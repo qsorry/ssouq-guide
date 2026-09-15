@@ -16,27 +16,42 @@ from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # ================= الإعدادات =================
-API_URL  = "http://mr7-4k.live:80/msAPIufgk/reseller/index.php"
-API_KEY  = os.environ.get("XM_API_KEY", "5d8e14c6870a10f36379418ee1a60993")
-HOST     = "http://mr7-4k.live:80"          # الهوست الذي يظهر للعميل في السطر
+# كل حساب مستقل تماماً: بيانات دخول الصفحة + API الريسيلر + الهوست الافتراضي.
+# أضف حسابات جديدة بنسخ أحد العناصر وتعديله.
+ACCOUNTS = [
+    {
+        "name":     "account1",
+        "user":     "admin",                        # اسم الدخول للصفحة
+        "password": "CHANGE_ME_1",                  # كلمة مرور الصفحة
+        "api_url":  "http://mr7-4k.live:80/msAPIufgk/reseller/index.php",
+        "api_key":  os.environ.get("XM_API_KEY", "5d8e14c6870a10f36379418ee1a60993"),
+        "host":     "http://mr7-4k.live:80",        # الهوست الافتراضي في السطر
+    },
+    {
+        "name":     "account2",
+        "user":     "user2",                        # اسم الدخول للصفحة
+        "password": "CHANGE_ME_2",                  # كلمة مرور الصفحة
+        "api_url":  "http://CHANGE_ME/reseller/index.php",   # رابط API الثاني
+        "api_key":  "CHANGE_ME",                    # مفتاح API الثاني
+        "host":     "http://CHANGE_ME:80",          # الهوست الافتراضي في السطر
+    },
+]
 TXT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lines.txt")
 HTML_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xm_lines.html")
 PORT     = int(os.environ.get("XM_PORT", "8080"))
 BIND     = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
-AUTH_USER = os.environ.get("XM_USER", "admin")       # اسم الدخول للصفحة
-AUTH_PASS = os.environ.get("XM_PASSWORD", "")        # كلمة المرور (إجباري عند النشر)
 DIGITS   = 12                                # طول اليوزر والباسورد (أرقام)
 # ============================================
 
 
-def api(action, params=None, post=False):
-    q = {"api_key": API_KEY, "action": action}
+def api(acct, action, params=None, post=False):
+    q = {"api_key": acct["api_key"], "action": action}
     body = None
     if post:
         body = urlencode(params or {}, doseq=True).encode()
     else:
         q.update(params or {})
-    url = API_URL + "?" + urlencode(q, doseq=True)
+    url = acct["api_url"] + "?" + urlencode(q, doseq=True)
     req = Request(url, data=body, headers={"User-Agent": "Mozilla/5.0",
               "Content-Type": "application/x-www-form-urlencoded"})
     with urlopen(req, timeout=30) as r:
@@ -67,9 +82,9 @@ def _ids(v):
     return [int(x) for x in (v or []) if str(x).strip().isdigit()]
 
 
-def get_packages():
+def get_packages(acct):
     pkgs = []
-    for p in _unwrap(api("get_packages")):
+    for p in _unwrap(api(acct, "get_packages")):
         if not isinstance(p, dict):
             continue
         if str(p.get("is_line", "1")) == "0":      # نعرض باقات M3U Lines فقط
@@ -88,8 +103,8 @@ def rand_digits(n=DIGITS):
     return str(secrets.randbelow(9) + 1) + "".join(str(secrets.randbelow(10)) for _ in range(n - 1))
 
 
-def create_line(pkg, username=None, password=None, host=None):
-    host = (host or HOST).strip().rstrip("/")
+def create_line(acct, pkg, username=None, password=None, host=None):
+    host = (host or acct["host"]).strip().rstrip("/")
     username = username or rand_digits()
     password = password or rand_digits()
     params = {
@@ -99,7 +114,7 @@ def create_line(pkg, username=None, password=None, host=None):
         "max_connections": pkg.get("max_connections") or 1,
         "bouquets_selected[]": pkg["bouquets"],  # اختيار كل Subscribed
     }
-    r = api("create_line", params, post=True)
+    r = api(acct, "create_line", params, post=True)
     ok = isinstance(r, dict) and (
         r.get("status") in ("STATUS_SUCCESS", "success", True) or r.get("result") is True)
     if not ok:
@@ -110,14 +125,23 @@ def create_line(pkg, username=None, password=None, host=None):
     line = f"Host {host}  Password {password} Username {username}"
     now = datetime.datetime.now()
     with open(TXT_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{now:%d-%m-%Y %H:%M}  |  {line}  |  {pkg['name']}\n")
+        f.write(f"{now:%d-%m-%Y %H:%M}  |  {acct['name']}  |  {line}  |  {pkg['name']}\n")
     return {"line": line, "username": username, "password": password,
             "package": pkg["name"], "time": now.isoformat(timespec="seconds")}
 
 
 # ---------------- وضع سطر الأوامر ----------------
+def pick_account():
+    if len(ACCOUNTS) == 1:
+        return ACCOUNTS[0]
+    for i, a in enumerate(ACCOUNTS, 1):
+        print(f"{i}) {a['name']}  —  {a['host']}")
+    return ACCOUNTS[int(input("\nرقم الحساب: ").strip()) - 1]
+
+
 def cli():
-    pkgs = get_packages()
+    acct = pick_account()
+    pkgs = get_packages(acct)
     if not pkgs:
         print("لا توجد باقات. شغّل: python xm_lines.py debug")
         return
@@ -127,7 +151,7 @@ def cli():
     count = int((input("عدد اليوزرات [1]: ").strip() or "1"))
     lines = []
     for _ in range(count):
-        res = create_line(pkgs[n - 1])
+        res = create_line(acct, pkgs[n - 1])
         lines.append(res["line"])
         print(res["line"])
     print(f"\n✓ تم الحفظ في {TXT_FILE}")
@@ -147,14 +171,14 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _authed(self):
-        if not AUTH_PASS:
-            return True
+        """يرجع الحساب المطابق لبيانات الدخول، أو None بعد إرسال 401."""
         h = self.headers.get("Authorization", "")
         if h.startswith("Basic "):
             try:
                 u, _, p = base64.b64decode(h[6:]).decode("utf-8", "replace").partition(":")
-                if hmac.compare_digest(u, AUTH_USER) and hmac.compare_digest(p, AUTH_PASS):
-                    return True
+                for a in ACCOUNTS:
+                    if hmac.compare_digest(u, a["user"]) and hmac.compare_digest(p, a["password"]):
+                        return a
             except Exception:
                 pass
         self.send_response(401)
@@ -162,25 +186,27 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", "0")
         self.end_headers()
-        return False
+        return None
 
     def do_GET(self):
         if self.path == "/robots.txt":
             return self._send(200, raw=b"User-agent: *\nDisallow: /\n", ctype="text/plain; charset=utf-8")
-        if not self._authed():
+        acct = self._authed()
+        if not acct:
             return
         try:
             if self.path in ("/", "/index.html"):
                 with open(HTML_FILE, "rb") as f:
                     return self._send(200, raw=f.read(), ctype="text/html; charset=utf-8")
             if self.path == "/api/packages":
-                return self._send(200, {"host": HOST, "packages": get_packages()})
+                return self._send(200, {"account": acct["name"], "host": acct["host"], "packages": get_packages(acct)})
             self._send(404, {"error": "not found"})
         except Exception as e:
             self._send(500, {"error": str(e)})
 
     def do_POST(self):
-        if not self._authed():
+        acct = self._authed()
+        if not acct:
             return
         try:
             if self.path != "/api/create":
@@ -190,11 +216,11 @@ class Handler(BaseHTTPRequestHandler):
             host = str(req.get("host") or "").strip()
             if host and not host.startswith(("http://", "https://")):
                 return self._send(400, {"error": "الهوست يجب أن يبدأ بـ http:// أو https://"})
-            pkg = next((p for p in get_packages() if str(p["id"]) == str(req.get("package_id"))), None)
+            pkg = next((p for p in get_packages(acct) if str(p["id"]) == str(req.get("package_id"))), None)
             if not pkg:
                 return self._send(400, {"error": "الباقة غير موجودة"})
             count = max(1, min(int(req.get("count", 1)), 50))
-            out = [create_line(pkg, req.get("username") if count == 1 else None,
+            out = [create_line(acct, pkg, req.get("username") if count == 1 else None,
                                req.get("password") if count == 1 else None, host) for _ in range(count)]
             self._send(200, {"lines": out})
         except Exception as e:
@@ -202,8 +228,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def web():
-    if not AUTH_PASS and BIND not in ("127.0.0.1", "localhost"):
-        sys.exit("XM_PASSWORD غير مضبوط. ضع كلمة مرور في متغير البيئة XM_PASSWORD قبل النشر.")
     print(f"الصفحة تعمل: http://{BIND}:{PORT}   (Ctrl+C للإيقاف)", flush=True)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
@@ -213,6 +237,6 @@ if __name__ == "__main__":
     if mode == "web":
         web()
     elif mode == "debug":
-        print(json.dumps(api("get_packages"), ensure_ascii=False, indent=2)[:4000])
+        print(json.dumps(api(pick_account(), "get_packages"), ensure_ascii=False, indent=2)[:4000])
     else:
         cli()

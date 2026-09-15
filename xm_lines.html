@@ -13,6 +13,7 @@
 body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif}
 main{max-width:620px;margin:0 auto;padding:20px 16px 60px}
 h1{font-size:1.6rem;margin:0 0 4px}
+.acct{font-size:.8rem;color:var(--mute);font-weight:400;direction:ltr;display:inline-block}
 .sub{color:var(--mute);margin:0 0 20px;font-size:.95rem}
 section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
 h2{font-size:1.05rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -48,7 +49,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 </head>
 <body>
 <main>
-  <h1>إنشاء يوزر M3U</h1>
+  <h1>إنشاء يوزر M3U <small class="acct" id="acct"></small></h1>
   <p class="sub">اختر الباقة، وكل البوكيهات المشتركة تُضاف تلقائياً.</p>
 
   <section>
@@ -85,21 +86,22 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 
 <script>
 const $ = id => document.getElementById(id);
-const KEY = "xm_lines_history";
-const HOST_KEY = "xm_lines_host";
+let account = "";
+const KEY = () => "xm_lines_history_" + account;
+const HOST_KEY = () => "xm_lines_host_" + account;
 let packages = [];
 
-const getHost = () => { try { return (localStorage.getItem(HOST_KEY) || "").trim(); } catch { return ""; } };
+const getHost = () => { try { return (localStorage.getItem(HOST_KEY()) || "").trim(); } catch { return ""; } };
 function saveHost(){
   const h = $("host").value.trim().replace(/\/+$/, "");
   if (!h) { $("msg").textContent = "اكتب الهوست أولاً."; return; }
   $("host").value = h;
-  try { localStorage.setItem(HOST_KEY, h); } catch {}
+  try { localStorage.setItem(HOST_KEY(), h); } catch {}
   toast("تم حفظ الهوست");
 }
 
-const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
-const save = h => { try { localStorage.setItem(KEY, JSON.stringify(h)); } catch {} };
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY())) || []; } catch { return []; } };
+const save = h => { try { localStorage.setItem(KEY(), JSON.stringify(h)); } catch {} };
 
 function toast(t="تم النسخ"){ const e=$("toast"); e.textContent=t; e.classList.add("on"); setTimeout(()=>e.classList.remove("on"),1400); }
 async function copy(text){
@@ -120,7 +122,10 @@ async function fetchPackages(){
     const r = await fetch("/api/packages"); const d = await r.json();
     if (d.error) throw new Error(d.error);
     packages = d.packages;
-    if (!$("host").value) $("host").value = getHost() || d.host || "";
+    account = d.account || "";
+    $("acct").textContent = account;
+    $("host").value = getHost() || d.host || "";
+    renderHistory();
     $("pkgs").innerHTML = packages.length ? packages.map((p,i)=>`
       <label class="pkg"><input type="radio" name="pkg" value="${esc(p.id)}" ${i===0?"checked":""}>
         <b>${esc(p.name)}</b><small>${p.bouquets.length} بوكيه</small></label>`).join("")
@@ -136,7 +141,7 @@ async function createLines(){
   if (!sel) { $("msg").textContent = "اختر باقة أولاً."; return; }
   const host = $("host").value.trim().replace(/\/+$/, "");
   if (!host) { $("msg").textContent = "اكتب الهوست أولاً."; return; }
-  if (host !== getHost()) { try { localStorage.setItem(HOST_KEY, host); } catch {} }
+  if (host !== getHost()) { try { localStorage.setItem(HOST_KEY(), host); } catch {} }
   const btn = $("create"); btn.disabled = true; btn.textContent = "جاري الإنشاء…"; $("msg").textContent = "";
   try {
     const r = await fetch("/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
@@ -180,7 +185,6 @@ $("exp").onclick = () => {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt],{type:"text/plain"})); a.download = "lines.txt"; a.click();
 };
 
-$("host").value = getHost();
 fetchPackages(); renderHistory();
 </script>
 </body>
