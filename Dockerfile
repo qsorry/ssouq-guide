@@ -1,4 +1,6 @@
-FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY index.html logo.jpg og-image.png robots.txt sitemap.xml /usr/share/nginx/html/
+FROM python:3.12-alpine
+WORKDIR /app
+COPY xm_lines.py xm_lines.html ./
+ENV XM_BIND=0.0.0.0 XM_PORT=80 PYTHONUNBUFFERED=1
 EXPOSE 80
+CMD ["python", "xm_lines.py", "web"]
