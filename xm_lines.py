@@ -10,7 +10,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines
 
 لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
-import json, os, sys, secrets, datetime
+import json, os, sys, secrets, datetime, base64, hmac
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +23,8 @@ TXT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lines.txt")
 HTML_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xm_lines.html")
 PORT     = int(os.environ.get("XM_PORT", "8080"))
 BIND     = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
+AUTH_USER = os.environ.get("XM_USER", "admin")       # اسم الدخول للصفحة
+AUTH_PASS = os.environ.get("XM_PASSWORD", "")        # كلمة المرور (إجباري عند النشر)
 DIGITS   = 12                                # طول اليوزر والباسورد (أرقام)
 # ============================================
 
@@ -144,20 +146,42 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _authed(self):
+        if not AUTH_PASS:
+            return True
+        h = self.headers.get("Authorization", "")
+        if h.startswith("Basic "):
+            try:
+                u, _, p = base64.b64decode(h[6:]).decode("utf-8", "replace").partition(":")
+                if hmac.compare_digest(u, AUTH_USER) and hmac.compare_digest(p, AUTH_PASS):
+                    return True
+            except Exception:
+                pass
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="XM Lines", charset="UTF-8"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
     def do_GET(self):
+        if self.path == "/robots.txt":
+            return self._send(200, raw=b"User-agent: *\nDisallow: /\n", ctype="text/plain; charset=utf-8")
+        if not self._authed():
+            return
         try:
             if self.path in ("/", "/index.html"):
                 with open(HTML_FILE, "rb") as f:
                     return self._send(200, raw=f.read(), ctype="text/html; charset=utf-8")
             if self.path == "/api/packages":
                 return self._send(200, {"host": HOST, "packages": get_packages()})
-            if self.path == "/robots.txt":
-                return self._send(200, raw=b"User-agent: *\nDisallow: /\n", ctype="text/plain; charset=utf-8")
             self._send(404, {"error": "not found"})
         except Exception as e:
             self._send(500, {"error": str(e)})
 
     def do_POST(self):
+        if not self._authed():
+            return
         try:
             if self.path != "/api/create":
                 return self._send(404, {"error": "not found"})
@@ -178,6 +202,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def web():
+    if not AUTH_PASS and BIND not in ("127.0.0.1", "localhost"):
+        sys.exit("XM_PASSWORD غير مضبوط. ضع كلمة مرور في متغير البيئة XM_PASSWORD قبل النشر.")
     print(f"الصفحة تعمل: http://{BIND}:{PORT}   (Ctrl+C للإيقاف)", flush=True)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
