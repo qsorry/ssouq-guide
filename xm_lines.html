@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>إنشاء يوزرات M3U</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#16324F;--paper:#EEF2F6;--card:#FFFFFF;--line:#D5DEE8;--go:#0F8C7B;--copy:#D9912B;--err:#C2412D;--mute:#5F7288}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8}}
+:root[data-theme="dark"]{--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif}
+main{max-width:620px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:1.6rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 20px;font-size:.95rem}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+h2{font-size:1.05rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pkgs{display:grid;gap:8px}
+.pkg{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;cursor:pointer}
+.pkg input{accent-color:var(--go);width:20px;height:20px}
+.pkg:has(input:checked){border-color:var(--go);background:color-mix(in srgb,var(--go) 9%,transparent)}
+.pkg b{flex:1;font-weight:500}
+.pkg small{color:var(--mute);white-space:nowrap}
+.row{display:grid;grid-template-columns:1fr 1fr 90px;gap:8px;margin-top:12px}
+label.f{font-size:.8rem;color:var(--mute)}
+input.t{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit;direction:ltr;text-align:left}
+button{font:inherit;border:0;border-radius:10px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-offset:2px}
+.go{width:100%;margin-top:14px;padding:14px;background:var(--go);color:#fff;font-weight:700;font-size:1.05rem}
+.go:disabled{opacity:.55;cursor:wait}
+.copy{background:var(--copy);color:#1b1206;padding:6px 14px;font-weight:700;font-size:.9rem}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:6px 12px;font-size:.85rem}
+.lines{direction:ltr;text-align:left;font:500 .88rem/1.7 "IBM Plex Mono",Consolas,monospace;background:var(--paper);border-radius:8px;padding:10px 12px;overflow-x:auto;white-space:pre}
+.msg{color:var(--err);font-size:.9rem;margin-top:10px;white-space:pre-wrap}
+.day{margin-top:14px}
+.day h3{font-size:.95rem;margin:0 0 6px;display:flex;justify-content:space-between;align-items:center}
+.item{display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px dashed var(--line)}
+.item time{font-weight:700;min-width:44px}
+.item .l{flex:1;direction:ltr;text-align:left;font:500 .8rem "IBM Plex Mono",Consolas,monospace;overflow-x:auto;white-space:nowrap}
+.item .p{color:var(--mute);font-size:.75rem;display:block;direction:rtl;text-align:right;font-family:"IBM Plex Sans Arabic",sans-serif}
+.empty{color:var(--mute);text-align:center;padding:10px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:8px 18px;border-radius:20px;opacity:0;transition:opacity .2s}
+.toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+@media (max-width:480px){.row{grid-template-columns:1fr 1fr}.row .c{grid-column:span 2}}
+</style>
+</head>
+<body>
+<main>
+  <h1>إنشاء يوزر M3U</h1>
+  <p class="sub">اختر الباقة، وكل البوكيهات المشتركة تُضاف تلقائياً.</p>
+
+  <section>
+    <h2>الهوست <button class="copy" id="saveHost">حفظ</button></h2>
+    <label class="f" for="host">يظهر للعميل في السطر (مثال: https://mrha.ink:80)</label>
+    <input class="t" id="host" placeholder="http://host:port" autocomplete="off">
+  </section>
+
+  <section>
+    <h2>الباقة <button class="ghost" id="reload">تحديث</button></h2>
+    <div class="pkgs" id="pkgs"><div class="empty">جاري تحميل الباقات…</div></div>
+    <div class="row">
+      <div><label class="f" for="u">Username (فارغ = تلقائي)</label><input class="t" id="u" inputmode="numeric"></div>
+      <div><label class="f" for="p">Password (فارغ = تلقائي)</label><input class="t" id="p" inputmode="numeric"></div>
+      <div class="c"><label class="f" for="n">العدد</label><input class="t" id="n" type="number" min="1" max="50" value="1"></div>
+    </div>
+    <button class="go" id="create">إنشاء اليوزر</button>
+    <div class="msg" id="msg"></div>
+  </section>
+
+  <section id="resBox" hidden>
+    <h2>اليوزرات الجديدة <button class="copy" id="copyRes">نسخ الكل</button></h2>
+    <div class="lines" id="res"></div>
+  </section>
+
+  <section>
+    <h2>السجل
+      <span><button class="ghost" id="exp">تصدير txt</button> <button class="ghost" id="clr">مسح</button></span>
+    </h2>
+    <div id="hist"></div>
+  </section>
+</main>
+<div class="toast" id="toast">تم النسخ</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const KEY = "xm_lines_history";
+const HOST_KEY = "xm_lines_host";
+let packages = [];
+
+const getHost = () => { try { return (localStorage.getItem(HOST_KEY) || "").trim(); } catch { return ""; } };
+function saveHost(){
+  const h = $("host").value.trim().replace(/\/+$/, "");
+  if (!h) { $("msg").textContent = "اكتب الهوست أولاً."; return; }
+  $("host").value = h;
+  try { localStorage.setItem(HOST_KEY, h); } catch {}
+  toast("تم حفظ الهوست");
+}
+
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
+const save = h => { try { localStorage.setItem(KEY, JSON.stringify(h)); } catch {} };
+
+function toast(t="تم النسخ"){ const e=$("toast"); e.textContent=t; e.classList.add("on"); setTimeout(()=>e.classList.remove("on"),1400); }
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta=document.createElement("textarea"); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  toast();
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function fetchPackages(){
+  $("msg").textContent = "";
+  if (location.protocol === "file:") {
+    $("pkgs").innerHTML = '<div class="empty">شغّل الصفحة عبر: python xm_lines.py web ثم افتح http://127.0.0.1:8080</div>';
+    return;
+  }
+  $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
+  try {
+    const r = await fetch("/api/packages"); const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    packages = d.packages;
+    if (!$("host").value) $("host").value = getHost() || d.host || "";
+    $("pkgs").innerHTML = packages.length ? packages.map((p,i)=>`
+      <label class="pkg"><input type="radio" name="pkg" value="${esc(p.id)}" ${i===0?"checked":""}>
+        <b>${esc(p.name)}</b><small>${p.bouquets.length} بوكيه</small></label>`).join("")
+      : '<div class="empty">لا توجد باقات M3U في الحساب.</div>';
+  } catch(e) {
+    $("pkgs").innerHTML = '<div class="empty">تعذر تحميل الباقات.</div>';
+    $("msg").textContent = e.message;
+  }
+}
+
+async function createLines(){
+  const sel = document.querySelector('input[name="pkg"]:checked');
+  if (!sel) { $("msg").textContent = "اختر باقة أولاً."; return; }
+  const host = $("host").value.trim().replace(/\/+$/, "");
+  if (!host) { $("msg").textContent = "اكتب الهوست أولاً."; return; }
+  if (host !== getHost()) { try { localStorage.setItem(HOST_KEY, host); } catch {} }
+  const btn = $("create"); btn.disabled = true; btn.textContent = "جاري الإنشاء…"; $("msg").textContent = "";
+  try {
+    const r = await fetch("/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({package_id: sel.value, host, username: $("u").value.trim(), password: $("p").value.trim(), count: +$("n").value || 1})});
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const h = load(); d.lines.forEach(x => h.unshift(x)); save(h);
+    $("res").textContent = d.lines.map(x=>x.line).join("\n");
+    $("resBox").hidden = false; $("u").value = ""; $("p").value = "";
+    renderHistory();
+    copy($("res").textContent);
+  } catch(e) { $("msg").textContent = e.message; }
+  btn.disabled = false; btn.textContent = "إنشاء اليوزر";
+}
+
+function renderHistory(){
+  const h = load();
+  if (!h.length) { $("hist").innerHTML = '<div class="empty">لم تُنشئ أي يوزر بعد.</div>'; return; }
+  const groups = {};
+  h.forEach(x => { const d = new Date(x.time); const k = d.toLocaleDateString("en-GB"); (groups[k] ||= []).push(x); });
+  $("hist").innerHTML = Object.entries(groups).map(([day, items]) => `
+    <div class="day"><h3>${day} <span>(${items.length}) <button class="copy" data-day="${day}">نسخ اليوم</button></span></h3>
+    ${items.map(x => `<div class="item"><time>${new Date(x.time).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</time>
+      <div class="l">${esc(x.line)}<span class="p">${esc(x.package)}</span></div>
+      <button class="ghost" data-line="${esc(x.line)}">نسخ</button></div>`).join("")}</div>`).join("");
+}
+
+$("hist").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.line) copy(b.dataset.line);
+  if (b.dataset.day) copy(load().filter(x => new Date(x.time).toLocaleDateString("en-GB") === b.dataset.day).map(x=>x.line).join("\n"));
+});
+$("copyRes").onclick = () => copy($("res").textContent);
+$("create").onclick = createLines;
+$("reload").onclick = fetchPackages;
+$("saveHost").onclick = saveHost;
+$("clr").onclick = () => { if (confirm("مسح السجل من المتصفح؟")) { save([]); renderHistory(); } };
+$("exp").onclick = () => {
+  const txt = load().map(x => { const d=new Date(x.time);
+    return `${d.toLocaleDateString("en-GB").replace(/\//g,"-")} ${d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}  |  ${x.line}  |  ${x.package}`; }).join("\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt],{type:"text/plain"})); a.download = "lines.txt"; a.click();
+};
+
+$("host").value = getHost();
+fetchPackages(); renderHistory();
+</script>
+</body>
+</html>
