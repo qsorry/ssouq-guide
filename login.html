@@ -36,9 +36,9 @@ const $ = id => document.getElementById(id);
 async function go(){
   $("msg").textContent = "";
   try {
-    const r = await fetch("/api/login", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({user:$("u").value.trim(), password:$("p").value})});
+    const r = await fetch("/admin/api/login", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({user:$("u").value.trim(), password:$("p").value})});
     const d = await r.json(); if (d.error) throw new Error(d.error);
-    location.href = d.role === "admin" ? "/admin" : "/";
+    location.href = d.role === "admin" ? "/admin/accounts" : "/admin";
   } catch(e) { $("msg").textContent = e.message; }
 }
 $("go").onclick = go;

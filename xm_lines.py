@@ -8,7 +8,8 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
   python xm_lines.py          ← وضع سطر الأوامر
   python xm_lines.py debug    ← يطبع رد get_packages الخام
 
-أول مرة تفتح الصفحة تضع كلمة مرور المدير، ثم من /admin تضيف الحسابات
+الصفحة الرئيسية / دليل تفعيل عام. الأداة كلها تحت /admin:
+أول مرة تفتح /admin تضع كلمة مرور المدير، ثم من /admin/accounts تضيف الحسابات
 (لكل حساب: اسم دخول، كلمة مرور، رابط API، مفتاح API، هوست).
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
@@ -22,7 +23,11 @@ BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR  = os.environ.get("XM_DATA", os.path.join(BASE_DIR, "data"))
 ACC_FILE  = os.path.join(DATA_DIR, "accounts.json")
 TXT_FILE  = os.path.join(DATA_DIR, "lines.txt")
-PAGES     = {"/": "xm_lines.html", "/admin": "admin.html", "/setup": "setup.html", "/login": "login.html"}
+P         = "/admin"                                  # كل الأداة تحت هذا المسار
+PAGES     = {P: "xm_lines.html", P + "/accounts": "admin.html", P + "/setup": "setup.html", P + "/login": "login.html"}
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image/png", ".jpg": "image/jpeg",
+             ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon"}
 SESSION_TTL = 30 * 24 * 3600                          # مدة الجلسة (30 يوم)
 PORT      = int(os.environ.get("XM_PORT", "8080"))
 BIND      = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
@@ -197,7 +202,7 @@ def create_line(acct, pkg, username=None, password=None, host=None):
 def pick_account():
     accts = load_store()["accounts"]
     if not accts:
-        sys.exit("لا توجد حسابات. شغّل الصفحة وأضف الحسابات من /admin أولاً.")
+        sys.exit("لا توجد حسابات. شغّل الصفحة وأضف الحسابات من /admin/accounts أولاً.")
     if len(accts) == 1:
         return accts[0]
     for i, a in enumerate(accts, 1):
@@ -258,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get("X-Forwarded-Proto", "").lower() == "https"
 
     def _set_cookie(self, tok, clear=False):
-        c = f"xm_session={tok}; Path=/; HttpOnly; SameSite=Lax"
+        c = f"xm_session={tok}; Path={P}; HttpOnly; SameSite=Lax"
         c += "; Max-Age=0" if clear else f"; Max-Age={SESSION_TTL}"
         if self._secure():
             c += "; Secure"
@@ -295,45 +300,61 @@ class Handler(BaseHTTPRequestHandler):
         return None, None
 
     def _deny(self, path):
-        if path.startswith("/api/"):
+        if path.startswith(P + "/api/"):
             self._send(401, {"error": "سجّل الدخول أولاً", "login": True})
         else:
-            self._redirect("/login")
+            self._redirect(P + "/login")
+
+    def _static(self, path):
+        rel = os.path.normpath(path[len("/static/"):]).replace("\\", "/")
+        full = os.path.join(STATIC_DIR, rel)
+        if rel.startswith("..") or not os.path.isfile(full):
+            return self._send(404, {"error": "not found"})
+        with open(full, "rb") as f:
+            self._send(200, raw=f.read(), ctype=MIME.get(os.path.splitext(rel)[1].lower(), "application/octet-stream"),
+                       extra={"Cache-Control": "public, max-age=2592000"})
 
     # ---------- GET ----------
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        # ----- الجزء العام -----
         if path == "/robots.txt":
-            return self._send(200, raw=b"User-agent: *\nDisallow: /\n", ctype="text/plain; charset=utf-8")
+            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n".encode(), ctype="text/plain; charset=utf-8")
+        if path in ("/", "/index.html"):
+            return self._page("index.html")
+        if path.startswith("/static/"):
+            return self._static(path)
+        if path == "/admin/":
+            return self._redirect(P)
+        if path != P and not path.startswith(P + "/"):
+            return self._send(404, raw="404".encode(), ctype="text/plain; charset=utf-8")
+        # ----- الأداة تحت /admin -----
         st = load_store()
-        # الإعداد الأول: لا يوجد مدير بعد
-        if not st["admin"]:
-            if path == "/setup":
-                return self._page(PAGES["/setup"])
-            return self._redirect("/setup")
-        if path == "/setup":
-            return self._redirect("/")
-        if path == "/logout":
+        if not st["admin"]:                       # الإعداد الأول: لا يوجد مدير بعد
+            return self._page(PAGES[P + "/setup"]) if path == P + "/setup" else self._redirect(P + "/setup")
+        if path == P + "/setup":
+            return self._redirect(P)
+        if path == P + "/logout":
             _sessions.pop(self._cookie("xm_session"), None)
             return self._send(302, raw=b"", ctype="text/plain",
-                              extra={"Location": "/login", **self._set_cookie("", clear=True)})
+                              extra={"Location": P + "/login", **self._set_cookie("", clear=True)})
         role, acct = self._who(st)
-        if path == "/login":
-            return self._redirect("/") if role else self._page(PAGES["/login"])
+        if path == P + "/login":
+            return self._redirect(P) if role else self._page(PAGES[P + "/login"])
         if not role:
             return self._deny(path)
         try:
-            if path == "/":
-                return self._redirect("/admin") if role == "admin" else self._page(PAGES["/"])
-            if path == "/admin":
-                return self._page(PAGES["/admin"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
-            if path == "/api/me":
+            if path == P:
+                return self._redirect(P + "/accounts") if role == "admin" else self._page(PAGES[P])
+            if path == P + "/accounts":
+                return self._page(PAGES[P + "/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
+            if path == P + "/api/me":
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None})
-            if path == "/api/packages":
+            if path == P + "/api/packages":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
                 return self._send(200, {"account": acct["name"], "host": acct["host"], "packages": get_packages(acct)})
-            if path == "/api/accounts":
+            if path == P + "/api/accounts":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, {"accounts": st["accounts"]})
@@ -344,6 +365,9 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- POST ----------
     def do_POST(self):
         path = self.path.split("?", 1)[0]
+        if not path.startswith(P + "/api/"):
+            return self._send(404, {"error": "not found"})
+        path = path[len(P):]
         try:
             with _lock:
                 st = load_store()

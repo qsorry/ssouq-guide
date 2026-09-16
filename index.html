@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تفعيل الاشتراك خطوة بخطوة | سمارت سوق</title>
+<meta name="description" content="معالج تفعيل اشتراك IPTV خطوة بخطوة على الآيفون والآيباد وجوالات الأندرويد وشاشات الأندرويد وشاشات سامسونج و LG.">
+<link rel="canonical" href="https://guide.ssouq.com/">
+<meta name="theme-color" content="#0F8C7B">
+<meta property="og:type" content="website"><meta property="og:locale" content="ar_SA"><meta property="og:site_name" content="سمارت سوق">
+<meta property="og:title" content="تفعيل الاشتراك خطوة بخطوة | سمارت سوق">
+<meta property="og:description" content="اختر جهازك واتبع الخطوات لتشغيل اشتراكك خلال دقائق.">
+<meta property="og:url" content="https://guide.ssouq.com/">
+<meta property="og:image" content="https://guide.ssouq.com/static/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/static/logo.jpg" type="image/jpeg">
+<link rel="apple-touch-icon" href="/static/logo.jpg">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#16324F;--paper:#EEF2F6;--card:#FFFFFF;--line:#D5DEE8;--go:#0F8C7B;--copy:#D9912B;--err:#C2412D;--mute:#5F7288;--wa:#1DA851;--soft:#E6F4F1}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8;--wa:#2FC46A;--soft:#17332F}}
+:root[data-theme="dark"]{--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8;--wa:#2FC46A;--soft:#17332F}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.7 "IBM Plex Sans Arabic",Tahoma,sans-serif}
+header{display:flex;align-items:center;gap:12px;max-width:680px;margin:0 auto;padding:16px}
+header img{width:44px;height:44px;border-radius:12px;object-fit:cover}
+header b{font-size:1.05rem}
+header small{display:block;color:var(--mute);font-size:.8rem}
+main{max-width:680px;margin:0 auto;padding:0 16px 60px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+h1{font-size:1.5rem;margin:0 0 6px}
+h2{font-size:1.15rem;margin:0 0 12px}
+p{margin:0 0 10px}
+.sub{color:var(--mute)}
+/* progress */
+.prog{display:flex;align-items:center;gap:0;margin:6px 0 18px;counter-reset:s}
+.prog span{flex:1;position:relative;text-align:center;font-size:.78rem;color:var(--mute);padding-top:30px}
+.prog span::before{counter-increment:s;content:counter(s);position:absolute;top:0;right:50%;transform:translateX(50%);width:26px;height:26px;border-radius:50%;background:var(--card);border:2px solid var(--line);color:var(--mute);font-weight:700;line-height:22px;font-size:.8rem}
+.prog span::after{content:"";position:absolute;top:12px;right:calc(50% + 13px);width:calc(100% - 26px);height:2px;background:var(--line)}
+.prog span:first-child::after{display:none}
+.prog span.done::before,.prog span.on::before{background:var(--go);border-color:var(--go);color:#fff}
+.prog span.done::after{background:var(--go)}
+.prog span.on{color:var(--ink);font-weight:700}
+/* device grid */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dev{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 10px;border:1.5px solid var(--line);border-radius:14px;background:transparent;color:var(--ink);font:inherit;cursor:pointer;text-align:center}
+.dev svg{width:40px;height:40px;stroke:var(--go);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dev b{font-size:.95rem}
+.dev small{color:var(--mute);font-size:.75rem}
+.dev:hover,.dev:focus-visible{border-color:var(--go);background:color-mix(in srgb,var(--go) 8%,transparent)}
+button:focus-visible,a:focus-visible{outline:3px solid var(--copy);outline-offset:2px}
+/* step */
+.step img{width:100%;max-height:360px;object-fit:contain;border-radius:12px;background:#0b1520;margin:12px 0}
+.step ol{padding-right:20px;margin:8px 0}
+.step li{margin-bottom:6px}
+.fields{display:grid;gap:6px;margin:10px 0}
+.f{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;font-size:.92rem}
+.f code{font:500 .95rem "IBM Plex Mono","IBM Plex Sans Arabic",Consolas,monospace;unicode-bidi:plaintext;background:var(--soft);padding:2px 8px;border-radius:6px}
+.note{background:var(--soft);border-radius:10px;padding:10px 12px;font-size:.9rem;margin:10px 0}
+.nav{display:flex;gap:8px;margin-top:16px}
+.btn{flex:1;padding:13px;border:0;border-radius:10px;font:inherit;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:inline-block}
+.go{background:var(--go);color:#fff}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);flex:0 0 auto;padding:13px 18px}
+.wa{background:var(--wa);color:#fff}
+.link{color:var(--go);word-break:break-all}
+.alt{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+.alt h3{font-size:.95rem;margin:0 0 6px}
+.done{text-align:center;padding:10px 0}
+.done .big{font-size:3rem;line-height:1}
+.pick{display:grid;gap:8px;margin-top:10px}
+.pick button{text-align:right;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);font:inherit;cursor:pointer}
+.pick button b{display:block}
+.pick button small{color:var(--mute)}
+.pick button:hover{border-color:var(--go)}
+footer{max-width:680px;margin:0 auto;padding:0 16px 30px;color:var(--mute);font-size:.8rem;text-align:center}
+footer a{color:var(--mute)}
+@media (prefers-reduced-motion:no-preference){.card{animation:in .25s ease}@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
+</style>
+</head>
+<body>
+<header><img src="/static/logo.jpg" alt=""><div><b>سمارت سوق</b><small>دليل تفعيل الاشتراك</small></div></header>
+<main>
+  <div class="prog" id="prog"><span class="on">جهازك</span><span>التطبيق</span><span>البيانات</span><span>جاهز</span></div>
+  <div id="view"></div>
+</main>
+<footer>تحتاج مساعدة؟ <a href="https://wa.me/966504998661" target="_blank" rel="noopener">الدعم الفني على واتساب</a> · <a href="https://ssouq.com" target="_blank" rel="noopener">ssouq.com</a></footer>
+
+<script>
+const WA = "https://wa.me/966504998661?text=" + encodeURIComponent("مرحباً، أحتاج مساعدة في تفعيل الاشتراك. نوع الجهاز: ");
+const ICONS = {
+  phone: '<svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 18h4"/></svg>',
+  tv: '<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+  apple: '<svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 5h6"/><circle cx="12" cy="18" r="1"/></svg>',
+  smart: '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="12" rx="1.5"/><path d="M6 21h12M12 17v4M7 9h4M7 12h6"/></svg>'
+};
+const CREDS = '<div class="note">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a> بالمتجر.</div>';
+
+const DEVICES = {
+  ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق NEXT+", steps: [
+    { title: "حمّل تطبيق NEXT+", img: "/static/img/ios-next-appstore.webp",
+      html: '<p>افتح App Store وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://apps.apple.com/app/id6443335504" target="_blank" rel="noopener">apps.apple.com/app/id6443335504</a></p>' },
+    { title: "أدخل بياناتك في التطبيق",
+      html: '<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class="f"><span>الخانة الرابعة</span><code>55555</code></div></div>' + CREDS }
+  ]},
+  android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق NEXT+ أو MR7", steps: [
+    { title: "حمّل تطبيق NEXT+", img: "/static/img/android-next-play.webp",
+      html: '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><div class="alt"><h3>بديل: تطبيقنا الخاص MR7</h3><p>تحميل مباشر من الرابط: <a class="link" href="http://aftv.news/5574841" target="_blank" rel="noopener">aftv.news/5574841</a></p></div>' },
+    { title: "أدخل بياناتك في التطبيق", img: "/static/img/android-mr7-home.webp",
+      html: '<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class="f"><span>الخانة الرابعة</span><code>55555</code></div></div><p class="sub">في تطبيق MR7: اسم المستخدم في الخانة الأولى، كلمة السر في الثانية، واترك Activation code فارغًا ثم اضغط Login.</p>' + CREDS }
+  ]},
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "Downloader + MR7 TV", steps: [
+    { title: "حمّل تطبيق MR7 TV عبر Downloader", img: "/static/img/tv-downloader.png",
+      html: '<ol><li>حمّل تطبيق <b dir="ltr">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir="ltr">MR7 TV</b>. ثبّته وافتحه.</p>' },
+    { title: "سجّل الدخول", img: "/static/img/tv-mr7-login.jpg",
+      html: '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثانية</span><code>كلمة السر</code></div><div class="f"><span>Activation code</span><code>اتركه فارغًا</code></div></div><p>ثم اضغط <b dir="ltr">LOGIN</b>.</p>' + CREDS }
+  ], doneImg: "/static/img/tv-mr7-home.jpg" },
+  webos: { icon: "smart", name: "سامسونج / LG", sub: "0Player مجاني أو ORA مدفوع", choose: {
+    title: "اختر التطبيق المناسب لشاشتك",
+    options: [
+      { key: "zero", label: "0Player", sub: "مجاني، تضيف بياناتك بنفسك" },
+      { key: "ora", label: "ORAplayer", sub: "مدفوع، نفعّله لك من طرفنا" }
+    ]},
+    variants: {
+      zero: [
+        { title: "حمّل تطبيق 0Player", img: "/static/img/webos-0player-store.jpg",
+          html: '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> وحمّله.</p>' },
+        { title: "أضف قائمة جديدة بـ Portal Code", img: "/static/img/webos-0player-add.jpg",
+          html: '<ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir="ltr">Portal Code</b>.</li></ol><img src="/static/img/webos-0player-portal.jpg" alt="تبويب Portal Code في 0Player"><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم تريده</code></div><div class="f"><span>Code (الخادم)</span><code>92929480</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS }
+      ],
+      ora: [
+        { title: "حمّل تطبيق ORAplayer", img: "/static/img/webos-ora-store.webp",
+          html: '<p>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class="fields"><div class="f"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class="f"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div>' },
+        { title: "أرسل لنا بيانات الجهاز",
+          html: '<p>افتح التطبيق وستجد على الشاشة معرف الجهاز ورمز PIN. أرسلهما لنا عبر واتساب:</p><div class="fields"><div class="f"><span>Device ID</span><code>معرف الجهاز</code></div><div class="f"><span>PIN</span><code>الرمز الظاهر</code></div></div><p>وسنفعّل الاشتراك مباشرة من طرفنا بدون أي خطوات إضافية.</p><a class="btn wa" href="' + WA + encodeURIComponent("شاشة سامسونج/LG - ORAplayer. Device ID: ") + '" target="_blank" rel="noopener">إرسال البيانات عبر واتساب</a>' }
+      ]
+    }
+  }
+};
+
+const $ = s => document.querySelector(s);
+const state = { dev: null, variant: null, i: 0 };
+
+function steps(){ const d = DEVICES[state.dev]; return d.variants ? (d.variants[state.variant] || []) : d.steps; }
+function setProg(n){ [...$("#prog").children].forEach((el, i) => { el.className = i < n ? "done" : i === n ? "on" : ""; }); }
+function go(){ window.scrollTo({ top: 0, behavior: "smooth" }); }
+
+function renderHome(){
+  setProg(0);
+  $("#view").innerHTML = `<div class="card"><h1>فعّل اشتراكك خلال دقائق</h1><p class="sub">اختر نوع جهازك وسنرشدك خطوة بخطوة.</p>
+    <div class="grid">${Object.entries(DEVICES).map(([k, d]) => `<button class="dev" data-dev="${k}">${ICONS[d.icon]}<b>${d.name}</b><small>${d.sub}</small></button>`).join("")}</div></div>`;
+}
+function renderChoose(){
+  const d = DEVICES[state.dev]; setProg(1);
+  $("#view").innerHTML = `<div class="card"><h2>${d.choose.title}</h2><div class="pick">${d.choose.options.map(o => `<button data-variant="${o.key}"><b>${o.label}</b><small>${o.sub}</small></button>`).join("")}</div>
+    <div class="nav"><button class="btn ghost" data-back>رجوع</button></div></div>`;
+}
+function renderStep(){
+  const list = steps(), s = list[state.i], d = DEVICES[state.dev]; setProg(1 + state.i);
+  $("#view").innerHTML = `<div class="card step"><p class="sub">${d.name}${state.variant ? " · " + d.choose.options.find(o => o.key === state.variant).label : ""} · الخطوة ${state.i + 1} من ${list.length}</p>
+    <h2>${s.title}</h2>${s.img ? `<img src="${s.img}" alt="${s.title}">` : ""}${s.html}
+    <div class="nav"><button class="btn ghost" data-back>رجوع</button><button class="btn go" data-next>${state.i + 1 < list.length ? "التالي" : "أنهيت الخطوات"}</button></div></div>`;
+}
+function renderDone(){
+  const d = DEVICES[state.dev]; setProg(3);
+  $("#view").innerHTML = `<div class="card done"><div class="big">🎉</div><h2>استمتع بالمشاهدة!</h2><p class="sub">إذا لم تعمل القنوات تأكد من كتابة البيانات بدون مسافات، وأعد تشغيل التطبيق.</p>
+    ${d.doneImg ? `<img src="${d.doneImg}" alt="" style="width:100%;border-radius:12px;margin:10px 0">` : ""}
+    <div class="nav"><a class="btn wa" href="${WA + encodeURIComponent(d.name)}" target="_blank" rel="noopener">واجهت مشكلة؟ تواصل معنا</a></div>
+    <div class="nav"><button class="btn ghost" data-home style="flex:1">تفعيل جهاز آخر</button></div></div>`;
+}
+function render(){
+  if (!state.dev) return renderHome();
+  const d = DEVICES[state.dev];
+  if (d.variants && !state.variant) return renderChoose();
+  if (state.i >= steps().length) return renderDone();
+  renderStep();
+}
+$("#view").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.dev) { state.dev = b.dataset.dev; state.variant = null; state.i = 0; }
+  else if (b.dataset.variant) { state.variant = b.dataset.variant; state.i = 0; }
+  else if (b.hasAttribute("data-next")) { state.i++; }
+  else if (b.hasAttribute("data-back")) {
+    if (state.i > 0) state.i--;
+    else if (state.variant) state.variant = null;
+    else state.dev = null;
+  }
+  else if (b.hasAttribute("data-home")) { state.dev = null; state.variant = null; state.i = 0; }
+  history.replaceState(null, "", state.dev ? "#" + state.dev + (state.variant ? "-" + state.variant : "") : location.pathname);
+  render(); go();
+});
+// deep link: #ios / #android / #tv / #webos-zero / #webos-ora
+const h = location.hash.slice(1).split("-");
+if (DEVICES[h[0]]) { state.dev = h[0]; if (h[1] && DEVICES[h[0]].variants?.[h[1]]) state.variant = h[1]; }
+render();
+</script>
+</body>
+</html>

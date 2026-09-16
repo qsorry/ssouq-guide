@@ -1,6 +1,7 @@
 FROM python:3.12-alpine
 WORKDIR /app
-COPY xm_lines.py xm_lines.html admin.html setup.html login.html ./
+COPY xm_lines.py xm_lines.html admin.html setup.html login.html index.html ./
+COPY static ./static
 RUN mkdir -p /app/data
 ENV XM_BIND=0.0.0.0 XM_PORT=80 PYTHONUNBUFFERED=1
 EXPOSE 80
