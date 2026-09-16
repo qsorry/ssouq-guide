@@ -101,8 +101,14 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--copy);outline-offse
 .pick button small{color:var(--mute)}
 .pick button:hover{border-color:var(--go)}
 /* m3u tool */
-.tool{margin-top:28px}
-.tool h2{font-size:1.25rem;margin:0 0 4px}
+.tool{margin-top:28px;padding:0}
+.tool>.toggle{display:flex;align-items:center;gap:10px;width:100%;padding:16px 18px;border:0;background:transparent;color:var(--ink);font:inherit;text-align:right;cursor:pointer;border-radius:16px}
+.tool>.toggle span{font-weight:700;font-size:1.1rem}
+.tool>.toggle small{color:var(--mute);font-size:.8rem;flex:1}
+.tool>.toggle i{width:10px;height:10px;border-right:2px solid var(--go);border-bottom:2px solid var(--go);transform:rotate(45deg);transition:transform .2s;flex:0 0 auto}
+.tool>.toggle[aria-expanded="true"] i{transform:rotate(-135deg)}
+.tool>.toggle[aria-expanded="true"]{border-bottom:1px dashed var(--line);border-radius:16px 16px 0 0}
+#m3u-body{padding:0 18px 18px}
 .lbl{display:block;font-size:.85rem;color:var(--mute);margin:10px 0 4px}
 .t{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);font:500 .95rem "IBM Plex Mono","IBM Plex Sans Arabic",Consolas,monospace}
 .t:focus{outline:none;border-color:var(--go)}
@@ -138,9 +144,10 @@ footer a{color:var(--mute)}
   <div class="prog" id="prog"><span class="on">جهازك</span><span>التطبيق</span><span>البيانات</span><span>جاهز</span></div>
   <h1 class="sr">تفعيل اشتراك IPTV خطوة بخطوة على جميع الأجهزة</h1>
   <div id="view"><noscript><div class="card"><h2>اختر جهازك</h2><ul><li><a class="link" href="#ios">آيفون / آيباد: تطبيق VAR Player</a></li><li><a class="link" href="#android-next">جوال أندرويد: NEXT+ / MR7</a> أو <a class="link" href="#android-smarters">IPTV Smarters Pro</a></li><li><a class="link" href="#tv-mr7">شاشة / بوكس أندرويد: MR7 TV</a> أو <a class="link" href="#tv-smarters">IPTV Smarters Pro</a></li><li><a class="link" href="#webos-zero">سامسونج / LG: 0Player</a> أو <a class="link" href="#webos-ora">ORAplayer</a></li><li><a class="link" href="#windows">كمبيوتر ويندوز: IPTV Smarters Pro</a></li><li><a class="link" href="#mac">ماك: IPTV Smarters Pro</a></li></ul><p class="sub">فعّل JavaScript لعرض المعالج خطوة بخطوة.</p></div></noscript></div>
-  <section class="card tool" id="m3u" aria-labelledby="m3u-h">
-    <h2 id="m3u-h">هل تريد رابط M3U؟</h2>
-    <p class="sub">بعض المشغّلات (مثل VLC أو Kodi أو مشغّلات الشاشات) تطلب رابط M3U بدل اسم المستخدم وكلمة المرور. أدخل بياناتك وسنولّد لك الرابط جاهزًا للنسخ. البيانات لا تُرسل لأي خادم، الرابط يُبنى داخل متصفحك فقط.</p>
+  <section class="card tool" id="m3u">
+    <button class="toggle" type="button" id="m3u-toggle" aria-expanded="false" aria-controls="m3u-body"><span>هل تريد رابط M3U؟</span><small>اضغط هنا لتوليد الرابط من بيانات اشتراكك</small><i aria-hidden="true"></i></button>
+    <div id="m3u-body" hidden>
+    <p class="sub" style="margin-top:12px">بعض المشغّلات (مثل VLC أو Kodi أو مشغّلات الشاشات) تطلب رابط M3U بدل اسم المستخدم وكلمة المرور. أدخل بياناتك وسنولّد لك الرابط جاهزًا للنسخ. البيانات لا تُرسل لأي خادم، الرابط يُبنى داخل متصفحك فقط.</p>
     <form id="m3u-form" autocomplete="off">
       <label class="lbl" for="m3u-host">رابط الهوست مع البورت</label>
       <input class="t" id="m3u-host" dir="ltr" inputmode="url" placeholder="http://host.com:8080" required>
@@ -156,6 +163,7 @@ footer a{color:var(--mute)}
       <p class="sub" id="m3u-msg">انسخ الرابط والصقه في المشغّل الذي تستخدمه.</p>
     </div>
     <p class="sub count" id="m3u-count" hidden>استفاد من هذه الأداة <b id="m3u-n">0</b> شخص حتى الآن.</p>
+    </div>
   </section>
   <section class="plans" id="plans" aria-labelledby="plans-h">
     <h2 id="plans-h">اشتراكات IPTV من متجر سمارت سوق</h2>
@@ -335,7 +343,12 @@ render();
   const out = document.getElementById("m3u-out"), link = document.getElementById("m3u-link"), msg = document.getElementById("m3u-msg");
   const cnt = document.getElementById("m3u-count"), num = document.getElementById("m3u-n");
   const show = n => { if (typeof n === "number") { num.textContent = n.toLocaleString("en-US"); cnt.hidden = false; } };
-  fetch("/api/stats").then(r => r.json()).then(d => show(d.m3u)).catch(() => {});
+  const tg = document.getElementById("m3u-toggle"), body = document.getElementById("m3u-body"); let loaded = false;
+  const open = (v) => { tg.setAttribute("aria-expanded", v); body.hidden = !v;
+    if (v && !loaded) { loaded = true; fetch("/api/stats").then(r => r.json()).then(d => show(d.m3u)).catch(() => {}); }
+    if (v) document.getElementById("m3u-host").focus({ preventScroll: true }); };
+  tg.addEventListener("click", () => open(tg.getAttribute("aria-expanded") !== "true"));
+  if (location.hash === "#m3u") open(true);
   form.addEventListener("submit", e => {
     e.preventDefault();
     let host = document.getElementById("m3u-host").value.trim().replace(/\/+$/, "");
