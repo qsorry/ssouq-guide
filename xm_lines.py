@@ -23,6 +23,24 @@ BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR  = os.environ.get("XM_DATA", os.path.join(BASE_DIR, "data"))
 ACC_FILE  = os.path.join(DATA_DIR, "accounts.json")
 TXT_FILE  = os.path.join(DATA_DIR, "lines.txt")
+STATS_FILE = os.path.join(DATA_DIR, "stats.json")   # عدّاد أداة M3U العامة
+
+def load_stats():
+    try:
+        with open(STATS_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def bump_stat(key):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    d = load_stats(); d[key] = int(d.get(key, 0)) + 1
+    tmp = STATS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, STATS_FILE)
+    return d[key]
 P         = "/admin"                                  # كل الأداة تحت هذا المسار
 PAGES     = {P: "xm_lines.html", P + "/accounts": "admin.html", P + "/setup": "setup.html", P + "/login": "login.html"}
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -327,6 +345,8 @@ class Handler(BaseHTTPRequestHandler):
                               ctype="text/plain; charset=utf-8")
         if path in ROOT_FILES:
             return self._static("/static/" + ROOT_FILES[path])
+        if path == "/api/stats":
+            return self._send(200, {"m3u": int(load_stats().get("m3u", 0))})
         if path in ("/", "/index.html"):
             return self._page("index.html")
         if path.startswith("/static/"):
@@ -372,6 +392,9 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- POST ----------
     def do_POST(self):
         path = self.path.split("?", 1)[0]
+        if path == "/api/m3u-generated":            # عدّاد عام لأداة M3U (بدون تسجيل دخول)
+            with _lock:
+                return self._send(200, {"m3u": bump_stat("m3u")})
         if not path.startswith(P + "/api/"):
             return self._send(404, {"error": "not found"})
         path = path[len(P):]

@@ -12,7 +12,7 @@
 4. `/admin/logout` لتسجيل الخروج، ومن صفحة الحسابات يمكن التصدير والاستيراد كملف JSON.
 
 ## الملفات
-- `xm_lines.py` السيرفر (Python بدون مكتبات خارجية). الحسابات تُحفظ في `data/accounts.json`.
+- `xm_lines.py` السيرفر (Python بدون مكتبات خارجية). الحسابات تُحفظ في `data/accounts.json`، وعدّاد أداة M3U العامة في `data/stats.json` (يظهر في الصفحة الرئيسية ويُقرأ من `/api/stats`).
 - `index.html` المعالج العام مع قسم اشتراكات المتجر (روابط شراء مباشرة إلى ssouq.com)، `static/` الصور والشعار والأيقونات (`static/icons`) و `site.webmanifest` و `sitemap.xml`.
 - `xm_lines.html` صفحة الإنشاء، `admin.html` الحسابات، `setup.html` الإعداد الأول، `login.html` تسجيل الدخول.
 
