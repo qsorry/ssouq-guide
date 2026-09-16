@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>تفعيل الاشتراك خطوة بخطوة | سمارت سوق</title>
-<meta name="description" content="معالج تفعيل اشتراك IPTV خطوة بخطوة على الآيفون والآيباد وجوالات الأندرويد وشاشات الأندرويد وشاشات سامسونج و LG.">
+<meta name="description" content="معالج تفعيل اشتراك IPTV خطوة بخطوة على الآيفون والآيباد وجوالات الأندرويد وشاشات الأندرويد وشاشات سامسونج و LG، عبر NEXT+ و MR7 TV و IPTV Smarters Pro و 0Player.">
 <link rel="canonical" href="https://guide.ssouq.com/">
 <meta name="theme-color" content="#0F8C7B">
 <meta property="og:type" content="website"><meta property="og:locale" content="ar_SA"><meta property="og:site_name" content="سمارت سوق">
@@ -103,18 +103,51 @@ const DEVICES = {
     { title: "أدخل بياناتك في التطبيق",
       html: '<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class="f"><span>الخانة الرابعة</span><code>55555</code></div></div>' + CREDS }
   ]},
-  android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق NEXT+ أو MR7", steps: [
-    { title: "حمّل تطبيق NEXT+", img: "/static/img/android-next-play.webp",
-      html: '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><div class="alt"><h3>بديل: تطبيقنا الخاص MR7</h3><p>تحميل مباشر من الرابط: <a class="link" href="http://aftv.news/5574841" target="_blank" rel="noopener">aftv.news/5574841</a></p></div>' },
-    { title: "أدخل بياناتك في التطبيق", img: "/static/img/android-mr7-home.webp",
-      html: '<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class="f"><span>الخانة الرابعة</span><code>55555</code></div></div><p class="sub">في تطبيق MR7: اسم المستخدم في الخانة الأولى، كلمة السر في الثانية، واترك Activation code فارغًا ثم اضغط Login.</p>' + CREDS }
-  ]},
-  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "Downloader + MR7 TV", steps: [
-    { title: "حمّل تطبيق MR7 TV عبر Downloader", img: "/static/img/tv-downloader.png",
-      html: '<ol><li>حمّل تطبيق <b dir="ltr">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir="ltr">MR7 TV</b>. ثبّته وافتحه.</p>' },
-    { title: "سجّل الدخول", img: "/static/img/tv-mr7-login.jpg",
-      html: '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثانية</span><code>كلمة السر</code></div><div class="f"><span>Activation code</span><code>اتركه فارغًا</code></div></div><p>ثم اضغط <b dir="ltr">LOGIN</b>.</p>' + CREDS }
-  ], doneImg: "/static/img/tv-mr7-home.jpg" },
+  android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو IPTV Smarters Pro", choose: {
+    title: "اختر التطبيق",
+    options: [
+      { key: "next", label: "NEXT+", sub: "الأسهل، من Google Play" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK" }
+    ]},
+    variants: {
+      next: [
+        { title: "حمّل تطبيق NEXT+", img: "/static/img/android-next-play.webp",
+          html: '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><div class="alt"><h3>بديل: تطبيقنا الخاص MR7</h3><p>تحميل مباشر من الرابط: <a class="link" href="http://aftv.news/5574841" target="_blank" rel="noopener">aftv.news/5574841</a></p></div>' },
+        { title: "أدخل بياناتك في التطبيق", img: "/static/img/android-mr7-home.webp",
+          html: '<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class="f"><span>الخانة الرابعة</span><code>55555</code></div></div><p class="sub">في تطبيق MR7: اسم المستخدم في الخانة الأولى، كلمة السر في الثانية، واترك Activation code فارغًا ثم اضغط Login.</p>' + CREDS }
+      ],
+      smarters: [
+        { title: "حمّل IPTV Smarters Pro",
+          html: '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class="btn go" href="https://ssouq.net/iptvsmarters/iptv-smarters-5.0.apk" target="_blank" rel="noopener">تحميل ملف APK</a></p><p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
+        { title: "فعّل الاشتراك بخيار Xtreme Codes", img: "/static/img/smarters-xtreme.jpg",
+          html: '<p>افتح التطبيق واختر <b dir="ltr">XTREME CODES</b>، ثم عبّئ الخانات بالترتيب:</p><img src="/static/img/smarters-login.jpg" alt="شاشة إدخال البيانات في IPTV Smarters"><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div>' + CREDS }
+      ]
+    }
+  },
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "MR7 TV أو IPTV Smarters Pro", choose: {
+    title: "اختر التطبيق",
+    options: [
+      { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تسجيل دخول مباشر" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader" }
+    ]},
+    variants: {
+      mr7: [
+        { title: "حمّل تطبيق MR7 TV عبر Downloader", img: "/static/img/tv-downloader.png",
+          html: '<ol><li>حمّل تطبيق <b dir="ltr">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir="ltr">MR7 TV</b>. ثبّته وافتحه.</p>' },
+        { title: "سجّل الدخول", img: "/static/img/tv-mr7-login.jpg",
+          html: '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثانية</span><code>كلمة السر</code></div><div class="f"><span>Activation code</span><code>اتركه فارغًا</code></div></div><p>ثم اضغط <b dir="ltr">LOGIN</b>.</p>' + CREDS }
+      ],
+      smarters: [
+        { title: "حمّل IPTV Smarters Pro عبر Downloader", img: "/static/img/tv-downloader.png",
+          html: '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>8744201</code></div></div>' },
+        { title: "اسمح بالتثبيت ثم ثبّت التطبيق", img: "/static/img/smarters-tv-install.jpg",
+          html: '<ol><li>عند التثبيت ستظهر رسالة "غير مسموح بتثبيت تطبيقات غير معروفة". اضغط <b>الإعدادات</b>.</li><li>فعّل زر السماح لتطبيق <b dir="ltr">Downloader</b>.</li><li>ارجع وافتح Downloader من جديد، ستجد الملف في خانة <b dir="ltr">Files</b>. اضغطه وثبّت التطبيق.</li></ol><p class="sub">هذه النسخة المجانية بدون أي رسوم.</p>' },
+        { title: "فعّل الاشتراك بخيار Xtreme Codes", img: "/static/img/smarters-xtreme.jpg",
+          html: '<p>افتح التطبيق واختر <b dir="ltr">XTREME CODES</b>، ثم عبّئ الخانات بالترتيب:</p><img src="/static/img/smarters-login.jpg" alt="شاشة إدخال البيانات في IPTV Smarters"><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div>' + CREDS }
+      ]
+    },
+    doneImgs: { mr7: "/static/img/tv-mr7-home.jpg" }
+  },
   webos: { icon: "smart", name: "سامسونج / LG", sub: "0Player مجاني أو ORA مدفوع", choose: {
     title: "اختر التطبيق المناسب لشاشتك",
     options: [
@@ -164,7 +197,7 @@ function renderStep(){
 function renderDone(){
   const d = DEVICES[state.dev]; setProg(3);
   $("#view").innerHTML = `<div class="card done"><div class="big">🎉</div><h2>استمتع بالمشاهدة!</h2><p class="sub">إذا لم تعمل القنوات تأكد من كتابة البيانات بدون مسافات، وأعد تشغيل التطبيق.</p>
-    ${d.doneImg ? `<img src="${d.doneImg}" alt="" style="width:100%;border-radius:12px;margin:10px 0">` : ""}
+    ${(d.doneImgs && d.doneImgs[state.variant]) ? `<img src="${d.doneImgs[state.variant]}" alt="" style="width:100%;border-radius:12px;margin:10px 0">` : ""}
     <div class="nav"><a class="btn wa" href="${WA + encodeURIComponent(d.name)}" target="_blank" rel="noopener">واجهت مشكلة؟ تواصل معنا</a></div>
     <div class="nav"><button class="btn ghost" data-home style="flex:1">تفعيل جهاز آخر</button></div></div>`;
 }
@@ -189,7 +222,7 @@ $("#view").addEventListener("click", e => {
   history.replaceState(null, "", state.dev ? "#" + state.dev + (state.variant ? "-" + state.variant : "") : location.pathname);
   render(); go();
 });
-// deep link: #ios / #android / #tv / #webos-zero / #webos-ora
+// deep link: #ios / #android-next / #android-smarters / #tv-mr7 / #tv-smarters / #webos-zero / #webos-ora
 const h = location.hash.slice(1).split("-");
 if (DEVICES[h[0]]) { state.dev = h[0]; if (h[1] && DEVICES[h[0]].variants?.[h[1]]) state.variant = h[1]; }
 render();
