@@ -12,7 +12,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 (لكل حساب: اسم دخول، كلمة مرور، رابط API، مفتاح API، هوست).
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
-import json, os, sys, secrets, datetime, base64, hmac, hashlib, threading
+import json, os, sys, secrets, datetime, base64, hmac, hashlib, threading, time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +22,8 @@ BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR  = os.environ.get("XM_DATA", os.path.join(BASE_DIR, "data"))
 ACC_FILE  = os.path.join(DATA_DIR, "accounts.json")
 TXT_FILE  = os.path.join(DATA_DIR, "lines.txt")
-PAGES     = {"/": "xm_lines.html", "/admin": "admin.html", "/setup": "setup.html"}
+PAGES     = {"/": "xm_lines.html", "/admin": "admin.html", "/setup": "setup.html", "/login": "login.html"}
+SESSION_TTL = 30 * 24 * 3600                          # مدة الجلسة (30 يوم)
 PORT      = int(os.environ.get("XM_PORT", "8080"))
 BIND      = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
 ADMIN_USER = "admin"                                  # اسم دخول المدير
@@ -30,6 +31,16 @@ DIGITS    = 12                                        # طول اليوزر وا
 # ============================================
 
 _lock = threading.Lock()
+_sessions = {}   # token -> {"role","user","exp"}
+
+
+def new_session(role, user):
+    for t, v in list(_sessions.items()):
+        if v["exp"] < time.time():
+            _sessions.pop(t, None)
+    tok = secrets.token_urlsafe(32)
+    _sessions[tok] = {"role": role, "user": user, "exp": time.time() + SESSION_TTL}
+    return tok
 
 
 # ---------------- التخزين ----------------
@@ -236,22 +247,58 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _cookie(self, name):
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v
+        return ""
+
+    def _secure(self):
+        return self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+
+    def _set_cookie(self, tok, clear=False):
+        c = f"xm_session={tok}; Path=/; HttpOnly; SameSite=Lax"
+        c += "; Max-Age=0" if clear else f"; Max-Age={SESSION_TTL}"
+        if self._secure():
+            c += "; Secure"
+        return {"Set-Cookie": c}
+
     def _who(self, st):
-        """('admin', None) أو ('account', acct) أو (None, None) بعد إرسال 401."""
+        """('admin', None) أو ('account', acct) أو (None, None) بدون إرسال رد."""
+        tok = self._cookie("xm_session")
+        ses = _sessions.get(tok)
+        if ses and ses["exp"] > time.time():
+            if ses["role"] == "admin":
+                return "admin", None
+            a = next((a for a in st["accounts"] if a["user"] == ses["user"]), None)
+            if a:
+                return "account", a
+            _sessions.pop(tok, None)
+        # دعم Basic Auth للأدوات مثل curl
         h = self.headers.get("Authorization", "")
         if h.startswith("Basic "):
             try:
                 u, _, p = base64.b64decode(h[6:]).decode("utf-8", "replace").partition(":")
-                if u == ADMIN_USER and check_pw(p, st["admin"]):
-                    return "admin", None
-                for a in st["accounts"]:
-                    if hmac.compare_digest(u, a["user"]) and hmac.compare_digest(p, a["password"]):
-                        return "account", a
+                return self._login(st, u, p)
             except Exception:
                 pass
-        self._send(401, raw=b"", ctype="text/plain; charset=utf-8",
-                   extra={"WWW-Authenticate": 'Basic realm="XM Lines", charset="UTF-8"'})
         return None, None
+
+    @staticmethod
+    def _login(st, u, p):
+        if u == ADMIN_USER and check_pw(p, st["admin"]):
+            return "admin", None
+        for a in st["accounts"]:
+            if hmac.compare_digest(u, a["user"]) and hmac.compare_digest(p, a["password"]):
+                return "account", a
+        return None, None
+
+    def _deny(self, path):
+        if path.startswith("/api/"):
+            self._send(401, {"error": "سجّل الدخول أولاً", "login": True})
+        else:
+            self._redirect("/login")
 
     # ---------- GET ----------
     def do_GET(self):
@@ -267,11 +314,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/setup":
             return self._redirect("/")
         if path == "/logout":
-            return self._send(401, raw="تم تسجيل الخروج".encode(), ctype="text/plain; charset=utf-8",
-                              extra={"WWW-Authenticate": 'Basic realm="XM Lines", charset="UTF-8"'})
+            _sessions.pop(self._cookie("xm_session"), None)
+            return self._send(302, raw=b"", ctype="text/plain",
+                              extra={"Location": "/login", **self._set_cookie("", clear=True)})
         role, acct = self._who(st)
+        if path == "/login":
+            return self._redirect("/") if role else self._page(PAGES["/login"])
         if not role:
-            return
+            return self._deny(path)
         try:
             if path == "/":
                 return self._redirect("/admin") if role == "admin" else self._page(PAGES["/"])
@@ -305,12 +355,19 @@ class Handler(BaseHTTPRequestHandler):
                         return self._send(400, {"error": "كلمة المرور قصيرة (6 أحرف على الأقل)"})
                     st["admin"] = hash_pw(pw)
                     save_store(st)
-                    return self._send(200, {"ok": True})
+                    return self._send(200, {"ok": True}, extra=self._set_cookie(new_session("admin", ADMIN_USER)))
                 if not st["admin"]:
                     return self._send(400, {"error": "أكمل الإعداد أولاً"})
+                if path == "/api/login":
+                    req = self._body()
+                    role, acct = self._login(st, str(req.get("user", "")).strip(), str(req.get("password", "")))
+                    if not role:
+                        return self._send(401, {"error": "اسم الدخول أو كلمة المرور غير صحيحة"})
+                    tok = new_session(role, ADMIN_USER if role == "admin" else acct["user"])
+                    return self._send(200, {"ok": True, "role": role}, extra=self._set_cookie(tok))
                 role, acct = self._who(st)
                 if not role:
-                    return
+                    return self._deny(path)
                 if path.startswith("/api/accounts"):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
@@ -352,6 +409,10 @@ class Handler(BaseHTTPRequestHandler):
             if len(pw) < 6:
                 return self._send(400, {"error": "كلمة المرور قصيرة (6 أحرف على الأقل)"})
             st["admin"] = hash_pw(pw)
+            mine = self._cookie("xm_session")
+            for t, v in list(_sessions.items()):
+                if v["role"] == "admin" and t != mine:
+                    _sessions.pop(t, None)
         else:
             return self._send(404, {"error": "not found"})
         save_store(st)
