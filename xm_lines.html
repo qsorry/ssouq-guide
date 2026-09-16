@@ -50,7 +50,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 <body>
 <main>
   <h1>إنشاء يوزر M3U <small class="acct" id="acct"></small></h1>
-  <p class="sub">اختر الباقة، وكل البوكيهات المشتركة تُضاف تلقائياً. · <a href="/logout" style="color:var(--go)">تسجيل الخروج</a></p>
+  <p class="sub">اختر الباقة، وكل البوكيهات المشتركة تُضاف تلقائياً. · <a href="/admin/logout" style="color:var(--go)">تسجيل الخروج</a></p>
 
   <section>
     <h2>الهوست <button class="copy" id="saveHost">حفظ</button></h2>
@@ -86,7 +86,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 
 <script>
 const $ = id => document.getElementById(id);
-const chk = d => { if (d && d.login) location.href = "/login"; return d; };
+const chk = d => { if (d && d.login) location.href = "/admin/login"; return d; };
 let account = "";
 const KEY = () => "xm_lines_history_" + account;
 const HOST_KEY = () => "xm_lines_host_" + account;
@@ -120,7 +120,7 @@ async function fetchPackages(){
   }
   $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
   try {
-    const r = await fetch("/api/packages"); const d = chk(await r.json());
+    const r = await fetch("/admin/api/packages"); const d = chk(await r.json());
     if (d.error) throw new Error(d.error);
     packages = d.packages;
     account = d.account || "";
@@ -145,7 +145,7 @@ async function createLines(){
   if (host !== getHost()) { try { localStorage.setItem(HOST_KEY(), host); } catch {} }
   const btn = $("create"); btn.disabled = true; btn.textContent = "جاري الإنشاء…"; $("msg").textContent = "";
   try {
-    const r = await fetch("/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
+    const r = await fetch("/admin/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({package_id: sel.value, host, username: $("u").value.trim(), password: $("p").value.trim(), count: +$("n").value || 1})});
     const d = chk(await r.json());
     if (d.error) throw new Error(d.error);

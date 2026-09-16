@@ -38,9 +38,9 @@ $("go").onclick = async () => {
   if (a.length < 6) return $("msg").textContent = "كلمة المرور قصيرة.";
   if (a !== b) return $("msg").textContent = "كلمتا المرور غير متطابقتين.";
   try {
-    const r = await fetch("/api/setup", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({password:a})});
+    const r = await fetch("/admin/api/setup", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({password:a})});
     const d = await r.json(); if (d.error) throw new Error(d.error);
-    location.href = "/admin";
+    location.href = "/admin/accounts";
   } catch(e) { $("msg").textContent = e.message; }
 };
 </script>
