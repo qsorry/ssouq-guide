@@ -27,7 +27,11 @@ P         = "/admin"                                  # كل الأداة تحت
 PAGES     = {P: "xm_lines.html", P + "/accounts": "admin.html", P + "/setup": "setup.html", P + "/login": "login.html"}
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image/png", ".jpg": "image/jpeg",
-             ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon"}
+             ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+             ".webmanifest": "application/manifest+json", ".xml": "application/xml; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
+# ملفات عامة تُقدَّم من جذر الموقع (للأيقونات والأرشفة)
+ROOT_FILES = {"/favicon.ico": "icons/favicon.ico", "/apple-touch-icon.png": "icons/apple-touch-icon.png",
+              "/site.webmanifest": "site.webmanifest", "/sitemap.xml": "sitemap.xml"}
 SESSION_TTL = 30 * 24 * 3600                          # مدة الجلسة (30 يوم)
 PORT      = int(os.environ.get("XM_PORT", "8080"))
 BIND      = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
@@ -319,7 +323,10 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         # ----- الجزء العام -----
         if path == "/robots.txt":
-            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n".encode(), ctype="text/plain; charset=utf-8")
+            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n\nSitemap: https://guide.ssouq.com/sitemap.xml\n".encode(),
+                              ctype="text/plain; charset=utf-8")
+        if path in ROOT_FILES:
+            return self._static("/static/" + ROOT_FILES[path])
         if path in ("/", "/index.html"):
             return self._page("index.html")
         if path.startswith("/static/"):
