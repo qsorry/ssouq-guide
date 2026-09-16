@@ -86,6 +86,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 
 <script>
 const $ = id => document.getElementById(id);
+const chk = d => { if (d && d.login) location.href = "/login"; return d; };
 let account = "";
 const KEY = () => "xm_lines_history_" + account;
 const HOST_KEY = () => "xm_lines_host_" + account;
@@ -119,7 +120,7 @@ async function fetchPackages(){
   }
   $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
   try {
-    const r = await fetch("/api/packages"); const d = await r.json();
+    const r = await fetch("/api/packages"); const d = chk(await r.json());
     if (d.error) throw new Error(d.error);
     packages = d.packages;
     account = d.account || "";
@@ -146,7 +147,7 @@ async function createLines(){
   try {
     const r = await fetch("/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({package_id: sel.value, host, username: $("u").value.trim(), password: $("p").value.trim(), count: +$("n").value || 1})});
-    const d = await r.json();
+    const d = chk(await r.json());
     if (d.error) throw new Error(d.error);
     const h = load(); d.lines.forEach(x => h.unshift(x)); save(h);
     $("res").textContent = d.lines.map(x=>x.line).join("\n");
