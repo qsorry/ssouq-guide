@@ -13,7 +13,7 @@
 
 ## الملفات
 - `xm_lines.py` السيرفر (Python بدون مكتبات خارجية). الحسابات تُحفظ في `data/accounts.json`.
-- `index.html` المعالج العام، `static/` الصور والشعار.
+- `index.html` المعالج العام مع قسم اشتراكات المتجر (روابط شراء مباشرة إلى ssouq.com)، `static/` الصور والشعار والأيقونات (`static/icons`) و `site.webmanifest` و `sitemap.xml`.
 - `xm_lines.html` صفحة الإنشاء، `admin.html` الحسابات، `setup.html` الإعداد الأول، `login.html` تسجيل الدخول.
 
 ## ملاحظة عن الحفظ

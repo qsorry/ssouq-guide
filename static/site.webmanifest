@@ -1,0 +1,17 @@
+{
+  "name": "دليل تفعيل الاشتراك | سمارت سوق",
+  "short_name": "دليل سمارت سوق",
+  "description": "معالج تفعيل اشتراك IPTV خطوة بخطوة على الآيفون والأندرويد وشاشات سامسونج و LG.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#EEF2F6",
+  "theme_color": "#0F8C7B",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
