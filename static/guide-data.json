@@ -1,0 +1,215 @@
+{
+ "ios": {
+  "icon": "apple",
+  "name": "آيفون / آيباد",
+  "sub": "تطبيق VAR Player",
+  "steps": [
+   {
+    "title": "حمّل تطبيق VAR Player",
+    "img": "/static/img/ios-var-appstore.jpg",
+    "html": "<p>افتح App Store وحمّل تطبيق <b dir=\"ltr\">VAR Player</b>، أو اضغط الرابط مباشرة:</p><p><a class=\"link\" href=\"https://apps.apple.com/sa/app/var-player-unlock-your-world/id6477530321?l=ar\" target=\"_blank\" rel=\"noopener\">apps.apple.com · VAR Player</a></p>"
+   },
+   {
+    "title": "أدخل الكود ثم بياناتك",
+    "html": "<ol><li>افتح التطبيق واختر خيار <b>الكود</b>.</li><li>اكتب رقم الكود التالي:</li></ol><div class=\"fields\"><div class=\"f\"><span>الكود</span><code>55555</code></div></div><p>بعدها ستظهر لك 3 خانات، عبّئها بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class=\"f\"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class=\"f\"><span>الخانة الثالثة</span><code>كلمة السر</code></div></div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+   }
+  ]
+ },
+ "android": {
+  "icon": "phone",
+  "name": "جوال أندرويد",
+  "sub": "NEXT+ أو IPTV Smarters Pro",
+  "choose": {
+   "title": "اختر التطبيق",
+   "options": [
+    {
+     "key": "next",
+     "label": "NEXT+",
+     "sub": "الأسهل، من Google Play"
+    },
+    {
+     "key": "smarters",
+     "label": "IPTV Smarters Pro",
+     "sub": "برنامج إضافي، تحميل مباشر APK"
+    }
+   ]
+  },
+  "variants": {
+   "next": [
+    {
+     "title": "حمّل تطبيق NEXT+",
+     "img": "/static/img/android-next-play.webp",
+     "html": "<p>افتح Google Play وحمّل تطبيق <b dir=\"ltr\">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class=\"link\" href=\"https://play.google.com/store/apps/details?id=com.code.next\" target=\"_blank\" rel=\"noopener\">play.google.com · NEXT+</a></p><div class=\"alt\"><h3>بديل: تطبيقنا الخاص MR7</h3><p>تحميل مباشر من الرابط: <a class=\"link\" href=\"http://aftv.news/5574841\" target=\"_blank\" rel=\"noopener\">aftv.news/5574841</a></p></div>"
+    },
+    {
+     "title": "أدخل بياناتك في التطبيق",
+     "img": "/static/img/android-mr7-home.webp",
+     "html": "<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class=\"f\"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class=\"f\"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class=\"f\"><span>الخانة الرابعة</span><code>55555</code></div></div><p class=\"sub\">في تطبيق MR7: اسم المستخدم في الخانة الأولى، كلمة السر في الثانية، واترك Activation code فارغًا ثم اضغط Login.</p><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+    }
+   ],
+   "smarters": [
+    {
+     "title": "حمّل IPTV Smarters Pro",
+     "html": "<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/IPTV-Smarters-Pro3.1.apk\" target=\"_blank\" rel=\"noopener\">تحميل ملف APK</a></p><p class=\"sub\">إذا ظهرت رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>"
+    },
+    {
+     "title": "فعّل الاشتراك بخيار Xtreme Codes",
+     "img": "/static/img/smarters-xtreme.jpg",
+     "html": "<p>افتح التطبيق واختر <b dir=\"ltr\">XTREME CODES</b>، ثم عبّئ الخانات بالترتيب:</p><img src=\"/static/img/smarters-login.jpg\" alt=\"شاشة إدخال البيانات في IPTV Smarters\"><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة السر</code></div><div class=\"f\"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+    }
+   ]
+  }
+ },
+ "tv": {
+  "icon": "tv",
+  "name": "شاشة / بوكس أندرويد",
+  "sub": "MR7 TV أو IPTV Smarters Pro",
+  "choose": {
+   "title": "اختر التطبيق",
+   "options": [
+    {
+     "key": "mr7",
+     "label": "MR7 TV",
+     "sub": "تطبيقنا الخاص، تسجيل دخول مباشر"
+    },
+    {
+     "key": "smarters",
+     "label": "IPTV Smarters Pro",
+     "sub": "برنامج إضافي عبر Downloader"
+    }
+   ]
+  },
+  "variants": {
+   "mr7": [
+    {
+     "title": "حمّل تطبيق MR7 TV عبر Downloader",
+     "img": "/static/img/tv-downloader.png",
+     "html": "<ol><li>حمّل تطبيق <b dir=\"ltr\">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir=\"ltr\">MR7 TV</b>. ثبّته وافتحه.</p>"
+    },
+    {
+     "title": "سجّل الدخول",
+     "img": "/static/img/tv-mr7-login.jpg",
+     "html": "<div class=\"fields\"><div class=\"f\"><span>الخانة الأولى</span><code>اسم المستخدم</code></div><div class=\"f\"><span>الخانة الثانية</span><code>كلمة السر</code></div><div class=\"f\"><span>Activation code</span><code>اتركه فارغًا</code></div></div><p>ثم اضغط <b dir=\"ltr\">LOGIN</b>.</p><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+    }
+   ],
+   "smarters": [
+    {
+     "title": "حمّل IPTV Smarters Pro عبر Downloader",
+     "img": "/static/img/tv-downloader.png",
+     "html": "<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir=\"ltr\">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><code>8744201</code></div></div>"
+    },
+    {
+     "title": "اسمح بالتثبيت ثم ثبّت التطبيق",
+     "img": "/static/img/smarters-tv-install.jpg",
+     "html": "<ol><li>عند التثبيت ستظهر رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\". اضغط <b>الإعدادات</b>.</li><li>فعّل زر السماح لتطبيق <b dir=\"ltr\">Downloader</b>.</li><li>ارجع وافتح Downloader من جديد، ستجد الملف في خانة <b dir=\"ltr\">Files</b>. اضغطه وثبّت التطبيق.</li></ol><p class=\"sub\">هذه النسخة المجانية بدون أي رسوم.</p>"
+    },
+    {
+     "title": "فعّل الاشتراك بخيار Xtreme Codes",
+     "img": "/static/img/smarters-xtreme.jpg",
+     "html": "<p>افتح التطبيق واختر <b dir=\"ltr\">XTREME CODES</b>، ثم عبّئ الخانات بالترتيب:</p><img src=\"/static/img/smarters-login.jpg\" alt=\"شاشة إدخال البيانات في IPTV Smarters\"><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة السر</code></div><div class=\"f\"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+    }
+   ]
+  },
+  "doneImgs": {
+   "mr7": "/static/img/tv-mr7-home.jpg"
+  }
+ },
+ "webos": {
+  "icon": "smart",
+  "name": "سامسونج / LG",
+  "sub": "0Player مجاني أو ORA مدفوع",
+  "choose": {
+   "title": "اختر التطبيق المناسب لشاشتك",
+   "options": [
+    {
+     "key": "zero",
+     "label": "0Player",
+     "sub": "مجاني، تضيف بياناتك بنفسك"
+    },
+    {
+     "key": "ora",
+     "label": "ORAplayer",
+     "sub": "مدفوع، نفعّله لك من طرفنا"
+    }
+   ]
+  },
+  "variants": {
+   "zero": [
+    {
+     "title": "حمّل تطبيق 0Player",
+     "img": "/static/img/webos-0player-store.jpg",
+     "html": "<p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> وحمّله.</p>"
+    },
+    {
+     "title": "أضف قائمة جديدة بـ Portal Code",
+     "img": "/static/img/webos-0player-add.jpg",
+     "html": "<ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir=\"ltr\">Portal Code</b>.</li></ol><img src=\"/static/img/webos-0player-portal.jpg\" alt=\"تبويب Portal Code في 0Player\"><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Code (الخادم)</span><code>92929480</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir=\"ltr\">SAVE</b>.</p><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+    }
+   ],
+   "ora": [
+    {
+     "title": "حمّل تطبيق ORAplayer",
+     "img": "/static/img/webos-ora-store.webp",
+     "html": "<p>من متجر التطبيقات في الشاشة حمّل <b dir=\"ltr\">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class=\"fields\"><div class=\"f\"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class=\"f\"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div>"
+    },
+    {
+     "title": "أرسل لنا بيانات الجهاز",
+     "html": "<p>افتح التطبيق وستجد على الشاشة معرف الجهاز ورمز PIN. أرسلهما لنا عبر واتساب:</p><div class=\"fields\"><div class=\"f\"><span>Device ID</span><code>معرف الجهاز</code></div><div class=\"f\"><span>PIN</span><code>الرمز الظاهر</code></div></div><p>وسنفعّل الاشتراك مباشرة من طرفنا بدون أي خطوات إضافية.</p><a class=\"btn wa\" href=\"https://wa.me/966504998661?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D9%8B%D8%8C%20%D8%A3%D8%AD%D8%AA%D8%A7%D8%AC%20%D9%85%D8%B3%D8%A7%D8%B9%D8%AF%D8%A9%20%D9%81%D9%8A%20%D8%AA%D9%81%D8%B9%D9%8A%D9%84%20%D8%A7%D9%84%D8%A7%D8%B4%D8%AA%D8%B1%D8%A7%D9%83.%20%D9%86%D9%88%D8%B9%20%D8%A7%D9%84%D8%AC%D9%87%D8%A7%D8%B2%3A%20%D8%B4%D8%A7%D8%B4%D8%A9%20%D8%B3%D8%A7%D9%85%D8%B3%D9%88%D9%86%D8%AC%2FLG%20-%20ORAplayer.%20Device%20ID%3A%20\" target=\"_blank\" rel=\"noopener\">إرسال البيانات عبر واتساب</a>"
+    }
+   ]
+  }
+ },
+ "windows": {
+  "icon": "pc",
+  "name": "كمبيوتر ويندوز",
+  "sub": "IPTV Smarters Pro للكمبيوتر",
+  "steps": [
+   {
+    "title": "حمّل برنامج IPTV Smarters Pro لويندوز",
+    "img": "/static/img/windows-badge.png",
+    "html": "<p>حمّل الملف المضغوط على الكمبيوتر (حجمه حوالي 130 ميغابايت):</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/iptv-smarters-pro-1-1-2.exe.zip\" rel=\"noopener\">تحميل البرنامج لويندوز (ZIP)</a></p><ol><li>بعد اكتمال التحميل اضغط بزر الفأرة الأيمن على الملف واختر <b>Extract All</b> (استخراج الكل).</li><li>افتح المجلد الناتج وشغّل ملف التثبيت <b dir=\"ltr\">.exe</b>.</li><li>إذا ظهرت نافذة <b dir=\"ltr\">Windows protected your PC</b> اضغط <b dir=\"ltr\">More info</b> ثم <b dir=\"ltr\">Run anyway</b>.</li><li>اضغط <b dir=\"ltr\">Next</b> ثم <b dir=\"ltr\">Install</b> حتى ينتهي التثبيت. سيفتح البرنامج تلقائيًا بعد التثبيت.</li></ol><p class=\"sub\">يعمل على ويندوز 10 و 11.</p>"
+   },
+   {
+    "title": "اختر خيار PLAYER API",
+    "img": "/static/img/smarters-pc-api.webp",
+    "html": "<p>عند فتح البرنامج أول مرة وافق على الشروط، ثم اختر الزر الأحمر <b dir=\"ltr\">PLAYER API</b>.</p>"
+   },
+   {
+    "title": "أدخل بيانات الاشتراك",
+    "img": "/static/img/smarters-pc-login.webp",
+    "html": "<p>عبّئ الخانات الأربع بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Any Name</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div><div class=\"f\"><span>http://url_here.com:port</span><code>رابط الهوست مع البورت</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class=\"note\">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir=\"ltr\">http://host.com:8080</code>، بدون مسافات.</div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+   }
+  ]
+ },
+ "mac": {
+  "icon": "mac",
+  "name": "ماك (MacBook / iMac)",
+  "sub": "IPTV Smarters Pro لنظام macOS",
+  "steps": [
+   {
+    "title": "حمّل برنامج IPTV Smarters Pro لماك",
+    "html": "<p>حمّل ملف <b dir=\"ltr\">DMG</b> مباشرة على جهاز الماك (حجمه حوالي 220 ميغابايت):</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/SmartersPro-1.0.0-universal.dmg\" rel=\"noopener\">تحميل البرنامج لماك (DMG)</a></p><p class=\"sub\">النسخة universal تعمل على أجهزة Apple Silicon (M1 وما بعده) وأجهزة Intel.</p>"
+   },
+   {
+    "title": "ثبّت البرنامج",
+    "img": "/static/img/mac-drag.webp",
+    "html": "<ol><li>افتح ملف DMG الذي حمّلته بالنقر المزدوج.</li><li>اسحب أيقونة <b dir=\"ltr\">IPTVSmartersPro</b> إلى مجلد <b dir=\"ltr\">Applications</b> وانتظر ثوانٍ حتى يكتمل النسخ.</li><li>افتح <b dir=\"ltr\">Launchpad</b> وشغّل البرنامج.</li></ol>"
+   },
+   {
+    "title": "اسمح بفتح البرنامج (مرة واحدة فقط)",
+    "img": "/static/img/mac-blocked.webp",
+    "html": "<p>لأن البرنامج من خارج App Store، سيمنعه النظام في المرة الأولى. اتبع هذه الخطوات مرة واحدة:</p><ol><li>في رسالة <b dir=\"ltr\">Not Opened</b> اضغط <b dir=\"ltr\">Done</b>.</li><li>اضغط شعار آبل أعلى يسار الشاشة ثم <b dir=\"ltr\">System Settings</b>.</li><li>من القائمة اليسرى اختر <b dir=\"ltr\">Privacy &amp; Security</b> وانزل إلى الأسفل ثم اضغط <b dir=\"ltr\">Open Anyway</b>.</li></ol><img src=\"/static/img/mac-open-anyway.webp\" alt=\"زر Open Anyway في إعدادات الخصوصية والأمان\"><ol start=\"4\"><li>أدخل كلمة مرور الجهاز أو استخدم البصمة، ثم اضغط <b dir=\"ltr\">Open</b>.</li></ol><img src=\"/static/img/mac-password.webp\" alt=\"طلب كلمة مرور الجهاز لفتح البرنامج\">"
+   },
+   {
+    "title": "اختر خيار PLAYER API",
+    "img": "/static/img/smarters-pc-api.webp",
+    "html": "<p>عند فتح البرنامج أول مرة وافق على الشروط، ثم اختر الزر الأحمر <b dir=\"ltr\">PLAYER API</b>.</p>"
+   },
+   {
+    "title": "أدخل بيانات الاشتراك",
+    "img": "/static/img/smarters-pc-login.webp",
+    "html": "<p>عبّئ الخانات الأربع بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Any Name</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div><div class=\"f\"><span>http://url_here.com:port</span><code>رابط الهوست مع البورت</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class=\"note\">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir=\"ltr\">http://host.com:8080</code>، بدون مسافات.</div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+   }
+  ]
+ }
+}
