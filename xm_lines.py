@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import guide_pages
+import store_sitemap
 
 # ================= الإعدادات =================
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -350,8 +351,18 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         # ----- الجزء العام -----
         if path == "/robots.txt":
-            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n\nSitemap: https://guide.ssouq.com/sitemap.xml\n".encode(),
+            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n\n"
+                              f"Sitemap: https://guide.ssouq.com/sitemap.xml\n"
+                              f"Sitemap: https://guide.ssouq.com/store-sitemap.xml\n".encode(),
                               ctype="text/plain; charset=utf-8")
+        if path == "/store-sitemap.xml":        # خريطة منتجات المتجر (إرسال متقاطع)
+            return self._send(200, raw=store_sitemap.sitemap(),
+                              ctype="application/xml; charset=utf-8",
+                              extra={"Cache-Control": PUBLIC_HTML_CACHE})
+        if path == "/store-sitemap.json":       # تشخيص: المصدر والعدد وحالة البتر
+            return self._send(200, raw=store_sitemap.status(),
+                              ctype="application/json; charset=utf-8",
+                              extra={"Cache-Control": "no-store"})
         if path == "/sitemap.xml":
             return self._send(200, raw=guide_pages.sitemap(),
                               ctype="application/xml; charset=utf-8",
