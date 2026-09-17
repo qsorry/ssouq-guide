@@ -18,6 +18,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import guide_pages
+
 # ================= الإعدادات =================
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR  = os.environ.get("XM_DATA", os.path.join(BASE_DIR, "data"))
@@ -49,7 +51,8 @@ MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image
              ".webmanifest": "application/manifest+json", ".xml": "application/xml; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
 # ملفات عامة تُقدَّم من جذر الموقع (للأيقونات والأرشفة)
 ROOT_FILES = {"/favicon.ico": "icons/favicon.ico", "/apple-touch-icon.png": "icons/apple-touch-icon.png",
-              "/site.webmanifest": "site.webmanifest", "/sitemap.xml": "sitemap.xml"}
+              "/site.webmanifest": "site.webmanifest"}
+PUBLIC_HTML_CACHE = "public, max-age=1800"     # كاش صفحات الموقع العامة
 SESSION_TTL = 30 * 24 * 3600                          # مدة الجلسة (30 يوم)
 PORT      = int(os.environ.get("XM_PORT", "8080"))
 BIND      = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
@@ -254,15 +257,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        for k, v in (extra or {}).items():
+        extra = extra or {}
+        # الافتراضي no-store، ما لم يمرّر النداء Cache-Control خاصًّا به.
+        # (كان يُرسل دائمًا فتخرج ترويستان متعارضتان على الملفات الثابتة.)
+        if not any(k.lower() == "cache-control" for k in extra):
+            self.send_header("Cache-Control", "no-store")
+        for k, v in extra.items():
             self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(body)
+        if not getattr(self, "_head_only", False):
+            self.wfile.write(body)
 
-    def _page(self, name):
+    def _page(self, name, cache=None):
         with open(os.path.join(BASE_DIR, name), "rb") as f:
-            self._send(200, raw=f.read(), ctype="text/html; charset=utf-8")
+            self._send(200, raw=f.read(), ctype="text/html; charset=utf-8",
+                       extra={"Cache-Control": cache} if cache else None)
 
     def _redirect(self, to):
         self._send(302, raw=b"", ctype="text/plain", extra={"Location": to})
@@ -343,12 +352,19 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/robots.txt":
             return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n\nSitemap: https://guide.ssouq.com/sitemap.xml\n".encode(),
                               ctype="text/plain; charset=utf-8")
+        if path == "/sitemap.xml":
+            return self._send(200, raw=guide_pages.sitemap(),
+                              ctype="application/xml; charset=utf-8",
+                              extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path in ROOT_FILES:
             return self._static("/static/" + ROOT_FILES[path])
         if path == "/api/stats":
             return self._send(200, {"m3u": int(load_stats().get("m3u", 0))})
         if path in ("/", "/index.html"):
-            return self._page("index.html")
+            return self._page("index.html", cache=PUBLIC_HTML_CACHE)
+        if path in guide_pages.PAGES:                 # صفحات الأجهزة الثابتة (للأرشفة)
+            return self._send(200, raw=guide_pages.render(path), ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path.startswith("/static/"):
             return self._static(path)
         if path == "/admin/":
@@ -388,6 +404,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
         except Exception as e:
             self._send(500, {"error": str(e)})
+
+    # ---------- HEAD ----------
+    def do_HEAD(self):
+        # BaseHTTPRequestHandler يرجع 501 لأي method غير معرّفة، وبعض الزواحف
+        # والمراقبات تستعمل HEAD. نعيد ترويسات GET نفسها بلا جسم.
+        self._head_only = True
+        try:
+            self.do_GET()
+        finally:
+            self._head_only = False
 
     # ---------- POST ----------
     def do_POST(self):
