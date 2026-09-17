@@ -403,6 +403,13 @@ const APP = (icon, name, where) =>
   `<div class="appbox"><img src="/static/img/apps/${icon}.webp" alt="أيقونة ${name}" width="54" height="54" loading="lazy">`
   + `<span><b dir="ltr">${name}</b><small>${where}</small></span></div>`;
 
+// خطوتا IPTV Smarters Pro: الشاشة واحدة على الجوال وعلى شاشة الأندرويد،
+// فتُعرَّفان هنا مرة ويشير إليهما المساران — فلا يفترقان عند أي تعديل.
+const SMARTERS_XTREAM = { title: "اختر LOGIN WITH XTREAM CODES API", img: "/static/img/smarters-android-type.webp",
+  html: '<p>افتح التطبيق فتظهر شاشة اختيار طريقة الدخول. اختر الخيار المحدَّد في الصورة: <b dir="ltr">LOGIN WITH XTREAM CODES API</b>. ولا تختر <b dir="ltr">LOAD YOUR PLAYLIST OR FILE/URL</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>' };
+const SMARTERS_LOGIN = { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-login.jpg",
+  html: '<p>عبّئ الخانات بالترتيب:</p><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div>' + CREDS };
+
 const DEVICES = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق VAR Player", steps: [
     { title: "حمّل تطبيق VAR Player", img: "/static/img/ios-var-appstore.jpg",
@@ -426,10 +433,8 @@ const DEVICES = {
       smarters: [
         { title: "حمّل IPTV Smarters Pro",
           html: APP("smarters-pro", "IPTV Smarters Pro", "تحميل مباشر APK") + '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class="btn go" href="https://ssouq.net/iptvsmarters/IPTV-Smarters-Pro3.1.apk" target="_blank" rel="noopener">تحميل ملف APK</a></p><p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
-        { title: "اختر LOGIN WITH XTREAM CODES API", img: "/static/img/smarters-android-type.webp",
-          html: '<p>افتح التطبيق فتظهر شاشة اختيار طريقة الدخول. اختر الخيار المحدَّد في الصورة: <b dir="ltr">LOGIN WITH XTREAM CODES API</b>. ولا تختر <b dir="ltr">LOAD YOUR PLAYLIST OR FILE/URL</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>' },
-        { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-login.jpg",
-          html: '<p>عبّئ الخانات بالترتيب:</p><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div>' + CREDS }
+        SMARTERS_XTREAM,
+        SMARTERS_LOGIN
       ]
     }
   },
@@ -451,10 +456,8 @@ const DEVICES = {
           html: APP("smarters-pro", "IPTV Smarters Pro", "عبر Downloader · مجاني") + '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>8744201</code></div></div>' },
         { title: "اسمح بالتثبيت ثم ثبّت التطبيق", img: "/static/img/smarters-tv-install.jpg",
           html: '<ol><li>عند التثبيت ستظهر رسالة "غير مسموح بتثبيت تطبيقات غير معروفة". اضغط <b>الإعدادات</b>.</li><li>فعّل زر السماح لتطبيق <b dir="ltr">Downloader</b>.</li><li>ارجع وافتح Downloader من جديد، ستجد الملف في خانة <b dir="ltr">Files</b>. اضغطه وثبّت التطبيق.</li></ol><p class="sub">هذه النسخة المجانية بدون أي رسوم.</p>' },
-        { title: "اختر XTREME CODES", img: "/static/img/smarters-xtreme.jpg",
-          html: '<p>افتح التطبيق فتظهر شاشة <b dir="ltr">CHOOSE PLAYLIST TYPE</b>. اختر الخيار المحدَّد في الصورة: <b dir="ltr">XTREME CODES</b> — في وسط الصف الأعلى. ولا تختر <b dir="ltr">M3U PLAYLIST</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>' },
-        { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-login.jpg",
-          html: '<p>عبّئ الخانات بالترتيب:</p><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div>' + CREDS }
+        SMARTERS_XTREAM,
+        SMARTERS_LOGIN
       ]
     },
     doneImgs: { mr7: "/static/img/tv-mr7-home.jpg" }

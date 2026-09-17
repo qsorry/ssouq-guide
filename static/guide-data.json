@@ -113,9 +113,9 @@
      "html": "<ol><li>عند التثبيت ستظهر رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\". اضغط <b>الإعدادات</b>.</li><li>فعّل زر السماح لتطبيق <b dir=\"ltr\">Downloader</b>.</li><li>ارجع وافتح Downloader من جديد، ستجد الملف في خانة <b dir=\"ltr\">Files</b>. اضغطه وثبّت التطبيق.</li></ol><p class=\"sub\">هذه النسخة المجانية بدون أي رسوم.</p>"
     },
     {
-     "title": "اختر XTREME CODES",
-     "img": "/static/img/smarters-xtreme.jpg",
-     "html": "<p>افتح التطبيق فتظهر شاشة <b dir=\"ltr\">CHOOSE PLAYLIST TYPE</b>. اختر الخيار المحدَّد في الصورة: <b dir=\"ltr\">XTREME CODES</b> — في وسط الصف الأعلى. ولا تختر <b dir=\"ltr\">M3U PLAYLIST</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
+     "title": "اختر LOGIN WITH XTREAM CODES API",
+     "img": "/static/img/smarters-android-type.webp",
+     "html": "<p>افتح التطبيق فتظهر شاشة اختيار طريقة الدخول. اختر الخيار المحدَّد في الصورة: <b dir=\"ltr\">LOGIN WITH XTREAM CODES API</b>. ولا تختر <b dir=\"ltr\">LOAD YOUR PLAYLIST OR FILE/URL</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
     },
     {
      "title": "أدخل بيانات الاشتراك",
