@@ -540,12 +540,13 @@ const SUBS = {
             sub: "تطبيق فالكون أو Smarters Pro" }
 };
 
-const FALCON_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",
-  html: '<p>افتح تطبيق فالكون وأدخل بيانات اشتراكك كما وصلتك.</p>'
-    + '<div class="fields"><div class="f"><span>اسم المستخدم</span><code>من رسالة الاشتراك</code></div>'
-    + '<div class="f"><span>كلمة المرور</span><code>من رسالة الاشتراك</code></div></div>' + CREDS
-    + '<div class="note">اختلفت الخانات عمّا في الشرح؟ صوّر الشاشة وأرسلها لنا على واتساب ونكملها معك.</div>'
-    + '<a class="btn wa" href="' + WA + encodeURIComponent("اشتراك فالكون - تسجيل الدخول في تطبيق فالكون") + '" target="_blank" rel="noopener">تواصل معنا على واتساب</a>' };
+const FALCON_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك", img: "/static/img/falcon-login.jpg",
+  html: '<p>افتح تطبيق فالكون فتظهر شاشة <b dir="ltr">Enter Your Login</b>. عبّئ الخانات الثلاث بالترتيب:</p>'
+    + '<div class="fields"><div class="f"><span>Any Name</span><code>أي اسم من عندك</code></div>'
+    + '<div class="f"><span>Username</span><code>اسم المستخدم</code></div>'
+    + '<div class="f"><span>Password</span><code>كلمة المرور</code></div></div>'
+    + '<p>ثم اضغط <b dir="ltr">ADD USER</b>. يُحفظ حسابك فتجده في <b dir="ltr">LIST USERS</b>، ومنه <b dir="ltr">CONNECT</b> لفتح الاشتراك.</p>'
+    + '<div class="note">لا توجد في تطبيق فالكون خانة لرابط الهوست — الخادم مضبوط داخل التطبيق، فيكفيك اسم المستخدم وكلمة المرور.</div>' + CREDS };
 
 const FALCON = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق Smarters Player Lite", steps: [
