@@ -55,9 +55,9 @@
      "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>تحميل مباشر APK</small></span></div><p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/IPTV-Smarters-Pro3.1.apk\" target=\"_blank\" rel=\"noopener\">تحميل ملف APK</a></p><p class=\"sub\">إذا ظهرت رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>"
     },
     {
-     "title": "اختر XTREME CODES",
-     "img": "/static/img/smarters-xtreme.jpg",
-     "html": "<p>افتح التطبيق فتظهر شاشة <b dir=\"ltr\">CHOOSE PLAYLIST TYPE</b>. اختر الخيار المحدَّد في الصورة: <b dir=\"ltr\">XTREME CODES</b> — في وسط الصف الأعلى. ولا تختر <b dir=\"ltr\">M3U PLAYLIST</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
+     "title": "اختر LOGIN WITH XTREAM CODES API",
+     "img": "/static/img/smarters-android-type.webp",
+     "html": "<p>افتح التطبيق فتظهر شاشة اختيار طريقة الدخول. اختر الخيار المحدَّد في الصورة: <b dir=\"ltr\">LOGIN WITH XTREAM CODES API</b>. ولا تختر <b dir=\"ltr\">LOAD YOUR PLAYLIST OR FILE/URL</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
     },
     {
      "title": "أدخل بيانات الاشتراك",
