@@ -138,7 +138,7 @@
     {
      "title": "حمّل تطبيق 0Player",
      "img": "/static/img/webos-0player-store.jpg",
-     "html": "<p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> وحمّله.</p>"
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/0player.webp\" alt=\"أيقونة 0Player\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">0Player</b><small>من متجر الشاشة · مجاني</small></span></div><p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> وحمّله.</p>"
     },
     {
      "title": "أضف قائمة جديدة بـ Portal Code",
@@ -150,7 +150,7 @@
     {
      "title": "حمّل تطبيق ORAplayer",
      "img": "/static/img/webos-ora-store.webp",
-     "html": "<p>من متجر التطبيقات في الشاشة حمّل <b dir=\"ltr\">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class=\"fields\"><div class=\"f\"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class=\"f\"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div>"
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/oraplayer.webp\" alt=\"أيقونة ORAplayer\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">ORAplayer</b><small>من متجر الشاشة · مدفوع</small></span></div><p>من متجر التطبيقات في الشاشة حمّل <b dir=\"ltr\">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class=\"fields\"><div class=\"f\"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class=\"f\"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div>"
     },
     {
      "title": "أرسل لنا بيانات الجهاز",

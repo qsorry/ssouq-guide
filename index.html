@@ -461,13 +461,13 @@ const DEVICES = {
     variants: {
       zero: [
         { title: "حمّل تطبيق 0Player", img: "/static/img/webos-0player-store.jpg",
-          html: '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> وحمّله.</p>' },
+          html: APP("0player", "0Player", "من متجر الشاشة · مجاني") + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> وحمّله.</p>' },
         { title: "أضف قائمة جديدة بـ Portal Code", img: "/static/img/webos-0player-add.jpg",
           html: '<ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir="ltr">Portal Code</b>.</li></ol><img src="/static/img/webos-0player-portal.jpg" alt="تبويب Portal Code في 0Player"><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم تريده</code></div><div class="f"><span>Code (الخادم)</span><code>92929480</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS }
       ],
       ora: [
         { title: "حمّل تطبيق ORAplayer", img: "/static/img/webos-ora-store.webp",
-          html: '<p>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class="fields"><div class="f"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class="f"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div>' },
+          html: APP("oraplayer", "ORAplayer", "من متجر الشاشة · مدفوع") + '<p>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class="fields"><div class="f"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class="f"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div>' },
         { title: "أرسل لنا بيانات الجهاز",
           html: '<p>افتح التطبيق وستجد على الشاشة معرف الجهاز ورمز PIN. أرسلهما لنا عبر واتساب:</p><div class="fields"><div class="f"><span>Device ID</span><code>معرف الجهاز</code></div><div class="f"><span>PIN</span><code>الرمز الظاهر</code></div></div><p>وسنفعّل الاشتراك مباشرة من طرفنا بدون أي خطوات إضافية.</p><a class="btn wa" href="' + WA + encodeURIComponent("شاشة سامسونج/LG - ORAplayer. Device ID: ") + '" target="_blank" rel="noopener">إرسال البيانات عبر واتساب</a>' }
       ]
