@@ -254,10 +254,13 @@ p{margin:0 0 10px}
 .done{text-align:center;padding:10px 0}
 .done .big{font-size:3rem;line-height:1}
 .pick{display:grid;gap:8px;margin-top:10px}
-.pick button{text-align:right;padding:13px 15px;border:1.5px solid var(--line);border-radius:13px;background:transparent;
-  color:var(--ink);font:inherit;cursor:pointer}
+.pick button{display:flex;align-items:center;gap:12px;text-align:right;padding:12px 14px;border:1.5px solid var(--line);
+  border-radius:13px;background:transparent;color:var(--ink);font:inherit;cursor:pointer}
+.pick button img{width:46px;height:46px;max-height:none;border-radius:12px;object-fit:cover;flex:0 0 auto;
+  background:var(--card);border:1px solid var(--line);margin:0}
+.pick button .who{flex:1;min-width:0}
 .pick button b{display:block}
-.pick button small{color:var(--mute)}
+.pick button small{display:block;color:var(--mute);line-height:1.5}
 .pick button:hover{border-color:var(--brand)}
 
 /* ---------- أداة M3U ---------- */
@@ -410,8 +413,8 @@ const DEVICES = {
   android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "next", label: "NEXT+", sub: "الأسهل، من Google Play" },
-      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK" }
+      { key: "next", label: "NEXT+", sub: "الأسهل، من Google Play", icon: "next-plus" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK", icon: "smarters-pro" }
     ]},
     variants: {
       next: [
@@ -431,8 +434,8 @@ const DEVICES = {
   tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "MR7 TV أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تسجيل دخول مباشر" },
-      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader" }
+      { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تسجيل دخول مباشر", icon: "mr7" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro" }
     ]},
     variants: {
       mr7: [
@@ -455,8 +458,8 @@ const DEVICES = {
   webos: { icon: "smart", name: "سامسونج / LG", sub: "0Player مجاني أو ORA مدفوع", choose: {
     title: "اختر التطبيق المناسب لشاشتك",
     options: [
-      { key: "zero", label: "0Player", sub: "مجاني، تضيف بياناتك بنفسك" },
-      { key: "ora", label: "ORAplayer", sub: "مدفوع، نفعّله لك من طرفنا" }
+      { key: "zero", label: "0Player", sub: "مجاني، تضيف بياناتك بنفسك", icon: "0player" },
+      { key: "ora", label: "ORAplayer", sub: "مدفوع، نفعّله لك من طرفنا", icon: "oraplayer" }
     ]},
     variants: {
       zero: [
@@ -568,8 +571,8 @@ const FALCON = {
   android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق فالكون أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، تحميل مباشر" },
-      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK" }
+      { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، تحميل مباشر", icon: "falcon-app" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK", icon: "smarters-pro" }
     ]},
     variants: {
       falconapp: [
@@ -587,8 +590,8 @@ const FALCON = {
   tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق فالكون أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، عبر Downloader" },
-      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader" }
+      { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، عبر Downloader", icon: "falcon-app" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro" }
     ]},
     variants: {
       falconapp: [
@@ -788,7 +791,9 @@ function renderDevices(){
 }
 function renderChoose(){
   const d = devs()[state.dev]; setProg(PROG_ACT, 2);
-  $("#view").innerHTML = `<div class="card"><h2>${d.choose.title}</h2><div class="pick">${d.choose.options.map(o => `<button type="button" data-variant="${o.key}"><b>${o.label}</b><small>${o.sub}</small></button>`).join("")}</div>
+  $("#view").innerHTML = `<div class="card"><h2>${d.choose.title}</h2><div class="pick">${d.choose.options.map(o => `<button type="button" data-variant="${o.key}">`
+      + (o.icon ? `<img src="/static/img/apps/${o.icon}.webp" alt="" width="46" height="46" loading="lazy">` : "")
+      + `<span class="who"><b>${o.label}</b><small>${o.sub}</small></span></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
 function renderStep(){

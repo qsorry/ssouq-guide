@@ -25,12 +25,14 @@
     {
      "key": "next",
      "label": "NEXT+",
-     "sub": "الأسهل، من Google Play"
+     "sub": "الأسهل، من Google Play",
+     "icon": "next-plus"
     },
     {
      "key": "smarters",
      "label": "IPTV Smarters Pro",
-     "sub": "برنامج إضافي، تحميل مباشر APK"
+     "sub": "برنامج إضافي، تحميل مباشر APK",
+     "icon": "smarters-pro"
     }
    ]
   },
@@ -70,12 +72,14 @@
     {
      "key": "mr7",
      "label": "MR7 TV",
-     "sub": "تطبيقنا الخاص، تسجيل دخول مباشر"
+     "sub": "تطبيقنا الخاص، تسجيل دخول مباشر",
+     "icon": "mr7"
     },
     {
      "key": "smarters",
      "label": "IPTV Smarters Pro",
-     "sub": "برنامج إضافي عبر Downloader"
+     "sub": "برنامج إضافي عبر Downloader",
+     "icon": "smarters-pro"
     }
    ]
   },
@@ -124,12 +128,14 @@
     {
      "key": "zero",
      "label": "0Player",
-     "sub": "مجاني، تضيف بياناتك بنفسك"
+     "sub": "مجاني، تضيف بياناتك بنفسك",
+     "icon": "0player"
     },
     {
      "key": "ora",
      "label": "ORAplayer",
-     "sub": "مدفوع، نفعّله لك من طرفنا"
+     "sub": "مدفوع، نفعّله لك من طرفنا",
+     "icon": "oraplayer"
     }
    ]
   },
