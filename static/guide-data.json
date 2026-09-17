@@ -55,9 +55,14 @@
      "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>تحميل مباشر APK</small></span></div><p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/IPTV-Smarters-Pro3.1.apk\" target=\"_blank\" rel=\"noopener\">تحميل ملف APK</a></p><p class=\"sub\">إذا ظهرت رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>"
     },
     {
-     "title": "فعّل الاشتراك بخيار Xtreme Codes",
+     "title": "اختر XTREME CODES",
      "img": "/static/img/smarters-xtreme.jpg",
-     "html": "<p>افتح التطبيق واختر <b dir=\"ltr\">XTREME CODES</b>، ثم عبّئ الخانات بالترتيب:</p><img src=\"/static/img/smarters-login.jpg\" alt=\"شاشة إدخال البيانات في IPTV Smarters\"><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة السر</code></div><div class=\"f\"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+     "html": "<p>افتح التطبيق فتظهر شاشة <b dir=\"ltr\">CHOOSE PLAYLIST TYPE</b>. اختر الخيار المحدَّد في الصورة: <b dir=\"ltr\">XTREME CODES</b> — في وسط الصف الأعلى. ولا تختر <b dir=\"ltr\">M3U PLAYLIST</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
+    },
+    {
+     "title": "أدخل بيانات الاشتراك",
+     "img": "/static/img/smarters-login.jpg",
+     "html": "<p>عبّئ الخانات بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة السر</code></div><div class=\"f\"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
     }
    ]
   }
@@ -108,9 +113,14 @@
      "html": "<ol><li>عند التثبيت ستظهر رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\". اضغط <b>الإعدادات</b>.</li><li>فعّل زر السماح لتطبيق <b dir=\"ltr\">Downloader</b>.</li><li>ارجع وافتح Downloader من جديد، ستجد الملف في خانة <b dir=\"ltr\">Files</b>. اضغطه وثبّت التطبيق.</li></ol><p class=\"sub\">هذه النسخة المجانية بدون أي رسوم.</p>"
     },
     {
-     "title": "فعّل الاشتراك بخيار Xtreme Codes",
+     "title": "اختر XTREME CODES",
      "img": "/static/img/smarters-xtreme.jpg",
-     "html": "<p>افتح التطبيق واختر <b dir=\"ltr\">XTREME CODES</b>، ثم عبّئ الخانات بالترتيب:</p><img src=\"/static/img/smarters-login.jpg\" alt=\"شاشة إدخال البيانات في IPTV Smarters\"><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة السر</code></div><div class=\"f\"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
+     "html": "<p>افتح التطبيق فتظهر شاشة <b dir=\"ltr\">CHOOSE PLAYLIST TYPE</b>. اختر الخيار المحدَّد في الصورة: <b dir=\"ltr\">XTREME CODES</b> — في وسط الصف الأعلى. ولا تختر <b dir=\"ltr\">M3U PLAYLIST</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
+    },
+    {
+     "title": "أدخل بيانات الاشتراك",
+     "img": "/static/img/smarters-login.jpg",
+     "html": "<p>عبّئ الخانات بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة السر</code></div><div class=\"f\"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div><div class=\"note\">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر.</div>"
     }
    ]
   },
