@@ -213,6 +213,15 @@ p{margin:0 0 10px}
 .howto li::before{content:counter(h);position:absolute;inset-inline-start:0;top:1px;width:24px;height:24px;border-radius:50%;
   background:var(--brand);color:var(--brand-on);display:grid;place-items:center;font-size:.76rem;font-weight:700}
 
+/* بطاقة التطبيق داخل الخطوة: أيقونته الرسمية، فلا يُحمَّل تطبيق شبيه بالاسم.
+   الاسم appbox لا app لأن صفحات الأجهزة الثابتة تستعمل h2.app لعناوينها. */
+.appbox{display:flex;align-items:center;gap:12px;background:var(--soft);border-radius:14px;padding:10px 12px;margin:0 0 12px}
+.appbox img,.step .appbox img{width:54px;height:54px;max-height:none;border-radius:14px;object-fit:cover;
+  flex:0 0 auto;background:var(--card);margin:0}
+.appbox b{display:block;font-size:1rem}
+.appbox small{display:block;color:var(--mute);font-size:.8rem;line-height:1.5}
+.opt .logo{width:46px;height:46px;border-radius:13px;object-fit:cover;flex:0 0 auto;background:var(--card);border:1px solid var(--line)}
+
 /* ---------- عناصر موروثة من المعالج ---------- */
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .dev{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 10px;border:1.5px solid var(--line);
@@ -386,10 +395,15 @@ const ICONS = {
 };
 const CREDS = '<div class="note">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a> بالمتجر.</div>';
 
+// أيقونة التطبيق واسمه فوق خطوة تحميله
+const APP = (icon, name, where) =>
+  `<div class="appbox"><img src="/static/img/apps/${icon}.webp" alt="أيقونة ${name}" width="54" height="54" loading="lazy">`
+  + `<span><b dir="ltr">${name}</b><small>${where}</small></span></div>`;
+
 const DEVICES = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق VAR Player", steps: [
     { title: "حمّل تطبيق VAR Player", img: "/static/img/ios-var-appstore.jpg",
-      html: '<p>افتح App Store وحمّل تطبيق <b dir="ltr">VAR Player</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://apps.apple.com/sa/app/var-player-unlock-your-world/id6477530321?l=ar" target="_blank" rel="noopener">apps.apple.com · VAR Player</a></p>' },
+      html: APP("var-player", "VAR Player", "من App Store · مجاني") + '<p>افتح App Store وحمّل تطبيق <b dir="ltr">VAR Player</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://apps.apple.com/sa/app/var-player-unlock-your-world/id6477530321?l=ar" target="_blank" rel="noopener">apps.apple.com · VAR Player</a></p>' },
     { title: "أدخل الكود ثم بياناتك",
       html: '<ol><li>افتح التطبيق واختر خيار <b>الكود</b>.</li><li>اكتب رقم الكود التالي:</li></ol><div class="fields"><div class="f"><span>الكود</span><code>55555</code></div></div><p>بعدها ستظهر لك 3 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div></div>' + CREDS }
   ]},
@@ -402,13 +416,13 @@ const DEVICES = {
     variants: {
       next: [
         { title: "حمّل تطبيق NEXT+", img: "/static/img/android-next-play.webp",
-          html: '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><div class="alt"><h3>بديل: تطبيقنا الخاص MR7</h3><p>تحميل مباشر من الرابط: <a class="link" href="http://aftv.news/5574841" target="_blank" rel="noopener">aftv.news/5574841</a></p></div>' },
+          html: APP("next-plus", "NEXT+", "من Google Play · مجاني") + '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><div class="alt"><h3>بديل: تطبيقنا الخاص MR7</h3>' + APP("mr7", "MR7 TV", "تحميل مباشر · تطبيقنا الخاص") + '<p>تحميل مباشر من الرابط: <a class="link" href="http://aftv.news/5574841" target="_blank" rel="noopener">aftv.news/5574841</a></p></div>' },
         { title: "أدخل بياناتك في التطبيق", img: "/static/img/android-mr7-home.webp",
           html: '<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class="f"><span>الخانة الرابعة</span><code>55555</code></div></div><p class="sub">في تطبيق MR7: اسم المستخدم في الخانة الأولى، كلمة السر في الثانية، واترك Activation code فارغًا ثم اضغط Login.</p>' + CREDS }
       ],
       smarters: [
         { title: "حمّل IPTV Smarters Pro",
-          html: '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class="btn go" href="https://ssouq.net/iptvsmarters/IPTV-Smarters-Pro3.1.apk" target="_blank" rel="noopener">تحميل ملف APK</a></p><p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
+          html: APP("smarters-pro", "IPTV Smarters Pro", "تحميل مباشر APK") + '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class="btn go" href="https://ssouq.net/iptvsmarters/IPTV-Smarters-Pro3.1.apk" target="_blank" rel="noopener">تحميل ملف APK</a></p><p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
         { title: "فعّل الاشتراك بخيار Xtreme Codes", img: "/static/img/smarters-xtreme.jpg",
           html: '<p>افتح التطبيق واختر <b dir="ltr">XTREME CODES</b>، ثم عبّئ الخانات بالترتيب:</p><img src="/static/img/smarters-login.jpg" alt="شاشة إدخال البيانات في IPTV Smarters"><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div>' + CREDS }
       ]
@@ -423,13 +437,13 @@ const DEVICES = {
     variants: {
       mr7: [
         { title: "حمّل تطبيق MR7 TV عبر Downloader", img: "/static/img/tv-downloader.png",
-          html: '<ol><li>حمّل تطبيق <b dir="ltr">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir="ltr">MR7 TV</b>. ثبّته وافتحه.</p>' },
+          html: APP("mr7", "MR7 TV", "عبر Downloader · تطبيقنا الخاص") + '<ol><li>حمّل تطبيق <b dir="ltr">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir="ltr">MR7 TV</b>. ثبّته وافتحه.</p>' },
         { title: "سجّل الدخول", img: "/static/img/tv-mr7-login.jpg",
           html: '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثانية</span><code>كلمة السر</code></div><div class="f"><span>Activation code</span><code>اتركه فارغًا</code></div></div><p>ثم اضغط <b dir="ltr">LOGIN</b>.</p>' + CREDS }
       ],
       smarters: [
         { title: "حمّل IPTV Smarters Pro عبر Downloader", img: "/static/img/tv-downloader.png",
-          html: '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>8744201</code></div></div>' },
+          html: APP("smarters-pro", "IPTV Smarters Pro", "عبر Downloader · مجاني") + '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>8744201</code></div></div>' },
         { title: "اسمح بالتثبيت ثم ثبّت التطبيق", img: "/static/img/smarters-tv-install.jpg",
           html: '<ol><li>عند التثبيت ستظهر رسالة "غير مسموح بتثبيت تطبيقات غير معروفة". اضغط <b>الإعدادات</b>.</li><li>فعّل زر السماح لتطبيق <b dir="ltr">Downloader</b>.</li><li>ارجع وافتح Downloader من جديد، ستجد الملف في خانة <b dir="ltr">Files</b>. اضغطه وثبّت التطبيق.</li></ol><p class="sub">هذه النسخة المجانية بدون أي رسوم.</p>' },
         { title: "فعّل الاشتراك بخيار Xtreme Codes", img: "/static/img/smarters-xtreme.jpg",
@@ -461,7 +475,7 @@ const DEVICES = {
   },
   windows: { icon: "pc", name: "كمبيوتر ويندوز", sub: "IPTV Smarters Pro للكمبيوتر", steps: [
     { title: "حمّل برنامج IPTV Smarters Pro لويندوز", img: "/static/img/windows-badge.png",
-      html: '<p>حمّل الملف المضغوط على الكمبيوتر (حجمه حوالي 130 ميغابايت):</p><p><a class="btn go" href="https://ssouq.net/iptvsmarters/iptv-smarters-pro-1-1-2.exe.zip" rel="noopener">تحميل البرنامج لويندوز (ZIP)</a></p><ol><li>بعد اكتمال التحميل اضغط بزر الفأرة الأيمن على الملف واختر <b>Extract All</b> (استخراج الكل).</li><li>افتح المجلد الناتج وشغّل ملف التثبيت <b dir="ltr">.exe</b>.</li><li>إذا ظهرت نافذة <b dir="ltr">Windows protected your PC</b> اضغط <b dir="ltr">More info</b> ثم <b dir="ltr">Run anyway</b>.</li><li>اضغط <b dir="ltr">Next</b> ثم <b dir="ltr">Install</b> حتى ينتهي التثبيت. سيفتح البرنامج تلقائيًا بعد التثبيت.</li></ol><p class="sub">يعمل على ويندوز 10 و 11.</p>' },
+      html: APP("smarters-pro", "IPTV Smarters Pro", "لويندوز 10 و 11") + '<p>حمّل الملف المضغوط على الكمبيوتر (حجمه حوالي 130 ميغابايت):</p><p><a class="btn go" href="https://ssouq.net/iptvsmarters/iptv-smarters-pro-1-1-2.exe.zip" rel="noopener">تحميل البرنامج لويندوز (ZIP)</a></p><ol><li>بعد اكتمال التحميل اضغط بزر الفأرة الأيمن على الملف واختر <b>Extract All</b> (استخراج الكل).</li><li>افتح المجلد الناتج وشغّل ملف التثبيت <b dir="ltr">.exe</b>.</li><li>إذا ظهرت نافذة <b dir="ltr">Windows protected your PC</b> اضغط <b dir="ltr">More info</b> ثم <b dir="ltr">Run anyway</b>.</li><li>اضغط <b dir="ltr">Next</b> ثم <b dir="ltr">Install</b> حتى ينتهي التثبيت. سيفتح البرنامج تلقائيًا بعد التثبيت.</li></ol><p class="sub">يعمل على ويندوز 10 و 11.</p>' },
     { title: "اختر خيار PLAYER API", img: "/static/img/smarters-pc-api.webp",
       html: '<p>عند فتح البرنامج أول مرة وافق على الشروط، ثم اختر الزر الأحمر <b dir="ltr">PLAYER API</b>.</p>' },
     { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-pc-login.webp",
@@ -469,7 +483,7 @@ const DEVICES = {
   ]},
   mac: { icon: "mac", name: "ماك (MacBook / iMac)", sub: "IPTV Smarters Pro لنظام macOS", steps: [
     { title: "حمّل برنامج IPTV Smarters Pro لماك",
-      html: '<p>حمّل ملف <b dir="ltr">DMG</b> مباشرة على جهاز الماك (حجمه حوالي 220 ميغابايت):</p><p><a class="btn go" href="https://ssouq.net/iptvsmarters/SmartersPro-1.0.0-universal.dmg" rel="noopener">تحميل البرنامج لماك (DMG)</a></p><p class="sub">النسخة universal تعمل على أجهزة Apple Silicon (M1 وما بعده) وأجهزة Intel.</p>' },
+      html: APP("smarters-pro", "IPTV Smarters Pro", "لنظام macOS · Apple Silicon و Intel") + '<p>حمّل ملف <b dir="ltr">DMG</b> مباشرة على جهاز الماك (حجمه حوالي 220 ميغابايت):</p><p><a class="btn go" href="https://ssouq.net/iptvsmarters/SmartersPro-1.0.0-universal.dmg" rel="noopener">تحميل البرنامج لماك (DMG)</a></p><p class="sub">النسخة universal تعمل على أجهزة Apple Silicon (M1 وما بعده) وأجهزة Intel.</p>' },
     { title: "ثبّت البرنامج", img: "/static/img/mac-drag.webp",
       html: '<ol><li>افتح ملف DMG الذي حمّلته بالنقر المزدوج.</li><li>اسحب أيقونة <b dir="ltr">IPTVSmartersPro</b> إلى مجلد <b dir="ltr">Applications</b> وانتظر ثوانٍ حتى يكتمل النسخ.</li><li>افتح <b dir="ltr">Launchpad</b> وشغّل البرنامج.</li></ol>' },
     { title: "اسمح بفتح البرنامج (مرة واحدة فقط)", img: "/static/img/mac-blocked.webp",
@@ -507,10 +521,99 @@ const BRAND_COPY = {
     chips: [["film", "أفلام ومسلسلات"], ["ball", "بث مباشر"], ["refresh", "تحديث يومي"]] }
 };
 const PROG_BUY = ["المحتوى", "الجهاز", "النوع", "الباقة"];
-const PROG_ACT = ["جهازك", "التطبيق", "البيانات", "جاهز"];
+const PROG_ACT = ["الاشتراك", "جهازك", "التطبيق", "جاهز"];
+
+
+/* ============================================================
+   نوعا الاشتراك
+   ------------------------------------------------------------
+   DEVICES أعلاه هو مسار "مرح" كاملًا — وهو المصدر الذي تُبنى منه
+   صفحات الأجهزة الثابتة (tools/sync_guide_data.js).
+   وفالكون يشترك معه في أكثر الخطوات ويختلف في أربعة مواضع فقط:
+   الآيفون (تطبيق آخر)، والأندرويد (تطبيق فالكون بدل MR7/NEXT+)،
+   وسامسونج و LG (رمز بوابة مختلف). وويندوز وماك يرثانه كما هما.
+   ============================================================ */
+const SUBS = {
+  marah:  { name: "مرح",   full: "MR7 TV",        art: "/static/img/brands/marah.webp",
+            sub: "تطبيق MR7 TV أو Smarters Pro" },
+  falcon: { name: "فالكون", full: "FALCON TV PRO", art: "/static/img/brands/falcon.webp",
+            sub: "تطبيق فالكون أو Smarters Pro" }
+};
+
+const FALCON_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",
+  html: '<p>افتح تطبيق فالكون وأدخل بيانات اشتراكك كما وصلتك.</p>'
+    + '<div class="fields"><div class="f"><span>اسم المستخدم</span><code>من رسالة الاشتراك</code></div>'
+    + '<div class="f"><span>كلمة المرور</span><code>من رسالة الاشتراك</code></div></div>' + CREDS
+    + '<div class="note">اختلفت الخانات عمّا في الشرح؟ صوّر الشاشة وأرسلها لنا على واتساب ونكملها معك.</div>'
+    + '<a class="btn wa" href="' + WA + encodeURIComponent("اشتراك فالكون - تسجيل الدخول في تطبيق فالكون") + '" target="_blank" rel="noopener">تواصل معنا على واتساب</a>' };
+
+const FALCON = {
+  ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق Smarters Player Lite", steps: [
+    { title: "حمّل تطبيق Smarters Player Lite",
+      html: APP("smarters-lite", "Smarters Player Lite", "من App Store · مجاني")
+        + '<p>افتح App Store وحمّل تطبيق <b dir="ltr">Smarters Player Lite</b>، أو اضغط الرابط مباشرة:</p>'
+        + '<p><a class="link" href="https://apps.apple.com/sa/app/smarters-player-lite/id1628995509?l=ar" target="_blank" rel="noopener">apps.apple.com · Smarters Player Lite</a></p>' },
+    { title: "فعّل الاشتراك بخيار Xtream Codes",
+      html: '<p>افتح التطبيق واختر تسجيل الدخول عبر <b dir="ltr">Xtream Codes API</b>، ثم عبّئ الخانات بالترتيب:</p>'
+        + '<img src="/static/img/smarters-login.jpg" alt="شاشة إدخال البيانات في تطبيق Smarters">'
+        + '<div class="fields"><div class="f"><span>Any Name</span><code>أي اسم من عندك</code></div>'
+        + '<div class="f"><span>Username</span><code>اسم المستخدم</code></div>'
+        + '<div class="f"><span>Password</span><code>كلمة المرور</code></div>'
+        + '<div class="f"><span>URL</span><code>رابط الهوست مع البورت</code></div></div>'
+        + '<div class="note">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http مع رقم البورت، مثل <code dir="ltr">http://host.com:8080</code>، بدون مسافات.</div>' + CREDS }
+  ]},
+
+  android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق فالكون أو IPTV Smarters Pro", choose: {
+    title: "اختر التطبيق",
+    options: [
+      { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، تحميل مباشر" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK" }
+    ]},
+    variants: {
+      falconapp: [
+        { title: "حمّل تطبيق فالكون",
+          html: APP("falcon-app", "FALCON TV PRO", "تحميل مباشر · تطبيق الاشتراك")
+            + '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p>'
+            + '<p><a class="btn go" href="https://aftv.news/1683248" target="_blank" rel="noopener">تحميل تطبيق فالكون</a></p>'
+            + '<p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
+        FALCON_LOGIN
+      ],
+      smarters: DEVICES.android.variants.smarters
+    }
+  },
+
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق فالكون أو IPTV Smarters Pro", choose: {
+    title: "اختر التطبيق",
+    options: [
+      { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، عبر Downloader" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader" }
+    ]},
+    variants: {
+      falconapp: [
+        { title: "حمّل تطبيق فالكون عبر Downloader", img: "/static/img/tv-downloader.png",
+          html: APP("falcon-app", "FALCON TV PRO", "عبر Downloader · تطبيق الاشتراك")
+            + '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li>'
+            + '<li>افتحه واكتب الكود التالي في خانة البحث:</li></ol>'
+            + '<div class="fields"><div class="f"><span>كود التحميل</span><code>1683248</code></div></div>'
+            + '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/1683248" target="_blank" rel="noopener">aftv.news/1683248</a>.</p>' },
+        DEVICES.tv.variants.smarters[1],
+        FALCON_LOGIN
+      ],
+      smarters: DEVICES.tv.variants.smarters
+    },
+  },
+
+  // نفس خطوات 0Player، ورمز البوابة وحده يختلف — فيُشتقّ منها ولا يُنسخ
+  webos: Object.assign({}, DEVICES.webos, { variants: {
+    zero: DEVICES.webos.variants.zero.map(s => Object.assign({}, s, { html: s.html.split("92929480").join("75710072") })),
+    ora: DEVICES.webos.variants.ora
+  }})
+};
+
+function devs(){ return state.sub === "falcon" ? Object.assign({}, DEVICES, FALCON) : DEVICES; }
 
 const $ = s => document.querySelector(s);
-const state = { screen: "home", taste: null, bdev: null, brand: null, plan: null, dev: null, variant: null, i: 0 };
+const state = { screen: "home", taste: null, bdev: null, brand: null, plan: null, sub: null, dev: null, variant: null, i: 0 };
 
 function stars(n){ return "★".repeat(n) + "☆".repeat(5 - n); }
 function setProg(labels, n){
@@ -660,33 +763,41 @@ function renderBuyDone(){
       <li>حمّل التطبيق المطلوب وأدخل بياناتك كما في الشرح.</li>
       <li>استمتع بالمشاهدة مباشرة.</li>
     </ol></div>
-    <div class="nav"><button class="btn go" type="button" data-activate="${act || ""}">افتح دليل التفعيل لجهازي</button></div>
+    <div class="nav"><button class="btn go" type="button" data-activate="${act || ""}" data-actsub="${state.brand}">افتح دليل التفعيل لجهازي</button></div>
     <div class="nav"><button class="btn ghost" type="button" data-back style="flex:1">تغيير الاختيار</button><button class="btn ghost" type="button" data-nav="plans" style="flex:1">كل الباقات</button></div>
     <p class="sub" style="margin-top:12px">استمتع بمحتواك المفضل ${ICONS.check}</p></div>`;
 }
 
 /* ---------- مسار التفعيل (المعالج الأصلي) ---------- */
-function steps(){ const d = DEVICES[state.dev]; return d.variants ? (d.variants[state.variant] || []) : d.steps; }
-function renderDevices(){
+function steps(){ const d = devs()[state.dev]; return d.variants ? (d.variants[state.variant] || []) : d.steps; }
+function renderSubs(){
   setProg(PROG_ACT, 0);
-  $("#view").innerHTML = `<div class="card"><h2>فعّل اشتراكك خلال دقائق</h2><p class="sub">اختر نوع جهازك وسنرشدك خطوة بخطوة.</p>
-    <div class="grid">${Object.entries(DEVICES).map(([k, d]) => `<button class="dev" type="button" data-dev="${k}">${ICONS[d.icon]}<b>${d.name}</b><small>${d.sub}</small></button>`).join("")}</div>
+  $("#view").innerHTML = `<div class="card"><h2>أي اشتراك لديك؟</h2>
+    <p class="sub">التطبيق ورمز التفعيل يختلفان بين الاشتراكين، فاختر اشتراكك أولًا. تجده في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a>.</p>
+    <div class="opts">${Object.entries(SUBS).map(([k, o]) => `<button class="opt" type="button" data-sub="${k}"><img class="logo" src="${o.art}" alt="" width="46" height="46" loading="lazy"><span><b>${o.name}</b><small>${o.sub}</small></span><span class="dot"></span></button>`).join("")}</div>
+    <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
+}
+function renderDevices(){
+  setProg(PROG_ACT, 1);
+  const S = SUBS[state.sub];
+  $("#view").innerHTML = `<div class="card"><p class="sub">اشتراك ${S.name} · ${S.full}</p><h2>اختر جهازك</h2><p class="sub">اختر الجهاز الذي ستشاهد عليه وسنرشدك خطوة بخطوة.</p>
+    <div class="grid">${Object.entries(devs()).map(([k, d]) => `<button class="dev" type="button" data-dev="${k}">${ICONS[d.icon]}<b>${d.name}</b><small>${d.sub}</small></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
 function renderChoose(){
-  const d = DEVICES[state.dev]; setProg(PROG_ACT, 1);
+  const d = devs()[state.dev]; setProg(PROG_ACT, 2);
   $("#view").innerHTML = `<div class="card"><h2>${d.choose.title}</h2><div class="pick">${d.choose.options.map(o => `<button type="button" data-variant="${o.key}"><b>${o.label}</b><small>${o.sub}</small></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
 function renderStep(){
-  const list = steps(), s = list[state.i], d = DEVICES[state.dev];
-  setProg(PROG_ACT, Math.min(1 + state.i, 2));
-  $("#view").innerHTML = `<div class="card step"><p class="sub">${d.name}${state.variant ? " · " + d.choose.options.find(o => o.key === state.variant).label : ""} · الخطوة ${state.i + 1} من ${list.length}</p>
+  const list = steps(), s = list[state.i], d = devs()[state.dev];
+  setProg(PROG_ACT, 2);
+  $("#view").innerHTML = `<div class="card step"><p class="sub">${SUBS[state.sub].name} · ${d.name}${state.variant ? " · " + d.choose.options.find(o => o.key === state.variant).label : ""} · الخطوة ${state.i + 1} من ${list.length}</p>
     <h2>${s.title}</h2>${s.img ? `<img src="${s.img}" alt="${s.title}">` : ""}${s.html}
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button><button class="btn go" type="button" data-next>${state.i + 1 < list.length ? "التالي" : "أنهيت الخطوات"}</button></div></div>`;
 }
 function renderActDone(){
-  const d = DEVICES[state.dev]; setProg(PROG_ACT, 3);
+  const d = devs()[state.dev]; setProg(PROG_ACT, 3);
   $("#view").innerHTML = `<div class="card done"><div class="big">🎉</div><h2>استمتع بالمشاهدة!</h2><p class="sub">إذا لم تعمل القنوات تأكد من كتابة البيانات بدون مسافات، وأعد تشغيل التطبيق.</p>
     ${(d.doneImgs && d.doneImgs[state.variant]) ? `<img src="${d.doneImgs[state.variant]}" alt="" style="width:100%;border-radius:12px;margin:10px 0">` : ""}
     <div class="nav"><a class="btn wa" href="${WA + encodeURIComponent(d.name)}" target="_blank" rel="noopener">واجهت مشكلة؟ تواصل معنا</a></div>
@@ -754,8 +865,10 @@ function hashFor(){
     case "plans": return "#plans";
     case "buy-taste": case "buy-device": case "buy-brand": case "buy-plan": case "buy-done": return "#" + b();
     case "activate":
-      if (!state.dev) return "#activate";
-      return "#" + state.dev + (state.variant ? "-" + state.variant : "") + (state.i ? "/" + (state.i + 1) : "");
+      if (!state.sub) return "#activate";
+      if (!state.dev) return "#activate/" + state.sub;
+      return "#activate/" + state.sub + "/" + state.dev
+           + (state.variant ? "/" + state.variant : "") + (state.i ? "/" + (state.i + 1) : "");
     default: return "";
   }
 }
@@ -765,9 +878,22 @@ function applyHash(){
   const seg = decodeURIComponent(location.hash.replace(/^#/, "")).split("/");
   const head = seg[0] || "";
   state.taste = state.bdev = state.brand = state.plan = null;
-  state.dev = null; state.variant = null; state.i = 0;
+  state.sub = null; state.dev = null; state.variant = null; state.i = 0;
   if (head === "m3u" || head === "plans") { state.screen = head; return; }
-  if (head === "activate") { state.screen = "activate"; return; }
+  if (head === "activate") {
+    state.screen = "activate";
+    if (!SUBS[seg[1]]) return;
+    state.sub = seg[1];
+    const D = devs();
+    let i = 2;
+    if (!D[seg[i]]) return;
+    state.dev = seg[i]; i++;
+    const v = D[state.dev].variants;
+    if (v && seg[i] && v[seg[i]]) { state.variant = seg[i]; i++; }
+    const n = parseInt(seg[i], 10);
+    if (n > 1) state.i = n - 1;
+    return;
+  }
   if (head === "buy") {
     if (TASTES[seg[1]]) state.taste = seg[1];
     if (state.taste && BUYDEV[seg[2]]) state.bdev = seg[2];
@@ -777,9 +903,10 @@ function applyHash(){
                  : state.bdev ? "buy-brand" : state.taste ? "buy-device" : "buy-taste";
     return;
   }
+  // الروابط القديمة قبل تفرّع الاشتراكين (#ios · #tv-mr7 …) تبقى عاملة وتعني مرح
   const dv = head.split("-");
   if (DEVICES[dv[0]]) {
-    state.screen = "activate"; state.dev = dv[0];
+    state.screen = "activate"; state.sub = "marah"; state.dev = dv[0];
     if (dv[1] && DEVICES[dv[0]].variants && DEVICES[dv[0]].variants[dv[1]]) state.variant = dv[1];
     const n = parseInt(seg[1], 10);
     if (n > 1) state.i = n - 1;
@@ -799,8 +926,9 @@ function paint(){
     case "m3u":        renderM3U();       break;
     case "plans":      renderPlans();     break;
     case "activate":
+      if (!state.sub) { renderSubs(); break; }
       if (!state.dev) { renderDevices(); break; }
-      if (DEVICES[state.dev].variants && !state.variant) { renderChoose(); break; }
+      if (devs()[state.dev].variants && !state.variant) { renderChoose(); break; }
       if (state.i >= steps().length) { renderActDone(); break; }
       renderStep(); break;
     default: renderHome();
@@ -827,6 +955,7 @@ function backState(){
       if (state.i > 0) state.i--;
       else if (state.variant) state.variant = null;
       else if (state.dev) state.dev = null;
+      else if (state.sub) state.sub = null;
       else state.screen = "home";
       break;
     default: state.screen = "home";
@@ -838,7 +967,7 @@ function back(){
 }
 function nav(to){
   if (to === "buy")           { state.screen = "buy-taste"; state.taste = state.bdev = state.brand = state.plan = null; }
-  else if (to === "activate") { state.screen = "activate"; state.dev = null; state.variant = null; state.i = 0; }
+  else if (to === "activate") { state.screen = "activate"; state.sub = null; state.dev = null; state.variant = null; state.i = 0; }
   else if (to === "m3u" || to === "plans") state.screen = to;
   else state.screen = "home";
   render(true); go();
@@ -858,8 +987,10 @@ $("#view").addEventListener("click", e => {
   else if (d.plan) { state.plan = d.plan; state.screen = "buy-done"; }
   else if (b.hasAttribute("data-activate")) {
     state.screen = "activate"; state.variant = null; state.i = 0;
-    state.dev = DEVICES[d.activate] ? d.activate : null;
+    state.sub = SUBS[d.actsub] ? d.actsub : null;              // نوع الاشتراك معروف من مسار الشراء
+    state.dev = state.sub && devs()[d.activate] ? d.activate : null;
   }
+  else if (d.sub) { state.sub = d.sub; state.dev = null; state.variant = null; state.i = 0; }
   else if (d.dev) { state.screen = "activate"; state.dev = d.dev; state.variant = null; state.i = 0; }
   else if (d.variant) { state.variant = d.variant; state.i = 0; }
   else if (b.hasAttribute("data-next")) state.i++;

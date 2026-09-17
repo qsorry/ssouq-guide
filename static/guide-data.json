@@ -7,7 +7,7 @@
    {
     "title": "حمّل تطبيق VAR Player",
     "img": "/static/img/ios-var-appstore.jpg",
-    "html": "<p>افتح App Store وحمّل تطبيق <b dir=\"ltr\">VAR Player</b>، أو اضغط الرابط مباشرة:</p><p><a class=\"link\" href=\"https://apps.apple.com/sa/app/var-player-unlock-your-world/id6477530321?l=ar\" target=\"_blank\" rel=\"noopener\">apps.apple.com · VAR Player</a></p>"
+    "html": "<div class=\"appbox\"><img src=\"/static/img/apps/var-player.webp\" alt=\"أيقونة VAR Player\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">VAR Player</b><small>من App Store · مجاني</small></span></div><p>افتح App Store وحمّل تطبيق <b dir=\"ltr\">VAR Player</b>، أو اضغط الرابط مباشرة:</p><p><a class=\"link\" href=\"https://apps.apple.com/sa/app/var-player-unlock-your-world/id6477530321?l=ar\" target=\"_blank\" rel=\"noopener\">apps.apple.com · VAR Player</a></p>"
    },
    {
     "title": "أدخل الكود ثم بياناتك",
@@ -39,7 +39,7 @@
     {
      "title": "حمّل تطبيق NEXT+",
      "img": "/static/img/android-next-play.webp",
-     "html": "<p>افتح Google Play وحمّل تطبيق <b dir=\"ltr\">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class=\"link\" href=\"https://play.google.com/store/apps/details?id=com.code.next\" target=\"_blank\" rel=\"noopener\">play.google.com · NEXT+</a></p><div class=\"alt\"><h3>بديل: تطبيقنا الخاص MR7</h3><p>تحميل مباشر من الرابط: <a class=\"link\" href=\"http://aftv.news/5574841\" target=\"_blank\" rel=\"noopener\">aftv.news/5574841</a></p></div>"
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/next-plus.webp\" alt=\"أيقونة NEXT+\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">NEXT+</b><small>من Google Play · مجاني</small></span></div><p>افتح Google Play وحمّل تطبيق <b dir=\"ltr\">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class=\"link\" href=\"https://play.google.com/store/apps/details?id=com.code.next\" target=\"_blank\" rel=\"noopener\">play.google.com · NEXT+</a></p><div class=\"alt\"><h3>بديل: تطبيقنا الخاص MR7</h3><div class=\"appbox\"><img src=\"/static/img/apps/mr7.webp\" alt=\"أيقونة MR7 TV\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">MR7 TV</b><small>تحميل مباشر · تطبيقنا الخاص</small></span></div><p>تحميل مباشر من الرابط: <a class=\"link\" href=\"http://aftv.news/5574841\" target=\"_blank\" rel=\"noopener\">aftv.news/5574841</a></p></div>"
     },
     {
      "title": "أدخل بياناتك في التطبيق",
@@ -50,7 +50,7 @@
    "smarters": [
     {
      "title": "حمّل IPTV Smarters Pro",
-     "html": "<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/IPTV-Smarters-Pro3.1.apk\" target=\"_blank\" rel=\"noopener\">تحميل ملف APK</a></p><p class=\"sub\">إذا ظهرت رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>"
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>تحميل مباشر APK</small></span></div><p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/IPTV-Smarters-Pro3.1.apk\" target=\"_blank\" rel=\"noopener\">تحميل ملف APK</a></p><p class=\"sub\">إذا ظهرت رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>"
     },
     {
      "title": "فعّل الاشتراك بخيار Xtreme Codes",
@@ -84,7 +84,7 @@
     {
      "title": "حمّل تطبيق MR7 TV عبر Downloader",
      "img": "/static/img/tv-downloader.png",
-     "html": "<ol><li>حمّل تطبيق <b dir=\"ltr\">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir=\"ltr\">MR7 TV</b>. ثبّته وافتحه.</p>"
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/mr7.webp\" alt=\"أيقونة MR7 TV\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">MR7 TV</b><small>عبر Downloader · تطبيقنا الخاص</small></span></div><ol><li>حمّل تطبيق <b dir=\"ltr\">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir=\"ltr\">MR7 TV</b>. ثبّته وافتحه.</p>"
     },
     {
      "title": "سجّل الدخول",
@@ -96,7 +96,7 @@
     {
      "title": "حمّل IPTV Smarters Pro عبر Downloader",
      "img": "/static/img/tv-downloader.png",
-     "html": "<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir=\"ltr\">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><code>8744201</code></div></div>"
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>عبر Downloader · مجاني</small></span></div><ol><li>من متجر التطبيقات في الشاشة حمّل <b dir=\"ltr\">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><code>8744201</code></div></div>"
     },
     {
      "title": "اسمح بالتثبيت ثم ثبّت التطبيق",
@@ -167,7 +167,7 @@
    {
     "title": "حمّل برنامج IPTV Smarters Pro لويندوز",
     "img": "/static/img/windows-badge.png",
-    "html": "<p>حمّل الملف المضغوط على الكمبيوتر (حجمه حوالي 130 ميغابايت):</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/iptv-smarters-pro-1-1-2.exe.zip\" rel=\"noopener\">تحميل البرنامج لويندوز (ZIP)</a></p><ol><li>بعد اكتمال التحميل اضغط بزر الفأرة الأيمن على الملف واختر <b>Extract All</b> (استخراج الكل).</li><li>افتح المجلد الناتج وشغّل ملف التثبيت <b dir=\"ltr\">.exe</b>.</li><li>إذا ظهرت نافذة <b dir=\"ltr\">Windows protected your PC</b> اضغط <b dir=\"ltr\">More info</b> ثم <b dir=\"ltr\">Run anyway</b>.</li><li>اضغط <b dir=\"ltr\">Next</b> ثم <b dir=\"ltr\">Install</b> حتى ينتهي التثبيت. سيفتح البرنامج تلقائيًا بعد التثبيت.</li></ol><p class=\"sub\">يعمل على ويندوز 10 و 11.</p>"
+    "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>لويندوز 10 و 11</small></span></div><p>حمّل الملف المضغوط على الكمبيوتر (حجمه حوالي 130 ميغابايت):</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/iptv-smarters-pro-1-1-2.exe.zip\" rel=\"noopener\">تحميل البرنامج لويندوز (ZIP)</a></p><ol><li>بعد اكتمال التحميل اضغط بزر الفأرة الأيمن على الملف واختر <b>Extract All</b> (استخراج الكل).</li><li>افتح المجلد الناتج وشغّل ملف التثبيت <b dir=\"ltr\">.exe</b>.</li><li>إذا ظهرت نافذة <b dir=\"ltr\">Windows protected your PC</b> اضغط <b dir=\"ltr\">More info</b> ثم <b dir=\"ltr\">Run anyway</b>.</li><li>اضغط <b dir=\"ltr\">Next</b> ثم <b dir=\"ltr\">Install</b> حتى ينتهي التثبيت. سيفتح البرنامج تلقائيًا بعد التثبيت.</li></ol><p class=\"sub\">يعمل على ويندوز 10 و 11.</p>"
    },
    {
     "title": "اختر خيار PLAYER API",
@@ -188,7 +188,7 @@
   "steps": [
    {
     "title": "حمّل برنامج IPTV Smarters Pro لماك",
-    "html": "<p>حمّل ملف <b dir=\"ltr\">DMG</b> مباشرة على جهاز الماك (حجمه حوالي 220 ميغابايت):</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/SmartersPro-1.0.0-universal.dmg\" rel=\"noopener\">تحميل البرنامج لماك (DMG)</a></p><p class=\"sub\">النسخة universal تعمل على أجهزة Apple Silicon (M1 وما بعده) وأجهزة Intel.</p>"
+    "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>لنظام macOS · Apple Silicon و Intel</small></span></div><p>حمّل ملف <b dir=\"ltr\">DMG</b> مباشرة على جهاز الماك (حجمه حوالي 220 ميغابايت):</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/SmartersPro-1.0.0-universal.dmg\" rel=\"noopener\">تحميل البرنامج لماك (DMG)</a></p><p class=\"sub\">النسخة universal تعمل على أجهزة Apple Silicon (M1 وما بعده) وأجهزة Intel.</p>"
    },
    {
     "title": "ثبّت البرنامج",
