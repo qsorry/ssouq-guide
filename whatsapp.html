@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>واتساب الطلبات</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#16324F;--paper:#EEF2F6;--card:#FFFFFF;--line:#D5DEE8;--go:#0F8C7B;--err:#C2412D;--warn:#B4741A;--mute:#5F7288;--soft:#F5F8FB}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--err:#EF6A55;--warn:#E0A44A;--mute:#8FA3B8;--soft:#101D2A}}
+:root[data-theme="dark"]{--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--err:#EF6A55;--warn:#E0A44A;--mute:#8FA3B8;--soft:#101D2A}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.7 "IBM Plex Sans Arabic",Tahoma,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 60px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:1.35rem;margin:0;flex:1}
+h2{font-size:1.05rem;margin:0 0 4px}
+p.sub{color:var(--mute);margin:0 0 14px;font-size:.9rem}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.tabs button{flex:1;min-width:110px;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--mute);border-radius:10px;font:inherit;font-weight:500;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--go);border-color:var(--go);color:#fff;font-weight:700}
+label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}
+input[dir="ltr"],select{direction:ltr}
+textarea{min-height:230px;direction:rtl;font-size:.9rem;line-height:1.75;white-space:pre-wrap}
+button.act{margin-top:14px;padding:12px 18px;background:var(--go);color:#fff;font:inherit;font-weight:700;border:0;border-radius:10px;cursor:pointer;width:auto}
+button.ghost{background:transparent;color:var(--mute);border:1px solid var(--line)}
+button.danger{background:var(--err)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--go);outline-offset:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row>*{flex:1;min-width:160px}
+.row>button{flex:0 0 auto}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.78rem;font-weight:700;border:1px solid var(--line);color:var(--mute)}
+.badge.ok{background:var(--go);border-color:var(--go);color:#fff}
+.badge.bad{background:var(--err);border-color:var(--err);color:#fff}
+.badge.wait{background:var(--warn);border-color:var(--warn);color:#fff}
+ul.checks{list-style:none;padding:0;margin:0}
+ul.checks li{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start;font-size:.9rem}
+ul.checks li:last-child{border-bottom:0}
+ul.checks .k{flex:0 0 190px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;direction:ltr;text-align:right}
+ul.checks .e{color:var(--mute);font-size:.84rem}
+.mark{flex:0 0 18px;font-weight:700}
+.mark.y{color:var(--go)}.mark.n{color:var(--err)}
+.note{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.87rem;color:var(--mute);margin-top:12px}
+.note.warn{border-color:var(--warn);color:var(--warn)}
+.note.bad{border-color:var(--err);color:var(--err)}
+code{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.83rem;direction:ltr;display:inline-block}
+.qr{text-align:center;padding:14px}
+.qr img{width:240px;height:240px;background:#fff;border-radius:12px;padding:8px}
+.log{list-style:none;padding:0;margin:0;font-size:.87rem}
+.log li{border-bottom:1px solid var(--line);padding:10px 0;display:flex;gap:10px;align-items:flex-start}
+.log li:last-child{border-bottom:0}
+.log .when{flex:0 0 118px;color:var(--mute);font-size:.78rem;direction:ltr;text-align:right}
+.log .what{flex:1;min-width:0}
+.log .body{color:var(--mute);font-size:.82rem;white-space:pre-wrap;word-break:break-word;margin-top:4px;max-height:5.6em;overflow:hidden}
+.msg{margin-top:12px;font-size:.9rem;min-height:1.4em}
+.msg.bad{color:var(--err)}.msg.ok{color:var(--go)}
+.switch{display:flex;align-items:center;gap:10px;margin-top:12px}
+.switch input{width:auto;flex:0 0 auto}
+.switch span{font-size:.9rem}
+@media(max-width:560px){ul.checks li{flex-wrap:wrap}ul.checks .k{flex:1 0 100%}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>واتساب الطلبات</h1>
+  <span class="badge" id="conn">…</span>
+  <button class="act ghost" id="out" style="margin:0;padding:8px 14px">خروج</button>
+</header>
+
+<div class="tabs" role="tablist">
+  <button role="tab" data-t="status" aria-selected="true">الحالة والربط</button>
+  <button role="tab" data-t="send" aria-selected="false">إرسال طلب</button>
+  <button role="tab" data-t="log" aria-selected="false">السجل</button>
+  <button role="tab" data-t="settings" aria-selected="false">الإعدادات</button>
+</div>
+
+<!-- ============ الحالة ============ -->
+<div id="tab-status">
+  <section>
+    <h2>جاهزية الصفحة</h2>
+    <p class="sub">ما هو مضبوط وما ينقص، وأثر كل نقص. يُقرأ من البيئة الحيّة لا من ملف.</p>
+    <ul class="checks" id="checks"><li>جارٍ الفحص…</li></ul>
+    <button class="act ghost" id="recheck">إعادة الفحص</button>
+  </section>
+
+  <section>
+    <h2>ربط الرقم</h2>
+    <p class="sub">الرقم يُربط بمسح الكود من واتساب ← الأجهزة المرتبطة ← ربط جهاز. يبقى مربوطًا بعد إعادة التشغيل.</p>
+    <div class="row">
+      <div><label for="num">رقم الواتساب (بصيغة دولية بلا +)</label>
+        <input id="num" dir="ltr" inputmode="numeric" placeholder="9665xxxxxxxx"></div>
+      <button class="act" id="connect">ربط الرقم</button>
+      <button class="act danger" id="disconnect">فصل</button>
+    </div>
+    <div class="qr" id="qrbox" hidden><img id="qr" alt="رمز الربط"><p class="sub" style="margin:10px 0 0">امسح الرمز خلال ٢٠ ثانية — يتجدّد تلقائيًّا.</p></div>
+    <div class="note" id="sessnote" hidden></div>
+    <div class="msg" id="cmsg"></div>
+  </section>
+
+  <section>
+    <h2>الوصلات</h2>
+    <p class="sub">ضع الأول في لوحة سلة ← المطوّرين ← الويب هوك، على حدث <b>تحديث حالة الطلب</b>. والثاني يضعه القارئ بنفسه عند الربط.</p>
+    <label>ويب هوك سلة</label><input id="wh" dir="ltr" readonly>
+    <label>استقبال رسائل العملاء</label><input id="ing" dir="ltr" readonly>
+  </section>
+</div>
+
+<!-- ============ إرسال ============ -->
+<div id="tab-send" hidden>
+  <section>
+    <h2>إرسال طلب بعينه</h2>
+    <p class="sub">اكتب رقم الطلب كما يظهر في لوحة سلة. تُعرض الرسالة كما ستصل العميل قبل أن تُرسل.</p>
+    <div class="row">
+      <div><label for="ref">رقم الطلب</label><input id="ref" dir="ltr" inputmode="numeric" placeholder="286705852"></div>
+      <button class="act" id="prev">معاينة</button>
+    </div>
+    <div class="msg" id="pmsg"></div>
+  </section>
+
+  <section id="pv" hidden>
+    <h2>الرسالة</h2>
+    <p class="sub" id="pvmeta"></p>
+    <div id="pvwarn"></div>
+    <label for="body">النص (يمكن تعديله قبل الإرسال)</label>
+    <textarea id="body"></textarea>
+    <div class="row">
+      <button class="act" id="send">إرسال إلى <span id="sendto"></span></button>
+      <button class="act ghost" id="force">إرسال مجددًا رغم أنها أُرسلت</button>
+    </div>
+    <div class="msg" id="smsg"></div>
+  </section>
+</div>
+
+<!-- ============ السجل ============ -->
+<div id="tab-log" hidden>
+  <section>
+    <h2>سجل المحادثات والإرسال</h2>
+    <p class="sub">كل ما أُرسل وكل ما وصل، بترتيب الأحدث. يتحدّث تلقائيًّا.</p>
+    <div class="row">
+      <div><label for="q">بحث (رقم طلب، جوال، نص)</label><input id="q" placeholder="اكتب للتصفية"></div>
+      <button class="act ghost" id="refresh">تحديث</button>
+    </div>
+    <ul class="log" id="logs"><li>…</li></ul>
+  </section>
+</div>
+
+<!-- ============ الإعدادات ============ -->
+<div id="tab-settings" hidden>
+  <section>
+    <h2>التشغيل</h2>
+    <div class="switch"><input type="checkbox" id="auto_send"><span>إرسال آلي لكل طلب جديد يصل من الويب هوك</span></div>
+    <div class="switch"><input type="checkbox" id="auto_reply"><span>إعادة إرسال البيانات لمن يراسلنا على الرقم</span></div>
+    <label for="provider">مزوّد الإرسال</label>
+    <select id="provider">
+      <option value="reader">واتساب العمليات — ربط بالـ QR (Baileys)</option>
+      <option value="cloud">واتساب الرسمي — Meta Cloud API</option>
+    </select>
+    <label for="skey">مفتاح الجلسة في القارئ</label>
+    <input id="skey" dir="ltr" placeholder="ssouq-guide">
+    <p class="sub" style="margin-top:6px">مفتاح مستقل لهذا الموقع، فلا يزاحم جلسات المنشآت في القارئ نفسه.</p>
+    <button class="act" id="savecfg">حفظ</button>
+    <div class="msg" id="cfgmsg"></div>
+  </section>
+
+  <section>
+    <h2>كلمة مرور الصفحة</h2>
+    <label for="np">كلمة مرور جديدة (٦ أحرف فأكثر)</label><input id="np" type="password" autocomplete="new-password">
+    <button class="act" id="savepw">تغيير</button>
+    <div class="msg" id="pwmsg"></div>
+  </section>
+</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const api = async (path, body) => {
+  const r = await fetch("/whatsapp/api/" + path, body === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  if (r.status === 401) { location.href = "/whatsapp/login"; throw new Error("انتهت الجلسة"); }
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+};
+const say = (el, text, cls) => { const n = $(el); n.textContent = text || ""; n.className = "msg " + (cls || ""); };
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const when = t => new Date(t * 1000).toLocaleString("ar-SA", {dateStyle: "short", timeStyle: "short"});
+
+/* ---------- التبويبات ---------- */
+let tab = "status";
+document.querySelectorAll('[role="tab"]').forEach(b => b.onclick = () => {
+  tab = b.dataset.t;
+  document.querySelectorAll('[role="tab"]').forEach(x => x.setAttribute("aria-selected", String(x === b)));
+  for (const t of ["status", "send", "log", "settings"]) $("tab-" + t).hidden = (t !== tab);
+  if (tab === "log") loadLog();
+});
+
+/* ---------- الحالة ---------- */
+let poll = null;
+async function loadStatus(){
+  let d;
+  try { d = await api("status"); } catch(e) { say("cmsg", e.message, "bad"); return; }
+  $("wh").value = d.webhook_url; $("ing").value = d.ingest_url;
+  $("checks").innerHTML = d.checks.map(c => `<li>
+      <span class="mark ${c.ok ? "y" : "n"}">${c.ok ? "✓" : "✕"}</span>
+      <span class="k">${esc(c.key)}</span>
+      <span class="what"><b>${esc(c.detail)}</b>${c.effect && !c.ok ? `<div class="e">${esc(c.effect)}</div>` : ""}</span>
+    </li>`).join("");
+
+  const s = d.session || {};
+  const state = s.status || (d.provider === "cloud" ? "cloud" : "unknown");
+  const map = {connected: ["مربوط", "ok"], qr: ["بانتظار المسح", "wait"], connecting: ["جارٍ الربط", "wait"],
+               disconnected: ["غير مربوط", "bad"], cloud: ["الواجهة الرسمية", "ok"], unknown: ["غير معروف", ""]};
+  const [lbl, cls] = map[state] || map.unknown;
+  $("conn").textContent = lbl + (s.number ? " · " + s.number : "");
+  $("conn").className = "badge " + cls;
+
+  const showQr = state === "qr" && s.qr;
+  $("qrbox").hidden = !showQr;
+  if (showQr) $("qr").src = s.qr.startsWith("data:") ? s.qr : "";
+  if (s.pairingCode) { $("sessnote").hidden = false; $("sessnote").textContent = "رمز الربط: " + s.pairingCode; }
+  else if (d.session_error) { $("sessnote").hidden = false; $("sessnote").className = "note bad"; $("sessnote").textContent = d.session_error; }
+  else $("sessnote").hidden = true;
+  if (s.number && !$("num").value) $("num").value = s.number;
+
+  $("auto_send").checked = !!d.settings.auto_send;
+  $("auto_reply").checked = !!d.settings.auto_reply;
+  $("provider").value = d.settings.provider || "reader";
+  $("skey").value = d.settings.session_key || "";
+
+  clearTimeout(poll);
+  if (state === "qr" || state === "connecting") poll = setTimeout(loadStatus, 4000);
+}
+$("recheck").onclick = loadStatus;
+
+$("connect").onclick = async () => {
+  const number = $("num").value.replace(/\D/g, "");
+  if (number.length < 10) return say("cmsg", "اكتب الرقم بصيغته الدولية بلا +", "bad");
+  say("cmsg", "جارٍ فتح الجلسة…");
+  try { await api("connect", {number}); say("cmsg", "افتح واتساب وامسح الرمز", "ok"); loadStatus(); }
+  catch(e) { say("cmsg", e.message, "bad"); }
+};
+$("disconnect").onclick = async () => {
+  if (!confirm("فصل الرقم؟ ستحتاج مسح الرمز مجددًا.")) return;
+  try { await api("disconnect", {}); say("cmsg", "فُصل", "ok"); loadStatus(); }
+  catch(e) { say("cmsg", e.message, "bad"); }
+};
+
+/* ---------- الإرسال ---------- */
+let current = null;
+async function preview(){
+  const ref = $("ref").value.replace(/\D/g, "");
+  if (!ref) return say("pmsg", "اكتب رقم الطلب", "bad");
+  say("pmsg", "جارٍ القراءة من سلة…");
+  $("pv").hidden = true;
+  try {
+    const d = await api("preview", {ref});
+    current = d;
+    say("pmsg", "");
+    $("pv").hidden = false;
+    $("body").value = d.body;
+    $("sendto").textContent = d.to || "—";
+    $("send").disabled = !d.to;
+    const brands = (d.brands || []).map(b => b === "falcon" ? "فالكون" : "مرح").join(" · ") || "—";
+    $("pvmeta").textContent = `الطلب ${d.ref} · ${d.customer || "بلا اسم"} · ${brands} · ${d.codes} كود · الحالة ${d.status || "—"}`;
+    const warns = (d.warnings || []).map(w => `<div class="note warn">${esc(w)}</div>`).join("");
+    const before = d.sent_before && d.sent_before.ok
+      ? `<div class="note">أُرسلت لهذا الطلب رسالة في ${when(d.sent_before.at)} — "إرسال" لن يكرّرها، استعمل الزر الثاني.</div>` : "";
+    $("pvwarn").innerHTML = warns + before;
+  } catch(e) { say("pmsg", e.message, "bad"); }
+}
+$("prev").onclick = preview;
+$("ref").addEventListener("keydown", e => { if (e.key === "Enter") preview(); });
+
+async function doSend(force){
+  if (!current) return;
+  say("smsg", "جارٍ الإرسال…");
+  try {
+    const d = await api("send", {ref: current.ref, force: !!force, body: $("body").value});
+    say("smsg", d.sent ? "أُرسلت إلى " + d.to : (d.note || "لم تُرسل"), d.sent ? "ok" : "bad");
+    if (d.sent) preview();
+  } catch(e) { say("smsg", e.message, "bad"); }
+}
+$("send").onclick = () => doSend(false);
+$("force").onclick = () => doSend(true);
+
+/* ---------- السجل ---------- */
+const KINDS = {sent: "أُرسلت", received: "وصلت من العميل", skipped: "تُخطّيت", send_failed: "فشل الإرسال",
+  reply_skipped: "لم يُرد", reply_failed: "فشل الرد", webhook_ignored: "ويب هوك متجاهَل",
+  webhook_failed: "ويب هوك فشل"};
+let logTimer = null;
+async function loadLog(){
+  clearTimeout(logTimer);
+  try {
+    const d = await api("log?limit=150&q=" + encodeURIComponent($("q").value.trim()));
+    $("logs").innerHTML = d.rows.length ? d.rows.map(r => {
+      const head = [KINDS[r.kind] || r.kind, r.ref ? "طلب " + r.ref : "", r.to || r.phone || "",
+                    r.customer || "", r.reason || r.error || ""].filter(Boolean).join(" · ");
+      return `<li><span class="when">${esc(when(r.at))}</span>
+        <span class="what"><b>${esc(head)}</b>${r.body ? `<div class="body">${esc(r.body)}</div>` : ""}</span></li>`;
+    }).join("") : "<li>لا شيء بعد.</li>";
+  } catch(e) { $("logs").innerHTML = `<li>${esc(e.message)}</li>`; }
+  if (tab === "log") logTimer = setTimeout(loadLog, 10000);
+}
+$("refresh").onclick = loadLog;
+$("q").addEventListener("input", () => { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 400); });
+
+/* ---------- الإعدادات ---------- */
+$("savecfg").onclick = async () => {
+  try {
+    await api("settings", {auto_send: $("auto_send").checked, auto_reply: $("auto_reply").checked,
+                           provider: $("provider").value, session_key: $("skey").value.trim()});
+    say("cfgmsg", "حُفظ", "ok"); loadStatus();
+  } catch(e) { say("cfgmsg", e.message, "bad"); }
+};
+$("savepw").onclick = async () => {
+  try { await api("password", {password: $("np").value}); $("np").value = ""; say("pwmsg", "تغيّرت", "ok"); }
+  catch(e) { say("pwmsg", e.message, "bad"); }
+};
+$("out").onclick = () => location.href = "/whatsapp/logout";
+
+loadStatus();
+</script>
+</body>
+</html>

@@ -13,13 +13,15 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 (لكل حساب: اسم دخول، كلمة مرور، رابط API، مفتاح API، هوست).
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
-import json, os, sys, secrets, datetime, base64, hmac, hashlib, threading, time
+import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, time
+from urllib import parse as urlparse
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import guide_pages
 import store_sitemap
+import whatsapp
 
 # ================= الإعدادات =================
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -346,12 +348,120 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, raw=f.read(), ctype=MIME.get(os.path.splitext(rel)[1].lower(), "application/octet-stream"),
                        extra={"Cache-Control": "public, max-age=2592000"})
 
+    # ---------- واتساب الطلبات (/whatsapp) ----------
+    WA_COOKIE = "wa_session"
+
+    def _wa_cookie(self, tok, clear=False):
+        c = f"{self.WA_COOKIE}={tok}; Path={whatsapp.P}; HttpOnly; SameSite=Lax"
+        c += "; Max-Age=0" if clear else f"; Max-Age={whatsapp.SESSION_TTL}"
+        if self._secure():
+            c += "; Secure"
+        return {"Set-Cookie": c}
+
+    def _wa_raw(self):
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        return self.rfile.read(n) if n else b""
+
+    def _whatsapp(self, path, method):
+        """صفحة تسليم الطلبات على واتساب. بابان بلا جلسة: القارئ وسلة."""
+        W = whatsapp.P
+        raw = self._wa_raw() if method == "POST" else b""
+        try:
+            body = json.loads(raw or b"{}")
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+
+        try:
+            # --- بابان يدخلان بتوقيعهما لا بجلسة متصفح ---
+            if path == W + "/ingest" and method == "POST":
+                if not hmac.compare_digest(self.headers.get("X-Reader-Token", ""), whatsapp.ingest_token()):
+                    return self._send(401, {"error": "توكن القارئ غير مطابق"})
+                return self._send(200, whatsapp.handle_ingest(body))
+            if path == W + "/salla-webhook" and method == "POST":
+                ok, why = whatsapp.verify_webhook(raw, self.headers.get("X-Salla-Signature", ""),
+                                                  self.headers.get("Authorization", ""))
+                if not ok:
+                    whatsapp.log_event("webhook_rejected", reason=why)
+                    return self._send(401, {"error": why})
+                return self._send(200, whatsapp.handle_webhook(body))
+
+            st = whatsapp.load()
+            authed = whatsapp.valid_session(self._cookie(self.WA_COOKIE))
+
+            # --- ما لا يحتاج جلسة: حالة الإعداد، الإعداد الأول، الدخول ---
+            if path == W + "/api/state" and method == "GET":
+                return self._send(200, {"setup": not st["password"], "authed": authed})
+            if path == W + "/api/setup" and method == "POST":
+                if st["password"]:
+                    return self._send(400, {"error": "تم الإعداد مسبقاً"})
+                pw = str(body.get("password", ""))
+                if len(pw) < 6:
+                    return self._send(400, {"error": "كلمة المرور قصيرة (6 أحرف على الأقل)"})
+                st["password"] = whatsapp.hash_pw(pw)
+                whatsapp.save(st)
+                return self._send(200, {"ok": True}, extra=self._wa_cookie(whatsapp.new_session()))
+            if path == W + "/api/login" and method == "POST":
+                if not whatsapp.check_pw(str(body.get("password", "")), st["password"]):
+                    return self._send(401, {"error": "كلمة المرور غير صحيحة"})
+                return self._send(200, {"ok": True}, extra=self._wa_cookie(whatsapp.new_session()))
+            if path == W + "/login" and method == "GET":
+                return self._redirect(W) if authed else self._page("wa_gate.html")
+            if path == W + "/logout" and method == "GET":
+                whatsapp.drop_session(self._cookie(self.WA_COOKIE))
+                return self._send(302, raw=b"", ctype="text/plain",
+                                  extra={"Location": W + "/login", **self._wa_cookie("", clear=True)})
+
+            if not authed:
+                if path.startswith(W + "/api/"):
+                    return self._send(401, {"error": "سجّل الدخول أولاً", "login": True})
+                return self._redirect(W + "/login")
+
+            # --- ما وراء الباب ---
+            if path == W and method == "GET":
+                return self._page("whatsapp.html")
+            if path == W + "/api/status" and method == "GET":
+                return self._send(200, whatsapp.status_payload())
+            if path == W + "/api/log" and method == "GET":
+                q = dict(urlparse.parse_qsl(self.path.partition("?")[2]))
+                limit = max(1, min(int(q.get("limit") or 150), 500))
+                return self._send(200, {"rows": whatsapp.read_log(limit, (q.get("q") or "").strip())})
+            if method == "POST":
+                if path == W + "/api/connect":
+                    num = re.sub(r"\D", "", str(body.get("number", "")))
+                    if len(num) < 10:
+                        return self._send(400, {"error": "رقم غير صالح"})
+                    return self._send(200, whatsapp.reader_connect(num) or {"ok": True})
+                if path == W + "/api/disconnect":
+                    return self._send(200, whatsapp.reader_disconnect() or {"ok": True})
+                if path == W + "/api/preview":
+                    return self._send(200, whatsapp.preview_order(str(body.get("ref", ""))))
+                if path == W + "/api/send":
+                    return self._send(200, whatsapp.deliver(str(body.get("ref", "")),
+                                                            force=bool(body.get("force")),
+                                                            body=body.get("body")))
+                if path == W + "/api/settings":
+                    return self._send(200, {"ok": True, "settings": whatsapp.set_settings(body)})
+                if path == W + "/api/password":
+                    pw = str(body.get("password", ""))
+                    if len(pw) < 6:
+                        return self._send(400, {"error": "كلمة المرور قصيرة (6 أحرف على الأقل)"})
+                    st["password"] = whatsapp.hash_pw(pw)
+                    whatsapp.save(st)
+                    return self._send(200, {"ok": True})
+            return self._send(404, {"error": "not found"})
+        except ValueError as e:
+            self._send(400, {"error": str(e)})
+        except Exception as e:
+            self._send(500, {"error": str(e)})
+
     # ---------- GET ----------
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         # ----- الجزء العام -----
         if path == "/robots.txt":
-            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n\n"
+            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nDisallow: {whatsapp.P}\nAllow: /\n\n"
                               f"Sitemap: https://guide.ssouq.com/sitemap.xml\n"
                               f"Sitemap: https://guide.ssouq.com/store-sitemap.xml\n".encode(),
                               ctype="text/plain; charset=utf-8")
@@ -378,6 +488,8 @@ class Handler(BaseHTTPRequestHandler):
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path.startswith("/static/"):
             return self._static(path)
+        if path == whatsapp.P or path.startswith(whatsapp.P + "/"):
+            return self._whatsapp(path, "GET")
         if path == "/admin/":
             return self._redirect(P)
         if path != P and not path.startswith(P + "/"):
@@ -429,6 +541,8 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- POST ----------
     def do_POST(self):
         path = self.path.split("?", 1)[0]
+        if path == whatsapp.P or path.startswith(whatsapp.P + "/"):
+            return self._whatsapp(path, "POST")
         if path == "/api/m3u-generated":            # عدّاد عام لأداة M3U (بدون تسجيل دخول)
             with _lock:
                 return self._send(200, {"m3u": bump_stat("m3u")})
