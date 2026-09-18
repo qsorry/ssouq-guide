@@ -244,6 +244,14 @@ p{margin:0 0 10px}
 .f{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;font-size:.92rem}
 .f code{font:500 .95rem "IBM Plex Mono","IBM Plex Sans Arabic",Consolas,monospace;unicode-bidi:plaintext;
   background:var(--soft);padding:2px 8px;border-radius:6px}
+/* قيمة تُنسخ بضغطة — لما يُكتب على الجهاز نفسه الذي يقرأ الدليل */
+.codecopy{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid var(--line);
+  border-radius:10px;background:var(--soft);color:var(--ink);font:inherit;cursor:pointer}
+.codecopy code{background:transparent;padding:0}
+.codecopy svg{width:15px;height:15px;stroke:var(--brand-text);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.codecopy em{font-style:normal;font-size:.76rem;color:var(--brand-text)}
+.codecopy:hover{border-color:var(--brand)}
+.codecopy.done{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,transparent)}
 .note{background:var(--soft);border-radius:12px;padding:11px 13px;font-size:.88rem;margin:10px 0;line-height:1.65}
 .note.warn{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .nav{display:flex;gap:8px;margin-top:16px}
@@ -402,7 +410,14 @@ const ICONS = {
   refresh: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>',
   wrench: '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 1 0 3 3l-1.8 1.8-2.9-2.9z"/><path d="m12.9 9.1-8 8a2 2 0 0 0 2.8 2.8l8-8"/></svg>'
 };
-const CREDS = '<div class="note">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a> بالمتجر.</div>';
+const CREDS = '<div class="note">بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a> بالمتجر — افتح الطلب ثم اضغط <b>المحتوى الرقمي</b>، فهي لا تظهر قبل الضغط عليه.</div>';
+
+// قيمة ثابتة مع زر نسخها
+const COPY = (value, label) =>
+  `<div class="fields"><div class="f"><span>${label}</span>`
+  + `<button class="codecopy" type="button" data-copy="${value}"><code dir="ltr">${value}</code>`
+  + `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/>`
+  + `<path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg><em>نسخ</em></button></div></div>`;
 
 // أيقونة التطبيق واسمه فوق خطوة تحميله
 const APP = (icon, name, where) =>
@@ -420,8 +435,19 @@ const DEVICES = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق VAR Player", steps: [
     { title: "حمّل تطبيق VAR Player", img: "/static/img/ios-var-appstore.jpg",
       html: APP("var-player", "VAR Player", "من App Store · مجاني") + '<p>افتح App Store وحمّل تطبيق <b dir="ltr">VAR Player</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://apps.apple.com/sa/app/var-player-unlock-your-world/id6477530321?l=ar" target="_blank" rel="noopener">apps.apple.com · VAR Player</a></p>' },
-    { title: "أدخل الكود ثم بياناتك",
-      html: '<ol><li>افتح التطبيق واختر خيار <b>الكود</b>.</li><li>اكتب رقم الكود التالي:</li></ol><div class="fields"><div class="f"><span>الكود</span><code>55555</code></div></div><p>بعدها ستظهر لك 3 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div></div>' + CREDS }
+    { title: "اختر Code", img: "/static/img/ios-var-code.webp",
+      html: '<p>افتح التطبيق فيظهر خياران. اختر المحدَّد في الصورة: <b dir="ltr">Code</b> — ولا تختر <b dir="ltr">List</b>.</p>' },
+    { title: "اكتب رمز الخادم", img: "/static/img/ios-var-server.webp",
+      html: '<p>في خانة <b dir="ltr">Server Code</b> اكتب هذا الرمز ثم اضغط <b dir="ltr">Go</b>:</p>'
+        + COPY("55555", "رمز الخادم") },
+    { title: "أدخل بيانات اشتراكك", img: "/static/img/ios-var-adduser.webp",
+      html: '<p>تظهر شاشة <b dir="ltr">Add User</b> بثلاث خانات، عبّئها كما وصلتك ثم اضغط <b dir="ltr">Go</b>:</p>'
+        + '<div class="fields"><div class="f"><span dir="ltr">http://url:port</span><code>رابط الهوست مع البورت</code></div>'
+        + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
+        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>' + CREDS
+        + '<div class="alt"><h3>لا تجد بياناتك؟</h3>'
+        + '<p>افتح <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a> واضغط على طلبك، ثم اضغط زر <b>المحتوى الرقمي</b> المحدَّد في الصورة — بياناتك تظهر بعده، ولا تظهر في صفحة الطلب قبل الضغط عليه.</p>'
+        + '<img src="/static/img/order-digital.webp" alt="زر المحتوى الرقمي داخل صفحة الطلب"></div>' }
   ]},
   android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
@@ -1018,6 +1044,13 @@ addEventListener("hashchange", () => { if (hashFor() !== location.hash) { applyH
 $("#view").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   const d = b.dataset;
+  if (d.copy) {                                   // النسخ لا يغيّر الشاشة
+    navigator.clipboard?.writeText(d.copy).catch(() => {});
+    const em = b.querySelector("em");
+    b.classList.add("done");
+    if (em) { em.textContent = "تم النسخ"; setTimeout(() => { em.textContent = "نسخ"; b.classList.remove("done"); }, 1800); }
+    return;
+  }
   if (d.nav) return nav(d.nav);
   if (b.hasAttribute("data-back")) return back();
   if (d.taste) { state.taste = d.taste; state.screen = "buy-device"; }

@@ -193,6 +193,16 @@ ul.more{{margin:8px 0 0;padding-inline-start:20px;line-height:2}}
 <p class="sub"><a class="link" href="/">أو افتح المعالج التفاعلي</a> واختر جهازك خطوة بخطوة.</p>
 </section>
 </main>
+<script>
+/* أزرار النسخ في هذه الصفحات الثابتة — الوسم نفسه الذي يبنيه COPY في المعالج،
+   فلو بقيت بلا سكربت لكان الزر يَعِد بنسخ لا يحدث. */
+document.addEventListener("click", function (e) {{
+  var b = e.target.closest("[data-copy]"); if (!b) return;
+  if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.copy).catch(function () {{}});
+  var em = b.querySelector("em"); b.classList.add("done");
+  if (em) {{ em.textContent = "تم النسخ"; setTimeout(function () {{ em.textContent = "نسخ"; b.classList.remove("done"); }}, 1800); }}
+}});
+</script>
 </body>
 </html>"""
     return doc.encode("utf-8")
