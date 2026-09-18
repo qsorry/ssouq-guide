@@ -156,12 +156,12 @@ p{margin:0 0 10px}
 .opt[aria-pressed="true"] .dot{border-color:var(--brand)}
 .opt[aria-pressed="true"] .dot::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--brand)}
 
-/* ---------- بطاقتا النوع (فالكون / مرح) ---------- */
+/* ---------- بطاقتا النوع (فالكون / سمارت) ---------- */
 .brands{display:grid;gap:12px}
 .brandcard{position:relative;display:block;width:100%;padding:16px;border:0;border-radius:18px;color:#fff;font:inherit;
   text-align:right;cursor:pointer;overflow:hidden;box-shadow:var(--shadow)}
 .brandcard.falcon{background:linear-gradient(210deg,#123A5E 0%,#0A1E33 55%,#3A1020 100%)}
-.brandcard.marah{background:linear-gradient(210deg,#1E7FC4 0%,#0F4E80 55%,#06263F 100%)}
+.brandcard.smart{background:linear-gradient(210deg,#1E7FC4 0%,#0F4E80 55%,#06263F 100%)}
 .brandcard{transition:transform .15s ease}
 .brandcard:hover,.brandcard:focus-visible{transform:translateY(-2px)}
 .brandcard.badged{padding-top:46px}
@@ -221,6 +221,11 @@ p{margin:0 0 10px}
 .appbox b{display:block;font-size:1rem}
 .appbox small{display:block;color:var(--mute);font-size:.8rem;line-height:1.5}
 .opt .logo{width:46px;height:46px;border-radius:13px;object-fit:cover;flex:0 0 auto;background:var(--card);border:1px solid var(--line)}
+.opt .badge{display:inline-block;background:var(--gold);color:var(--gold-ink);font-size:.66rem;font-weight:700;
+  border-radius:999px;padding:2px 9px;margin-inline-start:7px;vertical-align:2px}
+.opt.muted .logo{filter:grayscale(.55);opacity:.8}
+.result .tick.warn{background:var(--gold)}
+.result .tick.warn svg{stroke:var(--gold-ink)}
 
 /* ---------- عناصر موروثة من المعالج ---------- */
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -366,7 +371,7 @@ footer a{color:var(--mute)}
     <section class="plans" id="plans-static" aria-labelledby="plans-h">
       <h2 id="plans-h">اشتراكات IPTV من متجر سمارت سوق</h2>
       <p class="sub">اختر الباقة المناسبة لجهازك، وبعد إتمام الطلب ارجع لهذا الدليل لتفعيلها خلال دقائق. الشراء يتم على متجر ssouq.com.</p>
-      <div class="plan-grid"><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-3-أشهر-falcon-tv-pro/p153695876?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأقصر مدة</span><img src="/static/img/products/p153695876.webp" alt="فالكون · 3 أشهر" loading="lazy" width="500" height="500"><b>فالكون · 3 أشهر</b><small>مدة قصيرة تجرّب بها ثبات فالكون وقت المباريات.</small><span class="price">80.01 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-6-أشهر-falcon-tv-pro/p1233297791?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><img src="/static/img/products/p1233297791.webp" alt="فالكون · 6 أشهر" loading="lazy" width="500" height="500"><b>فالكون · 6 أشهر</b><small>نصف سنة على سيرفرات فالكون المخصصة للأحمال العالية.</small><span class="price">115 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-falcon-tv-pro/p479880741?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأكثر توازنًا</span><img src="/static/img/products/p479880741.webp" alt="فالكون · 15 شهرًا" loading="lazy" width="500" height="500"><b>فالكون · 15 شهرًا</b><small>سنة وثلاثة أشهر بدفعة واحدة، الأنسب لمن يتابع الموسم كاملًا.</small><span class="price">149.5 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-لجهازين-falcon-tv-pro/p484498871?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">جهازان</span><img src="/static/img/products/p484498871.webp" alt="فالكون · 15 شهرًا لجهازين" loading="lazy" width="500" height="500"><b>فالكون · 15 شهرًا لجهازين</b><small>مشاهدة عائلية متزامنة على جهازين باشتراك واحد.</small><span class="price">160 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-سنتين-falcon-tv-pro/p2083342610?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأوفر</span><img src="/static/img/products/p2083342610.webp" alt="فالكون · سنتان" loading="lazy" width="500" height="500"><b>فالكون · سنتان</b><small>أطول مدة في فالكون، وأقل تكلفة للشهر الواحد.</small><span class="price">198.95 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-لمدة-يوم-تجريبي/p1149343560?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">جرّب أولًا</span><img src="/static/img/products/p1149343560.webp" alt="مرح · يوم تجريبي" loading="lazy" width="500" height="500"><b>مرح · يوم تجريبي</b><small>يوم كامل بسعر رمزي تختبر به الخدمة على جهازك وشبكتك.</small><span class="price">5 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-لمدة-6-أشهر-جميع-الأجهزة/p1205321184?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><img src="/static/img/products/p1205321184.webp" alt="مرح · 6 أشهر" loading="lazy" width="500" height="500"><b>مرح · 6 أشهر</b><small>ستة أشهر على الجوال والشاشات والكمبيوتر بدفعة واحدة.</small><span class="stars" aria-label="التقييم 4.8 من 5">★★★★★<span class="votes">(6)</span></span><span class="price">28.75 ر.س<s>57.5 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-سمارت-سنه/p971439862?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأكثر مبيعًا</span><img src="/static/img/products/p971439862.webp" alt="مرح · سنة كاملة" loading="lazy" width="500" height="500"><b>مرح · سنة كاملة</b><small>الأعلى تقييمًا في المتجر: سنة كاملة على الشاشات الذكية والجوال.</small><span class="stars" aria-label="التقييم 5 من 5">★★★★★<span class="votes">(24)</span></span><span class="price">39 ر.س<s>77.99 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-ترفيهي-لمدة-12-شهر-نتفلكس-وشاهد-ومسلسلات/p2091471394?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">أفلام ومسلسلات</span><img src="/static/img/products/p2091471394.webp" alt="مرح · سنة ترفيهية" loading="lazy" width="500" height="500"><b>مرح · سنة ترفيهية</b><small>مكتبات نتفلكس وشاهد ومسلسلات رمضان قبل القنوات.</small><span class="stars" aria-label="التقييم 5 من 5">★★★★★<span class="votes">(1)</span></span><span class="price">46 ر.س<s>92 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-smarters-15-شهر/p159938107?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">جهازان</span><img src="/static/img/products/p159938107.webp" alt="مرح · 15 شهرًا لجهازين" loading="lazy" width="500" height="500"><b>مرح · 15 شهرًا لجهازين</b><small>12 شهرًا + 3 أشهر مجانًا، ومشاهدة متزامنة على جهازين.</small><span class="stars" aria-label="التقييم 4 من 5">★★★★☆<span class="votes">(1)</span></span><span class="price">65 ر.س<s>130 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-30-شهر/p1112367445?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأوفر</span><img src="/static/img/products/p1112367445.webp" alt="مرح · 30 شهرًا" loading="lazy" width="500" height="500"><b>مرح · 30 شهرًا</b><small>سنتان ونصف بدفعة واحدة، وأقل تكلفة للشهر الواحد في المتجر.</small><span class="price">99 ر.س<s>198.01 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-لشاشات-سامسونج-و-lg-لمدة-6-أشهر/p2067729417?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><img src="/static/img/products/p2067729417.webp" alt="مرح · 6 أشهر لسامسونج و LG" loading="lazy" width="500" height="500"><b>مرح · 6 أشهر لسامسونج و LG</b><small>تعمل على الشاشة مباشرة عبر 0Player أو ORAplayer، بلا رسيفر.</small><span class="stars" aria-label="التقييم 5 من 5">★★★★★<span class="votes">(1)</span></span><span class="price">34.99 ر.س<s>69.99 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-سامسونج-ال-جي-webos-12-شهر/p1859503976?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأوفر</span><img src="/static/img/products/p1859503976.webp" alt="مرح · سنة لسامسونج و LG" loading="lazy" width="500" height="500"><b>مرح · سنة لسامسونج و LG</b><small>سنة كاملة على شاشة webOS بلا أي جهاز إضافي.</small><span class="stars" aria-label="التقييم 5 من 5">★★★★★<span class="votes">(1)</span></span><span class="price">60 ر.س<s>119.99 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a></div>
+      <div class="plan-grid"><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-3-أشهر-falcon-tv-pro/p153695876?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأقصر مدة</span><img src="/static/img/products/p153695876.webp" alt="فالكون · 3 أشهر" loading="lazy" width="500" height="500"><b>فالكون · 3 أشهر</b><small>مدة قصيرة تجرّب بها ثبات فالكون وقت المباريات.</small><span class="price">80.01 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-6-أشهر-falcon-tv-pro/p1233297791?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><img src="/static/img/products/p1233297791.webp" alt="فالكون · 6 أشهر" loading="lazy" width="500" height="500"><b>فالكون · 6 أشهر</b><small>نصف سنة على سيرفرات فالكون المخصصة للأحمال العالية.</small><span class="price">115 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-falcon-tv-pro/p479880741?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأكثر توازنًا</span><img src="/static/img/products/p479880741.webp" alt="فالكون · 15 شهرًا" loading="lazy" width="500" height="500"><b>فالكون · 15 شهرًا</b><small>سنة وثلاثة أشهر بدفعة واحدة، الأنسب لمن يتابع الموسم كاملًا.</small><span class="price">149.5 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-لجهازين-falcon-tv-pro/p484498871?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">جهازان</span><img src="/static/img/products/p484498871.webp" alt="فالكون · 15 شهرًا لجهازين" loading="lazy" width="500" height="500"><b>فالكون · 15 شهرًا لجهازين</b><small>مشاهدة عائلية متزامنة على جهازين باشتراك واحد.</small><span class="price">160 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-سنتين-falcon-tv-pro/p2083342610?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأوفر</span><img src="/static/img/products/p2083342610.webp" alt="فالكون · سنتان" loading="lazy" width="500" height="500"><b>فالكون · سنتان</b><small>أطول مدة في فالكون، وأقل تكلفة للشهر الواحد.</small><span class="price">198.95 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-لمدة-يوم-تجريبي/p1149343560?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">جرّب أولًا</span><img src="/static/img/products/p1149343560.webp" alt="سمارت · يوم تجريبي" loading="lazy" width="500" height="500"><b>سمارت · يوم تجريبي</b><small>يوم كامل بسعر رمزي تختبر به الخدمة على جهازك وشبكتك.</small><span class="price">5 ر.س<em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-لمدة-6-أشهر-جميع-الأجهزة/p1205321184?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><img src="/static/img/products/p1205321184.webp" alt="سمارت · 6 أشهر" loading="lazy" width="500" height="500"><b>سمارت · 6 أشهر</b><small>ستة أشهر على الجوال والشاشات والكمبيوتر بدفعة واحدة.</small><span class="stars" aria-label="التقييم 4.8 من 5">★★★★★<span class="votes">(6)</span></span><span class="price">28.75 ر.س<s>57.5 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-سمارت-سنه/p971439862?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأكثر مبيعًا</span><img src="/static/img/products/p971439862.webp" alt="سمارت · سنة كاملة" loading="lazy" width="500" height="500"><b>سمارت · سنة كاملة</b><small>الأعلى تقييمًا في المتجر: سنة كاملة على الشاشات الذكية والجوال.</small><span class="stars" aria-label="التقييم 5 من 5">★★★★★<span class="votes">(24)</span></span><span class="price">39 ر.س<s>77.99 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-ترفيهي-لمدة-12-شهر-نتفلكس-وشاهد-ومسلسلات/p2091471394?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">أفلام ومسلسلات</span><img src="/static/img/products/p2091471394.webp" alt="سمارت · سنة ترفيهية" loading="lazy" width="500" height="500"><b>سمارت · سنة ترفيهية</b><small>مكتبات نتفلكس وشاهد ومسلسلات رمضان قبل القنوات.</small><span class="stars" aria-label="التقييم 5 من 5">★★★★★<span class="votes">(1)</span></span><span class="price">46 ر.س<s>92 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-smarters-15-شهر/p159938107?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">جهازان</span><img src="/static/img/products/p159938107.webp" alt="سمارت · 15 شهرًا لجهازين" loading="lazy" width="500" height="500"><b>سمارت · 15 شهرًا لجهازين</b><small>12 شهرًا + 3 أشهر مجانًا، ومشاهدة متزامنة على جهازين.</small><span class="stars" aria-label="التقييم 4 من 5">★★★★☆<span class="votes">(1)</span></span><span class="price">65 ر.س<s>130 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-30-شهر/p1112367445?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأوفر</span><img src="/static/img/products/p1112367445.webp" alt="سمارت · 30 شهرًا" loading="lazy" width="500" height="500"><b>سمارت · 30 شهرًا</b><small>سنتان ونصف بدفعة واحدة، وأقل تكلفة للشهر الواحد في المتجر.</small><span class="price">99 ر.س<s>198.01 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-لشاشات-سامسونج-و-lg-لمدة-6-أشهر/p2067729417?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><img src="/static/img/products/p2067729417.webp" alt="سمارت · 6 أشهر لسامسونج و LG" loading="lazy" width="500" height="500"><b>سمارت · 6 أشهر لسامسونج و LG</b><small>تعمل على الشاشة مباشرة عبر 0Player أو ORAplayer، بلا رسيفر.</small><span class="stars" aria-label="التقييم 5 من 5">★★★★★<span class="votes">(1)</span></span><span class="price">34.99 ر.س<s>69.99 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a><a class="plan" href="https://ssouq.com/اشتراك-iptv-سامسونج-ال-جي-webos-12-شهر/p1859503976?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener"><span class="tag">الأوفر</span><img src="/static/img/products/p1859503976.webp" alt="سمارت · سنة لسامسونج و LG" loading="lazy" width="500" height="500"><b>سمارت · سنة لسامسونج و LG</b><small>سنة كاملة على شاشة webOS بلا أي جهاز إضافي.</small><span class="stars" aria-label="التقييم 5 من 5">★★★★★<span class="votes">(1)</span></span><span class="price">60 ر.س<s>119.99 ر.س</s><em>شامل الضريبة</em></span><span class="cta">اشترِ الآن</span></a></div>
       <a class="more" href="https://ssouq.com/الاشتراكات-الرقمية/c993357185?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=plans" target="_blank" rel="noopener">عرض كل الاشتراكات الرقمية في المتجر ←</a>
     </section>
   </div>
@@ -394,7 +399,8 @@ const ICONS = {
   headset: '<svg viewBox="0 0 24 24"><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="2.5" y="13" width="4.5" height="6" rx="1.8"/><rect x="17" y="13" width="4.5" height="6" rx="1.8"/><path d="M19 19v.5a2.5 2.5 0 0 1-2.5 2.5H13"/></svg>',
   check: '<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
   spark: '<svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></svg>',
-  refresh: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>'
+  refresh: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>',
+  wrench: '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 1 0 3 3l-1.8 1.8-2.9-2.9z"/><path d="m12.9 9.1-8 8a2 2 0 0 0 2.8 2.8l8-8"/></svg>'
 };
 const CREDS = '<div class="note">اسم المستخدم وكلمة المرور تجدها في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a> بالمتجر.</div>';
 
@@ -505,14 +511,14 @@ const DEVICES = {
   ]}
 };
 
-const CATALOG = {"falcon": {"name": "فالكون","full": "FALCON TV PRO","stars": 5,"art": "/static/img/products/p153695876.webp","plans": [{"id": "p153695876","name": "فالكون · 3 أشهر","dur": "3 أشهر","price": "80.01","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-3-أشهر-falcon-tv-pro/p153695876?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p153695876.webp","desc": "مدة قصيرة تجرّب بها ثبات فالكون وقت المباريات.","tag": "الأقصر مدة"},{"id": "p1233297791","name": "فالكون · 6 أشهر","dur": "6 أشهر","price": "115","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-6-أشهر-falcon-tv-pro/p1233297791?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1233297791.webp","desc": "نصف سنة على سيرفرات فالكون المخصصة للأحمال العالية."},{"id": "p479880741","name": "فالكون · 15 شهرًا","dur": "15 شهرًا","price": "149.5","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-falcon-tv-pro/p479880741?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p479880741.webp","desc": "سنة وثلاثة أشهر بدفعة واحدة، الأنسب لمن يتابع الموسم كاملًا.","tag": "الأكثر توازنًا"},{"id": "p484498871","name": "فالكون · 15 شهرًا لجهازين","dur": "15 شهرًا","price": "160","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-لجهازين-falcon-tv-pro/p484498871?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p484498871.webp","desc": "مشاهدة عائلية متزامنة على جهازين باشتراك واحد.","tag": "جهازان"},{"id": "p2083342610","name": "فالكون · سنتان","dur": "24 شهرًا","price": "198.95","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-سنتين-falcon-tv-pro/p2083342610?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p2083342610.webp","desc": "أطول مدة في فالكون، وأقل تكلفة للشهر الواحد.","tag": "الأوفر"}]},"marah": {"name": "مرح","full": "MR7 TV","stars": 4,"art": "/static/img/products/p971439862.webp","plans": [{"id": "p1149343560","name": "مرح · يوم تجريبي","dur": "24 ساعة","price": "5","url": "https://ssouq.com/اشتراك-iptv-لمدة-يوم-تجريبي/p1149343560?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1149343560.webp","desc": "يوم كامل بسعر رمزي تختبر به الخدمة على جهازك وشبكتك.","tag": "جرّب أولًا"},{"id": "p1205321184","name": "مرح · 6 أشهر","dur": "6 أشهر","price": "28.75","url": "https://ssouq.com/اشتراك-iptv-لمدة-6-أشهر-جميع-الأجهزة/p1205321184?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1205321184.webp","desc": "ستة أشهر على الجوال والشاشات والكمبيوتر بدفعة واحدة.","was": "57.5","rating": "4.8","votes": 6},{"id": "p971439862","name": "مرح · سنة كاملة","dur": "12 شهرًا","price": "39","url": "https://ssouq.com/اشتراك-سمارت-سنه/p971439862?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p971439862.webp","desc": "الأعلى تقييمًا في المتجر: سنة كاملة على الشاشات الذكية والجوال.","was": "77.99","tag": "الأكثر مبيعًا","rating": "5","votes": 24},{"id": "p2091471394","name": "مرح · سنة ترفيهية","dur": "12 شهرًا","price": "46","url": "https://ssouq.com/اشتراك-iptv-ترفيهي-لمدة-12-شهر-نتفلكس-وشاهد-ومسلسلات/p2091471394?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p2091471394.webp","desc": "مكتبات نتفلكس وشاهد ومسلسلات رمضان قبل القنوات.","was": "92","tag": "أفلام ومسلسلات","rating": "5","votes": 1,"vod": true},{"id": "p159938107","name": "مرح · 15 شهرًا لجهازين","dur": "15 شهرًا","price": "65","url": "https://ssouq.com/اشتراك-iptv-smarters-15-شهر/p159938107?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p159938107.webp","desc": "12 شهرًا + 3 أشهر مجانًا، ومشاهدة متزامنة على جهازين.","was": "130","tag": "جهازان","rating": "4","votes": 1},{"id": "p1112367445","name": "مرح · 30 شهرًا","dur": "30 شهرًا","price": "99","url": "https://ssouq.com/اشتراك-iptv-30-شهر/p1112367445?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1112367445.webp","desc": "سنتان ونصف بدفعة واحدة، وأقل تكلفة للشهر الواحد في المتجر.","was": "198.01","tag": "الأوفر"},{"id": "p2067729417","name": "مرح · 6 أشهر لسامسونج و LG","dur": "6 أشهر","price": "34.99","url": "https://ssouq.com/اشتراك-iptv-لشاشات-سامسونج-و-lg-لمدة-6-أشهر/p2067729417?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p2067729417.webp","desc": "تعمل على الشاشة مباشرة عبر 0Player أو ORAplayer، بلا رسيفر.","was": "69.99","rating": "5","votes": 1,"webos": true},{"id": "p1859503976","name": "مرح · سنة لسامسونج و LG","dur": "12 شهرًا","price": "60","url": "https://ssouq.com/اشتراك-iptv-سامسونج-ال-جي-webos-12-شهر/p1859503976?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1859503976.webp","desc": "سنة كاملة على شاشة webOS بلا أي جهاز إضافي.","was": "119.99","tag": "الأوفر","rating": "5","votes": 1,"webos": true}]}};
+const CATALOG = {"falcon": {"name": "فالكون","full": "FALCON TV PRO","stars": 5,"art": "/static/img/products/p153695876.webp","plans": [{"id": "p153695876","name": "فالكون · 3 أشهر","dur": "3 أشهر","price": "80.01","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-3-أشهر-falcon-tv-pro/p153695876?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p153695876.webp","desc": "مدة قصيرة تجرّب بها ثبات فالكون وقت المباريات.","tag": "الأقصر مدة"},{"id": "p1233297791","name": "فالكون · 6 أشهر","dur": "6 أشهر","price": "115","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-6-أشهر-falcon-tv-pro/p1233297791?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1233297791.webp","desc": "نصف سنة على سيرفرات فالكون المخصصة للأحمال العالية."},{"id": "p479880741","name": "فالكون · 15 شهرًا","dur": "15 شهرًا","price": "149.5","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-falcon-tv-pro/p479880741?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p479880741.webp","desc": "سنة وثلاثة أشهر بدفعة واحدة، الأنسب لمن يتابع الموسم كاملًا.","tag": "الأكثر توازنًا"},{"id": "p484498871","name": "فالكون · 15 شهرًا لجهازين","dur": "15 شهرًا","price": "160","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-لجهازين-falcon-tv-pro/p484498871?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p484498871.webp","desc": "مشاهدة عائلية متزامنة على جهازين باشتراك واحد.","tag": "جهازان"},{"id": "p2083342610","name": "فالكون · سنتان","dur": "24 شهرًا","price": "198.95","url": "https://ssouq.com/اشتراك-فالكون-iptv-لمدة-سنتين-falcon-tv-pro/p2083342610?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p2083342610.webp","desc": "أطول مدة في فالكون، وأقل تكلفة للشهر الواحد.","tag": "الأوفر"}]},"smart": {"name": "سمارت","full": "MR7 TV","stars": 4,"art": "/static/img/products/p971439862.webp","plans": [{"id": "p1149343560","name": "سمارت · يوم تجريبي","dur": "24 ساعة","price": "5","url": "https://ssouq.com/اشتراك-iptv-لمدة-يوم-تجريبي/p1149343560?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1149343560.webp","desc": "يوم كامل بسعر رمزي تختبر به الخدمة على جهازك وشبكتك.","tag": "جرّب أولًا"},{"id": "p1205321184","name": "سمارت · 6 أشهر","dur": "6 أشهر","price": "28.75","url": "https://ssouq.com/اشتراك-iptv-لمدة-6-أشهر-جميع-الأجهزة/p1205321184?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1205321184.webp","desc": "ستة أشهر على الجوال والشاشات والكمبيوتر بدفعة واحدة.","was": "57.5","rating": "4.8","votes": 6},{"id": "p971439862","name": "سمارت · سنة كاملة","dur": "12 شهرًا","price": "39","url": "https://ssouq.com/اشتراك-سمارت-سنه/p971439862?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p971439862.webp","desc": "الأعلى تقييمًا في المتجر: سنة كاملة على الشاشات الذكية والجوال.","was": "77.99","tag": "الأكثر مبيعًا","rating": "5","votes": 24},{"id": "p2091471394","name": "سمارت · سنة ترفيهية","dur": "12 شهرًا","price": "46","url": "https://ssouq.com/اشتراك-iptv-ترفيهي-لمدة-12-شهر-نتفلكس-وشاهد-ومسلسلات/p2091471394?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p2091471394.webp","desc": "مكتبات نتفلكس وشاهد ومسلسلات رمضان قبل القنوات.","was": "92","tag": "أفلام ومسلسلات","rating": "5","votes": 1,"vod": true},{"id": "p159938107","name": "سمارت · 15 شهرًا لجهازين","dur": "15 شهرًا","price": "65","url": "https://ssouq.com/اشتراك-iptv-smarters-15-شهر/p159938107?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p159938107.webp","desc": "12 شهرًا + 3 أشهر مجانًا، ومشاهدة متزامنة على جهازين.","was": "130","tag": "جهازان","rating": "4","votes": 1},{"id": "p1112367445","name": "سمارت · 30 شهرًا","dur": "30 شهرًا","price": "99","url": "https://ssouq.com/اشتراك-iptv-30-شهر/p1112367445?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1112367445.webp","desc": "سنتان ونصف بدفعة واحدة، وأقل تكلفة للشهر الواحد في المتجر.","was": "198.01","tag": "الأوفر"},{"id": "p2067729417","name": "سمارت · 6 أشهر لسامسونج و LG","dur": "6 أشهر","price": "34.99","url": "https://ssouq.com/اشتراك-iptv-لشاشات-سامسونج-و-lg-لمدة-6-أشهر/p2067729417?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p2067729417.webp","desc": "تعمل على الشاشة مباشرة عبر 0Player أو ORAplayer، بلا رسيفر.","was": "69.99","rating": "5","votes": 1,"webos": true},{"id": "p1859503976","name": "سمارت · سنة لسامسونج و LG","dur": "12 شهرًا","price": "60","url": "https://ssouq.com/اشتراك-iptv-سامسونج-ال-جي-webos-12-شهر/p1859503976?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans","img": "/static/img/products/p1859503976.webp","desc": "سنة كاملة على شاشة webOS بلا أي جهاز إضافي.","was": "119.99","tag": "الأوفر","rating": "5","votes": 1,"webos": true}]}};
 
 /* ============================================================
    بيانات مسار الشراء
    ============================================================ */
 const TASTES = {
   live: { icon: "ball", label: "المباريات والبث المباشر", sub: "أهم شيء عندك المباريات والقنوات المباشرة", prefer: "falcon" },
-  vod:  { icon: "film", label: "الأفلام والمسلسلات", sub: "تفضّل الأفلام والمسلسلات والقنوات الترفيهية", prefer: "marah" },
+  vod:  { icon: "film", label: "الأفلام والمسلسلات", sub: "تفضّل الأفلام والمسلسلات والقنوات الترفيهية", prefer: "smart" },
   both: { icon: "both", label: "أريد الاثنين معًا", sub: "أفضل تجربة للبث المباشر وللأفلام والمسلسلات", prefer: "falcon" }
 };
 const BUYDEV = {
@@ -526,7 +532,7 @@ const BRAND_COPY = {
   falcon: { badge: "مناسب للبث المباشر", art: "/static/img/brands/falcon.webp",
     text: "مناسب جدًا للبث المباشر والمباريات، وكذلك الأفلام والمسلسلات، مع تحديث المحتوى يوميًا.",
     chips: [["ball", "بث مباشر"], ["film", "أفلام ومسلسلات"], ["refresh", "تحديث يومي"]] },
-  marah: { badge: "ممتاز للمسلسلات والأفلام", art: "/static/img/brands/marah.webp",
+  smart: { badge: "ممتاز للمسلسلات والأفلام", art: "/static/img/brands/smart.webp",
     text: "ممتاز للأفلام والمسلسلات مع تحديث يومي، ومناسب أيضًا للبث المباشر.",
     chips: [["film", "أفلام ومسلسلات"], ["ball", "بث مباشر"], ["refresh", "تحديث يومي"]] }
 };
@@ -537,18 +543,21 @@ const PROG_ACT = ["الاشتراك", "جهازك", "التطبيق", "جاهز"
 /* ============================================================
    نوعا الاشتراك
    ------------------------------------------------------------
-   DEVICES أعلاه هو مسار "مرح" كاملًا — وهو المصدر الذي تُبنى منه
+   DEVICES أعلاه هو مسار "سمارت" كاملًا — وهو المصدر الذي تُبنى منه
    صفحات الأجهزة الثابتة (tools/sync_guide_data.js).
    وفالكون يشترك معه في أكثر الخطوات ويختلف في أربعة مواضع فقط:
    الآيفون (تطبيق آخر)، والأندرويد (تطبيق فالكون بدل MR7/NEXT+)،
    وسامسونج و LG (رمز بوابة مختلف). وويندوز وماك يرثانه كما هما.
    ============================================================ */
 const SUBS = {
-  marah:  { name: "مرح",   full: "MR7 TV",        art: "/static/img/brands/marah.webp",
+  smart:  { name: "سمارت", full: "MR7 TV",        art: "/static/img/brands/smart.webp",
             sub: "تطبيق MR7 TV أو Smarters Pro" },
   falcon: { name: "فالكون", full: "FALCON TV PRO", art: "/static/img/brands/falcon.webp",
-            sub: "تطبيق فالكون أو Smarters Pro" }
+            sub: "تطبيق فالكون أو Smarters Pro" },
+  casper: { name: "كاسبر", full: "CASPER FLIX", art: "/static/img/brands/casper.webp",
+            sub: "صيانة — ستعود الخدمة قريبًا", maintenance: true }
 };
+const legacySub = k => k === "marah" ? "smart" : k;      // "مرح" كان اسم سمارت، فروابطه القديمة تبقى عاملة
 
 const FALCON_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك", img: "/static/img/falcon-login.jpg",
   html: '<p>افتح تطبيق فالكون فتظهر شاشة <b dir="ltr">Enter Your Login</b>. عبّئ الخانات الثلاث بالترتيب:</p>'
@@ -651,7 +660,7 @@ function plansFor(brand, bdev, taste){
   if (taste !== "vod") list = list.filter(p => !p.vod);
   return list;
 }
-function recommended(taste, bdev){ return bdev === "webos" ? "marah" : (TASTES[taste] || TASTES.both).prefer; }
+function recommended(taste, bdev){ return bdev === "webos" ? "smart" : (TASTES[taste] || TASTES.both).prefer; }
 
 /* ============================================================
    الشاشات
@@ -719,7 +728,7 @@ function renderBuyDevice(){
 function renderBuyBrand(){
   setProg(PROG_BUY, 2);
   const best = recommended(state.taste, state.bdev);
-  const order = best === "marah" ? ["marah", "falcon"] : ["falcon", "marah"];
+  const order = best === "smart" ? ["smart", "falcon"] : ["falcon", "smart"];
   const cards = order.map(k => {
     const b = CATALOG[k], c = BRAND_COPY[k];
     return `<button class="brandcard ${k}${k === best ? " badged" : ""}" type="button" data-brand="${k}">
@@ -732,7 +741,7 @@ function renderBuyBrand(){
     </button>`;
   }).join("");
   const webosNote = state.bdev === "webos"
-    ? `<div class="note warn">شاشات سامسونج و LG تعمل بنظام webOS، ولها في المتجر باقات مخصّصة تشتغل على الشاشة مباشرة عبر 0Player أو ORAplayer بلا رسيفر — وهي باقات "مرح".</div>` : "";
+    ? `<div class="note warn">شاشات سامسونج و LG تعمل بنظام webOS، ولها في المتجر باقات مخصّصة تشتغل على الشاشة مباشرة عبر 0Player أو ORAplayer بلا رسيفر — وهي باقات "سمارت".</div>` : "";
   $("#view").innerHTML = `<div class="card">
     <h2>اختر النوع الأنسب لك</h2>
     <p class="sub">بناءً على اختيارك، هذه الباقات المناسبة مع توضيح المميزات لكل اشتراك.</p>
@@ -750,7 +759,7 @@ function renderBuyPlan(){
       <span class="who"><b>${p.dur}${p.tag ? `<span class="badge">${p.tag}</span>` : ""}</b><small>${p.desc}</small></span>
       <span class="money">${p.price} ر.س${p.was ? `<s>${p.was} ر.س</s>` : ""}</span></button>`).join("");
   const warn = (state.bdev === "webos" && state.brand === "falcon")
-    ? `<div class="note warn">اخترت شاشة سامسونج أو LG مع فالكون، وفالكون يعمل بتطبيقه الخاص. تواصل مع الدعم قبل الشراء للتأكد من تثبيته على شاشتك، أو ارجع واختر "مرح" الذي له باقات مخصّصة لـ webOS.<br><a class="link" href="${WA}${encodeURIComponent("شاشة سامسونج/LG - استفسار عن فالكون")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>` : "";
+    ? `<div class="note warn">اخترت شاشة سامسونج أو LG مع فالكون، وفالكون يعمل بتطبيقه الخاص. تواصل مع الدعم قبل الشراء للتأكد من تثبيته على شاشتك، أو ارجع واختر "سمارت" الذي له باقات مخصّصة لـ webOS.<br><a class="link" href="${WA}${encodeURIComponent("شاشة سامسونج/LG - استفسار عن فالكون")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>` : "";
   $("#view").innerHTML = `<div class="card">
     <h2>اختر الباقة المناسبة</h2>
     <p class="sub">بعد تحديد المحتوى والجهاز، اختر الباقة التي تناسب احتياجك من حيث المدة والسعر.</p>
@@ -783,13 +792,25 @@ function renderBuyDone(){
     <p class="sub" style="margin-top:12px">استمتع بمحتواك المفضل ${ICONS.check}</p></div>`;
 }
 
+/* اشتراك متوقف للصيانة: لا خطوات تفعيل تُعرض له، بل حاله وطريق الدعم */
+function renderMaintenance(){
+  setProg(PROG_ACT, 0);
+  const S = SUBS[state.sub];
+  $("#view").innerHTML = `<div class="card result">
+    <div class="tick warn">${ICONS.wrench}</div>
+    <h2>اشتراك ${S.name} تحت الصيانة</h2>
+    <p class="sub">الخدمة متوقفة مؤقتًا وستعود قريبًا، فلا تُعرض خطوات التفعيل الآن. للاستفسار عن اشتراكك تواصل معنا.</p>
+    <div class="nav"><a class="btn wa" href="${WA + encodeURIComponent("اشتراك " + S.name + " - استفسار عن الصيانة")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>
+    <div class="nav"><button class="btn ghost" type="button" data-back style="flex:1">اشتراك آخر</button><button class="btn ghost" type="button" data-nav="plans" style="flex:1">كل الباقات</button></div></div>`;
+}
+
 /* ---------- مسار التفعيل (المعالج الأصلي) ---------- */
 function steps(){ const d = devs()[state.dev]; return d.variants ? (d.variants[state.variant] || []) : d.steps; }
 function renderSubs(){
   setProg(PROG_ACT, 0);
   $("#view").innerHTML = `<div class="card"><h2>أي اشتراك لديك؟</h2>
     <p class="sub">التطبيق ورمز التفعيل يختلفان بين الاشتراكين، فاختر اشتراكك أولًا. تجده في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a>.</p>
-    <div class="opts">${Object.entries(SUBS).map(([k, o]) => `<button class="opt" type="button" data-sub="${k}"><img class="logo" src="${o.art}" alt="" width="46" height="46" loading="lazy"><span><b>${o.name}</b><small>${o.sub}</small></span><span class="dot"></span></button>`).join("")}</div>
+    <div class="opts">${Object.entries(SUBS).map(([k, o]) => `<button class="opt${o.maintenance ? " muted" : ""}" type="button" data-sub="${k}"><img class="logo" src="${o.art}" alt="" width="46" height="46" loading="lazy"><span><b>${o.name}${o.maintenance ? `<span class="badge">صيانة</span>` : ""}</b><small>${o.sub}</small></span><span class="dot"></span></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
 function renderDevices(){
@@ -862,7 +883,7 @@ function renderPlans(){
   $("#view").innerHTML = `<section class="card plans">
     <h2>اشتراكات IPTV من متجر سمارت سوق</h2>
     <p class="sub">اختر الباقة المناسبة لجهازك، وبعد إتمام الطلب ارجع لهذا الدليل لتفعيلها خلال دقائق. الشراء يتم على متجر ssouq.com.</p>
-    ${block("falcon")}${block("marah")}
+    ${block("falcon")}${block("smart")}
     <a class="more" href="https://ssouq.com/الاشتراكات-الرقمية/c993357185?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=plans" target="_blank" rel="noopener">عرض كل الاشتراكات الرقمية في المتجر ←</a>
     <div class="nav"><button class="btn ghost" type="button" data-nav="home" style="flex:1">رجوع للرئيسية</button><button class="btn go" type="button" data-nav="buy" style="flex:1">ساعدني في الاختيار</button></div>
   </section>`;
@@ -899,8 +920,8 @@ function applyHash(){
   if (head === "m3u" || head === "plans") { state.screen = head; return; }
   if (head === "activate") {
     state.screen = "activate";
-    if (!SUBS[seg[1]]) return;
-    state.sub = seg[1];
+    if (!SUBS[legacySub(seg[1])]) return;
+    state.sub = legacySub(seg[1]);
     const D = devs();
     let i = 2;
     if (!D[seg[i]]) return;
@@ -914,16 +935,16 @@ function applyHash(){
   if (head === "buy") {
     if (TASTES[seg[1]]) state.taste = seg[1];
     if (state.taste && BUYDEV[seg[2]]) state.bdev = seg[2];
-    if (state.bdev && CATALOG[seg[3]]) state.brand = seg[3];
+    if (state.bdev && CATALOG[legacySub(seg[3])]) state.brand = legacySub(seg[3]);
     if (state.brand && CATALOG[state.brand].plans.some(p => p.id === seg[4])) state.plan = seg[4];
     state.screen = state.plan ? "buy-done" : state.brand ? "buy-plan"
                  : state.bdev ? "buy-brand" : state.taste ? "buy-device" : "buy-taste";
     return;
   }
-  // الروابط القديمة قبل تفرّع الاشتراكين (#ios · #tv-mr7 …) تبقى عاملة وتعني مرح
+  // الروابط القديمة قبل تفرّع الاشتراكين (#ios · #tv-mr7 …) تبقى عاملة وتعني سمارت
   const dv = head.split("-");
   if (DEVICES[dv[0]]) {
-    state.screen = "activate"; state.sub = "marah"; state.dev = dv[0];
+    state.screen = "activate"; state.sub = "smart"; state.dev = dv[0];
     if (dv[1] && DEVICES[dv[0]].variants && DEVICES[dv[0]].variants[dv[1]]) state.variant = dv[1];
     const n = parseInt(seg[1], 10);
     if (n > 1) state.i = n - 1;
@@ -944,6 +965,7 @@ function paint(){
     case "plans":      renderPlans();     break;
     case "activate":
       if (!state.sub) { renderSubs(); break; }
+      if (SUBS[state.sub].maintenance) { renderMaintenance(); break; }
       if (!state.dev) { renderDevices(); break; }
       if (devs()[state.dev].variants && !state.variant) { renderChoose(); break; }
       if (state.i >= steps().length) { renderActDone(); break; }
