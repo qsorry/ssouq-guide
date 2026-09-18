@@ -293,7 +293,7 @@ p{margin:0 0 10px}
 .plan{position:relative;display:flex;flex-direction:column;gap:6px;padding:12px;border:1.5px solid var(--line);
   border-radius:15px;background:var(--card);text-decoration:none;color:var(--ink)}
 .plan:hover,.plan:focus-visible{border-color:var(--brand)}
-.plan img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:var(--soft)}
+.plan img{width:100%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:11px;background:var(--soft)}  /* height:auto إلزامي: بدونه تتولّى سمة height="500" في الوسم فتبطل aspect-ratio وتمتدّ الصورة */
 .plan b{font-size:.92rem;line-height:1.45}
 .plan small{color:var(--mute);font-size:.76rem;line-height:1.55}
 .plan .price{margin-top:auto;display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;font-weight:700;color:var(--brand-text)}
