@@ -68,6 +68,10 @@ def _blank():
             "auto_reply": True,
         },
         "sent": {},                     # reference_id -> {at, to, status}
+        # توكن سلة كما وصل من حدث app.store.authorize، ومعه توكن تجديده.
+        # لا يُنسخ باليد ولا يُوضع في متغيّر بيئة — يصل وحده ويُجدَّد وحده.
+        "salla": {"access_token": "", "refresh_token": "", "expires_at": 0,
+                  "scope": "", "merchant": "", "at": 0, "refreshed_at": 0},
     }
 
 
@@ -80,6 +84,7 @@ def load():
     base = _blank()
     base.update(st if isinstance(st, dict) else {})
     base["settings"] = dict(_blank()["settings"], **(base.get("settings") or {}))
+    base["salla"] = dict(_blank()["salla"], **(base.get("salla") or {}))
     base.setdefault("sent", {})
     return base
 
@@ -170,10 +175,106 @@ def read_log(limit=200, q=""):
 
 
 # ================= سلة =================
+OAUTH_TOKEN_URL = os.environ.get("SALLA_TOKEN_URL", "https://accounts.salla.sa/oauth2/token")
+REFRESH_MARGIN = 24 * 3600        # يُجدَّد قبل انتهائه بيوم، لا عند سقوطه
+
+
+def store_tokens(d, how="authorize"):
+    """يحفظ ما وصل من سلة: التوكن وتوكن تجديده ووقت انتهائه.
+
+    `expires` يأتي أحيانًا ختمًا زمنيًّا وأحيانًا عددَ ثوانٍ، فيُقبل الشكلان:
+    الرقم الكبير ختم، والصغير مدة. وإلا حُسب الانتهاء خطأً بسنوات.
+    """
+    d = d or {}
+    tok = str(d.get("access_token") or "").strip()
+    if not tok:
+        return None
+    exp = d.get("expires") or d.get("expires_in") or 0
+    try:
+        exp = int(exp)
+    except (TypeError, ValueError):
+        exp = 0
+    expires_at = exp if exp > 10_000_000 else (int(time.time()) + exp if exp else 0)
+    with _lock:
+        st = load()
+        s = st["salla"]
+        s["access_token"] = tok
+        s["refresh_token"] = str(d.get("refresh_token") or s.get("refresh_token") or "").strip()
+        s["expires_at"] = expires_at
+        s["scope"] = str(d.get("scope") or s.get("scope") or "")
+        s["merchant"] = str(d.get("merchant") or d.get("store_id") or s.get("merchant") or "")
+        s["at"] = s.get("at") or int(time.time())
+        s["refreshed_at"] = int(time.time())
+        save(st)
+    log_event("salla_token", how=how, expires_at=expires_at,
+              scope=(s.get("scope") or "")[:200], merchant=s.get("merchant", ""))
+    return s
+
+
+def refresh_salla(force=False):
+    """يجدّد التوكن بتوكن التجديد. يرجع (نجح, سبب).
+
+    توكن التجديد يُستعمل مرة واحدة عند سلة: إعادة استعماله تُلغي كل التوكنات
+    وتفرض إعادة التثبيت. فالجديد يُكتب مكان القديم فورًا، ولا يُعاد النداء عند
+    الفشل — يُقال ويُسجَّل.
+    """
+    s = load()["salla"]
+    if not s.get("refresh_token"):
+        return False, "لا يوجد توكن تجديد — ثبّت التطبيق مرة واحدة ليصل"
+    if not force and s.get("expires_at") and s["expires_at"] - time.time() > REFRESH_MARGIN:
+        return True, ""
+    cid = (os.environ.get("SALLA_CLIENT_ID", "") or "").strip()
+    secret = (os.environ.get("SALLA_CLIENT_SECRET", "") or "").strip()
+    if not cid or not secret:
+        return False, "SALLA_CLIENT_ID أو SALLA_CLIENT_SECRET غير مضبوط — لا يمكن التجديد"
+    data = urllib.parse.urlencode({"grant_type": "refresh_token", "client_id": cid,
+                                   "client_secret": secret, "refresh_token": s["refresh_token"]}).encode()
+    req = urllib.request.Request(OAUTH_TOKEN_URL, data=data, headers={
+        "User-Agent": UA, "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            out = json.loads(r.read().decode("utf-8", "replace") or "{}")
+    except urllib.error.HTTPError as e:
+        why = "سلة رفضت التجديد (%d) — قد يكون توكن التجديد استُعمل أو انتهى؛ أعد تثبيت التطبيق" % e.code
+        log_event("salla_refresh_failed", error=why)
+        return False, why
+    except Exception as e:
+        log_event("salla_refresh_failed", error=str(e)[:200])
+        return False, "تعذّر الوصول لسلة: %s" % str(e)[:120]
+    if not store_tokens(out, how="refresh"):
+        log_event("salla_refresh_failed", error="رد سلة بلا توكن")
+        return False, "رد سلة بلا توكن"
+    return True, ""
+
+
 def _token(kind="admin"):
+    """التوكن المخزَّن أولًا (ويُجدَّد إن قارب الانتهاء) ثم متغيّر البيئة.
+
+    ترتيبٌ مقصود: ما وصل من سلة نفسها أحدث دائمًا مما كُتب باليد.
+    """
+    s = load()["salla"]
+    if s.get("access_token"):
+        if s.get("expires_at") and s["expires_at"] - time.time() <= REFRESH_MARGIN:
+            refresh_salla()
+            s = load()["salla"]
+        if s.get("access_token"):
+            return s["access_token"]
     if kind == "reports":
         return (os.environ.get("SALLA_REPORTS_TOKEN") or os.environ.get("SALLA_ADMIN_TOKEN") or "").strip()
     return (os.environ.get("SALLA_ADMIN_TOKEN") or "").strip()
+
+
+def hook_secret():
+    """السرّ داخل الرابط: يُولَّد مرة، ويُغني عن سرٍّ يُضبط في لوحة سلة."""
+    with _lock:
+        st = load()
+        sec = st.get("hook_secret")
+        if not sec:
+            sec = secrets.token_urlsafe(48)
+            st["hook_secret"] = sec
+            save(st)
+        return sec
 
 
 def _get_json(url, headers=None, timeout=TIMEOUT):
@@ -517,6 +618,21 @@ def verify_webhook(raw, signature="", authorization=""):
 
 
 def handle_webhook(payload):
+    ev = str(payload.get("event") or "")
+    data = payload.get("data") or {}
+
+    # التثبيت والتصريح: التوكن يصل هنا فلا يُنسخ باليد ولا يُوضع في البيئة.
+    if isinstance(data, dict) and data.get("access_token"):
+        s = store_tokens(dict(data, merchant=payload.get("merchant") or data.get("merchant")), how=ev or "authorize")
+        return {"ok": bool(s), "event": ev, "stored": bool(s)}
+    if ev in ("app.store.uninstall", "app.uninstalled"):
+        with _lock:
+            st = load()
+            st["salla"] = _blank()["salla"]
+            save(st)
+        log_event("salla_uninstalled", event=ev)
+        return {"ok": True, "event": ev, "cleared": True}
+
     ref, ok, ev, slug = order_ref_from_webhook(payload)
     if not ref:
         log_event("webhook_ignored", event=ev, reason="بلا رقم طلب")
@@ -600,9 +716,24 @@ def diagnostics():
     def add(key, ok, detail, effect):
         checks.append({"key": key, "ok": bool(ok), "detail": detail, "effect": effect})
 
+    s = st["salla"]
+    left = int((s.get("expires_at") or 0) - time.time())
+    if s.get("access_token"):
+        days = max(0, left // 86400)
+        add("توكن سلة", left > 0,
+            ("وصل من سلة، يبقى %d يومًا" % days) if left > 0 else "وصل من سلة لكنه انتهى",
+            "" if left > 0 else "سيُجدَّد آليًّا عند أول نداء، وإن فشل فأعد تثبيت التطبيق")
+        cid = os.environ.get("SALLA_CLIENT_ID") and os.environ.get("SALLA_CLIENT_SECRET")
+        add("التجديد الآلي", bool(s.get("refresh_token")) and bool(cid),
+            "يعمل" if (s.get("refresh_token") and cid) else
+            ("ينقصه SALLA_CLIENT_ID/SECRET" if s.get("refresh_token") else "لا يوجد توكن تجديد"),
+            "بدونه يتوقف كل شيء بعد أسبوعين من وصول التوكن")
+    else:
+        add("توكن سلة", bool(os.environ.get("SALLA_ADMIN_TOKEN")),
+            "من متغيّر البيئة" if os.environ.get("SALLA_ADMIN_TOKEN") else "لم يصل بعد",
+            "ثبّت التطبيق على متجرك فيصل التوكن إلى هذه الصفحة وحده — أو ضع SALLA_ADMIN_TOKEN يدويًّا")
+
     admin = _token()
-    add("SALLA_ADMIN_TOKEN", admin, "مضبوط" if admin else "غير مضبوط",
-        "بدونه لا يُقرأ الطلب ولا بيانات العميل — الصفحة لا تعمل إطلاقًا")
     if admin:
         try:
             _get_json("https://api.salla.dev/admin/v2/orders?per_page=1", {"Authorization": "Bearer " + admin})
@@ -631,9 +762,11 @@ def diagnostics():
         add("salla_reports", False, "غير مضبوط",
             "نص الكود لن يُقرأ — الرسالة تخرج بلا بيانات دخول")
 
-    hook = (os.environ.get("SALLA_WEBHOOK_SECRET", "") or "").strip()
-    add("SALLA_WEBHOOK_SECRET", hook, "مضبوط" if hook else "غير مضبوط",
-        "بدونه يُرفض كل نداء من سلة — الإرسال الآلي لا يعمل، واليدوي يعمل")
+    # الرابط السرّي يغني عن سرٍّ يُضبط في لوحة سلة، وهو مولَّد دائمًا — فالباب
+    # مقفل بلا أي إعداد منك. و SALLA_WEBHOOK_SECRET يبقى مقبولًا لمن ضبطه.
+    add("باب الويب هوك", True, "مقفل برابط سرّي" +
+        (" ومعه سرّ سلة" if (os.environ.get("SALLA_WEBHOOK_SECRET") or "").strip() else ""),
+        "")
 
     if provider == "reader":
         cfg = reader_cfg()
@@ -647,8 +780,12 @@ def diagnostics():
             "مضبوط" if os.environ.get("WA_CLOUD_PHONE_ID") else "غير مضبوط", "بدونه لا يُرسل واتساب")
 
     return {"provider": provider, "checks": checks,
-            "webhook_url": GUIDE_BASE + P + "/salla-webhook",
+            "webhook_url": GUIDE_BASE + P + "/hook/" + hook_secret(),
             "ingest_url": GUIDE_BASE + P + "/ingest",
+            "salla": {"connected": bool(st["salla"].get("access_token")),
+                      "expires_at": st["salla"].get("expires_at") or 0,
+                      "merchant": st["salla"].get("merchant") or "",
+                      "scope": st["salla"].get("scope") or ""},
             # "جاهز" = الإرسال اليدوي يعمل. نقص التقارير يُفقِد نص الكود، ونقص
             # سرّ الويب هوك يُطفئ الآلي وحده — وكلاهما معلن في الفحص أعلاه.
             "ready": all(c["ok"] for c in checks

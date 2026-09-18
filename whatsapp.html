@@ -46,6 +46,8 @@ ul.checks .e{color:var(--mute);font-size:.84rem}
 .mark.y{color:var(--go)}.mark.n{color:var(--err)}
 .note{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.87rem;color:var(--mute);margin-top:12px}
 .note.warn{border-color:var(--warn);color:var(--warn)}
+ol.steps{margin:12px 0 4px;padding-inline-start:20px;font-size:.89rem;color:var(--mute)}
+ol.steps li{margin-bottom:7px}ol.steps b{color:var(--ink)}
 .note.bad{border-color:var(--err);color:var(--err)}
 code{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.83rem;direction:ltr;display:inline-block}
 .qr{text-align:center;padding:14px}
@@ -103,10 +105,20 @@ code{background:var(--soft);border:1px solid var(--line);border-radius:6px;paddi
   </section>
 
   <section>
-    <h2>الوصلات</h2>
-    <p class="sub">ضع الأول في لوحة سلة ← المطوّرين ← الويب هوك، على حدث <b>تحديث حالة الطلب</b>. والثاني يضعه القارئ بنفسه عند الربط.</p>
-    <label>ويب هوك سلة</label><input id="wh" dir="ltr" readonly>
-    <label>استقبال رسائل العملاء</label><input id="ing" dir="ltr" readonly>
+    <h2>ربط سلة</h2>
+    <p class="sub" id="sallasub">…</p>
+    <div class="note" id="sallanote" hidden></div>
+    <ol class="steps">
+      <li>افتح <b dir="ltr">salla.partners</b> ← تطبيقاتي ← أنشئ تطبيقًا، واختر صلاحيات الطلبات والمنتجات والتقارير.</li>
+      <li>في قسم الويب هوك ضع <b>الرابط أدناه</b>، واختر الأحداث: <b>تحديث حالة الطلب</b> و<b>إنشاء طلب</b> و<b>تصريح المتجر</b>.</li>
+      <li>اضغط <b>تثبيت</b> على متجرك — التوكن يصل إلى هذه الصفحة وحده، ولا تنسخ شيئًا.</li>
+      <li>خذ <b dir="ltr">Client ID</b> و<b dir="ltr">Client Secret</b> من لوحة التطبيق وضعهما في Coolify مرة واحدة (لا ينتهيان) ليعمل التجديد الآلي.</li>
+    </ol>
+    <label>رابط الويب هوك — الرابط نفسه هو المفتاح، لا تنشره</label>
+    <div class="row"><input id="wh" dir="ltr" readonly><button class="act ghost" id="copywh">نسخ</button></div>
+    <label>استقبال رسائل العملاء (يضعه القارئ بنفسه عند الربط)</label><input id="ing" dir="ltr" readonly>
+    <button class="act ghost" id="refreshtok">تجديد التوكن الآن</button>
+    <div class="msg" id="tokmsg"></div>
   </section>
 </div>
 
@@ -205,6 +217,17 @@ async function loadStatus(){
   let d;
   try { d = await api("status"); } catch(e) { say("cmsg", e.message, "bad"); return; }
   $("wh").value = d.webhook_url; $("ing").value = d.ingest_url;
+
+  const sa = d.salla || {};
+  if (sa.connected) {
+    const days = Math.max(0, Math.floor((sa.expires_at - Date.now()/1000) / 86400));
+    $("sallasub").textContent = `التطبيق مثبَّت والتوكن وصل من سلة. يبقى ${days} يومًا ويُجدَّد وحده قبل انتهائه بيوم.`;
+    $("sallanote").hidden = false; $("sallanote").className = "note";
+    $("sallanote").textContent = "الخطوات أدناه انتهت — تبقى للمراجعة أو لإعادة التثبيت.";
+  } else {
+    $("sallasub").textContent = "التوكن لم يصل بعد. اتبع الخطوات مرة واحدة — لا تنسخ توكنًا ولا تضعه في متغيّرات البيئة.";
+    $("sallanote").hidden = true;
+  }
   $("checks").innerHTML = d.checks.map(c => `<li>
       <span class="mark ${c.ok ? "y" : "n"}">${c.ok ? "✓" : "✕"}</span>
       <span class="k">${esc(c.key)}</span>
@@ -320,6 +343,15 @@ $("savecfg").onclick = async () => {
 $("savepw").onclick = async () => {
   try { await api("password", {password: $("np").value}); $("np").value = ""; say("pwmsg", "تغيّرت", "ok"); }
   catch(e) { say("pwmsg", e.message, "bad"); }
+};
+$("copywh").onclick = async () => {
+  try { await navigator.clipboard.writeText($("wh").value); say("tokmsg", "نُسخ الرابط", "ok"); }
+  catch(e) { $("wh").select(); say("tokmsg", "حدّده وانسخه يدويًّا", "bad"); }
+};
+$("refreshtok").onclick = async () => {
+  say("tokmsg", "جارٍ التجديد…");
+  try { const d = await api("refresh-token", {}); say("tokmsg", d.note || "جُدِّد", "ok"); loadStatus(); }
+  catch(e) { say("tokmsg", e.message, "bad"); }
 };
 $("out").onclick = () => location.href = "/whatsapp/logout";
 

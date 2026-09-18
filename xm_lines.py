@@ -379,6 +379,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not hmac.compare_digest(self.headers.get("X-Reader-Token", ""), whatsapp.ingest_token()):
                     return self._send(401, {"error": "توكن القارئ غير مطابق"})
                 return self._send(200, whatsapp.handle_ingest(body))
+            if path.startswith(W + "/hook/") and method == "POST":
+                # الرابط نفسه هو المفتاح: سلة لا تحتاج إلا عنوانًا ترسل إليه،
+                # فلا سرّ يُضبط في لوحتها ولا يُنسخ إلى متغيّرات البيئة.
+                if not hmac.compare_digest(path[len(W + "/hook/"):], whatsapp.hook_secret()):
+                    whatsapp.log_event("webhook_rejected", reason="رابط سرّي غير مطابق")
+                    return self._send(404, {"error": "not found"})
+                return self._send(200, whatsapp.handle_webhook(body))
             if path == W + "/salla-webhook" and method == "POST":
                 ok, why = whatsapp.verify_webhook(raw, self.headers.get("X-Salla-Signature", ""),
                                                   self.headers.get("Authorization", ""))
@@ -441,6 +448,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, whatsapp.deliver(str(body.get("ref", "")),
                                                             force=bool(body.get("force")),
                                                             body=body.get("body")))
+                if path == W + "/api/refresh-token":
+                    ok, why = whatsapp.refresh_salla(force=True)
+                    if not ok:
+                        return self._send(400, {"error": why})
+                    return self._send(200, {"ok": True, "note": "جُدِّد التوكن"})
                 if path == W + "/api/settings":
                     return self._send(200, {"ok": True, "settings": whatsapp.set_settings(body)})
                 if path == W + "/api/password":
