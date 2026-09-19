@@ -373,7 +373,7 @@ footer a{color:var(--mute)}
         <li><a class="link" href="/iphone">آيفون / آيباد: تطبيق VAR Player</a></li>
         <li><a class="link" href="/android">جوال أندرويد: NEXT+ أو IPTV Smarters Pro</a></li>
         <li><a class="link" href="/android-tv">شاشة / بوكس أندرويد: MR7 TV أو IPTV Smarters Pro</a></li>
-        <li><a class="link" href="/samsung-lg">سامسونج / LG: 0Player أو ORAplayer</a></li>
+        <li><a class="link" href="/samsung-lg">سامسونج و LG و WebOS: 0Player أو ORAplayer</a></li>
         <li><a class="link" href="/windows">كمبيوتر ويندوز: IPTV Smarters Pro</a></li>
         <li><a class="link" href="/mac">ماك: IPTV Smarters Pro</a></li>
       </ul>
@@ -437,6 +437,9 @@ const SMARTERS_XTREAM = { title: "اختر LOGIN WITH XTREAM CODES API", img: "/
 const SMARTERS_LOGIN = { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-login.jpg",
   html: '<p>عبّئ الخانات بالترتيب:</p><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div>' + CREDS };
 
+// نظام WebOS ليس في شاشات LG وحدها، فمن تعمل شاشته به يتبع الخطوات نفسها
+const WEBOS_NOTE = '<div class="note">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir="ltr">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>';
+
 const DEVICES = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق VAR Player", steps: [
     { title: "حمّل تطبيق VAR Player", img: "/static/img/ios-var-appstore.jpg",
@@ -497,7 +500,7 @@ const DEVICES = {
     },
     doneImgs: { mr7: "/static/img/tv-mr7-home.jpg" }
   },
-  webos: { icon: "smart", name: "سامسونج / LG", sub: "0Player مجاني أو ORA مدفوع", choose: {
+  webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "0Player مجاني أو ORA مدفوع", choose: {
     title: "اختر التطبيق المناسب لشاشتك",
     options: [
       { key: "zero", label: "0Player", sub: "مجاني، تضيف بياناتك بنفسك", icon: "0player" },
@@ -506,13 +509,13 @@ const DEVICES = {
     variants: {
       zero: [
         { title: "حمّل تطبيق 0Player", img: "/static/img/webos-0player-store.jpg",
-          html: APP("0player", "0Player", "من متجر الشاشة · مجاني") + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> وحمّله.</p>' },
+          html: APP("0player", "0Player", "من متجر الشاشة · مجاني") + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> وحمّله.</p>' + WEBOS_NOTE },
         { title: "أضف قائمة جديدة بـ Portal Code", img: "/static/img/webos-0player-add.jpg",
           html: '<ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir="ltr">Portal Code</b>.</li></ol><img src="/static/img/webos-0player-portal.jpg" alt="تبويب Portal Code في 0Player"><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم تريده</code></div><div class="f"><span>Code (الخادم)</span><code>92929480</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS }
       ],
       ora: [
         { title: "حمّل تطبيق ORAplayer", img: "/static/img/webos-ora-store.webp",
-          html: APP("oraplayer", "ORAplayer", "من متجر الشاشة · مدفوع") + '<p>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class="fields"><div class="f"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class="f"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div>' },
+          html: APP("oraplayer", "ORAplayer", "من متجر الشاشة · مدفوع") + '<p>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class="fields"><div class="f"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class="f"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div>' + WEBOS_NOTE },
         { title: "أرسل لنا بيانات الجهاز",
           html: '<p>افتح التطبيق وستجد على الشاشة معرف الجهاز ورمز PIN. أرسلهما لنا عبر واتساب:</p><div class="fields"><div class="f"><span>Device ID</span><code>معرف الجهاز</code></div><div class="f"><span>PIN</span><code>الرمز الظاهر</code></div></div><p>وسنفعّل الاشتراك مباشرة من طرفنا بدون أي خطوات إضافية.</p><a class="btn wa" href="' + WA + encodeURIComponent("شاشة سامسونج/LG - ORAplayer. Device ID: ") + '" target="_blank" rel="noopener">إرسال البيانات عبر واتساب</a>' }
       ]
@@ -570,13 +573,14 @@ const PROG_ACT = ["الاشتراك", "جهازك", "التطبيق", "جاهز"
 
 
 /* ============================================================
-   نوعا الاشتراك
+   أنواع الاشتراك
    ------------------------------------------------------------
    DEVICES أعلاه هو مسار "سمارت" كاملًا — وهو المصدر الذي تُبنى منه
    صفحات الأجهزة الثابتة (tools/sync_guide_data.js).
    وفالكون يشترك معه في أكثر الخطوات ويختلف في أربعة مواضع فقط:
    الآيفون (تطبيق آخر)، والأندرويد (تطبيق فالكون بدل MR7/NEXT+)،
-   وسامسونج و LG (رمز بوابة مختلف). وويندوز وماك يرثانه كما هما.
+   وسامسونج و LG (رمز بوابة مختلف). وكاسبر يختلف في ثلاثة (أسفل
+   FALCON). وويندوز وماك يرثانه كما هما في الاثنين.
    ============================================================ */
 const SUBS = {
   smart:  { name: "سمارت", full: "MR7 TV",        art: "/static/img/brands/smart.webp",
@@ -584,7 +588,7 @@ const SUBS = {
   falcon: { name: "فالكون", full: "FALCON TV PRO", art: "/static/img/brands/falcon.webp",
             sub: "تطبيق فالكون أو Smarters Pro" },
   casper: { name: "كاسبر", full: "CASPER FLIX", art: "/static/img/brands/casper.webp",
-            sub: "صيانة — ستعود الخدمة قريبًا", maintenance: true }
+            sub: "AroPlayer أو Smarters Pro أو Duplecast" }
 };
 const legacySub = k => k === "marah" ? "smart" : k;      // "مرح" كان اسم سمارت، فروابطه القديمة تبقى عاملة
 
@@ -663,7 +667,86 @@ const FALCON = {
   }})
 };
 
-function devs(){ return state.sub === "falcon" ? Object.assign({}, DEVICES, FALCON) : DEVICES; }
+/* ============================================================
+   كاسبر — CASPER FLIX
+   ------------------------------------------------------------
+   كاسبر يرث من سمارت كل ما يدخل بالهوست واسم المستخدم وكلمة المرور
+   (ويندوز وماك كما هما)، ويختلف في ثلاثة مواضع:
+   الآيفون (AroPlayer بدل VAR Player)، والأندرويد جوالًا وشاشةً
+   (‏IPTV Smarters Pro وحده — بلا تطبيق مرح/MR7 فهو تطبيق سمارت،
+   وبلا NEXT+ لأنه يدخل برمز خادم خاص بلوحة سمارت)، وسامسونج و LG
+   و WebOS (تطبيق Duplecast بدل 0Player و ORAplayer).
+   ============================================================ */
+const CASPER = {
+  ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق AroPlayer", steps: [
+    { title: "حمّل تطبيق AroPlayer",
+      html: APP("aroplayer", "AroPlayer", "من App Store · مجاني")
+        + '<p>افتح App Store وحمّل تطبيق <b dir="ltr">AroPlayer</b>، أو اضغط الرابط مباشرة:</p>'
+        + '<p><a class="link" href="https://apps.apple.com/sa/app/aroplayer/id6789958902?l=ar" target="_blank" rel="noopener">apps.apple.com · AroPlayer</a></p>' },
+    { title: "اختر Xtream Codes", img: "/static/img/ios-aro-connect.webp",
+      html: '<p>افتح التطبيق فتظهر شاشة <b dir="ltr">How do you want to connect?</b>. اختر الخيار المحدَّد في الصورة: '
+        + '<b dir="ltr">Xtream Codes</b> — أول خيار في الصف الأعلى. ولا تختر <b dir="ltr">M3U Playlist</b> ولا '
+        + '<b dir="ltr">Single Stream</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>' },
+    { title: "أدخل بيانات الاشتراك", img: "/static/img/ios-aro-login.webp",
+      html: '<p>عبّئ الخانات بالترتيب:</p>'
+        + '<div class="fields"><div class="f"><span dir="ltr">Playlist Name</span><code>أي اسم من عندك</code></div>'
+        + '<div class="f"><span dir="ltr">Server URL</span><code>رابط الهوست مع البورت</code></div>'
+        + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
+        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
+        + '<p>ثم اضغط <b dir="ltr">Login</b>.</p>'
+        + '<div class="note">خانة الاسم اختيارية. ورابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http مع رقم البورت، '
+        + 'مثل <code dir="ltr">http://host.com:8080</code>، بدون مسافات.</div>' + CREDS }
+  ]},
+
+  // بلا تطبيق مرح (MR7): تطبيق سمارت وحدها. ويبقى Smarters Pro لأنه يدخل
+  // بالهوست واسم المستخدم وكلمة المرور، بلا رمز خاص بمزوّد.
+  android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق IPTV Smarters Pro",
+    steps: DEVICES.android.variants.smarters },
+
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق IPTV Smarters Pro",
+    steps: DEVICES.tv.variants.smarters },
+
+  webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "تطبيق Duplecast", steps: [
+    { title: "حمّل تطبيق Duplecast وافتحه", img: "/static/img/webos-duplecast-scan.webp",
+      html: APP("duplecast", "Duplecast", "من متجر الشاشة")
+        + '<p>من متجر التطبيقات في الشاشة (‏<b dir="ltr">Samsung Apps</b> أو <b dir="ltr">LG Content Store</b>) '
+        + 'ابحث عن <b dir="ltr">Duplecast</b> وحمّله.</p>'
+        + '<p>افتحه أول مرة فتظهر شاشة <b dir="ltr">Scan Code</b> برمز QR. امسح الرمز بكاميرا جوالك — من الشاشة نفسها '
+        + 'أو من صورة له — فتُفتح صفحة إدارة الجهاز وبياناته مكتوبة فيها تلقائيًا.</p>' + WEBOS_NOTE },
+    { title: "اضغط Add Playlist", img: "/static/img/webos-duplecast-manage.webp",
+      html: '<p>في صفحة الإدارة يظهر رقم جهازك تحت <b dir="ltr">Manage Device</b> وحالته تحته. '
+        + 'اضغط زر <b dir="ltr">Add Playlist</b> لإضافة قائمة تشغيل جديدة.</p>'
+        + '<div class="note">يمكنك إضافة أكثر من قائمة بالطريقة نفسها. والتطبيق يبدأ بفترة تجريبية '
+        + '(‏<b dir="ltr">Status : trial</b>)، وتفعيله الدائم من زرَّي <b dir="ltr">Activate by Payment</b> و '
+        + '<b dir="ltr">Activate by code</b> في الصفحة نفسها.</div>' },
+    { title: "عبّئ بياناتك في تبويب Xtream Info", img: "/static/img/webos-duplecast-form.webp",
+      html: '<p>اختر تبويب <b dir="ltr">Xtream Info</b> ثم عبّئ الخانات:</p>'
+        + '<div class="fields"><div class="f"><span dir="ltr">Mac</span><code>يظهر تلقائيًا — لا تغيّره</code></div>'
+        + '<div class="f"><span dir="ltr">Playlist name</span><code>أي اسم من عندك</code></div>'
+        + '<div class="f"><span dir="ltr">Host</span><code>رابط الهوست بدون رقم البورت</code></div>'
+        + '<div class="f"><span dir="ltr">Port</span><code>رقم البورت وحده</code></div>'
+        + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
+        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div>'
+        + '<div class="f"><span dir="ltr">Protect this playlist</span><code>اتركه غير مفعّل</code></div></div>'
+        + '<p>ثم اضغط <b dir="ltr">Save</b>.</p>'
+        + '<div class="note">الهوست والبورت خانتان منفصلتان هنا، فلا تكتب الرقم مع الرابط: إن وصلك '
+        + '<code dir="ltr">http://host.com:8080</code> فاكتب <code dir="ltr">http://host.com</code> في '
+        + '<b dir="ltr">Host</b> و <code dir="ltr">8080</code> في <b dir="ltr">Port</b>. ومن وصله رابط بلا رقم '
+        + 'فبورته <code dir="ltr">80</code>.</div>' + CREDS },
+    { title: "تأكّد أن القائمة حُفظت", img: "/static/img/webos-duplecast-saved.webp",
+      html: '<p>تظهر القائمة في جدول <b dir="ltr">Playlists</b> مع رسالة <b dir="ltr">Playlist added successfully</b>. '
+        + 'وإن أخطأت في بيانٍ اضغط <b dir="ltr">Edit</b> بجانبها وصحّحه.</p>' },
+    { title: "حدّث القائمة على الشاشة", img: "/static/img/webos-duplecast-refresh.webp",
+      html: '<p>ارجع إلى الشاشة الرئيسية في التطبيق على التلفاز واضغط زر التحديث (‏<b dir="ltr">↻</b>) '
+        + 'لجلب القنوات، وانتظر قليلًا حتى تكتمل.</p>'
+        + '<div class="note">إن لم تظهر القنوات فتأكد من اتصال الشاشة بالإنترنت، ومن صحة الهوست والبورت '
+        + 'واسم المستخدم وكلمة المرور.</div>' }
+  ]}
+};
+
+/* لكل اشتراك ما يخالف فيه مسار سمارت، وما لم يُذكر فيه يُورَث كما هو */
+const SUB_DEVICES = { falcon: FALCON, casper: CASPER };
+function devs(){ const over = SUB_DEVICES[state.sub]; return over ? Object.assign({}, DEVICES, over) : DEVICES; }
 
 const $ = s => document.querySelector(s);
 const state = { screen: "home", taste: null, bdev: null, brand: null, plan: null, sub: null, dev: null, variant: null, i: 0 };
@@ -838,7 +921,7 @@ function steps(){ const d = devs()[state.dev]; return d.variants ? (d.variants[s
 function renderSubs(){
   setProg(PROG_ACT, 0);
   $("#view").innerHTML = `<div class="card"><h2>أي اشتراك لديك؟</h2>
-    <p class="sub">التطبيق ورمز التفعيل يختلفان بين الاشتراكين، فاختر اشتراكك أولًا. تجده في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a>.</p>
+    <p class="sub">التطبيق ورمز التفعيل يختلفان من اشتراك لآخر، فاختر اشتراكك أولًا. تجده في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a>.</p>
     <div class="opts">${Object.entries(SUBS).map(([k, o]) => `<button class="opt${o.maintenance ? " muted" : ""}" type="button" data-sub="${k}"><img class="logo" src="${o.art}" alt="" width="46" height="46" loading="lazy"><span><b>${o.name}${o.maintenance ? `<span class="badge">صيانة</span>` : ""}</b><small>${o.sub}</small></span><span class="dot"></span></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
@@ -970,7 +1053,7 @@ function applyHash(){
                  : state.bdev ? "buy-brand" : state.taste ? "buy-device" : "buy-taste";
     return;
   }
-  // الروابط القديمة قبل تفرّع الاشتراكين (#ios · #tv-mr7 …) تبقى عاملة وتعني سمارت
+  // الروابط القديمة قبل تفرّع الاشتراكات (#ios · #tv-mr7 …) تبقى عاملة وتعني سمارت
   const dv = head.split("-");
   if (DEVICES[dv[0]]) {
     state.screen = "activate"; state.sub = "smart"; state.dev = dv[0];
