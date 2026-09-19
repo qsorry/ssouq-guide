@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import guide_pages
 import store_sitemap
+import xm_web
 
 # ================= الإعدادات =================
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -107,16 +108,27 @@ def check_pw(pw, rec):
 
 
 def clean_account(a, old=None):
-    """يتحقق من حقول الحساب ويرجع نسخة نظيفة أو يرفع ValueError."""
+    """يتحقق من حقول الحساب ويرجع نسخة نظيفة أو يرفع ValueError.
+
+    وضعان:
+      mode="api" (الافتراضي)  → عبر Reseller API: يتطلب api_url + api_key.
+      mode="web"              → عبر جلسة ويب للوحة (كابتشا): يتطلب panel_base.
+    كلاهما يتطلب name + user + password + host.
+    """
     old = old or {}
+    mode = str(a.get("mode", "")).strip().lower() or old.get("mode", "api")
+    if mode not in ("api", "web"):
+        mode = "api"
     out = {
-        "id":       old.get("id") or secrets.token_hex(4),
-        "name":     str(a.get("name", "")).strip() or old.get("name", ""),
-        "user":     str(a.get("user", "")).strip() or old.get("user", ""),
-        "password": str(a.get("password", "")) or old.get("password", ""),
-        "api_url":  str(a.get("api_url", "")).strip().rstrip("/") or old.get("api_url", ""),
-        "api_key":  str(a.get("api_key", "")).strip() or old.get("api_key", ""),
-        "host":     str(a.get("host", "")).strip().rstrip("/") or old.get("host", ""),
+        "id":         old.get("id") or secrets.token_hex(4),
+        "mode":       mode,
+        "name":       str(a.get("name", "")).strip() or old.get("name", ""),
+        "user":       str(a.get("user", "")).strip() or old.get("user", ""),
+        "password":   str(a.get("password", "")) or old.get("password", ""),
+        "api_url":    str(a.get("api_url", "")).strip().rstrip("/") or old.get("api_url", ""),
+        "api_key":    str(a.get("api_key", "")).strip() or old.get("api_key", ""),
+        "panel_base": str(a.get("panel_base", "")).strip().rstrip("/") or old.get("panel_base", ""),
+        "host":       str(a.get("host", "")).strip().rstrip("/") or old.get("host", ""),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -124,12 +136,16 @@ def clean_account(a, old=None):
         raise ValueError("اسم الدخول غير صالح أو محجوز")
     if len(out["password"]) < 4:
         raise ValueError("كلمة المرور قصيرة (4 أحرف على الأقل)")
-    if not out["api_url"].startswith(("http://", "https://")):
-        raise ValueError("رابط API يجب أن يبدأ بـ http:// أو https://")
-    if not out["api_key"]:
-        raise ValueError("مفتاح API مطلوب")
     if not out["host"].startswith(("http://", "https://")):
         raise ValueError("الهوست يجب أن يبدأ بـ http:// أو https://")
+    if mode == "web":
+        if not out["panel_base"].startswith(("http://", "https://")):
+            raise ValueError("رابط اللوحة (panel_base) يجب أن يبدأ بـ http:// أو https://")
+    else:
+        if not out["api_url"].startswith(("http://", "https://")):
+            raise ValueError("رابط API يجب أن يبدأ بـ http:// أو https://")
+        if not out["api_key"]:
+            raise ValueError("مفتاح API مطلوب")
     return out
 
 
@@ -172,7 +188,15 @@ def _ids(v):
     return [int(x) for x in (v or []) if str(x).strip().isdigit()]
 
 
+def web_session(acct):
+    return xm_web.PanelWebSession(acct, DATA_DIR)
+
+
 def get_packages(acct):
+    if acct.get("mode") == "web":                      # جلسة ويب بدل الـ API
+        return [{"id": p["value"], "name": p["text"], "credits": None,
+                 "max_connections": 1, "bouquets": []}
+                for p in web_session(acct).packages()]
     pkgs = []
     for p in _unwrap(api(acct, "get_packages")):
         if not isinstance(p, dict):
@@ -194,6 +218,17 @@ def rand_digits(n=DIGITS):
 
 
 def create_line(acct, pkg, username=None, password=None, host=None):
+    if acct.get("mode") == "web":                      # الإنشاء عبر نموذج اللوحة
+        r = web_session(acct).create_line(pkg["id"], username, password, host)
+        now = datetime.datetime.now()
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(TXT_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{now:%d-%m-%Y %H:%M}  |  {acct['name']}  |  {r['line']}  |  {pkg['name']}\n")
+        except OSError:
+            pass
+        return {"line": r["line"], "username": r["username"], "password": r["password"],
+                "package": pkg["name"], "time": r["time"]}
     host = (host or acct["host"]).strip().rstrip("/")
     username = username or rand_digits()
     password = password or rand_digits()
@@ -404,10 +439,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self._page(PAGES[P + "/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
             if path == P + "/api/me":
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None})
+            if path == P + "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
+                if role != "account" or acct.get("mode") != "web":
+                    return self._send(403, {"error": "غير متاح"})
+                s = web_session(acct)
+                s.begin()
+                ct, img = s.fetch_captcha()
+                return self._send(200, raw=img, ctype=ct or "image/jpeg")
             if path == P + "/api/packages":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
-                return self._send(200, {"account": acct["name"], "host": acct["host"], "packages": get_packages(acct)})
+                try:
+                    pkgs = get_packages(acct)
+                except xm_web.CaptchaNeeded:
+                    return self._send(200, {"account": acct["name"], "host": acct["host"],
+                                            "need_captcha": True})
+                except xm_web.LoginFailed as e:
+                    return self._send(200, {"account": acct["name"], "host": acct["host"],
+                                            "login_error": str(e)})
+                return self._send(200, {"account": acct["name"], "host": acct["host"], "packages": pkgs})
             if path == P + "/api/accounts":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -463,10 +513,28 @@ class Handler(BaseHTTPRequestHandler):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._admin_post(path, st)
+            if path == "/api/web/login":              # إدخال كود التحقّق يدويًا (وضع الويب)
+                if role != "account" or acct.get("mode") != "web":
+                    return self._send(403, {"error": "غير متاح"})
+                code = str(self._body().get("captcha", "")).strip()
+                if not code:
+                    return self._send(400, {"error": "اكتب الكود"})
+                try:
+                    web_session(acct).login(captcha=code)
+                    return self._send(200, {"ok": True})
+                except xm_web.LoginFailed as e:
+                    return self._send(200, {"ok": False, "error": str(e)})
+                except xm_web.CaptchaNeeded:
+                    return self._send(200, {"ok": False, "error": "الكود غير صحيح"})
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
-                return self._create(acct)
+                try:
+                    return self._create(acct)
+                except xm_web.CaptchaNeeded:
+                    return self._send(200, {"need_captcha": True})
+                except xm_web.LoginFailed as e:
+                    return self._send(200, {"login_error": str(e)})
             self._send(404, {"error": "not found"})
         except ValueError as e:
             self._send(400, {"error": str(e)})
