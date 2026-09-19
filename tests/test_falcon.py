@@ -40,7 +40,7 @@ def main():
     print("== adapter parsing ==")
     check("host from /me", falcon_api.host("B", "K") == "http://s.falconiptv.ink")
     pkgs = falcon_api.packages("B", "K")
-    check("packages parsed + mapped", len(pkgs) == 2 and pkgs[0]["id"] == 167 and pkgs[0]["name"] == "1months" and pkgs[0]["credits"] == 0.5)
+    check("packages parsed + Arabic name", len(pkgs) == 2 and pkgs[0]["id"] == 167 and pkgs[0]["name"] == "شهر" and pkgs[0]["name_en"] == "1months" and pkgs[0]["credits"] == 0.5)
     r = falcon_api.create_line("B", "K", 167, "u123", "p123")
     check("create returns sent username/password", r["username"] == "u123" and r["password"] == "p123" and r["id"] == 900001)
     try:
@@ -65,7 +65,7 @@ def main():
                          "guide_url": "https://guide.ssouq.com/"})  # host اختياري لفالكون
     check("clean_gate accepts falcon (host optional)", gate["mode"] == "falcon" and gate["host"] == "")
     pk = X.get_packages(gate)
-    check("get_packages routes to falcon", len(pk) == 2 and pk[0]["name"] == "1months")
+    check("get_packages routes to falcon (Arabic name)", len(pk) == 2 and pk[0]["name"] == "شهر" and pk[0]["name_en"] == "1months")
     out = X.create_line(gate, pk[0], "webuser", "webpass")
     check("create_line routes to falcon + new format", " User webuser " in out["line"] and " Pass webpass " in out["line"])
     check("host resolved from /me into the line", "s.falconiptv.ink" in out["line"])

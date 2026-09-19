@@ -208,10 +208,12 @@ def clean_account(a, old=None):
     كل بوابة لها ربطها الخاص (انظر clean_gate)."""
     old = old or {}
     out = {
-        "id":       old.get("id") or secrets.token_hex(4),
-        "name":     str(a.get("name", "")).strip() or old.get("name", ""),
-        "user":     str(a.get("user", "")).strip() or old.get("user", ""),
-        "password": _hash_password(a.get("password", ""), old.get("password")),
+        "id":        old.get("id") or secrets.token_hex(4),
+        "name":      str(a.get("name", "")).strip() or old.get("name", ""),
+        "user":      str(a.get("user", "")).strip() or old.get("user", ""),
+        "password":  _hash_password(a.get("password", ""), old.get("password")),
+        # رابط شرح واحد لكل بوابات الشخص (يُستعمل حين تُترك البوابة بلا رابط خاص).
+        "guide_url": str(a.get("guide_url", old.get("guide_url", ""))).strip(),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -219,6 +221,8 @@ def clean_account(a, old=None):
         raise ValueError("اسم الدخول غير صالح أو محجوز")
     if not _is_hash(out["password"]):
         raise ValueError("كلمة المرور مطلوبة")
+    if out["guide_url"] and not out["guide_url"].startswith(("http://", "https://")):
+        raise ValueError("رابط الشرح يجب أن يبدأ بـ http:// أو https://")
 
     old_gates = {g.get("id"): g for g in (old.get("gates") or [])}
     gates = []
@@ -629,11 +633,31 @@ class Handler(BaseHTTPRequestHandler):
                           "host": g["host"], "guide_url": g.get("guide_url", "")}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
+                                        "guide_url": acct.get("guide_url", "") if acct else "",
                                         "gates": gates})
             if path == P + "/api/mygates":            # بوابات الشخص كاملةً (لتحريرها)
                 if role != "account":
                     return self._send(403, {"error": "غير متاح"})
-                return self._send(200, {"gates": _redact_gates(acct.get("gates", []))})
+                return self._send(200, {"gates": _redact_gates(acct.get("gates", [])),
+                                        "guide_url": acct.get("guide_url", "")})
+            if path == P + "/api/gate-status":        # النقاط + آخر يوزر للبوابة
+                gate = find_gate(acct, self._q("gate")) if acct else None
+                if role != "account" or not gate:
+                    return self._send(403, {"error": "غير متاح"})
+                if gate.get("mode") == "falcon":
+                    return self._send(200, falcon_api.status(gate["api_url"], gate["api_key"]))
+                return self._send(200, {"provider": gate.get("mode"), "credits": None,
+                                        "unsupported": True})
+            if path == P + "/api/search":             # بحث بالـ username/password
+                gate = find_gate(acct, self._q("gate")) if acct else None
+                if role != "account" or not gate:
+                    return self._send(403, {"error": "غير متاح"})
+                q = self._q("q").strip()
+                if not q:
+                    return self._send(200, {"results": []})
+                if gate.get("mode") == "falcon":
+                    return self._send(200, {"results": falcon_api.search(gate["api_url"], gate["api_key"], q)})
+                return self._send(200, {"results": [], "unsupported": True})
             if path == P + "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate or gate.get("mode") != "web":
@@ -649,7 +673,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not gate:
                     return self._send(400, {"error": "اختر بوابة"})
                 base = {"account": acct["name"], "gate": gate["id"], "host": gate["host"],
-                        "guide_url": gate.get("guide_url", "")}
+                        "guide_url": gate.get("guide_url") or acct.get("guide_url", "")}
                 try:
                     pkgs = get_packages(gate)
                 except xm_web.CaptchaNeeded:
@@ -716,6 +740,15 @@ class Handler(BaseHTTPRequestHandler):
                     if role != "account":
                         return self._send(403, {"error": "غير متاح"})
                     return self._mygates_post(path, st, acct)
+                if path == "/api/myguide":              # رابط شرح واحد لكل البوابات
+                    if role != "account":
+                        return self._send(403, {"error": "غير متاح"})
+                    gu = str(self._body().get("guide_url", "")).strip()
+                    if gu and not gu.startswith(("http://", "https://")):
+                        return self._send(400, {"error": "رابط الشرح يجب أن يبدأ بـ http://"})
+                    acct["guide_url"] = gu
+                    save_store(st)
+                    return self._send(200, {"ok": True, "guide_url": gu})
             if path == "/api/web/login":              # إدخال كود التحقّق يدويًا (وضع الويب)
                 body = self._body()
                 gate = find_gate(acct, body.get("gate")) if acct else None
@@ -804,6 +837,9 @@ class Handler(BaseHTTPRequestHandler):
         gate = find_gate(acct, req.get("gate"))
         if not gate:
             return self._send(400, {"error": "اختر بوابة"})
+        # رابط الشرح: خاص بالبوابة، وإلا رابط الشخص العام لكل بواباته.
+        if not gate.get("guide_url") and acct.get("guide_url"):
+            gate = {**gate, "guide_url": acct["guide_url"]}
         pkg = next((p for p in get_packages(gate) if str(p["id"]) == str(req.get("package_id"))), None)
         if not pkg:
             return self._send(400, {"error": "الباقة غير موجودة"})

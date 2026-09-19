@@ -56,6 +56,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
       <div><label for="user">اسم الدخول للأداة</label><input id="user" autocomplete="off" placeholder="user1"></div>
       <div><label for="password">كلمة مرور الدخول</label><input id="password" autocomplete="new-password" placeholder="4 أحرف على الأقل"></div>
     </div>
+    <label for="acc_guide">رابط الشرح لكل البوابات (اختياري)</label><input id="acc_guide" placeholder="https://guide.ssouq.com/">
     <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
     <div id="gates"></div>
     <button class="ghost" id="addGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
@@ -151,6 +152,7 @@ function readGates(){
 function fill(a){
   $("id").value = a?.id || "";
   $("name").value = a?.name || ""; $("user").value = a?.user || "";
+  $("acc_guide").value = a?.guide_url || "";
   $("password").value = "";
   $("password").placeholder = a ? "اتركه فارغًا للإبقاء على الحالية" : "4 أحرف على الأقل";
   $("gates").innerHTML = "";
@@ -163,7 +165,7 @@ $("addGate").onclick = () => $("gates").appendChild(gateRow(null));
 
 $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
-                password: $("password").value, gates: readGates()};
+                password: $("password").value, guide_url: $("acc_guide").value, gates: readGates()};
   try { const d = await post("/admin/api/accounts", body); accounts = d.accounts; render(); fill(null); say($("msg"), "تم الحفظ", true); }
   catch(e) { say($("msg"), e.message); }
 };

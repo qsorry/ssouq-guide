@@ -57,6 +57,18 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 .gate-tabs{display:flex;flex-wrap:wrap;gap:8px}
 .gate-tab{padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;font:inherit}
 .gate-tab.on{background:var(--go);color:#fff;border-color:var(--go)}
+.gstat{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.chip{background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:6px 12px;font-size:.85rem;color:var(--ink)}
+.chip b{color:var(--go)}
+.warn{background:#4a2a12;border:1px solid #b45309;color:#fcd9a8;border-radius:10px;padding:10px 12px;font-size:.85rem;margin-bottom:10px}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .warn{background:#fef3c7;border-color:#f59e0b;color:#92400e}}
+.search-row{display:flex;gap:8px}
+.search-row .t{flex:1}
+.res-item{display:flex;gap:8px;align-items:center;border-top:1px dashed var(--line);padding:9px 0}
+.res-item .l{flex:1;direction:ltr;text-align:left;font:600 .82rem "IBM Plex Mono",Consolas,monospace;overflow-x:auto;white-space:nowrap}
+.res-item .st{font-size:.72rem;padding:2px 8px;border-radius:10px;border:1px solid var(--line);color:var(--mute)}
+.res-item .st.active{color:var(--go);border-color:var(--go)}
+@media (max-width:480px){main{padding:14px 12px 60px}h1{font-size:1.25rem}.gate-tab{flex:1;text-align:center;min-width:calc(50% - 4px)}section{padding:14px}}
 </style>
 </head>
 <body>
@@ -69,8 +81,22 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
     <div class="gate-tabs" id="gateTabs"><div class="empty">جاري تحميل البوابات…</div></div>
   </section>
 
+  <section id="statusBox" hidden>
+    <div class="warn" id="statusWarn" hidden></div>
+    <div class="gstat" id="gateStatus"></div>
+    <div class="search-row">
+      <input class="t" id="searchQ" placeholder="ابحث بيوزر أو باسورد">
+      <button class="ghost" id="searchBtn">بحث</button>
+    </div>
+    <div id="searchRes"></div>
+  </section>
+
   <section id="gatesManage" hidden>
     <h2>بواباتي <button class="ghost" id="closeManage">إغلاق</button></h2>
+    <label class="f" for="myGuide">رابط الشرح لكل بواباتي (يُستعمل حين تُترك البوابة بلا رابط خاص)</label>
+    <div class="search-row"><input class="t" id="myGuide" placeholder="https://guide.ssouq.com/"><button class="ghost" id="saveGuide">حفظ</button></div>
+    <div class="msg" id="guideMsg"></div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
     <div id="myGatesList"></div>
     <button class="ghost" id="addMyGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
     <div id="gateEditor" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
@@ -150,19 +176,78 @@ async function loadGates(){
     const r = await fetch("/admin/api/me"); const d = chk(await r.json());
     account = d.account || ""; $("acct").textContent = account;
     gates = d.gates || [];
+    if ($("myGuide")) $("myGuide").value = d.guide_url || "";
   } catch { gates = []; }
-  if (!gates.length){ $("gateTabs").innerHTML = '<div class="empty">لا توجد بوابات بعد — اضغط "إدارة بواباتي" لإضافة منشأتك.</div>'; return; }
+  if (!gates.length){ $("gateTabs").innerHTML = '<div class="empty">لا توجد بوابات بعد — اضغط "إدارة بواباتي" لإضافة منشأتك.</div>'; $("statusBox").hidden = true; return; }
   curGate = gates.some(g => g.id === curGate) ? curGate : gates[0].id;
   $("gateTabs").innerHTML = gates.map(g =>
     `<button class="gate-tab${g.id===curGate?" on":""}" data-gate="${g.id}">${esc(g.name)}</button>`).join("");
-  fetchPackages();
+  $("statusBox").hidden = false;
+  fetchPackages(); loadGateStatus();
 }
 function selectGate(id){
   if (id === curGate) return;
   curGate = id;
   document.querySelectorAll(".gate-tab").forEach(b => b.classList.toggle("on", b.dataset.gate === id));
-  $("resBox").hidden = true; $("msg").textContent = "";
-  fetchPackages(); renderHistory();
+  $("resBox").hidden = true; $("msg").textContent = ""; $("searchRes").innerHTML = ""; $("searchQ").value = "";
+  fetchPackages(); renderHistory(); loadGateStatus();
+}
+
+// ---- حالة البوابة: النقاط + آخر يوزر + تحذير التغيّر منذ آخر جلسة ----
+const STAT_KEY = () => "xm_status_" + account + "_" + curGate;
+async function loadGateStatus(){
+  const gate = gates.find(g => g.id === curGate) || {};
+  $("statusWarn").hidden = true; $("gateStatus").innerHTML = "";
+  if (gate.mode !== "falcon"){ $("gateStatus").innerHTML = '<span class="chip muted">حالة النقاط متاحة لبوابات فالكون</span>'; return; }
+  $("gateStatus").innerHTML = '<span class="chip">جاري القراءة…</span>';
+  try {
+    const r = await fetch("/admin/api/gate-status?gate=" + encodeURIComponent(curGate));
+    const s = chk(await r.json());
+    if (s.error){ $("gateStatus").innerHTML = '<span class="chip">'+esc(s.error)+'</span>'; return; }
+    $("gateStatus").innerHTML =
+      `<span class="chip">النقاط: <b>${s.credits ?? "—"}</b></span>` +
+      `<span class="chip">عدد اليوزرات: <b>${s.total ?? "—"}</b></span>` +
+      (s.last_username ? `<span class="chip">آخر يوزر: <b>${esc(String(s.last_username))}</b></span>` : "");
+    // مقارنة بآخر جلسة
+    let prev = null; try { prev = JSON.parse(localStorage.getItem(STAT_KEY())||"null"); } catch {}
+    if (prev){
+      const w = [];
+      if (prev.credits != null && s.credits != null && prev.credits !== s.credits)
+        w.push(`تغيّرت النقاط منذ آخر زيارة: ${prev.credits} ← ${s.credits}`);
+      if (prev.last_username && s.last_username && String(prev.last_username) !== String(s.last_username))
+        w.push(`آخر يوزر تغيّر (${prev.last_username} ← ${s.last_username}) — قد يكون أُنشئ مباشرة من اللوحة`);
+      else if (prev.total != null && s.total != null && prev.total !== s.total)
+        w.push(`تغيّر عدد اليوزرات: ${prev.total} ← ${s.total}`);
+      if (w.length){ $("statusWarn").innerHTML = "⚠ " + w.map(esc).join("<br>⚠ "); $("statusWarn").hidden = false; }
+    }
+    try { localStorage.setItem(STAT_KEY(), JSON.stringify({credits:s.credits, total:s.total, last_username:s.last_username})); } catch {}
+  } catch(e){ $("gateStatus").innerHTML = '<span class="chip">تعذّر قراءة الحالة</span>'; }
+}
+
+async function doSearch(){
+  const q = $("searchQ").value.trim();
+  if (!q){ $("searchRes").innerHTML = ""; return; }
+  $("searchRes").innerHTML = '<div class="empty">جاري البحث…</div>';
+  try {
+    const r = await fetch("/admin/api/search?gate=" + encodeURIComponent(curGate) + "&q=" + encodeURIComponent(q));
+    const d = chk(await r.json());
+    if (d.unsupported){ $("searchRes").innerHTML = '<div class="empty">البحث متاح لبوابات فالكون.</div>'; return; }
+    const rows = d.results || [];
+    $("searchRes").innerHTML = rows.length ? rows.map(x =>
+      `<div class="res-item"><div class="l">User ${esc(String(x.username||""))} Pass ${esc(String(x.password||""))}</div>
+        <span class="st ${x.status==="active"?"active":""}">${esc(String(x.status||""))}</span>
+        <button class="ghost" data-copy="User ${esc(String(x.username||""))} Pass ${esc(String(x.password||""))}">نسخ</button></div>`).join("")
+      : '<div class="empty">لا نتائج.</div>';
+  } catch(e){ $("searchRes").innerHTML = '<div class="empty">تعذّر البحث.</div>'; }
+}
+async function saveGuide(){
+  const gu = $("myGuide").value.trim();
+  $("guideMsg").textContent = "جاري الحفظ…";
+  try {
+    const r = await fetch("/admin/api/myguide", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({guide_url: gu})});
+    const d = chk(await r.json()); if (d.error) throw new Error(d.error);
+    $("guideMsg").textContent = "تم الحفظ لكل البوابات";
+  } catch(e){ $("guideMsg").textContent = e.message; }
 }
 
 
@@ -319,6 +404,10 @@ $("capCancel").onclick = hideCaptcha;
 $("capInput").addEventListener("keydown", e => { if (e.key === "Enter") submitCaptcha(); });
 $("reload").onclick = fetchPackages;
 $("gateTabs").addEventListener("click", e => { const b = e.target.closest(".gate-tab"); if (b) selectGate(b.dataset.gate); });
+$("searchBtn").onclick = doSearch;
+$("searchQ").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+$("searchRes").addEventListener("click", e => { const b = e.target.closest("button"); if (b && b.dataset.copy) copy(b.dataset.copy); });
+$("saveGuide").onclick = saveGuide;
 $("manageGates").onclick = () => { $("gatesManage").hidden = false; loadMyGates(); };
 $("closeManage").onclick = () => { $("gatesManage").hidden = true; };
 $("addMyGate").onclick = () => gateForm(null);

@@ -18,11 +18,39 @@
 
 stdlib فقط. المفتاح لا يُسجَّل ولا يُطبع.
 """
+import re
 import json
+import urllib.parse
 import urllib.request
 import urllib.error
 
 TIMEOUT = 30
+
+
+def arabic_package_name(en):
+    """اسم عربي لباقة فالكون الإنجليزية (1months, 1years 2 contact + 3 months...)."""
+    s = str(en or "").lower()
+    ym = re.search(r"(\d+)\s*years?", s)
+    mm = re.search(r"(\d+)\s*months?", s)
+    cm = re.search(r"(\d+)\s*(?:contact|connection|conn|device|screen)", s)
+    parts = []
+    if ym:
+        y = int(ym.group(1))
+        parts.append("سنة" if y == 1 else ("سنتان" if y == 2 else "%d سنوات" % y))
+    if mm:
+        m = int(mm.group(1))
+        parts.append("شهر" if m == 1 else ("شهران" if m == 2 else ("%d أشهر" % m if m <= 10 else "%d شهرًا" % m)))
+    name = " + ".join(parts) if parts else str(en)
+    if cm:
+        c = int(cm.group(1))
+        name += " — " + ("جهاز" if c == 1 else ("جهازان" if c == 2 else "%d أجهزة" % c))
+    return name or str(en)
+
+
+def _line_row(r):
+    return {"id": r.get("id"), "username": r.get("username"), "password": r.get("password"),
+            "status": r.get("status"), "exp": r.get("expires_at"),
+            "max_connections": r.get("max_connections"), "package_id": r.get("package_id")}
 
 
 class FalconError(RuntimeError):
@@ -73,13 +101,63 @@ def packages(base, key):
     for p in d.get("packages", []) or []:
         if not isinstance(p, dict):
             continue
+        en = p.get("package_name") or p.get("name") or ("باقة %s" % p.get("id"))
         out.append({
             "id": p.get("id"),
-            "name": p.get("package_name") or p.get("name") or ("باقة %s" % p.get("id")),
+            "name": arabic_package_name(en),        # الاسم بالعربي
+            "name_en": en,
             "credits": p.get("official_credits", p.get("credits")),
             "max_connections": p.get("max_connections", 1),
             "bouquets": [],
         })
+    return out
+
+
+def status(base, key):
+    """حالة البوابة: النقاط، الهوست، عدد اللاينات، وآخر يوزر مُنشأ (الأحدث)."""
+    r = me(base, key)
+    try:
+        d = _request(base, key, "/lines?per=1")
+    except FalconError:
+        d = {}
+    lines = d.get("lines", []) or []
+    newest = lines[0] if lines else {}   # /lines مرتَّبة من الأحدث
+    return {
+        "provider": "falcon",
+        "credits": r.get("credits"),
+        "host": r.get("host"),
+        "username": r.get("username"),
+        "total": d.get("total"),
+        "last_id": newest.get("id"),
+        "last_username": newest.get("username"),
+    }
+
+
+def search(base, key, query, max_pages=12, per=50):
+    """بحث بالـ username (خادمي عبر q=) أو بالـ password (مسح الصفحات)."""
+    query = str(query or "").strip()
+    if not query:
+        return []
+    d = _request(base, key, "/lines?per=%d&q=%s" % (per, urllib.parse.quote(query)))
+    rows = d.get("lines", []) or []
+    if rows:
+        return [_line_row(r) for r in rows[:50]]
+    # لا نتائج username → ابحث بالـ password عبر الصفحات
+    out, total = [], None
+    for page in range(1, max_pages + 1):
+        try:
+            d = _request(base, key, "/lines?per=%d&page=%d" % (per, page))
+        except FalconError:
+            break
+        ls = d.get("lines", []) or []
+        total = d.get("total", total)
+        for r in ls:
+            if query in str(r.get("username", "")) or query in str(r.get("password", "")):
+                out.append(_line_row(r))
+                if len(out) >= 50:
+                    return out
+        if len(ls) < per or (total and page * per >= total):
+            break
     return out
 
 
