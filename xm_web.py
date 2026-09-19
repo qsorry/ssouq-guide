@@ -589,18 +589,39 @@ class PanelWebSession:
             "last_username": last.get("user"),
         }
 
+    _KW = r"(?:(?<![a-z])(?:credits?|balance|credit\s*balance)(?![a-z])|الرصيد|رصيد\w*|النقاط|نقاط\w*|الكريد\w*|كريد\w*)"
+    _CREDIT_RX = [
+        re.compile(r'data-credits?\s*=\s*["\']?\s*([0-9][\d,]*(?:\.\d+)?)', re.I),
+        re.compile(_KW + r'[^0-9<]{0,15}(?:<[^>]+>\s*){0,4}([0-9][\d,]*(?:\.\d+)?)', re.I | re.U),
+        re.compile(r'([0-9][\d,]*(?:\.\d+)?)\s*(?:<[^>]+>\s*){0,4}[^0-9>]{0,8}' + _KW, re.I | re.U),
+    ]
+
     @staticmethod
     def _extract_credits(html: str):
-        """رقم الرصيد من "Credits: N" (أو رصيد/النقاط)، ولو تخلّلته وسوم."""
-        for pat in (
-            r'credits?\s*[:：]?\s*(?:<[^>]+>\s*)*([0-9][\d,]*(?:\.\d+)?)',
-            r'(?:الرصيد|رصيد|النقاط|نقاط)\s*[:：]?\s*(?:<[^>]+>\s*)*([0-9][\d,]*(?:\.\d+)?)',
-            r'data-credits?=["\']?\s*([0-9][\d,]*(?:\.\d+)?)',
-        ):
-            m = re.search(pat, html, re.I)
+        """رقم الرصيد من صفحة اللوحة: "Credits: N"، "رصيدك: N"، "N نقاط"… إلخ،
+        بأي لغة، مع تحمّل الوسوم واللواحق العربية (رصيدك/نقاطك)."""
+        for rx in PanelWebSession._CREDIT_RX:
+            m = rx.search(html)
             if m:
-                return _to_num(m.group(1))
+                n = _to_num(m.group(1))
+                if n is not None:
+                    return n
         return None
+
+    def diag_web(self) -> dict:
+        """تشخيص مؤقّت: مقتطفات حول كلمات الرصيد في صفحة اللوحة لضبط الاستخراج على
+        اللوحة الحيّة (لا يحوي كلمات مرور — لوحة المُوزِّع)."""
+        self.ensure_login()
+        html = self._text(self._request("/"))
+        snips = []
+        for m in re.finditer(r'.{0,32}(?:credit|balance|رصيد|نقاط|نقط|كريد).{0,32}', html, re.I | re.U):
+            t = re.sub(r'\s+', ' ', m.group(0)).strip()
+            if t and t not in snips:
+                snips.append(t)
+            if len(snips) >= 25:
+                break
+        return {"len": len(html), "scripts": html.lower().count("<script"),
+                "credits": self._extract_credits(html), "snippets": snips}
 
     @staticmethod
     def _dashboard_number(html: str, label_re: str):

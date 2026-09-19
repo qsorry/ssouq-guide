@@ -684,6 +684,18 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         return self._send(200, {"results": [], "error": "تعذّر البحث في اللوحة"})
                 return self._send(200, {"results": [], "unsupported": True})
+            if path == P + "/api/web/diag":           # تشخيص مؤقّت لاستخراج الرصيد
+                gate = find_gate(acct, self._q("gate")) if acct else None
+                if not gate and acct:
+                    gate = next((g for g in acct.get("gates", []) if g.get("mode") == "web"), None)
+                if role != "account" or not gate or gate.get("mode") != "web":
+                    return self._send(403, {"error": "غير متاح"})
+                try:
+                    return self._send(200, web_session(gate).diag_web())
+                except xm_web.CaptchaNeeded:
+                    return self._send(200, {"need_login": True})
+                except Exception as e:
+                    return self._send(200, {"error": str(e)[:200]})
             if path == P + "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate or gate.get("mode") != "web":

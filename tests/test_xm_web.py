@@ -71,7 +71,11 @@ def main():
         check("Credits with tags between", EC('<div>Credits:</div> <b>1,250</b>') == 1250)
         check("Arabic الرصيد", EC('<div>الرصيد: 340</div>') == 340)
         check("data-credits attribute", EC('<i data-credits="88"></i>') == 88)
-        check("no credits -> None", EC('<div>Dashboard</div>') is None)
+        check("Arabic رصيدك with suffix + colon", EC('<div>رصيدك: 1002</div>') == 1002)
+        check("Arabic نقاطك suffix", EC('<span>نقاطك</span> <b>7</b>') == 7)
+        check("number before نقاط", EC('<h3>1,250</h3><small>نقاط</small>') == 1250)
+        check("English endpoints does NOT match points", EC('<div>endpoints ready 99</div>') is None)
+        check("no credits -> None", EC('<div>Dashboard total 5</div>') is None)
         check("card number precedes label", DN('<h3>253</h3><p>ACTIVE SUBSCRIPTIONS</p>', r"active\s+subscription") == 253)
         check("distinct label, not the earlier number",
               DN('<h3>26</h3><p>CREATED TODAY</p><h3>253</h3><p>ACTIVE SUBSCRIPTIONS</p>', r"active\s+subscription") == 253)
