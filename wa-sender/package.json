@@ -1,0 +1,17 @@
+{
+  "name": "ssouq-wa-sender",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "مرسل واتساب لصفحة التجديدات في guide.ssouq.com — جلسة واحدة، طابور بفواصل عشوائية وسقف يومي، وقائمة إيقاف تُبنى من ردود العملاء.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "baileys": "7.0.0-rc13",
+    "express": "^4.21.2",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}

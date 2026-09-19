@@ -574,6 +574,27 @@ class Handler(BaseHTTPRequestHandler):
             renewals.save_wa(wa)
             return self._send(200, {"ok": True, "settings": s})
 
+        if path == "/api/wa/test":              # رسالة تجريبية عبر خدمة الإرسال
+            wa = renewals.load_wa(); cfg = wa["settings"]
+            if not cfg.get("send_url"):
+                return self._send(400, {"error": "ضع رابط خدمة الإرسال في الإعدادات أولاً"})
+            base = cfg["send_url"].rstrip("/")
+            if base.endswith("/send"): base = base[:-len("/send")]
+            ph = renewals.norm_phone(str(req.get("phone", "")))
+            if not ph:
+                return self._send(400, {"error": "اكتب رقمًا صحيحًا"})
+            try:
+                rq = Request(base + "/test", data=json.dumps({"phone": ph}).encode(), method="POST",
+                             headers={"Content-Type": "application/json",
+                                      "Authorization": "Bearer " + cfg.get("send_token", "")})
+                with urlopen(rq, timeout=40) as r:
+                    return self._send(200, {"ok": True, "reply": json.loads(r.read() or b"{}")})
+            except Exception as e:
+                detail = ""
+                try: detail = e.read().decode("utf-8", "replace")[:200]
+                except Exception: pass
+                return self._send(502, {"error": f"{e} {detail}".strip()})
+
         if path == "/api/wa/offer":
             pct = req.get("pct"); days = req.get("days")
             coupon = str(req.get("coupon", "")).strip()

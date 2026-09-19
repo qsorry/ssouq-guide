@@ -142,6 +142,10 @@ label.f{display:block;font-size:.8rem;color:var(--mute);margin:10px 0 4px}
     <label class="f">مفتاح الخدمة</label>
     <input type="text" id="stok" style="width:100%;direction:ltr">
     <button class="go" id="save" style="margin-top:14px">حفظ</button>
+    <div class="bar" style="margin-top:14px">
+      <input type="text" id="tph" placeholder="جرّب على رقمك: 05xxxxxxxx" style="direction:ltr">
+      <button class="act ghost" id="tbtn">أرسل رسالة تجريبية</button>
+    </div>
     <div class="msg" id="setmsg"></div>
     <h2 style="margin-top:22px">لا تراسلني</h2>
     <div class="bar"><input type="text" id="oo" placeholder="05xxxxxxxx" style="direction:ltr">
@@ -319,6 +323,17 @@ $("#save").onclick = async () => {
     $("#setmsg").className = "msg ok"; $("#setmsg").textContent = "حُفظ.";
     await load();
   } catch (e) { $("#setmsg").className = "msg err"; $("#setmsg").textContent = e.message; }
+};
+$("#tbtn").onclick = async () => {
+  const b = $("#tbtn"); b.textContent = "يرسل…"; b.disabled = true;
+  try {
+    const r = await j(API + "/test", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: $("#tph").value }) });
+    $("#setmsg").className = "msg ok";
+    $("#setmsg").textContent = r.reply && r.reply.ok === false
+      ? "وصلت الخدمة لكن الإرسال فشل: " + (r.reply.error || "") : "أُرسلت — افحص جوالك.";
+  } catch (e) { $("#setmsg").className = "msg err"; $("#setmsg").textContent = e.message; }
+  b.textContent = "أرسل رسالة تجريبية"; b.disabled = false;
 };
 $("#ooadd").onclick = async () => { await j(API + "/optout", { method: "POST",
   headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: $("#oo").value, on: true }) });
