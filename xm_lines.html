@@ -45,6 +45,14 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 .toast.on{opacity:1}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 @media (max-width:480px){.row{grid-template-columns:1fr 1fr}.row .c{grid-column:span 2}}
+.cap-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.cap-box{background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:360px;width:100%;box-shadow:0 14px 40px rgba(0,0,0,.3)}
+.cap-box h3{margin:0 0 4px}
+.cap-hint{color:var(--mute);font-size:.85rem;margin:0 0 14px}
+.cap-img{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.cap-img img{height:52px;border:1px solid var(--line);border-radius:8px;background:#fff;flex:1;object-fit:contain}
+.cap-actions{display:flex;gap:8px;margin-top:12px}
+.cap-actions .go{flex:1}
 </style>
 </head>
 <body>
@@ -82,6 +90,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
     <div id="hist"></div>
   </section>
 </main>
+<div class="cap-overlay" id="capOverlay" hidden>
+  <div class="cap-box">
+    <h3>كود التحقّق</h3>
+    <p class="cap-hint">تعذّرت القراءة الآلية للكود — اكتب الكود الظاهر في الصورة لإكمال الدخول إلى اللوحة.</p>
+    <div class="cap-img"><img id="capImg" alt="captcha"><button type="button" class="ghost" id="capReload" title="تحديث">↻</button></div>
+    <input class="t" id="capInput" inputmode="numeric" placeholder="اكتب الكود من الصورة" autocomplete="off">
+    <div class="msg" id="capMsg"></div>
+    <div class="cap-actions"><button class="go" id="capSubmit">دخول</button><button class="ghost" id="capCancel">إلغاء</button></div>
+  </div>
+</div>
 <div class="toast" id="toast">تم النسخ</div>
 
 <script>
@@ -112,6 +130,29 @@ async function copy(text){
 }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+// ---- كود التحقّق (وضع الويب): يُقرأ آلياً في الخادم، وهنا نطلبه من المشغّل عند فشله ----
+let capRetry = null;
+const capUrl = () => "/admin/api/web/captcha?t=" + Date.now();
+function showCaptcha(retry){
+  capRetry = retry || null;
+  $("capMsg").textContent = ""; $("capInput").value = "";
+  $("capImg").src = capUrl();
+  $("capOverlay").hidden = false; $("capInput").focus();
+}
+function hideCaptcha(){ $("capOverlay").hidden = true; capRetry = null; }
+async function submitCaptcha(){
+  const code = $("capInput").value.trim();
+  if (!code) { $("capMsg").textContent = "اكتب الكود."; return; }
+  const btn = $("capSubmit"); btn.disabled = true; $("capMsg").textContent = "جاري التحقق…";
+  try {
+    const r = await fetch("/admin/api/web/login", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({captcha: code})});
+    const d = chk(await r.json());
+    if (d && d.ok) { const fn = capRetry; hideCaptcha(); if (fn) fn(); }
+    else { $("capMsg").textContent = (d && d.error) || "الكود غير صحيح"; $("capImg").src = capUrl(); $("capInput").value=""; $("capInput").focus(); }
+  } catch(e){ $("capMsg").textContent = "تعذّر الإرسال."; }
+  btn.disabled = false;
+}
+
 async function fetchPackages(){
   $("msg").textContent = "";
   if (location.protocol === "file:") {
@@ -121,6 +162,8 @@ async function fetchPackages(){
   $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
   try {
     const r = await fetch("/admin/api/packages"); const d = chk(await r.json());
+    if (d.need_captcha) { account = d.account || account; $("acct").textContent = account; showCaptcha(fetchPackages); $("pkgs").innerHTML = '<div class="empty">بانتظار كود التحقّق…</div>'; return; }
+    if (d.login_error) throw new Error(d.login_error);
     if (d.error) throw new Error(d.error);
     packages = d.packages;
     account = d.account || "";
@@ -129,7 +172,7 @@ async function fetchPackages(){
     renderHistory();
     $("pkgs").innerHTML = packages.length ? packages.map((p,i)=>`
       <label class="pkg"><input type="radio" name="pkg" value="${esc(p.id)}" ${i===0?"checked":""}>
-        <b>${esc(p.name)}</b><small>${p.bouquets.length} بوكيه</small></label>`).join("")
+        <b>${esc(p.name)}</b><small>${p.bouquets && p.bouquets.length ? p.bouquets.length + " بوكيه" : ""}</small></label>`).join("")
       : '<div class="empty">لا توجد باقات M3U في الحساب.</div>';
   } catch(e) {
     $("pkgs").innerHTML = '<div class="empty">تعذر تحميل الباقات.</div>';
@@ -148,6 +191,8 @@ async function createLines(){
     const r = await fetch("/admin/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({package_id: sel.value, host, username: $("u").value.trim(), password: $("p").value.trim(), count: +$("n").value || 1})});
     const d = chk(await r.json());
+    if (d.need_captcha) { btn.disabled = false; btn.textContent = "إنشاء اليوزر"; showCaptcha(createLines); return; }
+    if (d.login_error) throw new Error(d.login_error);
     if (d.error) throw new Error(d.error);
     const h = load(); d.lines.forEach(x => h.unshift(x)); save(h);
     $("res").textContent = d.lines.map(x=>x.line).join("\n");
@@ -177,6 +222,10 @@ $("hist").addEventListener("click", e => {
 });
 $("copyRes").onclick = () => copy($("res").textContent);
 $("create").onclick = createLines;
+$("capSubmit").onclick = submitCaptcha;
+$("capReload").onclick = () => { $("capImg").src = capUrl(); $("capInput").value = ""; $("capInput").focus(); };
+$("capCancel").onclick = hideCaptcha;
+$("capInput").addEventListener("keydown", e => { if (e.key === "Enter") submitCaptcha(); });
 $("reload").onclick = fetchPackages;
 $("saveHost").onclick = saveHost;
 $("clr").onclick = () => { if (confirm("مسح السجل من المتصفح؟")) { save([]); renderHistory(); } };
