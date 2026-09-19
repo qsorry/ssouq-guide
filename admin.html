@@ -114,8 +114,9 @@ function gateRow(g){
     <label>اسم البوابة</label><input data-f="name" value="${esc(g.name||"")}" placeholder="بوابة مرح">
     <label>طريقة الربط</label>
     <select data-f="mode">
-      <option value="web"${g.mode!=="api"?" selected":""}>جلسة ويب للوحة (دخول + كود تحقّق)</option>
-      <option value="api"${g.mode==="api"?" selected":""}>Reseller API (مفتاح API)</option>
+      <option value="web"${(g.mode==="web"||!g.mode)?" selected":""}>Xtream — جلسة ويب (دخول + كود تحقّق)</option>
+      <option value="api"${g.mode==="api"?" selected":""}>Xtream — Reseller API (مفتاح API)</option>
+      <option value="falcon"${g.mode==="falcon"?" selected":""}>فالكون (Falcon API)</option>
     </select>
     <div data-web hidden>
       <label>رابط اللوحة</label><input data-f="panel_base" value="${esc(g.panel_base||"")}" placeholder="http://panel-host:2052">

@@ -78,8 +78,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
       <label class="f" for="g_name">اسم البوابة</label><input class="t" id="g_name" placeholder="بوابة مرح">
       <label class="f" for="g_mode">طريقة الربط</label>
       <select class="t" id="g_mode">
-        <option value="web">جلسة ويب للوحة (دخول + كود تحقّق)</option>
-        <option value="api">Reseller API (مفتاح API)</option>
+        <option value="web">Xtream — جلسة ويب (دخول + كود تحقّق)</option>
+        <option value="api">Xtream — Reseller API (مفتاح API)</option>
+        <option value="falcon">فالكون (Falcon API)</option>
       </select>
       <div id="g_web">
         <label class="f" for="g_panel_base">رابط اللوحة</label><input class="t" id="g_panel_base" placeholder="http://panel-host:2052">
@@ -203,7 +204,7 @@ async function submitCaptcha(){
 
 // ---- إدارة البوابات (إضافة ذاتية؛ البيانات تُحفظ مشفَّرة) ----
 let myGates = [];
-function applyGateMode(){ const web = $("g_mode").value !== "api"; $("g_web").hidden = !web; $("g_api").hidden = web; }
+function applyGateMode(){ const web = $("g_mode").value === "web"; $("g_web").hidden = !web; $("g_api").hidden = web; }
 function gateForm(g){
   g = g || {mode:"web"};
   $("g_id").value=g.id||""; $("g_name").value=g.name||""; $("g_mode").value=g.mode==="api"?"api":"web";

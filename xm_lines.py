@@ -23,6 +23,7 @@ import copy
 import guide_pages
 import store_sitemap
 import xm_web
+import falcon_api
 import crypto_store
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
@@ -166,7 +167,7 @@ def clean_gate(g, old=None):
     ورابط شرحها الخاص. لا تحذف بيانات قديمة عند التعديل."""
     old = old or {}
     mode = str(g.get("mode", "")).strip().lower() or old.get("mode", "api")
-    if mode not in ("api", "web"):
+    if mode not in ("api", "web", "falcon"):
         mode = "api"
     out = {
         "id":         str(g.get("id") or old.get("id") or secrets.token_hex(4)),
@@ -182,8 +183,11 @@ def clean_gate(g, old=None):
     }
     if not out["name"]:
         raise ValueError("اسم البوابة مطلوب")
-    if not out["host"].startswith(("http://", "https://")):
+    # الهوست اختياري لفالكون (يُقرأ من /me)؛ إلزامي لغيرها.
+    if out["host"] and not out["host"].startswith(("http://", "https://")):
         raise ValueError("هوست البوابة \"%s\" يجب أن يبدأ بـ http:// أو https://" % out["name"])
+    if not out["host"] and mode != "falcon":
+        raise ValueError("هوست البوابة \"%s\" مطلوب" % out["name"])
     if out["guide_url"] and not out["guide_url"].startswith(("http://", "https://")):
         raise ValueError("رابط الشرح للبوابة \"%s\" يجب أن يبدأ بـ http:// أو https://" % out["name"])
     if mode == "web":
@@ -350,6 +354,8 @@ def get_packages(gate):
         return [{"id": p["value"], "name": p["text"], "credits": None,
                  "max_connections": 1, "bouquets": []}
                 for p in web_session(gate).packages()]
+    if gate.get("mode") == "falcon":                   # لوحة فالكون (Bearer)
+        return falcon_api.packages(gate["api_url"], gate["api_key"])
     pkgs = []
     for p in _unwrap(api(gate, "get_packages")):
         if not isinstance(p, dict):
@@ -388,6 +394,17 @@ def create_line(gate, pkg, username=None, password=None):
         _log_txt(gate, line, pkg["name"])
         return {"line": line, "username": r["username"], "password": r["password"],
                 "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"]}
+    if gate.get("mode") == "falcon":                   # الإنشاء عبر لوحة فالكون
+        r = falcon_api.create_line(gate["api_url"], gate["api_key"], pkg["id"],
+                                   username, password, pkg.get("max_connections"))
+        g2 = dict(gate)
+        if not g2.get("host"):
+            g2["host"] = falcon_api.host(gate["api_url"], gate["api_key"])
+        line = format_line(g2, r["username"], r["password"])
+        _log_txt(g2, line, pkg["name"])
+        return {"line": line, "username": r["username"], "password": r["password"],
+                "package": pkg["name"], "verified": True,
+                "time": datetime.datetime.now().isoformat(timespec="seconds")}
     # وضع الـ API
     username = username or rand_digits()
     password = password or rand_digits()
