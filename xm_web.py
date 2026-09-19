@@ -426,6 +426,35 @@ class PanelWebSession:
         raise RuntimeError("لم يُعثر على صفحة إضافة اليوزر (add-line)")
 
     @staticmethod
+    def _field_value(html: str, name: str) -> str:
+        """قيمة حقل النموذج مهما كان نوعه (input/select/textarea)، بأي ترتيب
+        سمات أو نمط اقتباس — يطابق منطق val() في سكربت السيلينيوم."""
+        nq = re.escape(name)
+        # input: value مقتبسة أو غير مقتبسة
+        m = re.search(r'<input\b[^>]*\bname=["\']?%s["\'\s/>][^>]*>' % nq, html, re.I)
+        if m:
+            v = re.search(r'\bvalue=["\']([^"\']*)["\']', m.group(0), re.I) \
+                or re.search(r'\bvalue=([^\s"\'>]+)', m.group(0), re.I)
+            if v:
+                return _html.unescape(v.group(1))
+        # select: الخيار المحدَّد ثم أول خيار له قيمة
+        sm = re.search(r'<select\b[^>]*\bname=["\']?%s["\'\s>][^>]*>(.*?)</select>' % nq, html, re.I | re.S)
+        if sm:
+            opts = re.findall(r'<option\b([^>]*)>(.*?)</option>', sm.group(1), re.I | re.S)
+            for want_sel in (True, False):
+                for attrs, _txt in opts:
+                    if want_sel and not re.search(r'\bselected\b', attrs, re.I):
+                        continue
+                    vv = re.search(r'\bvalue=["\']?([^"\'\s>]*)', attrs, re.I)
+                    if vv and vv.group(1):
+                        return _html.unescape(vv.group(1))
+        # textarea
+        tm = re.search(r'<textarea\b[^>]*\bname=["\']?%s["\'\s>][^>]*>(.*?)</textarea>' % nq, html, re.I | re.S)
+        if tm:
+            return _html.unescape(re.sub(r"<[^>]+>", "", tm.group(1))).strip()
+        return ""
+
+    @staticmethod
     def _form_action(html: str) -> str:
         m = re.search(r'<form[^>]*id=["\']user_form["\'][^>]*>', html, re.I) \
             or re.search(r'<form[^>]*>', html, re.I)
@@ -462,13 +491,15 @@ class PanelWebSession:
         username = str(username or _rand_digits())
         password = str(password or _rand_digits())
 
-        # 1) صفحة الإضافة → member_id والحقول الافتراضية
+        # 1) صفحة الإضافة → member_id والحقول الافتراضية (input/select/textarea)
         page = self._text(self._request(self.add_url))
-        member_id = self._scrape_input(page, "member_id")
+        member_id = self._field_value(page, "member_id")
         if not member_id:
-            raise RuntimeError("member_id غير موجود في صفحة الإضافة")
-        is_official = self._scrape_input(page, "is_official") or "1"
-        custom_playlist = self._scrape_input(page, "custom_playlist_id")
+            names = ", ".join(sorted(set(re.findall(
+                r'name=["\']([^"\']*member[^"\']*)["\']', page, re.I)))) or "لا يوجد حقل باسم يحوي member"
+            raise RuntimeError("member_id غير موجود في صفحة الإضافة (الحقول المتاحة: %s)" % names)
+        is_official = self._field_value(page, "is_official") or "1"
+        custom_playlist = self._field_value(page, "custom_playlist_id")
         action = self.add_action or self._form_action(page) or "/user_reseller.php"
 
         # 2) بوكيهات الباقة (= كل Subscribed)

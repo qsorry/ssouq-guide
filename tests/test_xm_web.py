@@ -51,13 +51,26 @@ def main():
     srv = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_panel.py"), str(PORT), USER, PASS],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
+        print("== 0. _field_value: input / select / textarea / unquoted ==")
+        FV = xm_web.PanelWebSession._field_value
+        check("input, quoted value", FV('<input type=hidden name="member_id" value="8842">', "member_id") == "8842")
+        check("input, value before name", FV('<input value="77" name="member_id">', "member_id") == "77")
+        check("input, single quotes", FV("<input name='member_id' value='55'>", "member_id") == "55")
+        check("input, unquoted value", FV('<input name=member_id value=8842>', "member_id") == "8842")
+        check("select, selected option", FV('<select name="member_id"><option value="1">a</option>'
+              '<option value="8842" selected>me</option></select>', "member_id") == "8842")
+        check("select, first option when none selected", FV('<select name="member_id">'
+              '<option value="">--</option><option value="900">x</option></select>', "member_id") == "900")
+        check("textarea", FV('<textarea name="member_id">4242</textarea>', "member_id") == "4242")
+        check("absent -> empty", FV('<input name="other" value="z">', "member_id") == "")
+
         for _ in range(50):
             try:
                 urllib.request.urlopen(BASE + "/token.php", timeout=0.3)
                 break
             except Exception:
                 time.sleep(0.1)
-        print(f"mock panel up on {BASE} (pid {srv.pid})\n")
+        print(f"\nmock panel up on {BASE} (pid {srv.pid})\n")
 
         data_dir = tempfile.mkdtemp(prefix="xmweb_")
         acct = {"id": "acc1", "user": USER, "password": PASS,
