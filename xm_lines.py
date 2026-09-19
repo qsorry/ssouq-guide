@@ -25,11 +25,15 @@ import store_sitemap
 import xm_web
 import falcon_api
 import crypto_store
+import salla_api
+import wa_send
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
 _SENSITIVE_ACCT = ()
 _SENSITIVE_GATE = ("panel_pass", "api_key")
+_SENSITIVE_SVC = ("salla_secret", "salla_token")   # أسرار خدمة سلة المشفَّرة
+_SENSITIVE_WA = ("token", "secret")                # أسرار قناة الواتساب المشفَّرة
 
 
 def _is_hash(v):
@@ -46,6 +50,16 @@ def _crypt_store(st, fn):
             for k in _SENSITIVE_GATE:
                 if k in g:
                     g[k] = fn(g[k], DATA_DIR)
+    svc = out.get("service")
+    if isinstance(svc, dict):
+        for k in _SENSITIVE_SVC:
+            if svc.get(k):
+                svc[k] = fn(svc[k], DATA_DIR)
+        wa = svc.get("wa")
+        if isinstance(wa, dict):
+            for k in _SENSITIVE_WA:
+                if wa.get(k):
+                    wa[k] = fn(wa[k], DATA_DIR)
     return out
 
 # ================= الإعدادات =================
@@ -118,6 +132,7 @@ def load_store():
     st.setdefault("admin", None)
     st.setdefault("accounts", [])
     st = _crypt_store(st, crypto_store.decrypt)     # فكّ التشفير في الذاكرة
+    st["service"] = normalize_service(st.get("service"))
     # ترقية غير مدمّرة: كل حساب قديم → شخص ببوابة واحدة.
     migrated = False
     for i, a in enumerate(st["accounts"]):
@@ -308,6 +323,183 @@ def format_line(gate, username, password):
     if guide:
         line += " Guide " + guide
     return line
+
+
+# ================= خدمة سلة → واتساب (تسليم تلقائي) =================
+FULFILL_FILE = os.path.join(DATA_DIR, "fulfillments.json")
+POLL_INTERVAL = int(os.environ.get("SALLA_POLL_INTERVAL", "300"))
+_MAX_UNITS = 10                                       # حد أقصى للتوليد في الطلب الواحد
+
+
+def _now_iso():
+    tz = datetime.timezone(datetime.timedelta(hours=3))   # توقيت السعودية للعرض
+    return datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M")
+
+
+def default_service():
+    return {"enabled": False, "dry_run": True, "poll": False,
+            "salla_secret": "", "salla_token": "",
+            "wa": {"type": "none", "url": "", "secret": "", "token": "", "phone_id": "", "version": "v21.0"},
+            "template": "اشتراكك جاهز ✅\n{line}\n\nشكرًا لطلبك 🌟",
+            "map": []}
+
+
+def _clean_map_row(m):
+    return {"product_id": str(m.get("product_id", "")).strip(),
+            "account_id": str(m.get("account_id", "")).strip(),
+            "gate_id": str(m.get("gate_id", "")).strip(),
+            "package_id": str(m.get("package_id", "")).strip(),
+            "package_name": str(m.get("package_name", "")).strip()}
+
+
+def normalize_service(svc):
+    d = default_service()
+    if isinstance(svc, dict):
+        for k in ("enabled", "dry_run", "poll"):
+            d[k] = bool(svc.get(k, d[k]))
+        for k in ("salla_secret", "salla_token", "template"):
+            d[k] = str(svc.get(k, d[k]) or "")
+        wa = svc.get("wa") if isinstance(svc.get("wa"), dict) else {}
+        for k in d["wa"]:
+            d["wa"][k] = str(wa.get(k, d["wa"][k]) or "")
+        d["wa"]["type"] = (d["wa"]["type"] or "none").lower()
+        d["map"] = [_clean_map_row(m) for m in (svc.get("map") or []) if isinstance(m, dict)]
+    return d
+
+
+def clean_service(cfg, old):
+    """يبني إعداد الخدمة ويُبقي الأسرار عند تركها فارغة (كالبوابات)."""
+    old = normalize_service(old)
+    out = normalize_service(cfg)
+    for k in _SENSITIVE_SVC:
+        if not out[k]:
+            out[k] = old[k]
+    for k in _SENSITIVE_WA:
+        if not out["wa"][k]:
+            out["wa"][k] = old["wa"][k]
+    return out
+
+
+def redact_service(cfg):
+    """نسخة صالحة للمتصفح: بلا أسرار، مع أعلام has_*."""
+    c = normalize_service(cfg)
+    return {"enabled": c["enabled"], "dry_run": c["dry_run"], "poll": c["poll"],
+            "template": c["template"], "map": c["map"],
+            "has_salla_secret": bool(c["salla_secret"]), "has_salla_token": bool(c["salla_token"]),
+            "wa": {"type": c["wa"]["type"], "url": c["wa"]["url"], "phone_id": c["wa"]["phone_id"],
+                   "version": c["wa"]["version"], "has_token": bool(c["wa"]["token"]),
+                   "has_secret": bool(c["wa"]["secret"])}}
+
+
+def load_fulfillments():
+    try:
+        with open(FULFILL_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_fulfillments(d):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = FULFILL_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, FULFILL_FILE)
+
+
+def _find_account(st, account_id):
+    return next((a for a in st["accounts"] if str(a.get("id")) == str(account_id)), None)
+
+
+def _gen_for_map(st, m, simulate):
+    """يولّد سطر اشتراك لصفّ ربط واحد. simulate=True: سطر تجريبي بلا لمس اللوحة."""
+    acct = _find_account(st, m["account_id"])
+    gate = find_gate(acct, m["gate_id"]) if acct else None
+    if not gate:
+        return {"ok": False, "error": "بوابة الربط غير موجودة (عدّل الربط)"}
+    g = gate
+    if not g.get("guide_url") and acct.get("guide_url"):
+        g = {**g, "guide_url": acct["guide_url"]}
+    if simulate:
+        return {"ok": True, "line": format_line(g, "TEST-USER", "TEST-PASS"),
+                "username": "TEST-USER", "password": "TEST-PASS", "simulated": True}
+    pkg = {"id": m["package_id"], "name": m["package_name"] or ("باقة " + m["package_id"])}
+    r = create_line(g, pkg)
+    return {"ok": True, "line": r["line"], "username": r["username"],
+            "password": r["password"], "verified": r.get("verified", True)}
+
+
+def build_message(template, line, name):
+    t = template or default_service()["template"]
+    return t.replace("{line}", line).replace("{lines}", line).replace("{name}", name or "")
+
+
+def fulfill_order(st, order, source="webhook", force=False):
+    """يولّد الاشتراك(ات) للطلب ويرسلها على واتساب، محترمًا enabled/dry_run والتكرار."""
+    svc = st["service"]
+    oid = order.get("order_id") or ""
+    res = {"order_id": oid, "reference": order.get("reference", ""), "source": source,
+           "at": _now_iso(), "phone": order.get("phone", ""),
+           "name": order.get("customer_name", ""), "lines": [], "status": "ignored"}
+    if not svc.get("enabled"):
+        res["status"] = "disabled"; return res
+    if not salla_api.is_paid(order):
+        res["status"] = "unpaid"; return res
+    fulfilled = load_fulfillments()
+    prev = fulfilled.get(oid)
+    if prev and prev.get("status") in ("sent", "dry") and not force:
+        return {**prev, "skipped": "already"}
+    matched = [(item, m) for item in order.get("items", [])
+               for m in svc.get("map", []) if m["product_id"] and m["product_id"] == item["product_id"]]
+    if not matched:
+        res["status"] = "no_match"; fulfilled[oid] = res; save_fulfillments(fulfilled); return res
+    if not order.get("phone"):
+        res["status"] = "no_phone"; fulfilled[oid] = res; save_fulfillments(fulfilled); return res
+    simulate = bool(svc.get("dry_run"))
+    wa_cfg = {"type": "none"} if simulate else svc.get("wa", {})
+    any_ok = any_fail = False
+    for item, m in matched:
+        for _ in range(min(int(item.get("quantity", 1) or 1), _MAX_UNITS)):
+            try:
+                g = _gen_for_map(st, m, simulate)
+            except xm_web.CaptchaNeeded:
+                g = {"ok": False, "error": "بوابة الويب تحتاج كود تحقّق — سجّل الدخول لها من صفحة الإنشاء أولًا"}
+            except Exception as e:
+                g = {"ok": False, "error": str(e)[:200]}
+            row = {"product_id": m["product_id"], "product": item.get("name", "")}
+            if not g.get("ok"):
+                row["error"] = g.get("error"); any_fail = True; res["lines"].append(row); continue
+            msg = build_message(svc.get("template"), g["line"], order.get("customer_name", ""))
+            wr = wa_send.send(wa_cfg, order["phone"], msg)
+            row.update({"line": g["line"], "wa": wr, "simulated": g.get("simulated", False)})
+            any_ok = any_ok or bool(wr.get("ok")); any_fail = any_fail or not wr.get("ok")
+            res["lines"].append(row)
+    res["status"] = ("dry" if simulate else
+                     ("sent" if any_ok and not any_fail else ("partial" if any_ok else "failed")))
+    fulfilled[oid] = res; save_fulfillments(fulfilled)
+    return res
+
+
+def _poll_loop():
+    while True:
+        time.sleep(POLL_INTERVAL)
+        try:
+            with _lock:
+                st = load_store()
+                svc = st["service"]
+                if not (svc.get("enabled") and svc.get("poll") and svc.get("salla_token")):
+                    continue
+                fulfilled = load_fulfillments()
+                for o in salla_api.fetch_orders(svc["salla_token"], per_page=25, page=1):
+                    if o.get("order_id") and o["order_id"] not in fulfilled:
+                        fulfill_order(st, o, source="poll")
+        except Exception:
+            pass
+
+
+def start_poller():
+    threading.Thread(target=_poll_loop, daemon=True).start()
 
 
 # ---------------- API الريسيلر ----------------
@@ -723,6 +915,15 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, {"accounts": [redact_account(a) for a in st["accounts"]]})
+            if path == P + "/api/service":
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, redact_service(st["service"]))
+            if path == P + "/api/service/log":
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                rows = sorted(load_fulfillments().values(), key=lambda r: r.get("at", ""), reverse=True)[:100]
+                return self._send(200, {"log": rows})
             self._send(404, {"error": "not found"})
         except Exception as e:
             self._send(500, {"error": str(e)})
@@ -743,6 +944,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/m3u-generated":            # عدّاد عام لأداة M3U (بدون تسجيل دخول)
             with _lock:
                 return self._send(200, {"m3u": bump_stat("m3u")})
+        if path == "/salla/webhook":                # ويبهوك سلة (عام، موقَّع)
+            return self._salla_webhook()
         if not path.startswith(P + "/api/"):
             return self._send(404, {"error": "not found"})
         path = path[len(P):]
@@ -774,6 +977,10 @@ class Handler(BaseHTTPRequestHandler):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._admin_post(path, st)
+                if path.startswith("/api/service"):
+                    if role != "admin":
+                        return self._send(403, {"error": "للمدير فقط"})
+                    return self._service_post(path, st)
                 if path.startswith("/api/mygates"):    # الشخص يدير بواباته بنفسه
                     if role != "account":
                         return self._send(403, {"error": "غير متاح"})
@@ -887,8 +1094,54 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"lines": out})
 
 
+    def _salla_webhook(self):
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        raw = self.rfile.read(n) if n > 0 else b""
+        with _lock:
+            st = load_store()
+            svc = st["service"]
+            if not svc.get("enabled"):
+                return self._send(200, {"ok": True, "ignored": "disabled"})
+            if not salla_api.verify(svc.get("salla_secret", ""), svc.get("salla_token", ""), raw, self.headers):
+                return self._send(401, {"error": "توقيع غير صالح"})
+            try:
+                payload = json.loads(raw.decode("utf-8", "replace") or "{}")
+            except ValueError:
+                return self._send(400, {"error": "جسم غير صالح"})
+            order = salla_api.parse_order(payload)
+            if not order.get("order_id"):
+                return self._send(200, {"ok": True, "ignored": "no_order"})
+            res = fulfill_order(st, order, source="webhook")
+            return self._send(200, {"ok": True, "status": res.get("status")})
+
+    def _service_post(self, path, st):
+        req = self._body()
+        if path == "/api/service":
+            st["service"] = clean_service(req, st.get("service"))
+            save_store(st)
+            return self._send(200, {"ok": True, "service": redact_service(st["service"])})
+        if path == "/api/service/test":
+            to = salla_api.normalize_phone(req.get("phone", ""), req.get("code", ""))
+            if not to:
+                return self._send(400, {"error": "اكتب رقم واتساب صحيح"})
+            text = str(req.get("text") or "رسالة اختبار من خدمة سلة ← واتساب ✅")
+            r = wa_send.send(st["service"].get("wa", {}), to, text)
+            return self._send(200, {"ok": bool(r.get("ok")), "result": r, "to": to})
+        if path == "/api/service/fulfill":       # تنفيذ يدوي (اختبار الربط/إعادة إرسال)
+            order = {"order_id": str(req.get("order_id") or ("manual-" + secrets.token_hex(3))),
+                     "reference": str(req.get("order_id") or ""),
+                     "phone": salla_api.normalize_phone(req.get("phone", ""), req.get("code", "")),
+                     "customer_name": str(req.get("name", "")), "status": "paid",
+                     "items": [{"product_id": str(req.get("product_id", "")), "name": "",
+                                "sku": "", "quantity": max(1, min(int(req.get("count", 1) or 1), 10))}]}
+            res = fulfill_order(st, order, source="manual", force=bool(req.get("force")))
+            return self._send(200, {"ok": res.get("status") in ("sent", "dry", "partial"), "result": res})
+        return self._send(404, {"error": "not found"})
+
+
 def web():
     print(f"الصفحة تعمل: http://{BIND}:{PORT}   (Ctrl+C للإيقاف)", flush=True)
+    start_poller()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 

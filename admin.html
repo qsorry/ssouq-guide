@@ -40,6 +40,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 .gate select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}
 .gate .rm{background:transparent;border:1px solid var(--err);color:var(--err);padding:4px 10px;font-size:.8rem}
 .acct code.g{color:var(--ink);margin-top:4px}
+.gsel{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}
+textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 </style>
 </head>
 <body>
@@ -68,6 +70,60 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
   <section>
     <h2>الحسابات <span><button class="ghost" id="exp">تصدير</button> <button class="ghost" id="imp">استيراد</button><input type="file" id="file" accept="application/json" hidden></span></h2>
     <div id="list"><div class="empty">جاري التحميل…</div></div>
+  </section>
+
+  <section>
+    <h2>خدمة سلة ← واتساب <span><button class="ghost" id="svcReload">تحديث السجل</button></span></h2>
+    <p class="sub" style="margin:0 0 10px">تسليم الاشتراك تلقائيًا على واتساب لأي عميل يشتري من متجرك في سلة.</p>
+    <label>رابط الويبهوك — ضعه في سلة: المتجر ← الإعدادات ← الويبهوك (حدث order.created و order.updated)</label>
+    <input id="svcHook" readonly value="https://guide.ssouq.com/salla/webhook" onclick="this.select()">
+    <div class="g2">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="svcEnabled" style="width:auto"> تشغيل الخدمة</label>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="svcDry" style="width:auto"> وضع تجريبي (لا توليد/إرسال فعلي)</label>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="svcPoll" style="width:auto"> سحب دوري من سلة (يحتاج توكن الإدارة)</label>
+
+    <label style="margin-top:14px;font-weight:700;color:var(--ink)">سلة</label>
+    <div class="g2">
+      <div><label for="svcSecret">سر الويبهوك (Signature)</label><input id="svcSecret" type="password" autocomplete="off"></div>
+      <div><label for="svcToken">توكن إدارة سلة (اختياري — للسحب الدوري)</label><input id="svcToken" type="password" autocomplete="off"></div>
+    </div>
+
+    <label style="margin-top:14px;font-weight:700;color:var(--ink)">قناة واتساب</label>
+    <label for="svcWaType">الطريقة</label>
+    <select id="svcWaType" class="gsel">
+      <option value="none">تجريبي (بلا إرسال)</option>
+      <option value="cloud">WhatsApp Cloud API (رسمي)</option>
+      <option value="http">بوابة HTTP خاصة (رابطك)</option>
+    </select>
+    <div id="svcWaCloud" hidden>
+      <label for="svcWaToken">Access Token</label><input id="svcWaToken" type="password" autocomplete="off">
+      <div class="g2"><div><label for="svcWaPhone">Phone Number ID</label><input id="svcWaPhone"></div>
+        <div><label for="svcWaVer">الإصدار</label><input id="svcWaVer" placeholder="v21.0"></div></div>
+    </div>
+    <div id="svcWaHttp" hidden>
+      <label for="svcWaUrl">رابط البوابة — POST ‏{to, text}</label><input id="svcWaUrl" placeholder="https://...">
+      <label for="svcWaSecret">سر البوابة (Authorization) — اختياري</label><input id="svcWaSecret" type="password" autocomplete="off">
+    </div>
+
+    <label for="svcTpl" style="margin-top:14px">نص الرسالة — ‏{line} السطر · ‏{name} اسم العميل</label>
+    <textarea id="svcTpl" rows="3" class="gsel"></textarea>
+
+    <label style="margin-top:14px;font-weight:700;color:var(--ink)">ربط منتجات سلة بالبوابات</label>
+    <p class="sub" style="margin:0 0 6px">كل منتج (بمعرّفه في سلة) ← الحساب والبوابة والباقة التي يُولَّد منها الاشتراك.</p>
+    <div id="svcMap"></div>
+    <button class="ghost" id="svcAddMap" style="width:100%;margin-top:8px">+ إضافة ربط منتج</button>
+
+    <button class="go" id="svcSave">حفظ الخدمة</button>
+    <div class="msg" id="svcMsg"></div>
+
+    <label style="margin-top:14px;font-weight:700;color:var(--ink)">اختبار الإرسال</label>
+    <div class="g2"><div><label for="svcTestPhone">رقم واتساب</label><input id="svcTestPhone" placeholder="05xxxxxxxx"></div>
+      <div style="display:flex;align-items:flex-end"><button class="ghost" id="svcTest" style="width:100%;padding:10px">إرسال رسالة اختبار</button></div></div>
+    <div class="msg" id="svcTestMsg"></div>
+
+    <label style="margin-top:14px;font-weight:700;color:var(--ink)">سجل التسليم</label>
+    <div id="svcLog"><div class="empty">—</div></div>
   </section>
 
   <section>
@@ -198,8 +254,72 @@ $("apwBtn").onclick = async () => {
   try { await post("/admin/api/accounts/admin-password", {password: $("apw").value}); $("apw").value = ""; say($("apwMsg"), "تم التغيير. سيطلب المتصفح الدخول من جديد.", true); }
   catch(e) { say($("apwMsg"), e.message); }
 };
+// ---- خدمة سلة ← واتساب ----
+function applyWaType(){ const t=$("svcWaType").value; $("svcWaCloud").hidden=t!=="cloud"; $("svcWaHttp").hidden=t!=="http"; }
+function svcMapRow(m){
+  m = m || {};
+  const el=document.createElement("div"); el.className="gate";
+  const accOpts=accounts.map(a=>`<option value="${esc(a.id)}"${a.id===m.account_id?" selected":""}>${esc(a.name)}</option>`).join("");
+  el.innerHTML=`<div class="gh"><b>ربط منتج</b><button type="button" class="rm">حذف</button></div>
+    <label>معرّف المنتج في سلة (Product ID)</label><input data-f="product_id" value="${esc(m.product_id||"")}" placeholder="1234567890">
+    <div class="g2"><div><label>الحساب</label><select data-f="account_id"><option value="">—</option>${accOpts}</select></div>
+      <div><label>البوابة</label><select data-f="gate_id"></select></div></div>
+    <div class="g2"><div><label>معرّف الباقة (Package ID)</label><input data-f="package_id" value="${esc(m.package_id||"")}"></div>
+      <div><label>اسم الباقة</label><input data-f="package_name" value="${esc(m.package_name||"")}" style="direction:rtl;text-align:right"></div></div>`;
+  const accSel=el.querySelector('[data-f="account_id"]'), gateSel=el.querySelector('[data-f="gate_id"]');
+  const fillGates=()=>{ const a=accounts.find(x=>x.id===accSel.value); const gs=(a&&a.gates)||[];
+    gateSel.innerHTML='<option value="">—</option>'+gs.map(g=>`<option value="${esc(g.id)}"${g.id===m.gate_id?" selected":""}>${esc(g.name)} (${g.mode})</option>`).join(""); };
+  accSel.addEventListener("change",fillGates); fillGates();
+  el.querySelector(".rm").onclick=()=>el.remove();
+  return el;
+}
+function readSvcMap(){ return [...$("svcMap").children].map(el=>{const o={};el.querySelectorAll("[data-f]").forEach(i=>o[i.dataset.f]=i.value.trim());return o;})
+  .filter(m=>m.product_id); }
+function readService(){
+  return {enabled:$("svcEnabled").checked, dry_run:$("svcDry").checked, poll:$("svcPoll").checked,
+    salla_secret:$("svcSecret").value, salla_token:$("svcToken").value,
+    wa:{type:$("svcWaType").value, url:$("svcWaUrl").value, secret:$("svcWaSecret").value,
+        token:$("svcWaToken").value, phone_id:$("svcWaPhone").value, version:$("svcWaVer").value||"v21.0"},
+    template:$("svcTpl").value, map:readSvcMap()};
+}
+async function loadService(){
+  try {
+    const r=await fetch("/admin/api/service"); const d=chk(await r.json()); if(d.error) throw new Error(d.error);
+    $("svcEnabled").checked=!!d.enabled; $("svcDry").checked=!!d.dry_run; $("svcPoll").checked=!!d.poll;
+    $("svcTpl").value=d.template||"";
+    $("svcSecret").value=""; $("svcSecret").placeholder=d.has_salla_secret?"محفوظ — اتركه فارغًا للإبقاء":"";
+    $("svcToken").value=""; $("svcToken").placeholder=d.has_salla_token?"محفوظ — اتركه فارغًا للإبقاء":"";
+    const wa=d.wa||{};
+    $("svcWaType").value=wa.type||"none"; $("svcWaUrl").value=wa.url||""; $("svcWaPhone").value=wa.phone_id||""; $("svcWaVer").value=wa.version||"v21.0";
+    $("svcWaToken").value=""; $("svcWaToken").placeholder=wa.has_token?"محفوظ — اتركه فارغًا":"";
+    $("svcWaSecret").value=""; $("svcWaSecret").placeholder=wa.has_secret?"محفوظ — اتركه فارغًا":"";
+    applyWaType();
+    $("svcMap").innerHTML="";
+    const map=(d.map&&d.map.length)?d.map:[null];
+    map.forEach(m=>$("svcMap").appendChild(svcMapRow(m)));
+  } catch(e){ say($("svcMsg"), e.message); }
+  loadLog();
+}
+async function loadLog(){
+  try {
+    const r=await fetch("/admin/api/service/log"); const d=chk(await r.json()); const rows=d.log||[];
+    const S={sent:"✅ أُرسل",dry:"🧪 تجريبي",partial:"⚠ جزئي",failed:"❌ فشل",no_match:"— لا ربط",no_phone:"— بلا رقم",unpaid:"— غير مدفوع",disabled:"متوقّف"};
+    $("svcLog").innerHTML = rows.length ? rows.slice(0,30).map(r=>{
+      const lines=(r.lines||[]).map(l=> l.error?("⚠ "+esc(l.error)):esc(l.line||"")).join("<br>");
+      return `<div class="acct"><div class="i"><b>#${esc(r.reference||r.order_id)} — ${esc(S[r.status]||r.status)}</b>
+        <code>${esc(r.at||"")} · ${esc(r.phone||"")} · ${esc(r.name||"")}</code>${lines?`<code class="g">${lines}</code>`:""}</div></div>`;
+    }).join("") : '<div class="empty">لا عمليات بعد.</div>';
+  } catch(e){ $("svcLog").innerHTML='<div class="empty">تعذّر تحميل السجل</div>'; }
+}
+$("svcWaType").addEventListener("change", applyWaType);
+$("svcAddMap").onclick=()=>$("svcMap").appendChild(svcMapRow(null));
+$("svcReload").onclick=loadLog;
+$("svcSave").onclick=async()=>{ try{ await post("/admin/api/service", readService()); say($("svcMsg"),"تم الحفظ",true); loadService(); } catch(e){ say($("svcMsg"),e.message);} };
+$("svcTest").onclick=async()=>{ try{ const d=await post("/admin/api/service/test",{phone:$("svcTestPhone").value});
+  say($("svcTestMsg"), d.ok?("تم الإرسال إلى "+d.to):("فشل: "+((d.result&&d.result.error)||"")), d.ok); } catch(e){ say($("svcTestMsg"),e.message);} };
+
 fill(null);
-load();
+load().then(loadService);
 </script>
 </body>
 </html>
