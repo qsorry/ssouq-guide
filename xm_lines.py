@@ -85,8 +85,15 @@ SESSION_TTL = 30 * 24 * 3600                          # مدة الجلسة (30 
 PORT      = int(os.environ.get("XM_PORT", "8080"))
 BIND      = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
 ADMIN_USER = "admin"                                  # اسم دخول المدير
+# كلمة مرور المدير من متغيّر البيئة (يبقى عبر إعادات النشر) — يلغي صفحة الإعداد
+ADMIN_ENV_PW = os.environ.get("XM_ADMIN_PASSWORD", "").strip()
 DIGITS    = 12                                        # طول اليوزر والباسورد (أرقام)
 # ============================================
+
+
+def admin_configured(st):
+    """المدير مُعدّ إمّا بكلمة مرور محفوظة أو بمتغيّر بيئة (لا صفحة إعداد حينها)."""
+    return bool(st.get("admin")) or bool(ADMIN_ENV_PW)
 
 _lock = threading.Lock()
 _sessions = {}   # token -> {"role","user","exp"}
@@ -546,7 +553,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _login(st, u, p):
-        if u == ADMIN_USER and check_pw(p, st["admin"]):
+        if u == ADMIN_USER and ((ADMIN_ENV_PW and hmac.compare_digest(p, ADMIN_ENV_PW)) or check_pw(p, st["admin"])):
             return "admin", None
         for a in st["accounts"]:
             if not hmac.compare_digest(u, a.get("user", "")):
@@ -610,7 +617,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, raw="404".encode(), ctype="text/plain; charset=utf-8")
         # ----- الأداة تحت /admin -----
         st = load_store()
-        if not st["admin"]:                       # الإعداد الأول: لا يوجد مدير بعد
+        if not admin_configured(st):               # الإعداد الأول: لا يوجد مدير بعد
             return self._page(PAGES[P + "/setup"]) if path == P + "/setup" else self._redirect(P + "/setup")
         if path == P + "/setup":
             return self._redirect(P)
@@ -712,7 +719,7 @@ class Handler(BaseHTTPRequestHandler):
             with _lock:
                 st = load_store()
                 if path == "/api/setup":
-                    if st["admin"]:
+                    if admin_configured(st):
                         return self._send(400, {"error": "تم الإعداد مسبقاً"})
                     pw = str(self._body().get("password", ""))
                     if len(pw) < 6:
@@ -720,7 +727,7 @@ class Handler(BaseHTTPRequestHandler):
                     st["admin"] = hash_pw(pw)
                     save_store(st)
                     return self._send(200, {"ok": True}, extra=self._set_cookie(new_session("admin", ADMIN_USER)))
-                if not st["admin"]:
+                if not admin_configured(st):
                     return self._send(400, {"error": "أكمل الإعداد أولاً"})
                 if path == "/api/login":
                     req = self._body()
