@@ -408,10 +408,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redirect(P + "/accounts") if role == "admin" else self._page(PAGES[P])
             if path == P + "/accounts":
                 return self._page(PAGES[P + "/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
-            if path == P + "/whatsapp":
-                return self._page(PAGES[P + "/whatsapp"])
+            if path == P + "/whatsapp":                 # بيانات عملاء وأكواد: للمدير وحده
+                return self._page(PAGES[P + "/whatsapp"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
             if path == P + "/api/wa/data":
-                return self._wa_data()
+                return self._wa_data() if role == "admin" else self._send(403, {"error": "للمدير فقط"})
             if path == P + "/api/me":
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None})
             if path == P + "/api/packages":
@@ -450,8 +450,11 @@ class Handler(BaseHTTPRequestHandler):
                 st = load_store()
                 if not st["admin"]:
                     return self._send(400, {"error": "أكمل الإعداد أولاً"})
-                if not self._who(st)[0]:
+                role_ = self._who(st)[0]
+                if not role_:
                     return self._deny(path)
+                if role_ != "admin":                    # حسابات M3U لا ترى بيانات العملاء
+                    return self._send(403, {"error": "للمدير فقط"})
                 with _wa_lock:
                     return self._wa_post(path)
             with _lock:
