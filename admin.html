@@ -34,6 +34,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 .acct code{direction:ltr;display:block;font:500 .78rem/1.6 "IBM Plex Mono",Consolas,monospace;color:var(--mute);overflow-wrap:anywhere}
 .acct .b{display:flex;gap:6px}
 .empty{color:var(--mute);text-align:center;padding:10px}
+.gate{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;background:rgba(0,0,0,.02)}
+.gate .gh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.gate .gh b{color:var(--ink)}
+.gate select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}
+.gate .rm{background:transparent;border:1px solid var(--err);color:var(--err);padding:4px 10px;font-size:.8rem}
+.acct code.g{color:var(--ink);margin-top:4px}
 </style>
 </head>
 <body>
@@ -44,25 +50,15 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
   <section>
     <h2 id="formTitle">إضافة حساب</h2>
     <input type="hidden" id="id">
-    <label for="name">اسم الحساب (يظهر في الصفحة)</label><input id="name" placeholder="مثال: Server 1">
-    <label for="mode">طريقة الإنشاء</label>
-    <select id="mode" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit">
-      <option value="api">Reseller API (مفتاح API)</option>
-      <option value="web">جلسة ويب للوحة (دخول + كود تحقّق)</option>
-    </select>
+    <p class="sub" style="margin:0 0 10px">دخول الشخص للأداة، وبداخله بوابات — كل بوابة لها ربطها وهوستها ورابط شرحها.</p>
+    <label for="name">اسم الحساب (الشخص)</label><input id="name" placeholder="مثال: أحمد">
     <div class="g2">
-      <div><label for="user">اسم الدخول للوحة</label><input id="user" autocomplete="off" placeholder="user1"></div>
-      <div><label for="password">كلمة المرور</label><input id="password" autocomplete="new-password" placeholder="4 أحرف على الأقل"></div>
+      <div><label for="user">اسم الدخول للأداة</label><input id="user" autocomplete="off" placeholder="user1"></div>
+      <div><label for="password">كلمة مرور الدخول</label><input id="password" autocomplete="new-password" placeholder="4 أحرف على الأقل"></div>
     </div>
-    <div id="apiFields">
-      <label for="api_url">رابط API الكامل</label><input id="api_url" placeholder="http://server:80/xxx/reseller/index.php">
-      <label for="api_key">مفتاح API</label><input id="api_key" autocomplete="off">
-    </div>
-    <div id="webFields" hidden>
-      <label for="panel_base">رابط اللوحة</label><input id="panel_base" placeholder="http://panel-host:2052">
-      <p class="msg" style="color:var(--mute)">يُقرأ كود التحقّق آلياً؛ وإن فشل يُطلب منك إدخاله عند الإنشاء.</p>
-    </div>
-    <label for="host">الهوست الافتراضي (يظهر للعميل في السطر)</label><input id="host" placeholder="https://mrha.ink:80">
+    <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
+    <div id="gates"></div>
+    <button class="ghost" id="addGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
     <button class="go" id="save">حفظ الحساب</button>
     <button class="ghost" id="cancel" hidden style="width:100%;margin-top:8px">إلغاء التعديل</button>
     <div class="msg" id="msg"></div>
@@ -83,11 +79,6 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 <script>
 const $ = id => document.getElementById(id);
 const chk = d => { if (d && d.login) location.href = "/admin/login"; return d; };
-const F = ["name","mode","user","password","api_url","api_key","panel_base","host"];
-function applyMode(){
-  const web = $("mode").value === "web";
-  $("webFields").hidden = !web; $("apiFields").hidden = web;
-}
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let accounts = [];
 
@@ -102,20 +93,74 @@ async function load(){
   render();
 }
 function render(){
-  $("list").innerHTML = accounts.length ? accounts.map(a => `
-    <div class="acct"><div class="i"><b>${esc(a.name)}</b>
-      <code>${a.mode === "web" ? "وضع: جلسة ويب" : "وضع: API"}</code>
-      <code>login: ${esc(a.user)} / ${esc(a.password)}</code>
-      <code>${a.mode === "web" ? "panel: " + esc(a.panel_base) : "api: " + esc(a.api_url)}</code>
-      <code>host: ${esc(a.host)}</code></div>
-      <div class="b"><button class="ghost" data-edit="${a.id}">تعديل</button><button class="danger" data-del="${a.id}">حذف</button></div></div>`).join("")
-    : '<div class="empty">لا توجد حسابات بعد. أضف أول حساب من النموذج أعلاه.</div>';
+  $("list").innerHTML = accounts.length ? accounts.map(a => {
+    const gates = (a.gates || []).map(g =>
+      `<code class="g">• ${esc(g.name)} — ${g.mode === "web" ? "ويب" : "API"} — host: ${esc(g.host)}${g.guide_url ? " — Guide: " + esc(g.guide_url) : ""}</code>`).join("");
+    return `<div class="acct"><div class="i"><b>${esc(a.name)}</b>
+      <code>دخول: ${esc(a.user)} / ${esc(a.password)}</code>
+      <code>${(a.gates||[]).length} بوابة</code>${gates}</div>
+      <div class="b"><button class="ghost" data-edit="${a.id}">تعديل</button><button class="danger" data-del="${a.id}">حذف</button></div></div>`;
+  }).join("") : '<div class="empty">لا توجد حسابات بعد. أضف أول حساب من النموذج أعلاه.</div>';
 }
-function fill(a){ $("id").value = a?.id || ""; F.forEach(k => $(k).value = a?.[k] || (k === "mode" ? "api" : "")); applyMode(); $("formTitle").textContent = a ? "تعديل: " + a.name : "إضافة حساب"; $("cancel").hidden = !a; }
-$("mode").addEventListener("change", applyMode);
+
+// ---- بوابة واحدة في النموذج ----
+function gateRow(g){
+  g = g || {mode:"web"};
+  const el = document.createElement("div");
+  el.className = "gate";
+  el.innerHTML = `
+    <div class="gh"><b>بوابة</b><button type="button" class="rm">حذف البوابة</button></div>
+    <input type="hidden" data-f="id" value="${esc(g.id||"")}">
+    <label>اسم البوابة</label><input data-f="name" value="${esc(g.name||"")}" placeholder="بوابة مرح">
+    <label>طريقة الربط</label>
+    <select data-f="mode">
+      <option value="web"${g.mode!=="api"?" selected":""}>جلسة ويب للوحة (دخول + كود تحقّق)</option>
+      <option value="api"${g.mode==="api"?" selected":""}>Reseller API (مفتاح API)</option>
+    </select>
+    <div data-web hidden>
+      <label>رابط اللوحة</label><input data-f="panel_base" value="${esc(g.panel_base||"")}" placeholder="http://panel-host:2052">
+      <div class="g2">
+        <div><label>اسم الدخول للوحة</label><input data-f="panel_user" value="${esc(g.panel_user||"")}" autocomplete="off"></div>
+        <div><label>كلمة مرور اللوحة</label><input data-f="panel_pass" value="${esc(g.panel_pass||"")}" autocomplete="new-password"></div>
+      </div>
+    </div>
+    <div data-api hidden>
+      <label>رابط API الكامل</label><input data-f="api_url" value="${esc(g.api_url||"")}" placeholder="http://server/xxx/reseller/index.php">
+      <label>مفتاح API</label><input data-f="api_key" value="${esc(g.api_key||"")}" autocomplete="off">
+    </div>
+    <label>الهوست (يظهر في السطر)</label><input data-f="host" value="${esc(g.host||"")}" placeholder="http://ssouqhost.vip">
+    <label>رابط الشرح (Guide) — اتركه فارغاً لإخفائه</label><input data-f="guide_url" value="${esc(g.guide_url||"")}" placeholder="https://guide.ssouq.com/">`;
+  const sel = el.querySelector('[data-f="mode"]');
+  const applyGateMode = () => {
+    const web = sel.value === "web";
+    el.querySelector("[data-web]").hidden = !web;
+    el.querySelector("[data-api]").hidden = web;
+  };
+  sel.addEventListener("change", applyGateMode); applyGateMode();
+  el.querySelector(".rm").onclick = () => el.remove();
+  return el;
+}
+function readGates(){
+  return [...$("gates").children].map(el => {
+    const g = {};
+    el.querySelectorAll("[data-f]").forEach(i => g[i.dataset.f] = i.value);
+    return g;
+  });
+}
+function fill(a){
+  $("id").value = a?.id || "";
+  $("name").value = a?.name || ""; $("user").value = a?.user || ""; $("password").value = a?.password || "";
+  $("gates").innerHTML = "";
+  const gates = (a && a.gates && a.gates.length) ? a.gates : [null];
+  gates.forEach(g => $("gates").appendChild(gateRow(g)));
+  $("formTitle").textContent = a ? "تعديل: " + a.name : "إضافة حساب";
+  $("cancel").hidden = !a;
+}
+$("addGate").onclick = () => $("gates").appendChild(gateRow(null));
 
 $("save").onclick = async () => {
-  const body = {id: $("id").value}; F.forEach(k => body[k] = $(k).value);
+  const body = {id: $("id").value, name: $("name").value, user: $("user").value,
+                password: $("password").value, gates: readGates()};
   try { const d = await post("/admin/api/accounts", body); accounts = d.accounts; render(); fill(null); say($("msg"), "تم الحفظ", true); }
   catch(e) { say($("msg"), e.message); }
 };
@@ -148,6 +193,7 @@ $("apwBtn").onclick = async () => {
   try { await post("/admin/api/accounts/admin-password", {password: $("apw").value}); $("apw").value = ""; say($("apwMsg"), "تم التغيير. سيطلب المتصفح الدخول من جديد.", true); }
   catch(e) { say($("apwMsg"), e.message); }
 };
+fill(null);
 load();
 </script>
 </body>

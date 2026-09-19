@@ -84,6 +84,17 @@ def load_store():
         st = {}
     st.setdefault("admin", None)
     st.setdefault("accounts", [])
+    # ترقية غير مدمّرة: كل حساب قديم → شخص ببوابة واحدة.
+    migrated = False
+    for i, a in enumerate(st["accounts"]):
+        if not (isinstance(a.get("gates"), list) and a["gates"]):
+            st["accounts"][i] = migrate_account(a)
+            migrated = True
+    if migrated:
+        try:
+            save_store(st)
+        except OSError:
+            pass
     return st
 
 
@@ -107,28 +118,53 @@ def check_pw(pw, rec):
     return hmac.compare_digest(hash_pw(pw, rec["salt"])["hash"], rec["hash"])
 
 
-def clean_account(a, old=None):
-    """يتحقق من حقول الحساب ويرجع نسخة نظيفة أو يرفع ValueError.
-
-    وضعان:
-      mode="api" (الافتراضي)  → عبر Reseller API: يتطلب api_url + api_key.
-      mode="web"              → عبر جلسة ويب للوحة (كابتشا): يتطلب panel_base.
-    كلاهما يتطلب name + user + password + host.
-    """
+def clean_gate(g, old=None):
+    """بوابة توليد واحدة داخل حساب: لها اسمها وطريقة ربطها (api/web) وهوستها
+    ورابط شرحها الخاص. لا تحذف بيانات قديمة عند التعديل."""
     old = old or {}
-    mode = str(a.get("mode", "")).strip().lower() or old.get("mode", "api")
+    mode = str(g.get("mode", "")).strip().lower() or old.get("mode", "api")
     if mode not in ("api", "web"):
         mode = "api"
     out = {
-        "id":         old.get("id") or secrets.token_hex(4),
+        "id":         str(g.get("id") or old.get("id") or secrets.token_hex(4)),
+        "name":       str(g.get("name", "")).strip() or old.get("name", ""),
         "mode":       mode,
-        "name":       str(a.get("name", "")).strip() or old.get("name", ""),
-        "user":       str(a.get("user", "")).strip() or old.get("user", ""),
-        "password":   str(a.get("password", "")) or old.get("password", ""),
-        "api_url":    str(a.get("api_url", "")).strip().rstrip("/") or old.get("api_url", ""),
-        "api_key":    str(a.get("api_key", "")).strip() or old.get("api_key", ""),
-        "panel_base": str(a.get("panel_base", "")).strip().rstrip("/") or old.get("panel_base", ""),
-        "host":       str(a.get("host", "")).strip().rstrip("/") or old.get("host", ""),
+        "host":       str(g.get("host", "")).strip().rstrip("/") or old.get("host", ""),
+        "guide_url":  str(g.get("guide_url", old.get("guide_url", ""))).strip(),
+        "panel_base": str(g.get("panel_base", "")).strip().rstrip("/") or old.get("panel_base", ""),
+        "panel_user": str(g.get("panel_user", "")).strip() or old.get("panel_user", ""),
+        "panel_pass": str(g.get("panel_pass", "")) or old.get("panel_pass", ""),
+        "api_url":    str(g.get("api_url", "")).strip().rstrip("/") or old.get("api_url", ""),
+        "api_key":    str(g.get("api_key", "")).strip() or old.get("api_key", ""),
+    }
+    if not out["name"]:
+        raise ValueError("اسم البوابة مطلوب")
+    if not out["host"].startswith(("http://", "https://")):
+        raise ValueError("هوست البوابة \"%s\" يجب أن يبدأ بـ http:// أو https://" % out["name"])
+    if out["guide_url"] and not out["guide_url"].startswith(("http://", "https://")):
+        raise ValueError("رابط الشرح للبوابة \"%s\" يجب أن يبدأ بـ http:// أو https://" % out["name"])
+    if mode == "web":
+        if not out["panel_base"].startswith(("http://", "https://")):
+            raise ValueError("رابط لوحة البوابة \"%s\" يجب أن يبدأ بـ http://" % out["name"])
+        if not out["panel_user"] or not out["panel_pass"]:
+            raise ValueError("اسم الدخول وكلمة المرور للوحة مطلوبان للبوابة \"%s\"" % out["name"])
+    else:
+        if not out["api_url"].startswith(("http://", "https://")):
+            raise ValueError("رابط API للبوابة \"%s\" يجب أن يبدأ بـ http://" % out["name"])
+        if not out["api_key"]:
+            raise ValueError("مفتاح API مطلوب للبوابة \"%s\"" % out["name"])
+    return out
+
+
+def clean_account(a, old=None):
+    """حساب = شخص له اسم دخول وكلمة مرور للأداة، وبداخله بوابات توليد.
+    كل بوابة لها ربطها الخاص (انظر clean_gate)."""
+    old = old or {}
+    out = {
+        "id":       old.get("id") or secrets.token_hex(4),
+        "name":     str(a.get("name", "")).strip() or old.get("name", ""),
+        "user":     str(a.get("user", "")).strip() or old.get("user", ""),
+        "password": str(a.get("password", "")) or old.get("password", ""),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -136,17 +172,65 @@ def clean_account(a, old=None):
         raise ValueError("اسم الدخول غير صالح أو محجوز")
     if len(out["password"]) < 4:
         raise ValueError("كلمة المرور قصيرة (4 أحرف على الأقل)")
-    if not out["host"].startswith(("http://", "https://")):
-        raise ValueError("الهوست يجب أن يبدأ بـ http:// أو https://")
-    if mode == "web":
-        if not out["panel_base"].startswith(("http://", "https://")):
-            raise ValueError("رابط اللوحة (panel_base) يجب أن يبدأ بـ http:// أو https://")
-    else:
-        if not out["api_url"].startswith(("http://", "https://")):
-            raise ValueError("رابط API يجب أن يبدأ بـ http:// أو https://")
-        if not out["api_key"]:
-            raise ValueError("مفتاح API مطلوب")
+
+    old_gates = {g.get("id"): g for g in (old.get("gates") or [])}
+    gates = []
+    seen = set()
+    for g in (a.get("gates") or []):
+        cg = clean_gate(g, old_gates.get(str(g.get("id"))))
+        if cg["id"] in seen:
+            cg["id"] = secrets.token_hex(4)
+        seen.add(cg["id"])
+        gates.append(cg)
+    if not gates:
+        raise ValueError("أضف بوابة واحدة على الأقل")
+    out["gates"] = gates
     return out
+
+
+def migrate_account(a):
+    """يحوّل حساب النسخة القديمة (لوحة واحدة على مستوى الحساب) إلى شخص ببوابة
+    واحدة — دون فقد أي بيانات."""
+    if isinstance(a.get("gates"), list) and a["gates"]:
+        return a  # نسخة جديدة بالفعل
+    gate = {
+        "id": secrets.token_hex(4),
+        "name": a.get("name") or "البوابة",
+        "mode": a.get("mode", "api"),
+        "host": a.get("host", ""),
+        "guide_url": "",
+        "panel_base": a.get("panel_base", ""),
+        "panel_user": a.get("user", ""),      # بيانات اللوحة القديمة = دخول الحساب
+        "panel_pass": a.get("password", ""),
+        "api_url": a.get("api_url", ""),
+        "api_key": a.get("api_key", ""),
+    }
+    return {
+        "id": a.get("id") or secrets.token_hex(4),
+        "name": a.get("name", ""),
+        "user": a.get("user", ""),
+        "password": a.get("password", ""),
+        "gates": [gate],
+    }
+
+
+def find_gate(acct, gate_id):
+    if not acct:
+        return None
+    for g in acct.get("gates", []):
+        if str(g.get("id")) == str(gate_id):
+            return g
+    return None
+
+
+def format_line(gate, username, password):
+    """السطر بالصيغة الجديدة: Host .. User .. Pass .. [Guide ..]."""
+    host = str(gate.get("host", "")).strip()
+    line = "Host {h} User {u} Pass {p}".format(h=host, u=username, p=password)
+    guide = str(gate.get("guide_url", "")).strip()
+    if guide:
+        line += " Guide " + guide
+    return line
 
 
 # ---------------- API الريسيلر ----------------
@@ -188,17 +272,24 @@ def _ids(v):
     return [int(x) for x in (v or []) if str(x).strip().isdigit()]
 
 
-def web_session(acct):
-    return xm_web.PanelWebSession(acct, DATA_DIR)
+def web_session(gate):
+    """جلسة ويب لبوابة واحدة، بكوكيز مستقلة على القرص لكل بوابة."""
+    return xm_web.PanelWebSession({
+        "id": "gate_" + str(gate.get("id", "")),
+        "user": gate.get("panel_user", ""),
+        "password": gate.get("panel_pass", ""),
+        "panel_base": gate.get("panel_base", ""),
+        "host": gate.get("host", ""),
+    }, DATA_DIR)
 
 
-def get_packages(acct):
-    if acct.get("mode") == "web":                      # جلسة ويب بدل الـ API
+def get_packages(gate):
+    if gate.get("mode") == "web":                      # جلسة ويب بدل الـ API
         return [{"id": p["value"], "name": p["text"], "credits": None,
                  "max_connections": 1, "bouquets": []}
-                for p in web_session(acct).packages()]
+                for p in web_session(gate).packages()]
     pkgs = []
-    for p in _unwrap(api(acct, "get_packages")):
+    for p in _unwrap(api(gate, "get_packages")):
         if not isinstance(p, dict):
             continue
         if str(p.get("is_line", "1")) == "0":      # نعرض باقات M3U Lines فقط
@@ -217,19 +308,25 @@ def rand_digits(n=DIGITS):
     return str(secrets.randbelow(9) + 1) + "".join(str(secrets.randbelow(10)) for _ in range(n - 1))
 
 
-def create_line(acct, pkg, username=None, password=None, host=None):
-    if acct.get("mode") == "web":                      # الإنشاء عبر نموذج اللوحة
-        r = web_session(acct).create_line(pkg["id"], username, password, host)
-        now = datetime.datetime.now()
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            with open(TXT_FILE, "a", encoding="utf-8") as f:
-                f.write(f"{now:%d-%m-%Y %H:%M}  |  {acct['name']}  |  {r['line']}  |  {pkg['name']}\n")
-        except OSError:
-            pass
-        return {"line": r["line"], "username": r["username"], "password": r["password"],
-                "package": pkg["name"], "time": r["time"]}
-    host = (host or acct["host"]).strip().rstrip("/")
+def _log_txt(gate, line, pkg_name):
+    now = datetime.datetime.now()
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(TXT_FILE, "a", encoding="utf-8") as f:
+            f.write(f"{now:%d-%m-%Y %H:%M}  |  {gate.get('name','')}  |  {line}  |  {pkg_name}\n")
+    except OSError:
+        pass
+    return now
+
+
+def create_line(gate, pkg, username=None, password=None):
+    if gate.get("mode") == "web":                      # الإنشاء عبر نموذج اللوحة
+        r = web_session(gate).create_line(pkg["id"], username, password, gate.get("host"))
+        line = format_line(gate, r["username"], r["password"])
+        _log_txt(gate, line, pkg["name"])
+        return {"line": line, "username": r["username"], "password": r["password"],
+                "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"]}
+    # وضع الـ API
     username = username or rand_digits()
     password = password or rand_digits()
     params = {
@@ -239,7 +336,7 @@ def create_line(acct, pkg, username=None, password=None, host=None):
         "max_connections": pkg.get("max_connections") or 1,
         "bouquets_selected[]": pkg["bouquets"],  # اختيار كل Subscribed
     }
-    r = api(acct, "create_line", params, post=True)
+    r = api(gate, "create_line", params, post=True)
     ok = isinstance(r, dict) and (
         r.get("status") in ("STATUS_SUCCESS", "success", True) or r.get("result") is True)
     if not ok:
@@ -247,16 +344,10 @@ def create_line(acct, pkg, username=None, password=None, host=None):
     data = r.get("data") if isinstance(r.get("data"), dict) else {}
     username = data.get("username", username)
     password = data.get("password", password)
-    line = f"Host {host}  Password {password} Username {username}"
-    now = datetime.datetime.now()
-    try:
-        os.makedirs(DATA_DIR, exist_ok=True)
-        with open(TXT_FILE, "a", encoding="utf-8") as f:
-            f.write(f"{now:%d-%m-%Y %H:%M}  |  {acct['name']}  |  {line}  |  {pkg['name']}\n")
-    except OSError:
-        pass
+    line = format_line(gate, username, password)
+    now = _log_txt(gate, line, pkg["name"])
     return {"line": line, "username": username, "password": password,
-            "package": pkg["name"], "time": now.isoformat(timespec="seconds")}
+            "package": pkg["name"], "verified": True, "time": now.isoformat(timespec="seconds")}
 
 
 # ---------------- وضع سطر الأوامر ----------------
@@ -267,13 +358,22 @@ def pick_account():
     if len(accts) == 1:
         return accts[0]
     for i, a in enumerate(accts, 1):
-        print(f"{i}) {a['name']}  —  {a['host']}")
+        print(f"{i}) {a['name']}")
     return accts[int(input("\nرقم الحساب: ").strip()) - 1]
 
 
 def cli():
     acct = pick_account()
-    pkgs = get_packages(acct)
+    gates = acct.get("gates", [])
+    if not gates:
+        sys.exit("لا توجد بوابات في هذا الحساب.")
+    if len(gates) == 1:
+        gate = gates[0]
+    else:
+        for i, g in enumerate(gates, 1):
+            print(f"{i}) {g['name']}  —  {g['host']}")
+        gate = gates[int(input("\nرقم البوابة: ").strip()) - 1]
+    pkgs = get_packages(gate)
     if not pkgs:
         print("لا توجد باقات. شغّل: python xm_lines.py debug")
         return
@@ -282,7 +382,7 @@ def cli():
     n = int(input("\nرقم الباقة: ").strip())
     count = int((input("عدد اليوزرات [1]: ").strip() or "1"))
     for _ in range(count):
-        print(create_line(acct, pkgs[n - 1])["line"])
+        print(create_line(gate, pkgs[n - 1])["line"])
     print(f"\n✓ تم الحفظ في {TXT_FILE}")
 
 
@@ -315,6 +415,10 @@ class Handler(BaseHTTPRequestHandler):
     def _body(self):
         n = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(n) or b"{}")
+
+    def _q(self, name):
+        from urllib.parse import parse_qs, urlparse
+        return (parse_qs(urlparse(self.path).query).get(name, [""]) or [""])[0]
 
     def log_message(self, *a):
         pass
@@ -438,26 +542,34 @@ class Handler(BaseHTTPRequestHandler):
             if path == P + "/accounts":
                 return self._page(PAGES[P + "/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
             if path == P + "/api/me":
-                return self._send(200, {"role": role, "account": acct["name"] if acct else None})
+                gates = [{"id": g["id"], "name": g["name"], "mode": g["mode"],
+                          "host": g["host"], "guide_url": g.get("guide_url", "")}
+                         for g in (acct.get("gates", []) if acct else [])]
+                return self._send(200, {"role": role, "account": acct["name"] if acct else None,
+                                        "gates": gates})
             if path == P + "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
-                if role != "account" or acct.get("mode") != "web":
+                gate = find_gate(acct, self._q("gate")) if acct else None
+                if role != "account" or not gate or gate.get("mode") != "web":
                     return self._send(403, {"error": "غير متاح"})
-                s = web_session(acct)
+                s = web_session(gate)
                 s.begin()
                 ct, img = s.fetch_captcha()
                 return self._send(200, raw=img, ctype=ct or "image/jpeg")
             if path == P + "/api/packages":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                gate = find_gate(acct, self._q("gate"))
+                if not gate:
+                    return self._send(400, {"error": "اختر بوابة"})
+                base = {"account": acct["name"], "gate": gate["id"], "host": gate["host"],
+                        "guide_url": gate.get("guide_url", "")}
                 try:
-                    pkgs = get_packages(acct)
+                    pkgs = get_packages(gate)
                 except xm_web.CaptchaNeeded:
-                    return self._send(200, {"account": acct["name"], "host": acct["host"],
-                                            "need_captcha": True})
+                    return self._send(200, {**base, "need_captcha": True})
                 except xm_web.LoginFailed as e:
-                    return self._send(200, {"account": acct["name"], "host": acct["host"],
-                                            "login_error": str(e)})
-                return self._send(200, {"account": acct["name"], "host": acct["host"], "packages": pkgs})
+                    return self._send(200, {**base, "login_error": str(e)})
+                return self._send(200, {**base, "packages": pkgs})
             if path == P + "/api/accounts":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -514,13 +626,15 @@ class Handler(BaseHTTPRequestHandler):
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._admin_post(path, st)
             if path == "/api/web/login":              # إدخال كود التحقّق يدويًا (وضع الويب)
-                if role != "account" or acct.get("mode") != "web":
+                body = self._body()
+                gate = find_gate(acct, body.get("gate")) if acct else None
+                if role != "account" or not gate or gate.get("mode") != "web":
                     return self._send(403, {"error": "غير متاح"})
-                code = str(self._body().get("captcha", "")).strip()
+                code = str(body.get("captcha", "")).strip()
                 if not code:
                     return self._send(400, {"error": "اكتب الكود"})
                 try:
-                    web_session(acct).login(captcha=code)
+                    web_session(gate).login(captcha=code)
                     return self._send(200, {"ok": True})
                 except xm_web.LoginFailed as e:
                     return self._send(200, {"ok": False, "kind": "login", "error": str(e)})
@@ -579,15 +693,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _create(self, acct):
         req = self._body()
-        host = str(req.get("host") or "").strip()
-        if host and not host.startswith(("http://", "https://")):
-            return self._send(400, {"error": "الهوست يجب أن يبدأ بـ http:// أو https://"})
-        pkg = next((p for p in get_packages(acct) if str(p["id"]) == str(req.get("package_id"))), None)
+        gate = find_gate(acct, req.get("gate"))
+        if not gate:
+            return self._send(400, {"error": "اختر بوابة"})
+        pkg = next((p for p in get_packages(gate) if str(p["id"]) == str(req.get("package_id"))), None)
         if not pkg:
             return self._send(400, {"error": "الباقة غير موجودة"})
         count = max(1, min(int(req.get("count", 1)), 50))
-        out = [create_line(acct, pkg, req.get("username") if count == 1 else None,
-                           req.get("password") if count == 1 else None, host) for _ in range(count)]
+        out = [create_line(gate, pkg, req.get("username") if count == 1 else None,
+                           req.get("password") if count == 1 else None) for _ in range(count)]
         self._send(200, {"lines": out})
 
 
@@ -601,6 +715,6 @@ if __name__ == "__main__":
     if mode == "web":
         web()
     elif mode == "debug":
-        print(json.dumps(api(pick_account(), "get_packages"), ensure_ascii=False, indent=2)[:4000])
+        print(json.dumps(api(pick_account()["gates"][0], "get_packages"), ensure_ascii=False, indent=2)[:4000])
     else:
         cli()

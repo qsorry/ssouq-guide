@@ -80,36 +80,39 @@ def main():
                 except Exception:
                     return e.code, {}
 
-        print("== 1. Admin setup + add a WEB-mode account ==")
+        print("== 1. Admin setup + add a person with a WEB gate ==")
         code, d = jreq("/admin/api/setup", {"password": "admin123"})
         check("admin setup ok", code == 200 and d.get("ok"))
         code, d = jreq("/admin/api/accounts", {
-            "mode": "web", "name": "MR7", "user": PUSER, "password": PPASS,
-            "panel_base": PANEL, "host": "http://mrha.ink",
+            "name": "MR7", "user": PUSER, "password": PPASS,
+            "gates": [{"name": "بوابة مرح", "mode": "web", "host": "http://mrha.ink",
+                       "panel_base": PANEL, "panel_user": PUSER, "panel_pass": PPASS,
+                       "guide_url": "https://guide.ssouq.com/"}],
         })
-        check("web account added", code == 200 and d.get("ok"),
-              d.get("error") or "ok")
+        check("account with gate added", code == 200 and d.get("ok"), d.get("error") or "ok")
         acc = next((a for a in d.get("accounts", []) if a["user"] == PUSER), {})
-        check("account stored as web mode", acc.get("mode") == "web")
-        acc_id = acc.get("id", "")
+        gate = (acc.get("gates") or [{}])[0]
+        gid = gate.get("id", "")
+        check("gate stored as web mode", gate.get("mode") == "web" and gate.get("name") == "بوابة مرح")
+        check("gate id keyed session (gate_<id>)", bool(gid))
 
-        print("\n== 2. Log in as the account, then packages asks for captcha (no OCR) ==")
-        # سجّل خروج الأدمن ثم ادخل بالحساب
+        print("\n== 2. Log in as the person; the gate's packages ask for captcha (no OCR) ==")
         op.open(ADMIN + "/admin/logout")
         code, d = jreq("/admin/api/login", {"user": PUSER, "password": PPASS})
         check("account login ok", code == 200 and d.get("role") == "account")
-        code, d = jreq("/admin/api/packages")
+        code, d = jreq("/admin/api/me")
+        check("me lists the gate", any(g.get("id") == gid for g in d.get("gates", [])))
+        code, d = jreq("/admin/api/packages?gate=" + gid)
         check("packages requests captcha (OCR off)", d.get("need_captcha") is True,
               json.dumps(d, ensure_ascii=False)[:80])
 
         print("\n== 3. Fetch captcha, read it, submit the code ==")
-        # حمّل صورة الكابتشا (تبدأ جلسة اللوحة وتحفظ الكوكيز على قرص الأدمن)
-        r = op.open(ADMIN + "/admin/api/web/captcha", timeout=15)
+        r = op.open(ADMIN + "/admin/api/web/captcha?gate=" + gid, timeout=15)
         img = r.read()
         check("captcha image returned", r.getcode() == 200 and len(img) > 0,
               "%s %dB" % (r.headers.get("Content-Type"), len(img)))
-        # اقرأ الكود الحالي من اللوحة الوهمية بجلسة الحساب نفسها (كوكيز على قرص الأدمن)
-        jar_path = os.path.join(data_dir, "sessions", acc_id + ".cookies")
+        # جلسة البوابة مفتاحها gate_<id>
+        jar_path = os.path.join(data_dir, "sessions", "gate_" + gid + ".cookies")
         cjar = http.cookiejar.MozillaCookieJar(jar_path)
         cjar.load(ignore_discard=True, ignore_expires=True)
         pop = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cjar))
@@ -117,19 +120,21 @@ def main():
         cr.read()
         real_code = cr.headers.get("X-Captcha-Code", "")
         check("read the panel captcha code", real_code != "", real_code)
-        code, d = jreq("/admin/api/web/login", {"captcha": real_code})
+        code, d = jreq("/admin/api/web/login", {"gate": gid, "captcha": real_code})
         check("manual captcha login accepted", code == 200 and d.get("ok") is True,
               d.get("error") or "ok")
 
-        print("\n== 4. Now packages load, and a line can be created ==")
-        code, d = jreq("/admin/api/packages")
+        print("\n== 4. Packages load; a line is created in the new format ==")
+        code, d = jreq("/admin/api/packages?gate=" + gid)
         check("packages loaded after login", isinstance(d.get("packages"), list) and len(d["packages"]) == 3,
               "count=%s" % (len(d.get("packages", [])) if isinstance(d.get("packages"), list) else "?"))
-        code, d = jreq("/admin/api/create", {"package_id": "3", "host": "http://mrha.ink",
+        code, d = jreq("/admin/api/create", {"gate": gid, "package_id": "3",
                                              "username": "", "password": "", "count": 1})
         lines = d.get("lines", [])
-        check("line created via web session", bool(lines) and "Username" in lines[0].get("line", ""),
-              (lines[0]["line"][:48] + "…") if lines else json.dumps(d, ensure_ascii=False)[:80])
+        ln = lines[0]["line"] if lines else ""
+        check("line created via gate web session", bool(lines) and " User " in ln and " Pass " in ln,
+              (ln[:60] + "…") if ln else json.dumps(d, ensure_ascii=False)[:80])
+        check("line carries the gate's Guide url", "Guide https://guide.ssouq.com/" in ln, ln[-40:])
     finally:
         for pr in (admin, panel):
             pr.terminate()

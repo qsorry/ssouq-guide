@@ -54,6 +54,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 .cap-img img{height:52px;border:1px solid var(--line);border-radius:8px;background:#fff;flex:1;object-fit:contain}
 .cap-actions{display:flex;gap:8px;margin-top:12px}
 .cap-actions .go{flex:1}
+.gate-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.gate-tab{padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;font:inherit}
+.gate-tab.on{background:var(--go);color:#fff;border-color:var(--go)}
 </style>
 </head>
 <body>
@@ -61,10 +64,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
   <h1>إنشاء يوزر M3U <small class="acct" id="acct"></small></h1>
   <p class="sub">اختر الباقة، وكل البوكيهات المشتركة تُضاف تلقائياً. · <a href="/admin/logout" style="color:var(--go)">تسجيل الخروج</a></p>
 
-  <section>
-    <h2>الهوست <button class="copy" id="saveHost">حفظ</button></h2>
-    <label class="f" for="host">يظهر للعميل في السطر (مثال: https://mrha.ink:80)</label>
-    <input class="t" id="host" placeholder="http://host:port" autocomplete="off">
+  <section id="gatesBox">
+    <h2>البوابة</h2>
+    <div class="gate-tabs" id="gateTabs"><div class="empty">جاري تحميل البوابات…</div></div>
   </section>
 
   <section>
@@ -107,18 +109,31 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 const $ = id => document.getElementById(id);
 const chk = d => { if (d && d.login) location.href = "/admin/login"; return d; };
 let account = "";
-const KEY = () => "xm_lines_history_" + account;
-const HOST_KEY = () => "xm_lines_host_" + account;
+let gates = [];
+let curGate = "";                       // البوابة المختارة
+const KEY = () => "xm_lines_history_" + account + "_" + curGate;
 let packages = [];
 
-const getHost = () => { try { return (localStorage.getItem(HOST_KEY()) || "").trim(); } catch { return ""; } };
-function saveHost(){
-  const h = $("host").value.trim().replace(/\/+$/, "");
-  if (!h) { $("msg").textContent = "اكتب الهوست أولاً."; return; }
-  $("host").value = h;
-  try { localStorage.setItem(HOST_KEY(), h); } catch {}
-  toast("تم حفظ الهوست");
+async function loadGates(){
+  try {
+    const r = await fetch("/admin/api/me"); const d = chk(await r.json());
+    account = d.account || ""; $("acct").textContent = account;
+    gates = d.gates || [];
+  } catch { gates = []; }
+  if (!gates.length){ $("gateTabs").innerHTML = '<div class="empty">لا توجد بوابات. أضِفها من صفحة الحسابات.</div>'; return; }
+  curGate = gates.some(g => g.id === curGate) ? curGate : gates[0].id;
+  $("gateTabs").innerHTML = gates.map(g =>
+    `<button class="gate-tab${g.id===curGate?" on":""}" data-gate="${g.id}">${esc(g.name)}</button>`).join("");
+  fetchPackages();
 }
+function selectGate(id){
+  if (id === curGate) return;
+  curGate = id;
+  document.querySelectorAll(".gate-tab").forEach(b => b.classList.toggle("on", b.dataset.gate === id));
+  $("resBox").hidden = true; $("msg").textContent = "";
+  fetchPackages(); renderHistory();
+}
+
 
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY())) || []; } catch { return []; } };
 const save = h => { try { localStorage.setItem(KEY(), JSON.stringify(h)); } catch {} };
@@ -133,7 +148,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":
 
 // ---- كود التحقّق (وضع الويب): يُقرأ آلياً في الخادم، وهنا نطلبه من المشغّل عند فشله ----
 let capRetry = null;
-const capUrl = () => "/admin/api/web/captcha?t=" + Date.now();
+const capUrl = () => "/admin/api/web/captcha?gate=" + encodeURIComponent(curGate) + "&t=" + Date.now();
 function showCaptcha(retry){
   capRetry = retry || null;
   $("capMsg").textContent = ""; $("capInput").value = "";
@@ -146,10 +161,11 @@ async function submitCaptcha(){
   if (!code) { $("capMsg").textContent = "اكتب الكود."; return; }
   const btn = $("capSubmit"); btn.disabled = true; $("capMsg").textContent = "جاري التحقق…";
   try {
-    const r = await fetch("/admin/api/web/login", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({captcha: code})});
+    const body = JSON.stringify({gate: curGate, captcha: code});
+    const r = await fetch("/admin/api/web/login", {method:"POST", headers:{"Content-Type":"application/json"}, body});
     const d = chk(await r.json());
     if (d && d.ok) { const fn = capRetry; hideCaptcha(); if (fn) fn(); }
-    else if (d && d.kind === "login") { hideCaptcha(); $("msg").textContent = d.error || "فشل الدخول إلى اللوحة — تحقّق من اسم المستخدم وكلمة المرور في إعدادات الحساب."; $("pkgs").innerHTML = '<div class="empty">فشل الدخول إلى اللوحة. صحّح بيانات الحساب من صفحة الحسابات.</div>'; }
+    else if (d && d.kind === "login") { hideCaptcha(); $("msg").textContent = d.error || "فشل الدخول إلى اللوحة — تحقّق من اسم المستخدم وكلمة المرور في إعدادات البوابة."; $("pkgs").innerHTML = '<div class="empty">فشل الدخول إلى اللوحة. صحّح بيانات البوابة من صفحة الحسابات.</div>'; }
     else { $("capMsg").textContent = (d && d.error) || "الكود غير صحيح"; $("capImg").src = capUrl(); $("capInput").value=""; $("capInput").focus(); }
   } catch(e){ $("capMsg").textContent = "تعذّر الإرسال."; }
   btn.disabled = false;
@@ -161,16 +177,14 @@ async function fetchPackages(){
     $("pkgs").innerHTML = '<div class="empty">شغّل الصفحة عبر: python xm_lines.py web ثم افتح http://127.0.0.1:8080</div>';
     return;
   }
+  if (!curGate) { $("pkgs").innerHTML = '<div class="empty">اختر بوابة أولاً.</div>'; return; }
   $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
   try {
-    const r = await fetch("/admin/api/packages"); const d = chk(await r.json());
-    if (d.need_captcha) { account = d.account || account; $("acct").textContent = account; showCaptcha(fetchPackages); $("pkgs").innerHTML = '<div class="empty">بانتظار كود التحقّق…</div>'; return; }
+    const r = await fetch("/admin/api/packages?gate=" + encodeURIComponent(curGate)); const d = chk(await r.json());
+    if (d.need_captcha) { showCaptcha(fetchPackages); $("pkgs").innerHTML = '<div class="empty">بانتظار كود التحقّق…</div>'; return; }
     if (d.login_error) throw new Error(d.login_error);
     if (d.error) throw new Error(d.error);
     packages = d.packages;
-    account = d.account || "";
-    $("acct").textContent = account;
-    $("host").value = getHost() || d.host || "";
     renderHistory();
     $("pkgs").innerHTML = packages.length ? packages.map((p,i)=>`
       <label class="pkg"><input type="radio" name="pkg" value="${esc(p.id)}" ${i===0?"checked":""}>
@@ -185,13 +199,11 @@ async function fetchPackages(){
 async function createLines(){
   const sel = document.querySelector('input[name="pkg"]:checked');
   if (!sel) { $("msg").textContent = "اختر باقة أولاً."; return; }
-  const host = $("host").value.trim().replace(/\/+$/, "");
-  if (!host) { $("msg").textContent = "اكتب الهوست أولاً."; return; }
-  if (host !== getHost()) { try { localStorage.setItem(HOST_KEY(), host); } catch {} }
+  if (!curGate) { $("msg").textContent = "اختر بوابة أولاً."; return; }
   const btn = $("create"); btn.disabled = true; btn.textContent = "جاري الإنشاء…"; $("msg").textContent = "";
   try {
     const r = await fetch("/admin/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({package_id: sel.value, host, username: $("u").value.trim(), password: $("p").value.trim(), count: +$("n").value || 1})});
+      body: JSON.stringify({gate: curGate, package_id: sel.value, username: $("u").value.trim(), password: $("p").value.trim(), count: +$("n").value || 1})});
     const d = chk(await r.json());
     if (d.need_captcha) { btn.disabled = false; btn.textContent = "إنشاء اليوزر"; showCaptcha(createLines); return; }
     if (d.login_error) throw new Error(d.login_error);
@@ -229,7 +241,7 @@ $("capReload").onclick = () => { $("capImg").src = capUrl(); $("capInput").value
 $("capCancel").onclick = hideCaptcha;
 $("capInput").addEventListener("keydown", e => { if (e.key === "Enter") submitCaptcha(); });
 $("reload").onclick = fetchPackages;
-$("saveHost").onclick = saveHost;
+$("gateTabs").addEventListener("click", e => { const b = e.target.closest(".gate-tab"); if (b) selectGate(b.dataset.gate); });
 $("clr").onclick = () => { if (confirm("مسح السجل من المتصفح؟")) { save([]); renderHistory(); } };
 $("exp").onclick = () => {
   const txt = load().map(x => { const d=new Date(x.time);
@@ -237,7 +249,7 @@ $("exp").onclick = () => {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt],{type:"text/plain"})); a.download = "lines.txt"; a.click();
 };
 
-fetchPackages(); renderHistory();
+loadGates();
 </script>
 </body>
 </html>
