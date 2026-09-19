@@ -143,14 +143,18 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, json.dumps({"draw": 1, "recordsFiltered": 0, "data": []}),
                                   "application/json", hdr)
             term = qs.get("search[value]", [""])[0]
+            desc = qs.get("order[0][dir]", ["asc"])[0] == "desc"      # الأحدث أولًا
+            length = int(qs.get("length", ["10"])[0] or 10)
             data = []
-            for ln in LINES:
-                if ln["username"] == term or not term:
+            for ln in (list(reversed(LINES)) if desc else LINES):
+                if not term or term in ln["username"] or term in ln["password"]:   # بحث كل الأعمدة
                     row = ('<a href="?userid=%s">edit</a> User: %s Pass: %s End: %s '
                            '<a>1 / %s</a>' % (ln["id"], ln["username"], ln["password"],
                                               ln["end"], ln["conns"]))
                     data.append([row])
-            return self._send(200, json.dumps({"draw": 1, "recordsFiltered": len(data), "data": data}),
+            data = data[:length]
+            return self._send(200, json.dumps({"draw": 1, "recordsTotal": len(LINES),
+                                               "recordsFiltered": len(data), "data": data}),
                               "application/json", hdr)
 
         if path in ("/", "/dashboard"):

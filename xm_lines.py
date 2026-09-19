@@ -674,6 +674,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"results": []})
                 if gate.get("mode") == "falcon":
                     return self._send(200, {"results": falcon_api.search(gate["api_url"], gate["api_key"], q)})
+                if gate.get("mode") == "web":     # بحث جدول اللوحة نفسه
+                    try:
+                        return self._send(200, {"results": web_session(gate).search(q)})
+                    except xm_web.CaptchaNeeded:
+                        return self._send(200, {"results": [], "need_login": True})
+                    except xm_web.LoginFailed as e:
+                        return self._send(200, {"results": [], "login_error": str(e)})
+                    except Exception:
+                        return self._send(200, {"results": [], "error": "تعذّر البحث في اللوحة"})
                 return self._send(200, {"results": [], "unsupported": True})
             if path == P + "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
                 gate = find_gate(acct, self._q("gate")) if acct else None

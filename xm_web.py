@@ -567,15 +567,26 @@ class PanelWebSession:
         الرصيد ظاهر على الصفحة نفسها ("Credits: N")، فنلتقطه كما تلتقطه فالكون."""
         self.ensure_login()
         html = self._text(self._request("/"))
+        # آخر يوزر أُنشئ = أول صف في جدول اللاينات مرتَّبًا من الأحدث (كما في فالكون)،
+        # ومعه العدد الكلي من الجدول احتياطًا إن لم تُقرأ بطاقة لوحة المعلومات.
+        last, table_total = {}, None
+        try:
+            t = self._table_query("", 1)
+            last, table_total = (t["rows"][0] if t["rows"] else {}), t["total"]
+        except Exception:
+            pass
+        total = self._dashboard_number(html, r"active\s+subscription")
         return {
             "provider": "web",
             "credits": self._extract_credits(html),
             "host": self.acct.get("host", ""),
             "username": self.acct.get("user", ""),
             # "عدد اليوزرات" في واجهتنا = الاشتراكات الفعّالة على اللوحة.
-            "total": self._dashboard_number(html, r"active\s+subscription"),
+            "total": total if total is not None else table_total,
             "created_today": self._dashboard_number(html, r"created\s+today"),
             "online": self._dashboard_number(html, r"online\s+user"),
+            "last_id": last.get("id"),
+            "last_username": last.get("user"),
         }
 
     @staticmethod
@@ -597,11 +608,14 @@ class PanelWebSession:
         m = re.search(r'([0-9][\d,]*)\s*(?:<[^>]+>\s*)*' + label_re, html, re.I)
         return _to_num(m.group(1)) if m else None
 
-    def _search_line(self, username: str) -> dict:
-        # نفس معاملات DataTables التي تطلبها اللوحة (id=users + أعمدة كاملة)،
-        # وإلا رجّع table_search.php لا شيء ففشل التأكيد رغم نجاح الإنشاء.
+    _TABLE_COLS = 12
+
+    def _table_query(self, term: str = "", length: int = 10) -> dict:
+        """استعلام جدول اللاينات (table_search.php) بنفس معاملات DataTables التي تطلبها
+        اللوحة (id=users + الأعمدة كاملة) — وإلا رجّع لا شيء — مرتَّبًا من الأحدث.
+        يرجّع {"rows": [صفوف مفكَّكة], "total": العدد الكلي إن أعلنته اللوحة}."""
         params = [("draw", "1")]
-        for i in range(12):
+        for i in range(self._TABLE_COLS):
             params += [
                 ("columns[%d][data]" % i, str(i)),
                 ("columns[%d][name]" % i, ""),
@@ -612,8 +626,8 @@ class PanelWebSession:
             ]
         params += [
             ("order[0][column]", "0"), ("order[0][dir]", "desc"),
-            ("start", "0"), ("length", "10"),
-            ("search[value]", username), ("search[regex]", "false"),
+            ("start", "0"), ("length", str(int(length))),
+            ("search[value]", term), ("search[regex]", "false"),
             ("id", "users"), ("filter", ""), ("reseller", ""),
             ("date_created_from", ""), ("date_created_to", ""),
             ("date_expire_from", ""), ("date_expire_to", ""),
@@ -624,21 +638,53 @@ class PanelWebSession:
         try:
             j = json.loads(self._text(r))
         except ValueError:
-            return {}
+            return {"rows": [], "total": None}
+        rows = []
         for row in (j.get("data") or []):
             s = " ".join(str(c) for c in row) if isinstance(row, list) else str(row)
-            um = re.search(r"User:\s*([^<\s]+)", s)
-            if not um or um.group(1) != username:
-                continue
-            pm = re.search(r"Pass:\s*([^<\s]+)", s)
-            rid = re.search(r'userid=\\?"?(\d+)', s) or re.search(r'data-row-id=\\?"?(\d+)', s)
-            end = re.search(r"End:\s*([0-9][0-9\-\/.]+)", s)
-            conns = re.search(r"\d+\s*/\s*(\d+)\s*</a>", s)
-            return {"id": rid.group(1) if rid else "", "user": um.group(1),
-                    "pass": pm.group(1) if pm else "",
-                    "end": end.group(1) if end else "",
-                    "conns": conns.group(1) if conns else ""}
+            parsed = self._parse_row(s)
+            if parsed:
+                rows.append(parsed)
+        total = j.get("recordsTotal")
+        return {"rows": rows, "total": _to_num(total) if total is not None else None}
+
+    @staticmethod
+    def _parse_row(s: str) -> dict:
+        """صف جدول اللاينات (نص HTML مسطَّح) → {id, user, pass, end, conns, status}."""
+        um = re.search(r"User:\s*([^<\s]+)", s)
+        if not um:
+            return {}
+        pm = re.search(r"Pass:\s*([^<\s]+)", s)
+        rid = re.search(r'userid=\\?"?(\d+)', s) or re.search(r'data-row-id=\\?"?(\d+)', s)
+        end = re.search(r"End:\s*([0-9][0-9\-\/.]+)", s)
+        conns = re.search(r"\d+\s*/\s*(\d+)\s*</a>", s)
+        low = s.lower()
+        status = "expired" if "expired" in low else ("disabled" if re.search(r"disabled|banned", low) else "active")
+        return {"id": rid.group(1) if rid else "", "user": um.group(1),
+                "pass": pm.group(1) if pm else "",
+                "end": end.group(1) if end else "",
+                "conns": conns.group(1) if conns else "",
+                "status": status}
+
+    def _search_line(self, username: str) -> dict:
+        for row in self._table_query(username, 10)["rows"]:
+            if row["user"] == username:
+                return row
         return {}
+
+    def last_line(self) -> dict:
+        """آخر يوزر أُنشئ على اللوحة (أول صف مرتَّبًا من الأحدث)."""
+        rows = self._table_query("", 1)["rows"]
+        return rows[0] if rows else {}
+
+    def search(self, query: str, limit: int = 50) -> list:
+        """بحث بالـ username أو الـ password عبر بحث الجدول نفسه (يفتّش كل الأعمدة)."""
+        query = str(query or "").strip()
+        if not query:
+            return []
+        return [{"id": r["id"], "username": r["user"], "password": r["pass"],
+                 "status": r["status"], "exp": r["end"]}
+                for r in self._table_query(query, limit)["rows"]]
 
     def logout_local(self):
         for p in (self.jar_path, self.meta_path):

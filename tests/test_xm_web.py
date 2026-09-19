@@ -139,6 +139,14 @@ def main():
               "total=%s" % st.get("total"))
         check("status reads created-today and online counts", st.get("created_today") == 26 and st.get("online") == 6,
               "today=%s online=%s" % (st.get("created_today"), st.get("online")))
+        check("status reports the newest line as last user", st.get("last_username") == "webuser2",
+              "last=%s" % st.get("last_username"))
+        rows = s.search("webuser1")
+        check("search by username on the panel table", len(rows) == 1 and rows[0]["username"] == "webuser1"
+              and rows[0]["password"] == "pass1234", str(rows)[:80])
+        rows = s.search("pw2")
+        check("search by password on the panel table", len(rows) == 1 and rows[0]["username"] == "webuser2", str(rows)[:80])
+        check("empty search returns nothing", s.search("  ") == [])
 
         print("\n== 4. Session reused from disk (new object) ==")
         s2 = xm_web.PanelWebSession(acct, data_dir)
