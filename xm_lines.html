@@ -207,8 +207,9 @@ function applyGateMode(){ const web = $("g_mode").value !== "api"; $("g_web").hi
 function gateForm(g){
   g = g || {mode:"web"};
   $("g_id").value=g.id||""; $("g_name").value=g.name||""; $("g_mode").value=g.mode==="api"?"api":"web";
-  $("g_panel_base").value=g.panel_base||""; $("g_panel_user").value=g.panel_user||""; $("g_panel_pass").value=g.panel_pass||"";
-  $("g_api_url").value=g.api_url||""; $("g_api_key").value=g.api_key||"";
+  $("g_panel_base").value=g.panel_base||""; $("g_panel_user").value=g.panel_user||"";
+  $("g_panel_pass").value=""; $("g_panel_pass").placeholder=g.has_panel_pass?"محفوظة — اتركه فارغًا للإبقاء":"";
+  $("g_api_url").value=g.api_url||""; $("g_api_key").value=""; $("g_api_key").placeholder=g.has_api_key?"محفوظ — اتركه فارغًا للإبقاء":"";
   $("g_host").value=g.host||""; $("g_guide").value=g.guide_url||"";
   applyGateMode(); $("gateEditor").hidden=false; $("gateMsg").textContent="";
 }

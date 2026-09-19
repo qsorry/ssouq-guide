@@ -25,9 +25,14 @@ import store_sitemap
 import xm_web
 import crypto_store
 
-# حقول حسّاسة تُشفَّر في التخزين (تبقى مفكوكة في الذاكرة).
-_SENSITIVE_ACCT = ("password",)
+# كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
+# أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
+_SENSITIVE_ACCT = ()
 _SENSITIVE_GATE = ("panel_pass", "api_key")
+
+
+def _is_hash(v):
+    return isinstance(v, dict) and "salt" in v and "hash" in v
 
 
 def _crypt_store(st, fn):
@@ -111,6 +116,10 @@ def load_store():
         if "gates" not in a:                        # نسخة قديمة فقط (لا وجود للمفتاح)
             st["accounts"][i] = migrate_account(a)
             migrated = True
+        # ترقية أمنية: كلمة مرور دخول مخزَّنة كنص → hash لا يُسترجع.
+        elif isinstance(st["accounts"][i].get("password"), str):
+            st["accounts"][i]["password"] = hash_pw(st["accounts"][i]["password"])
+            migrated = True
     if migrated:
         try:
             save_store(st)
@@ -138,6 +147,18 @@ def check_pw(pw, rec):
     if not rec:
         return False
     return hmac.compare_digest(hash_pw(pw, rec["salt"])["hash"], rec["hash"])
+
+
+def _hash_password(value, old_hash):
+    """يرجّع hash لكلمة مرور الدخول. فارغ عند التعديل = يبقي القديمة."""
+    if _is_hash(value):
+        return value
+    pw = str(value or "")
+    if pw:
+        if len(pw) < 4:
+            raise ValueError("كلمة المرور قصيرة (4 أحرف على الأقل)")
+        return hash_pw(pw)
+    return old_hash if _is_hash(old_hash) else (hash_pw(old_hash) if isinstance(old_hash, str) and old_hash else None)
 
 
 def clean_gate(g, old=None):
@@ -186,14 +207,14 @@ def clean_account(a, old=None):
         "id":       old.get("id") or secrets.token_hex(4),
         "name":     str(a.get("name", "")).strip() or old.get("name", ""),
         "user":     str(a.get("user", "")).strip() or old.get("user", ""),
-        "password": str(a.get("password", "")) or old.get("password", ""),
+        "password": _hash_password(a.get("password", ""), old.get("password")),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
     if not out["user"] or ":" in out["user"] or out["user"] == ADMIN_USER:
         raise ValueError("اسم الدخول غير صالح أو محجوز")
-    if len(out["password"]) < 4:
-        raise ValueError("كلمة المرور قصيرة (4 أحرف على الأقل)")
+    if not _is_hash(out["password"]):
+        raise ValueError("كلمة المرور مطلوبة")
 
     old_gates = {g.get("id"): g for g in (old.get("gates") or [])}
     gates = []
@@ -226,13 +247,33 @@ def migrate_account(a):
         "api_url": a.get("api_url", ""),
         "api_key": a.get("api_key", ""),
     }
+    pw = a.get("password", "")
     return {
         "id": a.get("id") or secrets.token_hex(4),
         "name": a.get("name", ""),
         "user": a.get("user", ""),
-        "password": a.get("password", ""),
+        "password": pw if _is_hash(pw) else (hash_pw(str(pw)) if str(pw) else None),
         "gates": [gate],
     }
+
+
+def _redact_gates(gates):
+    out = copy.deepcopy(gates or [])
+    for g in out:
+        g["has_panel_pass"] = bool(g.get("panel_pass"))
+        g["has_api_key"] = bool(g.get("api_key"))
+        g["panel_pass"] = ""
+        g["api_key"] = ""
+    return out
+
+
+def redact_account(a):
+    """نسخة صالحة للإرسال للمتصفح: بلا كلمة مرور الدخول وبلا أسرار اللوحات."""
+    out = copy.deepcopy(a)
+    out.pop("password", None)
+    out["has_password"] = bool(a.get("password"))
+    out["gates"] = _redact_gates(a.get("gates", []))
+    return out
 
 
 def find_gate(acct, gate_id):
@@ -487,7 +528,11 @@ class Handler(BaseHTTPRequestHandler):
         if u == ADMIN_USER and check_pw(p, st["admin"]):
             return "admin", None
         for a in st["accounts"]:
-            if hmac.compare_digest(u, a["user"]) and hmac.compare_digest(p, a["password"]):
+            if not hmac.compare_digest(u, a.get("user", "")):
+                continue
+            stored = a.get("password")
+            ok = check_pw(p, stored) if _is_hash(stored) else hmac.compare_digest(p, str(stored or ""))
+            if ok:
                 return "account", a
         return None, None
 
@@ -571,7 +616,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == P + "/api/mygates":            # بوابات الشخص كاملةً (لتحريرها)
                 if role != "account":
                     return self._send(403, {"error": "غير متاح"})
-                return self._send(200, {"gates": acct.get("gates", [])})
+                return self._send(200, {"gates": _redact_gates(acct.get("gates", []))})
             if path == P + "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate or gate.get("mode") != "web":
@@ -598,7 +643,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == P + "/api/accounts":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, {"accounts": st["accounts"]})
+                return self._send(200, {"accounts": [redact_account(a) for a in st["accounts"]]})
             self._send(404, {"error": "not found"})
         except Exception as e:
             self._send(500, {"error": str(e)})
@@ -718,7 +763,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             return self._send(404, {"error": "not found"})
         save_store(st)
-        self._send(200, {"ok": True, "accounts": st["accounts"]})
+        self._send(200, {"ok": True, "accounts": [redact_account(a) for a in st["accounts"]]})
 
     def _mygates_post(self, path, st, acct):
         req = self._body()
@@ -735,7 +780,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             return self._send(404, {"error": "not found"})
         save_store(st)
-        self._send(200, {"ok": True, "gates": acct["gates"]})
+        self._send(200, {"ok": True, "gates": _redact_gates(acct["gates"])})
 
     def _create(self, acct):
         req = self._body()

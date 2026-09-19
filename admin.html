@@ -97,7 +97,7 @@ function render(){
     const gates = (a.gates || []).map(g =>
       `<code class="g">• ${esc(g.name)} — ${g.mode === "web" ? "ويب" : "API"} — host: ${esc(g.host)}${g.guide_url ? " — Guide: " + esc(g.guide_url) : ""}</code>`).join("");
     return `<div class="acct"><div class="i"><b>${esc(a.name)}</b>
-      <code>دخول: ${esc(a.user)} / ${esc(a.password)}</code>
+      <code>دخول: ${esc(a.user)}${a.has_password ? " · كلمة المرور محفوظة 🔒" : ""}</code>
       <code>${(a.gates||[]).length} بوابة</code>${gates}</div>
       <div class="b"><button class="ghost" data-edit="${a.id}">تعديل</button><button class="danger" data-del="${a.id}">حذف</button></div></div>`;
   }).join("") : '<div class="empty">لا توجد حسابات بعد. أضف أول حساب من النموذج أعلاه.</div>';
@@ -121,12 +121,12 @@ function gateRow(g){
       <label>رابط اللوحة</label><input data-f="panel_base" value="${esc(g.panel_base||"")}" placeholder="http://panel-host:2052">
       <div class="g2">
         <div><label>اسم الدخول للوحة</label><input data-f="panel_user" value="${esc(g.panel_user||"")}" autocomplete="off"></div>
-        <div><label>كلمة مرور اللوحة</label><input data-f="panel_pass" value="${esc(g.panel_pass||"")}" autocomplete="new-password"></div>
+        <div><label>كلمة مرور اللوحة</label><input data-f="panel_pass" value="" placeholder="${g.has_panel_pass?'محفوظة — اتركه فارغًا للإبقاء':''}" autocomplete="new-password"></div>
       </div>
     </div>
     <div data-api hidden>
       <label>رابط API الكامل</label><input data-f="api_url" value="${esc(g.api_url||"")}" placeholder="http://server/xxx/reseller/index.php">
-      <label>مفتاح API</label><input data-f="api_key" value="${esc(g.api_key||"")}" autocomplete="off">
+      <label>مفتاح API</label><input data-f="api_key" value="" placeholder="${g.has_api_key?'محفوظ — اتركه فارغًا للإبقاء':''}" autocomplete="off">
     </div>
     <label>الهوست (يظهر في السطر)</label><input data-f="host" value="${esc(g.host||"")}" placeholder="http://ssouqhost.vip">
     <label>رابط الشرح (Guide) — اتركه فارغاً لإخفائه</label><input data-f="guide_url" value="${esc(g.guide_url||"")}" placeholder="https://guide.ssouq.com/">`;
@@ -149,7 +149,9 @@ function readGates(){
 }
 function fill(a){
   $("id").value = a?.id || "";
-  $("name").value = a?.name || ""; $("user").value = a?.user || ""; $("password").value = a?.password || "";
+  $("name").value = a?.name || ""; $("user").value = a?.user || "";
+  $("password").value = "";
+  $("password").placeholder = a ? "اتركه فارغًا للإبقاء على الحالية" : "4 أحرف على الأقل";
   $("gates").innerHTML = "";
   const gates = (a && a.gates && a.gates.length) ? a.gates : [null];
   gates.forEach(g => $("gates").appendChild(gateRow(g)));
