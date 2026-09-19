@@ -523,9 +523,9 @@ class Handler(BaseHTTPRequestHandler):
                     web_session(acct).login(captcha=code)
                     return self._send(200, {"ok": True})
                 except xm_web.LoginFailed as e:
-                    return self._send(200, {"ok": False, "error": str(e)})
+                    return self._send(200, {"ok": False, "kind": "login", "error": str(e)})
                 except xm_web.CaptchaNeeded:
-                    return self._send(200, {"ok": False, "error": "الكود غير صحيح"})
+                    return self._send(200, {"ok": False, "kind": "captcha", "error": "الكود غير صحيح"})
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
