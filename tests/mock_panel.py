@@ -157,7 +157,9 @@ class H(BaseHTTPRequestHandler):
                                                "recordsFiltered": len(data), "data": data}),
                               "application/json", hdr)
 
-        if path in ("/", "/dashboard"):
+        if path == "/":                       # الجذر يحوّل للوحة كاللوحة الحقيقية
+            return self._send(302, b"", "text/plain", {**hdr, "Location": "/dashboard"})
+        if path == "/dashboard":
             credits = 1002
             active = 253 + len(LINES)
             html = (

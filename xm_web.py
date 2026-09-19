@@ -562,11 +562,35 @@ class PanelWebSession:
         }
 
     # ---- حالة اللوحة (الرصيد + أرقام لوحة المعلومات) ----
+    # الجذر "/" في لوحات كثيرة يردّ تحويلًا (30x) بجسم فارغ إلى لوحة المعلومات،
+    # فنتبع التحويل ونجرّب مساراتها المعروفة حتى نصل لصفحة فيها الرصيد فعلًا.
+    DASH_PATHS = ("/", "/dashboard", "/dashboard.php", "/home", "/home.php", "/index.php", "/reseller")
+
+    def _get_follow(self, path, max_hops=4):
+        r = self._request(path)
+        hops = 0
+        while 300 <= r.get("status", 0) < 400 and hops < max_hops:
+            loc = r.get("location", "")
+            if not loc or "login" in loc.lower():
+                break
+            r = self._request(loc)
+            hops += 1
+        return r
+
+    def _dashboard_html(self) -> str:
+        """أول صفحة لوحة مصادَقة غير فارغة (بعد اتّباع التحويلات)."""
+        for path in self.DASH_PATHS:
+            body = self._text(self._get_follow(path))
+            low = body.lower()
+            if body.strip() and 'id="login_form"' not in low and 'name="captcha"' not in low:
+                return body
+        return ""
+
     def status(self) -> dict:
         """يقرأ صفحة اللوحة المصادَقة ويستخرج الرصيد (Credits) وبعض أرقامها.
         الرصيد ظاهر على الصفحة نفسها ("Credits: N")، فنلتقطه كما تلتقطه فالكون."""
         self.ensure_login()
-        html = self._text(self._request("/"))
+        html = self._dashboard_html()
         # آخر يوزر أُنشئ = أول صف في جدول اللاينات مرتَّبًا من الأحدث (كما في فالكون)،
         # ومعه العدد الكلي من الجدول احتياطًا إن لم تُقرأ بطاقة لوحة المعلومات.
         last, table_total = {}, None
@@ -609,18 +633,23 @@ class PanelWebSession:
         return None
 
     def diag_web(self) -> dict:
-        """تشخيص مؤقّت: مقتطفات حول كلمات الرصيد في صفحة اللوحة لضبط الاستخراج على
-        اللوحة الحيّة (لا يحوي كلمات مرور — لوحة المُوزِّع)."""
+        """تشخيص مؤقّت: حالة كل مسار محتمل للوحة + مقتطفات حول كلمات الرصيد على
+        الصفحة الفعلية (لا يحوي كلمات مرور — لوحة المُوزِّع)."""
         self.ensure_login()
-        html = self._text(self._request("/"))
+        tries = []
+        for path in self.DASH_PATHS:
+            r = self._request(path)
+            tries.append({"path": path, "status": r.get("status"),
+                          "loc": (r.get("location") or "")[:140], "len": len(self._text(r))})
+        html = self._dashboard_html()
         snips = []
-        for m in re.finditer(r'.{0,32}(?:credit|balance|رصيد|نقاط|نقط|كريد).{0,32}', html, re.I | re.U):
+        for m in re.finditer(r'.{0,32}(?:credit|balance|رصيد|نقاط|نقط|كريد|point).{0,32}', html, re.I | re.U):
             t = re.sub(r'\s+', ' ', m.group(0)).strip()
             if t and t not in snips:
                 snips.append(t)
             if len(snips) >= 25:
                 break
-        return {"len": len(html), "scripts": html.lower().count("<script"),
+        return {"tries": tries, "dash_len": len(html), "scripts": html.lower().count("<script"),
                 "credits": self._extract_credits(html), "snippets": snips}
 
     @staticmethod
