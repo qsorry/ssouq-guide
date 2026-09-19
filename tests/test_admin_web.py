@@ -135,6 +135,35 @@ def main():
         check("line created via gate web session", bool(lines) and " User " in ln and " Pass " in ln,
               (ln[:60] + "…") if ln else json.dumps(d, ensure_ascii=False)[:80])
         check("line carries the gate's Guide url", "Guide https://guide.ssouq.com/" in ln, ln[-40:])
+
+        print("\n== 5. Self-service: person adds their own gate; data encrypted at rest ==")
+        # log back in as admin (password set at setup) and create a LOGIN-ONLY person
+        op.open(ADMIN + "/admin/logout")
+        jreq("/admin/api/login", {"user": "admin", "password": "admin123"})
+        code, d = jreq("/admin/api/accounts", {"name": "Ok", "user": "Ok", "password": "998661", "gates": []})
+        okacc = next((a for a in d.get("accounts", []) if a.get("user") == "Ok"), None)
+        check("login-only person created (0 gates)", okacc is not None and len(okacc.get("gates", [])) == 0,
+              (d.get("error") or "ok"))
+
+        # log in as that person, add a gate via self-service
+        op.open(ADMIN + "/admin/logout")
+        jreq("/admin/api/login", {"user": "Ok", "password": "998661"})
+        code, d = jreq("/admin/api/mygates")
+        check("mygates empty at first", d.get("gates") == [])
+        code, d = jreq("/admin/api/mygates", {"name": "بوابة مرح", "mode": "web", "host": "http://mrha.ink",
+                                              "panel_base": PANEL, "panel_user": PUSER, "panel_pass": "topsecretpass",
+                                              "guide_url": "https://guide.ssouq.com/"})
+        check("person added their own gate", d.get("ok") and len(d.get("gates", [])) == 1, d.get("error") or "ok")
+
+        # encryption at rest: the raw file must not contain the plaintext secret
+        raw = open(os.path.join(data_dir, "accounts.json"), encoding="utf-8").read()
+        check("panel password encrypted on disk", "topsecretpass" not in raw and "enc:1:" in raw)
+        check("tool password encrypted on disk", "998661" not in raw)
+
+        # delete it
+        gid2 = d["gates"][0]["id"]
+        code, d = jreq("/admin/api/mygates/delete", {"id": gid2})
+        check("person deleted their gate", d.get("ok") and d.get("gates") == [])
     finally:
         for pr in (admin, panel):
             pr.terminate()

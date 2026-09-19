@@ -18,9 +18,29 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import copy
+
 import guide_pages
 import store_sitemap
 import xm_web
+import crypto_store
+
+# حقول حسّاسة تُشفَّر في التخزين (تبقى مفكوكة في الذاكرة).
+_SENSITIVE_ACCT = ("password",)
+_SENSITIVE_GATE = ("panel_pass", "api_key")
+
+
+def _crypt_store(st, fn):
+    out = copy.deepcopy(st)
+    for a in out.get("accounts", []):
+        for k in _SENSITIVE_ACCT:
+            if k in a:
+                a[k] = fn(a[k], DATA_DIR)
+        for g in a.get("gates", []) or []:
+            for k in _SENSITIVE_GATE:
+                if k in g:
+                    g[k] = fn(g[k], DATA_DIR)
+    return out
 
 # ================= الإعدادات =================
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -84,10 +104,11 @@ def load_store():
         st = {}
     st.setdefault("admin", None)
     st.setdefault("accounts", [])
+    st = _crypt_store(st, crypto_store.decrypt)     # فكّ التشفير في الذاكرة
     # ترقية غير مدمّرة: كل حساب قديم → شخص ببوابة واحدة.
     migrated = False
     for i, a in enumerate(st["accounts"]):
-        if not (isinstance(a.get("gates"), list) and a["gates"]):
+        if "gates" not in a:                        # نسخة قديمة فقط (لا وجود للمفتاح)
             st["accounts"][i] = migrate_account(a)
             migrated = True
     if migrated:
@@ -100,9 +121,10 @@ def load_store():
 
 def save_store(st):
     os.makedirs(DATA_DIR, exist_ok=True)
+    enc = _crypt_store(st, crypto_store.encrypt)    # يُكتب مشفَّرًا على القرص
     tmp = ACC_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(st, f, ensure_ascii=False, indent=2)
+        json.dump(enc, f, ensure_ascii=False, indent=2)
     os.replace(tmp, ACC_FILE)
 
 
@@ -182,17 +204,16 @@ def clean_account(a, old=None):
             cg["id"] = secrets.token_hex(4)
         seen.add(cg["id"])
         gates.append(cg)
-    if not gates:
-        raise ValueError("أضف بوابة واحدة على الأقل")
+    # يجوز إنشاء دخول بلا بوابات — يضيفها الشخص بنفسه بعد الدخول.
     out["gates"] = gates
     return out
 
 
 def migrate_account(a):
     """يحوّل حساب النسخة القديمة (لوحة واحدة على مستوى الحساب) إلى شخص ببوابة
-    واحدة — دون فقد أي بيانات."""
-    if isinstance(a.get("gates"), list) and a["gates"]:
-        return a  # نسخة جديدة بالفعل
+    واحدة — دون فقد أي بيانات. وجود مفتاح gates (ولو فارغًا) = نسخة جديدة."""
+    if "gates" in a:
+        return a
     gate = {
         "id": secrets.token_hex(4),
         "name": a.get("name") or "البوابة",
@@ -547,6 +568,10 @@ class Handler(BaseHTTPRequestHandler):
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "gates": gates})
+            if path == P + "/api/mygates":            # بوابات الشخص كاملةً (لتحريرها)
+                if role != "account":
+                    return self._send(403, {"error": "غير متاح"})
+                return self._send(200, {"gates": acct.get("gates", [])})
             if path == P + "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate or gate.get("mode") != "web":
@@ -625,6 +650,10 @@ class Handler(BaseHTTPRequestHandler):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._admin_post(path, st)
+                if path.startswith("/api/mygates"):    # الشخص يدير بواباته بنفسه
+                    if role != "account":
+                        return self._send(403, {"error": "غير متاح"})
+                    return self._mygates_post(path, st, acct)
             if path == "/api/web/login":              # إدخال كود التحقّق يدويًا (وضع الويب)
                 body = self._body()
                 gate = find_gate(acct, body.get("gate")) if acct else None
@@ -690,6 +719,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "not found"})
         save_store(st)
         self._send(200, {"ok": True, "accounts": st["accounts"]})
+
+    def _mygates_post(self, path, st, acct):
+        req = self._body()
+        gates = acct.setdefault("gates", [])
+        if path == "/api/mygates":                     # إضافة/تعديل بوابة
+            old = next((g for g in gates if g["id"] == req.get("id")), None)
+            ng = clean_gate(req, old)
+            if old:
+                gates[gates.index(old)] = ng
+            else:
+                gates.append(ng)
+        elif path == "/api/mygates/delete":
+            acct["gates"] = [g for g in gates if g["id"] != req.get("id")]
+        else:
+            return self._send(404, {"error": "not found"})
+        save_store(st)
+        self._send(200, {"ok": True, "gates": acct["gates"]})
 
     def _create(self, acct):
         req = self._body()

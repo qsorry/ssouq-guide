@@ -5,7 +5,7 @@ WORKDIR /app
 # فلا ينكسر النشر بسبب الـ OCR.
 RUN (apk add --no-cache tesseract-ocr && pip install --no-cache-dir pillow pytesseract) || \
     echo "OCR deps skipped — manual captcha fallback will be used"
-COPY xm_lines.py xm_web.py guide_pages.py store_sitemap.py xm_lines.html admin.html setup.html login.html index.html ./
+COPY xm_lines.py xm_web.py crypto_store.py guide_pages.py store_sitemap.py xm_lines.html admin.html setup.html login.html index.html ./
 COPY static ./static
 RUN mkdir -p /app/data
 ENV XM_BIND=0.0.0.0 XM_PORT=80 PYTHONUNBUFFERED=1

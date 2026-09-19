@@ -65,8 +65,38 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
   <p class="sub">اختر الباقة، وكل البوكيهات المشتركة تُضاف تلقائياً. · <a href="/admin/logout" style="color:var(--go)">تسجيل الخروج</a></p>
 
   <section id="gatesBox">
-    <h2>البوابة</h2>
+    <h2>البوابة <button class="ghost" id="manageGates">إدارة بواباتي</button></h2>
     <div class="gate-tabs" id="gateTabs"><div class="empty">جاري تحميل البوابات…</div></div>
+  </section>
+
+  <section id="gatesManage" hidden>
+    <h2>بواباتي <button class="ghost" id="closeManage">إغلاق</button></h2>
+    <div id="myGatesList"></div>
+    <button class="ghost" id="addMyGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
+    <div id="gateEditor" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+      <input type="hidden" id="g_id">
+      <label class="f" for="g_name">اسم البوابة</label><input class="t" id="g_name" placeholder="بوابة مرح">
+      <label class="f" for="g_mode">طريقة الربط</label>
+      <select class="t" id="g_mode">
+        <option value="web">جلسة ويب للوحة (دخول + كود تحقّق)</option>
+        <option value="api">Reseller API (مفتاح API)</option>
+      </select>
+      <div id="g_web">
+        <label class="f" for="g_panel_base">رابط اللوحة</label><input class="t" id="g_panel_base" placeholder="http://panel-host:2052">
+        <div class="row"><div><label class="f" for="g_panel_user">اسم الدخول للوحة</label><input class="t" id="g_panel_user" autocomplete="off"></div>
+        <div><label class="f" for="g_panel_pass">كلمة مرور اللوحة</label><input class="t" id="g_panel_pass" autocomplete="new-password"></div></div>
+      </div>
+      <div id="g_api" hidden>
+        <label class="f" for="g_api_url">رابط API</label><input class="t" id="g_api_url" placeholder="http://server/xxx/reseller/index.php">
+        <label class="f" for="g_api_key">مفتاح API</label><input class="t" id="g_api_key" autocomplete="off">
+      </div>
+      <label class="f" for="g_host">الهوست (يظهر في السطر)</label><input class="t" id="g_host" placeholder="http://ssouqhost.vip">
+      <label class="f" for="g_guide">رابط الشرح (Guide) — فارغ = يُخفى</label><input class="t" id="g_guide" placeholder="https://guide.ssouq.com/">
+      <button class="go" id="saveGate">حفظ البوابة</button>
+      <button class="ghost" id="cancelGate" style="width:100%;margin-top:8px">إلغاء</button>
+    </div>
+    <div class="msg" id="gateMsg"></div>
+    <p class="muted" style="font-size:.8rem;color:var(--mute)">بيانات اللوحات تُحفظ مشفَّرة. تُعاد استخدام الجلسة المحفوظة تلقائياً، ولا يُطلب الكود إلا عند الحاجة.</p>
   </section>
 
   <section>
@@ -120,7 +150,7 @@ async function loadGates(){
     account = d.account || ""; $("acct").textContent = account;
     gates = d.gates || [];
   } catch { gates = []; }
-  if (!gates.length){ $("gateTabs").innerHTML = '<div class="empty">لا توجد بوابات. أضِفها من صفحة الحسابات.</div>'; return; }
+  if (!gates.length){ $("gateTabs").innerHTML = '<div class="empty">لا توجد بوابات بعد — اضغط "إدارة بواباتي" لإضافة منشأتك.</div>'; return; }
   curGate = gates.some(g => g.id === curGate) ? curGate : gates[0].id;
   $("gateTabs").innerHTML = gates.map(g =>
     `<button class="gate-tab${g.id===curGate?" on":""}" data-gate="${g.id}">${esc(g.name)}</button>`).join("");
@@ -169,6 +199,51 @@ async function submitCaptcha(){
     else { $("capMsg").textContent = (d && d.error) || "الكود غير صحيح"; $("capImg").src = capUrl(); $("capInput").value=""; $("capInput").focus(); }
   } catch(e){ $("capMsg").textContent = "تعذّر الإرسال."; }
   btn.disabled = false;
+}
+
+// ---- إدارة البوابات (إضافة ذاتية؛ البيانات تُحفظ مشفَّرة) ----
+let myGates = [];
+function applyGateMode(){ const web = $("g_mode").value !== "api"; $("g_web").hidden = !web; $("g_api").hidden = web; }
+function gateForm(g){
+  g = g || {mode:"web"};
+  $("g_id").value=g.id||""; $("g_name").value=g.name||""; $("g_mode").value=g.mode==="api"?"api":"web";
+  $("g_panel_base").value=g.panel_base||""; $("g_panel_user").value=g.panel_user||""; $("g_panel_pass").value=g.panel_pass||"";
+  $("g_api_url").value=g.api_url||""; $("g_api_key").value=g.api_key||"";
+  $("g_host").value=g.host||""; $("g_guide").value=g.guide_url||"";
+  applyGateMode(); $("gateEditor").hidden=false; $("gateMsg").textContent="";
+}
+function readGateForm(){
+  return {id:$("g_id").value, name:$("g_name").value, mode:$("g_mode").value,
+    panel_base:$("g_panel_base").value, panel_user:$("g_panel_user").value, panel_pass:$("g_panel_pass").value,
+    api_url:$("g_api_url").value, api_key:$("g_api_key").value, host:$("g_host").value, guide_url:$("g_guide").value};
+}
+async function loadMyGates(){
+  try { const r=await fetch("/admin/api/mygates"); const d=chk(await r.json()); myGates=d.gates||[]; } catch { myGates=[]; }
+  $("myGatesList").innerHTML = myGates.length ? myGates.map(g=>`
+    <div class="item"><div class="l" style="text-align:right;direction:rtl">${esc(g.name)} — ${g.mode==="web"?"ويب":"API"} — ${esc(g.host)}</div>
+      <button class="ghost" data-eg="${g.id}">تعديل</button>
+      <button class="ghost" data-dg="${g.id}" style="border-color:var(--go);color:var(--go)">حذف</button></div>`).join("")
+    : '<div class="empty">لا توجد بوابات بعد. أضِف أول بوابة.</div>';
+}
+async function saveGate(){
+  const b=readGateForm();
+  if(!b.name){ $("gateMsg").textContent="اسم البوابة مطلوب"; return; }
+  const btn=$("saveGate"); btn.disabled=true; $("gateMsg").textContent="جاري الحفظ…";
+  try {
+    const r=await fetch("/admin/api/mygates",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});
+    const d=chk(await r.json()); if(d.error) throw new Error(d.error);
+    $("gateEditor").hidden=true; await loadMyGates(); await loadGates(); $("gateMsg").textContent="تم الحفظ";
+  } catch(e){ $("gateMsg").textContent=e.message; }
+  btn.disabled=false;
+}
+async function deleteGate(id){
+  const g=myGates.find(x=>x.id===id); if(!g||!confirm(`حذف البوابة "${g.name}"؟`)) return;
+  try {
+    const r=await fetch("/admin/api/mygates/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});
+    const d=chk(await r.json()); if(d.error) throw new Error(d.error);
+    if(curGate===id) curGate="";
+    await loadMyGates(); await loadGates();
+  } catch(e){ alert(e.message); }
 }
 
 async function fetchPackages(){
@@ -242,6 +317,15 @@ $("capCancel").onclick = hideCaptcha;
 $("capInput").addEventListener("keydown", e => { if (e.key === "Enter") submitCaptcha(); });
 $("reload").onclick = fetchPackages;
 $("gateTabs").addEventListener("click", e => { const b = e.target.closest(".gate-tab"); if (b) selectGate(b.dataset.gate); });
+$("manageGates").onclick = () => { $("gatesManage").hidden = false; loadMyGates(); };
+$("closeManage").onclick = () => { $("gatesManage").hidden = true; };
+$("addMyGate").onclick = () => gateForm(null);
+$("cancelGate").onclick = () => { $("gateEditor").hidden = true; };
+$("saveGate").onclick = saveGate;
+$("g_mode").addEventListener("change", applyGateMode);
+$("myGatesList").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.eg) gateForm(myGates.find(g => g.id === b.dataset.eg));
+  if (b.dataset.dg) deleteGate(b.dataset.dg); });
 $("clr").onclick = () => { if (confirm("مسح السجل من المتصفح؟")) { save([]); renderHistory(); } };
 $("exp").onclick = () => {
   const txt = load().map(x => { const d=new Date(x.time);
