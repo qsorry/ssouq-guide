@@ -86,6 +86,8 @@ label.f{display:block;font-size:.8rem;color:var(--mute);margin:10px 0 4px}
         <option value="active">ساري</option>
       </select>
       <select id="kind">
+        <option value="expiring">رسالة: أوشك على الانتهاء + عرض</option>
+        <option value="renew">رسالة: تجديد بعد الانتهاء + عرض</option>
         <option value="d7">رسالة: قبل الانتهاء</option>
         <option value="expiry">رسالة: يوم الانتهاء</option>
         <option value="after3">رسالة: بعد ٣ أيام</option>
@@ -93,6 +95,7 @@ label.f{display:block;font-size:.8rem;color:var(--mute);margin:10px 0 4px}
       </select>
       <label class="note"><input type="checkbox" id="onlyrep"> المكرّرون فقط</label>
       <input type="search" id="q" placeholder="ابحث باسم أو جوال أو باقة">
+      <button class="act ghost" id="mkoffers">أنشئ عروضًا للمعروضين</button>
       <button class="act ghost" id="csv">تنزيل CSV</button>
     </div>
     <div id="list"></div>
@@ -123,6 +126,17 @@ label.f{display:block;font-size:.8rem;color:var(--mute);margin:10px 0 4px}
       <div><label class="f">أقل فاصل (ثانية)</label><input type="number" id="gmin" min="5"></div>
       <div><label class="f">أعلى فاصل (ثانية)</label><input type="number" id="gmax" min="5"></div>
     </div>
+    <h2 style="margin-top:22px">العرض الخاص</h2>
+    <p class="note">الرابط يُنشأ لكل عميل على حدة، ويُخفي نفسه بانقضاء المدة. الخصم نفسه يأتي من كوبون سلة:
+      إمّا كود واحد تنشئه في سلة وتضعه هنا، أو رمز وصول سلة فيصنع النظام كودًا خاصًا لكل عميل يُستعمل مرة واحدة.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px;max-width:520px">
+      <div><label class="f">نسبة الخصم %</label><input type="number" id="disc" min="1" max="90"></div>
+      <div><label class="f">مدة العرض (أيام)</label><input type="number" id="odays" min="1" max="60"></div>
+    </div>
+    <label class="f">كود كوبون جاهز من سلة (للجميع)</label>
+    <input type="text" id="coup" placeholder="RENEW20" style="width:100%;direction:ltr">
+    <label class="f">رمز وصول سلة — لإنشاء كوبون خاص لكل عميل (اختياري)</label>
+    <input type="text" id="stkn" placeholder="Bearer token بصلاحية marketing.read_write" style="width:100%;direction:ltr">
     <label class="f">رابط خدمة الإرسال (Baileys) — اختياري</label>
     <input type="text" id="surl" placeholder="https://wa.example.com/send" style="width:100%;direction:ltr">
     <label class="f">مفتاح الخدمة</label>
@@ -164,6 +178,8 @@ async function load(){
     ["good", s.repeat, "كرّروا الشراء"], ["hot", s.shortfalls, "يحتاج تعويضًا"],
     ["", s.with_code, "معه كود"], ["", Math.round(s.spend).toLocaleString("en"), "ريال مبيعات"],
   ].map(([c, v, l]) => `<div class="tile ${c}"><b>${v}</b><span>${l}</span></div>`).join("");
+  $("#disc").value = SET.discount; $("#odays").value = SET.offer_days;
+  $("#coup").value = SET.coupon || ""; $("#stkn").value = SET.salla_token || "";
   $("#cap").value = SET.daily_cap; $("#gmin").value = SET.gap_min; $("#gmax").value = SET.gap_max;
   $("#surl").value = SET.send_url || ""; $("#stok").value = SET.send_token || "";
   $("#today").value = d.sent_today + " من " + SET.daily_cap;
@@ -182,7 +198,7 @@ function render(){
   const rows = filtered(), kind = $("#kind").value;
   if (!rows.length) return $("#list").innerHTML = '<p class="empty">لا أحد في هذه الشريحة.</p>';
   $("#list").innerHTML = `<table><thead><tr>
-    <th>العميل</th><th class="num">الجوال</th><th>باقته</th><th>المتبقي</th><th>الترشيح</th><th>إرسال</th>
+    <th>العميل</th><th class="num">الجوال</th><th>باقته</th><th>المتبقي</th><th>الترشيح</th><th>العرض الخاص</th><th>إرسال</th>
     </tr></thead><tbody>${rows.slice(0, 300).map((c, i) => `<tr>
       <td>${esc(c.name) || "—"}${c.repeat ? '<span class="pill rep">كرّر ' + c.count + '</span>' : ""}
         <div class="note">${esc(c.city || "")}</div></td>
@@ -190,12 +206,36 @@ function render(){
       <td>${esc(c.last_product).slice(0, 44)}<div class="note">ينتهي ${c.last_exp}</div></td>
       <td><span class="pill s-${c.segment}">${SEGN[c.segment]}</span><div class="note">${remText(c.rem)}</div></td>
       <td>${c.plan ? esc(c.plan.name) + '<div class="note">' + c.plan.price + ' ريال</div>' : "—"}</td>
+      <td>${c.offer
+        ? `<b>${c.offer.final}</b> ريال <span class="note">(-${c.offer.pct}%)</span>
+           <div class="note">ينتهي ${c.offer.expires} · فُتح ${c.offer.views}×</div>
+           <button class="act ghost" data-l="${i}" style="margin-top:4px">نسخ الرابط</button>
+           <button class="act ghost" data-h="${i}">إخفاء</button>`
+        : `<button class="act ghost" data-o="${i}">أنشئ عرضًا</button>`}</td>
       <td><div class="rowbtns">
         <button class="act wa" data-i="${i}">واتساب</button>
         <button class="act ghost" data-c="${i}">نسخ</button></div></td>
     </tr>`).join("")}</tbody></table>
     ${rows.length > 300 ? `<p class="note">تُعرض ٣٠٠ من ${rows.length} — استخدم البحث أو نزّل CSV.</p>` : ""}`;
   $("#list").querySelectorAll("[data-i]").forEach(b => b.onclick = () => send(rows[+b.dataset.i], kind));
+  $("#list").querySelectorAll("[data-o]").forEach(b => b.onclick = async () => {
+    b.textContent = "…";
+    try { const r = await j(API + "/offer", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: rows[+b.dataset.o].phone }) });
+      if (r.error && !r.made.length) throw new Error(r.error);
+      await load();
+    } catch (e) { b.textContent = "أنشئ عرضًا"; alert(e.message); }
+  });
+  $("#list").querySelectorAll("[data-l]").forEach(b => b.onclick = () => {
+    navigator.clipboard.writeText(rows[+b.dataset.l].offer.url);
+    b.textContent = "نُسخ ✓"; setTimeout(() => b.textContent = "نسخ الرابط", 1500);
+  });
+  $("#list").querySelectorAll("[data-h]").forEach(b => b.onclick = async () => {
+    if (!confirm("إخفاء العرض؟ سيرى العميل صفحة «انتهى العرض».")) return;
+    await j(API + "/offer/hide", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: rows[+b.dataset.h].offer.token, on: true }) });
+    await load();
+  });
   $("#list").querySelectorAll("[data-c]").forEach(b => b.onclick = async () => {
     const t = await text(rows[+b.dataset.c], kind);
     navigator.clipboard.writeText(t); b.textContent = "نُسخ ✓"; setTimeout(() => b.textContent = "نسخ", 1500);
@@ -240,6 +280,10 @@ $("#tabs").onclick = e => {
   $("#tabs").querySelectorAll("button").forEach(x => x.setAttribute("aria-selected", x === b));
   ["list", "comp", "up", "set"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== b.dataset.tab));
 };
+$("#seg").addEventListener("change", () => {          // القالب يتبع الشريحة تلقائيًا
+  const m = { expired: "renew", d7: "expiring", d30: "expiring", d90: "d7", active: "d7" };
+  if (m[$("#seg").value]) $("#kind").value = m[$("#seg").value];
+});
 ["seg", "kind", "q", "onlyrep"].forEach(id => { const el = $("#" + id); el.oninput = render; el.onchange = render; });
 
 // ── رفع ──
@@ -269,7 +313,9 @@ $("#save").onclick = async () => {
   try {
     await j(API + "/settings", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ daily_cap: +$("#cap").value, gap_min: +$("#gmin").value,
-        gap_max: +$("#gmax").value, send_url: $("#surl").value.trim(), send_token: $("#stok").value.trim() }) });
+        gap_max: +$("#gmax").value, send_url: $("#surl").value.trim(), send_token: $("#stok").value.trim(),
+        discount: +$("#disc").value, offer_days: +$("#odays").value,
+        coupon: $("#coup").value.trim(), salla_token: $("#stkn").value.trim() }) });
     $("#setmsg").className = "msg ok"; $("#setmsg").textContent = "حُفظ.";
     await load();
   } catch (e) { $("#setmsg").className = "msg err"; $("#setmsg").textContent = e.message; }
@@ -281,13 +327,33 @@ $("#oolist").onclick = async e => { const a = e.target.closest("[data-oo]"); if 
   await j(API + "/optout", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone: a.dataset.oo, on: false }) }); await load(); };
 
+// ── حملة عروض ──
+$("#mkoffers").onclick = async () => {
+  const rows = filtered().filter(c => !c.offer);
+  if (!rows.length) return alert("كل المعروضين لديهم عرض حيّ بالفعل.");
+  const seg = $("#seg").value;
+  if (!confirm(`إنشاء عرض خاص لـ ${rows.length} عميلًا بخصم ${SET.discount}% لمدة ${SET.offer_days} أيام؟`)) return;
+  const btn = $("#mkoffers"); btn.textContent = "ينشئ…"; btn.disabled = true;
+  try {
+    const r = seg
+      ? await j(API + "/offer", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segment: seg, limit: rows.length }) })
+      : { made: [], error: "اختر شريحة أولًا (لا تنشئ عروضًا لكل العملاء دفعة واحدة)" };
+    alert(r.error && !r.made.length ? r.error
+      : `أُنشئ ${r.made.length} عرضًا${r.failed ? " · تعذّر " + r.failed : ""}.`);
+    await load();
+  } catch (e) { alert(e.message); }
+  btn.textContent = "أنشئ عروضًا للمعروضين"; btn.disabled = false;
+};
+
 // ── CSV ──
 $("#csv").onclick = () => {
   const rows = filtered();
   const head = ["الاسم", "الجوال", "المدينة", "الباقة", "تاريخ الانتهاء", "المتبقي بالأيام", "الشريحة",
-                "عدد اشتراكاته", "الكود", "الترشيح", "سعر الترشيح"];
+                "عدد اشتراكاته", "الكود", "الترشيح", "سعر الترشيح", "رابط العرض", "سعر العرض"];
   const body = rows.map(c => [c.name, c.phone, c.city, c.last_product, c.last_exp, c.rem, SEGN[c.segment],
-    c.count, c.code, c.plan ? c.plan.name : "", c.plan ? c.plan.price : ""]);
+    c.count, c.code, c.plan ? c.plan.name : "", c.plan ? c.plan.price : "",
+    c.offer ? c.offer.url : "", c.offer ? c.offer.final : ""]);
   const csv = "﻿" + [head, ...body].map(r => r.map(v =>
     `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
   const a = document.createElement("a");

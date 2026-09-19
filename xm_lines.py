@@ -353,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         # ----- الجزء العام -----
         if path == "/robots.txt":
-            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n\n"
+            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nDisallow: /offer/\nAllow: /\n\n"
                               f"Sitemap: https://guide.ssouq.com/sitemap.xml\n"
                               f"Sitemap: https://guide.ssouq.com/store-sitemap.xml\n".encode(),
                               ctype="text/plain; charset=utf-8")
@@ -380,6 +380,10 @@ class Handler(BaseHTTPRequestHandler):
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path.startswith("/static/"):
             return self._static(path)
+        if path.startswith("/offer/"):          # رابط العرض الخاص — عام بلا تسجيل دخول
+            off = renewals.get_offer(path[len("/offer/"):].strip("/"), bump=True)
+            return self._send(200 if off else 404, raw=renewals.offer_page(off),
+                              ctype="text/html; charset=utf-8", extra={"Cache-Control": "no-store"})
         if path == "/admin/":
             return self._redirect(P)
         if path != P and not path.startswith(P + "/"):
@@ -559,9 +563,46 @@ class Handler(BaseHTTPRequestHandler):
             s["gap_max"]   = max(s["gap_min"], int(req.get("gap_max", s["gap_max"])))
             s["send_url"]  = str(req.get("send_url", s.get("send_url", ""))).strip()
             s["send_token"] = str(req.get("send_token", s.get("send_token", ""))).strip()
+            s["discount"]   = max(1, min(int(req.get("discount", s.get("discount", 20))), 90))
+            s["offer_days"] = max(1, min(int(req.get("offer_days", s.get("offer_days", 3))), 60))
+            s["coupon"]     = str(req.get("coupon", s.get("coupon", ""))).strip()
+            s["salla_token"] = str(req.get("salla_token", s.get("salla_token", ""))).strip()
             s["enabled"]   = bool(s["send_url"])
             renewals.save_wa(wa)
             return self._send(200, {"ok": True, "settings": s})
+
+        if path == "/api/wa/offer":
+            pct = req.get("pct"); days = req.get("days")
+            coupon = str(req.get("coupon", "")).strip()
+            token_ = str(req.get("salla_token", "")).strip()
+            targets = []
+            if req.get("phone"):
+                ph = renewals.norm_phone(str(req["phone"]))
+                targets = [c for c in renewals.customers() if c["phone"] == ph]
+            elif req.get("segment"):
+                lim = max(1, min(int(req.get("limit", 100)), 1000))
+                targets = [c for c in renewals.customers()
+                           if c["segment"] == req["segment"] and not c["optout"]][:lim]
+            if not targets:
+                return self._send(404, {"error": "لا عملاء في هذا الاختيار"})
+            made, failed, err1 = [], 0, ""
+            for c in targets:
+                if renewals.offer_for(c["phone"]):      # لا نكرّر عرضًا حيًّا
+                    continue
+                off, err = renewals.make_offer(c, pct, days, coupon, token_)
+                if off:
+                    made.append({"phone": c["phone"], "name": c["name"], "token": off["token"],
+                                 "url": renewals.offer_url(off), "final": off["final"],
+                                 "coupon": off["coupon"]})
+                else:
+                    failed += 1; err1 = err1 or err
+                    if "سلة" in err or "كوبون" in err:   # خطأ إعداد: لا تُكرّره ٥٠٠ مرة
+                        break
+            return self._send(200, {"made": made, "failed": failed, "error": err1})
+
+        if path == "/api/wa/offer/hide":
+            off = renewals.hide_offer(str(req.get("token", "")), bool(req.get("on", True)))
+            return self._send(200 if off else 404, {"ok": bool(off)})
 
         if path == "/api/wa/optout":
             return self._send(200, {"optout": renewals.set_optout(str(req.get("phone", "")),

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{TITLE}} — سمارت سوق</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#004D73" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1826" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/static/icons/favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#14283A;--paper:#EFF5FA;--card:#FFFFFF;--line:#DCE6EF;--soft:#E8F1F6;
+  --brand:#004D73;--brand-text:#00587F;--gold:#F0A12B;--gold-ink:#3A2907;--mute:#5C7288;--wa:#1DA851;
+  --shadow:0 1px 2px rgba(16,42,66,.05),0 10px 26px -14px rgba(16,42,66,.22)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E3ECF5;--paper:#0B1826;--card:#132433;
+  --line:#25405A;--soft:#12293A;--brand:#0E6EA0;--brand-text:#63B8E2;--gold:#EEA945;--gold-ink:#2A1D04;
+  --mute:#90A5BA;--wa:#2FC46A;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 26px -14px rgba(0,0,0,.6)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:16px/1.75 "Amazon-Ember","IBM Plex Sans Arabic",Tahoma,sans-serif}
+main{max-width:520px;margin:0 auto;padding:26px 16px 50px}
+.logo{display:block;width:72px;margin:0 auto 18px;border-radius:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:var(--shadow)}
+h1{font-size:1.35rem;margin:0 0 6px;line-height:1.5}
+.lead{color:var(--mute);margin:0 0 18px;font-size:.95rem}
+.badge{display:inline-block;background:var(--gold);color:var(--gold-ink);font-weight:700;
+  padding:5px 14px;border-radius:999px;font-size:.9rem;margin-bottom:14px}
+.plan{display:flex;gap:14px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--soft)}
+.plan img{width:72px;height:72px;object-fit:cover;border-radius:10px;flex:none;background:var(--card)}
+.plan b{display:block;font-size:1.05rem}
+.plan span{color:var(--mute);font-size:.86rem}
+.price{display:flex;align-items:baseline;gap:10px;justify-content:center;margin:20px 0 6px}
+.price .old{color:var(--mute);text-decoration:line-through;font-size:1.05rem}
+.price .new{color:var(--brand-text);font-weight:700;font-size:2.2rem;line-height:1}
+.price .cur{color:var(--mute);font-size:.95rem}
+.save{text-align:center;color:var(--wa);font-weight:500;margin-bottom:18px}
+.cd{display:flex;gap:8px;justify-content:center;margin:0 0 18px}
+.cd div{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:62px;text-align:center}
+.cd b{display:block;font-size:1.3rem;line-height:1.2;font-variant-numeric:tabular-nums}
+.cd span{font-size:.72rem;color:var(--mute)}
+.buy{display:block;text-align:center;background:var(--gold);color:var(--gold-ink);font-weight:700;
+  padding:16px;border-radius:14px;text-decoration:none;font-size:1.05rem}
+.buy:hover{filter:brightness(1.05)}
+.coupon{margin-top:14px;text-align:center;font-size:.92rem;color:var(--mute)}
+.coupon code{background:var(--soft);border:1px dashed var(--line);border-radius:8px;padding:5px 12px;
+  font:700 1rem/1 monospace;color:var(--ink);letter-spacing:.06em;cursor:pointer;display:inline-block;margin-top:6px}
+.cur-sub{border-top:1px dashed var(--line);margin-top:18px;padding-top:14px;color:var(--mute);font-size:.88rem}
+.gone{text-align:center;padding:14px 0}
+.gone .x{font-size:2.6rem;line-height:1}
+.alt{display:block;text-align:center;margin-top:16px;color:var(--brand-text);font-size:.95rem}
+.foot{text-align:center;color:var(--mute);font-size:.82rem;margin-top:22px}
+.foot a{color:var(--brand-text)}
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="/static/logo.jpg" alt="سمارت سوق">
+  {{BODY}}
+  <p class="foot">سمارت سوق · <a href="https://ssouq.com">المتجر</a> ·
+    <a href="https://wa.me/966504998661">الدعم على واتساب</a></p>
+</main>
+{{SCRIPT}}
+</body>
+</html>

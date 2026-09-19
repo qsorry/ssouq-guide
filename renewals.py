@@ -10,14 +10,17 @@
 بايثون خالص بلا أي مكتبة خارجية، على نهج xm_lines.py. التخزين في data/subs.json
 و data/wa.json (يُضاف إليه ولا يُعاد كتابته).
 """
-import os, re, io, csv, json, html, zipfile, datetime, hashlib
+import os, re, io, csv, json, html, zipfile, datetime, hashlib, secrets
 import xml.etree.ElementTree as ET
 from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("XM_DATA", os.path.join(BASE_DIR, "data"))
 SUBS_FILE = os.path.join(DATA_DIR, "subs.json")
 WA_FILE   = os.path.join(DATA_DIR, "wa.json")
+OFFERS_FILE = os.path.join(DATA_DIR, "offers.json")
+SITE = os.environ.get("SITE_URL", "https://guide.ssouq.com")
 
 # ═════════ قواعد التعرّف (نفس قواعد تحليل التصدير) ═════════
 IPTV_HINT = re.compile(r"iptv|smarters|falcon|فالكون|كاسبر|اشتراك سمارت|webos|ال جي|"
@@ -153,7 +156,9 @@ def load_wa():
     d = _load(WA_FILE, {})
     d.setdefault("sent", []); d.setdefault("optout", [])
     d.setdefault("settings", {"daily_cap": 80, "gap_min": 45, "gap_max": 120,
-                              "send_url": "", "send_token": "", "enabled": False})
+                              "send_url": "", "send_token": "", "enabled": False,
+                              "discount": 20, "offer_days": 3, "coupon": "",
+                              "salla_token": ""})
     return d
 def save_wa(d): _save(WA_FILE, d)
 
@@ -319,6 +324,10 @@ def customers():
     for s in wa["sent"]:
         if s["phone"] not in last_sent or s["at"] > last_sent[s["phone"]]["at"]:
             last_sent[s["phone"]] = s
+    offs = {}
+    for o_ in load_offers()["offers"].values():
+        if offer_live(o_) and (o_["phone"] not in offs or o_["created"] > offs[o_["phone"]]["created"]):
+            offs[o_["phone"]] = o_
     by = {}
     for o in st["orders"].values():
         if not o["paid"] or not o["phone"]: continue
@@ -343,7 +352,11 @@ def customers():
         rem = (c["last_exp"] - t).days
         primary, alt = recommend(c["last_product"], c["last_months"])
         ls = last_sent.get(c["phone"])
+        off = offs.get(c["phone"])
         out.append({**c, "first": c["first"].isoformat(), "last_exp": c["last_exp"].isoformat(),
+                    "offer": ({"token": off["token"], "url": offer_url(off), "pct": off["pct"],
+                               "final": off["final"], "expires": off["expires"],
+                               "coupon": off["coupon"], "views": off.get("views", 0)} if off else None),
                     "rem": rem, "segment": segment_of(rem), "repeat": c["count"] > 1,
                     "spend": round(c["spend"], 2), "optout": c["phone"] in optout,
                     "last_sent": ls["at"] if ls else "", "sent_kind": ls["kind"] if ls else "",
@@ -381,27 +394,210 @@ def stats(cs=None):
             "segments": c, "updated": load_subs().get("updated", "")}
 
 
+# ═════════ العروض الخاصة ═════════
+def load_offers(): return _load(OFFERS_FILE, {"offers": {}})
+def save_offers(d): _save(OFFERS_FILE, d)
+
+
+def _num_id(pid):
+    m = re.search(r"(\d+)", pid or "")
+    return int(m.group(1)) if m else None
+
+
+def salla_coupon(token, code, pct, expiry, product_id=None):
+    """ينشئ كوبونًا في سلة لمرة واحدة. يرجع (نجح, رسالة).
+
+    يحتاج رمز وصول بصلاحية marketing.read_write. بدونه يعمل النظام بكوبون
+    واحد تكتبه بيدك في سلة وتضعه في الإعدادات.
+    """
+    body = {"code": code, "type": "percentage", "amount": int(pct),
+            "free_shipping": False, "exclude_sale_products": False,
+            "expiry_date": expiry, "usage_limit": 1, "usage_limit_per_user": 1,
+            "status": "active"}
+    pid = _num_id(product_id or "")
+    if pid: body["products_include"] = [pid]
+    try:
+        rq = Request("https://api.salla.dev/admin/v2/coupons",
+                     data=json.dumps(body).encode(), method="POST",
+                     headers={"Content-Type": "application/json",
+                              "Authorization": "Bearer " + token})
+        with urlopen(rq, timeout=25) as r:
+            json.loads(r.read() or b"{}")
+        return True, ""
+    except Exception as e:
+        detail = ""
+        try: detail = e.read().decode("utf-8", "replace")[:200]
+        except Exception: pass
+        return False, f"{e} {detail}".strip()
+
+
+def make_offer(cust, pct=None, days=None, coupon="", salla_token=""):
+    """ينشئ عرضًا خاصًا لعميل: رابط لا يفتحه غيره، وينتهي بنفسه.
+
+    السعر المخفَّض يُحسب من سعر الباقة المرشَّحة. الخصم نفسه يأتي من كوبون
+    سلة — إمّا كوبون واحد جاهز تضعه في الإعدادات، أو كوبون خاص لهذا العميل
+    يُنشأ آليًّا عبر واجهة سلة (مرة واحدة، ومقصور على باقته).
+    """
+    wa = load_wa(); s_ = wa["settings"]
+    pct = int(pct if pct is not None else s_.get("discount", 20))
+    days = int(days if days is not None else s_.get("offer_days", 3))
+    plan = cust.get("plan")
+    if not plan: return None, "لا توجد باقة مرشَّحة لهذا العميل"
+    price = float(plan.get("price") or 0)
+    final = round(price * (1 - pct / 100.0), 2)
+    tok = secrets.token_urlsafe(9).replace("-", "a").replace("_", "b")
+    expires = _today() + datetime.timedelta(days=days)
+    code = (coupon or s_.get("coupon") or "").strip()
+    note = ""
+    if salla_token or s_.get("salla_token"):
+        code = "SS" + tok[:6].upper()
+        ok, err = salla_coupon(salla_token or s_["salla_token"], code, pct,
+                               expires.isoformat(), plan.get("id"))
+        if not ok:
+            return None, "تعذّر إنشاء كوبون في سلة: " + err
+        note = "كوبون خاص"
+    elif not code:
+        return None, "ضع كود كوبون في الإعدادات، أو رمز وصول سلة لإنشاء كوبون خاص لكل عميل"
+    else:
+        note = "كوبون عام"
+    off = {"token": tok, "phone": cust["phone"], "name": cust.get("name", ""),
+           "plan_id": plan.get("id"), "plan_name": plan.get("name"),
+           "plan_url": plan.get("url"), "plan_img": plan.get("img", ""),
+           "plan_desc": plan.get("desc", ""), "dur": plan.get("dur", ""),
+           "price": price, "pct": pct, "final": final, "coupon": code,
+           "kind": note, "last_product": cust.get("last_product", ""),
+           "last_exp": cust.get("last_exp", ""),
+           "created": datetime.datetime.now().isoformat(timespec="seconds"),
+           "expires": expires.isoformat(), "views": 0, "hidden": False}
+    st = load_offers(); st["offers"][tok] = off; save_offers(st)
+    return off, ""
+
+
+def offer_url(off): return f"{SITE}/offer/{off['token']}"
+
+
+def get_offer(tok, bump=False):
+    st = load_offers(); off = st["offers"].get(tok)
+    if not off: return None
+    if bump:
+        off["views"] = off.get("views", 0) + 1
+        off.setdefault("first_view", datetime.datetime.now().isoformat(timespec="seconds"))
+        save_offers(st)
+    return off
+
+
+def offer_live(off):
+    """العرض حيّ ما لم يُخفَ يدويًا أو يمضِ تاريخه."""
+    if not off or off.get("hidden"): return False
+    return parse_date(off["expires"]) >= _today()
+
+
+def hide_offer(tok, on=True):
+    st = load_offers(); off = st["offers"].get(tok)
+    if off: off["hidden"] = bool(on); save_offers(st)
+    return off
+
+
+def offer_for(phone):
+    """أحدث عرض حيّ لهذا الرقم."""
+    st = load_offers()
+    live = [o for o in st["offers"].values() if o["phone"] == phone and offer_live(o)]
+    return max(live, key=lambda o: o["created"]) if live else None
+
+
+def offer_page(off):
+    """يصيّر صفحة العرض الخاصة. تُقدَّم للعميل بلا تسجيل دخول."""
+    with open(os.path.join(BASE_DIR, "offer.html"), encoding="utf-8") as f:
+        tpl = f.read()
+    e = lambda x: html.escape(str(x or ""), quote=True)
+    if not off:
+        body = ('<div class="card gone"><div class="x">🔍</div>'
+                '<h1>هذا الرابط غير موجود</h1>'
+                '<p class="lead">ربما نُسخ ناقصًا. تصفّح الباقات في المتجر.</p>'
+                '<a class="buy" href="https://ssouq.com">باقات سمارت سوق</a></div>')
+        return tpl.replace("{{TITLE}}", "رابط غير موجود").replace("{{BODY}}", body).replace("{{SCRIPT}}", "").encode()
+    first = e((off.get("name") or "").split(" ")[0] or "عميلنا")
+    if not offer_live(off):
+        body = (f'<div class="card gone"><div class="x">⌛</div>'
+                f'<h1>انتهى هذا العرض</h1>'
+                f'<p class="lead">عذرًا {first}، كان العرض لمدة محدودة وقد انقضى. '
+                f'الباقة ما زالت متاحة بسعرها المعلن.</p>'
+                f'<a class="buy" href="{e(off["plan_url"])}">{e(off["plan_name"])} — {off["price"]:g} ريال</a>'
+                f'<a class="alt" href="https://ssouq.com">تصفّح بقية الباقات</a></div>')
+        return tpl.replace("{{TITLE}}", "انتهى العرض").replace("{{BODY}}", body).replace("{{SCRIPT}}", "").encode()
+    left = (parse_date(off["expires"]) - _today()).days
+    img = e(off.get("plan_img") or "/static/logo.jpg")
+    cur = ""
+    if off.get("last_product"):
+        cur = (f'<div class="cur-sub">اشتراكك الحالي: {e(off["last_product"])[:60]}'
+               + (f' · ينتهي {e(off["last_exp"])}' if off.get("last_exp") else "") + '</div>')
+    coupon = ""
+    if off.get("coupon"):
+        coupon = (f'<div class="coupon">يُطبَّق الخصم بكود<br>'
+                  f'<code id="cp" title="اضغط للنسخ">{e(off["coupon"])}</code></div>')
+    body = (f'<div class="card">'
+            f'<span class="badge">خصم {off["pct"]}% لك وحدك</span>'
+            f'<h1>مرحبًا {first} — مدّد اشتراكك بسعر خاص</h1>'
+            f'<p class="lead">عرض أنشأناه لك، ولمدة محدودة.</p>'
+            f'<div class="plan"><img src="{img}" alt=""><div>'
+            f'<b>{e(off["plan_name"])}</b><span>{e(off.get("plan_desc") or off.get("dur") or "")}</span>'
+            f'</div></div>'
+            f'<div class="price"><span class="old">{off["price"]:g}</span>'
+            f'<span class="new">{off["final"]:g}</span><span class="cur">ريال</span></div>'
+            f'<p class="save">توفّر {round(off["price"] - off["final"], 2):g} ريال</p>'
+            f'<div class="cd" id="cd" data-exp="{e(off["expires"])}">'
+            f'<div><b id="dd">{left}</b><span>يوم</span></div>'
+            f'<div><b id="hh">--</b><span>ساعة</span></div>'
+            f'<div><b id="mm">--</b><span>دقيقة</span></div></div>'
+            f'<a class="buy" href="{e(off["plan_url"])}">اشترِ الآن بـ {off["final"]:g} ريال</a>'
+            f'{coupon}{cur}</div>')
+    script = ("""<script>
+(function(){
+  var cd=document.getElementById('cd'); if(!cd) return;
+  var end=new Date(cd.dataset.exp+'T23:59:59+03:00').getTime();
+  function t(){
+    var s=Math.max(0,Math.floor((end-Date.now())/1000));
+    document.getElementById('dd').textContent=Math.floor(s/86400);
+    document.getElementById('hh').textContent=Math.floor(s%86400/3600);
+    document.getElementById('mm').textContent=Math.floor(s%3600/60);
+    if(s<=0) location.reload();
+  }
+  t(); setInterval(t,30000);
+  var cp=document.getElementById('cp');
+  if(cp) cp.onclick=function(){navigator.clipboard.writeText(cp.textContent.trim());
+    var o=cp.textContent; cp.textContent='نُسخ ✓'; setTimeout(function(){cp.textContent=o;},1400);};
+})();
+</script>""")
+    return (tpl.replace("{{TITLE}}", f"خصم {off['pct']}% على التمديد")
+               .replace("{{BODY}}", body).replace("{{SCRIPT}}", script)).encode()
+
+
 # ═════════ الرسائل ═════════
 TEMPLATES = {
-    "d7":      ("قبل الانتهاء بأيام",
-                "مرحبًا {name} 👋\nاشتراكك في سمارت سوق ينتهي {when} — وبعدها ينقطع البث.\n\n"
-                "جدّد الآن واحتفظ بنفس الإعدادات على جهازك:\n{plan_name} — {plan_price} ريال\n{plan_url}\n\n"
-                "لأي استفسار راسلنا هنا مباشرة."),
-    "expiry":  ("يوم الانتهاء",
-                "مرحبًا {name} 👋\nاشتراكك انتهى اليوم. جدّده خلال ٢٤ ساعة ويعود البث فورًا بنفس الإعدادات:\n\n"
-                "{plan_name} — {plan_price} ريال\n{plan_url}"),
-    "after3":  ("بعد ٣ أيام من الانتهاء",
-                "مرحبًا {name} 👋\nمرّت ثلاثة أيام على انتهاء اشتراكك. كودك محفوظ عندنا، والتجديد يعيده كما كان:\n\n"
-                "{plan_name} — {plan_price} ريال\n{plan_url}\n\n"
-                "إن واجهتك مشكلة في الجهاز أخبرنا ونحلّها معك."),
+    "expiring": ("أوشك على الانتهاء + عرض",
+                "مرحبًا {name} 👋\nاشتراكك في سمارت سوق ينتهي {when}، وبعدها ينقطع البث.\n\n"
+                "مددنا لك بسعر خاص:\n{offer}\n\n"
+                "التمديد يحفظ نفس الإعدادات على جهازك — لا إعادة ضبط ولا كود جديد."),
+    "renew":   ("تجديد بعد الانتهاء + عرض",
+                "مرحبًا {name} 👋\nاشتراكك انتهى، وكودك ما زال محفوظًا عندنا.\n\n"
+                "جهّزنا لك عرض عودة:\n{offer}\n\n"
+                "بمجرد التجديد يعود البث على نفس الجهاز بنفس الإعدادات."),
     "compensation": ("تعويض عن نقص في المدة",
                 "مرحبًا {name} 👋\nراجعنا اشتراكك في سمارت سوق ووجدنا أنه فُعّل بمدة أقل مما دفعت:\n"
                 "دفعت {paid_months} وفُعّل لك حتى {real_exp} — بفارق {missing}.\n\n"
                 "الخطأ منّا، وقد أضفنا المدة الناقصة إلى اشتراكك بلا أي رسوم. "
                 "تاريخ انتهائك الجديد {new_exp}.\n\nنعتذر عن الخلل، وشكرًا لثقتك بنا."),
+    "d7":      ("قبل الانتهاء بأيام",
+                "مرحبًا {name} 👋\nاشتراكك في سمارت سوق ينتهي {when} — وبعدها ينقطع البث.\n\n"
+                "جدّد الآن واحتفظ بنفس الإعدادات على جهازك:\n{offer}\n\n"
+                "لأي استفسار راسلنا هنا مباشرة."),
+    "expiry":  ("يوم الانتهاء",
+                "مرحبًا {name} 👋\nاشتراكك انتهى اليوم. جدّده خلال ٢٤ ساعة ويعود البث فورًا بنفس الإعدادات:\n\n{offer}"),
+    "after3":  ("بعد ٣ أيام من الانتهاء",
+                "مرحبًا {name} 👋\nمرّت ثلاثة أيام على انتهاء اشتراكك. كودك محفوظ عندنا، والتجديد يعيده كما كان:\n\n{offer}\n\n"
+                "إن واجهتك مشكلة في الجهاز أخبرنا ونحلّها معك."),
     "after14": ("بعد أسبوعين — آخر تذكير",
-                "مرحبًا {name} 👋\nآخر تذكير منّا. لو رجعت اليوم نفعّل لك الاشتراك على نفس الجهاز بلا إعادة ضبط:\n\n"
-                "{plan_name} — {plan_price} ريال\n{plan_url}\n\n"
+                "مرحبًا {name} 👋\nآخر تذكير منّا. لو رجعت اليوم نفعّل لك الاشتراك على نفس الجهاز بلا إعادة ضبط:\n\n{offer}\n\n"
                 "وإن كنت لا ترغب بالتذكير، ردّ بكلمة (إيقاف) ولن نراسلك."),
 }
 
@@ -422,16 +618,31 @@ def _when_ar(n):
     return "بعد " + _days_ar(n)
 
 
-def render(cust, kind):
+def offer_block(cust, off=None):
+    """كتلة الباقة داخل الرسالة: بسعر العرض ورابطه الخاص إن وُجد، وإلا بالسعر المعلن."""
+    if off and offer_live(off):
+        left = (parse_date(off["expires"]) - _today()).days
+        return (f"{off['plan_name']}\n"
+                f"بدل {off['price']:g} ريال ← *{off['final']:g} ريال* (خصم {off['pct']}%)\n"
+                f"العرض لك وحدك وينتهي {_when_ar(left)}:\n{offer_url(off)}")
+    p = (cust.get("plan") or {})
+    return (f"{p.get('name', 'باقة سمارت سوق')} — {p.get('price', '')} ريال\n"
+            f"{p.get('url', 'https://ssouq.com')}")
+
+
+def render(cust, kind, off=None):
+    # حارس صياغة: لا تقل "ينتهي" لمن انتهى، ولا "انتهى" لمن لم ينتهِ.
+    rem = cust.get("rem", 0)
+    if rem < 0 and kind in ("expiring", "d7"): kind = "renew"
+    if rem >= 0 and kind in ("renew", "after3", "after14"): kind = "expiring"
     t = TEMPLATES.get(kind)
     if not t: return ""
-    p = cust.get("plan") or {}
+    if off is None: off = offer_for(cust.get("phone", ""))
     first = (cust.get("name") or "").split(" ")[0] or "عميلنا"
     return t[1].format(name=first, days=_days_ar(cust.get("rem", 0)),
                        when=_when_ar(cust.get("rem", 0)),
                        product=cust.get("last_product", ""),
-                       plan_name=p.get("name", "باقة سمارت سوق"),
-                       plan_price=p.get("price", ""), plan_url=p.get("url", "https://ssouq.com"))
+                       offer=offer_block(cust, off))
 
 
 def wa_link(phone, text):
