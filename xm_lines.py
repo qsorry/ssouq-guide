@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import guide_pages
 import store_sitemap
+import renewals
 
 # ================= الإعدادات =================
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -45,7 +46,7 @@ def bump_stat(key):
     os.replace(tmp, STATS_FILE)
     return d[key]
 P         = "/admin"                                  # كل الأداة تحت هذا المسار
-PAGES     = {P: "xm_lines.html", P + "/accounts": "admin.html", P + "/setup": "setup.html", P + "/login": "login.html"}
+PAGES     = {P: "xm_lines.html", P + "/accounts": "admin.html", P + "/whatsapp": "renewals.html", P + "/setup": "setup.html", P + "/login": "login.html"}
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image/png", ".jpg": "image/jpeg",
              ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon",
@@ -62,6 +63,7 @@ DIGITS    = 12                                        # طول اليوزر وا
 # ============================================
 
 _lock = threading.Lock()
+_wa_lock = threading.Lock()      # تخزين التجديدات مستقل عن الحسابات
 _sessions = {}   # token -> {"role","user","exp"}
 
 
@@ -402,6 +404,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redirect(P + "/accounts") if role == "admin" else self._page(PAGES[P])
             if path == P + "/accounts":
                 return self._page(PAGES[P + "/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
+            if path == P + "/whatsapp":
+                return self._page(PAGES[P + "/whatsapp"])
+            if path == P + "/api/wa/data":
+                return self._wa_data()
             if path == P + "/api/me":
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None})
             if path == P + "/api/packages":
@@ -436,6 +442,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "not found"})
         path = path[len(P):]
         try:
+            if path.startswith("/api/wa/"):          # التجديدات: تخزينها وقفلها مستقلان
+                st = load_store()
+                if not st["admin"]:
+                    return self._send(400, {"error": "أكمل الإعداد أولاً"})
+                if not self._who(st)[0]:
+                    return self._deny(path)
+                with _wa_lock:
+                    return self._wa_post(path)
             with _lock:
                 st = load_store()
                 if path == "/api/setup":
@@ -508,6 +522,88 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "not found"})
         save_store(st)
         self._send(200, {"ok": True, "accounts": st["accounts"]})
+
+    # ---------- التجديدات ----------
+    def _raw_body(self):
+        n = int(self.headers.get("Content-Length", 0))
+        if n > 40 * 1024 * 1024:
+            raise ValueError("الملف أكبر من 40 ميجابايت")
+        return self.rfile.read(n)
+
+    def _wa_data(self):
+        cs = renewals.customers()
+        sf = renewals.shortfalls()
+        for x in sf:
+            x["message"] = renewals.render_compensation(x)
+        wa = renewals.load_wa()
+        self._send(200, {"customers": cs, "shortfalls": sf, "stats": renewals.stats(cs),
+                         "settings": wa["settings"], "optout": wa["optout"],
+                         "sent_today": renewals.sent_today()})
+
+    def _wa_post(self, path):
+        if path == "/api/wa/upload":
+            name = ""
+            if "?" in self.path:
+                from urllib.parse import parse_qs
+                name = (parse_qs(self.path.split("?", 1)[1]).get("name") or [""])[0]
+            rows, kind = renewals.read_upload(self._raw_body())
+            rep = renewals.ingest(rows, name)
+            rep["kind"] = kind
+            return self._send(200, rep)
+
+        req = self._body()
+        if path == "/api/wa/settings":
+            wa = renewals.load_wa(); s = wa["settings"]
+            s["daily_cap"] = max(1, min(int(req.get("daily_cap", s["daily_cap"])), 500))
+            s["gap_min"]   = max(5, int(req.get("gap_min", s["gap_min"])))
+            s["gap_max"]   = max(s["gap_min"], int(req.get("gap_max", s["gap_max"])))
+            s["send_url"]  = str(req.get("send_url", s.get("send_url", ""))).strip()
+            s["send_token"] = str(req.get("send_token", s.get("send_token", ""))).strip()
+            s["enabled"]   = bool(s["send_url"])
+            renewals.save_wa(wa)
+            return self._send(200, {"ok": True, "settings": s})
+
+        if path == "/api/wa/optout":
+            return self._send(200, {"optout": renewals.set_optout(str(req.get("phone", "")),
+                                                                 bool(req.get("on", True)))})
+
+        phone = renewals.norm_phone(str(req.get("phone", "")))
+        kind = str(req.get("kind", "d7"))
+        cust = next((c for c in renewals.customers() if c["phone"] == phone), None)
+        if not cust:
+            return self._send(404, {"error": "العميل غير موجود"})
+        text = renewals.render(cust, kind)
+
+        if path == "/api/wa/message":
+            return self._send(200, {"text": text})
+
+        if path == "/api/wa/send":
+            wa = renewals.load_wa(); s = wa["settings"]
+            if phone in wa["optout"]:
+                return self._send(400, {"error": "هذا الرقم في قائمة لا تراسلني"})
+            sent = renewals.sent_today()
+            if sent >= int(s.get("daily_cap", 80)):
+                return self._send(200, {"sent_today": sent, "warn":
+                    f"بلغت السقف اليومي ({s['daily_cap']} رسالة). توقّف اليوم — تجاوزه يعرّض رقمك للحظر."})
+            link, note, ok = "", "يدوي", True
+            if s.get("send_url"):
+                try:
+                    body = json.dumps({"phone": phone, "text": text}).encode()
+                    rq = Request(s["send_url"], data=body, method="POST",
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": "Bearer " + s.get("send_token", "")})
+                    with urlopen(rq, timeout=25) as r:
+                        r.read()
+                    note = "آلي"
+                except Exception as e:
+                    ok, note = False, f"فشل الإرسال: {e}"
+            else:
+                link = renewals.wa_link(phone, text)
+            renewals.log_send(phone, kind, ok, note)
+            return self._send(200, {"link": link, "text": text, "ok": ok, "note": note,
+                                    "sent_today": sent + 1,
+                                    "warn": "" if ok else note})
+        return self._send(404, {"error": "not found"})
 
     def _create(self, acct):
         req = self._body()

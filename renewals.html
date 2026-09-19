@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>التجديدات — سمارت سوق</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#14283A;--paper:#EFF5FA;--card:#FFFFFF;--line:#DCE6EF;--soft:#E8F1F6;
+  --brand:#004D73;--brand-text:#00587F;--gold:#F0A12B;--mute:#5C7288;--wa:#1DA851;--err:#C2412D;
+  --shadow:0 1px 2px rgba(16,42,66,.05),0 10px 26px -14px rgba(16,42,66,.22)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E3ECF5;--paper:#0B1826;--card:#132433;
+  --line:#25405A;--soft:#12293A;--brand:#0E6EA0;--brand-text:#63B8E2;--gold:#EEA945;--mute:#90A5BA;--wa:#2FC46A;--err:#EF6A55;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 26px -14px rgba(0,0,0,.6)}}
+:root[data-theme="dark"]{--ink:#E3ECF5;--paper:#0B1826;--card:#132433;--line:#25405A;--soft:#12293A;
+  --brand:#0E6EA0;--brand-text:#63B8E2;--gold:#EEA945;--mute:#90A5BA;--wa:#2FC46A;--err:#EF6A55}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.7 "IBM Plex Sans Arabic",Tahoma,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:1.5rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 18px;font-size:.92rem}
+.sub a{color:var(--brand-text)}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)}
+h2{font-size:1.05rem;margin:0 0 12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.tile b{display:block;font-size:1.5rem;line-height:1.2}
+.tile span{color:var(--mute);font-size:.8rem}
+.tile.hot b{color:var(--err)} .tile.warn b{color:var(--gold)} .tile.good b{color:var(--wa)}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+nav.tabs button{background:transparent;border:1px solid var(--line);color:var(--ink);padding:8px 14px;border-radius:10px;font:inherit;cursor:pointer}
+nav.tabs button[aria-selected=true]{background:var(--brand);color:#fff;border-color:var(--brand)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+select,input[type=search],input[type=number],input[type=text]{padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--ink);font:inherit}
+input[type=search]{flex:1;min-width:180px}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{text-align:right;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-weight:500;font-size:.78rem;white-space:nowrap}
+td.num,th.num{direction:ltr;text-align:right;font-family:"IBM Plex Mono",monospace;font-size:.82rem}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.75rem;white-space:nowrap}
+.s-expired{background:rgba(194,65,45,.14);color:var(--err)}
+.s-d7{background:rgba(240,161,43,.18);color:var(--gold)}
+.s-d30{background:rgba(240,161,43,.10);color:var(--gold)}
+.s-d90{background:var(--soft);color:var(--brand-text)}
+.s-active{background:var(--soft);color:var(--mute)}
+.rep{background:rgba(29,168,81,.14);color:var(--wa);margin-inline-start:4px}
+button.act{font:inherit;border:0;border-radius:9px;cursor:pointer;padding:6px 11px;font-size:.82rem}
+.wa{background:var(--wa);color:#fff} .ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.go{background:var(--brand);color:#fff;padding:12px 18px;font-weight:700;border:0;border-radius:10px;cursor:pointer;font:inherit}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:30px;text-align:center;color:var(--mute);cursor:pointer}
+.drop.on{border-color:var(--brand);background:var(--soft);color:var(--brand-text)}
+.msg{font-size:.9rem;margin-top:10px;white-space:pre-wrap;min-height:1.4em}
+.msg.err{color:var(--err)} .msg.ok{color:var(--wa)}
+pre.tpl{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px;white-space:pre-wrap;font:inherit;font-size:.86rem;margin:8px 0 0}
+.empty{color:var(--mute);text-align:center;padding:24px}
+.hide{display:none}
+.note{color:var(--mute);font-size:.82rem}
+.rowbtns{display:flex;gap:6px;flex-wrap:wrap}
+label.f{display:block;font-size:.8rem;color:var(--mute);margin:10px 0 4px}
+</style>
+</head>
+<body>
+<main>
+  <h1>التجديدات</h1>
+  <p class="sub">كل عميل وباقته والمتبقي له، ورسالة جاهزة لكل حالة. ·
+    <a href="/admin">أداة M3U</a> · <a href="/admin/logout">تسجيل الخروج</a>
+    <span id="upd" class="note"></span></p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="list" aria-selected="true">العملاء</button>
+    <button data-tab="comp" aria-selected="false">تعويض نقص المدة</button>
+    <button data-tab="up"   aria-selected="false">رفع ملف</button>
+    <button data-tab="set"  aria-selected="false">الإعدادات</button>
+  </nav>
+
+  <section id="tab-list">
+    <div class="bar">
+      <select id="seg">
+        <option value="">كل الشرائح</option>
+        <option value="expired">منتهٍ</option>
+        <option value="d7">ينتهي خلال ٧ أيام</option>
+        <option value="d30">ينتهي خلال ٣٠ يومًا</option>
+        <option value="d90">ينتهي خلال ٩٠ يومًا</option>
+        <option value="active">ساري</option>
+      </select>
+      <select id="kind">
+        <option value="d7">رسالة: قبل الانتهاء</option>
+        <option value="expiry">رسالة: يوم الانتهاء</option>
+        <option value="after3">رسالة: بعد ٣ أيام</option>
+        <option value="after14">رسالة: آخر تذكير</option>
+      </select>
+      <label class="note"><input type="checkbox" id="onlyrep"> المكرّرون فقط</label>
+      <input type="search" id="q" placeholder="ابحث باسم أو جوال أو باقة">
+      <button class="act ghost" id="csv">تنزيل CSV</button>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <section id="tab-comp" class="hide">
+    <h2>عملاء فُعِّل لهم أقل مما دفعوا</h2>
+    <p class="note">يُقارَن تاريخ الانتهاء المسجَّل في ملاحظات الطلب بالمدة المدفوعة. عوّضهم في لوحة الاشتراك ثم أرسل الرسالة.</p>
+    <div id="comp"></div>
+  </section>
+
+  <section id="tab-up" class="hide">
+    <h2>رفع تصدير الطلبات</h2>
+    <p class="note">من سلة: الطلبات ← تصدير (CSV أو XLSX). ارفع أي عدد من الملفات — التكرار يُحذف برقم الطلب،
+      والأكواد تُستخرج من عمود "الملاحظات الداخلية".</p>
+    <div class="drop" id="drop">اسحب الملفات هنا أو اضغط للاختيار
+      <input type="file" id="file" multiple accept=".csv,.xlsx" class="hide"></div>
+    <div class="msg" id="upmsg"></div>
+  </section>
+
+  <section id="tab-set" class="hide">
+    <h2>إعدادات الإرسال</h2>
+    <p class="note">حمايةً لرقمك من الحظر: سقف يومي وفواصل عشوائية بين الرسائل. الإرسال الآلي يحتاج خدمة Baileys
+      — اتركه فارغًا وسيعمل الإرسال يدويًا بفتح واتساب لكل عميل.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px;max-width:520px">
+      <div><label class="f">السقف اليومي</label><input type="number" id="cap" min="1" max="500"></div>
+      <div><label class="f">أُرسل اليوم</label><input type="text" id="today" disabled></div>
+      <div><label class="f">أقل فاصل (ثانية)</label><input type="number" id="gmin" min="5"></div>
+      <div><label class="f">أعلى فاصل (ثانية)</label><input type="number" id="gmax" min="5"></div>
+    </div>
+    <label class="f">رابط خدمة الإرسال (Baileys) — اختياري</label>
+    <input type="text" id="surl" placeholder="https://wa.example.com/send" style="width:100%;direction:ltr">
+    <label class="f">مفتاح الخدمة</label>
+    <input type="text" id="stok" style="width:100%;direction:ltr">
+    <button class="go" id="save" style="margin-top:14px">حفظ</button>
+    <div class="msg" id="setmsg"></div>
+    <h2 style="margin-top:22px">لا تراسلني</h2>
+    <div class="bar"><input type="text" id="oo" placeholder="05xxxxxxxx" style="direction:ltr">
+      <button class="act ghost" id="ooadd">إضافة</button></div>
+    <div id="oolist" class="note"></div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const API = "/admin/api/wa";
+let DATA = [], COMP = [], SET = {};
+
+const j = async (u, o) => { const r = await fetch(u, o); const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.status); return d; };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const SEGN = { expired:"منتهٍ", d7:"٧ أيام", d30:"٣٠ يومًا", d90:"٩٠ يومًا", active:"ساري" };
+
+function remText(n){
+  if (n < 0) return "منتهٍ منذ " + Math.abs(n) + " يومًا";
+  if (n === 0) return "ينتهي اليوم";
+  if (n < 31) return "بعد " + n + " يومًا";
+  const m = Math.floor(n / 30.44), d = n - Math.round(m * 30.44);
+  return m + " شهر" + (d > 0 ? " و" + d + " يوم" : "");
+}
+
+async function load(){
+  const d = await j(API + "/data");
+  DATA = d.customers; COMP = d.shortfalls; SET = d.settings;
+  const s = d.stats;
+  $("#upd").textContent = s.updated ? " · آخر تحديث " + s.updated.replace("T", " ") : " · لم تُرفع بيانات بعد";
+  $("#tiles").innerHTML = [
+    ["", s.customers, "عميلًا"], ["hot", s.segments.expired, "منتهٍ"],
+    ["warn", s.segments.d7 + s.segments.d30, "ينتهي خلال شهر"], ["warn", s.segments.d90, "خلال ٩٠ يومًا"],
+    ["good", s.repeat, "كرّروا الشراء"], ["hot", s.shortfalls, "يحتاج تعويضًا"],
+    ["", s.with_code, "معه كود"], ["", Math.round(s.spend).toLocaleString("en"), "ريال مبيعات"],
+  ].map(([c, v, l]) => `<div class="tile ${c}"><b>${v}</b><span>${l}</span></div>`).join("");
+  $("#cap").value = SET.daily_cap; $("#gmin").value = SET.gap_min; $("#gmax").value = SET.gap_max;
+  $("#surl").value = SET.send_url || ""; $("#stok").value = SET.send_token || "";
+  $("#today").value = d.sent_today + " من " + SET.daily_cap;
+  $("#oolist").innerHTML = (d.optout || []).map(p => `<span class="pill s-active">${esc(p)}
+    <a href="#" data-oo="${esc(p)}" style="color:var(--err)">×</a></span>`).join(" ") || "لا أحد.";
+  render(); renderComp();
+}
+
+function filtered(){
+  const seg = $("#seg").value, q = $("#q").value.trim(), rep = $("#onlyrep").checked;
+  return DATA.filter(c => (!seg || c.segment === seg) && (!rep || c.repeat) && !c.optout &&
+    (!q || (c.name + " " + c.phone + " " + c.last_product).includes(q)));
+}
+
+function render(){
+  const rows = filtered(), kind = $("#kind").value;
+  if (!rows.length) return $("#list").innerHTML = '<p class="empty">لا أحد في هذه الشريحة.</p>';
+  $("#list").innerHTML = `<table><thead><tr>
+    <th>العميل</th><th class="num">الجوال</th><th>باقته</th><th>المتبقي</th><th>الترشيح</th><th>إرسال</th>
+    </tr></thead><tbody>${rows.slice(0, 300).map((c, i) => `<tr>
+      <td>${esc(c.name) || "—"}${c.repeat ? '<span class="pill rep">كرّر ' + c.count + '</span>' : ""}
+        <div class="note">${esc(c.city || "")}</div></td>
+      <td class="num">${esc(c.phone)}</td>
+      <td>${esc(c.last_product).slice(0, 44)}<div class="note">ينتهي ${c.last_exp}</div></td>
+      <td><span class="pill s-${c.segment}">${SEGN[c.segment]}</span><div class="note">${remText(c.rem)}</div></td>
+      <td>${c.plan ? esc(c.plan.name) + '<div class="note">' + c.plan.price + ' ريال</div>' : "—"}</td>
+      <td><div class="rowbtns">
+        <button class="act wa" data-i="${i}">واتساب</button>
+        <button class="act ghost" data-c="${i}">نسخ</button></div></td>
+    </tr>`).join("")}</tbody></table>
+    ${rows.length > 300 ? `<p class="note">تُعرض ٣٠٠ من ${rows.length} — استخدم البحث أو نزّل CSV.</p>` : ""}`;
+  $("#list").querySelectorAll("[data-i]").forEach(b => b.onclick = () => send(rows[+b.dataset.i], kind));
+  $("#list").querySelectorAll("[data-c]").forEach(b => b.onclick = async () => {
+    const t = await text(rows[+b.dataset.c], kind);
+    navigator.clipboard.writeText(t); b.textContent = "نُسخ ✓"; setTimeout(() => b.textContent = "نسخ", 1500);
+  });
+}
+
+const text = async (c, kind) => (await j(API + "/message", { method: "POST",
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: c.phone, kind }) })).text;
+
+async function send(c, kind){
+  const r = await j(API + "/send", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: c.phone, kind }) });
+  if (r.link) window.open(r.link, "_blank", "noopener");
+  $("#today").value = r.sent_today + " من " + SET.daily_cap;
+  if (r.warn) alert(r.warn);
+}
+
+function renderComp(){
+  if (!COMP.length) return $("#comp").innerHTML = '<p class="empty">لا يوجد — كل من سُجّل له تاريخ فعلي أخذ مدته كاملة.</p>';
+  $("#comp").innerHTML = COMP.map((x, i) => `<div style="border-top:1px dashed var(--line);padding:12px 0">
+    <b>${esc(x.name) || "—"}</b> <span class="num note">${esc(x.phone)}</span>
+    <div class="note">${esc(x.product).slice(0, 60)} · دفع ${x.months} شهرًا · فُعّل حتى ${x.real_exp}
+      بدل ${x.calc_exp} — <b style="color:var(--err)">ناقص ${x.missing_days} يومًا</b>
+      ${x.code ? ' · كود ' + esc(x.code) : ""}</div>
+    <pre class="tpl" id="cm${i}">${esc(x.message)}</pre>
+    <div class="rowbtns" style="margin-top:8px">
+      <button class="act wa" data-cw="${i}">واتساب</button>
+      <button class="act ghost" data-cc="${i}">نسخ الرسالة</button></div></div>`).join("");
+  $("#comp").querySelectorAll("[data-cw]").forEach(b => b.onclick = () => {
+    const x = COMP[+b.dataset.cw];
+    window.open("https://wa.me/" + x.phone + "?text=" + encodeURIComponent(x.message), "_blank", "noopener");
+  });
+  $("#comp").querySelectorAll("[data-cc]").forEach(b => b.onclick = () => {
+    navigator.clipboard.writeText(COMP[+b.dataset.cc].message);
+    b.textContent = "نُسخ ✓"; setTimeout(() => b.textContent = "نسخ الرسالة", 1500);
+  });
+}
+
+// ── التبويبات ──
+$("#tabs").onclick = e => {
+  const b = e.target.closest("button[data-tab]"); if (!b) return;
+  $("#tabs").querySelectorAll("button").forEach(x => x.setAttribute("aria-selected", x === b));
+  ["list", "comp", "up", "set"].forEach(t => $("#tab-" + t).classList.toggle("hide", t !== b.dataset.tab));
+};
+["seg", "kind", "q", "onlyrep"].forEach(id => { const el = $("#" + id); el.oninput = render; el.onchange = render; });
+
+// ── رفع ──
+const drop = $("#drop"), file = $("#file");
+drop.onclick = () => file.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("on"); };
+drop.ondragleave = () => drop.classList.remove("on");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("on"); upload(e.dataTransfer.files); };
+file.onchange = () => upload(file.files);
+async function upload(files){
+  const m = $("#upmsg"); let added = 0, up = 0, codes = 0;
+  for (const f of files) {
+    m.className = "msg"; m.textContent = "يقرأ " + f.name + "…";
+    try {
+      const r = await j(API + "/upload?name=" + encodeURIComponent(f.name),
+        { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: await f.arrayBuffer() });
+      added += r.added; up += r.updated; codes += r.codes;
+    } catch (e) { m.className = "msg err"; m.textContent = f.name + ": " + e.message; return; }
+  }
+  m.className = "msg ok";
+  m.textContent = `تمت قراءة ${files.length} ملفًا — أُضيف ${added} طلبًا، حُدّث ${up}، واستُخرج ${codes} كودًا.`;
+  await load();
+}
+
+// ── الإعدادات ──
+$("#save").onclick = async () => {
+  try {
+    await j(API + "/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ daily_cap: +$("#cap").value, gap_min: +$("#gmin").value,
+        gap_max: +$("#gmax").value, send_url: $("#surl").value.trim(), send_token: $("#stok").value.trim() }) });
+    $("#setmsg").className = "msg ok"; $("#setmsg").textContent = "حُفظ.";
+    await load();
+  } catch (e) { $("#setmsg").className = "msg err"; $("#setmsg").textContent = e.message; }
+};
+$("#ooadd").onclick = async () => { await j(API + "/optout", { method: "POST",
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: $("#oo").value, on: true }) });
+  $("#oo").value = ""; await load(); };
+$("#oolist").onclick = async e => { const a = e.target.closest("[data-oo]"); if (!a) return; e.preventDefault();
+  await j(API + "/optout", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone: a.dataset.oo, on: false }) }); await load(); };
+
+// ── CSV ──
+$("#csv").onclick = () => {
+  const rows = filtered();
+  const head = ["الاسم", "الجوال", "المدينة", "الباقة", "تاريخ الانتهاء", "المتبقي بالأيام", "الشريحة",
+                "عدد اشتراكاته", "الكود", "الترشيح", "سعر الترشيح"];
+  const body = rows.map(c => [c.name, c.phone, c.city, c.last_product, c.last_exp, c.rem, SEGN[c.segment],
+    c.count, c.code, c.plan ? c.plan.name : "", c.plan ? c.plan.price : ""]);
+  const csv = "﻿" + [head, ...body].map(r => r.map(v =>
+    `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "التجديدات-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+};
+
+load().catch(e => { document.querySelector("main").insertAdjacentHTML("beforeend",
+  '<p class="msg err">تعذّر التحميل: ' + e.message + '</p>'); });
+</script>
+</body>
+</html>
