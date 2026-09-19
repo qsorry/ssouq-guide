@@ -3,8 +3,8 @@
 """
 النطاقان: الأداة على نطاقها من الجذر، والموقع العام دليلُ تفعيل وحده.
   - admin.ssouq.com/        = الأداة (لا صفحات الدليل عليه، ولا فهرسة).
-  - guide.ssouq.com/admin   = عنوان قديم يُحوّل 301 إلى نطاق الأداة بما بعد "؟".
-  - Host آخر (محليًا/الاختبارات) = الأداة تحت /admin كما كانت، بلا أي تحويل.
+  - guide.ssouq.com/admin   = **لا يفتح شيئًا**: 404 كأن المسار لم يوجد.
+  - Host آخر (محليًا/الاختبارات) = الأداة تحت /admin كما كانت، بلا تغيير.
   - XM_ADMIN_HOST فارغًا = لا نطاق للأداة ولا تحويل (طريق الرجوع).
 تشغيل:  python tests/test_hosts.py
 """
@@ -79,22 +79,19 @@ def main():
         c, _, _, _ = req(base, "/samsung-lg", GUIDE)
         check("صفحات الأجهزة تعمل", c == 200, str(c))
         c, _, body, _ = req(base, "/robots.txt", GUIDE)
-        check("robots العام فيه خريطة الموقع", "Sitemap:" in body and "Disallow: /admin" in body, "")
+        check("robots العام فيه خريطة الموقع", "Sitemap:" in body, "")
+        check("ولا يذكر /admin (لا مسار يُمنع)", "/admin" not in body, body.strip().replace("\n", " · "))
 
-        print("\n== العنوان القديم يُحوّل إلى نطاق الأداة ==")
-        c, loc, _, _ = req(base, "/admin", GUIDE)
-        check("‏/admin → 301 إلى جذر نطاق الأداة", c == 301 and loc == f"http://{TOOL}/", f"{c} -> {loc}")
-        c, loc, _, _ = req(base, "/admin/", GUIDE)
-        check("‏/admin/ → الجذر كذلك", c == 301 and loc == f"http://{TOOL}/", loc)
-        c, loc, _, _ = req(base, "/admin/accounts?x=1", GUIDE)
-        check("المسار وما بعد ؟ يُحملان معه", c == 301 and loc == f"http://{TOOL}/accounts?x=1", loc)
-        c, loc, _, _ = req(base, "/admin/login", GUIDE, proto="https")
-        check("خلف الوكيل يخرج https", loc == f"https://{TOOL}/login", loc)
+        print("\n== الموقع العام لا أداة عليه إطلاقًا ==")
+        for u in ("/admin", "/admin/", "/admin/login", "/admin/accounts?x=1"):
+            c, loc, body, _ = req(base, u, GUIDE)
+            check(f"‏{u} = 404 بلا تحويل ولا صفحة دخول",
+                  c == 404 and not loc and "تسجيل الدخول" not in body, f"{c} {loc}")
+        c, _, body, _ = req(base, "/admin/login", GUIDE, proto="https")
+        check("وخلف الوكيل كذلك", c == 404, str(c))
         c, _, body, _ = req(base, "/admin/api/login", GUIDE, method="POST",
                             obj={"user": "admin", "password": ADMIN_PW})
-        d = json.loads(body or "{}")
-        check("POST قديم يردّ 401 بعلم الدخول (التبويب القديم يذهب للنطاق الجديد)",
-              c == 401 and d.get("login") is True, f"{c} {d.get('error','')}")
+        check("‏POST على /admin/api = 404 (لا دخول من هنا)", c == 404, str(c))
 
         print("\n== نطاق الأداة: الأداة من الجذر ==")
         c, loc, _, _ = req(base, "/", TOOL)

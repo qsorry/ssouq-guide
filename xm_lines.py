@@ -11,7 +11,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 الصفحة الرئيسية / دليل تفعيل عام، والأداة على نطاقها: https://admin.ssouq.com/
 أول مرة تفتحه تضع كلمة مرور المدير، ثم من /accounts تضيف الحسابات
 (لكل حساب: اسم دخول، كلمة مرور، رابط API، مفتاح API، هوست).
-وعلى الموقع العام بقي /admin عنوانًا قديمًا يُحوّل (301) إلى نطاق الأداة.
+ولا وجود لها على الموقع العام: guide.ssouq.com/admin لا يفتح شيئًا (404).
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
 import json, os, sys, secrets, datetime, base64, hmac, hashlib, threading, time
@@ -88,13 +88,13 @@ def bump_stat(key):
     return d[key]
 # ----- النطاقان -----
 # الأداة لها نطاقها الخاص وتُقدَّم عليه من الجذر (admin.ssouq.com/ = صفحة الأداة)،
-# والموقع العام يبقى دليل التفعيل وحده. العنوان القديم `guide.ssouq.com/admin`
-# يُحوّل (301) إلى النطاق الجديد فلا ينكسر رابط محفوظ.
+# والموقع العام يبقى دليل التفعيل وحده: `guide.ssouq.com/admin` **لا يفتح شيئًا**
+# (‏404 كأن المسار لم يوجد) — لا تحويل ولا صفحة دخول، فلا أثر للوحة على الموقع العام.
 # `XM_ADMIN_HOST` فارغًا = لا نطاق للأداة، فتبقى تحت /admin كما كانت — وهو ما
 # يحدث محليًا وفي الاختبارات أصلاً لأن الطلب يصل بـ Host = 127.0.0.1 لا بالنطاق.
 SITE_HOST  = os.environ.get("XM_SITE_HOST", "guide.ssouq.com").strip().lower()
 ADMIN_HOST = os.environ.get("XM_ADMIN_HOST", "admin.ssouq.com").strip().lower()
-ADMIN_PATH = "/admin"                                 # عنوان الأداة القديم على الموقع العام
+ADMIN_PATH = "/admin"                                 # مسار الأداة حين لا نطاق لها
 # صفحات الأداة بمسارها الداخلي (تحت /admin على الموقع العام، ومن الجذر على نطاقها)
 PAGES     = {"/": "xm_lines.html", "/accounts": "admin.html",
              "/setup": "setup.html", "/login": "login.html"}
@@ -692,7 +692,7 @@ class Handler(BaseHTTPRequestHandler):
     # يُعاد ضبطها من `_bind_host()` مع كل طلب؛ وهذه قيمها قبله.
     P = ADMIN_PATH
     on_tool_host = False
-    moved = False
+    off_site = False
 
     def _send(self, code, obj=None, ctype="application/json; charset=utf-8", raw=None, extra=None):
         body = raw if raw is not None else json.dumps(obj, ensure_ascii=False).encode()
@@ -797,20 +797,15 @@ class Handler(BaseHTTPRequestHandler):
         return h.partition(":")[0]
 
     def _bind_host(self):
-        """يحدّد من النطاق أين تُقدَّم الأداة: من الجذر أم تحت /admin."""
+        """يحدّد من النطاق أين تُقدَّم الأداة: من الجذر، أم تحت /admin، أم لا تُقدَّم."""
         host = self._bare_host(self.headers.get("X-Forwarded-Host") or self.headers.get("Host"))
         self.on_tool_host = bool(ADMIN_HOST) and host == ADMIN_HOST
-        self.moved = bool(ADMIN_HOST) and host == SITE_HOST   # العنوان القديم انتقل
+        self.off_site = bool(ADMIN_HOST) and host == SITE_HOST   # الموقع العام: لا أداة عليه
         self.P = "" if self.on_tool_host else ADMIN_PATH
 
     def _url(self, sub="/"):
         """عنوان صفحة من الأداة كما يراه المتصفح على هذا النطاق."""
         return (self.P + sub) if sub != "/" else (self.P or "/")
-
-    def _tool_url(self, sub="/"):
-        """العنوان الكامل على نطاق الأداة — وجهة التحويل من العنوان القديم."""
-        scheme = "https" if self._secure() else "http"
-        return f"{scheme}://{ADMIN_HOST}{sub if sub != '/' else '/'}"
 
     def _static(self, path):
         rel = os.path.normpath(path[len("/static/"):]).replace("\\", "/")
@@ -824,7 +819,7 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- GET ----------
     def do_GET(self):
         path = self.path.split("?", 1)[0]
-        qs = self.path[len(path):]              # ما بعد "؟" — يُحمَل مع أي تحويل
+        qs = self.path[len(path):]              # ما بعد "؟" — يُحمَل مع التحويل
         self._bind_host()
         if self.on_tool_host:                   # نطاق الأداة: الجذر هو الأداة، بلا موقع عام
             if path == "/robots.txt":           # لوحة الإدارة لا تُفهرس
@@ -839,7 +834,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._tool_get(path)
         # ----- الجزء العام -----
         if path == "/robots.txt":
-            return self._send(200, raw=f"User-agent: *\nDisallow: {ADMIN_PATH}\nAllow: /\n\n"
+            # حين تكون الأداة على نطاقها لا يبقى هنا مسار يُمنع — ومنعُ مسارٍ غير
+            # موجود إعلانٌ عنه.
+            block = "" if self.off_site else f"Disallow: {ADMIN_PATH}\n"
+            return self._send(200, raw=f"User-agent: *\n{block}Allow: /\n\n"
                               f"Sitemap: https://guide.ssouq.com/sitemap.xml\n"
                               f"Sitemap: https://guide.ssouq.com/store-sitemap.xml\n".encode(),
                               ctype="text/plain; charset=utf-8")
@@ -868,12 +866,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._static(path)
         if path == ADMIN_PATH + "/":
             path = ADMIN_PATH
-        if path != ADMIN_PATH and not path.startswith(ADMIN_PATH + "/"):
+        if self.off_site or (path != ADMIN_PATH and not path.startswith(ADMIN_PATH + "/")):
+            # الأداة على نطاقها وحده — فـ /admin هنا مسار لا وجود له
             return self._send(404, raw="404".encode(), ctype="text/plain; charset=utf-8")
-        sub = path[len(ADMIN_PATH):] or "/"
-        if self.moved:                            # العنوان القديم: انتقل إلى نطاق الأداة
-            return self._redirect(self._tool_url(sub) + qs, 301)
-        return self._tool_get(sub)
+        return self._tool_get(path[len(ADMIN_PATH):] or "/")
 
     # ---------- الأداة ----------
     def _tool_get(self, path):
@@ -1035,10 +1031,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"m3u": bump_stat("m3u")})
             if path == "/salla/webhook":            # ويبهوك سلة (عام، موقَّع)
                 return self._salla_webhook()
-        if not path.startswith(self.P + "/api/"):
+        if self.off_site or not path.startswith(self.P + "/api/"):
             return self._send(404, {"error": "not found"})
-        if self.moved:                              # تبويب قديم ما زال مفتوحًا على /admin
-            return self._send(401, {"error": f"انتقلت الأداة إلى {ADMIN_HOST}", "login": True})
         path = path[len(self.P):]
         try:
             with _lock:
