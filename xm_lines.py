@@ -8,9 +8,10 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
   python xm_lines.py          ← وضع سطر الأوامر
   python xm_lines.py debug    ← يطبع رد get_packages الخام
 
-الصفحة الرئيسية / دليل تفعيل عام. الأداة كلها تحت /admin:
-أول مرة تفتح /admin تضع كلمة مرور المدير، ثم من /admin/accounts تضيف الحسابات
+الصفحة الرئيسية / دليل تفعيل عام، والأداة على نطاقها: https://admin.ssouq.com/
+أول مرة تفتحه تضع كلمة مرور المدير، ثم من /accounts تضيف الحسابات
 (لكل حساب: اسم دخول، كلمة مرور، رابط API، مفتاح API، هوست).
+وعلى الموقع العام بقي /admin عنوانًا قديمًا يُحوّل (301) إلى نطاق الأداة.
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
 import json, os, sys, secrets, datetime, base64, hmac, hashlib, threading, time
@@ -85,8 +86,18 @@ def bump_stat(key):
         json.dump(d, f, ensure_ascii=False)
     os.replace(tmp, STATS_FILE)
     return d[key]
-P         = "/admin"                                  # كل الأداة تحت هذا المسار
-PAGES     = {P: "xm_lines.html", P + "/accounts": "admin.html", P + "/setup": "setup.html", P + "/login": "login.html"}
+# ----- النطاقان -----
+# الأداة لها نطاقها الخاص وتُقدَّم عليه من الجذر (admin.ssouq.com/ = صفحة الأداة)،
+# والموقع العام يبقى دليل التفعيل وحده. العنوان القديم `guide.ssouq.com/admin`
+# يُحوّل (301) إلى النطاق الجديد فلا ينكسر رابط محفوظ.
+# `XM_ADMIN_HOST` فارغًا = لا نطاق للأداة، فتبقى تحت /admin كما كانت — وهو ما
+# يحدث محليًا وفي الاختبارات أصلاً لأن الطلب يصل بـ Host = 127.0.0.1 لا بالنطاق.
+SITE_HOST  = os.environ.get("XM_SITE_HOST", "guide.ssouq.com").strip().lower()
+ADMIN_HOST = os.environ.get("XM_ADMIN_HOST", "admin.ssouq.com").strip().lower()
+ADMIN_PATH = "/admin"                                 # عنوان الأداة القديم على الموقع العام
+# صفحات الأداة بمسارها الداخلي (تحت /admin على الموقع العام، ومن الجذر على نطاقها)
+PAGES     = {"/": "xm_lines.html", "/accounts": "admin.html",
+             "/setup": "setup.html", "/login": "login.html"}
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image/png", ".jpg": "image/jpeg",
              ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon",
@@ -644,7 +655,7 @@ def create_line(gate, pkg, username=None, password=None):
 def pick_account():
     accts = load_store()["accounts"]
     if not accts:
-        sys.exit("لا توجد حسابات. شغّل الصفحة وأضف الحسابات من /admin/accounts أولاً.")
+        sys.exit("لا توجد حسابات. شغّل الصفحة وأضف الحسابات من صفحة الحسابات أولاً.")
     if len(accts) == 1:
         return accts[0]
     for i, a in enumerate(accts, 1):
@@ -678,6 +689,11 @@ def cli():
 
 # ---------------- وضع الصفحة ----------------
 class Handler(BaseHTTPRequestHandler):
+    # يُعاد ضبطها من `_bind_host()` مع كل طلب؛ وهذه قيمها قبله.
+    P = ADMIN_PATH
+    on_tool_host = False
+    moved = False
+
     def _send(self, code, obj=None, ctype="application/json; charset=utf-8", raw=None, extra=None):
         body = raw if raw is not None else json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
@@ -699,8 +715,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, raw=f.read(), ctype="text/html; charset=utf-8",
                        extra={"Cache-Control": cache} if cache else None)
 
-    def _redirect(self, to):
-        self._send(302, raw=b"", ctype="text/plain", extra={"Location": to})
+    def _redirect(self, to, code=302):
+        self._send(code, raw=b"", ctype="text/plain", extra={"Location": to})
 
     def _body(self):
         n = int(self.headers.get("Content-Length", 0))
@@ -724,7 +740,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get("X-Forwarded-Proto", "").lower() == "https"
 
     def _set_cookie(self, tok, clear=False):
-        c = f"xm_session={tok}; Path={P}; HttpOnly; SameSite=Lax"
+        c = f"xm_session={tok}; Path={self.P or '/'}; HttpOnly; SameSite=Lax"
         c += "; Max-Age=0" if clear else f"; Max-Age={SESSION_TTL}"
         if self._secure():
             c += "; Secure"
@@ -765,10 +781,36 @@ class Handler(BaseHTTPRequestHandler):
         return None, None
 
     def _deny(self, path):
-        if path.startswith(P + "/api/"):
+        """`path` داخلي (بلا بادئة) — فردّ الـ API 401 لا تحويلًا إلى صفحة."""
+        if path.startswith("/api/"):
             self._send(401, {"error": "سجّل الدخول أولاً", "login": True})
         else:
-            self._redirect(P + "/login")
+            self._redirect(self._url("/login"))
+
+    # ---------- النطاق الذي وصل عليه الطلب ----------
+    @staticmethod
+    def _bare_host(h):
+        """اسم النطاق وحده: بلا منفذ ولا أقواس IPv6 ولا قائمة وكلاء."""
+        h = (h or "").split(",")[0].strip().lower()
+        if h.startswith("["):                        # IPv6: [::1]:8080
+            return h.partition("]")[0][1:]
+        return h.partition(":")[0]
+
+    def _bind_host(self):
+        """يحدّد من النطاق أين تُقدَّم الأداة: من الجذر أم تحت /admin."""
+        host = self._bare_host(self.headers.get("X-Forwarded-Host") or self.headers.get("Host"))
+        self.on_tool_host = bool(ADMIN_HOST) and host == ADMIN_HOST
+        self.moved = bool(ADMIN_HOST) and host == SITE_HOST   # العنوان القديم انتقل
+        self.P = "" if self.on_tool_host else ADMIN_PATH
+
+    def _url(self, sub="/"):
+        """عنوان صفحة من الأداة كما يراه المتصفح على هذا النطاق."""
+        return (self.P + sub) if sub != "/" else (self.P or "/")
+
+    def _tool_url(self, sub="/"):
+        """العنوان الكامل على نطاق الأداة — وجهة التحويل من العنوان القديم."""
+        scheme = "https" if self._secure() else "http"
+        return f"{scheme}://{ADMIN_HOST}{sub if sub != '/' else '/'}"
 
     def _static(self, path):
         rel = os.path.normpath(path[len("/static/"):]).replace("\\", "/")
@@ -782,9 +824,22 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- GET ----------
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        qs = self.path[len(path):]              # ما بعد "؟" — يُحمَل مع أي تحويل
+        self._bind_host()
+        if self.on_tool_host:                   # نطاق الأداة: الجذر هو الأداة، بلا موقع عام
+            if path == "/robots.txt":           # لوحة الإدارة لا تُفهرس
+                return self._send(200, raw=b"User-agent: *\nDisallow: /\n",
+                                  ctype="text/plain; charset=utf-8")
+            if path in ROOT_FILES:
+                return self._static("/static/" + ROOT_FILES[path])
+            if path.startswith("/static/"):
+                return self._static(path)
+            if path == ADMIN_PATH or path.startswith(ADMIN_PATH + "/"):
+                return self._redirect((path[len(ADMIN_PATH):] or "/") + qs, 301)  # العنوان القديم
+            return self._tool_get(path)
         # ----- الجزء العام -----
         if path == "/robots.txt":
-            return self._send(200, raw=f"User-agent: *\nDisallow: {P}\nAllow: /\n\n"
+            return self._send(200, raw=f"User-agent: *\nDisallow: {ADMIN_PATH}\nAllow: /\n\n"
                               f"Sitemap: https://guide.ssouq.com/sitemap.xml\n"
                               f"Sitemap: https://guide.ssouq.com/store-sitemap.xml\n".encode(),
                               ctype="text/plain; charset=utf-8")
@@ -811,43 +866,50 @@ class Handler(BaseHTTPRequestHandler):
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path.startswith("/static/"):
             return self._static(path)
-        if path == "/admin/":
-            return self._redirect(P)
-        if path != P and not path.startswith(P + "/"):
+        if path == ADMIN_PATH + "/":
+            path = ADMIN_PATH
+        if path != ADMIN_PATH and not path.startswith(ADMIN_PATH + "/"):
             return self._send(404, raw="404".encode(), ctype="text/plain; charset=utf-8")
-        # ----- الأداة تحت /admin -----
+        sub = path[len(ADMIN_PATH):] or "/"
+        if self.moved:                            # العنوان القديم: انتقل إلى نطاق الأداة
+            return self._redirect(self._tool_url(sub) + qs, 301)
+        return self._tool_get(sub)
+
+    # ---------- الأداة ----------
+    def _tool_get(self, path):
+        """الأداة نفسها. `path` داخلي: "/" · "/login" · "/accounts" · "/api/…"."""
         st = load_store()
         if not admin_configured(st):               # الإعداد الأول: لا يوجد مدير بعد
-            return self._page(PAGES[P + "/setup"]) if path == P + "/setup" else self._redirect(P + "/setup")
-        if path == P + "/setup":
-            return self._redirect(P)
-        if path == P + "/logout":
+            return self._page(PAGES["/setup"]) if path == "/setup" else self._redirect(self._url("/setup"))
+        if path == "/setup":
+            return self._redirect(self._url())
+        if path == "/logout":
             _sessions.pop(self._cookie("xm_session"), None)
             return self._send(302, raw=b"", ctype="text/plain",
-                              extra={"Location": P + "/login", **self._set_cookie("", clear=True)})
+                              extra={"Location": self._url("/login"), **self._set_cookie("", clear=True)})
         role, acct = self._who(st)
-        if path == P + "/login":
-            return self._redirect(P) if role else self._page(PAGES[P + "/login"])
+        if path == "/login":
+            return self._redirect(self._url()) if role else self._page(PAGES["/login"])
         if not role:
             return self._deny(path)
         try:
-            if path == P:
-                return self._redirect(P + "/accounts") if role == "admin" else self._page(PAGES[P])
-            if path == P + "/accounts":
-                return self._page(PAGES[P + "/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
-            if path == P + "/api/me":
+            if path == "/":
+                return self._redirect(self._url("/accounts")) if role == "admin" else self._page(PAGES["/"])
+            if path == "/accounts":
+                return self._page(PAGES["/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
+            if path == "/api/me":
                 gates = [{"id": g["id"], "name": g["name"], "mode": g["mode"],
                           "host": g["host"], "guide_url": g.get("guide_url", "")}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",
                                         "gates": gates})
-            if path == P + "/api/mygates":            # بوابات الشخص كاملةً (لتحريرها)
+            if path == "/api/mygates":            # بوابات الشخص كاملةً (لتحريرها)
                 if role != "account":
                     return self._send(403, {"error": "غير متاح"})
                 return self._send(200, {"gates": _redact_gates(acct.get("gates", [])),
                                         "guide_url": acct.get("guide_url", "")})
-            if path == P + "/api/gate-status":        # النقاط + آخر يوزر للبوابة
+            if path == "/api/gate-status":        # النقاط + آخر يوزر للبوابة
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
                     return self._send(403, {"error": "غير متاح"})
@@ -865,7 +927,7 @@ class Handler(BaseHTTPRequestHandler):
                                                 "error": "تعذّر قراءة الرصيد من اللوحة"})
                 return self._send(200, {"provider": gate.get("mode"), "credits": None,
                                         "unsupported": True})
-            if path == P + "/api/search":             # بحث بالـ username/password
+            if path == "/api/search":             # بحث بالـ username/password
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
                     return self._send(403, {"error": "غير متاح"})
@@ -884,7 +946,7 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         return self._send(200, {"results": [], "error": "تعذّر البحث في اللوحة"})
                 return self._send(200, {"results": [], "unsupported": True})
-            if path == P + "/api/web/diag":           # تشخيص مؤقّت لاستخراج الرصيد
+            if path == "/api/web/diag":           # تشخيص مؤقّت لاستخراج الرصيد
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if not gate and acct:
                     gate = next((g for g in acct.get("gates", []) if g.get("mode") == "web"), None)
@@ -896,7 +958,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"need_login": True})
                 except Exception as e:
                     return self._send(200, {"error": str(e)[:200]})
-            if path == P + "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
+            if path == "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate or gate.get("mode") != "web":
                     return self._send(403, {"error": "غير متاح"})
@@ -904,7 +966,7 @@ class Handler(BaseHTTPRequestHandler):
                 s.begin()
                 ct, img = s.fetch_captcha()
                 return self._send(200, raw=img, ctype=ct or "image/jpeg")
-            if path == P + "/api/packages":
+            if path == "/api/packages":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
                 gate = find_gate(acct, self._q("gate"))
@@ -919,20 +981,20 @@ class Handler(BaseHTTPRequestHandler):
                 except xm_web.LoginFailed as e:
                     return self._send(200, {**base, "login_error": str(e)})
                 return self._send(200, {**base, "packages": pkgs})
-            if path == P + "/api/accounts":
+            if path == "/api/accounts":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, {"accounts": [redact_account(a) for a in st["accounts"]]})
-            if path == P + "/api/service":
+            if path == "/api/service":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, redact_service(st["service"]))
-            if path == P + "/api/service/log":
+            if path == "/api/service/log":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 rows = sorted(load_fulfillments().values(), key=lambda r: r.get("at", ""), reverse=True)[:100]
                 return self._send(200, {"log": rows})
-            if path == P + "/api/service/wa-status":
+            if path == "/api/service/wa-status":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 wa = st["service"].get("wa", {})
@@ -966,14 +1028,18 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- POST ----------
     def do_POST(self):
         path = self.path.split("?", 1)[0]
-        if path == "/api/m3u-generated":            # عدّاد عام لأداة M3U (بدون تسجيل دخول)
-            with _lock:
-                return self._send(200, {"m3u": bump_stat("m3u")})
-        if path == "/salla/webhook":                # ويبهوك سلة (عام، موقَّع)
-            return self._salla_webhook()
-        if not path.startswith(P + "/api/"):
+        self._bind_host()
+        if not self.on_tool_host:                   # مسارات الموقع العام وحده
+            if path == "/api/m3u-generated":        # عدّاد عام لأداة M3U (بدون تسجيل دخول)
+                with _lock:
+                    return self._send(200, {"m3u": bump_stat("m3u")})
+            if path == "/salla/webhook":            # ويبهوك سلة (عام، موقَّع)
+                return self._salla_webhook()
+        if not path.startswith(self.P + "/api/"):
             return self._send(404, {"error": "not found"})
-        path = path[len(P):]
+        if self.moved:                              # تبويب قديم ما زال مفتوحًا على /admin
+            return self._send(401, {"error": f"انتقلت الأداة إلى {ADMIN_HOST}", "login": True})
+        path = path[len(self.P):]
         try:
             with _lock:
                 st = load_store()
