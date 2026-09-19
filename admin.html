@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>إدارة الحسابات</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
@@ -47,7 +48,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 <body>
 <main>
   <h1>إدارة الحسابات</h1>
-  <p class="sub">كل حساب له اسم دخول وكلمة مرور و API وهوست مستقل. المستخدم يدخل على <a href="/admin">صفحة الإنشاء</a> ببياناته ويرى باقات الـ API الخاص به فقط. · <a href="/admin/logout">تسجيل الخروج</a></p>
+  <p class="sub">كل حساب له اسم دخول وكلمة مرور و API وهوست مستقل. المستخدم يدخل على <a href="/admin" id="lnkHome">صفحة الإنشاء</a> ببياناته ويرى باقات الـ API الخاص به فقط. · <a href="/admin/logout" id="lnkOut">تسجيل الخروج</a></p>
 
   <section>
     <h2 id="formTitle">إضافة حساب</h2>
@@ -136,10 +137,15 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
   </section>
 </main>
 <script>
+// الأداة تُقدَّم من الجذر على نطاقها (admin.ssouq.com) وتحت /admin على الموقع العام،
+// فتُبنى كل عناوينها على B بدل تثبيت "/admin" في كل نداء.
+const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+const HOME = B || "/";
 const $ = id => document.getElementById(id);
-const chk = d => { if (d && d.login) location.href = "/admin/login"; return d; };
+const chk = d => { if (d && d.login) location.href = B + "/login"; return d; };
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let accounts = [];
+$("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
 
 function say(el, t, ok){ el.textContent = t; el.className = "msg " + (ok ? "ok" : "err"); }
 async function post(url, body){
@@ -147,7 +153,7 @@ async function post(url, body){
   const d = chk(await r.json()); if (d.error) throw new Error(d.error); return d;
 }
 async function load(){
-  try { const r = await fetch("/admin/api/accounts"); const d = chk(await r.json()); if (d.error) throw new Error(d.error); accounts = d.accounts; }
+  try { const r = await fetch(B + "/api/accounts"); const d = chk(await r.json()); if (d.error) throw new Error(d.error); accounts = d.accounts; }
   catch(e) { $("list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   render();
 }
@@ -224,7 +230,7 @@ $("addGate").onclick = () => $("gates").appendChild(gateRow(null));
 $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
                 password: $("password").value, guide_url: $("acc_guide").value, gates: readGates()};
-  try { const d = await post("/admin/api/accounts", body); accounts = d.accounts; render(); fill(null); say($("msg"), "تم الحفظ", true); }
+  try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); fill(null); say($("msg"), "تم الحفظ", true); }
   catch(e) { say($("msg"), e.message); }
 };
 $("cancel").onclick = () => fill(null);
@@ -234,7 +240,7 @@ $("list").onclick = async e => {
   if (b.dataset.del) {
     const a = accounts.find(x => x.id === b.dataset.del);
     if (!confirm(`حذف الحساب "${a.name}"؟`)) return;
-    try { const d = await post("/admin/api/accounts/delete", {id: a.id}); accounts = d.accounts; render(); } catch(err) { alert(err.message); }
+    try { const d = await post(B + "/api/accounts/delete", {id: a.id}); accounts = d.accounts; render(); } catch(err) { alert(err.message); }
   }
 };
 $("exp").onclick = () => {
@@ -248,12 +254,12 @@ $("file").onchange = async () => {
   try {
     const d = JSON.parse(await f.text());
     if (!confirm("الاستيراد يستبدل كل الحسابات الحالية. متابعة؟")) return;
-    const r = await post("/admin/api/accounts/import", {accounts: d.accounts || d}); accounts = r.accounts; render(); say($("msg"), "تم الاستيراد", true);
+    const r = await post(B + "/api/accounts/import", {accounts: d.accounts || d}); accounts = r.accounts; render(); say($("msg"), "تم الاستيراد", true);
   } catch(e) { say($("msg"), e.message); }
   $("file").value = "";
 };
 $("apwBtn").onclick = async () => {
-  try { await post("/admin/api/accounts/admin-password", {password: $("apw").value}); $("apw").value = ""; say($("apwMsg"), "تم التغيير. سيطلب المتصفح الدخول من جديد.", true); }
+  try { await post(B + "/api/accounts/admin-password", {password: $("apw").value}); $("apw").value = ""; say($("apwMsg"), "تم التغيير. سيطلب المتصفح الدخول من جديد.", true); }
   catch(e) { say($("apwMsg"), e.message); }
 };
 // ---- خدمة سلة ← واتساب ----
@@ -286,7 +292,7 @@ function readService(){
 }
 async function loadService(){
   try {
-    const r=await fetch("/admin/api/service"); const d=chk(await r.json()); if(d.error) throw new Error(d.error);
+    const r=await fetch(B + "/api/service"); const d=chk(await r.json()); if(d.error) throw new Error(d.error);
     $("svcEnabled").checked=!!d.enabled; $("svcDry").checked=!!d.dry_run; $("svcPoll").checked=!!d.poll;
     $("svcTpl").value=d.template||"";
     $("svcSecret").value=""; $("svcSecret").placeholder=d.has_salla_secret?"محفوظ — اتركه فارغًا للإبقاء":"";
@@ -304,7 +310,7 @@ async function loadService(){
 }
 async function loadLog(){
   try {
-    const r=await fetch("/admin/api/service/log"); const d=chk(await r.json()); const rows=d.log||[];
+    const r=await fetch(B + "/api/service/log"); const d=chk(await r.json()); const rows=d.log||[];
     const S={sent:"✅ أُرسل",dry:"🧪 تجريبي",partial:"⚠ جزئي",failed:"❌ فشل",no_match:"— لا ربط",no_phone:"— بلا رقم",unpaid:"— غير مدفوع",disabled:"متوقّف"};
     $("svcLog").innerHTML = rows.length ? rows.slice(0,30).map(r=>{
       const lines=(r.lines||[]).map(l=> l.error?("⚠ "+esc(l.error)):esc(l.line||"")).join("<br>");
@@ -316,11 +322,11 @@ async function loadLog(){
 $("svcWaType").addEventListener("change", applyWaType);
 $("svcAddMap").onclick=()=>$("svcMap").appendChild(svcMapRow(null));
 $("svcReload").onclick=loadLog;
-$("svcSave").onclick=async()=>{ try{ await post("/admin/api/service", readService()); say($("svcMsg"),"تم الحفظ",true); loadService(); } catch(e){ say($("svcMsg"),e.message);} };
-$("svcTest").onclick=async()=>{ try{ const d=await post("/admin/api/service/test",{phone:$("svcTestPhone").value});
+$("svcSave").onclick=async()=>{ try{ await post(B + "/api/service", readService()); say($("svcMsg"),"تم الحفظ",true); loadService(); } catch(e){ say($("svcMsg"),e.message);} };
+$("svcTest").onclick=async()=>{ try{ const d=await post(B + "/api/service/test",{phone:$("svcTestPhone").value});
   say($("svcTestMsg"), d.ok?("تم الإرسال إلى "+d.to):("فشل: "+((d.result&&d.result.error)||"")), d.ok); } catch(e){ say($("svcTestMsg"),e.message);} };
 $("svcWaCheck").onclick=async()=>{ $("svcWaStatus").className="msg"; $("svcWaStatus").textContent="جاري الفحص…";
-  try{ const r=await fetch("/admin/api/service/wa-status"); const d=chk(await r.json());
+  try{ const r=await fetch(B + "/api/service/wa-status"); const d=chk(await r.json());
     if(!d.applicable){ say($("svcWaStatus"),"اختر «بوابة HTTP خاصة» واحفظ أولًا"); return; }
     if(d.connected){ say($("svcWaStatus"),"متصل ✅ "+(d.me||""), true); }
     else{ $("svcWaStatus").className="msg"; $("svcWaStatus").innerHTML='غير متصل — <a href="'+esc(d.link)+'" target="_blank" style="color:var(--go)">افتح صفحة ربط QR</a>'+(d.error?(" · "+esc(d.error)):""); }

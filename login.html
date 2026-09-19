@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>تسجيل الدخول</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -32,13 +33,17 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--go);outline-off
   <div class="msg" id="msg"></div>
 </section></main>
 <script>
+// الأداة تُقدَّم من الجذر على نطاقها (admin.ssouq.com) وتحت /admin على الموقع العام،
+// فتُبنى كل عناوينها على B بدل تثبيت "/admin" في كل نداء.
+const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+const HOME = B || "/";
 const $ = id => document.getElementById(id);
 async function go(){
   $("msg").textContent = "";
   try {
-    const r = await fetch("/admin/api/login", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({user:$("u").value.trim(), password:$("p").value})});
+    const r = await fetch(B + "/api/login", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({user:$("u").value.trim(), password:$("p").value})});
     const d = await r.json(); if (d.error) throw new Error(d.error);
-    location.href = d.role === "admin" ? "/admin/accounts" : "/admin";
+    location.href = d.role === "admin" ? B + "/accounts" : HOME;
   } catch(e) { $("msg").textContent = e.message; }
 }
 $("go").onclick = go;

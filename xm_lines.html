@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>Guide — البوابات</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
@@ -201,11 +202,11 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
   <div class="me" title="الحساب"><span class="av" id="acctAv">·</span><span class="acct" id="acct"></span></div>
   <nav class="nav">
     <a class="on"><svg viewBox="0 0 24 24"><path d="M4 10V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v5M4 10h16M4 10v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-9M12 14v3"/></svg>البوابات</a>
-    <a href="/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg>الشرح</a>
+    <a href="/" data-guide><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg>الشرح</a>
   </nav>
   <button class="icon-btn" id="themeBtn" title="الوضع الليلي/النهاري"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
-  <a class="icon-btn" href="/admin/logout" title="تسجيل الخروج"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
-  <a class="brand" href="/"><span class="mark"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9M12 3v9l6-3"/></svg></span><span><b>Guide</b><small>ssouq.com</small></span></a>
+  <a class="icon-btn" href="/admin/logout" id="lnkOut" title="تسجيل الخروج"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
+  <a class="brand" href="/" data-guide><span class="mark"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9M12 3v9l6-3"/></svg></span><span><b>Guide</b><small>ssouq.com</small></span></a>
 </header>
 
 <div class="scrim" id="scrim"></div>
@@ -328,12 +329,19 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 <div class="toast" id="toast">تم النسخ</div>
 
 <script>
+// الأداة تُقدَّم من الجذر على نطاقها (admin.ssouq.com) وتحت /admin على الموقع العام،
+// فتُبنى كل عناوينها على B بدل تثبيت "/admin" في كل نداء.
+const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+// الدليل موقعٌ آخر حين تكون الأداة على نطاقها، وجذرُ الموقع نفسه دونه.
+const GUIDE = B ? "/" : "https://guide.ssouq.com/";
 const $ = id => document.getElementById(id);
-const chk = d => { if (d && d.login) location.href = "/admin/login"; return d; };
+const chk = d => { if (d && d.login) location.href = B + "/login"; return d; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fmt = v => (v == null || v === "") ? "—" : (typeof v === "number" ? v.toLocaleString("en-US") : esc(String(v)));
 const MODE = {web:"Xtream — جلسة ويب", api:"Xtream — Reseller API", falcon:"فالكون — Falcon API"};
 let account = "";
+$("lnkOut").href = B + "/logout";
+for (const a of document.querySelectorAll("a[data-guide]")) a.href = GUIDE;
 let gates = [];
 let curGate = "";                       // البوابة المختارة
 const KEY = () => "xm_lines_history_" + account + "_" + curGate;
@@ -348,7 +356,7 @@ $("scrim").onclick = () => drawer(false);
 
 async function loadGates(){
   try {
-    const r = await fetch("/admin/api/me"); const d = chk(await r.json());
+    const r = await fetch(B + "/api/me"); const d = chk(await r.json());
     account = d.account || ""; $("acct").textContent = account; $("acctAv").textContent = (account || "·").slice(0,1).toUpperCase();
     gates = d.gates || [];
     if ($("myGuide")) $("myGuide").value = d.guide_url || "";
@@ -391,7 +399,7 @@ async function loadGateStatus(){
   setBadge("جاري القراءة…", "");
   $("gateStatus").innerHTML = '<div class="stat empty">جاري قراءة الرصيد من اللوحة…</div>';
   try {
-    const r = await fetch("/admin/api/gate-status?gate=" + encodeURIComponent(curGate));
+    const r = await fetch(B + "/api/gate-status?gate=" + encodeURIComponent(curGate));
     const s = chk(await r.json());
     if (s.need_login){ setBadge("يحتاج دخول", "warn"); $("gateStatus").innerHTML = '<div class="stat empty">سجّل الدخول إلى اللوحة (يُطلب الكود عند تحميل الباقات) لعرض الرصيد</div>'; return; }
     if (s.error || s.login_error){ setBadge("تعذّر", "err"); $("gateStatus").innerHTML = '<div class="stat empty">'+esc(s.error || s.login_error)+'</div>'; return; }
@@ -426,7 +434,7 @@ async function doSearch(){
   if (!q){ $("searchRes").innerHTML = ""; return; }
   $("searchRes").innerHTML = '<div class="empty">جاري البحث…</div>';
   try {
-    const r = await fetch("/admin/api/search?gate=" + encodeURIComponent(curGate) + "&q=" + encodeURIComponent(q));
+    const r = await fetch(B + "/api/search?gate=" + encodeURIComponent(curGate) + "&q=" + encodeURIComponent(q));
     const d = chk(await r.json());
     if (d.unsupported){ $("searchRes").innerHTML = '<div class="empty">البحث غير متاح لهذه البوابة.</div>'; return; }
     if (d.need_login){ $("searchRes").innerHTML = '<div class="empty">سجّل الدخول إلى اللوحة أولًا (حمّل الباقات واكتب الكود).</div>'; return; }
@@ -443,7 +451,7 @@ async function saveGuide(){
   const gu = $("myGuide").value.trim();
   $("guideMsg").className = "msg small"; $("guideMsg").textContent = "جاري الحفظ…";
   try {
-    const r = await fetch("/admin/api/myguide", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({guide_url: gu})});
+    const r = await fetch(B + "/api/myguide", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({guide_url: gu})});
     const d = chk(await r.json()); if (d.error) throw new Error(d.error);
     $("guideMsg").className = "msg small ok"; $("guideMsg").textContent = "تم الحفظ لكل البوابات";
   } catch(e){ $("guideMsg").textContent = e.message; }
@@ -461,7 +469,7 @@ async function copy(text){
 
 // ---- كود التحقّق (وضع الويب): يُقرأ آلياً في الخادم، وهنا نطلبه من المشغّل عند فشله ----
 let capRetry = null;
-const capUrl = () => "/admin/api/web/captcha?gate=" + encodeURIComponent(curGate) + "&t=" + Date.now();
+const capUrl = () => B + "/api/web/captcha?gate=" + encodeURIComponent(curGate) + "&t=" + Date.now();
 function showCaptcha(retry){
   capRetry = retry || null;
   $("capMsg").textContent = ""; $("capInput").value = "";
@@ -475,7 +483,7 @@ async function submitCaptcha(){
   const btn = $("capSubmit"); btn.disabled = true; $("capMsg").textContent = "جاري التحقق…";
   try {
     const body = JSON.stringify({gate: curGate, captcha: code});
-    const r = await fetch("/admin/api/web/login", {method:"POST", headers:{"Content-Type":"application/json"}, body});
+    const r = await fetch(B + "/api/web/login", {method:"POST", headers:{"Content-Type":"application/json"}, body});
     const d = chk(await r.json());
     if (d && d.ok) { const fn = capRetry; hideCaptcha(); loadGateStatus(); if (fn) fn(); }
     else if (d && d.kind === "login") { hideCaptcha(); $("msg").textContent = d.error || "فشل الدخول إلى اللوحة — تحقّق من اسم المستخدم وكلمة المرور في إعدادات البوابة."; $("pkgs").innerHTML = '<div class="empty">فشل الدخول إلى اللوحة. صحّح بيانات البوابة من "إدارة بواباتي".</div>'; }
@@ -502,7 +510,7 @@ function readGateForm(){
     api_url:$("g_api_url").value, api_key:$("g_api_key").value, host:$("g_host").value, guide_url:$("g_guide").value};
 }
 async function loadMyGates(){
-  try { const r=await fetch("/admin/api/mygates"); const d=chk(await r.json()); myGates=d.gates||[]; } catch { myGates=[]; }
+  try { const r=await fetch(B + "/api/mygates"); const d=chk(await r.json()); myGates=d.gates||[]; } catch { myGates=[]; }
   $("myGatesList").innerHTML = myGates.length ? myGates.map(g=>`
     <div class="item"><div class="l">${esc(g.name)}<small>${esc(MODE[g.mode]||g.mode)}${g.host?" · "+esc(g.host):""}</small></div>
       <button class="ghost" data-eg="${g.id}">تعديل</button>
@@ -516,7 +524,7 @@ async function saveGate(){
   if(!b.name){ $("gateMsg").textContent="اسم البوابة مطلوب"; return; }
   const btn=$("saveGate"); btn.disabled=true; $("gateMsg").className="msg"; $("gateMsg").textContent="جاري الحفظ…";
   try {
-    const r=await fetch("/admin/api/mygates",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});
+    const r=await fetch(B + "/api/mygates",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});
     const d=chk(await r.json()); if(d.error) throw new Error(d.error);
     $("gateEditor").hidden=true; await loadMyGates(); await loadGates(); $("gateMsg").className="msg ok"; $("gateMsg").textContent="تم الحفظ";
   } catch(e){ $("gateMsg").className="msg"; $("gateMsg").textContent=e.message; }
@@ -525,7 +533,7 @@ async function saveGate(){
 async function deleteGate(id){
   const g=myGates.find(x=>x.id===id); if(!g||!confirm(`حذف البوابة "${g.name}"؟`)) return;
   try {
-    const r=await fetch("/admin/api/mygates/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});
+    const r=await fetch(B + "/api/mygates/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});
     const d=chk(await r.json()); if(d.error) throw new Error(d.error);
     if(curGate===id) curGate="";
     await loadMyGates(); await loadGates();
@@ -543,7 +551,7 @@ async function fetchPackages(){
   if (!curGate) { $("pkgs").innerHTML = '<div class="empty">اختر بوابة أولاً.</div>'; return; }
   $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
   try {
-    const r = await fetch("/admin/api/packages?gate=" + encodeURIComponent(curGate)); const d = chk(await r.json());
+    const r = await fetch(B + "/api/packages?gate=" + encodeURIComponent(curGate)); const d = chk(await r.json());
     if (d.need_captcha) { showCaptcha(fetchPackages); $("pkgs").innerHTML = '<div class="empty">بانتظار كود التحقّق…</div>'; return; }
     if (d.login_error) throw new Error(d.login_error);
     if (d.error) throw new Error(d.error);
@@ -573,7 +581,7 @@ async function createLines(){
   if (!curGate) { $("msg").textContent = "اختر بوابة أولاً."; return; }
   const btn = $("create"); btn.disabled = true; $("createTxt").textContent = "جاري الإنشاء…"; $("msg").textContent = "";
   try {
-    const r = await fetch("/admin/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
+    const r = await fetch(B + "/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({gate: curGate, package_id: sel.value, username: $("u").value.trim(), password: $("p").value.trim(), count: countN()})});
     const d = chk(await r.json());
     if (d.need_captcha) { btn.disabled = false; updateCta(); showCaptcha(createLines); return; }
