@@ -599,16 +599,17 @@ class PanelWebSession:
             last, table_total = (t["rows"][0] if t["rows"] else {}), t["total"]
         except Exception:
             pass
-        total = self._dashboard_number(html, r"active\s+subscription")
+        # "عدد اليوزرات" = عدد لايناته من جدول اللوحة (رقم موثوق من الخادم، وهو ما
+        # يظهر 253)، ونلجأ لبطاقة لوحة المعلومات فقط إن غاب. أرقام "المتصلون
+        # الآن/أُنشئ اليوم/الاشتراكات" تُحمَّل بجافاسكربت على اللوحة (تكون صفرًا في
+        # HTML الخام)، فلا نعرضها كي لا تُضلِّل.
+        dash_total = self._dashboard_number(html, r"active\s+subscription")
         return {
             "provider": "web",
             "credits": self._extract_credits(html),
             "host": self.acct.get("host", ""),
             "username": self.acct.get("user", ""),
-            # "عدد اليوزرات" في واجهتنا = الاشتراكات الفعّالة على اللوحة.
-            "total": total if total is not None else table_total,
-            "created_today": self._dashboard_number(html, r"created\s+today"),
-            "online": self._dashboard_number(html, r"online\s+user"),
+            "total": table_total if table_total is not None else dash_total,
             "last_id": last.get("id"),
             "last_username": last.get("user"),
         }

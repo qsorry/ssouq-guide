@@ -139,10 +139,11 @@ def main():
         print("\n== 3c. Panel dashboard status (credits from the page) ==")
         st = s.status()
         check("status reads credits from the panel page", st.get("credits") == 1002, "credits=%s" % st.get("credits"))
-        check("status carries active subscriptions as total", isinstance(st.get("total"), int) and st["total"] >= 253,
+        # الجدول فيه لاينان (webuser1/webuser2) بينما بطاقة اللوحة تقول 255 —
+        # فالعدد يجب أن يأتي من الجدول الموثوق لا من البطاقة.
+        check("total comes from the users table, not the JS dashboard card", st.get("total") == 2,
               "total=%s" % st.get("total"))
-        check("status reads created-today and online counts", st.get("created_today") == 26 and st.get("online") == 6,
-              "today=%s online=%s" % (st.get("created_today"), st.get("online")))
+        check("JS-placeholder counts are not surfaced", "created_today" not in st and "online" not in st)
         check("status reports the newest line as last user", st.get("last_username") == "webuser2",
               "last=%s" % st.get("last_username"))
         rows = s.search("webuser1")
