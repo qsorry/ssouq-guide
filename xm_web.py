@@ -528,31 +528,61 @@ class PanelWebSession:
             "selected_bouquets": json.dumps(ids),
             "submit_user": "1",
         }
-        self._request(action, data=body, headers={"X-Requested-With": "XMLHttpRequest"})
+        cr = self._request(action, data=body, headers={"X-Requested-With": "XMLHttpRequest"})
 
-        # 4) تأكيد من جدول اللاينات
-        found = None
+        # إن ردّت اللوحة بخطأ صريح على الإنشاء نفسه، أوقف (لم يُخصم/لم يُنشأ).
+        alert = self._extract_alert(self._text(cr))
+        if alert and self._classify_login_error(alert) != "credentials" \
+                and re.search(r"error|fail|خطأ|فشل|not\s|invalid|denied|exceed|رصيد|credit", alert, re.I):
+            raise RuntimeError("رفضت اللوحة الإنشاء: " + alert)
+
+        # 4) تأكيد من جدول اللاينات (لجلب الـ id/الانتهاء) — **غير حاسم**:
+        # الإنشاء نقطة لا عودة (يُخصم الرصيد)، فلا نفقد بيانات اليوزر لو تأخّر البحث.
+        found = {}
         for _ in range(6):
-            found = self._search_line(username)
+            try:
+                found = self._search_line(username)
+            except Exception:
+                found = {}
             if found and found.get("id"):
                 break
             time.sleep(1.2)
-        if not (found and found.get("id")):
-            raise RuntimeError("تعذّر تأكيد إنشاء اليوزر بعد الإرسال")
 
-        line = "Host {h}  Password {p} Username {u}".format(h=host, p=password, u=username)
+        # اسم/كلمة المرور اللذان أرسلناهما هما ما سجّلته اللوحة (تركناهما فارغين =
+        # ولّدناهما نحن)، فنعرضهما دائمًا حتى لو تعذّر التأكيد.
+        u_final = found.get("user") or username
+        p_final = found.get("pass") or password
+        line = "Host {h}  Password {p} Username {u}".format(h=host, p=p_final, u=u_final)
         return {
-            "line": line, "username": username, "password": password, "host": host,
-            "package_id": str(package_id), "line_id": found.get("id"),
+            "line": line, "username": u_final, "password": p_final, "host": host,
+            "package_id": str(package_id), "line_id": found.get("id", ""),
             "exp": found.get("end", ""), "connections": found.get("conns", ""),
+            "verified": bool(found.get("id")),
             "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
 
     def _search_line(self, username: str) -> dict:
-        params = {
-            "draw": "1", "start": "0", "length": "25",
-            "search[value]": username, "_": str(int(time.time() * 1000)),
-        }
+        # نفس معاملات DataTables التي تطلبها اللوحة (id=users + أعمدة كاملة)،
+        # وإلا رجّع table_search.php لا شيء ففشل التأكيد رغم نجاح الإنشاء.
+        params = [("draw", "1")]
+        for i in range(12):
+            params += [
+                ("columns[%d][data]" % i, str(i)),
+                ("columns[%d][name]" % i, ""),
+                ("columns[%d][searchable]" % i, "true"),
+                ("columns[%d][orderable]" % i, "false" if i in (3, 10, 11) else "true"),
+                ("columns[%d][search][value]" % i, ""),
+                ("columns[%d][search][regex]" % i, "false"),
+            ]
+        params += [
+            ("order[0][column]", "0"), ("order[0][dir]", "desc"),
+            ("start", "0"), ("length", "10"),
+            ("search[value]", username), ("search[regex]", "false"),
+            ("id", "users"), ("filter", ""), ("reseller", ""),
+            ("date_created_from", ""), ("date_created_to", ""),
+            ("date_expire_from", ""), ("date_expire_to", ""),
+            ("_", str(int(time.time() * 1000))),
+        ]
         r = self._request("/table_search.php?" + urllib.parse.urlencode(params),
                           headers={"X-Requested-With": "XMLHttpRequest"})
         try:

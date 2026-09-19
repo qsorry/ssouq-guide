@@ -139,6 +139,9 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, html, headers=hdr)
 
         if path == "/table_search.php":
+            if qs.get("id", [""])[0] != "users":   # اللوحة تتطلب id=users
+                return self._send(200, json.dumps({"draw": 1, "recordsFiltered": 0, "data": []}),
+                                  "application/json", hdr)
             term = qs.get("search[value]", [""])[0]
             data = []
             for ln in LINES:

@@ -109,6 +109,17 @@ def main():
         check("line text formatted", "webuser1" in line["line"] and "mrha.ink" in line["line"])
         check("selected package recorded", line["package_id"] == "3")
 
+        print("\n== 3b. Create stays non-fatal if verification can't find the line ==")
+        orig_search = s._search_line
+        s._search_line = lambda u: {}      # محاكاة فشل/تأخّر table_search
+        try:
+            line2 = s.create_line(package_id=1, username="webuser2", password="pw2")
+            check("line still returned when search fails",
+                  line2.get("username") == "webuser2" and "webuser2" in line2["line"])
+            check("flagged as unverified", line2.get("verified") is False)
+        finally:
+            s._search_line = orig_search
+
         print("\n== 4. Session reused from disk (new object) ==")
         s2 = xm_web.PanelWebSession(acct, data_dir)
         check("reloaded session authenticated", s2.is_authenticated())
