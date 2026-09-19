@@ -102,8 +102,10 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
         <div><label for="svcWaVer">الإصدار</label><input id="svcWaVer" placeholder="v21.0"></div></div>
     </div>
     <div id="svcWaHttp" hidden>
-      <label for="svcWaUrl">رابط البوابة — POST ‏{to, text}</label><input id="svcWaUrl" placeholder="https://...">
-      <label for="svcWaSecret">سر البوابة (Authorization) — اختياري</label><input id="svcWaSecret" type="password" autocomplete="off">
+      <label for="svcWaUrl">رابط الإرسال — خدمة Baileys: POST ‏{to, text}</label><input id="svcWaUrl" placeholder="https://wa-service/send">
+      <label for="svcWaSecret">سر البوابة (WA_SECRET) — يُرسَل في Authorization</label><input id="svcWaSecret" type="password" autocomplete="off">
+      <button type="button" class="ghost" id="svcWaCheck" style="margin-top:10px">فحص اتصال واتساب (Baileys)</button>
+      <div class="msg" id="svcWaStatus"></div>
     </div>
 
     <label for="svcTpl" style="margin-top:14px">نص الرسالة — ‏{line} السطر · ‏{name} اسم العميل</label>
@@ -317,6 +319,12 @@ $("svcReload").onclick=loadLog;
 $("svcSave").onclick=async()=>{ try{ await post("/admin/api/service", readService()); say($("svcMsg"),"تم الحفظ",true); loadService(); } catch(e){ say($("svcMsg"),e.message);} };
 $("svcTest").onclick=async()=>{ try{ const d=await post("/admin/api/service/test",{phone:$("svcTestPhone").value});
   say($("svcTestMsg"), d.ok?("تم الإرسال إلى "+d.to):("فشل: "+((d.result&&d.result.error)||"")), d.ok); } catch(e){ say($("svcTestMsg"),e.message);} };
+$("svcWaCheck").onclick=async()=>{ $("svcWaStatus").className="msg"; $("svcWaStatus").textContent="جاري الفحص…";
+  try{ const r=await fetch("/admin/api/service/wa-status"); const d=chk(await r.json());
+    if(!d.applicable){ say($("svcWaStatus"),"اختر «بوابة HTTP خاصة» واحفظ أولًا"); return; }
+    if(d.connected){ say($("svcWaStatus"),"متصل ✅ "+(d.me||""), true); }
+    else{ $("svcWaStatus").className="msg"; $("svcWaStatus").innerHTML='غير متصل — <a href="'+esc(d.link)+'" target="_blank" style="color:var(--go)">افتح صفحة ربط QR</a>'+(d.error?(" · "+esc(d.error)):""); }
+  }catch(e){ say($("svcWaStatus"), e.message); } };
 
 fill(null);
 load().then(loadService);

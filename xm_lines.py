@@ -430,6 +430,14 @@ def _gen_for_map(st, m, simulate):
             "password": r["password"], "verified": r.get("verified", True)}
 
 
+def _wa_base(wa):
+    """أصل خدمة واتساب من رابط الإرسال (يحذف /send الأخير)."""
+    u = str((wa or {}).get("url", "")).strip()
+    if u.endswith("/send"):
+        u = u[:-5]
+    return u.rstrip("/")
+
+
 def build_message(template, line, name):
     t = template or default_service()["template"]
     return t.replace("{line}", line).replace("{lines}", line).replace("{name}", name or "")
@@ -924,6 +932,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403, {"error": "للمدير فقط"})
                 rows = sorted(load_fulfillments().values(), key=lambda r: r.get("at", ""), reverse=True)[:100]
                 return self._send(200, {"log": rows})
+            if path == P + "/api/service/wa-status":
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                wa = st["service"].get("wa", {})
+                if wa.get("type") != "http" or not wa.get("url"):
+                    return self._send(200, {"applicable": False})
+                base = _wa_base(wa)
+                link = base + "/?" + urlencode({"key": wa.get("secret", "")})
+                try:
+                    rq = Request(base + "/status", headers={"Authorization": "Bearer " + wa.get("secret", "")})
+                    with urlopen(rq, timeout=8) as r:
+                        d = json.loads(r.read().decode("utf-8", "replace") or "{}")
+                    return self._send(200, {"applicable": True, "connected": bool(d.get("connected")),
+                                            "me": d.get("me", ""), "link": link})
+                except Exception as e:
+                    return self._send(200, {"applicable": True, "connected": False,
+                                            "error": str(e)[:120], "link": link})
             self._send(404, {"error": "not found"})
         except Exception as e:
             self._send(500, {"error": str(e)})

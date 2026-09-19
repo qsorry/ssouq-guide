@@ -1,0 +1,16 @@
+{
+  "name": "ssouq-wa-baileys",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "خدمة إرسال واتساب صغيرة عبر Baileys — ربط بالـ QR وإرسال {to,text} لأداة Guide.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}
