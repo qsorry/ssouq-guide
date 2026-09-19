@@ -198,11 +198,12 @@ const STAT_KEY = () => "xm_status_" + account + "_" + curGate;
 async function loadGateStatus(){
   const gate = gates.find(g => g.id === curGate) || {};
   $("statusWarn").hidden = true; $("gateStatus").innerHTML = "";
-  if (gate.mode !== "falcon"){ $("gateStatus").innerHTML = '<span class="chip muted">حالة النقاط متاحة لبوابات فالكون</span>'; return; }
+  if (gate.mode !== "falcon" && gate.mode !== "web"){ $("gateStatus").innerHTML = '<span class="chip muted">حالة النقاط غير متاحة لهذه البوابة</span>'; return; }
   $("gateStatus").innerHTML = '<span class="chip">جاري القراءة…</span>';
   try {
     const r = await fetch("/admin/api/gate-status?gate=" + encodeURIComponent(curGate));
     const s = chk(await r.json());
+    if (s.need_login){ $("gateStatus").innerHTML = '<span class="chip muted">افتح البوابة وسجّل الدخول لعرض الرصيد</span>'; return; }
     if (s.error){ $("gateStatus").innerHTML = '<span class="chip">'+esc(s.error)+'</span>'; return; }
     $("gateStatus").innerHTML =
       `<span class="chip">النقاط: <b>${s.credits ?? "—"}</b></span>` +

@@ -64,6 +64,18 @@ def main():
         check("textarea", FV('<textarea name="member_id">4242</textarea>', "member_id") == "4242")
         check("absent -> empty", FV('<input name="other" value="z">', "member_id") == "")
 
+        print("\n== 0b. credits / dashboard number parsing ==")
+        EC = xm_web.PanelWebSession._extract_credits
+        DN = xm_web.PanelWebSession._dashboard_number
+        check("Credits: N (same node)", EC('<span class="credits-box">Credits: 1002</span>') == 1002)
+        check("Credits with tags between", EC('<div>Credits:</div> <b>1,250</b>') == 1250)
+        check("Arabic الرصيد", EC('<div>الرصيد: 340</div>') == 340)
+        check("data-credits attribute", EC('<i data-credits="88"></i>') == 88)
+        check("no credits -> None", EC('<div>Dashboard</div>') is None)
+        check("card number precedes label", DN('<h3>253</h3><p>ACTIVE SUBSCRIPTIONS</p>', r"active\s+subscription") == 253)
+        check("distinct label, not the earlier number",
+              DN('<h3>26</h3><p>CREATED TODAY</p><h3>253</h3><p>ACTIVE SUBSCRIPTIONS</p>', r"active\s+subscription") == 253)
+
         for _ in range(50):
             try:
                 urllib.request.urlopen(BASE + "/token.php", timeout=0.3)
@@ -119,6 +131,14 @@ def main():
             check("flagged as unverified", line2.get("verified") is False)
         finally:
             s._search_line = orig_search
+
+        print("\n== 3c. Panel dashboard status (credits from the page) ==")
+        st = s.status()
+        check("status reads credits from the panel page", st.get("credits") == 1002, "credits=%s" % st.get("credits"))
+        check("status carries active subscriptions as total", isinstance(st.get("total"), int) and st["total"] >= 253,
+              "total=%s" % st.get("total"))
+        check("status reads created-today and online counts", st.get("created_today") == 26 and st.get("online") == 6,
+              "today=%s online=%s" % (st.get("created_today"), st.get("online")))
 
         print("\n== 4. Session reused from disk (new object) ==")
         s2 = xm_web.PanelWebSession(acct, data_dir)

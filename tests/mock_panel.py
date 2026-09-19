@@ -154,7 +154,20 @@ class H(BaseHTTPRequestHandler):
                               "application/json", hdr)
 
         if path in ("/", "/dashboard"):
-            return self._send(200, "<html><body><h1>Dashboard</h1>logged in</body></html>", headers=hdr)
+            credits = 1002
+            active = 253 + len(LINES)
+            html = (
+                '<!DOCTYPE html><html><body>'
+                '<div class="topbar"><span class="credits-box">Credits: %d</span>'
+                '<span class="user">Okyesno</span></div>'
+                '<div class="cards">'
+                '<div class="card"><h3>6</h3><p>ONLINE USERS</p></div>'
+                '<div class="card"><h3>26</h3><p>CREATED TODAY</p></div>'
+                '<div class="card"><h3>253</h3><p>CREATED THIS MONTH</p></div>'
+                '<div class="card"><h3>%d</h3><p>ACTIVE SUBSCRIPTIONS</p></div>'
+                '<div class="card"><h3>6</h3><p>OPEN CONNECTIONS</p></div>'
+                '</div></body></html>' % (credits, active))
+            return self._send(200, html, headers=hdr)
 
         return self._send(404, "404", "text/plain", hdr)
 

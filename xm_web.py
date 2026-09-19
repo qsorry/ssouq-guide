@@ -561,6 +561,42 @@ class PanelWebSession:
             "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
 
+    # ---- حالة اللوحة (الرصيد + أرقام لوحة المعلومات) ----
+    def status(self) -> dict:
+        """يقرأ صفحة اللوحة المصادَقة ويستخرج الرصيد (Credits) وبعض أرقامها.
+        الرصيد ظاهر على الصفحة نفسها ("Credits: N")، فنلتقطه كما تلتقطه فالكون."""
+        self.ensure_login()
+        html = self._text(self._request("/"))
+        return {
+            "provider": "web",
+            "credits": self._extract_credits(html),
+            "host": self.acct.get("host", ""),
+            "username": self.acct.get("user", ""),
+            # "عدد اليوزرات" في واجهتنا = الاشتراكات الفعّالة على اللوحة.
+            "total": self._dashboard_number(html, r"active\s+subscription"),
+            "created_today": self._dashboard_number(html, r"created\s+today"),
+            "online": self._dashboard_number(html, r"online\s+user"),
+        }
+
+    @staticmethod
+    def _extract_credits(html: str):
+        """رقم الرصيد من "Credits: N" (أو رصيد/النقاط)، ولو تخلّلته وسوم."""
+        for pat in (
+            r'credits?\s*[:：]?\s*(?:<[^>]+>\s*)*([0-9][\d,]*(?:\.\d+)?)',
+            r'(?:الرصيد|رصيد|النقاط|نقاط)\s*[:：]?\s*(?:<[^>]+>\s*)*([0-9][\d,]*(?:\.\d+)?)',
+            r'data-credits?=["\']?\s*([0-9][\d,]*(?:\.\d+)?)',
+        ):
+            m = re.search(pat, html, re.I)
+            if m:
+                return _to_num(m.group(1))
+        return None
+
+    @staticmethod
+    def _dashboard_number(html: str, label_re: str):
+        """رقم بطاقةٍ يسبق تسميتها (قد تتخلّلهما وسوم فقط)، مثل "253 … ACTIVE SUBSCRIPTIONS"."""
+        m = re.search(r'([0-9][\d,]*)\s*(?:<[^>]+>\s*)*' + label_re, html, re.I)
+        return _to_num(m.group(1)) if m else None
+
     def _search_line(self, username: str) -> dict:
         # نفس معاملات DataTables التي تطلبها اللوحة (id=users + أعمدة كاملة)،
         # وإلا رجّع table_search.php لا شيء ففشل التأكيد رغم نجاح الإنشاء.
@@ -610,6 +646,16 @@ class PanelWebSession:
                 os.remove(p)
             except OSError:
                 pass
+
+
+def _to_num(s):
+    """نص رقمي (بفواصل آلاف) → int أو float، وإلا None."""
+    s = str(s).replace(",", "").strip()
+    try:
+        f = float(s)
+        return int(f) if f.is_integer() else f
+    except ValueError:
+        return None
 
 
 def _rand_digits(n: int = 12) -> str:

@@ -653,6 +653,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403, {"error": "غير متاح"})
                 if gate.get("mode") == "falcon":
                     return self._send(200, falcon_api.status(gate["api_url"], gate["api_key"]))
+                if gate.get("mode") == "web":     # الرصيد من صفحة اللوحة نفسها
+                    try:
+                        return self._send(200, web_session(gate).status())
+                    except xm_web.CaptchaNeeded:
+                        return self._send(200, {"provider": "web", "credits": None, "need_login": True})
+                    except xm_web.LoginFailed as e:
+                        return self._send(200, {"provider": "web", "credits": None, "login_error": str(e)})
+                    except Exception:
+                        return self._send(200, {"provider": "web", "credits": None,
+                                                "error": "تعذّر قراءة الرصيد من اللوحة"})
                 return self._send(200, {"provider": gate.get("mode"), "credits": None,
                                         "unsupported": True})
             if path == P + "/api/search":             # بحث بالـ username/password
