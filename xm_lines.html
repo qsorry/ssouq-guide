@@ -45,7 +45,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-o
 .toast.on{opacity:1}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 @media (max-width:480px){.row{grid-template-columns:1fr 1fr}.row .c{grid-column:span 2}}
-.cap-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.cap-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.cap-overlay.show{display:flex}
 .cap-box{background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:360px;width:100%;box-shadow:0 14px 40px rgba(0,0,0,.3)}
 .cap-box h3{margin:0 0 4px}
 .cap-hint{color:var(--mute);font-size:.85rem;margin:0 0 14px}
@@ -137,9 +138,9 @@ function showCaptcha(retry){
   capRetry = retry || null;
   $("capMsg").textContent = ""; $("capInput").value = "";
   $("capImg").src = capUrl();
-  $("capOverlay").hidden = false; $("capInput").focus();
+  $("capOverlay").classList.add("show"); $("capOverlay").hidden = false; $("capInput").focus();
 }
-function hideCaptcha(){ $("capOverlay").hidden = true; capRetry = null; }
+function hideCaptcha(){ $("capOverlay").classList.remove("show"); $("capOverlay").hidden = true; capRetry = null; }
 async function submitCaptcha(){
   const code = $("capInput").value.trim();
   if (!code) { $("capMsg").textContent = "اكتب الكود."; return; }
@@ -148,6 +149,7 @@ async function submitCaptcha(){
     const r = await fetch("/admin/api/web/login", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({captcha: code})});
     const d = chk(await r.json());
     if (d && d.ok) { const fn = capRetry; hideCaptcha(); if (fn) fn(); }
+    else if (d && d.kind === "login") { hideCaptcha(); $("msg").textContent = d.error || "فشل الدخول إلى اللوحة — تحقّق من اسم المستخدم وكلمة المرور في إعدادات الحساب."; $("pkgs").innerHTML = '<div class="empty">فشل الدخول إلى اللوحة. صحّح بيانات الحساب من صفحة الحسابات.</div>'; }
     else { $("capMsg").textContent = (d && d.error) || "الكود غير صحيح"; $("capImg").src = capUrl(); $("capInput").value=""; $("capInput").focus(); }
   } catch(e){ $("capMsg").textContent = "تعذّر الإرسال."; }
   btn.disabled = false;

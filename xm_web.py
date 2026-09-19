@@ -311,22 +311,59 @@ class PanelWebSession:
             "captcha": captcha,
         }
         r = self._request("/login.php", data=fields)
+        body = self._text(r)
         loc = r.get("location", "") or r.get("final_url", "")
+
+        # (أ) تحويل 30x يحمل error=... (اللوحة تفعلها لخطأ الكابتشا)
         m = re.search(r"[?&]error=([a-z0-9_\-]+)", loc, re.I)
         if m:
             code = m.group(1).lower()
-            if code == "captcha":
+            if code in ("captcha", "code"):
                 _, img = self.fetch_captcha()
                 raise CaptchaNeeded("image/jpeg", img, "captcha")
-            raise LoginFailed(code, self._login_error_msg(code))
-        # ردّ 200 يعيد نموذج الدخول = فشل صامت
-        body = self._text(r)
-        if r.get("status") == 200 and 'name="password"' in body and "login_form" in body:
-            _, img = self.fetch_captcha()
-            raise CaptchaNeeded("image/jpeg", img, "captcha")
+            raise LoginFailed("credentials" if code in ("login", "password", "user") else code,
+                              self._login_error_msg(code))
+
+        # (ب) ردّ 200 يعيد صفحة الدخول = فشل. نميّز سببه من رسالة alert في الصفحة،
+        # لأن اللوحة ترجع "Incorrect username or password" (بيانات) بردّ 200 لا بتحويل،
+        # فلا يصح عدّ كل 200-فيه-نموذج خطأَ كابتشا.
+        still_login = 'id="login_form"' in body or 'name="captcha"' in body
+        if still_login:
+            alert = self._extract_alert(body)
+            kind = self._classify_login_error(alert)
+            if kind == "captcha":
+                _, img = self.fetch_captcha()
+                raise CaptchaNeeded("image/jpeg", img, "captcha")
+            raise LoginFailed(kind, alert or self._login_error_msg(kind))
+
+        # (ج) لم نعد على صفحة الدخول → نجاح، ونتأكد بجلب صفحة محمية.
         if not self.is_authenticated():
             raise LoginFailed("not_authenticated", "قُبل الطلب لكن الجلسة غير مُصادَقة")
         return True
+
+    @staticmethod
+    def _extract_alert(html: str) -> str:
+        """نص أول تنبيه خطأ في صفحة الدخول (alert-danger)، منظّفًا من الوسوم."""
+        m = re.search(r'<div[^>]*class=["\'][^"\']*alert-danger[^"\']*["\'][^>]*>(.*?)</div>',
+                      html, re.I | re.S)
+        if not m:
+            return ""
+        txt = re.sub(r"<[^>]+>", " ", m.group(1))
+        txt = _html.unescape(re.sub(r"\s+", " ", txt)).strip(" ××")
+        return txt[:200]
+
+    @staticmethod
+    def _classify_login_error(alert: str) -> str:
+        a = (alert or "").lower()
+        if any(k in a for k in ("captcha", "verification code", "الكود", "رمز التحقق", "wrong code")):
+            return "captcha"
+        if any(k in a for k in ("username", "password", "incorrect", "invalid login",
+                                "credential", "كلمة المرور", "اسم المستخدم", "بيانات")):
+            return "credentials"
+        if any(k in a for k in ("blocked", "banned", "محظور", "suspend")):
+            return "blocked"
+        # صفحة دخول بلا رسالة واضحة: الأرجح بيانات خاطئة.
+        return "credentials"
 
     @staticmethod
     def _login_error_msg(code: str) -> str:

@@ -173,7 +173,14 @@ class H(BaseHTTPRequestHandler):
             if not want or form.get("captcha", "") != want:
                 return self._send(302, b"", "text/plain", {**hdr, "Location": "?error=captcha"})
             if form.get("username") != USER or form.get("password") != PASS:
-                return self._send(302, b"", "text/plain", {**hdr, "Location": "?error=credentials"})
+                # كما اللوحة الحقيقية: 200 + صفحة الدخول مع تنبيه، لا تحويل ?error=
+                html = ('<!DOCTYPE html><html><head><title>Xtream-Masters - Login</title></head><body>'
+                        '<div class="alert alert-danger alert-dismissible" role="alert">'
+                        'Incorrect username or password! Please try again.</div>'
+                        '<form action="./login.php" method="POST" id="login_form">'
+                        '<input type="text" name="username"><input type="password" name="password">'
+                        '<input type="text" name="captcha"></form></body></html>')
+                return self._send(200, html, headers=hdr)
             SESSIONS[sid]["auth"] = True
             return self._send(302, b"", "text/plain", {**hdr, "Location": "/dashboard"})
 

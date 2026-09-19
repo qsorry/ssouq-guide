@@ -126,11 +126,14 @@ def main():
         code = mock_code(bad)
         try:
             bad.login(captcha=code)
-            check("wrong password raises LoginFailed", False, "no exception")
+            check("correct captcha + wrong password -> LoginFailed(credentials), NOT captcha", False, "no exception")
         except xm_web.LoginFailed as e:
-            check("wrong password raises LoginFailed", e.code == "credentials", "code=%s" % e.code)
+            # هذا هو الخطأ الذي كان يُخفى كـ«الكود غير صحيح»: يجب أن يكون credentials.
+            check("correct captcha + wrong password -> LoginFailed(credentials), NOT captcha",
+                  e.code == "credentials", "code=%s msg=%s" % (e.code, str(e)[:40]))
         except xm_web.CaptchaNeeded:
-            check("wrong password raises LoginFailed", False, "got CaptchaNeeded (captcha mismatch)")
+            check("correct captcha + wrong password -> LoginFailed(credentials), NOT captcha",
+                  False, "BUG: mislabeled a credentials failure as a captcha error")
 
         for d in (data_dir, data_dir2, data_dir3):
             shutil.rmtree(d, ignore_errors=True)
