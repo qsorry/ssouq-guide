@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reseller API Activation Check — Xtream-Masters</title>
+<style>
+  :root{--bg:#ffffff;--ink:#1a1f2b;--muted:#5b6472;--line:#e3e7ee;--card:#f6f8fb;
+        --accent:#1f6feb;--warnbg:#fff6e6;--ok:#0a7d34;--code:#0f172a;--codebg:#f1f5f9}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:"Segoe UI",Arial,sans-serif;line-height:1.7;font-size:16px}
+  .wrap{max-width:820px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-size:1.55rem;margin:.2em 0 .1em}
+  h2{font-size:1.2rem;margin:1.6em 0 .5em;padding-left:10px;border-left:4px solid var(--accent)}
+  .sub{color:var(--muted);margin:0 0 1.4em}
+  table{width:100%;border-collapse:collapse;margin:.6em 0 1.2em;font-size:.95rem}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--card)}
+  code,pre{font-family:"Cascadia Code",Consolas,"Courier New",monospace}
+  code{background:var(--codebg);color:var(--code);padding:1px 5px;border-radius:4px;font-size:.9em}
+  pre{background:var(--codebg);color:var(--code);padding:12px 14px;border-radius:8px;
+      overflow-x:auto;font-size:.86rem;border:1px solid var(--line)}
+  ol,ul{padding-left:22px}
+  li{margin:.35em 0}
+  .warn{background:var(--warnbg);border:1px solid #f0d28a;color:#7a4a00;
+        padding:12px 14px;border-radius:8px;margin:1em 0}
+  .ok{color:var(--ok);font-weight:700}
+  .tag{display:inline-block;background:var(--card);border:1px solid var(--line);
+       border-radius:6px;padding:0 6px;font-size:.85em}
+  .btn{position:fixed;top:14px;right:14px;background:var(--accent);color:#fff;border:0;
+       border-radius:8px;padding:8px 14px;font-size:.9rem;cursor:pointer}
+  @media print{.btn{display:none}body{font-size:12.5px}.wrap{padding:0}}
+  hr{border:0;border-top:1px solid var(--line);margin:1.6em 0}
+</style>
+</head>
+<body>
+<button class="btn" onclick="window.print()">Print / Save PDF</button>
+<div class="wrap">
+
+<h1>Panel Install &amp; Reseller API Activation Check</h1>
+<p class="sub">Xtream-Masters panel — Mr7tv account · Guide for the server owner · Commands ready to copy &amp; paste</p>
+
+<p>This guide covers two linked issues: the <b>panel install domain</b> after the domain change (the root cause), and <b>activating the Reseller API</b> and verifying it from both the panel and the server.</p>
+
+<h2>Key values</h2>
+<table>
+<tr><th>Item</th><th>Value</th></tr>
+<tr><td>Our server (must be whitelisted in the panel)</td><td><span class="tag">158.220.81.202</span></td></tr>
+<tr><td>Existing access codes (Reseller API)</td><td><span class="tag">msAPIufgk</span> · <span class="tag">resellerapi</span></td></tr>
+<tr><td>Endpoint format (per docs)</td><td><code>http://{server-dns}:{stream-port}/{code}/reseller/index.php</code></td></tr>
+<tr><td>Old domain stuck in the API</td><td><span class="tag">mr7-4k.live</span> — ⚠️ does not resolve (old install domain)</td></tr>
+<tr><td>Current panel domain (admin)</td><td><span class="tag">mr7-4k.sbs:2052</span> (behind Cloudflare)</td></tr>
+<tr><td>Origin IP</td><td><span class="tag">205.237.107.54</span></td></tr>
+<tr><td>API docs</td><td><code>https://ottpanel.tv/xm_reseller_api_doc.html</code></td></tr>
+</table>
+<p><b>To fill in:</b> <code>{KEY}</code> = api_key from API Settings, <code>{PORT}</code> = stream port, <code>{PKG}</code> = a package id for testing, <code>{NEW}</code> = the final approved domain.</p>
+
+<hr>
+<h2>Section A — Panel install domain (root cause)</h2>
+<p>The panel was installed on one domain, then changed. The old domain <span class="tag">mr7-4k.live</span> is still stored in the stream/API settings, so access-code links are built on a domain that does not resolve. Unify all references on the final domain <code>{NEW}</code> (most likely <span class="tag">mr7-4k.sbs</span>):</p>
+<ol>
+<li><b>DNS:</b> add an <b>A</b> record for every hostname used (admin + stream + API) in the <code>{NEW}</code> zone ← <span class="tag">205.237.107.54</span>. On Cloudflare, set the <b>stream-port records to DNS only (grey cloud)</b>, since Cloudflare only proxies specific HTTP ports (80, 8080, 2052, 2082, 2086, 2095…).</li>
+<li><b>Panel General Settings:</b> update the <b>Panel URL / Access URL / Stream DNS</b> field (used to build access-code and stream links) from <span class="tag">mr7-4k.live</span> to <code>{NEW}</code>.</li>
+<li><b>Servers / Load Balancers:</b> for each server, update the <b>Server Domain / DNS</b> field to <code>{NEW}</code>.</li>
+<li><b>nginx:</b> add <code>{NEW}</code> to <code>server_name</code> on the admin and stream ports, with a valid SSL certificate.</li>
+<li><b>Access codes:</b> after the change, open Access Codes and confirm each link now uses <code>{NEW}</code>, not <span class="tag">mr7-4k.live</span> (regenerate/re-copy if needed).</li>
+<li><b>Old domain:</b> keep it pointed during the transition, or remove all references to it.</li>
+</ol>
+<div class="warn"><b>Quick check:</b> every code link on the Access Codes page must show <code>{NEW}</code> and that domain must actually resolve.</div>
+
+<hr>
+<h2>Section B — Verify the API setup inside the panel</h2>
+<ol>
+<li><b>Access code:</b> Access Codes ← a code of type <b>Reseller API</b>, status <b>Active</b>.</li>
+<li><b>IP list:</b> open the code ← <b>Restrictions</b> tab ← <b>Allowed IP Addresses</b> contains <span class="tag">158.220.81.202</span> (shown in the list box and saved with Add).</li>
+<li><b>Package groups:</b> the code's <b>Groups</b> tab has the sold package groups enabled, and each package has <b>Bouquets</b> assigned.</li>
+<li><b>Group permissions</b> (Edit Group ← Permissions): Can Use Reseller API ✓, Can Generate Mass Paid ✓, Can Delete Users ✓, User Delete Refund ✓.</li>
+<li><b>api_key:</b> from <b>Manage end-points / API Settings</b> — copy the key tied to the code. (The <i>Admin API Management</i> key is different and will not work.)</li>
+</ol>
+
+<hr>
+<h2>Section C — Verify from the server (live test)</h2>
+<p>Run from our server <span class="tag">158.220.81.202</span>. Replace <code>{NEW}</code>, <code>{PORT}</code>, <code>{KEY}</code>, then copy &amp; paste.</p>
+
+<p><b>1) Does the domain resolve?</b></p>
+<pre>getent hosts {NEW} || nslookup {NEW}</pre>
+
+<p><b>2) Does the endpoint respond? (safe, creates nothing) — action=user_info</b></p>
+<pre>curl -sS "http://{NEW}:{PORT}/msAPIufgk/reseller/index.php?api_key={KEY}&action=user_info"</pre>
+<p>Python fallback if curl is missing:</p>
+<pre>python3 -c "import urllib.request as u;print(u.urlopen('http://{NEW}:{PORT}/msAPIufgk/reseller/index.php?api_key={KEY}&action=user_info',timeout=25).read().decode())"</pre>
+
+<p><b>3) Read packages — action=packages</b></p>
+<pre>curl -sS "http://{NEW}:{PORT}/msAPIufgk/reseller/index.php?api_key={KEY}&action=packages"</pre>
+
+<p><b>4) Dry-run create test (dry_run=1, no real creation)</b></p>
+<pre>curl -sS -X POST "http://{NEW}:{PORT}/msAPIufgk/reseller/index.php" -d "api_key={KEY}&action=create_line&package_id={PKG}&dry_run=1"</pre>
+
+<p><b>5) Local test on the panel host itself (bypasses DNS and IP whitelist)</b></p>
+<pre>curl -sS -H "Host: {NEW}" "http://127.0.0.1:{PORT}/msAPIufgk/reseller/index.php?api_key={KEY}&action=user_info"</pre>
+<p>Try the other code <span class="tag">resellerapi</span> with the same commands if needed.</p>
+
+<hr>
+<h2>Section D — Interpreting the results</h2>
+<table>
+<tr><th>Response</th><th>Meaning</th><th>Action</th></tr>
+<tr><td><code>{"status":"STATUS_SUCCESS",...}</code></td><td class="ok">All good</td><td>Ready to connect</td></tr>
+<tr><td><code>IP FORBIDDEN</code></td><td>IP not allowed</td><td>Add 158.220.81.202 to Restrictions</td></tr>
+<tr><td>api_key / authentication message</td><td>Wrong key</td><td>Use the api_key from API Settings</td></tr>
+<tr><td><code>404 Not Found</code> (nginx)</td><td>Wrong domain/port or missing server_name</td><td>Do Section A</td></tr>
+<tr><td><code>could not resolve</code> / <code>Errno -3</code></td><td>Domain does not resolve</td><td>Do Section A (A record)</td></tr>
+<tr><td>Permission error on create_line</td><td>Missing permission</td><td>Enable Generate Mass Paid for the group</td></tr>
+</table>
+
+<hr>
+<h2>Section E — What to send us after success</h2>
+<p>Once you get a <code>STATUS_SUCCESS</code> response, send us:</p>
+<ol>
+<li>The <b>full working URL</b> (final domain, port, and code).</li>
+<li>The <b>api_key</b> tied to the code.</li>
+<li>The <b>final approved domain and port</b>.</li>
+</ol>
+<p>We will then connect the gateway in Reseller API mode directly.</p>
+
+</div>
+</body>
+</html>

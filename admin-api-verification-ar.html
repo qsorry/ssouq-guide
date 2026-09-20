@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تحقق تفعيل Reseller API — Xtream-Masters</title>
+<style>
+  :root{--bg:#ffffff;--ink:#1a1f2b;--muted:#5b6472;--line:#e3e7ee;--card:#f6f8fb;
+        --accent:#1f6feb;--warn:#b26a00;--warnbg:#fff6e6;--ok:#0a7d34;--code:#0f172a;--codebg:#f1f5f9}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:"Segoe UI",Tahoma,"Noto Naskh Arabic",Arial,sans-serif;
+       line-height:1.8;font-size:16px}
+  .wrap{max-width:820px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-size:1.55rem;margin:.2em 0 .1em}
+  h2{font-size:1.2rem;margin:1.6em 0 .5em;padding-inline-start:10px;border-inline-start:4px solid var(--accent)}
+  .sub{color:var(--muted);margin:0 0 1.4em}
+  table{width:100%;border-collapse:collapse;margin:.6em 0 1.2em;font-size:.95rem}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:start;vertical-align:top}
+  th{background:var(--card)}
+  code,pre{font-family:"Cascadia Code",Consolas,"Courier New",monospace;direction:ltr}
+  code{background:var(--codebg);color:var(--code);padding:1px 5px;border-radius:4px;font-size:.9em}
+  pre{background:var(--codebg);color:var(--code);padding:12px 14px;border-radius:8px;
+      overflow-x:auto;text-align:left;unicode-bidi:plaintext;font-size:.86rem;border:1px solid var(--line)}
+  ol,ul{padding-inline-start:22px}
+  li{margin:.35em 0}
+  .warn{background:var(--warnbg);border:1px solid #f0d28a;color:#7a4a00;
+        padding:12px 14px;border-radius:8px;margin:1em 0}
+  .ok{color:var(--ok);font-weight:700}
+  .tag{display:inline-block;background:var(--card);border:1px solid var(--line);
+       border-radius:6px;padding:0 6px;font-size:.85em;direction:ltr}
+  .btn{position:fixed;inset-block-start:14px;inset-inline-end:14px;background:var(--accent);
+       color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:.9rem;cursor:pointer}
+  @media print{.btn{display:none}body{font-size:12.5px}.wrap{padding:0}}
+  hr{border:0;border-top:1px solid var(--line);margin:1.6em 0}
+</style>
+</head>
+<body>
+<button class="btn" onclick="window.print()">طباعة / حفظ PDF</button>
+<div class="wrap">
+
+<h1>التحقق من تنصيب اللوحة وتفعيل Reseller API</h1>
+<p class="sub">لوحة Xtream-Masters — حساب Mr7tv · دليل موجّه لصاحب السرفر · الأوامر جاهزة للنسخ واللصق</p>
+
+<p>يعالج هذا الدليل أمرين مرتبطين: <b>نطاق تنصيب اللوحة</b> بعد تغيير الدومين (وهو السبب الجذري للمشكلة)، ثم <b>تفعيل الـ API</b> والتحقق منه من اللوحة ومن السيرفر.</p>
+
+<h2>القيم الأساسية</h2>
+<table>
+<tr><th>العنصر</th><th>القيمة</th></tr>
+<tr><td>عنوان خادمنا (يُصرَّح له في اللوحة)</td><td><span class="tag">158.220.81.202</span></td></tr>
+<tr><td>رموز الوصول الحالية (Reseller API)</td><td><span class="tag">msAPIufgk</span> · <span class="tag">resellerapi</span></td></tr>
+<tr><td>صيغة الرابط حسب الوثائق</td><td><code>http://{server-dns}:{stream-port}/{code}/reseller/index.php</code></td></tr>
+<tr><td>النطاق القديم العالق في الـ API</td><td><span class="tag">mr7-4k.live</span> — ⚠️ لا يُترجَم (دومين تنصيب قديم)</td></tr>
+<tr><td>نطاق اللوحة الحالي (الأدمن)</td><td><span class="tag">mr7-4k.sbs:2052</span> (خلف Cloudflare)</td></tr>
+<tr><td>عنوان الأصل (IP)</td><td><span class="tag">205.237.107.54</span></td></tr>
+<tr><td>وثائق الـ API</td><td><code>https://ottpanel.tv/xm_reseller_api_doc.html</code></td></tr>
+</table>
+<p><b>يُملأ لاحقًا:</b> <code>{KEY}</code> مفتاح api_key من API Settings ، <code>{PORT}</code> منفذ البث ، <code>{PKG}</code> رقم باقة للاختبار ، <code>{NEW}</code> الدومين النهائي المعتمد.</p>
+
+<hr>
+<h2>القسم أ — نطاق تنصيب اللوحة (المشكلة الجذرية)</h2>
+<p>نُصّبت اللوحة على دومين ثم غُيّر، فبقيت مراجع الدومين القديم <span class="tag">mr7-4k.live</span> في إعدادات البث/الـ API، ولذلك تُبنى روابط رموز الوصول على نطاق لا يُترجَم. يجب توحيد كل المراجع على الدومين النهائي <code>{NEW}</code> (الأرجح <span class="tag">mr7-4k.sbs</span>):</p>
+<ol>
+<li><b>DNS:</b> سجل <b>A</b> لكل اسم مستخدم (الأدمن + البث + الـ API) في منطقة <code>{NEW}</code> ← <span class="tag">205.237.107.54</span>. وإن كان على Cloudflare اجعل سجلات <b>منافذ البث DNS only (السحابة رمادية)</b>، لأن Cloudflare يمرّر منافذ HTTP محددة فقط (80, 8080, 2052, 2082, 2086, 2095…).</li>
+<li><b>General Settings في اللوحة:</b> حدّث حقل <b>Panel URL / Access URL / Stream DNS</b> (الذي تُبنى منه روابط رموز الوصول والبث) من <span class="tag">mr7-4k.live</span> إلى <code>{NEW}</code>.</li>
+<li><b>Servers / Load Balancers:</b> لكل خادم حدّث حقل <b>Server Domain / DNS</b> إلى <code>{NEW}</code>.</li>
+<li><b>nginx:</b> أضف <code>{NEW}</code> في <code>server_name</code> على منافذ الأدمن والبث، مع شهادة SSL صالحة له.</li>
+<li><b>رموز الوصول:</b> بعد التحديث افتح Access Codes وتأكد أن الرابط صار يستخدم <code>{NEW}</code> لا <span class="tag">mr7-4k.live</span> (أعد التوليد/النسخ إن لزم).</li>
+<li><b>الدومين القديم:</b> أبقِ توجيهه مؤقتًا أثناء الانتقال أو أزل كل مراجعه.</li>
+</ol>
+<div class="warn"><b>تحقق سريع:</b> رابط أي رمز في صفحة Access Codes يجب أن يظهر بنطاق <code>{NEW}</code> يُترجَم فعلًا.</div>
+
+<hr>
+<h2>القسم ب — التحقق من إعداد الـ API داخل اللوحة</h2>
+<ol>
+<li><b>رمز الوصول:</b> Access Codes ← رمز نوعه <b>Reseller API</b> حالته <b>Active</b>.</li>
+<li><b>قائمة الـ IP:</b> الرمز ← تبويب <b>Restrictions</b> ← <b>Allowed IP Addresses</b> يحتوي <span class="tag">158.220.81.202</span> (ظاهر داخل المربع ومحفوظ بـ Add).</li>
+<li><b>مجموعات الباقات:</b> تبويب <b>Groups</b> للرمز فيه مجموعات الباقات المُباعة، ولكل باقة <b>Bouquets</b> مُسندة.</li>
+<li><b>صلاحيات المجموعة</b> (Edit Group ← Permissions): Can Use Reseller API ✓ ، Can Generate Mass Paid ✓ ، Can Delete Users ✓ ، User Delete Refund ✓.</li>
+<li><b>api_key:</b> من <b>Manage end-points / API Settings</b> — انسخ المفتاح المرتبط بالرمز. (مفتاح صفحة <i>Admin API Management</i> مختلف ولا يصلح.)</li>
+</ol>
+
+<hr>
+<h2>القسم ج — التحقق من السيرفر (اختبار فعلي)</h2>
+<p>تُنفَّذ من خادمنا <span class="tag">158.220.81.202</span>. استبدل <code>{NEW}</code> و<code>{PORT}</code> و<code>{KEY}</code> بقيمها ثم انسخ والصق.</p>
+
+<p><b>1) هل الدومين يُترجَم؟</b></p>
+<pre>getent hosts {NEW} || nslookup {NEW}</pre>
+
+<p><b>2) هل النقطة ترد؟ (آمن، لا يُنشئ شيئًا) — action=user_info</b></p>
+<pre>curl -sS "http://{NEW}:{PORT}/msAPIufgk/reseller/index.php?api_key={KEY}&action=user_info"</pre>
+<p>بديل بايثون إن لم يوجد curl:</p>
+<pre>python3 -c "import urllib.request as u;print(u.urlopen('http://{NEW}:{PORT}/msAPIufgk/reseller/index.php?api_key={KEY}&action=user_info',timeout=25).read().decode())"</pre>
+
+<p><b>3) قراءة الباقات — action=packages</b></p>
+<pre>curl -sS "http://{NEW}:{PORT}/msAPIufgk/reseller/index.php?api_key={KEY}&action=packages"</pre>
+
+<p><b>4) اختبار إنشاء وهمي (dry_run=1، بلا تنفيذ فعلي)</b></p>
+<pre>curl -sS -X POST "http://{NEW}:{PORT}/msAPIufgk/reseller/index.php" -d "api_key={KEY}&action=create_line&package_id={PKG}&dry_run=1"</pre>
+
+<p><b>5) اختبار محلي على خادم اللوحة نفسه (يتجاوز DNS وقيد الـ IP)</b></p>
+<pre>curl -sS -H "Host: {NEW}" "http://127.0.0.1:{PORT}/msAPIufgk/reseller/index.php?api_key={KEY}&action=user_info"</pre>
+<p>جرّب الرمز الآخر <span class="tag">resellerapi</span> بنفس الأوامر إن لزم.</p>
+
+<hr>
+<h2>القسم د — تفسير النتائج</h2>
+<table>
+<tr><th>الرد</th><th>المعنى</th><th>الإجراء</th></tr>
+<tr><td><code>{"status":"STATUS_SUCCESS",...}</code></td><td class="ok">سليم</td><td>جاهز للربط</td></tr>
+<tr><td><code>IP FORBIDDEN</code></td><td>العنوان غير مصرّح</td><td>أضف 158.220.81.202 في Restrictions</td></tr>
+<tr><td>رسالة عن api_key / authentication</td><td>المفتاح خاطئ</td><td>خذ api_key من API Settings</td></tr>
+<tr><td><code>404 Not Found</code> (nginx)</td><td>نطاق/منفذ خاطئ أو server_name ناقص</td><td>نفّذ القسم أ</td></tr>
+<tr><td><code>could not resolve</code> / <code>Errno -3</code></td><td>الدومين لا يُترجَم</td><td>نفّذ القسم أ (سجل A)</td></tr>
+<tr><td>خطأ صلاحية عند create_line</td><td>صلاحية ناقصة</td><td>فعّل Generate Mass Paid للمجموعة</td></tr>
+</table>
+
+<hr>
+<h2>القسم هـ — ما نحتاج إرساله بعد النجاح</h2>
+<p>عند وصول رد <code>STATUS_SUCCESS</code> أرسل لنا:</p>
+<ol>
+<li><b>الرابط الكامل الناجح</b> (بالدومين النهائي والمنفذ والرمز).</li>
+<li><b>api_key</b> المرتبط بالرمز.</li>
+<li><b>الدومين والمنفذ</b> النهائيان المعتمدان.</li>
+</ol>
+<p>ثم نربط البوابة في الأداة بوضع Reseller API مباشرة.</p>
+
+</div>
+</body>
+</html>
