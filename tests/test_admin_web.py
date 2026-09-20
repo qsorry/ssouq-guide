@@ -135,8 +135,12 @@ def main():
 
         print("\n== 4. Packages load; a line is created in the new format ==")
         code, d = jreq("/admin/api/packages?gate=" + gid)
-        check("packages loaded after login", isinstance(d.get("packages"), list) and len(d["packages"]) == 3,
-              "count=%s" % (len(d.get("packages", [])) if isinstance(d.get("packages"), list) else "?"))
+        pk = d.get("packages") if isinstance(d.get("packages"), list) else []
+        check("packages loaded after login: 4 panel packages + 1 virtual (30 months = create + extend)", len(pk) == 5,
+              "count=%s" % (len(pk) if isinstance(d.get("packages"), list) else "?"))
+        virt = next((p for p in pk if p.get("id") == "x2:15"), {})
+        check("virtual 30-month package derived from the 15-month one", virt.get("name") == "اشتراك 30 شهر (12 نقاط)"
+              and virt.get("base_id") == "15" and virt.get("virtual") is True, json.dumps(virt, ensure_ascii=False)[:100])
         code, d = jreq("/admin/api/create", {"gate": gid, "package_id": "3",
                                              "username": "", "password": "", "count": 1})
         lines = d.get("lines", [])
@@ -151,6 +155,17 @@ def main():
         ls = d.get("lines", [])
         check("batch of 4 via API: 4 distinct 10-digit users", len(ls) == 4 and len({x["username"] for x in ls}) == 4
               and all(x["username"].isdigit() and len(x["username"]) == 10 for x in ls), json.dumps(d, ensure_ascii=False)[:100])
+
+        print("\n== 4b. Virtual 30-month package: create with 15 months then extend once ==")
+        code, d = jreq("/admin/api/create", {"gate": gid, "package_id": "x2:15", "username": "", "password": "", "count": 2})
+        ls = d.get("lines", [])
+        check("2 users created + extended", len(ls) == 2 and not d.get("error"), json.dumps(d, ensure_ascii=False)[:120])
+        check("each line reports the extension (end moved 15 months)",
+              all(x.get("extended", {}).get("times") == 1 and x["extended"].get("from") == "2026-12-31"
+                  and x["extended"].get("to") == "2028-03-31" for x in ls), json.dumps([x.get("extended") for x in ls], ensure_ascii=False))
+        check("line labelled with the virtual package name", all(x.get("package") == "اشتراك 30 شهر (12 نقاط)" for x in ls))
+        code, d = jreq("/admin/api/create", {"gate": gid, "package_id": "x2:999", "username": "", "password": "", "count": 1})
+        check("unknown virtual base rejected", code == 400 and "غير موجودة" in d.get("error", ""), d.get("error"))
 
         print("\n== 5. Self-service: person adds their own gate; data encrypted at rest ==")
         # log back in as admin (password set at setup) and create a LOGIN-ONLY person

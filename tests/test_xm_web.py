@@ -39,6 +39,14 @@ def check(label, cond, extra=""):
         print(f"  \033[31mFAIL\033[0m  {label}" + (f"  ({extra})" if extra else ""))
 
 
+def _raises(fn):
+    try:
+        fn()
+        return ""
+    except Exception as e:
+        return str(e)
+
+
 def mock_code(session):
     """يقرأ كود الكابتشا الحالي من اللوحة الوهمية عبر نفس opener الجلسة (نفس الكوكيز)،
     فيصبح هو الكود الصالح للطلب التالي — يحاكي إنسانًا يقرأ الصورة."""
@@ -150,7 +158,7 @@ def main():
 
         print("\n== 2. Read packages from the add page ==")
         pkgs = s.packages()
-        check("packages parsed", len(pkgs) == 3, "count=%d" % len(pkgs))
+        check("packages parsed", len(pkgs) == 4, "count=%d" % len(pkgs))
         check("package has id+name", bool(pkgs and pkgs[0].get("id") and pkgs[0].get("name")),
               pkgs[0]["name"] if pkgs else "-")
 
@@ -171,15 +179,42 @@ def main():
         finally:
             s._search_line = orig_search
 
+        print("\n== 3x. Extend a line (ExtendUser modal), as the Selenium script does ==")
+        EF = xm_web.PanelWebSession._extend_form
+        f = EF('<div><form id="extend_user_form"><input type="hidden" name="edit" value="9"><input type="hidden" name="keep_remaining_days" value="0">'
+               '<input type="text" name="note" value="x"><select name="package"><option value="">Select</option>'
+               '<option value="15" data-connections="2">اشتراك سنة + 3 اشهر</option></select></form></div>')
+        check("extend-form reader: hidden fields + options + data-connections",
+              f["found"] and f["fields"] == {"edit": "9", "keep_remaining_days": "0"} and f["options"] == [
+                  {"value": "15", "text": "اشتراك سنة + 3 اشهر", "connections": "2"}], str(f)[:120])
+        check("extend-form reader: missing form -> found False", EF('<div class="alert alert-danger">no</div>')["found"] is False)
+        check("supports_extend() true on Xtream-Masters and cached", s.supports_extend() is True and s._meta().get("extend_modal") is True)
+        base = s.create_line(package_id=15, username="extuser1", password="extpw1")
+        check("15-month base line created", base.get("line_id") and base.get("exp") == "2026-12-31", str(base.get("exp")))
+        ext = s.extend_line("extuser1", 15, "اشتراك سنة + 3 اشهر")
+        check("extend: end date moved by the package duration", ext["before"] == "2026-12-31" and ext["after"] == "2028-03-31",
+              "%s -> %s" % (ext["before"], ext["after"]))
+        check("extend: panel message + credits surfaced", ext["message"] == "User extended" and ext["credits"] == "994", str(ext)[:80])
+        try:
+            s.extend_line("nosuchuser", 15)
+            check("extend of unknown user raises before sending", False, "no exception")
+        except RuntimeError as e:
+            check("extend of unknown user raises before sending", "غير موجود" in str(e), str(e)[:60])
+        try:
+            s.extend_line("extuser1", 999)
+            check("extend with a package not in the modal raises before sending", False, "no exception")
+        except RuntimeError as e:
+            check("extend with a package not in the modal raises before sending", "غير متاحة للتمديد" in str(e), str(e)[:60])
+
         print("\n== 3c. Panel dashboard status (credits from the page) ==")
         st = s.status()
         check("status reads credits from the panel page", st.get("credits") == 1002, "credits=%s" % st.get("credits"))
         # الجدول فيه لاينان (webuser1/webuser2) بينما بطاقة اللوحة تقول 255 —
         # فالعدد يجب أن يأتي من الجدول الموثوق لا من البطاقة.
-        check("total comes from the users table, not the JS dashboard card", st.get("total") == 2,
+        check("total comes from the users table, not the JS dashboard card", st.get("total") == 3,
               "total=%s" % st.get("total"))
         check("JS-placeholder counts are not surfaced", "created_today" not in st and "online" not in st)
-        check("status reports the newest line as last user", st.get("last_username") == "webuser2",
+        check("status reports the newest line as last user", st.get("last_username") == "extuser1",
               "last=%s" % st.get("last_username"))
         rows = s.search("webuser1")
         check("search by username on the panel table", len(rows) == 1 and rows[0]["username"] == "webuser1"
@@ -304,7 +339,9 @@ def main():
             check("logs in directly with no captcha fetch", ok7 is True)
             check("needs_captcha() is False", s7.needs_captcha() is False)
             pk = s7.packages()
-            check("packages load on no-captcha panel", len(pk) == 3, "count=%d" % len(pk))
+            check("packages load on no-captcha panel", len(pk) == 4, "count=%d" % len(pk))
+            check("no extend modal on this panel -> supports_extend() False (cached)",
+                  s7.supports_extend() is False and s7._meta().get("extend_modal") is False)
             r7 = s7.create_line(pk[0]["id"], "1234567890", "0987654321")
             check("line created with our 10-digit pair", r7["username"] == "1234567890" and r7["password"] == "0987654321", r7["line"][:60])
             check("no get_package on this panel -> bouquets left to the panel", r7.get("bouquets") == "panel", str(r7.get("bouquets")))
@@ -351,6 +388,71 @@ def main():
             except Exception:
                 nc_srv.kill()
             shutil.rmtree(data_dir5, ignore_errors=True)
+
+        # ---- 7) الباقة الافتراضية (٣٠ شهر = ١٥ + تمديد) من طبقة xm_lines، وفشل التمديد لا يُضيع اليوزر ----
+        print("\n== 7. xm_lines virtual package: create + extend; extend failure keeps the user ==")
+        EF_PORT = PORT + 3
+        EFB = f"http://127.0.0.1:{EF_PORT}"
+        ef_srv = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_panel.py"), str(EF_PORT), USER, PASS, "extend_fail"],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        data_dir6 = tempfile.mkdtemp(prefix="xmweb_")
+        os.environ["XM_DATA"] = data_dir6
+        try:
+            import xm_lines  # noqa: E402  (DATA_DIR يُقرأ عند الاستيراد)
+            for _ in range(50):
+                try:
+                    urllib.request.urlopen(EFB + "/token.php", timeout=0.3)
+                    break
+                except Exception:
+                    time.sleep(0.1)
+            gate = {"id": "g1", "name": "مرح", "mode": "web", "host": "http://mrha.ink", "guide_url": "",
+                    "panel_base": EFB, "panel_user": USER, "panel_pass": PASS, "digits": 12}
+            sx = xm_lines.web_session(gate)
+            sx.begin()
+            rr = sx.opener.open(EFB + "/captcha.php?a=1", timeout=10); rr.read()
+            sx.login(captcha=rr.headers.get("X-Captcha-Code", ""))
+            pk = xm_lines.get_packages(gate)
+            ids = [p["id"] for p in pk]
+            check("get_packages(web) appends x2:15 after the panel's own packages", ids == ["1", "3", "12", "15", "x2:15"], str(ids))
+            v = pk[-1]
+            check("virtual package carries base + hint for the UI", v["base_id"] == "15" and v["virtual"] and "15 شهر" in v["hint"], str(v)[:100])
+            # التمديد يفشل على هذه اللوحة: اليوزر أُنشئ (خُصم) فيجب أن يُعاد في الخطأ وفي lines.txt
+            try:
+                xm_lines.create_line(gate, v)
+                check("extend failure raises", False, "no exception")
+            except RuntimeError as e:
+                m = str(e)
+                check("extend failure raises with the created user + base package named",
+                      "بالباقة الأساسية" in m and "اشتراك سنة + 3 اشهر" in m and "Insufficient credits" in m, m[:120])
+                u = m.split("اليوزر ")[1].split(" ")[0] if "اليوزر " in m else ""
+                check("username in the error is our 12-digit one", u.isdigit() and len(u) == 12, u)
+                txt = open(os.path.join(data_dir6, "lines.txt"), encoding="utf-8").read()
+                check("lines.txt logs it as base-only", u in txt and "فشل التمديد" in txt, txt.strip()[-80:])
+            # لوحة لا تمديد فيها → لا باقات افتراضية أصلًا (nocap mock بلا نافذة تمديد)
+            NC2 = PORT + 4
+            nc2 = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_panel.py"), str(NC2), USER, PASS, "nocap"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                for _ in range(50):
+                    try:
+                        urllib.request.urlopen(f"http://127.0.0.1:{NC2}/token.php", timeout=0.3)
+                        break
+                    except Exception:
+                        time.sleep(0.1)
+                g2 = dict(gate, id="g2", panel_base=f"http://127.0.0.1:{NC2}")
+                ids2 = [p["id"] for p in xm_lines.get_packages(g2)]
+                check("panel without an extend modal gets no virtual package", ids2 == ["1", "3", "12", "15"], str(ids2))
+                check("API-mode gate cannot use a virtual id",
+                      "جلسة الويب فقط" in _raises(lambda: xm_lines.create_line(dict(g2, mode="api"), v)))
+            finally:
+                nc2.terminate(); nc2.wait(timeout=5)
+        finally:
+            ef_srv.terminate()
+            try:
+                ef_srv.wait(timeout=5)
+            except Exception:
+                ef_srv.kill()
+            shutil.rmtree(data_dir6, ignore_errors=True)
 
         for d in (data_dir, data_dir2, data_dir3):
             shutil.rmtree(d, ignore_errors=True)

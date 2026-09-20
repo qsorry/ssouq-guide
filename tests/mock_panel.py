@@ -41,8 +41,12 @@ CAPTCHA_SRC = "img/verify.php?x=1" if ALT else "captcha.php?a=1"
 
 SESSIONS = {}   # phpsessid -> {captcha, auth}
 LINES = []      # created lines
-PACKAGES = [(1, "1 Month (5 credits)"), (3, "3 Months (13 credits)"), (12, "12 Months (45 credits)")]
-BOUQUETS = {1: [1, 2, 3], 3: [1, 2, 3, 4, 5], 12: [1, 2, 3, 4, 5, 6, 7]}
+PACKAGES = [(1, "1 Month (5 credits)"), (3, "3 Months (13 credits)"), (12, "12 Months (45 credits)"),
+            (15, "اشتراك سنة + 3 اشهر (6 نقاط)")]
+BOUQUETS = {1: [1, 2, 3], 3: [1, 2, 3, 4, 5], 12: [1, 2, 3, 4, 5, 6, 7], 15: [1, 2, 3, 4, 5, 6, 7]}
+# extend_fail = لوحة تقبل الإنشاء لكن تمديدها يفشل (لاختبار «أُنشئ بالباقة الأساسية فقط»).
+EXTEND_FAIL = VARIANT == "extend_fail"
+EXTENDS = []    # (line id, package) لكل تمديد ناجح
 
 
 class H(BaseHTTPRequestHandler):
@@ -136,6 +140,22 @@ class H(BaseHTTPRequestHandler):
             pid = int(qs.get("package_id", ["0"])[0] or 0)
             body = json.dumps({"bouquets": [{"id": b} for b in BOUQUETS.get(pid, [])]})
             return self._send(200, body, "application/json", hdr)
+
+        if path == "/user_reseller_extend_modal.php" and not NOCAP:
+            lid = qs.get("id", [""])[0]
+            ln = next((l for l in LINES if l["id"] == lid), None)
+            if not ln:
+                return self._send(200, '<div class="alert alert-danger">Line not found</div>', headers=hdr)
+            # كما اللوحة: تمديد بباقات نفس عدد الاتصالات فقط، والخيار يحمل data-connections
+            opts = "".join('<option value="%d" data-connections="1">%s</option>' % (i, t) for i, t in PACKAGES)
+            html = ('<div class="modal-body"><form id="extend_user_form" method="post">'
+                    '<input type="hidden" name="edit" value="%s">'
+                    '<input type="hidden" name="keep_remaining_days" value="0">'
+                    '<input type="hidden" name="group_change_confirmed" value="0">'
+                    '<select name="package" id="ext_package"><option value="">Select package</option>' + opts + '</select>'
+                    '<input type="hidden" name="selected_connections" value="1">'
+                    '<button name="submit_user" value="1">Extend</button></form></div>') % ln["id"]
+            return self._send(200, html, headers=hdr)
 
         if path in ("/user_reseller.php", "/line.php", "/user.php"):
             opts = "".join('<option value="%d">%s</option>' % (i, t) for i, t in PACKAGES)
@@ -245,6 +265,25 @@ class H(BaseHTTPRequestHandler):
                 "end": "2026-12-31", "conns": "1",
             })
             return self._send(200, '<div class="alert alert-success">created</div>', headers=hdr)
+
+        if path == "/user_reseller_extend_modal.php" and not NOCAP:
+            lid = urlparse(self.path).query.split("id=")[-1].split("&")[0] if "id=" in self.path else ""
+            ln = next((l for l in LINES if l["id"] == (form.get("edit") or lid)), None)
+            if not ln or form.get("submit_user") != "1" or not form.get("package"):
+                return self._send(200, json.dumps({"status": "error", "message": "Invalid extend request"}),
+                                  "application/json", hdr)
+            if EXTEND_FAIL:
+                return self._send(200, json.dumps({"status": "error", "message": "Insufficient credits"}),
+                                  "application/json", hdr)
+            # يضيف أشهر الباقة على تاريخ الانتهاء (السنة فقط تكفي للاختبار)
+            months = int(form["package"]) if form["package"].isdigit() else 1
+            y, m, d = (int(x) for x in ln["end"].split("-"))
+            m += months
+            y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+            ln["end"] = "%04d-%02d-%02d" % (y, m, d)
+            EXTENDS.append((ln["id"], form["package"]))
+            return self._send(200, json.dumps({"status": "success", "message": "User extended",
+                                               "new_credits": "994"}), "application/json", hdr)
 
         return self._send(404, "404", "text/plain", hdr)
 

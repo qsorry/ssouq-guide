@@ -578,7 +578,7 @@ async function fetchPackages(){
     renderHistory();
     $("pkgs").innerHTML = packages.length ? packages.map((p,i)=>`
       <label class="pkg"><input type="radio" name="pkg" value="${esc(p.id)}" ${i===0?"checked":""}>${calIcon}
-        <b>${esc(p.name)}</b><small>${p.credits != null ? esc(String(p.credits)) + " كريدت" : (p.bouquets && p.bouquets.length ? p.bouquets.length + " بوكيه" : "")}</small></label>`).join("")
+        <b>${esc(p.name)}</b><small>${p.hint ? esc(p.hint) : p.credits != null ? esc(String(p.credits)) + " كريدت" : (p.bouquets && p.bouquets.length ? p.bouquets.length + " بوكيه" : "")}</small></label>`).join("")
       : '<div class="empty">لا توجد باقات في الحساب.</div>';
   } catch(e) {
     $("pkgs").innerHTML = '<div class="empty">تعذر تحميل الباقات.</div>';

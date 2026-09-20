@@ -14,7 +14,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 ولا وجود لها على الموقع العام: guide.ssouq.com/admin لا يفتح شيئًا (404).
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
-import json, os, sys, secrets, datetime, base64, hmac, hashlib, threading, time
+import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -590,11 +590,88 @@ def web_session(gate):
     }, DATA_DIR)
 
 
+# ================= باقات افتراضية: إنشاء + تمديد (مرح) =================
+# باقة لا توجد في اللوحة تُصنع من باقة حقيقية: يُنشأ اليوزر بالباقة الأساسية ثم
+# يُمدَّد بها نفسها (ExtendUser) فتتضاعف مدته — كما يفعل سكربت السيلينيوم المثبت.
+# القاعدة الحالية: كل باقة مدتها ١٥ شهرًا (سنة + ٣ أشهر) تُولّد باقة «٣٠ شهر».
+VIRTUAL_PREFIX = "x2:"                                # معرّف الباقة الافتراضية: x2:<معرّف الأساس>
+DOUBLE_MONTHS = (15,)                                 # مدد الأساس التي تُضاعَف
+_AR_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
+def _first_int(part, default=None):
+    m = re.search(r"\d+", part)
+    return int(m.group()) if m else default
+
+
+def parse_package_name(text):
+    """يفهم اسم الباقة (عربيًا أو إنجليزيًا) → {months, devices, credits}.
+    'اشتراك سنة + 3 اشهر + جهازين (6 نقاط)' → months=15 devices=2 credits=6
+    '1 Year + 3 Months (6 credits)'          → months=15 devices=1 credits=6"""
+    s = str(text or "").translate(_AR_DIGITS)
+    main, _, paren = s.partition("(")
+    months, devices = 0, 1
+    for part in re.split(r"[+،,]", main):
+        low = part.lower()
+        if "جهازين" in part:
+            devices = 2
+        elif re.search(r"جهاز|اجهزة|أجهزة|device|connection", low):
+            devices = _first_int(part, devices)
+        elif "سنتين" in part:
+            months += 24
+        elif re.search(r"سن[ةه]|سنوات|year", low):
+            months += 12 * (_first_int(part, 1) or 1)
+        elif "شهرين" in part:
+            months += 2
+        elif re.search(r"شهر|اشهر|أشهر|شهور|month", low):
+            months += _first_int(part, 1) or 1
+    credits = None
+    if paren:
+        credits = 2 if "نقطتين" in paren else _first_int(paren, 1 if re.search(r"نقط[ةه]", paren) else None)
+    return {"months": months, "devices": devices, "credits": credits}
+
+
+def virtual_base(pkg_id):
+    """معرّف الباقة الافتراضية 'x2:15' → ('15', عدد مرات التمديد)؛ وإلا None."""
+    pid = str(pkg_id or "")
+    if not pid.startswith(VIRTUAL_PREFIX):
+        return None
+    return pid[len(VIRTUAL_PREFIX):], 1
+
+
+def virtual_packages(pkgs):
+    """الباقات الافتراضية المشتقة من قائمة باقات اللوحة (بنفس شكل عناصرها)."""
+    out = []
+    for p in pkgs:
+        info = parse_package_name(p.get("name", ""))
+        if info["months"] not in DOUBLE_MONTHS:
+            continue
+        name = "اشتراك %d شهر" % (info["months"] * 2)
+        if info["devices"] == 2:
+            name += " + جهازين"
+        elif info["devices"] > 2:
+            name += " + %d أجهزة" % info["devices"]
+        if info["credits"]:
+            name += " (%d نقاط)" % (info["credits"] * 2)
+        out.append({"id": VIRTUAL_PREFIX + str(p["id"]), "name": name, "credits": p.get("credits"),
+                    "max_connections": p.get("max_connections", 1), "bouquets": [],
+                    "virtual": True, "base_id": str(p["id"]), "base_name": p.get("name", ""),
+                    "hint": "إنشاء بباقة %d شهر ثم تمديدها مرة" % info["months"]})
+    return out
+
+
 def get_packages(gate):
     if gate.get("mode") == "web":                      # جلسة ويب بدل الـ API
-        return [{"id": p["value"], "name": p["text"], "credits": None,
+        sess = web_session(gate)
+        pkgs = [{"id": p["value"], "name": p["text"], "credits": None,
                  "max_connections": 1, "bouquets": []}
-                for p in web_session(gate).packages()]
+                for p in sess.packages()]
+        # الباقات الافتراضية (إنشاء + تمديد) فقط حين للوحة نافذة تمديد (مرح)، لا على
+        # لوحة بلا تمديد (كاسبر) حيث سينتهي الأمر بيوزر بالمدة الأساسية فقط.
+        virt = virtual_packages(pkgs)
+        if virt and sess.supports_extend():
+            pkgs += virt
+        return pkgs
     if gate.get("mode") == "falcon":                   # لوحة فالكون (Bearer)
         return falcon_api.packages(gate["api_url"], gate["api_key"])
     pkgs = []
@@ -633,6 +710,11 @@ def create_line(gate, pkg, username=None, password=None):
     # فلا يعتمد الطول على المزوّد (فالكون/جلسة ويب/API) ولا على ما تولّده لوحته.
     username = username or rand_digits(gate_digits(gate))
     password = password or rand_digits(gate_digits(gate))
+    vb = virtual_base(pkg["id"])
+    if vb and gate.get("mode") == "web":              # باقة افتراضية: إنشاء بالأساس ثم تمديد
+        return _create_extended(gate, pkg, vb[0], vb[1], username, password)
+    if vb:
+        raise RuntimeError("الباقة «%s» (إنشاء + تمديد) متاحة على جلسة الويب فقط" % pkg["name"])
     if gate.get("mode") == "web":                      # الإنشاء عبر نموذج اللوحة
         r = web_session(gate).create_line(pkg["id"], username, password, gate.get("host"))
         line = format_line(gate, r["username"], r["password"])
@@ -673,11 +755,37 @@ def create_line(gate, pkg, username=None, password=None):
             "package": pkg["name"], "verified": True, "time": now.isoformat(timespec="seconds")}
 
 
+def _create_extended(gate, pkg, base_id, times, username, password):
+    """يوزر بباقة افتراضية: يُنشأ بالباقة الأساسية ثم يُمدَّد بها `times` مرة.
+    فشل التمديد بعد الإنشاء لا يُخفي اليوزر: يُسجَّل في lines.txt بملاحظة واضحة
+    ويُرفع خطأ يحمل بياناته (خُصم رصيده فلا يضيع)."""
+    sess = web_session(gate)
+    r = sess.create_line(base_id, username, password, gate.get("host"))
+    u, p = r["username"], r["password"]
+    ends = []
+    try:
+        for _ in range(times):
+            ends.append(sess.extend_line(u, base_id, pkg.get("base_name", "")))
+    except (xm_web.CaptchaNeeded, xm_web.LoginFailed):
+        raise
+    except Exception as e:
+        base_name = pkg.get("base_name") or ("باقة " + str(base_id))
+        _log_txt(gate, format_line(gate, u, p), base_name + "  [فشل التمديد — بالباقة الأساسية فقط]")
+        raise RuntimeError("أُنشئ اليوزر %s / %s بالباقة الأساسية «%s» فقط وفشل تمديده: %s"
+                           % (u, p, base_name, str(e)[:160]))
+    line = format_line(gate, u, p)
+    _log_txt(gate, line, pkg["name"])
+    return {"line": line, "username": u, "password": p, "package": pkg["name"],
+            "verified": r.get("verified", True), "time": r["time"], "timing": r.get("timing"),
+            "extended": {"times": times, "from": ends[0]["before"] if ends else "",
+                         "to": ends[-1]["after"] if ends else ""}}
+
+
 def create_lines(gate, pkg, count, username=None, password=None):
     """دفعة يوزرات: (النتائج، رسالة خطأ أو None). على جلسة الويب تحضير واحد للدفعة كلها
     (دخول + صفحة الإضافة مرة) ثم إرسال واحد لكل يوزر؛ وعلى API/فالكون نداء لكل يوزر
     كما كان. يوزر يفشل في المنتصف لا يُخفي ما نجح قبله."""
-    if gate.get("mode") == "web" and count > 1:
+    if gate.get("mode") == "web" and count > 1 and not virtual_base(pkg["id"]):
         pairs = [(rand_digits(gate_digits(gate)), rand_digits(gate_digits(gate))) for _ in range(count)]
         out = []
         for r in web_session(gate).create_many(pkg["id"], pairs, gate.get("host")):
