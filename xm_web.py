@@ -745,12 +745,15 @@ class PanelWebSession:
         """كل ما يسبق الإرسال ويصلح لدفعة كاملة: الدخول مرة، اكتشاف صفحة الإضافة، جلبها
         مرة، قراءة نموذجها، وبوكيهات الباقة. الدفعة من ٥٠ يوزرًا تدفع هذا مرة واحدة
         ثم طلب إرسال واحدًا لكل يوزر — لا ثلاثة طلبات لكل يوزر."""
+        t0 = time.time()
         self.ensure_login()
+        t_login = time.time()
         self.discover_add()
         host = (host or self.acct.get("host", "")).strip().rstrip("/")
 
         # 1) صفحة الإضافة → member_id والحقول الافتراضية (input/select/textarea)
         page = self._text(self._request(self.add_url))
+        t_page = time.time()
         member_id = self._field_value(page, "member_id")
         if not member_id:
             names = ", ".join(sorted(set(re.findall(
@@ -795,15 +798,19 @@ class PanelWebSession:
         add_abs = self._abs(self.add_url or "/user_reseller.php")
         return {"package_id": str(package_id), "host": host, "body": body, "ids": ids,
                 "panel_bouquets": panel_bouquets, "action": urllib.parse.urljoin(add_abs, action),
-                "referer": add_abs}
+                "referer": add_abs,
+                "timing": {"login_ms": int((t_login - t0) * 1000), "page_ms": int((t_page - t_login) * 1000),
+                           "bouquets_ms": int((time.time() - t_page) * 1000)}}
 
     def _submit_add(self, prep: dict, username: str, password: str) -> dict:
         """إرسال يوزر واحد بجسم مُعدّ مسبقًا (نقطة اللاعودة) ثم تأكيد غير حاسم."""
         body = dict(prep["body"])
         body["username"] = username
         body["password"] = password
+        t0 = time.time()
         cr = self._request(prep["action"], data=body,
                            headers={"X-Requested-With": "XMLHttpRequest", "Referer": prep["referer"]})
+        t_post = time.time()
 
         # إن ردّت اللوحة بخطأ صريح على الإنشاء نفسه، أوقف (لم يُخصم/لم يُنشأ).
         alert = self._extract_alert(self._text(cr))
@@ -836,6 +843,8 @@ class PanelWebSession:
             "verified": bool(found.get("id")),
             "bouquets": "panel" if prep["panel_bouquets"] else prep["ids"],
             "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "timing": {**prep.get("timing", {}), "post_ms": int((t_post - t0) * 1000),
+                       "confirm_ms": int((time.time() - t_post) * 1000)},
         }
 
     def create_line(self, package_id, username=None, password=None, host=None) -> dict:
@@ -1014,7 +1023,7 @@ class PanelWebSession:
         except ValueError:
             # ليست JSON (404 أو صفحة HTML): اللوحة بلا جدول DataTables (Xtream Codes الأصلي).
             # نحفظ ذلك فلا نكرر النداء ولا ننتظر تأكيدًا لن يأتي بعد كل إنشاء.
-            if r.get("status", 0) >= 400 or "<html" in self._text(r)[:300].lower():
+            if r.get("status", 0) < 500:
                 self._save_meta(no_table_search=True)
             return {"rows": [], "total": None}
         rows = []
