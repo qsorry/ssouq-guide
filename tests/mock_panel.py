@@ -149,6 +149,8 @@ class H(BaseHTTPRequestHandler):
                 '<button name="submit_user" value="1">Create</button></form></body></html>')
             return self._send(200, html, headers=hdr)
 
+        if path == "/table_search.php" and NOCAP:   # Xtream Codes الأصلي: لا جدول DataTables
+            return self._send(404, "<html><body>404 Not Found</body></html>", headers=hdr)
         if path == "/table_search.php":
             if qs.get("id", [""])[0] != "users":   # اللوحة تتطلب id=users
                 return self._send(200, json.dumps({"draw": 1, "recordsFiltered": 0, "data": []}),
@@ -170,6 +172,12 @@ class H(BaseHTTPRequestHandler):
 
         if path == "/":                       # الجذر يحوّل للوحة كاللوحة الحقيقية
             return self._send(302, b"", "text/plain", {**hdr, "Location": "/dashboard"})
+        if path == "/dashboard" and NOCAP:
+            html = ('<!DOCTYPE html><html><body><ul class="sidebar"><li><a>Credits</a><span class="badge">1</span></li></ul>'
+                    '<div class="card"><h3>1</h3><p>OPEN CONNECTIONS</p></div>'
+                    '<div class="card"><h3>%d</h3><p>ACTIVE ACCOUNTS</p></div>'
+                    '<div class="card"><h3>3,975.50</h3><p>CREDITS</p></div></body></html>' % (4742 + len(LINES)))
+            return self._send(200, html, headers=hdr)
         if path == "/dashboard":
             credits = 1002
             active = 253 + len(LINES)
