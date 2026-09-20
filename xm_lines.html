@@ -472,10 +472,23 @@ async function copy(text){
 // ---- كود التحقّق (وضع الويب): يُقرأ آلياً في الخادم، وهنا نطلبه من المشغّل عند فشله ----
 let capRetry = null;
 const capUrl = () => B + "/api/web/captcha?gate=" + encodeURIComponent(curGate) + "&t=" + Date.now();
+// الصورة تُجلب بـ fetch لا بـ <img src> مباشرة: إن ردّ الخادم خطأً (اللوحة لم تُرجع صورة —
+// مسار مختلف، 404، حاجز حماية) نعرض سببه نصًّا بدل أيقونة صورة مكسورة لا تقول شيئًا.
+async function loadCaptcha(){
+  const img = $("capImg"); img.removeAttribute("src"); img.alt = "…";
+  try {
+    const r = await fetch(capUrl());
+    const ct = r.headers.get("Content-Type") || "";
+    if (r.ok && ct.startsWith("image/")) { img.src = URL.createObjectURL(await r.blob()); img.alt = "captcha"; return; }
+    let msg = "اللوحة لم تُرجع صورة كود التحقق (HTTP " + r.status + ")";
+    try { const d = await r.json(); if (d && d.error) msg = d.error; } catch {}
+    img.alt = "لا صورة"; $("capMsg").textContent = msg;
+  } catch (e) { img.alt = "لا صورة"; $("capMsg").textContent = "تعذّر جلب صورة كود التحقق."; }
+}
 function showCaptcha(retry){
   capRetry = retry || null;
   $("capMsg").textContent = ""; $("capInput").value = "";
-  $("capImg").src = capUrl();
+  loadCaptcha();
   $("capOverlay").classList.add("show"); $("capOverlay").hidden = false; $("capInput").focus();
 }
 function hideCaptcha(){ $("capOverlay").classList.remove("show"); $("capOverlay").hidden = true; capRetry = null; }
@@ -489,7 +502,7 @@ async function submitCaptcha(){
     const d = chk(await r.json());
     if (d && d.ok) { const fn = capRetry; hideCaptcha(); loadGateStatus(); if (fn) fn(); }
     else if (d && d.kind === "login") { hideCaptcha(); $("msg").textContent = d.error || "فشل الدخول إلى اللوحة — تحقّق من اسم المستخدم وكلمة المرور في إعدادات البوابة."; $("pkgs").innerHTML = '<div class="empty">فشل الدخول إلى اللوحة. صحّح بيانات البوابة من "إدارة بواباتي".</div>'; }
-    else { $("capMsg").textContent = (d && d.error) || "الكود غير صحيح"; $("capImg").src = capUrl(); $("capInput").value=""; $("capInput").focus(); }
+    else { $("capMsg").textContent = (d && d.error) || "الكود غير صحيح"; loadCaptcha(); $("capInput").value=""; $("capInput").focus(); }
   } catch(e){ $("capMsg").textContent = "تعذّر الإرسال."; }
   btn.disabled = false;
 }
@@ -633,7 +646,7 @@ $("copyAll").onclick = () => { const h = load(); if (!h.length) return toast("ل
 $("prt").onclick = () => window.print();
 $("create").onclick = createLines;
 $("capSubmit").onclick = submitCaptcha;
-$("capReload").onclick = () => { $("capImg").src = capUrl(); $("capInput").value = ""; $("capInput").focus(); };
+$("capReload").onclick = () => { $("capMsg").textContent = ""; loadCaptcha(); $("capInput").value = ""; $("capInput").focus(); };
 $("capCancel").onclick = hideCaptcha;
 $("capInput").addEventListener("keydown", e => { if (e.key === "Enter") submitCaptcha(); });
 $("reload").onclick = fetchPackages;

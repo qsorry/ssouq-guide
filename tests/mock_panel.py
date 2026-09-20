@@ -29,6 +29,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9077
 USER = sys.argv[2] if len(sys.argv) > 2 else "demo"
 PASS = sys.argv[3] if len(sys.argv) > 3 else "secret"
+# alt = لوحة بشكل آخر (ككاسبر): صفحة الدخول على /login.php لا /login، وصورة الكابتشا على
+# img/verify.php لا captcha.php (الذي يرد 404 HTML) — تختبر اكتشاف الرابط من الصفحة.
+ALT = (sys.argv[4] if len(sys.argv) > 4 else "") == "alt"
+LOGIN_PATH = "/login.php" if ALT else "/login"
+CAPTCHA_PATH = "/img/verify.php" if ALT else "/captcha.php"
+CAPTCHA_SRC = "img/verify.php?x=1" if ALT else "captcha.php?a=1"
 
 SESSIONS = {}   # phpsessid -> {captcha, auth}
 LINES = []      # created lines
@@ -89,7 +95,7 @@ class H(BaseHTTPRequestHandler):
 
         sid, hdr = self._ensure_sid()
 
-        if path == "/captcha.php":
+        if path == CAPTCHA_PATH:
             code = str(secrets.randbelow(900) + 100)  # 3 أرقام
             SESSIONS[sid]["captcha"] = code
             hdr2 = dict(hdr)
@@ -100,7 +106,7 @@ class H(BaseHTTPRequestHandler):
                    b"\x00\x00\x02\x02D\x01\x00;")
             return self._send(200, gif, "image/gif", hdr2)
 
-        if path == "/login":
+        if path == LOGIN_PATH:
             SESSIONS[sid].setdefault("lkey", secrets.token_hex(4))
             err = ""
             if "error" in qs:
@@ -113,13 +119,13 @@ class H(BaseHTTPRequestHandler):
                 '<input type="text" name="username" id="username">'
                 '<input type="password" name="password" id="password">'
                 '<input type="text" name="lkey" value="%s">'
-                '<img src="captcha.php?a=1"><input type="text" name="captcha">'
-                '<button type="submit">Login</button></form></body></html>' % SESSIONS[sid]["lkey"])
+                '<img src="%s"><input type="text" name="captcha">'
+                '<button type="submit">Login</button></form></body></html>' % (SESSIONS[sid]["lkey"], CAPTCHA_SRC))
             return self._send(200, html, headers=hdr)
 
         # محمي
         if not SESSIONS[sid].get("auth"):
-            return self._send(302, b"", "text/plain", {**hdr, "Location": "/login"})
+            return self._send(302, b"", "text/plain", {**hdr, "Location": LOGIN_PATH})
 
         if path == "/user_reseller.php" and qs.get("action", [""])[0] == "get_package":
             pid = int(qs.get("package_id", ["0"])[0] or 0)
@@ -207,7 +213,7 @@ class H(BaseHTTPRequestHandler):
             return self._send(302, b"", "text/plain", {**hdr, "Location": "/dashboard"})
 
         if not SESSIONS[sid].get("auth"):
-            return self._send(302, b"", "text/plain", {**hdr, "Location": "/login"})
+            return self._send(302, b"", "text/plain", {**hdr, "Location": LOGIN_PATH})
 
         if path in ("/user_reseller.php", "/line.php", "/user.php") and form.get("submit_user") == "1":
             uname = form.get("username", "")
