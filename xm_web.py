@@ -524,6 +524,20 @@ class PanelWebSession:
                 return
             self.login()  # آلي؛ قد يرمي CaptchaNeeded
 
+    def keepalive(self) -> bool:
+        """لمسة خفيفة تُبقي جلسة اللوحة حيّة دون إعادة دخول ولا كابتشا: طلبٌ واحد
+        بالكوكيز المحفوظة يُصفّر مؤقّت الخمول عند المزوّد. لا يعيد الدخول إن ماتت
+        الجلسة (ذلك يتطلّب كابتشا/إنسان ويُترك للطلب الحقيقي التالي).
+        True = الجلسة ما زالت صالحة."""
+        with self._login_lock():
+            try:
+                if self.is_authenticated():
+                    self._save_cookies()
+                    return True
+            except Exception:
+                pass
+            return False
+
     # ---- اكتشاف صفحة الإضافة ----
     _PKG_SELECT = re.compile(
         r'<select[^>]*(?:id=["\']package["\']|name=["\']package(?:_id)?["\']|'

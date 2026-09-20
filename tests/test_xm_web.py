@@ -163,6 +163,7 @@ def main():
         check("human-check cookie saved", any(c.name == "xm_simple_security_check" for c in s.cj))
         check("PHPSESSID saved", any(c.name == "PHPSESSID" for c in s.cj))
         check("is_authenticated() true", s.is_authenticated())
+        check("keepalive() true on live session", s.keepalive() is True)
 
         print("\n== 2. Read packages from the add page ==")
         pkgs = s.packages()

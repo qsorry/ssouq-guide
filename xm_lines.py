@@ -358,6 +358,9 @@ def format_line(gate, username, password):
 # ================= خدمة سلة → واتساب (تسليم تلقائي) =================
 FULFILL_FILE = os.path.join(DATA_DIR, "fulfillments.json")
 POLL_INTERVAL = int(os.environ.get("SALLA_POLL_INTERVAL", "300"))
+# إبقاء جلسة لوحة الويب حيّة: لمسة كل مدة أقل من مهلة الخمول (افتراضي PHP ٢٤د)
+# فلا تنتهي الجلسة ولا يتكرر الدخول/الكابتشا. صفّرها بـ XM_KEEPALIVE=0.
+KEEPALIVE_INTERVAL = int(os.environ.get("XM_KEEPALIVE_INTERVAL", "600"))
 _MAX_UNITS = 10                                       # حد أقصى للتوليد في الطلب الواحد
 
 
@@ -538,6 +541,29 @@ def _poll_loop():
 
 def start_poller():
     threading.Thread(target=_poll_loop, daemon=True).start()
+
+
+def _keepalive_loop():
+    """يُبقي جلسة كل بوابة ويب حيّة بلمسة دورية، فلا يُطلب الدخول/الكابتشا مجددًا."""
+    while True:
+        time.sleep(KEEPALIVE_INTERVAL)
+        try:
+            st = load_store()
+            for a in st.get("accounts", []) or []:
+                for g in a.get("gates", []) or []:
+                    if g.get("mode") != "web":
+                        continue
+                    try:
+                        web_session(g).keepalive()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+
+def start_keepalive():
+    if os.environ.get("XM_KEEPALIVE", "1") != "0":
+        threading.Thread(target=_keepalive_loop, daemon=True).start()
 
 
 # ---------------- API الريسيلر ----------------
@@ -1469,6 +1495,7 @@ class Handler(BaseHTTPRequestHandler):
 def web():
     print(f"الصفحة تعمل: http://{BIND}:{PORT}   (Ctrl+C للإيقاف)", flush=True)
     start_poller()
+    start_keepalive()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 
