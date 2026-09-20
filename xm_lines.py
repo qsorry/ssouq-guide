@@ -195,6 +195,23 @@ def _hash_password(value, old_hash):
     return old_hash if _is_hash(old_hash) else (hash_pw(old_hash) if isinstance(old_hash, str) and old_hash else None)
 
 
+def _clean_digits(v):
+    """طول اليوزر/الباسورد لبوابة: عدد صحيح بين 6 و20؛ الفراغ = الافتراضي العام."""
+    if v in (None, ""):
+        return DIGITS
+    try:
+        n = int(str(v).strip())
+    except ValueError:
+        raise ValueError("طول اليوزر والباسورد يجب أن يكون رقمًا (6 إلى 20)")
+    if not 6 <= n <= 20:
+        raise ValueError("طول اليوزر والباسورد يجب أن يكون بين 6 و20 رقمًا")
+    return n
+
+
+def gate_digits(gate):
+    return int(gate.get("digits") or DIGITS)
+
+
 def clean_gate(g, old=None):
     """بوابة توليد واحدة داخل حساب: لها اسمها وطريقة ربطها (api/web) وهوستها
     ورابط شرحها الخاص. لا تحذف بيانات قديمة عند التعديل."""
@@ -213,6 +230,8 @@ def clean_gate(g, old=None):
         "panel_pass": str(g.get("panel_pass", "")) or old.get("panel_pass", ""),
         "api_url":    str(g.get("api_url", "")).strip().rstrip("/") or old.get("api_url", ""),
         "api_key":    str(g.get("api_key", "")).strip() or old.get("api_key", ""),
+        # طول اليوزر والباسورد المولَّدين (أرقام) — لكل بوابة رقمها: كاسبر ١٠، وغيرها ١٢ افتراضًا.
+        "digits":     _clean_digits(g.get("digits", old.get("digits"))),
     }
     if not out["name"]:
         raise ValueError("اسم البوابة مطلوب")
@@ -610,6 +629,10 @@ def _log_txt(gate, line, pkg_name):
 
 
 def create_line(gate, pkg, username=None, password=None):
+    # اليوزر والباسورد يُولَّدان هنا — من جهتنا لا من اللوحة — بطول البوابة نفسها،
+    # فلا يعتمد الطول على المزوّد (فالكون/جلسة ويب/API) ولا على ما تولّده لوحته.
+    username = username or rand_digits(gate_digits(gate))
+    password = password or rand_digits(gate_digits(gate))
     if gate.get("mode") == "web":                      # الإنشاء عبر نموذج اللوحة
         r = web_session(gate).create_line(pkg["id"], username, password, gate.get("host"))
         line = format_line(gate, r["username"], r["password"])
@@ -628,8 +651,6 @@ def create_line(gate, pkg, username=None, password=None):
                 "package": pkg["name"], "verified": True,
                 "time": datetime.datetime.now().isoformat(timespec="seconds")}
     # وضع الـ API
-    username = username or rand_digits()
-    password = password or rand_digits()
     params = {
         "username": username,
         "password": password,
@@ -895,7 +916,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._page(PAGES["/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
             if path == "/api/me":
                 gates = [{"id": g["id"], "name": g["name"], "mode": g["mode"],
-                          "host": g["host"], "guide_url": g.get("guide_url", "")}
+                          "host": g["host"], "guide_url": g.get("guide_url", ""),
+                          "digits": gate_digits(g)}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",

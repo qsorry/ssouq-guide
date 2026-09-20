@@ -291,6 +291,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
     <button class="ghost wide" id="addMyGate" style="margin-top:8px">+ إضافة بوابة</button>
     <div id="gateEditor" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
       <input type="hidden" id="g_id">
+      <div class="row" style="margin-bottom:8px"><button type="button" class="ghost wide" id="presetKasper">تعبئة بوابة كاسبر (all-iptvs.com:2082 · جلسة ويب · 10 أرقام)</button></div>
       <label class="f" for="g_name">اسم البوابة</label><input class="t" id="g_name" placeholder="بوابة مرح" style="direction:rtl;text-align:right">
       <label class="f" for="g_mode">طريقة الربط</label>
       <select class="t" id="g_mode">
@@ -308,6 +309,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
         <label class="f" for="g_api_key">مفتاح API</label><input class="t" id="g_api_key" type="password" autocomplete="off">
       </div>
       <label class="f" for="g_host">الهوست (يظهر في السطر)</label><input class="t" id="g_host" placeholder="http://ssouqhost.vip">
+      <label class="f" for="g_digits">طول اليوزر والباسورد (أرقام، 6–20) — فارغ = 12</label><input class="t" id="g_digits" inputmode="numeric" placeholder="12">
       <label class="f" for="g_guide">رابط الشرح (Guide) — فارغ = يُستعمل الرابط العام</label><input class="t" id="g_guide" placeholder="https://guide.ssouq.com/">
       <button class="go" id="saveGate">حفظ البوابة</button>
       <button class="ghost wide" id="cancelGate" style="margin-top:8px">إلغاء</button>
@@ -374,7 +376,7 @@ async function loadGates(){
 function renderGateHeader(){
   const g = gates.find(x => x.id === curGate) || {};
   $("heroName").textContent = g.name || "—";
-  $("heroMode").textContent = (MODE[g.mode] || g.mode || "") + (g.host ? " · " + g.host.replace(/^https?:\/\//,"") : "");
+  $("heroMode").textContent = (MODE[g.mode] || g.mode || "") + (g.host ? " · " + g.host.replace(/^https?:\/\//,"") : "") + (g.digits ? " · " + g.digits + " أرقام" : "");
   const gl = $("heroGlyph"); gl.textContent = (g.name || "?").trim().slice(0,1); gl.className = "glyph " + (g.mode || "");
   $("infoTxt").textContent = `تُسحب البيانات من لوحة "${g.name || "البوابة"}" مباشرة وتُنشأ اليوزرات تلقائيًا. بيانات اللوحات محفوظة مشفَّرة، وتُعاد استخدام الجلسة بلا كود إلا عند الحاجة.`;
   setBadge("…", "");
@@ -501,13 +503,21 @@ function gateForm(g){
   $("g_panel_base").value=g.panel_base||""; $("g_panel_user").value=g.panel_user||"";
   $("g_panel_pass").value=""; $("g_panel_pass").placeholder=g.has_panel_pass?"محفوظة — اتركه فارغًا للإبقاء":"";
   $("g_api_url").value=g.api_url||""; $("g_api_key").value=""; $("g_api_key").placeholder=g.has_api_key?"محفوظ — اتركه فارغًا للإبقاء":"";
-  $("g_host").value=g.host||""; $("g_guide").value=g.guide_url||"";
+  $("g_host").value=g.host||""; $("g_guide").value=g.guide_url||""; $("g_digits").value=g.digits||"";
   applyGateMode(); $("gateEditor").hidden=false; $("gateMsg").textContent="";
 }
 function readGateForm(){
   return {id:$("g_id").value, name:$("g_name").value, mode:$("g_mode").value,
     panel_base:$("g_panel_base").value, panel_user:$("g_panel_user").value, panel_pass:$("g_panel_pass").value,
-    api_url:$("g_api_url").value, api_key:$("g_api_key").value, host:$("g_host").value, guide_url:$("g_guide").value};
+    api_url:$("g_api_url").value, api_key:$("g_api_key").value, host:$("g_host").value, guide_url:$("g_guide").value,
+    digits:$("g_digits").value};
+}
+// قالب كاسبر: لوحة Xtream-Masters على all-iptvs.com:2082 بجلسة ويب (كمرح)، ويوزر/باسورد من ١٠ أرقام.
+const KASPER = {name:"بوابة كاسبر", mode:"web", panel_base:"http://all-iptvs.com:2082", digits:10};
+function presetKasper(){
+  const id=$("g_id").value;
+  gateForm({...KASPER, id, panel_user:$("g_panel_user").value, host:$("g_host").value, guide_url:$("g_guide").value});
+  $("g_panel_user").focus();
 }
 async function loadMyGates(){
   try { const r=await fetch(B + "/api/mygates"); const d=chk(await r.json()); myGates=d.gates||[]; } catch { myGates=[]; }
@@ -636,6 +646,7 @@ $("manageGates").onclick = () => { drawer(false); openManage(); };
 $("closeManage").onclick = closeManage;
 $("gatesManage").addEventListener("click", e => { if (e.target === $("gatesManage")) closeManage(); });
 $("addMyGate").onclick = () => gateForm(null);
+$("presetKasper").onclick = presetKasper;
 $("cancelGate").onclick = () => { $("gateEditor").hidden = true; };
 $("saveGate").onclick = saveGate;
 $("g_mode").addEventListener("change", applyGateMode);

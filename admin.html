@@ -176,6 +176,7 @@ function gateRow(g){
   el.innerHTML = `
     <div class="gh"><b>بوابة</b><button type="button" class="rm">حذف البوابة</button></div>
     <input type="hidden" data-f="id" value="${esc(g.id||"")}">
+    <button type="button" class="ghost preset-kasper" style="width:100%;margin-bottom:8px">تعبئة بوابة كاسبر (all-iptvs.com:2082 · جلسة ويب · 10 أرقام)</button>
     <label>اسم البوابة</label><input data-f="name" value="${esc(g.name||"")}" placeholder="بوابة مرح">
     <label>طريقة الربط</label>
     <select data-f="mode">
@@ -195,6 +196,7 @@ function gateRow(g){
       <label>مفتاح API</label><input data-f="api_key" value="" placeholder="${g.has_api_key?'محفوظ — اتركه فارغًا للإبقاء':''}" autocomplete="off">
     </div>
     <label>الهوست (يظهر في السطر)</label><input data-f="host" value="${esc(g.host||"")}" placeholder="http://ssouqhost.vip">
+    <label>طول اليوزر والباسورد (أرقام، 6–20) — فارغ = 12</label><input data-f="digits" value="${esc(g.digits||"")}" inputmode="numeric" placeholder="12">
     <label>رابط الشرح (Guide) — اتركه فارغاً لإخفائه</label><input data-f="guide_url" value="${esc(g.guide_url||"")}" placeholder="https://guide.ssouq.com/">`;
   const sel = el.querySelector('[data-f="mode"]');
   const applyGateMode = () => {
@@ -204,6 +206,12 @@ function gateRow(g){
   };
   sel.addEventListener("change", applyGateMode); applyGateMode();
   el.querySelector(".rm").onclick = () => el.remove();
+  // قالب كاسبر: لوحة Xtream-Masters على all-iptvs.com:2082 بجلسة ويب (كمرح)، ويوزر/باسورد من ١٠ أرقام.
+  el.querySelector(".preset-kasper").onclick = () => {
+    const set = (f, v) => { el.querySelector(`[data-f="${f}"]`).value = v; };
+    set("name", "بوابة كاسبر"); set("mode", "web"); set("panel_base", "http://all-iptvs.com:2082"); set("digits", "10");
+    applyGateMode(); el.querySelector('[data-f="panel_user"]').focus();
+  };
   return el;
 }
 function readGates(){

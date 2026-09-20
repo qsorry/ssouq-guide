@@ -85,15 +85,23 @@ def main():
         check("admin setup ok", code == 200 and d.get("ok"))
         code, d = jreq("/admin/api/accounts", {
             "name": "MR7", "user": PUSER, "password": PPASS,
-            "gates": [{"name": "بوابة مرح", "mode": "web", "host": "http://mrha.ink",
+            "gates": [{"name": "بوابة كاسبر", "mode": "web", "host": "http://mrha.ink",
                        "panel_base": PANEL, "panel_user": PUSER, "panel_pass": PPASS,
-                       "guide_url": "https://guide.ssouq.com/"}],
+                       "guide_url": "https://guide.ssouq.com/", "digits": "10"}],
         })
         check("account with gate added", code == 200 and d.get("ok"), d.get("error") or "ok")
+        # طول اليوزر/الباسورد لكل بوابة: خارج 6–20 يُرفض، وكاسبر يُحفظ بـ 10.
+        code, bad = jreq("/admin/api/accounts", {
+            "name": "Bad", "user": "bad", "password": "badpass",
+            "gates": [{"name": "x", "mode": "web", "host": "http://h", "panel_base": PANEL,
+                       "panel_user": "u", "panel_pass": "p", "digits": "3"}],
+        })
+        check("digits outside 6–20 rejected", code != 200 or not bad.get("ok"), bad.get("error") or "accepted?!")
         acc = next((a for a in d.get("accounts", []) if a["user"] == PUSER), {})
         gate = (acc.get("gates") or [{}])[0]
         gid = gate.get("id", "")
-        check("gate stored as web mode", gate.get("mode") == "web" and gate.get("name") == "بوابة مرح")
+        check("gate stored as web mode", gate.get("mode") == "web" and gate.get("name") == "بوابة كاسبر")
+        check("gate keeps its 10-digit setting", gate.get("digits") == 10, str(gate.get("digits")))
         check("gate id keyed session (gate_<id>)", bool(gid))
 
         print("\n== 2. Log in as the person; the gate's packages ask for captcha (no OCR) ==")
@@ -102,6 +110,7 @@ def main():
         check("account login ok", code == 200 and d.get("role") == "account")
         code, d = jreq("/admin/api/me")
         check("me lists the gate", any(g.get("id") == gid for g in d.get("gates", [])))
+        check("me carries the gate digits", any(g.get("id") == gid and g.get("digits") == 10 for g in d.get("gates", [])))
         code, d = jreq("/admin/api/packages?gate=" + gid)
         check("packages requests captcha (OCR off)", d.get("need_captcha") is True,
               json.dumps(d, ensure_ascii=False)[:80])
@@ -135,6 +144,9 @@ def main():
         check("line created via gate web session", bool(lines) and " User " in ln and " Pass " in ln,
               (ln[:60] + "…") if ln else json.dumps(d, ensure_ascii=False)[:80])
         check("line carries the gate's Guide url", "Guide https://guide.ssouq.com/" in ln, ln[-40:])
+        u, pw = (lines[0].get("username", ""), lines[0].get("password", "")) if lines else ("", "")
+        check("username generated on our side: exactly 10 digits", u.isdigit() and len(u) == 10, u)
+        check("password generated on our side: exactly 10 digits", pw.isdigit() and len(pw) == 10, pw)
 
         print("\n== 5. Self-service: person adds their own gate; data encrypted at rest ==")
         # log back in as admin (password set at setup) and create a LOGIN-ONLY person
@@ -154,6 +166,8 @@ def main():
                                               "panel_base": PANEL, "panel_user": PUSER, "panel_pass": "topsecretpass",
                                               "guide_url": "https://guide.ssouq.com/"})
         check("person added their own gate", d.get("ok") and len(d.get("gates", [])) == 1, d.get("error") or "ok")
+        check("gate without digits defaults to 12", d.get("gates", [{}])[0].get("digits") == 12,
+              str(d.get("gates", [{}])[0].get("digits")))
 
         # encryption at rest: the raw file must not contain the plaintext secret
         raw = open(os.path.join(data_dir, "accounts.json"), encoding="utf-8").read()
