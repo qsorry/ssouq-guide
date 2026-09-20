@@ -309,8 +309,9 @@ def main():
             check("line created with our 10-digit pair", r7["username"] == "1234567890" and r7["password"] == "0987654321", r7["line"][:60])
             check("no get_package on this panel -> bouquets left to the panel", r7.get("bouquets") == "panel", str(r7.get("bouquets")))
             m7 = s7._meta()
-            check("panel facts cached (bouquets_by_panel + no_table_search)",
-                  m7.get("bouquets_by_panel") is True and m7.get("no_table_search") is True, str({k: m7.get(k) for k in ("bouquets_by_panel", "no_table_search")}))
+            check("panel facts cached (bouquets_by_panel) + first confirm miss counted",
+                  m7.get("bouquets_by_panel") is True and m7.get("confirm_misses") == 1 and not m7.get("no_table_search"),
+                  str({k: m7.get(k) for k in ("bouquets_by_panel", "no_table_search", "confirm_misses")}))
             t0 = time.time()
             r7b = s7.create_line(pk[1]["id"], "1111111111", "2222222222")
             dt = time.time() - t0
@@ -321,9 +322,12 @@ def main():
             dt = time.time() - t0
             check("create_many: 5 users in order, all created", [m.get("username") for m in many] == [p[0] for p in pairs], str([m.get("username") for m in many]))
             check("create_many: one prepare + one request per user (< 3s for 5)", dt < 3.0, "%.2fs" % dt)
+            check("a table that never finds us is given up after 3 misses", s7._meta().get("no_table_search") is True, str(s7._meta().get("confirm_misses")))
+            t0 = time.time(); s7.create_many(pk[0]["id"], [("5555555555", "6666666666")] * 3); dt = time.time() - t0
+            check("after giving up: 3 users with no confirmation wait (< 1s)", dt < 1.0, "%.2fs" % dt)
             st7 = s7.status()
             check("status reads the CREDITS card, not the badge", st7.get("credits") == 3975.5, str(st7.get("credits")))
-            check("status total from ACTIVE ACCOUNTS card when no table", st7.get("total") == 4742 + 7, str(st7.get("total")))
+            check("status total from ACTIVE ACCOUNTS card when no table", st7.get("total") == 4742 + 10, str(st7.get("total")))
             AF = xm_web.PanelWebSession._add_form
             f8 = AF('<form action="./user_reseller.php" method="post"><input type="hidden" name="member_id" value="8842">'
                     '<input type="text" name="username"><input type="password" name="password">'

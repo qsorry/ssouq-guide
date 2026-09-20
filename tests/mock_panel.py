@@ -149,8 +149,9 @@ class H(BaseHTTPRequestHandler):
                 '<button name="submit_user" value="1">Create</button></form></body></html>')
             return self._send(200, html, headers=hdr)
 
-        if path == "/table_search.php" and NOCAP:   # Xtream Codes الأصلي: لا جدول DataTables
-            return self._send(404, "<html><body>404 Not Found</body></html>", headers=hdr)
+        if path == "/table_search.php" and NOCAP:   # Xtream Codes: الجدول موجود لكنه لا يجد يوزرنا أبدًا (أعمدة/بحث آخران)
+            return self._send(200, json.dumps({"draw": 1, "recordsTotal": 0, "recordsFiltered": 0, "data": []}),
+                              "application/json", hdr)
         if path == "/table_search.php":
             if qs.get("id", [""])[0] != "users":   # اللوحة تتطلب id=users
                 return self._send(200, json.dumps({"draw": 1, "recordsFiltered": 0, "data": []}),

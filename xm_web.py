@@ -820,15 +820,28 @@ class PanelWebSession:
 
         # 4) تأكيد من جدول اللاينات (لجلب الـ id/الانتهاء) — **غير حاسم**:
         # الإنشاء نقطة لا عودة (يُخصم الرصيد)، فلا نفقد بيانات اليوزر لو تأخّر البحث.
+        # عدد المحاولات يتكيّف مع اللوحة: التي أثبتت أنها تجد يوزرنا (مرح) تُمهل حتى 6
+        # محاولات، والمجهولة محاولتان، والتي تردّ جدولًا لا يجد يوزرنا أبدًا (Xtream Codes:
+        # table_search.php موجود لكن بأعمدة وبحث آخرين) تُوقَف بعد ثلاث إخفاقات متتالية —
+        # وإلا دفع كل يوزر 6 × 1.2 ثانية انتظارًا لتأكيد لن يأتي.
+        meta = self._meta()
         found = {}
-        for _ in range(6):
-            try:
-                found = self._search_line(username)
-            except Exception:
-                found = {}
-            if (found and found.get("id")) or self._meta().get("no_table_search"):
-                break
-            time.sleep(1.2)
+        if not meta.get("no_table_search"):
+            attempts = 6 if meta.get("table_search_ok") else 2
+            for i in range(attempts):
+                try:
+                    found = self._search_line(username)
+                except Exception:
+                    found = {}
+                if (found and found.get("id")) or self._meta().get("no_table_search"):
+                    break
+                if i < attempts - 1:
+                    time.sleep(1.2)
+            if found and found.get("id"):
+                self._save_meta(table_search_ok=True, confirm_misses=0)
+            elif not meta.get("table_search_ok"):
+                misses = int(meta.get("confirm_misses") or 0) + 1
+                self._save_meta(confirm_misses=misses, **({"no_table_search": True} if misses >= 3 else {}))
 
         # اسم/كلمة المرور اللذان أرسلناهما هما ما سجّلته اللوحة (تركناهما فارغين =
         # ولّدناهما نحن)، فنعرضهما دائمًا حتى لو تعذّر التأكيد.
