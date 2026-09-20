@@ -638,7 +638,8 @@ def create_line(gate, pkg, username=None, password=None):
         line = format_line(gate, r["username"], r["password"])
         _log_txt(gate, line, pkg["name"])
         return {"line": line, "username": r["username"], "password": r["password"],
-                "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"]}
+                "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"],
+                "timing": r.get("timing")}
     if gate.get("mode") == "falcon":                   # الإنشاء عبر لوحة فالكون
         r = falcon_api.create_line(gate["api_url"], gate["api_key"], pkg["id"],
                                    username, password, pkg.get("max_connections"))
@@ -685,7 +686,8 @@ def create_lines(gate, pkg, count, username=None, password=None):
             line = format_line(gate, r["username"], r["password"])
             _log_txt(gate, line, pkg["name"])
             out.append({"line": line, "username": r["username"], "password": r["password"],
-                        "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"]})
+                        "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"],
+                        "timing": r.get("timing")})
         return out, None
     out = []
     for i in range(count):
@@ -1228,10 +1230,11 @@ class Handler(BaseHTTPRequestHandler):
         if not pkg:
             return self._send(400, {"error": "الباقة غير موجودة"})
         count = max(1, min(int(req.get("count", 1)), 50))
+        t_start = time.time()
         out, err = create_lines(gate, pkg, count,
                                 req.get("username") if count == 1 else None,
                                 req.get("password") if count == 1 else None)
-        resp = {"lines": out}
+        resp = {"lines": out, "total_ms": int((time.time() - t_start) * 1000)}
         if err:
             # ما أُنشئ قبل الخطأ أُنشئ فعلًا (وخُصم)، فيُعاد مع الخطأ لا بدلًا منه.
             resp["error"] = err if not out else "أُنشئ %d من %d ثم توقفت اللوحة: %s" % (len(out), count, err)

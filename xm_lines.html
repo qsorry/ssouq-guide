@@ -613,6 +613,11 @@ async function createLines(){
       $("resBox").hidden = false; $("u").value = ""; $("p").value = "";
       renderHistory(); loadGateStatus();
       copy($("res").textContent);
+      // أين ذهب الوقت: تحضير الدفعة مرة، ثم إرسال وتأكيد لكل يوزر.
+      const t = lines[0].timing || {}, sec = ms => (ms / 1000).toFixed(1) + " ث";
+      const post = lines.map(x => (x.timing || {}).post_ms || 0), conf = lines.map(x => (x.timing || {}).confirm_ms || 0);
+      const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+      $("msg").textContent = `الزمن الكلي ${sec(d.total_ms || 0)} · دخول ${sec(t.login_ms || 0)} · صفحة ${sec(t.page_ms || 0)} · بوكيهات ${sec(t.bouquets_ms || 0)} · إرسال ${sec(avg(post))}/يوزر · تأكيد ${sec(avg(conf))}/يوزر`;
     }
     if (d.error) throw new Error(d.error);
   } catch(e) { $("msg").textContent = e.message; }
