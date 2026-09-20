@@ -106,6 +106,11 @@ def main():
         check("card CREDITS beats a sidebar badge 1",
               EC('<li><a>Credits</a><span class="badge">1</span></li><div><h3>3,975.50</h3><p>CREDITS</p></div>') == 3975.5)
         check("decimal credits kept", EC('<h3>3,975.50</h3><p>CREDITS</p>') == 3975.5)
+        XC = ('<div class="card-bg credits"><h3><span data-plugin="counterup" class="entry">0</span></h3><p>Credits</p></div>'
+              '<small>New M3U with Package [YEAR], Credits: <font color="green">3974.5</font> -> <font color="red">3973.5</font></small>'
+              '<small>New M3U with Package [6 Month], Credits: <font color="green">3976</font> -> <font color="red">3975.5</font></small>')
+        check("Xtream Codes: newest log line after the arrow, not the JS counter 0", EC(XC) == 3973.5, str(EC(XC)))
+        check("counter 0 alone is ignored", EC('<span data-plugin="counterup" class="entry">0</span></h3><p>Credits</p>') is None)
         check("card number precedes label", DN('<h3>253</h3><p>ACTIVE SUBSCRIPTIONS</p>', r"active\s+subscription") == 253)
         check("distinct label, not the earlier number",
               DN('<h3>26</h3><p>CREATED TODAY</p><h3>253</h3><p>ACTIVE SUBSCRIPTIONS</p>', r"active\s+subscription") == 253)
