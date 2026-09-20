@@ -19,6 +19,8 @@ xm_web — إنشاء يوزرات M3U عبر جلسة ويب للوحة Xtream-
   packages() → قراءة قائمة الباقات من نموذج الإضافة
   create_line(pkg) → POST user_reseller.php (member_id + selected_bouquets + submit_user=1)
                      ثم تأكيد عبر table_search.php
+  extend_line(user, pkg) → GET user_reseller_extend_modal.php?id=<line id> (نموذج التمديد)
+                     ثم POST بنفس المسار، والتأكيد = تغيّر تاريخ الانتهاء في الجدول
 """
 import json
 import os
@@ -877,6 +879,107 @@ class PanelWebSession:
                 out.append({"error": str(e)[:200], "username": str(u), "password": str(p)})
                 break
         return out
+
+    # ---- تمديد يوزر (ExtendUser) ----
+    # نفس ما تفعله اللوحة من زر Extend (ومطابق لسكربت السيلينيوم المثبت): نموذج التمديد
+    # يُجلب من user_reseller_extend_modal.php?id=<line id>، ثم يُرسل POST لنفس المسار
+    # بحقوله المخفية + edit + package + selected_connections + submit_user=1.
+    EXTEND_PATH = "/user_reseller_extend_modal.php"
+
+    def supports_extend(self) -> bool:
+        """هل للوحة نافذة تمديد؟ (Xtream-Masters نعم؛ Xtream Codes الأصلي لا: 404).
+        يُفحص مرة واحدة ويُحفظ، فلا يكلّف كل تحميل للباقات طلبًا."""
+        meta = self._meta()
+        if "extend_modal" in meta:
+            return bool(meta["extend_modal"])
+        self.ensure_login()
+        try:
+            r = self._request(self.EXTEND_PATH + "?id=0", headers={"X-Requested-With": "XMLHttpRequest"})
+            ok = r.get("status", 0) < 400 and "login" not in (r.get("location") or "").lower()
+        except Exception:
+            return False           # لا نحفظ فشل الشبكة كحقيقة عن اللوحة
+        self._save_meta(extend_modal=ok)
+        return ok
+
+    @staticmethod
+    def _extend_form(html: str) -> dict:
+        """نموذج التمديد: حقوله المخفية بقيمها، وخيارات الباقات المسموحة
+        (value، النص، data-connections)."""
+        m = re.search(r"<form\b[^>]*\bid=[\"']extend_user_form[\"'][^>]*>(.*?)</form>", html, re.I | re.S)
+        form_html = m.group(0) if m else html
+        fields = {}
+        for im in re.finditer(r"<input\b[^>]*>", form_html, re.I):
+            tag = im.group(0)
+            typ = (re.search(r"""\btype=["']([^"']+)["']""", tag, re.I) or [None, "text"])[1].lower()
+            name = re.search(r"""\bname=["']([^"']+)["']""", tag, re.I)
+            if typ != "hidden" or not name:
+                continue
+            val = re.search(r"""\bvalue=["']([^"']*)["']""", tag, re.I)
+            fields[name.group(1)] = _html.unescape(val.group(1)) if val else ""
+        sm = re.search(r"<select\b[^>]*\bname=[\"']package[\"'][^>]*>(.*?)</select>", form_html, re.I | re.S) \
+            or re.search(r"<select\b[^>]*\bid=[\"']ext_package[\"'][^>]*>(.*?)</select>", html, re.I | re.S)
+        options = []
+        for om in re.finditer(r"<option\b([^>]*)>(.*?)</option>", sm.group(1) if sm else "", re.I | re.S):
+            attrs, text = om.group(1), _html.unescape(re.sub(r"<[^>]+>", "", om.group(2))).strip()
+            val = re.search(r"""\bvalue=["']([^"']*)["']""", attrs, re.I)
+            if not val or not val.group(1).strip():
+                continue
+            conns = re.search(r"""\bdata-connections=["']([^"']*)["']""", attrs, re.I)
+            options.append({"value": val.group(1).strip(), "text": text,
+                            "connections": conns.group(1) if conns else ""})
+        return {"found": bool(m), "fields": fields, "options": options}
+
+    def extend_line(self, username: str, package_id, package_text: str = "") -> dict:
+        """يمدّد يوزرًا قائمًا بباقة (نفس عدد الاتصالات). يرجّع {before, after, message, credits}.
+        RuntimeError قبل الإرسال = لم يُخصم شيء؛ وبعده = راجع اللوحة."""
+        self.ensure_login()
+        before = self._search_line(username)
+        if not before.get("id"):
+            raise RuntimeError("اليوزر %s غير موجود في جدول اللوحة فلا يمكن تمديده" % username)
+        url = self.EXTEND_PATH + "?id=" + urllib.parse.quote(str(before["id"]))
+        page = self._text(self._request(url, headers={"X-Requested-With": "XMLHttpRequest"}))
+        form = self._extend_form(page)
+        if not form["found"]:
+            alert = self._extract_alert(page)
+            raise RuntimeError("نموذج التمديد غير موجود في اللوحة" + (": " + alert if alert else ""))
+        norm = lambda t: re.sub(r"\s+", "", str(t or ""))
+        opt = next((o for o in form["options"] if o["value"] == str(package_id)), None) \
+            or (next((o for o in form["options"] if package_text and norm(o["text"]).startswith(norm(package_text))), None))
+        if not opt:
+            raise RuntimeError("الباقة %s غير متاحة للتمديد (تمديد بباقات نفس عدد الاتصالات فقط)" % package_id)
+        body = dict(form["fields"])
+        body["edit"] = before["id"]
+        body["submit_user"] = "1"
+        body["selected_connections"] = opt["connections"] or before.get("conns") or body.get("selected_connections") or "1"
+        body.setdefault("group_change_confirmed", "0")
+        body.setdefault("keep_remaining_days", "0")
+        body["package"] = opt["value"]
+
+        # نقطة اللاعودة
+        r = self._request(url, data=body, headers={"X-Requested-With": "XMLHttpRequest"})
+        txt = self._text(r)
+        try:
+            resp = json.loads(txt)
+        except ValueError:
+            resp = {}
+        msg = str(resp.get("message", "")) if isinstance(resp, dict) else ""
+        after = {}
+        for i in range(6):
+            try:
+                after = self._search_line(username)
+            except Exception:
+                after = {}
+            if after.get("id") and after.get("end") and after.get("end") != before.get("end"):
+                break
+            if i < 5:
+                time.sleep(1.2)
+        else:
+            if isinstance(resp, dict) and str(resp.get("status", "")).lower() in ("error", "false", "0"):
+                raise RuntimeError("رفضت اللوحة التمديد: " + (msg or txt[:200]))
+            raise RuntimeError("لم يتغيّر تاريخ انتهاء %s بعد التمديد%s" % (username, (" (" + msg + ")") if msg else ""))
+        return {"before": before.get("end", ""), "after": after.get("end", ""), "message": msg,
+                "credits": (resp.get("new_credits") if isinstance(resp, dict) else None),
+                "line_id": before["id"], "package": opt["text"]}
 
     # ---- حالة اللوحة (الرصيد + أرقام لوحة المعلومات) ----
     # الجذر "/" في لوحات كثيرة يردّ تحويلًا (30x) بجسم فارغ إلى لوحة المعلومات،
