@@ -99,6 +99,14 @@ def main():
         check("page checkboxes", PB('<input type="checkbox" name="bouquets[]" value="3"><input name="x" value="9">'
                                     '<select name="bouquet_ids[]"><option value="1">a</option><option value="2">b</option></select>') == [1, 2, 3])
 
+        print("\n== 0a3. table row: package / created date / dates for the package type ==")
+        PR = xm_web.PanelWebSession._parse_row
+        r0 = PR('<a href="?userid=5">e</a> User: u1 Pass: p1 Created: 2026-09-20 End: 2027-12-20 <a>0 / 2</a> <span>Package: اشتراك سنة + 3 اشهر + جهازين (12 نقطة)</span>')
+        check("row: package name, created, conns, dates", r0["package"] == "اشتراك سنة + 3 اشهر + جهازين (12 نقطة)" and r0["created"] == "2026-09-20"
+              and r0["conns"] == "2" and r0["dates"] == ["2026-09-20", "2027-12-20"], str(r0)[:120])
+        r1 = PR('User: u2 Pass: p2 End: 2027-01-01 <a>0 / 1</a>')
+        check("row without package/created stays parseable", r1["package"] == "" and r1["created"] == "" and r1["dates"] == ["2027-01-01"])
+
         print("\n== 0b. credits / dashboard number parsing ==")
         EC = xm_web.PanelWebSession._extract_credits
         DN = xm_web.PanelWebSession._dashboard_number

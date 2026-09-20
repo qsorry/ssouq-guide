@@ -173,6 +173,13 @@ def main():
         check("created_today counts every line made today (1 + 4 + 2)", d.get("created_today") == 7, str(d.get("created_today")))
         check("today_lines carry username/password/status/exp", len(tl) == 7 and all(x.get("username") and x.get("password") and x.get("exp") for x in tl),
               json.dumps(tl[:1], ensure_ascii=False)[:100])
+        types = sorted({x.get("package_type") for x in tl})
+        check("today_lines carry the package type (30 months from our log, 1/3 months from the panel row)",
+              types == ["3 شهر", "30 شهر", "شهر"], str(types))
+        code, d = jreq("/admin/api/search?gate=" + gid + "&q=" + u)
+        rs = d.get("results") or []
+        check("search result shows the package type (3 Months -> '3 شهر')", len(rs) == 1 and rs[0].get("package_type") == "3 شهر"
+              and rs[0].get("package_name") == "3 Months (13 credits)", json.dumps(rs, ensure_ascii=False)[:120])
 
         print("\n== 5. Self-service: person adds their own gate; data encrypted at rest ==")
         # log back in as admin (password set at setup) and create a LOGIN-ONLY person
