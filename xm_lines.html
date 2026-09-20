@@ -218,6 +218,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
     </div>
     <div class="stats" id="gateStatus"></div>
     <div class="warn" id="statusWarn" hidden></div>
+    <div id="todayBox" hidden></div>
   </section>
 
   <section class="panel">
@@ -341,6 +342,7 @@ let account = "";
 $("lnkOut").href = B + "/logout";
 for (const a of document.querySelectorAll("a[data-guide]")) a.href = GUIDE;
 let gates = [];
+let globalGuide = "";
 let curGate = "";                       // البوابة المختارة
 const KEY = () => "xm_lines_history_" + account + "_" + curGate;
 let packages = [];
@@ -357,7 +359,8 @@ async function loadGates(){
     const r = await fetch(B + "/api/me"); const d = chk(await r.json());
     account = d.account || ""; $("acct").textContent = account; $("acctAv").textContent = (account || "·").slice(0,1).toUpperCase();
     gates = d.gates || [];
-    if ($("myGuide")) $("myGuide").value = d.guide_url || "";
+    globalGuide = d.guide_url || "";
+    if ($("myGuide")) $("myGuide").value = globalGuide;
   } catch { gates = []; }
   if (!gates.length){
     $("gateTabs").innerHTML = '<div class="empty">لا توجد بوابات بعد — اضغط "إدارة بواباتي" لإضافة منشأتك.</div>';
@@ -392,7 +395,7 @@ const STAT_KEY = () => "xm_status_" + account + "_" + curGate;
 const stat = (l, v, cls="") => `<div class="stat ${cls}"><small>${l}</small><b${cls.includes("mono")?' class="mono"':""}>${fmt(v)}</b></div>`;
 async function loadGateStatus(){
   const gate = gates.find(g => g.id === curGate) || {};
-  $("statusWarn").hidden = true; $("gateStatus").innerHTML = "";
+  $("statusWarn").hidden = true; $("gateStatus").innerHTML = ""; $("todayBox").hidden = true; $("todayBox").innerHTML = "";
   if (gate.mode !== "falcon" && gate.mode !== "web"){ setBadge("بلا حالة", ""); $("gateStatus").innerHTML = '<div class="stat empty">حالة النقاط غير متاحة لهذه البوابة</div>'; return; }
   setBadge("جاري القراءة…", "");
   $("gateStatus").innerHTML = '<div class="stat empty">جاري قراءة الرصيد من اللوحة…</div>';
@@ -408,6 +411,7 @@ async function loadGateStatus(){
       (s.created_today != null ? stat("أُنشئ اليوم", s.created_today) : "") +
       (s.online != null ? stat("متصلون الآن", s.online) : "") +
       (s.last_username ? stat("آخر يوزر", s.last_username, "mono") : "");
+    renderToday(s);
     // مقارنة بآخر جلسة
     let prev = null; try { prev = JSON.parse(localStorage.getItem(STAT_KEY())||"null"); } catch {}
     if (prev){
@@ -423,6 +427,24 @@ async function loadGateStatus(){
     try { localStorage.setItem(STAT_KEY(), JSON.stringify({credits:s.credits, total:s.total, last_username:s.last_username})); } catch {}
   } catch(e){ setBadge("تعذّر", "err"); $("gateStatus").innerHTML = '<div class="stat empty">تعذّر قراءة الحالة</div>'; }
 }
+
+// اشتراكات اليوم من جدول اللوحة نفسه (ما أُنشئ من الأداة أو من اللوحة مباشرة)
+function renderToday(s){
+  const list = Array.isArray(s.today_lines) ? s.today_lines : null;
+  if (!list) return;
+  const box = $("todayBox"); box.hidden = false;
+  if (!list.length){ box.innerHTML = `<div class="day"><h3>اشتراكات اليوم <span>(0)</span></h3><div class="empty">لم يُنشأ أي اشتراك اليوم${s.today ? " (" + esc(s.today) + ")" : ""}.</div></div>`; return; }
+  const n = s.created_today != null ? s.created_today : list.length;
+  box.innerHTML = `<div class="day"><h3>اشتراكات اليوم <span>(${n})${n > list.length ? " — يُعرض " + list.length : ""} <button class="copy" id="copyToday">نسخ الكل</button></span></h3>
+    <div class="tw"><table class="tbl"><thead><tr><th>#</th><th>اسم المستخدم</th><th>كلمة المرور</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>
+    ${list.map((x,i) => `<tr><td class="n">${i+1}</td><td class="m">${esc(x.username)}</td><td class="m">${esc(x.password)}</td><td>${pill(x.status)}</td>
+      <td class="n hide-sm">${esc(x.exp || "—")}</td><td><button class="cb" title="نسخ السطر" data-line="${esc(lineOf(x))}">${copyIcon}</button></td></tr>`).join("")}
+    </tbody></table></div></div>`;
+  box.querySelector("#copyToday").onclick = () => copy(list.map(lineOf).join("\n"));
+}
+const lineOf = x => { const g = gates.find(g => g.id === curGate) || {}; const guide = g.guide_url || globalGuide || "";
+  return `Host ${g.host || ""} User ${x.username} Pass ${x.password}` + (guide ? ` Guide ${guide}` : ""); };
+$("todayBox").addEventListener("click", e => { const b = e.target.closest("button"); if (b && b.dataset.line) copy(b.dataset.line); });
 
 const copyIcon = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
 const pill = st => { st = String(st || ""); const ok = st === "active" || st === "نشط"; const bad = /expired|disabled|banned/.test(st);

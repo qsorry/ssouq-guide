@@ -167,6 +167,13 @@ def main():
         code, d = jreq("/admin/api/create", {"gate": gid, "package_id": "x2:999", "username": "", "password": "", "count": 1})
         check("unknown virtual base rejected", code == 400 and "غير موجودة" in d.get("error", ""), d.get("error"))
 
+        print("\n== 4c. Gate status lists today's subscriptions from the panel table ==")
+        code, d = jreq("/admin/api/gate-status?gate=" + gid)
+        tl = d.get("today_lines") or []
+        check("created_today counts every line made today (1 + 4 + 2)", d.get("created_today") == 7, str(d.get("created_today")))
+        check("today_lines carry username/password/status/exp", len(tl) == 7 and all(x.get("username") and x.get("password") and x.get("exp") for x in tl),
+              json.dumps(tl[:1], ensure_ascii=False)[:100])
+
         print("\n== 5. Self-service: person adds their own gate; data encrypted at rest ==")
         # log back in as admin (password set at setup) and create a LOGIN-ONLY person
         op.open(ADMIN + "/admin/logout")

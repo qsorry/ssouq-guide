@@ -765,7 +765,7 @@ def _create_extended(gate, pkg, base_id, times, username, password):
     ends = []
     try:
         for _ in range(times):
-            ends.append(sess.extend_line(u, base_id, pkg.get("base_name", "")))
+            ends.append(sess.extend_line(u, base_id, pkg.get("base_name", ""), line_id=r.get("line_id", "")))
     except (xm_web.CaptchaNeeded, xm_web.LoginFailed):
         raise
     except Exception as e:

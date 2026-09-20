@@ -207,14 +207,21 @@ def main():
             check("extend with a package not in the modal raises before sending", "غير متاحة للتمديد" in str(e), str(e)[:60])
 
         print("\n== 3c. Panel dashboard status (credits from the page) ==")
+        s.create_line(package_id=1, username="old_user9", password="oldpw")   # اللوحة الوهمية تعدّه مُنشأً بالأمس
+        td = s.today_lines()
+        check("today_lines: only lines created today, newest first, with the server count",
+              td["count"] == 3 and [x["username"] for x in td["lines"]] == ["extuser1", "webuser2", "webuser1"], str(td)[:120])
+        check("today's date is Riyadh's", td["date"] == xm_web.PanelWebSession._today() and len(td["date"]) == 10, td["date"])
         st = s.status()
+        check("status carries created_today + today_lines from the table (not the JS counter)", st.get("created_today") == 3
+              and len(st.get("today_lines", [])) == 3 and st["today_lines"][0]["password"] == "extpw1", str(st.get("created_today")))
         check("status reads credits from the panel page", st.get("credits") == 1002, "credits=%s" % st.get("credits"))
         # الجدول فيه لاينان (webuser1/webuser2) بينما بطاقة اللوحة تقول 255 —
         # فالعدد يجب أن يأتي من الجدول الموثوق لا من البطاقة.
-        check("total comes from the users table, not the JS dashboard card", st.get("total") == 3,
+        check("total comes from the users table, not the JS dashboard card", st.get("total") == 4,
               "total=%s" % st.get("total"))
-        check("JS-placeholder counts are not surfaced", "created_today" not in st and "online" not in st)
-        check("status reports the newest line as last user", st.get("last_username") == "extuser1",
+        check("JS-placeholder counts are not surfaced", "online" not in st)
+        check("status reports the newest line as last user", st.get("last_username") == "old_user9",
               "last=%s" % st.get("last_username"))
         rows = s.search("webuser1")
         check("search by username on the panel table", len(rows) == 1 and rows[0]["username"] == "webuser1"

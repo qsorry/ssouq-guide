@@ -179,16 +179,22 @@ class H(BaseHTTPRequestHandler):
             term = qs.get("search[value]", [""])[0]
             desc = qs.get("order[0][dir]", ["asc"])[0] == "desc"      # الأحدث أولًا
             length = int(qs.get("length", ["10"])[0] or 10)
+            c_from, c_to = qs.get("date_created_from", [""])[0], qs.get("date_created_to", [""])[0]
             data = []
             for ln in (list(reversed(LINES)) if desc else LINES):
+                if c_from and ln["created"] < c_from:
+                    continue
+                if c_to and ln["created"] > c_to:
+                    continue
                 if not term or term in ln["username"] or term in ln["password"]:   # بحث كل الأعمدة
                     row = ('<a href="?userid=%s">edit</a> User: %s Pass: %s End: %s '
                            '<a>1 / %s</a>' % (ln["id"], ln["username"], ln["password"],
                                               ln["end"], ln["conns"]))
                     data.append([row])
+            filtered = len(data)
             data = data[:length]
             return self._send(200, json.dumps({"draw": 1, "recordsTotal": len(LINES),
-                                               "recordsFiltered": len(data), "data": data}),
+                                               "recordsFiltered": filtered, "data": data}),
                               "application/json", hdr)
 
         if path == "/":                       # الجذر يحوّل للوحة كاللوحة الحقيقية
@@ -263,6 +269,8 @@ class H(BaseHTTPRequestHandler):
                 "package": form.get("package", ""), "member_id": form.get("member_id", ""),
                 "bouquets": form.get("selected_bouquets", ""),
                 "end": "2026-12-31", "conns": "1",
+                # يوزر اسمه يبدأ بـ old_ يُعدّ مُنشأً بالأمس (لاختبار «اشتراكات اليوم»)
+                "created": "2000-01-01" if uname.startswith("old") else time.strftime("%Y-%m-%d"),
             })
             return self._send(200, '<div class="alert alert-success">created</div>', headers=hdr)
 

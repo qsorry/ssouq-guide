@@ -929,13 +929,16 @@ class PanelWebSession:
                             "connections": conns.group(1) if conns else ""})
         return {"found": bool(m), "fields": fields, "options": options}
 
-    def extend_line(self, username: str, package_id, package_text: str = "") -> dict:
+    def extend_line(self, username: str, package_id, package_text: str = "", line_id: str = "") -> dict:
         """يمدّد يوزرًا قائمًا بباقة (نفس عدد الاتصالات). يرجّع {before, after, message, credits}.
+        line_id (إن عُرف من الإنشاء) يُغني عن البحث في الجدول إن لم يجده.
         RuntimeError قبل الإرسال = لم يُخصم شيء؛ وبعده = راجع اللوحة."""
         self.ensure_login()
-        before = self._search_line(username)
+        before = self._find_line(username)
         if not before.get("id"):
-            raise RuntimeError("اليوزر %s غير موجود في جدول اللوحة فلا يمكن تمديده" % username)
+            if not line_id:
+                raise RuntimeError("اليوزر %s غير موجود في جدول اللوحة فلا يمكن تمديده" % username)
+            before = {"id": str(line_id), "end": "", "conns": ""}
         url = self.EXTEND_PATH + "?id=" + urllib.parse.quote(str(before["id"]))
         page = self._text(self._request(url, headers={"X-Requested-With": "XMLHttpRequest"}))
         form = self._extend_form(page)
@@ -963,10 +966,13 @@ class PanelWebSession:
         except ValueError:
             resp = {}
         msg = str(resp.get("message", "")) if isinstance(resp, dict) else ""
+        status = str(resp.get("status", "")).lower() if isinstance(resp, dict) else ""
+        if status in ("error", "false", "0"):
+            raise RuntimeError("رفضت اللوحة التمديد: " + (msg or txt[:200]))
         after = {}
         for i in range(6):
             try:
-                after = self._search_line(username)
+                after = self._search_line(username, force=True)
             except Exception:
                 after = {}
             if after.get("id") and after.get("end") and after.get("end") != before.get("end"):
@@ -974,12 +980,16 @@ class PanelWebSession:
             if i < 5:
                 time.sleep(1.2)
         else:
-            if isinstance(resp, dict) and str(resp.get("status", "")).lower() in ("error", "false", "0"):
-                raise RuntimeError("رفضت اللوحة التمديد: " + (msg or txt[:200]))
+            # اللوحة قالت نجح لكن الجدول لم يُظهر التغيّر (أو لا يجدنا أصلًا): نصدّق اللوحة
+            # ولا نرمي خطأ يُظهر يوزرًا مُمدَّدًا فعلًا كأنه فشل.
+            if status in ("success", "true", "1", "ok"):
+                return {"before": before.get("end", ""), "after": after.get("end", ""), "message": msg,
+                        "credits": resp.get("new_credits"), "line_id": before["id"], "package": opt["text"],
+                        "verified": False}
             raise RuntimeError("لم يتغيّر تاريخ انتهاء %s بعد التمديد%s" % (username, (" (" + msg + ")") if msg else ""))
         return {"before": before.get("end", ""), "after": after.get("end", ""), "message": msg,
                 "credits": (resp.get("new_credits") if isinstance(resp, dict) else None),
-                "line_id": before["id"], "package": opt["text"]}
+                "line_id": before["id"], "package": opt["text"], "verified": True}
 
     # ---- حالة اللوحة (الرصيد + أرقام لوحة المعلومات) ----
     # الجذر "/" في لوحات كثيرة يردّ تحويلًا (30x) بجسم فارغ إلى لوحة المعلومات،
@@ -1024,6 +1034,12 @@ class PanelWebSession:
         # الآن/أُنشئ اليوم/الاشتراكات" تُحمَّل بجافاسكربت على اللوحة (تكون صفرًا في
         # HTML الخام)، فلا نعرضها كي لا تُضلِّل.
         dash_total = self._dashboard_number(html, r"active\s+(?:subscription|account)")
+        # اشتراكات اليوم: من الجدول بفلتر تاريخ الإنشاء (رقم الخادم لا عدّاد الجافاسكربت).
+        today = {}
+        try:
+            today = self.today_lines()
+        except Exception:
+            today = {}
         return {
             "provider": "web",
             "credits": self._extract_credits(html),
@@ -1032,6 +1048,9 @@ class PanelWebSession:
             "total": table_total if table_total is not None else dash_total,
             "last_id": last.get("id"),
             "last_username": last.get("user"),
+            "created_today": today.get("count") if today.get("lines") is not None else None,
+            "today": today.get("date", ""),
+            "today_lines": today.get("lines", []),
         }
 
     _KW = r"(?:(?<![a-z])(?:credits?|balance|credit\s*balance)(?![a-z])|الرصيد|رصيد\w*|النقاط|نقاط\w*|الكريد\w*|كريد\w*)"
@@ -1107,7 +1126,8 @@ class PanelWebSession:
 
     _TABLE_COLS = 12
 
-    def _table_query(self, term: str = "", length: int = 10) -> dict:
+    def _table_query(self, term: str = "", length: int = 10, force: bool = False,
+                     created_from: str = "", created_to: str = "") -> dict:
         """استعلام جدول اللاينات (table_search.php) بنفس معاملات DataTables التي تطلبها
         اللوحة (id=users + الأعمدة كاملة) — وإلا رجّع لا شيء — مرتَّبًا من الأحدث.
         يرجّع {"rows": [صفوف مفكَّكة], "total": العدد الكلي إن أعلنته اللوحة}."""
@@ -1126,11 +1146,11 @@ class PanelWebSession:
             ("start", "0"), ("length", str(int(length))),
             ("search[value]", term), ("search[regex]", "false"),
             ("id", "users"), ("filter", ""), ("reseller", ""),
-            ("date_created_from", ""), ("date_created_to", ""),
+            ("date_created_from", created_from), ("date_created_to", created_to),
             ("date_expire_from", ""), ("date_expire_to", ""),
             ("_", str(int(time.time() * 1000))),
         ]
-        if self._meta().get("no_table_search"):
+        if self._meta().get("no_table_search") and not force:
             return {"rows": [], "total": None}
         r = self._request("/table_search.php?" + urllib.parse.urlencode(params),
                           headers={"X-Requested-With": "XMLHttpRequest"})
@@ -1149,7 +1169,31 @@ class PanelWebSession:
             if parsed:
                 rows.append(parsed)
         total = j.get("recordsTotal")
-        return {"rows": rows, "total": _to_num(total) if total is not None else None}
+        filtered = j.get("recordsFiltered")
+        return {"rows": rows, "total": _to_num(total) if total is not None else None,
+                "filtered": _to_num(filtered) if filtered is not None else None}
+
+    @staticmethod
+    def _today() -> str:
+        """تاريخ اليوم بتوقيت الرياض (اللوحة والمشغّل هناك، والخادم قد يكون UTC)."""
+        import datetime as _dt
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo("Asia/Riyadh")
+        except Exception:
+            tz = _dt.timezone(_dt.timedelta(hours=3))
+        return _dt.datetime.now(tz).strftime("%Y-%m-%d")
+
+    def today_lines(self, limit: int = 200) -> dict:
+        """اشتراكات اليوم من جدول اللوحة نفسه (فلتر تاريخ الإنشاء من/إلى = اليوم):
+        {"date", "count", "lines": [{username, password, status, exp}]}. العدد من
+        recordsFiltered الذي يعلنه الخادم، فيصحّ حتى لو تجاوز الحدّ."""
+        day = self._today()
+        t = self._table_query("", limit, created_from=day, created_to=day)
+        rows = [{"id": r["id"], "username": r["user"], "password": r["pass"],
+                 "status": r["status"], "exp": r["end"]} for r in t["rows"]]
+        count = t.get("filtered")
+        return {"date": day, "count": count if count is not None else len(rows), "lines": rows}
 
     @staticmethod
     def _parse_row(s: str) -> dict:
@@ -1169,10 +1213,27 @@ class PanelWebSession:
                 "conns": conns.group(1) if conns else "",
                 "status": status}
 
-    def _search_line(self, username: str) -> dict:
-        for row in self._table_query(username, 10)["rows"]:
+    def _search_line(self, username: str, force: bool = False) -> dict:
+        for row in self._table_query(username, 10, force)["rows"]:
             if row["user"] == username:
                 return row
+        return {}
+
+    def _find_line(self, username: str, attempts: int = 5, delay: float = 1.5) -> dict:
+        """بحث إجباري (يتجاوز علامة «لا جدول») مع إمهال اللوحة: يوزر أُنشئ للتوّ قد
+        يتأخر ظهوره في الجدول بضع ثوانٍ. إن وُجد، تُصحَّح علامة الجلسة."""
+        found = {}
+        for i in range(attempts):
+            try:
+                found = self._search_line(username, force=True)
+            except Exception:
+                found = {}
+            if found.get("id"):
+                if self._meta().get("no_table_search"):
+                    self._save_meta(no_table_search=False, table_search_ok=True, confirm_misses=0)
+                return found
+            if i < attempts - 1:
+                time.sleep(delay)
         return {}
 
     def last_line(self) -> dict:
