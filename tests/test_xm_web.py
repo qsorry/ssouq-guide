@@ -299,6 +299,15 @@ def main():
             check("packages load on no-captcha panel", len(pk) == 3, "count=%d" % len(pk))
             r7 = s7.create_line(pk[0]["id"], "1234567890", "0987654321")
             check("line created with our 10-digit pair", r7["username"] == "1234567890" and r7["password"] == "0987654321", r7["line"][:60])
+            check("no get_package on this panel -> bouquets left to the panel", r7.get("bouquets") == "panel", str(r7.get("bouquets")))
+            AF = xm_web.PanelWebSession._add_form
+            f8 = AF('<form action="./user_reseller.php" method="post"><input type="hidden" name="member_id" value="8842">'
+                    '<input type="text" name="username"><input type="password" name="password">'
+                    '<select name="package"><option value="">Select</option><option value="1">1 Month</option></select>'
+                    '<input type="checkbox" name="allow_epg" checked><input type="checkbox" name="is_trial">'
+                    '<button name="submit_user" value="1">Create</button></form>')
+            check("add-form reader: fields/package/submit", f8["fields"].get("member_id") == "8842" and f8["package_field"] == "package"
+                  and f8["submit"] == "submit_user" and "allow_epg" in f8["fields"] and "is_trial" not in f8["fields"], str(f8)[:120])
 
             bad7 = xm_web.PanelWebSession({"id": "nocapbad", "user": USER, "password": "wrong",
                                            "panel_base": NC, "host": "http://mrha.ink"}, data_dir5)

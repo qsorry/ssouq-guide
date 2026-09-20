@@ -130,12 +130,11 @@ class H(BaseHTTPRequestHandler):
         if not SESSIONS[sid].get("auth"):
             return self._send(302, b"", "text/plain", {**hdr, "Location": LOGIN_PATH})
 
-        if path == "/user_reseller.php" and qs.get("action", [""])[0] == "get_package":
+        # nocap (Xtream Codes الأصلي): لا نداء get_package أصلًا — أي action يُعيد صفحة الإضافة
+        # نفسها HTML، والبوكيهات يحدّدها الخادم من الباقة.
+        if path == "/user_reseller.php" and qs.get("action", [""])[0] == "get_package" and not NOCAP:
             pid = int(qs.get("package_id", ["0"])[0] or 0)
-            if NOCAP:   # لوحة بشكل آخر: المعرّفات نصوص تحت data.bouquet_ids لا bouquets[].id
-                body = json.dumps({"status": "ok", "data": {"bouquet_ids": [str(b) for b in BOUQUETS.get(pid, [])]}})
-            else:
-                body = json.dumps({"bouquets": [{"id": b} for b in BOUQUETS.get(pid, [])]})
+            body = json.dumps({"bouquets": [{"id": b} for b in BOUQUETS.get(pid, [])]})
             return self._send(200, body, "application/json", hdr)
 
         if path in ("/user_reseller.php", "/line.php", "/user.php"):
@@ -225,6 +224,8 @@ class H(BaseHTTPRequestHandler):
             uname = form.get("username", "")
             if not uname:
                 return self._send(200, '<div class="alert">username required</div>', headers=hdr)
+            if NOCAP and "selected_bouquets" in form:   # Xtream Codes لا يعرف هذا الحقل
+                return self._send(200, '<div class="alert alert-danger">Error: unknown field selected_bouquets</div>', headers=hdr)
             LINES.append({
                 "id": str(secrets.randbelow(9000) + 1000),
                 "username": uname, "password": form.get("password", ""),
