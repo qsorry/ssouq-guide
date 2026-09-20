@@ -103,6 +103,9 @@ def main():
         check("number before نقاط", EC('<h3>1,250</h3><small>نقاط</small>') == 1250)
         check("English endpoints does NOT match points", EC('<div>endpoints ready 99</div>') is None)
         check("no credits -> None", EC('<div>Dashboard total 5</div>') is None)
+        check("card CREDITS beats a sidebar badge 1",
+              EC('<li><a>Credits</a><span class="badge">1</span></li><div><h3>3,975.50</h3><p>CREDITS</p></div>') == 3975.5)
+        check("decimal credits kept", EC('<h3>3,975.50</h3><p>CREDITS</p>') == 3975.5)
         check("card number precedes label", DN('<h3>253</h3><p>ACTIVE SUBSCRIPTIONS</p>', r"active\s+subscription") == 253)
         check("distinct label, not the earlier number",
               DN('<h3>26</h3><p>CREATED TODAY</p><h3>253</h3><p>ACTIVE SUBSCRIPTIONS</p>', r"active\s+subscription") == 253)
@@ -300,6 +303,16 @@ def main():
             r7 = s7.create_line(pk[0]["id"], "1234567890", "0987654321")
             check("line created with our 10-digit pair", r7["username"] == "1234567890" and r7["password"] == "0987654321", r7["line"][:60])
             check("no get_package on this panel -> bouquets left to the panel", r7.get("bouquets") == "panel", str(r7.get("bouquets")))
+            m7 = s7._meta()
+            check("panel facts cached (bouquets_by_panel + no_table_search)",
+                  m7.get("bouquets_by_panel") is True and m7.get("no_table_search") is True, str({k: m7.get(k) for k in ("bouquets_by_panel", "no_table_search")}))
+            t0 = time.time()
+            r7b = s7.create_line(pk[1]["id"], "1111111111", "2222222222")
+            dt = time.time() - t0
+            check("second create skips discovery + confirmation waits (< 2s)", r7b["username"] == "1111111111" and dt < 2.0, "%.2fs" % dt)
+            st7 = s7.status()
+            check("status reads the CREDITS card, not the badge", st7.get("credits") == 3975.5, str(st7.get("credits")))
+            check("status total from ACTIVE ACCOUNTS card when no table", st7.get("total") == 4742 + 2, str(st7.get("total")))
             AF = xm_web.PanelWebSession._add_form
             f8 = AF('<form action="./user_reseller.php" method="post"><input type="hidden" name="member_id" value="8842">'
                     '<input type="text" name="username"><input type="password" name="password">'

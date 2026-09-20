@@ -762,7 +762,12 @@ class PanelWebSession:
 
         # 2) بوكيهات الباقة (= كل Subscribed): من نداء get_package بأي شكل JSON، وإلا من
         #    عناصر البوكيهات في صفحة الإضافة نفسها؛ وإن لم يوجد شيء نقول ما ردّت به اللوحة.
-        ids, why = self._package_bouquets(package_id, page)
+        if self._meta().get("bouquets_by_panel"):
+            ids, why = [], "cached"
+        else:
+            ids, why = self._package_bouquets(package_id, page)
+            if not ids:
+                self._save_meta(bouquets_by_panel=True)   # لا يُعاد الاستكشاف في كل إنشاء
         # لوحة لا تعرض بوكيهات للريسيلر (Xtream Codes الأصلي: لا get_package ولا عناصر في
         # الصفحة) تحدّدها هي من الباقة — فنرسل النموذج بلا selected_bouquets.
         panel_bouquets = not ids
@@ -807,7 +812,7 @@ class PanelWebSession:
                 found = self._search_line(username)
             except Exception:
                 found = {}
-            if found and found.get("id"):
+            if (found and found.get("id")) or self._meta().get("no_table_search"):
                 break
             time.sleep(1.2)
 
@@ -867,7 +872,7 @@ class PanelWebSession:
         # يظهر 253)، ونلجأ لبطاقة لوحة المعلومات فقط إن غاب. أرقام "المتصلون
         # الآن/أُنشئ اليوم/الاشتراكات" تُحمَّل بجافاسكربت على اللوحة (تكون صفرًا في
         # HTML الخام)، فلا نعرضها كي لا تُضلِّل.
-        dash_total = self._dashboard_number(html, r"active\s+subscription")
+        dash_total = self._dashboard_number(html, r"active\s+(?:subscription|account)")
         return {
             "provider": "web",
             "credits": self._extract_credits(html),
@@ -885,17 +890,31 @@ class PanelWebSession:
         re.compile(r'([0-9][\d,]*(?:\.\d+)?)\s*(?:<[^>]+>\s*){0,4}[^0-9>]{0,8}' + _KW, re.I | re.U),
     ]
 
+    _NUM = r'([0-9][\d,]*(?:\.\d+)?)'
+
     @staticmethod
     def _extract_credits(html: str):
-        """رقم الرصيد من صفحة اللوحة: "Credits: N"، "رصيدك: N"، "N نقاط"… إلخ،
-        بأي لغة، مع تحمّل الوسوم واللواحق العربية (رصيدك/نقاطك)."""
-        for rx in PanelWebSession._CREDIT_RX:
-            m = rx.search(html)
-            if m:
+        """رقم الرصيد من صفحة اللوحة. الصفحة قد تذكر "credits" في أكثر من موضع (قائمة
+        جانبية ببادج 1، بطاقة 3,975.50 CREDITS…) فلا يُؤخذ أول تطابق بل **الأوثق**:
+        data-credits، ثم بطاقة رقمها يليه لفظ الرصيد وحده في عنصره، ثم "Credits: N"
+        بنقطتين، ثم أي تطابق عام — وعند التعادل الرقم الأكبر/ذو الكسور."""
+        KW, NUM = PanelWebSession._KW, PanelWebSession._NUM
+        TAGS = r'(?:<[^>]+>\s*)*'
+        scored = []
+        def add(rx, score):
+            for m in re.finditer(rx, html, re.I | re.U):
                 n = _to_num(m.group(1))
                 if n is not None:
-                    return n
-        return None
+                    scored.append((score, ("." in m.group(1) or "," in m.group(1)), n))
+        add(r'data-credits?\s*=\s*["\']?\s*' + NUM, 100)
+        add(NUM + r'\s*' + TAGS + KW + r'\s*(?:</|$)', 90)          # بطاقة: 3,975.50 </h3><p>CREDITS</p>
+        add(KW + r'\s*:\s*' + TAGS + NUM, 80)                       # Credits: 1002
+        add(KW + r'[^0-9<]{0,15}' + TAGS + NUM, 10)                   # عام: كلمة ثم رقم
+        add(NUM + r'\s*' + TAGS + r'[^0-9>]{0,8}' + KW, 10)          # عام: رقم ثم كلمة
+        if not scored:
+            return None
+        scored.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
+        return scored[0][2]
 
     def diag_web(self) -> dict:
         """تشخيص مؤقّت: حالة كل مسار محتمل للوحة + مقتطفات حول كلمات الرصيد على
@@ -948,11 +967,17 @@ class PanelWebSession:
             ("date_expire_from", ""), ("date_expire_to", ""),
             ("_", str(int(time.time() * 1000))),
         ]
+        if self._meta().get("no_table_search"):
+            return {"rows": [], "total": None}
         r = self._request("/table_search.php?" + urllib.parse.urlencode(params),
                           headers={"X-Requested-With": "XMLHttpRequest"})
         try:
             j = json.loads(self._text(r))
         except ValueError:
+            # ليست JSON (404 أو صفحة HTML): اللوحة بلا جدول DataTables (Xtream Codes الأصلي).
+            # نحفظ ذلك فلا نكرر النداء ولا ننتظر تأكيدًا لن يأتي بعد كل إنشاء.
+            if r.get("status", 0) >= 400 or "<html" in self._text(r)[:300].lower():
+                self._save_meta(no_table_search=True)
             return {"rows": [], "total": None}
         rows = []
         for row in (j.get("data") or []):
