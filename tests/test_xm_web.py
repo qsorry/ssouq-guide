@@ -315,9 +315,15 @@ def main():
             r7b = s7.create_line(pk[1]["id"], "1111111111", "2222222222")
             dt = time.time() - t0
             check("second create skips discovery + confirmation waits (< 2s)", r7b["username"] == "1111111111" and dt < 2.0, "%.2fs" % dt)
+            pairs = [("30000000%02d" % i, "40000000%02d" % i) for i in range(5)]
+            t0 = time.time()
+            many = s7.create_many(pk[0]["id"], pairs)
+            dt = time.time() - t0
+            check("create_many: 5 users in order, all created", [m.get("username") for m in many] == [p[0] for p in pairs], str([m.get("username") for m in many]))
+            check("create_many: one prepare + one request per user (< 3s for 5)", dt < 3.0, "%.2fs" % dt)
             st7 = s7.status()
             check("status reads the CREDITS card, not the badge", st7.get("credits") == 3975.5, str(st7.get("credits")))
-            check("status total from ACTIVE ACCOUNTS card when no table", st7.get("total") == 4742 + 2, str(st7.get("total")))
+            check("status total from ACTIVE ACCOUNTS card when no table", st7.get("total") == 4742 + 7, str(st7.get("total")))
             AF = xm_web.PanelWebSession._add_form
             f8 = AF('<form action="./user_reseller.php" method="post"><input type="hidden" name="member_id" value="8842">'
                     '<input type="text" name="username"><input type="password" name="password">'

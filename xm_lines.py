@@ -672,6 +672,34 @@ def create_line(gate, pkg, username=None, password=None):
             "package": pkg["name"], "verified": True, "time": now.isoformat(timespec="seconds")}
 
 
+def create_lines(gate, pkg, count, username=None, password=None):
+    """دفعة يوزرات: (النتائج، رسالة خطأ أو None). على جلسة الويب تحضير واحد للدفعة كلها
+    (دخول + صفحة الإضافة مرة) ثم إرسال واحد لكل يوزر؛ وعلى API/فالكون نداء لكل يوزر
+    كما كان. يوزر يفشل في المنتصف لا يُخفي ما نجح قبله."""
+    if gate.get("mode") == "web" and count > 1:
+        pairs = [(rand_digits(gate_digits(gate)), rand_digits(gate_digits(gate))) for _ in range(count)]
+        out = []
+        for r in web_session(gate).create_many(pkg["id"], pairs, gate.get("host")):
+            if r.get("error"):
+                return out, r["error"]
+            line = format_line(gate, r["username"], r["password"])
+            _log_txt(gate, line, pkg["name"])
+            out.append({"line": line, "username": r["username"], "password": r["password"],
+                        "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"]})
+        return out, None
+    out = []
+    for i in range(count):
+        try:
+            out.append(create_line(gate, pkg, username if count == 1 else None, password if count == 1 else None))
+        except (xm_web.CaptchaNeeded, xm_web.LoginFailed):
+            raise
+        except Exception as e:
+            if not out:
+                raise
+            return out, str(e)[:200]
+    return out, None
+
+
 # ---------------- وضع سطر الأوامر ----------------
 def pick_account():
     accts = load_store()["accounts"]
@@ -1200,9 +1228,14 @@ class Handler(BaseHTTPRequestHandler):
         if not pkg:
             return self._send(400, {"error": "الباقة غير موجودة"})
         count = max(1, min(int(req.get("count", 1)), 50))
-        out = [create_line(gate, pkg, req.get("username") if count == 1 else None,
-                           req.get("password") if count == 1 else None) for _ in range(count)]
-        self._send(200, {"lines": out})
+        out, err = create_lines(gate, pkg, count,
+                                req.get("username") if count == 1 else None,
+                                req.get("password") if count == 1 else None)
+        resp = {"lines": out}
+        if err:
+            # ما أُنشئ قبل الخطأ أُنشئ فعلًا (وخُصم)، فيُعاد مع الخطأ لا بدلًا منه.
+            resp["error"] = err if not out else "أُنشئ %d من %d ثم توقفت اللوحة: %s" % (len(out), count, err)
+        self._send(200, resp)
 
 
     def _salla_webhook(self):
