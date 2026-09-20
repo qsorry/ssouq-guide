@@ -296,16 +296,58 @@ class PanelWebSession:
                 return html
         raise RuntimeError("لم أجد صفحة الدخول في اللوحة (%s) — جرّبت: %s" % (self.base, ", ".join(tried)))
 
+    @staticmethod
+    def _parse_login_form(html: str) -> dict:
+        """يقرأ نموذج الدخول كما هو: مساره، وكل حقوله بقيمها، وأيّها اسم المستخدم وكلمة
+        المرور والكابتشا — فلا نفترض أسماء لوحة مرح على كل لوحة. لوحة بلا حقل كابتشا
+        (ككاسبر) تُعرف هنا فلا تُطلب لها صورة أصلًا."""
+        form_html = html
+        for m in re.finditer(r"<form\b[^>]*>(.*?)</form>", html, re.I | re.S):
+            if 'type="password"' in m.group(0).lower() or "type='password'" in m.group(0).lower():
+                form_html = m.group(0)
+                break
+        act = re.search(r"""<form\b[^>]*\baction=["']([^"']*)["']""", form_html, re.I)
+        fields, user_f, pass_f, cap_f = {}, "", "", ""
+        for m in re.finditer(r"<(input|select|textarea)\b[^>]*>", form_html, re.I):
+            tag = m.group(0)
+            name = re.search(r"""\bname=["']([^"']+)["']""", tag, re.I)
+            if not name:
+                continue
+            n = name.group(1)
+            typ = (re.search(r"""\btype=["']([^"']+)["']""", tag, re.I) or [None, "text"])[1].lower()
+            if typ in ("submit", "button", "image", "reset"):
+                continue
+            val = re.search(r"""\bvalue=["']([^"']*)["']""", tag, re.I)
+            fields[n] = _html.unescape(val.group(1)) if val else ""
+            low = n.lower()
+            if typ == "password" and not pass_f:
+                pass_f = n
+            elif re.search(r"captcha|vcode|verif|code", low) and typ != "hidden" and not cap_f:
+                cap_f = n
+            elif re.search(r"user|login|email|name", low) and typ in ("text", "email") and not user_f:
+                user_f = n
+        return {"action": _html.unescape(act.group(1)) if act else "", "fields": fields,
+                "user_field": user_f or "username", "pass_field": pass_f or "password",
+                "captcha_field": cap_f}
+
     def begin(self):
-        """جلسة دخول جديدة: تخطّي التحقق البشري + قراءة صفحة الدخول (PHPSESSID + lkey + رابط الكابتشا)."""
+        """جلسة دخول جديدة: تخطّي التحقق البشري + قراءة صفحة الدخول (PHPSESSID + النموذج كاملًا + رابط الكابتشا)."""
         self._handshake()
         html = self._login_page()
+        form = self._parse_login_form(html)
         self._save_meta(
             lkey=self._scrape_input(html, "lkey"),
             referrer=self._scrape_input(html, "referrer"),
             access_code=self._scrape_input(html, "access_code"),
             captcha_url=self._captcha_src(html),
+            login_form=form,
         )
+
+    def needs_captcha(self) -> bool:
+        """هل تطلب صفحة دخول اللوحة كود تحقق؟ (حقل كابتشا في النموذج أو صورة كابتشا)."""
+        meta = self._meta()
+        form = meta.get("login_form") or {}
+        return bool(form.get("captcha_field") or meta.get("captcha_url"))
 
     def fetch_captcha(self):
         """(content_type, bytes) لصورة الكابتشا الحالية (مربوطة بجلسة PHPSESSID).
@@ -339,6 +381,12 @@ class PanelWebSession:
         if captcha is not None:
             return self._attempt_login(captcha)
 
+        # لوحة بلا كود تحقق (ككاسبر): دخول مباشر بلا صورة ولا OCR ولا إنسان.
+        if not self._meta().get("login_form"):
+            self.begin()
+        if not self.needs_captcha():
+            return self._attempt_login("")
+
         # المسار الآلي
         last_img, last_ct = b"", "image/jpeg"
         for _ in range(max(1, auto_attempts)):
@@ -360,15 +408,21 @@ class PanelWebSession:
 
     def _attempt_login(self, captcha: str) -> bool:
         meta = self._meta()
-        fields = {
-            "referrer": meta.get("referrer", ""),
-            "access_code": meta.get("access_code", ""),
-            "username": self.acct.get("user", ""),
-            "password": self.acct.get("password", ""),
-            "lkey": meta.get("lkey", ""),
-            "captcha": captcha,
-        }
-        r = self._request("/login.php", data=fields)
+        form = meta.get("login_form") or {}
+        # الحقول كما في صفحة اللوحة (المخفية بقيمها)، ثم بياناتنا في حقلَي الاسم وكلمة المرور،
+        # والكود في حقل الكابتشا إن وُجد. الافتراضي = أسماء لوحة Xtream-Masters المعتادة.
+        fields = dict(form.get("fields") or {
+            "referrer": meta.get("referrer", ""), "access_code": meta.get("access_code", ""),
+            "lkey": meta.get("lkey", ""), "username": "", "password": "", "captcha": ""})
+        fields[form.get("user_field") or "username"] = self.acct.get("user", "")
+        fields[form.get("pass_field") or "password"] = self.acct.get("password", "")
+        if form.get("captcha_field"):
+            fields[form["captcha_field"]] = captcha
+        elif "captcha" in fields or not form:
+            fields["captcha"] = captcha
+        login_page = self._abs(meta.get("login_path") or "/login")
+        action = urllib.parse.urljoin(login_page, form.get("action") or "/login.php")
+        r = self._request(action, data=fields, headers={"Referer": login_page})
         body = self._text(r)
         loc = r.get("location", "") or r.get("final_url", "")
 
@@ -385,7 +439,7 @@ class PanelWebSession:
         # (ب) ردّ 200 يعيد صفحة الدخول = فشل. نميّز سببه من رسالة alert في الصفحة،
         # لأن اللوحة ترجع "Incorrect username or password" (بيانات) بردّ 200 لا بتحويل،
         # فلا يصح عدّ كل 200-فيه-نموذج خطأَ كابتشا.
-        still_login = 'id="login_form"' in body or 'name="captcha"' in body
+        still_login = 'id="login_form"' in body or 'name="captcha"' in body or 'type="password"' in body.lower()
         if still_login:
             alert = self._extract_alert(body)
             kind = self._classify_login_error(alert)
@@ -396,7 +450,8 @@ class PanelWebSession:
 
         # (ج) لم نعد على صفحة الدخول → نجاح، ونتأكد بجلب صفحة محمية.
         if not self.is_authenticated():
-            raise LoginFailed("not_authenticated", "قُبل الطلب لكن الجلسة غير مُصادَقة")
+            raise LoginFailed("not_authenticated", "قُبل الطلب لكن الجلسة غير مُصادَقة (أُرسل إلى %s بالحقول: %s)" % (
+                action.replace(self.base, "") or "/", ", ".join(sorted(fields)) or "—"))
         return True
 
     @staticmethod
@@ -442,7 +497,8 @@ class PanelWebSession:
         body = self._text(r)
         low = body.lower()
         # صفحة الدخول أو بوابة التحقّق البشري = غير مُصادَق
-        if 'id="login_form"' in body or ('name="password"' in low and "captcha" in low):
+        if 'id="login_form"' in body or ('name="password"' in low and "captcha" in low) \
+                or ('type="password"' in low and "<form" in low):
             return False
         for gate in ("xm_simple_security_check", "verifying your browser",
                      "security verification", "check.html", "token.php"):

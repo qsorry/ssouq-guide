@@ -31,7 +31,10 @@ USER = sys.argv[2] if len(sys.argv) > 2 else "demo"
 PASS = sys.argv[3] if len(sys.argv) > 3 else "secret"
 # alt = لوحة بشكل آخر (ككاسبر): صفحة الدخول على /login.php لا /login، وصورة الكابتشا على
 # img/verify.php لا captcha.php (الذي يرد 404 HTML) — تختبر اكتشاف الرابط من الصفحة.
-ALT = (sys.argv[4] if len(sys.argv) > 4 else "") == "alt"
+VARIANT = sys.argv[4] if len(sys.argv) > 4 else ""
+ALT = VARIANT == "alt"
+# nocap = لوحة بلا كود تحقق إطلاقًا (ككاسبر): لا صورة في صفحة الدخول ولا حقل captcha، و/captcha.php يرد 404.
+NOCAP = VARIANT == "nocap"
 LOGIN_PATH = "/login.php" if ALT else "/login"
 CAPTCHA_PATH = "/img/verify.php" if ALT else "/captcha.php"
 CAPTCHA_SRC = "img/verify.php?x=1" if ALT else "captcha.php?a=1"
@@ -95,7 +98,7 @@ class H(BaseHTTPRequestHandler):
 
         sid, hdr = self._ensure_sid()
 
-        if path == CAPTCHA_PATH:
+        if path == CAPTCHA_PATH and not NOCAP:
             code = str(secrets.randbelow(900) + 100)  # 3 أرقام
             SESSIONS[sid]["captcha"] = code
             hdr2 = dict(hdr)
@@ -111,6 +114,7 @@ class H(BaseHTTPRequestHandler):
             err = ""
             if "error" in qs:
                 err = '<p class="alert">error: %s</p>' % qs["error"][0]
+            cap = '' if NOCAP else '<img src="%s"><input type="text" name="captcha">' % CAPTCHA_SRC
             html = (
                 '<!DOCTYPE html><html><head><title>Login</title></head><body>' + err +
                 '<form action="./login.php" method="POST" id="login_form">'
@@ -118,9 +122,8 @@ class H(BaseHTTPRequestHandler):
                 '<input type="hidden" name="access_code" value="">'
                 '<input type="text" name="username" id="username">'
                 '<input type="password" name="password" id="password">'
-                '<input type="text" name="lkey" value="%s">'
-                '<img src="%s"><input type="text" name="captcha">'
-                '<button type="submit">Login</button></form></body></html>' % (SESSIONS[sid]["lkey"], CAPTCHA_SRC))
+                '<input type="text" name="lkey" value="' + SESSIONS[sid]["lkey"] + '">' + cap +
+                '<button type="submit">Login</button></form></body></html>')
             return self._send(200, html, headers=hdr)
 
         # محمي
@@ -198,7 +201,7 @@ class H(BaseHTTPRequestHandler):
 
         if path == "/login.php":
             want = SESSIONS[sid].get("captcha", "")
-            if not want or form.get("captcha", "") != want:
+            if not NOCAP and (not want or form.get("captcha", "") != want):
                 return self._send(302, b"", "text/plain", {**hdr, "Location": "?error=captcha"})
             if form.get("username") != USER or form.get("password") != PASS:
                 # كما اللوحة الحقيقية: 200 + صفحة الدخول مع تنبيه، لا تحويل ?error=
