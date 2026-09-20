@@ -163,24 +163,64 @@
  "windows": {
   "icon": "pc",
   "name": "كمبيوتر ويندوز",
-  "sub": "IPTV Smarters Pro للكمبيوتر",
-  "steps": [
-   {
-    "title": "حمّل برنامج IPTV Smarters Pro لويندوز",
-    "img": "/static/img/windows-badge.png",
-    "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>لويندوز 10 و 11</small></span></div><p>حمّل الملف المضغوط على الكمبيوتر (حجمه حوالي 130 ميغابايت):</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/iptv-smarters-pro-1-1-2.exe.zip\" rel=\"noopener\">تحميل البرنامج لويندوز (ZIP)</a></p><ol><li>بعد اكتمال التحميل اضغط بزر الفأرة الأيمن على الملف واختر <b>Extract All</b> (استخراج الكل).</li><li>افتح المجلد الناتج وشغّل ملف التثبيت <b dir=\"ltr\">.exe</b>.</li><li>إذا ظهرت نافذة <b dir=\"ltr\">Windows protected your PC</b> اضغط <b dir=\"ltr\">More info</b> ثم <b dir=\"ltr\">Run anyway</b>.</li><li>اضغط <b dir=\"ltr\">Next</b> ثم <b dir=\"ltr\">Install</b> حتى ينتهي التثبيت. سيفتح البرنامج تلقائيًا بعد التثبيت.</li></ol><p class=\"sub\">يعمل على ويندوز 10 و 11.</p>"
-   },
-   {
-    "title": "اختر خيار PLAYER API",
-    "img": "/static/img/smarters-pc-api.webp",
-    "html": "<p>عند فتح البرنامج أول مرة وافق على الشروط، ثم اختر الزر الأحمر <b dir=\"ltr\">PLAYER API</b>.</p>"
-   },
-   {
-    "title": "أدخل بيانات الاشتراك",
-    "img": "/static/img/smarters-pc-login.webp",
-    "html": "<p>عبّئ الخانات الأربع بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Any Name</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div><div class=\"f\"><span>http://url_here.com:port</span><code>رابط الهوست مع البورت</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class=\"note\">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir=\"ltr\">http://host.com:8080</code>، بدون مسافات.</div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
-   }
-  ]
+  "sub": "IPTV Smarters Pro أو IPTVnator",
+  "choose": {
+   "title": "اختر البرنامج",
+   "options": [
+    {
+     "key": "smarters",
+     "label": "IPTV Smarters Pro",
+     "sub": "البرنامج المعتاد، تحميل مباشر (ZIP)",
+     "icon": "smarters-pro"
+    },
+    {
+     "key": "iptvnator",
+     "label": "IPTVnator",
+     "sub": "مجاني ومفتوح المصدر، ملف تثبيت واحد",
+     "icon": "iptvnator"
+    }
+   ]
+  },
+  "variants": {
+   "smarters": [
+    {
+     "title": "حمّل برنامج IPTV Smarters Pro لويندوز",
+     "img": "/static/img/windows-badge.png",
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>لويندوز 10 و 11</small></span></div><p>حمّل الملف المضغوط على الكمبيوتر (حجمه حوالي 130 ميغابايت):</p><p><a class=\"btn go\" href=\"https://ssouq.net/iptvsmarters/iptv-smarters-pro-1-1-2.exe.zip\" rel=\"noopener\">تحميل البرنامج لويندوز (ZIP)</a></p><ol><li>بعد اكتمال التحميل اضغط بزر الفأرة الأيمن على الملف واختر <b>Extract All</b> (استخراج الكل).</li><li>افتح المجلد الناتج وشغّل ملف التثبيت <b dir=\"ltr\">.exe</b>.</li><li>إذا ظهرت نافذة <b dir=\"ltr\">Windows protected your PC</b> اضغط <b dir=\"ltr\">More info</b> ثم <b dir=\"ltr\">Run anyway</b>.</li><li>اضغط <b dir=\"ltr\">Next</b> ثم <b dir=\"ltr\">Install</b> حتى ينتهي التثبيت. سيفتح البرنامج تلقائيًا بعد التثبيت.</li></ol><p class=\"sub\">يعمل على ويندوز 10 و 11.</p>"
+    },
+    {
+     "title": "اختر خيار PLAYER API",
+     "img": "/static/img/smarters-pc-api.webp",
+     "html": "<p>عند فتح البرنامج أول مرة وافق على الشروط، ثم اختر الزر الأحمر <b dir=\"ltr\">PLAYER API</b>.</p>"
+    },
+    {
+     "title": "أدخل بيانات الاشتراك",
+     "img": "/static/img/smarters-pc-login.webp",
+     "html": "<p>عبّئ الخانات الأربع بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Any Name</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div><div class=\"f\"><span>http://url_here.com:port</span><code>رابط الهوست مع البورت</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class=\"note\">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir=\"ltr\">http://host.com:8080</code>، بدون مسافات.</div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+    }
+   ],
+   "iptvnator": [
+    {
+     "title": "حمّل برنامج IPTVnator وثبّته",
+     "img": "/static/img/windows-badge.png",
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/iptvnator.webp\" alt=\"أيقونة IPTVnator\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTVnator</b><small>لويندوز 10 و 11 (64‑bit) · مجاني</small></span></div><p>حمّل ملف التثبيت مباشرة (حجمه حوالي 185 ميغابايت):</p><p><a class=\"btn go\" href=\"https://github.com/4gray/iptvnator/releases/download/v0.22.0/iptvnator-0.22.0-windows-x64-setup.exe\" rel=\"noopener\">تحميل IPTVnator لويندوز (EXE)</a></p><ol><li>بعد اكتمال التحميل شغّل ملف <b dir=\"ltr\">iptvnator-0.22.0-windows-x64-setup.exe</b>.</li><li>إذا ظهرت نافذة <b dir=\"ltr\">Windows protected your PC</b> اضغط <b dir=\"ltr\">More info</b> ثم <b dir=\"ltr\">Run anyway</b> (البرنامج مفتوح المصدر لكنه غير موقَّع رقميًا).</li><li>اضغط <b dir=\"ltr\">Next</b> ثم <b dir=\"ltr\">Install</b> حتى ينتهي التثبيت، ثم افتح البرنامج من سطح المكتب أو قائمة ابدأ.</li></ol><p class=\"sub\">واجهة البرنامج بالإنجليزية (لا تدعم العربية بعد)، والخطوات التالية تشرح كل زر.</p>"
+    },
+    {
+     "title": "افتح تبويب ADD XTREME CODE",
+     "img": "/static/img/windows-iptvnator-tab.webp",
+     "html": "<p>عند فتح البرنامج تظهر صفحة <b dir=\"ltr\">Playlists</b> وفيها شريط تبويبات في الأعلى. اختر التبويب <b dir=\"ltr\">ADD XTREME CODE</b> (هكذا يكتبه البرنامج) — وهو المخصَّص للدخول باسم المستخدم وكلمة المرور.</p><div class=\"note\">لا تستخدم التبويبات الأخرى: <b dir=\"ltr\">Add via URL</b> لروابط M3U، و<b dir=\"ltr\">Add Stalker Portal</b> لأجهزة MAC — اشتراكك لا يحتاجهما.</div>"
+    },
+    {
+     "title": "أدخل بيانات الاشتراك واضغط ADD",
+     "img": "/static/img/windows-iptvnator-form.webp",
+     "html": "<p>عبّئ الخانات الأربع بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Playlist title</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Server URL</span><code>رابط الهوست مع البورت</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div></div><p>اضغط <b dir=\"ltr\">TEST CREDENTIALS</b> للتأكد من صحة البيانات (اختياري)، ثم <b dir=\"ltr\">ADD</b>.</p><div class=\"note\">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir=\"ltr\">http://host.com:8080</code>، بدون مسافات ولا شيء بعده. إن ظهر تنبيه أحمر تحت الخانة فالرابط ناقص البادئة <b dir=\"ltr\">http://</b>.</div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+    },
+    {
+     "title": "افتح القائمة وشاهد",
+     "html": "<p>بعد الإضافة يعود البرنامج إلى تبويب <b dir=\"ltr\">RECENTLY ADDED PLAYLISTS</b> وتظهر فيه قائمتك باسمها. اضغط عليها لتفتح ثلاثة أقسام: <b dir=\"ltr\">Live TV</b> للقنوات، و<b dir=\"ltr\">Movies</b> للأفلام، و<b dir=\"ltr\">Series</b> للمسلسلات.</p><ul><li>ابحث عن أي قناة من مربع البحث في الأعلى، واضغط النجمة لإضافتها إلى المفضلة.</li><li>للعودة إلى قوائمك اضغط أيقونة <b dir=\"ltr\">Home</b> في الشريط الجانبي.</li><li>إذا ظهرت رسالة <b dir=\"ltr\">Account expired</b> أو <b dir=\"ltr\">Unauthorized</b> فالبيانات غير صحيحة أو الاشتراك منتهٍ: افتح إعدادات القائمة من الأيقونة بجانب اسمها وصحّح البيانات.</li></ul>"
+    }
+   ]
+  }
  },
  "mac": {
   "icon": "mac",
