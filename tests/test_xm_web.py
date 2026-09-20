@@ -250,6 +250,57 @@ def main():
                 alt_srv.kill()
             shutil.rmtree(data_dir4, ignore_errors=True)
 
+        # ---- 6) لوحة بلا كود تحقق (ككاسبر): دخول مباشر بلا صورة، ثم باقات وإنشاء ----
+        print("\n== 6. Panel without captcha (Kasper-shaped): direct login, packages, create ==")
+        NC_PORT = PORT + 2
+        NC = f"http://127.0.0.1:{NC_PORT}"
+        nc_srv = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_panel.py"), str(NC_PORT), USER, PASS, "nocap"],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        data_dir5 = tempfile.mkdtemp(prefix="xmweb_")
+        try:
+            for _ in range(50):
+                try:
+                    urllib.request.urlopen(NC + "/token.php", timeout=0.3)
+                    break
+                except Exception:
+                    time.sleep(0.1)
+            PF = xm_web.PanelWebSession._parse_login_form
+            f = PF('<form action="./login.php" method="post"><input type="hidden" name="lkey" value="ab">'
+                   '<input type="text" name="user_name"><input type="password" name="pass_word">'
+                   '<button type="submit" name="go">Login</button></form>')
+            check("form parser: action + fields + detected names",
+                  f["action"] == "./login.php" and f["fields"].get("lkey") == "ab" and f["user_field"] == "user_name"
+                  and f["pass_field"] == "pass_word" and not f["captcha_field"] and "go" not in f["fields"], str(f)[:100])
+            f2 = PF('<form><input name="username"><input type="password" name="password"><input name="captcha"></form>')
+            check("form parser: captcha field detected", f2["captcha_field"] == "captcha")
+
+            s7 = xm_web.PanelWebSession({"id": "nocap", "user": USER, "password": PASS,
+                                         "panel_base": NC, "host": "http://mrha.ink"}, data_dir5)
+            xm_web.solve_captcha = lambda img: ""   # لا OCR — يجب ألا يُطلب أصلًا
+            s7.fetch_captcha = lambda: (_ for _ in ()).throw(AssertionError("captcha fetched on a no-captcha panel"))
+            ok7 = s7.login()
+            check("logs in directly with no captcha fetch", ok7 is True)
+            check("needs_captcha() is False", s7.needs_captcha() is False)
+            pk = s7.packages()
+            check("packages load on no-captcha panel", len(pk) == 3, "count=%d" % len(pk))
+            r7 = s7.create_line(pk[0]["id"], "1234567890", "0987654321")
+            check("line created with our 10-digit pair", r7["username"] == "1234567890" and r7["password"] == "0987654321", r7["line"][:60])
+
+            bad7 = xm_web.PanelWebSession({"id": "nocapbad", "user": USER, "password": "wrong",
+                                           "panel_base": NC, "host": "http://mrha.ink"}, data_dir5)
+            try:
+                bad7.login()
+                check("wrong password on no-captcha panel -> LoginFailed", False, "no exception")
+            except xm_web.LoginFailed as e:
+                check("wrong password on no-captcha panel -> LoginFailed", e.code == "credentials", "code=%s" % e.code)
+        finally:
+            nc_srv.terminate()
+            try:
+                nc_srv.wait(timeout=5)
+            except Exception:
+                nc_srv.kill()
+            shutil.rmtree(data_dir5, ignore_errors=True)
+
         for d in (data_dir, data_dir2, data_dir3):
             shutil.rmtree(d, ignore_errors=True)
     finally:
