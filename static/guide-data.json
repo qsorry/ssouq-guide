@@ -142,49 +142,19 @@
  "webos": {
   "icon": "smart",
   "name": "سامسونج و LG و WebOS",
-  "sub": "0Player مجاني أو ORA مدفوع",
-  "choose": {
-   "title": "اختر التطبيق المناسب لشاشتك",
-   "options": [
-    {
-     "key": "zero",
-     "label": "0Player",
-     "sub": "مجاني، تضيف بياناتك بنفسك",
-     "icon": "0player"
-    },
-    {
-     "key": "ora",
-     "label": "ORAplayer",
-     "sub": "مدفوع، نفعّله لك من طرفنا",
-     "icon": "oraplayer"
-    }
-   ]
-  },
-  "variants": {
-   "zero": [
-    {
-     "title": "حمّل تطبيق 0Player",
-     "img": "/static/img/webos-0player-store.jpg",
-     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/0player.webp\" alt=\"أيقونة 0Player\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">0Player</b><small>من متجر الشاشة · مجاني</small></span></div><p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> وحمّله.</p><div class=\"note\">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir=\"ltr\">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>"
-    },
-    {
-     "title": "أضف قائمة جديدة بـ Portal Code",
-     "img": "/static/img/webos-0player-add.jpg",
-     "html": "<ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir=\"ltr\">Portal Code</b>.</li></ol><img src=\"/static/img/webos-0player-portal.jpg\" alt=\"تبويب Portal Code في 0Player\"><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Code (الخادم)</span><code>92929480</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir=\"ltr\">SAVE</b>.</p><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
-    }
-   ],
-   "ora": [
-    {
-     "title": "حمّل تطبيق ORAplayer",
-     "img": "/static/img/webos-ora-store.webp",
-     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/oraplayer.webp\" alt=\"أيقونة ORAplayer\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">ORAplayer</b><small>من متجر الشاشة · مدفوع</small></span></div><p>من متجر التطبيقات في الشاشة حمّل <b dir=\"ltr\">ORAplayer</b>. التطبيق غير مجاني وله تفعيل مدفوع:</p><div class=\"fields\"><div class=\"f\"><span>اشتراك سنة لجهاز واحد</span><code>10 ريال</code></div><div class=\"f\"><span>اشتراك مدى الحياة</span><code>20 ريال</code></div></div><div class=\"note\">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir=\"ltr\">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>"
-    },
-    {
-     "title": "أرسل لنا بيانات الجهاز",
-     "html": "<p>افتح التطبيق وستجد على الشاشة معرف الجهاز ورمز PIN. أرسلهما لنا عبر واتساب:</p><div class=\"fields\"><div class=\"f\"><span>Device ID</span><code>معرف الجهاز</code></div><div class=\"f\"><span>PIN</span><code>الرمز الظاهر</code></div></div><p>وسنفعّل الاشتراك مباشرة من طرفنا بدون أي خطوات إضافية.</p><a class=\"btn wa\" href=\"https://wa.me/966504998661?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D9%8B%D8%8C%20%D8%A3%D8%AD%D8%AA%D8%A7%D8%AC%20%D9%85%D8%B3%D8%A7%D8%B9%D8%AF%D8%A9%20%D9%81%D9%8A%20%D8%AA%D9%81%D8%B9%D9%8A%D9%84%20%D8%A7%D9%84%D8%A7%D8%B4%D8%AA%D8%B1%D8%A7%D9%83.%20%D9%86%D9%88%D8%B9%20%D8%A7%D9%84%D8%AC%D9%87%D8%A7%D8%B2%3A%20%D8%B4%D8%A7%D8%B4%D8%A9%20%D8%B3%D8%A7%D9%85%D8%B3%D9%88%D9%86%D8%AC%2FLG%20-%20ORAplayer.%20Device%20ID%3A%20\" target=\"_blank\" rel=\"noopener\">إرسال البيانات عبر واتساب</a>"
-    }
-   ]
-  }
+  "sub": "تطبيق 0Player المجاني",
+  "steps": [
+   {
+    "title": "حمّل تطبيق 0Player",
+    "img": "/static/img/webos-0player-store.jpg",
+    "html": "<div class=\"appbox\"><img src=\"/static/img/apps/0player.webp\" alt=\"أيقونة 0Player\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">0Player</b><small>من متجر الشاشة · مجاني</small></span></div><p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> وحمّله.</p><div class=\"note\">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir=\"ltr\">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>"
+   },
+   {
+    "title": "أضف قائمة جديدة بـ Portal Code",
+    "img": "/static/img/webos-0player-add.jpg",
+    "html": "<ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir=\"ltr\">Portal Code</b>.</li></ol><img src=\"/static/img/webos-0player-portal.jpg\" alt=\"تبويب Portal Code في 0Player\"><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Code (الخادم)</span><code>92929480</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir=\"ltr\">SAVE</b>.</p><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+   }
+  ]
  },
  "windows": {
   "icon": "pc",
