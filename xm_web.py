@@ -702,6 +702,44 @@ class PanelWebSession:
             return ids, ""
         return [], "ردّ get_package بلا معرّفات (%s) ولا عناصر بوكيهات في صفحة الإضافة" % "؛ ".join(tried)
 
+    @classmethod
+    def _add_form(cls, page: str) -> dict:
+        """نموذج الإضافة كما تعرّفه اللوحة: مساره، حقوله بقيمها الافتراضية (المخفية،
+        والنصية بقيمها، وselect بخياره المحدَّد، وcheckbox المؤشَّر)، واسم حقل الباقة،
+        واسم زر الإرسال. فيُرسَل ما تتوقعه اللوحة نفسها لا ما تتوقعه لوحة مرح."""
+        form_html = page
+        for m in re.finditer(r"<form\b[^>]*>(.*?)</form>", page, re.I | re.S):
+            if cls._PKG_SELECT.search(m.group(0)):
+                form_html = m.group(0)
+                break
+        act = re.search(r"""<form\b[^>]*\baction=["']([^"']*)["']""", form_html, re.I)
+        fields, submit, pkg_field = {}, "", ""
+        for m in re.finditer(r"<(input|select|textarea|button)\b[^>]*>", form_html, re.I):
+            tag = m.group(0)
+            kind = m.group(1).lower()
+            name = re.search(r"""\bname=["']([^"']+)["']""", tag, re.I)
+            if not name:
+                continue
+            n = name.group(1)
+            typ = (re.search(r"""\btype=["']([^"']+)["']""", tag, re.I) or [None, "text" if kind == "input" else kind])[1].lower()
+            if kind == "button" or typ in ("submit", "image"):
+                if not submit and re.search(r"submit|save|add|create", n, re.I):
+                    submit = n
+                continue
+            if typ in ("button", "reset", "file"):
+                continue
+            if typ in ("checkbox", "radio") and not re.search(r"\bchecked\b", tag, re.I):
+                continue
+            if kind == "select":
+                fields[n] = cls._field_value(page, n)
+                if cls._PKG_SELECT.search(tag + "</select>") or re.search(r"package", n, re.I):
+                    pkg_field = pkg_field or n
+                continue
+            val = re.search(r"""\bvalue=["']([^"']*)["']""", tag, re.I)
+            fields[n] = _html.unescape(val.group(1)) if val else ""
+        return {"action": _html.unescape(act.group(1)) if act else "", "fields": fields,
+                "submit": submit, "package_field": pkg_field or "package"}
+
     # ---- إنشاء يوزر ----
     def create_line(self, package_id, username=None, password=None, host=None) -> dict:
         self.ensure_login()
@@ -725,25 +763,35 @@ class PanelWebSession:
         # 2) بوكيهات الباقة (= كل Subscribed): من نداء get_package بأي شكل JSON، وإلا من
         #    عناصر البوكيهات في صفحة الإضافة نفسها؛ وإن لم يوجد شيء نقول ما ردّت به اللوحة.
         ids, why = self._package_bouquets(package_id, page)
-        if not ids:
-            raise RuntimeError("لا توجد بوكيهات للباقة %s — %s" % (package_id, why))
+        # لوحة لا تعرض بوكيهات للريسيلر (Xtream Codes الأصلي: لا get_package ولا عناصر في
+        # الصفحة) تحدّدها هي من الباقة — فنرسل النموذج بلا selected_bouquets.
+        panel_bouquets = not ids
 
-        # 3) الإنشاء (نقطة اللاعودة)
+        # 3) الإنشاء (نقطة اللاعودة): حقول نموذج اللوحة نفسه فوق افتراضيات Xtream-Masters
+        form = self._add_form(page)
         body = {
             "is_official": is_official,
-            "username": username,
-            "password": password,
             "member_id": member_id,
-            "package": str(package_id),
             "mac_address_mag": "",
             "mac_address_e2": "",
             "allow_epg": "on",
             "reseller_notes": "",
             "custom_playlist_id": custom_playlist,
-            "selected_bouquets": json.dumps(ids),
-            "submit_user": "1",
         }
-        cr = self._request(action, data=body, headers={"X-Requested-With": "XMLHttpRequest"})
+        body.update(form.get("fields") or {})
+        body["username"] = username
+        body["password"] = password
+        body[form.get("package_field") or "package"] = str(package_id)
+        if not panel_bouquets:
+            body["selected_bouquets"] = json.dumps(ids)
+        else:
+            body.pop("selected_bouquets", None)
+        body[form.get("submit") or "submit_user"] = "1"
+        if form.get("action"):
+            action = form["action"]
+        action = urllib.parse.urljoin(self._abs(self.add_url or "/user_reseller.php"), action)
+        cr = self._request(action, data=body, headers={"X-Requested-With": "XMLHttpRequest",
+                                                       "Referer": self._abs(self.add_url or "/user_reseller.php")})
 
         # إن ردّت اللوحة بخطأ صريح على الإنشاء نفسه، أوقف (لم يُخصم/لم يُنشأ).
         alert = self._extract_alert(self._text(cr))
@@ -773,6 +821,7 @@ class PanelWebSession:
             "package_id": str(package_id), "line_id": found.get("id", ""),
             "exp": found.get("end", ""), "connections": found.get("conns", ""),
             "verified": bool(found.get("id")),
+            "bouquets": "panel" if panel_bouquets else ids,
             "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
 
