@@ -901,16 +901,28 @@ class PanelWebSession:
         KW, NUM = PanelWebSession._KW, PanelWebSession._NUM
         TAGS = r'(?:<[^>]+>\s*)*'
         scored = []
-        def add(rx, score):
+        def add(rx, score, first_only=False, group=1):
             for m in re.finditer(rx, html, re.I | re.U):
-                n = _to_num(m.group(1))
-                if n is not None:
-                    scored.append((score, ("." in m.group(1) or "," in m.group(1)), n))
+                n = _to_num(m.group(group))
+                if n is None:
+                    continue
+                sc = score
+                # عدّاد تحرّكه جافاسكربت (counterup) يُطبع صفرًا في HTML: ليس الرصيد.
+                around = html[max(0, m.start() - 160):m.start()] + m.group(0)
+                if n == 0 and re.search(r"counterup|counter-up|data-count|data-target", around, re.I):
+                    sc = 1
+                scored.append((sc, ("." in m.group(group) or "," in m.group(group)), n))
+                if first_only:
+                    break
         add(r'data-credits?\s*=\s*["\']?\s*' + NUM, 100)
+        # سجل العمليات في Xtream Codes: "Credits: 3975.5 -> 3974.5" — الرقم بعد السهم في
+        # أحدث سطر (الأول في الصفحة) هو الرصيد الحالي، وهو أوثق من بطاقةٍ تملؤها جافاسكربت.
+        add(r'credits?\s*:\s*' + TAGS + NUM + r'\s*' + TAGS + r'(?:-+&gt;|-+>|→|⇒)\s*' + TAGS + NUM, 95, first_only=True, group=2)
         add(NUM + r'\s*' + TAGS + KW + r'\s*(?:</|$)', 90)          # بطاقة: 3,975.50 </h3><p>CREDITS</p>
         add(KW + r'\s*:\s*' + TAGS + NUM, 80)                       # Credits: 1002
         add(KW + r'[^0-9<]{0,15}' + TAGS + NUM, 10)                   # عام: كلمة ثم رقم
         add(NUM + r'\s*' + TAGS + r'[^0-9>]{0,8}' + KW, 10)          # عام: رقم ثم كلمة
+        scored = [t for t in scored if t[0] > 1]   # عدّاد صفر وحده = رصيد غير معروف، لا صفر
         if not scored:
             return None
         scored.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)

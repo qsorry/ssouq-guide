@@ -176,7 +176,9 @@ class H(BaseHTTPRequestHandler):
             html = ('<!DOCTYPE html><html><body><ul class="sidebar"><li><a>Credits</a><span class="badge">1</span></li></ul>'
                     '<div class="card"><h3>1</h3><p>OPEN CONNECTIONS</p></div>'
                     '<div class="card"><h3>%d</h3><p>ACTIVE ACCOUNTS</p></div>'
-                    '<div class="card"><h3>3,975.50</h3><p>CREDITS</p></div></body></html>' % (4742 + len(LINES)))
+                    '<div class="card-bg credits"><h3><span data-plugin="counterup" class="entry">0</span></h3><p>Credits</p></div>'
+                    '<small>[<b>User Panel</b>] New M3U with Package [YEAR], Credits: <font color="green">3976</font> -> <font color="red">3975.5</font></small>'
+                    '</body></html>' % (4742 + len(LINES)))
             return self._send(200, html, headers=hdr)
         if path == "/dashboard":
             credits = 1002
