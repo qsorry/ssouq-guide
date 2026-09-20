@@ -250,21 +250,79 @@ class PanelWebSession:
                 return _html.unescape(v.group(1))
         return ""
 
+    # صفحة الدخول تختلف من لوحة لأخرى: /login في مرح، وقد تكون /login.php أو الجذر في غيرها.
+    LOGIN_CANDIDATES = ("/login", "/login.php", "/index.php", "/")
+    IMAGE_MAGIC = (b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"BM", b"RIFF", b"<svg", b"<?xml")
+
+    @staticmethod
+    def _captcha_src(html: str) -> str:
+        """رابط صورة الكابتشا كما تعرضه صفحة الدخول نفسها (أي <img> يذكر captcha في
+        عنوانه أو معرّفه أو صنفه أو وصفه). فارغ = لم يُعثر عليه."""
+        for m in re.finditer(r"<img\b[^>]*>", html, re.I):
+            tag = m.group(0)
+            src = re.search(r"""src=["']([^"']+)["']|src=([^\s>"']+)""", tag, re.I)
+            if not src:
+                continue
+            url = _html.unescape(src.group(1) or src.group(2) or "").strip()
+            if not url or url.startswith("data:"):
+                continue
+            if re.search(r"captcha|securimage|verify|vcode|kcaptcha|imagecode", tag, re.I):
+                return url
+
+        return ""
+
+    @staticmethod
+    def _looks_like_image(ctype: str, body: bytes) -> bool:
+        if (ctype or "").lower().startswith("image/"):
+            return True
+        head = (body or b"")[:8].lstrip()
+        return any(head.startswith(sig) for sig in PanelWebSession.IMAGE_MAGIC)
+
+    def _login_page(self):
+        """يجلب صفحة الدخول من أول مسار يعطي نموذجًا (ويتبع تحويلًا واحدًا)، ويحفظ مسارها."""
+        tried = []
+        known = self._meta().get("login_path")
+        for path in ((known,) if known else ()) + self.LOGIN_CANDIDATES:
+            r = self._request(path)
+            if 300 <= r.get("status", 0) < 400 and r.get("location"):
+                loc = r["location"]
+                if "login" in loc.lower() or path == "/":
+                    path = loc
+                    r = self._request(loc)
+            html = self._text(r)
+            tried.append("%s→%s" % (path, r.get("status")))
+            if r.get("status", 0) < 400 and ('name="captcha"' in html.lower() or 'name="password"' in html.lower()):
+                self._save_meta(login_path=path)
+                return html
+        raise RuntimeError("لم أجد صفحة الدخول في اللوحة (%s) — جرّبت: %s" % (self.base, ", ".join(tried)))
+
     def begin(self):
-        """جلسة دخول جديدة: تخطّي التحقق البشري + قراءة صفحة الدخول (PHPSESSID + lkey)."""
+        """جلسة دخول جديدة: تخطّي التحقق البشري + قراءة صفحة الدخول (PHPSESSID + lkey + رابط الكابتشا)."""
         self._handshake()
-        r = self._request("/login")
-        html = self._text(r)
+        html = self._login_page()
         self._save_meta(
             lkey=self._scrape_input(html, "lkey"),
             referrer=self._scrape_input(html, "referrer"),
             access_code=self._scrape_input(html, "access_code"),
+            captcha_url=self._captcha_src(html),
         )
 
     def fetch_captcha(self):
-        """(content_type, bytes) لصورة الكابتشا الحالية (مربوطة بجلسة PHPSESSID)."""
-        r = self._request("/captcha.php?a=1")
-        return r.get("ctype") or "image/jpeg", r.get("body") or b""
+        """(content_type, bytes) لصورة الكابتشا الحالية (مربوطة بجلسة PHPSESSID).
+        الرابط يُقرأ من صفحة الدخول نفسها؛ وإن غاب فالمسار المعتاد captcha.php. وما ليس
+        صورةً (404، صفحة دخول، حاجز حماية) يُرفع خطأً مقروءًا بدل صورة مكسورة."""
+        url = self._meta().get("captcha_url") or "/captcha.php?a=1"
+        base_login = self._meta().get("login_path") or "/login"
+        url = urllib.parse.urljoin(self._abs(base_login), url)   # نسبيّ إلى صفحة الدخول
+        url += ("&" if "?" in url else "?") + "t=%d" % int(time.time() * 1000)   # لا كاش
+        r = self._request(url, headers={"Accept": "image/*,*/*", "Referer": self._abs(base_login)})
+        ct, body = r.get("ctype") or "", r.get("body") or b""
+        if r.get("status", 0) >= 400 or not self._looks_like_image(ct, body):
+            snippet = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body[:600].decode("utf-8", "replace"))).strip()[:120]
+            raise RuntimeError("اللوحة لم تُرجع صورة كود التحقق من %s (HTTP %s، %s)%s" % (
+                url.split("?")[0].replace(self.base, "") or "/", r.get("status"), ct.split(";")[0] or "بلا نوع",
+                (": " + snippet) if snippet else ""))
+        return ct.split(";")[0] or "image/jpeg", body
 
     # ---- الدخول ----
     def login(self, captcha: str = None, auto_attempts: int = 3) -> bool:

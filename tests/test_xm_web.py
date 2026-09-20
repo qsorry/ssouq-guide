@@ -64,6 +64,19 @@ def main():
         check("textarea", FV('<textarea name="member_id">4242</textarea>', "member_id") == "4242")
         check("absent -> empty", FV('<input name="other" value="z">', "member_id") == "")
 
+        print("\n== 0a. captcha url + image sniffing ==")
+        CS = xm_web.PanelWebSession._captcha_src
+        LI = xm_web.PanelWebSession._looks_like_image
+        check("img src captcha.php", CS('<img src="captcha.php?a=1"><input name="captcha">') == "captcha.php?a=1")
+        check("securimage path", CS('<img id="c" src="/securimage/securimage_show.php?sid=1">') == "/securimage/securimage_show.php?sid=1")
+        check("captcha in id, not src", CS('<img id="captcha_img" src="/img/x.png">') == "/img/x.png")
+        check("ignores logo", CS('<img src="/logo.png" alt="logo">') == "")
+        check("ignores data: uri", CS('<img src="data:image/png;base64,AAA" class="captcha">') == "")
+        check("png magic without content-type", LI("", b"\x89PNG\r\n"))
+        check("jpeg magic", LI("application/octet-stream", b"\xff\xd8\xff\xe0"))
+        check("html is not an image", not LI("text/html", b"<!DOCTYPE html>"))
+        check("image/* content-type wins", LI("image/webp", b"RIFF"))
+
         print("\n== 0b. credits / dashboard number parsing ==")
         EC = xm_web.PanelWebSession._extract_credits
         DN = xm_web.PanelWebSession._dashboard_number
@@ -191,6 +204,51 @@ def main():
         except xm_web.CaptchaNeeded:
             check("correct captcha + wrong password -> LoginFailed(credentials), NOT captcha",
                   False, "BUG: mislabeled a credentials failure as a captcha error")
+
+        # ---- 5) لوحة بشكل آخر (ككاسبر): /login.php وصورة على مسار غير captcha.php ----
+        print("\n== 5. Alt-shaped panel: login page + captcha url discovered from the page itself ==")
+        ALT_PORT = PORT + 1
+        ALT = f"http://127.0.0.1:{ALT_PORT}"
+        alt_srv = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_panel.py"), str(ALT_PORT), USER, PASS, "alt"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        data_dir4 = tempfile.mkdtemp(prefix="xmweb_")
+        try:
+            for _ in range(50):
+                try:
+                    urllib.request.urlopen(ALT + "/token.php", timeout=0.3)
+                    break
+                except Exception:
+                    time.sleep(0.1)
+            s5 = xm_web.PanelWebSession({"id": "alt", "user": USER, "password": PASS,
+                                         "panel_base": ALT, "host": "http://mrha.ink"}, data_dir4)
+            s5.begin()
+            meta = s5._meta()
+            check("login page found at /login.php (not /login)", meta.get("login_path") == "/login.php", str(meta.get("login_path")))
+            check("lkey scraped from the alt login page", bool(meta.get("lkey")))
+            check("captcha url read from the page", meta.get("captcha_url") == "img/verify.php?x=1", str(meta.get("captcha_url")))
+            ct, img = s5.fetch_captcha()
+            check("captcha fetched from the discovered url as an image", ct.startswith("image/") and img.startswith(b"GIF8"), "%s %dB" % (ct, len(img)))
+            # الكود الصالح هو آخر صورة جُلبت بجلستنا؛ نقرأه من الترويسة كإنسان يقرأ الصورة
+            r = s5.opener.open(ALT + "/img/verify.php?x=1", timeout=10); r.read()
+            ok5 = s5.login(captcha=r.headers.get("X-Captcha-Code", ""))
+            check("manual login works on the alt-shaped panel", ok5 is True)
+
+            # مسار كابتشا خاطئ (كما لو كانت اللوحة ردّت 404 HTML) → خطأ مقروء لا بايتات HTML كصورة
+            s6 = xm_web.PanelWebSession({"id": "alt2", "user": USER, "password": PASS,
+                                         "panel_base": ALT, "host": "http://mrha.ink"}, data_dir4)
+            s6.begin(); s6._save_meta(captcha_url="/captcha.php?a=1")
+            try:
+                s6.fetch_captcha()
+                check("non-image captcha response raises a readable error", False, "no exception")
+            except RuntimeError as e:
+                check("non-image captcha response raises a readable error", "لم تُرجع صورة" in str(e) and "HTTP" in str(e), str(e)[:80])
+        finally:
+            alt_srv.terminate()
+            try:
+                alt_srv.wait(timeout=5)
+            except Exception:
+                alt_srv.kill()
+            shutil.rmtree(data_dir4, ignore_errors=True)
 
         for d in (data_dir, data_dir2, data_dir3):
             shutil.rmtree(d, ignore_errors=True)
