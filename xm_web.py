@@ -506,11 +506,21 @@ class PanelWebSession:
                 return False
         return r.get("status", 0) < 400
 
+    _LOGIN_LOCKS = {}
+    _LOCKS_GUARD = __import__("threading").Lock()
+
+    def _login_lock(self):
+        with self._LOCKS_GUARD:
+            return self._LOGIN_LOCKS.setdefault(self.jar_path, __import__("threading").Lock())
+
     def ensure_login(self):
-        """يعيد استخدام الكوكيز المحفوظة؛ ولو انتهت الجلسة يسجّل الدخول آليًا."""
-        if self.is_authenticated():
-            return
-        self.login()  # آلي؛ قد يرمي CaptchaNeeded
+        """يعيد استخدام الكوكيز المحفوظة؛ ولو انتهت الجلسة يسجّل الدخول آليًا.
+        قفل لكل بوابة: صفحة الإنشاء تطلب الرصيد والباقات معًا، فلو دخل الاثنان في آن واحد
+        كتب كلٌّ جلسته فوق جلسة الآخر وظهر أحدهما "بيانات غير صحيحة" بلا سبب."""
+        with self._login_lock():
+            if self.is_authenticated():
+                return
+            self.login()  # آلي؛ قد يرمي CaptchaNeeded
 
     # ---- اكتشاف صفحة الإضافة ----
     _PKG_SELECT = re.compile(
@@ -596,6 +606,102 @@ class PanelWebSession:
             opts.append({"value": val, "text": text, "id": val, "name": text})
         return opts
 
+    # ---- بوكيهات الباقة ----
+    @staticmethod
+    def _bouquet_ids(obj) -> list:
+        """كل معرّفات البوكيهات في ردّ JSON مهما كان شكله: {"bouquets":[{"id":1}]} كما في
+        مرح، أو {"data":{"bouquet_ids":["1","2"]}}، أو قائمة أرقام مباشرة، أو نص JSON
+        داخل نص. تُفضَّل القوائم تحت مفتاح يذكر bouquet؛ وإلا أي قائمة معرّفات."""
+        def ids_of(v):
+            if isinstance(v, str):
+                v = v.strip()
+                if v.startswith(("[", "{")):
+                    try:
+                        return ids_of(json.loads(v))
+                    except ValueError:
+                        return []
+                return [int(x) for x in re.split(r"[,\s]+", v) if x.isdigit()] if re.fullmatch(r"[\d,\s]+", v) else []
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                return [int(v)]
+            if isinstance(v, dict):
+                for k in ("id", "bouquet_id", "bid", "value"):
+                    if str(v.get(k, "")).strip().lstrip("-").isdigit():
+                        return [int(v[k])]
+                return []
+            if isinstance(v, list):
+                out = []
+                for it in v:
+                    out += ids_of(it)
+                return out
+            return []
+
+        preferred, fallback = [], []
+
+        def walk(node, key=""):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    walk(v, str(k))
+            elif isinstance(node, list):
+                got = ids_of(node)
+                if got:
+                    (preferred if re.search(r"bouquet|bqt|packages?_?ch|channels?", key, re.I) else fallback).extend(got)
+                else:
+                    for it in node:
+                        walk(it, key)
+            elif isinstance(node, str) and re.search(r"bouquet", key, re.I):
+                preferred.extend(ids_of(node))
+
+        if isinstance(obj, str):
+            try:
+                obj = json.loads(obj)
+            except ValueError:
+                return []
+        walk(obj)
+        seen, out = set(), []
+        for i in (preferred or fallback):
+            if i not in seen:
+                seen.add(i)
+                out.append(i)
+        return out
+
+    @staticmethod
+    def _page_bouquets(page: str) -> list:
+        """معرّفات البوكيهات من عناصر صفحة الإضافة (checkbox/select باسم يذكر bouquet)."""
+        out = []
+        for m in re.finditer(r"<(input|option)\b[^>]*>", page, re.I):
+            tag = m.group(0)
+            ctx = tag
+            if m.group(1).lower() == "option":
+                sel = re.search(r"<select\b[^>]*name=[\"']([^\"']*)[\"'][^>]*>(?:(?!</select>).)*?" + re.escape(tag), page, re.I | re.S)
+                ctx = (sel.group(1) if sel else "") + tag
+            if not re.search(r"bouquet", ctx, re.I):
+                continue
+            v = re.search(r"""\bvalue=["']?(\d+)""", tag, re.I)
+            if v:
+                out.append(int(v.group(1)))
+        return sorted(set(out))
+
+    def _package_bouquets(self, package_id, page: str):
+        """(ids, why): البوكيهات من get_package (نسبيًّا إلى صفحة الإضافة، ثم المسار المعتاد)،
+        وإلا من الصفحة؛ وwhy يصف ما رُئي حين لا شيء."""
+        tried = []
+        add_path = urllib.parse.urlparse(self._abs(self.add_url or "/user_reseller.php")).path or "/user_reseller.php"
+        for path in dict.fromkeys([add_path, "/user_reseller.php"]):
+            url = path + "?action=get_package&package_id=" + urllib.parse.quote(str(package_id))
+            r = self._request(url, headers={"X-Requested-With": "XMLHttpRequest",
+                                            "Accept": "application/json,text/javascript,*/*"})
+            text = self._text(r)
+            ids = self._bouquet_ids(text)
+            if ids:
+                return ids, ""
+            snippet = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text[:400])).strip()[:100]
+            tried.append("%s → HTTP %s %s%s" % (url.split("?")[0], r.get("status"), (r.get("ctype") or "").split(";")[0],
+                                                 (": " + snippet) if snippet else ""))
+        ids = self._page_bouquets(page)
+        if ids:
+            return ids, ""
+        return [], "ردّ get_package بلا معرّفات (%s) ولا عناصر بوكيهات في صفحة الإضافة" % "؛ ".join(tried)
+
     # ---- إنشاء يوزر ----
     def create_line(self, package_id, username=None, password=None, host=None) -> dict:
         self.ensure_login()
@@ -616,16 +722,11 @@ class PanelWebSession:
         custom_playlist = self._field_value(page, "custom_playlist_id")
         action = self.add_action or self._form_action(page) or "/user_reseller.php"
 
-        # 2) بوكيهات الباقة (= كل Subscribed)
-        bq = self._request("/user_reseller.php?action=get_package&package_id=" + urllib.parse.quote(str(package_id)),
-                           headers={"X-Requested-With": "XMLHttpRequest"})
-        try:
-            bj = json.loads(self._text(bq))
-        except ValueError:
-            bj = {}
-        ids = [int(b["id"]) for b in (bj.get("bouquets") or []) if str(b.get("id", "")).strip().isdigit()]
+        # 2) بوكيهات الباقة (= كل Subscribed): من نداء get_package بأي شكل JSON، وإلا من
+        #    عناصر البوكيهات في صفحة الإضافة نفسها؛ وإن لم يوجد شيء نقول ما ردّت به اللوحة.
+        ids, why = self._package_bouquets(package_id, page)
         if not ids:
-            raise RuntimeError("لا توجد بوكيهات للباقة %s" % package_id)
+            raise RuntimeError("لا توجد بوكيهات للباقة %s — %s" % (package_id, why))
 
         # 3) الإنشاء (نقطة اللاعودة)
         body = {

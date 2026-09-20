@@ -132,7 +132,10 @@ class H(BaseHTTPRequestHandler):
 
         if path == "/user_reseller.php" and qs.get("action", [""])[0] == "get_package":
             pid = int(qs.get("package_id", ["0"])[0] or 0)
-            body = json.dumps({"bouquets": [{"id": b} for b in BOUQUETS.get(pid, [])]})
+            if NOCAP:   # لوحة بشكل آخر: المعرّفات نصوص تحت data.bouquet_ids لا bouquets[].id
+                body = json.dumps({"status": "ok", "data": {"bouquet_ids": [str(b) for b in BOUQUETS.get(pid, [])]}})
+            else:
+                body = json.dumps({"bouquets": [{"id": b} for b in BOUQUETS.get(pid, [])]})
             return self._send(200, body, "application/json", hdr)
 
         if path in ("/user_reseller.php", "/line.php", "/user.php"):
