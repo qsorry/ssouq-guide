@@ -77,6 +77,20 @@ def main():
         check("html is not an image", not LI("text/html", b"<!DOCTYPE html>"))
         check("image/* content-type wins", LI("image/webp", b"RIFF"))
 
+        print("\n== 0a2. bouquet ids from any JSON shape ==")
+        BI = xm_web.PanelWebSession._bouquet_ids
+        check("marah shape", BI('{"bouquets":[{"id":1},{"id":"2"}]}') == [1, 2])
+        check("nested bouquet_ids strings", BI({"data": {"bouquet_ids": ["3", "4"]}}) == [3, 4])
+        check("plain int list under bouquets", BI({"bouquets": [5, 6, 6]}) == [5, 6])
+        check("json-in-string", BI({"bouquets": "[7,8]"}) == [7, 8])
+        check("comma string", BI({"bouquets": "9,10"}) == [9, 10])
+        check("preferred over unrelated lists", BI({"ids": [99], "bouquets": [{"id": 1}]}) == [1])
+        check("fallback to any id list", BI({"data": [{"id": 11}, {"id": 12}]}) == [11, 12])
+        check("html -> empty", BI("<html>404</html>") == [])
+        PB = xm_web.PanelWebSession._page_bouquets
+        check("page checkboxes", PB('<input type="checkbox" name="bouquets[]" value="3"><input name="x" value="9">'
+                                    '<select name="bouquet_ids[]"><option value="1">a</option><option value="2">b</option></select>') == [1, 2, 3])
+
         print("\n== 0b. credits / dashboard number parsing ==")
         EC = xm_web.PanelWebSession._extract_credits
         DN = xm_web.PanelWebSession._dashboard_number
