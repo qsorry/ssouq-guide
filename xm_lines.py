@@ -631,6 +631,76 @@ def parse_package_name(text):
     return {"months": months, "devices": devices, "credits": credits}
 
 
+def package_label(name="", months=None, devices=None):
+    """تسمية قصيرة لنوع الباقة: 'اشتراك سنة + 3 اشهر + جهازين (12 نقطة)' → '15 شهر جهازين'."""
+    if months is None or devices is None:
+        info = parse_package_name(name)
+        months = info["months"] if months is None else months
+        devices = info["devices"] if devices is None else devices
+    if not months:
+        return re.sub(r"\s*\(.*?\)\s*", " ", str(name or "")).strip()
+    m = {1: "شهر", 2: "شهرين", 12: "سنة", 24: "سنتين"}.get(months) or "%d شهر" % months
+    d = "" if not devices or devices < 2 else ("جهازين" if devices == 2 else "%d أجهزة" % devices)
+    return (m + " " + d).strip()
+
+
+def _parse_date(s):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"):
+        try:
+            return datetime.datetime.strptime(str(s).strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _logged_package(gate, username):
+    """اسم الباقة لليوزر كما سُجّل في lines.txt عند إنشائه من الأداة (أحدث سطر له)."""
+    try:
+        with open(TXT_FILE, encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return ""
+    needle = " User %s " % username
+    for ln in reversed(lines):
+        if needle in ln and ("|  %s  |" % gate.get("name", "")) in ln:
+            parts = [x.strip() for x in ln.split("|")]
+            if len(parts) >= 4:
+                return re.sub(r"\s*\[.*?\]\s*$", "", parts[3])
+    return ""
+
+
+def annotate_package_type(gate, rows, pkgs=None):
+    """يضيف لكل صف من جدول اللوحة نوع باقته ('15 شهر جهازين'): من سجل الأداة إن أنشأناه
+    نحن، وإلا من اسم الباقة إن ظهر في الصف، وإلا يُستنتج من الأجهزة ومدة الاشتراك
+    (تاريخ الإنشاء ↔ الانتهاء)."""
+    names = [p.get("name", "") for p in (pkgs or []) if p.get("name")]
+    for r in rows:
+        name = _logged_package(gate, r.get("username", "")) or r.get("package", "")
+        if not name and names:
+            text = r.get("text", "")
+            name = next((n for n in sorted(names, key=len, reverse=True) if n and n in text), "")
+        months, devices = None, None
+        if name:
+            info = parse_package_name(name)
+            months, devices = info["months"], info["devices"]
+        conns = str(r.get("connections") or "")
+        if conns.isdigit() and int(conns) > 0:
+            devices = int(conns)
+        if not months:
+            end = _parse_date(r.get("exp", ""))
+            start = _parse_date(r.get("created", ""))
+            if end and not start:
+                ds = [d for d in (_parse_date(x) for x in r.get("dates", [])) if d and d < end]
+                start = min(ds) if ds else None
+            if end and start:
+                months = int(round((end - start).days / 30.4375))
+        r["package_name"] = name
+        r["package_type"] = package_label(name, months, devices or 1) if (months or name) else ""
+        for k in ("dates", "text"):
+            r.pop(k, None)
+    return rows
+
+
 def virtual_base(pkg_id):
     """معرّف الباقة الافتراضية 'x2:15' → ('15', عدد مرات التمديد)؛ وإلا None."""
     pid = str(pkg_id or "")
@@ -1073,7 +1143,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, falcon_api.status(gate["api_url"], gate["api_key"]))
                 if gate.get("mode") == "web":     # الرصيد من صفحة اللوحة نفسها
                     try:
-                        return self._send(200, web_session(gate).status())
+                        stt = web_session(gate).status()
+                        annotate_package_type(gate, stt.get("today_lines") or [])
+                        return self._send(200, stt)
                     except xm_web.CaptchaNeeded:
                         return self._send(200, {"provider": "web", "credits": None, "need_login": True})
                     except xm_web.LoginFailed as e:
@@ -1094,7 +1166,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"results": falcon_api.search(gate["api_url"], gate["api_key"], q)})
                 if gate.get("mode") == "web":     # بحث جدول اللوحة نفسه
                     try:
-                        return self._send(200, {"results": web_session(gate).search(q)})
+                        return self._send(200, {"results": annotate_package_type(gate, web_session(gate).search(q))})
                     except xm_web.CaptchaNeeded:
                         return self._send(200, {"results": [], "need_login": True})
                     except xm_web.LoginFailed as e:

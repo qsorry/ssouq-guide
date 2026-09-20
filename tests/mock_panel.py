@@ -187,9 +187,12 @@ class H(BaseHTTPRequestHandler):
                 if c_to and ln["created"] > c_to:
                     continue
                 if not term or term in ln["username"] or term in ln["password"]:   # بحث كل الأعمدة
-                    row = ('<a href="?userid=%s">edit</a> User: %s Pass: %s End: %s '
+                    pname = dict(PACKAGES).get(int(ln["package"]) if str(ln["package"]).isdigit() else -1, "")
+                    row = ('<a href="?userid=%s">edit</a> User: %s Pass: %s Created: %s End: %s '
                            '<a>1 / %s</a>' % (ln["id"], ln["username"], ln["password"],
-                                              ln["end"], ln["conns"]))
+                                              ln["created"], ln["end"], ln["conns"]))
+                    if pname and not NOCAP:
+                        row += ' <span class="badge">Package: %s</span>' % pname
                     data.append([row])
             filtered = len(data)
             data = data[:length]

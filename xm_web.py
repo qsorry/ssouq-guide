@@ -1190,8 +1190,7 @@ class PanelWebSession:
         recordsFiltered الذي يعلنه الخادم، فيصحّ حتى لو تجاوز الحدّ."""
         day = self._today()
         t = self._table_query("", limit, created_from=day, created_to=day)
-        rows = [{"id": r["id"], "username": r["user"], "password": r["pass"],
-                 "status": r["status"], "exp": r["end"]} for r in t["rows"]]
+        rows = [self._row_out(r) for r in t["rows"]]
         count = t.get("filtered")
         return {"date": day, "count": count if count is not None else len(rows), "lines": rows}
 
@@ -1207,11 +1206,18 @@ class PanelWebSession:
         conns = re.search(r"\d+\s*/\s*(\d+)\s*</a>", s)
         low = s.lower()
         status = "expired" if "expired" in low else ("disabled" if re.search(r"disabled|banned", low) else "active")
+        text = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s))).strip()
+        pkg = re.search(r"(?:Package|Bouquet|الباقة|باقة)\s*[:：]?\s*([^|]{2,80}?)(?=\s+(?:User|Pass|End|Start|Created|Exp|Owner|Status)\b|\s*\||$)", text, re.I)
+        created = re.search(r"(?:Created|Start|Added|Date)\s*[:：]?\s*([0-9]{4}[-/.][0-9]{2}[-/.][0-9]{2}|[0-9]{2}[-/.][0-9]{2}[-/.][0-9]{4})", text, re.I)
         return {"id": rid.group(1) if rid else "", "user": um.group(1),
                 "pass": pm.group(1) if pm else "",
                 "end": end.group(1) if end else "",
                 "conns": conns.group(1) if conns else "",
-                "status": status}
+                "status": status,
+                "package": pkg.group(1).strip() if pkg else "",
+                "created": created.group(1) if created else "",
+                "dates": re.findall(r"[0-9]{4}[-/.][0-9]{2}[-/.][0-9]{2}|[0-9]{2}[-/.][0-9]{2}[-/.][0-9]{4}", text),
+                "text": text[:400]}
 
     def _search_line(self, username: str, force: bool = False) -> dict:
         for row in self._table_query(username, 10, force)["rows"]:
@@ -1246,9 +1252,15 @@ class PanelWebSession:
         query = str(query or "").strip()
         if not query:
             return []
-        return [{"id": r["id"], "username": r["user"], "password": r["pass"],
-                 "status": r["status"], "exp": r["end"]}
-                for r in self._table_query(query, limit)["rows"]]
+        return [self._row_out(r) for r in self._table_query(query, limit)["rows"]]
+
+    @staticmethod
+    def _row_out(r: dict) -> dict:
+        """صف الجدول بالشكل المُرسَل للصفحة (مع ما يلزم لمعرفة نوع الباقة)."""
+        return {"id": r["id"], "username": r["user"], "password": r["pass"],
+                "status": r["status"], "exp": r["end"], "connections": r.get("conns", ""),
+                "package": r.get("package", ""), "created": r.get("created", ""),
+                "dates": r.get("dates", []), "text": r.get("text", "")}
 
     def logout_local(self):
         for p in (self.jar_path, self.meta_path):
