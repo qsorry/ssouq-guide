@@ -605,12 +605,16 @@ async function createLines(){
     const d = chk(await r.json());
     if (d.need_captcha) { btn.disabled = false; updateCta(); showCaptcha(createLines); return; }
     if (d.login_error) throw new Error(d.login_error);
+    // ما أُنشئ قبل خطأ في المنتصف أُنشئ فعلًا: يُحفظ ويُعرض أولًا، ثم تُعرض رسالة الخطأ.
+    const lines = d.lines || [];
+    if (lines.length) {
+      const h = load(); lines.forEach(x => h.unshift(x)); save(h);
+      $("res").textContent = lines.map(x=>x.line).join("\n");
+      $("resBox").hidden = false; $("u").value = ""; $("p").value = "";
+      renderHistory(); loadGateStatus();
+      copy($("res").textContent);
+    }
     if (d.error) throw new Error(d.error);
-    const h = load(); d.lines.forEach(x => h.unshift(x)); save(h);
-    $("res").textContent = d.lines.map(x=>x.line).join("\n");
-    $("resBox").hidden = false; $("u").value = ""; $("p").value = "";
-    renderHistory(); loadGateStatus();
-    copy($("res").textContent);
   } catch(e) { $("msg").textContent = e.message; }
   btn.disabled = false; updateCta();
 }

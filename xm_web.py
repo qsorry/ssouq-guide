@@ -741,13 +741,13 @@ class PanelWebSession:
                 "submit": submit, "package_field": pkg_field or "package"}
 
     # ---- إنشاء يوزر ----
-    def create_line(self, package_id, username=None, password=None, host=None) -> dict:
+    def _prepare_add(self, package_id, host=None) -> dict:
+        """كل ما يسبق الإرسال ويصلح لدفعة كاملة: الدخول مرة، اكتشاف صفحة الإضافة، جلبها
+        مرة، قراءة نموذجها، وبوكيهات الباقة. الدفعة من ٥٠ يوزرًا تدفع هذا مرة واحدة
+        ثم طلب إرسال واحدًا لكل يوزر — لا ثلاثة طلبات لكل يوزر."""
         self.ensure_login()
         self.discover_add()
-
         host = (host or self.acct.get("host", "")).strip().rstrip("/")
-        username = str(username or _rand_digits())
-        password = str(password or _rand_digits())
 
         # 1) صفحة الإضافة → member_id والحقول الافتراضية (input/select/textarea)
         page = self._text(self._request(self.add_url))
@@ -763,16 +763,16 @@ class PanelWebSession:
         # 2) بوكيهات الباقة (= كل Subscribed): من نداء get_package بأي شكل JSON، وإلا من
         #    عناصر البوكيهات في صفحة الإضافة نفسها؛ وإن لم يوجد شيء نقول ما ردّت به اللوحة.
         if self._meta().get("bouquets_by_panel"):
-            ids, why = [], "cached"
+            ids = []
         else:
-            ids, why = self._package_bouquets(package_id, page)
+            ids, _why = self._package_bouquets(package_id, page)
             if not ids:
                 self._save_meta(bouquets_by_panel=True)   # لا يُعاد الاستكشاف في كل إنشاء
         # لوحة لا تعرض بوكيهات للريسيلر (Xtream Codes الأصلي: لا get_package ولا عناصر في
         # الصفحة) تحدّدها هي من الباقة — فنرسل النموذج بلا selected_bouquets.
         panel_bouquets = not ids
 
-        # 3) الإنشاء (نقطة اللاعودة): حقول نموذج اللوحة نفسه فوق افتراضيات Xtream-Masters
+        # 3) جسم الإرسال: حقول نموذج اللوحة نفسه فوق افتراضيات Xtream-Masters
         form = self._add_form(page)
         body = {
             "is_official": is_official,
@@ -784,8 +784,6 @@ class PanelWebSession:
             "custom_playlist_id": custom_playlist,
         }
         body.update(form.get("fields") or {})
-        body["username"] = username
-        body["password"] = password
         body[form.get("package_field") or "package"] = str(package_id)
         if not panel_bouquets:
             body["selected_bouquets"] = json.dumps(ids)
@@ -794,9 +792,18 @@ class PanelWebSession:
         body[form.get("submit") or "submit_user"] = "1"
         if form.get("action"):
             action = form["action"]
-        action = urllib.parse.urljoin(self._abs(self.add_url or "/user_reseller.php"), action)
-        cr = self._request(action, data=body, headers={"X-Requested-With": "XMLHttpRequest",
-                                                       "Referer": self._abs(self.add_url or "/user_reseller.php")})
+        add_abs = self._abs(self.add_url or "/user_reseller.php")
+        return {"package_id": str(package_id), "host": host, "body": body, "ids": ids,
+                "panel_bouquets": panel_bouquets, "action": urllib.parse.urljoin(add_abs, action),
+                "referer": add_abs}
+
+    def _submit_add(self, prep: dict, username: str, password: str) -> dict:
+        """إرسال يوزر واحد بجسم مُعدّ مسبقًا (نقطة اللاعودة) ثم تأكيد غير حاسم."""
+        body = dict(prep["body"])
+        body["username"] = username
+        body["password"] = password
+        cr = self._request(prep["action"], data=body,
+                           headers={"X-Requested-With": "XMLHttpRequest", "Referer": prep["referer"]})
 
         # إن ردّت اللوحة بخطأ صريح على الإنشاء نفسه، أوقف (لم يُخصم/لم يُنشأ).
         alert = self._extract_alert(self._text(cr))
@@ -820,15 +827,34 @@ class PanelWebSession:
         # ولّدناهما نحن)، فنعرضهما دائمًا حتى لو تعذّر التأكيد.
         u_final = found.get("user") or username
         p_final = found.get("pass") or password
+        host = prep["host"]
         line = "Host {h}  Password {p} Username {u}".format(h=host, p=p_final, u=u_final)
         return {
             "line": line, "username": u_final, "password": p_final, "host": host,
-            "package_id": str(package_id), "line_id": found.get("id", ""),
+            "package_id": prep["package_id"], "line_id": found.get("id", ""),
             "exp": found.get("end", ""), "connections": found.get("conns", ""),
             "verified": bool(found.get("id")),
-            "bouquets": "panel" if panel_bouquets else ids,
+            "bouquets": "panel" if prep["panel_bouquets"] else prep["ids"],
             "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
+
+    def create_line(self, package_id, username=None, password=None, host=None) -> dict:
+        prep = self._prepare_add(package_id, host)
+        return self._submit_add(prep, str(username or _rand_digits()), str(password or _rand_digits()))
+
+    def create_many(self, package_id, pairs, host=None) -> list:
+        """دفعة: (اسم، كلمة مرور) لكل يوزر — تحضير واحد ثم إرسال لكل زوج. يرجّع النتائج
+        بالترتيب؛ وإن فشل يوزر في المنتصف تُعاد النتائج الناجحة قبله مع الخطأ
+        (نقطة اللاعودة: ما أُنشئ قد خُصم، فلا يضيع)."""
+        prep = self._prepare_add(package_id, host)
+        out = []
+        for u, p in pairs:
+            try:
+                out.append(self._submit_add(prep, str(u), str(p)))
+            except Exception as e:
+                out.append({"error": str(e)[:200], "username": str(u), "password": str(p)})
+                break
+        return out
 
     # ---- حالة اللوحة (الرصيد + أرقام لوحة المعلومات) ----
     # الجذر "/" في لوحات كثيرة يردّ تحويلًا (30x) بجسم فارغ إلى لوحة المعلومات،
