@@ -927,7 +927,7 @@ class PanelWebSession:
                           "loc": (r.get("location") or "")[:140], "len": len(self._text(r))})
         html = self._dashboard_html()
         snips = []
-        for m in re.finditer(r'.{0,32}(?:credit|balance|رصيد|نقاط|نقط|كريد|point).{0,32}', html, re.I | re.U):
+        for m in re.finditer(r'.{0,160}(?:credit|balance|رصيد|نقاط|نقط|كريد|point).{0,160}', html, re.I | re.U | re.S):
             t = re.sub(r'\s+', ' ', m.group(0)).strip()
             if t and t not in snips:
                 snips.append(t)
