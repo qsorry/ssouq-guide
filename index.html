@@ -255,6 +255,11 @@ p{margin:0 0 10px}
 .note{background:var(--soft);border-radius:12px;padding:11px 13px;font-size:.88rem;margin:10px 0;line-height:1.65}
 .note.warn{background:color-mix(in srgb,var(--gold) 16%,transparent)}
 .note p{margin:0}
+.note.http{background:color-mix(in srgb,#dc2626 10%,var(--soft));border:1px solid color-mix(in srgb,#dc2626 45%,transparent)}
+.note.http .hv{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:1.05rem}
+.note.http .hv code{font-size:1.05rem;padding:3px 10px;border-radius:8px;background:var(--card);font-weight:700}
+.note.http .ok{color:#16a34a}.note.http .bad{color:#dc2626;text-decoration:line-through}
+.note.http p{margin-top:6px}
 .note img,.step .note img{display:block;width:100%;height:auto;max-height:none;margin:9px 0 0;
   border-radius:10px;background:transparent;object-fit:contain}
 .nav{display:flex;gap:8px;margin-top:16px}
@@ -419,6 +424,14 @@ const CREDS = '<div class="note"><p>بيانات اشتراكك تصلك في ر
   + 'افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p>'
   + '<img src="/static/img/order-digital.webp" alt="زر المحتوى الرقمي داخل صفحة الطلب" loading="lazy"></div>';
 
+// تنبيه http لا https — يُلحق بكل خطوة تُكتب فيها خانة الهوست، على كل جهاز وفي كل خيار،
+// لأن الجوال عند اللصق يضيف حرف s من نفسه أحيانًا فيصير الرابط https ولا يعمل الاشتراك.
+const HTTP_NOTE = '<div class="note http"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b>'
+  + '<div class="hv"><code dir="ltr" class="ok">http://</code><b>✅ صحيح</b></div>'
+  + '<div class="hv"><code dir="ltr" class="bad">https://</code><b>❌ خطأ — لا يعمل</b></div>'
+  + '<p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir="ltr">s</b> من نفسه فيصير الرابط <b dir="ltr">https</b> ولا يعمل الاشتراك. '
+  + 'بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir="ltr">https</b> فاحذف حرف <b dir="ltr">s</b> ليصبح <b dir="ltr">http</b>.</p></div>';
+
 // قيمة ثابتة مع زر نسخها
 const COPY = (value, label) =>
   `<div class="fields"><div class="f"><span>${label}</span>`
@@ -436,7 +449,7 @@ const APP = (icon, name, where) =>
 const SMARTERS_XTREAM = { title: "اختر LOGIN WITH XTREAM CODES API", img: "/static/img/smarters-android-type.webp",
   html: '<p>افتح التطبيق فتظهر شاشة اختيار طريقة الدخول. اختر الخيار المحدَّد في الصورة: <b dir="ltr">LOGIN WITH XTREAM CODES API</b>. ولا تختر <b dir="ltr">LOAD YOUR PLAYLIST OR FILE/URL</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>' };
 const SMARTERS_LOGIN = { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-login.jpg",
-  html: '<p>عبّئ الخانات بالترتيب:</p><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما هو بدون مسافات.</div>' + CREDS };
+  html: '<p>عبّئ الخانات بالترتيب:</p><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
 
 // نظام WebOS ليس في شاشات LG وحدها، فمن تعمل شاشته به يتبع الخطوات نفسها
 const WEBOS_NOTE = '<div class="note">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir="ltr">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>';
@@ -452,7 +465,7 @@ const DEVICES = {
         + COPY("55555", "رمز الخادم") },
     { title: "أدخل بيانات اشتراكك", img: "/static/img/ios-var-adduser.webp",
       html: '<p>تظهر شاشة <b dir="ltr">Add User</b> بثلاث خانات، عبّئها كما وصلتك ثم اضغط <b dir="ltr">Go</b>:</p>'
-        + '<div class="fields"><div class="f"><span dir="ltr">http://url:port</span><code>رابط الهوست مع البورت</code></div>'
+        + '<div class="fields"><div class="f"><span dir="ltr">http://url:port</span><code>رابط الهوست كما وصلك</code></div>'
         + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
         + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>' + CREDS }
   ]},
@@ -523,7 +536,7 @@ const DEVICES = {
       { title: "اختر خيار PLAYER API", img: "/static/img/smarters-pc-api.webp",
         html: '<p>عند فتح البرنامج أول مرة وافق على الشروط، ثم اختر الزر الأحمر <b dir="ltr">PLAYER API</b>.</p>' },
       { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-pc-login.webp",
-        html: '<p>عبّئ الخانات الأربع بالترتيب:</p><div class="fields"><div class="f"><span>Any Name</span><code>أي اسم تريده</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div><div class="f"><span>http://url_here.com:port</span><code>رابط الهوست مع البورت</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class="note">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir="ltr">http://host.com:8080</code>، بدون مسافات.</div>' + CREDS }
+        html: '<p>عبّئ الخانات الأربع بالترتيب:</p><div class="fields"><div class="f"><span>Any Name</span><code>أي اسم تريده</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div><div class="f"><span>http://url_here.com:port</span><code>رابط الهوست كما وصلك</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class="note">رابط الهوست يصلك مع بيانات الاشتراك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS }
   
       ],
       // IPTVnator: مشغّل مفتوح المصدر (MIT) لويندوز وماك ولينكس، يدخل بالهوست واسم
@@ -535,7 +548,7 @@ const DEVICES = {
         { title: "افتح تبويب ADD XTREME CODE", img: "/static/img/windows-iptvnator-tab.webp",
           html: '<p>عند فتح البرنامج تظهر صفحة <b dir="ltr">Playlists</b> وفيها شريط تبويبات في الأعلى. اختر التبويب <b dir="ltr">ADD XTREME CODE</b> (هكذا يكتبه البرنامج) — وهو المخصَّص للدخول باسم المستخدم وكلمة المرور.</p><div class="note">لا تستخدم التبويبات الأخرى: <b dir="ltr">Add via URL</b> لروابط M3U، و<b dir="ltr">Add Stalker Portal</b> لأجهزة MAC — اشتراكك لا يحتاجهما.</div>' },
         { title: "أدخل بيانات الاشتراك واضغط ADD", img: "/static/img/windows-iptvnator-form.webp",
-          html: '<p>عبّئ الخانات الأربع بالترتيب:</p><div class="fields"><div class="f"><span>Playlist title</span><code>أي اسم تريده</code></div><div class="f"><span>Server URL</span><code>رابط الهوست مع البورت</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>اضغط <b dir="ltr">TEST CREDENTIALS</b> للتأكد من صحة البيانات (اختياري)، ثم <b dir="ltr">ADD</b>.</p><div class="note">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir="ltr">http://host.com:8080</code>، بدون مسافات ولا شيء بعده. إن ظهر تنبيه أحمر تحت الخانة فالرابط ناقص البادئة <b dir="ltr">http://</b>.</div>' + CREDS },
+          html: '<p>عبّئ الخانات الأربع بالترتيب:</p><div class="fields"><div class="f"><span>Playlist title</span><code>أي اسم تريده</code></div><div class="f"><span>Server URL</span><code>رابط الهوست كما وصلك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>اضغط <b dir="ltr">TEST CREDENTIALS</b> للتأكد من صحة البيانات (اختياري)، ثم <b dir="ltr">ADD</b>.</p><div class="note">رابط الهوست يصلك مع بيانات الاشتراك، انسخه كما وصلك بدون مسافات ولا شيء بعده. إن ظهر تنبيه أحمر تحت الخانة فالرابط ناقص البادئة <b dir="ltr">http://</b>.</div>' + HTTP_NOTE + CREDS },
         { title: "افتح القائمة وشاهد",
           html: '<p>بعد الإضافة يعود البرنامج إلى تبويب <b dir="ltr">RECENTLY ADDED PLAYLISTS</b> وتظهر فيه قائمتك باسمها. اضغط عليها لتفتح ثلاثة أقسام: <b dir="ltr">Live TV</b> للقنوات، و<b dir="ltr">Movies</b> للأفلام، و<b dir="ltr">Series</b> للمسلسلات.</p><ul><li>ابحث عن أي قناة من مربع البحث في الأعلى، واضغط النجمة لإضافتها إلى المفضلة.</li><li>للعودة إلى قوائمك اضغط أيقونة <b dir="ltr">Home</b> في الشريط الجانبي.</li><li>إذا ظهرت رسالة <b dir="ltr">Account expired</b> أو <b dir="ltr">Unauthorized</b> فالبيانات غير صحيحة أو الاشتراك منتهٍ: افتح إعدادات القائمة من الأيقونة بجانب اسمها وصحّح البيانات.</li></ul>' },
       ],
@@ -551,7 +564,7 @@ const DEVICES = {
     { title: "اختر خيار PLAYER API", img: "/static/img/smarters-pc-api.webp",
       html: '<p>عند فتح البرنامج أول مرة وافق على الشروط، ثم اختر الزر الأحمر <b dir="ltr">PLAYER API</b>.</p>' },
     { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-pc-login.webp",
-      html: '<p>عبّئ الخانات الأربع بالترتيب:</p><div class="fields"><div class="f"><span>Any Name</span><code>أي اسم تريده</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div><div class="f"><span>http://url_here.com:port</span><code>رابط الهوست مع البورت</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class="note">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir="ltr">http://host.com:8080</code>، بدون مسافات.</div>' + CREDS }
+      html: '<p>عبّئ الخانات الأربع بالترتيب:</p><div class="fields"><div class="f"><span>Any Name</span><code>أي اسم تريده</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div><div class="f"><span>http://url_here.com:port</span><code>رابط الهوست كما وصلك</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class="note">رابط الهوست يصلك مع بيانات الاشتراك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS }
   ]},
   // شاشة السيارة: التطبيق على الآيفون لا على السيارة، ويدخل ببيانات Xtream Codes
   // نفسها (رابط الهوست + اسم المستخدم + كلمة المرور) فيصلح لكل الاشتراكات ويُورَث كما هو.
@@ -563,12 +576,12 @@ const DEVICES = {
     { title: "أدخل بيانات اشتراكك", img: "/static/img/carplay-rplay-xtream.webp",
       html: '<p>عبّئ الخانات الأربع المرقّمة في الصورة كما وصلتك:</p>'
         + '<div class="fields"><div class="f"><span dir="ltr">Name</span><code>أي اسم من عندك</code></div>'
-        + '<div class="f"><span dir="ltr">Server URL</span><code>رابط الهوست مع البورت</code></div>'
+        + '<div class="f"><span dir="ltr">Server URL</span><code>رابط الهوست كما وصلك</code></div>'
         + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
         + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
-        + '<p>اترك خانة <b dir="ltr">Custom XMLTV URL</b> فارغة فهي اختيارية.</p><div class="note">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir="ltr">http://host.com:8080</code>، بدون مسافات.</div>' + CREDS },
+        + '<p>اترك خانة <b dir="ltr">Custom XMLTV URL</b> فارغة فهي اختيارية.</p><div class="note">رابط الهوست يصلك مع بيانات الاشتراك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS },
     { title: "اضغط Test Connection ثم Save Playlist", img: "/static/img/carplay-rplay-test.webp",
-      html: '<p>انزل إلى أسفل الشاشة واضغط <b dir="ltr">Test Connection</b>. إن كانت البيانات صحيحة تظهر رسالة <b dir="ltr">Connected successfully</b> وتحتها اسم المستخدم.</p><img src="/static/img/carplay-rplay-save.webp" alt="رسالة Connected successfully ثم زر Save Playlist" loading="lazy"><p>ثم اضغط <b dir="ltr">Save Playlist</b> وانتظر ثوانٍ حتى تُحمَّل القنوات على الجوال.</p><div class="note">لم يظهر <b dir="ltr">Connected successfully</b>؟ راجع رابط الهوست مع البورت واسم المستخدم وكلمة المرور حرفًا حرفًا، فأكثر الأخطاء مسافة زائدة أو حرف ناقص.</div>' },
+      html: '<p>انزل إلى أسفل الشاشة واضغط <b dir="ltr">Test Connection</b>. إن كانت البيانات صحيحة تظهر رسالة <b dir="ltr">Connected successfully</b> وتحتها اسم المستخدم.</p><img src="/static/img/carplay-rplay-save.webp" alt="رسالة Connected successfully ثم زر Save Playlist" loading="lazy"><p>ثم اضغط <b dir="ltr">Save Playlist</b> وانتظر ثوانٍ حتى تُحمَّل القنوات على الجوال.</p><div class="note">لم يظهر <b dir="ltr">Connected successfully</b>؟ راجع رابط الهوست واسم المستخدم وكلمة المرور حرفًا حرفًا، فأكثر الأخطاء مسافة زائدة أو حرف ناقص.</div>' },
     { title: "شغّله من شاشة السيارة",
       html: '<ol><li>وصّل الآيفون بالسيارة كما تفعل مع الخرائط: بالكيبل أو لاسلكيًا.</li><li>على شاشة السيارة تظهر أيقونة <b dir="ltr">rPlay TV</b> بين تطبيقات CarPlay — إن لم تجدها في الصفحة الأولى فاسحب إلى الصفحة التالية.</li><li>افتحه واختر القناة من القائمة أو من المفضلة، فيعمل البث من اشتراكك نفسه بلا إدخال بيانات مرة أخرى.</li></ol><div class="note">الصورة تظهر على شاشة السيارة <b>والسيارة متوقفة</b> — هذا شرط من آبل لا من التطبيق، وعند الحركة تُوقف أكثر السيارات الصورة وتُبقي الصوت. والبث يستهلك من بيانات جوالك، فاحسب باقة الإنترنت.</div>' }
   ]}
@@ -648,8 +661,8 @@ const FALCON = {
         + '<div class="fields"><div class="f"><span>Any Name</span><code>أي اسم من عندك</code></div>'
         + '<div class="f"><span>Username</span><code>اسم المستخدم</code></div>'
         + '<div class="f"><span>Password</span><code>كلمة المرور</code></div>'
-        + '<div class="f"><span>URL</span><code>رابط الهوست مع البورت</code></div></div>'
-        + '<div class="note">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http مع رقم البورت، مثل <code dir="ltr">http://host.com:8080</code>، بدون مسافات.</div>' + CREDS }
+        + '<div class="f"><span>URL</span><code>رابط الهوست كما وصلك</code></div></div>'
+        + '<div class="note">رابط الهوست يصلك مع بيانات الاشتراك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS }
   ]},
 
   android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق فالكون أو IPTV Smarters Pro", choose: {
@@ -721,12 +734,11 @@ const CASPER = {
     { title: "أدخل بيانات الاشتراك", img: "/static/img/ios-aro-login.webp",
       html: '<p>عبّئ الخانات بالترتيب:</p>'
         + '<div class="fields"><div class="f"><span dir="ltr">Playlist Name</span><code>أي اسم من عندك</code></div>'
-        + '<div class="f"><span dir="ltr">Server URL</span><code>رابط الهوست مع البورت</code></div>'
+        + '<div class="f"><span dir="ltr">Server URL</span><code>رابط الهوست كما وصلك</code></div>'
         + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
         + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
         + '<p>ثم اضغط <b dir="ltr">Login</b>.</p>'
-        + '<div class="note">خانة الاسم اختيارية. ورابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http مع رقم البورت، '
-        + 'مثل <code dir="ltr">http://host.com:8080</code>، بدون مسافات.</div>' + CREDS }
+        + '<div class="note">خانة الاسم اختيارية. ورابط الهوست يصلك مع بيانات الاشتراك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS }
   ]},
 
   // بلا تطبيق مرح (MR7): تطبيق سمارت وحدها. ويبقى Smarters Pro لأنه يدخل
@@ -763,14 +775,14 @@ const CASPER = {
         + '<div class="note">الهوست والبورت خانتان منفصلتان هنا، فلا تكتب الرقم مع الرابط: إن وصلك '
         + '<code dir="ltr">http://host.com:8080</code> فاكتب <code dir="ltr">http://host.com</code> في '
         + '<b dir="ltr">Host</b> و <code dir="ltr">8080</code> في <b dir="ltr">Port</b>. ومن وصله رابط بلا رقم '
-        + 'فبورته <code dir="ltr">80</code>.</div>' + CREDS },
+        + 'فبورته <code dir="ltr">80</code>.</div>' + HTTP_NOTE + CREDS },
     { title: "تأكّد أن القائمة حُفظت", img: "/static/img/webos-duplecast-saved.webp",
       html: '<p>تظهر القائمة في جدول <b dir="ltr">Playlists</b> مع رسالة <b dir="ltr">Playlist added successfully</b>. '
         + 'وإن أخطأت في بيانٍ اضغط <b dir="ltr">Edit</b> بجانبها وصحّحه.</p>' },
     { title: "حدّث القائمة على الشاشة", img: "/static/img/webos-duplecast-refresh.webp",
       html: '<p>ارجع إلى الشاشة الرئيسية في التطبيق على التلفاز واضغط زر التحديث (‏<b dir="ltr">↻</b>) '
         + 'لجلب القنوات، وانتظر قليلًا حتى تكتمل.</p>'
-        + '<div class="note">إن لم تظهر القنوات فتأكد من اتصال الشاشة بالإنترنت، ومن صحة الهوست والبورت '
+        + '<div class="note">إن لم تظهر القنوات فتأكد من اتصال الشاشة بالإنترنت، ومن صحة رابط الهوست '
         + 'واسم المستخدم وكلمة المرور.</div>' }
   ]}
 };
@@ -993,7 +1005,7 @@ function renderM3U(){
     <h2>هل تريد رابط M3U؟</h2>
     <p class="sub">بعض المشغّلات (مثل VLC أو Kodi أو مشغّلات الشاشات) تطلب رابط M3U بدل اسم المستخدم وكلمة المرور. أدخل بياناتك وسنولّد لك الرابط جاهزًا للنسخ. البيانات لا تُرسل لأي خادم، الرابط يُبنى داخل متصفحك فقط.</p>
     <form id="m3u-form" autocomplete="off">
-      <label class="lbl" for="m3u-host">رابط الهوست مع البورت</label>
+      <label class="lbl" for="m3u-host">رابط الهوست كما وصلك</label>
       <input class="t" id="m3u-host" dir="ltr" inputmode="url" placeholder="http://host.com:8080" required>
       <label class="lbl" for="m3u-user">اسم المستخدم</label>
       <input class="t" id="m3u-user" dir="ltr" placeholder="username" required>
