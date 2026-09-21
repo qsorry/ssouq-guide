@@ -8,7 +8,7 @@
   واحدة: **أريد اشتراكًا جديدًا** (أربع خطوات ترشّح باقة) · **لدي اشتراك بالفعل**
   (معالج التفعيل خطوة بخطوة) · **أريد رابط M3U** (الأداة المجانية).
 - صفحات الأجهزة الثابتة — نسخة يقرأها محرك البحث من الخطوات نفسها:
-  `/samsung-lg` · `/iphone` · `/android` · `/android-tv` · `/windows` · `/mac`
+  `/samsung-lg` · `/iphone` · `/android` · `/android-tv` · `/windows` · `/mac` · `/carplay`
 - `/store-sitemap.xml` خريطة منتجات المتجر · `/salla/webhook` ويبهوك سلة.
 
 يعمل عبر Coolify من الـ Dockerfile بدون أي إعداد إضافي.
