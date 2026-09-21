@@ -1,17 +1,17 @@
 <!-- ============================================================
      مقال المدونة: تشغيل IPTV على شاشة السيارة (CarPlay) بتطبيق rPlay TV
+     مقال وإعلان معًا: شرح بخمس خطوات مرقّمة، والاشتراكات في وسط الشرح
+     (عند الحاجة إلى البيانات) وفي نهايته، بالصور والأزرار.
      انسخ كل ما تحته والصقه في محرر المدونة على ssouq.com بوضع HTML.
-     الشكل يحاكي دليل التفعيل (guide.ssouq.com): بطاقة لكل خطوة برأس
-     "الخطوة N من 5"، العنوان، الصورة، النص، وخانات البيانات شرائح.
-     الصور تُخدم من guide.ssouq.com. محرر المدونة يُسقط من الصناديق
-     width/margin/border-radius ويُبقي background/border/padding، ويُسقط
-     display:flex — فالتخطيط جداول وفواصل <p> لا flex ولا هوامش.
+     ما يحذفه المحرر من الأنماط (width/margin/border-radius على الصناديق)
+     لا يُعتمد عليه: الزوايا والتخطيط في صور مصمَّمة تُخدم من guide.ssouq.com،
+     والأزرار روابط <a> (المحرر يُبقي أنماطها كاملة).
      ============================================================ -->
 <div dir="rtl" style="line-height:1.9;max-width:760px;margin:0 auto">
 
   <table dir="rtl" style="width:100%;border-collapse:separate;border-spacing:0;background:#0b1526;color:#ffffff;border-radius:16px">
     <tr>
-      <td style="width:96px;padding:18px 18px 18px 8px;vertical-align:middle;text-align:center">
+      <td style="padding:18px 18px 18px 8px;vertical-align:middle;text-align:center">
         <img src="https://guide.ssouq.com/static/img/apps/rplay-tv.webp" alt="أيقونة تطبيق rPlay TV" width="72" height="72" style="width:72px;height:72px;border-radius:16px;display:inline-block;margin:0">
       </td>
       <td style="padding:18px 8px 18px 18px;vertical-align:middle;text-align:right">
@@ -22,49 +22,69 @@
     </tr>
   </table>
 
-  <p>لا تحتاج جهازًا إضافيًا ولا رسيفرًا: التطبيق على الآيفون، والبيانات تُدخل مرة واحدة، ثم يظهر rPlay TV على شاشة السيارة كلما وصلت جوالك بها. خمس خطوات بالصور، كما في <a href="https://guide.ssouq.com/carplay" style="color:#22c1d6">دليل التفعيل</a>.</p>
+  <p style="font-size:18px">تخيّل أن تنتظر في السيارة والمباراة أو المسلسل على شاشتها، بجودة اشتراكك نفسه في البيت. هذا ما يفعله تطبيق <b dir="ltr">rPlay TV</b> مع <b dir="ltr">Apple CarPlay</b>: التطبيق على الآيفون، والبيانات تُدخل مرة واحدة، ثم يظهر على شاشة السيارة كلما وصلت جوالك بها.</p>
+  <p style="text-align:center"><img src="https://guide.ssouq.com/static/img/blog/carplay-benefits.jpg" alt="بلا جهاز إضافي · بيانات مرة واحدة · تطبيق مجاني" style="max-width:520px;width:100%;height:auto;border-radius:16px;display:inline-block"></p>
+
+  <div style="background:rgba(34,193,214,.12);border:1px solid rgba(34,193,214,.35);padding:12px 16px;font-size:15px">
+    <b>ما تحتاجه قبل البدء:</b> آيفون بنظام <span dir="ltr">iOS 18</span> أو أحدث، وسيارة تدعم <span dir="ltr">Apple CarPlay</span>، واشتراك IPTV فعّال ببياناته الثلاث: رابط الهوست، اسم المستخدم، كلمة المرور. ما عندك اشتراك؟ <a href="https://ssouq.com/الاشتراكات-الرقمية/c993357185" style="color:#22c1d6;font-weight:700">الباقات هنا</a>، وتصلك خلال دقيقة.
+  </div>
+  <p></p>
 
   <!-- ===== الخطوة 1 ===== -->
   <div style="background:rgba(255,255,255,.05);border:1px solid rgba(128,128,128,.3);padding:16px 18px">
-    <p style="font-size:14px;color:#22c1d6">سيارة CarPlay · الخطوة 1 من 5</p>
-    <h2 style="font-size:22px;margin:4px 0 12px">حمّل تطبيق rPlay TV على الآيفون</h2>
-    <p>التطبيق يُثبَّت على الآيفون لا على السيارة. افتح App Store وحمّل تطبيق <b dir="ltr">rPlay TV</b>، أو اضغط الرابط مباشرة:</p>
-    <p><a href="https://apps.apple.com/sa/app/rplay-tv/id6795052913?l=ar" target="_blank" rel="noopener" style="color:#22c1d6" dir="ltr">apps.apple.com · rPlay TV</a></p>
-    <div style="background:rgba(34,193,214,.12);border:1px solid rgba(34,193,214,.35);padding:10px 14px;font-size:15px">يحتاج <b dir="ltr">iOS 18</b> أو أحدث، وسيارة تدعم <b dir="ltr">Apple CarPlay</b>. تُدخل بياناتك مرة واحدة على الجوال، ثم يظهر التطبيق على شاشة السيارة كلما وصلتَ جوالك بها.</div>
+    <table dir="rtl" style="border-collapse:collapse"><tr>
+      <td style="padding:0 0 0 12px;vertical-align:middle"><img src="https://guide.ssouq.com/static/img/blog/step-1.png" alt="1" width="52" height="52" style="width:52px;height:52px;display:block"></td>
+      <td style="vertical-align:middle"><h2 style="font-size:22px;margin:0">حمّل تطبيق rPlay TV على الآيفون</h2></td>
+    </tr></table>
+    <p>التطبيق يُثبَّت على الجوال لا على السيارة. افتح App Store وحمّل <b dir="ltr">rPlay TV</b>، أو اضغط الزر مباشرة. التطبيق مجاني ولا يحتاج حسابًا.</p>
+    <p><a href="https://apps.apple.com/sa/app/rplay-tv/id6795052913?l=ar" target="_blank" rel="noopener" style="display:inline-block;background:#22c1d6;color:#062030;font-weight:700;text-decoration:none;padding:9px 18px;border-radius:999px;font-size:15px">تحميل rPlay TV من App Store</a></p>
   </div>
   <p></p>
 
   <!-- ===== الخطوة 2 ===== -->
   <div style="background:rgba(255,255,255,.05);border:1px solid rgba(128,128,128,.3);padding:16px 18px">
-    <p style="font-size:14px;color:#22c1d6">سيارة CarPlay · الخطوة 2 من 5</p>
-    <h2 style="font-size:22px;margin:4px 0 12px">اضغط Add Playlist واختر Xtream Codes</h2>
+    <table dir="rtl" style="border-collapse:collapse"><tr>
+      <td style="padding:0 0 0 12px;vertical-align:middle"><img src="https://guide.ssouq.com/static/img/blog/step-2.png" alt="2" width="52" height="52" style="width:52px;height:52px;display:block"></td>
+      <td style="vertical-align:middle"><h2 style="font-size:22px;margin:0">اضغط Add Playlist واختر Xtream Codes</h2></td>
+    </tr></table>
+    <p>افتح التطبيق واضغط <b dir="ltr">Add Playlist</b>، فتظهر شاشة <b dir="ltr">Choose Source Type</b> بثلاثة خيارات. اختر الخيار الأوسط المحدَّد في الصورة: <b dir="ltr">Xtream Codes</b>. ولا تختر <b dir="ltr">Dispatcharr</b> ولا <b dir="ltr">M3U + EPG</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>
     <p style="text-align:center"><img src="https://guide.ssouq.com/static/img/carplay-rplay-source.webp" alt="شاشة Choose Source Type في rPlay TV واختيار Xtream Codes" style="max-width:340px;width:100%;height:auto;border-radius:16px;display:inline-block"></p>
-    <p>افتح التطبيق على الآيفون واضغط <b dir="ltr">Add Playlist</b>، فتظهر شاشة <b dir="ltr">Choose Source Type</b> بثلاثة خيارات. اختر الخيار الأوسط المحدَّد في الصورة: <b dir="ltr">Xtream Codes</b> — ولا تختر <b dir="ltr">Dispatcharr</b> ولا <b dir="ltr">M3U + EPG</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>
   </div>
   <p></p>
 
+  <!-- ===== إعلان في وسط الشرح: هنا يحتاج القارئ بيانات اشتراك ===== -->
+  <p style="font-size:18px"><b>الخطوة التالية تحتاج بيانات اشتراكك.</b> إن لم يكن عندك اشتراك بعد، اختر باقتك الآن وتصلك بياناتها خلال دقيقة من الدفع، ثم أكمل الخطوات:</p>
+  <p style="text-align:center"><a href="https://ssouq.com/الاشتراكات-الرقمية/c993357185"><img src="https://guide.ssouq.com/static/img/blog/carplay-plans-banner.jpg" alt="اشتراكات IPTV تعمل على الآيفون وشاشة السيارة: سمارت 6 أشهر 28.75 ر.س · سمارت 30 شهرًا 99 ر.س · فالكون 15 شهرًا 149.5 ر.س" style="max-width:520px;width:100%;height:auto;border-radius:16px;display:inline-block"></a></p>
+  <p style="text-align:center">
+    <a href="https://ssouq.com/اشتراك-iptv-لمدة-6-أشهر-جميع-الأجهزة/p1205321184" style="display:inline-block;margin:4px;background:#22c1d6;color:#062030;font-weight:700;text-decoration:none;padding:9px 16px;border-radius:999px;font-size:14px">سمارت 6 أشهر · 28.75 ر.س</a>
+    <a href="https://ssouq.com/اشتراك-iptv-30-شهر/p1112367445" style="display:inline-block;margin:4px;background:#22c1d6;color:#062030;font-weight:700;text-decoration:none;padding:9px 16px;border-radius:999px;font-size:14px">سمارت 30 شهرًا · 99 ر.س</a>
+    <a href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-falcon-tv-pro/p479880741" style="display:inline-block;margin:4px;background:#ff9f1c;color:#2a1d04;font-weight:700;text-decoration:none;padding:9px 16px;border-radius:999px;font-size:14px">فالكون 15 شهرًا · 149.5 ر.س</a>
+  </p>
+
   <!-- ===== الخطوة 3 ===== -->
   <div style="background:rgba(255,255,255,.05);border:1px solid rgba(128,128,128,.3);padding:16px 18px">
-    <p style="font-size:14px;color:#22c1d6">سيارة CarPlay · الخطوة 3 من 5</p>
-    <h2 style="font-size:22px;margin:4px 0 12px">أدخل بيانات اشتراكك</h2>
-    <p style="text-align:center"><img src="https://guide.ssouq.com/static/img/carplay-rplay-xtream.webp" alt="شاشة إدخال بيانات Xtream Codes في rPlay TV" style="max-width:340px;width:100%;height:auto;border-radius:16px;display:inline-block"></p>
-    <p>عبّئ الخانات الأربع المرقّمة في الصورة كما وصلتك:</p>
+    <table dir="rtl" style="border-collapse:collapse"><tr>
+      <td style="padding:0 0 0 12px;vertical-align:middle"><img src="https://guide.ssouq.com/static/img/blog/step-3.png" alt="3" width="52" height="52" style="width:52px;height:52px;display:block"></td>
+      <td style="vertical-align:middle"><h2 style="font-size:22px;margin:0">أدخل بيانات اشتراكك</h2></td>
+    </tr></table>
+    <p>عبّئ الخانات الأربع المرقّمة في الصورة كما وصلتك في رسالة تأكيد الطلب:</p>
     <table dir="rtl" style="width:100%;border-collapse:separate;border-spacing:0 6px;font-size:15px">
-      <tr><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3);width:38%" dir="ltr"><b>Name</b></td><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)"><code style="background:rgba(34,193,214,.18);padding:3px 10px;border-radius:8px">أي اسم من عندك</code></td></tr>
+      <tr><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)" dir="ltr"><b>Name</b></td><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)"><code style="background:rgba(34,193,214,.18);padding:3px 10px;border-radius:8px">أي اسم من عندك</code></td></tr>
       <tr><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)" dir="ltr"><b>Server URL</b></td><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)"><code style="background:rgba(34,193,214,.18);padding:3px 10px;border-radius:8px">رابط الهوست كما وصلك</code></td></tr>
       <tr><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)" dir="ltr"><b>Username</b></td><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)"><code style="background:rgba(34,193,214,.18);padding:3px 10px;border-radius:8px">اسم المستخدم</code></td></tr>
       <tr><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)" dir="ltr"><b>Password</b></td><td style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(128,128,128,.3)"><code style="background:rgba(34,193,214,.18);padding:3px 10px;border-radius:8px">كلمة المرور</code></td></tr>
     </table>
+    <p style="text-align:center"><img src="https://guide.ssouq.com/static/img/carplay-rplay-xtream.webp" alt="شاشة إدخال بيانات Xtream Codes في rPlay TV" style="max-width:340px;width:100%;height:auto;border-radius:16px;display:inline-block"></p>
     <p>اترك خانة <b dir="ltr">Custom XMLTV URL</b> فارغة فهي اختيارية.</p>
     <div style="background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.45);padding:10px 14px;font-size:15px">
       <b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><br>
       <span dir="ltr" style="color:#16a34a;font-weight:700;font-size:17px">http://</span> ✅ صحيح<br>
-      <span dir="ltr" style="color:#dc2626;font-weight:700;font-size:17px;text-decoration:line-through">https://</span> ❌ خطأ — لا يعمل<br>
+      <span dir="ltr" style="color:#dc2626;font-weight:700;font-size:17px;text-decoration:line-through">https://</span> ❌ خطأ، لا يعمل<br>
       عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir="ltr">s</b> من نفسه فيصير الرابط <b dir="ltr">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir="ltr">https</b> فاحذف حرف <b dir="ltr">s</b> ليصبح <b dir="ltr">http</b>.
     </div>
     <p></p>
     <div style="background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.4);padding:10px 14px;font-size:15px">
-      بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a href="https://ssouq.com/account/orders" style="color:#22c1d6">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.
+      بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a href="https://ssouq.com/account/orders" style="color:#22c1d6">صفحة طلباتك</a> بالمتجر: افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.
       <p style="text-align:center"><img src="https://guide.ssouq.com/static/img/order-digital.webp" alt="زر المحتوى الرقمي داخل صفحة الطلب" style="max-width:420px;width:100%;height:auto;border-radius:12px;display:inline-block"></p>
     </div>
   </div>
@@ -72,45 +92,53 @@
 
   <!-- ===== الخطوة 4 ===== -->
   <div style="background:rgba(255,255,255,.05);border:1px solid rgba(128,128,128,.3);padding:16px 18px">
-    <p style="font-size:14px;color:#22c1d6">سيارة CarPlay · الخطوة 4 من 5</p>
-    <h2 style="font-size:22px;margin:4px 0 12px">اضغط Test Connection ثم Save Playlist</h2>
-    <p style="text-align:center"><img src="https://guide.ssouq.com/static/img/carplay-rplay-test.webp" alt="زر Test Connection في rPlay TV" style="max-width:340px;width:100%;height:auto;border-radius:16px;display:inline-block"></p>
-    <p>انزل إلى أسفل الشاشة واضغط <b dir="ltr">Test Connection</b>. إن كانت البيانات صحيحة تظهر رسالة <b dir="ltr">Connected successfully</b> وتحتها اسم المستخدم.</p>
-    <p style="text-align:center"><img src="https://guide.ssouq.com/static/img/carplay-rplay-save.webp" alt="رسالة Connected successfully ثم زر Save Playlist" style="max-width:340px;width:100%;height:auto;border-radius:16px;display:inline-block"></p>
-    <p>ثم اضغط <b dir="ltr">Save Playlist</b> وانتظر ثوانٍ حتى تُحمَّل القنوات على الجوال.</p>
-    <div style="background:rgba(34,193,214,.12);border:1px solid rgba(34,193,214,.35);padding:10px 14px;font-size:15px">لم يظهر <b dir="ltr">Connected successfully</b>؟ راجع رابط الهوست واسم المستخدم وكلمة المرور حرفًا حرفًا، فأكثر الأخطاء مسافة زائدة أو حرف ناقص.</div>
+    <table dir="rtl" style="border-collapse:collapse"><tr>
+      <td style="padding:0 0 0 12px;vertical-align:middle"><img src="https://guide.ssouq.com/static/img/blog/step-4.png" alt="4" width="52" height="52" style="width:52px;height:52px;display:block"></td>
+      <td style="vertical-align:middle"><h2 style="font-size:22px;margin:0">اضغط Test Connection ثم Save Playlist</h2></td>
+    </tr></table>
+    <p>انزل إلى أسفل الشاشة واضغط <b dir="ltr">Test Connection</b>. إن كانت البيانات صحيحة تظهر رسالة <b dir="ltr">Connected successfully</b> وتحتها اسم المستخدم، فاضغط بعدها <b dir="ltr">Save Playlist</b> وانتظر ثوانٍ حتى تُحمَّل القنوات على الجوال.</p>
+    <p style="text-align:center">
+      <img src="https://guide.ssouq.com/static/img/carplay-rplay-test.webp" alt="زر Test Connection في rPlay TV" style="max-width:300px;width:100%;height:auto;border-radius:16px;display:inline-block;margin:4px">
+      <img src="https://guide.ssouq.com/static/img/carplay-rplay-save.webp" alt="رسالة Connected successfully ثم زر Save Playlist" style="max-width:300px;width:100%;height:auto;border-radius:16px;display:inline-block;margin:4px">
+    </p>
+    <div style="background:rgba(34,193,214,.12);border:1px solid rgba(34,193,214,.35);padding:10px 14px;font-size:15px">لم يظهر <b dir="ltr">Connected successfully</b>؟ راجع رابط الهوست واسم المستخدم وكلمة المرور حرفًا حرفًا، فأكثر الأخطاء مسافة زائدة أو حرف ناقص، أو حرف <b dir="ltr">s</b> زائد في أول الرابط.</div>
   </div>
   <p></p>
 
   <!-- ===== الخطوة 5 ===== -->
   <div style="background:rgba(255,255,255,.05);border:1px solid rgba(128,128,128,.3);padding:16px 18px">
-    <p style="font-size:14px;color:#22c1d6">سيارة CarPlay · الخطوة 5 من 5</p>
-    <h2 style="font-size:22px;margin:4px 0 12px">شغّله من شاشة السيارة</h2>
+    <table dir="rtl" style="border-collapse:collapse"><tr>
+      <td style="padding:0 0 0 12px;vertical-align:middle"><img src="https://guide.ssouq.com/static/img/blog/step-5.png" alt="5" width="52" height="52" style="width:52px;height:52px;display:block"></td>
+      <td style="vertical-align:middle"><h2 style="font-size:22px;margin:0">شغّله من شاشة السيارة</h2></td>
+    </tr></table>
     <ol style="padding-right:22px">
       <li>وصّل الآيفون بالسيارة كما تفعل مع الخرائط: بالكيبل أو لاسلكيًا.</li>
-      <li>على شاشة السيارة تظهر أيقونة <b dir="ltr">rPlay TV</b> بين تطبيقات CarPlay — إن لم تجدها في الصفحة الأولى فاسحب إلى الصفحة التالية.</li>
+      <li>على شاشة السيارة تظهر أيقونة <b dir="ltr">rPlay TV</b> بين تطبيقات CarPlay. إن لم تجدها في الصفحة الأولى فاسحب إلى الصفحة التالية.</li>
       <li>افتحه واختر القناة من القائمة أو من المفضلة، فيعمل البث من اشتراكك نفسه بلا إدخال بيانات مرة أخرى.</li>
     </ol>
-    <div style="background:rgba(34,193,214,.12);border:1px solid rgba(34,193,214,.35);padding:10px 14px;font-size:15px">الصورة تظهر على شاشة السيارة <b>والسيارة متوقفة</b> — هذا شرط من آبل لا من التطبيق، وعند الحركة تُوقف أكثر السيارات الصورة وتُبقي الصوت. والبث يستهلك من بيانات جوالك، فاحسب باقة الإنترنت.</div>
+    <div style="background:rgba(34,193,214,.12);border:1px solid rgba(34,193,214,.35);padding:10px 14px;font-size:15px">الصورة تظهر على شاشة السيارة <b>والسيارة متوقفة</b>؛ هذا شرط من آبل لا من التطبيق، وعند الحركة تُوقف أكثر السيارات الصورة وتُبقي الصوت. والبث يستهلك من بيانات جوالك، فاحسب باقة الإنترنت.</div>
   </div>
   <p></p>
 
-  <!-- ===== الباقة المناسبة ===== -->
-  <div style="background:rgba(255,255,255,.05);border:1px solid rgba(34,193,214,.45);padding:16px 18px">
-    <h2 style="font-size:22px;margin:0 0 6px">الباقة المناسبة لهذا الجهاز</h2>
-    <p style="font-size:15px">أي اشتراك يعمل على الآيفون يعمل على CarPlay، لأن التطبيق واحد والبيانات واحدة.</p>
-    <table dir="rtl" style="width:100%;border-collapse:collapse;text-align:center;font-size:15px">
-      <tr>
-        <td style="padding:8px;vertical-align:top;width:33%"><a href="https://ssouq.com/اشتراك-iptv-لمدة-6-أشهر-جميع-الأجهزة/p1205321184" style="color:inherit;text-decoration:none"><img src="https://guide.ssouq.com/static/img/products/p1205321184.webp" alt="اشتراك IPTV لمدة 6 أشهر لجميع الأجهزة" style="width:110px;height:110px;border-radius:14px;display:inline-block"><br><b>سمارت · 6 أشهر</b><br><span style="color:#ff9f1c;font-weight:700">28.75 ر.س</span></a></td>
-        <td style="padding:8px;vertical-align:top;width:33%"><a href="https://ssouq.com/اشتراك-iptv-30-شهر/p1112367445" style="color:inherit;text-decoration:none"><img src="https://guide.ssouq.com/static/img/products/p1112367445.webp" alt="اشتراك IPTV لمدة 30 شهرًا" style="width:110px;height:110px;border-radius:14px;display:inline-block"><br><b>سمارت · 30 شهرًا</b><br><span style="color:#ff9f1c;font-weight:700">99 ر.س</span></a></td>
-        <td style="padding:8px;vertical-align:top;width:33%"><a href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-falcon-tv-pro/p479880741" style="color:inherit;text-decoration:none"><img src="https://guide.ssouq.com/static/img/products/p479880741.webp" alt="اشتراك فالكون IPTV لمدة 15 شهرًا" style="width:110px;height:110px;border-radius:14px;display:inline-block"><br><b>فالكون · 15 شهرًا</b><br><span style="color:#ff9f1c;font-weight:700">149.5 ر.س</span></a></td>
-      </tr>
-    </table>
-    <p style="font-size:15px;text-align:center">أو تصفّح <a href="https://ssouq.com/الاشتراكات-الرقمية/c993357185" style="color:#22c1d6">كل اشتراكات IPTV</a> في متجر سمارت سوق.</p>
-  </div>
+  <!-- ===== إعلان فالكون للمباريات ===== -->
+  <p style="text-align:center"><a href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-falcon-tv-pro/p479880741"><img src="https://guide.ssouq.com/static/img/blog/carplay-falcon-banner.jpg" alt="المباريات في سيارتك بثبات فالكون: اشتراك فالكون 15 شهرًا بـ 149.5 ر.س" style="max-width:520px;width:100%;height:auto;border-radius:16px;display:inline-block"></a></p>
 
-  <p style="text-align:center;margin:22px 0 0">
-    <a href="https://guide.ssouq.com/carplay" style="display:inline-block;background:#22c1d6;color:#062030;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:999px">الشرح التفاعلي خطوة بخطوة على دليل التفعيل</a>
-  </p>
-  <p style="text-align:center;font-size:14px">تحتاج مساعدة؟ <a href="https://wa.me/966504998661?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D9%8B%D8%8C%20%D8%A3%D8%AD%D8%AA%D8%A7%D8%AC%20%D9%85%D8%B3%D8%A7%D8%B9%D8%AF%D8%A9%20%D9%81%D9%8A%20%D8%AA%D9%81%D8%B9%D9%8A%D9%84%20%D8%A7%D9%84%D8%A7%D8%B4%D8%AA%D8%B1%D8%A7%D9%83.%0A%D9%86%D9%88%D8%B9%20%D8%A7%D9%84%D8%AC%D9%87%D8%A7%D8%B2%3A%20%D8%B3%D9%8A%D8%A7%D8%B1%D8%A9%20CarPlay%0A%D8%A7%D9%84%D8%AA%D8%B7%D8%A8%D9%8A%D9%82%3A%20rPlay%20TV" style="color:#22c1d6">راسلنا على واتساب</a></p>
+  <!-- ===== أسئلة شائعة ===== -->
+  <h2 style="font-size:22px;margin:26px 0 10px">أسئلة شائعة</h2>
+  <p><b>هل يعمل اشتراكي الحالي على السيارة؟</b><br>نعم. أي اشتراك من سمارت سوق يعمل على الآيفون يعمل على CarPlay بالبيانات نفسها، لأن التطبيق واحد.</p>
+  <p><b>هل تُخصم السيارة من عدد الأجهزة؟</b><br>لا. السيارة تعرض ما يشغّله الآيفون، فهما جهاز واحد في حساب الاشتراك.</p>
+  <p><b>هل أحتاج إنترنت في السيارة؟</b><br>الآيفون هو الذي يبث، فيكفي إنترنت الجوال. الساعة الواحدة تستهلك تقريبًا ما تستهلكه ساعة يوتيوب بالجودة نفسها.</p>
+  <p><b>لا يظهر rPlay TV على شاشة السيارة؟</b><br>افتح التطبيق مرة على الآيفون بعد التثبيت، ثم أعد توصيله بالسيارة. وفي إعدادات الآيفون: عام ← CarPlay ← سيارتك ← تخصيص، تأكد أن التطبيق مُضاف.</p>
+
+  <!-- ===== دعوة ختامية ===== -->
+  <div style="background:#0b1526;color:#ffffff;border:1px solid rgba(34,193,214,.5);padding:20px 18px;text-align:center">
+    <div style="font-size:22px;font-weight:700;color:#ffffff">جاهز؟ اختر باقتك وابدأ خلال دقيقة</div>
+    <div style="font-size:15px;color:#c7d2e0">اشتراك واحد لكل أجهزتك: الآيفون، السيارة، والشاشة في البيت</div>
+    <p style="margin:12px 0 0">
+      <a href="https://ssouq.com/اشتراك-iptv-لمدة-6-أشهر-جميع-الأجهزة/p1205321184" style="display:inline-block;margin:4px;background:#22c1d6;color:#062030;font-weight:700;text-decoration:none;padding:10px 18px;border-radius:999px;font-size:15px">سمارت 6 أشهر · 28.75 ر.س</a>
+      <a href="https://ssouq.com/اشتراك-iptv-30-شهر/p1112367445" style="display:inline-block;margin:4px;background:#22c1d6;color:#062030;font-weight:700;text-decoration:none;padding:10px 18px;border-radius:999px;font-size:15px">سمارت 30 شهرًا · 99 ر.س</a>
+      <a href="https://ssouq.com/اشتراك-فالكون-iptv-لمدة-15-شهر-falcon-tv-pro/p479880741" style="display:inline-block;margin:4px;background:#ff9f1c;color:#2a1d04;font-weight:700;text-decoration:none;padding:10px 18px;border-radius:999px;font-size:15px">فالكون 15 شهرًا · 149.5 ر.س</a>
+    </p>
+    <p style="font-size:14px;color:#c7d2e0;margin:10px 0 0">أو <a href="https://ssouq.com/الاشتراكات-الرقمية/c993357185" style="color:#22c1d6">تصفّح كل الاشتراكات</a> · الشرح التفاعلي على <a href="https://guide.ssouq.com/carplay" style="color:#22c1d6">دليل التفعيل</a> · <a href="https://wa.me/966504998661?text=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7%D9%8B%D8%8C%20%D8%A3%D8%AD%D8%AA%D8%A7%D8%AC%20%D9%85%D8%B3%D8%A7%D8%B9%D8%AF%D8%A9%20%D9%81%D9%8A%20%D8%AA%D9%81%D8%B9%D9%8A%D9%84%20%D8%A7%D9%84%D8%A7%D8%B4%D8%AA%D8%B1%D8%A7%D9%83.%0A%D9%86%D9%88%D8%B9%20%D8%A7%D9%84%D8%AC%D9%87%D8%A7%D8%B2%3A%20%D8%B3%D9%8A%D8%A7%D8%B1%D8%A9%20CarPlay%0A%D8%A7%D9%84%D8%AA%D8%B7%D8%A8%D9%8A%D9%82%3A%20rPlay%20TV" style="color:#22c1d6">الدعم على واتساب</a></p>
+  </div>
 </div>
