@@ -1285,7 +1285,11 @@ function wireM3U(){
 /* ---------- الإقلاع: تُخفى النسخة الثابتة ويُقرأ الرابط ---------- */
 document.getElementById("fallback").hidden = true;
 // ?embed=1 — المعالج مضمَّنًا في مقال المدونة (iframe): يُخفى الرأس والذيل ويبقى المعالج وحده
-if (new URLSearchParams(location.search).get("embed") === "1") document.body.classList.add("embed");
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get("embed") === "1") document.body.classList.add("embed");
+  if (q.get("theme") === "dark" || q.get("theme") === "light") document.documentElement.dataset.theme = q.get("theme");   // يتبع لون الصفحة المضمِّنة
+}
 applyHash();
 render(false);
 </script>
