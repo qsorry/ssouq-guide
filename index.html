@@ -1109,8 +1109,40 @@ function applyHash(){
   state.screen = "home";
 }
 
+/* عنوان التبويب لكل شاشة: الرابط بعد # لا يراه محرك البحث (لذلك صفحات الأجهزة
+   الثابتة تحمل عناوينها بنفسها)، لكن المتصفح والسجل والمفضلة ومشاركة الرابط
+   تعرض هذا العنوان — فلا تبقى كل الشاشات باسم واحد. */
+const SITE_TITLE = document.title;
+function pageTitle(){
+  const T = t => t + " | سمارت سوق";
+  switch (state.screen) {
+    case "buy-taste":  return T("اشتراك جديد: ماذا تشاهد أكثر؟");
+    case "buy-device": return T("اشتراك جديد: اختر جهازك");
+    case "buy-brand":  return T("اختر نوع الاشتراك · " + BUYDEV[state.bdev].label);
+    case "buy-plan":   return T("باقات " + CATALOG[state.brand].name + " · " + BUYDEV[state.bdev].label);
+    case "buy-done": { const pl = CATALOG[state.brand].plans.find(p => p.id === state.plan); return T(pl ? pl.name : "الباقة المختارة"); }
+    case "m3u":        return T("توليد رابط M3U من بيانات اشتراكك");
+    case "plans":      return T("كل اشتراكات IPTV");
+    case "activate": {
+      if (!state.sub) return T("لدي اشتراك: اختر نوع اشتراكك");
+      const sub = SUBS[state.sub].name;
+      if (SUBS[state.sub].maintenance) return T("اشتراك " + sub + " تحت الصيانة");
+      if (!state.dev) return T("تفعيل اشتراك " + sub + ": اختر جهازك");
+      const d = devs()[state.dev];
+      if (d.variants && !state.variant) return T("تفعيل " + sub + " على " + d.name + ": اختر التطبيق");
+      const app = state.variant ? d.choose.options.find(o => o.key === state.variant).label : null;
+      const where = (app ? app + " على " : "") + d.name;
+      const n = steps().length;
+      if (state.i >= n) return T("تم تفعيل " + sub + " على " + d.name);
+      return T("الخطوة " + (state.i + 1) + " من " + n + " · " + where + " · تفعيل " + sub);
+    }
+    default: return SITE_TITLE;
+  }
+}
+
 function paint(){
   closeMenu();
+  document.title = pageTitle();
   switch (state.screen) {
     case "buy-taste":  renderBuyTaste();  break;
     case "buy-device": renderBuyDevice(); break;
