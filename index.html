@@ -467,7 +467,7 @@ const DEVICES = {
       html: '<p>تظهر شاشة <b dir="ltr">Add User</b> بثلاث خانات، عبّئها كما وصلتك ثم اضغط <b dir="ltr">Go</b>:</p>'
         + '<div class="fields"><div class="f"><span dir="ltr">http://url:port</span><code>رابط الهوست كما وصلك</code></div>'
         + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
-        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>' + CREDS }
+        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>' + HTTP_NOTE + CREDS }
   ]},
   android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
@@ -1007,6 +1007,7 @@ function renderM3U(){
     <form id="m3u-form" autocomplete="off">
       <label class="lbl" for="m3u-host">رابط الهوست كما وصلك</label>
       <input class="t" id="m3u-host" dir="ltr" inputmode="url" placeholder="http://host.com:8080" required>
+      ${HTTP_NOTE}
       <label class="lbl" for="m3u-user">اسم المستخدم</label>
       <input class="t" id="m3u-user" dir="ltr" placeholder="username" required>
       <label class="lbl" for="m3u-pass">كلمة المرور</label>
@@ -1219,6 +1220,7 @@ function wireM3U(){
     e.preventDefault();
     let host = $("#m3u-host").value.trim().replace(/\/+$/, "");
     const u = $("#m3u-user").value.trim(), p = $("#m3u-pass").value.trim();
+    host = host.replace(/^https:\/\//i, "http://");            // حرف s الزائد من اللصق: الرابط http دائمًا
     if (!/^https?:\/\//i.test(host)) host = "http://" + host;
     link.value = host + "/get.php?username=" + encodeURIComponent(u) + "&password=" + encodeURIComponent(p) + "&type=m3u_plus&output=ts";
     out.hidden = false; msg.textContent = "انسخ الرابط والصقه في المشغّل الذي تستخدمه."; link.focus(); link.select();
