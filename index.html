@@ -329,6 +329,8 @@ p{margin:0 0 10px}
 .linkish{background:transparent;border:0;padding:0;font:inherit;color:var(--brand-text);cursor:pointer;text-decoration:underline}
 
 footer{max-width:680px;margin:0 auto;padding:0 16px 30px;color:var(--mute);font-size:.8rem;text-align:center}
+/* وضع التضمين (?embed=1): المعالج داخل iframe في مقال المدونة — بلا رأس ولا ذيل */
+body.embed .topbar,body.embed footer{display:none}body.embed main{padding:8px 10px 24px}
 footer a{color:var(--mute)}
 @media (min-width:560px){.trust div{font-size:.8rem}.brands{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:no-preference){.card,.entry,.brandcard{animation:in .25s ease}
@@ -1180,7 +1182,7 @@ function paint(){
 let pushes = 0;                       // كم خطوة أضفناها لسجل المتصفح في هذه الجلسة
 function render(push){
   paint();
-  const h = hashFor(), url = h || location.pathname;
+  const h = hashFor(), url = h || location.pathname + location.search;   // نُبقي ?embed=1 عند العودة للرئيسية
   if (push && h !== location.hash) { history.pushState(null, "", url); pushes++; }
   else history.replaceState(null, "", url);
 }
@@ -1282,6 +1284,12 @@ function wireM3U(){
 
 /* ---------- الإقلاع: تُخفى النسخة الثابتة ويُقرأ الرابط ---------- */
 document.getElementById("fallback").hidden = true;
+// ?embed=1 — المعالج مضمَّنًا في مقال المدونة (iframe): يُخفى الرأس والذيل ويبقى المعالج وحده
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get("embed") === "1") document.body.classList.add("embed");
+  if (q.get("theme") === "dark" || q.get("theme") === "light") document.documentElement.dataset.theme = q.get("theme");   // يتبع لون الصفحة المضمِّنة
+}
 applyHash();
 render(false);
 </script>
