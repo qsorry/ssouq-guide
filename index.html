@@ -395,7 +395,22 @@ footer a{color:var(--mute)}
 <footer>تحتاج مساعدة؟ <a href="https://wa.me/966504998661" target="_blank" rel="noopener">الدعم الفني على واتساب</a> · <a href="https://whatsapp.com/channel/0029Vb91ux61SWssvKFZgL31" target="_blank" rel="noopener">قناتنا على واتساب</a> · <a href="https://ssouq.com" target="_blank" rel="noopener">ssouq.com</a></footer>
 <script>
 const STORE_UTM = "?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide";
-const WA = "https://wa.me/966504998661?text=" + encodeURIComponent("مرحباً، أحتاج مساعدة في تفعيل الاشتراك. نوع الجهاز: ");
+const WA_NUMBER = "https://wa.me/966504998661?text=";
+// رسالة الدعم على واتساب: نوع الاشتراك أولًا ثم الجهاز ثم التطبيق، سطرًا سطرًا،
+// فيعرف الدعم الحالة كاملة من الرسالة نفسها قبل أن يسأل.
+function waLink(extra){
+  const lines = ["مرحباً، أحتاج مساعدة في تفعيل الاشتراك."];
+  if (state.sub) lines.push("نوع الاشتراك: " + SUBS[state.sub].name + " (" + SUBS[state.sub].full + ")");
+  if (state.dev) {
+    const d = devs()[state.dev];
+    lines.push("نوع الجهاز: " + d.name);
+    const app = state.variant && d.choose ? d.choose.options.find(o => o.key === state.variant).label
+              : (!d.variants ? d.sub.replace(/^تطبيق /, "") : null);
+    if (app) lines.push("التطبيق: " + app);
+  }
+  if (extra) lines.push(extra);
+  return WA_NUMBER + encodeURIComponent(lines.join("\n"));
+}
 const ICONS = {
   phone: '<svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10 18h4"/></svg>',
   tv: '<svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
@@ -914,7 +929,7 @@ function renderBuyPlan(){
       <span class="who"><b>${p.dur}${p.tag ? `<span class="badge">${p.tag}</span>` : ""}</b><small>${p.desc}</small></span>
       <span class="money">${p.price} ر.س${p.was ? `<s>${p.was} ر.س</s>` : ""}</span></button>`).join("");
   const warn = (state.bdev === "webos" && state.brand === "falcon")
-    ? `<div class="note warn">اخترت شاشة سامسونج أو LG مع فالكون، وفالكون يعمل بتطبيقه الخاص. تواصل مع الدعم قبل الشراء للتأكد من تثبيته على شاشتك، أو ارجع واختر "سمارت" الذي له باقات مخصّصة لـ webOS.<br><a class="link" href="${WA}${encodeURIComponent("شاشة سامسونج/LG - استفسار عن فالكون")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>` : "";
+    ? `<div class="note warn">اخترت شاشة سامسونج أو LG مع فالكون، وفالكون يعمل بتطبيقه الخاص. تواصل مع الدعم قبل الشراء للتأكد من تثبيته على شاشتك، أو ارجع واختر "سمارت" الذي له باقات مخصّصة لـ webOS.<br><a class="link" href="${WA_NUMBER + encodeURIComponent("مرحباً، قبل الشراء: أريد اشتراك فالكون على شاشة سامسونج أو LG، هل يُثبَّت عليها؟")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>` : "";
   $("#view").innerHTML = `<div class="card">
     <h2>اختر الباقة المناسبة</h2>
     <p class="sub">بعد تحديد المحتوى والجهاز، اختر الباقة التي تناسب احتياجك من حيث المدة والسعر.</p>
@@ -955,7 +970,7 @@ function renderMaintenance(){
     <div class="tick warn">${ICONS.wrench}</div>
     <h2>اشتراك ${S.name} تحت الصيانة</h2>
     <p class="sub">الخدمة متوقفة مؤقتًا وستعود قريبًا، فلا تُعرض خطوات التفعيل الآن. للاستفسار عن اشتراكك تواصل معنا.</p>
-    <div class="nav"><a class="btn wa" href="${WA + encodeURIComponent("اشتراك " + S.name + " - استفسار عن الصيانة")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>
+    <div class="nav"><a class="btn wa" href="${waLink("الاستفسار: الخدمة تحت الصيانة")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>
     <div class="nav"><button class="btn ghost" type="button" data-back style="flex:1">اشتراك آخر</button><button class="btn ghost" type="button" data-nav="plans" style="flex:1">كل الباقات</button></div></div>`;
 }
 
@@ -993,7 +1008,7 @@ function renderActDone(){
   const d = devs()[state.dev]; setProg(PROG_ACT, 3);
   $("#view").innerHTML = `<div class="card done"><div class="big">🎉</div><h2>استمتع بالمشاهدة!</h2><p class="sub">إذا لم تعمل القنوات تأكد من كتابة البيانات بدون مسافات، وأعد تشغيل التطبيق.</p>
     ${(d.doneImgs && d.doneImgs[state.variant]) ? `<img src="${d.doneImgs[state.variant]}" alt="" style="width:100%;border-radius:12px;margin:10px 0">` : ""}
-    <div class="nav"><a class="btn wa" href="${WA + encodeURIComponent(d.name)}" target="_blank" rel="noopener">واجهت مشكلة؟ تواصل معنا</a></div>
+    <div class="nav"><a class="btn wa" href="${waLink("أنهيت الخطوات ولم تعمل القنوات.")}" target="_blank" rel="noopener">واجهت مشكلة؟ تواصل معنا</a></div>
     <div class="nav"><button class="btn ghost" type="button" data-nav="activate" style="flex:1">تفعيل جهاز آخر</button><button class="btn ghost" type="button" data-nav="buy" style="flex:1">تجديد أو شراء اشتراك</button></div>
     <p class="sub" style="margin-top:12px">تابع العروض والتحديثات على <a class="link" href="https://whatsapp.com/channel/0029Vb91ux61SWssvKFZgL31" target="_blank" rel="noopener">قناتنا في واتساب</a>.</p></div>`;
 }
