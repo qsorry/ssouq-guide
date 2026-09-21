@@ -252,5 +252,30 @@
     "html": "<p>عبّئ الخانات الأربع بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Any Name</span><code>أي اسم تريده</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div><div class=\"f\"><span>http://url_here.com:port</span><code>رابط الهوست مع البورت</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b> وانتظر ثوانٍ حتى تُحمَّل القنوات.</p><div class=\"note\">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir=\"ltr\">http://host.com:8080</code>، بدون مسافات.</div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
    }
   ]
+ },
+ "carplay": {
+  "icon": "car",
+  "name": "سيارة CarPlay",
+  "sub": "تطبيق rPlay TV على الآيفون",
+  "steps": [
+   {
+    "title": "حمّل تطبيق rPlay TV على الآيفون",
+    "html": "<div class=\"appbox\"><img src=\"/static/img/apps/rplay-tv.webp\" alt=\"أيقونة rPlay TV\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">rPlay TV</b><small>من App Store · مجاني</small></span></div><p>التطبيق يُثبَّت على الآيفون لا على السيارة. افتح App Store وحمّل تطبيق <b dir=\"ltr\">rPlay TV</b>، أو اضغط الرابط مباشرة:</p><p><a class=\"link\" href=\"https://apps.apple.com/sa/app/rplay-tv/id6795052913?l=ar\" target=\"_blank\" rel=\"noopener\">apps.apple.com · rPlay TV</a></p><div class=\"note\">يحتاج <b dir=\"ltr\">iOS 18</b> أو أحدث، وسيارة تدعم <b dir=\"ltr\">Apple CarPlay</b>. تُدخل بياناتك مرة واحدة على الجوال، ثم يظهر التطبيق على شاشة السيارة كلما وصلتَ جوالك بها.</div>"
+   },
+   {
+    "title": "اضغط Add Playlist واختر Xtream Codes",
+    "img": "/static/img/carplay-rplay-source.webp",
+    "html": "<p>افتح التطبيق على الآيفون واضغط <b dir=\"ltr\">Add Playlist</b>، فتظهر شاشة <b dir=\"ltr\">Choose Source Type</b> بثلاثة خيارات. اختر الخيار الأوسط المحدَّد في الصورة: <b dir=\"ltr\">Xtream Codes</b> — ولا تختر <b dir=\"ltr\">Dispatcharr</b> ولا <b dir=\"ltr\">M3U + EPG</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
+   },
+   {
+    "title": "أدخل بيانات اشتراكك",
+    "img": "/static/img/carplay-rplay-xtream.webp",
+    "html": "<p>عبّئ الخانات الأربع كما وصلتك:</p><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span dir=\"ltr\">Server URL</span><code>رابط الهوست مع البورت</code></div><div class=\"f\"><span dir=\"ltr\">Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span dir=\"ltr\">Password</span><code>كلمة المرور</code></div></div><p>اترك خانة <b dir=\"ltr\">Custom XMLTV URL</b> فارغة فهي اختيارية، ثم احفظ وانتظر ثوانٍ حتى تُحمَّل القنوات على الجوال.</p><div class=\"note\">رابط الهوست يصلك مع بيانات الاشتراك ويبدأ بـ http ويُكتب كما هو مع رقم البورت، مثل <code dir=\"ltr\">http://host.com:8080</code>، بدون مسافات.</div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+   },
+   {
+    "title": "شغّله من شاشة السيارة",
+    "html": "<ol><li>وصّل الآيفون بالسيارة كما تفعل مع الخرائط: بالكيبل أو لاسلكيًا.</li><li>على شاشة السيارة تظهر أيقونة <b dir=\"ltr\">rPlay TV</b> بين تطبيقات CarPlay — إن لم تجدها في الصفحة الأولى فاسحب إلى الصفحة التالية.</li><li>افتحه واختر القناة من القائمة أو من المفضلة، فيعمل البث من اشتراكك نفسه بلا إدخال بيانات مرة أخرى.</li></ol><div class=\"note\">الصورة تظهر على شاشة السيارة <b>والسيارة متوقفة</b> — هذا شرط من آبل لا من التطبيق، وعند الحركة تُوقف أكثر السيارات الصورة وتُبقي الصوت. والبث يستهلك من بيانات جوالك، فاحسب باقة الإنترنت.</div>"
+   }
+  ]
  }
 }
