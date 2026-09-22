@@ -11,7 +11,7 @@ const check=(l,c,x='')=>{ c?(pass++,console.log(`  PASS  ${l}${x?'  ('+x+')':''}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function up(u){ for(let i=0;i<80;i++){ try{execSync(`curl -s -o /dev/null ${u}`);return;}catch(e){} await sleep(150);} }
 (async()=>{
-  const panel=spawn('python3',[path.join(ROOT,'tests/mock_panel.py'),String(PANEL_PORT),'demo','secret'],{stdio:'ignore'});
+  const panel=spawn('python3',[path.join(ROOT,'tests/mock_panel.py'),String(PANEL_PORT),'demo','topsecretpass'],{stdio:'ignore'});
   const app=spawn('python3',[path.join(ROOT,'xm_lines.py'),'web'],{stdio:'ignore',env:{...process.env,XM_DATA:dataDir,XM_BIND:'127.0.0.1',XM_PORT:String(APP_PORT)}});
   await up(`http://127.0.0.1:${PANEL_PORT}/token.php`); await up(`http://127.0.0.1:${APP_PORT}/admin/login`);
   const browser=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
@@ -40,7 +40,7 @@ async function up(u){ for(let i=0;i<80;i++){ try{execSync(`curl -s -o /dev/null 
     await page.selectOption('#g_mode','web');
     await page.fill('#g_panel_base', PANEL);
     await page.fill('#g_panel_user','demo');
-    await page.fill('#g_panel_pass','secret');
+    await page.fill('#g_panel_pass','topsecretpass');
     await page.fill('#g_host','http://mrha.ink');
     await page.fill('#g_guide','https://guide.ssouq.com/');
     await page.click('#saveGate');
@@ -52,7 +52,8 @@ async function up(u){ for(let i=0;i<80;i++){ try{execSync(`curl -s -o /dev/null 
 
     // data encrypted at rest
     const raw=fs.readFileSync(path.join(dataDir,'accounts.json'),'utf8');
-    check('panel pass + tool pass encrypted on disk', !raw.includes('secret') && !raw.includes('998661') && raw.includes('enc:1:'));
+    // كلمة مرور مميّزة: "secret" وحدها تظهر في الملف كاسم حقل (salla_secret) لا كسرّ
+    check('panel pass + tool pass encrypted on disk', !raw.includes('topsecretpass') && !raw.includes('998661') && raw.includes('enc:1:'));
   }catch(e){ fail++; console.log('  FAIL exception:',e.message); }
   finally{ await browser.close(); panel.kill(); app.kill(); fs.rmSync(dataDir,{recursive:true,force:true}); }
   console.log(`\nResult: ${pass} passed, ${fail} failed`); process.exit(fail?1:0);

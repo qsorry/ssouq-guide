@@ -653,20 +653,104 @@ def _parse_date(s):
     return None
 
 
-def _logged_package(gate, username):
-    """اسم الباقة لليوزر كما سُجّل في lines.txt عند إنشائه من الأداة (أحدث سطر له)."""
+# ---- سجل الأداة (data/lines.txt): المرجع الوحيد لما أنشأته الأداة بنفسها ----
+# يُقرأ الملف مرة ويُحفظ فهرسه حتى يتغيّر (كان يُقرأ كاملًا لكل صف من الجدول).
+_LOG_EMPTY = {"sig": None, "by_user": {}, "by_gate": {}, "first": {}}
+_log_cache = dict(_LOG_EMPTY)
+
+
+def _log_at_day(at):
+    """طابع السجل "%d-%m-%Y %H:%M" → تاريخ (أو None)."""
+    return _parse_date(str(at).split(" ")[0])
+
+
+def _log_index():
+    """فهرس lines.txt:
+      by_user[username]     = {"at", "package", "gate"} — أحدث سطر لليوزر في أي بوابة
+      by_gate[(gate, user)] = نفسه لكن مقيَّدًا ببوابة بعينها
+      first[gate]           = أقدم تاريخ سجّلته الأداة لتلك البوابة (ما قبله لا علم لها به)"""
+    global _log_cache
+    try:
+        st = os.stat(TXT_FILE)
+        sig = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return _LOG_EMPTY
+    if _log_cache["sig"] == sig:
+        return _log_cache
+    by_user, by_gate, first = {}, {}, {}
     try:
         with open(TXT_FILE, encoding="utf-8") as f:
-            lines = f.readlines()
+            for ln in f:                       # الملف مرتَّب زمنيًا: الأحدث يغلب الأقدم
+                parts = [x.strip() for x in ln.split("|")]
+                if len(parts) < 4:
+                    continue
+                at, gname, body = parts[0], parts[1], parts[2]
+                m = re.search(r"\bUser\s+(\S+)", body)
+                if not m:
+                    continue
+                rec = {"at": at, "package": re.sub(r"\s*\[.*?\]\s*$", "", parts[3]), "gate": gname}
+                by_user[m.group(1)] = rec
+                by_gate[(gname, m.group(1))] = rec
+                day = _log_at_day(at)
+                if day and (gname not in first or day < first[gname]):
+                    first[gname] = day
     except OSError:
-        return ""
-    needle = " User %s " % username
-    for ln in reversed(lines):
-        if needle in ln and ("|  %s  |" % gate.get("name", "")) in ln:
-            parts = [x.strip() for x in ln.split("|")]
-            if len(parts) >= 4:
-                return re.sub(r"\s*\[.*?\]\s*$", "", parts[3])
-    return ""
+        return _LOG_EMPTY
+    _log_cache = {"sig": sig, "by_user": by_user, "by_gate": by_gate, "first": first}
+    return _log_cache
+
+
+def _logged_package(gate, username):
+    """اسم الباقة لليوزر كما سُجّل في lines.txt عند إنشائه من الأداة (أحدث سطر له)."""
+    rec = _log_index()["by_gate"].get((gate.get("name", ""), str(username or "")))
+    return rec["package"] if rec else ""
+
+
+def log_since(gate):
+    """أقدم تاريخ سجّلته الأداة لهذه البوابة (YYYY-MM-DD) أو "" إن لم تنشئ فيها شيئًا."""
+    d = _log_index()["first"].get(gate.get("name", ""))
+    return d.isoformat() if d else ""
+
+
+DATE_RX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+RANGE_DAYS = 7          # المدى الافتراضي: اليوم وستة قبله
+
+
+def date_range(d_from, d_to, span=RANGE_DAYS):
+    """يتحقّق من مدى تاريخ (YYYY-MM-DD) ويكمل ناقصه: الافتراضي آخر `span` أيام
+    منتهيةً باليوم بتوقيت الرياض. الطرفان مشمولان، ويُقلبان إن جاءا معكوسين."""
+    for v in (d_from, d_to):
+        # الصيغة والتقويم معًا: "2026-13-45" يطابق الشكل ولا يوجد في تقويم
+        if v and not (DATE_RX.match(v) and _parse_date(v)):
+            raise ValueError("التاريخ يكون بصيغة YYYY-MM-DD")
+    d_to = d_to or xm_web.today_riyadh()
+    if not d_from:
+        end = _parse_date(d_to)
+        d_from = (end - datetime.timedelta(days=span - 1)).isoformat() if end else d_to
+    return (d_to, d_from) if d_from > d_to else (d_from, d_to)
+
+
+def mark_origin(gate, rows, day_from=""):
+    """يضيف لكل صف مصدره الموثَّق:
+      tool    — له سطر في lines.txt ⇒ أنشأته الأداة (ومعه "tool_at" وقت الإنشاء)
+      panel   — لا أثر له في السجل رغم أن السجل يغطّي تاريخه ⇒ أُنشئ من اللوحة مباشرة
+      unknown — أقدم من أول سطر سجّلته الأداة لهذه البوابة أو مجهول تاريخ الإنشاء،
+                فلا يُنسب إلى أحد. `day_from` = بداية المدى الذي فلتره الخادم، تُستعمل
+                تاريخًا احتياطيًا لصفٍّ لا يعلن تاريخه؛ وتُترك فارغة حين لم يُفلتر بمدى.
+    المطابقة بالاسم في كل البوابات لا في هذه وحدها: الأسماء أرقام عشوائية (١٠–١٢ خانة)
+    فاحتمال تكرارها لا يُذكر، وبهذا لا تُتَّهم يوزرات أُنشئت قبل إعادة تسمية البوابة."""
+    idx = _log_index()
+    since = idx["first"].get(gate.get("name", ""))
+    fallback = _parse_date(day_from)
+    for r in rows:
+        rec = idx["by_user"].get(str(r.get("username") or ""))
+        if rec:
+            r["origin"], r["tool_at"] = "tool", rec["at"]
+            continue
+        created = _parse_date(r.get("created", "")) or fallback
+        # الاتّهام يحتاج تاريخًا معلومًا داخل تغطية السجل — وإلا فـ«غير معروف»
+        r["origin"] = "panel" if (since and created and created >= since) else "unknown"
+    return rows
 
 
 def annotate_package_type(gate, rows, pkgs=None):
@@ -764,8 +848,20 @@ def rand_digits(n=DIGITS):
     return str(secrets.randbelow(9) + 1) + "".join(str(secrets.randbelow(10)) for _ in range(n - 1))
 
 
+def _now_riyadh():
+    """الآن بتوقيت الرياض، بلا منطقة زمنية (ليبقى شكل ما يُكتب ويُعاد كما كان)."""
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Asia/Riyadh")
+    except Exception:
+        tz = datetime.timezone(datetime.timedelta(hours=3))
+    return datetime.datetime.now(tz).replace(tzinfo=None)
+
+
 def _log_txt(gate, line, pkg_name):
-    now = datetime.datetime.now()
+    # بتوقيت الرياض كتواريخ اللوحة نفسها: الخادم قد يكون UTC، وفارق الساعات الثلاث
+    # يُدرج اشتراك ما بعد منتصف الليل تحت تاريخ الأمس فيُقارَن بجدول اللوحة خطأً.
+    now = _now_riyadh()
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(TXT_FILE, "a", encoding="utf-8") as f:
@@ -1174,6 +1270,52 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         return self._send(200, {"results": [], "error": "تعذّر البحث في اللوحة"})
                 return self._send(200, {"results": [], "unsupported": True})
+            if path == "/api/lines":              # اشتراكات مدى تاريخي + مصدر كل اشتراك
+                gate = find_gate(acct, self._q("gate")) if acct else None
+                if role != "account" or not gate:
+                    return self._send(403, {"error": "غير متاح"})
+                try:
+                    # "days=7" = آخر ٧ أيام بتوقيت الرياض: يحسبها الخادم لا المتصفح،
+                    # فلا يزيغ المدى حين يكون جهاز المشغّل على توقيت آخر.
+                    span = max(1, min(int(self._q("days") or RANGE_DAYS), 365))
+                    d_from, d_to = date_range(self._q("from").strip(), self._q("to").strip(), span)
+                    limit = max(1, min(int(self._q("limit") or 300), 500))
+                except ValueError as e:
+                    return self._send(400, {"error": str(e) if "YYYY" in str(e) else "مدى غير صالح"})
+                base = {"from": d_from, "to": d_to, "log_since": log_since(gate)}
+                if gate.get("mode") == "web":
+                    try:
+                        d = web_session(gate).range_lines(d_from, d_to, limit)
+                    except xm_web.CaptchaNeeded:
+                        return self._send(200, {**base, "lines": [], "need_login": True})
+                    except xm_web.LoginFailed as e:
+                        return self._send(200, {**base, "lines": [], "login_error": str(e)})
+                    except Exception:
+                        return self._send(200, {**base, "lines": [], "error": "تعذّر قراءة اشتراكات هذه الفترة"})
+                elif gate.get("mode") == "falcon":
+                    # فالكون لا يفلتر بالتاريخ في واجهته، فنأخذ الأحدث ونفلتر عندنا
+                    # حين يعلن تاريخ الإنشاء، وإلا نُعلِم الصفحة أن المدى لم يُطبَّق.
+                    try:
+                        d = falcon_api.recent(gate["api_url"], gate["api_key"], limit)
+                    except Exception:
+                        return self._send(200, {**base, "lines": [], "error": "تعذّر قراءة اشتراكات هذه الفترة"})
+                    rows = d.get("lines") or []
+                    dated = [r for r in rows if str(r.get("created") or "")[:10]]
+                    if len(dated) == len(rows) and rows:
+                        rows = [r for r in rows if d_from <= str(r["created"])[:10] <= d_to]
+                    elif rows:
+                        base["no_date_filter"] = True
+                    d = {"count": len(rows), "lines": rows}
+                else:
+                    return self._send(200, {**base, "lines": [], "unsupported": True})
+                lines = d.get("lines") or []
+                annotate_package_type(gate, lines)
+                mark_origin(gate, lines, "" if base.get("no_date_filter") else d_from)
+                tally = {"tool": 0, "panel": 0, "unknown": 0}
+                for r in lines:
+                    tally[r.get("origin", "unknown")] = tally.get(r.get("origin", "unknown"), 0) + 1
+                return self._send(200, {**base, "count": d.get("count", len(lines)),
+                                        "shown": len(lines), "summary": tally, "lines": lines})
             if path == "/api/web/diag":           # تشخيص مؤقّت لاستخراج الرصيد
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 want = (self._q("name") or "").strip().lower()      # ?name=كاسبر يختار بالاسم

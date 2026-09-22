@@ -139,6 +139,11 @@ input.t::placeholder{color:color-mix(in srgb,var(--mute) 70%,transparent)}
 .pill{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.74rem;border:1px solid var(--line);color:var(--mute);background:var(--sf)}
 .pill.ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,transparent);background:color-mix(in srgb,var(--go) 12%,transparent)}
 .pill.bad{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,transparent);background:color-mix(in srgb,var(--err) 12%,transparent)}
+.pill.amber{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 12%,transparent)}
+.tbl tr.off td{background:color-mix(in srgb,var(--amber) 7%,transparent)}
+.sum{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;font-size:.85rem;color:var(--mute)}
+.sum b{color:var(--ink);font-weight:600}
+.warn .act{margin-top:8px;display:block;padding:5px 12px;border:1px solid color-mix(in srgb,var(--amber) 55%,transparent);border-radius:9px;color:var(--amber);font:inherit;font-size:.8rem;background:transparent}
 .pkgGroup{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
 .pkgGroup:first-child{margin-top:0;padding-top:0;border-top:0}
 .pkgGroup>h3{font-size:1rem;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center;font-weight:700}
@@ -256,6 +261,22 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
     <div id="searchRes" style="margin-top:10px"></div>
   </section>
 
+  <section class="panel" id="rangeBox" hidden>
+    <div class="ph"><h2>تدقيق الاشتراكات حسب التاريخ</h2>
+      <span class="acts">
+        <button class="ghost" data-days="7">٧ أيام</button>
+        <button class="ghost" data-days="30">٣٠ يومًا</button>
+      </span>
+    </div>
+    <div class="inline">
+      <input class="t" id="rFrom" type="date" aria-label="من تاريخ">
+      <input class="t" id="rTo" type="date" aria-label="إلى تاريخ">
+      <button class="ghost" id="rGo"><svg viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 10h18M5 6h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/></svg>عرض</button>
+    </div>
+    <small class="hint">يقرأ جدول اللوحة نفسه في هذه الفترة، ويوسم كل اشتراك: أُنشئ من الأداة أم مباشرة من اللوحة.</small>
+    <div id="rangeRes" style="margin-top:10px"></div>
+  </section>
+
   <section class="panel" id="histPanel">
     <div class="ph"><h2>اليوزرات المنشأة</h2>
       <span class="acts">
@@ -364,12 +385,12 @@ async function loadGates(){
   } catch { gates = []; }
   if (!gates.length){
     $("gateTabs").innerHTML = '<div class="empty">لا توجد بوابات بعد — اضغط "إدارة بواباتي" لإضافة منشأتك.</div>';
-    $("statusBox").hidden = true; $("searchBox").hidden = true; $("pkgs").innerHTML = '<div class="empty">أضِف بوابة أولًا.</div>'; return;
+    $("statusBox").hidden = true; $("searchBox").hidden = true; $("rangeBox").hidden = true; $("pkgs").innerHTML = '<div class="empty">أضِف بوابة أولًا.</div>'; return;
   }
   curGate = gates.some(g => g.id === curGate) ? curGate : gates[0].id;
   $("gateTabs").innerHTML = gates.map(g =>
     `<button class="gate-tab${g.id===curGate?" on":""}" data-gate="${g.id}" data-mode="${esc(g.mode)}" data-glyph="${esc((g.name||"?").trim().slice(0,1))}">${esc(g.name)}</button>`).join("");
-  $("statusBox").hidden = false; $("searchBox").hidden = false;
+  $("statusBox").hidden = false; $("searchBox").hidden = false; $("rangeBox").hidden = false;
   renderGateHeader(); fetchPackages(); loadGateStatus();
 }
 function renderGateHeader(){
@@ -387,6 +408,7 @@ function selectGate(id){
   curGate = id;
   document.querySelectorAll(".gate-tab").forEach(b => b.classList.toggle("on", b.dataset.gate === id));
   $("resBox").hidden = true; $("msg").textContent = ""; $("searchRes").innerHTML = ""; $("searchQ").value = "";
+  $("rangeRes").innerHTML = "";                     // نتائج التدقيق تخصّ بوابتها
   renderGateHeader(); fetchPackages(); renderHistory(); loadGateStatus();
 }
 
@@ -422,7 +444,12 @@ async function loadGateStatus(){
         w.push(`آخر يوزر تغيّر (${prev.last_username} ← ${s.last_username}) — قد يكون أُنشئ مباشرة من اللوحة`);
       else if (prev.total != null && s.total != null && prev.total !== s.total)
         w.push(`تغيّر عدد اليوزرات: ${prev.total} ← ${s.total}`);
-      if (w.length){ $("statusWarn").innerHTML = "⚠ " + w.map(esc).join("<br>⚠ "); $("statusWarn").hidden = false; }
+      if (w.length){
+        $("statusWarn").innerHTML = "⚠ " + w.map(esc).join("<br>⚠ ") +
+          '<button class="act" id="warnAudit">افحص اشتراكات آخر ٧ أيام ومصدرها</button>';
+        $("statusWarn").hidden = false;
+        $("warnAudit").onclick = () => { quickRange(7); $("rangeBox").scrollIntoView({behavior:"smooth", block:"start"}); };
+      }
     }
     try { localStorage.setItem(STAT_KEY(), JSON.stringify({credits:s.credits, total:s.total, last_username:s.last_username})); } catch {}
   } catch(e){ setBadge("تعذّر", "err"); $("gateStatus").innerHTML = '<div class="stat empty">تعذّر قراءة الحالة</div>'; }
@@ -449,6 +476,57 @@ $("todayBox").addEventListener("click", e => { const b = e.target.closest("butto
 const copyIcon = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
 const pill = st => { st = String(st || ""); const ok = st === "active" || st === "نشط"; const bad = /expired|disabled|banned/.test(st);
   return `<span class="pill ${ok?"ok":bad?"bad":""}">${ok?"نشط":bad?(st==="expired"?"منتهٍ":"موقوف"):esc(st||"—")}</span>`; };
+// ---- تدقيق الاشتراكات حسب التاريخ: من أنشأها — الأداة أم اللوحة مباشرة؟ ----
+// لا يُحمَّل تلقائيًا: كل عرض نداءٌ فعلي لجدول اللوحة، فيبقى بطلب المشغّل.
+// المدى السريع يُحسب في الخادم بتوقيت الرياض (توقيت اللوحة)، لا بتوقيت الجهاز.
+function quickRange(days){ $("rFrom").value = ""; $("rTo").value = ""; loadRange(days); }
+const ORIGIN = {
+  tool:    r => `<span class="pill ok" title="مسجَّل في سجل الأداة${r.tool_at ? " — " + esc(r.tool_at) : ""}">من الأداة</span>`,
+  panel:   () => `<span class="pill amber" title="لا أثر له في سجل الأداة لهذه الفترة">من اللوحة</span>`,
+  unknown: () => `<span class="pill" title="أقدم من أول اشتراك سجّلته الأداة لهذه البوابة، أو لا تُعلن اللوحة تاريخ إنشائه">غير معروف</span>`,
+};
+async function loadRange(days){
+  const box = $("rangeRes");
+  box.innerHTML = '<div class="empty">جاري القراءة من اللوحة…</div>';
+  const qs = new URLSearchParams({gate: curGate});
+  if (days) qs.set("days", days);
+  if ($("rFrom").value) qs.set("from", $("rFrom").value);
+  if ($("rTo").value) qs.set("to", $("rTo").value);
+  try {
+    const r = await fetch(B + "/api/lines?" + qs.toString());
+    const d = chk(await r.json());
+    if (d.from) $("rFrom").value = d.from;
+    if (d.to) $("rTo").value = d.to;
+    if (d.unsupported){ box.innerHTML = '<div class="empty">هذه البوابة لا تتيح قراءة جدول اشتراكاتها.</div>'; return; }
+    if (d.need_login){ box.innerHTML = '<div class="empty">سجّل الدخول إلى اللوحة أولًا (حمّل الباقات واكتب الكود).</div>'; return; }
+    if (d.error || d.login_error){ box.innerHTML = '<div class="empty">'+esc(d.error || d.login_error)+'</div>'; return; }
+    const rows = d.lines || [], sm = d.summary || {};
+    const notes = [];
+    if (d.no_date_filter) notes.push("هذه اللوحة لا تفلتر بالتاريخ، فتُعرض أحدث الاشتراكات لا فترة بعينها.");
+    if (d.shown < d.count) notes.push(`الفترة فيها ${d.count} اشتراكًا، ويُعرض منها ${d.shown}.`);
+    notes.push(d.log_since
+      ? `سجل الأداة لهذه البوابة يبدأ من ${d.log_since} — وما قبله يُوسَم «غير معروف» لا «من اللوحة».`
+      : "لا سجل للأداة في هذه البوابة بعد، فلا يمكن وسم أي اشتراك بمصدره.");
+    box.innerHTML =
+      `<div class="sum">المجموع <b>${d.count || 0}</b> · من الأداة <b>${sm.tool || 0}</b> · من اللوحة مباشرة <b>${sm.panel || 0}</b>` +
+      (sm.unknown ? ` · غير معروف <b>${sm.unknown}</b>` : "") + `</div>` +
+      (rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th>#</th><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>المصدر</th><th>تاريخ الإنشاء</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
+        rows.map((x,i) => `<tr class="${x.origin === "panel" ? "off" : ""}"><td class="n">${i+1}</td><td class="m">${esc(x.username)}</td><td class="m">${esc(x.password)}</td>
+          <td title="${esc(x.package_name||"")}">${esc(x.package_type||"—")}</td><td>${(ORIGIN[x.origin]||ORIGIN.unknown)(x)}</td>
+          <td class="n">${esc(x.tool_at || x.created || "—")}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(x.exp || "—")}</td>
+          <td><button class="cb" title="نسخ السطر" data-line="${esc(lineOf(x))}">${copyIcon}</button></td></tr>`).join("") +
+        `</tbody></table></div>` : '<div class="empty">لا اشتراكات في هذه الفترة.</div>') +
+      notes.map(n => `<small class="hint">${esc(n)}</small>`).join("");
+  } catch(e){ box.innerHTML = '<div class="empty">تعذّر قراءة اشتراكات هذه الفترة.</div>'; }
+}
+$("rGo").onclick = () => loadRange();
+$("rangeBox").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.days) quickRange(+b.dataset.days);
+  else if (b.dataset.line) copy(b.dataset.line);
+});
+
 async function doSearch(){
   const q = $("searchQ").value.trim();
   if (!q){ $("searchRes").innerHTML = ""; return; }

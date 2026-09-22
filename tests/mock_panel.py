@@ -20,6 +20,7 @@
 """
 import sys
 import re
+import datetime
 import json
 import time
 import secrets
@@ -38,6 +39,17 @@ NOCAP = VARIANT == "nocap"
 LOGIN_PATH = "/login.php" if ALT else "/login"
 CAPTCHA_PATH = "/img/verify.php" if ALT else "/captcha.php"
 CAPTCHA_SRC = "img/verify.php?x=1" if ALT else "captcha.php?a=1"
+
+def today_riyadh():
+    """تاريخ اليوم بتوقيت الرياض — اللوحة الحقيقية هناك، والأداة تسأل به،
+    فلو ختمت الحاوية (UTC غالبًا) بتاريخها لاختلّ «اشتراكات اليوم» بعد ٩ مساءً."""
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Asia/Riyadh")
+    except Exception:
+        tz = datetime.timezone(datetime.timedelta(hours=3))
+    return datetime.datetime.now(tz).strftime("%Y-%m-%d")
+
 
 SESSIONS = {}   # phpsessid -> {captcha, auth}
 LINES = []      # created lines
@@ -93,6 +105,17 @@ class H(BaseHTTPRequestHandler):
 
         if path == "/token.php":
             return self._send(200, secrets.token_urlsafe(32), "text/plain")
+
+        # للاختبار فقط: يزرع لاينًا في اللوحة كما لو أُنشئ منها مباشرة (لا عبر الأداة)
+        if path == "/_seed":
+            LINES.append({
+                "id": str(secrets.randbelow(9000) + 1000),
+                "username": qs.get("username", ["seeded"])[0], "password": qs.get("password", ["p"])[0],
+                "package": qs.get("package", ["1"])[0], "member_id": "", "bouquets": "",
+                "end": qs.get("end", ["2026-12-31"])[0], "conns": "1",
+                "created": qs.get("created", [today_riyadh()])[0],
+            })
+            return self._send(200, "ok", "text/plain")
 
         # بوابة التحقّق البشري
         if not self._has_human() and path not in ("/token.php",):
@@ -273,7 +296,7 @@ class H(BaseHTTPRequestHandler):
                 "bouquets": form.get("selected_bouquets", ""),
                 "end": "2026-12-31", "conns": "1",
                 # يوزر اسمه يبدأ بـ old_ يُعدّ مُنشأً بالأمس (لاختبار «اشتراكات اليوم»)
-                "created": "2000-01-01" if uname.startswith("old") else time.strftime("%Y-%m-%d"),
+                "created": "2000-01-01" if uname.startswith("old") else today_riyadh(),
             })
             return self._send(200, '<div class="alert alert-success">created</div>', headers=hdr)
 

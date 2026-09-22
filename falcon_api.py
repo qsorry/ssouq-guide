@@ -50,6 +50,7 @@ def arabic_package_name(en):
 def _line_row(r):
     return {"id": r.get("id"), "username": r.get("username"), "password": r.get("password"),
             "status": r.get("status"), "exp": r.get("expires_at"),
+            "created": str(r.get("created_at") or r.get("created") or "")[:10],
             "max_connections": r.get("max_connections"), "package_id": r.get("package_id")}
 
 
@@ -131,6 +132,16 @@ def status(base, key):
         "last_id": newest.get("id"),
         "last_username": newest.get("username"),
     }
+
+
+def recent(base, key, limit=50):
+    """أحدث اللاينات (فالكون يرتّبها من الأحدث). واجهته بلا فلتر تاريخ، فيُفلتَر
+    عندنا بـ created_at حين تعلنه."""
+    per = max(1, min(int(limit or 50), 200))
+    d = _request(base, key, "/lines?per=%d" % per)
+    if not d.get("ok", True):
+        raise FalconError("فالكون /lines: " + str(d.get("error")))
+    return {"total": d.get("total"), "lines": [_line_row(r) for r in (d.get("lines") or [])]}
 
 
 def search(base, key, query, max_pages=12, per=50):

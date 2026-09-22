@@ -98,6 +98,23 @@ PY`).toString().trim();
     await page.waitForSelector('#resBox:not([hidden]) .lines', {timeout:8000}).catch(()=>{});
     const res = await page.textContent('#res').catch(()=>'');
     check('created line in new format with Guide', res.includes(' User ') && res.includes(' Pass ') && res.includes('Guide https://guide.ssouq.com/'), res.slice(0,70));
+
+    // date-range audit: a line seeded straight into the panel must show as "من اللوحة"
+    execSync(`curl -s -o /dev/null "${PANEL}/_seed?username=910000000001&password=p1"`);
+    await page.click('#rangeBox button[data-days="7"]');
+    await page.waitForSelector('#rangeRes .tbl', {timeout:15000});
+    const sum = (await page.textContent('#rangeRes .sum')).replace(/\s+/g,' ').trim();
+    check('audit summary counts both origins', /من الأداة 1/.test(sum) && /من اللوحة مباشرة 1/.test(sum), sum);
+    const seeded = await page.$eval('#rangeRes .tbl tbody', b => {
+      const tr = [...b.querySelectorAll('tr')].find(r => r.textContent.includes('910000000001'));
+      return tr ? tr.className + '|' + tr.textContent.replace(/\s+/g,' ').trim() : '';
+    });
+    check('panel-made line is flagged and highlighted', seeded.startsWith('off|') && seeded.includes('من اللوحة'), seeded.slice(0,80));
+    const mine = await page.$eval('#rangeRes .tbl tbody', b => {
+      const tr = [...b.querySelectorAll('tr')].find(r => !r.textContent.includes('910000000001'));
+      return tr ? tr.textContent.replace(/\s+/g,' ').trim() : '';
+    });
+    check('tool-made line is flagged "من الأداة"', mine.includes('من الأداة'), mine.slice(0,80));
   } catch (e) {
     fail++; console.log('  FAIL  exception:', e.message);
   } finally {
