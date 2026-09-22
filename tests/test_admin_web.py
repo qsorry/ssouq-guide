@@ -9,6 +9,7 @@
 """
 import os
 import sys
+import datetime
 import json
 import time
 import shutil
@@ -180,6 +181,43 @@ def main():
         rs = d.get("results") or []
         check("search result shows the package type (3 Months -> '3 شهر')", len(rs) == 1 and rs[0].get("package_type") == "3 شهر"
               and rs[0].get("package_name") == "3 Months (13 credits)", json.dumps(rs, ensure_ascii=False)[:120])
+
+        print("\n== 4d. Date-range audit: which lines were NOT created by the tool ==")
+        code, st = jreq("/admin/api/gate-status?gate=" + gid)
+        today = st.get("today") or time.strftime("%Y-%m-%d")     # تاريخ اللوحة (الرياض) لا تاريخ الحاوية
+        # لاينان أُنشئا على اللوحة مباشرة (لا عبر الأداة): واحد اليوم وآخر قبل أن توجد الأداة
+        for q in ("username=910000000001&password=p1&created=" + today,
+                  "username=910000000002&password=p2&created=2000-01-01"):
+            urllib.request.urlopen(PANEL + "/_seed?" + q, timeout=5).read()
+        code, d = jreq("/admin/api/lines?gate=" + gid + "&from=" + today + "&to=" + today)
+        rows = {x["username"]: x for x in (d.get("lines") or [])}
+        sm = d.get("summary") or {}
+        check("range endpoint returns today's lines with a summary", d.get("count") == 8 and sm.get("tool") == 7,
+              json.dumps(sm, ensure_ascii=False) + " count=" + str(d.get("count")))
+        check("line created straight from the panel is flagged 'panel'",
+              rows.get("910000000001", {}).get("origin") == "panel" and sm.get("panel") == 1,
+              json.dumps(rows.get("910000000001", {}), ensure_ascii=False)[:120])
+        check("line created by the tool is flagged 'tool' with its log timestamp",
+              rows.get(u, {}).get("origin") == "tool" and bool(rows.get(u, {}).get("tool_at")),
+              json.dumps(rows.get(u, {}), ensure_ascii=False)[:120])
+        check("audit reports since when the tool's log covers this gate", d.get("log_since") == today, str(d.get("log_since")))
+        code, d = jreq("/admin/api/lines?gate=" + gid + "&from=1999-01-01&to=2000-12-31")
+        old_rows = d.get("lines") or []
+        check("lines older than the tool's log are 'unknown', never blamed on the panel",
+              len(old_rows) == 1 and old_rows[0]["origin"] == "unknown" and (d.get("summary") or {}).get("panel") == 0,
+              json.dumps(old_rows, ensure_ascii=False)[:120])
+        code, d = jreq("/admin/api/lines?gate=" + gid + "&from=2026-13-45")
+        check("malformed date rejected with 400", code == 400 and "YYYY-MM-DD" in d.get("error", ""), str(code) + " " + str(d.get("error")))
+        code, d = jreq("/admin/api/lines?gate=" + gid + "&days=1")
+        check("days=1 is computed server-side in Riyadh time (today only)",
+              d.get("from") == d.get("to") == today, "%s → %s" % (d.get("from"), d.get("to")))
+        code, d = jreq("/admin/api/lines?gate=" + gid)
+        span = (datetime.date.fromisoformat(d.get("to", today)) - datetime.date.fromisoformat(d.get("from", today))).days
+        check("default range = the 7 days ending today", d.get("to") == today and span == 6, "%s → %s" % (d.get("from"), d.get("to")))
+        code, st = jreq("/admin/api/gate-status?gate=" + gid)
+        code, d = jreq("/admin/api/lines?gate=" + gid + "&from=" + st.get("today", "") + "&to=" + st.get("today", ""))
+        check("today's box and the audit agree (today_lines = a one-day range)",
+              st.get("created_today") == d.get("count") == 8, "%s vs %s" % (st.get("created_today"), d.get("count")))
 
         print("\n== 5. Self-service: person adds their own gate; data encrypted at rest ==")
         # log back in as admin (password set at setup) and create a LOGIN-ONLY person

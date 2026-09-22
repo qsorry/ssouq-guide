@@ -1176,23 +1176,25 @@ class PanelWebSession:
     @staticmethod
     def _today() -> str:
         """تاريخ اليوم بتوقيت الرياض (اللوحة والمشغّل هناك، والخادم قد يكون UTC)."""
-        import datetime as _dt
-        try:
-            from zoneinfo import ZoneInfo
-            tz = ZoneInfo("Asia/Riyadh")
-        except Exception:
-            tz = _dt.timezone(_dt.timedelta(hours=3))
-        return _dt.datetime.now(tz).strftime("%Y-%m-%d")
+        return today_riyadh()
 
-    def today_lines(self, limit: int = 200) -> dict:
-        """اشتراكات اليوم من جدول اللوحة نفسه (فلتر تاريخ الإنشاء من/إلى = اليوم):
-        {"date", "count", "lines": [{username, password, status, exp}]}. العدد من
-        recordsFiltered الذي يعلنه الخادم، فيصحّ حتى لو تجاوز الحدّ."""
-        day = self._today()
-        t = self._table_query("", limit, created_from=day, created_to=day)
+    def range_lines(self, date_from: str = "", date_to: str = "", limit: int = 200) -> dict:
+        """اشتراكات مدى تاريخي من جدول اللوحة نفسه (فلتر تاريخ الإنشاء من/إلى):
+        {"from", "to", "count", "lines": [{username, password, status, exp, created}]}.
+        العدد من recordsFiltered الذي يعلنه الخادم، فيصحّ حتى لو تجاوز الحدّ (limit).
+        طرفا المدى مشمولان، والفارغ منهما = بلا حدّ من تلك الجهة."""
+        t = self._table_query("", limit, created_from=date_from, created_to=date_to)
         rows = [self._row_out(r) for r in t["rows"]]
         count = t.get("filtered")
-        return {"date": day, "count": count if count is not None else len(rows), "lines": rows}
+        return {"from": date_from, "to": date_to,
+                "count": count if count is not None else len(rows), "lines": rows}
+
+    def today_lines(self, limit: int = 200) -> dict:
+        """اشتراكات اليوم = مدى تاريخي طرفاه اليوم (بتوقيت الرياض):
+        {"date", "count", "lines": [...]}."""
+        day = self._today()
+        r = self.range_lines(day, day, limit)
+        return {"date": day, "count": r["count"], "lines": r["lines"]}
 
     @staticmethod
     def _parse_row(s: str) -> dict:
@@ -1268,6 +1270,17 @@ class PanelWebSession:
                 os.remove(p)
             except OSError:
                 pass
+
+
+def today_riyadh() -> str:
+    """تاريخ اليوم بتوقيت الرياض (اللوحة والمشغّل هناك، والخادم قد يكون UTC)."""
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Asia/Riyadh")
+    except Exception:
+        tz = _dt.timezone(_dt.timedelta(hours=3))
+    return _dt.datetime.now(tz).strftime("%Y-%m-%d")
 
 
 def _to_num(s):
