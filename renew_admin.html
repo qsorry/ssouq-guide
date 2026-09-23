@@ -225,6 +225,19 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
         <input type="number" id="rate" min="1" max="10000" value="12"></div>
     </div>
 
+    <h3>جلسة لوحة سلة <small style="font-weight:400">تقرأ ما لا تُخرجه الواجهة</small></h3>
+    <p class="note" style="margin-top:0">
+      بطاقة الاشتراك تظهر كاملةً في لوحة سلة ولا تُخرجها الواجهة دائمًا. افتح
+      <a href="https://s.salla.sa/orders" target="_blank" rel="noopener">لوحتك</a> في متصفّحك،
+      ومن أدوات المطوّر انسخ ترويسة <code>Cookie</code> والصقها هنا.
+      <b>لا كلمة مرور ولا دخول آلي</b> — اللوحة محميّة بتحقّق ثنائي.
+      وتُحفظ مشفَّرة، وتنتهي بانتهاء جلستك فتُلصق من جديد.
+    </p>
+    <label for="panelCookie">كوكيز الجلسة</label>
+    <input id="panelCookie" autocomplete="off" placeholder="salla_session=…; XSRF-TOKEN=…">
+    <div class="row"><button class="ghost" id="panelTest" type="button">اختبار الجلسة</button></div>
+    <p class="msg" id="panelMsg"></p>
+
     <h3>بريد التنبيه — يصلك حين ينقطع الوصل</h3>
     <div class="g2">
       <div><label for="smtpHost">خادم SMTP</label><input id="smtpHost" placeholder="smtp.gmail.com"></div>
@@ -409,7 +422,9 @@ async function watchPull(once){
     clearTimeout(pullTimer);
     if (!d.error && d.phase === 'done'){
       note($('#pullMsg'), `اكتمل السحب: ${AR(d.units)} يوزرًا، منها ${AR(d.found)} `
-        + `باعتماد جاهز${d.applied ? ' — واعتُمد الفهرس ✓' : ''}`, true);
+        + `باعتماد جاهز${d.applied ? ' — واعتُمد الفهرس ✓' : ''}`
+        + (d.session_expired ? '\nانتهت جلسة لوحة سلة أثناء السحب — الصق كوكيز جديدة وأعِده.' : ''),
+        !d.session_expired);
       const a = await api('/api/renew/analysis');
       if (a.analysis) render(a.analysis);
       showIndex((await api('/api/renew/config')).index);
@@ -533,6 +548,9 @@ async function loadCfg(){
   $('#mailTo').value = CFG.alert.to; $('#smtpTls').checked = !!CFG.alert.tls;
   $('#smtpPass').placeholder = CFG.alert.has_password ? '••• محفوظة — اتركها فارغة لتبقى'
                                                       : 'كلمة مرور البريد';
+  $('#panelCookie').value = '';
+  $('#panelCookie').placeholder = CFG.has_panel_cookie
+    ? '••• محفوظة — اتركها فارغة لتبقى' : 'salla_session=…; XSRF-TOKEN=…';
   $('#dryRun').checked = !!CFG.dry_run; $('#enabled').checked = !!CFG.enabled;
   drawPkgMap();
 }
@@ -618,6 +636,7 @@ $('#save').onclick = async () => {
     source: gateVal('#srcGate'), target: gateVal('#tgtGate'), packages,
     promise_hours: +$('#promise').value, retry_minutes: +$('#retry').value,
     rate_per_hour: +$('#rate').value,
+    panel_cookie: $('#panelCookie').value,
     alert: {host: $('#smtpHost').value.trim(), port: +$('#smtpPort').value,
             user: $('#smtpUser').value.trim(), password: $('#smtpPass').value,
             from: $('#mailFrom').value.trim(), to: $('#mailTo').value.trim(),
@@ -627,9 +646,19 @@ $('#save').onclick = async () => {
   const d = await post('/api/renew/config', body);
   btn.disabled = false;
   if (d.error) return note($('#cfgMsg'), d.error);
-  CFG = d.renew; $('#smtpPass').value = '';
+  CFG = d.renew; $('#smtpPass').value = ''; $('#panelCookie').value = '';
+  $('#panelCookie').placeholder = CFG.has_panel_cookie
+    ? '••• محفوظة — اتركها فارغة لتبقى' : 'salla_session=…; XSRF-TOKEN=…';
   $('#smtpPass').placeholder = CFG.alert.has_password ? '••• محفوظة — اتركها فارغة لتبقى' : 'كلمة مرور البريد';
   note($('#cfgMsg'), 'حُفظ الإعداد ✓', true);
+};
+
+$('#panelTest').onclick = async () => {
+  note($('#panelMsg'), 'جارٍ الاختبار…', true);
+  const d = await post('/api/renew/panel-test', {});
+  note($('#panelMsg'), d.ok
+    ? `الجلسة صالحة ✓ (${AR(d.cookies)} كوكي)`
+    : ('الجلسة غير صالحة: ' + (d.error || '—')), !!d.ok);
 };
 
 $('#testMail').onclick = async () => {

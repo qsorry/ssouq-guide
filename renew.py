@@ -58,10 +58,14 @@ def default_config():
         "rate_per_hour": 12,        # محاولات التعرّف لكل عنوان، منعًا لتخمين أرقام الطلبات
         "alert": {"host": "", "port": 587, "user": "", "password": "",
                   "from": "", "to": "", "tls": True, "gap_minutes": 30},
+        # كوكيز جلسة لوحة سلة، يلصقها المشغّل من متصفّحه. لا كلمة مرور ولا
+        # دخول آلي: اللوحة محميّة بتحقّق ثنائي وأتمتته عبثٌ وخطر.
+        "panel_cookie": "",
     }
 
 
 _SECRET_KEYS = ("password",)        # داخل alert: لا يُرسَل للمتصفح ولا يُمسح بالفراغ
+_TOP_SECRETS = ("panel_cookie",)    # سرٌّ في جذر الإعداد، بالحكم نفسه
 
 
 def _num(v):
@@ -96,6 +100,7 @@ def normalize_config(cfg):
             d[k] = max(lo, min(hi, int(cfg.get(k, d[k]))))
         except (TypeError, ValueError):
             pass
+    d["panel_cookie"] = str(cfg.get("panel_cookie", "") or "")
     al = cfg.get("alert") if isinstance(cfg.get("alert"), dict) else {}
     d["alert"].update({
         "host": str(al.get("host", "") or "").strip(),
@@ -118,6 +123,9 @@ def clean_config(new, old):
     for k in _SECRET_KEYS:
         if not n["alert"][k]:
             n["alert"][k] = o["alert"][k]
+    for k in _TOP_SECRETS:
+        if not n[k]:
+            n[k] = o[k]
     return n
 
 
@@ -126,7 +134,9 @@ def redact_config(cfg):
     c = normalize_config(cfg)
     a = dict(c["alert"])
     a["has_password"] = bool(a.pop("password", ""))
-    return {**c, "alert": a}
+    out = {**c, "alert": a}
+    out["has_panel_cookie"] = bool(out.pop("panel_cookie", ""))
+    return out
 
 
 # ============================ أدوات ============================
@@ -328,16 +338,17 @@ def _smtp_send(alert, subject, body):
         s.send_message(msg)
 
 
-def alert_disconnect(data_dir, cfg, reason, pending):
-    """بريدٌ واحد لكل انقطاع، لا بريدٌ لكل عميل: بين رسالتين فجوة `gap_minutes`.
-    يرجّع (أُرسل؟، سبب عدم الإرسال)."""
+def send_alert(data_dir, cfg, subject, body, kind="disconnect"):
+    """بريدٌ واحد لكل حدث، لا بريدٌ لكل عميل: لكل نوعٍ خانقُه المستقل، فانتهاءُ
+    جلسة اللوحة لا يبتلع تنبيهَ انقطاع مرح ولا العكس."""
     alert = normalize_config(cfg)["alert"]
     if not (alert.get("host") and alert.get("to")):
         return False, "بريد التنبيه غير مضبوط"
     gap = int(alert.get("gap_minutes") or 30) * 60
+    key = "alert_at" if kind == "disconnect" else "alert_at_" + kind
     with _db_lock:
         db = load_db(data_dir)
-        last = db.get("alert_at", "")
+        last = db.get(key, "")
         if last:
             try:
                 prev = datetime.datetime.strptime(last, "%Y-%m-%d %H:%M")
@@ -346,8 +357,17 @@ def alert_disconnect(data_dir, cfg, reason, pending):
                     return False, "أُرسل تنبيه قريب"
             except ValueError:
                 pass
-        db["alert_at"] = now_iso()
+        db[key] = now_iso()
         save_db(data_dir, db)
+    try:
+        _smtp_send(alert, subject, body)
+        return True, ""
+    except Exception as e:                      # البريد لا يُسقط التجديد
+        return False, str(e)[:200]
+
+
+def alert_disconnect(data_dir, cfg, reason, pending):
+    """انقطاع الوصل بمرح: الطلبات معلّقة حتى يعود."""
     body = (
         "انقطع الاتصال بين سيرفر الأداة ولوحة مرح، فتوقّف إنشاء يوزرات التجديد.\n\n"
         "السبب كما ورد من اللوحة:\n  %s\n\n"
@@ -357,11 +377,27 @@ def alert_disconnect(data_dir, cfg, reason, pending):
         "لتسريع ذلك: افتح https://admin.ssouq.com/ وسجّل الدخول لبوابة مرح\n"
         "(قد تكون الجلسة انتهت أو تطلب اللوحة كود تحقّق).\n"
     ) % (str(reason)[:400], pending, now_iso())
-    try:
-        _smtp_send(alert, "تنبيه: انقطاع الاتصال بلوحة مرح — %d طلب معلّق" % pending, body)
-        return True, ""
-    except Exception as e:                      # البريد لا يُسقط التجديد
-        return False, str(e)[:200]
+    return send_alert(data_dir, cfg,
+                      "تنبيه: انقطاع الاتصال بلوحة مرح — %d طلب معلّق" % pending,
+                      body, kind="disconnect")
+
+
+def alert_session_expired(data_dir, cfg):
+    """انتهاء جلسة لوحة سلة: تحقّقها الثنائي إلزاميّ لا يُعطَّل، فلا دخول آليّ
+    ولا تجديد تلقائي للجلسة — تُلصق كوكيز جديدة بيد المشغّل."""
+    body = (
+        "انتهت جلسة لوحة سلة، فتوقّفت قراءةُ بطاقات الاشتراك منها.\n\n"
+        "التجديد لم يتوقّف: اللوحة ثالثُ المصادر، وقبلها سجلّ الطلب وبطاقته من\n"
+        "الواجهة، وبعدها يكتب العميل يوزره بنفسه. لكن كلما طالت، كثُر من يُطلب\n"
+        "منهم الكتابة.\n\n"
+        "لإعادتها — ولا سبيل غيره، فالتحقّق الثنائي في سلة إلزاميّ لا يُعطَّل:\n"
+        "  1. افتح https://s.salla.sa/orders في متصفّحك وسجّل الدخول.\n"
+        "  2. من أدوات المطوّر ← Network، انسخ ترويسة Cookie من أي نداء.\n"
+        "  3. الصقها في https://admin.ssouq.com/renew ← «جلسة لوحة سلة».\n\n"
+        "الوقت: %s\n"
+    ) % now_iso()
+    return send_alert(data_dir, cfg, "تنبيه: انتهت جلسة لوحة سلة — الصق كوكيز جديدة",
+                      body, kind="session")
 
 
 # ============================ التنفيذ ============================

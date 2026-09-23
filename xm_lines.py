@@ -30,6 +30,7 @@ import salla_api
 import wa_send
 import renew
 import renew_import
+import salla_web
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
@@ -38,6 +39,7 @@ _SENSITIVE_GATE = ("panel_pass", "api_key")
 _SENSITIVE_SVC = ("salla_secret", "salla_token")   # أسرار خدمة سلة المشفَّرة
 _SENSITIVE_WA = ("token", "secret")                # أسرار قناة الواتساب المشفَّرة
 _SENSITIVE_ALERT = ("password",)                   # كلمة مرور بريد تنبيه التجديد
+_SENSITIVE_RENEW = ("panel_cookie",)               # كوكيز جلسة لوحة سلة
 
 
 def _is_hash(v):
@@ -65,10 +67,14 @@ def _crypt_store(st, fn):
                 if wa.get(k):
                     wa[k] = fn(wa[k], DATA_DIR)
     rnw = out.get("renew")
-    if isinstance(rnw, dict) and isinstance(rnw.get("alert"), dict):
-        for k in _SENSITIVE_ALERT:
-            if rnw["alert"].get(k):
-                rnw["alert"][k] = fn(rnw["alert"][k], DATA_DIR)
+    if isinstance(rnw, dict):
+        for k in _SENSITIVE_RENEW:
+            if rnw.get(k):
+                rnw[k] = fn(rnw[k], DATA_DIR)
+        if isinstance(rnw.get("alert"), dict):
+            for k in _SENSITIVE_ALERT:
+                if rnw["alert"].get(k):
+                    rnw["alert"][k] = fn(rnw["alert"][k], DATA_DIR)
     return out
 
 # ================= الإعدادات =================
@@ -623,9 +629,11 @@ def _pull_worker(token, with_history, apply_index):
         _pull.update(d)
 
     try:
+        st = load_store()
         units, meta = renew_import.pull_from_salla(
             token, progress=progress, with_history=with_history,
-            stop=lambda: _pull["cancel"])
+            stop=lambda: _pull["cancel"],
+            credentials_for=lambda sid, url: renew_credentials_for(st, sid, url))
         if not units:
             _pull["error"] = "لم يرجع أي طلب صالح من سلة"
             return
@@ -635,7 +643,10 @@ def _pull_worker(token, with_history, apply_index):
             renew.save_index(DATA_DIR, renew_import.build_index(units, meta))
             _pull["applied"] = True
         _pull.update({"units": len(units), "found": meta.get("with_credentials", 0),
-                      "phase": "done"})
+                      "phase": "done", "session_expired": meta.get("session_expired", False)})
+        if meta.get("session_expired"):
+            # التحقّق الثنائي في سلة إلزاميّ، فلا تُجدَّد الجلسة إلا بيد المشغّل.
+            renew.alert_session_expired(DATA_DIR, st.get("renew"))
     except Exception as e:
         _pull["error"] = str(e)[:300]
     finally:
@@ -650,7 +661,8 @@ def start_renew_pull(st, with_history=True, apply_index=True):
     if not token:
         return {"ok": False, "error": "رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة"}
     _pull.update({"running": True, "phase": "orders", "done": 0, "total": 0,
-                  "units": 0, "found": 0, "error": "", "cancel": False, "applied": False})
+                  "units": 0, "found": 0, "error": "", "cancel": False,
+                  "applied": False, "session_expired": False})
     threading.Thread(target=_pull_worker, args=(token, with_history, apply_index),
                      daemon=True).start()
     return {"ok": True}
@@ -707,6 +719,49 @@ def start_lines_export(st, side="source"):
     return {"ok": True}
 
 
+
+def renew_panel_session(st):
+    """جلسة لوحة سلة من الكوكيز الملصوقة، أو None إن لم تُلصق."""
+    cookie = renew.normalize_config(st.get("renew")).get("panel_cookie") or ""
+    if not cookie:
+        return None
+    try:
+        return salla_web.Session(cookie)
+    except salla_web.WebError:
+        return None
+
+
+def renew_credentials_for(st, sid, admin_url=""):
+    """اعتماد طلبٍ واحد من مصادره الثلاثة بالترتيب: سجلّ الطلب، ثم بطاقته من
+    الواجهة، ثم لوحةُ سلة بجلسة المتصفّح — وهي الأخيرة لأنها تحتاج لصقًا يدويًا
+    وتنتهي، لكنها ترى ما لا تُخرجه الواجهة."""
+    token = renew_salla_token(st)
+    if token and sid:
+        try:
+            notes = salla_api.history_notes(token, sid)
+            got = renew_import.parse_credentials(notes)
+            if got:
+                return got, "history"
+            if salla_api.code_ids_from_notes(notes):
+                got = renew_import.parse_credentials(salla_api.order_code_text(token, sid))
+                if got:
+                    return got, "card"
+        except Exception:
+            pass
+    sess = renew_panel_session(st)
+    tok = salla_web.admin_token(admin_url)
+    if sess and tok:
+        try:
+            got = renew_import.parse_credentials(sess.order_text(tok))
+            if got:
+                return got, "panel"
+        except salla_web.SessionExpired:
+            return {}, "session_expired"
+        except Exception:
+            pass
+    return {}, ""
+
+
 def renew_prov():
     return renew.Provisioner(renew_exists, create_line, find_gate)
 
@@ -746,17 +801,14 @@ def renew_lookup(st, order_no="", phone="", username="", password=""):
         # اعتمادٌ كُتب يدويًا في الطلب ونُقل إلى الفهرس: يُعفي العميل من كتابته.
         username = username or str(rec.get("username", "") or "")
         password = password or str(rec.get("password", "") or "")
-        if not (username and password) and rec.get("sid") and renew_salla_token(st):
-            # لم يُسحب سجلّ هذا الطلب بعد: نداءٌ واحد الآن أرخص من سحب المتجر كله.
-            try:
-                got = renew_import.parse_credentials(
-                    salla_api.history_notes(renew_salla_token(st), rec["sid"]))
-                username = username or got.get("username", "")
-                password = password or got.get("password", "")
-                if got.get("host"):
-                    out["old_host"] = got["host"]
-            except Exception:
-                pass
+        if not (username and password) and (rec.get("sid") or rec.get("admin_url")):
+            # لم يُسحب اعتماد هذا الطلب بعد: نداءٌ أو نداءان الآن أرخص من سحب
+            # المتجر كله، ويُغني العميل عن كتابة شيء.
+            got, _src = renew_credentials_for(st, rec.get("sid"), rec.get("admin_url", ""))
+            username = username or got.get("username", "")
+            password = password or got.get("password", "")
+            if got.get("host"):
+                out["old_host"] = got["host"]
         if rec.get("host"):
             out["old_host"] = rec["host"]
 
@@ -1682,6 +1734,13 @@ class Handler(BaseHTTPRequestHandler):
             db["claims"][key] = rec
             renew.save_db(DATA_DIR, db)
             return self._send(200, {"ok": True, "claim": rec})
+        if path == "/api/renew/panel-test":       # أما زالت كوكيز اللوحة صالحة؟
+            sess = renew_panel_session(st)
+            if not sess:
+                return self._send(200, {"ok": False, "error": "لم تُلصق كوكيز اللوحة"})
+            alive, why = sess.alive()
+            return self._send(200, {"ok": alive, "error": why,
+                                    "cookies": len(salla_web.cookie_names(sess.cookie))})
         if path == "/api/renew/alert-test":       # اختبار بريد التنبيه
             ok, why = renew.alert_disconnect(DATA_DIR, {**renew.normalize_config(st.get("renew")),
                                                         "alert": {**renew.normalize_config(st.get("renew"))["alert"],

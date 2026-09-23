@@ -459,8 +459,8 @@ def build_index(units, meta=None):
             orders[u["order"]] = {"phone": u["phone"], "date": u["date"],
                                   "months": u["months"], "devices": u["devices"],
                                   **({"inferred": True} if u["inferred"] else {}),
-                                  **{k: u[k] for k in ("host", "username", "password", "sid")
-                                     if u.get(k)}}
+                                  **{k: u[k] for k in ("host", "username", "password",
+                                                       "sid", "admin_url") if u.get(k)}}
     return {"orders": orders, "built": renew.now_iso(),
             "source_files": (meta or {}).get("files_kept", 0),
             "stats": meta or {}}
@@ -657,7 +657,9 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
         dev = info["devices"] if info.get("devices", 1) > 1 else devices_of(pname)
         expiry = renew.add_months(date, mo)
         for _ in range(max(1, min(int(it.get("quantity") or 1), 20))):
-            out.append({"order": no, "sid": str(order.get("id") or ""), "phone": phone,
+            out.append({"order": no, "sid": str(order.get("id") or ""),
+                        "admin_url": str(((order.get("urls") or {}).get("admin")) or ""),
+                        "phone": phone,
                         "date": date.isoformat(), "product": pname,
                         "sku": str(it.get("sku") or ""),
                         "months": mo, "devices": dev, "inferred": inferred,
@@ -666,7 +668,8 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
 
 
 def pull_from_salla(token, progress=None, with_history=True, stop=None,
-                    keep_unconfirmed=False, include_falcon=False, per_page=50):
+                    keep_unconfirmed=False, include_falcon=False, per_page=50,
+                    credentials_for=None):
     """يسحب طلبات المتجر كلها → (وحدات، تقرير).
 
     على مرحلتين: الطلبات أولًا (صفحةٌ لكل خمسين)، ثم — إن طُلب — سجلُّ كل طلبٍ
@@ -699,7 +702,7 @@ def pull_from_salla(token, progress=None, with_history=True, stop=None,
         if not rows:
             break
 
-    found = 0
+    found, expired = 0, False
     if with_history:
         by_sid = {}
         for u in units:
@@ -709,11 +712,16 @@ def pull_from_salla(token, progress=None, with_history=True, stop=None,
         for i, sid in enumerate(sids, 1):
             if stop and stop():
                 break
-            notes = salla_api.history_notes(token, sid)
-            cred = parse_credentials(notes)
-            if not cred and salla_api.code_ids_from_notes(notes):
-                # سُلّم بطاقةً رقمية لا تعليقًا: الاعتماد داخل الكود نفسه.
-                cred = parse_credentials(salla_api.order_code_text(token, sid))
+            if credentials_for:               # سلسلة المصادر الثلاث من المُنادي
+                cred, why = credentials_for(sid, by_sid[sid][0].get("admin_url", ""))
+                if why == "session_expired":
+                    expired = True
+            else:
+                notes = salla_api.history_notes(token, sid)
+                cred = parse_credentials(notes)
+                if not cred and salla_api.code_ids_from_notes(notes):
+                    # سُلّم بطاقةً رقمية لا تعليقًا: الاعتماد داخل الكود نفسه.
+                    cred = parse_credentials(salla_api.order_code_text(token, sid))
             if cred:
                 found += 1
                 for u in by_sid[sid]:
@@ -725,4 +733,5 @@ def pull_from_salla(token, progress=None, with_history=True, stop=None,
     return units, {"files_seen": 0, "files_kept": 0, "files_dup": 0, "dup_names": [],
                    "orders": len(seen), "orders_dup": 0, "dup_orders": [],
                    "skipped": skipped, "bad_files": [], "source": "salla",
-                   "orders_total": total, "with_credentials": found}
+                   "orders_total": total, "with_credentials": found,
+                   "session_expired": expired}

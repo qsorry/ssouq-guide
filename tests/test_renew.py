@@ -561,5 +561,86 @@ class TestSkuAndCard(unittest.TestCase):
             "host": "http://ssouqhost.vip"})
 
 
+# ============================ جلسة لوحة سلة ============================
+class TestPanelSession(unittest.TestCase):
+    """بديل الواجهة حين لا تُخرج ما نحتاج — بكوكيز يلصقها المشغّل، لا بدخول آلي."""
+
+    def test_a_pasted_cookie_header_is_cleaned(self):
+        import salla_web
+        for raw, want in [
+            ("Cookie: a=1; b=2", "a=1; b=2"),
+            ("a=1\nb=2", "a=1; b=2"),
+            ("  a=1; ضجيج; b=2 ", "a=1; b=2"),
+            ("a=1;", "a=1"),
+        ]:
+            self.assertEqual(salla_web.clean_cookie(raw), want, raw)
+
+    def test_an_empty_cookie_is_refused_outright(self):
+        import salla_web
+        with self.assertRaises(salla_web.WebError):
+            salla_web.Session("")
+
+    def test_the_admin_link_gives_the_panel_token(self):
+        """الواجهة تعطي `urls.admin` لكل طلب — وهو الجسر بينها وبين اللوحة."""
+        import salla_web
+        self.assertEqual(
+            salla_web.admin_token("https://s.salla.sa/orders/order/oPpbBAN_JmK78M6q"),
+            "oPpbBAN_JmK78M6q")
+        self.assertEqual(salla_web.admin_token("https://s.salla.sa/customers/x"), "")
+
+    def test_the_cookie_never_reaches_the_browser(self):
+        cfg = renew.normalize_config({"panel_cookie": "salla_session=secret"})
+        red = renew.redact_config(cfg)
+        self.assertNotIn("panel_cookie", red)
+        self.assertTrue(red["has_panel_cookie"])
+        self.assertNotIn("secret", json.dumps(red, ensure_ascii=False))
+
+    def test_an_empty_cookie_field_keeps_the_stored_one(self):
+        old = renew.normalize_config({"panel_cookie": "keepme=1"})
+        self.assertEqual(renew.clean_config({}, old)["panel_cookie"], "keepme=1")
+
+    def test_each_alert_kind_has_its_own_throttle(self):
+        """انقطاع مرح وانتهاء جلسة سلة حدثان مختلفان — فلا يبتلع أحدهما الآخر."""
+        d = tempfile.mkdtemp()
+        try:
+            sent = []
+            cfg = {**renew.default_config(),
+                   "alert": {**renew.default_config()["alert"],
+                             "host": "smtp.test", "to": "me@test", "gap_minutes": 60}}
+            real = renew._smtp_send
+            renew._smtp_send = lambda a, s_, b: sent.append(s_)
+            try:
+                renew.alert_disconnect(d, cfg, "refused", 3)
+                renew.alert_session_expired(d, cfg)          # نوعٌ آخر — يمرّ
+                renew.alert_disconnect(d, cfg, "refused", 4)  # مكرر — يُخنق
+                renew.alert_session_expired(d, cfg)           # مكرر — يُخنق
+            finally:
+                renew._smtp_send = real
+            self.assertEqual(len(sent), 2, sent)
+            self.assertTrue(any("مرح" in x for x in sent))
+            self.assertTrue(any("سلة" in x for x in sent))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_the_expiry_alert_says_how_to_fix_it(self):
+        """لا دخول آلي: التحقّق الثنائي إلزاميّ، فالرسالة تشرح اللصق."""
+        d = tempfile.mkdtemp()
+        try:
+            body = []
+            cfg = {**renew.default_config(),
+                   "alert": {**renew.default_config()["alert"],
+                             "host": "smtp.test", "to": "me@test"}}
+            real = renew._smtp_send
+            renew._smtp_send = lambda a, s_, b: body.append(b)
+            try:
+                renew.alert_session_expired(d, cfg)
+            finally:
+                renew._smtp_send = real
+            self.assertIn("s.salla.sa", body[0])
+            self.assertIn("Cookie", body[0])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
