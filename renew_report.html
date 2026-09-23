@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>تحليل التجديد</title>
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f6f8; --surface:#fcfcfb; --surface-2:#eef2f5; --line:#dfe5ea;
+  --ink:#10222c; --ink-2:#4a5c66; --ink-3:#76858d;
+  --brand:#004D73; --gold:#F0A12B;
+  --s1:#1a7fb3;            /* سارية */
+  --s2:#e34948;            /* منتهية */
+  --grid:#e6ebef;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#101416; --surface:#1a1a19; --surface-2:#22282b; --line:#31393d;
+  --ink:#f2f5f6; --ink-2:#b9c4c9; --ink-3:#8b979d;
+  --brand:#59b4dd; --gold:#e0a53f;
+  --s1:#3d9fd6; --s2:#e66767;
+  --grid:#2b3236;
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#101416; --surface:#1a1a19; --surface-2:#22282b; --line:#31393d;
+  --ink:#f2f5f6; --ink-2:#b9c4c9; --ink-3:#8b979d;
+  --brand:#59b4dd; --gold:#e0a53f;
+  --s1:#3d9fd6; --s2:#e66767;
+  --grid:#2b3236;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Amazon-Ember","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px;line-height:1.7;-webkit-text-size-adjust:100%}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 16px 80px}
+h1{font-size:clamp(22px,4.4vw,30px);margin:0 0 6px;letter-spacing:-.01em}
+h2{font-size:clamp(17px,3vw,21px);margin:0 0 4px}
+.sub{color:var(--ink-2);margin:0 0 26px;font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  padding:20px;margin:0 0 18px}
+.card>h2{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card>h2 small{font-weight:400;font-size:13px;color:var(--ink-3)}
+.note{color:var(--ink-2);font-size:13.5px;margin:2px 0 16px}
+
+/* ---- بطاقات الأرقام ---- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:0 0 18px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.tile .lab{font-size:13px;color:var(--ink-2);margin:0 0 6px}
+.tile .val{font-size:clamp(24px,5vw,32px);font-weight:700;line-height:1.15;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile .hint{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+.tile.hero{background:linear-gradient(135deg,var(--brand),#00354f);border-color:transparent;color:#fff}
+.tile.hero .lab,.tile.hero .hint{color:#cfe4ef}
+.tile.hero .val{color:var(--gold)}
+
+/* ---- جداول ---- */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line);
+  font-variant-numeric:tabular-nums}
+th{font-weight:600;color:var(--ink-2);font-size:13px;white-space:nowrap}
+tbody tr:hover{background:var(--surface-2)}
+tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
+.num{font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto;margin:0 -6px;padding:0 6px}
+td.name{text-align:right;min-width:230px;white-space:normal;line-height:1.5}
+
+/* ---- مدخلات النقاط ---- */
+input[type=number]{width:88px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface-2);color:var(--ink);font:inherit;font-size:14px;text-align:center;
+  font-variant-numeric:tabular-nums}
+input[type=number]:focus{outline:2px solid var(--brand);outline-offset:1px}
+.btn{border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+  border-radius:9px;padding:7px 13px;font:inherit;font-size:13.5px;cursor:pointer}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin:14px 0 0}
+
+/* ---- رسوم ---- */
+.chart{position:relative;margin-top:8px}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.bar{transition:opacity .12s}
+.chart:hover .bar{opacity:.45}
+.chart .bar:hover{opacity:1}
+.tick{font-size:11px;fill:var(--ink-3)}
+.vlab{font-size:11px;fill:var(--ink-2);font-weight:600}
+.gridline{stroke:var(--grid);stroke-width:1}
+.tip{position:absolute;pointer-events:none;opacity:0;transform:translate(-50%,-112%);
+  background:var(--ink);color:var(--bg);padding:6px 10px;border-radius:8px;font-size:12.5px;
+  white-space:nowrap;transition:opacity .1s;z-index:5;font-weight:600}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin:10px 0 0}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block;margin-inline-end:6px;
+  vertical-align:-1px}
+details{margin-top:12px}
+summary{cursor:pointer;color:var(--brand);font-size:13.5px;font-weight:600;padding:4px 0}
+.warn{background:color-mix(in srgb,var(--gold) 12%,var(--surface));
+  border:1px solid color-mix(in srgb,var(--gold) 45%,var(--line));
+  border-radius:10px;padding:12px 14px;font-size:13.5px;margin:14px 0 0}
+.warn b{color:var(--ink)}
+code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:13px}
+.toggle{position:fixed;inset-block-start:12px;inset-inline-start:12px;z-index:9}
+@media(max-width:560px){ .wrap{padding:18px 12px 60px} .card{padding:15px} th,td{padding:8px 6px} }
+</style>
+</head>
+<body>
+<button class="btn toggle" id="themeBtn" type="button">الوضع الليلي</button>
+<div class="wrap">
+
+<h1>تحليل قاعدة المشتركين — قبل صفحة التجديد</h1>
+<p class="sub">من ملفات طلبات سلة، بعد إزالة المكرر · تاريخ الاستعلام <b id="today"></b></p>
+
+<!-- ============ الأرقام ============ -->
+<div class="tiles">
+  <div class="tile"><p class="lab">يوزرات سارية اليوم</p>
+    <div class="val" id="tActive"></div>
+    <p class="hint">تحتاج خطًا على مرح</p></div>
+  <div class="tile"><p class="lab">عملاء (جوالات فريدة)</p>
+    <div class="val" id="tPhones"></div>
+    <p class="hint">الفرق = عملاء بأكثر من اشتراك</p></div>
+  <div class="tile"><p class="lab">إجمالي النقاط المطلوبة</p>
+    <div class="val" id="tPoints"></div>
+    <p class="hint">لتغطية المتبقّي لكل يوزر</p></div>
+  <div class="tile hero"><p class="lab">التكلفة الفعلية</p>
+    <div class="val" id="tCost"></div>
+    <p class="hint" id="tCostHint"></p></div>
+</div>
+
+<!-- ============ التنظيف ============ -->
+<div class="card">
+  <h2>١· تنظيف الملفات <small>ما استُبعد ولماذا</small></h2>
+  <p class="note">كل مكرر حُذف ولم يُحتسب مرتين: ملفات متطابقة بالكامل (نفس البصمة)، ثم
+     طلبات تكرّر رقمها بين الملفات.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>البند</th><th>العدد</th><th>ملاحظة</th></tr></thead>
+    <tbody id="cleanBody"></tbody>
+  </table></div>
+  <details><summary>أسماء الملفات المكررة المحذوفة</summary>
+    <div class="scroll"><table><tbody id="dupFiles"></tbody></table></div></details>
+</div>
+
+<!-- ============ التكلفة ============ -->
+<div class="card">
+  <h2>٢· التكلفة الفعلية <small>عدّل النقاط فيتغيّر كل شيء فورًا</small></h2>
+  <p class="note">لكل يوزر سارٍ نحسب <b>المتبقّي</b> من اشتراكه (تاريخ الشراء + مدة الباقة −
+     اليوم)، ثم نرقّيه لأقرب باقة تغطّيه. التكلفة = مجموع نقاط تلك الباقات × قيمة النقطة.</p>
+
+  <div class="warn">
+    <b>الأرقام الافتراضية للنقاط مشتقّة</b> من المثال الوحيد في كود الأداة
+    (<code>اشتراك سنة + 3 اشهر + جهازين (6 نقاط)</code> ⇒ ١٥ شهر لجهاز = ٣ نقاط).
+    ضع أسعار <b>مرح</b> الحقيقية في الحقول فتتحدّث التكلفة في الحال.
+  </div>
+
+  <div class="scroll"><table>
+    <thead><tr>
+      <th>الباقة المطلوبة</th><th>عدد اليوزرات</th><th>نقاط الباقة</th>
+      <th>النقاط</th><th>التكلفة (ر.س)</th>
+    </tr></thead>
+    <tbody id="costBody"></tbody>
+    <tfoot><tr>
+      <td>الإجمالي</td><td class="num" id="cfUnits"></td><td></td>
+      <td class="num" id="cfPoints"></td><td class="num" id="cfCost"></td>
+    </tr></tfoot>
+  </table></div>
+
+  <div class="row">
+    <label>قيمة النقطة: <input type="number" id="ppv" value="2" min="0" step="0.25"> ر.س</label>
+    <button class="btn" data-preset="panel" type="button">افتراضي اللوحة</button>
+    <button class="btn" data-preset="month" type="button">نقطة لكل شهر</button>
+  </div>
+</div>
+
+<!-- ============ متى تنتهي ============ -->
+<div class="card">
+  <h2>٣· متى تنتهي الاشتراكات <small>وحدة لكل يوزر، حسب شهر الانتهاء</small></h2>
+  <p class="note">يبيّن حجم الدفعة الشهرية التي ستطرق صفحة التجديد. ما قبل اليوم منتهٍ أصلًا.</p>
+  <div class="chart" id="chExpiry"><div class="tip"></div></div>
+  <div class="legend">
+    <span><i style="background:var(--s2)"></i>منتهٍ قبل اليوم</span>
+    <span><i style="background:var(--s1)"></i>سارٍ — ينتهي لاحقًا</span>
+  </div>
+  <details><summary>عرض الأرقام كجدول</summary>
+    <div class="scroll"><table>
+      <thead><tr><th>الشهر</th><th>يوزرات تنتهي</th><th>الحالة</th></tr></thead>
+      <tbody id="expiryBody"></tbody></table></div></details>
+</div>
+
+<!-- ============ المتبقي ============ -->
+<div class="card">
+  <h2>٤· المتبقّي لكل يوزر سارٍ <small>الشهور التي يجب أن تُمنح على مرح</small></h2>
+  <div class="chart" id="chRem"><div class="tip"></div></div>
+  <details><summary>عرض الأرقام كجدول</summary>
+    <div class="scroll"><table>
+      <thead><tr><th>المتبقّي</th><th>عدد اليوزرات</th><th>يُرقّى إلى باقة</th></tr></thead>
+      <tbody id="remBody"></tbody></table></div></details>
+</div>
+
+<!-- ============ المنتجات ============ -->
+<div class="card">
+  <h2>٥· الباقات المباعة <small>٢٨ منتجًا في المتجر ← مدة واحدة لكل منها</small></h2>
+  <p class="note">المدة تُقرأ من اسم المنتج. منتجان قديمان بلا مدة في الاسم
+     (<code>iptv smarters pro</code>) استُنتجت مدتهما من السعر — ٤٠ ر.س وهو سعر شريحة
+     السنة نفسها — ومُعلّمان بـ ⟨مُستنتج⟩.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>المنتج</th><th>المدة</th><th>مُباع</th><th>سارٍ</th></tr></thead>
+    <tbody id="prodBody"></tbody>
+  </table></div>
+</div>
+
+<!-- ============ تنبيهات ============ -->
+<div class="card">
+  <h2>٦· ما يجب الانتباه له قبل التنفيذ</h2>
+  <div id="flags"></div>
+</div>
+
+</div>
+<script>
+const D = {"today":"2026-09-23","files":{"total":16,"kept":12,"dup":4,"dup_names":["93c70694-e9789e10-3bda-4696-83f9-96ae7227b512_combined_1.csv","d97d3f94-03c29026-6f11-44e8-a01a-0eddcdd2b197_combined.csv","e82e6e61-70a4c0be-d9c9-4e60-9b5b-f0cf9110ac07_combined.csv","fccaf98b-b6dc0150-a53b-4945-8720-07b81fb7606b_combined.csv"]},"orders":{"raw_rows":5536,"unique":5535,"dup":1,"dup_ids":["268053485"]},"units":{"all":5626,"confirmed":5517,"other":109,"active":5334,"expired":183,"phones_active":4951},"status":[{"k":"طلبك مؤكد","n":5517},{"k":"ملغي","n":103},{"k":"بإنتظار الدفع","n":5},{"k":"جاهزة لشحن","n":1}],"tiers":[{"months":1,"devices":1,"n":60},{"months":3,"devices":1,"n":545},{"months":6,"devices":1,"n":1095},{"months":12,"devices":1,"n":3492},{"months":15,"devices":1,"n":125},{"months":30,"devices":1,"n":17}],"remaining":[{"k":1,"n":60},{"k":2,"n":88},{"k":3,"n":457},{"k":4,"n":431},{"k":5,"n":340},{"k":6,"n":324},{"k":7,"n":251},{"k":8,"n":363},{"k":9,"n":1117},{"k":10,"n":697},{"k":11,"n":491},{"k":12,"n":573},{"k":13,"n":124},{"k":14,"n":1},{"k":24,"n":4},{"k":25,"n":1},{"k":26,"n":2},{"k":27,"n":8},{"k":31,"n":2}],"expiry_month":[{"k":"2026-07","n":10},{"k":"2026-08","n":94},{"k":"2026-09","n":90},{"k":"2026-10","n":60},{"k":"2026-11","n":197},{"k":"2026-12","n":447},{"k":"2027-01","n":428},{"k":"2027-02","n":323},{"k":"2027-03","n":315},{"k":"2027-04","n":226},{"k":"2027-05","n":801},{"k":"2027-06","n":745},{"k":"2027-07","n":819},{"k":"2027-08","n":449},{"k":"2027-09","n":490},{"k":"2027-10","n":6},{"k":"2028-08","n":1},{"k":"2028-09","n":3},{"k":"2028-10","n":2},{"k":"2028-11","n":5},{"k":"2028-12","n":4},{"k":"2029-03","n":2}],"order_month":[{"k":"2025-11","n":103},{"k":"2025-12","n":226},{"k":"2026-01","n":260},{"k":"2026-02","n":421},{"k":"2026-03","n":406},{"k":"2026-04","n":437},{"k":"2026-05","n":951},{"k":"2026-06","n":1011},{"k":"2026-07","n":854},{"k":"2026-08","n":395},{"k":"2026-09","n":453}],"orig_months":[{"k":3,"n":1},{"k":6,"n":1103},{"k":12,"n":3432},{"k":15,"n":964},{"k":30,"n":17}],"multi":[{"k":1,"n":4644},{"k":2,"n":273},{"k":3,"n":25},{"k":4,"n":6},{"k":5,"n":2},{"k":35,"n":1}],"products":[{"name":"اشتراك سمارت لمدة سنه","months":12,"devices":1,"inferred":false,"n":1556,"active":1556},{"name":"اشتراك iptv للمسلسلات والافلام لمدة 15 شهر","months":15,"devices":1,"inferred":false,"n":772,"active":772},{"name":"اشتراك سمارت لمدة 6 اشهر","months":6,"devices":1,"inferred":false,"n":653,"active":480},{"name":"عرض خاص - اشتراك IPTV Smarters Pro لمدة سنة","months":12,"devices":1,"inferred":false,"n":434,"active":434},{"name":"اشتراك iptv للمسلسلات والافلام لمدة سنة","months":12,"devices":1,"inferred":false,"n":383,"active":383},{"name":"اشتراك iptv للمسلسلات والافلام لمدة 12 شهر","months":12,"devices":1,"inferred":false,"n":368,"active":368},{"name":"اشتراك iptv  سامسونج و ال جي  ونظام webOS لمدة 6 شهر","months":6,"devices":1,"inferred":false,"n":345,"active":336},{"name":"iptv smarters pro | سمارت اي بي تي في","months":12,"devices":1,"inferred":true,"n":225,"active":225},{"name":"اشتراك ترفيهي رقمي لمدة 12 شهر","months":12,"devices":1,"inferred":false,"n":187,"active":187},{"name":"iptv smarters pro","months":12,"devices":1,"inferred":true,"n":181,"active":181},{"name":"اشتراك مسلسلات شهر رمضان ونتفلكس وشاهد وامازون لمدة 15 شهر","months":15,"devices":1,"inferred":false,"n":93,"active":93},{"name":"اشتراك ترفيهي رقمي لمدة 15 شهر","months":15,"devices":1,"inferred":false,"n":63,"active":63},{"name":"اشتراك IPTV لشاشات سامسونج و LG لمدة 6 أشهر","months":6,"devices":1,"inferred":false,"n":57,"active":57},{"name":"اشتراك IPTV لمدة 6 أشهر | جميع الأجهزة","months":6,"devices":1,"inferred":false,"n":48,"active":48},{"name":"اشتراك كاسبر - 15 شهر","months":15,"devices":1,"inferred":false,"n":26,"active":26},{"name":"اشتراك IPTV لمدة سنة | Smart TV و Android TV","months":12,"devices":1,"inferred":false,"n":24,"active":24},{"name":"اشتراك IPTV ترفيهي لمدة 12 شهر | نتفلكس وشاهد ومسلسلات","months":12,"devices":1,"inferred":false,"n":22,"active":22},{"name":"اشتراك IPTV لمدة 12 شهر | تسليم فوري بلا انتظار","months":12,"devices":1,"inferred":false,"n":20,"active":20},{"name":"اشتراك iptv للمسلسلات والافلام لمدة 30 شهر","months":30,"devices":1,"inferred":false,"n":15,"active":15},{"name":"عرض خاص: اشتراك IPTV لمدة سنة بسعر مخفض","months":12,"devices":1,"inferred":false,"n":13,"active":13},{"name":"اشتراك IPTV Smarters Pro لمدة سنة","months":12,"devices":1,"inferred":false,"n":12,"active":12},{"name":"اشتراك كاسبر - 15 شهر | جهاز واحد","months":15,"devices":1,"inferred":false,"n":8,"active":8},{"name":"اشتراك IPTV لمدة 12 شهر للمسلسلات والأفلام","months":12,"devices":1,"inferred":false,"n":6,"active":6},{"name":"اشتراك IPTV لمدة 30 شهر | أطول باقة وأوفر سعر","months":30,"devices":1,"inferred":false,"n":2,"active":2},{"name":"اشتراك iptv  سامسونج و ال جي  ونظام webOS لمدة 15 شهر","months":15,"devices":1,"inferred":false,"n":1,"active":1},{"name":"اقوى بث باقه كاس العالم للمباريات | لمدة 3 شهور","months":3,"devices":1,"inferred":false,"n":1,"active":0},{"name":"اشتراك IPTV للمباريات والرياضة لمدة سنة","months":12,"devices":1,"inferred":false,"n":1,"active":1},{"name":"FALCON TV PRO | فالكون 15 شهر","months":15,"devices":1,"inferred":false,"n":1,"active":1}]};
+const AR = n => new Intl.NumberFormat('ar-SA',{maximumFractionDigits:2}).format(n);
+const $ = s => document.querySelector(s);
+
+/* ---------- افتراضات النقاط ---------- */
+const PRESETS = {
+  panel: {1:0.5, 3:1, 6:1.5, 12:2.5, 15:3, 30:6},   // مشتق من مثال اللوحة
+  month: {1:1,   3:3, 6:6,   12:12,  15:15, 30:30}  // نقطة لكل شهر
+};
+let pts = {...PRESETS.panel};
+
+$('#today').textContent = D.today;
+
+/* ---------- ١· التنظيف ---------- */
+$('#cleanBody').innerHTML = [
+  ['ملفات مرفوعة', D.files.total, 'قبل الفحص'],
+  ['ملفات متطابقة حُذفت', D.files.dup, 'نفس المحتوى حرفًا بحرف'],
+  ['ملفات اعتُمدت', D.files.kept, '—'],
+  ['صفوف قُرئت', D.orders.raw_rows, 'من الملفات المعتمدة'],
+  ['طلبات مكررة حُذفت', D.orders.dup, 'رقم الطلب ' + D.orders.dup_ids.join('، ')],
+  ['طلبات فريدة', D.orders.unique, 'أساس التحليل'],
+  ['وحدات اشتراك (يوزرات)', D.units.all, 'الطلب قد يحمل أكثر من يوزر'],
+  ['غير مؤكدة استُبعدت', D.units.other, 'ملغي · بانتظار الدفع'],
+  ['يوزرات مؤكدة', D.units.confirmed, '—'],
+  ['منها منتهية', D.units.expired, 'لا تُكلّف شيئًا'],
+  ['منها سارية', D.units.active, 'هذه التي نجدّدها'],
+].map(r => `<tr><td>${r[0]}</td><td class="num"><b>${AR(r[1])}</b></td>
+  <td style="color:var(--ink-3)">${r[2]}</td></tr>`).join('');
+
+$('#dupFiles').innerHTML = D.files.dup_names
+  .map(n => `<tr><td style="font-size:12px;direction:ltr;text-align:left">${n}</td></tr>`).join('');
+
+/* ---------- ٢· التكلفة ---------- */
+function recalc(){
+  const pv = parseFloat($('#ppv').value) || 0;
+  let tp = 0, tu = 0;
+  $('#costBody').innerHTML = D.tiers.map(t => {
+    const mult = t.devices >= 2 ? t.devices : 1;
+    const per  = (pts[t.months] || 0) * mult;
+    const p    = per * t.n;
+    tp += p; tu += t.n;
+    const label = t.months + ' شهر' + (t.devices >= 2 ? ' · جهازين' : '');
+    return `<tr><td>${label}</td><td class="num">${AR(t.n)}</td>
+      <td><input type="number" class="pt" data-m="${t.months}" value="${pts[t.months]}"
+           min="0" step="0.25"></td>
+      <td class="num">${AR(p)}</td><td class="num">${AR(p*pv)}</td></tr>`;
+  }).join('');
+  $('#cfUnits').textContent  = AR(tu);
+  $('#cfPoints').textContent = AR(tp);
+  $('#cfCost').textContent   = AR(tp*pv);
+  $('#tActive').textContent  = AR(D.units.active);
+  $('#tPhones').textContent  = AR(D.units.phones_active);
+  $('#tPoints').textContent  = AR(tp);
+  $('#tCost').textContent    = AR(tp*pv) + ' ر.س';
+  $('#tCostHint').textContent = 'النقطة بـ ' + AR(pv) + ' ر.س · ' +
+    AR(tp*pv/Math.max(tu,1)) + ' ر.س لكل يوزر';
+  document.querySelectorAll('.pt').forEach(i => i.oninput = e => {
+    pts[e.target.dataset.m] = parseFloat(e.target.value) || 0;
+    const f = document.activeElement === e.target ? e.target.dataset.m : null;
+    recalc();
+    if (f) { const el = document.querySelector('.pt[data-m="'+f+'"]'); el.focus();
+             el.setSelectionRange(el.value.length, el.value.length); }
+  });
+}
+$('#ppv').oninput = recalc;
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  pts = {...PRESETS[b.dataset.preset]}; recalc();
+});
+
+/* ---------- الرسوم ---------- */
+function barChart(host, rows, opt){
+  const W = 900, H = opt.h || 210, PL = 46, PR = 8, PT = 16, PB = 34;
+  const max = Math.max(...rows.map(r => r.n), 1);
+  const iw = W - PL - PR, ih = H - PT - PB;
+  const bw = iw / rows.length, gap = Math.min(3, bw * 0.22);
+  const y = v => PT + ih - (v / max) * ih;
+  const ticks = [0, .5, 1].map(f => Math.round(max * f));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${opt.label}">`;
+  ticks.forEach(t => { s += `<line class="gridline" x1="${PL}" x2="${W-PR}" y1="${y(t)}" y2="${y(t)}"/>
+     <text class="tick" x="${W-PR+4}" y="${y(t)+4}" text-anchor="start">${AR(t)}</text>`; });
+  rows.forEach((r, i) => {
+    const h = Math.max((r.n / max) * ih, r.n ? 2 : 0);
+    const x = PL + i * bw + gap / 2, w = Math.max(bw - gap, 1);
+    s += `<rect class="bar" x="${x}" y="${y(r.n)}" width="${w}" height="${h}"
+      rx="4" fill="${r.c || 'var(--s1)'}" data-t="${r.t}"><title>${r.t}</title></rect>`;
+    if (opt.every ? i % opt.every === 0 : true)
+      s += `<text class="tick" x="${x + w/2}" y="${H - PB + 15}" text-anchor="middle">${r.x}</text>`;
+    if (opt.topLabel && r.n / max > .55)
+      s += `<text class="vlab" x="${x + w/2}" y="${y(r.n) - 5}" text-anchor="middle">${AR(r.n)}</text>`;
+  });
+  host.insertAdjacentHTML('afterbegin', s + '</svg>');
+  const tip = host.querySelector('.tip');
+  host.querySelectorAll('.bar').forEach(b => {
+    b.onmouseenter = e => { const r = b.getBoundingClientRect(), h = host.getBoundingClientRect();
+      tip.textContent = b.dataset.t; tip.style.opacity = 1;
+      tip.style.left = (r.left - h.left + r.width/2) + 'px';
+      tip.style.top  = (r.top  - h.top) + 'px'; };
+    b.onmouseleave = () => tip.style.opacity = 0;
+  });
+}
+
+/* ٣· الانتهاء شهريًا */
+const exRows = D.expiry_month.map(r => ({
+  x: r.k.slice(2).replace('-', '/'), n: r.n, t: r.k + ' — ' + AR(r.n) + ' يوزر',
+  c: r.k < D.today.slice(0,7) ? 'var(--s2)' : 'var(--s1)'
+}));
+barChart($('#chExpiry'), exRows, {label:'يوزرات تنتهي كل شهر', every:2, topLabel:true});
+$('#expiryBody').innerHTML = D.expiry_month.map(r =>
+  `<tr><td>${r.k}</td><td class="num">${AR(r.n)}</td>
+   <td>${r.k < D.today.slice(0,7) ? 'منتهٍ' : 'سارٍ'}</td></tr>`).join('');
+
+/* ٤· المتبقي */
+const TIERS = [1,3,6,12,15,30];
+const up = m => TIERS.find(t => t >= m) || 30;
+barChart($('#chRem'), D.remaining.map(r => ({
+  x: r.k, n: r.n, t: 'متبقٍّ ' + r.k + ' شهر — ' + AR(r.n) + ' يوزر'
+})), {label:'توزيع الشهور المتبقية', topLabel:true});
+$('#remBody').innerHTML = D.remaining.map(r =>
+  `<tr><td>${r.k} شهر</td><td class="num">${AR(r.n)}</td>
+   <td>${up(r.k)} شهر</td></tr>`).join('');
+
+/* ٥· المنتجات */
+$('#prodBody').innerHTML = D.products.map(p =>
+  `<tr><td class="name">${p.name}${p.inferred ? ' <span style="color:var(--gold);font-size:12px">⟨مُستنتج⟩</span>' : ''}</td>
+   <td>${p.months} شهر${p.devices >= 2 ? ' · جهازين' : ''}</td>
+   <td class="num">${AR(p.n)}</td><td class="num">${AR(p.active)}</td></tr>`).join('');
+
+/* ٦· تنبيهات */
+const heavy = D.multi.filter(m => m.k >= 3).reduce((a,m) => a + m.n, 0);
+const busiest = D.multi[D.multi.length-1];
+$('#flags').innerHTML = [
+ [`عملاء بأكثر من اشتراك سارٍ`,
+  `${AR(D.units.active - D.units.phones_active)} وحدة زائدة على عدد الجوالات:
+   ${AR(D.multi.find(m=>m.k===2)?.n||0)} جوالًا بوحدتين، و${AR(heavy)} جوالًا بثلاث فأكثر.
+   بعضها أجهزة إضافية فعلًا، وبعضها <b>تجديد لنفس الخط</b> اشتراه العميل مرتين.
+   هذه هي الفجوة بين ${AR(D.units.active)} يوزر و${AR(D.units.phones_active)} عميل،
+   والتكلفة الحقيقية تقع بين الرقمين.`],
+ [`جوال واحد عليه ${AR(busiest.k)} اشتراكًا`,
+  `أعلى رقم في القائمة — غالبًا رقم موزّع أو رقم اختبار للمتجر. راجعه يدويًا قبل أن
+   تفتح له التجديد، وإلا صار بابًا لـ ${AR(busiest.k)} خط مجاني.`],
+ [`الملفات لا تحمل اليوزر والباسورد`,
+  `فحصنا كل الأعمدة: ١٦ طلبًا فقط فيها <code>Username/Password</code> داخل
+   «الملاحظات الداخلية». فربط الطلب بخطّه لا يتم من هذه الملفات — لا بد من
+   البحث في لوحة مرح بالجوال أو أن يكتب العميل يوزره بنفسه.`],
+ [`المتبقّي يُرقّى لأعلى`,
+  `لا توجد باقة بـ ٩ شهور مثلًا، فمن بقي له ٩ شهور يأخذ باقة ١٢. الفائض مدفوع من
+   عندنا وهو محسوب في الأرقام أعلاه.`],
+].map(f => `<p style="margin:0 0 14px"><b style="color:var(--gold)">${f[0]}</b><br>
+   <span style="color:var(--ink-2);font-size:14px">${f[1]}</span></p>`).join('');
+
+/* ---------- الوضع الليلي ---------- */
+const btn = $('#themeBtn');
+let dark = matchMedia('(prefers-color-scheme:dark)').matches;
+try { const v = localStorage.getItem('rr-theme'); if (v) dark = v === 'dark'; } catch(e){}
+const apply = () => { document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  btn.textContent = dark ? 'الوضع النهاري' : 'الوضع الليلي'; };
+btn.onclick = () => { dark = !dark; apply();
+  try { localStorage.setItem('rr-theme', dark ? 'dark' : 'light'); } catch(e){} };
+apply();
+
+recalc();
+</script>
+</body>
+</html>
