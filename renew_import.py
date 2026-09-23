@@ -31,6 +31,9 @@ CONFIRMED = ("طلبك مؤكد", "مكتمل", "تم التنفيذ", "جاري
 # فالكون خارج التجديد: لوحته قائمة بذاتها ولا يُنقل عملاؤها إلى مرح.
 EXCLUDE = re.compile(r"فالكون|falcon", re.I)
 
+# ليست اشتراكات تُجدَّد: تجربةُ يومٍ لا متبقّى لها، ولوحة الموزّعين ليست خطًّا.
+NOT_A_LINE = re.compile(r"تجريب|تجربة|trial|demo|لوحة تحكم|للموزعين|panel", re.I)
+
 # منتجات قديمة لا تحمل مدة في اسمها. سعر الوحدة ٤٠ ر.س وهو سعر شريحة السنة
 # نفسها في بقية المنتجات، فتُقرأ سنةً — وتُعلَّم `inferred` ليبقى الاستنتاج ظاهرًا.
 INFERRED_MONTHS = {
@@ -44,7 +47,7 @@ ORDER_COLS = {"order": "رقم الطلب", "status": "حالة الطلب", "ph
 # أعمدة ملف المنتجات تختلف بين تصديرات سلة، فتُقرأ بعدّة أسماء محتملة.
 PRODUCT_COLS = {
     "id":    ("معرف المنتج", "رقم المنتج", "id", "product_id"),
-    "name":  ("اسم المنتج", "الاسم", "name", "product_name"),
+    "name":  ("اسم المنتج", "أسم المنتج", "الاسم", "name", "product_name"),
     "sku":   ("SKU", "sku", "رمز المنتج", "الرمز"),
     "price": ("السعر", "price", "سعر المنتج"),
 }
@@ -61,6 +64,8 @@ def _decode(raw):
 
 
 def _rows(raw):
+    if is_xlsx(raw):
+        return _xlsx_rows(raw)
     text = _decode(raw)
     sample = text[:4096]
     try:
@@ -70,10 +75,29 @@ def _rows(raw):
     return list(csv.DictReader(io.StringIO(text), dialect=dialect))
 
 
+# سلة تكتب «أسم المنتج» بالهمزة و«اسم» بالألف في تصديرات مختلفة، فتُطبَّع
+# الهمزات قبل المقارنة — وإلا سقط العمود كله لفرقٍ في حرف.
+_ALIF = str.maketrans("أإآٱىة", "ااااية")
+
+
+def _norm_head(h):
+    t = str(h or "").translate(_ALIF)
+    return re.sub(r"[\s_\-:ـ]+", "", t).strip().lower()
+
+
 def _pick(row, names):
-    for n in names:
+    """قيمة أول عمودٍ يطابق أحد الأسماء. المطابقة متسامحة لأن سلة تسمّي العمود
+    «رمز المنتج sku» لا «SKU» — والمطابقة الحرفية كانت تُسقطه."""
+    for n in names:                                   # مطابقة تامة أولًا
         if n in row and str(row[n]).strip():
             return str(row[n]).strip()
+    wanted = [_norm_head(n) for n in names]
+    for k, v in row.items():
+        nk = _norm_head(k)
+        if not str(v).strip():
+            continue
+        if any(w and (nk == w or nk.endswith(w) or nk.startswith(w)) for w in wanted):
+            return str(v).strip()
     return ""
 
 
@@ -91,24 +115,133 @@ def dedupe_files(files):
     return keep, dups
 
 
+
+# ============================ xlsx ============================
+# سلة تصدّر xlsx كما تصدّر csv، فيُقرأ الاثنان. وxlsx حزمة zip فيها XML —
+# تُقرأ بالمكتبة القياسية وحدها، فلا تُضاف تبعية لأجل ملفٍ يُرفع مرة.
+_XLSX_MAGIC = b"PK\x03\x04"
+_SI = re.compile(r"<si>(.*?)</si>", re.S)
+_ROW = re.compile(r"<row[^>]*>(.*?)</row>", re.S)
+_CELL = re.compile(r'<c r="([A-Z]+)\d+"([^>]*)>(?:<v>(.*?)</v>|<is>(.*?)</is>)?</c>', re.S)
+_TAGS_X = re.compile(r"<[^>]+>")
+
+
+def is_xlsx(raw):
+    return bytes(raw[:4]) == _XLSX_MAGIC
+
+
+def _col_num(col):
+    n = 0
+    for ch in col:
+        n = n * 26 + (ord(ch) - 64)
+    return n
+
+
+def _xlsx_rows(raw):
+    """xlsx → قائمة صفوف كقواميس {العنوان: القيمة}، كما يعطيها قارئ CSV."""
+    import zipfile
+    import io as _io
+
+    z = zipfile.ZipFile(_io.BytesIO(raw))
+    names = z.namelist()
+    shared = []
+    if "xl/sharedStrings.xml" in names:
+        blob = z.read("xl/sharedStrings.xml").decode("utf-8", "replace")
+        shared = [_html_text(m) for m in _SI.findall(blob)]
+    sheet = next((n for n in names if re.match(r"xl/worksheets/sheet\d+\.xml$", n)), None)
+    if not sheet:
+        return []
+    body = z.read(sheet).decode("utf-8", "replace")
+
+    def cells(chunk):
+        out = {}
+        for m in _CELL.finditer(chunk):
+            col, attr, v, inline = m.groups()
+            if v is not None and 't="s"' in attr:
+                i = int(v)
+                out[col] = shared[i] if 0 <= i < len(shared) else ""
+            elif inline:
+                out[col] = _html_text(inline)
+            elif v is not None:
+                out[col] = v
+        return out
+
+    rows = _ROW.findall(body)
+    # صفّ العناوين هو أعرض صفوف الرأس، لا أوّلها: سلة تضع فوق الجدول سطر عنوان
+    # واحدًا («بيانات المنتج») فيسبق العناوينَ الحقيقية.
+    head_i, head = -1, {}
+    for i, r in enumerate(rows[:5]):
+        c = cells(r)
+        if len(c) > len(head):
+            head_i, head = i, c
+    if not head:
+        return []
+    order = sorted(head, key=_col_num)
+    out = []
+    for r in rows[head_i + 1:]:
+        c = cells(r)
+        if not c:
+            continue
+        out.append({head[col]: c.get(col, "") for col in order})
+    return out
+
+
+def _html_text(chunk):
+    import html as _h
+    return _h.unescape(_TAGS_X.sub("", chunk)).strip()
+
+
 # ============================ المنتجات ============================
 
-# رموز المنتجات (SKU) تحمل المدة صراحةً: ‏`MRH-12M-ENT` · `MRH-06M` · `MRH-30M`.
-# وهي أوثق من قراءة الاسم العربي: الاسم تسويقيّ يتغيّر، والرمز مُصنَّف بيد صاحبه.
-# ‏MRH = مرح، والباقي وصفُ الباقة (ENT · WEBOS · SMARTTV · OFFER …) لا مدة فيه.
-SKU_PAT = re.compile(r"(?i)^([A-Z]{2,6})-0*(\d{1,2})M(?:-([A-Z0-9]+))?", re.I)
+# رموز المنتجات (SKU) — أوثق ما في الكتالوج. الاسم تسويقيّ يتغيّر، والرمز
+# مُصنَّف بيد صاحبه. من كتالوج المتجر نفسه:
+#
+#   MRH-12M-ENT      مرح · ١٢ شهرًا · ترفيهي
+#   MRH-15M-2D       مرح · ١٥ شهرًا · جهازان   ← «2D» أجهزة لأن المدة سبقتها
+#   MRH-01D-TRIAL    مرح · يومٌ واحد          ← «01D» أيام لأن لا مدة قبلها
+#   FAL-PRO-24M      فالكون · سنتان           ← الرقم ليس بعد المقطع الأول
+#
+# ومن هنا ثلاث قواعد: المدة تُلتقط أينما وردت لا بعد الشرطة الأولى وحدها؛
+# و«‏nD» أجهزةٌ إن سبقتها مدة وأيامٌ إن لم تسبقها؛ والبادئة تُعرّف المزوّد
+# (‏MRH مرح · FAL فالكون) وهي أضبط من تلمّس كلمة «فالكون» في الاسم العربي.
+_SKU_PROVIDER = re.compile(r"^([A-Z]{2,6})(?=-)", re.I)
+_SKU_MONTHS = re.compile(r"(?:^|-)0*(\d{1,2})M(?=-|$)", re.I)
+_SKU_DAYS = re.compile(r"(?:^|-)0*(\d{1,3})D(?=-|$)", re.I)
+
+FALCON_PREFIX = ("FAL",)
 
 
 def sku_info(sku):
-    """‏`MRH-12M-ENT` → {provider, months, variant}. وإلا {}."""
-    m = SKU_PAT.match(str(sku or "").strip())
-    if not m:
+    """‏`MRH-15M-2D` → {provider, months, devices, variant}. وإلا {}."""
+    s = str(sku or "").strip()
+    if not s or "-" not in s:
         return {}
-    months = int(m.group(2))
-    if not 1 <= months <= 60:
-        return {}
-    return {"provider": m.group(1).upper(), "months": months,
-            "variant": (m.group(3) or "").upper()}
+    prov = _SKU_PROVIDER.match(s)
+    mo = _SKU_MONTHS.search(s)
+    out = {"provider": (prov.group(1).upper() if prov else ""),
+           "months": 0, "devices": 1, "days": 0, "variant": ""}
+    if mo:
+        n = int(mo.group(1))
+        if 1 <= n <= 60:
+            out["months"] = n
+        # بعد المدة، «nD» عددُ أجهزة
+        tail = s[mo.end():]
+        d = _SKU_DAYS.search(tail)
+        if d and 1 <= int(d.group(1)) <= 9:
+            out["devices"] = int(d.group(1))
+    else:
+        d = _SKU_DAYS.search(s)
+        if d:
+            out["days"] = int(d.group(1))          # تجربةُ أيام لا اشتراك يُجدَّد
+    parts = [p for p in s.split("-")[1:]
+             if not _SKU_MONTHS.fullmatch("-" + p) and not _SKU_DAYS.fullmatch("-" + p)]
+    out["variant"] = "-".join(parts).upper()
+    return out if (out["months"] or out["days"]) else {}
+
+
+def sku_is_falcon(sku):
+    """فالكون بالبادئة لا بالاسم: `FAL-PRO-15M` فالكون وإن خلا اسمه العربي منها."""
+    return (sku_info(sku).get("provider") or "") in FALCON_PREFIX
 
 
 def months_of(name):
@@ -270,7 +403,10 @@ def read_orders(files, products=None, keep_unconfirmed=False, include_falcon=Fal
                 skipped["no_items"] += 1
                 continue
             if not include_falcon and any(
-                    isinstance(it, list) and it and EXCLUDE.search(str(it[0])) for it in items):
+                    isinstance(it, list) and it and
+                    (EXCLUDE.search(str(it[0])) or
+                     sku_is_falcon(it[2] if len(it) > 2 else ""))
+                    for it in items):
                 skipped["falcon"] += 1          # فالكون لوحةٌ قائمة بذاتها، لا تُنقل لمرح
                 continue
 
@@ -285,9 +421,12 @@ def read_orders(files, products=None, keep_unconfirmed=False, include_falcon=Fal
                 # المنتج يُعرَّف بالـSKU أولًا، ثم بالاسم، ثم بقراءة الاسم نفسه.
                 info = sku_info(sku)
                 prod = products["by_sku"].get(sku) or products["by_name"].get(pname.strip().lower())
-                if info:                       # الرمز يحمل المدة صراحةً — أوثق ما لدينا
+                if info and info["days"] and not info["months"]:
+                    skipped["no_months"] += qty      # تجربةُ يومٍ لا متبقّى لها
+                    continue
+                if info and info["months"]:    # الرمز يحمل المدة صراحةً — أوثق ما لدينا
                     mo, inferred = info["months"], False
-                    dev = devices_of(pname)
+                    dev = info["devices"] if info["devices"] > 1 else devices_of(pname)
                 elif prod and prod.get("months"):
                     mo, dev, inferred = prod["months"], prod["devices"], prod.get("inferred", False)
                 else:
@@ -451,6 +590,14 @@ def parse_multipart(content_type, body):
 
 def looks_like_orders(raw):
     """أهذا ملف طلبات أم منتجات؟ يُقرأ من العناوين، فلا يحتاج المدير أن يرتّبهما."""
+    if is_xlsx(raw):
+        try:
+            rows = _xlsx_rows(raw)
+        except Exception:
+            return False
+        keys = " ".join(rows[0].keys()) if rows else ""
+        return bool(_pick({"k": keys}, (ORDER_COLS["order"],)) or
+                    ORDER_COLS["order"] in keys or "skus_json" in keys)
     head = _decode(raw[:8192]).splitlines()[:1]
     line = head[0] if head else ""
     return ORDER_COLS["order"] in line or "skus_json" in line
@@ -492,7 +639,8 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
     items = [it for it in (order.get("items") or []) if isinstance(it, dict)]
     if not items:
         return [], "no_items"
-    if not include_falcon and any(EXCLUDE.search(str(it.get("name", ""))) for it in items):
+    if not include_falcon and any(EXCLUDE.search(str(it.get("name", "")))
+                                  or sku_is_falcon(it.get("sku")) for it in items):
         return [], "falcon"
 
     phone = _salla_phone(order.get("customer"))
@@ -500,10 +648,13 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
     for it in items:
         pname = str(it.get("name") or "")
         info = sku_info(it.get("sku"))
-        mo, inferred = (info["months"], False) if info else months_of(pname)
+        if info.get("days") and not info.get("months"):
+            continue                                  # تجربةُ يوم
+        mo, inferred = ((info["months"], False) if info.get("months")
+                        else months_of(pname))
         if not mo:
             continue
-        dev = devices_of(pname)
+        dev = info["devices"] if info.get("devices", 1) > 1 else devices_of(pname)
         expiry = renew.add_months(date, mo)
         for _ in range(max(1, min(int(it.get("quantity") or 1), 20))):
             out.append({"order": no, "sid": str(order.get("id") or ""), "phone": phone,

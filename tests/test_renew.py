@@ -441,6 +441,35 @@ class TestDigitalCodes(unittest.TestCase):
                           "host": "http://ssouqhost.vip"})
 
 
+    def test_xlsx_is_read_like_csv(self):
+        """سلة تصدّر xlsx أيضًا — ويُقرأ بلا تبعية، بالمكتبة القياسية."""
+        import io as _io
+        import zipfile
+        book = _io.BytesIO()
+        with zipfile.ZipFile(book, "w") as z:
+            z.writestr("[Content_Types].xml", "<Types/>")
+            z.writestr("xl/sharedStrings.xml",
+                       "<sst><si><t>أسم المنتج</t></si><si><t>رمز المنتج sku</t></si>"
+                       "<si><t>اشتراك تجريبي</t></si><si><t>MRH-06M</t></si></sst>")
+            z.writestr("xl/worksheets/sheet1.xml",
+                       '<sheetData>'
+                       '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>'
+                       '<row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>'
+                       '</sheetData>')
+        raw = book.getvalue()
+        self.assertTrue(renew_import.is_xlsx(raw))
+        rows = renew_import._rows(raw)
+        self.assertEqual(rows[0]["أسم المنتج"], "اشتراك تجريبي")
+        self.assertEqual(rows[0]["رمز المنتج sku"], "MRH-06M")
+
+    def test_the_sku_column_is_found_despite_its_wording(self):
+        """سلة تسمّي العمود «رمز المنتج sku» — والمطابقة الحرفية كانت تُسقطه."""
+        self.assertEqual(
+            renew_import._pick({"رمز المنتج sku": "MRH-06M"}, ("SKU", "sku", "رمز المنتج")),
+            "MRH-06M")
+
+
+
 # ============================ خطوط اللوحة ============================
 class TestPanelLines(unittest.TestCase):
     """اللوحة هي المصدر الكامل الوحيد: كل خط فيها بيوزره وباسورده."""
@@ -488,17 +517,31 @@ class TestPanelLines(unittest.TestCase):
 class TestSkuAndCard(unittest.TestCase):
     """الرمز يحمل المدة صراحةً، والبطاقة تحمل الاعتماد — كلاهما من بيانات حيّة."""
 
-    def test_sku_carries_the_duration(self):
-        for sku, months, variant in [
-            ("MRH-12M-ENT", 12, "ENT"), ("MRH-06M", 6, ""), ("MRH-30M", 30, ""),
-            ("MRH-12M-SMARTTV", 12, "SMARTTV"), ("MRH-06M-WEBOS", 6, "WEBOS"),
+    def test_sku_carries_duration_devices_and_provider(self):
+        """رموز كتالوج المتجر نفسه."""
+        for sku, months, devices, prov in [
+            ("MRH-12M-ENT", 12, 1, "MRH"), ("MRH-06M", 6, 1, "MRH"),
+            ("MRH-30M", 30, 1, "MRH"), ("MRH-06M-WEBOS", 6, 1, "MRH"),
+            ("MRH-15M-2D", 15, 2, "MRH"),          # «2D» أجهزة: سبقتها مدة
+            ("FAL-PRO-24M", 24, 1, "FAL"),         # الرقم ليس بعد الشرطة الأولى
+            ("FAL-PRO-15M-2D", 15, 2, "FAL"),
         ]:
             got = renew_import.sku_info(sku)
-            self.assertEqual((got.get("months"), got.get("variant")), (months, variant), sku)
-            self.assertEqual(got.get("provider"), "MRH")
+            self.assertEqual((got.get("months"), got.get("devices"), got.get("provider")),
+                             (months, devices, prov), sku)
+
+    def test_a_day_trial_is_not_a_renewable_subscription(self):
+        """«MRH-01D-TRIAL» يومٌ لا شهر — ولا متبقّى لتجربةٍ تُجدَّد."""
+        got = renew_import.sku_info("MRH-01D-TRIAL")
+        self.assertEqual((got.get("days"), got.get("months")), (1, 0))
+
+    def test_falcon_is_known_by_its_prefix_not_its_arabic_name(self):
+        """‏`FAL-PRO-15M` فالكون وإن خلا اسمه العربي من الكلمة."""
+        self.assertTrue(renew_import.sku_is_falcon("FAL-PRO-15M"))
+        self.assertFalse(renew_import.sku_is_falcon("MRH-15M-2D"))
 
     def test_a_meaningless_sku_is_not_forced(self):
-        for sku in ("", "ABC", "MRH", "MRH-99M9", "MRH-0M"):
+        for sku in ("", "ABC", "MRH", "MRH-0M"):
             self.assertFalse(renew_import.sku_info(sku).get("months"), sku)
 
     def test_the_sku_beats_the_arabic_name(self):

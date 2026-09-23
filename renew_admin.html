@@ -94,13 +94,13 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
 
   <!-- ===================== ١· رفع الملفات ===================== -->
   <section>
-    <h2>١· رفع ملفات سلة <small>الطلبات والمنتجات — تُميَّز تلقائيًا</small></h2>
+    <h2>١· رفع ملفات سلة <small>الطلبات والمنتجات · CSV و XLSX — تُميَّز تلقائيًا</small></h2>
 
     <div class="drop" id="drop" tabindex="0" role="button">
       <b>اسحب الملفات هنا أو اضغط للاختيار</b>
-      ملف الطلبات وملف المنتجات (CSV) · يمكن اختيار عدة ملفات دفعة واحدة
+      ملف الطلبات وملف المنتجات — ‏CSV أو XLSX · يمكن اختيار عدة ملفات دفعة واحدة
     </div>
-    <input type="file" id="pick" accept=".csv,text/csv" multiple class="hidden">
+    <input type="file" id="pick" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple class="hidden">
     <div class="files" id="fileList"></div>
 
     <label class="chk"><input type="checkbox" id="apply" checked>
