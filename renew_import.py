@@ -154,12 +154,24 @@ _C_PASS = re.compile(r"(?i)\bpass\w*\s*[:=]\s*['\"]?([^\s|,;\"']{3,64})")
 _EMAILY = re.compile(r"[A-Za-z0-9._%+-]@")
 
 
+_TAGS = re.compile(r"<[^>]+>")
+_ENT = {"&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'"}
+
+
+def strip_html(text):
+    """‏`Host: x<br />Username: y` → سطران. سلة تحفظ ملاحظات السجل بـHTML."""
+    s = _TAGS.sub("\n", str(text or ""))
+    for k, v in _ENT.items():
+        s = s.replace(k, v)
+    return s
+
+
 def parse_credentials(text):
     """نصٌّ حرّ → {host, username, password} بما وُجد منها، وإلا {}.
 
     الهوست بلا نقطتين (`host http://x`) يُقبل فقط إذا صحبه يوزر أو باسورد في
     النصّ نفسه — وإلا صار كل ذكرٍ لكلمة «hosting» هوستًا."""
-    s = str(text or "")
+    s = strip_html(text)
     if not s.strip():
         return {}
     out = {}
@@ -285,7 +297,7 @@ def build_index(units, meta=None):
             orders[u["order"]] = {"phone": u["phone"], "date": u["date"],
                                   "months": u["months"], "devices": u["devices"],
                                   **({"inferred": True} if u["inferred"] else {}),
-                                  **{k: u[k] for k in ("host", "username", "password")
+                                  **{k: u[k] for k in ("host", "username", "password", "sid")
                                      if u.get(k)}}
     return {"orders": orders, "built": renew.now_iso(),
             "source_files": (meta or {}).get("files_kept", 0),
@@ -432,3 +444,105 @@ def ingest(files, keep_unconfirmed=False, include_falcon=False):
     agg = analyze(units, meta)
     agg["catalog"] = (products or {}).get("rows", [])
     return units, meta, products, agg
+
+
+# ============================ السحب من سلة مباشرة ============================
+# تصدير سلة ناقص: لا يُخرج سجل الطلب، وبيانات الاشتراك تُكتب فيه تعليقًا. والسحب
+# من الواجهة يعطي الطلبات كلها ومعها سجلّها — فلا ملفات ولا نقص.
+
+def _salla_phone(cust):
+    code = str((cust or {}).get("mobile_code") or "").strip()
+    mob = str((cust or {}).get("mobile") or "").strip()
+    return renew.norm_phone((code + mob) if code else mob)
+
+
+def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
+    """طلبٌ من واجهة سلة → وحدات (يوزر لكل نسخة). بنفس شكل قراءة الملفات."""
+    status = str(((order.get("status") or {}).get("customized") or {}).get("name")
+                 or (order.get("status") or {}).get("name") or "").strip()
+    if not keep_unconfirmed and status not in CONFIRMED:
+        return [], "unconfirmed"
+    no = renew.norm_order(order.get("reference_id") or order.get("id"))
+    date = renew.parse_date(((order.get("date") or {}).get("date")) or order.get("date"))
+    if not no or not date:
+        return [], "no_date"
+    items = [it for it in (order.get("items") or []) if isinstance(it, dict)]
+    if not items:
+        return [], "no_items"
+    if not include_falcon and any(EXCLUDE.search(str(it.get("name", ""))) for it in items):
+        return [], "falcon"
+
+    phone = _salla_phone(order.get("customer"))
+    out = []
+    for it in items:
+        pname = str(it.get("name") or "")
+        mo, inferred = months_of(pname)
+        if not mo:
+            continue
+        dev = devices_of(pname)
+        expiry = renew.add_months(date, mo)
+        for _ in range(max(1, min(int(it.get("quantity") or 1), 20))):
+            out.append({"order": no, "sid": str(order.get("id") or ""), "phone": phone,
+                        "date": date.isoformat(), "product": pname, "sku": "",
+                        "months": mo, "devices": dev, "inferred": inferred,
+                        "expiry": expiry.isoformat()})
+    return (out, "") if out else ([], "no_months")
+
+
+def pull_from_salla(token, progress=None, with_history=True, stop=None,
+                    keep_unconfirmed=False, include_falcon=False, per_page=50):
+    """يسحب طلبات المتجر كلها → (وحدات، تقرير).
+
+    على مرحلتين: الطلبات أولًا (صفحةٌ لكل خمسين)، ثم — إن طُلب — سجلُّ كل طلبٍ
+    أُبقي، لاستخراج ما كُتب فيه من يوزر وباسورد. المرحلة الثانية نداءٌ لكل طلب
+    فهي الأبطأ، ولذلك تُبلَّغ بالتقدّم وتقبل الإيقاف."""
+    import salla_api
+
+    units, seen = [], set()
+    skipped = {"unconfirmed": 0, "falcon": 0, "no_months": 0, "no_date": 0, "no_items": 0}
+    page, pages, total = 1, 1, 0
+
+    while page <= pages:
+        if stop and stop():
+            break
+        rows, pg = salla_api.orders_page(token, page, per_page)
+        pages, total = pg["pages"], pg["total"]
+        for o in rows:
+            got, why = salla_order_units(o, keep_unconfirmed, include_falcon)
+            if why:
+                skipped[why] = skipped.get(why, 0) + 1
+            for u in got:
+                if u["order"] in seen and not got:
+                    continue
+                seen.add(u["order"])
+                units.append(u)
+        if progress:
+            progress({"phase": "orders", "done": page, "total": pages,
+                      "units": len(units), "orders_total": total})
+        page += 1
+        if not rows:
+            break
+
+    found = 0
+    if with_history:
+        by_sid = {}
+        for u in units:
+            if u.get("sid"):
+                by_sid.setdefault(u["sid"], []).append(u)
+        sids = list(by_sid)
+        for i, sid in enumerate(sids, 1):
+            if stop and stop():
+                break
+            cred = parse_credentials(salla_api.history_notes(token, sid))
+            if cred:
+                found += 1
+                for u in by_sid[sid]:
+                    u.update(cred)
+            if progress and (i % 10 == 0 or i == len(sids)):
+                progress({"phase": "history", "done": i, "total": len(sids),
+                          "units": len(units), "found": found})
+
+    return units, {"files_seen": 0, "files_kept": 0, "files_dup": 0, "dup_names": [],
+                   "orders": len(seen), "orders_dup": 0, "dup_orders": [],
+                   "skipped": skipped, "bad_files": [], "source": "salla",
+                   "orders_total": total, "with_credentials": found}

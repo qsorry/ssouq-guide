@@ -608,6 +608,54 @@ def renew_packages(st):
     return out, (gate.get("point_cost") if gate else "")
 
 
+
+# ---- السحب المباشر من سلة (خلفيّ، لأنه يطول) ----
+_pull = {"running": False, "phase": "", "done": 0, "total": 0, "units": 0,
+         "found": 0, "error": "", "at": "", "cancel": False, "applied": False}
+
+
+def renew_salla_token(st):
+    return (st.get("service") or {}).get("salla_token") or ""
+
+
+def _pull_worker(token, with_history, apply_index):
+    def progress(d):
+        _pull.update(d)
+
+    try:
+        units, meta = renew_import.pull_from_salla(
+            token, progress=progress, with_history=with_history,
+            stop=lambda: _pull["cancel"])
+        if not units:
+            _pull["error"] = "لم يرجع أي طلب صالح من سلة"
+            return
+        agg = renew_import.analyze(units, meta)
+        renew.save_analysis(DATA_DIR, agg)
+        if apply_index:
+            renew.save_index(DATA_DIR, renew_import.build_index(units, meta))
+            _pull["applied"] = True
+        _pull.update({"units": len(units), "found": meta.get("with_credentials", 0),
+                      "phase": "done"})
+    except Exception as e:
+        _pull["error"] = str(e)[:300]
+    finally:
+        _pull["running"] = False
+        _pull["at"] = renew.now_iso()
+
+
+def start_renew_pull(st, with_history=True, apply_index=True):
+    if _pull["running"]:
+        return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
+    token = renew_salla_token(st)
+    if not token:
+        return {"ok": False, "error": "رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة"}
+    _pull.update({"running": True, "phase": "orders", "done": 0, "total": 0,
+                  "units": 0, "found": 0, "error": "", "cancel": False, "applied": False})
+    threading.Thread(target=_pull_worker, args=(token, with_history, apply_index),
+                     daemon=True).start()
+    return {"ok": True}
+
+
 def renew_prov():
     return renew.Provisioner(renew_exists, create_line, find_gate)
 
@@ -647,6 +695,17 @@ def renew_lookup(st, order_no="", phone="", username="", password=""):
         # اعتمادٌ كُتب يدويًا في الطلب ونُقل إلى الفهرس: يُعفي العميل من كتابته.
         username = username or str(rec.get("username", "") or "")
         password = password or str(rec.get("password", "") or "")
+        if not (username and password) and rec.get("sid") and renew_salla_token(st):
+            # لم يُسحب سجلّ هذا الطلب بعد: نداءٌ واحد الآن أرخص من سحب المتجر كله.
+            try:
+                got = renew_import.parse_credentials(
+                    salla_api.history_notes(renew_salla_token(st), rec["sid"]))
+                username = username or got.get("username", "")
+                password = password or got.get("password", "")
+                if got.get("host"):
+                    out["old_host"] = got["host"]
+            except Exception:
+                pass
         if rec.get("host"):
             out["old_host"] = rec["host"]
 
@@ -1436,6 +1495,11 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._send(200, {"packages": [], "error": str(e)[:200]})
                 return self._send(200, {"packages": pkgs, "point_cost": cost})
+            if path == "/api/renew/pull-status":   # تقدّم السحب من سلة
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {**_pull,
+                                        "has_token": bool(renew_salla_token(st))})
             if path == "/api/renew/queue":        # الطلبات: المعلّق والمنجز
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -1525,6 +1589,13 @@ class Handler(BaseHTTPRequestHandler):
             st["renew"] = renew.clean_config(req.get("renew") or {}, st.get("renew"))
             save_store(st)
             return self._send(200, {"ok": True, "renew": renew.redact_config(st["renew"])})
+        if path == "/api/renew/pull":             # سحب الطلبات من سلة مباشرة
+            return self._send(200, start_renew_pull(
+                st, with_history=req.get("with_history", True),
+                apply_index=req.get("apply", True)))
+        if path == "/api/renew/pull-cancel":
+            _pull["cancel"] = True
+            return self._send(200, {"ok": True})
         if path == "/api/renew/run":              # تفريغ الطابور الآن
             return self._send(200, {"ok": True, "result": renew_run_queue(st)})
         if path == "/api/renew/retry":            # إعادة طلب متوقّف إلى الطابور

@@ -174,3 +174,34 @@ def fetch_orders(token: str, per_page: int = 25, page: int = 1) -> list:
     """أحدث الطلبات من واجهة الإدارة (للسحب الدوري)، محلَّلةً بالشكل الموحّد."""
     d = _get("%s/admin/v2/orders?per_page=%d&page=%d" % (API, per_page, page), token)
     return [parse_order({"data": o}) for o in (d.get("data") or []) if isinstance(o, dict)]
+
+
+def orders_page(token: str, page: int = 1, per_page: int = 50) -> tuple:
+    """صفحة طلبات خامًا + معلومات الترقيم: (الطلبات، {page, pages, total}).
+
+    خامًا لا محلَّلةً، لأن فهرس التجديد يحتاج حقولًا لا يحملها `parse_order`
+    (تاريخ الطلب، وحالته، وأسماء بنوده وكمياتها)."""
+    d = _get("%s/admin/v2/orders?per_page=%d&page=%d&sort_by=created_at"
+             % (API, per_page, page), token)
+    rows = [o for o in (d.get("data") or []) if isinstance(o, dict)]
+    p = d.get("pagination") or {}
+    return rows, {"page": int(p.get("currentPage") or page),
+                  "pages": int(p.get("totalPages") or 1),
+                  "total": int(p.get("total") or len(rows))}
+
+
+def order_histories(token: str, order_id, page: int = 1) -> list:
+    """سجل الطلب: التعليقات والأنشطة. بيانات الاشتراك تُكتب هنا تعليقًا
+    (‏`Host: … Username: … Password: …`) ولا يُخرجها تصدير سلة — فهذا هو
+    المكان الوحيد الذي تُقرأ منه."""
+    d = _get("%s/admin/v2/orders/%s/histories?page=%d" % (API, order_id, page), token)
+    return [h for h in (d.get("data") or []) if isinstance(h, dict)]
+
+
+def history_notes(token: str, order_id) -> str:
+    """ملاحظات سجل الطلب مجموعةً في نصّ واحد، صالحًا لقارئ الاعتمادات."""
+    try:
+        rows = order_histories(token, order_id)
+    except SallaError:
+        return ""
+    return "\n".join(str(h.get("note") or "") for h in rows if h.get("note"))

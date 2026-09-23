@@ -115,6 +115,30 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
     <p class="note" id="idxNote"></p>
   </section>
 
+  <!-- ===================== السحب المباشر ===================== -->
+  <section>
+    <h2>أو: اسحب من سلة مباشرة <small>بلا ملفات — وأكمل مما لا يُصدَّر</small></h2>
+    <p class="note" style="margin-top:0">
+      تصدير سلة لا يُخرج <b>سجلّ الطلب</b>، وبيانات الاشتراك تُكتب فيه تعليقًا
+      (<code>Host: … Username: … Password: …</code>). والسحب من الواجهة يأتي بالطلبات
+      كلها ومعها سجلّها، فيُعرف يوزر العميل وباسورده ولا يُطلب منه كتابتهما.
+    </p>
+    <label class="chk"><input type="checkbox" id="pullHistory" checked>
+      اقرأ سجلّ كل طلب لاستخراج اليوزر والباسورد <b>(يطول — نداءٌ لكل طلب)</b></label>
+    <label class="chk"><input type="checkbox" id="pullApply" checked>
+      اعتماده فهرسًا تعمل عليه صفحة العميل</label>
+    <div class="row">
+      <button class="ghost" id="pull" type="button">ابدأ السحب</button>
+      <button class="ghost" id="pullStop" type="button" class="hidden">إيقاف</button>
+    </div>
+    <p class="msg" id="pullMsg"></p>
+    <div id="pullBar" class="hidden" style="margin-top:10px">
+      <div style="height:8px;background:var(--line);border-radius:99px;overflow:hidden">
+        <div id="pullFill" style="height:100%;width:0;background:var(--go);transition:width .3s"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===================== ٢· التحليل ===================== -->
   <section id="secAn" class="hidden">
     <h2>٢· التحليل <small id="anWhen"></small>
@@ -297,6 +321,54 @@ function showIndex(ix){
   $('#idxNote').textContent = ix.count
     ? `الفهرس الحالي: ${AR(ix.count)} طلبًا · آخر بناء ${ix.built || '—'}`
     : 'لا فهرس بعد — صفحة العميل لن تتعرّف على أحد حتى تعتمد ملفًا.';
+}
+
+/* ============ السحب المباشر من سلة ============ */
+let pullTimer = null;
+
+$('#pull').onclick = async () => {
+  const d = await post('/api/renew/pull', {
+    with_history: $('#pullHistory').checked, apply: $('#pullApply').checked});
+  if (!d.ok) return note($('#pullMsg'), d.error || 'تعذّر بدء السحب');
+  $('#pullBar').classList.remove('hidden');
+  $('#pullStop').classList.remove('hidden');
+  watchPull();
+};
+$('#pullStop').onclick = async () => {
+  await post('/api/renew/pull-cancel', {});
+  note($('#pullMsg'), 'طُلب الإيقاف — ينتهي بعد الصفحة الجارية.', true);
+};
+
+const PHASE = {orders: 'قراءة الطلبات', history: 'قراءة سجلّات الطلبات', done: 'اكتمل'};
+
+async function watchPull(once){
+  const d = await api('/api/renew/pull-status');
+  if (d.error) return;
+  const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
+  $('#pullFill').style.width = pct + '%';
+  const bits = [PHASE[d.phase] || d.phase];
+  if (d.total) bits.push(`${AR(d.done)} من ${AR(d.total)} (${pct}٪)`);
+  if (d.units) bits.push(`${AR(d.units)} يوزرًا`);
+  if (d.found) bits.push(`${AR(d.found)} باعتماد`);
+  if (d.running || d.phase){
+    note($('#pullMsg'), bits.join(' · '), !d.error);
+  }
+  if (d.error) note($('#pullMsg'), d.error);
+
+  if (d.running && !once){
+    clearTimeout(pullTimer);
+    pullTimer = setTimeout(watchPull, 2000);
+  } else if (!d.running){
+    $('#pullStop').classList.add('hidden');
+    clearTimeout(pullTimer);
+    if (!d.error && d.phase === 'done'){
+      note($('#pullMsg'), `اكتمل السحب: ${AR(d.units)} يوزرًا، منها ${AR(d.found)} `
+        + `باعتماد جاهز${d.applied ? ' — واعتُمد الفهرس ✓' : ''}`, true);
+      const a = await api('/api/renew/analysis');
+      if (a.analysis) render(a.analysis);
+      showIndex((await api('/api/renew/config')).index);
+    }
+  }
 }
 
 /* ============ ٢· التحليل ============ */
@@ -560,6 +632,11 @@ $('#runQ').onclick = async () => {
   await loadQueue();
   const d = await api('/api/renew/analysis');
   if (d.analysis) render(d.analysis);
+  const ps = await api('/api/renew/pull-status');
+  if (ps && !ps.has_token)
+    note($('#pullMsg'), 'رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة ليعمل السحب المباشر.');
+  else if (ps && ps.running){ $('#pullBar').classList.remove('hidden');
+    $('#pullStop').classList.remove('hidden'); watchPull(); }
 })();
 </script>
 </body>
