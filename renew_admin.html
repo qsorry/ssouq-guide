@@ -227,14 +227,24 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
 
     <h3>جلسة لوحة سلة <small style="font-weight:400">تقرأ ما لا تُخرجه الواجهة</small></h3>
     <p class="note" style="margin-top:0">
-      بطاقة الاشتراك تظهر كاملةً في لوحة سلة ولا تُخرجها الواجهة دائمًا. افتح
-      <a href="https://s.salla.sa/orders" target="_blank" rel="noopener">لوحتك</a> في متصفّحك،
-      ومن أدوات المطوّر انسخ ترويسة <code>Cookie</code> والصقها هنا.
-      <b>لا كلمة مرور ولا دخول آلي</b> — اللوحة محميّة بتحقّق ثنائي.
-      وتُحفظ مشفَّرة، وتنتهي بانتهاء جلستك فتُلصق من جديد.
+      بطاقة الاشتراك تظهر كاملةً في لوحة سلة ولا تُخرجها الواجهة دائمًا.
+      <b>ولا دخول آليّ ممكن</b>: كود الـSMS كنا سنتعامل معه كما نتعامل مع كابتشا
+      مرح، لكن <b>Cloudflare Turnstile يسبقه</b> ورمزُه لا يُصدَر إلا لمتصفّح حقيقي،
+      ومن ورائه مفتاحُ مرورٍ مربوطٌ بجهازك. فادخل بمتصفّحك وأعطنا جلستك:
     </p>
-    <label for="panelCookie">كوكيز الجلسة</label>
-    <input id="panelCookie" autocomplete="off" placeholder="salla_session=…; XSRF-TOKEN=…">
+    <ol class="note" style="margin:0 0 10px;padding-inline-start:20px">
+      <li>افتح <a href="https://s.salla.sa/orders" target="_blank" rel="noopener">s.salla.sa/orders</a>
+          في كروم على الحاسب، وسجّل دخولك كالمعتاد.</li>
+      <li>‏<code>F12</code> ← تبويب <b>Network</b> ← حدّث الصفحة.</li>
+      <li>انقر أي نداء بزرّ الفأرة الأيمن ← <b>Copy</b> ← <b>Copy as cURL</b>.</li>
+      <li>الصقه كما هو في الحقل أدناه — نستخرج الكوكيز منه وحدنا.</li>
+    </ol>
+    <p class="note" style="margin:0">
+      تُحفظ مشفَّرة ولا تُرسَل للمتصفّح أبدًا، وتنتهي بانتهاء جلستك فيصلك بريدٌ
+      يطلب لصقها من جديد. والتجديد لا يتوقّف حينها: اللوحة ثالثُ المصادر.
+    </p>
+    <label for="panelCookie">الصق «Copy as cURL» — أو ترويسة Cookie وحدها</label>
+    <input id="panelCookie" autocomplete="off" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'">
     <div class="row"><button class="ghost" id="panelTest" type="button">اختبار الجلسة</button></div>
     <p class="msg" id="panelMsg"></p>
 

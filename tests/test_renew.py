@@ -565,6 +565,20 @@ class TestSkuAndCard(unittest.TestCase):
 class TestPanelSession(unittest.TestCase):
     """بديل الواجهة حين لا تُخرج ما نحتاج — بكوكيز يلصقها المشغّل، لا بدخول آلي."""
 
+    def test_every_shape_of_paste_is_accepted(self):
+        """التنقيب عن الترويسة وحدها متعب، فيُقبل «Copy as cURL» كما هو."""
+        import salla_web
+        want = "salla_session=abc; XSRF-TOKEN=def"
+        for raw in [
+            "curl 'https://s.salla.sa/api/orders/x' -H 'accept: application/json' "
+            "-H 'cookie: salla_session=abc; XSRF-TOKEN=def' --compressed",
+            'curl "https://s.salla.sa/orders" -b "salla_session=abc; XSRF-TOKEN=def"',
+            "Cookie: salla_session=abc; XSRF-TOKEN=def",
+            "salla_session=abc; XSRF-TOKEN=def",
+            "salla_session=abc\nXSRF-TOKEN=def",
+        ]:
+            self.assertEqual(salla_web.clean_cookie(raw), want, raw[:40])
+
     def test_a_pasted_cookie_header_is_cleaned(self):
         import salla_web
         for raw, want in [
