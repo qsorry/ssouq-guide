@@ -139,6 +139,21 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
     </div>
   </section>
 
+  <!-- ===================== خطوط اللوحة ===================== -->
+  <section>
+    <h2>وأهمّها: صدِّر خطوط اللوحة <small>المصدر الكامل الوحيد لليوزر والباسورد</small></h2>
+    <p class="note" style="margin-top:0">
+      سلة تعرف <b>ماذا</b> اشترى العميل، ولا تعرف <b>بأيّ يوزر</b> سُلّم — إلا حيث
+      كُتب يدويًا. واللوحة تعرف كل خط بيوزره وباسورده وانتهائه. فبتصديرها مرةً
+      يصير التعرّف على العميل لحظيًّا بلا نداء للوحة وقت الطلب.
+    </p>
+    <div class="row">
+      <button class="ghost" id="lines" type="button">صدِّر الخطوط من لوحة البحث</button>
+      <button class="ghost hidden" id="linesStop" type="button">إيقاف</button>
+    </div>
+    <p class="msg" id="linesMsg"></p>
+  </section>
+
   <!-- ===================== ٢· التحليل ===================== -->
   <section id="secAn" class="hidden">
     <h2>٢· التحليل <small id="anWhen"></small>
@@ -321,6 +336,37 @@ function showIndex(ix){
   $('#idxNote').textContent = ix.count
     ? `الفهرس الحالي: ${AR(ix.count)} طلبًا · آخر بناء ${ix.built || '—'}`
     : 'لا فهرس بعد — صفحة العميل لن تتعرّف على أحد حتى تعتمد ملفًا.';
+}
+
+/* ============ تصدير خطوط اللوحة ============ */
+let linesTimer = null;
+
+$('#lines').onclick = async () => {
+  const d = await post('/api/renew/lines-export', {side: 'source'});
+  if (!d.ok) return note($('#linesMsg'), d.error || 'تعذّر بدء التصدير');
+  $('#linesStop').classList.remove('hidden');
+  watchLines();
+};
+$('#linesStop').onclick = async () => {
+  await post('/api/renew/lines-cancel', {});
+  note($('#linesMsg'), 'طُلب الإيقاف…', true);
+};
+
+async function watchLines(){
+  const d = await api('/api/renew/lines-status');
+  if (d.error && !d.running) { note($('#linesMsg'), d.error); }
+  else if (d.running) note($('#linesMsg'), `جارٍ التصدير… ${AR(d.done)} خطًّا`, true);
+  const sv = d.saved || {};
+  if (!d.running){
+    clearTimeout(linesTimer);
+    $('#linesStop').classList.add('hidden');
+    if (!d.error) note($('#linesMsg'), sv.count
+      ? `محفوظ: ${AR(sv.count)} خطًّا من «${esc(sv.gate || '—')}» · آخر تصدير ${sv.built || '—'}`
+      : 'لم يُصدَّر شيء بعد.', !!sv.count);
+  } else {
+    clearTimeout(linesTimer);
+    linesTimer = setTimeout(watchLines, 2000);
+  }
 }
 
 /* ============ السحب المباشر من سلة ============ */
@@ -632,6 +678,7 @@ $('#runQ').onclick = async () => {
   await loadQueue();
   const d = await api('/api/renew/analysis');
   if (d.analysis) render(d.analysis);
+  watchLines();
   const ps = await api('/api/renew/pull-status');
   if (ps && !ps.has_token)
     note($('#pullMsg'), 'رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة ليعمل السحب المباشر.');

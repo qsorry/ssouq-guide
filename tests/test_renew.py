@@ -441,5 +441,48 @@ class TestDigitalCodes(unittest.TestCase):
                           "host": "http://ssouqhost.vip"})
 
 
+# ============================ خطوط اللوحة ============================
+class TestPanelLines(unittest.TestCase):
+    """اللوحة هي المصدر الكامل الوحيد: كل خط فيها بيوزره وباسورده."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        renew.save_lines(self.dir, [
+            {"username": "111222333", "password": "aaa", "exp": "2027-03-01",
+             "created": "2026-03-01", "connections": "1", "package": "سنة"},
+            {"username": "444555666", "password": "bbb", "exp": "2027-06-10",
+             "created": "2026-03-02", "connections": "2", "package": "15 شهر"},
+            {"username": "777888999", "password": "ccc", "exp": "2026-12-01",
+             "created": "2026-06-01", "connections": "1", "package": "6 اشهر"},
+        ], "مرح", "http://marh.tv:80")
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_username_resolves_without_touching_the_panel(self):
+        got = renew.find_line(self.dir, "111222333")
+        self.assertEqual(got["password"], "aaa")
+
+    def test_lookup_ignores_letter_case(self):
+        renew.save_lines(self.dir, [{"username": "AbC123", "password": "p"}])
+        self.assertIsNotNone(renew.find_line(self.dir, "abc123"))
+        self.assertIsNotNone(renew.find_line(self.dir, "ABC123"))
+
+    def test_an_unknown_username_is_not_invented(self):
+        self.assertIsNone(renew.find_line(self.dir, "000000"))
+
+    def test_candidates_match_by_date_duration_and_devices(self):
+        """من لا يعرف يوزره: خطوطٌ أُنشئت حول يوم شرائه بنفس المدة والأجهزة."""
+        c = renew.match_candidates(self.dir, "2026-03-01", months=12, devices=1)
+        self.assertEqual([r["username"] for r in c], ["111222333"])
+
+    def test_devices_separate_two_lines_bought_the_same_week(self):
+        c = renew.match_candidates(self.dir, "2026-03-01", months=15, devices=2)
+        self.assertEqual([r["username"] for r in c], ["444555666"])
+
+    def test_a_distant_purchase_matches_nothing(self):
+        self.assertEqual(renew.match_candidates(self.dir, "2026-01-01", 12, 1), [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -565,3 +565,75 @@ def save_analysis(data_dir, agg):
 
 def save_index(data_dir, index):
     _write_json(index_path(data_dir), index)
+
+
+# ============================ خطوط اللوحة ============================
+# اللوحة هي المصدر الوحيد الكامل: كل خط فيها بيوزره وباسورده وانتهائه. وسلة
+# تعرف ماذا اشترى العميل، لكنها لا تعرف بأيّ يوزر سُلّم — إلا حيث كُتب يدويًا.
+# فمن كتب يوزره عرفناه من هنا فورًا، بلا نداء للوحة وقت الطلب.
+def lines_path(data_dir):
+    return os.path.join(data_dir, "renew_lines.json")
+
+
+def load_lines(data_dir):
+    try:
+        with open(lines_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and isinstance(d.get("by_user"), dict) \
+            else {"by_user": {}}
+    except (OSError, ValueError):
+        return {"by_user": {}}
+
+
+def save_lines(data_dir, rows, gate_name="", host=""):
+    """يحفظ تصدير اللوحة مفهرسًا باليوزر (بحروف صغيرة — اللوحات لا تتّسق)."""
+    by_user = {}
+    for r in rows:
+        u = str(r.get("username") or "").strip()
+        if not u:
+            continue
+        by_user[u.lower()] = {
+            "username": u, "password": str(r.get("password") or ""),
+            "exp": str(r.get("exp") or ""), "status": str(r.get("status") or ""),
+            "connections": str(r.get("connections") or ""),
+            "package": str(r.get("package") or ""), "created": str(r.get("created") or ""),
+        }
+    _write_json(lines_path(data_dir), {"by_user": by_user, "built": now_iso(),
+                                       "gate": gate_name, "host": host,
+                                       "count": len(by_user)})
+    return len(by_user)
+
+
+def find_line(data_dir, username):
+    """خطٌّ بيوزره من التصدير المحفوظ. لا شبكة ولا انتظار."""
+    u = str(username or "").strip().lower()
+    return load_lines(data_dir)["by_user"].get(u) if u else None
+
+
+def lines_stats(data_dir):
+    d = load_lines(data_dir)
+    return {"count": len(d.get("by_user", {})), "built": d.get("built", ""),
+            "gate": d.get("gate", ""), "host": d.get("host", "")}
+
+
+def match_candidates(data_dir, bought, months, devices=1, window=3):
+    """مرشّحو الخط لعميلٍ لا يعرف يوزره: خطوطٌ أُنشئت حول يوم شرائه بنفس المدة.
+
+    مطابقةٌ ظنّية لا قاطعة — المتجر يبيع عشرات في اليوم، فقد يتشابه المرشّحون.
+    تُعرض على الموظّف ليختار، ولا يُبنى عليها إنشاءٌ تلقائي."""
+    b = parse_date(bought)
+    if not b:
+        return []
+    out = []
+    for rec in load_lines(data_dir)["by_user"].values():
+        c = parse_date(rec.get("created"))
+        if not c or abs((c - b).days) > window:
+            continue
+        e = parse_date(rec.get("exp"))
+        if e and months and abs(months_between(c, e) - months) > 1:
+            continue
+        conns = str(rec.get("connections") or "")
+        if conns.isdigit() and devices and int(conns) != int(devices):
+            continue
+        out.append({**rec, "days_off": abs((c - b).days)})
+    return sorted(out, key=lambda r: r["days_off"])[:20]

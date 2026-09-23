@@ -656,6 +656,57 @@ def start_renew_pull(st, with_history=True, apply_index=True):
     return {"ok": True}
 
 
+
+# ---- تصدير خطوط اللوحة (خلفيّ) ----
+_lines_job = {"running": False, "done": 0, "total": 0, "error": "", "at": "", "cancel": False}
+
+
+def _lines_worker(gate, chunk=500):
+    try:
+        sess = web_session(gate)
+        rows, seen, page = [], set(), 0
+        while True:
+            if _lines_job["cancel"]:
+                break
+            got = sess.search("", limit=chunk * (page + 1))
+            fresh = [r for r in got if r.get("username") and r["username"] not in seen]
+            for r in fresh:
+                seen.add(r["username"])
+            rows += fresh
+            _lines_job.update({"done": len(rows), "total": len(rows)})
+            if len(fresh) == 0 or len(got) < chunk * (page + 1):
+                break
+            page += 1
+            if page > 40:                      # سقفٌ يمنع دورانًا بلا نهاية
+                break
+        n = renew.save_lines(DATA_DIR, rows, gate.get("name", ""), gate.get("host", ""))
+        _lines_job.update({"done": n, "total": n})
+    except xm_web.CaptchaNeeded:
+        _lines_job["error"] = "اللوحة تطلب كود تحقّق — سجّل الدخول لها من صفحة الإنشاء"
+    except Exception as e:
+        _lines_job["error"] = str(e)[:300]
+    finally:
+        _lines_job["running"] = False
+        _lines_job["at"] = renew.now_iso()
+
+
+def start_lines_export(st, side="source"):
+    if _lines_job["running"]:
+        return {"ok": False, "error": "تصديرٌ جارٍ بالفعل"}
+    cfg = renew.normalize_config(st.get("renew"))
+    acct = next((a for a in st["accounts"]
+                 if str(a.get("id")) == str(cfg[side]["account_id"])), None)
+    gate = find_gate(acct, cfg[side]["gate_id"]) if acct else None
+    ok, why = renew.gate_allowed(gate)
+    if not ok:
+        return {"ok": False, "error": why if gate else "البوابة غير مضبوطة"}
+    if gate.get("mode") != "web":
+        return {"ok": False, "error": "التصدير الكامل متاح على بوابات جلسة الويب"}
+    _lines_job.update({"running": True, "done": 0, "total": 0, "error": "", "cancel": False})
+    threading.Thread(target=_lines_worker, args=(gate,), daemon=True).start()
+    return {"ok": True}
+
+
 def renew_prov():
     return renew.Provisioner(renew_exists, create_line, find_gate)
 
@@ -712,8 +763,13 @@ def renew_lookup(st, order_no="", phone="", username="", password=""):
     # اللوحة القديمة إن أمكن — لا تُوقف التدفّق إن غابت أو سقطت.
     found, panel_down = {}, False
     if username:
+        # التصدير المحفوظ أولًا: يوزرٌ وباسوردٌ بلا شبكة ولا انتظار.
+        saved = renew.find_line(DATA_DIR, username)
+        if saved:
+            found = {"username": saved["username"], "password": saved["password"],
+                     "exp": saved.get("exp", ""), "connections": saved.get("connections", "")}
         gate = renew_source_gate(st)
-        if gate and renew.gate_allowed(gate)[0]:
+        if not found and gate and renew.gate_allowed(gate)[0]:
             try:
                 found = next((r for r in web_session(gate).search(username)
                               if str(r.get("username", "")).strip() == username), {})
@@ -1495,6 +1551,10 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._send(200, {"packages": [], "error": str(e)[:200]})
                 return self._send(200, {"packages": pkgs, "point_cost": cost})
+            if path == "/api/renew/lines-status":  # تقدّم تصدير خطوط اللوحة
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {**_lines_job, "saved": renew.lines_stats(DATA_DIR)})
             if path == "/api/renew/pull-status":   # تقدّم السحب من سلة
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -1593,6 +1653,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, start_renew_pull(
                 st, with_history=req.get("with_history", True),
                 apply_index=req.get("apply", True)))
+        if path == "/api/renew/lines-export":
+            return self._send(200, start_lines_export(st, req.get("side", "source")))
+        if path == "/api/renew/lines-cancel":
+            _lines_job["cancel"] = True
+            return self._send(200, {"ok": True})
+        if path == "/api/renew/candidates":       # مرشّحو الخط لمن لا يعرف يوزره
+            rec = renew.find_order(DATA_DIR, req.get("order", ""), req.get("phone", ""))
+            if not rec:
+                return self._send(404, {"error": "لا طلب بهذا الرقم والجوال"})
+            return self._send(200, {"ok": True, "candidates": renew.match_candidates(
+                DATA_DIR, rec.get("date"), rec.get("months"), rec.get("devices", 1))})
         if path == "/api/renew/pull-cancel":
             _pull["cancel"] = True
             return self._send(200, {"ok": True})
