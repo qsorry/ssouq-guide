@@ -28,6 +28,8 @@ import falcon_api
 import crypto_store
 import salla_api
 import wa_send
+import renew
+import renew_import
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
@@ -35,6 +37,7 @@ _SENSITIVE_ACCT = ()
 _SENSITIVE_GATE = ("panel_pass", "api_key")
 _SENSITIVE_SVC = ("salla_secret", "salla_token")   # أسرار خدمة سلة المشفَّرة
 _SENSITIVE_WA = ("token", "secret")                # أسرار قناة الواتساب المشفَّرة
+_SENSITIVE_ALERT = ("password",)                   # كلمة مرور بريد تنبيه التجديد
 
 
 def _is_hash(v):
@@ -61,6 +64,11 @@ def _crypt_store(st, fn):
             for k in _SENSITIVE_WA:
                 if wa.get(k):
                     wa[k] = fn(wa[k], DATA_DIR)
+    rnw = out.get("renew")
+    if isinstance(rnw, dict) and isinstance(rnw.get("alert"), dict):
+        for k in _SENSITIVE_ALERT:
+            if rnw["alert"].get(k):
+                rnw["alert"][k] = fn(rnw["alert"][k], DATA_DIR)
     return out
 
 # ================= الإعدادات =================
@@ -144,6 +152,7 @@ def load_store():
     st.setdefault("accounts", [])
     st = _crypt_store(st, crypto_store.decrypt)     # فكّ التشفير في الذاكرة
     st["service"] = normalize_service(st.get("service"))
+    st["renew"] = renew.normalize_config(st.get("renew"))
     # ترقية غير مدمّرة: كل حساب قديم → شخص ببوابة واحدة.
     migrated = False
     for i, a in enumerate(st["accounts"]):
@@ -212,6 +221,17 @@ def gate_digits(gate):
     return int(gate.get("digits") or DIGITS)
 
 
+def _clean_cost(v):
+    """سعر النقطة بالريال. الفراغ يعني «غير محدَّد» لا صفرًا — فصفرٌ تكلفةٌ."""
+    if v is None or str(v).strip() == "":
+        return ""
+    try:
+        c = round(float(str(v).strip()), 3)
+    except (TypeError, ValueError):
+        return ""
+    return "" if c < 0 or c > 10000 else c
+
+
 def clean_gate(g, old=None):
     """بوابة توليد واحدة داخل حساب: لها اسمها وطريقة ربطها (api/web) وهوستها
     ورابط شرحها الخاص. لا تحذف بيانات قديمة عند التعديل."""
@@ -232,6 +252,9 @@ def clean_gate(g, old=None):
         "api_key":    str(g.get("api_key", "")).strip() or old.get("api_key", ""),
         # طول اليوزر والباسورد المولَّدين (أرقام) — لكل بوابة رقمها: كاسبر ١٠، وغيرها ١٢ افتراضًا.
         "digits":     _clean_digits(g.get("digits", old.get("digits"))),
+        # سعر النقطة بالريال عند هذا المزوّد — يكتبه صاحب الحساب، فهو وحده يعرف
+        # ما اشترى به نقاطه. منه تُحسب تكلفة التجديد.
+        "point_cost": _clean_cost(g.get("point_cost", old.get("point_cost"))),
     }
     if not out["name"]:
         raise ValueError("اسم البوابة مطلوب")
@@ -538,6 +561,153 @@ def _poll_loop():
 
 def start_poller():
     threading.Thread(target=_poll_loop, daemon=True).start()
+
+# ================= تجديد الاشتراك على مرح =================
+# `renew.py` يحمل القاعدة والطابور والتنبيه ولا يعرف شيئًا عن اللوحات؛ وهذا
+# القسم هو الجسر: يسأل اللوحة ويُنشئ عليها، فيبقى الملفان قابلين للاختبار وحدهما.
+
+def renew_exists(gate, username):
+    """أهذا اليوزر موجود على اللوحة؟ هذا هو الحارس ضدّ الإنشاء مرتين: إنشاءٌ نجح
+    وضاع ردّه يُكتشف هنا فلا يُعاد. الشكّ يُرفع استثناءً لا يُبتلع — أن نُبقي
+    الطلب معلّقًا أهون من أن نُنشئ خطًّا ثانيًا بنفس اليوزر."""
+    u = str(username or "").strip()
+    if not u:
+        return False
+    mode = gate.get("mode")
+    if mode == "web":
+        rows = web_session(gate).search(u)
+    elif mode == "falcon":
+        rows = falcon_api.search(gate["api_url"], gate["api_key"], u)
+    else:
+        r = api(gate, "get_line", {"username": u})
+        rows = _unwrap(r) if isinstance(r, (list, dict)) else []
+    return any(str(x.get("username", "")).strip() == u for x in rows if isinstance(x, dict))
+
+
+def renew_packages(st):
+    """باقات بوابة مرح كما تسمّيها اللوحة، ومعها نقاطها ومدتها.
+
+    النقاط مكتوبة في الاسم نفسه («اشتراك سنة + جهازين (6 نقاط)») فتُقرأ منه ولا
+    تُخمَّن — وهي ليست حاصل ضرب: السنة بأربع نقاط، والسنة بجهازين بستٍّ لا بثمانٍ."""
+    cfg = renew.normalize_config(st.get("renew"))
+    acct = next((a for a in st["accounts"]
+                 if str(a.get("id")) == str(cfg["target"]["account_id"])), None)
+    gate = find_gate(acct, cfg["target"]["gate_id"]) if acct else None
+    ok, why = renew.gate_allowed(gate)
+    if not ok:
+        raise RuntimeError(why if gate else "بوابة مرح غير مضبوطة في إعداد التجديد")
+    out = []
+    for p in get_packages(gate):
+        info = parse_package_name(p.get("name", ""))
+        credits = p.get("credits")
+        if credits in (None, "") and info["credits"]:
+            credits = info["credits"]
+        out.append({"id": str(p.get("id")), "name": p.get("name", ""),
+                    "months": info["months"], "devices": info["devices"],
+                    "credits": credits, "virtual": bool(p.get("virtual"))})
+    return out, (gate.get("point_cost") if gate else "")
+
+
+def renew_prov():
+    return renew.Provisioner(renew_exists, create_line, find_gate)
+
+
+def renew_source_gate(st):
+    cfg = st.get("renew") or {}
+    acct = next((a for a in st["accounts"]
+                 if str(a.get("id")) == str((cfg.get("source") or {}).get("account_id"))), None)
+    return find_gate(acct, (cfg.get("source") or {}).get("gate_id")) if acct else None
+
+
+def renew_lookup(st, order_no="", phone="", username="", password=""):
+    """يتعرّف على العميل ويحسب ما يستحقّه، بلا إنشاء ولا تسجيل.
+
+    مدخلان مقبولان (كما في المواصفة): رقم الطلب مع الجوال، أو يوزر الاشتراك.
+      • **الطلب والجوال** يثبتان الاستحقاق: الفهرس يعطي تاريخ الشراء ومدة الباقة.
+      • **اليوزر** يعطي الهوية التي نُبقيها كما هي على مرح.
+
+    وتبقى كلمة المرور: ملفات سلة لا تحملها. تُقرأ من اللوحة القديمة إن كانت
+    مضبوطة وحيّة، وإلا **يكتبها العميل** من رسالة اشتراكه — وهذا ليس حالة
+    نادرة: اللوحة القديمة قد تكون هي سببَ النقل أصلًا."""
+    cfg = renew.normalize_config(st.get("renew"))
+    out = {"ok": False}
+    order_no, phone = renew.norm_order(order_no), renew.norm_phone(phone)
+    username, password = str(username or "").strip(), str(password or "").strip()
+
+    plan = None
+    if order_no:
+        if not phone:
+            return {"ok": False, "error": "اكتب رقم الجوال المسجَّل في الطلب"}
+        rec = renew.find_order(DATA_DIR, order_no, phone)
+        if not rec:
+            return {"ok": False, "error": "لم نجد طلبًا بهذا الرقم والجوال معًا. "
+                                          "تأكّد من رقم الطلب، والجوال كما كتبته وقت الشراء."}
+        plan = renew.plan_from_order(rec)
+        out["devices"] = int(rec.get("devices") or 1)
+
+    # اللوحة القديمة إن أمكن — لا تُوقف التدفّق إن غابت أو سقطت.
+    found, panel_down = {}, False
+    if username:
+        gate = renew_source_gate(st)
+        if gate and renew.gate_allowed(gate)[0]:
+            try:
+                found = next((r for r in web_session(gate).search(username)
+                              if str(r.get("username", "")).strip() == username), {})
+            except Exception:
+                panel_down = True
+        if found.get("password"):
+            password = password or found["password"]
+        if not plan and found:
+            plan = renew.plan_from_expiry(renew.parse_date(found.get("exp")))
+            if str(found.get("connections", "")).isdigit():
+                out["devices"] = max(1, int(found["connections"]))
+
+    if not plan:
+        if username and (panel_down or not renew_source_gate(st)):
+            # لا فهرس ولا لوحة: لا سبيل لمعرفة ما يستحقّه
+            return {"ok": False, "error": "اكتب رقم طلبك ورقم جوالك — بهما نعرف ما تبقّى لك."}
+        if username:
+            return {"ok": False, "error": "لم نجد يوزرًا بهذا الاسم. "
+                                          "انسخه كما هو، أو استخدم رقم طلبك وجوالك."}
+        return {"ok": False, "error": "اكتب رقم الطلب مع الجوال، أو يوزر اشتراكك"}
+    if plan.get("expired"):
+        return {"ok": False, "expired": True, "expiry": plan.get("expiry", ""),
+                "error": "اشتراكك منتهٍ — التجديد هنا لمن بقيت له مدة. تفضّل بالشراء من المتجر."}
+
+    key = renew.claim_key(order_no, username)
+    prev = renew.load_db(DATA_DIR)["claims"].get(key) if key else None
+    out.update({"ok": True, "plan": plan, "username": username, "password": password,
+                "need_username": not username,
+                "need_password": bool(username) and not password,
+                "panel_down": panel_down,
+                "claimed": renew.public_view(prev, cfg["promise_hours"]) if prev else None})
+    return out
+
+
+def renew_run_queue(st=None):
+    st = st or load_store()
+    return renew.run_queue(DATA_DIR, st, st.get("renew"), renew_prov())
+
+
+def _renew_loop():
+    """يعيد المحاولة دوريًا: ما إن يعود الوصل بمرح حتى تُنشأ المعلّقات تباعًا."""
+    while True:
+        try:
+            st = load_store()
+            cfg = renew.normalize_config(st.get("renew"))
+            time.sleep(max(60, int(cfg["retry_minutes"]) * 60))
+            if not cfg.get("enabled") or not renew.pending(DATA_DIR):
+                continue
+            with _lock:
+                renew_run_queue(load_store())
+        except Exception:
+            time.sleep(300)
+
+
+def start_renew_worker():
+    threading.Thread(target=_renew_loop, daemon=True).start()
+
+
 
 
 # ---------------- API الريسيلر ----------------
@@ -1086,6 +1256,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._static("/static/" + ROOT_FILES[path])
         if path == "/api/stats":
             return self._send(200, {"m3u": int(load_stats().get("m3u", 0))})
+        if path == "/renew":                    # صفحة التجديد (عامة، بلا تسجيل دخول)
+            return self._page("renew.html", cache=PUBLIC_HTML_CACHE)
+        if path == "/api/renew/ticket":         # متابعة طلب معلّق برقم تذكرته
+            return self._renew_ticket()
         if path in ("/", "/index.html"):
             return self._page("index.html", cache=PUBLIC_HTML_CACHE)
         if path in guide_pages.PAGES:                 # صفحات الأجهزة الثابتة (للأرشفة)
@@ -1125,7 +1299,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/me":
                 gates = [{"id": g["id"], "name": g["name"], "mode": g["mode"],
                           "host": g["host"], "guide_url": g.get("guide_url", ""),
-                          "digits": gate_digits(g)}
+                          "digits": gate_digits(g), "point_cost": g.get("point_cost", "")}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",
@@ -1221,6 +1395,53 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, redact_service(st["service"]))
+            if path == "/api/renew/config":       # إعداد التجديد (المدير)
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {"renew": renew.redact_config(st.get("renew")),
+                                        "index": renew.index_stats(DATA_DIR),
+                                        "tiers": list(renew.TIERS)})
+            if path == "/renew":                  # صفحة الرفع والتحليل والإعداد
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._page("renew_admin.html")
+            if path == "/api/renew/analysis":      # آخر تحليل محفوظ
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {"analysis": renew.load_analysis(DATA_DIR),
+                                        "index": renew.index_stats(DATA_DIR)})
+            if path == "/api/renew/report":        # التحليل صفحةً تُحفَظ وتُرسَل
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                agg = renew.load_analysis(DATA_DIR)
+                if not agg:
+                    return self._send(404, {"error": "لا تحليل بعد — ارفع الملفات أولًا"})
+                return self._send(200, raw=renew_import.report_html(agg).encode(),
+                                  ctype="text/html; charset=utf-8",
+                                  extra={"Content-Disposition":
+                                         'attachment; filename="renew-analysis.html"'})
+            if path == "/api/renew/packages":     # باقات مرح بنقاطها (للربط والتكلفة)
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                try:
+                    pkgs, cost = renew_packages(st)
+                except xm_web.CaptchaNeeded:
+                    return self._send(200, {"packages": [],
+                                            "error": "اللوحة تطلب كود تحقّق — سجّل الدخول لها من صفحة الإنشاء"})
+                except Exception as e:
+                    return self._send(200, {"packages": [], "error": str(e)[:200]})
+                return self._send(200, {"packages": pkgs, "point_cost": cost})
+            if path == "/api/renew/queue":        # الطلبات: المعلّق والمنجز
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                db = renew.load_db(DATA_DIR)
+                rows = sorted(db["claims"].values(), key=lambda r: r.get("at", ""), reverse=True)
+                counts = {}
+                for r in db["claims"].values():
+                    counts[r.get("state", "?")] = counts.get(r.get("state", "?"), 0) + 1
+                return self._send(200, {"rows": rows[:200], "counts": counts,
+                                        "total": len(db["claims"]),
+                                        "alert_at": db.get("alert_at", "")})
             if path == "/api/service/log":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -1257,6 +1478,133 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             self._head_only = False
 
+
+
+
+    def _renew_upload(self, st):
+        """يرفع المدير ملفات سلة (الطلبات والمنتجات معًا) فيُبنى الفهرس ويُعرض
+        التحليل. الملفات لا تُحفظ على القرص — يُحفظ ما استُخلص منها فقط."""
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        if n <= 0:
+            return self._send(400, {"error": "لا ملفات"})
+        if n > renew_import.MAX_UPLOAD:
+            return self._send(413, {"error": "الحجم أكبر من %d ميغابايت"
+                                             % (renew_import.MAX_UPLOAD // (1024 * 1024))})
+        body = self.rfile.read(n)
+        fields, files = renew_import.parse_multipart(self.headers.get("Content-Type", ""), body)
+        files = [(fn, raw) for _, fn, raw in files if raw]
+        if not files:
+            return self._send(400, {"error": "لم يصل أي ملف"})
+        yes = lambda k: str(fields.get(k, "")).lower() in ("1", "true", "on", "yes")
+        try:
+            units, meta, _prods, agg = renew_import.ingest(
+                files, keep_unconfirmed=yes("keep_unconfirmed"),
+                include_falcon=yes("include_falcon"))
+        except Exception as e:
+            return self._send(400, {"error": "تعذّرت قراءة الملفات: " + str(e)[:200]})
+        if not units:
+            return self._send(200, {"ok": False, "analysis": agg,
+                                    "error": "لم يُقرأ أي طلب صالح من الملفات"})
+        renew.save_analysis(DATA_DIR, agg)
+        applied = False
+        if yes("apply"):                       # اعتماده فهرسًا تعمل عليه الصفحة العامة
+            renew.save_index(DATA_DIR, renew_import.build_index(units, meta))
+            applied = True
+        return self._send(200, {"ok": True, "applied": applied, "analysis": agg,
+                                "index": renew.index_stats(DATA_DIR)})
+
+    # ---------- تجديد الاشتراك (المدير) ----------
+    def _renew_admin(self, path, st):
+        req = self._body()
+        if path == "/api/renew/config":
+            st["renew"] = renew.clean_config(req.get("renew") or {}, st.get("renew"))
+            save_store(st)
+            return self._send(200, {"ok": True, "renew": renew.redact_config(st["renew"])})
+        if path == "/api/renew/run":              # تفريغ الطابور الآن
+            return self._send(200, {"ok": True, "result": renew_run_queue(st)})
+        if path == "/api/renew/retry":            # إعادة طلب متوقّف إلى الطابور
+            key = str(req.get("key", ""))
+            db = renew.load_db(DATA_DIR)
+            rec = db["claims"].get(key)
+            if not rec:
+                return self._send(404, {"error": "لا طلب بهذا المفتاح"})
+            if rec.get("state") == "done":
+                return self._send(400, {"error": "منجز — لا يُعاد، وإلا أُنشئ يوزر ثانٍ"})
+            rec["state"] = "queued"
+            rec["attempts"] = 0
+            db["claims"][key] = rec
+            renew.save_db(DATA_DIR, db)
+            return self._send(200, {"ok": True, "claim": rec})
+        if path == "/api/renew/alert-test":       # اختبار بريد التنبيه
+            ok, why = renew.alert_disconnect(DATA_DIR, {**renew.normalize_config(st.get("renew")),
+                                                        "alert": {**renew.normalize_config(st.get("renew"))["alert"],
+                                                                  "gap_minutes": 0}},
+                                             "رسالة اختبار — لا انقطاع فعلي", len(renew.pending(DATA_DIR)))
+            return self._send(200, {"ok": ok, "error": why})
+        return self._send(404, {"error": "not found"})
+
+    # ---------- تجديد الاشتراك (عام) ----------
+    def _client_ip(self):
+        fwd = self.headers.get("X-Forwarded-For", "")
+        return (fwd.split(",")[0].strip() if fwd else self.client_address[0])
+
+    def _renew_ticket(self):
+        rec = renew.by_ticket(DATA_DIR, self._q("t"))
+        if not rec:
+            return self._send(404, {"error": "لا طلب بهذا الرقم"})
+        hours = renew.normalize_config(load_store().get("renew"))["promise_hours"]
+        return self._send(200, {"ok": True, "claim": renew.public_view(rec, hours)})
+
+    def _renew_public(self, path):
+        """التعرّف والتقديم. لا تسجيل دخول — فالحارس هو مطابقة الطلب بالجوال
+        وحدّ المحاولات بالساعة، وإلا صارت أرقام الطلبات قابلة للتخمين."""
+        with _lock:
+            st = load_store()
+        cfg = renew.normalize_config(st.get("renew"))
+        if not cfg.get("enabled"):
+            return self._send(503, {"error": "صفحة التجديد غير مفعّلة حاليًا"})
+        try:
+            req = self._body()
+        except ValueError:
+            return self._send(400, {"error": "طلب غير صالح"})
+        if not renew.rate_ok(DATA_DIR, self._client_ip(), cfg["rate_per_hour"]):
+            return self._send(429, {"error": "محاولات كثيرة. انتظر ساعة ثم أعد المحاولة."})
+
+        order = str(req.get("order", ""))
+        phone = str(req.get("phone", ""))
+        user = str(req.get("username", "")).strip()
+        pw = str(req.get("password", ""))
+        try:
+            look = renew_lookup(st, order, phone, user, pw)
+        except Exception:
+            return self._send(200, {"ok": False, "offline": True,
+                                    "error": "تعذّر الوصول للوحة الآن",
+                                    "promise_hours": cfg["promise_hours"]})
+        if path == "/api/renew/lookup" or not look.get("ok"):
+            return self._send(200, look)
+
+        # ----- التقديم -----
+        if look.get("need_username"):
+            return self._send(200, {**look, "error": "اكتب يوزر اشتراكك الحالي لنُبقيه كما هو"})
+        if look.get("need_password"):
+            return self._send(200, {**look, "error": "اكتب كلمة مرور اشتراكك — هي في رسالة اشتراكك بعد Pass"})
+        plan = look["plan"]
+        with _lock:
+            st = load_store()
+            rec, created = renew.submit(
+                DATA_DIR, st, st.get("renew"), renew_prov(),
+                order_no=order, phone=phone, username=look["username"],
+                password=look.get("password", ""), months=plan["months"],
+                tier=plan["tier"], expiry=plan["expiry"],
+                devices=look.get("devices", 1), source="page")
+        if not rec:
+            return self._send(400, {"error": "تعذّر تسجيل الطلب"})
+        if rec.get("state") == "queued":        # الوصل مقطوع: وعدٌ بالمدة وتنبيهٌ لنا
+            renew.alert_disconnect(DATA_DIR, st.get("renew"),
+                                   rec.get("last_error", ""), len(renew.pending(DATA_DIR)))
+        return self._send(200, {"ok": True, "created": created,
+                                "claim": renew.public_view(rec, cfg["promise_hours"])})
+
     # ---------- POST ----------
     def do_POST(self):
         path = self.path.split("?", 1)[0]
@@ -1267,6 +1615,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"m3u": bump_stat("m3u")})
             if path == "/salla/webhook":            # ويبهوك سلة (عام، موقَّع)
                 return self._salla_webhook()
+            if path in ("/api/renew/lookup", "/api/renew/claim"):
+                return self._renew_public(path)
         if self.off_site or not path.startswith(self.P + "/api/"):
             return self._send(404, {"error": "not found"})
         path = path[len(self.P):]
@@ -1298,6 +1648,14 @@ class Handler(BaseHTTPRequestHandler):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._admin_post(path, st)
+                if path == "/api/renew/upload":
+                    if role != "admin":
+                        return self._send(403, {"error": "للمدير فقط"})
+                    return self._renew_upload(st)
+                if path.startswith("/api/renew/"):
+                    if role != "admin":
+                        return self._send(403, {"error": "للمدير فقط"})
+                    return self._renew_admin(path, st)
                 if path.startswith("/api/service"):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
@@ -1469,6 +1827,7 @@ class Handler(BaseHTTPRequestHandler):
 def web():
     print(f"الصفحة تعمل: http://{BIND}:{PORT}   (Ctrl+C للإيقاف)", flush=True)
     start_poller()
+    start_renew_worker()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 

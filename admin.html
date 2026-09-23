@@ -48,7 +48,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 <body>
 <main>
   <h1>إدارة الحسابات</h1>
-  <p class="sub">كل حساب له اسم دخول وكلمة مرور و API وهوست مستقل. المستخدم يدخل على <a href="/admin" id="lnkHome">صفحة الإنشاء</a> ببياناته ويرى باقات الـ API الخاص به فقط. · <a href="/admin/logout" id="lnkOut">تسجيل الخروج</a></p>
+  <p class="sub">كل حساب له اسم دخول وكلمة مرور و API وهوست مستقل. المستخدم يدخل على <a href="/admin" id="lnkHome">صفحة الإنشاء</a> ببياناته ويرى باقات الـ API الخاص به فقط. · <a href="/admin/renew" id="lnkRenew">خدمة التجديد</a> · <a href="/admin/logout" id="lnkOut">تسجيل الخروج</a></p>
 
   <section>
     <h2 id="formTitle">إضافة حساب</h2>
@@ -140,6 +140,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 // الأداة تُقدَّم من الجذر على نطاقها (admin.ssouq.com) وتحت /admin على الموقع العام،
 // فتُبنى كل عناوينها على B بدل تثبيت "/admin" في كل نداء.
 const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+document.getElementById("lnkRenew").href = B + "/renew";
 const HOME = B || "/";
 const $ = id => document.getElementById(id);
 const chk = d => { if (d && d.login) location.href = B + "/login"; return d; };
@@ -197,7 +198,8 @@ function gateRow(g){
     </div>
     <label>الهوست (يظهر في السطر)</label><input data-f="host" value="${esc(g.host||"")}" placeholder="http://ssouqhost.vip">
     <label>طول اليوزر والباسورد (أرقام، 6–20) — فارغ = 12</label><input data-f="digits" value="${esc(g.digits||"")}" inputmode="numeric" placeholder="12">
-    <label>رابط الشرح (Guide) — اتركه فارغاً لإخفائه</label><input data-f="guide_url" value="${esc(g.guide_url||"")}" placeholder="https://guide.ssouq.com/">`;
+    <label>رابط الشرح (Guide) — اتركه فارغاً لإخفائه</label><input data-f="guide_url" value="${esc(g.guide_url||"")}" placeholder="https://guide.ssouq.com/">
+    <label>سعر النقطة عند هذا المزوّد (ريال) — منه تُحسب تكلفة التجديد</label><input data-f="point_cost" value="${esc(g.point_cost??"")}" inputmode="decimal" placeholder="2">`;
   const sel = el.querySelector('[data-f="mode"]');
   const applyGateMode = () => {
     const web = sel.value === "web";
