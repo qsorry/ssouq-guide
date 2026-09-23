@@ -30,6 +30,7 @@ import salla_api
 import wa_send
 import renew
 import renew_import
+import salla_web
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
@@ -38,6 +39,7 @@ _SENSITIVE_GATE = ("panel_pass", "api_key")
 _SENSITIVE_SVC = ("salla_secret", "salla_token")   # أسرار خدمة سلة المشفَّرة
 _SENSITIVE_WA = ("token", "secret")                # أسرار قناة الواتساب المشفَّرة
 _SENSITIVE_ALERT = ("password",)                   # كلمة مرور بريد تنبيه التجديد
+_SENSITIVE_RENEW = ("panel_cookie",)               # كوكيز جلسة لوحة سلة
 
 
 def _is_hash(v):
@@ -65,10 +67,14 @@ def _crypt_store(st, fn):
                 if wa.get(k):
                     wa[k] = fn(wa[k], DATA_DIR)
     rnw = out.get("renew")
-    if isinstance(rnw, dict) and isinstance(rnw.get("alert"), dict):
-        for k in _SENSITIVE_ALERT:
-            if rnw["alert"].get(k):
-                rnw["alert"][k] = fn(rnw["alert"][k], DATA_DIR)
+    if isinstance(rnw, dict):
+        for k in _SENSITIVE_RENEW:
+            if rnw.get(k):
+                rnw[k] = fn(rnw[k], DATA_DIR)
+        if isinstance(rnw.get("alert"), dict):
+            for k in _SENSITIVE_ALERT:
+                if rnw["alert"].get(k):
+                    rnw["alert"][k] = fn(rnw["alert"][k], DATA_DIR)
     return out
 
 # ================= الإعدادات =================
@@ -608,6 +614,242 @@ def renew_packages(st):
     return out, (gate.get("point_cost") if gate else "")
 
 
+
+# ---- السحب المباشر من سلة (خلفيّ، لأنه يطول) ----
+_pull = {"running": False, "phase": "", "done": 0, "total": 0, "units": 0,
+         "found": 0, "error": "", "at": "", "cancel": False, "applied": False}
+
+
+def renew_salla_token(st):
+    return (st.get("service") or {}).get("salla_token") or ""
+
+
+def _pull_worker(token, with_history, apply_index):
+    def progress(d):
+        _pull.update(d)
+
+    try:
+        st = load_store()
+        units, meta = renew_import.pull_from_salla(
+            token, progress=progress, with_history=with_history,
+            stop=lambda: _pull["cancel"],
+            credentials_for=lambda sid, url: renew_credentials_for(st, sid, url))
+        if not units:
+            _pull["error"] = "لم يرجع أي طلب صالح من سلة"
+            return
+        agg = renew_import.analyze(units, meta)
+        renew.save_analysis(DATA_DIR, agg)
+        if apply_index:
+            renew.save_index(DATA_DIR, renew_import.build_index(units, meta))
+            _pull["applied"] = True
+        _pull.update({"units": len(units), "found": meta.get("with_credentials", 0),
+                      "phase": "done", "session_expired": meta.get("session_expired", False)})
+        if meta.get("session_expired"):
+            # التحقّق الثنائي في سلة إلزاميّ، فلا تُجدَّد الجلسة إلا بيد المشغّل.
+            renew.alert_session_expired(DATA_DIR, st.get("renew"))
+    except Exception as e:
+        _pull["error"] = str(e)[:300]
+    finally:
+        _pull["running"] = False
+        _pull["at"] = renew.now_iso()
+
+
+def start_renew_pull(st, with_history=True, apply_index=True):
+    if _pull["running"]:
+        return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
+    token = renew_salla_token(st)
+    if not token:
+        return {"ok": False, "error": "رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة"}
+    _pull.update({"running": True, "phase": "orders", "done": 0, "total": 0,
+                  "units": 0, "found": 0, "error": "", "cancel": False,
+                  "applied": False, "session_expired": False})
+    threading.Thread(target=_pull_worker, args=(token, with_history, apply_index),
+                     daemon=True).start()
+    return {"ok": True}
+
+
+
+# ---- تصدير خطوط اللوحة (خلفيّ) ----
+_lines_job = {"running": False, "done": 0, "total": 0, "error": "", "at": "", "cancel": False}
+
+
+def _lines_worker(gate, chunk=500):
+    try:
+        sess = web_session(gate)
+        rows, seen, page = [], set(), 0
+        while True:
+            if _lines_job["cancel"]:
+                break
+            got = sess.search("", limit=chunk * (page + 1))
+            fresh = [r for r in got if r.get("username") and r["username"] not in seen]
+            for r in fresh:
+                seen.add(r["username"])
+            rows += fresh
+            _lines_job.update({"done": len(rows), "total": len(rows)})
+            if len(fresh) == 0 or len(got) < chunk * (page + 1):
+                break
+            page += 1
+            if page > 40:                      # سقفٌ يمنع دورانًا بلا نهاية
+                break
+        n = renew.save_lines(DATA_DIR, rows, gate.get("name", ""), gate.get("host", ""))
+        _lines_job.update({"done": n, "total": n})
+    except xm_web.CaptchaNeeded:
+        _lines_job["error"] = "اللوحة تطلب كود تحقّق — سجّل الدخول لها من صفحة الإنشاء"
+    except Exception as e:
+        _lines_job["error"] = str(e)[:300]
+    finally:
+        _lines_job["running"] = False
+        _lines_job["at"] = renew.now_iso()
+
+
+def start_lines_export(st, side="source"):
+    if _lines_job["running"]:
+        return {"ok": False, "error": "تصديرٌ جارٍ بالفعل"}
+    cfg = renew.normalize_config(st.get("renew"))
+    acct = next((a for a in st["accounts"]
+                 if str(a.get("id")) == str(cfg[side]["account_id"])), None)
+    gate = find_gate(acct, cfg[side]["gate_id"]) if acct else None
+    ok, why = renew.gate_allowed(gate)
+    if not ok:
+        return {"ok": False, "error": why if gate else "البوابة غير مضبوطة"}
+    if gate.get("mode") != "web":
+        return {"ok": False, "error": "التصدير الكامل متاح على بوابات جلسة الويب"}
+    _lines_job.update({"running": True, "done": 0, "total": 0, "error": "", "cancel": False})
+    threading.Thread(target=_lines_worker, args=(gate,), daemon=True).start()
+    return {"ok": True}
+
+
+
+def renew_panel_session(st):
+    """جلسة لوحة سلة من الكوكيز الملصوقة، أو None إن لم تُلصق."""
+    cookie = renew.normalize_config(st.get("renew")).get("panel_cookie") or ""
+    if not cookie:
+        return None
+    try:
+        return salla_web.Session(cookie)
+    except salla_web.WebError:
+        return None
+
+
+def renew_credentials_for(st, sid, admin_url=""):
+    """اعتماد طلبٍ واحد من مصادره بالترتيب: سجلّ الطلب، ثم بطاقته من الواجهة،
+    ثم لوحةُ سلة بجلسة المتصفّح — وهذه الأخيرة لا تُسأل إلا في الحصاد، لأن
+    `admin_url` لا يُمرَّر إلا منه: جلستها تنتهي خلال ساعات، فلا يُعلَّق عليها
+    عميلٌ ينتظر."""
+    token = renew_salla_token(st)
+    if token and sid:
+        try:
+            notes = salla_api.history_notes(token, sid)
+            got = renew_import.parse_credentials(notes)
+            if got:
+                return got, "history"
+            if salla_api.code_ids_from_notes(notes):
+                got = renew_import.parse_credentials(salla_api.order_code_text(token, sid))
+                if got:
+                    return got, "card"
+        except Exception:
+            pass
+    sess = renew_panel_session(st)
+    tok = salla_web.admin_token(admin_url)
+    if sess and tok:
+        try:
+            got = renew_import.parse_credentials(sess.order_text(tok))
+            if got:
+                return got, "panel"
+        except salla_web.SessionExpired:
+            return {}, "session_expired"
+        except Exception:
+            pass
+    return {}, ""
+
+
+
+# ---- الحصاد: نافذة الجلسة القصيرة تُستنفد جمعًا ----
+_harvest = {"running": False, "done": 0, "total": 0, "found": 0, "error": "",
+            "at": "", "cancel": False, "expired": False, "merged": 0}
+HARVEST_WORKERS = int(os.environ.get("RENEW_HARVEST_WORKERS", "6"))
+_HARVEST_BATCH = 25                      # كل كم سجلًّا يُكتب القرص
+
+
+def _harvest_worker(st, sids):
+    """يستنزف المعلّق بخيوط متوازية. أول انتهاءٍ للجلسة يوقف الجولة: البقية
+    ستنتهي مثلها، والاستمرار يحرق المعلّق تعليمًا بلا فائدة."""
+    import queue
+    q = queue.Queue()
+    for sid, url in sids:
+        q.put((sid, url))
+    buf, lock = [], threading.Lock()
+    stop = threading.Event()
+
+    def flush(force=False):
+        with lock:
+            if not buf or (len(buf) < _HARVEST_BATCH and not force):
+                return
+            rows, buf[:] = list(buf), []
+        _harvest["found"] = renew.harvest_record(DATA_DIR, rows)
+
+    def run():
+        while not stop.is_set() and not _harvest["cancel"]:
+            try:
+                sid, url = q.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                cred, why = renew_credentials_for(st, sid, url)
+            except Exception:
+                cred, why = {}, ""
+            if why == "session_expired":
+                _harvest["expired"] = True
+                stop.set()
+                return                      # لا يُعلَّم: تُعاد محاولته بجلسة جديدة
+            with lock:
+                buf.append((sid, cred))
+            _harvest["done"] += 1
+            flush()
+
+    threads = [threading.Thread(target=run, daemon=True) for _ in range(HARVEST_WORKERS)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    flush(force=True)
+
+
+def _harvest_main():
+    try:
+        st = load_store()
+        idx = renew.load_index(DATA_DIR)
+        orders = list((idx.get("orders") or {}).values())
+        pairs = [(str(o.get("sid") or ""), str(o.get("admin_url") or ""))
+                 for o in orders if o.get("sid") and not o.get("username")]
+        pending = {s for s in renew.harvest_pending(DATA_DIR, [p[0] for p in pairs])}
+        todo = [p for p in pairs if p[0] in pending]
+        _harvest.update({"total": len(todo), "done": 0})
+        if not todo:
+            _harvest["merged"] = renew.harvest_into_index(DATA_DIR)
+            return
+        _harvest_worker(st, todo)
+        _harvest["merged"] = renew.harvest_into_index(DATA_DIR)
+        if _harvest["expired"]:
+            renew.alert_session_expired(DATA_DIR, st.get("renew"))
+    except Exception as e:
+        _harvest["error"] = str(e)[:300]
+    finally:
+        _harvest["running"] = False
+        _harvest["at"] = renew.now_iso()
+
+
+def start_harvest(st):
+    if _harvest["running"]:
+        return {"ok": False, "error": "حصادٌ جارٍ بالفعل"}
+    if not renew.load_index(DATA_DIR).get("orders"):
+        return {"ok": False, "error": "لا فهرس بعد — اسحب من سلة أو ارفع الملفات أولًا"}
+    _harvest.update({"running": True, "done": 0, "total": 0, "error": "",
+                     "cancel": False, "expired": False, "merged": 0})
+    threading.Thread(target=_harvest_main, daemon=True).start()
+    return {"ok": True}
+
+
 def renew_prov():
     return renew.Provisioner(renew_exists, create_line, find_gate)
 
@@ -644,12 +886,35 @@ def renew_lookup(st, order_no="", phone="", username="", password=""):
                                           "تأكّد من رقم الطلب، والجوال كما كتبته وقت الشراء."}
         plan = renew.plan_from_order(rec)
         out["devices"] = int(rec.get("devices") or 1)
+        # اعتمادٌ كُتب يدويًا في الطلب ونُقل إلى الفهرس: يُعفي العميل من كتابته.
+        username = username or str(rec.get("username", "") or "")
+        password = password or str(rec.get("password", "") or "")
+        if not (username and password) and rec.get("sid"):
+            # المحصود أولًا — قرصٌ لا شبكة، فلا يعتمد العميل على جلسةٍ قد ماتت.
+            got = renew.load_harvest(DATA_DIR)["found"].get(str(rec["sid"])) or {}
+            if not got and renew_salla_token(st):
+                # لم يُحصد بعد: محاولةٌ واحدة الآن تُغني العميل عن الكتابة. ولا
+                # تُسأل لوحةُ سلة هنا — جلستها قصيرة وبطيئة، وموضعها الحصاد.
+                got, _why = renew_credentials_for(st, rec["sid"], "")
+                if got:
+                    renew.harvest_record(DATA_DIR, [(rec["sid"], got)])
+            username = username or got.get("username", "")
+            password = password or got.get("password", "")
+            if got.get("host"):
+                out["old_host"] = got["host"]
+        if rec.get("host"):
+            out["old_host"] = rec["host"]
 
     # اللوحة القديمة إن أمكن — لا تُوقف التدفّق إن غابت أو سقطت.
     found, panel_down = {}, False
     if username:
+        # التصدير المحفوظ أولًا: يوزرٌ وباسوردٌ بلا شبكة ولا انتظار.
+        saved = renew.find_line(DATA_DIR, username)
+        if saved:
+            found = {"username": saved["username"], "password": saved["password"],
+                     "exp": saved.get("exp", ""), "connections": saved.get("connections", "")}
         gate = renew_source_gate(st)
-        if gate and renew.gate_allowed(gate)[0]:
+        if not found and gate and renew.gate_allowed(gate)[0]:
             try:
                 found = next((r for r in web_session(gate).search(username)
                               if str(r.get("username", "")).strip() == username), {})
@@ -1431,6 +1696,20 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._send(200, {"packages": [], "error": str(e)[:200]})
                 return self._send(200, {"packages": pkgs, "point_cost": cost})
+            if path == "/api/renew/lines-status":  # تقدّم تصدير خطوط اللوحة
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {**_lines_job, "saved": renew.lines_stats(DATA_DIR)})
+            if path == "/api/renew/harvest-status":
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {**_harvest,
+                                        "saved": renew.harvest_stats(DATA_DIR)})
+            if path == "/api/renew/pull-status":   # تقدّم السحب من سلة
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {**_pull,
+                                        "has_token": bool(renew_salla_token(st))})
             if path == "/api/renew/queue":        # الطلبات: المعلّق والمنجز
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -1520,6 +1799,31 @@ class Handler(BaseHTTPRequestHandler):
             st["renew"] = renew.clean_config(req.get("renew") or {}, st.get("renew"))
             save_store(st)
             return self._send(200, {"ok": True, "renew": renew.redact_config(st["renew"])})
+        if path == "/api/renew/pull":             # سحب الطلبات من سلة مباشرة
+            return self._send(200, start_renew_pull(
+                st, with_history=req.get("with_history", True),
+                apply_index=req.get("apply", True)))
+        if path == "/api/renew/lines-export":
+            return self._send(200, start_lines_export(st, req.get("side", "source")))
+        if path == "/api/renew/lines-cancel":
+            _lines_job["cancel"] = True
+            return self._send(200, {"ok": True})
+        if path == "/api/renew/candidates":       # مرشّحو الخط لمن لا يعرف يوزره
+            rec = renew.find_order(DATA_DIR, req.get("order", ""), req.get("phone", ""))
+            if not rec:
+                return self._send(404, {"error": "لا طلب بهذا الرقم والجوال"})
+            return self._send(200, {"ok": True, "candidates": renew.match_candidates(
+                DATA_DIR, rec.get("date"), rec.get("months"), rec.get("devices", 1))})
+        if path == "/api/renew/harvest":
+            return self._send(200, start_harvest(st))
+        if path == "/api/renew/harvest-cancel":
+            _harvest["cancel"] = True
+            return self._send(200, {"ok": True})
+        if path == "/api/renew/harvest-retry":     # يُعاد على من لم يُعطِ شيئًا
+            return self._send(200, {"ok": True, "kept": renew.harvest_reset(DATA_DIR)})
+        if path == "/api/renew/pull-cancel":
+            _pull["cancel"] = True
+            return self._send(200, {"ok": True})
         if path == "/api/renew/run":              # تفريغ الطابور الآن
             return self._send(200, {"ok": True, "result": renew_run_queue(st)})
         if path == "/api/renew/retry":            # إعادة طلب متوقّف إلى الطابور
@@ -1535,6 +1839,13 @@ class Handler(BaseHTTPRequestHandler):
             db["claims"][key] = rec
             renew.save_db(DATA_DIR, db)
             return self._send(200, {"ok": True, "claim": rec})
+        if path == "/api/renew/panel-test":       # أما زالت كوكيز اللوحة صالحة؟
+            sess = renew_panel_session(st)
+            if not sess:
+                return self._send(200, {"ok": False, "error": "لم تُلصق كوكيز اللوحة"})
+            alive, why = sess.alive()
+            return self._send(200, {"ok": alive, "error": why,
+                                    "cookies": len(salla_web.cookie_names(sess.cookie))})
         if path == "/api/renew/alert-test":       # اختبار بريد التنبيه
             ok, why = renew.alert_disconnect(DATA_DIR, {**renew.normalize_config(st.get("renew")),
                                                         "alert": {**renew.normalize_config(st.get("renew"))["alert"],

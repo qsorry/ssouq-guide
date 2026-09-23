@@ -58,10 +58,14 @@ def default_config():
         "rate_per_hour": 12,        # محاولات التعرّف لكل عنوان، منعًا لتخمين أرقام الطلبات
         "alert": {"host": "", "port": 587, "user": "", "password": "",
                   "from": "", "to": "", "tls": True, "gap_minutes": 30},
+        # كوكيز جلسة لوحة سلة، يلصقها المشغّل من متصفّحه. لا كلمة مرور ولا
+        # دخول آلي: اللوحة محميّة بتحقّق ثنائي وأتمتته عبثٌ وخطر.
+        "panel_cookie": "",
     }
 
 
 _SECRET_KEYS = ("password",)        # داخل alert: لا يُرسَل للمتصفح ولا يُمسح بالفراغ
+_TOP_SECRETS = ("panel_cookie",)    # سرٌّ في جذر الإعداد، بالحكم نفسه
 
 
 def _num(v):
@@ -96,6 +100,7 @@ def normalize_config(cfg):
             d[k] = max(lo, min(hi, int(cfg.get(k, d[k]))))
         except (TypeError, ValueError):
             pass
+    d["panel_cookie"] = str(cfg.get("panel_cookie", "") or "")
     al = cfg.get("alert") if isinstance(cfg.get("alert"), dict) else {}
     d["alert"].update({
         "host": str(al.get("host", "") or "").strip(),
@@ -118,6 +123,9 @@ def clean_config(new, old):
     for k in _SECRET_KEYS:
         if not n["alert"][k]:
             n["alert"][k] = o["alert"][k]
+    for k in _TOP_SECRETS:
+        if not n[k]:
+            n[k] = o[k]
     return n
 
 
@@ -126,7 +134,9 @@ def redact_config(cfg):
     c = normalize_config(cfg)
     a = dict(c["alert"])
     a["has_password"] = bool(a.pop("password", ""))
-    return {**c, "alert": a}
+    out = {**c, "alert": a}
+    out["has_panel_cookie"] = bool(out.pop("panel_cookie", ""))
+    return out
 
 
 # ============================ أدوات ============================
@@ -328,16 +338,17 @@ def _smtp_send(alert, subject, body):
         s.send_message(msg)
 
 
-def alert_disconnect(data_dir, cfg, reason, pending):
-    """بريدٌ واحد لكل انقطاع، لا بريدٌ لكل عميل: بين رسالتين فجوة `gap_minutes`.
-    يرجّع (أُرسل؟، سبب عدم الإرسال)."""
+def send_alert(data_dir, cfg, subject, body, kind="disconnect"):
+    """بريدٌ واحد لكل حدث، لا بريدٌ لكل عميل: لكل نوعٍ خانقُه المستقل، فانتهاءُ
+    جلسة اللوحة لا يبتلع تنبيهَ انقطاع مرح ولا العكس."""
     alert = normalize_config(cfg)["alert"]
     if not (alert.get("host") and alert.get("to")):
         return False, "بريد التنبيه غير مضبوط"
     gap = int(alert.get("gap_minutes") or 30) * 60
+    key = "alert_at" if kind == "disconnect" else "alert_at_" + kind
     with _db_lock:
         db = load_db(data_dir)
-        last = db.get("alert_at", "")
+        last = db.get(key, "")
         if last:
             try:
                 prev = datetime.datetime.strptime(last, "%Y-%m-%d %H:%M")
@@ -346,8 +357,17 @@ def alert_disconnect(data_dir, cfg, reason, pending):
                     return False, "أُرسل تنبيه قريب"
             except ValueError:
                 pass
-        db["alert_at"] = now_iso()
+        db[key] = now_iso()
         save_db(data_dir, db)
+    try:
+        _smtp_send(alert, subject, body)
+        return True, ""
+    except Exception as e:                      # البريد لا يُسقط التجديد
+        return False, str(e)[:200]
+
+
+def alert_disconnect(data_dir, cfg, reason, pending):
+    """انقطاع الوصل بمرح: الطلبات معلّقة حتى يعود."""
     body = (
         "انقطع الاتصال بين سيرفر الأداة ولوحة مرح، فتوقّف إنشاء يوزرات التجديد.\n\n"
         "السبب كما ورد من اللوحة:\n  %s\n\n"
@@ -357,11 +377,27 @@ def alert_disconnect(data_dir, cfg, reason, pending):
         "لتسريع ذلك: افتح https://admin.ssouq.com/ وسجّل الدخول لبوابة مرح\n"
         "(قد تكون الجلسة انتهت أو تطلب اللوحة كود تحقّق).\n"
     ) % (str(reason)[:400], pending, now_iso())
-    try:
-        _smtp_send(alert, "تنبيه: انقطاع الاتصال بلوحة مرح — %d طلب معلّق" % pending, body)
-        return True, ""
-    except Exception as e:                      # البريد لا يُسقط التجديد
-        return False, str(e)[:200]
+    return send_alert(data_dir, cfg,
+                      "تنبيه: انقطاع الاتصال بلوحة مرح — %d طلب معلّق" % pending,
+                      body, kind="disconnect")
+
+
+def alert_session_expired(data_dir, cfg):
+    """انتهاء جلسة لوحة سلة: تحقّقها الثنائي إلزاميّ لا يُعطَّل، فلا دخول آليّ
+    ولا تجديد تلقائي للجلسة — تُلصق كوكيز جديدة بيد المشغّل."""
+    body = (
+        "انتهت جلسة لوحة سلة، فتوقّفت قراءةُ بطاقات الاشتراك منها.\n\n"
+        "التجديد لم يتوقّف: اللوحة ثالثُ المصادر، وقبلها سجلّ الطلب وبطاقته من\n"
+        "الواجهة، وبعدها يكتب العميل يوزره بنفسه. لكن كلما طالت، كثُر من يُطلب\n"
+        "منهم الكتابة.\n\n"
+        "لإعادتها — ولا سبيل غيره، فالتحقّق الثنائي في سلة إلزاميّ لا يُعطَّل:\n"
+        "  1. افتح https://s.salla.sa/orders في متصفّحك وسجّل الدخول.\n"
+        "  2. من أدوات المطوّر ← Network، انسخ ترويسة Cookie من أي نداء.\n"
+        "  3. الصقها في https://admin.ssouq.com/renew ← «جلسة لوحة سلة».\n\n"
+        "الوقت: %s\n"
+    ) % now_iso()
+    return send_alert(data_dir, cfg, "تنبيه: انتهت جلسة لوحة سلة — الصق كوكيز جديدة",
+                      body, kind="session")
 
 
 # ============================ التنفيذ ============================
@@ -565,3 +601,165 @@ def save_analysis(data_dir, agg):
 
 def save_index(data_dir, index):
     _write_json(index_path(data_dir), index)
+
+
+# ============================ خطوط اللوحة ============================
+# اللوحة هي المصدر الوحيد الكامل: كل خط فيها بيوزره وباسورده وانتهائه. وسلة
+# تعرف ماذا اشترى العميل، لكنها لا تعرف بأيّ يوزر سُلّم — إلا حيث كُتب يدويًا.
+# فمن كتب يوزره عرفناه من هنا فورًا، بلا نداء للوحة وقت الطلب.
+def lines_path(data_dir):
+    return os.path.join(data_dir, "renew_lines.json")
+
+
+def load_lines(data_dir):
+    try:
+        with open(lines_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and isinstance(d.get("by_user"), dict) \
+            else {"by_user": {}}
+    except (OSError, ValueError):
+        return {"by_user": {}}
+
+
+def save_lines(data_dir, rows, gate_name="", host=""):
+    """يحفظ تصدير اللوحة مفهرسًا باليوزر (بحروف صغيرة — اللوحات لا تتّسق)."""
+    by_user = {}
+    for r in rows:
+        u = str(r.get("username") or "").strip()
+        if not u:
+            continue
+        by_user[u.lower()] = {
+            "username": u, "password": str(r.get("password") or ""),
+            "exp": str(r.get("exp") or ""), "status": str(r.get("status") or ""),
+            "connections": str(r.get("connections") or ""),
+            "package": str(r.get("package") or ""), "created": str(r.get("created") or ""),
+        }
+    _write_json(lines_path(data_dir), {"by_user": by_user, "built": now_iso(),
+                                       "gate": gate_name, "host": host,
+                                       "count": len(by_user)})
+    return len(by_user)
+
+
+def find_line(data_dir, username):
+    """خطٌّ بيوزره من التصدير المحفوظ. لا شبكة ولا انتظار."""
+    u = str(username or "").strip().lower()
+    return load_lines(data_dir)["by_user"].get(u) if u else None
+
+
+def lines_stats(data_dir):
+    d = load_lines(data_dir)
+    return {"count": len(d.get("by_user", {})), "built": d.get("built", ""),
+            "gate": d.get("gate", ""), "host": d.get("host", "")}
+
+
+def match_candidates(data_dir, bought, months, devices=1, window=3):
+    """مرشّحو الخط لعميلٍ لا يعرف يوزره: خطوطٌ أُنشئت حول يوم شرائه بنفس المدة.
+
+    مطابقةٌ ظنّية لا قاطعة — المتجر يبيع عشرات في اليوم، فقد يتشابه المرشّحون.
+    تُعرض على الموظّف ليختار، ولا يُبنى عليها إنشاءٌ تلقائي."""
+    b = parse_date(bought)
+    if not b:
+        return []
+    out = []
+    for rec in load_lines(data_dir)["by_user"].values():
+        c = parse_date(rec.get("created"))
+        if not c or abs((c - b).days) > window:
+            continue
+        e = parse_date(rec.get("exp"))
+        if e and months and abs(months_between(c, e) - months) > 1:
+            continue
+        conns = str(rec.get("connections") or "")
+        if conns.isdigit() and devices and int(conns) != int(devices):
+            continue
+        out.append({**rec, "days_off": abs((c - b).days)})
+    return sorted(out, key=lambda r: r["days_off"])[:20]
+
+
+# ============================ الحصاد ============================
+# جلسة لوحة سلة تنتهي خلال ساعات، فهي **نافذةُ حصادٍ لا اعتمادٌ دائم**: يُجمع
+# فيها ما يُستطاع ويُخزَّن، فلا تُسأل اللوحة مرة أخرى عمّا حُصد.
+#
+# ولذلك ثلاث خصال: يُحفظ التقدّم على القرص لا في الذاكرة (فموتُ الخادم لا
+# يُضيّع ساعةَ عمل)، ويُستأنف من حيث وقف (فالجلسة الجديدة تُكمل لا تبدأ)،
+# ويعمل بخيوط متوازية (فالنافذة قصيرة والطلبات عشرات الألوف).
+def harvest_path(data_dir):
+    return os.path.join(data_dir, "renew_harvest.json")
+
+
+def _empty_harvest():
+    return {"seen": {}, "found": {}, "at": "", "rounds": 0}
+
+
+def load_harvest(data_dir):
+    try:
+        with open(harvest_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return _empty_harvest()
+    if not isinstance(d, dict):
+        return _empty_harvest()
+    for k, v in _empty_harvest().items():
+        if not isinstance(d.get(k), type(v)):
+            d[k] = v
+    return d
+
+
+def save_harvest(data_dir, h):
+    h["at"] = now_iso()
+    _write_json(harvest_path(data_dir), h)
+
+
+def harvest_stats(data_dir):
+    h = load_harvest(data_dir)
+    return {"seen": len(h["seen"]), "found": len(h["found"]),
+            "at": h.get("at", ""), "rounds": h.get("rounds", 0)}
+
+
+def harvest_pending(data_dir, sids):
+    """ما لم يُحاوَل بعد. المحاوَلُ لا يُعاد ولو لم يُعطِ اعتمادًا — وإلا دارت
+    الجلسةُ القصيرة على من لا اعتماد له وتركت من له."""
+    seen = load_harvest(data_dir)["seen"]
+    return [s for s in sids if s and str(s) not in seen]
+
+
+def harvest_record(data_dir, rows):
+    """يسجّل دفعةً: [(sid, cred)]. الكتابة دفعةً لا لكل واحد، فالقرص لا يُرهَق."""
+    if not rows:
+        return 0
+    with _db_lock:
+        h = load_harvest(data_dir)
+        for sid, cred in rows:
+            h["seen"][str(sid)] = 1
+            if cred:
+                h["found"][str(sid)] = cred
+        save_harvest(data_dir, h)
+        return len(h["found"])
+
+
+def harvest_into_index(data_dir):
+    """يدمج ما حُصد في فهرس التجديد، فيصير التعرّف لحظيًّا بلا لوحة ولا واجهة."""
+    h = load_harvest(data_dir)
+    if not h["found"]:
+        return 0
+    idx = load_index(data_dir)
+    orders = idx.get("orders") or {}
+    n = 0
+    for rec in orders.values():
+        cred = h["found"].get(str(rec.get("sid") or ""))
+        if cred and not rec.get("username"):
+            rec.update({k: v for k, v in cred.items() if v})
+            n += 1
+    if n:
+        idx["orders"] = orders
+        save_index(data_dir, idx)
+    return n
+
+
+def harvest_reset(data_dir):
+    """يمسح أثر المحاولات ويُبقي ما وُجد — لإعادة الكرّة على من لم يُعطِ شيئًا."""
+    with _db_lock:
+        h = load_harvest(data_dir)
+        h["seen"] = {k: 1 for k in h["found"]}
+        h["rounds"] = int(h.get("rounds", 0)) + 1
+        save_harvest(data_dir, h)
+        return len(h["seen"])

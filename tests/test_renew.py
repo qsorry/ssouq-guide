@@ -343,5 +343,367 @@ class TestPricing(unittest.TestCase):
         self.assertEqual(cfg["packages"]["12"]["credits"], 4)
 
 
+# ============================ قراءة الاعتمادات ============================
+class TestCredentials(unittest.TestCase):
+    """الاعتماد يُكتب يدويًا في الطلب، فتختلف صياغته من كاتب لآخر ومن شهر لآخر.
+    القراءة تتسامح مع الشكل وتتمسّك بالمعنى."""
+
+    STYLES = [
+        # كما وردت فعلًا في ملفات سلة
+        ("Host: http://ksa4you.co:80 | Username: 293643794326 |Password: 221893957253",
+         "http://ksa4you.co:80", "293643794326", "221893957253"),
+        ("Host: http://ssouq.org:80\nUsername: 608147296618\nPassword: 299303692789",
+         "http://ssouq.org:80", "608147296618", "299303692789"),
+        ("Host-URL: http://mrha.ink", "http://mrha.ink", None, None),
+        # صيغ أخرى: بلا مسافة، بفواصل، وبحرف كبير في UserName
+        ("HOST:http://ssouqhost.vip|UserName:962491987906|Password:195990759930",
+         "http://ssouqhost.vip", "962491987906", "195990759930"),
+        # «host» بلا نقطتين، و«Passowrd» مصحَّفًا، والترتيب مقلوب
+        ("username:346731410391 Passowrd:266061955108 host http://ssouqhost.vip",
+         "http://ssouqhost.vip", "346731410391", "266061955108"),
+    ]
+
+    def test_every_style_reads_the_same(self):
+        for text, host, user, pw in self.STYLES:
+            got = renew_import.parse_credentials(text)
+            self.assertEqual(got.get("host"), host, text[:40])
+            if user:
+                self.assertEqual(got.get("username"), user, text[:40])
+                self.assertEqual(got.get("password"), pw, text[:40])
+
+    def test_bare_host_without_a_colon_needs_company(self):
+        """«host http://x» بلا نقطتين يُقبل مع يوزر أو باسورد فقط — وإلا صار كل
+        ذكرٍ لكلمة hosting هوستًا."""
+        self.assertEqual(renew_import.parse_credentials("نحن أفضل hosting في السوق"), {})
+        self.assertEqual(renew_import.parse_credentials("host example.com"), {})
+        self.assertEqual(
+            renew_import.parse_credentials("user:abc pass:xyz host example.com").get("host"),
+            "http://example.com")
+
+    def test_an_email_is_not_a_host(self):
+        for e in ("host_12@live.com", "host80@gmail.com", "password007@hotmail.co.uk"):
+            self.assertNotIn("host", renew_import.parse_credentials(e))
+
+    def test_credentials_travel_into_the_index(self):
+        """ما كُتب في الطلب يصل إلى الفهرس، فلا يُطلب من العميل كتابته."""
+        raw = ("رقم الطلب,حالة الطلب,رقم الجوال,تاريخ الطلب,الملاحظات الداخلية,skus_json\n"
+               '777,طلبك مؤكد,0501234567,2026-06-01,'
+               '"HOST:http://ssouqhost.vip|UserName:9624919|Password:1959907",'
+               '"[[""اشتراك لمدة سنة"", 1, """", 40, 40]]"\n').encode("utf-8")
+        units, meta = renew_import.read_orders([("o.csv", raw)])
+        self.assertEqual(units[0]["username"], "9624919")
+        idx = renew_import.build_index(units, meta)
+        self.assertEqual(idx["orders"]["777"]["password"], "1959907")
+        self.assertEqual(idx["orders"]["777"]["host"], "http://ssouqhost.vip")
+
+    def test_analysis_counts_credentials_and_hosts(self):
+        raw = ("رقم الطلب,حالة الطلب,رقم الجوال,تاريخ الطلب,الملاحظات الداخلية,skus_json\n"
+               '778,طلبك مؤكد,0501234567,2026-06-01,'
+               '"Host: http://a.co:80 | Username: 111 | Password: 222",'
+               '"[[""اشتراك لمدة سنة"", 1, """", 40, 40]]"\n'
+               '779,طلبك مؤكد,0501234568,2026-06-01,,'
+               '"[[""اشتراك لمدة سنة"", 1, """", 40, 40]]"\n').encode("utf-8")
+        units, meta = renew_import.read_orders([("o.csv", raw)])
+        agg = renew_import.analyze(units, meta)
+        self.assertEqual(agg["creds"]["with_credentials"], 1)
+        self.assertEqual(agg["creds"]["hosts"], [{"k": "a.co:80", "n": 1}])
+
+
+# ============================ البطاقات الرقمية ============================
+class TestDigitalCodes(unittest.TestCase):
+    """مساران لتسليم الاشتراك: تعليقٌ يكتبه موظّف، وبطاقةٌ من مخزون الأكواد.
+    السجلّ لا يحمل الثانية — يحمل رقمها فقط."""
+
+    def test_code_id_read_from_the_history_line(self):
+        import salla_api
+        self.assertEqual(salla_api.code_ids_from_notes("تم شراء الكود #186327502"),
+                         ["186327502"])
+        self.assertEqual(salla_api.code_ids_from_notes("تم إرسال رسالة التقيم"), [])
+
+    def test_an_order_delivered_by_card_has_no_credentials_in_its_history(self):
+        """الطلب 272053873 كما جاء من سلة: سبعة قيود آلية، ولا اعتماد فيها."""
+        notes = "\n".join(["تم إرسال رسالة التقيم",
+                            "تم إرسال فاتورة الطلب  ومحتوى المنتجات إلى بريد العميل",
+                            "تم إرسال البطاقات الرقمية إلى جوال العميل",
+                            "تم شراء الكود #186327502"])
+        self.assertEqual(renew_import.parse_credentials(notes), {})
+        import salla_api
+        self.assertTrue(salla_api.code_ids_from_notes(notes))   # لكنه يدلّ على الكود
+
+    def test_credentials_are_read_out_of_a_card_payload(self):
+        """حمولة الكود مهما تعشّشت: تُجمَّع نصوصها وتُقرأ بنفس القارئ."""
+        import salla_api
+        payload = {"data": [{"id": 1, "codes": [
+            {"code": "HOST:http://ssouqhost.vip|UserName:962491987906|Password:195990759930"}]}]}
+        text = "\n".join(salla_api._walk_strings(payload["data"], []))
+        self.assertEqual(renew_import.parse_credentials(text),
+                         {"username": "962491987906", "password": "195990759930",
+                          "host": "http://ssouqhost.vip"})
+
+
+    def test_xlsx_is_read_like_csv(self):
+        """سلة تصدّر xlsx أيضًا — ويُقرأ بلا تبعية، بالمكتبة القياسية."""
+        import io as _io
+        import zipfile
+        book = _io.BytesIO()
+        with zipfile.ZipFile(book, "w") as z:
+            z.writestr("[Content_Types].xml", "<Types/>")
+            z.writestr("xl/sharedStrings.xml",
+                       "<sst><si><t>أسم المنتج</t></si><si><t>رمز المنتج sku</t></si>"
+                       "<si><t>اشتراك تجريبي</t></si><si><t>MRH-06M</t></si></sst>")
+            z.writestr("xl/worksheets/sheet1.xml",
+                       '<sheetData>'
+                       '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>'
+                       '<row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>'
+                       '</sheetData>')
+        raw = book.getvalue()
+        self.assertTrue(renew_import.is_xlsx(raw))
+        rows = renew_import._rows(raw)
+        self.assertEqual(rows[0]["أسم المنتج"], "اشتراك تجريبي")
+        self.assertEqual(rows[0]["رمز المنتج sku"], "MRH-06M")
+
+    def test_the_sku_column_is_found_despite_its_wording(self):
+        """سلة تسمّي العمود «رمز المنتج sku» — والمطابقة الحرفية كانت تُسقطه."""
+        self.assertEqual(
+            renew_import._pick({"رمز المنتج sku": "MRH-06M"}, ("SKU", "sku", "رمز المنتج")),
+            "MRH-06M")
+
+
+
+# ============================ خطوط اللوحة ============================
+class TestPanelLines(unittest.TestCase):
+    """اللوحة هي المصدر الكامل الوحيد: كل خط فيها بيوزره وباسورده."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        renew.save_lines(self.dir, [
+            {"username": "111222333", "password": "aaa", "exp": "2027-03-01",
+             "created": "2026-03-01", "connections": "1", "package": "سنة"},
+            {"username": "444555666", "password": "bbb", "exp": "2027-06-10",
+             "created": "2026-03-02", "connections": "2", "package": "15 شهر"},
+            {"username": "777888999", "password": "ccc", "exp": "2026-12-01",
+             "created": "2026-06-01", "connections": "1", "package": "6 اشهر"},
+        ], "مرح", "http://marh.tv:80")
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_username_resolves_without_touching_the_panel(self):
+        got = renew.find_line(self.dir, "111222333")
+        self.assertEqual(got["password"], "aaa")
+
+    def test_lookup_ignores_letter_case(self):
+        renew.save_lines(self.dir, [{"username": "AbC123", "password": "p"}])
+        self.assertIsNotNone(renew.find_line(self.dir, "abc123"))
+        self.assertIsNotNone(renew.find_line(self.dir, "ABC123"))
+
+    def test_an_unknown_username_is_not_invented(self):
+        self.assertIsNone(renew.find_line(self.dir, "000000"))
+
+    def test_candidates_match_by_date_duration_and_devices(self):
+        """من لا يعرف يوزره: خطوطٌ أُنشئت حول يوم شرائه بنفس المدة والأجهزة."""
+        c = renew.match_candidates(self.dir, "2026-03-01", months=12, devices=1)
+        self.assertEqual([r["username"] for r in c], ["111222333"])
+
+    def test_devices_separate_two_lines_bought_the_same_week(self):
+        c = renew.match_candidates(self.dir, "2026-03-01", months=15, devices=2)
+        self.assertEqual([r["username"] for r in c], ["444555666"])
+
+    def test_a_distant_purchase_matches_nothing(self):
+        self.assertEqual(renew.match_candidates(self.dir, "2026-01-01", 12, 1), [])
+
+
+# ============================ رموز المنتجات والبطاقة ============================
+class TestSkuAndCard(unittest.TestCase):
+    """الرمز يحمل المدة صراحةً، والبطاقة تحمل الاعتماد — كلاهما من بيانات حيّة."""
+
+    def test_sku_carries_duration_devices_and_provider(self):
+        """رموز كتالوج المتجر نفسه."""
+        for sku, months, devices, prov in [
+            ("MRH-12M-ENT", 12, 1, "MRH"), ("MRH-06M", 6, 1, "MRH"),
+            ("MRH-30M", 30, 1, "MRH"), ("MRH-06M-WEBOS", 6, 1, "MRH"),
+            ("MRH-15M-2D", 15, 2, "MRH"),          # «2D» أجهزة: سبقتها مدة
+            ("FAL-PRO-24M", 24, 1, "FAL"),         # الرقم ليس بعد الشرطة الأولى
+            ("FAL-PRO-15M-2D", 15, 2, "FAL"),
+        ]:
+            got = renew_import.sku_info(sku)
+            self.assertEqual((got.get("months"), got.get("devices"), got.get("provider")),
+                             (months, devices, prov), sku)
+
+    def test_a_day_trial_is_not_a_renewable_subscription(self):
+        """«MRH-01D-TRIAL» يومٌ لا شهر — ولا متبقّى لتجربةٍ تُجدَّد."""
+        got = renew_import.sku_info("MRH-01D-TRIAL")
+        self.assertEqual((got.get("days"), got.get("months")), (1, 0))
+
+    def test_falcon_is_known_by_its_prefix_not_its_arabic_name(self):
+        """‏`FAL-PRO-15M` فالكون وإن خلا اسمه العربي من الكلمة."""
+        self.assertTrue(renew_import.sku_is_falcon("FAL-PRO-15M"))
+        self.assertFalse(renew_import.sku_is_falcon("MRH-15M-2D"))
+
+    def test_a_meaningless_sku_is_not_forced(self):
+        for sku in ("", "ABC", "MRH", "MRH-0M"):
+            self.assertFalse(renew_import.sku_info(sku).get("months"), sku)
+
+    def test_the_sku_beats_the_arabic_name(self):
+        """الاسم تسويقيّ يتغيّر، والرمز مُصنَّف بيد صاحبه — فالرمز يُقدَّم."""
+        raw = ("رقم الطلب,حالة الطلب,رقم الجوال,تاريخ الطلب,skus_json\n"
+               '881,طلبك مؤكد,0501234567,2026-06-01,'
+               '"[[""اشتراك ترفيهي رقمي"", 1, ""MRH-06M"", 40, 40]]"\n').encode("utf-8")
+        units, _ = renew_import.read_orders([("o.csv", raw)])
+        self.assertEqual(units[0]["months"], 6)      # لا مدة في الاسم أصلًا
+
+    def test_the_real_digital_card_is_read(self):
+        """نصّ البطاقة كما يظهر في لوحة سلة للطلب 272053873 — بالتصحيف وكل شيء."""
+        card = ("الرقم المخزني SKU:\nMRH-12M-ENT\nالكود:\n"
+                "username:346731410391\nPassowrd:266061955108 host http://ssouqhost.vip")
+        self.assertEqual(renew_import.parse_credentials(card), {
+            "username": "346731410391", "password": "266061955108",
+            "host": "http://ssouqhost.vip"})
+
+
+# ============================ جلسة لوحة سلة ============================
+class TestPanelSession(unittest.TestCase):
+    """بديل الواجهة حين لا تُخرج ما نحتاج — بكوكيز يلصقها المشغّل، لا بدخول آلي."""
+
+    def test_every_shape_of_paste_is_accepted(self):
+        """التنقيب عن الترويسة وحدها متعب، فيُقبل «Copy as cURL» كما هو."""
+        import salla_web
+        want = "salla_session=abc; XSRF-TOKEN=def"
+        for raw in [
+            "curl 'https://s.salla.sa/api/orders/x' -H 'accept: application/json' "
+            "-H 'cookie: salla_session=abc; XSRF-TOKEN=def' --compressed",
+            'curl "https://s.salla.sa/orders" -b "salla_session=abc; XSRF-TOKEN=def"',
+            "Cookie: salla_session=abc; XSRF-TOKEN=def",
+            "salla_session=abc; XSRF-TOKEN=def",
+            "salla_session=abc\nXSRF-TOKEN=def",
+        ]:
+            self.assertEqual(salla_web.clean_cookie(raw), want, raw[:40])
+
+    def test_a_pasted_cookie_header_is_cleaned(self):
+        import salla_web
+        for raw, want in [
+            ("Cookie: a=1; b=2", "a=1; b=2"),
+            ("a=1\nb=2", "a=1; b=2"),
+            ("  a=1; ضجيج; b=2 ", "a=1; b=2"),
+            ("a=1;", "a=1"),
+        ]:
+            self.assertEqual(salla_web.clean_cookie(raw), want, raw)
+
+    def test_an_empty_cookie_is_refused_outright(self):
+        import salla_web
+        with self.assertRaises(salla_web.WebError):
+            salla_web.Session("")
+
+    def test_the_admin_link_gives_the_panel_token(self):
+        """الواجهة تعطي `urls.admin` لكل طلب — وهو الجسر بينها وبين اللوحة."""
+        import salla_web
+        self.assertEqual(
+            salla_web.admin_token("https://s.salla.sa/orders/order/oPpbBAN_JmK78M6q"),
+            "oPpbBAN_JmK78M6q")
+        self.assertEqual(salla_web.admin_token("https://s.salla.sa/customers/x"), "")
+
+    def test_the_cookie_never_reaches_the_browser(self):
+        cfg = renew.normalize_config({"panel_cookie": "salla_session=secret"})
+        red = renew.redact_config(cfg)
+        self.assertNotIn("panel_cookie", red)
+        self.assertTrue(red["has_panel_cookie"])
+        self.assertNotIn("secret", json.dumps(red, ensure_ascii=False))
+
+    def test_an_empty_cookie_field_keeps_the_stored_one(self):
+        old = renew.normalize_config({"panel_cookie": "keepme=1"})
+        self.assertEqual(renew.clean_config({}, old)["panel_cookie"], "keepme=1")
+
+    def test_each_alert_kind_has_its_own_throttle(self):
+        """انقطاع مرح وانتهاء جلسة سلة حدثان مختلفان — فلا يبتلع أحدهما الآخر."""
+        d = tempfile.mkdtemp()
+        try:
+            sent = []
+            cfg = {**renew.default_config(),
+                   "alert": {**renew.default_config()["alert"],
+                             "host": "smtp.test", "to": "me@test", "gap_minutes": 60}}
+            real = renew._smtp_send
+            renew._smtp_send = lambda a, s_, b: sent.append(s_)
+            try:
+                renew.alert_disconnect(d, cfg, "refused", 3)
+                renew.alert_session_expired(d, cfg)          # نوعٌ آخر — يمرّ
+                renew.alert_disconnect(d, cfg, "refused", 4)  # مكرر — يُخنق
+                renew.alert_session_expired(d, cfg)           # مكرر — يُخنق
+            finally:
+                renew._smtp_send = real
+            self.assertEqual(len(sent), 2, sent)
+            self.assertTrue(any("مرح" in x for x in sent))
+            self.assertTrue(any("سلة" in x for x in sent))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_the_expiry_alert_says_how_to_fix_it(self):
+        """لا دخول آلي: التحقّق الثنائي إلزاميّ، فالرسالة تشرح اللصق."""
+        d = tempfile.mkdtemp()
+        try:
+            body = []
+            cfg = {**renew.default_config(),
+                   "alert": {**renew.default_config()["alert"],
+                             "host": "smtp.test", "to": "me@test"}}
+            real = renew._smtp_send
+            renew._smtp_send = lambda a, s_, b: body.append(b)
+            try:
+                renew.alert_session_expired(d, cfg)
+            finally:
+                renew._smtp_send = real
+            self.assertIn("s.salla.sa", body[0])
+            self.assertIn("Cookie", body[0])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+# ============================ الحصاد ============================
+class TestHarvest(unittest.TestCase):
+    """جلسة اللوحة تنتهي خلال ساعات، فهي نافذةُ حصادٍ لا اعتمادٌ دائم."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        renew.save_index(self.dir, {"orders": {
+            "101": {"sid": "s1", "phone": "966501111111", "date": "2026-03-01", "months": 12},
+            "102": {"sid": "s2", "phone": "966502222222", "date": "2026-03-01", "months": 12},
+            "103": {"sid": "s3", "phone": "966503333333", "date": "2026-03-01", "months": 12},
+        }})
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_progress_survives_a_restart(self):
+        """التقدّم على القرص لا في الذاكرة — فموتُ الخادم لا يُضيّع ساعةَ عمل."""
+        renew.harvest_record(self.dir, [("s1", {"username": "u1", "password": "p1"})])
+        self.assertEqual(renew.harvest_pending(self.dir, ["s1", "s2", "s3"]), ["s2", "s3"])
+        self.assertEqual(renew.harvest_stats(self.dir)["found"], 1)
+
+    def test_a_fruitless_order_is_not_asked_twice(self):
+        """من لا اعتماد له يُعلَّم أيضًا — وإلا دارت الجلسة القصيرة عليه وتركت غيره."""
+        renew.harvest_record(self.dir, [("s2", {})])
+        self.assertNotIn("s2", renew.harvest_pending(self.dir, ["s1", "s2", "s3"]))
+        self.assertEqual(renew.harvest_stats(self.dir)["found"], 0)
+
+    def test_what_was_harvested_lands_in_the_index(self):
+        renew.harvest_record(self.dir, [("s1", {"username": "u1", "password": "p1",
+                                                "host": "http://old.tv"})])
+        self.assertEqual(renew.harvest_into_index(self.dir), 1)
+        rec = renew.load_index(self.dir)["orders"]["101"]
+        self.assertEqual((rec["username"], rec["password"]), ("u1", "p1"))
+        self.assertEqual(renew.harvest_into_index(self.dir), 0)   # لا يُكرَّر
+
+    def test_a_harvested_order_never_needs_the_session_again(self):
+        """بعد الحصاد يُعرف العميل من القرص — ولو ماتت الجلسة واللوحة معًا."""
+        renew.harvest_record(self.dir, [("s1", {"username": "u1", "password": "p1"})])
+        got = renew.load_harvest(self.dir)["found"].get("s1")
+        self.assertEqual(got["password"], "p1")
+
+    def test_a_retry_round_keeps_what_was_found_and_frees_the_rest(self):
+        renew.harvest_record(self.dir, [("s1", {"username": "u1"}), ("s2", {}), ("s3", {})])
+        self.assertEqual(renew.harvest_pending(self.dir, ["s1", "s2", "s3"]), [])
+        renew.harvest_reset(self.dir)
+        self.assertEqual(renew.harvest_pending(self.dir, ["s1", "s2", "s3"]), ["s2", "s3"])
+        self.assertEqual(renew.harvest_stats(self.dir)["rounds"], 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

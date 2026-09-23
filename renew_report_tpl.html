@@ -196,9 +196,16 @@ code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:13p
       <tbody id="remBody"></tbody></table></div></details>
 </div>
 
+<!-- ============ الاعتمادات ============ -->
+<div class="card" id="cardCred">
+  <h2>٥· الاعتمادات المكتوبة في الطلبات <small>الهوست واليوزر والباسورد</small></h2>
+  <p class="note" id="credNote"></p>
+  <div class="scroll" id="credTable"></div>
+</div>
+
 <!-- ============ المنتجات ============ -->
 <div class="card">
-  <h2>٥· الباقات المباعة <small>٢٨ منتجًا في المتجر ← مدة واحدة لكل منها</small></h2>
+  <h2>٦· الباقات المباعة <small>٢٨ منتجًا في المتجر ← مدة واحدة لكل منها</small></h2>
   <p class="note">المدة تُقرأ من اسم المنتج. منتجان قديمان بلا مدة في الاسم
      (<code>iptv smarters pro</code>) استُنتجت مدتهما من السعر — ٤٠ ر.س وهو سعر شريحة
      السنة نفسها — ومُعلّمان بـ ⟨مُستنتج⟩.</p>
@@ -210,7 +217,7 @@ code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:13p
 
 <!-- ============ تنبيهات ============ -->
 <div class="card">
-  <h2>٦· ما يجب الانتباه له قبل التنفيذ</h2>
+  <h2>٧· ما يجب الانتباه له قبل التنفيذ</h2>
   <div id="flags"></div>
 </div>
 
@@ -338,7 +345,22 @@ $('#remBody').innerHTML = D.remaining.map(r =>
   `<tr><td>${r.k} شهر</td><td class="num">${AR(r.n)}</td>
    <td>${up(r.k)} شهر</td></tr>`).join('');
 
-/* ٥· المنتجات */
+/* ٥· الاعتمادات */
+(function(){
+  const c = D.creds || {with_credentials: 0, hosts: []};
+  $('#credNote').innerHTML = c.with_credentials
+    ? `<b>${AR(c.with_credentials)}</b> يوزرًا من ${AR(D.units.all)} يحمل طلبُه اليوزر والباسورد —
+       هؤلاء يُجدَّدون بلا أن يكتب العميل شيئًا. والبقية يكتبها العميل أو تُقرأ من اللوحة القديمة،
+       لأن سلة لا تُخزّن بيانات الاشتراك.`
+    : `لا طلب يحمل يوزرًا أو باسوردًا — سلة لا تُخزّنهما، وما يُكتب منهما يُكتب يدويًا في ملاحظة.`;
+  $('#credTable').innerHTML = c.hosts.length
+    ? `<table><thead><tr><th>الهوست القديم</th><th>عدد الطلبات</th></tr></thead><tbody>
+       ${c.hosts.map(h => `<tr><td style="direction:ltr;text-align:left">${h.k}</td>
+          <td class="num">${AR(h.n)}</td></tr>`).join('')}</tbody></table>`
+    : '';
+})();
+
+/* ٦· المنتجات */
 $('#prodBody').innerHTML = D.products.map(p =>
   `<tr><td class="name">${p.name}${p.inferred ? ' <span style="color:var(--gold);font-size:12px">⟨مُستنتج⟩</span>' : ''}</td>
    <td>${p.months} شهر${p.devices >= 2 ? ' · جهازين' : ''}</td>

@@ -174,3 +174,91 @@ def fetch_orders(token: str, per_page: int = 25, page: int = 1) -> list:
     """أحدث الطلبات من واجهة الإدارة (للسحب الدوري)، محلَّلةً بالشكل الموحّد."""
     d = _get("%s/admin/v2/orders?per_page=%d&page=%d" % (API, per_page, page), token)
     return [parse_order({"data": o}) for o in (d.get("data") or []) if isinstance(o, dict)]
+
+
+def orders_page(token: str, page: int = 1, per_page: int = 50) -> tuple:
+    """صفحة طلبات خامًا + معلومات الترقيم: (الطلبات، {page, pages, total}).
+
+    خامًا لا محلَّلةً، لأن فهرس التجديد يحتاج حقولًا لا يحملها `parse_order`
+    (تاريخ الطلب، وحالته، وأسماء بنوده وكمياتها)."""
+    d = _get("%s/admin/v2/orders?per_page=%d&page=%d&sort_by=created_at"
+             % (API, per_page, page), token)
+    rows = [o for o in (d.get("data") or []) if isinstance(o, dict)]
+    p = d.get("pagination") or {}
+    return rows, {"page": int(p.get("currentPage") or page),
+                  "pages": int(p.get("totalPages") or 1),
+                  "total": int(p.get("total") or len(rows))}
+
+
+def order_histories(token: str, order_id, page: int = 1) -> list:
+    """سجل الطلب: التعليقات والأنشطة. بيانات الاشتراك تُكتب هنا تعليقًا
+    (‏`Host: … Username: … Password: …`) ولا يُخرجها تصدير سلة — فهذا هو
+    المكان الوحيد الذي تُقرأ منه."""
+    d = _get("%s/admin/v2/orders/%s/histories?page=%d" % (API, order_id, page), token)
+    return [h for h in (d.get("data") or []) if isinstance(h, dict)]
+
+
+def history_notes(token: str, order_id) -> str:
+    """ملاحظات سجل الطلب مجموعةً في نصّ واحد، صالحًا لقارئ الاعتمادات."""
+    try:
+        rows = order_histories(token, order_id)
+    except SallaError:
+        return ""
+    return "\n".join(str(h.get("note") or "") for h in rows if h.get("note"))
+
+
+# ------------------------- البطاقات الرقمية -------------------------
+# لا يُفتح رابط العميل أبدًا: `digital_content` في الطلب صفحةٌ خاصة بصاحبها
+# وحده، وقراءتها انتحالٌ لصفته. الاعتماد يُقرأ من واجهة الإدارة برمز المتجر.
+#
+# مساران لتسليم الاشتراك في هذا المتجر:
+#   • تعليقٌ يكتبه موظّف في سجلّ الطلب  → `history_notes`
+#   • بطاقة رقمية من مخزون أكواد المنتج → هنا
+# الثاني لا يُخرجه التصدير ولا يظهر في السجلّ إلا سطرًا: «تم شراء الكود #<رقم>».
+CODE_NOTE = re.compile(r"(?:تم شراء الكود|code)\s*#\s*(\d+)", re.I)
+
+# مسارات سلة المحتملة لأكواد الطلب. تُجرَّب بالترتيب ويُحفظ ما نجح، فلا نعيد
+# تخمينًا نجح مرة — وواجهة سلة تختلف بين إصدارات التطبيق.
+_ITEM_CODE_PATHS = (
+    "/admin/v2/orders/%(order)s/items",
+    "/admin/v2/orders/items?order_id=%(order)s",
+    "/admin/v2/products/codes?order_id=%(order)s",
+)
+_code_path_ok = [None]
+
+
+def code_ids_from_notes(notes: str) -> list:
+    """أرقام الأكواد المذكورة في سجلّ الطلب."""
+    return CODE_NOTE.findall(str(notes or ""))
+
+
+def _walk_strings(obj, out, depth=0):
+    if depth > 6:
+        return out
+    if isinstance(obj, str):
+        out.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _walk_strings(v, out, depth + 1)
+    elif isinstance(obj, list):
+        for v in obj:
+            _walk_strings(v, out, depth + 1)
+    return out
+
+
+def order_code_text(token: str, order_id) -> str:
+    """نصّ بطاقات الطلب الرقمية مجموعًا — يُمرَّر لقارئ الاعتمادات كما هو.
+
+    يُجرَّب أكثر من مسار لأن سلة لا توثّق هذا بثبات؛ وأول مسار ينجح يُحفظ."""
+    paths = ([_code_path_ok[0]] if _code_path_ok[0] else []) + list(_ITEM_CODE_PATHS)
+    for path in paths:
+        try:
+            d = _get(API + (path % {"order": order_id}), token)
+        except SallaError:
+            continue
+        chunks = _walk_strings(d.get("data", d), [])
+        text = "\n".join(c for c in chunks if len(c) < 500)
+        if re.search(r"(?i)host|user|pass", text):
+            _code_path_ok[0] = path
+            return text
+    return ""

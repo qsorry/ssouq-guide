@@ -94,13 +94,13 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
 
   <!-- ===================== ١· رفع الملفات ===================== -->
   <section>
-    <h2>١· رفع ملفات سلة <small>الطلبات والمنتجات — تُميَّز تلقائيًا</small></h2>
+    <h2>١· رفع ملفات سلة <small>الطلبات والمنتجات · CSV و XLSX — تُميَّز تلقائيًا</small></h2>
 
     <div class="drop" id="drop" tabindex="0" role="button">
       <b>اسحب الملفات هنا أو اضغط للاختيار</b>
-      ملف الطلبات وملف المنتجات (CSV) · يمكن اختيار عدة ملفات دفعة واحدة
+      ملف الطلبات وملف المنتجات — ‏CSV أو XLSX · يمكن اختيار عدة ملفات دفعة واحدة
     </div>
-    <input type="file" id="pick" accept=".csv,text/csv" multiple class="hidden">
+    <input type="file" id="pick" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple class="hidden">
     <div class="files" id="fileList"></div>
 
     <label class="chk"><input type="checkbox" id="apply" checked>
@@ -113,6 +113,67 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
     <button class="go" id="up" disabled>ارفع وحلّل</button>
     <p class="msg" id="upMsg"></p>
     <p class="note" id="idxNote"></p>
+  </section>
+
+  <!-- ===================== السحب المباشر ===================== -->
+  <section>
+    <h2>أو: اسحب من سلة مباشرة <small>بلا ملفات — وأكمل مما لا يُصدَّر</small></h2>
+    <p class="note" style="margin-top:0">
+      تصدير سلة لا يُخرج <b>سجلّ الطلب</b>، وبيانات الاشتراك تُكتب فيه تعليقًا
+      (<code>Host: … Username: … Password: …</code>). والسحب من الواجهة يأتي بالطلبات
+      كلها ومعها سجلّها، فيُعرف يوزر العميل وباسورده ولا يُطلب منه كتابتهما.
+    </p>
+    <label class="chk"><input type="checkbox" id="pullHistory" checked>
+      اقرأ سجلّ كل طلب لاستخراج اليوزر والباسورد <b>(يطول — نداءٌ لكل طلب)</b></label>
+    <label class="chk"><input type="checkbox" id="pullApply" checked>
+      اعتماده فهرسًا تعمل عليه صفحة العميل</label>
+    <div class="row">
+      <button class="ghost" id="pull" type="button">ابدأ السحب</button>
+      <button class="ghost" id="pullStop" type="button" class="hidden">إيقاف</button>
+    </div>
+    <p class="msg" id="pullMsg"></p>
+    <div id="pullBar" class="hidden" style="margin-top:10px">
+      <div style="height:8px;background:var(--line);border-radius:99px;overflow:hidden">
+        <div id="pullFill" style="height:100%;width:0;background:var(--go);transition:width .3s"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== خطوط اللوحة ===================== -->
+  <section>
+    <h2>وأهمّها: صدِّر خطوط اللوحة <small>المصدر الكامل الوحيد لليوزر والباسورد</small></h2>
+    <p class="note" style="margin-top:0">
+      سلة تعرف <b>ماذا</b> اشترى العميل، ولا تعرف <b>بأيّ يوزر</b> سُلّم — إلا حيث
+      كُتب يدويًا. واللوحة تعرف كل خط بيوزره وباسورده وانتهائه. فبتصديرها مرةً
+      يصير التعرّف على العميل لحظيًّا بلا نداء للوحة وقت الطلب.
+    </p>
+    <div class="row">
+      <button class="ghost" id="lines" type="button">صدِّر الخطوط من لوحة البحث</button>
+      <button class="ghost hidden" id="linesStop" type="button">إيقاف</button>
+    </div>
+    <p class="msg" id="linesMsg"></p>
+  </section>
+
+  <!-- ===================== الحصاد ===================== -->
+  <section>
+    <h2>احصد الاعتمادات <small>الجلسة نافذةٌ تنتهي — استنفدها جمعًا</small></h2>
+    <p class="note" style="margin-top:0">
+      جلسة لوحة سلة تنتهي خلال ساعات. فبدل أن يعتمد عليها العميل وقت طلبه،
+      يُجمع فيها كل ما يُستطاع <b>ويُخزَّن على القرص</b> — وبعدها لا تُسأل اللوحة
+      عمّا حُصد ولو ماتت الجلسة. يعمل بعدّة خيوط، ويُحفظ تقدّمه أولًا بأول،
+      <b>ويُستأنف من حيث وقف</b> إن انقطع أو انتهت الجلسة.
+    </p>
+    <div class="row">
+      <button class="ghost" id="harv" type="button">ابدأ الحصاد</button>
+      <button class="ghost hidden" id="harvStop" type="button">إيقاف</button>
+      <button class="ghost" id="harvRetry" type="button">أعِد على من لم يُعطِ شيئًا</button>
+    </div>
+    <p class="msg" id="harvMsg"></p>
+    <div id="harvBar" class="hidden" style="margin-top:10px">
+      <div style="height:8px;background:var(--line);border-radius:99px;overflow:hidden">
+        <div id="harvFill" style="height:100%;width:0;background:var(--go);transition:width .3s"></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===================== ٢· التحليل ===================== -->
@@ -144,6 +205,9 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
     <h3>متى تنتهي الاشتراكات</h3>
     <div class="bars" id="bars"></div>
     <div class="axis" id="axis"></div>
+
+    <h3>الاعتمادات المكتوبة في الطلبات <small style="font-weight:400">من كتب اشتراكه في الطلب لا يُطلب منه كتابته</small></h3>
+    <div id="credBox"></div>
 
     <h3>الباقات المباعة</h3>
     <div class="scroll"><table>
@@ -182,6 +246,29 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
       <div><label for="rate">حد محاولات التعرّف لكل عنوان/ساعة</label>
         <input type="number" id="rate" min="1" max="10000" value="12"></div>
     </div>
+
+    <h3>جلسة لوحة سلة <small style="font-weight:400">تقرأ ما لا تُخرجه الواجهة</small></h3>
+    <p class="note" style="margin-top:0">
+      بطاقة الاشتراك تظهر كاملةً في لوحة سلة ولا تُخرجها الواجهة دائمًا.
+      <b>ولا دخول آليّ ممكن</b>: كود الـSMS كنا سنتعامل معه كما نتعامل مع كابتشا
+      مرح، لكن <b>Cloudflare Turnstile يسبقه</b> ورمزُه لا يُصدَر إلا لمتصفّح حقيقي،
+      ومن ورائه مفتاحُ مرورٍ مربوطٌ بجهازك. فادخل بمتصفّحك وأعطنا جلستك:
+    </p>
+    <ol class="note" style="margin:0 0 10px;padding-inline-start:20px">
+      <li>افتح <a href="https://s.salla.sa/orders" target="_blank" rel="noopener">s.salla.sa/orders</a>
+          في كروم على الحاسب، وسجّل دخولك كالمعتاد.</li>
+      <li>‏<code>F12</code> ← تبويب <b>Network</b> ← حدّث الصفحة.</li>
+      <li>انقر أي نداء بزرّ الفأرة الأيمن ← <b>Copy</b> ← <b>Copy as cURL</b>.</li>
+      <li>الصقه كما هو في الحقل أدناه — نستخرج الكوكيز منه وحدنا.</li>
+    </ol>
+    <p class="note" style="margin:0">
+      تُحفظ مشفَّرة ولا تُرسَل للمتصفّح أبدًا، وتنتهي بانتهاء جلستك فيصلك بريدٌ
+      يطلب لصقها من جديد. والتجديد لا يتوقّف حينها: اللوحة ثالثُ المصادر.
+    </p>
+    <label for="panelCookie">الصق «Copy as cURL» — أو ترويسة Cookie وحدها</label>
+    <input id="panelCookie" autocomplete="off" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'">
+    <div class="row"><button class="ghost" id="panelTest" type="button">اختبار الجلسة</button></div>
+    <p class="msg" id="panelMsg"></p>
 
     <h3>بريد التنبيه — يصلك حين ينقطع الوصل</h3>
     <div class="g2">
@@ -296,6 +383,133 @@ function showIndex(ix){
     : 'لا فهرس بعد — صفحة العميل لن تتعرّف على أحد حتى تعتمد ملفًا.';
 }
 
+/* ============ الحصاد ============ */
+let harvTimer = null;
+
+$('#harv').onclick = async () => {
+  const d = await post('/api/renew/harvest', {});
+  if (!d.ok) return note($('#harvMsg'), d.error || 'تعذّر بدء الحصاد');
+  $('#harvBar').classList.remove('hidden');
+  $('#harvStop').classList.remove('hidden');
+  watchHarvest();
+};
+$('#harvStop').onclick = async () => {
+  await post('/api/renew/harvest-cancel', {});
+  note($('#harvMsg'), 'طُلب الإيقاف — ما حُصد محفوظ.', true);
+};
+$('#harvRetry').onclick = async () => {
+  const d = await post('/api/renew/harvest-retry', {});
+  note($('#harvMsg'), d.error || `أُعيد فتح المحاولة · بقي المحصود (${AR(d.kept)})`, !d.error);
+  watchHarvest(true);
+};
+
+async function watchHarvest(once){
+  const d = await api('/api/renew/harvest-status');
+  if (d.error && !d.running) note($('#harvMsg'), d.error);
+  const sv = d.saved || {};
+  const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
+  $('#harvFill').style.width = pct + '%';
+
+  if (d.running){
+    note($('#harvMsg'), `جارٍ الحصاد… ${AR(d.done)} من ${AR(d.total)} (${pct}٪)`
+      + ` · ${AR(sv.found || 0)} باعتماد`, true);
+    clearTimeout(harvTimer);
+    if (!once) harvTimer = setTimeout(watchHarvest, 2000);
+    return;
+  }
+  clearTimeout(harvTimer);
+  $('#harvStop').classList.add('hidden');
+  if (d.expired){
+    note($('#harvMsg'), `انتهت الجلسة أثناء الحصاد — المحصود محفوظ (${AR(sv.found||0)}).`
+      + ' الصق كوكيز جديدة واضغط «ابدأ الحصاد»، فيُستأنف من حيث وقف.');
+  } else if (!d.error && sv.seen){
+    note($('#harvMsg'), `محصود: ${AR(sv.found || 0)} اعتمادًا من ${AR(sv.seen)} طلبًا`
+      + `${d.merged ? ` · دُمج ${AR(d.merged)} في الفهرس ✓` : ''}`
+      + ` · آخر عمل ${sv.at || '—'}`, true);
+  }
+}
+
+/* ============ تصدير خطوط اللوحة ============ */
+let linesTimer = null;
+
+$('#lines').onclick = async () => {
+  const d = await post('/api/renew/lines-export', {side: 'source'});
+  if (!d.ok) return note($('#linesMsg'), d.error || 'تعذّر بدء التصدير');
+  $('#linesStop').classList.remove('hidden');
+  watchLines();
+};
+$('#linesStop').onclick = async () => {
+  await post('/api/renew/lines-cancel', {});
+  note($('#linesMsg'), 'طُلب الإيقاف…', true);
+};
+
+async function watchLines(){
+  const d = await api('/api/renew/lines-status');
+  if (d.error && !d.running) { note($('#linesMsg'), d.error); }
+  else if (d.running) note($('#linesMsg'), `جارٍ التصدير… ${AR(d.done)} خطًّا`, true);
+  const sv = d.saved || {};
+  if (!d.running){
+    clearTimeout(linesTimer);
+    $('#linesStop').classList.add('hidden');
+    if (!d.error) note($('#linesMsg'), sv.count
+      ? `محفوظ: ${AR(sv.count)} خطًّا من «${esc(sv.gate || '—')}» · آخر تصدير ${sv.built || '—'}`
+      : 'لم يُصدَّر شيء بعد.', !!sv.count);
+  } else {
+    clearTimeout(linesTimer);
+    linesTimer = setTimeout(watchLines, 2000);
+  }
+}
+
+/* ============ السحب المباشر من سلة ============ */
+let pullTimer = null;
+
+$('#pull').onclick = async () => {
+  const d = await post('/api/renew/pull', {
+    with_history: $('#pullHistory').checked, apply: $('#pullApply').checked});
+  if (!d.ok) return note($('#pullMsg'), d.error || 'تعذّر بدء السحب');
+  $('#pullBar').classList.remove('hidden');
+  $('#pullStop').classList.remove('hidden');
+  watchPull();
+};
+$('#pullStop').onclick = async () => {
+  await post('/api/renew/pull-cancel', {});
+  note($('#pullMsg'), 'طُلب الإيقاف — ينتهي بعد الصفحة الجارية.', true);
+};
+
+const PHASE = {orders: 'قراءة الطلبات', history: 'قراءة سجلّات الطلبات', done: 'اكتمل'};
+
+async function watchPull(once){
+  const d = await api('/api/renew/pull-status');
+  if (d.error) return;
+  const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
+  $('#pullFill').style.width = pct + '%';
+  const bits = [PHASE[d.phase] || d.phase];
+  if (d.total) bits.push(`${AR(d.done)} من ${AR(d.total)} (${pct}٪)`);
+  if (d.units) bits.push(`${AR(d.units)} يوزرًا`);
+  if (d.found) bits.push(`${AR(d.found)} باعتماد`);
+  if (d.running || d.phase){
+    note($('#pullMsg'), bits.join(' · '), !d.error);
+  }
+  if (d.error) note($('#pullMsg'), d.error);
+
+  if (d.running && !once){
+    clearTimeout(pullTimer);
+    pullTimer = setTimeout(watchPull, 2000);
+  } else if (!d.running){
+    $('#pullStop').classList.add('hidden');
+    clearTimeout(pullTimer);
+    if (!d.error && d.phase === 'done'){
+      note($('#pullMsg'), `اكتمل السحب: ${AR(d.units)} يوزرًا، منها ${AR(d.found)} `
+        + `باعتماد جاهز${d.applied ? ' — واعتُمد الفهرس ✓' : ''}`
+        + (d.session_expired ? '\nانتهت جلسة لوحة سلة أثناء السحب — الصق كوكيز جديدة وأعِده.' : ''),
+        !d.session_expired);
+      const a = await api('/api/renew/analysis');
+      if (a.analysis) render(a.analysis);
+      showIndex((await api('/api/renew/config')).index);
+    }
+  }
+}
+
 /* ============ ٢· التحليل ============ */
 // نقاط باقات مرح كما تكتبها اللوحة في أسماء باقاتها. المفتاح «مدة|أجهزة»
 // لأن الجهازين ليسا ضِعفًا: السنة أربع نقاط، والسنة بجهازين ست لا ثمانٍ.
@@ -332,6 +546,19 @@ function render(a){
        data-t="${r.k} — ${AR(r.n)} يوزر"></i>`).join('');
   $('#axis').innerHTML = em.length
     ? `<span>${em[0].k}</span><span>${em[em.length-1].k}</span>` : '';
+
+  const c = a.creds || {with_credentials: 0, hosts: []};
+  $('#credBox').innerHTML = c.with_credentials
+    ? `<p class="note" style="margin-top:0">${AR(c.with_credentials)} يوزرًا من ${AR(a.units.all)}
+         يحمل طلبُه يوزره وباسورده — هؤلاء يُجدَّدون بضغطة واحدة بلا أن يكتبوا شيئًا.</p>
+       <div class="scroll"><table>
+         <thead><tr><th>الهوست القديم</th><th>عدد</th></tr></thead><tbody>
+         ${c.hosts.map(h => `<tr><td style="direction:ltr;text-align:left">${esc(h.k)}</td>
+            <td>${AR(h.n)}</td></tr>`).join('')
+            || '<tr><td colspan="2" style="color:var(--mute)">لا هوست مكتوب</td></tr>'}
+       </tbody></table></div>`
+    : `<p class="note" style="margin-top:0">لا طلب يحمل يوزرًا أو باسوردًا.
+         سلة لا تُخزّنهما، فيكتبهما العميل أو تُقرأ من اللوحة القديمة.</p>`;
 
   $('#prodBody').innerHTML = a.products.map(p =>
     `<tr><td class="name">${esc(p.name)}${p.inferred ? ' <span style="color:var(--copy)">⟨مُستنتج⟩</span>' : ''}</td>
@@ -399,6 +626,9 @@ async function loadCfg(){
   $('#mailTo').value = CFG.alert.to; $('#smtpTls').checked = !!CFG.alert.tls;
   $('#smtpPass').placeholder = CFG.alert.has_password ? '••• محفوظة — اتركها فارغة لتبقى'
                                                       : 'كلمة مرور البريد';
+  $('#panelCookie').value = '';
+  $('#panelCookie').placeholder = CFG.has_panel_cookie
+    ? '••• محفوظة — اتركها فارغة لتبقى' : 'salla_session=…; XSRF-TOKEN=…';
   $('#dryRun').checked = !!CFG.dry_run; $('#enabled').checked = !!CFG.enabled;
   drawPkgMap();
 }
@@ -484,6 +714,7 @@ $('#save').onclick = async () => {
     source: gateVal('#srcGate'), target: gateVal('#tgtGate'), packages,
     promise_hours: +$('#promise').value, retry_minutes: +$('#retry').value,
     rate_per_hour: +$('#rate').value,
+    panel_cookie: $('#panelCookie').value,
     alert: {host: $('#smtpHost').value.trim(), port: +$('#smtpPort').value,
             user: $('#smtpUser').value.trim(), password: $('#smtpPass').value,
             from: $('#mailFrom').value.trim(), to: $('#mailTo').value.trim(),
@@ -493,9 +724,19 @@ $('#save').onclick = async () => {
   const d = await post('/api/renew/config', body);
   btn.disabled = false;
   if (d.error) return note($('#cfgMsg'), d.error);
-  CFG = d.renew; $('#smtpPass').value = '';
+  CFG = d.renew; $('#smtpPass').value = ''; $('#panelCookie').value = '';
+  $('#panelCookie').placeholder = CFG.has_panel_cookie
+    ? '••• محفوظة — اتركها فارغة لتبقى' : 'salla_session=…; XSRF-TOKEN=…';
   $('#smtpPass').placeholder = CFG.alert.has_password ? '••• محفوظة — اتركها فارغة لتبقى' : 'كلمة مرور البريد';
   note($('#cfgMsg'), 'حُفظ الإعداد ✓', true);
+};
+
+$('#panelTest').onclick = async () => {
+  note($('#panelMsg'), 'جارٍ الاختبار…', true);
+  const d = await post('/api/renew/panel-test', {});
+  note($('#panelMsg'), d.ok
+    ? `الجلسة صالحة ✓ (${AR(d.cookies)} كوكي)`
+    : ('الجلسة غير صالحة: ' + (d.error || '—')), !!d.ok);
 };
 
 $('#testMail').onclick = async () => {
@@ -544,6 +785,13 @@ $('#runQ').onclick = async () => {
   await loadQueue();
   const d = await api('/api/renew/analysis');
   if (d.analysis) render(d.analysis);
+  watchLines();
+  watchHarvest();
+  const ps = await api('/api/renew/pull-status');
+  if (ps && !ps.has_token)
+    note($('#pullMsg'), 'رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة ليعمل السحب المباشر.');
+  else if (ps && ps.running){ $('#pullBar').classList.remove('hidden');
+    $('#pullStop').classList.remove('hidden'); watchPull(); }
 })();
 </script>
 </body>
