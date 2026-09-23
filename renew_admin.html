@@ -154,6 +154,28 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
     <p class="msg" id="linesMsg"></p>
   </section>
 
+  <!-- ===================== الحصاد ===================== -->
+  <section>
+    <h2>احصد الاعتمادات <small>الجلسة نافذةٌ تنتهي — استنفدها جمعًا</small></h2>
+    <p class="note" style="margin-top:0">
+      جلسة لوحة سلة تنتهي خلال ساعات. فبدل أن يعتمد عليها العميل وقت طلبه،
+      يُجمع فيها كل ما يُستطاع <b>ويُخزَّن على القرص</b> — وبعدها لا تُسأل اللوحة
+      عمّا حُصد ولو ماتت الجلسة. يعمل بعدّة خيوط، ويُحفظ تقدّمه أولًا بأول،
+      <b>ويُستأنف من حيث وقف</b> إن انقطع أو انتهت الجلسة.
+    </p>
+    <div class="row">
+      <button class="ghost" id="harv" type="button">ابدأ الحصاد</button>
+      <button class="ghost hidden" id="harvStop" type="button">إيقاف</button>
+      <button class="ghost" id="harvRetry" type="button">أعِد على من لم يُعطِ شيئًا</button>
+    </div>
+    <p class="msg" id="harvMsg"></p>
+    <div id="harvBar" class="hidden" style="margin-top:10px">
+      <div style="height:8px;background:var(--line);border-radius:99px;overflow:hidden">
+        <div id="harvFill" style="height:100%;width:0;background:var(--go);transition:width .3s"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===================== ٢· التحليل ===================== -->
   <section id="secAn" class="hidden">
     <h2>٢· التحليل <small id="anWhen"></small>
@@ -359,6 +381,52 @@ function showIndex(ix){
   $('#idxNote').textContent = ix.count
     ? `الفهرس الحالي: ${AR(ix.count)} طلبًا · آخر بناء ${ix.built || '—'}`
     : 'لا فهرس بعد — صفحة العميل لن تتعرّف على أحد حتى تعتمد ملفًا.';
+}
+
+/* ============ الحصاد ============ */
+let harvTimer = null;
+
+$('#harv').onclick = async () => {
+  const d = await post('/api/renew/harvest', {});
+  if (!d.ok) return note($('#harvMsg'), d.error || 'تعذّر بدء الحصاد');
+  $('#harvBar').classList.remove('hidden');
+  $('#harvStop').classList.remove('hidden');
+  watchHarvest();
+};
+$('#harvStop').onclick = async () => {
+  await post('/api/renew/harvest-cancel', {});
+  note($('#harvMsg'), 'طُلب الإيقاف — ما حُصد محفوظ.', true);
+};
+$('#harvRetry').onclick = async () => {
+  const d = await post('/api/renew/harvest-retry', {});
+  note($('#harvMsg'), d.error || `أُعيد فتح المحاولة · بقي المحصود (${AR(d.kept)})`, !d.error);
+  watchHarvest(true);
+};
+
+async function watchHarvest(once){
+  const d = await api('/api/renew/harvest-status');
+  if (d.error && !d.running) note($('#harvMsg'), d.error);
+  const sv = d.saved || {};
+  const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
+  $('#harvFill').style.width = pct + '%';
+
+  if (d.running){
+    note($('#harvMsg'), `جارٍ الحصاد… ${AR(d.done)} من ${AR(d.total)} (${pct}٪)`
+      + ` · ${AR(sv.found || 0)} باعتماد`, true);
+    clearTimeout(harvTimer);
+    if (!once) harvTimer = setTimeout(watchHarvest, 2000);
+    return;
+  }
+  clearTimeout(harvTimer);
+  $('#harvStop').classList.add('hidden');
+  if (d.expired){
+    note($('#harvMsg'), `انتهت الجلسة أثناء الحصاد — المحصود محفوظ (${AR(sv.found||0)}).`
+      + ' الصق كوكيز جديدة واضغط «ابدأ الحصاد»، فيُستأنف من حيث وقف.');
+  } else if (!d.error && sv.seen){
+    note($('#harvMsg'), `محصود: ${AR(sv.found || 0)} اعتمادًا من ${AR(sv.seen)} طلبًا`
+      + `${d.merged ? ` · دُمج ${AR(d.merged)} في الفهرس ✓` : ''}`
+      + ` · آخر عمل ${sv.at || '—'}`, true);
+  }
 }
 
 /* ============ تصدير خطوط اللوحة ============ */
@@ -718,6 +786,7 @@ $('#runQ').onclick = async () => {
   const d = await api('/api/renew/analysis');
   if (d.analysis) render(d.analysis);
   watchLines();
+  watchHarvest();
   const ps = await api('/api/renew/pull-status');
   if (ps && !ps.has_token)
     note($('#pullMsg'), 'رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة ليعمل السحب المباشر.');

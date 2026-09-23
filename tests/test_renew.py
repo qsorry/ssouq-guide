@@ -656,5 +656,54 @@ class TestPanelSession(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+# ============================ الحصاد ============================
+class TestHarvest(unittest.TestCase):
+    """جلسة اللوحة تنتهي خلال ساعات، فهي نافذةُ حصادٍ لا اعتمادٌ دائم."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        renew.save_index(self.dir, {"orders": {
+            "101": {"sid": "s1", "phone": "966501111111", "date": "2026-03-01", "months": 12},
+            "102": {"sid": "s2", "phone": "966502222222", "date": "2026-03-01", "months": 12},
+            "103": {"sid": "s3", "phone": "966503333333", "date": "2026-03-01", "months": 12},
+        }})
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_progress_survives_a_restart(self):
+        """التقدّم على القرص لا في الذاكرة — فموتُ الخادم لا يُضيّع ساعةَ عمل."""
+        renew.harvest_record(self.dir, [("s1", {"username": "u1", "password": "p1"})])
+        self.assertEqual(renew.harvest_pending(self.dir, ["s1", "s2", "s3"]), ["s2", "s3"])
+        self.assertEqual(renew.harvest_stats(self.dir)["found"], 1)
+
+    def test_a_fruitless_order_is_not_asked_twice(self):
+        """من لا اعتماد له يُعلَّم أيضًا — وإلا دارت الجلسة القصيرة عليه وتركت غيره."""
+        renew.harvest_record(self.dir, [("s2", {})])
+        self.assertNotIn("s2", renew.harvest_pending(self.dir, ["s1", "s2", "s3"]))
+        self.assertEqual(renew.harvest_stats(self.dir)["found"], 0)
+
+    def test_what_was_harvested_lands_in_the_index(self):
+        renew.harvest_record(self.dir, [("s1", {"username": "u1", "password": "p1",
+                                                "host": "http://old.tv"})])
+        self.assertEqual(renew.harvest_into_index(self.dir), 1)
+        rec = renew.load_index(self.dir)["orders"]["101"]
+        self.assertEqual((rec["username"], rec["password"]), ("u1", "p1"))
+        self.assertEqual(renew.harvest_into_index(self.dir), 0)   # لا يُكرَّر
+
+    def test_a_harvested_order_never_needs_the_session_again(self):
+        """بعد الحصاد يُعرف العميل من القرص — ولو ماتت الجلسة واللوحة معًا."""
+        renew.harvest_record(self.dir, [("s1", {"username": "u1", "password": "p1"})])
+        got = renew.load_harvest(self.dir)["found"].get("s1")
+        self.assertEqual(got["password"], "p1")
+
+    def test_a_retry_round_keeps_what_was_found_and_frees_the_rest(self):
+        renew.harvest_record(self.dir, [("s1", {"username": "u1"}), ("s2", {}), ("s3", {})])
+        self.assertEqual(renew.harvest_pending(self.dir, ["s1", "s2", "s3"]), [])
+        renew.harvest_reset(self.dir)
+        self.assertEqual(renew.harvest_pending(self.dir, ["s1", "s2", "s3"]), ["s2", "s3"])
+        self.assertEqual(renew.harvest_stats(self.dir)["rounds"], 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

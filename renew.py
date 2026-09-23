@@ -673,3 +673,93 @@ def match_candidates(data_dir, bought, months, devices=1, window=3):
             continue
         out.append({**rec, "days_off": abs((c - b).days)})
     return sorted(out, key=lambda r: r["days_off"])[:20]
+
+
+# ============================ الحصاد ============================
+# جلسة لوحة سلة تنتهي خلال ساعات، فهي **نافذةُ حصادٍ لا اعتمادٌ دائم**: يُجمع
+# فيها ما يُستطاع ويُخزَّن، فلا تُسأل اللوحة مرة أخرى عمّا حُصد.
+#
+# ولذلك ثلاث خصال: يُحفظ التقدّم على القرص لا في الذاكرة (فموتُ الخادم لا
+# يُضيّع ساعةَ عمل)، ويُستأنف من حيث وقف (فالجلسة الجديدة تُكمل لا تبدأ)،
+# ويعمل بخيوط متوازية (فالنافذة قصيرة والطلبات عشرات الألوف).
+def harvest_path(data_dir):
+    return os.path.join(data_dir, "renew_harvest.json")
+
+
+def _empty_harvest():
+    return {"seen": {}, "found": {}, "at": "", "rounds": 0}
+
+
+def load_harvest(data_dir):
+    try:
+        with open(harvest_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return _empty_harvest()
+    if not isinstance(d, dict):
+        return _empty_harvest()
+    for k, v in _empty_harvest().items():
+        if not isinstance(d.get(k), type(v)):
+            d[k] = v
+    return d
+
+
+def save_harvest(data_dir, h):
+    h["at"] = now_iso()
+    _write_json(harvest_path(data_dir), h)
+
+
+def harvest_stats(data_dir):
+    h = load_harvest(data_dir)
+    return {"seen": len(h["seen"]), "found": len(h["found"]),
+            "at": h.get("at", ""), "rounds": h.get("rounds", 0)}
+
+
+def harvest_pending(data_dir, sids):
+    """ما لم يُحاوَل بعد. المحاوَلُ لا يُعاد ولو لم يُعطِ اعتمادًا — وإلا دارت
+    الجلسةُ القصيرة على من لا اعتماد له وتركت من له."""
+    seen = load_harvest(data_dir)["seen"]
+    return [s for s in sids if s and str(s) not in seen]
+
+
+def harvest_record(data_dir, rows):
+    """يسجّل دفعةً: [(sid, cred)]. الكتابة دفعةً لا لكل واحد، فالقرص لا يُرهَق."""
+    if not rows:
+        return 0
+    with _db_lock:
+        h = load_harvest(data_dir)
+        for sid, cred in rows:
+            h["seen"][str(sid)] = 1
+            if cred:
+                h["found"][str(sid)] = cred
+        save_harvest(data_dir, h)
+        return len(h["found"])
+
+
+def harvest_into_index(data_dir):
+    """يدمج ما حُصد في فهرس التجديد، فيصير التعرّف لحظيًّا بلا لوحة ولا واجهة."""
+    h = load_harvest(data_dir)
+    if not h["found"]:
+        return 0
+    idx = load_index(data_dir)
+    orders = idx.get("orders") or {}
+    n = 0
+    for rec in orders.values():
+        cred = h["found"].get(str(rec.get("sid") or ""))
+        if cred and not rec.get("username"):
+            rec.update({k: v for k, v in cred.items() if v})
+            n += 1
+    if n:
+        idx["orders"] = orders
+        save_index(data_dir, idx)
+    return n
+
+
+def harvest_reset(data_dir):
+    """يمسح أثر المحاولات ويُبقي ما وُجد — لإعادة الكرّة على من لم يُعطِ شيئًا."""
+    with _db_lock:
+        h = load_harvest(data_dir)
+        h["seen"] = {k: 1 for k in h["found"]}
+        h["rounds"] = int(h.get("rounds", 0)) + 1
+        save_harvest(data_dir, h)
+        return len(h["seen"])

@@ -732,9 +732,10 @@ def renew_panel_session(st):
 
 
 def renew_credentials_for(st, sid, admin_url=""):
-    """اعتماد طلبٍ واحد من مصادره الثلاثة بالترتيب: سجلّ الطلب، ثم بطاقته من
-    الواجهة، ثم لوحةُ سلة بجلسة المتصفّح — وهي الأخيرة لأنها تحتاج لصقًا يدويًا
-    وتنتهي، لكنها ترى ما لا تُخرجه الواجهة."""
+    """اعتماد طلبٍ واحد من مصادره بالترتيب: سجلّ الطلب، ثم بطاقته من الواجهة،
+    ثم لوحةُ سلة بجلسة المتصفّح — وهذه الأخيرة لا تُسأل إلا في الحصاد، لأن
+    `admin_url` لا يُمرَّر إلا منه: جلستها تنتهي خلال ساعات، فلا يُعلَّق عليها
+    عميلٌ ينتظر."""
     token = renew_salla_token(st)
     if token and sid:
         try:
@@ -760,6 +761,93 @@ def renew_credentials_for(st, sid, admin_url=""):
         except Exception:
             pass
     return {}, ""
+
+
+
+# ---- الحصاد: نافذة الجلسة القصيرة تُستنفد جمعًا ----
+_harvest = {"running": False, "done": 0, "total": 0, "found": 0, "error": "",
+            "at": "", "cancel": False, "expired": False, "merged": 0}
+HARVEST_WORKERS = int(os.environ.get("RENEW_HARVEST_WORKERS", "6"))
+_HARVEST_BATCH = 25                      # كل كم سجلًّا يُكتب القرص
+
+
+def _harvest_worker(st, sids):
+    """يستنزف المعلّق بخيوط متوازية. أول انتهاءٍ للجلسة يوقف الجولة: البقية
+    ستنتهي مثلها، والاستمرار يحرق المعلّق تعليمًا بلا فائدة."""
+    import queue
+    q = queue.Queue()
+    for sid, url in sids:
+        q.put((sid, url))
+    buf, lock = [], threading.Lock()
+    stop = threading.Event()
+
+    def flush(force=False):
+        with lock:
+            if not buf or (len(buf) < _HARVEST_BATCH and not force):
+                return
+            rows, buf[:] = list(buf), []
+        _harvest["found"] = renew.harvest_record(DATA_DIR, rows)
+
+    def run():
+        while not stop.is_set() and not _harvest["cancel"]:
+            try:
+                sid, url = q.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                cred, why = renew_credentials_for(st, sid, url)
+            except Exception:
+                cred, why = {}, ""
+            if why == "session_expired":
+                _harvest["expired"] = True
+                stop.set()
+                return                      # لا يُعلَّم: تُعاد محاولته بجلسة جديدة
+            with lock:
+                buf.append((sid, cred))
+            _harvest["done"] += 1
+            flush()
+
+    threads = [threading.Thread(target=run, daemon=True) for _ in range(HARVEST_WORKERS)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    flush(force=True)
+
+
+def _harvest_main():
+    try:
+        st = load_store()
+        idx = renew.load_index(DATA_DIR)
+        orders = list((idx.get("orders") or {}).values())
+        pairs = [(str(o.get("sid") or ""), str(o.get("admin_url") or ""))
+                 for o in orders if o.get("sid") and not o.get("username")]
+        pending = {s for s in renew.harvest_pending(DATA_DIR, [p[0] for p in pairs])}
+        todo = [p for p in pairs if p[0] in pending]
+        _harvest.update({"total": len(todo), "done": 0})
+        if not todo:
+            _harvest["merged"] = renew.harvest_into_index(DATA_DIR)
+            return
+        _harvest_worker(st, todo)
+        _harvest["merged"] = renew.harvest_into_index(DATA_DIR)
+        if _harvest["expired"]:
+            renew.alert_session_expired(DATA_DIR, st.get("renew"))
+    except Exception as e:
+        _harvest["error"] = str(e)[:300]
+    finally:
+        _harvest["running"] = False
+        _harvest["at"] = renew.now_iso()
+
+
+def start_harvest(st):
+    if _harvest["running"]:
+        return {"ok": False, "error": "حصادٌ جارٍ بالفعل"}
+    if not renew.load_index(DATA_DIR).get("orders"):
+        return {"ok": False, "error": "لا فهرس بعد — اسحب من سلة أو ارفع الملفات أولًا"}
+    _harvest.update({"running": True, "done": 0, "total": 0, "error": "",
+                     "cancel": False, "expired": False, "merged": 0})
+    threading.Thread(target=_harvest_main, daemon=True).start()
+    return {"ok": True}
 
 
 def renew_prov():
@@ -801,10 +889,15 @@ def renew_lookup(st, order_no="", phone="", username="", password=""):
         # اعتمادٌ كُتب يدويًا في الطلب ونُقل إلى الفهرس: يُعفي العميل من كتابته.
         username = username or str(rec.get("username", "") or "")
         password = password or str(rec.get("password", "") or "")
-        if not (username and password) and (rec.get("sid") or rec.get("admin_url")):
-            # لم يُسحب اعتماد هذا الطلب بعد: نداءٌ أو نداءان الآن أرخص من سحب
-            # المتجر كله، ويُغني العميل عن كتابة شيء.
-            got, _src = renew_credentials_for(st, rec.get("sid"), rec.get("admin_url", ""))
+        if not (username and password) and rec.get("sid"):
+            # المحصود أولًا — قرصٌ لا شبكة، فلا يعتمد العميل على جلسةٍ قد ماتت.
+            got = renew.load_harvest(DATA_DIR)["found"].get(str(rec["sid"])) or {}
+            if not got and renew_salla_token(st):
+                # لم يُحصد بعد: محاولةٌ واحدة الآن تُغني العميل عن الكتابة. ولا
+                # تُسأل لوحةُ سلة هنا — جلستها قصيرة وبطيئة، وموضعها الحصاد.
+                got, _why = renew_credentials_for(st, rec["sid"], "")
+                if got:
+                    renew.harvest_record(DATA_DIR, [(rec["sid"], got)])
             username = username or got.get("username", "")
             password = password or got.get("password", "")
             if got.get("host"):
@@ -1607,6 +1700,11 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, {**_lines_job, "saved": renew.lines_stats(DATA_DIR)})
+            if path == "/api/renew/harvest-status":
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {**_harvest,
+                                        "saved": renew.harvest_stats(DATA_DIR)})
             if path == "/api/renew/pull-status":   # تقدّم السحب من سلة
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -1716,6 +1814,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {"error": "لا طلب بهذا الرقم والجوال"})
             return self._send(200, {"ok": True, "candidates": renew.match_candidates(
                 DATA_DIR, rec.get("date"), rec.get("months"), rec.get("devices", 1))})
+        if path == "/api/renew/harvest":
+            return self._send(200, start_harvest(st))
+        if path == "/api/renew/harvest-cancel":
+            _harvest["cancel"] = True
+            return self._send(200, {"ok": True})
+        if path == "/api/renew/harvest-retry":     # يُعاد على من لم يُعطِ شيئًا
+            return self._send(200, {"ok": True, "kept": renew.harvest_reset(DATA_DIR)})
         if path == "/api/renew/pull-cancel":
             _pull["cancel"] = True
             return self._send(200, {"ok": True})
