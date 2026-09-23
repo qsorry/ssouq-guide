@@ -145,6 +145,9 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
     <div class="bars" id="bars"></div>
     <div class="axis" id="axis"></div>
 
+    <h3>الاعتمادات المكتوبة في الطلبات <small style="font-weight:400">من كتب اشتراكه في الطلب لا يُطلب منه كتابته</small></h3>
+    <div id="credBox"></div>
+
     <h3>الباقات المباعة</h3>
     <div class="scroll"><table>
       <thead><tr><th>المنتج</th><th>المدة</th><th>مُباع</th><th>سارٍ</th></tr></thead>
@@ -332,6 +335,19 @@ function render(a){
        data-t="${r.k} — ${AR(r.n)} يوزر"></i>`).join('');
   $('#axis').innerHTML = em.length
     ? `<span>${em[0].k}</span><span>${em[em.length-1].k}</span>` : '';
+
+  const c = a.creds || {with_credentials: 0, hosts: []};
+  $('#credBox').innerHTML = c.with_credentials
+    ? `<p class="note" style="margin-top:0">${AR(c.with_credentials)} يوزرًا من ${AR(a.units.all)}
+         يحمل طلبُه يوزره وباسورده — هؤلاء يُجدَّدون بضغطة واحدة بلا أن يكتبوا شيئًا.</p>
+       <div class="scroll"><table>
+         <thead><tr><th>الهوست القديم</th><th>عدد</th></tr></thead><tbody>
+         ${c.hosts.map(h => `<tr><td style="direction:ltr;text-align:left">${esc(h.k)}</td>
+            <td>${AR(h.n)}</td></tr>`).join('')
+            || '<tr><td colspan="2" style="color:var(--mute)">لا هوست مكتوب</td></tr>'}
+       </tbody></table></div>`
+    : `<p class="note" style="margin-top:0">لا طلب يحمل يوزرًا أو باسوردًا.
+         سلة لا تُخزّنهما، فيكتبهما العميل أو تُقرأ من اللوحة القديمة.</p>`;
 
   $('#prodBody').innerHTML = a.products.map(p =>
     `<tr><td class="name">${esc(p.name)}${p.inferred ? ' <span style="color:var(--copy)">⟨مُستنتج⟩</span>' : ''}</td>

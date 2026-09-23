@@ -140,6 +140,61 @@ def read_products(files):
     return {"by_sku": by_sku, "by_name": by_name, "rows": rows}
 
 
+
+# ============================ الاعتمادات داخل الطلب ============================
+# بيانات الاشتراك تُكتب يدويًا في ملاحظة الطلب، فتختلف صياغتها من كاتب لآخر ومن
+# شهر لآخر. رأينا في ملفات سلة وحدها: «Host:» و«Host-URL:»، وبفواصل أسطر تارةً
+# و«|» تارة، وبمنفذ وبغيره. ويُكتب أيضًا «host» بلا نقطتين، و«UserName» بحرف
+# كبير، و«Passowrd» مصحَّفًا. فالقراءة هنا تتسامح مع الشكل وتتمسّك بالمعنى.
+_C_HOST = re.compile(
+    r"(?i)\bhost(?:[\w-]*)\s*[:=]?\s*['\"]?"
+    r"((?:https?://)?[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}(?::\d{1,5})?)")
+_C_USER = re.compile(r"(?i)\buser\s*-?\s*(?:name)?\s*[:=]\s*['\"]?([A-Za-z0-9._\-]{3,64})")
+_C_PASS = re.compile(r"(?i)\bpass\w*\s*[:=]\s*['\"]?([^\s|,;\"']{3,64})")
+_EMAILY = re.compile(r"[A-Za-z0-9._%+-]@")
+
+
+def parse_credentials(text):
+    """نصٌّ حرّ → {host, username, password} بما وُجد منها، وإلا {}.
+
+    الهوست بلا نقطتين (`host http://x`) يُقبل فقط إذا صحبه يوزر أو باسورد في
+    النصّ نفسه — وإلا صار كل ذكرٍ لكلمة «hosting» هوستًا."""
+    s = str(text or "")
+    if not s.strip():
+        return {}
+    out = {}
+    u = _C_USER.search(s)
+    p = _C_PASS.search(s)
+    if u:
+        out["username"] = u.group(1)
+    if p:
+        out["password"] = p.group(1)
+    for m in _C_HOST.finditer(s):
+        host = m.group(1)
+        if _EMAILY.search(s[max(0, m.start(1) - 1):m.start(1) + 1]):
+            continue                        # ‏host_12@live.com بريدٌ لا هوست
+        explicit = "=" in m.group(0) or ":" in m.group(0)[:m.group(0).find(host)]
+        if explicit or out:
+            out["host"] = host if host.startswith(("http://", "https://")) else "http://" + host
+            break
+    return out
+
+
+def credentials_of(row):
+    """يفتّش أعمدة الطلب كلها عن كتلة اعتماد — فالكاتب قد يضعها في الملاحظة
+    الداخلية أو في العنوان أو في أي حقل حرّ."""
+    best = {}
+    for col, v in row.items():
+        if col == ORDER_COLS["skus"] or not v:
+            continue
+        got = parse_credentials(v)
+        if len(got) > len(best):
+            best = got
+        if len(best) == 3:
+            break
+    return best
+
+
 # ============================ الطلبات ============================
 def read_orders(files, products=None, keep_unconfirmed=False, include_falcon=False):
     """ملفات طلبات → (وحدات، تقرير). الوحدة يوزر واحد: كمية ٢ تعطي وحدتين."""
@@ -189,6 +244,7 @@ def read_orders(files, products=None, keep_unconfirmed=False, include_falcon=Fal
                 continue
 
             phone = renew.norm_phone(r.get(ORDER_COLS["phone"]))
+            cred = credentials_of(r)          # قد تكون مكتوبة يدويًا في الطلب
             for it in items:
                 if not isinstance(it, list) or not it:
                     continue
@@ -210,7 +266,7 @@ def read_orders(files, products=None, keep_unconfirmed=False, include_falcon=Fal
                     units.append({"order": no, "phone": phone, "date": date.isoformat(),
                                   "product": pname, "sku": sku, "months": mo,
                                   "devices": dev, "inferred": inferred,
-                                  "expiry": expiry.isoformat()})
+                                  "expiry": expiry.isoformat(), **cred})
 
     return units, {"files_seen": len(keep) + len(dup_files), "files_kept": len(keep),
                    "files_dup": len(dup_files), "dup_names": dup_files,
@@ -228,7 +284,9 @@ def build_index(units, meta=None):
         if not cur or u["months"] > cur["months"]:
             orders[u["order"]] = {"phone": u["phone"], "date": u["date"],
                                   "months": u["months"], "devices": u["devices"],
-                                  **({"inferred": True} if u["inferred"] else {})}
+                                  **({"inferred": True} if u["inferred"] else {}),
+                                  **{k: u[k] for k in ("host", "username", "password")
+                                     if u.get(k)}}
     return {"orders": orders, "built": renew.now_iso(),
             "source_files": (meta or {}).get("files_kept", 0),
             "stats": meta or {}}
@@ -276,8 +334,20 @@ def analyze(units, meta=None, today=None):
         k = (u["product"], u["months"], u["devices"], u["inferred"])
         prods[k] = prods.get(k, 0) + 1
 
+    hosts = {}
+    with_cred = 0
+    for u in units:
+        if u.get("username") or u.get("password"):
+            with_cred += 1
+        if u.get("host"):
+            h = u["host"].lower().replace("http://", "").replace("https://", "")
+            hosts[h] = hosts.get(h, 0) + 1
+
     return {
         "today": today.isoformat(),
+        "creds": {"with_credentials": with_cred,
+                  "hosts": [{"k": h, "n": n} for h, n in
+                            sorted(hosts.items(), key=lambda x: -x[1])]},
         "files": {"total": meta.get("files_seen", 0), "kept": meta.get("files_kept", 0),
                   "dup": meta.get("files_dup", 0), "dup_names": meta.get("dup_names", []),
                   "bad": meta.get("bad_files", [])},

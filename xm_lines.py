@@ -644,6 +644,11 @@ def renew_lookup(st, order_no="", phone="", username="", password=""):
                                           "تأكّد من رقم الطلب، والجوال كما كتبته وقت الشراء."}
         plan = renew.plan_from_order(rec)
         out["devices"] = int(rec.get("devices") or 1)
+        # اعتمادٌ كُتب يدويًا في الطلب ونُقل إلى الفهرس: يُعفي العميل من كتابته.
+        username = username or str(rec.get("username", "") or "")
+        password = password or str(rec.get("password", "") or "")
+        if rec.get("host"):
+            out["old_host"] = rec["host"]
 
     # اللوحة القديمة إن أمكن — لا تُوقف التدفّق إن غابت أو سقطت.
     found, panel_down = {}, False

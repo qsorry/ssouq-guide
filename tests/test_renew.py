@@ -343,5 +343,71 @@ class TestPricing(unittest.TestCase):
         self.assertEqual(cfg["packages"]["12"]["credits"], 4)
 
 
+# ============================ قراءة الاعتمادات ============================
+class TestCredentials(unittest.TestCase):
+    """الاعتماد يُكتب يدويًا في الطلب، فتختلف صياغته من كاتب لآخر ومن شهر لآخر.
+    القراءة تتسامح مع الشكل وتتمسّك بالمعنى."""
+
+    STYLES = [
+        # كما وردت فعلًا في ملفات سلة
+        ("Host: http://ksa4you.co:80 | Username: 293643794326 |Password: 221893957253",
+         "http://ksa4you.co:80", "293643794326", "221893957253"),
+        ("Host: http://ssouq.org:80\nUsername: 608147296618\nPassword: 299303692789",
+         "http://ssouq.org:80", "608147296618", "299303692789"),
+        ("Host-URL: http://mrha.ink", "http://mrha.ink", None, None),
+        # صيغ أخرى: بلا مسافة، بفواصل، وبحرف كبير في UserName
+        ("HOST:http://ssouqhost.vip|UserName:962491987906|Password:195990759930",
+         "http://ssouqhost.vip", "962491987906", "195990759930"),
+        # «host» بلا نقطتين، و«Passowrd» مصحَّفًا، والترتيب مقلوب
+        ("username:346731410391 Passowrd:266061955108 host http://ssouqhost.vip",
+         "http://ssouqhost.vip", "346731410391", "266061955108"),
+    ]
+
+    def test_every_style_reads_the_same(self):
+        for text, host, user, pw in self.STYLES:
+            got = renew_import.parse_credentials(text)
+            self.assertEqual(got.get("host"), host, text[:40])
+            if user:
+                self.assertEqual(got.get("username"), user, text[:40])
+                self.assertEqual(got.get("password"), pw, text[:40])
+
+    def test_bare_host_without_a_colon_needs_company(self):
+        """«host http://x» بلا نقطتين يُقبل مع يوزر أو باسورد فقط — وإلا صار كل
+        ذكرٍ لكلمة hosting هوستًا."""
+        self.assertEqual(renew_import.parse_credentials("نحن أفضل hosting في السوق"), {})
+        self.assertEqual(renew_import.parse_credentials("host example.com"), {})
+        self.assertEqual(
+            renew_import.parse_credentials("user:abc pass:xyz host example.com").get("host"),
+            "http://example.com")
+
+    def test_an_email_is_not_a_host(self):
+        for e in ("host_12@live.com", "host80@gmail.com", "password007@hotmail.co.uk"):
+            self.assertNotIn("host", renew_import.parse_credentials(e))
+
+    def test_credentials_travel_into_the_index(self):
+        """ما كُتب في الطلب يصل إلى الفهرس، فلا يُطلب من العميل كتابته."""
+        raw = ("رقم الطلب,حالة الطلب,رقم الجوال,تاريخ الطلب,الملاحظات الداخلية,skus_json\n"
+               '777,طلبك مؤكد,0501234567,2026-06-01,'
+               '"HOST:http://ssouqhost.vip|UserName:9624919|Password:1959907",'
+               '"[[""اشتراك لمدة سنة"", 1, """", 40, 40]]"\n').encode("utf-8")
+        units, meta = renew_import.read_orders([("o.csv", raw)])
+        self.assertEqual(units[0]["username"], "9624919")
+        idx = renew_import.build_index(units, meta)
+        self.assertEqual(idx["orders"]["777"]["password"], "1959907")
+        self.assertEqual(idx["orders"]["777"]["host"], "http://ssouqhost.vip")
+
+    def test_analysis_counts_credentials_and_hosts(self):
+        raw = ("رقم الطلب,حالة الطلب,رقم الجوال,تاريخ الطلب,الملاحظات الداخلية,skus_json\n"
+               '778,طلبك مؤكد,0501234567,2026-06-01,'
+               '"Host: http://a.co:80 | Username: 111 | Password: 222",'
+               '"[[""اشتراك لمدة سنة"", 1, """", 40, 40]]"\n'
+               '779,طلبك مؤكد,0501234568,2026-06-01,,'
+               '"[[""اشتراك لمدة سنة"", 1, """", 40, 40]]"\n').encode("utf-8")
+        units, meta = renew_import.read_orders([("o.csv", raw)])
+        agg = renew_import.analyze(units, meta)
+        self.assertEqual(agg["creds"]["with_credentials"], 1)
+        self.assertEqual(agg["creds"]["hosts"], [{"k": "a.co:80", "n": 1}])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
