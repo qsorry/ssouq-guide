@@ -766,7 +766,8 @@ def renew_credentials_for(st, sid, admin_url=""):
 
 # ---- الحصاد: نافذة الجلسة القصيرة تُستنفد جمعًا ----
 _harvest = {"running": False, "done": 0, "total": 0, "found": 0, "error": "",
-            "at": "", "cancel": False, "expired": False, "merged": 0}
+            "at": "", "cancel": False, "expired": False, "merged": 0,
+            "counts": {}, "scope": {}}
 HARVEST_WORKERS = int(os.environ.get("RENEW_HARVEST_WORKERS", "6"))
 _HARVEST_BATCH = 25                      # كل كم سجلًّا يُكتب القرص
 
@@ -815,16 +816,13 @@ def _harvest_worker(st, sids):
     flush(force=True)
 
 
-def _harvest_main():
+def _harvest_main(scope):
     try:
         st = load_store()
-        idx = renew.load_index(DATA_DIR)
-        orders = list((idx.get("orders") or {}).values())
-        pairs = [(str(o.get("sid") or ""), str(o.get("admin_url") or ""))
-                 for o in orders if o.get("sid") and not o.get("username")]
-        pending = {s for s in renew.harvest_pending(DATA_DIR, [p[0] for p in pairs])}
-        todo = [p for p in pairs if p[0] in pending]
-        _harvest.update({"total": len(todo), "done": 0})
+        rows, counts = renew.harvest_scope(DATA_DIR, **scope)
+        todo = [(r["sid"], r["admin_url"]) for r in rows]
+        _harvest.update({"total": len(todo), "done": 0, "counts": counts,
+                         "scope": scope})
         if not todo:
             _harvest["merged"] = renew.harvest_into_index(DATA_DIR)
             return
@@ -839,15 +837,26 @@ def _harvest_main():
         _harvest["at"] = renew.now_iso()
 
 
-def start_harvest(st):
+def harvest_scope_args(req):
+    """نطاق الحصاد كما يطلبه المدير: من تاريخ، إلى تاريخ، وأنُسقط المنتهي."""
+    return {"from_date": str(req.get("from_date", "") or "").strip(),
+            "to_date": str(req.get("to_date", "") or "").strip(),
+            "active_only": bool(req.get("active_only", True))}
+
+
+def start_harvest(st, scope=None):
     if _harvest["running"]:
         return {"ok": False, "error": "حصادٌ جارٍ بالفعل"}
     if not renew.load_index(DATA_DIR).get("orders"):
         return {"ok": False, "error": "لا فهرس بعد — اسحب من سلة أو ارفع الملفات أولًا"}
-    _harvest.update({"running": True, "done": 0, "total": 0, "error": "",
-                     "cancel": False, "expired": False, "merged": 0})
-    threading.Thread(target=_harvest_main, daemon=True).start()
-    return {"ok": True}
+    scope = scope or {}
+    _rows, counts = renew.harvest_scope(DATA_DIR, **scope)
+    if not counts["pending"]:
+        return {"ok": False, "error": "لا طلب في هذا النطاق يحتاج حصادًا", "counts": counts}
+    _harvest.update({"running": True, "done": 0, "total": counts["pending"], "error": "",
+                     "cancel": False, "expired": False, "merged": 0, "counts": counts})
+    threading.Thread(target=_harvest_main, args=(scope,), daemon=True).start()
+    return {"ok": True, "counts": counts}
 
 
 def renew_prov():
@@ -1815,7 +1824,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True, "candidates": renew.match_candidates(
                 DATA_DIR, rec.get("date"), rec.get("months"), rec.get("devices", 1))})
         if path == "/api/renew/harvest":
-            return self._send(200, start_harvest(st))
+            return self._send(200, start_harvest(st, harvest_scope_args(req)))
+        if path == "/api/renew/harvest-preview":   # كم سيُحصد قبل أن يبدأ
+            _rows, counts = renew.harvest_scope(DATA_DIR, **harvest_scope_args(req))
+            return self._send(200, {"ok": True, "counts": counts})
         if path == "/api/renew/harvest-cancel":
             _harvest["cancel"] = True
             return self._send(200, {"ok": True})

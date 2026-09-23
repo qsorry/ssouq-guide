@@ -163,6 +163,20 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
       عمّا حُصد ولو ماتت الجلسة. يعمل بعدّة خيوط، ويُحفظ تقدّمه أولًا بأول،
       <b>ويُستأنف من حيث وقف</b> إن انقطع أو انتهت الجلسة.
     </p>
+    <h3>النطاق — ابدأ بما يستحقّ</h3>
+    <p class="note" style="margin-top:0">
+      النافذة ساعات والطلبات عشرات الألوف، فالحصاد الأعمى يحرقها على ما لا يهمّ.
+      اختر <b>من تاريخ</b> فيُقرأ ما بعده فقط — والأحدث أولًا، لأنه أطولها بقاءً.
+    </p>
+    <div class="g3">
+      <div><label for="hFrom">من تاريخ</label><input type="date" id="hFrom"></div>
+      <div><label for="hTo">إلى تاريخ (اختياري)</label><input type="date" id="hTo"></div>
+      <div><label>&nbsp;</label>
+        <label class="chk" style="margin:0"><input type="checkbox" id="hActive" checked>
+          السارية فقط — المنتهي لا يُجدَّد</label></div>
+    </div>
+    <p class="note" id="harvPreview" style="margin-top:8px">—</p>
+
     <div class="row">
       <button class="ghost" id="harv" type="button">ابدأ الحصاد</button>
       <button class="ghost hidden" id="harvStop" type="button">إيقاف</button>
@@ -386,8 +400,23 @@ function showIndex(ix){
 /* ============ الحصاد ============ */
 let harvTimer = null;
 
+const harvScope = () => ({from_date: $('#hFrom').value, to_date: $('#hTo').value,
+                          active_only: $('#hActive').checked});
+
+async function harvestPreview(){
+  const d = await post('/api/renew/harvest-preview', harvScope());
+  const c = (d && d.counts) || {};
+  $('#harvPreview').innerHTML = c.in_range == null ? '—' :
+    `في النطاق <b>${AR(c.in_range)}</b> من ${AR(c.orders)} طلبًا · `
+    + `<b style="color:var(--go)">${AR(c.pending)}</b> سيُحصد الآن`
+    + ` · ${AR(c.known)} اعتماده معروف`
+    + ` · ${AR(c.done)} حوول سابقًا`
+    + (c.expired ? ` · ${AR(c.expired)} منتهٍ استُبعد` : '');
+}
+['#hFrom','#hTo','#hActive'].forEach(id => { const e=$(id); if(e) e.onchange = harvestPreview; });
+
 $('#harv').onclick = async () => {
-  const d = await post('/api/renew/harvest', {});
+  const d = await post('/api/renew/harvest', harvScope());
   if (!d.ok) return note($('#harvMsg'), d.error || 'تعذّر بدء الحصاد');
   $('#harvBar').classList.remove('hidden');
   $('#harvStop').classList.remove('hidden');
@@ -400,7 +429,7 @@ $('#harvStop').onclick = async () => {
 $('#harvRetry').onclick = async () => {
   const d = await post('/api/renew/harvest-retry', {});
   note($('#harvMsg'), d.error || `أُعيد فتح المحاولة · بقي المحصود (${AR(d.kept)})`, !d.error);
-  watchHarvest(true);
+  watchHarvest(true); harvestPreview();
 };
 
 async function watchHarvest(once){
@@ -427,6 +456,7 @@ async function watchHarvest(once){
       + `${d.merged ? ` · دُمج ${AR(d.merged)} في الفهرس ✓` : ''}`
       + ` · آخر عمل ${sv.at || '—'}`, true);
   }
+  harvestPreview();
 }
 
 /* ============ تصدير خطوط اللوحة ============ */
@@ -787,6 +817,7 @@ $('#runQ').onclick = async () => {
   if (d.analysis) render(d.analysis);
   watchLines();
   watchHarvest();
+  harvestPreview();
   const ps = await api('/api/renew/pull-status');
   if (ps && !ps.has_token)
     note($('#pullMsg'), 'رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة ليعمل السحب المباشر.');
