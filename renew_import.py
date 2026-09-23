@@ -533,7 +533,11 @@ def pull_from_salla(token, progress=None, with_history=True, stop=None,
         for i, sid in enumerate(sids, 1):
             if stop and stop():
                 break
-            cred = parse_credentials(salla_api.history_notes(token, sid))
+            notes = salla_api.history_notes(token, sid)
+            cred = parse_credentials(notes)
+            if not cred and salla_api.code_ids_from_notes(notes):
+                # سُلّم بطاقةً رقمية لا تعليقًا: الاعتماد داخل الكود نفسه.
+                cred = parse_credentials(salla_api.order_code_text(token, sid))
             if cred:
                 found += 1
                 for u in by_sid[sid]:

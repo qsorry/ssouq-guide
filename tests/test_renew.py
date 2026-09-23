@@ -409,5 +409,37 @@ class TestCredentials(unittest.TestCase):
         self.assertEqual(agg["creds"]["hosts"], [{"k": "a.co:80", "n": 1}])
 
 
+# ============================ البطاقات الرقمية ============================
+class TestDigitalCodes(unittest.TestCase):
+    """مساران لتسليم الاشتراك: تعليقٌ يكتبه موظّف، وبطاقةٌ من مخزون الأكواد.
+    السجلّ لا يحمل الثانية — يحمل رقمها فقط."""
+
+    def test_code_id_read_from_the_history_line(self):
+        import salla_api
+        self.assertEqual(salla_api.code_ids_from_notes("تم شراء الكود #186327502"),
+                         ["186327502"])
+        self.assertEqual(salla_api.code_ids_from_notes("تم إرسال رسالة التقيم"), [])
+
+    def test_an_order_delivered_by_card_has_no_credentials_in_its_history(self):
+        """الطلب 272053873 كما جاء من سلة: سبعة قيود آلية، ولا اعتماد فيها."""
+        notes = "\n".join(["تم إرسال رسالة التقيم",
+                            "تم إرسال فاتورة الطلب  ومحتوى المنتجات إلى بريد العميل",
+                            "تم إرسال البطاقات الرقمية إلى جوال العميل",
+                            "تم شراء الكود #186327502"])
+        self.assertEqual(renew_import.parse_credentials(notes), {})
+        import salla_api
+        self.assertTrue(salla_api.code_ids_from_notes(notes))   # لكنه يدلّ على الكود
+
+    def test_credentials_are_read_out_of_a_card_payload(self):
+        """حمولة الكود مهما تعشّشت: تُجمَّع نصوصها وتُقرأ بنفس القارئ."""
+        import salla_api
+        payload = {"data": [{"id": 1, "codes": [
+            {"code": "HOST:http://ssouqhost.vip|UserName:962491987906|Password:195990759930"}]}]}
+        text = "\n".join(salla_api._walk_strings(payload["data"], []))
+        self.assertEqual(renew_import.parse_credentials(text),
+                         {"username": "962491987906", "password": "195990759930",
+                          "host": "http://ssouqhost.vip"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -205,3 +205,57 @@ def history_notes(token: str, order_id) -> str:
     except SallaError:
         return ""
     return "\n".join(str(h.get("note") or "") for h in rows if h.get("note"))
+
+
+# ------------------------- البطاقات الرقمية -------------------------
+# مساران لتسليم الاشتراك في هذا المتجر:
+#   • تعليقٌ يكتبه موظّف في سجلّ الطلب  → `history_notes`
+#   • بطاقة رقمية من مخزون أكواد المنتج → هنا
+# الثاني لا يُخرجه التصدير ولا يظهر في السجلّ إلا سطرًا: «تم شراء الكود #<رقم>».
+CODE_NOTE = re.compile(r"(?:تم شراء الكود|code)\s*#\s*(\d+)", re.I)
+
+# مسارات سلة المحتملة لأكواد الطلب. تُجرَّب بالترتيب ويُحفظ ما نجح، فلا نعيد
+# تخمينًا نجح مرة — وواجهة سلة تختلف بين إصدارات التطبيق.
+_ITEM_CODE_PATHS = (
+    "/admin/v2/orders/%(order)s/items",
+    "/admin/v2/orders/items?order_id=%(order)s",
+    "/admin/v2/products/codes?order_id=%(order)s",
+)
+_code_path_ok = [None]
+
+
+def code_ids_from_notes(notes: str) -> list:
+    """أرقام الأكواد المذكورة في سجلّ الطلب."""
+    return CODE_NOTE.findall(str(notes or ""))
+
+
+def _walk_strings(obj, out, depth=0):
+    if depth > 6:
+        return out
+    if isinstance(obj, str):
+        out.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _walk_strings(v, out, depth + 1)
+    elif isinstance(obj, list):
+        for v in obj:
+            _walk_strings(v, out, depth + 1)
+    return out
+
+
+def order_code_text(token: str, order_id) -> str:
+    """نصّ بطاقات الطلب الرقمية مجموعًا — يُمرَّر لقارئ الاعتمادات كما هو.
+
+    يُجرَّب أكثر من مسار لأن سلة لا توثّق هذا بثبات؛ وأول مسار ينجح يُحفظ."""
+    paths = ([_code_path_ok[0]] if _code_path_ok[0] else []) + list(_ITEM_CODE_PATHS)
+    for path in paths:
+        try:
+            d = _get(API + (path % {"order": order_id}), token)
+        except SallaError:
+            continue
+        chunks = _walk_strings(d.get("data", d), [])
+        text = "\n".join(c for c in chunks if len(c) < 500)
+        if re.search(r"(?i)host|user|pass", text):
+            _code_path_ok[0] = path
+            return text
+    return ""
