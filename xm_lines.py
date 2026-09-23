@@ -221,6 +221,17 @@ def gate_digits(gate):
     return int(gate.get("digits") or DIGITS)
 
 
+def _clean_cost(v):
+    """سعر النقطة بالريال. الفراغ يعني «غير محدَّد» لا صفرًا — فصفرٌ تكلفةٌ."""
+    if v is None or str(v).strip() == "":
+        return ""
+    try:
+        c = round(float(str(v).strip()), 3)
+    except (TypeError, ValueError):
+        return ""
+    return "" if c < 0 or c > 10000 else c
+
+
 def clean_gate(g, old=None):
     """بوابة توليد واحدة داخل حساب: لها اسمها وطريقة ربطها (api/web) وهوستها
     ورابط شرحها الخاص. لا تحذف بيانات قديمة عند التعديل."""
@@ -241,6 +252,9 @@ def clean_gate(g, old=None):
         "api_key":    str(g.get("api_key", "")).strip() or old.get("api_key", ""),
         # طول اليوزر والباسورد المولَّدين (أرقام) — لكل بوابة رقمها: كاسبر ١٠، وغيرها ١٢ افتراضًا.
         "digits":     _clean_digits(g.get("digits", old.get("digits"))),
+        # سعر النقطة بالريال عند هذا المزوّد — يكتبه صاحب الحساب، فهو وحده يعرف
+        # ما اشترى به نقاطه. منه تُحسب تكلفة التجديد.
+        "point_cost": _clean_cost(g.get("point_cost", old.get("point_cost"))),
     }
     if not out["name"]:
         raise ValueError("اسم البوابة مطلوب")
@@ -568,6 +582,30 @@ def renew_exists(gate, username):
         r = api(gate, "get_line", {"username": u})
         rows = _unwrap(r) if isinstance(r, (list, dict)) else []
     return any(str(x.get("username", "")).strip() == u for x in rows if isinstance(x, dict))
+
+
+def renew_packages(st):
+    """باقات بوابة مرح كما تسمّيها اللوحة، ومعها نقاطها ومدتها.
+
+    النقاط مكتوبة في الاسم نفسه («اشتراك سنة + جهازين (6 نقاط)») فتُقرأ منه ولا
+    تُخمَّن — وهي ليست حاصل ضرب: السنة بأربع نقاط، والسنة بجهازين بستٍّ لا بثمانٍ."""
+    cfg = renew.normalize_config(st.get("renew"))
+    acct = next((a for a in st["accounts"]
+                 if str(a.get("id")) == str(cfg["target"]["account_id"])), None)
+    gate = find_gate(acct, cfg["target"]["gate_id"]) if acct else None
+    ok, why = renew.gate_allowed(gate)
+    if not ok:
+        raise RuntimeError(why if gate else "بوابة مرح غير مضبوطة في إعداد التجديد")
+    out = []
+    for p in get_packages(gate):
+        info = parse_package_name(p.get("name", ""))
+        credits = p.get("credits")
+        if credits in (None, "") and info["credits"]:
+            credits = info["credits"]
+        out.append({"id": str(p.get("id")), "name": p.get("name", ""),
+                    "months": info["months"], "devices": info["devices"],
+                    "credits": credits, "virtual": bool(p.get("virtual"))})
+    return out, (gate.get("point_cost") if gate else "")
 
 
 def renew_prov():
@@ -1261,7 +1299,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/me":
                 gates = [{"id": g["id"], "name": g["name"], "mode": g["mode"],
                           "host": g["host"], "guide_url": g.get("guide_url", ""),
-                          "digits": gate_digits(g)}
+                          "digits": gate_digits(g), "point_cost": g.get("point_cost", "")}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",
@@ -1382,6 +1420,17 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="text/html; charset=utf-8",
                                   extra={"Content-Disposition":
                                          'attachment; filename="renew-analysis.html"'})
+            if path == "/api/renew/packages":     # باقات مرح بنقاطها (للربط والتكلفة)
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                try:
+                    pkgs, cost = renew_packages(st)
+                except xm_web.CaptchaNeeded:
+                    return self._send(200, {"packages": [],
+                                            "error": "اللوحة تطلب كود تحقّق — سجّل الدخول لها من صفحة الإنشاء"})
+                except Exception as e:
+                    return self._send(200, {"packages": [], "error": str(e)[:200]})
+                return self._send(200, {"packages": pkgs, "point_cost": cost})
             if path == "/api/renew/queue":        # الطلبات: المعلّق والمنجز
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})

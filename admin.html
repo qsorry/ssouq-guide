@@ -198,7 +198,8 @@ function gateRow(g){
     </div>
     <label>الهوست (يظهر في السطر)</label><input data-f="host" value="${esc(g.host||"")}" placeholder="http://ssouqhost.vip">
     <label>طول اليوزر والباسورد (أرقام، 6–20) — فارغ = 12</label><input data-f="digits" value="${esc(g.digits||"")}" inputmode="numeric" placeholder="12">
-    <label>رابط الشرح (Guide) — اتركه فارغاً لإخفائه</label><input data-f="guide_url" value="${esc(g.guide_url||"")}" placeholder="https://guide.ssouq.com/">`;
+    <label>رابط الشرح (Guide) — اتركه فارغاً لإخفائه</label><input data-f="guide_url" value="${esc(g.guide_url||"")}" placeholder="https://guide.ssouq.com/">
+    <label>سعر النقطة عند هذا المزوّد (ريال) — منه تُحسب تكلفة التجديد</label><input data-f="point_cost" value="${esc(g.point_cost??"")}" inputmode="decimal" placeholder="2">`;
   const sel = el.querySelector('[data-f="mode"]');
   const applyGateMode = () => {
     const web = sel.value === "web";

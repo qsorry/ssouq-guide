@@ -307,6 +307,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
       </div>
       <label class="f" for="g_host">الهوست (يظهر في السطر)</label><input class="t" id="g_host" placeholder="http://ssouqhost.vip">
       <label class="f" for="g_digits">طول اليوزر والباسورد (أرقام، 6–20) — فارغ = 12</label><input class="t" id="g_digits" inputmode="numeric" placeholder="12">
+      <label class="f" for="g_point_cost">سعر النقطة عند هذا المزوّد (ريال)</label><input class="t" id="g_point_cost" inputmode="decimal" placeholder="2">
       <label class="f" for="g_guide">رابط الشرح (Guide) — فارغ = يُستعمل الرابط العام</label><input class="t" id="g_guide" placeholder="https://guide.ssouq.com/">
       <button class="go" id="saveGate">حفظ البوابة</button>
       <button class="ghost wide" id="cancelGate" style="margin-top:8px">إلغاء</button>
@@ -535,13 +536,14 @@ function gateForm(g){
   $("g_panel_pass").value=""; $("g_panel_pass").placeholder=g.has_panel_pass?"محفوظة — اتركه فارغًا للإبقاء":"";
   $("g_api_url").value=g.api_url||""; $("g_api_key").value=""; $("g_api_key").placeholder=g.has_api_key?"محفوظ — اتركه فارغًا للإبقاء":"";
   $("g_host").value=g.host||""; $("g_guide").value=g.guide_url||""; $("g_digits").value=g.digits||"";
+  $("g_point_cost").value = (g.point_cost ?? "");
   applyGateMode(); $("gateEditor").hidden=false; $("gateMsg").textContent="";
 }
 function readGateForm(){
   return {id:$("g_id").value, name:$("g_name").value, mode:$("g_mode").value,
     panel_base:$("g_panel_base").value, panel_user:$("g_panel_user").value, panel_pass:$("g_panel_pass").value,
     api_url:$("g_api_url").value, api_key:$("g_api_key").value, host:$("g_host").value, guide_url:$("g_guide").value,
-    digits:$("g_digits").value};
+    digits:$("g_digits").value, point_cost:$("g_point_cost").value};
 }
 // قالب كاسبر: لوحة Xtream-Masters على all-iptvs.com:2082 بجلسة ويب (كمرح)، ويوزر/باسورد من ١٠ أرقام.
 const KASPER = {name:"بوابة كاسبر", mode:"web", panel_base:"http://all-iptvs.com:2082", digits:10};

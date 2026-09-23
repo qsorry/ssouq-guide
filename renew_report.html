@@ -146,9 +146,10 @@ code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:13p
      اليوم)، ثم نرقّيه لأقرب باقة تغطّيه. التكلفة = مجموع نقاط تلك الباقات × قيمة النقطة.</p>
 
   <div class="warn">
-    <b>الأرقام الافتراضية للنقاط مشتقّة</b> من المثال الوحيد في كود الأداة
-    (<code>اشتراك سنة + 3 اشهر + جهازين (6 نقاط)</code> ⇒ ١٥ شهر لجهاز = ٣ نقاط).
-    ضع أسعار <b>مرح</b> الحقيقية في الحقول فتتحدّث التكلفة في الحال.
+    <b>النقاط هي أرقام لوحة مرح نفسها</b>، مقروءةً من أسماء باقاتها
+    (<code>اشتراك سنة (4 نقاط)</code> · <code>اشتراك سنة + جهازين (6 نقاط)</code>).
+    لاحظ أن <b>الجهازين ليسا ضِعفًا</b>: السنة أربع نقاط والسنة بجهازين ست لا ثمانٍ.
+    وقيمة النقطة بالريال يكتبها صاحب الحساب في بوابته.
   </div>
 
   <div class="scroll"><table>
@@ -165,7 +166,7 @@ code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:13p
 
   <div class="row">
     <label>قيمة النقطة: <input type="number" id="ppv" value="2" min="0" step="0.25"> ر.س</label>
-    <button class="btn" data-preset="panel" type="button">افتراضي اللوحة</button>
+    <button class="btn" data-preset="marh" type="button">أسعار مرح</button>
     <button class="btn" data-preset="month" type="button">نقطة لكل شهر</button>
   </div>
 </div>
@@ -220,11 +221,13 @@ const AR = n => new Intl.NumberFormat('ar-SA',{maximumFractionDigits:2}).format(
 const $ = s => document.querySelector(s);
 
 /* ---------- افتراضات النقاط ---------- */
+// نقاط باقات مرح كما تكتبها اللوحة في أسماء باقاتها. المفتاح «مدة|أجهزة»
+// لأن الجهازين ليسا ضِعفًا: السنة أربع نقاط، والسنة بجهازين ست لا ثمانٍ.
 const PRESETS = {
-  panel: {1:0.5, 3:1, 6:1.5, 12:2.5, 15:3, 30:6},   // مشتق من مثال اللوحة
-  month: {1:1,   3:3, 6:6,   12:12,  15:15, 30:30}  // نقطة لكل شهر
+  marh:  {"1|1":1,"3|1":2,"6|1":3,"12|1":4,"15|1":4,"30|1":8,"12|2":6,"15|2":6},
+  month: {"1|1":1,"3|1":3,"6|1":6,"12|1":12,"15|1":15,"30|1":30,"12|2":24,"15|2":30}
 };
-let pts = {...PRESETS.panel};
+let pts = {...PRESETS.marh};
 
 $('#today').textContent = D.today;
 
@@ -252,14 +255,13 @@ function recalc(){
   const pv = parseFloat($('#ppv').value) || 0;
   let tp = 0, tu = 0;
   $('#costBody').innerHTML = D.tiers.map(t => {
-    const mult = t.devices >= 2 ? t.devices : 1;
-    const per  = (pts[t.months] || 0) * mult;
-    const p    = per * t.n;
+    const k   = t.months + '|' + (t.devices >= 2 ? 2 : 1);
+    const per = pts[k] != null ? pts[k] : 0;
+    const p   = per * t.n;
     tp += p; tu += t.n;
     const label = t.months + ' شهر' + (t.devices >= 2 ? ' · جهازين' : '');
     return `<tr><td>${label}</td><td class="num">${AR(t.n)}</td>
-      <td><input type="number" class="pt" data-m="${t.months}" value="${pts[t.months]}"
-           min="0" step="0.25"></td>
+      <td><input type="number" class="pt" data-k="${k}" value="${per}" min="0" step="0.5"></td>
       <td class="num">${AR(p)}</td><td class="num">${AR(p*pv)}</td></tr>`;
   }).join('');
   $('#cfUnits').textContent  = AR(tu);
@@ -272,11 +274,11 @@ function recalc(){
   $('#tCostHint').textContent = 'النقطة بـ ' + AR(pv) + ' ر.س · ' +
     AR(tp*pv/Math.max(tu,1)) + ' ر.س لكل يوزر';
   document.querySelectorAll('.pt').forEach(i => i.oninput = e => {
-    pts[e.target.dataset.m] = parseFloat(e.target.value) || 0;
-    const f = document.activeElement === e.target ? e.target.dataset.m : null;
+    const k = e.target.dataset.k;
+    pts[k] = parseFloat(e.target.value) || 0;
     recalc();
-    if (f) { const el = document.querySelector('.pt[data-m="'+f+'"]'); el.focus();
-             el.setSelectionRange(el.value.length, el.value.length); }
+    const el = document.querySelector('.pt[data-k="'+k+'"]');
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
   });
 }
 $('#ppv').oninput = recalc;

@@ -64,6 +64,16 @@ def default_config():
 _SECRET_KEYS = ("password",)        # داخل alert: لا يُرسَل للمتصفح ولا يُمسح بالفراغ
 
 
+def _num(v):
+    """رقمٌ أو فراغ. الفراغ «غير معروف» لا صفرًا — وصفرُ النقاط باقةٌ مجانية."""
+    if v is None or str(v).strip() == "":
+        return ""
+    try:
+        return round(float(str(v).strip()), 3)
+    except (TypeError, ValueError):
+        return ""
+
+
 def normalize_config(cfg):
     d = default_config()
     if not isinstance(cfg, dict):
@@ -76,7 +86,8 @@ def normalize_config(cfg):
                    "gate_id": str(got.get("gate_id", "") or "").strip()}
     pk = cfg.get("packages") if isinstance(cfg.get("packages"), dict) else {}
     d["packages"] = {str(m): {"id": str(v.get("id", "") or "").strip(),
-                              "name": str(v.get("name", "") or "").strip()}
+                              "name": str(v.get("name", "") or "").strip(),
+                              "credits": _num(v.get("credits"))}
                      for m, v in pk.items()
                      if isinstance(v, dict) and str(m).isdigit() and v.get("id")}
     for k, lo, hi in (("promise_hours", 1, 240), ("retry_minutes", 1, 1440),

@@ -285,5 +285,63 @@ class TestGuarantees(unittest.TestCase):
         self.assertEqual(new["alert"]["password"], "keepme")
 
 
+# ============================ نقاط الباقات وسعرها ============================
+class TestPricing(unittest.TestCase):
+    """النقاط تُقرأ من أسماء باقات مرح، وسعر النقطة يكتبه صاحب الحساب."""
+
+    def test_credits_read_from_the_package_name(self):
+        import xm_lines
+        for name, months, devices, credits in [
+            ("اشتراك شهر (نقطة)", 1, 1, 1),
+            ("اشتراك 3 اشهر (نقطتين)", 3, 1, 2),
+            ("اشتراك 6 اشهر (3 نقاط)", 6, 1, 3),
+            ("اشتراك سنة (4 نقاط)", 12, 1, 4),
+            ("اشتراك سنة + 3 اشهر (4 نقاط)", 15, 1, 4),
+            ("اشتراك سنة + جهازين (6 نقاط)", 12, 2, 6),
+            ("اشتراك سنة + 3 اشهر + جهازين (6 نقاط)", 15, 2, 6),
+            ("اشتراك 30 شهر (8 نقاط)", 30, 1, 8),
+        ]:
+            info = xm_lines.parse_package_name(name)
+            self.assertEqual((info["months"], info["devices"], info["credits"]),
+                             (months, devices, credits), name)
+
+    def test_two_devices_is_not_double(self):
+        """السنة بأربع نقاط والسنة بجهازين بستٍّ — لا بثمانٍ. الضربُ في الأجهزة خطأ."""
+        import xm_lines
+        one = xm_lines.parse_package_name("اشتراك سنة (4 نقاط)")["credits"]
+        two = xm_lines.parse_package_name("اشتراك سنة + جهازين (6 نقاط)")["credits"]
+        self.assertEqual((one, two), (4, 6))
+        self.assertNotEqual(two, one * 2)
+
+    def test_gate_keeps_the_cost_its_owner_typed(self):
+        import xm_lines
+        g = xm_lines.clean_gate({"name": "مرح", "mode": "web", "host": "http://m.tv:80",
+                                 "panel_base": "http://p.tv", "panel_user": "u",
+                                 "panel_pass": "p", "point_cost": "2.5"})
+        self.assertEqual(g["point_cost"], 2.5)
+
+    def test_blank_cost_is_unknown_not_zero(self):
+        """الفراغ «غير محدَّد»، وصفرٌ تكلفةٌ — فلا يُخلط بينهما."""
+        import xm_lines
+        base = {"name": "مرح", "mode": "web", "host": "http://m.tv:80",
+                "panel_base": "http://p.tv", "panel_user": "u", "panel_pass": "p"}
+        self.assertEqual(xm_lines.clean_gate({**base, "point_cost": ""})["point_cost"], "")
+        self.assertEqual(xm_lines.clean_gate({**base, "point_cost": "لا"})["point_cost"], "")
+        self.assertEqual(xm_lines.clean_gate({**base, "point_cost": "0"})["point_cost"], 0)
+
+    def test_cost_survives_an_edit_that_omits_it(self):
+        import xm_lines
+        old = xm_lines.clean_gate({"name": "مرح", "mode": "web", "host": "http://m.tv:80",
+                                   "panel_base": "http://p.tv", "panel_user": "u",
+                                   "panel_pass": "p", "point_cost": 2})
+        new = xm_lines.clean_gate({"name": "مرح", "mode": "web", "host": "http://m.tv:80",
+                                   "panel_base": "http://p.tv", "panel_user": "u"}, old)
+        self.assertEqual(new["point_cost"], 2)
+
+    def test_config_stores_package_credits(self):
+        cfg = renew.normalize_config({"packages": {"12": {"id": "7", "name": "سنة", "credits": "4"}}})
+        self.assertEqual(cfg["packages"]["12"]["credits"], 4)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
