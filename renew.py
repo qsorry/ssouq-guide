@@ -763,3 +763,45 @@ def harvest_reset(data_dir):
         h["rounds"] = int(h.get("rounds", 0)) + 1
         save_harvest(data_dir, h)
         return len(h["seen"])
+
+
+def harvest_scope(data_dir, from_date="", to_date="", active_only=True, today=None):
+    """يختار ما يُحصد بنطاقٍ من التاريخ بدل كنسِ المتجر كله.
+
+    النافذة ساعات والطلبات عشرات الألوف، فالحصاد الأعمى يحرقها على ما لا
+    يهمّ: طلبٌ انقضى اشتراكه لا يُجدَّد، فلا معنى لقراءة اعتماده. ومن هنا
+    خياران — نطاقُ تاريخٍ يختاره المشغّل، وإسقاطُ المنتهي افتراضًا.
+
+    يرجّع (ما يُحصد الآن، إحصاءٌ يُعرض قبل البدء)."""
+    today = today or _today()
+    a, b = parse_date(from_date), parse_date(to_date)
+    orders = (load_index(data_dir).get("orders") or {})
+    seen = load_harvest(data_dir)["seen"]
+
+    n = {"orders": len(orders), "in_range": 0, "known": 0, "expired": 0,
+         "done": 0, "pending": 0}
+    todo = []
+    for no, rec in orders.items():
+        d = parse_date(rec.get("date"))
+        if not d or (a and d < a) or (b and d > b):
+            continue
+        n["in_range"] += 1
+        if rec.get("username") and rec.get("password"):
+            n["known"] += 1                      # اعتماده معروف أصلًا
+            continue
+        if active_only:
+            exp = add_months(d, int(rec.get("months") or 0)) if rec.get("months") else None
+            if not exp or exp <= today:
+                n["expired"] += 1                # انقضى، فلا يُجدَّد ولا يُقرأ
+                continue
+        sid = str(rec.get("sid") or "")
+        if not sid:
+            continue
+        if sid in seen:
+            n["done"] += 1                       # حوول في جولةٍ سابقة
+            continue
+        n["pending"] += 1
+        todo.append({"sid": sid, "order": no, "date": rec.get("date", ""),
+                     "admin_url": str(rec.get("admin_url") or "")})
+    todo.sort(key=lambda r: r["date"], reverse=True)   # الأحدث أولًا: أطولها بقاءً
+    return todo, n

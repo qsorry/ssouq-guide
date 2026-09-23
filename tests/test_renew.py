@@ -704,6 +704,43 @@ class TestHarvest(unittest.TestCase):
         self.assertEqual(renew.harvest_pending(self.dir, ["s1", "s2", "s3"]), ["s2", "s3"])
         self.assertEqual(renew.harvest_stats(self.dir)["rounds"], 1)
 
+    def test_the_scope_is_chosen_by_date(self):
+        """النافذة ساعات، فالحصاد يُوجَّه لا يُكنس."""
+        renew.save_index(self.dir, {"orders": {
+            "1": {"sid": "s1", "date": "2026-08-01", "months": 12, "admin_url": "u1"},
+            "2": {"sid": "s2", "date": "2026-02-01", "months": 12, "admin_url": "u2"},
+        }})
+        rows, n = renew.harvest_scope(self.dir, from_date="2026-06-01", today=TODAY)
+        self.assertEqual([r["order"] for r in rows], ["1"])
+        self.assertEqual((n["in_range"], n["pending"]), (1, 1))
+
+    def test_an_expired_order_is_not_worth_reading(self):
+        """انقضى اشتراكه فلا يُجدَّد — فلا معنى لإنفاق النافذة على اعتماده."""
+        renew.save_index(self.dir, {"orders": {
+            "9": {"sid": "s9", "date": "2024-01-01", "months": 12, "admin_url": "u9"}}})
+        rows, n = renew.harvest_scope(self.dir, today=TODAY)
+        self.assertEqual((rows, n["expired"]), ([], 1))
+        rows2, _ = renew.harvest_scope(self.dir, active_only=False, today=TODAY)
+        self.assertEqual(len(rows2), 1)
+
+    def test_an_order_whose_credentials_are_known_is_skipped(self):
+        renew.save_index(self.dir, {"orders": {
+            "7": {"sid": "s7", "date": "2026-08-01", "months": 12,
+                  "username": "u", "password": "p"}}})
+        rows, n = renew.harvest_scope(self.dir, today=TODAY)
+        self.assertEqual((rows, n["known"]), ([], 1))
+
+    def test_the_newest_orders_are_harvested_first(self):
+        """الأحدث أطولها بقاءً، فهو أولى بنافذةٍ قد تُغلَق قبل أن تكتمل."""
+        renew.save_index(self.dir, {"orders": {
+            "a": {"sid": "sa", "date": "2026-04-01", "months": 12, "admin_url": "ua"},
+            "b": {"sid": "sb", "date": "2026-08-01", "months": 12, "admin_url": "ub"},
+            "c": {"sid": "sc", "date": "2026-06-01", "months": 12, "admin_url": "uc"},
+        }})
+        rows, _ = renew.harvest_scope(self.dir, today=TODAY)
+        self.assertEqual([r["order"] for r in rows], ["b", "c", "a"])
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
