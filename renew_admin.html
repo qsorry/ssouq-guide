@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>خدمة التجديد</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#16324F;--paper:#EEF2F6;--card:#FFFFFF;--line:#D5DEE8;--go:#0F8C7B;--copy:#D9912B;--err:#C2412D;--mute:#5F7288;--s1:#1a7fb3;--s2:#e34948}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8;--s1:#3d9fd6;--s2:#e66767}}
+:root[data-theme="dark"]{--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8;--s1:#3d9fd6;--s2:#e66767}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif}
+main{max-width:860px;margin:0 auto;padding:20px 16px 70px}
+h1{font-size:1.5rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 20px;font-size:.95rem}
+.sub a{color:var(--go)}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+h2{font-size:1.05rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+h2 small{font-weight:400;font-size:.8rem;color:var(--mute)}
+h3{font-size:.92rem;margin:18px 0 8px;color:var(--mute);font-weight:600}
+label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
+input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}
+input{direction:ltr;text-align:left}
+input[type=checkbox]{width:auto;margin:0 0 0 7px;vertical-align:-2px}
+select{direction:rtl;text-align:right}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 10px}
+@media (max-width:560px){.g2,.g3{grid-template-columns:1fr}}
+button{font:inherit;border:0;border-radius:10px;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--copy);outline-offset:2px}
+.go{width:100%;margin-top:14px;padding:13px;background:var(--go);color:#fff;font-weight:700}
+.go:disabled{opacity:.6;cursor:progress}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:7px 13px;font-size:.85rem}
+.ghost:hover{border-color:var(--go);color:var(--go)}
+.msg{font-size:.9rem;margin-top:10px;white-space:pre-wrap}
+.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
+.chk{font-size:.87rem;color:var(--ink);margin-top:9px;display:block;cursor:pointer}
+
+/* منطقة الرفع */
+.drop{border:2px dashed var(--line);border-radius:14px;padding:26px 16px;text-align:center;
+  color:var(--mute);cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--go);background:color-mix(in srgb,var(--go) 6%,transparent);color:var(--go)}
+.drop b{display:block;color:var(--ink);font-size:1rem;margin-bottom:3px}
+.files{margin:12px 0 0;font-size:.85rem}
+.files div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line)}
+.files div:last-child{border-bottom:0}
+.files .n{overflow-wrap:anywhere;direction:ltr;text-align:left;flex:1}
+.files .t{color:var(--mute);flex:0 0 auto;font-size:.8rem}
+
+/* أرقام */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0 0 14px}
+.tile{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.tile .k{font-size:.78rem;color:var(--mute)}
+.tile .v{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.25}
+.tile.hero{background:var(--go);border-color:var(--go);color:#fff}
+.tile.hero .k{color:#cdeee8}
+
+table{width:100%;border-collapse:collapse;font-size:.87rem}
+th,td{padding:8px 9px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{font-weight:600;color:var(--mute);font-size:.8rem;white-space:nowrap}
+tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
+td.name{white-space:normal;min-width:190px;line-height:1.45}
+.scroll{overflow-x:auto}
+input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:.76rem;font-weight:600}
+.pill.done{background:color-mix(in srgb,var(--go) 18%,transparent);color:var(--go)}
+.pill.queued{background:color-mix(in srgb,var(--copy) 20%,transparent);color:var(--copy)}
+.pill.stuck,.pill.rejected{background:color-mix(in srgb,var(--err) 16%,transparent);color:var(--err)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.hidden{display:none !important}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-top-color:transparent;
+  border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-inline-end:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.note{font-size:.84rem;color:var(--mute);margin:8px 0 0;line-height:1.65}
+.bars{display:flex;align-items:flex-end;gap:2px;height:110px;margin:10px 0 4px}
+.bars i{flex:1;background:var(--s1);border-radius:3px 3px 0 0;min-height:2px;position:relative}
+.bars i.past{background:var(--s2)}
+.bars i:hover::after{content:attr(data-t);position:absolute;bottom:100%;right:50%;transform:translateX(50%);
+  background:var(--ink);color:var(--card);padding:4px 8px;border-radius:6px;font-size:.72rem;white-space:nowrap;z-index:3}
+.axis{display:flex;justify-content:space-between;font-size:.72rem;color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+  <h1>خدمة التجديد على سيرفر مرح</h1>
+  <p class="sub">
+    ارفع ملفات سلة فتُقرأ ويُستخرج التحليل، ثم اربط الباقات ببوابة مرح وفعّل الصفحة للعملاء.
+    · <a href="/accounts" id="lnkAcc">إدارة الحسابات</a>
+    · <a href="/renew" id="lnkPub" target="_blank">صفحة العميل</a>
+    · <a href="/logout" id="lnkOut">خروج</a>
+  </p>
+
+  <!-- ===================== ١· رفع الملفات ===================== -->
+  <section>
+    <h2>١· رفع ملفات سلة <small>الطلبات والمنتجات — تُميَّز تلقائيًا</small></h2>
+
+    <div class="drop" id="drop" tabindex="0" role="button">
+      <b>اسحب الملفات هنا أو اضغط للاختيار</b>
+      ملف الطلبات وملف المنتجات (CSV) · يمكن اختيار عدة ملفات دفعة واحدة
+    </div>
+    <input type="file" id="pick" accept=".csv,text/csv" multiple class="hidden">
+    <div class="files" id="fileList"></div>
+
+    <label class="chk"><input type="checkbox" id="apply" checked>
+      اعتماده فهرسًا تعمل عليه صفحة العميل</label>
+    <label class="chk"><input type="checkbox" id="includeFalcon">
+      تضمين طلبات فالكون (تُستبعد افتراضيًا — لوحتها قائمة بذاتها)</label>
+    <label class="chk"><input type="checkbox" id="keepUnconfirmed">
+      تضمين الملغي وغير المدفوع (للفحص فقط)</label>
+
+    <button class="go" id="up" disabled>ارفع وحلّل</button>
+    <p class="msg" id="upMsg"></p>
+    <p class="note" id="idxNote"></p>
+  </section>
+
+  <!-- ===================== ٢· التحليل ===================== -->
+  <section id="secAn" class="hidden">
+    <h2>٢· التحليل <small id="anWhen"></small>
+      <button class="ghost" id="dl" type="button">تنزيل التقرير</button></h2>
+
+    <div class="tiles" id="tiles"></div>
+
+    <h3>التنظيف — ما استُبعد ولماذا</h3>
+    <div class="scroll"><table><tbody id="cleanBody"></tbody></table></div>
+
+    <h3>التكلفة الفعلية — عدّل النقاط فيتغيّر كل شيء</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>الباقة المطلوبة</th><th>يوزرات</th><th>نقاط الباقة</th><th>النقاط</th><th>ر.س</th></tr></thead>
+      <tbody id="costBody"></tbody>
+      <tfoot><tr><td>الإجمالي</td><td id="cU"></td><td></td><td id="cP"></td><td id="cC"></td></tr></tfoot>
+    </table></div>
+    <div class="row">
+      <label style="margin:0;color:var(--ink)">قيمة النقطة
+        <input class="pt" type="number" id="ppv" value="2" min="0" step="0.25"> ر.س</label>
+      <button class="ghost" data-preset="panel" type="button">افتراضي اللوحة</button>
+      <button class="ghost" data-preset="month" type="button">نقطة لكل شهر</button>
+    </div>
+    <p class="note">الافتراضي مشتقّ من مثال اللوحة الوحيد في الكود
+      (<code>سنة + 3 اشهر + جهازين = 6 نقاط</code> ⇒ ١٥ شهر لجهاز = ٣). ضع أسعار مرح الحقيقية.</p>
+
+    <h3>متى تنتهي الاشتراكات</h3>
+    <div class="bars" id="bars"></div>
+    <div class="axis" id="axis"></div>
+
+    <h3>الباقات المباعة</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>المنتج</th><th>المدة</th><th>مُباع</th><th>سارٍ</th></tr></thead>
+      <tbody id="prodBody"></tbody></table></div>
+  </section>
+
+  <!-- ===================== ٣· الربط ===================== -->
+  <section>
+    <h2>٣· الربط والإعداد</h2>
+
+    <div class="g2">
+      <div>
+        <label for="srcGate">لوحة البحث عن اشتراك العميل</label>
+        <select id="srcGate"></select>
+      </div>
+      <div>
+        <label for="tgtGate">بوابة مرح (وجهة الإنشاء)</label>
+        <select id="tgtGate"></select>
+      </div>
+    </div>
+    <p class="note">بوابات فالكون لا تصلح طرفًا هنا — عملاؤها خارج هذا التجديد.</p>
+
+    <h3>ربط المدة بباقة على مرح</h3>
+    <div id="pkgMap"></div>
+    <p class="note">المتبقّي يُرقّى لأصغر باقة تغطّيه، فالمدد غير المربوطة تبقى معلّقة في الطابور.</p>
+
+    <h3>عند انقطاع الاتصال بمرح</h3>
+    <div class="g3">
+      <div><label for="promise">يُوعَد العميل بالتفعيل خلال (ساعة)</label>
+        <input type="number" id="promise" min="1" max="240" value="12"></div>
+      <div><label for="retry">إعادة المحاولة كل (دقيقة)</label>
+        <input type="number" id="retry" min="1" max="1440" value="10"></div>
+      <div><label for="rate">حد محاولات التعرّف لكل عنوان/ساعة</label>
+        <input type="number" id="rate" min="1" max="10000" value="12"></div>
+    </div>
+
+    <h3>بريد التنبيه — يصلك حين ينقطع الوصل</h3>
+    <div class="g2">
+      <div><label for="smtpHost">خادم SMTP</label><input id="smtpHost" placeholder="smtp.gmail.com"></div>
+      <div><label for="smtpPort">المنفذ</label><input type="number" id="smtpPort" value="587"></div>
+      <div><label for="smtpUser">اسم الدخول</label><input id="smtpUser" autocomplete="off"></div>
+      <div><label for="smtpPass">كلمة المرور</label><input type="password" id="smtpPass" autocomplete="new-password" placeholder="اتركها فارغة لتبقى كما هي"></div>
+      <div><label for="mailFrom">المُرسِل</label><input id="mailFrom" placeholder="alerts@ssouq.com"></div>
+      <div><label for="mailTo">يُرسَل إلى</label><input id="mailTo" placeholder="you@ssouq.com"></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="smtpTls" checked> STARTTLS (المنفذ 465 يستخدم SSL تلقائيًا)</label>
+
+    <h3>التشغيل</h3>
+    <label class="chk"><input type="checkbox" id="dryRun" checked>
+      وضع التجربة — لا يُلمس مرح، تُسجَّل الطلبات فقط</label>
+    <label class="chk"><input type="checkbox" id="enabled">
+      تفعيل صفحة التجديد للعملاء</label>
+
+    <button class="go" id="save">حفظ الإعداد</button>
+    <div class="row">
+      <button class="ghost" id="testMail" type="button">اختبار بريد التنبيه</button>
+    </div>
+    <p class="msg" id="cfgMsg"></p>
+  </section>
+
+  <!-- ===================== ٤· الطابور ===================== -->
+  <section>
+    <h2>٤· الطلبات <small id="qCounts"></small>
+      <button class="ghost" id="runQ" type="button">تفريغ الطابور الآن</button></h2>
+    <div class="scroll"><table>
+      <thead><tr><th>الوقت</th><th>الطلب</th><th>اليوزر</th><th>المدة</th><th>الحالة</th><th></th></tr></thead>
+      <tbody id="qBody"></tbody></table></div>
+    <p class="msg" id="qMsg"></p>
+  </section>
+</main>
+
+<script>
+"use strict";
+const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+const $ = s => document.querySelector(s);
+const AR = n => new Intl.NumberFormat('ar-SA',{maximumFractionDigits:2}).format(n || 0);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+["lnkAcc","lnkOut"].forEach(id => { const a = $('#' + id); if (a) a.href = B + a.getAttribute('href'); });
+// على نطاق الأداة، /renew هو هذه الصفحة نفسها — فصفحة العميل على الموقع العام.
+$('#lnkPub').href = B ? '/renew' : 'https://guide.ssouq.com/renew';
+
+const api = async (path, opt) => {
+  const r = await fetch(B + path, opt);
+  let d = {}; try { d = await r.json(); } catch(e){}
+  if (!r.ok && !d.error) d.error = 'خطأ ' + r.status;
+  return d;
+};
+const post = (path, body) => api(path, {method:'POST',
+  headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+
+function note(el, text, ok){
+  el.textContent = text || '';
+  el.className = 'msg' + (text ? (ok ? ' ok' : ' err') : '');
+}
+
+/* ============ ١· الرفع ============ */
+let picked = [];
+const drop = $('#drop'), pick = $('#pick');
+drop.onclick = () => pick.click();
+drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick.click(); } };
+['dragenter','dragover'].forEach(t => drop.addEventListener(t, e => {
+  e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => drop.addEventListener(t, e => {
+  e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+pick.onchange = () => addFiles(pick.files);
+
+function addFiles(list){
+  for (const f of list) if (!picked.some(p => p.name === f.name && p.size === f.size)) picked.push(f);
+  $('#fileList').innerHTML = picked.map((f, i) =>
+    `<div><span class="n">${esc(f.name)}</span>
+      <span class="t">${AR(Math.round(f.size/1024))} ك.ب
+      <button class="ghost" data-rm="${i}" type="button" style="padding:2px 8px;margin-right:6px">حذف</button>
+      </span></div>`).join('');
+  document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+    picked.splice(+b.dataset.rm, 1); addFiles([]); });
+  $('#up').disabled = !picked.length;
+}
+
+$('#up').onclick = async () => {
+  const btn = $('#up');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>جارٍ القراءة…';
+  note($('#upMsg'), '');
+  const fd = new FormData();
+  picked.forEach(f => fd.append('files', f, f.name));
+  fd.append('apply', $('#apply').checked ? '1' : '0');
+  fd.append('include_falcon', $('#includeFalcon').checked ? '1' : '0');
+  fd.append('keep_unconfirmed', $('#keepUnconfirmed').checked ? '1' : '0');
+  let d = {};
+  try {
+    const r = await fetch(B + '/api/renew/upload', {method:'POST', body: fd});
+    d = await r.json().catch(() => ({error:'ردّ غير مفهوم من الخادم'}));
+  } catch(e){ d = {error:'تعذّر الرفع: ' + e.message}; }
+  btn.disabled = false; btn.textContent = 'ارفع وحلّل';
+  if (!d.ok) return note($('#upMsg'), d.error || 'تعذّرت القراءة');
+  note($('#upMsg'), d.applied ? 'تمّت القراءة واعتُمد الفهرس ✓' : 'تمّت القراءة (بلا اعتماد) ✓', true);
+  showIndex(d.index);
+  render(d.analysis);
+};
+
+function showIndex(ix){
+  if (!ix) return;
+  $('#idxNote').textContent = ix.count
+    ? `الفهرس الحالي: ${AR(ix.count)} طلبًا · آخر بناء ${ix.built || '—'}`
+    : 'لا فهرس بعد — صفحة العميل لن تتعرّف على أحد حتى تعتمد ملفًا.';
+}
+
+/* ============ ٢· التحليل ============ */
+const PRESETS = {panel:{1:0.5,3:1,6:1.5,12:2.5,15:3,30:6}, month:{1:1,3:3,6:6,12:12,15:15,30:30}};
+let pts = {...PRESETS.panel}, AN = null;
+
+function render(a){
+  if (!a) return;
+  AN = a;
+  $('#secAn').classList.remove('hidden');
+  $('#anWhen').textContent = 'تاريخ الاستعلام ' + a.today;
+
+  $('#tiles').innerHTML = [
+    ['يوزرات سارية', AR(a.units.active)],
+    ['عملاء فريدون', AR(a.units.phones_active)],
+    ['منتهية', AR(a.units.expired)],
+  ].map(t => `<div class="tile"><p class="k">${t[0]}</p><p class="v">${t[1]}</p></div>`).join('')
+   + `<div class="tile hero"><p class="k">التكلفة الفعلية</p><p class="v" id="heroCost">—</p></div>`;
+
+  const sk = a.orders.skipped || {};
+  $('#cleanBody').innerHTML = [
+    ['ملفات مرفوعة', a.files.total], ['ملفات متطابقة حُذفت', a.files.dup],
+    ['طلبات فريدة', a.orders.unique], ['طلبات مكررة حُذفت', a.orders.dup],
+    ['غير مؤكدة', sk.unconfirmed || 0], ['فالكون', sk.falcon || 0],
+    ['بلا مدة', sk.no_months || 0], ['بلا تاريخ', sk.no_date || 0],
+    ['يوزرات (وحدات)', a.units.all],
+  ].map(r => `<tr><td>${r[0]}</td><td><b>${AR(r[1])}</b></td></tr>`).join('');
+
+  // شهور الانتهاء
+  const em = a.expiry_month, max = Math.max(...em.map(x => x.n), 1), cut = a.today.slice(0,7);
+  $('#bars').innerHTML = em.map(r =>
+    `<i class="${r.k < cut ? 'past' : ''}" style="height:${Math.max(2, r.n/max*100)}%"
+       data-t="${r.k} — ${AR(r.n)} يوزر"></i>`).join('');
+  $('#axis').innerHTML = em.length
+    ? `<span>${em[0].k}</span><span>${em[em.length-1].k}</span>` : '';
+
+  $('#prodBody').innerHTML = a.products.map(p =>
+    `<tr><td class="name">${esc(p.name)}${p.inferred ? ' <span style="color:var(--copy)">⟨مُستنتج⟩</span>' : ''}</td>
+      <td>${p.months} شهر${p.devices >= 2 ? ' · جهازين' : ''}</td>
+      <td>${AR(p.n)}</td><td>${AR(p.active)}</td></tr>`).join('');
+
+  cost();
+}
+
+function cost(){
+  if (!AN) return;
+  const pv = parseFloat($('#ppv').value) || 0;
+  let tp = 0, tu = 0;
+  $('#costBody').innerHTML = AN.tiers.map(t => {
+    const per = (pts[t.months] || 0) * (t.devices >= 2 ? t.devices : 1);
+    const p = per * t.n; tp += p; tu += t.n;
+    return `<tr><td>${t.months} شهر${t.devices >= 2 ? ' · جهازين' : ''}</td><td>${AR(t.n)}</td>
+      <td><input class="pt" type="number" data-m="${t.months}" value="${pts[t.months]}" min="0" step="0.25"></td>
+      <td>${AR(p)}</td><td>${AR(p*pv)}</td></tr>`;
+  }).join('');
+  $('#cU').textContent = AR(tu); $('#cP').textContent = AR(tp); $('#cC').textContent = AR(tp*pv);
+  const hero = $('#heroCost');
+  if (hero) hero.textContent = AR(tp*pv) + ' ر.س';
+  document.querySelectorAll('#costBody .pt').forEach(i => i.oninput = e => {
+    pts[e.target.dataset.m] = parseFloat(e.target.value) || 0;
+    const m = e.target.dataset.m; cost();
+    const el = document.querySelector(`#costBody .pt[data-m="${m}"]`);
+    if (el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  });
+}
+$('#ppv').oninput = cost;
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  pts = {...PRESETS[b.dataset.preset]}; cost(); });
+$('#dl').onclick = () => location.href = B + '/api/renew/report';
+
+/* ============ ٣· الإعداد ============ */
+let GATES = [], TIERS = [1,3,6,12,15,30], CFG = null;
+
+async function loadGates(){
+  const d = await api('/api/accounts');
+  GATES = [];
+  (d.accounts || []).forEach(a => (a.gates || []).forEach(g => GATES.push({
+    account_id: String(a.id), gate_id: String(g.id), mode: g.mode,
+    label: `${a.name} · ${g.name}${g.mode === 'falcon' ? ' (فالكون)' : ''}`,
+    falcon: g.mode === 'falcon'})));
+  ['#srcGate','#tgtGate'].forEach(sel => {
+    $(sel).innerHTML = '<option value="">— اختر بوابة —</option>' +
+      GATES.filter(g => !g.falcon).map(g =>
+        `<option value="${g.account_id}|${g.gate_id}">${esc(g.label)}</option>`).join('');
+  });
+}
+
+async function loadCfg(){
+  const d = await api('/api/renew/config');
+  if (d.error) return note($('#cfgMsg'), d.error);
+  CFG = d.renew; TIERS = d.tiers || TIERS;
+  showIndex(d.index);
+  $('#srcGate').value = CFG.source.account_id ? CFG.source.account_id + '|' + CFG.source.gate_id : '';
+  $('#tgtGate').value = CFG.target.account_id ? CFG.target.account_id + '|' + CFG.target.gate_id : '';
+  $('#promise').value = CFG.promise_hours; $('#retry').value = CFG.retry_minutes;
+  $('#rate').value = CFG.rate_per_hour;
+  $('#smtpHost').value = CFG.alert.host; $('#smtpPort').value = CFG.alert.port;
+  $('#smtpUser').value = CFG.alert.user; $('#mailFrom').value = CFG.alert.from;
+  $('#mailTo').value = CFG.alert.to; $('#smtpTls').checked = !!CFG.alert.tls;
+  $('#smtpPass').placeholder = CFG.alert.has_password ? '••• محفوظة — اتركها فارغة لتبقى'
+                                                      : 'كلمة مرور البريد';
+  $('#dryRun').checked = !!CFG.dry_run; $('#enabled').checked = !!CFG.enabled;
+  drawPkgMap();
+}
+
+function drawPkgMap(){
+  const p = (CFG && CFG.packages) || {};
+  $('#pkgMap').innerHTML = TIERS.map(t => `
+    <div class="g2" style="align-items:end">
+      <div><label>باقة ${t} شهر — المعرّف على مرح</label>
+        <input data-pk="${t}" value="${esc((p[t]||{}).id || '')}" placeholder="package id"></div>
+      <div><label>اسمها (للسجل)</label>
+        <input data-pn="${t}" value="${esc((p[t]||{}).name || '')}" placeholder="اسم الباقة"></div>
+    </div>`).join('');
+}
+
+function gateVal(sel){
+  const [a, g] = ($(sel).value || '|').split('|');
+  return {account_id: a || '', gate_id: g || ''};
+}
+
+$('#save').onclick = async () => {
+  const packages = {};
+  TIERS.forEach(t => {
+    const id = ($(`[data-pk="${t}"]`) || {}).value || '';
+    if (id.trim()) packages[t] = {id: id.trim(), name: (($(`[data-pn="${t}"]`)||{}).value || '').trim()};
+  });
+  const body = {renew: {
+    enabled: $('#enabled').checked, dry_run: $('#dryRun').checked,
+    source: gateVal('#srcGate'), target: gateVal('#tgtGate'), packages,
+    promise_hours: +$('#promise').value, retry_minutes: +$('#retry').value,
+    rate_per_hour: +$('#rate').value,
+    alert: {host: $('#smtpHost').value.trim(), port: +$('#smtpPort').value,
+            user: $('#smtpUser').value.trim(), password: $('#smtpPass').value,
+            from: $('#mailFrom').value.trim(), to: $('#mailTo').value.trim(),
+            tls: $('#smtpTls').checked},
+  }};
+  const btn = $('#save'); btn.disabled = true;
+  const d = await post('/api/renew/config', body);
+  btn.disabled = false;
+  if (d.error) return note($('#cfgMsg'), d.error);
+  CFG = d.renew; $('#smtpPass').value = '';
+  $('#smtpPass').placeholder = CFG.alert.has_password ? '••• محفوظة — اتركها فارغة لتبقى' : 'كلمة مرور البريد';
+  note($('#cfgMsg'), 'حُفظ الإعداد ✓', true);
+};
+
+$('#testMail').onclick = async () => {
+  note($('#cfgMsg'), 'جارٍ الإرسال…', true);
+  const d = await post('/api/renew/alert-test', {});
+  note($('#cfgMsg'), d.ok ? 'وصل بريد الاختبار ✓' : ('تعذّر الإرسال: ' + (d.error || '—')), !!d.ok);
+};
+
+/* ============ ٤· الطابور ============ */
+async function loadQueue(){
+  const d = await api('/api/renew/queue');
+  if (d.error) return note($('#qMsg'), d.error);
+  const c = d.counts || {};
+  $('#qCounts').textContent = Object.keys(c).length
+    ? Object.entries(c).map(([k,v]) => `${label(k)} ${AR(v)}`).join(' · ') : 'لا طلبات بعد';
+  $('#qBody').innerHTML = (d.rows || []).map(r => `
+    <tr><td>${esc(r.at)}</td><td>${esc(r.order || '—')}</td>
+      <td style="direction:ltr;text-align:left">${esc(r.username)}</td>
+      <td>${r.tier} شهر</td>
+      <td><span class="pill ${r.state}">${label(r.state)}</span>
+        ${r.last_error ? `<br><small style="color:var(--mute)">${esc(r.last_error.slice(0,70))}</small>` : ''}</td>
+      <td>${r.state !== 'done'
+        ? `<button class="ghost" data-retry="${esc(r.key)}" type="button">إعادة</button>` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="6" style="text-align:center;color:var(--mute)">لا طلبات</td></tr>';
+  document.querySelectorAll('[data-retry]').forEach(b => b.onclick = async () => {
+    const d2 = await post('/api/renew/retry', {key: b.dataset.retry});
+    note($('#qMsg'), d2.error || 'أُعيد إلى الطابور ✓', !d2.error);
+    loadQueue();
+  });
+}
+const label = s => ({done:'منجز', queued:'في الدور', stuck:'متوقّف', rejected:'مرفوض'}[s] || s);
+
+$('#runQ').onclick = async () => {
+  const btn = $('#runQ'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>جارٍ…';
+  const d = await post('/api/renew/run', {});
+  btn.disabled = false; btn.textContent = 'تفريغ الطابور الآن';
+  const r = d.result || {};
+  note($('#qMsg'), d.error || `جُرّب ${AR(r.ran)} · نُفّذ ${AR(r.done)} · باقٍ ${AR(r.left)}`, !d.error);
+  loadQueue();
+};
+
+/* ============ الإقلاع ============ */
+(async () => {
+  await loadGates();
+  await loadCfg();
+  await loadQueue();
+  const d = await api('/api/renew/analysis');
+  if (d.analysis) render(d.analysis);
+})();
+</script>
+</body>
+</html>

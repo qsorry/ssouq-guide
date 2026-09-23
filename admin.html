@@ -48,7 +48,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 <body>
 <main>
   <h1>إدارة الحسابات</h1>
-  <p class="sub">كل حساب له اسم دخول وكلمة مرور و API وهوست مستقل. المستخدم يدخل على <a href="/admin" id="lnkHome">صفحة الإنشاء</a> ببياناته ويرى باقات الـ API الخاص به فقط. · <a href="/admin/logout" id="lnkOut">تسجيل الخروج</a></p>
+  <p class="sub">كل حساب له اسم دخول وكلمة مرور و API وهوست مستقل. المستخدم يدخل على <a href="/admin" id="lnkHome">صفحة الإنشاء</a> ببياناته ويرى باقات الـ API الخاص به فقط. · <a href="/admin/renew" id="lnkRenew">خدمة التجديد</a> · <a href="/admin/logout" id="lnkOut">تسجيل الخروج</a></p>
 
   <section>
     <h2 id="formTitle">إضافة حساب</h2>
@@ -140,6 +140,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 // الأداة تُقدَّم من الجذر على نطاقها (admin.ssouq.com) وتحت /admin على الموقع العام،
 // فتُبنى كل عناوينها على B بدل تثبيت "/admin" في كل نداء.
 const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+document.getElementById("lnkRenew").href = B + "/renew";
 const HOME = B || "/";
 const $ = id => document.getElementById(id);
 const chk = d => { if (d && d.login) location.href = B + "/login"; return d; };
