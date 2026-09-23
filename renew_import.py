@@ -92,6 +92,25 @@ def dedupe_files(files):
 
 
 # ============================ المنتجات ============================
+
+# رموز المنتجات (SKU) تحمل المدة صراحةً: ‏`MRH-12M-ENT` · `MRH-06M` · `MRH-30M`.
+# وهي أوثق من قراءة الاسم العربي: الاسم تسويقيّ يتغيّر، والرمز مُصنَّف بيد صاحبه.
+# ‏MRH = مرح، والباقي وصفُ الباقة (ENT · WEBOS · SMARTTV · OFFER …) لا مدة فيه.
+SKU_PAT = re.compile(r"(?i)^([A-Z]{2,6})-0*(\d{1,2})M(?:-([A-Z0-9]+))?", re.I)
+
+
+def sku_info(sku):
+    """‏`MRH-12M-ENT` → {provider, months, variant}. وإلا {}."""
+    m = SKU_PAT.match(str(sku or "").strip())
+    if not m:
+        return {}
+    months = int(m.group(2))
+    if not 1 <= months <= 60:
+        return {}
+    return {"provider": m.group(1).upper(), "months": months,
+            "variant": (m.group(3) or "").upper()}
+
+
 def months_of(name):
     """مدة الباقة من اسم المنتج. يرجّع (أشهر، أمُستنتَج؟)."""
     s = str(name or "").translate(renew._AR_DIGITS)
@@ -264,8 +283,12 @@ def read_orders(files, products=None, keep_unconfirmed=False, include_falcon=Fal
                 qty = int(it[1] or 1) if len(it) > 1 else 1
                 sku = str(it[2] or "") if len(it) > 2 else ""
                 # المنتج يُعرَّف بالـSKU أولًا، ثم بالاسم، ثم بقراءة الاسم نفسه.
+                info = sku_info(sku)
                 prod = products["by_sku"].get(sku) or products["by_name"].get(pname.strip().lower())
-                if prod and prod.get("months"):
+                if info:                       # الرمز يحمل المدة صراحةً — أوثق ما لدينا
+                    mo, inferred = info["months"], False
+                    dev = devices_of(pname)
+                elif prod and prod.get("months"):
                     mo, dev, inferred = prod["months"], prod["devices"], prod.get("inferred", False)
                 else:
                     mo, inferred = months_of(pname)
@@ -476,14 +499,16 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
     out = []
     for it in items:
         pname = str(it.get("name") or "")
-        mo, inferred = months_of(pname)
+        info = sku_info(it.get("sku"))
+        mo, inferred = (info["months"], False) if info else months_of(pname)
         if not mo:
             continue
         dev = devices_of(pname)
         expiry = renew.add_months(date, mo)
         for _ in range(max(1, min(int(it.get("quantity") or 1), 20))):
             out.append({"order": no, "sid": str(order.get("id") or ""), "phone": phone,
-                        "date": date.isoformat(), "product": pname, "sku": "",
+                        "date": date.isoformat(), "product": pname,
+                        "sku": str(it.get("sku") or ""),
                         "months": mo, "devices": dev, "inferred": inferred,
                         "expiry": expiry.isoformat()})
     return (out, "") if out else ([], "no_months")

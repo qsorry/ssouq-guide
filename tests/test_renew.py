@@ -484,5 +484,39 @@ class TestPanelLines(unittest.TestCase):
         self.assertEqual(renew.match_candidates(self.dir, "2026-01-01", 12, 1), [])
 
 
+# ============================ رموز المنتجات والبطاقة ============================
+class TestSkuAndCard(unittest.TestCase):
+    """الرمز يحمل المدة صراحةً، والبطاقة تحمل الاعتماد — كلاهما من بيانات حيّة."""
+
+    def test_sku_carries_the_duration(self):
+        for sku, months, variant in [
+            ("MRH-12M-ENT", 12, "ENT"), ("MRH-06M", 6, ""), ("MRH-30M", 30, ""),
+            ("MRH-12M-SMARTTV", 12, "SMARTTV"), ("MRH-06M-WEBOS", 6, "WEBOS"),
+        ]:
+            got = renew_import.sku_info(sku)
+            self.assertEqual((got.get("months"), got.get("variant")), (months, variant), sku)
+            self.assertEqual(got.get("provider"), "MRH")
+
+    def test_a_meaningless_sku_is_not_forced(self):
+        for sku in ("", "ABC", "MRH", "MRH-99M9", "MRH-0M"):
+            self.assertFalse(renew_import.sku_info(sku).get("months"), sku)
+
+    def test_the_sku_beats_the_arabic_name(self):
+        """الاسم تسويقيّ يتغيّر، والرمز مُصنَّف بيد صاحبه — فالرمز يُقدَّم."""
+        raw = ("رقم الطلب,حالة الطلب,رقم الجوال,تاريخ الطلب,skus_json\n"
+               '881,طلبك مؤكد,0501234567,2026-06-01,'
+               '"[[""اشتراك ترفيهي رقمي"", 1, ""MRH-06M"", 40, 40]]"\n').encode("utf-8")
+        units, _ = renew_import.read_orders([("o.csv", raw)])
+        self.assertEqual(units[0]["months"], 6)      # لا مدة في الاسم أصلًا
+
+    def test_the_real_digital_card_is_read(self):
+        """نصّ البطاقة كما يظهر في لوحة سلة للطلب 272053873 — بالتصحيف وكل شيء."""
+        card = ("الرقم المخزني SKU:\nMRH-12M-ENT\nالكود:\n"
+                "username:346731410391\nPassowrd:266061955108 host http://ssouqhost.vip")
+        self.assertEqual(renew_import.parse_credentials(card), {
+            "username": "346731410391", "password": "266061955108",
+            "host": "http://ssouqhost.vip"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
