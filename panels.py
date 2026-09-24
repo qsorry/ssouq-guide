@@ -69,6 +69,18 @@ def line_months(rec):
         months_from_dates(rec.get("created"), rec.get("exp"))
 
 
+def expiry_status(exp, today, renewal_days):
+    """حالة الانتهاء من تاريخ اللوحة: كم بقي، أمنتهٍ، أقريبٌ من الانتهاء.
+
+    القريب: انتهاؤه بين اليوم و`renewal_days` يومًا — وقتُ رسالة التجديد."""
+    d = renew.parse_date(exp)
+    if not d:
+        return {"exp_date": "", "days_left": None, "expired": False, "expiring_soon": False}
+    left = (d - today).days
+    return {"exp_date": d.isoformat(), "days_left": left,
+            "expired": left < 0, "expiring_soon": 0 <= left <= renewal_days}
+
+
 # ============================ تخزين يوزرات اللوحات ============================
 def panel_lines_path(data_dir):
     return os.path.join(data_dir, "renew_panel_lines.json")
@@ -124,6 +136,7 @@ def save_store_lines(data_dir, units):
     lines, no_user = [], 0
     for u in units:
         rec = {"order": u.get("order", ""), "date": u.get("date", ""),
+               "phone": u.get("phone", ""),
                "host": u.get("host", ""), "username": u.get("username", ""),
                "password": u.get("password", ""), "months": u.get("months", 0),
                "devices": u.get("devices", 1), "expiry": u.get("expiry", ""),
@@ -169,7 +182,7 @@ WRONG_PANEL = "wrong_panel"                 # موجودٌ لكن على لوح�
 HOST_UNMAPPED = "host_unmapped"             # هوست الطلب غير مربوطٍ بأي لوحة
 
 
-def compare(config, data_dir):
+def compare(config, data_dir, days_override=None):
     """يطابق خطوط سلة المحفوظة بيوزرات اللوحات المحفوظة → صفوفٌ مصنّفة + ملخّص.
 
     لا شبكة هنا: يعمل على ما سُحب وحُفظ. فالسحب نافذةٌ تُجمع فيها البيانات، ثم
@@ -179,11 +192,14 @@ def compare(config, data_dir):
     hidx = host_index(cfg["panels"])
     pl = load_panel_lines(data_dir)["panels"]
     store = load_store_lines(data_dir)
+    today = renew._today()
+    renewal_days = days_override if days_override else cfg.get("renewal_days", 45)
 
     rows = []
     summary = {OK: 0, DURATION_MISMATCH: 0, MISSING: 0, WRONG_PANEL: 0,
                HOST_UNMAPPED: 0, "no_username": store.get("no_username", 0),
-               "store_lines": len(store.get("lines", []))}
+               "store_lines": len(store.get("lines", [])),
+               "expired": 0, "expiring_soon": 0}
 
     for ln in store.get("lines", []):
         u = str(ln.get("username") or "").strip()
@@ -208,12 +224,14 @@ def compare(config, data_dir):
                     break
 
         row = {"username": u, "order": ln.get("order", ""), "date": ln.get("date", ""),
+               "phone": ln.get("phone", ""),
                "host": ln.get("host", ""), "host_norm": nh, "product": ln.get("product", ""),
                "sku": ln.get("sku", ""), "store_months": s_months,
                "panel_id": pid, "panel_name": panel["name"] if panel else "",
                "found_panel_id": found_pid,
                "found_panel_name": (pl.get(found_pid, {}).get("name", "") if found_pid else ""),
-               "panel_months": 0, "panel_exp": "", "panel_package": ""}
+               "panel_months": 0, "panel_exp": "", "panel_package": "",
+               "days_left": None, "expired": False, "expiring_soon": False}
 
         if not pid:
             row["kind"] = HOST_UNMAPPED
@@ -223,6 +241,13 @@ def compare(config, data_dir):
             row["panel_months"] = int(found_rec.get("months") or 0)
             row["panel_exp"] = found_rec.get("exp", "")
             row["panel_package"] = found_rec.get("package", "")
+            es = expiry_status(found_rec.get("exp"), today, renewal_days)
+            row.update({"days_left": es["days_left"], "expired": es["expired"],
+                        "expiring_soon": es["expiring_soon"]})
+            if es["expired"]:
+                summary["expired"] += 1
+            elif es["expiring_soon"]:
+                summary["expiring_soon"] += 1
             if found_pid and pid and found_pid != pid:
                 row["kind"] = WRONG_PANEL
             elif s_months and row["panel_months"] and s_months != row["panel_months"]:
@@ -236,4 +261,20 @@ def compare(config, data_dir):
     # الأهمّ أولًا: الفروق ثم المفقود ثم اللوحة الخاطئة ثم الهوست غير المربوط ثم المطابق.
     order = {DURATION_MISMATCH: 0, MISSING: 1, WRONG_PANEL: 2, HOST_UNMAPPED: 3, OK: 4}
     rows.sort(key=lambda r: (order.get(r["kind"], 9), r["username"]))
-    return {"rows": rows, "summary": summary, "built": renew.now_iso()}
+    return {"rows": rows, "summary": summary, "built": renew.now_iso(),
+            "renewal_days": renewal_days}
+
+
+def renewal_list(config, data_dir, days_override=None):
+    """العملاء المستحقّون للتجديد: خطٌّ وُجد على لوحته وانتهى أو قارب الانتهاء
+    (خلال renewal_days)، ومعه جوال العميل ورقم طلبه — جاهزٌ لرسالة تجديد.
+
+    الأعجل أولًا (الأقلّ أيامًا متبقّية)، والمنتهي قبل القريب."""
+    res = compare(config, data_dir, days_override)
+    due = [r for r in res["rows"] if r.get("days_left") is not None
+           and (r["expired"] or r["expiring_soon"])]
+    due.sort(key=lambda r: r["days_left"])
+    return {"rows": due, "renewal_days": res["renewal_days"],
+            "expired": res["summary"]["expired"],
+            "expiring_soon": res["summary"]["expiring_soon"],
+            "built": res["built"]}

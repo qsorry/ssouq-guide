@@ -757,7 +757,9 @@ def _panels_worker(entries):
             try:
                 sess = web_session(gate)
                 if isinstance(sess, xm_web.CasperWebSession):
-                    rows = sess.all_users(progress=prog)
+                    # النشطون والمنتهون معًا: القريب من الانتهاء يُعرف من تاريخ
+                    # الانتهاء، والمنتهي يُعرف من مشاهدة expired المستقلّة.
+                    rows = sess.all_users(views=("", "expired"), progress=prog)
                 else:
                     rows = sess.search("", limit=20000)
                 n = panels.save_panel_lines(DATA_DIR, panel_id, name, rows)
@@ -806,8 +808,17 @@ _KIND_AR = {
 }
 
 
-def _compare_xlsx(st):
-    res = panels.compare(st.get("renew"), DATA_DIR)
+def _days_arg(v):
+    """معامل days من الرابط → عددٌ في [1,365] أو None (فيُستعمل المحفوظ)."""
+    try:
+        n = int(str(v or "").strip())
+        return max(1, min(365, n))
+    except (TypeError, ValueError):
+        return None
+
+
+def _compare_xlsx(st, days=None):
+    res = panels.compare(st.get("renew"), DATA_DIR, days)
     headers = ["الحالة", "اليوزر", "رقم الطلب", "التاريخ", "الهوست", "اللوحة (بالهوست)",
                "وُجد على", "سلة (أشهر)", "اللوحة (أشهر)", "الفرق", "باقة اللوحة",
                "انتهاء اللوحة", "المنتج", "SKU"]
@@ -825,6 +836,17 @@ def _compare_xlsx(st):
                ["بلا يوزر (لا يُطابَق)", s.get("no_username", 0)]]
     return xlsx_write.build_xlsx([("المقارنة", headers, rows),
                                   ("ملخّص", ["البند", "العدد"], summary)])
+
+
+def _renewal_xlsx(st, days=None):
+    r = panels.renewal_list(st.get("renew"), DATA_DIR, days)
+    headers = ["الحالة", "أيام متبقّية", "اليوزر", "جوال العميل", "رقم الطلب",
+               "اللوحة", "انتهاء اللوحة", "المدّة المباعة", "المنتج"]
+    rows = [["منتهٍ" if x["expired"] else "قريب الانتهاء", x["days_left"],
+             x["username"], x.get("phone", ""), x["order"],
+             x["found_panel_name"] or x["panel_name"], x["panel_exp"],
+             x["store_months"], x["product"]] for x in r["rows"]]
+    return xlsx_write.build_xlsx([("للتجديد", headers, rows)])
 
 
 def _panel_users_xlsx():
@@ -1860,11 +1882,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/renew/compare":       # نتيجة المطابقة (سلة ↔ اللوحات)
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, panels.compare(st.get("renew"), DATA_DIR))
+                return self._send(200, panels.compare(st.get("renew"), DATA_DIR,
+                                                      _days_arg(self._q("days"))))
             if path == "/api/renew/compare.xlsx":   # المطابقة ملفَّ Excel
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, raw=_compare_xlsx(st),
+                return self._send(200, raw=_compare_xlsx(st, _days_arg(self._q("days"))),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="salla-vs-panels.xlsx"'})
@@ -1875,6 +1898,18 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="panel-users.xlsx"'})
+            if path == "/api/renew/renewal":       # العملاء المستحقّون للتجديد
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, panels.renewal_list(st.get("renew"), DATA_DIR,
+                                                           _days_arg(self._q("days"))))
+            if path == "/api/renew/renewal.xlsx":   # قائمة التجديد Excel
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, raw=_renewal_xlsx(st, _days_arg(self._q("days"))),
+                                  ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  extra={"Content-Disposition":
+                                         'attachment; filename="renewal-due.xlsx"'})
             if path == "/api/renew/harvest-status":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})

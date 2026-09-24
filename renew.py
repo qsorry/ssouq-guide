@@ -56,6 +56,7 @@ def default_config():
         "promise_hours": 12,        # ما يُقال للعميل عند الانقطاع
         "retry_minutes": 10,        # كل كم يُعاد تفريغ الطابور
         "rate_per_hour": 12,        # محاولات التعرّف لكل عنوان، منعًا لتخمين أرقام الطلبات
+        "renewal_days": 45,         # «قريبٌ من الانتهاء» = انتهاؤه خلال هذه الأيام
         "alert": {"host": "", "port": 587, "user": "", "password": "",
                   "from": "", "to": "", "tls": True, "gap_minutes": 30},
         # كوكيز جلسة لوحة سلة، يلصقها المشغّل من متصفّحه. لا كلمة مرور ولا
@@ -127,7 +128,7 @@ def normalize_config(cfg):
                      for m, v in pk.items()
                      if isinstance(v, dict) and str(m).isdigit() and v.get("id")}
     for k, lo, hi in (("promise_hours", 1, 240), ("retry_minutes", 1, 1440),
-                      ("rate_per_hour", 1, 10000)):
+                      ("rate_per_hour", 1, 10000), ("renewal_days", 1, 365)):
         try:
             d[k] = max(lo, min(hi, int(cfg.get(k, d[k]))))
         except (TypeError, ValueError):
@@ -159,6 +160,9 @@ def clean_config(new, old):
     for k in _TOP_SECRETS:
         if not n[k]:
             n[k] = o[k]
+    # اللوحات تُدار من مسارها الخاص؛ حفظُ الإعداد العام لا يمسّها ما لم يُرسِلها.
+    if not (isinstance(new, dict) and "panels" in new):
+        n["panels"] = o["panels"]
     return n
 
 
