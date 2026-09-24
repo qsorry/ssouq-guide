@@ -190,6 +190,44 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
     </div>
   </section>
 
+  <!-- ===================== مقارنة اللوحات ===================== -->
+  <section>
+    <h2>قارِن سلة باللوحات <small>يوزرٌ مباعٌ في سلة — أموجودٌ على لوحته؟ وبالمدة نفسها؟</small></h2>
+
+    <h3>اللوحات وهوستاتها <small style="font-weight:400">كل لوحة دخولٌ واحد وعدّة هوستات للعملاء تتبعها</small></h3>
+    <div id="panelsBox"></div>
+    <div class="row" style="margin-top:8px">
+      <button class="ghost" id="addPanel" type="button">+ أضف لوحة</button>
+      <button class="go" id="savePanels" type="button">احفظ اللوحات</button>
+    </div>
+    <p class="msg" id="panelsMsg"></p>
+
+    <h3>اسحب يوزرات اللوحات <small style="font-weight:400">مرّةً تُجمع، ثم تُقارَن بلا انتظار</small></h3>
+    <div class="row">
+      <button class="ghost" id="pullPanels" type="button">اسحب يوزرات كل اللوحات</button>
+      <button class="ghost hidden" id="pullPanelsStop" type="button">إيقاف</button>
+      <a class="ghost" id="dlUsers" href="#" type="button">تنزيل اليوزرات Excel</a>
+    </div>
+    <p class="msg" id="panelsMsg2"></p>
+    <div id="panelsBar" class="hidden" style="margin-top:10px">
+      <div style="height:8px;background:#e5e7eb;border-radius:6px;overflow:hidden">
+        <div id="panelsFill" style="height:100%;width:0;background:var(--go);transition:width .3s"></div>
+      </div>
+    </div>
+    <div id="panelsResults"></div>
+
+    <h3>النتيجة <small style="font-weight:400">الأهمّ أولًا: فروق المدّة ثم المفقود</small>
+      <a class="ghost" id="dlCompare" href="#" style="margin-right:8px">تنزيل المقارنة Excel</a>
+      <button class="ghost" id="doCompare" type="button">حدّث المقارنة</button></h3>
+    <div class="tiles" id="cmpTiles"></div>
+    <div class="row" id="cmpFilters" style="margin:8px 0;gap:6px;flex-wrap:wrap"></div>
+    <div class="scroll"><table>
+      <thead><tr><th>الحالة</th><th>اليوزر</th><th>الطلب</th><th>الهوست</th>
+        <th>اللوحة</th><th>سلة</th><th>اللوحة</th><th>باقة اللوحة</th></tr></thead>
+      <tbody id="cmpBody"></tbody></table></div>
+    <p class="msg" id="cmpMsg"></p>
+  </section>
+
   <!-- ===================== ٢· التحليل ===================== -->
   <section id="secAn" class="hidden">
     <h2>٢· التحليل <small id="anWhen"></small>
@@ -808,10 +846,180 @@ $('#runQ').onclick = async () => {
   loadQueue();
 };
 
+/* ============ مقارنة اللوحات ============ */
+let PANELS = [];               // لوحات المقارنة كما حُفظت
+const CMP_KIND = {
+  duration_mismatch: {t: 'فرق مدّة', c: '#b45309'},
+  missing_on_panel:  {t: 'مفقود على اللوحة', c: '#b91c1c'},
+  wrong_panel:       {t: 'لوحة مختلفة', c: '#7c3aed'},
+  host_unmapped:     {t: 'هوست غير مربوط', c: '#6b7280'},
+  ok:                {t: 'مطابق', c: '#15803d'},
+};
+let cmpAll = [], cmpFilter = '';
+
+function webGateOptions(sel){
+  const opts = GATES.filter(g => g.mode === 'web').map(g =>
+    `<option value="${g.account_id}|${g.gate_id}" ${sel === g.account_id + '|' + g.gate_id ? 'selected' : ''}>${esc(g.label)}</option>`).join('');
+  return '<option value="">— اختر بوابة (ويب) —</option>' + opts;
+}
+
+function panelRow(p){
+  p = p || {name: '', account_id: '', gate_id: '', hosts: []};
+  const gv = p.account_id ? p.account_id + '|' + p.gate_id : '';
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.style.marginBottom = '8px';
+  div.innerHTML = `
+    <div class="g2">
+      <div><label>اسم اللوحة</label>
+        <input class="pName" value="${esc(p.name)}" placeholder="كاسبر / مرح / c4k"></div>
+      <div><label>بوابة السحب</label>
+        <select class="pGate">${webGateOptions(gv)}</select></div>
+    </div>
+    <label style="margin-top:6px">هوستات العملاء التابعة لها <small style="font-weight:400">هوستٌ في كل سطر — يُطابَق بها الطلب في سلة</small></label>
+    <textarea class="pHosts" rows="3" style="width:100%;direction:ltr" placeholder="sub.kasper.tv&#10;kasper2.tv">${esc((p.hosts || []).join('\n'))}</textarea>
+    <div class="row" style="margin-top:6px"><button class="ghost pDel" type="button">حذف اللوحة</button></div>`;
+  div.querySelector('.pDel').onclick = () => div.remove();
+  return div;
+}
+
+async function loadPanels(){
+  const d = await api('/api/renew/panels');
+  if (d.error) return note($('#panelsMsg'), d.error);
+  PANELS = d.panels || [];
+  const box = $('#panelsBox'); box.innerHTML = '';
+  if (!PANELS.length) box.appendChild(panelRow());
+  else PANELS.forEach(p => box.appendChild(panelRow(p)));
+  renderPanelSaved(d.lines || {}, d.store || {});
+}
+
+function renderPanelSaved(lines, store){
+  const parts = Object.values(lines).map(p => `${esc(p.name)}: ${AR(p.count)}`);
+  const t = parts.length ? ('محفوظ — ' + parts.join(' · ')) : 'لم تُسحب يوزرات اللوحات بعد.';
+  const s = store.count != null ? ` | خطوط سلة (بيوزر): ${AR(store.count)}${store.no_username ? ` · بلا يوزر ${AR(store.no_username)}` : ''}` : '';
+  note($('#panelsMsg2'), t + s, !!parts.length);
+}
+
+$('#addPanel').onclick = () => $('#panelsBox').appendChild(panelRow());
+
+$('#savePanels').onclick = async () => {
+  const panels = [...$('#panelsBox').querySelectorAll('.card')].map(d => {
+    const [a, g] = (d.querySelector('.pGate').value || '|').split('|');
+    return {name: d.querySelector('.pName').value.trim(),
+            account_id: a || '', gate_id: g || '',
+            hosts: d.querySelector('.pHosts').value.split('\n').map(s => s.trim()).filter(Boolean)};
+  }).filter(p => p.name);
+  const btn = $('#savePanels'); btn.disabled = true;
+  const d = await post('/api/renew/panels', {panels});
+  btn.disabled = false;
+  if (d.error) return note($('#panelsMsg'), d.error);
+  PANELS = d.panels || [];
+  note($('#panelsMsg'), `حُفظت ${AR(PANELS.length)} لوحة ✓`, true);
+};
+
+let panelsTimer = null;
+$('#pullPanels').onclick = async () => {
+  const d = await post('/api/renew/panels-pull', {});
+  if (!d.ok) return note($('#panelsMsg2'), d.error || 'تعذّر بدء السحب');
+  $('#panelsBar').classList.remove('hidden');
+  $('#pullPanelsStop').classList.remove('hidden');
+  note($('#panelsMsg2'), `بدأ سحب ${AR(d.panels)} لوحة…`, true);
+  watchPanels();
+};
+$('#pullPanelsStop').onclick = async () => {
+  await post('/api/renew/panels-cancel', {});
+  note($('#panelsMsg2'), 'طُلب الإيقاف — ينتهي بعد اللوحة الجارية.', true);
+};
+
+function panelsResultsHtml(res){
+  if (!res || !res.length) return '';
+  return '<div class="scroll" style="margin-top:8px"><table><tbody>' + res.map(r =>
+    `<tr><td>${esc(r.panel)}</td><td>${r.ok
+      ? `<span style="color:#15803d">${AR(r.count)} يوزر ✓</span>`
+      : `<span style="color:#b91c1c">${esc(r.error || 'فشل')}</span>`}</td></tr>`).join('')
+    + '</tbody></table></div>';
+}
+
+async function watchPanels(){
+  const d = await api('/api/renew/panels-status');
+  const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
+  $('#panelsFill').style.width = pct + '%';
+  if (d.running) note($('#panelsMsg2'),
+    `جارٍ سحب «${esc(d.panel || '—')}»… ${AR(d.done)} يوزر`, true);
+  $('#panelsResults').innerHTML = panelsResultsHtml(d.results);
+  if (d.running){
+    clearTimeout(panelsTimer);
+    panelsTimer = setTimeout(watchPanels, 2000);
+  } else {
+    $('#pullPanelsStop').classList.add('hidden');
+    clearTimeout(panelsTimer);
+    const ok = (d.results || []).filter(r => r.ok).reduce((s, r) => s + r.count, 0);
+    if (d.phase === 'done') note($('#panelsMsg2'), `اكتمل — ${AR(ok)} يوزر محفوظ. اضغط «حدّث المقارنة».`, true);
+    renderPanelSaved(d.saved || {}, {});
+  }
+}
+
+function renderCompare(res){
+  cmpAll = res.rows || [];
+  const s = res.summary || {};
+  const tiles = [
+    ['خطوط سلة', s.store_lines || 0, ''],
+    ['فرق مدّة', s.duration_mismatch || 0, CMP_KIND.duration_mismatch.c],
+    ['مفقود', s.missing_on_panel || 0, CMP_KIND.missing_on_panel.c],
+    ['لوحة مختلفة', s.wrong_panel || 0, CMP_KIND.wrong_panel.c],
+    ['هوست غير مربوط', s.host_unmapped || 0, CMP_KIND.host_unmapped.c],
+    ['مطابق', s.ok || 0, CMP_KIND.ok.c],
+    ['بلا يوزر', s.no_username || 0, ''],
+  ];
+  $('#cmpTiles').innerHTML = tiles.map(t =>
+    `<div class="tile"><p class="k">${t[0]}</p><p class="v" ${t[2] ? `style="color:${t[2]}"` : ''}>${AR(t[1])}</p></div>`).join('');
+  const kinds = ['', 'duration_mismatch', 'missing_on_panel', 'wrong_panel', 'host_unmapped', 'ok'];
+  $('#cmpFilters').innerHTML = kinds.map(k => {
+    const lbl = k ? CMP_KIND[k].t : 'الكل';
+    const n = k ? (s[k] || 0) : cmpAll.length;
+    return `<button class="ghost" data-k="${k}" style="${cmpFilter === k ? 'border-color:var(--go);font-weight:700' : ''}">${lbl} (${AR(n)})</button>`;
+  }).join('');
+  $('#cmpFilters').querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+    cmpFilter = b.dataset.k; drawCmpRows();
+  });
+  drawCmpRows();
+}
+
+function drawCmpRows(){
+  const rows = cmpFilter ? cmpAll.filter(r => r.kind === cmpFilter) : cmpAll;
+  $('#cmpBody').innerHTML = rows.slice(0, 1000).map(r => {
+    const k = CMP_KIND[r.kind] || {t: r.kind, c: '#000'};
+    const dm = r.kind === 'duration_mismatch';
+    return `<tr>
+      <td><span style="color:${k.c};font-weight:600">${k.t}</span></td>
+      <td style="direction:ltr;text-align:left">${esc(r.username)}</td>
+      <td>${esc(r.order || '—')}</td>
+      <td style="direction:ltr;text-align:left;color:var(--mute)">${esc(r.host_norm || '—')}</td>
+      <td>${esc(r.found_panel_name || r.panel_name || '—')}</td>
+      <td ${dm ? 'style="font-weight:700"' : ''}>${r.store_months || '—'}</td>
+      <td ${dm ? 'style="font-weight:700;color:' + k.c + '"' : ''}>${r.panel_months || '—'}</td>
+      <td style="color:var(--mute)">${esc(r.panel_package || '—')}</td></tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--mute)">لا صفوف</td></tr>';
+  if (rows.length > 1000)
+    note($('#cmpMsg'), `عُرض أول ١٠٠٠ من ${AR(rows.length)} — نزّل Excel للكل.`, true);
+  else note($('#cmpMsg'), '');
+}
+
+$('#doCompare').onclick = async () => {
+  const btn = $('#doCompare'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>جارٍ…';
+  const d = await api('/api/renew/compare');
+  btn.disabled = false; btn.textContent = 'حدّث المقارنة';
+  if (d.error) return note($('#cmpMsg'), d.error);
+  renderCompare(d);
+};
+$('#dlCompare').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/compare.xlsx'; };
+$('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/users.xlsx'; };
+
 /* ============ الإقلاع ============ */
 (async () => {
   await loadGates();
   await loadCfg();
+  await loadPanels();
   await loadQueue();
   const d = await api('/api/renew/analysis');
   if (d.analysis) render(d.analysis);

@@ -1270,6 +1270,161 @@ class PanelWebSession:
                 pass
 
 
+class CasperWebSession(PanelWebSession):
+    """لوحة كاسبر (c4kpanel وأخواتها): دخولٌ PHP بسيط بلا كود تحقّق، وقائمة
+    مستخدمين بترقيم صفحات على `index.php/users/index`. تختلف عن Xtream التي
+    تعتمد `table_search.php`، فلها هنا دخولها ومحلّلها، وتشارك من الصنف الأب
+    البنيةَ التحتية وحدها (الكوكيز والطلبات وحلّ الرابط).
+
+    ‏panel_base قد يُكتب رابطَ الجذر مع مسار السياق (…/iptv) أو رابطَ صفحة
+    الدخول (…/iptv/login.php)؛ ومنه يُشتقّ السياق فتُبنى عليه بقيّة المسارات."""
+
+    def __init__(self, account, data_dir, use_ocr=False):
+        super().__init__(account, data_dir, use_ocr=use_ocr)
+        raw = str(account.get("panel_base") or account.get("login_url") or "").strip()
+        path = urllib.parse.urlparse(raw).path.rstrip("/")
+        if path.endswith("/login.php"):
+            path = path[: -len("/login.php")]
+        self.ctx = path                       # مثل "/iptv" (وقد يكون "")
+        self.login_path = (self.ctx + "/login.php") if self.ctx else "/login.php"
+
+    def _u(self, rel):
+        """مسارٌ داخل سياق اللوحة: _u("index.php/users/index") → /iptv/index.php/..."""
+        rel = rel.lstrip("/")
+        return (self.ctx + "/" + rel) if self.ctx else "/" + rel
+
+    def is_authenticated(self) -> bool:
+        r = self._request(self._u("index.php/home/index"))
+        loc = (r.get("location", "") or r.get("final_url", "")).lower()
+        if "login.php" in loc or "auth=0" in loc:
+            return False
+        low = self._text(r).lower()
+        if "do_login" in low or ('name="password"' in low and "login" in low):
+            return False
+        return r.get("status", 0) < 400
+
+    def login(self, captcha: str = None, auto_attempts: int = 3) -> bool:
+        """يقرأ صفحة الدخول (PHPSESSID + الحقول المخفية) ثم يُرسل الاسم وكلمة المرور
+        و`maa=do_login`. لا كود تحقّق ولا OCR ولا إنسان — لوحة كاسبر لا تطلبه."""
+        page = self._text(self._request(self.login_path))
+        form = self._parse_login_form(page) if 'name="password"' in page.lower() else {}
+        fields = dict(form.get("fields") or {})
+        fields[form.get("user_field") or "username"] = self.acct.get("user", "")
+        fields[form.get("pass_field") or "password"] = self.acct.get("password", "")
+        fields.setdefault("maa", "do_login")
+        self._request(self.login_path, data=fields,
+                      headers={"Referer": self._abs(self.login_path)})
+        if self.is_authenticated():
+            return True
+        raise LoginFailed("credentials",
+                          "تعذّر الدخول إلى لوحة كاسبر — تحقّق من اسم الدخول وكلمة المرور")
+
+    def ensure_login(self):
+        with self._login_lock():
+            if self.is_authenticated():
+                return
+            self.login()
+
+    # ---- قراءة قائمة المستخدمين ----
+    _RE_EXP = re.compile(r'data-name=["\']exp_date["\'][^>]*>([^<]+)<', re.I)
+    _RE_TD = re.compile(r"<td\b[^>]*>(.*?)</td>", re.I | re.S)
+    _RE_TR = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.I | re.S)
+    _RE_TBODY = re.compile(r"<tbody\b[^>]*>(.*?)</tbody>", re.I | re.S)
+    _RE_TAG = re.compile(r"<[^>]+>")
+    _RE_PAGES = re.compile(r"users/index\?&(?:amp;)?page=(\d+)", re.I)
+
+    @classmethod
+    def _cell(cls, s: str) -> str:
+        return _html.unescape(re.sub(r"\s+", " ", cls._RE_TAG.sub(" ", s or ""))).strip()
+
+    @classmethod
+    def _parse_users_page(cls, html: str) -> list:
+        """صفوف صفحةِ مستخدمين → قائمة قواميس بالشكل نفسه الذي يحفظه التصدير.
+
+        الأعمدة ثابتة في لوحة كاسبر (رأس الجدول: ID · · Reseller · Fullname ·
+        Username · Password · Package · Lock · Created · Expire · Notes · MAX):
+        [0] رقم · [4] اليوزر · [5] كلمة المرور · [6] الباقة («15 Months») ·
+        [8] الإنشاء · [11] عدد الاتصالات؛ والانتهاء من الحقل `data-name="exp_date"`
+        لأنه أوثق من موضع العمود. الحذر: [2] اسم الموزّع لا اليوزر (يتكرّر في كل صف)."""
+        m = cls._RE_TBODY.search(html)
+        body = m.group(1) if m else ""
+        out = []
+        for tr in cls._RE_TR.findall(body):
+            tds = cls._RE_TD.findall(tr)
+            if len(tds) < 12:
+                continue
+            user = cls._cell(tds[4])
+            if not user:
+                continue
+            exp = cls._RE_EXP.search(tr)
+            out.append({
+                "id": cls._cell(tds[0]),
+                "username": user,
+                "password": cls._cell(tds[5]),
+                "package": cls._cell(tds[6]),
+                "created": cls._cell(tds[8])[:10],
+                "exp": (exp.group(1).strip() if exp else cls._cell(tds[9]))[:16],
+                "connections": cls._cell(tds[11]),
+                "status": "",
+            })
+        return out
+
+    @classmethod
+    def _last_page(cls, html: str) -> int:
+        pages = [int(x) for x in cls._RE_PAGES.findall(html)]
+        return max(pages) if pages else 1
+
+    def iter_users(self, view: str = "", max_pages: int = 500, progress=None):
+        """يمرّ على كل صفحات المستخدمين ويُخرج صفوفها صفًّا صفًّا (بلا تكرار).
+
+        ‏view: "" النشطون، أو expired/banned/disabled. يتوقّف على أول صفحةٍ
+        فارغة أو ببلوغ آخر صفحةٍ في الترقيم — أيّهما أسبق."""
+        self.ensure_login()
+        seen, page, last = set(), 1, None
+        while page <= max_pages:
+            q = "page=%d" % page + (("&view=" + urllib.parse.quote(view)) if view else "")
+            html = self._text(self._request(self._u("index.php/users/index?" + q)))
+            rows = self._parse_users_page(html)
+            if last is None:
+                last = self._last_page(html)
+            for r in rows:
+                u = r["username"]
+                if u and u not in seen:
+                    seen.add(u)
+                    yield r
+            if progress:
+                progress(len(seen), last or page, page)
+            if not rows or page >= (last or page):
+                break
+            page += 1
+
+    def all_users(self, views=("",), max_pages: int = 500, progress=None) -> list:
+        """كل المستخدمين من كل المشاهدات المطلوبة، مفهرسين باليوزر (بلا تكرار)."""
+        by_user, order = {}, []
+        for v in views:
+            for r in self.iter_users(v, max_pages=max_pages, progress=progress):
+                u = r["username"]
+                if u not in by_user:
+                    order.append(u)
+                by_user[u] = r                # المشاهدة الأولى تكفي؛ لا تُدهَس بأخرى
+        return [by_user[u] for u in order]
+
+    def search(self, query: str, limit: int = 50) -> list:
+        """بحثٌ صحيحٌ لا يُخطئ النفي: مسحٌ كاملٌ ثم ترشيح باليوزر أو كلمة المرور.
+        لوحة كاسبر لا تُرشّح بموثوقية عبر الرابط، ومسحُها مرّةً أضمن من نفيٍ كاذب
+        قد يُنشئ خطًّا ثانيًا بنفس اليوزر."""
+        q = str(query or "").strip().lower()
+        if not q:
+            return []
+        out = []
+        for r in self.iter_users():
+            if q in r["username"].lower() or q in str(r.get("password", "")).lower():
+                out.append(r)
+                if len(out) >= limit:
+                    break
+        return out
+
+
 def _to_num(s):
     """نص رقمي (بفواصل آلاف) → int أو float، وإلا None."""
     s = str(s).replace(",", "").strip()

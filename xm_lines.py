@@ -30,6 +30,8 @@ import salla_api
 import wa_send
 import renew
 import renew_import
+import panels
+import xlsx_write
 import salla_web
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
@@ -254,6 +256,10 @@ def clean_gate(g, old=None):
         "panel_base": str(g.get("panel_base", "")).strip().rstrip("/") or old.get("panel_base", ""),
         "panel_user": str(g.get("panel_user", "")).strip() or old.get("panel_user", ""),
         "panel_pass": str(g.get("panel_pass", "")) or old.get("panel_pass", ""),
+        # نكهة جلسة الويب: xtream (table_search الافتراضي) أو casper (لوحة كاسبر/c4k
+        # بترقيم index.php/users/index). لا أثر لها على بوابات api/falcon.
+        "web_flavor": (str(g.get("web_flavor", "")).strip().lower()
+                       or old.get("web_flavor", "") or "xtream"),
         "api_url":    str(g.get("api_url", "")).strip().rstrip("/") or old.get("api_url", ""),
         "api_key":    str(g.get("api_key", "")).strip() or old.get("api_key", ""),
         # طول اليوزر والباسورد المولَّدين (أرقام) — لكل بوابة رقمها: كاسبر ١٠، وغيرها ١٢ افتراضًا.
@@ -272,6 +278,8 @@ def clean_gate(g, old=None):
     if out["guide_url"] and not out["guide_url"].startswith(("http://", "https://")):
         raise ValueError("رابط الشرح للبوابة \"%s\" يجب أن يبدأ بـ http:// أو https://" % out["name"])
     if mode == "web":
+        if out["web_flavor"] not in ("xtream", "casper"):
+            out["web_flavor"] = "xtream"
         if not out["panel_base"].startswith(("http://", "https://")):
             raise ValueError("رابط لوحة البوابة \"%s\" يجب أن يبدأ بـ http://" % out["name"])
         if not out["panel_user"] or not out["panel_pass"]:
@@ -639,6 +647,7 @@ def _pull_worker(token, with_history, apply_index):
             return
         agg = renew_import.analyze(units, meta)
         renew.save_analysis(DATA_DIR, agg)
+        panels.save_store_lines(DATA_DIR, units)   # لتغذية مقارنة اللوحات
         if apply_index:
             renew.save_index(DATA_DIR, renew_import.build_index(units, meta))
             _pull["applied"] = True
@@ -676,21 +685,29 @@ _lines_job = {"running": False, "done": 0, "total": 0, "error": "", "at": "", "c
 def _lines_worker(gate, chunk=500):
     try:
         sess = web_session(gate)
-        rows, seen, page = [], set(), 0
-        while True:
+        if isinstance(sess, xm_web.CasperWebSession):
+            # كاسبر: سحبٌ كامل بترقيم الصفحات (search الفارغ لا يصلح لجلب الكل).
+            def prog(seen, last, page):
+                _lines_job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
+            rows = sess.all_users(progress=prog)
             if _lines_job["cancel"]:
-                break
-            got = sess.search("", limit=chunk * (page + 1))
-            fresh = [r for r in got if r.get("username") and r["username"] not in seen]
-            for r in fresh:
-                seen.add(r["username"])
-            rows += fresh
-            _lines_job.update({"done": len(rows), "total": len(rows)})
-            if len(fresh) == 0 or len(got) < chunk * (page + 1):
-                break
-            page += 1
-            if page > 40:                      # سقفٌ يمنع دورانًا بلا نهاية
-                break
+                rows = rows[:_lines_job["done"]]
+        else:
+            rows, seen, page = [], set(), 0
+            while True:
+                if _lines_job["cancel"]:
+                    break
+                got = sess.search("", limit=chunk * (page + 1))
+                fresh = [r for r in got if r.get("username") and r["username"] not in seen]
+                for r in fresh:
+                    seen.add(r["username"])
+                rows += fresh
+                _lines_job.update({"done": len(rows), "total": len(rows)})
+                if len(fresh) == 0 or len(got) < chunk * (page + 1):
+                    break
+                page += 1
+                if page > 40:                  # سقفٌ يمنع دورانًا بلا نهاية
+                    break
         n = renew.save_lines(DATA_DIR, rows, gate.get("name", ""), gate.get("host", ""))
         _lines_job.update({"done": n, "total": n})
     except xm_web.CaptchaNeeded:
@@ -718,6 +735,112 @@ def start_lines_export(st, side="source"):
     threading.Thread(target=_lines_worker, args=(gate,), daemon=True).start()
     return {"ok": True}
 
+
+# ---- سحب يوزرات لوحات المقارنة (خلفيّ) ----
+# لكل لوحةٍ بوابتُها (account_id/gate_id)؛ تُسحب يوزراتها كلها وتُخزَّن باسم
+# اللوحة، ثم تُقارَن بخطوط سلة. يمرّ على كل اللوحات المضبوطة في طلبةٍ واحدة.
+_panels_job = {"running": False, "phase": "", "panel": "", "done": 0, "total": 0,
+               "error": "", "at": "", "cancel": False, "results": []}
+
+
+def _panels_worker(entries):
+    results = []
+    try:
+        for (panel_id, name, gate) in entries:
+            if _panels_job["cancel"]:
+                break
+            _panels_job.update({"phase": "pull", "panel": name, "done": 0, "total": 0})
+
+            def prog(seen, last, page, _n=name):
+                _panels_job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
+
+            try:
+                sess = web_session(gate)
+                if isinstance(sess, xm_web.CasperWebSession):
+                    rows = sess.all_users(progress=prog)
+                else:
+                    rows = sess.search("", limit=20000)
+                n = panels.save_panel_lines(DATA_DIR, panel_id, name, rows)
+                results.append({"panel": name, "count": n, "ok": True})
+            except xm_web.CaptchaNeeded:
+                results.append({"panel": name, "ok": False,
+                                "error": "اللوحة تطلب كود تحقّق"})
+            except Exception as e:
+                results.append({"panel": name, "ok": False, "error": str(e)[:200]})
+            _panels_job["results"] = list(results)
+    finally:
+        _panels_job.update({"running": False, "phase": "done", "panel": "",
+                            "at": renew.now_iso(), "results": results})
+
+
+def start_panels_pull(st):
+    if _panels_job["running"]:
+        return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
+    cfg = renew.normalize_config(st.get("renew"))
+    entries = []
+    for p in cfg["panels"]:
+        acct = next((a for a in st["accounts"]
+                     if str(a.get("id")) == str(p.get("account_id"))), None)
+        gate = find_gate(acct, p.get("gate_id")) if acct else None
+        if not gate:
+            return {"ok": False, "error": "اللوحة «%s» بلا بوابة مضبوطة" % p["name"]}
+        if gate.get("mode") != "web":
+            return {"ok": False,
+                    "error": "سحب اليوزرات متاح على بوابات جلسة الويب (اللوحة «%s»)" % p["name"]}
+        entries.append((p["id"], p["name"], gate))
+    if not entries:
+        return {"ok": False, "error": "لا لوحات مضبوطة — أضف لوحةً وهوستاتها أولًا"}
+    _panels_job.update({"running": True, "phase": "start", "panel": "", "done": 0,
+                        "total": 0, "error": "", "cancel": False, "results": []})
+    threading.Thread(target=_panels_worker, args=(entries,), daemon=True).start()
+    return {"ok": True, "panels": len(entries)}
+
+
+# ---- تصدير Excel: المقارنة ويوزرات اللوحات ----
+_KIND_AR = {
+    panels.DURATION_MISMATCH: "فرق مدّة",
+    panels.MISSING: "مفقود على اللوحة",
+    panels.WRONG_PANEL: "لوحة مختلفة",
+    panels.HOST_UNMAPPED: "هوست غير مربوط",
+    panels.OK: "مطابق",
+}
+
+
+def _compare_xlsx(st):
+    res = panels.compare(st.get("renew"), DATA_DIR)
+    headers = ["الحالة", "اليوزر", "رقم الطلب", "التاريخ", "الهوست", "اللوحة (بالهوست)",
+               "وُجد على", "سلة (أشهر)", "اللوحة (أشهر)", "الفرق", "باقة اللوحة",
+               "انتهاء اللوحة", "المنتج", "SKU"]
+    rows = [[_KIND_AR.get(r["kind"], r["kind"]), r["username"], r["order"], r["date"],
+             r["host"], r["panel_name"], r["found_panel_name"], r["store_months"],
+             r["panel_months"], r.get("months_diff", ""), r["panel_package"],
+             r["panel_exp"], r["product"], r["sku"]] for r in res["rows"]]
+    s = res["summary"]
+    summary = [["إجمالي خطوط سلة", s.get("store_lines", 0)],
+               ["مطابق", s.get(panels.OK, 0)],
+               ["فرق مدّة", s.get(panels.DURATION_MISMATCH, 0)],
+               ["مفقود على اللوحة", s.get(panels.MISSING, 0)],
+               ["لوحة مختلفة", s.get(panels.WRONG_PANEL, 0)],
+               ["هوست غير مربوط", s.get(panels.HOST_UNMAPPED, 0)],
+               ["بلا يوزر (لا يُطابَق)", s.get("no_username", 0)]]
+    return xlsx_write.build_xlsx([("المقارنة", headers, rows),
+                                  ("ملخّص", ["البند", "العدد"], summary)])
+
+
+def _panel_users_xlsx():
+    data = panels.load_panel_lines(DATA_DIR)["panels"]
+    headers = ["اليوزر", "كلمة المرور", "الباقة", "المدة (أشهر)", "الإنشاء",
+               "الانتهاء", "الاتصالات", "الحالة"]
+    sheets = []
+    for pid, p in data.items():
+        rows = [[r.get("username", ""), r.get("password", ""), r.get("package", ""),
+                 r.get("months", 0), r.get("created", ""), r.get("exp", ""),
+                 r.get("connections", ""), r.get("status", "")]
+                for r in p.get("by_user", {}).values()]
+        sheets.append((p.get("name", pid) or pid, headers, rows))
+    if not sheets:
+        sheets = [("اليوزرات", headers, [])]
+    return xlsx_write.build_xlsx(sheets)
 
 
 def renew_panel_session(st):
@@ -1024,14 +1147,20 @@ def _ids(v):
 
 
 def web_session(gate):
-    """جلسة ويب لبوابة واحدة، بكوكيز مستقلة على القرص لكل بوابة."""
-    return xm_web.PanelWebSession({
+    """جلسة ويب لبوابة واحدة، بكوكيز مستقلة على القرص لكل بوابة.
+
+    نكهة كاسبر (c4k وأخواتها) لها صنفها الخاص لأن دخولها وقائمة يوزراتها
+    يختلفان عن Xtream؛ وما عداها يبقى على PanelWebSession كما كان."""
+    acct = {
         "id": "gate_" + str(gate.get("id", "")),
         "user": gate.get("panel_user", ""),
         "password": gate.get("panel_pass", ""),
         "panel_base": gate.get("panel_base", ""),
         "host": gate.get("host", ""),
-    }, DATA_DIR)
+    }
+    if str(gate.get("web_flavor", "")).lower() == "casper":
+        return xm_web.CasperWebSession(acct, DATA_DIR)
+    return xm_web.PanelWebSession(acct, DATA_DIR)
 
 
 # ================= باقات افتراضية: إنشاء + تمديد (مرح) =================
@@ -1709,6 +1838,43 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, {**_lines_job, "saved": renew.lines_stats(DATA_DIR)})
+            if path == "/api/renew/panels":       # لوحات المقارنة وهوستاتها + خيارات البوابات
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                cfg = renew.normalize_config(st.get("renew"))
+                gates = [{"account_id": a["id"], "account": a.get("name", ""),
+                          "gate_id": g["id"], "gate": g.get("name", ""),
+                          "mode": g.get("mode"), "flavor": g.get("web_flavor", "")}
+                         for a in st["accounts"] for g in (a.get("gates") or [])
+                         if g.get("mode") == "web"]
+                return self._send(200, {"panels": cfg["panels"], "gates": gates,
+                                        "lines": panels.panel_lines_stats(DATA_DIR),
+                                        "store": {k: v for k, v in
+                                                  panels.load_store_lines(DATA_DIR).items()
+                                                  if k != "lines"}})
+            if path == "/api/renew/panels-status":  # تقدّم سحب يوزرات اللوحات
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, {**_panels_job,
+                                        "saved": panels.panel_lines_stats(DATA_DIR)})
+            if path == "/api/renew/compare":       # نتيجة المطابقة (سلة ↔ اللوحات)
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, panels.compare(st.get("renew"), DATA_DIR))
+            if path == "/api/renew/compare.xlsx":   # المطابقة ملفَّ Excel
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, raw=_compare_xlsx(st),
+                                  ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  extra={"Content-Disposition":
+                                         'attachment; filename="salla-vs-panels.xlsx"'})
+            if path == "/api/renew/users.xlsx":     # كل يوزرات اللوحات المسحوبة Excel
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._send(200, raw=_panel_users_xlsx(),
+                                  ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  extra={"Content-Disposition":
+                                         'attachment; filename="panel-users.xlsx"'})
             if path == "/api/renew/harvest-status":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -1816,6 +1982,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, start_lines_export(st, req.get("side", "source")))
         if path == "/api/renew/lines-cancel":
             _lines_job["cancel"] = True
+            return self._send(200, {"ok": True})
+        if path == "/api/renew/panels":           # حفظ لوحات المقارنة وهوستاتها
+            cur = renew.normalize_config(st.get("renew"))
+            cur["panels"] = renew.normalize_panels(req.get("panels"))
+            st["renew"] = renew.clean_config(cur, st.get("renew"))
+            save_store(st)
+            return self._send(200, {"ok": True,
+                                    "panels": renew.normalize_config(st["renew"])["panels"]})
+        if path == "/api/renew/panels-pull":      # سحب يوزرات كل اللوحات المضبوطة
+            return self._send(200, start_panels_pull(st))
+        if path == "/api/renew/panels-cancel":
+            _panels_job["cancel"] = True
             return self._send(200, {"ok": True})
         if path == "/api/renew/candidates":       # مرشّحو الخط لمن لا يعرف يوزره
             rec = renew.find_order(DATA_DIR, req.get("order", ""), req.get("phone", ""))

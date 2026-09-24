@@ -61,6 +61,11 @@ def default_config():
         # كوكيز جلسة لوحة سلة، يلصقها المشغّل من متصفّحه. لا كلمة مرور ولا
         # دخول آلي: اللوحة محميّة بتحقّق ثنائي وأتمتته عبثٌ وخطر.
         "panel_cookie": "",
+        # لوحات المقارنة: كل لوحة دخولٌ واحد (بوابة داخل حساب) وعدّة هوستات
+        # للعملاء تتبعها. الطلب في سلة يُطابَق باللوحة عبر هوسته، ثم يُقارَن
+        # يوزره ومدّته بما في يوزرات تلك اللوحة المسحوبة.
+        #   {"id","name","account_id","gate_id","hosts":[...]}
+        "panels": [],
     }
 
 
@@ -76,6 +81,33 @@ def _num(v):
         return round(float(str(v).strip()), 3)
     except (TypeError, ValueError):
         return ""
+
+
+def normalize_panels(panels):
+    """قائمة لوحات المقارنة، منظّفة: لكل لوحة معرّفٌ واسمٌ وبوابةُ سحبٍ
+    (account_id/gate_id) وهوستاتٌ فريدة مُوحّدة الصيغة. تُطرح اللوحات بلا اسم."""
+    out, seen = [], set()
+    for p in (panels or []):
+        if not isinstance(p, dict):
+            continue
+        name = str(p.get("name", "") or "").strip()
+        if not name:
+            continue
+        pid = str(p.get("id", "") or "").strip() or secrets.token_hex(4)
+        if pid in seen:
+            pid = secrets.token_hex(4)
+        seen.add(pid)
+        hosts, hseen = [], set()
+        for h in (p.get("hosts") or []):
+            nh = norm_host(h)
+            if nh and nh not in hseen:
+                hseen.add(nh)
+                hosts.append(nh)
+        out.append({"id": pid, "name": name,
+                    "account_id": str(p.get("account_id", "") or "").strip(),
+                    "gate_id": str(p.get("gate_id", "") or "").strip(),
+                    "hosts": hosts})
+    return out
 
 
 def normalize_config(cfg):
@@ -101,6 +133,7 @@ def normalize_config(cfg):
         except (TypeError, ValueError):
             pass
     d["panel_cookie"] = str(cfg.get("panel_cookie", "") or "")
+    d["panels"] = normalize_panels(cfg.get("panels"))
     al = cfg.get("alert") if isinstance(cfg.get("alert"), dict) else {}
     d["alert"].update({
         "host": str(al.get("host", "") or "").strip(),
@@ -162,6 +195,18 @@ def norm_phone(p):
 
 def norm_order(o):
     return re.sub(r"\D", "", str(o or "").translate(_AR_DIGITS))
+
+
+def norm_host(h):
+    """هوست بصيغة واحدة للمطابقة: بلا بروتوكول ولا مسار ولا منفذ ولا www،
+    وبأحرف صغيرة. «https://Sub.Kasper.tv:8080/xx» و«sub.kasper.tv» يتساويان."""
+    s = str(h or "").strip().lower()
+    s = re.sub(r"^[a-z][a-z0-9+.\-]*://", "", s)   # يقتطع البروتوكول
+    s = s.split("/")[0].split("?")[0].split("#")[0]  # المضيف وحده
+    s = re.sub(r":\d+$", "", s)                    # يقتطع المنفذ
+    if s.startswith("www."):
+        s = s[4:]
+    return s.strip(". ")
 
 
 def parse_date(s):
