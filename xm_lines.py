@@ -684,30 +684,10 @@ _lines_job = {"running": False, "done": 0, "total": 0, "error": "", "at": "", "c
 
 def _lines_worker(gate, chunk=500):
     try:
-        sess = web_session(gate)
-        if isinstance(sess, xm_web.CasperWebSession):
-            # كاسبر: سحبٌ كامل بترقيم الصفحات (search الفارغ لا يصلح لجلب الكل).
-            def prog(seen, last, page):
-                _lines_job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
-            rows = sess.all_users(progress=prog)
-            if _lines_job["cancel"]:
-                rows = rows[:_lines_job["done"]]
-        else:
-            rows, seen, page = [], set(), 0
-            while True:
-                if _lines_job["cancel"]:
-                    break
-                got = sess.search("", limit=chunk * (page + 1))
-                fresh = [r for r in got if r.get("username") and r["username"] not in seen]
-                for r in fresh:
-                    seen.add(r["username"])
-                rows += fresh
-                _lines_job.update({"done": len(rows), "total": len(rows)})
-                if len(fresh) == 0 or len(got) < chunk * (page + 1):
-                    break
-                page += 1
-                if page > 40:                  # سقفٌ يمنع دورانًا بلا نهاية
-                    break
+        def prog(seen, last=1, page=1):
+            _lines_job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
+
+        rows = _all_web_lines(gate, prog)
         n = renew.save_lines(DATA_DIR, rows, gate.get("name", ""), gate.get("host", ""))
         _lines_job.update({"done": n, "total": n})
     except xm_web.CaptchaNeeded:
@@ -755,15 +735,10 @@ def _panels_worker(entries):
                 _panels_job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
 
             try:
-                sess = web_session(gate)
-                if isinstance(sess, xm_web.CasperWebSession):
-                    # النشطون والمنتهون معًا: القريب من الانتهاء يُعرف من تاريخ
-                    # الانتهاء، والمنتهي يُعرف من مشاهدة expired المستقلّة.
-                    rows = sess.all_users(views=("", "expired"), progress=prog)
-                else:
-                    rows = sess.search("", limit=20000)
+                rows = _all_web_lines(gate, prog)
                 n = panels.save_panel_lines(DATA_DIR, panel_id, name, rows)
-                results.append({"panel": name, "count": n, "ok": True})
+                results.append({"panel": name, "count": n, "ok": True,
+                                "error": "" if n else "رجعت اللوحة صفر يوزر — تحقّق من نوع البوابة (casper/Xtream) وبياناتها"})
             except xm_web.CaptchaNeeded:
                 results.append({"panel": name, "ok": False,
                                 "error": "اللوحة تطلب كود تحقّق"})
@@ -1183,6 +1158,28 @@ def web_session(gate):
     if str(gate.get("web_flavor", "")).lower() == "casper":
         return xm_web.CasperWebSession(acct, DATA_DIR)
     return xm_web.PanelWebSession(acct, DATA_DIR)
+
+
+def _all_web_lines(gate, progress=None):
+    """كل يوزرات بوابة ويب، أيًّا كان نوعها ومهما ضُبط:
+      - كاسبر (بالنوع أو بالاكتشاف): صفحاتٌ بترقيم، نشطٌ ومنتهٍ معًا.
+      - Xtream: استعلامُ الجدول الفارغ يرجّع الكل (search الفارغ لا يصلح).
+    وإن ضُبطت لوحة كاسبر بنوع Xtream خطأً (لا جدول DataTables، فيرجع صفرًا)،
+    تُعاد المحاولة كاسبر تلقائيًا على نفس البوابة — فيعمل السحب دون ضبطٍ دقيق."""
+    sess = web_session(gate)
+    if isinstance(sess, xm_web.CasperWebSession):
+        return sess.all_users(views=("", "expired"), progress=progress)
+    t = sess._table_query("", 100000, force=True)
+    rows = [sess._row_out(r) for r in t["rows"]]
+    if not rows:                       # لا جدول DataTables؟ غالبًا لوحة PHP كاسبر
+        try:
+            csess = web_session({**gate, "web_flavor": "casper"})
+            rows = csess.all_users(views=("", "expired"), progress=progress)
+        except Exception:
+            rows = []
+    if progress:
+        progress(len(rows), 1, 1)
+    return rows
 
 
 # ================= باقات افتراضية: إنشاء + تمديد (مرح) =================
