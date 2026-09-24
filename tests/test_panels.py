@@ -94,6 +94,25 @@ def test_casper_connector():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_pull_flavors():
+    print("== سحب اللوحات: كاسبر واكتشافه التلقائي ==")
+    import xm_lines
+    srv, base, _t = mock_casper.start(user_count=120)
+    xm_lines.DATA_DIR = tempfile.mkdtemp(prefix="pull_")
+    try:
+        g_casper = {"id": "c1", "mode": "web", "web_flavor": "casper",
+                    "panel_base": base, "panel_user": "x", "panel_pass": "y", "host": base}
+        check("بوابة كاسبر تسحب كل اليوزرات", len(xm_lines._all_web_lines(g_casper)) == 120)
+        # نفس لوحة كاسبر لكن مضبوطة Xtream خطأً → اكتشافٌ تلقائي لا صفر
+        g_wrong = {**g_casper, "id": "c2", "web_flavor": "xtream"}
+        rows = xm_lines._all_web_lines(g_wrong)
+        check("كاسبر مضبوطة Xtream خطأً → تُكتشف تلقائيًا لا تُرجع صفرًا",
+              len(rows) == 120, str(len(rows)))
+        check("اليوزر من العمود الصحيح", rows[0]["username"].startswith("u"), rows[0]["username"])
+    finally:
+        srv.shutdown()
+
+
 def test_compare():
     print("== المطابقة سلة ↔ اللوحات ==")
     d = tempfile.mkdtemp(prefix="cmp_")
@@ -202,6 +221,7 @@ def main():
     test_host()
     test_normalize_panels()
     test_casper_connector()
+    test_pull_flavors()
     test_compare()
     test_renewal()
     test_xlsx()
