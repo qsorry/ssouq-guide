@@ -134,6 +134,42 @@ def test_compare():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_renewal():
+    print("== المنتهي والقريب من الانتهاء والتجديد ==")
+    import datetime
+    d = tempfile.mkdtemp(prefix="ren_")
+    today = renew._today()
+    def iso(days): return (today + datetime.timedelta(days=days)).isoformat()
+    try:
+        panels.save_panel_lines(d, "pk", "كاسبر", [
+            {"username": "exp1", "package": "12 Months", "created": iso(-400), "exp": iso(-5)},   # منتهٍ
+            {"username": "soon1", "package": "12 Months", "created": iso(-350), "exp": iso(20)},   # قريب (خلال 45)
+            {"username": "far1", "package": "12 Months", "created": iso(-10), "exp": iso(300)},     # بعيد
+        ])
+        panels.save_store_lines(d, [
+            {"order": "1", "phone": "966500000001", "host": "kasper.tv", "username": "exp1", "months": 12},
+            {"order": "2", "phone": "966500000002", "host": "kasper.tv", "username": "soon1", "months": 12},
+            {"order": "3", "phone": "966500000003", "host": "kasper.tv", "username": "far1", "months": 12},
+        ])
+        cfg = {"renewal_days": 45, "panels": [{"id": "pk", "name": "كاسبر",
+               "account_id": "a", "gate_id": "g", "hosts": ["kasper.tv"]}]}
+        res = panels.compare(cfg, d)
+        check("منتهٍ واحد", res["summary"]["expired"] == 1, str(res["summary"]))
+        check("قريب الانتهاء واحد", res["summary"]["expiring_soon"] == 1)
+        rl = panels.renewal_list(cfg, d)
+        users = [r["username"] for r in rl["rows"]]
+        check("قائمة التجديد فيها المنتهي والقريب فقط",
+              set(users) == {"exp1", "soon1"}, str(users))
+        check("الأعجل أولًا (المنتهي قبل القريب)", users[0] == "exp1", str(users))
+        check("الجوال محمول في الصف", rl["rows"][0].get("phone") == "966500000001")
+        # نطاق أضيق: 10 أيام → القريب (20 يومًا) يخرج
+        rl2 = panels.renewal_list(cfg, d, days_override=10)
+        check("days_override يضيّق القريب", [r["username"] for r in rl2["rows"]] == ["exp1"],
+              str([r["username"] for r in rl2["rows"]]))
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_xlsx():
     print("== تصدير Excel ==")
     data = xlsx_write.build_xlsx([
@@ -167,6 +203,7 @@ def main():
     test_normalize_panels()
     test_casper_connector()
     test_compare()
+    test_renewal()
     test_xlsx()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, "

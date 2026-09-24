@@ -1331,7 +1331,7 @@ class CasperWebSession(PanelWebSession):
     _RE_TR = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.I | re.S)
     _RE_TBODY = re.compile(r"<tbody\b[^>]*>(.*?)</tbody>", re.I | re.S)
     _RE_TAG = re.compile(r"<[^>]+>")
-    _RE_PAGES = re.compile(r"users/index\?&(?:amp;)?page=(\d+)", re.I)
+    _RE_PAGES = re.compile(r"users/index\?[^\"'>]*?page=(\d+)", re.I)
 
     @classmethod
     def _cell(cls, s: str) -> str:
