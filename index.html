@@ -535,7 +535,7 @@ const DEVICES = {
         { title: "حمّل تطبيق 0Player (زيرو بلاير)", img: "/static/img/webos-0player-store.jpg",
           html: APP("0player", "0Player", "من متجر الشاشة · مجاني") + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله.</p>' + WEBOS_NOTE },
         { title: "أضف القائمة — الخيار الأول: من الشاشة", img: "/static/img/webos-0player-add.jpg",
-          html: '<p>لك خياران لإضافة القائمة: من الشاشة مباشرة (هذه الخطوة)، أو من الجوال (الخطوة التالية). اختر أحدهما فقط.</p><ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir="ltr">Portal Code</b>.</li></ol><img src="/static/img/webos-0player-portal.jpg" alt="تبويب Portal Code في 0Player"><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم تريده</code></div><div class="f"><span>Code (الخادم)</span><code>92929480</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS },
+          html: '<p>لك خياران لإضافة القائمة: من الشاشة مباشرة (هذه الخطوة)، أو من الجوال (الخطوة التالية). اختر أحدهما فقط.</p><ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir="ltr">Portal Code</b>.</li></ol><img src="/static/img/webos-0player-portal-92929480.webp" alt="خانات تبويب Portal Code في 0Player، وفي خانة Code يُكتب الكود 92929480"><div class="note"><b>مهم:</b> في خانة <b dir="ltr">Code</b> اكتب الكود <b dir="ltr">92929480</b> كما هو حتى يعمل معك الاشتراك.</div><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم تريده</code></div><div class="f"><span>Code (الخادم)</span><code>92929480</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS },
         { title: "أضف القائمة — الخيار الثاني: من الجوال عبر 0player.com",
           html: '<p>هذا الخيار بديل للخيار الأول، فإن أضفت القائمة من الشاشة فلا تحتاجه. وإن كانت الكتابة بريموت الشاشة متعبة، أضف القائمة من متصفح جوالك بالترتيب:</p><ol><li>افتح <a class="link" href="https://0player.com/" target="_blank" rel="noopener" dir="ltr">0player.com</a> من الجوال.</li><li>أدخل عنوان <b dir="ltr">MAC</b> الظاهر في التطبيق على الشاشة لتسجيل الدخول.</li><li>اضغط الزر المحدَّد في الصورة: <b dir="ltr">Add Portal Code Playlist</b>، وفي الواجهة العربية اسمه <b>إضافة قائمة تشغيل رمز البوابة</b>.</li></ol><img src="/static/img/webos-0player-web-en.webp" alt="زر Add Portal Code Playlist في موقع 0player.com من الجوال" loading="lazy"><img src="/static/img/webos-0player-web-ar.webp" alt="زر إضافة قائمة تشغيل رمز البوابة في الواجهة العربية لموقع 0player.com" loading="lazy"><ol start="4"><li>اكتب اسمًا للقائمة، وأدخل الرمز التالي مع اسم المستخدم وكلمة السر من بيانات اشتراكك:</li></ol><div class="fields"><div class="f"><span>Code (الخادم)</span><code>92929480</code></div></div><ol start="5"><li>تظهر رسالة <b dir="ltr">Portal group retrieved successfully</b>. اضغط <b dir="ltr">Close</b>، ثم افتح التطبيق على الشاشة، أو أعد فتحه، وستجد القائمة فيه.</li></ol><img src="/static/img/webos-0player-web-done.webp" alt="رسالة نجاح إضافة القائمة في موقع 0player.com" loading="lazy">' }
   ]},
@@ -722,7 +722,9 @@ const FALCON = {
     },
   },
 
-  // نفس خطوات 0Player، ورمز البوابة وحده يختلف — فيُشتقّ منها ولا يُنسخ
+  // نفس خطوات 0Player، ورمز البوابة وحده يختلف — فيُشتقّ منها ولا يُنسخ.
+  // صورة الخانات مكتوب عليها الرمز، واسمها يحمله (webos-0player-portal-<الرمز>.webp)
+  // فيتبدّل معه هنا تلقائيًا إلى نسخة فالكون
   webos: Object.assign({}, DEVICES.webos, {
     steps: DEVICES.webos.steps.map(s => Object.assign({}, s, { html: s.html.split("92929480").join("75710072") }))
   })
