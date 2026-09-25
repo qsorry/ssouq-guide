@@ -1572,17 +1572,24 @@ class CasperWebSession(PanelWebSession):
         action = self._u("index.php/users/doAdd")   # مسار الحفظ الفعلي (لا /users/ = بحث)
         self._request(action, data=fields,
                       headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
-        # لا نثق بردّ الصفحة — نتأكّد فعليًا بفلتر اليوزر (الترتيب الافتراضي ليس
-        # تنازليًا، فلا يصلح فحص الصفحة الأولى). إن لم يظهر فالإنشاء لم يقع — نرفع
-        # خطأً صريحًا لا ندّعي نجاحًا (وإلا حُسب مبيعًا ولم يُنشأ).
-        made = next((x for x in self._parse_users_page(self._text(self._request(
-            self._u("index.php/users/index?username=" + urllib.parse.quote(u)))))
-            if x["username"] == u), None)
+        # ردّ doAdd يعيد النموذج في النجاح والفشل معًا، فلا يصلح إشارةً. نتحقّق فعليًا
+        # بفلتر اليوزر، مع إعادةٍ بتأخّرٍ يسير: اللوحة قد تتأخّر لحظةً في إظهار الجديد،
+        # فلا نرفع فشلًا كاذبًا يوقف الدفعة على يوزرٍ أُنشئ فعلًا.
+        made = None
+        for attempt in range(4):
+            if attempt:
+                time.sleep(0.8)
+            made = next((x for x in self._parse_users_page(self._text(self._request(
+                self._u("index.php/users/index?username=" + urllib.parse.quote(u)))))
+                if x["username"] == u), None)
+            if made:
+                break
         if not made:
             raise LoginFailed(
                 "create_failed",
-                "لم يُنشأ اليوزر على كاسبر — طريقة الإرسال تحتاج مطابقة الطلب الحقيقي "
-                "(الصق «Copy as cURL» لعملية إضافة يوزر من اللوحة لأضبطها)")
+                "لم تُؤكِّد اللوحة إنشاء اليوزر — غالبًا بلغتَ حدّ الإنشاء (التجارب "
+                "مقيّدة بشدّة) أو ضغطٌ مؤقّت على اللوحة. أعِد المحاولة بعد قليل، أو "
+                "بباقةٍ مدفوعة بدل التجربة.")
         return {"username": u, "password": p, "id": made.get("id", ""),
                 "exp": made.get("exp", ""), "package": made.get("package", ""),
                 "verified": True, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -1592,12 +1599,19 @@ class CasperWebSession(PanelWebSession):
         """دفعة يوزرات على كاسبر: إنشاءٌ لكل زوج (لكلٍّ نموذجُه وبواقاته). إن فشل
         واحدٌ في المنتصف تُعاد النتائج الناجحة قبله مع الخطأ (ما أُنشئ قد خُصم)."""
         out = []
-        for u, p in pairs:
+        for i, (u, p) in enumerate(pairs):
+            if i:
+                time.sleep(1.2)                   # اللوحة تخنق الطلبات المتلاحقة؛ مهلةٌ تكفي
             try:
                 out.append(self.create_line(package_id, u, p, host))
-            except Exception as e:
-                out.append({"error": str(e)[:200], "username": str(u), "password": str(p)})
-                break
+            except Exception:
+                # قد يكون خنقًا مؤقتًا لا رفضًا — أمهل ثم أعد المحاولة مرّةً قبل التوقّف.
+                time.sleep(3)
+                try:
+                    out.append(self.create_line(package_id, u, p, host))
+                except Exception as e:
+                    out.append({"error": str(e)[:200], "username": str(u), "password": str(p)})
+                    break
         return out
 
 
