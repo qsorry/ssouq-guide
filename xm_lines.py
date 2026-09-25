@@ -2033,6 +2033,29 @@ class Handler(BaseHTTPRequestHandler):
             save_store(st)
             return self._send(200, {"ok": True,
                                     "panels": renew.normalize_config(owner["renew"])["panels"]})
+        if path == "/api/renew/panel-cookie":     # ضبط كوكيز لوحة سلة وحدها — من إضافة المتصفح
+            # طريق ثانٍ للصق «Copy as cURL»: الإضافة تقرأ كوكيز s.salla.sa من
+            # المتصفّح وترسلها هنا (بترويسة Basic، فتمرّ بـ `_who` كأي أداة).
+            # نضبط `panel_cookie` وحده ونُبقي بقية الإعداد كما هو عبر clean_config.
+            raw = req.get("cookie") or req.get("curl") or ""
+            cookie = salla_web.clean_cookie(raw)
+            if not cookie:
+                return self._send(400, {"error": "لا كوكيز في المُرسَل"})
+            cur = renew.normalize_config(rcfg)
+            cur["panel_cookie"] = cookie
+            owner["renew"] = renew.clean_config(cur, rcfg)
+            save_store(st)
+            resp = {"ok": True, "cookies": len(salla_web.cookie_names(cookie))}
+            if req.get("test"):                    # اختبار فوري اختياري للإضافة
+                try:
+                    alive, why = salla_web.Session(cookie).alive()
+                    resp["alive"] = alive
+                    if not alive:
+                        resp["alive_error"] = why
+                except Exception as e:
+                    resp["alive"] = False
+                    resp["alive_error"] = str(e)[:200]
+            return self._send(200, resp)
         if path == "/api/renew/panels-pull":      # سحب يوزرات كل اللوحات المضبوطة
             return self._send(200, start_panels_pull(st, rws, rcfg, racs))
         if path == "/api/renew/panels-cancel":

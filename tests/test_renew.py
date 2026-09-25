@@ -613,6 +613,23 @@ class TestPanelSession(unittest.TestCase):
         old = renew.normalize_config({"panel_cookie": "keepme=1"})
         self.assertEqual(renew.clean_config({}, old)["panel_cookie"], "keepme=1")
 
+    def test_the_extension_endpoint_sets_only_the_cookie(self):
+        """‏`/api/renew/panel-cookie` من الإضافة يضبط الكوكيز وحدها ولا يمسّ الباقي.
+
+        نحاكي منطق النقطة: تُقرأ الترويسة من «Copy as cURL»، ثم تُدمج بـ clean_config
+        فوق الإعداد القائم — فيبقى كل حقلٍ آخر كما هو."""
+        import salla_web
+        rcfg = renew.normalize_config({"promise_hours": 6, "enabled": True,
+                                       "panel_cookie": "old=1"})
+        raw = ("curl 'https://s.salla.sa/api/orders/x' "
+               "-H 'cookie: salla_session=NEW; XSRF-TOKEN=tok'")
+        cur = renew.normalize_config(rcfg)
+        cur["panel_cookie"] = salla_web.clean_cookie(raw)
+        out = renew.clean_config(cur, rcfg)
+        self.assertEqual(out["panel_cookie"], "salla_session=NEW; XSRF-TOKEN=tok")
+        self.assertEqual(out["promise_hours"], 6)   # بقية الإعداد لم تُمسّ
+        self.assertTrue(out["enabled"])
+
     def test_each_alert_kind_has_its_own_throttle(self):
         """انقطاع مرح وانتهاء جلسة سلة حدثان مختلفان — فلا يبتلع أحدهما الآخر."""
         d = tempfile.mkdtemp()
