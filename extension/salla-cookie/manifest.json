@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "جلسة سلة → أداة ssouq",
+  "description": "التقاط ترويسة كوكيز لوحة سلة (s.salla.sa) وإرسالها إلى أداة التجديد — بديل «Copy as cURL».",
+  "version": "1.0.0",
+  "default_locale": "ar",
+  "action": {
+    "default_title": "التقاط جلسة سلة",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "cookies",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://s.salla.sa/*",
+    "https://*.salla.sa/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
+}
