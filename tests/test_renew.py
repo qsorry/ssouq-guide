@@ -613,6 +613,21 @@ class TestPanelSession(unittest.TestCase):
         old = renew.normalize_config({"panel_cookie": "keepme=1"})
         self.assertEqual(renew.clean_config({}, old)["panel_cookie"], "keepme=1")
 
+    def test_the_extension_zips_ready_to_load(self):
+        """‏`/api/renew/extension.zip` يبني الإضافة من مصدرها لا من ملفٍّ متقادم،
+        بادئةً بـ `salla-cookie/` كي يعطي فكُّ الضغط مجلّدًا يُحمَّل مباشرةً."""
+        import io
+        import zipfile
+        import xm_lines
+        data = xm_lines.build_extension_zip()
+        self.assertTrue(data, "الحزمة فارغة")
+        z = zipfile.ZipFile(io.BytesIO(data))
+        self.assertIsNone(z.testzip())                 # لا ملفّ تالف
+        names = z.namelist()
+        self.assertIn("salla-cookie/manifest.json", names)
+        self.assertIn("salla-cookie/background.js", names)
+        self.assertTrue(any(n.endswith(".png") for n in names))  # الأيقونات معها
+
     def test_the_extension_endpoint_sets_only_the_cookie(self):
         """‏`/api/renew/panel-cookie` من الإضافة يضبط الكوكيز وحدها ولا يمسّ الباقي.
 
