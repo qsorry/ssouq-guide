@@ -188,6 +188,30 @@ def save_store(st):
     os.replace(tmp, ACC_FILE)
 
 
+# ============================ مساحة عمل renew لكل حساب ============================
+# الأدمن يبقى على المساحة العامة (data/) توافقًا مع بياناته الحالية وخدمة العميل.
+# كل حساب يوزر له مجلده المعزول (data/renew_ws/<id>/) وإعداده الخاص (acct["renew"])
+# فلا يرى غيره — «كل شيء مثل الأدمن لكن يقتصر على أعماله».
+def renew_ws(role, acct):
+    """(مجلّد البيانات، مالك الإعداد). الأدمن: (DATA_DIR, None) → الإعداد في st.
+    الحساب: (مجلّده، acct) → الإعداد في acct["renew"]."""
+    if role == "admin" or not acct:
+        return DATA_DIR, None
+    d = os.path.join(DATA_DIR, "renew_ws", str(acct.get("id") or "x"))
+    os.makedirs(d, exist_ok=True)
+    return d, acct
+
+
+def renew_cfg(st, owner):
+    """إعداد renew لهذه المساحة: من acct إن كان حسابًا، وإلا من st (الأدمن)."""
+    return (owner or st).get("renew")
+
+
+def _own_job(job, ws):
+    """حالة المهمة إن كانت لهذه المساحة، وإلا «خاملة» — فلا يرى يوزرٌ تقدّم غيره."""
+    return dict(job) if job.get("owner") == ws else {"running": False}
+
+
 def hash_pw(pw, salt=None):
     salt = salt or secrets.token_hex(8)
     h = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(), 100_000).hex()
@@ -598,13 +622,13 @@ def renew_exists(gate, username):
     return any(str(x.get("username", "")).strip() == u for x in rows if isinstance(x, dict))
 
 
-def renew_packages(st):
+def renew_packages(cfg, accounts):
     """باقات بوابة مرح كما تسمّيها اللوحة، ومعها نقاطها ومدتها.
 
     النقاط مكتوبة في الاسم نفسه («اشتراك سنة + جهازين (6 نقاط)») فتُقرأ منه ولا
     تُخمَّن — وهي ليست حاصل ضرب: السنة بأربع نقاط، والسنة بجهازين بستٍّ لا بثمانٍ."""
-    cfg = renew.normalize_config(st.get("renew"))
-    acct = next((a for a in st["accounts"]
+    cfg = renew.normalize_config(cfg)
+    acct = next((a for a in accounts
                  if str(a.get("id")) == str(cfg["target"]["account_id"])), None)
     gate = find_gate(acct, cfg["target"]["gate_id"]) if acct else None
     ok, why = renew.gate_allowed(gate)
@@ -628,11 +652,15 @@ _pull = {"running": False, "phase": "", "done": 0, "total": 0, "units": 0,
          "found": 0, "error": "", "at": "", "cancel": False, "applied": False}
 
 
-def renew_salla_token(st):
+def renew_salla_token(st, cfg=None):
+    """رمز سلة لهذه المساحة: رمز الإعداد الخاص إن وُجد (لكل حساب رمزه)، وإلا
+    رمز الخدمة العام (يستعمله الأدمن)."""
+    if cfg and (cfg.get("salla_token") or ""):
+        return cfg["salla_token"]
     return (st.get("service") or {}).get("salla_token") or ""
 
 
-def _pull_worker(token, with_history, apply_index):
+def _pull_worker(token, with_history, apply_index, ws, cfg):
     def progress(d):
         _pull.update(d)
 
@@ -646,16 +674,16 @@ def _pull_worker(token, with_history, apply_index):
             _pull["error"] = "لم يرجع أي طلب صالح من سلة"
             return
         agg = renew_import.analyze(units, meta)
-        renew.save_analysis(DATA_DIR, agg)
-        panels.save_store_lines(DATA_DIR, units)   # لتغذية مقارنة اللوحات
+        renew.save_analysis(ws, agg)
+        panels.save_store_lines(ws, units)         # لتغذية مقارنة اللوحات
         if apply_index:
-            renew.save_index(DATA_DIR, renew_import.build_index(units, meta))
+            renew.save_index(ws, renew_import.build_index(units, meta))
             _pull["applied"] = True
         _pull.update({"units": len(units), "found": meta.get("with_credentials", 0),
                       "phase": "done", "session_expired": meta.get("session_expired", False)})
         if meta.get("session_expired"):
             # التحقّق الثنائي في سلة إلزاميّ، فلا تُجدَّد الجلسة إلا بيد المشغّل.
-            renew.alert_session_expired(DATA_DIR, st.get("renew"))
+            renew.alert_session_expired(ws, cfg)
     except Exception as e:
         _pull["error"] = str(e)[:300]
     finally:
@@ -663,16 +691,16 @@ def _pull_worker(token, with_history, apply_index):
         _pull["at"] = renew.now_iso()
 
 
-def start_renew_pull(st, with_history=True, apply_index=True):
+def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True):
     if _pull["running"]:
         return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
-    token = renew_salla_token(st)
+    token = renew_salla_token(st, cfg)
     if not token:
-        return {"ok": False, "error": "رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة"}
-    _pull.update({"running": True, "phase": "orders", "done": 0, "total": 0,
+        return {"ok": False, "error": "رمز سلة غير مضبوط — اضبطه في إعداد المساحة"}
+    _pull.update({"running": True, "owner": ws, "phase": "orders", "done": 0, "total": 0,
                   "units": 0, "found": 0, "error": "", "cancel": False,
                   "applied": False, "session_expired": False})
-    threading.Thread(target=_pull_worker, args=(token, with_history, apply_index),
+    threading.Thread(target=_pull_worker, args=(token, with_history, apply_index, ws, cfg),
                      daemon=True).start()
     return {"ok": True}
 
@@ -682,13 +710,13 @@ def start_renew_pull(st, with_history=True, apply_index=True):
 _lines_job = {"running": False, "done": 0, "total": 0, "error": "", "at": "", "cancel": False}
 
 
-def _lines_worker(gate, chunk=500):
+def _lines_worker(gate, ws):
     try:
         def prog(seen, last=1, page=1):
             _lines_job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
 
         rows = _all_web_lines(gate, prog)
-        n = renew.save_lines(DATA_DIR, rows, gate.get("name", ""), gate.get("host", ""))
+        n = renew.save_lines(ws, rows, gate.get("name", ""), gate.get("host", ""))
         _lines_job.update({"done": n, "total": n})
     except xm_web.CaptchaNeeded:
         _lines_job["error"] = "اللوحة تطلب كود تحقّق — سجّل الدخول لها من صفحة الإنشاء"
@@ -699,11 +727,11 @@ def _lines_worker(gate, chunk=500):
         _lines_job["at"] = renew.now_iso()
 
 
-def start_lines_export(st, side="source"):
+def start_lines_export(st, ws, cfg, accounts, side="source"):
     if _lines_job["running"]:
         return {"ok": False, "error": "تصديرٌ جارٍ بالفعل"}
-    cfg = renew.normalize_config(st.get("renew"))
-    acct = next((a for a in st["accounts"]
+    cfg = renew.normalize_config(cfg)
+    acct = next((a for a in accounts
                  if str(a.get("id")) == str(cfg[side]["account_id"])), None)
     gate = find_gate(acct, cfg[side]["gate_id"]) if acct else None
     ok, why = renew.gate_allowed(gate)
@@ -711,8 +739,9 @@ def start_lines_export(st, side="source"):
         return {"ok": False, "error": why if gate else "البوابة غير مضبوطة"}
     if gate.get("mode") != "web":
         return {"ok": False, "error": "التصدير الكامل متاح على بوابات جلسة الويب"}
-    _lines_job.update({"running": True, "done": 0, "total": 0, "error": "", "cancel": False})
-    threading.Thread(target=_lines_worker, args=(gate,), daemon=True).start()
+    _lines_job.update({"running": True, "owner": ws, "done": 0, "total": 0,
+                       "error": "", "cancel": False})
+    threading.Thread(target=_lines_worker, args=(gate, ws), daemon=True).start()
     return {"ok": True}
 
 
@@ -723,7 +752,7 @@ _panels_job = {"running": False, "phase": "", "panel": "", "done": 0, "total": 0
                "error": "", "at": "", "cancel": False, "results": []}
 
 
-def _panels_worker(entries):
+def _panels_worker(entries, ws):
     results = []
     try:
         for (panel_id, name, gate) in entries:
@@ -736,7 +765,7 @@ def _panels_worker(entries):
 
             try:
                 rows = _all_web_lines(gate, prog)
-                n = panels.save_panel_lines(DATA_DIR, panel_id, name, rows)
+                n = panels.save_panel_lines(ws, panel_id, name, rows)
                 results.append({"panel": name, "count": n, "ok": True,
                                 "error": "" if n else "رجعت اللوحة صفر يوزر — تحقّق من نوع البوابة (casper/Xtream) وبياناتها"})
             except xm_web.CaptchaNeeded:
@@ -750,13 +779,13 @@ def _panels_worker(entries):
                             "at": renew.now_iso(), "results": results})
 
 
-def start_panels_pull(st):
+def start_panels_pull(st, ws, cfg, accounts):
     if _panels_job["running"]:
         return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
-    cfg = renew.normalize_config(st.get("renew"))
+    cfg = renew.normalize_config(cfg)
     entries = []
     for p in cfg["panels"]:
-        acct = next((a for a in st["accounts"]
+        acct = next((a for a in accounts
                      if str(a.get("id")) == str(p.get("account_id"))), None)
         gate = find_gate(acct, p.get("gate_id")) if acct else None
         if not gate:
@@ -767,9 +796,9 @@ def start_panels_pull(st):
         entries.append((p["id"], p["name"], gate))
     if not entries:
         return {"ok": False, "error": "لا لوحات مضبوطة — أضف لوحةً وهوستاتها أولًا"}
-    _panels_job.update({"running": True, "phase": "start", "panel": "", "done": 0,
-                        "total": 0, "error": "", "cancel": False, "results": []})
-    threading.Thread(target=_panels_worker, args=(entries,), daemon=True).start()
+    _panels_job.update({"running": True, "owner": ws, "phase": "start", "panel": "",
+                        "done": 0, "total": 0, "error": "", "cancel": False, "results": []})
+    threading.Thread(target=_panels_worker, args=(entries, ws), daemon=True).start()
     return {"ok": True, "panels": len(entries)}
 
 
@@ -792,8 +821,8 @@ def _days_arg(v):
         return None
 
 
-def _compare_xlsx(st, days=None):
-    res = panels.compare(st.get("renew"), DATA_DIR, days)
+def _compare_xlsx(ws, cfg, days=None):
+    res = panels.compare(cfg, ws, days)
     headers = ["الحالة", "اليوزر", "رقم الطلب", "التاريخ", "الهوست", "اللوحة (بالهوست)",
                "وُجد على", "سلة (أشهر)", "اللوحة (أشهر)", "الفرق", "باقة اللوحة",
                "انتهاء اللوحة", "المنتج", "SKU"]
@@ -813,8 +842,8 @@ def _compare_xlsx(st, days=None):
                                   ("ملخّص", ["البند", "العدد"], summary)])
 
 
-def _renewal_xlsx(st, days=None):
-    r = panels.renewal_list(st.get("renew"), DATA_DIR, days)
+def _renewal_xlsx(ws, cfg, days=None):
+    r = panels.renewal_list(cfg, ws, days)
     headers = ["الحالة", "أيام متبقّية", "اليوزر", "جوال العميل", "رقم الطلب",
                "اللوحة", "انتهاء اللوحة", "المدّة المباعة", "المنتج"]
     rows = [["منتهٍ" if x["expired"] else "قريب الانتهاء", x["days_left"],
@@ -824,8 +853,8 @@ def _renewal_xlsx(st, days=None):
     return xlsx_write.build_xlsx([("للتجديد", headers, rows)])
 
 
-def _panel_users_xlsx():
-    data = panels.load_panel_lines(DATA_DIR)["panels"]
+def _panel_users_xlsx(ws):
+    data = panels.load_panel_lines(ws)["panels"]
     headers = ["اليوزر", "كلمة المرور", "الباقة", "المدة (أشهر)", "الإنشاء",
                "الانتهاء", "الاتصالات", "الحالة"]
     sheets = []
@@ -1713,6 +1742,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirect(self._url()) if role else self._page(PAGES["/login"])
         if not role:
             return self._deny(path)
+        # مساحة renew لهذه الجلسة: الأدمن عامّة، والحساب معزولة (انظر renew_ws).
+        rws, rown = renew_ws(role, acct)
+        rcfg = renew_cfg(st, rown)
+        racs = st["accounts"] if role == "admin" else ([acct] if acct else [])
         try:
             if path == "/":
                 return self._redirect(self._url("/accounts")) if role == "admin" else self._page(PAGES["/"])
@@ -1817,25 +1850,18 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, redact_service(st["service"]))
-            if path == "/api/renew/config":       # إعداد التجديد (المدير)
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, {"renew": renew.redact_config(st.get("renew")),
-                                        "index": renew.index_stats(DATA_DIR),
-                                        "tiers": list(renew.TIERS)})
+            if path == "/api/renew/config":       # إعداد المساحة (الأدمن أو الحساب لنفسه)
+                return self._send(200, {"renew": renew.redact_config(rcfg),
+                                        "index": renew.index_stats(rws),
+                                        "tiers": list(renew.TIERS),
+                                        "is_admin": role == "admin"})
             if path == "/renew":                  # صفحة الرفع والتحليل والإعداد
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
                 return self._page("renew_admin.html")
             if path == "/api/renew/analysis":      # آخر تحليل محفوظ
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, {"analysis": renew.load_analysis(DATA_DIR),
-                                        "index": renew.index_stats(DATA_DIR)})
+                return self._send(200, {"analysis": renew.load_analysis(rws),
+                                        "index": renew.index_stats(rws)})
             if path == "/api/renew/report":        # التحليل صفحةً تُحفَظ وتُرسَل
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                agg = renew.load_analysis(DATA_DIR)
+                agg = renew.load_analysis(rws)
                 if not agg:
                     return self._send(404, {"error": "لا تحليل بعد — ارفع الملفات أولًا"})
                 return self._send(200, raw=renew_import.report_html(agg).encode(),
@@ -1843,10 +1869,8 @@ class Handler(BaseHTTPRequestHandler):
                                   extra={"Content-Disposition":
                                          'attachment; filename="renew-analysis.html"'})
             if path == "/api/renew/packages":     # باقات مرح بنقاطها (للربط والتكلفة)
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
                 try:
-                    pkgs, cost = renew_packages(st)
+                    pkgs, cost = renew_packages(rcfg, racs)
                 except xm_web.CaptchaNeeded:
                     return self._send(200, {"packages": [],
                                             "error": "اللوحة تطلب كود تحقّق — سجّل الدخول لها من صفحة الإنشاء"})
@@ -1854,56 +1878,39 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"packages": [], "error": str(e)[:200]})
                 return self._send(200, {"packages": pkgs, "point_cost": cost})
             if path == "/api/renew/lines-status":  # تقدّم تصدير خطوط اللوحة
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, {**_lines_job, "saved": renew.lines_stats(DATA_DIR)})
+                return self._send(200, {**_own_job(_lines_job, rws),
+                                        "saved": renew.lines_stats(rws)})
             if path == "/api/renew/panels":       # لوحات المقارنة وهوستاتها + خيارات البوابات
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                cfg = renew.normalize_config(st.get("renew"))
+                cfg = renew.normalize_config(rcfg)
                 gates = [{"account_id": a["id"], "account": a.get("name", ""),
                           "gate_id": g["id"], "gate": g.get("name", ""),
                           "mode": g.get("mode"), "flavor": g.get("web_flavor", "")}
-                         for a in st["accounts"] for g in (a.get("gates") or [])
+                         for a in racs for g in (a.get("gates") or [])
                          if g.get("mode") == "web"]
                 return self._send(200, {"panels": cfg["panels"], "gates": gates,
-                                        "lines": panels.panel_lines_stats(DATA_DIR),
+                                        "lines": panels.panel_lines_stats(rws),
                                         "store": {k: v for k, v in
-                                                  panels.load_store_lines(DATA_DIR).items()
+                                                  panels.load_store_lines(rws).items()
                                                   if k != "lines"}})
             if path == "/api/renew/panels-status":  # تقدّم سحب يوزرات اللوحات
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, {**_panels_job,
-                                        "saved": panels.panel_lines_stats(DATA_DIR)})
+                return self._send(200, {**_own_job(_panels_job, rws),
+                                        "saved": panels.panel_lines_stats(rws)})
             if path == "/api/renew/compare":       # نتيجة المطابقة (سلة ↔ اللوحات)
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, panels.compare(st.get("renew"), DATA_DIR,
-                                                      _days_arg(self._q("days"))))
+                return self._send(200, panels.compare(rcfg, rws, _days_arg(self._q("days"))))
             if path == "/api/renew/compare.xlsx":   # المطابقة ملفَّ Excel
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, raw=_compare_xlsx(st, _days_arg(self._q("days"))),
+                return self._send(200, raw=_compare_xlsx(rws, rcfg, _days_arg(self._q("days"))),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="salla-vs-panels.xlsx"'})
             if path == "/api/renew/users.xlsx":     # كل يوزرات اللوحات المسحوبة Excel
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, raw=_panel_users_xlsx(),
+                return self._send(200, raw=_panel_users_xlsx(rws),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="panel-users.xlsx"'})
             if path == "/api/renew/renewal":       # العملاء المستحقّون للتجديد
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, panels.renewal_list(st.get("renew"), DATA_DIR,
-                                                           _days_arg(self._q("days"))))
+                return self._send(200, panels.renewal_list(rcfg, rws, _days_arg(self._q("days"))))
             if path == "/api/renew/renewal.xlsx":   # قائمة التجديد Excel
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, raw=_renewal_xlsx(st, _days_arg(self._q("days"))),
+                return self._send(200, raw=_renewal_xlsx(rws, rcfg, _days_arg(self._q("days"))),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="renewal-due.xlsx"'})
@@ -1913,10 +1920,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {**_harvest,
                                         "saved": renew.harvest_stats(DATA_DIR)})
             if path == "/api/renew/pull-status":   # تقدّم السحب من سلة
-                if role != "admin":
-                    return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, {**_pull,
-                                        "has_token": bool(renew_salla_token(st))})
+                return self._send(200, {**_own_job(_pull, rws),
+                                        "has_token": bool(renew_salla_token(st, rcfg))})
             if path == "/api/renew/queue":        # الطلبات: المعلّق والمنجز
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -1967,7 +1972,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
-    def _renew_upload(self, st):
+    def _renew_upload(self, st, ws):
         """يرفع المدير ملفات سلة (الطلبات والمنتجات معًا) فيُبنى الفهرس ويُعرض
         التحليل. الملفات لا تُحفظ على القرص — يُحفظ ما استُخلص منها فقط."""
         n = int(self.headers.get("Content-Length", 0) or 0)
@@ -1991,42 +1996,55 @@ class Handler(BaseHTTPRequestHandler):
         if not units:
             return self._send(200, {"ok": False, "analysis": agg,
                                     "error": "لم يُقرأ أي طلب صالح من الملفات"})
-        renew.save_analysis(DATA_DIR, agg)
+        renew.save_analysis(ws, agg)
+        panels.save_store_lines(ws, units)     # ليغذّي المقارنة من الملفات أيضًا
         applied = False
         if yes("apply"):                       # اعتماده فهرسًا تعمل عليه الصفحة العامة
-            renew.save_index(DATA_DIR, renew_import.build_index(units, meta))
+            renew.save_index(ws, renew_import.build_index(units, meta))
             applied = True
         return self._send(200, {"ok": True, "applied": applied, "analysis": agg,
-                                "index": renew.index_stats(DATA_DIR)})
+                                "index": renew.index_stats(ws)})
 
-    # ---------- تجديد الاشتراك (المدير) ----------
-    def _renew_admin(self, path, st):
+    # ---------- تجديد الاشتراك: عمليات المساحة (أدمن أو حساب لنفسه) ----------
+    def _renew_admin(self, path, st, role, acct):
         req = self._body()
+        rws, rown = renew_ws(role, acct)
+        rcfg = renew_cfg(st, rown)
+        racs = st["accounts"] if role == "admin" else ([acct] if acct else [])
+        owner = rown or st                        # مالك الإعداد: acct للحساب، st للأدمن
+
         if path == "/api/renew/config":
-            st["renew"] = renew.clean_config(req.get("renew") or {}, st.get("renew"))
+            owner["renew"] = renew.clean_config(req.get("renew") or {}, rcfg)
             save_store(st)
-            return self._send(200, {"ok": True, "renew": renew.redact_config(st["renew"])})
+            return self._send(200, {"ok": True, "renew": renew.redact_config(owner["renew"])})
         if path == "/api/renew/pull":             # سحب الطلبات من سلة مباشرة
             return self._send(200, start_renew_pull(
-                st, with_history=req.get("with_history", True),
+                st, rws, rcfg, with_history=req.get("with_history", True),
                 apply_index=req.get("apply", True)))
         if path == "/api/renew/lines-export":
-            return self._send(200, start_lines_export(st, req.get("side", "source")))
+            return self._send(200, start_lines_export(st, rws, rcfg, racs, req.get("side", "source")))
         if path == "/api/renew/lines-cancel":
             _lines_job["cancel"] = True
             return self._send(200, {"ok": True})
         if path == "/api/renew/panels":           # حفظ لوحات المقارنة وهوستاتها
-            cur = renew.normalize_config(st.get("renew"))
+            cur = renew.normalize_config(rcfg)
             cur["panels"] = renew.normalize_panels(req.get("panels"))
-            st["renew"] = renew.clean_config(cur, st.get("renew"))
+            owner["renew"] = renew.clean_config(cur, rcfg)
             save_store(st)
             return self._send(200, {"ok": True,
-                                    "panels": renew.normalize_config(st["renew"])["panels"]})
+                                    "panels": renew.normalize_config(owner["renew"])["panels"]})
         if path == "/api/renew/panels-pull":      # سحب يوزرات كل اللوحات المضبوطة
-            return self._send(200, start_panels_pull(st))
+            return self._send(200, start_panels_pull(st, rws, rcfg, racs))
         if path == "/api/renew/panels-cancel":
             _panels_job["cancel"] = True
             return self._send(200, {"ok": True})
+        if path == "/api/renew/pull-cancel":
+            _pull["cancel"] = True
+            return self._send(200, {"ok": True})
+
+        # ---- خدمة العميل المشتركة: للأدمن فقط (طابور/حصاد/إنشاء على مرح) ----
+        if role != "admin":
+            return self._send(403, {"error": "هذه العملية للمدير فقط"})
         if path == "/api/renew/candidates":       # مرشّحو الخط لمن لا يعرف يوزره
             rec = renew.find_order(DATA_DIR, req.get("order", ""), req.get("phone", ""))
             if not rec:
@@ -2043,9 +2061,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True})
         if path == "/api/renew/harvest-retry":     # يُعاد على من لم يُعطِ شيئًا
             return self._send(200, {"ok": True, "kept": renew.harvest_reset(DATA_DIR)})
-        if path == "/api/renew/pull-cancel":
-            _pull["cancel"] = True
-            return self._send(200, {"ok": True})
         if path == "/api/renew/run":              # تفريغ الطابور الآن
             return self._send(200, {"ok": True, "result": renew_run_queue(st)})
         if path == "/api/renew/retry":            # إعادة طلب متوقّف إلى الطابور
@@ -2182,13 +2197,10 @@ class Handler(BaseHTTPRequestHandler):
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._admin_post(path, st)
                 if path == "/api/renew/upload":
-                    if role != "admin":
-                        return self._send(403, {"error": "للمدير فقط"})
-                    return self._renew_upload(st)
+                    ws, own = renew_ws(role, acct)
+                    return self._renew_upload(st, ws)
                 if path.startswith("/api/renew/"):
-                    if role != "admin":
-                        return self._send(403, {"error": "للمدير فقط"})
-                    return self._renew_admin(path, st)
+                    return self._renew_admin(path, st, role, acct)
                 if path.startswith("/api/service"):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
