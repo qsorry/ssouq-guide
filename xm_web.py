@@ -1443,19 +1443,22 @@ class CasperWebSession(PanelWebSession):
         return [by_user[u] for u in order]
 
     def search(self, query: str, limit: int = 50) -> list:
-        """بحثٌ صحيحٌ لا يُخطئ النفي: مسحٌ كاملٌ ثم ترشيح باليوزر أو كلمة المرور.
-        لوحة كاسبر لا تُرشّح بموثوقية عبر الرابط، ومسحُها مرّةً أضمن من نفيٍ كاذب
-        قد يُنشئ خطًّا ثانيًا بنفس اليوزر."""
-        q = str(query or "").strip().lower()
+        """بحثٌ سريعٌ عبر فلتر الخادم (users/index?username=) — طلبٌ واحد لا مسحُ
+        كل الصفحات. بلا علامة بدل يُلفّ بـ*…* (تطابق احتواء)، ويُقبل * كما هو."""
+        q = str(query or "").strip()
         if not q:
             return []
-        out = []
-        for r in self.iter_users():
-            if q in r["username"].lower() or q in str(r.get("password", "")).lower():
-                out.append(r)
-                if len(out) >= limit:
-                    break
-        return out
+        self.ensure_login()
+        term = q if "*" in q else "*" + q + "*"
+        html = self._text(self._request(
+            self._u("index.php/users/index?username=" + urllib.parse.quote(term))))
+        rows = self._parse_users_page(html)
+        # الترشيح حاسمٌ (لا نُرجع كل الصفوف عند عدم التطابق — حارس منع الإنشاء
+        # المزدوج يعتمد على نفيٍ صادق): تطابق احتواء باليوزر أو كلمة المرور.
+        ql = q.replace("*", "").lower()
+        out = [r for r in rows
+               if ql in r["username"].lower() or ql in str(r.get("password", "")).lower()]
+        return out[:limit]
 
     # ---- إنشاء يوزر على كاسبر ----
     _RE_PKG_SELECT = re.compile(r'<select[^>]*name=[\'"]package[\'"][^>]*>(.*?)</select>', re.S | re.I)
