@@ -1277,12 +1277,26 @@ class CasperWebSession(PanelWebSession):
     البنيةَ التحتية وحدها (الكوكيز والطلبات وحلّ الرابط).
 
     ‏panel_base قد يُكتب رابطَ الجذر مع مسار السياق (…/iptv) أو رابطَ صفحة
-    الدخول (…/iptv/login.php)؛ ومنه يُشتقّ السياق فتُبنى عليه بقيّة المسارات."""
+    الدخول (…/iptv/login.php)؛ ومنه يُشتقّ السياق فتُبنى عليه بقيّة المسارات.
+
+    ولأن لوحة كاسبر تُغيّر دومينها كل فترة (all-iptvs → c4kpanel → boss4k …) وهي
+    اللوحة نفسها بنفس الحساب، يجوز كتابة عدّة دومينات في panel_base (بفاصلة أو
+    مسافة أو سطر): تُجرّب حتى ينجح أحدها، ويُحفظ الناجح فيُبدأ به لاحقًا — فلا
+    يُعاد الضبط مع كل تغيير دومين."""
 
     def __init__(self, account, data_dir, use_ocr=False):
         super().__init__(account, data_dir, use_ocr=use_ocr)
-        raw = str(account.get("panel_base") or account.get("login_url") or "").strip()
-        path = urllib.parse.urlparse(raw).path.rstrip("/")
+        raw_all = str(account.get("panel_base") or account.get("login_url") or "").strip()
+        self.candidates = [c.strip() for c in re.split(r"[\s,|]+", raw_all) if c.strip()] \
+            or [self.base]
+        self._use_base(self.candidates[0])
+
+    def _use_base(self, raw):
+        """يضبط الجذر والسياق ومسار الدخول من رابطٍ واحد (دومين + …/iptv اختياري)."""
+        m = re.match(r"^(https?://[^/]+)", raw)
+        if m:
+            self.base = m.group(1)
+        path = urllib.parse.urlparse(raw if "://" in raw else "http://x/" + raw).path.rstrip("/")
         if path.endswith("/login.php"):
             path = path[: -len("/login.php")]
         self.ctx = path                       # مثل "/iptv" (وقد يكون "")
@@ -1294,7 +1308,10 @@ class CasperWebSession(PanelWebSession):
         return (self.ctx + "/" + rel) if self.ctx else "/" + rel
 
     def is_authenticated(self) -> bool:
-        r = self._request(self._u("index.php/home/index"))
+        try:
+            r = self._request(self._u("index.php/home/index"))
+        except Exception:
+            return False                      # دومينٌ ميّت/تعذّر الوصول → غير مُصادَق
         loc = (r.get("location", "") or r.get("final_url", "")).lower()
         if "login.php" in loc or "auth=0" in loc:
             return False
@@ -1303,9 +1320,8 @@ class CasperWebSession(PanelWebSession):
             return False
         return r.get("status", 0) < 400
 
-    def login(self, captcha: str = None, auto_attempts: int = 3) -> bool:
-        """يقرأ صفحة الدخول (PHPSESSID + الحقول المخفية) ثم يُرسل الاسم وكلمة المرور
-        و`maa=do_login`. لا كود تحقّق ولا OCR ولا إنسان — لوحة كاسبر لا تطلبه."""
+    def _login_one(self) -> bool:
+        """محاولة دخولٍ واحدة على الدومين الحالي (self.base)."""
         page = self._text(self._request(self.login_path))
         form = self._parse_login_form(page) if 'name="password"' in page.lower() else {}
         fields = dict(form.get("fields") or {})
@@ -1314,10 +1330,27 @@ class CasperWebSession(PanelWebSession):
         fields.setdefault("maa", "do_login")
         self._request(self.login_path, data=fields,
                       headers={"Referer": self._abs(self.login_path)})
-        if self.is_authenticated():
-            return True
+        return self.is_authenticated()
+
+    def login(self, captcha: str = None, auto_attempts: int = 3) -> bool:
+        """يُسجّل الدخول مُجرّبًا الدومينات المتاحة (الناجحُ سابقًا أولًا) حتى ينجح
+        أحدها، ثم يحفظه. لا كود تحقّق ولا OCR — لوحة كاسبر لا تطلبه."""
+        last = self._meta().get("casper_base")
+        order = ([last] if last and last in self.candidates else []) + \
+                [c for c in self.candidates if c != last]
+        errs = []
+        for raw in order:
+            self._use_base(raw)
+            try:
+                if self._login_one():
+                    self._save_meta(casper_base=raw)
+                    return True
+                errs.append("%s: بيانات مرفوضة" % self.base)
+            except Exception as e:
+                errs.append("%s: %s" % (self.base, str(e)[:60]))
         raise LoginFailed("credentials",
-                          "تعذّر الدخول إلى لوحة كاسبر — تحقّق من اسم الدخول وكلمة المرور")
+                          "تعذّر الدخول إلى لوحة كاسبر على أي دومين — تحقّق من الرابط والبيانات (%s)"
+                          % " · ".join(errs[:4]))
 
     def ensure_login(self):
         with self._login_lock():
