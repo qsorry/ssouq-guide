@@ -650,7 +650,7 @@ const SUBS = {
   falcon: { name: "فالكون", full: "FALCON TV PRO", art: "/static/img/brands/falcon.webp",
             sub: "تطبيق فالكون أو Smarters Pro" },
   casper: { name: "كاسبر", full: "CASPER FLIX", art: "/static/img/brands/casper.webp",
-            sub: "AroPlayer أو Smarters Pro أو Duplecast" }
+            sub: "CASPER VIP أو AroPlayer أو Duplecast" }
 };
 const legacySub = k => k === "marah" ? "smart" : k;      // "مرح" كان اسم سمارت، فروابطه القديمة تبقى عاملة
 
@@ -734,10 +734,19 @@ const FALCON = {
    كاسبر يرث من سمارت كل ما يدخل بالهوست واسم المستخدم وكلمة المرور
    (ويندوز وماك كما هما)، ويختلف في ثلاثة مواضع:
    الآيفون (AroPlayer بدل VAR Player)، والأندرويد جوالًا وشاشةً
-   (‏IPTV Smarters Pro وحده — بلا تطبيق مرح/MR7 فهو تطبيق سمارت،
-   وبلا NEXT+ لأنه يدخل برمز خادم خاص بلوحة سمارت)، وسامسونج و LG
+   (‏تطبيق CASPER VIP بكود Downloader ‏3638997، أو IPTV Smarters Pro —
+   بلا تطبيق مرح/MR7 فهو تطبيق سمارت، وبلا NEXT+ لأنه يدخل برمز خادم
+   خاص بلوحة سمارت)، وسامسونج و LG
    و WebOS (تطبيق Duplecast بدل 0Player).
    ============================================================ */
+// دخول تطبيق CASPER VIP — واحد على الجوال وعلى الشاشة
+const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",
+  html: '<p>افتح تطبيق <b dir="ltr">CASPER VIP</b> وعبّئ خانات الدخول ببيانات اشتراكك:</p>'
+    + '<div class="fields"><div class="f"><span>Username</span><code>اسم المستخدم</code></div>'
+    + '<div class="f"><span>Password</span><code>كلمة المرور</code></div></div>'
+    + '<p>ثم اضغط زر الدخول.</p>'
+    + '<div class="note">إن طلب التطبيق رابط الهوست فهو يصلك مع بيانات اشتراكك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
+
 const CASPER = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق AroPlayer", steps: [
     { title: "حمّل تطبيق AroPlayer",
@@ -758,13 +767,48 @@ const CASPER = {
         + '<div class="note">خانة الاسم اختيارية. ورابط الهوست يصلك مع بيانات الاشتراك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS }
   ]},
 
-  // بلا تطبيق مرح (MR7): تطبيق سمارت وحدها. ويبقى Smarters Pro لأنه يدخل
-  // بالهوست واسم المستخدم وكلمة المرور، بلا رمز خاص بمزوّد.
-  android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق IPTV Smarters Pro",
-    steps: DEVICES.android.variants.smarters },
+  // تطبيق الاشتراك الخاص CASPER VIP أولًا، ويبقى Smarters Pro بديلًا لأنه يدخل
+  // بالهوست واسم المستخدم وكلمة المرور، بلا رمز خاص بمزوّد. وبلا تطبيق مرح (MR7):
+  // تطبيق سمارت وحدها.
+  android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق CASPER VIP أو IPTV Smarters Pro", choose: {
+    title: "اختر التطبيق",
+    options: [
+      { key: "caspervip", label: "CASPER VIP", sub: "تطبيق الاشتراك الخاص، تحميل مباشر", icon: "casper-vip" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK", icon: "smarters-pro" }
+    ]},
+    variants: {
+      caspervip: [
+        { title: "حمّل تطبيق CASPER VIP",
+          html: APP("casper-vip", "CASPER VIP", "تحميل مباشر · تطبيق الاشتراك")
+            + '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p>'
+            + '<p><a class="btn go" href="https://aftv.news/3638997" target="_blank" rel="noopener">تحميل تطبيق CASPER VIP</a></p>'
+            + '<p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
+        CASPER_VIP_LOGIN
+      ],
+      smarters: DEVICES.android.variants.smarters
+    }
+  },
 
-  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق IPTV Smarters Pro",
-    steps: DEVICES.tv.variants.smarters },
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق CASPER VIP أو IPTV Smarters Pro", choose: {
+    title: "اختر التطبيق",
+    options: [
+      { key: "caspervip", label: "CASPER VIP", sub: "تطبيق الاشتراك الخاص، عبر Downloader", icon: "casper-vip" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro" }
+    ]},
+    variants: {
+      caspervip: [
+        { title: "حمّل تطبيق CASPER VIP عبر Downloader", img: "/static/img/tv-downloader.png",
+          html: APP("casper-vip", "CASPER VIP", "عبر Downloader · تطبيق الاشتراك")
+            + '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li>'
+            + '<li>افتحه واكتب الكود التالي في خانة البحث ثم اضغط <b dir="ltr">Go</b>:</li></ol>'
+            + COPY("3638997", "كود التحميل")
+            + '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/3638997" target="_blank" rel="noopener">aftv.news/3638997</a>.</p>' },
+        DEVICES.tv.variants.smarters[1],
+        CASPER_VIP_LOGIN
+      ],
+      smarters: DEVICES.tv.variants.smarters
+    }
+  },
 
   webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "تطبيق Duplecast", steps: [
     { title: "حمّل تطبيق Duplecast وافتحه", img: "/static/img/webos-duplecast-scan.webp",
