@@ -1464,9 +1464,31 @@ class CasperWebSession(PanelWebSession):
     def supports_extend(self) -> bool:
         return False                          # كاسبر: المدة من الباقة نفسها، لا تمديد ×٢
 
+    @staticmethod
+    def _ar_pkg(text: str) -> str:
+        """اسم باقةٍ إنجليزيٍّ من اللوحة → عربيٌّ آليًّا. «15 Months [Credit: 1]» →
+        «١٥ شهرًا — نقطة ١» · «1 Year» → «سنة» · «1 Day» → «تجربة يوم»."""
+        cred = re.search(r"credit[:\s]*([\d.,]+)", text, re.I)
+        m = re.search(r"(\d+)\s*(year|month|week|day)", text, re.I)
+        name = re.sub(r"\s*\[.*?\]\s*", " ", text).strip()   # افتراضيًا: بلا قوس الرصيد
+        if m:
+            n, unit = int(m.group(1)), m.group(2).lower()
+            if unit == "day":
+                name = "تجربة يوم" if n == 1 else "%d أيام" % n
+            elif unit == "week":
+                name = "أسبوع" if n == 1 else "%d أسابيع" % n
+            elif unit == "year":
+                name = "سنة" if n == 1 else ("سنتان" if n == 2 else "%d سنوات" % n)
+            else:  # month
+                name = ("شهر" if n == 1 else "شهران" if n == 2
+                        else "%d أشهر" % n if 3 <= n <= 10 else "%d شهرًا" % n)
+        if cred:
+            name += " — %s نقطة" % cred.group(1)
+        return name.translate(str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩"))
+
     def packages(self) -> list:
-        """باقات كاسبر من صفحة الإضافة: كلٌّ مدةٌ ورصيدها («15 Months [Credit: 1]»).
-        تُرجع {value,text,id,name} كما تتوقّع صفحة الإنشاء."""
+        """باقات كاسبر من صفحة الإضافة: كلٌّ مدةٌ ورصيدها. تُترجم أسماؤها للعربية
+        آليًّا للعرض، مع إبقاء المعرّف والنصّ الأصلي. {value,text,id,name}."""
         self.ensure_login()
         html = self._text(self._request(self._u("index.php/users/Form?t=add")))
         m = self._RE_PKG_SELECT.search(html)
@@ -1478,7 +1500,8 @@ class CasperWebSession(PanelWebSession):
             text = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", text))).strip()
             if not val or val == "0" or re.search(r"choose|select|اختر", text, re.I):
                 continue
-            out.append({"value": val, "text": text, "id": val, "name": text})
+            ar = self._ar_pkg(text)
+            out.append({"value": val, "text": ar, "id": val, "name": ar, "en": text})
         return out
 
     def _bouquets_for(self, package_id):
