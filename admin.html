@@ -178,7 +178,7 @@ function gateRow(g){
     <div class="gh"><b>بوابة</b><button type="button" class="rm">حذف البوابة</button></div>
     <input type="hidden" data-f="id" value="${esc(g.id||"")}">
     <button type="button" class="ghost preset-kasper" style="width:100%;margin-bottom:8px">تعبئة بوابة كاسبر (all-iptvs.com:2082 · جلسة ويب · 10 أرقام)</button>
-    <button type="button" class="ghost preset-c4k" style="width:100%;margin-bottom:8px">تعبئة بوابة c4kpanel (كاسبر · https://c4kpanel.com/iptv · بلا كود تحقّق · 10 أرقام)</button>
+    <button type="button" class="ghost preset-c4k" style="width:100%;margin-bottom:8px">تعبئة بوابة كاسبر Casper (الدومين الحالي: https://boss4k.vip/iptv · بلا كود تحقّق · 10 أرقام)</button>
     <label>اسم البوابة</label><input data-f="name" value="${esc(g.name||"")}" placeholder="بوابة مرح">
     <label>طريقة الربط</label>
     <select data-f="mode">
@@ -192,7 +192,7 @@ function gateRow(g){
         <option value="xtream"${(g.web_flavor!=="casper")?" selected":""}>Xtream — بحث الجدول (مرح/all-iptvs)</option>
         <option value="casper"${(g.web_flavor==="casper")?" selected":""}>كاسبر / c4kpanel — index.php/users (بلا كود تحقّق)</option>
       </select>
-      <label>رابط اللوحة</label><input data-f="panel_base" value="${esc(g.panel_base||"")}" placeholder="http://panel-host:2052 · لكاسبر: https://c4kpanel.com/iptv">
+      <label>رابط اللوحة <small style="color:var(--mute)">— كاسبر تُغيّر دومينها؛ يمكن كتابة عدّة دومينات (بفاصلة) فيُجرَّب الناجح</small></label><input data-f="panel_base" value="${esc(g.panel_base||"")}" placeholder="https://boss4k.vip/iptv , https://c4kpanel.com/iptv">
       <div class="g2">
         <div><label>اسم الدخول للوحة</label><input data-f="panel_user" value="${esc(g.panel_user||"")}" autocomplete="off"></div>
         <div><label>كلمة مرور اللوحة</label><input data-f="panel_pass" value="" placeholder="${g.has_panel_pass?'محفوظة — اتركه فارغًا للإبقاء':''}" autocomplete="new-password"></div>
@@ -224,8 +224,8 @@ function gateRow(g){
   // قالب c4kpanel: لوحة كاسبر PHP بلا كود تحقّق، قائمة يوزرات بترقيم index.php/users.
   el.querySelector(".preset-c4k").onclick = () => {
     const set = (f, v) => { el.querySelector(`[data-f="${f}"]`).value = v; };
-    set("name", "c4kpanel"); set("mode", "web"); set("web_flavor", "casper");
-    set("panel_base", "https://c4kpanel.com/iptv"); set("digits", "10");
+    set("name", "بوابة كاسبر"); set("mode", "web"); set("web_flavor", "casper");
+    set("panel_base", "https://boss4k.vip/iptv"); set("digits", "10");
     applyGateMode(); el.querySelector('[data-f="panel_user"]').focus();
   };
   return el;
