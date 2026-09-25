@@ -1559,72 +1559,115 @@ class CasperWebSession(PanelWebSession):
                 "verified": True, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "timing": {}, "ok": True}
 
+    _RE_INPUT = re.compile(r"<input\b[^>]*>", re.I)
+    _RE_FORM_ACTION = re.compile(
+        r'<form\b[^>]*\bid=[\'"]frmUsers[\'"][^>]*\baction=[\'"]([^\'"]+)', re.I)
+
+    def _add_form(self):
+        """يقرأ نموذج «إضافة يوزر» كما هو: مسار الإرسال + كلُّ الحقول بقيمها،
+        ومنها اليوزر المولَّد من اللوحة (username/usernameold) وحقلُ كلمة المرور
+        بقيمته «Auto Generated» — وهي الرايةُ التي تجعل اللوحة تولّد كلمة المرور
+        بنفسها. نُرسل النموذجَ بقيمه هذه بالضبط (كما يفعل سكربت السيلينيوم العامل):
+        لا نخترع يوزرًا ولا كلمة مرور، فاللوحة ترفض المخترَع وتولّد هي.
+        يُرجِع (action, fields, username)."""
+        html = self._text(self._request(self._u("index.php/users/Form?t=add")))
+        fields = {}
+        for tag in self._RE_INPUT.findall(html):
+            nm = re.search(r'name=[\'"]([^\'"]+)', tag)
+            if not nm:
+                continue
+            typ = (re.search(r'type=[\'"]([^\'"]+)', tag) or [None, "text"])[1].lower()
+            if typ in ("submit", "button", "image", "reset", "file", "checkbox", "radio"):
+                continue
+            # الحقول المعطَّلة (disabled) لا يرسلها المتصفح — ومنها حقلُ كلمة المرور
+            # (قيمته «Auto Generated»): بتركه تولّد اللوحة كلمةَ مرورٍ عشوائيةً حقيقية.
+            if re.search(r'\bdisabled\b', tag, re.I):
+                continue
+            vl = re.search(r'value=[\'"]([^\'"]*)', tag)
+            fields[nm.group(1)] = _html.unescape(vl.group(1)) if vl else ""
+        m = self._RE_FORM_ACTION.search(html) or re.search(
+            r'<form\b[^>]*\baction=[\'"]([^\'"]+)', html, re.I)
+        action = _html.unescape(m.group(1)) if m else self._u("index.php/users/doAdd")
+        return action, fields, fields.get("username", "")
+
+    @staticmethod
+    def _num_pw(password):
+        """كلمة مرورٍ **رقمية**: الممرَّرة إن كانت أرقامًا فقط، وإلا مولّدة رقمية.
+        نتحكّم بها نحن (نُرسلها في النموذج) فلا نترك للوحة توليدَ كلمةٍ بحروف
+        (زرّ Reset Pass في اللوحة يولّد حروفًا — والعميل يريدها أرقامًا)."""
+        p = str(password or "")
+        return p if p.isdigit() else _rand_digits(12)
+
     def create_line(self, package_id, username=None, password=None, host=None,
                     bouquets=None) -> dict:
-        """يُنشئ يوزرًا بالباقة (المدة) المطلوبة. آمنٌ للإعادة: إن كان اليوزر موجودًا
-        (أُنشئ في محاولةٍ سابقة قبل خنقٍ عابر) يُرجَع كما هو دون تكرار. bouquets
-        يُمرَّر للدفعة فلا يُجلب لكل يوزر."""
+        """يُنشئ يوزرًا بالباقة (المدة) المطلوبة عبر نموذج اللوحة نفسه.
+
+        اليوزر يأتي مولَّدًا من اللوحة (النموذج يملؤه سلفًا في username/usernameold)
+        — لا نخترعه لأن اللوحة ترفض المخترَع. أمّا كلمة المرور فنضبطها نحن **رقمية**
+        ونُرسلها في النموذج (حقلُها معطَّلٌ افتراضيًّا وقيمتُه «Auto Generated»،
+        فبتزويده تُخزَّن قيمتُنا؛ ولو تُرك للوحة قد تولّد حروفًا كزرّ Reset Pass).
+        فكلمة المرور المُعادة موثوقةٌ (هي ما أرسلناه) ورقميّةٌ دائمًا.
+        bouquets يُمرَّر للدفعة فلا يُجلب لكل يوزر."""
         self.ensure_login()
-        u = str(username or _rand_digits(10))
-        p = str(password or _rand_digits(10))
-        # فحصٌ مسبق: يمنع تكرار يوزرٍ أُنشئ ثم تعذّر تأكيده (إعادة المحاولة).
-        made = self._find_user(u)
-        if made:
-            return self._ok_line(u, p, made)
-        form_html = self._text(self._request(self._u("index.php/users/Form?t=add")))
-        hidden = {}
-        for tag in re.finditer(r'<input[^>]*type=[\'"]hidden[\'"][^>]*>', form_html, re.I):
-            nm = re.search(r'name=[\'"]([^\'"]+)', tag.group(0))
-            vl = re.search(r'value=[\'"]([^\'"]*)', tag.group(0))
-            if nm:
-                hidden[nm.group(1)] = _html.unescape(vl.group(1)) if vl else ""
+        action, fields, u = self._add_form()
+        if not u:                                  # نادر: لا يوزر مملوء → نولّده نحن
+            u = str(username or _rand_digits(12))
+            fields["username"] = fields["usernameold"] = u
+        p = self._num_pw(password)
         if bouquets is None:
             bouquets = self._bouquets_for(package_id)
         live, vod = bouquets
         if not live and not vod:
             raise LoginFailed("bouquets", "لم تُرجع اللوحة أي بوكيهات لهذه الباقة — تحقّق من الباقة")
-        fields = {**hidden, "app_name": "users", "t": "add", "userid": "0", "id": "0",
-                  "IF": "0", "page": "0", "owner_mem_group": hidden.get("owner_mem_group", "0"),
-                  "setChosePkg": str(package_id), "username": u, "usernameold": u,
-                  "password": p, "package": str(package_id), "reseller_notes": "",
-                  "liveBq[]": live, "vodBq[]": vod}
-        self._request(self._u("index.php/users/doAdd"), data=fields,
+        fields.update({"setChosePkg": str(package_id), "package": str(package_id),
+                       "liveBq[]": live, "vodBq[]": vod, "password": p})
+        fields.setdefault("reseller_notes", "")
+        self._request(action, data=fields,
                       headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
         # ردّ doAdd لا يميّز النجاح؛ نتحقّق بالفلتر مع صبرٍ (اللوحة تتأخّر لحظةً).
-        for attempt in range(6):
+        # كلمة المرور المُعادة هي التي أرسلناها (رقمية موثوقة)، لا ما يعرضه الجدول.
+        for attempt in range(8):
             if attempt:
-                time.sleep(min(attempt, 4))
+                time.sleep(min(attempt, 3))
             made = self._find_user(u)
             if made:
                 return self._ok_line(u, p, made)
         raise LoginFailed(
             "create_failed",
-            "لم تُؤكِّد اللوحة إنشاء اليوزر — غالبًا خنقٌ مؤقّت أو سقف إنشاءٍ على "
-            "اللوحة. أُعيدت المحاولة؛ انتظر قليلًا ثم أكمل الباقي.")
+            "لم تُؤكِّد اللوحة إنشاء اليوزر بعد الإرسال — انتظر قليلًا ثم أعد المحاولة.")
 
     def create_many(self, package_id, pairs, host=None) -> list:
-        """دفعة يوزرات على كاسبر: إنشاءٌ لكل زوج (لكلٍّ نموذجُه وبواقاته). إن فشل
-        واحدٌ في المنتصف تُعاد النتائج الناجحة قبله مع الخطأ (ما أُنشئ قد خُصم)."""
+        """دفعة يوزرات على كاسبر: كلٌّ من نموذجٍ جديد (يوزره المولَّد من اللوحة،
+        وكلمةُ مرورِه الرقمية من عندنا). عدد الأزواج هو العدد المطلوب؛ يُؤخذ من كل
+        زوجٍ كلمةُ مروره (إن كانت أرقامًا) وإلا تُولَّد رقمية — واليوزر دومًا من
+        اللوحة. فشلُ محاولةٍ لا يُنشئ شيئًا (لم يُخصم رصيد) فإعادتها آمنة بلا
+        تكرار. إن فشل يوزرٌ نهائيًا تُعاد النتائج الناجحة قبله مع الخطأ."""
         try:
-            bouquets = self._bouquets_for(package_id)   # مرّةً للدفعة كلها (أقلّ طلبات = خنقٌ أقلّ)
+            bouquets = self._bouquets_for(package_id)   # مرّةً للدفعة كلها (أقلّ طلبات)
         except Exception:
             bouquets = None
         out = []
-        for i, (u, p) in enumerate(pairs):
+        for i in range(len(pairs)):
             if i:
-                time.sleep(2)                     # اللوحة تخنق الطلبات المتلاحقة
+                time.sleep(2)                     # فاصلٌ لطيفٌ بين الطلبات المتلاحقة
+            pw = pairs[i][1] if (i < len(pairs) and len(pairs[i]) > 1) else None
             last = None
-            for wait in (0, 8, 20):               # محاولة + إعادتان بتراجع تصاعدي (آمنٌ: لا تكرار)
-                if wait:
-                    time.sleep(wait)
+            for attempt in range(3):              # محاولة + إعادتان (كلٌّ بنموذجٍ جديد = آمن)
+                if attempt:
+                    time.sleep(3 * attempt)
                 try:
-                    out.append(self.create_line(package_id, u, p, host, bouquets))
+                    out.append(self.create_line(package_id, None, pw, host, bouquets))
                     last = None
                     break
+                except (CaptchaNeeded, LoginFailed) as e:
+                    if getattr(e, "args", [None])[0] == "bouquets":
+                        last = e
+                        break                     # خطأٌ بنيويّ، لا فائدة من الإعادة
+                    last = e
                 except Exception as e:
                     last = e
             if last is not None:
-                out.append({"error": str(last)[:200], "username": str(u), "password": str(p)})
+                out.append({"error": str(last)[:200]})
                 break
         return out
 

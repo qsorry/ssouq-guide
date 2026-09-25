@@ -10,6 +10,7 @@ Package · Lock · Created · Expire · Notes · MAX Conn. · · Options.
 
 import http.server
 import threading
+import urllib.parse
 
 
 PER_PAGE = 50
@@ -35,6 +36,8 @@ def _make_users(n):
 class _Handler(http.server.BaseHTTPRequestHandler):
     users = _make_users(120)          # تُستبدل من الخادم
     ctx = "/iptv"
+    _gen = [0]                         # عدّاد اليوزرات المولَّدة من اللوحة
+    _lock = threading.Lock()
 
     def log_message(self, *a):
         pass
@@ -59,10 +62,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "<button type='submit'>Login</button>"
                 "<input type='hidden' name='maa' value='do_login' /></form></body></html>")
 
-    def _rows_html(self, page):
-        total = len(self.users)
+    def _rows_html(self, page, users=None):
+        src = self.users if users is None else users
+        total = len(src)
         last = max(1, (total + PER_PAGE - 1) // PER_PAGE)
-        chunk = self.users[(page - 1) * PER_PAGE: page * PER_PAGE]
+        chunk = src[(page - 1) * PER_PAGE: page * PER_PAGE]
         trs = []
         for u in chunk:
             trs.append(
@@ -94,6 +98,45 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "</tr></thead><tbody>%s</tbody></table>"
                 "<ul class='pagination'>%s</ul></body></html>" % ("".join(trs), pag))
 
+    def _add_form_html(self):
+        """نموذج «إضافة يوزر» كما في اللوحة الحقيقية: يوزرٌ مملوءٌ سلفًا ومولَّدٌ
+        من اللوحة (username/usernameold)، وحقلُ كلمة المرور **معطَّل** (disabled)
+        قيمتُه «Auto Generated» — فلا يرسله المتصفح، فتولّد اللوحة كلمةً عشوائية."""
+        with self._lock:
+            self._gen[0] += 1
+            u = "3%011d" % self._gen[0]        # يوزرٌ رقميّ بطول ١٢
+        return ("<!DOCTYPE html><html><head><title>Casper Vip</title></head><body>"
+                "<form method=\"POST\" name=\"form_add\" id='frmUsers' "
+                "action=\"/iptv/index.php/users/doAdd\" enctype=\"multipart/form-data\">"
+                "<input type=\"text\" name=\"username\" value=\"%s\" class=\"form-control\">"
+                "<input type=\"text\" name=\"password\" disabled='' value=\"Auto Generated\" "
+                "placeholder=\"Leave empty for random password\">"
+                "<input type=\"hidden\" name=\"app_name\" value=\"users\">"
+                "<input type=\"hidden\" name=\"t\" value=\"add\">"
+                "<input type=\"hidden\" name=\"userid\" value=\"0\">"
+                "<input type=\"hidden\" name=\"usernameold\" value=\"%s\">"
+                "<input type=\"hidden\" name=\"id\" value=\"0\">"
+                "<input type=\"hidden\" name=\"IF\" value=\"0\">"
+                "<input type=\"hidden\" name=\"page\" value=\"0\">"
+                "<input type=\"hidden\" name=\"setChosePkg\" value=\"\">"
+                "<input type=\"hidden\" name=\"owner_mem_group\" value=\"0\">"
+                "<select name=\"package\" id=\"package\">"
+                "<option value=\"\">Choose Package</option>"
+                "<option value=\"726\">15 Months [Credit: 1]</option>"
+                "<option value=\"594\">1 Year [Credit: 1]</option>"
+                "<option value=\"580\">6 Months [Credit: 0.5]</option>"
+                "<option value=\"727\">1 Day</option></select>"
+                "<select name=\"liveBq[]\" id=\"mag_bouquetLive\"></select>"
+                "<select name=\"vodBq[]\" id=\"mag_bouquetVod\"></select>"
+                "</form></body></html>" % (u, u))
+
+    @staticmethod
+    def _bouquets_html():
+        return ("<select name=\"liveBq[]\" id=\"mag_bouquetLive\">"
+                "<option value=\"1\">Live A</option><option value=\"2\">Live B</option></select>"
+                "<select name=\"vodBq[]\" id=\"mag_bouquetVod\">"
+                "<option value=\"10\">Vod A</option></select>")
+
     def do_GET(self):
         p = self.path
         if "login.php" in p:
@@ -104,8 +147,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if "index.php/home/index" in p:
-            return self._html(200, "<html><body>Dashboard OK</body></html>")
+            return self._html(200, "<html><body>Dashboard OK Credit : 6303</body></html>")
+        if "index.php/users/Form" in p and "t=add" in p:
+            return self._html(200, self._add_form_html())
         if "index.php/users/index" in p:
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(p).query)
+            if q.get("username"):                # فلتر الخادم بالاسم (كما في اللوحة الحقيقية)
+                term = q["username"][0].replace("*", "").lower()
+                hits = [u for u in self.users if term in u["username"].lower()]
+                return self._html(200, self._rows_html(1, hits))
             page = 1
             if "page=" in p:
                 try:
@@ -125,6 +175,30 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Set-Cookie", "casper_sess=1; path=/")
             self.end_headers()
             return
+        if "global_ajax/getBouquets" in self.path:
+            return self._html(200, self._bouquets_html())
+        if "index.php/users/doAdd" in self.path:
+            fields = urllib.parse.parse_qs(body, keep_blank_values=True)
+            user = (fields.get("username") or [""])[0].strip()
+            pkg = (fields.get("package") or [""])[0].strip()
+            # حقلُ كلمة المرور معطَّلٌ في النموذج فلا يصل المتصفحُ به: غيابُه =
+            # «اتركه فارغًا لكلمةٍ عشوائية» → نولّد رقمية. حضورُه = تُخزَّن كما هي
+            # (نمذجةٌ للعطب القديم الذي كان يرسل «Auto Generated»).
+            pw = (fields.get("password") or [None])[0]
+            if not user:
+                return self._html(400, "no username")
+            if pw is None or pw == "":
+                with self._lock:
+                    self._gen[0] += 1
+                    pw = "8%011d" % self._gen[0]      # كلمة مرورٍ رقمية مولَّدة
+            names = {"726": "15 Months", "594": "1 Year", "580": "6 Months", "727": "1 Day"}
+            with self._lock:
+                self.users.insert(0, {                 # الأحدث أولًا (id:desc)
+                    "id": str(1000000 + self._gen[0]),
+                    "username": user, "password": pw,
+                    "package": names.get(pkg, "15 Months"),
+                    "created": "2026-09-25", "exp": "2027-12-25 22:54", "conns": "0/1"})
+            return self._html(200, "<html><body>OK</body></html>")
         self._html(400, "bad")
 
 
