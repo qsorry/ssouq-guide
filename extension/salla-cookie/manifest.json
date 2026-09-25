@@ -3,7 +3,6 @@
   "name": "جلسة سلة → أداة ssouq",
   "description": "التقاط ترويسة كوكيز لوحة سلة (s.salla.sa) وإرسالها إلى أداة التجديد — بديل «Copy as cURL».",
   "version": "1.0.0",
-  "default_locale": "ar",
   "action": {
     "default_title": "التقاط جلسة سلة",
     "default_popup": "popup.html",

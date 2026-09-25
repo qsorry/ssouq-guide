@@ -629,6 +629,14 @@ class TestPanelSession(unittest.TestCase):
         self.assertIn("background.js", names)
         self.assertIn("icons/icon-16.png", names)      # المجلّدات الداخلية تبقى
         self.assertFalse(any(n.startswith("salla-cookie/") for n in names))
+        # البيان صالح لكروم: لو ذُكر default_locale لزم مجلّد _locales وإلا رُفض.
+        man = json.loads(z.read("manifest.json").decode("utf-8"))
+        self.assertEqual(man.get("manifest_version"), 3)
+        if man.get("default_locale"):
+            self.assertTrue(any(n.startswith("_locales/") for n in names),
+                            "default_locale يستلزم مجلّد _locales")
+        for icon in man.get("icons", {}).values():       # كل أيقونة معلنة موجودة
+            self.assertIn(icon, names, icon)
 
     def test_the_extension_endpoint_sets_only_the_cookie(self):
         """‏`/api/renew/panel-cookie` من الإضافة يضبط الكوكيز وحدها ولا يمسّ الباقي.
