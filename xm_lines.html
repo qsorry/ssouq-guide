@@ -289,7 +289,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
     <button class="ghost wide" id="addMyGate" style="margin-top:8px">+ إضافة بوابة</button>
     <div id="gateEditor" hidden style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
       <input type="hidden" id="g_id">
-      <div class="row" style="margin-bottom:8px"><button type="button" class="ghost wide" id="presetKasper">تعبئة بوابة كاسبر (all-iptvs.com:2082 · جلسة ويب · 10 أرقام)</button></div>
+      <div class="row" style="margin-bottom:8px"><button type="button" class="ghost wide" id="presetKasper">تعبئة بوابة كاسبر Casper (boss4k.vip · بلا كود تحقّق · 10 أرقام)</button></div>
       <label class="f" for="g_name">اسم البوابة</label><input class="t" id="g_name" placeholder="بوابة مرح" style="direction:rtl;text-align:right">
       <label class="f" for="g_mode">طريقة الربط</label>
       <select class="t" id="g_mode">
@@ -298,7 +298,12 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
         <option value="falcon">فالكون (Falcon API)</option>
       </select>
       <div id="g_web">
-        <label class="f" for="g_panel_base">رابط اللوحة</label><input class="t" id="g_panel_base" placeholder="http://panel-host:2052">
+        <label class="f" for="g_web_flavor">نوع لوحة الويب</label>
+        <select class="t" id="g_web_flavor">
+          <option value="xtream">Xtream — بحث الجدول (مرح/all-iptvs)</option>
+          <option value="casper">كاسبر / c4kpanel — index.php/users (بلا كود تحقّق)</option>
+        </select>
+        <label class="f" for="g_panel_base">رابط اللوحة <small style="color:var(--mute)">— كاسبر تُغيّر دومينها؛ يمكن كتابة عدّة دومينات بفاصلة</small></label><input class="t" id="g_panel_base" placeholder="https://boss4k.vip/iptv , https://c4kpanel.com/iptv">
         <div class="row"><div><label class="f" for="g_panel_user">اسم الدخول للوحة</label><input class="t" id="g_panel_user" autocomplete="off"></div>
         <div><label class="f" for="g_panel_pass">كلمة مرور اللوحة</label><input class="t" id="g_panel_pass" type="password" autocomplete="new-password"></div></div>
       </div>
@@ -534,6 +539,7 @@ function applyGateMode(){ const m = $("g_mode").value; $("g_web").hidden = m !==
 function gateForm(g){
   g = g || {mode:"web"};
   $("g_id").value=g.id||""; $("g_name").value=g.name||""; $("g_mode").value=MODE[g.mode]?g.mode:"web";
+  $("g_web_flavor").value = (g.web_flavor === "casper") ? "casper" : "xtream";
   $("g_panel_base").value=g.panel_base||""; $("g_panel_user").value=g.panel_user||"";
   $("g_panel_pass").value=""; $("g_panel_pass").placeholder=g.has_panel_pass?"محفوظة — اتركه فارغًا للإبقاء":"";
   $("g_api_url").value=g.api_url||""; $("g_api_key").value=""; $("g_api_key").placeholder=g.has_api_key?"محفوظ — اتركه فارغًا للإبقاء":"";
@@ -543,12 +549,14 @@ function gateForm(g){
 }
 function readGateForm(){
   return {id:$("g_id").value, name:$("g_name").value, mode:$("g_mode").value,
+    web_flavor:$("g_web_flavor").value,
     panel_base:$("g_panel_base").value, panel_user:$("g_panel_user").value, panel_pass:$("g_panel_pass").value,
     api_url:$("g_api_url").value, api_key:$("g_api_key").value, host:$("g_host").value, guide_url:$("g_guide").value,
     digits:$("g_digits").value, point_cost:$("g_point_cost").value};
 }
-// قالب كاسبر: لوحة Xtream-Masters على all-iptvs.com:2082 بجلسة ويب (كمرح)، ويوزر/باسورد من ١٠ أرقام.
-const KASPER = {name:"بوابة كاسبر", mode:"web", panel_base:"http://all-iptvs.com:2082", digits:10};
+// قالب كاسبر Casper الحالي: c4kpanel/boss4k بجلسة ويب بلا كود تحقّق، ويوزر/باسورد ١٠ أرقام.
+// كاسبر تُغيّر دومينها، فيُملأ الدومين الحالي ويجوز إضافة غيره بفاصلة.
+const KASPER = {name:"بوابة كاسبر", mode:"web", web_flavor:"casper", panel_base:"https://boss4k.vip/iptv", digits:10};
 function presetKasper(){
   const id=$("g_id").value;
   gateForm({...KASPER, id, panel_user:$("g_panel_user").value, host:$("g_host").value, guide_url:$("g_guide").value});
