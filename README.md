@@ -510,7 +510,7 @@ LG، و`vod: true` للباقة الترفيهية التي تُعرض لمن ا
 
 | | سمارت | فالكون | كاسبر |
 |---|---|---|---|
-| آيفون / آيباد | VAR Player | **Smarters Player Lite** | **AroPlayer** |
+| آيفون / آيباد | VAR Player | **Smarters Player Lite** | **CASPER VIP** · AroPlayer |
 | جوال أندرويد | NEXT+ (أو MR7) · IPTV Smarters Pro | **تطبيق فالكون** · IPTV Smarters Pro | **CASPER VIP** · IPTV Smarters Pro |
 | شاشة / بوكس أندرويد | MR7 TV · IPTV Smarters Pro | **تطبيق فالكون** · IPTV Smarters Pro | **CASPER VIP** · IPTV Smarters Pro |
 | سامسونج و LG و WebOS | 0Player برمز `92929480` | 0Player برمز **`75710072`** | **Duplecast** |
@@ -520,7 +520,7 @@ LG، و`vod: true` للباقة الترفيهية التي تُعرض لمن ا
 سمارت، ولا **NEXT+** لأن دخوله برمز خادم لوحة سمارت (`55555`). وعلى الأندرويد
 جوالًا وشاشةً تطبيق الاشتراك الخاص **CASPER VIP** أولًا — يُحمَّل بكود Downloader
 **`3638997`** على الشاشات، ومن الرابط المباشر `aftv.news/3638997` على الجوال،
-ودخوله في `CASPER_VIP_LOGIN` خطوة واحدة للجهازين — و`IPTV Smarters Pro` بديلًا،
+وعلى الآيفون من App Store (`id6443763941`)، ودخوله في `CASPER_VIP_LOGIN` خطوة واحدة للأجهزة الثلاثة — و`IPTV Smarters Pro` بديلًا،
 وهو يدخل بالهوست واسم المستخدم وكلمة المرور بلا رمز مزوّد أصلًا.
 و**Duplecast** على سامسونج و LG يأخذ الهوست والبورت في **خانتين منفصلتين**،
 فالخطوة تقول ذلك صراحةً وإلا لصق المشترك `http://host.com:8080` كاملًا في خانة
