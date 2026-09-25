@@ -1457,6 +1457,109 @@ class CasperWebSession(PanelWebSession):
                     break
         return out
 
+    # ---- إنشاء يوزر على كاسبر ----
+    _RE_PKG_SELECT = re.compile(r'<select[^>]*name=[\'"]package[\'"][^>]*>(.*?)</select>', re.S | re.I)
+    _RE_OPT = re.compile(r'<option[^>]*value=[\'"]?([^\'">]*)[\'"]?[^>]*>(.*?)</option>', re.S | re.I)
+
+    def supports_extend(self) -> bool:
+        return False                          # كاسبر: المدة من الباقة نفسها، لا تمديد ×٢
+
+    def packages(self) -> list:
+        """باقات كاسبر من صفحة الإضافة: كلٌّ مدةٌ ورصيدها («15 Months [Credit: 1]»).
+        تُرجع {value,text,id,name} كما تتوقّع صفحة الإنشاء."""
+        self.ensure_login()
+        html = self._text(self._request(self._u("index.php/users/Form?t=add")))
+        m = self._RE_PKG_SELECT.search(html)
+        if not m:
+            raise RuntimeError("قائمة الباقات غير موجودة في صفحة الإضافة (كاسبر)")
+        out = []
+        for val, text in self._RE_OPT.findall(m.group(1)):
+            val = val.strip()
+            text = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", text))).strip()
+            if not val or val == "0" or re.search(r"choose|select|اختر", text, re.I):
+                continue
+            out.append({"value": val, "text": text, "id": val, "name": text})
+        return out
+
+    def _bouquets_for(self, package_id):
+        """قيم liveBq[]/vodBq[] لباقةٍ ما، كما تعيدها getBouquets عند اختيارها."""
+        r = self._request(self._u("index.php/global_ajax/getBouquets/?NH=1"),
+                          data={"package": str(package_id)},
+                          headers={"X-Requested-With": "XMLHttpRequest"})
+        html = self._text(r)
+        live, vod = [], []
+        for name, bucket in (("liveBq[]", live), ("vodBq[]", vod)):
+            sm = re.search(r'<select[^>]*name=[\'"]' + re.escape(name) + r'[\'"][^>]*>(.*?)</select>',
+                           html, re.S | re.I)
+            if sm:
+                bucket += [v.strip() for v, _ in self._RE_OPT.findall(sm.group(1)) if v.strip()]
+        return live, vod
+
+    def status(self) -> dict:
+        """رصيد الموزّع (Credit) وبعض الأرقام — لبطاقة صفحة الإنشاء."""
+        self.ensure_login()
+        html = self._text(self._request(self._u("index.php/home/index")))
+        last, total = {}, None
+        try:
+            page1 = self._text(self._request(self._u("index.php/users/index?page=1")))
+            rows = self._parse_users_page(page1)
+            last = rows[0] if rows else {}
+            pgs = [int(x) for x in self._RE_PAGES.findall(page1)]
+            total = (max(pgs) * 50) if pgs else len(rows)   # تقديرٌ من الترقيم
+        except Exception:
+            pass
+        return {
+            "provider": "web",
+            "credits": self._extract_credits(html),
+            "host": self.acct.get("host", ""),
+            "username": self.acct.get("user", ""),
+            "total": total,
+            "last_id": last.get("id"),
+            "last_username": last.get("username"),
+            "created_today": None,
+            "today": "",
+            "today_lines": [],
+        }
+
+    def create_line(self, package_id, username=None, password=None, host=None) -> dict:
+        """يُنشئ يوزرًا بالباقة (المدة) المطلوبة: يجلب نموذج الإضافة وبواقات الباقة،
+        ثم يُرسل الاسم وكلمة المرور والباقة وكل البواقات. يرجّع {username,password,...}."""
+        self.ensure_login()
+        u = str(username or _rand_digits(10))
+        p = str(password or _rand_digits(10))
+        form_html = self._text(self._request(self._u("index.php/users/Form?t=add")))
+        # الحقول المخفية كما ترسلها اللوحة
+        hidden = {}
+        for tag in re.finditer(r'<input[^>]*type=[\'"]hidden[\'"][^>]*>', form_html, re.I):
+            nm = re.search(r'name=[\'"]([^\'"]+)', tag.group(0))
+            vl = re.search(r'value=[\'"]([^\'"]*)', tag.group(0))
+            if nm:
+                hidden[nm.group(1)] = _html.unescape(vl.group(1)) if vl else ""
+        live, vod = self._bouquets_for(package_id)
+        if not live and not vod:
+            raise LoginFailed("bouquets", "لم تُرجع اللوحة أي بوكيهات لهذه الباقة — تحقّق من الباقة")
+        fields = {**hidden, "app_name": "users", "t": "add", "userid": "0", "id": "0",
+                  "IF": "0", "page": "0", "owner_mem_group": hidden.get("owner_mem_group", "0"),
+                  "setChosePkg": str(package_id), "username": u, "usernameold": u,
+                  "password": p, "package": str(package_id), "reseller_notes": "",
+                  "liveBq[]": live, "vodBq[]": vod}
+        action = self._u("index.php/users/")
+        self._request(action, data=fields,
+                      headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
+        # لا نثق بردّ الصفحة — نتأكّد فعليًا: اليوزر الجديد يأخذ أعلى رقم فيظهر أوّلَ
+        # صفحةٍ (مرتَّبة تنازليًا). إن لم يظهر فالإنشاء لم يقع — نرفع خطأً صريحًا لا
+        # ندّعي نجاحًا (وإلا حُسب مبيعًا ولم يُنشأ).
+        made = next((x for x in self._parse_users_page(
+            self._text(self._request(self._u("index.php/users/index?page=1"))))
+            if x["username"] == u), None)
+        if not made:
+            raise LoginFailed(
+                "create_failed",
+                "لم يُنشأ اليوزر على كاسبر — طريقة الإرسال تحتاج مطابقة الطلب الحقيقي "
+                "(الصق «Copy as cURL» لعملية إضافة يوزر من اللوحة لأضبطها)")
+        return {"username": u, "password": p, "id": made.get("id", ""),
+                "exp": made.get("exp", ""), "package": made.get("package", ""), "ok": True}
+
 
 def _to_num(s):
     """نص رقمي (بفواصل آلاف) → int أو float، وإلا None."""
