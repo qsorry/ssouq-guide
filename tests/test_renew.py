@@ -615,7 +615,8 @@ class TestPanelSession(unittest.TestCase):
 
     def test_the_extension_zips_ready_to_load(self):
         """‏`/api/renew/extension.zip` يبني الإضافة من مصدرها لا من ملفٍّ متقادم،
-        بادئةً بـ `salla-cookie/` كي يعطي فكُّ الضغط مجلّدًا يُحمَّل مباشرةً."""
+        و`manifest.json` في **جذر** الحزمة لا داخل مجلّد فرعي — وإلا رفضه كروم
+        بعد فكّ ويندوز الضغطَ إلى مجلّد باسم الملف («البيان مفقود»)."""
         import io
         import zipfile
         import xm_lines
@@ -624,9 +625,10 @@ class TestPanelSession(unittest.TestCase):
         z = zipfile.ZipFile(io.BytesIO(data))
         self.assertIsNone(z.testzip())                 # لا ملفّ تالف
         names = z.namelist()
-        self.assertIn("salla-cookie/manifest.json", names)
-        self.assertIn("salla-cookie/background.js", names)
-        self.assertTrue(any(n.endswith(".png") for n in names))  # الأيقونات معها
+        self.assertIn("manifest.json", names)          # في الجذر مباشرةً
+        self.assertIn("background.js", names)
+        self.assertIn("icons/icon-16.png", names)      # المجلّدات الداخلية تبقى
+        self.assertFalse(any(n.startswith("salla-cookie/") for n in names))
 
     def test_the_extension_endpoint_sets_only_the_cookie(self):
         """‏`/api/renew/panel-cookie` من الإضافة يضبط الكوكيز وحدها ولا يمسّ الباقي.

@@ -121,17 +121,17 @@ EXTENSION_DIR = os.path.join(BASE_DIR, "extension", "salla-cookie")
 
 def build_extension_zip():
     """إضافة المتصفّح مضغوطةً في الذاكرة من مصدرها — فلا يُحفظ ملفٌّ ثنائيّ في
-    المستودع يتقادم عن الكود. تُبنى من المجلّد بادئةً بـ `salla-cookie/` كي يعطي
-    فكّ الضغط مجلّدًا واضح الاسم يُحمَّل بـ «تحميل غير مضغوط»."""
+    المستودع يتقادم عن الكود. الملفات في **جذر** الحزمة (‏`manifest.json` أولها)
+    لا داخل مجلّد فرعي: ويندوز يفكّ الضغط إلى مجلّد باسم الملف، فلو كان تحته
+    مجلّدٌ ثانٍ لصار البيان على عمق طبقتين ورفضه كروم («البيان مفقود»)."""
     if not os.path.isdir(EXTENSION_DIR):
         return b""
     buf = io.BytesIO()
-    top = os.path.dirname(EXTENSION_DIR)
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for root, _dirs, files in os.walk(EXTENSION_DIR):
             for fn in sorted(files):
                 full = os.path.join(root, fn)
-                z.write(full, os.path.relpath(full, top))
+                z.write(full, os.path.relpath(full, EXTENSION_DIR))
     return buf.getvalue()
 MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image/png", ".jpg": "image/jpeg",
              ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon",
