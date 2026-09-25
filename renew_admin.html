@@ -7,21 +7,36 @@
 <title>خدمة التجديد</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#16324F;--paper:#EEF2F6;--card:#FFFFFF;--line:#D5DEE8;--go:#0F8C7B;--copy:#D9912B;--err:#C2412D;--mute:#5F7288;--s1:#1a7fb3;--s2:#e34948}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8;--s1:#3d9fd6;--s2:#e66767}}
-:root[data-theme="dark"]{--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8;--s1:#3d9fd6;--s2:#e66767}
+/* نظام تصميم لوحة اليوزر نفسه (نفس المتغيّرات) + أسماء بديلة ليعمل الستايل القديم */
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45);
+  --paper:var(--bg);--card:var(--sf);--copy:var(--amber);--s1:var(--blue);--s2:var(--err)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif}
-main{max-width:860px;margin:0 auto;padding:20px 16px 70px}
-h1{font-size:1.5rem;margin:0 0 4px}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
+/* الهيدر الثابت — مطابق للوحة اليوزر */
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;height:62px;padding:0 18px;background:color-mix(in srgb,var(--sf) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;margin-inline-start:auto}
+.brand .mark{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);display:grid;place-items:center;color:#fff}
+.brand b{font-size:1rem;display:block;line-height:1} .brand small{color:var(--mute);font-size:.72rem}
+.nav{display:flex;gap:4px} .nav a{padding:8px 12px;border-radius:10px;color:var(--mute);font-weight:500;text-decoration:none;font-size:.9rem}
+.nav a.on{color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
+.nav a:hover{color:var(--ink)}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);cursor:pointer;text-decoration:none}
+.icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nav a svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px;margin-inline-end:5px}
+@media (max-width:640px){.nav a small,.brand small{display:none}.nav a{padding:8px}}
+main{max-width:900px;margin:0 auto;padding:20px 16px 70px}
+h1{font-size:1.4rem;margin:0 0 4px}
 .sub{color:var(--mute);margin:0 0 20px;font-size:.95rem}
 .sub a{color:var(--go)}
-section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+section{background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
 h2{font-size:1.05rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 h2 small{font-weight:400;font-size:.8rem;color:var(--mute)}
 h3{font-size:.92rem;margin:18px 0 8px;color:var(--mute);font-weight:600}
 label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
-input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--sf2);color:var(--ink);font:inherit}
 input{direction:ltr;text-align:left}
 input[type=checkbox]{width:auto;margin:0 0 0 7px;vertical-align:-2px}
 select{direction:rtl;text-align:right}
@@ -30,7 +45,7 @@ select{direction:rtl;text-align:right}
 @media (max-width:560px){.g2,.g3{grid-template-columns:1fr}}
 button{font:inherit;border:0;border-radius:10px;cursor:pointer}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--copy);outline-offset:2px}
-.go{width:100%;margin-top:14px;padding:13px;background:var(--go);color:#fff;font-weight:700}
+.go{width:100%;margin-top:14px;padding:13px;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;border-radius:12px;box-shadow:0 8px 20px color-mix(in srgb,var(--go) 30%,transparent)}
 .go:disabled{opacity:.6;cursor:progress}
 .ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:7px 13px;font-size:.85rem}
 .ghost:hover{border-color:var(--go);color:var(--go)}
@@ -51,10 +66,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 
 /* أرقام */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0 0 14px}
-.tile{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.tile{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--sf2)}
 .tile .k{font-size:.78rem;color:var(--mute)}
 .tile .v{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.25}
-.tile.hero{background:var(--go);border-color:var(--go);color:#fff}
+.tile.hero{background:linear-gradient(135deg,var(--go),var(--go2));border-color:var(--go);color:var(--go-ink)}
 .tile.hero .k{color:#cdeee8}
 
 table{width:100%;border-collapse:collapse;font-size:.87rem}
@@ -80,16 +95,26 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
 .bars i:hover::after{content:attr(data-t);position:absolute;bottom:100%;right:50%;transform:translateX(50%);
   background:var(--ink);color:var(--card);padding:4px 8px;border-radius:6px;font-size:.72rem;white-space:nowrap;z-index:3}
 .axis{display:flex;justify-content:space-between;font-size:.72rem;color:var(--mute)}
+.card{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:14px}
+a{color:var(--go)}
 </style>
 </head>
 <body>
+<header class="top">
+  <nav class="nav">
+    <a id="lnkHome"><svg viewBox="0 0 24 24"><path d="M4 10V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v5M4 10h16M4 10v9a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-9M12 14v3"/></svg><small>البوابات</small></a>
+    <a class="on"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M21 3v5h-5M3 21v-5h5"/></svg><small>التجديد والمقارنة</small></a>
+    <a id="lnkAcc" class="admin-only"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M4 20a5 5 0 0 1 10 0M17 11l2 2 3-3"/></svg><small>الحسابات</small></a>
+  </nav>
+  <button class="icon-btn" id="themeBtn" title="الوضع الليلي/النهاري"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <a class="icon-btn" href="/logout" id="lnkOut" title="خروج"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
+  <a class="brand" id="lnkBrand"><span class="mark"><svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2"><path d="M12 3a9 9 0 1 0 9 9M12 3v9l6-3"/></svg></span><span><b>Guide</b><small>ssouq.com</small></span></a>
+</header>
 <main>
-  <h1>خدمة التجديد على سيرفر مرح</h1>
+  <h1>التجديد والمقارنة</h1>
   <p class="sub">
-    ارفع ملفات سلة فتُقرأ ويُستخرج التحليل، ثم اربط الباقات ببوابة مرح وفعّل الصفحة للعملاء.
-    · <a href="/accounts" id="lnkAcc">إدارة الحسابات</a>
-    · <a href="/renew" id="lnkPub" target="_blank">صفحة العميل</a>
-    · <a href="/logout" id="lnkOut">خروج</a>
+    ارفع ملفات سلة أو اسحبها، قارِن يوزراتك باللوحات، وجهّز قائمة التجديد.
+    <span class="admin-only">· <a href="/renew" id="lnkPub" target="_blank">صفحة العميل</a></span>
   </p>
 
   <!-- ===================== ١· رفع الملفات ===================== -->
@@ -155,7 +180,7 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
   </section>
 
   <!-- ===================== الحصاد ===================== -->
-  <section>
+  <section class="admin-only">
     <h2>احصد الاعتمادات <small>الجلسة نافذةٌ تنتهي — استنفدها جمعًا</small></h2>
     <p class="note" style="margin-top:0">
       جلسة لوحة سلة تنتهي خلال ساعات. فبدل أن يعتمد عليها العميل وقت طلبه،
@@ -274,6 +299,9 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
   <section>
     <h2>٣· الربط والإعداد</h2>
 
+    <label for="sallaToken">رمز سلة (Admin API) — لسحب طلباتك من سلة مباشرة</label>
+    <input id="sallaToken" autocomplete="off" placeholder="ory_at_… أو رمز التطبيق الخاص">
+
     <div class="g2">
       <div>
         <label for="srcGate">لوحة البحث عن اشتراك العميل</label>
@@ -322,7 +350,7 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
     </p>
     <label for="panelCookie">الصق «Copy as cURL» — أو ترويسة Cookie وحدها</label>
     <input id="panelCookie" autocomplete="off" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'">
-    <div class="row"><button class="ghost" id="panelTest" type="button">اختبار الجلسة</button></div>
+    <div class="row admin-only"><button class="ghost" id="panelTest" type="button">اختبار الجلسة</button></div>
     <p class="msg" id="panelMsg"></p>
 
     <h3>بريد التنبيه — يصلك حين ينقطع الوصل</h3>
@@ -344,13 +372,13 @@ input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
 
     <button class="go" id="save">حفظ الإعداد</button>
     <div class="row">
-      <button class="ghost" id="testMail" type="button">اختبار بريد التنبيه</button>
+      <button class="ghost admin-only" id="testMail" type="button">اختبار بريد التنبيه</button>
     </div>
     <p class="msg" id="cfgMsg"></p>
   </section>
 
   <!-- ===================== ٤· الطابور ===================== -->
-  <section>
+  <section class="admin-only">
     <h2>٤· الطلبات <small id="qCounts"></small>
       <button class="ghost" id="runQ" type="button">تفريغ الطابور الآن</button></h2>
     <div class="scroll"><table>
@@ -368,9 +396,23 @@ const AR = n => new Intl.NumberFormat('ar-SA',{maximumFractionDigits:2}).format(
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-["lnkAcc","lnkOut"].forEach(id => { const a = $('#' + id); if (a) a.href = B + a.getAttribute('href'); });
+// روابط الهيدر (مطابقة للوحة اليوزر)
+{ const set=(id,p)=>{const a=$('#'+id); if(a) a.href=B+p;};
+  set('lnkHome','/'); set('lnkBrand','/'); set('lnkAcc','/accounts'); set('lnkOut','/logout'); }
 // على نطاق الأداة، /renew هو هذه الصفحة نفسها — فصفحة العميل على الموقع العام.
 $('#lnkPub').href = B ? '/renew' : 'https://guide.ssouq.com/renew';
+
+// مبدّل الثيم (يُحفظ محليًا) — كما في لوحة اليوزر
+(function(){
+  const KEY='ssouq_theme';
+  try{ const t=localStorage.getItem(KEY); if(t) document.documentElement.setAttribute('data-theme',t); }catch(e){}
+  const btn=$('#themeBtn'); if(btn) btn.onclick=()=>{
+    const cur=document.documentElement.getAttribute('data-theme');
+    const nx = cur==='light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme',nx);
+    try{ localStorage.setItem(KEY,nx); }catch(e){}
+  };
+})();
 
 const api = async (path, opt) => {
   const r = await fetch(B + path, opt);
@@ -670,12 +712,20 @@ $('#dl').onclick = () => location.href = B + '/api/renew/report';
 let GATES = [], TIERS = [1,3,6,12,15,30], CFG = null;
 
 async function loadGates(){
-  const d = await api('/api/accounts');
   GATES = [];
-  (d.accounts || []).forEach(a => (a.gates || []).forEach(g => GATES.push({
-    account_id: String(a.id), gate_id: String(g.id), mode: g.mode,
-    label: `${a.name} · ${g.name}${g.mode === 'falcon' ? ' (فالكون)' : ''}`,
-    falcon: g.mode === 'falcon'})));
+  const d = await api('/api/accounts');
+  if (d.accounts) {                         // المدير: كل الحسابات وبواباتها
+    d.accounts.forEach(a => (a.gates || []).forEach(g => GATES.push({
+      account_id: String(a.id), gate_id: String(g.id), mode: g.mode,
+      label: `${a.name} · ${g.name}${g.mode === 'falcon' ? ' (فالكون)' : ''}`,
+      falcon: g.mode === 'falcon'})));
+  } else {                                  // الحساب: بواباته هو فقط (من /api/me)
+    const me = await api('/api/me');
+    (me.gates || []).forEach(g => GATES.push({
+      account_id: '', gate_id: String(g.id), mode: g.mode,
+      label: `${g.name}${g.mode === 'falcon' ? ' (فالكون)' : ''}`,
+      falcon: g.mode === 'falcon'}));
+  }
   ['#srcGate','#tgtGate'].forEach(sel => {
     $(sel).innerHTML = '<option value="">— اختر بوابة —</option>' +
       GATES.filter(g => !g.falcon).map(g =>
@@ -683,10 +733,14 @@ async function loadGates(){
   });
 }
 
+let IS_ADMIN = false;
 async function loadCfg(){
   const d = await api('/api/renew/config');
   if (d.error) return note($('#cfgMsg'), d.error);
   CFG = d.renew; TIERS = d.tiers || TIERS;
+  IS_ADMIN = !!d.is_admin;
+  // خدمة العميل المشتركة (حصاد/طابور/اختبارات) للمدير فقط — تُخفى عن اليوزر.
+  if (!IS_ADMIN) document.querySelectorAll('.admin-only').forEach(e => e.classList.add('hidden'));
   showIndex(d.index);
   $('#srcGate').value = CFG.source.account_id ? CFG.source.account_id + '|' + CFG.source.gate_id : '';
   $('#tgtGate').value = CFG.target.account_id ? CFG.target.account_id + '|' + CFG.target.gate_id : '';
@@ -701,6 +755,9 @@ async function loadCfg(){
   $('#panelCookie').value = '';
   $('#panelCookie').placeholder = CFG.has_panel_cookie
     ? '••• محفوظة — اتركها فارغة لتبقى' : 'salla_session=…; XSRF-TOKEN=…';
+  $('#sallaToken').value = '';
+  $('#sallaToken').placeholder = CFG.has_salla_token
+    ? '••• محفوظ — اتركه فارغًا ليبقى' : 'ory_at_… أو رمز التطبيق الخاص';
   $('#dryRun').checked = !!CFG.dry_run; $('#enabled').checked = !!CFG.enabled;
   drawPkgMap();
 }
@@ -787,6 +844,7 @@ $('#save').onclick = async () => {
     promise_hours: +$('#promise').value, retry_minutes: +$('#retry').value,
     rate_per_hour: +$('#rate').value, renewal_days: +$('#renewalDays').value,
     panel_cookie: $('#panelCookie').value,
+    salla_token: $('#sallaToken').value,
     alert: {host: $('#smtpHost').value.trim(), port: +$('#smtpPort').value,
             user: $('#smtpUser').value.trim(), password: $('#smtpPass').value,
             from: $('#mailFrom').value.trim(), to: $('#mailTo').value.trim(),
@@ -796,9 +854,11 @@ $('#save').onclick = async () => {
   const d = await post('/api/renew/config', body);
   btn.disabled = false;
   if (d.error) return note($('#cfgMsg'), d.error);
-  CFG = d.renew; $('#smtpPass').value = ''; $('#panelCookie').value = '';
+  CFG = d.renew; $('#smtpPass').value = ''; $('#panelCookie').value = ''; $('#sallaToken').value = '';
   $('#panelCookie').placeholder = CFG.has_panel_cookie
     ? '••• محفوظة — اتركها فارغة لتبقى' : 'salla_session=…; XSRF-TOKEN=…';
+  $('#sallaToken').placeholder = CFG.has_salla_token
+    ? '••• محفوظ — اتركه فارغًا ليبقى' : 'ory_at_… أو رمز التطبيق الخاص';
   $('#smtpPass').placeholder = CFG.alert.has_password ? '••• محفوظة — اتركها فارغة لتبقى' : 'كلمة مرور البريد';
   note($('#cfgMsg'), 'حُفظ الإعداد ✓', true);
 };
@@ -861,9 +921,13 @@ const CMP_KIND = {
 };
 let cmpAll = [], cmpFilter = '';
 
+let WEBGATES = [];   // بوابات الويب لهذه المساحة (من /api/renew/panels، بمعرّف الحساب الصحيح)
 function webGateOptions(sel){
-  const opts = GATES.filter(g => g.mode === 'web').map(g =>
-    `<option value="${g.account_id}|${g.gate_id}" ${sel === g.account_id + '|' + g.gate_id ? 'selected' : ''}>${esc(g.label)}</option>`).join('');
+  const opts = WEBGATES.map(g => {
+    const v = g.account_id + '|' + g.gate_id;
+    const lbl = (g.account ? g.account + ' · ' : '') + (g.gate || '');
+    return `<option value="${v}" ${sel === v ? 'selected' : ''}>${esc(lbl)}</option>`;
+  }).join('');
   return '<option value="">— اختر بوابة (ويب) —</option>' + opts;
 }
 
@@ -891,6 +955,7 @@ async function loadPanels(){
   const d = await api('/api/renew/panels');
   if (d.error) return note($('#panelsMsg'), d.error);
   PANELS = d.panels || [];
+  WEBGATES = d.gates || [];
   const box = $('#panelsBox'); box.innerHTML = '';
   if (!PANELS.length) box.appendChild(panelRow());
   else PANELS.forEach(p => box.appendChild(panelRow(p)));
@@ -1047,18 +1112,16 @@ $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/ren
 
 /* ============ الإقلاع ============ */
 (async () => {
+  await loadCfg();                 // يضبط IS_ADMIN ويُخفي أجزاء المدير أولًا
   await loadGates();
-  await loadCfg();
   await loadPanels();
-  await loadQueue();
   const d = await api('/api/renew/analysis');
   if (d.analysis) render(d.analysis);
   watchLines();
-  watchHarvest();
-  harvestPreview();
+  if (IS_ADMIN) { await loadQueue(); watchHarvest(); harvestPreview(); }
   const ps = await api('/api/renew/pull-status');
   if (ps && !ps.has_token)
-    note($('#pullMsg'), 'رمز سلة غير مضبوط — اضبطه في إعداد خدمة سلة ليعمل السحب المباشر.');
+    note($('#pullMsg'), 'رمز سلة غير مضبوط — اضبطه في الإعداد ليعمل السحب المباشر.');
   else if (ps && ps.running){ $('#pullBar').classList.remove('hidden');
     $('#pullStop').classList.remove('hidden'); watchPull(); }
 })();

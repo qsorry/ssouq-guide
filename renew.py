@@ -62,6 +62,9 @@ def default_config():
         # كوكيز جلسة لوحة سلة، يلصقها المشغّل من متصفّحه. لا كلمة مرور ولا
         # دخول آلي: اللوحة محميّة بتحقّق ثنائي وأتمتته عبثٌ وخطر.
         "panel_cookie": "",
+        # رمز سلة (Admin API) لهذه المساحة — لكل حساب رمزه، فيسحب طلباته وحده.
+        # فارغٌ للأدمن = يستعمل رمز الخدمة العام.
+        "salla_token": "",
         # لوحات المقارنة: كل لوحة دخولٌ واحد (بوابة داخل حساب) وعدّة هوستات
         # للعملاء تتبعها. الطلب في سلة يُطابَق باللوحة عبر هوسته، ثم يُقارَن
         # يوزره ومدّته بما في يوزرات تلك اللوحة المسحوبة.
@@ -71,7 +74,7 @@ def default_config():
 
 
 _SECRET_KEYS = ("password",)        # داخل alert: لا يُرسَل للمتصفح ولا يُمسح بالفراغ
-_TOP_SECRETS = ("panel_cookie",)    # سرٌّ في جذر الإعداد، بالحكم نفسه
+_TOP_SECRETS = ("panel_cookie", "salla_token")  # سرٌّ في جذر الإعداد، بالحكم نفسه
 
 
 def _num(v):
@@ -134,6 +137,7 @@ def normalize_config(cfg):
         except (TypeError, ValueError):
             pass
     d["panel_cookie"] = str(cfg.get("panel_cookie", "") or "")
+    d["salla_token"] = str(cfg.get("salla_token", "") or "")
     d["panels"] = normalize_panels(cfg.get("panels"))
     al = cfg.get("alert") if isinstance(cfg.get("alert"), dict) else {}
     d["alert"].update({
@@ -173,6 +177,7 @@ def redact_config(cfg):
     a["has_password"] = bool(a.pop("password", ""))
     out = {**c, "alert": a}
     out["has_panel_cookie"] = bool(out.pop("panel_cookie", ""))
+    out["has_salla_token"] = bool(out.pop("salla_token", ""))
     return out
 
 
