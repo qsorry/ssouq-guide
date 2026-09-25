@@ -1547,21 +1547,40 @@ class CasperWebSession(PanelWebSession):
             "today_lines": [],
         }
 
-    def create_line(self, package_id, username=None, password=None, host=None) -> dict:
-        """يُنشئ يوزرًا بالباقة (المدة) المطلوبة: يجلب نموذج الإضافة وبواقات الباقة،
-        ثم يُرسل الاسم وكلمة المرور والباقة وكل البواقات. يرجّع {username,password,...}."""
+    def _find_user(self, u):
+        """صفُّ اليوزر من فلتر الخادم، أو None. سريعٌ (طلب واحد)."""
+        rows = self._parse_users_page(self._text(self._request(
+            self._u("index.php/users/index?username=" + urllib.parse.quote(u)))))
+        return next((x for x in rows if x["username"] == u), None)
+
+    def _ok_line(self, u, p, made):
+        return {"username": u, "password": p, "id": made.get("id", ""),
+                "exp": made.get("exp", ""), "package": made.get("package", ""),
+                "verified": True, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "timing": {}, "ok": True}
+
+    def create_line(self, package_id, username=None, password=None, host=None,
+                    bouquets=None) -> dict:
+        """يُنشئ يوزرًا بالباقة (المدة) المطلوبة. آمنٌ للإعادة: إن كان اليوزر موجودًا
+        (أُنشئ في محاولةٍ سابقة قبل خنقٍ عابر) يُرجَع كما هو دون تكرار. bouquets
+        يُمرَّر للدفعة فلا يُجلب لكل يوزر."""
         self.ensure_login()
         u = str(username or _rand_digits(10))
         p = str(password or _rand_digits(10))
+        # فحصٌ مسبق: يمنع تكرار يوزرٍ أُنشئ ثم تعذّر تأكيده (إعادة المحاولة).
+        made = self._find_user(u)
+        if made:
+            return self._ok_line(u, p, made)
         form_html = self._text(self._request(self._u("index.php/users/Form?t=add")))
-        # الحقول المخفية كما ترسلها اللوحة
         hidden = {}
         for tag in re.finditer(r'<input[^>]*type=[\'"]hidden[\'"][^>]*>', form_html, re.I):
             nm = re.search(r'name=[\'"]([^\'"]+)', tag.group(0))
             vl = re.search(r'value=[\'"]([^\'"]*)', tag.group(0))
             if nm:
                 hidden[nm.group(1)] = _html.unescape(vl.group(1)) if vl else ""
-        live, vod = self._bouquets_for(package_id)
+        if bouquets is None:
+            bouquets = self._bouquets_for(package_id)
+        live, vod = bouquets
         if not live and not vod:
             raise LoginFailed("bouquets", "لم تُرجع اللوحة أي بوكيهات لهذه الباقة — تحقّق من الباقة")
         fields = {**hidden, "app_name": "users", "t": "add", "userid": "0", "id": "0",
@@ -1569,49 +1588,44 @@ class CasperWebSession(PanelWebSession):
                   "setChosePkg": str(package_id), "username": u, "usernameold": u,
                   "password": p, "package": str(package_id), "reseller_notes": "",
                   "liveBq[]": live, "vodBq[]": vod}
-        action = self._u("index.php/users/doAdd")   # مسار الحفظ الفعلي (لا /users/ = بحث)
-        self._request(action, data=fields,
+        self._request(self._u("index.php/users/doAdd"), data=fields,
                       headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
-        # ردّ doAdd يعيد النموذج في النجاح والفشل معًا، فلا يصلح إشارةً. نتحقّق فعليًا
-        # بفلتر اليوزر، مع إعادةٍ بتأخّرٍ يسير: اللوحة قد تتأخّر لحظةً في إظهار الجديد،
-        # فلا نرفع فشلًا كاذبًا يوقف الدفعة على يوزرٍ أُنشئ فعلًا.
-        made = None
-        for attempt in range(4):
+        # ردّ doAdd لا يميّز النجاح؛ نتحقّق بالفلتر مع صبرٍ (اللوحة تتأخّر لحظةً).
+        for attempt in range(6):
             if attempt:
-                time.sleep(0.8)
-            made = next((x for x in self._parse_users_page(self._text(self._request(
-                self._u("index.php/users/index?username=" + urllib.parse.quote(u)))))
-                if x["username"] == u), None)
+                time.sleep(min(attempt, 4))
+            made = self._find_user(u)
             if made:
-                break
-        if not made:
-            raise LoginFailed(
-                "create_failed",
-                "لم تُؤكِّد اللوحة إنشاء اليوزر — غالبًا بلغتَ حدّ الإنشاء (التجارب "
-                "مقيّدة بشدّة) أو ضغطٌ مؤقّت على اللوحة. أعِد المحاولة بعد قليل، أو "
-                "بباقةٍ مدفوعة بدل التجربة.")
-        return {"username": u, "password": p, "id": made.get("id", ""),
-                "exp": made.get("exp", ""), "package": made.get("package", ""),
-                "verified": True, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "timing": {}, "ok": True}
+                return self._ok_line(u, p, made)
+        raise LoginFailed(
+            "create_failed",
+            "لم تُؤكِّد اللوحة إنشاء اليوزر — غالبًا خنقٌ مؤقّت أو سقف إنشاءٍ على "
+            "اللوحة. أُعيدت المحاولة؛ انتظر قليلًا ثم أكمل الباقي.")
 
     def create_many(self, package_id, pairs, host=None) -> list:
         """دفعة يوزرات على كاسبر: إنشاءٌ لكل زوج (لكلٍّ نموذجُه وبواقاته). إن فشل
         واحدٌ في المنتصف تُعاد النتائج الناجحة قبله مع الخطأ (ما أُنشئ قد خُصم)."""
+        try:
+            bouquets = self._bouquets_for(package_id)   # مرّةً للدفعة كلها (أقلّ طلبات = خنقٌ أقلّ)
+        except Exception:
+            bouquets = None
         out = []
         for i, (u, p) in enumerate(pairs):
             if i:
-                time.sleep(1.2)                   # اللوحة تخنق الطلبات المتلاحقة؛ مهلةٌ تكفي
-            try:
-                out.append(self.create_line(package_id, u, p, host))
-            except Exception:
-                # قد يكون خنقًا مؤقتًا لا رفضًا — أمهل ثم أعد المحاولة مرّةً قبل التوقّف.
-                time.sleep(3)
+                time.sleep(2)                     # اللوحة تخنق الطلبات المتلاحقة
+            last = None
+            for wait in (0, 8, 20):               # محاولة + إعادتان بتراجع تصاعدي (آمنٌ: لا تكرار)
+                if wait:
+                    time.sleep(wait)
                 try:
-                    out.append(self.create_line(package_id, u, p, host))
-                except Exception as e:
-                    out.append({"error": str(e)[:200], "username": str(u), "password": str(p)})
+                    out.append(self.create_line(package_id, u, p, host, bouquets))
+                    last = None
                     break
+                except Exception as e:
+                    last = e
+            if last is not None:
+                out.append({"error": str(last)[:200], "username": str(u), "password": str(p)})
+                break
         return out
 
 
