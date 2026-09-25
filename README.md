@@ -449,7 +449,8 @@ python tests/test_renew.py
   `salla_web.py` جلسة لوحة سلة، `renew.html` صفحة العميل، `renew_admin.html` صفحة المدير،
   `renew_report_tpl.html` قالب التقرير.
 - `extension/salla-cookie/` إضافة متصفّح تلتقط كوكيز لوحة سلة وترسلها للأداة
-  (`/api/renew/panel-cookie`) — بديل «Copy as cURL».
+  (`/api/renew/panel-cookie`) — بديل «Copy as cURL». تُحمَّل جاهزةً من صفحة الإعداد
+  (`GET /api/renew/extension.zip`، تُبنى من المصدر فلا تتقادم).
   بياناتها في `data/`: `renew_index.json` الفهرس، `renewals.json` الطلبات،
   `renew_analysis.json` آخر تحليل، `renew_lines.json` خطوط اللوحة،
   `renew_harvest.json` تقدّم الحصاد.

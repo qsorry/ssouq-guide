@@ -15,6 +15,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
 import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, time
+import io, zipfile
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -115,6 +116,23 @@ ADMIN_PATH = "/admin"                                 # مسار الأداة ح
 PAGES     = {"/": "xm_lines.html", "/accounts": "admin.html",
              "/setup": "setup.html", "/login": "login.html"}
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+EXTENSION_DIR = os.path.join(BASE_DIR, "extension", "salla-cookie")
+
+
+def build_extension_zip():
+    """إضافة المتصفّح مضغوطةً في الذاكرة من مصدرها — فلا يُحفظ ملفٌّ ثنائيّ في
+    المستودع يتقادم عن الكود. تُبنى من المجلّد بادئةً بـ `salla-cookie/` كي يعطي
+    فكّ الضغط مجلّدًا واضح الاسم يُحمَّل بـ «تحميل غير مضغوط»."""
+    if not os.path.isdir(EXTENSION_DIR):
+        return b""
+    buf = io.BytesIO()
+    top = os.path.dirname(EXTENSION_DIR)
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, _dirs, files in os.walk(EXTENSION_DIR):
+            for fn in sorted(files):
+                full = os.path.join(root, fn)
+                z.write(full, os.path.relpath(full, top))
+    return buf.getvalue()
 MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image/png", ".jpg": "image/jpeg",
              ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon",
              ".webmanifest": "application/manifest+json", ".xml": "application/xml; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
@@ -1868,6 +1886,14 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="text/html; charset=utf-8",
                                   extra={"Content-Disposition":
                                          'attachment; filename="renew-analysis.html"'})
+            if path == "/api/renew/extension.zip":  # إضافة المتصفّح جاهزة للتحميل
+                data = build_extension_zip()
+                if not data:
+                    return self._send(404, {"error": "ملف الإضافة غير متوفّر"})
+                return self._send(200, raw=data, ctype="application/zip",
+                                  extra={"Content-Disposition":
+                                         'attachment; filename="salla-cookie-extension.zip"',
+                                         "Cache-Control": "no-store"})
             if path == "/api/renew/packages":     # باقات مرح بنقاطها (للربط والتكلفة)
                 try:
                     pkgs, cost = renew_packages(rcfg, racs)

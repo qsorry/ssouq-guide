@@ -350,8 +350,17 @@ a{color:var(--go)}
     </p>
     <p class="note" style="margin:0 0 6px">
       <b>طريقٌ أسهل:</b> إضافة المتصفّح «جلسة سلة → أداة ssouq» تلتقط الكوكيز
-      وترسلها هنا بنقرة، بلا لصق (المجلّد <code>extension/salla-cookie</code>).
+      وترسلها هنا بنقرة، بلا لصق.
     </p>
+    <div class="row" style="margin:0 0 10px">
+      <a class="ghost" id="dlExt" href="#" role="button" style="text-decoration:none">⬇︎ تحميل الإضافة (ZIP)</a>
+    </div>
+    <ol class="note" style="margin:0 0 10px;padding-inline-start:20px">
+      <li>حمّل الملف وفكّ ضغطه، فيظهر مجلّد <code>salla-cookie</code>.</li>
+      <li>افتح <code>chrome://extensions</code> ← فعّل <b>وضع المطوّر</b>.</li>
+      <li>‏<b>تحميل غير مضغوط</b> ← اختر مجلّد <code>salla-cookie</code>.</li>
+      <li>افتح الإضافة ← اضبط عنوان الأداة واسم الدخول وكلمة المرور ← احفظ.</li>
+    </ol>
     <label for="panelCookie">الصق «Copy as cURL» — أو ترويسة Cookie وحدها</label>
     <input id="panelCookie" autocomplete="off" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'">
     <div class="row admin-only"><button class="ghost" id="panelTest" type="button">اختبار الجلسة</button></div>
@@ -711,6 +720,7 @@ $('#ppv').oninput = cost;
 document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
   pts = {...PRESETS[b.dataset.preset]}; cost(); });
 $('#dl').onclick = () => location.href = B + '/api/renew/report';
+$('#dlExt').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/extension.zip'; };
 
 /* ============ ٣· الإعداد ============ */
 let GATES = [], TIERS = [1,3,6,12,15,30], CFG = null;
