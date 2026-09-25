@@ -1543,14 +1543,14 @@ class CasperWebSession(PanelWebSession):
                   "setChosePkg": str(package_id), "username": u, "usernameold": u,
                   "password": p, "package": str(package_id), "reseller_notes": "",
                   "liveBq[]": live, "vodBq[]": vod}
-        action = self._u("index.php/users/")
+        action = self._u("index.php/users/doAdd")   # مسار الحفظ الفعلي (لا /users/ = بحث)
         self._request(action, data=fields,
                       headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
-        # لا نثق بردّ الصفحة — نتأكّد فعليًا: اليوزر الجديد يأخذ أعلى رقم فيظهر أوّلَ
-        # صفحةٍ (مرتَّبة تنازليًا). إن لم يظهر فالإنشاء لم يقع — نرفع خطأً صريحًا لا
-        # ندّعي نجاحًا (وإلا حُسب مبيعًا ولم يُنشأ).
-        made = next((x for x in self._parse_users_page(
-            self._text(self._request(self._u("index.php/users/index?page=1"))))
+        # لا نثق بردّ الصفحة — نتأكّد فعليًا بفلتر اليوزر (الترتيب الافتراضي ليس
+        # تنازليًا، فلا يصلح فحص الصفحة الأولى). إن لم يظهر فالإنشاء لم يقع — نرفع
+        # خطأً صريحًا لا ندّعي نجاحًا (وإلا حُسب مبيعًا ولم يُنشأ).
+        made = next((x for x in self._parse_users_page(self._text(self._request(
+            self._u("index.php/users/index?username=" + urllib.parse.quote(u)))))
             if x["username"] == u), None)
         if not made:
             raise LoginFailed(
