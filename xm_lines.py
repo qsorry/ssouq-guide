@@ -1905,7 +1905,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/me":
                 gates = [{"id": g["id"], "name": g["name"], "mode": g["mode"],
                           "host": g["host"], "guide_url": g.get("guide_url", ""),
-                          "digits": gate_digits(g), "point_cost": g.get("point_cost", "")}
+                          "digits": gate_digits(g), "point_cost": g.get("point_cost", ""),
+                          "web_flavor": g.get("web_flavor", "")}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",
