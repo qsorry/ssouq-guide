@@ -634,10 +634,13 @@ def _poll_loop():
             with _lock:
                 st = load_store()
                 svc = st["service"]
-                if not (svc.get("enabled") and svc.get("poll") and svc.get("salla_token")):
+                if not (svc.get("enabled") and svc.get("poll")):
+                    continue
+                orders = _poll_salla_orders(st, svc, per_page=25)
+                if not orders:
                     continue
                 fulfilled = load_fulfillments()
-                for o in salla_api.fetch_orders(svc["salla_token"], per_page=25, page=1):
+                for o in orders:
                     if o.get("order_id") and o["order_id"] not in fulfilled:
                         fulfill_order(st, o, source="poll")
         except Exception:
@@ -705,6 +708,31 @@ def renew_salla_token(st, cfg=None):
     if cfg and (cfg.get("salla_token") or ""):
         return cfg["salla_token"]
     return (st.get("service") or {}).get("salla_token") or ""
+
+
+def salla_service_cookie(st):
+    """كوكيز جلسة لوحة سلة المشتركة (تُربط بضغطة واحدة عبر إضافة المتصفح، وتُخزَّن
+    في إعداد تجديد الأدمن `panel_cookie`). يستعملها كلٌّ من التجديد والتسليم
+    التلقائي — ربطٌ واحدٌ لسلة يكفي الاثنين."""
+    return str((st.get("renew") or {}).get("panel_cookie") or "").strip()
+
+
+def _poll_salla_orders(st, svc, per_page=25):
+    """أحدث طلبات سلة للتسليم التلقائي: بجلسة اللوحة (الإضافة) أوّلًا — لا توكن —
+    وإلا بتوكن الإدارة إن ضُبط. تُعاد مُحلَّلةً جاهزةً للتنفيذ."""
+    cookie = salla_service_cookie(st)
+    if cookie:
+        try:
+            rows = salla_web.Session(cookie).recent_orders(per_page)
+            return [salla_api.parse_order(r) for r in rows]
+        except salla_web.SessionExpired:
+            renew.alert_session_expired(DATA_DIR, st.get("renew"))
+            return []
+        except Exception:
+            return []
+    if svc.get("salla_token"):
+        return list(salla_api.fetch_orders(svc["salla_token"], per_page=per_page, page=1))
+    return []
 
 
 def _pull_worker(token, with_history, apply_index, ws, cfg):
@@ -2091,6 +2119,27 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403, {"error": "للمدير فقط"})
                 rows = sorted(load_fulfillments().values(), key=lambda r: r.get("at", ""), reverse=True)[:100]
                 return self._send(200, {"log": rows})
+            if path == "/api/service/salla-status":   # حالة ربط سلة (الجلسة المشتركة)
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                cookie = salla_service_cookie(st)
+                if not cookie:
+                    return self._send(200, {"connected": False})
+                out = {"connected": True, "cookies": len(salla_web.cookie_names(cookie))}
+                try:
+                    alive, why = salla_web.Session(cookie).alive()
+                    out["alive"] = alive
+                    if not alive:
+                        out["alive_error"] = why
+                    else:
+                        try:
+                            out["orders"] = len(salla_web.Session(cookie).recent_orders(25))
+                        except Exception:
+                            out["orders"] = None
+                except Exception as e:
+                    out["alive"] = False
+                    out["alive_error"] = str(e)[:200]
+                return self._send(200, out)
             if path == "/api/service/wa-status":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})

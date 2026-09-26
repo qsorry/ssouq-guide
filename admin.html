@@ -164,19 +164,39 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
   <section>
     <h2>خدمة سلة ← واتساب <span><button class="ghost" id="svcReload">تحديث السجل</button></span></h2>
     <p class="sub" style="margin:0 0 10px">تسليم الاشتراك تلقائيًا على واتساب لأي عميل يشتري من متجرك في سلة.</p>
-    <label>رابط الويبهوك — ضعه في سلة: المتجر ← الإعدادات ← الويبهوك (حدث order.created و order.updated)</label>
-    <input id="svcHook" readonly value="https://guide.ssouq.com/salla/webhook" onclick="this.select()">
+
+    <!-- ربط سلة بضغطة واحدة (بإضافة المتصفح / جلسة اللوحة) -->
+    <div style="background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px">
+      <b style="display:block;margin-bottom:4px">ربط سلة بضغطة واحدة</b>
+      <p class="sub" style="margin:0 0 10px">سجّل دخولك للوحة سلة في متصفّحك، ثم اربط بالإضافة. تُستخدم نفس الجلسة للتسليم التلقائي وللتجديد — بلا توكن ولا أسرار.</p>
+      <p class="msg" id="svcSallaStatus">…</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+        <a class="ghost" id="svcDlExt">⬇ تنزيل الإضافة</a>
+        <button class="ghost" id="svcSallaTest" type="button">اختبار الربط</button>
+      </div>
+      <label>أو الصق «Copy as cURL» من لوحة سلة (بديل الإضافة)</label>
+      <div style="display:flex;gap:8px">
+        <input id="svcCurl" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'">
+        <button class="ghost" id="svcCurlBtn" type="button" style="white-space:nowrap">ربط</button>
+      </div>
+    </div>
+
     <div class="g2">
       <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="svcEnabled" style="width:auto"> تشغيل الخدمة</label>
       <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="svcDry" style="width:auto"> وضع تجريبي (لا توليد/إرسال فعلي)</label>
     </div>
-    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="svcPoll" style="width:auto"> سحب دوري من سلة (يحتاج توكن الإدارة)</label>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="svcPoll" style="width:auto"> سحب دوري من سلة (بالجلسة المربوطة أو توكن الإدارة)</label>
 
-    <label style="margin-top:14px;font-weight:700;color:var(--ink)">سلة</label>
+    <details class="adv" style="margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--sf2);padding:0 12px">
+    <summary style="cursor:pointer;padding:12px 0;color:var(--mute)">إعداد متقدّم — ويبهوك سلة (بديل)</summary>
+    <label>رابط الويبهوك — ضعه في سلة: المتجر ← الإعدادات ← الويبهوك (حدث order.created و order.updated)</label>
+    <input id="svcHook" readonly value="https://guide.ssouq.com/salla/webhook" onclick="this.select()" style="margin-bottom:10px">
+
     <div class="g2">
       <div><label for="svcSecret">سر الويبهوك (Signature)</label><input id="svcSecret" type="password" autocomplete="off"></div>
       <div><label for="svcToken">توكن إدارة سلة (اختياري — للسحب الدوري)</label><input id="svcToken" type="password" autocomplete="off"></div>
     </div>
+    </details>
 
     <label style="margin-top:14px;font-weight:700;color:var(--ink)">قناة واتساب</label>
     <label for="svcWaType">الطريقة</label>
@@ -539,9 +559,30 @@ $("svcWaCheck").onclick=async()=>{ $("svcWaStatus").className="msg"; $("svcWaSta
     else{ $("svcWaStatus").className="msg"; $("svcWaStatus").innerHTML='غير متصل — <a href="'+esc(d.link)+'" target="_blank" style="color:var(--go)">افتح صفحة ربط QR</a>'+(d.error?(" · "+esc(d.error)):""); }
   }catch(e){ say($("svcWaStatus"), e.message); } };
 
+// ---- ربط سلة بضغطة واحدة (جلسة اللوحة عبر الإضافة / cURL) ----
+$("svcDlExt").href = B + "/api/renew/extension.zip";
+async function loadSallaStatus(){
+  const el = $("svcSallaStatus");
+  el.className = "msg"; el.textContent = "جارِ التحقّق…";
+  try {
+    const r = await fetch(B + "/api/service/salla-status"); const d = chk(await r.json());
+    if (!d.connected) { el.className = "msg"; el.textContent = "غير مربوط — نزّل الإضافة، سجّل دخول لوحة سلة، ثم اضغط ربط."; return; }
+    if (d.alive) { const n = (d.orders == null) ? "" : ` · قرأ ${d.orders} طلبًا`; say(el, `مربوط ✅ (${d.cookies} كوكي)${n}`, true); }
+    else { say(el, "الجلسة منتهية — أعِد الربط: " + (d.alive_error || "")); }
+  } catch(e) { say(el, e.message); }
+}
+$("svcSallaTest").onclick = loadSallaStatus;
+$("svcCurlBtn").onclick = async () => {
+  const raw = $("svcCurl").value.trim();
+  if (!raw) { say($("svcSallaStatus"), "الصق «Copy as cURL» أو ترويسة الكوكيز"); return; }
+  say($("svcSallaStatus"), "جارِ الربط…", true);
+  try { await post(B + "/api/renew/panel-cookie", {cookie: raw, test: 1}); $("svcCurl").value = ""; loadSallaStatus(); }
+  catch(e) { say($("svcSallaStatus"), e.message); }
+};
+
 fill(null);
 nav((()=>{ try { return localStorage.getItem("xm_admin_tab") || "home"; } catch { return "home"; } })());
-load().then(loadService);
+load().then(loadService).then(loadSallaStatus);
 </script>
 </body>
 </html>
