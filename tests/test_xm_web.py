@@ -178,17 +178,10 @@ def main():
         check("line text formatted", "webuser1" in line["line"] and "mrha.ink" in line["line"])
         check("selected package recorded", line["package_id"] == "3")
 
-        print("\n== 3b. Create stays non-fatal if verification can't find the line ==")
-        orig_search, orig_recent = s._search_line, s._recent_line
-        s._search_line = lambda u, force=False: {}   # محاكاة فشل/تأخّر table_search
-        s._recent_line = lambda u, scan=80: {}       # وفشل مسح أحدث الصفوف أيضًا
-        try:
-            line2 = s.create_line(package_id=1, username="webuser2", password="pw2")
-            check("line still returned when search fails",
-                  line2.get("username") == "webuser2" and "webuser2" in line2["line"])
-            check("flagged as unverified", line2.get("verified") is False)
-        finally:
-            s._search_line, s._recent_line = orig_search, orig_recent
+        print("\n== 3b. Create a second line and verify it ==")
+        line2 = s.create_line(package_id=1, username="webuser2", password="pw2")
+        check("second create returned a line id", bool(line2.get("line_id")), "id=%s" % line2.get("line_id"))
+        check("second line verified", line2.get("verified") is True)
 
         print("\n== 3x. Extend a line (ExtendUser modal), as the Selenium script does ==")
         EF = xm_web.PanelWebSession._extend_form
@@ -251,6 +244,22 @@ def main():
             check("flagged verified via fallback", line3.get("verified") is True)
         finally:
             s._search_line = orig_search
+
+        print("\n== 3e. Unconfirmed create on a proven-search panel raises (no phantom user) ==")
+        # على لوحةٍ أثبت بحثها أنه يجد يوزرنا، غياب اليوزر عن الجدول وعن أحدث الصفوف = فشلٌ
+        # صامتٌ للإنشاء، فيُرفع خطأ بدل تلفيق يوزرٍ لا وجود له (سبب مشكلة اليوزر «المفقود»).
+        orig_search, orig_recent = s._search_line, s._recent_line
+        s._search_line = lambda u, force=False: {}
+        s._recent_line = lambda u, scan=80: {}
+        raised = ""
+        try:
+            s.create_line(package_id=1, username="phantom1", password="pw9")
+        except RuntimeError as e:
+            raised = str(e)
+        finally:
+            s._search_line, s._recent_line = orig_search, orig_recent
+        check("phantom (unconfirmed) create raises instead of fabricating a user",
+              "لم تُنشئ اللوحة اليوزر" in raised, raised[:80])
 
         print("\n== 4. Session reused from disk (new object) ==")
         s2 = xm_web.PanelWebSession(acct, data_dir)

@@ -41,6 +41,18 @@ CAPTCHA_SRC = "img/verify.php?x=1" if ALT else "captcha.php?a=1"
 
 SESSIONS = {}   # phpsessid -> {captcha, auth}
 LINES = []      # created lines
+
+
+def _riyadh_today():
+    """تاريخ اليوم بتوقيت الرياض — نفس ما يحسبه العميل (_today) كي لا يفشل اختبار
+    «اشتراكات اليوم» حين يكون الخادم UTC والساعة بعد منتصف ليل الرياض (فارق +3)."""
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("Asia/Riyadh")
+    except Exception:
+        tz = _dt.timezone(_dt.timedelta(hours=3))
+    return _dt.datetime.now(tz).strftime("%Y-%m-%d")
 PACKAGES = [(1, "1 Month (5 credits)"), (3, "3 Months (13 credits)"), (12, "12 Months (45 credits)"),
             (15, "اشتراك سنة + 3 اشهر (6 نقاط)")]
 BOUQUETS = {1: [1, 2, 3], 3: [1, 2, 3, 4, 5], 12: [1, 2, 3, 4, 5, 6, 7], 15: [1, 2, 3, 4, 5, 6, 7]}
@@ -273,7 +285,7 @@ class H(BaseHTTPRequestHandler):
                 "bouquets": form.get("selected_bouquets", ""),
                 "end": "2026-12-31", "conns": "1",
                 # يوزر اسمه يبدأ بـ old_ يُعدّ مُنشأً بالأمس (لاختبار «اشتراكات اليوم»)
-                "created": "2000-01-01" if uname.startswith("old") else time.strftime("%Y-%m-%d"),
+                "created": "2000-01-01" if uname.startswith("old") else _riyadh_today(),
             })
             return self._send(200, '<div class="alert alert-success">created</div>', headers=hdr)
 

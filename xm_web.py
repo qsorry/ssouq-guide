@@ -457,6 +457,36 @@ class PanelWebSession:
         return True
 
     @staticmethod
+    def _add_error(text: str) -> str:
+        """رسالة فشلٍ من ردّ الإنشاء (JSON أو تنبيه HTML). '' إن بدا ناجحًا/غامضًا.
+        اللوحات ترد أحيانًا JSON {result:false}/{status:'error'} أو تنبيهًا غير
+        alert-success — وكلاهما كان يُهمَل فيُلفَّق نجاحٌ ليوزرٍ لم يُنشأ."""
+        t = (text or "").strip()
+        if t[:1] in ("{", "["):
+            try:
+                j = json.loads(t)
+            except ValueError:
+                j = None
+            if isinstance(j, dict):
+                status = str(j.get("status", "")).lower()
+                if j.get("result") is True or j.get("success") is True \
+                        or status in ("success", "ok", "true", "1"):
+                    return ""
+                msg = j.get("message") or j.get("error") or j.get("msg") or ""
+                negative = (j.get("result") is False or j.get("success") is False
+                            or status in ("error", "fail", "failed", "false", "0"))
+                if negative or msg:
+                    return str(msg or "رفضت اللوحة الإنشاء")[:200]
+                return ""
+        # تنبيه HTML: أي alert ليس alert-success يُعدّ فشلًا.
+        m = re.search(r'<div[^>]*class=["\'][^"\']*\balert\b[^"\']*["\'][^>]*>(.*?)</div>',
+                      t, re.I | re.S)
+        if m and "alert-success" not in m.group(0).lower():
+            msg = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1)))).strip(" ×")
+            return msg[:200] if msg else "رفضت اللوحة الإنشاء"
+        return ""
+
+    @staticmethod
     def _extract_alert(html: str) -> str:
         """نص أول تنبيه خطأ في صفحة الدخول (alert-danger)، منظّفًا من الوسوم."""
         m = re.search(r'<div[^>]*class=["\'][^"\']*alert-danger[^"\']*["\'][^>]*>(.*?)</div>',
@@ -814,18 +844,15 @@ class PanelWebSession:
                            headers={"X-Requested-With": "XMLHttpRequest", "Referer": prep["referer"]})
         t_post = time.time()
 
-        # إن ردّت اللوحة بخطأ صريح على الإنشاء نفسه، أوقف (لم يُخصم/لم يُنشأ).
-        alert = self._extract_alert(self._text(cr))
-        if alert and self._classify_login_error(alert) != "credentials" \
-                and re.search(r"error|fail|خطأ|فشل|not\s|invalid|denied|exceed|رصيد|credit", alert, re.I):
-            raise RuntimeError("رفضت اللوحة الإنشاء: " + alert)
+        # إن ردّت اللوحة بخطأ صريح على الإنشاء نفسه (JSON أو تنبيه)، أوقف (لم يُنشأ).
+        add_err = self._add_error(self._text(cr))
+        if add_err and self._classify_login_error(add_err) != "credentials":
+            raise RuntimeError("رفضت اللوحة الإنشاء: " + add_err)
 
-        # 4) تأكيد من جدول اللاينات (لجلب الـ id/الانتهاء) — **غير حاسم**:
-        # الإنشاء نقطة لا عودة (يُخصم الرصيد)، فلا نفقد بيانات اليوزر لو تأخّر البحث.
+        # 4) تأكيد من جدول اللاينات (لجلب الـ id/الانتهاء):
         # عدد المحاولات يتكيّف مع اللوحة: التي أثبتت أنها تجد يوزرنا (مرح) تُمهل حتى 6
         # محاولات، والمجهولة محاولتان، والتي تردّ جدولًا لا يجد يوزرنا أبدًا (Xtream Codes:
-        # table_search.php موجود لكن بأعمدة وبحث آخرين) تُوقَف بعد ثلاث إخفاقات متتالية —
-        # وإلا دفع كل يوزر 6 × 1.2 ثانية انتظارًا لتأكيد لن يأتي.
+        # table_search.php موجود لكن بأعمدة وبحث آخرين) تُوقَف بعد ثلاث إخفاقات متتالية.
         meta = self._meta()
         found = {}
         if not meta.get("no_table_search"):
@@ -840,12 +867,29 @@ class PanelWebSession:
                 if i < attempts - 1:
                     time.sleep(1.2)
             if not (found and found.get("id")):
-                # الاحتياط: بحث الجدول بالمصطلح قد يتأخّر في فهرسة المُنشأ حديثًا، لكنه
-                # يتصدّر أحدث الصفوف (أعلى id) — فنلتقط الـ id منها لئلا يفشل التمديد لاحقًا.
-                found = self._recent_line(username) or found
+                # الاحتياط: أحدث الصفوف (المُنشأ حديثًا يتصدّرها بأعلى id) — أوثق من بحث
+                # المصطلح الذي قد يتأخّر بالفهرسة. على لوحةٍ مثبتة (نجزم بالفشل عند غيابه)
+                # نعيد المحاولة قليلًا قبل الجزم؛ وعلى لوحةٍ غير مثبتة مسحٌ واحد بلا انتظار
+                # (لئلا نبطّئ اكتشاف «لا جدول بحث»).
+                if meta.get("table_search_ok"):
+                    for j in range(3):
+                        found = self._recent_line(username) or found
+                        if found and found.get("id"):
+                            break
+                        if j < 2:
+                            time.sleep(1.0)
+                else:
+                    found = self._recent_line(username) or found
             if found and found.get("id"):
                 self._save_meta(table_search_ok=True, confirm_misses=0)
-            elif not meta.get("table_search_ok"):
+            elif meta.get("table_search_ok"):
+                # لوحةٌ يعمل بحثها وأثبتت أنها تجد يوزرنا، ومع ذلك لم يظهر اليوزر في الجدول
+                # ولا في أحدث الصفوف → الإنشاء فشل فعلًا (لم يُنشأ). نرفع الخطأ بدل تلفيق
+                # يوزرٍ وهمي لا وجود له على اللوحة (سبب مشكلة اليوزر «المفقود»).
+                raise RuntimeError("لم تُنشئ اللوحة اليوزر" + (": " + add_err if add_err
+                                   else " — لم يظهر في الجدول ولا في أحدث الصفوف بعد الإرسال."))
+            else:
+                # لوحةٌ لم تُثبت بعدُ أن بحثها يجد يوزرنا: لا نجزم بالفشل (قد يكون البحث مختلفًا).
                 misses = int(meta.get("confirm_misses") or 0) + 1
                 self._save_meta(confirm_misses=misses, **({"no_table_search": True} if misses >= 3 else {}))
 
