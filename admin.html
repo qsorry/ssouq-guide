@@ -79,54 +79,88 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .gate .rm{background:var(--sf);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:5px 11px;font-size:.8rem}
 .gsel{width:100%}
 textarea.gsel{direction:rtl;text-align:right;resize:vertical}
+
+/* تبويبات كتطبيق: عروض + شريط سفلي + زر عائم + نافذة */
+.view{display:none} .view.on{display:block}
+.wrap{padding-bottom:96px}
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.quick button{display:flex;align-items:center;gap:8px;justify-content:center;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--sf2);color:var(--ink);font-weight:600}
+.quick button:hover{border-color:var(--go);color:var(--go)}
+.bnav{position:fixed;inset-inline:0;bottom:0;z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+.bnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;color:var(--mute);font-size:.68rem;border-radius:12px}
+.bnav button svg{width:22px;height:22px}
+.bnav button.on{color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
+.fab{position:fixed;inset-inline-end:16px;bottom:80px;z-index:41;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-size:2rem;line-height:1;display:grid;place-items:center;box-shadow:0 12px 28px color-mix(in srgb,var(--go) 45%,transparent)}
+.modal{position:fixed;inset:0;z-index:50;background:rgba(4,10,22,.6);display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--sf);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;box-shadow:var(--shadow)}
+.sheet section{border:0;border-radius:0;margin:0}
+@media(min-width:640px){.modal{align-items:center;padding:18px}.sheet{border-radius:20px}}
+.sheet h2{position:sticky;top:0;background:var(--sf);padding-bottom:10px;z-index:1}
+.sheet h2 .x{margin-inline-start:auto;background:var(--sf2);border:1px solid var(--line);color:var(--ink);width:34px;height:34px;border-radius:10px;font-size:1rem}
+/* صفوف البوابات المُصمَّمة */
+.gate-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:12px;background:var(--sf2);margin-top:8px}
+.gbadge{flex:none;font-size:.72rem;font-weight:700;color:#fff;padding:4px 9px;border-radius:8px}
+.gbadge.web{background:linear-gradient(135deg,#f59e0b,#dc2626)}
+.gbadge.api{background:linear-gradient(135deg,var(--purple),#4c1d95)}
+.gbadge.falcon{background:linear-gradient(135deg,#0ea5e9,#1e40af)}
+.gr-i{flex:1;min-width:0}
+.gr-i b{display:block;font-size:.92rem}
+.gr-i small{display:block;color:var(--mute);font:500 .76rem/1.5 "IBM Plex Mono",Consolas,monospace;direction:ltr;text-align:start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gr-guide{flex:none;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);display:grid;place-items:center;color:var(--go)}
+/* حساب قابل للطيّ */
+.acct{display:block;border-top:1px solid var(--line);padding:0}
+.acct:first-child{border-top:0}
+.ahead{display:flex;align-items:center;gap:10px;padding:14px 2px;cursor:pointer}
+.ai{flex:1;min-width:0}.ai b{display:block;font-size:1.02rem}.ai small{display:block;color:var(--mute);font-size:.82rem}
+.chev{width:20px;height:20px;color:var(--mute);transition:transform .2s;flex:none}
+.acct.open .chev{transform:rotate(180deg)}
+.adet{max-height:0;overflow:hidden;transition:max-height .3s ease}
+.acct.open .adet{max-height:2000px;padding-bottom:14px}
+.adet .b{display:flex;gap:8px;margin-top:10px}
+.linkrow{width:100%;justify-content:space-between;margin-top:8px;padding:13px 14px;text-decoration:none}
+.searchbar{margin-bottom:12px}
 </style>
 </head>
 <body>
 <header class="top">
   <button class="icon-btn" id="themeBtn" title="تبديل السمة" aria-label="تبديل السمة"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
-  <nav class="nav">
-    <a id="lnkHome"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>الإنشاء</a>
-    <a id="lnkRenew"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>التجديد</a>
-    <a id="lnkOut" class="out"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>خروج</a>
-  </nav>
   <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span>
-    <span><b>سمارت سوق</b><small>لوحة الإدارة</small></span></div>
+    <span><b>سمارت سوق</b><small id="viewTitle">لوحة الإدارة</small></span></div>
 </header>
 <main class="wrap">
-  <h1>أهلاً بك</h1>
-  <p class="sub">إدارة الحسابات والبوابات وخدمة سلة ← واتساب.</p>
+  <!-- الرئيسية -->
+  <div class="view on" data-view="home">
+    <h1>أهلاً بك</h1>
+    <p class="sub">إدارة الحسابات والبوابات وخدمة سلة ← واتساب.</p>
+    <section>
+      <div class="stats">
+        <div class="stat"><small>الحسابات</small><b id="statAcc">—</b></div>
+        <div class="stat"><small>البوابات</small><b id="statGates">—</b></div>
+        <div class="stat" id="statSvcCard"><small>خدمة سلة</small><b id="statSvc" class="mono">—</b></div>
+      </div>
+    </section>
+    <section>
+      <h2>اختصارات</h2>
+      <div class="quick">
+        <button data-nav="accounts"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/></svg>الحسابات</button>
+        <button data-nav="salla"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg>ربط سلة</button>
+        <button data-nav="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>الإعدادات</button>
+        <button id="qAdd"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>حساب جديد</button>
+      </div>
+    </section>
+  </div>
 
-  <section>
-    <div class="stats">
-      <div class="stat"><small>الحسابات</small><b id="statAcc">—</b></div>
-      <div class="stat"><small>البوابات</small><b id="statGates">—</b></div>
-      <div class="stat" id="statSvcCard"><small>خدمة سلة</small><b id="statSvc" class="mono">—</b></div>
-    </div>
-  </section>
-
-  <section>
-    <h2 id="formTitle">إضافة حساب</h2>
-    <input type="hidden" id="id">
-    <p class="sub" style="margin:0 0 10px">دخول الشخص للأداة، وبداخله بوابات — كل بوابة لها ربطها وهوستها ورابط شرحها.</p>
-    <label for="name">اسم الحساب (الشخص)</label><input id="name" placeholder="مثال: أحمد">
-    <div class="g2">
-      <div><label for="user">اسم الدخول للأداة</label><input id="user" autocomplete="off" placeholder="user1"></div>
-      <div><label for="password">كلمة مرور الدخول</label><input id="password" autocomplete="new-password" placeholder="4 أحرف على الأقل"></div>
-    </div>
-    <label for="acc_guide">رابط الشرح لكل البوابات (اختياري)</label><input id="acc_guide" placeholder="https://guide.ssouq.com/">
-    <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
-    <div id="gates"></div>
-    <button class="ghost" id="addGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
-    <button class="go" id="save">حفظ الحساب</button>
-    <button class="ghost" id="cancel" hidden style="width:100%;margin-top:8px">إلغاء التعديل</button>
-    <div class="msg" id="msg"></div>
-  </section>
-
+  <!-- الحسابات -->
+  <div class="view" data-view="accounts">
   <section>
     <h2>الحسابات <span><button class="ghost" id="exp">تصدير</button> <button class="ghost" id="imp">استيراد</button><input type="file" id="file" accept="application/json" hidden></span></h2>
+    <input id="acctSearch" class="searchbar" placeholder="ابحث بالاسم أو اسم الدخول">
     <div id="list"><div class="empty">جاري التحميل…</div></div>
   </section>
+  </div>
 
+  <!-- ربط سلة -->
+  <div class="view" data-view="salla">
   <section>
     <h2>خدمة سلة ← واتساب <span><button class="ghost" id="svcReload">تحديث السجل</button></span></h2>
     <p class="sub" style="margin:0 0 10px">تسليم الاشتراك تلقائيًا على واتساب لأي عميل يشتري من متجرك في سلة.</p>
@@ -182,14 +216,54 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
     <label style="margin-top:14px;font-weight:700;color:var(--ink)">سجل التسليم</label>
     <div id="svcLog"><div class="empty">—</div></div>
   </section>
+  </div>
 
+  <!-- الإعدادات -->
+  <div class="view" data-view="settings">
+  <section>
+    <h2>روابط</h2>
+    <a class="ghost linkrow" id="lnkHome"><span>صفحة الإنشاء</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
+    <a class="ghost linkrow" id="lnkRenew"><span>خدمة التجديد</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
+    <a class="ghost linkrow out" id="lnkOut"><span>تسجيل الخروج</span><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></a>
+  </section>
   <section>
     <h2>كلمة مرور المدير</h2>
     <label for="apw">كلمة مرور جديدة (6 أحرف على الأقل)</label><input id="apw" type="password" autocomplete="new-password">
     <button class="go" id="apwBtn">تغيير</button>
     <div class="msg" id="apwMsg"></div>
   </section>
+  </div>
 </main>
+
+<!-- نافذة إضافة/تعديل حساب -->
+<div class="modal" id="acctModal" hidden><div class="sheet">
+  <section>
+    <h2 id="formTitle">إضافة حساب <button class="x" id="acctClose" type="button" title="إغلاق">✕</button></h2>
+    <input type="hidden" id="id">
+    <p class="sub" style="margin:0 0 10px">دخول الشخص للأداة، وبداخله بوابات — كل بوابة لها ربطها وهوستها ورابط شرحها.</p>
+    <label for="name">اسم الحساب (الشخص)</label><input id="name" placeholder="مثال: أحمد">
+    <div class="g2">
+      <div><label for="user">اسم الدخول للأداة</label><input id="user" autocomplete="off" placeholder="user1"></div>
+      <div><label for="password">كلمة مرور الدخول</label><input id="password" autocomplete="new-password" placeholder="4 أحرف على الأقل"></div>
+    </div>
+    <label for="acc_guide">رابط الشرح لكل البوابات (اختياري)</label><input id="acc_guide" placeholder="https://guide.ssouq.com/">
+    <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
+    <div id="gates"></div>
+    <button class="ghost" id="addGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
+    <button class="go" id="save">حفظ الحساب</button>
+    <button class="ghost" id="cancel" style="width:100%;margin-top:8px">إلغاء</button>
+    <div class="msg" id="msg"></div>
+  </section>
+</div></div>
+
+<!-- شريط التنقّل السفلي -->
+<nav class="bnav">
+  <button data-nav="home"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5"/></svg>الرئيسية</button>
+  <button data-nav="accounts"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/></svg>الحسابات</button>
+  <button data-nav="salla"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg>ربط سلة</button>
+  <button data-nav="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>الإعدادات</button>
+</nav>
+<button class="fab" id="fabAdd" title="إضافة حساب" hidden>+</button>
 <script>
 // الأداة تُقدَّم من الجذر على نطاقها (admin.ssouq.com) وتحت /admin على الموقع العام،
 // فتُبنى كل عناوينها على B بدل تثبيت "/admin" في كل نداء.
@@ -223,15 +297,30 @@ async function load(){
   catch(e) { $("list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   render();
 }
+const gateBadge = m => m === "falcon" ? '<span class="gbadge falcon">فالكون</span>'
+  : m === "api" ? '<span class="gbadge api">API</span>' : '<span class="gbadge web">ويب</span>';
+const hostFmt = h => String(h || "").replace(/^https?:\/\//, "") || "—";
+const GLINK = '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>';
 function render(){
-  $("list").innerHTML = accounts.length ? accounts.map(a => {
-    const gates = (a.gates || []).map(g =>
-      `<code class="g">• ${esc(g.name)} — ${g.mode === "web" ? "ويب" : "API"} — host: ${esc(g.host)}${g.guide_url ? " — Guide: " + esc(g.guide_url) : ""}</code>`).join("");
-    return `<div class="acct"><div class="i"><b>${esc(a.name)}</b>
-      <code>دخول: ${esc(a.user)}${a.has_password ? " · كلمة المرور محفوظة 🔒" : ""}</code>
-      <code>${(a.gates||[]).length} بوابة</code>${gates}</div>
-      <div class="b"><button class="ghost" data-edit="${a.id}">تعديل</button><button class="danger" data-del="${a.id}">حذف</button></div></div>`;
-  }).join("") : '<div class="empty">لا توجد حسابات بعد. أضف أول حساب من النموذج أدناه.</div>';
+  const q = ($("acctSearch") ? $("acctSearch").value : "").trim().toLowerCase();
+  const list = accounts.filter(a => !q ||
+    String(a.name||"").toLowerCase().includes(q) || String(a.user||"").toLowerCase().includes(q));
+  $("list").innerHTML = list.length ? list.map(a => {
+    const gates = (a.gates || []).map(g => `
+      <div class="gate-row">${gateBadge(g.mode)}
+        <div class="gr-i"><b>${esc(g.name)}</b><small>${esc(hostFmt(g.host))}</small></div>
+        ${g.guide_url ? `<a class="gr-guide" href="${esc(g.guide_url)}" target="_blank" rel="noopener" title="رابط الشرح">${GLINK}</a>` : ""}
+      </div>`).join("");
+    return `<div class="acct" data-acc="${a.id}">
+      <div class="ahead" data-toggle="${a.id}">
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: ${esc(a.user)}${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة</small></div>
+        <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="adet">
+        ${gates || '<div class="empty">لا بوابات</div>'}
+        <div class="b"><button class="ghost" data-edit="${a.id}">تعديل</button><button class="danger" data-del="${a.id}">حذف</button></div>
+      </div></div>`;
+  }).join("") : `<div class="empty">${q ? "لا حسابات مطابقة." : "لا توجد حسابات بعد — اضغط زر (+) لإضافة حساب."}</div>`;
   updateStats();
 }
 
@@ -317,22 +406,48 @@ function fill(a){
 }
 $("addGate").onclick = () => $("gates").appendChild(gateRow(null));
 
+// ---- نافذة إضافة/تعديل الحساب ----
+function openModal(a){ fill(a); say($("msg"), "", true); $("acctModal").hidden = false; document.body.style.overflow = "hidden"; }
+function closeModal(){ $("acctModal").hidden = true; document.body.style.overflow = ""; }
+$("fabAdd").onclick = () => openModal(null);
+$("qAdd").onclick = () => openModal(null);
+$("acctClose").onclick = closeModal;
+$("acctModal").onclick = e => { if (e.target === $("acctModal")) closeModal(); };
+
 $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
                 password: $("password").value, guide_url: $("acc_guide").value, gates: readGates()};
-  try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); fill(null); say($("msg"), "تم الحفظ", true); }
+  try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
   catch(e) { say($("msg"), e.message); }
 };
-$("cancel").onclick = () => fill(null);
+$("cancel").onclick = closeModal;
+$("acctSearch").addEventListener("input", render);
 $("list").onclick = async e => {
-  const b = e.target.closest("button"); if (!b) return;
-  if (b.dataset.edit) { fill(accounts.find(a => a.id === b.dataset.edit)); window.scrollTo({top:0}); }
-  if (b.dataset.del) {
+  const b = e.target.closest("button");
+  if (b && b.dataset.edit) { openModal(accounts.find(a => a.id === b.dataset.edit)); return; }
+  if (b && b.dataset.del) {
     const a = accounts.find(x => x.id === b.dataset.del);
     if (!confirm(`حذف الحساب "${a.name}"؟`)) return;
     try { const d = await post(B + "/api/accounts/delete", {id: a.id}); accounts = d.accounts; render(); } catch(err) { alert(err.message); }
+    return;
   }
+  const t = e.target.closest("[data-toggle]");
+  if (t) t.closest(".acct").classList.toggle("open");
 };
+
+// ---- التنقّل بين التبويبات ----
+const TITLES = {home:"لوحة الإدارة", accounts:"الحسابات", salla:"ربط سلة ← واتساب", settings:"الإعدادات"};
+function nav(v){
+  if (!TITLES[v]) v = "home";
+  document.querySelectorAll(".view").forEach(el => el.classList.toggle("on", el.dataset.view === v));
+  document.querySelectorAll(".bnav button").forEach(b => b.classList.toggle("on", b.dataset.nav === v));
+  $("viewTitle").textContent = TITLES[v];
+  $("fabAdd").hidden = v !== "accounts";
+  window.scrollTo({top:0});
+  try { localStorage.setItem("xm_admin_tab", v); } catch {}
+}
+document.querySelector(".bnav").addEventListener("click", e => { const b = e.target.closest("button"); if (b) nav(b.dataset.nav); });
+document.querySelectorAll("[data-nav]").forEach(b => { if (!b.closest(".bnav")) b.addEventListener("click", () => nav(b.dataset.nav)); });
 $("exp").onclick = () => {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([JSON.stringify({accounts}, null, 2)], {type:"application/json"}));
@@ -425,6 +540,7 @@ $("svcWaCheck").onclick=async()=>{ $("svcWaStatus").className="msg"; $("svcWaSta
   }catch(e){ say($("svcWaStatus"), e.message); } };
 
 fill(null);
+nav((()=>{ try { return localStorage.getItem("xm_admin_tab") || "home"; } catch { return "home"; } })());
 load().then(loadService);
 </script>
 </body>
