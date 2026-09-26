@@ -391,6 +391,18 @@ def main():
             check("add-form reader: fields/package/submit", f8["fields"].get("member_id") == "8842" and f8["package_field"] == "package"
                   and f8["submit"] == "submit_user" and "allow_epg" in f8["fields"] and "is_trial" not in f8["fields"], str(f8)[:120])
 
+            # آخر اتصال في لوحات Xtream (مرح): «Never» = لم يُستخدم، وإلا تاريخ
+            PR = xm_web.PanelWebSession._parse_row
+            never = PR('<a href="?userid=5">edit</a> User: 111 Pass: 222 Created: 2026-01-01 '
+                       'End: 2027-01-01 <a>0 / 1</a> Info: Never')
+            check("Xtream row: 'Never' captured as last_conn (unused)", never.get("last_conn") == "Never", str(never.get("last_conn")))
+            used = PR('<a href="?userid=6">edit</a> User: 333 Pass: 444 Created: 2026-01-01 '
+                      'End: 2027-01-01 <a>1 / 1</a> Last Connection: 2026-09-20 14:30')
+            check("Xtream row: a dated last connection is captured",
+                  used.get("last_conn", "").startswith("2026-09-20"), str(used.get("last_conn")))
+            none = PR('<a href="?userid=7">edit</a> User: 555 Pass: 666 End: 2027-01-01 <a>0 / 1</a>')
+            check("Xtream row: no last-connection field -> blank", none.get("last_conn") == "", str(none.get("last_conn")))
+
             bad7 = xm_web.PanelWebSession({"id": "nocapbad", "user": USER, "password": "wrong",
                                            "panel_base": NC, "host": "http://mrha.ink"}, data_dir5)
             try:

@@ -94,6 +94,17 @@ def main():
         check("active offline -> غير متصل", ar["a2"]["active"] == "غير متصل", ar["a2"]["active"])
         check("active unknown -> blank", ar["a3"]["active"] == "", repr(ar["a3"]["active"]))
         check("النشاط الآن is a column header", "النشاط الآن" in users_export.HEADERS)
+
+        # عمود «آخر اتصال»: Never→لم يُستخدم · تاريخ يبقى كما هو · فارغ→فارغ
+        lc_rows = [{"username": "n1", "password": "x", "last_conn": "Never"},
+                   {"username": "n2", "password": "y", "last_conn": "2026-09-20 14:30"},
+                   {"username": "n3", "password": "z"}]
+        users_export.replace_all(d, A, "gateLC", "مرح", lc_rows)
+        lr = {r["username"]: r for r in users_export.load(users_export.paths(d, A, "gateLC")[0])}
+        check("last_conn Never -> لم يُستخدم", lr["n1"]["last_conn"] == "لم يُستخدم", lr["n1"]["last_conn"])
+        check("last_conn date kept", lr["n2"]["last_conn"] == "2026-09-20 14:30", lr["n2"]["last_conn"])
+        check("last_conn missing -> blank", lr["n3"]["last_conn"] == "", repr(lr["n3"]["last_conn"]))
+        check("آخر اتصال is a column header", "آخر اتصال" in users_export.HEADERS)
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

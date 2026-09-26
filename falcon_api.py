@@ -187,6 +187,9 @@ def all_lines(base, key, progress=None, per=50, max_pages=4000):
                           if r.get("online") is not None else
                           ("online" if r.get("active_connections") else "")
                           if r.get("active_connections") is not None else "",
+                # آخر اتصال إن أتاحته فالكون (أسماء الحقول تختلف)؛ وإلا فارغ.
+                "last_conn": str(r.get("last_connection") or r.get("last_seen")
+                                 or r.get("lastseen") or r.get("last_online") or ""),
                 "status": r.get("status") or "",
             })
         if progress:
