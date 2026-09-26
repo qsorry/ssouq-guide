@@ -839,6 +839,10 @@ class PanelWebSession:
                     break
                 if i < attempts - 1:
                     time.sleep(1.2)
+            if not (found and found.get("id")):
+                # الاحتياط: بحث الجدول بالمصطلح قد يتأخّر في فهرسة المُنشأ حديثًا، لكنه
+                # يتصدّر أحدث الصفوف (أعلى id) — فنلتقط الـ id منها لئلا يفشل التمديد لاحقًا.
+                found = self._recent_line(username) or found
             if found and found.get("id"):
                 self._save_meta(table_search_ok=True, confirm_misses=0)
             elif not meta.get("table_search_ok"):
@@ -1234,6 +1238,18 @@ class PanelWebSession:
                 return row
         return {}
 
+    def _recent_line(self, username: str, scan: int = 80) -> dict:
+        """يبحث عن يوزرٍ أُنشئ للتوّ ضمن أحدث الصفوف (بلا مصطلح بحث، مرتَّبة تنازليًا حسب
+        الـ id) — أوثق من بحث الجدول الذي قد يتأخّر في فهرسة المُنشأ حديثًا. يُطابق الاسم
+        بالضبط. يُرجّع الصف أو {}."""
+        try:
+            for row in self._table_query("", scan, force=True)["rows"]:
+                if row.get("user") == username:
+                    return row
+        except Exception:
+            pass
+        return {}
+
     def _find_line(self, username: str, attempts: int = 5, delay: float = 1.5) -> dict:
         """بحث إجباري (يتجاوز علامة «لا جدول») مع إمهال اللوحة: يوزر أُنشئ للتوّ قد
         يتأخر ظهوره في الجدول بضع ثوانٍ. إن وُجد، تُصحَّح علامة الجلسة."""
@@ -1243,6 +1259,8 @@ class PanelWebSession:
                 found = self._search_line(username, force=True)
             except Exception:
                 found = {}
+            if not found.get("id"):
+                found = self._recent_line(username)   # الاحتياط: أحدث الصفوف (المُنشأ حديثًا يتصدّرها)
             if found.get("id"):
                 if self._meta().get("no_table_search"):
                     self._save_meta(no_table_search=False, table_search_ok=True, confirm_misses=0)

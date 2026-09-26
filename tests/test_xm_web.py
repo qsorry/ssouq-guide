@@ -179,15 +179,16 @@ def main():
         check("selected package recorded", line["package_id"] == "3")
 
         print("\n== 3b. Create stays non-fatal if verification can't find the line ==")
-        orig_search = s._search_line
-        s._search_line = lambda u: {}      # محاكاة فشل/تأخّر table_search
+        orig_search, orig_recent = s._search_line, s._recent_line
+        s._search_line = lambda u, force=False: {}   # محاكاة فشل/تأخّر table_search
+        s._recent_line = lambda u, scan=80: {}       # وفشل مسح أحدث الصفوف أيضًا
         try:
             line2 = s.create_line(package_id=1, username="webuser2", password="pw2")
             check("line still returned when search fails",
                   line2.get("username") == "webuser2" and "webuser2" in line2["line"])
             check("flagged as unverified", line2.get("verified") is False)
         finally:
-            s._search_line = orig_search
+            s._search_line, s._recent_line = orig_search, orig_recent
 
         print("\n== 3x. Extend a line (ExtendUser modal), as the Selenium script does ==")
         EF = xm_web.PanelWebSession._extend_form
@@ -239,6 +240,17 @@ def main():
         rows = s.search("pw2")
         check("search by password on the panel table", len(rows) == 1 and rows[0]["username"] == "webuser2", str(rows)[:80])
         check("empty search returns nothing", s.search("  ") == [])
+
+        print("\n== 3d. Recent-rows scan captures the id when term-search lags ==")
+        orig_search = s._search_line
+        s._search_line = lambda u, force=False: {}   # بحث الجدول بالمصطلح يتأخّر بالفهرسة
+        try:                                          # لكن أحدث الصفوف (المسح الاحتياطي) يجده
+            line3 = s.create_line(package_id=3, username="webuser3", password="pw3")
+            check("id captured via recent-rows fallback", bool(line3.get("line_id")),
+                  "id=%s" % line3.get("line_id"))
+            check("flagged verified via fallback", line3.get("verified") is True)
+        finally:
+            s._search_line = orig_search
 
         print("\n== 4. Session reused from disk (new object) ==")
         s2 = xm_web.PanelWebSession(acct, data_dir)
