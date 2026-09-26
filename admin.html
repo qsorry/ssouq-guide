@@ -6,49 +6,103 @@
 <meta name="robots" content="noindex, nofollow">
 <title>إدارة الحسابات</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 <style>
-:root{--ink:#16324F;--paper:#EEF2F6;--card:#FFFFFF;--line:#D5DEE8;--go:#0F8C7B;--copy:#D9912B;--err:#C2412D;--mute:#5F7288}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8}}
-:root[data-theme="dark"]{--ink:#E3ECF5;--paper:#0E1A26;--card:#162635;--line:#284055;--go:#23B39F;--copy:#EAA744;--err:#EF6A55;--mute:#8FA3B8}
+/* نفس نظام تصميم صفحة اليوزر (xm_lines) — داكنٌ افتراضيًّا، متوافقٌ مع الجوال */
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--copy:#f2b23e;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45)}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--copy:#b45309;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif}
-main{max-width:680px;margin:0 auto;padding:20px 16px 60px}
-h1{font-size:1.5rem;margin:0 0 4px}
-.sub{color:var(--mute);margin:0 0 20px;font-size:.95rem}
-.sub a{color:var(--go)}
-section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
-h2{font-size:1.05rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
+[hidden]{display:none!important}
+a{color:var(--go);text-decoration:none}
+svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* الرأس */
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:8px;height:60px;padding:0 14px;background:color-mix(in srgb,var(--sf) 90%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;margin-inline-start:auto;font-weight:700;line-height:1.1}
+.brand .mark{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);display:grid;place-items:center;color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--go) 45%,transparent);flex:none}
+.brand b{display:block;font-size:1.02rem}
+.brand small{display:block;color:var(--mute);font-size:.7rem;font-weight:400}
+.nav{display:flex;gap:2px;flex-wrap:wrap}
+.nav a{padding:8px 10px;border-radius:10px;color:var(--mute);font-weight:500;font-size:.86rem;display:inline-flex;align-items:center;gap:5px}
+.nav a:hover{color:var(--ink);background:var(--sf2)}
+.nav a.out:hover{color:var(--err)}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none}
+.icon-btn:hover{border-color:var(--go)}
+
+/* الهيكل */
+.wrap{max-width:760px;margin:0 auto;padding:16px 14px 60px}
+h1{font-size:1.35rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 16px;font-size:.9rem}
+section{background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+h2{font-size:1.08rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
-input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit;direction:ltr;text-align:left}
+input,select,textarea{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--sf2);color:var(--ink);font:inherit}
+input{direction:ltr;text-align:left}
+select{cursor:pointer}
+textarea{direction:rtl;text-align:right;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--go)}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
-@media (max-width:480px){.g2{grid-template-columns:1fr}}
-button{font:inherit;border:0;border-radius:10px;cursor:pointer}
-button:focus-visible,input:focus-visible{outline:3px solid var(--copy);outline-offset:2px}
-.go{width:100%;margin-top:14px;padding:13px;background:var(--go);color:#fff;font-weight:700}
-.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:6px 12px;font-size:.85rem}
-.danger{background:transparent;border:1px solid var(--err);color:var(--err);padding:6px 12px;font-size:.85rem}
-.msg{font-size:.9rem;margin-top:10px;min-height:1.4em;white-space:pre-wrap}
+@media (max-width:520px){.g2{grid-template-columns:1fr}}
+button{font:inherit;border:0;border-radius:10px;cursor:pointer;color:inherit;background:none}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--go);outline-offset:2px}
+.go{width:100%;margin-top:16px;padding:14px;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;font-size:1.02rem;border-radius:14px;box-shadow:0 10px 26px color-mix(in srgb,var(--go) 35%,transparent)}
+.go:active{opacity:.9}
+.ghost{background:var(--sf2);border:1px solid var(--line);color:var(--ink);padding:8px 13px;font-size:.85rem;display:inline-flex;align-items:center;gap:6px}
+.ghost:hover{border-color:var(--go);color:var(--go)}
+.danger{background:var(--sf2);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:8px 13px;font-size:.85rem}
+.danger:hover{background:color-mix(in srgb,var(--err) 12%,var(--sf2))}
+.msg{font-size:.9rem;margin-top:10px;min-height:1.4em;white-space:pre-wrap;color:var(--mute)}
 .msg.err{color:var(--err)} .msg.ok{color:var(--go)}
-.acct{border-top:1px dashed var(--line);padding:12px 0;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+
+/* بطاقات الأرقام */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.stat{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.stat small{display:block;color:var(--mute);font-size:.76rem}
+.stat b{display:block;font-size:1.5rem;line-height:1.35;font-variant-numeric:tabular-nums}
+.stat b.mono{font-size:.95rem;font-weight:700;padding-top:6px}
+.stat.on b{color:var(--go)}
+
+/* الحسابات + البوابات */
+.acct{border-top:1px dashed var(--line);padding:14px 0;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.acct:first-child{border-top:0;padding-top:4px}
 .acct .i{flex:1;min-width:200px}
-.acct b{display:block}
-.acct code{direction:ltr;display:block;font:500 .78rem/1.6 "IBM Plex Mono",Consolas,monospace;color:var(--mute);overflow-wrap:anywhere}
-.acct .b{display:flex;gap:6px}
-.empty{color:var(--mute);text-align:center;padding:10px}
-.gate{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;background:rgba(0,0,0,.02)}
+.acct b{display:block;font-size:1.02rem}
+.acct code{direction:ltr;display:block;font:500 .78rem/1.7 "IBM Plex Mono",Consolas,monospace;color:var(--mute);overflow-wrap:anywhere}
+.acct code.g{color:var(--ink);margin-top:3px}
+.acct .b{display:flex;gap:6px;flex-wrap:wrap}
+.empty{color:var(--mute);text-align:center;padding:14px;font-size:.9rem}
+.gate{border:1.5px solid var(--line);border-radius:14px;padding:14px;margin-top:12px;background:var(--sf2)}
 .gate .gh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
 .gate .gh b{color:var(--ink)}
-.gate select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}
-.gate .rm{background:transparent;border:1px solid var(--err);color:var(--err);padding:4px 10px;font-size:.8rem}
-.acct code.g{color:var(--ink);margin-top:4px}
-.gsel{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}
+.gate .rm{background:var(--sf);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:5px 11px;font-size:.8rem}
+.gsel{width:100%}
 textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 </style>
 </head>
 <body>
-<main>
-  <h1>إدارة الحسابات</h1>
-  <p class="sub">كل حساب له اسم دخول وكلمة مرور و API وهوست مستقل. المستخدم يدخل على <a href="/admin" id="lnkHome">صفحة الإنشاء</a> ببياناته ويرى باقات الـ API الخاص به فقط. · <a href="/admin/renew" id="lnkRenew">خدمة التجديد</a> · <a href="/admin/logout" id="lnkOut">تسجيل الخروج</a></p>
+<header class="top">
+  <button class="icon-btn" id="themeBtn" title="تبديل السمة" aria-label="تبديل السمة"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <nav class="nav">
+    <a id="lnkHome"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>الإنشاء</a>
+    <a id="lnkRenew"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>التجديد</a>
+    <a id="lnkOut" class="out"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>خروج</a>
+  </nav>
+  <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span>
+    <span><b>سمارت سوق</b><small>لوحة الإدارة</small></span></div>
+</header>
+<main class="wrap">
+  <h1>أهلاً بك</h1>
+  <p class="sub">إدارة الحسابات والبوابات وخدمة سلة ← واتساب.</p>
+
+  <section>
+    <div class="stats">
+      <div class="stat"><small>الحسابات</small><b id="statAcc">—</b></div>
+      <div class="stat"><small>البوابات</small><b id="statGates">—</b></div>
+      <div class="stat" id="statSvcCard"><small>خدمة سلة</small><b id="statSvc" class="mono">—</b></div>
+    </div>
+  </section>
 
   <section>
     <h2 id="formTitle">إضافة حساب</h2>
@@ -148,6 +202,17 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 let accounts = [];
 $("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
 
+// تبديل السمة (يُحفَظ) — نفس مبدأ صفحة اليوزر
+$("themeBtn").onclick = () => {
+  const light = document.documentElement.getAttribute("data-theme") === "light";
+  document.documentElement.setAttribute("data-theme", light ? "dark" : "light");
+  try { localStorage.setItem("xm_theme", light ? "dark" : "light"); } catch {}
+};
+function updateStats(){
+  $("statAcc").textContent = accounts.length;
+  $("statGates").textContent = accounts.reduce((n, a) => n + ((a.gates || []).length), 0);
+}
+
 function say(el, t, ok){ el.textContent = t; el.className = "msg " + (ok ? "ok" : "err"); }
 async function post(url, body){
   const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
@@ -166,7 +231,8 @@ function render(){
       <code>دخول: ${esc(a.user)}${a.has_password ? " · كلمة المرور محفوظة 🔒" : ""}</code>
       <code>${(a.gates||[]).length} بوابة</code>${gates}</div>
       <div class="b"><button class="ghost" data-edit="${a.id}">تعديل</button><button class="danger" data-del="${a.id}">حذف</button></div></div>`;
-  }).join("") : '<div class="empty">لا توجد حسابات بعد. أضف أول حساب من النموذج أعلاه.</div>';
+  }).join("") : '<div class="empty">لا توجد حسابات بعد. أضف أول حساب من النموذج أدناه.</div>';
+  updateStats();
 }
 
 // ---- بوابة واحدة في النموذج ----
@@ -318,6 +384,8 @@ async function loadService(){
   try {
     const r=await fetch(B + "/api/service"); const d=chk(await r.json()); if(d.error) throw new Error(d.error);
     $("svcEnabled").checked=!!d.enabled; $("svcDry").checked=!!d.dry_run; $("svcPoll").checked=!!d.poll;
+    $("statSvc").textContent = d.enabled ? (d.dry_run ? "تجريبي" : "نشطة") : "متوقفة";
+    $("statSvcCard").classList.toggle("on", !!d.enabled && !d.dry_run);
     $("svcTpl").value=d.template||"";
     $("svcSecret").value=""; $("svcSecret").placeholder=d.has_salla_secret?"محفوظ — اتركه فارغًا للإبقاء":"";
     $("svcToken").value=""; $("svcToken").placeholder=d.has_salla_token?"محفوظ — اتركه فارغًا للإبقاء":"";
