@@ -267,6 +267,16 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
     </div>
     <div id="hist"></div>
   </section>
+
+  <section class="panel" id="xlsxPanel">
+    <div class="ph"><h2>ملف Excel لكل اليوزرات</h2></div>
+    <p class="msg small" id="xlsxStat">…</p>
+    <div class="inline" style="flex-wrap:wrap;gap:8px">
+      <button class="btn" id="xlsxPull"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg><span id="xlsxPullTxt">سحب جميع اليوزرات وحفظها Excel</span></button>
+      <button class="ghost" id="xlsxDown"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 12h8M8 16h5M8 8h8"/></svg>تنزيل ملف Excel</button>
+    </div>
+    <p class="msg small" style="opacity:.75;margin-top:8px">يُحدَّث الملف تلقائيًا كلما أنشأت يوزرات جديدة، ويبقى محفوظًا على السيرفر.</p>
+  </section>
 </main>
 
 <aside class="side" id="side">
@@ -378,7 +388,7 @@ async function loadGates(){
   $("gateTabs").innerHTML = gates.map(g =>
     `<button class="gate-tab${g.id===curGate?" on":""}" data-gate="${g.id}" data-mode="${esc(g.mode)}" data-glyph="${esc((g.name||"?").trim().slice(0,1))}">${esc(g.name)}</button>`).join("");
   $("statusBox").hidden = false; $("searchBox").hidden = false;
-  renderGateHeader(); fetchPackages(); loadGateStatus();
+  renderGateHeader(); fetchPackages(); loadGateStatus(); loadXlsxStatus();
 }
 function renderGateHeader(){
   const g = gates.find(x => x.id === curGate) || {};
@@ -395,7 +405,7 @@ function selectGate(id){
   curGate = id;
   document.querySelectorAll(".gate-tab").forEach(b => b.classList.toggle("on", b.dataset.gate === id));
   $("resBox").hidden = true; $("msg").textContent = ""; $("searchRes").innerHTML = ""; $("searchQ").value = "";
-  renderGateHeader(); fetchPackages(); renderHistory(); loadGateStatus();
+  renderGateHeader(); fetchPackages(); renderHistory(); loadGateStatus(); loadXlsxStatus();
 }
 
 // ---- حالة البوابة: النقاط + آخر يوزر + تحذير التغيّر منذ آخر جلسة ----
@@ -645,7 +655,7 @@ async function createLines(){
       const h = load(); lines.forEach(x => h.unshift(x)); save(h);
       $("res").textContent = lines.map(x=>x.line).join("\n");
       $("resBox").hidden = false; $("u").value = ""; $("p").value = "";
-      renderHistory(); loadGateStatus();
+      renderHistory(); loadGateStatus(); loadXlsxStatus();
       copy($("res").textContent);
       // أين ذهب الوقت: تحضير الدفعة مرة، ثم إرسال وتأكيد لكل يوزر.
       const t = lines[0].timing || {}, sec = ms => (ms / 1000).toFixed(1) + " ث";
@@ -721,6 +731,41 @@ $("exp").onclick = () => {
     return `${d.toLocaleDateString("en-GB").replace(/\//g,"-")} ${d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}  |  ${x.line}  |  ${x.package}`; }).join("\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt],{type:"text/plain"})); a.download = "lines.txt"; a.click();
 };
+
+// ---- ملف Excel لكل اليوزرات (محفوظ على السيرفر) ----
+async function loadXlsxStatus(){
+  const el = $("xlsxStat"), dn = $("xlsxDown");
+  if (!curGate) { el.textContent = "اختر بوابة أولاً."; dn.disabled = true; return; }
+  try {
+    const r = await fetch(B + "/api/users-export/status?gate=" + encodeURIComponent(curGate));
+    const d = chk(await r.json());
+    if (d.exists) {
+      el.textContent = `الملف محفوظ · ${d.count} يوزر · آخر تحديث ${d.updated_at}`;
+      dn.disabled = false;
+    } else {
+      el.textContent = "لا يوجد ملف بعد — اسحب اليوزرات لإنشائه.";
+      dn.disabled = true;
+    }
+  } catch(e) { el.textContent = "تعذّر قراءة حالة الملف."; dn.disabled = true; }
+}
+async function pullXlsx(){
+  if (!curGate) { toast("اختر بوابة أولاً"); return; }
+  const btn = $("xlsxPull"), txt = $("xlsxPullTxt"), old = txt.textContent;
+  btn.disabled = true; txt.textContent = "جاري السحب…";
+  try {
+    const r = await fetch(B + "/api/users-export/pull", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({gate: curGate})});
+    const d = chk(await r.json());
+    if (d.need_captcha) { showCaptcha(pullXlsx); return; }
+    if (d.login_error) throw new Error(d.login_error);
+    if (d.error) throw new Error(d.error);
+    toast(`تم حفظ ${d.count} يوزر في ملف Excel`);
+    loadXlsxStatus();
+  } catch(e) { $("xlsxStat").textContent = e.message; }
+  finally { btn.disabled = false; txt.textContent = old; }
+}
+$("xlsxPull").onclick = pullXlsx;
+$("xlsxDown").onclick = () => { if (!curGate) return; window.location = B + "/api/users-export/download?gate=" + encodeURIComponent(curGate); };
 
 updateCta();
 loadGates();
