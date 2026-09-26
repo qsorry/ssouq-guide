@@ -172,12 +172,72 @@ class Session:
         _walk(d, chunks)
         return "\n".join(c for c in chunks if len(c) < 800)
 
+    # مرشّحات قائمة الطلبات في لوحة سلة (غير موثّقة كمسار الطلب المفرد) — تُجرَّب
+    # بالترتيب ويُحفظ أوّل ما ردّ قائمةَ طلبات، فلا يُخمَّن ثانيةً.
+    _LIST_PATHS = (
+        "/api/orders?per_page={n}&page=1",
+        "/api/v1/orders?per_page={n}&page=1",
+        "/orders?format=json&per_page={n}",
+        "/api/orders?limit={n}",
+        "/dashboard/orders?format=json",
+    )
+
+    def recent_orders(self, limit=25):
+        """أحدث الطلبات من لوحة سلة بالجلسة (لا توكن API) — للسحب الدوري. تُعيد
+        قائمة قواميس خام كما تعطيها اللوحة (يحلّلها المتصل بـ salla_api.parse_order).
+        أفضل جهد: مسار القائمة غير موثّق فتُجرّب مرشّحات ويُلتقط أوّل قائمةٍ صالحة."""
+        paths = ([self._list_path] if getattr(self, "_list_path", None) else []) \
+            + [p for p in self._LIST_PATHS if p != getattr(self, "_list_path", None)]
+        for tpl in paths:
+            d = self._json(tpl.format(n=int(limit)))
+            rows = _find_orders(d)
+            if rows:
+                self._list_path = tpl
+                return rows[:limit]
+        return []
+
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     """لا نتبع 30x: التحويل إلى /auth هو خبرُ انتهاء الجلسة، لا خطأً نُخفيه."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def _looks_like_order(d):
+    if not isinstance(d, dict):
+        return False
+    keys = set(d.keys())
+    has_id = bool(keys & {"id", "order_id", "reference_id", "reference"})
+    has_ord = bool(keys & {"status", "total", "amount", "payment_method", "customer", "items", "reference_id"})
+    return has_id and has_ord
+
+
+def _find_orders(obj, depth=0):
+    """يبحث في ردّ JSON عن أوّل قائمةِ طلباتٍ فعلية (تحت data/orders/items/results
+    أو قائمة عليا)، متسامحًا مع اختلاف أشكال ردود لوحة سلة."""
+    if depth > 6 or obj is None:
+        return []
+    if isinstance(obj, list):
+        rows = [x for x in obj if _looks_like_order(x)]
+        if rows:
+            return rows
+        for x in obj:
+            r = _find_orders(x, depth + 1)
+            if r:
+                return r
+        return []
+    if isinstance(obj, dict):
+        for k in ("data", "orders", "items", "results", "list"):
+            if k in obj:
+                r = _find_orders(obj[k], depth + 1)
+                if r:
+                    return r
+        for v in obj.values():
+            r = _find_orders(v, depth + 1)
+            if r:
+                return r
+    return []
 
 
 def _walk(obj, out, depth=0):
