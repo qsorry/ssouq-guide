@@ -1670,13 +1670,17 @@ class CasperWebSession(PanelWebSession):
         sub = self._submit_new(package_id, password, live, vod)
         # ردّ doAdd لا يميّز النجاح؛ نتحقّق بالفلتر مع صبرٍ (اللوحة تتأخّر لحظةً).
         # كلمة المرور المُعادة هي التي أرسلناها (رقمية موثوقة)، لا ما يعرضه الجدول.
-        t_conf = time.time()
-        for attempt in range(8):
+        t_conf, u = time.time(), sub["username"]
+        for attempt in range(9):
             if attempt:
                 time.sleep(min(attempt, 3))
-            made = self._find_user(sub["username"])
+            made = self._find_user(u)
+            if not made and attempt >= 2:
+                # فلتر ?username= قد يتأخّر لحظةً بعد الإنشاء بينما اليوزر موجودٌ
+                # فعلًا في أحدث الصفوف — نفحصها مباشرةً فلا نُعلن فشلًا كاذبًا.
+                made = self._recent_index(80).get(u)
             if made:
-                return self._ok_line(sub["username"], sub["password"], made, {
+                return self._ok_line(u, sub["password"], made, {
                     "login_ms": login_ms, "page_ms": sub["page_ms"],
                     "bouquets_ms": bouquets_ms, "post_ms": sub["post_ms"],
                     "confirm_ms": int((time.time() - t_conf) * 1000)})
