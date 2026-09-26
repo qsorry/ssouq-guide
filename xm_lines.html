@@ -585,6 +585,7 @@ async function createReplacement(oldU){
     }
     if (d.error) throw new Error(d.error);
   } catch(e){ if ($("mkMsg")) $("mkMsg").textContent = e.message; else toast(e.message); }
+  finally { const g = $("mkGo"); if (g) { g.disabled = false; g.textContent = "إنشاء البديل وربطه بـ " + oldU; } }
 }
 async function saveGuide(){
   const gu = $("myGuide").value.trim();
