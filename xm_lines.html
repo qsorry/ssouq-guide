@@ -274,7 +274,8 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
         <details class="adv">
           <summary><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>خيارات متقدمة</summary>
           <div class="body">
-            <label class="f" for="u">Username مخصص (فارغ = تلقائي)</label><input class="t" id="u" inputmode="numeric" autocomplete="off">
+            <label class="f" for="u" id="uLbl">Username مخصص (فارغ = تلقائي)</label><input class="t" id="u" inputmode="numeric" autocomplete="off">
+            <small class="hint" id="uNote" hidden>كاسبر يولّد اسم اليوزر تلقائيًا — لا يُطبَّق الاسم المخصص، تُطبَّق كلمة المرور فقط.</small>
             <label class="f" for="p">Password مخصص (فارغ = تلقائي)</label><input class="t" id="p" inputmode="numeric" autocomplete="off">
           </div>
         </details>
@@ -446,6 +447,11 @@ function renderGateHeader(){
   $("heroMode").textContent = (MODE[g.mode] || g.mode || "") + (g.host ? " · " + g.host.replace(/^https?:\/\//,"") : "") + (g.digits ? " · " + g.digits + " أرقام" : "");
   const gl = $("heroGlyph"); gl.textContent = (g.name || "?").trim().slice(0,1); gl.className = "glyph " + (g.mode || "");
   $("infoTxt").textContent = `تُسحب البيانات من لوحة "${g.name || "البوابة"}" مباشرة وتُنشأ اليوزرات تلقائيًا. بيانات اللوحات محفوظة مشفَّرة، وتُعاد استخدام الجلسة بلا كود إلا عند الحاجة.`;
+  const casper = g.mode === "web" && g.web_flavor === "casper";
+  const uNote = $("uNote"), uInp = $("u"), uLbl = $("uLbl");
+  if (uNote) uNote.hidden = !casper;
+  if (uInp){ uInp.disabled = casper; if (casper) uInp.value = ""; uInp.placeholder = casper ? "يولّده كاسبر تلقائيًا" : ""; }
+  if (uLbl) uLbl.textContent = casper ? "Username (يولّده كاسبر تلقائيًا)" : "Username مخصص (فارغ = تلقائي)";
   setBadge("…", "");
 }
 function setBadge(txt, cls){ const b = $("heroBadge"); b.className = "badge " + cls; b.querySelector("span").textContent = txt; }
@@ -513,6 +519,8 @@ function renderToday(s){
 }
 const lineOf = x => { const g = gates.find(g => g.id === curGate) || {}; const guide = g.guide_url || globalGuide || "";
   return `Host ${g.host || ""} User ${x.username} Pass ${x.password}` + (guide ? ` Guide ${guide}` : ""); };
+// كاسبر يولّد اسم اليوزر بنفسه ولا يقبل اسمًا مختارًا؛ تُطبَّق كلمة المرور فقط. باقي البوابات تقبل الاثنين.
+const gateIsCasper = id => { const g = gates.find(g => g.id === (id||curGate)) || {}; return g.mode === "web" && g.web_flavor === "casper"; };
 $("todayBox").addEventListener("click", e => { const b = e.target.closest("button"); if (b && b.dataset.line) copy(b.dataset.line); });
 
 const copyIcon = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
@@ -548,7 +556,7 @@ async function doSearch(){
     $("searchRes").innerHTML = L + (rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
       rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
         return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
-          <td><button class="cb" title="نسخ" data-copy="User ${u} Pass ${p}">${copyIcon}</button></td></tr>`; }).join("") + `</tbody></table></div>`
+          <td><button class="cb" title="نسخ السطر الكامل" data-copy="${esc(lineOf(x))}">${copyIcon}</button></td></tr>`; }).join("") + `</tbody></table></div>`
       : missCard(q));
   } catch(e){ $("searchRes").innerHTML = '<div class="empty">تعذّر البحث.</div>'; }
 }
@@ -557,19 +565,35 @@ async function showReplPicker(q){
   box.hidden = false;
   if (!packages || !packages.length){ box.innerHTML = '<div class="empty">جاري تحميل الباقات…</div>'; await fetchPackages(); }
   if (!packages || !packages.length){ box.innerHTML = '<div class="empty">تعذّر تحميل الباقات — اختر بوابة أولًا.</div>'; return; }
+  const casper = gateIsCasper();
+  const credBox = casper
+    ? `<label class="f" for="rp" style="margin-top:10px">Password مخصص (أرقام، فارغ = تلقائي)</label>
+       <input class="t" id="rp" inputmode="numeric" autocomplete="off" placeholder="فارغ = تُولَّد تلقائيًا">
+       <small class="hint">كاسبر يولّد اسم اليوزر تلقائيًا ولا يقبل اسمًا مختارًا — تُطبَّق كلمة المرور فقط.</small>`
+    : `<label class="f" for="ru" style="margin-top:10px">Username مخصص (فارغ = تلقائي)</label>
+       <div style="display:flex;gap:6px;align-items:center">
+         <input class="t" id="ru" inputmode="numeric" autocomplete="off" placeholder="فارغ = تُولَّد تلقائيًا" style="flex:1">
+         <button type="button" class="ghost" id="ruSame" style="white-space:nowrap">نفس الرقم القديم</button>
+       </div>
+       <label class="f" for="rp" style="margin-top:8px">Password مخصص (فارغ = تلقائي)</label>
+       <input class="t" id="rp" inputmode="numeric" autocomplete="off" placeholder="فارغ = تُولَّد تلقائيًا">`;
   box.innerHTML = `<div class="lbl" style="margin-top:10px">اختر المدة/الباقة للبديل:</div>
     <div class="pkgs">${packages.map((p,i)=>`<label class="pkg"><input type="radio" name="rpkg" value="${esc(p.id)}" ${i===0?"checked":""}>${calIcon}<b>${esc(p.name)}</b><small>${p.hint?esc(p.hint):(p.credits!=null?esc(String(p.credits))+" كريدت":"")}</small></label>`).join("")}</div>
-    <button class="go" id="mkGo" data-old="${esc(q)}">إنشاء البديل وربطه بـ ${esc(q)}</button>
+    ${credBox}
+    <button class="go" id="mkGo" data-old="${esc(q)}" style="margin-top:10px">إنشاء البديل وربطه بـ ${esc(q)}</button>
     <div class="msg" id="mkMsg"></div>`;
   box.hidden = false;
+  const same = $("ruSame"); if (same) same.onclick = () => { const u = $("ru"); if (u){ u.value = q; u.focus(); } };
 }
 async function createReplacement(oldU){
   const sel = document.querySelector('input[name="rpkg"]:checked');
   if (!sel){ if($("mkMsg")) $("mkMsg").textContent = "اختر باقة."; return; }
   const btn = $("mkGo"); if (btn){ btn.disabled = true; btn.textContent = "جاري الإنشاء…"; }
   try {
+    const uEl = $("ru"), pEl = $("rp");
+    const cu = uEl ? uEl.value.trim() : "", cp = pEl ? pEl.value.trim() : "";
     const r = await fetch(B + "/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({gate: curGate, package_id: sel.value, count: 1, replaces: oldU})});
+      body: JSON.stringify({gate: curGate, package_id: sel.value, count: 1, replaces: oldU, username: cu, password: cp})});
     const d = chk(await r.json());
     if (d.need_captcha){ showCaptcha(() => createReplacement(oldU)); return; }
     if (d.login_error) throw new Error(d.login_error);
@@ -578,10 +602,11 @@ async function createReplacement(oldU){
       const h = load(); lines.forEach(x => h.unshift(x)); save(h);
       renderHistory(); loadGateStatus(); loadXlsxStatus();
       const nu = esc(String(lines[0].username||"")), np = esc(String(lines[0].password||""));
-      copy(`User ${lines[0].username} Pass ${lines[0].password}`);
-      if ($("mkBox")) $("mkBox").innerHTML = `<div class="msg ok" style="margin-top:8px">أُنشئ البديل وارتبط بـ ${esc(oldU)} ✓ (نُسخ)</div>
+      const full = lines[0].line || lineOf(lines[0]);
+      copy(full);
+      if ($("mkBox")) $("mkBox").innerHTML = `<div class="msg ok" style="margin-top:8px">أُنشئ البديل وارتبط بـ ${esc(oldU)} ✓ (نُسخ السطر الكامل)</div>
         <div class="tw"><table class="tbl"><tbody><tr><td class="m">${nu}</td><td class="m">${np}</td><td>${esc(String(lines[0].package||""))}</td>
-        <td><button class="cb" title="نسخ" data-copy="User ${nu} Pass ${np}">${copyIcon}</button></td></tr></tbody></table></div>`;
+        <td><button class="cb" title="نسخ السطر الكامل" data-copy="${esc(full)}">${copyIcon}</button></td></tr></tbody></table></div>`;
     }
     if (d.error) throw new Error(d.error);
   } catch(e){ if ($("mkMsg")) $("mkMsg").textContent = e.message; else toast(e.message); }
