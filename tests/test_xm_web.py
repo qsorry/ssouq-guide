@@ -485,6 +485,13 @@ def main():
             check("casper packages parsed (4, Arabic names)", len(cpk) == 4, "count=%d" % len(cpk))
             check("15-month package id 726 present", any(p["id"] == "726" for p in cpk))
 
+            # النشاط الآن (online/offline) يُلتقط من نقطة الحالة في العمود [1]
+            allu = cs.all_users()
+            check("rows carry the online/offline activity flag",
+                  all("active" in r for r in allu) and any(r["active"] == "online" for r in allu)
+                  and any(r["active"] == "offline" for r in allu),
+                  str({r["active"] for r in allu}))
+
             # الإنشاء المفرد: اليوزر من اللوحة، وكلمة المرور رقميّةٌ نضبطها نحن.
             # كلمة مرورٍ غير رقمية ممرَّرة → تُستبدَل بواحدةٍ رقمية مولّدة.
             r = cs.create_line("726", "IGNORED_USER", "NOTdigits!!", "http://ssouqhost.vip:80")

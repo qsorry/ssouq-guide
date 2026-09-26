@@ -29,6 +29,7 @@ def _make_users(n):
             "created": "2026-01-01",
             "exp": "2027-04-01 12:00" if mo == 15 else "2026-07-01 12:00",
             "conns": "0/1",
+            "online": (i % 5 == 0),          # بعضهم «متصل الآن» لاختبار عمود النشاط
         })
     return out
 
@@ -72,7 +73,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             trs.append(
                 "<tr>"
                 "<td>%s</td>"                       # 0 id
-                "<td><a>on</a></td>"                # 1 online
+                "<td title=\"%s\"><a>on</a></td>"   # 1 online (نقطة الحالة)
                 "<td>reseller1</td>"                # 2 reseller (يتكرّر — فخّ)
                 "<td>Full</td>"                     # 3 fullname
                 "<td>%s</td>"                       # 4 username
@@ -85,7 +86,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "<td>%s</td>"                       # 11 max conn
                 "<td></td>"                         # 12
                 "<td><a>opts</a></td>"              # 13 options
-                "</tr>" % (u["id"], u["username"], u["password"], u["package"],
+                "</tr>" % (u["id"], "online" if u.get("online") else "offline",
+                           u["username"], u["password"], u["package"],
                            u["created"], u["exp"], u["conns"]))
         pag = "".join(
             "<li><a href='/iptv/index.php/users/index?&amp;page=%d'>%d</a></li>" % (p, p)

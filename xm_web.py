@@ -1365,6 +1365,7 @@ class CasperWebSession(PanelWebSession):
     _RE_TBODY = re.compile(r"<tbody\b[^>]*>(.*?)</tbody>", re.I | re.S)
     _RE_TAG = re.compile(r"<[^>]+>")
     _RE_PAGES = re.compile(r"users/index\?[^\"'>]*?page=(\d+)", re.I)
+    _RE_ONLINE = re.compile(r'title=["\'](online|offline)["\']', re.I)
 
     @classmethod
     def _cell(cls, s: str) -> str:
@@ -1390,6 +1391,9 @@ class CasperWebSession(PanelWebSession):
             if not user:
                 continue
             exp = cls._RE_EXP.search(tr)
+            # نقطة الحالة في العمود [1] تحمل title="online"/"offline" — الإشارة
+            # الوحيدة للنشاط التي تعرضها لوحة كاسبر (اتصالٌ الآن، لا تاريخ آخر اتصال).
+            am = cls._RE_ONLINE.search(tr)
             out.append({
                 "id": cls._cell(tds[0]),
                 "username": user,
@@ -1398,6 +1402,7 @@ class CasperWebSession(PanelWebSession):
                 "created": cls._cell(tds[8])[:10],
                 "exp": (exp.group(1).strip() if exp else cls._cell(tds[9]))[:16],
                 "connections": cls._cell(tds[11]),
+                "active": am.group(1).lower() if am else "",
                 "status": "",
             })
         return out

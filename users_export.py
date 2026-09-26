@@ -18,9 +18,14 @@ import time
 import xlsx_write
 
 # أعمدة الملف (المفتاح ↔ الرأس العربي)، بالترتيب.
-KEYS = ["username", "password", "package", "exp", "created", "connections", "host"]
+KEYS = ["username", "password", "package", "exp", "created", "connections", "active", "host"]
 HEADERS = ["اليوزر", "كلمة المرور", "الباقة", "تاريخ الانتهاء",
-           "تاريخ الإنشاء", "الاتصالات", "الهوست"]
+           "تاريخ الإنشاء", "الاتصالات", "النشاط الآن", "الهوست"]
+
+# النشاط الحالي (الإشارة الوحيدة التي تعرضها اللوحات — لا يوجد «آخر اتصال»):
+# online→متصل الآن · offline→غير متصل · وإلا فراغ (غير متاحٍ لهذه المنصّة).
+_ACTIVE_AR = {"online": "متصل الآن", "1": "متصل الآن", "true": "متصل الآن", "yes": "متصل الآن",
+              "offline": "غير متصل", "0": "غير متصل", "false": "غير متصل", "no": "غير متصل"}
 
 
 def _key(acct_id, gate_id):
@@ -43,6 +48,7 @@ def paths(data_dir, acct_id, gate_id):
 def _norm(row, host=""):
     """صفٌّ واردٌ (قاموس اللوحة أو نتيجة الإنشاء) → قاموسٌ بمفاتيح ثابتة."""
     g = lambda *ks: next((str(row.get(k)) for k in ks if row.get(k) not in (None, "")), "")
+    act = g("active", "online").strip().lower()
     return {
         "username": g("username", "user"),
         "password": g("password", "pass"),
@@ -50,6 +56,7 @@ def _norm(row, host=""):
         "exp": g("exp", "exp_date", "expire"),
         "created": g("created", "created_at") or "",
         "connections": g("connections", "max_connections", "conns"),
+        "active": _ACTIVE_AR.get(act, ""),
         "host": g("host") or str(host or ""),
     }
 
