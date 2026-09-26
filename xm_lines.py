@@ -1602,6 +1602,7 @@ def _create_extended(gate, pkg, base_id, times, username, password):
     sess = web_session(gate)
     r = sess.create_line(base_id, username, password, gate.get("host"))
     u, p = r["username"], r["password"]
+    confirmed = bool(r.get("line_id"))   # اللوحة أثبتت وجود اليوزر (id) — لا مجرّد افتراض نجاح
     ends = []
     try:
         for _ in range(times):
@@ -1610,9 +1611,14 @@ def _create_extended(gate, pkg, base_id, times, username, password):
         raise
     except Exception as e:
         base_name = pkg.get("base_name") or ("باقة " + str(base_id))
-        _log_txt(gate, format_line(gate, u, p), base_name + "  [فشل التمديد — بالباقة الأساسية فقط]")
-        raise RuntimeError("أُنشئ اليوزر %s / %s بالباقة الأساسية «%s» فقط وفشل تمديده: %s"
-                           % (u, p, base_name, str(e)[:160]))
+        if confirmed:   # اليوزر موجود فعلًا على اللوحة (بالأساسية فقط) — التمديد وحده فشل
+            _log_txt(gate, format_line(gate, u, p), base_name + "  [فشل التمديد — بالباقة الأساسية فقط]")
+            raise RuntimeError("أُنشئ اليوزر %s / %s بالباقة الأساسية «%s» فقط وفشل تمديده: %s"
+                               % (u, p, base_name, str(e)[:160]))
+        # لم تؤكّد اللوحة وجود اليوزر (لا id ولا في أحدث الصفوف): قد لا يكون أُنشئ أصلًا.
+        _log_txt(gate, format_line(gate, u, p), base_name + "  [غير مؤكَّد — راجع اللوحة]")
+        raise RuntimeError("تعذّر تأكيد إنشاء اليوزر %s / %s على اللوحة (قد لا يكون أُنشئ). "
+                           "راجع اللوحة وابحث عن الأحدث قبل إعادة المحاولة." % (u, p))
     line = format_line(gate, u, p)
     _log_txt(gate, line, pkg["name"])
     return {"line": line, "username": u, "password": p, "package": pkg["name"],
