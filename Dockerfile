@@ -5,7 +5,7 @@ WORKDIR /app
 # فلا ينكسر النشر بسبب الـ OCR.
 RUN (apk add --no-cache tesseract-ocr && pip install --no-cache-dir pillow pytesseract) || \
     echo "OCR deps skipped — manual captcha fallback will be used"
-COPY xm_lines.py xm_web.py falcon_api.py salla_api.py wa_send.py crypto_store.py guide_pages.py store_sitemap.py renew.py renew_import.py panels.py xlsx_write.py users_export.py salla_web.py xm_lines.html admin.html setup.html login.html index.html renew.html renew_admin.html renew_report_tpl.html ./
+COPY xm_lines.py xm_web.py falcon_api.py salla_api.py wa_send.py crypto_store.py guide_pages.py store_sitemap.py renew.py renew_import.py panels.py xlsx_write.py users_export.py user_links.py salla_web.py xm_lines.html admin.html setup.html login.html index.html renew.html renew_admin.html renew_report_tpl.html ./
 COPY static ./static
 COPY extension ./extension
 RUN mkdir -p /app/data

@@ -191,6 +191,15 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
   .tbl td,.tbl th{padding:8px}
 }
 @media (prefers-reduced-motion:reduce){.toast,.side,.gate-tab,.pkg{transition:none}}
+/* روابط الاستبدال (قديم↔جديد) + بطاقة «لم يُعثر» */
+.lnks{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.lnk{background:color-mix(in srgb,var(--go) 10%,var(--sf2));border:1px solid color-mix(in srgb,var(--go) 35%,var(--line));border-radius:12px;padding:9px 12px;font-size:.86rem}
+.lnk b{font-weight:700}
+.go-t{color:var(--go)}
+.miss{border:1.5px dashed var(--line);border-radius:14px;padding:16px;text-align:center;background:var(--sf2)}
+.miss-h{font-weight:700;font-size:1rem;margin-bottom:4px}
+.miss-p{color:var(--mute);font-size:.85rem;margin:0 0 12px}
+.miss #mkBox{text-align:start}
 /* بطاقة ملف Excel */
 #xlsxPanel .xp-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 #xlsxPanel .xp-ic{width:46px;height:46px;border-radius:13px;flex:none;display:grid;place-items:center;color:var(--go);background:color-mix(in srgb,var(--go) 16%,transparent);border:1px solid color-mix(in srgb,var(--go) 40%,transparent)}
@@ -509,6 +518,21 @@ $("todayBox").addEventListener("click", e => { const b = e.target.closest("butto
 const copyIcon = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
 const pill = st => { st = String(st || ""); const ok = st === "active" || st === "نشط"; const bad = /expired|disabled|banned/.test(st);
   return `<span class="pill ${ok?"ok":bad?"bad":""}">${ok?"نشط":bad?(st==="expired"?"منتهٍ":"موقوف"):esc(st||"—")}</span>`; };
+function linkNote(l){
+  const old = esc(String(l.old||"")), nw = esc(String(l.new||"")), pk = l.package ? " · " + esc(String(l.package)) : "", at = l.at ? " · " + esc(String(l.at)) : "";
+  return l.direction === "replaced_by"
+    ? `<div class="lnk">🔁 هذا الرقم <b>${old}</b> استُبدل بـ <b class="go-t">${nw}</b>${pk}${at}</div>`
+    : `<div class="lnk">🔁 <b class="go-t">${nw}</b> بديلٌ عن الرقم القديم <b>${old}</b>${pk}${at}</div>`;
+}
+const renderLinks = links => (links && links.length) ? `<div class="lnks">${links.map(linkNote).join("")}</div>` : "";
+function missCard(q){
+  return `<div class="miss">
+    <div class="miss-h">لم يُعثر على «${esc(q)}»</div>
+    <p class="miss-p">أنشئ يوزرًا بديلًا واربطه بهذا الرقم — لو رجعت إليه لاحقًا عرفتَ بديله.</p>
+    <button class="ghost" id="mkRepl">إنشاء يوزر بديل</button>
+    <div id="mkBox" hidden></div>
+  </div>`;
+}
 async function doSearch(){
   const q = $("searchQ").value.trim();
   if (!q){ $("searchRes").innerHTML = ""; return; }
@@ -516,16 +540,51 @@ async function doSearch(){
   try {
     const r = await fetch(B + "/api/search?gate=" + encodeURIComponent(curGate) + "&q=" + encodeURIComponent(q));
     const d = chk(await r.json());
-    if (d.unsupported){ $("searchRes").innerHTML = '<div class="empty">البحث غير متاح لهذه البوابة.</div>'; return; }
-    if (d.need_login){ $("searchRes").innerHTML = '<div class="empty">سجّل الدخول إلى اللوحة أولًا (حمّل الباقات واكتب الكود).</div>'; return; }
-    if (d.error || d.login_error){ $("searchRes").innerHTML = '<div class="empty">'+esc(d.error||d.login_error)+'</div>'; return; }
+    const L = renderLinks(d.links);
+    if (d.unsupported){ $("searchRes").innerHTML = L + '<div class="empty">البحث غير متاح لهذه البوابة.</div>'; return; }
+    if (d.need_login){ $("searchRes").innerHTML = L + '<div class="empty">سجّل الدخول إلى اللوحة أولًا (حمّل الباقات واكتب الكود).</div>'; return; }
+    if (d.error || d.login_error){ $("searchRes").innerHTML = L + '<div class="empty">'+esc(d.error||d.login_error)+'</div>'; return; }
     const rows = d.results || [];
-    $("searchRes").innerHTML = rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
+    $("searchRes").innerHTML = L + (rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
       rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
         return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
           <td><button class="cb" title="نسخ" data-copy="User ${u} Pass ${p}">${copyIcon}</button></td></tr>`; }).join("") + `</tbody></table></div>`
-      : '<div class="empty">لا نتائج.</div>';
+      : missCard(q));
   } catch(e){ $("searchRes").innerHTML = '<div class="empty">تعذّر البحث.</div>'; }
+}
+async function showReplPicker(q){
+  const box = $("mkBox"); if (!box) return;
+  box.hidden = false;
+  if (!packages || !packages.length){ box.innerHTML = '<div class="empty">جاري تحميل الباقات…</div>'; await fetchPackages(); }
+  if (!packages || !packages.length){ box.innerHTML = '<div class="empty">تعذّر تحميل الباقات — اختر بوابة أولًا.</div>'; return; }
+  box.innerHTML = `<div class="lbl" style="margin-top:10px">اختر المدة/الباقة للبديل:</div>
+    <div class="pkgs">${packages.map((p,i)=>`<label class="pkg"><input type="radio" name="rpkg" value="${esc(p.id)}" ${i===0?"checked":""}>${calIcon}<b>${esc(p.name)}</b><small>${p.hint?esc(p.hint):(p.credits!=null?esc(String(p.credits))+" كريدت":"")}</small></label>`).join("")}</div>
+    <button class="go" id="mkGo" data-old="${esc(q)}">إنشاء البديل وربطه بـ ${esc(q)}</button>
+    <div class="msg" id="mkMsg"></div>`;
+  box.hidden = false;
+}
+async function createReplacement(oldU){
+  const sel = document.querySelector('input[name="rpkg"]:checked');
+  if (!sel){ if($("mkMsg")) $("mkMsg").textContent = "اختر باقة."; return; }
+  const btn = $("mkGo"); if (btn){ btn.disabled = true; btn.textContent = "جاري الإنشاء…"; }
+  try {
+    const r = await fetch(B + "/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({gate: curGate, package_id: sel.value, count: 1, replaces: oldU})});
+    const d = chk(await r.json());
+    if (d.need_captcha){ showCaptcha(() => createReplacement(oldU)); return; }
+    if (d.login_error) throw new Error(d.login_error);
+    const lines = d.lines || [];
+    if (lines.length){
+      const h = load(); lines.forEach(x => h.unshift(x)); save(h);
+      renderHistory(); loadGateStatus(); loadXlsxStatus();
+      const nu = esc(String(lines[0].username||"")), np = esc(String(lines[0].password||""));
+      copy(`User ${lines[0].username} Pass ${lines[0].password}`);
+      if ($("mkBox")) $("mkBox").innerHTML = `<div class="msg ok" style="margin-top:8px">أُنشئ البديل وارتبط بـ ${esc(oldU)} ✓ (نُسخ)</div>
+        <div class="tw"><table class="tbl"><tbody><tr><td class="m">${nu}</td><td class="m">${np}</td><td>${esc(String(lines[0].package||""))}</td>
+        <td><button class="cb" title="نسخ" data-copy="User ${nu} Pass ${np}">${copyIcon}</button></td></tr></tbody></table></div>`;
+    }
+    if (d.error) throw new Error(d.error);
+  } catch(e){ if ($("mkMsg")) $("mkMsg").textContent = e.message; else toast(e.message); }
 }
 async function saveGuide(){
   const gu = $("myGuide").value.trim();
@@ -754,7 +813,12 @@ $("reload").onclick = fetchPackages;
 $("gateTabs").addEventListener("click", e => { const b = e.target.closest(".gate-tab"); if (b) selectGate(b.dataset.gate); });
 $("searchBtn").onclick = doSearch;
 $("searchQ").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
-$("searchRes").addEventListener("click", e => { const b = e.target.closest("button"); if (b && b.dataset.copy) copy(b.dataset.copy); });
+$("searchRes").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.copy) { copy(b.dataset.copy); return; }
+  if (b.id === "mkRepl") { showReplPicker($("searchQ").value.trim()); return; }
+  if (b.id === "mkGo") { createReplacement(b.dataset.old); return; }
+});
 $("saveGuide").onclick = saveGuide;
 $("manageGates").onclick = () => { drawer(false); openManage(); };
 $("closeManage").onclick = closeManage;

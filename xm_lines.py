@@ -34,6 +34,7 @@ import renew_import
 import panels
 import xlsx_write
 import users_export
+import user_links
 import salla_web
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
@@ -1941,18 +1942,20 @@ class Handler(BaseHTTPRequestHandler):
                 q = self._q("q").strip()
                 if not q:
                     return self._send(200, {"results": []})
+                # روابط الاستبدال (قديم↔جديد) لهذا الرقم — لتتبّع «استُبدل بـ / بديل عن»
+                links = user_links.find(DATA_DIR, acct["id"], gate["id"], q)
                 if gate.get("mode") == "falcon":
-                    return self._send(200, {"results": falcon_api.search(gate["api_url"], gate["api_key"], q)})
+                    return self._send(200, {"results": falcon_api.search(gate["api_url"], gate["api_key"], q), "links": links})
                 if gate.get("mode") == "web":     # بحث جدول اللوحة نفسه
                     try:
-                        return self._send(200, {"results": annotate_package_type(gate, web_session(gate).search(q))})
+                        return self._send(200, {"results": annotate_package_type(gate, web_session(gate).search(q)), "links": links})
                     except xm_web.CaptchaNeeded:
-                        return self._send(200, {"results": [], "need_login": True})
+                        return self._send(200, {"results": [], "links": links, "need_login": True})
                     except xm_web.LoginFailed as e:
-                        return self._send(200, {"results": [], "login_error": str(e)})
+                        return self._send(200, {"results": [], "links": links, "login_error": str(e)})
                     except Exception:
-                        return self._send(200, {"results": [], "error": "تعذّر البحث في اللوحة"})
-                return self._send(200, {"results": [], "unsupported": True})
+                        return self._send(200, {"results": [], "links": links, "error": "تعذّر البحث في اللوحة"})
+                return self._send(200, {"results": [], "links": links, "unsupported": True})
             if path == "/api/users-export/status":   # حالة ملف الإكسل لهذه البوابة
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
@@ -2562,6 +2565,15 @@ class Handler(BaseHTTPRequestHandler):
                                    out, gate.get("host", ""))
             except Exception:
                 pass                               # التصدير مساعدٌ لا يُفشل الإنشاء
+        replaces = str(req.get("replaces") or "").strip()   # ربط القديم بالجديد (بديل)
+        if replaces and out:
+            try:
+                linked = [user_links.add(DATA_DIR, acct["id"], gate["id"],
+                                         replaces, r["username"], r.get("package", ""))
+                          for r in out]
+                resp["linked"] = [x for x in linked if x]
+            except Exception:
+                pass                               # الربط مساعدٌ لا يُفشل الإنشاء
         self._send(200, resp)
 
 
