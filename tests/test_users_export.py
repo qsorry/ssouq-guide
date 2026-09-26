@@ -83,6 +83,17 @@ def main():
 
         # لا ملف بعد لبوابةٍ لم تُسحب
         check("status false before any pull", users_export.status(d, A, "gateC")["exists"] is False)
+
+        # عمود «النشاط الآن»: online→متصل الآن · offline→غير متصل · غيرها→فراغ
+        act_rows = [{"username": "a1", "password": "x", "active": "online"},
+                    {"username": "a2", "password": "y", "active": "offline"},
+                    {"username": "a3", "password": "z"}]
+        users_export.replace_all(d, A, "gateAct", "لوحة", act_rows)
+        ar = {r["username"]: r for r in users_export.load(users_export.paths(d, A, "gateAct")[0])}
+        check("active online -> متصل الآن", ar["a1"]["active"] == "متصل الآن", ar["a1"]["active"])
+        check("active offline -> غير متصل", ar["a2"]["active"] == "غير متصل", ar["a2"]["active"])
+        check("active unknown -> blank", ar["a3"]["active"] == "", repr(ar["a3"]["active"]))
+        check("النشاط الآن is a column header", "النشاط الآن" in users_export.HEADERS)
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

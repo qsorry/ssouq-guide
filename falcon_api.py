@@ -182,6 +182,11 @@ def all_lines(base, key, progress=None, per=50, max_pages=4000):
                 "exp": r.get("expires_at") or r.get("exp") or "",
                 "created": str(r.get("created_at") or "")[:10],
                 "connections": r.get("max_connections"),
+                # النشاط الآن إن أتاحته فالكون (online/متصلون الآن)؛ وإلا يُترك فارغًا.
+                "active": ("online" if r.get("online") else "offline")
+                          if r.get("online") is not None else
+                          ("online" if r.get("active_connections") else "")
+                          if r.get("active_connections") is not None else "",
                 "status": r.get("status") or "",
             })
         if progress:
