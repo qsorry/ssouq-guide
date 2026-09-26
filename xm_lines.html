@@ -421,7 +421,11 @@ async function loadGates(){
     $("gateTabs").innerHTML = '<div class="empty">لا توجد بوابات بعد — اضغط "إدارة بواباتي" لإضافة منشأتك.</div>';
     $("statusBox").hidden = true; $("searchBox").hidden = true; $("pkgs").innerHTML = '<div class="empty">أضِف بوابة أولًا.</div>'; return;
   }
-  curGate = gates.some(g => g.id === curGate) ? curGate : gates[0].id;
+  // تذكّر آخر بوابة مختارة (لكل حساب) — فلا يرجع تحديثُ الصفحة للبوابة الأولى.
+  if (!gates.some(g => g.id === curGate)) {
+    let saved = ""; try { saved = localStorage.getItem("xm_curgate_" + account) || ""; } catch {}
+    curGate = gates.some(g => g.id === saved) ? saved : gates[0].id;
+  }
   $("gateTabs").innerHTML = gates.map(g =>
     `<button class="gate-tab${g.id===curGate?" on":""}" data-gate="${g.id}" data-mode="${esc(g.mode)}" data-glyph="${esc((g.name||"?").trim().slice(0,1))}">${esc(g.name)}</button>`).join("");
   $("statusBox").hidden = false; $("searchBox").hidden = false;
@@ -440,6 +444,7 @@ function selectGate(id){
   drawer(false);
   if (id === curGate) return;
   curGate = id;
+  try { localStorage.setItem("xm_curgate_" + account, id); } catch {}
   document.querySelectorAll(".gate-tab").forEach(b => b.classList.toggle("on", b.dataset.gate === id));
   $("resBox").hidden = true; $("msg").textContent = ""; $("searchRes").innerHTML = ""; $("searchQ").value = "";
   renderGateHeader(); fetchPackages(); renderHistory(); loadGateStatus(); loadXlsxStatus();
