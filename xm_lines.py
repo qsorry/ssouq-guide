@@ -775,19 +775,39 @@ def _export_key(acct_id, gate_id):
     return "%s__%s" % (acct_id, gate_id)
 
 
+def _all_gate_lines(gate, progress=None):
+    """كل يوزرات البوابة للتصدير — بوابةُ ويب (كاسبر/Xtream) أو فالكون."""
+    if gate.get("mode") == "falcon":
+        return falcon_api.all_lines(gate["api_url"], gate["api_key"], progress)
+    return _all_web_lines(gate, progress)
+
+
+def _export_host(gate):
+    """هوست البوابة للتصدير؛ يُحلّ من فالكون إن لم يكن مضبوطًا في البوابة."""
+    h = (gate.get("host") or "").strip()
+    if h or gate.get("mode") != "falcon":
+        return h
+    try:
+        return falcon_api.host(gate["api_url"], gate["api_key"]) or ""
+    except Exception:
+        return ""
+
+
 def _export_worker(acct_id, gate_id, gate, key):
     job = _export_jobs[key]
     try:
         def prog(seen, last=1, page=1):
             job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
 
-        rows = _all_web_lines(gate, prog)
+        rows = _all_gate_lines(gate, prog)
         n = users_export.replace_all(DATA_DIR, acct_id, gate_id, gate.get("name"),
-                                     rows, gate.get("host", ""))
+                                     rows, _export_host(gate))
         job.update({"count": n, "done": n, "total": n})
     except xm_web.CaptchaNeeded:
         job["error"] = "اللوحة تطلب كود تحقّق — سجّل الدخول لها من الصفحة"
     except xm_web.LoginFailed as e:
+        job["error"] = str(e)[:200]
+    except falcon_api.FalconError as e:
         job["error"] = str(e)[:200]
     except Exception as e:
         job["error"] = str(e)[:200]
@@ -2366,8 +2386,8 @@ class Handler(BaseHTTPRequestHandler):
                 gate = find_gate(acct, self._body().get("gate"))
                 if not gate:
                     return self._send(400, {"error": "اختر بوابة"})
-                if gate.get("mode") != "web":
-                    return self._send(200, {"error": "السحب الكامل متاحٌ لبوابات الويب فقط"})
+                if gate.get("mode") not in ("web", "falcon"):
+                    return self._send(200, {"error": "السحب الكامل متاحٌ لبوابات الويب أو فالكون"})
                 return self._send(200, start_users_export(acct["id"], gate["id"], gate))
             if path == "/api/create":
                 if role != "account":

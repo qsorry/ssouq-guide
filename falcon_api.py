@@ -161,6 +161,37 @@ def search(base, key, query, max_pages=12, per=50):
     return out
 
 
+def all_lines(base, key, progress=None, per=50, max_pages=4000):
+    """كل لايناتِ البوابة (بترقيم الصفحات) — للتصدير إلى Excel. الباقةُ بالاسم
+    العربي (تُحلّ من /packages)، والانتهاء والاتصالات كما تعطيها اللوحة."""
+    try:
+        pkgmap = {str(p["id"]): p["name"] for p in packages(base, key)}
+    except Exception:
+        pkgmap = {}
+    out, total = [], None
+    for page in range(1, max_pages + 1):
+        d = _request(base, key, "/lines?per=%d&page=%d" % (per, page))
+        ls = d.get("lines", []) or []
+        total = d.get("total", total)
+        for r in ls:
+            out.append({
+                "id": r.get("id"),
+                "username": r.get("username"),
+                "password": r.get("password"),
+                "package": pkgmap.get(str(r.get("package_id")), r.get("package_name") or ""),
+                "exp": r.get("expires_at") or r.get("exp") or "",
+                "created": str(r.get("created_at") or "")[:10],
+                "connections": r.get("max_connections"),
+                "status": r.get("status") or "",
+            })
+        if progress:
+            last = max(1, ((total or len(out)) + per - 1) // per)
+            progress(len(out), last, page)
+        if not ls or len(ls) < per or (total and page * per >= total):
+            break
+    return out
+
+
 def _rand_digits(n=12):
     import secrets
     return str(secrets.randbelow(9) + 1) + "".join(str(secrets.randbelow(10)) for _ in range(n - 1))

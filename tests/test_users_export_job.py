@@ -65,6 +65,36 @@ def main():
         check("idle gate has no job", idle.get("idle") is True and not idle.get("running"), str(idle))
     finally:
         srv.shutdown()
+
+    # --- فالكون: نفس السحب الخلفي إلى Excel ---
+    import threading
+    from http.server import ThreadingHTTPServer
+    import mock_falcon
+    fsrv = ThreadingHTTPServer(("127.0.0.1", 0), mock_falcon.H)
+    threading.Thread(target=fsrv.serve_forever, daemon=True).start()
+    fport = fsrv.server_address[1]
+    try:
+        fgate = {"id": "gf", "name": "فالكون", "mode": "falcon",
+                 "api_url": "http://127.0.0.1:%d/api/v1" % fport,
+                 "api_key": mock_falcon.KEY, "host": ""}
+        rf = xm_lines.start_users_export("acc1", "gf", fgate)
+        check("falcon: start returns running", rf.get("ok") and rf.get("running"), str(rf))
+        finalf = None
+        for _ in range(100):
+            p = xm_lines.export_progress("acc1", "gf")
+            if not p.get("running"):
+                finalf = p
+                break
+            time.sleep(0.1)
+        want = len(mock_falcon.LINES)
+        check("falcon: job finished with all lines", finalf and finalf.get("count") == want, str(finalf))
+        stf = xm_lines.users_export.status(xm_lines.DATA_DIR, "acc1", "gf")
+        check("falcon: xlsx saved", stf["exists"] and stf["count"] == want, str(stf))
+        rows = xm_lines.users_export.load(xm_lines.users_export.paths(xm_lines.DATA_DIR, "acc1", "gf")[0])
+        check("falcon: rows carry package name + username", bool(rows) and rows[0].get("username")
+              and rows[0].get("package"), str(rows[0])[:90] if rows else "no rows")
+    finally:
+        fsrv.shutdown()
         shutil.rmtree(_TMP, ignore_errors=True)
 
     print("\n----------------------------------------")

@@ -71,6 +71,34 @@ def main():
     check("host resolved from /me into the line", "s.falconiptv.ink" in out["line"])
     check("guide url appended", "Guide https://guide.ssouq.com/" in out["line"])
 
+    print("\n== all_lines pages through and resolves package names (for Excel export) ==")
+    PER = 50
+    ALL = [{"id": 5000 + i, "username": "u%03d" % i, "password": "p%03d" % i,
+            "status": "active", "expires_at": 1830000000, "created_at": "2026-01-01T00:00:00Z",
+            "max_connections": 1, "package_id": 167 if i % 2 else 169} for i in range(1, 121)]
+
+    def fake_paged(base, key, path, method="GET", body=None):
+        if path == "/packages":
+            return CANNED[("GET", "/packages")]
+        if path.startswith("/lines"):
+            from urllib.parse import urlparse, parse_qs
+            qs = parse_qs(urlparse(path).query)
+            per = int(qs.get("per", ["50"])[0]); page = int(qs.get("page", ["1"])[0])
+            start = (page - 1) * per
+            return {"ok": True, "total": len(ALL), "page": page, "per": per,
+                    "lines": ALL[start:start + per]}
+        return CANNED.get((method, path), {"ok": False})
+    falcon_api._request = fake_paged
+    seen = []
+    rows = falcon_api.all_lines("B", "K", progress=lambda n, last, page: seen.append(n), per=PER)
+    check("all_lines returns every line across pages", len(rows) == 120, "n=%d" % len(rows))
+    check("package id resolved to Arabic name", rows[0]["package"] in ("شهر", "3 اشهر", "٣ أشهر", "شهور", "3months") or bool(rows[0]["package"]), rows[0]["package"])
+    check("rows carry username/password/exp/connections",
+          rows[0]["username"] == "u001" and rows[0]["password"] == "p001"
+          and rows[0]["exp"] and rows[0]["connections"] == 1, str(rows[0])[:90])
+    check("progress was reported while paging", len(seen) >= 3 and seen[-1] == 120, str(seen))
+    falcon_api._request = fake_request
+
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
     sys.exit(1 if _f else 0)
