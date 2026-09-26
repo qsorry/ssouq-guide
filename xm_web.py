@@ -1553,11 +1553,11 @@ class CasperWebSession(PanelWebSession):
             self._u("index.php/users/index?username=" + urllib.parse.quote(u)))))
         return next((x for x in rows if x["username"] == u), None)
 
-    def _ok_line(self, u, p, made):
+    def _ok_line(self, u, p, made, timing=None):
         return {"username": u, "password": p, "id": made.get("id", ""),
                 "exp": made.get("exp", ""), "package": made.get("package", ""),
                 "verified": True, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "timing": {}, "ok": True}
+                "timing": timing or {}, "ok": True}
 
     _RE_INPUT = re.compile(r"<input\b[^>]*>", re.I)
     _RE_FORM_ACTION = re.compile(
@@ -1598,6 +1598,40 @@ class CasperWebSession(PanelWebSession):
         p = str(password or "")
         return p if p.isdigit() else _rand_digits(12)
 
+    def _submit_new(self, package_id, password, live, vod):
+        """يُرسل نموذجَ إضافةٍ واحدًا (بلا تأكيد): يجلب النموذج (يوزرٌ مولَّدٌ من
+        اللوحة) ويُرسله بكلمة مرورٍ رقميةٍ من عندنا. يُرجِع dict فيه اليوزر وكلمة
+        المرور وزمنَي الصفحة والإرسال بالميلي ثانية (للقياس)."""
+        t_page = time.time()
+        action, fields, u = self._add_form()
+        page_ms = int((time.time() - t_page) * 1000)
+        if not u:                                  # نادر: لا يوزر مملوء → نولّده نحن
+            u = _rand_digits(12)
+            fields["username"] = fields["usernameold"] = u
+        p = self._num_pw(password)
+        fields.update({"setChosePkg": str(package_id), "package": str(package_id),
+                       "liveBq[]": live, "vodBq[]": vod, "password": p})
+        fields.setdefault("reseller_notes", "")
+        t_send = time.time()
+        self._request(action, data=fields,
+                      headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
+        return {"username": u, "password": p,
+                "page_ms": page_ms, "post_ms": int((time.time() - t_send) * 1000)}
+
+    def _recent_index(self, need: int) -> dict:
+        """أحدث المستخدمين (ترتيب id تنازليًّا) مفهرسين باليوزر — طلبٌ واحدٌ للدفعة
+        كلها بدل تأكيدٍ لكلّ يوزر. يجلب صفحاتٍ كافيةً لتغطية العدد المطلوب."""
+        found, page, cap = {}, 1, 2 + (max(need, 1) // 50)
+        while len(found) < need and page <= cap:
+            rows = self._parse_users_page(self._text(self._request(
+                self._u("index.php/users/index?order=id:desc&page=%d" % page))))
+            if not rows:
+                break
+            for r in rows:
+                found.setdefault(r["username"], r)
+            page += 1
+        return found
+
     def create_line(self, package_id, username=None, password=None, host=None,
                     bouquets=None) -> dict:
         """يُنشئ يوزرًا بالباقة (المدة) المطلوبة عبر نموذج اللوحة نفسه.
@@ -1608,68 +1642,102 @@ class CasperWebSession(PanelWebSession):
         فبتزويده تُخزَّن قيمتُنا؛ ولو تُرك للوحة قد تولّد حروفًا كزرّ Reset Pass).
         فكلمة المرور المُعادة موثوقةٌ (هي ما أرسلناه) ورقميّةٌ دائمًا.
         bouquets يُمرَّر للدفعة فلا يُجلب لكل يوزر."""
+        t_login = time.time()
         self.ensure_login()
-        action, fields, u = self._add_form()
-        if not u:                                  # نادر: لا يوزر مملوء → نولّده نحن
-            u = str(username or _rand_digits(12))
-            fields["username"] = fields["usernameold"] = u
-        p = self._num_pw(password)
+        login_ms = int((time.time() - t_login) * 1000)
+        t_bq = time.time()
         if bouquets is None:
             bouquets = self._bouquets_for(package_id)
+        bouquets_ms = int((time.time() - t_bq) * 1000)
         live, vod = bouquets
         if not live and not vod:
             raise LoginFailed("bouquets", "لم تُرجع اللوحة أي بوكيهات لهذه الباقة — تحقّق من الباقة")
-        fields.update({"setChosePkg": str(package_id), "package": str(package_id),
-                       "liveBq[]": live, "vodBq[]": vod, "password": p})
-        fields.setdefault("reseller_notes", "")
-        self._request(action, data=fields,
-                      headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
+        sub = self._submit_new(package_id, password, live, vod)
         # ردّ doAdd لا يميّز النجاح؛ نتحقّق بالفلتر مع صبرٍ (اللوحة تتأخّر لحظةً).
         # كلمة المرور المُعادة هي التي أرسلناها (رقمية موثوقة)، لا ما يعرضه الجدول.
+        t_conf = time.time()
         for attempt in range(8):
             if attempt:
                 time.sleep(min(attempt, 3))
-            made = self._find_user(u)
+            made = self._find_user(sub["username"])
             if made:
-                return self._ok_line(u, p, made)
+                return self._ok_line(sub["username"], sub["password"], made, {
+                    "login_ms": login_ms, "page_ms": sub["page_ms"],
+                    "bouquets_ms": bouquets_ms, "post_ms": sub["post_ms"],
+                    "confirm_ms": int((time.time() - t_conf) * 1000)})
         raise LoginFailed(
             "create_failed",
             "لم تُؤكِّد اللوحة إنشاء اليوزر بعد الإرسال — انتظر قليلًا ثم أعد المحاولة.")
 
     def create_many(self, package_id, pairs, host=None) -> list:
-        """دفعة يوزرات على كاسبر: كلٌّ من نموذجٍ جديد (يوزره المولَّد من اللوحة،
-        وكلمةُ مرورِه الرقمية من عندنا). عدد الأزواج هو العدد المطلوب؛ يُؤخذ من كل
-        زوجٍ كلمةُ مروره (إن كانت أرقامًا) وإلا تُولَّد رقمية — واليوزر دومًا من
-        اللوحة. فشلُ محاولةٍ لا يُنشئ شيئًا (لم يُخصم رصيد) فإعادتها آمنة بلا
-        تكرار. إن فشل يوزرٌ نهائيًا تُعاد النتائج الناجحة قبله مع الخطأ."""
+        """دفعة يوزرات على كاسبر — سريعةٌ: تحضيرٌ مرّةً (دخول + بوكيهات)، ثم لكلّ
+        يوزرٍ نموذجٌ جديد (يوزرُه من اللوحة، وكلمةُ مرورِه الرقمية من عندنا) بلا
+        فواصلَ زمنية، ثم **تأكيدٌ واحدٌ للدفعة كلها** (أحدث الصفوف) بدل تأكيدٍ لكل
+        يوزر. اليوزرُ الذي لا يظهر يُعاد إنشاؤه مرّةً (فشلُ الإرسال لا يُنشئ ولا
+        يخصم، فالإعادة آمنة). تُعاد الناجحون أولًا، وإن بقي فاشلٌ فرسالةُ خطأٍ."""
+        t_login = time.time()
+        self.ensure_login()
+        login_ms = int((time.time() - t_login) * 1000)
+        t_bq = time.time()
         try:
-            bouquets = self._bouquets_for(package_id)   # مرّةً للدفعة كلها (أقلّ طلبات)
+            bouquets = self._bouquets_for(package_id)   # مرّةً للدفعة كلها
         except Exception:
             bouquets = None
-        out = []
+        bouquets_ms = int((time.time() - t_bq) * 1000)
+        if not bouquets or (not bouquets[0] and not bouquets[1]):
+            return [{"error": "لم تُرجع اللوحة أي بوكيهات لهذه الباقة — تحقّق من الباقة"}]
+        live, vod = bouquets
+
+        subs = []                                   # الإرسال المتتابع (بلا فواصل)
         for i in range(len(pairs)):
-            if i:
-                time.sleep(2)                     # فاصلٌ لطيفٌ بين الطلبات المتلاحقة
-            pw = pairs[i][1] if (i < len(pairs) and len(pairs[i]) > 1) else None
-            last = None
-            for attempt in range(3):              # محاولة + إعادتان (كلٌّ بنموذجٍ جديد = آمن)
-                if attempt:
-                    time.sleep(3 * attempt)
-                try:
-                    out.append(self.create_line(package_id, None, pw, host, bouquets))
-                    last = None
-                    break
-                except (CaptchaNeeded, LoginFailed) as e:
-                    if getattr(e, "args", [None])[0] == "bouquets":
-                        last = e
-                        break                     # خطأٌ بنيويّ، لا فائدة من الإعادة
-                    last = e
-                except Exception as e:
-                    last = e
-            if last is not None:
-                out.append({"error": str(last)[:200]})
-                break
+            pw = pairs[i][1] if len(pairs[i]) > 1 else None
+            try:
+                subs.append(self._submit_new(package_id, pw, live, vod))
+            except (CaptchaNeeded, LoginFailed):
+                raise
+            except Exception:
+                subs.append(None)
+
+        t_conf = time.time()
+        idx = self._recent_index(len([s for s in subs if s]))
+        # إعادة إنشاءٍ واحدةٌ لمن لم يظهر (فشلُ إرسالٍ أو تأخّرُ ظهور)، ثم تأكيدٌ فرديّ
+        for i, s in enumerate(subs):
+            if s and s["username"] in idx:
+                continue
+            if s is None:
+                s = subs[i] = self._safe_submit(package_id, pairs, i, live, vod)
+            if s and s["username"] not in idx:
+                made = self._find_user(s["username"])
+                if not made:                        # لم يُنشأ فعلًا → أعِد الإنشاء مرّة
+                    s = subs[i] = self._safe_submit(package_id, pairs, i, live, vod)
+                    made = self._find_user(s["username"]) if s else None
+                if made:
+                    idx[s["username"]] = made
+        confirm_total = int((time.time() - t_conf) * 1000)
+
+        ok = [s for s in subs if s and s["username"] in idx]
+        confirm_per = confirm_total // max(1, len(ok))
+        out, first = [], True
+        for s in subs:
+            if not (s and s["username"] in idx):
+                continue
+            made = idx[s["username"]]
+            out.append(self._ok_line(s["username"], s["password"], made, {
+                "login_ms": login_ms if first else 0, "page_ms": s["page_ms"],
+                "bouquets_ms": bouquets_ms if first else 0, "post_ms": s["post_ms"],
+                "confirm_ms": confirm_per}))
+            first = False
+        if len(ok) < len(pairs):
+            out.append({"error": "لم تُؤكِّد اللوحة إنشاء %d من %d — انتظر قليلًا وأعد الباقي"
+                        % (len(pairs) - len(ok), len(pairs))})
         return out
+
+    def _safe_submit(self, package_id, pairs, i, live, vod):
+        pw = pairs[i][1] if len(pairs[i]) > 1 else None
+        try:
+            return self._submit_new(package_id, pw, live, vod)
+        except Exception:
+            return None
 
 
 def _to_num(s):
