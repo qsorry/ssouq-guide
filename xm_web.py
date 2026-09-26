@@ -1209,6 +1209,14 @@ class PanelWebSession:
         text = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", s))).strip()
         pkg = re.search(r"(?:Package|Bouquet|الباقة|باقة)\s*[:：]?\s*([^|]{2,80}?)(?=\s+(?:User|Pass|End|Start|Created|Exp|Owner|Status)\b|\s*\||$)", text, re.I)
         created = re.search(r"(?:Created|Start|Added|Date)\s*[:：]?\s*([0-9]{4}[-/.][0-9]{2}[-/.][0-9]{2}|[0-9]{2}[-/.][0-9]{2}[-/.][0-9]{4})", text, re.I)
+        # آخر اتصال (لوحات Xtream مثل مرح تعرضه): «Never» = لم يُستخدم أبدًا، وإلا تاريخ.
+        # «Never» إشارةٌ قويةٌ مستقلّةٌ عن التسمية (Info/Last Connection حسب القالب).
+        if re.search(r"\bnever\b", low):
+            last_conn = "Never"
+        else:
+            lc = re.search(r"(?:Last\s*Connection|Last\s*Connected|Last\s*Online|Info|آخر\s*اتصال|آخر\s*ظهور)"
+                           r"\s*[:：]?\s*([0-9]{2,4}[-/.][0-9]{1,2}[-/.][0-9]{1,4}(?:[ T][0-9:]+)?)", text, re.I)
+            last_conn = lc.group(1) if lc else ""
         return {"id": rid.group(1) if rid else "", "user": um.group(1),
                 "pass": pm.group(1) if pm else "",
                 "end": end.group(1) if end else "",
@@ -1216,6 +1224,7 @@ class PanelWebSession:
                 "status": status,
                 "package": pkg.group(1).strip() if pkg else "",
                 "created": created.group(1) if created else "",
+                "last_conn": last_conn,
                 "dates": re.findall(r"[0-9]{4}[-/.][0-9]{2}[-/.][0-9]{2}|[0-9]{2}[-/.][0-9]{2}[-/.][0-9]{4}", text),
                 "text": text[:400]}
 
@@ -1260,6 +1269,7 @@ class PanelWebSession:
         return {"id": r["id"], "username": r["user"], "password": r["pass"],
                 "status": r["status"], "exp": r["end"], "connections": r.get("conns", ""),
                 "package": r.get("package", ""), "created": r.get("created", ""),
+                "last_conn": r.get("last_conn", ""),
                 "dates": r.get("dates", []), "text": r.get("text", "")}
 
     def logout_local(self):
