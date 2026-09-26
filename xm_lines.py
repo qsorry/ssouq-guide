@@ -156,7 +156,34 @@ def admin_configured(st):
     return bool(st.get("admin")) or bool(ADMIN_ENV_PW)
 
 _lock = threading.Lock()
-_sessions = {}   # token -> {"role","user","exp"}
+# الجلسات تُحفَظ على القرص (نفس مجلّد البيانات الدائم) لا في الذاكرة فقط — وإلا
+# فكل نشرٍ/إعادة تشغيلٍ للحاوية يمسحها فيُخرَج الجميع رغم صلاحية الكوكي (٣٠ يوم).
+SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
+
+
+def _load_sessions():
+    try:
+        with open(SESSIONS_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        now = time.time()
+        return {t: v for t, v in d.items()
+                if isinstance(v, dict) and v.get("exp", 0) > now}
+    except Exception:
+        return {}
+
+
+_sessions = _load_sessions()   # token -> {"role","user","exp"}
+
+
+def _save_sessions():
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        tmp = SESSIONS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(_sessions, f)
+        os.replace(tmp, SESSIONS_FILE)
+    except Exception:
+        pass                    # الحفظ مساعدٌ لا يُفشل الطلب
 
 
 def new_session(role, user):
@@ -165,6 +192,7 @@ def new_session(role, user):
             _sessions.pop(t, None)
     tok = secrets.token_urlsafe(32)
     _sessions[tok] = {"role": role, "user": user, "exp": time.time() + SESSION_TTL}
+    _save_sessions()
     return tok
 
 
@@ -1828,6 +1856,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirect(self._url())
         if path == "/logout":
             _sessions.pop(self._cookie("xm_session"), None)
+            _save_sessions()
             return self._send(302, raw=b"", ctype="text/plain",
                               extra={"Location": self._url("/login"), **self._set_cookie("", clear=True)})
         role, acct = self._who(st)
@@ -2435,6 +2464,7 @@ class Handler(BaseHTTPRequestHandler):
             for t, v in list(_sessions.items()):
                 if v["role"] == "admin" and t != mine:
                     _sessions.pop(t, None)
+            _save_sessions()
         else:
             return self._send(404, {"error": "not found"})
         save_store(st)
