@@ -764,6 +764,58 @@ def start_lines_export(st, ws, cfg, accounts, side="source"):
     return {"ok": True}
 
 
+# ---- سحب كل يوزرات البوابة إلى Excel (خلفيّ، بعدّاد حيّ) ----
+# لكل (حساب، بوابة) مهمّةٌ مستقلّة، فيرى كلُّ شخصٍ عدّاد سحبه هو. الحالة تُقرأ
+# من /api/users-export/progress كل ثانيةٍ تقريبًا لعرض «جاري السحب… N».
+_export_jobs = {}
+_export_lock = threading.Lock()
+
+
+def _export_key(acct_id, gate_id):
+    return "%s__%s" % (acct_id, gate_id)
+
+
+def _export_worker(acct_id, gate_id, gate, key):
+    job = _export_jobs[key]
+    try:
+        def prog(seen, last=1, page=1):
+            job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
+
+        rows = _all_web_lines(gate, prog)
+        n = users_export.replace_all(DATA_DIR, acct_id, gate_id, gate.get("name"),
+                                     rows, gate.get("host", ""))
+        job.update({"count": n, "done": n, "total": n})
+    except xm_web.CaptchaNeeded:
+        job["error"] = "اللوحة تطلب كود تحقّق — سجّل الدخول لها من الصفحة"
+    except xm_web.LoginFailed as e:
+        job["error"] = str(e)[:200]
+    except Exception as e:
+        job["error"] = str(e)[:200]
+    finally:
+        job["running"] = False
+        job["at"] = time.strftime("%Y-%m-%d %H:%M")
+
+
+def start_users_export(acct_id, gate_id, gate):
+    key = _export_key(acct_id, gate_id)
+    with _export_lock:
+        j = _export_jobs.get(key)
+        if j and j.get("running"):
+            return {"ok": False, "running": True, "error": "سحبٌ جارٍ بالفعل"}
+        _export_jobs[key] = {"running": True, "done": 0, "total": 0, "count": 0,
+                             "error": "", "at": ""}
+    threading.Thread(target=_export_worker, args=(acct_id, gate_id, gate, key),
+                     daemon=True).start()
+    return {"ok": True, "running": True}
+
+
+def export_progress(acct_id, gate_id):
+    j = _export_jobs.get(_export_key(acct_id, gate_id))
+    if not j:
+        return {"running": False, "idle": True, "done": 0, "total": 0}
+    return {k: j.get(k) for k in ("running", "done", "total", "count", "error", "at")}
+
+
 # ---- سحب يوزرات لوحات المقارنة (خلفيّ) ----
 # لكل لوحةٍ بوابتُها (account_id/gate_id)؛ تُسحب يوزراتها كلها وتُخزَّن باسم
 # اللوحة، ثم تُقارَن بخطوط سلة. يمرّ على كل اللوحات المضبوطة في طلبةٍ واحدة.
@@ -1829,6 +1881,11 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "account" or not gate:
                     return self._send(403, {"error": "غير متاح"})
                 return self._send(200, users_export.status(DATA_DIR, acct["id"], gate["id"]))
+            if path == "/api/users-export/progress":  # تقدّم السحب الحيّ (عدّاد)
+                gate = find_gate(acct, self._q("gate")) if acct else None
+                if role != "account" or not gate:
+                    return self._send(403, {"error": "غير متاح"})
+                return self._send(200, export_progress(acct["id"], gate["id"]))
             if path == "/api/users-export/download":  # تنزيل ملف الإكسل المحفوظ
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
@@ -2311,16 +2368,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, {"error": "اختر بوابة"})
                 if gate.get("mode") != "web":
                     return self._send(200, {"error": "السحب الكامل متاحٌ لبوابات الويب فقط"})
-                try:
-                    rows = _all_web_lines(gate)
-                except xm_web.CaptchaNeeded:
-                    return self._send(200, {"need_captcha": True})
-                except xm_web.LoginFailed as e:
-                    return self._send(200, {"login_error": str(e)})
-                n = users_export.replace_all(DATA_DIR, acct["id"], gate["id"],
-                                             gate.get("name"), rows, gate.get("host", ""))
-                return self._send(200, {"ok": True, **users_export.status(DATA_DIR, acct["id"], gate["id"]),
-                                        "count": n})
+                return self._send(200, start_users_export(acct["id"], gate["id"], gate))
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
