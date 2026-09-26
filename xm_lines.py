@@ -33,6 +33,7 @@ import renew
 import renew_import
 import panels
 import xlsx_write
+import users_export
 import salla_web
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
@@ -1429,7 +1430,8 @@ def create_line(gate, pkg, username=None, password=None):
         line = format_line(gate, r["username"], r["password"])
         _log_txt(gate, line, pkg["name"])
         return {"line": line, "username": r["username"], "password": r["password"],
-                "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"],
+                "package": pkg["name"], "exp": r.get("exp", ""),
+                "verified": r.get("verified", True), "time": r["time"],
                 "timing": r.get("timing")}
     if gate.get("mode") == "falcon":                   # الإنشاء عبر لوحة فالكون
         r = falcon_api.create_line(gate["api_url"], gate["api_key"], pkg["id"],
@@ -1503,7 +1505,8 @@ def create_lines(gate, pkg, count, username=None, password=None):
             line = format_line(gate, r["username"], r["password"])
             _log_txt(gate, line, pkg["name"])
             out.append({"line": line, "username": r["username"], "password": r["password"],
-                        "package": pkg["name"], "verified": r.get("verified", True), "time": r["time"],
+                        "package": pkg["name"], "exp": r.get("exp", ""),
+                        "verified": r.get("verified", True), "time": r["time"],
                         "timing": r.get("timing")})
         return out, None
     out = []
@@ -1821,6 +1824,24 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         return self._send(200, {"results": [], "error": "تعذّر البحث في اللوحة"})
                 return self._send(200, {"results": [], "unsupported": True})
+            if path == "/api/users-export/status":   # حالة ملف الإكسل لهذه البوابة
+                gate = find_gate(acct, self._q("gate")) if acct else None
+                if role != "account" or not gate:
+                    return self._send(403, {"error": "غير متاح"})
+                return self._send(200, users_export.status(DATA_DIR, acct["id"], gate["id"]))
+            if path == "/api/users-export/download":  # تنزيل ملف الإكسل المحفوظ
+                gate = find_gate(acct, self._q("gate")) if acct else None
+                if role != "account" or not gate:
+                    return self._send(403, {"error": "غير متاح"})
+                _jsonl, xlsx_path = users_export.paths(DATA_DIR, acct["id"], gate["id"])
+                if not os.path.exists(xlsx_path):
+                    return self._send(404, {"error": "لا يوجد ملف بعد — اسحب اليوزرات أولًا"})
+                fn = "users-%s.xlsx" % re.sub(r"[^A-Za-z0-9_.-]+", "_", str(gate.get("name") or gate["id"]))
+                with open(xlsx_path, "rb") as f:
+                    return self._send(200, raw=f.read(),
+                                      ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                      extra={"Content-Disposition": 'attachment; filename="%s"' % fn,
+                                             "Cache-Control": "no-store"})
             if path == "/api/web/diag":           # تشخيص مؤقّت لاستخراج الرصيد
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 want = (self._q("name") or "").strip().lower()      # ?name=كاسبر يختار بالاسم
@@ -2282,6 +2303,24 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": False, "kind": "login", "error": str(e)})
                 except xm_web.CaptchaNeeded:
                     return self._send(200, {"ok": False, "kind": "captcha", "error": "الكود غير صحيح"})
+            if path == "/api/users-export/pull":      # سحب كل اليوزرات وحفظها Excel
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                gate = find_gate(acct, self._body().get("gate"))
+                if not gate:
+                    return self._send(400, {"error": "اختر بوابة"})
+                if gate.get("mode") != "web":
+                    return self._send(200, {"error": "السحب الكامل متاحٌ لبوابات الويب فقط"})
+                try:
+                    rows = _all_web_lines(gate)
+                except xm_web.CaptchaNeeded:
+                    return self._send(200, {"need_captcha": True})
+                except xm_web.LoginFailed as e:
+                    return self._send(200, {"login_error": str(e)})
+                n = users_export.replace_all(DATA_DIR, acct["id"], gate["id"],
+                                             gate.get("name"), rows, gate.get("host", ""))
+                return self._send(200, {"ok": True, **users_export.status(DATA_DIR, acct["id"], gate["id"]),
+                                        "count": n})
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -2370,6 +2409,12 @@ class Handler(BaseHTTPRequestHandler):
         if err:
             # ما أُنشئ قبل الخطأ أُنشئ فعلًا (وخُصم)، فيُعاد مع الخطأ لا بدلًا منه.
             resp["error"] = err if not out else "أُنشئ %d من %d ثم توقفت اللوحة: %s" % (len(out), count, err)
+        if out:                                    # تعبئة ملف الإكسل تلقائيًا باليوزرات المُنشأة
+            try:
+                users_export.merge(DATA_DIR, acct["id"], gate["id"], gate.get("name"),
+                                   out, gate.get("host", ""))
+            except Exception:
+                pass                               # التصدير مساعدٌ لا يُفشل الإنشاء
         self._send(200, resp)
 
 
