@@ -124,8 +124,6 @@ input.t::placeholder{color:color-mix(in srgb,var(--mute) 70%,transparent)}
 .msg.ok{color:var(--go)}
 .msg.small{font-size:.78rem;margin-top:4px}
 .lines{direction:ltr;text-align:left;font:500 .86rem/1.8 "IBM Plex Mono",Consolas,monospace;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;overflow-x:auto;white-space:pre;margin:0}
-/* نص الشرح بدل السطر: عربيٌّ بأسطر لاتينية (Host/User/Pass) — كل سطر باتجاهه، ويلتفّ */
-.lines.msgs{direction:rtl;unicode-bidi:plaintext;text-align:start;white-space:pre-wrap;font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif}
 .empty{color:var(--mute);text-align:center;padding:14px;font-size:.9rem}
 
 /* ---------- الجداول ---------- */
@@ -410,7 +408,7 @@ $("lnkOut").href = B + "/logout";
 for (const a of document.querySelectorAll("a[data-guide]")) a.href = GUIDE;
 let gates = [];
 let globalGuide = "";
-let guideText = "";                     // نص الشرح إن فعّله المدير لهذا العميل — وإلا يُنسخ السطر
+let guideText = "";                     // نص الشرح إن فعّله المدير لهذا العميل — يُنسخ من البحث بدل السطر
 let curGate = "";                       // البوابة المختارة
 const KEY = () => "xm_lines_history_" + account + "_" + curGate;
 let packages = [];
@@ -429,7 +427,6 @@ async function loadGates(){
     gates = d.gates || [];
     globalGuide = d.guide_url || "";
     guideText = d.guide_text || "";
-    $("copyRes").textContent = guideText ? "نسخ نص الشرح" : "نسخ الكل";
     if ($("myGuide")) $("myGuide").value = globalGuide;
   } catch { gates = []; }
   if (!gates.length){
@@ -518,13 +515,14 @@ function renderToday(s){
   box.innerHTML = `<div class="day"><h3>اشتراكات اليوم <span>(${n})${n > list.length ? " — يُعرض " + list.length : ""} <button class="copy" id="copyToday">نسخ الكل</button></span></h3>
     <div class="tw"><table class="tbl"><thead><tr><th>#</th><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>
     ${list.map((x,i) => `<tr><td class="n">${i+1}</td><td class="m">${esc(x.username)}</td><td class="m">${esc(x.password)}</td><td title="${esc(x.package_name||"")}">${esc(x.package_type||"—")}</td><td>${pill(x.status)}</td>
-      <td class="n hide-sm">${esc(x.exp || "—")}</td><td><button class="cb" title="${cpTitle("نسخ السطر")}" data-line="${esc(msgOf(x))}">${copyIcon}</button></td></tr>`).join("")}
+      <td class="n hide-sm">${esc(x.exp || "—")}</td><td><button class="cb" title="نسخ السطر" data-line="${esc(lineOf(x))}">${copyIcon}</button></td></tr>`).join("")}
     </tbody></table></div></div>`;
   box.querySelector("#copyToday").onclick = () => copy(list.map(lineOf).join("\n"));
 }
 const lineOf = x => { const g = gates.find(g => g.id === curGate) || {}; const guide = g.guide_url || globalGuide || "";
   return `Host ${g.host || ""} User ${x.username} Pass ${x.password}` + (guide ? ` Guide ${guide}` : ""); };
-// ما يُنسخ لعميلٍ واحد: نص الشرح إن فعّله المدير لهذا العميل (بقيم اليوزر)، وإلا السطر كما كان.
+// ما يُنسخ من البحث (نتائجه واليوزر البديل): نص الشرح إن فعّله المدير لهذا العميل (بقيم
+// اليوزر)، وإلا السطر كما كان. الإنشاء والسجل واشتراكات اليوم تنسخ السطر دائمًا.
 // الهوست من البوابة، وإلا من سطر الإنشاء نفسه (فالكون بلا هوست يقرؤه من /me لحظة الإنشاء).
 // {server} اسم اشتراك البوابة كما في الدليل (سمارت/فالكون/كاسبر) — يحسبه الخادم من رابط شرحها.
 const msgOf = x => {
@@ -535,7 +533,6 @@ const msgOf = x => {
              server: g.guide_sub || ""};
   return guideText.replace(/\{(host|user|pass|guide|server)\}/g, (_, k) => v[k]);
 };
-const MSG_SEP = "\n\n——————————\n\n";     // بين نصوص الشرح حين يُنشأ أكثر من يوزر
 const cpTitle = t => guideText ? "نسخ نص الشرح" : t;
 // كاسبر يولّد اسم اليوزر بنفسه ولا يقبل اسمًا مختارًا؛ تُطبَّق كلمة المرور فقط. باقي البوابات تقبل الاثنين.
 const gateIsCasper = id => { const g = gates.find(g => g.id === (id||curGate)) || {}; return g.mode === "web" && g.web_flavor === "casper"; };
@@ -798,8 +795,7 @@ async function createLines(){
     const lines = d.lines || [];
     if (lines.length) {
       const h = load(); lines.forEach(x => h.unshift(x)); save(h);
-      $("res").textContent = lines.map(msgOf).join(guideText ? MSG_SEP : "\n");
-      $("res").classList.toggle("msgs", !!guideText);
+      $("res").textContent = lines.map(x=>x.line).join("\n");
       $("resBox").hidden = false; $("u").value = ""; $("p").value = "";
       renderHistory(); loadGateStatus(); loadXlsxStatus();
       copy($("res").textContent);
@@ -836,7 +832,7 @@ function renderHistory(){
     ${items.map((x,i) => `<tr><td class="n">${i+1}</td><td class="m">${esc(partOf(x,"username",/User\s+(\S+)/))}</td><td class="m">${esc(partOf(x,"password",/Pass\s+(\S+)/))}</td>
       <td>${x.verified === false ? '<span class="pill">غير مؤكد</span>' : '<span class="pill ok">نشط</span>'}</td>
       <td class="n hide-sm">${new Date(x.time).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</td>
-      <td><button class="cb" title="${cpTitle("نسخ السطر")}" data-line="${esc(msgOf(x))}">${copyIcon}</button></td></tr>`).join("")}
+      <td><button class="cb" title="نسخ السطر" data-line="${esc(x.line)}">${copyIcon}</button></td></tr>`).join("")}
     </tbody></table></div></div>`).join("")}</div>`;
   }).join("");
 }

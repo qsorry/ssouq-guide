@@ -442,8 +442,8 @@ def clean_account(a, old=None):
         "password":  _hash_password(a.get("password", ""), old.get("password")),
         # رابط شرح واحد لكل بوابات الشخص (يُستعمل حين تُترك البوابة بلا رابط خاص).
         "guide_url": str(a.get("guide_url", old.get("guide_url", ""))).strip(),
-        # نسخ نص الشرح: يفعّله المدير لهذا العميل، فتنسخ صفحة الإنشاء النص كاملًا
-        # بقيم اليوزر بدل السطر الواحد (بعد الإنشاء، ومن البحث، وللبديل).
+        # نسخ نص الشرح: يفعّله المدير لهذا العميل، فينسخ البحث (نتائجه واليوزر البديل)
+        # النص كاملًا بقيم اليوزر بدل السطر الواحد. الإنشاء يبقى سطرًا.
         "copy_guide": bool(a.get("copy_guide", old.get("copy_guide", False))),
         "guide_text": _clean_guide_text(a.get("guide_text", old.get("guide_text", ""))),
     }
