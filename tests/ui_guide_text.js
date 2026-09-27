@@ -1,5 +1,5 @@
-// Browser test: the admin enables "نسخ نص الشرح" for one client, and that client's
-// create page copies the full guide text (create · search · replacement · history).
+// Browser test: the admin enables "نسخ نص الشرح" for one client. That client's search
+// (result copy + replacement) copies the full guide text; creating users keeps the line.
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -57,38 +57,34 @@ const HOST3 = 'http://smart.host:80', GUIDE3 = 'https://guide.ssouq.com/#activat
     await admin.waitForSelector('#acctModal', {state:'hidden'});
     check('client row shows the option', (await admin.textContent('#list')).includes('نسخ نص الشرح'));
 
-    // ---- صفحة الإنشاء للعميل ----
+    // ---- صفحة الإنشاء للعميل: الإنشاء يبقى سطرًا حتى مع الخيار ----
     await user.goto(APP + '/admin/login');
     r = await api(user, '/admin/api/login', {user:'casper', password:'pw_casper'});
     check('client login', r.role === 'account');
     await user.goto(APP + '/admin');
     await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
-    check('copy button says it copies the guide text', (await user.textContent('#copyRes')).trim() === 'نسخ نص الشرح');
+    const LINE = (h, g) => new RegExp('^Host ' + h + ' User \\d{12} Pass \\d{12} Guide ' + g.replace(/[.#/]/g, '\\$&') + '$');
+    check('create: copy button unchanged (نسخ الكل)', (await user.textContent('#copyRes')).trim() === 'نسخ الكل');
     await user.click('#create');
     await user.waitForSelector('#resBox:not([hidden])', {timeout: 8000});
     const res = await user.textContent('#res');
-    const m = res.match(/User: (\d+)\nPass: (\d+)/);
-    check('created: result is the guide text', res.startsWith('📲 طريقة التثبيت والتفعيل') && res.includes('🔗 شرح التثبيت:\n' + GUIDE), res.slice(0, 30));
-    check('created: host/user/pass filled in', res.includes('Host: ' + HOST + '\n') && !!m && m[1].length === 12 && m[2].length === 12, m ? m[1] + '/' + m[2] : 'no creds');
-    check('created: no placeholder left', !/\{(host|user|pass|guide|server)\}/.test(res));
-    check('created: subscription name from the gate guide (كاسبر)', res.includes('واختيار سيرفر كاسبر ✅'));
-    check('created: copied to the clipboard as shown', (await clip()) === res);
-    check('created: result box switches to the text style', await user.$eval('#res', e => e.classList.contains('msgs')));
-    if (SHOTS) await (await user.$('#resBox')).screenshot({path: path.join(SHOTS, 'create-guide-text.png')});
-    const hist = await user.$eval('#hist button.cb', b => b.dataset.line);
-    check('history row copies the guide text', hist.startsWith('📲') && m && hist.includes('User: ' + m[1]));
+    check('create: result is the one-line format, not the guide text', LINE(HOST, GUIDE).test(res), res);
+    check('create: clipboard holds the line', (await clip()) === res);
+    check('history row copies the line', (await user.$eval('#hist button.cb', b => b.dataset.line)) === res);
 
-    // ---- البحث ----
+    // ---- البحث: نص الشرح ----
     await user.fill('#searchQ', 'user003');
     await user.click('#searchBtn');
     await user.waitForSelector('#searchRes button.cb', {timeout: 8000});
     const sc = await user.$eval('#searchRes button.cb', b => b.dataset.copy);
-    check('search: copy is the guide text for that user', sc.startsWith('📲') && sc.includes('Host: ' + HOST + '\nUser: user003\nPass: pass003'), sc.slice(-40));
+    check('search: copy is the guide text for that user', sc.startsWith('📲 طريقة التثبيت والتفعيل') && sc.includes('🔗 شرح التثبيت:\n' + GUIDE) && sc.includes('Host: ' + HOST + '\nUser: user003\nPass: pass003'), sc.slice(-40));
+    check('search: subscription name from the gate guide (كاسبر)', sc.includes('واختيار سيرفر كاسبر ✅'));
+    check('search: no placeholder left', !/\{(host|user|pass|guide|server)\}/.test(sc));
     await user.click('#searchRes button.cb');
     await sleep(150);
     check('search: clipboard holds it', (await clip()) === sc);
 
-    // ---- بديل عن رقمٍ لم يُعثر عليه ----
+    // ---- بديل عن رقمٍ لم يُعثر عليه (من البحث): نص الشرح ----
     await user.fill('#searchQ', '999000111');
     await user.click('#searchBtn');
     await user.waitForSelector('#mkRepl', {timeout: 8000});
@@ -100,44 +96,44 @@ const HOST3 = 'http://smart.host:80', GUIDE3 = 'https://guide.ssouq.com/#activat
     const rc = await clip();
     check('replacement: clipboard holds the guide text', rc.startsWith('📲') && /User: \d{12}\nPass: \d{12}/.test(rc), rc.slice(-40));
 
-    // ---- بوابة ثانية برابط شرح فالكون: اسم الاشتراك يتبعها ----
+    // ---- بوابة برابط فالكون: اسم الاشتراك في البحث يتبع رابطها، والإنشاء سطر ----
     await user.click('.gate-tab:has-text("بوابة فالكون")');
     await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
-    await user.click('#create');
-    await user.waitForFunction(() => document.querySelector('#res').textContent.includes('falcon.host'), null, {timeout: 8000});
-    const res2 = await user.textContent('#res');
-    check('other gate: subscription name follows its guide (فالكون)', res2.includes('واختيار سيرفر فالكون ✅') && !res2.includes('كاسبر'), (res2.match(/واختيار سيرفر [^\n]*/) || [''])[0]);
-    check('other gate: its own guide link and host', res2.includes('🔗 شرح التثبيت:\n' + GUIDE2) && res2.includes('Host: ' + HOST2 + '\n'));
     await user.fill('#searchQ', 'user002');
     await user.click('#searchBtn');
     await user.waitForSelector('#searchRes button.cb', {timeout: 8000});
-    check('other gate: search copy names فالكون', (await user.$eval('#searchRes button.cb', b => b.dataset.copy)).includes('واختيار سيرفر فالكون ✅'));
+    const sc2 = await user.$eval('#searchRes button.cb', b => b.dataset.copy);
+    check('Falcon link: search names فالكون', sc2.includes('واختيار سيرفر فالكون ✅') && !sc2.includes('كاسبر'), (sc2.match(/واختيار سيرفر [^\n]*/) || [''])[0]);
+    check('Falcon link: its own guide link and host', sc2.includes('🔗 شرح التثبيت:\n' + GUIDE2) && sc2.includes('Host: ' + HOST2 + '\n'));
+    await user.click('#create');
+    await user.waitForFunction(() => document.querySelector('#res').textContent.includes('falcon.host'), null, {timeout: 8000});
+    check('Falcon gate: create still copies the line', LINE(HOST2, GUIDE2).test(await user.textContent('#res')));
+
+    // ---- بوابة برابط سمارت (ونوعها فالكون): الاسم يتبع الرابط ----
     await user.click('.gate-tab:has-text("بوابة سمارت")');
     await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
-    await user.click('#create');
-    await user.waitForFunction(() => document.querySelector('#res').textContent.includes('smart.host'), null, {timeout: 8000});
-    const res3 = await user.textContent('#res');
-    check('smart link: name is سمارت (link wins over the Falcon gate type)', res3.includes('واختيار سيرفر سمارت ✅') && res3.includes('🔗 شرح التثبيت:\n' + GUIDE3), (res3.match(/واختيار سيرفر [^\n]*/) || [''])[0]);
+    await user.fill('#searchQ', 'user001');
+    await user.click('#searchBtn');
+    await user.waitForSelector('#searchRes button.cb', {timeout: 8000});
+    const sc3 = await user.$eval('#searchRes button.cb', b => b.dataset.copy);
+    check('Smart link: search names سمارت (link wins over the Falcon gate type)', sc3.includes('واختيار سيرفر سمارت ✅') && sc3.includes('🔗 شرح التثبيت:\n' + GUIDE3), (sc3.match(/واختيار سيرفر [^\n]*/) || [''])[0]);
     await user.click('.gate-tab:has-text("بوابة كاسبر")');
     await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
 
-    // ---- إيقاف الخيار يعيد السطر الواحد ----
+    // ---- إيقاف الخيار: البحث يعود سطرًا ----
     const acc = (await api(admin, '/admin/api/accounts')).accounts[0];
     r = await api(admin, '/admin/api/accounts', {...acc, password:'', copy_guide:false});
     check('admin switches it off', r.ok === true, r.error || '');
     await user.reload();
     await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
-    check('copy button back to normal', (await user.textContent('#copyRes')).trim() === 'نسخ الكل');
-    await user.click('#create');
-    await user.waitForFunction(() => /^Host /.test(document.querySelector('#res').textContent), null, {timeout: 8000});
-    const line = await user.textContent('#res');
-    check('off: result is the one-line format again', new RegExp('^Host ' + HOST + ' User \\d{12} Pass \\d{12} Guide ' + GUIDE.replace(/[.#/]/g, '\\$&') + '$').test(line), line);
-    check('off: clipboard holds the line', (await clip()) === line);
-    check('off: result box back to the line style', !(await user.$eval('#res', e => e.classList.contains('msgs'))));
     await user.fill('#searchQ', 'user004');
     await user.click('#searchBtn');
     await user.waitForSelector('#searchRes button.cb', {timeout: 8000});
     check('off: search copies the line', (await user.$eval('#searchRes button.cb', b => b.dataset.copy)) === `Host ${HOST} User user004 Pass pass004 Guide ${GUIDE}`);
+    await user.click('#create');
+    await user.waitForFunction(() => /^Host /.test(document.querySelector('#res').textContent), null, {timeout: 8000});
+    const line = await user.textContent('#res');
+    check('off: create copies the line', LINE(HOST, GUIDE).test(line) && (await clip()) === line, line);
   } catch (e) { fail++; console.log('  FAIL  exception:', e.message); }
   finally {
     await browser.close(); falcon.kill(); app.kill();
