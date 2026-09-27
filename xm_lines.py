@@ -365,13 +365,14 @@ def clean_gate(g, old=None):
 
 
 # نص الشرح الافتراضي لخيار «نسخ نص الشرح» — يعدّله المدير لكل عميل. تملأ صفحة
-# الإنشاء {guide} {host} {user} {pass} بقيم البوابة واليوزر لحظة النسخ.
+# الإنشاء {guide} {host} {user} {pass} بقيم البوابة واليوزر لحظة النسخ، و{server}
+# باسم اشتراك البوابة كما في الدليل (انظر guide_sub).
 DEFAULT_GUIDE_TEXT = """📲 طريقة التثبيت والتفعيل
 
 🔗 شرح التثبيت:
 {guide}
 
-يرجى اتباع الخطوات الموجودة في الشرح واختيار سيرفر كاسبر ✅
+يرجى اتباع الخطوات الموجودة في الشرح واختيار سيرفر {server} ✅
 
 📌 بيانات الاشتراك:
 
@@ -392,7 +393,8 @@ def _clean_guide_text(v):
     t = str(v or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if len(t) > GUIDE_TEXT_MAX:
         raise ValueError("نص الشرح طويل (الحد %d حرف)" % GUIDE_TEXT_MAX)
-    return "" if t == DEFAULT_GUIDE_TEXT else t
+    # والافتراضي قبل {server} («كاسبر» للجميع) — من صفحة حسابات فُتحت قبل التحديث — مثله.
+    return "" if t in (DEFAULT_GUIDE_TEXT, DEFAULT_GUIDE_TEXT.replace("{server}", "كاسبر")) else t
 
 
 def guide_text_of(acct):
@@ -400,6 +402,33 @@ def guide_text_of(acct):
     if not acct or not acct.get("copy_guide"):
         return ""
     return acct.get("guide_text") or DEFAULT_GUIDE_TEXT
+
+
+# أسماء الاشتراكات كما يعرضها الدليل (SUBS في index.html) — فما يُطلب من العميل
+# اختياره هو ما يراه في الشرح. «مرح» اسم سمارت القديم (legacySub هناك).
+GUIDE_SUBS = {"smart": "سمارت", "falcon": "فالكون", "casper": "كاسبر"}
+_SUB_WORDS = {"smart": ("smart", "marah", "mr7", "سمارت", "مرح"),
+              "falcon": ("falcon", "فالكون"),
+              "casper": ("casper", "كاسبر")}
+
+
+def guide_sub(gate, guide_url=""):
+    """اسم اشتراك البوابة في الدليل ({server} في نص الشرح): من رابط شرحها
+    (#activate/<الاشتراك>) لأنه ما سيفتحه العميل، وإلا من اسمها، وإلا من نوعها،
+    وآخرًا اسمها نفسه بلا «بوابة»."""
+    m = re.search(r"#activate/([a-z]+)", guide_url or gate.get("guide_url", ""))
+    key = m.group(1) if m else ""
+    key = "smart" if key == "marah" else key
+    if key not in GUIDE_SUBS:
+        name = str(gate.get("name", "")).lower()
+        key = next((k for k, words in _SUB_WORDS.items() if any(w in name for w in words)), "")
+    if not key and gate.get("mode") == "falcon":
+        key = "falcon"
+    if not key and gate.get("mode") == "web" and gate.get("web_flavor") == "casper":
+        key = "casper"
+    if key:
+        return GUIDE_SUBS[key]
+    return re.sub(r"^\s*بوابة\s+", "", str(gate.get("name", ""))).strip()
 
 
 def clean_account(a, old=None):
@@ -1962,7 +1991,8 @@ class Handler(BaseHTTPRequestHandler):
                 gates = [{"id": g["id"], "name": g["name"], "mode": g["mode"],
                           "host": g["host"], "guide_url": g.get("guide_url", ""),
                           "digits": gate_digits(g), "point_cost": g.get("point_cost", ""),
-                          "web_flavor": g.get("web_flavor", "")}
+                          "web_flavor": g.get("web_flavor", ""),
+                          "guide_sub": guide_sub(g, g.get("guide_url") or acct.get("guide_url", ""))}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",
