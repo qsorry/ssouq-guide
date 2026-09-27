@@ -364,6 +364,44 @@ def clean_gate(g, old=None):
     return out
 
 
+# نص الشرح الافتراضي لخيار «نسخ نص الشرح» — يعدّله المدير لكل عميل. تملأ صفحة
+# الإنشاء {guide} {host} {user} {pass} بقيم البوابة واليوزر لحظة النسخ.
+DEFAULT_GUIDE_TEXT = """📲 طريقة التثبيت والتفعيل
+
+🔗 شرح التثبيت:
+{guide}
+
+يرجى اتباع الخطوات الموجودة في الشرح واختيار سيرفر كاسبر ✅
+
+📌 بيانات الاشتراك:
+
+Host: {host}
+User: {user}
+Pass: {pass}
+
+⚠️ مهم جدًا:
+يرجى استخدام التطبيق الموصى به في الشرح فقط، حيث إن الاشتراك لن يعمل عند استخدام تطبيق آخر.
+
+يرجى حذف أي تطبيق سابق للخدمة، ثم تثبيت التطبيق الموصى به واتباع خطوات التفعيل الموجودة في الدليل."""
+GUIDE_TEXT_MAX = 4000
+
+
+def _clean_guide_text(v):
+    """نص الشرح كما كتبه المدير، بأسطر \\n وبلا فراغ حوله. النص الافتراضي نفسه يُحفظ
+    فارغًا فيتبع الافتراضي — والفراغ عند القراءة = الافتراضي (انظر guide_text_of)."""
+    t = str(v or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if len(t) > GUIDE_TEXT_MAX:
+        raise ValueError("نص الشرح طويل (الحد %d حرف)" % GUIDE_TEXT_MAX)
+    return "" if t == DEFAULT_GUIDE_TEXT else t
+
+
+def guide_text_of(acct):
+    """ما تنسخه صفحة الإنشاء لهذا العميل بدل السطر: نصه أو الافتراضي، و"" إن لم يُفعَّل."""
+    if not acct or not acct.get("copy_guide"):
+        return ""
+    return acct.get("guide_text") or DEFAULT_GUIDE_TEXT
+
+
 def clean_account(a, old=None):
     """حساب = شخص له اسم دخول وكلمة مرور للأداة، وبداخله بوابات توليد.
     كل بوابة لها ربطها الخاص (انظر clean_gate)."""
@@ -375,6 +413,10 @@ def clean_account(a, old=None):
         "password":  _hash_password(a.get("password", ""), old.get("password")),
         # رابط شرح واحد لكل بوابات الشخص (يُستعمل حين تُترك البوابة بلا رابط خاص).
         "guide_url": str(a.get("guide_url", old.get("guide_url", ""))).strip(),
+        # نسخ نص الشرح: يفعّله المدير لهذا العميل، فتنسخ صفحة الإنشاء النص كاملًا
+        # بقيم اليوزر بدل السطر الواحد (بعد الإنشاء، ومن البحث، وللبديل).
+        "copy_guide": bool(a.get("copy_guide", old.get("copy_guide", False))),
+        "guide_text": _clean_guide_text(a.get("guide_text", old.get("guide_text", ""))),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -384,6 +426,10 @@ def clean_account(a, old=None):
         raise ValueError("كلمة المرور مطلوبة")
     if out["guide_url"] and not out["guide_url"].startswith(("http://", "https://")):
         raise ValueError("رابط الشرح يجب أن يبدأ بـ http:// أو https://")
+    # نصٌّ بلا اليوزر أو الباسورد يُنسخ للعميل بلا بيانات اشتراكه — يُرفض ما دام مفعّلًا.
+    missing = [k for k in ("{user}", "{pass}") if k not in guide_text_of(out)]
+    if out["copy_guide"] and missing:
+        raise ValueError("نص الشرح يجب أن يحتوي %s — وإلا نُسخ بلا بيانات الاشتراك" % " و".join(missing))
 
     old_gates = {g.get("id"): g for g in (old.get("gates") or [])}
     gates = []
@@ -396,6 +442,10 @@ def clean_account(a, old=None):
         gates.append(cg)
     # يجوز إنشاء دخول بلا بوابات — يضيفها الشخص بنفسه بعد الدخول.
     out["gates"] = gates
+    # ما لا يديره هذا النموذج — كإعداد التجديد (renew) الذي يحفظه الحساب لنفسه — يبقى
+    # كما هو، وإلا مسحه أي حفظٍ للحساب من صفحة الحسابات.
+    for k, v in old.items():
+        out.setdefault(k, v)
     return out
 
 
@@ -1916,6 +1966,7 @@ class Handler(BaseHTTPRequestHandler):
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",
+                                        "guide_text": guide_text_of(acct),
                                         "gates": gates})
             if path == "/api/mygates":            # بوابات الشخص كاملةً (لتحريرها)
                 if role != "account":
@@ -2028,7 +2079,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/accounts":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
-                return self._send(200, {"accounts": [redact_account(a) for a in st["accounts"]]})
+                return self._send(200, {"accounts": [redact_account(a) for a in st["accounts"]],
+                                        "default_guide_text": DEFAULT_GUIDE_TEXT})
             if path == "/api/service":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
