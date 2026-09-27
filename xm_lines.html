@@ -526,12 +526,14 @@ const lineOf = x => { const g = gates.find(g => g.id === curGate) || {}; const g
   return `Host ${g.host || ""} User ${x.username} Pass ${x.password}` + (guide ? ` Guide ${guide}` : ""); };
 // ما يُنسخ لعميلٍ واحد: نص الشرح إن فعّله المدير لهذا العميل (بقيم اليوزر)، وإلا السطر كما كان.
 // الهوست من البوابة، وإلا من سطر الإنشاء نفسه (فالكون بلا هوست يقرؤه من /me لحظة الإنشاء).
+// {server} اسم اشتراك البوابة كما في الدليل (سمارت/فالكون/كاسبر) — يحسبه الخادم من رابط شرحها.
 const msgOf = x => {
   if (!guideText) return x.line || lineOf(x);
   const g = gates.find(g => g.id === curGate) || {};
   const v = {host: g.host || partOf(x, "host", /^Host\s+(\S+)/), user: partOf(x, "username", /User\s+(\S+)/),
-             pass: partOf(x, "password", /Pass\s+(\S+)/), guide: g.guide_url || globalGuide || partOf(x, "guide", /Guide\s+(\S+)/)};
-  return guideText.replace(/\{(host|user|pass|guide)\}/g, (_, k) => v[k]);
+             pass: partOf(x, "password", /Pass\s+(\S+)/), guide: g.guide_url || globalGuide || partOf(x, "guide", /Guide\s+(\S+)/),
+             server: g.guide_sub || ""};
+  return guideText.replace(/\{(host|user|pass|guide|server)\}/g, (_, k) => v[k]);
 };
 const MSG_SEP = "\n\n——————————\n\n";     // بين نصوص الشرح حين يُنشأ أكثر من يوزر
 const cpTitle = t => guideText ? "نسخ نص الشرح" : t;

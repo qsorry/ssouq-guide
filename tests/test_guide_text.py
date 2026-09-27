@@ -6,9 +6,13 @@
 يصل صفحة الإنشاء (/api/me)، وألّا يمسح حفظُ الحساب ما لا يديره نموذجه.
 تشغيل:  python tests/test_guide_text.py
 """
-import os, sys, json, time, shutil, tempfile, subprocess, http.cookiejar, urllib.request, urllib.error
+import os, re, sys, json, time, shutil, tempfile, subprocess, http.cookiejar, urllib.request, urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
+sys.path.insert(0, ROOT)
+_UNIT_DATA = tempfile.mkdtemp(prefix="gtext_unit_")
+os.environ["XM_DATA"] = _UNIT_DATA        # قبل الاستيراد (لفحص guide_sub مباشرة)
+import xm_lines as X  # noqa: E402
 ADMIN_PORT = int(os.environ.get("ADMIN_PORT_GT", "9731"))
 ADMIN = f"http://127.0.0.1:{ADMIN_PORT}"
 _p = _f = 0
@@ -52,6 +56,8 @@ def main():
         check("admin gets the default text", dflt.startswith("📲 طريقة التثبيت والتفعيل"), dflt[:30])
         check("default has guide/host/user/pass placeholders",
               all(k in dflt for k in ("🔗 شرح التثبيت:\n{guide}", "Host: {host}\nUser: {user}\nPass: {pass}")))
+        check("default names the subscription per gate, not «كاسبر» for all",
+              "واختيار سيرفر {server} ✅" in dflt and "كاسبر" not in dflt)
         check("default keeps the warning block", "⚠️ مهم جدًا:" in dflt and dflt.endswith("خطوات التفعيل الموجودة في الدليل."))
 
         _, d = adm("/admin/api/accounts", {"name": "كاسبر", "user": "casper", "password": "pw_casper", "gates": [CASPER_GATE]})
@@ -77,6 +83,9 @@ def main():
         check("that client's create page gets the default text", m.get("guide_text") == dflt)
         _, m = me_o("/admin/api/me")
         check("another client stays on the one-line copy", m.get("guide_text") == "")
+        c, d = adm("/admin/api/accounts", {**body, "guide_text": dflt.replace("{server}", "كاسبر")})
+        cas = next(a for a in d.get("accounts", []) if a["user"] == "casper")
+        check("the old «كاسبر for all» default (stale page) also follows the default", c == 200 and cas.get("guide_text") == "")
 
         print("\n== 3. A custom text per client ==")
         custom = "مرحبًا 👋\r\nHost: {host}\r\nUser: {user}\r\nPass: {pass}\r\n{guide}\r\n"
@@ -123,16 +132,47 @@ def main():
         names = [p.get("name") for p in (r.get("renew") or {}).get("panels", [])]
         check("renew panel survives the admin save", names == ["لوحة كاسبر"], str(names))
 
-        print("\n== 6. Import carries the option ==")
+        print("\n== 6. {server}: the subscription name as the guide shows it ==")
+        G = lambda **k: {"name": "", "mode": "api", **k}
+        for label, g, url, want in [
+            ("casper link wins over the gate name", G(name="بوابة مرح"), "https://guide.ssouq.com/#activate/casper", "كاسبر"),
+            ("falcon link (deep path)", G(), "https://guide.ssouq.com/#activate/falcon/android/2", "فالكون"),
+            ("smart link", G(), "https://guide.ssouq.com/#activate/smart", "سمارت"),
+            ("old marah link = smart", G(), "https://guide.ssouq.com/#activate/marah", "سمارت"),
+            ("no sub in link: by gate name مرح", G(name="بوابة مرح"), "https://guide.ssouq.com/", "سمارت"),
+            ("no link: by gate name Falcon", G(name="Falcon 2"), "", "فالكون"),
+            ("no link: Falcon gate type", G(name="بوابة جديدة", mode="falcon"), "", "فالكون"),
+            ("no link: Casper panel type", G(name="بوابة جديدة", mode="web", web_flavor="casper"), "", "كاسبر"),
+            ("unknown: gate name without «بوابة»", G(name="بوابة الريم"), "https://guide.ssouq.com/#activate/xyz", "الريم"),
+        ]:
+            got = X.guide_sub(g, url)
+            check(label + " → " + want, got == want, got)
+        src = open(os.path.join(ROOT, "index.html"), encoding="utf-8").read()
+        block = src[src.index("const SUBS = {"):]
+        names = dict(re.findall(r'(\w+):\s*\{\s*name:\s*"([^"]+)"', block[:block.index("};")]))
+        check("names match the guide's SUBS in index.html", names == X.GUIDE_SUBS, str(names))
+        check("the guide still reads the old marah key as smart", 'k === "marah" ? "smart"' in src)
+
+        _, m = me_c("/admin/api/me")
+        check("create page gets the gate's subscription name", m["gates"][0].get("guide_sub") == "كاسبر", m["gates"][0].get("guide_sub"))
+        adm("/admin/api/accounts", {"name": "سمارت", "user": "smart", "password": "pw_smart",
+                                    "guide_url": "https://guide.ssouq.com/#activate/smart",
+                                    "gates": [{**CASPER_GATE, "name": "بوابة ٣", "web_flavor": "xtream", "guide_url": ""}]})
+        me_s = session(); me_s("/admin/api/login", {"user": "smart", "password": "pw_smart"})
+        _, m = me_s("/admin/api/me")
+        check("gate without its own link uses the client's guide link", m["gates"][0].get("guide_sub") == "سمارت", m["gates"][0].get("guide_sub"))
+        print("\n== 7. Import carries the option (replaces all accounts — keep last) ==")
         c, d = adm("/admin/api/accounts/import", {"accounts": [
             {"name": "مستورد", "user": "imp", "password": "pw_imp", "gates": [], "copy_guide": True, "guide_text": ""}]})
         imp = (d.get("accounts") or [{}])[0]
         check("imported account keeps copy_guide", c == 200 and imp.get("copy_guide") is True and imp.get("guide_text") == "", d.get("error", ""))
+
     finally:
         app.terminate()
         try: app.wait(timeout=5)
         except Exception: app.kill()
         shutil.rmtree(data_dir, ignore_errors=True)
+        shutil.rmtree(_UNIT_DATA, ignore_errors=True)
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
     sys.exit(1 if _f else 0)

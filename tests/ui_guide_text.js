@@ -16,6 +16,8 @@ const api = (page, url, body) => page.evaluate(async ([u, b]) => (await fetch(u,
   {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(b)})).json(), [url, body]);
 
 const HOST = 'http://ssouqhost.vip:80', GUIDE = 'https://guide.ssouq.com/#activate/casper';
+const HOST2 = 'http://falcon.host:80', GUIDE2 = 'https://guide.ssouq.com/#activate/falcon';
+const HOST3 = 'http://smart.host:80', GUIDE3 = 'https://guide.ssouq.com/#activate/smart';
 
 (async () => {
   const falcon = spawn('python3', [path.join(ROOT,'tests/mock_falcon.py'), String(FALCON_PORT), 'testkey'], {stdio:'ignore'});
@@ -32,8 +34,11 @@ const HOST = 'http://ssouqhost.vip:80', GUIDE = 'https://guide.ssouq.com/#activa
     await admin.goto(APP + '/admin/setup');
     await api(admin, '/admin/api/setup', {password:'admin123'});
     let r = await api(admin, '/admin/api/accounts', {name:'عميل كاسبر', user:'casper', password:'pw_casper',
-      gates:[{name:'بوابة كاسبر', mode:'falcon', api_url:FALCON, api_key:'testkey', host:HOST, guide_url:GUIDE}]});
-    check('client with a gate created', r.ok === true, r.error || '');
+      gates:[{name:'بوابة كاسبر', mode:'falcon', api_url:FALCON, api_key:'testkey', host:HOST, guide_url:GUIDE},
+             {name:'بوابة فالكون', mode:'falcon', api_url:FALCON, api_key:'testkey', host:HOST2, guide_url:GUIDE2},
+             // نوعها فالكون ورابطها سمارت: الاسم يتبع الرابط المضاف لا نوع البوابة
+             {name:'بوابة سمارت', mode:'falcon', api_url:FALCON, api_key:'testkey', host:HOST3, guide_url:GUIDE3}]});
+    check('client with three gates created', r.ok === true, r.error || '');
 
     // ---- صفحة الحسابات: تفعيل الخيار من المربع ----
     await admin.evaluate(() => localStorage.setItem('xm_admin_tab', 'accounts'));
@@ -65,7 +70,8 @@ const HOST = 'http://ssouqhost.vip:80', GUIDE = 'https://guide.ssouq.com/#activa
     const m = res.match(/User: (\d+)\nPass: (\d+)/);
     check('created: result is the guide text', res.startsWith('📲 طريقة التثبيت والتفعيل') && res.includes('🔗 شرح التثبيت:\n' + GUIDE), res.slice(0, 30));
     check('created: host/user/pass filled in', res.includes('Host: ' + HOST + '\n') && !!m && m[1].length === 12 && m[2].length === 12, m ? m[1] + '/' + m[2] : 'no creds');
-    check('created: no placeholder left', !/\{(host|user|pass|guide)\}/.test(res));
+    check('created: no placeholder left', !/\{(host|user|pass|guide|server)\}/.test(res));
+    check('created: subscription name from the gate guide (كاسبر)', res.includes('واختيار سيرفر كاسبر ✅'));
     check('created: copied to the clipboard as shown', (await clip()) === res);
     check('created: result box switches to the text style', await user.$eval('#res', e => e.classList.contains('msgs')));
     if (SHOTS) await (await user.$('#resBox')).screenshot({path: path.join(SHOTS, 'create-guide-text.png')});
@@ -93,6 +99,27 @@ const HOST = 'http://ssouqhost.vip:80', GUIDE = 'https://guide.ssouq.com/#activa
     check('replacement: says the guide text was copied', (await user.textContent('#mkBox .msg.ok')).includes('نُسخ نص الشرح'));
     const rc = await clip();
     check('replacement: clipboard holds the guide text', rc.startsWith('📲') && /User: \d{12}\nPass: \d{12}/.test(rc), rc.slice(-40));
+
+    // ---- بوابة ثانية برابط شرح فالكون: اسم الاشتراك يتبعها ----
+    await user.click('.gate-tab:has-text("بوابة فالكون")');
+    await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
+    await user.click('#create');
+    await user.waitForFunction(() => document.querySelector('#res').textContent.includes('falcon.host'), null, {timeout: 8000});
+    const res2 = await user.textContent('#res');
+    check('other gate: subscription name follows its guide (فالكون)', res2.includes('واختيار سيرفر فالكون ✅') && !res2.includes('كاسبر'), (res2.match(/واختيار سيرفر [^\n]*/) || [''])[0]);
+    check('other gate: its own guide link and host', res2.includes('🔗 شرح التثبيت:\n' + GUIDE2) && res2.includes('Host: ' + HOST2 + '\n'));
+    await user.fill('#searchQ', 'user002');
+    await user.click('#searchBtn');
+    await user.waitForSelector('#searchRes button.cb', {timeout: 8000});
+    check('other gate: search copy names فالكون', (await user.$eval('#searchRes button.cb', b => b.dataset.copy)).includes('واختيار سيرفر فالكون ✅'));
+    await user.click('.gate-tab:has-text("بوابة سمارت")');
+    await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
+    await user.click('#create');
+    await user.waitForFunction(() => document.querySelector('#res').textContent.includes('smart.host'), null, {timeout: 8000});
+    const res3 = await user.textContent('#res');
+    check('smart link: name is سمارت (link wins over the Falcon gate type)', res3.includes('واختيار سيرفر سمارت ✅') && res3.includes('🔗 شرح التثبيت:\n' + GUIDE3), (res3.match(/واختيار سيرفر [^\n]*/) || [''])[0]);
+    await user.click('.gate-tab:has-text("بوابة كاسبر")');
+    await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
 
     // ---- إيقاف الخيار يعيد السطر الواحد ----
     const acc = (await api(admin, '/admin/api/accounts')).accounts[0];
