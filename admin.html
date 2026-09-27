@@ -79,6 +79,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .gate .rm{background:var(--sf);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:5px 11px;font-size:.8rem}
 .gsel{width:100%}
 textarea.gsel{direction:rtl;text-align:right;resize:vertical}
+.hint{display:block;color:var(--mute);font-size:.76rem;margin-top:4px}
+/* نص الشرح: عربي وأسطر لاتينية (Host/User/Pass) — كل سطر باتجاهه */
+#acc_guide_text{unicode-bidi:plaintext;text-align:start;font-size:.88rem;line-height:1.7}
+.acct .tag{color:var(--go)}
 
 /* تبويبات كتطبيق: عروض + شريط سفلي + زر عائم + نافذة */
 .view{display:none} .view.on{display:block}
@@ -267,6 +271,15 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
       <div><label for="password">كلمة مرور الدخول</label><input id="password" autocomplete="new-password" placeholder="4 أحرف على الأقل"></div>
     </div>
     <label for="acc_guide">رابط الشرح لكل البوابات (اختياري)</label><input id="acc_guide" placeholder="https://guide.ssouq.com/">
+    <div class="gate">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_copy_guide" style="width:auto"> نسخ نص الشرح لهذا العميل</label>
+      <small class="hint">عند إنشاء يوزر أو نسخه من البحث يُنسخ هذا النص كاملًا بدل السطر الواحد.</small>
+      <div id="acc_guide_box" hidden>
+        <label for="acc_guide_text">نص الشرح — ‏<b>{guide}</b> رابط الشرح · ‏<b>{host}</b> الهوست · ‏<b>{user}</b> اليوزر · ‏<b>{pass}</b> الباسورد</label>
+        <textarea id="acc_guide_text" rows="14"></textarea>
+        <button type="button" class="ghost" id="acc_guide_reset" style="margin-top:8px">استرجاع النص الافتراضي</button>
+      </div>
+    </div>
     <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
     <div id="gates"></div>
     <button class="ghost" id="addGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
@@ -294,6 +307,7 @@ const $ = id => document.getElementById(id);
 const chk = d => { if (d && d.login) location.href = B + "/login"; return d; };
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let accounts = [];
+let defaultGuideText = "";              // نص الشرح الافتراضي (من الخادم) — يُعبّأ به المربع
 $("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
 
 // تبديل السمة (يُحفَظ) — نفس مبدأ صفحة اليوزر
@@ -313,7 +327,7 @@ async function post(url, body){
   const d = chk(await r.json()); if (d.error) throw new Error(d.error); return d;
 }
 async function load(){
-  try { const r = await fetch(B + "/api/accounts"); const d = chk(await r.json()); if (d.error) throw new Error(d.error); accounts = d.accounts; }
+  try { const r = await fetch(B + "/api/accounts"); const d = chk(await r.json()); if (d.error) throw new Error(d.error); accounts = d.accounts; defaultGuideText = d.default_guide_text || ""; }
   catch(e) { $("list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   render();
 }
@@ -333,7 +347,7 @@ function render(){
       </div>`).join("");
     return `<div class="acct" data-acc="${a.id}">
       <div class="ahead" data-toggle="${a.id}">
-        <div class="ai"><b>${esc(a.name)}</b><small>دخول: ${esc(a.user)}${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة</small></div>
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: ${esc(a.user)}${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}</small></div>
         <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="adet">
@@ -416,6 +430,9 @@ function fill(a){
   $("id").value = a?.id || "";
   $("name").value = a?.name || ""; $("user").value = a?.user || "";
   $("acc_guide").value = a?.guide_url || "";
+  $("acc_copy_guide").checked = !!a?.copy_guide;
+  $("acc_guide_text").value = a?.guide_text || defaultGuideText;
+  applyCopyGuide();
   $("password").value = "";
   $("password").placeholder = a ? "اتركه فارغًا للإبقاء على الحالية" : "4 أحرف على الأقل";
   $("gates").innerHTML = "";
@@ -425,6 +442,14 @@ function fill(a){
   $("cancel").hidden = !a;
 }
 $("addGate").onclick = () => $("gates").appendChild(gateRow(null));
+// نسخ نص الشرح: المربع يظهر مع الخيار، وفارغُه يُعبّأ بالنص الافتراضي.
+function applyCopyGuide(){
+  const on = $("acc_copy_guide").checked;
+  $("acc_guide_box").hidden = !on;
+  if (on && !$("acc_guide_text").value.trim()) $("acc_guide_text").value = defaultGuideText;
+}
+$("acc_copy_guide").addEventListener("change", applyCopyGuide);
+$("acc_guide_reset").onclick = () => { $("acc_guide_text").value = defaultGuideText; };
 
 // ---- نافذة إضافة/تعديل الحساب ----
 function openModal(a){ fill(a); say($("msg"), "", true); $("acctModal").hidden = false; document.body.style.overflow = "hidden"; }
@@ -436,7 +461,8 @@ $("acctModal").onclick = e => { if (e.target === $("acctModal")) closeModal(); }
 
 $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
-                password: $("password").value, guide_url: $("acc_guide").value, gates: readGates()};
+                password: $("password").value, guide_url: $("acc_guide").value,
+                copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value, gates: readGates()};
   try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
   catch(e) { say($("msg"), e.message); }
 };
