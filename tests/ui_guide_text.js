@@ -17,6 +17,7 @@ const api = (page, url, body) => page.evaluate(async ([u, b]) => (await fetch(u,
 
 const HOST = 'http://ssouqhost.vip:80', GUIDE = 'https://guide.ssouq.com/#activate/casper';
 const HOST2 = 'http://falcon.host:80', GUIDE2 = 'https://guide.ssouq.com/#activate/falcon';
+const HOST3 = 'http://smart.host:80', GUIDE3 = 'https://guide.ssouq.com/#activate/smart';
 
 (async () => {
   const falcon = spawn('python3', [path.join(ROOT,'tests/mock_falcon.py'), String(FALCON_PORT), 'testkey'], {stdio:'ignore'});
@@ -34,8 +35,10 @@ const HOST2 = 'http://falcon.host:80', GUIDE2 = 'https://guide.ssouq.com/#activa
     await api(admin, '/admin/api/setup', {password:'admin123'});
     let r = await api(admin, '/admin/api/accounts', {name:'عميل كاسبر', user:'casper', password:'pw_casper',
       gates:[{name:'بوابة كاسبر', mode:'falcon', api_url:FALCON, api_key:'testkey', host:HOST, guide_url:GUIDE},
-             {name:'بوابة فالكون', mode:'falcon', api_url:FALCON, api_key:'testkey', host:HOST2, guide_url:GUIDE2}]});
-    check('client with two gates created', r.ok === true, r.error || '');
+             {name:'بوابة فالكون', mode:'falcon', api_url:FALCON, api_key:'testkey', host:HOST2, guide_url:GUIDE2},
+             // نوعها فالكون ورابطها سمارت: الاسم يتبع الرابط المضاف لا نوع البوابة
+             {name:'بوابة سمارت', mode:'falcon', api_url:FALCON, api_key:'testkey', host:HOST3, guide_url:GUIDE3}]});
+    check('client with three gates created', r.ok === true, r.error || '');
 
     // ---- صفحة الحسابات: تفعيل الخيار من المربع ----
     await admin.evaluate(() => localStorage.setItem('xm_admin_tab', 'accounts'));
@@ -109,6 +112,12 @@ const HOST2 = 'http://falcon.host:80', GUIDE2 = 'https://guide.ssouq.com/#activa
     await user.click('#searchBtn');
     await user.waitForSelector('#searchRes button.cb', {timeout: 8000});
     check('other gate: search copy names فالكون', (await user.$eval('#searchRes button.cb', b => b.dataset.copy)).includes('واختيار سيرفر فالكون ✅'));
+    await user.click('.gate-tab:has-text("بوابة سمارت")');
+    await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
+    await user.click('#create');
+    await user.waitForFunction(() => document.querySelector('#res').textContent.includes('smart.host'), null, {timeout: 8000});
+    const res3 = await user.textContent('#res');
+    check('smart link: name is سمارت (link wins over the Falcon gate type)', res3.includes('واختيار سيرفر سمارت ✅') && res3.includes('🔗 شرح التثبيت:\n' + GUIDE3), (res3.match(/واختيار سيرفر [^\n]*/) || [''])[0]);
     await user.click('.gate-tab:has-text("بوابة كاسبر")');
     await user.waitForSelector('input[name="pkg"]', {timeout: 8000});
 
