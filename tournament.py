@@ -54,7 +54,7 @@ STAGES = {"quarterfinals": "ربع النهائي", "semifinals": "نصف الن
           "relegation-playoffs": "ملحق الصعود والهبوط"}
 ADS = ("p153695876", "p479880741", "p2083342610")    # باقات الإعلان من CATALOG، بترتيبها
 UTM_CAMPAIGN = "nations-league"
-PREDICT = PATH + "/predict"                          # صفحة المسابقة: المفتوحة والمفروزة وشروطها
+PREDICT = PATH + "/predict"                          # كانت صفحة المسابقة؛ تحوَّل الآن إلى /predict
 DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
 LIVE_TTL = 60
 DONE_TTL = 6 * 3600                                  # ملخّص مباراة انتهت لا يتغيّر
@@ -365,12 +365,13 @@ def _predict_card(m, s, st):
     """بطاقة المسابقة في صفحة المباراة. الحالة والنموذج من /api/contest بالمتصفح، فتبقى
     الصفحة مخزَّنةً كما هي ولا يعرض الكاش حالةً قديمة."""
     return (f'<section class="card predict" id="predict" data-m="{_esc(m["id"])}" '
-            f'data-draw="{_ver("contest-draw.js")}" data-rules="{PREDICT}#rules" aria-labelledby="predict-h">'
+            f'data-draw="{_ver("contest-draw.js")}" data-rules="/predict#rules" aria-labelledby="predict-h">'
             f'<span class="eyebrow">مسابقة مجانية</span>'
             f'<h2 id="predict-h">توقّع النتيجة واربح {_esc(s["prize"])}</h2>' + _prize_row(s) +
             f'<div class="pbody"><p class="sub">{_esc(contest.STATE_MSG.get(st, "") if st != "open" else "")}'
             f'</p><noscript><p>فعّل JavaScript لتسجّل توقّعك.</p></noscript></div>'
-            f'<p class="prules"><a class="link" href="{PREDICT}#rules">شروط المسابقة وكيف يتم الفرز</a></p>'
+            f'<p class="prules"><a class="link" href="/predict#rules">شروط المسابقة وكيف يتم الفرز</a> · '
+            f'<a class="link" href="/predict">كل المسابقات</a></p>'
             f'</section><script src="/static/contest.js?v={_ver("contest.js")}" defer></script>')
 
 
@@ -951,67 +952,10 @@ def announcement(rows, now=None):
     return "\n".join(out)
 
 
-def render_predict():
-    """صفحة المسابقة (‏<البطولة>/predict): مسابقات هذه البطولة المفتوحة للتوقّع، والمفروزة بفائزيها، وشروطها
-    وطريقة الفرز. ← (رمز، بايتات، مدة الكاش)."""
-    data = _feed.get()[0]
-    rows = [r for r in contest.listing(contests(), (data or {}).get("matches", []))
-            if contest.cup_path(r["match"]) == PATH]
-    page_url = guide_pages.SITE + PREDICT
-    title = f"مسابقة توقّع النتيجة واربح اشتراكًا — {CUP['name']} | سمارت سوق"
-    h1 = "مسابقة توقّع النتيجة"
-    desc = (f"توقّع نتيجة مباريات {CUP['name']} مجانًا واربح اشتراكًا من سمارت سوق. التوقّعات تُقفل مع صافرة "
-            "البداية، والفرز آليٌّ بعد صافرة النهاية بفيديو يشرح كيف تم.")
-
-    def item(r):
-        mt = r["match"]
-        href = f"{PATH}/{mt['slug']}#predict"
-        teams = f"{_esc(mt['home'])} و{_esc(mt['away'])}"
-        if r["state"] == "open":
-            info, go = f"الجائزة: {_esc(r['prize'])} · تُقفل {_esc(when_label(r.get('closes') or mt['ts']))}", "توقّع الآن ←"
-        elif r["state"] == "done":
-            h, a = r["score"] or (0, 0)
-            won = "، ".join(_esc(w) for w in r["won"]) or "لا فائز"
-            info = (f"{_esc(mt['home'])} {h} – {a} {_esc(mt['away'])} · الفائز: {won} · {r['count']} توقّعًا")
-            go = "شاهد الفرز ←"
-        else:
-            info, go = f"الجائزة: {_esc(r['prize'])} · {_esc(contest.STATE_MSG.get(r['state'], ''))}", "التفاصيل ←"
-        return (f'<li><a href="{href}"><span class="pi"><b>مباراة {teams}</b><small>{info}</small></span>'
-                f'<span class="pgo">{go}</span></a></li>')
-
-    parts = []
-    groups = [("open", "مفتوحة للتوقّع", [r for r in rows if r["state"] == "open"]),
-              ("live", "أُقفلت وتنتظر الفرز", [r for r in rows if r["state"] in ("closed", "pending", "hold")]),
-              ("done", "فُرزت", [r for r in rows if r["state"] == "done"][:20])]
-    for key, head, rs in groups:
-        if rs:
-            parts.append(f'<section class="card" id="{key}"><h2>{head}</h2><ul class="pcal">'
-                         + "".join(item(r) for r in rs) + "</ul></section>")
-    if not rows:
-        parts.append('<section class="card"><p>لا مسابقة مفتوحة الآن. تابع <a class="link" href="'
-                     f'{PATH}">مباريات {_esc(CUP["name"])}</a>، ونعلن المسابقة القادمة على صفحة مباراتها.</p></section>')
-    rules = "".join(f"<li>{_esc(x)}</li>" for x in contest.RULES)
-    parts.append(f'<section class="card" id="rules"><h2>الشروط وطريقة الفرز</h2><ol class="prulelist">{rules}</ol>'
-                 '<h3>الفرز بالأرقام</h3><p class="sub">عند الإقفال تُحسب <b>بصمة التوقّعات</b> (SHA-256 لقائمتها) '
-                 'وتظهر في صفحة المباراة. وبعد صافرة النهاية: <b>رقم القرعة</b> = SHA-256(البصمة | رقم المباراة | '
-                 'النتيجة)، ورقم الفائز الأول = أول 12 خانة من SHA-256(رقم القرعة:0) عددًا عشريًّا، والفائز هو '
-                 'المؤهّل الذي ترتيبه (بترتيب التسجيل) باقي قسمة ذلك الرقم على عدد المؤهّلين، مبتدئًا من الصفر. '
-                 'وكل أرقام الفرز منشورة في صفحة المباراة ليتحقّق منها من شاء.</p></section>')
-    crumbs = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
-        {"@type": "ListItem", "position": 1, "name": "دليل سمارت سوق", "item": guide_pages.SITE + "/"},
-        {"@type": "ListItem", "position": 2, "name": CUP["name"], "item": guide_pages.SITE + PATH},
-        {"@type": "ListItem", "position": 3, "name": h1, "item": page_url}]}
-    head = (f"<h1>{h1}</h1>\n<p class=\"sub\">توقّع نتيجة المباراة مجانًا واربح اشتراكًا من سمارت سوق — "
-            "الفرز آليٌّ بعد صافرة النهاية.</p>")
-    body = _doc(title, desc, page_url, [crumbs], f'<a class="link" href="{PATH}">{_esc(CUP["name"])}</a> ← {h1}',
-                head, "".join(parts), False)
-    return 200, body, 60
-
-
 def sitemap():
     """صفحة البطولة وصفحات مبارياتها لخريطة الموقع."""
     data = _feed.get()[0]
-    return ([(PATH, "daily", "0.8"), (PREDICT, "daily", "0.6")]
+    return ([(PATH, "daily", "0.8")]
             + [(url(m), "daily", "0.6") for m in (data or {}).get("matches", [])])
 
 

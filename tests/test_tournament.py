@@ -184,8 +184,8 @@ def unit():
     code, raw, age = T.render_match("7-croatia-czechia")
     check("ملخّصٌ متعذّر لا يُسقط الصفحة", code == 200 and "كرواتيا" in raw.decode("utf-8"))
     sm = [p for p, _, _ in T.sitemap()]
-    check("خريطة الموقع: الصفحة وصفحة المسابقة ومبارياتها", sm[0] == "/nations-league" and len(sm) == 2 + len(ms)
-          and T.PREDICT in sm and "/nations-league/1-france-belgium" in sm)
+    check("خريطة الموقع: الصفحة ومبارياتها (وصفحة المسابقة الواحدة في الخادم)", sm[0] == "/nations-league"
+          and len(sm) == 1 + len(ms) and T.PREDICT not in sm and "/nations-league/1-france-belgium" in sm)
 
     print("\nالأداة المدمجة في متجر سلة")
     code, raw, age = T.render_widget()
@@ -258,7 +258,7 @@ def unit_gulf():
     code, raw, _ = G.render_widget()
     check("ودجت كأس الخليج", code == 200 and "كأس الخليج العربي" in raw.decode("utf-8"))
     sm = [u for u, *_ in G.sitemap()]
-    check("في خريطة الموقع بمبارياتها", "/gulf-cup" in sm and "/gulf-cup/predict" in sm and "/gulf-cup/103-saudi-arabia-iraq" in sm)
+    check("في خريطة الموقع بمبارياتها", "/gulf-cup" in sm and "/gulf-cup/103-saudi-arabia-iraq" in sm)
     print("\nودجت المتجر للبطولتين")
     G.channels = lambda: {"103": "AL KASS One"}
     T._feed.reset()
@@ -363,8 +363,11 @@ def live():
         check("صفحة مباراة من كأس الخليج", c == 200 and "السعودية" in b and "ترتيب المجموعة الأولى" in b)
         c, h, _ = req(base, "/gulf-cup/103")
         check("ورابطها المختصر ← 301", c == 301 and h.get("Location") == "/gulf-cup/103-saudi-arabia-iraq")
-        c, _, b = req(base, "/gulf-cup/predict")
-        check("صفحة مسابقة كأس الخليج", c == 200 and "مسابقة توقّع النتيجة" in b and 'href="/gulf-cup">كأس الخليج العربي' in b)
+        c, h, _ = req(base, "/gulf-cup/predict")
+        check("صفحة مسابقة كأس الخليج ← صفحة المسابقات الواحدة", c == 301 and h.get("Location") == "/predict")
+        c, _, b = req(base, "/predict")
+        check("/predict للبطولتين", c == 200 and "مسابقة التوقّعات" in b and 'href="/gulf-cup">كأس الخليج العربي' in b
+              and 'href="/nations-league">دوري الأمم الأوروبية' in b)
         c, _, _ = req(base, "/gulf-cup/1-france-belgium")
         check("ومباراةٌ من دوري الأمم ليست تحتها", c == 404)
         c, _, b = req(base, "/sitemap.xml")

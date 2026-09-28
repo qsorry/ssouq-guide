@@ -227,6 +227,25 @@ print(json.dumps(rec, ensure_ascii=False))
     await other.waitForSelector('#predict .pmine', {timeout:10000});
     check('الرقم نفسه من جهازٍ آخر: مسجّلٌ من قبل ولا يتغيّر', (await other.textContent('#predict .pmine')).includes('من قبل')
           && (await page.evaluate(async () => (await (await fetch('/api/contest?m=6')).json()).count)) === 1);
+    console.log('صفحة المسابقات /predict');
+    await page.goto(APP + '/predict');
+    await page.waitForSelector('.mc[data-m="6"]', {timeout:8000});
+    check('ليليةٌ افتراضًا، وبلا تمرير أفقي على 360px', (await page.getAttribute('html', 'data-theme')) === 'dark'
+          && await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    check('بطاقة المباراة تعرف توقّع الزائر من متصفحه', (await page.textContent('.mc[data-m="6"] .mine')).includes('توقّعك مسجّل: 2-1')
+          && !(await page.$eval('.mc[data-m="6"] .mine', e => e.hidden)));
+    await page.click('.tabs button[data-k="done"]');
+    const vis = await page.$$eval('.mc', cs => cs.filter(c => !c.hidden).map(c => c.dataset.tab));
+    check('التصفية: «منتهية» تُظهر المفروزة وحدها', vis.length > 0 && vis.every(t => t === 'done'), vis.join(','));
+    await page.click('.tabs button[data-k="all"]');
+    check('و«كل المسابقات» تعيدها كلها', (await page.$$eval('.mc', cs => cs.filter(c => c.hidden).length)) === 0);
+    await page.click('#tbtn');
+    await page.reload();
+    check('زرّ الوضع النهاري يُحفظ', (await page.getAttribute('html', 'data-theme')) === 'light');
+    await page.click('#tbtn');
+    await shot(page, 'predict-page');
+    await page.goto(APP + '/nations-league/6-netherlands-serbia');
+    await page.waitForSelector('#predict .pmine', {timeout:8000});
     const plain = await whatsapp('966551234567', 'السلام عليكم، متى ينتهي اشتراكي؟');
     check('رسائل العملاء الأخرى: ignored ولا ردّ', plain.answer.status === 'ignored' && plain.sent.length === 0);
 

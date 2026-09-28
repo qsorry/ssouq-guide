@@ -731,7 +731,7 @@ def live():
         code, body, _ = get(base + "/nations-league/6-netherlands-serbia")
         page = body.decode()
         check("بطاقة المسابقة في صفحة المباراة", 'id="predict" data-m="6"' in page and "/static/contest.js?v=" in page)
-        check("ورابط الشروط", 'href="/nations-league/predict#rules"' in page)
+        check("ورابط الشروط وكل المسابقات", 'href="/predict#rules"' in page and 'href="/predict">كل المسابقات' in page)
         code, body, _ = get(base + "/nations-league/3-england-spain")
         check("ولا بطاقة لمباراةٍ بلا مسابقة", 'id="predict"' not in body.decode())
         code, body, _ = get(base + "/nations-league")
@@ -741,12 +741,24 @@ def live():
         code, body, _ = get(base + "/nations-league/widget?theme=dark")
         page = body.decode()
         check("والشريط في ودجت المتجر يُفتح في نافذة", re.search(r'<a class="pbanner" href="[^"]+#predict" target="_blank"', page))
-        code, body, _ = get(base + "/nations-league/predict")
+        code, body, _ = get(base + "/predict")
         page = body.decode()
         check("صفحة المسابقة: المفتوحة والشروط", code == 200 and "مفتوحة للتوقّع" in page and 'id="rules"' in page
               and C.RULES[0] in page)
         code, body, _ = get(base + "/sitemap.xml")
-        check("صفحة المسابقة في خريطة الموقع", b"/nations-league/predict</loc>" in body)
+        check("صفحة المسابقة في خريطة الموقع، لا صفحتا البطولتين القديمتان", b"/predict</loc>" in body
+              and b"/nations-league/predict</loc>" not in body)
+        req = urllib.request.Request(base + "/nations-league/predict")
+
+        class _NoRedir(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        try:
+            urllib.request.build_opener(_NoRedir).open(req, timeout=10)
+            moved = (200, "")
+        except urllib.error.HTTPError as e:
+            moved = (e.code, e.headers.get("Location"))
+        check("صفحة مسابقة البطولة القديمة ← 301 إلى /predict", moved == (301, "/predict"), moved)
 
         code, body, _ = get(base + "/api/contest?m=1")
         d = json.loads(body)
@@ -826,7 +838,7 @@ def live():
         code, body, _ = get(base + "/gulf-cup/103-saudi-arabia-iraq")
         page = body.decode()
         check("وبطاقتها في صفحة المباراة بشروط بطولتها", 'id="predict" data-m="103"' in page
-              and 'data-rules="/gulf-cup/predict#rules"' in page)
+              and 'data-rules="/predict#rules"' in page)
         code, body, _ = get(base + "/api/contest?m=103")
         pub = json.loads(body)
         check("والعلن يعرف بطولتها", pub["state"] == "open" and pub["match"]["path"] == "/gulf-cup"
@@ -842,11 +854,25 @@ def live():
         check("ورسالة المباراة وحدها: بعلمَي المنتخبين وقناتها ورابط صفحتها", "السعودية × العراق" in one
               and "📺 القناة الناقلة: AL KASS One" in one
               and "https://guide.ssouq.com/gulf-cup/103-saudi-arabia-iraq#predict" in one, one[:300])
-        code, body, _ = get(base + "/gulf-cup/predict")
-        check("صفحة مسابقة كأس الخليج: مسابقتها وحدها", "103-saudi-arabia-iraq#predict" in body.decode()
-              and "netherlands" not in body.decode())
-        code, body, _ = get(base + "/nations-league/predict")
-        check("وصفحة دوري الأمم بلا مسابقة كأس الخليج", "103-saudi-arabia-iraq" not in body.decode())
+        code, body, _ = get(base + "/predict")
+        page = body.decode()
+        cards = {m: st for st, m in re.findall(r'<article class="mc ([a-z]+)[^"]*" data-tab="[a-z]+" data-m="(\d+)"', page)}
+        check("صفحة المسابقات: البطولتان معًا، بطاقةٌ لكل مسابقة بحالها", cards.get("103") == "open" and cards.get("6") == "open"
+              and cards.get("1") == "done" and cards.get("2") == "done", cards)
+        card103 = re.search(r'<article class="mc open[^"]*" data-tab="open" data-m="103">.*?</article>', page, re.S).group(0)
+        check("بطاقة مباراة كأس الخليج: بطولتها وقناتها و«شارك الآن» إلى صفحتها وجائزتها", "كأس الخليج العربي" in card103
+              and ">AL KASS One</span>" in card103 and 'class="cta go" href="/gulf-cup/103-saudi-arabia-iraq#predict"' in card103
+              and "اشتراك شهر" in card103 and "الجائزة" in card103, card103[:300])
+        card1 = re.search(r'<article class="mc done[^"]*" data-tab="done" data-m="1">.*?</article>', page, re.S).group(0)
+        check("والمفروزة: النتيجة والفائز وزرّ عرض الفرز", '<span class="sc">2<i>-</i>1</span>' in card1
+              and 'class="won"' in card1 and "عرض النتيجة وفيديو الفرز" in card1, card1[:300])
+        card2 = re.search(r'<article class="mc done[^"]*" data-tab="done" data-m="2">.*?</article>', page, re.S).group(0)
+        check("والمعاد فرزها بلا فائز", "لم يُصب أحدٌ النتيجة بالضبط، فلا فائز." in card2)
+        check("وأزرار التصفية بأعدادها", re.search(r'data-k="all"[^>]*>كل المسابقات <span class="n">\((\d+)\)</span>', page)
+              and re.search(r'data-k="open"[^>]*>مفتوحة للتوقّع <span class="n">\(\d+\)</span>', page))
+        check("والفائزون، وكيف أشارك، والشروط", 'id="winners"' in page and 'class="wins"' in page and 'id="how"' in page
+              and 'id="rules"' in page and "الفرز بالأرقام" in page)
+        check("ولا رقمٌ كامل فيها", not re.search(r"9665\d{8}", page))
         code, res = post(base + "/api/contest/start", {"m": "103", "name": "فهد", "h": 2, "a": 0, "agree": True})
         check("رمزٌ لمباراة كأس الخليج", code == 200 and "السعودية 2 – 0 العراق" in res["text"], res)
         r = inbound("966551230077", res["text"])

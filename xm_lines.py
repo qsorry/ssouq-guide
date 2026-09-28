@@ -27,6 +27,7 @@ import guide_pages
 import store_sitemap
 import league
 import tournament
+import predict_page
 import contest
 import xm_web
 import falcon_api
@@ -2380,7 +2381,8 @@ class Handler(BaseHTTPRequestHandler):
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
         if path == "/sitemap.xml":
-            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + [u for t in CUPS for u in t.sitemap()]),
+            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + [(predict_page.PATH, "daily", "0.7")]
+                                                           + [u for t in CUPS for u in t.sitemap()]),
                               ctype="application/xml; charset=utf-8",
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path in ROOT_FILES:
@@ -2392,6 +2394,10 @@ class Handler(BaseHTTPRequestHandler):
             if t is None:
                 return self._send(404, {"ok": False, "error": "unknown league"})
             return self._send(200, t, extra={"Cache-Control": "public, max-age=300" if t["ok"] else "no-store"})
+        if path == predict_page.PATH:           # مسابقة التوقّعات: البطولتان، والفائزون، والشروط
+            code, body, age = predict_page.render(HUB_CUPS, contest.summaries(DATA_DIR), contest.channels(DATA_DIR))
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"})
         for t in CUPS:                          # البطولات: صفحتها وودجتها ومسابقتها ومبارياتها
             page = self._cup_page(t, path)
             if page is not None:
@@ -2905,10 +2911,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                               else {"Retry-After": str(league.RETRY)})
-        if path == t.PREDICT:                   # صفحة المسابقة: المفتوحة والمفروزة وشروطها
-            code, body, age = t.render_predict()
-            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
-                              extra={"Cache-Control": f"public, max-age={age}"})
+        if path == t.PREDICT:                   # صفحة المسابقة لكل بطولة صارت صفحةً واحدة للبطولتين
+            return self._redirect(predict_page.PATH, 301)
         if path.startswith(t.PATH + "/"):       # صفحة مباراة من البطولة
             page = t.render_match(path[len(t.PATH) + 1:])
             if page and page[0] == "redirect":
