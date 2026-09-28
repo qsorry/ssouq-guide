@@ -208,7 +208,9 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
 .lt span{flex:1;min-width:0}.lt b{display:block;font-size:.95rem}.lt small{display:block;color:var(--mute);font-size:.78rem}
 /* الشريط السفلي: العنصر الحاليّ بخلفيةٍ ونقطة */
 .bnav{inset-inline:8px;bottom:8px;border:1px solid var(--line);border-radius:20px;padding:6px}
-.bnav button{position:relative;font-size:.74rem;font-weight:600;padding:8px 2px 10px}
+.bnav button,.bnav a{position:relative;font-size:.74rem;font-weight:600;padding:8px 2px 10px}
+.bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--mute);border-radius:12px;text-decoration:none}
+.bnav a svg{width:22px;height:22px}
 .bnav button.on{background:color-mix(in srgb,var(--go) 16%,transparent)}
 .bnav button.on::after{content:"";position:absolute;bottom:3px;width:5px;height:5px;border-radius:50%;background:var(--go)}
 @media (min-width:760px){.bnav{max-width:640px;margin:0 auto}}
@@ -422,6 +424,7 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
 <nav class="bnav">
   <button data-nav="home"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5"/></svg>الرئيسية</button>
   <button data-nav="accounts"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/></svg>الحسابات</button>
+  <a id="navContest"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>المسابقة</a>
   <button data-nav="salla"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg>ربط سلة</button>
   <button data-nav="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>الإعدادات</button>
 </nav>
@@ -441,7 +444,7 @@ $("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
 $("lnkRemain").href = B + "/remaining"; $("bellAdm").href = B + "/remaining#notes";
 $("lnkContest").href = B + "/contest"; $("qContest").onclick = () => { location.href = B + "/contest"; };
 $("lkCreate").href = HOME; $("lkRenew").href = B + "/renew"; $("lkRemain").href = B + "/remaining";
-$("lkContest").href = B + "/contest"; $("kpiPrize").href = B + "/contest";
+$("lkContest").href = $("navContest").href = B + "/contest"; $("kpiPrize").href = B + "/contest";
 $("qLinks").onclick = () => $("links").scrollIntoView({behavior: "smooth", block: "start"});
 // الجوائز: المسابقات المفتوحة (لم تُفرز بعد) وتوقّعاتها — من ملخّصات المسابقة وحدها
 async function contestStats(){
@@ -659,8 +662,9 @@ function nav(v){
   $("viewTitle").textContent = TITLES[v];
   $("fabAdd").hidden = v !== "accounts";
   window.scrollTo({top:0});
-  try { localStorage.setItem("xm_admin_tab", v); } catch {}
+  history.replaceState(null, "", location.pathname + location.search + (v === "home" ? "" : "#" + v));
 }
+addEventListener("hashchange", () => nav(location.hash.slice(1)));
 document.querySelector(".bnav").addEventListener("click", e => { const b = e.target.closest("button"); if (b) nav(b.dataset.nav); });
 document.querySelectorAll("[data-nav]").forEach(b => { if (!b.closest(".bnav")) b.addEventListener("click", () => nav(b.dataset.nav)); });
 $("exp").onclick = () => {
@@ -776,7 +780,7 @@ $("svcCurlBtn").onclick = async () => {
 };
 
 fill(null);
-nav((()=>{ try { return localStorage.getItem("xm_admin_tab") || "home"; } catch { return "home"; } })());
+nav(location.hash.slice(1) || "home");        // زيارةٌ جديدة: الرئيسية؛ و#accounts وأخواتها تفتح تبويبها
 load().then(loadService).then(loadSallaStatus);
 </script>
 </body>

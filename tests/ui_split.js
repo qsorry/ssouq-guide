@@ -40,8 +40,8 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await api(admin, '/admin/api/accounts', {name:'عميل عادي', user:'plain', password:'pw_plain', gates:[gate]});
 
     // ---- المدير يفتح الميزة من نافذة الحساب ----
-    await admin.evaluate(() => localStorage.setItem('xm_admin_tab', 'accounts'));
-    await admin.goto(APP + '/admin/accounts');
+    await admin.goto(APP + '/admin/accounts#accounts');   // تبويب الحسابات من عنوانه
+    await admin.reload();                                  // وبياناتٌ جديدة إن كانت الصفحة نفسها
     await admin.waitForSelector('[data-toggle]');
     await admin.click('.acct:first-child [data-toggle]');
     await admin.click('.acct:first-child [data-edit]');

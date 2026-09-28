@@ -786,7 +786,8 @@ def live():
         rows = {r["eid"]: r for r in json.loads(body)["rows"]}
         check("صفحة المدير: المفروزة والمفتوحة", rows["1"]["state"] == "done" and rows["6"]["state"] == "open")
         code, body, _ = get(base + "/admin/contest", auth=True)
-        check("صفحة المدير نفسها", code == 200 and "مسابقة توقّع النتيجة" in body.decode())
+        check("صفحة المدير نفسها بتصميم اللوحة", code == 200 and "<h1>مسابقة التوقّعات</h1>" in body.decode()
+              and 'class="bnav"' in body.decode())
 
         code, body, _ = get(base + "/admin/api/contest/admin/match?m=2", auth=True)
         det = json.loads(body)
