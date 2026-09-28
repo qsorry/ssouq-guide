@@ -64,9 +64,36 @@ async function waitUp(url) { for (let i=0;i<80;i++){ try{ execSync(`curl -s -o /
     await page.click('#recent .ra');
     check('a latest account opens it in the accounts tab', await page.$eval('.view[data-view="accounts"]', v => v.classList.contains('on'))
       && await page.$eval('.acct', a => a.classList.contains('open')));
+    check('the open tab is kept in the address (a reload stays on it)', new URL(page.url()).hash === '#accounts');
+    await page.evaluate(() => localStorage.setItem('xm_admin_tab', 'accounts'));   // ما كانت الأداة تتذكّره
+    await page.goto(APP + '/admin/accounts');
+    check('a fresh visit opens the dashboard home, not the last tab', await page.$eval('.view[data-view="home"]', v => v.classList.contains('on'))
+      && new URL(page.url()).hash === '');
+    await page.goto(APP + '/admin/accounts#settings');
+    check('#settings in the address opens its tab', await page.$eval('.view[data-view="settings"]', v => v.classList.contains('on')));
+    check('the bottom bar links the contest page', (await page.getAttribute('.bnav #navContest', 'href')) === '/admin/contest'
+      && (await page.$$('.bnav > *')).length === 5);
     await page.setViewportSize({width: 390, height: 844});
     await page.evaluate(() => nav('home'));
     check('dashboard fits a phone (no horizontal scroll)', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    if (process.env.SHOTS_DIR) { await page.waitForTimeout(400); await page.screenshot({path: path.join(process.env.SHOTS_DIR, 'dashboard-phone.png')}); }
+    await page.goto(APP + '/admin/contest');
+    await page.waitForSelector('.kpis .kpi');
+    check('the contest page in the dashboard design: header, banner, 4 stat cards, shortcuts, bottom bar',
+      (await page.textContent('.top .brand b')) === 'سمارت سوق' && (await page.textContent('.hero h1')) === 'مسابقة التوقّعات'
+      && (await page.$$('.kpis .kpi')).length === 4 && (await page.$$('.qgrid .qt')).length === 6
+      && (await page.textContent('.bnav a.on')).includes('المسابقة')
+      && (await page.getAttribute('.bnav a[data-tab="accounts"]', 'href')) === '/admin/accounts#accounts'
+      && (await page.getAttribute('.bnav #lnkHome', 'href')) === '/admin/accounts'
+      && await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    if (process.env.SHOTS_DIR) {                 // ما تراه على الجوال أولًا: الرأس والترحيب والأرقام والشريط السفلي
+      await page.screenshot({path: path.join(process.env.SHOTS_DIR, 'contest-admin-phone.png')});
+      await page.evaluate(() => { document.getElementById('matches').scrollIntoView(); });
+      await page.screenshot({path: path.join(process.env.SHOTS_DIR, 'contest-admin-phone-rows.png')});
+    }
+    await page.click('.bnav a[data-tab="accounts"]');
+    await page.waitForSelector('.view[data-view="accounts"].on', {timeout: 5000});
+    check('and its bar opens the dashboard tabs', new URL(page.url()).pathname === '/admin/accounts');
 
     // login as the person
     await page.evaluate(async () => { await fetch('/admin/logout'); });
