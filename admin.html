@@ -154,6 +154,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
         <button data-nav="salla"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg>ربط سلة</button>
         <button data-nav="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>الإعدادات</button>
         <button id="qAdd"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>حساب جديد</button>
+        <button id="qContest"><svg viewBox="0 0 24 24"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7"/></svg>مسابقة التوقّعات</button>
       </div>
     </section>
   </div>
@@ -253,6 +254,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
     <a class="ghost linkrow" id="lnkHome"><span>صفحة الإنشاء</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
     <a class="ghost linkrow" id="lnkRenew"><span>خدمة التجديد</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
     <a class="ghost linkrow" id="lnkRemain"><span>حسابات متبقية (الاشتراكات المجزّأة)</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
+    <a class="ghost linkrow" id="lnkContest"><span>مسابقة توقّع النتيجة</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
     <a class="ghost linkrow out" id="lnkOut"><span>تسجيل الخروج</span><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></a>
   </section>
   <section>
@@ -319,6 +321,7 @@ let accounts = [];
 let defaultGuideText = "";              // نص الشرح الافتراضي (من الخادم) — يُعبّأ به المربع
 $("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
 $("lnkRemain").href = B + "/remaining"; $("bellAdm").href = B + "/remaining#notes";
+$("lnkContest").href = B + "/contest"; $("qContest").onclick = () => { location.href = B + "/contest"; };
 // الجرس: يظهر حين تُفتح الاشتراكات المجزّأة لعميلٍ واحدٍ على الأقل، وشارته غير المقروء.
 async function bellAdm(){
   try {

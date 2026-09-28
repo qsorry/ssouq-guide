@@ -16,12 +16,15 @@
 صورة ولا رابط. والصفحة لا تذكر قنوات البث: ESPN لا تعطي ناقلي المنطقة.
 """
 import datetime
+import functools
+import hashlib
 import json
 import os
 import re
 import time
 import unicodedata
 
+import contest
 import guide_pages
 import league
 from league import RIYADH, MONTHS, _esc
@@ -45,6 +48,7 @@ STAGES = {"quarterfinals": "ربع النهائي", "semifinals": "نصف الن
           "relegation-playoffs": "ملحق الصعود والهبوط"}
 ADS = ("p153695876", "p479880741", "p2083342610")    # باقات الإعلان من CATALOG، بترتيبها
 UTM_CAMPAIGN = "nations-league"
+PREDICT = PATH + "/predict"                          # صفحة المسابقة: المفتوحة والمفروزة وشروطها
 DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
 LIVE_TTL = 60
 DONE_TTL = 6 * 3600                                  # ملخّص مباراة انتهت لا يتغيّر
@@ -54,6 +58,35 @@ STATS = [("possessionPct", "الاستحواذ"), ("totalShots", "التسديد
          ("yellowCards", "البطاقات الصفراء"), ("redCards", "البطاقات الحمراء"), ("saves", "التصديات")]
 # نوع الهدف من نصّ ESPN ← ما يُكتب بجانبه (الأدق أولًا)
 GOAL_KINDS = [("own goal", "هدف عكسي"), ("penalty", "ركلة جزاء"), ("header", "برأسية"), ("free", "ركلة حرة")]
+
+
+# مسابقة التوقّعات (contest.py): الخادم يضبط هذه بمجلد بياناته فتعيد {المعرّف: ملخّص}،
+# وبدونه (الاختبارات بلا خادم) لا مسابقة.
+def contests():
+    return {}
+
+
+def _contests(ms, now=None):
+    """مسابقات هذه المباريات التي لم تُطفأ: {المعرّف: (الملخّص، الحالة)}."""
+    cs, now = contests(), time.time() if now is None else now
+    out = {}
+    for m in ms:
+        s = cs.get(m["id"])
+        st = contest.state_of(s, m, now) if s else "off"
+        if st != "off":
+            out[m["id"]] = (s, st)
+    return out
+
+
+@functools.lru_cache(maxsize=None)
+def _ver(name):
+    """بصمة ملفٍّ ثابت للرابط (?v=) — فالملفات الثابتة مخزَّنة شهرًا ويصل التعديل مع النشر.
+    تُحسب مرةً في عمر العملية: الملف لا يتغيّر إلا بنشرٍ يعيد تشغيلها."""
+    try:
+        with open(os.path.join(guide_pages.BASE_DIR, "static", name), "rb") as f:
+            return hashlib.sha1(f.read()).hexdigest()[:10]
+    except OSError:
+        return "0"
 
 
 # ---------- القراءة ----------
@@ -211,6 +244,11 @@ def _clock(ts):
     return f"{t.hour % 12 or 12}:{t.minute:02d} {'ص' if t.hour < 12 else 'م'}"
 
 
+def when_label(ts):
+    """«الاثنين 28 سبتمبر 2026 · 9:45 م» بتوقيت السعودية."""
+    return f"{_day_label(_day(ts))} · {_clock(ts)}"
+
+
 def _team(s, away=False):
     crest = (f'<img src="{_esc(s["logo"])}" alt="" width="26" height="26" loading="lazy">'
              if s["logo"] else '<i class="crest"></i>')
@@ -243,22 +281,58 @@ def _status(m):
     return mid, note, cls
 
 
-def _row(m, new_tab=False):
+def _row(m, new_tab=False, pz=None):
+    """صف مباراة؛ و`pz` مسابقات الصفحة ({المعرّف: (الملخّص، الحالة)}) فتحمل المفتوحةُ شارتها."""
     mid, note, cls = _status(m)
     target = ' target="_blank" rel="noopener"' if new_tab else ""
-    return (f'<li><a class="match{cls}" href="{url(m)}"{target}>{_team(m["home"])}<span class="mid">{mid}{note}'
-            f'<small class="stage">{_esc(m["stage"])}</small></span>{_team(m["away"], True)}</a></li>')
+    open_ = (pz or {}).get(m["id"], (None, ""))[1] == "open"
+    badge = '<small class="pz">توقّع واربح</small>' if open_ else ""
+    return (f'<li><a class="match{cls}" href="{url(m)}{"#predict" if open_ else ""}"{target}>{_team(m["home"])}'
+            f'<span class="mid">{mid}{note}<small class="stage">{_esc(m["stage"])}</small>{badge}</span>'
+            f'{_team(m["away"], True)}</a></li>')
 
 
-def _by_day(ms, newest_first=False, new_tab=False):
+def _by_day(ms, newest_first=False, new_tab=False, pz=None):
     days = {}
     for m in ms:
         days.setdefault(_day(m["ts"]), []).append(m)
     out = []
     for d in sorted(days, reverse=newest_first):
         out.append(f'<h3 class="mday">{_day_label(d)}</h3><ul class="matches">'
-                   + "".join(_row(m, new_tab) for m in days[d]) + "</ul>")
+                   + "".join(_row(m, new_tab, pz) for m in days[d]) + "</ul>")
     return "".join(out)
+
+
+GIFT = ('<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7"/>'
+        '<path d="M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg>')
+
+
+def _banner(ms, pz, new_tab=False):
+    """شريط المسابقة أعلى الصفحة: أقرب مباراةٍ مفتوحةٍ للتوقّع وجائزتها."""
+    opens = [m for m in ms if pz.get(m["id"], (None, ""))[1] == "open"]
+    if not opens:
+        return ""
+    m = min(opens, key=lambda x: x["ts"])
+    s = pz[m["id"]][0]
+    target = ' target="_blank" rel="noopener"' if new_tab else ""
+    more = " · ومسابقات أخرى" if len(opens) > 1 else ""
+    return (f'<a class="pbanner" href="{url(m)}#predict"{target}>{GIFT}<span><b>توقّع نتيجة '
+            f'{_esc(m["home"]["name"])} و{_esc(m["away"]["name"])} واربح {_esc(s["prize"])}</b>'
+            f'<small>مجانًا · تُقفل التوقّعات {_esc(when_label(m["ts"]))}{more}</small></span>'
+            f'<span class="pgo">توقّع الآن ←</span></a>')
+
+
+def _predict_card(m, s, st):
+    """بطاقة المسابقة في صفحة المباراة. الحالة والنموذج من /api/contest بالمتصفح، فتبقى
+    الصفحة مخزَّنةً كما هي ولا يعرض الكاش حالةً قديمة."""
+    return (f'<section class="card predict" id="predict" data-m="{_esc(m["id"])}" '
+            f'data-draw="{_ver("contest-draw.js")}" aria-labelledby="predict-h">'
+            f'<span class="eyebrow">مسابقة مجانية</span>'
+            f'<h2 id="predict-h">توقّع النتيجة واربح {_esc(s["prize"])}</h2>'
+            f'<div class="pbody"><p class="sub">{_esc(contest.STATE_MSG.get(st, "") if st != "open" else "")}'
+            f'</p><noscript><p>فعّل JavaScript لتسجّل توقّعك.</p></noscript></div>'
+            f'<p class="prules"><a class="link" href="{PREDICT}#rules">شروط المسابقة وكيف يتم الفرز</a></p>'
+            f'</section><script src="/static/contest.js?v={_ver("contest.js")}" defer></script>')
 
 
 def _catalog():
@@ -370,6 +444,102 @@ main{max-width:1040px}
 .stat .bar i{background:var(--brand)}
 .stat .bar i+i{background:var(--gold)}
 .stats-head{display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px}
+.match .pz{margin-top:3px;font-size:.68rem;font-weight:800;color:var(--gold-ink);background:var(--gold);
+  border-radius:999px;padding:0 8px;line-height:1.7}
+.pbanner{display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:16px;border-radius:16px;
+  background:linear-gradient(200deg,#F7B447 0%,#E0900F 100%);color:#2A1D04;text-decoration:none;box-shadow:var(--shadow)}
+.pbanner svg{width:30px;height:30px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pbanner b{display:block;font-size:.98rem;line-height:1.45}
+.pbanner small{display:block;font-size:.78rem;opacity:.85}
+.pbanner .pgo{margin-inline-start:auto;flex:0 0 auto;font-weight:800;font-size:.86rem;white-space:nowrap}
+.predict{border:2px solid var(--gold)}
+.predict h2{font-size:1.2rem}
+.predict h3{font-size:.98rem;margin:14px 0 6px}
+.prules{margin:10px 0 0;font-size:.82rem}
+.pscore{display:inline-flex;gap:5px;align-items:baseline;font-weight:800;font-variant-numeric:tabular-nums}
+.pscore i{font-style:normal;color:var(--mute);font-weight:400}
+.pcount{color:var(--mute);font-size:.88rem;margin:0 0 10px}
+.pcount b{color:var(--ink)}
+.pcount .hms{display:inline-block;direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+.pteams{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;margin:6px 0 4px}
+.pteam{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;min-width:0}
+.pteam img,.pteam .crest{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--soft)}
+.pteam b{font-size:.92rem;line-height:1.35}
+.pvs{color:var(--mute);font-size:1.4rem;font-weight:700;align-self:end;margin-bottom:6px}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper button{width:40px;height:40px;border-radius:12px;border:1.5px solid var(--line);background:var(--soft);
+  color:var(--ink);font:inherit;font-size:1.35rem;font-weight:700;line-height:1;cursor:pointer}
+.stepper button:hover{border-color:var(--brand)}
+.stepper output{min-width:46px;text-align:center;font-size:2rem;font-weight:800;font-variant-numeric:tabular-nums}
+.pform label.pl{display:block;font-size:.85rem;color:var(--mute);margin:12px 0 4px}
+.pform input[type=text],.pform input[type=tel]{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:12px;
+  background:var(--card);color:var(--ink);font:inherit}
+.pform input[type=tel]{direction:ltr;text-align:right}
+.pform input:focus{outline:0;border-color:var(--brand)}
+.pform input.bad{border-color:#DC2626}
+.pform .hint{display:block;color:var(--mute);font-size:.76rem;margin-top:4px}
+.pform .chk{display:flex;gap:8px;align-items:flex-start;font-size:.86rem;margin-top:10px;cursor:pointer}
+.pform .chk input{margin-top:5px;width:17px;height:17px;flex:0 0 auto;accent-color:var(--brand)}
+.pform .hp{position:absolute;inset-inline-start:-9999px;width:1px;height:1px;opacity:0}
+.pform .btn{display:block;width:100%;margin-top:14px}
+.pmsg{min-height:1.4em;margin:8px 0 0;font-size:.9rem}
+.pmsg.err{color:#DC2626}
+.pmine{background:var(--soft);border-radius:12px;padding:12px 14px;margin:10px 0;font-size:.92rem}
+.pmine .ph,.pwait code{direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+.btn.wa{display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.wa svg{width:20px;height:20px;fill:currentColor;stroke:none;margin:0}
+.pshare{display:block;text-align:center;margin-top:4px}
+.pwait{background:var(--soft);border-radius:14px;padding:14px;margin:10px 0}
+.pwait>b{display:block;font-size:1rem;margin-bottom:4px}
+.pwait code{font:700 1.05rem ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;padding:1px 8px}
+.pwait .btn{margin:10px 0 6px}
+.pstat{display:flex;gap:8px;align-items:flex-start;color:var(--mute);font-size:.86rem;margin:6px 0}
+.spin{flex:0 0 auto;width:14px;height:14px;margin-top:4px;border-radius:50%;border:2px solid var(--line);
+  border-top-color:var(--brand);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.plink{background:none;border:0;padding:0;font:inherit;font-size:.84rem;color:var(--brand-text);text-decoration:underline;cursor:pointer}
+.pbars{display:grid;gap:6px;margin:6px 0 4px}
+.pbar{display:grid;grid-template-columns:7.5em 1fr 3em;align-items:center;gap:8px;font-size:.84rem}
+.pbar span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pbar i{display:block;height:9px;border-radius:5px;background:var(--brand);min-width:3px}
+.pbar b{text-align:end;font-variant-numeric:tabular-nums}
+.ptop{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.ptop li{border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:.84rem}
+.ptop small{color:var(--mute)}
+.pfp{margin-top:12px;font-size:.84rem}
+.pfp summary{cursor:pointer;color:var(--brand-text);font-weight:700}
+.pfp code{display:block;margin:6px 0 4px;padding:8px 10px;border-radius:10px;background:var(--soft);direction:ltr;
+  text-align:left;overflow-wrap:anywhere;font:600 .74rem/1.6 ui-monospace,Menlo,Consolas,monospace;color:var(--ink)}
+.pfp p{color:var(--mute);margin:4px 0}
+.pwin{background:linear-gradient(200deg,var(--brand) 0%,#012E45 100%);color:#fff;border-radius:16px;padding:14px 16px;margin:4px 0 12px}
+.pwin .eyebrow{background:rgba(255,255,255,.14);color:#FFD79A;margin-bottom:6px}
+.wrow{padding:8px 0;border-top:1px solid rgba(255,255,255,.16)}
+.wrow:first-of-type{border-top:0}
+.wrow b{font-size:1.15rem;margin-inline-end:10px}
+.wrow .ph{direction:ltr;unicode-bidi:isolate;color:#BFD8E6;margin-inline-start:8px;font-variant-numeric:tabular-nums}
+.wrow small{display:block;color:#BFD8E6;font-size:.8rem}
+.pplay{display:flex;align-items:center;justify-content:center;gap:8px;width:100%}
+.pplay svg{width:18px;height:18px;fill:currentColor}
+.pvid{position:fixed;inset:0;z-index:60;background:rgba(3,12,22,.86);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;padding:16px}
+.pvid canvas{height:min(76vh,calc((100vw - 32px) * 16 / 9));aspect-ratio:9/16;border-radius:16px;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);background:#012E45}
+.pvid .bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.pvid .btn{flex:0 0 auto;padding:11px 18px}
+.pvid .ghost{color:#fff;border-color:rgba(255,255,255,.35)}
+.pvid .pmsg{color:#BFD8E6;text-align:center}
+.pcal{list-style:none;margin:0;padding:0}
+.pcal li{padding:12px 0;border-top:1px solid var(--line)}
+.pcal li:first-child{border-top:0}
+.pcal a{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
+.pcal a:hover b{text-decoration:underline}
+.pcal .pi{flex:1;min-width:0}
+.pcal b{display:block;font-size:.98rem}
+.pcal small{display:block;color:var(--mute);font-size:.8rem}
+.pcal .pgo{flex:0 0 auto;font-weight:800;font-size:.84rem;color:var(--brand-text);white-space:nowrap}
+.prulelist{margin:0;padding-inline-start:1.3em}
+.prulelist li{margin:0 0 8px}
 """
 
 
@@ -397,13 +567,14 @@ def render():
         todays = [m for m in ms if _day(m["ts"]) == today or m["state"] == "in"]
         results = [m for m in ms if m["state"] == "post" and m not in todays]
         upcoming = [m for m in ms if m["state"] == "pre" and m not in todays]
+        pz = _contests(ms)
         sections = []
         if todays:
-            sections.append(("today", "مباريات اليوم", _by_day(todays)))
+            sections.append(("today", "مباريات اليوم", _by_day(todays, pz=pz)))
         if results:
-            sections.append(("results", "النتائج", _by_day(results, newest_first=True)))
+            sections.append(("results", "النتائج", _by_day(results, newest_first=True, pz=pz)))
         if upcoming:
-            sections.append(("upcoming", "المباريات القادمة", _by_day(upcoming)))
+            sections.append(("upcoming", "المباريات القادمة", _by_day(upcoming, pz=pz)))
         groups = {"league": CUP["level"], "groups": data["groups"], "zones": ZONES}
         if data["groups"]:
             sections.append(("groups", "ترتيب المجموعات", league.tables_html(groups)))
@@ -413,7 +584,7 @@ def render():
             cards.append(f'<section class="card" id="{k}" aria-labelledby="{k}-h"><h2 id="{k}-h">{t}</h2>{body}</section>')
             if i == 0:
                 cards.append(_ad("cup-ad-inline"))
-        body = (f'<nav class="ltabs" aria-label="أقسام الصفحة">{chips}</nav>' + "".join(cards)
+        body = (_banner(ms, pz) + f'<nav class="ltabs" aria-label="أقسام الصفحة">{chips}</nav>' + "".join(cards)
                 + f'<p class="lsrc">آخر تحديث: <time datetime="{datetime.datetime.fromtimestamp(at, RIYADH).isoformat()}">'
                 f'{league._when(at)}</time> بتوقيت السعودية · يُحدَّث تلقائيًا · المصدر ESPN</p>')
     else:
@@ -552,6 +723,9 @@ def render_match(tail):
             f'<p class="when">{_esc(when)}</p>'
             + (f'<p class="when">الملعب: <span dir="auto">{_esc(place)}</span></p>' if place else "") + "</section>")
     parts = [hero]
+    pz = _contests(data["matches"])
+    if m["id"] in pz:
+        parts.append(_predict_card(m, *pz[m["id"]]))
     goals = _goals_html(m, s)
     if goals:
         parts.append(f'<section class="card"><h2>الأهداف</h2>{goals}</section>')
@@ -567,7 +741,7 @@ def render_match(tail):
               and (x["group"] == m["group"] if m["group"] else not x["group"] and x["stage"] == m["stage"])]
     if others:
         parts.append(f'<section class="card"><h2>مباريات {_esc(group["name"] if group else m["stage"])} الأخرى</h2>'
-                     + _by_day(others) + "</section>")
+                     + _by_day(others, pz=pz) + "</section>")
     parts.append(f'<p class="lsrc"><a class="link" href="{PATH}">كل نتائج {_esc(CUP["name"])} ومبارياته ←</a></p>')
     event = {"@context": "https://schema.org", "@type": "SportsEvent", "name": f"{h['name']} × {a['name']}",
              "sport": "Soccer", "startDate": datetime.datetime.fromtimestamp(m["ts"], RIYADH).isoformat(),
@@ -590,10 +764,67 @@ def render_match(tail):
     return 200, body, (LIVE_TTL if live else 300)
 
 
+def render_predict():
+    """صفحة المسابقة (‏/nations-league/predict): المفتوحة للتوقّع، والمفروزة بفائزيها، وشروطها
+    وطريقة الفرز. ← (رمز، بايتات، مدة الكاش)."""
+    data = _feed.get()[0]
+    rows = contest.listing(contests(), (data or {}).get("matches", []))
+    page_url = guide_pages.SITE + PREDICT
+    title = f"مسابقة توقّع النتيجة واربح اشتراكًا — {CUP['name']} | سمارت سوق"
+    h1 = "مسابقة توقّع النتيجة"
+    desc = (f"توقّع نتيجة مباريات {CUP['name']} مجانًا واربح اشتراكًا من سمارت سوق. التوقّعات تُقفل مع صافرة "
+            "البداية، والفرز آليٌّ بعد صافرة النهاية بفيديو يشرح كيف تم.")
+
+    def item(r):
+        mt = r["match"]
+        href = f"{PATH}/{mt['slug']}#predict"
+        teams = f"{_esc(mt['home'])} و{_esc(mt['away'])}"
+        if r["state"] == "open":
+            info, go = f"الجائزة: {_esc(r['prize'])} · تُقفل {_esc(when_label(mt['ts']))}", "توقّع الآن ←"
+        elif r["state"] == "done":
+            h, a = r["score"] or (0, 0)
+            won = "، ".join(_esc(w) for w in r["won"]) or "لا فائز"
+            info = (f"{_esc(mt['home'])} {h} – {a} {_esc(mt['away'])} · الفائز: {won} · {r['count']} توقّعًا")
+            go = "شاهد الفرز ←"
+        else:
+            info, go = f"الجائزة: {_esc(r['prize'])} · {_esc(contest.STATE_MSG.get(r['state'], ''))}", "التفاصيل ←"
+        return (f'<li><a href="{href}"><span class="pi"><b>مباراة {teams}</b><small>{info}</small></span>'
+                f'<span class="pgo">{go}</span></a></li>')
+
+    parts = []
+    groups = [("open", "مفتوحة للتوقّع", [r for r in rows if r["state"] == "open"]),
+              ("live", "أُقفلت وتنتظر الفرز", [r for r in rows if r["state"] in ("closed", "pending", "hold")]),
+              ("done", "فُرزت", [r for r in rows if r["state"] == "done"][:20])]
+    for key, head, rs in groups:
+        if rs:
+            parts.append(f'<section class="card" id="{key}"><h2>{head}</h2><ul class="pcal">'
+                         + "".join(item(r) for r in rs) + "</ul></section>")
+    if not rows:
+        parts.append('<section class="card"><p>لا مسابقة مفتوحة الآن. تابع <a class="link" href="'
+                     f'{PATH}">مباريات {_esc(CUP["name"])}</a>، ونعلن المسابقة القادمة على صفحة مباراتها.</p></section>')
+    rules = "".join(f"<li>{_esc(x)}</li>" for x in contest.RULES)
+    parts.append(f'<section class="card" id="rules"><h2>الشروط وطريقة الفرز</h2><ol class="prulelist">{rules}</ol>'
+                 '<h3>الفرز بالأرقام</h3><p class="sub">عند الإقفال تُحسب <b>بصمة التوقّعات</b> (SHA-256 لقائمتها) '
+                 'وتظهر في صفحة المباراة. وبعد صافرة النهاية: <b>رقم القرعة</b> = SHA-256(البصمة | رقم المباراة | '
+                 'النتيجة)، ورقم الفائز الأول = أول 12 خانة من SHA-256(رقم القرعة:0) عددًا عشريًّا، والفائز هو '
+                 'المؤهّل الذي ترتيبه (بترتيب التسجيل) باقي قسمة ذلك الرقم على عدد المؤهّلين، مبتدئًا من الصفر. '
+                 'وكل أرقام الفرز منشورة في صفحة المباراة ليتحقّق منها من شاء.</p></section>')
+    crumbs = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "دليل سمارت سوق", "item": guide_pages.SITE + "/"},
+        {"@type": "ListItem", "position": 2, "name": CUP["name"], "item": guide_pages.SITE + PATH},
+        {"@type": "ListItem", "position": 3, "name": h1, "item": page_url}]}
+    head = (f"<h1>{h1}</h1>\n<p class=\"sub\">توقّع نتيجة المباراة مجانًا واربح اشتراكًا من سمارت سوق — "
+            "الفرز آليٌّ بعد صافرة النهاية.</p>")
+    body = _doc(title, desc, page_url, [crumbs], f'<a class="link" href="{PATH}">{_esc(CUP["name"])}</a> ← {h1}',
+                head, "".join(parts), False)
+    return 200, body, 60
+
+
 def sitemap():
     """صفحة البطولة وصفحات مبارياتها لخريطة الموقع."""
     data = _feed.get()[0]
-    return [(PATH, "daily", "0.8")] + [(url(m), "daily", "0.6") for m in (data or {}).get("matches", [])]
+    return ([(PATH, "daily", "0.8"), (PREDICT, "daily", "0.6")]
+            + [(url(m), "daily", "0.6") for m in (data or {}).get("matches", [])])
 
 
 WIDGET_ROWS = 4
@@ -630,7 +861,8 @@ def render_widget(theme=""):
     upcoming = [m for m in ms if m["state"] == "pre" and m not in todays]
     cols = ([("مباريات اليوم", todays[:WIDGET_ROWS]), ("المباريات القادمة", upcoming[:WIDGET_ROWS])] if todays
             else [("المباريات القادمة", upcoming[:2 * WIDGET_ROWS])])
-    body = ("".join(f"<div><h2>{t}</h2>{_by_day(rows, new_tab=True)}</div>" for t, rows in cols if rows) if ms
+    pz = _contests(ms)
+    body = ("".join(f"<div><h2>{t}</h2>{_by_day(rows, new_tab=True, pz=pz)}</div>" for t, rows in cols if rows) if ms
             else '<p class="sub">تعذّر تحميل المباريات الآن، ونعيد المحاولة تلقائيًا.</p>')
     live = any(m["state"] == "in" for m in ms)
     doc = f"""<!doctype html>
@@ -652,6 +884,7 @@ def render_widget(theme=""):
 <section class="card wcard">
 <a class="wtop" href="{PATH}" target="_blank" rel="noopener">{BALL}<span><b>{_esc(CUP['name'])}</b>
 <small>{_esc(CUP['level'])} · {_esc(CUP['season'])}</small></span><span class="all">كل النتائج ←</span></a>
+{_banner(ms, pz, new_tab=True)}
 <div class="wcols">{body}</div>
 <p class="lsrc">يُحدَّث تلقائيًا · المصدر ESPN</p>
 </section>

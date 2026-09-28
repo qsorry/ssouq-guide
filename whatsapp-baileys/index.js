@@ -4,13 +4,18 @@
 // ثم تعرض واجهة HTTP بسيطة تستدعيها أداة Guide عبر قناة "بوابة HTTP خاصة":
 //   GET  /health              → صحّة الخدمة (بلا مصادقة)
 //   GET  /            (?key=) → صفحة مسح رمز QR للربط
-//   GET  /status      (?key=) → {connected, me, hasQR}
+//   GET  /status      (?key=) → {connected, me, hasQR, inbound}
 //   GET  /qr          (?key=) → {connected, qr}   (qr = صورة data-URL)
 //   POST /send    (Bearer)    → {to, text} → يرسل، ويرجّع {ok, id}
 //   POST /logout  (Bearer)    → يفصل الجلسة لإعادة الربط
 //
-// المصادقة بمتغيّر البيئة WA_SECRET (Bearer للـ POST، أو ?key= لصفحات GET).
-// WA_FAKE=1 يشغّل الخدمة بمُرسِل وهمي (بلا واتساب) لاختبار الواجهة والتكامل.
+// والرسائل الواردة: رسالة توقّعٍ من مسابقة التوقّعات («رمز التوقّع: XXXXXX») تُمرَّر إلى
+// WA_INBOUND_URL (‏/api/contest/wa-inbound في أداة Guide) برقم مرسلها ووقتها من خادم واتساب،
+// ويُرسل ردّها للمرسل. وما عداها من رسائل العملاء لا يُمرَّر ولا يُردّ عليه.
+//
+// المصادقة بمتغيّر البيئة WA_SECRET (Bearer للـ POST، أو ?key= لصفحات GET)، وبه نفسه تُوقَّع
+// الرسائل الممرَّرة. WA_FAKE=1 يشغّل الخدمة بمُرسِل وهمي (بلا واتساب) لاختبار الواجهة والتكامل،
+// ومعه POST /fake-inbound {from, text, name, ts} يحاكي رسالةً واردة.
 //
 // تنويه: Baileys غير رسمي وقد يُعرّض الرقم للحظر — استعمله برقم عمليات مخصّص.
 
@@ -22,10 +27,67 @@ const HOST = process.env.WA_BIND || '0.0.0.0';
 const SECRET = (process.env.WA_SECRET || '').trim();
 const AUTH_DIR = process.env.WA_AUTH_DIR || './auth';
 const FAKE = !!process.env.WA_FAKE;
+const INBOUND = (process.env.WA_INBOUND_URL || '').trim();   // أين تُمرَّر رسائل التوقّعات
 
 const state = { connected: false, me: '', qr: null };   // qr = صورة data-URL
 let sendImpl = async () => { throw new Error('واتساب غير متصل'); };
 export const __sent = [];                                // لأغراض الاختبار (WA_FAKE)
+
+
+// ---------- الرسائل الواردة: مسابقة التوقّعات ----------
+// العلامة بلا تشكيل: «رمز التوقّع» مكتوبة في الرسالة الجاهزة، ولا يُمرَّر غيرها
+const MARK = /رمز\s*التوقع/;
+const plain = (t) => String(t || '').replace(/[\u064B-\u065F\u0670\u0640]/g, '');
+const seen = new Set();                                  // معرّفات ما مُرِّر (رسالةٌ تصل مرتين تُمرَّر مرة)
+
+function textOf(m) {
+  const x = (m && m.message) || {};
+  const inner = (x.ephemeralMessage && x.ephemeralMessage.message) ||
+    (x.viewOnceMessage && x.viewOnceMessage.message) || (x.viewOnceMessageV2 && x.viewOnceMessageV2.message) || x;
+  return inner.conversation || (inner.extendedTextMessage && inner.extendedTextMessage.text) || '';
+}
+
+// رقم المرسل: من remoteJid إن كان رقمًا، أو من senderPn حين يصل المرسل بمعرّف LID
+function phoneOf(key) {
+  for (const j of [key.senderPn, key.remoteJid]) {
+    if (j && /@s\.whatsapp\.net$/.test(j)) return j.split('@')[0].split(':')[0];
+  }
+  return '';
+}
+
+function secondsOf(t) {
+  if (typeof t === 'number') return t;
+  if (t && typeof t.toNumber === 'function') return t.toNumber();
+  return Number(t) || 0;
+}
+
+export async function handleInbound(msg, reply) {
+  if (!INBOUND || !MARK.test(plain(msg.text))) return { forwarded: false };
+  if (msg.id) {
+    if (seen.has(msg.id)) return { forwarded: false, repeat: true };
+    seen.add(msg.id);
+    if (seen.size > 5000) seen.delete(seen.values().next().value);
+  }
+  let d = {};
+  try {
+    const r = await fetch(INBOUND, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + SECRET },
+      body: JSON.stringify({ from: msg.from, text: msg.text, name: msg.name, id: msg.id, ts: msg.ts }),
+      signal: AbortSignal.timeout(15000),
+    });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok) return { forwarded: true, status: r.status, error: d.error || '' };
+  } catch (e) {
+    console.error('inbound error', (e && e.message) || e);
+    if (msg.id) seen.delete(msg.id);                     // تُعاد إن وصلت ثانيةً
+    return { forwarded: false, error: String((e && e.message) || e) };
+  }
+  if (d.reply) {
+    try { await reply(String(d.reply)); } catch (e) { console.error('reply error', (e && e.message) || e); }
+  }
+  return { forwarded: true, status: 200, reply: d.reply || '' };
+}
 
 
 async function startBaileys() {
@@ -65,12 +127,22 @@ async function startBaileys() {
       const r = await sock.sendMessage(jid, { text: String(text) });
       return (r && r.key && r.key.id) || '';
     };
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+      for (const m of messages || []) {
+        const k = m.key || {}, jid = k.remoteJid || '';
+        if (k.fromMe || !jid || /@(g\.us|broadcast|newsletter)$/.test(jid)) continue;
+        const text = textOf(m);
+        if (!text) continue;
+        await handleInbound({ from: phoneOf(k), text, name: m.pushName || '', id: k.id || '', ts: secondsOf(m.messageTimestamp) },
+                            (t) => sock.sendMessage(jid, { text: t }));
+      }
+    });
   };
   start();
 }
 
 function startFake() {
-  state.connected = true; state.me = 'FAKE';
+  state.connected = true; state.me = (process.env.WA_FAKE_ME || '').trim() || 'FAKE';
   sendImpl = async (to, text) => { __sent.push({ to, text }); return 'FAKE-' + __sent.length; };
 }
 
@@ -116,7 +188,7 @@ const server = http.createServer((req, res) => {
   if (!authed(req, url)) return json(res, 401, { ok: false, error: 'unauthorized' });
 
   if (req.method === 'GET' && p === '/status')
-    return json(res, 200, { connected: state.connected, me: state.me, hasQR: !!state.qr });
+    return json(res, 200, { connected: state.connected, me: state.me, hasQR: !!state.qr, inbound: !!INBOUND });
   if (req.method === 'GET' && p === '/qr')
     return json(res, 200, { connected: state.connected, qr: state.qr });
   if (req.method === 'GET' && (p === '/' || p === '/link')) {
@@ -136,6 +208,20 @@ const server = http.createServer((req, res) => {
       if (!state.connected) return json(res, 503, { ok: false, error: 'واتساب غير متصل — امسح الرمز أولًا' });
       try { const id = await sendImpl(to, text); json(res, 200, { ok: true, id }); }
       catch (e) { json(res, 502, { ok: false, error: String((e && e.message) || e) }); }
+    });
+    return;
+  }
+  if (req.method === 'POST' && p === '/fake-inbound' && FAKE) {   // يحاكي رسالةً واردة (اختبار فقط)
+    let raw = '';
+    req.on('data', (c) => { raw += c; if (raw.length > 1e5) req.destroy(); });
+    req.on('end', async () => {
+      let o = {};
+      try { o = JSON.parse(raw || '{}'); } catch { return json(res, 400, { ok: false, error: 'bad json' }); }
+      const from = String(o.from || '').replace(/\D/g, ''), before = __sent.length;
+      const out = await handleInbound({ from, text: String(o.text || ''), name: String(o.name || ''),
+                                        id: String(o.id || ''), ts: Number(o.ts) || Math.floor(Date.now() / 1000) },
+                                      (t) => sendImpl(from, t));
+      json(res, 200, { ok: true, ...out, sent: __sent.slice(before) });
     });
     return;
   }
