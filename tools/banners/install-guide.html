@@ -1,0 +1,92 @@
+<!doctype html>
+<!--
+  بنر «شرح التثبيت» في سلايدر رئيسية المتجر (قسم «صور متحركة» في ssouq.com)، ورابطه
+  https://guide.ssouq.com/#activate — معالج التفعيل خطوة بخطوة.
+  المقاس 1440×556 كبقية شرائح السلايدر (نسبة 1108×428 التي تطلبها سلة)، والخط Noto Sans Arabic
+  كالشريحتين «باقة ١٥ شهرًا لجهازين» و«شاشتك ذكية؟».
+  بعد أي تعديل هنا:  node tools/render_banner.js tools/banners/install-guide.html static/img/store/install-guide.webp
+-->
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&family=Noto+Sans:wght@400;700&display=block" rel="stylesheet">
+<style>
+  :root{--gold:#E8B04A;--ink:#0B2233;--sky:#50C2E9;--frame:#3D8DB3;--screen:#0B2E45}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1440px;height:556px;overflow:hidden}
+  body{font-family:"Noto Sans Arabic","Noto Sans",sans-serif;color:#fff;
+    background:
+      radial-gradient(ellipse 55% 95% at 90% 0%, rgba(40,146,196,.55), transparent 70%),
+      repeating-linear-gradient(118deg, rgba(255,255,255,.022) 0 2px, transparent 2px 96px),
+      linear-gradient(100deg,#022B44 0%,#004A70 48%,#0B6997 100%)}
+  .copy{position:absolute;right:75px;top:50%;transform:translateY(-50%);width:640px}
+  .pill{display:inline-block;font-size:19px;line-height:1;padding:10px 20px;border-radius:999px;
+    background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.28);color:#DCECF5}
+  h1{font-size:62px;line-height:1.28;font-weight:700;margin:22px 0 14px}
+  h1 em{font-style:normal;color:var(--gold)}
+  p{font-size:25px;line-height:1.5;color:#CFE3EE;margin-bottom:30px}
+  .btn{display:inline-block;background:var(--gold);color:#10202C;font-size:25px;font-weight:700;
+    padding:15px 46px;border-radius:14px;box-shadow:0 10px 24px rgba(0,0,0,.22)}
+  svg{position:absolute;left:70px;top:50%;transform:translateY(-50%)}
+  .logo{clip-path:inset(0 round 9px)}
+</style>
+</head>
+<body>
+  <div class="copy">
+    <span class="pill">اشتريت اشتراكك؟</span>
+    <h1>شرح <em>التثبيت</em><br>خطوة بخطوة</h1>
+    <p>آيفون · أندرويد · شاشات سامسونج و LG · ويندوز وماك</p>
+    <span class="btn">ابدأ الشرح</span>
+  </div>
+
+  <svg width="600" height="470" viewBox="0 -24 600 470" xmlns="http://www.w3.org/2000/svg">
+    <!-- الشاشة -->
+    <rect x="110" y="40" width="440" height="280" rx="22" fill="var(--screen)" stroke="var(--frame)" stroke-width="8"/>
+    <rect x="296" y="324" width="68" height="34" fill="#1D5E7C"/>
+    <rect x="258" y="356" width="144" height="16" rx="8" fill="#2F7E9E"/>
+
+    <!-- مراحل المعالج من اليمين: الاشتراك (تمّ) ← جهازك (الحالية) ← التطبيق ← جاهز -->
+    <line x1="220" y1="86" x2="440" y2="86" stroke="#1F5A7A" stroke-width="4"/>
+    <line x1="366" y1="86" x2="440" y2="86" stroke="var(--sky)" stroke-width="4"/>
+    <circle cx="440" cy="86" r="15" fill="var(--sky)"/>
+    <path d="M433 86l5 5 9-10" fill="none" stroke="var(--ink)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="367" cy="86" r="15" fill="var(--gold)"/>
+    <text x="367" y="92" text-anchor="middle" font-size="16" font-weight="700" fill="var(--ink)" font-family="Noto Sans">2</text>
+    <circle cx="294" cy="86" r="14" fill="var(--screen)" stroke="#2C6F92" stroke-width="3"/>
+    <circle cx="220" cy="86" r="14" fill="var(--screen)" stroke="#2C6F92" stroke-width="3"/>
+
+    <!-- «أي اشتراك لديك؟»: سمارت (مختار) · فالكون · كاسبر -->
+    <rect x="150" y="122" width="360" height="54" rx="12" fill="rgba(232,176,74,.10)" stroke="var(--gold)" stroke-width="2.5"/>
+    <image class="logo" href="../../static/img/brands/smart.webp" x="460" y="130" width="38" height="38"/>
+    <rect x="306" y="136" width="140" height="11" rx="5.5" fill="#E6F1F7"/>
+    <rect x="266" y="154" width="180" height="8" rx="4" fill="#6E9AB3"/>
+    <circle cx="176" cy="149" r="11" fill="var(--gold)"/>
+    <path d="M170.5 149l4 4 7-8" fill="none" stroke="var(--ink)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="150" y="186" width="360" height="54" rx="12" fill="rgba(255,255,255,.04)" stroke="#23607F" stroke-width="2"/>
+    <image class="logo" href="../../static/img/brands/falcon.webp" x="460" y="194" width="38" height="38"/>
+    <rect x="326" y="200" width="120" height="11" rx="5.5" fill="#B9D3E1"/>
+    <rect x="286" y="218" width="160" height="8" rx="4" fill="#4F7F99"/>
+    <circle cx="176" cy="213" r="11" fill="none" stroke="#3B7A9C" stroke-width="2.5"/>
+
+    <rect x="150" y="250" width="360" height="54" rx="12" fill="rgba(255,255,255,.04)" stroke="#23607F" stroke-width="2"/>
+    <image class="logo" href="../../static/img/brands/casper.webp" x="460" y="258" width="38" height="38"/>
+    <rect x="336" y="264" width="110" height="11" rx="5.5" fill="#B9D3E1"/>
+    <rect x="276" y="282" width="170" height="8" rx="4" fill="#4F7F99"/>
+    <circle cx="176" cy="277" r="11" fill="none" stroke="#3B7A9C" stroke-width="2.5"/>
+
+    <!-- الجوال: تمّ التفعيل -->
+    <rect x="30" y="190" width="150" height="240" rx="26" fill="var(--screen)" stroke="var(--gold)" stroke-width="7"/>
+    <rect x="85" y="204" width="40" height="7" rx="3.5" fill="#2C6F92"/>
+    <circle cx="105" cy="292" r="36" fill="var(--gold)"/>
+    <path d="M89 292l11 11 21-23" fill="none" stroke="var(--ink)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="62" y="348" width="86" height="10" rx="5" fill="#E6F1F7"/>
+    <rect x="74" y="368" width="62" height="8" rx="4" fill="#6E9AB3"/>
+    <rect x="58" y="392" width="94" height="18" rx="9" fill="#1F5A7A"/>
+
+    <!-- الشارة -->
+    <circle cx="540" cy="46" r="52" fill="var(--gold)"/>
+    <text x="540" y="56" text-anchor="middle" font-size="26" font-weight="700" fill="#10202C" font-family="Noto Sans Arabic">بالصور</text>
+  </svg>
+</body>
+</html>
