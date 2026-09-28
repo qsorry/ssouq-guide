@@ -413,6 +413,38 @@ def main():
         code, d = a.jreq("/admin/api/split/cfg", {"auto": False, "remind_days": 5})
         check("settings saved (manual mode, 5-day reminder)", code == 200 and d["cfg"] == {"auto": False, "remind_days": 5})
 
+        print("\n== 7b. تجربة على خطٍّ تجريبي (قبل الاعتماد على اللوحة) ==")
+        code, d = a.jreq("/admin/api/create", {"gate": g_m, "package_id": "1", "count": 1, "password": "111000111000"})
+        trial = (d.get("lines") or [{}])[0].get("username", "")
+        check("a trial line exists on the panel (plain create, not tracked)", code == 200 and trial and not d.get("split"))
+        code, d = a.jreq("/admin/api/split/test-rename", {"gate": g_m, "username": trial})
+        pl = next((l for l in panel_state(MARAH)["lines"] if l["username"] == d.get("new")), {})
+        check("test renamed it on the panel", d.get("ok") is True and pl and d.get("old") == trial,
+              json.dumps(d, ensure_ascii=False)[:160])
+        check("…password unchanged (on the panel and reported)", pl.get("password") == "111000111000"
+              and d.get("same_password") is True)
+        _, st8 = a.jreq("/admin/api/split/state")
+        gm = next(g for g in st8["accounts"][0]["gates"] if g["id"] == g_m)
+        check("gate marked 'tested OK' in settings", gm["edit"].get("edit") == "ok")
+        check("a test notification recorded (no email)", any(n["kind"] == "test" and n.get("mail") == "skip"
+                                                            for n in st8["notes"]))
+        check("the trial line is not tracked", not any(l["username"] == d.get("new") for l in st8["lines"]))
+        _, cur = a.jreq("/admin/api/split/state")
+        tracked = next(l for l in cur["lines"] if l["id"] == m_id)["username"]
+        code, d = a.jreq("/admin/api/split/test-rename", {"gate": g_m, "username": tracked})
+        check("refuses a customer's tracked line", code == 400 and "متابَع" in d.get("error", ""), d.get("error", ""))
+        code, d = a.jreq("/admin/api/split/test-rename", {"gate": g_m, "username": "000000000001"})
+        check("unknown username refused", code == 400)
+        code, d = a.jreq("/admin/api/create", {"gate": g_l, "package_id": "1", "count": 1})
+        ltrial = (d.get("lines") or [{}])[0].get("username", "")
+        edits0 = len(panel_state(LOCK)["edits"])
+        code, d = a.jreq("/admin/api/split/test-rename", {"gate": g_l, "username": ltrial})
+        check("locked panel: test reports 'not allowed', nothing sent",
+              d.get("ok") is False and d.get("kind") == "unsupported" and len(panel_state(LOCK)["edits"]) == edits0,
+              d.get("error", ""))
+        code, d = b.jreq("/admin/api/split/test-rename", {"gate": gb, "username": trial})
+        check("client without the feature cannot run tests", code == 403)
+
         print("\n== 8. العزل: لا يرى عميلٌ خطوط غيره ==")
         code, d = b.jreq("/admin/api/split/rotate", {"id": m_id})
         check("client B cannot touch client A's line", code == 403, str(code))

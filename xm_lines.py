@@ -2906,7 +2906,7 @@ class Handler(BaseHTTPRequestHandler):
             for a in scope:
                 split_subs.mark_read(DATA_DIR, a["id"], ids or None)
             return self._send(200, {"ok": True})
-        if path in ("/api/split/cfg", "/api/split/test-email", "/api/split/register"):
+        if path in ("/api/split/cfg", "/api/split/test-email", "/api/split/register", "/api/split/test-rename"):
             want = str(req.get("account_id") or "")
             a = next((x for x in scope if str(x["id"]) == want), None) if want else \
                 (scope[0] if len(scope) == 1 else None)
@@ -2923,6 +2923,8 @@ class Handler(BaseHTTPRequestHandler):
                     "هنا تصلك تذكيرات انتهاء الأجزاء المبيعة وتغيير أسماء المستخدمين.\n\n%s\n"
                     % (a.get("name", ""), split_page_url()))
                 return self._send(200, {"ok": bool(ok), "error": "" if ok else err})
+            if path == "/api/split/test-rename":
+                return self._split_test_rename(a, req)
             return self._split_register(a, req)
         rid = str(req.get("id") or "")
         a = next((x for x in scope if rid and rid in split_subs.load(DATA_DIR, x["id"])["lines"]), None)
@@ -2962,6 +2964,55 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             return self._send(400, {"error": str(e)})
         return self._send(200, {"ok": True, "line": split_subs.decorate(rec)})
+
+    def _split_test_rename(self, a, req):
+        """«تجربة على خطٍّ تجريبي»: يغيّر اسم خطٍّ تجريبي على لوحته الحقيقية كما سيحدث
+        عند انتهاء الأجزاء (كلمة المرور كما هي، وبالحرّاس أنفسهم)، ويسجّل للبوابة أنها
+        جُرِّبت. لا يُمسّ خطٌّ متابَع — فالتجربة لا تقطع عميلًا."""
+        if not split_on(a):
+            return self._send(403, {"error": "الميزة مغلقة لهذا العميل"})
+        gate = find_gate(a, req.get("gate"))
+        if not split_gate_ok(gate):
+            return self._send(400, {"error": "اختر بوابة مرح أو كاسبر أو فالكون"})
+        user = str(req.get("username", "")).strip()
+        if not user:
+            return self._send(400, {"error": "اكتب اسم مستخدم الخط التجريبي"})
+        if split_subs.find(split_subs.load(DATA_DIR, a["id"]), gate["id"], user):
+            return self._send(400, {"error": "هذا خطٌّ متابَع لعميل — جرّب على خطٍّ تجريبي لا على خطّ عميل"})
+        try:
+            found = split_find_line(gate, user)
+        except xm_web.CaptchaNeeded:
+            return self._send(200, {"ok": False, "kind": "transient",
+                                    "error": "اللوحة تطلب كود تحقّق — افتح صفحة الإنشاء وادخل بوابة «%s» ثم أعد التجربة"
+                                             % gate.get("name", "")})
+        except Exception as e:
+            return self._send(200, {"ok": False, "kind": "transient", "error": "تعذّر البحث في اللوحة: %s" % str(e)[:160]})
+        if not found:
+            return self._send(400, {"error": "لم أجد «%s» في اللوحة — انسخ اسم الخط التجريبي كما هو" % user})
+        new = split_subs.new_username(gate, user)
+        rec = {"username": user, "password": found.get("password", ""), "line_id": found.get("line_id", "")}
+        name = gate.get("name", "")
+        try:
+            res = split_change(gate, rec, {"username": new, "password": rec["password"]}) or {}
+        except split_subs.Transient as e:
+            return self._send(200, {"ok": False, "kind": "transient", "error": str(e)})
+        except split_subs.Unsupported as e:
+            split_subs.record_test(DATA_DIR, a["id"], gate, False,
+                                   "🧪 تجربة على «%s»: اللوحة لم تتح تغيير الاسم — لم يُرسَل إليها شيء (%s)." % (name, e),
+                                   error=str(e))
+            return self._send(200, {"ok": False, "kind": "unsupported", "error": str(e)})
+        except Exception as e:                  # أُرسل التعديل ولم يتأكّد: راجع اللوحة
+            split_subs.record_test(DATA_DIR, a["id"], gate, None,
+                                   "🧪 تجربة على «%s»: أُرسل تغيير الخط %s ← %s ولم يتأكّد: %s — راجع اللوحة."
+                                   % (name, user, new, str(e)[:200]))
+            return self._send(200, {"ok": False, "kind": "failed", "old": user, "new": new, "error": str(e)[:300]})
+        split_subs.record_test(DATA_DIR, a["id"], gate, True,
+                               "🧪 نجحت التجربة على «%s»: تغيّر اسم الخط التجريبي %s ← %s، وكلمة المرور كما هي."
+                               % (name, user, new))
+        return self._send(200, {"ok": True, "old": user, "new": new,
+                                "password": res.get("password") or rec["password"],
+                                "same_password": (res.get("password") or rec["password"]) == rec["password"],
+                                "exp": str(res.get("exp") or "")})
 
     def _split_register(self, a, req):
         """يُدخل خطًّا قائمًا (بِيع جزؤه الأول قبل تفعيل الميزة) في المتابعة. كلمة المرور

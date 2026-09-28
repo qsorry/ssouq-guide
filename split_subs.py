@@ -490,6 +490,24 @@ def _new_username(gate, current):
     return _new_value(n, cur)
 
 
+def new_username(gate, current):
+    """اسمٌ جديد بصيغة الحالي — للتجربة على خطٍّ تجريبي بالقاعدة نفسها."""
+    return _new_username(gate, current)
+
+
+def record_test(data_dir, acct_id, gate, ok, text, error="", now=None):
+    """نتيجة «تجربة على خطٍّ تجريبي»: حالة البوابة (جُرِّبت بنجاح/لم تتح) وإشعارٌ بها.
+    فشلٌ عابر (كود تحقّق، لوحة لا تردّ) لا يغيّر حالتها — لم تُجرَّب بعد."""
+    now = now or now_dt()
+    with _lock:
+        db = load(data_dir, acct_id)
+        if ok is not None:
+            db["gates"][str(gate.get("id", ""))] = {"edit": "ok" if ok else "unsupported",
+                                                    "at": fmt(now), "error": "" if ok else error[:300]}
+        _note(db, "test", {"gate_name": gate.get("name", "")}, text, now, mail=False)
+        save(data_dir, acct_id, db)
+
+
 def rotate(data_dir, acct_id, rid, gate, bridge, now=None, how="auto"):
     """يغيّر اسم مستخدم الخط على اللوحة (كلمة المرور كما هي) ويُغلق الجزء المبيع.
     يرجّع (السجل، النتيجة) حيث النتيجة: ok · busy · skip · missing · transient · failed.

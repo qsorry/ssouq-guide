@@ -215,7 +215,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;
 const MONTHS = n => { n = +n || 0; return n <= 0 ? "أقل من شهر" : n === 1 ? "شهر" : n === 2 ? "شهران" : n <= 10 ? n + " أشهر" : n + " شهرًا"; };
 const DAYS = n => n < 0 ? "متأخر " + (-n) + " يوم" : n === 0 ? "اليوم" : n === 1 ? "غدًا" : "بعد " + n + " يوم";
 const MODE = {web: "جلسة ويب", falcon: "فالكون", api: "Reseller API"};
-let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "";
+let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null;
 const icon = {copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'};
 
 for (const [id, p] of [["lnkHome", "/"], ["lnkBrand", "/"], ["lnkRenew", "/renew"], ["lnkAcc", "/accounts"], ["lnkOut", "/logout"]]) $(id).href = B + p;
@@ -386,6 +386,7 @@ function renderSettings(){
   const a = accs[0], m = a.mail || {};
   const mail = m.configured ? `<span class="ok-t">✓ تصل التذكيرات إلى ${m.to ? '<b class="mono">' + esc(m.to) + "</b>" : "بريد المدير"}</span>${m.source === "admin" && D.role === "admin" ? " (بريد المدير)" : ""}`
     : `<span class="err" style="margin:0">لم يُضبط بريد التنبيه — اضبطه من <a href="${B}/renew">صفحة التجديد</a> (قسم «بريد التنبيه»). الإشعارات تبقى هنا في الجرس.</span>`;
+  const testGates = a.gates.filter(g => g.supported).map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`);
   const gates = a.gates.map(g => {
     const e = g.edit || {};
     const st = !g.supported ? "خارج النظام (Reseller API) — يدوي" : e.edit === "ok" ? "✓ جُرِّب التغيير التلقائي بنجاح (" + esc((e.at || "").slice(0, 10)) + ")"
@@ -399,7 +400,28 @@ function renderSettings(){
     <div class="line-row"><button class="btn" id="sSave" data-acc="${esc(a.id)}">حفظ الإعدادات</button><button class="ghost" id="sTest" data-acc="${esc(a.id)}">إرسال بريد تجريبي</button></div>
     <p class="hint" style="font-size:.86rem">${mail}${m.last_error ? '<br><span class="err">آخر خطأ بريد: ' + esc(m.last_error) + "</span>" : ""}</p>
     <label class="f">البوابات</label><div class="gates">${gates}</div>
-    <span class="hint">جرّب التغيير التلقائي مرةً على كل لوحة بخطٍّ تجريبي («غيّر الآن» في الأجزاء الجارية) قبل الاعتماد عليه. ما لا تتيحه اللوحة لا يُرسَل إليها أصلًا، ويصير «يحتاج تدخّلًا» بإشعارٍ وبريد.</span>`;
+    <span class="hint">جرّب التغيير على كل لوحةٍ مرةً بخطٍّ تجريبي (بالأسفل) قبل الاعتماد عليه. ما لا تتيحه اللوحة لا يُرسَل إليها أصلًا، ويصير «يحتاج تدخّلًا» بإشعارٍ وبريد.</span>
+    ${testGates.length && a.enabled ? `<div class="card" id="testBox" style="margin-top:14px">
+      <b>🧪 تجربة على خطٍّ تجريبي</b>
+      <span class="hint" style="margin-top:4px">أنشئ خطًّا تجريبيًا من اللوحة نفسها (صفحة التجربة في مرح مثلًا)، واكتب اسمه هنا: يتغيّر اسم المستخدم على اللوحة الحقيقية كما سيحدث عند انتهاء الأجزاء، وكلمة المرور كما هي — فتعرف أن التغيير التلقائي يعمل على هذه البوابة. <b>لا تستخدم خطّ عميل.</b></span>
+      <div class="g2"><div><label class="f" for="tGate">البوابة</label><select class="t" id="tGate">${testGates.join("")}</select></div>
+        <div><label class="f" for="tUser">اسم مستخدم الخط التجريبي</label><input class="t ltr" id="tUser" inputmode="numeric" autocomplete="off"></div></div>
+      <div class="line-row"><button class="btn" id="tGo">جرّب تغيير الاسم</button></div>
+      <div id="tRes">${TEST_RES && TEST_RES.acc === a.id ? TEST_RES.html : ""}</div></div>` : ""}`;
+  if ($("tGo")) $("tGo").onclick = async () => {
+    const u = $("tUser").value.trim();
+    if (!u){ toast("اكتب اسم مستخدم الخط التجريبي", true); return; }
+    if (!confirm("سيتغيّر اسم «" + u + "» على اللوحة الآن (كلمة المرور كما هي). استخدم خطًّا تجريبيًا فقط — متابعة؟")) return;
+    const b = $("tGo"); b.disabled = true; b.textContent = "جاري التجربة على اللوحة…"; $("tRes").innerHTML = "";
+    let html;
+    try {
+      const d = await api("/api/split/test-rename", {account_id: a.id, gate: $("tGate").value, username: u});
+      html = d.ok ? `<div class="ok-t" style="margin-top:8px">✓ نجحت التجربة: <b class="mono">${esc(d.old)}</b> ← <b class="mono">${esc(d.new)}</b> — كلمة المرور ${d.same_password ? "كما هي" : "<span class='err'>تغيّرت!</span>"} (<span class="mono">${esc(d.password)}</span>). التغيير التلقائي يعمل على هذه البوابة.</div>`
+        : `<div class="err">${d.kind === "unsupported" ? "✗ اللوحة لم تتح تغيير الاسم — لم يُرسَل إليها شيء، والتغيير على هذه البوابة يدوي: " : d.kind === "failed" ? "⚠ أُرسل التغيير ولم يتأكّد — راجع اللوحة: " : ""}${esc(d.error || "تعذّرت التجربة")}</div>`;
+    } catch(e){ html = `<div class="err">${esc(e.message)}</div>`; }
+    TEST_RES = {acc: a.id, html};
+    await load();
+  };
   $("sSave").onclick = async () => {
     try { const d = await api("/api/split/cfg", {account_id: a.id, auto: $("sAuto").checked, remind_days: +$("sDays").value || 0});
       if (d.error) throw new Error(d.error); toast("حُفظت الإعدادات ✓"); load(); } catch(e){ toast(e.message, true); }

@@ -107,6 +107,22 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await user.click('#readAll');
     await sleep(500);
     check('mark all read clears the badge', await user.isHidden('#bellN'));
+
+    // ---- تجربة على خطٍّ تجريبي من الصفحة ----
+    const meU = await api(user, '/admin/api/me');
+    const made2 = await api(user, '/admin/api/create', {gate: meU.gates[0].id, package_id: 167, count: 1});
+    const trialU = made2.lines[0].username, trialP = made2.lines[0].password;
+    await user.goto(APP + '/admin/remaining');
+    await user.waitForSelector('#tGo');
+    check('trial-test block shown in settings', (await user.textContent('#testBox')).includes('تجربة على خطٍّ تجريبي'));
+    await user.fill('#tUser', trialU);
+    await user.click('#tGo');                                        // يقبل التأكيد
+    await user.waitForSelector('#tRes .ok-t, #tRes .err', {timeout: 15000});
+    const tres = await user.textContent('#tRes');
+    check('trial test renames it and keeps the password', tres.includes('نجحت التجربة') && tres.includes(trialU)
+          && tres.includes('كما هي') && tres.includes(trialP), tres);
+    check('gate now shows «جُرِّب … بنجاح»', (await user.textContent('.gates')).includes('جُرِّب التغيير التلقائي بنجاح'));
+    await shot(user, 'split-trial-test');
     await user.setViewportSize({width: 390, height: 844});
     await shot(user, 'split-remaining-mobile');
     const overflow = await user.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
