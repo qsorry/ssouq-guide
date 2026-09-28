@@ -74,6 +74,37 @@ class EditUnsupported(RuntimeError):
     تعذّر ما يُحفظ به الخط سليمًا). يُرفع **قبل** أي إرسال — فلم يتغيّر شيء."""
 
 
+class WeakRejected(RuntimeError):
+    """رفضت اللوحة الإنشاء لأن اسم المستخدم (أو كلمة المرور) «ضعيف» — لوحة مرح:
+    «Week username, Please use stronge username». رفضٌ قبل الإنشاء: لم يُنشأ شيء
+    ولم يُخصم، فالمولَّد منهما يُستبدل ويُعاد الإرسال. field = username أو password."""
+
+    def __init__(self, field: str, value: str, panel_msg: str, note: str = ""):
+        what = ("اسم المستخدم «%s» لأنها تراه ضعيفًا" if field == "username"
+                else "كلمة المرور «%s» لأنها تراها ضعيفة") % value
+        super().__init__("رفضت اللوحة %s (%s)%s" % (what, panel_msg, " — " + note if note else ""))
+        self.field, self.value, self.panel_msg = field, value, panel_msg
+
+
+# لوحة مرح ترفض ما تعدّه سهل التخمين بهذا النص حرفيًّا (بأخطائه): «Week username, Please
+# use stronge username». نلتقط صيغه القريبة، ولكلمة المرور أيضًا، دون رسائل الدخول
+# («Incorrect username or password») ولا «Username already exists».
+_WEAK_RE = re.compile(
+    r"\b(?:weak|week)[\s_-]*(user[\s_-]*name|pass[\s_-]*word)"
+    r"|\b(user[\s_-]*name|pass[\s_-]*word)[\s_-]+(?:is[\s_-]+)?(?:too[\s_-]+)?(?:weak|week)\b"
+    r"|\bstrong(?:e|er)?[\s_-]+(user[\s_-]*name|pass[\s_-]*word)", re.I)
+_WEAK_AR_RE = re.compile(r"(اسم\s*(?:ال)?مستخدم|كلمة\s*(?:ال)?مرور)[^.،\n]{0,20}?ضعيف")
+
+
+def weak_field(msg: str) -> str:
+    """"username" أو "password" إن رفضت اللوحة أحدهما لضعفه، وإلا ""."""
+    m = _WEAK_RE.search(msg or "") or _WEAK_AR_RE.search(msg or "")
+    if not m:
+        return ""
+    word = next(g for g in m.groups() if g).lower()
+    return "password" if word.startswith(("pass", "كلمة")) else "username"
+
+
 # ----------------------------- نماذج HTML (تعديل يوزر) -----------------------------
 # قراءةٌ عامّة لأي نموذج كما يرسله المتصفح: كل حقلٍ بقيمته، والمعطَّل لا يُرسَل،
 # والمربّعات المؤشَّرة وحدها، وخيارات select المحدَّدة (أو أولها). فيُرسَل نموذج
@@ -983,8 +1014,10 @@ class PanelWebSession:
         t_post = time.time()
 
         # إن ردّت اللوحة بخطأ صريح على الإنشاء نفسه (JSON أو تنبيه)، أوقف (لم يُنشأ).
+        # («Week username» فيها كلمة username فيعدّها المصنِّف خطأ دخول — فتُفحص قبله.)
         add_err = self._add_error(self._text(cr))
-        if add_err and self._classify_login_error(add_err) != "credentials":
+        weak = weak_field(add_err)
+        if add_err and not weak and self._classify_login_error(add_err) != "credentials":
             raise RuntimeError("رفضت اللوحة الإنشاء: " + add_err)
 
         # 4) تأكيد من جدول اللاينات (لجلب الـ id/الانتهاء):
@@ -993,7 +1026,18 @@ class PanelWebSession:
         # table_search.php موجود لكن بأعمدة وبحث آخرين) تُوقَف بعد ثلاث إخفاقات متتالية.
         meta = self._meta()
         found = {}
-        if not meta.get("no_table_search"):
+        if weak:
+            # اسمٌ (أو كلمة مرور) «ضعيف»: رفضٌ صريح قبل الإنشاء. نظرةٌ واحدة بلا انتظار
+            # تكفي للتأكّد أنه لم يُنشأ — لا ~١٢ ثانية من محاولات التأكيد — ثم يُرفع
+            # ليُستبدل (_submit_regen)، ولا يُلفَّق يوزرٌ مرفوض على لوحةٍ غير مثبتة.
+            if not meta.get("no_table_search"):
+                try:
+                    found = self._search_line(username) or self._recent_line(username)
+                except Exception:
+                    found = {}
+            if not found.get("id"):
+                raise WeakRejected(weak, username if weak == "username" else password, add_err)
+        elif not meta.get("no_table_search"):
             attempts = 6 if meta.get("table_search_ok") else 2
             for i in range(attempts):
                 try:
@@ -1048,19 +1092,49 @@ class PanelWebSession:
                        "confirm_ms": int((time.time() - t_post) * 1000)},
         }
 
-    def create_line(self, package_id, username=None, password=None, host=None) -> dict:
+    WEAK_TRIES = 5      # بدائل الاسم الذي ترفضه اللوحة لضعفه، لكل يوزر، قبل الإيقاف
+
+    def _submit_regen(self, prep: dict, username: str, password: str, regen=()) -> dict:
+        """_submit_add، وإن رفضت اللوحة ما ولّدناه نحن لضعفه (regen: username/password)
+        يُولَّد بديلٌ بالطول نفسه ويُعاد الإرسال، حتى WEAK_TRIES مرة. الرفض قبل الإنشاء
+        فلا شيء يُخصم مرتين. وما كتبه المشغّل لا يُستبدل أبدًا: يُرفع ليكتب غيره.
+        weak_retries في النتيجة = عدد البدائل."""
+        tries = 0
+        while True:
+            try:
+                res = self._submit_add(prep, username, password)
+                res["weak_retries"] = tries
+                return res
+            except WeakRejected as e:
+                if e.field not in regen:
+                    raise WeakRejected(e.field, e.value, e.panel_msg,
+                                       "اكتب غيره أو اترك الخانة فارغة ليُولَّد") from None
+                if tries >= self.WEAK_TRIES:
+                    raise WeakRejected(e.field, e.value, e.panel_msg,
+                                       "ورفضت قبله %d بدائل مولَّدة" % tries) from None
+                tries += 1
+                if e.field == "username":
+                    username = rand_digits(len(username))
+                else:
+                    password = rand_digits(len(password))
+
+    def create_line(self, package_id, username=None, password=None, host=None, regen=()) -> dict:
+        """regen: ما ولّده المستدعي ("username"/"password") فيُستبدل إن رفضته اللوحة لضعفه؛
+        وما لم يُمرَّر يُولَّد هنا فيدخل فيه. أما ما كتبه المشغّل فلا يُستبدل."""
+        regen = set(regen) | {k for k, v in (("username", username), ("password", password)) if not v}
         prep = self._prepare_add(package_id, host)
-        return self._submit_add(prep, str(username or _rand_digits()), str(password or _rand_digits()))
+        return self._submit_regen(prep, str(username or rand_digits()), str(password or rand_digits()), regen)
 
     def create_many(self, package_id, pairs, host=None) -> list:
-        """دفعة: (اسم، كلمة مرور) لكل يوزر — تحضير واحد ثم إرسال لكل زوج. يرجّع النتائج
-        بالترتيب؛ وإن فشل يوزر في المنتصف تُعاد النتائج الناجحة قبله مع الخطأ
-        (نقطة اللاعودة: ما أُنشئ قد خُصم، فلا يضيع)."""
+        """دفعة: (اسم، كلمة مرور) مولَّدَين لكل يوزر — تحضير واحد ثم إرسال لكل زوج. يرجّع
+        النتائج بالترتيب؛ والزوج الذي ترفضه اللوحة لضعفه يُستبدل ولا يوقف الدفعة. وإن فشل
+        يوزر في المنتصف تُعاد النتائج الناجحة قبله مع الخطأ (نقطة اللاعودة: ما أُنشئ قد
+        خُصم، فلا يضيع)."""
         prep = self._prepare_add(package_id, host)
         out = []
         for u, p in pairs:
             try:
-                out.append(self._submit_add(prep, str(u), str(p)))
+                out.append(self._submit_regen(prep, str(u), str(p), ("username", "password")))
             except Exception as e:
                 out.append({"error": str(e)[:200], "username": str(u), "password": str(p)})
                 break
@@ -2025,7 +2099,7 @@ class CasperWebSession(PanelWebSession):
         نتحكّم بها نحن (نُرسلها في النموذج) فلا نترك للوحة توليدَ كلمةٍ بحروف
         (زرّ Reset Pass في اللوحة يولّد حروفًا — والعميل يريدها أرقامًا)."""
         p = str(password or "")
-        return p if p.isdigit() else _rand_digits(12)
+        return p if p.isdigit() else rand_digits(12)
 
     def _submit_new(self, package_id, password, live, vod):
         """يُرسل نموذجَ إضافةٍ واحدًا (بلا تأكيد): يجلب النموذج (يوزرٌ مولَّدٌ من
@@ -2035,7 +2109,7 @@ class CasperWebSession(PanelWebSession):
         action, fields, u = self._add_form()
         page_ms = int((time.time() - t_page) * 1000)
         if not u:                                  # نادر: لا يوزر مملوء → نولّده نحن
-            u = _rand_digits(12)
+            u = rand_digits(12)
             fields["username"] = fields["usernameold"] = u
         p = self._num_pw(password)
         fields.update({"setChosePkg": str(package_id), "package": str(package_id),
@@ -2062,8 +2136,9 @@ class CasperWebSession(PanelWebSession):
         return found
 
     def create_line(self, package_id, username=None, password=None, host=None,
-                    bouquets=None) -> dict:
+                    bouquets=None, regen=()) -> dict:
         """يُنشئ يوزرًا بالباقة (المدة) المطلوبة عبر نموذج اللوحة نفسه.
+        (regen للتوافق مع الأب فقط: اليوزر هنا من اللوحة نفسها فلا يُستبدل.)
 
         اليوزر يأتي مولَّدًا من اللوحة (النموذج يملؤه سلفًا في username/usernameold)
         — لا نخترعه لأن اللوحة ترفض المخترَع. أمّا كلمة المرور فنضبطها نحن **رقمية**
@@ -2284,5 +2359,22 @@ def _to_num(s):
         return None
 
 
-def _rand_digits(n: int = 12) -> str:
-    return str(secrets.randbelow(9) + 1) + "".join(str(secrets.randbelow(10)) for _ in range(n - 1))
+def _weak_digits(s: str) -> bool:
+    """نمطٌ سهل التخمين في أرقام: ثلاثةٌ متتالية متماثلة (777) أو متسلسلة صعودًا أو
+    نزولًا، ولو دارت على الصفر (123 · 987 · 890 · 098)."""
+    d = [int(c) for c in s]
+    for a, b, c in zip(d, d[1:], d[2:]):
+        step = (b - a) % 10
+        if step in (0, 1, 9) and (c - b) % 10 == step:
+            return True
+    return False
+
+
+def rand_digits(n: int = 12) -> str:
+    """يوزر أو كلمة مرور: أرقامٌ عشوائية لا تبدأ بصفر ولا نمطَ سهلَ التخمين فيها
+    (_weak_digits) — لوحة مرح ترفض الاسم «الضعيف». يُعاد السحب حتى يخلو منه (نحو
+    ثلاثة أرباع السحوبات تخلو من أول مرة بطول ١٢)."""
+    while True:
+        s = str(secrets.randbelow(9) + 1) + "".join(str(secrets.randbelow(10)) for _ in range(n - 1))
+        if not _weak_digits(s):
+            return s

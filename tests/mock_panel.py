@@ -23,6 +23,8 @@
                                         تمديد مدفوع، بوكيهات فارغة = مسح القنوات،
                                         كلمة مرور فارغة = توليد جديدة
   GET  /__lines                       → اللاينات كما في «قاعدتها» (للاختبار فقط)
+  (weak) POST إنشاء بيوزر أو كلمة مرور فيها ثلاثة أحرف متماثلة متتالية → رفضٌ بنصّ مرح
+                                        حرفيًّا: «Week username, Please use stronge username»
   أي مسار محمي بلا جلسة → 302 /login
 """
 import sys
@@ -71,6 +73,9 @@ LOCK_USER = VARIANT == "lockuser"
 # jsbq = جدول بوكيهات نموذج التعديل يُرسم بالجافاسكربت (فارغٌ في HTML الخام).
 JS_BQ = VARIANT == "jsbq"
 EDITS = []      # (line id, form) لكل تعديل وصل
+# weak = لوحة ترفض اليوزر (أو كلمة المرور) «الضعيف» كمرح — بلا إنشاء ولا خصم.
+WEAK = VARIANT == "weak"
+WEAK_POSTS = []  # (username, password) لكل إنشاءٍ رُفض لضعفه
 
 
 class H(BaseHTTPRequestHandler):
@@ -118,8 +123,8 @@ class H(BaseHTTPRequestHandler):
         if path == "/token.php":
             return self._send(200, secrets.token_urlsafe(32), "text/plain")
         if path == "/__lines":                    # للاختبار فقط: حالة اللاينات (بلا جلسة)
-            return self._send(200, json.dumps({"lines": LINES, "edits": EDITS, "extends": EXTENDS}),
-                              "application/json")
+            return self._send(200, json.dumps({"lines": LINES, "edits": EDITS, "extends": EXTENDS,
+                                               "weak_posts": WEAK_POSTS}), "application/json")
 
         # بوابة التحقّق البشري
         if not self._has_human() and path not in ("/token.php",):
@@ -336,6 +341,12 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, '<div class="alert">username required</div>', headers=hdr)
             if NOCAP and "selected_bouquets" in form:   # Xtream Codes لا يعرف هذا الحقل
                 return self._send(200, '<div class="alert alert-danger">Error: unknown field selected_bouquets</div>', headers=hdr)
+            if WEAK:                                    # اليوزر أولًا ثم كلمة المرور، كمرح
+                for field, val in (("username", uname), ("password", form.get("password", ""))):
+                    if re.search(r"(.)\1\1", val):
+                        WEAK_POSTS.append((uname, form.get("password", "")))
+                        return self._send(200, '<div class="alert alert-danger">Week %s, Please use stronge %s</div>'
+                                          % (field, field), headers=hdr)
             LINES.append({
                 "id": str(secrets.randbelow(9000) + 1000),
                 "username": uname, "password": form.get("password", ""),
