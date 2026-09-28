@@ -98,9 +98,19 @@ STATS_FILE = os.path.join(DATA_DIR, "stats.json")   # عدّاد أداة M3U ا
 # مسابقاتها والقناة الناقلة لكل مباراة من مجلد البيانات هذا
 CUPS = (tournament, tournament.instance("gulf_cup", **tournament.GULF))
 HUB_CUPS = (CUPS[1], CUPS[0])                 # ودجت المتجر: كأس الخليج أولًا
+
+
+def tv_map():
+    """القنوات الناقلة: ما كتبه المدير لكل مباراة وبطولة، وقناة كل بطولةٍ من إعدادها ما لم يغيّرها."""
+    tv = contest.channels(DATA_DIR)
+    for t in CUPS:
+        tv.setdefault("cup:" + t.PATH, t.CUP.get("tv", ""))
+    return tv
+
+
 for _cup in CUPS:
     _cup.contests = lambda: contest.summaries(DATA_DIR)
-    _cup.channels = lambda: contest.channels(DATA_DIR)
+    _cup.channels = tv_map
 
 
 def cup_matches():
@@ -2395,7 +2405,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {"ok": False, "error": "unknown league"})
             return self._send(200, t, extra={"Cache-Control": "public, max-age=300" if t["ok"] else "no-store"})
         if path == predict_page.PATH:           # مسابقة التوقّعات: البطولتان، والفائزون، والشروط
-            code, body, age = predict_page.render(HUB_CUPS, contest.summaries(DATA_DIR), contest.channels(DATA_DIR))
+            code, body, age = predict_page.render(HUB_CUPS, contest.summaries(DATA_DIR), tv_map())
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"})
         for t in CUPS:                          # البطولات: صفحتها وودجتها ومسابقتها ومبارياتها
@@ -2993,15 +3003,24 @@ class Handler(BaseHTTPRequestHandler):
                                 "contest": res["status"]})
 
     def _contest_admin_get(self, path):
+        if path == "/api/contest/admin/summary":       # أرقام لوحة الإدارة: من الملخّصات وحدها، بلا ESPN ولا واتساب
+            summ = contest.summaries(DATA_DIR).values()
+            live = [s for s in summ if s["on"] and not s["draw"] and not s["void"]]
+            return self._send(200, {"ok": True, "active": len(live), "predictions": sum(s["count"] for s in summ),
+                                    "done": sum(1 for s in summ if s["draw"]),
+                                    "winners": sum(len(s.get("won") or []) for s in summ)})
         ms, feed_ok = cup_matches()
         if path == "/api/contest/admin":
             rows = contest.admin_rows(DATA_DIR, ms)
-            tv = contest.channels(DATA_DIR)
+            tv = tv_map()
             for r in rows:
                 r["when"] = tournament.when_label(r["match"]["ts"]) if r["match"].get("ts") else ""
-                r["tv"] = tv.get(r["eid"], "")
+                r["tv"] = contest.channel_for(tv, r["eid"], contest.cup_path(r["match"]))   # للعرض والرسالة
+                r["tv_own"] = tv.get(r["eid"], "")                                       # ما كُتب لها وحدها
             return self._send(200, {"ok": True, "rows": rows, "feed": feed_ok or bool(ms),
-                                    "channels": sorted(set(tv.values()) | set(contest.TV_SUGGEST)),
+                                    "channels": sorted({v for v in tv.values() if v} | set(contest.TV_SUGGEST)),
+                                    "cups": [{"path": t.PATH, "name": t.CUP["name"], "tv": tv["cup:" + t.PATH],
+                                              "default": t.CUP.get("tv", "")} for t in HUB_CUPS],
                                     "settings": contest.load_settings(DATA_DIR), "reader": self._reader_view(),
                                     "announce": tournament.announcement(rows),
                                     "announce_by": {r["eid"]: tournament.announcement([r]) for r in rows
@@ -3054,7 +3073,12 @@ class Handler(BaseHTTPRequestHandler):
             code, d, err = reader_call("DELETE", "/sessions/" + contest.READER_TENANT)
             _reader_cache["d"] = None
             return self._send(200 if code == 200 else 502, {"ok": code == 200, "error": err, **self._reader_view()})
-        if path == "/api/contest/admin/tv":              # القناة الناقلة لمباراة (تظهر في صفحاتها ورسالة القناة)
+        if path == "/api/contest/admin/tv":              # القناة الناقلة لمباراة، أو الافتراضية لبطولة
+            if req.get("cup"):
+                cup = str(req["cup"])
+                if cup not in {t.PATH for t in CUPS}:
+                    return self._send(404, {"error": "بطولةٌ غير معروفة"})
+                return self._send(200, {"ok": True, "channel": contest.set_channel(DATA_DIR, "cup:" + cup, req.get("channel"))})
             if not cup_match(req.get("m")):
                 return self._send(404, {"error": "المباراة ليست في جدول البطولات"})
             return self._send(200, {"ok": True, "channel": contest.set_channel(DATA_DIR, req.get("m"), req.get("channel"))})
