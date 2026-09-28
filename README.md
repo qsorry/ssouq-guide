@@ -558,6 +558,7 @@ python tests/test_renew.py
   `static/contest.js` بطاقة صفحة المباراة، `static/contest-draw.js` فيديو الفرز. بياناتها في
   `data/contest/` (ملفٌّ لكل مباراة، و`settings.json`).
 - `tools/sync_guide_data.js` يستخرج كائن `DEVICES` من `index.html` إلى `static/guide-data.json`.
+- `tools/banners/` مصادر بنرات المتجر (HTML)، و`tools/render_banner.js` يصوّرها WebP إلى `static/img/store/`.
 - `xm_lines.py` السيرفر (Python بدون مكتبات خارجية). الحسابات تُحفظ في `data/accounts.json`، وعدّاد أداة M3U العامة في `data/stats.json` (يظهر في الصفحة الرئيسية ويُقرأ من `/api/stats`).
 - `index.html` المعالج العام مع قسم اشتراكات المتجر (روابط شراء مباشرة إلى ssouq.com)، `static/` الصور والشعار والأيقونات (`static/icons`) و `site.webmanifest` و `sitemap.xml`.
 - `xm_lines.html` صفحة الإنشاء، `admin.html` لوحة الإدارة والحسابات (رئيسيتها: أرقام المسابقات من
@@ -955,3 +956,22 @@ Sitemap: https://guide.ssouq.com/store-sitemap.xml
 
 `/store-sitemap.json` يعرض الحالة: المصدر وعدد المنتجات وهل وقع بتر.
 وإن تعذّر الجلب تبقى آخر نسخة صالحة بدل تقديم خريطة ناقصة.
+
+
+## بنر «شرح التثبيت» في رئيسية المتجر
+الشريحة **الرابعة** في سلايدر «صور متحركة» أعلى رئيسية ssouq.com (ثيم رائد)، بجانب شرائح العروض الثلاث،
+ورابطها **`https://guide.ssouq.com/#activate`** — معالج التفعيل من أول خطوة («أي اشتراك لديك؟»)، وهي ما
+ترسمه الشاشة في البنر: مراحل المعالج وخيارات سمارت وفالكون وكاسبر بشعاراتها.
+
+| | |
+|---|---|
+| **الصورة** | `static/img/store/install-guide.webp` ‏1440×556 كبقية الشرائح (نسبة 1108×428 التي تطلبها سلة)، بخطّها Noto Sans Arabic وتدرّجها الأزرق وزرّها الذهبي |
+| **المصدر** | `tools/banners/install-guide.html` — يُعدَّل نصًّا ثم `node tools/render_banner.js tools/banners/install-guide.html static/img/store/install-guide.webp` (يرفض الالتقاط إن لم يُحمَّل الخط أو شعار) |
+| **الاستضافة** | المتجر يأخذها من jsDelivr مثبَّتةً على الإيداع (`cdn.jsdelivr.net/gh/qsorry/ssouq-guide@45f56f4f29e3d9ddb0b8aec763d64fd23ee5b37c/static/img/store/install-guide.webp`) لأنها لزمت قبل نشر هذا الفرع؛ وبعد الدمج تُقدَّم أيضًا من `guide.ssouq.com/static/img/store/install-guide.webp`. ورفعها من محرر سلة يضعها على سيرفرها كبقية الشرائح |
+
+**الرابط الخارجي يُحفظ `custom` لا `manual`:** في إعدادات الشريحة `"items.url": "https://guide.ssouq.com/#activate"`
+و`"items.url__type": "custom"` فيخرج الرابط كما هو. أما صيغة `manual` (‏`[{"source":"manual",…}]`) فيرسمها القالب
+`ssouq.com/redirect/manual/<الرابط>`، وتلك تردّ **410** فلا يصل أحد. فبعد أي تعديل تحقّق من `href` الشريحة في الصفحة نفسها.
+
+**صورة معدَّلة = رابط جديد في الشريحة:** رابط jsDelivr يحمل رقم الإيداع فلا يتغيّر ما يقدّمه أبدًا — يُستبدل برابط
+الإيداع الجديد. وعلى الدليل `/static/` يُخزَّن 30 يومًا في المتصفح، فالصورة المعدَّلة تُحفظ باسمٍ جديد (‏`install-guide-2.webp`).
