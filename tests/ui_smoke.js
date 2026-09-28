@@ -50,6 +50,23 @@ async function waitUp(url) { for (let i=0;i<80;i++){ try{ execSync(`curl -s -o /
     await page.waitForTimeout(400);
     const listTxt = await page.textContent('#list');
     check('admin list shows both gate names', listTxt.includes('بوابة مرح') && listTxt.includes('بوابة فالكون'));
+    // the dashboard home: welcome banner, stat cards, shortcuts, latest accounts and admin links
+    await page.evaluate(() => nav('home'));
+    await page.waitForFunction(() => document.getElementById('statPrize').textContent !== '—', null, {timeout: 8000});
+    check('dashboard: banner, 3 stat cards, 6 shortcuts, admin links',
+      (await page.textContent('.hero h1')).includes('مرحباً بك في لوحة الإدارة') && (await page.$$('.kpis .kpi')).length === 3
+      && (await page.$$('.qgrid .qt')).length === 6 && (await page.$$('#links .lt')).length >= 4);
+    check('dashboard: accounts and gates counted, prizes from the contest summary',
+      (await page.textContent('#statAcc')) === '1' && (await page.textContent('#statGates')) === '2'
+      && (await page.textContent('#statPrize')) === '0');
+    check('dashboard: latest accounts with an avatar, login name isolated', (await page.$$('#recent .ra')).length === 1
+      && (await page.$eval('#recent .ra bdi', e => e.textContent)) === 'demo');
+    await page.click('#recent .ra');
+    check('a latest account opens it in the accounts tab', await page.$eval('.view[data-view="accounts"]', v => v.classList.contains('on'))
+      && await page.$eval('.acct', a => a.classList.contains('open')));
+    await page.setViewportSize({width: 390, height: 844});
+    await page.evaluate(() => nav('home'));
+    check('dashboard fits a phone (no horizontal scroll)', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
 
     // login as the person
     await page.evaluate(async () => { await fetch('/admin/logout'); });

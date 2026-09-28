@@ -832,6 +832,45 @@ def live():
         code, body, _ = get(base + "/gulf-cup")
         check("وفي جدول البطولة", ">AL KASS One</span>" in body.decode())
 
+        # قناة كل بطولة: من إعدادها (beIN SPORTS لدوري الأمم وAL KASS لكأس الخليج) ما لم يغيّرها المدير،
+        # وقناة المباراة تغلبها، ومسحها يُخفي القناة لا يعيد الافتراضية. (الخادم عمليةٌ أخرى: الملف يُقرأ من جديد)
+        def tv_file():
+            C._tv.clear()
+            return C.channels(data)
+
+        code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
+        d = json.loads(body)
+        rows, cups = {r["eid"]: r for r in d["rows"]}, {c["path"]: c for c in d["cups"]}
+        check("قناة كل بطولة جاهزة من إعدادها", cups["/nations-league"]["tv"] == "beIN SPORTS"
+              and cups["/gulf-cup"]["tv"] == "AL KASS" and cups["/gulf-cup"]["name"] == "كأس الخليج العربي", cups)
+        check("ومباراةٌ بلا قناتها تأخذ قناة بطولتها", rows["6"]["tv"] == "beIN SPORTS" and rows["6"]["tv_own"] == ""
+              and rows["104"]["tv"] == "AL KASS" and rows["103"]["tv"] == "AL KASS One" and rows["103"]["tv_own"] == "AL KASS One",
+              {k: (rows[k]["tv"], rows[k]["tv_own"]) for k in ("6", "103", "104")})
+        code, body, _ = get(base + "/nations-league/6-netherlands-serbia")
+        check("فتظهر في صفحة مباراة دوري الأمم", 'القناة الناقلة: <b dir="ltr">beIN SPORTS</b>' in body.decode())
+        code, body, _ = get(base + "/nations-league/widget")
+        check("وفي ودجت المتجر للبطولتين", '<span dir="ltr">beIN SPORTS</span>' in body.decode()
+              and '<span dir="ltr">AL KASS</span>' in body.decode())
+        code, res = post(base + "/admin/api/contest/admin/tv", {"cup": "/nations-league", "channel": "beIN SPORTS 2"})
+        check("قناة البطولة للمدير وحده", code == 401)
+        code, res = post(base + "/admin/api/contest/admin/tv", {"cup": "/somewhere", "channel": "x"}, auth=True)
+        check("ولا قناة لبطولةٍ غير معروفة", code == 404, res)
+        code, res = post(base + "/admin/api/contest/admin/tv", {"cup": "/nations-league", "channel": " beIN  SPORTS 2 "}, auth=True)
+        check("تغيير قناة البطولة", code == 200 and res["channel"] == "beIN SPORTS 2"
+              and tv_file().get("cup:/nations-league") == "beIN SPORTS 2", res)
+        code, body, _ = get(base + "/nations-league/6-netherlands-serbia")
+        check("فتتغيّر لكل مبارياتها", 'القناة الناقلة: <b dir="ltr">beIN SPORTS 2</b>' in body.decode())
+        code, res = post(base + "/admin/api/contest/admin/tv", {"cup": "/nations-league", "channel": ""}, auth=True)
+        code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
+        d = json.loads(body)
+        check("ومسحها يُخفيها ولا يعيد الافتراضية", code == 200 and tv_file().get("cup:/nations-league") == ""
+              and {c["path"]: c["tv"] for c in d["cups"]}["/nations-league"] == ""
+              and {r["eid"]: r for r in d["rows"]}["6"]["tv"] == "" and "" not in d["channels"])
+        code, body, _ = get(base + "/nations-league/6-netherlands-serbia")
+        check("فلا قناة في صفحة المباراة", "القناة الناقلة" not in body.decode())
+        code, res = post(base + "/admin/api/contest/admin/tv", {"cup": "/nations-league", "channel": "beIN SPORTS"}, auth=True)
+        check("وتعود بكتابتها", code == 200 and C.channel_for(tv_file(), "6", "/nations-league") == "beIN SPORTS")
+
         code, res = post(base + "/admin/api/contest/admin/set", {"m": "103", "on": True, "prize": "اشتراك شهر",
                                                                  "winners": 1}, auth=True)
         check("مسابقة على مباراةٍ من كأس الخليج", code == 200 and res["contest"]["match"]["path"] == "/gulf-cup", res)

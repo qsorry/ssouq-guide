@@ -65,6 +65,12 @@ button:disabled{opacity:.55;cursor:default}
 .chip.closed,.chip.pending,.chip.hold{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,var(--line))}
 .chip.done{color:#fff;background:var(--go2);border-color:var(--go2)}
 .chip.void{color:var(--err)}
+.cuptv{margin:0 0 12px;padding:10px 12px;border:1px dashed var(--line);border-radius:14px}
+.cupin{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.cuptv label{margin:0 0 4px}
+.cuptv .hint{display:block;margin:8px 0 0}
+.cuptv .msg:empty{display:none}
+.cuptv input{direction:ltr;text-align:left}
 .tvf{display:flex;gap:8px;align-items:center;margin-top:10px}
 .tvf label{margin:0;white-space:nowrap}
 .tvf input{max-width:240px;direction:ltr;text-align:left}
@@ -147,9 +153,13 @@ button:disabled{opacity:.55;cursor:default}
 
   <section>
     <h2>المباريات <span class="acts"><button class="ghost" id="pFresh" title="يجلب منتجات سلة من جديد">تحديث الاشتراكات</button><a class="ghost" id="xlsAll">Excel كل التوقّعات</a><a class="ghost" id="lnkPub" target="_blank" rel="noopener">صفحة المسابقة</a></span></h2>
+    <div class="cuptv"><div class="cupin" id="cupTv"></div>
+      <small class="hint">قناة كل بطولة تظهر للزوار تحت كل مباراةٍ منها: في ودجت المتجر وصفحة المباراة وصفحة المسابقة ورسالة القناة.
+        وقناةٌ تكتبها في صفّ مباراةٍ تغلبها (مثل AL KASS Two لمباراةٍ بعينها)، وإن مسحت قناة البطولة لم تظهر قناة.</small>
+      <div class="msg" id="cupTvMsg"></div></div>
     <div id="rows"><p class="empty">نحمّل المباريات…</p></div>
     <datalist id="tvlist"></datalist>
-    <p class="hint">مباريات دوري الأمم الأوروبية وكأس الخليج العربي القادمة خلال ثلاثة أسابيع، وكل مباراةٍ عليها مسابقة. المسابقة تُفتح قبل صافرة البداية فقط، وعدد الفائزين لا يتغيّر بعد الإقفال. و«القناة الناقلة» تظهر في صفحة المباراة وجدول البطولة ورسالة القناة، وتُحفظ فور كتابتها.</p>
+    <p class="hint">مباريات دوري الأمم الأوروبية وكأس الخليج العربي القادمة خلال ثلاثة أسابيع، وكل مباراةٍ عليها مسابقة. المسابقة تُفتح قبل صافرة البداية فقط، وعدد الفائزين لا يتغيّر بعد الإقفال. والقنوات الناقلة تُحفظ فور كتابتها.</p>
   </section>
 
   <section id="annSec">
@@ -188,7 +198,7 @@ const sc = (h, a) => `<span class="sc"><b>${h}</b><i>-</i><b>${a}</b></span>`;
 const STATE = {off: "بلا مسابقة", open: "مفتوحة للتوقّع", hold: "موقوفة حتى يُعلن الموعد", closed: "أُقفلت — المباراة جارية",
                pending: "انتهت — الفرز خلال دقيقة", done: "فُرزت", void: "أُلغيت المباراة"};
 const SITE = "https://guide.ssouq.com";
-let DATA = null, player = null;
+let DATA = null, player = null, CUPTV = {};
 
 $("lnkHome").href = B + "/accounts"; $("lnkOut").href = B + "/logout";
 $("xlsAll").href = B + "/api/contest/admin/export.xlsx"; $("lnkPub").href = SITE + "/predict";
@@ -215,6 +225,10 @@ async function load() {
   $("stDone").textContent = num(rows.filter(r => r.state === "done").length);
   wa(d.reader || {});
   $("tvlist").innerHTML = (d.channels || []).map(c => `<option value="${esc(c)}">`).join("");
+  CUPTV = {}; (d.cups || []).forEach(c => { CUPTV[c.path] = c.tv; });
+  if (!$("cupTv").contains(document.activeElement))
+    $("cupTv").innerHTML = (d.cups || []).map(c => `<div><label>قناة مباريات ${esc(c.name)}</label>
+      <input data-cup="${esc(c.path)}" list="tvlist" value="${esc(c.tv)}" placeholder="بلا قناة — مثل ${esc(c.default || "beIN SPORTS")}" maxlength="40"></div>`).join("");
   if (!$("sText").dataset.set) {
     const s = d.settings || {};
     $("sNotify").checked = !!s.notify; $("sText").value = s.text || ""; $("sAdmin").value = s.admin_phone || "";
@@ -275,7 +289,7 @@ function row(r) {
         ${c ? `<button class="ghost" data-a="view">التوقّعات والفرز</button>` : ""}
         <a class="ghost" href="${SITE}${esc(m.path || "/nations-league")}/${esc(m.slug)}#predict" target="_blank" rel="noopener">صفحة المباراة</a></div></div>
     ${r.mstate === "post" || st === "done" || st === "void" ? "" : `<div class="tvf"><label>القناة الناقلة</label>
-      <input data-f="tv" list="tvlist" value="${esc(r.tv || "")}" placeholder="مثل AL KASS One" maxlength="40"></div>`}
+      <input data-f="tv" list="tvlist" value="${esc(r.tv_own || "")}" placeholder="${esc(CUPTV[m.path || "/nations-league"] ? CUPTV[m.path || "/nations-league"] + " (قناة البطولة)" : "بلا قناة — اكتبها مثل AL KASS One")}" maxlength="40"></div>`}
     ${ctl}<div class="msg"></div></div>`;
 }
 
@@ -301,6 +315,15 @@ function prizeField(c) {
     <a class="hint plink" data-f="plink" href="${esc(link)}" target="_blank" rel="noopener" ${link ? "" : "hidden"} dir="ltr" style="overflow-wrap:anywhere">${esc(shortUrl(link))}</a>
     ${PSRC ? `<span class="hint" style="color:var(--amber)">${esc(PSRC)}</span>` : ""}`;
 }
+$("cupTv").addEventListener("change", async e => {        // القناة الافتراضية لبطولة: تُحفظ فورًا
+  const inp = e.target.closest("[data-cup]"); if (!inp) return;
+  const d = await api("/api/contest/admin/tv", {cup: inp.dataset.cup, channel: inp.value}), msg = $("cupTvMsg");
+  const cup = inp.closest("div").querySelector("label").textContent.replace("قناة مباريات ", "");
+  msg.className = "msg " + (d.ok ? "ok" : "err");
+  msg.textContent = d.ok ? (d.channel ? `حُفظت: ${d.channel} لمباريات ${cup}` : `مُسحت قناة ${cup}، فلا تظهر قناةٌ لمبارياتها`)
+                         : (d.error || "تعذّر الحفظ");
+  if (d.ok) { inp.value = d.channel; inp.blur(); load(); }
+});
 $("rows").addEventListener("change", async e => {        // القناة الناقلة: تُحفظ فور تغييرها
   if (e.target.dataset.f !== "tv") return;
   const rowEl = e.target.closest(".mrow"), msg = rowEl.querySelector(".msg");
