@@ -127,6 +127,7 @@
       count: d.count || 0, score: d.score || [0, 0], fp: d.fp || "", seed: d.seed || "",
       exact: d.exact || 0, outcome: d.outcome || 0, picks: picks, pool: d.pool || [], poolFrom: d.pool_from || 0,
       fallback: !d.exact && picks.length > 0, site: rep.site || "guide.ssouq.com", sample: !!rep.sample,
+      nobody: d.mode === "outcome" ? "لم يُصب أحدٌ النتيجة ولا الفائز" : "لم يُصب أحدٌ النتيجة بالضبط",
       seedNum: parseInt(String(d.seed || "5eed").slice(0, 8), 16) || 1
     };
   }
@@ -320,7 +321,7 @@
       if (!r.fallback) {
         var c = Math.round(r.exact * easeOut(prog(l, .6, 1.9)));
         text(ctx, num(c), W / 2, ly, {size: 150, color: C.gold, dir: "ltr", alpha: a});
-        text(ctx, r.exact ? "أصابوا النتيجة بالضبط من " + num(r.count) : "لم يُصب أحدٌ النتيجة ولا الفائز",
+        text(ctx, r.exact ? "أصابوا النتيجة بالضبط من " + num(r.count) : r.nobody,
              W / 2, ly + 120, {size: 42, alpha: a, max: W - 160});
         if (r.exact) text(ctx, "هؤلاء وحدهم يدخلون القرعة", W / 2, ly + 185, {size: 34, weight: 500, color: C.mute,
                          alpha: easeOut(prog(l, 2.0, 2.5))});
@@ -419,7 +420,7 @@
       var p = r.picks[0];
       if (!p) {
         title(ctx, "لا فائز في هذه المباراة", l, 700);
-        text(ctx, "لم يُصب أحدٌ النتيجة ولا الفائز", W / 2, 820, {size: 44, weight: 500, color: C.mute,
+        text(ctx, r.nobody, W / 2, 820, {size: 44, weight: 500, color: C.mute,
              alpha: easeOut(prog(l, .3, .8))});
         text(ctx, "نلقاكم في المباراة القادمة", W / 2, 1000, {size: 56, color: C.gold2, alpha: easeOut(prog(l, .6, 1.1))});
         return;

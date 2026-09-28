@@ -77,7 +77,9 @@
   function open() {
     var me = mine(), tk = ticket();
     var head = '<p class="pcount">' + (data.count ? "<b>" + preds(data.count) + "</b> حتى الآن" : "كن أول من يتوقّع") +
-      ' · تُقفل التوقّعات بعد <b class="cd">…</b></p>';
+      ' · تُقفل التوقّعات بعد <b class="cd">…</b></p>' +
+      '<p class="pcount">' + (data.mode === "outcome" ? "يفوز من يصيب النتيجة بالضبط، فإن لم يُصبها أحد فمن يصيب الفائز"
+                                                      : "يفوز من يصيب النتيجة بالضبط فقط") + "</p>";
     if (me) body.innerHTML = head + mineHtml(me) + share();
     else if (tk) waiting(head, tk);
     else if (data.reg === false) body.innerHTML = head + '<p class="pmsg err">التسجيل عبر واتساب متوقّفٌ الآن. حاول بعد قليل.</p>';
@@ -259,7 +261,8 @@
             "<small>توقّع " + named(p.h, p.a) + " · " + tier[p.tier] + " · رقم توقّعه " + p.n + "</small></div>";
         }).join("") + "</div>";
     } else {
-      html += '<p><b>لم يُصب أحدٌ النتيجة ولا الفائز، فلا فائز في هذه المباراة.</b></p>';
+      html += "<p><b>" + (d.mode === "outcome" ? "لم يُصب أحدٌ النتيجة ولا الفائز" : "لم يُصب أحدٌ النتيجة بالضبط") +
+        "، فلا فائز في هذه المباراة.</b></p>";
     }
     html += '<p class="pcount">النتيجة النهائية: <b>' + named(d.score[0], d.score[1]) + "</b> · " + preds(d.count) +
       " · أصاب النتيجة بالضبط " + num(d.exact) + "</p>";

@@ -13,7 +13,8 @@ confirm، فيُسجَّل التوقّع **برقم مرسل الرسالة ن�
   • **بصمة التوقّعات**: SHA-256 لقائمتها كما أُقفلت، تُعرض للعموم من لحظة الإقفال.
   • **الفرز** بعد صافرة النهاية:
         رقم القرعة = SHA-256(البصمة | المباراة | النتيجة)
-    المؤهّلون من أصاب النتيجة بالضبط، فإن لم يكن أحد فمن أصاب الفائز أو التعادل،
+    المؤهّلون من أصاب النتيجة بالضبط — فإن لم يكن أحد فلا فائز (mode=exact، الافتراض)، أو في
+    مسابقةٍ اختار مديرها ذلك (mode=outcome) فمن أصاب الفائز أو التعادل —
     والفائز = المؤهّل رقم (رقم القرعة mod عددهم) بترتيب التسجيل. لا يعرف أحدٌ الرقم
     قبل النهاية، ولا تتغيّر القائمة بعد الإقفال، وإعادة الفرز تعطي الفائز نفسه.
   • **التبليغ** على واتساب للرقم نفسه، والجائزة لا تُسلَّم إلا له.
@@ -47,6 +48,7 @@ NAME_MAX = 30
 PRIZE_MAX = 80
 MAX_WINNERS = 10
 EXTRA_MAX = 15                   # أقصى ما يبقى فيه التوقّع مفتوحًا بعد صافرة البداية (دقائق، خيارٌ للمدير)
+MODES = ("exact", "outcome")     # الفوز: النتيجة بالضبط وحدها (الافتراض)، أو بالضبط وإلا من أصاب الفائز
 IP_PER_HOUR = 30                # رموز من عنوانٍ واحد في الساعة، على كل المباريات
 IP_PER_MATCH = 6                # ومن عنوانٍ واحد في المباراة الواحدة (عائلةٌ على شبكة البيت)
 WA_GRACE = 10 * 60              # رسالةٌ أُرسلت قبل البداية ووصلت بعدها تُقبل حتى هذا؛ وبعده تُعلن البصمة
@@ -71,7 +73,8 @@ RULES = [
     "توقّعٌ واحد لكل رقم واتساب في كل مباراة، ولا يُعدَّل بعد إرساله.",
     "تُقفل التوقّعات مع صافرة البداية، أو بعدها بدقائق إن ذُكر ذلك في المباراة: لا تُقبل رسالةٌ أُرسلت بعد الإقفال.",
     "النتيجة المعتمدة نتيجة المباراة النهائية كما تعلنها ESPN، بالأشواط الإضافية إن لُعبت، ولا تُحسب ركلات الترجيح.",
-    "الفرز آليٌّ بعد صافرة النهاية: المؤهّلون من أصاب النتيجة بالضبط، فإن لم يُصبها أحد فمن أصاب الفائز أو التعادل.",
+    "الفرز آليٌّ بعد صافرة النهاية بين من أصاب النتيجة بالضبط، فإن لم يُصبها أحد فلا فائز — إلا في مسابقةٍ "
+    "ذُكر فيها أن الفرز حينها بين من أصاب الفائز أو التعادل.",
     "الفائز يُختار بقرعة ثابتة: رقم القرعة من بصمة التوقّعات (تُعلن عند الإقفال) والنتيجة النهائية، "
     "والفائز هو المؤهّل الذي ترتيبه باقي قسمة هذا الرقم على عدد المؤهّلين. فلا يختاره أحدٌ بيده، "
     "وإعادة الفرز تعطي الفائز نفسه.",
@@ -139,7 +142,8 @@ def _summary(rec):
     s = {"eid": rec["eid"], "on": bool(rec.get("on")), "prize": rec.get("prize") or "",
          "prize_id": rec.get("prize_id") or "", "prize_url": rec.get("prize_url") or "",
          "prize_img": rec.get("prize_img") or "",
-         "winners": int(rec.get("winners") or 1), "extra": extra_of(rec), "count": len(rec.get("entries") or []),
+         "winners": int(rec.get("winners") or 1), "extra": extra_of(rec), "mode": mode_of(rec),
+         "count": len(rec.get("entries") or []),
          "draw": bool(rec.get("draw")), "void": bool(rec.get("void")), "match": rec.get("match") or {}}
     if rec.get("draw"):
         by = {e["n"]: e for e in rec["entries"]}
@@ -308,6 +312,12 @@ def extra_of(rec):
         return max(0, min(int((rec or {}).get("extra") or 0), EXTRA_MAX))
     except (TypeError, ValueError):
         return 0
+
+
+def mode_of(rec):
+    """طريقة الفوز: exact (من أصاب النتيجة بالضبط وحده) أو outcome (فإن لم يُصبها أحد فمن أصاب الفائز)."""
+    m = str((rec or {}).get("mode") or "")
+    return m if m in MODES else "exact"
 
 
 def lock_at(rec, ts):
@@ -529,16 +539,44 @@ def draw(rec, m, now=None):
     seed = _sha(f"{fp}|{rec['eid']}|{h}-{a}")
     exact = [e for e in es if e["h"] == h and e["a"] == a]
     right = [e for e in es if _sign(e["h"] - e["a"]) == _sign(h - a) and not (e["h"] == h and e["a"] == a)]
-    picks, want = [], max(1, int(rec.get("winners") or 1))
-    for tier, pool in (("exact", exact), ("outcome", right)):
+    picks, want, mode = [], max(1, int(rec.get("winners") or 1)), mode_of(rec)
+    for tier, pool in (("exact", exact), ("outcome", right if mode == "outcome" else [])):
         pool = [e["n"] for e in pool]
         while pool and len(picks) < want:
             num = draw_number(seed, len(picks))
             idx = num % len(pool)
             picks.append({"n": pool[idx], "tier": tier, "num": num, "size": len(pool), "idx": idx, "pool": list(pool)})
             pool.pop(idx)
-    return {"at": now, "score": [h, a], "fp": fp, "seed": seed, "count": len(es),
+    return {"at": now, "score": [h, a], "fp": fp, "seed": seed, "count": len(es), "mode": mode,
             "exact": len(exact), "outcome": len(right), "picks": picks}
+
+
+def draw_mode(d):
+    """طريقة فرزٍ محفوظ (ما سبق الخيار: outcome إن فاز فيه من أصاب الفائز)."""
+    if (d or {}).get("mode") in MODES:
+        return d["mode"]
+    return "outcome" if any(p.get("tier") == "outcome" for p in (d or {}).get("picks", [])) else "exact"
+
+
+def redraw(data_dir, eid, mode, now=None):
+    """إعادة فرزٍ تمّ بطريقة فوزٍ أخرى — بالمدخلات نفسها (القائمة ونتيجة المباراة المحفوظتين)، فرقم
+    القرعة والبصمة لا يتغيّران. والفرز السابق ورسائله تُحفظ في سجلّ الإعادات ← السجل، أو None."""
+    now = time.time() if now is None else now
+    if mode not in MODES:
+        raise ValueError("طريقة فوزٍ غير معروفة")
+    with _lock:
+        rec = load(data_dir, eid)
+        if not rec or not rec.get("draw"):
+            return None
+        old = rec["draw"]
+        h, a = old["score"]
+        rec.setdefault("redraws", []).append({"at": now, "mode": draw_mode(old), "draw": old,
+                                             "sent": rec.get("sent") or []})
+        rec["mode"] = mode
+        rec["draw"] = draw(rec, {"home": {"score": h}, "away": {"score": a}}, now)
+        rec["sent"] = []
+        _save(data_dir, rec)
+        return rec
 
 
 def due(rec, m, now=None):
@@ -591,6 +629,7 @@ def public_draw(rec):
         start = max(0, first["idx"] - POOL_WINDOW)
         pool = [_pub_entry(by[n]) for n in first["pool"][start:first["idx"] + POOL_WINDOW + 1] if n in by]
     return {"at": d["at"], "score": d["score"], "fp": d["fp"], "seed": d["seed"], "count": d["count"],
+            "mode": draw_mode(d), "redrawn": len(rec.get("redraws") or []),
             "exact": d["exact"], "outcome": d["outcome"], "picks": picks, "pool": pool, "pool_from": start}
 
 
@@ -609,7 +648,7 @@ def public(rec, m, now=None):
     out = {"ok": True, "state": st, "eid": rec["eid"], "prize": rec.get("prize") or "",
            "prize_url": rec.get("prize_url") or "", "prize_img": rec.get("prize_img") or "",
            "winners": int(rec.get("winners") or 1), "count": len(es), "now": round(now, 3),
-           "match": _match_of(rec, m), "msg": STATE_MSG.get(st, ""), "extra": extra_of(rec)}
+           "match": _match_of(rec, m), "msg": STATE_MSG.get(st, ""), "extra": extra_of(rec), "mode": mode_of(rec)}
     if st == "hold":
         out["msg"] = ("المباراة مؤجلة، والتوقّعات موقوفة حتى يُعلن موعدها الجديد."
                       if m and m["status"] in HOLD else STATE_MSG["hold"])
@@ -713,7 +752,7 @@ def prize_name(product):
     return (name.split("|")[0].strip() or name.strip())[:PRIZE_MAX]
 
 
-def configure(data_dir, m, on, prize, winners, now=None, product=None, extra=None):
+def configure(data_dir, m, on, prize, winners, now=None, product=None, extra=None, mode=None):
     """فتح المسابقة على مباراة أو إيقافها، بجائزتها وعدد فائزيها ← (رمز، رد). والجائزة منتجٌ من
     المتجر (`product` من store_sitemap.products، فيُحفظ رابطه وصورته) أو نصٌّ يكتبه المدير."""
     now = time.time() if now is None else now
@@ -730,6 +769,10 @@ def configure(data_dir, m, on, prize, winners, now=None, product=None, extra=Non
         if rec.get("draw"):
             return 409, {"error": "فُرزت هذه المسابقة، فلا تُعدَّل."}
         old = state_of(dict(rec, on=True), m, now)
+        if mode in MODES and mode != mode_of(rec):
+            if rec["entries"] and old not in ("open", "hold"):
+                return 409, {"error": "لا تتغيّر طريقة الفوز بعد إقفال التوقّعات."}
+            rec["mode"] = mode
         if extra is not None and extra != extra_of(rec):
             # الإقفال يتغيّر ما لم تُعلن البصمة (قائمة التوقّعات النهائية) ولم تنتهِ المباراة
             if old not in ("open", "hold", "closed") or now >= lock_at(rec, m["ts"]) + WA_GRACE:
@@ -794,6 +837,10 @@ def admin_detail(data_dir, eid, m, now=None):
     return {"ok": True, "eid": eid, "state": state_of(rec, m, now), "on": bool(rec.get("on")),
             "prize": rec.get("prize") or "", "winners": int(rec.get("winners") or 1),
             "prize_id": rec.get("prize_id") or "", "prize_url": rec.get("prize_url") or "",
+            "mode": mode_of(rec), "draw_mode": draw_mode(d) if d else "",
+            "redraws": [{"at": x["at"], "mode": x["mode"],
+                         "won": [short_name(by[p["n"]]["name"]) for p in x["draw"]["picks"] if p["n"] in by]}
+                        for x in rec.get("redraws") or []],
             "match": _match_of(rec, m), "fp": fingerprint(rec["entries"]),
             "entries": [{k: e.get(k) for k in ("n", "name", "phone", "h", "a", "at", "promo")} for e in rec["entries"]],
             "won": won, "draw": {k: v for k, v in d.items() if k != "picks"} if d else None,
