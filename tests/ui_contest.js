@@ -35,6 +35,19 @@ print(json.dumps(rec, ensure_ascii=False))
 "`).toString();
   fs.mkdirSync(path.join(dir, 'contest'), {recursive: true});
   fs.writeFileSync(path.join(dir, 'contest', '1.json'), out);
+  // كليلة 28 سبتمبر: فُرزت قبل خيار الطريقة، ولم يُصب أحدٌ 0-1 فخرج فائزان ممن توقّع فوز الضيف
+  const old = execSync(`python3 -c "
+import json, sys; sys.path[:0] = ['${ROOT}', '${ROOT}/tests']
+import mock_espn, tournament as T, contest as C
+m = next(x for x in T.matches(mock_espn.scoreboard('uefa.nations', '2026')['events']) if x['id'] == '2')
+rec = C._blank('2'); rec.update(on=True, prize='اشتراك 3 أشهر', winners=2, match=C._snap(m))
+for i, (h, a) in enumerate([(0, 2), (1, 2), (2, 0), (0, 3), (1, 1), (0, 2), (1, 3)], 1):
+    rec['entries'].append({'n': i, 'name': ['عبدالله', 'عمر', 'سارة', 'فهد', 'نورة', 'خالد', 'ريم'][i - 1],
+                           'phone': '96655200%04d' % i, 'h': h, 'a': a, 'at': m['ts'] - 600 + i, 'ipk': '', 'promo': False})
+rec['draw'] = C.draw(dict(rec, mode='outcome'), m, m['ts'] + 7000); del rec['draw']['mode']
+print(json.dumps(rec, ensure_ascii=False))
+"`).toString();
+  fs.writeFileSync(path.join(dir, 'contest', '2.json'), old);
 }
 
 (async () => {
@@ -149,6 +162,7 @@ print(json.dumps(rec, ensure_ascii=False))
     await page.click('#predict [data-side="a"] [data-d="1"]'); await page.click('#predict [data-side="a"] [data-d="-1"]');
     check('أزرار الأهداف', (await page.$$eval('#predict output', o => o.map(x => x.textContent))).join('-') === '2-1');
     check('لا خانة رقم: الرقم من واتساب', !(await page.$('#p-phone')));
+    check('والبطاقة تقول من يفوز: النتيجة بالضبط فقط', (await page.textContent('#predict')).includes('يفوز من يصيب النتيجة بالضبط فقط'));
     await page.click('#predict button[type=submit]');
     check('الاسم قبل الإرسال', (await page.textContent('#predict .pmsg')).includes('اسمك'));
     await page.fill('#p-name', 'سارة');
@@ -245,6 +259,38 @@ print(json.dumps(rec, ensure_ascii=False))
     check('ورسالة التهنئة أُرسلت له', (await adm.textContent('#dBody .sent')).includes('أُرسلت ✓'));
     check('وفيديو الفرز', !!(await adm.$('#dBody canvas')) && !(await adm.$eval('#vSave', b => b.hidden)));
     await shot(adm, 'contest-admin-draw');
+
+    console.log('إعادة فرزٍ قديم على «النتيجة بالضبط فقط»');
+    await adm.click('#dClose');
+    await adm.click('.mrow[data-eid="2"] [data-a="view"]');
+    await adm.waitForSelector('#dRedraw', {timeout:8000});
+    check('فرزٌ قديم بفائزَين ممن أصاب الفائز، وزرّ «أعد الفرز: النتيجة بالضبط فقط»', (await adm.$$('#dBody .win')).length === 2
+          && (await adm.textContent('#dBody')).includes('من أصاب النتيجة بالضبط، وإلا من أصاب الفائز'));
+    adm.once('dialog', dlg => dlg.accept());
+    await adm.click('#dRedraw');
+    await adm.waitForFunction(() => document.getElementById('dBody').textContent.includes('أُعيد الفرز'), null, {timeout:8000});
+    const after = await adm.textContent('#dBody');
+    check('بعد الإعادة: لا فائز، والطريقة «بالضبط فقط»، ومن كانا فائزين في السجلّ', !(await adm.$('#dBody .win'))
+          && after.includes('لم يُصب أحدٌ النتيجة بالضبط، فلا فائز') && after.includes('من أصاب النتيجة بالضبط فقط')
+          && after.includes('عبدالله') && !(await adm.$('#dRedraw')), after.slice(0, 80));
+    await adm.click('#dClose');
+    const pub2 = await (await browser.newContext({viewport:{width:360, height:780}})).newPage();
+    pub2.on('pageerror', e => errors.push(e.message));
+    await pub2.goto(APP + '/nations-league/2-germany-greece');
+    await pub2.waitForSelector('#predict .pcount', {timeout:8000});
+    const card2 = await pub2.textContent('#predict');
+    check('وبطاقة المباراة للعموم: لم يُصب أحدٌ النتيجة بالضبط، فلا فائز', card2.includes('لم يُصب أحدٌ النتيجة بالضبط، فلا فائز')
+          && !(await pub2.$('#predict .pwin')), card2.slice(0, 80));
+    await pub2.click('#predict .pplay');                  // سكربت الفيديو يُحمَّل عند الطلب
+    await pub2.waitForFunction(() => window.SSDraw && document.querySelector('.pvid canvas'), null, {timeout:8000});
+    const vid2 = await pub2.evaluate(async () => {
+      const r = await (await fetch('/api/contest?m=2')).json();
+      const c = document.createElement('canvas');
+      const api = await window.SSDraw.prepare(c, {match: r.match, when: r.when, prize: r.prize, eid: '2', draw: r.draw});
+      for (let t = 0; t <= api.total + 1; t += 1.5) api.frame(t);
+      return api.total;
+    });
+    check('وفيديو فرزها يُرسم بلا خطأ', vid2 > 5, vid2);
     check('بلا أخطاء في الصفحات', errors.length === 0, errors.join(' | '));
   } finally {
     await browser.close();

@@ -225,14 +225,23 @@ def unit():
           and two[1]["num"] == int(hashlib.sha256(f"{sd}:1".encode()).hexdigest()[:12], 16)
           and two[1]["size"] == 2)
     fb = dict(end, home=dict(end["home"], score=4), away=dict(end["away"], score=1))
-    dfb = C.draw(rec, fb, NOW)
-    check("لا أحد بالضبط ← من أصاب الفائز", dfb["exact"] == 0 and dfb["picks"][0]["tier"] == "outcome"
-          and dfb["picks"][0]["size"] == 5, dfb["picks"])
-    rec5 = dict(rec, winners=5)
-    five = C.draw(rec5, end, NOW)["picks"]
-    check("أكثر من المصيبين بالضبط: تكملهم فئة الفائز", [x["tier"] for x in five] == ["exact"] * 3 + ["outcome"] * 2)
+    dex = C.draw(rec, fb, NOW)
+    check("الافتراض «بالضبط فقط»: لا أحد بالضبط ← لا فائز، ولو أصاب كثيرون الفائز", C.mode_of(rec) == "exact"
+          and dex["mode"] == "exact" and dex["exact"] == 0 and dex["outcome"] == 5 and dex["picks"] == [], dex["picks"])
+    five_x = C.draw(dict(rec, winners=5), end, NOW)["picks"]
+    check("وأكثر من المصيبين بالضبط: لا تكملهم فئة الفائز", [x["tier"] for x in five_x] == ["exact"] * 3)
+    orec = dict(rec, mode="outcome")
+    dfb = C.draw(orec, fb, NOW)
+    check("طريقة «بالضبط، وإلا من أصاب الفائز»: من أصاب الفائز", dfb["mode"] == "outcome" and dfb["exact"] == 0
+          and dfb["picks"][0]["tier"] == "outcome" and dfb["picks"][0]["size"] == 5, dfb["picks"])
+    five = C.draw(dict(orec, winners=5), end, NOW)["picks"]
+    check("وأكثر من المصيبين بالضبط: تكملهم فئة الفائز", [x["tier"] for x in five] == ["exact"] * 3 + ["outcome"] * 2)
+    check("وبالمعادلة نفسها: الفائز الأول لا يتغيّر بين الطريقتين حين يصيب أحدٌ بالضبط",
+          C.draw(orec, end, NOW)["picks"][0] == dr["picks"][0])
     nob = dict(end, home=dict(end["home"], score=0), away=dict(end["away"], score=2))
-    check("لم يُصب أحدٌ شيئًا ← لا فائز", C.draw(rec, nob, NOW)["picks"] == [])
+    check("لم يُصب أحدٌ شيئًا ← لا فائز", C.draw(orec, nob, NOW)["picks"] == [] and C.draw(rec, nob, NOW)["picks"] == [])
+    check("فرزٌ قديمٌ بلا طريقة: تُعرف من فئة فائزيه", C.draw_mode({"picks": [{"tier": "outcome"}]}) == "outcome"
+          and C.draw_mode({"picks": [{"tier": "exact"}]}) == "exact" and C.draw_mode({"picks": []}) == "exact")
 
     print("الفرز الآلي (settle)")
     live = dict(end, state="in", status="STATUS_SECOND_HALF")
@@ -249,6 +258,50 @@ def unit():
     seed(d, match(eid="9"), people[:2])
     rec, did = C.settle(d, "9", match(eid="9", status="STATUS_CANCELED"), NOW)
     check("المباراة الملغاة: بلا فرز", not did and rec["void"] and C.state_of(rec, match(eid="9"), NOW) == "void")
+
+    print("إعادة الفرز بطريقة «بالضبط فقط»")
+    d6 = fresh()
+    m6 = match(eid="41")
+    code, res = C.configure(d6, m6, True, "شهر", 2, now=m6["ts"] - 7200, mode="outcome")
+    check("طريقة الفوز تُحفظ في المسابقة", code == 200 and res["contest"]["mode"] == "outcome", res)
+    code, res = C.configure(d6, m6, True, "شهر", 2, now=m6["ts"] - 7200, mode="bogus")
+    check("وقيمةٌ غير معروفة لا تغيّرها", res["contest"]["mode"] == "outcome")
+    r6 = C.load(d6, "41")
+    for i, (h, a) in enumerate([(0, 2), (1, 2), (2, 0), (0, 3), (1, 1), (0, 2), (2, 2)], 1):
+        r6["entries"].append({"n": i, "name": f"مشارك {i}", "phone": f"96655100000{i}", "h": h, "a": a,
+                              "at": m6["ts"] - 600 + i, "ipk": "", "promo": False})
+    with C._lock:
+        C._save(d6, r6)
+    code, res = C.configure(d6, dict(m6, state="in", status="STATUS_FIRST_HALF"), True, "شهر", 2,
+                            now=m6["ts"] + 600, mode="exact")
+    check("ولا تتغيّر بعد إقفال التوقّعات", code == 409, res)
+    end6 = dict(m6, state="post", status="STATUS_FULL_TIME", home=dict(m6["home"], score=0), away=dict(m6["away"], score=1))
+    r6, did = C.settle(d6, "41", end6, m6["ts"] + C.SETTLE_AFTER)
+    first = r6["draw"]
+    check("فرز الطريقة القديمة: فائزان ممن أصاب الفائز", did and [p["tier"] for p in first["picks"]] == ["outcome"] * 2)
+    r6["sent"] = [{"to": "966551000001", "kind": "winner", "ok": True}]
+    with C._lock:
+        C._save(d6, r6)
+    again = C.redraw(d6, "41", "exact", now=m6["ts"] + 9000)
+    check("إعادة الفرز «بالضبط فقط»: لا فائز، بالبصمة ورقم القرعة نفسيهما", again["draw"]["picks"] == []
+          and again["draw"]["mode"] == "exact" and again["draw"]["seed"] == first["seed"]
+          and again["draw"]["fp"] == first["fp"] and again["mode"] == "exact")
+    check("والفرز السابق ورسائله محفوظان في سجلّ الإعادات", again["redraws"][0]["draw"] == first
+          and again["redraws"][0]["mode"] == "outcome" and again["redraws"][0]["sent"] and again["sent"] == [])
+    pub6 = C.public(C.load(d6, "41"), end6, m6["ts"] + 9100)
+    check("والعلن: لا فائز، بطريقة «بالضبط»، ومرّة إعادة", pub6["state"] == "done" and pub6["draw"]["picks"] == []
+          and pub6["draw"]["mode"] == "exact" and pub6["draw"]["redrawn"] == 1)
+    det6 = C.admin_detail(d6, "41", end6, m6["ts"] + 9100)
+    check("والمدير يرى السجلّ بأسماء من كانوا فائزين", det6["draw_mode"] == "exact" and len(det6["redraws"]) == 1
+          and len(det6["redraws"][0]["won"]) == 2 and not det6["won"], det6["redraws"])
+    check("وإعادةٌ لمسابقةٍ لم تُفرز: لا شيء", C.redraw(d6, "999", "exact") is None)
+    try:
+        C.redraw(d6, "41", "x")
+        bad = False
+    except ValueError:
+        bad = True
+    check("وطريقةٌ غير معروفة تُرفض", bad)
+    shutil.rmtree(d6)
 
     print("العلن")
     pub = C.public(C.load(d, "7"), end, NOW)
@@ -404,6 +457,11 @@ def unit_prize():
           and f"1️⃣ ادخل صفحة المباراة 👇\n{G}9-بلجيكا-فرنسا#predict\n2️⃣ توقّع النتيجة واكتب اسمك\n3️⃣" in one
           and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in one, one[:400])
     check("والإقفال بعد البداية بدقائق المدير", "• التوقّعات تُقفل بعد صافرة البداية بـ 10 دقائق\n" in one)
+    check("وسطر الفرز بطريقة الفوز: «بالضبط فقط» افتراضًا", "• الفرز آلي بعد صافرة النهاية بين اللي جابوا النتيجة بالضبط، "
+          "وإذا ما أحد جابها ما فيه فائز\n" in one)
+    orow = row("بلجيكا", "فرنسا", k)
+    orow["contest"]["mode"] = "outcome"
+    check("و«بالضبط، وإلا من أصاب الفائز»", "وإذا ما أحد جابها فبين اللي عرفوا الفائز\n" in T.announcement([orow], now))
     mix = T.announcement([row("أ", "ب", k, extra=10), row("ج", "د", k)], now)
     check("وإقفالٌ مختلف بين المباريات يُقال عامًّا", "أو بعدها بدقائق، كما في صفحة كل مباراة" in mix)
     txt = T.announcement([row("تركيا", "إيطاليا", k, prize=""), row("بلجيكا", "فرنسا", k + 3 * 86400, w=3)], now)
@@ -503,6 +561,17 @@ def live():
     os.makedirs(os.path.join(data, "contest"))
     with open(os.path.join(data, "contest", "1.json"), "w", encoding="utf-8") as f:
         json.dump(rec, f, ensure_ascii=False)
+    # كليلة 28 سبتمبر: فُرزت قبل خيار الطريقة (لا mode)، ولم يُصب أحدٌ 0-1 فخرج فائزان ممن توقّع فوز الضيف
+    m2 = next(x for x in ms if x["id"] == "2")
+    old = C._blank("2")
+    old.update(on=True, prize="اشتراك 3 أشهر", winners=2, match=C._snap(m2))
+    for i, (h, a) in enumerate([(0, 2), (1, 2), (2, 0), (0, 3), (1, 1), (0, 2), (1, 3)], 1):
+        old["entries"].append({"n": i, "name": f"لاعب {i}", "phone": f"9665520000{i:02d}", "h": h, "a": a,
+                               "at": m2["ts"] - 600 + i, "ipk": "", "promo": False})
+    old["draw"] = C.draw(dict(old, mode="outcome"), m2, m2["ts"] + 7000)
+    del old["draw"]["mode"]
+    with open(os.path.join(data, "contest", "2.json"), "w", encoding="utf-8") as f:
+        json.dump(old, f, ensure_ascii=False)
     procs = [subprocess.Popen([sys.executable, os.path.join(HERE, "mock_espn.py"), str(mport)])]
     try:
         base, reader = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{wport}"
@@ -692,6 +761,25 @@ def live():
         check("صفحة المدير: المفروزة والمفتوحة", rows["1"]["state"] == "done" and rows["6"]["state"] == "open")
         code, body, _ = get(base + "/admin/contest", auth=True)
         check("صفحة المدير نفسها", code == 200 and "مسابقة توقّع النتيجة" in body.decode())
+
+        code, body, _ = get(base + "/admin/api/contest/admin/match?m=2", auth=True)
+        det = json.loads(body)
+        check("فرزٌ قديم: طريقته «بالضبط، وإلا من أصاب الفائز» وفائزاه منها", det["draw_mode"] == "outcome"
+              and len(det["won"]) == 2 and all(w["tier"] == "outcome" for w in det["won"]), det.get("draw_mode"))
+        code, res = post(base + "/admin/api/contest/admin/redraw", {"m": "2", "mode": "exact"})
+        check("إعادة الفرز للمدير وحده", code == 401)
+        code, res = post(base + "/admin/api/contest/admin/redraw", {"m": "2", "mode": "exact"}, auth=True)
+        check("«أعد الفرز: النتيجة بالضبط فقط» ← لا فائز", code == 200 and res["ok"] and res["picks"] == 0, res)
+        code, body, _ = get(base + "/api/contest?m=2")
+        d2 = json.loads(body)
+        check("والعلن يقولها: مفروزة بلا فائز بطريقة «بالضبط»", d2["state"] == "done" and d2["draw"]["picks"] == []
+              and d2["draw"]["mode"] == "exact" and d2["draw"]["redrawn"] == 1 and d2["draw"]["seed"] == old["draw"]["seed"], d2.get("draw"))
+        code, body, _ = get(base + "/admin/api/contest/admin/match?m=2", auth=True)
+        det = json.loads(body)
+        check("والمدير يرى من كانا فائزين في سجلّ الإعادات", det["draw_mode"] == "exact" and not det["won"]
+              and len(det["redraws"]) == 1 and len(det["redraws"][0]["won"]) == 2, det.get("redraws"))
+        code, res = post(base + "/admin/api/contest/admin/redraw", {"m": "6", "mode": "exact"}, auth=True)
+        check("ولا إعادة لمسابقةٍ لم تُفرز", code == 409, res)
         code, body, _ = get(base + "/static/contest-draw.js")
         check("سكربت الفيديو يُقدَّم", code == 200 and b"SSDraw" in body)
     finally:

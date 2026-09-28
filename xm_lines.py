@@ -3041,7 +3041,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not product:
                     return self._send(400, {"error": "هذا الاشتراك غير موجود في المتجر الآن — حدّث القائمة"})
             code, res = contest.configure(DATA_DIR, m, bool(req.get("on")), req.get("prize"), req.get("winners"),
-                                          product=product, extra=req.get("extra"))
+                                          product=product, extra=req.get("extra"), mode=req.get("mode"))
             return self._send(code, res)
         if path == "/api/contest/admin/settle":       # «افرز الآن»: ما تفعله الدورة كل دقيقة
             rec, drawn = contest.settle(DATA_DIR, contest.eid_of(req.get("m")), m)
@@ -3049,6 +3049,12 @@ class Handler(BaseHTTPRequestHandler):
                 why = "أُلغيت المباراة فلا فرز." if rec and rec.get("void") else "لم تنتهِ المباراة بعد."
                 return self._send(409, {"error": why})
             return self._send(200, {"ok": True, "drawn": drawn, "sent": contest_notify(rec) if drawn else []})
+        if path == "/api/contest/admin/redraw":       # إعادة فرزٍ بطريقة فوزٍ أخرى (بالمدخلات نفسها)
+            rec = contest.redraw(DATA_DIR, contest.eid_of(req.get("m")), str(req.get("mode") or ""))
+            if not rec:
+                return self._send(409, {"error": "لم تُفرز بعد."})
+            # لا رسائل تلقائية: من بقي فائزًا بُلّغ من قبل، و«أعد إرسال الرسائل» في يد المدير
+            return self._send(200, {"ok": True, "picks": len(rec["draw"]["picks"])})
         if path == "/api/contest/admin/notify":       # إعادة رسائل الفرز
             rec = contest.load(DATA_DIR, req.get("m"))
             if not rec or not rec.get("draw"):
