@@ -29,6 +29,7 @@ import league
 import tournament
 import predict_page
 import contest
+import content
 import xm_web
 import falcon_api
 import crypto_store
@@ -2182,6 +2183,23 @@ def start_contest_worker():
     threading.Thread(target=_contest_loop, daemon=True).start()
 
 
+CONTENT_TICK = 600                  # كل عشر دقائق: أيّ سيرفرٍ له رابط M3U مرّ يومٌ على محتواه يُسحب
+
+
+def _content_loop():
+    time.sleep(60)                  # بعد الإقلاع بدقيقة، لا معه
+    while True:
+        try:
+            content.tick(DATA_DIR)
+        except Exception:
+            pass
+        time.sleep(CONTENT_TICK)
+
+
+def start_content_worker():
+    threading.Thread(target=_content_loop, daemon=True).start()
+
+
 # ---------------- وضع سطر الأوامر ----------------
 def pick_account():
     accts = load_store()["accounts"]
@@ -2382,7 +2400,8 @@ class Handler(BaseHTTPRequestHandler):
                               extra={"Cache-Control": "no-store"})
         if path == "/sitemap.xml":
             return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + [(predict_page.PATH, "daily", "0.7")]
-                                                           + [u for t in CUPS for u in t.sitemap()]),
+                                                           + [u for t in CUPS for u in t.sitemap()]
+                                                           + content.sitemap(DATA_DIR)),
                               ctype="application/xml; charset=utf-8",
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path in ROOT_FILES:
@@ -2415,6 +2434,34 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                                   extra={"Cache-Control": "public, max-age=300"} if code == 200
                                   else {"Retry-After": str(league.RETRY)})
+        if path in (content.PATH, content.PATH + "/"):   # محتوى الاشتراكات: إلى أول سيرفرٍ له محتوى
+            key = content.first_key(DATA_DIR)
+            if key:
+                return self._redirect(f"{content.PATH}/{key}{qs}")
+            code, body = content.render_missing(DATA_DIR)
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": "public, max-age=300"})
+        if path.startswith(content.PATH + "/"):     # صفحة سيرفر: المسلسلات بمواسمها والأفلام والقنوات، والبحث
+            code, body, age = content.render(DATA_DIR, content.key_ok(path[len(content.PATH) + 1:].strip("/")),
+                                             {k: self._q(k) for k in ("t", "g", "p", "q")})
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"})
+        if path == "/api/content":              # الرئيسية ومسار الشراء: السيرفرات التي لها محتوى وأعدادها
+            b = content.brief(DATA_DIR)           # والفارغ لا يُحفظ في المتصفح: يظهر الرابط فور أول ملف
+            return self._send(200, b, extra={"Cache-Control": "public, max-age=300" if b["servers"] else "no-store"})
+        if path in ("/api/content/group", "/api/content/search"):   # قسمٌ يُفتح في مكانه · البحث بالاسم
+            key = content.key_ok(self._q("s"))
+            if path.endswith("/search"):
+                res = content.api_search(DATA_DIR, key, self._q("q"))
+            else:
+                try:
+                    page = int(self._q("p") or 1)
+                except ValueError:
+                    page = 1
+                res = content.api_group(DATA_DIR, key, self._q("t"), self._q("g"), page)
+            if res is None:
+                return self._send(404, {"ok": False, "error": "not found"})
+            return self._send(200, res, extra={"Cache-Control": "public, max-age=600"})
         if path == "/renew":                    # صفحة التجديد (عامة، بلا تسجيل دخول)
             return self._page("renew.html", cache=PUBLIC_HTML_CACHE)
         if path == "/api/renew/ticket":         # متابعة طلب معلّق برقم تذكرته
@@ -2585,6 +2632,14 @@ class Handler(BaseHTTPRequestHandler):
                         if split_package_ok(p):
                             p["split"] = True
                 return self._send(200, {**base, "packages": pkgs})
+            if path == "/content" or path.startswith("/api/content/"):   # محتوى السيرفرات من ملفات M3U (للمدير)
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                if path == "/content":
+                    return self._page("content_admin.html")
+                if path == "/api/content/admin":
+                    return self._send(200, content.admin_state(DATA_DIR))
+                return self._send(404, {"error": "not found"})
             if path == "/contest" or path.startswith("/api/contest/"):   # مسابقة التوقّعات (للمدير)
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -3034,6 +3089,63 @@ class Handler(BaseHTTPRequestHandler):
                 "status": r.get("status", ""), "number": r.get("number", ""),
                 "qr": r.get("qr") if r.get("status") == "qr" else None, "error": r.get("error", "")}
 
+    def _content_upload(self):
+        """ملف M3U في جسم الطلب كما هو (أو مضغوطًا gzip من صفحة المدير) — يُقرأ وهو يصل، فلا يُحفظ
+        الملف ولا يُحمَّل كله في الذاكرة."""
+        key = content.key_ok(self._q("s"))
+        try:
+            left = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            left = 0
+        if not key or left <= 0:
+            return self._send(400, {"error": "اختر ملف M3U"})
+        box = [left]
+
+        def read(n):
+            if box[0] <= 0:
+                return b""
+            b = self.rfile.read(min(n, box[0]))
+            if not b:                           # انقطع الرفع: لا يُحفظ نصف الملف على أنه كله
+                raise ValueError("انقطع الرفع قبل أن يكتمل — أعد المحاولة")
+            box[0] -= len(b)
+            return b
+        try:
+            res = content.ingest(DATA_DIR, key, read, "file", self._q("name"))
+        except content.Busy:
+            self.close_connection = True
+            return self._send(409, {"error": "يُقرأ ملف هذا السيرفر الآن، انتظر حتى ينتهي"})
+        except ValueError as e:
+            self.close_connection = True
+            return self._send(400, {"error": str(e)})
+        return self._send(200, {"ok": True, "result": res, **content.admin_state(DATA_DIR)})
+
+    def _content_admin_post(self, path):
+        if path == "/api/content/admin/upload":
+            return self._content_upload()
+        body = self._body()
+        key = content.key_ok(body.get("s"))
+        try:
+            if path == "/api/content/admin/url":            # رابط M3U: يُحفظ مشفَّرًا ويُسحب الآن ثم كل يوم
+                if content.set_url(DATA_DIR, key, body.get("url")):
+                    content.start_refresh(DATA_DIR, key)
+            elif path == "/api/content/admin/refresh":      # «اسحب الآن»
+                content.start_refresh(DATA_DIR, key)
+            elif path == "/api/content/admin/hide":         # إخفاء قسمٍ من الصفحة العامة أو إظهاره
+                content.set_hidden(DATA_DIR, key, body.get("g"), bool(body.get("hidden")))
+            elif path == "/api/content/admin/server":       # إضافة سيرفر أو تعديل اسمه ورابط شرائه
+                content.save_server(DATA_DIR, body)
+            elif path == "/api/content/admin/move":         # ترتيب السيرفرات في الصفحة
+                content.move_server(DATA_DIR, key, int(body.get("dir") or 0))
+            elif path == "/api/content/admin/clear":        # مسح محتوى السيرفر (و«drop» يحذفه من القائمة)
+                content.clear(DATA_DIR, key, drop=bool(body.get("drop")))
+            else:
+                return self._send(404, {"error": "not found"})
+        except content.Busy:
+            return self._send(409, {"error": "يُقرأ ملف هذا السيرفر الآن، انتظر حتى ينتهي"})
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
+        return self._send(200, {"ok": True, **content.admin_state(DATA_DIR)})
+
     def _contest_admin_post(self, path):
         req = self._body()
         if path == "/api/contest/admin/settings":
@@ -3229,6 +3341,10 @@ class Handler(BaseHTTPRequestHandler):
                     acct["guide_url"] = gu
                     save_store(st)
                     return self._send(200, {"ok": True, "guide_url": gu})
+            if path.startswith("/api/content/"):      # خارج القفل: رفع ملف M3U وقراءته يطولان
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._content_admin_post(path)
             if path.startswith("/api/contest/"):      # خارج القفل: التبليغ ينتظر واتساب
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -3667,6 +3783,7 @@ def web():
     start_renew_worker()
     start_split_worker()
     start_contest_worker()
+    start_content_worker()
     start_embedded_reader()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 

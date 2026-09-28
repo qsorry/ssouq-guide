@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>محتوى السيرفرات</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+<style>
+/* نظام تصميم صفحات الأداة نفسه (admin.html · contest_admin.html) — داكنٌ افتراضيًّا، متوافقٌ مع الجوال */
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--shadow:0 18px 50px rgba(0,0,0,.45)}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--shadow:0 14px 40px rgba(20,40,80,.14)}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
+[hidden]{display:none!important}
+a{color:var(--go);text-decoration:none}
+svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:8px;height:60px;padding:0 14px;background:color-mix(in srgb,var(--sf) 90%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;margin-inline-start:auto;font-weight:700;line-height:1.1}
+.brand .mark{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#4fd6ad,#18a87b 60%,#0b6b4d);display:grid;place-items:center;color:#fff;flex:none}
+.brand b{display:block;font-size:1.02rem}
+.brand small{display:block;color:var(--mute);font-size:.7rem;font-weight:400}
+.nav{display:flex;gap:2px;flex-wrap:wrap}
+.nav a{padding:8px 10px;border-radius:10px;color:var(--mute);font-weight:500;font-size:.86rem}
+.nav a:hover{color:var(--ink);background:var(--sf2)}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none;cursor:pointer}
+.wrap{max-width:820px;margin:0 auto;padding:16px 14px 60px}
+h1{font-size:1.35rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 16px;font-size:.9rem}
+section{background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:16px}
+h2{font-size:1.08rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+h2 small{color:var(--mute);font-weight:400;font-size:.78rem;margin-inline-start:6px}
+h3{font-size:.95rem;margin:16px 0 6px}
+label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
+input,select,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--sf2);color:var(--ink);font:inherit}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--go)}
+input.ltr{direction:ltr;text-align:left}
+input[type=file]{padding:8px}
+button{font:inherit;border:0;border-radius:10px;cursor:pointer;color:inherit;background:none}
+button:disabled{opacity:.55;cursor:default}
+.go{padding:11px 16px;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;border-radius:12px;white-space:nowrap}
+.ghost{background:var(--sf2);border:1px solid var(--line);color:var(--ink);padding:8px 13px;font-size:.85rem;display:inline-flex;align-items:center;gap:6px;border-radius:10px;white-space:nowrap}
+.ghost:hover{border-color:var(--go);color:var(--go)}
+.danger{background:var(--sf2);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:8px 13px;font-size:.85rem}
+.linkbtn{color:var(--go);padding:0;font-size:inherit;text-decoration:underline}
+.linkbtn.red{color:var(--err)}
+.msg{font-size:.88rem;margin-top:8px;min-height:1.3em;white-space:pre-wrap;color:var(--mute)}
+.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
+.hint{display:block;color:var(--mute);font-size:.78rem;margin-top:4px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.stat{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.stat small{display:block;color:var(--mute);font-size:.76rem}
+.stat b{display:block;font-size:1.3rem;line-height:1.35;font-variant-numeric:tabular-nums}
+.empty{color:var(--mute);text-align:center;padding:14px;font-size:.9rem}
+.chip{display:inline-block;font-size:.74rem;font-weight:700;border-radius:999px;padding:2px 10px;border:1px solid var(--line);color:var(--mute)}
+.chip.on{color:var(--go);border-color:color-mix(in srgb,var(--go) 50%,var(--line))}
+.chip.busy{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,var(--line))}
+.acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row input{flex:1;min-width:200px}
+.meta{color:var(--mute);font-size:.84rem;margin-top:10px}
+.meta .mono{direction:ltr;unicode-bidi:isolate;font:500 .8rem "IBM Plex Mono",Consolas,monospace;color:var(--ink)}
+.err{color:var(--err);font-size:.86rem;margin-top:8px}
+.bar{height:6px;border-radius:99px;background:var(--sf2);overflow:hidden;margin-top:10px;border:1px solid var(--line)}
+.bar i{display:block;height:100%;width:0;background:var(--go);transition:width .2s}
+details.groups{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+details.groups summary{cursor:pointer;font-weight:500}
+.gtabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 8px}
+.gtabs button{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--sf2);font-size:.82rem}
+.gtabs button[aria-pressed="true"]{background:var(--go);color:var(--go-ink);border-color:var(--go)}
+.glist{max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:8px}
+.grow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:.88rem;margin:0;color:var(--ink);cursor:pointer}
+.grow:last-child{border-bottom:0}
+.grow input{width:18px;height:18px;flex:none;accent-color:var(--go)}
+.grow span{flex:1;min-width:0;overflow-wrap:anywhere}
+.grow small{color:var(--mute);white-space:nowrap}
+.grow.off span{opacity:.5;text-decoration:line-through}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+@media (max-width:600px){.form{grid-template-columns:1fr}}
+.foot{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<header class="top">
+  <button class="icon-btn" id="themeBtn" title="تبديل السمة" aria-label="تبديل السمة"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <nav class="nav"><a id="lnkHome">الحسابات</a><a id="lnkOut">خروج</a></nav>
+  <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4M10 9l4 2-4 2z"/></svg></span>
+    <span><b>محتوى السيرفرات</b><small>من ملفات M3U</small></span></div>
+</header>
+<main class="wrap">
+  <h1>محتوى السيرفرات</h1>
+  <p class="sub">لكل سيرفر ملف M3U: ارفعه، أو ضع رابطه فيُسحب منه كل يوم وحده. فيرى الزائر في
+    <a id="lnkPub" target="_blank" rel="noopener">صفحة المحتوى</a> المسلسلات بمواسمها وحلقاتها والأفلام والقنوات، ويبحث فيها
+    بالاسم قبل أن يشتري. لا يُنشر من الملف رابطٌ ولا اسم مستخدم ولا كلمة مرور، وأقسام الكبار تُحذف وحدها.</p>
+  <div id="list"><p class="empty">نحمّل السيرفرات…</p></div>
+
+  <section>
+    <h2>أضف سيرفرًا</h2>
+    <div class="form">
+      <div><label for="nName">اسم السيرفر كما يراه الزائر</label><input id="nName" maxlength="40" placeholder="مثل: كون"></div>
+      <div><label for="nKey">رابط صفحته (اختياري)</label><input id="nKey" class="ltr" maxlength="24" placeholder="kon">
+        <span class="hint">guide.ssouq.com/content/<b id="nKeyEx">…</b> — حروف إنجليزية صغيرة وأرقام، ولا يتغيّر بعد الإضافة</span></div>
+      <div><label for="nFull">سطرٌ تحت الاسم (اختياري)</label><input id="nFull" class="ltr" maxlength="40" placeholder="KON TV"></div>
+      <div><label for="nBuy">رابط الشراء في المتجر (اختياري)</label><input id="nBuy" class="ltr" placeholder="https://ssouq.com/..."></div>
+    </div>
+    <button class="go" id="nAdd" style="margin-top:12px">أضف السيرفر</button>
+    <div class="msg" id="nMsg"></div>
+  </section>
+</main>
+<script>
+// الأداة على نطاقها (admin.ssouq.com) من الجذر، وتحت /admin على الموقع العام
+const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+const SITE = "https://guide.ssouq.com";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = n => Number(n || 0).toLocaleString("en-US");
+// العدد ومعدوده كما في content._count: واحد، اثنان، جمع 3–10، مفرد 11–99، مفرد المئات
+const count = (n, f) => n === 1 ? f[0] : n === 2 ? f[1]
+  : num(n) + " " + (n % 100 >= 3 && n % 100 <= 10 ? f[2] : n % 100 > 10 || n < 100 ? f[3] : f[4]);
+const N = {item: ["عنصر واحد", "عنصران", "عناصر", "عنصرًا", "عنصر"], ep: ["حلقة واحدة", "حلقتان", "حلقات", "حلقة", "حلقة"],
+           movie: ["فيلم واحد", "فيلمان", "أفلام", "فيلمًا", "فيلم"], live: ["قناة واحدة", "قناتان", "قنوات", "قناة", "قناة"]};
+const mb = b => (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + " MB";
+const when = ts => ts ? new Date(ts * 1000).toLocaleString("ar-SA-u-nu-latn-ca-gregory",
+  {day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Riyadh"}) : "";
+const KINDS = ["series", "movie", "live"];
+const KIND = {series: "المسلسلات", movie: "الأفلام", live: "القنوات"};
+let DATA = null, poll = 0;
+const UI = {};            // لكل سيرفر: الأقسام مفتوحة؟ ونوعها، وما كُتب في بحثها وفي الرابط — فلا يمسحها إعادة الرسم
+const SIG = {};           // بصمة ما رُسم لكل سيرفر: لا يُعاد رسم ما لم تتغيّر بياناته (فلا يضيع ملفٌ اختير ولم يُرفع)
+
+$("lnkHome").href = B + "/accounts"; $("lnkOut").href = B + "/logout"; $("lnkPub").href = SITE + "/content";
+$("themeBtn").onclick = () => {
+  const d = document.documentElement, t = d.getAttribute("data-theme") === "light" ? "" : "light";
+  t ? d.setAttribute("data-theme", t) : d.removeAttribute("data-theme");
+  try { localStorage.setItem("xm_theme", t); } catch (e) {}
+};
+
+async function api(path, body) {
+  const r = await fetch(B + path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+  const d = await r.json().catch(() => ({error: "رد غير صالح"}));
+  if (d && d.login) { location.href = B + "/login"; throw new Error("login"); }
+  return d;
+}
+
+function stats(c) {
+  const t = [["مسلسلات", c.series], ["مواسم", c.seasons], ["حلقات", c.episodes], ["أفلام", c.movie], ["قنوات", c.live]];
+  return `<div class="stats">${t.map(([l, n]) => `<div class="stat"><small>${l}</small><b>${num(n)}</b></div>`).join("")}</div>`;
+}
+
+function chip(s) {
+  if (s.busy) return `<span class="chip busy">${s.busy.stage === "connect" ? "يتصل بالسيرفر…" : "يقرأ الملف… " + mb(s.busy.bytes || 0)}</span>`;
+  return s.has ? '<span class="chip on">منشور</span>' : '<span class="chip">بلا محتوى</span>';
+}
+
+function meta(s) {
+  const out = [];
+  if (s.has) {
+    out.push(`آخر تحديث: ${esc(when(s.at))}`);
+    out.push(s.source === "url" ? "من الرابط" : `من ملف${s.label ? ` <span class="mono">${esc(s.label)}</span>` : ""}`);
+    out.push(`${count(s.entries, N.item)} في الملف`);
+    const sk = s.skipped || {};
+    const drop = [sk.adult ? `${num(sk.adult)} من أقسام الكبار` : "", sk.sep ? `${num(sk.sep)} سطر فاصل` : ""].filter(Boolean);
+    if (drop.length) out.push("أُسقط: " + drop.join(" و"));
+  }
+  if (s.url) out.push(`الرابط <span class="mono">${esc(s.url)}</span> يُسحب كل ${DATA.refresh_hours} ساعة`);
+  return out.join(" · ");
+}
+
+function groupsHTML(s) {
+  const ui = UI[s.key], k = ui.tab, f = (ui.filter || "").trim().toLowerCase();
+  const all = KINDS.reduce((n, x) => n + s.groups[x].length, 0);
+  const hid = KINDS.reduce((n, x) => n + s.groups[x].filter(g => g[3]).length, 0);
+  const rows = s.groups[k].filter(g => !f || g[1].toLowerCase().includes(f)).map(([id, name, n, off]) =>
+    `<label class="grow${off ? " off" : ""}"><input type="checkbox" data-g="${esc(id)}"${off ? "" : " checked"}>`
+    + `<span>${esc(name)}</span><small>${num(n)}</small></label>`).join("") || '<p class="empty">لا أقسام</p>';
+  return `<details class="groups"${ui.open ? " open" : ""}><summary>الأقسام (${num(all)})${hid ? ` — المخفي منها ${num(hid)}` : ""}: أزل العلامة عمّا لا تريد عرضه للزائر</summary>
+    <div class="gtabs">${KINDS.map(x => `<button type="button" data-gk="${x}" aria-pressed="${x === k}">${KIND[x]} (${num(s.groups[x].length)})</button>`).join("")}</div>
+    <input type="search" data-gf placeholder="ابحث في الأقسام" value="${esc(ui.filter || "")}">
+    <div class="glist">${rows}</div></details>`;
+}
+
+function srvHTML(s, i, n) {
+  const ui = UI[s.key];
+  return `<h2><span><b>${esc(s.name)}</b>${s.full ? `<small>${esc(s.full)}</small>` : ""}</span>
+      <span class="acts">${chip(s)}
+        <button class="ghost" type="button" data-act="up"${i === 0 ? " disabled" : ""} title="قبل السيرفر الذي فوقه" aria-label="أعلى">↑</button>
+        <button class="ghost" type="button" data-act="down"${i === n - 1 ? " disabled" : ""} title="بعد السيرفر الذي تحته" aria-label="أسفل">↓</button>
+        <button class="ghost" type="button" data-act="edit">تعديل</button>
+        ${s.has ? `<a class="ghost" href="${SITE + esc(s.page)}" target="_blank" rel="noopener">صفحته ↗</a>` : ""}</span></h2>
+    ${s.counts ? stats(s.counts) : ""}
+    <div class="meta">${meta(s)}</div>
+    ${s.error ? `<div class="err">آخر سحب لم ينجح: ${esc(s.error)}${s.has ? " — والمحتوى السابق باقٍ في الصفحة" : ""}</div>` : ""}
+    <div class="form" data-editbox${ui.edit ? "" : " hidden"}>
+      <div><label>الاسم</label><input data-e="name" maxlength="40" value="${esc(s.name)}"></div>
+      <div><label>سطرٌ تحته</label><input data-e="full" class="ltr" maxlength="40" value="${esc(s.full)}"></div>
+      <div><label>رابط الشراء في المتجر</label><input data-e="buy" class="ltr" value="${esc(s.buy)}" placeholder="https://ssouq.com/..."></div>
+      <div><label>رابط الصفحة</label><input class="ltr" value="${esc(SITE + s.page)}" readonly></div>
+      <div><button class="go" type="button" data-act="save" style="margin-top:10px">حفظ</button></div>
+    </div>
+    <h3>ارفع ملف M3U</h3>
+    <div class="row"><input type="file" data-file accept=".m3u,.m3u8,.txt,.gz"><button class="go" type="button" data-act="upload">ارفع الملف</button></div>
+    <div class="bar" data-bar hidden><i></i></div>
+    <h3>أو رابط M3U — يُسحب منه الآن ثم كل ${DATA.refresh_hours} ساعة</h3>
+    <div class="row"><input class="ltr" data-url placeholder="http://host:port/get.php?username=…&password=…&type=m3u_plus" value="${esc(ui.url || "")}">
+      <button class="ghost" type="button" data-act="url">${s.url ? "استبدل الرابط" : "احفظ واسحب الآن"}</button></div>
+    ${s.url ? `<div class="meta"><button class="linkbtn" type="button" data-act="refresh">اسحب الآن</button> · <button class="linkbtn red" type="button" data-act="unlink">احذف الرابط</button> (يبقى المحتوى الحالي)</div>` : ""}
+    <div class="msg" data-msg>${ui.msg ? esc(ui.msg[0]) : ""}</div>
+    ${s.has ? groupsHTML(s) : ""}
+    <div class="foot">${s.has ? '<button class="danger" type="button" data-act="clear">امسح المحتوى</button>' : ""}
+      <button class="danger" type="button" data-act="drop">احذف السيرفر</button></div>`;
+}
+
+function render() {
+  const list = $("list"), ss = DATA.servers || [];
+  if (!ss.length) { list.innerHTML = '<section><p class="empty">لا سيرفرات — أضف واحدًا من الأسفل.</p></section>'; return; }
+  // الترتيب تغيّر أو سيرفرٌ أُضيف/حُذف: رسمٌ كامل؛ وإلا فالمتغيّر وحده
+  const keys = ss.map(s => s.key).join(",");
+  if (list.dataset.keys !== keys) { list.innerHTML = ss.map(s => `<section data-k="${esc(s.key)}"></section>`).join(""); list.dataset.keys = keys; }
+  ss.forEach((s, i) => {
+    UI[s.key] = UI[s.key] || {tab: "series", open: false};
+    const sig = JSON.stringify([s, i, ss.length]);     // وتبديل النوع أو التعديل يمسح البصمة بنفسه
+    if (SIG[s.key] === sig) return;
+    SIG[s.key] = sig;
+    const sec = list.querySelector(`[data-k="${CSS.escape(s.key)}"]`);
+    sec.innerHTML = srvHTML(s, i, ss.length);
+    const m = UI[s.key].msg; if (m) sec.querySelector("[data-msg]").className = "msg" + (m[1] ? " " + m[1] : "");
+  });
+  const busy = ss.some(s => s.busy);
+  clearTimeout(poll);
+  if (busy) poll = setTimeout(load, 2000);
+}
+
+async function load() {
+  try { DATA = await api("/api/content/admin"); render(); }
+  catch (e) { if (e.message !== "login") $("list").innerHTML = '<section><p class="empty">تعذّر التحميل</p></section>'; }
+}
+
+function say(key, text, cls) {
+  UI[key].msg = text ? [text, cls || ""] : null;
+  const sec = document.querySelector(`[data-k="${CSS.escape(key)}"]`);
+  const m = sec && sec.querySelector("[data-msg]");
+  if (m) { m.textContent = text || ""; m.className = "msg" + (cls ? " " + cls : ""); }
+}
+
+function done(d, key, ok) {
+  if (d && d.servers) { DATA = d; delete SIG[key]; render(); }
+  if (d && d.error) say(key, d.error, "err"); else if (ok) say(key, ok, "ok");
+}
+
+function summary(r) {
+  const n = r.n || {}, sk = r.skipped || {};
+  const parts = [n.series ? count(n.series, N.ep) + " من المسلسلات" : "", n.movie ? count(n.movie, N.movie) : "",
+                 n.live ? count(n.live, N.live) : ""].filter(Boolean);
+  let t = `تم: ${count(r.entries, N.item)} — ${parts.join(" و")}.`;
+  if (sk.adult) t += ` وأُسقط ${num(sk.adult)} من أقسام الكبار.`;
+  return t;
+}
+
+async function upload(key, sec) {
+  const file = sec.querySelector("[data-file]").files[0];
+  if (!file) return say(key, "اختر ملف M3U أولًا", "err");
+  const btn = sec.querySelector('[data-act="upload"]'), bar = sec.querySelector("[data-bar]");
+  btn.disabled = true;
+  let body = file;
+  // يُضغط في المتصفح قبل الرفع (نحو عُشر حجمه) — والخادم يفكّه وهو يقرؤه
+  if (window.CompressionStream && !/\.gz$/i.test(file.name) && file.size > 262144) {
+    say(key, `يضغط الملف (${mb(file.size)}) قبل رفعه…`);
+    try { body = await new Response(file.stream().pipeThrough(new CompressionStream("gzip"))).blob(); } catch (e) { body = file; }
+  }
+  bar.hidden = false; bar.firstElementChild.style.width = "0";
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", B + "/api/content/admin/upload?s=" + encodeURIComponent(key) + "&name=" + encodeURIComponent(file.name));
+  xhr.setRequestHeader("Content-Type", "application/octet-stream");
+  xhr.upload.onprogress = e => {
+    if (!e.lengthComputable) return;
+    bar.firstElementChild.style.width = Math.round(e.loaded / e.total * 100) + "%";
+    say(key, e.loaded < e.total ? `يرفع… ${mb(e.loaded)} من ${mb(e.total)}` : "رُفع، ويُقرأ الملف الآن…");
+  };
+  xhr.onload = () => {
+    let d = {}; try { d = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
+    if (d.login) { location.href = B + "/login"; return; }
+    btn.disabled = false; bar.hidden = true;
+    done(d, key, xhr.status === 200 && d.result ? summary(d.result) : "");
+    if (xhr.status !== 200 && !d.error) say(key, "تعذّر الرفع (" + xhr.status + ")", "err");
+  };
+  xhr.onerror = () => { btn.disabled = false; bar.hidden = true; say(key, "انقطع الاتصال أثناء الرفع", "err"); };
+  xhr.send(body);
+}
+
+$("list").addEventListener("click", async e => {
+  const b = e.target.closest("[data-act],[data-gk]"); if (!b) return;
+  const sec = b.closest("[data-k]"), key = sec.dataset.k, ui = UI[key];
+  if (b.dataset.gk) { ui.tab = b.dataset.gk; ui.open = true; delete SIG[key]; return render(); }
+  const act = b.dataset.act;
+  if (act === "upload") return upload(key, sec);
+  if (act === "edit") { ui.edit = !ui.edit; delete SIG[key]; return render(); }
+  let d;
+  b.disabled = true;
+  try {
+    if (act === "up" || act === "down") d = await api("/api/content/admin/move", {s: key, dir: act === "up" ? -1 : 1});
+    else if (act === "save") {
+      const v = f => sec.querySelector(`[data-e="${f}"]`).value;
+      d = await api("/api/content/admin/server", {s: key, name: v("name"), full: v("full"), buy: v("buy")});
+      if (!d.error) ui.edit = false;
+      return done(d, key, d.error ? "" : "حُفظ");
+    } else if (act === "url") {
+      const url = sec.querySelector("[data-url]").value.trim();
+      if (!url) return say(key, "الصق رابط M3U", "err");
+      d = await api("/api/content/admin/url", {s: key, url});
+      if (!d.error) ui.url = "";
+      return done(d, key, d.error ? "" : "حُفظ الرابط، ويُسحب الآن…");
+    } else if (act === "refresh") { d = await api("/api/content/admin/refresh", {s: key}); return done(d, key, d.error ? "" : "يُسحب الآن…"); }
+    else if (act === "unlink") {
+      if (!confirm("حذف الرابط؟ يبقى المحتوى الحالي في الصفحة، ولا يُحدَّث بعدها إلا برفع ملف.")) return;
+      d = await api("/api/content/admin/url", {s: key, url: ""});
+      return done(d, key, d.error ? "" : "حُذف الرابط");
+    } else if (act === "clear") {
+      if (!confirm("مسح محتوى هذا السيرفر ورابطه؟ تختفي صفحته حتى ترفع ملفًا جديدًا.")) return;
+      d = await api("/api/content/admin/clear", {s: key});
+      return done(d, key, d.error ? "" : "مُسح المحتوى");
+    } else if (act === "drop") {
+      if (!confirm("حذف هذا السيرفر من القائمة مع محتواه ورابطه؟")) return;
+      d = await api("/api/content/admin/clear", {s: key, drop: true});
+    }
+    if (d) done(d, key);
+  } catch (err) { if (err.message !== "login") say(key, "تعذّر الاتصال", "err"); }
+  finally { if (b.isConnected) b.disabled = false; }
+});
+
+$("list").addEventListener("change", async e => {
+  const cb = e.target.closest("input[data-g]"); if (!cb) return;
+  const sec = cb.closest("[data-k]"), key = sec.dataset.k;
+  cb.closest(".grow").classList.toggle("off", !cb.checked);
+  const d = await api("/api/content/admin/hide", {s: key, g: cb.dataset.g, hidden: !cb.checked}).catch(() => ({error: "تعذّر الحفظ"}));
+  if (d.error) { cb.checked = !cb.checked; cb.closest(".grow").classList.toggle("off", !cb.checked); say(key, d.error, "err"); return; }
+  DATA = d; SIG[key] = null; render();
+});
+
+$("list").addEventListener("input", e => {
+  const sec = e.target.closest("[data-k]"); if (!sec) return;
+  const ui = UI[sec.dataset.k];
+  if (e.target.matches("[data-url]")) { ui.url = e.target.value; return; }
+  if (e.target.matches("[data-gf]")) {
+    ui.filter = e.target.value;
+    const q = ui.filter.trim().toLowerCase();
+    sec.querySelectorAll(".grow").forEach(r => { r.hidden = !!q && !r.querySelector("span").textContent.toLowerCase().includes(q); });
+  }
+});
+
+$("list").addEventListener("toggle", e => {
+  if (!e.target.matches || !e.target.matches("details.groups")) return;
+  UI[e.target.closest("[data-k]").dataset.k].open = e.target.open;
+}, true);
+
+$("nKey").oninput = () => { $("nKeyEx").textContent = $("nKey").value.trim().toLowerCase() || "…"; };
+$("nAdd").onclick = async () => {
+  const body = {new: true, name: $("nName").value, key: $("nKey").value, full: $("nFull").value, buy: $("nBuy").value};
+  const d = await api("/api/content/admin/server", body).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { $("nMsg").className = "msg err"; $("nMsg").textContent = d.error; return; }
+  ["nName", "nKey", "nFull", "nBuy"].forEach(id => { $(id).value = ""; }); $("nKeyEx").textContent = "…";
+  $("nMsg").className = "msg ok"; $("nMsg").textContent = "أُضيف السيرفر — ارفع ملفه أو ضع رابطه.";
+  DATA = d; render();
+};
+
+load();
+</script>
+</body>
+</html>
