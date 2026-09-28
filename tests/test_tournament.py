@@ -187,6 +187,23 @@ def unit():
     check("خريطة الموقع: الصفحة ومبارياتها", sm[0] == "/nations-league" and len(sm) == 1 + len(ms)
           and "/nations-league/1-france-belgium" in sm)
 
+    print("\nالأداة المدمجة في متجر سلة")
+    code, raw, age = T.render_widget()
+    wp = raw.decode("utf-8")
+    heads = re.findall(r"<h2>([^<]+)</h2>", wp)
+    check("مباريات اليوم والقادمة، بلا «آخر النتائج»", heads == ["مباريات اليوم", "المباريات القادمة"]
+          and "آخر النتائج" not in wp, str(heads))
+    check("لا نتيجة منتهية من أمسٍ فيها", 'href="/nations-league/1-france-belgium"' not in wp
+          and 'href="/nations-league/4-portugal-wales"' in wp)
+    check("روابطها تُفتح في نافذة جديدة", wp.count('target="_blank"') == wp.count("<a ") and wp.count("<a ") > 1)
+    check("لا تُفهرس، ورابطها القانوني الصفحة", '<meta name="robots" content="noindex">' in wp
+          and f'rel="canonical" href="{T.guide_pages.SITE}/nations-league"' in wp)
+    check("تبلّغ الحاضنة بطولها", "parent.postMessage({ssouqWidget:" in wp)
+    check("فاتحة، وداكنة بـ theme=dark", 'data-theme="light"' in wp
+          and 'data-theme="dark"' in T.render_widget(dark=True)[1].decode("utf-8"))
+    check("بلا إعلان داخل المتجر", "cup-ad" not in wp.split("<body>")[1])
+    check("والجارية تتحدّث كل دقيقة", age == T.LIVE_TTL and '<meta http-equiv="refresh" content="60">' in wp)
+
     print("\nتعذّر الجلب")
 
     def down(path):
@@ -248,6 +265,8 @@ def live():
         check("صفحة المباراة 200 بأهدافها", c == 200 and "Kylian Mbappé" in b and h.get("Cache-Control") == "public, max-age=300")
         c, _, _ = req(base, "/nations-league/999-nobody")
         check("مباراة غير موجودة = 404", c == 404)
+        c, h, b = req(base, "/nations-league/widget?theme=dark")
+        check("/nations-league/widget للمتجر", c == 200 and 'data-theme="dark"' in b and "noindex" in b)
         c, _, b = req(base, "/")
         check("الرئيسية تربطها", 'href="/nations-league"' in b)
         c, _, b = req(base, "/nations-league", "admin.ssouq.com")

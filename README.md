@@ -778,6 +778,20 @@ node tools/sync_guide_data.js
 `SportsEvent` و`BreadcrumbList`. الملخّص (‏`summary?event=`) كاشٌ لكل مباراة: دقيقة وهي
 جارية، وست ساعات بعد نهايتها — وإن تعذّر ظهرت الصفحة بلا أهداف ولا إحصاءات.
 
+**في رئيسية متجر سلة:** `/nations-league/widget` نسخةٌ مدمجة لقسم «محتوى HTML» في محرر
+الصفحة الرئيسية: رأسٌ بلون المتجر ورابط «كل النتائج»، و«مباريات اليوم» و«المباريات
+القادمة» (4 لكلٍّ منهما، أو 8 قادمة إن لم يكن اليوم مباريات) — **بلا «آخر النتائج»** بطلب
+المتجر، وبلا إعلان (هي في المتجر نفسه). خلفيتها شفافة، وثيمها فاتح أو داكن
+(‏`?theme=dark`، والمتجر داكن)، وروابطها تُفتح في نافذة جديدة، ولا تُفهرس. وتبلّغ
+الصفحة الحاضنة بطولها فيتّسع الإطار لها بلا تمرير داخلي — وإن أسقطت سلة السطر
+`<script>` بقي الإطار بطوله الافتراضي. الكود الذي يُلصق في القسم:
+
+```html
+<iframe id="ssouq-nl" src="https://guide.ssouq.com/nations-league/widget?theme=dark"
+  title="دوري الأمم الأوروبية" style="display:block;width:100%;height:560px;border:0"></iframe>
+<script>addEventListener("message",function(e){if(e.origin==="https://guide.ssouq.com"&&e.data&&e.data.ssouqWidget){document.getElementById("ssouq-nl").style.height=e.data.ssouqWidget+"px"}});</script>
+```
+
 **بطولة أخرى** (كأس آسيا 2027 في السعودية مثلًا — جدولها كاملٌ في ESPN برمز
 `afc.asian.cup`): غيّر `CUP` (الرمز، والسنوات، وبادئة المجموعات، وأسماء الأدوار) و
 `RANK_ZONES` ونصوص الصفحة. أسماء المنتخبات الأوروبية والآسيوية كلها في `league.AR`.
