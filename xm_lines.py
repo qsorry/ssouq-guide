@@ -26,6 +26,7 @@ import guide_pages
 import store_sitemap
 import league
 import tournament
+import contest
 import xm_web
 import falcon_api
 import crypto_store
@@ -91,6 +92,8 @@ DATA_DIR  = os.environ.get("XM_DATA", os.path.join(BASE_DIR, "data"))
 ACC_FILE  = os.path.join(DATA_DIR, "accounts.json")
 TXT_FILE  = os.path.join(DATA_DIR, "lines.txt")
 STATS_FILE = os.path.join(DATA_DIR, "stats.json")   # عدّاد أداة M3U العامة
+# مسابقة التوقّعات: صفحات البطولة تقرأ مسابقاتها من مجلد البيانات هذا
+tournament.contests = lambda: contest.summaries(DATA_DIR)
 
 def load_stats():
     try:
@@ -1963,6 +1966,69 @@ def start_split_worker():
     threading.Thread(target=_split_loop, daemon=True).start()
 
 
+# ============================ مسابقة التوقّعات ============================
+# الفرز آليٌّ في دورة كل دقيقة: كل مسابقةٍ انتهت مباراتها تُفرز ويُبلَّغ فائزوها على
+# واتساب بقناة خدمة سلة نفسها. وأول زائرٍ لصفحة المباراة بعد النهاية يسبق الدورة إن سبقها.
+CONTEST_TICK = 60
+
+
+def cup_match(eid):
+    """مباراة البطولة بمعرّفها من كاش ESPN، أو None."""
+    eid = contest.eid_of(eid)
+    data = tournament._feed.get()[0] if eid else None
+    return next((m for m in (data or {}).get("matches", []) if m["id"] == eid), None)
+
+
+def contest_link(rec):
+    mt = rec.get("match") or {}
+    return f"https://{SITE_HOST}{tournament.PATH}/{mt.get('slug') or rec['eid']}#predict"
+
+
+def contest_notify(rec):
+    """رسائل الفرز: للفائزين (إن فُعّل التبليغ) ولرقم المدير — وتُسجَّل نتيجة كلٍّ منها."""
+    try:
+        wa = load_store()["service"].get("wa", {})
+        out = []
+        for msg in contest.messages(rec, contest.load_settings(DATA_DIR), contest_link(rec)):
+            r = wa_send.send(wa, msg["to"], msg["text"])
+            out.append({"to": msg["to"], "kind": msg["kind"], "n": msg.get("n"), "ok": bool(r.get("ok")),
+                        "dry": bool(r.get("dry")), "error": str(r.get("error") or "")[:200]})
+        if out:
+            contest.mark_sent(DATA_DIR, rec["eid"], out)
+        return out
+    except Exception as e:                  # التبليغ لا يُسقط الفرز؛ ويُعاد من صفحة المدير
+        return [{"ok": False, "error": str(e)[:200]}]
+
+
+def contest_tick(now=None):
+    """دورةٌ واحدة ← معرّفات ما فُرز فيها."""
+    ids = contest.waiting(DATA_DIR)
+    if not ids:
+        return []                           # لا مسابقة تنتظر: لا نداء لـ ESPN
+    data = tournament._feed.get()[0]
+    ms = {m["id"]: m for m in (data or {}).get("matches", [])}
+    done = []
+    for eid in ids:
+        rec, drawn = contest.settle(DATA_DIR, eid, ms.get(eid), now)
+        if drawn:
+            done.append(eid)
+            contest_notify(rec)
+    return done
+
+
+def _contest_loop():
+    while True:
+        time.sleep(CONTEST_TICK)
+        try:
+            contest_tick()
+        except Exception:
+            pass
+
+
+def start_contest_worker():
+    threading.Thread(target=_contest_loop, daemon=True).start()
+
+
 # ---------------- وضع سطر الأوامر ----------------
 def pick_account():
     accts = load_store()["accounts"]
@@ -2184,6 +2250,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                               else {"Retry-After": str(league.RETRY)})
+        if path == "/api/contest":              # حال مسابقة المباراة (للبطاقة في صفحتها)
+            return self._contest_public()
+        if path == tournament.PREDICT:           # صفحة المسابقة: المفتوحة والمفروزة وشروطها
+            code, body, age = tournament.render_predict()
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"})
         if path.startswith(tournament.PATH + "/"):    # صفحة مباراة من البطولة
             page = tournament.render_match(path[len(tournament.PATH) + 1:])
             if page and page[0] == "redirect":
@@ -2371,6 +2443,10 @@ class Handler(BaseHTTPRequestHandler):
                         if split_package_ok(p):
                             p["split"] = True
                 return self._send(200, {**base, "packages": pkgs})
+            if path == "/contest" or path.startswith("/api/contest/"):   # مسابقة التوقّعات (للمدير)
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._page("contest_admin.html") if path == "/contest" else self._contest_admin_get(path)
             if path == "/remaining":              # الحسابات المتبقية (الاشتراكات المجزّأة)
                 if role == "account" and not split_on(acct):
                     return self._redirect(self._url())
@@ -2681,6 +2757,80 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": ok, "error": why})
         return self._send(404, {"error": "not found"})
 
+    # ---------- مسابقة التوقّعات ----------
+    def _contest_public(self):
+        m = cup_match(self._q("m"))
+        rec = contest.load(DATA_DIR, self._q("m"))
+        if rec and m and contest.due(rec, m):          # زائرٌ سبق الدورة بعد صافرة النهاية
+            rec, drawn = contest.settle(DATA_DIR, m["id"], m)
+            if drawn:
+                threading.Thread(target=contest_notify, args=(rec,), daemon=True).start()
+        d = contest.public(rec, m) if rec else {"ok": True, "state": "off"}
+        if (d.get("match") or {}).get("ts"):
+            d["when"] = tournament.when_label(d["match"]["ts"])
+        return self._send(200, d)
+
+    def _contest_enter(self):
+        if int(self.headers.get("Content-Length", 0) or 0) > 4096:
+            return self._send(413, {"error": "طلب كبير"})
+        try:
+            form = self._body()
+        except ValueError:
+            return self._send(400, {"error": "طلب غير صالح"})
+        if not isinstance(form, dict):
+            return self._send(400, {"error": "طلب غير صالح"})
+        code, res = contest.enter(DATA_DIR, cup_match(form.get("m")), form, self._client_ip())
+        return self._send(code, res)
+
+    def _contest_admin_get(self, path):
+        data = tournament._feed.get()[0]
+        ms = (data or {}).get("matches", [])
+        if path == "/api/contest/admin":
+            rows = contest.admin_rows(DATA_DIR, ms)
+            for r in rows:
+                r["when"] = tournament.when_label(r["match"]["ts"]) if r["match"].get("ts") else ""
+            return self._send(200, {"ok": True, "rows": rows, "feed": bool(data),
+                                    "settings": contest.load_settings(DATA_DIR),
+                                    "wa": load_store()["service"].get("wa", {}).get("type") or "none"})
+        if path == "/api/contest/admin/match":
+            eid = contest.eid_of(self._q("m"))
+            d = contest.admin_detail(DATA_DIR, eid, next((x for x in ms if x["id"] == eid), None))
+            if not d:
+                return self._send(404, {"error": "لا مسابقة على هذه المباراة"})
+            if d["match"].get("ts"):
+                d["when"] = d["public"]["when"] = tournament.when_label(d["match"]["ts"])
+            d["link"] = contest_link(d)
+            return self._send(200, d)
+        if path == "/api/contest/admin/export.xlsx":      # التوقّعات Excel: مباراةٌ أو كلها
+            eid = contest.eid_of(self._q("m"))
+            raw = xlsx_write.build_xlsx(contest.export_sheets(DATA_DIR, eid))
+            return self._send(200, raw=raw, ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                              extra={"Content-Disposition": f'attachment; filename="contest-{eid or "all"}.xlsx"'})
+        return self._send(404, {"error": "not found"})
+
+    def _contest_admin_post(self, path):
+        req = self._body()
+        if path == "/api/contest/admin/settings":
+            return self._send(200, {"ok": True, "settings": contest.save_settings(DATA_DIR, req)})
+        m = cup_match(req.get("m"))
+        if path == "/api/contest/admin/set":
+            if not m:
+                return self._send(404, {"error": "المباراة ليست في جدول البطولة"})
+            code, res = contest.configure(DATA_DIR, m, bool(req.get("on")), req.get("prize"), req.get("winners"))
+            return self._send(code, res)
+        if path == "/api/contest/admin/settle":       # «افرز الآن»: ما تفعله الدورة كل دقيقة
+            rec, drawn = contest.settle(DATA_DIR, contest.eid_of(req.get("m")), m)
+            if not rec or not rec.get("draw"):
+                why = "أُلغيت المباراة فلا فرز." if rec and rec.get("void") else "لم تنتهِ المباراة بعد."
+                return self._send(409, {"error": why})
+            return self._send(200, {"ok": True, "drawn": drawn, "sent": contest_notify(rec) if drawn else []})
+        if path == "/api/contest/admin/notify":       # إعادة رسائل الفرز (بعد ضبط الواتساب مثلًا)
+            rec = contest.load(DATA_DIR, req.get("m"))
+            if not rec or not rec.get("draw"):
+                return self._send(409, {"error": "لم تُفرز بعد."})
+            return self._send(200, {"ok": True, "sent": contest_notify(rec)})
+        return self._send(404, {"error": "not found"})
+
     # ---------- تجديد الاشتراك (عام) ----------
     def _client_ip(self):
         fwd = self.headers.get("X-Forwarded-For", "")
@@ -2755,6 +2905,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._salla_webhook()
             if path in ("/api/renew/lookup", "/api/renew/claim"):
                 return self._renew_public(path)
+            if path == "/api/contest/enter":         # توقّعٌ من صفحة المباراة (عام)
+                return self._contest_enter()
         if self.off_site or not path.startswith(self.P + "/api/"):
             return self._send(404, {"error": "not found"})
         path = path[len(self.P):]
@@ -2808,6 +2960,10 @@ class Handler(BaseHTTPRequestHandler):
                     acct["guide_url"] = gu
                     save_store(st)
                     return self._send(200, {"ok": True, "guide_url": gu})
+            if path.startswith("/api/contest/"):      # خارج القفل: التبليغ ينتظر واتساب
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._contest_admin_post(path)
             if path == "/api/web/login":              # إدخال كود التحقّق يدويًا (وضع الويب)
                 body = self._body()
                 gate = find_gate(acct, body.get("gate")) if acct else None
@@ -3241,6 +3397,7 @@ def web():
     start_poller()
     start_renew_worker()
     start_split_worker()
+    start_contest_worker()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 

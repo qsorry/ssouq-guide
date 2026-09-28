@@ -184,8 +184,8 @@ def unit():
     code, raw, age = T.render_match("7-croatia-czechia")
     check("ملخّصٌ متعذّر لا يُسقط الصفحة", code == 200 and "كرواتيا" in raw.decode("utf-8"))
     sm = [p for p, _, _ in T.sitemap()]
-    check("خريطة الموقع: الصفحة ومبارياتها", sm[0] == "/nations-league" and len(sm) == 1 + len(ms)
-          and "/nations-league/1-france-belgium" in sm)
+    check("خريطة الموقع: الصفحة وصفحة المسابقة ومبارياتها", sm[0] == "/nations-league" and len(sm) == 2 + len(ms)
+          and T.PREDICT in sm and "/nations-league/1-france-belgium" in sm)
 
     print("\nالأداة المدمجة في متجر سلة")
     code, raw, age = T.render_widget()

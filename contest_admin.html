@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>مسابقة التوقّعات</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+<style>
+/* نظام تصميم صفحات الأداة نفسه (admin.html) — داكنٌ افتراضيًّا، متوافقٌ مع الجوال */
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--shadow:0 18px 50px rgba(0,0,0,.45)}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--shadow:0 14px 40px rgba(20,40,80,.14)}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
+[hidden]{display:none!important}
+a{color:var(--go);text-decoration:none}
+svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:8px;height:60px;padding:0 14px;background:color-mix(in srgb,var(--sf) 90%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;margin-inline-start:auto;font-weight:700;line-height:1.1}
+.brand .mark{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#f7b447,#e0900f 60%,#a86a08);display:grid;place-items:center;color:#fff;flex:none}
+.brand b{display:block;font-size:1.02rem}
+.brand small{display:block;color:var(--mute);font-size:.7rem;font-weight:400}
+.nav{display:flex;gap:2px;flex-wrap:wrap}
+.nav a{padding:8px 10px;border-radius:10px;color:var(--mute);font-weight:500;font-size:.86rem}
+.nav a:hover{color:var(--ink);background:var(--sf2)}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none;cursor:pointer}
+.wrap{max-width:820px;margin:0 auto;padding:16px 14px 60px}
+h1{font-size:1.35rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 16px;font-size:.9rem}
+section{background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:16px}
+h2{font-size:1.08rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+h3{font-size:.98rem;margin:16px 0 8px}
+label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
+input,select,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--sf2);color:var(--ink);font:inherit}
+textarea{resize:vertical;line-height:1.7}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--go)}
+input.ltr{direction:ltr;text-align:left}
+button{font:inherit;border:0;border-radius:10px;cursor:pointer;color:inherit;background:none}
+button:disabled{opacity:.55;cursor:default}
+.go{padding:11px 16px;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;border-radius:12px}
+.ghost{background:var(--sf2);border:1px solid var(--line);color:var(--ink);padding:8px 13px;font-size:.85rem;display:inline-flex;align-items:center;gap:6px;border-radius:10px}
+.ghost:hover{border-color:var(--go);color:var(--go)}
+.danger{background:var(--sf2);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:8px 13px;font-size:.85rem}
+.msg{font-size:.88rem;margin-top:8px;min-height:1.3em;white-space:pre-wrap;color:var(--mute)}
+.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
+.hint{display:block;color:var(--mute);font-size:.78rem;margin-top:4px}
+.chk{display:flex;gap:8px;align-items:center;color:var(--ink);font-size:.9rem;margin-top:8px;cursor:pointer}
+.chk input{width:18px;height:18px;flex:none;accent-color:var(--go)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stat{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.stat small{display:block;color:var(--mute);font-size:.76rem}
+.stat b{display:block;font-size:1.4rem;line-height:1.35;font-variant-numeric:tabular-nums}
+.empty{color:var(--mute);text-align:center;padding:14px;font-size:.9rem}
+/* صفوف المباريات */
+.mrow{border-top:1px solid var(--line);padding:14px 0}
+.mrow:first-child{border-top:0;padding-top:2px}
+.mhead{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.mi{flex:1;min-width:220px}
+.mi b{display:block;font-size:1rem}
+.mi small{display:block;color:var(--mute);font-size:.8rem}
+.chip{display:inline-block;margin-top:6px;font-size:.74rem;font-weight:700;border-radius:999px;padding:2px 10px;border:1px solid var(--line);color:var(--mute)}
+.chip.open{color:var(--go);border-color:color-mix(in srgb,var(--go) 50%,var(--line))}
+.chip.closed,.chip.pending,.chip.hold{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,var(--line))}
+.chip.done{color:#fff;background:var(--go2);border-color:var(--go2)}
+.chip.void{color:var(--err)}
+.mctl{display:grid;grid-template-columns:1fr 110px auto;gap:8px;align-items:end;margin-top:10px}
+.mctl label{margin-top:0}
+@media (max-width:560px){.mctl{grid-template-columns:1fr 90px}.mctl .acts{grid-column:1/-1}}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.acts button{white-space:nowrap}
+/* النافذة */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(4,10,22,.6);display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--sf);width:100%;max-width:760px;max-height:94vh;overflow:auto;border-radius:20px 20px 0 0;box-shadow:var(--shadow)}
+.sheet section{border:0;border-radius:0;margin:0}
+.sheet h2{position:sticky;top:-16px;background:var(--sf);padding:6px 0 10px;z-index:2}
+.sheet .x{margin-inline-start:auto;background:var(--sf2);border:1px solid var(--line);color:var(--ink);width:34px;height:34px;border-radius:10px}
+@media(min-width:640px){.modal{align-items:center;padding:18px}.sheet{border-radius:20px}}
+.win{background:var(--sf2);border:1px solid color-mix(in srgb,var(--go) 45%,var(--line));border-radius:14px;padding:12px 14px;margin-top:8px}
+.win b{font-size:1.05rem;margin-inline-end:10px}
+.win .ph{direction:ltr;unicode-bidi:isolate;font-family:"IBM Plex Mono",monospace}
+.win small{display:block;color:var(--mute)}
+.mono{direction:ltr;text-align:left;font:500 .76rem/1.7 "IBM Plex Mono",Consolas,monospace;overflow-wrap:anywhere;background:var(--sf2);border-radius:10px;padding:8px 10px;margin:4px 0}
+.tbl{width:100%;border-collapse:collapse;font-size:.85rem}
+.tbl th,.tbl td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:start;white-space:nowrap}
+.tbl th{color:var(--mute);font-weight:500;position:sticky;top:0;background:var(--sf)}
+.tbl td.ph{direction:ltr;unicode-bidi:isolate;font-family:"IBM Plex Mono",monospace;text-align:right}
+.tbl tr.w td{color:var(--go);font-weight:700}
+.tblbox{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:8px}
+.sc{display:inline-flex;gap:4px;font-weight:700;font-variant-numeric:tabular-nums}
+.sc i{font-style:normal;color:var(--mute)}
+.vid{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:10px}
+.vid canvas{width:min(100%,320px);aspect-ratio:9/16;border-radius:14px;background:#012E45}
+.sent li{font-size:.84rem}
+</style>
+</head>
+<body>
+<header class="top">
+  <button class="icon-btn" id="themeBtn" title="تبديل السمة" aria-label="تبديل السمة"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <nav class="nav"><a id="lnkHome">الحسابات</a><a id="lnkOut">خروج</a></nav>
+  <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg></span>
+    <span><b>مسابقة التوقّعات</b><small>توقّع النتيجة واربح</small></span></div>
+</header>
+<main class="wrap">
+  <h1>مسابقة توقّع النتيجة</h1>
+  <p class="sub">افتح المسابقة على مباراة واكتب جائزتها. التوقّعات تُقفل مع صافرة البداية، والفرز آليٌّ بعد صافرة النهاية، والفائز يُبلَّغ على واتساب — ولا يُطلب منك شيء إلا تسليم الجائزة.</p>
+
+  <section>
+    <div class="stats">
+      <div class="stat"><small>مسابقات مفتوحة</small><b id="stOpen">—</b></div>
+      <div class="stat"><small>كل التوقّعات</small><b id="stAll">—</b></div>
+      <div class="stat"><small>فُرزت</small><b id="stDone">—</b></div>
+      <div class="stat"><small>قناة واتساب</small><b id="stWa" style="font-size:1rem;padding-top:6px">—</b></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>المباريات <span class="acts"><a class="ghost" id="xlsAll">Excel كل التوقّعات</a><a class="ghost" id="lnkPub" target="_blank" rel="noopener">صفحة المسابقة</a></span></h2>
+    <div id="rows"><p class="empty">نحمّل المباريات…</p></div>
+    <p class="hint">المباريات القادمة خلال ثلاثة أسابيع، وكل مباراةٍ عليها مسابقة. المسابقة تُفتح قبل صافرة البداية فقط، وعدد الفائزين لا يتغيّر بعد الإقفال.</p>
+  </section>
+
+  <section>
+    <h2>التبليغ على واتساب</h2>
+    <label class="chk"><input type="checkbox" id="sNotify"> أرسل للفائز رسالة تهنئة تلقائيًا بعد الفرز</label>
+    <label for="sText">نص رسالة الفائز</label>
+    <textarea id="sText" rows="7"></textarea>
+    <span class="hint">يُستبدل فيه: {name} الاسم الأول · {match} المباراة · {score} النتيجة · {prize} الجائزة · {link} صفحة الفرز</span>
+    <label for="sAdmin">رقم واتسابك لملخّص كل فرز (اختياري)</label>
+    <input id="sAdmin" class="ltr" inputmode="tel" placeholder="05xxxxxxxx">
+    <p class="hint" id="waHint"></p>
+    <button class="go" id="sSave" style="margin-top:12px">حفظ</button>
+    <div class="msg" id="sMsg"></div>
+  </section>
+</main>
+
+<div class="modal" id="mdl" hidden><div class="sheet"><section>
+  <h2><span id="dTitle"></span><button class="x" id="dClose" aria-label="إغلاق">✕</button></h2>
+  <div id="dBody"></div>
+</section></div></div>
+
+<script src="/static/contest-draw.js"></script>
+<script>
+// الأداة على نطاقها (admin.ssouq.com) من الجذر، وتحت /admin على الموقع العام
+const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = n => Number(n || 0).toLocaleString("en-US");
+const sc = (h, a) => `<span class="sc"><b>${h}</b><i>-</i><b>${a}</b></span>`;
+const STATE = {off: "بلا مسابقة", open: "مفتوحة للتوقّع", hold: "موقوفة حتى يُعلن الموعد", closed: "أُقفلت — المباراة جارية",
+               pending: "انتهت — الفرز خلال دقيقة", done: "فُرزت", void: "أُلغيت المباراة"};
+const SITE = "https://guide.ssouq.com";
+let DATA = null, player = null;
+
+$("lnkHome").href = B + "/accounts"; $("lnkOut").href = B + "/logout";
+$("xlsAll").href = B + "/api/contest/admin/export.xlsx"; $("lnkPub").href = SITE + "/nations-league/predict";
+$("themeBtn").onclick = () => {
+  const d = document.documentElement, t = d.getAttribute("data-theme") === "light" ? "" : "light";
+  t ? d.setAttribute("data-theme", t) : d.removeAttribute("data-theme");
+  try { localStorage.setItem("xm_theme", t); } catch (e) {}
+};
+
+async function api(path, body) {
+  const r = await fetch(B + path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+  const d = await r.json().catch(() => ({error: "رد غير صالح"}));
+  if (d && d.login) { location.href = B + "/login"; throw new Error("login"); }
+  return d;
+}
+
+async function load() {
+  const d = await api("/api/contest/admin");
+  DATA = d;
+  const rows = d.rows || [];
+  const cs = rows.filter(r => r.contest);
+  $("stOpen").textContent = num(rows.filter(r => r.state === "open").length);
+  $("stAll").textContent = num(cs.reduce((n, r) => n + (r.contest.count || 0), 0));
+  $("stDone").textContent = num(rows.filter(r => r.state === "done").length);
+  $("stWa").textContent = d.wa === "none" ? "غير مضبوطة" : d.wa === "cloud" ? "Cloud API" : "بوابة HTTP";
+  $("waHint").textContent = d.wa === "none"
+    ? "قناة الواتساب غير مضبوطة، فالرسائل لا تُرسل. اضبطها من الإعدادات ← ربط سلة ← واتساب، ثم «أعد إرسال الرسائل» من تفاصيل المسابقة."
+    : "الرسائل من قناة خدمة سلة نفسها.";
+  if (!$("sText").dataset.set) {
+    const s = d.settings || {};
+    $("sNotify").checked = !!s.notify; $("sText").value = s.text || ""; $("sAdmin").value = s.admin_phone || "";
+    $("sText").dataset.set = "1";
+  }
+  if (!d.feed && !rows.length) { $("rows").innerHTML = '<p class="empty">تعذّر جلب المباريات من ESPN الآن. أعد المحاولة بعد دقائق.</p>'; return; }
+  $("rows").innerHTML = rows.length ? rows.map(row).join("") : '<p class="empty">لا مباريات قادمة في البطولة الآن.</p>';
+}
+
+function row(r) {
+  const c = r.contest, st = r.state, m = r.match;
+  const fresh = r.mstate !== "in" && r.mstate !== "post";   // لم تبدأ: تُفتح عليها مسابقة
+  const count = c ? ` · ${num(c.count)} توقّعًا` : "";
+  const score = (r.mstate === "post" || r.mstate === "in") && r.score ? " · " + m.home + " " + r.score[0] + " – " + r.score[1] + " " + m.away : "";
+  let ctl = "";
+  if ((c && c.on && !c.draw) || (!(c && c.draw) && fresh && ["off", "open", "hold"].includes(st))) {
+    const w = c ? c.winners : 1;
+    ctl = `<div class="mctl">
+      <div><label>الجائزة</label><input data-f="prize" value="${esc(c ? c.prize : "")}" placeholder="اشتراك 3 أشهر" maxlength="80"></div>
+      <div><label>الفائزون</label><select data-f="winners">${[1,2,3,4,5].map(n => `<option ${n === w ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+      <div class="acts">${c && c.on
+        ? `<button class="ghost" data-a="save">حفظ</button><button class="danger" data-a="off">إيقاف</button>`
+        : `<button class="go" data-a="on">افتح المسابقة</button>`}</div></div>`;
+  }
+  return `<div class="mrow" data-eid="${esc(r.eid)}">
+    <div class="mhead"><div class="mi"><b>${esc(m.home)} × ${esc(m.away)}</b>
+      <small>${esc(r.when)} · ${esc(m.stage)}${esc(score)}</small>
+      <span class="chip ${st}">${STATE[st] || st}${count}</span></div>
+      <div class="acts">${c ? `<button class="ghost" data-a="view">التوقّعات والفرز</button>` : ""}
+        <a class="ghost" href="${SITE}/nations-league/${esc(m.slug)}#predict" target="_blank" rel="noopener">صفحة المباراة</a></div></div>
+    ${ctl}<div class="msg"></div></div>`;
+}
+
+$("rows").addEventListener("click", async e => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  const rowEl = b.closest(".mrow"), eid = rowEl.dataset.eid, msg = rowEl.querySelector(".msg"), a = b.dataset.a;
+  if (a === "view") return view(eid);
+  const f = k => (rowEl.querySelector(`[data-f="${k}"]`) || {}).value;
+  if (a === "off" && !confirm("إيقاف المسابقة يخفيها من صفحة المباراة ولا يُفرز لها. التوقّعات تبقى محفوظة. متابعة؟")) return;
+  b.disabled = true; msg.className = "msg"; msg.textContent = "…";
+  const d = await api("/api/contest/admin/set", {m: eid, on: a !== "off", prize: f("prize"), winners: f("winners")});
+  b.disabled = false;
+  if (!d.ok) { msg.className = "msg err"; msg.textContent = d.error || "تعذّر الحفظ"; return; }
+  await load();
+});
+
+$("sSave").onclick = async () => {
+  const d = await api("/api/contest/admin/settings", {notify: $("sNotify").checked, text: $("sText").value, admin_phone: $("sAdmin").value});
+  $("sMsg").className = "msg " + (d.ok ? "ok" : "err"); $("sMsg").textContent = d.ok ? "حُفظ." : (d.error || "تعذّر الحفظ");
+  if (d.ok) { $("sAdmin").value = d.settings.admin_phone || ""; }
+};
+
+// ---------- تفاصيل مسابقة ----------
+function close() { if (player) player.stop(); player = null; $("mdl").hidden = true; }
+$("dClose").onclick = close;
+$("mdl").addEventListener("click", e => { if (e.target === $("mdl")) close(); });
+
+async function view(eid) {
+  const d = await api("/api/contest/admin/match?m=" + encodeURIComponent(eid));
+  if (!d.ok) return alert(d.error || "تعذّر التحميل");
+  const m = d.match, dr = d.draw, won = d.won || [];
+  $("dTitle").textContent = m.home + " × " + m.away;
+  let h = `<p class="sub" style="margin:0">${esc(d.when || "")} · ${esc(m.stage)} · <span class="chip ${d.state}">${STATE[d.state] || d.state}</span></p>
+    <p>الجائزة: <b>${esc(d.prize)}</b> · الفائزون: <b>${d.winners}</b> · التوقّعات: <b>${num(d.entries.length)}</b></p>`;
+  if (dr) {
+    h += `<h3>النتيجة ${esc(m.home)} ${sc(dr.score[0], dr.score[1])} ${esc(m.away)} — أصاب النتيجة ${num(dr.exact)}، وأصاب الفائز ${num(dr.outcome)}</h3>`;
+    h += won.length ? won.map(w => `<div class="win"><b>${esc(w.name)}</b><a class="ph" href="https://wa.me/${esc(w.phone)}" target="_blank" rel="noopener">+${esc(w.phone)}</a>
+      <small>توقّع ${esc(m.home)} ${sc(w.h, w.a)} ${esc(m.away)} · ${w.tier === "exact" ? "أصاب النتيجة بالضبط" : "أصاب الفائز"} · رقم توقّعه ${w.n}
+      · رقم الفائز ${num(w.num)} ÷ ${num(w.size)} ← الباقي ${w.idx}</small></div>`).join("")
+      : '<p class="empty">لم يُصب أحدٌ النتيجة ولا الفائز، فلا فائز.</p>';
+    const sent = d.sent || [];
+    h += `<h3>رسائل واتساب</h3>` + (sent.length ? `<ul class="sent">${sent.map(s => `<li>${s.kind === "admin" ? "ملخّص المدير" : "الفائز"} ‎+${esc(s.to)} — ${s.dry ? "لم تُرسل (القناة غير مضبوطة)" : s.ok ? "أُرسلت ✓" : "فشلت: " + esc(s.error)}</li>`).join("")}</ul>` : '<p class="hint">لا رسائل بعد.</p>');
+    h += `<div class="acts"><button class="ghost" id="dNotify">أعد إرسال الرسائل</button></div><div class="msg" id="dMsg"></div>`;
+    h += `<h3>فيديو الفرز</h3><div class="vid"><canvas width="1080" height="1920"></canvas><div class="acts">
+      <button class="ghost" id="vPlay">تشغيل</button><button class="go" id="vSave">تنزيل الفيديو</button></div>
+      <div class="msg" id="vMsg">فيديو عمودي (9:16) للقصص والحالة. التسجيل بطول الفيديو (نحو 22 ثانية)، فأبقِ الصفحة مفتوحة.</div></div>`;
+  } else if (d.state === "pending") {
+    h += `<div class="acts"><button class="go" id="dSettle">افرز الآن</button></div><div class="msg" id="dMsg">الفرز الآلي يمرّ كل دقيقة؛ وهذا يسبقه.</div>`;
+  }
+  h += `<h3>بصمة التوقّعات</h3><div class="mono">${esc(d.fp)}</div>`;
+  if (dr) h += `<div class="hint">رقم القرعة (SHA-256 للبصمة | المباراة | النتيجة):</div><div class="mono">${esc(dr.seed)}</div>`;
+  const winners = new Set(won.map(w => w.n));
+  h += `<h3>التوقّعات <span class="acts"><input id="dFind" placeholder="بحث بالاسم أو الرقم" style="width:190px;padding:6px 10px"><a class="ghost" href="${B}/api/contest/admin/export.xlsx?m=${esc(d.eid)}">Excel</a></span></h3>
+    <div class="tblbox"><table class="tbl"><thead><tr><th>#</th><th>الاسم</th><th>واتساب</th><th>التوقّع</th><th>الوقت</th><th>عروض</th></tr></thead><tbody>
+    ${d.entries.slice().reverse().map(e => `<tr class="${winners.has(e.n) ? "w" : ""}" data-q="${esc((e.name + " " + e.phone).toLowerCase())}"><td>${e.n}</td><td>${esc(e.name)}</td><td class="ph">${esc(e.phone)}</td><td>${sc(e.h, e.a)}</td>
+      <td>${new Date(e.at * 1000).toLocaleString("en-GB", {timeZone: "Asia/Riyadh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})}</td><td>${e.promo ? "✓" : ""}</td></tr>`).join("") || '<tr><td colspan="6" class="empty">لا توقّعات بعد</td></tr>'}
+    </tbody></table></div>`;
+  $("dBody").innerHTML = h;
+  $("mdl").hidden = false;
+  $("dFind").oninput = e => { const q = e.target.value.trim().toLowerCase(); $("dBody").querySelectorAll("tbody tr[data-q]").forEach(tr => tr.hidden = q && !tr.dataset.q.includes(q)); };
+  if ($("dSettle")) $("dSettle").onclick = async () => {
+    const r = await api("/api/contest/admin/settle", {m: d.eid});
+    if (!r.ok) { $("dMsg").className = "msg err"; $("dMsg").textContent = r.error; return; }
+    await load(); view(d.eid);
+  };
+  if ($("dNotify")) $("dNotify").onclick = async () => {
+    $("dMsg").textContent = "نرسل…";
+    const r = await api("/api/contest/admin/notify", {m: d.eid});
+    $("dMsg").className = "msg " + (r.ok ? "ok" : "err");
+    $("dMsg").textContent = r.ok ? (r.sent || []).map(s => (s.dry ? "لم تُرسل: القناة غير مضبوطة" : s.ok ? "أُرسلت ✓" : "فشلت: " + s.error)).join("\n") || "لا رسائل (التبليغ مطفأ ولا رقم للمدير)" : r.error;
+  };
+  if (dr) {
+    const rep = {match: d.public.match, when: d.when, prize: d.prize, eid: d.eid, draw: d.public.draw,
+                 site: "guide.ssouq.com/nations-league/" + m.slug};
+    const cv = $("dBody").querySelector("canvas");
+    player = window.SSDraw.play(cv, rep);
+    $("vPlay").onclick = () => player && player.play();
+    $("vSave").hidden = !window.SSDraw.canRecord();
+    $("vSave").onclick = async () => {
+      const btn = $("vSave"); btn.disabled = true; $("vPlay").disabled = true;
+      if (player) player.stop();
+      try {
+        const out = await window.SSDraw.record(rep, {canvas: cv, onProgress: p => { $("vMsg").textContent = "نسجّل… " + Math.round(p * 100) + "%"; }});
+        window.SSDraw.save(out, "فرز-" + m.home + "-" + m.away);
+        $("vMsg").textContent = "نُزّل الفيديو (" + out.ext.toUpperCase() + ").";
+      } catch (err) { $("vMsg").textContent = err.message || "تعذّر التسجيل"; }
+      btn.disabled = false; $("vPlay").disabled = false;
+    };
+  }
+}
+
+load();
+setInterval(() => { if ($("mdl").hidden) load(); }, 60000);
+</script>
+</body>
+</html>
