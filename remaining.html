@@ -68,21 +68,40 @@ h2 small{font-weight:400;font-size:.8rem;color:var(--mute)}
 .note.unread .ud{visibility:visible}
 .more{margin-top:8px}
 
-/* المجموعات والبطاقات */
-.grp{margin-top:14px}
-.grp:first-of-type{margin-top:0}
-.grp h3{display:flex;align-items:center;gap:8px;font-size:.98rem;margin:0 0 8px}
-.grp h3 .rm{color:var(--go)}
+/* المجموعات: نوع الجزء وما يبقى بعده (أو ما تبقّى للبيع) بعددها — مطويّة، تُفتح بلمسة */
+.gp{border:1px solid var(--line);border-radius:14px;background:var(--sf2);margin-top:8px}
+.gp:first-child{margin-top:0}
+.gp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:13px;user-select:none}
+.gp>summary::-webkit-details-marker{display:none}
+.gp>summary:hover .gt{color:var(--go)}
+.gp .gn{flex:none;width:52px;height:50px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:color-mix(in srgb,var(--go) 14%,transparent);color:var(--go);line-height:1.1}
+.gp .gn b{font-size:1.3rem;font-variant-numeric:tabular-nums}
+.gp .gn small{font-size:.66rem;font-weight:500}
+.gp .gi{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.gp .gt{font-weight:700;font-size:.97rem}
+.gp .gt .rm{color:var(--go)}
+.gp .gi small{color:var(--mute);font-size:.78rem}
+.gp .gi small b{color:var(--amber);font-weight:500}
+.gp .chev{flex:none;color:var(--mute);transition:transform .2s}
+.gp[open] .chev{transform:rotate(180deg)}
+.gp>.cards{padding:0 8px 8px}
+.gp .card{background:var(--sf)}
+.find{position:relative;margin:0 0 16px}
+.find svg{position:absolute;inset-inline-start:12px;top:50%;transform:translateY(-50%);color:var(--mute);pointer-events:none}
+.find input.t{padding-inline-start:38px}
 .cards{display:grid;gap:8px}
 .card{border:1px solid var(--line);border-radius:14px;background:var(--sf2);padding:11px 13px}
 .row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .creds{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 230px}
 .creds span{display:flex;gap:6px;align-items:baseline;font-size:.78rem;color:var(--mute);white-space:nowrap}
 .creds .mono{color:var(--ink)}
-.meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--mute)}
-.meta span{padding:2px 9px;border-radius:10px;border:1px solid var(--line);background:var(--sf)}
-.meta .em{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent)}
-.meta .ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,transparent)}
+/* سطر المعلومات: نصٌّ هادئ بفواصل، والملوَّن ما يستحق الانتباه */
+.meta{display:flex;flex-wrap:wrap;row-gap:2px;margin-top:7px;font-size:.8rem;color:var(--mute)}
+.meta span{white-space:nowrap}
+.meta span:not(:last-child)::after{content:"·";margin:0 7px;color:var(--mute);opacity:.7}
+.meta .em{color:var(--amber);font-weight:500}
+.meta .ok{color:var(--go)}
+.meta .mono{font-size:.8rem;font-weight:500;color:inherit}
 .acts{display:flex;gap:6px;flex-wrap:wrap}
 .ghost{background:var(--sf);border:1px solid var(--line);padding:7px 12px;font-size:.84rem;display:inline-flex;align-items:center;gap:6px}
 .ghost:hover{border-color:var(--go);color:var(--go)}
@@ -131,8 +150,13 @@ details.old summary{cursor:pointer;color:var(--mute);font-size:.9rem}
   .brand small{display:none}
   main{padding:14px 12px 110px}
   section{padding:13px}
+  /* أزرار البطاقة في سطرٍ واحد حتى على جوالٍ بعرض 360 */
+  .copy,.ghost{padding:7px 9px}
+  .acts .ghost svg{display:none}
+  .gp>.cards{padding:0 6px 6px}
+  .gp .card{padding:10px 11px}
 }
-@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+@media (prefers-reduced-motion:reduce){.toast,.gp .chev{transition:none}}
 </style>
 </head>
 <body>
@@ -149,6 +173,7 @@ details.old summary{cursor:pointer;color:var(--mute);font-size:.9rem}
 
   <div class="accbar" id="accBar" hidden></div>
   <div class="tiles" id="tiles"></div>
+  <div class="find" id="findBox" hidden><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input class="t" id="q" type="search" placeholder="ابحث باسم المستخدم أو كلمة المرور أو العميل" autocomplete="off" aria-label="بحث في الخطوط"></div>
 
   <section id="notes">
     <h2><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>الإشعارات <span class="count" id="notesN">0</span><span class="grow"></span><button class="ghost" id="readAll">تعليم الكل كمقروء</button></h2>
@@ -214,8 +239,15 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MONTHS = n => { n = +n || 0; return n <= 0 ? "أقل من شهر" : n === 1 ? "شهر" : n === 2 ? "شهران" : n <= 10 ? n + " أشهر" : n + " شهرًا"; };
 const DAYS = n => n < 0 ? "متأخر " + (-n) + " يوم" : n === 0 ? "اليوم" : n === 1 ? "غدًا" : "بعد " + n + " يوم";
+const UNIT = n => n % 100 >= 3 && n % 100 <= 10 ? "يوزرات" : "يوزر";      // تحت العدد: «10 يوزرات»، «16 يوزر»
 const MODE = {web: "جلسة ويب", falcon: "فالكون", api: "Reseller API"};
-let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null, MAIL_RES = null;
+let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null, MAIL_RES = null, Q = "";
+// المجموعات المطويّة: ما يفتحه المستخدم أو يطويه يبقى كذلك بين التحديثات والزيارات (في هذا المتصفح).
+const GKEY = "xm_split_groups";
+let GRP = {};
+try { const v = JSON.parse(localStorage.getItem(GKEY) || "{}"); if (v && typeof v === "object" && !Array.isArray(v)) GRP = v; } catch {}
+// البحث: الأرقام العربية والهندية تُقرأ لاتينية، ولا فرق بين الحروف الكبيرة والصغيرة.
+const norm = s => String(s == null ? "" : s).trim().toLowerCase().replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0);
 const icon = {copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'};
 
 for (const [id, p] of [["lnkHome", "/"], ["lnkBrand", "/"], ["lnkRenew", "/renew"], ["lnkAcc", "/accounts"], ["lnkOut", "/logout"]]) $(id).href = B + p;
@@ -258,36 +290,65 @@ function render(){
   bar.hidden = !(D.role === "admin" && D.accounts.length > 1);
   if (!bar.hidden) bar.innerHTML = `<button class="chip${ACC ? "" : " on"}" data-acc="">الكل</button>` +
     D.accounts.map(a => `<button class="chip${ACC === a.id ? " on" : ""}" data-acc="${esc(a.id)}">${esc(a.name)}${a.enabled ? "" : " (مغلقة)"}</button>`).join("");
-  const L = D.lines.filter(inAcc);
-  const avail = L.filter(x => x.state === "available");
-  const act = L.filter(x => x.state === "active").sort((a, b) => (a.slice?.due || "").localeCompare(b.slice?.due || ""));
-  const attn = L.filter(x => x.state === "failed" || x.state === "due");
-  const done = L.filter(x => x.state === "sold_out" || x.state === "ended");
+  // الأرقام للكل، والقوائم (renderLists) لما يطابق البحث
+  const L = D.lines.filter(inAcc), of = (...st) => L.filter(x => st.includes(x.state));
+  const act = of("active"), attn = of("failed", "due").length;
   const soon = act.filter(x => x.due_in_days <= 7).length;
   const unread = D.notes.filter(n => inAcc(n) && !n.read).length;
   $("tiles").innerHTML =
-    `<button class="tile go" data-go="avail"><small>متاحة للبيع</small><b>${avail.length}</b></button>` +
+    `<button class="tile go" data-go="avail"><small>متاحة للبيع</small><b>${of("available").length}</b></button>` +
     `<button class="tile" data-go="active"><small>أجزاء جارية</small><b>${act.length}</b></button>` +
     `<button class="tile" data-go="active"><small>تنتهي خلال ٧ أيام</small><b>${soon}</b></button>` +
-    `<button class="tile${attn.length ? " warn" : ""}" data-go="${attn.length ? "attn" : "notes"}"><small>تحتاج تدخّلًا</small><b>${attn.length}</b></button>`;
+    `<button class="tile${attn ? " warn" : ""}" data-go="${attn ? "attn" : "notes"}"><small>تحتاج تدخّلًا</small><b>${attn}</b></button>`;
+  $("findBox").hidden = !L.length;
   renderBell(D.unread);
   renderNotes(unread);
+  renderLists();
+  renderReg(); renderSettings();
+}
+
+const hit = x => [x.username, x.password, (x.slice || {}).customer, ...(x.history || []).flatMap(h => [h.username, h.customer])].some(v => norm(v).includes(Q));
+const byDue = (a, b) => ((a.slice || {}).due || "").localeCompare((b.slice || {}).due || "");
+const noHit = '<div class="empty">لا نتيجة هنا للبحث.</div>';
+// مجموعةٌ مطويّة: عددها بارزًا، ثم عنوانها وسطرٌ يلخّصها. تُفتح وحدها إن كانت الوحيدة، أو أثناء البحث، أو لبيعٍ مفتوحٍ فيها.
+function group(key, title, n, sub, body, single, force){
+  const on = !!Q || !!force || (key in GRP ? !!GRP[key] : single);
+  return `<details class="gp" data-gk="${esc(key)}"${on ? " open" : ""}><summary>
+    <span class="gn"><b>${n}</b> <small>${UNIT(n)}</small></span> <span class="gi"><span class="gt">${title}</span> ${sub ? `<small>${sub}</small>` : ""}</span>
+    <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="cards">${body}</div></details>`;
+}
+function renderLists(){
+  const L = D.lines.filter(x => inAcc(x) && (!Q || hit(x))), of = (...st) => L.filter(x => st.includes(x.state));
   // تحتاج تدخّلًا
+  const attn = of("failed", "due");
   $("attn").hidden = !attn.length; $("attnN").textContent = attn.length;
   $("attnList").innerHTML = attn.map(cardAttn).join("");
-  // المتاحة: مجموعاتٌ بما تبقّى (متبقي ٩ أشهر …) — الأطول بقاءً أولًا
+  // المتاحة: مجموعاتٌ بما تبقّى («متبقي 9 أشهر — 5 يوزرات») — الأطول بقاءً أولًا
+  const avail = of("available"), vg = {};
+  avail.forEach(x => (vg[x.remaining_months] ||= []).push(x));
+  const vk = Object.keys(vg).map(Number).sort((a, b) => b - a);
   $("availN").textContent = avail.length;
-  const groups = {};
-  avail.forEach(x => (groups[x.remaining_months] ||= []).push(x));
-  const keys = Object.keys(groups).map(Number).sort((a, b) => b - a);
-  $("availList").innerHTML = keys.length ? keys.map(k => `<div class="grp"><h3>متبقي <span class="rm">${MONTHS(k)}</span> <span class="count">${groups[k].length}</span></h3>
-      <div class="cards">${groups[k].sort((a, b) => (a.available_since || "").localeCompare(b.available_since || "")).map(cardAvail).join("")}</div></div>`).join("")
-    : '<div class="empty">لا خطوط متاحة بعد — تظهر هنا حين ينتهي جزءٌ ويتغيّر اسمه.</div>';
+  $("availList").innerHTML = vk.length ? vk.map(k => {
+    const g = vg[k].sort((a, b) => (a.available_since || "").localeCompare(b.available_since || ""));
+    return group("v:" + k, `متبقي <span class="rm">${MONTHS(k)}</span>`, g.length, "الأقدم متاح منذ " + esc((g[0].available_since || "").slice(0, 10)),
+                 g.map(cardAvail).join(""), vk.length === 1, g.some(x => x.id === OPEN_SELL));
+  }).join("") : Q ? noHit : '<div class="empty">لا خطوط متاحة بعد — تظهر هنا حين ينتهي جزءٌ ويتغيّر اسمه.</div>';
+  // الجارية: مجموعاتٌ بنوع الجزء وما يبقى بعده («جزء 3 أشهر · بعده متبقي 12 شهرًا — 10 يوزرات») — الأطول جزءًا أولًا، وداخلها الأقرب موعدًا أولًا
+  const act = of("active").sort(byDue), ag = {};
+  act.forEach(x => (ag[((x.slice || {}).months || 0) + ":" + (x.remaining_after || 0)] ||= []).push(x));
+  const ak = Object.keys(ag).sort((a, b) => { const [m1, r1] = a.split(":").map(Number), [m2, r2] = b.split(":").map(Number); return m2 - m1 || r2 - r1; });
   $("activeN").textContent = act.length;
-  $("activeList").innerHTML = act.length ? act.map(cardActive).join("") : '<div class="empty">لا أجزاء جارية — أنشئ من صفحة الإنشاء باقة ١٥ شهرًا واختر «٦ أشهر» أو «٣» أو «شهر».</div>';
+  $("activeList").innerHTML = ak.length ? ak.map(k => {
+    const g = ag[k], [m, r] = k.split(":").map(Number), soon = g.filter(x => x.due_in_days <= 7).length;
+    return group("a:" + k, `جزء ${MONTHS(m)} · بعده متبقي <span class="rm">${MONTHS(r)}</span>`, g.length,
+                 `أقرب تغيير ${esc(((g[0].slice || {}).due || "").slice(0, 10))} · ${DAYS(g[0].due_in_days)}${soon ? ` · <b>${soon} خلال ٧ أيام</b>` : ""}`,
+                 g.map(cardActive).join(""), ak.length === 1);
+  }).join("") : Q ? noHit : '<div class="empty">لا أجزاء جارية — أنشئ من صفحة الإنشاء باقة ١٥ شهرًا واختر «٦ أشهر» أو «٣» أو «شهر».</div>';
+  const done = of("sold_out", "ended");
   $("done").hidden = !done.length; $("doneN").textContent = done.length;
   $("doneList").innerHTML = done.map(cardDone).join("");
-  renderReg(); renderSettings();
+  if (Q && done.length) $("done").querySelector("details").open = true;
 }
 
 function renderBell(n){ const d = $("bellN"); d.hidden = !n; d.textContent = n > 99 ? "99+" : String(n); }
@@ -295,17 +356,18 @@ function renderNotes(unread){
   const N = D.notes.filter(inAcc);
   $("notesN").textContent = unread; $("notesN").className = "count" + (unread ? " hot" : "");
   $("readAll").hidden = !unread;
-  const list = SHOW_OLD ? N : N.slice(0, 8);
+  // أحدث ثلاثة (وكل غير المقروء حتى ثمانية) — فلا تدفع الإشعاراتُ القوائمَ بعيدًا
+  const k = Math.min(8, Math.max(3, unread)), list = SHOW_OLD ? N : N.slice(0, k);
   $("notesList").innerHTML = list.length ? list.map(n => `<button class="note${n.read ? "" : " unread"}" data-note="${esc(n.id)}">
       <i class="ud"></i><span class="t">${esc(n.text)}<small>${esc(n.at)}${acctName(n)}</small></span></button>`).join("")
     : '<div class="empty">لا إشعارات بعد — تصلك هنا (وبالبريد إن ضُبط): قبل انتهاء الجزء بأيام، وحين يتغيّر اسم المستخدم، وإن تعذّر التغيير.</div>';
-  $("notesMore").hidden = SHOW_OLD || N.length <= 8;
+  $("notesMore").hidden = SHOW_OLD || N.length <= k;
 }
 const creds = x => `<div class="creds"><span>اسم المستخدم <b class="mono">${esc(x.username)}</b></span><span>كلمة المرور <b class="mono">${esc(x.password)}</b></span></div>`;
 const who = x => x.slice && x.slice.customer ? `<span>العميل: ${esc(x.slice.customer)}</span>` : "";
 function copyBtns(x){
   return `<button class="copy" data-copy="${esc(x.id)}" data-kind="line" title="Host · User · Pass · Guide">${icon.copy}نسخ السطر</button>` +
-    (x.message ? `<button class="ghost" data-copy="${esc(x.id)}" data-kind="msg">${icon.copy}نسخ نص الشرح</button>` : "");
+    (x.message ? `<button class="ghost" data-copy="${esc(x.id)}" data-kind="msg" title="نسخ نص الشرح">${icon.copy}نسخ الشرح</button>` : "");
 }
 function cardAvail(x){
   const open = OPEN_SELL === x.id;
@@ -314,7 +376,7 @@ function cardAvail(x){
   const last = (x.history || []).slice(-1)[0];
   return `<div class="card" data-line="${esc(x.id)}">
     <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="btn" data-sell="${esc(x.id)}">${open ? "إغلاق" : "بيع"}</button>${last ? `<button class="ghost" data-undo="${esc(x.id)}" title="يعيد الاسم القديم ${esc(last.username)} على اللوحة ويعيد الجزء كما كان">↩️ تراجع</button>` : ""}</div></div>
-    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span class="ok">ينتهي الخط ${esc(x.expiry)}</span><span>متاح منذ ${esc((x.available_since || "").slice(0, 10))}</span><span>بِيع ${(x.history || []).length} مرة</span>${last ? `<span>كان <b class="mono">${esc(last.username)}</b></span>` : ""}</div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span class="ok">ينتهي الخط ${esc(x.expiry)}</span><span>متاح منذ ${esc((x.available_since || "").slice(0, 10))}</span>${last ? `<span>كان <b class="mono">${esc(last.username)}</b></span>` : ""}</div>
     ${x.last_error ? `<div class="err">${esc(x.last_error)}</div>` : ""}
     ${open ? `<div class="sellbox"><div class="opts">${opts}</div>
       <label class="f" for="cu_${esc(x.id)}">العميل (اختياري)</label><input class="t" id="cu_${esc(x.id)}" placeholder="اسم أو جوال أو رقم طلب">
@@ -322,13 +384,13 @@ function cardAvail(x){
       <div class="line-row"><button class="btn" data-dosell="${esc(x.id)}">تأكيد البيع</button><button class="ghost danger" data-del="${esc(x.id)}">إيقاف المتابعة</button></div></div>` : ""}
     ${history(x)}</div>`;
 }
+// نوع الجزء وما يبقى بعده في عنوان مجموعته، فالبطاقة للاسم وموعد تغييره (والساعة حين يقترب)
 function cardActive(x){
-  const s = x.slice || {}, late = x.due_in_days < 0;
+  const s = x.slice || {}, due = s.due || "";
   return `<div class="card" data-line="${esc(x.id)}">
     <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="ghost" data-rot="${esc(x.id)}" title="ينتهي الجزء الآن وينقطع العميل">غيّر الآن</button></div></div>
-    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span>الجزء ${s.n || 1}: ${MONTHS(s.months)}</span>${who(x)}
-      <span class="${late || x.due_in_days <= 7 ? "em" : ""}">يتغيّر الاسم ${esc(s.due || "")} · ${DAYS(x.due_in_days)}</span>
-      <span class="ok">بعده متبقي ${MONTHS(x.remaining_after)}</span></div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span>${(s.n || 1) > 1 ? `<span>الجزء ${s.n}</span>` : ""}${who(x)}
+      <span class="${x.due_in_days <= 7 ? "em" : ""}" title="${esc(due)}">يتغيّر الاسم ${esc(x.due_in_days <= 1 ? due : due.slice(0, 10))} · ${DAYS(x.due_in_days)}</span></div>
     ${x.last_error ? `<div class="err">آخر محاولة: ${esc(x.last_error)}</div>` : ""}</div>`;
 }
 function cardAttn(x){
@@ -446,6 +508,9 @@ function renderSettings(){
 // ---------------- الأفعال ----------------
 const byId = id => D.lines.find(x => x.id === id);
 document.addEventListener("click", async e => {
+  // فتح مجموعةٍ أو طيّها بيد المستخدم يُحفظ — النقر يسبق التبديل، فالحالة الجديدة عكس الحالية.
+  const sm = e.target.closest("summary"), gp = sm && sm.parentElement;
+  if (gp && gp.dataset.gk){ GRP[gp.dataset.gk] = !gp.open; try { localStorage.setItem(GKEY, JSON.stringify(GRP)); } catch {} return; }
   const b = e.target.closest("button"); if (!b) return;
   const t = e.target.closest(".tile"); if (t && t.dataset.go){ document.getElementById(t.dataset.go).scrollIntoView({behavior: "smooth", block: "start"}); return; }
   if (b.dataset.acc !== undefined && b.classList.contains("chip")){ ACC = b.dataset.acc; render(); return; }
@@ -510,6 +575,7 @@ document.addEventListener("click", async e => {
 });
 $("readAll").onclick = async () => { try { await api("/api/split/read", {}); await load(); } catch(e){ toast(e.message, true); } };
 $("notesMore").onclick = () => { SHOW_OLD = true; render(); };
+$("q").oninput = () => { Q = norm($("q").value); if (D && D.lines) renderLists(); };
 
 load();
 // تحديثٌ كل دقيقة — إلا أثناء الكتابة أو البيع، فلا يُمحى ما يُكتب.

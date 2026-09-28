@@ -127,6 +127,50 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await sleep(500);
     check('mark all read clears the badge', await user.isHidden('#bellN'));
 
+    // ---- التنظيم: مجموعاتٌ بنوع الجزء وما يبقى بعده، بعددها ----
+    const gid = (await api(user, '/admin/api/me')).gates[0].id;
+    const m3 = await api(user, '/admin/api/create', {gate: gid, package_id: 190, count: 3, slice_months: 3});
+    const m1 = await api(user, '/admin/api/create', {gate: gid, package_id: 190, count: 2, slice_months: 1});
+    check('created 3 × 3 months and 2 × 1 month', m3.lines.length === 3 && m1.lines.length === 2, m3.error || m1.error || '');
+    await user.goto(APP + '/admin/remaining');
+    await user.waitForSelector('#activeList .gp');
+    const heads = await user.$$eval('#activeList .gp > summary', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+    check('three groups, longest slice first', heads.length === 3 && heads[0].includes('جزء 6 أشهر')
+          && heads[1].includes('جزء 3 أشهر') && heads[2].includes('جزء شهر'), heads.join(' | '));
+    check('group title: count, slice and what remains after', /^3 يوزرات جزء 3 أشهر/.test(heads[1]) && heads[1].includes('بعده متبقي 12 شهرًا')
+          && /^2 يوزر جزء شهر/.test(heads[2]) && heads[2].includes('بعده متبقي 14 شهرًا'), heads[1] + ' | ' + heads[2]);
+    check('group shows its nearest change', heads[1].includes('أقرب تغيير') && heads[1].includes('بعد'), heads[1]);
+    check('several groups: all folded at first', await user.$$eval('#activeList .gp', els => els.every(e => !e.open)));
+    await user.click('#activeList .gp:nth-child(2) > summary');
+    check('tap opens the group with its lines', await user.$$eval('#activeList .gp:nth-child(2) .card', els => els.length) === 3
+          && await user.isVisible('#activeList .gp:nth-child(2) [data-copy]'));
+    await user.reload();
+    await user.waitForSelector('#activeList .gp');
+    check('opened group stays open after reload, others folded', await user.$$eval('#activeList .gp', els => els.map(e => e.open).join()) === 'false,true,false');
+    const needle = m1.lines[1].username;
+    const arabic = needle.replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);                  // يُكتب بالأرقام العربية
+    await user.fill('#q', arabic);
+    await user.waitForFunction(() => document.querySelectorAll('#activeList .card').length === 1, null, {timeout: 5000}).catch(() => {});
+    check('search (Arabic digits) finds the one line and opens its group', await user.$$eval('#activeList .card', els => els.length) === 1
+          && (await user.textContent('#activeList')).includes(needle) && await user.isVisible(`#activeList [data-rot]`));
+    check('search: other lists say no result', (await user.textContent('#availList')).includes('لا نتيجة'));
+    check('tiles keep the totals while searching', await user.$eval('#tiles [data-go="active"] b', e => e.textContent) === '6');
+    await user.fill('#q', '');
+    await user.waitForFunction(() => document.querySelectorAll('#activeList .gp').length === 3, null, {timeout: 5000}).catch(() => {});
+    check('clearing the search restores the groups as they were', await user.$$eval('#activeList .gp', els => els.map(e => e.open).join()) === 'false,true,false');
+    // مع نص الشرح تصير الأزرار ثلاثة («نسخ السطر» · «نسخ الشرح» · «غيّر الآن»)
+    const sa = (await api(admin, '/admin/api/accounts')).accounts.find(a => a.user === 'split');
+    r = await api(admin, '/admin/api/accounts', {...sa, copy_guide: true});
+    check('admin turns on the guide text for him', r.ok === true && r.accounts.find(a => a.user === 'split').copy_guide === true, r.error || '');
+    await user.reload();
+    await user.waitForSelector('#activeList .gp[open] [data-kind="msg"]');
+    await user.setViewportSize({width: 360, height: 780});
+    await sleep(200);
+    const actsH = await user.$$eval('#activeList .gp[open] .card .acts', els => Math.max(...els.map(e => e.getBoundingClientRect().height)));
+    check('phone (360px): card buttons stay on one row', actsH > 0 && actsH < 50, String(actsH));
+    await shot(user, 'split-remaining-groups-mobile');
+    await user.setViewportSize({width: 1280, height: 800});
+
     // ---- تجربة على خطٍّ تجريبي من الصفحة ----
     const meU = await api(user, '/admin/api/me');
     const made2 = await api(user, '/admin/api/create', {gate: meU.gates[0].id, package_id: 167, count: 1});
