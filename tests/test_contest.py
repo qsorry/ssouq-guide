@@ -384,18 +384,28 @@ def unit_prize():
     from league import RIYADH
     k = datetime.datetime(2026, 9, 28, 21, 45, tzinfo=RIYADH).timestamp()
     now = datetime.datetime(2026, 9, 28, 20, 40, tzinfo=RIYADH).timestamp()
+    G = "https://guide.ssouq.com/nations-league/"
 
-    def row(h, a, ts, prize="اشتراك سمارت 3 أشهر", w=1, st="open"):
-        return {"state": st, "match": {"home": h, "away": a, "ts": ts}, "contest": {"prize": prize, "winners": w}}
+    def row(h, a, ts, prize="اشتراك سمارت 3 أشهر", w=1, st="open", extra=0):
+        return {"state": st, "match": {"home": h, "away": a, "ts": ts, "slug": f"9-{h}-{a}"},
+                "contest": {"prize": prize, "winners": w, "extra": extra}}
 
     txt = T.announcement([row("تركيا", "إيطاليا", k), row("بلجيكا", "فرنسا", k), row("x", "y", k, st="off"),
                           row("z", "w", k, st="hold")], now)
-    check("رسالة القناة: مباريات الليلة بموعدها وجائزتها", txt.startswith("🎁 *مسابقة سمارت سوق: توقّع النتيجة واربح!*\n\n"
-          "⚽ مباريات الليلة في دوري الأمم الأوروبية:\n• تركيا × إيطاليا\n• بلجيكا × فرنسا\n🕘 الساعة 9:45 م\n\n"
-          "🏆 *الجائزة لكل مباراة:* اشتراك سمارت 3 أشهر\n\n*كيف تشارك؟*"), txt[:300])
-    check("وفيها رابط المسابقة والشروط والختام", "1️⃣ ادخل صفحة المسابقة 👇\nhttps://guide.ssouq.com/nations-league/predict\n"
-          in txt and "• التوقّعات تُقفل مع صافرة البداية" in txt and txt.endswith("بالتوفيق للجميع 🤞"))
+    check("رسالة القناة: مباريات الليلة، ولكلٍّ رابطها الخاص، وموعدها وجائزتها",
+          txt.startswith("🎁 *مسابقة سمارت سوق: توقّع النتيجة واربح!*\n\n⚽ مباريات الليلة في دوري الأمم الأوروبية:\n"
+                         f"• تركيا × إيطاليا\n{G}9-تركيا-إيطاليا#predict\n• بلجيكا × فرنسا\n{G}9-بلجيكا-فرنسا#predict\n"
+                         "🕘 الساعة 9:45 م\n\n🏆 *الجائزة لكل مباراة:* اشتراك سمارت 3 أشهر\n\n*كيف تشارك؟*\n"
+                         "1️⃣ افتح رابط المباراة اللي تبيها 👆\n2️⃣ توقّع النتيجة واكتب اسمك\n"), txt[:420])
+    check("والشروط والختام", "• التوقّعات تُقفل مع صافرة البداية\n" in txt and txt.endswith("بالتوفيق للجميع 🤞"))
     check("والموقوفة والمغلقة ليست فيها", "x × y" not in txt and "z × w" not in txt)
+    one = T.announcement([row("بلجيكا", "فرنسا", k, w=2, extra=10)], now)
+    check("مباراةٌ واحدة: رابط صفحتها في الخطوة الأولى", "⚽ مباراة الليلة في" in one
+          and f"1️⃣ ادخل صفحة المباراة 👇\n{G}9-بلجيكا-فرنسا#predict\n2️⃣ توقّع النتيجة واكتب اسمك\n3️⃣" in one
+          and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in one, one[:400])
+    check("والإقفال بعد البداية بدقائق المدير", "• التوقّعات تُقفل بعد صافرة البداية بـ 10 دقائق\n" in one)
+    mix = T.announcement([row("أ", "ب", k, extra=10), row("ج", "د", k)], now)
+    check("وإقفالٌ مختلف بين المباريات يُقال عامًّا", "أو بعدها بدقائق، كما في صفحة كل مباراة" in mix)
     txt = T.announcement([row("تركيا", "إيطاليا", k, prize=""), row("بلجيكا", "فرنسا", k + 3 * 86400, w=3)], now)
     check("أيامٌ مختلفة وجوائز مختلفة: الموعد والجائزة لكلٍّ", "⚽ المباريات المفتوحة للتوقّع في" in txt
           and "• تركيا × إيطاليا — الاثنين 28 سبتمبر 2026 · 9:45 م" in txt
@@ -405,9 +415,50 @@ def unit_prize():
     check("مباراة الغد وحدها: جائزةٌ بفائزَين", "⚽ مباراة الغد في" in txt and "🕓 الساعة 4:45 م" in txt
           and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in txt, txt[:300])
     txt = T.announcement([row("أ", "ب", k), row("ج", "د", k - 2 * 3600)], now - 6 * 3600)
-    check("اليوم بموعدين: الساعة على كل مباراة", "⚽ مباريات الليلة في" in txt and "• ج × د — 7:45 م\n• أ × ب — 9:45 م" in txt
-          and "الساعة" not in txt, txt[:300])
+    check("اليوم بموعدين: الساعة على كل مباراة", "⚽ مباريات الليلة في" in txt
+          and f"• ج × د — 7:45 م\n{G}9-ج-د#predict\n• أ × ب — 9:45 م" in txt and "الساعة" not in txt, txt[:300])
     check("ولا مسابقة مفتوحة: لا رسالة", T.announcement([row("a", "b", k, st="done")], now) == "")
+
+    # الإقفال بعد صافرة البداية بدقائق (خيار المدير)
+    d4 = fresh()
+    m = match(eid="31", ts=NOW + 3600)
+    code, res = C.configure(d4, m, True, "شهر", 1, now=NOW, extra=10)
+    check("خيار الإقفال: يُحفظ ويظهر في الملخّص", code == 200 and res["contest"]["extra"] == 10, res)
+    code, res = C.configure(d4, m, True, "شهر", 1, now=NOW, extra=99)
+    check("وأقصاه 15 دقيقة", res["contest"]["extra"] == C.EXTRA_MAX == 15)
+    C.configure(d4, m, True, "شهر", 1, now=NOW, extra=10)
+    rec = C.load(d4, "31")
+    live_m = dict(m, state="in", status="STATUS_FIRST_HALF")
+    check("بعد الصافرة وضمن الدقائق: مفتوحة والمباراة جارية", C.state_of(rec, live_m, m["ts"] + 9 * 60) == "open")
+    check("وبعدها مقفلة", C.state_of(rec, live_m, m["ts"] + 10 * 60) == "closed")
+    check("وبلا الخيار: مقفلةٌ مع الصافرة", C.state_of(dict(rec, extra=0), live_m, m["ts"] + 60) == "closed")
+    code, res = C.start(d4, live_m, form(m="31"), "1.2.3.4", now=m["ts"] + 5 * 60)
+    check("وتُعطى رموزٌ خلالها", code == 200, res)
+    ms4 = {"31": live_m}
+    r = C.confirm(d4, res["text"], "966551112233", m["ts"] + 6 * 60, ms4, lambda x: "L", now=m["ts"] + 6 * 60)
+    check("ورسالةٌ أُرسلت خلالها تُسجَّل", r["status"] == "done", r)
+    code, res2 = C.start(d4, live_m, form(m="31"), "1.2.3.5", now=m["ts"] + 9 * 60)
+    r = C.confirm(d4, res2["text"], "966551112244", m["ts"] + 10 * 60 + 5, ms4, lambda x: "L", now=m["ts"] + 10 * 60 + 5)
+    check("وما أُرسل بعد الإقفال متأخر", r["status"] == "late" and "إقفال التوقّعات" in r["reply"], r)
+    pub = C.public(C.load(d4, "31"), live_m, m["ts"] + 11 * 60)
+    check("العلن: موعد الإقفال، والبصمة بعد مهلة الرسائل من الإقفال", pub["closes"] == m["ts"] + 600 and "fp" not in pub
+          and "بـ 10 دقائق" in pub["msg"] and "fp" in C.public(C.load(d4, "31"), live_m, m["ts"] + 600 + C.WA_GRACE))
+    code, res = C.configure(d4, m, True, "شهر", 1, now=m["ts"] + 600 + C.WA_GRACE, extra=15)
+    check("ولا يتغيّر الإقفال بعد إعلان القائمة النهائية", code == 409, res)
+    d5 = fresh()
+    m5 = match(eid="32", ts=NOW)
+    C.configure(d5, m5, True, "شهر", 1, now=NOW - 60)
+    rec5 = C.load(d5, "32")
+    rec5["entries"].append({"n": 1, "name": "س", "phone": "966551110000", "h": 1, "a": 0, "at": NOW - 30, "ipk": "", "promo": False})
+    with C._lock:
+        C._save(d5, rec5)
+    code, res = C.configure(d5, dict(m5, state="in", status="STATUS_FIRST_HALF"), True, "شهر", 1, now=NOW + 120, extra=10)
+    check("قبل إعلان القائمة: يُمدَّد الإقفال بعد الصافرة فتعود مفتوحة", code == 200
+          and C.state_of(C.load(d5, "32"), dict(m5, state="in", status="STATUS_FIRST_HALF"), NOW + 180) == "open", res)
+    lst = C.listing(C.summaries(d4), [live_m], m["ts"] + 60)
+    check("صفحة المسابقة: موعد الإقفال لكل مسابقة", lst and lst[0]["closes"] == m["ts"] + 600)
+    for x in (d4, d5):
+        shutil.rmtree(x)
     shutil.rmtree(d)
 
 
@@ -586,7 +637,9 @@ def live():
         ann = json.loads(body)["announce"]
         check("رسالة القناة جاهزة: المباراة وموعدها وجائزتها ورابط المسابقة", "🎁 *مسابقة سمارت سوق" in ann
               and "• هولندا × صربيا" in ann and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in ann
-              and "https://guide.ssouq.com/nations-league/predict" in ann and "الساعة" in ann, ann)
+              and "https://guide.ssouq.com/nations-league/6-netherlands-serbia#predict" in ann and "الساعة" in ann, ann)
+        by = json.loads(body)["announce_by"]
+        check("ورسالةٌ لكل مباراةٍ مفتوحة برابطها", set(by) == {"6"} and by["6"] == ann)
         code, res = post(base + "/api/contest/start", {"m": "3", "name": "سارة", "h": 3, "a": 0, "agree": True})
         check("مباراةٌ بلا مسابقة", code == 409 and res.get("state") == "off")
         code, body, _ = get(base + "/api/contest?m=6")

@@ -318,7 +318,7 @@ def _banner(ms, pz, new_tab=False):
     more = " · ومسابقات أخرى" if len(opens) > 1 else ""
     return (f'<a class="pbanner" href="{url(m)}#predict"{target}>{GIFT}<span><b>توقّع نتيجة '
             f'{_esc(m["home"]["name"])} و{_esc(m["away"]["name"])} واربح {_esc(s["prize"])}</b>'
-            f'<small>مجانًا · تُقفل التوقّعات {_esc(when_label(m["ts"]))}{more}</small></span>'
+            f'<small>مجانًا · تُقفل التوقّعات {_esc(when_label(contest.lock_at(s, m["ts"])))}{more}</small></span>'
             f'<span class="pgo">توقّع الآن ←</span></a>')
 
 
@@ -780,17 +780,13 @@ def render_match(tail):
     return 200, body, (LIVE_TTL if live else 300)
 
 
-ANNOUNCE_TAIL = """*كيف تشارك؟*
-1️⃣ ادخل صفحة المسابقة 👇
-{link}
-2️⃣ اختر المباراة، توقّع النتيجة واكتب اسمك
-3️⃣ اضغط «أرسل توقّعي على واتساب» وأرسل الرسالة الجاهزة كما هي
+ANNOUNCE_TAIL = """3️⃣ اضغط «أرسل توقّعي على واتساب» وأرسل الرسالة الجاهزة كما هي
 4️⃣ يوصلك تأكيد على الواتساب ✅
 
 📌 *الشروط باختصار:*
 • المشاركة مجانية
 • توقّع واحد لكل رقم في كل مباراة
-• التوقّعات تُقفل مع صافرة البداية
+• {lock}
 • الفرز آلي بعد صافرة النهاية: بين اللي جابوا النتيجة بالضبط، وإذا ما أحد جابها فبين اللي عرفوا الفائز
 • ننشر فيديو يوضح كيف تم الفرز، ونبلّغ الفائز على الواتساب
 
@@ -798,9 +794,13 @@ ANNOUNCE_TAIL = """*كيف تشارك؟*
 CLOCKS = "🕛🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚"
 
 
+def _mins(n):
+    return f"{n} دقائق" if 3 <= n <= 10 else f"{n} دقيقة"
+
+
 def announcement(rows, now=None):
     """رسالة الإعلان في القناة، جاهزةً للنسخ من صفحة المدير: المسابقات المفتوحة للتوقّع بمبارياتها
-    وموعدها وجائزتها (صفوف contest.admin_rows). ولا مسابقة مفتوحة ← نصٌّ فارغ."""
+    وموعدها وجائزتها ورابط صفحة كلٍّ منها (صفوف contest.admin_rows). ولا مسابقة مفتوحة ← نصٌّ فارغ."""
     now = time.time() if now is None else now
     ms = sorted((r for r in rows if r.get("state") == "open" and r.get("contest")), key=lambda r: r["match"]["ts"])
     if not ms:
@@ -821,11 +821,17 @@ def announcement(rows, now=None):
     def teams(r):
         return f"{r['match']['home']} × {r['match']['away']}"
 
+    def link(r):                                   # رابطٌ خاص بالمباراة: بطاقة التوقّع فيها مباشرةً
+        slug = r["match"].get("slug")
+        return f"{guide_pages.SITE}{PATH}/{slug}#predict" if slug else guide_pages.SITE + PREDICT
+
     lines = []
     for r in ms:
         ts = r["match"]["ts"]
         tail = "" if one_day and one_time else f" — {_clock(ts)}" if one_day else f" — {when_label(ts)}"
         lines.append(f"• {teams(r)}{tail}")
+        if len(ms) > 1:
+            lines.append(link(r))
     if one_day and one_time:
         t = datetime.datetime.fromtimestamp(ms[0]["match"]["ts"], RIYADH)
         lines.append(f"{CLOCKS[t.hour % 12]} الساعة {_clock(ms[0]['match']['ts'])}")
@@ -842,8 +848,14 @@ def announcement(rows, now=None):
         prizes = f"🏆 *الجائزة لكل مباراة:* {labels[0]}"
     else:
         prizes = "🏆 *الجوائز:*\n" + "\n".join(f"• {teams(r)}: {lab}" for r, lab in zip(ms, labels))
+    extras = {contest.extra_of(r["contest"]) for r in ms}
+    lock = ("التوقّعات تُقفل مع صافرة البداية" if extras == {0}
+            else f"التوقّعات تُقفل بعد صافرة البداية بـ {_mins(extras.pop())}" if len(extras) == 1
+            else "التوقّعات تُقفل مع صافرة البداية أو بعدها بدقائق، كما في صفحة كل مباراة")
+    how = (["1️⃣ ادخل صفحة المباراة 👇", link(ms[0]), "2️⃣ توقّع النتيجة واكتب اسمك"] if len(ms) == 1
+           else ["1️⃣ افتح رابط المباراة اللي تبيها 👆", "2️⃣ توقّع النتيجة واكتب اسمك"])
     return "\n".join(["🎁 *مسابقة سمارت سوق: توقّع النتيجة واربح!*", "", head, *lines, "", prizes, "",
-                      ANNOUNCE_TAIL.format(link=guide_pages.SITE + PREDICT)])
+                      "*كيف تشارك؟*", *how, ANNOUNCE_TAIL.format(lock=lock)])
 
 
 def render_predict():
@@ -862,7 +874,7 @@ def render_predict():
         href = f"{PATH}/{mt['slug']}#predict"
         teams = f"{_esc(mt['home'])} و{_esc(mt['away'])}"
         if r["state"] == "open":
-            info, go = f"الجائزة: {_esc(r['prize'])} · تُقفل {_esc(when_label(mt['ts']))}", "توقّع الآن ←"
+            info, go = f"الجائزة: {_esc(r['prize'])} · تُقفل {_esc(when_label(r.get('closes') or mt['ts']))}", "توقّع الآن ←"
         elif r["state"] == "done":
             h, a = r["score"] or (0, 0)
             won = "، ".join(_esc(w) for w in r["won"]) or "لا فائز"
