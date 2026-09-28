@@ -16,7 +16,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 """
 import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, time
 import io, zipfile
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -1984,6 +1984,35 @@ def contest_link(rec):
     return f"https://{SITE_HOST}{tournament.PATH}/{mt.get('slug') or rec['eid']}#predict"
 
 
+_wa_probe = {"at": 0.0, "d": {}}
+
+
+def wa_bridge(st, fresh=False):
+    """حال خدمة واتساب (Baileys): رقمها واتصالها وهل تمرّر الرسائل الواردة (‏WA_INBOUND_URL).
+    تُسأل مرةً كل خمس دقائق (ودقيقة بعد فشل)، فلا يصلها سؤالٌ مع كل زائر."""
+    wa = st["service"].get("wa", {})
+    if wa.get("type") != "http" or not wa.get("url"):
+        return {}
+    now = time.time()
+    if not fresh and now - _wa_probe["at"] < (300 if _wa_probe["d"].get("ok") else 60):
+        return dict(_wa_probe["d"])
+    try:
+        rq = Request(_wa_base(wa) + "/status", headers={"Authorization": "Bearer " + wa.get("secret", "")})
+        with urlopen(rq, timeout=6) as r:
+            x = json.loads(r.read().decode("utf-8", "replace") or "{}")
+        d = {"ok": True, "connected": bool(x.get("connected")), "inbound": bool(x.get("inbound")),
+             "me": re.sub(r"\D", "", str(x.get("me") or ""))}
+    except Exception as e:
+        d = {"ok": False, "error": str(e)[:120]}
+    _wa_probe.update(at=now, d=d)
+    return dict(d)
+
+
+def contest_wa_number(st):
+    """الرقم الذي تُرسل إليه رسائل التوقّع: من إعداد المسابقة إن ضُبط، وإلا رقم خدمة واتساب نفسها."""
+    return contest.load_settings(DATA_DIR)["wa_number"] or wa_bridge(st).get("me", "")
+
+
 def contest_notify(rec):
     """رسائل الفرز: للفائزين (إن فُعّل التبليغ) ولرقم المدير — وتُسجَّل نتيجة كلٍّ منها."""
     try:
@@ -2252,6 +2281,8 @@ class Handler(BaseHTTPRequestHandler):
                               else {"Retry-After": str(league.RETRY)})
         if path == "/api/contest":              # حال مسابقة المباراة (للبطاقة في صفحتها)
             return self._contest_public()
+        if path == "/api/contest/ticket":       # الصفحة تنتظر رسالة الواتساب برمزها
+            return self._send(200, contest.ticket_status(DATA_DIR, self._q("m"), self._q("c")))
         if path == tournament.PREDICT:           # صفحة المسابقة: المفتوحة والمفروزة وشروطها
             code, body, age = tournament.render_predict()
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
@@ -2768,9 +2799,13 @@ class Handler(BaseHTTPRequestHandler):
         d = contest.public(rec, m) if rec else {"ok": True, "state": "off"}
         if (d.get("match") or {}).get("ts"):
             d["when"] = tournament.when_label(d["match"]["ts"])
+        if d.get("state") == "open":                 # التسجيل برسالة واتساب: أله رقمٌ يستقبل؟
+            with _lock:
+                st = load_store()
+            d["reg"] = bool(contest_wa_number(st))
         return self._send(200, d)
 
-    def _contest_enter(self):
+    def _contest_start(self):
         if int(self.headers.get("Content-Length", 0) or 0) > 4096:
             return self._send(413, {"error": "طلب كبير"})
         try:
@@ -2779,8 +2814,40 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "طلب غير صالح"})
         if not isinstance(form, dict):
             return self._send(400, {"error": "طلب غير صالح"})
-        code, res = contest.enter(DATA_DIR, cup_match(form.get("m")), form, self._client_ip())
+        with _lock:
+            st = load_store()
+        wa = contest_wa_number(st)
+        if not wa:
+            return self._send(503, {"error": "التسجيل عبر واتساب متوقّفٌ الآن. حاول بعد قليل."})
+        code, res = contest.start(DATA_DIR, cup_match(form.get("m")), form, self._client_ip())
+        if code == 200:
+            res["wa"] = wa
+            res["url"] = f"https://wa.me/{wa}?text={quote(res['text'], safe='')}"
         return self._send(code, res)
+
+    def _contest_inbound(self):
+        """من خدمة واتساب: {from, text, ts} ← {reply} تردّ به على المرسل. توقيعها سرّ البوابة
+        نفسه الذي تُرسل به الأداة، فلا يسجّل أحدٌ توقّعًا برقمٍ ليس له بطلبٍ مباشر."""
+        if int(self.headers.get("Content-Length", 0) or 0) > 16384:
+            return self._send(413, {"ok": False, "error": "too large"})
+        with _lock:
+            st = load_store()
+        wa = st["service"].get("wa", {})
+        secret = str(wa.get("secret") or "").encode()
+        auth = self.headers.get("Authorization", "")
+        tok = (auth[7:] if auth.startswith("Bearer ") else "").encode()
+        if wa.get("type") != "http" or not secret or not hmac.compare_digest(tok, secret):
+            return self._send(401, {"ok": False, "error": "unauthorized"})
+        try:
+            body = self._body()
+        except ValueError:
+            return self._send(400, {"ok": False, "error": "bad json"})
+        if not isinstance(body, dict):
+            return self._send(400, {"ok": False, "error": "bad json"})
+        data = tournament._feed.get()[0]
+        ms = {m["id"]: m for m in (data or {}).get("matches", [])}
+        res = contest.confirm(DATA_DIR, body.get("text"), body.get("from"), body.get("ts"), ms, contest_link)
+        return self._send(200, {"ok": True, **res})
 
     def _contest_admin_get(self, path):
         data = tournament._feed.get()[0]
@@ -2789,9 +2856,11 @@ class Handler(BaseHTTPRequestHandler):
             rows = contest.admin_rows(DATA_DIR, ms)
             for r in rows:
                 r["when"] = tournament.when_label(r["match"]["ts"]) if r["match"].get("ts") else ""
+            st = load_store()
             return self._send(200, {"ok": True, "rows": rows, "feed": bool(data),
                                     "settings": contest.load_settings(DATA_DIR),
-                                    "wa": load_store()["service"].get("wa", {}).get("type") or "none"})
+                                    "wa": st["service"].get("wa", {}).get("type") or "none",
+                                    "bridge": wa_bridge(st, fresh=True), "number": contest_wa_number(st)})
         if path == "/api/contest/admin/match":
             eid = contest.eid_of(self._q("m"))
             d = contest.admin_detail(DATA_DIR, eid, next((x for x in ms if x["id"] == eid), None))
@@ -2905,8 +2974,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._salla_webhook()
             if path in ("/api/renew/lookup", "/api/renew/claim"):
                 return self._renew_public(path)
-            if path == "/api/contest/enter":         # توقّعٌ من صفحة المباراة (عام)
-                return self._contest_enter()
+            if path == "/api/contest/start":         # النتيجة والاسم من الصفحة ← رمزٌ ورسالةٌ جاهزة
+                return self._contest_start()
+            if path == "/api/contest/wa-inbound":    # رسالة توقّعٍ وصلت خدمة واتساب (موقَّعة بسرّها)
+                return self._contest_inbound()
         if self.off_site or not path.startswith(self.P + "/api/"):
             return self._send(404, {"error": "not found"})
         path = path[len(self.P):]

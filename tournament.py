@@ -485,7 +485,20 @@ main{max-width:1040px}
 .pmsg{min-height:1.4em;margin:8px 0 0;font-size:.9rem}
 .pmsg.err{color:#DC2626}
 .pmine{background:var(--soft);border-radius:12px;padding:12px 14px;margin:10px 0;font-size:.92rem}
-.pmine .btn{display:block;margin-top:10px}
+.pmine .ph,.pwait code{direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+.btn.wa{display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.wa svg{width:20px;height:20px;fill:currentColor;stroke:none;margin:0}
+.pshare{display:block;text-align:center;margin-top:4px}
+.pwait{background:var(--soft);border-radius:14px;padding:14px;margin:10px 0}
+.pwait>b{display:block;font-size:1rem;margin-bottom:4px}
+.pwait code{font:700 1.05rem ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;background:var(--card);
+  border:1px solid var(--line);border-radius:8px;padding:1px 8px}
+.pwait .btn{margin:10px 0 6px}
+.pstat{display:flex;gap:8px;align-items:flex-start;color:var(--mute);font-size:.86rem;margin:6px 0}
+.spin{flex:0 0 auto;width:14px;height:14px;margin-top:4px;border-radius:50%;border:2px solid var(--line);
+  border-top-color:var(--brand);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.plink{background:none;border:0;padding:0;font:inherit;font-size:.84rem;color:var(--brand-text);text-decoration:underline;cursor:pointer}
 .pbars{display:grid;gap:6px;margin:6px 0 4px}
 .pbar{display:grid;grid-template-columns:7.5em 1fr 3em;align-items:center;gap:8px;font-size:.84rem}
 .pbar span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

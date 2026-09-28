@@ -1,13 +1,16 @@
 /* بطاقة «توقّع النتيجة واربح» في صفحة المباراة (‏#predict[data-m]).
    الحالة من /api/contest بلا كاش، فالصفحة نفسها تبقى مخزَّنة: مفتوحة ← النموذج والعدّاد،
-   مقفلة ← ماذا توقّع الناس وبصمة التوقّعات، مفروزة ← الفائز وفيديو الفرز (contest-draw.js). */
+   مقفلة ← ماذا توقّع الناس وبصمة التوقّعات، مفروزة ← الفائز وفيديو الفرز (contest-draw.js).
+   التسجيل برسالة واتساب: النتيجة والاسم ← رمزٌ (‏/api/contest/start) ← واتساب برسالةٍ جاهزة
+   ← الصفحة تنتظر الرمز (‏/api/contest/ticket) حتى يُسجَّل برقم مرسل الرسالة. والرمز محفوظ في
+   المتصفح، فمن رجع من واتساب أو أغلق الصفحة يجد حاله كما تركها. */
 (function () {
   "use strict";
   var box = document.getElementById("predict");
   if (!box) return;
   var EID = box.getAttribute("data-m"), body = box.querySelector(".pbody");
-  var KEY = "ssouq_predict_" + EID, RULES = "/nations-league/predict#rules";
-  var data = null, skew = 0, tick = null, again = null, player = null;
+  var KEY = "ssouq_predict_" + EID, TKEY = KEY + "_t", RULES = "/nations-league/predict#rules";
+  var data = null, skew = 0, tick = null, again = null, player = null, poll = null;
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -17,8 +20,11 @@
   // النتيجة رقمان منفصلان: صاحب الأرض يمينًا بجانب اسمه، كما في صفحات البطولة
   function score(h, a) { return '<span class="pscore"><b>' + h + "</b><i>-</i><b>" + a + "</b></span>"; }
   function named(h, a) { return esc(data.match.home) + " " + score(h, a) + " " + esc(data.match.away); }
-  function mine() { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; } }
-  function keep(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} }
+  function get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
+  function put(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function mine() { return get(KEY); }
+  function keep(v) { put(KEY, v); }
+  function ticket() { return get(TKEY); }
   function num(n) { return Number(n || 0).toLocaleString("en-US"); }
   function crest(u) { return u ? '<img src="' + esc(u) + '" alt="" width="44" height="44">' : '<i class="crest"></i>'; }
   function crests(root) {                            // شعارٌ تعذّر تحميله يصير دائرةً فارغة لا أيقونةً مكسورة
@@ -48,6 +54,7 @@
 
   function render() {
     clearInterval(tick);
+    clearTimeout(poll);
     if (!data || !data.ok || data.state === "off") { box.hidden = true; return; }
     box.hidden = false;
     if (data.state === "open") return open();
@@ -68,13 +75,13 @@
   }
 
   function open() {
-    var me = mine();
+    var me = mine(), tk = ticket();
     var head = '<p class="pcount">' + (data.count ? "<b>" + preds(data.count) + "</b> حتى الآن" : "كن أول من يتوقّع") +
       ' · تُقفل التوقّعات بعد <b class="cd">…</b></p>';
-    if (me) {
-      body.innerHTML = head + '<div class="pmine">سجّلت توقّعك: ' + named(me.h, me.a) + " — رقم توقّعك <b>" + me.n +
-        "</b>.<br>الفرز آليٌّ بعد صافرة النهاية، ونبلّغك على واتساب إن فزت." + share() + "</div>";
-    } else {
+    if (me) body.innerHTML = head + mineHtml(me) + share();
+    else if (tk) waiting(head, tk);
+    else if (data.reg === false) body.innerHTML = head + '<p class="pmsg err">التسجيل عبر واتساب متوقّفٌ الآن. حاول بعد قليل.</p>';
+    else {
       var m = data.match;
       body.innerHTML = head +
         '<form class="pform" novalidate>' +
@@ -85,14 +92,12 @@
         "</div>" +
         '<label class="pl" for="p-name">اسمك</label>' +
         '<input id="p-name" name="name" type="text" maxlength="30" autocomplete="given-name" required>' +
-        '<label class="pl" for="p-phone">رقم واتساب</label>' +
-        '<input id="p-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05xxxxxxxx" required>' +
-        '<small class="hint">نبلّغ الفائز على هذا الرقم، والجائزة لا تُسلَّم إلا له. ورقمٌ من خارج السعودية يُكتب بمفتاح دولته.</small>' +
         '<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
         '<label class="chk"><input type="checkbox" name="agree"><span>قرأت <a class="link" href="' + RULES +
         '" target="_blank" rel="noopener">شروط المسابقة</a> وأوافق عليها</span></label>' +
         '<label class="chk"><input type="checkbox" name="promo"><span>أرسلوا لي عروض الاشتراكات على واتساب (اختياري)</span></label>' +
-        '<button class="btn buy" type="submit">أرسل توقّعي</button>' +
+        '<button class="btn wa" type="submit">' + WA + "أرسل توقّعي على واتساب</button>" +
+        '<small class="hint">ينفتح واتساب برسالةٍ جاهزة فيها رمز توقّعك؛ أرسلها كما هي، ويُسجَّل توقّعك برقمك الذي أرسلت منه.</small>' +
         '<p class="pmsg" role="status" aria-live="polite"></p>' +
         "</form>";
       wire(body.querySelector("form"));
@@ -101,6 +106,49 @@
     countdown();
     tick = setInterval(countdown, 1000);
   }
+
+  var WA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11 11 0 0 0 3.4 17.3L2 22l4.8-1.3A11 11 0 1 0 20.5 3.5zM12 20a8 8 0 0 1-4.2-1.2l-.3-.2-2.8.8.8-2.7-.2-.3A8 8 0 1 1 12 20zm4.4-6c-.2-.1-1.4-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>';
+
+  function mineHtml(me) {
+    return '<div class="pmine">' + (me.h == null
+      ? "رقمك سجّل توقّعه لهذه المباراة من قبل" + (me.n ? " — رقم توقّعك <b>" + me.n + "</b>" : "") + ". والتوقّع لا يُعدَّل."
+      : "سجّلت توقّعك" + (me.phone ? ' من رقم <span class="ph">' + esc(me.phone) + "</span>" : "") + ": " + named(me.h, me.a) +
+        " — رقم توقّعك <b>" + me.n + "</b>.<br>الفرز آليٌّ بعد صافرة النهاية، ونبلّغك على واتساب إن فزت.") + "</div>";
+  }
+
+  // الرمز أُخذ والرسالة لم تصل بعد: زرّ واتساب، وانتظارٌ حتى يُسجَّل
+  function waiting(head, tk) {
+    body.innerHTML = head + '<div class="pwait"><b>آخر خطوة: أرسل الرسالة من واتساب</b>' +
+      "<p>توقّعك: " + named(tk.h, tk.a) + ' · رمزه <code dir="ltr">' + esc(tk.code) + "</code></p>" +
+      '<a class="btn wa" href="' + esc(tk.url) + '" target="_blank" rel="noopener">' + WA + "افتح واتساب وأرسل الرسالة</a>" +
+      '<p class="pstat"><i class="spin" aria-hidden="true"></i><span>بانتظار رسالتك… أرسلها كما هي قبل صافرة البداية، ' +
+      "ويظهر هنا تأكيد التسجيل.</span></p>" +
+      '<button class="plink" type="button" data-a="redo">غيّر توقّعي</button></div>';
+    body.querySelector('[data-a="redo"]').addEventListener("click", function () { put(TKEY, null); render(); });
+    check(tk);
+  }
+
+  function check(tk) {
+    clearTimeout(poll);
+    fetch("/api/contest/ticket?m=" + encodeURIComponent(EID) + "&c=" + encodeURIComponent(tk.code), {cache: "no-store"})
+      .then(function (r) { return r.json(); })
+      .then(function (t) {
+        if (ticket() === null || ticket().code !== tk.code) return;    // غيّر توقّعه أثناء الانتظار
+        if (t.state === "pending") { poll = setTimeout(function () { check(tk); }, document.hidden ? 15000 : 3000); return; }
+        put(TKEY, null);
+        if (t.state === "done") { keep({n: t.n, h: t.h, a: t.a, phone: t.phone || ""}); data.count = (data.count || 0) + 1; }
+        else if (t.state === "dup") keep({n: t.n, phone: t.phone || ""});
+        else if (t.state === "late") put(KEY + "_note", "وصلت رسالتك بعد صافرة البداية، فلم يُحتسب التوقّع.");
+        load();
+      })
+      .catch(function () { poll = setTimeout(function () { check(tk); }, 8000); });
+  }
+
+  // من رجع من واتساب: يُسأل عن الرمز فورًا لا بعد مهلة
+  document.addEventListener("visibilitychange", function () {
+    var tk = ticket();
+    if (!document.hidden && tk && data && (data.state === "open" || data.state === "closed")) check(tk);
+  });
 
   function stepper(side, team) {
     return '<div class="stepper" data-side="' + side + '">' +
@@ -112,8 +160,8 @@
   function share() {
     var text = "توقّعت نتيجة مباراة " + data.match.home + " و" + data.match.away + " في مسابقة سمارت سوق 🎁\n" +
       "توقّع أنت واربح " + data.prize + ": " + location.origin + location.pathname + "#predict";
-    return '<a class="btn wa" href="https://wa.me/?text=' + encodeURIComponent(text) +
-      '" target="_blank" rel="noopener">شارك المسابقة على واتساب</a>';
+    return '<a class="btn ghost pshare" href="https://wa.me/?text=' + encodeURIComponent(text) +
+      '" target="_blank" rel="noopener">شارك المسابقة مع أصحابك</a>';
   }
 
   function wire(form) {
@@ -132,20 +180,19 @@
       if (busy) return;
       form.querySelectorAll(".bad").forEach(function (x) { x.classList.remove("bad"); });
       var f = form.elements;
-      var req = {m: EID, h: goals.h, a: goals.a, name: f.name.value, phone: f.phone.value,
-                 agree: f.agree.checked, promo: f.promo.checked, website: f.website.value};
+      var req = {m: EID, h: goals.h, a: goals.a, name: f.name.value, agree: f.agree.checked, promo: f.promo.checked,
+                 website: f.website.value};
       if (!req.name.trim()) return fail("اكتب اسمك", "name");
-      if (!req.phone.trim()) return fail("اكتب رقم واتساب", "phone");
       if (!req.agree) return fail("وافق على شروط المسابقة أولًا", "agree");
-      busy = true; msg.className = "pmsg"; msg.textContent = "نرسل توقّعك…";
-      fetch("/api/contest/enter", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(req)})
-        .then(function (r) { return r.json().then(function (d) { return [r.status, d]; }); })
-        .then(function (x) {
+      busy = true; msg.className = "pmsg"; msg.textContent = "نجهّز رسالتك…";
+      fetch("/api/contest/start", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(req)})
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
           busy = false;
-          var d = x[1];
-          if (d.ok) {
-            keep({n: d.n, h: d.h, a: d.a});
-            data.count = d.count || data.count + 1;
+          if (d.ok && d.url) {
+            var tk = {code: d.code, h: d.h, a: d.a, url: d.url};
+            put(TKEY, tk);
+            window.open(d.url, "_blank", "noopener");          // وإن منعه المتصفح فزرّ واتساب في الخطوة التالية
             return open();
           }
           if (d.state && d.state !== "open") return load();
@@ -182,12 +229,18 @@
   }
 
   function closed() {
-    var me = mine(), html = '<p><b>' + esc(data.msg) + "</b></p>";
+    var me = mine(), tk = ticket(), note = get(KEY + "_note"), html = '<p><b>' + esc(data.msg) + "</b></p>";
+    if (note) html += '<p class="pmsg err">' + esc(note) + "</p>";
+    if (tk && !me && data.state === "closed") {
+      html += '<p class="pstat"><i class="spin" aria-hidden="true"></i><span>إن أرسلت رسالة توقّعك قبل الصافرة فتأكيدها ' +
+        "يظهر هنا خلال دقائق.</span></p>";
+      check(tk);
+    } else if (tk && data.state !== "closed") put(TKEY, null);
     if (data.state !== "hold" && data.state !== "void") {
       html += '<p class="pcount"><b>' + preds(data.count) + "</b>" +
         (data.state === "pending" ? " · النتيجة تُفرز الآن" : " · الفرز آليٌّ بعد صافرة النهاية") + "</p>";
     }
-    if (me) html += '<div class="pmine">توقّعك: ' + named(me.h, me.a) + " — رقم توقّعك <b>" + me.n + "</b></div>";
+    if (me) html += mineHtml(me);
     if (data.dist && data.dist.n) html += bars(data.dist);
     html += fp();
     body.innerHTML = html;
@@ -210,10 +263,10 @@
     }
     html += '<p class="pcount">النتيجة النهائية: <b>' + named(d.score[0], d.score[1]) + "</b> · " + preds(d.count) +
       " · أصاب النتيجة بالضبط " + num(d.exact) + "</p>";
-    if (me) {
+    if (me && me.n) {
       var won = picks.some(function (p) { return p.n === me.n; });
       html += '<div class="pmine">' + (won ? "🎉 مبروك! أنت الفائز — تواصلنا معك على واتساب." :
-        "توقّعك كان " + named(me.h, me.a) + ". حظًا أوفر في المباراة القادمة!") + "</div>";
+        (me.h == null ? "" : "توقّعك كان " + named(me.h, me.a) + ". ") + "حظًا أوفر في المباراة القادمة!") + "</div>";
     }
     html += '<button class="btn go pplay" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>' +
       "شاهد كيف تم الفرز</button>";

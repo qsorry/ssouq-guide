@@ -23,6 +23,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 import io
@@ -57,7 +58,7 @@ def match(eid="7", state="pre", status="STATUS_SCHEDULED", ts=NOW + 3600, h=0, a
 
 
 def form(**kw):
-    d = {"m": "7", "name": "عبدالله محمد", "phone": "0551234567", "h": 2, "a": 1, "agree": True}
+    d = {"m": "7", "name": "عبدالله محمد", "h": 2, "a": 1, "agree": True}
     d.update(kw)
     return d
 
@@ -108,43 +109,88 @@ def unit():
     check("ملغاة", C.state_of(s, match(status="STATUS_CANCELED"), NOW) == "void")
     check("مطفأة", C.state_of({"on": False}, match(), NOW) == "off" and C.state_of(None, match(), NOW) == "off")
 
-    print("التوقّع")
+    print("التسجيل برسالة واتساب")
     d = fresh()
     m = match()
-    code, res = C.enter(d, m, form(), "1.1.1.1", NOW)
+    ms = {"7": m}
+    link = lambda rec: "https://x/" + rec["eid"]  # noqa: E731
+    code, res = C.start(d, m, form(), "1.1.1.1", NOW)
     check("لا مسابقة قبل أن يفتحها المدير", code == 409 and res.get("state") == "off", res)
     C.configure(d, m, True, "اشتراك 3 أشهر", 1, now=NOW)
-    code, res = C.enter(d, m, form(), "1.1.1.1", NOW)
-    check("توقّعٌ مقبول برقمه", code == 200 and res["n"] == 1 and (res["h"], res["a"]) == (2, 1), res)
-    code, res = C.enter(d, m, form(phone="+966551234567", h=0, a=0), "2.2.2.2", NOW)
-    check("الرقم نفسه بصيغةٍ أخرى مرفوض، ولا يُعدَّل التوقّع", code == 409 and res.get("dup")
-          and C.load(d, "7")["entries"][0]["h"] == 2, res)
-    check("الاسم لازم", C.enter(d, m, form(name=" 1 ", phone="0551111111"), "3.3.3.3", NOW)[1].get("field") == "name")
-    check("الرقم لازم", C.enter(d, m, form(phone="0512"), "3.3.3.3", NOW)[1].get("field") == "phone")
-    check("النتيجة لازمة وفي حدّها", C.enter(d, m, form(phone="0551111111", h=40), "3.3.3.3", NOW)[1].get("field") == "score"
-          and C.enter(d, m, form(phone="0551111111", h="x"), "3.3.3.3", NOW)[1].get("field") == "score")
-    check("الموافقة على الشروط لازمة", C.enter(d, m, form(phone="0551111111", agree=False), "3.3.3.3", NOW)[1].get("field") == "agree")
-    code, res = C.enter(d, m, form(phone="0552222222", website="http://spam"), "4.4.4.4", NOW)
-    check("الحقل المخفي: ردٌّ كاذب ولا حفظ", code == 200 and res["n"] == 0 and len(C.load(d, "7")["entries"]) == 1)
-    code, res = C.enter(d, m, form(phone="0553333333"), "5.5.5.5", m["ts"])
-    check("لحظة البداية مرفوض", code == 409 and res["state"] == "closed", res)
-    code, res = C.enter(d, match(eid="8"), form(phone="0553333333"), "5.5.5.5", NOW)
-    check("مباراةٌ غير التي في الطلب", code == 404)
-    for i in range(C.IP_PER_MATCH - 1):
-        C.enter(d, m, form(phone=f"05500000{i:02d}"), "1.1.1.1", NOW)
-    code, res = C.enter(d, m, form(phone="0559999999"), "1.1.1.1", NOW)
-    check(f"حدّ العنوان في المباراة ({C.IP_PER_MATCH})", code == 429, res)
+    code, res = C.start(d, m, form(), "1.1.1.1", NOW)
+    tk = res.get("code", "")
+    check("الصفحة تأخذ رمزًا ورسالةً جاهزة، ولا رقم يُكتب", code == 200 and len(tk) == C.CODE_LEN
+          and set(tk) <= set(C.CODE_ALPHA) and ("رمز التوقّع: " + tk) in res["text"]
+          and "بلجيكا 2 – 1 فرنسا" in res["text"], res)
+    check("الرمز ينتظر ولا توقّع بعد", C.ticket_status(d, "7", tk)["state"] == "pending" and not C.load(d, "7")["entries"])
+    r = C.confirm(d, res["text"], "966551234567", NOW + 5, ms, link, now=NOW + 6)
+    rec = C.load(d, "7")
+    check("الرسالة تسجّله برقم مرسلها", r["status"] == "done" and r["n"] == 1
+          and rec["entries"][0]["phone"] == "966551234567" and rec["entries"][0]["name"] == "عبدالله محمد", r)
+    check("ويُردّ عليه بالتأكيد ورابط صفحته", "تم تسجيل توقّعك" in r["reply"] and "https://x/7" in r["reply"]
+          and "بلجيكا 2 – 1 فرنسا" in r["reply"])
+    ts = C.ticket_status(d, "7", tk.lower())
+    check("والصفحة ترى التسجيل برقمٍ مخفي", ts["state"] == "done" and ts["n"] == 1 and ts["phone"] == "05•••••567", ts)
+    r = C.confirm(d, res["text"], "966551234567", NOW + 7, ms, link, now=NOW + 8)
+    check("الرسالة نفسها مرةً ثانية: لا توقّعٌ ثانٍ", r["status"] == "done" and len(C.load(d, "7")["entries"]) == 1, r)
+    r = C.confirm(d, res["text"], "966559999999", NOW + 9, ms, link, now=NOW + 9)
+    check("الرمز من رقمٍ آخر (رسالةٌ مُعاد توجيهها) مرفوض", r["status"] == "used"
+          and len(C.load(d, "7")["entries"]) == 1, r)
+    code, res2 = C.start(d, m, form(h=0, a=0), "2.2.2.2", NOW)
+    r = C.confirm(d, res2["text"], "+966 55 123 4567", NOW + 10, ms, link, now=NOW + 10)
+    check("رقمٌ توقّع من قبل: مرفوض ولا يتغيّر توقّعه", r["status"] == "dup" and "من قبل" in r["reply"]
+          and C.load(d, "7")["entries"][0]["h"] == 2 and C.ticket_status(d, "7", res2["code"])["state"] == "dup", r)
+    check("رسالة عميلٍ عادية بلا رمز: لا ردّ أبدًا",
+          C.confirm(d, "السلام عليكم، متى ينتهي اشتراكي؟", "966551111111", NOW, ms, link, now=NOW) == {"status": "ignored"})
+    r = C.confirm(d, "رمز التوقّع: ACDEFG", "966551111111", NOW, ms, link, now=NOW)
+    check("رمزٌ لا وجود له", r["status"] == "unknown" and r["reply"])
+    code, res3 = C.start(d, m, form(h=1, a=1), "3.3.3.3", NOW)
+    r = C.confirm(d, res3["text"], "", NOW, ms, link, now=NOW)
+    check("رقم المرسل مجهول (معرّف LID بلا رقم): لا تسجيل", r["status"] == "nophone" and len(C.load(d, "7")["entries"]) == 1)
+    r = C.confirm(d, res3["text"], "966552222222", m["ts"] + 1, ms, link, now=m["ts"] + 2)
+    check("أُرسلت بعد صافرة البداية: لا تُحتسب", r["status"] == "late" and len(C.load(d, "7")["entries"]) == 1
+          and C.ticket_status(d, "7", res3["code"])["state"] == "late", r)
+    code, res4 = C.start(d, m, form(h=3, a=0), "4.4.4.4", NOW)
+    r = C.confirm(d, res4["text"], "966553333333", m["ts"] - 30, ms, link, now=m["ts"] + 120)
+    check("أُرسلت قبلها ووصلت بعدها: تُحتسب بوقت إرسالها", r["status"] == "done"
+          and C.load(d, "7")["entries"][-1]["at"] == m["ts"] - 30, r)
+    code, res5 = C.start(d, m, form(h=0, a=3), "5.5.5.5", NOW)
+    r = C.confirm(d, res5["text"], "966554444444", m["ts"] - 30, ms, link, now=m["ts"] + C.WA_GRACE + 1)
+    check("وبعد المهلة لا تُقبل مهما كان وقت إرسالها", r["status"] == "late")
+    check("لا رمز بعد البداية", C.start(d, m, form(), "6.6.6.6", m["ts"])[1].get("state") == "closed")
+    check("وقتٌ شاذّ من المرسل: وقت الوصول", C._sent_time(NOW + 99999, NOW) == NOW and C._sent_time("x", NOW) == NOW
+          and C._sent_time(NOW - 60, NOW) == NOW - 60)
+    check("الرمز من الرسالة وإن تغيّرت كتابتها", C.code_in("توقّعي\nرمز التوقّع: k7q4mx") == "K7Q4MX"
+          and C.code_in("رمز التوقع ٣٤٦٧٩A شكرًا") == "34679A" and C.code_in("رمز التوقّع: K7Q4MXX") == ""
+          and C.code_in("K7Q4MX") == "")
+    C.configure(d, match(eid="8"), True, "اشتراك شهر", 1, now=NOW)
+    code, r8 = C.start(d, match(eid="8"), form(m="8"), "7.7.7.7", NOW)
+    r = C.confirm(d, r8["text"], "966555555555", NOW, {"7": m, "8": match(eid="8")}, link, now=NOW)
+    check("الرمز يدلّ على مباراته", r["status"] == "done" and r["eid"] == "8" and len(C.load(d, "8")["entries"]) == 1)
+    check("الاسم لازم", C.start(d, m, form(name=" 1 "), "8.8.8.8", NOW)[1].get("field") == "name")
+    check("النتيجة لازمة وفي حدّها", C.start(d, m, form(h=40), "8.8.8.8", NOW)[1].get("field") == "score"
+          and C.start(d, m, form(h="x"), "8.8.8.8", NOW)[1].get("field") == "score")
+    check("الموافقة على الشروط لازمة", C.start(d, m, form(agree=False), "8.8.8.8", NOW)[1].get("field") == "agree")
+    code, res = C.start(d, m, form(website="http://spam"), "8.8.8.8", NOW)
+    check("الحقل المخفي: رمزٌ كاذب لا يُحفظ", code == 200 and res["code"] not in C.load(d, "7")["tickets"])
+    check("مباراةٌ غير التي في الطلب", C.start(d, match(eid="8"), form(), "8.8.8.8", NOW)[0] == 404)
+    got = [C.start(d, m, form(), "1.2.3.4", NOW)[0] for _ in range(C.IP_PER_MATCH + 1)]
+    check(f"حدّ العنوان في المباراة ({C.IP_PER_MATCH})", got[-1] == 429 and got[:-1] == [200] * C.IP_PER_MATCH, got)
     old = C.IP_PER_HOUR
     C.IP_PER_HOUR = 3
     try:
         C._hits.clear()
-        got = [C.enter(d, m, form(phone=f"05600000{i:02d}"), "9.9.9.9", NOW)[0] for i in range(4)]
+        got = [C.start(d, m, form(), "9.9.9.9", NOW)[0] for i in range(4)]
     finally:
         C.IP_PER_HOUR = old
     check("حدّ العنوان في الساعة", got == [200, 200, 200, 429], got)
     rec = C.load(d, "7")
-    check("لا يُحفظ العنوان نفسه", all(not re.search(r"\d+\.\d+\.\d+\.\d+", json.dumps(e)) for e in rec["entries"]))
+    blob = json.dumps(rec)
+    check("لا يُحفظ العنوان نفسه", not re.search(r"\d+\.\d+\.\d+\.\d+", blob))
     check("لقطة المباراة مع المسابقة", rec["match"]["home"] == "بلجيكا" and rec["match"]["slug"] == "7-belgium-france")
+    closed = dict(m, state="in", status="STATUS_FIRST_HALF")
+    check("البصمة لا تُعلن قبل مهلة الرسائل المتأخرة", "fp" not in C.public(rec, closed, m["ts"] + 60)
+          and "fp" in C.public(rec, closed, m["ts"] + C.WA_GRACE))
     shutil.rmtree(d)
 
     print("البصمة")
@@ -197,7 +243,8 @@ def unit():
     rec, did = C.settle(d, "7", other, m["ts"] + C.SETTLE_AFTER + 60)
     check("الإعادة لا تغيّر شيئًا", not did and rec["draw"]["seed"] == sd)
     check("خرجت من قائمة الانتظار", "7" not in C.waiting(d) and C.summaries(d)["7"]["draw"])
-    check("لا توقّع بعد الفرز", C.enter(d, m, form(phone="0557777777"), "7.7.7.7", NOW)[1].get("state") == "done")
+    check("لا رمز بعد الفرز", C.start(d, m, form(), "7.7.7.7", NOW)[1].get("state") == "done")
+    check("والرموز لا تُحفظ بعده", "tickets" not in C.load(d, "7"))
     check("لا تعديل بعد الفرز", C.configure(d, m, True, "x", 1, now=NOW)[0] == 409)
     seed(d, match(eid="9"), people[:2])
     rec, did = C.settle(d, "9", match(eid="9", status="STATUS_CANCELED"), NOW)
@@ -291,7 +338,7 @@ def post(url, body, auth=False):
 
 def live():
     print("خادمٌ حيّ")
-    mport, port = 9781, 9782
+    mport, port, wport = 9781, 9782, 9783
     data = tempfile.mkdtemp(prefix="contest_live_")
     # مسابقةٌ على مباراةٍ انتهت (1: فرنسا 2-1 بلجيكا) بتوقّعاتٍ سُجّلت قبلها — ليفرزها الخادم
     ms = T.matches(mock_espn.scoreboard("uefa.nations", "2026")["events"])
@@ -333,14 +380,78 @@ def live():
         d = json.loads(body)
         check("الحال مفتوحة بلا كاش وبموعدٍ مقروء", code == 200 and d["state"] == "open" and d["count"] == 0
               and "no-store" in hd.get("Cache-Control", "") and d["when"].endswith(("ص", "م")), d)
-        code, res = post(base + "/api/contest/enter", {"m": "6", "name": "سارة", "phone": "0551230000", "h": 1, "a": 0,
-                                                       "agree": True, "promo": True})
-        check("توقّعٌ من الموقع", code == 200 and res["n"] == 1, res)
-        code, res = post(base + "/api/contest/enter", {"m": "6", "name": "سارة", "phone": "551230000", "h": 3, "a": 0,
-                                                       "agree": True})
-        check("والرقم نفسه مرفوض", code == 409 and res.get("dup"))
-        code, res = post(base + "/api/contest/enter", {"m": "3", "name": "سارة", "phone": "0551230001", "h": 3, "a": 0,
-                                                       "agree": True})
+        check("بلا واتساب مضبوط: التسجيل متوقّف", d.get("reg") is False)
+        code, res = post(base + "/api/contest/start", {"m": "6", "name": "سارة", "h": 1, "a": 0, "agree": True})
+        check("ولا رمز", code == 503, res)
+
+        # خدمة واتساب الحقيقية (whatsapp-baileys) بوضعها الوهمي: تمرّر الرسائل إلى الأداة وتردّ
+        bridge = f"http://127.0.0.1:{wport}"
+        if shutil.which("node"):
+            procs.append(subprocess.Popen(["node", os.path.join(ROOT, "whatsapp-baileys", "index.js")], env=dict(
+                os.environ, WA_FAKE="1", WA_FAKE_ME="966500000009", WA_SECRET="brg_live", WA_PORT=str(wport),
+                WA_BIND="127.0.0.1", WA_INBOUND_URL=base + "/api/contest/wa-inbound"),
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            for _ in range(60):
+                try:
+                    urllib.request.urlopen(bridge + "/health", timeout=1)
+                    break
+                except Exception:
+                    time.sleep(.1)
+        else:
+            post(base + "/admin/api/contest/admin/settings", {"notify": True, "wa_number": "0500000009"}, auth=True)
+        code, res = post(base + "/admin/api/service", {"wa": {"type": "http", "url": bridge + "/send", "secret": "brg_live"}},
+                         auth=True)
+        check("المدير يضبط قناة واتساب (Baileys)", code == 200, res)
+        code, body, _ = get(base + "/api/contest?m=6")
+        check("فيُفتح التسجيل", json.loads(body).get("reg") is True)
+        code, res = post(base + "/api/contest/start", {"m": "6", "name": "سارة", "h": 1, "a": 0, "agree": True,
+                                                       "promo": True})
+        check("رمزٌ ورابط واتساب برسالةٍ جاهزة إلى رقم المتجر", code == 200
+              and res["url"].startswith("https://wa.me/966500000009?text=")
+              and urllib.parse.quote(res["code"]) in res["url"] and "%0A" in res["url"], res)
+        tk = res["code"]
+        code, _ = post(base + "/api/contest/wa-inbound", {"from": "966551230000", "text": res["text"]})
+        check("الأداة لا تقبل رسالةً بلا توقيع الخدمة", code == 401)
+        req = urllib.request.Request(base + "/api/contest/wa-inbound", data=b"{}", method="POST",
+                                     headers={"Content-Type": "application/json", "Authorization": "Bearer wrong"})
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            bad = 200
+        except urllib.error.HTTPError as e:
+            bad = e.code
+        check("ولا بسرٍّ خاطئ", bad == 401)
+
+        def inbound(frm, text):
+            if shutil.which("node"):
+                rq = urllib.request.Request(bridge + "/fake-inbound", method="POST",
+                                            data=json.dumps({"from": frm, "text": text}).encode(),
+                                            headers={"Content-Type": "application/json", "Authorization": "Bearer brg_live"})
+                with urllib.request.urlopen(rq, timeout=15) as r:
+                    return json.loads(r.read())
+            rq = urllib.request.Request(base + "/api/contest/wa-inbound", method="POST",
+                                        data=json.dumps({"from": frm, "text": text, "ts": time.time()}).encode(),
+                                        headers={"Content-Type": "application/json", "Authorization": "Bearer brg_live"})
+            with urllib.request.urlopen(rq, timeout=15) as r:
+                d = json.loads(r.read())
+            return {"forwarded": d.get("status") != "ignored", "reply": d.get("reply", ""),
+                    "sent": [{"to": frm, "text": d["reply"]}] if d.get("reply") else []}
+
+        r = inbound("966551230000", res["text"])
+        check("رسالة التوقّع تصل الأداة ويُردّ على مرسلها", r["forwarded"] and "تم تسجيل توقّعك" in r["reply"]
+              and r["sent"] and r["sent"][0]["to"] == "966551230000", r)
+        code, body, _ = get(base + f"/api/contest/ticket?m=6&c={tk}")
+        t = json.loads(body)
+        check("والصفحة ترى رمزها مسجّلًا برقمٍ مخفي", t["state"] == "done" and t["n"] == 1 and t["phone"] == "05•••••000", t)
+        r = inbound("966551239999", res["text"])
+        check("الرسالة نفسها من رقمٍ آخر: الرمز مستخدم", "استُخدم" in r["reply"], r)
+        r = inbound("966551230000", "السلام عليكم، متى ينتهي اشتراكي؟")
+        check("رسائل العملاء الأخرى لا تُمرَّر ولا يُردّ عليها", not r["forwarded"] and not r["sent"], r)
+        if shutil.which("node"):
+            code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
+            d = json.loads(body)
+            check("صفحة المدير: الخدمة متصلة وتمرّر الرسائل، والرقم منها", d["bridge"].get("connected")
+                  and d["bridge"].get("inbound") and d["number"] == "966500000009", d.get("bridge"))
+        code, res = post(base + "/api/contest/start", {"m": "3", "name": "سارة", "h": 3, "a": 0, "agree": True})
         check("مباراةٌ بلا مسابقة", code == 409 and res.get("state") == "off")
         code, body, _ = get(base + "/api/contest?m=6")
         check("العلن: العدد ولا رقم", json.loads(body)["count"] == 1 and b"551230000" not in body)
@@ -378,8 +489,8 @@ def live():
             if det.get("sent"):
                 break
             time.sleep(.1)
-        check("المدير يرى الرقم كاملًا ونتيجة الإرسال", det["won"][0]["phone"].startswith("9665500")
-              and det["sent"] and det["sent"][0]["dry"], det.get("sent"))
+        check("المدير يرى الرقم كاملًا، ورسالة الفائز أُرسلت له عبر الخدمة", det["won"][0]["phone"].startswith("9665500")
+              and det["sent"] and det["sent"][0]["to"] == det["won"][0]["phone"] and det["sent"][0]["ok"], det.get("sent"))
         code, res = post(base + "/admin/api/contest/admin/settle", {"m": "1"}, auth=True)
         check("«افرز الآن» بعد الفرز لا يغيّر شيئًا", code == 200 and res["drawn"] is False)
         code, res = post(base + "/admin/api/contest/admin/settle", {"m": "6"}, auth=True)

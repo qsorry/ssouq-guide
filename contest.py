@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
 """مسابقة «توقّع النتيجة واربح» على مباريات البطولة (‏tournament.py).
 
-المدير يفتحها على مباراةٍ بعينها من admin.ssouq.com/contest بجائزتها وعدد فائزيها،
-والزائر يتوقّع من صفحة المباراة باسمه ورقم واتسابه. وما بعد ذلك آليٌّ كله، بلا يد:
+المدير يفتحها على مباراةٍ بعينها من admin.ssouq.com/contest بجائزتها وعدد فائزيها.
+والزائر يختار النتيجة في صفحة المباراة ويكتب اسمه، فيأخذ **رمزًا** (‏start)، ثم يرسل رسالة
+واتساب جاهزة فيها الرمز إلى رقم المتجر؛ وخدمة واتساب (whatsapp-baileys) تمرّرها إلى
+confirm، فيُسجَّل التوقّع **برقم مرسل الرسالة نفسه** — لا رقمٌ يُكتب، فلا رقمٌ وهمي ولا رقم
+صاحبٍ دون علمه. وما بعد ذلك آليٌّ كله، بلا يد:
 
-  • **الإقفال** مع موعد البداية من ESPN. الخادم يرفض ما بعده، فلا تنفع صفحةٌ مخزَّنة ولا مفتوحة.
-  • **توقّعٌ واحد لكل رقم** في كل مباراة، ولا يُعدَّل — فلا يغيّر أحدٌ توقّعَ غيره برقمه.
+  • **الإقفال** مع موعد البداية من ESPN: لا رمز بعده، ولا تُقبل إلا رسالةٌ أرسلها صاحبها قبله
+    بوقت خادم واتساب نفسه (تُستقبل حتى WA_GRACE بعد البداية إن تأخّر وصولها).
+  • **توقّعٌ واحد لكل رقم** في كل مباراة، ولا يُعدَّل.
   • **بصمة التوقّعات**: SHA-256 لقائمتها كما أُقفلت، تُعرض للعموم من لحظة الإقفال.
   • **الفرز** بعد صافرة النهاية:
         رقم القرعة = SHA-256(البصمة | المباراة | النتيجة)
     المؤهّلون من أصاب النتيجة بالضبط، فإن لم يكن أحد فمن أصاب الفائز أو التعادل،
     والفائز = المؤهّل رقم (رقم القرعة mod عددهم) بترتيب التسجيل. لا يعرف أحدٌ الرقم
     قبل النهاية، ولا تتغيّر القائمة بعد الإقفال، وإعادة الفرز تعطي الفائز نفسه.
-  • **التبليغ** على واتساب للرقم نفسه، والجائزة لا تُسلَّم إلا له — فالرقم الوهمي لا يربح
-    شيئًا، ولذلك لا كود تحقّق عند التسجيل.
+  • **التبليغ** على واتساب للرقم نفسه، والجائزة لا تُسلَّم إلا له.
 
 التخزين ملفٌّ لكل مباراة في data/contest/<المعرّف>.json، والإعداد في settings.json بجانبها.
 بلا مكتبات خارجية.
@@ -23,6 +26,7 @@ import datetime
 import hashlib
 import json
 import os
+import random
 import re
 import threading
 import time
@@ -40,8 +44,11 @@ MAX_GOALS = 15
 NAME_MAX = 30
 PRIZE_MAX = 80
 MAX_WINNERS = 10
-IP_PER_HOUR = 30                # توقّعات صالحة من عنوانٍ واحد في الساعة، على كل المباريات
+IP_PER_HOUR = 30                # رموز من عنوانٍ واحد في الساعة، على كل المباريات
 IP_PER_MATCH = 6                # ومن عنوانٍ واحد في المباراة الواحدة (عائلةٌ على شبكة البيت)
+WA_GRACE = 10 * 60              # رسالةٌ أُرسلت قبل البداية ووصلت بعدها تُقبل حتى هذا؛ وبعده تُعلن البصمة
+CODE_ALPHA = "ACDEFGHJKLMNPQRTUVWXY34679"   # بلا ما يلتبس (0/O، 1/I، 5/S، 8/B، 2/Z)
+CODE_LEN = 6
 POOL_WINDOW = 150               # المؤهّلون المعروضون حول الفائز في تقرير الفرز العام (من كل جهة)
 RIYADH = datetime.timezone(datetime.timedelta(hours=3))
 
@@ -51,13 +58,14 @@ DEFAULT_TEXT = ("مبروك {name} 🎉\n"
                 "جائزتك: {prize}\n\n"
                 "رُد على هذه الرسالة لاستلامها.\n"
                 "كيف تم الفرز: {link}")
-DEFAULTS = {"notify": True, "text": DEFAULT_TEXT, "admin_phone": ""}
+DEFAULTS = {"notify": True, "text": DEFAULT_TEXT, "admin_phone": "", "wa_number": ""}
 
 # شروط المسابقة كما تظهر للزائر (صفحة المسابقة وبطاقة المباراة)
 RULES = [
     "المشاركة مجانية ولا تشترط شراء.",
+    "يُسجَّل التوقّع برسالة واتساب يرسلها المشارك من رقمه، والرقم المعتمد رقم مرسل الرسالة.",
     "توقّعٌ واحد لكل رقم واتساب في كل مباراة، ولا يُعدَّل بعد إرساله.",
-    "تُقفل التوقّعات مع موعد صافرة البداية، ولا يُقبل بعده شيء.",
+    "تُقفل التوقّعات مع موعد صافرة البداية: لا تُقبل رسالةٌ أُرسلت بعده.",
     "النتيجة المعتمدة نتيجة المباراة النهائية كما تعلنها ESPN، بالأشواط الإضافية إن لُعبت، ولا تُحسب ركلات الترجيح.",
     "الفرز آليٌّ بعد صافرة النهاية: المؤهّلون من أصاب النتيجة بالضبط، فإن لم يُصبها أحد فمن أصاب الفائز أو التعادل.",
     "الفائز يُختار بقرعة ثابتة: رقم القرعة من بصمة التوقّعات (تُعلن عند الإقفال) والنتيجة النهائية، "
@@ -166,15 +174,19 @@ def load_settings(data_dir):
     out["notify"] = bool(s.get("notify", DEFAULTS["notify"]))
     out["text"] = str(s.get("text") or DEFAULTS["text"])[:1000]
     out["admin_phone"] = norm_phone(s.get("admin_phone", ""))
+    out["wa_number"] = norm_phone(s.get("wa_number", ""))
     return out
 
 
 def save_settings(data_dir, new):
     s = {"notify": bool(new.get("notify")),
          "text": str(new.get("text") or "").strip()[:1000] or DEFAULT_TEXT,
-         "admin_phone": norm_phone(new.get("admin_phone", ""))}
+         "admin_phone": norm_phone(new.get("admin_phone", "")),
+         "wa_number": norm_phone(new.get("wa_number", ""))}
     if s["admin_phone"] and not phone_ok(s["admin_phone"]):
         raise ValueError("رقم واتساب المدير غير صحيح")
+    if s["wa_number"] and not phone_ok(s["wa_number"]):
+        raise ValueError("رقم استقبال التوقّعات غير صحيح")
     with _lock:
         _write(os.path.join(_dir(data_dir), SETTINGS), s)
     return load_settings(data_dir)
@@ -289,7 +301,17 @@ def dist(entries, top=5):
             "away": sum(1 for e in entries if e["h"] < e["a"])}
 
 
-# ---------- التوقّع ----------
+# ---------- التوقّع: رمزٌ من الصفحة، ثم رسالة واتساب من صاحب الرقم ----------
+_CODE_RE = re.compile(r"رمز\s*التوقع\s*[:：]?\s*([A-Za-z0-9]{%d})(?![A-Za-z0-9])" % CODE_LEN)
+_TASHKEEL = re.compile(r"[\u064B-\u065F\u0670\u0640]")
+
+
+def code_in(text):
+    """الرمز من رسالة التوقّع («رمز التوقّع: K7Q4MX»)، بلا تشكيلٍ وبأرقامٍ عربيةٍ أو لاتينية."""
+    m = _CODE_RE.search(_TASHKEEL.sub("", str(text or "")).translate(_AR_DIGITS))
+    return m.group(1).upper() if m else ""
+
+
 def _rate_ok(ipk, now):
     if not ipk:
         return True
@@ -305,44 +327,134 @@ def _rate_ok(ipk, now):
     return ok
 
 
-def enter(data_dir, m, form, ip="", now=None):
-    """توقّعٌ جديد من صفحة المباراة ← (رمز HTTP، الرد)."""
+def message_text(mt, h, a, code):
+    """نصّ رسالة واتساب الجاهزة — والرمز فيه ما يُعتمد، لا النتيجة المكتوبة."""
+    return (f"توقّعي في مسابقة سمارت سوق 🎁\n{mt['home']} {h} – {a} {mt['away']}\n"
+            f"رمز التوقّع: {code}")
+
+
+def start(data_dir, m, form, ip="", now=None):
+    """الخطوة الأولى من الصفحة: النتيجة والاسم ← رمزٌ ورسالةٌ جاهزة (‏(رمز HTTP، الرد))."""
     now = time.time() if now is None else now
     if not m or m["id"] != eid_of(form.get("m")):
         return 404, {"error": "لا مسابقة على هذه المباراة"}
-    if str(form.get("website") or "").strip():            # حقلٌ مخفي لا يملؤه إلا روبوت
-        return 200, {"ok": True, "n": 0}
     name = clean_name(form.get("name"))
-    phone = norm_phone(form.get("phone"))
     h, a = _goals(form.get("h")), _goals(form.get("a"))
+    if str(form.get("website") or "").strip():            # حقلٌ مخفي لا يملؤه إلا روبوت: ردٌّ لا يُحفظ
+        return 200, {"ok": True, "code": "".join(CODE_ALPHA[0] for _ in range(CODE_LEN)), "h": h or 0, "a": a or 0,
+                     "text": ""}
     if len(name) < 2 or not re.search(r"[^\W\d_]", name):
         return 400, {"error": "اكتب اسمك", "field": "name"}
-    if not phone_ok(phone):
-        return 400, {"error": "اكتب رقم واتساب صحيحًا، مثل 05xxxxxxxx", "field": "phone"}
     if h is None or a is None:
         return 400, {"error": "اختر النتيجة", "field": "score"}
     if not form.get("agree"):
         return 400, {"error": "وافق على شروط المسابقة أولًا", "field": "agree"}
     ipk = _ipk(ip)
     if not _rate_ok(ipk, now):
-        return 429, {"error": "توقّعات كثيرة من هذا الاتصال. حاول بعد ساعة."}
+        return 429, {"error": "محاولات كثيرة من هذا الاتصال. حاول بعد ساعة."}
+    others = [e for e in waiting(data_dir) if e != m["id"]]
     with _lock:
         rec = load(data_dir, m["id"])
         st = state_of(rec, m, now)
         if st != "open":
             return 409, {"error": STATE_MSG.get(st, "التوقّعات مقفلة."), "state": st}
-        es = rec["entries"]
-        if any(e["phone"] == phone for e in es):
-            return 409, {"error": "هذا الرقم سجّل توقّعه لهذه المباراة من قبل، والتوقّع لا يُعدَّل.",
-                         "dup": True, "field": "phone"}
-        if ipk and sum(1 for e in es if e.get("ipk") == ipk) >= IP_PER_MATCH:
+        tickets = rec.setdefault("tickets", {})
+        if ipk and sum(1 for t in tickets.values() if t.get("ipk") == ipk) >= IP_PER_MATCH:
             return 429, {"error": "بلغت التوقّعات من هذا الاتصال حدّها في هذه المباراة."}
-        n = (es[-1]["n"] if es else 0) + 1
-        es.append({"n": n, "name": name, "phone": phone, "h": h, "a": a, "at": round(now, 3),
-                   "ipk": ipk, "promo": bool(form.get("promo"))})
+        taken = set(tickets)
+        for e in others:                                   # الرمز يدلّ على مباراته وحده
+            taken |= set(((load(data_dir, e) or {}).get("tickets") or {}))
+        rnd = random.SystemRandom()
+        code = ""
+        while not code or code in taken:
+            code = "".join(rnd.choice(CODE_ALPHA) for _ in range(CODE_LEN))
+        tickets[code] = {"name": name, "h": h, "a": a, "promo": bool(form.get("promo")), "at": round(now, 3),
+                         "ipk": ipk, "st": "pending"}
         rec["match"] = _snap(m)
         _save(data_dir, rec)
-    return 200, {"ok": True, "n": n, "h": h, "a": a, "count": len(es)}
+    return 200, {"ok": True, "code": code, "h": h, "a": a, "text": message_text(rec["match"], h, a, code)}
+
+
+def _sent_time(ts, now):
+    """وقت الإرسال من خادم واتساب؛ وإن غاب أو شذّ فوقت الوصول."""
+    try:
+        ts = float(ts)
+    except (TypeError, ValueError):
+        return now
+    return ts if now - 86400 < ts <= now + 120 else now
+
+
+def confirm(data_dir, text, phone, sent_ts, matches, link, now=None):
+    """الخطوة الثانية من واتساب: رسالةٌ فيها رمز ← يُسجَّل التوقّع برقم مرسلها.
+    ← {status, reply?, eid?, n?}: done · dup (الرقم توقّع من قبل) · late (أُرسلت بعد البداية)
+    · used (الرمز لرقمٍ آخر) · unknown · nophone · ignored (لا رمز: لا ردّ أبدًا —
+    فرسائل العملاء الأخرى على الرقم نفسه لا يُجاب عنها)."""
+    now = time.time() if now is None else now
+    code = code_in(text)
+    if not code:
+        return {"status": "ignored"}
+    phone = norm_phone(phone)
+    ids = waiting(data_dir)
+    with _lock:
+        rec = t = None
+        for eid in ids:
+            r = load(data_dir, eid)
+            if r and code in (r.get("tickets") or {}):
+                rec, t = r, r["tickets"][code]
+                break
+        if not t:
+            return {"status": "unknown", "reply": "لم نجد هذا الرمز، أو انتهى وقته. سجّل توقّعك من صفحة المباراة "
+                                                  "ثم أرسل الرسالة كما هي."}
+        eid, mt = rec["eid"], rec.get("match") or {}
+        m = (matches or {}).get(eid)
+        kick = (m or mt).get("ts") or 0
+        page = link(rec)
+        if t["st"] == "done":
+            if t.get("by") == _sha(phone)[:16]:
+                return {"status": "done", "eid": eid, "n": t["n"], "reply": f"توقّعك مسجّل من قبل، ورقمه {t['n']}. "
+                                                                            "بالتوفيق!"}
+            return {"status": "used", "eid": eid, "reply": "هذا الرمز استُخدم من رقمٍ آخر. سجّل توقّعك أنت من صفحة "
+                                                           f"المباراة: {page}"}
+        if not phone_ok(phone):
+            return {"status": "nophone", "eid": eid, "reply": "تعذّر التعرّف على رقمك من واتساب. حدّث التطبيق "
+                                                              "وأعد إرسال الرسالة."}
+        sent = _sent_time(sent_ts, now)
+        void = m and m["status"] in VOID
+        if void or not kick or sent >= kick or now >= kick + WA_GRACE:
+            t["st"] = "late"
+            _save(data_dir, rec)
+            return {"status": "late", "eid": eid, "reply": "وصلت رسالتك بعد صافرة البداية فلم يُحتسب التوقّع. "
+                                                           "نلقاك في المباراة القادمة!"}
+        old = next((e for e in rec["entries"] if e["phone"] == phone), None)
+        if old:
+            t.update(st="dup", n=old["n"], ph=mask_phone(phone))
+            _save(data_dir, rec)
+            return {"status": "dup", "eid": eid, "n": old["n"],
+                    "reply": f"رقمك سجّل توقّعه لهذه المباراة من قبل: {mt.get('home', '')} {old['h']} – {old['a']} "
+                             f"{mt.get('away', '')} (رقم توقّعك {old['n']}). والتوقّع لا يُعدَّل."}
+        n = (rec["entries"][-1]["n"] if rec["entries"] else 0) + 1
+        rec["entries"].append({"n": n, "name": t["name"], "phone": phone, "h": t["h"], "a": t["a"],
+                               "at": round(sent, 3), "ipk": t.get("ipk", ""), "promo": bool(t.get("promo"))})
+        t.update(st="done", n=n, by=_sha(phone)[:16], ph=mask_phone(phone))
+        if m:
+            rec["match"] = _snap(m)
+        _save(data_dir, rec)
+    return {"status": "done", "eid": eid, "n": n,
+            "reply": (f"تم تسجيل توقّعك ✅\n{mt.get('home', '')} {t['h']} – {t['a']} {mt.get('away', '')}\n"
+                      f"رقم توقّعك: {n}\nالفرز آليٌّ بعد صافرة النهاية، ونبلّغك هنا إن فزت 🎁\n{page}")}
+
+
+def ticket_status(data_dir, eid, code):
+    """حال الرمز للصفحة وهي تنتظر الرسالة — لا يكشف إلا ما يعرفه صاحب الرمز."""
+    rec = load(data_dir, eid)
+    t = ((rec or {}).get("tickets") or {}).get(str(code or "").strip().upper())
+    if not t:
+        return {"ok": True, "state": "unknown"}
+    out = {"ok": True, "state": t["st"], "h": t["h"], "a": t["a"]}
+    for k, v in (("n", "n"), ("ph", "phone")):
+        if t.get(k):
+            out[v] = t[k]
+    return out
 
 
 # ---------- الفرز ----------
@@ -388,12 +500,14 @@ def settle(data_dir, eid, m, now=None):
         if m["status"] in VOID:
             rec["void"] = {"at": now, "status": m["status"]}
             rec["match"] = _snap(m)
+            rec.pop("tickets", None)
             _save(data_dir, rec)
             return rec, False
         if not due(rec, m, now):
             return rec, False
         rec["draw"] = draw(rec, m, now)
         rec["match"] = _snap(m)
+        rec.pop("tickets", None)                      # الرموز لا تلزم بعد الفرز
         _save(data_dir, rec)
         return rec, True
 
@@ -441,8 +555,9 @@ def public(rec, m, now=None):
     if st == "hold":
         out["msg"] = ("المباراة مؤجلة، والتوقّعات موقوفة حتى يُعلن موعدها الجديد."
                       if m and m["status"] in HOLD else STATE_MSG["hold"])
-    if st in ("closed", "pending", "done", "void"):
-        out["fp"] = fingerprint(es)
+    kick = out["match"].get("ts") or 0
+    if st in ("pending", "done", "void") or (st == "closed" and now >= kick + WA_GRACE):
+        out["fp"] = fingerprint(es)                   # بعد مهلة الرسائل المتأخرة: القائمة نهائية
         out["dist"] = dist(es)
     if st == "done":
         out["draw"] = public_draw(rec)
@@ -584,6 +699,7 @@ def admin_detail(data_dir, eid, m, now=None):
             "match": _match_of(rec, m), "fp": fingerprint(rec["entries"]),
             "entries": [{k: e.get(k) for k in ("n", "name", "phone", "h", "a", "at", "promo")} for e in rec["entries"]],
             "won": won, "draw": {k: v for k, v in d.items() if k != "picks"} if d else None,
+            "tickets": dict(collections.Counter(t["st"] for t in (rec.get("tickets") or {}).values())),
             "sent": rec.get("sent") or [], "public": public(rec, m, now)}
 
 

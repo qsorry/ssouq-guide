@@ -93,6 +93,10 @@ button:disabled{opacity:.55;cursor:default}
 .vid{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:10px}
 .vid canvas{width:min(100%,320px);aspect-ratio:9/16;border-radius:14px;background:#012E45}
 .sent li{font-size:.84rem}
+.warn{border-color:color-mix(in srgb,var(--amber) 55%,var(--line))}
+.warn b{color:var(--amber)}
+.warn ul{margin:6px 0 0;padding-inline-start:1.2em;color:var(--mute);font-size:.88rem}
+.okline{color:var(--go)}
 </style>
 </head>
 <body>
@@ -104,14 +108,15 @@ button:disabled{opacity:.55;cursor:default}
 </header>
 <main class="wrap">
   <h1>مسابقة توقّع النتيجة</h1>
-  <p class="sub">افتح المسابقة على مباراة واكتب جائزتها. التوقّعات تُقفل مع صافرة البداية، والفرز آليٌّ بعد صافرة النهاية، والفائز يُبلَّغ على واتساب — ولا يُطلب منك شيء إلا تسليم الجائزة.</p>
+  <p class="sub">افتح المسابقة على مباراة واكتب جائزتها. المشارك يسجّل توقّعه برسالة واتساب من رقمه، والتوقّعات تُقفل مع صافرة البداية، والفرز آليٌّ بعد صافرة النهاية، والفائز يُبلَّغ على واتساب — ولا يُطلب منك شيء إلا تسليم الجائزة.</p>
+  <section id="waBox" class="warn" hidden></section>
 
   <section>
     <div class="stats">
       <div class="stat"><small>مسابقات مفتوحة</small><b id="stOpen">—</b></div>
       <div class="stat"><small>كل التوقّعات</small><b id="stAll">—</b></div>
       <div class="stat"><small>فُرزت</small><b id="stDone">—</b></div>
-      <div class="stat"><small>قناة واتساب</small><b id="stWa" style="font-size:1rem;padding-top:6px">—</b></div>
+      <div class="stat"><small>استقبال التوقّعات</small><b id="stWa" style="font-size:1rem;padding-top:6px">—</b></div>
     </div>
   </section>
 
@@ -129,6 +134,9 @@ button:disabled{opacity:.55;cursor:default}
     <span class="hint">يُستبدل فيه: {name} الاسم الأول · {match} المباراة · {score} النتيجة · {prize} الجائزة · {link} صفحة الفرز</span>
     <label for="sAdmin">رقم واتسابك لملخّص كل فرز (اختياري)</label>
     <input id="sAdmin" class="ltr" inputmode="tel" placeholder="05xxxxxxxx">
+    <label for="sNum">رقم استقبال التوقّعات (اختياري)</label>
+    <input id="sNum" class="ltr" inputmode="tel" placeholder="يُؤخذ من خدمة الواتساب">
+    <span class="hint">المشاركون يرسلون رسائل التوقّع إلى هذا الرقم، ويجب أن يكون الرقم المربوط بخدمة واتساب (Baileys) نفسه. اتركه فارغًا ليُؤخذ منها تلقائيًا.</span>
     <p class="hint" id="waHint"></p>
     <button class="go" id="sSave" style="margin-top:12px">حفظ</button>
     <div class="msg" id="sMsg"></div>
@@ -176,13 +184,22 @@ async function load() {
   $("stOpen").textContent = num(rows.filter(r => r.state === "open").length);
   $("stAll").textContent = num(cs.reduce((n, r) => n + (r.contest.count || 0), 0));
   $("stDone").textContent = num(rows.filter(r => r.state === "done").length);
-  $("stWa").textContent = d.wa === "none" ? "غير مضبوطة" : d.wa === "cloud" ? "Cloud API" : "بوابة HTTP";
-  $("waHint").textContent = d.wa === "none"
-    ? "قناة الواتساب غير مضبوطة، فالرسائل لا تُرسل. اضبطها من الإعدادات ← ربط سلة ← واتساب، ثم «أعد إرسال الرسائل» من تفاصيل المسابقة."
-    : "الرسائل من قناة خدمة سلة نفسها.";
+  const br = d.bridge || {}, issues = [];
+  if (d.wa !== "http") issues.push("قناة الواتساب ليست خدمة Baileys (بوابة HTTP). اضبطها من الإعدادات ← ربط سلة ← واتساب.");
+  else if (!br.ok) issues.push("تعذّر الوصول لخدمة الواتساب" + (br.error ? ": " + br.error : "") + ".");
+  else {
+    if (!br.connected) issues.push("خدمة الواتساب غير متصلة — افتح صفحة ربطها وامسح رمز QR.");
+    if (!br.inbound) issues.push("خدمة الواتساب لا تمرّر الرسائل الواردة: اضبط فيها WA_INBOUND_URL = https://guide.ssouq.com/api/contest/wa-inbound ثم أعد نشرها.");
+  }
+  if (!d.number) issues.push("لا رقم لاستقبال التوقّعات، فالتسجيل متوقّف.");
+  $("stWa").innerHTML = issues.length ? '<span style="color:var(--err)">غير جاهز</span>' : '<span class="okline">جاهز ✓</span>';
+  $("waBox").hidden = !issues.length;
+  $("waBox").innerHTML = '<b>التسجيل برسالة واتساب يحتاج:</b><ul>' + issues.map(x => "<li>" + esc(x) + "</li>").join("") + "</ul>";
+  $("waHint").innerHTML = d.number ? 'الرقم الذي يراسله المشاركون الآن: <b dir="ltr">+' + esc(d.number) + "</b>" : "";
   if (!$("sText").dataset.set) {
     const s = d.settings || {};
     $("sNotify").checked = !!s.notify; $("sText").value = s.text || ""; $("sAdmin").value = s.admin_phone || "";
+    $("sNum").value = s.wa_number || "";
     $("sText").dataset.set = "1";
   }
   if (!d.feed && !rows.length) { $("rows").innerHTML = '<p class="empty">تعذّر جلب المباريات من ESPN الآن. أعد المحاولة بعد دقائق.</p>'; return; }
@@ -227,9 +244,10 @@ $("rows").addEventListener("click", async e => {
 });
 
 $("sSave").onclick = async () => {
-  const d = await api("/api/contest/admin/settings", {notify: $("sNotify").checked, text: $("sText").value, admin_phone: $("sAdmin").value});
+  const d = await api("/api/contest/admin/settings", {notify: $("sNotify").checked, text: $("sText").value,
+                                                       admin_phone: $("sAdmin").value, wa_number: $("sNum").value});
   $("sMsg").className = "msg " + (d.ok ? "ok" : "err"); $("sMsg").textContent = d.ok ? "حُفظ." : (d.error || "تعذّر الحفظ");
-  if (d.ok) { $("sAdmin").value = d.settings.admin_phone || ""; }
+  if (d.ok) { $("sAdmin").value = d.settings.admin_phone || ""; $("sNum").value = d.settings.wa_number || ""; load(); }
 };
 
 // ---------- تفاصيل مسابقة ----------
@@ -244,6 +262,9 @@ async function view(eid) {
   $("dTitle").textContent = m.home + " × " + m.away;
   let h = `<p class="sub" style="margin:0">${esc(d.when || "")} · ${esc(m.stage)} · <span class="chip ${d.state}">${STATE[d.state] || d.state}</span></p>
     <p>الجائزة: <b>${esc(d.prize)}</b> · الفائزون: <b>${d.winners}</b> · التوقّعات: <b>${num(d.entries.length)}</b></p>`;
+  const tk = d.tickets || {};
+  if (tk.pending || tk.late || tk.dup)
+    h += `<p class="hint">رموزٌ لم تصل رسالتها: ${num(tk.pending || 0)} · وصلت بعد الصافرة: ${num(tk.late || 0)} · رقمٌ حاول مرةً ثانية: ${num(tk.dup || 0)}</p>`;
   if (dr) {
     h += `<h3>النتيجة ${esc(m.home)} ${sc(dr.score[0], dr.score[1])} ${esc(m.away)} — أصاب النتيجة ${num(dr.exact)}، وأصاب الفائز ${num(dr.outcome)}</h3>`;
     h += won.length ? won.map(w => `<div class="win"><b>${esc(w.name)}</b><a class="ph" href="https://wa.me/${esc(w.phone)}" target="_blank" rel="noopener">+${esc(w.phone)}</a>
