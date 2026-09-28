@@ -36,6 +36,7 @@ import xlsx_write
 import users_export
 import user_links
 import salla_web
+import split_subs
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
@@ -446,6 +447,9 @@ def clean_account(a, old=None):
         # النص كاملًا بقيم اليوزر بدل السطر الواحد. الإنشاء يبقى سطرًا.
         "copy_guide": bool(a.get("copy_guide", old.get("copy_guide", False))),
         "guide_text": _clean_guide_text(a.get("guide_text", old.get("guide_text", ""))),
+        # الاشتراكات المجزّأة (بيع ٦ · ٣ · شهر من باقة ١٥ شهرًا وتغيير اسم المستخدم عند
+        # انتهاء الجزء): يفتحها المدير لعميلٍ بعينه، ومغلقةٌ لغيره فلا يتغيّر عليه شيء.
+        "split": bool(a.get("split", old.get("split", False))),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -1736,6 +1740,207 @@ def create_lines(gate, pkg, count, username=None, password=None):
     return out, None
 
 
+# ================= الاشتراكات المجزّأة (٦ · ٣ · شهر من باقة ١٥ شهرًا) =================
+# `split_subs.py` يحمل الأجزاء والمواعيد والإشعارات ولا يعرف شيئًا عن اللوحات؛ وهذا
+# القسم هو الجسر: يغيّر اسم المستخدم على لوحة الخط (مرح/كاسبر بجلسة ويب، وفالكون)
+# ويُرسل بريد الملخّص، ويشغّل الدورة. الميزة لكل عميلٍ على حدة (`split` في حسابه).
+SPLIT_MODES = ("web", "falcon")              # مرح وكاسبر (جلسة ويب) وفالكون
+SPLIT_TICK = max(1, int(os.environ.get("SPLIT_TICK_SECONDS", "300")))
+
+
+def split_on(acct):
+    """هل فُتحت الميزة لهذا العميل؟ (المدير يفتحها من نافذة الحساب)"""
+    return bool(acct and acct.get("split"))
+
+
+def split_gate_ok(gate):
+    return bool(gate) and gate.get("mode") in SPLIT_MODES
+
+
+def split_base_months(pkg):
+    """مدة الباقة بالأشهر كما يقرؤها الاسم (وفالكون باسمها الإنجليزي أيضًا)."""
+    months = parse_package_name(pkg.get("name", ""))["months"]
+    if not months and pkg.get("name_en"):
+        months = parse_package_name(pkg["name_en"])["months"]
+    return months
+
+
+def split_package_ok(pkg):
+    """باقةٌ تُجزّأ: مدتها ١٥ شهرًا، وليست افتراضيةً (x2 = ٣٠ شهرًا)."""
+    return bool(pkg) and not virtual_base(pkg.get("id")) and split_subs.eligible(split_base_months(pkg))
+
+
+def split_create_error(acct, gate, pkg, slice_m):
+    """سبب رفض إنشاءٍ مجزّأ، أو "" إن صلح."""
+    if not split_on(acct):
+        return "الاشتراكات المجزّأة غير مفعّلة لهذا الحساب"
+    if slice_m not in split_subs.SLICES:
+        return "نوع البيع غير صالح"
+    if not split_gate_ok(gate):
+        return "التجزئة متاحة لبوابات مرح وكاسبر وفالكون فقط"
+    if not split_package_ok(pkg):
+        return "التجزئة من باقات ١٥ شهرًا فقط"
+    return ""
+
+
+def split_register_created(acct, gate, pkg, slice_m, out):
+    """يسجّل الخطوط المُنشأة للتوّ كأجزاء مبيعة. التسجيل مساعدٌ لا يُفشل الإنشاء: ما
+    أُنشئ خُصم وسُلِّم، فخطأ التسجيل يُعاد مع الخط ليُسجَّل من الصفحة."""
+    months = split_base_months(pkg)
+    res = []
+    for r in out:
+        host = (re.search(r"Host\s+(\S+)", r.get("line", "")) or [None, ""])[1] or gate.get("host", "")
+        try:
+            now = split_subs.now_dt()
+            reckoned = renew.add_months(now.date(), months)
+            rec, _new = split_subs.register(
+                DATA_DIR, acct["id"], gate, r["username"], r["password"], slice_m,
+                package=pkg.get("name", ""), base_months=months, host=host,
+                expiry=split_subs.trust_expiry(r.get("exp"), reckoned),
+                line_id=r.get("line_id", ""), source="create", now=now)
+            v = split_subs.decorate(rec)
+            res.append({"id": rec["id"], "username": rec["username"], "due": rec["slice"]["due"],
+                        "months": slice_m, "remaining_after": v.get("remaining_after", 0)})
+        except Exception as e:
+            res.append({"username": r.get("username", ""), "error": str(e)[:200]})
+    return res
+
+
+def split_change(gate, rec, pend):
+    """الجسر: يغيّر اسم مستخدم خطٍّ مجزّأ على لوحته — كلمة المرور كما هي — ويتحقّق.
+    يُترجم أعطال اللوحات إلى ما يفهمه split_subs: عابرٌ يُعاد لاحقًا (Transient)،
+    ومرفوضٌ قبل أي إرسال يدويّ (Unsupported)، وما سواهما بعد الإرسال «راجع اللوحة»."""
+    mode, name = gate.get("mode"), gate.get("name", "")
+    try:
+        if mode == "web":
+            return web_session(gate).edit_line(rec["username"], pend["username"],
+                                               line_id=rec.get("line_id", ""), package=rec.get("package", ""))
+        if mode == "falcon":
+            return falcon_api.rename_line(gate["api_url"], gate["api_key"], rec["username"],
+                                          pend["username"], line_id=rec.get("line_id", ""))
+        raise split_subs.Unsupported("بوابات Reseller API خارج هذا النظام — غيّر اسم المستخدم من اللوحة ثم أكّد")
+    except xm_web.CaptchaNeeded:
+        raise split_subs.Transient("اللوحة تطلب كود تحقّق — افتح صفحة الإنشاء وادخل بوابة «%s» ليُكمَل التغيير" % name)
+    except xm_web.EditUnsupported as e:
+        raise split_subs.Unsupported(str(e))
+    except xm_web.LoginFailed as e:
+        raise split_subs.Transient("تعذّر الدخول إلى لوحة «%s»: %s" % (name, e))
+    except falcon_api.FalconUnsupported as e:
+        raise split_subs.Unsupported(str(e))
+    except falcon_api.FalconOffline as e:
+        raise split_subs.Transient(str(e))
+    except OSError as e:                       # URLError ومهلة الشبكة: اللوحة لم تردّ
+        raise split_subs.Transient("تعذّر الوصول إلى لوحة «%s»: %s" % (name, getattr(e, "reason", e)))
+
+
+def split_find_line(gate, username):
+    """الخط كما تُظهره لوحته الآن: {password, exp, line_id} أو {} إن لم يوجد."""
+    username = str(username or "").strip()
+    if gate.get("mode") == "web":
+        rows = web_session(gate).search(username)
+    elif gate.get("mode") == "falcon":
+        rows = falcon_api.search(gate["api_url"], gate["api_key"], username)
+    else:
+        rows = []
+    r = next((x for x in rows if str(x.get("username", "")).strip() == username), None)
+    return {"password": str(r.get("password") or ""), "exp": r.get("exp") or "",
+            "line_id": str(r.get("id") or "")} if r else {}
+
+
+def split_texts(acct, gate, rec):
+    """ما يُنسخ للعميل التالي ببيانات الخط الحالية: السطر، ونصّ الشرح إن فعّله المدير
+    لهذا العميل (بنفس خانات صفحة الإنشاء: {host} {user} {pass} {guide} {server})."""
+    g = dict(gate)
+    g["host"] = rec.get("host") or gate.get("host", "")
+    if not g.get("guide_url") and acct.get("guide_url"):
+        g["guide_url"] = acct["guide_url"]
+    out = {"line": format_line(g, rec.get("username", ""), rec.get("password", "")), "message": ""}
+    text = guide_text_of(acct)
+    if text:
+        vals = {"host": g["host"], "user": rec.get("username", ""), "pass": rec.get("password", ""),
+                "guide": g.get("guide_url", ""), "server": guide_sub(g, g.get("guide_url", ""))}
+        out["message"] = re.sub(r"\{(host|user|pass|guide|server)\}", lambda m: vals[m.group(1)], text)
+    return out
+
+
+class _SplitBridge:
+    change = staticmethod(split_change)
+
+
+SPLIT_BRIDGE = _SplitBridge()
+
+
+def _split_alert(st, acct):
+    """(إعداد البريد، مصدره): بريد تنبيه الحساب (إعداد التجديد في مساحته)، وإلا بريد
+    المدير — ومصدره "account" أو "admin" أو "" إن لم يُضبط أيّهما."""
+    own = renew.normalize_config((acct or {}).get("renew"))["alert"]
+    if own.get("host") and own.get("to"):
+        return own, "account"
+    adm = renew.normalize_config(st.get("renew"))["alert"]
+    if adm.get("host") and adm.get("to"):
+        return adm, "admin"
+    return None, ""
+
+
+def split_mailer(st, acct):
+    """mailer لـ split_subs: (الموضوع، النص) → (نجح؟، الخطأ)؛ None = لا بريد مضبوط."""
+    alert, _src = _split_alert(st, acct)
+    if not alert:
+        return lambda subject, body: (None, "بريد التذكير غير مضبوط — اضبط «بريد التنبيه» في صفحة التجديد")
+
+    def send(subject, body):
+        try:
+            renew._smtp_send(alert, subject, body)   # خادم البريد نفسه الذي ينبّه بانقطاع مرح
+            return True, ""
+        except Exception as e:
+            return False, str(e)[:200]
+    return send
+
+
+def split_mail_status(st, acct, role):
+    alert, src = _split_alert(st, acct)
+    if not alert:
+        return {"configured": False}
+    # بريد المدير لا يُكشف لحساب عميل — يكفيه أن يعرف أن التذكير يصل إلى المدير.
+    return {"configured": True, "source": src,
+            "to": alert["to"] if (role == "admin" or src == "account") else ""}
+
+
+def split_page_url():
+    return ("https://%s/remaining" % ADMIN_HOST) if ADMIN_HOST else \
+        ("https://%s%s/remaining" % (SITE_HOST, ADMIN_PATH))
+
+
+def split_tick(now=None):
+    """دورةٌ واحدة لكل عميلٍ فُتحت له الميزة: تذكير، ثم تغيير اسم ما حان جزؤه، ثم بريد."""
+    st = load_store()
+    out = {}
+    for a in st["accounts"]:
+        if not split_on(a) or not split_subs.has_data(DATA_DIR, a["id"]):
+            continue
+        gates = {str(g.get("id")): g for g in (a.get("gates") or [])}
+        try:
+            out[a["id"]] = split_subs.process(DATA_DIR, a["id"], gates, SPLIT_BRIDGE, now=now,
+                                              mailer=split_mailer(st, a), page_url=split_page_url(),
+                                              title=a.get("name", ""))
+        except Exception as e:                  # حسابٌ متعثّر لا يوقف البقية
+            out[a["id"]] = {"error": str(e)[:200]}
+    return out
+
+
+def _split_loop():
+    while True:
+        time.sleep(SPLIT_TICK)
+        try:
+            split_tick()
+        except Exception:
+            pass
+
+
+def start_split_worker():
+    threading.Thread(target=_split_loop, daemon=True).start()
+
+
 # ---------------- وضع سطر الأوامر ----------------
 def pick_account():
     accts = load_store()["accounts"]
@@ -1997,6 +2202,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",
                                         "guide_text": guide_text_of(acct),
+                                        "split": split_on(acct),
+                                        "split_slices": list(split_subs.SLICES) if split_on(acct) else [],
                                         "gates": gates})
             if path == "/api/mygates":            # بوابات الشخص كاملةً (لتحريرها)
                 if role != "account":
@@ -2105,7 +2312,19 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {**base, "need_captcha": True})
                 except xm_web.LoginFailed as e:
                     return self._send(200, {**base, "login_error": str(e)})
+                if split_on(acct) and split_gate_ok(gate):   # باقات ١٥ شهرًا تُباع أجزاءً
+                    for p in pkgs:
+                        if split_package_ok(p):
+                            p["split"] = True
                 return self._send(200, {**base, "packages": pkgs})
+            if path == "/remaining":              # الحسابات المتبقية (الاشتراكات المجزّأة)
+                if role == "account" and not split_on(acct):
+                    return self._redirect(self._url())
+                return self._page("remaining.html")
+            if path == "/api/split/state":
+                return self._send(200, self._split_state(st, role, acct))
+            if path == "/api/split/notes":        # الجرس: عدد غير المقروء وأحدث الإشعارات
+                return self._send(200, self._split_notes(st, role, acct))
             if path == "/api/accounts":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -2559,6 +2778,8 @@ class Handler(BaseHTTPRequestHandler):
                 if gate.get("mode") not in ("web", "falcon"):
                     return self._send(200, {"error": "السحب الكامل متاحٌ لبوابات الويب أو فالكون"})
                 return self._send(200, start_users_export(acct["id"], gate["id"], gate))
+            if path.startswith("/api/split/"):        # خارج القفل: تغيير الاسم يلمس اللوحة
+                return self._split_post(path, st, role, acct)
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -2628,6 +2849,165 @@ class Handler(BaseHTTPRequestHandler):
         save_store(st)
         self._send(200, {"ok": True, "gates": _redact_gates(acct["gates"])})
 
+    # ---------- الاشتراكات المجزّأة ----------
+    @staticmethod
+    def _split_scope(st, role, acct):
+        """حسابات هذه الجلسة: العميل نفسه إن فُتحت له الميزة؛ والمدير كلُّ عميلٍ فُتحت
+        له أو بقيت له خطوطٌ مسجَّلة (فلا تختفي خطوطُ عميلٍ أُغلقت عنه الميزة)."""
+        if role == "admin":
+            return [a for a in st["accounts"] if split_on(a) or split_subs.has_data(DATA_DIR, a["id"])]
+        return [acct] if split_on(acct) else []
+
+    def _split_state(self, st, role, acct):
+        now = split_subs.now_dt()
+        accounts, lines, notes, unread = [], [], [], 0
+        for a in self._split_scope(st, role, acct):
+            v = split_subs.view(DATA_DIR, a["id"], now)
+            gates = {str(g.get("id")): g for g in (a.get("gates") or [])}
+            accounts.append({
+                "id": a["id"], "name": a.get("name", ""), "enabled": split_on(a),
+                "cfg": v["cfg"], "unread": v["unread"],
+                "mail": {**split_mail_status(st, a, role),
+                         "last_sent": v["mail"].get("last_sent", ""),
+                         "last_error": v["mail"].get("last_error", "")},
+                "gates": [{"id": g.get("id"), "name": g.get("name", ""), "mode": g.get("mode"),
+                           "flavor": g.get("web_flavor", ""), "supported": split_gate_ok(g),
+                           "edit": v["gates"].get(str(g.get("id")), {})}
+                          for g in (a.get("gates") or [])]})
+            for rec in v["lines"]:
+                g = gates.get(rec.get("gate_id")) or {"host": rec.get("host", ""), "name": rec.get("gate_name", "")}
+                rec.update(split_texts(a, g, rec))
+                rec["account_name"] = a.get("name", "")
+                lines.append(rec)
+            notes += [{**n, "account_id": a["id"], "account_name": a.get("name", "")} for n in v["notes"]]
+            unread += v["unread"]
+        notes.sort(key=lambda n: n.get("at", ""), reverse=True)
+        return {"role": role, "accounts": accounts, "lines": lines, "notes": notes[:150],
+                "unread": unread, "slices": list(split_subs.SLICES),
+                "base_months": list(split_subs.BASE_MONTHS), "now": split_subs.fmt(now)}
+
+    def _split_notes(self, st, role, acct):
+        scope = self._split_scope(st, role, acct)
+        notes, unread = [], 0
+        for a in scope:
+            db = split_subs.load(DATA_DIR, a["id"])
+            unread += split_subs.unread(db)
+            notes += [{**n, "account_name": a.get("name", "")} for n in db["notes"][:20]]
+        notes.sort(key=lambda n: n.get("at", ""), reverse=True)
+        return {"enabled": bool(scope), "unread": unread, "notes": notes[:20]}
+
+    def _split_post(self, path, st, role, acct):
+        req = self._body()
+        scope = self._split_scope(st, role, acct)
+        if not scope:
+            return self._send(403, {"error": "الاشتراكات المجزّأة غير مفعّلة لهذا الحساب"})
+        if path == "/api/split/read":             # تعليم الإشعارات مقروءة (كلها أو بعضها)
+            ids = [str(x) for x in (req.get("ids") or [])]
+            for a in scope:
+                split_subs.mark_read(DATA_DIR, a["id"], ids or None)
+            return self._send(200, {"ok": True})
+        if path in ("/api/split/cfg", "/api/split/test-email", "/api/split/register"):
+            want = str(req.get("account_id") or "")
+            a = next((x for x in scope if str(x["id"]) == want), None) if want else \
+                (scope[0] if len(scope) == 1 else None)
+            if not a:
+                return self._send(400, {"error": "اختر الحساب"})
+            if path == "/api/split/cfg":
+                cfg = split_subs.set_cfg(DATA_DIR, a["id"],
+                                         {k: req[k] for k in ("auto", "remind_days") if k in req})
+                return self._send(200, {"ok": True, "cfg": cfg})
+            if path == "/api/split/test-email":
+                ok, err = split_mailer(st, a)(
+                    "حسابات متبقية — بريد تجريبي",
+                    "هذا بريدٌ تجريبي من صفحة «حسابات متبقية» (%s).\n"
+                    "هنا تصلك تذكيرات انتهاء الأجزاء المبيعة وتغيير أسماء المستخدمين.\n\n%s\n"
+                    % (a.get("name", ""), split_page_url()))
+                return self._send(200, {"ok": bool(ok), "error": "" if ok else err})
+            return self._split_register(a, req)
+        rid = str(req.get("id") or "")
+        a = next((x for x in scope if rid and rid in split_subs.load(DATA_DIR, x["id"])["lines"]), None)
+        if not a:
+            return self._send(404, {"error": "لا خط بهذا المعرّف"})
+        try:
+            if path == "/api/split/sell":
+                rec = split_subs.sell(DATA_DIR, a["id"], rid, req.get("months", 0), req.get("customer", ""))
+            elif path == "/api/split/customer":
+                rec = split_subs.set_customer(DATA_DIR, a["id"], rid, req.get("customer", ""))
+            elif path == "/api/split/confirm":
+                rec = split_subs.confirm_manual(DATA_DIR, a["id"], rid, req.get("username", ""),
+                                                req.get("password", ""))
+            elif path == "/api/split/delete":
+                split_subs.delete(DATA_DIR, a["id"], rid)
+                return self._send(200, {"ok": True})
+            elif path == "/api/split/rotate":         # «غيّر الآن»: قبل موعده أو بعد تعذّره
+                if not split_on(a):
+                    return self._send(403, {"error": "الميزة مغلقة لهذا العميل — لا تغيير"})
+                cur = split_subs.load(DATA_DIR, a["id"])["lines"][rid]
+                gate = find_gate(a, cur.get("gate_id"))
+                if not gate:
+                    return self._send(400, {"error": "بوابة هذا الخط لم تعد موجودة في الحساب"})
+                rec, res = split_subs.rotate(DATA_DIR, a["id"], rid, gate, SPLIT_BRIDGE, how="now")
+                if res == "busy":
+                    return self._send(409, {"error": "جارٍ تغيير هذا الخط الآن — انتظر لحظة"})
+                if res == "skip":
+                    return self._send(400, {"error": "لا جزء مبيعًا ينتظر التغيير في هذا الخط"})
+                if res != "ok":
+                    return self._send(200, {"ok": False, "result": res,
+                                            "error": (rec or {}).get("last_error", "") or "تعذّر التغيير",
+                                            "line": split_subs.decorate(rec) if rec else None})
+            else:
+                return self._send(404, {"error": "not found"})
+        except KeyError as e:
+            return self._send(404, {"error": str(e.args[0] if e.args else e)})
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
+        return self._send(200, {"ok": True, "line": split_subs.decorate(rec)})
+
+    def _split_register(self, a, req):
+        """يُدخل خطًّا قائمًا (بِيع جزؤه الأول قبل تفعيل الميزة) في المتابعة. كلمة المرور
+        وتاريخ الانتهاء من اللوحة إن أمكن، وإلا مما كتبه المشغّل."""
+        gate = find_gate(a, req.get("gate"))
+        if not split_gate_ok(gate):
+            return self._send(400, {"error": "اختر بوابة مرح أو كاسبر أو فالكون"})
+        user = str(req.get("username", "")).strip()
+        pw = str(req.get("password", "")).strip()
+        if not user:
+            return self._send(400, {"error": "اكتب اسم المستخدم"})
+        try:
+            months = int(req.get("months") or 0)
+        except (TypeError, ValueError):
+            months = 0
+        if months not in split_subs.SLICES:
+            return self._send(400, {"error": "اختر نوع البيع (٦ · ٣ · شهر)"})
+        now = split_subs.now_dt()
+        day = split_subs.to_date(req.get("start")) if req.get("start") else now.date()
+        if not day:
+            return self._send(400, {"error": "تاريخ البيع غير مفهوم (سنة-شهر-يوم)"})
+        if day > now.date():
+            return self._send(400, {"error": "تاريخ البيع في المستقبل"})
+        start = datetime.datetime.combine(day, now.time())
+        found, why = {}, ""
+        try:
+            found = split_find_line(gate, user)
+        except xm_web.CaptchaNeeded:
+            why = "اللوحة تطلب كود تحقّق — ادخل البوابة من صفحة الإنشاء أو اكتب كلمة المرور"
+        except Exception as e:
+            why = "تعذّر البحث في اللوحة: %s" % str(e)[:120]
+        if not found and not pw:
+            return self._send(400, {"error": why or "لم أجد اليوزر في اللوحة — تأكّد منه أو اكتب كلمة المرور"})
+        reckoned = renew.add_months(start.date(), split_subs.BASE_MONTHS[0])
+        expiry = split_subs.to_date(req.get("expiry")) or split_subs.to_date(found.get("exp"))
+        if not expiry or not (start.date() < expiry <= renew.add_months(start.date(), 16)):
+            expiry = reckoned                      # تاريخٌ لا يُصدَّق (صيغة مقلوبة) = المحسوب
+        try:
+            rec, new = split_subs.register(
+                DATA_DIR, a["id"], gate, user, pw or found.get("password", ""), months,
+                base_months=split_subs.BASE_MONTHS[0], start=start, expiry=expiry,
+                customer=req.get("customer", ""), line_id=found.get("line_id", ""), source="manual")
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
+        return self._send(200, {"ok": True, "created": new, "line": split_subs.decorate(rec)})
+
     def _create(self, acct):
         req = self._body()
         gate = find_gate(acct, req.get("gate"))
@@ -2640,6 +3020,15 @@ class Handler(BaseHTTPRequestHandler):
         if not pkg:
             return self._send(400, {"error": "الباقة غير موجودة"})
         count = max(1, min(int(req.get("count", 1)), 50))
+        # بيعٌ مجزّأ (٦ · ٣ · شهر من باقة ١٥ شهرًا): يُفحص قبل أي إنشاء، فالرفض لا يخصم.
+        try:
+            slice_m = int(req.get("slice_months") or 0)
+        except (TypeError, ValueError):
+            slice_m = -1
+        if slice_m:
+            why = split_create_error(acct, gate, pkg, slice_m)
+            if why:
+                return self._send(400, {"error": why})
         t_start = time.time()
         out, err = create_lines(gate, pkg, count,
                                 req.get("username") if count == 1 else None,
@@ -2663,6 +3052,11 @@ class Handler(BaseHTTPRequestHandler):
                 resp["linked"] = [x for x in linked if x]
             except Exception:
                 pass                               # الربط مساعدٌ لا يُفشل الإنشاء
+        if slice_m and out:                        # يُتابَع الجزء المبيع حتى يتغيّر اسمه
+            resp["split"] = split_register_created(acct, gate, pkg, slice_m, out)
+            label = "%s · جزء %s" % (pkg.get("name", ""), split_subs.months_ar(slice_m))
+            for r in out:
+                r["package"] = label               # السجل في المتصفح يفصل المجزّأ عن الكامل
         self._send(200, resp)
 
 
@@ -2715,6 +3109,7 @@ def web():
     print(f"الصفحة تعمل: http://{BIND}:{PORT}   (Ctrl+C للإيقاف)", flush=True)
     start_poller()
     start_renew_worker()
+    start_split_worker()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 

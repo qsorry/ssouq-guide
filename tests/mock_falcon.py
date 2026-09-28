@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""لوحة فالكون وهمية للاختبار.  python tests/mock_falcon.py 9077 testkey"""
+"""لوحة فالكون وهمية للاختبار.  python tests/mock_falcon.py 9077 testkey [nopatch]
+
+PATCH /api/v1/lines/<id> يغيّر الاسم (أو كلمة المرور) — ‏nopatch = لا مسار تعديل (405)."""
 import sys, json, secrets
 from urllib.parse import urlparse, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9077
 KEY = sys.argv[2] if len(sys.argv) > 2 else "testkey"
+NOPATCH = len(sys.argv) > 3 and sys.argv[3] == "nopatch"
 CREDITS = [100.0]
 PACKAGES = [
     {"id": 167, "package_name": "1months", "official_credits": 0.5, "max_connections": 1},
     {"id": 169, "package_name": "3months", "official_credits": 1.0, "max_connections": 1},
     {"id": 180, "package_name": "1years 2 contact", "official_credits": 4.0, "max_connections": 2},
+    {"id": 190, "package_name": "1years + 3 months", "official_credits": 5.0, "max_connections": 1},
 ]
 LINES = [{"id": 1000 + i, "username": "user%03d" % i, "password": "pass%03d" % i,
           "status": "active", "expires_at": 1830000000, "max_connections": 1, "package_id": 167}
@@ -71,6 +75,28 @@ class H(BaseHTTPRequestHandler):
                 "max_connections": body.get("max_connections", 1), "package_id": pid}
         LINES.append(line)
         CREDITS[0] = round(CREDITS[0] - pkg["official_credits"], 2)
+        return self._json(200, {"ok": True, "line": line})
+
+
+    def do_PATCH(self):
+        if not self._auth():
+            return self._json(401, {"ok": False, "error": "unauthorized"})
+        path = urlparse(self.path).path
+        if NOPATCH or not path.startswith("/api/v1/lines/"):
+            return self._json(405, {"ok": False, "error": "method_not_allowed"})
+        n = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(n) or b"{}")
+        lid = path.rsplit("/", 1)[-1]
+        line = next((l for l in LINES if str(l["id"]) == lid), None)
+        if not line:
+            return self._json(404, {"ok": False, "error": "not_found"})
+        new = body.get("username")
+        if new and any(l is not line and l["username"] == new for l in LINES):
+            return self._json(409, {"ok": False, "error": "username_taken"})
+        if new:
+            line["username"] = new
+        if body.get("password"):
+            line["password"] = body["password"]
         return self._json(200, {"ok": True, "line": line})
 
 

@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>حسابات متبقية</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+<style>
+/* نظام تصميم الأداة نفسه (متغيّرات لوحة اليوزر وصفحة التجديد) */
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
+[hidden]{display:none!important}
+a{color:var(--go)}
+button{font:inherit;border:0;border-radius:10px;cursor:pointer;color:inherit;background:none}
+button:disabled{opacity:.55;cursor:wait}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--go);outline-offset:2px}
+svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mono{font:600 .9rem "IBM Plex Mono",Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+
+/* الرأس */
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:8px;height:62px;padding:0 16px;background:color-mix(in srgb,var(--sf) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;margin-inline-start:auto;color:inherit;text-decoration:none;line-height:1.1}
+.brand .mark{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);display:grid;place-items:center;color:#fff;flex:none}
+.brand .mark svg{width:20px;height:20px;stroke:#fff}
+.brand b{display:block;font-size:1rem}.brand small{display:block;color:var(--mute);font-size:.72rem}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);text-decoration:none;flex:none;position:relative}
+.icon-btn:hover{border-color:var(--go)}
+.dot{position:absolute;top:-6px;inset-inline-end:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--err);color:#fff;font:700 .7rem/20px "IBM Plex Sans Arabic",sans-serif;text-align:center;border:2px solid var(--sf)}
+
+main{max-width:980px;margin:0 auto;padding:18px 16px 110px}
+h1{font-size:1.45rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 16px;font-size:.92rem;max-width:70ch}
+section{background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:16px}
+h2{font-size:1.06rem;margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+h2 .grow{flex:1}
+h2 small{font-weight:400;font-size:.8rem;color:var(--mute)}
+.count{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 8px;border-radius:12px;background:var(--sf2);border:1px solid var(--line);font-size:.78rem;color:var(--mute);font-variant-numeric:tabular-nums}
+.count.hot{background:var(--err);border-color:var(--err);color:#fff}
+
+/* الأرقام */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 16px}
+.tile{border:1px solid var(--line);border-radius:14px;padding:11px 13px;background:var(--sf);text-align:start;cursor:pointer;color:inherit}
+.tile:hover{border-color:var(--go)}
+.tile small{display:block;color:var(--mute);font-size:.76rem}
+.tile b{display:block;font-size:1.5rem;line-height:1.25;font-variant-numeric:tabular-nums}
+.tile.go{background:linear-gradient(135deg,var(--go),var(--go2));border-color:var(--go);color:var(--go-ink)}
+.tile.go small{color:color-mix(in srgb,var(--go-ink) 75%,transparent)}
+.tile.warn b{color:var(--err)}
+
+/* مرشّح الحساب (للمدير) */
+.accbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.chip{padding:6px 13px;border-radius:20px;border:1px solid var(--line);background:var(--sf2);font-size:.84rem;color:var(--mute)}
+.chip.on{border-color:var(--go);color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
+
+/* الإشعارات */
+.notes{display:flex;flex-direction:column;gap:6px}
+.note{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border-radius:12px;background:var(--sf2);border:1px solid transparent;font-size:.88rem;text-align:start;width:100%;color:inherit}
+.note.unread{border-color:color-mix(in srgb,var(--go) 45%,transparent);background:color-mix(in srgb,var(--go) 8%,var(--sf2))}
+.note .t{flex:1;min-width:0;overflow-wrap:anywhere}
+.note small{display:block;color:var(--mute);font-size:.74rem;margin-top:2px}
+.note .ud{width:8px;height:8px;border-radius:50%;background:var(--go);margin-top:7px;flex:none;visibility:hidden}
+.note.unread .ud{visibility:visible}
+.more{margin-top:8px}
+
+/* المجموعات والبطاقات */
+.grp{margin-top:14px}
+.grp:first-of-type{margin-top:0}
+.grp h3{display:flex;align-items:center;gap:8px;font-size:.98rem;margin:0 0 8px}
+.grp h3 .rm{color:var(--go)}
+.cards{display:grid;gap:8px}
+.card{border:1px solid var(--line);border-radius:14px;background:var(--sf2);padding:11px 13px}
+.row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.creds{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 230px}
+.creds span{display:flex;gap:6px;align-items:baseline;font-size:.78rem;color:var(--mute);white-space:nowrap}
+.creds .mono{color:var(--ink)}
+.meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--mute)}
+.meta span{padding:2px 9px;border-radius:10px;border:1px solid var(--line);background:var(--sf)}
+.meta .em{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent)}
+.meta .ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,transparent)}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.ghost{background:var(--sf);border:1px solid var(--line);padding:7px 12px;font-size:.84rem;display:inline-flex;align-items:center;gap:6px}
+.ghost:hover{border-color:var(--go);color:var(--go)}
+.ghost.danger:hover{border-color:var(--err);color:var(--err)}
+.btn{background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;padding:8px 14px;font-size:.86rem}
+.copy{background:var(--amber);color:#1b1206;font-weight:700;padding:7px 12px;font-size:.84rem;display:inline-flex;align-items:center;gap:6px}
+.err{color:var(--err);font-size:.84rem;margin-top:8px;overflow-wrap:anywhere}
+.ok-t{color:var(--go)}
+.empty{color:var(--mute);text-align:center;padding:16px;font-size:.9rem;border:1.5px dashed var(--line);border-radius:14px}
+
+/* نموذج البيع داخل البطاقة */
+.sellbox{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.opt{position:relative}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt span{display:inline-block;padding:7px 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--sf);font-size:.86rem;cursor:pointer}
+.opt input:checked+span{border-color:var(--go);color:var(--go);background:color-mix(in srgb,var(--go) 12%,var(--sf));font-weight:700}
+.opt input:focus-visible+span{outline:2px solid var(--go);outline-offset:2px}
+label.f{display:block;font-size:.8rem;color:var(--mute);margin:10px 0 4px}
+input.t,select.t{width:100%;padding:9px 11px;border:1.5px solid var(--line);border-radius:10px;background:var(--sf);color:var(--ink);font:inherit}
+input.t.ltr{direction:ltr;text-align:left}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.hint{display:block;color:var(--mute);font-size:.78rem;margin-top:6px}
+.line-row{display:flex;gap:8px;align-items:center;margin-top:10px}
+.line-row .t{flex:1}
+details.old summary{cursor:pointer;color:var(--mute);font-size:.9rem}
+.hist{font-size:.8rem;color:var(--mute);margin-top:6px}
+.hist div{padding:3px 0;border-top:1px dashed var(--line)}
+.gates{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.gates div{display:flex;gap:8px;align-items:center;font-size:.86rem;padding:7px 10px;border-radius:10px;background:var(--sf2)}
+.gates div small{color:var(--mute);margin-inline-start:auto;font-size:.76rem;text-align:end}
+.chk{display:flex;gap:8px;align-items:center;font-size:.9rem;margin-top:6px;cursor:pointer}
+.chk input{width:18px;height:18px;accent-color:var(--go)}
+
+/* شريط التنقّل السفلي (كصفحة التجديد) */
+.bnav{position:fixed;inset-inline:0;bottom:0;z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+.bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;color:var(--mute);font-size:.7rem;font-weight:500;border-radius:12px;text-decoration:none}
+.bnav a svg{width:22px;height:22px}
+.bnav a.on{color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
+.toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);background:var(--go);color:var(--go-ink);padding:9px 20px;border-radius:20px;opacity:0;transition:opacity .2s;font-weight:500;z-index:60;box-shadow:var(--shadow);max-width:92vw;text-align:center}
+.toast.on{opacity:1}
+.toast.bad{background:var(--err);color:#fff}
+@media (max-width:720px){
+  .tiles{grid-template-columns:1fr 1fr}
+  .g2{grid-template-columns:1fr}
+  .brand small{display:none}
+  main{padding:14px 12px 110px}
+  section{padding:13px}
+}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <button class="icon-btn" id="themeBtn" title="الوضع الليلي/النهاري" aria-label="الوضع الليلي/النهاري"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <a class="icon-btn" href="/logout" id="lnkOut" title="تسجيل الخروج" aria-label="تسجيل الخروج"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
+  <a class="icon-btn" href="#notes" id="bellBtn" title="الإشعارات" aria-label="الإشعارات"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot" id="bellN" hidden>0</span></a>
+  <a class="brand" id="lnkBrand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h10"/><circle cx="18" cy="17" r="3"/></svg></span><span><b>سمارت سوق</b><small>حسابات متبقية</small></span></a>
+</header>
+
+<main>
+  <h1>حسابات متبقية</h1>
+  <p class="sub">خطوط باقة ١٥ شهرًا تُباع أجزاءً: ٦ أشهر أو ٣ أو شهر. عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> على اللوحة — كلمة المرور كما هي — فينقطع العميل ويعود الخط هنا بما تبقّى، جاهزًا للبيع من جديد.</p>
+
+  <div class="accbar" id="accBar" hidden></div>
+  <div class="tiles" id="tiles"></div>
+
+  <section id="notes">
+    <h2><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>الإشعارات <span class="count" id="notesN">0</span><span class="grow"></span><button class="ghost" id="readAll">تعليم الكل كمقروء</button></h2>
+    <div class="notes" id="notesList"></div>
+    <button class="ghost more" id="notesMore" hidden>عرض الأقدم</button>
+  </section>
+
+  <section id="attn" hidden>
+    <h2>تحتاج تدخّلًا <span class="count hot" id="attnN">0</span><small>لم يُغيَّر الاسم تلقائيًا — غيّره من اللوحة ثم أكّد، أو أعِد المحاولة</small></h2>
+    <div class="cards" id="attnList"></div>
+  </section>
+
+  <section id="avail">
+    <h2>حسابات متبقية للبيع <span class="count" id="availN">0</span><small>تغيّر اسمها بعد انتهاء جزئها — انسخ السطر للعميل التالي</small></h2>
+    <div id="availList"></div>
+  </section>
+
+  <section id="active">
+    <h2>أجزاء مبيعة جارية <span class="count" id="activeN">0</span><small>يتغيّر الاسم تلقائيًا في موعد كلٍّ منها</small></h2>
+    <div class="cards" id="activeList"></div>
+  </section>
+
+  <section id="reg">
+    <h2>إضافة خطٍّ قائم <small>خطٌّ بباقة ١٥ شهرًا بِيع جزؤه قبل تفعيل الميزة</small></h2>
+    <div class="g2">
+      <div><label class="f" for="rGate">البوابة</label><select class="t" id="rGate"></select></div>
+      <div><label class="f" for="rUser">اسم المستخدم</label><input class="t ltr" id="rUser" inputmode="numeric" autocomplete="off"></div>
+      <div><label class="f" for="rPass">كلمة المرور <small>(فارغ = تُقرأ من اللوحة)</small></label><input class="t ltr" id="rPass" inputmode="numeric" autocomplete="off"></div>
+      <div><label class="f" for="rStart">تاريخ بيع الجزء</label><input class="t ltr" id="rStart" type="date"></div>
+    </div>
+    <label class="f">الجزء المبيع</label>
+    <div class="opts" id="rMonths"></div>
+    <label class="f" for="rCust">العميل (اختياري)</label><input class="t" id="rCust" placeholder="اسم أو جوال أو رقم طلب">
+    <div class="line-row"><button class="btn" id="rGo">إضافة إلى المتابعة</button></div>
+    <div class="err" id="rMsg"></div>
+  </section>
+
+  <section id="done" hidden>
+    <details class="old"><summary>المنتهية وبيع المتبقي <span class="count" id="doneN">0</span></summary>
+      <div class="cards" id="doneList" style="margin-top:10px"></div>
+    </details>
+  </section>
+
+  <section id="settings">
+    <h2>الإعدادات <small id="setFor"></small></h2>
+    <div id="setBox"></div>
+  </section>
+</main>
+
+<nav class="bnav">
+  <a id="lnkHome"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>الإنشاء</a>
+  <a id="lnkRenew"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>التجديد</a>
+  <a class="on"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h10"/><circle cx="18" cy="17" r="3"/></svg>المتبقية</a>
+  <a id="lnkAcc" hidden><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/></svg>الحسابات</a>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+// الأداة من الجذر على نطاقها، وتحت /admin على الموقع العام — فكل العناوين على B.
+const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const MONTHS = n => { n = +n || 0; return n <= 0 ? "أقل من شهر" : n === 1 ? "شهر" : n === 2 ? "شهران" : n <= 10 ? n + " أشهر" : n + " شهرًا"; };
+const DAYS = n => n < 0 ? "متأخر " + (-n) + " يوم" : n === 0 ? "اليوم" : n === 1 ? "غدًا" : "بعد " + n + " يوم";
+const MODE = {web: "جلسة ويب", falcon: "فالكون", api: "Reseller API"};
+let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "";
+const icon = {copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'};
+
+for (const [id, p] of [["lnkHome", "/"], ["lnkBrand", "/"], ["lnkRenew", "/renew"], ["lnkAcc", "/accounts"], ["lnkOut", "/logout"]]) $(id).href = B + p;
+$("themeBtn").onclick = () => { const l = document.documentElement.getAttribute("data-theme") === "light";
+  document.documentElement.setAttribute("data-theme", l ? "dark" : "light"); try { localStorage.setItem("xm_theme", l ? "dark" : "light"); } catch {} };
+
+function toast(t, bad){ const e = $("toast"); e.textContent = t; e.className = "toast on" + (bad ? " bad" : ""); clearTimeout(toast.h); toast.h = setTimeout(() => e.className = "toast", bad ? 3600 : 1800); }
+async function copy(text, what){
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  toast(what || "تم النسخ");
+}
+async function api(path, body){
+  const r = await fetch(B + path, body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  let d = {}; try { d = await r.json(); } catch {}
+  if (d && d.login) { location.href = B + "/login"; throw new Error("سجّل الدخول"); }
+  if (!r.ok && !("ok" in d)) throw new Error(d.error || ("HTTP " + r.status));
+  return d;
+}
+
+// ---------------- التحميل والرسم ----------------
+async function load(){
+  try { D = await api("/api/split/state"); }
+  catch(e){ $("tiles").innerHTML = '<div class="empty" style="grid-column:1/-1">' + esc(e.message) + '</div>'; return; }
+  $("lnkAcc").hidden = D.role !== "admin";
+  if (!D.accounts.length){
+    document.querySelectorAll("main section").forEach(s => s.hidden = true);
+    $("tiles").innerHTML = '<div class="empty" style="grid-column:1/-1">الاشتراكات المجزّأة غير مفعّلة بعد — يفتحها المدير لعميلٍ من نافذة حسابه في صفحة الحسابات.</div>';
+    return;
+  }
+  if (ACC && !D.accounts.some(a => a.id === ACC)) ACC = "";
+  render();
+}
+const inAcc = x => !ACC || x.account_id === ACC;
+const acctName = x => D.role === "admin" && D.accounts.length > 1 ? ` · ${esc(x.account_name || "")}` : "";
+
+function render(){
+  // مرشّح الحساب (للمدير بأكثر من عميل)
+  const bar = $("accBar");
+  bar.hidden = !(D.role === "admin" && D.accounts.length > 1);
+  if (!bar.hidden) bar.innerHTML = `<button class="chip${ACC ? "" : " on"}" data-acc="">الكل</button>` +
+    D.accounts.map(a => `<button class="chip${ACC === a.id ? " on" : ""}" data-acc="${esc(a.id)}">${esc(a.name)}${a.enabled ? "" : " (مغلقة)"}</button>`).join("");
+  const L = D.lines.filter(inAcc);
+  const avail = L.filter(x => x.state === "available");
+  const act = L.filter(x => x.state === "active").sort((a, b) => (a.slice?.due || "").localeCompare(b.slice?.due || ""));
+  const attn = L.filter(x => x.state === "failed" || x.state === "due");
+  const done = L.filter(x => x.state === "sold_out" || x.state === "ended");
+  const soon = act.filter(x => x.due_in_days <= 7).length;
+  const unread = D.notes.filter(n => inAcc(n) && !n.read).length;
+  $("tiles").innerHTML =
+    `<button class="tile go" data-go="avail"><small>متاحة للبيع</small><b>${avail.length}</b></button>` +
+    `<button class="tile" data-go="active"><small>أجزاء جارية</small><b>${act.length}</b></button>` +
+    `<button class="tile" data-go="active"><small>تنتهي خلال ٧ أيام</small><b>${soon}</b></button>` +
+    `<button class="tile${attn.length ? " warn" : ""}" data-go="${attn.length ? "attn" : "notes"}"><small>تحتاج تدخّلًا</small><b>${attn.length}</b></button>`;
+  renderBell(D.unread);
+  renderNotes(unread);
+  // تحتاج تدخّلًا
+  $("attn").hidden = !attn.length; $("attnN").textContent = attn.length;
+  $("attnList").innerHTML = attn.map(cardAttn).join("");
+  // المتاحة: مجموعاتٌ بما تبقّى (متبقي ٩ أشهر …) — الأطول بقاءً أولًا
+  $("availN").textContent = avail.length;
+  const groups = {};
+  avail.forEach(x => (groups[x.remaining_months] ||= []).push(x));
+  const keys = Object.keys(groups).map(Number).sort((a, b) => b - a);
+  $("availList").innerHTML = keys.length ? keys.map(k => `<div class="grp"><h3>متبقي <span class="rm">${MONTHS(k)}</span> <span class="count">${groups[k].length}</span></h3>
+      <div class="cards">${groups[k].sort((a, b) => (a.available_since || "").localeCompare(b.available_since || "")).map(cardAvail).join("")}</div></div>`).join("")
+    : '<div class="empty">لا خطوط متاحة بعد — تظهر هنا حين ينتهي جزءٌ ويتغيّر اسمه.</div>';
+  $("activeN").textContent = act.length;
+  $("activeList").innerHTML = act.length ? act.map(cardActive).join("") : '<div class="empty">لا أجزاء جارية — أنشئ من صفحة الإنشاء باقة ١٥ شهرًا واختر «٦ أشهر» أو «٣» أو «شهر».</div>';
+  $("done").hidden = !done.length; $("doneN").textContent = done.length;
+  $("doneList").innerHTML = done.map(cardDone).join("");
+  renderReg(); renderSettings();
+}
+
+function renderBell(n){ const d = $("bellN"); d.hidden = !n; d.textContent = n > 99 ? "99+" : String(n); }
+function renderNotes(unread){
+  const N = D.notes.filter(inAcc);
+  $("notesN").textContent = unread; $("notesN").className = "count" + (unread ? " hot" : "");
+  $("readAll").hidden = !unread;
+  const list = SHOW_OLD ? N : N.slice(0, 8);
+  $("notesList").innerHTML = list.length ? list.map(n => `<button class="note${n.read ? "" : " unread"}" data-note="${esc(n.id)}">
+      <i class="ud"></i><span class="t">${esc(n.text)}<small>${esc(n.at)}${acctName(n)}</small></span></button>`).join("")
+    : '<div class="empty">لا إشعارات بعد.</div>';
+  $("notesMore").hidden = SHOW_OLD || N.length <= 8;
+}
+const creds = x => `<div class="creds"><span>اسم المستخدم <b class="mono">${esc(x.username)}</b></span><span>كلمة المرور <b class="mono">${esc(x.password)}</b></span></div>`;
+const who = x => x.slice && x.slice.customer ? `<span>العميل: ${esc(x.slice.customer)}</span>` : "";
+function copyBtns(x){
+  return `<button class="copy" data-copy="${esc(x.id)}" data-kind="line" title="Host · User · Pass · Guide">${icon.copy}نسخ السطر</button>` +
+    (x.message ? `<button class="ghost" data-copy="${esc(x.id)}" data-kind="msg">${icon.copy}نسخ نص الشرح</button>` : "");
+}
+function cardAvail(x){
+  const open = OPEN_SELL === x.id;
+  const opts = (x.can_sell || []).map((m, i) => `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="${m}"${i === 0 ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("") +
+    `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="0"${(x.can_sell || []).length ? "" : " checked"}><span>المتبقي كاملًا (${MONTHS(x.remaining_months)})</span></label>`;
+  return `<div class="card" data-line="${esc(x.id)}">
+    <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="btn" data-sell="${esc(x.id)}">${open ? "إغلاق" : "بيع"}</button></div></div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span class="ok">ينتهي الخط ${esc(x.expiry)}</span><span>متاح منذ ${esc((x.available_since || "").slice(0, 10))}</span><span>بِيع ${(x.history || []).length} مرة</span></div>
+    ${open ? `<div class="sellbox"><div class="opts">${opts}</div>
+      <label class="f" for="cu_${esc(x.id)}">العميل (اختياري)</label><input class="t" id="cu_${esc(x.id)}" placeholder="اسم أو جوال أو رقم طلب">
+      <span class="hint">يُنسخ السطر بعد البيع مباشرةً، ويتغيّر اسم المستخدم تلقائيًا عند انتهاء الجزء.</span>
+      <div class="line-row"><button class="btn" data-dosell="${esc(x.id)}">تأكيد البيع</button><button class="ghost danger" data-del="${esc(x.id)}">إيقاف المتابعة</button></div></div>` : ""}
+    ${history(x)}</div>`;
+}
+function cardActive(x){
+  const s = x.slice || {}, late = x.due_in_days < 0;
+  return `<div class="card" data-line="${esc(x.id)}">
+    <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="ghost" data-rot="${esc(x.id)}" title="ينتهي الجزء الآن وينقطع العميل">غيّر الآن</button></div></div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span>الجزء ${s.n || 1}: ${MONTHS(s.months)}</span>${who(x)}
+      <span class="${late || x.due_in_days <= 7 ? "em" : ""}">يتغيّر الاسم ${esc(s.due || "")} · ${DAYS(x.due_in_days)}</span>
+      <span class="ok">بعده متبقي ${MONTHS(x.remaining_after)}</span></div>
+    ${x.last_error ? `<div class="err">آخر محاولة: ${esc(x.last_error)}</div>` : ""}</div>`;
+}
+function cardAttn(x){
+  const pend = (x.pending && x.pending.username) || "";
+  const why = x.state === "due" ? "حان التغيير — التغيير التلقائي معطَّل أو الجزء انتهى قبل تسجيله." : (x.last_error || "تعذّر التغيير");
+  return `<div class="card" data-line="${esc(x.id)}">
+    <div class="row1">${creds(x)}<div class="acts"><button class="btn" data-rot="${esc(x.id)}">${x.state === "due" ? "غيّر الآن تلقائيًا" : "أعِد المحاولة"}</button></div></div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span>الجزء: ${MONTHS((x.slice || {}).months)}</span>${who(x)}<span class="em">موعده ${esc((x.slice || {}).due || "")}</span></div>
+    <div class="err">${esc(why)}</div>
+    <div class="line-row"><input class="t ltr" id="nu_${esc(x.id)}" value="${esc(pend)}" placeholder="اسم المستخدم الجديد كما غيّرته في اللوحة" inputmode="numeric" autocomplete="off">
+      ${pend ? `<button class="ghost" data-cp="${esc(pend)}" title="انسخه لتكتبه في اللوحة">${icon.copy}</button>` : ""}
+      <button class="ghost" data-confirm="${esc(x.id)}">أكّدتُ التغيير</button></div>
+    <span class="hint">${pend ? "غيّر اسم المستخدم في اللوحة إلى هذا (أو غيره) — كلمة المرور كما هي — ثم «أكّدتُ التغيير»." : "غيّر اسم المستخدم في اللوحة (كلمة المرور كما هي)، واكتبه هنا ثم «أكّدتُ التغيير»."}</span></div>`;
+}
+function cardDone(x){
+  return `<div class="card"><div class="row1">${creds(x)}<div class="acts">${x.state === "sold_out" ? copyBtns(x) : ""}<button class="ghost danger" data-del="${esc(x.id)}">حذف من المتابعة</button></div></div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span>${x.state === "sold_out" ? "بِيع المتبقي — ينتهي " + esc(x.expiry) : "انتهى " + esc(x.expiry)}</span>${who(x)}</div>${history(x)}</div>`;
+}
+function history(x){
+  const h = x.history || [];
+  if (!h.length) return "";
+  return `<details class="hist"><summary>الأجزاء السابقة (${h.length})</summary>${h.map(p => `<div>الجزء ${p.n}: ${MONTHS(p.months)} · ${esc((p.start || "").slice(0, 10))} ← ${esc((p.ended_at || "").slice(0, 10))} · كان <span class="mono">${esc(p.username)}</span>${p.customer ? " · " + esc(p.customer) : ""} · ${p.how === "manual" ? "يدويًا" : "تلقائيًا"}</div>`).join("")}</details>`;
+}
+
+// ---------------- إضافة خطٍّ قائم ----------------
+function renderReg(){
+  const accs = D.accounts.filter(a => a.enabled && (!ACC || a.id === ACC));
+  const opts = accs.flatMap(a => a.gates.filter(g => g.supported).map(g => `<option value="${esc(a.id)}|${esc(g.id)}">${esc(g.name)}${D.accounts.length > 1 ? " — " + esc(a.name) : ""}</option>`));
+  $("reg").hidden = !opts.length;
+  const cur = $("rGate").value;
+  $("rGate").innerHTML = opts.join("");
+  if (cur && [...$("rGate").options].some(o => o.value === cur)) $("rGate").value = cur;
+  if (!$("rMonths").children.length) $("rMonths").innerHTML = D.slices.map((m, i) => `<label class="opt"><input type="radio" name="rm" value="${m}"${i === 0 ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("");
+  if (!$("rStart").value) $("rStart").value = (D.now || "").slice(0, 10);
+}
+$("rGo").onclick = async () => {
+  const [account_id, gate] = ($("rGate").value || "|").split("|");
+  const months = +((document.querySelector('input[name="rm"]:checked') || {}).value || 0);
+  const btn = $("rGo"); btn.disabled = true; $("rMsg").className = "err"; $("rMsg").textContent = "جاري البحث في اللوحة…";
+  try {
+    const d = await api("/api/split/register", {account_id, gate, months, username: $("rUser").value.trim(), password: $("rPass").value.trim(),
+                                                start: $("rStart").value, customer: $("rCust").value.trim()});
+    if (d.error) throw new Error(d.error);
+    $("rMsg").className = "err ok-t";
+    $("rMsg").textContent = d.created ? (d.line.state === "due" ? "أُضيف — جزؤه انتهى بالفعل، فهو في «تحتاج تدخّلًا» ليقرّر تغييره." : "أُضيف ✓ يتغيّر اسمه في " + d.line.slice.due) : "هذا الخط متابَعٌ بالفعل.";
+    $("rUser").value = $("rPass").value = $("rCust").value = "";
+    await load();
+  } catch(e){ $("rMsg").textContent = e.message; }
+  btn.disabled = false;
+};
+
+// ---------------- الإعدادات ----------------
+function renderSettings(){
+  const accs = D.accounts.filter(a => !ACC || a.id === ACC);
+  $("setFor").textContent = accs.length === 1 && D.accounts.length > 1 ? "— " + accs[0].name : "";
+  if (accs.length !== 1){ $("setBox").innerHTML = '<div class="empty">اختر حسابًا من الأعلى لضبط إعداداته.</div>'; return; }
+  const a = accs[0], m = a.mail || {};
+  const mail = m.configured ? `<span class="ok-t">✓ تصل التذكيرات إلى ${m.to ? '<b class="mono">' + esc(m.to) + "</b>" : "بريد المدير"}</span>${m.source === "admin" && D.role === "admin" ? " (بريد المدير)" : ""}`
+    : `<span class="err" style="margin:0">لم يُضبط بريد التنبيه — اضبطه من <a href="${B}/renew">صفحة التجديد</a> (قسم «بريد التنبيه»). الإشعارات تبقى هنا في الجرس.</span>`;
+  const gates = a.gates.map(g => {
+    const e = g.edit || {};
+    const st = !g.supported ? "خارج النظام (Reseller API) — يدوي" : e.edit === "ok" ? "✓ جُرِّب التغيير التلقائي بنجاح (" + esc((e.at || "").slice(0, 10)) + ")"
+      : e.edit === "unsupported" ? "✗ اللوحة لم تتح التغيير — يدوي: " + esc(e.error || "") : "لم يُجرَّب بعد";
+    return `<div><b>${esc(g.name)}</b><small>${esc(MODE[g.mode] || g.mode)}${g.flavor === "casper" ? " · كاسبر" : ""} — ${st}</small></div>`;
+  }).join("");
+  $("setBox").innerHTML = (a.enabled ? "" : '<div class="err" style="margin:0 0 10px">الميزة مغلقة لهذا العميل — لا تغيير تلقائي لخطوطه حتى يفتحها المدير.</div>') + `
+    <label class="chk"><input type="checkbox" id="sAuto"${a.cfg.auto ? " checked" : ""}> تغيير اسم المستخدم تلقائيًا عند انتهاء الجزء</label>
+    <span class="hint">بلا هذا الخيار يصلك إشعارٌ وبريد حين يحين التغيير، وتغيّره بزرٍّ من «تحتاج تدخّلًا».</span>
+    <div class="g2"><div><label class="f" for="sDays">تذكيرٌ قبل انتهاء الجزء بـ (أيام، ٠ = بلا تذكير)</label><input class="t ltr" id="sDays" type="number" min="0" max="30" value="${a.cfg.remind_days}"></div></div>
+    <div class="line-row"><button class="btn" id="sSave" data-acc="${esc(a.id)}">حفظ الإعدادات</button><button class="ghost" id="sTest" data-acc="${esc(a.id)}">إرسال بريد تجريبي</button></div>
+    <p class="hint" style="font-size:.86rem">${mail}${m.last_error ? '<br><span class="err">آخر خطأ بريد: ' + esc(m.last_error) + "</span>" : ""}</p>
+    <label class="f">البوابات</label><div class="gates">${gates}</div>
+    <span class="hint">جرّب التغيير التلقائي مرةً على كل لوحة بخطٍّ تجريبي («غيّر الآن» في الأجزاء الجارية) قبل الاعتماد عليه. ما لا تتيحه اللوحة لا يُرسَل إليها أصلًا، ويصير «يحتاج تدخّلًا» بإشعارٍ وبريد.</span>`;
+  $("sSave").onclick = async () => {
+    try { const d = await api("/api/split/cfg", {account_id: a.id, auto: $("sAuto").checked, remind_days: +$("sDays").value || 0});
+      if (d.error) throw new Error(d.error); toast("حُفظت الإعدادات ✓"); load(); } catch(e){ toast(e.message, true); }
+  };
+  $("sTest").onclick = async () => {
+    $("sTest").disabled = true;
+    try { const d = await api("/api/split/test-email", {account_id: a.id}); toast(d.ok ? "أُرسل البريد التجريبي ✓" : "تعذّر الإرسال: " + (d.error || ""), !d.ok); }
+    catch(e){ toast(e.message, true); }
+    $("sTest").disabled = false;
+  };
+}
+
+// ---------------- الأفعال ----------------
+const byId = id => D.lines.find(x => x.id === id);
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const t = e.target.closest(".tile"); if (t && t.dataset.go){ document.getElementById(t.dataset.go).scrollIntoView({behavior: "smooth", block: "start"}); return; }
+  if (b.dataset.acc !== undefined && b.classList.contains("chip")){ ACC = b.dataset.acc; render(); return; }
+  if (b.dataset.copy){ const x = byId(b.dataset.copy); if (x) copy(b.dataset.kind === "msg" ? x.message : x.line, b.dataset.kind === "msg" ? "نُسخ نص الشرح" : "نُسخ السطر"); return; }
+  if (b.dataset.cp){ copy(b.dataset.cp, "نُسخ الاسم الجديد"); return; }
+  if (b.dataset.note){ const n = D.notes.find(z => z.id === b.dataset.note); if (n && !n.read){ n.read = true; D.unread = Math.max(0, D.unread - 1); render(); api("/api/split/read", {ids: [n.id]}).catch(() => {}); } return; }
+  if (b.dataset.sell){ OPEN_SELL = OPEN_SELL === b.dataset.sell ? "" : b.dataset.sell; render(); return; }
+  if (b.dataset.dosell){
+    const id = b.dataset.dosell, x = byId(id);
+    const months = +((document.querySelector(`input[name="sm_${CSS.escape(id)}"]:checked`) || {}).value || 0);
+    const customer = ($("cu_" + id) || {}).value || "";
+    b.disabled = true;
+    try {
+      const d = await api("/api/split/sell", {id, months, customer});
+      if (d.error) throw new Error(d.error);
+      OPEN_SELL = "";
+      await copy(x.message || x.line, (x.message ? "نُسخ نص الشرح" : "نُسخ السطر") + (d.line.state === "active" ? " · يتغيّر الاسم في " + d.line.slice.due : " · بِيع المتبقي"));
+      await load();
+    } catch(err){ toast(err.message, true); b.disabled = false; }
+    return;
+  }
+  if (b.dataset.rot){
+    const x = byId(b.dataset.rot);
+    if (x && x.state === "active" && !confirm("سيتغيّر اسم المستخدم الآن فينقطع العميل الحالي قبل موعده (" + ((x.slice || {}).due || "") + "). متابعة؟")) return;
+    b.disabled = true; const old = b.textContent; b.textContent = "جاري التغيير في اللوحة…";
+    try {
+      const d = await api("/api/split/rotate", {id: b.dataset.rot});
+      if (d.ok) toast("✓ تغيّر اسم المستخدم إلى " + d.line.username);
+      else toast(d.error || "تعذّر التغيير", true);
+      await load();
+    } catch(err){ toast(err.message, true); b.disabled = false; b.textContent = old; }
+    return;
+  }
+  if (b.dataset.confirm){
+    const id = b.dataset.confirm, u = ($("nu_" + id) || {}).value || "";
+    if (!u.trim()){ toast("اكتب اسم المستخدم الجديد كما غيّرته في اللوحة", true); return; }
+    b.disabled = true;
+    try { const d = await api("/api/split/confirm", {id, username: u.trim()}); if (d.error) throw new Error(d.error); toast("✓ أُكِّد — الخط متاحٌ للبيع"); await load(); }
+    catch(err){ toast(err.message, true); b.disabled = false; }
+    return;
+  }
+  if (b.dataset.del){
+    if (!confirm("إيقاف متابعة هذا الخط؟ لا يُمسّ شيءٌ في اللوحة، ولا يتغيّر اسمه بعد اليوم.")) return;
+    try { const d = await api("/api/split/delete", {id: b.dataset.del}); if (d.error) throw new Error(d.error); OPEN_SELL = ""; toast("أُوقفت المتابعة"); await load(); }
+    catch(err){ toast(err.message, true); }
+    return;
+  }
+});
+$("readAll").onclick = async () => { try { await api("/api/split/read", {}); await load(); } catch(e){ toast(e.message, true); } };
+$("notesMore").onclick = () => { SHOW_OLD = true; render(); };
+
+load();
+// تحديثٌ كل دقيقة — إلا أثناء الكتابة أو البيع، فلا يُمحى ما يُكتب.
+setInterval(() => {
+  const busy = OPEN_SELL || /^(INPUT|SELECT|TEXTAREA)$/.test((document.activeElement || {}).tagName || "");
+  if (!document.hidden && !busy) load();
+}, 60000);
+</script>
+</body>
+</html>
