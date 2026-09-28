@@ -615,11 +615,14 @@ BALL = ('<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="
         '<path d="m12 7 3.6 2.6-1.4 4.2H9.8L8.4 9.6z"/><path d="M12 3v4M4.2 9.6l3.9 1.4M6.9 19l2.6-3.4M17.1 19l-2.6-3.4M19.8 9.6l-3.9 1.4"/></svg>')
 
 
-def render_widget(dark=False):
+def render_widget(theme=""):
     """النسخة المدمجة في رئيسية متجر سلة (‏/nations-league/widget داخل iframe في قسم «محتوى
     HTML»): مباريات اليوم والقادمة — بلا «آخر النتائج» (طلب المتجر) — ورابط الصفحة كاملة.
-    خلفيتها شفافة وثيمها فاتح (إلا بـ theme=dark)، وروابطها تُفتح في نافذة جديدة، وتبلّغ الصفحة
-    الحاضنة بطولها فيتّسع الإطار لها بلا تمرير داخلي. ← (رمز، بايتات، مدة الكاش)."""
+    خلفيتها شفافة، ووضعها **كوضع المتجر**: المتجر (قالب رائد) يتبع إعداد جهاز الزائر،
+    والإطار يرى الإعداد نفسه فتتبعه الأنماط (prefers-color-scheme) نهاريةً أو ليلية، إلا
+    إن فُرض ?theme=light أو dark. ولا تُعلن color-scheme: لو اختلف عن وضع صفحة المتجر
+    لرسم المتصفح خلف الإطار خلفيةً معتمة بدل الشفافة. وروابطها تُفتح في نافذة جديدة،
+    وتبلّغ الصفحة الحاضنة بطولها فيتّسع الإطار لها بلا تمرير داخلي. ← (رمز، بايتات، مدة الكاش)."""
     data = _feed.get()[0]
     ms = data["matches"] if data else []
     today = _day(time.time())
@@ -631,7 +634,7 @@ def render_widget(dark=False):
             else '<p class="sub">تعذّر تحميل المباريات الآن، ونعيد المحاولة تلقائيًا.</p>')
     live = any(m["state"] == "in" for m in ms)
     doc = f"""<!doctype html>
-<html lang="ar" dir="rtl" data-theme="{'dark' if dark else 'light'}">
+<html lang="ar" dir="rtl"{f' data-theme="{theme}"' if theme in ("light", "dark") else ""}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

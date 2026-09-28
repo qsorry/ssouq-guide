@@ -781,14 +781,19 @@ node tools/sync_guide_data.js
 **في رئيسية متجر سلة:** `/nations-league/widget` نسخةٌ مدمجة لقسم «محتوى HTML» في محرر
 الصفحة الرئيسية: رأسٌ بلون المتجر ورابط «كل النتائج»، و«مباريات اليوم» و«المباريات
 القادمة» (4 لكلٍّ منهما، أو 8 قادمة إن لم يكن اليوم مباريات) — **بلا «آخر النتائج»** بطلب
-المتجر، وبلا إعلان (هي في المتجر نفسه). خلفيتها شفافة، وثيمها فاتح أو داكن
-(‏`?theme=dark`، والمتجر داكن)، وروابطها تُفتح في نافذة جديدة، ولا تُفهرس. وتبلّغ
-الصفحة الحاضنة بطولها فيتّسع الإطار لها بلا تمرير داخلي — وإن أسقطت سلة السطر
-`<script>` بقي الإطار بطوله الافتراضي. الكود الذي يُلصق في القسم:
+المتجر، وبلا إعلان (هي في المتجر نفسه). خلفيتها شفافة، ووضعها **كثيم المتجر**: المتجر
+ليليٌّ دائمًا (‏CSS مخصّص في قالب رائد، لا يتبع جهاز الزائر)، فالكود يطلبها `?theme=dark`
+ولا يُمسّ وضع المتجر. وبلا `?theme` تتبع جهاز الزائر؛ ولا تُعلَن `color-scheme` كي لا يرسم
+المتصفح خلف الإطار خلفيةً معتمة. وروابطها تُفتح في نافذة جديدة، ولا تُفهرس.
+
+**الطول:** تبلّغ الصفحة الحاضنة بطولها فيتّسع الإطار لها بلا تمرير داخلي. لكن
+JavaScript المخصّص مطفأ في القالب، فقد تُسقط سلة سطر `<script>`؛ لذلك في الكود طولٌ
+احتياطي بحسب العرض (عمودٌ على الجوال، عمودان من 720px) يكفي مباريات يومٍ عادي.
+الكود الذي يُلصق في القسم:
 
 ```html
-<iframe id="ssouq-nl" src="https://guide.ssouq.com/nations-league/widget?theme=dark"
-  title="دوري الأمم الأوروبية" style="display:block;width:100%;height:560px;border:0"></iframe>
+<style>#ssouq-nl{display:block;width:100%;height:560px;border:0}@media (max-width:719px){#ssouq-nl{height:780px}}</style>
+<iframe id="ssouq-nl" src="https://guide.ssouq.com/nations-league/widget?theme=dark" title="دوري الأمم الأوروبية"></iframe>
 <script>addEventListener("message",function(e){if(e.origin==="https://guide.ssouq.com"&&e.data&&e.data.ssouqWidget){document.getElementById("ssouq-nl").style.height=e.data.ssouqWidget+"px"}});</script>
 ```
 

@@ -199,8 +199,12 @@ def unit():
     check("لا تُفهرس، ورابطها القانوني الصفحة", '<meta name="robots" content="noindex">' in wp
           and f'rel="canonical" href="{T.guide_pages.SITE}/nations-league"' in wp)
     check("تبلّغ الحاضنة بطولها", "parent.postMessage({ssouqWidget:" in wp)
-    check("فاتحة، وداكنة بـ theme=dark", 'data-theme="light"' in wp
-          and 'data-theme="dark"' in T.render_widget(dark=True)[1].decode("utf-8"))
+    check("وضعها كوضع جهاز الزائر (كالمتجر)، ويُفرض بـ theme", "data-theme" not in wp.split("<head>")[0]
+          and 'data-theme="dark"' in T.render_widget("dark")[1].decode("utf-8")
+          and 'data-theme="light"' in T.render_widget("light")[1].decode("utf-8")
+          and "data-theme" not in T.render_widget("<x>")[1].decode("utf-8").split("<head>")[0])
+    check("بلا color-scheme فتبقى شفافة فوق المتجر (وتتبع prefers-color-scheme)",
+          not re.search(r"(?<!prefers-)color-scheme", wp) and "prefers-color-scheme" in wp)
     check("بلا إعلان داخل المتجر", "cup-ad" not in wp.split("<body>")[1])
     check("والجارية تتحدّث كل دقيقة", age == T.LIVE_TTL and '<meta http-equiv="refresh" content="60">' in wp)
 
@@ -265,8 +269,8 @@ def live():
         check("صفحة المباراة 200 بأهدافها", c == 200 and "Kylian Mbappé" in b and h.get("Cache-Control") == "public, max-age=300")
         c, _, _ = req(base, "/nations-league/999-nobody")
         check("مباراة غير موجودة = 404", c == 404)
-        c, h, b = req(base, "/nations-league/widget?theme=dark")
-        check("/nations-league/widget للمتجر", c == 200 and 'data-theme="dark"' in b and "noindex" in b)
+        c, h, b = req(base, "/nations-league/widget")
+        check("/nations-league/widget للمتجر", c == 200 and "data-theme" not in b.split("<head>")[0] and "noindex" in b)
         c, _, b = req(base, "/")
         check("الرئيسية تربطها", 'href="/nations-league"' in b)
         c, _, b = req(base, "/nations-league", "admin.ssouq.com")
