@@ -16,7 +16,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import urllib.error
 import urllib.request
@@ -42,15 +41,14 @@ def check(l, c, x=""):
 
 def reset(fetch):
     """كاش فارغ كأن الخادم أقلع للتوّ، وجلبٌ من الدالة المعطاة."""
-    for st in L._state.values():
-        st.update(data=None, at=0.0, next=0.0, busy=False, error=None)
-        st["first"] = threading.Event()
+    for feed in L._state.values():
+        feed.reset()
     L._fetch = fetch
 
 
 def idle(slug, timeout=5):
     end = time.time() + timeout
-    while L._state[slug]["busy"] and time.time() < end:
+    while L._state[slug].busy and time.time() < end:
         time.sleep(0.01)
 
 
@@ -99,8 +97,11 @@ def unit():
     check("لا اسمين لناديين", len(set(L.AR.values())) == len(L.AR))
     check("كل أندية الوهمية معرَّبة (عدا المجهول)",
           all(tid in L.AR for tid, _ in mock_espn.SAUDI[:-1] + mock_espn.EUROPE + mock_espn.WEST + mock_espn.EAST))
-    check("العدد مع معدوده", [L._count(n, "نقطة", "نقطتين", "نقاط", "نقطة") for n in (1, 2, 7, 10, 11, 18)]
-          == ["نقطة واحدة", "نقطتين", "7 نقاط", "10 نقاط", "11 نقطة", "18 نقطة"])
+    check("العدد مع معدوده", [L.count(n, L.POINTS) for n in (1, 2, 7, 10, 11, 18, 100, 101, 103, 111)]
+          == ["نقطة واحدة", "نقطتين", "7 نقاط", "10 نقاط", "11 نقطة", "18 نقطة", "100 نقطة", "101 نقطة",
+              "103 نقاط", "111 نقطة"])
+    check("المجموعات بأسمائها العربية", [L._group(n, 0)[1] for n in ("Group A", "Group F", "Group A2", "Group D1")]
+          == ["المجموعة الأولى", "المجموعة السادسة", "المجموعة الثانية", "المجموعة الأولى"])
 
     print("\nالكاش")
     calls = []
@@ -120,18 +121,18 @@ def unit():
     check("لا جلب ثانٍ في المدة", len(calls) == 1)
     L.table("champions-league")
     check("لكل دوري كاشه", calls == ["eng.1", "uefa.champions"], str(calls))
-    L._state["premier-league"]["next"] = 0          # انتهت المدة
+    L._state["premier-league"].next = 0            # انتهت المدة
     L._fetch = down
     t = L.table("premier-league")
     check("بعد المدة يُقدَّم المحفوظ فورًا", t["ok"])
     idle("premier-league")
     st = L._state["premier-league"]
     check("الفشل في الخلفية يُبقي النسخة ويؤجّل المحاولة",
-          st["data"] and st["error"] == "connection refused" and 0 < st["next"] - time.time() <= L.RETRY)
+          st.data and st.error == "connection refused" and 0 < st.next - time.time() <= L.RETRY)
     n = len(calls)
     L.table("premier-league")
     check("لا محاولة قبل دقيقتين", len(calls) == n)
-    st.update(at=time.time() - L.MAX_AGE - 1, next=time.time() + 999)
+    st.at, st.next = time.time() - L.MAX_AGE - 1, time.time() + 999
     check("نسخة أقدم من يومين لا تُعرض", L.table("premier-league")["ok"] is False)
     reset(down)
     t = L.table()

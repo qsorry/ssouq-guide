@@ -1,5 +1,6 @@
 // Browser test of the league standings (ترتيب الدوريات): the home card and its tabs, the
-// per-league pages, and that a dead ESPN leaves the home page untouched. ESPN is mocked.
+// per-league pages, the Nations League page (/nations-league) and its subscriptions ad, and
+// that a dead ESPN leaves the home page untouched. ESPN is mocked.
 //   NODE_PATH=<dir with playwright-core> node tests/ui_league.js     (SHOTS_DIR=… for screenshots)
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
@@ -19,7 +20,7 @@ const app = (port, api) => spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web
 (async () => {
   const procs = [spawn('python3', [path.join(ROOT,'tests/mock_espn.py'), String(ESPN_PORT)], {stdio:'ignore'}),
                  app(APP_PORT, `http://127.0.0.1:${ESPN_PORT}`), app(DEAD_PORT, 'http://127.0.0.1:9')];
-  await up(`http://127.0.0.1:${ESPN_PORT}/ksa.1/standings`);
+  await up(`http://127.0.0.1:${ESPN_PORT}/v2/sports/soccer/ksa.1/standings`);
   await up(`http://127.0.0.1:${APP_PORT}/robots.txt`); await up(`http://127.0.0.1:${DEAD_PORT}/robots.txt`);
   const browser = await chromium.launch({executablePath: EXE, args:['--no-sandbox']});
   const APP = `http://127.0.0.1:${APP_PORT}`, DEAD = `http://127.0.0.1:${DEAD_PORT}`;
@@ -87,6 +88,41 @@ const app = (port, api) => spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web
     check('الأزرار روابط بين الصفحات', await page.$$eval('table.standings tbody tr', r => r.length) === 36);
     check('بلا تمرير أفقي', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await shot(page, 'league-page-ucl');
+
+    console.log('\nدوري الأمم الأوروبية');
+    await page.goto(APP + '/');
+    await page.click('a.entry.cup');
+    await page.waitForURL(APP + '/nations-league');
+    check('الرئيسية تفتح صفحة دوري الأمم', (await page.textContent('h1')).includes('دوري الأمم الأوروبية'));
+    check('على الجوال: بلا تمرير أفقي', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    check('على الجوال: الإعلان بطاقة بين الأقسام لا عمود', await page.isVisible('.cup-ad-inline') && !(await page.isVisible('.cup-ad-side')));
+    check('الجارية مُعلَّمة مباشرة', await page.$$eval('#today .match.live', l => l.length) === 2);
+    const geo = await page.$eval('#results .match.done', li => {
+      const [h, a] = li.querySelectorAll('.score b'), [th] = li.querySelectorAll('.side b');
+      return { hx: h.getBoundingClientRect().x, ax: a.getBoundingClientRect().x, tx: th.getBoundingClientRect().x };
+    });
+    check('نتيجة صاحب الأرض بجانب اسمه (يمينًا)', geo.hx > geo.ax && geo.tx > geo.hx, JSON.stringify(geo));
+    await shot(page, 'nations-league-mobile');
+    await page.click('#results a.match[href$="-france-belgium"]');
+    await page.waitForURL(APP + '/nations-league/1-france-belgium');
+    check('المباراة تفتح صفحتها', (await page.textContent('h1')) === 'مباراة فرنسا وبلجيكا'
+          && await page.$$eval('.goals li', l => l.length) === 3);
+    check('صفحة المباراة: بلا تمرير أفقي، والإعلان فيها', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
+          && await page.isVisible('.cup-ad-inline'));
+    const bar = await page.$eval('.stat .bar i', i => i.getBoundingClientRect().right);
+    check('شريط صاحب الأرض يبدأ من اليمين', Math.abs(bar - await page.$eval('.stat .bar', b => b.getBoundingClientRect().right)) < 1);
+    await shot(page, 'match-mobile');
+    const wide = await browser.newContext({viewport:{width:1280, height:900}});
+    const desk = await wide.newPage();
+    await desk.goto(APP + '/nations-league');
+    check('على الكمبيوتر: الاشتراكات عمودٌ بجانب النتائج', await desk.isVisible('.cup-ad-side') && !(await desk.isVisible('.cup-ad-inline'))
+          && await desk.evaluate(() => document.querySelector('.cup-ad-side').getBoundingClientRect().right
+                                     <= document.querySelector('.cupmain').getBoundingClientRect().left + 1));
+    await desk.evaluate(() => scrollTo({top: 1500, behavior: 'instant'}));
+    await desk.waitForTimeout(200);
+    check('والعمود يبقى ظاهرًا مع التمرير', await desk.evaluate(() => { const r = document.querySelector('.cup-ad-side').getBoundingClientRect(); return r.top >= 0 && r.top < 40; }));
+    await shot(desk, 'nations-league-desktop');
+    await wide.close();
 
     console.log('\nوضع التضمين وتعطّل ESPN');
     await page.goto(APP + '/?embed=1');
