@@ -842,6 +842,17 @@ def mail_hint(err):
     return ""
 
 
+def mail_verified(data_dir, acct_id):
+    """نجح بريدٌ تجريبي: البريد يعمل الآن — تُمحى أخطاؤه القديمة ويُرسَل المنتظر فورًا
+    بلا انتظار موعد إعادة المحاولة."""
+    with _lock:
+        if not has_data(data_dir, acct_id):
+            return
+        db = load(data_dir, acct_id)
+        db["mail"].update({"last_error": "", "fails": 0, "next_try": ""})
+        save(data_dir, acct_id, db)
+
+
 def flush_mail(data_dir, acct_id, mailer, now=None, page_url="", title=""):
     """يرسل الإشعارات المنتظرة في بريدٍ واحد. mailer(subject, body) → (ok, error)؛
     ok=None = البريد غير مضبوط: تنتظر الإشعارات يومًا (MAIL_WAIT_HOURS) ثم تُترك."""
@@ -867,9 +878,9 @@ def flush_mail(data_dir, acct_id, mailer, now=None, page_url="", title=""):
         m = db["mail"]
         if ok is None:
             # البريد غير مضبوط بعد: تنتظر الإشعارات يومًا (فضبطُه بعدها بقليلٍ يُوصلها)،
-            # ثم تُترك في الأداة وحدها — فلا يصل سيلُ إشعاراتٍ قديمة يوم يُضبط.
-            m.update({"last_error": err or "بريد التذكير غير مضبوط",
-                      "next_try": fmt(now + datetime.timedelta(minutes=MAIL_RETRY_MINUTES))})
+            # ثم تُترك في الأداة وحدها — فلا يصل سيلُ إشعاراتٍ قديمة يوم يُضبط. ويُعاد
+            # الفحص كل دورة: معرفة الضبط لا تكلّف شيئًا، والانتظار يؤخّر البريد بعد ضبطه.
+            m.update({"last_error": err or "بريد التذكير غير مضبوط", "next_try": ""})
             for n in db["notes"]:
                 if n.get("id") in ids:
                     at = parse_dt(n.get("at"))

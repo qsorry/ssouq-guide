@@ -1915,6 +1915,18 @@ def split_page_url():
         ("https://%s%s/remaining" % (SITE_HOST, ADMIN_PATH))
 
 
+def split_flush_async(st, acct):
+    """يرسل بريد ما جدّ لهذا العميل الآن — في خيطٍ مستقل فلا تنتظر الصفحةُ خادمَ البريد.
+    لما يفعله المشغّل بيده («غيّر الآن»، بريدٌ تجريبي نجح)؛ والدورة تكفي ما عداه."""
+    def run():
+        try:
+            split_subs.flush_mail(DATA_DIR, acct["id"], split_mailer(st, acct),
+                                  page_url=split_page_url(), title=acct.get("name", ""))
+        except Exception:
+            pass                               # البريد مساعدٌ لا يُفشل شيئًا؛ والدورة تعيده
+    threading.Thread(target=run, daemon=True).start()
+
+
 def split_tick(now=None):
     """دورةٌ واحدة لكل عميلٍ فُتحت له الميزة: تذكير، ثم تغيير اسم ما حان جزؤه، ثم بريد."""
     st = load_store()
@@ -2868,13 +2880,15 @@ class Handler(BaseHTTPRequestHandler):
         for a in self._split_scope(st, role, acct):
             v = split_subs.view(DATA_DIR, a["id"], now)
             gates = {str(g.get("id")): g for g in (a.get("gates") or [])}
+            mstat = split_mail_status(st, a, role)
+            merr = v["mail"].get("last_error", "")
+            if mstat.get("configured") and "غير مضبوط" in merr:
+                merr = ""                            # خطأٌ قديمٌ من قبل ضبط البريد — لم يعد صحيحًا
             accounts.append({
                 "id": a["id"], "name": a.get("name", ""), "enabled": split_on(a),
                 "cfg": v["cfg"], "unread": v["unread"],
-                "mail": {**split_mail_status(st, a, role),
-                         "last_sent": v["mail"].get("last_sent", ""),
-                         "last_error": v["mail"].get("last_error", ""),
-                         "hint": split_subs.mail_hint(v["mail"].get("last_error", ""))},
+                "mail": {**mstat, "last_sent": v["mail"].get("last_sent", ""),
+                         "last_error": merr, "hint": split_subs.mail_hint(merr)},
                 "gates": [{"id": g.get("id"), "name": g.get("name", ""), "mode": g.get("mode"),
                            "flavor": g.get("web_flavor", ""), "supported": split_gate_ok(g),
                            "edit": v["gates"].get(str(g.get("id")), {})}
@@ -2927,6 +2941,9 @@ class Handler(BaseHTTPRequestHandler):
                     "هذا بريدٌ تجريبي من صفحة «حسابات متبقية» (%s).\n"
                     "هنا تصلك تذكيرات انتهاء الأجزاء المبيعة وتغيير أسماء المستخدمين.\n\n%s\n"
                     % (a.get("name", ""), split_page_url()))
+                if ok:                              # البريد يعمل: تُمحى أخطاؤه ويُرسَل المنتظر الآن
+                    split_subs.mail_verified(DATA_DIR, a["id"])
+                    split_flush_async(st, a)
                 return self._send(200, {"ok": bool(ok), "error": "" if ok else err,
                                         "hint": "" if ok else split_subs.mail_hint(err)})
             if path == "/api/split/test-rename":
@@ -2955,6 +2972,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not gate:
                     return self._send(400, {"error": "بوابة هذا الخط لم تعد موجودة في الحساب"})
                 rec, res = split_subs.rotate(DATA_DIR, a["id"], rid, gate, SPLIT_BRIDGE, how="now")
+                if res not in ("busy", "skip"):
+                    split_flush_async(st, a)             # بريد التغيير (أو تعذّره) الآن لا بعد الدورة
                 if res == "busy":
                     return self._send(409, {"error": "جارٍ تغيير هذا الخط الآن — انتظر لحظة"})
                 if res == "skip":
