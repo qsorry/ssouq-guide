@@ -24,6 +24,7 @@ import copy
 
 import guide_pages
 import store_sitemap
+import league
 import xm_web
 import falcon_api
 import crypto_store
@@ -2156,13 +2157,27 @@ class Handler(BaseHTTPRequestHandler):
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
         if path == "/sitemap.xml":
-            return self._send(200, raw=guide_pages.sitemap(),
+            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP),
                               ctype="application/xml; charset=utf-8",
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path in ROOT_FILES:
             return self._static("/static/" + ROOT_FILES[path])
         if path == "/api/stats":
             return self._send(200, {"m3u": int(load_stats().get("m3u", 0))})
+        if path == "/api/league":               # بطاقة ترتيب الدوريات في الرئيسية
+            t = league.api(self._q("l"))        # الفشل لا يُحفظ في المتصفح فيُعاد مع الزيارة التالية
+            if t is None:
+                return self._send(404, {"ok": False, "error": "unknown league"})
+            return self._send(200, t, extra={"Cache-Control": "public, max-age=300" if t["ok"] else "no-store"})
+        if path in ("/standings", "/standings/"):
+            return self._redirect(league.PATH + league.DEFAULT, 301)
+        if path.startswith(league.PATH):        # صفحة ترتيب لكل دوري (للأرشفة)
+            page = league.render(path[len(league.PATH):])
+            if page:
+                code, body = page
+                return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                                  extra={"Cache-Control": "public, max-age=300"} if code == 200
+                                  else {"Retry-After": str(league.RETRY)})
         if path == "/renew":                    # صفحة التجديد (عامة، بلا تسجيل دخول)
             return self._page("renew.html", cache=PUBLIC_HTML_CACHE)
         if path == "/api/renew/ticket":         # متابعة طلب معلّق برقم تذكرته

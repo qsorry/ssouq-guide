@@ -50,6 +50,7 @@
   --gold:#F0A12B;--gold-ink:#3A2907;
   --mute:#5C7288;--wa:#1DA851;
   --shadow:0 1px 2px rgba(16,42,66,.05),0 10px 26px -14px rgba(16,42,66,.22);
+  --crest:transparent;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --ink:#E3ECF5;--paper:#0B1826;--card:#132433;--line:#25405A;--soft:#12293A;
@@ -57,6 +58,7 @@
   --gold:#EEA945;--gold-ink:#2A1D04;
   --mute:#90A5BA;--wa:#2FC46A;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 26px -14px rgba(0,0,0,.6);
+  --crest:#DCE6EF;
 }}
 :root[data-theme="dark"]{
   --ink:#E3ECF5;--paper:#0B1826;--card:#132433;--line:#25405A;--soft:#12293A;
@@ -64,6 +66,7 @@
   --gold:#EEA945;--gold-ink:#2A1D04;
   --mute:#90A5BA;--wa:#2FC46A;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 26px -14px rgba(0,0,0,.6);
+  --crest:#DCE6EF;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -328,6 +331,42 @@ p{margin:0 0 10px}
 .btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-4px;margin-inline-end:6px}
 .linkish{background:transparent;border:0;padding:0;font:inherit;color:var(--brand-text);cursor:pointer;text-decoration:underline}
 
+/* ---------- ترتيب الدوريات: بطاقة الرئيسية وصفحات /standings (الجدول يرسمه league.py) ---------- */
+/* على الجوال سطرٌ يُسحب أفقيًا وطرفه يبهت ليدلّ أن وراءه دوريات، وعلى الأعرض تلتفّ فتظهر كلها */
+.ltabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 0 14px;padding:2px 0 4px;padding-inline-end:28px;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 32px);mask-image:linear-gradient(to right,transparent,#000 32px)}
+.ltabs::-webkit-scrollbar{display:none}
+.ltabs button,.ltabs a{flex:0 0 auto;padding:7px 14px;border:1.5px solid var(--line);border-radius:999px;background:var(--card);
+  color:var(--ink);font:inherit;font-size:.84rem;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}
+.ltabs button:hover,.ltabs a:hover{border-color:var(--brand)}
+.ltabs [aria-pressed="true"],.ltabs [aria-current="page"]{border-color:var(--brand);background:var(--brand);color:var(--brand-on)}
+.league .lname{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 6px}
+.season{display:inline-block;font-size:.72rem;font-weight:700;color:var(--brand-text);background:var(--soft);
+  border-radius:999px;padding:2px 10px;vertical-align:.2em}
+.lgroup{font-size:.92rem;margin:14px 0 2px}
+.lwrap{overflow-x:auto}
+.standings{width:100%;border-collapse:collapse;font-size:.86rem;font-variant-numeric:tabular-nums}
+.standings th,.standings td{padding:8px 4px;text-align:center;border-top:1px solid var(--line);white-space:nowrap}
+.standings thead th{border-top:0;padding-top:4px;color:var(--mute);font-size:.72rem;font-weight:600}
+.standings abbr{text-decoration:none}
+.standings .team{width:100%;text-align:start;white-space:normal}
+.standings .team span{display:flex;align-items:center;gap:8px}
+.standings .team b{font-weight:600}
+.standings .team img,.standings .crest{width:22px;height:22px;flex:0 0 auto;border-radius:50%;object-fit:contain;background:var(--crest)}
+.standings .crest{display:inline-block;background:var(--soft)}
+.standings td:first-child{border-inline-start:3px solid var(--z,transparent);color:var(--mute);font-weight:700}
+.standings .pts{font-weight:700;color:var(--brand-text)}
+.zones{list-style:none;display:flex;flex-wrap:wrap;gap:4px 14px;margin:10px 0 0;padding:0;font-size:.74rem;color:var(--mute)}
+.zones li::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--z);
+  margin-inline-end:6px;vertical-align:-1px}
+.lfull{display:block;text-align:center;margin-top:12px;font-weight:700}
+.lsrc{margin:10px 0 0;font-size:.74rem;color:var(--mute);text-align:center}
+#league-body[aria-busy="true"]{opacity:.45}
+@media (min-width:560px){.ltabs{flex-wrap:wrap;overflow:visible;padding-inline-end:0;-webkit-mask-image:none;mask-image:none}
+  .standings th,.standings td{padding-inline:8px}}
+@media (max-width:359px){.standings .wdl{display:none}}
+@media (max-width:519px){.standings .gfga{display:none}}
+
 footer{max-width:680px;margin:0 auto;padding:0 16px 30px;color:var(--mute);font-size:.8rem;text-align:center}
 /* وضع التضمين (?embed=1): المعالج داخل iframe في مقال المدونة — بلا رأس ولا ذيل */
 body.embed .topbar,body.embed footer{display:none}body.embed main{padding:8px 10px 24px}
@@ -361,6 +400,7 @@ footer a{color:var(--mute)}
       <li><button type="button" data-nav="activate">لدي اشتراك — فعّله<em>خطوة بخطوة</em></button></li>
       <li><button type="button" data-nav="m3u">رابط M3U<em>أداة مجانية</em></button></li>
       <li><button type="button" data-nav="plans">كل الباقات<em>13 باقة</em></button></li>
+      <li><a href="/standings/saudi-pro-league">ترتيب الدوريات<em>محدَّث تلقائيًا</em></a></li>
       <li><a href="https://wa.me/966504998661" target="_blank" rel="noopener">الدعم الفني على واتساب<em>مباشر</em></a></li>
       <li><a href="https://ssouq.com/?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=menu" target="_blank" rel="noopener">متجر سمارت سوق<em>ssouq.com</em></a></li>
     </ul>
@@ -385,6 +425,19 @@ footer a{color:var(--mute)}
         <li><a class="link" href="/mac">ماك: IPTV Smarters Pro</a></li>
       </ul>
       <p class="sub">فعّل JavaScript ليرشدك المعالج خطوة بخطوة ويختار لك الباقة المناسبة.</p>
+    </section>
+    <section class="card">
+      <h2>جدول ترتيب الدوريات</h2>
+      <ul>
+        <li><a class="link" href="/standings/saudi-pro-league">جدول ترتيب دوري روشن السعودي</a></li>
+        <li><a class="link" href="/standings/premier-league">جدول ترتيب الدوري الإنجليزي الممتاز</a></li>
+        <li><a class="link" href="/standings/la-liga">جدول ترتيب الدوري الإسباني</a></li>
+        <li><a class="link" href="/standings/serie-a">جدول ترتيب الدوري الإيطالي</a></li>
+        <li><a class="link" href="/standings/bundesliga">جدول ترتيب الدوري الألماني</a></li>
+        <li><a class="link" href="/standings/ligue-1">جدول ترتيب الدوري الفرنسي</a></li>
+        <li><a class="link" href="/standings/champions-league">جدول ترتيب دوري أبطال أوروبا</a></li>
+        <li><a class="link" href="/standings/afc-champions-league">جدول ترتيب دوري أبطال آسيا للنخبة</a></li>
+      </ul>
     </section>
     <section class="plans" id="plans-static" aria-labelledby="plans-h">
       <h2 id="plans-h">اشتراكات IPTV من متجر سمارت سوق</h2>
@@ -937,8 +990,56 @@ function renderHome(){
     <div>${ICONS.bolt}<b>تفعيل سريع</b>خلال دقائق</div>
     <div>${ICONS.shield}<b>دفعة واحدة</b>بلا تجديد تلقائي</div>
   </div>
+  <section class="card league" id="league" aria-labelledby="league-h" hidden></section>
   <a class="card chan" href="https://whatsapp.com/channel/0029Vb91ux61SWssvKFZgL31" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1.2-1.4-1.9-1-1 .8a4.2 4.2 0 0 1-2-2l.8-1-1-1.9z"/></svg><span><b>انضم إلى قناتنا على واتساب</b><small>عروض الاشتراكات والتحديثات وطرق التفعيل الجديدة</small></span></a>
   <p class="sub" style="text-align:center">أو <button class="linkish" type="button" data-nav="plans">تصفّح كل الباقات مباشرة ←</button></p>`;
+  loadLeague();
+}
+
+/* ---------- ترتيب الدوريات في الرئيسية ----------
+   league.py يرسم الجدول (كما في صفحات /standings) فيُحقن هنا كما هو، والأزرار
+   من قائمة الدوريات في الرد نفسه. كل دوري يُجلب مرة في الجلسة، وإن تعذّر أول
+   جلب بقيت البطاقة مخفية ولم يتأثر شيء آخر. ولا تظهر في وضع التضمين. */
+const league = { on: "", got: {} };             // on: الدوري المعروض ("" = الافتراضي عند السيرفر)
+function leagueGet(slug){                      // الفشل لا يُحفظ: الضغطة التالية تعيد المحاولة
+  if (!league.got[slug]) league.got[slug] = fetch("/api/league" + (slug ? "?l=" + encodeURIComponent(slug) : ""))
+    .then(r => r.json()).catch(() => ({ ok: false }))
+    .then(d => { if (!d.ok) delete league.got[slug]; return d; });
+  return league.got[slug];
+}
+function paintLeague(d){
+  const sec = $("#league"); if (!sec) return;   // غادر الزائر الرئيسية قبل وصول الرد
+  if (!sec.dataset.ready) {                     // أول رسم: العنوان والأزرار مرة واحدة
+    if (!d.ok) return;
+    sec.innerHTML = `<h2 id="league-h">ترتيب الدوريات</h2>
+      <div class="ltabs" role="group" aria-label="اختر الدوري">${d.leagues.map(l =>
+        `<button type="button" data-league="${l.slug}" aria-pressed="false">${l.tab}</button>`).join("")}</div>
+      <div id="league-body"></div><p class="lsrc">يُحدَّث تلقائيًا · المصدر ESPN</p>`;
+    sec.dataset.ready = "1"; sec.hidden = false;
+  }
+  league.on = d.slug;
+  sec.querySelectorAll("[data-league]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.league === d.slug)));
+  const body = $("#league-body");
+  body.removeAttribute("aria-busy");
+  body.innerHTML = d.ok ? d.html : `<p class="sub">تعذّر تحميل هذا الترتيب الآن، حاول بعد قليل${
+    d.page ? ` أو <a class="link" href="${d.page}">افتح صفحته</a>` : ""}.</p>`;
+}
+function showLeague(slug){
+  league.on = slug;
+  const sec = $("#league"); if (!sec) return;
+  sec.querySelectorAll("[data-league]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.league === slug)));
+  $("#league-body").setAttribute("aria-busy", "true");
+  leagueGet(slug).then(d => { if (league.on === slug) paintLeague(Object.assign({ slug }, d)); });
+}
+function loadLeague(){
+  if (document.body.classList.contains("embed")) return;
+  const slug = league.on;
+  leagueGet(slug).then(d => {
+    if (!slug && d.ok) league.got[d.slug] = league.got[""];     // الافتراضي باسمه أيضًا، فلا يُجلب مرتين
+    if (league.on !== slug) return;
+    if (!d.ok && slug) { league.on = ""; return loadLeague(); } // تعذّر ما اختاره: نعود للافتراضي لا نُخفي البطاقة
+    paintLeague(d);
+  });
 }
 
 function renderBuyTaste(){
@@ -1293,6 +1394,7 @@ $("#view").addEventListener("click", e => {
     if (em) { em.textContent = "تم النسخ"; setTimeout(() => { em.textContent = "نسخ"; b.classList.remove("done"); }, 1800); }
     return;
   }
+  if (d.league) return showLeague(d.league);      // تبديل الدوري لا يغيّر الشاشة
   if (d.nav) return nav(d.nav);
   if (b.hasAttribute("data-back")) return back();
   if (d.taste) { state.taste = d.taste; state.screen = "buy-device"; }
