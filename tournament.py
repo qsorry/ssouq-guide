@@ -381,15 +381,16 @@ def _catalog():
     return json.loads(m.group(1)) if m else {}
 
 
-def _ad(cls):
-    """إعلان الاشتراكات: باقات ADS كما هي في CATALOG، وروابطها بحملة هذه الصفحة."""
+def _ad(cls, campaign=None):
+    """إعلان الاشتراكات: باقات ADS كما هي في CATALOG، وروابطها بحملة هذه الصفحة (أو `campaign`
+    لصفحةٍ أخرى تعرضه، كصفحات المشاهدة في watch.py)."""
     plans = {p["id"]: p for b in _catalog().values() for p in b.get("plans", [])}
     cards = []
     for pid in ADS:
         p = plans.get(pid)
         if not p:
             continue
-        url = re.sub(r"utm_campaign=[^&]*", "utm_campaign=" + UTM_CAMPAIGN, p["url"])
+        url = re.sub(r"utm_campaign=[^&]*", "utm_campaign=" + (campaign or UTM_CAMPAIGN), p["url"])
         was = f'<s>{_esc(p["was"])} ر.س</s>' if p.get("was") else ""
         cards.append(
             f'<a class="planrow" href="{_esc(url)}" target="_blank" rel="noopener">'
@@ -644,7 +645,8 @@ def render():
                 'حدّث الصفحة بعد دقائق.</p></section>' + _ad("cup-ad-inline"))
 
     main = (f'<h1>{_esc(h1)}</h1>\n<p class="sub">نتائج المباريات أولًا بأول، ومواعيد القادمة بتوقيت '
-            f'السعودية، وترتيب {CUP["groups_word"]}.</p>')
+            f'السعودية، وترتيب {CUP["groups_word"]}.</p>\n<p class="sub"><a class="link" href="{league.WATCH}'
+            f'{PATH.strip("/")}">مشاهدة {_esc(CUP["name"])}: القنوات الناقلة ومباريات اليوم ←</a></p>')
     return ((200 if data else 503), _doc(title, desc, url, [crumbs], _esc(CUP["name"]), main, body, live),
             (LIVE_TTL if live else 300))
 

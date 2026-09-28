@@ -1,6 +1,7 @@
 // Browser test of the league standings (ترتيب الدوريات): the home card and its tabs, the
-// per-league pages, the Nations League page (/nations-league) and its subscriptions ad, and
-// that a dead ESPN leaves the home page untouched. ESPN is mocked.
+// per-league pages, the Nations League page (/nations-league) and its subscriptions ad, the
+// watch pages (/watch and /watch/<league>) from the home entry, and that a dead ESPN leaves the
+// home page untouched. ESPN is mocked.
 //   NODE_PATH=<dir with playwright-core> node tests/ui_league.js     (SHOTS_DIR=… for screenshots)
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
@@ -125,6 +126,22 @@ const app = (port, api) => spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web
     check('والعمود يبقى ظاهرًا مع التمرير', await desk.evaluate(() => { const r = document.querySelector('.cup-ad-side').getBoundingClientRect(); return r.top >= 0 && r.top < 40; }));
     await shot(desk, 'nations-league-desktop');
     await wide.close();
+
+    console.log('\nصفحات المشاهدة');
+    await page.goto(APP + '/');
+    await page.click('a.entry.watch');
+    await page.waitForURL(APP + '/watch');
+    check('الرئيسية تفتح مدخل المشاهدة: بطاقةٌ لكل مسابقة', (await page.textContent('h1')) === 'مشاهدة مباريات اليوم'
+          && await page.$$eval('.wcomp', s => s.length) === 10);
+    check('المدخل على الجوال: بلا تمرير أفقي', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await shot(page, 'watch-hub-mobile');
+    await page.click('.wcomp h2 a[href="/watch/saudi-pro-league"]');
+    await page.waitForURL(APP + '/watch/saudi-pro-league');
+    check('صفحة دوري روشن: الجارية مُعلَّمة، والناقل تحت القادمة', await page.$$eval('#today .match.live', l => l.length) === 1
+          && await page.$$eval('#upcoming .tv', l => l.length) === 2 && (await page.textContent('#upcoming .tv')).includes('ثمانية'));
+    check('على الجوال: بلا تمرير أفقي، والإعلان بطاقة بين الأقسام', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
+          && await page.isVisible('.cup-ad-inline') && !(await page.isVisible('.cup-ad-side')));
+    await shot(page, 'watch-spl-mobile');
 
     console.log('\nوضع التضمين وتعطّل ESPN');
     await page.goto(APP + '/?embed=1');
