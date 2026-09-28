@@ -403,8 +403,10 @@ table.cmp td.go{{white-space:nowrap}}
     return doc.encode("utf-8")
 
 
-def sitemap():
-    """خريطة الموقع مبنيّة من PAGES نفسها، فلا تتخلّف عنها عند إضافة صفحة."""
+def sitemap(extra=()):
+    """خريطة الموقع مبنيّة من PAGES نفسها، فلا تتخلّف عنها عند إضافة صفحة.
+    و`extra` صفحاتٌ من وحدات أخرى: (المسار، changefreq، priority) — كصفحات
+    ترتيب الدوريات في league.SITEMAP."""
     import datetime
     today = datetime.date.today().isoformat()
     rows = [
@@ -419,6 +421,11 @@ def sitemap():
             '  <url>\n    <loc>%s%s</loc>\n    <lastmod>%s</lastmod>'
             '\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>'
             % (SITE, path, today))
+    for path, freq, prio in extra:
+        rows.append(
+            '  <url>\n    <loc>%s%s</loc>\n    <lastmod>%s</lastmod>'
+            '\n    <changefreq>%s</changefreq>\n    <priority>%s</priority>\n  </url>'
+            % (SITE, path, today, freq, prio))
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
             'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n'
