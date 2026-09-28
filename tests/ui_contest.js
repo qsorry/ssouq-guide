@@ -1,14 +1,16 @@
-// Browser test of the prediction contest (مسابقة التوقّعات): the card on a match page (form without a phone,
-// the ready WhatsApp message, the message arriving through the WhatsApp service and registering the sender's
-// number, one prediction per number, the remembered prediction), a finished match (winner, the draw video
-// player, every scene renders, recording to a video file) and the admin page. ESPN is mocked, and the
-// WhatsApp service is the real whatsapp-baileys in its fake mode (WA_FAKE).
+// Browser test of the prediction contest (مسابقة التوقّعات): the admin page first (linking the contest number
+// through the logistics WhatsApp service: URL and secret, number, QR, connected; the prize picked from the
+// store's products with its link; the channel message ready to copy), then the card on a match page (form
+// without a phone, the ready WhatsApp message, the message arriving through the service and registering the
+// sender's number, one prediction per number, the remembered prediction), a finished match (winner, the draw
+// video player, every scene renders, recording to a video file) and the draw details in the admin page.
+// ESPN is mocked; the WhatsApp service (whatsapp-reader) and Salla's product API are tests/mock_reader.py.
 //   NODE_PATH=<dir with playwright-core> node tests/ui_contest.js     (SHOTS_DIR=… for screenshots)
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const ROOT = path.dirname(__dirname);
-const ESPN_PORT = 9771, APP_PORT = 9772, WA_PORT = 9773, WA_SECRET = 'ui_wa_secret';
+const ESPN_PORT = 9771, APP_PORT = 9772, WA_PORT = 9773, WA_SECRET = 'ui_wa_secret', TENANT = 'ssouq-guide--contest';
 const SHOTS = process.env.SHOTS_DIR || '';
 const EXE = execSync("ls -d /opt/pw-browsers/chromium*/chrome-linux/chrome 2>/dev/null | head -1").toString().trim();
 let pass = 0, fail = 0;
@@ -39,29 +41,88 @@ print(json.dumps(rec, ensure_ascii=False))
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'uicontest_'));
   seedFinished(data);
   const APP = `http://127.0.0.1:${APP_PORT}`, WA = `http://127.0.0.1:${WA_PORT}`;
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('WHATSAPP_READER_') && k !== 'SALLA_ADMIN_TOKEN'));
   const procs = [spawn('python3', [path.join(ROOT,'tests/mock_espn.py'), String(ESPN_PORT)], {stdio:'ignore'}),
-                 spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web'], {stdio:'ignore', env:{...process.env,
+                 spawn('python3', [path.join(ROOT,'tests/mock_reader.py'), String(WA_PORT), WA_SECRET], {stdio:'ignore'}),
+                 spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web'], {stdio:'ignore', env:{...env,
                    XM_DATA: data, XM_BIND:'127.0.0.1', XM_PORT:String(APP_PORT), XM_ADMIN_PASSWORD:'envpass123',
-                   LEAGUE_API:`http://127.0.0.1:${ESPN_PORT}`}}),
-                 spawn('node', [path.join(ROOT,'whatsapp-baileys/index.js')], {stdio:'ignore', env:{...process.env,
-                   WA_FAKE:'1', WA_FAKE_ME:'966500000009', WA_SECRET, WA_PORT:String(WA_PORT), WA_BIND:'127.0.0.1',
-                   WA_INBOUND_URL: APP + '/api/contest/wa-inbound'}})];
+                   LEAGUE_API:`http://127.0.0.1:${ESPN_PORT}`, SALLA_API: WA,
+                   CONTEST_INBOUND_URL: APP + '/api/contest/wa-inbound'}})];
   await up(`http://127.0.0.1:${ESPN_PORT}/v2/sports/soccer/ksa.1/standings`);
   await up(`http://127.0.0.1:${APP_PORT}/robots.txt`);
-  await up(`${WA}/health`);
-  // رسالة واتساب واردة: من رقم المرسل إلى خدمة الواتساب (وهمية) التي تمرّرها للأداة
-  const whatsapp = async (from, text) => (await fetch(WA + '/fake-inbound', {method: 'POST',
-    headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + WA_SECRET}, body: JSON.stringify({from, text})})).json();
+  await up(`${WA}/store/v1/products`);
+  // الخدمة (وهمية): «مسح الرمز»، ورسالةٌ خاصة من رقم المرسل تمرّرها للأداة كما تفعل الحقيقية
+  const reader = async (p, body) => (await fetch(WA + p, {method: 'POST', headers: {'Content-Type': 'application/json',
+    'X-Reader-Secret': WA_SECRET}, body: JSON.stringify(body || {})})).json();
+  const whatsapp = (from, text) => reader('/_test/dm/' + TENANT, {wa_message_id: 'W' + Date.now() + Math.random(),
+    sender_number: from, sender_name: '', sent_at: Math.floor(Date.now() / 1000), body: text, quoted_body: '',
+    forwarded: false, media_base64: null, media_mime: null});
   const waText = href => decodeURIComponent(new URL(href).searchParams.get('text'));
   const browser = await chromium.launch({executablePath: EXE, args:['--no-sandbox']});
   const errors = [];
   try {
-    const admin = (p, body) => fetch(APP + '/admin' + p, {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: AUTH},
-      body: JSON.stringify(body)});
-    const svc = await admin('/api/service', {wa: {type: 'http', url: WA + '/send', secret: WA_SECRET}});
-    check('المدير يربط خدمة الواتساب (Baileys)', svc.status === 200);
-    const r = await admin('/api/contest/admin/set', {m: '6', on: true, prize: 'اشتراك 3 أشهر', winners: 1});
-    check('ويفتح المسابقة على هولندا وصربيا', r.status === 200);
+    console.log('صفحة المدير: ربط الرقم والجائزة ورسالة القناة');
+    const actx = await browser.newContext({viewport:{width:430, height:900}});
+    await actx.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: APP});
+    const adm = await actx.newPage();
+    adm.on('pageerror', e => errors.push(e.message));
+    await adm.goto(APP + '/admin/login');
+    await adm.evaluate(async () => { await fetch('/admin/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user: 'admin', password: 'envpass123'})}); });
+    await adm.goto(APP + '/admin/contest');
+    await adm.waitForSelector('.mrow[data-eid="6"]', {timeout:8000});
+    check('الخدمة غير مضبوطة: خانتا الرابط والسرّ', await adm.isVisible('#waCfg') && !(await adm.isVisible('#waLink'))
+          && (await adm.textContent('#waChip')).includes('غير مضبوط'));
+    check('والتسجيل غير جاهز', (await adm.textContent('#stWa')).includes('غير جاهز'));
+    await adm.fill('#rUrl', WA); await adm.fill('#rSecret', WA_SECRET);
+    await adm.click('#rSave');
+    await adm.waitForSelector('#waConnect:not([hidden])', {timeout:8000});
+    check('بعد الحفظ: غير مربوط — الرقم ثم «ربط»', !(await adm.isVisible('#waCfg'))
+          && (await adm.textContent('#waState')).includes('أدخل الرقم') && (await adm.inputValue('#rSecret')) === '');
+    await adm.fill('#wNum', '0500000009');
+    await adm.click('#wGo');
+    await adm.waitForSelector('#waQr:not([hidden])', {timeout:8000});
+    check('يظهر رمز QR للمسح وشرحه', (await adm.getAttribute('#wQrImg', 'src')).startsWith('data:image/png;base64,')
+          && (await adm.textContent('#waQr')).includes('الأجهزة المرتبطة') && (await adm.textContent('#waChip')).includes('بانتظار'));
+    await shot(adm, 'contest-admin-qr');
+    await reader('/_test/scan/' + TENANT);
+    await adm.waitForFunction(() => document.getElementById('waChip').textContent.includes('مربوط ✓'), null, {timeout:10000});
+    check('بعد المسح: مربوطٌ برقمه، والرمز يختفي وحده', (await adm.textContent('#waState')).includes('+966500000009')
+          && await adm.$eval('#waQr', e => e.hidden) && await adm.$eval('#waConnect', e => e.hidden) && await adm.isVisible('#waOn'));
+    check('واستقبال التوقّعات جاهز', (await adm.textContent('#stWa')).includes('جاهز ✓'));
+    await adm.fill('#wTest', '0551112222'); await adm.click('#wTestGo');
+    await adm.waitForFunction(() => document.getElementById('waMsg').textContent.includes('✓'), null, {timeout:8000});
+    check('رسالة تجربة من رقم المسابقة', true);
+
+    const opts = await adm.$$eval('.mrow[data-eid="6"] select[data-f="prize_id"] option', o => o.map(x => [x.value, x.textContent]));
+    check('الجائزة: اشتراكات المتجر بأسعارها، والنافد معلَّم، وجائزةٌ أخرى', opts.some(([v, t]) => v === '1001'
+          && t.includes('اشتراك سمارت 3 أشهر') && t.includes('79 ر.س')) && opts.some(([v, t]) => v === '1002' && t.includes('نافد'))
+          && !opts.some(([v]) => v === '1003') && opts.some(([v]) => v === '__text'), JSON.stringify(opts).slice(0, 120));
+    await adm.selectOption('.mrow[data-eid="6"] select[data-f="prize_id"]', '1001');
+    check('اختياره يُظهر رابطه', (await adm.getAttribute('.mrow[data-eid="6"] [data-f="plink"]', 'href')) === 'https://ssouq.com/smart-3m/p1001'
+          && await adm.isVisible('.mrow[data-eid="6"] [data-f="plink"]'));
+    await adm.selectOption('.mrow[data-eid="6"] select[data-f="prize_id"]', '__text');
+    check('«جائزة أخرى» تفتح خانة الكتابة', await adm.isVisible('.mrow[data-eid="6"] input[data-f="prize"]')
+          && !(await adm.isVisible('.mrow[data-eid="6"] [data-f="plink"]')));
+    await adm.selectOption('.mrow[data-eid="6"] select[data-f="prize_id"]', '1001');
+    await adm.click('.mrow[data-eid="6"] [data-a="on"]');
+    await adm.waitForFunction(() => (document.querySelector('.mrow[data-eid="6"] .chip') || {}).textContent.includes('مفتوحة'), null, {timeout:8000});
+    check('فُتحت المسابقة بالاشتراك المختار ورابطه', (await adm.$eval('.mrow[data-eid="6"] select[data-f="prize_id"]', s => s.value)) === '1001'
+          && (await adm.getAttribute('.mrow[data-eid="6"] [data-f="plink"]', 'href')).startsWith('https://ssouq.com/smart-3m/p1001?utm_source='));
+    const ann = await adm.inputValue('#annText');
+    check('رسالة القناة كُتبت وحدها: المباراة والجائزة والرابط', ann.startsWith('🎁 *مسابقة سمارت سوق: توقّع النتيجة واربح!*')
+          && ann.includes('• هولندا × صربيا') && ann.includes('🏆 *الجائزة:* اشتراك سمارت 3 أشهر')
+          && ann.includes('https://guide.ssouq.com/nations-league/predict'), ann.slice(0, 90));
+    await adm.click('#annCopy');
+    await adm.waitForFunction(() => document.getElementById('annMsg').textContent.includes('نُسخت'), null, {timeout:5000});
+    check('«نسخ الرسالة» ينسخها كما هي', (await adm.evaluate(() => navigator.clipboard.readText())) === ann);
+    await adm.fill('#annText', ann + '\nسطرٌ من المدير');
+    await adm.evaluate(() => load());
+    check('تعديل المدير لا يمسحه التحديث الدوري', (await adm.inputValue('#annText')).endsWith('سطرٌ من المدير'));
+    await adm.click('#annReset');
+    check('و«إعادة إنشاء» يعيدها', (await adm.inputValue('#annText')) === ann);
+    check('بلا تمرير أفقي في صفحة المدير (430px)', await adm.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await shot(adm, 'contest-admin');
 
     console.log('بطاقة المباراة المفتوحة');
     const ctx = await browser.newContext({viewport:{width:360, height:780}});
@@ -92,13 +153,16 @@ print(json.dumps(rec, ensure_ascii=False))
     await page.waitForSelector('#predict .pwait', {timeout:8000});
     const code = await page.textContent('#predict .pwait code');
     const href = await page.getAttribute('#predict .pwait a.wa', 'href');
-    check('الخطوة الأخيرة: رمزٌ وزرّ واتساب برسالةٍ جاهزة إلى رقم المتجر', /^[A-Z0-9]{6}$/.test(code)
+    check('سطر الجائزة: الاشتراك برابط صفحته', (await page.getAttribute('#predict .pprize', 'href') || '').includes('p1001?utm_source=')
+          && (await page.textContent('#predict .pprize')).includes('اشتراك سمارت 3 أشهر'));
+    check('الخطوة الأخيرة: رمزٌ وزرّ واتساب برسالةٍ جاهزة إلى رقم المسابقة', /^[A-Z0-9]{6}$/.test(code)
           && href.startsWith('https://wa.me/966500000009?text=') && waText(href).includes('رمز التوقّع: ' + code)
           && waText(href).includes('هولندا 2 – 1 صربيا'), code);
     await shot(page, 'contest-wait');
     const sent = await whatsapp('966551234567', waText(href));
-    check('رسالة الواتساب تُسجّله ويُردّ عليه', sent.forwarded && (sent.reply || '').includes('تم تسجيل توقّعك')
-          && sent.sent[0].to === '966551234567', JSON.stringify(sent).slice(0, 80));
+    check('رسالة الواتساب تُسجّله ويُردّ عليه من رقم المسابقة', sent.code === 200 && sent.answer.status === 'ok'
+          && sent.sent.length && sent.sent[0].to === '966551234567' && sent.sent[0].body.includes('تم تسجيل توقّعك'),
+          JSON.stringify(sent).slice(0, 80));
     await page.waitForSelector('#predict .pmine', {timeout:10000});
     const mine = await page.textContent('#predict .pmine');
     check('والصفحة تؤكّد برقم المرسل مخفيًّا', mine.includes('سجّلت توقّعك') && mine.includes('05•••••567'), mine.slice(0, 70));
@@ -125,7 +189,7 @@ print(json.dumps(rec, ensure_ascii=False))
     check('الرقم نفسه من جهازٍ آخر: مسجّلٌ من قبل ولا يتغيّر', (await other.textContent('#predict .pmine')).includes('من قبل')
           && (await page.evaluate(async () => (await (await fetch('/api/contest?m=6')).json()).count)) === 1);
     const plain = await whatsapp('966551234567', 'السلام عليكم، متى ينتهي اشتراكي؟');
-    check('رسائل العملاء الأخرى لا تُمرَّر ولا يُردّ عليها', !plain.forwarded && plain.sent.length === 0);
+    check('رسائل العملاء الأخرى: ignored ولا ردّ', plain.answer.status === 'ignored' && plain.sent.length === 0);
 
     console.log('المباراة المنتهية والفيديو');
     await page.goto(APP + '/nations-league/1-france-belgium');
@@ -163,12 +227,7 @@ print(json.dumps(rec, ensure_ascii=False))
     await page.keyboard.press('Escape');
     check('Esc يغلق الفيديو', !(await page.$('.pvid')));
 
-    console.log('صفحة المدير');
-    const adm = await (await browser.newContext({viewport:{width:430, height:900}})).newPage();
-    adm.on('pageerror', e => errors.push(e.message));
-    await adm.goto(APP + '/admin/login');
-    await adm.evaluate(async () => { await fetch('/admin/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({user: 'admin', password: 'envpass123'})}); });
+    console.log('صفحة المدير: التفاصيل والفرز');
     await adm.goto(APP + '/admin/contest');
     await adm.waitForSelector('.mrow[data-eid="6"]', {timeout:8000});
     check('المباراة المفتوحة وعدد توقّعاتها', (await adm.textContent('.mrow[data-eid="6"] .chip')).includes('1 توقّعًا'));
@@ -177,9 +236,8 @@ print(json.dumps(rec, ensure_ascii=False))
     await adm.waitForSelector('#dBody .win', {timeout:8000});
     check('التفاصيل: الفائز برقمه كاملًا', /\+9665501\d{5}/.test(await adm.textContent('#dBody .win')));
     check('ورسالة التهنئة أُرسلت له', (await adm.textContent('#dBody .sent')).includes('أُرسلت ✓'));
-    check('واستقبال التوقّعات جاهز', (await adm.textContent('#stWa')).includes('جاهز') && await adm.$eval('#waBox', b => b.hidden));
     check('وفيديو الفرز', !!(await adm.$('#dBody canvas')) && !(await adm.$eval('#vSave', b => b.hidden)));
-    await shot(adm, 'contest-admin');
+    await shot(adm, 'contest-admin-draw');
     check('بلا أخطاء في الصفحات', errors.length === 0, errors.join(' | '));
   } finally {
     await browser.close();

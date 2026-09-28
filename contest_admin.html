@@ -109,7 +109,36 @@ button:disabled{opacity:.55;cursor:default}
 <main class="wrap">
   <h1>مسابقة توقّع النتيجة</h1>
   <p class="sub">افتح المسابقة على مباراة واكتب جائزتها. المشارك يسجّل توقّعه برسالة واتساب من رقمه، والتوقّعات تُقفل مع صافرة البداية، والفرز آليٌّ بعد صافرة النهاية، والفائز يُبلَّغ على واتساب — ولا يُطلب منك شيء إلا تسليم الجائزة.</p>
-  <section id="waBox" class="warn" hidden></section>
+  <section id="waSec">
+    <h2>ربط واتساب المسابقة <span class="chip" id="waChip">…</span></h2>
+    <p class="hint" style="margin-top:0">المشاركون يرسلون رسائل التوقّع إلى الرقم الذي تربطه هنا، عبر خدمة واتساب النظام اللوجستي نفسها (جلسةٌ خاصة بالمسابقة).</p>
+    <div id="waCfg" hidden>
+      <label for="rUrl">رابط خدمة الواتساب (WHATSAPP_READER_URL)</label>
+      <input id="rUrl" class="ltr" placeholder="https://…">
+      <label for="rSecret">السرّ (WHATSAPP_READER_SECRET)</label>
+      <input id="rSecret" class="ltr" type="password" autocomplete="off" placeholder="كما في النظام اللوجستي">
+      <button class="go" id="rSave" style="margin-top:12px">حفظ</button>
+    </div>
+    <div id="waLink" hidden>
+      <div id="waState" class="msg" style="margin-top:0"></div>
+      <div id="waConnect" hidden>
+        <label for="wNum">رقم الواتساب الذي تربطه</label>
+        <input id="wNum" class="ltr" inputmode="tel" placeholder="05xxxxxxxx">
+        <button class="go" id="wGo" style="margin-top:12px">ربط</button>
+      </div>
+      <div id="waQr" class="vid" hidden>
+        <img id="wQrImg" alt="رمز QR" style="width:260px;max-width:80vw;background:#fff;border-radius:14px;padding:10px">
+        <p class="hint">في جوال الرقم: واتساب ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز، ثم امسح الرمز. يتحدّث الرمز وحده حتى يتم الربط.</p>
+      </div>
+      <div id="waOn" class="acts" hidden style="margin-top:10px">
+        <input id="wTest" class="ltr" inputmode="tel" placeholder="رقمٌ لرسالة تجربة" style="width:180px">
+        <button class="ghost" id="wTestGo">أرسل تجربة</button>
+        <button class="danger" id="wOff">فصل</button>
+      </div>
+      <button class="ghost" id="rEdit" style="margin-top:10px">تعديل رابط الخدمة وسرّها</button>
+    </div>
+    <div class="msg" id="waMsg"></div>
+  </section>
 
   <section>
     <div class="stats">
@@ -121,9 +150,16 @@ button:disabled{opacity:.55;cursor:default}
   </section>
 
   <section>
-    <h2>المباريات <span class="acts"><a class="ghost" id="xlsAll">Excel كل التوقّعات</a><a class="ghost" id="lnkPub" target="_blank" rel="noopener">صفحة المسابقة</a></span></h2>
+    <h2>المباريات <span class="acts"><button class="ghost" id="pFresh" title="يجلب منتجات سلة من جديد">تحديث الاشتراكات</button><a class="ghost" id="xlsAll">Excel كل التوقّعات</a><a class="ghost" id="lnkPub" target="_blank" rel="noopener">صفحة المسابقة</a></span></h2>
     <div id="rows"><p class="empty">نحمّل المباريات…</p></div>
     <p class="hint">المباريات القادمة خلال ثلاثة أسابيع، وكل مباراةٍ عليها مسابقة. المسابقة تُفتح قبل صافرة البداية فقط، وعدد الفائزين لا يتغيّر بعد الإقفال.</p>
+  </section>
+
+  <section id="annSec">
+    <h2>رسالة القناة <span class="acts"><button class="ghost" id="annReset">إعادة إنشاء</button><button class="go" id="annCopy">نسخ الرسالة</button></span></h2>
+    <p class="hint" style="margin-top:0">تُكتب وحدها من المسابقات المفتوحة: المباريات وموعدها وجائزتها. عدّلها إن شئت، ثم انسخها والصقها في القناة.</p>
+    <textarea id="annText" rows="18" placeholder="افتح مسابقةً على مباراة، فتظهر رسالتها هنا."></textarea>
+    <div class="msg" id="annMsg"></div>
   </section>
 
   <section>
@@ -134,10 +170,6 @@ button:disabled{opacity:.55;cursor:default}
     <span class="hint">يُستبدل فيه: {name} الاسم الأول · {match} المباراة · {score} النتيجة · {prize} الجائزة · {link} صفحة الفرز</span>
     <label for="sAdmin">رقم واتسابك لملخّص كل فرز (اختياري)</label>
     <input id="sAdmin" class="ltr" inputmode="tel" placeholder="05xxxxxxxx">
-    <label for="sNum">رقم استقبال التوقّعات (اختياري)</label>
-    <input id="sNum" class="ltr" inputmode="tel" placeholder="يُؤخذ من خدمة الواتساب">
-    <span class="hint">المشاركون يرسلون رسائل التوقّع إلى هذا الرقم، ويجب أن يكون الرقم المربوط بخدمة واتساب (Baileys) نفسه. اتركه فارغًا ليُؤخذ منها تلقائيًا.</span>
-    <p class="hint" id="waHint"></p>
     <button class="go" id="sSave" style="margin-top:12px">حفظ</button>
     <div class="msg" id="sMsg"></div>
   </section>
@@ -184,27 +216,37 @@ async function load() {
   $("stOpen").textContent = num(rows.filter(r => r.state === "open").length);
   $("stAll").textContent = num(cs.reduce((n, r) => n + (r.contest.count || 0), 0));
   $("stDone").textContent = num(rows.filter(r => r.state === "done").length);
-  const br = d.bridge || {}, issues = [];
-  if (d.wa !== "http") issues.push("قناة الواتساب ليست خدمة Baileys (بوابة HTTP). اضبطها من الإعدادات ← ربط سلة ← واتساب.");
-  else if (!br.ok) issues.push("تعذّر الوصول لخدمة الواتساب" + (br.error ? ": " + br.error : "") + ".");
-  else {
-    if (!br.connected) issues.push("خدمة الواتساب غير متصلة — افتح صفحة ربطها وامسح رمز QR.");
-    if (!br.inbound) issues.push("خدمة الواتساب لا تمرّر الرسائل الواردة: اضبط فيها WA_INBOUND_URL = https://guide.ssouq.com/api/contest/wa-inbound ثم أعد نشرها.");
-  }
-  if (!d.number) issues.push("لا رقم لاستقبال التوقّعات، فالتسجيل متوقّف.");
-  $("stWa").innerHTML = issues.length ? '<span style="color:var(--err)">غير جاهز</span>' : '<span class="okline">جاهز ✓</span>';
-  $("waBox").hidden = !issues.length;
-  $("waBox").innerHTML = '<b>التسجيل برسالة واتساب يحتاج:</b><ul>' + issues.map(x => "<li>" + esc(x) + "</li>").join("") + "</ul>";
-  $("waHint").innerHTML = d.number ? 'الرقم الذي يراسله المشاركون الآن: <b dir="ltr">+' + esc(d.number) + "</b>" : "";
+  wa(d.reader || {});
   if (!$("sText").dataset.set) {
     const s = d.settings || {};
     $("sNotify").checked = !!s.notify; $("sText").value = s.text || ""; $("sAdmin").value = s.admin_phone || "";
-    $("sNum").value = s.wa_number || "";
     $("sText").dataset.set = "1";
   }
+  ann(d.announce || "");
+  if (!PRODUCTS) await products();
+  if ($("rows").querySelector("[data-dirty]")) return;          // تعديلٌ لم يُحفظ: لا يُمسح بالتحديث
   if (!d.feed && !rows.length) { $("rows").innerHTML = '<p class="empty">تعذّر جلب المباريات من ESPN الآن. أعد المحاولة بعد دقائق.</p>'; return; }
   $("rows").innerHTML = rows.length ? rows.map(row).join("") : '<p class="empty">لا مباريات قادمة في البطولة الآن.</p>';
 }
+
+// ---------- رسالة القناة ----------
+function ann(text) {
+  const t = $("annText");
+  if (t.dataset.dirty && t.dataset.gen !== text) { $("annMsg").className = "msg"; $("annMsg").textContent = "تغيّرت المسابقات بعد تعديلك — «إعادة إنشاء» يكتبها من جديد."; }
+  t.dataset.gen = text;
+  if (!t.dataset.dirty) t.value = text;
+  $("annCopy").disabled = !t.value.trim();
+}
+$("annText").oninput = () => { $("annText").dataset.dirty = "1"; $("annCopy").disabled = !$("annText").value.trim(); };
+$("annReset").onclick = () => { delete $("annText").dataset.dirty; $("annMsg").textContent = ""; ann($("annText").dataset.gen || ""); };
+$("annCopy").onclick = async () => {
+  const t = $("annText");
+  let ok = false;
+  try { await navigator.clipboard.writeText(t.value); ok = true; }
+  catch (e) { t.focus(); t.select(); try { ok = document.execCommand("copy"); } catch (e2) {} }
+  $("annMsg").className = "msg " + (ok ? "ok" : "err");
+  $("annMsg").textContent = ok ? "نُسخت ✓ — الصقها في القناة." : "تعذّر النسخ التلقائي: حدّد النص وانسخه.";
+};
 
 function row(r) {
   const c = r.contest, st = r.state, m = r.match;
@@ -215,7 +257,7 @@ function row(r) {
   if ((c && c.on && !c.draw) || (!(c && c.draw) && fresh && ["off", "open", "hold"].includes(st))) {
     const w = c ? c.winners : 1;
     ctl = `<div class="mctl">
-      <div><label>الجائزة</label><input data-f="prize" value="${esc(c ? c.prize : "")}" placeholder="اشتراك 3 أشهر" maxlength="80"></div>
+      <div><label>الجائزة</label>${prizeField(c)}</div>
       <div><label>الفائزون</label><select data-f="winners">${[1,2,3,4,5].map(n => `<option ${n === w ? "selected" : ""}>${n}</option>`).join("")}</select></div>
       <div class="acts">${c && c.on
         ? `<button class="ghost" data-a="save">حفظ</button><button class="danger" data-a="off">إيقاف</button>`
@@ -230,6 +272,91 @@ function row(r) {
     ${ctl}<div class="msg"></div></div>`;
 }
 
+// ---------- الجائزة: اشتراكٌ من المتجر ----------
+let PRODUCTS = null, PSRC = "";
+async function products(fresh) {
+  const d = await api("/api/contest/admin/products" + (fresh ? "?fresh=1" : ""));
+  PRODUCTS = d.products || []; PSRC = d.ok ? "" : "تعذّر جلب اشتراكات المتجر" + (d.error ? ": " + d.error : "") + " — اكتب الجائزة يدويًّا أو أعد المحاولة.";
+  if (DATA && (DATA.rows || []).length && !$("rows").querySelector("[data-dirty]")) $("rows").innerHTML = DATA.rows.map(row).join("");
+}
+const money = v => v ? ` · ${Number(v).toLocaleString("en-US")} ر.س` : "";
+const shortUrl = u => { u = String(u || "").split("?")[0]; try { return decodeURI(u); } catch (e) { return u; } };   // بلا علامة الدليل
+function prizeField(c) {
+  const sel = c && c.prize_id ? c.prize_id : (c && c.prize ? "__text" : "");
+  const list = PRODUCTS || [];
+  let opts = list.map(p => `<option value="${esc(p.id)}" data-url="${esc(p.url)}" ${p.id === sel ? "selected" : ""}>${esc(p.name)}${money(p.price)}${p.available ? "" : " (نافد)"}</option>`).join("");
+  const link = c && c.prize_url ? c.prize_url : "";
+  if (c && c.prize_id && !list.some(p => p.id === c.prize_id))     // المحفوظة وإن غابت عن القائمة الآن
+    opts = `<option value="${esc(c.prize_id)}" data-url="${esc(link)}" selected>${esc(c.prize)}</option>` + opts;
+  return `<select data-f="prize_id"><option value="">— اختر الاشتراك من المتجر —</option>${opts}
+      <option value="__text" ${sel === "__text" ? "selected" : ""}>جائزة أخرى (أكتبها)</option></select>
+    <input data-f="prize" value="${esc(c && !c.prize_id ? c.prize : "")}" placeholder="اكتب الجائزة" maxlength="80" ${sel === "__text" ? "" : "hidden"} style="margin-top:6px">
+    <a class="hint plink" data-f="plink" href="${esc(link)}" target="_blank" rel="noopener" ${link ? "" : "hidden"} dir="ltr" style="overflow-wrap:anywhere">${esc(shortUrl(link))}</a>
+    ${PSRC ? `<span class="hint" style="color:var(--amber)">${esc(PSRC)}</span>` : ""}`;
+}
+$("rows").addEventListener("input", e => { const r = e.target.closest(".mrow"); if (r && e.target.dataset.f) r.dataset.dirty = "1"; });
+$("rows").addEventListener("change", e => {
+  const r = e.target.closest(".mrow"); if (r && e.target.dataset.f) r.dataset.dirty = "1";
+  const s = e.target.closest('[data-f="prize_id"]'); if (!s) return;
+  const box = s.parentElement, o = s.selectedOptions[0], link = box.querySelector('[data-f="plink"]');
+  box.querySelector('[data-f="prize"]').hidden = s.value !== "__text";
+  const url = o && o.dataset.url ? o.dataset.url : "";
+  link.hidden = !url; link.href = url; link.textContent = shortUrl(url);
+});
+
+$("pFresh").onclick = async () => { $("pFresh").disabled = true; await products(true); $("pFresh").disabled = false; };
+
+// ---------- ربط واتساب المسابقة (خدمة النظام اللوجستي) ----------
+let waTimer = null;
+const WA_STATE = {connected: "مربوط ✓", qr: "بانتظار مسح الرمز", connecting: "يتصل…", disconnected: "غير مربوط", "": "غير مربوط"};
+function wa(r) {
+  clearTimeout(waTimer);
+  const configured = r.configured;
+  $("waCfg").hidden = configured && !$("waCfg").dataset.edit;
+  $("waLink").hidden = !configured;
+  if (!$("rUrl").value) $("rUrl").value = r.url || "";
+  $("rSecret").placeholder = r.has_secret ? "محفوظ — اتركه فارغًا ليبقى" : "كما في النظام اللوجستي";
+  $("rUrl").disabled = $("rSecret").disabled = $("rSave").disabled = !!r.env;
+  $("rEdit").hidden = !!r.env;
+  const on = r.status === "connected";
+  $("waChip").className = "chip " + (on ? "done" : r.error ? "void" : configured ? "hold" : "");
+  $("waChip").textContent = !configured ? "غير مضبوط" : r.error ? "تعذّر الوصول" : (WA_STATE[r.status] || r.status);
+  $("stWa").innerHTML = on ? '<span class="okline">جاهز ✓</span>' : '<span style="color:var(--err)">غير جاهز</span>';
+  $("waState").className = "msg " + (r.error ? "err" : on ? "ok" : "");
+  $("waState").innerHTML = r.error ? "خدمة الواتساب غير متاحة: " + esc(r.error)
+    : on ? 'مربوط برقم <b dir="ltr">+' + esc(r.number) + "</b> — جاهزٌ لاستقبال التوقّعات."
+    : r.status === "qr" ? "بانتظار مسح الرمز من الجوال" + (r.number ? ' <b dir="ltr">+' + esc(r.number) + "</b>" : "") + "."
+    : r.status === "connecting" ? "يتصل… إن طال، اضغط «ربط» من جديد."
+    : configured ? "غير مربوط — أدخل الرقم ثم اضغط «ربط»، فيظهر رمز QR." : "";
+  if (r.number && !$("wNum").value) $("wNum").value = r.number;
+  $("waConnect").hidden = !configured || !!r.error || on;        // كالنظام اللوجستي: الرقم والربط حتى يتصل
+  $("waQr").hidden = r.status !== "qr" || !r.qr;
+  if (r.qr) $("wQrImg").src = r.qr;
+  $("waOn").hidden = !on;
+  if (configured && !r.error && (r.status === "qr" || r.status === "connecting"))   // حتى يتم الربط
+    waTimer = setTimeout(async () => wa(await api("/api/contest/admin/wa")), 4000);
+}
+$("rSave").onclick = async () => {
+  const d = await api("/api/contest/admin/wa/config", {url: $("rUrl").value, secret: $("rSecret").value});
+  $("waMsg").className = "msg " + (d.ok ? "ok" : "err"); $("waMsg").textContent = d.ok ? "حُفظ." : (d.error || "تعذّر الحفظ");
+  if (d.ok) { $("rSecret").value = ""; delete $("waCfg").dataset.edit; wa(d); }
+};
+$("rEdit").onclick = () => { $("waCfg").dataset.edit = "1"; $("waCfg").hidden = false; };
+$("wGo").onclick = async () => {
+  $("waMsg").className = "msg"; $("waMsg").textContent = "نبدأ الربط…";
+  const d = await api("/api/contest/admin/wa/connect", {number: $("wNum").value});
+  $("waMsg").className = "msg " + (d.ok ? "" : "err"); $("waMsg").textContent = d.ok ? "" : (d.error || "تعذّر بدء الربط");
+  if (d.ok) wa(d);
+};
+$("wOff").onclick = async () => {
+  if (!confirm("فصل الرقم يوقف تسجيل التوقّعات ورسائل الفائزين حتى تربط رقمًا من جديد. متابعة؟")) return;
+  wa(await api("/api/contest/admin/wa/disconnect", {}));
+};
+$("wTestGo").onclick = async () => {
+  const d = await api("/api/contest/admin/wa/test", {to: $("wTest").value});
+  $("waMsg").className = "msg " + (d.ok ? "ok" : "err"); $("waMsg").textContent = d.ok ? "أُرسلت رسالة التجربة ✓" : (d.error || "تعذّر الإرسال");
+};
+
 $("rows").addEventListener("click", async e => {
   const b = e.target.closest("[data-a]"); if (!b) return;
   const rowEl = b.closest(".mrow"), eid = rowEl.dataset.eid, msg = rowEl.querySelector(".msg"), a = b.dataset.a;
@@ -237,17 +364,20 @@ $("rows").addEventListener("click", async e => {
   const f = k => (rowEl.querySelector(`[data-f="${k}"]`) || {}).value;
   if (a === "off" && !confirm("إيقاف المسابقة يخفيها من صفحة المباراة ولا يُفرز لها. التوقّعات تبقى محفوظة. متابعة؟")) return;
   b.disabled = true; msg.className = "msg"; msg.textContent = "…";
-  const d = await api("/api/contest/admin/set", {m: eid, on: a !== "off", prize: f("prize"), winners: f("winners")});
+  const pid = f("prize_id") || "";
+  const d = await api("/api/contest/admin/set", {m: eid, on: a !== "off", winners: f("winners"),
+                                                 prize_id: pid === "__text" ? "" : pid, prize: pid === "__text" || !pid ? f("prize") : ""});
   b.disabled = false;
   if (!d.ok) { msg.className = "msg err"; msg.textContent = d.error || "تعذّر الحفظ"; return; }
+  delete rowEl.dataset.dirty;
   await load();
 });
 
 $("sSave").onclick = async () => {
   const d = await api("/api/contest/admin/settings", {notify: $("sNotify").checked, text: $("sText").value,
-                                                       admin_phone: $("sAdmin").value, wa_number: $("sNum").value});
+                                                       admin_phone: $("sAdmin").value});
   $("sMsg").className = "msg " + (d.ok ? "ok" : "err"); $("sMsg").textContent = d.ok ? "حُفظ." : (d.error || "تعذّر الحفظ");
-  if (d.ok) { $("sAdmin").value = d.settings.admin_phone || ""; $("sNum").value = d.settings.wa_number || ""; load(); }
+  if (d.ok) { $("sAdmin").value = d.settings.admin_phone || ""; }
 };
 
 // ---------- تفاصيل مسابقة ----------
