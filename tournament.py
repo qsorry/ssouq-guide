@@ -483,7 +483,8 @@ main{max-width:1040px}
 .stat .bar i{background:var(--brand)}
 .stat .bar i+i{background:var(--gold)}
 .stats-head{display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px}
-.match .tv{display:inline-flex;align-items:center;gap:3px;color:var(--brand-text);font-weight:700}
+.match .tv{display:inline-flex;align-items:center;gap:4px;margin-top:3px;padding:1px 8px;border-radius:999px;
+  background:var(--soft);border:1px solid var(--line);color:var(--brand-text);font-weight:700;font-size:.7rem;line-height:1.6}
 .match .tv svg,.tvline svg{width:13px;height:13px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .mhero .tvline{display:flex;align-items:center;justify-content:center;gap:5px;color:var(--brand-text)}
@@ -816,18 +817,37 @@ def render_match(tail):
     return 200, body, (LIVE_TTL if live else 300)
 
 
-ANNOUNCE_TAIL = """3️⃣ اضغط «أرسل توقّعي على واتساب» وأرسل الرسالة الجاهزة كما هي
-4️⃣ يوصلك تأكيد على الواتساب ✅
-
-📌 *الشروط باختصار:*
-• المشاركة مجانية
-• توقّع واحد لكل رقم في كل مباراة
-• {lock}
-• {rule}
-• ننشر فيديو يوضح كيف تم الفرز، ونبلّغ الفائز على الواتساب
-
-بالتوفيق للجميع 🤞"""
 CLOCKS = "🕛🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚"
+# رمز الدولة في شعار ESPN (…/countries/500/ksa.png) ← رمزها في ISO؛ ومنه علمها رمزًا تعبيريًّا
+FLAG_CODES = {
+    "ksa": "SA", "irq": "IQ", "oma": "OM", "kuw": "KW", "uae": "AE", "yem": "YE", "qat": "QA", "bhr": "BH",
+    "jor": "JO", "syr": "SY", "leb": "LB", "pal": "PS", "egy": "EG", "mar": "MA", "alg": "DZ", "tun": "TN",
+    "lby": "LY", "sud": "SD", "irn": "IR", "jpn": "JP", "kor": "KR", "chn": "CN", "aus": "AU", "uzb": "UZ",
+    "ind": "IN", "idn": "ID", "tha": "TH", "vie": "VN", "mas": "MY", "phi": "PH", "prk": "KP", "kgz": "KG",
+    "tjk": "TJ", "tkm": "TM", "afg": "AF", "pak": "PK", "sin": "SG", "hkg": "HK", "bra": "BR", "arg": "AR",
+    "usa": "US", "mex": "MX", "can": "CA", "uru": "UY", "col": "CO", "chi": "CL", "sen": "SN", "nga": "NG",
+    "alb": "AL", "and": "AD", "arm": "AM", "fifa.armenia": "AM", "aut": "AT", "aze": "AZ", "bel": "BE",
+    "bih": "BA", "blr": "BY", "bul": "BG", "cro": "HR", "cyp": "CY", "cze": "CZ", "den": "DK", "esp": "ES",
+    "est": "EE", "fin": "FI", "fra": "FR", "fro": "FO", "geo": "GE", "ger": "DE", "gib": "GI", "gre": "GR",
+    "hun": "HU", "irl": "IE", "isl": "IS", "isr": "IL", "ita": "IT", "kaz": "KZ", "kosovo": "XK", "kos": "XK",
+    "lie": "LI", "ltu": "LT", "lux": "LU", "lva": "LV", "mda": "MD", "mkd": "MK", "mlt": "MT", "mtg": "ME",
+    "mne": "ME", "ned": "NL", "nor": "NO", "pol": "PL", "por": "PT", "rom": "RO", "rou": "RO", "sba": "RS",
+    "srb": "RS", "smr": "SM", "sui": "CH", "svk": "SK", "svn": "SI", "swe": "SE", "tur": "TR", "ukr": "UA",
+    "rus": "RU",
+}
+SUBFLAGS = {"eng": "gbeng", "sco": "gbsct", "wal": "gbwls"}      # أعلام إنجلترا واسكتلندا وويلز
+
+
+def flag(logo):
+    """علم المنتخب رمزًا تعبيريًّا من رابط شعاره عند ESPN (‏ksa ← 🇸🇦)، أو فارغ لما لا يُعرف."""
+    m = re.search(r"/countries/500/([a-z0-9_.-]+)\.png", str(logo or ""))
+    if not m:
+        return ""
+    code = m.group(1)
+    if code in SUBFLAGS:
+        return "\U0001F3F4" + "".join(chr(0xE0000 + ord(ch)) for ch in SUBFLAGS[code]) + "\U000E007F"
+    iso = FLAG_CODES.get(code, "")
+    return "".join(chr(0x1F1E6 + ord(ch) - 65) for ch in iso)
 
 
 def _mins(n):
@@ -836,7 +856,8 @@ def _mins(n):
 
 def announcement(rows, now=None):
     """رسالة الإعلان في القناة، جاهزةً للنسخ من صفحة المدير: المسابقات المفتوحة للتوقّع بمبارياتها
-    وموعدها وجائزتها ورابط صفحة كلٍّ منها (صفوف contest.admin_rows). ولا مسابقة مفتوحة ← نصٌّ فارغ."""
+    (بأعلام المنتخبين) وموعدها وقناتها وجائزتها ورابط صفحة كلٍّ منها، والشروط بطريقة الفوز والإقفال
+    (صفوف contest.admin_rows). ولا مسابقة مفتوحة ← نصٌّ فارغ."""
     now = time.time() if now is None else now
     ms = sorted((r for r in rows if r.get("state") == "open" and r.get("contest")), key=lambda r: r["match"]["ts"])
     if not ms:
@@ -844,67 +865,90 @@ def announcement(rows, now=None):
     today = _day(now)
     days = sorted({_day(r["match"]["ts"]) for r in ms})
     one_day, one_time = len(days) == 1, len({_clock(r["match"]["ts"]) for r in ms}) == 1
-    what = "مباراة" if len(ms) == 1 else "مباريات"
+    single = len(ms) == 1
 
     def cup(r):
         return r["match"].get("cup") or contest.DEFAULT_CUP
 
     cups = {cup(r) for r in ms}
-    where = f" في {cups.pop()}" if len(cups) == 1 else ""           # بطولاتٌ مختلفة: اسمها بجانب كل مباراة
-    if not one_day:
-        head = f"⚽ المباريات المفتوحة للتوقّع{where}:"
-    else:
+    mixed = len(cups) > 1
+    where = "" if mixed or single else f" في {next(iter(cups))}"
+    if one_day:
         d, first = days[0], datetime.datetime.fromtimestamp(ms[0]["match"]["ts"], RIYADH)
         when = (("الليلة" if first.hour >= 17 else "اليوم") if d == today
                 else "الغد" if d == today + datetime.timedelta(days=1)
                 else f"{DAYS[d.weekday()]} {d.day} {MONTHS[d.month - 1]}")
-        head = f"⚽ {what} {when}{where}:"
+        intro = f"توقّع نتيجة مباراة {when} بين:" if single else f"توقّع نتيجة مباريات {when}{where}:"
+    else:
+        intro = f"توقّع نتيجة المباريات المفتوحة للتوقّع{where}:"
+
+    def clock(ts):
+        return CLOCKS[datetime.datetime.fromtimestamp(ts, RIYADH).hour % 12]
 
     def teams(r):
-        return f"{r['match']['home']} × {r['match']['away']}"
+        mt = r["match"]
+        fh, fa = flag(mt.get("home_logo")), flag(mt.get("away_logo"))
+        return f"{fh + ' ' if fh else ''}{mt['home']} × {mt['away']}{' ' + fa if fa else ''}"
 
     def link(r):                                   # رابطٌ خاص بالمباراة: بطاقة التوقّع فيها مباشرةً
         slug, path = r["match"].get("slug"), contest.cup_path(r["match"])
         return f"{guide_pages.SITE}{path}/{slug}#predict" if slug else f"{guide_pages.SITE}{path}/predict"
 
-    lines = []
-    for r in ms:
-        ts = r["match"]["ts"]
-        tail = "" if one_day and one_time else f" — {_clock(ts)}" if one_day else f" — {when_label(ts)}"
-        tv = f" — 📺 {r['tv']}" if r.get("tv") else ""
-        lines.append(f"• {teams(r)}{'' if where else f' ({cup(r)})'}{tail}{tv}")
-        if len(ms) > 1:
-            lines.append(link(r))
-    if one_day and one_time:
-        t = datetime.datetime.fromtimestamp(ms[0]["match"]["ts"], RIYADH)
-        lines.append(f"{CLOCKS[t.hour % 12]} الساعة {_clock(ms[0]['match']['ts'])}")
+    ts0 = ms[0]["match"]["ts"]
+    shared = f"{clock(ts0)} الساعة {_clock(ts0)}" if one_day and one_time else ""
+    out = ["🎁 مسابقة سمارت سوق | توقّع واربح! ⚽🏆", "", intro, ""]
+    if single:
+        r = ms[0]
+        out.append(teams(r))
+        out.append(shared or f"{clock(ts0)} {when_label(ts0)}")
+        if r.get("tv"):
+            out.append(f"📺 القناة الناقلة: {r['tv']}")
+    else:
+        if shared:
+            out += [shared, ""]
+        for r in ms:
+            ts = r["match"]["ts"]
+            out.append(teams(r) + (f" ({cup(r)})" if mixed else ""))
+            if not shared:
+                out.append(f"{clock(ts)} {_clock(ts) if one_day else when_label(ts)}")
+            if r.get("tv"):
+                out.append(f"📺 {r['tv']}")
+            out += [link(r), ""]
+        out.pop()
 
     def prize(r):
         c = r["contest"]
         w = int(c.get("winners") or 1)
-        return (c.get("prize") or "[اكتب الجائزة هنا]") + (" (فائزان)" if w == 2 else f" ({w} فائزين)" if w > 2 else "")
+        return (c.get("prize") or "[اكتب الجائزة هنا]") + (" — فائزان" if w == 2 else f" — {w} فائزين" if w > 2 else "")
 
     labels = [prize(r) for r in ms]
-    if len(ms) == 1:
-        prizes = f"🏆 *الجائزة:* {labels[0]}"
+    if single:
+        out += ["", "🎁 الجائزة:", labels[0] + " 🎉"]
     elif len(set(labels)) == 1:
-        prizes = f"🏆 *الجائزة لكل مباراة:* {labels[0]}"
+        out += ["", "🎁 الجائزة لكل مباراة:", labels[0] + " 🎉"]
     else:
-        prizes = "🏆 *الجوائز:*\n" + "\n".join(f"• {teams(r)}: {lab}" for r, lab in zip(ms, labels))
+        out += ["", "🎁 الجوائز:"] + [f"• {r['match']['home']} × {r['match']['away']}: {lab}" for r, lab in zip(ms, labels)]
+
+    out += ["", "طريقة المشاركة:"]
+    out += (["1️⃣ ادخل صفحة المباراة 👇", link(ms[0])] if single else ["1️⃣ افتح رابط المباراة اللي تبيها 👆"])
+    out += ["", "2️⃣ اكتب توقعك للنتيجة + اسمك.", "",
+            "3️⃣ اضغط «أرسل توقّعي على واتساب» وأرسل الرسالة الجاهزة كما هي.", "",
+            "4️⃣ انتظر رسالة التأكيد على الواتساب ✅"]
+
+    each = "المباراة" if single else "كل مباراة"
     extras = {contest.extra_of(r["contest"]) for r in ms}
-    lock = ("التوقّعات تُقفل مع صافرة البداية" if extras == {0}
-            else f"التوقّعات تُقفل بعد صافرة البداية بـ {_mins(extras.pop())}" if len(extras) == 1
-            else "التوقّعات تُقفل مع صافرة البداية أو بعدها بدقائق، كما في صفحة كل مباراة")
+    lock = (f"تُغلق التوقعات مع صافرة بداية {each}." if extras == {0}
+            else f"تُغلق التوقعات بعد صافرة البداية بـ {_mins(next(iter(extras)))}." if len(extras) == 1
+            else "تُغلق التوقعات مع صافرة البداية أو بعدها بدقائق، كما في صفحة كل مباراة.")
     modes = {contest.mode_of(r["contest"]) for r in ms}
-    rule = ("الفرز آلي بعد صافرة النهاية بين اللي جابوا النتيجة بالضبط، وإذا ما أحد جابها ما فيه فائز" if modes == {"exact"}
-            else "الفرز آلي بعد صافرة النهاية: بين اللي جابوا النتيجة بالضبط، وإذا ما أحد جابها فبين اللي عرفوا الفائز"
-            if modes == {"outcome"}
-            else "الفرز آلي بعد صافرة النهاية بين اللي جابوا النتيجة بالضبط (وفي بعض المباريات إذا ما أحد جابها فبين "
-                 "اللي عرفوا الفائز، كما في صفحتها)")
-    how = (["1️⃣ ادخل صفحة المباراة 👇", link(ms[0]), "2️⃣ توقّع النتيجة واكتب اسمك"] if len(ms) == 1
-           else ["1️⃣ افتح رابط المباراة اللي تبيها 👆", "2️⃣ توقّع النتيجة واكتب اسمك"])
-    return "\n".join(["🎁 *مسابقة سمارت سوق: توقّع النتيجة واربح!*", "", head, *lines, "", prizes, "",
-                      "*كيف تشارك؟*", *how, ANNOUNCE_TAIL.format(lock=lock, rule=rule)])
+    nowin = ("إذا لم يتوقع أحد النتيجة الصحيحة، لا يوجد فائز." if modes == {"exact"}
+             else "إذا لم يتوقع أحد النتيجة الصحيحة، فالفرز بين من توقّع الفائز." if modes == {"outcome"}
+             else "إذا لم يتوقع أحد النتيجة الصحيحة: لا فائز، أو الفرز بين من توقّع الفائز — كما في صفحة كل مباراة.")
+    out += ["", "📌 الشروط:", "• المشاركة مجانية بالكامل.", "• توقع واحد فقط لكل رقم في كل مباراة.", f"• {lock}",
+            f"• بعد نهاية {each} يتم الفرز آليًا بين أصحاب التوقع الصحيح بالنتيجة كاملة.", f"• {nowin}",
+            "• سيتم نشر فيديو يوضح آلية الفرز، والتواصل مع الفائز عبر الواتساب.", "",
+            "🔥 جاهزين للتحدي؟ توقّع النتيجة الآن!", "", "🤞 بالتوفيق للجميع!"]
+    return "\n".join(out)
 
 
 def render_predict():
@@ -1041,6 +1085,101 @@ addEventListener("load",h);if(window.ResizeObserver)new ResizeObserver(h).observ
 </html>"""
     return (200 if ms else 503), doc.encode("utf-8"), (LIVE_TTL if live else 300)
 
+
+HUB_ROWS = 6                                         # القادمة لكل بطولة في «المباريات القادمة»
+HUB_CSS = """
+.whead{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:-4px -4px 14px;border-radius:14px;
+  background:linear-gradient(200deg,var(--brand) 0%,#012E45 100%);color:#fff}
+.whead svg{width:30px;height:30px;flex:0 0 auto;stroke:#FFD79A;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.whead b{display:block;font-size:1.05rem;line-height:1.35}
+.whead small{display:block;color:#BFD8E6;font-size:.76rem}
+.wcup h2{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:1rem;margin:0 0 6px}
+.wcup h2 a{font-size:.8rem;font-weight:700;white-space:nowrap}
+.wnone{margin:0 0 6px}
+.wmore{margin-top:14px}
+.wmore>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--soft);font-weight:800;
+  color:var(--brand-text);user-select:none}
+.wmore>summary::-webkit-details-marker{display:none}
+.wmore>summary svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;
+  stroke-linejoin:round;transition:transform .2s}
+.wmore[open]>summary svg{transform:rotate(180deg)}
+.wmore>summary .n{font-weight:600;color:var(--mute);font-size:.8rem}
+.wmore>.wcols,.wmore>.wone{margin-top:14px}
+"""
+CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'
+
+
+def render_hub(cups, theme=""):
+    """ودجت رئيسية متجر سلة لأكثر من بطولة (كأس الخليج ودوري الأمم): مباريات اليوم من كلٍّ — والجارية
+    دائمًا — بقنواتها، وأقرب مسابقةٍ مفتوحة، و«المباريات القادمة» زرٌّ يفتحها (‏<details>، بلا سكربت).
+    الإطار يتّسع معها: الصفحة تبلّغ الحاضنة بطولها كلما تغيّر. وبلا مباريات اليوم تُفتح القادمة وحدها.
+    والوضع والشفافية ونافذة الروابط كـ render_widget. ← (رمز، بايتات، مدة الكاش)."""
+    today = _day(time.time())
+    todays, ups, live, banner, any_ms = [], [], False, None, False
+    for c in cups:
+        ms = (c._feed.get()[0] or {}).get("matches", [])
+        any_ms = any_ms or bool(ms)
+        pz = c._contests(ms)
+        t = [m for m in ms if c._day(m["ts"]) == today or m["state"] == "in"]
+        u = [m for m in ms if m["state"] == "pre" and m not in t][:HUB_ROWS]
+        live = live or any(m["state"] == "in" for m in ms)
+        head = (f'<h2><span>{_esc(c.CUP["name"])}</span><a href="{c.PATH}" target="_blank" rel="noopener">'
+                f'كل النتائج ←</a></h2>')
+        if t:
+            todays.append(f'<div class="wcup">{head}<ul class="matches">'
+                          + "".join(c._row(m, True, pz) for m in t) + "</ul></div>")
+        if u:
+            ups.append((len(u), f'<div class="wcup">{head}{c._by_day(u, new_tab=True, pz=pz)}</div>'))
+        opens = [m for m in ms if pz.get(m["id"], (None, ""))[1] == "open"]
+        if opens:
+            m = min(opens, key=lambda x: x["ts"])
+            if banner is None or m["ts"] < banner[0]:
+                banner = (m["ts"], c._banner(opens, pz, new_tab=True))
+    names = " · ".join(c.CUP["name"] for c in cups)
+    if not any_ms:
+        body = '<p class="sub">تعذّر تحميل المباريات الآن، ونعيد المحاولة تلقائيًا.</p>'
+    else:
+        cols = lambda xs: f'<div class="{"wcols" if len(xs) > 1 else "wone"}">{"".join(xs)}</div>'   # عمودان لبطولتين
+        body = cols(todays) if todays else '<p class="sub wnone">لا مباريات اليوم — أقرب المباريات تحت.</p>'
+        if ups:
+            n = sum(k for k, _ in ups)
+            body += (f'<details class="wmore" id="more"{"" if todays else " open"}><summary>المباريات القادمة '
+                     f'<span class="n">({n})</span>{CHEVRON}</summary>'
+                     f'{cols([h for _, h in ups])}</details>')
+    doc = f"""<!doctype html>
+<html lang="ar" dir="rtl"{f' data-theme="{theme}"' if theme in ("light", "dark") else ""}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مباريات اليوم — {_esc(names)} | سمارت سوق</title>
+<meta name="robots" content="noindex">
+{'<meta http-equiv="refresh" content="60">' if live else ''}
+<link rel="canonical" href="{guide_pages.SITE}{cups[0].PATH}">
+<link rel="preconnect" href="{league.LOGO_HOST}">
+<style>{guide_pages._style()}
+{CSS}
+{WIDGET_CSS}
+{HUB_CSS}</style>
+</head>
+<body>
+<main>
+<section class="card wcard">
+<div class="whead">{BALL}<span><b>مباريات اليوم</b><small>{_esc(_day_label(today))} · {_esc(names)}</small></span></div>
+{banner[1] if banner else ""}
+{body}
+<p class="lsrc">بتوقيت السعودية · يُحدَّث تلقائيًا · المصدر ESPN</p>
+</section>
+</main>
+<script>
+(function(){{function h(){{parent.postMessage({{ssouqWidget:Math.ceil(document.documentElement.getBoundingClientRect().height)}},"*")}}
+addEventListener("load",h);if(window.ResizeObserver)new ResizeObserver(h).observe(document.body);
+var d=document.getElementById("more");if(d){{try{{if(sessionStorage.getItem("ssouqMore")==="1")d.open=true}}catch(e){{}}
+d.addEventListener("toggle",function(){{try{{sessionStorage.setItem("ssouqMore",d.open?"1":"0")}}catch(e){{}}h()}})}}}})();
+</script>
+</body>
+</html>"""
+    return (200 if any_ms else 503), doc.encode("utf-8"), (LIVE_TTL if live else 300)
 
 # ---------- نسخةٌ لبطولةٍ أخرى ----------
 # كأس الخليج العربي 2026 (خليجي 27 في السعودية): مجموعتان من أربعة منتخبات، يتأهل الأول والثاني من

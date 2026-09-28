@@ -91,7 +91,9 @@ const app = (port, api) => spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web
 
     console.log('\nدوري الأمم الأوروبية');
     await page.goto(APP + '/');
-    await page.click('a.entry.cup');
+    check('الرئيسية: كأس الخليج أولًا ثم دوري الأمم', (await page.$$eval('a.entry.cup', a => a.map(x => x.getAttribute('href'))))
+          .join(' ') === '/gulf-cup /nations-league');
+    await page.click('a.entry.cup[href="/nations-league"]');
     await page.waitForURL(APP + '/nations-league');
     check('الرئيسية تفتح صفحة دوري الأمم', (await page.textContent('h1')).includes('دوري الأمم الأوروبية'));
     check('على الجوال: بلا تمرير أفقي', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

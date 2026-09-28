@@ -96,6 +96,7 @@ STATS_FILE = os.path.join(DATA_DIR, "stats.json")   # عدّاد أداة M3U ا
 # البطولات: دوري الأمم (tournament) وكأس الخليج (نسخةٌ من الوحدة نفسها بإعدادها). وصفحاتهما تقرأ
 # مسابقاتها والقناة الناقلة لكل مباراة من مجلد البيانات هذا
 CUPS = (tournament, tournament.instance("gulf_cup", **tournament.GULF))
+HUB_CUPS = (CUPS[1], CUPS[0])                 # ودجت المتجر: كأس الخليج أولًا
 for _cup in CUPS:
     _cup.contests = lambda: contest.summaries(DATA_DIR)
     _cup.channels = lambda: contest.channels(DATA_DIR)
@@ -2899,8 +2900,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                               else {"Retry-After": str(league.RETRY)})
-        if path == t.PATH + "/widget":          # النسخة المدمجة في رئيسية متجر سلة (iframe)
-            code, body, age = t.render_widget(self._q("theme"))
+        if path == t.PATH + "/widget":          # ودجت رئيسية متجر سلة (iframe): مباريات اليوم من البطولتين
+            code, body, age = tournament.render_hub(HUB_CUPS, self._q("theme"))
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                               else {"Retry-After": str(league.RETRY)})
