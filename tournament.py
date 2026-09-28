@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """صفحة بطولة بعينها (‏/nations-league): النتائج ومباريات اليوم والقادمة وترتيب
-المجموعات، ومعها إعلان الاشتراكات.
+المجموعات، ومعها إعلان الاشتراكات — وصفحة لكل مباراة (‏/nations-league/<المعرّف>-<الفريقان>)
+بموعدها أو نتيجتها وأهدافها وإحصاءاتها وترتيب مجموعتها.
 
 البطولة الآن دوري الأمم الأوروبية 2026-27 — المستوى الأول (League A) وحده:
 مجموعاته الأربع، وأدواره الإقصائية (ربع النهائي والنهائيات)، وملحق الصعود والهبوط
@@ -19,6 +20,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 
 import guide_pages
 import league
@@ -45,6 +47,13 @@ ADS = ("p153695876", "p479880741", "p2083342610")    # باقات الإعلان
 UTM_CAMPAIGN = "nations-league"
 DAYS = ["الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد"]
 LIVE_TTL = 60
+DONE_TTL = 6 * 3600                                  # ملخّص مباراة انتهت لا يتغيّر
+# إحصاءات صفحة المباراة بترتيبها: (اسمها عند ESPN، اسمها هنا)
+STATS = [("possessionPct", "الاستحواذ"), ("totalShots", "التسديدات"), ("shotsOnTarget", "على المرمى"),
+         ("wonCorners", "الركنيات"), ("foulsCommitted", "الأخطاء"), ("offsides", "التسلل"),
+         ("yellowCards", "البطاقات الصفراء"), ("redCards", "البطاقات الحمراء"), ("saves", "التصديات")]
+# نوع الهدف من نصّ ESPN ← ما يُكتب بجانبه (الأدق أولًا)
+GOAL_KINDS = [("own goal", "هدف عكسي"), ("penalty", "ركلة جزاء"), ("header", "برأسية"), ("free", "ركلة حرة")]
 
 
 # ---------- القراءة ----------
@@ -68,9 +77,16 @@ def _side(x):
     t = x.get("team") or {}
     name = league.AR.get(str(t.get("id") or "")) or _placeholder(t.get("displayName") or t.get("name"))
     so = x.get("shootoutScore")
-    return {"id": str(t.get("id") or ""), "name": name, "logo": league.logo(t.get("logo")),
+    return {"id": str(t.get("id") or ""), "name": name, "en": str(t.get("displayName") or ""),
+            "logo": league.logo(t.get("logo")),
             "score": int(float(x.get("score") or 0)), "so": None if so is None else int(float(so)),
             "win": bool(x.get("winner"))}
+
+
+def _slug(*names):
+    """«Türkiye» ← turkiye: حروف لاتينية وأرقام بشرطات، لرابط المباراة."""
+    s = unicodedata.normalize("NFKD", " ".join(names)).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")
 
 
 def _ts(s):
@@ -101,11 +117,14 @@ def matches(events):
         home, away = sides.get("home", comp[0]), sides.get("away", comp[1])
         st = c.get("status") or e.get("status") or {}
         kind = st.get("type") or {}
+        eid = str(e.get("id") or "")
+        h, a = _side(home), _side(away)
         out.append({
-            "id": str(e.get("id") or ""), "ts": _ts(e.get("date")),
+            "id": eid, "slug": "-".join(x for x in (eid, _slug(h["en"], a["en"])) if x),
+            "ts": _ts(e.get("date")), "group": group,
             "time_ok": c.get("timeValid") is not False,
             "stage": league._group(group, 0)[1] if group else STAGES.get(stage, stage),
-            "home": _side(home), "away": _side(away),
+            "home": h, "away": a,
             "state": kind.get("state") or "pre", "status": kind.get("name") or "",
             "clock": str(st.get("displayClock") or ""),
         })
@@ -144,6 +163,40 @@ def _ttl(data):
 _feed = league.Feed(lambda: load(), _ttl)
 
 
+def summary(d):
+    """ملخّص مباراة من ESPN ← الأهداف (بمعرّف فريقها) والإحصاءات والملعب."""
+    comp = ((d.get("header") or {}).get("competitions") or [{}])[0]
+    state = ((comp.get("status") or {}).get("type") or {}).get("state") or "pre"
+    goals = []
+    for k in d.get("keyEvents") or []:
+        if not k.get("scoringPlay"):
+            continue
+        kind = ((k.get("type") or {}).get("text") or "").lower()
+        who = ((k.get("participants") or [{}])[0].get("athlete") or {}).get("displayName") or ""
+        goals.append({"team": str((k.get("team") or {}).get("id") or ""),
+                      "min": str((k.get("clock") or {}).get("displayValue") or ""), "who": who,
+                      "kind": next((ar for en, ar in GOAL_KINDS if en in kind), "")})
+    stats = {str((t.get("team") or {}).get("id") or ""): {s.get("name"): s.get("displayValue")
+                                                            for s in t.get("statistics") or []}
+             for t in (d.get("boxscore") or {}).get("teams") or []}
+    gi = d.get("gameInfo") or {}
+    venue = gi.get("venue") or {}
+    return {"state": state, "goals": goals, "stats": stats, "venue": venue.get("fullName") or "",
+            "city": (venue.get("address") or {}).get("city") or "", "attendance": gi.get("attendance")}
+
+
+_summaries = {}                                      # معرّف المباراة ← كاش ملخّصها (مباريات البطولة وحدها)
+
+
+def _summary_of(m):
+    f = _summaries.get(m["id"])
+    if f is None:
+        f = _summaries[m["id"]] = league.Feed(
+            lambda eid=m["id"]: summary(league.get_json(f"/site/v2/sports/soccer/{CUP['code']}/summary?event={eid}")),
+            lambda d: LIVE_TTL if d["state"] == "in" else DONE_TTL if d["state"] == "post" else league.TTL)
+    return f.get()[0]
+
+
 # ---------- الرسم ----------
 def _day(ts):
     return datetime.datetime.fromtimestamp(ts, RIYADH).date()
@@ -166,7 +219,12 @@ def _team(s, away=False):
             f'{name + crest if away else crest + name}</span>')
 
 
-def _row(m):
+def url(m):
+    return f"{PATH}/{m['slug']}"
+
+
+def _status(m):
+    """(الوسط: النتيجة أو الموعد، سطر الحال تحته، صنف الصف)."""
     h, a = m["home"], m["away"]
     score = (f'<span class="score"><b>{h["score"]}</b><i>-</i><b>{a["score"]}</b></span>')
     if m["state"] == "in":
@@ -182,8 +240,13 @@ def _row(m):
         off = {"STATUS_POSTPONED": "مؤجلة", "STATUS_CANCELED": "ملغاة"}.get(m["status"])
         when = off or (_clock(m["ts"]) if m["time_ok"] else "يُعلن لاحقًا")
         mid, note, cls = f'<span class="kick">{when}</span>', "", ""
-    return (f'<li class="match{cls}">{_team(h)}<span class="mid">{mid}{note}'
-            f'<small class="stage">{_esc(m["stage"])}</small></span>{_team(a, True)}</li>')
+    return mid, note, cls
+
+
+def _row(m):
+    mid, note, cls = _status(m)
+    return (f'<li><a class="match{cls}" href="{url(m)}">{_team(m["home"])}<span class="mid">{mid}{note}'
+            f'<small class="stage">{_esc(m["stage"])}</small></span>{_team(m["away"], True)}</a></li>')
 
 
 def _by_day(ms, newest_first=False):
@@ -228,17 +291,20 @@ def _ad(cls):
             '<a class="more" href="/#plans">كل الباقات ←</a></aside>')
 
 
-def _lead(ms):
-    """جملة آخر نتيجة للوصف: «فازت إسبانيا على إنجلترا 3-2» (الفائز أولًا)."""
-    done = [m for m in ms if m["state"] == "post"]
-    if not done:
-        return ""
-    m = done[-1]
+def _result(m):
+    """«فوز إسبانيا على إنجلترا 3-2» (الفائز أولًا) أو «تعادل … 1-1»، وبالترجيح إن كان."""
     h, a = m["home"], m["away"]
     if h["score"] == a["score"] and not (h["win"] or a["win"]):
-        return f" آخر نتيجة: تعادل {h['name']} و{a['name']} {h['score']}-{a['score']}."
+        return f"تعادل {h['name']} و{a['name']} {h['score']}-{a['score']}"
     w, l = (h, a) if h["win"] or (not a["win"] and h["score"] > a["score"]) else (a, h)
-    return f" آخر نتيجة: فوز {w['name']} على {l['name']} {w['score']}-{l['score']}."
+    pens = f" بركلات الترجيح {w['so']}-{l['so']}" if w["so"] is not None and l["so"] is not None else ""
+    return f"فوز {w['name']} على {l['name']} {w['score']}-{l['score']}{pens}"
+
+
+def _lead(ms):
+    """جملة آخر نتيجة للوصف."""
+    done = [m for m in ms if m["state"] == "post"]
+    return f" آخر نتيجة: {_result(done[-1])}." if done else ""
 
 
 CSS = """
@@ -249,6 +315,8 @@ main{max-width:1040px}
 @media (min-width:960px){.cupgrid{grid-template-columns:minmax(0,1fr) 320px;align-items:start}
   .cup-ad-side{display:block;position:sticky;top:16px}.cup-ad-inline{display:none}}
 .matches{list-style:none;margin:0;padding:0}
+.matches a.match{color:inherit;text-decoration:none}
+.matches a.match:hover .side b,.matches a.match:focus-visible .side b{text-decoration:underline}
 .mday{font-size:.92rem;margin:16px 0 4px;color:var(--brand-text)}
 .mday:first-child{margin-top:0}
 .match{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;
@@ -275,6 +343,32 @@ main{max-width:1040px}
 .ad .btn{display:block;margin-top:4px}
 .ad .more{display:block;text-align:center;margin-top:10px;font-weight:700}
 .cup-ad-inline{margin:0}
+.mhero{text-align:center}
+.mhero .stage{display:block;color:var(--mute);font-size:.82rem;margin-bottom:12px}
+.mhero .match{border-top:0;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px}
+.mhero .match .side{flex-direction:column;justify-content:center;text-align:center}
+.mhero .match .side.away{justify-content:center}
+.mhero .match .side.away img,.mhero .match .side.away .crest{order:-1}
+.mhero .match .side img,.mhero .match .crest{width:56px;height:56px}
+.mhero .match .side b{font-size:1.05rem}
+.mhero .match .score{font-size:2rem}
+.mhero .match .kick{font-size:1.3rem}
+.mhero .when{margin:10px 0 0;color:var(--mute);font-size:.86rem}
+.goals{list-style:none;margin:0;padding:0}
+.goals li{display:flex;gap:8px;align-items:baseline;padding:7px 0;border-top:1px solid var(--line)}
+.goals li:first-child{border-top:0}
+.goals li.away{justify-content:flex-end}
+.goals .min{font-weight:700;color:var(--brand-text);font-variant-numeric:tabular-nums}
+.goals small{color:var(--mute)}
+.stat{display:grid;grid-template-columns:3.5em 1fr 3.5em;align-items:center;gap:4px 10px;padding:8px 0;
+  border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.stat:first-child{border-top:0}
+.stat>b{text-align:center}
+.stat>span{text-align:center;color:var(--mute);font-size:.84rem}
+.stat .bar{grid-column:1/-1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--line)}
+.stat .bar i{background:var(--brand)}
+.stat .bar i+i{background:var(--gold)}
+.stats-head{display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px}
 """
 
 
@@ -325,6 +419,16 @@ def render():
         body = ('<section class="card"><p>تعذّر تحميل المباريات الآن، ونعيد المحاولة تلقائيًا. '
                 'حدّث الصفحة بعد دقائق.</p></section>' + _ad("cup-ad-inline"))
 
+    main = (f'<h1>{_esc(h1)}</h1>\n<p class="sub">نتائج المباريات أولًا بأول، ومواعيد القادمة بتوقيت '
+            f'السعودية، وترتيب المجموعات الأربع.</p>')
+    return ((200 if data else 503), _doc(title, desc, url, [crumbs], _esc(CUP["name"]), main, body, live),
+            (LIVE_TTL if live else 300))
+
+
+def _doc(title, desc, url, ld, crumb, head, body, live):
+    """قالب الصفحتين: الرأس والأنماط، ثم عمود المحتوى وبجانبه عمود الاشتراكات."""
+    site = guide_pages.SITE
+    ld_html = "".join(f'<script type="application/ld+json">{json.dumps(x, ensure_ascii=False)}</script>' for x in ld)
     doc = f"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -352,16 +456,15 @@ def render():
 <link rel="icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="{league.LOGO_HOST}">
-<script type="application/ld+json">{json.dumps(crumbs, ensure_ascii=False)}</script>
+{ld_html}
 <style>{guide_pages._style()}
 nav.crumb{{font-size:14px;opacity:.75;margin:0 0 14px}}
 {CSS}</style>
 </head>
 <body>
 <main id="view">
-<nav class="crumb"><a class="link" href="/">دليل سمارت سوق</a> ← {_esc(CUP['name'])}</nav>
-<h1>{_esc(h1)}</h1>
-<p class="sub">نتائج المباريات أولًا بأول، ومواعيد القادمة بتوقيت السعودية، وترتيب المجموعات الأربع.</p>
+<nav class="crumb"><a class="link" href="/">دليل سمارت سوق</a> ← {crumb}</nav>
+{head}
 <div class="cupgrid">
 <div class="cupmain">
 {body}
@@ -371,4 +474,122 @@ nav.crumb{{font-size:14px;opacity:.75;margin:0 0 14px}}
 </main>
 </body>
 </html>"""
-    return (200 if data else 503), doc.encode("utf-8"), (LIVE_TTL if live else 300)
+    return doc.encode("utf-8")
+
+
+def _goals_html(m, s):
+    """الأهداف بترتيبها: هدف صاحب الأرض يمينًا والضيف يسارًا، بالدقيقة واللاعب."""
+    items = []
+    for g in s["goals"]:
+        away = g["team"] == m["away"]["id"]
+        kind = f' <small>({_esc(g["kind"])})</small>' if g["kind"] else ""
+        items.append(f'<li class="{"away" if away else "home"}"><span class="min" dir="ltr">{_esc(g["min"])}</span>'
+                     f'<b dir="auto">{_esc(g["who"])}</b>{kind}</li>')
+    return f'<ul class="goals">{"".join(items)}</ul>' if items else ""
+
+
+def _num(v):
+    try:
+        return float(str(v).rstrip("%"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _stats_html(m, s):
+    """صفوف المقارنة: قيمة صاحب الأرض يمينًا والضيف يسارًا، وشريطٌ بنسبتهما."""
+    hs, as_ = s["stats"].get(m["home"]["id"]) or {}, s["stats"].get(m["away"]["id"]) or {}
+    rows = []
+    for key, label in STATS:
+        h, a = _num(hs.get(key)), _num(as_.get(key))
+        if h is None or a is None:
+            continue
+        pct = key == "possessionPct"
+        share = 50 if h + a == 0 else round(100 * h / (h + a))
+        show = (lambda v: f"{round(v)}%") if pct else (lambda v: f"{int(v)}")
+        rows.append(f'<div class="stat"><b>{show(h)}</b><span>{label}</span><b>{show(a)}</b>'
+                    f'<span class="bar" aria-hidden="true"><i style="width:{share}%"></i><i style="flex:1"></i></span></div>')
+    if not rows:
+        return ""
+    return (f'<div class="stats-head"><span dir="auto">{_esc(m["home"]["name"])}</span>'
+            f'<span dir="auto">{_esc(m["away"]["name"])}</span></div>' + "".join(rows))
+
+
+def _desc(m, when):
+    names = f"{m['home']['name']} و{m['away']['name']}"
+    if m["state"] == "post":
+        return f"انتهت مباراة {names} في {CUP['name']} ({m['stage']}) ب{_result(m)}."
+    if m["state"] == "in":
+        return (f"مباراة {names} في {CUP['name']} مباشرة الآن: {m['home']['name']} {m['home']['score']}، "
+                f"{m['away']['name']} {m['away']['score']}.")
+    return f"موعد مباراة {names} في {CUP['name']} ({CUP['level']}، {m['stage']}): {when}."
+
+
+def render_match(tail):
+    """صفحة مباراة ← (رمز، بايتات، مدة الكاش)، أو ("redirect", الرابط) لرابطٍ غير رابطها،
+    أو None لمباراة ليست من البطولة."""
+    mt = re.fullmatch(r"(\d+)(?:-[a-z0-9-]*)?", tail or "")
+    if not mt:
+        return None
+    data, at, error = _feed.get()
+    m = next((x for x in (data or {}).get("matches", []) if x["id"] == mt.group(1)), None)
+    if m is None:
+        return None
+    if tail != m["slug"]:
+        return "redirect", url(m)
+    s = _summary_of(m) or {"goals": [], "stats": {}, "venue": "", "city": "", "attendance": None}
+    h, a = m["home"], m["away"]
+    page_url = guide_pages.SITE + url(m)
+    day = _day_label(_day(m["ts"]))
+    when = f"{day} الساعة {_clock(m['ts'])} بتوقيت السعودية" if m["time_ok"] else f"{day}، والساعة تُعلن لاحقًا"
+    title = f"{h['name']} و{a['name']} في {CUP['name']}: موعد المباراة والنتيجة | سمارت سوق"
+    h1 = f"مباراة {h['name']} و{a['name']}"
+    place = ", ".join(x for x in (s["venue"], s["city"]) if x)          # بالإنجليزية كما عند ESPN
+    mid, note, cls = _status(m)
+    hero = (f'<section class="card mhero" aria-label="{_esc(h1)}"><span class="stage">{_esc(CUP["name"])} · '
+            f'{_esc(CUP["level"])} · {_esc(m["stage"])}</span>'
+            f'<div class="match{cls}">{_team(h)}<span class="mid">{mid}{note}</span>{_team(a, True)}</div>'
+            f'<p class="when">{_esc(when)}</p>'
+            + (f'<p class="when">الملعب: <span dir="auto">{_esc(place)}</span></p>' if place else "") + "</section>")
+    parts = [hero]
+    goals = _goals_html(m, s)
+    if goals:
+        parts.append(f'<section class="card"><h2>الأهداف</h2>{goals}</section>')
+    parts.append(_ad("cup-ad-inline"))
+    stats = _stats_html(m, s)
+    if stats:
+        parts.append(f'<section class="card"><h2>إحصاءات المباراة</h2>{stats}</section>')
+    group = next((g for g in data["groups"] if g["key"] == m["group"]), None) if m["group"] else None
+    if group:
+        parts.append(f'<section class="card"><h2>ترتيب {_esc(group["name"])}</h2>'
+                     + league.tables_html({"league": CUP["level"], "groups": [group], "zones": ZONES}) + "</section>")
+    others = [x for x in data["matches"] if x is not m
+              and (x["group"] == m["group"] if m["group"] else not x["group"] and x["stage"] == m["stage"])]
+    if others:
+        parts.append(f'<section class="card"><h2>مباريات {_esc(group["name"] if group else m["stage"])} الأخرى</h2>'
+                     + _by_day(others) + "</section>")
+    parts.append(f'<p class="lsrc"><a class="link" href="{PATH}">كل نتائج {_esc(CUP["name"])} ومبارياته ←</a></p>')
+    event = {"@context": "https://schema.org", "@type": "SportsEvent", "name": f"{h['name']} × {a['name']}",
+             "sport": "Soccer", "startDate": datetime.datetime.fromtimestamp(m["ts"], RIYADH).isoformat(),
+             "eventStatus": "https://schema.org/" + ("EventPostponed" if m["status"] == "STATUS_POSTPONED"
+                                                    else "EventCancelled" if m["status"] == "STATUS_CANCELED"
+                                                    else "EventScheduled"),
+             "homeTeam": {"@type": "SportsTeam", "name": h["name"]},
+             "awayTeam": {"@type": "SportsTeam", "name": a["name"]},
+             "superEvent": {"@type": "SportsEvent", "name": f"{CUP['name']} {CUP['season']}"}, "url": page_url}
+    if place:
+        event["location"] = {"@type": "Place", "name": s["venue"] or place, "address": s["city"] or place}
+    crumbs = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "دليل سمارت سوق", "item": guide_pages.SITE + "/"},
+        {"@type": "ListItem", "position": 2, "name": CUP["name"], "item": guide_pages.SITE + PATH},
+        {"@type": "ListItem", "position": 3, "name": h1, "item": page_url}]}
+    live = m["state"] == "in"
+    body = _doc(title, _desc(m, when), page_url, [crumbs, event],
+                f'<a class="link" href="{PATH}">{_esc(CUP["name"])}</a> ← {_esc(h1)}',
+                f"<h1>{_esc(h1)}</h1>", "".join(parts), live)
+    return 200, body, (LIVE_TTL if live else 300)
+
+
+def sitemap():
+    """صفحة البطولة وصفحات مبارياتها لخريطة الموقع."""
+    data = _feed.get()[0]
+    return [(PATH, "daily", "0.8")] + [(url(m), "daily", "0.6") for m in (data or {}).get("matches", [])]

@@ -103,6 +103,15 @@ const app = (port, api) => spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web
     });
     check('نتيجة صاحب الأرض بجانب اسمه (يمينًا)', geo.hx > geo.ax && geo.tx > geo.hx, JSON.stringify(geo));
     await shot(page, 'nations-league-mobile');
+    await page.click('#results a.match[href$="-france-belgium"]');
+    await page.waitForURL(APP + '/nations-league/1-france-belgium');
+    check('المباراة تفتح صفحتها', (await page.textContent('h1')) === 'مباراة فرنسا وبلجيكا'
+          && await page.$$eval('.goals li', l => l.length) === 3);
+    check('صفحة المباراة: بلا تمرير أفقي، والإعلان فيها', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
+          && await page.isVisible('.cup-ad-inline'));
+    const bar = await page.$eval('.stat .bar i', i => i.getBoundingClientRect().right);
+    check('شريط صاحب الأرض يبدأ من اليمين', Math.abs(bar - await page.$eval('.stat .bar', b => b.getBoundingClientRect().right)) < 1);
+    await shot(page, 'match-mobile');
     const wide = await browser.newContext({viewport:{width:1280, height:900}});
     const desk = await wide.newPage();
     await desk.goto(APP + '/nations-league');

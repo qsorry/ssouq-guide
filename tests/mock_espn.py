@@ -12,8 +12,8 @@ GET /v2/sports/soccer/<code>/standings بشكل رد ESPN نفسه (children ←
   أي رمز آخر      400 كما تفعل ESPN مع دوري لا تغطيه
 
 GET /site/v2/sports/soccer/uefa.nations/scoreboard?dates=2026 مباريات دوري الأمم
-بمواعيد حول «الآن» (scoreboard)، وسنة أخرى بلا مباريات. والدوال نفسها (payload
-وscoreboard) تستوردها الاختبارات بلا خادم.
+بمواعيد حول «الآن» (scoreboard)، وسنة أخرى بلا مباريات؛ و…/summary?event=<المعرّف>
+ملخّص المباراة (summary). والدوال نفسها تستوردها الاختبارات بلا خادم.
 """
 import datetime
 import json
@@ -113,6 +113,33 @@ def scoreboard(code, dates):
     ]}
 
 
+def summary(code, eid):
+    """ملخّص مباراة (‏summary?event=): أهداف وإحصاءات وملعب للمنتهية (1) والجارية (4)، وحالٌ فقط لغيرهما."""
+    event = next((e for e in (scoreboard(code, "2026") or {}).get("events", []) if e["id"] == eid), None)
+    if event is None:
+        return None
+    comp = event["competitions"][0]
+    out = {"header": {"competitions": [{"status": comp["status"]}]}, "keyEvents": [],
+           "gameInfo": {"venue": {"fullName": "Stade de France", "address": {"city": "Saint-Denis"}}, "attendance": 70000}}
+    goals = {"1": [("478", "12'", "Kylian Mbappé", "Goal"), ("459", "40'", "Romelu Lukaku", "Goal - Header"),
+                   ("478", "78'", "Ousmane Dembélé", "Penalty - Scored")],
+             "4": [("482", "23'", "Cristiano Ronaldo", "Goal")]}.get(eid)
+    if goals is None:
+        return out
+    out["keyEvents"] = [{"type": {"text": "Kickoff"}, "scoringPlay": False}] + [
+        {"type": {"text": kind}, "clock": {"displayValue": minute}, "team": {"id": tid}, "scoringPlay": True,
+         "participants": [{"athlete": {"displayName": who}}]} for tid, minute, who, kind in goals]
+    home, away = (x["team"]["id"] for x in comp["competitors"])
+    out["boxscore"] = {"teams": [
+        {"team": {"id": home}, "statistics": [{"name": "possessionPct", "displayValue": "55.4"},
+                                              {"name": "totalShots", "displayValue": "14"},
+                                              {"name": "yellowCards", "displayValue": "2"}]},
+        {"team": {"id": away}, "statistics": [{"name": "possessionPct", "displayValue": "44.6"},
+                                              {"name": "totalShots", "displayValue": "6"},
+                                              {"name": "yellowCards", "displayValue": "0"}]}]}
+    return out
+
+
 def _entry(tid, name, rank, n, note=None):
     """صفّ نادٍ: المتصدّر أعلى النقاط، ونقاط كل صف أقل ممّن قبله."""
     w, d = max(0, 5 - rank // 4), rank % 2
@@ -178,6 +205,8 @@ class H(BaseHTTPRequestHandler):
             data = payload(parts[3])
         elif parts[:4] == ["site", "v2", "sports", "soccer"] and len(parts) == 6 and parts[5] == "scoreboard":
             data = scoreboard(parts[4], (parse_qs(u.query).get("dates") or [""])[0])
+        elif parts[:4] == ["site", "v2", "sports", "soccer"] and len(parts) == 6 and parts[5] == "summary":
+            data = summary(parts[4], (parse_qs(u.query).get("event") or [""])[0])
         body = json.dumps(data if data is not None else {"code": 400, "message": "bad league"}).encode()
         self.send_response(200 if data is not None else 400)
         self.send_header("Content-Type", "application/json")

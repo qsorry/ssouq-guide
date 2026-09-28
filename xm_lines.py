@@ -2158,7 +2158,7 @@ class Handler(BaseHTTPRequestHandler):
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
         if path == "/sitemap.xml":
-            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + [(tournament.PATH, "daily", "0.8")]),
+            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + tournament.sitemap()),
                               ctype="application/xml; charset=utf-8",
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path in ROOT_FILES:
@@ -2175,6 +2175,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                               else {"Retry-After": str(league.RETRY)})
+        if path.startswith(tournament.PATH + "/"):    # صفحة مباراة من البطولة
+            page = tournament.render_match(path[len(tournament.PATH) + 1:])
+            if page and page[0] == "redirect":
+                return self._redirect(page[1], 301)
+            if page:
+                code, body, age = page
+                return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                                  extra={"Cache-Control": f"public, max-age={age}"})
         if path in ("/standings", "/standings/"):
             return self._redirect(league.PATH + league.DEFAULT, 301)
         if path.startswith(league.PATH):        # صفحة ترتيب لكل دوري (للأرشفة)

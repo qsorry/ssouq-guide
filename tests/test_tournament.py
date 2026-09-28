@@ -6,6 +6,7 @@
   - الحالات: منتهية، ترجيح، تمديد، مباشرة، استراحة، مؤجلة، وأطرافٌ لم تُعرف بعد.
   - الأقسام: «اليوم» فيه الجارية دائمًا، والنتائج الأحدث أولًا، والقادمة بالموعد.
   - الترتيب بمناطق المراكز لا بملاحظات ESPN المختلطة، وإعلان الاشتراكات من CATALOG.
+  - صفحة المباراة: رابطها، وموعدها أو نتيجتها، وأهدافها وإحصاءاتها، ومجموعتها، وSportsEvent.
   - /nations-league وخريطة الموقع على خادم حيّ مع ESPN وهمية، ومع ESPN لا تردّ.
 
 تشغيل:  python tests/test_tournament.py
@@ -44,6 +45,12 @@ def fake_espn(path):
     m = re.fullmatch(r"/site/v2/sports/soccer/([\w.]+)/scoreboard\?dates=(\d+)", path)
     if m:
         return mock_espn.scoreboard(m.group(1), m.group(2))
+    m = re.fullmatch(r"/site/v2/sports/soccer/([\w.]+)/summary\?event=(\d+)", path)
+    if m:
+        got = mock_espn.summary(m.group(1), m.group(2))
+        if got is None:
+            raise OSError("HTTP Error 400")
+        return got
     m = re.fullmatch(r"/v2/sports/soccer/([\w.]+)/standings", path)
     return mock_espn.payload(m.group(1))
 
@@ -131,6 +138,55 @@ def unit():
               f"{p['price']} ر.س" in page and f"/{pid}?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=nations-league" in page)
     check("لا قنوات بث في الصفحة", not re.search(r"(?i)bein|ssc|قناة", page[page.index("<body>"):]))
 
+    print("\nصفحة المباراة")
+    check("روابط المباريات بأسماء الفريقين", [by[i]["slug"] for i in ("1", "5", "10")]
+          == ["1-france-belgium", "5-italy-turkiye", "10-group-a1-winner-group-a2-2nd-place"])
+    check("صفحة البطولة تربط كل مباراة", 'href="/nations-league/1-france-belgium"' in page
+          and page.count('<a class="match') == len(ms))
+    check("رابطٌ مختصر أو خاطئ يحوَّل إلى رابطها",
+          T.render_match("1") == ("redirect", "/nations-league/1-france-belgium") == T.render_match("1-x"))
+    check("مباراةٌ ليست من البطولة = لا صفحة",
+          T.render_match("999") is None and T.render_match("9-sweden-hungary") is None and T.render_match("abc") is None)
+    code, raw, age = T.render_match("1-france-belgium")
+    mp = raw.decode("utf-8")
+    check("200 بعنوانها", code == 200 and "<title>فرنسا وبلجيكا في دوري الأمم الأوروبية: موعد المباراة والنتيجة | سمارت سوق</title>" in mp)
+    check("وصف المنتهية بنتيجتها", "انتهت مباراة فرنسا وبلجيكا في دوري الأمم الأوروبية (المجموعة الأولى) بفوز فرنسا على بلجيكا 2-1." in mp)
+    check("canonical رابطها", 'rel="canonical" href="https://guide.ssouq.com/nations-league/1-france-belgium"' in mp)
+    goals = re.search(r'<ul class="goals">(.*?)</ul>', mp, re.S)
+    g = goals.group(1) if goals else ""
+    check("الأهداف بدقائقها وأصحابها ونوعها", g.count("<li") == 3 and '<span class="min" dir="ltr">12&#x27;</span>' in g
+          and "Romelu Lukaku" in g and "(برأسية)" in g and "(ركلة جزاء)" in g)
+    check("هدف الضيف في جهته", re.search(r'<li class="away">[^<]*<span class="min"[^>]*>40', g) is not None
+          and g.count('class="home"') == 2)
+    check("الإحصاءات بقيمتي الفريقين وشريط النسبة", "الاستحواذ" in mp and "<b>55%</b>" in mp and "<b>45%</b>" in mp
+          and 'style="width:55%"' in mp and 'style="width:70%"' in mp)
+    check("ترتيب مجموعتها ومبارياتها الأخرى", "ترتيب المجموعة الأولى" in mp and "مباريات المجموعة الأولى الأخرى" in mp
+          and 'href="/nations-league/5-italy-turkiye"' in mp and 'href="/nations-league/1-france-belgium"' not in mp)
+    blocks = [json.loads(b) for b in re.findall(r'application/ld\+json">(.*?)</script>', mp, re.S)]
+    ev = next((b for b in blocks if b.get("@type") == "SportsEvent"), {})
+    check("SportsEvent صالح", ev.get("homeTeam", {}).get("name") == "فرنسا" and ev.get("awayTeam", {}).get("name") == "بلجيكا"
+          and ev.get("location", {}).get("name") == "Stade de France" and ev.get("startDate", "").endswith("+03:00"))
+    check("مسار التنقّل ثلاث درجات", any(b.get("@type") == "BreadcrumbList" and len(b["itemListElement"]) == 3 for b in blocks))
+    check("وإعلان الاشتراكات فيها", mp.count('<aside class="card ad') == 2)
+    code, raw, age = T.render_match("4-portugal-wales")
+    lp = raw.decode("utf-8")
+    check("الجارية: مباشرة، وتتحدّث كل دقيقة", age == T.LIVE_TTL and '<meta http-equiv="refresh" content="60">' in lp
+          and "مباشرة الآن: البرتغال 1، ويلز 0." in lp and "Cristiano Ronaldo" in lp)
+    code, raw, age = T.render_match("6-netherlands-serbia")
+    pp = raw.decode("utf-8")
+    check("القادمة: موعدها بالساعة، بلا أهداف ولا إحصاءات", code == 200 and "موعد مباراة هولندا وصربيا" in pp
+          and re.search(r"الساعة \d{1,2}:\d\d [صم] بتوقيت السعودية", pp) and "<h2>الأهداف</h2>" not in pp
+          and "<h2>إحصاءات المباراة</h2>" not in pp)
+    code, raw, age = T.render_match("10-group-a1-winner-group-a2-2nd-place")
+    qp = raw.decode("utf-8")
+    check("ربع نهائي لم تُعرف أطرافه ولا ساعته", "متصدّر المجموعة الأولى" in qp and "والساعة تُعلن لاحقًا" in qp
+          and "مباريات ربع النهائي الأخرى" in qp and "11-spain-portugal" in qp and "12-denmark-norway" not in qp)
+    code, raw, age = T.render_match("7-croatia-czechia")
+    check("ملخّصٌ متعذّر لا يُسقط الصفحة", code == 200 and "كرواتيا" in raw.decode("utf-8"))
+    sm = [p for p, _, _ in T.sitemap()]
+    check("خريطة الموقع: الصفحة ومبارياتها", sm[0] == "/nations-league" and len(sm) == 1 + len(ms)
+          and "/nations-league/1-france-belgium" in sm)
+
     print("\nتعذّر الجلب")
 
     def down(path):
@@ -184,7 +240,14 @@ def live():
               and "المجموعة الرابعة" in b)
         check("كاش دقيقة والمباراة جارية", h.get("Cache-Control") == "public, max-age=60", h.get("Cache-Control"))
         c, _, b = req(base, "/sitemap.xml")
-        check("في خريطة الموقع", c == 200 and "/nations-league</loc>" in b)
+        check("في خريطة الموقع بمبارياتها", c == 200 and "/nations-league</loc>" in b
+              and "/nations-league/1-france-belgium</loc>" in b)
+        c, h, _ = req(base, "/nations-league/1")
+        check("رابط المباراة المختصر ← 301 إلى رابطها", c == 301 and h.get("Location") == "/nations-league/1-france-belgium")
+        c, h, b = req(base, "/nations-league/1-france-belgium")
+        check("صفحة المباراة 200 بأهدافها", c == 200 and "Kylian Mbappé" in b and h.get("Cache-Control") == "public, max-age=300")
+        c, _, _ = req(base, "/nations-league/999-nobody")
+        check("مباراة غير موجودة = 404", c == 404)
         c, _, b = req(base, "/")
         check("الرئيسية تربطها", 'href="/nations-league"' in b)
         c, _, b = req(base, "/nations-league", "admin.ssouq.com")
