@@ -9,6 +9,7 @@ GET /v2/sports/soccer/<code>/standings بشكل رد ESPN نفسه (children ←
   uefa.champions  36 فريقًا بملاحظات الأدوار، وملاحظة لا يعرفها التعريب
   afc.champions   جدولان: الشرق أولًا في الرد (والصفحة تقدّم الغرب)
   uefa.nations    مجموعات المستوى الأول الأربع بملاحظات ESPN المختلطة، ومجموعة من الثاني
+  global.gulf_cup مجموعتا كأس الخليج (والمباريات تسمّي كل مجموعة باسم الأخرى، كما تفعل ESPN في 2026)
   أي رمز آخر      400 كما تفعل ESPN مع دوري لا تغطيه
 
 GET /site/v2/sports/soccer/uefa.nations/scoreboard?dates=2026 مباريات دوري الأمم
@@ -54,6 +55,8 @@ NATIONS = {
     "A4": [("482", "Portugal"), ("464", "Norway"), ("479", "Denmark"), ("578", "Wales")],
     "B1": [("466", "Sweden"), ("580", "Scotland"), ("471", "Poland"), ("480", "Hungary")],
 }
+GULF = {"A": [("655", "Saudi Arabia"), ("4375", "Iraq"), ("2841", "Oman"), ("841", "Kuwait")],
+        "B": [("4397", "United Arab Emirates"), ("4398", "Qatar"), ("4381", "Bahrain"), ("6014", "Yemen")]}
 # ملاحظات ESPN الحقيقية في دوري الأمم تخلط المستويات الأربعة في سطر واحد
 MIXED_NOTES = {1: "A: Qualifies for QFs; B-D: Promotion", 3: "A, B: Relegation playoffs",
                4: "A, B: Relegation; C: Relegation or playoffs"}
@@ -77,9 +80,32 @@ def _event(eid, mins, home, away, stage="league-phase", group=None, state="post"
                               "competitors": comp}]}
 
 
+def gulf(dates):
+    """كأس الخليج 2026: مباراتان انتهتا، وثلاثٌ قادمة، ونصف نهائيٍّ بأطرافٍ لم تُعرف — وتسمية المجموعة
+    في المباريات معكوسة عن الترتيب (السعودية في «Group B» هنا وفي «Group A» في الترتيب)."""
+    if dates != "2026":
+        return {"events": []}
+    day = 24 * 60
+    return {"events": [
+        _event("101", -2 * day, ("655", "Saudi Arabia", 1, None, True), ("841", "Kuwait", 0, None, False), group="B"),
+        _event("102", -2 * day + 60, ("4397", "United Arab Emirates", 4, None, True), ("6014", "Yemen", 0, None, False),
+               group="A"),
+        _event("103", 1 * day, ("655", "Saudi Arabia", 0, None, False), ("4375", "Iraq", 0, None, False), group="B",
+               state="pre", status="STATUS_SCHEDULED", clock="0'"),
+        _event("104", 1 * day, ("2841", "Oman", 0, None, False), ("841", "Kuwait", 0, None, False), group="B",
+               state="pre", status="STATUS_SCHEDULED", clock="0'"),
+        _event("105", 2 * day, ("4397", "United Arab Emirates", 0, None, False), ("4398", "Qatar", 0, None, False),
+               group="A", state="pre", status="STATUS_SCHEDULED", clock="0'"),
+        _event("106", 10 * day, ("-3", "Group A Winner", 0, None, False), ("-4", "Group B 2nd Place", 0, None, False),
+               stage="semifinals", state="pre", status="STATUS_SCHEDULED", clock="0'", time_valid=False),
+    ]}
+
+
 def scoreboard(code, dates):
     """مباريات دوري الأمم حول الآن: منتهية، وجارية، واستراحة، وقادمة، ومؤجلة، وأدوار
     إقصائية (ترجيح، تمديد، وأطراف لم تُعرف بعد)، وما ليس من المستوى الأول."""
+    if code == "global.gulf_cup":
+        return gulf(dates)
     if code != "uefa.nations":
         return None
     if dates != "2026":
@@ -186,6 +212,7 @@ def payload(code):
         "afc.champions": lambda: [_child("East Region", EAST), _child("West Region", WEST)],
         "uefa.nations": lambda: [_child(f"Group {g}", teams, lambda r, n: MIXED_NOTES.get(r))
                                  for g, teams in NATIONS.items()],
+        "global.gulf_cup": lambda: [_child(f"Group {g}", teams) for g, teams in GULF.items()],
     }.get(code)
     if not kids:
         return None
