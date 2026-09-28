@@ -28,10 +28,12 @@ import json
 import os
 import random
 import re
+import secrets
 import threading
 import time
 import unicodedata
 
+import crypto_store
 import renew
 
 DIR = "contest"
@@ -51,6 +53,7 @@ CODE_ALPHA = "ACDEFGHJKLMNPQRTUVWXY34679"   # بلا ما يلتبس (0/O، 1/I�
 CODE_LEN = 6
 POOL_WINDOW = 150               # المؤهّلون المعروضون حول الفائز في تقرير الفرز العام (من كل جهة)
 RIYADH = datetime.timezone(datetime.timedelta(hours=3))
+PRIZE_UTM = "utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=contest"   # كروابط الدليل
 
 DEFAULT_TEXT = ("مبروك {name} 🎉\n"
                 "فزت في مسابقة سمارت سوق لتوقّع نتيجة مباراة {match}.\n"
@@ -58,7 +61,7 @@ DEFAULT_TEXT = ("مبروك {name} 🎉\n"
                 "جائزتك: {prize}\n\n"
                 "رُد على هذه الرسالة لاستلامها.\n"
                 "كيف تم الفرز: {link}")
-DEFAULTS = {"notify": True, "text": DEFAULT_TEXT, "admin_phone": "", "wa_number": ""}
+DEFAULTS = {"notify": True, "text": DEFAULT_TEXT, "admin_phone": ""}
 
 # شروط المسابقة كما تظهر للزائر (صفحة المسابقة وبطاقة المباراة)
 RULES = [
@@ -133,6 +136,8 @@ def _blank(eid):
 
 def _summary(rec):
     s = {"eid": rec["eid"], "on": bool(rec.get("on")), "prize": rec.get("prize") or "",
+         "prize_id": rec.get("prize_id") or "", "prize_url": rec.get("prize_url") or "",
+         "prize_img": rec.get("prize_img") or "",
          "winners": int(rec.get("winners") or 1), "count": len(rec.get("entries") or []),
          "draw": bool(rec.get("draw")), "void": bool(rec.get("void")), "match": rec.get("match") or {}}
     if rec.get("draw"):
@@ -174,20 +179,54 @@ def load_settings(data_dir):
     out["notify"] = bool(s.get("notify", DEFAULTS["notify"]))
     out["text"] = str(s.get("text") or DEFAULTS["text"])[:1000]
     out["admin_phone"] = norm_phone(s.get("admin_phone", ""))
-    out["wa_number"] = norm_phone(s.get("wa_number", ""))
     return out
+
+
+# ---------- خدمة واتساب النظام اللوجستي (whatsapp-reader في souq-saas) ----------
+# الخدمة نفسها التي يربط بها النظام اللوجستي أرقامه: جلسةٌ لكل مفتاح، تُربط برمز QR من صفحة
+# المدير، وتمرّر الرسائل الخاصة (1:1) إلى رابطنا موقَّعةً برمزٍ نولّده. رابطها وسرّها من
+# متغيّرات البيئة بالأسماء نفسها التي في النظام اللوجستي، وإلا من إعداد المسابقة (مشفَّرًا).
+READER_TENANT = "ssouq-guide--contest"
+
+
+def reader_config(data_dir):
+    """← {url, secret, token, env}: token رمز توقيع الرسائل الواردة، يُولَّد مرةً ويُحفظ مشفَّرًا."""
+    s = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
+    url = os.environ.get("WHATSAPP_READER_URL", "").strip() or str(s.get("reader_url") or "")
+    secret = os.environ.get("WHATSAPP_READER_SECRET", "").strip() or crypto_store.decrypt(s.get("reader_secret") or "", data_dir)
+    token = crypto_store.decrypt(s.get("reader_token") or "", data_dir)
+    if not token:
+        token = secrets.token_urlsafe(24)
+        with _lock:
+            s = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
+            s["reader_token"] = crypto_store.encrypt(token, data_dir)
+            _write(os.path.join(_dir(data_dir), SETTINGS), s)
+    return {"url": url.rstrip("/"), "secret": secret, "token": token,
+            "env": bool(os.environ.get("WHATSAPP_READER_URL", "").strip())}
+
+
+def save_reader(data_dir, url, secret):
+    """رابط الخدمة وسرّها من صفحة المدير؛ والسرّ الفارغ يُبقي المحفوظ."""
+    url = str(url or "").strip().rstrip("/")
+    if url and not re.match(r"^https?://[^\s/]+", url):
+        raise ValueError("رابط خدمة الواتساب يبدأ بـ https://")
+    with _lock:
+        s = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
+        s["reader_url"] = url
+        if str(secret or "").strip():
+            s["reader_secret"] = crypto_store.encrypt(str(secret).strip(), data_dir)
+        _write(os.path.join(_dir(data_dir), SETTINGS), s)
 
 
 def save_settings(data_dir, new):
     s = {"notify": bool(new.get("notify")),
          "text": str(new.get("text") or "").strip()[:1000] or DEFAULT_TEXT,
-         "admin_phone": norm_phone(new.get("admin_phone", "")),
-         "wa_number": norm_phone(new.get("wa_number", ""))}
+         "admin_phone": norm_phone(new.get("admin_phone", ""))}
     if s["admin_phone"] and not phone_ok(s["admin_phone"]):
         raise ValueError("رقم واتساب المدير غير صحيح")
-    if s["wa_number"] and not phone_ok(s["wa_number"]):
-        raise ValueError("رقم استقبال التوقّعات غير صحيح")
     with _lock:
+        old = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
+        s.update({k: v for k, v in old.items() if k.startswith("reader_")})
         _write(os.path.join(_dir(data_dir), SETTINGS), s)
     return load_settings(data_dir)
 
@@ -550,6 +589,7 @@ def public(rec, m, now=None):
         return {"ok": True, "state": "off"}
     es = rec.get("entries") or []
     out = {"ok": True, "state": st, "eid": rec["eid"], "prize": rec.get("prize") or "",
+           "prize_url": rec.get("prize_url") or "", "prize_img": rec.get("prize_img") or "",
            "winners": int(rec.get("winners") or 1), "count": len(es), "now": round(now, 3),
            "match": _match_of(rec, m), "msg": STATE_MSG.get(st, "")}
     if st == "hold":
@@ -611,7 +651,8 @@ def messages(rec, settings, link):
             if e:
                 out.append({"to": e["phone"], "kind": "winner", "n": e["n"],
                             "text": _fill(settings.get("text") or DEFAULT_TEXT, name=short_name(e["name"]),
-                                          match=match, score=score, prize=rec.get("prize") or "", link=link)})
+                                          match=match, score=score, prize=rec.get("prize") or "", link=link,
+                                          prize_link=rec.get("prize_url") or "")})
     if settings.get("admin_phone"):
         won = "، ".join(f"{by[p['n']]['name']} ({by[p['n']]['phone']}) #{p['n']}" for p in d["picks"] if p["n"] in by)
         out.append({"to": settings["admin_phone"], "kind": "admin",
@@ -632,9 +673,30 @@ def mark_sent(data_dir, eid, results):
 
 
 # ---------- الإدارة ----------
-def configure(data_dir, m, on, prize, winners, now=None):
-    """فتح المسابقة على مباراة أو إيقافها، بجائزتها وعدد فائزيها ← (رمز، رد)."""
+def saved_prize(data_dir, eid):
+    """منتج الجائزة المحفوظ على المسابقة بصيغة store_sitemap.product_of — فيبقى إن غاب عن قائمة
+    المتجر لحظيًّا (فشل جلبٍ أو إخفاء)، ولا يُطلب من المدير اختياره من جديد."""
+    rec = load(data_dir, eid) or {}
+    if not rec.get("prize_id"):
+        return None
+    url = rec.get("prize_url") or ""
+    if url.endswith(PRIZE_UTM):
+        url = url[:-len(PRIZE_UTM) - 1]
+    return {"id": rec["prize_id"], "name": rec.get("prize") or "", "url": url, "img": rec.get("prize_img") or ""}
+
+
+def prize_name(product):
+    """اسم الجائزة من اسم المنتج في سلة بلا ذيله بعد «|»: «اشتراك فالكون IPTV لمدة 3 أشهر»."""
+    name = str(product.get("name") or "")
+    return (name.split("|")[0].strip() or name.strip())[:PRIZE_MAX]
+
+
+def configure(data_dir, m, on, prize, winners, now=None, product=None):
+    """فتح المسابقة على مباراة أو إيقافها، بجائزتها وعدد فائزيها ← (رمز، رد). والجائزة منتجٌ من
+    المتجر (`product` من store_sitemap.products، فيُحفظ رابطه وصورته) أو نصٌّ يكتبه المدير."""
     now = time.time() if now is None else now
+    if product:
+        prize = prize_name(product)
     prize = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", str(prize or ""))).strip()[:PRIZE_MAX]
     try:
         winners = max(1, min(int(winners or 1), MAX_WINNERS))
@@ -652,6 +714,12 @@ def configure(data_dir, m, on, prize, winners, now=None):
         if rec["entries"] and st not in ("open", "hold") and winners != int(rec.get("winners") or 1):
             return 409, {"error": "لا يتغيّر عدد الفائزين بعد إقفال التوقّعات."}
         rec.update(on=bool(on), prize=prize or rec.get("prize") or "", winners=winners, match=_snap(m))
+        if product:
+            url = product["url"]
+            rec.update(prize_id=product["id"], prize_url=url + ("&" if "?" in url else "?") + PRIZE_UTM,
+                       prize_img=product.get("img") or "")
+        elif prize:                                   # جائزةٌ مكتوبة تحلّ محلّ المنتج
+            rec.update(prize_id="", prize_url="", prize_img="")
         _save(data_dir, rec)
     return 200, {"ok": True, "contest": _summary(rec)}
 
@@ -696,6 +764,7 @@ def admin_detail(data_dir, eid, m, now=None):
                 **{k: p[k] for k in ("tier", "num", "size", "idx")}} for p in d["picks"] if p["n"] in by]
     return {"ok": True, "eid": eid, "state": state_of(rec, m, now), "on": bool(rec.get("on")),
             "prize": rec.get("prize") or "", "winners": int(rec.get("winners") or 1),
+            "prize_id": rec.get("prize_id") or "", "prize_url": rec.get("prize_url") or "",
             "match": _match_of(rec, m), "fp": fingerprint(rec["entries"]),
             "entries": [{k: e.get(k) for k in ("n", "name", "phone", "h", "a", "at", "promo")} for e in rec["entries"]],
             "won": won, "draw": {k: v for k, v in d.items() if k != "picks"} if d else None,

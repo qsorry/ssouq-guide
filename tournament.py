@@ -322,13 +322,23 @@ def _banner(ms, pz, new_tab=False):
             f'<span class="pgo">توقّع الآن ←</span></a>')
 
 
+def _prize_row(s):
+    """الجائزة منتجٌ من المتجر: صورته واسمه ورابطه (يُفتح في نافذة)."""
+    if not s.get("prize_url"):
+        return ""
+    img = (f'<img src="{_esc(s["prize_img"])}" alt="" width="46" height="46" loading="lazy">'
+           if s.get("prize_img") else "")
+    return (f'<a class="pprize" href="{_esc(s["prize_url"])}" target="_blank" rel="noopener">{img}'
+            f'<span><small>الجائزة</small><b>{_esc(s["prize"])}</b></span><span class="pgo">صفحة الاشتراك ←</span></a>')
+
+
 def _predict_card(m, s, st):
     """بطاقة المسابقة في صفحة المباراة. الحالة والنموذج من /api/contest بالمتصفح، فتبقى
     الصفحة مخزَّنةً كما هي ولا يعرض الكاش حالةً قديمة."""
     return (f'<section class="card predict" id="predict" data-m="{_esc(m["id"])}" '
             f'data-draw="{_ver("contest-draw.js")}" aria-labelledby="predict-h">'
             f'<span class="eyebrow">مسابقة مجانية</span>'
-            f'<h2 id="predict-h">توقّع النتيجة واربح {_esc(s["prize"])}</h2>'
+            f'<h2 id="predict-h">توقّع النتيجة واربح {_esc(s["prize"])}</h2>' + _prize_row(s) +
             f'<div class="pbody"><p class="sub">{_esc(contest.STATE_MSG.get(st, "") if st != "open" else "")}'
             f'</p><noscript><p>فعّل JavaScript لتسجّل توقّعك.</p></noscript></div>'
             f'<p class="prules"><a class="link" href="{PREDICT}#rules">شروط المسابقة وكيف يتم الفرز</a></p>'
@@ -456,6 +466,12 @@ main{max-width:1040px}
 .predict h2{font-size:1.2rem}
 .predict h3{font-size:.98rem;margin:14px 0 6px}
 .prules{margin:10px 0 0;font-size:.82rem}
+.pprize{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:0 0 12px;border:1px solid var(--line);
+  border-radius:14px;background:var(--soft);color:inherit;text-decoration:none}
+.pprize img{width:46px;height:46px;border-radius:10px;object-fit:cover;flex:0 0 auto;background:var(--card)}
+.pprize small{display:block;color:var(--mute);font-size:.74rem}
+.pprize b{display:block;font-size:.92rem;line-height:1.4}
+.pprize .pgo{margin-inline-start:auto;flex:0 0 auto;font-weight:700;font-size:.8rem;color:var(--brand-text);white-space:nowrap}
 .pscore{display:inline-flex;gap:5px;align-items:baseline;font-weight:800;font-variant-numeric:tabular-nums}
 .pscore i{font-style:normal;color:var(--mute);font-weight:400}
 .pcount{color:var(--mute);font-size:.88rem;margin:0 0 10px}
@@ -762,6 +778,72 @@ def render_match(tail):
                 f'<a class="link" href="{PATH}">{_esc(CUP["name"])}</a> ← {_esc(h1)}',
                 f"<h1>{_esc(h1)}</h1>", "".join(parts), live)
     return 200, body, (LIVE_TTL if live else 300)
+
+
+ANNOUNCE_TAIL = """*كيف تشارك؟*
+1️⃣ ادخل صفحة المسابقة 👇
+{link}
+2️⃣ اختر المباراة، توقّع النتيجة واكتب اسمك
+3️⃣ اضغط «أرسل توقّعي على واتساب» وأرسل الرسالة الجاهزة كما هي
+4️⃣ يوصلك تأكيد على الواتساب ✅
+
+📌 *الشروط باختصار:*
+• المشاركة مجانية
+• توقّع واحد لكل رقم في كل مباراة
+• التوقّعات تُقفل مع صافرة البداية
+• الفرز آلي بعد صافرة النهاية: بين اللي جابوا النتيجة بالضبط، وإذا ما أحد جابها فبين اللي عرفوا الفائز
+• ننشر فيديو يوضح كيف تم الفرز، ونبلّغ الفائز على الواتساب
+
+بالتوفيق للجميع 🤞"""
+CLOCKS = "🕛🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚"
+
+
+def announcement(rows, now=None):
+    """رسالة الإعلان في القناة، جاهزةً للنسخ من صفحة المدير: المسابقات المفتوحة للتوقّع بمبارياتها
+    وموعدها وجائزتها (صفوف contest.admin_rows). ولا مسابقة مفتوحة ← نصٌّ فارغ."""
+    now = time.time() if now is None else now
+    ms = sorted((r for r in rows if r.get("state") == "open" and r.get("contest")), key=lambda r: r["match"]["ts"])
+    if not ms:
+        return ""
+    today = _day(now)
+    days = sorted({_day(r["match"]["ts"]) for r in ms})
+    one_day, one_time = len(days) == 1, len({_clock(r["match"]["ts"]) for r in ms}) == 1
+    what = "مباراة" if len(ms) == 1 else "مباريات"
+    if not one_day:
+        head = f"⚽ المباريات المفتوحة للتوقّع في {CUP['name']}:"
+    else:
+        d, first = days[0], datetime.datetime.fromtimestamp(ms[0]["match"]["ts"], RIYADH)
+        when = (("الليلة" if first.hour >= 17 else "اليوم") if d == today
+                else "الغد" if d == today + datetime.timedelta(days=1)
+                else f"{DAYS[d.weekday()]} {d.day} {MONTHS[d.month - 1]}")
+        head = f"⚽ {what} {when} في {CUP['name']}:"
+
+    def teams(r):
+        return f"{r['match']['home']} × {r['match']['away']}"
+
+    lines = []
+    for r in ms:
+        ts = r["match"]["ts"]
+        tail = "" if one_day and one_time else f" — {_clock(ts)}" if one_day else f" — {when_label(ts)}"
+        lines.append(f"• {teams(r)}{tail}")
+    if one_day and one_time:
+        t = datetime.datetime.fromtimestamp(ms[0]["match"]["ts"], RIYADH)
+        lines.append(f"{CLOCKS[t.hour % 12]} الساعة {_clock(ms[0]['match']['ts'])}")
+
+    def prize(r):
+        c = r["contest"]
+        w = int(c.get("winners") or 1)
+        return (c.get("prize") or "[اكتب الجائزة هنا]") + (" (فائزان)" if w == 2 else f" ({w} فائزين)" if w > 2 else "")
+
+    labels = [prize(r) for r in ms]
+    if len(ms) == 1:
+        prizes = f"🏆 *الجائزة:* {labels[0]}"
+    elif len(set(labels)) == 1:
+        prizes = f"🏆 *الجائزة لكل مباراة:* {labels[0]}"
+    else:
+        prizes = "🏆 *الجوائز:*\n" + "\n".join(f"• {teams(r)}: {lab}" for r, lab in zip(ms, labels))
+    return "\n".join(["🎁 *مسابقة سمارت سوق: توقّع النتيجة واربح!*", "", head, *lines, "", prizes, "",
+                      ANNOUNCE_TAIL.format(link=guide_pages.SITE + PREDICT)])
 
 
 def render_predict():

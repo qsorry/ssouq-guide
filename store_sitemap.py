@@ -15,6 +15,7 @@
 """
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -24,6 +25,7 @@ STORE_ID = os.environ.get("SALLA_STORE_ID", "831097886")
 STORE_URL = os.environ.get("SALLA_STORE_URL", "https://ssouq.com").rstrip("/")
 CATEGORY = os.environ.get("SALLA_CATEGORY_ID", "993357185")
 TOKEN = os.environ.get("SALLA_ADMIN_TOKEN", "").strip()
+API = os.environ.get("SALLA_API", "https://api.salla.dev").rstrip("/")   # يُغيَّر في الاختبارات وحدها
 TTL = int(os.environ.get("STORE_SITEMAP_TTL", "3600"))
 TIMEOUT = 12
 # واجهة سلة تحجب وكيل urllib الافتراضي بـ403، فنرسل وكيلًا صريحًا.
@@ -44,7 +46,7 @@ def _get(url, headers):
 
 def _from_public():
     """المنتجات المعروضة على الواجهة — ما تراه الواجهة هو ما يراه الزائر."""
-    data = _get(f"https://api.salla.dev/store/v1/products?per_page=50",
+    data = _get(f"{API}/store/v1/products?per_page=50",
                 {"Store-Identifier": STORE_ID, "Accept": "application/json"})
     items = []
     for p in data.get("data", []):
@@ -58,7 +60,7 @@ def _from_admin():
     """واجهة الإدارة: ترقيم كامل، ونصفّي المخفي وغير المعروض على الويب."""
     items, page = [], 1
     while page <= 40:
-        d = _get(f"https://api.salla.dev/admin/v2/products?per_page=50&page={page}",
+        d = _get(f"{API}/admin/v2/products?per_page=50&page={page}",
                  {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"})
         rows = d.get("data", [])
         if not rows:
@@ -161,3 +163,100 @@ def status():
     meta = dict(_fresh()[1])
     meta["cached_for_seconds"] = int(max(0, TTL - (time.time() - _cache["at"])))
     return json.dumps(meta, ensure_ascii=False, indent=1).encode("utf-8")
+
+
+# ---------- منتجات المتجر للاختيار منها (جائزة مسابقة التوقّعات) ----------
+PRODUCTS_TTL = 600
+_plock = threading.Lock()
+_products = {"at": 0.0, "key": None, "data": None}
+
+
+def _amount(v):
+    if isinstance(v, dict):                          # الإدارية: {amount, currency}، والعامة رقم
+        v = v.get("amount")
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def product_of(p):
+    """منتجٌ من واجهة سلة (العامة أو الإدارية) بشكلٍ واحد، أو None لما ليس معروضًا في المتجر:
+    {id, name, url, price, img, available} — والنافد (out) يبقى: الجائزة تُسلَّم بيدٍ لا من المخزون."""
+    if not isinstance(p, dict):
+        return None
+    url = ((p.get("urls") or {}).get("customer") or p.get("url") or "").strip()
+    status, pid = str(p.get("status") or ""), str(p.get("id") or "")
+    if not url.startswith(STORE_URL + "/") or status not in ("sale", "out") or not pid.isdigit():
+        return None
+    if not (p.get("show_in") or {}).get("web", True):
+        return None
+    img = p.get("image") if isinstance(p.get("image"), dict) else {}
+    img = str(img.get("url") or p.get("main_image") or p.get("thumbnail") or "")
+    return {"id": pid, "name": re.sub(r"\s+", " ", str(p.get("name") or "")).strip(), "url": url,
+            "price": _amount(p.get("sale_price")) or _amount(p.get("price")),
+            "img": img if img.startswith("https://") else "",
+            "available": status == "sale" and not p.get("is_out_of_stock")}
+
+
+def _products_admin(token):
+    out, page = [], 1
+    while page <= 40:
+        d = _get(f"{API}/admin/v2/products?per_page=50&page={page}",
+                 {"Authorization": f"Bearer {token}", "Accept": "application/json"})
+        rows = d.get("data") or []
+        out += [x for x in map(product_of, rows) if x]
+        cur = d.get("pagination") or {}
+        if not rows or not cur.get("totalPages") or page >= cur["totalPages"]:
+            break
+        page += 1
+    return out
+
+
+def _products_public(extra_ids):
+    """الواجهة العامة تعطي 15 منتجًا وتتجاهل الترقيم؛ وما سقط منها ويعرفه الدليل يُطلب بتفاصيله."""
+    head = {"Store-Identifier": STORE_ID, "Accept": "application/json"}
+    out = [x for x in map(product_of, _get(f"{API}/store/v1/products?per_page=50", head).get("data") or []) if x]
+    have = {x["id"] for x in out}
+    for pid in extra_ids:
+        pid = str(pid).lstrip("p")
+        if not pid.isdigit() or pid in have:
+            continue
+        try:
+            x = product_of(_get(f"{API}/store/v1/products/{pid}/details", head).get("data"))
+        except (urllib.error.URLError, ValueError, TimeoutError):
+            x = None                                  # منتجٌ حُذف أو تعذّر: لا يُسقط القائمة
+        if x:
+            out.append(x)
+            have.add(pid)
+    return out
+
+
+def products(token="", extra_ids=(), fresh=False):
+    """منتجات المتجر الحيّة ← (القائمة، المصدر، الخطأ). بالرمز الإداري كاملةً؛ وبدونه (أو إن رُفض)
+    الواجهة العامة ومعها `extra_ids`. عشر دقائق في الذاكرة، والفشل يُبقي آخر قائمةٍ صالحة."""
+    token = (token or TOKEN or "").strip()
+    key = (bool(token), tuple(extra_ids))
+    with _plock:
+        c = dict(_products)
+    if not fresh and c["data"] and c["key"] == key and time.time() - c["at"] < PRODUCTS_TTL:
+        return c["data"]
+    items, source, error = [], "", ""
+    if token:
+        try:
+            items, source = _products_admin(token), "admin"
+        except (urllib.error.URLError, ValueError, KeyError, TimeoutError) as e:
+            error = "الواجهة الإدارية: " + str(e)[:120]
+    if not items:
+        try:
+            items, source = _products_public(extra_ids), "public"
+        except (urllib.error.URLError, ValueError, KeyError, TimeoutError) as e:
+            error = (error + " · " if error else "") + str(e)[:120]
+    with _plock:
+        if items:
+            _products.update(at=time.time(), key=key, data=(items, source, ""))
+            return _products["data"]
+        if _products["data"]:                         # فشلٌ عابر: القائمة السابقة أصلح من لا شيء
+            return (_products["data"][0], _products["data"][1], error)
+    return [], "error", error

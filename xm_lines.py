@@ -18,6 +18,7 @@ import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, t
 import io, zipfile
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import copy
@@ -1984,49 +1985,93 @@ def contest_link(rec):
     return f"https://{SITE_HOST}{tournament.PATH}/{mt.get('slug') or rec['eid']}#predict"
 
 
-_wa_probe = {"at": 0.0, "d": {}}
+# خدمة واتساب النظام اللوجستي (whatsapp-reader): جلسة المسابقة فيها، تُربط بـ QR من صفحة المدير.
+CONTEST_INBOUND_URL = os.environ.get("CONTEST_INBOUND_URL", "").strip()   # للاختبار؛ وإلا من SITE_HOST
+_reader_cache = {"at": 0.0, "d": None}
 
 
-def wa_bridge(st, fresh=False):
-    """حال خدمة واتساب (Baileys): رقمها واتصالها وهل تمرّر الرسائل الواردة (‏WA_INBOUND_URL).
-    تُسأل مرةً كل خمس دقائق (ودقيقة بعد فشل)، فلا يصلها سؤالٌ مع كل زائر."""
-    wa = st["service"].get("wa", {})
-    if wa.get("type") != "http" or not wa.get("url"):
-        return {}
-    now = time.time()
-    if not fresh and now - _wa_probe["at"] < (300 if _wa_probe["d"].get("ok") else 60):
-        return dict(_wa_probe["d"])
+def contest_inbound_url():
+    return CONTEST_INBOUND_URL or f"https://{SITE_HOST}/api/contest/wa-inbound"
+
+
+def reader_call(method, path, body=None, timeout=15):
+    """نداءٌ لخدمة الواتساب بسرّها ← (رمز HTTP أو 0، الرد أو {}، الخطأ)."""
+    cfg = contest.reader_config(DATA_DIR)
+    if not cfg["url"] or not cfg["secret"]:
+        return 0, {}, "not_configured"
+    data = json.dumps(body).encode() if body is not None else None
+    rq = Request(cfg["url"] + path, data=data, method=method,
+                 headers={"X-Reader-Secret": cfg["secret"], "Content-Type": "application/json",
+                          "Accept": "application/json"})
     try:
-        rq = Request(_wa_base(wa) + "/status", headers={"Authorization": "Bearer " + wa.get("secret", "")})
-        with urlopen(rq, timeout=6) as r:
-            x = json.loads(r.read().decode("utf-8", "replace") or "{}")
-        d = {"ok": True, "connected": bool(x.get("connected")), "inbound": bool(x.get("inbound")),
-             "me": re.sub(r"\D", "", str(x.get("me") or ""))}
-    except Exception as e:
-        d = {"ok": False, "error": str(e)[:120]}
-    _wa_probe.update(at=now, d=d)
-    return dict(d)
+        with urlopen(rq, timeout=timeout) as r:
+            return r.getcode(), json.loads(r.read().decode("utf-8", "replace") or "{}"), ""
+    except HTTPError as e:
+        raw = e.read().decode("utf-8", "replace") if e.fp else ""
+        try:
+            d = json.loads(raw or "{}")
+        except ValueError:
+            d = {}
+        return e.code, d, f"HTTP {e.code}: {(d.get('error') if isinstance(d, dict) else '') or raw[:160]}"
+    except Exception as e:                      # شبكة، شهادة، مهلة
+        return 0, {}, str(getattr(e, "reason", e))[:300]
 
 
-def contest_wa_number(st):
-    """الرقم الذي تُرسل إليه رسائل التوقّع: من إعداد المسابقة إن ضُبط، وإلا رقم خدمة واتساب نفسها."""
-    return contest.load_settings(DATA_DIR)["wa_number"] or wa_bridge(st).get("me", "")
+def reader_status(fresh=False):
+    """حال جلسة المسابقة في الخدمة ← {configured, ok, status, number, qr, error} — دقيقة في
+    الذاكرة لزوّار الموقع، وطازجةٌ لصفحة المدير."""
+    now = time.time()
+    c = _reader_cache
+    if not fresh and c["d"] is not None and now - c["at"] < (60 if c["d"].get("ok") else 20):
+        return dict(c["d"])
+    code, d, err = reader_call("GET", "/sessions/" + contest.READER_TENANT, timeout=10)
+    if err == "not_configured":
+        out = {"configured": False, "ok": False, "status": "", "number": "", "qr": None, "error": ""}
+    elif code == 200:
+        out = {"configured": True, "ok": True, "status": str(d.get("status") or ""),
+               "number": re.sub(r"\D", "", str(d.get("number") or "")), "qr": d.get("qr"),
+               "version": str(d.get("version") or ""), "error": ""}
+    else:
+        out = {"configured": True, "ok": False, "status": "", "number": "", "qr": None,
+               "error": "الخدمة رفضت السر (403) — طابِق WHATSAPP_READER_SECRET" if code == 403 else err}
+    c.update(at=now, d=out)
+    return dict(out)
+
+
+def contest_wa_number(st=None):
+    """الرقم الذي تُرسل إليه رسائل التوقّع: رقم جلسة المسابقة وهي متصلة، وإلا لا تسجيل."""
+    r = reader_status()
+    return r["number"] if r.get("status") == "connected" else ""
+
+
+def reader_send(to, text):
+    """رسالةٌ من رقم المسابقة ← {ok, error}."""
+    code, d, err = reader_call("POST", f"/sessions/{contest.READER_TENANT}/send", {"to": to, "body": text})
+    if code == 200:
+        return {"ok": True}
+    return {"ok": False, "error": {"not_connected": "رقم المسابقة غير مربوط", "not_on_whatsapp": "الرقم ليس على واتساب",
+                                   "no_session": "رقم المسابقة غير مربوط"}.get(d.get("error"), err or "تعذّر الإرسال")}
 
 
 def contest_notify(rec):
-    """رسائل الفرز: للفائزين (إن فُعّل التبليغ) ولرقم المدير — وتُسجَّل نتيجة كلٍّ منها."""
+    """رسائل الفرز: للفائزين (إن فُعّل التبليغ) ولرقم المدير — من رقم المسابقة، وتُسجَّل نتيجة كلٍّ منها."""
     try:
-        wa = load_store()["service"].get("wa", {})
         out = []
         for msg in contest.messages(rec, contest.load_settings(DATA_DIR), contest_link(rec)):
-            r = wa_send.send(wa, msg["to"], msg["text"])
+            r = reader_send(msg["to"], msg["text"])
             out.append({"to": msg["to"], "kind": msg["kind"], "n": msg.get("n"), "ok": bool(r.get("ok")),
-                        "dry": bool(r.get("dry")), "error": str(r.get("error") or "")[:200]})
+                        "dry": False, "error": str(r.get("error") or "")[:200]})
         if out:
             contest.mark_sent(DATA_DIR, rec["eid"], out)
         return out
     except Exception as e:                  # التبليغ لا يُسقط الفرز؛ ويُعاد من صفحة المدير
         return [{"ok": False, "error": str(e)[:200]}]
+
+
+def store_products(st, fresh=False):
+    """منتجات المتجر لاختيار الجائزة: بالرمز الإداري إن وُجد، وإلا الواجهة العامة ومعها باقات الدليل."""
+    ids = [p["id"] for b in tournament._catalog().values() for p in b.get("plans", [])]
+    return store_sitemap.products(renew_salla_token(st), ids, fresh=fresh)
 
 
 def contest_tick(now=None):
@@ -2799,10 +2844,8 @@ class Handler(BaseHTTPRequestHandler):
         d = contest.public(rec, m) if rec else {"ok": True, "state": "off"}
         if (d.get("match") or {}).get("ts"):
             d["when"] = tournament.when_label(d["match"]["ts"])
-        if d.get("state") == "open":                 # التسجيل برسالة واتساب: أله رقمٌ يستقبل؟
-            with _lock:
-                st = load_store()
-            d["reg"] = bool(contest_wa_number(st))
+        if d.get("state") == "open":                 # التسجيل برسالة واتساب: أرقم المسابقة متصل؟
+            d["reg"] = bool(contest_wa_number())
         return self._send(200, d)
 
     def _contest_start(self):
@@ -2814,9 +2857,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "طلب غير صالح"})
         if not isinstance(form, dict):
             return self._send(400, {"error": "طلب غير صالح"})
-        with _lock:
-            st = load_store()
-        wa = contest_wa_number(st)
+        wa = contest_wa_number()
         if not wa:
             return self._send(503, {"error": "التسجيل عبر واتساب متوقّفٌ الآن. حاول بعد قليل."})
         code, res = contest.start(DATA_DIR, cup_match(form.get("m")), form, self._client_ip())
@@ -2826,28 +2867,41 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(code, res)
 
     def _contest_inbound(self):
-        """من خدمة واتساب: {from, text, ts} ← {reply} تردّ به على المرسل. توقيعها سرّ البوابة
-        نفسه الذي تُرسل به الأداة، فلا يسجّل أحدٌ توقّعًا برقمٍ ليس له بطلبٍ مباشر."""
-        if int(self.headers.get("Content-Length", 0) or 0) > 16384:
-            return self._send(413, {"ok": False, "error": "too large"})
-        with _lock:
-            st = load_store()
-        wa = st["service"].get("wa", {})
-        secret = str(wa.get("secret") or "").encode()
-        auth = self.headers.get("Authorization", "")
-        tok = (auth[7:] if auth.startswith("Bearer ") else "").encode()
-        if wa.get("type") != "http" or not secret or not hmac.compare_digest(tok, secret):
+        """من خدمة واتساب النظام اللوجستي: رسالةٌ خاصة وصلت رقم المسابقة ({sender_number, body,
+        sent_at}، موقَّعة بـ X-Reader-Token). رسالة التوقّع تُسجَّل ويُردّ على مرسلها من رقم المسابقة،
+        وما عداها يُجاب عنه بـ ignored فلا يُردّ على أحد."""
+        tok = contest.reader_config(DATA_DIR)["token"].encode()
+        got = (self.headers.get("X-Reader-Token") or "").encode()
+        if not tok or not hmac.compare_digest(got, tok):
             return self._send(401, {"ok": False, "error": "unauthorized"})
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        if n > 65536:                   # صورةٌ أو ملف (حتى 5MB): ليس توقّعًا — يُقرأ ويُهمل، فلا تعيده الخدمة
+            if n > 16 * 1024 * 1024:
+                self.close_connection = True
+                return self._send(413, {"ok": False, "error": "too large"})
+            while n > 0:
+                chunk = self.rfile.read(min(n, 65536))
+                if not chunk:
+                    break
+                n -= len(chunk)
+            return self._send(200, {"ok": True, "status": "ignored"})
         try:
             body = self._body()
         except ValueError:
             return self._send(400, {"ok": False, "error": "bad json"})
-        if not isinstance(body, dict):
-            return self._send(400, {"ok": False, "error": "bad json"})
+        if not isinstance(body, dict) or body.get("type") == "ping":    # فحص الخدمة لرابطنا
+            return self._send(200, {"ok": True, "status": "ok"})
+        if body.get("type") == "ack":                   # إيصال تسليمٍ/قراءةٍ لرسالةٍ أرسلناها
+            return self._send(200, {"ok": True, "status": "ignored"})
         data = tournament._feed.get()[0]
         ms = {m["id"]: m for m in (data or {}).get("matches", [])}
-        res = contest.confirm(DATA_DIR, body.get("text"), body.get("from"), body.get("ts"), ms, contest_link)
-        return self._send(200, {"ok": True, **res})
+        res = contest.confirm(DATA_DIR, body.get("body"), body.get("sender_number"), body.get("sent_at"), ms,
+                              contest_link)
+        if res.get("reply"):                          # الردّ بعد إجابة الخدمة، لا قبلها
+            threading.Thread(target=reader_send, args=(contest.norm_phone(body.get("sender_number")), res["reply"]),
+                             daemon=True).start()
+        return self._send(200, {"ok": True, "status": "ignored" if res["status"] == "ignored" else "ok",
+                                "contest": res["status"]})
 
     def _contest_admin_get(self, path):
         data = tournament._feed.get()[0]
@@ -2856,11 +2910,14 @@ class Handler(BaseHTTPRequestHandler):
             rows = contest.admin_rows(DATA_DIR, ms)
             for r in rows:
                 r["when"] = tournament.when_label(r["match"]["ts"]) if r["match"].get("ts") else ""
-            st = load_store()
             return self._send(200, {"ok": True, "rows": rows, "feed": bool(data),
-                                    "settings": contest.load_settings(DATA_DIR),
-                                    "wa": st["service"].get("wa", {}).get("type") or "none",
-                                    "bridge": wa_bridge(st, fresh=True), "number": contest_wa_number(st)})
+                                    "settings": contest.load_settings(DATA_DIR), "reader": self._reader_view(),
+                                    "announce": tournament.announcement(rows)})
+        if path == "/api/contest/admin/wa":            # حال ربط رقم المسابقة (والـ QR ما دام ينتظر)
+            return self._send(200, {"ok": True, **self._reader_view()})
+        if path == "/api/contest/admin/products":      # منتجات المتجر لاختيار الجائزة
+            items, source, error = store_products(load_store(), fresh=self._q("fresh") == "1")
+            return self._send(200, {"ok": bool(items), "products": items, "source": source, "error": error})
         if path == "/api/contest/admin/match":
             eid = contest.eid_of(self._q("m"))
             d = contest.admin_detail(DATA_DIR, eid, next((x for x in ms if x["id"] == eid), None))
@@ -2877,15 +2934,59 @@ class Handler(BaseHTTPRequestHandler):
                               extra={"Content-Disposition": f'attachment; filename="contest-{eid or "all"}.xlsx"'})
         return self._send(404, {"error": "not found"})
 
+    @staticmethod
+    def _reader_view():
+        cfg = contest.reader_config(DATA_DIR)
+        r = reader_status(fresh=True)
+        return {"configured": r["configured"], "url": cfg["url"], "has_secret": bool(cfg["secret"]), "env": cfg["env"],
+                "status": r.get("status", ""), "number": r.get("number", ""),
+                "qr": r.get("qr") if r.get("status") == "qr" else None, "error": r.get("error", ""),
+                "inbound": contest_inbound_url()}
+
     def _contest_admin_post(self, path):
         req = self._body()
         if path == "/api/contest/admin/settings":
             return self._send(200, {"ok": True, "settings": contest.save_settings(DATA_DIR, req)})
+        if path == "/api/contest/admin/wa/config":       # رابط خدمة الواتساب وسرّها
+            contest.save_reader(DATA_DIR, req.get("url"), req.get("secret"))
+            _reader_cache["d"] = None
+            return self._send(200, {"ok": True, **self._reader_view()})
+        if path == "/api/contest/admin/wa/connect":      # ربط رقم: الخدمة تبدأ الجلسة ويظهر QR
+            number = contest.norm_phone(req.get("number"))
+            if not contest.phone_ok(number):
+                return self._send(400, {"error": "اكتب رقم الواتساب الذي تربطه، مثل 05xxxxxxxx"})
+            cfg = contest.reader_config(DATA_DIR)
+            code, d, err = reader_call("POST", "/sessions", {
+                "tenant": contest.READER_TENANT, "number": number, "callbackUrl": contest_inbound_url(),
+                "ingestToken": cfg["token"], "dmCallbackUrl": contest_inbound_url()}, timeout=30)
+            _reader_cache["d"] = None
+            if code != 200:
+                return self._send(502, {"error": err or "تعذّر بدء الربط"})
+            return self._send(200, {"ok": True, **self._reader_view()})
+        if path == "/api/contest/admin/wa/disconnect":   # فصل الرقم (يُمسح ربطه من الخدمة)
+            code, d, err = reader_call("DELETE", "/sessions/" + contest.READER_TENANT)
+            _reader_cache["d"] = None
+            return self._send(200 if code == 200 else 502, {"ok": code == 200, "error": err, **self._reader_view()})
+        if path == "/api/contest/admin/wa/test":         # رسالة تجربة من رقم المسابقة
+            to = contest.norm_phone(req.get("to"))
+            if not contest.phone_ok(to):
+                return self._send(400, {"error": "اكتب رقمًا صحيحًا"})
+            r = reader_send(to, "رسالة تجربة من مسابقة سمارت سوق ✅")
+            return self._send(200 if r["ok"] else 502, r)
         m = cup_match(req.get("m"))
         if path == "/api/contest/admin/set":
             if not m:
                 return self._send(404, {"error": "المباراة ليست في جدول البطولة"})
-            code, res = contest.configure(DATA_DIR, m, bool(req.get("on")), req.get("prize"), req.get("winners"))
+            product = None
+            pid = str(req.get("prize_id") or "").strip()
+            if pid and req.get("on"):                 # الإيقاف لا يمسّ الجائزة
+                saved = contest.saved_prize(DATA_DIR, m["id"])
+                product = (next((x for x in store_products(load_store())[0] if x["id"] == pid), None)
+                           or (saved if saved and saved["id"] == pid else None))
+                if not product:
+                    return self._send(400, {"error": "هذا الاشتراك غير موجود في المتجر الآن — حدّث القائمة"})
+            code, res = contest.configure(DATA_DIR, m, bool(req.get("on")), req.get("prize"), req.get("winners"),
+                                          product=product)
             return self._send(code, res)
         if path == "/api/contest/admin/settle":       # «افرز الآن»: ما تفعله الدورة كل دقيقة
             rec, drawn = contest.settle(DATA_DIR, contest.eid_of(req.get("m")), m)
@@ -2893,7 +2994,7 @@ class Handler(BaseHTTPRequestHandler):
                 why = "أُلغيت المباراة فلا فرز." if rec and rec.get("void") else "لم تنتهِ المباراة بعد."
                 return self._send(409, {"error": why})
             return self._send(200, {"ok": True, "drawn": drawn, "sent": contest_notify(rec) if drawn else []})
-        if path == "/api/contest/admin/notify":       # إعادة رسائل الفرز (بعد ضبط الواتساب مثلًا)
+        if path == "/api/contest/admin/notify":       # إعادة رسائل الفرز
             rec = contest.load(DATA_DIR, req.get("m"))
             if not rec or not rec.get("draw"):
                 return self._send(409, {"error": "لم تُفرز بعد."})

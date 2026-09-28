@@ -310,6 +310,118 @@ def unit():
         shutil.rmtree(x)
 
 
+def unit_prize():
+    """الجائزة من منتجات سلة، وإعداد خدمة واتساب النظام اللوجستي، ورسالة القناة."""
+    import datetime
+    import store_sitemap as S
+    print("الجائزة والخدمة ورسالة القناة")
+    pub = {"id": 11, "name": " اشتراك  سمارت 3 أشهر | IPTV ", "status": "sale", "url": "https://ssouq.com/a/p11",
+           "price": 99, "sale_price": 79, "image": {"url": "https://cdn.salla.sa/11.png"}, "is_out_of_stock": False}
+    x = S.product_of(pub)
+    check("منتج الواجهة العامة بشكلٍ واحد", x == {"id": "11", "name": "اشتراك سمارت 3 أشهر | IPTV",
+                                                   "url": "https://ssouq.com/a/p11", "price": 79.0,
+                                                   "img": "https://cdn.salla.sa/11.png", "available": True}, x)
+    adm = {"id": 12, "name": "سنة", "status": "out", "urls": {"customer": "https://ssouq.com/b/p12"},
+           "price": {"amount": 249, "currency": "SAR"}, "main_image": "http://insecure/x.png", "show_in": {"web": True}}
+    x = S.product_of(adm)
+    check("والإدارية: السعر من {amount}، والنافد يبقى بلا توفّر، ولا صورة بلا https", x["price"] == 249.0
+          and not x["available"] and x["img"] == "", x)
+    check("المخفي، وغير المعروض على الويب، ورابطٌ خارج المتجر: لا", not S.product_of(dict(pub, status="hidden"))
+          and not S.product_of(dict(adm, show_in={"web": False})) and not S.product_of(dict(pub, url="https://evil.com/p11"))
+          and not S.product_of(dict(pub, id="p11")) and not S.product_of(None))
+    check("اسم الجائزة ما قبل «|»", C.prize_name({"name": "اشتراك سمارت 3 أشهر | IPTV"}) == "اشتراك سمارت 3 أشهر")
+
+    d = fresh()
+    m = match(eid="21", ts=NOW + 7200)
+    prod = S.product_of(pub)
+    code, res = C.configure(d, m, True, "", 1, now=NOW, product=prod)
+    c = res["contest"]
+    check("اختيار منتجٍ جائزةً: الاسم والرابط بعلامة الدليل والصورة", code == 200 and c["prize"] == "اشتراك سمارت 3 أشهر"
+          and c["prize_id"] == "11" and c["prize_url"] == "https://ssouq.com/a/p11?" + C.PRIZE_UTM
+          and c["prize_img"] == "https://cdn.salla.sa/11.png", c)
+    sp = C.saved_prize(d, "21")
+    check("المحفوظ يُستعاد منتجًا برابطه الأصلي", sp == {"id": "11", "name": "اشتراك سمارت 3 أشهر",
+                                                        "url": "https://ssouq.com/a/p11", "img": "https://cdn.salla.sa/11.png"}, sp)
+    code, res = C.configure(d, m, True, "", 2, now=NOW, product=sp)
+    check("وإعادة حفظه لا تكرّر علامة الدليل", res["contest"]["prize_url"].count("utm_source") == 1
+          and res["contest"]["winners"] == 2, res)
+    code, res = C.configure(d, m, False, "", 2, now=NOW)
+    check("الإيقاف يُبقي الجائزة ورابطها", code == 200 and not res["contest"]["on"]
+          and res["contest"]["prize_id"] == "11", res)
+    code, res = C.configure(d, m, True, "بطاقة هدية", 1, now=NOW)
+    check("جائزةٌ مكتوبة تحلّ محلّ المنتج", res["contest"]["prize"] == "بطاقة هدية" and not res["contest"]["prize_id"]
+          and not res["contest"]["prize_url"] and C.saved_prize(d, "21") is None, res)
+    pub_d = C.public(C.load(d, "21"), m, NOW)
+    check("والعلن يحمل رابط الجائزة إن وُجد", "prize_url" in pub_d)
+    C.configure(d, m, True, "", 1, now=NOW, product=prod)
+    html = T._prize_row(C.summaries(d)["21"])
+    check("سطر الجائزة في البطاقة: رابط صفحتها في نافذة", 'class="pprize"' in html and "p11?utm_source=" in html
+          and 'target="_blank"' in html and "اشتراك سمارت 3 أشهر" in html, html)
+    check("ولا سطر لجائزةٍ بلا رابط", T._prize_row({"prize": "x", "prize_url": ""}) == "")
+
+    # إعداد الخدمة: من صفحة المدير مشفَّرًا، أو من البيئة بأسماء النظام اللوجستي
+    saved = {k: os.environ.pop(k) for k in ("WHATSAPP_READER_URL", "WHATSAPP_READER_SECRET") if k in os.environ}
+    try:
+        cfg = C.reader_config(d)
+        check("بلا إعداد: لا رابط ولا سرّ، ورمز الوارد يُولَّد", cfg["url"] == "" and cfg["secret"] == ""
+              and len(cfg["token"]) >= 24 and not cfg["env"], cfg)
+        check("ورمز الوارد ثابتٌ بين القراءات", C.reader_config(d)["token"] == cfg["token"])
+        C.save_reader(d, "https://wa.example.com/", "s3cret")
+        c2 = C.reader_config(d)
+        check("الرابط بلا شرطة أخيرة والسرّ محفوظ", c2["url"] == "https://wa.example.com" and c2["secret"] == "s3cret")
+        raw = open(os.path.join(d, "contest", "settings.json"), encoding="utf-8").read()
+        check("والسرّ مشفَّرٌ على القرص", "s3cret" not in raw and cfg["token"] not in raw)
+        C.save_reader(d, "https://wa.example.com", "")
+        check("سرٌّ فارغ يُبقي المحفوظ", C.reader_config(d)["secret"] == "s3cret")
+        C.save_settings(d, {"notify": True, "text": "مرحبا {name}", "admin_phone": "0551234567"})
+        check("حفظ إعدادات التبليغ لا يمسح إعداد الخدمة", C.reader_config(d)["secret"] == "s3cret"
+              and C.reader_config(d)["token"] == cfg["token"])
+        try:
+            C.save_reader(d, "ftp://x", "")
+            bad = False
+        except ValueError:
+            bad = True
+        check("رابطٌ غير http(s) يُرفض", bad)
+        os.environ.update(WHATSAPP_READER_URL="https://reader.internal:3000", WHATSAPP_READER_SECRET="envsec")
+        c3 = C.reader_config(d)
+        check("البيئة تغلب إعداد الصفحة", c3["url"] == "https://reader.internal:3000" and c3["secret"] == "envsec"
+              and c3["env"], c3)
+    finally:
+        os.environ.pop("WHATSAPP_READER_URL", None)
+        os.environ.pop("WHATSAPP_READER_SECRET", None)
+        os.environ.update(saved)
+
+    # رسالة القناة
+    from league import RIYADH
+    k = datetime.datetime(2026, 9, 28, 21, 45, tzinfo=RIYADH).timestamp()
+    now = datetime.datetime(2026, 9, 28, 20, 40, tzinfo=RIYADH).timestamp()
+
+    def row(h, a, ts, prize="اشتراك سمارت 3 أشهر", w=1, st="open"):
+        return {"state": st, "match": {"home": h, "away": a, "ts": ts}, "contest": {"prize": prize, "winners": w}}
+
+    txt = T.announcement([row("تركيا", "إيطاليا", k), row("بلجيكا", "فرنسا", k), row("x", "y", k, st="off"),
+                          row("z", "w", k, st="hold")], now)
+    check("رسالة القناة: مباريات الليلة بموعدها وجائزتها", txt.startswith("🎁 *مسابقة سمارت سوق: توقّع النتيجة واربح!*\n\n"
+          "⚽ مباريات الليلة في دوري الأمم الأوروبية:\n• تركيا × إيطاليا\n• بلجيكا × فرنسا\n🕘 الساعة 9:45 م\n\n"
+          "🏆 *الجائزة لكل مباراة:* اشتراك سمارت 3 أشهر\n\n*كيف تشارك؟*"), txt[:300])
+    check("وفيها رابط المسابقة والشروط والختام", "1️⃣ ادخل صفحة المسابقة 👇\nhttps://guide.ssouq.com/nations-league/predict\n"
+          in txt and "• التوقّعات تُقفل مع صافرة البداية" in txt and txt.endswith("بالتوفيق للجميع 🤞"))
+    check("والموقوفة والمغلقة ليست فيها", "x × y" not in txt and "z × w" not in txt)
+    txt = T.announcement([row("تركيا", "إيطاليا", k, prize=""), row("بلجيكا", "فرنسا", k + 3 * 86400, w=3)], now)
+    check("أيامٌ مختلفة وجوائز مختلفة: الموعد والجائزة لكلٍّ", "⚽ المباريات المفتوحة للتوقّع في" in txt
+          and "• تركيا × إيطاليا — الاثنين 28 سبتمبر 2026 · 9:45 م" in txt
+          and "🏆 *الجوائز:*\n• تركيا × إيطاليا: [اكتب الجائزة هنا]\n• بلجيكا × فرنسا: اشتراك سمارت 3 أشهر (3 فائزين)" in txt,
+          txt[:400])
+    txt = T.announcement([row("تركيا", "إيطاليا", k + 86400 - 5 * 3600, w=2)], now)
+    check("مباراة الغد وحدها: جائزةٌ بفائزَين", "⚽ مباراة الغد في" in txt and "🕓 الساعة 4:45 م" in txt
+          and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in txt, txt[:300])
+    txt = T.announcement([row("أ", "ب", k), row("ج", "د", k - 2 * 3600)], now - 6 * 3600)
+    check("اليوم بموعدين: الساعة على كل مباراة", "⚽ مباريات الليلة في" in txt and "• ج × د — 7:45 م\n• أ × ب — 9:45 م" in txt
+          and "الساعة" not in txt, txt[:300])
+    check("ولا مسابقة مفتوحة: لا رسالة", T.announcement([row("a", "b", k, st="done")], now) == "")
+    shutil.rmtree(d)
+
+
 # ---------- خادمٌ حيّ ----------
 def get(url, auth=False):
     req = urllib.request.Request(url)
@@ -353,10 +465,14 @@ def live():
         json.dump(rec, f, ensure_ascii=False)
     procs = [subprocess.Popen([sys.executable, os.path.join(HERE, "mock_espn.py"), str(mport)])]
     try:
-        env = dict(os.environ, XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
-                   LEAGUE_API=f"http://127.0.0.1:{mport}")
+        base, reader = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{wport}"
+        # خدمة واتساب النظام اللوجستي وهميةً (ومعها منتجات سلة)، ورابط الوارد إلى هذا الخادم
+        procs.append(subprocess.Popen([sys.executable, os.path.join(HERE, "mock_reader.py"), str(wport), "rdr_live"]))
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("WHATSAPP_READER_", "SALLA_ADMIN_TOKEN"))}
+        env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
+                   LEAGUE_API=f"http://127.0.0.1:{mport}", SALLA_API=reader,
+                   CONTEST_INBOUND_URL=base + "/api/contest/wa-inbound")
         procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env))
-        base = f"http://127.0.0.1:{port}"
         for _ in range(60):
             try:
                 urllib.request.urlopen(base + "/robots.txt", timeout=2)
@@ -384,73 +500,112 @@ def live():
         code, res = post(base + "/api/contest/start", {"m": "6", "name": "سارة", "h": 1, "a": 0, "agree": True})
         check("ولا رمز", code == 503, res)
 
-        # خدمة واتساب الحقيقية (whatsapp-baileys) بوضعها الوهمي: تمرّر الرسائل إلى الأداة وتردّ
-        bridge = f"http://127.0.0.1:{wport}"
-        if shutil.which("node"):
-            procs.append(subprocess.Popen(["node", os.path.join(ROOT, "whatsapp-baileys", "index.js")], env=dict(
-                os.environ, WA_FAKE="1", WA_FAKE_ME="966500000009", WA_SECRET="brg_live", WA_PORT=str(wport),
-                WA_BIND="127.0.0.1", WA_INBOUND_URL=base + "/api/contest/wa-inbound"),
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-            for _ in range(60):
-                try:
-                    urllib.request.urlopen(bridge + "/health", timeout=1)
-                    break
-                except Exception:
-                    time.sleep(.1)
-        else:
-            post(base + "/admin/api/contest/admin/settings", {"notify": True, "wa_number": "0500000009"}, auth=True)
-        code, res = post(base + "/admin/api/service", {"wa": {"type": "http", "url": bridge + "/send", "secret": "brg_live"}},
-                         auth=True)
-        check("المدير يضبط قناة واتساب (Baileys)", code == 200, res)
+        # ربط رقم المسابقة كما في النظام اللوجستي: رابط الخدمة وسرّها ← الرقم ← QR ← مربوط
+        def rd(method, path, body=None, secret="rdr_live"):
+            rq = urllib.request.Request(reader + path, method=method, data=json.dumps(body).encode() if body else None,
+                                        headers={"Content-Type": "application/json", "X-Reader-Secret": secret})
+            with urllib.request.urlopen(rq, timeout=20) as r:
+                return json.loads(r.read())
+
+        code, body, _ = get(base + "/admin/api/contest/admin/wa", auth=True)
+        w = json.loads(body)
+        check("صفحة المدير: الخدمة غير مضبوطة بعد", code == 200 and w["configured"] is False and not w["qr"], w)
+        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": "ftp://x", "secret": "s"}, auth=True)
+        check("رابط الخدمة يُقبل http(s) وحده", code == 400 and "https://" in res["error"], res)
+        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": reader + "/", "secret": "wrong"}, auth=True)
+        check("سرٌّ خاطئ: الخدمة ترفض (403) والصفحة تقولها", res["configured"] and "403" in res["error"]
+              and res["url"] == reader and res["has_secret"], res)
+        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": reader, "secret": "rdr_live"}, auth=True)
+        check("بالسرّ الصحيح: مضبوطة وغير مربوطة", code == 200 and not res["error"] and res["status"] == "disconnected", res)
+        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": reader, "secret": ""}, auth=True)
+        check("حفظ الرابط بسرٍّ فارغ يُبقي السرّ", not res["error"] and res["has_secret"], res)
+        st = json.loads(open(os.path.join(data, "contest", "settings.json"), encoding="utf-8").read())
+        check("السرّ ورمز الوارد مشفّران على القرص", "rdr_live" not in json.dumps(st) and st.get("reader_secret")
+              and st.get("reader_token"), list(st))
+        code, res = post(base + "/admin/api/contest/admin/wa/connect", {"number": "12"}, auth=True)
+        check("الربط يطلب رقمًا صحيحًا", code == 400)
+        code, res = post(base + "/admin/api/contest/admin/wa/connect", {"number": "0500000009"}, auth=True)
+        check("«ربط»: يظهر رمز QR للمسح", code == 200 and res["status"] == "qr" and res["qr"].startswith("data:image/"), res)
+        sess = rd("GET", "/_test/log")["sessions"]["ssouq-guide--contest"]
+        check("والجلسة في الخدمة باسمها ورقمها، ورسائلها الخاصة إلى الأداة موقّعة", sess["number"] == "966500000009"
+              and sess["dmCallbackUrl"] == base + "/api/contest/wa-inbound" and len(sess["ingestToken"]) >= 24, sess)
+        code, body, _ = get(base + "/api/contest?m=6")
+        check("قبل المسح: التسجيل متوقّف", json.loads(body).get("reg") is False)
+        rd("POST", "/_test/scan/ssouq-guide--contest", {})
+        code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
+        w = json.loads(body)["reader"]
+        check("بعد المسح: مربوطٌ برقمه، ولا QR", w["status"] == "connected" and w["number"] == "966500000009"
+              and not w["qr"], w)
         code, body, _ = get(base + "/api/contest?m=6")
         check("فيُفتح التسجيل", json.loads(body).get("reg") is True)
+        code, res = post(base + "/admin/api/contest/admin/wa/test", {"to": "0551112222"}, auth=True)
+        log = rd("GET", "/_test/log")
+        check("رسالة تجربة من رقم المسابقة", code == 200 and res["ok"] and log["sent"][-1]["to"] == "966551112222", res)
+        code, res = post(base + "/admin/api/contest/admin/wa/test", {"to": "0599000000"}, auth=True)
+        check("ورقمٌ ليس على واتساب يُقال بوضوح", code == 502 and res["error"] == "الرقم ليس على واتساب", res)
+
         code, res = post(base + "/api/contest/start", {"m": "6", "name": "سارة", "h": 1, "a": 0, "agree": True,
                                                        "promo": True})
-        check("رمزٌ ورابط واتساب برسالةٍ جاهزة إلى رقم المتجر", code == 200
+        check("رمزٌ ورابط واتساب برسالةٍ جاهزة إلى رقم المسابقة", code == 200
               and res["url"].startswith("https://wa.me/966500000009?text=")
               and urllib.parse.quote(res["code"]) in res["url"] and "%0A" in res["url"], res)
         tk = res["code"]
-        code, _ = post(base + "/api/contest/wa-inbound", {"from": "966551230000", "text": res["text"]})
-        check("الأداة لا تقبل رسالةً بلا توقيع الخدمة", code == 401)
-        req = urllib.request.Request(base + "/api/contest/wa-inbound", data=b"{}", method="POST",
-                                     headers={"Content-Type": "application/json", "Authorization": "Bearer wrong"})
-        try:
-            urllib.request.urlopen(req, timeout=5)
-            bad = 200
-        except urllib.error.HTTPError as e:
-            bad = e.code
-        check("ولا بسرٍّ خاطئ", bad == 401)
 
-        def inbound(frm, text):
-            if shutil.which("node"):
-                rq = urllib.request.Request(bridge + "/fake-inbound", method="POST",
-                                            data=json.dumps({"from": frm, "text": text}).encode(),
-                                            headers={"Content-Type": "application/json", "Authorization": "Bearer brg_live"})
-                with urllib.request.urlopen(rq, timeout=15) as r:
-                    return json.loads(r.read())
-            rq = urllib.request.Request(base + "/api/contest/wa-inbound", method="POST",
-                                        data=json.dumps({"from": frm, "text": text, "ts": time.time()}).encode(),
-                                        headers={"Content-Type": "application/json", "Authorization": "Bearer brg_live"})
-            with urllib.request.urlopen(rq, timeout=15) as r:
-                d = json.loads(r.read())
-            return {"forwarded": d.get("status") != "ignored", "reply": d.get("reply", ""),
-                    "sent": [{"to": frm, "text": d["reply"]}] if d.get("reply") else []}
+        def inbound(frm, text, **extra):
+            """رسالةٌ خاصة إلى رقم المسابقة كما تمرّرها الخدمة (شكل handleDirectMessage)."""
+            payload = {"wa_message_id": f"W{time.time_ns()}", "sender_number": frm, "sender_name": "x",
+                       "sent_at": int(time.time()), "body": text, "quoted_body": "", "forwarded": False,
+                       "media_base64": None, "media_mime": None, **extra}
+            return rd("POST", "/_test/dm/ssouq-guide--contest", payload)
 
+        r = inbound("966551230000", res["text"], _token="wrong")
+        check("الأداة لا تقبل رسالةً بتوقيعٍ خاطئ", r["code"] == 401 and not r["sent"], r)
+        code, _ = post(base + "/api/contest/wa-inbound", {"sender_number": "966551230000", "body": res["text"]})
+        check("ولا بلا توقيع", code == 401)
         r = inbound("966551230000", res["text"])
-        check("رسالة التوقّع تصل الأداة ويُردّ على مرسلها", r["forwarded"] and "تم تسجيل توقّعك" in r["reply"]
-              and r["sent"] and r["sent"][0]["to"] == "966551230000", r)
+        check("رسالة التوقّع تصل الأداة ويُردّ على مرسلها من رقم المسابقة", r["code"] == 200
+              and r["answer"]["status"] == "ok" and r["sent"] and r["sent"][0]["to"] == "966551230000"
+              and "تم تسجيل توقّعك" in r["sent"][0]["body"], r)
         code, body, _ = get(base + f"/api/contest/ticket?m=6&c={tk}")
         t = json.loads(body)
         check("والصفحة ترى رمزها مسجّلًا برقمٍ مخفي", t["state"] == "done" and t["n"] == 1 and t["phone"] == "05•••••000", t)
         r = inbound("966551239999", res["text"])
-        check("الرسالة نفسها من رقمٍ آخر: الرمز مستخدم", "استُخدم" in r["reply"], r)
+        check("الرسالة نفسها من رقمٍ آخر: الرمز مستخدم", r["sent"] and "استُخدم" in r["sent"][0]["body"], r)
         r = inbound("966551230000", "السلام عليكم، متى ينتهي اشتراكي؟")
-        check("رسائل العملاء الأخرى لا تُمرَّر ولا يُردّ عليها", not r["forwarded"] and not r["sent"], r)
-        if shutil.which("node"):
-            code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
-            d = json.loads(body)
-            check("صفحة المدير: الخدمة متصلة وتمرّر الرسائل، والرقم منها", d["bridge"].get("connected")
-                  and d["bridge"].get("inbound") and d["number"] == "966500000009", d.get("bridge"))
+        check("رسائل العملاء الأخرى: ignored ولا ردّ", r["answer"].get("status") == "ignored" and not r["sent"], r)
+        r = rd("POST", "/_test/dm/ssouq-guide--contest", {"type": "ack", "wa_message_id": "X", "ack_status": "read"})
+        check("إيصالات التسليم تُهمل", r["code"] == 200 and r["answer"]["status"] == "ignored" and not r["sent"], r)
+        r = inbound("966551230000", "", media_base64="A" * 300000, media_mime="image/jpeg")
+        check("صورةٌ كبيرة تُقرأ وتُهمل (فلا تعيدها الخدمة)", r["code"] == 200 and r["answer"]["status"] == "ignored", r)
+        r = rd("POST", "/_test/dm/ssouq-guide--contest", {"type": "ping"})
+        check("وفحص الخدمة لرابطنا", r["code"] == 200 and r["answer"]["status"] == "ok", r)
+
+        # الجائزة اشتراكٌ من منتجات سلة الحيّة، برابطه
+        code, body, _ = get(base + "/admin/api/contest/admin/products", auth=True)
+        pr = json.loads(body)
+        ids = [x["id"] for x in pr["products"]]
+        check("منتجات سلة للاختيار: المعروض والنافد، لا المخفي", pr["ok"] and ids[:2] == ["1001", "1002"]
+              and "1003" not in ids and pr["source"] == "public", pr)
+        check("بسعر العرض وتوفّره", pr["products"][0]["price"] == 79 and pr["products"][0]["available"]
+              and not pr["products"][1]["available"])
+        code, res = post(base + "/admin/api/contest/admin/set", {"m": "6", "on": True, "prize_id": "999", "winners": 1},
+                         auth=True)
+        check("منتجٌ ليس في المتجر يُرفض", code == 400, res)
+        code, res = post(base + "/admin/api/contest/admin/set", {"m": "6", "on": True, "prize_id": "1001", "winners": 2},
+                         auth=True)
+        c6 = res.get("contest") or {}
+        check("اختيار الاشتراك: اسمه جائزةً ورابطه بعلامة الدليل", code == 200 and c6["prize"] == "اشتراك سمارت 3 أشهر"
+              and c6["prize_id"] == "1001" and c6["prize_url"].startswith("https://ssouq.com/smart-3m/p1001?utm_source=")
+              and c6["prize_img"] == "https://cdn.salla.sa/p1001.png", c6)
+        code, body, _ = get(base + "/nations-league/6-netherlands-serbia")
+        page = body.decode()
+        check("والبطاقة تعرض الجائزة برابط صفحتها", 'class="pprize"' in page and "p1001?utm_source=" in page
+              and "توقّع النتيجة واربح اشتراك سمارت 3 أشهر" in page)
+        code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
+        ann = json.loads(body)["announce"]
+        check("رسالة القناة جاهزة: المباراة وموعدها وجائزتها ورابط المسابقة", "🎁 *مسابقة سمارت سوق" in ann
+              and "• هولندا × صربيا" in ann and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in ann
+              and "https://guide.ssouq.com/nations-league/predict" in ann and "الساعة" in ann, ann)
         code, res = post(base + "/api/contest/start", {"m": "3", "name": "سارة", "h": 3, "a": 0, "agree": True})
         check("مباراةٌ بلا مسابقة", code == 409 and res.get("state") == "off")
         code, body, _ = get(base + "/api/contest?m=6")
@@ -458,8 +613,7 @@ def live():
 
         code, body, _ = get(base + "/nations-league/6-netherlands-serbia")
         page = body.decode()
-        check("بطاقة المسابقة في صفحة المباراة", 'id="predict" data-m="6"' in page and "/static/contest.js?v=" in page
-              and "توقّع النتيجة واربح اشتراك 3 أشهر" in page)
+        check("بطاقة المسابقة في صفحة المباراة", 'id="predict" data-m="6"' in page and "/static/contest.js?v=" in page)
         check("ورابط الشروط", 'href="/nations-league/predict#rules"' in page)
         code, body, _ = get(base + "/nations-league/3-england-spain")
         check("ولا بطاقة لمباراةٍ بلا مسابقة", 'id="predict"' not in body.decode())
@@ -514,6 +668,7 @@ def live():
 
 def main():
     unit()
+    unit_prize()
     live()
     print(f"\nResult: {_p} passed, {_f} failed")
     sys.exit(1 if _f else 0)
