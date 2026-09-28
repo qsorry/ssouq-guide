@@ -184,8 +184,8 @@ def unit():
     code, raw, age = T.render_match("7-croatia-czechia")
     check("ملخّصٌ متعذّر لا يُسقط الصفحة", code == 200 and "كرواتيا" in raw.decode("utf-8"))
     sm = [p for p, _, _ in T.sitemap()]
-    check("خريطة الموقع: الصفحة وصفحة المسابقة ومبارياتها", sm[0] == "/nations-league" and len(sm) == 2 + len(ms)
-          and T.PREDICT in sm and "/nations-league/1-france-belgium" in sm)
+    check("خريطة الموقع: الصفحة ومبارياتها (وصفحة المسابقة الواحدة في الخادم)", sm[0] == "/nations-league"
+          and len(sm) == 1 + len(ms) and T.PREDICT not in sm and "/nations-league/1-france-belgium" in sm)
 
     print("\nالأداة المدمجة في متجر سلة")
     code, raw, age = T.render_widget()
@@ -258,7 +258,40 @@ def unit_gulf():
     code, raw, _ = G.render_widget()
     check("ودجت كأس الخليج", code == 200 and "كأس الخليج العربي" in raw.decode("utf-8"))
     sm = [u for u, *_ in G.sitemap()]
-    check("في خريطة الموقع بمبارياتها", "/gulf-cup" in sm and "/gulf-cup/predict" in sm and "/gulf-cup/103-saudi-arabia-iraq" in sm)
+    check("في خريطة الموقع بمبارياتها", "/gulf-cup" in sm and "/gulf-cup/103-saudi-arabia-iraq" in sm)
+    print("\nودجت المتجر للبطولتين")
+    G.channels = lambda: {"103": "AL KASS One"}
+    T._feed.reset()
+    code, raw, age = T.render_hub((G, T))
+    hp = raw.decode("utf-8")
+    body = hp.split("<body>")[1]
+    check("200 وتتحدّث كل دقيقة والمباراة جارية", code == 200 and age == T.LIVE_TTL)
+    today_part = body.split('<details')[0]
+    check("مباريات اليوم من دوري الأمم (الجارية دائمًا)", 'href="/nations-league/4-portugal-wales"' in today_part
+          and 'href="/nations-league/5-italy-turkiye"' in today_part)
+    check("وكأس الخليج أولًا بعنوانها ورابط صفحتها", body.find("كأس الخليج العربي") < body.find("دوري الأمم الأوروبية")
+          and 'href="/gulf-cup" target="_blank"' in body and 'href="/nations-league" target="_blank"' in body)
+    more = re.search(r'<details class="wmore" id="more"([^>]*)><summary>المباريات القادمة <span class="n">\((\d+)\)</span>', body)
+    check("«المباريات القادمة» زرٌّ مغلق يفتحها، بعددها", more and more.group(1) == "" and int(more.group(2)) > 0,
+          more.group(0) if more else "")
+    up_part = body.split('<details')[1]
+    check("وفيها قادمة البطولتين بقنواتها", 'href="/gulf-cup/103-saudi-arabia-iraq"' in up_part
+          and 'href="/nations-league/6-netherlands-serbia"' in up_part and ">AL KASS One</span>" in up_part)
+    check("ولا نتيجة منتهية من أمس", "1-france-belgium" not in body and "101-saudi-arabia-kuwait" not in body)
+    check("روابطها كلها في نافذة جديدة", body.count('target="_blank"') == body.count("<a "), body.count("<a "))
+    check("تبلّغ الحاضنة بطولها، ومع فتح الزر", "parent.postMessage({ssouqWidget:" in hp and 'addEventListener("toggle"' in hp)
+    check("لا تُفهرس، ووضعها كالمتجر", '<meta name="robots" content="noindex">' in hp and "data-theme" not in hp.split("<head>")[0]
+          and 'data-theme="dark"' in T.render_hub((G, T), "dark")[1].decode("utf-8"))
+    calm = {"matches": [dict(m, state="pre", ts=time.time() + 3 * 86400) for m in G._feed.get()[0]["matches"][:2]],
+            "groups": []}
+    G2 = T.instance("gulf_hub_calm", **T.GULF)
+    G2._feed.get = lambda: (calm, time.time(), None)
+    code, raw, _ = T.render_hub((G2,))
+    cp = raw.decode("utf-8")
+    check("بلا مباريات اليوم: تقولها، والقادمة مفتوحة", "لا مباريات اليوم" in cp and '<details class="wmore" id="more" open>' in cp)
+    G2._feed.get = lambda: (None, 0, "down")
+    code, raw, _ = T.render_hub((G2,))
+    check("وبلا بيانات: 503", code == 503 and "تعذّر تحميل المباريات" in raw.decode("utf-8"))
     G.channels = lambda: {}
 
 
@@ -314,6 +347,10 @@ def live():
         check("مباراة غير موجودة = 404", c == 404)
         c, h, b = req(base, "/nations-league/widget")
         check("/nations-league/widget للمتجر", c == 200 and "data-theme" not in b.split("<head>")[0] and "noindex" in b)
+        check("وهو ودجت البطولتين: كأس الخليج أولًا، والقادمة زرٌّ", b.find("كأس الخليج العربي") < b.find("دوري الأمم الأوروبية")
+              and '<details class="wmore" id="more"' in b and 'href="/gulf-cup/' in b)
+        c, h, b2 = req(base, "/gulf-cup/widget")
+        check("و/gulf-cup/widget الودجت نفسه", c == 200 and '<details class="wmore"' in b2)
         c, _, b = req(base, "/")
         check("الرئيسية تربطها", 'href="/nations-league"' in b)
         c, _, b = req(base, "/nations-league", "admin.ssouq.com")
@@ -326,8 +363,11 @@ def live():
         check("صفحة مباراة من كأس الخليج", c == 200 and "السعودية" in b and "ترتيب المجموعة الأولى" in b)
         c, h, _ = req(base, "/gulf-cup/103")
         check("ورابطها المختصر ← 301", c == 301 and h.get("Location") == "/gulf-cup/103-saudi-arabia-iraq")
-        c, _, b = req(base, "/gulf-cup/predict")
-        check("صفحة مسابقة كأس الخليج", c == 200 and "مسابقة توقّع النتيجة" in b and 'href="/gulf-cup">كأس الخليج العربي' in b)
+        c, h, _ = req(base, "/gulf-cup/predict")
+        check("صفحة مسابقة كأس الخليج ← صفحة المسابقات الواحدة", c == 301 and h.get("Location") == "/predict")
+        c, _, b = req(base, "/predict")
+        check("/predict للبطولتين", c == 200 and "مسابقة التوقّعات" in b and 'href="/gulf-cup">كأس الخليج العربي' in b
+              and 'href="/nations-league">دوري الأمم الأوروبية' in b)
         c, _, _ = req(base, "/gulf-cup/1-france-belgium")
         check("ومباراةٌ من دوري الأمم ليست تحتها", c == 404)
         c, _, b = req(base, "/sitemap.xml")

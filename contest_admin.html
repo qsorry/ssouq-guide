@@ -191,7 +191,7 @@ const SITE = "https://guide.ssouq.com";
 let DATA = null, player = null;
 
 $("lnkHome").href = B + "/accounts"; $("lnkOut").href = B + "/logout";
-$("xlsAll").href = B + "/api/contest/admin/export.xlsx"; $("lnkPub").href = SITE + "/nations-league/predict";
+$("xlsAll").href = B + "/api/contest/admin/export.xlsx"; $("lnkPub").href = SITE + "/predict";
 $("themeBtn").onclick = () => {
   const d = document.documentElement, t = d.getAttribute("data-theme") === "light" ? "" : "light";
   t ? d.setAttribute("data-theme", t) : d.removeAttribute("data-theme");

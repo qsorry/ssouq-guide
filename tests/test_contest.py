@@ -433,48 +433,62 @@ def unit_prize():
         os.environ.pop("WHATSAPP_READER_SECRET", None)
         os.environ.update(saved)
 
-    # رسالة القناة
+    # رسالة القناة (بصيغة المتجر، وبأعلام المنتخبين)
     from league import RIYADH
     k = datetime.datetime(2026, 9, 28, 21, 45, tzinfo=RIYADH).timestamp()
     now = datetime.datetime(2026, 9, 28, 20, 40, tzinfo=RIYADH).timestamp()
     G = "https://guide.ssouq.com/nations-league/"
+    LOGO = "https://a.espncdn.com/combiner/i?img=/i/teamlogos/countries/500/{}.png&w=48&h=48"
+    CODES = {"تركيا": "tur", "إيطاليا": "ita", "بلجيكا": "bel", "فرنسا": "fra", "إنجلترا": "eng"}
 
     def row(h, a, ts, prize="اشتراك سمارت 3 أشهر", w=1, st="open", extra=0):
-        return {"state": st, "match": {"home": h, "away": a, "ts": ts, "slug": f"9-{h}-{a}"},
+        return {"state": st, "match": {"home": h, "away": a, "ts": ts, "slug": f"9-{h}-{a}",
+                                       "home_logo": LOGO.format(CODES.get(h, "zz")), "away_logo": LOGO.format(CODES.get(a, "zz"))},
                 "contest": {"prize": prize, "winners": w, "extra": extra}}
 
+    check("الأعلام من شعار ESPN، وإنجلترا بعلمها", T.flag(LOGO.format("ksa")) == "🇸🇦" and T.flag(LOGO.format("irq")) == "🇮🇶"
+          and T.flag(LOGO.format("sba")) == "🇷🇸" and T.flag(LOGO.format("eng")) == "🏴\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F"
+          and T.flag(LOGO.format("zz")) == "" and T.flag("") == "")
+    one = T.announcement([row("بلجيكا", "فرنسا", k)], now)
+    check("مباراةٌ واحدة: الصيغة كما كتبها المتجر، بالعلمين ورابط صفحتها", one == "\n".join([
+        "🎁 مسابقة سمارت سوق | توقّع واربح! ⚽🏆", "", "توقّع نتيجة مباراة الليلة بين:", "",
+        "🇧🇪 بلجيكا × فرنسا 🇫🇷", "🕘 الساعة 9:45 م", "", "🎁 الجائزة:", "اشتراك سمارت 3 أشهر 🎉", "",
+        "طريقة المشاركة:", "1️⃣ ادخل صفحة المباراة 👇", f"{G}9-بلجيكا-فرنسا#predict", "",
+        "2️⃣ اكتب توقعك للنتيجة + اسمك.", "", "3️⃣ اضغط «أرسل توقّعي على واتساب» وأرسل الرسالة الجاهزة كما هي.", "",
+        "4️⃣ انتظر رسالة التأكيد على الواتساب ✅", "", "📌 الشروط:", "• المشاركة مجانية بالكامل.",
+        "• توقع واحد فقط لكل رقم في كل مباراة.", "• تُغلق التوقعات مع صافرة بداية المباراة.",
+        "• بعد نهاية المباراة يتم الفرز آليًا بين أصحاب التوقع الصحيح بالنتيجة كاملة.",
+        "• إذا لم يتوقع أحد النتيجة الصحيحة، لا يوجد فائز.",
+        "• سيتم نشر فيديو يوضح آلية الفرز، والتواصل مع الفائز عبر الواتساب.", "",
+        "🔥 جاهزين للتحدي؟ توقّع النتيجة الآن!", "", "🤞 بالتوفيق للجميع!"]), one[:300])
     txt = T.announcement([row("تركيا", "إيطاليا", k), row("بلجيكا", "فرنسا", k), row("x", "y", k, st="off"),
                           row("z", "w", k, st="hold")], now)
-    check("رسالة القناة: مباريات الليلة، ولكلٍّ رابطها الخاص، وموعدها وجائزتها",
-          txt.startswith("🎁 *مسابقة سمارت سوق: توقّع النتيجة واربح!*\n\n⚽ مباريات الليلة في دوري الأمم الأوروبية:\n"
-                         f"• تركيا × إيطاليا\n{G}9-تركيا-إيطاليا#predict\n• بلجيكا × فرنسا\n{G}9-بلجيكا-فرنسا#predict\n"
-                         "🕘 الساعة 9:45 م\n\n🏆 *الجائزة لكل مباراة:* اشتراك سمارت 3 أشهر\n\n*كيف تشارك؟*\n"
-                         "1️⃣ افتح رابط المباراة اللي تبيها 👆\n2️⃣ توقّع النتيجة واكتب اسمك\n"), txt[:420])
-    check("والشروط والختام", "• التوقّعات تُقفل مع صافرة البداية\n" in txt and txt.endswith("بالتوفيق للجميع 🤞"))
+    check("مباريات الليلة: الساعة مرّة، ولكلٍّ علماها ورابطها", "توقّع نتيجة مباريات الليلة في دوري الأمم الأوروبية:\n\n🕘 الساعة 9:45 م\n\n"
+          f"🇹🇷 تركيا × إيطاليا 🇮🇹\n{G}9-تركيا-إيطاليا#predict\n\n🇧🇪 بلجيكا × فرنسا 🇫🇷\n{G}9-بلجيكا-فرنسا#predict\n\n"
+          "🎁 الجائزة لكل مباراة:\nاشتراك سمارت 3 أشهر 🎉\n\nطريقة المشاركة:\n1️⃣ افتح رابط المباراة اللي تبيها 👆\n" in txt,
+          txt[:500])
+    check("والشروط لكل مباراة والختام", "• تُغلق التوقعات مع صافرة بداية كل مباراة.\n" in txt
+          and "• بعد نهاية كل مباراة يتم الفرز آليًا" in txt and txt.endswith("🤞 بالتوفيق للجميع!"))
     check("والموقوفة والمغلقة ليست فيها", "x × y" not in txt and "z × w" not in txt)
     one = T.announcement([row("بلجيكا", "فرنسا", k, w=2, extra=10)], now)
-    check("مباراةٌ واحدة: رابط صفحتها في الخطوة الأولى", "⚽ مباراة الليلة في" in one
-          and f"1️⃣ ادخل صفحة المباراة 👇\n{G}9-بلجيكا-فرنسا#predict\n2️⃣ توقّع النتيجة واكتب اسمك\n3️⃣" in one
-          and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in one, one[:400])
-    check("والإقفال بعد البداية بدقائق المدير", "• التوقّعات تُقفل بعد صافرة البداية بـ 10 دقائق\n" in one)
-    check("وسطر الفرز بطريقة الفوز: «بالضبط فقط» افتراضًا", "• الفرز آلي بعد صافرة النهاية بين اللي جابوا النتيجة بالضبط، "
-          "وإذا ما أحد جابها ما فيه فائز\n" in one)
+    check("فائزان، والإقفال بعد البداية بدقائق المدير", "اشتراك سمارت 3 أشهر — فائزان 🎉" in one
+          and "• تُغلق التوقعات بعد صافرة البداية بـ 10 دقائق.\n" in one)
     orow = row("بلجيكا", "فرنسا", k)
     orow["contest"]["mode"] = "outcome"
-    check("و«بالضبط، وإلا من أصاب الفائز»", "وإذا ما أحد جابها فبين اللي عرفوا الفائز\n" in T.announcement([orow], now))
+    check("وطريقة «بالضبط، وإلا من أصاب الفائز»", "• إذا لم يتوقع أحد النتيجة الصحيحة، فالفرز بين من توقّع الفائز."
+          in T.announcement([orow], now))
     mix = T.announcement([row("أ", "ب", k, extra=10), row("ج", "د", k)], now)
     check("وإقفالٌ مختلف بين المباريات يُقال عامًّا", "أو بعدها بدقائق، كما في صفحة كل مباراة" in mix)
     txt = T.announcement([row("تركيا", "إيطاليا", k, prize=""), row("بلجيكا", "فرنسا", k + 3 * 86400, w=3)], now)
-    check("أيامٌ مختلفة وجوائز مختلفة: الموعد والجائزة لكلٍّ", "⚽ المباريات المفتوحة للتوقّع في" in txt
-          and "• تركيا × إيطاليا — الاثنين 28 سبتمبر 2026 · 9:45 م" in txt
-          and "🏆 *الجوائز:*\n• تركيا × إيطاليا: [اكتب الجائزة هنا]\n• بلجيكا × فرنسا: اشتراك سمارت 3 أشهر (3 فائزين)" in txt,
+    check("أيامٌ مختلفة وجوائز مختلفة: الموعد والجائزة لكلٍّ", "توقّع نتيجة المباريات المفتوحة للتوقّع في دوري الأمم الأوروبية:" in txt
+          and "🇹🇷 تركيا × إيطاليا 🇮🇹\n🕘 الاثنين 28 سبتمبر 2026 · 9:45 م\n" in txt
+          and "🎁 الجوائز:\n• تركيا × إيطاليا: [اكتب الجائزة هنا]\n• بلجيكا × فرنسا: اشتراك سمارت 3 أشهر — 3 فائزين" in txt,
           txt[:400])
     txt = T.announcement([row("تركيا", "إيطاليا", k + 86400 - 5 * 3600, w=2)], now)
-    check("مباراة الغد وحدها: جائزةٌ بفائزَين", "⚽ مباراة الغد في" in txt and "🕓 الساعة 4:45 م" in txt
-          and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in txt, txt[:300])
+    check("مباراة الغد وحدها", "توقّع نتيجة مباراة الغد بين:" in txt and "🕓 الساعة 4:45 م" in txt, txt[:200])
     txt = T.announcement([row("أ", "ب", k), row("ج", "د", k - 2 * 3600)], now - 6 * 3600)
-    check("اليوم بموعدين: الساعة على كل مباراة", "⚽ مباريات الليلة في" in txt
-          and f"• ج × د — 7:45 م\n{G}9-ج-د#predict\n• أ × ب — 9:45 م" in txt and "الساعة" not in txt, txt[:300])
+    check("اليوم بموعدين: الساعة تحت كل مباراة", "توقّع نتيجة مباريات الليلة في دوري الأمم الأوروبية:" in txt
+          and f"ج × د\n🕖 7:45 م\n{G}9-ج-د#predict\n\nأ × ب\n🕘 9:45 م" in txt and "الساعة" not in txt, txt[:300])
     check("ولا مسابقة مفتوحة: لا رسالة", T.announcement([row("a", "b", k, st="done")], now) == "")
 
     # الإقفال بعد صافرة البداية بدقائق (خيار المدير)
@@ -704,8 +718,8 @@ def live():
               and "توقّع النتيجة واربح اشتراك سمارت 3 أشهر" in page)
         code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
         ann = json.loads(body)["announce"]
-        check("رسالة القناة جاهزة: المباراة وموعدها وجائزتها ورابط المسابقة", "🎁 *مسابقة سمارت سوق" in ann
-              and "• هولندا × صربيا" in ann and "🏆 *الجائزة:* اشتراك سمارت 3 أشهر (فائزان)" in ann
+        check("رسالة القناة جاهزة: المباراة وموعدها وجائزتها ورابط المسابقة", "🎁 مسابقة سمارت سوق | توقّع واربح!" in ann
+              and "هولندا × صربيا" in ann and "🎁 الجائزة:\nاشتراك سمارت 3 أشهر — فائزان 🎉" in ann
               and "https://guide.ssouq.com/nations-league/6-netherlands-serbia#predict" in ann and "الساعة" in ann, ann)
         by = json.loads(body)["announce_by"]
         check("ورسالةٌ لكل مباراةٍ مفتوحة برابطها", set(by) == {"6"} and by["6"] == ann)
@@ -717,7 +731,7 @@ def live():
         code, body, _ = get(base + "/nations-league/6-netherlands-serbia")
         page = body.decode()
         check("بطاقة المسابقة في صفحة المباراة", 'id="predict" data-m="6"' in page and "/static/contest.js?v=" in page)
-        check("ورابط الشروط", 'href="/nations-league/predict#rules"' in page)
+        check("ورابط الشروط وكل المسابقات", 'href="/predict#rules"' in page and 'href="/predict">كل المسابقات' in page)
         code, body, _ = get(base + "/nations-league/3-england-spain")
         check("ولا بطاقة لمباراةٍ بلا مسابقة", 'id="predict"' not in body.decode())
         code, body, _ = get(base + "/nations-league")
@@ -727,12 +741,24 @@ def live():
         code, body, _ = get(base + "/nations-league/widget?theme=dark")
         page = body.decode()
         check("والشريط في ودجت المتجر يُفتح في نافذة", re.search(r'<a class="pbanner" href="[^"]+#predict" target="_blank"', page))
-        code, body, _ = get(base + "/nations-league/predict")
+        code, body, _ = get(base + "/predict")
         page = body.decode()
         check("صفحة المسابقة: المفتوحة والشروط", code == 200 and "مفتوحة للتوقّع" in page and 'id="rules"' in page
               and C.RULES[0] in page)
         code, body, _ = get(base + "/sitemap.xml")
-        check("صفحة المسابقة في خريطة الموقع", b"/nations-league/predict</loc>" in body)
+        check("صفحة المسابقة في خريطة الموقع، لا صفحتا البطولتين القديمتان", b"/predict</loc>" in body
+              and b"/nations-league/predict</loc>" not in body)
+        req = urllib.request.Request(base + "/nations-league/predict")
+
+        class _NoRedir(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        try:
+            urllib.request.build_opener(_NoRedir).open(req, timeout=10)
+            moved = (200, "")
+        except urllib.error.HTTPError as e:
+            moved = (e.code, e.headers.get("Location"))
+        check("صفحة مسابقة البطولة القديمة ← 301 إلى /predict", moved == (301, "/predict"), moved)
 
         code, body, _ = get(base + "/api/contest?m=1")
         d = json.loads(body)
@@ -812,7 +838,7 @@ def live():
         code, body, _ = get(base + "/gulf-cup/103-saudi-arabia-iraq")
         page = body.decode()
         check("وبطاقتها في صفحة المباراة بشروط بطولتها", 'id="predict" data-m="103"' in page
-              and 'data-rules="/gulf-cup/predict#rules"' in page)
+              and 'data-rules="/predict#rules"' in page)
         code, body, _ = get(base + "/api/contest?m=103")
         pub = json.loads(body)
         check("والعلن يعرف بطولتها", pub["state"] == "open" and pub["match"]["path"] == "/gulf-cup"
@@ -820,19 +846,33 @@ def live():
         code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
         d = json.loads(body)
         ann, one = d["announce"], d["announce_by"]["103"]
-        check("رسالة القناة: بطولتان فاسم كلٍّ بجانب مباراته، ورابطها تحت مسارها", "⚽ المباريات المفتوحة للتوقّع:\n" in ann
+        check("رسالة القناة: بطولتان فاسم كلٍّ بجانب مباراته، ورابطها تحت مسارها", "توقّع نتيجة المباريات المفتوحة للتوقّع:\n" in ann
               and "(كأس الخليج العربي)" in ann and "(دوري الأمم الأوروبية)" in ann
               and "https://guide.ssouq.com/gulf-cup/103-saudi-arabia-iraq#predict" in ann
               and "https://guide.ssouq.com/nations-league/6-netherlands-serbia#predict" in ann, ann[:400])
         check("والقناة الناقلة بجانب المباراة", "📺 AL KASS One" in ann)
-        check("ورسالة المباراة وحدها: في كأس الخليج العربي", " في كأس الخليج العربي:" in one
-              and "• السعودية × العراق — 📺 AL KASS One" in one
+        check("ورسالة المباراة وحدها: بعلمَي المنتخبين وقناتها ورابط صفحتها", "السعودية × العراق" in one
+              and "📺 القناة الناقلة: AL KASS One" in one
               and "https://guide.ssouq.com/gulf-cup/103-saudi-arabia-iraq#predict" in one, one[:300])
-        code, body, _ = get(base + "/gulf-cup/predict")
-        check("صفحة مسابقة كأس الخليج: مسابقتها وحدها", "103-saudi-arabia-iraq#predict" in body.decode()
-              and "netherlands" not in body.decode())
-        code, body, _ = get(base + "/nations-league/predict")
-        check("وصفحة دوري الأمم بلا مسابقة كأس الخليج", "103-saudi-arabia-iraq" not in body.decode())
+        code, body, _ = get(base + "/predict")
+        page = body.decode()
+        cards = {m: st for st, m in re.findall(r'<article class="mc ([a-z]+)[^"]*" data-tab="[a-z]+" data-m="(\d+)"', page)}
+        check("صفحة المسابقات: البطولتان معًا، بطاقةٌ لكل مسابقة بحالها", cards.get("103") == "open" and cards.get("6") == "open"
+              and cards.get("1") == "done" and cards.get("2") == "done", cards)
+        card103 = re.search(r'<article class="mc open[^"]*" data-tab="open" data-m="103">.*?</article>', page, re.S).group(0)
+        check("بطاقة مباراة كأس الخليج: بطولتها وقناتها و«شارك الآن» إلى صفحتها وجائزتها", "كأس الخليج العربي" in card103
+              and ">AL KASS One</span>" in card103 and 'class="cta go" href="/gulf-cup/103-saudi-arabia-iraq#predict"' in card103
+              and "اشتراك شهر" in card103 and "الجائزة" in card103, card103[:300])
+        card1 = re.search(r'<article class="mc done[^"]*" data-tab="done" data-m="1">.*?</article>', page, re.S).group(0)
+        check("والمفروزة: النتيجة والفائز وزرّ عرض الفرز", '<span class="sc">2<i>-</i>1</span>' in card1
+              and 'class="won"' in card1 and "عرض النتيجة وفيديو الفرز" in card1, card1[:300])
+        card2 = re.search(r'<article class="mc done[^"]*" data-tab="done" data-m="2">.*?</article>', page, re.S).group(0)
+        check("والمعاد فرزها بلا فائز", "لم يُصب أحدٌ النتيجة بالضبط، فلا فائز." in card2)
+        check("وأزرار التصفية بأعدادها", re.search(r'data-k="all"[^>]*>كل المسابقات <span class="n">\((\d+)\)</span>', page)
+              and re.search(r'data-k="open"[^>]*>مفتوحة للتوقّع <span class="n">\(\d+\)</span>', page))
+        check("والفائزون، وكيف أشارك، والشروط", 'id="winners"' in page and 'class="wins"' in page and 'id="how"' in page
+              and 'id="rules"' in page and "الفرز بالأرقام" in page)
+        check("ولا رقمٌ كامل فيها", not re.search(r"9665\d{8}", page))
         code, res = post(base + "/api/contest/start", {"m": "103", "name": "فهد", "h": 2, "a": 0, "agree": True})
         check("رمزٌ لمباراة كأس الخليج", code == 200 and "السعودية 2 – 0 العراق" in res["text"], res)
         r = inbound("966551230077", res["text"])
