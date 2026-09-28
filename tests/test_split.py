@@ -130,13 +130,13 @@ class TestRotation(Base):
     def test_reminder_once_before_due(self):
         rec, _ = self.reg()
         due = S.parse_dt(rec["slice"]["due"])
+        alerts = lambda: [n for n in S.load(self.d, "a1")["notes"] if n["kind"] != "sold"]
         S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due - datetime.timedelta(days=5))
-        self.assertEqual(S.load(self.d, "a1")["notes"], [])
+        self.assertEqual(alerts(), [])
         for h in (0, 1, 2):
             S.process(self.d, "a1", {"g1": GATE}, self.panel,
                       now=due - datetime.timedelta(days=2, hours=h))
-        notes = S.load(self.d, "a1")["notes"]
-        self.assertEqual([n["kind"] for n in notes], ["due_soon"], "تذكيرٌ واحد لا تذكيرٌ كل دورة")
+        self.assertEqual([n["kind"] for n in alerts()], ["due_soon"], "تذكيرٌ واحد لا تذكيرٌ كل دورة")
 
     def test_lost_response_not_changed_twice(self):
         """حُجز الاسم الجديد، ثم مات الخادم بعد أن أخذته اللوحة: الإعادة تعدّه نجاحًا
@@ -252,6 +252,67 @@ class TestInFlight(Base):
         self.assertNotIn(rec["id"], S.load(self.d, "a1")["lines"])
 
 
+class TestUndo(Base):
+    """«تراجع»: يعيد الاسم القديم على اللوحة ويعيد الجزء كما كان."""
+
+    def rotated_now(self):
+        rec, _ = self.reg()
+        r, res = S.rotate(self.d, "a1", rec["id"], GATE, self.panel, now=T0 + datetime.timedelta(minutes=4), how="now")
+        self.assertEqual(res, "ok")
+        return rec, r
+
+    def test_undo_restores_name_and_slice(self):
+        rec, r = self.rotated_now()
+        self.assertNotEqual(r["username"], "111122223333")
+        u, res = S.undo(self.d, "a1", rec["id"], GATE, self.panel, now=T0 + datetime.timedelta(minutes=5))
+        self.assertEqual(res, "ok")
+        self.assertEqual(self.panel.lines, {"111122223333": "999988887777"}, "اللوحة عادت إلى الاسم القديم")
+        self.assertEqual((u["state"], u["username"], u["password"]), (S.ACTIVE, "111122223333", "999988887777"))
+        self.assertEqual(u["slice"]["due"], rec["slice"]["due"], "الجزء عاد بموعده نفسه")
+        self.assertEqual(u["history"], [])
+        n = S.load(self.d, "a1")["notes"][0]
+        self.assertEqual((n["kind"], n["read"], n["mail"]), ("undo", True, "skip"))
+        # ويسير بعدها كأن شيئًا لم يكن: يتغيّر في موعده
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=S.parse_dt(rec["slice"]["due"]))
+        self.assertEqual(self.rec(rec["id"])["state"], S.AVAILABLE)
+
+    def test_panel_already_reverted_by_hand(self):
+        rec, r = self.rotated_now()
+        self.panel.lines = {"111122223333": "999988887777"}         # المشغّل أعاده من اللوحة بيده
+        u, res = S.undo(self.d, "a1", rec["id"], GATE, self.panel, now=T0 + datetime.timedelta(minutes=5))
+        self.assertEqual((res, u["username"]), ("ok", "111122223333"))
+
+    def test_only_an_unsold_available_line(self):
+        rec, r = self.rotated_now()
+        S.sell(self.d, "a1", rec["id"], 3, now=T0 + datetime.timedelta(minutes=5))
+        u, res = S.undo(self.d, "a1", rec["id"], GATE, self.panel, now=T0 + datetime.timedelta(minutes=6))
+        self.assertEqual(res, "skip", "بِيع بعد التغيير — التراجع يقطع العميل الجديد")
+        fresh, _ = self.reg(user="100000000009")
+        _u, res = S.undo(self.d, "a1", fresh["id"], GATE, self.panel, now=T0)
+        self.assertEqual(res, "skip", "لا تغيير يُتراجع عنه")
+
+    def test_past_due_slice_comes_back_waiting(self):
+        """التراجع عن تغييرٍ في موعده: الجزء انتهى — يعود «حان التغيير» لا «يجري»، وإلا
+        غيّرته الدورة التالية فورًا."""
+        rec, _ = self.reg()
+        due = S.parse_dt(rec["slice"]["due"])
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due)
+        u, res = S.undo(self.d, "a1", rec["id"], GATE, self.panel, now=due + datetime.timedelta(hours=1))
+        self.assertEqual((res, u["state"]), ("ok", S.DUE))
+        calls = len(self.panel.calls)
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due + datetime.timedelta(hours=2))
+        self.assertEqual(len(self.panel.calls), calls)
+
+    def test_failure_keeps_line_and_says_why(self):
+        rec, r = self.rotated_now()
+        self.panel.fail = S.Unsupported("اللوحة تقفل حقل اسم المستخدم")
+        u, res = S.undo(self.d, "a1", rec["id"], GATE, self.panel, now=T0 + datetime.timedelta(minutes=5))
+        self.assertEqual(res, "failed")
+        cur = self.rec(rec["id"])
+        self.assertEqual((cur["state"], cur["username"]), (S.AVAILABLE, r["username"]))
+        self.assertIn("تعذّر التراجع", cur["last_error"])
+
+
 class TestResell(Base):
     def rotated(self, months=6):
         rec, _ = self.reg(months=months)
@@ -317,6 +378,19 @@ class TestMail(Base):
         S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due + datetime.timedelta(hours=1), mailer=m)
         self.assertEqual(len(m.sent), 1, "لا يُعاد ما أُرسل")
 
+    def test_sale_logged_quietly(self):
+        """بيع جزءٍ يُسجَّل في قائمة الإشعارات (ليظهر أن الخط متابَع) — مقروءًا، فلا
+        يرفع العدّاد، ولا بريد له: المشغّل هو من باع."""
+        rec, _ = self.reg()
+        notes = S.load(self.d, "a1")["notes"]
+        self.assertEqual([(n["kind"], n["read"], n["mail"]) for n in notes], [("sold", True, "skip")])
+        self.assertIn("يتغيّر اسم المستخدم 2027-03-28 14:30", notes[0]["text"])
+        self.assertIn("متبقي 9 أشهر", notes[0]["text"])
+        self.assertEqual(S.unread(S.load(self.d, "a1")), 0)
+        m = Mailer()
+        S.flush_mail(self.d, "a1", m, now=T0)
+        self.assertEqual(m.sent, [])
+
     def test_failed_mail_retries_then_gives_up(self):
         self.reg()
         m = Mailer(ok=False)
@@ -328,16 +402,42 @@ class TestMail(Base):
             S.process(self.d, "a1", {"g1": GATE}, self.panel,
                       now=due + datetime.timedelta(minutes=31 * i), mailer=m)
         self.assertEqual(len(m.sent), S.MAIL_MAX_FAILS)
-        self.assertTrue(all(n["mail"] == "failed" for n in S.load(self.d, "a1")["notes"]))
+        self.assertTrue(all(n["mail"] in ("failed", "skip") for n in S.load(self.d, "a1")["notes"]))
+        self.assertTrue(any(n["mail"] == "failed" for n in S.load(self.d, "a1")["notes"]))
 
-    def test_unconfigured_mail_is_skipped(self):
-        self.reg()
-        due = T0 + datetime.timedelta(days=182)
-        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due,
-                  mailer=lambda s, b: (None, "بريد التذكير غير مضبوط"))
+    def test_unconfigured_mail_waits_a_day(self):
+        """البريد غير مضبوط لحظة الإشعار: ينتظر الإشعار يومًا — فضبطُ البريد بعده بقليل
+        يُوصله — ثم يبقى في الأداة وحدها (لا سيلَ إشعاراتٍ قديمة يوم يُضبط)."""
+        rec, _ = self.reg()
+        due = S.parse_dt(rec["slice"]["due"])
+        none = lambda s, b: (None, "بريد التذكير غير مضبوط")
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due, mailer=none)
         db = S.load(self.d, "a1")
-        self.assertTrue(all(n["mail"] == "skip" for n in db["notes"]))
-        self.assertEqual(S.unread(db), 1, "الإشعار باقٍ في الأداة")
+        self.assertEqual([n["mail"] for n in db["notes"] if n["kind"] == "rotated"], ["pending"])
+        self.assertEqual(S.unread(db), 1)
+        m = Mailer()                                              # ضُبط البريد بعد ساعة
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due + datetime.timedelta(hours=1), mailer=m)
+        self.assertEqual(len(m.sent), 1)
+        self.assertIn("تغيّرت بياناتها 1", m.sent[0][0])
+
+    def test_unconfigured_for_a_day_then_dropped(self):
+        rec, _ = self.reg()
+        due = S.parse_dt(rec["slice"]["due"])
+        none = lambda s, b: (None, "بريد التذكير غير مضبوط")
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due, mailer=none)
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due + datetime.timedelta(hours=25), mailer=none)
+        m = Mailer()
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due + datetime.timedelta(hours=26), mailer=m)
+        self.assertEqual(m.sent, [], "إشعار الأمس لا يُرسَل اليوم")
+        self.assertTrue(all(n["mail"] == "skip" for n in S.load(self.d, "a1")["notes"]))
+
+    def test_mail_hints(self):
+        self.assertIn("كلمة مرور التطبيقات", S.mail_hint("(535, b'5.7.8 Username and Password not accepted')"))
+        self.assertIn("465", S.mail_hint("[SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1006)"))
+        self.assertIn("اسم خادم", S.mail_hint("[Errno -2] Name or service not known"))
+        self.assertIn("المنفذ الآخر", S.mail_hint("timed out"))
+        self.assertEqual(S.mail_hint(""), "")
+        self.assertEqual(S.mail_hint("بريد التذكير غير مضبوط"), "")
 
 
 class TestNotes(Base):

@@ -74,6 +74,13 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await user.waitForSelector('#splitMsg:not([hidden])', {timeout:15000});
     const sm = await user.textContent('#splitMsg');
     check('created: tells when the name changes', sm.includes('يتغيّر اسم المستخدم تلقائيًا') && sm.includes('متبقي 9 أشهر'), sm);
+    check('message links to «حسابات متبقية»', await user.$$eval('#splitMsg a', els => els.some(e => e.getAttribute('href').endsWith('/remaining'))));
+    check('message warns the email is not set up (no SMTP here)', sm.includes('بريد التنبيه غير مضبوط'), sm);
+    await user.click('#bellBtn');
+    await user.waitForFunction(() => document.getElementById('notesItems').textContent.includes('بِيع'), null, {timeout: 5000}).catch(() => {});
+    check('bell shows the sale in the log right away', (await user.textContent('#notesItems')).includes('بِيع جزء 6 أشهر'));
+    check('…without a badge (it is his own action)', await user.isHidden('#bellN'));
+    await user.click('#bellBtn');
     const made = (await user.textContent('#res')).trim();
     const u1 = (made.match(/User (\S+)/) || [])[1];
     check('line still copied as usual', /^Host http:\/\/falcon\.host User \d+ Pass \d+ Guide /.test(made), made);
@@ -90,9 +97,18 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await user.click(`#activeList [data-rot]`);                     // «غيّر الآن» (يقبل التأكيد)
     await user.waitForSelector('#availList .card', {timeout:15000});
     const avail = await user.textContent('#availList');
-    const u2 = (await user.$eval('#availList .creds .mono', e => e.textContent)).trim();
-    check('renamed and moved to «متبقية للبيع»', u2 && u2 !== u1 && avail.includes('متبقي'), `${u1} → ${u2}`);
+    const u2first = (await user.$eval('#availList .creds .mono', e => e.textContent)).trim();
+    check('renamed and moved to «متبقية للبيع»', u2first && u2first !== u1 && avail.includes('متبقي'), `${u1} → ${u2first}`);
     check('grouped by what remains', /متبقي\s*1[45] شهرًا/.test(avail), avail.slice(0, 80));
+    // «تراجع»: يعود الاسم القديم ويعود الجزء، ثم يُغيَّر من جديد لبقية الاختبار
+    check('undo button names the old username', (await user.getAttribute('#availList [data-undo]', 'title')).includes(u1));
+    await user.click('#availList [data-undo]');                    // يقبل التأكيد
+    await user.waitForSelector('#activeList .card', {timeout:15000});
+    check('undo: back to the old name, slice running again', (await user.textContent('#activeList')).includes(u1)
+          && (await user.textContent('#availList')).includes('لا خطوط متاحة'));
+    await user.click(`#activeList [data-rot]`);
+    await user.waitForSelector('#availList .card', {timeout:15000});
+    const u2 = (await user.$eval('#availList .creds .mono', e => e.textContent)).trim();
     check('bell badge counts the notification', await user.isVisible('#bellN'));
     await user.click('#availList [data-sell]');
     await user.waitForSelector('.sellbox');
@@ -127,6 +143,12 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await shot(user, 'split-remaining-mobile');
     const overflow = await user.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     check('no horizontal scroll on a phone', !overflow);
+    await user.goto(APP + '/admin');                              // الجوال: الرابط في القائمة الجانبية
+    await user.waitForSelector('#menuBtn');
+    await user.click('#menuBtn');
+    await sleep(300);
+    check('phone: «حسابات متبقية» in the side menu', await user.isVisible('#sideRemain'));
+    await shot(user, 'split-create-mobile-menu');
     await user.setViewportSize({width: 1280, height: 800});
     await user.goto(APP + '/admin');
     await user.waitForSelector('#bellBtn:not([hidden])');
