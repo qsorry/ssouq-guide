@@ -139,6 +139,8 @@ p{margin:0 0 10px}
 .entry .chev{margin-inline-start:auto;flex:0 0 auto;width:9px;height:9px;border-right:2px solid var(--mute);
   border-bottom:2px solid var(--mute);transform:rotate(135deg)}
 .entry.primary{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 6%,var(--card))}
+a.entry{text-decoration:none}
+.entry.cup{border-color:var(--gold);background:color-mix(in srgb,var(--gold) 9%,var(--card));margin-bottom:16px}
 .trust{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
 .trust div{text-align:center;padding:14px 6px;border:1px solid var(--line);border-radius:14px;background:var(--card);
   font-size:.76rem;color:var(--mute);line-height:1.45}
@@ -400,6 +402,7 @@ footer a{color:var(--mute)}
       <li><button type="button" data-nav="activate">لدي اشتراك — فعّله<em>خطوة بخطوة</em></button></li>
       <li><button type="button" data-nav="m3u">رابط M3U<em>أداة مجانية</em></button></li>
       <li><button type="button" data-nav="plans">كل الباقات<em>13 باقة</em></button></li>
+      <li><a href="/nations-league">دوري الأمم الأوروبية<em>النتائج والمباريات</em></a></li>
       <li><a href="/standings/saudi-pro-league">ترتيب الدوريات<em>محدَّث تلقائيًا</em></a></li>
       <li><a href="https://wa.me/966504998661" target="_blank" rel="noopener">الدعم الفني على واتساب<em>مباشر</em></a></li>
       <li><a href="https://ssouq.com/?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=menu" target="_blank" rel="noopener">متجر سمارت سوق<em>ssouq.com</em></a></li>
@@ -428,6 +431,7 @@ footer a{color:var(--mute)}
     </section>
     <section class="card">
       <h2>جدول ترتيب الدوريات</h2>
+      <p><a class="link" href="/nations-league">نتائج دوري الأمم الأوروبية 2026-27 — المستوى الأول</a></p>
       <ul>
         <li><a class="link" href="/standings/saudi-pro-league">جدول ترتيب دوري روشن السعودي</a></li>
         <li><a class="link" href="/standings/premier-league">جدول ترتيب الدوري الإنجليزي الممتاز</a></li>
@@ -990,6 +994,8 @@ function renderHome(){
     <div>${ICONS.bolt}<b>تفعيل سريع</b>خلال دقائق</div>
     <div>${ICONS.shield}<b>دفعة واحدة</b>بلا تجديد تلقائي</div>
   </div>
+  <a class="entry cup" href="/nations-league"><span class="bubble">${ICONS.ball}</span>
+    <span><b>دوري الأمم الأوروبية — المستوى الأول</b><small>نتائج المباريات أولًا بأول، ومباريات اليوم، وترتيب المجموعات</small></span><span class="chev"></span></a>
   <section class="card league" id="league" aria-labelledby="league-h" hidden></section>
   <a class="card chan" href="https://whatsapp.com/channel/0029Vb91ux61SWssvKFZgL31" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1.2-1.4-1.9-1-1 .8a4.2 4.2 0 0 1-2-2l.8-1-1-1.9z"/></svg><span><b>انضم إلى قناتنا على واتساب</b><small>عروض الاشتراكات والتحديثات وطرق التفعيل الجديدة</small></span></a>
   <p class="sub" style="text-align:center">أو <button class="linkish" type="button" data-nav="plans">تصفّح كل الباقات مباشرة ←</button></p>`;

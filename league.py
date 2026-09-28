@@ -10,11 +10,12 @@ ESPN** لا باسمه (الاسم يتغيّر إملاؤه والمعرّف ث
 الجدول يُرسم هنا وحده، صفحةً كاملة على السيرفر كصفحات الأجهزة (بأنماط المعالج
 نفسها) فيقرؤه محرك البحث كما يراه الزائر، ومقطعًا تحقنه الرئيسية كما هو.
 
-الكاش لكل دوري على حدة: يُجلب عند أول طلب ويُحفظ ربع ساعة (`LEAGUE_TTL`).
-انتهاء المدة لا يؤخّر أحدًا: يُقدَّم المحفوظ فورًا ويُجدَّد في الخلفية، فلا يصل
-ESPN أكثر من طلب لكل دوري كل ربع ساعة مهما كثر الزوار. والفشل يُبقي آخر نسخة
-صالحة ويعيد المحاولة بعد دقيقتين — إلا إن تجاوز عمرها يومين فيُخفى الجدول بدل
-أن يُعرض ترتيبٌ قديم على أنه الحالي.
+الكاش لكل دوري على حدة (`Feed`، وتستعمله صفحة البطولة في tournament.py أيضًا):
+يُجلب عند أول طلب ويُحفظ ربع ساعة (`LEAGUE_TTL`). انتهاء المدة لا يؤخّر أحدًا:
+يُقدَّم المحفوظ فورًا ويُجدَّد في الخلفية، فلا يصل ESPN أكثر من طلب لكل دوري كل
+ربع ساعة مهما كثر الزوار. والفشل يُبقي آخر نسخة صالحة ويعيد المحاولة بعد
+دقيقتين — إلا إن تجاوز عمرها يومين فيُخفى الجدول بدل أن يُعرض ترتيبٌ قديم على
+أنه الحالي.
 """
 import datetime
 import html as _html
@@ -28,7 +29,8 @@ import urllib.request
 
 import guide_pages
 
-API = os.environ.get("LEAGUE_API", "https://site.api.espn.com/apis/v2/sports/soccer").rstrip("/")
+# أصل واجهات ESPN: الترتيب تحت /v2/… والمباريات تحت /site/v2/… (الاختبارات توجّهه إلى ESPN وهمية)
+API = os.environ.get("LEAGUE_API", "https://site.api.espn.com/apis").rstrip("/")
 TTL = int(os.environ.get("LEAGUE_TTL", "900"))
 RETRY = 120                       # بعد فشلٍ: متى تُعاد المحاولة
 MAX_AGE = 2 * 24 * 3600           # أقدم نسخة تُعرض إن تعذّر التجديد
@@ -125,6 +127,27 @@ AR = {
     "12008": "الدحيل", "5325": "سنترال كوست مارينرز", "7112": "كاواساكي فرونتال",
     "7116": "يوكوهاما مارينوس", "7521": "شاندونغ تايشان", "22351": "غوانغجو",
     "7527": "الريان", "18461": "برسبوليس",
+    # منتخبات أوروبا (الـ54 كلها، لدوري الأمم ومُلحقاته)
+    "585": "ألبانيا", "587": "أندورا", "579": "أرمينيا", "474": "النمسا", "581": "أذربيجان",
+    "583": "بيلاروسيا", "459": "بلجيكا", "452": "البوسنة والهرسك", "462": "بلغاريا",
+    "477": "كرواتيا", "445": "قبرص", "450": "التشيك", "479": "الدنمارك", "448": "إنجلترا",
+    "444": "إستونيا", "447": "جزر فارو", "458": "فنلندا", "478": "فرنسا", "584": "جورجيا",
+    "481": "ألمانيا", "16721": "جبل طارق", "455": "اليونان", "480": "المجر", "470": "آيسلندا",
+    "461": "إسرائيل", "162": "إيطاليا", "2619": "كازاخستان", "18272": "كوسوفو", "456": "لاتفيا",
+    "589": "ليختنشتاين", "460": "ليتوانيا", "582": "لوكسمبورغ", "453": "مالطا", "483": "مولدوفا",
+    "6775": "الجبل الأسود", "449": "هولندا", "463": "مقدونيا الشمالية", "586": "أيرلندا الشمالية",
+    "464": "النرويج", "471": "بولندا", "482": "البرتغال", "476": "أيرلندا", "473": "رومانيا",
+    "588": "سان مارينو", "580": "اسكتلندا", "6757": "صربيا", "468": "سلوفاكيا", "472": "سلوفينيا",
+    "164": "إسبانيا", "466": "السويد", "475": "سويسرا", "465": "تركيا", "457": "أوكرانيا",
+    "578": "ويلز",
+    # منتخبات آسيا (من كأس آسيا 2019 و2023 و2027)
+    "628": "أستراليا", "4381": "البحرين", "658": "الصين", "1928": "هونغ كونغ", "4385": "الهند",
+    "4895": "إندونيسيا", "469": "إيران", "4375": "العراق", "627": "اليابان", "2917": "الأردن",
+    "841": "الكويت", "6724": "قيرغيزستان", "4388": "لبنان", "2405": "ماليزيا",
+    "4860": "كوريا الشمالية", "2841": "عُمان", "6167": "فلسطين", "7347": "الفلبين", "4398": "قطر",
+    "655": "السعودية", "4384": "سنغافورة", "451": "كوريا الجنوبية", "4380": "سوريا",
+    "6723": "طاجيكستان", "4396": "تايلاند", "7507": "تركمانستان", "4397": "الإمارات",
+    "2570": "أوزبكستان", "7349": "فيتنام", "6014": "اليمن",
 }
 
 # ملاحظة ESPN على صفّ النادي ← (المفتاح، الاسم العربي، اللون). الأدقّ أولًا:
@@ -152,10 +175,59 @@ GROUPS = {"west": (0, "منطقة الغرب"), "east": (1, "منطقة الشر
 
 MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس",
           "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
+ORDINALS = ["الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة", "السابعة",
+            "الثامنة", "التاسعة", "العاشرة", "الحادية عشرة", "الثانية عشرة"]
 
-_lock = threading.Lock()
-_state = {k: {"data": None, "at": 0.0, "next": 0.0, "busy": False, "error": None,
-              "first": threading.Event()} for k in LEAGUES}
+# صيغ العدد مع معدوده: واحد، اثنان، 3–10، 11–99، والمئات (100، 101، 102…)
+POINTS = ("نقطة واحدة", "نقطتين", "نقاط", "نقطة", "نقطة")
+MATCHES = ("مباراة واحدة", "مباراتين", "مباريات", "مباراة", "مباراة")
+
+
+class Feed:
+    """جلبٌ مخزَّن: يُقدَّم المحفوظ فورًا ويُجدَّد في الخلفية متى انتهت مدته، والفشل
+    يُبقي آخر نسخة صالحة ويعيد المحاولة بعد RETRY، وما قدُم أكثر من MAX_AGE لا
+    يُقدَّم. أول طلبٍ بعد الإقلاع وحده ينتظر أول جلب (بحدّ المهلة).
+    `ttl(data)` مدة النسخة بالثواني — ثابتة للدوريات، وأقصر للبطولة وقت المباريات."""
+
+    def __init__(self, load, ttl=None):
+        self.load = load
+        self.ttl = ttl or (lambda data: TTL)
+        self.lock = threading.Lock()
+        self.reset()
+
+    def reset(self):
+        self.data, self.at, self.next, self.busy, self.error = None, 0.0, 0.0, False, None
+        self.first = threading.Event()
+
+    def refresh(self):
+        data, error = None, None
+        try:
+            data = self.load()
+        except Exception as e:    # شبكة، مهلة، JSON تالف، أو شكلٌ غير متوقّع
+            error = (str(e) or e.__class__.__name__)[:160]
+        finally:
+            now = time.time()
+            with self.lock:
+                if data:
+                    self.data, self.at, self.next = data, now, now + self.ttl(data)
+                else:
+                    self.next = now + RETRY
+                self.busy, self.error = False, error
+            self.first.set()
+        return data is not None
+
+    def get(self):
+        """(البيانات أو None، وقت جلبها، الخطأ)."""
+        with self.lock:
+            if time.time() >= self.next and not self.busy:
+                self.busy = True
+                threading.Thread(target=self.refresh, daemon=True).start()
+        self.first.wait(TIMEOUT + 2)
+        with self.lock:
+            data, at, error = self.data, self.at, self.error
+        if not data or time.time() - at > MAX_AGE:
+            return None, at, error or "stale"
+        return data, at, error
 
 
 # ---------- القراءة من ESPN ----------
@@ -169,14 +241,16 @@ def _stat(entry, name):
     return 0
 
 
+def logo(href):
+    """شعار النادي أو علم المنتخب مصغّرًا (48px بدل 500px) من خادم صور ESPN وحده."""
+    href = str(href or "")
+    if not href.startswith(LOGO_HOST + "/i/"):
+        return ""
+    return f"{LOGO_HOST}/combiner/i?img={urllib.parse.quote(href[len(LOGO_HOST):])}&w=48&h=48"
+
+
 def _logo(team):
-    """شعار النادي مصغّرًا (48px بدل 500px) من خادم صور ESPN وحده."""
-    for lg in team.get("logos") or []:
-        href = str(lg.get("href") or "")
-        if href.startswith(LOGO_HOST + "/i/"):
-            img = urllib.parse.quote(href[len(LOGO_HOST):])
-            return f"{LOGO_HOST}/combiner/i?img={img}&w=48&h=48"
-    return ""
+    return next((u for u in (logo(lg.get("href")) for lg in team.get("logos") or []) if u), "")
 
 
 def _zone(entry):
@@ -192,13 +266,17 @@ def _zone(entry):
 
 
 def _group(name, i):
-    """(ترتيب العرض، الاسم العربي) لجدولٍ من جداول البطولة."""
+    """(ترتيب العرض، الاسم العربي) لجدولٍ من جداول البطولة: "Group B" (كأس آسيا)
+    و"Group A2" (المجموعة الثانية من مستوى في دوري الأمم) ← «المجموعة الثانية»."""
     key = str(name or "").strip().lower()
     for needle, got in GROUPS.items():
         if re.search(rf"\b{needle}\b", key):
             return got
-    m = re.fullmatch(r"group ([a-z0-9]+)", key)
-    return 10 + i, (f"المجموعة {m.group(1).upper()}" if m else str(name or ""))
+    m = re.fullmatch(r"group (?:([a-l])|[a-d]([1-9]))", key)
+    if m:
+        n = ord(m.group(1)) - ord("a") if m.group(1) else int(m.group(2)) - 1
+        return 10 + i, f"المجموعة {ORDINALS[n]}"
+    return 10 + i, str(name or "")
 
 
 def parse(data):
@@ -230,7 +308,7 @@ def parse(data):
             else:
                 r["zone"] = ""
         order, gname = _group(ch.get("name"), i)
-        groups.append((order, {"name": gname, "rows": rows}))
+        groups.append((order, {"name": gname, "key": str(ch.get("name") or ""), "rows": rows}))
     if not groups:
         raise ValueError("no standings in response")
     groups = [g for _, g in sorted(groups, key=lambda og: og[0])]
@@ -242,33 +320,22 @@ def parse(data):
     return {"season": f"{m.group(1)}-{m.group(2)}" if m else "", "groups": groups, "zones": zones}
 
 
-def _fetch(code):
+def get_json(path):
+    """JSON من واجهات ESPN (المسار بعد API، مثل /v2/sports/soccer/ksa.1/standings)."""
     # بلا User-Agent خاص: بوابة ESPN (‏Akamai) تردّ 403 على أي وكيل مخصَّص أو
     # شبيهٍ بالمتصفح، وتقبل وكيل urllib الافتراضي (عكس سلة في store_sitemap).
-    req = urllib.request.Request(f"{API}/{code}/standings", headers={"Accept": "application/json"})
+    req = urllib.request.Request(API + path, headers={"Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
+def _fetch(code):
+    return get_json(f"/v2/sports/soccer/{code}/standings")
+
+
 # ---------- الكاش ----------
-def refresh(slug):
-    """جلبٌ واحد يحدّث كاش الدوري؛ الفشل يُبقي آخر نسخة صالحة ويؤجّل المحاولة."""
-    st = _state[slug]
-    data, error = None, None
-    try:
-        data = parse(_fetch(LEAGUES[slug]["code"]))
-    except Exception as e:        # شبكة، مهلة، JSON تالف، أو شكلٌ غير متوقّع
-        error = (str(e) or e.__class__.__name__)[:160]
-    finally:
-        now = time.time()
-        with _lock:
-            if data:
-                st.update(data=data, at=now, next=now + TTL)
-            else:
-                st["next"] = now + RETRY
-            st.update(busy=False, error=error)
-        st["first"].set()
-    return data is not None
+# `_fetch` يُقرأ وقت الجلب لا وقت التعريف، فتستبدله الاختبارات.
+_state = {k: Feed(lambda code=v["code"]: parse(_fetch(code))) for k, v in LEAGUES.items()}
 
 
 def table(slug=None):
@@ -278,18 +345,10 @@ def table(slug=None):
     lg = LEAGUES.get(slug)
     if not lg:
         return None
-    st = _state[slug]
-    now = time.time()
-    with _lock:
-        if now >= st["next"] and not st["busy"]:
-            st["busy"] = True
-            threading.Thread(target=refresh, args=(slug,), daemon=True).start()
-    st["first"].wait(TIMEOUT + 2)
-    with _lock:
-        data, at, error = st["data"], st["at"], st["error"]
+    data, at, error = _state[slug].get()
     head = {"slug": slug, "league": lg["name"], "page": PATH + slug, "leagues": MENU}
-    if not data or time.time() - at > MAX_AGE:
-        return dict(head, ok=False, error=error or "stale")
+    if not data:
+        return dict(head, ok=False, error=error)
     return dict(head, ok=True, source="ESPN", updated=int(at), **data)
 
 
@@ -298,13 +357,18 @@ def _esc(s):
     return _html.escape(str(s if s is not None else ""), quote=True)
 
 
-def _count(n, one, two, few, many):
-    """العدد مع معدوده كما يُكتب: نقطة واحدة، نقطتين، 7 نقاط، 18 نقطة."""
+def count(n, forms):
+    """العدد مع معدوده كما يُكتب: نقطة واحدة، نقطتين، 7 نقاط، 18 نقطة، 101 يوم.
+    forms: (واحد، اثنان، جمع 3–10، مفرد 11–99، مفرد المئات) — POINTS وMATCHES."""
+    one, two, few, many, hundred = forms
     if n == 1:
-        return f"{one} واحدة"
+        return one
     if n == 2:
         return two
-    return f"{n} {few if 3 <= n <= 10 else many}"
+    r = n % 100
+    if 3 <= r <= 10:
+        return f"{n} {few}"
+    return f"{n} {many if n < 100 or r > 10 else hundred}"
 
 
 def _when(ts):
@@ -317,7 +381,7 @@ def _season(t):
     return f' <span class="season" dir="ltr">{_esc(t["season"])}</span>' if t.get("season") else ""
 
 
-def _tables_html(t, limit=0):
+def tables_html(t, limit=0):
     """جداول الدوري (جدول لكل مجموعة) ودليل ألوانه. limit يقصّ كل جدول
     لبطاقة الرئيسية، وبدونه يخرج كاملًا بعمودَي الأهداف له وعليه."""
     full = not limit
@@ -377,7 +441,7 @@ def api(slug=None):
         return out
     out.update(season=t["season"], updated=t["updated"], html=(
         f'<p class="lname"><b>{_esc(t["league"])}</b>{_season(t)}</p>'
-        + _tables_html(t, limit=PREVIEW)
+        + tables_html(t, limit=PREVIEW)
         + f'<a class="lfull" href="{_esc(t["page"])}">جدول الترتيب الكامل ←</a>'))
     return out
 
@@ -394,8 +458,7 @@ def render(slug):
     lead = ""
     if t["ok"] and len(t["groups"]) == 1 and t["groups"][0]["rows"][0]["p"]:
         top = t["groups"][0]["rows"][0]
-        lead = (f" يتصدّر {top['name']} برصيد {_count(top['pts'], 'نقطة', 'نقطتين', 'نقاط', 'نقطة')}"
-                f" بعد {_count(top['p'], 'مباراة', 'مباراتين', 'مباريات', 'مباراة')}.")
+        lead = f" يتصدّر {top['name']} برصيد {count(top['pts'], POINTS)} بعد {count(top['p'], MATCHES)}."
     desc = (f"جدول ترتيب {name}{season} محدَّثًا تلقائيًا: النقاط وعدد المباريات والفوز "
             f"والتعادل والخسارة والأهداف وفارقها لكل الفرق.{lead}")
     crumbs = {
@@ -409,7 +472,7 @@ def render(slug):
         f'<a href="{PATH}{k}"{" aria-current=page" if k == t["slug"] else ""}>{_esc(v["tab"])}</a>'
         for k, v in LEAGUES.items())
     if t["ok"]:
-        body = (_tables_html(t) + f'<p class="lsrc">آخر تحديث: <time datetime="'
+        body = (tables_html(t) + f'<p class="lsrc">آخر تحديث: <time datetime="'
                 f'{datetime.datetime.fromtimestamp(t["updated"], RIYADH).isoformat()}">{_when(t["updated"])}</time>'
                 ' بتوقيت السعودية · يُحدَّث تلقائيًا · المصدر ESPN</p>')
     else:

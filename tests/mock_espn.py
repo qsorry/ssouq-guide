@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""واجهة ترتيب ESPN وهمية للاختبار.  python tests/mock_espn.py 9596
+"""واجهات ESPN وهمية للاختبار.  python tests/mock_espn.py 9596   (LEAGUE_API=http://127.0.0.1:9596)
 
-GET /<code>/standings بشكل رد ESPN نفسه (children ← standings ← entries):
+GET /v2/sports/soccer/<code>/standings بشكل رد ESPN نفسه (children ← standings ← entries):
   ksa.1           18 ناديًا بلا ملاحظات، مقلوبة الترتيب في الرد، وآخرها نادٍ
                   مجهول المعرّف باسم إنجليزي فيه وسوم HTML وشعار من خادم غريب
   eng.1           20 ناديًا بملاحظات التأهل والهبوط
   uefa.champions  36 فريقًا بملاحظات الأدوار، وملاحظة لا يعرفها التعريب
   afc.champions   جدولان: الشرق أولًا في الرد (والصفحة تقدّم الغرب)
+  uefa.nations    مجموعات المستوى الأول الأربع بملاحظات ESPN المختلطة، ومجموعة من الثاني
   أي رمز آخر      400 كما تفعل ESPN مع دوري لا تغطيه
 
-والدوال نفسها (payload) تستوردها الاختبارات بلا خادم.
+GET /site/v2/sports/soccer/uefa.nations/scoreboard?dates=2026 مباريات دوري الأمم
+بمواعيد حول «الآن» (scoreboard)، وسنة أخرى بلا مباريات. والدوال نفسها (payload
+وscoreboard) تستوردها الاختبارات بلا خادم.
 """
+import datetime
 import json
 import sys
+import time
+from urllib.parse import parse_qs, urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SAUDI = [("929", "Al Hilal"), ("2276", "Al Ittihad"), ("817", "Al Nassr"), ("8346", "Al Ahli"),
@@ -39,6 +45,72 @@ WEST = [("929", "Al Hilal"), ("817", "Al Nassr"), ("2276", "Al Ittihad"), ("8346
         ("7128", "Al Ain"), ("7135", "Al Sadd")]
 EAST = [("7115", "Kashima Antlers"), ("7477", "Vissel Kobe"), ("7120", "Ulsan HD"),
         ("977", "Shanghai Shenhua"), ("6972", "FC Seoul"), ("7112", "Kawasaki Frontale")]
+
+
+NATIONS = {
+    "A1": [("478", "France"), ("459", "Belgium"), ("465", "Türkiye"), ("162", "Italy")],
+    "A2": [("455", "Greece"), ("449", "Netherlands"), ("481", "Germany"), ("6757", "Serbia")],
+    "A3": [("164", "Spain"), ("477", "Croatia"), ("448", "England"), ("450", "Czechia")],
+    "A4": [("482", "Portugal"), ("464", "Norway"), ("479", "Denmark"), ("578", "Wales")],
+    "B1": [("466", "Sweden"), ("580", "Scotland"), ("471", "Poland"), ("480", "Hungary")],
+}
+# ملاحظات ESPN الحقيقية في دوري الأمم تخلط المستويات الأربعة في سطر واحد
+MIXED_NOTES = {1: "A: Qualifies for QFs; B-D: Promotion", 3: "A, B: Relegation playoffs",
+               4: "A, B: Relegation; C: Relegation or playoffs"}
+
+
+def _event(eid, mins, home, away, stage="league-phase", group=None, state="post", status="STATUS_FULL_TIME",
+           clock="90'", time_valid=True):
+    """مباراة scoreboard تبدأ بعد mins دقيقة من الآن (سالبة = مضت). home/away: (id، الاسم، الأهداف، الترجيح، الفائز)."""
+    date = datetime.datetime.fromtimestamp(time.time() + mins * 60, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+    comp = []
+    for side, (tid, name, score, so, win) in (("home", home), ("away", away)):
+        x = {"homeAway": side, "score": str(score), "winner": win,
+             "team": {"id": tid, "displayName": name,
+                      "logo": f"https://a.espncdn.com/i/teamlogos/countries/500/{tid}.png"}}
+        if so is not None:
+            x["shootoutScore"] = so
+        comp.append(x)
+    return {"id": eid, "date": date, "season": {"year": 2026, "slug": stage},
+            "competitions": [{"timeValid": time_valid, "group": {"name": f"Group {group}"} if group else None,
+                              "status": {"displayClock": clock, "type": {"state": state, "name": status}},
+                              "competitors": comp}]}
+
+
+def scoreboard(code, dates):
+    """مباريات دوري الأمم حول الآن: منتهية، وجارية، واستراحة، وقادمة، ومؤجلة، وأدوار
+    إقصائية (ترجيح، تمديد، وأطراف لم تُعرف بعد)، وما ليس من المستوى الأول."""
+    if code != "uefa.nations":
+        return None
+    if dates != "2026":
+        return {"events": []}
+    day = 24 * 60
+    return {"events": [
+        _event("1", -3 * day, ("478", "France", 2, None, True), ("459", "Belgium", 1, None, False), group="A1"),
+        _event("2", -2 * day, ("481", "Germany", 0, None, False), ("455", "Greece", 1, None, True), group="A2"),
+        _event("3", -2 * day + 60, ("448", "England", 2, None, False), ("164", "Spain", 3, None, True), group="A3"),
+        _event("4", -67, ("482", "Portugal", 1, None, False), ("578", "Wales", 0, None, False), group="A4",
+               state="in", status="STATUS_IN_PROGRESS", clock="67'"),
+        _event("5", -50, ("162", "Italy", 0, None, False), ("465", "Türkiye", 0, None, False), group="A1",
+               state="in", status="STATUS_HALFTIME", clock="45'"),
+        _event("6", 2 * day, ("449", "Netherlands", 0, None, False), ("6757", "Serbia", 0, None, False), group="A2",
+               state="pre", status="STATUS_SCHEDULED", clock="0'"),
+        _event("7", 3 * day, ("477", "Croatia", 0, None, False), ("450", "Czechia", 0, None, False), group="A3",
+               state="pre", status="STATUS_POSTPONED", clock="0'"),
+        _event("8", 4 * day, ("164", "Spain", 0, None, False), ("-9", "<b>Evil</b> & Co", 0, None, False), group="A3",
+               state="pre", status="STATUS_SCHEDULED", clock="0'"),
+        _event("9", -2 * day, ("466", "Sweden", 3, None, True), ("480", "Hungary", 0, None, False), group="B1"),
+        _event("10", 60 * day, ("-1", "Group A1 Winner", 0, None, False), ("-2", "Group A2 2nd Place", 0, None, False),
+               stage="quarterfinals", state="pre", status="STATUS_SCHEDULED", clock="0'", time_valid=False),
+        _event("11", -10 * day, ("164", "Spain", 2, 5, True), ("482", "Portugal", 2, 4, False),
+               stage="quarterfinals", status="STATUS_FINAL_PEN", clock="120'"),
+        _event("12", -9 * day, ("479", "Denmark", 3, None, True), ("464", "Norway", 2, None, False),
+               stage="semifinals", status="STATUS_FINAL_AET", clock="120'"),
+        _event("13", -20 * day, ("578", "Wales", 1, None, False), ("580", "Scotland", 1, None, False),
+               stage="relegation-playoffs"),
+        _event("14", -20 * day, ("456", "Latvia", 2, None, True), ("16721", "Gibraltar", 0, None, False),
+               stage="relegation-playoffs"),
+    ]}
 
 
 def _entry(tid, name, rank, n, note=None):
@@ -85,6 +157,8 @@ def payload(code):
         "eng.1": lambda: [_child("2026-27 English Premier League", ENGLAND, _england_note)],
         "uefa.champions": lambda: [_child("League Phase", EUROPE, _europe_note)],
         "afc.champions": lambda: [_child("East Region", EAST), _child("West Region", WEST)],
+        "uefa.nations": lambda: [_child(f"Group {g}", teams, lambda r, n: MIXED_NOTES.get(r))
+                                 for g, teams in NATIONS.items()],
     }.get(code)
     if not kids:
         return None
@@ -97,10 +171,15 @@ class H(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        parts = self.path.split("?")[0].strip("/").split("/")
-        data = payload(parts[0]) if len(parts) == 2 and parts[1] == "standings" else None
-        body = json.dumps(data if data else {"code": 400, "message": "bad league"}).encode()
-        self.send_response(200 if data else 400)
+        u = urlparse(self.path)
+        parts = u.path.strip("/").split("/")
+        data = None
+        if parts[:3] == ["v2", "sports", "soccer"] and len(parts) == 5 and parts[4] == "standings":
+            data = payload(parts[3])
+        elif parts[:4] == ["site", "v2", "sports", "soccer"] and len(parts) == 6 and parts[5] == "scoreboard":
+            data = scoreboard(parts[4], (parse_qs(u.query).get("dates") or [""])[0])
+        body = json.dumps(data if data is not None else {"code": 400, "message": "bad league"}).encode()
+        self.send_response(200 if data is not None else 400)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
