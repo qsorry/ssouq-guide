@@ -2179,6 +2179,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                               else {"Retry-After": str(league.RETRY)})
+        if path == tournament.PATH + "/widget":   # النسخة المدمجة في رئيسية متجر سلة (iframe)
+            code, body, age = tournament.render_widget(self._q("theme"))
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"} if code == 200
+                              else {"Retry-After": str(league.RETRY)})
         if path.startswith(tournament.PATH + "/"):    # صفحة مباراة من البطولة
             page = tournament.render_match(path[len(tournament.PATH) + 1:])
             if page and page[0] == "redirect":

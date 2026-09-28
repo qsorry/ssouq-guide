@@ -243,20 +243,21 @@ def _status(m):
     return mid, note, cls
 
 
-def _row(m):
+def _row(m, new_tab=False):
     mid, note, cls = _status(m)
-    return (f'<li><a class="match{cls}" href="{url(m)}">{_team(m["home"])}<span class="mid">{mid}{note}'
+    target = ' target="_blank" rel="noopener"' if new_tab else ""
+    return (f'<li><a class="match{cls}" href="{url(m)}"{target}>{_team(m["home"])}<span class="mid">{mid}{note}'
             f'<small class="stage">{_esc(m["stage"])}</small></span>{_team(m["away"], True)}</a></li>')
 
 
-def _by_day(ms, newest_first=False):
+def _by_day(ms, newest_first=False, new_tab=False):
     days = {}
     for m in ms:
         days.setdefault(_day(m["ts"]), []).append(m)
     out = []
     for d in sorted(days, reverse=newest_first):
         out.append(f'<h3 class="mday">{_day_label(d)}</h3><ul class="matches">'
-                   + "".join(_row(m) for m in days[d]) + "</ul>")
+                   + "".join(_row(m, new_tab) for m in days[d]) + "</ul>")
     return "".join(out)
 
 
@@ -593,3 +594,72 @@ def sitemap():
     """صفحة البطولة وصفحات مبارياتها لخريطة الموقع."""
     data = _feed.get()[0]
     return [(PATH, "daily", "0.8")] + [(url(m), "daily", "0.6") for m in (data or {}).get("matches", [])]
+
+
+WIDGET_ROWS = 4
+WIDGET_CSS = """
+body{background:transparent}
+main{max-width:1100px;padding:2px 2px 14px}
+.wcard{margin:0}
+.wtop{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:-4px -4px 14px;border-radius:14px;
+  background:linear-gradient(200deg,var(--brand) 0%,#012E45 100%);color:#fff;text-decoration:none}
+.wtop svg{width:30px;height:30px;flex:0 0 auto;stroke:#FFD79A;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.wtop b{display:block;font-size:1.05rem;line-height:1.35}
+.wtop small{display:block;color:#BFD8E6;font-size:.76rem}
+.wtop .all{margin-inline-start:auto;flex:0 0 auto;font-size:.8rem;font-weight:700;color:#FFD79A;white-space:nowrap}
+.wcols{display:grid;gap:14px}
+.wcols h2{font-size:1rem;margin:0 0 6px}
+@media (min-width:720px){.wcols{grid-template-columns:1fr 1fr;gap:24px}}
+"""
+BALL = ('<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/>'
+        '<path d="m12 7 3.6 2.6-1.4 4.2H9.8L8.4 9.6z"/><path d="M12 3v4M4.2 9.6l3.9 1.4M6.9 19l2.6-3.4M17.1 19l-2.6-3.4M19.8 9.6l-3.9 1.4"/></svg>')
+
+
+def render_widget(theme=""):
+    """النسخة المدمجة في رئيسية متجر سلة (‏/nations-league/widget داخل iframe في قسم «محتوى
+    HTML»): مباريات اليوم والقادمة — بلا «آخر النتائج» (طلب المتجر) — ورابط الصفحة كاملة.
+    خلفيتها شفافة، ووضعها **كوضع المتجر**: المتجر (قالب رائد) يتبع إعداد جهاز الزائر،
+    والإطار يرى الإعداد نفسه فتتبعه الأنماط (prefers-color-scheme) نهاريةً أو ليلية، إلا
+    إن فُرض ?theme=light أو dark. ولا تُعلن color-scheme: لو اختلف عن وضع صفحة المتجر
+    لرسم المتصفح خلف الإطار خلفيةً معتمة بدل الشفافة. وروابطها تُفتح في نافذة جديدة،
+    وتبلّغ الصفحة الحاضنة بطولها فيتّسع الإطار لها بلا تمرير داخلي. ← (رمز، بايتات، مدة الكاش)."""
+    data = _feed.get()[0]
+    ms = data["matches"] if data else []
+    today = _day(time.time())
+    todays = [m for m in ms if _day(m["ts"]) == today or m["state"] == "in"]
+    upcoming = [m for m in ms if m["state"] == "pre" and m not in todays]
+    cols = ([("مباريات اليوم", todays[:WIDGET_ROWS]), ("المباريات القادمة", upcoming[:WIDGET_ROWS])] if todays
+            else [("المباريات القادمة", upcoming[:2 * WIDGET_ROWS])])
+    body = ("".join(f"<div><h2>{t}</h2>{_by_day(rows, new_tab=True)}</div>" for t, rows in cols if rows) if ms
+            else '<p class="sub">تعذّر تحميل المباريات الآن، ونعيد المحاولة تلقائيًا.</p>')
+    live = any(m["state"] == "in" for m in ms)
+    doc = f"""<!doctype html>
+<html lang="ar" dir="rtl"{f' data-theme="{theme}"' if theme in ("light", "dark") else ""}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{_esc(CUP['name'])} — {_esc(CUP['level'])} | سمارت سوق</title>
+<meta name="robots" content="noindex">
+{'<meta http-equiv="refresh" content="60">' if live else ''}
+<link rel="canonical" href="{guide_pages.SITE}{PATH}">
+<link rel="preconnect" href="{league.LOGO_HOST}">
+<style>{guide_pages._style()}
+{CSS}
+{WIDGET_CSS}</style>
+</head>
+<body>
+<main>
+<section class="card wcard">
+<a class="wtop" href="{PATH}" target="_blank" rel="noopener">{BALL}<span><b>{_esc(CUP['name'])}</b>
+<small>{_esc(CUP['level'])} · {_esc(CUP['season'])}</small></span><span class="all">كل النتائج ←</span></a>
+<div class="wcols">{body}</div>
+<p class="lsrc">يُحدَّث تلقائيًا · المصدر ESPN</p>
+</section>
+</main>
+<script>
+(function(){{function h(){{parent.postMessage({{ssouqWidget:Math.ceil(document.documentElement.getBoundingClientRect().height)}},"*")}}
+addEventListener("load",h);if(window.ResizeObserver)new ResizeObserver(h).observe(document.body);}})();
+</script>
+</body>
+</html>"""
+    return (200 if ms else 503), doc.encode("utf-8"), (LIVE_TTL if live else 300)
