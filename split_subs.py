@@ -44,6 +44,7 @@ RETRY_MINUTES = 30               # إعادة المحاولة بعد عطلٍ �
 MAX_TRANSIENT = 48               # ≈ يوم كامل من المحاولات العابرة، ثم «يحتاج تدخّلًا»
 MAIL_RETRY_MINUTES = 30
 MAIL_MAX_FAILS = 6
+MAIL_WAIT_HOURS = 24             # إشعارٌ ينتظر ضبط البريد يومًا، ثم يبقى في الأداة وحدها
 
 # الحالات
 ACTIVE = "active"        # جزءٌ مبيع يجري
@@ -227,11 +228,12 @@ def set_cfg(data_dir, acct_id, cfg):
 
 
 # ============================ الإشعارات ============================
-def _note(db, kind, rec, text, now, mail=True):
-    """إشعارٌ داخل الأداة (يُعدّ في الجرس حتى يُقرأ)، ويُرسَل في بريد الملخّص إن mail."""
+def _note(db, kind, rec, text, now, mail=True, read=False):
+    """إشعارٌ داخل الأداة (يُعدّ في الجرس حتى يُقرأ)، ويُرسَل في بريد الملخّص إن mail.
+    read=True سجلٌّ لما فعله المشغّل بيده (بيع جزء): يظهر في القائمة ولا يرفع العدّاد."""
     n = {"id": secrets.token_hex(5), "at": fmt(now), "kind": kind,
          "line": (rec or {}).get("id", ""), "username": (rec or {}).get("username", ""),
-         "gate": (rec or {}).get("gate_name", ""), "text": text, "read": False,
+         "gate": (rec or {}).get("gate_name", ""), "text": text, "read": bool(read),
          "mail": "pending" if mail else "skip"}
     db["notes"].insert(0, n)
     del db["notes"][MAX_NOTES:]
@@ -333,6 +335,8 @@ def register(data_dir, acct_id, gate, username, password, slice_months, *, packa
                   "🔔 الخط %s (%s) — جزء %s انتهى قبل تسجيله في %s؛ غيّر %s من الصفحة أو أكّد."
                   % (username, rec["gate_name"], months_ar(slice_months), rec["slice"]["due"],
                      CHANGED), now, mail=False)
+        else:
+            _note(db, "sold", rec, _sold_text(rec, exp), now, mail=False, read=True)
         db["lines"][rid] = rec
         save(data_dir, acct_id, db)
         return rec, True
@@ -351,6 +355,19 @@ def busy(data_dir, acct_id, rid):
 def _not_busy(data_dir, acct_id, rid):
     if busy(data_dir, acct_id, rid):
         raise ValueError("جارٍ تغيير هذا الخط على اللوحة الآن — انتظر لحظة ثم أعد")
+
+
+def _sold_text(rec, exp):
+    """سطر السجلّ حين يُباع جزء: ما بِيع، ومتى يتغيّر الاسم، وما يبقى بعده."""
+    sl = rec.get("slice") or {}
+    who = (" للعميل %s" % sl["customer"]) if sl.get("customer") else ""
+    if rec.get("state") == SOLD_OUT:
+        return "🆕 بِيع المتبقي من الخط %s (%s)%s — ينتهي %s، ولا تغيير بعده." % (
+            rec["username"], rec["gate_name"], who, exp.isoformat())
+    due = parse_dt(sl.get("due"))
+    return "🆕 بِيع جزء %s من الخط %s (%s)%s — يتغيّر اسم المستخدم %s، ثم «متبقي %s»." % (
+        months_ar(sl.get("months")), rec["username"], rec["gate_name"], who, sl.get("due", ""),
+        months_ar(months_left(exp, due.date())) if due else "")
 
 
 def _get(db, rid):
@@ -395,6 +412,7 @@ def sell(data_dir, acct_id, rid, months, customer="", now=None):
             rec["state"] = SOLD_OUT if final else ACTIVE
         rec.update({"attempts": 0, "last_error": "", "next_try": "", "delayed_noted": False,
                     "available_since": ""})
+        _note(db, "sold", rec, _sold_text(rec, exp), now, mail=False, read=True)
         save(data_dir, acct_id, db)
         return rec
 
@@ -549,6 +567,72 @@ def rotate(data_dir, acct_id, rid, gate, bridge, now=None, how="auto"):
         except Exception as e:                  # بعد الإرسال أو غامض: لا إعادة تلقائية
             return _after_fail(data_dir, acct_id, rid, now, str(e) or e.__class__.__name__, prior, how)
         return _after_ok(data_dir, acct_id, rid, pend, res, now, how)
+    finally:
+        with _inflight_guard:
+            _inflight.discard(key)
+
+
+def undo(data_dir, acct_id, rid, gate, bridge, now=None):
+    """«تراجع» عن آخر تغيير اسم: يعيد اسم الخط على اللوحة كما كان (كلمة المرور كما هي)
+    ويعيد جزأه المبيع كما كان. يرجّع (السجل، النتيجة): ok · busy · skip · missing ·
+    transient · failed. لا تراجع إلا عن خطٍّ «متاح» لم يُبَع بعد التغيير — وإلا قُطع
+    عميلٌ جديد. وإن كانت اللوحة قد عادت إلى الاسم القديم (غيّره المشغّل بيده) عُدّ نجاحًا.
+
+    جزءٌ فات موعده يعود «حان التغيير» لا «يجري» — وإلا غيّرته الدورة التالية من جديد."""
+    now = now or now_dt()
+    key = _key(data_dir, acct_id, rid)
+    with _inflight_guard:
+        if key in _inflight:
+            return None, "busy"
+        _inflight.add(key)
+    try:
+        with _lock:
+            db = load(data_dir, acct_id)
+            rec = db["lines"].get(str(rid))
+            if not rec:
+                return None, "missing"
+            hist = rec.get("history") or []
+            if rec.get("state") != AVAILABLE or not hist:
+                return rec, "skip"
+            last = hist[-1]
+            snap = copy.deepcopy(rec)
+            pend = {"username": last.get("username", ""), "password": rec["password"]}
+        if not pend["username"] or pend["username"] == snap["username"]:
+            return snap, "skip"
+        try:
+            bridge.change(gate, snap, pend)
+        except (Transient, Unsupported, Exception) as e:
+            with _lock:
+                db = load(data_dir, acct_id)
+                cur = db["lines"].get(str(rid))
+                if cur:
+                    cur["last_error"] = ("تعذّر التراجع: %s" % e)[:300]
+                    save(data_dir, acct_id, db)
+            kind = "transient" if isinstance(e, Transient) else "failed"
+            return cur, kind
+        with _lock:
+            db = load(data_dir, acct_id)
+            rec = db["lines"].get(str(rid))
+            if not rec:
+                return None, "missing"
+            last = rec["history"].pop()
+            renamed = rec["username"]
+            rec["username"] = last.get("username") or rec["username"]
+            due = parse_dt(last.get("due"))
+            days = int(db["cfg"].get("remind_days") or 0)
+            rec["slice"] = {"n": last.get("n", len(rec["history"]) + 1), "months": last.get("months"),
+                            "start": last.get("start", ""), "due": last.get("due", ""),
+                            "customer": last.get("customer", ""), "final": False,
+                            "reminded": bool(due and days and now >= due - datetime.timedelta(days=days))}
+            rec["state"] = ACTIVE if due and due > now else DUE
+            rec.update({"pending": None, "attempts": 0, "last_error": "", "next_try": "",
+                        "delayed_noted": False, "available_since": ""})
+            _note(db, "undo", rec, "↩️ تراجع: عاد اسم الخط %s ← %s (%s)، وجزؤه (%s) %s."
+                  % (renamed, rec["username"], rec["gate_name"], months_ar(last.get("months")),
+                     ("يجري حتى %s" % last.get("due", "")) if rec["state"] == ACTIVE
+                     else "انتهى موعده — ينتظر قرارك"), now, mail=False, read=True)
+            save(data_dir, acct_id, db)
+            return rec, "ok"
     finally:
         with _inflight_guard:
             _inflight.discard(key)
@@ -732,9 +816,35 @@ def digest(notes, page_url="", title=""):
     return subject, "\n".join(lines) + "\n"
 
 
+def mail_hint(err):
+    """شرحٌ بالعربية لأشهر أخطاء خادم البريد (SMTP)، ليعرف المشغّل ما يُصلح — أو ""."""
+    e = str(err or "").lower()
+    if not e or "غير مضبوط" in e:
+        return ""
+    has = lambda *ks: any(k in e for k in ks)
+    if has("smtp auth extension not supported"):
+        return "الخادم لا يقبل الدخول قبل التشفير — استخدم المنفذ 587 مع STARTTLS، أو 465."
+    if has("535", "534", "5.7.8", "5.7.9", "username and password not accepted", "authentication",
+           "invalid login", "application-specific", "bad credentials", "auth failed"):
+        return ("خادم البريد رفض اسم الدخول أو كلمة المرور. في Gmail أو Google Workspace أو Zoho "
+                "مع التحقّق الثنائي تلزم «كلمة مرور التطبيقات» لا كلمة المرور العادية.")
+    if has("wrong_version_number", "wrong version number", "unknown protocol", "ssl", "tls"):
+        return "المنفذ ونوع التشفير لا يتطابقان: 465 للاتصال المشفَّر (SSL)، و587 مع STARTTLS."
+    if has("name or service not known", "nodename nor servname", "getaddrinfo",
+           "no address associated", "temporary failure in name resolution"):
+        return "اسم خادم SMTP غير صحيح — تأكّد منه (مثل smtp.gmail.com أو smtp.zoho.com)."
+    if has("timed out", "timeout", "connection refused", "network is unreachable",
+           "no route to host", "errno 111", "errno 110", "errno 113"):
+        return ("لم يصل السيرفر إلى خادم البريد على هذا المنفذ — جرّب المنفذ الآخر (465 أو 587)، "
+                "أو تحقّق أن مزوّد السيرفر لا يحجب منافذ البريد.")
+    if has("550", "553", "554", "5.7.1", "sender", "relay", "not owned"):
+        return "خادم البريد رفض المُرسِل أو المستلم — اجعل «المُرسِل» هو بريد اسم الدخول نفسه."
+    return ""
+
+
 def flush_mail(data_dir, acct_id, mailer, now=None, page_url="", title=""):
     """يرسل الإشعارات المنتظرة في بريدٍ واحد. mailer(subject, body) → (ok, error)؛
-    ok=None = البريد غير مضبوط (تُترك الإشعارات في الأداة ولا تُحاوَل لاحقًا)."""
+    ok=None = البريد غير مضبوط: تنتظر الإشعارات يومًا (MAIL_WAIT_HOURS) ثم تُترك."""
     now = now or now_dt()
     with _lock:
         if not has_data(data_dir, acct_id):
@@ -756,8 +866,17 @@ def flush_mail(data_dir, acct_id, mailer, now=None, page_url="", title=""):
         db = load(data_dir, acct_id)
         m = db["mail"]
         if ok is None:
-            mark = "skip"
-            m.update({"last_error": err or "بريد التذكير غير مضبوط", "next_try": ""})
+            # البريد غير مضبوط بعد: تنتظر الإشعارات يومًا (فضبطُه بعدها بقليلٍ يُوصلها)،
+            # ثم تُترك في الأداة وحدها — فلا يصل سيلُ إشعاراتٍ قديمة يوم يُضبط.
+            m.update({"last_error": err or "بريد التذكير غير مضبوط",
+                      "next_try": fmt(now + datetime.timedelta(minutes=MAIL_RETRY_MINUTES))})
+            for n in db["notes"]:
+                if n.get("id") in ids:
+                    at = parse_dt(n.get("at"))
+                    old = not at or now - at > datetime.timedelta(hours=MAIL_WAIT_HOURS)
+                    n["mail"] = "skip" if old else "pending"
+            save(data_dir, acct_id, db)
+            return ok
         elif ok:
             mark = "sent"
             m.update({"last_sent": fmt(now), "last_error": "", "fails": 0, "next_try": ""})

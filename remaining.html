@@ -215,7 +215,7 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;
 const MONTHS = n => { n = +n || 0; return n <= 0 ? "أقل من شهر" : n === 1 ? "شهر" : n === 2 ? "شهران" : n <= 10 ? n + " أشهر" : n + " شهرًا"; };
 const DAYS = n => n < 0 ? "متأخر " + (-n) + " يوم" : n === 0 ? "اليوم" : n === 1 ? "غدًا" : "بعد " + n + " يوم";
 const MODE = {web: "جلسة ويب", falcon: "فالكون", api: "Reseller API"};
-let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null;
+let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null, MAIL_RES = null;
 const icon = {copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'};
 
 for (const [id, p] of [["lnkHome", "/"], ["lnkBrand", "/"], ["lnkRenew", "/renew"], ["lnkAcc", "/accounts"], ["lnkOut", "/logout"]]) $(id).href = B + p;
@@ -298,7 +298,7 @@ function renderNotes(unread){
   const list = SHOW_OLD ? N : N.slice(0, 8);
   $("notesList").innerHTML = list.length ? list.map(n => `<button class="note${n.read ? "" : " unread"}" data-note="${esc(n.id)}">
       <i class="ud"></i><span class="t">${esc(n.text)}<small>${esc(n.at)}${acctName(n)}</small></span></button>`).join("")
-    : '<div class="empty">لا إشعارات بعد.</div>';
+    : '<div class="empty">لا إشعارات بعد — تصلك هنا (وبالبريد إن ضُبط): قبل انتهاء الجزء بأيام، وحين يتغيّر اسم المستخدم، وإن تعذّر التغيير.</div>';
   $("notesMore").hidden = SHOW_OLD || N.length <= 8;
 }
 const creds = x => `<div class="creds"><span>اسم المستخدم <b class="mono">${esc(x.username)}</b></span><span>كلمة المرور <b class="mono">${esc(x.password)}</b></span></div>`;
@@ -311,9 +311,11 @@ function cardAvail(x){
   const open = OPEN_SELL === x.id;
   const opts = (x.can_sell || []).map((m, i) => `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="${m}"${i === 0 ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("") +
     `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="0"${(x.can_sell || []).length ? "" : " checked"}><span>المتبقي كاملًا (${MONTHS(x.remaining_months)})</span></label>`;
+  const last = (x.history || []).slice(-1)[0];
   return `<div class="card" data-line="${esc(x.id)}">
-    <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="btn" data-sell="${esc(x.id)}">${open ? "إغلاق" : "بيع"}</button></div></div>
-    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span class="ok">ينتهي الخط ${esc(x.expiry)}</span><span>متاح منذ ${esc((x.available_since || "").slice(0, 10))}</span><span>بِيع ${(x.history || []).length} مرة</span></div>
+    <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="btn" data-sell="${esc(x.id)}">${open ? "إغلاق" : "بيع"}</button>${last ? `<button class="ghost" data-undo="${esc(x.id)}" title="يعيد الاسم القديم ${esc(last.username)} على اللوحة ويعيد الجزء كما كان">↩️ تراجع</button>` : ""}</div></div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span class="ok">ينتهي الخط ${esc(x.expiry)}</span><span>متاح منذ ${esc((x.available_since || "").slice(0, 10))}</span><span>بِيع ${(x.history || []).length} مرة</span>${last ? `<span>كان <b class="mono">${esc(last.username)}</b></span>` : ""}</div>
+    ${x.last_error ? `<div class="err">${esc(x.last_error)}</div>` : ""}
     ${open ? `<div class="sellbox"><div class="opts">${opts}</div>
       <label class="f" for="cu_${esc(x.id)}">العميل (اختياري)</label><input class="t" id="cu_${esc(x.id)}" placeholder="اسم أو جوال أو رقم طلب">
       <span class="hint">يُنسخ السطر بعد البيع مباشرةً، ويتغيّر اسم المستخدم تلقائيًا عند انتهاء الجزء.</span>
@@ -398,7 +400,8 @@ function renderSettings(){
     <span class="hint">بلا هذا الخيار يصلك إشعارٌ وبريد حين يحين التغيير، وتغيّره بزرٍّ من «تحتاج تدخّلًا».</span>
     <div class="g2"><div><label class="f" for="sDays">تذكيرٌ قبل انتهاء الجزء بـ (أيام، ٠ = بلا تذكير)</label><input class="t ltr" id="sDays" type="number" min="0" max="30" value="${a.cfg.remind_days}"></div></div>
     <div class="line-row"><button class="btn" id="sSave" data-acc="${esc(a.id)}">حفظ الإعدادات</button><button class="ghost" id="sTest" data-acc="${esc(a.id)}">إرسال بريد تجريبي</button></div>
-    <p class="hint" style="font-size:.86rem">${mail}${m.last_error ? '<br><span class="err">آخر خطأ بريد: ' + esc(m.last_error) + "</span>" : ""}</p>
+    <p class="hint" style="font-size:.86rem">${mail}${m.last_error && m.configured ? '<br><span class="err">آخر خطأ بريد: ' + esc(m.last_error) + (m.hint ? "<br>↳ " + esc(m.hint) : "") + "</span>" : ""}</p>
+    <div id="sMailRes">${MAIL_RES && MAIL_RES.acc === a.id ? MAIL_RES.html : ""}</div>
     <label class="f">البوابات</label><div class="gates">${gates}</div>
     <span class="hint">جرّب التغيير على كل لوحةٍ مرةً بخطٍّ تجريبي (بالأسفل) قبل الاعتماد عليه. ما لا تتيحه اللوحة لا يُرسَل إليها أصلًا، ويصير «يحتاج تدخّلًا» بإشعارٍ وبريد.</span>
     ${testGates.length && a.enabled ? `<div class="card" id="testBox" style="margin-top:14px">
@@ -427,10 +430,16 @@ function renderSettings(){
       if (d.error) throw new Error(d.error); toast("حُفظت الإعدادات ✓"); load(); } catch(e){ toast(e.message, true); }
   };
   $("sTest").onclick = async () => {
-    $("sTest").disabled = true;
-    try { const d = await api("/api/split/test-email", {account_id: a.id}); toast(d.ok ? "أُرسل البريد التجريبي ✓" : "تعذّر الإرسال: " + (d.error || ""), !d.ok); }
-    catch(e){ toast(e.message, true); }
-    $("sTest").disabled = false;
+    $("sTest").disabled = true; $("sTest").textContent = "جاري الإرسال…";
+    let html;
+    try {
+      const d = await api("/api/split/test-email", {account_id: a.id});
+      html = d.ok ? '<p class="ok-t" style="margin:8px 0 0">✓ أُرسل البريد التجريبي — تفقّد صندوق الوارد (والرسائل غير المرغوب فيها).</p>'
+        : `<p class="err" style="margin:8px 0 0">✗ تعذّر الإرسال: <span class="mono" style="font-weight:400">${esc(d.error || "")}</span>${d.hint ? "<br>↳ " + esc(d.hint) : ""}</p>`;
+    } catch(e){ html = `<p class="err">${esc(e.message)}</p>`; }
+    MAIL_RES = {acc: a.id, html};
+    $("sMailRes").innerHTML = html;
+    $("sTest").disabled = false; $("sTest").textContent = "إرسال بريد تجريبي";
   };
 }
 
@@ -466,6 +475,20 @@ document.addEventListener("click", async e => {
       const d = await api("/api/split/rotate", {id: b.dataset.rot});
       if (d.ok) toast("✓ تغيّر اسم المستخدم إلى " + d.line.username);
       else toast(d.error || "تعذّر التغيير", true);
+      await load();
+    } catch(err){ toast(err.message, true); b.disabled = false; b.textContent = old; }
+    return;
+  }
+  if (b.dataset.undo){
+    const x = byId(b.dataset.undo), last = ((x || {}).history || []).slice(-1)[0];
+    if (!x || !last) return;
+    if (!confirm("تراجع: يعود اسم الخط على اللوحة من " + x.username + " إلى " + last.username + " (كلمة المرور كما هي)، ويعود جزؤه (" + MONTHS(last.months) + ") حتى " + (last.due || "") + ". متابعة؟")) return;
+    b.disabled = true; const old = b.textContent; b.textContent = "جاري التراجع في اللوحة…";
+    try {
+      const d = await api("/api/split/undo", {id: b.dataset.undo});
+      if (d.error && !("ok" in d)) throw new Error(d.error);
+      if (d.ok) toast("↩️ عاد الاسم إلى " + d.line.username);
+      else toast(d.error || "تعذّر التراجع", true);
       await load();
     } catch(err){ toast(err.message, true); b.disabled = false; b.textContent = old; }
     return;

@@ -1787,6 +1787,7 @@ def split_register_created(acct, gate, pkg, slice_m, out):
     """يسجّل الخطوط المُنشأة للتوّ كأجزاء مبيعة. التسجيل مساعدٌ لا يُفشل الإنشاء: ما
     أُنشئ خُصم وسُلِّم، فخطأ التسجيل يُعاد مع الخط ليُسجَّل من الصفحة."""
     months = split_base_months(pkg)
+    days = split_subs.load(DATA_DIR, acct["id"])["cfg"].get("remind_days") or 0
     res = []
     for r in out:
         host = (re.search(r"Host\s+(\S+)", r.get("line", "")) or [None, ""])[1] or gate.get("host", "")
@@ -1799,8 +1800,11 @@ def split_register_created(acct, gate, pkg, slice_m, out):
                 expiry=split_subs.trust_expiry(r.get("exp"), reckoned),
                 line_id=r.get("line_id", ""), source="create", now=now)
             v = split_subs.decorate(rec)
+            due = split_subs.parse_dt(rec["slice"]["due"])
             res.append({"id": rec["id"], "username": rec["username"], "due": rec["slice"]["due"],
-                        "months": slice_m, "remaining_after": v.get("remaining_after", 0)})
+                        "months": slice_m, "remaining_after": v.get("remaining_after", 0),
+                        # موعد بريد التذكير (قبل التغيير بأيام الإعداد)، "" = بلا تذكير
+                        "remind": (due - datetime.timedelta(days=days)).date().isoformat() if days and due else ""})
         except Exception as e:
             res.append({"username": r.get("username", ""), "error": str(e)[:200]})
     return res
@@ -2869,7 +2873,8 @@ class Handler(BaseHTTPRequestHandler):
                 "cfg": v["cfg"], "unread": v["unread"],
                 "mail": {**split_mail_status(st, a, role),
                          "last_sent": v["mail"].get("last_sent", ""),
-                         "last_error": v["mail"].get("last_error", "")},
+                         "last_error": v["mail"].get("last_error", ""),
+                         "hint": split_subs.mail_hint(v["mail"].get("last_error", ""))},
                 "gates": [{"id": g.get("id"), "name": g.get("name", ""), "mode": g.get("mode"),
                            "flavor": g.get("web_flavor", ""), "supported": split_gate_ok(g),
                            "edit": v["gates"].get(str(g.get("id")), {})}
@@ -2922,7 +2927,8 @@ class Handler(BaseHTTPRequestHandler):
                     "هذا بريدٌ تجريبي من صفحة «حسابات متبقية» (%s).\n"
                     "هنا تصلك تذكيرات انتهاء الأجزاء المبيعة وتغيير أسماء المستخدمين.\n\n%s\n"
                     % (a.get("name", ""), split_page_url()))
-                return self._send(200, {"ok": bool(ok), "error": "" if ok else err})
+                return self._send(200, {"ok": bool(ok), "error": "" if ok else err,
+                                        "hint": "" if ok else split_subs.mail_hint(err)})
             if path == "/api/split/test-rename":
                 return self._split_test_rename(a, req)
             return self._split_register(a, req)
@@ -2956,6 +2962,22 @@ class Handler(BaseHTTPRequestHandler):
                 if res != "ok":
                     return self._send(200, {"ok": False, "result": res,
                                             "error": (rec or {}).get("last_error", "") or "تعذّر التغيير",
+                                            "line": split_subs.decorate(rec) if rec else None})
+            elif path == "/api/split/undo":           # «تراجع»: يعيد الاسم القديم على اللوحة والجزء كما كان
+                if not split_on(a):
+                    return self._send(403, {"error": "الميزة مغلقة لهذا العميل — لا تغيير"})
+                cur = split_subs.load(DATA_DIR, a["id"])["lines"][rid]
+                gate = find_gate(a, cur.get("gate_id"))
+                if not gate:
+                    return self._send(400, {"error": "بوابة هذا الخط لم تعد موجودة في الحساب"})
+                rec, res = split_subs.undo(DATA_DIR, a["id"], rid, gate, SPLIT_BRIDGE)
+                if res == "busy":
+                    return self._send(409, {"error": "جارٍ تغيير هذا الخط الآن — انتظر لحظة"})
+                if res == "skip":
+                    return self._send(400, {"error": "لا تغيير اسمٍ يُتراجع عنه — التراجع لخطٍّ متاحٍ لم يُبَع بعد تغييره"})
+                if res != "ok":
+                    return self._send(200, {"ok": False, "result": res,
+                                            "error": (rec or {}).get("last_error", "") or "تعذّر التراجع",
                                             "line": split_subs.decorate(rec) if rec else None})
             else:
                 return self._send(404, {"error": "not found"})
@@ -3105,6 +3127,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass                               # الربط مساعدٌ لا يُفشل الإنشاء
         if slice_m and out:                        # يُتابَع الجزء المبيع حتى يتغيّر اسمه
             resp["split"] = split_register_created(acct, gate, pkg, slice_m, out)
+            resp["split_mail"] = split_mail_status(load_store(), acct, "account")   # أيصل التذكير بالبريد؟
             label = "%s · جزء %s" % (pkg.get("name", ""), split_subs.months_ar(slice_m))
             for r in out:
                 r["package"] = label               # السجل في المتصفح يفصل المجزّأ عن الكامل

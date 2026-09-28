@@ -291,6 +291,15 @@ def main():
         check("Marah: 6-month slice created and tracked", code == 200 and sp.get("id") and sp.get("months") == 6,
               json.dumps(sp, ensure_ascii=False))
         check("…9 months remain after it", sp.get("remaining_after") == 9, str(sp.get("remaining_after")))
+        due_d = datetime.date.fromisoformat(sp.get("due", "2000-01-01")[:10])
+        check("…reminder email date = 3 days before the change",
+              sp.get("remind") == (due_d - datetime.timedelta(days=3)).isoformat(), str(sp.get("remind")))
+        check("…says the reminder goes to the admin's email (address hidden from the client)",
+              d.get("split_mail") == {"configured": True, "source": "admin", "to": ""}, json.dumps(d.get("split_mail")))
+        _, nd = a.jreq("/admin/api/split/notes")
+        check("…the sale is logged in the notifications, without raising the badge",
+              any(n["kind"] == "sold" and n["read"] for n in nd.get("notes", [])) and nd.get("unread") == 0,
+              json.dumps(nd, ensure_ascii=False)[:120])
         check("…the history groups it apart", "جزء 6 أشهر" in d["lines"][0].get("package", ""),
               d["lines"][0].get("package", ""))
         m_id = sp.get("id")
@@ -352,6 +361,16 @@ def main():
               rc.get("password") == rc.get("history", [{}])[0].get("password"))
         check("Casper: old name gone from the panel",
               not any(u["username"] == c_user for u in mock_casper._Handler.users))
+        code, d = a.jreq("/admin/api/split/undo", {"id": c_id})
+        cu2 = next((u for u in mock_casper._Handler.users if u["id"] == cu.get("id")), {})
+        check("undo: the old name is back on the panel, password kept",
+              d.get("ok") is True and cu2.get("username") == c_user and cu2.get("password") == cu.get("password"),
+              json.dumps(d, ensure_ascii=False)[:160])
+        check("undo: its slice is back — date passed, so it waits for the operator",
+              d.get("line", {}).get("state") == "due" and d["line"]["username"] == c_user
+              and not d["line"].get("history"))
+        code, d = a.jreq("/admin/api/split/undo", {"id": c_id})
+        check("undo twice refused (nothing left to undo)", code == 400, str(code))
         fl = json.loads(urllib.request.urlopen(urllib.request.Request(
             FALCON + "/lines?per=50&q=" + rf.get("username", "-"), headers={"Authorization": "Bearer fk"})).read())
         check("Falcon: renamed by the scheduler, password kept",
@@ -407,6 +426,12 @@ def main():
         check("no password in any email", "999988887777" not in body and rc.get("password", "-") not in body)
         code, d = a.jreq("/admin/api/split/test-email", {})
         check("test email sent", d.get("ok") is True, d.get("error", ""))
+        a.jreq("/admin/api/renew/config", {"renew": {"alert": {"host": "127.0.0.1", "port": 9, "to": "c@example.com",
+                                                                "tls": False}}})
+        code, d = a.jreq("/admin/api/split/test-email", {})
+        check("broken mail server: the error comes back with a plain explanation",
+              d.get("ok") is False and d.get("error") and "المنفذ" in d.get("hint", ""), json.dumps(d, ensure_ascii=False))
+        a.jreq("/admin/api/renew/config", {"renew": {"alert": {"host": "", "to": ""}}})    # يعود لبريد المدير
         code, d = a.jreq("/admin/api/split/read", {})
         _, d = a.jreq("/admin/api/split/notes")
         check("mark all read → badge clears", d.get("unread") == 0, str(d.get("unread")))
@@ -462,9 +487,10 @@ def main():
               and "عميل عادي" not in names, ",".join(names))
         check("admin sees the alert address", any(x["mail"].get("to") == "owner@example.com" for x in d["accounts"]))
         _, d = a.jreq("/admin/api/split/state")
-        check("client sees 'admin email' without its address", d["accounts"][0]["mail"] ==
-              {"configured": True, "source": "admin", "to": "", "last_sent": d["accounts"][0]["mail"]["last_sent"],
-               "last_error": ""}, json.dumps(d["accounts"][0]["mail"]))
+        mail = d["accounts"][0]["mail"]
+        check("client sees 'admin email' without its address",
+              {k: mail.get(k) for k in ("configured", "source", "to", "last_error")} ==
+              {"configured": True, "source": "admin", "to": "", "last_error": ""}, json.dumps(mail))
     finally:
         for p in procs:
             p.kill()
