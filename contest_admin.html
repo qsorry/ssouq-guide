@@ -65,6 +65,10 @@ button:disabled{opacity:.55;cursor:default}
 .chip.closed,.chip.pending,.chip.hold{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,var(--line))}
 .chip.done{color:#fff;background:var(--go2);border-color:var(--go2)}
 .chip.void{color:var(--err)}
+.tvf{display:flex;gap:8px;align-items:center;margin-top:10px}
+.tvf label{margin:0;white-space:nowrap}
+.tvf input{max-width:240px;direction:ltr;text-align:left}
+.cupname{color:var(--amber);font-weight:700}
 .mctl{display:grid;grid-template-columns:1fr 80px 150px 170px auto;gap:8px;align-items:end;margin-top:10px}
 .mctl label{margin-top:0}
 @media (max-width:760px){.mctl{grid-template-columns:90px 1fr}.mctl .pz,.mctl .md,.mctl .acts{grid-column:1/-1}}
@@ -144,7 +148,8 @@ button:disabled{opacity:.55;cursor:default}
   <section>
     <h2>المباريات <span class="acts"><button class="ghost" id="pFresh" title="يجلب منتجات سلة من جديد">تحديث الاشتراكات</button><a class="ghost" id="xlsAll">Excel كل التوقّعات</a><a class="ghost" id="lnkPub" target="_blank" rel="noopener">صفحة المسابقة</a></span></h2>
     <div id="rows"><p class="empty">نحمّل المباريات…</p></div>
-    <p class="hint">المباريات القادمة خلال ثلاثة أسابيع، وكل مباراةٍ عليها مسابقة. المسابقة تُفتح قبل صافرة البداية فقط، وعدد الفائزين لا يتغيّر بعد الإقفال.</p>
+    <datalist id="tvlist"></datalist>
+    <p class="hint">مباريات دوري الأمم الأوروبية وكأس الخليج العربي القادمة خلال ثلاثة أسابيع، وكل مباراةٍ عليها مسابقة. المسابقة تُفتح قبل صافرة البداية فقط، وعدد الفائزين لا يتغيّر بعد الإقفال. و«القناة الناقلة» تظهر في صفحة المباراة وجدول البطولة ورسالة القناة، وتُحفظ فور كتابتها.</p>
   </section>
 
   <section id="annSec">
@@ -209,6 +214,7 @@ async function load() {
   $("stAll").textContent = num(cs.reduce((n, r) => n + (r.contest.count || 0), 0));
   $("stDone").textContent = num(rows.filter(r => r.state === "done").length);
   wa(d.reader || {});
+  $("tvlist").innerHTML = (d.channels || []).map(c => `<option value="${esc(c)}">`).join("");
   if (!$("sText").dataset.set) {
     const s = d.settings || {};
     $("sNotify").checked = !!s.notify; $("sText").value = s.text || ""; $("sAdmin").value = s.admin_phone || "";
@@ -217,6 +223,8 @@ async function load() {
   ann(d.announce || "");
   if (!PRODUCTS) await products();
   if ($("rows").querySelector("[data-dirty]")) return;          // تعديلٌ لم يُحفظ: لا يُمسح بالتحديث
+  const foc = document.activeElement;                            // ولا ما يُكتب الآن
+  if (foc && $("rows").contains(foc) && foc.matches("input,select")) return;
   if (!d.feed && !rows.length) { $("rows").innerHTML = '<p class="empty">تعذّر جلب المباريات من ESPN الآن. أعد المحاولة بعد دقائق.</p>'; return; }
   $("rows").innerHTML = rows.length ? rows.map(row).join("") : '<p class="empty">لا مباريات قادمة في البطولة الآن.</p>';
 }
@@ -261,11 +269,13 @@ function row(r) {
   }
   return `<div class="mrow" data-eid="${esc(r.eid)}">
     <div class="mhead"><div class="mi"><b>${esc(m.home)} × ${esc(m.away)}</b>
-      <small>${esc(r.when)} · ${esc(m.stage)}${esc(score)}</small>
+      <small><span class="cupname">${esc(m.cup || "دوري الأمم الأوروبية")}</span> · ${esc(r.when)} · ${esc(m.stage)}${esc(score)}</small>
       <span class="chip ${st}">${STATE[st] || st}${count}</span></div>
       <div class="acts">${st === "open" && DATA && (DATA.announce_by || {})[r.eid] ? `<button class="go" data-a="copy">نسخ رسالتها للقناة</button>` : ""}
         ${c ? `<button class="ghost" data-a="view">التوقّعات والفرز</button>` : ""}
-        <a class="ghost" href="${SITE}/nations-league/${esc(m.slug)}#predict" target="_blank" rel="noopener">صفحة المباراة</a></div></div>
+        <a class="ghost" href="${SITE}${esc(m.path || "/nations-league")}/${esc(m.slug)}#predict" target="_blank" rel="noopener">صفحة المباراة</a></div></div>
+    ${r.mstate === "post" || st === "done" || st === "void" ? "" : `<div class="tvf"><label>القناة الناقلة</label>
+      <input data-f="tv" list="tvlist" value="${esc(r.tv || "")}" placeholder="مثل AL KASS One" maxlength="40"></div>`}
     ${ctl}<div class="msg"></div></div>`;
 }
 
@@ -291,9 +301,18 @@ function prizeField(c) {
     <a class="hint plink" data-f="plink" href="${esc(link)}" target="_blank" rel="noopener" ${link ? "" : "hidden"} dir="ltr" style="overflow-wrap:anywhere">${esc(shortUrl(link))}</a>
     ${PSRC ? `<span class="hint" style="color:var(--amber)">${esc(PSRC)}</span>` : ""}`;
 }
-$("rows").addEventListener("input", e => { const r = e.target.closest(".mrow"); if (r && e.target.dataset.f) r.dataset.dirty = "1"; });
+$("rows").addEventListener("change", async e => {        // القناة الناقلة: تُحفظ فور تغييرها
+  if (e.target.dataset.f !== "tv") return;
+  const rowEl = e.target.closest(".mrow"), msg = rowEl.querySelector(".msg");
+  const d = await api("/api/contest/admin/tv", {m: rowEl.dataset.eid, channel: e.target.value});
+  msg.className = "msg " + (d.ok ? "ok" : "err");
+  msg.textContent = d.ok ? (d.channel ? "حُفظت القناة: " + d.channel : "مُسحت القناة") : (d.error || "تعذّر الحفظ");
+  if (d.ok) e.target.value = d.channel;
+});
+const edits = e => e.target.dataset.f && e.target.dataset.f !== "tv";   // القناة تُحفظ فورًا فلا «تعديل معلّق»
+$("rows").addEventListener("input", e => { const r = e.target.closest(".mrow"); if (r && edits(e)) r.dataset.dirty = "1"; });
 $("rows").addEventListener("change", e => {
-  const r = e.target.closest(".mrow"); if (r && e.target.dataset.f) r.dataset.dirty = "1";
+  const r = e.target.closest(".mrow"); if (r && edits(e)) r.dataset.dirty = "1";
   const s = e.target.closest('[data-f="prize_id"]'); if (!s) return;
   const box = s.parentElement, o = s.selectedOptions[0], link = box.querySelector('[data-f="plink"]');
   box.querySelector('[data-f="prize"]').hidden = s.value !== "__text";
@@ -442,7 +461,7 @@ async function view(eid) {
   };
   if (dr) {
     const rep = {match: d.public.match, when: d.when, prize: d.prize, eid: d.eid, draw: d.public.draw,
-                 site: "guide.ssouq.com/nations-league/" + m.slug};
+                 site: "guide.ssouq.com" + (m.path || "/nations-league") + "/" + m.slug};
     const cv = $("dBody").querySelector("canvas");
     player = window.SSDraw.play(cv, rep);
     $("vPlay").onclick = () => player && player.play();

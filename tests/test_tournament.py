@@ -219,6 +219,49 @@ def unit():
     check("503 برسالة والإعلان باقٍ", code == 503 and "تعذّر تحميل المباريات الآن" in page and "cup-ad-side" in page)
 
 
+def unit_gulf():
+    """كأس الخليج: نسخةٌ من الوحدة نفسها بإعدادها، مستقلةٌ بكاشها وصفحاتها — والقناة الناقلة."""
+    print("\nكأس الخليج")
+    G = T.instance("gulf_cup_test", **T.GULF)
+    check("نسخةٌ مستقلة: مسارها ومسابقتها وكاشها", G.PATH == "/gulf-cup" and G.PREDICT == "/gulf-cup/predict"
+          and T.PATH == "/nations-league" and T.PREDICT == "/nations-league/predict" and G._feed is not T._feed
+          and G.CUP["code"] == "global.gulf_cup" and T.CUP["code"] == "uefa.nations")
+    L.get_json = fake_espn
+    G._feed.reset()
+    data = G._feed.get()[0]
+    by = {m["id"]: m for m in data["matches"]}
+    check("مبارياتها كلها: المجموعتان ونصف النهائي", set(by) == {"101", "102", "103", "104", "105", "106"}, str(sorted(by)))
+    check("وتحمل بطولتها", by["103"]["path"] == "/gulf-cup" and by["103"]["cup"] == "كأس الخليج العربي")
+    check("المجموعة من الترتيب لا من تسمية ESPN المعكوسة", by["103"]["group"] == "Group A"
+          and by["103"]["stage"] == "المجموعة الأولى" and by["105"]["stage"] == "المجموعة الثانية")
+    check("أطراف نصف النهائي قبل أن تُعرف", (by["106"]["home"]["name"], by["106"]["away"]["name"], by["106"]["stage"])
+          == ("متصدّر المجموعة الأولى", "وصيف المجموعة الثانية", "نصف النهائي"))
+    check("الأسماء بالعربية", (by["103"]["home"]["name"], by["103"]["away"]["name"]) == ("السعودية", "العراق"))
+    G.channels = lambda: {"103": "AL KASS One"}
+    code, raw, age = G.render()
+    page = raw.decode("utf-8")
+    check("صفحة كأس الخليج", code == 200 and "<title>نتائج كأس الخليج العربي 2026 — خليجي 27 ومباريات اليوم | سمارت سوق</title>" in page
+          and f'rel="canonical" href="{T.guide_pages.SITE}/gulf-cup"' in page and "المجموعتين" in page)
+    g = section(page, "groups")
+    check("جدولا المجموعتين، والأول والثاني إلى نصف النهائي", g.count('<table class="standings">') == 2
+          and "التأهل إلى نصف النهائي" in g and "ربع النهائي" not in g)
+    check("القناة الناقلة في صف المباراة", 'class="tv"' in page and ">AL KASS One</span>" in page
+          and page.count('class="tv"') == 1)
+    check("وروابط المباريات تحت مسارها", 'href="/gulf-cup/103-saudi-arabia-iraq"' in page and "/nations-league/" not in page.split("<main")[1].split("cupmain")[0])
+    code, raw, age = G.render_match("103-saudi-arabia-iraq")
+    mp = raw.decode("utf-8")
+    check("صفحة المباراة: القناة الناقلة وبطولتها ومجموعتها الصحيحة", code == 200 and "القناة الناقلة: <b dir=\"ltr\">AL KASS One</b>" in mp
+          and "كأس الخليج العربي · خليجي 27 · المجموعة الأولى" in mp and "ترتيب المجموعة الأولى" in mp)
+    code, raw, _ = G.render_match("101-saudi-arabia-kuwait")
+    check("ولا سطر قناة لمباراةٍ بلا قناة", code == 200 and "القناة الناقلة" not in raw.decode("utf-8"))
+    check("وليست من دوري الأمم", T.render_match("103-saudi-arabia-iraq") is None)
+    code, raw, _ = G.render_widget()
+    check("ودجت كأس الخليج", code == 200 and "كأس الخليج العربي" in raw.decode("utf-8"))
+    sm = [u for u, *_ in G.sitemap()]
+    check("في خريطة الموقع بمبارياتها", "/gulf-cup" in sm and "/gulf-cup/predict" in sm and "/gulf-cup/103-saudi-arabia-iraq" in sm)
+    G.channels = lambda: {}
+
+
 def req(base, path, host=None):
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *a, **k):
@@ -277,6 +320,20 @@ def live():
         check("نطاق الأداة لا يقدّمها", c != 200 or "دوري الأمم" not in b, str(c))
         c, h, b = req(dead, "/nations-league")
         check("ESPN لا تردّ: 503 مع Retry-After", c == 503 and h.get("Retry-After") == str(L.RETRY))
+        c, h, b = req(base, "/gulf-cup", "guide.ssouq.com")
+        check("/gulf-cup على الموقع العام", c == 200 and "كأس الخليج العربي" in b and "المجموعة الثانية" in b)
+        c, h, b = req(base, "/gulf-cup/103-saudi-arabia-iraq")
+        check("صفحة مباراة من كأس الخليج", c == 200 and "السعودية" in b and "ترتيب المجموعة الأولى" in b)
+        c, h, _ = req(base, "/gulf-cup/103")
+        check("ورابطها المختصر ← 301", c == 301 and h.get("Location") == "/gulf-cup/103-saudi-arabia-iraq")
+        c, _, b = req(base, "/gulf-cup/predict")
+        check("صفحة مسابقة كأس الخليج", c == 200 and "مسابقة توقّع النتيجة" in b and 'href="/gulf-cup">كأس الخليج العربي' in b)
+        c, _, _ = req(base, "/gulf-cup/1-france-belgium")
+        check("ومباراةٌ من دوري الأمم ليست تحتها", c == 404)
+        c, _, b = req(base, "/sitemap.xml")
+        check("كأس الخليج في خريطة الموقع", "/gulf-cup</loc>" in b and "/gulf-cup/103-saudi-arabia-iraq</loc>" in b)
+        c, _, b = req(base, "/")
+        check("والرئيسية تربطها", 'href="/gulf-cup"' in b)
     finally:
         for p in procs:
             p.terminate()
@@ -286,6 +343,7 @@ def live():
 
 def main():
     unit()
+    unit_gulf()
     live()
     print(f"\n{_p} نجح · {_f} فشل")
     return 1 if _f else 0

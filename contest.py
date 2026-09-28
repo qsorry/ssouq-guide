@@ -294,11 +294,55 @@ def _sign(x):
     return (x > 0) - (x < 0)
 
 
+DEFAULT_PATH, DEFAULT_CUP = "/nations-league", "دوري الأمم الأوروبية"    # ما سبق تعدّد البطولات
+
+
 def _snap(m):
-    """ما يلزم من المباراة ليبقى مع المسابقة وإن خرجت من ESPN."""
+    """ما يلزم من المباراة ليبقى مع المسابقة وإن خرجت من ESPN — ومنه بطولتها (مسارها واسمها)."""
     return {"home": m["home"]["name"], "away": m["away"]["name"],
             "home_logo": m["home"].get("logo") or "", "away_logo": m["away"].get("logo") or "",
-            "ts": m["ts"], "slug": m["slug"], "stage": m["stage"], "time_ok": m["time_ok"]}
+            "ts": m["ts"], "slug": m["slug"], "stage": m["stage"], "time_ok": m["time_ok"],
+            "path": m.get("path") or DEFAULT_PATH, "cup": m.get("cup") or DEFAULT_CUP}
+
+
+def cup_path(mt):
+    """مسار بطولة المباراة من لقطتها (اللقطات القديمة لدوري الأمم)."""
+    return (mt or {}).get("path") or DEFAULT_PATH
+
+
+# ---------- القناة الناقلة لكل مباراة (يكتبها المدير؛ ESPN لا تعطي ناقلي المنطقة) ----------
+TV = "tv.json"
+TV_MAX = 40
+TV_SUGGEST = ("AL KASS One", "AL KASS Two", "SSC 1", "SSC 2", "SSC Extra", "beIN SPORTS 1", "beIN SPORTS 2",
+              "beIN SPORTS 3", "beIN SPORTS 4", "Thmanyah 1", "KSA Sports 1", "Dubai Sports", "Abu Dhabi Sports")
+_tv = {}                                            # مجلد البيانات ← {المعرّف: القناة} في الذاكرة
+
+
+def channels(data_dir):
+    """{معرّف المباراة: اسم القناة} — من الذاكرة بعد أول قراءة."""
+    with _lock:
+        if data_dir not in _tv:
+            d = _read(os.path.join(_dir(data_dir), TV)) or {}
+            _tv[data_dir] = {str(k): str(v) for k, v in d.items() if v} if isinstance(d, dict) else {}
+        return dict(_tv[data_dir])
+
+
+def set_channel(data_dir, eid, name):
+    """قناة مباراة؛ والفارغ يمسحها ← الاسم المحفوظ."""
+    eid = eid_of(eid)
+    if not eid:
+        raise ValueError("مباراةٌ غير معروفة")
+    name = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", str(name or ""))).strip()[:TV_MAX]
+    channels(data_dir)
+    with _lock:
+        cur = dict(_tv[data_dir])
+        if name:
+            cur[eid] = name
+        else:
+            cur.pop(eid, None)
+        _write(os.path.join(_dir(data_dir), TV), cur)
+        _tv[data_dir] = cur
+    return name
 
 
 def _sha(s):
@@ -635,7 +679,9 @@ def public_draw(rec):
 
 def _match_of(rec, m):
     s = _snap(m) if m else (rec.get("match") or {})
-    return {k: s.get(k) for k in ("home", "away", "home_logo", "away_logo", "ts", "slug", "stage", "time_ok")}
+    out = {k: s.get(k) for k in ("home", "away", "home_logo", "away_logo", "ts", "slug", "stage", "time_ok")}
+    out.update(path=cup_path(s), cup=s.get("cup") or DEFAULT_CUP)
+    return out
 
 
 def public(rec, m, now=None):

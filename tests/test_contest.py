@@ -780,6 +780,66 @@ def live():
               and len(det["redraws"]) == 1 and len(det["redraws"][0]["won"]) == 2, det.get("redraws"))
         code, res = post(base + "/admin/api/contest/admin/redraw", {"m": "6", "mode": "exact"}, auth=True)
         check("ولا إعادة لمسابقةٍ لم تُفرز", code == 409, res)
+
+        # كأس الخليج: مبارياتها في صفحة المدير، والقناة الناقلة، ومسابقةٌ على مباراةٍ منها برابطها
+        code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
+        d = json.loads(body)
+        rows = {r["eid"]: r for r in d["rows"]}
+        check("صفحة المدير: مباريات كأس الخليج مع دوري الأمم", "103" in rows and "6" in rows
+              and rows["103"]["match"]["cup"] == "كأس الخليج العربي" and rows["103"]["match"]["path"] == "/gulf-cup"
+              and rows["6"]["match"]["path"] == "/nations-league", sorted(rows))
+        check("واقتراحات القنوات", "AL KASS One" in d["channels"] and "beIN SPORTS 1" in d["channels"])
+        code, res = post(base + "/admin/api/contest/admin/tv", {"m": "103", "channel": " AL  KASS One "})
+        check("القناة للمدير وحده", code == 401)
+        code, res = post(base + "/admin/api/contest/admin/tv", {"m": "103", "channel": " AL  KASS One "}, auth=True)
+        check("حفظ القناة الناقلة (بلا مسافاتٍ زائدة)", code == 200 and res["channel"] == "AL KASS One", res)
+        code, res = post(base + "/admin/api/contest/admin/tv", {"m": "999999", "channel": "x"}, auth=True)
+        check("ولا قناة لمباراةٍ ليست في البطولات", code == 404, res)
+        code, res = post(base + "/admin/api/contest/admin/tv", {"m": "104", "channel": "AL KASS Two"}, auth=True)
+        code, res = post(base + "/admin/api/contest/admin/tv", {"m": "104", "channel": ""}, auth=True)
+        check("والفارغ يمسحها", code == 200 and res["channel"] == "" and "104" not in C.channels(data))
+        code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
+        check("وتظهر في صف المباراة", {r["eid"]: r for r in json.loads(body)["rows"]}["103"]["tv"] == "AL KASS One")
+        code, body, _ = get(base + "/gulf-cup/103-saudi-arabia-iraq")
+        page = body.decode()
+        check("وفي صفحة المباراة", code == 200 and "القناة الناقلة: <b dir=\"ltr\">AL KASS One</b>" in page)
+        code, body, _ = get(base + "/gulf-cup")
+        check("وفي جدول البطولة", ">AL KASS One</span>" in body.decode())
+
+        code, res = post(base + "/admin/api/contest/admin/set", {"m": "103", "on": True, "prize": "اشتراك شهر",
+                                                                 "winners": 1}, auth=True)
+        check("مسابقة على مباراةٍ من كأس الخليج", code == 200 and res["contest"]["match"]["path"] == "/gulf-cup", res)
+        code, body, _ = get(base + "/gulf-cup/103-saudi-arabia-iraq")
+        page = body.decode()
+        check("وبطاقتها في صفحة المباراة بشروط بطولتها", 'id="predict" data-m="103"' in page
+              and 'data-rules="/gulf-cup/predict#rules"' in page)
+        code, body, _ = get(base + "/api/contest?m=103")
+        pub = json.loads(body)
+        check("والعلن يعرف بطولتها", pub["state"] == "open" and pub["match"]["path"] == "/gulf-cup"
+              and pub["match"]["cup"] == "كأس الخليج العربي", pub.get("match"))
+        code, body, _ = get(base + "/admin/api/contest/admin", auth=True)
+        d = json.loads(body)
+        ann, one = d["announce"], d["announce_by"]["103"]
+        check("رسالة القناة: بطولتان فاسم كلٍّ بجانب مباراته، ورابطها تحت مسارها", "⚽ المباريات المفتوحة للتوقّع:\n" in ann
+              and "(كأس الخليج العربي)" in ann and "(دوري الأمم الأوروبية)" in ann
+              and "https://guide.ssouq.com/gulf-cup/103-saudi-arabia-iraq#predict" in ann
+              and "https://guide.ssouq.com/nations-league/6-netherlands-serbia#predict" in ann, ann[:400])
+        check("والقناة الناقلة بجانب المباراة", "📺 AL KASS One" in ann)
+        check("ورسالة المباراة وحدها: في كأس الخليج العربي", " في كأس الخليج العربي:" in one
+              and "• السعودية × العراق — 📺 AL KASS One" in one
+              and "https://guide.ssouq.com/gulf-cup/103-saudi-arabia-iraq#predict" in one, one[:300])
+        code, body, _ = get(base + "/gulf-cup/predict")
+        check("صفحة مسابقة كأس الخليج: مسابقتها وحدها", "103-saudi-arabia-iraq#predict" in body.decode()
+              and "netherlands" not in body.decode())
+        code, body, _ = get(base + "/nations-league/predict")
+        check("وصفحة دوري الأمم بلا مسابقة كأس الخليج", "103-saudi-arabia-iraq" not in body.decode())
+        code, res = post(base + "/api/contest/start", {"m": "103", "name": "فهد", "h": 2, "a": 0, "agree": True})
+        check("رمزٌ لمباراة كأس الخليج", code == 200 and "السعودية 2 – 0 العراق" in res["text"], res)
+        r = inbound("966551230077", res["text"])
+        r2 = inbound("966551230088", res["text"])
+        check("والرد برابط صفحتها تحت /gulf-cup", r["sent"] and "تم تسجيل توقّعك" in r["sent"][0]["body"]
+              and r2["sent"] and "https://guide.ssouq.com/gulf-cup/103-saudi-arabia-iraq#predict" in r2["sent"][0]["body"],
+              (r2.get("sent") or [{}])[0].get("body", "")[:200])
         code, body, _ = get(base + "/static/contest-draw.js")
         check("سكربت الفيديو يُقدَّم", code == 200 and b"SSDraw" in body)
     finally:

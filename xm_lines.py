@@ -93,8 +93,22 @@ DATA_DIR  = os.environ.get("XM_DATA", os.path.join(BASE_DIR, "data"))
 ACC_FILE  = os.path.join(DATA_DIR, "accounts.json")
 TXT_FILE  = os.path.join(DATA_DIR, "lines.txt")
 STATS_FILE = os.path.join(DATA_DIR, "stats.json")   # عدّاد أداة M3U العامة
-# مسابقة التوقّعات: صفحات البطولة تقرأ مسابقاتها من مجلد البيانات هذا
-tournament.contests = lambda: contest.summaries(DATA_DIR)
+# البطولات: دوري الأمم (tournament) وكأس الخليج (نسخةٌ من الوحدة نفسها بإعدادها). وصفحاتهما تقرأ
+# مسابقاتها والقناة الناقلة لكل مباراة من مجلد البيانات هذا
+CUPS = (tournament, tournament.instance("gulf_cup", **tournament.GULF))
+for _cup in CUPS:
+    _cup.contests = lambda: contest.summaries(DATA_DIR)
+    _cup.channels = lambda: contest.channels(DATA_DIR)
+
+
+def cup_matches():
+    """مباريات البطولات كلها من كاش ESPN (والمتعذّرة تُتخطّى) ← (المباريات، أتاحت كلها؟)."""
+    ms, ok = [], True
+    for t in CUPS:
+        data = t._feed.get()[0]
+        ok = ok and bool(data)
+        ms += (data or {}).get("matches", [])
+    return ms, ok
 
 def load_stats():
     try:
@@ -1974,15 +1988,20 @@ CONTEST_TICK = 60
 
 
 def cup_match(eid):
-    """مباراة البطولة بمعرّفها من كاش ESPN، أو None."""
+    """مباراةٌ من البطولات بمعرّفها من كاش ESPN، أو None."""
     eid = contest.eid_of(eid)
-    data = tournament._feed.get()[0] if eid else None
-    return next((m for m in (data or {}).get("matches", []) if m["id"] == eid), None)
+    if not eid:
+        return None
+    for t in CUPS:
+        m = next((m for m in (t._feed.get()[0] or {}).get("matches", []) if m["id"] == eid), None)
+        if m:
+            return m
+    return None
 
 
 def contest_link(rec):
     mt = rec.get("match") or {}
-    return f"https://{SITE_HOST}{tournament.PATH}/{mt.get('slug') or rec['eid']}#predict"
+    return f"https://{SITE_HOST}{contest.cup_path(mt)}/{mt.get('slug') or rec['eid']}#predict"
 
 
 # خدمة واتساب النظام اللوجستي (whatsapp-reader): جلسة المسابقة فيها، تُربط بـ QR من صفحة المدير.
@@ -2138,8 +2157,7 @@ def contest_tick(now=None):
     ids = contest.waiting(DATA_DIR)
     if not ids:
         return []                           # لا مسابقة تنتظر: لا نداء لـ ESPN
-    data = tournament._feed.get()[0]
-    ms = {m["id"]: m for m in (data or {}).get("matches", [])}
+    ms = {m["id"]: m for m in cup_matches()[0]}
     done = []
     for eid in ids:
         rec, drawn = contest.settle(DATA_DIR, eid, ms.get(eid), now)
@@ -2361,7 +2379,7 @@ class Handler(BaseHTTPRequestHandler):
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
         if path == "/sitemap.xml":
-            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + tournament.sitemap()),
+            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + [u for t in CUPS for u in t.sitemap()]),
                               ctype="application/xml; charset=utf-8",
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path in ROOT_FILES:
@@ -2373,32 +2391,14 @@ class Handler(BaseHTTPRequestHandler):
             if t is None:
                 return self._send(404, {"ok": False, "error": "unknown league"})
             return self._send(200, t, extra={"Cache-Control": "public, max-age=300" if t["ok"] else "no-store"})
-        if path == tournament.PATH:             # صفحة البطولة: النتائج والمباريات وإعلان الاشتراكات
-            code, body, age = tournament.render()
-            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
-                              extra={"Cache-Control": f"public, max-age={age}"} if code == 200
-                              else {"Retry-After": str(league.RETRY)})
-        if path == tournament.PATH + "/widget":   # النسخة المدمجة في رئيسية متجر سلة (iframe)
-            code, body, age = tournament.render_widget(self._q("theme"))
-            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
-                              extra={"Cache-Control": f"public, max-age={age}"} if code == 200
-                              else {"Retry-After": str(league.RETRY)})
+        for t in CUPS:                          # البطولات: صفحتها وودجتها ومسابقتها ومبارياتها
+            page = self._cup_page(t, path)
+            if page is not None:
+                return page
         if path == "/api/contest":              # حال مسابقة المباراة (للبطاقة في صفحتها)
             return self._contest_public()
         if path == "/api/contest/ticket":       # الصفحة تنتظر رسالة الواتساب برمزها
             return self._send(200, contest.ticket_status(DATA_DIR, self._q("m"), self._q("c")))
-        if path == tournament.PREDICT:           # صفحة المسابقة: المفتوحة والمفروزة وشروطها
-            code, body, age = tournament.render_predict()
-            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
-                              extra={"Cache-Control": f"public, max-age={age}"})
-        if path.startswith(tournament.PATH + "/"):    # صفحة مباراة من البطولة
-            page = tournament.render_match(path[len(tournament.PATH) + 1:])
-            if page and page[0] == "redirect":
-                return self._redirect(page[1], 301)
-            if page:
-                code, body, age = page
-                return self._send(code, raw=body, ctype="text/html; charset=utf-8",
-                                  extra={"Cache-Control": f"public, max-age={age}"})
         if path in ("/standings", "/standings/"):
             return self._redirect(league.PATH + league.DEFAULT, 301)
         if path.startswith(league.PATH):        # صفحة ترتيب لكل دوري (للأرشفة)
@@ -2892,6 +2892,32 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": ok, "error": why})
         return self._send(404, {"error": "not found"})
 
+    def _cup_page(self, t, path):
+        """صفحات بطولة: صفحتها، وودجت المتجر، وصفحة مسابقتها، وصفحات مبارياتها — أو None."""
+        if path == t.PATH:                      # صفحة البطولة: النتائج والمباريات وإعلان الاشتراكات
+            code, body, age = t.render()
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"} if code == 200
+                              else {"Retry-After": str(league.RETRY)})
+        if path == t.PATH + "/widget":          # النسخة المدمجة في رئيسية متجر سلة (iframe)
+            code, body, age = t.render_widget(self._q("theme"))
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"} if code == 200
+                              else {"Retry-After": str(league.RETRY)})
+        if path == t.PREDICT:                   # صفحة المسابقة: المفتوحة والمفروزة وشروطها
+            code, body, age = t.render_predict()
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"})
+        if path.startswith(t.PATH + "/"):       # صفحة مباراة من البطولة
+            page = t.render_match(path[len(t.PATH) + 1:])
+            if page and page[0] == "redirect":
+                return self._redirect(page[1], 301)
+            if page:
+                code, body, age = page
+                return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                                  extra={"Cache-Control": f"public, max-age={age}"})
+        return None
+
     # ---------- مسابقة التوقّعات ----------
     def _contest_public(self):
         m = cup_match(self._q("m"))
@@ -2952,8 +2978,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True, "status": "ok"})
         if body.get("type") == "ack":                   # إيصال تسليمٍ/قراءةٍ لرسالةٍ أرسلناها
             return self._send(200, {"ok": True, "status": "ignored"})
-        data = tournament._feed.get()[0]
-        ms = {m["id"]: m for m in (data or {}).get("matches", [])}
+        ms = {m["id"]: m for m in cup_matches()[0]}
         res = contest.confirm(DATA_DIR, body.get("body"), body.get("sender_number"), body.get("sent_at"), ms,
                               contest_link)
         if res.get("reply"):                          # الردّ بعد إجابة الخدمة، لا قبلها
@@ -2963,13 +2988,15 @@ class Handler(BaseHTTPRequestHandler):
                                 "contest": res["status"]})
 
     def _contest_admin_get(self, path):
-        data = tournament._feed.get()[0]
-        ms = (data or {}).get("matches", [])
+        ms, feed_ok = cup_matches()
         if path == "/api/contest/admin":
             rows = contest.admin_rows(DATA_DIR, ms)
+            tv = contest.channels(DATA_DIR)
             for r in rows:
                 r["when"] = tournament.when_label(r["match"]["ts"]) if r["match"].get("ts") else ""
-            return self._send(200, {"ok": True, "rows": rows, "feed": bool(data),
+                r["tv"] = tv.get(r["eid"], "")
+            return self._send(200, {"ok": True, "rows": rows, "feed": feed_ok or bool(ms),
+                                    "channels": sorted(set(tv.values()) | set(contest.TV_SUGGEST)),
                                     "settings": contest.load_settings(DATA_DIR), "reader": self._reader_view(),
                                     "announce": tournament.announcement(rows),
                                     "announce_by": {r["eid"]: tournament.announcement([r]) for r in rows
@@ -3022,6 +3049,10 @@ class Handler(BaseHTTPRequestHandler):
             code, d, err = reader_call("DELETE", "/sessions/" + contest.READER_TENANT)
             _reader_cache["d"] = None
             return self._send(200 if code == 200 else 502, {"ok": code == 200, "error": err, **self._reader_view()})
+        if path == "/api/contest/admin/tv":              # القناة الناقلة لمباراة (تظهر في صفحاتها ورسالة القناة)
+            if not cup_match(req.get("m")):
+                return self._send(404, {"error": "المباراة ليست في جدول البطولات"})
+            return self._send(200, {"ok": True, "channel": contest.set_channel(DATA_DIR, req.get("m"), req.get("channel"))})
         if path == "/api/contest/admin/wa/test":         # رسالة تجربة من رقم المسابقة
             to = contest.norm_phone(req.get("to"))
             if not contest.phone_ok(to):

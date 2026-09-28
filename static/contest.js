@@ -9,7 +9,8 @@
   var box = document.getElementById("predict");
   if (!box) return;
   var EID = box.getAttribute("data-m"), body = box.querySelector(".pbody");
-  var KEY = "ssouq_predict_" + EID, TKEY = KEY + "_t", RULES = "/nations-league/predict#rules";
+  var KEY = "ssouq_predict_" + EID, TKEY = KEY + "_t",
+      RULES = box.getAttribute("data-rules") || "/nations-league/predict#rules";   // شروط بطولة المباراة
   var data = null, skew = 0, tick = null, again = null, player = null, poll = null;
 
   function esc(s) {

@@ -142,6 +142,24 @@ print(json.dumps(rec, ensure_ascii=False))
     await adm.click('#annReset');
     check('و«إعادة إنشاء» يعيدها', (await adm.inputValue('#annText')) === ann);
     check('بلا تمرير أفقي في صفحة المدير (430px)', await adm.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    check('مباريات كأس الخليج مع دوري الأمم، واسم البطولة في كل صف',
+          (await adm.textContent('.mrow[data-eid="103"] .cupname')) === 'كأس الخليج العربي'
+          && (await adm.textContent('.mrow[data-eid="6"] .cupname')) === 'دوري الأمم الأوروبية'
+          && (await adm.getAttribute('.mrow[data-eid="103"] a[href*="#predict"]', 'href')).includes('/gulf-cup/103-saudi-arabia-iraq'));
+    await adm.fill('.mrow[data-eid="103"] [data-f="tv"]', 'AL KASS One');
+    await adm.press('.mrow[data-eid="103"] [data-f="tv"]', 'Tab');
+    await adm.waitForFunction(() => document.querySelector('.mrow[data-eid="103"] .msg').textContent.includes('حُفظت القناة'), null, {timeout:8000});
+    check('القناة الناقلة تُحفظ فور كتابتها، ومعها اقتراحات', (await adm.$$eval('#tvlist option', o => o.map(x => x.value))).includes('AL KASS Two'));
+    await adm.evaluate(() => load());
+    check('وتبقى بعد التحديث', (await adm.inputValue('.mrow[data-eid="103"] [data-f="tv"]')) === 'AL KASS One');
+    const gpage = await (await browser.newContext({viewport:{width:360, height:780}})).newPage();
+    gpage.on('pageerror', e => errors.push(e.message));
+    await gpage.goto(APP + '/gulf-cup/103-saudi-arabia-iraq');
+    check('وتظهر في صفحة المباراة', (await gpage.textContent('.mhero')).includes('القناة الناقلة: AL KASS One'));
+    await gpage.goto(APP + '/gulf-cup');
+    check('وفي جدول كأس الخليج', (await gpage.textContent('#upcoming')).includes('AL KASS One')
+          && await gpage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await shot(gpage, 'gulf-cup');
     await shot(adm, 'contest-admin');
 
     console.log('بطاقة المباراة المفتوحة');

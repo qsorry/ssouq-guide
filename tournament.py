@@ -3,7 +3,10 @@
 المجموعات، ومعها إعلان الاشتراكات — وصفحة لكل مباراة (‏/nations-league/<المعرّف>-<الفريقان>)
 بموعدها أو نتيجتها وأهدافها وإحصاءاتها وترتيب مجموعتها.
 
-البطولة الآن دوري الأمم الأوروبية 2026-27 — المستوى الأول (League A) وحده:
+والوحدة نفسها تخدم أكثر من بطولة: هذه النسخة دوري الأمم، و`instance(**GULF)` نسخةٌ ثانية منها
+(‏/gulf-cup: كأس الخليج العربي — خليجي 27) بكاشها وصفحاتها، يصنعها الخادم عند إقلاعه.
+
+دوري الأمم الأوروبية 2026-27 — المستوى الأول (League A) وحده:
 مجموعاته الأربع، وأدواره الإقصائية (ربع النهائي والنهائيات)، وملحق الصعود والهبوط
 حين يكون أحد طرفيه من منتخباته. المباريات من scoreboard في ESPN (كل سنةٍ من سنتي
 البطولة في طلب واحد) والترتيب من standings عبر league.parse، والأسماء العربية
@@ -13,14 +16,17 @@
 تنتهي؛ والصفحة نفسها تتحدّث كل دقيقة ما دامت فيها مباراة جارية.
 
 الإعلان من CATALOG في index.html — مصدر الباقات الوحيد — فلا يُنسخ هنا سعرٌ ولا
-صورة ولا رابط. والصفحة لا تذكر قنوات البث: ESPN لا تعطي ناقلي المنطقة.
+صورة ولا رابط. والقناة الناقلة يكتبها المدير لكل مباراة (ESPN لا تعطي ناقلي المنطقة)،
+فتظهر في صف المباراة وصفحتها ورسالة القناة.
 """
 import datetime
 import functools
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import sys
 import time
 import unicodedata
 
@@ -35,7 +41,7 @@ CUP = dict(
     name="دوري الأمم الأوروبية", level="المستوى الأول", season="2026-27",
     group="Group A",                                   # مجموعات المستوى الأول: A1…A4
     knockout=("quarterfinals", "semifinals", "3rd-place-match", "final"),
-    playoffs="relegation-playoffs",
+    playoffs="relegation-playoffs", groups_word="المجموعات الأربع",
 )
 # مركز المنتخب في مجموعته ← منطقته (نظام 2026-27: الأول والثاني إلى ربع النهائي،
 # والثالث إلى ملحق الهبوط، والرابع يهبط). ملاحظات ESPN هنا تخلط المستويات الأربعة.
@@ -64,6 +70,21 @@ GOAL_KINDS = [("own goal", "هدف عكسي"), ("penalty", "ركلة جزاء"),
 # وبدونه (الاختبارات بلا خادم) لا مسابقة.
 def contests():
     return {}
+
+
+# القناة الناقلة لكل مباراة (يكتبها المدير): الخادم يضبط هذه فتعيد {المعرّف: القناة}.
+def channels():
+    return {}
+
+
+TV_ICON = ('<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="12" rx="2"/>'
+           '<path d="m8 3 4 4 4-4"/></svg>')
+
+
+def _tv(m):
+    """سطر القناة الناقلة إن كُتبت."""
+    ch = channels().get(m["id"])
+    return f'<small class="tv">{TV_ICON}<span dir="ltr">{_esc(ch)}</span></small>' if ch else ""
 
 
 def _contests(ms, now=None):
@@ -159,7 +180,7 @@ def matches(events):
             "stage": league._group(group, 0)[1] if group else STAGES.get(stage, stage),
             "home": h, "away": a,
             "state": kind.get("state") or "pre", "status": kind.get("name") or "",
-            "clock": str(st.get("displayClock") or ""),
+            "clock": str(st.get("displayClock") or ""), "path": PATH, "cup": CUP["name"],
         })
     out.sort(key=lambda m: (m["ts"], m["id"]))
     return out
@@ -181,7 +202,15 @@ def load():
     ms = matches(events)
     if not ms:
         raise ValueError("no matches for this tournament")
-    return {"matches": ms, "groups": _groups(league.get_json(f"/v2/sports/soccer/{CUP['code']}/standings"))}
+    groups = _groups(league.get_json(f"/v2/sports/soccer/{CUP['code']}/standings"))
+    # مجموعة المباراة من الترتيب بمنتخبَيها: ESPN تخلط أحيانًا تسمية المجموعة في المباريات (كأس الخليج
+    # 2026: السعودية والعراق «Group B» في المباريات و«Group A» في الترتيب) — والترتيب هو المرجع
+    by_team = {r["name"]: g for g in groups for r in g["rows"]}
+    for m in ms:
+        g = by_team.get(m["home"]["name"])
+        if m["group"] and g and by_team.get(m["away"]["name"]) is g and g["key"] != m["group"]:
+            m["group"], m["stage"] = g["key"], g["name"]
+    return {"matches": ms, "groups": groups}
 
 
 def _ttl(data):
@@ -288,7 +317,7 @@ def _row(m, new_tab=False, pz=None):
     open_ = (pz or {}).get(m["id"], (None, ""))[1] == "open"
     badge = '<small class="pz">توقّع واربح</small>' if open_ else ""
     return (f'<li><a class="match{cls}" href="{url(m)}{"#predict" if open_ else ""}"{target}>{_team(m["home"])}'
-            f'<span class="mid">{mid}{note}<small class="stage">{_esc(m["stage"])}</small>{badge}</span>'
+            f'<span class="mid">{mid}{note}<small class="stage">{_esc(m["stage"])}</small>{_tv(m)}{badge}</span>'
             f'{_team(m["away"], True)}</a></li>')
 
 
@@ -336,7 +365,7 @@ def _predict_card(m, s, st):
     """بطاقة المسابقة في صفحة المباراة. الحالة والنموذج من /api/contest بالمتصفح، فتبقى
     الصفحة مخزَّنةً كما هي ولا يعرض الكاش حالةً قديمة."""
     return (f'<section class="card predict" id="predict" data-m="{_esc(m["id"])}" '
-            f'data-draw="{_ver("contest-draw.js")}" aria-labelledby="predict-h">'
+            f'data-draw="{_ver("contest-draw.js")}" data-rules="{PREDICT}#rules" aria-labelledby="predict-h">'
             f'<span class="eyebrow">مسابقة مجانية</span>'
             f'<h2 id="predict-h">توقّع النتيجة واربح {_esc(s["prize"])}</h2>' + _prize_row(s) +
             f'<div class="pbody"><p class="sub">{_esc(contest.STATE_MSG.get(st, "") if st != "open" else "")}'
@@ -454,6 +483,11 @@ main{max-width:1040px}
 .stat .bar i{background:var(--brand)}
 .stat .bar i+i{background:var(--gold)}
 .stats-head{display:flex;justify-content:space-between;font-weight:700;margin-bottom:6px}
+.match .tv{display:inline-flex;align-items:center;gap:3px;color:var(--brand-text);font-weight:700}
+.match .tv svg,.tvline svg{width:13px;height:13px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.mhero .tvline{display:flex;align-items:center;justify-content:center;gap:5px;color:var(--brand-text)}
+.mhero .tvline svg{width:16px;height:16px}
 .match .pz{margin-top:3px;font-size:.68rem;font-weight:800;color:var(--gold-ink);background:var(--gold);
   border-radius:999px;padding:0 8px;line-height:1.7}
 .pbanner{display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:16px;border-radius:16px;
@@ -567,7 +601,7 @@ def render():
     h1 = f"{CUP['name']} {CUP['season']} — {CUP['level']}"
     ms = data["matches"] if data else []
     desc = (f"نتائج مباريات {CUP['level']} في {CUP['name']} {CUP['season']} أولًا بأول، ومواعيد المباريات "
-            f"القادمة بتوقيت السعودية، وترتيب المجموعات الأربع.{_lead(ms)}")
+            f"القادمة بتوقيت السعودية، وترتيب {CUP['groups_word']}.{_lead(ms)}")
     crumbs = {
         "@context": "https://schema.org", "@type": "BreadcrumbList",
         "itemListElement": [
@@ -608,7 +642,7 @@ def render():
                 'حدّث الصفحة بعد دقائق.</p></section>' + _ad("cup-ad-inline"))
 
     main = (f'<h1>{_esc(h1)}</h1>\n<p class="sub">نتائج المباريات أولًا بأول، ومواعيد القادمة بتوقيت '
-            f'السعودية، وترتيب المجموعات الأربع.</p>')
+            f'السعودية، وترتيب {CUP["groups_word"]}.</p>')
     return ((200 if data else 503), _doc(title, desc, url, [crumbs], _esc(CUP["name"]), main, body, live),
             (LIVE_TTL if live else 300))
 
@@ -737,6 +771,8 @@ def render_match(tail):
             f'{_esc(CUP["level"])} · {_esc(m["stage"])}</span>'
             f'<div class="match{cls}">{_team(h)}<span class="mid">{mid}{note}</span>{_team(a, True)}</div>'
             f'<p class="when">{_esc(when)}</p>'
+            + (f'<p class="when tvline">{TV_ICON}القناة الناقلة: <b dir="ltr">{_esc(channels()[m["id"]])}</b></p>'
+               if channels().get(m["id"]) else "")
             + (f'<p class="when">الملعب: <span dir="auto">{_esc(place)}</span></p>' if place else "") + "</section>")
     parts = [hero]
     pz = _contests(data["matches"])
@@ -809,27 +845,34 @@ def announcement(rows, now=None):
     days = sorted({_day(r["match"]["ts"]) for r in ms})
     one_day, one_time = len(days) == 1, len({_clock(r["match"]["ts"]) for r in ms}) == 1
     what = "مباراة" if len(ms) == 1 else "مباريات"
+
+    def cup(r):
+        return r["match"].get("cup") or contest.DEFAULT_CUP
+
+    cups = {cup(r) for r in ms}
+    where = f" في {cups.pop()}" if len(cups) == 1 else ""           # بطولاتٌ مختلفة: اسمها بجانب كل مباراة
     if not one_day:
-        head = f"⚽ المباريات المفتوحة للتوقّع في {CUP['name']}:"
+        head = f"⚽ المباريات المفتوحة للتوقّع{where}:"
     else:
         d, first = days[0], datetime.datetime.fromtimestamp(ms[0]["match"]["ts"], RIYADH)
         when = (("الليلة" if first.hour >= 17 else "اليوم") if d == today
                 else "الغد" if d == today + datetime.timedelta(days=1)
                 else f"{DAYS[d.weekday()]} {d.day} {MONTHS[d.month - 1]}")
-        head = f"⚽ {what} {when} في {CUP['name']}:"
+        head = f"⚽ {what} {when}{where}:"
 
     def teams(r):
         return f"{r['match']['home']} × {r['match']['away']}"
 
     def link(r):                                   # رابطٌ خاص بالمباراة: بطاقة التوقّع فيها مباشرةً
-        slug = r["match"].get("slug")
-        return f"{guide_pages.SITE}{PATH}/{slug}#predict" if slug else guide_pages.SITE + PREDICT
+        slug, path = r["match"].get("slug"), contest.cup_path(r["match"])
+        return f"{guide_pages.SITE}{path}/{slug}#predict" if slug else f"{guide_pages.SITE}{path}/predict"
 
     lines = []
     for r in ms:
         ts = r["match"]["ts"]
         tail = "" if one_day and one_time else f" — {_clock(ts)}" if one_day else f" — {when_label(ts)}"
-        lines.append(f"• {teams(r)}{tail}")
+        tv = f" — 📺 {r['tv']}" if r.get("tv") else ""
+        lines.append(f"• {teams(r)}{'' if where else f' ({cup(r)})'}{tail}{tv}")
         if len(ms) > 1:
             lines.append(link(r))
     if one_day and one_time:
@@ -865,10 +908,11 @@ def announcement(rows, now=None):
 
 
 def render_predict():
-    """صفحة المسابقة (‏/nations-league/predict): المفتوحة للتوقّع، والمفروزة بفائزيها، وشروطها
+    """صفحة المسابقة (‏<البطولة>/predict): مسابقات هذه البطولة المفتوحة للتوقّع، والمفروزة بفائزيها، وشروطها
     وطريقة الفرز. ← (رمز، بايتات، مدة الكاش)."""
     data = _feed.get()[0]
-    rows = contest.listing(contests(), (data or {}).get("matches", []))
+    rows = [r for r in contest.listing(contests(), (data or {}).get("matches", []))
+            if contest.cup_path(r["match"]) == PATH]
     page_url = guide_pages.SITE + PREDICT
     title = f"مسابقة توقّع النتيجة واربح اشتراكًا — {CUP['name']} | سمارت سوق"
     h1 = "مسابقة توقّع النتيجة"
@@ -996,3 +1040,30 @@ addEventListener("load",h);if(window.ResizeObserver)new ResizeObserver(h).observ
 </body>
 </html>"""
     return (200 if ms else 503), doc.encode("utf-8"), (LIVE_TTL if live else 300)
+
+
+# ---------- نسخةٌ لبطولةٍ أخرى ----------
+# كأس الخليج العربي 2026 (خليجي 27 في السعودية): مجموعتان من أربعة منتخبات، يتأهل الأول والثاني من
+# كلٍّ إلى نصف النهائي، ثم النهائي. رمزها عند ESPN ‏global.gulf_cup.
+GULF = dict(
+    PATH="/gulf-cup",
+    CUP=dict(code="global.gulf_cup", years=("2026",), name="كأس الخليج العربي", level="خليجي 27", season="2026",
+             group="Group", knockout=("semifinals", "3rd-place-match", "final"), playoffs=None,
+             groups_word="المجموعتين"),
+    RANK_ZONES={1: "sf", 2: "sf"},
+    ZONES={"sf": {"label": "التأهل إلى نصف النهائي", "color": "#16A34A"}},
+    UTM_CAMPAIGN="gulf-cup",
+)
+
+
+def instance(name, **cfg):
+    """نسخةٌ مستقلة من هذه الوحدة لبطولةٍ أخرى — كاشها وملخّصاتها وصفحاتها — بإعدادها (PATH وCUP
+    ومناطق الترتيب وحملة الروابط)، ومسار مسابقتها منه. يصنعها الخادم مرةً عند إقلاعه."""
+    spec = importlib.util.spec_from_file_location(name, os.path.abspath(__file__))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for k, v in cfg.items():
+        setattr(mod, k, v)
+    mod.PREDICT = mod.PATH + "/predict"
+    sys.modules[name] = mod
+    return mod
