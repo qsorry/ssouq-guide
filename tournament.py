@@ -460,18 +460,18 @@ main{max-width:1040px}
 .pscore i{font-style:normal;color:var(--mute);font-weight:400}
 .pcount{color:var(--mute);font-size:.88rem;margin:0 0 10px}
 .pcount b{color:var(--ink)}
-.pcount .cd{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+.pcount .hms{display:inline-block;direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
 .pteams{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;margin:6px 0 4px}
 .pteam{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;min-width:0}
 .pteam img,.pteam .crest{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--soft)}
 .pteam b{font-size:.92rem;line-height:1.35}
-.pvs{color:var(--mute);font-size:1.4rem;font-weight:700}
+.pvs{color:var(--mute);font-size:1.4rem;font-weight:700;align-self:end;margin-bottom:6px}
 .stepper{display:flex;align-items:center;gap:6px}
 .stepper button{width:40px;height:40px;border-radius:12px;border:1.5px solid var(--line);background:var(--soft);
   color:var(--ink);font:inherit;font-size:1.35rem;font-weight:700;line-height:1;cursor:pointer}
 .stepper button:hover{border-color:var(--brand)}
 .stepper output{min-width:46px;text-align:center;font-size:2rem;font-weight:800;font-variant-numeric:tabular-nums}
-.pform label.f{display:block;font-size:.85rem;color:var(--mute);margin:12px 0 4px}
+.pform label.pl{display:block;font-size:.85rem;color:var(--mute);margin:12px 0 4px}
 .pform input[type=text],.pform input[type=tel]{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:12px;
   background:var(--card);color:var(--ink);font:inherit}
 .pform input[type=tel]{direction:ltr;text-align:right}

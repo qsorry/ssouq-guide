@@ -79,7 +79,7 @@ print(json.dumps(rec, ensure_ascii=False))
     check('وزرّ المشاركة على واتساب', (await page.getAttribute('#predict .pmine a.wa', 'href')).startsWith('https://wa.me/?text='));
     await page.reload();
     await page.waitForSelector('#predict .pmine', {timeout:8000});
-    check('يبقى بعد التحديث', (await page.textContent('#predict .pcount')).includes('1'));
+    check('يبقى بعد التحديث', (await page.textContent('#predict .pcount')).includes('توقّعٌ واحد'));
     await shot(page, 'contest-done-entry');
 
     const other = await (await browser.newContext({viewport:{width:360, height:780}})).newPage();

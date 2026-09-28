@@ -296,6 +296,7 @@ async function view(eid) {
         window.SSDraw.save(out, "فرز-" + m.home + "-" + m.away);
         $("vMsg").textContent = "نُزّل الفيديو (" + out.ext.toUpperCase() + ").";
       } catch (err) { $("vMsg").textContent = err.message || "تعذّر التسجيل"; }
+      player = window.SSDraw.play(cv, rep);           // التسجيل قد يغيّر مقاس اللوحة
       btn.disabled = false; $("vPlay").disabled = false;
     };
   }

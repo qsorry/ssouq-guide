@@ -21,6 +21,16 @@
   function keep(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) {} }
   function num(n) { return Number(n || 0).toLocaleString("en-US"); }
   function crest(u) { return u ? '<img src="' + esc(u) + '" alt="" width="44" height="44">' : '<i class="crest"></i>'; }
+  function crests(root) {                            // شعارٌ تعذّر تحميله يصير دائرةً فارغة لا أيقونةً مكسورة
+    root.querySelectorAll(".pteam img").forEach(function (im) {
+      var swap = function () { var i = document.createElement("i"); i.className = "crest"; im.replaceWith(i); };
+      if (im.complete && !im.naturalWidth) swap(); else im.addEventListener("error", swap);
+    });
+  }
+  // 0 · توقّعٌ واحد · توقّعان · 3-10 توقّعات · 11+ توقّعًا
+  function preds(n) {
+    return n === 1 ? "توقّعٌ واحد" : n === 2 ? "توقّعان" : num(n) + (n % 100 >= 3 && n % 100 <= 10 ? " توقّعات" : " توقّعًا");
+  }
 
   function load() {
     clearTimeout(again);
@@ -54,13 +64,13 @@
     var d = Math.floor(left / 86400), h = Math.floor(left % 86400 / 3600), m = Math.floor(left % 3600 / 60), s = left % 60;
     var hms = [h, m, s].map(function (x) { return (x < 10 ? "0" : "") + x; }).join(":");
     var days = d === 1 ? "يوم" : d === 2 ? "يومين" : d <= 10 ? d + " أيام" : d + " يومًا";
-    el.textContent = d ? days + " و" + hms : hms;
+    el.innerHTML = (d ? days + " و" : "") + '<span class="hms">' + hms + "</span>";
   }
 
   function open() {
     var me = mine();
-    var head = '<p class="pcount"><b>' + num(data.count) + "</b> " + (data.count === 1 ? "توقّع" : "توقّعًا") +
-      ' حتى الآن · تُقفل التوقّعات بعد <b class="cd">…</b></p>';
+    var head = '<p class="pcount">' + (data.count ? "<b>" + preds(data.count) + "</b> حتى الآن" : "كن أول من يتوقّع") +
+      ' · تُقفل التوقّعات بعد <b class="cd">…</b></p>';
     if (me) {
       body.innerHTML = head + '<div class="pmine">سجّلت توقّعك: ' + named(me.h, me.a) + " — رقم توقّعك <b>" + me.n +
         "</b>.<br>الفرز آليٌّ بعد صافرة النهاية، ونبلّغك على واتساب إن فزت." + share() + "</div>";
@@ -73,9 +83,9 @@
         '<span class="pvs">-</span>' +
         '<div class="pteam">' + crest(m.away_logo) + "<b>" + esc(m.away) + "</b>" + stepper("a", m.away) + "</div>" +
         "</div>" +
-        '<label class="f" for="p-name">اسمك</label>' +
+        '<label class="pl" for="p-name">اسمك</label>' +
         '<input id="p-name" name="name" type="text" maxlength="30" autocomplete="given-name" required>' +
-        '<label class="f" for="p-phone">رقم واتساب</label>' +
+        '<label class="pl" for="p-phone">رقم واتساب</label>' +
         '<input id="p-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="05xxxxxxxx" required>' +
         '<small class="hint">نبلّغ الفائز على هذا الرقم، والجائزة لا تُسلَّم إلا له. ورقمٌ من خارج السعودية يُكتب بمفتاح دولته.</small>' +
         '<input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
@@ -86,6 +96,7 @@
         '<p class="pmsg" role="status" aria-live="polite"></p>' +
         "</form>";
       wire(body.querySelector("form"));
+      crests(body);
     }
     countdown();
     tick = setInterval(countdown, 1000);
@@ -173,7 +184,7 @@
   function closed() {
     var me = mine(), html = '<p><b>' + esc(data.msg) + "</b></p>";
     if (data.state !== "hold" && data.state !== "void") {
-      html += '<p class="pcount"><b>' + num(data.count) + "</b> توقّعًا" +
+      html += '<p class="pcount"><b>' + preds(data.count) + "</b>" +
         (data.state === "pending" ? " · النتيجة تُفرز الآن" : " · الفرز آليٌّ بعد صافرة النهاية") + "</p>";
     }
     if (me) html += '<div class="pmine">توقّعك: ' + named(me.h, me.a) + " — رقم توقّعك <b>" + me.n + "</b></div>";
@@ -197,8 +208,8 @@
     } else {
       html += '<p><b>لم يُصب أحدٌ النتيجة ولا الفائز، فلا فائز في هذه المباراة.</b></p>';
     }
-    html += '<p class="pcount">النتيجة النهائية: <b>' + named(d.score[0], d.score[1]) + "</b> · " + num(d.count) +
-      " توقّعًا · أصاب النتيجة بالضبط " + num(d.exact) + "</p>";
+    html += '<p class="pcount">النتيجة النهائية: <b>' + named(d.score[0], d.score[1]) + "</b> · " + preds(d.count) +
+      " · أصاب النتيجة بالضبط " + num(d.exact) + "</p>";
     if (me) {
       var won = picks.some(function (p) { return p.n === me.n; });
       html += '<div class="pmine">' + (won ? "🎉 مبروك! أنت الفائز — تواصلنا معك على واتساب." :
@@ -259,7 +270,11 @@
           rec = false;
           window.SSDraw.save(out, "فرز-" + data.match.home + "-" + data.match.away);
           msg.textContent = "نُزّل الفيديو.";
-        }).catch(function (err) { rec = false; msg.textContent = (err && err.message) || "تعذّر التسجيل"; });
+          player = window.SSDraw.play(canvas, report());
+        }).catch(function (err) {
+          rec = false; msg.textContent = (err && err.message) || "تعذّر التسجيل";
+          player = window.SSDraw.play(canvas, report());
+        });
       }
     });
     script("/static/contest-draw.js" + (v ? "?v=" + v : "")).then(function () {

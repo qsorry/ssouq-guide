@@ -8,7 +8,7 @@
 
    SSDraw.play(canvas, report)         يعرضه في canvas ← {ready, play(), stop(), total}
    SSDraw.record(report, {canvas, onProgress}) ← Promise<{blob, type, ext}>
-   SSDraw.prepare(canvas, report)      ← Promise<{frame(t), total}> — إطارٌ بعينه (للاختبار ولتصدير الإطارات)
+   SSDraw.prepare(canvas, report, {scale}) ← Promise<{frame(t), total}> — إطارٌ بعينه (للاختبار ولتصدير الإطارات)
    SSDraw.canRecord() · SSDraw.save(out, name) */
 (function () {
   "use strict";
@@ -518,9 +518,10 @@
     });
   }
 
-  function prepare(canvas, report) {
-    canvas.width = W;
-    canvas.height = H;
+  function prepare(canvas, report, opts) {
+    var k = (opts && opts.scale) || 1;                 // الرسم بإحداثيات 1080×1920 دائمًا، واللوحة بمقاسها
+    canvas.width = Math.round(W * k);
+    canvas.height = Math.round(H * k);
     var ctx = canvas.getContext("2d"), r = norm(report), P = plan(r), cache = {}, im = {};
     return Promise.all([fonts(), image(r.homeLogo), image(r.awayLogo)]).then(function (x) {
       im.home = x[1];
@@ -532,7 +533,7 @@
           if (t < P.S[i].t0 + P.S[i].d) { sc = P.S[i]; break; }
         }
         var l = t - sc.t0, last = sc === P.S[P.S.length - 1];
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.setTransform(k, 0, 0, k, 0, 0);
         ctx.globalAlpha = 1;
         background(ctx, t);
         ctx.save();
@@ -558,7 +559,7 @@
     }
     var ctl = {
       total: 0,
-      ready: prepare(canvas, report).then(function (a) { api = a; ctl.total = a.total; return ctl; }),
+      ready: prepare(canvas, report, opts).then(function (a) { api = a; ctl.total = a.total; return ctl; }),
       play: function () {
         var my = ++gen;
         return ctl.ready.then(function () {
@@ -589,12 +590,23 @@
     return !!(pick() && window.HTMLCanvasElement && HTMLCanvasElement.prototype.captureStream);
   }
 
+  // التسجيل بالوقت الحقيقي: H.264 يرمّزه الجهاز نفسه فيبقى 1080×1920، وWebM ترميزٌ برمجيٌّ
+  // يُسقط الإطارات بهذا المقاس على جهازٍ مشغول فيُسجَّل 720×1280. وتسجيلٌ خرج فارغًا يُعاد مرة.
   function record(report, opts) {
     opts = opts || {};
     var canvas = opts.canvas || document.createElement("canvas");
     var type = pick();
     if (!type || !canvas.captureStream) return Promise.reject(new Error("المتصفح لا يدعم تسجيل الفيديو — جرّب كروم أو سفاري"));
-    var ctl = play(canvas, report, {auto: false}), timer = 0;
+    return once(canvas, report, type, opts).then(function (out) {
+      return out.blob.size > 10000 ? out : once(canvas, report, type, opts);
+    }).then(function (out) {
+      if (out.blob.size > 10000) return out;
+      throw new Error("تعذّر التسجيل — أبقِ الصفحة ظاهرةً وأعد المحاولة");
+    });
+  }
+
+  function once(canvas, report, type, opts) {
+    var ctl = play(canvas, report, {auto: false, scale: /mp4/.test(type) ? 1 : 2 / 3}), timer = 0;
     return ctl.ready.then(function () {
       var stream = canvas.captureStream(FPS);
       var rec = new MediaRecorder(stream, {mimeType: type, videoBitsPerSecond: 8000000});
