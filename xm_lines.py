@@ -2971,7 +2971,9 @@ class Handler(BaseHTTPRequestHandler):
                 r["when"] = tournament.when_label(r["match"]["ts"]) if r["match"].get("ts") else ""
             return self._send(200, {"ok": True, "rows": rows, "feed": bool(data),
                                     "settings": contest.load_settings(DATA_DIR), "reader": self._reader_view(),
-                                    "announce": tournament.announcement(rows)})
+                                    "announce": tournament.announcement(rows),
+                                    "announce_by": {r["eid"]: tournament.announcement([r]) for r in rows
+                                                    if r["state"] == "open"}})
         if path == "/api/contest/admin/wa":            # حال ربط رقم المسابقة (والـ QR ما دام ينتظر)
             return self._send(200, {"ok": True, **self._reader_view()})
         if path == "/api/contest/admin/products":      # منتجات المتجر لاختيار الجائزة
@@ -3039,7 +3041,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not product:
                     return self._send(400, {"error": "هذا الاشتراك غير موجود في المتجر الآن — حدّث القائمة"})
             code, res = contest.configure(DATA_DIR, m, bool(req.get("on")), req.get("prize"), req.get("winners"),
-                                          product=product)
+                                          product=product, extra=req.get("extra"))
             return self._send(code, res)
         if path == "/api/contest/admin/settle":       # «افرز الآن»: ما تفعله الدورة كل دقيقة
             rec, drawn = contest.settle(DATA_DIR, contest.eid_of(req.get("m")), m)

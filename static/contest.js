@@ -66,7 +66,7 @@
   function countdown() {
     var el = body.querySelector(".cd");
     if (!el) return;
-    var left = Math.floor((data.match.ts * 1000 - (Date.now() + skew)) / 1000);
+    var left = Math.floor(((data.closes || data.match.ts) * 1000 - (Date.now() + skew)) / 1000);   // الإقفال: الصافرة ودقائق المدير
     if (left <= 0) { clearInterval(tick); load(); return; }
     var d = Math.floor(left / 86400), h = Math.floor(left % 86400 / 3600), m = Math.floor(left % 3600 / 60), s = left % 60;
     var hms = [h, m, s].map(function (x) { return (x < 10 ? "0" : "") + x; }).join(":");
@@ -121,7 +121,7 @@
     body.innerHTML = head + '<div class="pwait"><b>آخر خطوة: أرسل الرسالة من واتساب</b>' +
       "<p>توقّعك: " + named(tk.h, tk.a) + ' · رمزه <code dir="ltr">' + esc(tk.code) + "</code></p>" +
       '<a class="btn wa" href="' + esc(tk.url) + '" target="_blank" rel="noopener">' + WA + "افتح واتساب وأرسل الرسالة</a>" +
-      '<p class="pstat"><i class="spin" aria-hidden="true"></i><span>بانتظار رسالتك… أرسلها كما هي قبل صافرة البداية، ' +
+      '<p class="pstat"><i class="spin" aria-hidden="true"></i><span>بانتظار رسالتك… أرسلها كما هي قبل إقفال التوقّعات، ' +
       "ويظهر هنا تأكيد التسجيل.</span></p>" +
       '<button class="plink" type="button" data-a="redo">غيّر توقّعي</button></div>';
     body.querySelector('[data-a="redo"]').addEventListener("click", function () { put(TKEY, null); render(); });
@@ -138,7 +138,7 @@
         put(TKEY, null);
         if (t.state === "done") { keep({n: t.n, h: t.h, a: t.a, phone: t.phone || ""}); data.count = (data.count || 0) + 1; }
         else if (t.state === "dup") keep({n: t.n, phone: t.phone || ""});
-        else if (t.state === "late") put(KEY + "_note", "وصلت رسالتك بعد صافرة البداية، فلم يُحتسب التوقّع.");
+        else if (t.state === "late") put(KEY + "_note", "وصلت رسالتك بعد إقفال التوقّعات، فلم يُحتسب التوقّع.");
         load();
       })
       .catch(function () { poll = setTimeout(function () { check(tk); }, 8000); });

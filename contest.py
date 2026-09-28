@@ -46,6 +46,7 @@ MAX_GOALS = 15
 NAME_MAX = 30
 PRIZE_MAX = 80
 MAX_WINNERS = 10
+EXTRA_MAX = 15                   # أقصى ما يبقى فيه التوقّع مفتوحًا بعد صافرة البداية (دقائق، خيارٌ للمدير)
 IP_PER_HOUR = 30                # رموز من عنوانٍ واحد في الساعة، على كل المباريات
 IP_PER_MATCH = 6                # ومن عنوانٍ واحد في المباراة الواحدة (عائلةٌ على شبكة البيت)
 WA_GRACE = 10 * 60              # رسالةٌ أُرسلت قبل البداية ووصلت بعدها تُقبل حتى هذا؛ وبعده تُعلن البصمة
@@ -68,7 +69,7 @@ RULES = [
     "المشاركة مجانية ولا تشترط شراء.",
     "يُسجَّل التوقّع برسالة واتساب يرسلها المشارك من رقمه، والرقم المعتمد رقم مرسل الرسالة.",
     "توقّعٌ واحد لكل رقم واتساب في كل مباراة، ولا يُعدَّل بعد إرساله.",
-    "تُقفل التوقّعات مع موعد صافرة البداية: لا تُقبل رسالةٌ أُرسلت بعده.",
+    "تُقفل التوقّعات مع صافرة البداية، أو بعدها بدقائق إن ذُكر ذلك في المباراة: لا تُقبل رسالةٌ أُرسلت بعد الإقفال.",
     "النتيجة المعتمدة نتيجة المباراة النهائية كما تعلنها ESPN، بالأشواط الإضافية إن لُعبت، ولا تُحسب ركلات الترجيح.",
     "الفرز آليٌّ بعد صافرة النهاية: المؤهّلون من أصاب النتيجة بالضبط، فإن لم يُصبها أحد فمن أصاب الفائز أو التعادل.",
     "الفائز يُختار بقرعة ثابتة: رقم القرعة من بصمة التوقّعات (تُعلن عند الإقفال) والنتيجة النهائية، "
@@ -138,7 +139,7 @@ def _summary(rec):
     s = {"eid": rec["eid"], "on": bool(rec.get("on")), "prize": rec.get("prize") or "",
          "prize_id": rec.get("prize_id") or "", "prize_url": rec.get("prize_url") or "",
          "prize_img": rec.get("prize_img") or "",
-         "winners": int(rec.get("winners") or 1), "count": len(rec.get("entries") or []),
+         "winners": int(rec.get("winners") or 1), "extra": extra_of(rec), "count": len(rec.get("entries") or []),
          "draw": bool(rec.get("draw")), "void": bool(rec.get("void")), "match": rec.get("match") or {}}
     if rec.get("draw"):
         by = {e["n"]: e for e in rec["entries"]}
@@ -301,6 +302,19 @@ def _sha(s):
 
 
 # ---------- الحالة ----------
+def extra_of(rec):
+    """دقائق يبقى فيها التوقّع مفتوحًا بعد صافرة البداية (0 = يُقفل مع الصافرة)."""
+    try:
+        return max(0, min(int((rec or {}).get("extra") or 0), EXTRA_MAX))
+    except (TypeError, ValueError):
+        return 0
+
+
+def lock_at(rec, ts):
+    """موعد إقفال التوقّعات: صافرة البداية ودقائق المدير بعدها."""
+    return (ts or 0) + extra_of(rec) * 60
+
+
 def state_of(rec, m, now=None):
     """off · open · hold · closed · pending · done · void — لسجلٍّ أو ملخّصه."""
     now = time.time() if now is None else now
@@ -319,9 +333,11 @@ def state_of(rec, m, now=None):
     if m["state"] == "pre":
         if m["status"] in HOLD or not m["time_ok"]:
             return "hold"
-        return "open" if now < m["ts"] else "closed"
+        return "open" if now < lock_at(rec, m["ts"]) else "closed"
     if m["state"] == "post" and m["status"] not in HOLD:
         return "pending"
+    if m["state"] == "in" and m["status"] not in HOLD and now < lock_at(rec, m["ts"]):
+        return "open"                                  # دقائق المدير بعد الصافرة
     return "closed"
 
 
@@ -460,10 +476,11 @@ def confirm(data_dir, text, phone, sent_ts, matches, link, now=None):
                                                               "وأعد إرسال الرسالة."}
         sent = _sent_time(sent_ts, now)
         void = m and m["status"] in VOID
-        if void or not kick or sent >= kick or now >= kick + WA_GRACE:
+        lock = lock_at(rec, kick)
+        if void or not kick or sent >= lock or now >= lock + WA_GRACE:
             t["st"] = "late"
             _save(data_dir, rec)
-            return {"status": "late", "eid": eid, "reply": "وصلت رسالتك بعد صافرة البداية فلم يُحتسب التوقّع. "
+            return {"status": "late", "eid": eid, "reply": "وصلت رسالتك بعد إقفال التوقّعات فلم يُحتسب التوقّع. "
                                                            "نلقاك في المباراة القادمة!"}
         old = next((e for e in rec["entries"] if e["phone"] == phone), None)
         if old:
@@ -592,12 +609,15 @@ def public(rec, m, now=None):
     out = {"ok": True, "state": st, "eid": rec["eid"], "prize": rec.get("prize") or "",
            "prize_url": rec.get("prize_url") or "", "prize_img": rec.get("prize_img") or "",
            "winners": int(rec.get("winners") or 1), "count": len(es), "now": round(now, 3),
-           "match": _match_of(rec, m), "msg": STATE_MSG.get(st, "")}
+           "match": _match_of(rec, m), "msg": STATE_MSG.get(st, ""), "extra": extra_of(rec)}
     if st == "hold":
         out["msg"] = ("المباراة مؤجلة، والتوقّعات موقوفة حتى يُعلن موعدها الجديد."
                       if m and m["status"] in HOLD else STATE_MSG["hold"])
-    kick = out["match"].get("ts") or 0
-    if st in ("pending", "done", "void") or (st == "closed" and now >= kick + WA_GRACE):
+    lock = lock_at(rec, out["match"].get("ts") or 0)
+    out["closes"] = lock
+    if st == "closed" and out["extra"]:
+        out["msg"] = f"أُقفلت التوقّعات بعد صافرة البداية بـ {out['extra']} دقائق."
+    if st in ("pending", "done", "void") or (st == "closed" and now >= lock + WA_GRACE):
         out["fp"] = fingerprint(es)                   # بعد مهلة الرسائل المتأخرة: القائمة نهائية
         out["dist"] = dist(es)
     if st == "done":
@@ -620,7 +640,8 @@ def listing(summ, matches, now=None):
         if not snap:
             continue
         rows.append({"eid": eid, "state": st, "prize": s["prize"], "count": s["count"],
-                     "won": s.get("won") or [], "score": s.get("score"), "match": snap})
+                     "won": s.get("won") or [], "score": s.get("score"), "match": snap,
+                     "closes": lock_at(s, snap.get("ts"))})
     order = {"open": 0, "hold": 1, "closed": 2, "pending": 2, "done": 3, "void": 4}
     rows.sort(key=lambda r: (order.get(r["state"], 5),
                              r["match"]["ts"] if order.get(r["state"], 5) < 3 else -r["match"]["ts"]))
@@ -692,7 +713,7 @@ def prize_name(product):
     return (name.split("|")[0].strip() or name.strip())[:PRIZE_MAX]
 
 
-def configure(data_dir, m, on, prize, winners, now=None, product=None):
+def configure(data_dir, m, on, prize, winners, now=None, product=None, extra=None):
     """فتح المسابقة على مباراة أو إيقافها، بجائزتها وعدد فائزيها ← (رمز، رد). والجائزة منتجٌ من
     المتجر (`product` من store_sitemap.products، فيُحفظ رابطه وصورته) أو نصٌّ يكتبه المدير."""
     now = time.time() if now is None else now
@@ -701,12 +722,19 @@ def configure(data_dir, m, on, prize, winners, now=None, product=None):
     prize = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", str(prize or ""))).strip()[:PRIZE_MAX]
     try:
         winners = max(1, min(int(winners or 1), MAX_WINNERS))
+        extra = None if extra is None else max(0, min(int(extra or 0), EXTRA_MAX))
     except (TypeError, ValueError):
         return 400, {"error": "عدد الفائزين رقم"}
     with _lock:
         rec = load(data_dir, m["id"]) or _blank(m["id"])
         if rec.get("draw"):
             return 409, {"error": "فُرزت هذه المسابقة، فلا تُعدَّل."}
+        old = state_of(dict(rec, on=True), m, now)
+        if extra is not None and extra != extra_of(rec):
+            # الإقفال يتغيّر ما لم تُعلن البصمة (قائمة التوقّعات النهائية) ولم تنتهِ المباراة
+            if old not in ("open", "hold", "closed") or now >= lock_at(rec, m["ts"]) + WA_GRACE:
+                return 409, {"error": "أُعلنت قائمة التوقّعات النهائية، فلا يتغيّر وقت الإقفال."}
+            rec["extra"] = extra
         st = state_of(dict(rec, on=True), m, now)
         if on and not prize:
             return 400, {"error": "اكتب الجائزة"}
