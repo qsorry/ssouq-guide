@@ -8,6 +8,7 @@
 تشغيل:  python tests/test_xm_web.py
 """
 import os
+import json
 import sys
 import time
 import shutil
@@ -568,6 +569,148 @@ def main():
         finally:
             cas_srv.shutdown()
             shutil.rmtree(data_dir7, ignore_errors=True)
+
+        # == 9. يوزر «ضعيف» (مرح: Week username): يُستبدل المولَّد ولا تتوقّف الدفعة ==
+        # كانت دفعة من ١٠ تتوقّف عند ٥: رفضت اللوحة السادس لضعفه، وقرأ المصنِّفُ «username»
+        # في الرسالة فعدّها خطأ دخول فانتظر ~١٢ ثانية تأكيدًا ثم أوقف الدفعة.
+        print("\n== 9. Weak username (Marah 'Week username'): replace it, don't stop the batch ==")
+        WF = xm_web.weak_field
+        check("weak_field: Marah's exact text -> username", WF("Week username, Please use stronge username") == "username")
+        check("weak_field: password / 'too weak' / Arabic forms",
+              WF("Weak password, please use a stronger password") == "password" and WF("Username is too weak") == "username"
+              and WF("اسم المستخدم ضعيف جدًا") == "username" and WF("كلمة المرور ضعيفة") == "password")
+        check("weak_field: login and duplicate errors are not 'weak'",
+              not WF("Incorrect username or password! Please try again.") and not WF("Username already exists")
+              and not WF("") and not WF(None))
+        AE = xm_web.PanelWebSession._add_error
+        check("weak text read from a JSON reply and from an alert-danger reply",
+              WF(AE('{"result":false,"message":"Week username, Please use stronge username"}')) == "username"
+              and WF(AE('<div class="alert alert-danger">Week username, Please use stronge username</div>')) == "username")
+        WD = xm_web._weak_digits
+        check("_weak_digits: repeats and runs, up or down, wrap-around included",
+              all(WD(x) for x in ("123", "987", "777", "890", "098", "4120003")) and not any(WD(x) for x in ("135792", "5", "")))
+        samples = [xm_web.rand_digits(12) for _ in range(3000)]
+        check("rand_digits: 12 digits, no leading zero, never an easy pattern",
+              all(len(x) == 12 and x.isdigit() and x[0] != "0" and not WD(x) for x in samples))
+        check("rand_digits: still random (3000 distinct)", len(set(samples)) == len(samples))
+        import xm_lines  # noqa: E402
+        g10 = [xm_lines.rand_digits(10) for _ in range(500)]
+        check("xm_lines.rand_digits uses it at the gate's length",
+              all(len(x) == 10 and not WD(x) for x in g10), g10[0])
+
+        WK_PORT = PORT + 5
+        WKB = f"http://127.0.0.1:{WK_PORT}"
+        wk_srv = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_panel.py"), str(WK_PORT), USER, PASS, "weak"],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        data_dir8 = tempfile.mkdtemp(prefix="xmweb_weak_")
+        orig_rand = xm_web.rand_digits
+        orig_dirs = (xm_lines.DATA_DIR, xm_lines.TXT_FILE)
+        panel = lambda: json.loads(urllib.request.urlopen(WKB + "/__lines", timeout=5).read())   # noqa: E731
+        try:
+            for _ in range(50):
+                try:
+                    urllib.request.urlopen(WKB + "/token.php", timeout=0.3)
+                    break
+                except Exception:
+                    time.sleep(0.1)
+
+            def logged_in(sess):
+                sess.begin()
+                rr = sess.opener.open(WKB + "/captcha.php?a=1", timeout=10); rr.read()
+                sess.login(captcha=rr.headers.get("X-Captcha-Code", ""))
+                return sess
+
+            sw = logged_in(xm_web.PanelWebSession({"id": "weak", "user": USER, "password": PASS,
+                                                   "panel_base": WKB, "host": "http://mrha.ink"}, data_dir8))
+            ok1 = sw.create_line(1, "135792468024", "246813579135")
+            check("a strong username is created as before", ok1["username"] == "135792468024"
+                  and ok1.get("verified") is True and ok1.get("weak_retries") == 0, str(ok1)[:100])
+
+            pairs = [("192837465019", "564738291056"), ("283746519283", "675849302167"),
+                     ("111222333444", "786950413278"), ("394857610394", "897061524389")]
+            t0 = time.time(); many = sw.create_many(1, pairs); dt = time.time() - t0
+            users = [m.get("username") for m in many]
+            check("batch with a weak username completes: 4/4, no error",
+                  len(many) == 4 and not any(m.get("error") for m in many), str(many)[-160:])
+            check("only the weak one is replaced (12 digits, not weak); the rest kept, in order",
+                  users[:2] == [pairs[0][0], pairs[1][0]] and users[3] == pairs[3][0] and users[2] != pairs[2][0]
+                  and len(users[2] or "") == 12 and users[2].isdigit() and not WD(users[2]), str(users))
+            check("the replacement keeps its generated password and is verified",
+                  many[2]["password"] == pairs[2][1] and many[2].get("verified") is True)
+            check("weak_retries counts the replacement", [m.get("weak_retries") for m in many] == [0, 0, 1, 0],
+                  str([m.get("weak_retries") for m in many]))
+            check("no ~12s confirmation wait on the rejection", dt < 3.0, "%.2fs" % dt)
+            p = panel()
+            on_panel = [x["username"] for x in p["lines"]]
+            check("the rejected name was never created; its replacement was",
+                  pairs[2][0] not in on_panel and users[2] in on_panel, str(on_panel))
+
+            m2 = sw.create_many(1, [("405968172405", "555000111222")])
+            check("a weak generated password is replaced too (username kept)",
+                  not m2[0].get("error") and m2[0]["username"] == "405968172405"
+                  and m2[0]["password"] != "555000111222" and m2[0].get("weak_retries") == 1, str(m2)[:140])
+
+            before = len(panel()["lines"])
+            try:
+                sw.create_line(1, "777000", "13579246")
+                check("an operator-typed weak username is NOT replaced", False, "no exception")
+            except xm_web.WeakRejected as e:
+                check("an operator-typed weak username is NOT replaced: Arabic error naming it + the panel's text",
+                      e.field == "username" and "777000" in str(e) and "Week username" in str(e)
+                      and "اترك الخانة فارغة" in str(e), str(e)[:140])
+            check("...and nothing was created for it", len(panel()["lines"]) == before)
+
+            seq = iter(["999888777666"])            # أول يوزرٍ يُولَّد هنا ضعيف
+            xm_web.rand_digits = lambda n=12: next(seq, None) or orig_rand(n)
+            try:
+                r1 = sw.create_line(1, None, "86420864")
+            finally:
+                xm_web.rand_digits = orig_rand
+            check("create_line with no username: the generated weak one is replaced",
+                  r1["username"] != "999888777666" and r1.get("weak_retries") == 1 and r1["password"] == "86420864",
+                  str(r1)[:120])
+
+            xm_web.rand_digits = lambda n=12: "1" * n   # لوحةٌ ترفض كل بديل: لا حلقة بلا نهاية
+            try:
+                m3 = sw.create_many(1, [("111111111111", "246802468024")])
+            finally:
+                xm_web.rand_digits = orig_rand
+            err = (m3[0] if m3 else {}).get("error", "")
+            check("a panel rejecting every replacement stops with its reason", len(m3) == 1
+                  and "Week username" in err and "بدائل" in err, err[:140])
+            sent = [x for x in panel()["weak_posts"] if x[0] == "111111111111"]
+            check("exactly 1 + WEAK_TRIES attempts were sent", len(sent) == 1 + xm_web.PanelWebSession.WEAK_TRIES,
+                  "%d posts" % len(sent))
+
+            # طبقة xm_lines: دفعة على بوابة ويب (جلسة جديدة لم يُثبت بحثها بعد) أولُ يوزرٍ فيها
+            # ضعيف → يُستبدل (لا يوزرٌ وهمي على لوحةٍ غير مثبتة)، ويصل weak_retries للصفحة.
+            xm_lines.DATA_DIR, xm_lines.TXT_FILE = data_dir8, os.path.join(data_dir8, "lines.txt")
+            gate = {"id": "gw", "name": "مرح", "mode": "web", "host": "http://mrha.ink", "guide_url": "",
+                    "panel_base": WKB, "panel_user": USER, "panel_pass": PASS, "digits": 12}
+            logged_in(xm_lines.web_session(gate))
+            pk1 = next(x for x in xm_lines.get_packages(gate) if str(x["id"]) == "1")
+            seq = iter(["444555666777"])
+            xm_web.rand_digits = lambda n=12: next(seq, None) or orig_rand(n)
+            try:
+                out, err = xm_lines.create_lines(gate, pk1, 3)
+            finally:
+                xm_web.rand_digits = orig_rand
+            check("xm_lines batch: 3/3 created, no error, weak one replaced",
+                  err is None and len(out) == 3 and "444555666777" not in [x["username"] for x in out],
+                  "%s %s" % (err, [x["username"] for x in out]))
+            check("xm_lines batch: weak_retries reaches the page", sum(x.get("weak_retries", 0) for x in out) == 1,
+                  str([x.get("weak_retries") for x in out]))
+            check("xm_lines: an operator-typed weak username raises (never swapped for another)",
+                  "اترك الخانة فارغة" in _raises(lambda: xm_lines.create_line(gate, pk1, "000999", None)))
+        finally:
+            xm_web.rand_digits = orig_rand
+            xm_lines.DATA_DIR, xm_lines.TXT_FILE = orig_dirs
+            wk_srv.terminate()
+            try:
+                wk_srv.wait(timeout=5)
+            except Exception:
+                wk_srv.kill()
+            shutil.rmtree(data_dir8, ignore_errors=True)
 
         for d in (data_dir, data_dir2, data_dir3):
             shutil.rmtree(d, ignore_errors=True)

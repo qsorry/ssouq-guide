@@ -1614,7 +1614,8 @@ def get_packages(gate):
 
 
 def rand_digits(n=DIGITS):
-    return str(secrets.randbelow(9) + 1) + "".join(str(secrets.randbelow(10)) for _ in range(n - 1))
+    # بلا نمطٍ سهل التخمين (777 · 123 · 987): لوحة مرح ترفض اليوزر «الضعيف».
+    return xm_web.rand_digits(n)
 
 
 def _log_txt(gate, line, pkg_name):
@@ -1631,21 +1632,23 @@ def _log_txt(gate, line, pkg_name):
 def create_line(gate, pkg, username=None, password=None):
     # اليوزر والباسورد يُولَّدان هنا — من جهتنا لا من اللوحة — بطول البوابة نفسها،
     # فلا يعتمد الطول على المزوّد (فالكون/جلسة ويب/API) ولا على ما تولّده لوحته.
+    # وما ولّدناه (لا ما كتبه المشغّل) تستبدله جلسة الويب إن رفضته اللوحة لضعفه.
+    regen = tuple(k for k, v in (("username", username), ("password", password)) if not v)
     username = username or rand_digits(gate_digits(gate))
     password = password or rand_digits(gate_digits(gate))
     vb = virtual_base(pkg["id"])
     if vb and gate.get("mode") == "web":              # باقة افتراضية: إنشاء بالأساس ثم تمديد
-        return _create_extended(gate, pkg, vb[0], vb[1], username, password)
+        return _create_extended(gate, pkg, vb[0], vb[1], username, password, regen)
     if vb:
         raise RuntimeError("الباقة «%s» (إنشاء + تمديد) متاحة على جلسة الويب فقط" % pkg["name"])
     if gate.get("mode") == "web":                      # الإنشاء عبر نموذج اللوحة
-        r = web_session(gate).create_line(pkg["id"], username, password, gate.get("host"))
+        r = web_session(gate).create_line(pkg["id"], username, password, gate.get("host"), regen=regen)
         line = format_line(gate, r["username"], r["password"])
         _log_txt(gate, line, pkg["name"])
         return {"line": line, "username": r["username"], "password": r["password"],
                 "package": pkg["name"], "exp": r.get("exp", ""),
                 "verified": r.get("verified", True), "time": r["time"],
-                "timing": r.get("timing")}
+                "timing": r.get("timing"), "weak_retries": r.get("weak_retries", 0)}
     if gate.get("mode") == "falcon":                   # الإنشاء عبر لوحة فالكون
         r = falcon_api.create_line(gate["api_url"], gate["api_key"], pkg["id"],
                                    username, password, pkg.get("max_connections"))
@@ -1679,12 +1682,12 @@ def create_line(gate, pkg, username=None, password=None):
             "package": pkg["name"], "verified": True, "time": now.isoformat(timespec="seconds")}
 
 
-def _create_extended(gate, pkg, base_id, times, username, password):
+def _create_extended(gate, pkg, base_id, times, username, password, regen=()):
     """يوزر بباقة افتراضية: يُنشأ بالباقة الأساسية ثم يُمدَّد بها `times` مرة.
     فشل التمديد بعد الإنشاء لا يُخفي اليوزر: يُسجَّل في lines.txt بملاحظة واضحة
     ويُرفع خطأ يحمل بياناته (خُصم رصيده فلا يضيع)."""
     sess = web_session(gate)
-    r = sess.create_line(base_id, username, password, gate.get("host"))
+    r = sess.create_line(base_id, username, password, gate.get("host"), regen=regen)
     u, p = r["username"], r["password"]
     confirmed = bool(r.get("line_id"))   # اللوحة أثبتت وجود اليوزر (id) — لا مجرّد افتراض نجاح
     ends = []
@@ -1707,6 +1710,7 @@ def _create_extended(gate, pkg, base_id, times, username, password):
     _log_txt(gate, line, pkg["name"])
     return {"line": line, "username": u, "password": p, "package": pkg["name"],
             "verified": r.get("verified", True), "time": r["time"], "timing": r.get("timing"),
+            "weak_retries": r.get("weak_retries", 0),
             "extended": {"times": times, "from": ends[0]["before"] if ends else "",
                          "to": ends[-1]["after"] if ends else ""}}
 
@@ -1726,7 +1730,7 @@ def create_lines(gate, pkg, count, username=None, password=None):
             out.append({"line": line, "username": r["username"], "password": r["password"],
                         "package": pkg["name"], "exp": r.get("exp", ""),
                         "verified": r.get("verified", True), "time": r["time"],
-                        "timing": r.get("timing")})
+                        "timing": r.get("timing"), "weak_retries": r.get("weak_retries", 0)})
         return out, None
     out = []
     for i in range(count):
