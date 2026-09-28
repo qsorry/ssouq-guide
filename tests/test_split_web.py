@@ -432,6 +432,22 @@ def main():
         check("broken mail server: the error comes back with a plain explanation",
               d.get("ok") is False and d.get("error") and "المنفذ" in d.get("hint", ""), json.dumps(d, ensure_ascii=False))
         a.jreq("/admin/api/renew/config", {"renew": {"alert": {"host": "", "to": ""}}})    # يعود لبريد المدير
+        sp_file = split_file(data_dir, acc_a["id"])
+        with open(sp_file, encoding="utf-8") as f:
+            sdb = json.load(f)
+        sdb["mail"]["last_error"] = "بريد التذكير غير مضبوط"         # من قبل أن يُضبط البريد
+        with open(sp_file, "w", encoding="utf-8") as f:
+            json.dump(sdb, f, ensure_ascii=False)
+        _, stx = a.jreq("/admin/api/split/state")
+        check("a stale 'mail not configured' error is hidden once mail is configured",
+              stx["accounts"][0]["mail"]["last_error"] == "", stx["accounts"][0]["mail"]["last_error"])
+        sdb["mail"]["last_error"] = "SMTP boom"
+        with open(sp_file, "w", encoding="utf-8") as f:
+            json.dump(sdb, f, ensure_ascii=False)
+        a.jreq("/admin/api/split/test-email", {})
+        _, stx = a.jreq("/admin/api/split/state")
+        check("a successful test email clears the old mail error", stx["accounts"][0]["mail"]["last_error"] == "",
+              stx["accounts"][0]["mail"]["last_error"])
         code, d = a.jreq("/admin/api/split/read", {})
         _, d = a.jreq("/admin/api/split/notes")
         check("mark all read → badge clears", d.get("unread") == 0, str(d.get("unread")))

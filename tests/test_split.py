@@ -420,6 +420,27 @@ class TestMail(Base):
         self.assertEqual(len(m.sent), 1)
         self.assertIn("تغيّرت بياناتها 1", m.sent[0][0])
 
+    def test_mail_configured_minutes_later_goes_next_cycle(self):
+        """لا انتظارَ نصف ساعة بعد ضبط البريد: فحصُ الضبط لا يكلّف شيئًا، فيُعاد كل دورة."""
+        rec, _ = self.reg()
+        due = S.parse_dt(rec["slice"]["due"])
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due, mailer=lambda s, b: (None, "غير مضبوط"))
+        m = Mailer()
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due + datetime.timedelta(minutes=5), mailer=m)
+        self.assertEqual(len(m.sent), 1)
+
+    def test_verified_mail_clears_old_errors_and_retry_wait(self):
+        rec, _ = self.reg()
+        due = S.parse_dt(rec["slice"]["due"])
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due, mailer=Mailer(ok=False))
+        self.assertTrue(S.load(self.d, "a1")["mail"]["next_try"])
+        S.mail_verified(self.d, "a1")                          # بريدٌ تجريبي نجح
+        mail = S.load(self.d, "a1")["mail"]
+        self.assertEqual((mail["last_error"], mail["next_try"], mail["fails"]), ("", "", 0))
+        m = Mailer()
+        S.flush_mail(self.d, "a1", m, now=due + datetime.timedelta(minutes=1))
+        self.assertEqual(len(m.sent), 1, "المنتظر يُرسَل فورًا لا بعد نصف ساعة")
+
     def test_unconfigured_for_a_day_then_dropped(self):
         rec, _ = self.reg()
         due = S.parse_dt(rec["slice"]["due"])

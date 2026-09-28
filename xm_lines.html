@@ -123,6 +123,7 @@ input.t::placeholder{color:color-mix(in srgb,var(--mute) 70%,transparent)}
 .msg{color:var(--err);font-size:.88rem;margin-top:10px;white-space:pre-wrap;min-height:0}
 .msg.ok{color:var(--go)}
 .msg.small{font-size:.78rem;margin-top:4px}
+.msg.timing{color:var(--mute);font-size:.8rem}     /* زمن الإنشاء معلومةٌ لا خطأ — رماديّ لا أحمر */
 .lines{direction:ltr;text-align:left;font:500 .86rem/1.8 "IBM Plex Mono",Consolas,monospace;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;overflow-x:auto;white-space:pre;margin:0}
 .empty{color:var(--mute);text-align:center;padding:14px;font-size:.9rem}
 
@@ -309,6 +310,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
     </div>
     <button class="go" id="create"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><span id="createTxt">إنشاء يوزر واحد</span></button>
     <div class="msg" id="msg"></div>
+    <div class="msg timing" id="timing" hidden></div>
     <div class="msg ok" id="splitMsg" hidden></div>
   </section>
 
@@ -494,6 +496,7 @@ function selectGate(id){
   drawer(false);
   if (id === curGate) return;
   curGate = id;
+  $("timing").hidden = true; showSplitResult(null);
   try { localStorage.setItem("xm_curgate_" + account, id); } catch {}
   document.querySelectorAll(".gate-tab").forEach(b => b.classList.toggle("on", b.dataset.gate === id));
   $("resBox").hidden = true; $("msg").textContent = ""; $("searchRes").innerHTML = ""; $("searchQ").value = "";
@@ -878,7 +881,7 @@ async function createLines(){
   const sel = document.querySelector('input[name="pkg"]:checked');
   if (!sel) { $("msg").textContent = "اختر باقة أولاً."; return; }
   if (!curGate) { $("msg").textContent = "اختر بوابة أولاً."; return; }
-  const btn = $("create"); btn.disabled = true; $("createTxt").textContent = "جاري الإنشاء…"; $("msg").textContent = ""; showSplitResult(null);
+  const btn = $("create"); btn.disabled = true; $("createTxt").textContent = "جاري الإنشاء…"; $("msg").textContent = ""; $("timing").hidden = true; showSplitResult(null);
   try {
     const r = await fetch(B + "/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({gate: curGate, package_id: sel.value, username: $("u").value.trim(), password: $("p").value.trim(), count: countN(),
@@ -899,7 +902,8 @@ async function createLines(){
       const t = lines[0].timing || {}, sec = ms => (ms / 1000).toFixed(1) + " ث";
       const post = lines.map(x => (x.timing || {}).post_ms || 0), conf = lines.map(x => (x.timing || {}).confirm_ms || 0);
       const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
-      $("msg").textContent = `الزمن الكلي ${sec(d.total_ms || 0)} · دخول ${sec(t.login_ms || 0)} · صفحة ${sec(t.page_ms || 0)} · بوكيهات ${sec(t.bouquets_ms || 0)} · إرسال ${sec(avg(post))}/يوزر · تأكيد ${sec(avg(conf))}/يوزر`;
+      $("timing").textContent = `الزمن الكلي ${sec(d.total_ms || 0)} · دخول ${sec(t.login_ms || 0)} · صفحة ${sec(t.page_ms || 0)} · بوكيهات ${sec(t.bouquets_ms || 0)} · إرسال ${sec(avg(post))}/يوزر · تأكيد ${sec(avg(conf))}/يوزر`;
+      $("timing").hidden = false;
     }
     if (d.error) throw new Error(d.error);
   } catch(e) { $("msg").textContent = e.message; }

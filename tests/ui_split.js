@@ -74,6 +74,9 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await user.waitForSelector('#splitMsg:not([hidden])', {timeout:15000});
     const sm = await user.textContent('#splitMsg');
     check('created: tells when the name changes', sm.includes('يتغيّر اسم المستخدم تلقائيًا') && sm.includes('متبقي 9 أشهر'), sm);
+    check('timing line is grey info, not a red error', await user.isVisible('#timing')
+          && (await user.textContent('#msg')).trim() === ''
+          && await user.$eval('#timing', e => getComputedStyle(e).color) !== await user.$eval('#msg', e => getComputedStyle(e).color));
     check('message links to «حسابات متبقية»', await user.$$eval('#splitMsg a', els => els.some(e => e.getAttribute('href').endsWith('/remaining'))));
     check('message warns the email is not set up (no SMTP here)', sm.includes('بريد التنبيه غير مضبوط'), sm);
     await user.click('#bellBtn');
