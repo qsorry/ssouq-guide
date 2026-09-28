@@ -111,15 +111,8 @@ button:disabled{opacity:.55;cursor:default}
   <p class="sub">افتح المسابقة على مباراة واكتب جائزتها. المشارك يسجّل توقّعه برسالة واتساب من رقمه، والتوقّعات تُقفل مع صافرة البداية، والفرز آليٌّ بعد صافرة النهاية، والفائز يُبلَّغ على واتساب — ولا يُطلب منك شيء إلا تسليم الجائزة.</p>
   <section id="waSec">
     <h2>ربط واتساب المسابقة <span class="chip" id="waChip">…</span></h2>
-    <p class="hint" style="margin-top:0">المشاركون يرسلون رسائل التوقّع إلى الرقم الذي تربطه هنا، عبر خدمة واتساب النظام اللوجستي نفسها (جلسةٌ خاصة بالمسابقة).</p>
-    <div id="waCfg" hidden>
-      <label for="rUrl">رابط خدمة الواتساب (WHATSAPP_READER_URL)</label>
-      <input id="rUrl" class="ltr" placeholder="https://…">
-      <label for="rSecret">السرّ (WHATSAPP_READER_SECRET)</label>
-      <input id="rSecret" class="ltr" type="password" autocomplete="off" placeholder="كما في النظام اللوجستي">
-      <button class="go" id="rSave" style="margin-top:12px">حفظ</button>
-    </div>
-    <div id="waLink" hidden>
+    <p class="hint" style="margin-top:0">المشاركون يرسلون رسائل التوقّع إلى الرقم الذي تربطه هنا، ومنه تصلهم الردود ورسالة الفائز — بخدمة واتساب النظام اللوجستي نفسها.</p>
+    <div id="waLink">
       <div id="waState" class="msg" style="margin-top:0"></div>
       <div id="waConnect" hidden>
         <label for="wNum">رقم الواتساب الذي تربطه</label>
@@ -135,7 +128,6 @@ button:disabled{opacity:.55;cursor:default}
         <button class="ghost" id="wTestGo">أرسل تجربة</button>
         <button class="danger" id="wOff">فصل</button>
       </div>
-      <button class="ghost" id="rEdit" style="margin-top:10px">تعديل رابط الخدمة وسرّها</button>
     </div>
     <div class="msg" id="waMsg"></div>
   </section>
@@ -312,36 +304,25 @@ const WA_STATE = {connected: "مربوط ✓", qr: "بانتظار مسح الر
 function wa(r) {
   clearTimeout(waTimer);
   const configured = r.configured;
-  $("waCfg").hidden = configured && !$("waCfg").dataset.edit;
-  $("waLink").hidden = !configured;
-  if (!$("rUrl").value) $("rUrl").value = r.url || "";
-  $("rSecret").placeholder = r.has_secret ? "محفوظ — اتركه فارغًا ليبقى" : "كما في النظام اللوجستي";
-  $("rUrl").disabled = $("rSecret").disabled = $("rSave").disabled = !!r.env;
-  $("rEdit").hidden = !!r.env;
   const on = r.status === "connected";
   $("waChip").className = "chip " + (on ? "done" : r.error ? "void" : configured ? "hold" : "");
-  $("waChip").textContent = !configured ? "غير مضبوط" : r.error ? "تعذّر الوصول" : (WA_STATE[r.status] || r.status);
+  $("waChip").textContent = !configured ? "غير مضبوطة" : r.error ? "غير متاحة" : (WA_STATE[r.status] || r.status);
   $("stWa").innerHTML = on ? '<span class="okline">جاهز ✓</span>' : '<span style="color:var(--err)">غير جاهز</span>';
   $("waState").className = "msg " + (r.error ? "err" : on ? "ok" : "");
   $("waState").innerHTML = r.error ? "خدمة الواتساب غير متاحة: " + esc(r.error)
     : on ? 'مربوط برقم <b dir="ltr">+' + esc(r.number) + "</b> — جاهزٌ لاستقبال التوقّعات."
     : r.status === "qr" ? "بانتظار مسح الرمز من الجوال" + (r.number ? ' <b dir="ltr">+' + esc(r.number) + "</b>" : "") + "."
     : r.status === "connecting" ? "يتصل… إن طال، اضغط «ربط» من جديد."
-    : configured ? "غير مربوط — أدخل الرقم ثم اضغط «ربط»، فيظهر رمز QR." : "";
+    : configured ? "غير مربوط — أدخل الرقم ثم اضغط «ربط»، فيظهر رمز QR." : "خدمة الواتساب غير مضبوطة: " + esc(r.error);
   if (r.number && !$("wNum").value) $("wNum").value = r.number;
   $("waConnect").hidden = !configured || !!r.error || on;        // كالنظام اللوجستي: الرقم والربط حتى يتصل
   $("waQr").hidden = r.status !== "qr" || !r.qr;
   if (r.qr) $("wQrImg").src = r.qr;
   $("waOn").hidden = !on;
-  if (configured && !r.error && (r.status === "qr" || r.status === "connecting"))   // حتى يتم الربط
-    waTimer = setTimeout(async () => wa(await api("/api/contest/admin/wa")), 4000);
+  // حتى يتم الربط، أو حتى تبدأ الخدمة المدمجة بعد نشرٍ أو إعادة تشغيل
+  if (configured && (r.status === "qr" || r.status === "connecting" || (r.error && r.embedded)))
+    waTimer = setTimeout(async () => wa(await api("/api/contest/admin/wa")), r.error ? 5000 : 4000);
 }
-$("rSave").onclick = async () => {
-  const d = await api("/api/contest/admin/wa/config", {url: $("rUrl").value, secret: $("rSecret").value});
-  $("waMsg").className = "msg " + (d.ok ? "ok" : "err"); $("waMsg").textContent = d.ok ? "حُفظ." : (d.error || "تعذّر الحفظ");
-  if (d.ok) { $("rSecret").value = ""; delete $("waCfg").dataset.edit; wa(d); }
-};
-$("rEdit").onclick = () => { $("waCfg").dataset.edit = "1"; $("waCfg").hidden = false; };
 $("wGo").onclick = async () => {
   $("waMsg").className = "msg"; $("waMsg").textContent = "نبدأ الربط…";
   const d = await api("/api/contest/admin/wa/connect", {number: $("wNum").value});

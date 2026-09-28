@@ -52,6 +52,9 @@ def main():
     missing = sorted(p for p in pages if p not in copied)
     check("every page the server serves is copied into the image", not missing, ", ".join(missing))
     check("the split subscriptions ship", "split_subs.py" in copied and "remaining.html" in copied)
+    check("the contest WhatsApp service ships (installed, non-fatal)",
+          "COPY whatsapp-reader/server.js ./whatsapp-reader/" in docker and "npm ci --omit=dev" in docker
+          and "whatsapp-reader/package-lock.json" in docker and "contest WhatsApp linking unavailable" in docker)
     print("\nResult: %d passed, %d failed" % (_p, _f))
     sys.exit(1 if _f else 0)
 

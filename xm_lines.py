@@ -1988,10 +1988,64 @@ def contest_link(rec):
 # خدمة واتساب النظام اللوجستي (whatsapp-reader): جلسة المسابقة فيها، تُربط بـ QR من صفحة المدير.
 CONTEST_INBOUND_URL = os.environ.get("CONTEST_INBOUND_URL", "").strip()   # للاختبار؛ وإلا من SITE_HOST
 _reader_cache = {"at": 0.0, "d": None}
+READER_DIR = os.path.join(BASE_DIR, "whatsapp-reader")
+_embed = {"proc": None, "why": "", "started": 0.0}
 
 
 def contest_inbound_url():
-    return CONTEST_INBOUND_URL or f"https://{SITE_HOST}/api/contest/wa-inbound"
+    """أين تمرّر الخدمة رسائل رقم المسابقة: المدمجة من داخل الحاوية، والخارجية بالرابط العام."""
+    if CONTEST_INBOUND_URL:
+        return CONTEST_INBOUND_URL
+    if contest.reader_config(DATA_DIR)["embedded"]:
+        return f"http://127.0.0.1:{PORT}/api/contest/wa-inbound"
+    return f"https://{SITE_HOST}/api/contest/wa-inbound"
+
+
+def start_embedded_reader():
+    """نسخة whatsapp-reader (خدمة النظام اللوجستي) داخل الحاوية على 127.0.0.1، بسرٍّ مولَّد وجلساتٍ
+    في مجلد البيانات الدائم — فربط رقم المسابقة رقمٌ ثم رمز QR، بلا إعداد. تُعاد إن توقّفت. ولا تعمل
+    إن ضُبطت خدمةٌ خارجية (WHATSAPP_READER_URL) أو لم تُثبَّت (node ومكتباتها)."""
+    import shutil
+    import subprocess
+    cfg = contest.reader_config(DATA_DIR)
+    if not cfg["embedded"]:
+        return
+    node, server = shutil.which("node"), os.path.join(READER_DIR, "server.js")
+    if not node or not os.path.isfile(server) or not os.path.isdir(os.path.join(READER_DIR, "node_modules")):
+        _embed["why"] = "خدمة الواتساب غير مثبّتة على هذا الخادم (node ومكتباتها)"
+        return
+    data = os.path.join(DATA_DIR, "wa-reader")
+    os.makedirs(data, exist_ok=True)
+    env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME": data, "NODE_ENV": "production",
+           "PORT": str(contest.EMBED_PORT), "WHATSAPP_READER_SECRET": cfg["secret"],
+           "READER_DATA_DIR": os.path.join(data, "sessions"), "LOG_LEVEL": "warn",
+           "READER_DISK_FLOOR_BYTES": str(64 * 1024 * 1024)}
+
+    def loop():
+        wait = 5
+        while True:
+            logf = os.path.join(data, "reader.log")
+            try:
+                if os.path.getsize(logf) > 2 * 1024 * 1024:
+                    os.replace(logf, logf + ".1")
+            except OSError:
+                pass
+            t0 = time.time()
+            try:
+                with open(logf, "ab") as out:
+                    p = subprocess.Popen([node, server], cwd=READER_DIR, env=env, stdout=out, stderr=out,
+                                         stdin=subprocess.DEVNULL)
+                    _embed.update(proc=p, why="", started=t0)
+                    code = p.wait()
+                _embed["why"] = f"توقّفت خدمة الواتساب (رمز {code}) — تُعاد تلقائيًّا"
+            except Exception as e:                  # لا تُسقط الخادم أبدًا
+                _embed["why"] = "تعذّر تشغيل خدمة الواتساب: " + str(e)[:160]
+            _embed["proc"] = None
+            _reader_cache["d"] = None
+            wait = 5 if time.time() - t0 > 300 else min(wait * 2, 300)
+            time.sleep(wait)
+
+    threading.Thread(target=loop, daemon=True).start()
 
 
 def reader_call(method, path, body=None, timeout=15):
@@ -2026,7 +2080,12 @@ def reader_status(fresh=False):
         return dict(c["d"])
     code, d, err = reader_call("GET", "/sessions/" + contest.READER_TENANT, timeout=10)
     if err == "not_configured":
-        out = {"configured": False, "ok": False, "status": "", "number": "", "qr": None, "error": ""}
+        out = {"configured": False, "ok": False, "status": "", "number": "", "qr": None,
+               "error": "WHATSAPP_READER_SECRET غير مضبوط مع WHATSAPP_READER_URL"}
+    elif code == 0 and contest.reader_config(DATA_DIR)["embedded"] and (
+            not _embed["proc"] or time.time() - _embed["started"] < 20):
+        out = {"configured": True, "ok": False, "status": "", "number": "", "qr": None,
+               "error": _embed["why"] or "خدمة الواتساب تبدأ الآن… أعد المحاولة بعد لحظات"}
     elif code == 200:
         out = {"configured": True, "ok": True, "status": str(d.get("status") or ""),
                "number": re.sub(r"\D", "", str(d.get("number") or "")), "qr": d.get("qr"),
@@ -2936,21 +2995,15 @@ class Handler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _reader_view():
-        cfg = contest.reader_config(DATA_DIR)
         r = reader_status(fresh=True)
-        return {"configured": r["configured"], "url": cfg["url"], "has_secret": bool(cfg["secret"]), "env": cfg["env"],
+        return {"configured": r["configured"], "embedded": contest.reader_config(DATA_DIR)["embedded"],
                 "status": r.get("status", ""), "number": r.get("number", ""),
-                "qr": r.get("qr") if r.get("status") == "qr" else None, "error": r.get("error", ""),
-                "inbound": contest_inbound_url()}
+                "qr": r.get("qr") if r.get("status") == "qr" else None, "error": r.get("error", "")}
 
     def _contest_admin_post(self, path):
         req = self._body()
         if path == "/api/contest/admin/settings":
             return self._send(200, {"ok": True, "settings": contest.save_settings(DATA_DIR, req)})
-        if path == "/api/contest/admin/wa/config":       # رابط خدمة الواتساب وسرّها
-            contest.save_reader(DATA_DIR, req.get("url"), req.get("secret"))
-            _reader_cache["d"] = None
-            return self._send(200, {"ok": True, **self._reader_view()})
         if path == "/api/contest/admin/wa/connect":      # ربط رقم: الخدمة تبدأ الجلسة ويظهر QR
             number = contest.norm_phone(req.get("number"))
             if not contest.phone_ok(number):
@@ -3570,6 +3623,7 @@ def web():
     start_renew_worker()
     start_split_worker()
     start_contest_worker()
+    start_embedded_reader()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 

@@ -359,33 +359,22 @@ def unit_prize():
           and 'target="_blank"' in html and "اشتراك سمارت 3 أشهر" in html, html)
     check("ولا سطر لجائزةٍ بلا رابط", T._prize_row({"prize": "x", "prize_url": ""}) == "")
 
-    # إعداد الخدمة: من صفحة المدير مشفَّرًا، أو من البيئة بأسماء النظام اللوجستي
+    # الخدمة: مدمجةٌ داخل الحاوية بلا إعداد، أو خارجيةٌ من البيئة بأسماء النظام اللوجستي
     saved = {k: os.environ.pop(k) for k in ("WHATSAPP_READER_URL", "WHATSAPP_READER_SECRET") if k in os.environ}
     try:
         cfg = C.reader_config(d)
-        check("بلا إعداد: لا رابط ولا سرّ، ورمز الوارد يُولَّد", cfg["url"] == "" and cfg["secret"] == ""
-              and len(cfg["token"]) >= 24 and not cfg["env"], cfg)
-        check("ورمز الوارد ثابتٌ بين القراءات", C.reader_config(d)["token"] == cfg["token"])
-        C.save_reader(d, "https://wa.example.com/", "s3cret")
-        c2 = C.reader_config(d)
-        check("الرابط بلا شرطة أخيرة والسرّ محفوظ", c2["url"] == "https://wa.example.com" and c2["secret"] == "s3cret")
+        check("بلا إعداد: الخدمة المدمجة على 127.0.0.1 بسرٍّ مولَّد", cfg["embedded"]
+              and cfg["url"] == f"http://127.0.0.1:{C.EMBED_PORT}" and len(cfg["secret"]) >= 24, cfg["url"])
+        check("ورمز الوارد غير السرّ، وكلاهما ثابتٌ بين القراءات", len(cfg["token"]) >= 24 and cfg["token"] != cfg["secret"]
+              and C.reader_config(d) == cfg)
         raw = open(os.path.join(d, "contest", "settings.json"), encoding="utf-8").read()
-        check("والسرّ مشفَّرٌ على القرص", "s3cret" not in raw and cfg["token"] not in raw)
-        C.save_reader(d, "https://wa.example.com", "")
-        check("سرٌّ فارغ يُبقي المحفوظ", C.reader_config(d)["secret"] == "s3cret")
+        check("وكلاهما مشفَّرٌ على القرص", cfg["secret"] not in raw and cfg["token"] not in raw)
         C.save_settings(d, {"notify": True, "text": "مرحبا {name}", "admin_phone": "0551234567"})
-        check("حفظ إعدادات التبليغ لا يمسح إعداد الخدمة", C.reader_config(d)["secret"] == "s3cret"
-              and C.reader_config(d)["token"] == cfg["token"])
-        try:
-            C.save_reader(d, "ftp://x", "")
-            bad = False
-        except ValueError:
-            bad = True
-        check("رابطٌ غير http(s) يُرفض", bad)
-        os.environ.update(WHATSAPP_READER_URL="https://reader.internal:3000", WHATSAPP_READER_SECRET="envsec")
+        check("حفظ إعدادات التبليغ لا يمسّهما", C.reader_config(d) == cfg)
+        os.environ.update(WHATSAPP_READER_URL="https://reader.internal:3000/", WHATSAPP_READER_SECRET="envsec")
         c3 = C.reader_config(d)
-        check("البيئة تغلب إعداد الصفحة", c3["url"] == "https://reader.internal:3000" and c3["secret"] == "envsec"
-              and c3["env"], c3)
+        check("خدمةٌ خارجية من البيئة تغلب المدمجة", c3["url"] == "https://reader.internal:3000" and c3["secret"] == "envsec"
+              and not c3["embedded"] and c3["token"] == cfg["token"], c3)
     finally:
         os.environ.pop("WHATSAPP_READER_URL", None)
         os.environ.pop("WHATSAPP_READER_SECRET", None)
@@ -470,8 +459,8 @@ def live():
         procs.append(subprocess.Popen([sys.executable, os.path.join(HERE, "mock_reader.py"), str(wport), "rdr_live"]))
         env = {k: v for k, v in os.environ.items() if not k.startswith(("WHATSAPP_READER_", "SALLA_ADMIN_TOKEN"))}
         env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
-                   LEAGUE_API=f"http://127.0.0.1:{mport}", SALLA_API=reader,
-                   CONTEST_INBOUND_URL=base + "/api/contest/wa-inbound")
+                   LEAGUE_API=f"http://127.0.0.1:{mport}", SALLA_API=reader, WHATSAPP_READER_URL=reader,
+                   WHATSAPP_READER_SECRET="rdr_live", CONTEST_INBOUND_URL=base + "/api/contest/wa-inbound")
         procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env))
         for _ in range(60):
             try:
@@ -509,19 +498,11 @@ def live():
 
         code, body, _ = get(base + "/admin/api/contest/admin/wa", auth=True)
         w = json.loads(body)
-        check("صفحة المدير: الخدمة غير مضبوطة بعد", code == 200 and w["configured"] is False and not w["qr"], w)
-        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": "ftp://x", "secret": "s"}, auth=True)
-        check("رابط الخدمة يُقبل http(s) وحده", code == 400 and "https://" in res["error"], res)
-        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": reader + "/", "secret": "wrong"}, auth=True)
-        check("سرٌّ خاطئ: الخدمة ترفض (403) والصفحة تقولها", res["configured"] and "403" in res["error"]
-              and res["url"] == reader and res["has_secret"], res)
-        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": reader, "secret": "rdr_live"}, auth=True)
-        check("بالسرّ الصحيح: مضبوطة وغير مربوطة", code == 200 and not res["error"] and res["status"] == "disconnected", res)
-        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": reader, "secret": ""}, auth=True)
-        check("حفظ الرابط بسرٍّ فارغ يُبقي السرّ", not res["error"] and res["has_secret"], res)
-        st = json.loads(open(os.path.join(data, "contest", "settings.json"), encoding="utf-8").read())
-        check("السرّ ورمز الوارد مشفّران على القرص", "rdr_live" not in json.dumps(st) and st.get("reader_secret")
-              and st.get("reader_token"), list(st))
+        check("صفحة المدير: الخدمة جاهزة، والرقم غير مربوط", code == 200 and w["configured"] and not w["error"]
+              and w["status"] == "disconnected" and not w["embedded"] and not w["qr"], w)
+        check("ولا رابطَ ولا سرَّ في ردّها", "rdr_live" not in body.decode() and reader not in body.decode())
+        code, res = post(base + "/admin/api/contest/admin/wa/config", {"url": "x", "secret": "y"}, auth=True)
+        check("لا إعداد للرابط والسرّ من الصفحة", code == 404)
         code, res = post(base + "/admin/api/contest/admin/wa/connect", {"number": "12"}, auth=True)
         check("الربط يطلب رقمًا صحيحًا", code == 400)
         code, res = post(base + "/admin/api/contest/admin/wa/connect", {"number": "0500000009"}, auth=True)
@@ -666,10 +647,57 @@ def live():
         shutil.rmtree(data, ignore_errors=True)
 
 
+def live_embedded():
+    """الخدمة المدمجة: بلا أيّ إعداد يشغّلها الخادم داخل الحاوية وتجيب صفحة المدير (إن ثُبّتت مكتباتها)."""
+    reader_dir = os.path.join(ROOT, "whatsapp-reader")
+    if not shutil.which("node") or not os.path.isdir(os.path.join(reader_dir, "node_modules")):
+        print("الخدمة المدمجة: تُتخطّى (لا node أو لم تُثبَّت مكتباتها: cd whatsapp-reader && npm ci --omit=dev)")
+        return
+    print("الخدمة المدمجة")
+    port, rport = 9785, 9786
+    data = tempfile.mkdtemp(prefix="contest_emb_")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("WHATSAPP_READER_")}
+    env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
+               LEAGUE_API="http://127.0.0.1:9", CONTEST_READER_PORT=str(rport))
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env)
+    base, w = f"http://127.0.0.1:{port}", {}
+    try:
+        for _ in range(100):
+            try:
+                code, body, _ = get(base + "/admin/api/contest/admin/wa", auth=True)
+                w = json.loads(body)
+                if w.get("status") == "disconnected" and not w.get("error"):
+                    break
+            except Exception:
+                pass
+            time.sleep(.2)
+        check("بلا إعداد: الخادم يشغّل الخدمة المدمجة وصفحة المدير تطلب الرقم وحده", w.get("configured")
+              and w.get("embedded") and w.get("status") == "disconnected" and not w.get("error"), w)
+        code, res = post(base + "/admin/api/contest/admin/wa/connect", {"number": "0500000009"}, auth=True)
+        check("«ربط» يبدأ جلسة المسابقة فيها برقمها", code == 200 and res["status"] in ("connecting", "qr")
+              and res["number"] == "966500000009", res)
+        check("وجلساتها في مجلد البيانات الدائم", os.path.isdir(os.path.join(data, "wa-reader", "sessions")))
+        code, res = post(base + "/admin/api/contest/admin/wa/disconnect", {}, auth=True)
+        check("و«فصل» يمسحها", code == 200 and res["status"] == "disconnected", res)
+    finally:
+        p.terminate()
+        p.wait(timeout=10)
+        for pid in os.listdir("/proc"):              # الخدمة ابنةٌ للخادم: تُعرف بمنفذها في بيئتها
+            try:
+                with open(f"/proc/{pid}/environ", "rb") as f:
+                    if f"PORT={rport}".encode() in f.read().split(b"\0"):
+                        os.kill(int(pid), 15)
+            except (OSError, ValueError):
+                pass
+        time.sleep(.5)
+        shutil.rmtree(data, ignore_errors=True)
+
+
 def main():
     unit()
     unit_prize()
     live()
+    live_embedded()
     print(f"\nResult: {_p} passed, {_f} failed")
     sys.exit(1 if _f else 0)
 

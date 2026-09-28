@@ -1,5 +1,5 @@
 // Browser test of the prediction contest (مسابقة التوقّعات): the admin page first (linking the contest number
-// through the logistics WhatsApp service: URL and secret, number, QR, connected; the prize picked from the
+// through the logistics WhatsApp service like the logistics system: number, QR, connected; the prize picked from the
 // store's products with its link; the channel message ready to copy), then the card on a match page (form
 // without a phone, the ready WhatsApp message, the message arriving through the service and registering the
 // sender's number, one prediction per number, the remembered prediction), a finished match (winner, the draw
@@ -46,8 +46,8 @@ print(json.dumps(rec, ensure_ascii=False))
                  spawn('python3', [path.join(ROOT,'tests/mock_reader.py'), String(WA_PORT), WA_SECRET], {stdio:'ignore'}),
                  spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web'], {stdio:'ignore', env:{...env,
                    XM_DATA: data, XM_BIND:'127.0.0.1', XM_PORT:String(APP_PORT), XM_ADMIN_PASSWORD:'envpass123',
-                   LEAGUE_API:`http://127.0.0.1:${ESPN_PORT}`, SALLA_API: WA,
-                   CONTEST_INBOUND_URL: APP + '/api/contest/wa-inbound'}})];
+                   LEAGUE_API:`http://127.0.0.1:${ESPN_PORT}`, SALLA_API: WA, WHATSAPP_READER_URL: WA,
+                   WHATSAPP_READER_SECRET: WA_SECRET, CONTEST_INBOUND_URL: APP + '/api/contest/wa-inbound'}})];
   await up(`http://127.0.0.1:${ESPN_PORT}/v2/sports/soccer/ksa.1/standings`);
   await up(`http://127.0.0.1:${APP_PORT}/robots.txt`);
   await up(`${WA}/store/v1/products`);
@@ -71,14 +71,11 @@ print(json.dumps(rec, ensure_ascii=False))
       body: JSON.stringify({user: 'admin', password: 'envpass123'})}); });
     await adm.goto(APP + '/admin/contest');
     await adm.waitForSelector('.mrow[data-eid="6"]', {timeout:8000});
-    check('الخدمة غير مضبوطة: خانتا الرابط والسرّ', await adm.isVisible('#waCfg') && !(await adm.isVisible('#waLink'))
-          && (await adm.textContent('#waChip')).includes('غير مضبوط'));
-    check('والتسجيل غير جاهز', (await adm.textContent('#stWa')).includes('غير جاهز'));
-    await adm.fill('#rUrl', WA); await adm.fill('#rSecret', WA_SECRET);
-    await adm.click('#rSave');
     await adm.waitForSelector('#waConnect:not([hidden])', {timeout:8000});
-    check('بعد الحفظ: غير مربوط — الرقم ثم «ربط»', !(await adm.isVisible('#waCfg'))
-          && (await adm.textContent('#waState')).includes('أدخل الرقم') && (await adm.inputValue('#rSecret')) === '');
+    check('كالنظام اللوجستي: رقم الجوال و«ربط» وحدهما، بلا رابطٍ ولا سرّ', (await adm.textContent('#waState')).includes('أدخل الرقم')
+          && (await adm.textContent('#waChip')).includes('غير مربوط') && (await adm.$$('#waSec input')).length === 2
+          && !(await adm.$('#rUrl')) && !(await adm.$('#rSecret')));
+    check('والتسجيل غير جاهز', (await adm.textContent('#stWa')).includes('غير جاهز'));
     await adm.fill('#wNum', '0500000009');
     await adm.click('#wGo');
     await adm.waitForSelector('#waQr:not([hidden])', {timeout:8000});
