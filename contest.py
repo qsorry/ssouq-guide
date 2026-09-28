@@ -184,38 +184,39 @@ def load_settings(data_dir):
 
 # ---------- خدمة واتساب النظام اللوجستي (whatsapp-reader في souq-saas) ----------
 # الخدمة نفسها التي يربط بها النظام اللوجستي أرقامه: جلسةٌ لكل مفتاح، تُربط برمز QR من صفحة
-# المدير، وتمرّر الرسائل الخاصة (1:1) إلى رابطنا موقَّعةً برمزٍ نولّده. رابطها وسرّها من
-# متغيّرات البيئة بالأسماء نفسها التي في النظام اللوجستي، وإلا من إعداد المسابقة (مشفَّرًا).
+# المدير (الرقم ← «ربط» ← امسح الرمز)، وتمرّر الرسائل الخاصة (1:1) إلى رابطنا موقَّعةً برمزٍ نولّده.
+# تعمل نسختها (whatsapp-reader/) داخل الحاوية نفسها على 127.0.0.1 بسرٍّ يُولَّد ويُحفظ — فلا إعداد؛
+# وإن ضُبط WHATSAPP_READER_URL/SECRET (بأسمائهما في النظام اللوجستي) فالخدمة الخارجية بدلها.
 READER_TENANT = "ssouq-guide--contest"
+EMBED_PORT = int(os.environ.get("CONTEST_READER_PORT", "3301") or 3301)
+
+
+def _secret(data_dir, key):
+    """سرٌّ عشوائيّ يُولَّد مرةً ويُحفظ مشفَّرًا في إعداد المسابقة."""
+    s = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
+    v = crypto_store.decrypt(s.get(key) or "", data_dir)
+    if v:
+        return v
+    with _lock:
+        s = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
+        v = crypto_store.decrypt(s.get(key) or "", data_dir)
+        if not v:
+            v = secrets.token_urlsafe(24)
+            s[key] = crypto_store.encrypt(v, data_dir)
+            _write(os.path.join(_dir(data_dir), SETTINGS), s)
+    return v
 
 
 def reader_config(data_dir):
-    """← {url, secret, token, env}: token رمز توقيع الرسائل الواردة، يُولَّد مرةً ويُحفظ مشفَّرًا."""
-    s = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
-    url = os.environ.get("WHATSAPP_READER_URL", "").strip() or str(s.get("reader_url") or "")
-    secret = os.environ.get("WHATSAPP_READER_SECRET", "").strip() or crypto_store.decrypt(s.get("reader_secret") or "", data_dir)
-    token = crypto_store.decrypt(s.get("reader_token") or "", data_dir)
-    if not token:
-        token = secrets.token_urlsafe(24)
-        with _lock:
-            s = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
-            s["reader_token"] = crypto_store.encrypt(token, data_dir)
-            _write(os.path.join(_dir(data_dir), SETTINGS), s)
-    return {"url": url.rstrip("/"), "secret": secret, "token": token,
-            "env": bool(os.environ.get("WHATSAPP_READER_URL", "").strip())}
-
-
-def save_reader(data_dir, url, secret):
-    """رابط الخدمة وسرّها من صفحة المدير؛ والسرّ الفارغ يُبقي المحفوظ."""
-    url = str(url or "").strip().rstrip("/")
-    if url and not re.match(r"^https?://[^\s/]+", url):
-        raise ValueError("رابط خدمة الواتساب يبدأ بـ https://")
-    with _lock:
-        s = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
-        s["reader_url"] = url
-        if str(secret or "").strip():
-            s["reader_secret"] = crypto_store.encrypt(str(secret).strip(), data_dir)
-        _write(os.path.join(_dir(data_dir), SETTINGS), s)
+    """← {url, secret, token, embedded}: الخدمة المدمجة (افتراضًا) أو الخارجية من البيئة؛ وtoken رمز
+    توقيع الرسائل الواردة."""
+    url = os.environ.get("WHATSAPP_READER_URL", "").strip().rstrip("/")
+    if url:
+        secret = os.environ.get("WHATSAPP_READER_SECRET", "").strip()
+    else:
+        url, secret = f"http://127.0.0.1:{EMBED_PORT}", _secret(data_dir, "reader_embed_secret")
+    return {"url": url, "secret": secret, "token": _secret(data_dir, "reader_token"),
+            "embedded": url == f"http://127.0.0.1:{EMBED_PORT}"}
 
 
 def save_settings(data_dir, new):

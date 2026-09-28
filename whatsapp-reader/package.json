@@ -1,0 +1,21 @@
+{
+  "name": "souq-whatsapp-reader",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-session WhatsApp reader for Souq's فواتير واتساب: joins each business's Invoice group and forwards messages to that business's ingest endpoint. Runs as its own container, separate from the Laravel app image.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "baileys": "7.0.0-rc13",
+    "express": "^4.21.2",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}
