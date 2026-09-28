@@ -16,6 +16,13 @@
   GET  /user_reseller.php?action=get_package&package_id=..  → JSON بوكيهات
   POST /user_reseller.php (submit_user=1)  → إنشاء اليوزر
   GET  /table_search.php?search[value]=..  → صف اللاين المُنشأ
+  GET  /user_reseller.php?id=<id>     → نموذج تعديل اليوزر (كـ XtreamUI): edit مخفيّ،
+                                        الاسم وكلمة المرور مملوءان، باقةٌ فارغة = «بلا
+                                        تغيير»، selected_bouquets فارغ (تملؤه الواجهة)
+  POST /user_reseller.php (edit=<id>) → تعديل. نُمذِج أخطارها عمدًا: باقةٌ مُرسَلة =
+                                        تمديد مدفوع، بوكيهات فارغة = مسح القنوات،
+                                        كلمة مرور فارغة = توليد جديدة
+  GET  /__lines                       → اللاينات كما في «قاعدتها» (للاختبار فقط)
   أي مسار محمي بلا جلسة → 302 /login
 """
 import sys
@@ -59,6 +66,11 @@ BOUQUETS = {1: [1, 2, 3], 3: [1, 2, 3, 4, 5], 12: [1, 2, 3, 4, 5, 6, 7], 15: [1,
 # extend_fail = لوحة تقبل الإنشاء لكن تمديدها يفشل (لاختبار «أُنشئ بالباقة الأساسية فقط»).
 EXTEND_FAIL = VARIANT == "extend_fail"
 EXTENDS = []    # (line id, package) لكل تمديد ناجح
+# lockuser = لوحة تقفل حقل اسم المستخدم في نموذج التعديل (الموزّع لا يغيّره).
+LOCK_USER = VARIANT == "lockuser"
+# jsbq = جدول بوكيهات نموذج التعديل يُرسم بالجافاسكربت (فارغٌ في HTML الخام).
+JS_BQ = VARIANT == "jsbq"
+EDITS = []      # (line id, form) لكل تعديل وصل
 
 
 class H(BaseHTTPRequestHandler):
@@ -105,6 +117,9 @@ class H(BaseHTTPRequestHandler):
 
         if path == "/token.php":
             return self._send(200, secrets.token_urlsafe(32), "text/plain")
+        if path == "/__lines":                    # للاختبار فقط: حالة اللاينات (بلا جلسة)
+            return self._send(200, json.dumps({"lines": LINES, "edits": EDITS, "extends": EXTENDS}),
+                              "application/json")
 
         # بوابة التحقّق البشري
         if not self._has_human() and path not in ("/token.php",):
@@ -152,6 +167,29 @@ class H(BaseHTTPRequestHandler):
             pid = int(qs.get("package_id", ["0"])[0] or 0)
             body = json.dumps({"bouquets": [{"id": b} for b in BOUQUETS.get(pid, [])]})
             return self._send(200, body, "application/json", hdr)
+
+        if path == "/user_reseller.php" and qs.get("id") and not NOCAP:   # نموذج التعديل
+            ln = next((l for l in LINES if l["id"] == qs["id"][0]), None)
+            if not ln:
+                return self._send(200, '<div class="alert alert-danger">User not found</div>', headers=hdr)
+            opts = "".join('<option value="%d">%s</option>' % (i, t) for i, t in PACKAGES)
+            rows = "".join('<tr%s><td>%d</td><td>Bouquet %d</td></tr>'
+                           % (' class="selected"' if str(b) in ln["bouquets"] else "", b, b)
+                           for b in range(1, 8)) if not JS_BQ else ""
+            lock = " disabled" if LOCK_USER else ""
+            html = ('<!DOCTYPE html><html><body>'
+                    '<form id="user_form" action="./user_reseller.php?id=%s" method="post">'
+                    '<input type="hidden" name="edit" value="%s">'
+                    '<input type="hidden" name="member_id" value="8842">'
+                    '<input type="hidden" name="selected_bouquets" id="selected_bouquets" value="">'
+                    '<input type="text" name="username" value="%s"%s>'
+                    '<input type="text" name="password" value="%s">'
+                    '<select name="package"><option value="">-- لا تغيير --</option>%s</select>'
+                    '<textarea name="reseller_notes">note</textarea>'
+                    '<table id="datatable-bouquets"><tbody>%s</tbody></table>'
+                    '<button type="submit" name="submit_user" value="1">Save</button></form>'
+                    '</body></html>') % (ln["id"], ln["id"], ln["username"], lock, ln["password"], opts, rows)
+            return self._send(200, html, headers=hdr)
 
         if path == "/user_reseller_extend_modal.php" and not NOCAP:
             lid = qs.get("id", [""])[0]
@@ -271,6 +309,26 @@ class H(BaseHTTPRequestHandler):
 
         if not SESSIONS[sid].get("auth"):
             return self._send(302, b"", "text/plain", {**hdr, "Location": LOGIN_PATH})
+
+        if path == "/user_reseller.php" and form.get("edit") and form.get("submit_user") == "1":
+            ln = next((l for l in LINES if l["id"] == form["edit"]), None)
+            EDITS.append((form["edit"], form))
+            if not ln:
+                return self._send(200, '<div class="alert alert-danger">User not found</div>', headers=hdr)
+            if LOCK_USER and form.get("username") and form["username"] != ln["username"]:
+                return self._send(200, '<div class="alert alert-danger">You cannot change the username</div>', headers=hdr)
+            new_u = form.get("username") or ln["username"]
+            if any(l is not ln and l["username"] == new_u for l in LINES):
+                return self._send(200, '<div class="alert alert-danger">Username already exists</div>', headers=hdr)
+            if form.get("package"):                  # تمديدٌ مدفوع — لا يجوز أن يُرسَل
+                y, m, d = (int(x) for x in ln["end"].split("-"))
+                m += int(form["package"])
+                y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+                ln["end"] = "%04d-%02d-%02d" % (y, m, d)
+            ln["bouquets"] = form.get("selected_bouquets", "")      # فارغٌ = مُسحت القنوات
+            ln["username"] = new_u
+            ln["password"] = form.get("password") or secrets.token_hex(4)   # فارغٌ = ولّدت اللوحة
+            return self._send(302, b"", "text/plain", {**hdr, "Location": "./users.php?saved=1"})
 
         if path in ("/user_reseller.php", "/line.php", "/user.php") and form.get("submit_user") == "1":
             uname = form.get("username", "")

@@ -69,6 +69,144 @@ class LoginFailed(Exception):
         self.code = code
 
 
+class EditUnsupported(RuntimeError):
+    """تعديل اليوزر غير متاحٍ من جلسة الموزّع (لا صفحة تعديل، أو الحقل مقفل، أو
+    تعذّر ما يُحفظ به الخط سليمًا). يُرفع **قبل** أي إرسال — فلم يتغيّر شيء."""
+
+
+# ----------------------------- نماذج HTML (تعديل يوزر) -----------------------------
+# قراءةٌ عامّة لأي نموذج كما يرسله المتصفح: كل حقلٍ بقيمته، والمعطَّل لا يُرسَل،
+# والمربّعات المؤشَّرة وحدها، وخيارات select المحدَّدة (أو أولها). فيُرسَل نموذج
+# التعديل كما لو فتحه إنسانٌ وغيّر خانةً واحدة ثم ضغط «حفظ».
+_RE_FORM_BLOCK = re.compile(r"<form\b([^>]*)>(.*?)</form>", re.I | re.S)
+_RE_INPUT_TAG = re.compile(r"<input\b([^>]*)>", re.I)
+_RE_SELECT_BLOCK = re.compile(r"<select\b([^>]*)>(.*?)</select>", re.I | re.S)
+_RE_TEXTAREA_BLOCK = re.compile(r"<textarea\b([^>]*)>(.*?)</textarea>", re.I | re.S)
+_RE_BUTTON_TAG = re.compile(r"<button\b([^>]*)>", re.I)
+_RE_OPTION_TAG = re.compile(r"<option\b([^>]*)>(.*?)(?=<option\b|</option>|$)", re.I | re.S)
+_MASKED = re.compile(r"^[\*•●·x]{3,}$", re.I)
+
+
+def _attr(attrs: str, name: str):
+    """قيمة سمة (مقتبسة أو لا)، أو None إن غابت."""
+    m = re.search(r"""(?<![\w-])%s\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))""" % re.escape(name),
+                  attrs or "", re.I)
+    if not m:
+        return None
+    return _html.unescape(next(g for g in m.groups() if g is not None))
+
+
+def _flag(attrs: str, name: str) -> bool:
+    """سمةٌ منطقية (disabled/readonly/checked/selected/multiple) — بعد حذف القيم
+    المقتبسة، فلا يُعدّ class="btn disabled" تعطيلًا."""
+    bare = re.sub(r"""=\s*("[^"]*"|'[^']*')""", "=", attrs or "")
+    return bool(re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(name), bare, re.I))
+
+
+def parse_forms(html: str) -> list:
+    """كل نماذج الصفحة: [{action, method, id, fields:[{kind,name,type,value,disabled,
+    readonly,checked,multiple,options:[(value,text,selected)]}]}]."""
+    out = []
+    for fm in _RE_FORM_BLOCK.finditer(html or ""):
+        attrs, inner = fm.group(1), fm.group(2)
+        fields = []
+        for im in _RE_INPUT_TAG.finditer(inner):
+            a = im.group(1)
+            fields.append({"kind": "input", "name": _attr(a, "name") or "",
+                           "type": (_attr(a, "type") or "text").lower(),
+                           "value": _attr(a, "value"), "disabled": _flag(a, "disabled"),
+                           "readonly": _flag(a, "readonly"), "checked": _flag(a, "checked")})
+        for sm in _RE_SELECT_BLOCK.finditer(inner):
+            a, body = sm.group(1), sm.group(2)
+            opts = []
+            for om in _RE_OPTION_TAG.finditer(body):
+                oa = om.group(1)
+                text = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", om.group(2)))).strip()
+                val = _attr(oa, "value")
+                opts.append((text if val is None else val, text, _flag(oa, "selected")))
+            fields.append({"kind": "select", "name": _attr(a, "name") or "", "type": "select",
+                           "value": None, "disabled": _flag(a, "disabled"), "readonly": False,
+                           "checked": False, "multiple": _flag(a, "multiple"), "options": opts})
+        for tm in _RE_TEXTAREA_BLOCK.finditer(inner):
+            a = tm.group(1)
+            fields.append({"kind": "textarea", "name": _attr(a, "name") or "", "type": "textarea",
+                           "value": _html.unescape(tm.group(2)), "disabled": _flag(a, "disabled"),
+                           "readonly": _flag(a, "readonly"), "checked": False})
+        for bm in _RE_BUTTON_TAG.finditer(inner):
+            a = bm.group(1)
+            fields.append({"kind": "button", "name": _attr(a, "name") or "",
+                           "type": (_attr(a, "type") or "submit").lower(),
+                           "value": _attr(a, "value"), "disabled": _flag(a, "disabled"),
+                           "readonly": False, "checked": False})
+        out.append({"action": _attr(attrs, "action") or "", "method": (_attr(attrs, "method") or "get").lower(),
+                    "id": _attr(attrs, "id") or "", "fields": fields})
+    return out
+
+
+def serialize_form(fields) -> list:
+    """أزواج (اسم، قيمة) كما يرسلها المتصفح بلا نقرٍ على شيء (بلا زرّ الإرسال)."""
+    out = []
+    for f in fields:
+        name = f.get("name")
+        if not name or f.get("disabled"):
+            continue
+        kind, typ = f.get("kind"), f.get("type")
+        if kind == "button" or typ in ("submit", "button", "image", "reset", "file"):
+            continue
+        if kind == "select":
+            opts = f.get("options") or []
+            chosen = [v for v, _t, sel in opts if sel]
+            if f.get("multiple"):
+                out += [(name, v) for v in chosen]
+            elif chosen:
+                out.append((name, chosen[-1]))
+            elif opts:
+                out.append((name, opts[0][0]))
+            continue
+        if typ in ("checkbox", "radio"):
+            if f.get("checked"):
+                out.append((name, f.get("value") if f.get("value") is not None else "on"))
+            continue
+        out.append((name, f.get("value") or ""))
+    return out
+
+
+def _submit_pair(fields):
+    """زرّ الإرسال في النموذج (الاسم والقيمة) — لوحات Xtream تنتظر submit_user=1."""
+    for f in fields:
+        if f.get("name") and (f.get("kind") == "button" or f.get("type") in ("submit", "image")) \
+                and not f.get("disabled"):
+            return f["name"], (f.get("value") if f.get("value") not in (None, "") else "1")
+    return None
+
+
+def _row_links(raw: str, line_id: str) -> list:
+    """روابط صفٍّ في جدول اللوحة تحمل معرّف الخط وتبدو «تعديلًا» (لا حذفًا ولا
+    تمديدًا ولا تنزيلًا) — أوّل ما يُجرَّب لصفحة التعديل."""
+    lid = str(line_id or "")
+    if not lid:
+        return []
+    found = []
+    for m in re.finditer(r"""(?:href|data-href|data-url|data-remote)\s*=\s*(?:"([^"]+)"|'([^']+)')""",
+                         raw or "", re.I):
+        found.append(_html.unescape(m.group(1) or m.group(2)))
+    for m in re.finditer(r"""location(?:\.href)?\s*=\s*\\?['"]([^'"\\]+)""", raw or "", re.I):
+        found.append(_html.unescape(m.group(1)))
+    out = []
+    for u in found:
+        u = u.strip().replace("\\/", "/")
+        if not u or u.startswith(("#", "javascript:", "mailto:")):
+            continue
+        if not re.search(r"(?<!\d)%s(?!\d)" % re.escape(lid), u):
+            continue
+        if re.search(r"extend|renew|delete|remove|kill|disable|enable|ban|block|download|m3u|"
+                     r"playlist|export|logout|reset|restart|lock", u, re.I):
+            continue
+        if u not in out:
+            out.append(u)
+    return out
+
+
 # ----------------------------- OCR (اختياري) -----------------------------
 _OCR_STATE = {"checked": False, "ok": False}
 
@@ -1039,6 +1177,214 @@ class PanelWebSession:
                 "credits": (resp.get("new_credits") if isinstance(resp, dict) else None),
                 "line_id": before["id"], "package": opt["text"], "verified": True}
 
+    # ---- تغيير اسم يوزرٍ قائم (الاشتراكات المجزّأة) ----
+    # صفحة التعديل غير موثّقة، فتُجرَّب: روابطُ صفّ اليوزر نفسه في الجدول، ثم مساراتٌ
+    # معتادة للوحات Xtream — ويُحفظ أوّل ما نجح (كصفحة الإضافة). ولا يُرسَل نموذجٌ إلا
+    # إن كان **نموذج هذا اليوزر بعينه**: مملوءًا باسمه ويحمل معرّف خطّه في حقلٍ مخفيّ
+    # أو في مسار إرساله — فلا يُرسَل نموذج «إضافة» أبدًا (يُنشئ خطًّا ويخصم نقاطًا).
+    EDIT_CANDIDATES = ("/user_reseller.php?id={id}", "/user_reseller.php?edit={id}",
+                       "/user_reseller_edit_modal.php?id={id}", "/user.php?id={id}",
+                       "/line.php?id={id}")
+    _USER_FIELDS = ("username", "user_name", "login", "user")
+    _PASS_FIELDS = ("password", "pass", "user_password")
+
+    @classmethod
+    def _pick_edit_form(cls, page: str, line_id, username: str):
+        """نموذج تعديل هذا اليوزر من الصفحة، أو None: حقلُ الاسم مملوءٌ باسمه الحالي
+        (نموذج الإضافة فارغٌ أو باسمٍ مولَّد) ومعرّفُ الخط في حقلٍ مخفيّ أو في مسار
+        الإرسال الذي كتبته اللوحة نفسها (لا المسار الذي فتحناه نحن)."""
+        lid = str(line_id or "")
+        for form in parse_forms(page):
+            fs = form["fields"]
+            uf = next((f for f in fs if f["kind"] == "input" and f["name"].lower() in cls._USER_FIELDS), None)
+            pf = next((f for f in fs if f["kind"] == "input" and f["name"].lower() in cls._PASS_FIELDS), None)
+            if not uf or not pf or (uf.get("value") or "").strip() != username:
+                continue
+            marked = lid and (
+                any(f["kind"] == "input" and f["type"] == "hidden" and (f.get("value") or "").strip() == lid
+                    for f in fs)
+                or re.search(r"(?<!\d)%s(?!\d)" % re.escape(lid), form["action"] or ""))
+            if marked:
+                return {"form": form, "user": uf, "pass": pf}
+        return None
+
+    def _edit_form(self, line_id, username: str, links=()):
+        """(نموذج التعديل، مسار صفحته، الصفحة) — أو EditUnsupported إن لم يوجد."""
+        tried = []
+        known = self._meta().get("edit_url") or ""
+        for tpl in dict.fromkeys(([known] if known else []) + list(links) + list(self.EDIT_CANDIDATES)):
+            url = tpl.replace("{id}", urllib.parse.quote(str(line_id)))
+            if not url.startswith("/") and not re.match(r"^https?://", url):
+                url = urllib.parse.urljoin(self.base + "/", url)
+            r = self._request(url, headers={"X-Requested-With": "XMLHttpRequest"} if "modal" in url.lower() else None)
+            st, loc = r.get("status", 0), (r.get("location") or "").lower()
+            if st >= 300 or "login" in loc:
+                tried.append("%s → %s" % (url.replace(self.base, ""), st))
+                continue
+            page = self._text(r)
+            picked = self._pick_edit_form(page, line_id, username)
+            if picked:
+                if "{id}" in tpl:
+                    self._save_meta(edit_url=tpl)
+                return picked, url, page
+            tried.append("%s → لا نموذج لهذا اليوزر" % url.replace(self.base, ""))
+        raise EditUnsupported("لم أجد صفحة تعديل اليوزر في اللوحة — غيّر اسم المستخدم من اللوحة يدويًا"
+                              " (جرّبت: %s)" % "، ".join(tried[:5]))
+
+    @staticmethod
+    def _set_pair(pairs, name, value):
+        """يضبط قيمة حقلٍ واحد (ويضيفه إن غاب)، ولا يمسّ غيره."""
+        out, done = [], False
+        for k, v in pairs:
+            if k == name:
+                if not done:
+                    out.append((k, value))
+                    done = True
+                continue
+            out.append((k, v))
+        if not done:
+            out.append((name, value))
+        return out
+
+    def _keep_password(self, picked, pairs, current_password):
+        """كلمة المرور تبقى كما هي. حقلٌ فارغ قد يعني عند اللوحة «ولّد كلمة جديدة»،
+        وحقلٌ مقنَّع (****) يُحفظ نجومًا — فيُملآن بالحالية؛ وقيمةٌ أخرى تُوقف."""
+        pf = picked["pass"]
+        if pf.get("disabled"):
+            return pairs                        # لا يُرسَل أصلًا: تبقى المحفوظة
+        val = (pf.get("value") or "").strip()
+        if val and val == current_password:
+            return pairs
+        if (not val or _MASKED.match(val)) and current_password:
+            return self._set_pair(pairs, pf["name"], current_password)
+        if not current_password:
+            raise EditUnsupported("تعذّر قراءة كلمة المرور الحالية للخط — غيّر اسم المستخدم يدويًا")
+        raise EditUnsupported("كلمة المرور في صفحة التعديل تخالف كلمة الخط — غيّر اسم المستخدم يدويًا")
+
+    def _package_id_by_name(self, name):
+        """معرّف باقةٍ من اسمها كما في قائمة الإضافة (المسافات لا تُحسب)، أو ""."""
+        norm = lambda t: re.sub(r"\s+", "", str(t or ""))
+        want = norm(name)
+        if not want:
+            return ""
+        try:
+            return next((str(p.get("value") or p.get("id")) for p in self.packages()
+                         if want in (norm(p.get("text")), norm(p.get("name")))), "")
+        except Exception:
+            return ""
+
+    def _fill_bouquets(self, picked, pairs, page, package_hint=""):
+        """البوكيهات (القنوات): حقلٌ تملؤه واجهة اللوحة بالجافاسكربت عادةً. إن جاء فارغًا
+        نملؤه بما للخط (الصفوف المحدَّدة في جدول بوكيهات الصفحة، وإلا بوكيهات باقته كما
+        يرسلها الإنشاء نفسه — الباقة من النموذج أو باسمها) — وإلا نتوقّف: نموذجٌ بلا
+        بوكيهات قد يمسح قنوات العميل."""
+        fs = picked["form"]["fields"]
+        names = [f["name"] for f in fs if f["name"] and re.search(r"bouquet", f["name"], re.I)
+                 and not f.get("disabled")]
+        for name in dict.fromkeys(names):
+            vals = [v for k, v in pairs if k == name and str(v).strip() not in ("", "[]", "null")]
+            if vals:
+                continue
+            ids = []
+            for tm in re.finditer(r"<table\b[^>]*bouquet[^>]*>(.*?)</table>", page, re.I | re.S):
+                for tr in re.finditer(r"<tr\b([^>]*)>(.*?)</tr>", tm.group(1), re.I | re.S):
+                    if re.search(r"\bselected\b", _attr(tr.group(1), "class") or "", re.I):
+                        td = re.search(r"<td\b[^>]*>\s*(\d+)\s*</td>", tr.group(2), re.I)
+                        if td:
+                            ids.append(int(td.group(1)))
+            if not ids:
+                pkg = next((v for k, v in serialize_form(fs) if re.search(r"package", k, re.I) and v), "") \
+                    or self._package_id_by_name(package_hint)
+                if pkg:
+                    ids, _why = self._package_bouquets(pkg, page)
+            if not ids:
+                raise EditUnsupported("تعذّر قراءة بوكيهات الخط من صفحة التعديل — غيّر اسم المستخدم "
+                                      "يدويًا لئلا تُمسح قنواته")
+            f = next(x for x in fs if x["name"] == name)
+            if f["kind"] == "input" and f["type"] not in ("checkbox", "radio"):
+                pairs = self._set_pair(pairs, name, json.dumps(ids))
+            else:
+                pairs = [(k, v) for k, v in pairs if k != name] + [(name, str(i)) for i in ids]
+        return pairs
+
+    def _submit_edit(self, picked, url, page, new_username, current_password, blank_package=True,
+                     package_hint=""):
+        """يرسل نموذج التعديل باسمٍ جديد وحده (نقطة اللاعودة)، ويرجّع نصّ الردّ.
+        كل ما قبل الإرسال يرفع EditUnsupported إن لم يصلح — فلا يتغيّر شيء."""
+        uf = picked["user"]
+        if uf.get("disabled") or uf.get("readonly"):
+            raise EditUnsupported("اللوحة لا تسمح للموزّع بتغيير اسم المستخدم — غيّره من اللوحة يدويًا")
+        fs = picked["form"]["fields"]
+        pairs = serialize_form(fs)
+        pairs = self._set_pair(pairs, uf["name"], new_username)
+        pairs = self._keep_password(picked, pairs, current_password)
+        pairs = self._fill_bouquets(picked, pairs, page, package_hint)
+        if blank_package:
+            # في نموذج التعديل خيارٌ فارغ للباقة = «بلا تغيير»؛ أيُّ باقةٍ تُرسَل قد تُفهم
+            # تمديدًا يخصم نقاطًا ويغيّر الانتهاء — فلا تُرسَل.
+            for f in fs:
+                if f["kind"] == "select" and re.search(r"package", f["name"], re.I) \
+                        and any(v == "" for v, _t, _s in f.get("options") or []):
+                    pairs = self._set_pair(pairs, f["name"], "")
+        sub = _submit_pair(fs) or ("submit_user", "1")
+        if not any(k == sub[0] for k, _ in pairs):
+            pairs.append(sub)
+        page_abs = self._abs(url)
+        action = urllib.parse.urljoin(page_abs, picked["form"]["action"]) if picked["form"]["action"] else page_abs
+        r = self._request(action, data=pairs, headers={"X-Requested-With": "XMLHttpRequest", "Referer": page_abs})
+        return self._text(r)
+
+    def edit_line(self, username: str, new_username: str, line_id: str = "", package: str = "") -> dict:
+        """يغيّر اسم يوزرٍ قائم على اللوحة وكلمةُ مروره كما هي، ثم يتحقّق من الجدول:
+        الاسم الجديد ظاهر، بكلمة المرور نفسها، وتاريخ الانتهاء نفسه.
+        يرجّع {verified, line_id, exp, password, already?}. EditUnsupported = لم يُرسَل
+        شيء؛ RuntimeError بعد الإرسال = راجع اللوحة (قد يكون حُفظ)."""
+        username, new_username = str(username or "").strip(), str(new_username or "").strip()
+        if not username or not new_username or new_username == username:
+            raise ValueError("اسمٌ جديد مختلف مطلوب")
+        self.ensure_login()
+        # ١) أُخذ في محاولةٍ سابقة ضاع ردّها؟ — نجاحٌ بلا إرسالٍ ثانٍ
+        done = self._search_line(new_username, force=True)
+        if done.get("user") == new_username:
+            return {"already": True, "verified": True, "line_id": done.get("id", ""),
+                    "exp": done.get("end", ""), "password": done.get("pass", "")}
+        # ٢) الخط كما هو الآن (ومعه روابط صفّه)
+        t = self._table_query(username, 10, force=True, raw=True)
+        before, raw = {}, ""
+        for row, rs in zip(t["rows"], t.get("raw") or []):
+            if row.get("user") == username:
+                before, raw = row, rs
+                break
+        lid = before.get("id") or str(line_id or "")
+        if not before or not lid:
+            raise EditUnsupported("اليوزر %s غير موجود في جدول اللوحة — لا يُعدَّل ما لا يُرى" % username)
+        picked, url, page = self._edit_form(lid, username, _row_links(raw, lid))
+        # ٣) الإرسال
+        reply = self._submit_edit(picked, url, page, new_username, before.get("pass", ""),
+                                  package_hint=package or before.get("package", ""))
+        # ٤) التحقّق من الجدول نفسه
+        after = {}
+        for i in range(6):
+            try:
+                after = self._search_line(new_username, force=True)
+            except Exception:
+                after = {}
+            if after.get("user") == new_username:
+                break
+            if i < 5:
+                time.sleep(1.2)
+        if after.get("user") != new_username:
+            why = self._add_error(reply)
+            raise RuntimeError("أُرسل التعديل لكن الاسم الجديد لم يظهر في جدول اللوحة%s — راجع اللوحة"
+                               % ((": " + why) if why else ""))
+        if before.get("pass") and after.get("pass") and after["pass"] != before["pass"]:
+            raise RuntimeError("تغيّر الاسم لكن كلمة المرور تغيّرت أيضًا (%s) — راجع اللوحة" % after["pass"])
+        if before.get("end") and after.get("end") and after["end"] != before["end"]:
+            raise RuntimeError("تغيّر الاسم لكن تغيّر تاريخ الانتهاء أيضًا (%s ← %s) — راجع اللوحة"
+                               % (before["end"], after["end"]))
+        return {"verified": True, "line_id": after.get("id") or lid, "exp": after.get("end", ""),
+                "password": after.get("pass", "")}
+
     # ---- حالة اللوحة (الرصيد + أرقام لوحة المعلومات) ----
     # الجذر "/" في لوحات كثيرة يردّ تحويلًا (30x) بجسم فارغ إلى لوحة المعلومات،
     # فنتبع التحويل ونجرّب مساراتها المعروفة حتى نصل لصفحة فيها الرصيد فعلًا.
@@ -1175,10 +1521,11 @@ class PanelWebSession:
     _TABLE_COLS = 12
 
     def _table_query(self, term: str = "", length: int = 10, force: bool = False,
-                     created_from: str = "", created_to: str = "") -> dict:
+                     created_from: str = "", created_to: str = "", raw: bool = False) -> dict:
         """استعلام جدول اللاينات (table_search.php) بنفس معاملات DataTables التي تطلبها
         اللوحة (id=users + الأعمدة كاملة) — وإلا رجّع لا شيء — مرتَّبًا من الأحدث.
-        يرجّع {"rows": [صفوف مفكَّكة], "total": العدد الكلي إن أعلنته اللوحة}."""
+        يرجّع {"rows": [صفوف مفكَّكة], "total": العدد الكلي إن أعلنته اللوحة}، ومعه
+        "raw" (نصّ كل صفٍّ كما ورد، بترتيب rows) حين raw=True — لقراءة روابط الصف."""
         params = [("draw", "1")]
         for i in range(self._TABLE_COLS):
             params += [
@@ -1199,7 +1546,7 @@ class PanelWebSession:
             ("_", str(int(time.time() * 1000))),
         ]
         if self._meta().get("no_table_search") and not force:
-            return {"rows": [], "total": None}
+            return {"rows": [], "total": None, **({"raw": []} if raw else {})}
         r = self._request("/table_search.php?" + urllib.parse.urlencode(params),
                           headers={"X-Requested-With": "XMLHttpRequest"})
         try:
@@ -1209,17 +1556,22 @@ class PanelWebSession:
             # نحفظ ذلك فلا نكرر النداء ولا ننتظر تأكيدًا لن يأتي بعد كل إنشاء.
             if r.get("status", 0) < 500:
                 self._save_meta(no_table_search=True)
-            return {"rows": [], "total": None}
-        rows = []
+            return {"rows": [], "total": None, **({"raw": []} if raw else {})}
+        rows, raws = [], []
         for row in (j.get("data") or []):
             s = " ".join(str(c) for c in row) if isinstance(row, list) else str(row)
             parsed = self._parse_row(s)
             if parsed:
                 rows.append(parsed)
+                if raw:
+                    raws.append(s)
         total = j.get("recordsTotal")
         filtered = j.get("recordsFiltered")
-        return {"rows": rows, "total": _to_num(total) if total is not None else None,
-                "filtered": _to_num(filtered) if filtered is not None else None}
+        out = {"rows": rows, "total": _to_num(total) if total is not None else None,
+               "filtered": _to_num(filtered) if filtered is not None else None}
+        if raw:
+            out["raw"] = raws
+        return out
 
     @staticmethod
     def _today() -> str:
@@ -1819,6 +2171,107 @@ class CasperWebSession(PanelWebSession):
             return self._submit_new(package_id, pw, live, vod)
         except Exception:
             return None
+
+    # ---- تغيير اسم يوزر (الاشتراكات المجزّأة) ----
+    # كالأب في حرّاسه، ويختلف في الموضع: الصفّ من فلتر الخادم، وصفحة التعديل من
+    # روابط خياراته أو من مسارات Form المعتادة، والبوكيهات liveBq[]/vodBq[] — والباقة
+    # تُرسَل كما هي (نموذج كاسبر يطلبها)، ويُتحقَّق بعدها أن الانتهاء لم يتغيّر.
+    CASPER_EDIT_CANDIDATES = ("index.php/users/Form?t=edit&id={id}",
+                              "index.php/users/Form?t=edit&userid={id}",
+                              "index.php/users/Form?id={id}&t=edit",
+                              "index.php/users/edit/{id}", "index.php/users/Form/edit/{id}")
+
+    def _user_row(self, u):
+        """(صفّ اليوزر، نصّ صفّه الخام) من فلتر الخادم — لقراءة روابط خياراته."""
+        html = self._text(self._request(self._u("index.php/users/index?username=" + urllib.parse.quote(u))))
+        m = self._RE_TBODY.search(html)
+        for tr in re.finditer(r"<tr\b[^>]*>.*?</tr>", m.group(1) if m else "", re.I | re.S):
+            rows = self._parse_users_page("<tbody>%s</tbody>" % tr.group(0))
+            if rows and rows[0]["username"] == u:
+                return rows[0], tr.group(0)
+        return None, ""
+
+    def _edit_form(self, line_id, username: str, links=()):
+        tried = []
+        known = self._meta().get("casper_edit_url") or ""
+        list_url = self._abs(self._u("index.php/users/index"))
+        for tpl in dict.fromkeys(([known] if known else []) + list(links) + list(self.CASPER_EDIT_CANDIDATES)):
+            rel = tpl.replace("{id}", urllib.parse.quote(str(line_id)))
+            if re.match(r"^https?://", rel) or rel.startswith("/"):
+                url = rel
+            elif "{id}" in tpl:
+                url = self._u(rel)                  # مسارٌ معتاد: داخل سياق اللوحة
+            else:
+                url = urllib.parse.urljoin(list_url, rel)   # رابط صفٍّ: نسبةً لصفحة القائمة
+            r = self._request(url)
+            st, loc = r.get("status", 0), (r.get("location") or "").lower()
+            if st >= 300 or "login" in loc:
+                tried.append("%s → %s" % (url.replace(self.base, ""), st))
+                continue
+            page = self._text(r)
+            picked = self._pick_edit_form(page, line_id, username)
+            if picked:
+                if "{id}" in tpl:
+                    self._save_meta(casper_edit_url=tpl)
+                return picked, url, page
+            tried.append("%s → لا نموذج لهذا اليوزر" % url.replace(self.base, ""))
+        raise EditUnsupported("لم أجد صفحة تعديل اليوزر في لوحة كاسبر — غيّر اسم المستخدم من اللوحة يدويًا"
+                              " (جرّبت: %s)" % "، ".join(tried[:5]))
+
+    def edit_line(self, username: str, new_username: str, line_id: str = "", package: str = "") -> dict:
+        """يغيّر اسم يوزرٍ على كاسبر وكلمةُ مروره كما هي، ثم يتحقّق من القائمة (انظر الأب)."""
+        username, new_username = str(username or "").strip(), str(new_username or "").strip()
+        if not username or not new_username or new_username == username:
+            raise ValueError("اسمٌ جديد مختلف مطلوب")
+        self.ensure_login()
+        done = self._find_user(new_username)
+        if done:                                # أُخذ في محاولةٍ سابقة ضاع ردّها
+            return {"already": True, "verified": True, "line_id": done.get("id", ""),
+                    "exp": done.get("exp", ""), "password": done.get("password", "")}
+        before, raw = self._user_row(username)
+        lid = (before or {}).get("id") or str(line_id or "")
+        if not before or not lid:
+            raise EditUnsupported("اليوزر %s غير موجود في لوحة كاسبر — لا يُعدَّل ما لا يُرى" % username)
+        picked, url, page = self._edit_form(lid, username, _row_links(raw, lid))
+        uf = picked["user"]
+        if uf.get("disabled") or uf.get("readonly"):
+            raise EditUnsupported("لوحة كاسبر لا تسمح للموزّع بتغيير اسم المستخدم — غيّره من اللوحة يدويًا")
+        fs = picked["form"]["fields"]
+        pairs = serialize_form(fs)
+        pairs = self._set_pair(pairs, uf["name"], new_username)
+        pairs = self._keep_password(picked, pairs, before.get("password", ""))
+        bq = [f["name"] for f in fs if f["name"] in ("liveBq[]", "vodBq[]") and not f.get("disabled")]
+        if bq and not any(k in bq and v for k, v in pairs):
+            pkg = next((v for k, v in pairs if k == "package" and v), "") \
+                or self._package_id_by_name(package or before.get("package", ""))
+            live, vod = self._bouquets_for(pkg) if pkg else ([], [])
+            if not live and not vod:
+                raise EditUnsupported("تعذّر قراءة بوكيهات الخط من لوحة كاسبر — غيّر اسم المستخدم يدويًا "
+                                      "لئلا تُمسح قنواته")
+            pairs = [(k, v) for k, v in pairs if k not in ("liveBq[]", "vodBq[]")] \
+                + [("liveBq[]", x) for x in live] + [("vodBq[]", x) for x in vod]
+        sub = _submit_pair(fs)
+        if sub and not any(k == sub[0] for k, _ in pairs):
+            pairs.append(sub)
+        page_abs = self._abs(url)
+        action = urllib.parse.urljoin(page_abs, picked["form"]["action"]) if picked["form"]["action"] else page_abs
+        self._request(action, data=pairs, headers={"Referer": page_abs})      # نقطة اللاعودة
+        after = None
+        for attempt in range(6):
+            if attempt:
+                time.sleep(min(attempt, 2))
+            after = self._find_user(new_username)
+            if after:
+                break
+        if not after:
+            raise RuntimeError("أُرسل التعديل لكن الاسم الجديد لم يظهر في لوحة كاسبر — راجع اللوحة")
+        if before.get("password") and after.get("password") and after["password"] != before["password"]:
+            raise RuntimeError("تغيّر الاسم لكن كلمة المرور تغيّرت أيضًا (%s) — راجع اللوحة" % after["password"])
+        if before.get("exp") and after.get("exp") and after["exp"][:10] != before["exp"][:10]:
+            raise RuntimeError("تغيّر الاسم لكن تغيّر تاريخ الانتهاء أيضًا (%s ← %s) — راجع اللوحة"
+                               % (before["exp"][:10], after["exp"][:10]))
+        return {"verified": True, "line_id": after.get("id") or lid, "exp": after.get("exp", ""),
+                "password": after.get("password", "")}
 
 
 def _to_num(s):

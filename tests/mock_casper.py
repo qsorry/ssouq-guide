@@ -6,6 +6,10 @@
 
 الأعمدة كما في اللوحة: ID · · Reseller · Fullname · Username · Password ·
 Package · Lock · Created · Expire · Notes · MAX Conn. · · Options.
+
+وللاشتراكات المجزّأة: رابط «تعديل» في خيارات كل صف، ونموذج تعديلٍ (Form?t=edit)
+بالاسم وكلمة المرور والبوكيهات المحدَّدة، و doEdit يُنمذِج أخطارها: كلمة مرورٍ
+فارغة تُولَّد جديدة، وبوكيهاتٌ غائبة تُمسح. `edits` يسجّل ما وصل.
 """
 
 import http.server
@@ -39,6 +43,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     ctx = "/iptv"
     _gen = [0]                         # عدّاد اليوزرات المولَّدة من اللوحة
     _lock = threading.Lock()
+    edits = []                         # (id, الحقول) لكل تعديلٍ وصل
 
     def log_message(self, *a):
         pass
@@ -85,10 +90,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "<td></td>"                         # 10 notes
                 "<td>%s</td>"                       # 11 max conn
                 "<td></td>"                         # 12
-                "<td><a>opts</a></td>"              # 13 options
+                "<td><a href='/iptv/index.php/users/Form?t=edit&amp;id=%s'>Edit</a> <a>opts</a></td>"  # 13 options
                 "</tr>" % (u["id"], "online" if u.get("online") else "offline",
                            u["username"], u["password"], u["package"],
-                           u["created"], u["exp"], u["conns"]))
+                           u["created"], u["exp"], u["conns"], u["id"]))
         pag = "".join(
             "<li><a href='/iptv/index.php/users/index?&amp;page=%d'>%d</a></li>" % (p, p)
             for p in range(1, last + 1))
@@ -132,6 +137,30 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "<select name=\"vodBq[]\" id=\"mag_bouquetVod\"></select>"
                 "</form></body></html>" % (u, u))
 
+    def _edit_form_html(self, uid):
+        u = next((x for x in self.users if x["id"] == uid), None)
+        if not u:
+            return None
+        bq = u.get("bq", {"live": ["1", "2"], "vod": ["10"]})
+        pk = {"15 Months": "726", "1 Year": "594", "6 Months": "580", "1 Day": "727"}.get(u["package"], "726")
+        opt = lambda v, t, cur: '<option value="%s"%s>%s</option>' % (v, " selected" if v in cur else "", t)
+        return ("<!DOCTYPE html><html><body>"
+                "<form method=\"POST\" id='frmUsers' action=\"/iptv/index.php/users/doEdit\">"
+                "<input type=\"text\" name=\"username\" value=\"%s\">"
+                "<input type=\"text\" name=\"password\" value=\"%s\" placeholder=\"Leave empty for random password\">"
+                "<input type=\"hidden\" name=\"usernameold\" value=\"%s\">"
+                "<input type=\"hidden\" name=\"t\" value=\"edit\">"
+                "<input type=\"hidden\" name=\"id\" value=\"%s\">"
+                "<select name=\"package\"><option value=\"\">Choose Package</option>%s</select>"
+                "<select name=\"liveBq[]\" multiple>%s</select>"
+                "<select name=\"vodBq[]\" multiple>%s</select>"
+                "<button type=\"submit\" class=\"btn\">Save</button>"
+                "</form></body></html>" % (
+                    u["username"], u["password"], u["username"], u["id"],
+                    "".join(opt(v, t, [pk]) for v, t in (("726", "15 Months"), ("594", "1 Year"), ("580", "6 Months"))),
+                    "".join(opt(v, t, bq["live"]) for v, t in (("1", "Live A"), ("2", "Live B"))),
+                    "".join(opt(v, t, bq["vod"]) for v, t in (("10", "Vod A"),))))
+
     @staticmethod
     def _bouquets_html():
         return ("<select name=\"liveBq[]\" id=\"mag_bouquetLive\">"
@@ -152,6 +181,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             return self._html(200, "<html><body>Dashboard OK Credit : 6303</body></html>")
         if "index.php/users/Form" in p and "t=add" in p:
             return self._html(200, self._add_form_html())
+        if "index.php/users/Form" in p and "t=edit" in p:
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(p).query)
+            html = self._edit_form_html((q.get("id") or [""])[0])
+            return self._html(200 if html else 404, html or "<html>no user</html>")
         if "index.php/users/index" in p:
             q = urllib.parse.parse_qs(urllib.parse.urlparse(p).query)
             if q.get("username"):                # فلتر الخادم بالاسم (كما في اللوحة الحقيقية)
@@ -179,6 +212,22 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             return
         if "global_ajax/getBouquets" in self.path:
             return self._html(200, self._bouquets_html())
+        if "index.php/users/doEdit" in self.path:
+            f = urllib.parse.parse_qs(body, keep_blank_values=True)
+            one = lambda k: (f.get(k) or [""])[0]
+            with self._lock:
+                self.edits.append((one("id"), f))
+                u = next((x for x in self.users if x["id"] == one("id")), None)
+                if not u or one("usernameold") != u["username"]:
+                    return self._html(400, "bad user")
+                new = one("username").strip() or u["username"]
+                if any(x is not u and x["username"] == new for x in self.users):
+                    return self._html(200, "<div class='alert alert-danger'>Username exists</div>")
+                u["username"] = new
+                pw = one("password")
+                u["password"] = pw if pw else "gen%05d" % len(self.edits)   # فارغة = جديدة
+                u["bq"] = {"live": f.get("liveBq[]", []), "vod": f.get("vodBq[]", [])}  # غائبة = مُسحت
+            return self._html(200, "<html><body>OK</body></html>")
         if "index.php/users/doAdd" in self.path:
             fields = urllib.parse.parse_qs(body, keep_blank_values=True)
             user = (fields.get("username") or [""])[0].strip()

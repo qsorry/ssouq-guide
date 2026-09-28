@@ -30,6 +30,9 @@ svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;
 .nav a.out:hover{color:var(--err)}
 .icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none}
 .icon-btn:hover{border-color:var(--go)}
+/* جرس الاشتراكات المجزّأة: شارةٌ بعدد غير المقروء */
+.bell{position:relative}
+.bell .dot{position:absolute;top:-6px;inset-inline-end:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--err);color:#fff;font-size:.7rem;font-weight:700;display:grid;place-items:center;border:2px solid var(--sf)}
 
 /* الهيكل */
 .wrap{max-width:760px;margin:0 auto;padding:16px 14px 60px}
@@ -128,6 +131,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 <body>
 <header class="top">
   <button class="icon-btn" id="themeBtn" title="تبديل السمة" aria-label="تبديل السمة"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <a class="icon-btn bell" id="bellAdm" hidden title="إشعارات الحسابات المتبقية" aria-label="الإشعارات"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot" id="bellAdmN" hidden>0</span></a>
   <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span>
     <span><b>سمارت سوق</b><small id="viewTitle">لوحة الإدارة</small></span></div>
 </header>
@@ -248,6 +252,7 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
     <h2>روابط</h2>
     <a class="ghost linkrow" id="lnkHome"><span>صفحة الإنشاء</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
     <a class="ghost linkrow" id="lnkRenew"><span>خدمة التجديد</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
+    <a class="ghost linkrow" id="lnkRemain"><span>حسابات متبقية (الاشتراكات المجزّأة)</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
     <a class="ghost linkrow out" id="lnkOut"><span>تسجيل الخروج</span><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></a>
   </section>
   <section>
@@ -280,6 +285,10 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
         <button type="button" class="ghost" id="acc_guide_reset" style="margin-top:8px">استرجاع النص الافتراضي</button>
       </div>
     </div>
+    <div class="gate">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_split" style="width:auto"> الاشتراكات المجزّأة لهذا العميل</label>
+      <small class="hint">بيع ٦ أشهر أو ٣ أو شهر من خطٍّ بباقة ١٥ شهرًا (مرح · كاسبر · فالكون). عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> تلقائيًا — كلمة المرور كما هي — ويصير الخط في «حسابات متبقية» جاهزًا للبيع بما تبقّى، مع إشعارٍ وتذكيرٍ بالبريد. مغلقةٌ لغيره فلا يتغيّر عليه شيء.</small>
+    </div>
     <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
     <div id="gates"></div>
     <button class="ghost" id="addGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
@@ -309,6 +318,16 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 let accounts = [];
 let defaultGuideText = "";              // نص الشرح الافتراضي (من الخادم) — يُعبّأ به المربع
 $("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
+$("lnkRemain").href = B + "/remaining"; $("bellAdm").href = B + "/remaining#notes";
+// الجرس: يظهر حين تُفتح الاشتراكات المجزّأة لعميلٍ واحدٍ على الأقل، وشارته غير المقروء.
+async function bellAdm(){
+  try {
+    const d = await (await fetch(B + "/api/split/notes")).json();
+    $("bellAdm").hidden = !d.enabled;
+    $("bellAdmN").hidden = !d.unread; $("bellAdmN").textContent = d.unread > 99 ? "99+" : String(d.unread || 0);
+  } catch(e) {}
+}
+bellAdm(); setInterval(bellAdm, 60000);
 
 // تبديل السمة (يُحفَظ) — نفس مبدأ صفحة اليوزر
 $("themeBtn").onclick = () => {
@@ -347,7 +366,7 @@ function render(){
       </div>`).join("");
     return `<div class="acct" data-acc="${a.id}">
       <div class="ahead" data-toggle="${a.id}">
-        <div class="ai"><b>${esc(a.name)}</b><small>دخول: ${esc(a.user)}${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}</small></div>
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: ${esc(a.user)}${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}</small></div>
         <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="adet">
@@ -431,6 +450,7 @@ function fill(a){
   $("name").value = a?.name || ""; $("user").value = a?.user || "";
   $("acc_guide").value = a?.guide_url || "";
   $("acc_copy_guide").checked = !!a?.copy_guide;
+  $("acc_split").checked = !!a?.split;
   $("acc_guide_text").value = a?.guide_text || defaultGuideText;
   applyCopyGuide();
   $("password").value = "";
@@ -462,7 +482,8 @@ $("acctModal").onclick = e => { if (e.target === $("acctModal")) closeModal(); }
 $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
                 password: $("password").value, guide_url: $("acc_guide").value,
-                copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value, gates: readGates()};
+                copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value,
+                split: $("acc_split").checked, gates: readGates()};
   try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
   catch(e) { say($("msg"), e.message); }
 };
