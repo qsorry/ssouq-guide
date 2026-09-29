@@ -56,6 +56,8 @@ def main():
         c, h, b = get(VIDEO, "bytes=0-1")
         check("bytes=0-1 → 206 وبايتان (أول ما يطلبه سفاري)", c == 206 and b == raw[:2] and h.get("Content-Range") == f"bytes 0-1/{n}",
               f"{c} {h.get('Content-Range')}")
+        c, h, b = get(VIDEO + "?v=2", "bytes=0-1")
+        check("?v= في العنوان (إصدار الفيديو في الدليل) يُتجاهل: الملف نفسه", c == 206 and b == raw[:2], str(c))
         c, h, b = get(VIDEO, "bytes=1000-")
         check("bytes=1000- → من الموضع إلى الآخر", c == 206 and b == raw[1000:] and h.get("Content-Range") == f"bytes 1000-{n - 1}/{n}")
         c, h, b = get(VIDEO, "bytes=-500")

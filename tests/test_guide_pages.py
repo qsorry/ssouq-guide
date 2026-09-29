@@ -88,7 +88,7 @@ def main():
         for steps in ([dev["steps"]] if "steps" in dev else dev["variants"].values()):
             for st in steps:
                 srcs.update([st["img"]] if st.get("img") else [])
-                srcs.update(re.findall(r'(?:src|poster)="(/static/[^"]+)"', st.get("html", "")))
+                srcs.update(re.findall(r'(?:src|poster)="(/static/[^"?]+)', st.get("html", "")))   # ?v= لا يدخل في اسم الملف
         srcs.update(f"/static/img/apps/{o['icon']}.webp"
                     for o in dev.get("choose", {}).get("options", []) if o.get("icon"))
     missing = sorted(p for p in srcs if not os.path.isfile(os.path.join(ROOT, p.lstrip("/"))))
@@ -102,12 +102,15 @@ def main():
           [o["key"] for o in w["choose"]["options"]] == ["0player", "ssiptv"])
     # التحميل وحده يختلف بين الجهازين، وما بعده خطوات واحدة
     check("خطوات SS IPTV بعد التحميل واحدة على الجهازين", w["variants"]["ssiptv"][1:] == v["steps"][1:])
-    video = '<video src="/static/video/ssiptv-ar.mp4" poster="/static/video/ssiptv-ar.webp"'
-    check("فيديو الخطوات أول خطوة التحميل في المسارين",
-          video in v["steps"][0]["html"] and video in w["variants"]["ssiptv"][0]["html"])
+    video = re.compile(r'^<div class="vid"><video src="/static/video/ssiptv-ar\.mp4\?v=(\d+)" poster="/static/video/ssiptv-ar\.webp\?v=\1"')
+    check("فيديو الخطوات أول خطوة التحميل في المسارين، بإصدارٍ واحد للفيديو وغلافه",
+          bool(video.match(v["steps"][0]["html"])) and bool(video.match(w["variants"]["ssiptv"][0]["html"])))
     h = G.render("/vidaa").decode("utf-8")
     check("/vidaa تربط محرّر ss-iptv.com وأداة M3U",
           'href="https://ss-iptv.com/en/users/playlist"' in h and 'href="/#m3u"' in h)
+    # كصفحتي منتج كاسبر في المتجر: لا يعمل على VIDAA، فلا تقول الصفحة «لكل الاشتراكات»
+    check("/vidaa لسمارت وفالكون، وكاسبر لا يعمل عليها",
+          "لكل الاشتراكات" not in h and "سمارت أو فالكون، أما كاسبر فلا يعمل على هذه الشاشات" in h)
     h = G.render("/samsung-lg").decode("utf-8")
     check("/samsung-lg فيها التطبيقان", "تطبيق 0Player" in h and "تطبيق SS IPTV" in h)
 

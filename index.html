@@ -242,6 +242,8 @@ a.entry{text-decoration:none}
 .dev small{color:var(--mute);font-size:.75rem}
 .dev:last-child:nth-child(odd){grid-column:1/-1}
 .dev:hover,.dev:focus-visible{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 7%,transparent)}
+.dev.muted{border-style:dashed}
+.dev.muted svg{stroke:var(--mute)}
 .step img{width:100%;max-height:360px;object-fit:contain;border-radius:12px;background:#0b1520;margin:12px 0}
 .step img[src$="windows-badge.png"]{max-height:90px;background:#fff;padding:8px}
 .vid{margin:4px 0 16px}
@@ -564,8 +566,9 @@ const VIDAA_NOTE = '<div class="note">هذه الخطوات لشاشات هاي�
 
 /* ------------------------------------------------------------
    SS IPTV — مشغّل مجاني يقرأ رابط M3U، والرابط يُبنى من الهوست واسم المستخدم
-   وكلمة المرور (أداة #m3u)، فيصلح لسمارت وفالكون وكاسبر بلا رمز بوابة: خطواته
-   واحدة في الاشتراكات الثلاثة، يعرّفها DEVICES ويرثها FALCON و CASPER كما هي.
+   وكلمة المرور (أداة #m3u)، فيصلح لسمارت وفالكون بلا رمز بوابة: خطواته واحدة
+   فيهما، يعرّفها DEVICES ويرثها FALCON كما هي. وكاسبر لا يعمل على هذه الشاشات
+   أصلًا (كما تقول صفحتا منتجه في المتجر)، فلا يرثها — انظر CASPER.
    الذي يختلف خطوة التحميل وحدها: LG من متجرها — في كتالوج LG للسعودية على
    شاشات 2016–2024، وليس على موديلات 2025 (وفيها 0Player و Duplecast) —
    وسامسونج ليس في متجرها فيعمل من فلاشة (شاشات 2015–2019 كما يذكر موقعه)،
@@ -623,8 +626,9 @@ const SS_IPTV_STEPS = [
       + 'إلى <code dir="ltr">output=m3u8</code>، ثم <b dir="ltr">OK</b> و <b dir="ltr">SAVE</b>.</div>' }
 ];
 // فيديو الخطوات السبع بعناوين عربية وتكبير على كل زر — أول خطوة التحميل في المسارين.
-// عموديٌّ للجوال، ومصدره في tools/video_ssiptv (يُعاد إنتاجه منه إن تغيّرت خطوة).
-const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4" poster="/static/video/ssiptv-ar.webp" '
+// عموديٌّ للجوال، ومصدره في tools/video_ssiptv (يُعاد إنتاجه منه إن تغيّرت خطوة). و?v= يُرفع مع كل
+// إنتاج جديد: الملفات الثابتة تُخزَّن في المتصفح 30 يومًا، والغلاف يُجلب مع كل عرضٍ للخطوة.
+const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4?v=2" poster="/static/video/ssiptv-ar.webp?v=2" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الخطوات كلها في دقيقة وربع، ثم اتبعها هنا خطوة خطوة.</p></div>';
 // خطوة التحميل: شاشات سامسونج و LG
@@ -832,9 +836,10 @@ const PROG_ACT = ["الاشتراك", "جهازك", "التطبيق", "جاهز"
    صفحات الأجهزة الثابتة (tools/sync_guide_data.js).
    وفالكون يشترك معه في أكثر الخطوات ويختلف في أربعة مواضع فقط:
    الآيفون (تطبيق آخر)، والأندرويد (تطبيق فالكون بدل MR7/NEXT+)،
-   وسامسونج و LG (رمز بوابة مختلف في 0Player). وكاسبر يختلف في ثلاثة (أسفل
-   FALCON). وويندوز وماك والسيارة و VIDAA — ومعه SS IPTV على سامسونج و LG —
-   يرثها الاثنان كما هي: كلها تدخل بالهوست واسم المستخدم وكلمة المرور.
+   وسامسونج و LG (رمز بوابة مختلف في 0Player). وكاسبر يختلف في موضعين، ولا يعمل
+   على شاشتين (أسفل FALCON). وويندوز وماك والسيارة يرثها الاثنان كما هي: كلها
+   تدخل بالهوست واسم المستخدم وكلمة المرور. و VIDAA — ومعه SS IPTV على سامسونج
+   و LG — يرثه فالكون وحده.
    ============================================================ */
 const SUBS = {
   smart:  { name: "سمارت", full: "MR7 TV",        art: "/static/img/brands/smart.webp",
@@ -842,7 +847,7 @@ const SUBS = {
   falcon: { name: "فالكون", full: "FALCON TV PRO", art: "/static/img/brands/falcon.webp",
             sub: "تطبيق فالكون أو Smarters Pro" },
   casper: { name: "كاسبر", full: "CASPER FLIX", art: "/static/img/brands/casper.webp",
-            sub: "CASPER VIP أو AroPlayer أو Duplecast" }
+            sub: "CASPER VIP أو AroPlayer أو Smarters Pro" }
 };
 const legacySub = k => k === "marah" ? "smart" : k;      // "مرح" كان اسم سمارت، فروابطه القديمة تبقى عاملة
 
@@ -928,12 +933,14 @@ const FALCON = {
    كاسبر — CASPER FLIX
    ------------------------------------------------------------
    كاسبر يرث من سمارت كل ما يدخل بالهوست واسم المستخدم وكلمة المرور
-   (ويندوز وماك كما هما)، ويختلف في ثلاثة مواضع:
+   (ويندوز وماك كما هما)، ويختلف في موضعين:
    الآيفون (تطبيق CASPER VIP من App Store، أو AroPlayer بدل VAR Player)، والأندرويد جوالًا وشاشةً
    (‏تطبيق CASPER VIP بكود Downloader ‏3638997، أو IPTV Smarters Pro —
    بلا تطبيق مرح/MR7 فهو تطبيق سمارت، وبلا NEXT+ لأنه يدخل برمز خادم
-   خاص بلوحة سمارت)، وسامسونج و LG
-   و WebOS (تطبيق Duplecast بدل 0Player، و SS IPTV بجانبه كما هو).
+   خاص بلوحة سمارت).
+   ولا يعمل على شاشات سامسونج و LG ولا الشاشات بنظام VIDAA أو WebOS — كما تقول
+   صفحتا منتجه في المتجر — فالشاشتان في آخر قائمة أجهزته بلا خطوات (off): تقولان
+   ذلك وأين يعمل، وتفتحان باقات سمارت لتلك الشاشة كما تحيل إليها صفحة المنتج.
    ============================================================ */
 // دخول تطبيق CASPER VIP — واحد على الآيفون والجوال والشاشة
 const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",
@@ -942,6 +949,10 @@ const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتر
     + '<div class="f"><span>Password</span><code>كلمة المرور</code></div></div>'
     + '<p>ثم اضغط زر الدخول.</p>'
     + '<div class="note">إن طلب التطبيق رابط الهوست فهو يصلك مع بيانات اشتراكك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
+
+// كاسبر لا يعمل على هذه الشاشات، بنصّ صفحتي منتجه في المتجر: أين لا يعمل، وأين يعمل
+const CASPER_OFF = 'اشتراك كاسبر لا يعمل على شاشات سامسونج و LG، ولا على الشاشات بنظام <b dir="ltr">VIDAA</b> أو '
+  + '<b dir="ltr">WebOS</b>. ويعمل على الكمبيوتر والماك وجوال أندرويد والآيفون والشاشات بنظام أندرويد.';
 
 const CASPER = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق CASPER VIP أو AroPlayer", choose: {
@@ -1023,52 +1034,10 @@ const CASPER = {
     }
   },
 
-  webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "تطبيق Duplecast أو SS IPTV", choose: {
-    title: "اختر التطبيق",
-    options: [
-      { key: "duplecast", label: "Duplecast", sub: "من متجر الشاشة، ببيانات اشتراكك", icon: "duplecast" },
-      SS_IPTV_OPT
-    ]},
-    variants: {
-      duplecast: [
-    { title: "حمّل تطبيق Duplecast وافتحه", img: "/static/img/webos-duplecast-scan.webp",
-      html: APP("duplecast", "Duplecast", "من متجر الشاشة")
-        + '<p>من متجر التطبيقات في الشاشة (‏<b dir="ltr">Samsung Apps</b> أو <b dir="ltr">LG Content Store</b>) '
-        + 'ابحث عن <b dir="ltr">Duplecast</b> وحمّله.</p>'
-        + '<p>افتحه أول مرة فتظهر شاشة <b dir="ltr">Scan Code</b> برمز QR. امسح الرمز بكاميرا جوالك — من الشاشة نفسها '
-        + 'أو من صورة له — فتُفتح صفحة إدارة الجهاز وبياناته مكتوبة فيها تلقائيًا.</p>' + WEBOS_NOTE },
-    { title: "اضغط Add Playlist", img: "/static/img/webos-duplecast-manage.webp",
-      html: '<p>في صفحة الإدارة يظهر رقم جهازك تحت <b dir="ltr">Manage Device</b> وحالته تحته. '
-        + 'اضغط زر <b dir="ltr">Add Playlist</b> لإضافة قائمة تشغيل جديدة.</p>'
-        + '<div class="note">يمكنك إضافة أكثر من قائمة بالطريقة نفسها. والتطبيق يبدأ بفترة تجريبية '
-        + '(‏<b dir="ltr">Status : trial</b>)، وتفعيله الدائم من زرَّي <b dir="ltr">Activate by Payment</b> و '
-        + '<b dir="ltr">Activate by code</b> في الصفحة نفسها.</div>' },
-    { title: "عبّئ بياناتك في تبويب Xtream Info", img: "/static/img/webos-duplecast-form.webp",
-      html: '<p>اختر تبويب <b dir="ltr">Xtream Info</b> ثم عبّئ الخانات:</p>'
-        + '<div class="fields"><div class="f"><span dir="ltr">Mac</span><code>يظهر تلقائيًا — لا تغيّره</code></div>'
-        + '<div class="f"><span dir="ltr">Playlist name</span><code>أي اسم من عندك</code></div>'
-        + '<div class="f"><span dir="ltr">Host</span><code>رابط الهوست بدون رقم البورت</code></div>'
-        + '<div class="f"><span dir="ltr">Port</span><code>رقم البورت وحده</code></div>'
-        + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
-        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div>'
-        + '<div class="f"><span dir="ltr">Protect this playlist</span><code>اتركه غير مفعّل</code></div></div>'
-        + '<p>ثم اضغط <b dir="ltr">Save</b>.</p>'
-        + '<div class="note">الهوست والبورت خانتان منفصلتان هنا، فلا تكتب الرقم مع الرابط: إن وصلك '
-        + '<code dir="ltr">http://host.com:8080</code> فاكتب <code dir="ltr">http://host.com</code> في '
-        + '<b dir="ltr">Host</b> و <code dir="ltr">8080</code> في <b dir="ltr">Port</b>. ومن وصله رابط بلا رقم '
-        + 'فبورته <code dir="ltr">80</code>.</div>' + HTTP_NOTE + CREDS },
-    { title: "تأكّد أن القائمة حُفظت", img: "/static/img/webos-duplecast-saved.webp",
-      html: '<p>تظهر القائمة في جدول <b dir="ltr">Playlists</b> مع رسالة <b dir="ltr">Playlist added successfully</b>. '
-        + 'وإن أخطأت في بيانٍ اضغط <b dir="ltr">Edit</b> بجانبها وصحّحه.</p>' },
-    { title: "حدّث القائمة على الشاشة", img: "/static/img/webos-duplecast-refresh.webp",
-      html: '<p>ارجع إلى الشاشة الرئيسية في التطبيق على التلفاز واضغط زر التحديث (‏<b dir="ltr">↻</b>) '
-        + 'لجلب القنوات، وانتظر قليلًا حتى تكتمل.</p>'
-        + '<div class="note">إن لم تظهر القنوات فتأكد من اتصال الشاشة بالإنترنت، ومن صحة رابط الهوست '
-        + 'واسم المستخدم وكلمة المرور.</div>' }
-      ],
-      ssiptv: DEVICES.webos.variants.ssiptv
-    }
-  }
+  // ما لا يعمل عليه كاسبر (CASPER_OFF): لا خطوات بل off — نصّ الشاشة، ومفتاحها في مسار
+  // الشراء لباقات سمارت لها. وتنزل الشاشتان إلى آخر قائمة الأجهزة.
+  webos: { icon: "smart", name: DEVICES.webos.name, sub: "لا يعمل مع كاسبر", off: { text: CASPER_OFF, buy: "webos" } },
+  vidaa: { icon: "vidaa", name: DEVICES.vidaa.name, sub: "لا يعمل مع كاسبر", off: { text: CASPER_OFF, buy: "vidaa" } }
 };
 
 /* لكل اشتراك ما يخالف فيه مسار سمارت، وما لم يُذكر فيه يُورَث كما هو */
@@ -1322,8 +1291,21 @@ function renderDevices(){
   setProg(PROG_ACT, 1);
   const S = SUBS[state.sub];
   $("#view").innerHTML = `<div class="card"><p class="sub">اشتراك ${S.name} · ${S.full}</p><h2>اختر جهازك</h2><p class="sub">اختر الجهاز الذي ستشاهد عليه وسنرشدك خطوة بخطوة.</p>
-    <div class="grid">${Object.entries(devs()).map(([k, d]) => `<button class="dev" type="button" data-dev="${k}">${ICONS[d.icon]}<b>${d.name}</b><small>${d.sub}</small></button>`).join("")}</div>
+    <div class="grid">${Object.entries(devs()).sort((a, b) => !!a[1].off - !!b[1].off)   // ما لا يعمل عليه الاشتراك في الآخر
+      .map(([k, d]) => `<button class="dev${d.off ? " muted" : ""}" type="button" data-dev="${k}">${ICONS[d.icon]}<b>${d.name}</b><small>${d.sub}</small></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
+}
+/* جهازٌ لا يعمل عليه الاشتراك (off — كاسبر على سامسونج و LG و VIDAA): لا خطوات، بل ما تقوله
+   صفحة منتجه، وزرٌّ إلى باقات سمارت لهذه الشاشة في مسار الشراء كما تحيل إليها */
+function renderOff(){
+  const d = devs()[state.dev]; setProg(PROG_ACT, 1);
+  $("#view").innerHTML = `<div class="card result">
+    <div class="tick warn">${ICONS[d.icon]}</div>
+    <h2>${SUBS[state.sub].name} لا يعمل على ${d.name}</h2>
+    <p class="sub">${d.off.text}</p>
+    <p>لهذه الشاشات اختر اشتراك سمارت المخصص لها: يعمل على الشاشة مباشرة، بلا رسيفر ولا جهاز إضافي.</p>
+    <div class="nav"><button class="btn go" type="button" data-buy="vod/${d.off.buy}/smart">باقات سمارت لشاشتك</button></div>
+    <div class="nav"><button class="btn ghost" type="button" data-back>جهاز آخر</button></div></div>`;
 }
 function renderChoose(){
   const d = devs()[state.dev]; setProg(PROG_ACT, 2);
@@ -1432,6 +1414,7 @@ function applyHash(){
     let i = 2;
     if (!D[seg[i]]) return;
     state.dev = seg[i]; i++;
+    if (D[state.dev].off) return;                  // لا خطوات فيه: روابط خطواته القديمة تفتح شاشته
     const v = D[state.dev].variants;
     if (v && seg[i] && v[seg[i]]) { state.variant = seg[i]; i++; }
     const n = parseInt(seg[i], 10);
@@ -1479,6 +1462,7 @@ function pageTitle(){
       if (SUBS[state.sub].maintenance) return T("اشتراك " + sub + " تحت الصيانة");
       if (!state.dev) return T("تفعيل اشتراك " + sub + ": اختر جهازك");
       const d = devs()[state.dev];
+      if (d.off) return T(sub + " لا يعمل على " + d.name);
       if (d.variants && !state.variant) return T("تفعيل " + sub + " على " + d.name + ": اختر التطبيق");
       const app = state.variant ? d.choose.options.find(o => o.key === state.variant).label : null;
       const where = (app ? app + " على " : "") + d.name;
@@ -1535,6 +1519,7 @@ function paint(){
       if (!state.sub) { renderSubs(); break; }
       if (SUBS[state.sub].maintenance) { renderMaintenance(); break; }
       if (!state.dev) { renderDevices(); break; }
+      if (devs()[state.dev].off) { renderOff(); break; }
       if (devs()[state.dev].variants && !state.variant) { renderChoose(); break; }
       if (state.i >= steps().length) { renderActDone(); break; }
       renderStep(); break;
@@ -1554,7 +1539,7 @@ function sqStep(){                    // الإحصائيات: خطوات الم
     case "plans":     k = "plans_open"; break;
     case "activate": {
       if (!state.sub) { k = "activate_start"; break; }
-      if (!state.dev || SUBS[state.sub].maintenance || (devs()[state.dev].variants && !state.variant)) break;
+      if (!state.dev || SUBS[state.sub].maintenance || devs()[state.dev].off || (devs()[state.dev].variants && !state.variant)) break;
       const where = state.sub + "/" + state.dev + (state.variant ? "/" + state.variant : "");
       if (state.i >= steps().length) k = "activate_done:" + where;
       else if (state.i === 0) k = "activate_device:" + where;
@@ -1627,6 +1612,10 @@ $("#view").addEventListener("click", e => {
     state.screen = "activate"; state.variant = null; state.i = 0;
     state.sub = SUBS[d.actsub] ? d.actsub : null;              // نوع الاشتراك معروف من مسار الشراء
     state.dev = state.sub && devs()[d.activate] ? d.activate : null;
+  }
+  else if (d.buy) {                                            // من جهازٍ لا يعمل عليه الاشتراك إلى باقات شاشته
+    const [taste, bdev, brand] = d.buy.split("/");
+    Object.assign(state, { screen: "buy-plan", taste, bdev, brand, plan: null });
   }
   else if (d.sub) { state.sub = d.sub; state.dev = null; state.variant = null; state.i = 0; }
   else if (d.dev) { state.screen = "activate"; state.dev = d.dev; state.variant = null; state.i = 0; }
