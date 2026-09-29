@@ -215,13 +215,16 @@ def load():
     return {"matches": ms, "groups": groups}
 
 
+def _hot(m, now=None):
+    """المباراة جارية، أو قريبة: من قبل انطلاقها بنصف ساعة إلى ثلاث ساعات بعده (ESPN قد تتأخّر في قلبها «جارية»)."""
+    now = time.time() if now is None else now
+    return m["state"] == "in" or (m["state"] == "pre" and m["time_ok"] and m["ts"] - 1800 <= now <= m["ts"] + 3 * 3600)
+
+
 def _ttl(data):
     """دقيقة واحدة حول المباريات (من قبل انطلاقها بنصف ساعة)، وإلا المدة العادية."""
     now = time.time()
-    for m in data["matches"]:
-        if m["state"] == "in" or (m["state"] == "pre" and m["time_ok"] and m["ts"] - 1800 <= now <= m["ts"] + 3 * 3600):
-            return LIVE_TTL
-    return league.TTL
+    return LIVE_TTL if any(_hot(m, now) for m in data["matches"]) else league.TTL
 
 
 _feed = league.Feed(lambda: load(), _ttl)
@@ -977,7 +980,50 @@ main{max-width:1100px;padding:2px 2px 14px}
 .wcols{display:grid;gap:14px}
 .wcols h2{font-size:1rem;margin:0 0 6px}
 @media (min-width:720px){.wcols{grid-template-columns:1fr 1fr;gap:24px}}
+.match.goal .score{animation:ssqgoal 1.2s ease-in-out 3}
+@keyframes ssqgoal{50%{transform:scale(1.3);color:#F59E0B}}
+@media (prefers-reduced-motion:reduce){.match.goal .score{animation:none}}
 """
+# التحديث الحيّ داخل المتجر: الودجت يسأل خادمنا عن نفسه كل POLL_LIVE ثانية ما دامت مباراةٌ جارية أو
+# قريبة (tournament._hot)، وإلا كل POLL_IDLE، ويبدّل محتوى البطاقة في مكانه — لا يُعاد تحميل الإطار
+# ولا تُحدَّث صفحة المتجر، فلا وميض ولا قفز، ويبقى زرّ «المباريات القادمة» على حاله. والنتيجة التي
+# تغيّرت تنبض لحظةً (‏.goal). ويتوقّف السؤال والتبويب مخفيّ ويعود فور ظهوره. والمدة يكتبها الخادم على
+# البطاقة (‏data-poll) مع وقت رسمها (‏data-at): نسخةٌ قديمة من كاش المتصفح تُستبدل بعد ثانيتين لا بعد مدة.
+POLL_LIVE = 30
+POLL_IDLE = 300
+WIDGET_JS = """(function(){
+var card=document.querySelector(".wcard"),last=card.innerHTML,busy=0,timer;
+function h(){parent.postMessage({ssouqWidget:Math.ceil(document.documentElement.getBoundingClientRect().height)},"*")}
+addEventListener("load",h);if(window.ResizeObserver)new ResizeObserver(h).observe(document.body);
+function more(open){var d=document.getElementById("more");if(!d)return;
+if(open!=null)d.open=open;else try{if(sessionStorage.getItem("ssouqMore")==="1")d.open=true}catch(e){}}
+more();
+document.addEventListener("toggle",function(e){if(e.target.id==="more"){try{sessionStorage.setItem("ssouqMore",e.target.open?"1":"0")}catch(x){}h()}},true);
+if(!window.fetch||!window.DOMParser)return;
+function key(a){return(a.getAttribute("href")||"").split("#")[0]}
+function score(a){var s=a.querySelector(".score");return s?s.textContent:""}
+function swap(n){var old={},d=document.getElementById("more");
+card.querySelectorAll("a.match").forEach(function(a){old[key(a)]=score(a)});
+card.innerHTML=n.innerHTML;more(d?d.open:null);
+card.querySelectorAll("a.match").forEach(function(a){var o=old[key(a)],s=score(a);if(o&&s&&o!==s)a.classList.add("goal")})}
+function poll(){return(+card.getAttribute("data-poll")||300)*1e3}
+function plan(ms){clearTimeout(timer);timer=setTimeout(tick,ms)}
+function tick(){if(document.hidden||busy)return;busy=1;
+fetch(location.href,{cache:"no-store",credentials:"omit"}).then(function(r){return r.ok?r.text():""}).then(function(t){
+var n=t&&new DOMParser().parseFromString(t,"text/html").querySelector(".wcard");if(!n)return;
+card.setAttribute("data-poll",n.getAttribute("data-poll")||"");
+if(n.innerHTML!==last){last=n.innerHTML;swap(n)}}).catch(function(){}).then(function(){busy=0;plan(poll())})}
+document.addEventListener("visibilitychange",function(){if(!document.hidden)tick()});
+plan(Date.now()-(+card.getAttribute("data-at")||0)*1e3>poll()?2e3:poll());
+})();"""
+
+
+def _live_attrs(ms):
+    """سمات البطاقة للتحديث الحيّ: كل كم ثانية تسأل، ومتى رُسمت."""
+    now = time.time()
+    return f' data-poll="{POLL_LIVE if any(_hot(m, now) for m in ms) else POLL_IDLE}" data-at="{int(now)}"'
+
+
 BALL = ('<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/>'
         '<path d="m12 7 3.6 2.6-1.4 4.2H9.8L8.4 9.6z"/><path d="M12 3v4M4.2 9.6l3.9 1.4M6.9 19l2.6-3.4M17.1 19l-2.6-3.4M19.8 9.6l-3.9 1.4"/></svg>')
 
@@ -1008,7 +1054,6 @@ def render_widget(theme=""):
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{_esc(CUP['name'])} — {_esc(CUP['level'])} | سمارت سوق</title>
 <meta name="robots" content="noindex">
-{'<meta http-equiv="refresh" content="60">' if live else ''}
 <link rel="canonical" href="{guide_pages.SITE}{PATH}">
 <link rel="preconnect" href="{league.LOGO_HOST}">
 <style>{guide_pages._style()}
@@ -1017,7 +1062,7 @@ def render_widget(theme=""):
 </head>
 <body>
 <main>
-<section class="card wcard">
+<section class="card wcard"{_live_attrs(ms)}>
 <a class="wtop" href="{PATH}" target="_blank" rel="noopener">{BALL}<span><b>{_esc(CUP['name'])}</b>
 <small>{_esc(CUP['level'])} · {_esc(CUP['season'])}</small></span><span class="all">كل النتائج ←</span></a>
 {_banner(ms, pz, new_tab=True)}
@@ -1026,8 +1071,7 @@ def render_widget(theme=""):
 </section>
 </main>
 <script>
-(function(){{function h(){{parent.postMessage({{ssouqWidget:Math.ceil(document.documentElement.getBoundingClientRect().height)}},"*")}}
-addEventListener("load",h);if(window.ResizeObserver)new ResizeObserver(h).observe(document.body);}})();
+{WIDGET_JS}
 </script>
 </body>
 </html>"""
@@ -1064,10 +1108,10 @@ def render_hub(cups, theme=""):
     الإطار يتّسع معها: الصفحة تبلّغ الحاضنة بطولها كلما تغيّر. وبلا مباريات اليوم تُفتح القادمة وحدها.
     والوضع والشفافية ونافذة الروابط كـ render_widget. ← (رمز، بايتات، مدة الكاش)."""
     today = _day(time.time())
-    todays, ups, live, banner, any_ms = [], [], False, None, False
+    todays, ups, live, banner, all_ms = [], [], False, None, []
     for c in cups:
         ms = (c._feed.get()[0] or {}).get("matches", [])
-        any_ms = any_ms or bool(ms)
+        all_ms += ms
         pz = c._contests(ms)
         t = [m for m in ms if c._day(m["ts"]) == today or m["state"] == "in"]
         u = [m for m in ms if m["state"] == "pre" and m not in t][:HUB_ROWS]
@@ -1085,7 +1129,7 @@ def render_hub(cups, theme=""):
             if banner is None or m["ts"] < banner[0]:
                 banner = (m["ts"], c._banner(opens, pz, new_tab=True))
     names = " · ".join(c.CUP["name"] for c in cups)
-    if not any_ms:
+    if not all_ms:
         body = '<p class="sub">تعذّر تحميل المباريات الآن، ونعيد المحاولة تلقائيًا.</p>'
     else:
         cols = lambda xs: f'<div class="{"wcols" if len(xs) > 1 else "wone"}">{"".join(xs)}</div>'   # عمودان لبطولتين
@@ -1102,7 +1146,6 @@ def render_hub(cups, theme=""):
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>مباريات اليوم — {_esc(names)} | سمارت سوق</title>
 <meta name="robots" content="noindex">
-{'<meta http-equiv="refresh" content="60">' if live else ''}
 <link rel="canonical" href="{guide_pages.SITE}{cups[0].PATH}">
 <link rel="preconnect" href="{league.LOGO_HOST}">
 <style>{guide_pages._style()}
@@ -1112,7 +1155,7 @@ def render_hub(cups, theme=""):
 </head>
 <body>
 <main>
-<section class="card wcard">
+<section class="card wcard"{_live_attrs(all_ms)}>
 <div class="whead">{BALL}<span><b>مباريات اليوم</b><small>{_esc(_day_label(today))} · {_esc(names)}</small></span></div>
 {banner[1] if banner else ""}
 {body}
@@ -1120,14 +1163,11 @@ def render_hub(cups, theme=""):
 </section>
 </main>
 <script>
-(function(){{function h(){{parent.postMessage({{ssouqWidget:Math.ceil(document.documentElement.getBoundingClientRect().height)}},"*")}}
-addEventListener("load",h);if(window.ResizeObserver)new ResizeObserver(h).observe(document.body);
-var d=document.getElementById("more");if(d){{try{{if(sessionStorage.getItem("ssouqMore")==="1")d.open=true}}catch(e){{}}
-d.addEventListener("toggle",function(){{try{{sessionStorage.setItem("ssouqMore",d.open?"1":"0")}}catch(e){{}}h()}})}}}})();
+{WIDGET_JS}
 </script>
 </body>
 </html>"""
-    return (200 if any_ms else 503), doc.encode("utf-8"), (LIVE_TTL if live else 300)
+    return (200 if all_ms else 503), doc.encode("utf-8"), (LIVE_TTL if live else 300)
 
 # ---------- نسخةٌ لبطولةٍ أخرى ----------
 # كأس الخليج العربي 2026 (خليجي 27 في السعودية): مجموعتان من أربعة منتخبات، يتأهل الأول والثاني من
