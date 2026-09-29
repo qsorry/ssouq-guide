@@ -859,36 +859,32 @@ def _mins(n):
     return f"{n} دقائق" if 3 <= n <= 10 else f"{n} دقيقة"
 
 
+def _clock_word(ts):
+    """«8:30 مساءً»: الساعة في رسالة القناة بكلمتها لا بحرفها."""
+    t = datetime.datetime.fromtimestamp(ts, RIYADH)
+    return f"{t.hour % 12 or 12}:{t.minute:02d} {'صباحًا' if t.hour < 12 else 'مساءً'}"
+
+
 def announcement(rows, now=None):
-    """رسالة الإعلان في القناة، جاهزةً للنسخ من صفحة المدير: المسابقات المفتوحة للتوقّع بمبارياتها
-    (بأعلام المنتخبين) وموعدها وقناتها وجائزتها ورابط صفحة كلٍّ منها، والشروط بطريقة الفوز والإقفال
-    (صفوف contest.admin_rows). ولا مسابقة مفتوحة ← نصٌّ فارغ."""
+    """رسالة «تحدّي التوقعات» للقناة بصيغة المتجر، جاهزةً للنسخ من صفحة المدير: المباريات المفتوحة للتوقّع
+    بأعلام منتخبيها وموعدها وقناتها (ورابط كلٍّ منها إن كانت أكثر من واحدة)، والجائزة وعدد الفائزين،
+    والشروط، ورابط صفحة التحدي (صفوف contest.admin_rows). ولا مسابقة مفتوحة ← نصٌّ فارغ."""
     now = time.time() if now is None else now
     ms = sorted((r for r in rows if r.get("state") == "open" and r.get("contest")), key=lambda r: r["match"]["ts"])
     if not ms:
         return ""
-    today = _day(now)
-    days = sorted({_day(r["match"]["ts"]) for r in ms})
-    one_day, one_time = len(days) == 1, len({_clock(r["match"]["ts"]) for r in ms}) == 1
-    single = len(ms) == 1
+    today, single = _day(now), len(ms) == 1
+    one_day = len({_day(r["match"]["ts"]) for r in ms}) == 1
 
-    def cup(r):
-        return r["match"].get("cup") or contest.DEFAULT_CUP
-
-    cups = {cup(r) for r in ms}
-    mixed = len(cups) > 1
-    where = "" if mixed or single else f" في {next(iter(cups))}"
-    if one_day:
-        d, first = days[0], datetime.datetime.fromtimestamp(ms[0]["match"]["ts"], RIYADH)
-        when = (("الليلة" if first.hour >= 17 else "اليوم") if d == today
+    def when(ts):                                  # الليلة · اليوم · الغد · الخميس 1 أكتوبر
+        d = _day(ts)
+        return (("الليلة" if datetime.datetime.fromtimestamp(ts, RIYADH).hour >= 17 else "اليوم") if d == today
                 else "الغد" if d == today + datetime.timedelta(days=1)
                 else f"{DAYS[d.weekday()]} {d.day} {MONTHS[d.month - 1]}")
-        intro = f"توقّع نتيجة مباراة {when} بين:" if single else f"توقّع نتيجة مباريات {when}{where}:"
-    else:
-        intro = f"توقّع نتيجة المباريات المفتوحة للتوقّع{where}:"
 
-    def clock(ts):
-        return CLOCKS[datetime.datetime.fromtimestamp(ts, RIYADH).hour % 12]
+    def at(ts):                                    # 🕗 الساعة 8:30 مساءً — ويومها قبلها إن اختلفت الأيام
+        clock = CLOCKS[datetime.datetime.fromtimestamp(ts, RIYADH).hour % 12]
+        return f"{clock} {'' if one_day else when(ts) + ' '}الساعة {_clock_word(ts)}"
 
     def teams(r):
         mt = r["match"]
@@ -899,60 +895,43 @@ def announcement(rows, now=None):
         slug, path = r["match"].get("slug"), contest.cup_path(r["match"])
         return f"{guide_pages.SITE}{path}/{slug}#predict" if slug else f"{guide_pages.SITE}{path}/predict"
 
-    ts0 = ms[0]["match"]["ts"]
-    shared = f"{clock(ts0)} الساعة {_clock(ts0)}" if one_day and one_time else ""
-    out = ["🎁 مسابقة سمارت سوق | توقّع واربح! ⚽🏆", "", intro, ""]
-    if single:
-        r = ms[0]
-        out.append(teams(r))
-        out.append(shared or f"{clock(ts0)} {when_label(ts0)}")
+    def cup(r):
+        return r["match"].get("cup") or contest.DEFAULT_CUP
+
+    mixed = len({cup(r) for r in ms}) > 1
+    first = ms[0]["match"]["ts"]
+    out = ["⚽🎉 تحدّي التوقعات مع سمارت سوق",
+           f"شاركنا توقعك لنتيجة مباراة {when(first)}:" if single
+           else f"شاركنا توقعك لنتائج مباريات {when(first)}:" if one_day else "شاركنا توقعك لنتائج هذه المباريات:"]
+    for r in ms:                                   # مباراةٌ واحدة كما كتبها المتجر؛ وأكثر: كتلةٌ لكلٍّ برابطها
+        block = [teams(r)] + ([f"🏆 {cup(r)}"] if mixed else []) + [at(r["match"]["ts"])]
         if r.get("tv"):
-            out.append(f"📺 القناة الناقلة: {r['tv']}")
+            block.append(f"📺 القناة الناقلة: {r['tv']}")
+        out += block if single else ["", *block, f"🔗 {link(r)}"]
+    if not single:
+        out.append("")
+
+    def picked(w):                                 # «سيتم اختيار …»
+        return "فائز واحد" if w == 1 else "فائزَين" if w == 2 else f"{w} فائزين"
+
+    prizes = [(r["contest"].get("prize") or "[اكتب الجائزة هنا]", int(r["contest"].get("winners") or 1)) for r in ms]
+    out.append("💬 اكتب توقعك للنتيجة في التعليقات أو في صفحة التحدي.")
+    if len(set(prizes)) == 1:
+        prize, w = prizes[0]
+        gets = "ويحصل على:" if w == 1 else "ويحصل كلٌّ منهما على:" if w == 2 else "ويحصل كلٌّ منهم على:"
+        out += [f"🎁 سيتم اختيار {picked(w)}{'' if single else ' في كل مباراة'} وفق شروط المسابقة المعلنة، {gets}",
+                f"⭐ {prize}"]
     else:
-        if shared:
-            out += [shared, ""]
-        for r in ms:
-            ts = r["match"]["ts"]
-            out.append(teams(r) + (f" ({cup(r)})" if mixed else ""))
-            if not shared:
-                out.append(f"{clock(ts)} {_clock(ts) if one_day else when_label(ts)}")
-            if r.get("tv"):
-                out.append(f"📺 {r['tv']}")
-            out += [link(r), ""]
-        out.pop()
-
-    def prize(r):
-        c = r["contest"]
-        w = int(c.get("winners") or 1)
-        return (c.get("prize") or "[اكتب الجائزة هنا]") + (" — فائزان" if w == 2 else f" — {w} فائزين" if w > 2 else "")
-
-    labels = [prize(r) for r in ms]
-    if single:
-        out += ["", "🎁 الجائزة:", labels[0] + " 🎉"]
-    elif len(set(labels)) == 1:
-        out += ["", "🎁 الجائزة لكل مباراة:", labels[0] + " 🎉"]
-    else:
-        out += ["", "🎁 الجوائز:"] + [f"• {r['match']['home']} × {r['match']['away']}: {lab}" for r, lab in zip(ms, labels)]
-
-    out += ["", "طريقة المشاركة:"]
-    out += (["1️⃣ ادخل صفحة المباراة 👇", link(ms[0])] if single else ["1️⃣ افتح رابط المباراة اللي تبيها 👆"])
-    out += ["", "2️⃣ اكتب توقعك للنتيجة + اسمك.", "",
-            "3️⃣ اضغط «أرسل توقّعي على واتساب» وأرسل الرسالة الجاهزة كما هي.", "",
-            "4️⃣ انتظر رسالة التأكيد على الواتساب ✅"]
-
-    each = "المباراة" if single else "كل مباراة"
-    extras = {contest.extra_of(r["contest"]) for r in ms}
-    lock = (f"تُغلق التوقعات مع صافرة بداية {each}." if extras == {0}
-            else f"تُغلق التوقعات بعد صافرة البداية بـ {_mins(next(iter(extras)))}." if len(extras) == 1
-            else "تُغلق التوقعات مع صافرة البداية أو بعدها بدقائق، كما في صفحة كل مباراة.")
-    modes = {contest.mode_of(r["contest"]) for r in ms}
-    nowin = ("إذا لم يتوقع أحد النتيجة الصحيحة، لا يوجد فائز." if modes == {"exact"}
-             else "إذا لم يتوقع أحد النتيجة الصحيحة، فالفرز بين من توقّع الفائز." if modes == {"outcome"}
-             else "إذا لم يتوقع أحد النتيجة الصحيحة: لا فائز، أو الفرز بين من توقّع الفائز — كما في صفحة كل مباراة.")
-    out += ["", "📌 الشروط:", "• المشاركة مجانية بالكامل.", "• توقع واحد فقط لكل رقم في كل مباراة.", f"• {lock}",
-            f"• بعد نهاية {each} يتم الفرز آليًا بين أصحاب التوقع الصحيح بالنتيجة كاملة.", f"• {nowin}",
-            "• سيتم نشر فيديو يوضح آلية الفرز، والتواصل مع الفائز عبر الواتساب.", "",
-            "🔥 جاهزين للتحدي؟ توقّع النتيجة الآن!", "", "🤞 بالتوفيق للجميع!"]
+        out.append("🎁 سيتم اختيار الفائزين وفق شروط المسابقة المعلنة، والجوائز:")
+        out += [f"⭐ {r['match']['home']} × {r['match']['away']}: {prize}"
+                + ("" if w == 1 else " — فائزان" if w == 2 else f" — {w} فائزين") for r, (prize, w) in zip(ms, prizes)]
+    many = not single or prizes[0][1] > 1
+    out += ["📌 شروط المشاركة:", "✅ المشاركة متاحة للجميع",
+            "✅ توقع واحد فقط لكل مشارك" + ("" if single else " في كل مباراة"),
+            f"✅ يتم الإعلان عن {'الفائزين' if many else 'الفائز'} بعد نهاية {'المباراة' if single else 'كل مباراة'}",
+            "✅ لا يوجد أي رسوم أو شراء مطلوب للمشاركة",
+            "للتفاصيل:", f"🔗 {link(ms[0]) if single else guide_pages.SITE + '/predict'}",   # صفحة المسابقات للبطولتين
+            f"🔥 شارك توقعك واستمتع بأجواء {'المباراة' if single else 'المباريات'}!"]
     return "\n".join(out)
 
 

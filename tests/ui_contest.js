@@ -120,19 +120,19 @@ print(json.dumps(rec, ensure_ascii=False))
     check('فُتحت المسابقة بالاشتراك المختار ورابطه', (await adm.$eval('.mrow[data-eid="6"] select[data-f="prize_id"]', s => s.value)) === '1001'
           && (await adm.getAttribute('.mrow[data-eid="6"] [data-f="plink"]', 'href')).startsWith('https://ssouq.com/smart-3m/p1001?utm_source='));
     const ann = await adm.inputValue('#annText');
-    check('رسالة القناة كُتبت وحدها: المباراة والجائزة والرابط', ann.startsWith('🎁 مسابقة سمارت سوق | توقّع واربح! ⚽🏆')
-          && ann.includes('هولندا × صربيا') && ann.includes('🎁 الجائزة:\nاشتراك سمارت 3 أشهر')
+    check('رسالة القناة كُتبت وحدها: المباراة والجائزة والرابط', ann.startsWith('⚽🎉 تحدّي التوقعات مع سمارت سوق')
+          && ann.includes('هولندا × صربيا') && ann.includes('ويحصل على:\n⭐ اشتراك سمارت 3 أشهر')
           && ann.includes('https://guide.ssouq.com/nations-league/6-netherlands-serbia#predict'), ann.slice(0, 90));
     await adm.click('.mrow[data-eid="6"] [data-a="copy"]');
     await adm.waitForFunction(() => document.querySelector('.mrow[data-eid="6"] .msg').textContent.includes('نُسخت'), null, {timeout:5000});
     check('«نسخ رسالتها للقناة»: رسالة المباراة برابطها الخاص', (await adm.evaluate(() => navigator.clipboard.readText())) === ann);
     await adm.selectOption('.mrow[data-eid="6"] select[data-f="extra"]', '10');
     await adm.click('.mrow[data-eid="6"] [data-a="save"]');
-    await adm.waitForFunction(() => document.getElementById('annText').value.includes('بعد صافرة البداية بـ 10 دقائق'), null, {timeout:8000});
-    check('خيار الإقفال بعد البداية بـ 10 دقائق يُحفظ ويظهر في الرسالة', (await adm.$eval('.mrow[data-eid="6"] select[data-f="extra"]', s => s.value)) === '10');
+    await adm.waitForFunction(() => DATA.rows.find(r => r.eid === '6').contest.extra === 10, null, {timeout:8000});
+    check('خيار الإقفال بعد البداية بـ 10 دقائق يُحفظ', (await adm.$eval('.mrow[data-eid="6"] select[data-f="extra"]', s => s.value)) === '10');
     await adm.selectOption('.mrow[data-eid="6"] select[data-f="extra"]', '0');
     await adm.click('.mrow[data-eid="6"] [data-a="save"]');
-    await adm.waitForFunction(() => document.getElementById('annText').value.includes('تُغلق التوقعات مع صافرة بداية المباراة'), null, {timeout:8000});
+    await adm.waitForFunction(() => DATA.rows.find(r => r.eid === '6').contest.extra === 0, null, {timeout:8000});
     await adm.click('#annCopy');
     await adm.waitForFunction(() => document.getElementById('annMsg').textContent.includes('نُسخت'), null, {timeout:5000});
     check('«نسخ الرسالة» ينسخها كما هي', (await adm.evaluate(() => navigator.clipboard.readText())) === ann);
