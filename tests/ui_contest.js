@@ -160,6 +160,26 @@ print(json.dumps(rec, ensure_ascii=False))
     check('وفي جدول كأس الخليج', (await gpage.textContent('#upcoming')).includes('AL KASS One')
           && await gpage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await shot(gpage, 'gulf-cup');
+    check('قناة كل بطولة جاهزة في رأس المباريات', (await adm.inputValue('#cupTv [data-cup="/gulf-cup"]')) === 'AL KASS'
+          && (await adm.inputValue('#cupTv [data-cup="/nations-league"]')) === 'beIN SPORTS'
+          && (await adm.getAttribute('.mrow[data-eid="6"] [data-f="tv"]', 'placeholder')) === 'beIN SPORTS (قناة البطولة)');
+    await adm.fill('#cupTv [data-cup="/nations-league"]', 'beIN SPORTS 1');
+    await adm.press('#cupTv [data-cup="/nations-league"]', 'Enter');
+    await adm.waitForFunction(() => document.querySelector('#cupTvMsg').textContent.includes('حُفظت: beIN SPORTS 1'), null, {timeout:8000});
+    await adm.waitForFunction(() => document.querySelector('.mrow[data-eid="6"] [data-f="tv"]').placeholder.includes('beIN SPORTS 1'), null, {timeout:8000});
+    check('وتُحفظ فور كتابتها، وصفوف مبارياتها تعرضها', (await adm.inputValue('#cupTv [data-cup="/nations-league"]')) === 'beIN SPORTS 1');
+    await gpage.goto(APP + '/nations-league/6-netherlands-serbia');
+    check('فتظهر في صفحة مباراة دوري الأمم بلا كتابتها لها', (await gpage.textContent('.mhero')).includes('القناة الناقلة: beIN SPORTS 1'));
+    await gpage.goto(APP + '/nations-league/widget');
+    const wtv = await gpage.$$eval('a.match', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+    check('وفي ودجت المتجر: قناةٌ تحت كل مباراة من البطولتين', wtv.some(t => t.includes('beIN SPORTS 1'))
+          && wtv.some(t => t.includes('AL KASS One')) && wtv.some(t => /AL KASS(?! One)/.test(t))
+          && await gpage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), wtv.length);
+    await gpage.evaluate(() => document.querySelector('#more') && (document.querySelector('#more').open = true));
+    await shot(gpage, 'widget-channels');
+    await adm.fill('#cupTv [data-cup="/nations-league"]', 'beIN SPORTS');
+    await adm.press('#cupTv [data-cup="/nations-league"]', 'Enter');
+    await adm.waitForFunction(() => document.querySelector('#cupTvMsg').textContent.includes('حُفظت: beIN SPORTS '), null, {timeout:8000});
     await shot(adm, 'contest-admin');
 
     console.log('بطاقة المباراة المفتوحة');
@@ -175,6 +195,9 @@ print(json.dumps(rec, ensure_ascii=False))
     check('العدّاد يعدّ حتى الإقفال', /^(يوم|يومين) و\d{2}:\d{2}:\d{2}$/.test(await page.textContent('#predict .cd')),
           await page.textContent('#predict .cd'));
     check('بلا تمرير أفقي على 360px', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const cshare = await page.getAttribute('#predict form ~ a.pshare', 'href');
+    check('زرّ «شارك المسابقة» تحت النموذج قبل التوقّع: رابط المباراة نفسها', cshare && cshare.startsWith('https://wa.me/?text=')
+          && waText(cshare).includes('/nations-league/6-netherlands-serbia#predict'), cshare && waText(cshare).slice(0, 90));
     await page.click('#predict [data-side="h"] [data-d="1"]'); await page.click('#predict [data-side="h"] [data-d="1"]');
     await page.click('#predict [data-side="a"] [data-d="1"]');
     await page.click('#predict [data-side="a"] [data-d="1"]'); await page.click('#predict [data-side="a"] [data-d="-1"]');
@@ -232,6 +255,28 @@ print(json.dumps(rec, ensure_ascii=False))
     await page.waitForSelector('.mc[data-m="6"]', {timeout:8000});
     check('ليليةٌ افتراضًا، وبلا تمرير أفقي على 360px', (await page.getAttribute('html', 'data-theme')) === 'dark'
           && await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const hs = await page.getAttribute('.hbtn a.pshare', 'href'), cs6 = await page.getAttribute('.mc[data-m="6"] a.pshare', 'href');
+    check('«شارك المسابقة» في رأس الصفحة برابطها', hs.startsWith('https://wa.me/?text=') && waText(hs).includes('/predict'), waText(hs).slice(0, 90));
+    check('و«مشاركة» في كل بطاقةٍ مفتوحة برابط مباراتها', await page.$$eval('.mc.open', cs => cs.every(c => c.querySelector('a.pshare')))
+          && waText(cs6).includes('هولندا') && waText(cs6).includes('/nations-league/6-netherlands-serbia#predict')
+          && !(await page.$('.mc.done a.pshare')), waText(cs6).slice(0, 90));
+    check('والقناة في البطاقة: قناة البطولة وإن لم تُكتب للمباراة', (await page.textContent('.mc[data-m="6"] .meta')).includes('beIN SPORTS'));
+    const sctx = await browser.newContext({viewport:{width:360, height:780}});
+    await sctx.addInitScript(() => { navigator.share = d => { window.__shared = d; return Promise.resolve(); }; });
+    const sp = await sctx.newPage();
+    sp.on('pageerror', e => errors.push(e.message));
+    await sp.goto(APP + '/predict');
+    await sp.click('.hbtn a.pshare');
+    await sp.click('.mc[data-m="6"] a.pshare');
+    const shared = await sp.evaluate(() => window.__shared);
+    check('وفي الجوال تفتح المشاركة الأصلية (واتساب وغيره) بلا مغادرة الصفحة', shared && shared.url.endsWith('/nations-league/6-netherlands-serbia#predict')
+          && shared.text.includes('هولندا') && sp.url().endsWith('/predict'), JSON.stringify(shared || {}).slice(0, 90));
+    await sp.goto(APP + '/nations-league/6-netherlands-serbia');
+    await sp.waitForSelector('#predict form ~ a.pshare', {timeout:8000});
+    await sp.click('#predict form ~ a.pshare');
+    check('ومن بطاقة المباراة كذلك', (await sp.evaluate(() => window.__shared.url)).endsWith('/nations-league/6-netherlands-serbia#predict')
+          && sp.url().endsWith('/nations-league/6-netherlands-serbia'));
+    await sctx.close();
     check('بطاقة المباراة تعرف توقّع الزائر من متصفحه', (await page.textContent('.mc[data-m="6"] .mine')).includes('توقّعك مسجّل: 2-1')
           && !(await page.$eval('.mc[data-m="6"] .mine', e => e.hidden)));
     await page.click('.tabs button[data-k="done"]');

@@ -81,7 +81,7 @@
       ' · تُقفل التوقّعات بعد <b class="cd">…</b></p>' +
       '<p class="pcount">' + (data.mode === "outcome" ? "يفوز من يصيب النتيجة بالضبط، فإن لم يُصبها أحد فمن يصيب الفائز"
                                                       : "يفوز من يصيب النتيجة بالضبط فقط") + "</p>";
-    if (me) body.innerHTML = head + mineHtml(me) + share();
+    if (me) body.innerHTML = head + mineHtml(me) + share(true);
     else if (tk) waiting(head, tk);
     else if (data.reg === false) body.innerHTML = head + '<p class="pmsg err">التسجيل عبر واتساب متوقّفٌ الآن. حاول بعد قليل.</p>';
     else {
@@ -102,7 +102,7 @@
         '<button class="btn wa" type="submit">' + WA + "أرسل توقّعي على واتساب</button>" +
         '<small class="hint">ينفتح واتساب برسالةٍ جاهزة فيها رمز توقّعك؛ أرسلها كما هي، ويُسجَّل توقّعك برقمك الذي أرسلت منه.</small>' +
         '<p class="pmsg" role="status" aria-live="polite"></p>' +
-        "</form>";
+        "</form>" + share(false);
       wire(body.querySelector("form"));
       crests(body);
     }
@@ -160,12 +160,25 @@
       '<button type="button" data-d="-1" aria-label="هدف أقل لـ' + esc(team) + '">−</button></div>';
   }
 
-  function share() {
-    var text = "توقّعت نتيجة مباراة " + data.match.home + " و" + data.match.away + " في مسابقة سمارت سوق 🎁\n" +
-      "توقّع أنت واربح " + data.prize + ": " + location.origin + location.pathname + "#predict";
-    return '<a class="btn ghost pshare" href="https://wa.me/?text=' + encodeURIComponent(text) +
-      '" target="_blank" rel="noopener">شارك المسابقة مع أصحابك</a>';
+  function share(mine) {
+    var url = location.origin + location.pathname + "#predict";
+    var text = (mine ? "توقّعت نتيجة مباراة " : "توقّع نتيجة مباراة ") + data.match.home + " و" + data.match.away +
+      " في مسابقة سمارت سوق 🎁\n" + (mine ? "توقّع أنت واربح " : "مجانًا، واربح ") + data.prize;
+    return '<a class="btn ghost pshare" href="https://wa.me/?text=' + encodeURIComponent(text + ": " + url) +
+      '" target="_blank" rel="noopener" data-title="مسابقة سمارت سوق" data-text="' + esc(text) + '" data-url="' + esc(url) +
+      '">' + SHARE + "شارك المسابقة مع أصحابك</a>";
   }
+  // قائمة المشاركة في الجوال (واتساب وسناب وتيليجرام…)، وإلا رابط واتساب
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest(".pshare");
+    if (!a || !navigator.share) return;
+    e.preventDefault();
+    navigator.share({title: a.getAttribute("data-title"), text: a.getAttribute("data-text"), url: a.getAttribute("data-url")})
+      .catch(function () {});
+  });
+  var SHARE = '<svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;' +
+    'stroke-linecap:round;stroke-linejoin:round;margin-inline-end:6px;vertical-align:-3px"><circle cx="18" cy="5" r="3"/>' +
+    '<circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>';
 
   function wire(form) {
     var goals = {h: 0, a: 0}, msg = form.querySelector(".pmsg"), busy = false;

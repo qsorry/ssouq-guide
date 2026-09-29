@@ -313,30 +313,37 @@ def cup_path(mt):
 # ---------- القناة الناقلة لكل مباراة (يكتبها المدير؛ ESPN لا تعطي ناقلي المنطقة) ----------
 TV = "tv.json"
 TV_MAX = 40
-TV_SUGGEST = ("AL KASS One", "AL KASS Two", "SSC 1", "SSC 2", "SSC Extra", "beIN SPORTS 1", "beIN SPORTS 2",
-              "beIN SPORTS 3", "beIN SPORTS 4", "Thmanyah 1", "KSA Sports 1", "Dubai Sports", "Abu Dhabi Sports")
+TV_SUGGEST = ("AL KASS", "AL KASS One", "AL KASS Two", "beIN SPORTS", "beIN SPORTS 1", "beIN SPORTS 2", "beIN SPORTS 3",
+              "beIN SPORTS 4", "SSC 1", "SSC 2", "SSC Extra", "Thmanyah 1", "KSA Sports 1", "Dubai Sports", "Abu Dhabi Sports")
 _tv = {}                                            # مجلد البيانات ← {المعرّف: القناة} في الذاكرة
 
 
 def channels(data_dir):
-    """{معرّف المباراة: اسم القناة} — من الذاكرة بعد أول قراءة."""
+    """{معرّف المباراة أو cup:<مسار البطولة>: اسم القناة} — من الذاكرة بعد أول قراءة. وقناة البطولة
+    الفارغة محفوظةٌ عمدًا: مسحها المدير فلا تُعرض قناتها الافتراضية."""
     with _lock:
         if data_dir not in _tv:
             d = _read(os.path.join(_dir(data_dir), TV)) or {}
-            _tv[data_dir] = {str(k): str(v) for k, v in d.items() if v} if isinstance(d, dict) else {}
+            _tv[data_dir] = ({str(k): str(v) for k, v in d.items() if v or str(k).startswith("cup:")}
+                             if isinstance(d, dict) else {})
         return dict(_tv[data_dir])
 
 
+def channel_for(tv, eid, path):
+    """قناة المباراة: قناتها إن كُتبت، وإلا القناة الافتراضية لبطولتها (مفتاحها cup:<المسار>)."""
+    return (tv or {}).get(str(eid)) or (tv or {}).get("cup:" + str(path or DEFAULT_PATH)) or ""
+
+
 def set_channel(data_dir, eid, name):
-    """قناة مباراة؛ والفارغ يمسحها ← الاسم المحفوظ."""
-    eid = eid_of(eid)
-    if not eid:
+    """قناة مباراة (معرّفها) أو قناة بطولةٍ افتراضية (cup:<المسار>)؛ والفارغ يمسحها ← الاسم المحفوظ."""
+    eid = str(eid or "").strip()
+    if not (re.fullmatch(r"cup:/[a-z0-9-]{2,40}", eid) or eid_of(eid)):
         raise ValueError("مباراةٌ غير معروفة")
     name = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", str(name or ""))).strip()[:TV_MAX]
     channels(data_dir)
     with _lock:
         cur = dict(_tv[data_dir])
-        if name:
+        if name or eid.startswith("cup:"):              # قناة البطولة الفارغة تبقى: «بلا قناة» لا «الافتراضية»
             cur[eid] = name
         else:
             cur.pop(eid, None)

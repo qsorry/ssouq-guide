@@ -50,7 +50,17 @@ ICON = {
     "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     "store": '<path d="M3 9l1.5-5h15L21 9M4 9v11h16V9M3 9h18M9 20v-6h6v6"/>',
     "arrow": '<path d="m15 18-6-6 6-6"/>',
+    "share": '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>'
+             '<path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>',
 }
+
+
+def _share(text, url, label, cls):
+    """زرّ مشاركة: قائمة المشاركة في الجوال إن وُجدت (بالسكربت)، وإلا رابط واتساب بالنص والرابط."""
+    from urllib.parse import quote
+    return (f'<a class="{cls} pshare" href="https://wa.me/?text={quote(text + ": " + url, safe="")}" target="_blank" '
+            f'rel="noopener" data-title="مسابقة سمارت سوق" data-text="{_esc(text)}" data-url="{_esc(url)}" '
+            f'aria-label="{_esc(label)}">{_i("share")}<span>{_esc(label)}</span></a>')
 
 
 def _i(name, cls="i"):
@@ -138,8 +148,9 @@ def _cards(cups, summ, tv, now):
         else:
             cta = '<span class="cta shut">أُلغيت المباراة فلا فرز</span>'
         meta = [f'{_i("clock")}<span>{_esc(_when(ts))}</span>']
-        if tv.get(r["eid"]):
-            meta.append(f'{_i("tv")}<span dir="ltr">{_esc(tv[r["eid"]])}</span>')
+        ch = contest.channel_for(tv, r["eid"], path)
+        if ch:
+            meta.append(f'{_i("tv")}<span dir="ltr">{_esc(ch)}</span>')
         img = (f'<img src="{_esc(s["prize_img"])}" alt="" width="52" height="52" loading="lazy">'
                if s.get("prize_img") else f'<span class="gi">{_i("gift")}</span>')
         many = f'<small class="w">لـ{"فائزَين" if w == 2 else f"{w} فائزين"}</small>' if w > 1 else ""
@@ -154,10 +165,14 @@ def _cards(cups, summ, tv, now):
                   if logo else '<i class="fl"></i>')
             return f'<span class="tm{" away" if away else ""}">{fl}<b dir="auto">{_esc(name)}</b></span>'
 
+        share = ""
+        if st == "open":
+            share = _share(f"توقّع نتيجة مباراة {mt.get('home')} و{mt.get('away')} في مسابقة سمارت سوق 🎁 مجانًا، واربح "
+                           f"{s.get('prize') or r.get('prize') or 'اشتراكًا'}", guide_pages.SITE + href, "مشاركة", "shr")
         out.append((TAB_OF.get(st, "done"), (
             f'<article class="mc {st}{" hot" if "hot" in badge else ""}" data-tab="{TAB_OF.get(st, "done")}" data-m="{_esc(r["eid"])}">'
             f'<div class="mcm"><div class="mtop"><span class="cupn">{_i("trophy")}{_esc(mt.get("cup") or contest.DEFAULT_CUP)}'
-            f'<small>{_esc(mt.get("stage") or "")}</small></span>{badge}</div>'
+            f'<small>{_esc(mt.get("stage") or "")}</small></span><span class="tr">{badge}{share}</span></div>'
             f'<a class="teams" href="{_esc(href)}">{team(mt.get("home"), mt.get("home_logo"))}{mid}'
             f'{team(mt.get("away"), mt.get("away_logo"), True)}</a>'
             f'<p class="meta">{"".join(f"<span>{x}</span>" for x in meta)}</p>'
@@ -227,6 +242,13 @@ body{background:var(--paper)}
 .hero .ht{padding-inline-end:92px}
 @media (min-width:720px){.hero{padding:34px 34px 20px}.hero .cup{width:190px;inset-inline-end:40px;top:14px}
   .hero .ht{padding-inline-end:230px;min-height:196px;max-width:none}}
+.hbtn{display:flex;flex-wrap:wrap;gap:8px}
+.glass{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:14px;font-weight:800;color:#fff;
+  text-decoration:none;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(6px)}
+.mtop .tr{display:inline-flex;align-items:center;gap:6px}
+.shr{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:.76rem;font-weight:800;
+  background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none}
+.shr .i{width:14px;height:14px}
 .gold{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:14px;font-weight:800;
   background:linear-gradient(180deg,#FFD27A,#F0A12B);color:#3A2907;text-decoration:none;box-shadow:0 6px 18px -8px rgba(240,161,43,.8)}
 .feats{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:22px}
@@ -338,6 +360,8 @@ var h=location.hash.slice(1);if(h==="open"||h==="live"||h==="done")pick(h);
 document.querySelectorAll('.nav a[data-k]').forEach(function(a){a.addEventListener("click",function(){pick(a.dataset.k)})});
 cards.forEach(function(c){var v=null;try{v=JSON.parse(localStorage.getItem("ssouq_predict_"+c.dataset.m)||"null")}catch(e){}
  var p=c.querySelector(".mine");if(v&&v.n&&p){p.hidden=false;p.textContent="✓ توقّعك مسجّل"+(v.h!=null?": "+v.h+"-"+v.a:"")+" · رقم توقّعك "+v.n;}});
+document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest(".pshare");if(!a||!navigator.share)return;
+ e.preventDefault();navigator.share({title:a.dataset.title,text:a.dataset.text,url:a.dataset.url}).catch(function(){});});
 document.querySelectorAll("img.fl").forEach(function(im){im.addEventListener("error",function(){var i=document.createElement("i");i.className="fl";im.replaceWith(i)})});
 var gift=document.getElementById("giftTpl");
 document.querySelectorAll(".prz img").forEach(function(im){im.addEventListener("error",function(){if(gift)im.replaceWith(gift.content.firstElementChild.cloneNode(true))})});
@@ -408,7 +432,8 @@ def render(cups, summ, tv, now=None):
 {TROPHY}
 <div class="ht"><h1 id="h1">توقّع النتائج واربح الجوائز</h1>
 <p>شارك مجانًا في مسابقات مباريات {_esc(names)}، واربح اشتراكات سمارت سوق.</p>
-<a class="gold" href="#how">{_i("q")}كيف أشارك؟</a></div>
+<div class="hbtn"><a class="gold" href="#how">{_i("q")}كيف أشارك؟</a>
+{_share("توقّع نتائج مباريات " + names + " مجانًا واربح اشتراكات سمارت سوق 🎁", url, "شارك المسابقة", "glass")}</div></div>
 <div class="feats">
 <div class="feat"><span class="ic">{_i("gift")}</span><span><b>جوائز مميزة</b><small>اشتراكات IPTV من المتجر</small></span></div>
 <div class="feat"><span class="ic">{_i("chart")}</span><span><b>توقّع المباريات</b><small>بخطوات بسيطة عبر واتساب</small></span></div>
