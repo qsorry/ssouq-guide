@@ -355,7 +355,7 @@ def _ad(srv, c):
     """إعلان الاشتراك في أعلى الصفحة تحت السيرفرات — أول ما يراه الزائر، وعلى الجوال قبل الجانب بكثير: باقات السيرفر نفسه من CATALOG
     (‏C.PLANS) بأسعارها وخصمها، أو رابط شرائه من صفحة المدير، أو باقات إعلان الموقع (‏tournament.ADS) لسيرفرٍ
     بلا هذا ولا ذاك. وروابطه بحملة ‏content-ad."""
-    catalog = {p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])}
+    catalog = _plan_index()
     own = [catalog[i] for i in C.PLANS.get(srv["key"], ()) if i in catalog]
     plans = own or ([] if srv["buy"] else [catalog[i] for i in tournament.ADS if i in catalog])
     if not plans and not srv["buy"]:
@@ -381,7 +381,14 @@ def _ad(srv, c):
             f'<div class="adbtns"><a class="btn" href="{_esc(buy)}" target="_blank" rel="noopener">'
             + (f"اشترك في {name}" if mine else "اشترك الآن") + '</a>'
             '<a class="btn ghost" href="/#buy">ساعدني في الاختيار</a></div></div>'
-            + (f'<div class="adplans">{"".join(cards)}</div>' if cards else "") + "</aside>")
+            + (f'<div class="adplans" style="--n:{len(cards)}">{"".join(cards)}</div>' if cards else "") + "</aside>")
+
+
+def _plan_index():
+    """كل الباقات بمعرّفها: CATALOG في index.html، ومعها PLAN_EXTRA (كاسبر)."""
+    plans = dict(C.PLAN_EXTRA)
+    plans.update({p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])})
+    return plans
 
 
 def _cta(srv):
@@ -390,7 +397,7 @@ def _cta(srv):
     name = _esc(srv["name"])
     rows, first = [], ""
     if not srv["buy"]:
-        plans = {p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])}
+        plans = _plan_index()
         for pid in C.PLANS.get(srv["key"], ()):
             p = plans.get(pid)
             if not p:
@@ -795,7 +802,7 @@ button{font:inherit;color:inherit}
 .ad p{margin:0;color:#c9d6f0;font-size:.9rem}
 .adbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .adbtns .btn{padding:11px 18px;flex:1 1 auto;white-space:nowrap}
-.adplans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.adplans{display:grid;grid-template-columns:repeat(var(--n,3),minmax(0,1fr));gap:10px}
 .adplan{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:16px 10px 12px;
   border-radius:16px;border:1px solid var(--line2);background:rgba(6,11,23,.55);transition:border-color .2s,transform .2s}
 .adplan:hover{border-color:var(--gold);transform:translateY(-2px)}
