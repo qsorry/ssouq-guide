@@ -1196,7 +1196,12 @@ JS = """
         .catch(function(){})
         .then(function(){ if (n === seq) box.removeAttribute("aria-busy"); });
     };
-    inp.addEventListener("input", function(){ clearTimeout(timer2); timer2 = setTimeout(run, 250); });
+    var sqt = 0, sqlast = "";            // الإحصائيات: ما بحثوا عنه، حين يتوقّفون عن الكتابة (لا كل حرف)
+    var sqrun = function(){
+      var v = inp.value.trim().toLowerCase();
+      if (v.replace(/\\s/g, "").length >= 2 && v !== sqlast && window.sq) { sqlast = v; window.sq("search", v); }
+    };
+    inp.addEventListener("input", function(){ clearTimeout(timer2); timer2 = setTimeout(run, 250); clearTimeout(sqt); sqt = setTimeout(sqrun, 1500); });
     f.addEventListener("submit", function(e){ e.preventDefault(); clearTimeout(timer2); lastq = null; run(); });
   }
 })();

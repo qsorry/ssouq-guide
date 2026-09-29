@@ -2120,7 +2120,7 @@ def channel_text(data_dir, keys, since, until, now=None):
         if more:
             out += ["", "🎞️ *حلقات ومواسم جديدة*"] + _lines(sorted(more.values(), key=rank_more), lim["eps"],
                                                              _more_line, N_SERIES)
-        link = f"{guide_pages.SITE}{PATH}/{s['key']}?t=new"
+        link = f"{guide_pages.SITE}{PATH}/{s['key']}?t=new&ref=wa"    # ref=wa: زيارات القناة باسمها في الإحصائيات
         out += ["", "🔗 القائمة كاملة، وابحث باسم ما تريد:", link] if single else ["", f"🔗 القائمة كاملة: {link}"]
     return "\n".join(out), total
 

@@ -46,6 +46,8 @@ import users_export
 import user_links
 import salla_web
 import split_subs
+import analytics
+import google_api
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
@@ -115,6 +117,18 @@ def tv_map():
 for _cup in CUPS:
     _cup.contests = lambda: contest.summaries(DATA_DIR)
     _cup.channels = tv_map
+
+
+def sitemap_extra():
+    """صفحات الوحدات في خريطة الموقع ← [(المسار، changefreq، priority)] — بعد الرئيسية وصفحات الأجهزة."""
+    return (league.SITEMAP + watch.SITEMAP + [(predict_page.PATH, "daily", "0.7")]
+            + [u for t in CUPS for u in t.sitemap()] + content.sitemap(DATA_DIR))
+
+
+def site_pages():
+    """صفحات الموقع العامة كما في خريطته ← [(المسار، changefreq)]: ما يُرسَل إلى IndexNow."""
+    return ([("/", "weekly")] + [(p, "monthly") for p in guide_pages.PAGES]
+            + [(p, f) for p, f, _ in sitemap_extra()])
 
 
 def cup_matches():
@@ -2401,9 +2415,12 @@ class Handler(BaseHTTPRequestHandler):
     P = ADMIN_PATH
     on_tool_host = False
     off_site = False
+    _inject = False                 # صفحةٌ عامة: يُحقن فيها سكربت العدّاد وما رُبط (analytics.head)
 
     def _send(self, code, obj=None, ctype="application/json; charset=utf-8", raw=None, extra=None):
         body = raw if raw is not None else json.dumps(obj, ensure_ascii=False).encode()
+        if self._inject and code == 200 and ctype.startswith("text/html"):
+            body = analytics.inject(body, DATA_DIR)
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -2529,6 +2546,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         qs = self.path[len(path):]              # ما بعد "؟" — يُحمَل مع التحويل
         self._bind_host()
+        self._inject = False
         if self.on_tool_host:                   # نطاق الأداة: الجذر هو الأداة، بلا موقع عام
             if path == "/robots.txt":           # لوحة الإدارة لا تُفهرس
                 return self._send(200, raw=b"User-agent: *\nDisallow: /\n",
@@ -2541,6 +2559,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redirect((path[len(ADMIN_PATH):] or "/") + qs, 301)  # العنوان القديم
             return self._tool_get(path)
         # ----- الجزء العام -----
+        if not path.startswith(("/static/", "/api/", ADMIN_PATH + "/")) and "/img/" not in path:
+            analytics.crawl(DATA_DIR, self.headers.get("User-Agent", ""), path)   # محركات البحث ومعاينات المشاركة
+        self._inject = not path.endswith("/widget")     # والودجت في رئيسية المتجر لا يُعدّ زيارةً للدليل
+        key = analytics.indexnow_key_file(DATA_DIR, path) if path.endswith(".txt") else None
+        if key:                                         # مفتاح IndexNow: به يتحقّق Bing أن الإرسال منّا
+            return self._send(200, raw=key.encode(), ctype="text/plain; charset=utf-8",
+                              extra={"Cache-Control": "public, max-age=86400"})
         if path == "/robots.txt":
             # حين تكون الأداة على نطاقها لا يبقى هنا مسار يُمنع — ومنعُ مسارٍ غير
             # موجود إعلانٌ عنه.
@@ -2558,10 +2583,7 @@ class Handler(BaseHTTPRequestHandler):
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
         if path == "/sitemap.xml":
-            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + watch.SITEMAP
-                                                           + [(predict_page.PATH, "daily", "0.7")]
-                                                           + [u for t in CUPS for u in t.sitemap()]
-                                                           + content.sitemap(DATA_DIR)),
+            return self._send(200, raw=guide_pages.sitemap(sitemap_extra()),
                               ctype="application/xml; charset=utf-8",
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path in ROOT_FILES:
@@ -2650,6 +2672,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.off_site or (path != ADMIN_PATH and not path.startswith(ADMIN_PATH + "/")):
             # الأداة على نطاقها وحده — فـ /admin هنا مسار لا وجود له
             return self._send(404, raw="404".encode(), ctype="text/plain; charset=utf-8")
+        self._inject = False
         return self._tool_get(path[len(ADMIN_PATH):] or "/")
 
     # ---------- الأداة ----------
@@ -2817,6 +2840,10 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._page("contest_admin.html") if path == "/contest" else self._contest_admin_get(path)
+            if path == "/stats" or path.startswith("/api/analytics/"):   # إحصائيات الدليل وربطه (للمدير)
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._page("stats_admin.html") if path == "/stats" else self._analytics_get(path)
             if path == "/remaining":              # الحسابات المتبقية (الاشتراكات المجزّأة)
                 if role == "account" and not split_on(acct):
                     return self._redirect(self._url())
@@ -3220,6 +3247,80 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {"ok": True, "status": "ignored" if res["status"] == "ignored" else "ok",
                                 "contest": res["status"]})
 
+    # ---------- إحصائيات الدليل ----------
+    def _days(self, default=30):
+        try:
+            return max(1, min(int(self._q("days") or default), 400))
+        except ValueError:
+            return default
+
+    def _analytics_get(self, path):
+        if path == "/api/analytics/report":             # أعداد المدة: الزوّار والصفحات والمصادر والأحداث…
+            r = analytics.report(DATA_DIR, self._days())
+            r["products"] = {k: v[0] for k, v in guide_pages.PRODUCTS.items()}
+            r["site"] = "https://" + SITE_HOST
+            return self._send(200, r)
+        if path == "/api/analytics/summary":            # بطاقة رئيسية اللوحة: زوّار اليوم ومن في الموقع الآن
+            return self._send(200, analytics.summary(DATA_DIR))
+        if path == "/api/analytics/settings":           # المعرّفات، وحال ربط جوجل، وIndexNow، وصفحات الموقع
+            s = analytics.public_settings(DATA_DIR)
+            s.update(site=SITE_HOST, pages=[p for p, _ in site_pages()])
+            return self._send(200, s)
+        if path == "/api/analytics/google":             # Google Analytics وSearch Console (محفوظةً دقائق)
+            creds = analytics.google_creds(DATA_DIR)
+            if not creds:
+                return self._send(200, {"ok": False, "connected": False})
+            r = google_api.report(creds, self._days(28), SITE_HOST, fresh=self._q("fresh") == "1")
+            r["connected"] = True
+            return self._send(200, r)
+        return self._send(404, {"error": "not found"})
+
+    def _analytics_post(self, path):
+        body = self._body()
+        if path == "/api/analytics/tags":               # GA4 وGTM وClarity والبيكسلات ووسما التحقّق
+            return self._send(200, {"ok": True, "tags": analytics.save_tags(DATA_DIR, body)})
+        if path == "/api/analytics/google":             # مفتاح حساب الخدمة (يُشفَّر) ورقم الخاصية والموقع
+            g = analytics.save_google(DATA_DIR, body, google_api.load_key)
+            google_api.clear_cache()
+            return self._send(200, {"ok": True, "google": g})
+        creds = analytics.google_creds(DATA_DIR)
+        if path == "/api/analytics/google-check":       # «اختبر الربط»: الخصائص والمواقع التي يراها الحساب
+            if not creds:
+                return self._send(400, {"error": "ألصق ملف مفتاح حساب الخدمة أولًا"})
+            return self._send(200, google_api.check(creds))
+        if path == "/api/analytics/sitemaps":           # إرسال خريطتي الموقع إلى Search Console
+            if not creds or not creds.get("site"):
+                return self._send(400, {"error": "اربط Search Console أولًا (الحساب والموقع)"})
+            try:
+                res = google_api.send_sitemaps(creds, [f"https://{SITE_HOST}/sitemap.xml",
+                                                       f"https://{SITE_HOST}/store-sitemap.xml"])
+            except google_api.GoogleError as e:
+                return self._send(200, {"ok": False, **e.as_dict()})
+            return self._send(200, {"ok": all(r["ok"] for r in res), "results": res})
+        if path == "/api/analytics/indexnow":           # IndexNow: الإرسال اليومي، و«أرسل كل الصفحات الآن»
+            if "auto" in body:
+                analytics.set_indexnow_auto(DATA_DIR, body.get("auto"))
+            res = None
+            if body.get("submit"):
+                res = analytics.submit(DATA_DIR, SITE_HOST, [f"https://{SITE_HOST}{p}" for p, _ in site_pages()])
+            return self._send(200, {"ok": res["ok"] if res else True, "result": res,
+                                    "indexnow": analytics.public_settings(DATA_DIR)["indexnow"]})
+        return self._send(404, {"error": "not found"})
+
+    def _client_ip(self):
+        h = self.headers
+        return (h.get("CF-Connecting-IP") or h.get("X-Real-IP") or (h.get("X-Forwarded-For") or "").split(",")[0]
+                or self.client_address[0]).strip()
+
+    def _hit(self):
+        """سكربت الصفحة يرسل زيارةً أو حدثًا ← 204 دائمًا (ما لا يُحسب لا يُقال لمرسله)."""
+        n = int(self.headers.get("Content-Length", 0) or 0)
+        raw = self.rfile.read(min(n, analytics.MAX_BODY + 1)) if n > 0 else b""
+        own = {h for h in (SITE_HOST, ADMIN_HOST,
+                           self._bare_host(self.headers.get("X-Forwarded-Host") or self.headers.get("Host"))) if h}
+        analytics.hit(DATA_DIR, raw, self.headers, self._client_ip(), own)
+        return self._send(204, raw=b"", ctype="text/plain")
+
     def _contest_admin_get(self, path):
         if path == "/api/contest/admin/summary":       # أرقام لوحة الإدارة: من الملخّصات وحدها، بلا ESPN ولا واتساب
             summ = contest.summaries(DATA_DIR).values()
@@ -3519,7 +3620,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?", 1)[0]
         self._bind_host()
+        self._inject = False
         if not self.on_tool_host:                   # مسارات الموقع العام وحده
+            if path == analytics.HIT:               # عدّاد الزيارات من سكربت الصفحة (بلا كوكيز)
+                return self._hit()
             if path == "/api/m3u-generated":        # عدّاد عام لأداة M3U (بدون تسجيل دخول)
                 with _lock:
                     return self._send(200, {"m3u": bump_stat("m3u")})
@@ -3592,6 +3696,10 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._contest_admin_post(path)
+            if path.startswith("/api/analytics/"):    # خارج القفل: ربط جوجل وIndexNow ينتظران الشبكة
+                if role != "admin":
+                    return self._send(403, {"error": "للمدير فقط"})
+                return self._analytics_post(path)
             if path == "/api/web/login":              # إدخال كود التحقّق يدويًا (وضع الويب)
                 body = self._body()
                 gate = find_gate(acct, body.get("gate")) if acct else None
@@ -4033,8 +4141,26 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "not found"})
 
 
+def start_analytics():
+    """عامل الإحصائيات (الكتابة الدورية وIndexNow اليومي)، وأعداد اليوم تُكتب قبل أن يُطفأ الخادم."""
+    analytics.start(DATA_DIR, SITE_HOST, site_pages)
+    import signal
+
+    def on_term(signum, frame):
+        try:
+            analytics.flush(DATA_DIR, force=True)
+        finally:                                 # ثم ما كان يحدث قبله كما هو (وPID 1 في الحاوية يتجاهلها)
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            os.kill(os.getpid(), signal.SIGTERM)
+    try:
+        signal.signal(signal.SIGTERM, on_term)
+    except (ValueError, OSError):
+        pass
+
+
 def web():
     print(f"الصفحة تعمل: http://{BIND}:{PORT}   (Ctrl+C للإيقاف)", flush=True)
+    start_analytics()
     start_poller()
     start_renew_worker()
     start_split_worker()
