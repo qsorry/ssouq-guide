@@ -804,9 +804,33 @@ def unit_enrich():
         check("بلا تقييمٍ ولا تاريخ، والأحدث برقمه", v2["counts"]["movie"] == 33
               and not any(it.get("r") or it.get("a") for g in v2["kinds"]["movie"] for it in g["items"]), v2["counts"])
 
+        print("ملفٌّ بلا أقسام (‏type=m3u)")
+        C.set_url(d, "kon", f"{base}/get.php?username=u&password=p&type=m3u")
+        mock_xtream.Handler.hits.clear()
+        ok, err = C.refresh(d, "kon")
+        kon = next(s for s in C.admin_state(d)["servers"] if s["key"] == "kon")
+        v3 = C._view(d, "kon")[1]
+        check("طلبات الأقسام وشعارات القنوات", ok and set(mock_xtream.Handler.hits) >= {
+              "/player_api.php?action=get_live_streams", "/player_api.php?action=get_vod_categories",
+              "/player_api.php?action=get_series_categories", "/player_api.php?action=get_live_categories"}, err)
+        check("كل عنصرٍ في قسمه من الواجهة، بترتيبها", [g["name"] for g in v3["kinds"]["movie"]] == list(mock_xtream.MOVIES)
+              and [g["name"] for g in v3["kinds"]["series"]] == list(mock_xtream.SERIES)
+              and [g["name"] for g in v3["kinds"]["live"]] == list(mock_xtream.CHANNELS),
+              [[g["name"] for g in v3["kinds"][k]] for k in C.KINDS])
+        check("والأعداد كما في الملف بأقسامه", v3["counts"] == {"series": 10, "seasons": 43, "episodes": 645, "movie": 32,
+                                                              "live": 14} and kon["api"]["grouped"] == 56, (v3["counts"], kon["api"]))
+        check("وقسم الكبار في الواجهة يُسقط ما فيه، وللمدير", kon["skipped"]["adult"] == 3 and kon["adult"]["count"] == 3
+              and "Hot Stuff" not in json.dumps(v3["cat"]) and ["Hot Stuff", "XXX | Adults"] in kon["adult"]["panel"],
+              (kon["skipped"], kon["adult"]))
+        logos = [it.get("p") for g in v3["kinds"]["live"] for it in g["items"]]
+        check("وشعار القناة من الواجهة", all(logos) and f"{base}/images/106.png" in logos, logos[:3])
+        code, html = page(d, "kon", t="movie")
+        check("والصفحة بأقسامها", code == 200 and "بلا قسم" not in html and html.count('<a class="chip"') == 3)
+
         text = mock_xtream.build(base)[0]
         res = C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
         check("والملف المرفوع يُثرى من روابطه", res["api"] == {"ok": True, "movies": 32, "series": 10}, res["api"])
+        C.set_url(d, "kon", "")
         res = C.ingest(d, "kon", reader(text.replace("/u/p/", "/u/old/").encode()), "file", "kon.m3u")
         check("واشتراكٌ في الملف لا تقبله الواجهة: السبب للمدير", res["api"]["ok"] is False
               and "لم تُرجع شيئًا" in res["api"]["error"] and C._view(d, "kon")[1]["counts"]["movie"] == 33, res["api"])

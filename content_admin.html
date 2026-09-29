@@ -235,7 +235,8 @@ function meta(s) {
     const drop = [sk.adult ? count(sk.adult, N.item) + " للكبار" : "", sk.sep ? count(sk.sep, N.sep) : ""].filter(Boolean);
     if (drop.length) out.push("أُسقط: " + drop.join(" و"));
     // التقييمات والتصنيفات وتاريخ الإضافة من واجهة Xtream بالبيانات نفسها
-    if (s.api && s.api.ok) out.push(`التقييمات والتصنيفات من واجهة السيرفر: ${count(s.api.movies || 0, N.movie)} و${count(s.api.series || 0, N.series)}`);
+    if (s.api && s.api.ok) out.push(`التقييمات والتصنيفات من واجهة السيرفر: ${count(s.api.movies || 0, N.movie)} و${count(s.api.series || 0, N.series)}`
+      + (s.api.grouped ? ` — والملف بلا أقسام فقُسِّم ${count(s.api.grouped, N.item)} بأقسام الواجهة` : ""));
     else if (s.api) out.push(`<span class="warnline">تعذّر جلب التقييمات من واجهة السيرفر (${esc(s.api.error || "")}) — الصفحة بما في الملف</span>`);
     // محتوى قُرئ قبل الصور والتقييمات: الرابط يُسحب وحده في دقائق، والملف يُعاد رفعه
     if (s.old) out.push(`<span class="warnline">قُرئ هذا المحتوى قبل إضافة الصور والتقييمات — ${s.url
@@ -370,7 +371,8 @@ function summary(r) {
   const parts = [n.series ? count(n.series, N.ep) + " من المسلسلات" : "", n.movie ? count(n.movie, N.movie) : "",
                  n.live ? count(n.live, N.live) : ""].filter(Boolean);
   let t = `تم: ${count(r.entries, N.item)} — ${parts.join(" و")}.`;
-  if (r.api && r.api.ok) t += ` ومن واجهة السيرفر: تقييم ${count(r.api.movies || 0, N.movie)} و${count(r.api.series || 0, N.series)}.`;
+  if (r.api && r.api.ok) t += ` ومن واجهة السيرفر: تقييم ${count(r.api.movies || 0, N.movie)} و${count(r.api.series || 0, N.series)}`
+    + (r.api.grouped ? `، وأقسام ${count(r.api.grouped, N.item)} (الملف بلا أقسام).` : ".");
   else if (r.api) t += ` (تعذّر جلب التقييمات من واجهة السيرفر: ${r.api.error || ""})`;
   if (sk.adult) t += ` وأُسقط ${count(sk.adult, N.item)} للكبار.`;
   return t;

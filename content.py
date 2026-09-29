@@ -165,8 +165,11 @@ def _clean(s):
     return s[:NAME_MAX].strip()
 
 
+NO_GROUP = "بلا قسم"          # عنصرٌ بلا ‏group-title (ملف ‏type=m3u) — ويُنقل إلى قسمه في الواجهة إن أمكن
+
+
 def _group(s):
-    return " ".join(_CTRL.sub("", unicodedata.normalize("NFC", s or "")).split())[:GROUP_MAX] or "بلا قسم"
+    return " ".join(_CTRL.sub("", unicodedata.normalize("NFC", s or "")).split())[:GROUP_MAX] or NO_GROUP
 
 
 def _is_sep(name):
@@ -1342,11 +1345,31 @@ def _year(v):
     return int(m.group(1)) if m and int(m.group(1)) <= YEAR_MAX else 0
 
 
+def _cid(o):
+    """قسم العنصر في الواجهة: ‏category_id، أو أوّل ‏category_ids في اللوحات الأحدث."""
+    c = o.get("category_id")
+    if c in (None, "") and isinstance(o.get("category_ids"), list) and o["category_ids"]:
+        c = o["category_ids"][0]
+    return str(c).strip() if c not in (None, "") else ""
+
+
+def _optional(xt, action, each):
+    """طلبٌ لا يُفشل الإثراء إن فشل (الأقسام وشعارات القنوات): ‏each لكل عنصر ← نجح؟"""
+    try:
+        with _api_open(xt, action) as r:
+            for o in _json_items(r.read):
+                each(o)
+        return True
+    except Exception:  # noqa: BLE001 — الصفحة بلا هذا وحده
+        return False
+
+
 def enrich(cat, xt, flagged=None):
     """يُثري الفهرس من واجهة Xtream: تقييم الفيلم والمسلسل وتاريخ إضافته، وتصنيفه وقصته، وخلفية المسلسل —
-    ويُسقط ما تعلّمه الواجهة للكبار (واسمه وقسمه في ‏flagged للمدير وحده، مرةً لكل فيلم). ← {movies، series}
-    عدد ما أُثري. والفشل استثناء، والفهرس كما هو قبله."""
-    movies, series = {}, {}
+    ويُسقط ما تعلّمه الواجهة للكبار (واسمه وقسمه في ‏flagged للمدير وحده، مرةً لكل فيلم). وملفٌّ بلا أقسام
+    (‏type=m3u: كل شيءٍ في «بلا قسم») يُقسَّم بأقسام الواجهة وبترتيبها، وشعار القناة منها إن لم يكن في الملف.
+    ← {movies، series، grouped} عدد ما أُثري وما قُسِّم. والفشل استثناء، والفهرس كما هو قبله."""
+    movies, series, lives = {}, {}, {}
     for g in cat.get("movie") or []:
         for it in g["items"]:
             if it.get("i"):
@@ -1354,7 +1377,12 @@ def enrich(cat, xt, flagged=None):
     for g in cat.get("series") or []:
         for it in g["items"]:
             series.setdefault(_norm(it["n"]), []).append(it)
-    found, adult, done, heard = {}, set(), {"movies": 0, "series": 0}, 0
+    for g in cat.get("live") or []:
+        for it in g["items"]:
+            if it.get("i"):
+                lives.setdefault(it["i"], []).append(it)
+    want = {k for k in KINDS if any(g["name"] == NO_GROUP for g in cat.get(k) or [])}   # ما يحتاج أقسام الواجهة
+    found, adult, done, heard, cids = {}, set(), {"movies": 0, "series": 0}, 0, {}
     if movies:
         with _api_open(xt, "get_vod_streams") as r:
             for o in _json_items(r.read):
@@ -1367,7 +1395,7 @@ def enrich(cat, xt, flagged=None):
                     continue
                 found[sid] = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("added")), "g": _genres(o.get("genre")),
                                     "d": _plot(o.get("plot") or o.get("description")), "p": _poster(o.get("stream_icon")),
-                                    "y": _year(o.get("year") or o.get("releasedate"))})
+                                    "y": _year(o.get("year") or o.get("releasedate")), "c": _cid(o)})
     got = {}
     if series:
         with _api_open(xt, "get_series") as r:
@@ -1382,20 +1410,47 @@ def enrich(cat, xt, flagged=None):
                 bd = bd[0] if isinstance(bd, list) and bd else bd
                 meta = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("last_modified")), "g": _genres(o.get("genre")),
                               "d": _plot(o.get("plot")), "b": _poster(bd if isinstance(bd, str) else ""),
-                              "p": _poster(o.get("cover")), "y": yr})
+                              "p": _poster(o.get("cover")), "y": yr, "c": _cid(o)})
                 for it in its:                  # مسلسلان بالاسم نفسه: السنة تفصل بينهما
                     if not (yr and it.get("y") and it["y"] != yr) and id(it) not in got:
                         got[id(it)] = (it, meta)
     if (movies or series) and not heard:      # رفض الدخول يُردّ كائنًا لا مصفوفة: اشتراكٌ منتهٍ أو واجهةٌ مغلقة
         raise ValueError("الواجهة لم تُرجع شيئًا — الاشتراك منتهٍ أو السيرفر لا يتيحها")
-    # لا يُمسّ الفهرس إلا بعد أن يُقرأ الردّان كاملَين
+    logos = {}
+    if lives and ("live" in want or any(not it.get("p") for its in lives.values() for it in its)):
+        def live(o):
+            sid = _int(o.get("stream_id"))
+            if sid in lives:
+                logos[sid] = (_poster(o.get("stream_icon")), _cid(o))
+        _optional(xt, "get_live_streams", live)
+    names = {}
+
+    def category(d):
+        def add(o):
+            name = _group(str(o.get("category_name") or ""))
+            if _cid(o) and name != NO_GROUP:
+                d.setdefault(_cid(o), name)
+        return add
+    for kind, action in (("movie", "get_vod_categories"), ("series", "get_series_categories"),
+                         ("live", "get_live_categories")):
+        if kind in want:
+            names[kind] = {}
+            _optional(xt, action, category(names[kind]))
+    # لا يُمسّ الفهرس إلا بعد أن تُقرأ الردود كاملة
     for sid, meta in found.items():
         for it in movies[sid]:
-            it.update({k: val for k, val in meta.items() if k not in ("p", "y") or not it.get(k)})
+            cids[id(it)] = meta.get("c", "")
+            it.update({k: val for k, val in meta.items() if k != "c" and (k not in ("p", "y") or not it.get(k))})
         done["movies"] += 1
     for it, meta in got.values():
-        it.update({k: val for k, val in meta.items() if k not in ("p", "y") or not it.get(k)})
+        cids[id(it)] = meta.get("c", "")
+        it.update({k: val for k, val in meta.items() if k != "c" and (k not in ("p", "y") or not it.get(k))})
     done["series"] = len(got)
+    for sid, (logo, cid) in logos.items():
+        for it in lives[sid]:
+            cids[id(it)] = cid
+            if logo and not it.get("p"):
+                it["p"] = logo
     if adult:
         told = set()
         for g in cat.get("movie") or []:
@@ -1407,7 +1462,46 @@ def enrich(cat, xt, flagged=None):
             g["items"] = [x for x in g["items"] if x.get("i") not in adult]
         cat["movie"] = [g for g in cat.get("movie") or [] if g["items"]]
         cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(adult)
+    grouped = sum(_regroup(cat, kind, names.get(kind) or {}, cids, flagged) for kind in want)
+    if grouped:
+        done["grouped"] = grouped
     return done
+
+
+def _regroup(cat, kind, names, cids, flagged):
+    """ما في «بلا قسم» إلى قسمه في الواجهة (‏names: رقم القسم ← اسمه، بترتيب الواجهة) — وقسمٌ للكبار يُسقط ما فيه
+    (وفي ‏flagged للمدير). وما لم يُعرف قسمه يبقى في «بلا قسم» آخرها. ← عدد ما نُقل."""
+    groups = cat.get(kind) or []
+    loose = next((g for g in groups if g["name"] == NO_GROUP), None)
+    if loose is None or not names:
+        return 0
+    by, rest = {}, []
+    for it in loose["items"]:
+        name = names.get(cids.get(id(it), ""))
+        (by.setdefault(name, []) if name else rest).append(it)
+    out = [g for g in groups if g is not loose]
+    named = {g["name"]: g for g in out}
+    moved = 0
+    for name in dict.fromkeys(names.values()):
+        its = by.get(name)
+        if not its:
+            continue
+        if _ADULT_GROUP.search(name):
+            cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(its)
+            if flagged is not None:
+                flagged.extend([f"{x['n']} ({x['y']})" if x.get("y") else x["n"], name] for x in its)
+            continue
+        if name in named:
+            named[name]["items"].extend(its)
+        else:
+            named[name] = {"id": _gid(kind, name), "name": name, "items": its}
+            out.append(named[name])
+        moved += len(its)
+    if rest:
+        loose["items"] = rest
+        out.append(loose)
+    cat[kind] = out
+    return moved
 
 
 # ================= الواجهات الأخرى =================
