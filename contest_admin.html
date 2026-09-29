@@ -103,6 +103,17 @@ button:disabled{opacity:.55;cursor:default}
 .vid{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:10px}
 .vid canvas{width:min(100%,320px);aspect-ratio:9/16;border-radius:14px;background:#012E45}
 .sent li{font-size:.84rem}
+/* هدية الفائز وتهنئة القناة */
+.gform{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;align-items:end}
+.gform label{margin-top:0}
+.gift{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-top:8px}
+.gift.ok{border-color:color-mix(in srgb,var(--go) 45%,var(--line))}
+.gift.bad{border-color:color-mix(in srgb,var(--err) 50%,var(--line))}
+.gift b{margin-inline-end:8px}
+.gift small{display:block;color:var(--mute)}
+.gift .acts{margin-top:6px}
+.gift .mono{margin:6px 0 0;white-space:pre-wrap}
+.gift .ph{direction:ltr;unicode-bidi:isolate;font-family:"IBM Plex Mono",monospace}
 .warn{border-color:color-mix(in srgb,var(--amber) 55%,var(--line))}
 .warn b{color:var(--amber)}
 .warn ul{margin:6px 0 0;padding-inline-start:1.2em;color:var(--mute);font-size:.88rem}
@@ -277,7 +288,7 @@ section{border-radius:20px}
     <label class="chk"><input type="checkbox" id="sNotify"> أرسل للفائز رسالة تهنئة تلقائيًا بعد الفرز</label>
     <label for="sText">نص رسالة الفائز</label>
     <textarea id="sText" rows="7"></textarea>
-    <span class="hint">يُستبدل فيه: {name} الاسم الأول · {match} المباراة · {score} النتيجة · {prize} الجائزة · {link} صفحة الفرز</span>
+    <span class="hint">يُستبدل فيه: {name} الاسم الأول · {match} المباراة · {score} النتيجة · {prize} الجائزة · {link} صفحة الفرز · {claim} كيف يستلم جائزته («بيانات اشتراكك وطريقة تفعيله تصلك هنا» إن اخترت للمسابقة هدية الفائز، وإلا «رُد على هذه الرسالة لاستلامها»)</span>
     <label for="sAdmin">رقم واتسابك لملخّص كل فرز (اختياري)</label>
     <input id="sAdmin" class="ltr" inputmode="tel" placeholder="05xxxxxxxx">
     <button class="go" id="sSave" style="margin-top:12px">حفظ</button>
@@ -538,6 +549,8 @@ $("mdl").addEventListener("click", e => { if (e.target === $("mdl")) close(); })
 
 async function view(eid) {
   const d = await api("/api/contest/admin/match?m=" + encodeURIComponent(eid));
+  if (player) player.stop();                        // إعادة العرض بعد إجراء: العرض السابق يتوقّف
+  player = null;
   if (!d.ok) return alert(d.error || "تعذّر التحميل");
   const m = d.match, dr = d.draw, won = d.won || [];
   $("dTitle").textContent = m.home + " × " + m.away;
@@ -556,15 +569,18 @@ async function view(eid) {
     (d.redraws || []).forEach(x => { h += `<p class="hint">أُعيد الفرز ${new Date(x.at * 1000).toLocaleString("en-GB", {timeZone: "Asia/Riyadh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})} — كان الفوز «${x.mode === "outcome" ? "بالضبط، وإلا من أصاب الفائز" : "بالضبط فقط"}» والفائزون: ${esc(x.won.join("، ") || "لا أحد")}</p>`; });
     if (d.draw_mode === "outcome")
       h += `<div class="acts"><button class="danger" id="dRedraw">أعد الفرز: النتيجة بالضبط فقط</button></div>`;
+    h += giftBox(d, true);
     const sent = d.sent || [];
     h += `<h3>رسائل واتساب</h3>` + (sent.length ? `<ul class="sent">${sent.map(s => `<li>${s.kind === "admin" ? "ملخّص المدير" : "الفائز"} ‎+${esc(s.to)} — ${s.dry ? "لم تُرسل (القناة غير مضبوطة)" : s.ok ? "أُرسلت ✓" : "فشلت: " + esc(s.error)}</li>`).join("")}</ul>` : '<p class="hint">لا رسائل بعد.</p>');
     h += `<div class="acts"><button class="ghost" id="dNotify">أعد إرسال الرسائل</button></div><div class="msg" id="dMsg"></div>`;
     h += `<h3>فيديو الفرز</h3><div class="vid"><canvas width="1080" height="1920"></canvas><div class="acts">
       <button class="ghost" id="vPlay">تشغيل</button><button class="go" id="vSave">تنزيل الفيديو</button></div>
       <div class="msg" id="vMsg">فيديو عمودي (9:16) للقصص والحالة. التسجيل بطول الفيديو (نحو 22 ثانية)، فأبقِ الصفحة مفتوحة.</div></div>`;
+    h += postBox(d);
   } else if (d.state === "pending") {
     h += `<div class="acts"><button class="go" id="dSettle">افرز الآن</button></div><div class="msg" id="dMsg">الفرز الآلي يمرّ كل دقيقة؛ وهذا يسبقه.</div>`;
   }
+  if (!dr && d.state !== "void") h += giftBox(d, false);
   h += `<h3>بصمة التوقّعات</h3><div class="mono">${esc(d.fp)}</div>`;
   if (dr) h += `<div class="hint">رقم القرعة (SHA-256 للبصمة | المباراة | النتيجة):</div><div class="mono">${esc(dr.seed)}</div>`;
   const winners = new Set(won.map(w => w.n));
@@ -575,6 +591,7 @@ async function view(eid) {
     </tbody></table></div>`;
   $("dBody").innerHTML = h;
   $("mdl").hidden = false;
+  if ($("gBox")) giftWire(d, !!dr);
   $("dFind").oninput = e => { const q = e.target.value.trim().toLowerCase(); $("dBody").querySelectorAll("tbody tr[data-q]").forEach(tr => tr.hidden = q && !tr.dataset.q.includes(q)); };
   if ($("dSettle")) $("dSettle").onclick = async () => {
     const r = await api("/api/contest/admin/settle", {m: d.eid});
@@ -601,18 +618,197 @@ async function view(eid) {
     player = window.SSDraw.play(cv, rep);
     $("vPlay").onclick = () => player && player.play();
     $("vSave").hidden = !window.SSDraw.canRecord();
-    $("vSave").onclick = async () => {
-      const btn = $("vSave"); btn.disabled = true; $("vPlay").disabled = true;
+    // تسجيلٌ واحد في كل مرة (التنزيل أو النشر): الأزرار موقوفة حتى ينتهي، ثم يعود العرض
+    const record = async (bitrate, say) => {
+      const btns = ["vSave", "vPlay", "pPost", "pText1"].map($).filter(Boolean);
+      btns.forEach(b => { b.disabled = true; });
       if (player) player.stop();
       try {
-        const out = await window.SSDraw.record(rep, {canvas: cv, onProgress: p => { $("vMsg").textContent = "نسجّل… " + Math.round(p * 100) + "%"; }});
+        return await window.SSDraw.record(rep, {canvas: cv, bitrate, onProgress: p => say("نسجّل الفيديو… " + Math.round(p * 100) + "%")});
+      } finally {
+        player = window.SSDraw.play(cv, rep);         // التسجيل قد يغيّر مقاس اللوحة
+        btns.forEach(b => { b.disabled = false; });
+      }
+    };
+    $("vSave").onclick = async () => {
+      try {
+        const out = await record(0, t => { $("vMsg").textContent = t; });
         window.SSDraw.save(out, "فرز-" + m.home + "-" + m.away);
         $("vMsg").textContent = "نُزّل الفيديو (" + out.ext.toUpperCase() + ").";
       } catch (err) { $("vMsg").textContent = err.message || "تعذّر التسجيل"; }
-      player = window.SSDraw.play(cv, rep);           // التسجيل قد يغيّر مقاس اللوحة
-      btn.disabled = false; $("vPlay").disabled = false;
     };
+    postWire(d, record);
   }
+}
+
+// ---------- هدية الفائز: اشتراكٌ يُنشأ بنظام الإنشاء نفسه ويُرسل على رقمه ----------
+let GATES = null;
+const GIFT_ST = {creating: "يُنشأ الآن…", failed: "تعذّر الإنشاء"};
+const monthsAr = n => n === 1 ? "شهر واحد" : n === 2 ? "شهران" : n <= 10 ? n + " أشهر" : n + " شهرًا";
+function giftBox(d, drawn) {
+  const g = d.gift;
+  if (drawn && !(d.won || []).length && !Object.keys(d.gifts || {}).length) return "";   // لا فائز
+  let h = `<h3>🎁 هدية الفائز</h3><div id="gBox">
+    <p class="hint" style="margin-top:0">${drawn ? "اختر الباقة ومدة الهدية، فيُنشأ لكل فائزٍ اشتراكه ويُرسل له على واتساب ببياناته وطريقة التثبيت — من رقم المسابقة، ويُدوَّن له هنا."
+      : "اخترها الآن فتُنشأ للفائز وتُرسل له على واتساب وحدها بعد الفرز (بعد رسالة التهنئة)."}
+      مثلًا: باقة 15 شهرًا ويُعطى منها 12 شهرًا بنظام الاشتراكات المجزّأة — يتغيّر اسم المستخدم عند انتهاء مدته ويبقى الباقي للبيع.</p>
+    ${g ? `<p class="okline" id="gCur">الهدية: <b>${esc(g.label)}</b> · ${esc(g.account)} / ${esc(g.gate)}</p>` : ""}
+    <div class="gform">
+      <div><label for="gAcct">الحساب</label><select id="gAcct"><option value="">…</option></select></div>
+      <div><label for="gGate">البوابة</label><select id="gGate"></select></div>
+      <div><label for="gPkg">الباقة</label><select id="gPkg"></select></div>
+      <div><label for="gMonths">مدة الهدية</label><select id="gMonths"></select>
+        <input id="gOther" class="ltr" inputmode="numeric" placeholder="عدد الأشهر" hidden style="margin-top:6px"></div>
+    </div>
+    <span class="hint" id="gHint"></span>
+    <div class="acts" style="margin-top:10px"><button class="go" id="gSave" disabled>${drawn ? "أنشئ الاشتراك وأرسله للفائز" : "احفظ الهدية"}</button>
+      ${g ? '<button class="ghost" id="gClear">إلغاء الهدية</button>' : ""}</div>
+    <div class="msg" id="gMsg"></div>`;
+  if (drawn) {
+    const won = d.won || [], gifts = d.gifts || {}, cur = new Set(won.map(w => String(w.n)));
+    const rows = won.map(w => giftRow(w.n, w.name, w.phone, gifts[String(w.n)], true))
+      .concat(Object.keys(gifts).filter(n => !cur.has(n)).map(n => giftRow(n, gifts[n].name, gifts[n].to, gifts[n], false)));
+    h += rows.length ? rows.join("") : "";
+  }
+  return h + `</div>`;
+}
+function giftRow(n, name, phone, g, current) {
+  const who = `<b>${esc(name)}</b><span class="ph" dir="ltr">+${esc(phone)}</span>${current ? "" : ' <small>فائزٌ في فرزٍ سابق</small>'}`;
+  if (!g) return `<div class="gift">${who}<small>لم تُرسل هديته بعد</small></div>`;
+  if (g.st !== "created")
+    return `<div class="gift bad">${who}<small>${GIFT_ST[g.st] || g.st}${g.error ? ": " + esc(g.error) : ""}</small>
+      ${g.st === "failed" && current ? `<div class="acts"><button class="ghost" data-gsend="${esc(n)}">أعد المحاولة</button></div>` : ""}</div>`;
+  const s = g.sent || {}, sp = g.split || {};
+  return `<div class="gift ${s.ok ? "ok" : "bad"}">${who}
+    <small>${esc(g.label || g.package)} · ${esc(g.account || "")} / ${esc(g.gate || "")} · أُنشئ ${new Date(g.created * 1000).toLocaleString("en-GB", {timeZone: "Asia/Riyadh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})}
+      ${sp.due ? " · يتغيّر اسم المستخدم " + esc(sp.due) : ""}</small>
+    <div class="mono">Host: ${esc(g.host)}\nUser: ${esc(g.username)}\nPass: ${esc(g.password)}</div>
+    <small>${s.at ? (s.ok ? "وصلته رسالة الاشتراك وطريقة التثبيت ✓" : "لم تصله الرسالة: " + esc(s.error)) : "لم تُرسل رسالته بعد"}</small>
+    <div class="acts"><button class="ghost" data-gsend="${esc(n)}" data-resend="1">أعد إرسال رسالته</button></div></div>`;
+}
+async function giftWire(d, drawn) {
+  const pick = d.gift || d.gift_last || {};
+  const say = (t, cls) => { $("gMsg").className = "msg " + (cls || ""); $("gMsg").textContent = t; };
+  const r0 = await api("/api/contest/admin/gates").catch(() => ({}));   // كل مرة: حسابٌ أُضيف للتوّ يظهر
+  GATES = r0.accounts || [];
+  if (!$("gAcct")) return;                          // أُغلقت النافذة أو فُتحت غيرها
+  if (!GATES.length) { say("لا حسابات ببوابات بعد — أضفها من «الحسابات».", "err"); return; }
+  const acctOf = () => GATES.find(a => a.id === $("gAcct").value);
+  let PKGS = [], SPLIT = null;
+  $("gAcct").innerHTML = '<option value="">اختر الحساب</option>' + GATES.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+  const months = () => {
+    const p = PKGS.find(x => String(x.id) === $("gPkg").value);
+    const opts = ['<option value="0">الباقة كاملة</option>'];
+    if (p && p.split) opts.push(...SPLIT.slices.map(s => `<option value="${s}">${monthsAr(s)} منها</option>`), '<option value="other">مدة أخرى…</option>');
+    $("gMonths").innerHTML = opts.join("");
+    const want = String(pick.months || 0);
+    if ([...$("gMonths").options].some(o => o.value === want)) $("gMonths").value = want;
+    else if (p && p.split && +want) { $("gMonths").value = "other"; $("gOther").value = want; }
+    $("gOther").hidden = $("gMonths").value !== "other";
+    $("gHint").textContent = !p ? "" : p.split ? `باقة ${p.months} شهرًا: أعطِ الفائز جزءًا منها (حتى ${SPLIT.max_slice} شهرًا) ويبقى الباقي للبيع.`
+      : SPLIT && SPLIT.split ? "تُعطى كاملة — التجزئة لباقات 15 شهرًا." : (acctOf() && !acctOf().split ? "تُعطى كاملة — افتح «الاشتراكات المجزّأة» لهذا الحساب لتعطي جزءًا من باقة 15 شهرًا." : "تُعطى كاملة.");
+    $("gSave").disabled = !p;
+  };
+  const pkgs = async () => {
+    PKGS = []; $("gPkg").innerHTML = ""; $("gMonths").innerHTML = ""; $("gSave").disabled = true;
+    if (!$("gGate").value) return;
+    $("gPkg").innerHTML = "<option>يُجلب من اللوحة…</option>";
+    const r = await api(`/api/contest/admin/packages?a=${encodeURIComponent($("gAcct").value)}&g=${encodeURIComponent($("gGate").value)}`);
+    if (!$("gPkg")) return;
+    if (!r.ok) { $("gPkg").innerHTML = ""; say(r.error || "تعذّر جلب الباقات", "err"); $("gMsg").dataset.pkg = "1"; return; }
+    if ($("gMsg").dataset.pkg) { say(""); delete $("gMsg").dataset.pkg; }   // يمسح خطأ الباقات وحده، لا نتيجة الإرسال
+    PKGS = r.packages || []; SPLIT = r;
+    $("gPkg").innerHTML = '<option value="">اختر الباقة</option>' + PKGS.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.split ? " ✂" : ""}</option>`).join("");
+    if (PKGS.some(p => String(p.id) === String(pick.package_id))) $("gPkg").value = String(pick.package_id);
+    months();
+  };
+  const gates = () => {
+    const a = acctOf();
+    $("gGate").innerHTML = '<option value="">اختر البوابة</option>' + (a ? a.gates : []).map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join("");
+    if (a && a.gates.some(g => g.id === pick.gate_id)) $("gGate").value = pick.gate_id;
+    return pkgs();
+  };
+  $("gAcct").onchange = gates; $("gGate").onchange = pkgs; $("gPkg").onchange = months;
+  $("gMonths").onchange = () => { $("gOther").hidden = $("gMonths").value !== "other"; };
+  if (GATES.some(a => a.id === pick.account_id)) $("gAcct").value = pick.account_id;
+  gates();
+  const done = r => (r.gifts || []).map(x => `${x.name}: ` + (x.ok ? (x.already ? "وصلته من قبل ✓" : "أُنشئ اشتراكه (" + x.username + ") ووصلته رسالته ✓") : x.error)).join("\n");
+  $("gSave").onclick = async () => {
+    const mv = $("gMonths").value === "other" ? $("gOther").value.trim() : $("gMonths").value;
+    if (drawn && !confirm("يُنشأ الاشتراك على اللوحة لكل فائزٍ لم يُنشأ له (ويُخصم رصيده)، ويُرسل له على واتساب. متابعة؟")) return;
+    $("gSave").disabled = true; say(drawn ? "نُنشئ الاشتراك ونرسله…" : "نتحقّق من الباقة في اللوحة…");
+    const r = await api("/api/contest/admin/gift", {m: d.eid, account_id: $("gAcct").value, gate_id: $("gGate").value,
+                                                   package_id: $("gPkg").value, months: mv, send: drawn});
+    $("gSave").disabled = false;
+    if (!r.ok) return say(r.error || "تعذّر الحفظ", "err");
+    const msg = drawn ? done(r) : "حُفظت ✓ — تُنشأ للفائز وتُرسل له بعد الفرز.";
+    await view(d.eid);
+    say(msg, drawn && (r.gifts || []).some(x => !x.ok) ? "err" : "ok");
+  };
+  if ($("gClear")) $("gClear").onclick = async () => {
+    if (!confirm("تُلغى الهدية، فلا تُنشأ لمن لم تُنشأ له. وما أُنشئ يبقى كما هو. متابعة؟")) return;
+    const r = await api("/api/contest/admin/gift", {m: d.eid, clear: true});
+    if (!r.ok) return say(r.error || "تعذّر الإلغاء", "err");
+    view(d.eid);
+  };
+  $("gBox").querySelectorAll("[data-gsend]").forEach(b => { b.onclick = async () => {
+    b.disabled = true; say(b.dataset.resend ? "نرسل…" : "نُنشئ الاشتراك ونرسله…");
+    const r = await api("/api/contest/admin/gift/send", {m: d.eid, n: b.dataset.gsend, resend: !!b.dataset.resend});
+    b.disabled = false;
+    if (!r.ok) return say(r.error || "تعذّر الإرسال", "err");
+    const msg = done(r);
+    await view(d.eid);
+    say(msg, (r.gifts || []).some(x => !x.ok) ? "err" : "ok");
+  }; });
+}
+
+// ---------- تهنئة الفائزين في قناة واتساب مع فيديو الفرز ----------
+function postBox(d) {
+  const ch = d.channel || {}, posts = d.posts || [];
+  const when = t => new Date(t * 1000).toLocaleString("en-GB", {timeZone: "Asia/Riyadh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
+  return `<h3>تهنئة الفائزين في القناة</h3>
+    <p class="hint" style="margin-top:0">${ch.linked ? `تُنشر في قناة «${esc(ch.name || "واتساب")}» من رقم المسابقة، ومعها فيديو الفرز (MP4 يسجّله المتصفح الآن، نحو 22 ثانية — أبقِ الصفحة ظاهرة).`
+      : `لا قناة واتساب مربوطة — اربطها من <a href="${B}/content">صفحة المحتوى</a> («قناة واتساب») لتُنشر من هنا، أو انسخ الرسالة ونزّل الفيديو وانشرهما بنفسك.`}</p>
+    <textarea id="pText" rows="11">${esc(d.post_text || "")}</textarea>
+    <div class="acts" style="margin-top:8px">${ch.linked ? `<button class="go" id="pPost">انشر في القناة مع الفيديو</button><button class="ghost" id="pText1">انشر النص وحده</button>` : ""}
+      <button class="ghost" id="pCopy">نسخ الرسالة</button></div>
+    <div class="msg" id="pMsg"></div>
+    ${posts.length ? `<ul class="sent">${posts.slice().reverse().map(p => `<li>${when(p.at)} — ${p.video ? "مع الفيديو" : "نصٌّ وحده"} — ${p.ok ? "نُشر ✓" : "فشل: " + esc(p.error)}</li>`).join("")}</ul>` : ""}`;
+}
+function postWire(d, record) {
+  const say = (t, cls) => { $("pMsg").className = "msg " + (cls || ""); $("pMsg").textContent = t; };
+  $("pCopy").onclick = async () => {
+    let ok = false;
+    try { await navigator.clipboard.writeText($("pText").value); ok = true; }
+    catch (e) { $("pText").focus(); $("pText").select(); try { ok = document.execCommand("copy"); } catch (e2) {} }
+    say(ok ? "نُسخت ✓ — الصقها في القناة مع الفيديو." : "تعذّر النسخ التلقائي: حدّد النص وانسخه.", ok ? "ok" : "err");
+  };
+  if (!$("pPost")) return;
+  $("pPost").hidden = !window.SSDraw.canRecord();
+  const publish = async withVideo => {
+    const text = $("pText").value.trim();
+    if (!text) return say("اكتب نصّ المنشور", "err");
+    let body = {m: d.eid, text}, ext = "";
+    try {
+      if (withVideo) {
+        const out = await record(4000000, t => say(t));      // 4 ميغابت: نحو 12 ميغابايت، في حدود واتساب
+        say("نرفع الفيديو وننشر…");
+        const b64 = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1] || ""); fr.onerror = no; fr.readAsDataURL(out.blob); });
+        body = {...body, video: b64, mime: out.type}; ext = out.ext;
+      } else say("ننشر…");
+    } catch (err) { return say(err.message || "تعذّر التسجيل", "err"); }
+    ["pPost", "pText1"].forEach(id => { $(id).disabled = true; });
+    const r = await api("/api/contest/admin/channel", body).catch(() => ({error: "انقطع الاتصال — أعد المحاولة"}));
+    if (!$("pPost")) return;
+    ["pPost", "pText1"].forEach(id => { $(id).disabled = false; });
+    if (!r.ok) return say(r.error || "تعذّر النشر", "err");
+    await view(d.eid);
+    $("pMsg").className = "msg ok";
+    $("pMsg").textContent = `نُشر في قناة «${r.channel || ""}» ✓` + (ext && ext !== "mp4"
+      ? " — والفيديو WebM فوصل ملفًّا لا مقطعًا: هذا المتصفح لا يسجّل MP4، فانشر من كروم أو سفاري ليصل مقطعًا يُشغَّل." : "");
+  };
+  $("pPost").onclick = () => publish(true);
+  $("pText1").onclick = () => publish(false);
 }
 
 load();

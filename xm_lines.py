@@ -1838,7 +1838,7 @@ def split_create_error(acct, gate, pkg, slice_m):
     return ""
 
 
-def split_register_created(acct, gate, pkg, slice_m, out):
+def split_register_created(acct, gate, pkg, slice_m, out, customer=""):
     """يسجّل الخطوط المُنشأة للتوّ كأجزاء مبيعة. التسجيل مساعدٌ لا يُفشل الإنشاء: ما
     أُنشئ خُصم وسُلِّم، فخطأ التسجيل يُعاد مع الخط ليُسجَّل من الصفحة."""
     months = split_base_months(pkg)
@@ -1853,7 +1853,7 @@ def split_register_created(acct, gate, pkg, slice_m, out):
                 DATA_DIR, acct["id"], gate, r["username"], r["password"], slice_m,
                 package=pkg.get("name", ""), base_months=months, host=host,
                 expiry=split_subs.trust_expiry(r.get("exp"), reckoned),
-                line_id=r.get("line_id", ""), source="create", now=now)
+                line_id=r.get("line_id", ""), customer=customer, source="create", now=now)
             v = split_subs.decorate(rec)
             due = split_subs.parse_dt(rec["slice"]["due"])
             res.append({"id": rec["id"], "username": rec["username"], "due": rec["slice"]["due"],
@@ -2163,7 +2163,8 @@ def reader_send(to, text):
 
 
 def contest_notify(rec):
-    """رسائل الفرز: للفائزين (إن فُعّل التبليغ) ولرقم المدير — من رقم المسابقة، وتُسجَّل نتيجة كلٍّ منها."""
+    """رسائل الفرز: للفائزين (إن فُعّل التبليغ) ولرقم المدير — من رقم المسابقة، وتُسجَّل نتيجة كلٍّ منها.
+    ثم هدية الفائز إن اختارها المدير: اشتراكه وطريقة تثبيته بعد رسالة التهنئة (انظر contest_deliver)."""
     try:
         out = []
         for msg in contest.messages(rec, contest.load_settings(DATA_DIR), contest_link(rec)):
@@ -2172,9 +2173,171 @@ def contest_notify(rec):
                         "dry": False, "error": str(r.get("error") or "")[:200]})
         if out:
             contest.mark_sent(DATA_DIR, rec["eid"], out)
-        return out
     except Exception as e:                  # التبليغ لا يُسقط الفرز؛ ويُعاد من صفحة المدير
-        return [{"ok": False, "error": str(e)[:200]}]
+        out = [{"ok": False, "error": str(e)[:200]}]
+    if contest.gift_of(rec):
+        try:
+            contest_deliver(rec["eid"])
+        except Exception:
+            pass                            # يُعاد من صفحة المدير («أرسل الهدية»)، ولا يُنشأ اشتراكٌ مرتين
+    return out
+
+
+# ---------- هدية الفائز: اشتراكٌ يُنشأ له بنظام الإنشاء نفسه ويُرسل على رقمه ----------
+def gift_targets(st=None):
+    """الحسابات وبواباتها لاختيار الهدية في صفحة المسابقة — بلا أسرار؛ وsplit: تُجزّأ باقاتها (١٥ شهرًا
+    يُعطى منها ١٢ مثلًا) إن فُتحت الاشتراكات المجزّأة للحساب وكانت البوابة مرح أو كاسبر أو فالكون."""
+    st = st or load_store()
+    out = []
+    for a in st["accounts"]:
+        gates = [{"id": g["id"], "name": g.get("name", ""), "mode": g.get("mode", ""),
+                  "split": split_on(a) and split_gate_ok(g)} for g in a.get("gates") or []]
+        if gates:
+            out.append({"id": a["id"], "name": a.get("name", ""), "split": split_on(a), "gates": gates})
+    return out
+
+
+def gift_gate(st, account_id, gate_id):
+    """(الحساب، البوابة برابط شرحها أو رابط الحساب) — أو (…، None)."""
+    acct = _find_account(st, account_id)
+    gate = find_gate(acct, gate_id) if acct else None
+    if gate and not gate.get("guide_url") and acct.get("guide_url"):
+        gate = {**gate, "guide_url": acct["guide_url"]}
+    return acct, gate
+
+
+def gift_packages(acct, gate):
+    """باقات البوابة للهدية: {id, name, months, split} — split: يُعطى منها جزء (باقة ١٥ شهرًا)."""
+    return [{"id": p["id"], "name": p.get("name", ""), "months": split_base_months(p) or 0,
+             "split": bool(split_on(acct) and split_gate_ok(gate) and split_package_ok(p))}
+            for p in get_packages(gate)]
+
+
+def gift_error(e, acct, gate):
+    """سبب فشل الإنشاء على اللوحة بالعربية."""
+    name, who = (gate or {}).get("name", ""), (acct or {}).get("name", "")
+    if isinstance(e, xm_web.CaptchaNeeded):
+        return "اللوحة تطلب كود تحقّق — ادخل بوابة «%s» من صفحة الإنشاء بحساب «%s» ثم أعد الإرسال" % (name, who)
+    if isinstance(e, xm_web.LoginFailed):
+        return "تعذّر الدخول إلى لوحة «%s»: %s" % (name, e)
+    return str(e)[:300] or "تعذّر الإنشاء"
+
+
+def gift_create(acct, gate, spec, entry, cache):
+    """ينشئ اشتراك الهدية لفائزٍ كما تنشئه صفحة الإنشاء: الباقة كاملة، أو جزءٌ منها بنظام الاشتراكات
+    المجزّأة (يُتابَع حتى يتغيّر اسم المستخدم عند انتهائه) ← بيانات الاشتراك التي تُدوَّن للفائز."""
+    if not acct or not gate:
+        raise RuntimeError("حساب الهدية أو بوابتها لم يعد موجودًا — اختر الهدية من جديد")
+    if not cache:
+        cache.append(get_packages(gate))
+    pkg = next((p for p in cache[0] if str(p["id"]) == str(spec.get("package_id"))), None)
+    if not pkg:
+        raise RuntimeError("باقة الهدية لم تعد في لوحة «%s» — اختر الهدية من جديد" % gate.get("name", ""))
+    months = int(spec.get("months") or 0)
+    if months:
+        why = split_create_error(acct, gate, pkg, months)
+        if why:
+            raise RuntimeError(why)
+    r = create_line(gate, pkg)
+    host = (re.search(r"Host\s+(\S+)", r.get("line", "")) or [None, ""])[1] or gate.get("host", "")
+    try:                                      # ملف الإكسل للبوابة، كالإنشاء من الصفحة
+        users_export.merge(DATA_DIR, acct["id"], gate["id"], gate.get("name"), [r], gate.get("host", ""))
+    except Exception:
+        pass
+    guide = gate.get("guide_url", "")
+    info = {"username": r["username"], "password": r["password"], "host": host, "line": r.get("line", ""),
+            "exp": r.get("exp", ""), "package": pkg.get("name", ""), "months": months,
+            "label": spec.get("label") or pkg.get("name", ""), "account_id": acct["id"], "account": acct.get("name", ""),
+            "gate_id": gate["id"], "gate": gate.get("name", ""), "guide": guide, "server": guide_sub(gate, guide)}
+    if months:
+        sp = split_register_created(acct, gate, pkg, months, [r],
+                                    customer=f"فائز المسابقة: {entry.get('name', '')} {entry.get('phone', '')}".strip())
+        info["split"] = sp[0] if sp else {}
+    return info
+
+
+def gift_message(acct, g, rec):
+    """رسالة الهدية للفائز: رأسٌ بالمسابقة ومدة اشتراكه، ثم نصّ الشرح نفسه الذي يُنسخ للعملاء (نصّ الحساب أو
+    الافتراضي «📲 طريقة التثبيت والتفعيل») ببيانات اشتراكه."""
+    mt = rec.get("match") or {}
+    head = f"🎁 هديتك في مسابقة سمارت سوق ({mt.get('home', '')} × {mt.get('away', '')})"
+    dur = int(g.get("months") or 0)
+    head += f"\nالاشتراك: {split_subs.months_ar(dur)}" if dur else f"\nالاشتراك: {g.get('label') or g.get('package', '')}"
+    text = (acct or {}).get("guide_text") or DEFAULT_GUIDE_TEXT
+    vals = {"host": g.get("host", ""), "user": g.get("username", ""), "pass": g.get("password", ""),
+            "guide": g.get("guide") or f"https://{SITE_HOST}/", "server": g.get("server", "")}
+    return head + "\n\n" + re.sub(r"\{(host|user|pass|guide|server)\}", lambda m: vals[m.group(1)], text)
+
+
+def contest_deliver(eid, force=False, only=None, resend=False):
+    """هدية المسابقة لفائزيها ← [نتيجة لكل فائز]. لكلٍّ منهم اشتراكٌ يُنشأ **مرةً واحدة** (يُحجز قبل لمس
+    اللوحة: contest.gift_claim) ويُدوَّن له، ثم رسالةٌ ببياناته وطريقة التثبيت على رقمه من رقم المسابقة.
+    ما أُنشئ لا يُنشأ ثانيةً: تُرسل رسالته إن لم تصل (أو resend). والفاشل لا يُعاد إلا بيد المدير (force).
+    only: فائزٌ واحد برقم توقّعه."""
+    rec = contest.load(DATA_DIR, eid)
+    spec = contest.gift_of(rec)
+    if not rec or not rec.get("draw") or not spec:
+        return []
+    acct, gate = gift_gate(load_store(), spec["account_id"], spec["gate_id"])
+    by = {e["n"]: e for e in rec["entries"]}
+    out, cache = [], []
+    for n in contest.winners_n(rec):
+        if only is not None and str(n) != str(only):
+            continue
+        e = by[n]
+        state, g = contest.gift_claim(DATA_DIR, eid, n, force=force)
+        row = {"n": n, "to": e["phone"], "name": e["name"]}
+        if state in ("busy", "failed"):
+            out.append(dict(row, ok=False, error="يُنشأ اشتراكه الآن" if state == "busy" else g.get("error", "")))
+            continue
+        if state == "go":
+            try:
+                info = gift_create(acct, gate, spec, e, cache)
+            except Exception as ex:
+                err = gift_error(ex, acct, gate)
+                contest.gift_fail(DATA_DIR, eid, n, err)
+                out.append(dict(row, ok=False, error=err))
+                continue
+            g = contest.gift_done(DATA_DIR, eid, n, info) or dict(info)
+        elif (g.get("sent") or {}).get("ok") and not resend:
+            out.append(dict(row, ok=True, already=True, username=g.get("username", "")))
+            continue
+        r = reader_send(e["phone"], gift_message(acct, g, rec))
+        contest.gift_sent(DATA_DIR, eid, n, r.get("ok"), r.get("error", ""))
+        out.append(dict(row, ok=bool(r.get("ok")), created=state == "go", username=g.get("username", ""),
+                        error="" if r.get("ok") else "أُنشئ الاشتراك وتعذّرت رسالته: " + str(r.get("error") or "")))
+    return out
+
+
+CHANNEL_VIDEO_MAX = 30 * 1024 * 1024        # فيديو منشور القناة (تقبل الخدمة حتى 32 ميغابايت)
+
+
+def contest_channel(rec, text, video="", mime=""):
+    """تهنئة الفائزين في قناة واتساب المربوطة (صفحة المحتوى) من رقم المسابقة، مع فيديو الفرز إن أُرفق
+    (base64) ← {ok, error, channel}. وتُحفظ نتيجته على المسابقة."""
+    ch = content.channel(DATA_DIR)
+    text = str(text or "").strip()[:4000]
+    if not ch["jid"]:
+        return {"ok": False, "error": "لا قناة واتساب مربوطة — اربطها من صفحة المحتوى («قناة واتساب») فإليها يُنشر"}
+    if ch["role"] and ch["role"] not in ("OWNER", "ADMIN"):
+        return {"ok": False, "error": "رقم المسابقة ليس مشرفًا في قناة «%s» — اجعله مشرفًا فيها ثم أعد" % ch["name"]}
+    if not text:
+        return {"ok": False, "error": "اكتب نصّ المنشور"}
+    body = {"to": ch["jid"], "body": text}
+    if video:
+        mime = mime if re.fullmatch(r"video/(mp4|webm)", str(mime or "")) else "video/mp4"
+        body.update(media_base64=video, media_mime=mime, media_filename="draw." + mime.split("/")[1])
+    code, d, err = reader_call("POST", f"/sessions/{contest.READER_TENANT}/send", body, timeout=240)
+    if code == 200:
+        res = {"ok": True, "error": ""}
+    else:
+        e = str(d.get("error") or "") if isinstance(d, dict) else ""
+        res = {"ok": False, "error": {"media_invalid": "الفيديو أكبر مما تقبله خدمة الواتساب",
+                                      "not_connected": "رقم المسابقة غير مربوط",
+                                      "no_session": "رقم المسابقة غير مربوط"}.get(e) or _reader_error({"error": err})}
+    contest.log_post(DATA_DIR, rec["eid"], {"ok": res["ok"], "error": res["error"][:200], "video": bool(video),
+                                            "channel": ch["name"]})
+    return dict(res, channel=ch["name"])
 
 
 def store_products(st, fresh=False):
@@ -3374,7 +3537,24 @@ class Handler(BaseHTTPRequestHandler):
             if d["match"].get("ts"):
                 d["when"] = d["public"]["when"] = tournament.when_label(d["match"]["ts"])
             d["link"] = contest_link(d)
+            rec = contest.load(DATA_DIR, eid)
+            d["post_text"] = contest.winners_post(rec, d["link"], f"https://{SITE_HOST}/predict")
+            ch = content.channel(DATA_DIR)
+            d["channel"] = {"linked": bool(ch["jid"]), "name": ch["name"], "role": ch["role"]}
+            d["gift_last"] = contest.last_gift(DATA_DIR)
             return self._send(200, d)
+        if path == "/api/contest/admin/gates":          # الحسابات وبواباتها لهدية الفائز
+            return self._send(200, {"ok": True, "accounts": gift_targets()})
+        if path == "/api/contest/admin/packages":       # باقات بوابةٍ لهدية الفائز (من اللوحة نفسها)
+            acct, gate = gift_gate(load_store(), self._q("a"), self._q("g"))
+            if not gate:
+                return self._send(404, {"error": "اختر الحساب والبوابة"})
+            try:
+                return self._send(200, {"ok": True, "packages": gift_packages(acct, gate),
+                                        "split": bool(split_on(acct) and split_gate_ok(gate)),
+                                        "slices": list(split_subs.SLICES), "max_slice": split_subs.MAX_SLICE})
+            except Exception as e:
+                return self._send(502, {"error": gift_error(e, acct, gate)})
         if path == "/api/contest/admin/export.xlsx":      # التوقّعات Excel: مباراةٌ أو كلها
             eid = contest.eid_of(self._q("m"))
             raw = xlsx_write.build_xlsx(contest.export_sheets(DATA_DIR, eid))
@@ -3503,6 +3683,23 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {"ok": True, **content_state()})
 
     def _contest_admin_post(self, path):
+        if path == "/api/contest/admin/channel":         # تهنئة الفائزين في القناة مع فيديو الفرز
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            if n > CHANNEL_VIDEO_MAX * 4 // 3 + 64 * 1024:
+                self.close_connection = True
+                return self._send(413, {"error": "الفيديو أكبر من %d ميغابايت" % (CHANNEL_VIDEO_MAX // (1024 * 1024))})
+            req = self._body()
+            rec = contest.load(DATA_DIR, req.get("m"))
+            if not rec or not rec.get("draw"):
+                return self._send(409, {"error": "لم تُفرز بعد."})
+            video = str(req.get("video") or "")
+            if video and not re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", video):
+                return self._send(400, {"error": "ملف الفيديو تالف — سجّله من جديد"})
+            res = contest_channel(rec, req.get("text"), video, str(req.get("mime") or ""))
+            return self._send(200 if res["ok"] else 502, res)
         req = self._body()
         if path == "/api/contest/admin/settings":
             return self._send(200, {"ok": True, "settings": contest.save_settings(DATA_DIR, req)})
@@ -3569,7 +3766,55 @@ class Handler(BaseHTTPRequestHandler):
             if not rec or not rec.get("draw"):
                 return self._send(409, {"error": "لم تُفرز بعد."})
             return self._send(200, {"ok": True, "sent": contest_notify(rec)})
+        if path == "/api/contest/admin/gift":         # هدية الفائز: الحساب والبوابة والباقة ومدتها
+            return self._contest_gift(req)
+        if path == "/api/contest/admin/gift/send":    # أرسل الهدية الآن: تُنشأ لمن لم تُنشأ له، وتُعاد رسالتها
+            rec = contest.load(DATA_DIR, req.get("m"))
+            if not rec or not rec.get("draw"):
+                return self._send(409, {"error": "لم تُفرز بعد."})
+            if not contest.gift_of(rec):
+                return self._send(409, {"error": "اختر الهدية أولًا"})
+            n = req.get("n")
+            return self._send(200, {"ok": True, "gifts": contest_deliver(rec["eid"], force=True,
+                                                                         only=None if n in (None, "") else n,
+                                                                         resend=bool(req.get("resend")))})
         return self._send(404, {"error": "not found"})
+
+    def _contest_gift(self, req):
+        """يحفظ هدية المسابقة بعد التحقّق منها على اللوحة (الباقة موجودة، والجزء صالح بقواعد التجزئة) —
+        قبل الفرز فتُرسل وحدها بعده، أو بعده مع send فتُرسل للفائزين الآن. وclear يمسحها."""
+        rec = contest.load(DATA_DIR, req.get("m"))
+        if not rec:
+            return self._send(404, {"error": "لا مسابقة على هذه المباراة"})
+        if req.get("clear"):
+            contest.set_gift(DATA_DIR, rec["eid"], None)
+            return self._send(200, {"ok": True, "gift": None})
+        acct, gate = gift_gate(load_store(), req.get("account_id"), req.get("gate_id"))
+        if not gate:
+            return self._send(400, {"error": "اختر الحساب والبوابة"})
+        try:
+            pkgs = get_packages(gate)
+        except Exception as e:
+            return self._send(502, {"error": gift_error(e, acct, gate)})
+        pkg = next((p for p in pkgs if str(p["id"]) == str(req.get("package_id"))), None)
+        if not pkg:
+            return self._send(400, {"error": "اختر الباقة"})
+        months = split_subs.parse_months(req.get("months") or 0)
+        if months is None:
+            return self._send(400, {"error": "مدة الهدية بالأشهر الكاملة"})
+        if months:
+            why = split_create_error(acct, gate, pkg, months)
+            if why:
+                return self._send(400, {"error": why})
+        label = ("%s من %s" % (split_subs.months_ar(months), pkg.get("name", ""))) if months else pkg.get("name", "")
+        spec = {"account_id": acct["id"], "account": acct.get("name", ""), "gate_id": gate["id"],
+                "gate": gate.get("name", ""), "package_id": str(pkg["id"]), "package": pkg.get("name", ""),
+                "months": months, "label": label}
+        rec = contest.set_gift(DATA_DIR, rec["eid"], spec)
+        res = {"ok": True, "gift": contest.gift_of(rec)}
+        if req.get("send") and rec.get("draw"):
+            res["gifts"] = contest_deliver(rec["eid"], force=True)
+        return self._send(200, res)
 
     # ---------- تجديد الاشتراك (عام) ----------
     def _client_ip(self):

@@ -6,7 +6,8 @@
 واجهة الخدمة كما في souq-saas/whatsapp-reader/server.js، وكلها بترويسة X-Reader-Secret (وإلا 403):
   POST   /sessions                {tenant, number, callbackUrl, ingestToken, dmCallbackUrl} ← لقطة الجلسة (qr)
   GET    /sessions/<tenant>       ← اللقطة، أو {status: disconnected} بلا جلسة
-  POST   /sessions/<tenant>/send  {to, body} ← {ok, waMessageId} · 404 no_session · 409 not_connected
+  POST   /sessions/<tenant>/send  {to, body, media_base64?, media_mime?, media_filename?} ← {ok, waMessageId}
+                                  · 404 no_session · 409 not_connected · 422 media_invalid
                                   (و‏to معرّفٌ فيه «@» — قناةٌ ‏…@newsletter — يُرسل إليه كما هو)
   DELETE /sessions/<tenant>       ← {status: disconnected}
 وإضافة ssouq-guide (قنوات واتساب):
@@ -20,6 +21,7 @@
 ومنتجات سلة العامة (بلا سرّ، SALLA_API=http://127.0.0.1:<port>):
   GET    /store/v1/products?per_page=50 · /store/v1/products/<id>/details
 """
+import base64
 import json
 import re
 import sys
@@ -188,8 +190,16 @@ class H(BaseHTTPRequestHandler):
                 return self._send(422, {"error": "to_and_body_required"})
             if to.startswith("966599"):                   # رقمٌ ليس على واتساب
                 return self._send(409, {"error": "not_on_whatsapp"})
+            item = {"to": to, "body": body["body"]}
+            if body.get("media_base64"):                  # مرفقٌ (فيديو الفرز): يُحفظ نوعه وحجمه لا محتواه
+                try:
+                    size = len(base64.b64decode(body["media_base64"], validate=True))
+                except ValueError:
+                    return self._send(422, {"error": "media_invalid"})
+                item.update(media_mime=body.get("media_mime") or "", media_size=size,
+                            media_filename=body.get("media_filename") or "")
             with _lock:
-                sent.append({"to": to, "body": body["body"]})
+                sent.append(item)
                 n = len(sent)
             return self._send(200, {"ok": True, "waMessageId": f"MOCK{n}"})
         self._send(404, {"error": "not found"})

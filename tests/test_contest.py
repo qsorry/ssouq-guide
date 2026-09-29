@@ -13,6 +13,7 @@
 
 تشغيل:  python tests/test_contest.py
 """
+import base64
 import hashlib
 import json
 import os
@@ -586,7 +587,19 @@ def live():
     del old["draw"]["mode"]
     with open(os.path.join(data, "contest", "2.json"), "w", encoding="utf-8") as f:
         json.dump(old, f, ensure_ascii=False)
-    procs = [subprocess.Popen([sys.executable, os.path.join(HERE, "mock_espn.py"), str(mport)])]
+    # ويلز 1-1 (13): مسابقةٌ مطفأة بتوقّعاتها — تُختار هديتها ثم تُفتح فتُفرز فتُرسل الهدية وحدها
+    m13 = next(x for x in ms if x["id"] == "13")
+    r13 = C._blank("13")
+    r13.update(on=False, prize="اشتراك سنة", winners=1, match=C._snap(m13))
+    for i, (h, a) in enumerate([(1, 1), (2, 0), (0, 1)], 1):
+        r13["entries"].append({"n": i, "name": f"ضيف {i}", "phone": f"9665530000{i:02d}", "h": h, "a": a,
+                               "at": m13["ts"] - 900 + i, "ipk": "", "promo": False})
+    with open(os.path.join(data, "contest", "13.json"), "w", encoding="utf-8") as f:
+        json.dump(r13, f, ensure_ascii=False)
+    fport = 9787                                          # لوحة فالكون وهمية: باقة 15 شهرًا تُجزّأ
+    procs = [subprocess.Popen([sys.executable, os.path.join(HERE, "mock_espn.py"), str(mport)]),
+             subprocess.Popen([sys.executable, os.path.join(HERE, "mock_falcon.py"), str(fport), "fk"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)]
     try:
         base, reader = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{wport}"
         # خدمة واتساب النظام اللوجستي وهميةً (ومعها منتجات سلة)، ورابط الوارد إلى هذا الخادم
@@ -774,6 +787,7 @@ def live():
             time.sleep(.1)
         check("المدير يرى الرقم كاملًا، ورسالة الفائز أُرسلت له عبر الخدمة", det["won"][0]["phone"].startswith("9665500")
               and det["sent"] and det["sent"][0]["to"] == det["won"][0]["phone"] and det["sent"][0]["ok"], det.get("sent"))
+        gift_live(base, rd, data, fport, det["won"][0])
         code, res = post(base + "/admin/api/contest/admin/settle", {"m": "1"}, auth=True)
         check("«افرز الآن» بعد الفرز لا يغيّر شيئًا", code == 200 and res["drawn"] is False)
         code, res = post(base + "/admin/api/contest/admin/settle", {"m": "6"}, auth=True)
@@ -928,6 +942,133 @@ def live():
         shutil.rmtree(data, ignore_errors=True)
 
 
+def gift_live(base, rd, data, fport, w):
+    """هدية الفائز وتهنئة القناة على الخادم الحيّ: لوحة فالكون وهمية، وخدمة واتساب وهمية."""
+    print("هدية الفائز")
+    falcon = f"http://127.0.0.1:{fport}/api/v1"
+
+    def lines():
+        rq = urllib.request.Request(falcon + "/lines?per=500", headers={"Authorization": "Bearer fk"})
+        with urllib.request.urlopen(rq, timeout=10) as r:
+            return json.loads(r.read())["total"]
+
+    def sent_to(phone):
+        return [s for s in rd("GET", "/_test/log")["sent"] if s["to"] == phone]
+
+    def detail(eid):
+        return json.loads(get(base + f"/admin/api/contest/admin/match?m={eid}", auth=True)[1])
+
+    check("قبل اختيار الهدية: رسالة الفائز تطلب الردّ لاستلامها", C.CLAIM_REPLY in sent_to(w["phone"])[0]["body"])
+    code, res = post(base + "/admin/api/accounts", {
+        "name": "عميل الهدايا", "user": "gifts", "password": "pw_gifts", "split": True,
+        "gates": [{"name": "بوابة فالكون", "mode": "falcon", "api_url": falcon, "api_key": "fk",
+                   "host": "http://falcon.host", "guide_url": "https://guide.ssouq.com/#activate/falcon"}]}, auth=True)
+    acct = next(a for a in res.get("accounts", []) if a["user"] == "gifts")
+    aid, gid = acct["id"], acct["gates"][0]["id"]
+    code, body, _ = get(base + "/admin/api/contest/admin/gates")
+    check("الحسابات والباقات للمدير وحده", code == 401)
+    code, body, _ = get(base + "/admin/api/contest/admin/gates", auth=True)
+    ga = {a["id"]: a for a in json.loads(body)["accounts"]}
+    check("الحسابات وبواباتها للاختيار، بلا أسرار", aid in ga and ga[aid]["split"] and ga[aid]["gates"][0]["split"]
+          and b'"fk"' not in body and falcon.encode() not in body, ga.get(aid))
+    code, body, _ = get(base + f"/admin/api/contest/admin/packages?a={aid}&g={gid}", auth=True)
+    pk = json.loads(body)
+    by = {str(p["id"]): p for p in pk.get("packages", [])}
+    check("باقات اللوحة نفسها: باقة 15 شهرًا تُجزّأ، وباقة 3 أشهر لا", pk.get("split") and by["190"]["split"]
+          and by["190"]["months"] == 15 and not by["169"]["split"] and pk["slices"][0] == 12, pk)
+    code, res = post(base + "/admin/api/contest/admin/gift", {"m": "1", "account_id": aid, "gate_id": gid,
+                                                             "package_id": "169", "months": 12}, auth=True)
+    check("جزءٌ من باقةٍ ليست 15 شهرًا يُرفض", code == 400 and "باقات" in res["error"], res)
+    code, res = post(base + "/admin/api/contest/admin/gift", {"m": "1", "account_id": aid, "gate_id": gid,
+                                                             "package_id": "190", "months": 15}, auth=True)
+    check("والجزء أقصر من الباقة", code == 400 and "مدة الجزء" in res["error"], res)
+    code, res = post(base + "/admin/api/contest/admin/gift/send", {"m": "1"}, auth=True)
+    check("لا إرسال قبل اختيار الهدية", code == 409, res)
+    before, msgs = lines(), len(sent_to(w["phone"]))
+    code, res = post(base + "/admin/api/contest/admin/gift", {"m": "1", "account_id": aid, "gate_id": gid,
+                                                             "package_id": "190", "months": 12, "send": True}, auth=True)
+    g = (res.get("gifts") or [{}])[0]
+    check("باقة 15 شهرًا ويُعطى منها 12: اشتراكٌ واحد للفائز على اللوحة", code == 200 and g.get("ok") and g.get("created")
+          and g["n"] == w["n"] and lines() == before + 1, res)
+    msg = sent_to(w["phone"])[-1]["body"]
+    check("ورسالةٌ على رقمه: بيانات اشتراكه وطريقة التثبيت (نصّ الشرح نفسه)", len(sent_to(w["phone"])) == msgs + 1
+          and msg.startswith("🎁 هديتك في مسابقة سمارت سوق (فرنسا × بلجيكا)") and "الاشتراك: 12 شهرًا" in msg
+          and "📲 طريقة التثبيت والتفعيل" in msg and f"User: {g['username']}\nPass: " in msg
+          and "https://guide.ssouq.com/#activate/falcon" in msg and "سيرفر فالكون" in msg, msg[:300])
+    gg = detail("1")["gifts"][str(w["n"])]
+    check("ويُدوَّن له: اليوزر والباسورد والهوست والمدة وموعد تغيير اسمه", gg["st"] == "created"
+          and gg["username"] == g["username"] and gg["password"] and gg["host"] and gg["label"].startswith("12 شهرًا")
+          and gg["split"].get("due") and gg["sent"]["ok"] and gg["to"] == w["phone"], gg)
+    with open(os.path.join(data, "split", aid + ".json"), encoding="utf-8") as f:
+        sp = [x for x in json.load(f)["lines"].values() if x["username"] == g["username"]]
+    check("وفي الاشتراكات المجزّأة: جزء 12 شهرًا باسم الفائز ورقمه", len(sp) == 1 and sp[0]["slice"]["months"] == 12
+          and w["phone"] in sp[0]["slice"]["customer"] and sp[0]["base_months"] == 15, sp)
+    code, res = post(base + "/admin/api/contest/admin/gift/send", {"m": "1"}, auth=True)
+    check("«أرسل الهدية» مرةً ثانية: لا اشتراك آخر ولا رسالة", code == 200 and res["gifts"][0].get("already")
+          and lines() == before + 1 and len(sent_to(w["phone"])) == msgs + 1, res)
+    code, res = post(base + "/admin/api/contest/admin/gift/send", {"m": "1", "n": w["n"], "resend": True}, auth=True)
+    check("«أعد إرسال رسالته»: الرسالة نفسها، بلا اشتراكٍ جديد", code == 200 and res["gifts"][0]["ok"]
+          and lines() == before + 1 and sent_to(w["phone"])[-1]["body"] == msg, res)
+    code, body, _ = get(base + "/admin/api/contest/admin/export.xlsx?m=1", auth=True)
+    z = zipfile.ZipFile(io.BytesIO(body))
+    xml = "".join(z.read(n).decode() for n in z.namelist() if n.startswith(("xl/worksheets/", "xl/sharedStrings")))
+    check("وفي Excel: اشتراك الفائز", g["username"] in xml and "هدية: اسم المستخدم" in xml)
+
+    # هديةٌ تُختار قبل الفرز: تُرسل وحدها بعده، بعد رسالة التهنئة
+    code, res = post(base + "/admin/api/contest/admin/gift", {"m": "13", "account_id": aid, "gate_id": gid,
+                                                             "package_id": "190", "months": 6}, auth=True)
+    check("هديةٌ قبل الفرز تُحفظ ولا يُنشأ شيء", code == 200 and res["gift"]["months"] == 6 and "gifts" not in res
+          and lines() == before + 1, res)
+    code, res = post(base + "/admin/api/contest/admin/set", {"m": "13", "on": True, "prize": "اشتراك سنة"}, auth=True)
+    get(base + "/api/contest?m=13")                         # أول زائرٍ بعد النهاية يفرزها
+    for _ in range(50):
+        d13 = detail("13")
+        if any((x.get("sent") or {}).get("at") for x in d13.get("gifts", {}).values()):
+            break
+        time.sleep(.2)
+    w13 = d13["won"][0] if d13.get("won") else {}
+    got = sent_to(w13.get("phone", "-"))
+    check("بعد الفرز: التهنئة تقول إن اشتراكه يصله هنا، ثم رسالة اشتراكه (6 أشهر)", w13.get("n") == 1 and len(got) == 2
+          and C.CLAIM_GIFT in got[0]["body"] and "الاشتراك: 6 أشهر" in got[1]["body"]
+          and d13["gifts"]["1"]["st"] == "created" and lines() == before + 2, [x["body"][:80] for x in got])
+
+    print("تهنئة الفائزين في القناة")
+    d1 = detail("1")
+    post_text = d1["post_text"]
+    check("المنشور جاهز: الفائز باسمه الأول ورقمه مخفيًّا، والجائزة ورابط الفرز", post_text.startswith("🏆 مبروك للفائز")
+          and "فرنسا 2 – 1 بلجيكا" in post_text and "05•••••" in post_text and w["phone"] not in post_text
+          and "🎁 الجائزة: اشتراك 3 أشهر" in post_text and "https://guide.ssouq.com/nations-league/" in post_text
+          and "https://guide.ssouq.com/predict" in post_text, post_text)
+    check("ولا قناة مربوطة بعد", d1["channel"]["linked"] is False)
+    video = base64.b64encode(b"\x00\x00\x00\x18ftypmp42" + b"v" * 50000).decode()
+    code, res = post(base + "/admin/api/contest/admin/channel", {"m": "1", "text": post_text, "video": video,
+                                                                "mime": "video/mp4"}, auth=True)
+    check("بلا قناة: يقول أين تُربط", code == 502 and "صفحة المحتوى" in res["error"], res)
+    code, res = post(base + "/admin/api/content/admin/channel",
+                     {"link": "https://whatsapp.com/channel/0029VaFollowOnly00000000", "on": False, "servers": []}, auth=True)
+    code, res = post(base + "/admin/api/contest/admin/channel", {"m": "1", "text": post_text}, auth=True)
+    check("قناةٌ الرقمُ متابعٌ فيها لا مشرف: يقول ذلك", code == 502 and "ليس مشرفًا" in res["error"], res)
+    code, res = post(base + "/admin/api/content/admin/channel",
+                     {"link": "https://whatsapp.com/channel/0029VaSsouqNews000000000", "on": False, "servers": []}, auth=True)
+    check("ربط القناة من صفحة المحتوى", code == 200, res)
+    code, res = post(base + "/admin/api/contest/admin/channel", {"m": "6", "text": "x"}, auth=True)
+    check("ولا منشور لمسابقةٍ لم تُفرز", code == 409, res)
+    code, res = post(base + "/admin/api/contest/admin/channel", {"m": "1", "text": post_text, "video": "@@@"}, auth=True)
+    check("وفيديو تالف يُرفض", code == 400, res)
+    code, res = post(base + "/admin/api/contest/admin/channel", {"m": "1", "text": post_text, "video": video,
+                                                                "mime": "video/mp4"})
+    check("النشر للمدير وحده", code == 401)
+    code, res = post(base + "/admin/api/contest/admin/channel", {"m": "1", "text": post_text, "video": video,
+                                                                "mime": "video/mp4"}, auth=True)
+    last = rd("GET", "/_test/log")["sent"][-1]
+    check("انشر في القناة مع الفيديو: من رقم المسابقة إلى معرّف القناة، والفيديو MP4 مرفقًا", code == 200 and res["ok"]
+          and res["channel"] == "سمارت سوق | الجديد" and last["to"] == "120363000000000001@newsletter"
+          and last["body"] == post_text and last["media_mime"] == "video/mp4" and last["media_size"] > 50000
+          and last["media_filename"] == "draw.mp4", {k: v for k, v in last.items() if k != "body"})
+    posts = detail("1")["posts"]
+    check("ويُسجَّل المنشور على المسابقة", len(posts) == 1 and posts[0]["ok"] and posts[0]["video"], posts)
+
+
 def live_embedded():
     """الخدمة المدمجة: بلا أيّ إعداد يشغّلها الخادم داخل الحاوية وتجيب صفحة المدير (إن ثُبّتت مكتباتها)."""
     reader_dir = os.path.join(ROOT, "whatsapp-reader")
@@ -974,9 +1115,91 @@ def live_embedded():
         shutil.rmtree(data, ignore_errors=True)
 
 
+def unit_gift():
+    print("هدية الفائز (السجل)")
+    d = fresh()
+    m = match()
+    people = [("سارة الحربي", "966550000001", 2, 1), ("فهد", "966550000002", 1, 0), ("نورة", "966550000003", 2, 1)]
+    rec = seed(d, m, people, prize="اشتراك سمارت 3 أشهر", winners=2)
+    end = dict(m, state="post", status="STATUS_FULL_TIME", home=dict(m["home"], score=2), away=dict(m["away"], score=1))
+    rec, _ = C.settle(d, "7", end, m["ts"] + C.SETTLE_AFTER)
+    ns = C.winners_n(rec)
+    check("الفائزان برقمي توقّعهما", sorted(ns) == [1, 3], ns)
+    st = {"notify": True, "text": C.DEFAULT_TEXT}
+    check("بلا هدية: التهنئة تطلب الردّ", all(C.CLAIM_REPLY in x["text"] for x in C.messages(rec, st, "L")))
+    spec = {"account_id": "a1", "account": "عميل", "gate_id": "g1", "gate": "فالكون", "package_id": "190",
+            "package": "1years + 3 months", "months": 12, "label": "12 شهرًا من 1years + 3 months", "secret": "x"}
+    check("لا هدية لمسابقةٍ لا وجود لها", C.set_gift(d, "404", spec) is None)
+    rec = C.set_gift(d, "7", spec, now=NOW)
+    check("الهدية تُحفظ بمفاتيحها وحدها", C.gift_of(rec)["months"] == 12 and "secret" not in rec["gift"]
+          and C.last_gift(d)["package_id"] == "190")
+    check("ومعها تقول التهنئة إن اشتراكه يصله هنا", all(C.CLAIM_GIFT in x["text"] and "{claim}" not in x["text"]
+                                                        for x in C.messages(rec, st, "L")))
+    C.save_settings(d, {"notify": True, "text": ""})
+    check("حفظ الإعداد يُبقي آخر هدية", C.last_gift(d) and C.last_gift(d)["gate_id"] == "g1")
+    with open(os.path.join(d, "contest", "settings.json"), encoding="utf-8") as f:
+        s = json.load(f)
+    s["text"] = C._OLD_TEXT
+    with open(os.path.join(d, "contest", "settings.json"), "w", encoding="utf-8") as f:
+        json.dump(s, f, ensure_ascii=False)
+    check("النصّ الافتراضي القديم (قبل {claim}) يُقرأ الافتراضيَّ الجديد", C.load_settings(d)["text"] == C.DEFAULT_TEXT)
+
+    state, g = C.gift_claim(d, "7", 1, now=NOW)
+    check("الحجز قبل لمس اللوحة", state == "go" and g["st"] == "creating" and g["to"] == "966550000001"
+          and g["name"] == "سارة الحربي")
+    check("وحجزٌ ثانٍ والإنشاء جارٍ: ينتظر", C.gift_claim(d, "7", 1, force=True, now=NOW + 5)[0] == "busy")
+    C.gift_done(d, "7", 1, {"username": "u1", "password": "p1", "host": "http://h", "label": "12 شهرًا"}, now=NOW + 9)
+    state, g = C.gift_claim(d, "7", 1, force=True, now=NOW + 20)
+    check("ما أُنشئ لا يُنشأ ثانيةً ولو بيد المدير", state == "have" and g["username"] == "u1")
+    C.gift_sent(d, "7", 1, False, "رقم المسابقة غير مربوط", now=NOW + 21)
+    C.gift_sent(d, "7", 1, True, now=NOW + 30)
+    g = C.load(d, "7")["gifts"]["1"]
+    check("ونتيجة رسالته تُحفظ", g["sent"]["ok"] and g["sends"] == 2)
+    C.gift_claim(d, "7", 3, now=NOW)
+    C.gift_fail(d, "7", 3, "اللوحة تطلب كود تحقّق", now=NOW + 1)
+    check("الفاشل لا يُعاد وحده", C.gift_claim(d, "7", 3, now=NOW + 60)[0] == "failed")
+    check("ويُعاد بيد المدير", C.gift_claim(d, "7", 3, force=True, now=NOW + 60)[0] == "go"
+          and C.load(d, "7")["gifts"]["3"]["tries"] == 2)
+    state, g = C.gift_claim(d, "7", 3, now=NOW + 60 + C.GIFT_STALE)
+    check("وحجزٌ انقطع في منتصفه: فشلٌ يطلب مراجعة اللوحة، لا إنشاءٌ ثانٍ", state == "failed" and "اللوحة" in g["error"])
+    sheets = C.export_sheets(d, "7")
+    head, rows = sheets[0][1], {r[0]: r for r in sheets[0][2]}
+    check("Excel: اشتراك الفائز في صفّه", head[-2:] == ["هدية: اسم المستخدم", "هدية: الاشتراك"]
+          and rows[1][-2:] == ["u1", "12 شهرًا"] and rows[3][-2:] == ["", ""])
+    det = C.admin_detail(d, "7", None)
+    check("وتفاصيل المدير: الهدية وسجلّ كل فائز", det["gift"]["label"].startswith("12 شهرًا")
+          and det["gifts"]["1"]["password"] == "p1")
+    rec = C.set_gift(d, "7", None)
+    check("وإلغاؤها يُبقي ما أُنشئ", C.gift_of(rec) is None and rec["gifts"]["1"]["username"] == "u1")
+
+    print("تهنئة الفائزين في القناة (النص)")
+    rec = C.load(d, "7")
+    t = C.winners_post(dict(rec, match=dict(rec["match"], cup="دوري الأمم الأوروبية")), "https://x/draw", "https://x/predict")
+    check("فائزان: رأسٌ بالجمع وميداليتان بالاسم الأول والرقم مخفيًّا", t.startswith("🏆 مبروك للفائزين")
+          and "🥇 " in t and "🥈 " in t and "سارة (\u206605•••••001\u2069) — توقّع 2 – 1" in t and "الحربي" not in t
+          and "966550000001" not in t, t)
+    check("والمباراة والجائزة والأعداد والروابط", "⚽ بلجيكا 2 – 1 فرنسا · دوري الأمم الأوروبية" in t
+          and "🎁 الجائزة: اشتراك سمارت 3 أشهر" in t and "بالضبط 2 من 3 توقّعات" in t
+          and "🎬 شاهد كيف تم الفرز: https://x/draw" in t and "https://x/predict" in t, t)
+    one = dict(rec, draw=dict(rec["draw"], picks=rec["draw"]["picks"][:1]))
+    check("فائزٌ واحد: بالمفرد", C.winners_post(one, "L").startswith("🏆 مبروك للفائز في"))
+    tier = dict(rec, draw=dict(rec["draw"], picks=[dict(rec["draw"]["picks"][0], tier="outcome")]))
+    check("ومن أصاب الفائز يُقال ذلك", "(أصاب الفائز)" in C.winners_post(tier, "L"))
+    none = dict(rec, draw=dict(rec["draw"], picks=[], exact=0))
+    t0 = C.winners_post(none, "L")
+    check("لا فائز: يقولها ولا يهنّئ أحدًا", "فلا فائز هذه المرة" in t0 and "مبروك" not in t0, t0)
+    check("ولا منشور قبل الفرز", C.winners_post({"eid": "1", "entries": []}, "L") == "")
+    for i in range(C.POSTS_MAX + 3):
+        C.log_post(d, "7", {"ok": i % 2 == 0, "video": True}, now=NOW + i)
+    posts = C.load(d, "7")["posts"]
+    check("سجلّ المنشورات: آخرها فقط", len(posts) == C.POSTS_MAX and posts[-1]["at"] == NOW + C.POSTS_MAX + 2)
+    shutil.rmtree(d)
+
+
 def main():
     unit()
     unit_prize()
+    unit_gift()
     live()
     live_embedded()
     print(f"\nResult: {_p} passed, {_f} failed")

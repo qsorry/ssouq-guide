@@ -7,7 +7,7 @@
    ← القرعة (رقمها، باقي القسمة، والدولاب يقف على الفائز) ← الفائز.
 
    SSDraw.play(canvas, report)         يعرضه في canvas ← {ready, play(), stop(), total}
-   SSDraw.record(report, {canvas, onProgress}) ← Promise<{blob, type, ext}>
+   SSDraw.record(report, {canvas, onProgress, bitrate}) ← Promise<{blob, type, ext}> — bitrate افتراضًا 8 ميغابت
    SSDraw.prepare(canvas, report, {scale}) ← Promise<{frame(t), total}> — إطارٌ بعينه (للاختبار ولتصدير الإطارات)
    SSDraw.canRecord() · SSDraw.save(out, name) */
 (function () {
@@ -610,7 +610,7 @@
     var ctl = play(canvas, report, {auto: false, scale: /mp4/.test(type) ? 1 : 2 / 3}), timer = 0;
     return ctl.ready.then(function () {
       var stream = canvas.captureStream(FPS);
-      var rec = new MediaRecorder(stream, {mimeType: type, videoBitsPerSecond: 8000000});
+      var rec = new MediaRecorder(stream, {mimeType: type, videoBitsPerSecond: opts.bitrate || 8000000});
       var chunks = [];
       rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
       var stopped = new Promise(function (ok) { rec.onstop = ok; });

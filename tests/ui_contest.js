@@ -10,7 +10,7 @@ const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const ROOT = path.dirname(__dirname);
-const ESPN_PORT = 9771, APP_PORT = 9772, WA_PORT = 9773, WA_SECRET = 'ui_wa_secret', TENANT = 'ssouq-guide--contest';
+const ESPN_PORT = 9771, APP_PORT = 9772, WA_PORT = 9773, FALCON_PORT = 9774, WA_SECRET = 'ui_wa_secret', TENANT = 'ssouq-guide--contest';
 const SHOTS = process.env.SHOTS_DIR || '';
 const EXE = execSync("ls -d /opt/pw-browsers/chromium*/chrome-linux/chrome 2>/dev/null | head -1").toString().trim();
 let pass = 0, fail = 0;
@@ -57,6 +57,7 @@ print(json.dumps(rec, ensure_ascii=False))
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('WHATSAPP_READER_') && k !== 'SALLA_ADMIN_TOKEN'));
   const procs = [spawn('python3', [path.join(ROOT,'tests/mock_espn.py'), String(ESPN_PORT)], {stdio:'ignore'}),
                  spawn('python3', [path.join(ROOT,'tests/mock_reader.py'), String(WA_PORT), WA_SECRET], {stdio:'ignore'}),
+                 spawn('python3', [path.join(ROOT,'tests/mock_falcon.py'), String(FALCON_PORT), 'fk'], {stdio:'ignore'}),
                  spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web'], {stdio:'ignore', env:{...env,
                    XM_DATA: data, XM_BIND:'127.0.0.1', XM_PORT:String(APP_PORT), XM_ADMIN_PASSWORD:'envpass123',
                    LEAGUE_API:`http://127.0.0.1:${ESPN_PORT}`, SALLA_API: WA, WHATSAPP_READER_URL: WA,
@@ -341,6 +342,63 @@ print(json.dumps(rec, ensure_ascii=False))
     check('ورسالة التهنئة أُرسلت له', (await adm.textContent('#dBody .sent')).includes('أُرسلت ✓'));
     check('وفيديو الفرز', !!(await adm.$('#dBody canvas')) && !(await adm.$eval('#vSave', b => b.hidden)));
     await shot(adm, 'contest-admin-draw');
+
+    console.log('هدية الفائز: باقة 15 شهرًا ويُعطى منها 12، تُنشأ وتُرسل على رقمه');
+    await adm.click('#dClose');
+    await adm.evaluate(async falcon => { await fetch('/admin/api/accounts', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: 'عميل الهدايا', user: 'gifts', password: 'pw_gifts', split: true, gates: [{name: 'بوابة فالكون',
+        mode: 'falcon', api_url: falcon, api_key: 'fk', host: 'http://falcon.host', guide_url: 'https://guide.ssouq.com/#activate/falcon'}]})}); },
+      `http://127.0.0.1:${FALCON_PORT}/api/v1`);
+    await adm.click('.mrow[data-eid="1"] [data-a="view"]');
+    await adm.waitForSelector('#gAcct option[value]:not([value=""])', {state: 'attached', timeout:8000});
+    check('نموذج الهدية في التفاصيل، ولم تُرسل بعد', (await adm.textContent('#gBox')).includes('لم تُرسل هديته بعد')
+          && (await adm.textContent('#gSave')).includes('أنشئ الاشتراك وأرسله'));
+    await adm.selectOption('#gAcct', {label: 'عميل الهدايا'});
+    await adm.selectOption('#gGate', {label: 'بوابة فالكون'});
+    await adm.waitForSelector('#gPkg option[value="190"]', {state: 'attached', timeout:8000});
+    check('باقات اللوحة نفسها، وباقة 15 شهرًا معلَّمة للتجزئة', (await adm.textContent('#gPkg option[value="190"]')).includes('✂'));
+    await adm.selectOption('#gPkg', '190');
+    const mopts = await adm.$$eval('#gMonths option', os => os.map(o => o.textContent));
+    check('مدة الهدية: الباقة كاملة أو جزءٌ منها', mopts[0] === 'الباقة كاملة' && mopts.includes('12 شهرًا منها')
+          && mopts.includes('6 أشهر منها') && mopts.includes('مدة أخرى…'), mopts.join(' · '));
+    await adm.selectOption('#gPkg', '169');
+    check('وباقةٌ ليست 15 شهرًا: كاملةً فقط', (await adm.$$('#gMonths option')).length === 1);
+    await adm.selectOption('#gPkg', '190');
+    await adm.selectOption('#gMonths', '12');
+    adm.once('dialog', dlg => dlg.accept());
+    await adm.click('#gSave');
+    await adm.waitForSelector('#gBox .gift.ok', {timeout:15000});
+    const gtext = await adm.textContent('#gBox');
+    check('أُنشئ اشتراك الفائز ووصلته رسالته، ويُدوَّن له', /User: \d{12}/.test(gtext) && gtext.includes('Host: http://falcon.host')
+          && gtext.includes('الهدية: 12 شهرًا من ') && gtext.includes('وصلته رسالة الاشتراك وطريقة التثبيت ✓')
+          && gtext.includes('يتغيّر اسم المستخدم') && (await adm.textContent('#gMsg')).includes('✓'), gtext.slice(0, 160));
+    const waLog = await (await fetch(WA + '/_test/log', {headers: {'X-Reader-Secret': WA_SECRET}})).json();
+    const gmsg = waLog.sent[waLog.sent.length - 1];
+    check('والرسالة على رقمه: بيانات اشتراكه وطريقة التثبيت', /^9665501\d{5}$/.test(gmsg.to)
+          && gmsg.body.includes('📲 طريقة التثبيت والتفعيل') && gmsg.body.includes('الاشتراك: 12 شهرًا'), gmsg.body.slice(0, 80));
+    await shot(adm, 'contest-admin-gift');
+
+    console.log('تهنئة الفائزين في القناة مع الفيديو');
+    check('المنشور جاهز، وبلا قناة مربوطة: رابط صفحة المحتوى والنسخ وحده', (await adm.inputValue('#pText')).startsWith('🏆 مبروك للفائز')
+          && !(await adm.$('#pPost')) && !!(await adm.$('#dBody a[href$="/content"]')));
+    await adm.click('#pCopy');
+    check('نسخ المنشور', (await adm.evaluate(() => navigator.clipboard.readText())).startsWith('🏆 مبروك للفائز'));
+    await adm.evaluate(async () => { await fetch('/admin/api/content/admin/channel', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({link: 'https://whatsapp.com/channel/0029VaSsouqNews000000000', on: false, servers: []})}); });
+    await adm.click('#dClose');
+    await adm.click('.mrow[data-eid="1"] [data-a="view"]');
+    await adm.waitForSelector('#pPost', {timeout:8000});
+    check('بعد ربط القناة: «انشر في القناة مع الفيديو» باسمها', (await adm.textContent('#dBody')).includes('سمارت سوق | الجديد'));
+    await adm.fill('#pText', (await adm.inputValue('#pText')) + '\nتعديل المدير');
+    await adm.click('#pPost');
+    await adm.waitForFunction(() => /نُشر في قناة|تعذّر|فشل/.test(document.getElementById('pMsg').textContent), null, {timeout:90000});
+    const post = (await (await fetch(WA + '/_test/log', {headers: {'X-Reader-Secret': WA_SECRET}})).json()).sent.pop();
+    check('نُشر في القناة: النصّ كما عدّله المدير ومعه فيديو الفرز', (await adm.textContent('#pMsg')).includes('نُشر في قناة «سمارت سوق | الجديد» ✓')
+          && (post.media_mime === 'video/mp4' || (await adm.textContent('#pMsg')).includes('وصل ملفًّا'))
+          && post.to === '120363000000000001@newsletter' && post.body.endsWith('تعديل المدير') && /^video\//.test(post.media_mime)
+          && post.media_size > 100000 && (await adm.textContent('#dBody .sent:last-of-type')).includes('مع الفيديو — نُشر ✓'),
+          `${post.media_mime} ${post.media_size}`);
+    await shot(adm, 'contest-admin-channel');
 
     console.log('إعادة فرزٍ قديم على «النتيجة بالضبط فقط»');
     await adm.click('#dClose');

@@ -1,7 +1,7 @@
 # خدمة واتساب المسابقة (whatsapp-reader)
 
 نسخةٌ من خدمة واتساب **النظام اللوجستي** (`souq-saas/whatsapp-reader`، الإصدار 42) — `package.json`
-و`package-lock.json` كما هما، و`server.js` كما هو **وعليه إضافةٌ واحدة** (أدناه). تُثبَّت في صورة الأداة (`Dockerfile`)
+و`package-lock.json` كما هما، و`server.js` كما هو **وعليه إضافتان** (أدناه). تُثبَّت في صورة الأداة (`Dockerfile`)
 ويشغّلها الخادم (`xm_lines.py`، `start_embedded_reader`) داخل الحاوية على `127.0.0.1:3301` (`CONTEST_READER_PORT`):
 
 - السرّ `WHATSAPP_READER_SECRET` يولّده الخادم ويحفظه مشفَّرًا في إعداد المسابقة — لا إعداد يدويّ.
@@ -9,7 +9,11 @@
 - تُعاد إن توقّفت، ولا تعمل إن ضُبطت خدمةٌ خارجية بـ `WHATSAPP_READER_URL`.
 
 الربط من صفحة مدير المسابقة كالنظام اللوجستي: الرقم ← «ربط» ← رمز QR ← «مربوط». ولتحديثها: انسخ الملفات
-الثلاثة من souq-saas، ثم أعِد الإضافة إلى `server.js`.
+الثلاثة من souq-saas، ثم أعِد الإضافتين إلى `server.js`.
+
+## الإضافة: فيديو MP4 مقطعًا (تهنئة الفائزين في القناة)
+في `POST /sessions/:tenant/send`: مرفقٌ `media_mime` فيه `video/mp4` يُرسل **مقطع فيديو** (`{video, caption}`) لا ملفًّا —
+فيُشغَّل فيديو الفرز في منشور القناة. والصور كما هي، وما عداهما (‏WebM مثلًا) ملفٌّ كما كان.
 
 ## الإضافة: قنوات واتساب (منشور «أضيف مؤخرًا»)
 `GET /sessions/:tenant/newsletter?invite=<الرمز>` (أو `?jid=<…@newsletter>`) ← `{ok, id, name, subscribers, role, invite}`
