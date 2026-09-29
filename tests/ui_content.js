@@ -116,6 +116,15 @@ function konList(more) {
     check('إخفاء قسم: القائمة تبقى مفتوحة وهو معلَّم', await ap.$eval('[data-k="smart"] details.groups', d => d.open)
           && await ap.$eval('[data-k="smart"] .grow.off', r => r.textContent.includes('Netflix') && !r.querySelector('input').checked));
     check('وما أُسقط يبقى مفتوحًا بعد إعادة الرسم', await ap.$eval('[data-k="smart"] details.adult', d => d.open));
+    // محتوى قرأته النسخة الأولى (قبل الصور والتقييمات): المدير يُطلب منه إعادة رفع الملف
+    fs.writeFileSync(path.join(DATA, 'content', 'kon.json'), JSON.stringify({entries: 1, n: {series: 0, movie: 1, live: 0},
+      skipped: {}, series: [], live: [], movie: [{id: 'm0', name: 'M', items: ['Old Film (2019)']}], at: Date.now() / 1000}));
+    await ap.reload();
+    await ap.waitForSelector('[data-k="kon"] .warnline', {timeout: 8000});
+    check('المحتوى القديم: «أعد رفع الملف»', (await ap.textContent('[data-k="kon"] .warnline')).includes('أعد رفع الملف'));
+    ap.once('dialog', dlg => dlg.accept());       // «مسح محتوى هذا السيرفر؟»
+    await ap.click('[data-k="kon"] [data-act="clear"]');
+    await ap.waitForFunction(() => !document.querySelector('[data-k="kon"] .warnline'), null, {timeout: 8000});
 
     console.log('تنبيه الكبار');
     check('بلا بريدٍ ولا رقم، ويقول ما ينقص', await ap.$eval('#alert', e => !e.hidden) && await ap.inputValue('#aMail') === ''
@@ -168,6 +177,11 @@ function konList(more) {
     check('الأعداد', (await dp.textContent('.stats')).replace(/\s/g, '').includes('2,500فيلم')
           && (await dp.textContent('.stats')).replace(/\s/g, '').includes('2مسلسلان'));
     check('القسم المخفي ليس فيها', !(await dp.content()).includes('Netflix'));
+    const logos = await dp.$$eval('.servers a', a => a.map(x => [x.querySelector('b').textContent,
+      x.querySelector('img') ? x.querySelector('img').getAttribute('src') : '', !!x.getAttribute('aria-current')]));
+    check('السيرفرات بشعاراتها، والحالي معلَّم', JSON.stringify(logos) === JSON.stringify([
+      ['سمارت', '/static/img/brands/smart.webp', true], ['فالكون', '/static/img/brands/falcon.webp', false]]), JSON.stringify(logos));
+    check('والشعارات تُحمَّل', await dp.$$eval('.servers img', i => i.length === 2 && i.every(x => x.complete && x.naturalWidth > 0)));
     await dp.waitForLoadState('networkidle').catch(() => {});
     await dp.reload({waitUntil: 'networkidle'}).catch(() => {});     // والثانية: 404 الصور من ذاكرة الخادم فورًا
     check('ولا صورة معطوبة: الحرفان الأولان مكانها', await dp.evaluate(() => [...document.querySelectorAll('.pos img,.chip img,.slide img')]
@@ -242,8 +256,9 @@ function konList(more) {
     check('مسح البحث يمسح النتائج', await dp.$eval('#cres', b => getComputedStyle(b).display === 'none'));
     await dp.fill('.search input', 'mbc');
     await dp.press('.search input', 'Enter');
-    await dp.waitForFunction(() => document.querySelector('#cres').textContent.includes('MBC 1'), null, {timeout: 8000});
-    check('Enter يبحث بلا انتقال', dp.url().includes('/content/smart?q=mbc'));
+    await dp.waitForFunction(() => document.querySelector('#cres').textContent.includes('لا يوجد'), null, {timeout: 8000});
+    check('Enter يبحث بلا انتقال، والبحث باسم المسلسل أو الفيلم وحده (لا القنوات)', dp.url().includes('/content/smart?q=mbc')
+          && (await dp.textContent('#cres')).includes('والقنوات في'));
     await dp.fill('.search input', 'breaking');
     await dp.waitForFunction(() => document.querySelector('#cres').textContent.includes('ويوجد أيضًا في'), null, {timeout: 8000});
     check('وأين يوجد في السيرفرات الأخرى', (await dp.textContent('#cres .other')).includes('فالكون'));
@@ -257,6 +272,7 @@ function konList(more) {
     await dp.waitForSelector('#cx-modal:not([hidden])');
     const fm = await dp.textContent('#cx-modal');
     check('والنافذة: التقييم والتصنيف وتاريخ الإضافة', fm.includes('★ 7.8') && fm.includes('Action • Drama') && fm.includes('أضيف أمس'), fm);
+    check('وحرفا الملصق كما في الخادم', await dp.textContent('#cx-modal .ph') === 'FT');
     await dp.keyboard.press('Escape');
     await dp.goto(APP + '/content/falcon?t=live');
     const logo = dp.locator('img[src^="/content/falcon/img/"]').first();
@@ -274,6 +290,22 @@ function konList(more) {
       check(`بلا تمرير أفقي: ${u}`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     }
     await page.goto(APP + '/content/falcon');
+    const adPos = await page.evaluate(() => {
+      const a = document.querySelector('main > .ad'), hero = document.querySelector('.hero');
+      const r = a.getBoundingClientRect();
+      return {plans: a.querySelectorAll('.adplan').length, top: Math.round(r.top), h: Math.round(r.height),
+              above: r.bottom <= hero.getBoundingClientRect().top, fits: r.left >= 0 && r.right <= innerWidth,
+              tagged: [...a.querySelectorAll('a[target]')].every(x => x.href.includes('utm_campaign=content-ad'))};
+    });
+    check('الإعلان في أعلى الصفحة على الجوال، مختصرًا: باقات فالكون بحملتها', adPos.plans === 3 && adPos.above
+          && adPos.top < 300 && adPos.h < 420 && adPos.fits && adPos.tagged, JSON.stringify(adPos));
+    const st = await page.evaluate(() => {
+      const box = document.querySelector('.stats').getBoundingClientRect();
+      const tiles = [...document.querySelectorAll('.stat')].map(t => t.getBoundingClientRect());
+      return {n: tiles.length, rows: new Set(tiles.map(t => Math.round(t.top))).size,
+              left: Math.round(tiles[tiles.length - 1].left - box.left)};
+    });
+    check('خانات الأعداد تملأ صفوفها (3 ثم 2)', st.n === 5 && st.rows === 2 && st.left <= 1, JSON.stringify(st));
     await page.locator('.row .card').first().click();
     await page.waitForSelector('#cx-modal:not([hidden])');
     check('والنافذة كذلك', await page.evaluate(() => {

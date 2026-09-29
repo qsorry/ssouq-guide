@@ -3,8 +3,11 @@
 """سيرفر Xtream وهمي لاختبارات صفحة المحتوى: قائمة M3U (‏get.php) وواجهته (‏player_api.php) وصور القنوات.
 
   get.php?username=u&password=p           قائمة M3U: أفلام ومسلسلات بحلقاتها وقنوات وقسمٌ للكبار
-  player_api.php?…&action=get_vod_streams  تقييم الأفلام وتاريخ إضافتها وتصنيفها، وفيلمٌ معلَّمٌ للكبار
-  player_api.php?…&action=get_series       تصنيف المسلسلات وقصتها وتقييمها وتاريخ آخر حلقة
+  get.php?…&type=m3u                       والقائمة نفسها بلا خصائص (بلا أقسام ولا صور) كما تعطيها اللوحات
+  player_api.php?…&action=get_vod_streams  تقييم الأفلام وتاريخ إضافتها وتصنيفها وقسمها، وفيلمٌ معلَّمٌ للكبار
+  player_api.php?…&action=get_series       تصنيف المسلسلات وقصتها وتقييمها وتاريخ آخر حلقة وقسمها
+  player_api.php?…&action=get_live_streams شعار كل قناةٍ وقسمها
+  player_api.php?…&action=get_*_categories الأقسام بأرقامها وترتيبها
   images/<الاسم>.png                        صورةٌ مولَّدة (للمرور بخادمنا)
   وكلمة مرورٍ أخرى: 403 (اشتراكٌ منتهٍ)، وwant=api-down: الواجهة 500 والقائمة سليمة.
 
@@ -78,45 +81,58 @@ PLOTS = {"Breaking Bad": "معلّم كيمياء يتحوّل إلى صانع �
          "المؤسس عثمان": "قصة عثمان بن أرطغرل وتأسيس الدولة العثمانية."}
 
 
-def build(host):
-    """← (نص M3U، {رقم الفيلم: بياناته في الواجهة}، [المسلسلات في الواجهة]) بأرقامٍ تصاعدية: الأحدث أكبر."""
-    lines, vod, series, sid = ["#EXTM3U"], {}, [], 100
-    for group, items in CHANNELS.items():
+CATS = {"live": {g: str(21 + n) for n, g in enumerate(list(CHANNELS) + list(ADULT))},
+        "vod": {g: str(1 + n) for n, g in enumerate(MOVIES)}, "series": {g: str(11 + n) for n, g in enumerate(SERIES)}}
+
+
+def build(host, plain=False):
+    """← (نص M3U، {رقم الفيلم: بياناته في الواجهة}، [المسلسلات في الواجهة]، [القنوات في الواجهة]) بأرقامٍ تصاعدية:
+    الأحدث أكبر. و‏plain: القائمة بلا خصائص (‏type=m3u) — بلا أقسام ولا صور، والواجهة وحدها تعرفها."""
+    lines, vod, series, live, sid = ["#EXTM3U"], {}, [], [], 100
+
+    def ext(attrs, title):
+        return f"#EXTINF:-1,{title}" if plain else f"#EXTINF:-1 {attrs},{title}"
+    for group, items in list(CHANNELS.items()) + list(ADULT.items()):
         for name in items:
             sid += 1
-            lines += [f'#EXTINF:-1 tvg-id="" tvg-name="{name}" tvg-logo="{host}/images/{sid}.png" group-title="{group}",{name}',
-                      f"{host}/{USER}/{PASS}/{sid}"]
-    for group, items in ADULT.items():
-        for name in items:
-            sid += 1
-            lines += [f'#EXTINF:-1 group-title="{group}",{name}', f"{host}/{USER}/{PASS}/{sid}"]
+            logo = f"{host}/images/{sid}.png" if group in CHANNELS else ""
+            lines += [ext(f'tvg-id="" tvg-name="{name}" tvg-logo="{logo}" group-title="{group}"' if logo
+                          else f'group-title="{group}"', name), f"{host}/{USER}/{PASS}/{sid}"]
+            live.append({"num": sid, "name": name, "stream_type": "live", "stream_id": sid, "stream_icon": logo,
+                         "category_id": CATS["live"][group]})
     flat = [(g, m) for g, items in MOVIES.items() for m in items]
     for group, (name, year, poster, rating, genre, ago) in sorted(flat, key=lambda x: -x[1][5]):   # الأقدم أولًا
         sid += 1
         logo = TMDB + poster if poster else f"{host}/images/{sid}.png"
         title = f"{name} ({year})"
-        lines += [f'#EXTINF:-1 tvg-name="{title}" tvg-logo="{logo}" group-title="{group}",{title}',
+        lines += [ext(f'tvg-name="{title}" tvg-logo="{logo}" group-title="{group}"', title),
                   f"{host}/movie/{USER}/{PASS}/{sid}.mkv"]
         vod[sid] = {"num": sid, "name": title, "stream_type": "movie", "stream_id": sid, "stream_icon": logo,
                     "rating": str(rating), "rating_5based": rating / 2, "added": str(NOW - ago * 86400), "genre": genre,
-                    "is_adult": "0", "category_id": "1", "container_extension": "mkv"}
+                    "is_adult": "0", "category_id": CATS["vod"][group], "container_extension": "mkv"}
     sid += 1                                   # فيلمٌ في قسمٍ عادي تعلّمه الواجهة للكبار: يُسقط بالإثراء
-    lines += ['#EXTINF:-1 group-title="أفلام عربية",Hidden Adult Film', f"{host}/movie/{USER}/{PASS}/{sid}.mp4"]
-    vod[sid] = {"stream_id": sid, "name": "Hidden Adult Film", "is_adult": "1"}
+    lines += [ext('group-title="أفلام عربية"', "Hidden Adult Film"), f"{host}/movie/{USER}/{PASS}/{sid}.mp4"]
+    vod[sid] = {"stream_id": sid, "name": "Hidden Adult Film", "is_adult": "1", "category_id": CATS["vod"]["أفلام عربية"]}
     flat = [(g, s) for g, items in SERIES.items() for s in items]
     for group, (name, poster, seasons, eps, rating, genre, year, ago) in sorted(flat, key=lambda x: -x[1][7]):
         for s in range(1, seasons + 1):
             for e in range(1, eps + 1):
                 sid += 1
                 title = f"{name} S{s:02d} E{e:02d}"
-                lines += [f'#EXTINF:-1 tvg-name="{title}" tvg-logo="{TMDB}{poster}" group-title="{group}",{title}',
+                lines += [ext(f'tvg-name="{title}" tvg-logo="{TMDB}{poster}" group-title="{group}"', title),
                           f"{host}/series/{USER}/{PASS}/{sid}.mkv"]
         series.append({"num": len(series) + 1, "name": name, "series_id": len(series) + 1, "cover": TMDB + poster,
                        "plot": PLOTS.get(name, f"{name}: القصة كاملة بمواسمها."), "cast": "", "director": "",
                        "genre": genre, "releaseDate": f"{year}-01-20", "last_modified": str(NOW - ago * 86400),
                        "rating": str(rating), "rating_5based": rating / 2, "backdrop_path": [TMDB + poster],
-                       "youtube_trailer": "", "episode_run_time": "50", "category_id": "2"})
-    return "\n".join(lines) + "\n", vod, series
+                       "youtube_trailer": "", "episode_run_time": "50", "category_id": CATS["series"][group]})
+    return "\n".join(lines) + "\n", vod, series, live
+
+
+def categories(kind):
+    """أقسام الواجهة بترتيبها — وقسمٌ فارغ الاسم تتجاهله القراءة."""
+    return [{"category_id": cid, "category_name": name, "parent_id": 0} for name, cid in CATS[kind].items()] \
+        + [{"category_id": "99", "category_name": "", "parent_id": 0}]
 
 
 def png(seed, w=120, h=120):
@@ -155,17 +171,16 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/player_api.php":
                 return self._send(200, json.dumps({"user_info": {"auth": 0}}).encode(), "application/json")
             return self._send(403, b"Forbidden")
-        text, vod, series = build(host)
+        text, vod, series, live = build(host, plain=q.get("type") == "m3u")
         if u.path == "/get.php":
             return self._send(200, text.encode("utf-8"), "audio/x-mpegurl")
         if u.path == "/player_api.php":
             if self.server.api_down:
                 return self._send(500, b"error")
-            if q.get("action") == "get_vod_streams":
-                return self._send(200, json.dumps(list(vod.values()), ensure_ascii=False).encode(), "application/json")
-            if q.get("action") == "get_series":
-                return self._send(200, json.dumps(series, ensure_ascii=False).encode(), "application/json")
-            return self._send(200, b"[]", "application/json")
+            data = {"get_vod_streams": list(vod.values()), "get_series": series, "get_live_streams": live,
+                    "get_vod_categories": categories("vod"), "get_series_categories": categories("series"),
+                    "get_live_categories": categories("live")}.get(q.get("action"), [])
+            return self._send(200, json.dumps(data, ensure_ascii=False).encode(), "application/json")
         return self._send(404, b"not found")
 
 

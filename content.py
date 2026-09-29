@@ -88,6 +88,8 @@ NAME_MAX = 150
 GROUP_MAX = 100
 PAGE = 300                   # عناصر القسم في الصفحة الواحدة وفي كل «عرض المزيد»
 SEARCH_MAX = 40              # نتائج البحث المعروضة لكل نوع
+SEARCH_KINDS = ("series", "movie")   # البحث باسم المسلسل أو الفيلم وحده — لا القنوات، ومنها قنوات 24/7 تعرض
+                                     # حلقات مسلسلٍ باسمه («SOLO باب الحارة»، «… S01») فتبدو حلقاتٍ في النتائج
 QUERY_MAX = 60
 ADULT_LIST = 200             # ما يُحفظ للمدير من أقسام الكبار ومن الأسماء المحذوفة (والباقي عددٌ)
 ADULT_MARKS = 5000           # بصمات ما أُسقط، لمعرفة الجديد منه في كل سحب
@@ -170,8 +172,11 @@ def _clean(s):
     return s[:NAME_MAX].strip()
 
 
+NO_GROUP = "بلا قسم"          # عنصرٌ بلا ‏group-title (ملف ‏type=m3u) — ويُنقل إلى قسمه في الواجهة إن أمكن
+
+
 def _group(s):
-    return " ".join(_CTRL.sub("", unicodedata.normalize("NFC", s or "")).split())[:GROUP_MAX] or "بلا قسم"
+    return " ".join(_CTRL.sub("", unicodedata.normalize("NFC", s or "")).split())[:GROUP_MAX] or NO_GROUP
 
 
 def _is_sep(name):
@@ -265,8 +270,9 @@ def _sid(url):
 
 
 def _poster(v):
-    v = (v or "").strip()
-    return v if v.lower().startswith(("http://", "https://")) and len(v) <= 600 and " " not in v else ""
+    """رابط الصورة كما يُطلب — والمسافة فيه (‏«…/logos/MBC 1.png» في لوحاتٍ كثيرة) مرمَّزة لا مُسقِطة."""
+    v = (v or "").strip().replace(" ", "%20")
+    return v if v.lower().startswith(("http://", "https://")) and len(v) <= 600 and not re.search(r"[\s\"<>]", v) else ""
 
 
 def _slim(d):
@@ -679,8 +685,10 @@ def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
                 cat["api"] = {"ok": False, "error": _fetch_error(e)}
         now = time.time()
         cat.update(key=key, at=now, source=source, label=str(label or "")[:80])
-        # ما رُئي قبل هذه الميزة: الفهرس السابق نفسه (يُقرأ مرة، قبل أن يُستبدل)، فيُعرف الجديد من أول سحب
-        prev = None if os.path.exists(_seen_path(data_dir, key)) else _read(_cat_path(data_dir, key))
+        # ما رُئي قبل هذه الميزة: الفهرس السابق نفسه (يُقرأ مرة، قبل أن يُستبدل)، فيُعرف الجديد من أول سحب — بالقراءة
+        # الحالية وحدها (‏"v":2): فهرس النسخة الأولى قُرئت أسماؤه بغيرها، فيبدو ما فيه جديدًا؛ وبعده بداية
+        prev = (None if os.path.exists(_seen_path(data_dir, key)) or _cat_old(data_dir, key)
+                else _read(_cat_path(data_dir, key)))
         _write(_cat_path(data_dir, key), cat)
         _cache.pop(key, None)
         _settle(data_dir, key, "")
@@ -801,13 +809,14 @@ def start_refresh(data_dir, key):
 
 
 def tick(data_dir, now=None):
-    """دورة الخلفية: كل سيرفرٍ له رابط يُسحب إن مرّ يومٌ على آخر محتوى، ولا يُعاد فشلٌ قبل RETRY."""
+    """دورة الخلفية: كل سيرفرٍ له رابط يُسحب إن مرّ يومٌ على آخر محتوى — أو كان محتواه من القراءة الأولى (بلا صور
+    ولا تقييم) فيُسحب في أول دورة — ولا يُعاد فشلٌ قبل RETRY."""
     now = now or time.time()
     for s in servers(data_dir):
         if not s["url"] or s["key"] in _busy:
             continue
-        cat_at = _cat_at(data_dir, s["key"])
-        if now - cat_at >= REFRESH and now - s["try_at"] >= RETRY:
+        due = now - _cat_at(data_dir, s["key"]) >= REFRESH or _cat_old(data_dir, s["key"])
+        if due and now - s["try_at"] >= RETRY:
             refresh(data_dir, s["key"], now=now)
 
 
@@ -817,6 +826,18 @@ def _cat_at(data_dir, key):
         return os.stat(_cat_path(data_dir, key)).st_mtime
     except OSError:
         return 0.0
+
+
+_V2 = re.compile(rb'^\{\s*"v"\s*:\s*2\b')
+
+
+def _cat_old(data_dir, key):
+    """فهرسٌ قرأته النسخة الأولى (بلا صور ولا أرقام ولا تقييم) — من أول بايتاته: النسخة الحالية تبدأ بـ ‏"v":2."""
+    try:
+        with open(_cat_path(data_dir, key), "rb") as f:
+            return not _V2.match(f.read(32))
+    except OSError:
+        return False
 
 
 # ================= إدارة السيرفرات =================
@@ -930,13 +951,28 @@ def _view(data_dir, key):
 
 
 def _upgrade(cat):
-    """فهرسٌ من النسخة الأولى (الفيلم والقناة نصًّا، والمسلسل [الاسم، المواسم]) بصيغة العناصر الحالية."""
+    """فهرسٌ من النسخة الأولى (الفيلم والقناة نصًّا، والمسلسل [الاسم، المواسم]) بصيغة العناصر الحالية — والسنة
+    والجودة تُفصلان من الاسم كما في القراءة الحالية، فيُعرض الفيلم بسنته وبجوداته عنصرًا واحدًا من الآن، لا بعد
+    السحب التالي."""
     if cat.get("v") == 2:
         return cat
+    cat["old"] = True                        # للمدير: يُعاد رفعه أو يُسحب لتظهر الصور والتقييمات
     for kind in KINDS:
         for g in cat.get(kind) or []:
-            g["items"] = [it if isinstance(it, dict) else {"n": it[0], "s": it[1]} if isinstance(it, list)
-                          else {"n": str(it)} for it in g.get("items") or []]
+            items = {}
+            for n, it in enumerate(g.get("items") or []):
+                if isinstance(it, dict):
+                    rec = it
+                elif kind == "series" and isinstance(it, list):
+                    name, year = _split_year(_dequal(str(it[0])))
+                    rec = _slim({"n": name, "y": year, "s": it[1]})
+                elif kind == "movie":
+                    name, year = _split_year(_dequal(str(it)))
+                    rec = _slim({"n": _dequal(name), "y": year})
+                else:
+                    rec = {"n": _dequal(str(it))}
+                items.setdefault(n if kind == "series" else _ikey(kind, rec), rec)
+            g["items"] = list(items.values())
     cat["v"] = 2
     return cat
 
@@ -962,7 +998,8 @@ def _build(cat, hidden):
         for gi, g in enumerate(gs):
             for ii, it in enumerate(g["items"]):
                 name = it.get("n", "")
-                idx.append((_norm(f"{name} {it['y']}" if it.get("y") else name), gi, ii))
+                if kind in SEARCH_KINDS:
+                    idx.append((_norm(f"{name} {it['y']}" if it.get("y") else name), gi, ii))
                 for u in (it.get("p"), it.get("b")):
                     if u and not _TMDB.match(u):
                         v["imgs"][img_hash(u)] = u
@@ -1034,6 +1071,63 @@ def _search(key, v, q):
         _found.clear()
     _found[ck] = (out, total)
     return out, total
+
+
+def _near(a, b):
+    """بين الكلمتين تعديلٌ واحد: حرفٌ مختلف («ياب» «باب») أو زائد أو ناقص، أو حرفان متجاوران مقلوبان."""
+    la, lb = len(a), len(b)
+    if la > lb:
+        a, b, la, lb = b, a, lb, la
+    if lb - la > 1 or a == b:
+        return False
+    i = 0
+    while i < la and a[i] == b[i]:
+        i += 1
+    if la < lb:
+        return a[i:] == b[i + 1:]
+    return a[i + 1:] == b[i + 1:] or (i + 1 < la and a[i] == b[i + 1] and a[i + 1] == b[i] and a[i + 2:] == b[i + 2:])
+
+
+def _vocab(v):
+    """كلمات أسماء المسلسلات والأفلام بطولها، الأكثر تكرارًا أولًا — لتصحيح خطأٍ في كتابة البحث. تُبنى أول مرة."""
+    voc = v.get("_vocab")
+    if voc is None:
+        freq = {}
+        for kind in SEARCH_KINDS:
+            for norm, _, _ in v["index"][kind]:
+                for w in norm.split():
+                    if len(w) >= 3 and not w.isdigit():
+                        freq[w] = freq.get(w, 0) + 1
+        voc = {}
+        for w, n in freq.items():
+            voc.setdefault(len(w), []).append((n, w))
+        for lst in voc.values():
+            lst.sort(key=lambda x: (-x[0], x[1]))
+        v["_vocab"] = voc
+    return voc
+
+
+def suggest(key, v, q):
+    """أقرب بحثٍ له نتائج لبحثٍ بلا نتائج — خطأٌ في حرفٍ واحد من كلمة («ياب الحارة» ← «باب الحارة»، «braking bad»
+    ← «breaking bad»): لكل كلمةٍ من ثلاثة أحرفٍ فأكثر أقرب كلمات الأسماء إليها الأكثر تكرارًا، ويُجرَّب تصحيح كلمةٍ
+    ثم كلمتين. ← الكلمات المصحَّحة نصًّا، أو "" إن لم يُعرف."""
+    words = _words(q)
+    if not words or len(words) > 4 or _search(key, v, q)[1]:
+        return ""
+    voc = _vocab(v)
+    alts = []
+    for w in words:
+        near = sorted(((n, x) for size in (len(w) - 1, len(w), len(w) + 1) for n, x in voc.get(size, ())
+                       if _near(w, x)), key=lambda p: (-p[0], p[1])) if len(w) >= 3 and not w.isdigit() else []
+        alts.append([x for _, x in near[:3]])
+    tries = [{i: a} for i in range(len(words)) for a in alts[i]]
+    tries += [{i: a, j: b} for i in range(len(words)) for j in range(i + 1, len(words))
+              for a in alts[i][:2] for b in alts[j][:2]]
+    for t in tries[:24]:
+        fixed = " ".join(t.get(i, w) for i, w in enumerate(words))
+        if _search(key, v, fixed)[1]:
+            return fixed
+    return ""
 
 
 def select(v, kind, gid="", year=0, genre="", rating=0, sort="new"):
@@ -1335,11 +1429,31 @@ def _year(v):
     return int(m.group(1)) if m and int(m.group(1)) <= YEAR_MAX else 0
 
 
+def _cid(o):
+    """قسم العنصر في الواجهة: ‏category_id، أو أوّل ‏category_ids في اللوحات الأحدث."""
+    c = o.get("category_id")
+    if c in (None, "") and isinstance(o.get("category_ids"), list) and o["category_ids"]:
+        c = o["category_ids"][0]
+    return str(c).strip() if c not in (None, "") else ""
+
+
+def _optional(xt, action, each):
+    """طلبٌ لا يُفشل الإثراء إن فشل (الأقسام وشعارات القنوات): ‏each لكل عنصر ← نجح؟"""
+    try:
+        with _api_open(xt, action) as r:
+            for o in _json_items(r.read):
+                each(o)
+        return True
+    except Exception:  # noqa: BLE001 — الصفحة بلا هذا وحده
+        return False
+
+
 def enrich(cat, xt, flagged=None):
     """يُثري الفهرس من واجهة Xtream: تقييم الفيلم والمسلسل وتاريخ إضافته، وتصنيفه وقصته، وخلفية المسلسل —
-    ويُسقط ما تعلّمه الواجهة للكبار (واسمه وقسمه في ‏flagged للمدير وحده، مرةً لكل فيلم). ← {movies، series}
-    عدد ما أُثري. والفشل استثناء، والفهرس كما هو قبله."""
-    movies, series = {}, {}
+    ويُسقط ما تعلّمه الواجهة للكبار (واسمه وقسمه في ‏flagged للمدير وحده، مرةً لكل فيلم). وملفٌّ بلا أقسام
+    (‏type=m3u: كل شيءٍ في «بلا قسم») يُقسَّم بأقسام الواجهة وبترتيبها، وشعار القناة منها إن لم يكن في الملف.
+    ← {movies، series، grouped} عدد ما أُثري وما قُسِّم. والفشل استثناء، والفهرس كما هو قبله."""
+    movies, series, lives = {}, {}, {}
     for g in cat.get("movie") or []:
         for it in g["items"]:
             if it.get("i"):
@@ -1347,7 +1461,12 @@ def enrich(cat, xt, flagged=None):
     for g in cat.get("series") or []:
         for it in g["items"]:
             series.setdefault(_norm(it["n"]), []).append(it)
-    found, adult, done, heard = {}, set(), {"movies": 0, "series": 0}, 0
+    for g in cat.get("live") or []:
+        for it in g["items"]:
+            if it.get("i"):
+                lives.setdefault(it["i"], []).append(it)
+    want = {k for k in KINDS if any(g["name"] == NO_GROUP for g in cat.get(k) or [])}   # ما يحتاج أقسام الواجهة
+    found, adult, done, heard, cids = {}, set(), {"movies": 0, "series": 0}, 0, {}
     if movies:
         with _api_open(xt, "get_vod_streams") as r:
             for o in _json_items(r.read):
@@ -1360,7 +1479,7 @@ def enrich(cat, xt, flagged=None):
                     continue
                 found[sid] = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("added")), "g": _genres(o.get("genre")),
                                     "d": _plot(o.get("plot") or o.get("description")), "p": _poster(o.get("stream_icon")),
-                                    "y": _year(o.get("year") or o.get("releasedate"))})
+                                    "y": _year(o.get("year") or o.get("releasedate")), "c": _cid(o)})
     got = {}
     if series:
         with _api_open(xt, "get_series") as r:
@@ -1375,20 +1494,47 @@ def enrich(cat, xt, flagged=None):
                 bd = bd[0] if isinstance(bd, list) and bd else bd
                 meta = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("last_modified")), "g": _genres(o.get("genre")),
                               "d": _plot(o.get("plot")), "b": _poster(bd if isinstance(bd, str) else ""),
-                              "p": _poster(o.get("cover")), "y": yr})
+                              "p": _poster(o.get("cover")), "y": yr, "c": _cid(o)})
                 for it in its:                  # مسلسلان بالاسم نفسه: السنة تفصل بينهما
                     if not (yr and it.get("y") and it["y"] != yr) and id(it) not in got:
                         got[id(it)] = (it, meta)
     if (movies or series) and not heard:      # رفض الدخول يُردّ كائنًا لا مصفوفة: اشتراكٌ منتهٍ أو واجهةٌ مغلقة
         raise ValueError("الواجهة لم تُرجع شيئًا — الاشتراك منتهٍ أو السيرفر لا يتيحها")
-    # لا يُمسّ الفهرس إلا بعد أن يُقرأ الردّان كاملَين
+    logos = {}
+    if lives and ("live" in want or any(not it.get("p") for its in lives.values() for it in its)):
+        def live(o):
+            sid = _int(o.get("stream_id"))
+            if sid in lives:
+                logos[sid] = (_poster(o.get("stream_icon")), _cid(o))
+        _optional(xt, "get_live_streams", live)
+    names = {}
+
+    def category(d):
+        def add(o):
+            name = _group(str(o.get("category_name") or ""))
+            if _cid(o) and name != NO_GROUP:
+                d.setdefault(_cid(o), name)
+        return add
+    for kind, action in (("movie", "get_vod_categories"), ("series", "get_series_categories"),
+                         ("live", "get_live_categories")):
+        if kind in want:
+            names[kind] = {}
+            _optional(xt, action, category(names[kind]))
+    # لا يُمسّ الفهرس إلا بعد أن تُقرأ الردود كاملة
     for sid, meta in found.items():
         for it in movies[sid]:
-            it.update({k: val for k, val in meta.items() if k not in ("p", "y") or not it.get(k)})
+            cids[id(it)] = meta.get("c", "")
+            it.update({k: val for k, val in meta.items() if k != "c" and (k not in ("p", "y") or not it.get(k))})
         done["movies"] += 1
     for it, meta in got.values():
-        it.update({k: val for k, val in meta.items() if k not in ("p", "y") or not it.get(k)})
+        cids[id(it)] = meta.get("c", "")
+        it.update({k: val for k, val in meta.items() if k != "c" and (k not in ("p", "y") or not it.get(k))})
     done["series"] = len(got)
+    for sid, (logo, cid) in logos.items():
+        for it in lives[sid]:
+            cids[id(it)] = cid
+            if logo and not it.get("p"):
+                it["p"] = logo
     if adult:
         told = set()
         for g in cat.get("movie") or []:
@@ -1400,7 +1546,46 @@ def enrich(cat, xt, flagged=None):
             g["items"] = [x for x in g["items"] if x.get("i") not in adult]
         cat["movie"] = [g for g in cat.get("movie") or [] if g["items"]]
         cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(adult)
+    grouped = sum(_regroup(cat, kind, names.get(kind) or {}, cids, flagged) for kind in want)
+    if grouped:
+        done["grouped"] = grouped
     return done
+
+
+def _regroup(cat, kind, names, cids, flagged):
+    """ما في «بلا قسم» إلى قسمه في الواجهة (‏names: رقم القسم ← اسمه، بترتيب الواجهة) — وقسمٌ للكبار يُسقط ما فيه
+    (وفي ‏flagged للمدير). وما لم يُعرف قسمه يبقى في «بلا قسم» آخرها. ← عدد ما نُقل."""
+    groups = cat.get(kind) or []
+    loose = next((g for g in groups if g["name"] == NO_GROUP), None)
+    if loose is None or not names:
+        return 0
+    by, rest = {}, []
+    for it in loose["items"]:
+        name = names.get(cids.get(id(it), ""))
+        (by.setdefault(name, []) if name else rest).append(it)
+    out = [g for g in groups if g is not loose]
+    named = {g["name"]: g for g in out}
+    moved = 0
+    for name in dict.fromkeys(names.values()):
+        its = by.get(name)
+        if not its:
+            continue
+        if _ADULT_GROUP.search(name):
+            cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(its)
+            if flagged is not None:
+                flagged.extend([f"{x['n']} ({x['y']})" if x.get("y") else x["n"], name] for x in its)
+            continue
+        if name in named:
+            named[name]["items"].extend(its)
+        else:
+            named[name] = {"id": _gid(kind, name), "name": name, "items": its}
+            out.append(named[name])
+        moved += len(its)
+    if rest:
+        loose["items"] = rest
+        out.append(loose)
+    cat[kind] = out
+    return moved
 
 
 # ================= الواجهات الأخرى =================
@@ -1445,7 +1630,8 @@ def admin_state(data_dir):
             "key": s["key"], "name": s["name"], "full": s["full"], "buy": s["buy"], "page": f"{PATH}/{s['key']}",
             "has": _has(v), "at": v["at"] if v else 0, "source": cat.get("source", ""), "label": cat.get("label", ""),
             "counts": v["counts"] if v else None, "entries": cat.get("entries", 0), "n": cat.get("n", {}),
-            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "adult": _adult_view(data_dir, s["key"]),
+            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "old": bool(cat.get("old")),
+            "adult": _adult_view(data_dir, s["key"]),
             "news": (_read(_news_path(data_dir, s["key"])) or {}).get("last"),
             "url": mask_url(url) if url else "", "try_at": s["try_at"],
             "error": s["error"], "busy": dict(_busy[s["key"]]) if s["key"] in _busy else None,
@@ -1491,8 +1677,8 @@ def _record_news(data_dir, key, cat, prev=None):
     with _news_lock:
         now = time.time()                    # داخل القفل: منشور القناة يقطع السجلّ عند لحظةٍ لا يتخطّاها سحب
         mem = _read(_seen_path(data_dir, key))
-        if mem is None and prev:
-            base = _news_state(_upgrade(prev))
+        if mem is None and prev and prev.get("v") == 2:
+            base = _news_state(prev)
             mem = {"movie": list(base["movie"]), "series": {h: sorted(r["s"].items()) for h, r in base["series"].items()}}
         first = mem is None
         mem = mem or {}

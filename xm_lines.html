@@ -630,21 +630,52 @@ async function showReplPicker(q){
        <input class="t" id="rp" inputmode="numeric" autocomplete="off" placeholder="فارغ = تُولَّد تلقائيًا">`;
   box.innerHTML = `<div class="lbl" style="margin-top:10px">اختر المدة/الباقة للبديل:</div>
     <div class="pkgs">${packages.map((p,i)=>`<label class="pkg"><input type="radio" name="rpkg" value="${esc(p.id)}" ${i===0?"checked":""}>${calIcon}<b>${esc(p.name)}</b><small>${p.hint?esc(p.hint):(p.credits!=null?esc(String(p.credits))+" كريدت":"")}</small></label>`).join("")}</div>
+    <div id="rSliceBox" hidden>
+      <div class="lbl" style="margin-top:12px">مدة البديل <small>— من باقة ١٥ شهرًا</small></div>
+      <div class="slices" id="rSlices"></div>
+      <small class="hint" id="rSliceHint"></small>
+    </div>
     ${credBox}
     <button class="go" id="mkGo" data-old="${esc(q)}" style="margin-top:10px">إنشاء البديل وربطه بـ ${esc(q)}</button>
     <div class="msg" id="mkMsg"></div>`;
   box.hidden = false;
   const same = $("ruSame"); if (same) same.onclick = () => { const u = $("ru"); if (u){ u.value = q; u.focus(); } };
+  updateReplSlice();
+}
+// ---- مدة البديل: من باقة ١٥ شهرًا يُعطى البديل جزءًا منها (١٢ · ٦ · ٣ · شهر) كنوع البيع في
+// الإنشاء — يُسجَّل، ويتغيّر اسمه وحده عند انتهاء مدته فيعود الباقي إلى «حسابات متبقية».
+// تظهر لمن فُتحت له الاشتراكات المجزّأة فقط، وعلى باقات ١٥ شهرًا (split) وحدها.
+const replPkg = () => { const s = document.querySelector('input[name="rpkg"]:checked'); return s ? (packages || []).find(p => String(p.id) === s.value) : null; };
+function replSliceMonths(){
+  const b = $("rSliceBox"); if (!b || b.hidden) return 0;
+  const s = document.querySelector('input[name="rslice"]:checked');
+  return s ? +s.value || 0 : 0;
+}
+const replGoLabel = old => { const m = replSliceMonths(); return "إنشاء البديل" + (m ? " (" + monthsAr(m) + ")" : "") + " وربطه بـ " + old; };
+function updateReplSlice(){
+  const b = $("rSliceBox"); if (!b) return;
+  const p = replPkg(), on = splitOn && !!(p && p.split), keep = String(replSliceMonths());
+  b.hidden = !on;
+  if (on) {
+    $("rSlices").innerHTML = sliceChips("rslice", keep);
+    if (!document.querySelector('input[name="rslice"]:checked')) document.querySelector('input[name="rslice"]').checked = true;
+  }
+  replSliceHint();
+}
+function replSliceHint(){
+  const h = $("rSliceHint"); if (h) h.textContent = sliceHintText(replSliceMonths(), "يُعطى البديل مدة الباقة كاملةً (١٥ شهرًا) — بلا متابعة ولا تغيير.");
+  const g = $("mkGo"); if (g && !g.disabled) g.textContent = replGoLabel(g.dataset.old);
 }
 async function createReplacement(oldU){
   const sel = document.querySelector('input[name="rpkg"]:checked');
   if (!sel){ if($("mkMsg")) $("mkMsg").textContent = "اختر باقة."; return; }
+  const sm = replSliceMonths();                          // مدة البديل (٠ = مدة الباقة كاملة)
   const btn = $("mkGo"); if (btn){ btn.disabled = true; btn.textContent = "جاري الإنشاء…"; }
   try {
     const uEl = $("ru"), pEl = $("rp");
     const cu = uEl ? uEl.value.trim() : "", cp = pEl ? pEl.value.trim() : "";
     const r = await fetch(B + "/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({gate: curGate, package_id: sel.value, count: 1, replaces: oldU, username: cu, password: cp})});
+      body: JSON.stringify({gate: curGate, package_id: sel.value, count: 1, replaces: oldU, username: cu, password: cp, slice_months: sm})});
     const d = chk(await r.json());
     if (d.need_captcha){ showCaptcha(() => createReplacement(oldU)); return; }
     if (d.login_error) throw new Error(d.login_error);
@@ -655,13 +686,15 @@ async function createReplacement(oldU){
       const nu = esc(String(lines[0].username||"")), np = esc(String(lines[0].password||""));
       const full = msgOf(lines[0]);
       copy(full);
-      if ($("mkBox")) $("mkBox").innerHTML = `<div class="msg ok" style="margin-top:8px">أُنشئ البديل وارتبط بـ ${esc(oldU)} ✓ (نُسخ ${guideText ? "نص الشرح" : "السطر الكامل"})</div>
+      const sp = splitResult(d.split, d.split_mail);    // متى يتغيّر اسمه وما يبقى — أو لماذا لم يُسجَّل
+      if ($("mkBox")) $("mkBox").innerHTML = `<div class="msg ok" style="margin-top:8px">أُنشئ البديل${sm ? " (" + monthsAr(sm) + ")" : ""} وارتبط بـ ${esc(oldU)} ✓ (نُسخ ${guideText ? "نص الشرح" : "السطر الكامل"})</div>
         <div class="tw"><table class="tbl"><tbody><tr><td class="m">${nu}</td><td class="m">${np}</td><td>${esc(String(lines[0].package||""))}</td>
-        <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(full)}">${copyIcon}</button></td></tr></tbody></table></div>`;
+        <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(full)}">${copyIcon}</button></td></tr></tbody></table></div>`
+        + (sp ? `<div class="msg${sp.ok ? " ok" : ""}" id="mkSplit" style="margin-top:8px">${sp.html}</div>` : "");
     }
     if (d.error) throw new Error(d.error);
   } catch(e){ if ($("mkMsg")) $("mkMsg").textContent = e.message; else toast(e.message); }
-  finally { const g = $("mkGo"); if (g) { g.disabled = false; g.textContent = "إنشاء البديل وربطه بـ " + oldU; } }
+  finally { const g = $("mkGo"); if (g) { g.disabled = false; g.textContent = replGoLabel(oldU); } }
 }
 async function saveGuide(){
   const gu = $("myGuide").value.trim();
@@ -821,6 +854,10 @@ $("n").addEventListener("input", updateCta); $("n").addEventListener("change", u
 // ---- نوع البيع (الاشتراكات المجزّأة): جزءٌ من باقة ١٥ شهرًا يتغيّر اسمه عند انتهائه ----
 const monthsAr = n => n === 1 ? "شهر" : n === 2 ? "شهران" : n <= 10 ? n + " أشهر" : n + " شهرًا";
 const selectedPkg = () => { const s = document.querySelector('input[name="pkg"]:checked'); return s ? (packages || []).find(p => String(p.id) === s.value) : null; };
+// خيارات المدة (كامل · ١٢ · ٦ · ٣ · شهر) — لنوع البيع في الإنشاء ولـ«مدة البديل» معًا.
+// keep = ما كان مختارًا قبل إعادة الرسم، فتبديل باقةٍ بمثلها لا يُضيّع الاختيار.
+const sliceChips = (name, keep) => [0, ...splitSlices].map(m => `<label><input type="radio" name="${name}" value="${m}"${String(m) === keep ? " checked" : ""}><span>${m ? monthsAr(m) : "كامل ١٥ شهرًا"}</span></label>`).join("");
+const sliceHintText = (m, full) => m ? `يُنشأ بباقة ١٥ شهرًا ويُسلَّم للعميل ${monthsAr(m)}، ثم يتغيّر اسم المستخدم وحده تلقائيًا (كلمة المرور كما هي) فيصير الخط «متبقي ${monthsAr(15 - m)}» في حسابات متبقية.` : full;
 function sliceMonths(){
   if ($("sliceBox").hidden) return 0;
   const s = document.querySelector('input[name="slice"]:checked');
@@ -831,20 +868,18 @@ function updateSliceBox(){
   const keep = String(sliceMonths());
   $("sliceBox").hidden = !on;
   if (on) {
-    const opts = [0, ...splitSlices];
-    $("slices").innerHTML = opts.map(m => `<label><input type="radio" name="slice" value="${m}"${String(m) === keep ? " checked" : ""}><span>${m ? monthsAr(m) : "كامل ١٥ شهرًا"}</span></label>`).join("");
+    $("slices").innerHTML = sliceChips("slice", keep);
     if (!document.querySelector('input[name="slice"]:checked')) document.querySelector('input[name="slice"]').checked = true;
   }
   sliceHint(); updateCta();
 }
 function sliceHint(){
-  const m = sliceMonths();
-  $("sliceHint").textContent = m ? `يُنشأ بباقة ١٥ شهرًا ويُسلَّم للعميل ${monthsAr(m)}، ثم يتغيّر اسم المستخدم وحده تلقائيًا (كلمة المرور كما هي) فيصير الخط «متبقي ${monthsAr(15 - m)}» في حسابات متبقية.`
-                                  : "يُباع الخط كاملًا ١٥ شهرًا كما كان — بلا متابعة ولا تغيير.";
+  $("sliceHint").textContent = sliceHintText(sliceMonths(), "يُباع الخط كاملًا ١٥ شهرًا كما كان — بلا متابعة ولا تغيير.");
 }
-function showSplitResult(sp, mail){
-  const box = $("splitMsg");
-  if (!sp || !sp.length) { box.hidden = true; box.innerHTML = ""; return; }
+// نتيجة تسجيل الأجزاء بعد الإنشاء: متى يتغيّر الاسم وما يبقى بعده وأين يصل التذكير، أو لماذا لم
+// يُسجَّل خطٌّ — {html, ok} أو null. لرسالة الإنشاء ولرسالة البديل معًا.
+function splitResult(sp, mail){
+  if (!sp || !sp.length) return null;
   const ok = sp.filter(x => !x.error), bad = sp.filter(x => x.error);
   const a = (href, t) => `<a href="${B + href}" style="color:inherit;text-decoration:underline;font-weight:700">${t}</a>`;
   const rows = [];
@@ -856,7 +891,12 @@ function showSplitResult(sp, mail){
       : `⚠ بريد التنبيه غير مضبوط — التذكير يصل في الجرس 🔔 فقط. اضبطه من ${a("/renew", "صفحة التجديد")} (قسم «بريد التنبيه»).`);
   }
   bad.forEach(x => rows.push(`⚠ ${esc(x.username)}: أُنشئ لكن لم يُسجَّل للمتابعة (${esc(x.error)}) — أضِفه من ${a("/remaining", "حسابات متبقية")} ← «إضافة خطٍّ قائم».`));
-  box.className = "msg " + (bad.length ? "" : "ok"); box.innerHTML = rows.join("<br>"); box.hidden = false;
+  return {html: rows.join("<br>"), ok: !bad.length};
+}
+function showSplitResult(sp, mail){
+  const box = $("splitMsg"), r = splitResult(sp, mail);
+  if (!r) { box.hidden = true; box.innerHTML = ""; return; }
+  box.className = "msg " + (r.ok ? "ok" : ""); box.innerHTML = r.html; box.hidden = false;
 }
 
 // ---- جرس الإشعارات ----
@@ -962,6 +1002,10 @@ $("searchRes").addEventListener("click", e => {
   if (b.dataset.copy) { copy(b.dataset.copy); return; }
   if (b.id === "mkRepl") { showReplPicker($("searchQ").value.trim()); return; }
   if (b.id === "mkGo") { createReplacement(b.dataset.old); return; }
+});
+$("searchRes").addEventListener("change", e => {        // باقة البديل تُظهر مدته (باقة ١٥ شهرًا) أو تخفيها
+  if (e.target.name === "rpkg") updateReplSlice();
+  else if (e.target.name === "rslice") replSliceHint();
 });
 $("saveGuide").onclick = saveGuide;
 $("manageGates").onclick = () => { drawer(false); openManage(); };

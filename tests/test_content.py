@@ -243,6 +243,10 @@ def unit_parse():
     check("ملفٌّ فارغ أو صفحة خطأ: لا عناصر", catalog("<html>403 Forbidden</html>")["entries"] == 0
           and catalog("")["entries"] == 0)
 
+    check("رابط الصورة: المسافة مرمَّزة، وغير الرابط يسقط", C._poster(" http://h/logos/MBC 1.png ") == "http://h/logos/MBC%201.png"
+          and C._poster("https://image.tmdb.org/t/p/w600/a.jpg") == "https://image.tmdb.org/t/p/w600/a.jpg"
+          and C._poster("javascript:alert(1)") == "" and C._poster('http://h/a".png') == "" and C._poster("") == "")
+
     print("البحث والعدّ")
     check("الهمزات والتشكيل والتاء المربوطة", C._norm("أُسامة") == C._norm("اسامه") == "اسامه")
     check("حالة الأحرف والرموز والأرقام", C._norm("Breaking-Bad ᴴᴰ ٢") == "breaking bad hd 2", C._norm("Breaking-Bad ᴴᴰ ٢"))
@@ -504,6 +508,11 @@ def unit_news():
     r = seed(d2, "smart", NEWS_MORE)
     check("قبل الذاكرة: يُقارن بالفهرس السابق فيُعرف الجديد من أول سحب", r["news"].get("movie") == 2 and not r["news"].get("first"),
           r["news"])
+    C._write(C._cat_path(d2, "kon"), {"key": "kon", "at": time.time(), "entries": 1, "n": {"movie": 1}, "skipped": {},
+                                      "movie": [{"id": C._gid("movie", "Films"), "name": "Films", "items": ["Old Film (2019) FHD"]}]})
+    r = seed(d2, "kon", NEWS_MORE)
+    check("وفهرس النسخة الأولى (قُرئت أسماؤه بغير القراءة الحالية) لا يُقارن به: بداية", r["news"].get("first") is True
+          and not logged(d2, "kon"), r["news"])
     C.clear(d2, "smart")
     check("مسح المحتوى يمسح ما رُئي وما جدّ", not os.path.exists(C._seen_path(d2, "smart"))
           and not os.path.exists(C._news_path(d2, "smart")))
@@ -693,8 +702,10 @@ def unit_render():
           and "9 مسلسلات بمواسمها و4 أفلام و5 قنوات" in html)
     check("تُفهرس ولها canonical", 'content="index, follow' in html and
           '<link rel="canonical" href="https://guide.ssouq.com/content/smart">' in html)
-    check("السيرفرات التي لها محتوى", '<a href="/content/smart" aria-current=page>سمارت</a>' in html
-          and '<a href="/content/falcon">فالكون</a>' in html and "/content/kon" not in html)
+    check("السيرفرات التي لها محتوى، كلٌّ بشعاره واسمه", '<a href="/content/smart" aria-current=page><img class="lg" '
+          'src="/static/img/brands/smart.webp"' in html and "<b>سمارت</b><small>MR7 TV</small>" in html
+          and '<a href="/content/falcon"><img class="lg" src="/static/img/brands/falcon.webp"' in html
+          and "<b>فالكون</b><small>FALCON TV PRO</small>" in html and "/content/kon" not in html)
     check("الرأس: الأنواع و«أضيف مؤخرًا» والبحث", '<a href="/content/smart" class=home aria-current=page>الرئيسية</a>' in html
           and '<a href="/content/smart?t=series">المسلسلات</a>' in html and '<a href="/content/smart?t=new">أضيف مؤخرًا</a>' in html
           and '<form class="search" role="search" action="/content/smart" method="get">' in html)
@@ -730,6 +741,30 @@ def unit_render():
           and 'data-cta="https://' in html)
     check("لا رابط ولا بيانات دخول ولا وسم من الملف", "pass456" not in html and "user123" not in html and "panel.example" not in html
           and "<script>alert(1)" not in html and "&lt;script&gt;alert(1)&lt;/script&gt;" in html)
+
+    print("الإعلان")
+    ad = html[html.index('<aside class="ad"'):html.index("</aside>", html.index('<aside class="ad"'))]
+    check("في أعلى الصفحة: تحت السيرفرات وقبل الواجهة والصفوف، مرةً واحدة", html.count('<aside class="ad"') == 1
+          and html.index('<nav class="servers"') < html.index('<div id="cres"') < html.index('<aside class="ad"')
+          < html.index('<div class="herobox">') < html.index('<section class="row">'))
+    check("باقات السيرفر نفسه بأسعارها وخصمها وحملة content-ad", "كل هذا المحتوى في اشتراك سمارت" in ad
+          and ad.count('class="adplan"') == 3 and ad.count("utm_campaign=content-ad") == 4 and "-50%" in ad
+          and "<s>92</s>" in ad and "اشترك في سمارت</a>" in ad and "9 مسلسلات بمواسمها" in ad, ad[:300])
+    code, html2 = page(d, "smart", t="series")
+    check("وفي صفحة النوع في أعلاها كذلك", html2.count('<aside class="ad"') == 1
+          and html2.index('<aside class="ad"') < html2.index('<div class="stats">'))
+    code, html3 = page(d, "smart", q="breaking")
+    check("ونتائج البحث قبله", html3.index('<section class="results">') < html3.index('<aside class="ad"'))
+    check("ولا إعلان في صفحةٍ غير موجودة", '<aside class="ad"' not in page(d, "smart", t="series", g="0000000000")[1])
+    seed(d, "casper", SAMPLE)
+    cad = page(d, "casper")[1]
+    check("سيرفرٌ بلا باقاتٍ في المتجر: إعلان الموقع", "اشتراكات سمارت سوق" in cad and "p153695876" in cad
+          and "اشترك الآن</a>" in cad and "كل هذا المحتوى في اشتراك كاسبر" not in cad)
+    C.save_server(d, {"key": "casper", "name": "كاسبر", "full": "CASPER FLIX", "buy": "https://ssouq.com/casper"})
+    cad = page(d, "casper")[1]
+    check("وبرابط شرائه من صفحة المدير: زرّه وحده", "كل هذا المحتوى في اشتراك كاسبر" in cad and 'class="adplan"' not in cad
+          and 'href="https://ssouq.com/casper?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in cad)
+    C.clear(d, "casper")
 
     print("صفحة النوع والقسم")
     code, html = page(d, "smart", t="series")
@@ -792,7 +827,8 @@ def unit_render():
     check("المسلسل مرةً بمواسمه كلها", "نتائج «breaking» في سمارت <small>نتيجة واحدة</small>" in r
           and "المسلسلات <small>(1)</small>" in r and titles(r) == ["Breaking Bad"]
           and cards(r)[0]["sc"][-1] == "الموسم 3 (حلقة واحدة)", r[:300])
-    check("ويوجد أيضًا في السيرفرات الأخرى", 'ويوجد أيضًا في: <a href="/content/falcon?q=breaking">فالكون (1)</a>' in r)
+    check("ويوجد أيضًا في السيرفرات الأخرى، بشعارها", 'ويوجد أيضًا في: <a href="/content/falcon?q=breaking"><img class="lg sm" '
+          'src="/static/img/brands/falcon.webp"' in r and "فالكون (1)</a>" in r)
     r = P.api_search(d, "smart", "only in falcon")["html"]
     check("ما ليس هنا: أين يوجد", "لا يوجد «only in falcon» في سمارت" in r and "لكنه موجود في" in r and "فالكون (1)" in r)
     r = P.api_search(d, "smart", "عثمان")["html"]
@@ -803,6 +839,34 @@ def unit_render():
     r = P.api_search(d, "falcon", "film")["html"]
     check("الواسع: أولها وعددها كله", len(titles(r)) == C.SEARCH_MAX and "(650)" in r and "و610 نتائج أخرى" in r, r[:160])
     check("كل الكلمات", titles(P.api_search(d, "falcon", "film 0007")["html"]) == ["Film 0007"])
+    print("خطأٌ في حرف")
+    check("كلمتان بينهما تعديلٌ واحد", [C._near(a, b) for a, b in (("ياب", "باب"), ("breakng", "breaking"), ("abdc", "abcd"),
+                                                                 ("باب", "باب"), ("abc", "abxy"), ("ab", "ba"))]
+          == [True, True, True, False, False, True])
+    r = P.api_search(d, "smart", "ياب الحارة")["html"]
+    check("«ياب الحارة» ← «باب الحارة»، ويقول ذلك", titles(r) == ["باب الحارة"] and "نتائج «باب الحارة» في سمارت" in r
+          and "لا يوجد «ياب الحارة» كما كُتب، فهذه نتائج أقرب اسمٍ إليه." in r, r[:300])
+    r = P.api_search(d, "smart", "المؤسص عثمان")["html"]
+    check("والكلمة المصحَّحة كما في الاسم (بهمزتها)", titles(r) == ["المؤسس عثمان"] and "نتائج «المؤسس عثمان»" in r, r[:200])
+    r = P.api_search(d, "smart", "braking bad")["html"]
+    check("وبالإنجليزية، ومعها أين يوجد", titles(r) == ["Breaking Bad"] and "نتائج «Breaking bad»" in r
+          and '<a href="/content/falcon?q=Breaking%20bad">' in r, r[-300:])
+    check("وفي كلمتين معًا", titles(P.api_search(d, "smart", "breakng bda")["html"]) == ["Breaking Bad"])
+    check("ولا يُصحَّح ما لا يقرب شيئًا، ولا الكلمة القصيرة", titles(P.api_search(d, "smart", "zzzz qqqq")["html"]) == []
+          and C.suggest("smart", C._view(d, "smart")[1], "xy") == ""
+          and C.suggest("smart", C._view(d, "smart")[1], "breaking") == "")
+    t0 = time.time()
+    r = P.api_search(d, "falcon", "flim 0007")["html"]
+    check("وفي قسمٍ كبير (650 فيلمًا) بسرعة", titles(r) == ["Film 0007"] and time.time() - t0 < 1, round(time.time() - t0, 3))
+
+    r = P.api_search(d, "smart", "mbc")["html"]
+    check("القنوات لا تُبحث، والنتيجة تدلّ على تبويبها", "لا يوجد «mbc» في سمارت" in r and titles(r) == []
+          and 'والقنوات في <a class="link" href="/content/smart?t=live">تبويبها</a>' in r, r[-200:])
+    seed(d, "kon", "#EXTM3U\n" + entry("باب الحارة ج3 ح12", "مسلسلات شامية", "series", 1)
+         + entry("SOLO باب الحارة", "24/7", "live", 2) + entry("TU Choufli Hal S01", "TUNISIA", "live", 3))
+    check("ولا قنوات 24/7 باسم المسلسل: المسلسل وحده", titles(P.api_search(d, "kon", "باب الحارة")["html"]) == ["باب الحارة"]
+          and titles(P.api_search(d, "kon", "choufli")["html"]) == [])
+    C.clear(d, "kon")
     r = P.api_search(d, "smart", "zzzz qqqq")["html"]
     check("لا نتائج", "لا يوجد «zzzz qqqq» في سمارت" in r and "جرّب جزءًا من الاسم" in r)
     code, html = page(d, "smart", q="breaking")
@@ -812,6 +876,8 @@ def unit_render():
     check("والبحث مهرَّبًا", "<img src=x" not in html and "&lt;img src=x onerror=alert(1)&gt;" in html)
 
     print("لا محتوى")
+    check("وسيرفرٌ بلا شعار: أول حرفٍ من اسمه", P._logo("kon", "كون") == '<span class="lg bi" style="--h:%d" aria-hidden="true">ك</span>'
+          % P._hue("كون") and P._logo("x", "<b>")[-11:] == "&lt;</span>")
     code, body = P.render_missing(d, "kon")
     check("سيرفرٌ بلا محتوى: 404 تدلّ على غيره", code == 404 and 'href="/content/smart"' in body.decode()
           and 'href="/content/falcon"' in body.decode() and "noindex" in body.decode())
@@ -827,11 +893,21 @@ def unit_render():
     C._write(C._cat_path(d, "kon"), {
         "key": "kon", "at": time.time(), "entries": 4, "n": {"series": 3, "movie": 1, "live": 0}, "skipped": {},
         "series": [{"id": C._gid("series", "Old"), "name": "Old", "items": [["Old Show", [[1, 2], [2, 1]]]]}],
-        "movie": [{"id": C._gid("movie", "Films"), "name": "Films", "items": ["Old Film (2019)"]}], "live": []})
+        "movie": [{"id": C._gid("movie", "Films"), "name": "Films",
+                   "items": ["Old Film (2019) FHD", "Old Film (2019) HD", "Blade Runner 2049"]}],
+        "live": [{"id": C._gid("live", "TV"), "name": "TV", "items": ["MBC 1 HD", "MBC 1 FHD"]}]})
     code, html = page(d, "kon")
-    check("يُعرض كما هو حتى يُسحب ثانية", code == 200 and "Old Show" in html and "موسمان" in html and "Old Film (2019)" in html
-          and C._view(d, "kon")[1]["counts"] == {"series": 1, "seasons": 2, "episodes": 3, "movie": 1, "live": 0}
+    check("يُعرض حتى يُسحب ثانية", code == 200 and "Old Show" in html and "موسمان" in html
           and "?t=new" not in html and 'class="slide' not in html)
+    check("والسنة والجودة تُفصلان منه من الآن", '<h3 dir="auto">Old Film</h3><p class="sub">2019</p>' in html
+          and '<h3 dir="auto">Blade Runner 2049</h3>' in html and '<h3 dir="auto">MBC 1</h3>' in html
+          and C._view(d, "kon")[1]["counts"] == {"series": 1, "seasons": 2, "episodes": 3, "movie": 2, "live": 1},
+          C._view(d, "kon")[1]["counts"])
+
+    print("الحرفان مكان الصورة")
+    check("بلا أقواسٍ ولا سنة", [P._initials(n) for n in ("UNABOMBER (2026)", "Mother Mary (2026)", "12 Strong (2018)",
+                                                          "(500) Days of Summer", "2020", "350 جرام", "مُسلسل رائع", "", "---")]
+          == ["U", "MM", "S", "DO", "2", "ج", "مر", "•", "•"])
 
     print("التاريخ")
     now = time.time()
@@ -1002,9 +1078,33 @@ def unit_enrich():
         check("بلا تقييمٍ ولا تاريخ، والأحدث برقمه", v2["counts"]["movie"] == 33
               and not any(it.get("r") or it.get("a") for g in v2["kinds"]["movie"] for it in g["items"]), v2["counts"])
 
+        print("ملفٌّ بلا أقسام (‏type=m3u)")
+        C.set_url(d, "kon", f"{base}/get.php?username=u&password=p&type=m3u")
+        mock_xtream.Handler.hits.clear()
+        ok, err = C.refresh(d, "kon")
+        kon = next(s for s in C.admin_state(d)["servers"] if s["key"] == "kon")
+        v3 = C._view(d, "kon")[1]
+        check("طلبات الأقسام وشعارات القنوات", ok and set(mock_xtream.Handler.hits) >= {
+              "/player_api.php?action=get_live_streams", "/player_api.php?action=get_vod_categories",
+              "/player_api.php?action=get_series_categories", "/player_api.php?action=get_live_categories"}, err)
+        check("كل عنصرٍ في قسمه من الواجهة، بترتيبها", [g["name"] for g in v3["kinds"]["movie"]] == list(mock_xtream.MOVIES)
+              and [g["name"] for g in v3["kinds"]["series"]] == list(mock_xtream.SERIES)
+              and [g["name"] for g in v3["kinds"]["live"]] == list(mock_xtream.CHANNELS),
+              [[g["name"] for g in v3["kinds"][k]] for k in C.KINDS])
+        check("والأعداد كما في الملف بأقسامه", v3["counts"] == {"series": 10, "seasons": 43, "episodes": 645, "movie": 32,
+                                                              "live": 14} and kon["api"]["grouped"] == 56, (v3["counts"], kon["api"]))
+        check("وقسم الكبار في الواجهة يُسقط ما فيه، وللمدير", kon["skipped"]["adult"] == 3 and kon["adult"]["count"] == 3
+              and "Hot Stuff" not in json.dumps(v3["cat"]) and ["Hot Stuff", "XXX | Adults"] in kon["adult"]["panel"],
+              (kon["skipped"], kon["adult"]))
+        logos = [it.get("p") for g in v3["kinds"]["live"] for it in g["items"]]
+        check("وشعار القناة من الواجهة", all(logos) and f"{base}/images/106.png" in logos, logos[:3])
+        code, html = page(d, "kon", t="movie")
+        check("والصفحة بأقسامها", code == 200 and "بلا قسم" not in html and html.count('<a class="chip"') == 3)
+
         text = mock_xtream.build(base)[0]
         res = C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
         check("والملف المرفوع يُثرى من روابطه", res["api"] == {"ok": True, "movies": 32, "series": 10}, res["api"])
+        C.set_url(d, "kon", "")
         res = C.ingest(d, "kon", reader(text.replace("/u/p/", "/u/old/").encode()), "file", "kon.m3u")
         check("واشتراكٌ في الملف لا تقبله الواجهة: السبب للمدير", res["api"]["ok"] is False
               and "لم تُرجع شيئًا" in res["api"]["error"] and C._view(d, "kon")[1]["counts"]["movie"] == 33, res["api"])
@@ -1092,6 +1192,24 @@ def unit_fetch():
             check("«اسحب الآن» بلا رابط", False)
         except ValueError:
             check("«اسحب الآن» بلا رابط", True)
+
+        print("محتوى القراءة الأولى")
+        old = {"entries": 1, "n": {"series": 0, "movie": 1, "live": 0}, "skipped": {}, "series": [], "live": [],
+               "movie": [{"id": C._gid("movie", "M"), "name": "M", "items": ["Old Film (2019)"]}]}
+        state = lambda k: next(x for x in C.admin_state(d)["servers"] if x["key"] == k)  # noqa: E731
+        C._write(C._cat_path(d, "smart"), old)
+        check("بلا رابط: للمدير «أعد رفع الملف»", state("smart")["old"] is True and C._cat_old(d, "smart")
+              and not C._cat_old(d, "falcon"))
+        C.tick(d)
+        check("والدورة لا تمسّه", C._cat_old(d, "smart"))
+        C._write(C._cat_path(d, "casper"), old)
+        C.set_url(d, "casper", base + "/get.php?username=user123&password=pass456")
+        n0 = lists()
+        C.tick(d)
+        check("وبرابط: يُسحب في أول دورة لا بعد يوم", lists() == n0 + 1 and not C._cat_old(d, "casper")
+              and state("casper")["old"] is False and C._view(d, "casper")[1]["counts"]["series"] == 9)
+        C.tick(d)
+        check("ثم كل يومٍ كعادته", lists() == n0 + 1)
     finally:
         srv.shutdown()
         shutil.rmtree(d, ignore_errors=True)
