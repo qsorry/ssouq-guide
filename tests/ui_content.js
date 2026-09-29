@@ -1,5 +1,6 @@
 // Browser test of the content page (/content): the admin page uploads an M3U (gzip-compressed in the
-// browser), hides a group, and saves an Xtream link whose panel API adds ratings, genres and dates; the
+// browser), lists what it dropped as adult, saves and tests who gets the adult alert, hides a group,
+// and saves an Xtream link whose panel API adds ratings, genres and dates; the
 // homepage, menu, buy flow and plans screen link the page only once a server has content; the hero
 // carousel, the details window with each season's episodes, "أضيف مؤخرًا", row arrows, a category grid
 // with pages, the filters, search as you type (and where else a name exists), panel images through our
@@ -83,10 +84,15 @@ function playlist(movies) {
           `${size} → ${sent && sent.size}`);
     const msg = await ap.textContent('[data-k="smart"] [data-msg]');
     check('ملخّص الرفع بالعربية', msg.includes('تم: 2,557 عنصرًا — 55 حلقة من المسلسلات و2,500 فيلم وقناتان.')
-          && msg.includes('أُسقط 1 من أقسام الكبار'), msg);
+          && msg.includes('وأُسقط عنصر واحد للكبار.'), msg);
     check('منشور بأعداده', (await ap.textContent('[data-k="smart"] .chip')).includes('منشور')
           && (await ap.textContent('[data-k="smart"] .stats')).includes('2,500'));
     check('وبلا بيانات الدخول', !(await ap.content()).includes('pass456'));
+    check('أُسقط بعدده ومعدوده', (await ap.textContent('[data-k="smart"] .meta')).includes('أُسقط: عنصر واحد للكبار'));
+    await ap.click('[data-k="smart"] details.adult summary');
+    const ad = await ap.textContent('[data-k="smart"] details.adult');
+    check('وما هو: القسم بعدده، ولا يُنشر', ad.includes('ما أُسقط للكبار (عنصر واحد) — لا يُنشر')
+          && ad.includes('أقسامٌ حُذفت كلها') && ad.includes('XXX | Adults'), ad.replace(/\s+/g, ' ').slice(0, 160));
     await ap.click('[data-k="smart"] details.groups summary');
     await ap.click('[data-k="smart"] [data-gk="series"]');
     const nf = ap.locator('[data-k="smart"] .grow', {hasText: 'Netflix'});
@@ -96,6 +102,24 @@ function playlist(movies) {
     await ap.waitForFunction(() => document.querySelector('[data-k="smart"] details.groups summary').textContent.includes('المخفي منها 1'));
     check('إخفاء قسم: القائمة تبقى مفتوحة وهو معلَّم', await ap.$eval('[data-k="smart"] details.groups', d => d.open)
           && await ap.$eval('[data-k="smart"] .grow.off', r => r.textContent.includes('Netflix') && !r.querySelector('input').checked));
+    check('وما أُسقط يبقى مفتوحًا بعد إعادة الرسم', await ap.$eval('[data-k="smart"] details.adult', d => d.open));
+
+    console.log('تنبيه الكبار');
+    check('بلا بريدٍ ولا رقم، ويقول ما ينقص', await ap.$eval('#alert', e => !e.hidden) && await ap.inputValue('#aMail') === ''
+          && (await ap.textContent('#aMailHint')).includes('خادم البريد غير مضبوط')
+          && (await ap.textContent('#aWaHint')).includes('غير مربوط') && await ap.$eval('#aFrom', e => !e.hidden));
+    await ap.fill('#aMail', 'not-an-email');
+    await ap.click('#aSave');
+    await ap.waitForFunction(() => document.querySelector('#aMsg').textContent.includes('بريدًا صحيحًا'), null, {timeout: 8000});
+    check('بريدٌ غير صحيح يُرفض', (await ap.getAttribute('#aMsg', 'class')).includes('err'));
+    await ap.fill('#aMail', 'me@example.com');
+    await ap.fill('#aWa', '0551234567');
+    await ap.click('#aTest');
+    await ap.waitForFunction(() => document.querySelector('#aMsg').textContent.includes('واتساب:'), null, {timeout: 30000});
+    const tm = await ap.textContent('#aMsg');
+    check('التجربة تحفظ الخانتين ثم ترسل، وتقول ما جرى لكلٍّ منهما', tm.includes('البريد: لم يُرسل — خادم البريد غير مضبوط')
+          && tm.includes('واتساب: لم يُرسل — ') && !tm.includes('Errno') && await ap.inputValue('#aWa') === '966551234567'
+          && await ap.$eval('#aFrom', e => e.hidden), tm);
     check('بلا تمرير أفقي في صفحة المدير', await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await shot(ap, 'content-admin');
 

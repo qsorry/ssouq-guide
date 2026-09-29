@@ -2198,6 +2198,59 @@ def start_contest_worker():
 CONTENT_TICK = 600                  # كل عشر دقائق: أيّ سيرفرٍ له رابط M3U مرّ يومٌ على محتواه يُسحب
 
 
+def content_page_url():
+    return ("https://%s/content" % ADMIN_HOST) if ADMIN_HOST else \
+        ("https://%s%s/content" % (SITE_HOST, ADMIN_PATH))
+
+
+def content_alert_to(st=None):
+    """لمن يصل تنبيه الكبار ← (البريد، رقم واتساب، حفظه المدير؟): ما حفظه في صفحة المحتوى (والفارغ لا
+    يُرسل إليه)، وإلا «يُرسَل إلى» من بريد التنبيه (صفحة التجديد) ورقمه في صفحة المسابقة."""
+    own = content.alert_to(DATA_DIR)
+    if own is not None:
+        return own["mail"], own["wa"], True
+    st = st or load_store()
+    return st["renew"]["alert"].get("to", ""), contest.load_settings(DATA_DIR).get("admin_phone", ""), False
+
+
+def content_alert_info():
+    """لصفحة المحتوى: لمن يصل التنبيه، وهل يُرسل — خادم البريد مضبوط؟ ورقم المسابقة مربوط (ومنه يُرسل)؟"""
+    st = load_store()
+    mail, wa, saved = content_alert_to(st)
+    r = reader_status()
+    return {"mail": mail, "wa": wa, "saved": saved, "smtp": bool(st["renew"]["alert"].get("host")),
+            "wa_from": r.get("number", "") if r.get("status") == "connected" else ""}
+
+
+def content_send(subject, body):
+    """تنبيه المدير من صفحة المحتوى ← {mail, wa} بنتيجة كلٍّ منهما: البريد من خادم «بريد التنبيه»
+    (صفحة التجديد)، وواتساب من رقم المسابقة المربوط."""
+    st = load_store()
+    mail, wa, _saved = content_alert_to(st)
+    body += "\n\nصفحة المحتوى: " + content_page_url()
+    alert = st["renew"]["alert"]
+    if not mail:
+        out = {"mail": {"ok": False, "error": "لا بريد للتنبيه"}}
+    elif not alert.get("host"):
+        out = {"mail": {"ok": False, "to": mail, "error": "خادم البريد غير مضبوط — اضبط «بريد التنبيه» في صفحة التجديد"}}
+    else:
+        try:
+            renew._smtp_send(dict(alert, to=mail), subject, body)
+            out = {"mail": {"ok": True, "to": mail}}
+        except Exception as e:
+            out = {"mail": {"ok": False, "to": mail, "error": (split_subs.mail_hint(e) or str(e))[:300]}}
+    if not wa:
+        out["wa"] = {"ok": False, "error": "لا رقم واتساب للتنبيه"}
+    else:
+        r = reader_send(wa, f"*{subject}*\n\n{body}")
+        err = "" if r.get("ok") else str(r.get("error") or "")
+        rs = reader_status() if err else {}
+        if err and not rs.get("ok") and rs.get("error"):   # الخدمة نفسها لا تُجيب: سببها بالعربية لا خطأ الشبكة
+            err = rs["error"]
+        out["wa"] = {"ok": bool(r.get("ok")), "to": wa, "error": err[:200]}
+    return out
+
+
 def _content_loop():
     time.sleep(60)                  # بعد الإقلاع بدقيقة، لا معه
     while True:
@@ -2209,6 +2262,8 @@ def _content_loop():
 
 
 def start_content_worker():
+    content.notifier = content_send         # ما جدّ للكبار في ملف سيرفر: بالبريد وواتساب
+    content.alert_info = content_alert_info
     threading.Thread(target=_content_loop, daemon=True).start()
 
 
@@ -3171,6 +3226,17 @@ class Handler(BaseHTTPRequestHandler):
                 content.move_server(DATA_DIR, key, int(body.get("dir") or 0))
             elif path == "/api/content/admin/clear":        # مسح محتوى السيرفر (و«drop» يحذفه من القائمة)
                 content.clear(DATA_DIR, key, drop=bool(body.get("drop")))
+            elif path == "/api/content/admin/alert":        # من يصله تنبيه الكبار: بريدٌ ورقم واتساب
+                mail, wa = str(body.get("mail") or "").strip(), contest.norm_phone(body.get("wa") or "")
+                if mail and not re.fullmatch(r"[^@\s<>,;\"']+@[^@\s<>,;\"']+\.[^@\s<>,;\"'.]{2,}", mail):
+                    raise ValueError("اكتب بريدًا صحيحًا")
+                if wa and not contest.phone_ok(wa):
+                    raise ValueError("رقم واتساب غير صحيح — مثل 05xxxxxxxx أو رقمٌ دوليٌّ بمفتاح دولته")
+                content.save_alert_to(DATA_DIR, mail, wa)
+            elif path == "/api/content/admin/alert-test":   # رسالةٌ تجريبية بالطريقين
+                res = content_send("تجربة تنبيه محتوى الكبار",
+                                   "رسالةٌ تجريبية من صفحة محتوى السيرفرات: إن وصلتك فتنبيه محتوى الكبار يصل إليك هنا.")
+                return self._send(200, {"ok": True, "test": res, **content.admin_state(DATA_DIR)})
             else:
                 return self._send(404, {"error": "not found"})
         except content.Busy:
