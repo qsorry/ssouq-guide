@@ -13,7 +13,7 @@ RUN (apk add --no-cache nodejs npm git && cd whatsapp-reader && npm ci --omit=de
      && (npm cache clean --force; apk del npm git; true)) || \
     (rm -rf whatsapp-reader/node_modules; echo "WhatsApp reader deps skipped — contest WhatsApp linking unavailable")
 COPY whatsapp-reader/server.js ./whatsapp-reader/
-COPY xm_lines.py xm_web.py falcon_api.py salla_api.py wa_send.py crypto_store.py guide_pages.py store_sitemap.py league.py tournament.py watch.py predict_page.py contest.py content.py content_page.py renew.py renew_import.py panels.py xlsx_write.py users_export.py user_links.py salla_web.py split_subs.py xm_lines.html admin.html setup.html login.html index.html renew.html renew_admin.html renew_report_tpl.html remaining.html contest_admin.html content_admin.html ./
+COPY xm_lines.py xm_web.py falcon_api.py salla_api.py wa_send.py crypto_store.py guide_pages.py store_sitemap.py league.py tournament.py watch.py predict_page.py contest.py content.py content_page.py store_sync.py renew.py renew_import.py panels.py xlsx_write.py users_export.py user_links.py salla_web.py split_subs.py xm_lines.html admin.html setup.html login.html index.html renew.html renew_admin.html renew_report_tpl.html remaining.html contest_admin.html content_admin.html ./
 COPY static ./static
 COPY extension ./extension
 RUN mkdir -p /app/data

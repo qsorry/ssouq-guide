@@ -130,6 +130,40 @@ section{border-radius:20px}
 .wa .bubble{max-width:470px;background:var(--wa-bub);color:var(--wa-ink);border-radius:4px 14px 14px 14px;padding:10px 12px 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:14.5px/1.55 system-ui,"Segoe UI",Tahoma,sans-serif;box-shadow:0 1px .5px rgba(0,0,0,.13)}
 .wa .bubble a{color:var(--wa-link);text-decoration:underline}
 .wa small{display:block;color:var(--mute);font-size:.76rem;margin-top:8px}
+
+/* ===== أعداد المحتوى في منتجات المتجر ===== */
+.rules{margin:0 0 8px;padding-inline-start:20px;font-size:.86rem;color:var(--ink)}
+.rules li{margin:3px 0}
+.rules b{font-weight:500;color:var(--go)}
+details.conn{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--sf2)}
+details.conn>summary{cursor:pointer;padding:10px 0;font-weight:500;font-size:.9rem}
+details.conn[open]{padding-bottom:12px}
+details.adv{margin-top:10px}
+details.adv summary{cursor:pointer;color:var(--mute);font-size:.84rem}
+.steps{margin:0;padding-inline-start:20px;font-size:.85rem}
+.steps li{margin:4px 0}
+.mono{direction:ltr;unicode-bidi:isolate;font:500 .8rem "IBM Plex Mono",Consolas,monospace;overflow-wrap:anywhere}
+.plist{border:1px solid var(--line);border-radius:12px;margin-top:8px;overflow:hidden}
+.prow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--line)}
+.prow:last-child{border-bottom:0}
+.prow .pn{flex:1 1 220px;min-width:0;overflow-wrap:anywhere;font-size:.9rem}
+.prow .pn small{display:block;color:var(--mute);font-size:.76rem}
+.prow select{width:auto;min-width:130px;flex:none;padding:7px 10px}
+.prow .st{flex:1 1 100%;font-size:.8rem;color:var(--mute)}
+.prow .st.warnline{color:var(--amber)} .prow .st.bad{color:var(--err)}
+.sug{color:var(--go);font-size:.74rem;font-weight:700}
+label.force{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.82rem;color:var(--mute);cursor:pointer}
+label.force input{width:16px;height:16px;accent-color:var(--amber)}
+.diff{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
+.diff h4{margin:0 0 6px;font-size:.9rem}
+.diff ul{list-style:none;margin:0;padding:0}
+.diff li{padding:5px 0;border-bottom:1px dashed var(--line);font-size:.85rem;overflow-wrap:anywhere}
+.diff li:last-child{border-bottom:0}
+.diff li small{color:var(--mute)}
+.diff del{color:var(--err);text-decoration:line-through;text-decoration-thickness:1px}
+.diff ins{color:var(--go);text-decoration:none;font-weight:500}
+.diff li.far{background:color-mix(in srgb,var(--amber) 9%,transparent);border-radius:8px;padding-inline:6px}
+.diff li.far::after{content:" · فرقٌ كبير";color:var(--amber);font-size:.76rem;font-weight:700}
 </style>
 </head>
 <body>
@@ -146,7 +180,8 @@ section{border-radius:20px}
     <p>لكل سيرفر ملف M3U: ارفعه، أو ضع رابطه فيُسحب منه كل يوم وحده. فيرى الزائر في
       <a id="lnkPub" target="_blank" rel="noopener">صفحة المحتوى</a> المسلسلات بمواسمها وحلقاتها والأفلام والقنوات، ويبحث فيها
       بالاسم قبل أن يشتري. لا يُنشر من الملف رابطٌ ولا اسم مستخدم ولا كلمة مرور، وأقسام الكبار تُحذف وحدها
-      ويصلك <a href="#alert">تنبيهٌ</a> بما حُذف منها. وما جدّ في كل سحبٍ يُنشر كل يوم في <a href="#chan">قناة واتساب</a>.</p>
+      ويصلك <a href="#alert">تنبيهٌ</a> بما حُذف منها. وما جدّ في كل سحبٍ يُنشر كل يوم في <a href="#chan">قناة واتساب</a>،
+      وأعداده تُكتب في <a href="#store">وصف منتجات المتجر</a>.</p>
   </section>
   <div id="list"><p class="empty">نحمّل السيرفرات…</p></div>
 
@@ -171,6 +206,61 @@ section{border-radius:20px}
     <div class="msg" id="cMsg"></div>
     <div class="wa" id="cBox" hidden><div class="bubble" id="cText" dir="rtl"></div><small id="cSize"></small></div>
     <p class="meta" id="cLast"></p>
+  </section>
+
+  <section id="store" hidden>
+    <h2><span>أعداد المحتوى في منتجات المتجر</span><span class="chip" id="sChip"></span></h2>
+    <p class="sub">بعد كل سحبٍ لملف M3U تُكتب أعداد صفحة المحتوى في وصف منتجات سلة المربوطة بسيرفرها — وحدها كل يوم، بلا
+      ذكاءٍ اصطناعي. ولا يُكتب الوصف من جديد: يُبدَّل فيه ما يُعرف بشكله، وما سواه يبقى كما كتبته.</p>
+    <ul class="rules">
+      <li><b>«6,100+ فيلم»</b> و<b>«أكثر من 6,100 فيلم»</b> وما عُطف عليه («… و8,700 مسلسل») ← عددٌ تقريبيٌّ دون العدد الحقيقي</li>
+      <li><b>«6,184 فيلمًا و1,788 مسلسلًا»</b> ← العدد الدقيق (زوجًا؛ والدقيق المنفرد كـ«418 فيلمًا جديدًا» لا يُمسّ)</li>
+      <li>تاريخ <b>«آخر تحديث … 29 سبتمبر 2026»</b> ← يوم آخر سحب، ومعه اليوم والهجري إن كُتبا</li>
+      <li>المعدود: فيلم · مسلسل · قناة · حلقة · موسم، و«فيلم ومسلسل» مجموعهما — في الوصف وفي وصف محركات البحث</li>
+    </ul>
+    <p class="hint">أول تحديثٍ لكل منتجٍ بيدك بعد المعاينة، وبعده يُحدَّث وحده. وإن بعُد عددٌ جديد عمّا في الوصف (أقل من
+      70% منه أو فوق ضعفه) عُلّق المنتج كله ولم يُكتب، ووصلك تنبيه.</p>
+
+    <h3>الربط بسلة</h3>
+    <div class="meta" id="sAuth"></div>
+    <details class="conn" id="sConn"><summary>ربط تطبيق سلة — يتجدّد رمزه وحده</summary>
+      <ol class="steps">
+        <li>في <a href="https://portal.salla.partners" target="_blank" rel="noopener">بوابة شركاء سلة</a> أنشئ تطبيقًا خاصًّا
+          بنمط الربط السهل (Easy Mode).</li>
+        <li>صلاحياته: <b>المنتجات — قراءة وكتابة</b> (<span class="mono">products.read_write</span>) و<span class="mono">offline_access</span>.</li>
+        <li>رابط الويبهوك (Webhook URL): <span class="mono" id="sHookUrl"></span> — وانسخ سرّه (Webhook Secret).</li>
+        <li>الصق معرّف التطبيق وسرّه وسرّ الويبهوك هنا واحفظ، ثم ثبّت التطبيق في متجرك: يصل الرمز وحده، ويتجدّد قبل انتهائه.</li>
+      </ol>
+      <div class="form">
+        <div><label for="sCid">معرّف التطبيق (Client ID)</label><input id="sCid" class="ltr" maxlength="100" autocomplete="off"></div>
+        <div><label for="sSecret">سرّ التطبيق (Client Secret)</label><input id="sSecret" class="ltr" type="password" autocomplete="off"></div>
+        <div><label for="sHook">سرّ الويبهوك (Webhook Secret)</label><input id="sHook" class="ltr" type="password" autocomplete="off"></div>
+      </div>
+      <details class="adv"><summary>أو الصق رمزًا (Access Token)</summary>
+        <div class="form">
+          <div><label for="sTok">الرمز (Access Token)</label><input id="sTok" class="ltr" type="password" autocomplete="off"></div>
+          <div><label for="sRef">رمز التجديد (Refresh Token) — اختياري</label><input id="sRef" class="ltr" type="password" autocomplete="off"></div>
+        </div>
+        <span class="hint">الرمز وحده يعيش 14 يومًا؛ ومع رمز التجديد ومعرّف التطبيق وسرّه يتجدّد وحده.</span>
+      </details>
+      <div class="acts" style="margin-top:12px"><button class="go" type="button" id="sAuthSave">حفظ الربط</button>
+        <button class="ghost" type="button" id="sCheck">جرّب الربط</button>
+        <button class="danger" type="button" id="sUnlink">افصل</button></div>
+    </details>
+
+    <h3>المنتجات المربوطة</h3>
+    <div id="sLinks"></div>
+    <div class="row" style="margin-top:10px"><input id="sQ" maxlength="60" placeholder="ابحث في منتجات المتجر بالاسم أو الرمز (SKU)">
+      <button class="ghost" type="button" id="sFind">ابحث</button><button class="ghost" type="button" id="sSuggest">المقترحة</button></div>
+    <div id="sFound"></div>
+    <label class="switch"><input type="checkbox" id="sOn"><span>حدّث المتجر وحده بعد كل سحب</span></label>
+    <div class="acts" style="margin-top:12px"><button class="go" type="button" id="sSave">حفظ</button>
+      <button class="ghost" type="button" id="sPrev">معاينة التغييرات</button>
+      <button class="ghost" type="button" id="sRun">حدّث الآن</button>
+      <label class="force"><input type="checkbox" id="sForce">ومعه ما فيه فرقٌ كبير</label></div>
+    <div class="msg" id="sMsg"></div>
+    <div id="sDiff"></div>
+    <p class="meta" id="sLast"></p>
   </section>
 
   <section id="alert" hidden>
@@ -222,7 +312,8 @@ const count = (n, f) => n === 1 ? f[0] : n === 2 ? f[1]
 const N = {item: ["عنصر واحد", "عنصران", "عناصر", "عنصرًا", "عنصر"], ep: ["حلقة واحدة", "حلقتان", "حلقات", "حلقة", "حلقة"],
            movie: ["فيلم واحد", "فيلمان", "أفلام", "فيلمًا", "فيلم"], live: ["قناة واحدة", "قناتان", "قنوات", "قناة", "قناة"],
            series: ["مسلسل واحد", "مسلسلان", "مسلسلات", "مسلسلًا", "مسلسل"],
-           sep: ["سطر فاصل واحد", "سطران فاصلان", "أسطر فاصلة", "سطرًا فاصلًا", "سطر فاصل"]};
+           sep: ["سطر فاصل واحد", "سطران فاصلان", "أسطر فاصلة", "سطرًا فاصلًا", "سطر فاصل"],
+           product: ["منتج واحد", "منتجان", "منتجات", "منتجًا", "منتج"], change: ["تغيير واحد", "تغييران", "تغييرات", "تغييرًا", "تغيير"]};
 const mb = b => (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + " MB";
 const when = ts => ts ? new Date(ts * 1000).toLocaleString("ar-SA-u-nu-latn-ca-gregory",
   {day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Riyadh"}) : "";
@@ -479,10 +570,199 @@ $("chan").addEventListener("click", async e => {
   } finally { if (b.isConnected) b.disabled = false; }
 });
 
+// ===== أعداد المحتوى في منتجات المتجر =====
+let SFILL = false, SDIRTY = false, SSIG = "", SLINKS = [], FOUND = [];   // SLINKS: الربط كما يُعدَّل في الصفحة حتى «حفظ»
+const sNote = (text, cls) => { $("sMsg").textContent = text; $("sMsg").className = "msg" + (cls ? " " + cls : ""); };
+const WHAT = {total: "الأفلام والمسلسلات", movies: "الأفلام", series: "المسلسلات", channels: "القنوات",
+              episodes: "الحلقات", seasons: "المواسم", date: "تاريخ آخر تحديث"};
+const dayOf = ts => ts ? new Date(ts * 1000).toLocaleDateString("ar-SA-u-nu-latn-ca-gregory",
+  {day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Riyadh"}) : "";
+const srvName = k => ((DATA.servers || []).find(s => s.key === k) || {}).name || k;
+const srvOpts = sel => (DATA.servers || []).map(s => `<option value="${esc(s.key)}"${s.key === sel ? " selected" : ""}>${esc(s.name)}</option>`).join("");
+const pLink = p => p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.name || p.id)}</a>` : esc(p.name || p.id);
+
+function authHTML(a) {
+  const out = [];
+  if (a.own) {
+    out.push(a.source === "webhook" ? "مربوط بتطبيق سلة ✓" : "مربوط برمزٍ ملصوق ✓");
+    if (a.renews) out.push("يتجدّد وحده" + (a.expires ? " — الرمز الحالي حتى " + esc(dayOf(a.expires)) : ""));
+    else out.push(`<span class="warnline">لا يتجدّد وحده${a.expires ? " — الرمز حتى " + esc(dayOf(a.expires)) : " — الرمز الملصوق يعيش 14 يومًا"}: أكمل معرّف التطبيق وسرّه ورمز التجديد</span>`);
+    if (a.scope && !/products\.read_write/.test(a.scope)) out.push('<span class="warnline">صلاحيات التطبيق بلا «المنتجات: قراءة وكتابة»</span>');
+  } else if (a.fallback) out.push("يُستعمل توكن إدارة سلة من إعداد الخدمة (لا يتجدّد وحده — الأفضل تطبيقٌ من الأسفل)");
+  else out.push('<span class="warnline">غير مربوط — اربط تطبيق سلة من الأسفل</span>');
+  if (!a.own && a.client_id) out.push(a.hook ? "حُفظ التطبيق — ثبّته في متجرك ليصل الرمز" : '<span class="warnline">أكمل سرّ الويبهوك ليصل الرمز</span>');
+  if (a.error) out.push(`<span class="warnline">${esc(a.error)}</span>`);
+  return out.join(" · ");
+}
+
+// حال المنتج المربوط كما حُفظ: ينتظر أول تحديثٍ بيد المدير، أو معلَّق، أو فشل، أو آخر ما كُتب فيه
+function linkStatus(l) {
+  if (!l.has) return ["لا محتوى لهذا السيرفر بعد — ارفع ملفه أو ضع رابطه", "warnline"];
+  if (l.error) return ["آخر محاولة لم تنجح: " + l.error, "bad"];
+  if (l.held.length) return ["معلَّق: " + l.held.slice(0, 2).map(x => `${WHAT[x.what] || ""} «${x.old}» ← «${x.new}»`).join("، ")
+    + " — عددٌ بعيد عمّا في الوصف، فلم يُكتب شيء: راجع المعاينة ثم «حدّث الآن» مع «ومعه ما فيه فرقٌ كبير»", "warnline"];
+  if (!l.approved) return ["ينتظر أول تحديثٍ بيدك: «معاينة التغييرات» ثم «حدّث الآن» — وبعده يُحدَّث وحده", "warnline"];
+  return [(l.put_at ? `آخر كتابة ${when(l.put_at)} (${count(l.changes.length, N.change)})` : "لم يحتج تغييرًا")
+    + (l.fresh ? " · مطابقٌ لآخر سحب ✓" : " · يُحدَّث بعد السحب القادم"), ""];
+}
+
+function renderStore(force) {
+  const st = DATA.store, sec = $("store");
+  sec.hidden = !st;
+  if (!st) return;
+  if (!SFILL) {
+    SLINKS = st.links.map(l => ({id: l.id, server: l.server, name: l.name, url: l.url}));
+    $("sOn").checked = !!st.on; $("sCid").value = st.auth.client_id || ""; SFILL = true; SDIRTY = false;
+    if (!st.ready) $("sConn").open = true;
+  }
+  const sig = JSON.stringify([st, SLINKS, (DATA.servers || []).map(s => s.key + ":" + s.name)]);
+  if (sig === SSIG && !force) return;          // لا يُعاد رسم ما لم يتغيّر، فلا تُغلق قائمةٌ مفتوحة
+  SSIG = sig;
+  const a = st.auth, chip = $("sChip"), n = st.links.length;
+  chip.className = "chip" + (st.on && n && st.ready ? " on" : "");
+  chip.textContent = !st.ready ? "غير مربوط" : !n ? "بلا منتجات" : st.on ? "يُحدَّث وحده" : "موقوف";
+  $("sHookUrl").textContent = st.hook_url;
+  $("sAuth").innerHTML = authHTML(a);
+  const keep = "محفوظ — اتركه فارغًا للإبقاء";
+  $("sSecret").placeholder = a.secret ? keep : ""; $("sHook").placeholder = a.hook ? keep : "";
+  $("sTok").placeholder = a.own ? keep : ""; $("sRef").placeholder = a.refresh ? keep : "";
+  const info = Object.fromEntries(st.links.map(l => [l.id, l]));
+  $("sLinks").innerHTML = SLINKS.length ? `<div class="plist">${SLINKS.map(l => {
+    const i = info[l.id], [t, cls] = i && i.server === l.server ? linkStatus(i) : ["لم يُحفظ بعد — اضغط «حفظ»", "warnline"];
+    return `<div class="prow" data-id="${esc(l.id)}"><div class="pn">${pLink(l)}<small>#${esc(l.id)}</small></div>
+      <select data-srv aria-label="سيرفر المنتج">${srvOpts(l.server)}</select>
+      <button class="ghost" type="button" data-rm title="فكّ الربط" aria-label="فكّ الربط">✕</button>
+      <div class="st ${cls}">${esc(t)}</div></div>`;
+  }).join("")}</div>` : '<p class="empty">لا منتجات مربوطة — ابحث عنها في المتجر من الأسفل، أو اضغط «المقترحة».</p>';
+  const L = st.last;
+  $("sLast").innerHTML = L ? `آخر تحديث ${L.manual ? "بيدك" : "تلقائي"} ${esc(when(L.at))}: كُتب في ${count(L.n || 0, N.product)} من ${count(L.total || 0, N.product)}`
+    + (L.held ? ` · عُلّق ${count(L.held, N.product)}` : "") + (L.error ? ` · <span class="warnline">${esc(L.error)}</span>` : "") : "";
+}
+
+function foundHTML() {
+  if (!FOUND.length) return '<p class="empty">لا نتائج</p>';
+  const have = new Set(SLINKS.map(l => l.id));
+  const state = s => s === "hidden" ? " · مخفي" : s === "out" ? " · نفد" : "";
+  return `<div class="plist">${FOUND.map(p => `<div class="prow" data-pid="${esc(p.id)}"><div class="pn">${pLink(p)}
+      <small>#${esc(p.id)}${p.sku ? " · " + esc(p.sku) : ""}${state(p.status)}${p.suggest ? ' · <span class="sug">مقترح: ' + esc(srvName(p.suggest)) + "</span>" : ""}</small></div>
+      <select data-srv aria-label="سيرفر المنتج"><option value="">— السيرفر —</option>${srvOpts(p.suggest)}</select>
+      <button class="ghost" type="button" data-add${have.has(p.id) ? " disabled" : ""}>${have.has(p.id) ? "مربوط" : "اربط"}</button></div>`).join("")}</div>`;
+}
+
+// ما سيتغيّر (أو ما تغيّر) في وصف كل منتج: القديم مشطوبًا والجديد بعده، والبعيد معلَّمًا
+function diffHTML(ps) {
+  return ps.map(p => `<div class="diff"><h4>${pLink(p)} <small>— ${esc(srvName(p.server))}</small></h4>${
+    p.error ? `<p class="err">${esc(p.error)}</p>` : (p.changes || []).length
+      ? `<ul>${p.changes.map(x => `<li class="${x.far ? "far" : ""}"><small>${esc(WHAT[x.what] || "")}${x.seo ? " · وصف محركات البحث" : ""}:</small>
+          <del>${esc(x.old)}</del> ← <ins>${esc(x.new)}</ins></li>`).join("")}</ul>`
+      : '<p class="hint">لا تغيير: وصفه مطابق، أو ليس فيه شكلٌ من الأشكال المعروفة أعلاه</p>'}</div>`).join("");
+}
+
+async function saveStore() {
+  const d = await api("/api/content/admin/store", {links: SLINKS, on: $("sOn").checked})
+    .catch(e => ({error: e.message === "login" ? "" : "تعذّر الاتصال"}));
+  if (d.error !== undefined) { if (d.error) sNote(d.error, "err"); return false; }
+  DATA = d; SFILL = false; render();
+  return true;
+}
+
+async function saveAuth(clear) {
+  const body = clear ? {clear: true} : {client_id: $("sCid").value.trim(), secret: $("sSecret").value.trim(),
+    hook: $("sHook").value.trim(), token: $("sTok").value.trim(), refresh: $("sRef").value.trim()};
+  const d = await api("/api/content/admin/store-auth", body).catch(e => ({error: e.message === "login" ? "" : "تعذّر الاتصال"}));
+  if (d.error !== undefined) { if (d.error) sNote(d.error, "err"); return; }
+  ["sSecret", "sHook", "sTok", "sRef"].forEach(id => { $(id).value = ""; });
+  DATA = d; SFILL = false; render();
+  if (clear) return sNote("فُصل الربط", "ok");
+  const c = d.check || {};
+  sNote(c.ok ? `حُفظ، والربط يعمل ✓ — في المتجر ${count(c.total || 0, N.product)}` : "حُفظ" + (c.error ? " — " + c.error : ""), c.ok ? "ok" : "");
+}
+
+async function sPreview() {
+  if (SDIRTY && !(await saveStore())) return;
+  if (!SLINKS.length) return sNote("اربط منتجًا أولًا", "err");
+  sNote("يقرأ وصف المنتجات من سلة…");
+  const d = await api("/api/content/admin/store-preview", {}).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) return sNote(d.error, "err");
+  $("sDiff").innerHTML = diffHTML(d.products);
+  const n = d.products.reduce((a, p) => a + (p.changes || []).length, 0);
+  const far = d.products.reduce((a, p) => a + (p.held || []).length, 0);
+  sNote(n ? `${count(n, N.change)} — لم يُكتب شيءٌ بعد` + (far ? `. منها ${count(far, N.change)} بفرقٍ كبير: لا يُكتب المنتج إلا مع «ومعه ما فيه فرقٌ كبير»` : "")
+    : "لا تغيير: الوصف مطابقٌ لأعداد صفحة المحتوى", far ? "err" : "");
+}
+
+async function sRun() {
+  if (SDIRTY && !(await saveStore())) return;
+  if (!SLINKS.length) return sNote("اربط منتجًا أولًا", "err");
+  const force = $("sForce").checked;
+  if (!confirm(`يكتب أعداد صفحة المحتوى الآن في وصف ${count(SLINKS.length, N.product)} في سلة${force ? "، ومعها ما فيه فرقٌ كبير" : ""}. وبعده تُحدَّث وحدها بعد كل سحب${$("sOn").checked ? "" : " إن فعّلت «حدّث المتجر وحده»"}. حدّث؟`)) return;
+  sNote("يُحدَّث المتجر…");
+  const d = await api("/api/content/admin/store-run", {force}).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.servers) { DATA = d; SFILL = false; render(); }
+  if (!d.run) return sNote(d.error || "تعذّر التحديث", "err");
+  const res = Object.entries(d.run.results || {});
+  $("sDiff").innerHTML = diffHTML(res.map(([id, x]) => ({...(SLINKS.find(l => l.id === id) || {id}), ...x})));
+  const held = res.filter(([, x]) => (x.held || []).length).length, bad = res.filter(([, x]) => !x.ok).length;
+  sNote(`كُتب في ${count(d.run.n || 0, N.product)}` + (held ? ` · عُلّق ${count(held, N.product)} لفرقٍ كبير` : "")
+    + (bad ? ` · لم ينجح ${count(bad, N.product)}` : ""), bad ? "err" : held ? "" : "ok");
+}
+
+$("store").addEventListener("change", e => {
+  const sel = e.target.closest("#sLinks [data-srv]");
+  if (sel) {
+    const l = SLINKS.find(x => x.id === sel.closest("[data-id]").dataset.id);
+    if (l) { l.server = sel.value; SDIRTY = true; renderStore(true); sNote("غيّرتَ السيرفر — اضغط «حفظ»"); }
+  }
+  if (e.target.id === "sOn") SDIRTY = true;
+});
+
+$("store").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.hasAttribute("data-rm")) {
+    SLINKS = SLINKS.filter(x => x.id !== b.closest("[data-id]").dataset.id); SDIRTY = true;
+    $("sFound").innerHTML = FOUND.length ? foundHTML() : ""; renderStore(true);
+    return sNote("فُكّ الربط — اضغط «حفظ»");
+  }
+  if (b.hasAttribute("data-add")) {
+    const row = b.closest("[data-pid]"), p = FOUND.find(x => x.id === row.dataset.pid), srv = row.querySelector("[data-srv]").value;
+    if (!srv) return sNote("اختر سيرفر المنتج أولًا", "err");
+    SLINKS.push({id: p.id, server: srv, name: p.name, url: p.url}); SDIRTY = true;
+    $("sFound").innerHTML = foundHTML(); renderStore(true);
+    return sNote(`رُبط «${p.name}» بسيرفر ${srvName(srv)} — اضغط «حفظ»`);
+  }
+  if (!b.id) return;
+  b.disabled = true;
+  try {
+    if (b.id === "sSave") { if (await saveStore()) sNote("حُفظ", "ok"); }
+    else if (b.id === "sFind" || b.id === "sSuggest") {
+      const q = b.id === "sFind" ? $("sQ").value.trim() : "";
+      if (b.id === "sFind" && !q) return sNote("اكتب اسم المنتج أو رمزه", "err");
+      sNote("يبحث في منتجات المتجر…");
+      const d = await api("/api/content/admin/store-products", {q}).catch(() => ({error: "تعذّر الاتصال"}));
+      if (d.error) return sNote(d.error, "err");
+      FOUND = d.products || [];
+      $("sFound").innerHTML = foundHTML();
+      sNote(FOUND.length ? `${count(FOUND.length, N.product)} — اختر سيرفر كلٍّ منها واضغط «اربط»` : "");
+    }
+    else if (b.id === "sAuthSave") await saveAuth(false);
+    else if (b.id === "sUnlink") { if (confirm("فصل ربط سلة؟ تُحذف الرموز والأسرار المحفوظة هنا، ولا تُحدَّث المنتجات حتى تربطه ثانية.")) await saveAuth(true); }
+    else if (b.id === "sCheck") {
+      const d = await api("/api/content/admin/store-check", {}).catch(() => ({error: "تعذّر الاتصال"}));
+      if (d.servers) { DATA = d; render(); }
+      const c = d.check || {};
+      sNote(c.ok ? `الربط يعمل ✓ — في المتجر ${count(c.total || 0, N.product)}` : (c.error || d.error || "تعذّر"), c.ok ? "ok" : "err");
+    }
+    else if (b.id === "sPrev") await sPreview();
+    else if (b.id === "sRun") await sRun();
+  } finally { if (b.isConnected) b.disabled = false; }
+});
+$("sQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("sFind").click(); } });
+
 function render() {
   const list = $("list"), ss = DATA.servers || [];
   renderAlert();
   renderChannel();
+  renderStore();
   if (!ss.length) { list.innerHTML = '<section><p class="empty">لا سيرفرات — أضف واحدًا من الأسفل.</p></section>'; return; }
   // الترتيب تغيّر أو سيرفرٌ أُضيف/حُذف: رسمٌ كامل؛ وإلا فالمتغيّر وحده
   const keys = ss.map(s => s.key).join(",");
