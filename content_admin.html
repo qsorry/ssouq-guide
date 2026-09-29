@@ -63,6 +63,7 @@ button:disabled{opacity:.55;cursor:default}
 .meta{color:var(--mute);font-size:.84rem;margin-top:10px}
 .meta .mono{direction:ltr;unicode-bidi:isolate;font:500 .8rem "IBM Plex Mono",Consolas,monospace;color:var(--ink)}
 .err{color:var(--err);font-size:.86rem;margin-top:8px}
+.warnline{color:var(--amber)}
 .bar{height:6px;border-radius:99px;background:var(--sf2);overflow:hidden;margin-top:10px;border:1px solid var(--line)}
 .bar i{display:block;height:100%;width:0;background:var(--go);transition:width .2s}
 details.groups{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
@@ -159,7 +160,8 @@ const num = n => Number(n || 0).toLocaleString("en-US");
 const count = (n, f) => n === 1 ? f[0] : n === 2 ? f[1]
   : num(n) + " " + (n % 100 >= 3 && n % 100 <= 10 ? f[2] : n % 100 > 10 || n < 100 ? f[3] : f[4]);
 const N = {item: ["عنصر واحد", "عنصران", "عناصر", "عنصرًا", "عنصر"], ep: ["حلقة واحدة", "حلقتان", "حلقات", "حلقة", "حلقة"],
-           movie: ["فيلم واحد", "فيلمان", "أفلام", "فيلمًا", "فيلم"], live: ["قناة واحدة", "قناتان", "قنوات", "قناة", "قناة"]};
+           movie: ["فيلم واحد", "فيلمان", "أفلام", "فيلمًا", "فيلم"], live: ["قناة واحدة", "قناتان", "قنوات", "قناة", "قناة"],
+           series: ["مسلسل واحد", "مسلسلان", "مسلسلات", "مسلسلًا", "مسلسل"]};
 const mb = b => (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + " MB";
 const when = ts => ts ? new Date(ts * 1000).toLocaleString("ar-SA-u-nu-latn-ca-gregory",
   {day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Riyadh"}) : "";
@@ -191,7 +193,8 @@ function stats(c) {
 }
 
 function chip(s) {
-  if (s.busy) return `<span class="chip busy">${s.busy.stage === "connect" ? "يتصل بالسيرفر…" : "يقرأ الملف… " + mb(s.busy.bytes || 0)}</span>`;
+  if (s.busy) return `<span class="chip busy">${s.busy.stage === "connect" ? "يتصل بالسيرفر…"
+    : s.busy.stage === "meta" ? "يجلب التقييمات والتصنيفات…" : "يقرأ الملف… " + mb(s.busy.bytes || 0)}</span>`;
   return s.has ? '<span class="chip on">منشور</span>' : '<span class="chip">بلا محتوى</span>';
 }
 
@@ -204,6 +207,9 @@ function meta(s) {
     const sk = s.skipped || {};
     const drop = [sk.adult ? `${num(sk.adult)} من أقسام الكبار` : "", sk.sep ? `${num(sk.sep)} سطر فاصل` : ""].filter(Boolean);
     if (drop.length) out.push("أُسقط: " + drop.join(" و"));
+    // التقييمات والتصنيفات وتاريخ الإضافة من واجهة Xtream بالبيانات نفسها
+    if (s.api && s.api.ok) out.push(`التقييمات والتصنيفات من واجهة السيرفر: ${count(s.api.movies || 0, N.movie)} و${count(s.api.series || 0, N.series)}`);
+    else if (s.api) out.push(`<span class="warnline">تعذّر جلب التقييمات من واجهة السيرفر (${esc(s.api.error || "")}) — الصفحة بما في الملف</span>`);
   }
   if (s.url) out.push(`الرابط <span class="mono">${esc(s.url)}</span> يُسحب كل ${DATA.refresh_hours} ساعة`);
   return out.join(" · ");
@@ -295,6 +301,8 @@ function summary(r) {
   const parts = [n.series ? count(n.series, N.ep) + " من المسلسلات" : "", n.movie ? count(n.movie, N.movie) : "",
                  n.live ? count(n.live, N.live) : ""].filter(Boolean);
   let t = `تم: ${count(r.entries, N.item)} — ${parts.join(" و")}.`;
+  if (r.api && r.api.ok) t += ` ومن واجهة السيرفر: تقييم ${count(r.api.movies || 0, N.movie)} و${count(r.api.series || 0, N.series)}.`;
+  else if (r.api) t += ` (تعذّر جلب التقييمات من واجهة السيرفر: ${r.api.error || ""})`;
   if (sk.adult) t += ` وأُسقط ${num(sk.adult)} من أقسام الكبار.`;
   return t;
 }

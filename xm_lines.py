@@ -31,6 +31,7 @@ import watch
 import predict_page
 import contest
 import content
+import content_page
 import xm_web
 import falcon_api
 import crypto_store
@@ -2460,27 +2461,28 @@ class Handler(BaseHTTPRequestHandler):
             key = content.first_key(DATA_DIR)
             if key:
                 return self._redirect(f"{content.PATH}/{key}{qs}")
-            code, body = content.render_missing(DATA_DIR)
+            code, body = content_page.render_missing(DATA_DIR)
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": "public, max-age=300"})
-        if path.startswith(content.PATH + "/"):     # صفحة سيرفر: المسلسلات بمواسمها والأفلام والقنوات، والبحث
-            code, body, age = content.render(DATA_DIR, content.key_ok(path[len(content.PATH) + 1:].strip("/")),
-                                             {k: self._q(k) for k in ("t", "g", "p", "q")})
+        if path.startswith(content.PATH + "/"):
+            parts = path[len(content.PATH) + 1:].strip("/").split("/")
+            if len(parts) == 3 and parts[1] == "img":    # ملصقٌ من خادمنا (لا يظهر سيرفر اللوحة)
+                code, data, ctype = content.image(DATA_DIR, content.key_ok(parts[0]), parts[2])
+                if code != 200:
+                    return self._send(404, raw=b"", ctype="text/plain", extra={"Cache-Control": "public, max-age=3600"})
+                return self._send(200, raw=data, ctype=ctype,
+                                  extra={"Cache-Control": "public, max-age=2592000, immutable"})
+            # صفحة سيرفر: الواجهة والأقسام والصفوف والتصفية و«أضيف مؤخرًا» والبحث
+            code, body, age = content_page.render(DATA_DIR, content.key_ok(parts[0]) if len(parts) == 1 else "",
+                                                  {k: self._q(k) for k in ("t", "g", "p", "q", "view", "y", "genre",
+                                                                            "r", "sort", "all")})
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"})
         if path == "/api/content":              # الرئيسية ومسار الشراء: السيرفرات التي لها محتوى وأعدادها
             b = content.brief(DATA_DIR)           # والفارغ لا يُحفظ في المتصفح: يظهر الرابط فور أول ملف
             return self._send(200, b, extra={"Cache-Control": "public, max-age=300" if b["servers"] else "no-store"})
-        if path in ("/api/content/group", "/api/content/search"):   # قسمٌ يُفتح في مكانه · البحث بالاسم
-            key = content.key_ok(self._q("s"))
-            if path.endswith("/search"):
-                res = content.api_search(DATA_DIR, key, self._q("q"))
-            else:
-                try:
-                    page = int(self._q("p") or 1)
-                except ValueError:
-                    page = 1
-                res = content.api_group(DATA_DIR, key, self._q("t"), self._q("g"), page)
+        if path == "/api/content/search":       # البحث بالاسم مع الكتابة
+            res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"))
             if res is None:
                 return self._send(404, {"ok": False, "error": "not found"})
             return self._send(200, res, extra={"Cache-Control": "public, max-age=600"})
