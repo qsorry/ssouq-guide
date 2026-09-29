@@ -1,6 +1,7 @@
 // Browser test: SS IPTV in the activation guide, for every subscription. The new VIDAA device
 // walks all seven steps to the done screen with every image loaded; Samsung/LG asks for the app
 // (0Player or Duplecast, and SS IPTV); Falcon keeps its own 0Player portal code; old links still open.
+// And the buy path: VIDAA gets the Samsung/LG plans and Smart first, as the store's product pages advise.
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -64,6 +65,37 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
         (await h2()) === 'حمّل تطبيق SS IPTV' && (await page.textContent('#view')).includes('userwidget'));
       check('… with the same steps after it', (await page.textContent('#view .card.step .sub')).includes('الخطوة 1 من 7'));
     }
+
+    console.log('== buy path ==');
+    await open('#buy/live');
+    const bdevs = await page.$$eval('#view [data-bdev]', b => b.map(x => x.dataset.bdev));
+    check('VIDAA in the buy device list, right after Samsung/LG', bdevs.indexOf('vidaa') === bdevs.indexOf('webos') + 1, bdevs.join(' | '));
+    await page.click('[data-bdev="vidaa"]');
+    await page.waitForSelector('#view .brandcard');
+    check('VIDAA: Smart first even for live sports, with the SS IPTV note',
+      (await page.$eval('#view .brandcard.badged', b => b.dataset.brand)) === 'smart'
+      && (await page.textContent('#view .note.warn')).includes('SS IPTV'));
+    await open('#buy/live/vidaa/smart');
+    const vPlans = await page.$$eval('#view [data-plan]', b => b.map(x => x.dataset.plan));
+    const vText = await page.textContent('#view');
+    await open('#buy/live/webos/smart');
+    const wPlans = await page.$$eval('#view [data-plan]', b => b.map(x => x.dataset.plan));
+    check('VIDAA gets the Samsung/LG plans', vPlans.length === 4 && vPlans.join() === wPlans.join(), vPlans.join(' '));
+    check('… with a note that they run on VIDAA via SS IPTV', vText.includes('وهي نفسها لشاشات VIDAA'));
+    check('… and Samsung/LG has no such note', !(await page.textContent('#view')).includes('لشاشات VIDAA'));
+    await open('#buy/live/vidaa/falcon');
+    const fPlans = await page.$$eval('#view [data-plan]', b => b.map(x => x.dataset.plan));
+    const fWarn = await page.textContent('#view .note.warn');
+    check('VIDAA + Falcon: Falcon plans with the ask-support caution',
+      fPlans.length > 0 && fWarn.includes('اخترت شاشة هايسنس (VIDAA) مع فالكون') && fWarn.includes('للشاشات الذكية'));
+    await open('#buy/live/webos/falcon');
+    check('Samsung/LG + Falcon caution unchanged',
+      (await page.textContent('#view .note.warn')).includes('اخترت شاشة سامسونج أو LG مع فالكون') && (await page.textContent('#view .note.warn')).includes('لـ webOS'));
+    await open(`#buy/vod/vidaa/smart/${vPlans[vPlans.length - 1]}`);
+    await page.click('[data-activate]');
+    await page.waitForSelector('#view .card.step');
+    check('result page opens the VIDAA activation steps',
+      new URL(page.url()).hash === '#activate/smart/vidaa' && (await h2()) === 'حمّل تطبيق SS IPTV من متجر VIDAA');
 
     console.log('== links and codes ==');
     await open('#activate/smart/vidaa/2');
