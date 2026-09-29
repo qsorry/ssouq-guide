@@ -123,6 +123,9 @@ h2 small{font-weight:400;font-size:.8rem;color:var(--mute)}
 label.f{display:block;font-size:.8rem;color:var(--mute);margin:10px 0 4px}
 input.t,select.t{width:100%;padding:9px 11px;border:1.5px solid var(--line);border-radius:10px;background:var(--sf);color:var(--ink);font:inherit}
 input.t.ltr{direction:ltr;text-align:left}
+.opt-n{display:flex;align-items:center;gap:8px;margin-top:8px}
+.opt-n input.t{width:6.5em;text-align:center;direction:ltr}
+.opt-n small{color:var(--mute);font-size:.8rem}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 .hint{display:block;color:var(--mute);font-size:.78rem;margin-top:6px}
 .line-row{display:flex;gap:8px;align-items:center;margin-top:10px}
@@ -169,7 +172,7 @@ details.old summary{cursor:pointer;color:var(--mute);font-size:.9rem}
 
 <main>
   <h1>حسابات متبقية</h1>
-  <p class="sub">خطوط باقة ١٥ شهرًا تُباع أجزاءً: ١٢ شهرًا أو ٦ أو ٣ أو شهر. عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> على اللوحة — كلمة المرور كما هي — فينقطع العميل ويعود الخط هنا بما تبقّى، جاهزًا للبيع من جديد.</p>
+  <p class="sub">خطوط باقة ١٥ شهرًا تُباع أجزاءً: ١٢ شهرًا أو ٦ أو ٣ أو شهر، أو أي مدةٍ أخرى بالأشهر. عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> على اللوحة — كلمة المرور كما هي — فينقطع العميل ويعود الخط هنا بما تبقّى، جاهزًا للبيع من جديد.</p>
 
   <div class="accbar" id="accBar" hidden></div>
   <div class="tiles" id="tiles"></div>
@@ -206,6 +209,7 @@ details.old summary{cursor:pointer;color:var(--mute);font-size:.9rem}
     </div>
     <label class="f">الجزء المبيع</label>
     <div class="opts" id="rMonths"></div>
+    <div class="opt-n" id="rMonthsN" hidden><input class="t" id="rMonthsV" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="10" aria-label="عدد الأشهر"><small id="rMonthsR">شهر</small></div>
     <label class="f" for="rCust">العميل (اختياري)</label><input class="t" id="rCust" placeholder="اسم أو جوال أو رقم طلب">
     <div class="line-row"><button class="btn" id="rGo">إضافة إلى المتابعة</button></div>
     <div class="err" id="rMsg"></div>
@@ -245,6 +249,11 @@ const MODE = {web: "جلسة ويب", falcon: "فالكون", api: "Reseller API
 // فالـ١٢ شهرًا تُختار صراحةً ولا تُباع بالنقرة المعتادة.
 const pickSlice = list => list.includes(D.default_slice) ? D.default_slice : list[0];
 let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null, MAIL_RES = null, Q = "";
+// «مدة أخرى»: عدد أشهرٍ يُكتب (١٠ مثلًا، وبالأرقام العربية أيضًا) ← عددٌ صحيح، وإلا NaN.
+const typedMonths = v => { const s = norm(v); return /^\d{1,3}$/.test(s) ? +s : NaN; };
+// ما اختير في بطاقة البيع المفتوحة ({v: الخيار، n: العدد المكتوب}) — يبقى إن أُعيد رسمها (إشعارٌ قُرئ،
+// حسابٌ اختير)، فلا يعود إلى ستة أشهر من تلقاء نفسه ويُباع غير ما اختير.
+let SELL_PICK = {};
 // المجموعات المطويّة: ما يفتحه المستخدم أو يطويه يبقى كذلك بين التحديثات والزيارات (في هذا المتصفح).
 const GKEY = "xm_split_groups";
 let GRP = {};
@@ -347,7 +356,7 @@ function renderLists(){
     return group("a:" + k, `جزء ${MONTHS(m)} · بعده متبقي <span class="rm">${MONTHS(r)}</span>`, g.length,
                  `أقرب تغيير ${esc(((g[0].slice || {}).due || "").slice(0, 10))} · ${DAYS(g[0].due_in_days)}${soon ? ` · <b>${soon} خلال ٧ أيام</b>` : ""}`,
                  g.map(cardActive).join(""), ak.length === 1);
-  }).join("") : Q ? noHit : '<div class="empty">لا أجزاء جارية — أنشئ من صفحة الإنشاء باقة ١٥ شهرًا واختر «١٢ شهرًا» أو «٦ أشهر» أو «٣» أو «شهر».</div>';
+  }).join("") : Q ? noHit : '<div class="empty">لا أجزاء جارية — أنشئ من صفحة الإنشاء باقة ١٥ شهرًا واختر «١٢ شهرًا» أو «٦ أشهر» أو «٣» أو «شهر» أو «مدة أخرى».</div>';
   const done = of("sold_out", "ended");
   $("done").hidden = !done.length; $("doneN").textContent = done.length;
   $("doneList").innerHTML = done.map(cardDone).join("");
@@ -374,15 +383,21 @@ function copyBtns(x){
 }
 function cardAvail(x){
   const open = OPEN_SELL === x.id;
-  const can = x.can_sell || [], def = pickSlice(can);
-  const opts = can.map(m => `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="${m}"${m === def ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("") +
-    `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="0"${(x.can_sell || []).length ? "" : " checked"}><span>المتبقي كاملًا (${MONTHS(x.remaining_months)})</span></label>`;
+  // الخيارات السريعة التي يتّسع لها، و«مدة أخرى» (حتى max_sell شهرًا)، و«المتبقي كاملًا» — والمختار
+  // ما اختاره المشغّل قبل إعادة الرسم إن بقي بين الخيارات، وإلا ستة أشهر كما كان.
+  const can = x.can_sell || [], most = x.max_sell || 0, keep = SELL_PICK[x.id] || {};
+  const vals = [...can.map(String), ...(most > 1 ? ["n"] : []), "0"];
+  const def = vals.includes(keep.v) ? keep.v : can.length ? String(pickSlice(can)) : "0";
+  const radio = (v, t) => `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="${v}"${v === def ? " checked" : ""}><span>${t}</span></label>`;
+  const opts = can.map(m => radio(String(m), MONTHS(m))).join("") + (most > 1 ? radio("n", "مدة أخرى") : "")
+    + radio("0", `المتبقي كاملًا (${MONTHS(x.remaining_months)})`);
+  const nbox = most > 1 ? `<div class="opt-n"${def === "n" ? "" : " hidden"}><input class="t" id="smn_${esc(x.id)}" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="${Math.min(10, most)}" value="${esc(keep.n || "")}" aria-label="عدد الأشهر"><small>شهر — من 1 إلى ${most}</small></div>` : "";
   const last = (x.history || []).slice(-1)[0];
   return `<div class="card" data-line="${esc(x.id)}">
     <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="btn" data-sell="${esc(x.id)}">${open ? "إغلاق" : "بيع"}</button>${last ? `<button class="ghost" data-undo="${esc(x.id)}" title="يعيد الاسم القديم ${esc(last.username)} على اللوحة ويعيد الجزء كما كان">↩️ تراجع</button>` : ""}</div></div>
     <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span class="ok">ينتهي الخط ${esc(x.expiry)}</span><span>متاح منذ ${esc((x.available_since || "").slice(0, 10))}</span>${last ? `<span>كان <b class="mono">${esc(last.username)}</b></span>` : ""}</div>
     ${x.last_error ? `<div class="err">${esc(x.last_error)}</div>` : ""}
-    ${open ? `<div class="sellbox"><div class="opts">${opts}</div>
+    ${open ? `<div class="sellbox"><div class="opts">${opts}</div>${nbox}
       <label class="f" for="cu_${esc(x.id)}">العميل (اختياري)</label><input class="t" id="cu_${esc(x.id)}" placeholder="اسم أو جوال أو رقم طلب">
       <span class="hint">يُنسخ السطر بعد البيع مباشرةً، ويتغيّر اسم المستخدم تلقائيًا عند انتهاء الجزء.</span>
       <div class="line-row"><button class="btn" data-dosell="${esc(x.id)}">تأكيد البيع</button><button class="ghost danger" data-del="${esc(x.id)}">إيقاف المتابعة</button></div></div>` : ""}
@@ -427,12 +442,20 @@ function renderReg(){
   const cur = $("rGate").value;
   $("rGate").innerHTML = opts.join("");
   if (cur && [...$("rGate").options].some(o => o.value === cur)) $("rGate").value = cur;
-  if (!$("rMonths").children.length) $("rMonths").innerHTML = D.slices.map(m => `<label class="opt"><input type="radio" name="rm" value="${m}"${m === pickSlice(D.slices) ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("");
+  if (!$("rMonths").children.length) {
+    $("rMonths").innerHTML = D.slices.map(m => `<label class="opt"><input type="radio" name="rm" value="${m}"${m === pickSlice(D.slices) ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("")
+      + `<label class="opt"><input type="radio" name="rm" value="n"><span>مدة أخرى</span></label>`;
+    $("rMonthsR").textContent = `شهر — من 1 إلى ${D.max_slice || 14}`;
+  }
   if (!$("rStart").value) $("rStart").value = (D.now || "").slice(0, 10);
 }
 $("rGo").onclick = async () => {
   const [account_id, gate] = ($("rGate").value || "|").split("|");
-  const months = +((document.querySelector('input[name="rm"]:checked') || {}).value || 0);
+  const pick = (document.querySelector('input[name="rm"]:checked') || {}).value || "0", most = D.max_slice || 14;
+  const months = pick === "n" ? typedMonths($("rMonthsV").value) : +pick || 0;
+  if (!(months >= 1 && months <= most)) {
+    $("rMsg").className = "err"; $("rMsg").textContent = `اكتب عدد أشهر الجزء المبيع من 1 إلى ${most}`; return;
+  }
   const btn = $("rGo"); btn.disabled = true; $("rMsg").className = "err"; $("rMsg").textContent = "جاري البحث في اللوحة…";
   try {
     const d = await api("/api/split/register", {account_id, gate, months, username: $("rUser").value.trim(), password: $("rPass").value.trim(),
@@ -521,15 +544,20 @@ document.addEventListener("click", async e => {
   if (b.dataset.copy){ const x = byId(b.dataset.copy); if (x) copy(b.dataset.kind === "msg" ? x.message : x.line, b.dataset.kind === "msg" ? "نُسخ نص الشرح" : "نُسخ السطر"); return; }
   if (b.dataset.cp){ copy(b.dataset.cp, "نُسخ الاسم الجديد"); return; }
   if (b.dataset.note){ const n = D.notes.find(z => z.id === b.dataset.note); if (n && !n.read){ n.read = true; D.unread = Math.max(0, D.unread - 1); render(); api("/api/split/read", {ids: [n.id]}).catch(() => {}); } return; }
-  if (b.dataset.sell){ OPEN_SELL = OPEN_SELL === b.dataset.sell ? "" : b.dataset.sell; render(); return; }
+  if (b.dataset.sell){ OPEN_SELL = OPEN_SELL === b.dataset.sell ? "" : b.dataset.sell; delete SELL_PICK[b.dataset.sell]; render(); return; }
   if (b.dataset.dosell){
     const id = b.dataset.dosell, x = byId(id);
-    const months = +((document.querySelector(`input[name="sm_${CSS.escape(id)}"]:checked`) || {}).value || 0);
+    const pick = (document.querySelector(`input[name="sm_${CSS.escape(id)}"]:checked`) || {}).value || "0";
+    const months = pick === "n" ? typedMonths(($("smn_" + id) || {}).value) : +pick || 0;
+    if (pick === "n" && !(months >= 1 && months <= (x.max_sell || 0))) {   // «مدة أخرى» فيما يتّسع له الخط
+      toast(`اكتب عدد الأشهر من 1 إلى ${x.max_sell || 0}`, true); return;
+    }
     const customer = ($("cu_" + id) || {}).value || "";
     b.disabled = true;
     try {
       const d = await api("/api/split/sell", {id, months, customer});
       if (d.error) throw new Error(d.error);
+      delete SELL_PICK[id];
       OPEN_SELL = "";
       await copy(x.message || x.line, (x.message ? "نُسخ نص الشرح" : "نُسخ السطر") + (d.line.state === "active" ? " · يتغيّر الاسم في " + d.line.slice.due : " · بِيع المتبقي"));
       await load();
@@ -580,6 +608,17 @@ document.addEventListener("click", async e => {
 $("readAll").onclick = async () => { try { await api("/api/split/read", {}); await load(); } catch(e){ toast(e.message, true); } };
 $("notesMore").onclick = () => { SHOW_OLD = true; render(); };
 $("q").oninput = () => { Q = norm($("q").value); if (D && D.lines) renderLists(); };
+// «مدة أخرى»: مربع العدد يظهر معها (ويأخذ التركيز) ويختفي مع غيرها — في بطاقة البيع و«إضافة خطٍّ قائم».
+document.addEventListener("change", e => {
+  const t = e.target;
+  if (t.name === "rm"){ $("rMonthsN").hidden = t.value !== "n"; if (t.value === "n") $("rMonthsV").focus(); return; }
+  if (t.name && t.name.startsWith("sm_")){
+    const id = t.name.slice(3), n = $("smn_" + id);
+    (SELL_PICK[id] ||= {}).v = t.value;
+    if (n){ n.parentElement.hidden = t.value !== "n"; if (t.value === "n") n.focus(); }
+  }
+});
+document.addEventListener("input", e => { const t = e.target; if (t.id && t.id.startsWith("smn_")) (SELL_PICK[t.id.slice(4)] ||= {}).n = t.value; });
 
 load();
 // تحديثٌ كل دقيقة — إلا أثناء الكتابة أو البيع، فلا يُمحى ما يُكتب.

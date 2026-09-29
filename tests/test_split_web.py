@@ -283,7 +283,8 @@ def main():
         a = Client()
         a.jreq("/admin/api/login", {"user": "split", "password": "pw_split"})
         _, me = a.jreq("/admin/api/me")
-        check("me: split on with 12/6/3/1", me.get("split") is True and me.get("split_slices") == [12, 6, 3, 1])
+        check("me: split on with 12/6/3/1, and «مدة أخرى» up to 14",
+              me.get("split") is True and me.get("split_slices") == [12, 6, 3, 1] and me.get("split_max") == 14)
         st, _ = a.status("/admin/remaining")
         check("remaining page opens for him", st == 200, str(st))
         g_m = gid["بوابة مرح"]
@@ -296,8 +297,8 @@ def main():
         code, d = a.jreq("/admin/api/create", {"gate": g_m, "package_id": "12", "count": 1, "slice_months": 6})
         check("a 12-month package is refused", code == 400 and "١٥" in d.get("error", ""), d.get("error", ""))
         before = len(panel_state(MARAH)["lines"])
-        code, d = a.jreq("/admin/api/create", {"gate": g_m, "package_id": "15", "count": 1, "slice_months": 5})
-        check("an unknown slice is refused", code == 400)
+        code, d = a.jreq("/admin/api/create", {"gate": g_m, "package_id": "15", "count": 1, "slice_months": 15})
+        check("a slice as long as the whole line is refused", code == 400)
         check("…and nothing was created on the panel", len(panel_state(MARAH)["lines"]) == before)
         code, d = a.jreq("/admin/api/create", {"gate": g_m, "package_id": "15", "count": 1, "slice_months": 6,
                                                "password": "999988887777"})
@@ -368,14 +369,35 @@ def main():
               json.dumps(d.get("links"), ensure_ascii=False))
         r_id = spr.get("id")
 
+        print("\n== 3c. «مدة أخرى»: أي عددٍ من الأشهر — ١٠ مثلًا ==")
+        old_f = "555000333444"
+        code, d = a.jreq("/admin/api/create", {"gate": g_f, "package_id": "190", "count": 1, "replaces": old_f,
+                                               "slice_months": "١٠"})
+        sp10 = (d.get("split") or [{}])[0]
+        l10 = (d.get("lines") or [{}])[0]
+        check("a replacement given 10 months (typed in Arabic digits) is tracked, 5 left after it",
+              code == 200 and sp10.get("months") == 10 and sp10.get("remaining_after") == 5
+              and "جزء 10 أشهر" in l10.get("package", ""), json.dumps(d, ensure_ascii=False)[:200])
+        check("…and its link to the old number names the 10 months",
+              [(x["old"], x["package"]) for x in d.get("linked", [])] == [(old_f, l10.get("package"))],
+              json.dumps(d.get("linked"), ensure_ascii=False))
+        t10_id = sp10.get("id")
+        before = len(panel_state(MARAH)["lines"])
+        for bad in (15, "abc", -2):
+            code, d = a.jreq("/admin/api/create", {"gate": g_m, "package_id": "15", "count": 1, "slice_months": bad})
+            check("%r months refused, saying the range" % (bad,), code == 400 and "من شهر إلى 14 شهرًا" in d.get("error", ""),
+                  d.get("error", ""))
+        check("…and nothing was created for any of them", len(panel_state(MARAH)["lines"]) == before)
+
         code, d = a.jreq("/admin/api/split/state")
         lines = {l["id"]: l for l in d.get("lines", [])}
-        check("state lists the running slices, the replacement among them",
-              all(lines.get(x, {}).get("state") == "active" for x in (m_id, c_id, f_id, r_id))
-              and lines.get(r_id, {}).get("slice", {}).get("months") == 12, str(list(lines)))
-        check("state: 12 is a sale type, and 6 stays the preselected one",
-              d.get("slices") == [12, 6, 3, 1] and d.get("default_slice") == 6,
-              "%s %s" % (d.get("slices"), d.get("default_slice")))
+        check("state lists the running slices, the replacements among them",
+              all(lines.get(x, {}).get("state") == "active" for x in (m_id, c_id, f_id, r_id, t10_id))
+              and lines.get(r_id, {}).get("slice", {}).get("months") == 12
+              and lines.get(t10_id, {}).get("slice", {}).get("months") == 10, str(list(lines)))
+        check("state: 12 is a sale type, 6 stays the preselected one, «مدة أخرى» up to 14",
+              d.get("slices") == [12, 6, 3, 1] and d.get("default_slice") == 6 and d.get("max_slice") == 14,
+              "%s %s %s" % (d.get("slices"), d.get("default_slice"), d.get("max_slice")))
         check("line text ready to copy (host · user · pass · guide)",
               lines.get(m_id, {}).get("line", "").startswith("Host http://mrha.ink User %s Pass 999988887777" % m_user),
               lines.get(m_id, {}).get("line", ""))
@@ -444,6 +466,14 @@ def main():
         code, d = a.jreq("/admin/api/split/confirm", {"id": l_id, "username": "123123123123"})
         check("operator changed it by hand and confirmed", code == 200 and d["line"]["state"] == "available"
               and d["line"]["username"] == "123123123123", d.get("error", ""))
+        check("an available line offers «مدة أخرى» up to what it has left", d["line"].get("max_sell", 0) >= 14,
+              str(d["line"].get("max_sell")))
+        code, d = a.jreq("/admin/api/split/sell", {"id": l_id, "months": 16})
+        check("selling more months than the line has is refused", code == 400 and "أقصر" in d.get("error", ""),
+              d.get("error", ""))
+        code, d = a.jreq("/admin/api/split/sell", {"id": l_id, "months": "10", "customer": "عميل العشرة"})
+        check("sold with «مدة أخرى»: 10 months, 5 left after", code == 200 and d["line"]["state"] == "active"
+              and d["line"]["slice"]["months"] == 10 and d["line"].get("remaining_after") == 5, d.get("error", ""))
         g_n = gid["فالكون بلا تعديل"]
         start = (datetime.date.today() - datetime.timedelta(days=200)).isoformat()
         code, d = a.jreq("/admin/api/split/register", {"gate": g_n, "username": "user002", "months": 6, "start": start})
@@ -454,6 +484,13 @@ def main():
         code, d = a.jreq("/admin/api/split/rotate", {"id": n_line.get("id")})
         check("Falcon without PATCH → needs attention", d.get("ok") is False and d["line"]["state"] == "failed",
               d.get("error", ""))
+        exp = (datetime.date.today() + datetime.timedelta(days=450)).isoformat()
+        code, d = a.jreq("/admin/api/split/register", {"gate": g_n, "username": "user003", "months": "١١", "expiry": exp})
+        check("an existing line registered with «مدة أخرى» (11 months, Arabic digits)", code == 200 and
+              (d.get("line") or {}).get("slice", {}).get("months") == 11 and d["line"]["state"] == "active",
+              json.dumps(d, ensure_ascii=False)[:160])
+        code, d = a.jreq("/admin/api/split/register", {"gate": g_n, "username": "user004", "months": 15})
+        check("…but not 15 months — that is the whole line", code == 400 and "14" in d.get("error", ""), d.get("error", ""))
         code, d = a.jreq("/admin/api/split/register", {"gate": gid["بوابة API"], "username": "x", "months": 6})
         check("Reseller-API gates are outside the system", code == 400)
         code, d = a.jreq("/admin/api/split/register", {"gate": g_m, "username": "nobody000000", "months": 6})
