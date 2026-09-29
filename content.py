@@ -11,16 +11,20 @@ admin.ssouq.com/content، أو يُحفظ رابطه فيُسحب منه كل ي
   • المسلسل وموسمه وحلقته من اسم الحلقة: «Breaking Bad S01 E01» و«1x01» و«الموسم 2 الحلقة 5»
     و«ج3 ح12»؛ فيُعدّ لكل مسلسل مواسمه وحلقات كل موسم (والحلقة المكرّرة بجودتين تُعدّ مرة).
   • الأقسام كما سمّاها السيرفر (‏group-title)، وبادئة اللغة من الاسم تُحذف («AR: » «|EN| »)،
-    وسطور الفواصل (‏«##### ARABIC #####») تُتخطّى، وأقسام الكبار تُسقط كلها ولا تُحفظ.
+    وسطور الفواصل (‏«##### ARABIC #####») تُتخطّى، وأقسام الكبار تُسقط كلها فلا تُنشر.
 
 لا يُحفظ من الملف رابطٌ ولا شعار ولا اسم مستخدم: الناتج أسماءٌ وأعداد فقط. ورابط السيرفر (فيه بيانات
 الدخول) مشفَّرٌ على القرص ولا يصل المتصفح إلا مخفيًّا.
 
+وما أُسقط للكبار يُحفظ للمدير وحده في ملفٍ مستقل لا تقرؤه الصفحة العامة: أقسامٌ حُذفت كلها بعددها،
+وأسماءٌ حُذفت من أقسامٍ عادية (قد يكون بينها فيلمٌ عادي)، وأفلامٌ علّمتها واجهة السيرفر للكبار. وإن ظهر في سحبٍ ما لم يكن في سابقه وصل
+المديرَ تنبيهٌ به بالبريد وواتساب (‏notifier يضبطه الخادم).
+
 والصفحة تُرسم على الخادم كلها — الأقسام وأعدادها، وقائمة كل قسم بصفحاتها، والبحث — فتعمل بلا
 سكربت؛ وسكربتها الصغير يفتح القسم في مكانه ويبحث مع الكتابة من الواجهات نفسها.
 
-التخزين في data/content/: ‏<السيرفر>.json لكل سيرفر، وsettings.json بالسيرفرات وروابطها وما أخفاه
-المدير من أقسام. بلا مكتبات خارجية.
+التخزين في data/content/: ‏<السيرفر>.json لكل سيرفر، و‏<السيرفر>.adult.json بما أُسقط منه للكبار،
+وsettings.json بالسيرفرات وروابطها وما أخفاه المدير من أقسام ومن يصله التنبيه. بلا مكتبات خارجية.
 """
 import codecs
 import hashlib
@@ -53,6 +57,7 @@ N_EPISODES = ("حلقة واحدة", "حلقتان", "حلقات", "حلقة", "
 N_MOVIES = ("فيلم واحد", "فيلمان", "أفلام", "فيلمًا", "فيلم")
 N_CHANNELS = ("قناة واحدة", "قناتان", "قنوات", "قناة", "قناة")
 N_RESULTS = ("نتيجة واحدة", "نتيجتان", "نتائج", "نتيجة", "نتيجة")
+N_ITEMS = ("عنصر واحد", "عنصران", "عناصر", "عنصرًا", "عنصر")
 N_OF = {"series": N_SERIES, "movie": N_MOVIES, "live": N_CHANNELS}
 
 # السيرفرات كما يسمّيها المتجر، لكلٍّ ملف M3U. المفتاح آخر رابط صفحته (‏/content/smart) ولا يتغيّر،
@@ -79,12 +84,19 @@ GROUP_MAX = 100
 PAGE = 300                   # عناصر القسم في الصفحة الواحدة وفي كل «عرض المزيد»
 SEARCH_MAX = 40              # نتائج البحث المعروضة لكل نوع
 QUERY_MAX = 60
+ADULT_LIST = 200             # ما يُحفظ للمدير من أقسام الكبار ومن الأسماء المحذوفة (والباقي عددٌ)
+ADULT_MARKS = 5000           # بصمات ما أُسقط، لمعرفة الجديد منه في كل سحب
+ALERT_LINES = 15             # سطور التنبيه لكلٍّ منهما، والقائمة كاملة في صفحة المدير
 UA = "VLC/3.0.20 LibVLC/3.0.20"   # لوحات Xtream تقبل المشغّلات وقد تردّ غيرها
 
 _lock = threading.RLock()     # الإعداد: قراءةٌ ثم كتابة
 _busy = {}                    # السيرفر ← {stage, bytes, at} ما دام يُقرأ ملفه
 _cache = {}                   # السيرفر ← (البصمة، العرض المشتق)
 _found = {}                   # كاش البحث: (السيرفر، البصمة، الكلمات) ← النتيجة
+
+# تنبيه المدير بما أُسقط للكبار — يضبطهما الخادم (xm_lines)، وبدونهما لا تنبيه:
+notifier = None               # (العنوان، النص) ← {"mail": {ok, to, error}, "wa": {…}}
+alert_info = None             # () ← لمن يصل التنبيه ومن أين يُرسل، لصفحة المدير
 
 
 class Busy(Exception):
@@ -268,6 +280,8 @@ class Parser:
         self.n = {k: 0 for k in KINDS}
         self.skipped = {"adult": 0, "sep": 0, "bad": 0}
         self.xt = None                       # (القاعدة، المستخدم، الكلمة) لواجهة Xtream — لا تُحفظ
+        self.adult_groups = {}               # قسم الكبار ← عدد ما فيه (حُذف كله)
+        self.adult_titles = {}               # بصمة الاسم ← [الاسم، قسمه، عدده]: حُذف باسمه من قسمٍ عادي
 
     def line(self, s):
         s = s.strip()
@@ -292,8 +306,18 @@ class Parser:
         if not name:
             self.skipped["bad"] += 1
             return
-        if _ADULT_GROUP.search(group) or _ADULT_TITLE.search(name):
+        if _ADULT_GROUP.search(group):
             self.skipped["adult"] += 1
+            if group in self.adult_groups or len(self.adult_groups) < ADULT_MARKS:
+                self.adult_groups[group] = self.adult_groups.get(group, 0) + 1
+            return
+        if _ADULT_TITLE.search(name):
+            self.skipped["adult"] += 1
+            k = _norm(name)
+            if k in self.adult_titles:
+                self.adult_titles[k][2] += 1
+            elif len(self.adult_titles) < ADULT_MARKS:
+                self.adult_titles[k] = [name, group, 1]
             return
         if _is_sep(name):
             self.skipped["sep"] += 1
@@ -364,6 +388,20 @@ class Parser:
             out[kind] = gs
         return out
 
+    def dropped(self, flagged=()):
+        """ما أُسقط للكبار — للمدير وحده، ولا يدخل الفهرس: الأقسام بعدد ما فيها، والأسماء من أقسامٍ
+        عادية بقسمها، والأفلام التي علّمتها واجهة السيرفر للكبار (‏flagged من enrich: [الاسم، قسمه])،
+        وما لم يتّسع له الحدّ عددًا (‏more)، وبصمات الكل لمعرفة الجديد في السحب التالي."""
+        groups = [[g, n] for g, n in self.adult_groups.items()][:ADULT_LIST]
+        titles = list(self.adult_titles.values())[:ADULT_LIST]
+        panel = [list(x) for x in flagged[:ADULT_LIST]]
+        marks = ({_gid("adult-g", _norm(g)) for g in self.adult_groups} | {_gid("adult-t", k) for k in self.adult_titles}
+                 | {_gid("adult-t", _norm(x[0])) for x in flagged[:ADULT_MARKS]})
+        count = self.skipped["adult"] + len(flagged)
+        return {"count": count, "groups": groups, "titles": titles, "panel": panel,
+                "more": count - sum(g[1] for g in groups) - sum(t[2] for t in titles) - len(panel),
+                "marks": sorted(marks)}
+
 
 def _chunks(read, chunk):
     """قطع الملف كما هي، أو مفكوكةً إن كان gzip — وكل قطعةٍ مفكوكة بحدّها، فلا يصير ملفٌّ صغير
@@ -416,14 +454,19 @@ def iter_lines(read, progress=None, limit=MAX_BYTES, chunk=1 << 20):
     yield from buf.replace("\r", "\n").split("\n")
 
 
-def _parse(read, progress=None):
-    """← (الفهرس، بيانات واجهة Xtream من روابط الملف أو None). الثانية للإثراء وقت القراءة وحدها،
-    ولا تدخل الفهرس."""
+def _run(read, progress=None):
     p = Parser()
     for i, line in enumerate(iter_lines(read, progress)):
         if i == 0:
             line = line.lstrip("\ufeff")
         p.line(line)
+    return p
+
+
+def _parse(read, progress=None):
+    """← (الفهرس، بيانات واجهة Xtream من روابط الملف أو None). الثانية للإثراء وقت القراءة وحدها،
+    ولا تدخل الفهرس."""
+    p = _run(read, progress)
     return p.result(), p.xt
 
 
@@ -467,6 +510,11 @@ def _dir(data_dir):
 
 def _cat_path(data_dir, key):
     return os.path.join(_dir(data_dir), key + ".json")
+
+
+def _adult_path(data_dir, key):
+    """ما أُسقط للكبار — بنقطةٍ في اسمه فلا يكون ملف سيرفرٍ آخر، ولا تقرؤه الصفحة العامة."""
+    return os.path.join(_dir(data_dir), key + ".adult.json")
 
 
 def _read(path):
@@ -517,7 +565,28 @@ def _load(data_dir):
 
 
 def _save(data_dir, rows):
-    _write(os.path.join(_dir(data_dir), SETTINGS), {"servers": rows})
+    path = os.path.join(_dir(data_dir), SETTINGS)
+    s = _read(path) or {}                   # ويبقى ما سوى السيرفرات فيه (من يصله التنبيه)
+    s["servers"] = rows
+    _write(path, s)
+
+
+def alert_to(data_dir):
+    """من يصله تنبيه الكبار كما حفظه المدير ← {mail, wa} (والفارغ لا يُرسل إليه)، أو None إن لم يحفظه
+    بعد — فيأخذ الخادم بريد التنبيه ورقم واتساب المدير من إعداداتهما."""
+    a = (_read(os.path.join(_dir(data_dir), SETTINGS)) or {}).get("alert")
+    if not isinstance(a, dict):
+        return None
+    return {"mail": str(a.get("mail") or "")[:200], "wa": str(a.get("wa") or "")[:20]}
+
+
+def save_alert_to(data_dir, mail, wa):
+    """يحفظ من يصله التنبيه — والتحقّق من البريد والرقم على الخادم قبله."""
+    with _lock:
+        path = os.path.join(_dir(data_dir), SETTINGS)
+        s = _read(path) or {}
+        s["alert"] = {"mail": str(mail or "")[:200], "wa": str(wa or "")[:20]}
+        _write(path, s)
 
 
 def servers(data_dir):
@@ -582,25 +651,88 @@ def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
     try:
         state = _busy.get(key) or {}
         state["stage"] = "read"
-        cat, found = _parse(read, progress=lambda n: state.__setitem__("bytes", n))
+        p = _run(read, progress=lambda n: state.__setitem__("bytes", n))
+        cat, found = p.result(), p.xt
         if not cat["entries"]:
             raise ValueError("لا عناصر في الملف (‏#EXTINF) — تأكّد أنه قائمة M3U نفسها لا صفحة خطأ")
-        api = xt or found
+        api, flagged = xt or found, []
         if api:
             state["stage"] = "meta"
             try:
-                cat["api"] = {"ok": True, **enrich(cat, api)}
+                cat["api"] = {"ok": True, **enrich(cat, api, flagged)}
             except Exception as e:  # noqa: BLE001 — الصفحة بما في الملف، والسبب للمدير
                 cat["api"] = {"ok": False, "error": _fetch_error(e)}
-        cat.update(key=key, at=time.time(), source=source, label=str(label or "")[:80])
+        now = time.time()
+        cat.update(key=key, at=now, source=source, label=str(label or "")[:80])
         _write(_cat_path(data_dir, key), cat)
         _cache.pop(key, None)
         _settle(data_dir, key, "")
+        new = _record_adult(data_dir, key, p.dropped(flagged), source, now)
+        if new and notifier:
+            subject, body = alert_text(_server(data_dir, key)["name"], new, cat["skipped"]["adult"])
+            threading.Thread(target=_alert, args=(data_dir, key, subject, body), daemon=True).start()
         _view(data_dir, key)                    # يُبنى فهرس البحث الآن، فلا ينتظره أول زائر
         return {"entries": cat["entries"], "n": cat["n"], "skipped": cat["skipped"], "api": cat.get("api")}
     finally:
         if not claimed:
             _release(key)
+
+
+def _record_adult(data_dir, key, rep, source, at):
+    """يحفظ ما أُسقط للكبار للمدير ← ما لم يكن في السحب السابق {groups, titles, panel, other, first}، أو None
+    إن لم يجدّ شيء. وملفٌّ لا شيء فيه للكبار يمحو السابق، فما يعود بعده جديد."""
+    path = _adult_path(data_dir, key)
+    with _lock:
+        old = _read(path)
+        if not rep["count"]:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            return None
+        _write(path, dict(rep, at=at, source=source, alert=(old or {}).get("alert")))
+    new = set(rep["marks"]) - set((old or {}).get("marks") or [])
+    if not new:
+        return None
+    groups = [g for g in rep["groups"] if _gid("adult-g", _norm(g[0])) in new]
+    titles = [t for t in rep["titles"] if _gid("adult-t", _norm(t[0])) in new]
+    panel = [t for t in rep.get("panel") or [] if _gid("adult-t", _norm(t[0])) in new]
+    return {"groups": groups, "titles": titles, "panel": panel,
+            "other": max(0, len(new) - len(groups) - len(titles) - len(panel)), "first": old is None}
+
+
+def alert_text(name, new, count):
+    """تنبيه المدير بما جدّ للكبار في ملف سيرفر (للبريد وواتساب) ← (العنوان، النص)."""
+    lines = [f"ظهر في ملف سيرفر {name} محتوى للكبار{'' if new['first'] else ' لم يكن في سحبه السابق'}، "
+             "فحُذف من صفحة المحتوى ولم يُنشر."]
+    if new["groups"]:
+        lines += ["", "أقسامٌ حُذفت كلها:"]
+        lines += [f"• {g} ({_count(n, N_ITEMS)})" for g, n in new["groups"][:ALERT_LINES]]
+    if new["titles"]:
+        lines += ["", "أسماءٌ حُذفت من أقسامٍ عادية — راجِعها، فقد يكون بينها فيلمٌ عادي:"]
+        lines += [f"• {t} — في «{g}»" for t, g, _n in new["titles"][:ALERT_LINES]]
+    if new["panel"]:
+        lines += ["", "أفلامٌ علّمتها لوحة السيرفر للكبار:"]
+        lines += [f"• {t} — في «{g}»" for t, g in new["panel"][:ALERT_LINES]]
+    left = sum(max(0, len(new[k]) - ALERT_LINES) for k in ("groups", "titles", "panel")) + new["other"]
+    if left:
+        lines.append(f"• و{left:,} غيرها في صفحة المحتوى")
+    lines += ["", f"المحذوف للكبار من ملفه كله: {_count(count, N_ITEMS)}."]
+    return f"تنبيه: محتوى للكبار في ملف سيرفر {name} (حُذف ولم يُنشر)", "\n".join(lines)
+
+
+def _alert(data_dir, key, subject, body):
+    """يرسل التنبيه ويحفظ ما جرى ليراه المدير — في خيطٍ مستقل، فلا ينتظره رفعٌ ولا سحب."""
+    try:
+        res = notifier(subject, body)
+    except Exception as e:  # noqa: BLE001 — التنبيه لا يُسقط شيئًا، وسببه يُحفظ
+        res = {"error": str(e)[:200]}
+    with _lock:
+        path = _adult_path(data_dir, key)
+        rec = _read(path)
+        if rec:                                 # ومُسح المحتوى قبل أن يُرسل: لا شيء يُحفظ
+            rec["alert"] = dict(res if isinstance(res, dict) else {}, at=time.time())
+            _write(path, rec)
 
 
 def _fetch_error(e):
@@ -744,10 +876,11 @@ def clear(data_dir, key, drop=False):
             if r["key"] == key:
                 r.update(url="", error="", try_at=0.0, hidden=[])
         _save(data_dir, rows)
-        try:
-            os.remove(_cat_path(data_dir, key))
-        except OSError:
-            pass
+        for path in (_cat_path(data_dir, key), _adult_path(data_dir, key)):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
         _cache.pop(key, None)
 
 
@@ -1180,9 +1313,10 @@ def _year(v):
     return int(m.group(1)) if m and int(m.group(1)) <= YEAR_MAX else 0
 
 
-def enrich(cat, xt):
+def enrich(cat, xt, flagged=None):
     """يُثري الفهرس من واجهة Xtream: تقييم الفيلم والمسلسل وتاريخ إضافته، وتصنيفه وقصته، وخلفية المسلسل —
-    ويُسقط ما تعلّمه الواجهة للكبار. ← {movies، series} عدد ما أُثري. والفشل استثناء، والفهرس كما هو قبله."""
+    ويُسقط ما تعلّمه الواجهة للكبار (واسمه وقسمه في ‏flagged للمدير وحده، مرةً لكل فيلم). ← {movies، series}
+    عدد ما أُثري. والفشل استثناء، والفهرس كما هو قبله."""
     movies, series = {}, {}
     for g in cat.get("movie") or []:
         for it in g["items"]:
@@ -1234,7 +1368,13 @@ def enrich(cat, xt):
         it.update({k: val for k, val in meta.items() if k not in ("p", "y") or not it.get(k)})
     done["series"] = len(got)
     if adult:
+        told = set()
         for g in cat.get("movie") or []:
+            if flagged is not None:
+                for x in g["items"]:
+                    if x.get("i") in adult and x["i"] not in told:
+                        told.add(x["i"])
+                        flagged.append([f"{x['n']} ({x['y']})" if x.get("y") else x["n"], g["name"]])
             g["items"] = [x for x in g["items"] if x.get("i") not in adult]
         cat["movie"] = [g for g in cat.get("movie") or [] if g["items"]]
         cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(adult)
@@ -1260,8 +1400,19 @@ def sitemap(data_dir):
             if _has(_view(data_dir, s["key"])[1])]
 
 
+def _adult_view(data_dir, key):
+    """ما أُسقط من ملف السيرفر للكبار وآخر تنبيهٍ به — لصفحة المدير وحدها."""
+    rec = _read(_adult_path(data_dir, key))
+    return {k: rec.get(k) for k in ("count", "groups", "titles", "panel", "more", "at", "source", "alert")} if rec else None
+
+
 def admin_state(data_dir):
-    """صفحة المدير: كل سيرفر بحاله وأعداده وأقسامه كلها (المخفية معلَّمة) — ورابطه مخفيًّا."""
+    """صفحة المدير: كل سيرفر بحاله وأعداده وأقسامه كلها (المخفية معلَّمة) وما أُسقط منه للكبار —
+    ورابطه مخفيًّا. ومعها لمن يصل تنبيه الكبار."""
+    try:
+        alert = alert_info() if alert_info else None
+    except Exception:  # noqa: BLE001 — حال التنبيه لا يُسقط الصفحة
+        alert = None
     out = []
     for s in servers(data_dir):
         v = _view(data_dir, s["key"])[1]
@@ -1272,8 +1423,9 @@ def admin_state(data_dir):
             "key": s["key"], "name": s["name"], "full": s["full"], "buy": s["buy"], "page": f"{PATH}/{s['key']}",
             "has": _has(v), "at": v["at"] if v else 0, "source": cat.get("source", ""), "label": cat.get("label", ""),
             "counts": v["counts"] if v else None, "entries": cat.get("entries", 0), "n": cat.get("n", {}),
-            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "url": mask_url(url) if url else "", "try_at": s["try_at"],
+            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "adult": _adult_view(data_dir, s["key"]),
+            "url": mask_url(url) if url else "", "try_at": s["try_at"],
             "error": s["error"], "busy": dict(_busy[s["key"]]) if s["key"] in _busy else None,
             "groups": {k: [[g["id"], g["name"], len(g["items"]), g["id"] in hidden] for g in cat.get(k) or []]
                        for k in KINDS}})
-    return {"servers": out, "refresh_hours": REFRESH // 3600}
+    return {"servers": out, "refresh_hours": REFRESH // 3600, "alert": alert}
