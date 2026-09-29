@@ -7,7 +7,11 @@
   POST   /sessions                {tenant, number, callbackUrl, ingestToken, dmCallbackUrl} ← لقطة الجلسة (qr)
   GET    /sessions/<tenant>       ← اللقطة، أو {status: disconnected} بلا جلسة
   POST   /sessions/<tenant>/send  {to, body} ← {ok, waMessageId} · 404 no_session · 409 not_connected
+                                  (و‏to معرّفٌ فيه «@» — قناةٌ ‏…@newsletter — يُرسل إليه كما هو)
   DELETE /sessions/<tenant>       ← {status: disconnected}
+وإضافة ssouq-guide (قنوات واتساب):
+  GET    /sessions/<tenant>/newsletter?invite=<الرمز>|jid=<…@newsletter> ← {ok, id, name, subscribers, role, invite}
+                                  · 404 channel_not_found (القنوات في CHANNELS)
 ومفاتيح الاختبار (بالسرّ نفسه):
   POST   /_test/scan/<tenant>     «مُسح الرمز»: تتصل الجلسة برقمها
   POST   /_test/dm/<tenant>       {payload} تُرسل إلى dmCallbackUrl بـ X-Reader-Token كما تفعل الخدمة
@@ -22,6 +26,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -39,6 +44,11 @@ PRODUCTS = [
 ]
 DETAILS = {"1004": {"id": 1004, "name": "اشتراك يومي", "status": "sale", "url": "https://ssouq.com/day/p1004",
                     "price": 9, "image": {"url": "https://cdn.salla.sa/p1004.png"}}}
+# قنوات واتساب: رمز رابطها ← القناة، والرقم المربوط مشرفٌ في الأولى ومتابعٌ في الثانية
+CHANNELS = {"0029VaSsouqNews000000000": {"id": "120363000000000001@newsletter", "name": "سمارت سوق | الجديد",
+                                         "subscribers": 1520, "role": "ADMIN"},
+            "0029VaFollowOnly00000000": {"id": "120363000000000002@newsletter", "name": "قناةٌ أتابعها",
+                                         "subscribers": 99, "role": "SUBSCRIBER"}}
 
 
 def snap(s):
@@ -88,6 +98,20 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/_test/log":
             with _lock:
                 return self._send(200, {"sessions": sessions, "sent": sent, "posts": posts})
+        u = urllib.parse.urlsplit(self.path)
+        m = re.fullmatch(r"/sessions/([^/]+)/newsletter", u.path)
+        if m:
+            s = sessions.get(m.group(1))
+            if not s:
+                return self._send(404, {"error": "no_session"})
+            if s["status"] != "connected":
+                return self._send(409, {"error": "not_connected"})
+            q = urllib.parse.parse_qs(u.query)
+            inv, jid = (q.get("invite") or [""])[0], (q.get("jid") or [""])[0]
+            code = inv or next((k for k, c in CHANNELS.items() if c["id"] == jid), "")
+            if code not in CHANNELS:
+                return self._send(404, {"error": "channel_not_found"})
+            return self._send(200, dict(CHANNELS[code], ok=True, invite=code))
         m = re.fullmatch(r"/sessions/([^/]+)", self.path)
         if m:
             s = sessions.get(m.group(1))
@@ -158,7 +182,8 @@ class H(BaseHTTPRequestHandler):
                 return self._send(404, {"error": "no_session"})
             if s["status"] != "connected":
                 return self._send(409, {"error": "not_connected"})
-            to = re.sub(r"\D", "", str(body.get("to") or ""))
+            raw = str(body.get("to") or "")
+            to = raw if "@" in raw else re.sub(r"\D", "", raw)      # المعرّف (قناةٌ أو مجموعة) كما هو
             if not to or not body.get("body"):
                 return self._send(422, {"error": "to_and_body_required"})
             if to.startswith("966599"):                   # رقمٌ ليس على واتساب

@@ -2288,6 +2288,46 @@ app.post('/sessions/:tenant/send', async (req, res) => {
     }
 });
 
+// قنوات واتساب — إضافة ssouq-guide على نسخة souq-saas (أعِدها إن نسختَ server.js من هناك):
+// GET /sessions/:tenant/newsletter?invite=<رمز رابط القناة> أو ?jid=<…@newsletter> ← {ok, id, name,
+// subscribers, role, invite}. الرابط whatsapp.com/channel/<الرمز> لا يحمل معرّف القناة، والنشر فيها يحتاجه:
+// POST /sessions/:tenant/send {to: '<المعرّف>@newsletter', body} كأي محادثة. و`role` دور الرقم المربوط
+// فيها (OWNER · ADMIN · SUBSCRIBER · GUEST) — والنشر للمالك والمشرفين وحدهم.
+app.get('/sessions/:tenant/newsletter', async (req, res) => {
+    const session = sessions.get(req.params.tenant);
+    if (!session) return res.status(404).json({ error: 'no_session' });
+    if (session.status !== 'connected' || !session.sock) {
+        return res.status(409).json({ error: 'not_connected' });
+    }
+    const jid = String(req.query.jid || '').trim();
+    const invite = String(req.query.invite || '').trim();
+    if (jid ? !/^\d{5,30}@newsletter$/.test(jid) : !/^[A-Za-z0-9]{10,40}$/.test(invite)) {
+        return res.status(422).json({ error: 'invalid' });
+    }
+    try {
+        const meta = await session.sock.newsletterMetadata(jid ? 'jid' : 'invite', jid || invite);
+        if (!meta?.id) return res.status(404).json({ error: 'channel_not_found' });
+        // rc13 يعيد ردّ الخادم كما هو (thread_metadata.name.text …)، والأنواع تصفه مسطّحًا — يُقرأ الشكلان
+        const thread = meta.thread_metadata || {};
+        const text = (v) => (v && typeof v === 'object' ? v.text : v) || '';
+        res.json({
+            ok: true,
+            id: String(meta.id),
+            name: String(text(thread.name) || text(meta.name)),
+            subscribers: Number(thread.subscribers_count ?? meta.subscribers ?? 0) || 0,
+            role: String(meta.viewer_metadata?.role || ''),
+            invite: String(thread.invite || meta.invite || ''),
+        });
+    } catch (err) {
+        log.warn({ tenant: session.tenant, jid, invite, err: String(err) }, 'newsletter lookup failed');
+        const code = Number(err?.output?.statusCode || 0);
+        res.status(code === 404 ? 404 : 502).json({
+            error: code === 404 ? 'channel_not_found' : 'lookup_failed',
+            detail: String(err).slice(0, 300),
+        });
+    }
+});
+
 // One-click reverse-channel test (فحص استقبال الردود): POST a `type:"ping"`
 // to the stored dmCallbackUrl exactly like a real reply/receipt would go, and
 // return what the app ACTUALLY answered — so "why do replies die?" is settled

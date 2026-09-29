@@ -119,6 +119,17 @@ section{border-radius:20px}
 .bnav a svg{width:22px;height:22px}
 .bnav a:hover{color:var(--ink)}
 @media (min-width:760px){.bnav{max-width:640px;margin-inline:auto}}
+
+/* ===== قناة واتساب: «أضيف مؤخرًا» — والمعاينة فقاعةٌ كما تظهر في واتساب ===== */
+.picks{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.picks label{display:inline-flex;align-items:center;gap:6px;margin:0;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--sf2);color:var(--ink);font-size:.85rem;cursor:pointer}
+.picks input,.switch input{width:17px;height:17px;flex:none;accent-color:var(--go)}
+.switch{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--ink);font-size:.9rem;cursor:pointer}
+.wa{--wa-bg:#0b141a;--wa-bub:#202c33;--wa-ink:#e9edef;--wa-link:#53bdeb;margin-top:12px;padding:16px 12px;border-radius:16px;background:var(--wa-bg);border:1px solid var(--line)}
+:root[data-theme="light"] .wa{--wa-bg:#efeae2;--wa-bub:#ffffff;--wa-ink:#111b21;--wa-link:#027eb5}
+.wa .bubble{max-width:470px;background:var(--wa-bub);color:var(--wa-ink);border-radius:4px 14px 14px 14px;padding:10px 12px 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:14.5px/1.55 system-ui,"Segoe UI",Tahoma,sans-serif;box-shadow:0 1px .5px rgba(0,0,0,.13)}
+.wa .bubble a{color:var(--wa-link);text-decoration:underline}
+.wa small{display:block;color:var(--mute);font-size:.76rem;margin-top:8px}
 </style>
 </head>
 <body>
@@ -135,9 +146,32 @@ section{border-radius:20px}
     <p>لكل سيرفر ملف M3U: ارفعه، أو ضع رابطه فيُسحب منه كل يوم وحده. فيرى الزائر في
       <a id="lnkPub" target="_blank" rel="noopener">صفحة المحتوى</a> المسلسلات بمواسمها وحلقاتها والأفلام والقنوات، ويبحث فيها
       بالاسم قبل أن يشتري. لا يُنشر من الملف رابطٌ ولا اسم مستخدم ولا كلمة مرور، وأقسام الكبار تُحذف وحدها
-      ويصلك <a href="#alert">تنبيهٌ</a> بما حُذف منها.</p>
+      ويصلك <a href="#alert">تنبيهٌ</a> بما حُذف منها. وما جدّ في كل سحبٍ يُنشر كل يوم في <a href="#chan">قناة واتساب</a>.</p>
   </section>
   <div id="list"><p class="empty">نحمّل السيرفرات…</p></div>
+
+  <section id="chan" hidden>
+    <h2><span>قناة واتساب: «أضيف مؤخرًا» كل يوم</span><span class="chip" id="cChip"></span></h2>
+    <p class="sub">كل يومٍ في ساعته يُنشر في قناتك ما أضيف منذ المنشور السابق: الأفلام والمسلسلات الجديدة، والمواسم والحلقات
+      الجديدة لمسلسلاتٍ قائمة، ورابط «أضيف مؤخرًا» في صفحة كل سيرفر — ولا يُنشر شيءٌ في يومٍ لم يجدّ فيه شيء. ويُنشر من رقم
+      المسابقة، فاجعله مشرفًا في القناة.</p>
+    <div class="form">
+      <div><label for="cLink">رابط القناة</label><input id="cLink" class="ltr" maxlength="200" placeholder="https://whatsapp.com/channel/0029Va…">
+        <span class="hint" id="cLinkHint"></span></div>
+      <div><label for="cHour">ساعة المنشور (بتوقيت السعودية)</label><select id="cHour"></select>
+        <span class="hint">وإن لم يجدّ شيءٌ منذ المنشور السابق لم يُنشر شيء</span></div>
+    </div>
+    <label>السيرفرات في المنشور</label>
+    <div class="picks" id="cSrv"></div>
+    <label class="switch"><input type="checkbox" id="cOn"><span>انشر كل يومٍ وحده</span></label>
+    <div class="acts" style="margin-top:12px"><button class="go" type="button" id="cSave">حفظ</button>
+      <button class="ghost" type="button" id="cPrev">معاينة المنشور</button>
+      <button class="ghost" type="button" id="cMe">أرسل المعاينة إلى واتسابي</button>
+      <button class="ghost" type="button" id="cPost">انشر الآن</button></div>
+    <div class="msg" id="cMsg"></div>
+    <div class="wa" id="cBox" hidden><div class="bubble" id="cText" dir="rtl"></div><small id="cSize"></small></div>
+    <p class="meta" id="cLast"></p>
+  </section>
 
   <section id="alert" hidden>
     <h2>تنبيه محتوى الكبار</h2>
@@ -237,6 +271,7 @@ function meta(s) {
     // التقييمات والتصنيفات وتاريخ الإضافة من واجهة Xtream بالبيانات نفسها
     if (s.api && s.api.ok) out.push(`التقييمات والتصنيفات من واجهة السيرفر: ${count(s.api.movies || 0, N.movie)} و${count(s.api.series || 0, N.series)}`);
     else if (s.api) out.push(`<span class="warnline">تعذّر جلب التقييمات من واجهة السيرفر (${esc(s.api.error || "")}) — الصفحة بما في الملف</span>`);
+    if (s.news) out.push(newsHTML(s.news));
   }
   if (s.url) out.push(`الرابط <span class="mono">${esc(s.url)}</span> يُسحب كل ${DATA.refresh_hours} ساعة`);
   return out.join(" · ");
@@ -324,9 +359,124 @@ function renderAlert() {
   $("aFrom").hidden = !!a.saved;
 }
 
+// ===== قناة واتساب: «أضيف مؤخرًا» كل يوم =====
+let CFILL = false;        // خانات القناة تُملأ مرةً (وبعد الحفظ)، فلا يمسح تحديثُ الصفحة ما يُختار فيها
+const HOUR = h => h === 0 ? "12 منتصف الليل" : h < 12 ? h + " صباحًا" : h === 12 ? "12 ظهرًا" : (h - 12) + " مساءً";
+const riyadh = () => new Date(Date.now() + 3 * 3600e3);          // بتوقيت السعودية (UTC+3) بساعة UTC
+$("cHour").innerHTML = Array.from({length: 24}, (_, h) => `<option value="${h}">${HOUR(h)}</option>`).join("");
+const cNote = (text, cls) => { $("cMsg").textContent = text; $("cMsg").className = "msg" + (cls ? " " + cls : ""); };
+const picked = () => [...$("cSrv").querySelectorAll("input:checked")].map(i => i.value);
+const linkOf = c => c.invite ? "https://whatsapp.com/channel/" + c.invite : c.jid || "";
+// تنسيق واتساب في المعاينة: *عريض* و_مائل_ و~مشطوب~، والروابط
+const waHTML = t => esc(t)
+  .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,:!?]|$)/gm, "$1<b>$2</b>")
+  .replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,:!?]|$)/gm, "$1<i>$2</i>")
+  .replace(/(^|[\s(])~([^~\n]+)~(?=[\s).,:!?]|$)/gm, "$1<s>$2</s>")
+  .replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+
+function nextPost(c) {
+  const now = riyadh(), today = now.toISOString().slice(0, 10);
+  if (c.day === today) return "غدًا " + HOUR(c.hour);
+  return now.getUTCHours() < c.hour ? "اليوم " + HOUR(c.hour) : "خلال دقائق";
+}
+
+function renderChannel() {
+  const c = DATA.channel, sec = $("chan");
+  sec.hidden = !c;
+  if (!c) return;
+  const ss = DATA.servers || [], sk = ss.map(s => s.key + ":" + s.name).join(",");
+  if (!CFILL || $("cSrv").dataset.k !== sk) {       // وسيرفرٌ أُضيف أو حُذف: تُعاد الخانات بما اختير فيها
+    const had = $("cSrv").dataset.k ? new Set(picked()) : null;
+    const all = !c.jid && !c.servers.length;          // لم تُربط بعد: السيرفرات كلها
+    $("cSrv").innerHTML = ss.map(s => `<label><input type="checkbox" value="${esc(s.key)}"${
+      (had && CFILL ? had.has(s.key) : all || c.servers.includes(s.key)) ? " checked" : ""}>${esc(s.name)}</label>`).join("")
+      || '<span class="hint">أضف سيرفرًا أولًا</span>';
+    $("cSrv").dataset.k = sk;
+  }
+  if (!CFILL) { $("cLink").value = linkOf(c); $("cHour").value = String(c.hour); $("cOn").checked = !!c.on; CFILL = true; }
+  const chip = $("cChip");
+  chip.className = "chip" + (c.on && c.jid ? " on" : "");
+  chip.textContent = c.on && c.jid ? "كل يوم " + HOUR(c.hour) : c.jid ? "موقوف" : "غير مربوطة";
+  const from = (DATA.alert || {}).wa_from, admin = c.role === "OWNER" || c.role === "ADMIN";
+  let hint = "من واتساب: افتح القناة ← اسمها ← مشاركة القناة ← نسخ الرابط، والصقه هنا.";
+  if (c.jid) {
+    hint = `القناة ${c.name ? "«" + esc(c.name) + "»" : `<span class="mono">${esc(c.jid)}</span>`}${c.subs ? " · " + num(c.subs) + " متابع" : ""}`
+      + (c.role === "OWNER" ? " · رقم المسابقة مالكها ✓" : c.role === "ADMIN" ? " · رقم المسابقة مشرفٌ فيها ✓"
+        : c.role ? ' · <span class="warnline">رقم المسابقة ليس مشرفًا فيها — فلا يُنشر منه</span>' : "");
+    if (c.role && !admin && from) hint += `<br>من هاتف مالك القناة: القناة ← اسمها ← دعوة مشرفين ← اختر رقم المسابقة
+      <span class="mono">${esc(from)}</span>، واقبل الدعوة من واتسابه، ثم <button class="linkbtn" type="button" id="cVerify">تحقّق</button>.`;
+  }
+  if (!from) hint += `<br><span class="warnline">رقم المسابقة غير مربوط الآن — اربطه من <a href="${B}/contest">صفحة المسابقة</a>، فمنه يُنشر.</span>`;
+  $("cLinkHint").innerHTML = hint;
+  const out = [];
+  if (c.posted) out.push(`آخر منشور: ${esc(when(c.posted.at))} — ${tally(c.posted.n || {})}${c.posted.manual ? " (يدويًّا)" : ""}`);
+  const L = c.last;
+  if (L && !L.ok) out.push(`<span class="warnline">آخر محاولة (${esc(when(L.at))}) لم تُنشر: ${esc(L.error || "")}</span>`);
+  else if (L && L.empty) out.push(`موعد ${esc(when(L.at))}: لا جديد فلم يُنشر شيء`);
+  if (c.jid) out.push(tally(c.pending) ? `الجديد منذ آخر منشور: ${tally(c.pending)}` : "لا جديد منذ آخر منشور");
+  if (c.on && c.jid) out.push(`المنشور القادم: ${nextPost(c)}`);
+  $("cLast").innerHTML = out.join("<br>");
+}
+
+// ما في الخانات غير المحفوظ؟ (يُحفظ قبل «انشر الآن»)
+function cDirty() {
+  const c = DATA.channel || {}, a = picked().sort().join(), b = [...(c.servers || [])].sort().join();
+  return $("cLink").value.trim() !== linkOf(c) || Number($("cHour").value) !== c.hour || $("cOn").checked !== !!c.on || a !== b;
+}
+
+async function saveChannel(extra) {
+  const d = await api("/api/content/admin/channel", {link: $("cLink").value.trim(), servers: picked(),
+    hour: Number($("cHour").value), on: $("cOn").checked, ...(extra || {})})
+    .catch(e => ({error: e.message === "login" ? "" : "تعذّر الاتصال"}));
+  if (d.error !== undefined) { if (d.error) cNote(d.error, "err"); return false; }
+  DATA = d; CFILL = false; render();
+  return true;
+}
+
+// المعاينة: ما جدّ منذ آخر منشور، وإلا ما جدّ في آخر 7 أيام ليُرى شكل المنشور
+async function preview(me) {
+  let d = await api("/api/content/admin/channel-preview", {servers: picked(), me}).catch(() => ({error: "تعذّر الاتصال"}));
+  let note = "";
+  if (!d.error && !d.preview.text) {
+    d = await api("/api/content/admin/channel-preview", {servers: picked(), me, days: 7}).catch(() => ({error: "تعذّر الاتصال"}));
+    note = "لا جديد منذ آخر منشور — هذه معاينةٌ بما جدّ في آخر 7 أيام.";
+  }
+  if (d.error) return cNote(d.error, "err");
+  const t = d.preview.text;
+  $("cBox").hidden = !t;
+  $("cText").innerHTML = t ? waHTML(t) : "";
+  $("cSize").textContent = t ? `${tally(d.preview.n)} · ${num(t.length)} حرفًا` : "";
+  if (!t) note = "لا جديد في آخر 7 أيام — يُعرف الجديد من ثاني سحبٍ لكل سيرفر.";
+  const m = d.me;
+  if (m) note = (note ? note + "\n" : "") + (m.ok ? `أُرسلت المعاينة إلى واتسابك ✓ ${m.to}` : "لم تُرسل إلى واتسابك — " + (m.error || ""));
+  cNote(note, m ? (m.ok ? "ok" : "err") : "");
+}
+
+$("chan").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b || !b.id) return;
+  b.disabled = true;
+  try {
+    if (b.id === "cSave") { if (await saveChannel()) cNote("حُفظ", "ok"); }
+    else if (b.id === "cVerify") { if (await saveChannel({verify: true})) cNote("تحقّقنا من القناة", "ok"); }
+    else if (b.id === "cPrev") await preview(false);
+    else if (b.id === "cMe") await preview(true);
+    else if (b.id === "cPost") {
+      if (cDirty() && !(await saveChannel())) return;
+      if (!DATA.channel.jid) return cNote("الصق رابط القناة واحفظ أولًا", "err");
+      if (!confirm("ينشر في القناة الآن ما جدّ منذ آخر منشور، ويراه كل متابعيها. انشر؟")) return;
+      cNote("يُنشر…");
+      const d = await api("/api/content/admin/channel-post", {}).catch(() => ({error: "تعذّر الاتصال"}));
+      if (d.servers) { DATA = d; render(); }
+      if (d.error) return cNote(d.error, "err");
+      cNote(`نُشر في القناة ✓ ${tally(d.post.n || {})}`, "ok");
+    }
+  } finally { if (b.isConnected) b.disabled = false; }
+});
+
 function render() {
   const list = $("list"), ss = DATA.servers || [];
   renderAlert();
+  renderChannel();
   if (!ss.length) { list.innerHTML = '<section><p class="empty">لا سيرفرات — أضف واحدًا من الأسفل.</p></section>'; return; }
   // الترتيب تغيّر أو سيرفرٌ أُضيف/حُذف: رسمٌ كامل؛ وإلا فالمتغيّر وحده
   const keys = ss.map(s => s.key).join(",");
@@ -370,7 +520,20 @@ function summary(r) {
   if (r.api && r.api.ok) t += ` ومن واجهة السيرفر: تقييم ${count(r.api.movies || 0, N.movie)} و${count(r.api.series || 0, N.series)}.`;
   else if (r.api) t += ` (تعذّر جلب التقييمات من واجهة السيرفر: ${r.api.error || ""})`;
   if (sk.adult) t += ` وأُسقط ${count(sk.adult, N.item)} للكبار.`;
+  const nw = r.news || {};
+  if (!nw.first && !nw.error) t += tally(nw) ? ` والجديد فيه: ${tally(nw)}.` : " ولا جديد فيه عمّا قبله.";
   return t;
+}
+
+// ما جدّ في آخر سحبٍ للسيرفر (منه منشور القناة): أعداده، أو أنه أول سحب، أو أن الملف تغيّر كله فعُدّ بدايةً جديدة
+const tally = n => [n.movie ? count(n.movie, N.movie) : "", n.series ? count(n.series, N.series) : "",
+                    n.eps ? count(n.eps, N.ep) : ""].filter(Boolean).join(" · ");
+function newsHTML(nw) {
+  if (nw.error) return `<span class="warnline">تعذّر تسجيل الجديد: ${esc(nw.error)}</span>`;
+  const flood = (nw.flood || []).map(([k, n]) => count(n, k === "movie" ? N.movie : N.series)).join(" و");
+  if (flood) return `<span class="warnline">تغيّر الملف كثيرًا (${flood} دفعةً واحدة) فعُدّ بدايةً جديدة لا جديدًا</span>`;
+  if (nw.first) return "سُجّل ما فيه ليُعرف الجديد من السحب التالي";
+  return tally(nw) ? `الجديد فيه: ${tally(nw)}` : "لا جديد فيه عمّا قبله";
 }
 
 async function upload(key, sec) {
