@@ -169,7 +169,7 @@ details.old summary{cursor:pointer;color:var(--mute);font-size:.9rem}
 
 <main>
   <h1>حسابات متبقية</h1>
-  <p class="sub">خطوط باقة ١٥ شهرًا تُباع أجزاءً: ٦ أشهر أو ٣ أو شهر. عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> على اللوحة — كلمة المرور كما هي — فينقطع العميل ويعود الخط هنا بما تبقّى، جاهزًا للبيع من جديد.</p>
+  <p class="sub">خطوط باقة ١٥ شهرًا تُباع أجزاءً: ١٢ شهرًا أو ٦ أو ٣ أو شهر. عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> على اللوحة — كلمة المرور كما هي — فينقطع العميل ويعود الخط هنا بما تبقّى، جاهزًا للبيع من جديد.</p>
 
   <div class="accbar" id="accBar" hidden></div>
   <div class="tiles" id="tiles"></div>
@@ -241,6 +241,9 @@ const MONTHS = n => { n = +n || 0; return n <= 0 ? "أقل من شهر" : n === 
 const DAYS = n => n < 0 ? "متأخر " + (-n) + " يوم" : n === 0 ? "اليوم" : n === 1 ? "غدًا" : "بعد " + n + " يوم";
 const UNIT = n => n % 100 >= 3 && n % 100 <= 10 ? "يوزرات" : "يوزر";      // تحت العدد: «10 يوزرات»، «16 يوزر»
 const MODE = {web: "جلسة ويب", falcon: "فالكون", api: "Reseller API"};
+// نوع البيع المختار مسبقًا: ستة أشهر كما كان (default_slice) إن اتّسع لها الخط، وإلا أطولُ ما يتّسع —
+// فالـ١٢ شهرًا تُختار صراحةً ولا تُباع بالنقرة المعتادة.
+const pickSlice = list => list.includes(D.default_slice) ? D.default_slice : list[0];
 let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null, MAIL_RES = null, Q = "";
 // المجموعات المطويّة: ما يفتحه المستخدم أو يطويه يبقى كذلك بين التحديثات والزيارات (في هذا المتصفح).
 const GKEY = "xm_split_groups";
@@ -344,7 +347,7 @@ function renderLists(){
     return group("a:" + k, `جزء ${MONTHS(m)} · بعده متبقي <span class="rm">${MONTHS(r)}</span>`, g.length,
                  `أقرب تغيير ${esc(((g[0].slice || {}).due || "").slice(0, 10))} · ${DAYS(g[0].due_in_days)}${soon ? ` · <b>${soon} خلال ٧ أيام</b>` : ""}`,
                  g.map(cardActive).join(""), ak.length === 1);
-  }).join("") : Q ? noHit : '<div class="empty">لا أجزاء جارية — أنشئ من صفحة الإنشاء باقة ١٥ شهرًا واختر «٦ أشهر» أو «٣» أو «شهر».</div>';
+  }).join("") : Q ? noHit : '<div class="empty">لا أجزاء جارية — أنشئ من صفحة الإنشاء باقة ١٥ شهرًا واختر «١٢ شهرًا» أو «٦ أشهر» أو «٣» أو «شهر».</div>';
   const done = of("sold_out", "ended");
   $("done").hidden = !done.length; $("doneN").textContent = done.length;
   $("doneList").innerHTML = done.map(cardDone).join("");
@@ -371,7 +374,8 @@ function copyBtns(x){
 }
 function cardAvail(x){
   const open = OPEN_SELL === x.id;
-  const opts = (x.can_sell || []).map((m, i) => `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="${m}"${i === 0 ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("") +
+  const can = x.can_sell || [], def = pickSlice(can);
+  const opts = can.map(m => `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="${m}"${m === def ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("") +
     `<label class="opt"><input type="radio" name="sm_${esc(x.id)}" value="0"${(x.can_sell || []).length ? "" : " checked"}><span>المتبقي كاملًا (${MONTHS(x.remaining_months)})</span></label>`;
   const last = (x.history || []).slice(-1)[0];
   return `<div class="card" data-line="${esc(x.id)}">
@@ -423,7 +427,7 @@ function renderReg(){
   const cur = $("rGate").value;
   $("rGate").innerHTML = opts.join("");
   if (cur && [...$("rGate").options].some(o => o.value === cur)) $("rGate").value = cur;
-  if (!$("rMonths").children.length) $("rMonths").innerHTML = D.slices.map((m, i) => `<label class="opt"><input type="radio" name="rm" value="${m}"${i === 0 ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("");
+  if (!$("rMonths").children.length) $("rMonths").innerHTML = D.slices.map(m => `<label class="opt"><input type="radio" name="rm" value="${m}"${m === pickSlice(D.slices) ? " checked" : ""}><span>${MONTHS(m)}</span></label>`).join("");
   if (!$("rStart").value) $("rStart").value = (D.now || "").slice(0, 10);
 }
 $("rGo").onclick = async () => {

@@ -83,6 +83,33 @@ class TestRegister(Base):
         self.assertEqual(S.decorate(r3, T0)["remaining_after"], 12)
         self.assertEqual(S.decorate(r1, T0)["remaining_after"], 14)
 
+    def test_twelve_of_fifteen(self):
+        """سنةٌ للعميل من باقة ١٥ شهرًا (ومنها «مدة البديل»): يتغيّر الاسم بعد ١٢ شهرًا،
+        ويبقى من الخط ثلاثة أشهر للبيع — لا «بيعُ المتبقي» ولا تغييرٌ قبل موعده."""
+        rec, _ = self.reg(user="100000000012", months=12)
+        self.assertEqual(rec["state"], S.ACTIVE)
+        self.assertEqual(rec["slice"]["months"], 12)
+        self.assertEqual(rec["slice"]["due"], "2027-09-28 14:30")
+        self.assertFalse(rec["slice"]["final"])
+        self.assertEqual(S.decorate(rec, T0)["remaining_after"], 3, "بعد اثني عشر من خمسة عشر يبقى ثلاثة")
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=T0 + datetime.timedelta(days=300))
+        self.assertEqual(self.panel.calls, [], "لا تغيير قبل تمام السنة")
+        due = S.parse_dt(rec["slice"]["due"])
+        S.process(self.d, "a1", {"g1": GATE}, self.panel, now=due)
+        r = self.rec(rec["id"])
+        self.assertEqual(r["state"], S.AVAILABLE)
+        self.assertNotEqual(r["username"], "100000000012")
+        self.assertEqual(S.decorate(r, due)["remaining_months"], 3)
+        self.assertEqual(S.decorate(r, due)["can_sell"], [3, 1])
+
+    def test_slices_and_default(self):
+        """١٢ شهرًا نوعُ بيعٍ كغيره، والاختيار المسبق في «بيع» و«إضافة خطٍّ قائم» يبقى ستة."""
+        self.assertEqual(S.SLICES, (12, 6, 3, 1))
+        self.assertIn(S.DEFAULT_SLICE, S.SLICES)
+        self.assertEqual(S.DEFAULT_SLICE, 6)
+        v = S.view(self.d, "a1", T0)
+        self.assertEqual((v["slices"], v["default_slice"]), ([12, 6, 3, 1], 6))
+
     def test_same_line_not_twice(self):
         a, _ = self.reg()
         b, new = self.reg()
@@ -342,6 +369,14 @@ class TestResell(Base):
         self.assertEqual(len(self.panel.calls), calls)
         self.assertEqual(self.rec(r["id"])["state"], S.ENDED)
         self.assertEqual(len(self.rec(r["id"])["history"]), 2)
+
+    def test_sell_twelve_when_it_fits(self):
+        """بعد جزء شهرٍ يبقى ١٤: تُعرض ١٢ بين أنواع البيع، وبيعها يترك شهرين بعدها."""
+        r, due = self.rotated(months=1)
+        self.assertEqual(S.decorate(r, due)["can_sell"], [12, 6, 3, 1])
+        r = S.sell(self.d, "a1", r["id"], 12, customer="عميل السنة", now=due)
+        self.assertEqual((r["state"], r["slice"]["months"]), (S.ACTIVE, 12))
+        self.assertEqual(S.decorate(r, due)["remaining_after"], 2)
 
     def test_sell_remainder(self):
         r, due = self.rotated()
