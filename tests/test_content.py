@@ -9,6 +9,8 @@
   - الأعداد: المسلسل في قسمين يُعدّ مرة بمواسمه كلها، والحلقة المكرّرة مرة، والمخفي من الأقسام لا يُعدّ.
   - الإثراء: التقييم والتصنيف والقصة وتاريخ الإضافة من ‏player_api.php، وما تعلّمه للكبار يسقط، وفشلها
     لا يمنع الحفظ؛ ولا بيانات دخول في الفهرس.
+  - ما أُسقط للكبار (بالقسم وبالاسم وما تعلّمه الواجهة): يُحفظ للمدير وحده، لا في الفهرس ولا الصفحة ولا البحث،
+    والتنبيه بما جدّ منه وحده بالبريد وواتساب، وما جرى له، ومن يصله التنبيه وتجربته.
   - الصفحة: الواجهة المتحرّكة، والأعداد، و«أضيف مؤخرًا»، وصفحة النوع والقسم والتصفية وصفحاتها، والبحث
     بالاسم وأين يوجد في السيرفرات الأخرى، ونافذة التفاصيل بمواسمها، والفهرسة للصفحة الرئيسية وحدها،
     ولا رابط ولا بيانات دخول ولا وسم من الملف، والفهرس القديم (النسخة الأولى).
@@ -16,11 +18,13 @@
   - السيرفرات: الافتراضية الأربعة، والإضافة والتعديل والترتيب والمسح، والرابط مشفَّرًا ومخفيًّا،
     والسحب منه والفشل والدورة اليومية.
   - على خادم حيّ: الرفع (خامًا ومضغوطًا) وصلاحياته، والرابط من سيرفر Xtream وهمي، والصفحات والصور
-    والواجهات، وخريطة الموقع، والنطاقان.
+    والواجهات، وخريطة الموقع، والنطاقان — والتنبيه يصل فعلًا ببريدٍ وهمي (SMTP) وخدمة واتساب وهمية.
 
 تشغيل:  python tests/test_content.py
 """
 import base64
+import email
+import email.policy
 import gzip
 import html as _html
 import http.server
@@ -28,6 +32,7 @@ import json
 import os
 import re
 import shutil
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -177,6 +182,13 @@ def unit_parse():
     check("الأعداد الخام", cat["n"] == {"series": 15, "movie": 4, "live": 6}, cat["n"])
     check("الكبار والفواصل تسقط", cat["skipped"] == {"adult": 2, "sep": 1, "bad": 0}, cat["skipped"])
     check("قسم الكبار لا يُحفظ اسمه", "XXX | Adults" not in json.dumps(cat) and "Night Club" not in json.dumps(cat))
+    dr = C._run(reader(SAMPLE.encode("utf-8"))).dropped()
+    check("وما أُسقط للمدير: القسمان بعددهما", dr["groups"] == [["XXX | Adults", 1], ["For Adults +18", 1]]
+          and dr["titles"] == [] and dr["count"] == 2 and dr["more"] == 0 and len(dr["marks"]) == 2, dr)
+    dr = C._run(reader(("#EXTM3U\n" + entry("xXx (2002)", "VOD | English Movies", "movie", 1)
+                        + entry("xXx (2002)", "VOD | 4K", "movie", 2)).encode())).dropped()
+    check("والاسم من قسمٍ عادي بقسمه، والمكرّر مرة بعدده", dr["titles"] == [["xXx (2002)", "VOD | English Movies", 2]]
+          and dr["groups"] == [] and dr["count"] == 2 and dr["more"] == 0, dr)
     check("«Movies 2018+» ليس قسم كبار", "Horror Night" in m.get("Movies 2018+", []))
     check("«Sex Education» في قسمٍ عادي يبقى", "Sex Education" in ss["Netflix"])
     check("القناة بجوداتها واحدة وبلا بادئة", lv["AR | MBC"] == ["MBC 1"] and lv["beIN SPORTS"] == ["beIN SPORTS 1"], lv)
@@ -329,6 +341,109 @@ def unit_store():
     C.clear(d, "smart")
     check("مسح المحتوى يخفي الصفحة ويُبقي السيرفر", C._view(d, "smart")[1] is None and C._server(d, "smart"))
     shutil.rmtree(d, ignore_errors=True)
+
+
+def wait_alert(d, key, after, t=5.0):
+    """ما أُسقط بعد أن يُحفظ فيه تنبيهٌ أُرسل بعد `after` (التنبيه في خيطٍ مستقل)."""
+    for _ in range(int(t / .05)):
+        a = C._adult_view(d, key)
+        if a and (a.get("alert") or {}).get("at", 0) >= after:
+            return a
+        time.sleep(.05)
+    return C._adult_view(d, key) or {}
+
+
+def unit_adult():
+    print("ما أُسقط للكبار والتنبيه به")
+    d = fresh()
+    sent, ev = [], threading.Event()
+
+    def fake(subject, body):
+        sent.append((subject, body))
+        ev.set()
+        return {"mail": {"ok": True, "to": "me@example.com"}, "wa": {"ok": False, "to": "966500000000", "error": "رقم المسابقة غير مربوط"}}
+
+    C.notifier = fake
+    try:
+        t0 = time.time()
+        seed(d)
+        check("تنبيهٌ بأول ما أُسقط", ev.wait(5) and len(sent) == 1, len(sent))
+        subject, body = sent[0]
+        check("العنوان باسم السيرفر", subject == "تنبيه: محتوى للكبار في ملف سيرفر سمارت (حُذف ولم يُنشر)", subject)
+        check("والنص بالقسمين وعددهما، وأنه لم يُنشر", "• XXX | Adults (عنصر واحد)" in body
+              and "• For Adults +18 (عنصر واحد)" in body and "ولم يُنشر" in body
+              and "لم يكن في سحبه السابق" not in body and "المحذوف للكبار من ملفه كله: عنصران." in body, body)
+        a = wait_alert(d, "smart", t0)
+        check("وما جرى يُحفظ للمدير", a.get("alert", {}).get("mail", {}).get("ok") is True
+              and a["alert"]["wa"]["error"] == "رقم المسابقة غير مربوط", a.get("alert"))
+        sm = next(s for s in C.admin_state(d)["servers"] if s["key"] == "smart")
+        check("حال المدير: ما أُسقط بأقسامه، بلا بصماته", sm["adult"]["groups"] == [["XXX | Adults", 1], ["For Adults +18", 1]]
+              and sm["adult"]["count"] == 2 and sm["adult"]["source"] == "file" and "marks" not in sm["adult"], sm["adult"])
+        raw = open(C._cat_path(d, "smart"), encoding="utf-8").read()
+        html = P.render(d, "smart", {})[1].decode("utf-8")
+        check("وليس في فهرس الصفحة ولا فيها ولا في بحثها", "Adults" not in raw and "Night Club" not in raw
+              and "Adults" not in html and all(f"لا يوجد «{q}»" in P.api_search(d, "smart", q)["html"]
+                                               for q in ("Hot Stuff", "Night Club", "Adults")))
+
+        sent.clear()
+        ev.clear()
+        seed(d)
+        check("السحب التالي بلا جديد: لا تنبيه", not ev.wait(.5) and not sent)
+        t1 = time.time()
+        seed(d, text=SAMPLE + entry("xXx: Return of Xander Cage (2017)", "VOD | English Movies", "movie", 90))
+        check("وما جدّ وحده", ev.wait(5) and "• xXx: Return of Xander Cage (2017) — في «VOD | English Movies»" in sent[0][1]
+              and "XXX | Adults" not in sent[0][1] and "لم يكن في سحبه السابق" in sent[0][1]
+              and "من ملفه كله: 3 عناصر." in sent[0][1], sent[0][1] if sent else "")
+        a = wait_alert(d, "smart", t1)
+        check("والاسم المحذوف من قسمٍ عادي بقسمه", a.get("titles") == [["xXx: Return of Xander Cage (2017)", "VOD | English Movies", 1]]
+              and a.get("count") == 3 and a.get("alert", {}).get("at", 0) >= t1, a)
+
+        sent.clear()
+        ev.clear()
+        seed(d, text="#EXTM3U\n" + entry("MBC 1", "AR | MBC", n=1))
+        check("ملفٌّ بلا شيءٍ للكبار يمحو السجل ولا يُنبَّه به", C._adult_view(d, "smart") is None and not ev.wait(.3))
+        t2 = time.time()
+        seed(d)
+        check("وما يعود بعده يُنبَّه به", ev.wait(5) and "لم يكن في سحبه السابق" not in sent[0][1])
+        wait_alert(d, "smart", t2)
+
+        C.notifier = lambda s, b: 1 / 0
+        t3 = time.time()
+        seed(d, "kon")
+        a = wait_alert(d, "kon", t3)
+        check("فشل التنبيه يُحفظ سببه ولا يُسقط الإدخال", "division" in a.get("alert", {}).get("error", "")
+              and C._view(d, "kon")[1]["counts"]["series"] == 9, a.get("alert"))
+        C.clear(d, "kon")
+        check("مسح المحتوى يمسح ما أُسقط", not os.path.exists(C._adult_path(d, "kon")))
+
+        C.notifier = fake
+        sent.clear()
+        ev.clear()
+        many = ("#EXTM3U\n" + "".join(entry(f"Clip {i}", f"XXX | Studio {i:03d}", n=i) for i in range(250))
+                + "".join(entry(f"Brazzers Night {i}", "VOD | Mix", "movie", 1000 + i) for i in range(20))
+                + entry("Normal News", "News", n=5000))
+        t4 = time.time()
+        seed(d, "falcon", many)
+        a = wait_alert(d, "falcon", t4)
+        check("الحدّ: 200 قسم والباقي عدد", len(a.get("groups") or []) == C.ADULT_LIST and a.get("more") == 50
+              and len(a.get("titles") or []) == 20 and a.get("count") == 270, (len(a.get("groups") or []), a.get("more")))
+        body = sent[0][1] if sent else ""
+        check("والتنبيه بأوّلها وعدد الباقي", body.count("• XXX | Studio") == C.ALERT_LINES
+              and body.count("• Brazzers Night") == C.ALERT_LINES and "• و240 غيرها في صفحة المحتوى" in body, body[-200:])
+
+        print("من يصله التنبيه")
+        check("لم يُحفظ بعد", C.alert_to(d) is None)
+        C.save_alert_to(d, "me@example.com", "966500000000")
+        C.save_server(d, {"new": True, "name": "نجم", "key": "najm"})
+        check("يُحفظ، ويبقى بعد حفظ السيرفرات", C.alert_to(d) == {"mail": "me@example.com", "wa": "966500000000"}
+              and C._server(d, "najm") is not None)
+        C.alert_info = lambda: {"mail": "me@example.com"}
+        check("وحاله مع حال المدير", C.admin_state(d)["alert"] == {"mail": "me@example.com"})
+        C.alert_info = lambda: 1 / 0
+        check("وتعذّره لا يُسقط الصفحة", C.admin_state(d)["alert"] is None)
+    finally:
+        C.notifier = C.alert_info = None
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def big(n_movies=650, prefix="Film"):
@@ -630,6 +745,8 @@ def unit_enrich():
     try:
         C.set_url(d, "smart", f"{base}/get.php?username=u&password=p&type=m3u_plus")
         mock_xtream.Handler.hits.clear()
+        sent, ev = [], threading.Event()
+        C.notifier = lambda subject, body: (sent.append(body), ev.set(), {"mail": {"ok": True, "to": "me@example.com"}})[2]
         ok, err = C.refresh(d, "smart")
         st = next(s for s in C.admin_state(d)["servers"] if s["key"] == "smart")
         check("القائمة ثم الواجهة: طلبٌ للأفلام وطلبٌ للمسلسلات", ok and mock_xtream.Handler.hits
@@ -638,6 +755,12 @@ def unit_enrich():
         v = C._view(d, "smart")[1]
         check("الأعداد", v["counts"] == {"series": 10, "seasons": 43, "episodes": 645, "movie": 32, "live": 14}, v["counts"])
         check("وما تعلّمه الواجهة للكبار يسقط", st["skipped"]["adult"] == 3 and "Hidden Adult Film" not in json.dumps(v["cat"]))
+        check("ويُعرض للمدير وحده في «ما أُسقط للكبار» بقسمه", st["adult"]["panel"] == [["Hidden Adult Film", "أفلام عربية"]]
+              and st["adult"]["groups"] == [["XXX | Adults", 2]] and st["adult"]["count"] == 3 and st["adult"]["more"] == 0,
+              st["adult"])
+        check("والتنبيه به", ev.wait(5) and "أفلامٌ علّمتها لوحة السيرفر للكبار:\n• Hidden Adult Film — في «أفلام عربية»" in sent[0]
+              and "• XXX | Adults (عنصران)" in sent[0] and "من ملفه كله: 3 عناصر." in sent[0], sent[0] if sent else "")
+        C.notifier = None
         mv = {it["n"]: it for g in v["kinds"]["movie"] for it in g["items"]}
         f1 = mv["F1 The Movie"]
         check("الفيلم: تقييمه وتصنيفه وتاريخ إضافته", f1["r"] == 7.8 and f1["g"] == ["Action", "Drama"] and f1["y"] == 2025
@@ -688,6 +811,7 @@ def unit_enrich():
         check("واشتراكٌ في الملف لا تقبله الواجهة: السبب للمدير", res["api"]["ok"] is False
               and "لم تُرجع شيئًا" in res["api"]["error"] and C._view(d, "kon")[1]["counts"]["movie"] == 33, res["api"])
     finally:
+        C.notifier = None
         srv.shutdown()
         down.shutdown()
         shutil.rmtree(d, ignore_errors=True)
@@ -881,6 +1005,33 @@ def live():
         check("حال المدير", sm["has"] and sm["label"] == "smart.m3u" and sm["counts"]["series"] == 9
               and st["refresh_hours"] == 24)
 
+        print("ما أُسقط للكبار والتنبيه به")
+        for _ in range(50):
+            sm = next(s for s in json.loads(req(adm + "/api/content/admin", auth=True)[1])["servers"] if s["key"] == "smart")
+            if (sm.get("adult") or {}).get("alert"):
+                break
+            time.sleep(.1)
+        al = (sm.get("adult") or {}).get("alert") or {}
+        check("ما أُسقط للمدير، وتنبيهٌ به (ولا بريد ولا رقم بعد)", sm["adult"]["groups"] == [["XXX | Adults", 1], ["For Adults +18", 1]]
+              and al.get("mail", {}).get("error") == "لا بريد للتنبيه" and al.get("wa", {}).get("error") == "لا رقم واتساب للتنبيه",
+              sm.get("adult"))
+        check("لمن يصل التنبيه: لا شيء مضبوط", st["alert"] == {"mail": "", "wa": "", "saved": False, "smtp": False, "wa_from": ""},
+              st.get("alert"))
+        for body, err in [({"mail": "not-an-email", "wa": ""}, "بريدًا صحيحًا"),
+                          ({"mail": "a@b.co\nBcc: x@y.z", "wa": ""}, "بريدًا صحيحًا"), ({"mail": "", "wa": "12"}, "رقم واتساب")]:
+            code, d = jpost(adm + "/api/content/admin/alert", body)
+            check(f"يُرفض: {err} ({body['mail'] or body['wa']!r})", code == 400 and err in d.get("error", ""), d)
+        code, st = jpost(adm + "/api/content/admin/alert", {"mail": " me@example.com ", "wa": "0551234567"})
+        check("يُحفظ البريد والرقم بصيغته", code == 200 and st["alert"]["mail"] == "me@example.com"
+              and st["alert"]["wa"] == "966551234567" and st["alert"]["saved"] is True, st.get("alert"))
+        code, d = jpost(adm + "/api/content/admin/alert-test", {})
+        check("رسالةٌ تجريبية: نتيجة كلٍّ منهما، وسببها بالعربية", code == 200 and "خادم البريد غير مضبوط" in d["test"]["mail"]["error"]
+              and d["test"]["mail"]["to"] == "me@example.com" and d["test"]["wa"]["ok"] is False
+              and d["test"]["wa"]["to"] == "966551234567" and "Errno" not in d["test"]["wa"]["error"]
+              and re.search("[ء-ي]", d["test"]["wa"]["error"]), d.get("test"))
+        check("وللمدير وحده", jpost(adm + "/api/content/admin/alert-test", {}, auth=False)[0] == 401
+              and jpost(adm + "/api/content/admin/alert", {"mail": ""}, auth=False)[0] == 401)
+
         code, st = jpost(adm + "/api/content/admin/url",
                          {"s": "falcon", "url": xbase + "/get.php?username=u&password=p&type=m3u_plus"})
         check("الرابط يُحفظ ويُسحب في الخلفية", code == 200 and st["servers"][3]["url"].endswith("/•••")
@@ -958,6 +1109,10 @@ def live():
         check("والصفحة العامة عليه", code == 200)
         code, _, _ = req(base + "/api/content/admin/upload?s=smart", SAMPLE.encode(), True, {"Host": "guide.ssouq.com"})
         check("ولا رفع عليه", code == 404)
+        code, _, _ = req(base + "/api/content/admin/alert-test", b"{}", True, {"Host": "guide.ssouq.com"})
+        check("ولا تنبيه منه", code == 404)
+        pub = req(base + "/content/smart", headers={"Host": "guide.ssouq.com"})[1].decode()
+        check("وما أُسقط للكبار ليس في صفحته", "Adults" not in pub and "Night Club" not in pub)
         code, st = jpost(adm + "/api/content/admin/clear", {"s": "najm", "drop": True})
         check("حذف سيرفر", code == 200 and all(s["key"] != "najm" for s in st["servers"]))
     finally:
@@ -967,14 +1122,137 @@ def live():
         shutil.rmtree(data, ignore_errors=True)
 
 
+MAILS = []
+
+
+class _SMTP(socketserver.StreamRequestHandler):
+    """خادم بريدٍ وهمي بلا TLS (كالذي في test_split_web): يحفظ كل رسالةٍ كما وصلت."""
+
+    def handle(self):
+        self.wfile.write(b"220 fake ESMTP\r\n")
+        data, buf = False, []
+        while True:
+            line = self.rfile.readline()
+            if not line:
+                break
+            if data:
+                if line in (b".\r\n", b".\n"):
+                    MAILS.append(email.message_from_bytes(b"".join(buf), policy=email.policy.default))
+                    buf, data = [], False
+                    self.wfile.write(b"250 OK\r\n")
+                else:
+                    buf.append(line[1:] if line.startswith(b"..") else line)
+                continue
+            cmd = line.strip().upper()
+            if cmd.startswith(b"EHLO"):
+                self.wfile.write(b"250-fake\r\n250 8BITMIME\r\n")
+            elif cmd == b"DATA":
+                data = True
+                self.wfile.write(b"354 go\r\n")
+            elif cmd == b"QUIT":
+                self.wfile.write(b"221 bye\r\n")
+                break
+            else:
+                self.wfile.write(b"250 OK\r\n")
+
+
+def live_alert():
+    """التنبيه يصل فعلًا: بريدٌ من خادم «بريد التنبيه» وواتساب من رقم المسابقة (خدمةٌ وهمية)."""
+    print("خادمٌ حيّ: تنبيه الكبار يصل بالبريد وواتساب")
+    port, wport = 9796, 9786
+    data = tempfile.mkdtemp(prefix="content_alert_")
+    smtp = socketserver.ThreadingTCPServer(("127.0.0.1", 0), _SMTP)
+    threading.Thread(target=smtp.serve_forever, daemon=True).start()
+    reader = f"http://127.0.0.1:{wport}"
+    rdp = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_reader.py"), str(wport), "rdr_content"])
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("WHATSAPP_READER_", "SALLA_ADMIN_TOKEN"))}
+    env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
+               WHATSAPP_READER_URL=reader, WHATSAPP_READER_SECRET="rdr_content")
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env)
+    adm = f"http://127.0.0.1:{port}/admin"
+
+    def rd(method, path, body=None):
+        rq = urllib.request.Request(reader + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                    headers={"Content-Type": "application/json", "X-Reader-Secret": "rdr_content"})
+        with urllib.request.urlopen(rq, timeout=20) as r:
+            return json.loads(r.read())
+
+    def casper():
+        return next(s for s in json.loads(req(adm + "/api/content/admin", auth=True)[1])["servers"] if s["key"] == "casper")
+
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/robots.txt", timeout=2)
+                rd("GET", "/_test/log")
+                break
+            except Exception:
+                time.sleep(.2)
+        code, d = jpost(adm + "/api/renew/config", {"renew": {"alert": {
+            "host": "127.0.0.1", "port": smtp.server_address[1], "to": "owner@example.com", "from": "alerts@example.com",
+            "tls": False}}})
+        check("بريد التنبيه في صفحة التجديد", code == 200 and d.get("ok"), d)
+        jpost(adm + "/api/contest/admin/wa/connect", {"number": "0500000009"})
+        rd("POST", "/_test/scan/ssouq-guide--contest", {})
+        req(adm + "/api/contest/admin", auth=True)          # صفحة المسابقة تجدّد حال الرقم
+        code, d = jpost(adm + "/api/contest/admin/settings", {"notify": True, "admin_phone": "0551112222"})
+        check("ورقم المدير في صفحة المسابقة", code == 200 and d["settings"]["admin_phone"] == "966551112222", d)
+        st = json.loads(req(adm + "/api/content/admin", auth=True)[1])
+        check("بلا حفظٍ في صفحة المحتوى: يصل إليهما، ومن رقم المسابقة",
+              st["alert"] == {"mail": "owner@example.com", "wa": "966551112222", "saved": False, "smtp": True,
+                              "wa_from": "966500000009"}, st["alert"])
+
+        playlist = ("#EXTM3U\n" + entry("MBC 1", "AR | MBC", n=1) + entry("Hot Stuff", "XXX | Adults", n=2)
+                    + entry("xXx (2002)", "VOD | English Movies", "movie", 3))
+        wa0 = len(rd("GET", "/_test/log")["sent"])
+        code, _, _ = req(adm + "/api/content/admin/upload?s=casper&name=casper.m3u", playlist.encode(), True)
+        for _ in range(100):
+            if MAILS and len(rd("GET", "/_test/log")["sent"]) > wa0 and (casper().get("adult") or {}).get("alert"):
+                break
+            time.sleep(.1)
+        m = MAILS[-1] if MAILS else {}
+        body = m.get_body().get_content() if MAILS else ""
+        check("وصل البريد بما أُسقط وأين يُراجع", code == 200 and len(MAILS) == 1
+              and str(m["Subject"]) == "تنبيه: محتوى للكبار في ملف سيرفر كاسبر (حُذف ولم يُنشر)"
+              and str(m["To"]) == "owner@example.com" and "• XXX | Adults (عنصر واحد)" in body
+              and "• xXx (2002) — في «VOD | English Movies»" in body and "https://admin.ssouq.com/content" in body, body)
+        sent = rd("GET", "/_test/log")["sent"][wa0:]
+        check("ووصل واتساب رقم المدير", len(sent) == 1 and sent[0]["to"] == "966551112222"
+              and sent[0]["body"].startswith("*تنبيه: محتوى للكبار في ملف سيرفر كاسبر") and "xXx (2002)" in sent[0]["body"], sent)
+        al = casper()["adult"]["alert"]
+        check("ونتيجته في صفحة المدير: وصلا", al["mail"] == {"ok": True, "to": "owner@example.com"}
+              and al["wa"] == {"ok": True, "to": "966551112222", "error": ""}, al)
+        req(adm + "/api/content/admin/upload?s=casper&name=casper.m3u", playlist.encode(), True)
+        time.sleep(1)
+        check("والملف نفسه ثانيةً: لا تنبيه", len(MAILS) == 1 and len(rd("GET", "/_test/log")["sent"]) == wa0 + 1)
+
+        code, st = jpost(adm + "/api/content/admin/alert", {"mail": "me@example.com", "wa": ""})
+        check("ما يُحفظ في صفحة المحتوى يغلب", code == 200 and st["alert"]["mail"] == "me@example.com" and st["alert"]["wa"] == ""
+              and st["alert"]["saved"] is True, st.get("alert"))
+        code, d = jpost(adm + "/api/content/admin/alert-test", {})
+        check("والتجربة إليه، والخانة الفارغة لا يُرسل إليها", code == 200 and d["test"]["mail"] == {"ok": True, "to": "me@example.com"}
+              and d["test"]["wa"]["error"] == "لا رقم واتساب للتنبيه" and str(MAILS[-1]["To"]) == "me@example.com"
+              and str(MAILS[-1]["Subject"]) == "تجربة تنبيه محتوى الكبار"
+              and len(rd("GET", "/_test/log")["sent"]) == wa0 + 1, d.get("test"))
+    finally:
+        p.terminate()
+        p.wait(timeout=10)
+        rdp.terminate()
+        rdp.wait(timeout=10)
+        smtp.shutdown()
+        shutil.rmtree(data, ignore_errors=True)
+
+
 def main():
     unit_parse()
     unit_store()
+    unit_adult()
     unit_render()
     unit_images()
     unit_fetch()
     unit_enrich()
     live()
+    live_alert()
     print(f"\nResult: {_p} passed, {_f} failed")
     sys.exit(1 if _f else 0)
 

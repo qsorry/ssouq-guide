@@ -78,6 +78,15 @@ details.groups summary{cursor:pointer;font-weight:500}
 .grow span{flex:1;min-width:0;overflow-wrap:anywhere}
 .grow small{color:var(--mute);white-space:nowrap}
 .grow.off span{opacity:.5;text-decoration:line-through}
+details.adult{margin-top:10px;border:1px solid color-mix(in srgb,var(--amber) 40%,var(--line));border-radius:12px;padding:8px 12px;background:color-mix(in srgb,var(--amber) 6%,var(--sf))}
+details.adult summary{cursor:pointer;font-weight:500;font-size:.88rem;color:var(--amber)}
+details.adult h4{font-size:.8rem;font-weight:500;color:var(--mute);margin:10px 0 2px}
+.alist{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto}
+.alist li{display:flex;gap:10px;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:.86rem}
+.alist li:last-child{border-bottom:0}
+.alist span{flex:1;min-width:0;overflow-wrap:anywhere}
+.alist small{color:var(--mute);max-width:48%;text-align:end;overflow-wrap:anywhere}
+.hint .mono{direction:ltr;unicode-bidi:isolate;font:500 .76rem "IBM Plex Mono",Consolas,monospace}
 .form{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
 @media (max-width:600px){.form{grid-template-columns:1fr}}
 .foot{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
@@ -125,9 +134,26 @@ section{border-radius:20px}
     <h1>محتوى السيرفرات</h1>
     <p>لكل سيرفر ملف M3U: ارفعه، أو ضع رابطه فيُسحب منه كل يوم وحده. فيرى الزائر في
       <a id="lnkPub" target="_blank" rel="noopener">صفحة المحتوى</a> المسلسلات بمواسمها وحلقاتها والأفلام والقنوات، ويبحث فيها
-      بالاسم قبل أن يشتري. لا يُنشر من الملف رابطٌ ولا اسم مستخدم ولا كلمة مرور، وأقسام الكبار تُحذف وحدها.</p>
+      بالاسم قبل أن يشتري. لا يُنشر من الملف رابطٌ ولا اسم مستخدم ولا كلمة مرور، وأقسام الكبار تُحذف وحدها
+      ويصلك <a href="#alert">تنبيهٌ</a> بما حُذف منها.</p>
   </section>
   <div id="list"><p class="empty">نحمّل السيرفرات…</p></div>
+
+  <section id="alert" hidden>
+    <h2>تنبيه محتوى الكبار</h2>
+    <p class="sub">إن ظهر في ملف سيرفرٍ شيءٌ للكبار لم يكن في سحبه السابق، يُحذف من الصفحة ولا يُنشر، ويصلك تنبيهٌ بما هو —
+      فإن كان بينه فيلمٌ عادي حُذف خطأً عرفتَه.</p>
+    <div class="form">
+      <div><label for="aMail">بريدك</label><input id="aMail" class="ltr" type="email" maxlength="200" placeholder="you@gmail.com">
+        <span class="hint" id="aMailHint"></span></div>
+      <div><label for="aWa">رقم واتسابك</label><input id="aWa" class="ltr" inputmode="tel" maxlength="20" placeholder="05xxxxxxxx">
+        <span class="hint" id="aWaHint"></span></div>
+    </div>
+    <span class="hint" id="aFrom" hidden>أُخذا من «بريد التنبيه» ومن رقمك في صفحة المسابقة — غيّرهما واحفظ إن شئت، والخانة الفارغة لا يُرسل إليها.</span>
+    <div class="acts" style="margin-top:12px"><button class="go" type="button" id="aSave">حفظ</button>
+      <button class="ghost" type="button" id="aTest">أرسل رسالة تجريبية</button></div>
+    <div class="msg" id="aMsg"></div>
+  </section>
 
   <section>
     <h2>أضف سيرفرًا</h2>
@@ -161,7 +187,8 @@ const count = (n, f) => n === 1 ? f[0] : n === 2 ? f[1]
   : num(n) + " " + (n % 100 >= 3 && n % 100 <= 10 ? f[2] : n % 100 > 10 || n < 100 ? f[3] : f[4]);
 const N = {item: ["عنصر واحد", "عنصران", "عناصر", "عنصرًا", "عنصر"], ep: ["حلقة واحدة", "حلقتان", "حلقات", "حلقة", "حلقة"],
            movie: ["فيلم واحد", "فيلمان", "أفلام", "فيلمًا", "فيلم"], live: ["قناة واحدة", "قناتان", "قنوات", "قناة", "قناة"],
-           series: ["مسلسل واحد", "مسلسلان", "مسلسلات", "مسلسلًا", "مسلسل"]};
+           series: ["مسلسل واحد", "مسلسلان", "مسلسلات", "مسلسلًا", "مسلسل"],
+           sep: ["سطر فاصل واحد", "سطران فاصلان", "أسطر فاصلة", "سطرًا فاصلًا", "سطر فاصل"]};
 const mb = b => (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + " MB";
 const when = ts => ts ? new Date(ts * 1000).toLocaleString("ar-SA-u-nu-latn-ca-gregory",
   {day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Riyadh"}) : "";
@@ -205,7 +232,7 @@ function meta(s) {
     out.push(s.source === "url" ? "من الرابط" : `من ملف${s.label ? ` <span class="mono">${esc(s.label)}</span>` : ""}`);
     out.push(`${count(s.entries, N.item)} في الملف`);
     const sk = s.skipped || {};
-    const drop = [sk.adult ? `${num(sk.adult)} من أقسام الكبار` : "", sk.sep ? `${num(sk.sep)} سطر فاصل` : ""].filter(Boolean);
+    const drop = [sk.adult ? count(sk.adult, N.item) + " للكبار" : "", sk.sep ? count(sk.sep, N.sep) : ""].filter(Boolean);
     if (drop.length) out.push("أُسقط: " + drop.join(" و"));
     // التقييمات والتصنيفات وتاريخ الإضافة من واجهة Xtream بالبيانات نفسها
     if (s.api && s.api.ok) out.push(`التقييمات والتصنيفات من واجهة السيرفر: ${count(s.api.movies || 0, N.movie)} و${count(s.api.series || 0, N.series)}`);
@@ -216,6 +243,29 @@ function meta(s) {
   }
   if (s.url) out.push(`الرابط <span class="mono">${esc(s.url)}</span> يُسحب كل ${DATA.refresh_hours} ساعة`);
   return out.join(" · ");
+}
+
+function sentHTML(r) {
+  if (r.error) return "لم يُرسل: " + esc(r.error);
+  return [["البريد", r.mail], ["واتساب", r.wa]].filter(([, x]) => x)
+    .map(([l, x]) => x.ok ? `${l} ✓` : `${l} ✗ ${esc(x.error || "")}`).join(" · ");
+}
+
+// ما أُسقط للكبار (لا يُنشر): أقسامٌ حُذفت كلها بعددها، وأسماءٌ من أقسامٍ عادية قد يكون بينها فيلمٌ عادي، وآخر تنبيه
+function adultHTML(s) {
+  const n = (s.skipped || {}).adult, a = s.adult;
+  if (!n) return "";
+  if (!a) return `<div class="meta">لم تُحفظ أسماء ما أُسقط من هذا الملف — ${s.url ? "اضغط «اسحب الآن» لتراها" : "ارفع الملف من جديد لتراها"}، ويصلك تنبيهٌ بها.</div>`;
+  const li = (name, small) => `<li><span>${esc(name)}</span><small>${small}</small></li>`;
+  const g = (a.groups || []).map(([name, c]) => li(name, count(c, N.item))).join("");
+  const t = (a.titles || []).map(([name, grp, c]) => li(name, `في «${esc(grp)}»${c > 1 ? ` (${count(c, N.item)})` : ""}`)).join("");
+  const p = (a.panel || []).map(([name, grp]) => li(name, `في «${esc(grp)}»`)).join("");
+  return `<details class="adult"${UI[s.key].adult ? " open" : ""}><summary>ما أُسقط للكبار (${count(a.count, N.item)}) — لا يُنشر</summary>
+    ${g ? `<h4>أقسامٌ حُذفت كلها</h4><ul class="alist">${g}</ul>` : ""}
+    ${t ? `<h4>أسماءٌ حُذفت من أقسامٍ عادية — قد يكون بينها فيلمٌ عادي</h4><ul class="alist">${t}</ul>` : ""}
+    ${p ? `<h4>أفلامٌ علّمتها لوحة السيرفر للكبار</h4><ul class="alist">${p}</ul>` : ""}
+    ${a.more ? `<p class="hint">و${count(a.more, N.item)} غيرها</p>` : ""}
+    ${a.alert ? `<p class="hint">آخر تنبيه ${esc(when(a.alert.at))}: ${sentHTML(a.alert)}</p>` : ""}</details>`;
 }
 
 function groupsHTML(s) {
@@ -241,6 +291,7 @@ function srvHTML(s, i, n) {
         ${s.has ? `<a class="ghost" href="${SITE + esc(s.page)}" target="_blank" rel="noopener">صفحته ↗</a>` : ""}</span></h2>
     ${s.counts ? stats(s.counts) : ""}
     <div class="meta">${meta(s)}</div>
+    ${adultHTML(s)}
     ${s.error ? `<div class="err">آخر سحب لم ينجح: ${esc(s.error)}${s.has ? " — والمحتوى السابق باقٍ في الصفحة" : ""}</div>` : ""}
     <div class="form" data-editbox${ui.edit ? "" : " hidden"}>
       <div><label>الاسم</label><input data-e="name" maxlength="40" value="${esc(s.name)}"></div>
@@ -262,8 +313,23 @@ function srvHTML(s, i, n) {
       <button class="danger" type="button" data-act="drop">احذف السيرفر</button></div>`;
 }
 
+let AFILL = false;        // خانتا التنبيه تُملآن مرةً (وبعد الحفظ)، فلا يمسح تحديثُ الصفحة ما يُكتب فيهما
+
+function renderAlert() {
+  const a = DATA.alert;
+  $("alert").hidden = !a;
+  if (!a) return;
+  if (!AFILL) { $("aMail").value = a.mail || ""; $("aWa").value = a.wa || ""; AFILL = true; }
+  $("aMailHint").innerHTML = a.smtp ? "يُرسل من خادم «بريد التنبيه» في صفحة التجديد"
+    : `خادم البريد غير مضبوط — اضبط «بريد التنبيه» في <a href="${B}/renew">صفحة التجديد</a>`;
+  $("aWaHint").innerHTML = a.wa_from ? `يُرسل من رقم المسابقة <span class="mono">${esc(a.wa_from)}</span>`
+    : `رقم المسابقة غير مربوط الآن — اربطه من <a href="${B}/contest">صفحة المسابقة</a>`;
+  $("aFrom").hidden = !!a.saved;
+}
+
 function render() {
   const list = $("list"), ss = DATA.servers || [];
+  renderAlert();
   if (!ss.length) { list.innerHTML = '<section><p class="empty">لا سيرفرات — أضف واحدًا من الأسفل.</p></section>'; return; }
   // الترتيب تغيّر أو سيرفرٌ أُضيف/حُذف: رسمٌ كامل؛ وإلا فالمتغيّر وحده
   const keys = ss.map(s => s.key).join(",");
@@ -306,7 +372,7 @@ function summary(r) {
   let t = `تم: ${count(r.entries, N.item)} — ${parts.join(" و")}.`;
   if (r.api && r.api.ok) t += ` ومن واجهة السيرفر: تقييم ${count(r.api.movies || 0, N.movie)} و${count(r.api.series || 0, N.series)}.`;
   else if (r.api) t += ` (تعذّر جلب التقييمات من واجهة السيرفر: ${r.api.error || ""})`;
-  if (sk.adult) t += ` وأُسقط ${num(sk.adult)} من أقسام الكبار.`;
+  if (sk.adult) t += ` وأُسقط ${count(sk.adult, N.item)} للكبار.`;
   return t;
 }
 
@@ -402,9 +468,37 @@ $("list").addEventListener("input", e => {
 });
 
 $("list").addEventListener("toggle", e => {
-  if (!e.target.matches || !e.target.matches("details.groups")) return;
-  UI[e.target.closest("[data-k]").dataset.k].open = e.target.open;
+  if (!e.target.matches || !e.target.matches("details.groups, details.adult")) return;
+  UI[e.target.closest("[data-k]").dataset.k][e.target.matches(".adult") ? "adult" : "open"] = e.target.open;
 }, true);
+
+// تنبيه الكبار: الحفظ، والتجربة بما في الخانتين (تُحفظان قبلها إن تغيّرتا)
+const aNote = (text, cls) => { $("aMsg").textContent = text; $("aMsg").className = "msg" + (cls ? " " + cls : ""); };
+async function saveAlert() {
+  const d = await api("/api/content/admin/alert", {mail: $("aMail").value.trim(), wa: $("aWa").value.trim()})
+    .catch(e => ({error: e.message === "login" ? "" : "تعذّر الاتصال"}));
+  if (d.error !== undefined) { if (d.error) aNote(d.error, "err"); return false; }
+  DATA = d; AFILL = false; render();
+  return true;
+}
+$("aSave").onclick = async () => {
+  $("aSave").disabled = true;
+  try { if (await saveAlert()) aNote("حُفظ", "ok"); } finally { $("aSave").disabled = false; }
+};
+$("aTest").onclick = async () => {
+  const a = DATA.alert || {};
+  $("aTest").disabled = true;
+  try {
+    if (($("aMail").value.trim() !== (a.mail || "") || $("aWa").value.trim() !== (a.wa || "")) && !(await saveAlert())) return;
+    aNote("يُرسل…");
+    const d = await api("/api/content/admin/alert-test", {}).catch(() => ({error: "تعذّر الاتصال"}));
+    if (d.error) return aNote(d.error, "err");
+    DATA = d; render();
+    const m = d.test.mail || {}, w = d.test.wa || {};
+    const line = (l, x) => `${l}: ${x.ok ? "أُرسل ✓ إلى " + x.to : "لم يُرسل — " + (x.error || "")}`;
+    aNote(line("البريد", m) + "\n" + line("واتساب", w), m.ok && w.ok ? "ok" : m.ok || w.ok ? "" : "err");
+  } finally { $("aTest").disabled = false; }
+};
 
 $("nKey").oninput = () => { $("nKeyEx").textContent = $("nKey").value.trim().toLowerCase() || "…"; };
 $("nAdd").onclick = async () => {
