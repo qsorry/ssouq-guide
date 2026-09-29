@@ -89,6 +89,9 @@ def unit():
     check("دقيقة واحدة قبل الانطلاق بنصف ساعة", T._ttl({"matches": soon}) == T.LIVE_TTL)
     late = calm + [dict(ms[0], state="pre", time_ok=False, ts=time.time() + 20 * 60)]
     check("ساعة غير معتمدة لا تسرّع التحديث", T._ttl({"matches": late}) == L.TTL)
+    stuck = dict(ms[0], state="pre", time_ok=True, ts=time.time() - 75 * 60)
+    check("مباراةٌ فات موعدها وESPN لم تقلبها «جارية» تبقى قريبة", T._hot(stuck)
+          and not T._hot(dict(stuck, ts=time.time() - 4 * 3600)))
 
     print("\nالترتيب")
     groups = T._groups(mock_espn.payload("uefa.nations"))
@@ -206,7 +209,10 @@ def unit():
     check("بلا color-scheme فتبقى شفافة فوق المتجر (وتتبع prefers-color-scheme)",
           not re.search(r"(?<!prefers-)color-scheme", wp) and "prefers-color-scheme" in wp)
     check("بلا إعلان داخل المتجر", "cup-ad" not in wp.split("<body>")[1])
-    check("والجارية تتحدّث كل دقيقة", age == T.LIVE_TTL and '<meta http-equiv="refresh" content="60">' in wp)
+    check("والجارية: كاش دقيقة", age == T.LIVE_TTL)
+    check("تتحدّث في مكانها بلا إعادة تحميل: لا meta refresh، وتسأل عن نفسها كل 30 ثانية",
+          'http-equiv="refresh"' not in wp and f'<section class="card wcard" data-poll="{T.POLL_LIVE}" data-at="' in wp
+          and 'fetch(location.href,{cache:"no-store"' in wp and "card.innerHTML=n.innerHTML" in wp)
 
     print("\nتعذّر الجلب")
 
@@ -280,6 +286,9 @@ def unit_gulf():
     check("ولا نتيجة منتهية من أمس", "1-france-belgium" not in body and "101-saudi-arabia-kuwait" not in body)
     check("روابطها كلها في نافذة جديدة", body.count('target="_blank"') == body.count("<a "), body.count("<a "))
     check("تبلّغ الحاضنة بطولها، ومع فتح الزر", "parent.postMessage({ssouqWidget:" in hp and 'addEventListener("toggle"' in hp)
+    check("وتتحدّث في مكانها كل 30 ثانية والمباراة جارية، بلا إعادة تحميل",
+          'http-equiv="refresh"' not in hp and f'data-poll="{T.POLL_LIVE}"' in hp and "{WIDGET_JS}" not in hp
+          and hp.count("<script>") == 1)
     check("لا تُفهرس، ووضعها كالمتجر", '<meta name="robots" content="noindex">' in hp and "data-theme" not in hp.split("<head>")[0]
           and 'data-theme="dark"' in T.render_hub((G, T), "dark")[1].decode("utf-8"))
     calm = {"matches": [dict(m, state="pre", ts=time.time() + 3 * 86400) for m in G._feed.get()[0]["matches"][:2]],
@@ -289,6 +298,7 @@ def unit_gulf():
     code, raw, _ = T.render_hub((G2,))
     cp = raw.decode("utf-8")
     check("بلا مباريات اليوم: تقولها، والقادمة مفتوحة", "لا مباريات اليوم" in cp and '<details class="wmore" id="more" open>' in cp)
+    check("وتسأل كل 5 دقائق ما دام لا شيء قريب", f'data-poll="{T.POLL_IDLE}"' in cp)
     G2._feed.get = lambda: (None, 0, "down")
     code, raw, _ = T.render_hub((G2,))
     check("وبلا بيانات: 503", code == 503 and "تعذّر تحميل المباريات" in raw.decode("utf-8"))
