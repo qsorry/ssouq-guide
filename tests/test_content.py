@@ -809,13 +809,27 @@ def unit_render():
     check("ولا إعلان في صفحةٍ غير موجودة", '<aside class="ad"' not in page(d, "smart", t="series", g="0000000000")[1])
     seed(d, "casper", SAMPLE)
     cad = page(d, "casper")[1]
-    check("سيرفرٌ بلا باقاتٍ في المتجر: إعلان الموقع", "اشتراكات سمارت سوق" in cad and "p153695876" in cad
-          and "اشترك الآن</a>" in cad and "كل هذا المحتوى في اشتراك كاسبر" not in cad)
-    C.save_server(d, {"key": "casper", "name": "كاسبر", "full": "CASPER FLIX", "buy": "https://ssouq.com/casper"})
-    cad = page(d, "casper")[1]
-    check("وبرابط شرائه من صفحة المدير: زرّه وحده", "كل هذا المحتوى في اشتراك كاسبر" in cad and 'class="adplan"' not in cad
-          and 'href="https://ssouq.com/casper?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in cad)
+    ad = cad[cad.index('<aside class="ad"'):cad.index("</aside>", cad.index('<aside class="ad"'))]
+    adplans = ad[ad.index('<div class="adplans">'):]
+    check("وكاسبر بباقاته هو لا بباقات فالكون", "كل هذا المحتوى في اشتراك كاسبر" in ad and adplans.count('class="adplan"') == 2
+          and adplans.index("p1147637724") < adplans.index("p1557813796") and "<em>28 ر.س</em>" in adplans
+          and "<em>23 ر.س</em>" in adplans and "اشترك في كاسبر</a>" in ad and "p153695876" not in ad
+          and "اشتراكات سمارت سوق" not in ad
+          and 'href="https://ssouq.com/اشتراك-كاسبر-iptv-لمدة-12-شهر-3-أشهر-هدية/p1147637724?utm_source=guide.ssouq.com'
+              '&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in ad, ad[:300])
+    check("وفي الجانب باقاته بحملة الصفحة", 'p1557813796?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content"'
+          in cad and "اشترك في كاسبر</h2>" in cad)
     C.clear(d, "casper")
+    seed(d, "kon", SAMPLE)
+    kad = page(d, "kon")[1]
+    check("سيرفرٌ بلا باقاتٍ في المتجر: إعلان الموقع", "اشتراكات سمارت سوق" in kad and "p153695876" in kad
+          and "اشترك الآن</a>" in kad and "كل هذا المحتوى في اشتراك كون" not in kad)
+    C.save_server(d, {"key": "kon", "name": "كون", "full": "", "buy": "https://ssouq.com/kon"})
+    kad = page(d, "kon")[1]
+    check("وبرابط شرائه من صفحة المدير: زرّه وحده", "كل هذا المحتوى في اشتراك كون" in kad and 'class="adplan"' not in kad
+          and 'href="https://ssouq.com/kon?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in kad)
+    C.save_server(d, {"key": "kon", "name": "كون", "full": "", "buy": ""})
+    C.clear(d, "kon")
 
     print("صفحة النوع والقسم")
     code, html = page(d, "smart", t="series")

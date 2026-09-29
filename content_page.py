@@ -795,7 +795,7 @@ button{font:inherit;color:inherit}
 .ad p{margin:0;color:#c9d6f0;font-size:.9rem}
 .adbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .adbtns .btn{padding:11px 18px;flex:1 1 auto;white-space:nowrap}
-.adplans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.adplans{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:10px}   /* عمودٌ لكل باقة (حتى ثلاث) */
 .adplan{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:16px 10px 12px;
   border-radius:16px;border:1px solid var(--line2);background:rgba(6,11,23,.55);transition:border-color .2s,transform .2s}
 .adplan:hover{border-color:var(--gold);transform:translateY(-2px)}
