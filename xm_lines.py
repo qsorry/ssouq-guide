@@ -32,6 +32,7 @@ import predict_page
 import contest
 import content
 import content_page
+import store_sync
 import xm_web
 import falcon_api
 import crypto_store
@@ -2320,6 +2321,16 @@ def content_channel_save(body):
     return ""
 
 
+def content_state():
+    """صفحة المحتوى للمدير: السيرفرات وقناة واتساب وتنبيه الكبار، وبطاقة أعداد المحتوى في منتجات المتجر."""
+    return dict(content.admin_state(DATA_DIR), store=store_sync.state(DATA_DIR))
+
+
+def content_store_token():
+    """توكن إدارة سلة من إعداد الخدمة (أو ‏SALLA_ADMIN_TOKEN) — لأعداد المحتوى في المتجر إن لم يُربط لها تطبيق."""
+    return renew_salla_token(load_store()) or store_sitemap.TOKEN
+
+
 def _content_loop():
     time.sleep(60)                  # بعد الإقلاع بدقيقة، لا معه
     while True:
@@ -2331,6 +2342,10 @@ def _content_loop():
             content.channel_tick(DATA_DIR)  # منشور «أضيف مؤخرًا» في قناة واتساب إن حانت ساعته — بعد السحب، فيضمّ ما جدّ فيه
         except Exception:
             pass
+        try:
+            store_sync.tick(DATA_DIR)       # أعداد المحتوى في وصف منتجات المتجر — بعد السحب، فتُكتب أعداده الجديدة
+        except Exception:
+            pass
         time.sleep(CONTENT_TICK)
 
 
@@ -2338,6 +2353,8 @@ def start_content_worker():
     content.notifier = content_send         # ما جدّ للكبار في ملف سيرفر: بالبريد وواتساب
     content.alert_info = content_alert_info
     content.channel_sender = content_channel_send   # منشور القناة: من رقم المسابقة
+    store_sync.notifier = content_send      # منتجٌ لم تُكتب أعداده وحده، أو رمز سلة لم يُجدَّد: بالبريد وواتساب
+    store_sync.fallback_token = content_store_token
     threading.Thread(target=_content_loop, daemon=True).start()
 
 
@@ -2791,7 +2808,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/content":
                     return self._page("content_admin.html")
                 if path == "/api/content/admin":
-                    return self._send(200, content.admin_state(DATA_DIR))
+                    return self._send(200, content_state())
                 return self._send(404, {"error": "not found"})
             if path == "/contest" or path.startswith("/api/contest/"):   # مسابقة التوقّعات (للمدير)
                 if role != "admin":
@@ -3279,7 +3296,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             self.close_connection = True
             return self._send(400, {"error": str(e)})
-        return self._send(200, {"ok": True, "result": res, **content.admin_state(DATA_DIR)})
+        return self._send(200, {"ok": True, "result": res, **content_state()})
 
     def _content_admin_post(self, path):
         if path == "/api/content/admin/upload":
@@ -3310,7 +3327,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/content/admin/alert-test":   # رسالةٌ تجريبية بالطريقين
                 res = content_send("تجربة تنبيه محتوى الكبار",
                                    "رسالةٌ تجريبية من صفحة محتوى السيرفرات: إن وصلتك فتنبيه محتوى الكبار يصل إليك هنا.")
-                return self._send(200, {"ok": True, "test": res, **content.admin_state(DATA_DIR)})
+                return self._send(200, {"ok": True, "test": res, **content_state()})
             elif path == "/api/content/admin/channel":      # قناة واتساب: رابطها والسيرفرات وساعة المنشور وتفعيله
                 err = content_channel_save(body)
                 if err:
@@ -3335,15 +3352,34 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/content/admin/channel-post":  # «انشر الآن»: ما جدّ منذ آخر منشور، في القناة
                 res = content.channel_run(DATA_DIR, manual=True)
                 return self._send(200 if res.get("ok") else 400,
-                                  {"ok": bool(res.get("ok")), "post": res, **content.admin_state(DATA_DIR),
+                                  {"ok": bool(res.get("ok")), "post": res, **content_state(),
                                    **({} if res.get("ok") else {"error": res.get("error") or "تعذّر النشر"})})
+            elif path == "/api/content/admin/store":         # أعداد المحتوى في المتجر: المنتجات وسيرفراتها، والتحديث التلقائي
+                store_sync.save(DATA_DIR, body)
+            elif path == "/api/content/admin/store-auth":    # ربط سلة: تطبيقٌ يتجدّد رمزه، أو رمزٌ يُلصق — ثم يُجرَّب
+                store_sync.save_auth(DATA_DIR, body)
+                if not body.get("clear"):
+                    return self._send(200, {"ok": True, "check": store_sync.check(DATA_DIR), **content_state()})
+            elif path == "/api/content/admin/store-check":   # «جرّب الربط»: منتجٌ واحد من المتجر بالرمز
+                return self._send(200, {"ok": True, "check": store_sync.check(DATA_DIR), **content_state()})
+            elif path == "/api/content/admin/store-products":   # منتجات المتجر للربط: بحثٌ، أو ما يطابق أسماء السيرفرات
+                return self._send(200, store_sync.catalog(DATA_DIR, body.get("q")))
+            elif path == "/api/content/admin/store-preview":    # ما سيتغيّر في وصف كل منتج — بلا كتابة
+                ids = body.get("ids") if isinstance(body.get("ids"), list) else None
+                return self._send(200, store_sync.preview(DATA_DIR, ids))
+            elif path == "/api/content/admin/store-run":     # «حدّث الآن»: يكتب في المنتجات ويعتمدها، فتُحدَّث بعده وحدها
+                ids = body.get("ids") if isinstance(body.get("ids"), list) else None
+                res = store_sync.run(DATA_DIR, ids, manual=True, force=bool(body.get("force")))
+                return self._send(200 if "results" in res else 409,
+                                  {"ok": bool(res.get("ok")), "run": res, **content_state(),
+                                   **({"error": res["error"]} if res.get("error") else {})})
             else:
                 return self._send(404, {"error": "not found"})
         except content.Busy:
             return self._send(409, {"error": "يُقرأ ملف هذا السيرفر الآن، انتظر حتى ينتهي"})
         except ValueError as e:
             return self._send(400, {"error": str(e)})
-        return self._send(200, {"ok": True, **content.admin_state(DATA_DIR)})
+        return self._send(200, {"ok": True, **content_state()})
 
     def _contest_admin_post(self, path):
         req = self._body()
@@ -3944,6 +3980,17 @@ class Handler(BaseHTTPRequestHandler):
     def _salla_webhook(self):
         n = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(n) if n > 0 else b""
+        if store_sync.app_event(raw):             # تطبيق سلة (أعداد المحتوى في المتجر): رمزه يصل هنا عند تثبيته وتحديثه
+            with _lock:
+                svc = load_store()["service"]
+            if not (store_sync.verify(DATA_DIR, raw, self.headers)
+                    or salla_api.verify(svc.get("salla_secret", ""), "", raw, self.headers)):
+                return self._send(401, {"error": "توقيع غير صالح"})
+            try:
+                ev = store_sync.on_app_event(DATA_DIR, json.loads(raw.decode("utf-8", "replace")))
+            except (ValueError, AttributeError):
+                return self._send(400, {"error": "جسم غير صالح"})
+            return self._send(200, {"ok": True, "event": ev})
         with _lock:
             st = load_store()
             svc = st["service"]
