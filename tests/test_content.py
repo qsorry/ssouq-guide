@@ -646,7 +646,7 @@ def unit_channel():
                                                 f"{R}• The Boys · الموسم 4 · 4 حلقات", f"{R}• قيامة أرطغرل · حلقتان"],
           block("🎞️ *حلقات ومواسم جديدة*"))
     check("ورابط «أضيف مؤخرًا» في صفحة السيرفر آخرًا", lines[-2:] == ["🔗 القائمة كاملة، وابحث باسم ما تريد:",
-                                                                   "https://guide.ssouq.com/content/casper?t=new"], lines[-2:])
+                                                                   "https://guide.ssouq.com/content/casper?t=new&ref=wa"], lines[-2:])
     check("وما قبل الفترة وبعدها لا يدخل", C.channel_text(d, ["casper"], T, T + 60)[0] == ""
           and "Too Old" not in text and "Hidden" not in text)
     check("والسيرفر غير المختار لا يدخل", C.channel_text(d, ["smart"], 0, T + 60)[0] == "")
@@ -661,8 +661,8 @@ def unit_channel():
     l3 = t3.split("\n")
     check("سيرفران: عنوانٌ عام، وقسمٌ لكلٍّ بترتيب الصفحة وأعداده ورابطه",
           l3[0] == "🆕 *أضيف مؤخرًا*" and l3.count(C.SEP) == 2 and l3.index("📡 *كاسبر*") < l3.index("📡 *سمارت*")
-          and "✨ 9 أفلام" in l3 and "🔗 القائمة كاملة: https://guide.ssouq.com/content/smart?t=new" in l3
-          and "🔗 القائمة كاملة: https://guide.ssouq.com/content/casper?t=new" in l3 and n3["movie"] == 13, t3[:300])
+          and "✨ 9 أفلام" in l3 and "🔗 القائمة كاملة: https://guide.ssouq.com/content/smart?t=new&ref=wa" in l3
+          and "🔗 القائمة كاملة: https://guide.ssouq.com/content/casper?t=new&ref=wa" in l3 and n3["movie"] == 13, t3[:300])
     check("وسطور كل قسمٍ أقلّ", t3.count(f"{R}• Film") == 5 and "…و4 أفلام غيرها" in t3, t3.count(f"{R}• Film"))
 
     print("القناة: ربطها ومنشورها في ساعته")
@@ -1873,7 +1873,7 @@ def live_channel():
         text = d["preview"]["text"]
         check("المعاينة: المنشور كما سيُنشر", code == 200 and text.startswith("🆕 *أضيف مؤخرًا في كاسبر*")
               and "Dune: Part Two (2024)" in text and "Shogun · حلقتان" in text
-              and "Breaking Bad · المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new")
+              and "Breaking Bad · المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new&ref=wa")
               and len(rd("GET", "/_test/log")["sent"]) == 0, text)
         code, d = jpost(adm + "/api/content/admin/channel-preview", {"servers": ["smart"]})
         check("وبسيرفراتٍ لم تُحفظ", code == 200 and d["preview"]["text"] == "")

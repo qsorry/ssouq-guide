@@ -53,8 +53,8 @@ async function waitUp(url) { for (let i=0;i<80;i++){ try{ execSync(`curl -s -o /
     // the dashboard home: welcome banner, stat cards, shortcuts, latest accounts and admin links
     await page.evaluate(() => nav('home'));
     await page.waitForFunction(() => document.getElementById('statPrize').textContent !== '—', null, {timeout: 8000});
-    check('dashboard: banner, 3 stat cards, 6 shortcuts, admin links',
-      (await page.textContent('.hero h1')).includes('مرحباً بك في لوحة الإدارة') && (await page.$$('.kpis .kpi')).length === 3
+    check('dashboard: banner, 4 stat cards (visitors too), 6 shortcuts, admin links',
+      (await page.textContent('.hero h1')).includes('مرحباً بك في لوحة الإدارة') && (await page.$$('.kpis .kpi')).length === 4
       && (await page.$$('.qgrid .qt')).length === 6 && (await page.$$('#links .lt')).length >= 4);
     check('dashboard: accounts and gates counted, prizes from the contest summary',
       (await page.textContent('#statAcc')) === '1' && (await page.textContent('#statGates')) === '2'
