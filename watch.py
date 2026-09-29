@@ -67,9 +67,9 @@ COMPS = {
 SITEMAP = [(PATH, "daily", "0.8")] + [(f"{PATH}/{k}", "daily", "0.8") for k in COMPS]
 
 # صفحات تشغيل الاشتراك على كل جهاز (guide_pages.PAGES) بأسماء أجهزتها
-DEVICES = [("/samsung-lg", "شاشات سامسونج و LG"), ("/android-tv", "شاشات وبوكسات أندرويد"),
-           ("/iphone", "الآيفون والآيباد"), ("/android", "جوالات أندرويد"), ("/windows", "كمبيوتر ويندوز"),
-           ("/mac", "أجهزة ماك"), ("/carplay", "شاشة السيارة CarPlay")]
+DEVICES = [("/samsung-lg", "شاشات سامسونج و LG"), ("/vidaa", "شاشات هايسنس و VIDAA"),
+           ("/android-tv", "شاشات وبوكسات أندرويد"), ("/iphone", "الآيفون والآيباد"), ("/android", "جوالات أندرويد"),
+           ("/windows", "كمبيوتر ويندوز"), ("/mac", "أجهزة ماك"), ("/carplay", "شاشة السيارة CarPlay")]
 
 # أدوار البطولات القارية عند ESPN (‏season.slug) ← أسماؤها، فوق أسماء أدوار tournament
 STAGES = dict(tournament.STAGES, **{"league-phase": "مرحلة الدوري", "league-stage": "مرحلة الدوري",

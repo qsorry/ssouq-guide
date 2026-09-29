@@ -3,14 +3,17 @@
 """صفحات الدليل الثابتة: الأجهزة و/compare.
 
 يفحص ما يسهل أن ينكسر صامتًا: صفحة جهاز تسقط، رابط منتج يشير إلى مفتاح
-غير موجود في PRODUCTS، مخطط FAQ يخرج JSON غير صالح، أو صفحة تُضاف إلى
-PAGES ولا تدخل خريطة الموقع.
+غير موجود في PRODUCTS، مخطط FAQ يخرج JSON غير صالح، صفحة تُضاف إلى
+PAGES ولا تدخل خريطة الموقع، صورة خطوة ليست على القرص، أو guide-data.json
+نُسي بعد تعديل المعالج فبقيت الصفحات على القديم.
 
 تشغيل:  python tests/test_guide_pages.py
 """
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -76,6 +79,43 @@ def main():
     check("تحيل إلى مقال المتجر ولا تعيد نصّه", G.BLOG_COMPARE in h)
     check("تربط كل صفحات الأجهزة",
           all(f'href="{p}"' in h for p in G.PAGES if not G.PAGES[p].get("compare")))
+
+    print("\nصور الخطوات على القرص")
+    # الصورة تُكتب نصًّا في index.html، فالناقصة لا يكشفها إلا من يفتح خطوتها
+    data = G._data()
+    srcs = set()
+    for dev in data.values():
+        for steps in ([dev["steps"]] if "steps" in dev else dev["variants"].values()):
+            for st in steps:
+                srcs.update([st["img"]] if st.get("img") else [])
+                srcs.update(re.findall(r'src="(/static/[^"]+)"', st.get("html", "")))
+        srcs.update(f"/static/img/apps/{o['icon']}.webp"
+                    for o in dev.get("choose", {}).get("options", []) if o.get("icon"))
+    missing = sorted(p for p in srcs if not os.path.isfile(os.path.join(ROOT, p.lstrip("/"))))
+    check(f"كل الصور ({len(srcs)}) موجودة", not missing, ", ".join(missing[:4]))
+
+    print("\nSS IPTV و VIDAA")
+    v, w = data["vidaa"], data["webos"]
+    check("VIDAA جهاز بخطوات SS IPTV السبع", len(v.get("steps", [])) == 7
+          and v["steps"][0]["title"] == "حمّل تطبيق SS IPTV من متجر VIDAA")
+    check("سامسونج و LG: اختيار 0Player أو SS IPTV",
+          [o["key"] for o in w["choose"]["options"]] == ["0player", "ssiptv"])
+    # التحميل وحده يختلف بين الجهازين، وما بعده خطوات واحدة
+    check("خطوات SS IPTV بعد التحميل واحدة على الجهازين", w["variants"]["ssiptv"][1:] == v["steps"][1:])
+    h = G.render("/vidaa").decode("utf-8")
+    check("/vidaa تربط محرّر ss-iptv.com وأداة M3U",
+          'href="https://ss-iptv.com/en/users/playlist"' in h and 'href="/#m3u"' in h)
+    h = G.render("/samsung-lg").decode("utf-8")
+    check("/samsung-lg فيها التطبيقان", "تطبيق 0Player" in h and "تطبيق SS IPTV" in h)
+
+    print("\nguide-data.json على آخر المعالج")
+    node = shutil.which("node")
+    if node:
+        r = subprocess.run([node, os.path.join(ROOT, "tools", "sync_guide_data.js"), "--check"],
+                           capture_output=True, text=True, timeout=60)
+        check("مطابق لـ index.html", r.returncode == 0, (r.stdout or r.stderr).strip()[:90])
+    else:
+        print("  تخطّي: لا node على هذا الجهاز")
 
     print("\nخريطة الموقع")
     sm = G.sitemap().decode("utf-8")
