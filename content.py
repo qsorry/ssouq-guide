@@ -775,13 +775,27 @@ def _view(data_dir, key):
 
 
 def _upgrade(cat):
-    """فهرسٌ من النسخة الأولى (الفيلم والقناة نصًّا، والمسلسل [الاسم، المواسم]) بصيغة العناصر الحالية."""
+    """فهرسٌ من النسخة الأولى (الفيلم والقناة نصًّا، والمسلسل [الاسم، المواسم]) بصيغة العناصر الحالية — والسنة
+    والجودة تُفصلان من الاسم كما في القراءة الحالية، فيُعرض الفيلم بسنته وبجوداته عنصرًا واحدًا من الآن، لا بعد
+    السحب التالي."""
     if cat.get("v") == 2:
         return cat
     for kind in KINDS:
         for g in cat.get(kind) or []:
-            g["items"] = [it if isinstance(it, dict) else {"n": it[0], "s": it[1]} if isinstance(it, list)
-                          else {"n": str(it)} for it in g.get("items") or []]
+            items = {}
+            for n, it in enumerate(g.get("items") or []):
+                if isinstance(it, dict):
+                    rec = it
+                elif kind == "series" and isinstance(it, list):
+                    name, year = _split_year(_dequal(str(it[0])))
+                    rec = _slim({"n": name, "y": year, "s": it[1]})
+                elif kind == "movie":
+                    name, year = _split_year(_dequal(str(it)))
+                    rec = _slim({"n": _dequal(name), "y": year})
+                else:
+                    rec = {"n": _dequal(str(it))}
+                items.setdefault(n if kind == "series" else _ikey(kind, rec), rec)
+            g["items"] = list(items.values())
     cat["v"] = 2
     return cat
 

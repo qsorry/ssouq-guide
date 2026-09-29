@@ -220,6 +220,7 @@ function playlist(movies) {
     await dp.waitForSelector('#cx-modal:not([hidden])');
     const fm = await dp.textContent('#cx-modal');
     check('والنافذة: التقييم والتصنيف وتاريخ الإضافة', fm.includes('★ 7.8') && fm.includes('Action • Drama') && fm.includes('أضيف أمس'), fm);
+    check('وحرفا الملصق كما في الخادم', await dp.textContent('#cx-modal .ph') === 'FT');
     await dp.keyboard.press('Escape');
     await dp.goto(APP + '/content/falcon?t=live');
     const logo = dp.locator('img[src^="/content/falcon/img/"]').first();
@@ -237,6 +238,13 @@ function playlist(movies) {
       check(`بلا تمرير أفقي: ${u}`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     }
     await page.goto(APP + '/content/falcon');
+    const st = await page.evaluate(() => {
+      const box = document.querySelector('.stats').getBoundingClientRect();
+      const tiles = [...document.querySelectorAll('.stat')].map(t => t.getBoundingClientRect());
+      return {n: tiles.length, rows: new Set(tiles.map(t => Math.round(t.top))).size,
+              left: Math.round(tiles[tiles.length - 1].left - box.left)};
+    });
+    check('خانات الأعداد تملأ صفوفها (3 ثم 2)', st.n === 5 && st.rows === 2 && st.left <= 1, JSON.stringify(st));
     await page.locator('.row .card').first().click();
     await page.waitForSelector('#cx-modal:not([hidden])');
     check('والنافذة كذلك', await page.evaluate(() => {

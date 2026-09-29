@@ -78,7 +78,10 @@ def _hue(s):
 
 
 def _initials(name):
-    words = [w for w in re.split(r"[\s\-:]+", name or "") if w]
+    """حرفا الملصق بلا صورة: أول حرفٍ من أول كلمتين — بلا الأقواس والرموز، والأرقام («(2026)» «12 Strong»)
+    إلا إن لم يكن غيرها («2020»)."""
+    words = re.findall(r"[^\W_]+", C._TASHKEEL.sub("", name or ""))
+    words = [w for w in words if not w.isdigit()] or words
     return "".join(w[0] for w in words[:2]).upper() or "•"
 
 
@@ -631,8 +634,8 @@ button{font:inherit;color:inherit}
 .stat .i{width:34px;height:34px;color:var(--acc)}
 .stat b{display:block;font-size:1.55rem;line-height:1.2;font-variant-numeric:tabular-nums}
 .stat small{color:var(--mute)}
-@media (max-width:900px){.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:520px){.stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:900px){.stats{display:flex;flex-wrap:wrap}.stat{flex:1 1 30%;min-width:0}}   /* 3 ثم ما بقي بعرض الصف */
+@media (max-width:520px){.stats{gap:8px}
   .stat{flex-direction:column;align-items:center;text-align:center;gap:4px;padding:10px 4px}
   .stat .i{width:24px;height:24px}.stat b{font-size:1.12rem}.stat small{font-size:.74rem}
   .nav a.home{display:none}.nav a{padding:8px 9px;font-size:.9rem}}
@@ -823,7 +826,11 @@ JS = """
   var modal = $("#cx-modal"), last = null;
   var KIND = {movie: "فيلم", series: "مسلسل", live: "قناة"};
   var hue = function(s){ var n = 0; for (var i = 0; i < s.length; i++) n += s.charCodeAt(i); return n * 37 % 360; };
-  var ini = function(s){ return s.split(/[\\s\\-:]+/).filter(Boolean).slice(0, 2).map(function(w){ return w[0]; }).join("").toUpperCase() || "•"; };
+  var ini = function(s){      // كـ _initials في الخادم
+    var w = s.replace(/\\p{M}/gu, "").match(/[\\p{L}\\p{N}]+/gu) || [];
+    var l = w.filter(function(x){ return !/^\\p{N}+$/u.test(x); });
+    return (l.length ? l : w).slice(0, 2).map(function(x){ return x[0]; }).join("").toUpperCase() || "•";
+  };
   function open(d, from){
     var facts = [d.y, (d.g || []).join(" • ")].filter(Boolean).join(" · ");
     $(".sheet", modal).innerHTML = '<button class="x" type="button" aria-label="إغلاق">✕</button><div class="cover"></div>'

@@ -500,11 +500,21 @@ def unit_render():
     C._write(C._cat_path(d, "kon"), {
         "key": "kon", "at": time.time(), "entries": 4, "n": {"series": 3, "movie": 1, "live": 0}, "skipped": {},
         "series": [{"id": C._gid("series", "Old"), "name": "Old", "items": [["Old Show", [[1, 2], [2, 1]]]]}],
-        "movie": [{"id": C._gid("movie", "Films"), "name": "Films", "items": ["Old Film (2019)"]}], "live": []})
+        "movie": [{"id": C._gid("movie", "Films"), "name": "Films",
+                   "items": ["Old Film (2019) FHD", "Old Film (2019) HD", "Blade Runner 2049"]}],
+        "live": [{"id": C._gid("live", "TV"), "name": "TV", "items": ["MBC 1 HD", "MBC 1 FHD"]}]})
     code, html = page(d, "kon")
-    check("يُعرض كما هو حتى يُسحب ثانية", code == 200 and "Old Show" in html and "موسمان" in html and "Old Film (2019)" in html
-          and C._view(d, "kon")[1]["counts"] == {"series": 1, "seasons": 2, "episodes": 3, "movie": 1, "live": 0}
+    check("يُعرض حتى يُسحب ثانية", code == 200 and "Old Show" in html and "موسمان" in html
           and "?t=new" not in html and 'class="slide' not in html)
+    check("والسنة والجودة تُفصلان منه من الآن", '<h3 dir="auto">Old Film</h3><p class="sub">2019</p>' in html
+          and '<h3 dir="auto">Blade Runner 2049</h3>' in html and '<h3 dir="auto">MBC 1</h3>' in html
+          and C._view(d, "kon")[1]["counts"] == {"series": 1, "seasons": 2, "episodes": 3, "movie": 2, "live": 1},
+          C._view(d, "kon")[1]["counts"])
+
+    print("الحرفان مكان الصورة")
+    check("بلا أقواسٍ ولا سنة", [P._initials(n) for n in ("UNABOMBER (2026)", "Mother Mary (2026)", "12 Strong (2018)",
+                                                          "(500) Days of Summer", "2020", "350 جرام", "مُسلسل رائع", "", "---")]
+          == ["U", "MM", "S", "DO", "2", "ج", "مر", "•", "•"])
 
     print("التاريخ")
     now = time.time()
