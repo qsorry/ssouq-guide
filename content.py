@@ -685,15 +685,11 @@ def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
                 cat["api"] = {"ok": False, "error": _fetch_error(e)}
         now = time.time()
         cat.update(key=key, at=now, source=source, label=str(label or "")[:80])
-        # ما رُئي قبل هذه الميزة: الفهرس السابق نفسه (يُقرأ مرة، قبل أن يُستبدل)، فيُعرف الجديد من أول سحب — بالقراءة
-        # الحالية وحدها (‏"v":2): فهرس النسخة الأولى قُرئت أسماؤه بغيرها، فيبدو ما فيه جديدًا؛ وبعده بداية
-        prev = (None if os.path.exists(_seen_path(data_dir, key)) or _cat_old(data_dir, key)
-                else _read(_cat_path(data_dir, key)))
         _write(_cat_path(data_dir, key), cat)
         _cache.pop(key, None)
         _settle(data_dir, key, "")
         try:
-            news = _record_news(data_dir, key, cat, prev)
+            news = _record_news(data_dir, key, cat)
         except Exception as e:  # noqa: BLE001 — تسجيل الجديد لا يُسقط الإدخال، وسببه للمدير
             news = {"error": str(e)[:200]}
         new = _record_adult(data_dir, key, p.dropped(flagged), source, now)
@@ -1669,17 +1665,15 @@ def _news_state(cat):
     return out
 
 
-def _record_news(data_dir, key, cat, prev=None):
-    """يسجّل ما جدّ في الفهرس عمّا رُئي من ملف السيرفر قبله ← ملخّصه {at, movie, series, eps, first?, flood?}.
-    وبلا ذاكرةٍ بعدُ يُقارن بالفهرس السابق (‏prev) إن كان، وإلا فهو بدايةٌ لا جديد فيها. وما جدّ بأكثر من
-    NEWS_FLOOD ومن نصف نوعه بدايةٌ جديدة: يُحفظ أنه رُئي ولا يُعدّ جديدًا."""
+def _record_news(data_dir, key, cat):
+    """يسجّل ما جدّ في الفهرس عمّا رُئي من ملف السيرفر قبله ← ملخّصه {at, movie, series, eps, first?, flood?} (والمسلسلات
+    ما جدّ فيه شيء: الجديدة وما زادت حلقاته). وبلا ذاكرةٍ بعدُ فهو بدايةٌ لا جديد فيها، ووقتها «start» في السجلّ: ما قبله
+    يُعرف من تاريخ الإضافة في واجهة السيرفر (‏_panel). وما جدّ بأكثر من NEWS_FLOOD ومن نصف نوعه بدايةٌ جديدة: يُحفظ
+    أنه رُئي ولا يُعدّ جديدًا."""
     cur = _news_state(cat)
     with _news_lock:
         now = time.time()                    # داخل القفل: منشور القناة يقطع السجلّ عند لحظةٍ لا يتخطّاها سحب
         mem = _read(_seen_path(data_dir, key))
-        if mem is None and prev and prev.get("v") == 2:
-            base = _news_state(prev)
-            mem = {"movie": list(base["movie"]), "series": {h: sorted(r["s"].items()) for h, r in base["series"].items()}}
         first = mem is None
         mem = mem or {}
         seen_m = [h for h in mem.get("movie") or [] if isinstance(h, str)]
@@ -1725,19 +1719,33 @@ def _record_news(data_dir, key, cat, prev=None):
         _write(_seen_path(data_dir, key), {"movie": seen_m[-NEWS_SEEN:],
                                             "series": {h: sorted(v.items()) for h, v in list(seen_s.items())[-NEWS_SEEN:]}})
         eps = sum(sum(cur["series"][h]["s"].values()) for h in fresh) + sum(a[1] for _h, add in more for a in add)
-        last = _slim({"at": now, "movie": len(movies), "series": len(fresh), "eps": eps, "first": first, "flood": flood})
-        log = [e for e in (_read(_news_path(data_dir, key)) or {}).get("log") or []
-               if isinstance(e, dict) and (e.get("t") or 0) >= now - NEWS_KEEP] + entries
-        _write(_news_path(data_dir, key), {"log": log[-NEWS_LOG:], "last": last})
+        last = _slim({"at": now, "movie": len(movies), "series": len(fresh) + len(more), "eps": eps, "first": first,
+                      "flood": flood})
+        old = _read(_news_path(data_dir, key)) or {}
+        log = [e for e in old.get("log") or [] if isinstance(e, dict) and (e.get("t") or 0) >= now - NEWS_KEEP] + entries
+        _write(_news_path(data_dir, key), {"log": log[-NEWS_LOG:], "last": last, "start": _news_start(old) or now})
     return last
 
 
+def _news_start(rec):
+    """من متى يعرف سجلّ السيرفر ما جدّ: وقت أول سحبٍ سُجّل بعد هذه الميزة (بدايته) — أو None بلا سجلّ. (وسجلٌّ من نسخةٍ
+    لم تحفظه: أول ما فيه.)"""
+    if not rec:
+        return None
+    if rec.get("start"):
+        return _float(rec["start"])
+    ts = [e.get("t") or 0 for e in rec.get("log") or [] if isinstance(e, dict)]
+    return min(ts) if ts else _float((rec.get("last") or {}).get("at")) or None
+
+
 def _pending(data_dir, key, since, until, hidden=()):
-    """ما سُجّل من جديد السيرفر في (since, until] ← (الأفلام، المسلسلات الجديدة، مسلسلاتٌ جدّت حلقاتها)، كلٌّ
-    {بصمة: عنصر}: الفيلم والمسلسل مرة، وحلقات المسلسل من كل سحبٍ مجموعةً بموسمها {الموسم: [زادت، صارت، جديد؟]}
-    (والمسلسل الجديد يضمّ ما جدّ من حلقاته بعده). وما أقسامه كلها مخفيةٌ من الصفحة لا يُعدّ."""
+    """ما جدّ في السيرفر في (since, until] ← (الأفلام، المسلسلات الجديدة، مسلسلاتٌ جدّت حلقاتها)، كلٌّ {بصمة: عنصر}:
+    من السجلّ الفيلم والمسلسل مرة، وحلقات المسلسل من كل سحبٍ مجموعةً بموسمها {الموسم: [زادت، صارت، جديد؟]} (والمسلسل
+    الجديد يضمّ ما جدّ من حلقاته بعده) — وما قبل بداية السجلّ (أو بلا سجلٍّ بعد) من تاريخ الإضافة في واجهة السيرفر
+    كما في «أضيف مؤخرًا» في الصفحة (‏_panel). وما أقسامه كلها مخفيةٌ من الصفحة لا يُعدّ."""
     movies, fresh, more = {}, {}, {}
-    for e in (_read(_news_path(data_dir, key)) or {}).get("log") or []:
+    rec = _read(_news_path(data_dir, key)) or {}
+    for e in rec.get("log") or []:
         if not isinstance(e, dict) or not e.get("h") or not since < (e.get("t") or 0) <= until:
             continue
         if e.get("gs") and all(g in hidden for g in e["gs"]):
@@ -1756,12 +1764,49 @@ def _pending(data_dir, key, since, until, hidden=()):
             for s, d, n, new in e.get("add") or ():
                 a = m["add"].setdefault(int(s), [0, 0, 0])
                 a[0], a[1], a[2] = a[0] + d, max(a[1], n), a[2] or new
+    start = _news_start(rec)
+    edge = until if start is None else min(until, start)
+    if since < edge:                         # ما قبل السجلّ: لا يلتقي به (السجلّ ما لم يكن في سحب بدايته)
+        pm, ps = _panel(data_dir, key, since, edge, set(movies) | set(fresh) | set(more))
+        movies.update(pm)
+        more.update(ps)
     return movies, fresh, more
 
 
+def _panel(data_dir, key, since, until, known=()):
+    """ما أضافته لوحة السيرفر في (since, until] بتاريخه من واجهة Xtream (‏a: إضافة الفيلم، وآخر تحديثٍ للمسلسل) —
+    ما يعرضه «أضيف مؤخرًا» في الصفحة — من أقسامها الظاهرة، بلا ما في known ← (أفلام، مسلسلات) كعناصر _pending، والمسلسل
+    بموسمه الأخير وحلقاته (‏cur) إذ لا يُعرف كم جدّ منها. ونوعٌ غيّرت اللوحة تواريخه كلها (أكثر من NEWS_FLOOD ومن
+    نصفه) لا يُعدّ منه شيء."""
+    v = _view(data_dir, key)[1]
+    out = {"movie": {}, "series": {}}
+    if not v:
+        return out["movie"], out["series"]
+    for kind, got in out.items():
+        for g in v["kinds"][kind]:
+            for it in g["items"]:
+                a = it.get("a") or 0
+                if not since < a <= until:
+                    continue
+                h = _gid(kind, _ikey(kind, it))
+                if h in known:
+                    continue
+                x = got.get(h)
+                if x is None:
+                    x = got[h] = dict(_slim({"h": h, "n": it.get("n"), "y": it.get("y"), "r": it.get("r"), "a": a}), gs=[])
+                    if kind == "series":
+                        ss = [(s, n) for s, n in it.get("s") or () if s] or [(0, sum(n for _s, n in it.get("s") or ()))]
+                        x.update(add={}, cur=list(max(ss)))
+                x["gs"].append(g["id"])
+        if len(got) > max(NEWS_FLOOD, v["counts"][kind] // 2):
+            got.clear()
+    return out["movie"], out["series"]
+
+
 def _tally(movies, fresh, more):
-    """الأعداد {movie، series، eps}: الحلقات ما في المسلسلات الجديدة وما جدّ في غيرها."""
-    return {"movie": len(movies), "series": len(fresh),
+    """الأعداد {movie، series، eps}: المسلسلات ما جدّ فيه شيء، والحلقات ما في المسلسلات الجديدة وما جدّ في غيرها (وما
+    حدّثته اللوحة لا يُعرف كم جدّ فيه)."""
+    return {"movie": len(movies), "series": len(fresh) + len(more),
             "eps": sum(sum(x["s"].values()) for x in fresh.values()) + sum(a[0] for x in more.values() for a in x["add"].values())}
 
 
@@ -1817,7 +1862,12 @@ def _series_line(x):
 
 
 def _more_line(x):
-    """«The Boys · الموسم 4 · 3 حلقات» · «House of the Dragon · الموسم 2 (جديد) · 8 حلقات»."""
+    """«The Boys · الموسم 4 · 3 حلقات» · «House of the Dragon · الموسم 2 (جديد) · 8 حلقات» — وما حدّثته اللوحة ولا يُعرف
+    كم جدّ فيه: موسمه الأخير وحلقاته «The Boys · الموسم 4 (8 حلقات)»."""
+    if not x["add"]:
+        s, n = x.get("cur") or (0, 0)
+        return f"{_title(x, year=False)} · الموسم {s} ({_count(n, N_EPISODES)})" if s else \
+            f"{_title(x, year=False)} ({_count(n, N_EPISODES)})"
     ss = sorted(s for s in x["add"] if s)
     if len(ss) == 1:
         where = f"الموسم {ss[0]}" + (" (جديد)" if x["add"][ss[0]][2] else "")

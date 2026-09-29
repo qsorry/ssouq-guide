@@ -337,7 +337,7 @@ function konList(more) {
     check('الرفع الثاني بما جدّ فيه', up.result && up.result.news.movie === 2 && up.result.news.eps === 2, JSON.stringify(up.result && up.result.news));
     await ap.goto(APP + '/admin/content');
     await ap.waitForSelector('#chan:not([hidden]) #cSrv input');
-    check('وما جدّ في آخر سحبٍ على بطاقة السيرفر', (await ap.textContent('[data-k="kon"] .meta')).includes('الجديد فيه: فيلمان · مسلسل واحد · حلقتان'),
+    check('وما جدّ في آخر سحبٍ على بطاقة السيرفر', (await ap.textContent('[data-k="kon"] .meta')).includes('الجديد فيه: فيلمان · مسلسلان · حلقتان'),
           await ap.textContent('[data-k="kon"] .meta'));
     check('قبل الربط: غير مربوطة، والسيرفرات كلها، والساعة 9 مساءً', (await ap.textContent('#cChip')) === 'غير مربوطة'
           && (await ap.$$eval('#cSrv input', i => i.filter(x => x.checked).length)) === 4 && await ap.inputValue('#cHour') === '21'
@@ -351,7 +351,7 @@ function konList(more) {
     check('الحفظ: القناة باسمها ومتابعيها، ورقم المسابقة مشرفٌ فيها', hint.includes('«سمارت سوق | الجديد»') && hint.includes('1,520 متابع')
           && (await ap.textContent('#cChip')) === 'كل يوم 9 مساءً', hint);
     const last0 = await ap.textContent('#cLast');
-    check('وما جدّ منذ ربطها وموعد المنشور', last0.includes('الجديد منذ آخر منشور: فيلمان · مسلسل واحد · حلقتان')
+    check('وما جدّ منذ ربطها وموعد المنشور', last0.includes('الجديد منذ آخر منشور: فيلمان · مسلسلان · حلقتان')
           && last0.includes('المنشور القادم:'), last0);
     await ap.click('#cPrev');
     await ap.waitForSelector('#cBox:not([hidden])');
@@ -359,7 +359,7 @@ function konList(more) {
     check('المعاينة فقاعة واتساب: العريض عريض، والرابط رابط', bub.html.includes('<b>أضيف مؤخرًا في كون</b>')
           && bub.html.includes('<b>أفلام جديدة</b>') && bub.text.includes('Dune: Part Two (2024)') && bub.text.includes('Shogun · حلقة واحدة')
           && bub.href === 'https://guide.ssouq.com/content/kon?t=new', bub.text.slice(0, 160));
-    check('وحجمها', (await ap.textContent('#cSize')).includes('فيلمان · مسلسل واحد · حلقتان'));
+    check('وحجمها', (await ap.textContent('#cSize')).includes('فيلمان · مسلسلان · حلقتان'));
     check('بلا تمرير أفقي والمعاينة ظاهرة', await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth
           && document.querySelector('#cText').getBoundingClientRect().right <= innerWidth));
     if (SHOTS) await ap.locator('#chan').screenshot({path: path.join(SHOTS, 'content-channel.png')});
@@ -372,6 +372,14 @@ function konList(more) {
     const last1 = await ap.textContent('#cLast');
     check('وآخر منشورٍ يدويًّا، ولا جديد بعده', last1.includes('آخر منشور:') && last1.includes('(يدويًّا)')
           && last1.includes('لا جديد منذ آخر منشور'), last1);
+    // سيرفرٌ مُثرًى من واجهة Xtream: ما في «أضيف مؤخرًا» في صفحته يدخل المنشور من تاريخ إضافته، بلا انتظار سحبٍ ثانٍ
+    await ap.check('#cSrv input[value="falcon"]');
+    await ap.click('#cPrev');
+    await ap.waitForFunction(() => document.querySelector('#cText').textContent.includes('فالكون'), null, {timeout: 15000});
+    const bub2 = await ap.textContent('#cText');
+    check('و«أضيف مؤخرًا» في صفحة سيرفرٍ مُثرًى يدخل المعاينة من تاريخ إضافته في واجهته', bub2.includes('F1 The Movie (2025) ⭐ 7.8')
+          && bub2.includes('Stranger Things · الموسم 5 (9 حلقات)') && !bub2.includes('Oppenheimer')
+          && (await ap.textContent('#cMsg')).includes('آخر 7 أيام'), bub2.slice(0, 240));
 
     check('بلا أخطاء سكربت', errors.length === 0, errors.join(' | '));
   } catch (e) {
