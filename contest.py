@@ -395,8 +395,8 @@ def state_of(rec, m, now=None):
         if m["status"] in HOLD or not m["time_ok"]:
             return "hold"
         return "open" if now < lock_at(rec, m["ts"]) else "closed"
-    if m["state"] == "post" and m["status"] not in HOLD:
-        return "pending"
+    if m["state"] == "post" and m["status"] not in HOLD and not m.get("filled"):
+        return "pending"                               # والمملوءة من FotMob (tournament.fill) تنتظر نتيجة ESPN
     if m["state"] == "in" and m["status"] not in HOLD and now < lock_at(rec, m["ts"]):
         return "open"                                  # دقائق المدير بعد الصافرة
     return "closed"

@@ -265,6 +265,62 @@ def unit_gulf():
     check("ودجت كأس الخليج", code == 200 and "كأس الخليج العربي" in raw.decode("utf-8"))
     sm = [u for u, *_ in G.sitemap()]
     check("في خريطة الموقع بمبارياتها", "/gulf-cup" in sm and "/gulf-cup/103-saudi-arabia-iraq" in sm)
+    print("\nالمباشر من FotMob حين تسكت ESPN")
+    kick = time.time() - 70 * 60
+    base = G._feed.get()[0]["matches"]
+    ms = [dict(m, home=dict(m["home"]), away=dict(m["away"]), ts=kick) for m in base if m["id"] in ("103", "104", "105")]
+    ms += [dict(m, home=dict(m["home"]), away=dict(m["away"])) for m in base if m["id"] == "106"]   # بعد أيام: لا تُسأل
+    iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(kick))
+
+    def fm(home, away, hs, as_, **st):
+        return {"home": {"name": home, "score": hs}, "away": {"name": away, "score": as_},
+                "status": dict({"utcTime": iso, "started": True, "cancelled": False, "finished": False}, **st)}
+    asked = []
+
+    def fake_fotmob(ymd):
+        asked.append(ymd)
+        return {"leagues": [
+            {"primaryId": 999, "matches": [fm("Oman", "Kuwait", 7, 7, ongoing=True, liveTime={"short": "10\u200e\u2019\u200e"})]},
+            {"primaryId": 329, "matches": [
+                fm("Oman", "Kuwait", 1, 1, ongoing=True, liveTime={"short": "69\u200e\u2019\u200e"}),
+                fm("Iraq", "Saudi Arabia", 0, 2, finished=True, reason={"short": "FT"}),      # الأرض معكوسة عن ESPN
+                fm("UAE", "Qatar", 0, 0, ongoing=True, liveTime={"short": "HT"})]}]}
+    real_fotmob = G.fotmob_day
+    G.fotmob_day = fake_fotmob
+    G.fill(ms)
+    by = {m["id"]: m for m in ms}
+    check("ESPN تقول «مجدولة» بعد الانطلاق: الحال والنتيجة والدقيقة من FotMob", by["104"]["state"] == "in"
+          and (by["104"]["home"]["score"], by["104"]["away"]["score"]) == (1, 1) and by["104"]["clock"] == "69'"
+          and by["104"]["filled"], str(by["104"]["clock"]))
+    check("من بطولتها وحدها (لا مباراةٌ بالأسماء نفسها من دوري آخر)", by["104"]["home"]["score"] != 7)
+    check("المنتهية: النتيجة بصاحب أرض ESPN والفائز", by["103"]["state"] == "post" and by["103"]["status"] == "STATUS_FULL_TIME"
+          and (by["103"]["home"]["score"], by["103"]["away"]["score"]) == (2, 0) and by["103"]["home"]["win"]
+          and not by["103"]["away"]["win"])
+    check("بين الشوطين، والاسم المختصر (UAE)", by["105"]["state"] == "in" and by["105"]["status"] == "STATUS_HALFTIME"
+          and T._key("UAE") == T._key("United Arab Emirates") and T._key("Türkiye") == "turkiye")
+    check("والقادمة لا تُمسّ، ويُسأل عن يوم المباريات وحده مرةً", by["106"]["state"] == "pre" and "filled" not in by["106"]
+          and asked == [time.strftime("%Y%m%d", time.gmtime(kick))], str(asked))
+    rec = {"on": True, "entries": []}
+    check("ولا تُفرز مسابقةٌ على نتيجة FotMob: تنتظر ESPN", T.contest.state_of(rec, by["103"]) == "closed"
+          and T.contest.state_of(rec, dict(by["103"], filled=False)) == "pending")
+    G2 = T.instance("gulf_fill_hub", **T.GULF)
+    G2._feed.get = lambda: ({"matches": ms, "groups": []}, time.time(), None)
+    G2._contests = lambda ms, now=None: {}
+    code, raw, _ = T.render_hub((G2,))
+    hub = raw.decode("utf-8")
+    check("وفي ودجت المتجر: النتيجة مباشرةً، والمصدر يذكر FotMob", code == 200
+          and re.search(r'class="match live" href="/gulf-cup/104-oman-kuwait".*?<b>1</b><i>-</i><b>1</b>', hub, re.S)
+          and "المصدر ESPN وFotMob" in hub)
+    G.fotmob_day = lambda ymd: (_ for _ in ()).throw(OSError("fotmob down"))
+    ms2 = [dict(m, home=dict(m["home"]), away=dict(m["away"]), ts=kick) for m in base if m["id"] == "104"]
+    G.fill(ms2)
+    check("وتعذّر FotMob لا يُسقط شيئًا: تبقى كما قالت ESPN", ms2[0]["state"] == "pre" and "filled" not in ms2[0])
+    asked.clear()
+    T.fotmob_day = fake_fotmob
+    T.fill([dict(m, ts=kick) for m in base if m["id"] == "104"])
+    check("ودوري الأمم (ESPN حيّة فيه) لا يسأل FotMob", asked == [])
+    G.fotmob_day = T.fotmob_day = real_fotmob
+
     print("\nودجت المتجر للبطولتين")
     G.channels = lambda: {"103": "AL KASS One"}
     T._feed.reset()

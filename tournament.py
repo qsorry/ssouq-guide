@@ -21,6 +21,7 @@
 """
 import datetime
 import functools
+import gzip
 import hashlib
 import importlib.util
 import json
@@ -29,6 +30,7 @@ import re
 import sys
 import time
 import unicodedata
+import urllib.request
 
 import contest
 import guide_pages
@@ -212,7 +214,80 @@ def load():
         g = by_team.get(m["home"]["name"])
         if m["group"] and g and by_team.get(m["away"]["name"]) is g and g["key"] != m["group"]:
             m["group"], m["stage"] = g["key"], g["name"]
+    fill(ms)
     return {"matches": ms, "groups": groups}
+
+
+# ---------- المباشر من FotMob حين تسكت ESPN ----------
+# كأس الخليج في ESPN بلا تغطية حيّة: مبارياتها تبقى «مجدولة» 0-0 بعد انطلاقها ولا تُكتب نتيجتها إلا بعد
+# نهايتها بزمن (29 سبتمبر 2026: عُمان والكويت 1-1 في الشوط الثاني وESPN تقول «مجدولة»). فالمباراة التي فات
+# موعدها وESPN لم تكتب حالها تُملأ حالها ونتيجتها ودقيقتها من FotMob (مباريات يومها في بطولات CUP["fotmob"]،
+# بمعرّف FotMob الأساسي)، وتعود ESPN المرجع متى كتبت. والمملوءة معلَّمة `filled` فلا تُفرز عليها مسابقة
+# (‏contest.state_of ينتظر نتيجة ESPN). وتعذّر FotMob لا يُسقط شيئًا: تبقى المباراة كما قالت ESPN.
+FOTMOB_API = os.environ.get("FOTMOB_API", "https://www.fotmob.com/api").rstrip("/")
+FILL_WINDOW = 24 * 3600                              # بعد الموعد: ما بقيت ESPN «مجدولة» يومًا كاملًا يُملأ
+FOTMOB_NAMES = {"uae": "unitedarabemirates"}        # أسماء FotMob المختصرة ← اسم ESPN
+
+
+def fotmob_day(ymd):
+    """مباريات يومٍ (‏YYYYMMDD بتوقيت غرينتش) من FotMob، بالوكيل الافتراضي وgzip كطلبات ESPN."""
+    req = urllib.request.Request(f"{FOTMOB_API}/data/matches?date={ymd}",
+                                 headers={"Accept": "application/json", "Accept-Encoding": "gzip"})
+    with urllib.request.urlopen(req, timeout=league.TIMEOUT) as r:
+        raw = r.read()
+        if (r.headers.get("Content-Encoding") or "").lower() == "gzip":
+            raw = gzip.decompress(raw)
+        return json.loads(raw.decode("utf-8"))
+
+
+def _key(name):
+    k = re.sub(r"[^a-z]", "", unicodedata.normalize("NFKD", str(name or "")).encode("ascii", "ignore").decode().lower())
+    return FOTMOB_NAMES.get(k, k)
+
+
+def fill(ms, now=None):
+    """يملأ من FotMob حال المباريات التي فات موعدها وESPN ما زالت تقول «مجدولة» (في مكانها)."""
+    ids = set(CUP.get("fotmob") or ())
+    now = time.time() if now is None else now
+    todo = [m for m in ms if m["state"] == "pre" and m["status"] == "STATUS_SCHEDULED" and m["time_ok"]
+            and m["ts"] <= now <= m["ts"] + FILL_WINDOW]
+    if not ids or not todo:
+        return
+    ymd = lambda ts: datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y%m%d")
+    days = {}
+    for d in sorted({ymd(m["ts"]) for m in todo}):
+        try:
+            days[d] = [x for lg in fotmob_day(d).get("leagues") or [] if lg.get("primaryId") in ids
+                       for x in lg.get("matches") or []]
+        except Exception:                            # شبكة، مهلة، أو شكلٌ غير متوقّع: تبقى كما قالت ESPN
+            days[d] = []
+    for m in todo:
+        eh, ea = _key(m["home"]["en"]), _key(m["away"]["en"])
+        for x in days[ymd(m["ts"])]:
+            st = x.get("status") or {}
+            try:
+                if st.get("cancelled") or not st.get("started") or abs(_ts(st["utcTime"]) - m["ts"]) > 900:
+                    continue
+                fh, fa = _key((x.get("home") or {}).get("name")), _key((x.get("away") or {}).get("name"))
+                if fh == eh or fa == ea:
+                    hs, as_ = x["home"].get("score"), x["away"].get("score")
+                elif fh == ea or fa == eh:                  # صاحب الأرض عند FotMob ضيفٌ عند ESPN
+                    hs, as_ = x["away"].get("score"), x["home"].get("score")
+                else:
+                    continue
+                hs, as_ = int(hs or 0), int(as_ or 0)
+            except (KeyError, TypeError, ValueError):
+                continue
+            m["home"]["score"], m["away"]["score"], m["filled"] = hs, as_, True
+            if st.get("finished") or st.get("awarded"):
+                m["state"] = "post"
+                m["status"] = "STATUS_FINAL_AET" if (st.get("reason") or {}).get("short") == "AET" else "STATUS_FULL_TIME"
+                m["home"]["win"], m["away"]["win"] = hs > as_, as_ > hs
+            else:
+                short = str((st.get("liveTime") or {}).get("short") or "").replace("‎", "").replace("’", "'")
+                m["state"], m["clock"] = "in", short
+                m["status"] = "STATUS_HALFTIME" if short == "HT" else "STATUS_IN_PROGRESS"
+            break
 
 
 def _hot(m, now=None):
@@ -644,7 +719,7 @@ def render():
                 cards.append(_ad("cup-ad-inline"))
         body = (_banner(ms, pz) + f'<nav class="ltabs" aria-label="أقسام الصفحة">{chips}</nav>' + "".join(cards)
                 + f'<p class="lsrc">آخر تحديث: <time datetime="{datetime.datetime.fromtimestamp(at, RIYADH).isoformat()}">'
-                f'{league._when(at)}</time> بتوقيت السعودية · يُحدَّث تلقائيًا · المصدر ESPN</p>')
+                f'{league._when(at)}</time> بتوقيت السعودية · يُحدَّث تلقائيًا · المصدر {_source(ms)}</p>')
     else:
         body = ('<section class="card"><p>تعذّر تحميل المباريات الآن، ونعيد المحاولة تلقائيًا. '
                 'حدّث الصفحة بعد دقائق.</p></section>' + _ad("cup-ad-inline"))
@@ -1018,6 +1093,11 @@ plan(Date.now()-(+card.getAttribute("data-at")||0)*1e3>poll()?2e3:poll());
 })();"""
 
 
+def _source(ms):
+    """سطر المصدر: ESPN، ومعها FotMob إن مُلئت منه مباراة (fill)."""
+    return "ESPN وFotMob" if any(m.get("filled") for m in ms) else "ESPN"
+
+
 def _live_attrs(ms):
     """سمات البطاقة للتحديث الحيّ: كل كم ثانية تسأل، ومتى رُسمت."""
     now = time.time()
@@ -1067,7 +1147,7 @@ def render_widget(theme=""):
 <small>{_esc(CUP['level'])} · {_esc(CUP['season'])}</small></span><span class="all">كل النتائج ←</span></a>
 {_banner(ms, pz, new_tab=True)}
 <div class="wcols">{body}</div>
-<p class="lsrc">يُحدَّث تلقائيًا · المصدر ESPN</p>
+<p class="lsrc">يُحدَّث تلقائيًا · المصدر {_source(ms)}</p>
 </section>
 </main>
 <script>
@@ -1159,7 +1239,7 @@ def render_hub(cups, theme=""):
 <div class="whead">{BALL}<span><b>مباريات اليوم</b><small>{_esc(_day_label(today))} · {_esc(names)}</small></span></div>
 {banner[1] if banner else ""}
 {body}
-<p class="lsrc">بتوقيت السعودية · يُحدَّث تلقائيًا · المصدر ESPN</p>
+<p class="lsrc">بتوقيت السعودية · يُحدَّث تلقائيًا · المصدر {_source(all_ms)}</p>
 </section>
 </main>
 <script>
@@ -1176,7 +1256,8 @@ GULF = dict(
     PATH="/gulf-cup",
     CUP=dict(code="global.gulf_cup", years=("2026",), name="كأس الخليج العربي", level="خليجي 27", season="2026",
              group="Group", knockout=("semifinals", "3rd-place-match", "final"), playoffs=None,
-             groups_word="المجموعتين", tv="AL KASS"),       # الكأس القطرية تنقل مبارياتها (One وTwo)
+             groups_word="المجموعتين", tv="AL KASS",        # الكأس القطرية تنقل مبارياتها (One وTwo)
+             fotmob=(329,)),                                # معرّف كأس الخليج في FotMob: المباشر حين تسكت ESPN (fill)
     RANK_ZONES={1: "sf", 2: "sf"},
     ZONES={"sf": {"label": "التأهل إلى نصف النهائي", "color": "#16A34A"}},
     UTM_CAMPAIGN="gulf-cup",
