@@ -358,7 +358,7 @@ function konList(more) {
     const bub = await ap.$eval('#cText', e => ({html: e.innerHTML, text: e.textContent, href: (e.querySelector('a') || {}).href}));
     check('المعاينة فقاعة واتساب: العريض عريض، والرابط رابط', bub.html.includes('<b>أضيف مؤخرًا في كون</b>')
           && bub.html.includes('<b>أفلام جديدة</b>') && bub.text.includes('Dune: Part Two (2024)') && bub.text.includes('Shogun · حلقة واحدة')
-          && bub.href === 'https://guide.ssouq.com/content/kon?t=new', bub.text.slice(0, 160));
+          && bub.href === 'https://guide.ssouq.com/content/kon?t=new&ref=wa', bub.text.slice(0, 160));
     check('وحجمها', (await ap.textContent('#cSize')).includes('فيلمان · مسلسلان · حلقتان'));
     check('بلا تمرير أفقي والمعاينة ظاهرة', await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth
           && document.querySelector('#cText').getBoundingClientRect().right <= innerWidth));
