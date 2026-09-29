@@ -14,8 +14,10 @@
   - الصفحة: الواجهة المتحرّكة، والأعداد، و«أضيف مؤخرًا»، وصفحة النوع والقسم والتصفية وصفحاتها، والبحث
     بالاسم وأين يوجد في السيرفرات الأخرى، ونافذة التفاصيل بمواسمها، والفهرسة للصفحة الرئيسية وحدها،
     ولا رابط ولا بيانات دخول ولا وسم من الملف، والفهرس القديم (النسخة الأولى).
+  - الصفحة بالإنجليزية (‏/en/content): نصوصها كلها وأعدادها وتواريخها وباقاتها، وhreflang للغتين، وزرّ اللغة بما في
+    الصفحة، والبحث وأين يوجد، و«لا محتوى» — ولا نصَّ عربيًّا فيها إلا أسماء الملف.
   - الصور: TMDB مباشرةً، وغيرها عبر خادمنا بلا العناوين الداخلية، وتخزينها بحدّ، وما تعذّر لا يُعاد قبل يوم.
-  - السيرفرات: الافتراضية الأربعة، والإضافة والتعديل والترتيب والمسح، والرابط مشفَّرًا ومخفيًّا،
+  - السيرفرات: الافتراضية الأربعة، والإضافة والتعديل (واسمه بالإنجليزية) والترتيب والمسح، والرابط مشفَّرًا ومخفيًّا،
     والسحب منه والفشل والدورة اليومية.
   - على خادم حيّ: الرفع (خامًا ومضغوطًا) وصلاحياته، والرابط من سيرفر Xtream وهمي، والصفحات والصور
     والواجهات، وخريطة الموقع، والنطاقان — والتنبيه يصل فعلًا ببريدٍ وهمي (SMTP) وخدمة واتساب وهمية.
@@ -23,6 +25,7 @@
 تشغيل:  python tests/test_content.py
 """
 import base64
+import datetime
 import email
 import email.policy
 import gzip
@@ -294,6 +297,20 @@ def unit_store():
     check("بلا رابط: مفتاحٌ يُولَّد", C.save_server(d, {"new": True, "name": "آخر"}) == "server-1")
     C.save_server(d, {"key": "najm", "name": "نجم", "buy": "https://ssouq.com/p1"})
     check("تعديل الاسم ورابط الشراء", C._server(d, "najm")["name"] == "نجم" and C._server(d, "najm")["buy"] == "https://ssouq.com/p1")
+    check("الاسم الإنجليزي: الافتراضية بأسمائها، وغيرها برابط صفحته", [C.en_name(s) for s in C.servers(d)]
+          == ["Kon", "Casper", "Smart", "Falcon", "Najm", "Server 1"] and C._server(d, "najm")["en"] == "",
+          [C.en_name(s) for s in C.servers(d)])
+    C.save_server(d, {"s": "najm", "name": "نجم", "en": "  Najm   TV ", "full": "NAJM TV", "buy": ""})
+    check("تعديلٌ بمفتاح s كما ترسله بطاقة السيرفر، ومعه اسمه بالإنجليزية", C._server(d, "najm")["en"] == "Najm TV"
+          and C.en_name(C._server(d, "najm")) == "Najm TV" and C._server(d, "najm")["full"] == "NAJM TV")
+    C.save_server(d, {"key": "najm", "name": "نجم", "full": "NAJM TV"})
+    check("وتعديلٌ بلا الاسم الإنجليزي يُبقيه", C._server(d, "najm")["en"] == "Najm TV")
+    C.save_server(d, {"key": "najm", "name": "نجم", "en": "", "full": "NAJM TV"})
+    check("وبلا اسمٍ إنجليزي: السطر تحته", C.en_name(C._server(d, "najm")) == "NAJM TV")
+    C.save_server(d, {"key": "najm", "name": "Najm", "en": "", "full": "NAJM TV"})
+    check("أو اسمه إن كان بحروفٍ لاتينية", C.en_name(C._server(d, "najm")) == "Najm")
+    check("وسيرفرٌ جديد لا يأخذ مفتاح s", C.save_server(d, {"new": True, "name": "ثالث", "s": "najm"}) == "server-2")
+    C.clear(d, "server-2", drop=True)
     C.move_server(d, "najm", -1)
     check("الترتيب", [s["key"] for s in C.servers(d)][3:5] == ["najm", "falcon"], [s["key"] for s in C.servers(d)])
     C.clear(d, "server-1", drop=True)
@@ -646,7 +663,7 @@ def unit_channel():
                                                 f"{R}• The Boys · الموسم 4 · 4 حلقات", f"{R}• قيامة أرطغرل · حلقتان"],
           block("🎞️ *حلقات ومواسم جديدة*"))
     check("ورابط «أضيف مؤخرًا» في صفحة السيرفر آخرًا", lines[-2:] == ["🔗 القائمة كاملة، وابحث باسم ما تريد:",
-                                                                   "https://guide.ssouq.com/content/casper?t=new"], lines[-2:])
+                                                                   "https://guide.ssouq.com/content/casper?t=new&ref=wa"], lines[-2:])
     check("وما قبل الفترة وبعدها لا يدخل", C.channel_text(d, ["casper"], T, T + 60)[0] == ""
           and "Too Old" not in text and "Hidden" not in text)
     check("والسيرفر غير المختار لا يدخل", C.channel_text(d, ["smart"], 0, T + 60)[0] == "")
@@ -661,8 +678,8 @@ def unit_channel():
     l3 = t3.split("\n")
     check("سيرفران: عنوانٌ عام، وقسمٌ لكلٍّ بترتيب الصفحة وأعداده ورابطه",
           l3[0] == "🆕 *أضيف مؤخرًا*" and l3.count(C.SEP) == 2 and l3.index("📡 *كاسبر*") < l3.index("📡 *سمارت*")
-          and "✨ 9 أفلام" in l3 and "🔗 القائمة كاملة: https://guide.ssouq.com/content/smart?t=new" in l3
-          and "🔗 القائمة كاملة: https://guide.ssouq.com/content/casper?t=new" in l3 and n3["movie"] == 13, t3[:300])
+          and "✨ 9 أفلام" in l3 and "🔗 القائمة كاملة: https://guide.ssouq.com/content/smart?t=new&ref=wa" in l3
+          and "🔗 القائمة كاملة: https://guide.ssouq.com/content/casper?t=new&ref=wa" in l3 and n3["movie"] == 13, t3[:300])
     check("وسطور كل قسمٍ أقلّ", t3.count(f"{R}• Film") == 5 and "…و4 أفلام غيرها" in t3, t3.count(f"{R}• Film"))
 
     print("القناة: ربطها ومنشورها في ساعته")
@@ -786,7 +803,7 @@ def unit_summary():
               and not built and not any(s["loading"] for s in after["servers"]), built)
         check("والرئيسية والتحويل وخريطة الموقع وقائمة السيرفرات كذلك",
               [s["key"] for s in C.brief(d)["servers"]] == ["smart", "falcon"] and C.first_key(d) == "smart"
-              and len(C.sitemap(d)) == 2 and C.has(d, "falcon") and not C.has(d, "kon")
+              and len(C.sitemap(d)) == 4 and C.has(d, "falcon") and not C.has(d, "kon")
               and P.render_missing(d, "kon")[0] == 404 and not built, built)
 
         print("وما لم يُبنَ بعد لا تنتظره")
@@ -1140,7 +1157,9 @@ def unit_render():
     b = C.brief(d)
     check("للرئيسية: السيرفرات وأعدادها", [s["key"] for s in b["servers"]] == ["smart", "falcon"]
           and b["servers"][0]["series"] == 9 and b["servers"][1]["movies"] == 650, b)
-    check("خريطة الموقع", C.sitemap(d) == [("/content/smart", "daily", "0.7"), ("/content/falcon", "daily", "0.7")])
+    check("خريطة الموقع: صفحة كل سيرفرٍ له محتوى، ثم الإنجليزية منها", C.sitemap(d) == [
+        ("/content/smart", "daily", "0.7"), ("/content/falcon", "daily", "0.7"),
+        ("/en/content/smart", "daily", "0.6"), ("/en/content/falcon", "daily", "0.6")], C.sitemap(d))
 
     print("فهرسٌ من النسخة الأولى")
     C._write(C._cat_path(d, "kon"), {
@@ -1167,6 +1186,161 @@ def unit_render():
     check("«أضيف»: اليوم وأمس ومنذ", [P._ago(now - x * 86400, now) for x in (.2, 1.5, 2, 3, 11, 14, 60, 400, 800)]
           == ["اليوم", "أمس", "منذ يومين", "منذ 3 أيام", "منذ أسبوع", "منذ أسبوعين", "منذ شهرين", "منذ سنة", "منذ سنتين"]
           and P._ago(0) == "")
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_render_en():
+    print("الصفحة الإنجليزية (‏/en/content)")
+    d = fresh()
+    seed(d)
+    seed(d, "falcon", "#EXTM3U\n" + entry("Only In Falcon S01 E01", "Falcon Series", "series", 1)
+         + entry("Breaking Bad S05 E01", "Falcon Series", "series", 2) + big(650))
+    code, body, age = P.render(d, "smart", {}, "en")
+    html = body.decode("utf-8")
+    check("200 ومخزَّنة عشر دقائق، ومن اليسار", code == 200 and age == 600 and '<html lang="en" dir="ltr">' in html)
+    check("العنوان والوصف بالإنجليزية وبالأعداد",
+          "<title>Smart subscription content: series with their seasons, movies and channels | Smart Souq</title>" in html
+          and "9 series with their seasons, 4 movies and 5 channels. Search any series or movie by name, see each series’" in html
+          and '<meta property="og:locale" content="en_US">' in html and '<meta property="og:site_name" content="Smart Souq">' in html)
+    check("تُفهرس بـ canonical لها، وhreflang للغتين", 'content="index, follow' in html
+          and '<link rel="canonical" href="https://guide.ssouq.com/en/content/smart">' in html
+          and '<link rel="alternate" hreflang="ar" href="https://guide.ssouq.com/content/smart">' in html
+          and '<link rel="alternate" hreflang="en" href="https://guide.ssouq.com/en/content/smart">' in html
+          and '<link rel="alternate" hreflang="x-default" href="https://guide.ssouq.com/content/smart">' in html)
+    check("السيرفرات بأسمائها الإنجليزية وروابط الإنجليزية", '<a href="/en/content/smart" aria-current=page><img class="lg" ' in html
+          and "<b>Smart</b><small>MR7 TV</small>" in html and '<a href="/en/content/falcon">' in html
+          and "<b>Falcon</b><small>FALCON TV PRO</small>" in html and '<span class="lbl">Server:</span>' in html)
+    check("الرأس: الأنواع و«New» والبحث، وزرّ العربية", '<a href="/en/content/smart" class=home aria-current=page>Home</a>' in html
+          and '<a href="/en/content/smart?t=series">Series</a>' in html and '<a href="/en/content/smart?t=new">New</a>' in html
+          and '<form class="search" role="search" action="/en/content/smart" method="get">' in html
+          and 'placeholder="Search by series or movie name…"' in html
+          and '<a class="lang" href="/content/smart" hreflang="ar" lang="ar">' in html and "العربية</a>" in html)
+    check("خانات الأعداد", all(f"<b>{n}</b><small>{w}</small>" in html for n, w in
+                               (("4", "movies"), ("9", "series"), ("5", "channels"), ("13", "episodes"), ("11", "seasons"))))
+    check("تبويبات الأنواع بأعدادها", "Series <small>9</small></a>" in html and "Movies <small>4</small></a>" in html
+          and "Channels <small>5</small></a>" in html)
+    check("الصفوف كما بالعربية وعناوينها بالإنجليزية", titles(section(html, "Recently added movies"))
+          == ["Horror Night", "الفيل الأزرق ج2", "Love, Death &amp; Robots: The Movie", "The Batman"]
+          and "Breaking Bad" in titles(section(html, "New series and new episodes"))
+          and titles(section(html, "Recently added channels")) == ["beIN SPORTS 1", "AL Jazeera", "MBC 1"]
+          and "<h2>VOD | English Movies <small>· Movie</small></h2>" in html and "View all (2)" in html
+          and '<span class="kick"><svg' in html and "Recently added · Movie</span>" in html and ">View details</button>" in html)
+    bb = next(x for x in cards(html) if x["n"] == "Breaking Bad")
+    check("النافذة: المواسم وحلقات كل موسم بالإنجليزية", bb["ss"] == "3 seasons · 4 episodes"
+          and bb["sc"] == ["Season 1 (2 episodes)", "Season 2 (1 episode)", "Season 3 (1 episode)"], bb)
+    check("والبطاقة بعدد مواسمه", '<h3 dir="auto">Breaking Bad</h3><p class="sub">3 seasons</p>' in html)
+    check("وبلا موسم: حلقاته وحدها", next(x for x in cards(html) if x["n"] == "قيامة أرطغرل")["ss"] == "1 episode")
+    ad = html[html.index('<aside class="ad"'):html.index("</aside>", html.index('<aside class="ad"'))]
+    check("الإعلان: باقات سمارت بأسمائها الإنجليزية وأسعارها وحملته", 'aria-label="Ad: Smart subscription"' in ad
+          and "<h2>All this content in a Smart subscription</h2>" in ad
+          and "9 series with their seasons, 4 movies and 5 channels — one-time payment with no auto-renewal" in ad
+          and '>Subscribe<span class="wide"> to Smart</span></a>' in ad and ">Help me choose</a>" in ad
+          and "<b>Smart · Entertainment year</b><small>Movies &amp; series</small>" in ad
+          and "<b>Smart · Full year</b><small>Best seller</small>" in ad and "<b>Smart · 30 months</b><small>Best value</small>" in ad
+          and "<em>46 SAR<s>92</s></em>" in ad and ad.count("utm_campaign=content-ad") == 4, ad[:400])
+    check("والجانب: باقاته بحملة الصفحة، و«Subscribe to Smart»", "<h2>Subscribe to Smart</h2>" in html
+          and "p2091471394?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content" in html
+          and ">All plans</a>" in html and 'data-name="Smart"' in html and html.count('<span class="n">') == 6)
+    check("التذييل", 'Smart Souq guide</a> → <a href="/en/content/smart">Smart content</a>' in html
+          and "— from the subscription’s own playlist · Last updated: " in html and "(Saudi time)" in html)
+    shown = re.sub(r"<style>.*?</style>|<script[^>]*>.*?</script>", "", html, flags=re.S)   # بلا السكربت: فيه نصوص اللغتين
+    ui = ("الرئيسية", "أضيف مؤخرًا", "عرض الكل", "اشترك", "ر.س", "بمواسمها", "تصفية", "إعلان", "السيرفر:", "مواسم", "حلقة",
+          "دليل سمارت سوق", "التالي", "السابق", "منذ")
+    check("ولا نصَّ عربيًّا من الصفحة نفسها (أسماء الملف وأقسامه كما هي)", not [w for w in ui if w in shown]
+          and "مسلسلات رمضان 2026" in shown, [w for w in ui if w in shown])
+    check("ولا رابط ولا بيانات دخول ولا وسم من الملف", "pass456" not in html and "panel.example" not in html
+          and "<script>alert(1)" not in html)
+    ar = page(d, "smart")[1]
+    check("والعربية: زرّ English إليها، وhreflang للغتين", '<a class="lang" href="/en/content/smart" hreflang="en" lang="en">' in ar
+          and "English</a>" in ar and '<link rel="alternate" hreflang="en" href="https://guide.ssouq.com/en/content/smart">' in ar
+          and '<html lang="ar" dir="rtl">' in ar and '<meta property="og:locale:alternate" content="en_US">' in ar)
+
+    print("زرّ اللغة يحمل الصفحة نفسها")
+    code, html = page(d, "smart", t="movie", view="grid", y="2022", sort="az")
+    check("من العربية", '<a class="lang" href="/en/content/smart?t=movie&amp;view=grid&amp;y=2022&amp;sort=az" hreflang="en"' in html)
+    code, body, _ = P.render(d, "smart", {"q": "باب", "p": "", "g": None}, "en")
+    check("ومن الإنجليزية ببحثها", '<a class="lang" href="/content/smart?q=%D8%A8%D8%A7%D8%A8" hreflang="ar"' in body.decode())
+
+    print("صفحات الإنجليزية الأخرى")
+    en = lambda key="smart", **q: (lambda r: (r[0], r[1].decode("utf-8")))(P.render(d, key, q, "en"))  # noqa: E731
+    code, html = en(t="series")
+    check("صفحة النوع: التصفية بالإنجليزية ولا تُفهرس ولا hreflang", code == 200 and "Filter series</h2>" in html
+          and '<label for="fg">Category</label>' in html and '<option value="" selected>All categories</option>' in html
+          and ">Apply filter</button>" in html and '<option value="new" selected>Recently added</option>' in html
+          and 'content="noindex, follow"' in html and 'rel="canonical"' not in html and 'rel="alternate"' not in html
+          and '<a href="/en/content/smart?t=series" aria-current=page>Series</a>' in html)
+    drama = C._view(d, "smart")[1]["kinds"]["series"][0]
+    code, html = en(t="series", g=drama["id"])
+    check("صفحة القسم", code == 200 and "<h1>SERIES | Drama</h1>" in html and '<span class="sub">2 series</span>' in html)
+    code, html = en(t="series", g="0000000000")
+    check("وقسمٌ لم يعد موجودًا: 404", code == 404 and "This category no longer exists — choose one of the current categories." in html)
+    code, html = en(t="movie", all="1")
+    check("كل الأقسام", code == 200 and "<h1>Movie categories</h1>" in html and "3 categories" in html
+          and "<small>2 movies</small>" in html and "<small>1 movie</small>" in html)
+    code, html = en(t="new")
+    check("أضيف مؤخرًا", code == 200 and "Recently added to Smart</h1>" in html
+          and "Newest first, in the order they were added to the server" in html and titles(section(html, "Channels")))
+    code, html = en(t="movie", view="grid", y="2022")
+    check("التصفية بالسنة", "<h1>Movies in Smart</h1>" in html and "1 movie · 2022" in html)
+    check("وبلا نتائج", "No results with this filter — widen it or choose “All”." in en(t="movie", view="grid", y="1999")[1])
+    fbig = C._view(d, "falcon")[1]["kinds"]["movie"][0]["id"]
+    code, html = en("falcon", t="movie", g=fbig, p="2")
+    check("الصفحات", "Page 2 of 11" in html and f'href="/en/content/falcon?t=movie&amp;g={fbig}&amp;p=3">Next →</a>' in html
+          and f'href="/en/content/falcon?t=movie&amp;g={fbig}&amp;p=1">← Previous</a>' in html and 'aria-label="Pages"' in html)
+
+    print("البحث بالإنجليزية")
+    r = P.api_search(d, "smart", "breaking", "en")["html"]
+    check("النتائج وأين يوجد أيضًا", "Results for “breaking” in Smart <small>1 result</small>" in r
+          and "Series <small>(1)</small>" in r and titles(r) == ["Breaking Bad"]
+          and 'Also on: <a href="/en/content/falcon?q=breaking"><img class="lg sm" ' in r and "Falcon (1)</a>" in r, r[:300])
+    r = P.api_search(d, "smart", "only in falcon", "en")["html"]
+    check("وما ليس هنا", "No results for “only in falcon” in Smart" in r and "But it’s on: " in r and "Falcon (1)" in r)
+    r = P.api_search(d, "smart", "ياب الحارة", "en")["html"]
+    check("والتصحيح", titles(r) == ["باب الحارة"] and "Results for “باب الحارة” in Smart" in r
+          and "No exact match for “ياب الحارة”, so these are the results for the closest name." in r, r[:300])
+    r = P.api_search(d, "smart", "mbc", "en")["html"]
+    check("والقنوات في تبويبها", "Search by series or movie name: try part of the name, or type it in English or Arabic" in r
+          and '— channels are in <a class="link" href="/en/content/smart?t=live">their own tab</a>.' in r, r[-250:])
+    check("والواسع", "610 more — type the name more precisely." in P.api_search(d, "falcon", "film", "en")["html"])
+    check("ولغةٌ غير معروفة: العربية", "نتائج «breaking» في سمارت" in P.api_search(d, "smart", "breaking", "fr")["html"])
+    code, html = en(q="breaking")
+    check("وبلا سكربت: ?q= على الصفحة نفسها", code == 200 and '<div id="cres" aria-live="polite"><section class="results">'
+          '<div class="rh"><h2>Results for' in html and 'content="noindex, follow"' in html)
+
+    print("لا محتوى بالإنجليزية")
+    code, body = P.render_missing(d, "kon", "en")
+    body = body.decode()
+    check("404 تدلّ على غيره بالإنجليزية", code == 404 and '<html lang="en" dir="ltr">' in body and "noindex" in body
+          and "<title>Subscription content | Smart Souq</title>" in body and 'href="/en/content/smart"' in body
+          and "Smart content</a>" in body and "This server’s content hasn’t been published yet." in body
+          and '<a class="lang" href="/content/kon" hreflang="ar"' in body)
+    check("وسيرفرٌ لا وجود له", P.render(d, "nope", {}, "en")[0] == 404
+          and '<a class="lang" href="/content" hreflang="ar"' in P.render_missing(d, "nope", "en")[1].decode())
+
+    print("الإنجليزية: التاريخ والباقات والاسم")
+    now = time.time()
+    check("«Added»: today, yesterday, … ago", [P._ago(now - x * 86400, now, P.EN) for x in (.2, 1.5, 2, 3, 11, 14, 60, 400, 800)]
+          == ["today", "yesterday", "2 days ago", "3 days ago", "a week ago", "2 weeks ago", "2 months ago", "a year ago",
+              "2 years ago"])
+    t0 = datetime.datetime(2026, 9, 29, 21, 5, tzinfo=datetime.timezone(datetime.timedelta(hours=3))).timestamp()
+    check("آخر تحديث بتوقيت السعودية", P._when(t0, P.EN) == "Sep 29, 2026, 9:05 PM" and P._when(t0 - 20.5 * 3600, P.EN)
+          == "Sep 29, 2026, 12:35 AM" and P._when(t0) == "29 سبتمبر 2026، 9:05 م", P._when(t0, P.EN))
+    check("المدّة", [P._dur_en(x) for x in ("24 ساعة", "شهر", "3 أشهر", "15 شهرًا", "سنتان", "سنة", "٦ أشهر", "")]
+          == ["24 hours", "1 month", "3 months", "15 months", "2 years", "1 year", "6 months", ""])
+    cat = P._catalog()
+    check("اسم الباقة ووسمها", [P._plan(cat[i], P.EN) for i in ("p484498871", "p1212753121", "p1149343560", "p1233297791")]
+          == [("Falcon · 15 months for 2 devices", "2 devices"), ("Smart · 1 month for Samsung & LG", "Shortest"),
+              ("Smart · 1-day trial", "Try it first"), ("Falcon · 6 months", "6 months")]
+          and P._plan(cat["p479880741"]) == ("فالكون · 15 شهرًا", "الأكثر توازنًا"))
+    check("ولا حرفَ عربيًّا في باقات CATALOG كلها بالإنجليزية", not [p["id"] for p in cat.values()
+                                                                 if C._ARABIC.search(" ".join(P._plan(p, P.EN)))])
+    C.save_server(d, {"key": "smart", "name": "سمارت", "en": "MR7", "full": "MR7 TV"})
+    html = en()[1]
+    check("اسم السيرفر بالإنجليزية من صفحة المدير: في الرأس والإعلان وباقاته", "<b>MR7</b><small>MR7 TV</small>" in html
+          and "All this content in a MR7 subscription" in html and "<b>MR7 · Full year</b>" in html)
+    C.save_server(d, {"key": "smart", "name": "سمارت", "en": "", "full": "MR7 TV"})
+    html = en()[1]
+    check("وبلا اسمٍ: السطر تحته، ولا يُكرَّر", "<b>MR7 TV</b></span></a>" in html and "<small>MR7 TV</small>" not in html)
     shutil.rmtree(d, ignore_errors=True)
 
 
@@ -1658,6 +1832,36 @@ def live():
               and 'id="content-entry" href="/content" hidden' in home and "/api/content" in home
               and 'href="/content"' in home)
 
+        print("الصفحة الإنجليزية (‏/en/content)")
+        try:
+            op.open(base + "/en/content?q=x", timeout=10)
+            check("‏/en/content يحوّل", False)
+        except urllib.error.HTTPError as e:
+            check("‏/en/content يحوّل إلى أوّل سيرفرٍ له محتوى ومعه البحث", e.code == 302
+                  and e.headers["Location"] == "/en/content/kon?q=x", e.headers.get("Location"))
+        code, raw, hd = req(base + "/en/content/smart")
+        html = raw.decode()
+        check("صفحة السيرفر بالإنجليزية", code == 200 and '<html lang="en" dir="ltr">' in html
+              and "Smart subscription content" in html and "public, max-age=600" in hd.get("Cache-Control", "")
+              and "Netflix" not in html and all(f'href="/en/content/{k}"' in html for k in ("kon", "smart", "falcon")))
+        check("وصفحاتها الأخرى", req(base + "/en/content/smart/")[0] == 200
+              and "Recently added to Smart" in req(base + "/en/content/smart?t=new")[1].decode()
+              and req(base + "/en/content/smart?t=series&g=nothing")[0] == 404
+              and req(base + "/en/content/nope")[0] == 404 and req(base + "/en/content/smart/extra")[0] == 404
+              and req(base + "/en/content/falcon/img/" + "0" * 16)[0] == 404
+              and req(base + "/en/content/smart", method="HEAD")[0] == 200)
+        r = json.loads(req(base + "/api/content/search?s=kon&lang=en&q=breaking")[1])["html"]
+        check("والبحث بالإنجليزية", "No results for “breaking” in Kon" in r and "But it’s on: " in r
+              and 'href="/en/content/falcon?q=breaking"' in r, r[:200])
+        sm = req(base + "/sitemap.xml")[1].decode()
+        check("وفي خريطة الموقع", "/en/content/smart</loc>" in sm and "/en/content/kon</loc>" in sm
+              and "/en/content/casper" not in sm)
+        code, st = jpost(adm + "/api/content/admin/server", {"s": "smart", "name": "سمارت", "en": "Smart TV", "full": "MR7 TV",
+                                                            "buy": ""})
+        check("تعديل السيرفر من بطاقته (مفتاحه في s) ومعه اسمه بالإنجليزية", code == 200
+              and next(s for s in st["servers"] if s["key"] == "smart")["en_name"] == "Smart TV"
+              and "<b>Smart TV</b>" in req(base + "/en/content/smart")[1].decode(), st.get("error"))
+
         print("النطاقان")
         code, raw, _ = req(base + "/content", auth=True, headers={"Host": "admin.ssouq.com"})
         check("نطاق الأداة: ‏/content صفحة المدير", code == 200 and "محتوى السيرفرات".encode() in raw)
@@ -1873,7 +2077,7 @@ def live_channel():
         text = d["preview"]["text"]
         check("المعاينة: المنشور كما سيُنشر", code == 200 and text.startswith("🆕 *أضيف مؤخرًا في كاسبر*")
               and "Dune: Part Two (2024)" in text and "Shogun · حلقتان" in text
-              and "Breaking Bad · المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new")
+              and "Breaking Bad · المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new&ref=wa")
               and len(rd("GET", "/_test/log")["sent"]) == 0, text)
         code, d = jpost(adm + "/api/content/admin/channel-preview", {"servers": ["smart"]})
         check("وبسيرفراتٍ لم تُحفظ", code == 200 and d["preview"]["text"] == "")
@@ -1916,6 +2120,7 @@ def main():
     unit_channel()
     unit_summary()
     unit_render()
+    unit_render_en()
     unit_images()
     unit_fetch()
     unit_enrich()

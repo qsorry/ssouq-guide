@@ -53,6 +53,7 @@ import crypto_store
 import guide_pages
 
 PATH = "/content"
+PATH_EN = "/en/content"      # الصفحة نفسها بالإنجليزية (‏content_page)، وصورها من ‏PATH
 DIR = "content"
 SETTINGS = "settings.json"
 KINDS = ("series", "movie", "live")
@@ -68,13 +69,14 @@ N_ITEMS = ("عنصر واحد", "عنصران", "عناصر", "عنصرًا", "�
 N_OF = {"series": N_SERIES, "movie": N_MOVIES, "live": N_CHANNELS}
 
 # السيرفرات كما يسمّيها المتجر، لكلٍّ ملف M3U. المفتاح آخر رابط صفحته (‏/content/smart) ولا يتغيّر،
-# والاسم وما تحته يُعدَّلان من صفحة المدير، ويُضاف غيرها منها.
+# والاسم وما تحته واسمه بالإنجليزية (‏en، للصفحة الإنجليزية) تُعدَّل من صفحة المدير، ويُضاف غيرها منها.
 DEFAULT_SERVERS = (
-    {"key": "kon", "name": "كون", "full": ""},
-    {"key": "casper", "name": "كاسبر", "full": "CASPER FLIX"},
-    {"key": "smart", "name": "سمارت", "full": "MR7 TV"},
-    {"key": "falcon", "name": "فالكون", "full": "FALCON TV PRO"},
+    {"key": "kon", "name": "كون", "full": "", "en": "Kon"},
+    {"key": "casper", "name": "كاسبر", "full": "CASPER FLIX", "en": "Casper"},
+    {"key": "smart", "name": "سمارت", "full": "MR7 TV", "en": "Smart"},
+    {"key": "falcon", "name": "فالكون", "full": "FALCON TV PRO", "en": "Falcon"},
 )
+EN_NAMES = {s["key"]: s["en"] for s in DEFAULT_SERVERS}   # وللسيرفر الافتراضي المحفوظ قبل الاسم الإنجليزي
 MAX_SERVERS = 12
 # باقات بطاقة الاشتراك تحت المحتوى، من CATALOG في index.html (مصدر الباقات الوحيد) بترتيبها —
 # لسيرفرٍ له باقاتٌ هناك. وغيرها يأخذ «رابط الشراء» من صفحة المدير، أو زرّي الدليل.
@@ -606,7 +608,9 @@ def _load(data_dir):
             continue
         seen.add(k)
         out.append({"key": k, "name": str(x.get("name") or k).strip()[:40],
-                    "full": str(x.get("full") or "").strip()[:40], "buy": str(x.get("buy") or "").strip()[:500],
+                    "full": str(x.get("full") or "").strip()[:40],
+                    "en": str((x.get("en") if "en" in x else EN_NAMES.get(k)) or "").strip()[:40],
+                    "buy": str(x.get("buy") or "").strip()[:500],
                     "url": x.get("url") if isinstance(x.get("url"), str) else "",
                     "hidden": [h for h in (x.get("hidden") or []) if isinstance(h, str)][:5000],
                     "try_at": _float(x.get("try_at")), "error": str(x.get("error") or "")[:300]})
@@ -641,6 +645,17 @@ def save_alert_to(data_dir, mail, wa):
 def servers(data_dir):
     with _lock:
         return _load(data_dir)
+
+
+_ARABIC = re.compile(r"[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\ufeff]")
+
+
+def en_name(srv):
+    """اسم السيرفر في الصفحة الإنجليزية: ما كتبه المدير، أو اسمه إن كان بحروفٍ لاتينية، أو السطر تحته («FALCON TV PRO»)،
+    أو رابط صفحته («najm» ← Najm)."""
+    name = srv.get("name") or ""
+    return (srv.get("en") or ("" if _ARABIC.search(name) else name) or srv.get("full")
+            or srv["key"].replace("-", " ").title())
 
 
 def _server(data_dir, key):
@@ -889,15 +904,17 @@ def set_hidden(data_dir, key, gid, hidden):
 
 
 def save_server(data_dir, form):
-    """يضيف سيرفرًا (بلا key قائم) أو يعدّل اسمه وما تحته ورابط شرائه."""
+    """يضيف سيرفرًا (‏new، والمفتاح المطلوب في key) أو يعدّل اسمه وما تحته واسمه بالإنجليزية ورابط شرائه (المفتاح
+    في key، أو في s كما ترسله بطاقة السيرفر في صفحة المدير)."""
     name = " ".join(str(form.get("name") or "").split())[:40]
     full = " ".join(str(form.get("full") or "").split())[:40]
+    en = " ".join(str(form.get("en") or "").split())[:40]
     buy = str(form.get("buy") or "").strip()[:500]
     if buy and not buy.lower().startswith(("http://", "https://")):
         raise ValueError("رابط الشراء يبدأ بـ https://")
     if not name:
         raise ValueError("اكتب اسم السيرفر")
-    raw_key = str(form.get("key") or "").strip()
+    raw_key = str(form.get("key") or ("" if form.get("new") else form.get("s")) or "").strip()
     key = key_ok(raw_key)
     with _lock:
         rows = _load(data_dir)
@@ -910,13 +927,13 @@ def save_server(data_dir, form):
                 raise ValueError(f"الحد {MAX_SERVERS} سيرفرًا")
             taken = {r["key"] for r in rows}
             key = key or next(f"server-{i}" for i in range(1, 100) if f"server-{i}" not in taken)
-            rows.append({"key": key, "name": name, "full": full, "buy": buy, "url": "", "hidden": [],
+            rows.append({"key": key, "name": name, "full": full, "en": en, "buy": buy, "url": "", "hidden": [],
                          "try_at": 0.0, "error": ""})
         else:
             r = next((r for r in rows if r["key"] == key), None)
             if not r:
                 raise ValueError("سيرفر غير معروف")
-            r.update(name=name, full=full, buy=buy)
+            r.update(name=name, full=full, buy=buy, **({"en": en} if "en" in form else {}))
         _save(data_dir, rows)
         return key
 
@@ -1746,7 +1763,9 @@ def brief(data_dir, wait=True):
 
 
 def sitemap(data_dir):
-    return [(f"{PATH}/{s['key']}", "daily", "0.7") for s in servers(data_dir) if has(data_dir, s["key"], s)]
+    """صفحة كل سيرفرٍ له محتوى، ثم الإنجليزية منها."""
+    keys = [s["key"] for s in servers(data_dir) if has(data_dir, s["key"], s)]
+    return [(f"{PATH}/{k}", "daily", "0.7") for k in keys] + [(f"{PATH_EN}/{k}", "daily", "0.6") for k in keys]
 
 
 def _adult_view(data_dir, key):
@@ -1771,7 +1790,8 @@ def admin_state(data_dir):
         hidden = set(s["hidden"])
         url = crypto_store.decrypt(s["url"], data_dir) if s["url"] else ""
         out.append({
-            "key": s["key"], "name": s["name"], "full": s["full"], "buy": s["buy"], "page": f"{PATH}/{s['key']}",
+            "key": s["key"], "name": s["name"], "full": s["full"], "en": s["en"], "en_name": en_name(s), "buy": s["buy"],
+            "page": f"{PATH}/{s['key']}", "page_en": f"{PATH_EN}/{s['key']}",
             "has": bool(m.get("has")), "at": m.get("at", 0), "source": cat.get("source", ""), "label": cat.get("label", ""),
             "counts": m.get("counts"), "entries": cat.get("entries", 0), "n": cat.get("n", {}),
             "skipped": cat.get("skipped", {}), "api": cat.get("api"), "old": bool(cat.get("old")), "loading": not fresh,
@@ -2100,7 +2120,7 @@ def channel_text(data_dir, keys, since, until, now=None):
         if more:
             out += ["", "🎞️ *حلقات ومواسم جديدة*"] + _lines(sorted(more.values(), key=rank_more), lim["eps"],
                                                              _more_line, N_SERIES)
-        link = f"{guide_pages.SITE}{PATH}/{s['key']}?t=new"
+        link = f"{guide_pages.SITE}{PATH}/{s['key']}?t=new&ref=wa"    # ref=wa: زيارات القناة باسمها في الإحصائيات
         out += ["", "🔗 القائمة كاملة، وابحث باسم ما تريد:", link] if single else ["", f"🔗 القائمة كاملة: {link}"]
     return "\n".join(out), total
 

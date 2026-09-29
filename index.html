@@ -1523,8 +1523,30 @@ function paint(){
 }
 
 let pushes = 0;                       // كم خطوة أضفناها لسجل المتصفح في هذه الجلسة
+let sqLast = "";
+function sqStep(){                    // الإحصائيات: خطوات المسارين، مرةً لكل خطوةٍ جديدة (لا مع كل رسم)
+  let k = "";
+  switch (state.screen) {
+    case "buy-taste": k = "buy_start"; break;
+    case "buy-done":  k = "buy_result:" + state.plan; break;
+    case "m3u":       k = "m3u_open"; break;
+    case "plans":     k = "plans_open"; break;
+    case "activate": {
+      if (!state.sub) { k = "activate_start"; break; }
+      if (!state.dev || SUBS[state.sub].maintenance || (devs()[state.dev].variants && !state.variant)) break;
+      const where = state.sub + "/" + state.dev + (state.variant ? "/" + state.variant : "");
+      if (state.i >= steps().length) k = "activate_done:" + where;
+      else if (state.i === 0) k = "activate_device:" + where;
+    }
+  }
+  if (!k || k === sqLast) return;
+  sqLast = k;
+  const i = k.indexOf(":");
+  if (window.sq) i < 0 ? sq(k) : sq(k.slice(0, i), k.slice(i + 1));
+}
 function render(push){
   paint();
+  sqStep();
   const h = hashFor(), url = h || location.pathname + location.search;   // نُبقي ?embed=1 عند العودة للرئيسية
   if (push && h !== location.hash) { history.pushState(null, "", url); pushes++; }
   else history.replaceState(null, "", url);
@@ -1618,6 +1640,7 @@ function wireM3U(){
     link.value = host + "/get.php?username=" + encodeURIComponent(u) + "&password=" + encodeURIComponent(p) + "&type=m3u_plus&output=ts";
     out.hidden = false; msg.textContent = "انسخ الرابط والصقه في المشغّل الذي تستخدمه."; link.focus(); link.select();
     let counted = false; try { counted = localStorage.getItem("m3u_counted") === "1"; } catch (_) {}
+    if (window.sq) sq("m3u_generate");
     if (!counted) fetch("/api/m3u-generated", { method: "POST" }).then(r => r.json()).then(d => { show(d.m3u); try { localStorage.setItem("m3u_counted", "1"); } catch (_) {} }).catch(() => {});
   });
   $("#m3u-copy").addEventListener("click", async () => {
