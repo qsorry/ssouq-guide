@@ -97,6 +97,17 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check('result page opens the VIDAA activation steps',
       new URL(page.url()).hash === '#activate/smart/vidaa' && (await h2()) === 'حمّل تطبيق SS IPTV من متجر VIDAA');
 
+    console.log('== video ==');
+    await open('#activate/smart/vidaa');
+    const vid = await page.$eval('#view .vid video', v => ({ src: v.getAttribute('src'), poster: v.getAttribute('poster'),
+      playsinline: v.hasAttribute('playsinline'), controls: v.controls, preload: v.getAttribute('preload') }));
+    check('the SS IPTV video heads the install step', vid.src === '/static/video/ssiptv-ar.mp4' && vid.poster === '/static/video/ssiptv-ar.webp'
+      && vid.playsinline && vid.controls && vid.preload === 'none', JSON.stringify(vid));
+    const range = await page.evaluate(async () => { const r = await fetch('/static/video/ssiptv-ar.mp4', { headers: { Range: 'bytes=0-1' } });
+      return [r.status, r.headers.get('content-type'), r.headers.get('content-range'), (await r.arrayBuffer()).byteLength]; });
+    check('… served in byte ranges, as iPhone Safari needs', range[0] === 206 && range[1] === 'video/mp4' && /^bytes 0-1\/\d+$/.test(range[2]) && range[3] === 2, range.join(' '));
+    check('… and its poster loads', (await page.$eval('#view .vid video', v => fetch(v.poster).then(r => r.ok))));
+
     console.log('== links and codes ==');
     await open('#activate/smart/vidaa/2');
     check('M3U step opens the M3U tool in a new tab',

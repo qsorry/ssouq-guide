@@ -244,6 +244,9 @@ a.entry{text-decoration:none}
 .dev:hover,.dev:focus-visible{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 7%,transparent)}
 .step img{width:100%;max-height:360px;object-fit:contain;border-radius:12px;background:#0b1520;margin:12px 0}
 .step img[src$="windows-badge.png"]{max-height:90px;background:#fff;padding:8px}
+.vid{margin:4px 0 16px}
+.vid video{display:block;width:100%;max-width:340px;height:auto;aspect-ratio:9/16;margin:0 auto;border-radius:16px;background:#06222F}
+.vid .sub{text-align:center;margin:8px 0 0}
 .step ol{padding-right:20px;margin:8px 0}
 .step li{margin-bottom:6px}
 .fields{display:grid;gap:6px;margin:10px 0}
@@ -619,9 +622,14 @@ const SS_IPTV_STEPS = [
       + '<div class="note">تتوقف الصورة بعد دقائق من التشغيل؟ عدّل الرابط من زر القلم: غيّر آخره من <code dir="ltr">output=ts</code> '
       + 'إلى <code dir="ltr">output=m3u8</code>، ثم <b dir="ltr">OK</b> و <b dir="ltr">SAVE</b>.</div>' }
 ];
+// فيديو الخطوات السبع بعناوين عربية وتكبير على كل زر — أول خطوة التحميل في المسارين.
+// عموديٌّ للجوال، ومصدره في tools/video_ssiptv (يُعاد إنتاجه منه إن تغيّرت خطوة).
+const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4" poster="/static/video/ssiptv-ar.webp" '
+  + 'controls playsinline preload="none" width="720" height="1280"></video>'
+  + '<p class="sub">شاهد الخطوات كلها في دقيقة وربع، ثم اتبعها هنا خطوة خطوة.</p></div>';
 // خطوة التحميل: شاشات سامسونج و LG
 const SS_IPTV_GET_WEBOS = { title: "حمّل تطبيق SS IPTV",
-  html: APP("ss-iptv", "SS IPTV", "مجاني · من فريق SS IPTV")
+  html: SS_IPTV_VIDEO + APP("ss-iptv", "SS IPTV", "مجاني · من فريق SS IPTV")
     + '<p><b>شاشات LG:</b> افتح متجر التطبيقات في الشاشة (<b dir="ltr">LG Content Store</b>، واسمه في الشاشات الأحدث <b dir="ltr">Apps</b>)، '
     + 'وابحث عن <b dir="ltr">SS IPTV</b> — المطوّر <b dir="ltr">SS IPTV Team</b> — وحمّله. متوفر لشاشات LG من <b>2016 إلى 2024</b>.</p>'
     + '<div class="note">شاشة LG موديل <b>2025</b>؟ التطبيق لا يظهر في متجرها: ارجع واختر التطبيق الآخر، فهو متوفر فيها.</div>'
@@ -635,7 +643,7 @@ const SS_IPTV_GET_WEBOS = { title: "حمّل تطبيق SS IPTV",
     + WEBOS_NOTE };
 // خطوة التحميل: شاشات VIDAA
 const SS_IPTV_GET_VIDAA = { title: "حمّل تطبيق SS IPTV من متجر VIDAA",
-  html: APP("ss-iptv", "SS IPTV", "من متجر VIDAA · مجاني")
+  html: SS_IPTV_VIDEO + APP("ss-iptv", "SS IPTV", "من متجر VIDAA · مجاني")
     + '<ol><li>اضغط زر <b dir="ltr">Home</b> في الريموت، وافتح متجر التطبيقات (‏<b dir="ltr">App Store</b> أو <b dir="ltr">VIDAA Store</b> حسب إصدار الشاشة).</li>'
     + '<li>ابحث عن <b dir="ltr">SS IPTV</b> — المطوّر <b dir="ltr">SS IPTV Team</b> — وثبّته، ثم افتحه من تطبيقاتك.</li></ol>'
     + VIDAA_NOTE };

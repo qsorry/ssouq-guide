@@ -1,0 +1,249 @@
+<!doctype html>
+<!-- فيديو SS IPTV (‏static/video/ssiptv-ar.mp4): المشاهد والتعليقات والتكبير هنا، و render.js يصوّرها
+     إطارًا إطارًا ويرمّزها. عدّل SCENES ثم: node tools/video_ssiptv/render.js -->
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=block" rel="stylesheet">
+<style>
+:root{--brand:#004D73;--deep:#06222F;--gold:#F0A12B;--ink:#EAF3F8;--soft:#BFD3DE}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:720px;height:1280px;overflow:hidden;background:var(--deep)}
+body{font-family:"IBM Plex Sans Arabic",sans-serif;color:var(--ink)}
+#stage{position:relative;width:720px;height:1280px;overflow:hidden;
+  background:radial-gradient(120% 70% at 50% 0%,#0B5E88 0%,var(--brand) 38%,var(--deep) 100%)}
+/* رأس ثابت: الشعار والخطوة */
+#hdr{position:absolute;top:34px;left:32px;right:32px;height:74px;display:flex;align-items:center;gap:14px}
+#hdr img{width:64px;height:64px;border-radius:16px;background:#fff}
+#hdr .who{display:flex;flex-direction:column;line-height:1.15}
+#hdr .who b{font-size:30px;font-weight:700}
+#hdr .who small{font-size:20px;color:var(--soft)}
+#pill{margin-inline-start:auto;background:var(--gold);color:#1b1300;font-weight:700;font-size:26px;padding:10px 22px;border-radius:40px}
+#prog{position:absolute;top:124px;left:32px;right:32px;display:flex;gap:8px}
+#prog i{flex:1;height:8px;border-radius:8px;background:rgba(255,255,255,.18)}
+#prog i.on{background:var(--gold)}
+/* الشاشة: الكاميرا فوق الصورة */
+#screen{position:absolute;top:156px;left:20px;width:680px;height:760px;border-radius:30px;overflow:hidden;
+  background:#081A24;box-shadow:0 18px 50px rgba(0,0,0,.45),inset 0 0 0 2px rgba(255,255,255,.08)}
+#bgImg{position:absolute;inset:-60px;width:calc(100% + 120px);height:calc(100% + 120px);object-fit:cover;filter:blur(26px) brightness(.38) saturate(1.2)}
+#cam{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+#cam img{display:block}
+.ring{position:absolute;border:solid var(--gold);pointer-events:none}
+/* بطاقات المقدمة والتحميل والختام */
+#card{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 44px;gap:18px}
+#card .icon{width:170px;height:170px;border-radius:38px;box-shadow:0 0 0 6px rgba(240,161,43,.9),0 20px 60px rgba(0,0,0,.5)}
+#card h1{font-size:50px;line-height:1.3;font-weight:700}
+#card h1 em{font-style:normal;color:var(--gold)}
+#card .sub{font-size:30px;color:var(--soft);line-height:1.5}
+#card .chips{display:flex;flex-wrap:wrap;justify-content:center;gap:12px}
+#card .chips span{background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.18);border-radius:40px;padding:8px 22px;font-size:28px;font-weight:600}
+#card .rows{width:100%;display:flex;flex-direction:column;gap:14px;margin-top:6px}
+#card .row{display:flex;align-items:center;gap:16px;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.12);border-radius:22px;padding:16px 20px;text-align:start}
+#card .row b{min-width:150px;font-size:33px;color:var(--gold)}
+#card .row span{font-size:30px;line-height:1.4}
+#card .row.no{border-color:rgba(255,120,120,.35)}
+#card .tick{font-size:110px;line-height:1}
+.k{color:var(--gold);font-weight:700;unicode-bidi:isolate}
+/* التعليق */
+#cap{position:absolute;left:20px;right:20px;bottom:36px;min-height:300px;border-radius:30px;padding:30px 34px;
+  background:rgba(3,20,29,.72);border:2px solid rgba(255,255,255,.08);display:flex;flex-direction:column;justify-content:center;gap:14px}
+#capT{font-size:47px;font-weight:700;line-height:1.3}
+#capT .n{display:inline-flex;align-items:center;justify-content:center;width:58px;height:58px;border-radius:50%;background:var(--gold);color:#1b1300;font-size:34px;margin-inline-end:14px;vertical-align:middle}
+#capB{font-size:37px;line-height:1.5;color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="hdr"><img src="../../static/icons/icon-192.png" alt=""><div class="who"><b>سمارت سوق</b><small>دليل التفعيل · guide.ssouq.com</small></div><span id="pill"></span></div>
+  <div id="prog"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="screen"><img id="bgImg" alt=""><div id="cam"><img id="camImg" alt=""></div><div id="card"></div></div>
+  <div id="cap"><h2 id="capT"></h2><p id="capB"></p></div>
+</div>
+<script>
+const SW = 680, SH = 760;
+const K = s => `<b class="k" dir="ltr">${s}</b>`;
+// الصور وأبعادها (بكسل الصورة)
+const IMG = {
+  m3u:  { src: "assets/a_m3u.png",    w: 1170, h: 2660 },
+  code: { src: "assets/a_code.png",   w: 1170, h: 1330 },
+  tab:  { src: "assets/a_tab.png",    w: 1170, h: 700 },
+  item: { src: "assets/a_item.png",   w: 1170, h: 2340 },
+  saved:{ src: "assets/a_saved.png",  w: 1170, h: 1110 },
+  home: { src: "assets/a_tvhome.jpg", w: 1920, h: 1080 },
+  set:  { src: "assets/a_tvset.jpg",  w: 1920, h: 1080 }
+};
+const ICON = '<img class="icon" src="../../static/img/apps/ss-iptv.webp" alt="">';
+/* المشاهد: مدة، ثم صورة وكاميرا (أهداف بزمنها) وحلقات وتعليقات — أو بطاقة */
+const SCENES = [
+  { dur: 4.6, card: t => `${ICON}
+      <h1>تشغيل اشتراكك على الشاشة<br>بتطبيق <em dir="ltr">SS IPTV</em></h1>
+      <div class="chips"><span>LG</span><span>سامسونج</span><span>هايسنس VIDAA</span></div>
+      <p class="sub">لكل الاشتراكات: سمارت · فالكون · كاسبر</p>`,
+    caps: [{ t: 0, title: "7 خطوات بالترتيب", body: "الجوال في يدك، والشاشة أمامك — لنبدأ 👇" }] },
+
+  { step: 1, dur: 7.4, card: t => `${ICON}
+      <h1 dir="ltr" style="margin-top:-4px">SS IPTV</h1>
+      <p class="sub">المطوّر ${K("SS IPTV Team")} · مجاني</p>
+      <div class="rows">
+        <div class="row" style="opacity:${fade(t, 1.2)}"><b>LG</b><span>من متجر التطبيقات في الشاشة<br>شاشات 2016 إلى 2024</span></div>
+        <div class="row" style="opacity:${fade(t, 2.2)}"><b>هايسنس</b><span>من متجر VIDAA في الشاشة</span></div>
+        <div class="row no" style="opacity:${fade(t, 3.2)}"><b>سامسونج</b><span>ليس في متجرها: من فلاشة USB<br>لشاشات 2015 إلى 2019 فقط</span></div>
+      </div>`,
+    caps: [{ t: 0, title: "حمّل تطبيق SS IPTV", body: `ابحث عنه في متجر التطبيقات في الشاشة باسم ${K("SS IPTV")}` },
+           { t: 3.6, title: "حمّل تطبيق SS IPTV", body: "شاشتك غير مذكورة؟ ارجع للدليل واختر التطبيق الآخر" }] },
+
+  { step: 2, dur: 10.4, img: "m3u",
+    cam: [{ t: 0, r: [60, 40, 1050, 900], d: 0 }, { t: 1.2, r: [90, 690, 990, 230] }, { t: 3.0, r: [90, 1660, 990, 470] },
+          { t: 4.8, r: [90, 2120, 990, 220] }, { t: 6.6, r: [90, 2400, 990, 230] }],
+    rings: [{ r: [105, 753, 960, 144], from: 1.9, to: 3.0 }, { r: [105, 1724, 960, 144], from: 3.7, to: 4.8 }, { r: [105, 1979, 960, 144], from: 4.0, to: 4.8 },
+            { r: [105, 2159, 960, 166], from: 5.5, to: 6.6 }, { r: [105, 2436, 192, 153], from: 7.3 }],
+    caps: [{ t: 0, title: "جهّز رابط M3U", body: `من دليلنا افتح «أريد رابط M3U» — ${K("guide.ssouq.com")}` },
+           { t: 1.4, title: "جهّز رابط M3U", body: `اكتب رابط الهوست كما وصلك — يبدأ بـ ${K("http")} وليس ${K("https")}` },
+           { t: 3.2, title: "جهّز رابط M3U", body: "ثم اسم المستخدم وكلمة المرور" },
+           { t: 5.0, title: "جهّز رابط M3U", body: "اضغط «توليد الرابط»" },
+           { t: 6.8, title: "جهّز رابط M3U", body: "اضغط «نسخ» — ستلصقه بعد قليل" }] },
+
+  { step: 3, dur: 4.8, img: "home",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.4, r: [1470, 20, 380, 150] }],
+    rings: [{ r: [1624, 43, 82, 74], from: 2.2 }],
+    caps: [{ t: 0, title: "على الشاشة: افتح SS IPTV", body: "أول مرة تظهر اتفاقية الاستخدام: اختر Agree" },
+           { t: 1.6, title: "على الشاشة: الإعدادات", body: "بأسهم الريموت انتقل إلى الترس ⚙ واضغط OK" }] },
+
+  { step: 3, dur: 7.4, img: "set",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.0, r: [10, 120, 560, 140] }, { t: 3.2, r: [540, 405, 830, 240] }],
+    rings: [{ r: [26, 131, 518, 112], from: 1.7, to: 3.2 }, { r: [958, 468, 389, 84], from: 3.9 }],
+    caps: [{ t: 0, title: "اطلب رمز الربط", body: `في الإعدادات اختر ${K("General")}` },
+           { t: 3.3, title: "اطلب رمز الربط", body: `اضغط ${K("Get code")} فيظهر الرمز مكان ${K("XXXXXX")} — اتركه ظاهرًا` }] },
+
+  { step: 4, dur: 8.0, img: "code",
+    cam: [{ t: 0, r: [0, 0, 1170, 1330], d: 0 }, { t: 1.6, r: [60, 820, 1070, 420] }],
+    rings: [{ r: [92, 930, 606, 141], from: 2.4, to: 4.6 }, { r: [702, 930, 411, 141], from: 4.8 }],
+    caps: [{ t: 0, title: "اربط الشاشة من الجوال", body: `افتح ${K("ss-iptv.com/en/users/playlist")}` },
+           { t: 2.4, title: "اربط الشاشة من الجوال", body: `اكتب الرمز الظاهر على الشاشة في ${K("Enter Connection Code")}` },
+           { t: 4.8, title: "اربط الشاشة من الجوال", body: `ثم اضغط ${K("ADD DEVICE")}` }] },
+
+  { step: 5, dur: 6.2, img: "tab",
+    cam: [{ t: 0, r: [0, 0, 1170, 700], d: 0 }, { t: 1.7, r: [40, 230, 700, 180] }, { t: 3.6, r: [40, 440, 700, 210] }],
+    rings: [{ r: [60, 4, 1050, 92], from: 0.4, to: 1.7 }, { r: [60, 264, 372, 114], from: 2.3, to: 3.6 }, { r: [60, 480, 369, 135], from: 4.2 }],
+    caps: [{ t: 0, title: "أضف الرابط", body: `تظهر ${K("The device is connected successfully!")}` },
+           { t: 1.9, title: "أضف الرابط", body: `اختر تبويب ${K("External Playlists")}` },
+           { t: 3.8, title: "أضف الرابط", body: `اضغط ${K("ADD ITEM")}` }] },
+
+  { step: 5, dur: 8.2, img: "item",
+    cam: [{ t: 0, r: [33, 0, 1104, 840], d: 0 }, { t: 4.4, r: [33, 1960, 1104, 380] }],
+    rings: [{ r: [130, 370, 964, 124], from: 0.8, to: 4.4 }, { r: [130, 664, 964, 124], from: 2.4, to: 4.4 }, { r: [834, 2119, 260, 139], from: 5.4 }],
+    caps: [{ t: 0, title: "أضف الرابط", body: `${K("Displayed Name")}: اكتب أي اسم` },
+           { t: 2.2, title: "أضف الرابط", body: `${K("Source")}: الصق رابط M3U الذي نسخته` },
+           { t: 4.6, title: "أضف الرابط", body: `اترك البقية كما هي واضغط ${K("OK")}` }] },
+
+  { step: 6, dur: 6.6, img: "saved",
+    cam: [{ t: 0, r: [0, 0, 1170, 1110], d: 0 }, { t: 1.2, r: [500, 440, 640, 220] }, { t: 3.8, r: [40, 0, 1090, 200] }],
+    rings: [{ r: [762, 1553 - 1075, 300, 139], from: 1.9, to: 3.8 }, { r: [60, 4, 1050, 92], from: 4.4 }],
+    caps: [{ t: 0, title: "احفظ القائمة", body: `اضغط ${K("SAVE")} — بدونه لا تصل القائمة إلى الشاشة` },
+           { t: 4.0, title: "احفظ القائمة", body: `تظهر ${K("Playlist has been successfully saved!")}` }] },
+
+  { step: 7, dur: 8.6, img: "home",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.3, r: [1360, 20, 420, 150] }, { t: 4.2, r: [20, 420, 960, 200] }],
+    rings: [{ r: [1441, 43, 88, 74], from: 2.0, to: 4.2 }, { r: [36, 443, 924, 158], from: 4.9 }],
+    caps: [{ t: 0, title: "على الشاشة: افتح قائمتك", body: "ارجع إلى الشاشة الرئيسية في التطبيق" },
+           { t: 1.8, title: "على الشاشة: افتح قائمتك", body: "اضغط التحديث ↻ أو أغلق التطبيق وافتحه" },
+           { t: 4.6, title: "على الشاشة: افتح قائمتك", body: "يظهر مربع بالاسم الذي كتبته — افتحه وشاهد" }] },
+
+  { dur: 5.6, card: t => `<div class="tick">🎉</div>
+      <h1>جاهز! استمتع بالمشاهدة</h1>
+      <p class="sub">ظهرت ${K("Failed to load remote content")}؟<br>تأكّد أن الرابط يبدأ بـ ${K("http")} وبلا مسافات</p>
+      <div class="chips"><span>الدعم الفني على واتساب</span><span dir="ltr">guide.ssouq.com</span></div>`,
+    caps: [{ t: 0, title: "انتهت الخطوات", body: "الشرح المكتوب بالصور في دليل التفعيل لكل جهاز" }] }
+];
+
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const ease = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+function fade(t, at){ return clamp((t - at) / 0.35, 0, 1).toFixed(3); }
+const starts = []; let TOTAL = 0;
+for (const s of SCENES) { starts.push(TOTAL); TOTAL += s.dur; }
+
+function camFor(img, r){
+  const I = IMG[img];
+  let x, y, w, h;
+  if (r === "full") { x = 0; y = 0; w = I.w; h = I.h; } else [x, y, w, h] = r;
+  const pad = r === "full" ? 1 : 1.12;
+  let s = Math.min(SW / (w * pad), SH / (h * pad), img === "home" || img === "set" ? 1.7 : 1.25);
+  let cx = x + w / 2, cy = y + h / 2;
+  // لا تُظهر ما وراء حدود الصورة إن كانت تملأ الشاشة
+  cx = I.w * s >= SW ? clamp(cx, SW / (2 * s), I.w - SW / (2 * s)) : I.w / 2;
+  cy = I.h * s >= SH ? clamp(cy, SH / (2 * s), I.h - SH / (2 * s)) : I.h / 2;
+  return { cx, cy, s };
+}
+function camAt(sc, t){
+  const keys = sc.cam;
+  let cur = camFor(sc.img, keys[0].r);
+  for (let i = 1; i < keys.length; i++) {
+    const k = keys[i];
+    if (t < k.t) break;
+    const to = camFor(sc.img, k.r), p = ease(clamp((t - k.t) / (k.d ?? 1.0), 0, 1));
+    // تكبير لوغاريتمي: الانتقال بين مقياسين متباعدين يبدو أنعم
+    cur = { cx: cur.cx + (to.cx - cur.cx) * p, cy: cur.cy + (to.cy - cur.cy) * p, s: Math.exp(Math.log(cur.s) + (Math.log(to.s) - Math.log(cur.s)) * p) };
+  }
+  return cur;
+}
+
+let lastScene = -1, lastCard = "", lastCap = null;
+const $ = id => document.getElementById(id);
+function renderAt(T){
+  let i = SCENES.length - 1;
+  while (i > 0 && T < starts[i]) i--;
+  const sc = SCENES[i], t = T - starts[i];
+  const a = clamp(Math.min(t / 0.3, (sc.dur - t) / 0.3), 0, 1);      // دخول المشهد وخروجه
+  $("screen").style.opacity = i === 0 && t < 0.3 ? 1 : a;
+  $("cap").style.opacity = i === 0 && t < 0.3 ? 1 : a;
+  // الخطوة وشريط التقدّم
+  $("pill").style.visibility = sc.step ? "visible" : "hidden";
+  if (sc.step) $("pill").textContent = `الخطوة ${sc.step} من 7`;
+  document.querySelectorAll("#prog i").forEach((el, k) => el.classList.toggle("on", !!sc.step && k < sc.step || (!sc.step && i > 0)));
+  // بطاقة أو صورة
+  if (sc.card) {
+    $("card").style.display = "flex"; $("cam").style.display = "none"; $("bgImg").style.display = "none";
+    const html = sc.card(t); if (html !== lastCard) { $("card").innerHTML = html; lastCard = html; }
+  } else {
+    $("card").style.display = "none"; $("cam").style.display = "block"; $("bgImg").style.display = "block";
+    if (i !== lastScene) {
+      const I = IMG[sc.img]; const im = $("camImg");
+      im.src = I.src; im.width = I.w; im.height = I.h; $("bgImg").src = I.src;
+      $("cam").querySelectorAll(".ring").forEach(r => r.remove());
+      sc.rings.forEach((r, k) => { const d = document.createElement("div"); d.className = "ring"; d.dataset.k = k; $("cam").appendChild(d); });
+    }
+    const c = camAt(sc, t);
+    $("cam").style.transform = `translate(${SW / 2 - c.cx * c.s}px, ${SH / 2 - c.cy * c.s}px) scale(${c.s})`;
+    $("cam").querySelectorAll(".ring").forEach(el => {
+      const R = sc.rings[+el.dataset.k], on = t >= R.from && (R.to === undefined || t < R.to);
+      if (!on) { el.style.opacity = 0; return; }
+      const p = ease(clamp((t - R.from) / 0.4, 0, 1)), g = 0.5 + 0.5 * Math.sin((t - R.from) * Math.PI * 2 * 1.1);
+      const pad = 10 / c.s, bw = 7 / c.s;
+      const [x, y, w, h] = R.r, grow = (1 - p) * 0.25;
+      el.style.left = `${x - pad - w * grow / 2}px`; el.style.top = `${y - pad - h * grow / 2}px`;
+      el.style.width = `${w + 2 * pad + w * grow}px`; el.style.height = `${h + 2 * pad + h * grow}px`;
+      el.style.borderWidth = `${bw}px`; el.style.borderRadius = `${22 / c.s}px`; el.style.opacity = p;
+      el.style.boxShadow = `0 0 ${(14 + 18 * g) / c.s}px ${(3 + 5 * g) / c.s}px rgba(240,161,43,${0.35 + 0.35 * g}), inset 0 0 0 ${2 / c.s}px rgba(255,255,255,.25)`;
+    });
+  }
+  // التعليق
+  let cap = sc.caps[0]; for (const c of sc.caps) if (t >= c.t) cap = c;
+  if (cap !== lastCap) {
+    $("capT").innerHTML = (sc.step ? `<span class="n">${sc.step}</span>` : "") + cap.title;
+    $("capB").innerHTML = cap.body; lastCap = cap;
+  }
+  const since = t - cap.t;
+  $("capB").style.opacity = cap.t > 0 ? clamp(since / 0.3, 0, 1) : 1;
+  lastScene = i;
+}
+async function init(){
+  // المقاسات من الصور نفسها: لقطةٌ أُعيد التقاطها قد تختلف ببكسل أو اثنين
+  await Promise.all(Object.values(IMG).map(async I => { const im = new Image(); im.src = I.src; await im.decode(); I.w = im.naturalWidth; I.h = im.naturalHeight; }));
+  const ic = new Image(); ic.src = "../../static/img/apps/ss-iptv.webp"; await ic.decode();
+  await document.fonts.load('700 44px "IBM Plex Sans Arabic"'); await document.fonts.load('400 33px "IBM Plex Sans Arabic"');
+  await document.fonts.ready;
+  return TOTAL;
+}
+</script>
+</body>
+</html>
