@@ -2604,16 +2604,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                                   extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                                   else {"Retry-After": str(league.RETRY)})
-        if path in (content.PATH, content.PATH + "/"):   # محتوى الاشتراكات: إلى أول سيرفرٍ له محتوى
+        root = content.PATH_EN if path == content.PATH_EN or path.startswith(content.PATH_EN + "/") else content.PATH
+        lang = "en" if root == content.PATH_EN else "ar"     # الصفحة نفسها بالإنجليزية على ‏/en/content
+        if path in (root, root + "/"):          # محتوى الاشتراكات: إلى أول سيرفرٍ له محتوى
             key = content.first_key(DATA_DIR)
             if key:
-                return self._redirect(f"{content.PATH}/{key}{qs}")
-            code, body = content_page.render_missing(DATA_DIR)
+                return self._redirect(f"{root}/{key}{qs}")
+            code, body = content_page.render_missing(DATA_DIR, lang=lang)
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": "public, max-age=300"})
-        if path.startswith(content.PATH + "/"):
-            parts = path[len(content.PATH) + 1:].strip("/").split("/")
-            if len(parts) == 3 and parts[1] == "img":    # ملصقٌ من خادمنا (لا يظهر سيرفر اللوحة)
+        if path.startswith(root + "/"):
+            parts = path[len(root) + 1:].strip("/").split("/")
+            if root == content.PATH and len(parts) == 3 and parts[1] == "img":    # ملصقٌ من خادمنا (لا يظهر سيرفر اللوحة)
                 code, data, ctype = content.image(DATA_DIR, content.key_ok(parts[0]), parts[2])
                 if code != 200:
                     return self._send(404, raw=b"", ctype="text/plain", extra={"Cache-Control": "public, max-age=3600"})
@@ -2621,15 +2623,14 @@ class Handler(BaseHTTPRequestHandler):
                                   extra={"Cache-Control": "public, max-age=2592000, immutable"})
             # صفحة سيرفر: الواجهة والأقسام والصفوف والتصفية و«أضيف مؤخرًا» والبحث
             code, body, age = content_page.render(DATA_DIR, content.key_ok(parts[0]) if len(parts) == 1 else "",
-                                                  {k: self._q(k) for k in ("t", "g", "p", "q", "view", "y", "genre",
-                                                                            "r", "sort", "all")})
+                                                  {k: self._q(k) for k in content_page.QUERY}, lang)
             return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                               extra={"Cache-Control": f"public, max-age={age}"})
         if path == "/api/content":              # الرئيسية ومسار الشراء: السيرفرات التي لها محتوى وأعدادها
             b = content.brief(DATA_DIR)           # والفارغ لا يُحفظ في المتصفح: يظهر الرابط فور أول ملف
             return self._send(200, b, extra={"Cache-Control": "public, max-age=300" if b["servers"] else "no-store"})
-        if path == "/api/content/search":       # البحث بالاسم مع الكتابة
-            res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"))
+        if path == "/api/content/search":       # البحث بالاسم مع الكتابة (و‏lang=en للصفحة الإنجليزية)
+            res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"), self._q("lang"))
             if res is None:
                 return self._send(404, {"ok": False, "error": "not found"})
             return self._send(200, res, extra={"Cache-Control": "public, max-age=600"})
