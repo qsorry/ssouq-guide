@@ -29,7 +29,7 @@ NEW_MAX = {"movie": 48, "series": 48, "live": 24}
 NEW_DAYS = 14                # شارة «جديد» لما أضيف خلالها (بتاريخ الواجهة)
 KIND_ONE = {"movie": "فيلم", "series": "مسلسل", "live": "قناة"}
 N_GROUPS = ("قسم واحد", "قسمان", "أقسام", "قسمًا", "قسم")
-ART = {k: f"/static/img/brands/{k}.webp" for k in ("smart", "falcon", "casper")}   # شعار السيرفر في الرأس إن كان له
+ART = {k: f"/static/img/brands/{k}.webp" for k in ("smart", "falcon", "casper")}   # شعار السيرفر إن كان له
 DAYS = ("يوم", "يومين", "أيام", "يومًا", "يوم")
 WEEKS = ("أسبوع", "أسبوعين", "أسابيع", "أسبوعًا", "أسبوع")
 MONTHS = ("شهر", "شهرين", "أشهر", "شهرًا", "شهر")
@@ -75,6 +75,13 @@ def _ago(ts, now=None):
 
 def _hue(s):
     return sum(map(ord, s or "")) * 37 % 360
+
+
+def _logo(key, name, cls="lg"):
+    """شعار السيرفر (‏ART)، أو أول حرفٍ من اسمه بلونٍ منه لسيرفرٍ بلا شعار."""
+    if key in ART:
+        return f'<img class="{cls}" src="{ART[key]}" alt="" width="40" height="40" decoding="async">'
+    return f'<span class="{cls} bi" style="--h:{_hue(name)}" aria-hidden="true">{_esc((name or "•")[:1])}</span>'
 
 
 def _initials(name):
@@ -190,8 +197,9 @@ def _servers(data_dir, key):
     shown = [s for s in C.servers(data_dir) if s["key"] == key or C._has(C._view(data_dir, s["key"])[1])]
     if len(shown) < 2:
         return ""
-    return ('<nav class="servers" aria-label="السيرفرات"><span>السيرفر:</span>' + "".join(
-        f'<a href="{C.PATH}/{s["key"]}"{" aria-current=page" if s["key"] == key else ""}>{_esc(s["name"])}</a>'
+    return ('<nav class="servers" aria-label="السيرفرات"><span class="lbl">السيرفر:</span>' + "".join(
+        f'<a href="{C.PATH}/{s["key"]}"{" aria-current=page" if s["key"] == key else ""}>{_logo(s["key"], s["name"])}'
+        f'<span><b>{_esc(s["name"])}</b>' + (f'<small>{_esc(s["full"])}</small>' if s["full"] else "") + "</span></a>"
         for s in shown) + "</nav>")
 
 
@@ -389,7 +397,8 @@ def results_html(data_dir, key, srv, v, q):
         ov = C._view(data_dir, s["key"])[1] if s["key"] != key else None
         n = C._search(s["key"], ov, q)[1] if C._has(ov) else 0
         if n:
-            elsewhere.append(f'<a href="{C.PATH}/{s["key"]}?q={quote(q)}">{_esc(s["name"])} ({n:,})</a>')
+            elsewhere.append(f'<a href="{C.PATH}/{s["key"]}?q={quote(q)}">{_logo(s["key"], s["name"], "lg sm")}'
+                             f'{_esc(s["name"])} ({n:,})</a>')
     other = (f'<p class="other">{"ويوجد أيضًا في" if total else "لكنه موجود في"}: {" · ".join(elsewhere)}</p>'
              if elsewhere else "")
     if not total:
@@ -533,7 +542,8 @@ def _footer(base, name, v, summary):
 def render_missing(data_dir, key=""):
     """لا محتوى بعد (أو سيرفرٌ لا وجود له): صفحةٌ تدلّ على ما وُجد، لا تُفهرس ← (404، بايتات)."""
     others = [s for s in C.servers(data_dir) if s["key"] != key and C._has(C._view(data_dir, s["key"])[1])]
-    links = "".join(f'<li><a class="link" href="{C.PATH}/{s["key"]}">محتوى {_esc(s["name"])}</a></li>' for s in others)
+    links = "".join(f'<li><a class="link" href="{C.PATH}/{s["key"]}">{_logo(s["key"], s["name"], "lg sm")}محتوى {_esc(s["name"])}'
+                    '</a></li>' for s in others)
     body = ('<main class="wrap"><section class="panel missing"><h1>محتوى الاشتراكات</h1>'
             '<p>لم يُنشر محتوى هذا السيرفر بعد.</p>'
             + (f'<p class="empty">وهذه السيرفرات منشورٌ محتواها:</p><ul>{links}</ul>' if links else "")
@@ -582,9 +592,20 @@ button{font:inherit;color:inherit}
 .search button{background:none;border:0;color:var(--mute);cursor:pointer;padding:4px;display:grid}
 @media (max-width:900px){.top{position:static}.top .wrap{flex-wrap:wrap;gap:8px 12px;padding-block:10px}
   .search{order:3;min-width:0;flex:1 1 100%}.nav{order:2;flex:1 1 100%}}
-.servers{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap;color:var(--mute);font-size:.88rem}
-.servers a{padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:600}
-.servers a[aria-current]{background:var(--acc);border-color:var(--acc)}
+.servers{display:flex;align-items:center;gap:10px;margin-top:16px;overflow-x:auto;scrollbar-width:none;padding:2px}
+.servers::-webkit-scrollbar{display:none}
+.servers .lbl{color:var(--mute);font-size:.88rem;flex:none}
+.servers a{display:flex;align-items:center;gap:10px;flex:none;padding:6px;padding-inline-end:16px;border-radius:14px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.servers a:hover{border-color:var(--line2)}
+.servers a[aria-current]{border-color:var(--acc);background:linear-gradient(135deg,rgba(47,140,255,.24),rgba(47,140,255,.07));
+  box-shadow:inset 0 0 0 1px var(--acc)}
+.servers b{display:block;font-size:.95rem;line-height:1.25}
+.servers small{display:block;color:var(--mute);font-size:.68rem;letter-spacing:.04em;direction:ltr;text-align:right}
+.lg{width:40px;height:40px;border-radius:10px;object-fit:cover;flex:none;background:var(--card2)}
+.lg.bi{display:grid;place-items:center;font-weight:700;color:#fff;background:linear-gradient(135deg,hsl(var(--h) 50% 34%),hsl(var(--h) 55% 18%))}
+.lg.sm{width:22px;height:22px;border-radius:6px;font-size:.72rem}
+@media (max-width:520px){.servers .lbl,.servers small{display:none}.servers a{gap:8px;padding-inline-end:12px}.servers .lg{width:34px;height:34px}}
 /* الواجهة */
 .herobox{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:14px;margin-top:16px}
 .hero{position:relative;border-radius:22px;overflow:hidden;border:1px solid var(--line);background:var(--card);min-height:340px}
@@ -737,7 +758,8 @@ button{font:inherit;color:inherit}
 .results{margin:18px 0 8px;padding:18px;border-radius:18px;border:1px solid var(--line2);background:rgba(14,23,44,.72)}
 .results h3{margin:16px 0 10px;font-size:1rem}
 .results .other{margin:16px 0 0;color:var(--mute)}
-.results .other a{color:var(--acc);font-weight:600}
+.results .other a{display:inline-flex;align-items:center;gap:6px;color:var(--acc);font-weight:600;vertical-align:middle}
+.missing li a{display:inline-flex;align-items:center;gap:8px}
 #cres[aria-busy="true"]{opacity:.5}
 #cres:empty{display:none}
 .empty{color:var(--mute)}

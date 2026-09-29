@@ -164,6 +164,11 @@ function playlist(movies) {
     check('الأعداد', (await dp.textContent('.stats')).replace(/\s/g, '').includes('2,500فيلم')
           && (await dp.textContent('.stats')).replace(/\s/g, '').includes('2مسلسلان'));
     check('القسم المخفي ليس فيها', !(await dp.content()).includes('Netflix'));
+    const logos = await dp.$$eval('.servers a', a => a.map(x => [x.querySelector('b').textContent,
+      x.querySelector('img') ? x.querySelector('img').getAttribute('src') : '', !!x.getAttribute('aria-current')]));
+    check('السيرفرات بشعاراتها، والحالي معلَّم', JSON.stringify(logos) === JSON.stringify([
+      ['سمارت', '/static/img/brands/smart.webp', true], ['فالكون', '/static/img/brands/falcon.webp', false]]), JSON.stringify(logos));
+    check('والشعارات تُحمَّل', await dp.$$eval('.servers img', i => i.length === 2 && i.every(x => x.complete && x.naturalWidth > 0)));
     await dp.waitForLoadState('networkidle').catch(() => {});
     await dp.reload({waitUntil: 'networkidle'}).catch(() => {});     // والثانية: 404 الصور من ذاكرة الخادم فورًا
     check('ولا صورة معطوبة: الحرفان الأولان مكانها', await dp.evaluate(() => [...document.querySelectorAll('.pos img,.chip img,.slide img')]

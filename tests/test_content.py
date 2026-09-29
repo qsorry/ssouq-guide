@@ -485,8 +485,10 @@ def unit_render():
           and "9 مسلسلات بمواسمها و4 أفلام و5 قنوات" in html)
     check("تُفهرس ولها canonical", 'content="index, follow' in html and
           '<link rel="canonical" href="https://guide.ssouq.com/content/smart">' in html)
-    check("السيرفرات التي لها محتوى", '<a href="/content/smart" aria-current=page>سمارت</a>' in html
-          and '<a href="/content/falcon">فالكون</a>' in html and "/content/kon" not in html)
+    check("السيرفرات التي لها محتوى، كلٌّ بشعاره واسمه", '<a href="/content/smart" aria-current=page><img class="lg" '
+          'src="/static/img/brands/smart.webp"' in html and "<b>سمارت</b><small>MR7 TV</small>" in html
+          and '<a href="/content/falcon"><img class="lg" src="/static/img/brands/falcon.webp"' in html
+          and "<b>فالكون</b><small>FALCON TV PRO</small>" in html and "/content/kon" not in html)
     check("الرأس: الأنواع و«أضيف مؤخرًا» والبحث", '<a href="/content/smart" class=home aria-current=page>الرئيسية</a>' in html
           and '<a href="/content/smart?t=series">المسلسلات</a>' in html and '<a href="/content/smart?t=new">أضيف مؤخرًا</a>' in html
           and '<form class="search" role="search" action="/content/smart" method="get">' in html)
@@ -584,7 +586,8 @@ def unit_render():
     check("المسلسل مرةً بمواسمه كلها", "نتائج «breaking» في سمارت <small>نتيجة واحدة</small>" in r
           and "المسلسلات <small>(1)</small>" in r and titles(r) == ["Breaking Bad"]
           and cards(r)[0]["sc"][-1] == "الموسم 3 (حلقة واحدة)", r[:300])
-    check("ويوجد أيضًا في السيرفرات الأخرى", 'ويوجد أيضًا في: <a href="/content/falcon?q=breaking">فالكون (1)</a>' in r)
+    check("ويوجد أيضًا في السيرفرات الأخرى، بشعارها", 'ويوجد أيضًا في: <a href="/content/falcon?q=breaking"><img class="lg sm" '
+          'src="/static/img/brands/falcon.webp"' in r and "فالكون (1)</a>" in r)
     r = P.api_search(d, "smart", "only in falcon")["html"]
     check("ما ليس هنا: أين يوجد", "لا يوجد «only in falcon» في سمارت" in r and "لكنه موجود في" in r and "فالكون (1)" in r)
     r = P.api_search(d, "smart", "عثمان")["html"]
@@ -604,6 +607,8 @@ def unit_render():
     check("والبحث مهرَّبًا", "<img src=x" not in html and "&lt;img src=x onerror=alert(1)&gt;" in html)
 
     print("لا محتوى")
+    check("وسيرفرٌ بلا شعار: أول حرفٍ من اسمه", P._logo("kon", "كون") == '<span class="lg bi" style="--h:%d" aria-hidden="true">ك</span>'
+          % P._hue("كون") and P._logo("x", "<b>")[-11:] == "&lt;</span>")
     code, body = P.render_missing(d, "kon")
     check("سيرفرٌ بلا محتوى: 404 تدلّ على غيره", code == 404 and 'href="/content/smart"' in body.decode()
           and 'href="/content/falcon"' in body.decode() and "noindex" in body.decode())
