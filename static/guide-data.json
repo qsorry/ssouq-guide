@@ -149,7 +149,7 @@
     {
      "key": "0player",
      "label": "0Player",
-     "sub": "الأسهل: من متجر الشاشة، برمز البوابة وبياناتك",
+     "sub": "من متجر الشاشة: بالباركود من جوالك أو بالريموت",
      "icon": "0player"
     },
     {
@@ -164,17 +164,59 @@
    "0player": [
     {
      "title": "حمّل تطبيق 0Player (زيرو بلاير)",
-     "img": "/static/img/webos-0player-store.jpg",
-     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/0player.webp\" alt=\"أيقونة 0Player\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">0Player</b><small>من متجر الشاشة · مجاني</small></span></div><p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله.</p><div class=\"note\">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir=\"ltr\">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>"
+     "html": "<div class=\"vid\"><video src=\"/static/video/0player-92929480-ar.mp4?v=1\" poster=\"/static/video/0player-92929480-ar.webp?v=1\" controls playsinline preload=\"none\" width=\"720\" height=\"1280\"></video><p class=\"sub\">شاهد الطريقتين في دقيقة ونصف، ثم اتبع الخطوات هنا واحدة واحدة.</p></div><div class=\"appbox\"><img src=\"/static/img/apps/0player.webp\" alt=\"أيقونة 0Player\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">0Player</b><small>من متجر الشاشة</small></span></div><p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله، ثم افتحه من تطبيقاتك.</p><div class=\"note\">موجود في متجر سامسونج، وفي متجر LG لشاشات 2016 إلى 2025.</div><div class=\"note\">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir=\"ltr\">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>"
     },
     {
-     "title": "أضف القائمة — الخيار الأول: من الشاشة",
-     "img": "/static/img/webos-0player-add.jpg",
-     "html": "<p>لك خياران لإضافة القائمة: من الشاشة مباشرة (هذه الخطوة)، أو من الجوال (الخطوة التالية). اختر أحدهما فقط.</p><ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir=\"ltr\">Portal Code</b>.</li></ol><img src=\"/static/img/webos-0player-portal-92929480.webp\" alt=\"خانات تبويب Portal Code في 0Player، وفي خانة Code يُكتب الكود 92929480\"><div class=\"note\"><b>مهم:</b> في خانة <b dir=\"ltr\">Code</b> اكتب الكود <b dir=\"ltr\">92929480</b> كما هو حتى يعمل معك الاشتراك.</div><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>اكتب أي شيء، مثلًا smart</code></div><div class=\"f\"><span>Code (الخادم)</span><code>92929480</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir=\"ltr\">SAVE</b>.</p><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+     "title": "افتح التطبيق واضغط «متابعة»",
+     "img": "/static/img/webos-0player-notice.webp",
+     "html": "<p>أول مرة تفتح التطبيق تظهر رسالة: <b>لم ترفع قائمة التشغيل الخاصة بك بعد</b>. اضغط <b>متابعة</b> لتدخل التطبيق.</p><div class=\"note\">في الرسالة عنوان <b dir=\"ltr\">MAC</b> ومفتاح الجهاز، ولا تحتاجهما في هذا الشرح. وإن لم تظهر الرسالة فالتطبيق على الشاشة الرئيسية: انتقل للخطوة التالية.</div>"
     },
     {
-     "title": "أضف القائمة — الخيار الثاني: من الجوال عبر 0player.com",
-     "html": "<p>هذا الخيار بديل للخيار الأول، فإن أضفت القائمة من الشاشة فلا تحتاجه. وإن كانت الكتابة بريموت الشاشة متعبة، أضف القائمة من متصفح جوالك بالترتيب:</p><ol><li>افتح <a class=\"link\" href=\"https://0player.com/\" target=\"_blank\" rel=\"noopener\" dir=\"ltr\">0player.com</a> من الجوال.</li><li>أدخل عنوان <b dir=\"ltr\">MAC</b> الظاهر في التطبيق على الشاشة لتسجيل الدخول.</li><li>اضغط الزر المحدَّد في الصورة: <b dir=\"ltr\">Add Portal Code Playlist</b>، وفي الواجهة العربية اسمه <b>إضافة قائمة تشغيل رمز البوابة</b>.</li></ol><img src=\"/static/img/webos-0player-web-en.webp\" alt=\"زر Add Portal Code Playlist في موقع 0player.com من الجوال\" loading=\"lazy\"><img src=\"/static/img/webos-0player-web-ar.webp\" alt=\"زر إضافة قائمة تشغيل رمز البوابة في الواجهة العربية لموقع 0player.com\" loading=\"lazy\"><ol start=\"4\"><li>اكتب اسمًا للقائمة، وأدخل الرمز التالي مع اسم المستخدم وكلمة السر من بيانات اشتراكك:</li></ol><div class=\"fields\"><div class=\"f\"><span>Code (الخادم)</span><code>92929480</code></div></div><ol start=\"5\"><li>تظهر رسالة <b dir=\"ltr\">Portal group retrieved successfully</b>. اضغط <b dir=\"ltr\">Close</b>، ثم افتح التطبيق على الشاشة، أو أعد فتحه، وستجد القائمة فيه.</li></ol><img src=\"/static/img/webos-0player-web-done.webp\" alt=\"رسالة نجاح إضافة القائمة في موقع 0player.com\" loading=\"lazy\">"
+     "title": "اضغط PlayList (قائمة التشغيل)",
+     "img": "/static/img/webos-0player-home.webp",
+     "html": "<p>في الشاشة الرئيسية انتقل بأسهم الريموت إلى مربع <b dir=\"ltr\">PlayList</b> — واسمه في الواجهة العربية <b>قائمة التشغيل</b> — واضغط <b dir=\"ltr\">OK</b>.</p>"
+    },
+    {
+     "title": "اضغط Add Playlist واختر Portal Code",
+     "img": "/static/img/webos-0player-lists.webp",
+     "html": "<p>تُفتح شاشة قوائمك <b dir=\"ltr\">Choose Your Playlist</b>. اضغط <b dir=\"ltr\">Add Playlist</b> فتظهر شاشة <b dir=\"ltr\">Add a new playlist</b>، واختر فيها تبويب <b dir=\"ltr\">Portal Code</b> في الأعلى.</p><img src=\"/static/img/webos-0player-dialog.webp\" alt=\"شاشة Add a new playlist: تبويب Portal Code وخانات البيانات، وعلى يمينها باركود للجوال\" loading=\"lazy\"><p><b>ومن هنا تضيف بيانات اشتراكك بطريقة من اثنتين، اختر واحدة:</b></p>",
+     "fork": [
+      {
+       "to": 4,
+       "icon": "phone",
+       "label": "بالباركود من جوالك",
+       "sub": "الأسهل: تكتب البيانات في الجوال بدل الريموت"
+      },
+      {
+       "to": 5,
+       "icon": "tv",
+       "label": "من التطبيق نفسه",
+       "sub": "تكتب البيانات على الشاشة بالريموت"
+      }
+     ]
+    },
+    {
+     "title": "الطريقة الأولى: بالباركود من جوالك",
+     "num": 5,
+     "next": 6,
+     "prev": 3,
+     "img": "/static/img/webos-0player-web-92929480.webp",
+     "html": "<ol><li>افتح كاميرا جوالك ووجّهها إلى الباركود على يمين شاشة <b dir=\"ltr\">Add a new playlist</b>، ثم اضغط الرابط الذي يظهر.</li><li>يُفتح موقع <b dir=\"ltr\">0player.com</b> على صفحة جهازك مباشرة. إن ظهرت نافذة <b dir=\"ltr\">Welcome to Zero Player</b> فاضغط <b dir=\"ltr\">Accept legal terms</b>.</li><li>تأكّد أن تبويب <b dir=\"ltr\">Portal Code</b> هو المختار، وعبّئ الخانات كما في الصورة:</li></ol><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">Name</span><code>أي اسم، مثلًا ssouq</code></div></div><div class=\"fields\"><div class=\"f\"><span>Code</span><button class=\"codecopy\" type=\"button\" data-copy=\"92929480\"><code dir=\"ltr\">92929480</code><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"/><path d=\"M5 15V5a2 2 0 0 1 2-2h8\"/></svg><em>نسخ</em></button></div></div><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span dir=\"ltr\">Password</span><code>كلمة المرور</code></div></div><ol start=\"4\"><li>اكتب الحروف الظاهرة في الصورة في خانة <b dir=\"ltr\">Captcha</b>، ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</li><li>تظهر <b dir=\"ltr\">Playlist Added!</b> فقد أُضيفت قائمتك. ارجع إلى الشاشة وأكمل الخطوة التالية.</li></ol><img src=\"/static/img/webos-0player-web-done.webp\" alt=\"رسالة Playlist Added! في موقع 0player.com\" loading=\"lazy\"><div class=\"note\">امسح الباركود الظاهر على شاشتك أنت: فيه رقم جهازك. والباركود في صور الدليل مثالٌ لا يُمسح.</div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+    },
+    {
+     "title": "الطريقة الثانية: من التطبيق نفسه",
+     "num": 5,
+     "next": 6,
+     "prev": 3,
+     "img": "/static/img/webos-0player-portal-92929480.webp",
+     "html": "<p>في شاشة <b dir=\"ltr\">Add a new playlist</b> على تبويب <b dir=\"ltr\">Portal Code</b> اختر كل خانة بالريموت واكتب فيها:</p><div class=\"note\"><b>مهم:</b> في خانة <b dir=\"ltr\">Code</b> اكتب الكود <b dir=\"ltr\">92929480</b> كما هو حتى يعمل معك الاشتراك.</div><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">Playlist Name</span><code>أي اسم، مثلًا ssouq</code></div><div class=\"f\"><span dir=\"ltr\">Code</span><code dir=\"ltr\">92929480</code></div><div class=\"f\"><span dir=\"ltr\">Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span dir=\"ltr\">Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir=\"ltr\">SAVE</b>.</p><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+    },
+    {
+     "title": "اختر قائمتك وشاهد",
+     "num": 6,
+     "prev": 3,
+     "img": "/static/img/webos-0player-reload.webp",
+     "html": "<p>ارجع إلى شاشة قوائمك <b dir=\"ltr\">Choose Your Playlist</b>:</p><ol><li>إن أضفت القائمة بالباركود فاضغط <b dir=\"ltr\">Reload</b> — وبالعربي <b>إعادة التحميل</b> — حتى تظهر.</li><li>اختر قائمتك باسمها الذي كتبته.</li><li>ومن الشاشة الرئيسية افتح <b dir=\"ltr\">Live TV</b> للقنوات، أو <b dir=\"ltr\">Movies</b> و <b dir=\"ltr\">Series</b> للأفلام والمسلسلات.</li></ol><div class=\"note\">لم تظهر القائمة أو القنوات؟ أغلق التطبيق وافتحه، وتأكّد من الكود <b dir=\"ltr\">92929480</b> واسم المستخدم وكلمة المرور بلا مسافات.</div>"
     }
    ],
    "ssiptv": [

@@ -294,6 +294,8 @@ a.entry{text-decoration:none}
 .pick button b{display:block}
 .pick button small{display:block;color:var(--mute);line-height:1.5}
 .pick button:hover{border-color:var(--brand)}
+.pick button svg{width:40px;height:40px;flex:0 0 auto;stroke:var(--brand-text);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pick.fork{margin:6px 0 4px}
 
 /* ---------- أداة M3U ---------- */
 .lbl{display:block;font-size:.85rem;color:var(--mute);margin:10px 0 4px}
@@ -631,6 +633,11 @@ const SS_IPTV_STEPS = [
 const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4?v=2" poster="/static/video/ssiptv-ar.webp?v=2" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الخطوات كلها في دقيقة وربع، ثم اتبعها هنا خطوة خطوة.</p></div>';
+// فيديو خطوات 0Player — أول خطوة التحميل. اسمه يحمل رمز البوابة (…-92929480-…) فيتبدّل مع رمز فالكون
+// كصور الخانات، ومصدره tools/video/0player.html. و?v= يُرفع مع كل إنتاج جديد كفيديو SS IPTV.
+const ZERO_VIDEO = '<div class="vid"><video src="/static/video/0player-92929480-ar.mp4?v=1" poster="/static/video/0player-92929480-ar.webp?v=1" '
+  + 'controls playsinline preload="none" width="720" height="1280"></video>'
+  + '<p class="sub">شاهد الطريقتين في دقيقة ونصف، ثم اتبع الخطوات هنا واحدة واحدة.</p></div>';
 // خطوة التحميل: شاشات سامسونج و LG
 const SS_IPTV_GET_WEBOS = { title: "حمّل تطبيق SS IPTV",
   html: SS_IPTV_VIDEO + APP("ss-iptv", "SS IPTV", "مجاني · من فريق SS IPTV")
@@ -716,17 +723,57 @@ const DEVICES = {
   webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "تطبيق 0Player أو SS IPTV", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "0player", label: "0Player", sub: "الأسهل: من متجر الشاشة، برمز البوابة وبياناتك", icon: "0player" },
+      { key: "0player", label: "0Player", sub: "من متجر الشاشة: بالباركود من جوالك أو بالريموت", icon: "0player" },
       SS_IPTV_OPT
     ]},
     variants: {
+      // التحميل، ثم «متابعة» في رسالة أول فتح، ثم PlayList، ثم Add Playlist وتبويب Portal Code — وعندها
+      // تفرّعٌ (fork) إلى طريقة من اثنتين: الباركود من الجوال أو التطبيق نفسه بالريموت. كلتاهما «الخطوة 5»
+      // (num) وتنتهيان إلى الأخيرة (next)، والرجوع منهما إلى التفرّع (prev). الصور من tools/video/shots_0player.js.
       "0player": [
-        { title: "حمّل تطبيق 0Player (زيرو بلاير)", img: "/static/img/webos-0player-store.jpg",
-          html: APP("0player", "0Player", "من متجر الشاشة · مجاني") + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله.</p>' + WEBOS_NOTE },
-        { title: "أضف القائمة — الخيار الأول: من الشاشة", img: "/static/img/webos-0player-add.jpg",
-          html: '<p>لك خياران لإضافة القائمة: من الشاشة مباشرة (هذه الخطوة)، أو من الجوال (الخطوة التالية). اختر أحدهما فقط.</p><ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir="ltr">Portal Code</b>.</li></ol><img src="/static/img/webos-0player-portal-92929480.webp" alt="خانات تبويب Portal Code في 0Player، وفي خانة Code يُكتب الكود 92929480"><div class="note"><b>مهم:</b> في خانة <b dir="ltr">Code</b> اكتب الكود <b dir="ltr">92929480</b> كما هو حتى يعمل معك الاشتراك.</div><div class="fields"><div class="f"><span>Playlist Name</span><code>اكتب أي شيء، مثلًا smart</code></div><div class="f"><span>Code (الخادم)</span><code>92929480</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS },
-        { title: "أضف القائمة — الخيار الثاني: من الجوال عبر 0player.com",
-          html: '<p>هذا الخيار بديل للخيار الأول، فإن أضفت القائمة من الشاشة فلا تحتاجه. وإن كانت الكتابة بريموت الشاشة متعبة، أضف القائمة من متصفح جوالك بالترتيب:</p><ol><li>افتح <a class="link" href="https://0player.com/" target="_blank" rel="noopener" dir="ltr">0player.com</a> من الجوال.</li><li>أدخل عنوان <b dir="ltr">MAC</b> الظاهر في التطبيق على الشاشة لتسجيل الدخول.</li><li>اضغط الزر المحدَّد في الصورة: <b dir="ltr">Add Portal Code Playlist</b>، وفي الواجهة العربية اسمه <b>إضافة قائمة تشغيل رمز البوابة</b>.</li></ol><img src="/static/img/webos-0player-web-en.webp" alt="زر Add Portal Code Playlist في موقع 0player.com من الجوال" loading="lazy"><img src="/static/img/webos-0player-web-ar.webp" alt="زر إضافة قائمة تشغيل رمز البوابة في الواجهة العربية لموقع 0player.com" loading="lazy"><ol start="4"><li>اكتب اسمًا للقائمة، وأدخل الرمز التالي مع اسم المستخدم وكلمة السر من بيانات اشتراكك:</li></ol><div class="fields"><div class="f"><span>Code (الخادم)</span><code>92929480</code></div></div><ol start="5"><li>تظهر رسالة <b dir="ltr">Portal group retrieved successfully</b>. اضغط <b dir="ltr">Close</b>، ثم افتح التطبيق على الشاشة، أو أعد فتحه، وستجد القائمة فيه.</li></ol><img src="/static/img/webos-0player-web-done.webp" alt="رسالة نجاح إضافة القائمة في موقع 0player.com" loading="lazy">' }
+        { title: "حمّل تطبيق 0Player (زيرو بلاير)",
+          html: ZERO_VIDEO + APP("0player", "0Player", "من متجر الشاشة")
+            + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله، ثم افتحه من تطبيقاتك.</p>'
+            + '<div class="note">موجود في متجر سامسونج، وفي متجر LG لشاشات 2016 إلى 2025.</div>' + WEBOS_NOTE },
+        { title: "افتح التطبيق واضغط «متابعة»", img: "/static/img/webos-0player-notice.webp",
+          html: '<p>أول مرة تفتح التطبيق تظهر رسالة: <b>لم ترفع قائمة التشغيل الخاصة بك بعد</b>. اضغط <b>متابعة</b> لتدخل التطبيق.</p>'
+            + '<div class="note">في الرسالة عنوان <b dir="ltr">MAC</b> ومفتاح الجهاز، ولا تحتاجهما في هذا الشرح. وإن لم تظهر الرسالة فالتطبيق على الشاشة الرئيسية: انتقل للخطوة التالية.</div>' },
+        { title: "اضغط PlayList (قائمة التشغيل)", img: "/static/img/webos-0player-home.webp",
+          html: '<p>في الشاشة الرئيسية انتقل بأسهم الريموت إلى مربع <b dir="ltr">PlayList</b> — واسمه في الواجهة العربية <b>قائمة التشغيل</b> — واضغط <b dir="ltr">OK</b>.</p>' },
+        { title: "اضغط Add Playlist واختر Portal Code", img: "/static/img/webos-0player-lists.webp",
+          html: '<p>تُفتح شاشة قوائمك <b dir="ltr">Choose Your Playlist</b>. اضغط <b dir="ltr">Add Playlist</b> فتظهر شاشة <b dir="ltr">Add a new playlist</b>، واختر فيها تبويب <b dir="ltr">Portal Code</b> في الأعلى.</p>'
+            + '<img src="/static/img/webos-0player-dialog.webp" alt="شاشة Add a new playlist: تبويب Portal Code وخانات البيانات، وعلى يمينها باركود للجوال" loading="lazy">'
+            + '<p><b>ومن هنا تضيف بيانات اشتراكك بطريقة من اثنتين، اختر واحدة:</b></p>',
+          fork: [
+            { to: 4, icon: "phone", label: "بالباركود من جوالك", sub: "الأسهل: تكتب البيانات في الجوال بدل الريموت" },
+            { to: 5, icon: "tv", label: "من التطبيق نفسه", sub: "تكتب البيانات على الشاشة بالريموت" }
+          ] },
+        { title: "الطريقة الأولى: بالباركود من جوالك", num: 5, next: 6, prev: 3, img: "/static/img/webos-0player-web-92929480.webp",
+          html: '<ol><li>افتح كاميرا جوالك ووجّهها إلى الباركود على يمين شاشة <b dir="ltr">Add a new playlist</b>، ثم اضغط الرابط الذي يظهر.</li>'
+            + '<li>يُفتح موقع <b dir="ltr">0player.com</b> على صفحة جهازك مباشرة. إن ظهرت نافذة <b dir="ltr">Welcome to Zero Player</b> فاضغط <b dir="ltr">Accept legal terms</b>.</li>'
+            + '<li>تأكّد أن تبويب <b dir="ltr">Portal Code</b> هو المختار، وعبّئ الخانات كما في الصورة:</li></ol>'
+            + '<div class="fields"><div class="f"><span dir="ltr">Name</span><code>أي اسم، مثلًا ssouq</code></div></div>'
+            + COPY("92929480", "Code")
+            + '<div class="fields"><div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
+            + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
+            + '<ol start="4"><li>اكتب الحروف الظاهرة في الصورة في خانة <b dir="ltr">Captcha</b>، ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</li>'
+            + '<li>تظهر <b dir="ltr">Playlist Added!</b> فقد أُضيفت قائمتك. ارجع إلى الشاشة وأكمل الخطوة التالية.</li></ol>'
+            + '<img src="/static/img/webos-0player-web-done.webp" alt="رسالة Playlist Added! في موقع 0player.com" loading="lazy">'
+            + '<div class="note">امسح الباركود الظاهر على شاشتك أنت: فيه رقم جهازك. والباركود في صور الدليل مثالٌ لا يُمسح.</div>' + CREDS },
+        { title: "الطريقة الثانية: من التطبيق نفسه", num: 5, next: 6, prev: 3, img: "/static/img/webos-0player-portal-92929480.webp",
+          html: '<p>في شاشة <b dir="ltr">Add a new playlist</b> على تبويب <b dir="ltr">Portal Code</b> اختر كل خانة بالريموت واكتب فيها:</p>'
+            + '<div class="note"><b>مهم:</b> في خانة <b dir="ltr">Code</b> اكتب الكود <b dir="ltr">92929480</b> كما هو حتى يعمل معك الاشتراك.</div>'
+            + '<div class="fields"><div class="f"><span dir="ltr">Playlist Name</span><code>أي اسم، مثلًا ssouq</code></div>'
+            + '<div class="f"><span dir="ltr">Code</span><code dir="ltr">92929480</code></div>'
+            + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
+            + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
+            + '<p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS },
+        { title: "اختر قائمتك وشاهد", num: 6, prev: 3, img: "/static/img/webos-0player-reload.webp",
+          html: '<p>ارجع إلى شاشة قوائمك <b dir="ltr">Choose Your Playlist</b>:</p>'
+            + '<ol><li>إن أضفت القائمة بالباركود فاضغط <b dir="ltr">Reload</b> — وبالعربي <b>إعادة التحميل</b> — حتى تظهر.</li>'
+            + '<li>اختر قائمتك باسمها الذي كتبته.</li>'
+            + '<li>ومن الشاشة الرئيسية افتح <b dir="ltr">Live TV</b> للقنوات، أو <b dir="ltr">Movies</b> و <b dir="ltr">Series</b> للأفلام والمسلسلات.</li></ol>'
+            + '<div class="note">لم تظهر القائمة أو القنوات؟ أغلق التطبيق وافتحه، وتأكّد من الكود <b dir="ltr">92929480</b> واسم المستخدم وكلمة المرور بلا مسافات.</div>' }
       ],
       ssiptv: SS_IPTV(SS_IPTV_GET_WEBOS)
     }
@@ -920,11 +967,11 @@ const FALCON = {
   },
 
   // نفس خطوات 0Player، ورمز البوابة وحده يختلف — فيُشتقّ منها ولا يُنسخ.
-  // صورة الخانات مكتوب عليها الرمز، واسمها يحمله (webos-0player-portal-<الرمز>.webp)
+  // وما كُتب عليه الرمز من صور وفيديو اسمه يحمله (…-0player-portal-<الرمز>.webp، 0player-<الرمز>-ar.mp4)
   // فيتبدّل معه هنا تلقائيًا إلى نسخة فالكون. و SS IPTV يبقى كما هو: رابطه بلا رمز بوابة.
   webos: Object.assign({}, DEVICES.webos, {
     variants: Object.assign({}, DEVICES.webos.variants, {
-      "0player": DEVICES.webos.variants["0player"].map(s => Object.assign({}, s, { html: s.html.split("92929480").join("75710072") }))
+      "0player": DEVICES.webos.variants["0player"].map(s => JSON.parse(JSON.stringify(s).split("92929480").join("75710072")))
     })
   })
 };
@@ -1314,12 +1361,18 @@ function renderChoose(){
       + `<span class="who"><b>${o.label}</b><small>${o.sub}</small></span></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
+/* خطواتٌ تتفرّع: خطوةٌ فيها fork تعرض طرقها أزرارًا بدل «التالي» (data-goto إلى أول خطوات الطريقة)،
+   وخطوة الطريقة تحمل رقمها (num — الطريقتان برقمٍ واحد)، وما بعدها (next)، والرجوع منها (prev). */
+const stepNo = (list, i) => list[i].num || i + 1;
+const stepsTotal = list => Math.max(...list.map((s, i) => s.num || i + 1));
 function renderStep(){
-  const list = steps(), s = list[state.i], d = devs()[state.dev];
+  const list = steps(), s = list[state.i], d = devs()[state.dev], next = s.next ?? state.i + 1;
   setProg(PROG_ACT, 2);
-  $("#view").innerHTML = `<div class="card step"><p class="sub">${SUBS[state.sub].name} · ${d.name}${state.variant ? " · " + d.choose.options.find(o => o.key === state.variant).label : ""} · الخطوة ${state.i + 1} من ${list.length}</p>
-    <h2>${s.title}</h2>${s.img ? `<img src="${s.img}" alt="${s.title}">` : ""}${s.html}
-    <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button><button class="btn go" type="button" data-next>${state.i + 1 < list.length ? "التالي" : "أنهيت الخطوات"}</button></div></div>`;
+  const fork = s.fork ? `<div class="pick fork">${s.fork.map(o => `<button type="button" data-goto="${o.to}">${ICONS[o.icon] || ""}`
+    + `<span class="who"><b>${o.label}</b><small>${o.sub}</small></span></button>`).join("")}</div>` : "";
+  $("#view").innerHTML = `<div class="card step"><p class="sub">${SUBS[state.sub].name} · ${d.name}${state.variant ? " · " + d.choose.options.find(o => o.key === state.variant).label : ""} · الخطوة ${stepNo(list, state.i)} من ${stepsTotal(list)}</p>
+    <h2>${s.title}</h2>${s.img ? `<img src="${s.img}" alt="${s.title}">` : ""}${s.html}${fork}
+    <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button>${s.fork ? "" : `<button class="btn go" type="button" data-next>${next < list.length ? "التالي" : "أنهيت الخطوات"}</button>`}</div></div>`;
 }
 function renderActDone(){
   const d = devs()[state.dev]; setProg(PROG_ACT, 3);
@@ -1466,9 +1519,9 @@ function pageTitle(){
       if (d.variants && !state.variant) return T("تفعيل " + sub + " على " + d.name + ": اختر التطبيق");
       const app = state.variant ? d.choose.options.find(o => o.key === state.variant).label : null;
       const where = (app ? app + " على " : "") + d.name;
-      const n = steps().length;
-      if (state.i >= n) return T("تم تفعيل " + sub + " على " + d.name);
-      return T("الخطوة " + (state.i + 1) + " من " + n + " · " + where + " · تفعيل " + sub);
+      const list = steps();
+      if (state.i >= list.length) return T("تم تفعيل " + sub + " على " + d.name);
+      return T("الخطوة " + stepNo(list, state.i) + " من " + stepsTotal(list) + " · " + where + " · تفعيل " + sub);
     }
     default: return SITE_TITLE;
   }
@@ -1567,7 +1620,7 @@ function backState(){
     case "buy-plan":   state.screen = "buy-brand"; state.plan = null; break;
     case "buy-done":   state.screen = "buy-plan"; state.plan = null; break;
     case "activate":
-      if (state.i > 0) state.i--;
+      if (state.i > 0) state.i = (steps()[state.i] || {}).prev ?? state.i - 1;   // من خطوة طريقةٍ إلى التفرّع
       else if (state.variant) state.variant = null;
       else if (state.dev) state.dev = null;
       else if (state.sub) state.sub = null;
@@ -1620,7 +1673,8 @@ $("#view").addEventListener("click", e => {
   else if (d.sub) { state.sub = d.sub; state.dev = null; state.variant = null; state.i = 0; }
   else if (d.dev) { state.screen = "activate"; state.dev = d.dev; state.variant = null; state.i = 0; }
   else if (d.variant) { state.variant = d.variant; state.i = 0; }
-  else if (b.hasAttribute("data-next")) state.i++;
+  else if (d.goto !== undefined) state.i = +d.goto;             // تفرّع الخطوات: أول خطوات الطريقة المختارة
+  else if (b.hasAttribute("data-next")) state.i = steps()[state.i].next ?? state.i + 1;
   else return;
   render(true); go();
 });

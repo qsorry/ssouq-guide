@@ -151,11 +151,11 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     await open('#activate/smart/vidaa/4');
     check('connect step opens the SS IPTV playlist editor',
       (await page.$eval('#view a.btn.go', a => a.href)) === 'https://ss-iptv.com/en/users/playlist');
-    await open('#activate/falcon/webos/0player/2');
+    await open('#activate/falcon/webos/0player/6');          // طريقة «من التطبيق نفسه»: فيها الرمز وصورته
     const fal = await page.textContent('#view');
     check("Falcon's 0Player keeps its own portal code", fal.includes('75710072') && !fal.includes('92929480'));
     check('… and its own portal image', (await page.$$eval('#view img', im => im.map(i => i.getAttribute('src')))).includes('/static/img/webos-0player-portal-75710072.webp'));
-    await open('#activate/smart/webos/0player/2');
+    await open('#activate/smart/webos/0player/6');
     check("Smart's 0Player code unchanged", (await page.textContent('#view')).includes('92929480'));
     await open('#activate/casper/webos/duplecast/3');
     check("Casper's old Duplecast link opens its not-on-this-TV screen",

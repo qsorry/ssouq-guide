@@ -153,7 +153,8 @@ def _steps_html(dev):
         for s in steps:
             n += 1
             out.append('<section class="card step">')
-            out.append(f'<h3>الخطوة {n} — {_esc(s["title"])}</h3>')
+            # خطوتا الطريقتين بعد التفرّع تحملان رقمًا واحدًا (num) كما في المعالج
+            out.append(f'<h3>الخطوة {s.get("num", n)} — {_esc(s["title"])}</h3>')
             if s.get("img"):
                 out.append(f'<img src="{_esc(s["img"])}" alt="{_esc(s["title"])}" loading="lazy">')
             out.append(s.get("html", ""))
