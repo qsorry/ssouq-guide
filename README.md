@@ -905,10 +905,18 @@ JavaScript المخصّص مطفأ في القالب، فقد تُسقط سلة 
 الكود الذي يُلصق في القسم:
 
 ```html
+<style>/* رأس الصفحة المثبّت عند التمرير: خلفية داكنة بدل الشفافة */.main-nav-container.fixed-pinned .inner{background:var(--ssq-bg,#081F2A)!important;border-bottom:1px solid var(--ssq-border,rgba(127,220,248,.16));box-shadow:0 8px 28px rgba(0,0,0,.18)!important}</style>
 <style>#ssouq-nl{display:block;width:100%;height:560px;border:0}@media (max-width:719px){#ssouq-nl{height:780px}}</style>
 <iframe id="ssouq-nl" src="https://guide.ssouq.com/nations-league/widget?theme=dark" title="دوري الأمم الأوروبية"></iframe>
 <script>addEventListener("message",function(e){if(e.origin==="https://guide.ssouq.com"&&e.data&&e.data.ssouqWidget){document.getElementById("ssouq-nl").style.height=e.data.ssouqWidget+"px"}});</script>
 ```
+
+**السطر الأول لرأس الصفحة لا للودجت.** الـ CSS المخصّص في القالب يجعل خلفية
+`.main-nav-container .inner` شفافة، والقالب يثبّت هذا العنصر نفسه أعلى الشاشة عند
+التمرير (`fixed-pinned`)، فكان الشعار والسلة والقائمة تطفو فوق المحتوى بلا خلفية.
+مكانه الصحيح الـ CSS المخصّص ليسري على كل الصفحات، لكن ربط سلة (MCP) لا يصل إليه
+فوُضع هنا، وهنا يسري على الرئيسية وحدها. فإن نُقل إلى الـ CSS المخصّص صار هذا السطر
+زائدًا لا يضرّ.
 
 **بطولة أخرى** (كأس آسيا 2027 في السعودية مثلًا — جدولها كاملٌ في ESPN برمز
 `afc.asian.cup`): غيّر `CUP` (الرمز، والسنوات، وبادئة المجموعات، وأسماء الأدوار) و
