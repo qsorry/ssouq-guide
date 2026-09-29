@@ -352,7 +352,7 @@ def _money(v):
 
 
 def _ad(srv, c):
-    """إعلان الاشتراك بين صفوف المحتوى — يراه زائر الجوال قبل أن يصل إلى الجانب: باقات السيرفر نفسه من CATALOG
+    """إعلان الاشتراك في أعلى الصفحة تحت السيرفرات — أول ما يراه الزائر، وعلى الجوال قبل الجانب بكثير: باقات السيرفر نفسه من CATALOG
     (‏C.PLANS) بأسعارها وخصمها، أو رابط شرائه من صفحة المدير، أو باقات إعلان الموقع (‏tournament.ADS) لسيرفرٍ
     بلا هذا ولا ذاك. وروابطه بحملة ‏content-ad."""
     catalog = {p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])}
@@ -513,9 +513,7 @@ def render(data_dir, key, query):
     gi = v["byid"][kind].get(gid) if kind and gid else None
     if kind and gid and gi is None:
         code = 404
-    spot = 99                                   # موضع الإعلان بين عناصر main (آخرها إن لم يُحدَّد)
     if t == "" and not gid:
-        spot = 1                                # بعد أول صف
         head = _hero(key, v) + _stats(c) + _kinds(base, v, t)
         for k in ("movie", "series", "live"):
             if v["recent"][k]:
@@ -530,7 +528,6 @@ def render(data_dir, key, query):
                                  _link(base, t=k, g=g["id"]), f'عرض الكل ({len(g["items"]):,})'))
         side += [_recent_list(key, v, ("movie", "series")), cta]
     elif t == "new":
-        spot = 2                                # بعد أول شبكة
         head = _stats(c) + _kinds(base, v, t)
         main.append(f'<div class="gh"><h1>{_i("new")} أضيف مؤخرًا في {_esc(name)}</h1>'
                     '<span class="sub">الأحدث أولًا، بترتيب إضافتها إلى السيرفر</span></div>')
@@ -566,7 +563,6 @@ def render(data_dir, key, query):
     else:                                   # صفحة النوع: الأقسام صورًا ثم صفٌّ لكل قسم
         kind = kind or kinds[0]
         t = kind
-        spot = 2                                # بعد الأقسام صورًا وأول صف
         head = _stats(c) + _kinds(base, v, t)
         miss = '<p class="empty">هذا القسم لم يعد موجودًا، واختر من الأقسام الحالية.</p>' if code == 404 else ""
         main.append(miss + _chips(key, base, v, kind))
@@ -578,9 +574,7 @@ def render(data_dir, key, query):
             main.append(f'<p class="empty"><a class="link" href="{_link(base, t=kind, all=1)}">كل أقسام '
                         f'{C.KIND_TAB[kind]} ({len(v["kinds"][kind]):,}) ←</a></p>')
         side += [_filters(base, v, kind, cur), _recent_list(key, v, (kind,)), cta]
-    ad = _ad(srv, c)
-    if ad and code == 200:
-        main.insert(min(spot, len(main)), ad)
+    ad = _ad(srv, c) if code == 200 else ""    # في أعلى الصفحة تحت السيرفرات — ونتائج البحث قبله
     summary = _summary_text(c)
     what = " و".join(x for k, x in (("series", "المسلسلات بمواسمها"), ("movie", "الأفلام"), ("live", "القنوات")) if c[k])
     title = f"محتوى اشتراك {name}: {what} | سمارت سوق"
@@ -591,7 +585,7 @@ def render(data_dir, key, query):
     body = (_header(base, srv, v, t, q, key) + '<main class="wrap">' + _servers(data_dir, key)
             + (f'<h1 class="sr">محتوى اشتراك {_esc(name)}</h1>' if t == "" and not gid else "")
             + '<div id="cres" aria-live="polite">' + (results_html(data_dir, key, srv, v, q) if q else "") + "</div>"
-            + head + '<div class="layout"><div class="col">' + "".join(main) + "</div>"
+            + ad + head + '<div class="layout"><div class="col">' + "".join(main) + "</div>"
             + f'<aside class="side">{"".join(side)}</aside></div></main>' + _footer(base, name, v, summary))
     return code, _doc(title, desc, guide_pages.SITE + base, index, body, key, name, cta_link), 600
 
@@ -793,7 +787,7 @@ button{font:inherit;color:inherit}
 .card.ch .pos img{object-fit:contain;padding:14%}
 .card.ch .ph{color:#1d2c4f;font-size:1.4rem}
 /* الإعلان */
-.ad{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.45fr);gap:20px;align-items:center;margin:26px 0;padding:22px;
+.ad{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.45fr);gap:20px;align-items:center;margin:16px 0 0;padding:22px;
   border-radius:20px;border:1px solid rgba(246,195,67,.38);
   background:radial-gradient(520px 220px at 100% 0,rgba(246,195,67,.16),transparent 62%),linear-gradient(135deg,#15305e,#0b1530)}
 .ad .eyebrow{display:inline-block;font-size:.7rem;font-weight:800;color:#1b1400;background:var(--gold);border-radius:6px;padding:2px 9px}
@@ -814,10 +808,12 @@ button{font:inherit;color:inherit}
 .adplan .off{position:absolute;top:8px;inset-inline-end:8px;background:#e5484d;color:#fff;font-size:.68rem;font-weight:800;
   border-radius:6px;padding:1px 6px}
 @media (max-width:760px){.ad{grid-template-columns:1fr;padding:18px}}
-@media (max-width:520px){.adplans{grid-template-columns:1fr}
-  .adplan{flex-direction:row;text-align:start;padding:10px 12px;gap:12px}.adplan img{width:46px;height:46px}
-  .adplan .t{flex:1}.adplan .off{top:auto;bottom:8px;inset-inline-end:auto;inset-inline-start:8px}
-}
+@media (max-width:520px){.ad{padding:14px;gap:12px}.ad h2{font-size:1.1rem;margin:8px 0 4px}   /* مختصرٌ في الأعلى */
+  .ad p{font-size:.82rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .adplans{gap:6px}.adplan{padding:12px 4px 8px;gap:4px;border-radius:12px}.adplan img{width:40px;height:40px;border-radius:9px}
+  .adplan b{font-size:.74rem}.adplan small{display:none}.adplan em{font-size:.9rem}.adplan s{display:none}
+  .adplan .off{top:4px;inset-inline-end:4px;font-size:.62rem;padding:0 4px}
+  .adbtns{margin-top:10px}.adbtns .btn{padding:10px 12px}.adbtns .ghost{flex:0 0 auto}}
 /* الجانب */
 .side{display:flex;flex-direction:column;gap:16px;min-width:0}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}

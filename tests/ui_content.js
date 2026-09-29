@@ -278,14 +278,14 @@ function playlist(movies) {
     }
     await page.goto(APP + '/content/falcon');
     const adPos = await page.evaluate(() => {
-      const a = document.querySelector('.col .ad'), rows = document.querySelectorAll('.col .row');
+      const a = document.querySelector('main > .ad'), hero = document.querySelector('.hero');
       const r = a.getBoundingClientRect();
-      return {plans: a.querySelectorAll('.adplan').length, after: rows[0].getBoundingClientRect().top < r.top,
-              before: r.bottom <= rows[1].getBoundingClientRect().top, fits: r.left >= 0 && r.right <= innerWidth,
+      return {plans: a.querySelectorAll('.adplan').length, top: Math.round(r.top), h: Math.round(r.height),
+              above: r.bottom <= hero.getBoundingClientRect().top, fits: r.left >= 0 && r.right <= innerWidth,
               tagged: [...a.querySelectorAll('a[target]')].every(x => x.href.includes('utm_campaign=content-ad'))};
     });
-    check('الإعلان على الجوال بعد أول صف: باقات فالكون بحملتها', adPos.plans === 3 && adPos.after && adPos.before && adPos.fits
-          && adPos.tagged, JSON.stringify(adPos));
+    check('الإعلان في أعلى الصفحة على الجوال، مختصرًا: باقات فالكون بحملتها', adPos.plans === 3 && adPos.above
+          && adPos.top < 300 && adPos.h < 420 && adPos.fits && adPos.tagged, JSON.stringify(adPos));
     const st = await page.evaluate(() => {
       const box = document.querySelector('.stats').getBoundingClientRect();
       const tiles = [...document.querySelectorAll('.stat')].map(t => t.getBoundingClientRect());

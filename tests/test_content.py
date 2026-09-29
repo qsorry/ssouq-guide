@@ -527,15 +527,17 @@ def unit_render():
 
     print("الإعلان")
     ad = html[html.index('<aside class="ad"'):html.index("</aside>", html.index('<aside class="ad"'))]
-    rows = [m.start() for m in re.finditer('<section class="row">', html)]
-    check("بين الصفوف بعد أولها، مرةً واحدة", html.count('<aside class="ad"') == 1
-          and rows[0] < html.index('<aside class="ad"') < rows[1])
+    check("في أعلى الصفحة: تحت السيرفرات وقبل الواجهة والصفوف، مرةً واحدة", html.count('<aside class="ad"') == 1
+          and html.index('<nav class="servers"') < html.index('<div id="cres"') < html.index('<aside class="ad"')
+          < html.index('<div class="herobox">') < html.index('<section class="row">'))
     check("باقات السيرفر نفسه بأسعارها وخصمها وحملة content-ad", "كل هذا المحتوى في اشتراك سمارت" in ad
           and ad.count('class="adplan"') == 3 and ad.count("utm_campaign=content-ad") == 4 and "-50%" in ad
           and "<s>92</s>" in ad and "اشترك في سمارت</a>" in ad and "9 مسلسلات بمواسمها" in ad, ad[:300])
     code, html2 = page(d, "smart", t="series")
-    check("وفي صفحة النوع بعد أول صف", html2.count('<aside class="ad"') == 1
-          and html2.index('<section class="row">') < html2.index('<aside class="ad"'))
+    check("وفي صفحة النوع في أعلاها كذلك", html2.count('<aside class="ad"') == 1
+          and html2.index('<aside class="ad"') < html2.index('<div class="stats">'))
+    code, html3 = page(d, "smart", q="breaking")
+    check("ونتائج البحث قبله", html3.index('<section class="results">') < html3.index('<aside class="ad"'))
     check("ولا إعلان في صفحةٍ غير موجودة", '<aside class="ad"' not in page(d, "smart", t="series", g="0000000000")[1])
     seed(d, "casper", SAMPLE)
     cad = page(d, "casper")[1]
