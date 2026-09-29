@@ -5,7 +5,7 @@ const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const ROOT = path.dirname(__dirname);
-const APP_PORT = 9762;
+const APP_PORT = 9831;             // 9762 هو خادم جوجل الوهمي في test_analytics.py
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guide_ssiptv_'));
 const SHOTS = process.env.SHOTS_DIR || '';
 const EXE = fs.existsSync('/opt/pw-browsers/chromium/chrome-linux/chrome')
