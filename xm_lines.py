@@ -188,7 +188,8 @@ def build_extension_zip():
     return buf.getvalue()
 MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image/png", ".jpg": "image/jpeg",
              ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".ico": "image/x-icon",
-             ".webmanifest": "application/manifest+json", ".xml": "application/xml; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
+             ".webmanifest": "application/manifest+json", ".xml": "application/xml; charset=utf-8", ".txt": "text/plain; charset=utf-8",
+             ".mp4": "video/mp4"}
 # ملفات عامة تُقدَّم من جذر الموقع (للأيقونات والأرشفة)
 ROOT_FILES = {"/favicon.ico": "icons/favicon.ico", "/apple-touch-icon.png": "icons/apple-touch-icon.png",
               "/site.webmanifest": "site.webmanifest"}
@@ -2537,9 +2538,25 @@ class Handler(BaseHTTPRequestHandler):
         full = os.path.join(STATIC_DIR, rel)
         if rel.startswith("..") or not os.path.isfile(full):
             return self._send(404, {"error": "not found"})
+        ctype = MIME.get(os.path.splitext(rel)[1].lower(), "application/octet-stream")
+        extra = {"Cache-Control": "public, max-age=2592000", "Accept-Ranges": "bytes"}
+        # مقطعٌ واحد من الملف (Range) — سفاري الآيفون لا يشغّل فيديو MP4 إلا به (206)
+        m = re.fullmatch(r"bytes=(\d*)-(\d*)", (self.headers.get("Range") or "").strip())
+        a, b = (m.group(1), m.group(2)) if m else ("", "")
+        if (a or b) and not (a and b and int(b) < int(a)):  # «5-3» مقطعٌ غير صالح: يُتجاهل فيُرسل الملف كاملًا
+            size = os.path.getsize(full)
+            if a:
+                start, end = int(a), min(int(b or size - 1), size - 1)
+            else:                                           # bytes=-N: آخر N بايت
+                start, end = size - min(int(b), size), size - 1
+            if start >= size or end < start:
+                return self._send(416, raw=b"", ctype=ctype, extra={**extra, "Content-Range": f"bytes */{size}"})
+            with open(full, "rb") as f:
+                f.seek(start)
+                part = f.read(end - start + 1)
+            return self._send(206, raw=part, ctype=ctype, extra={**extra, "Content-Range": f"bytes {start}-{end}/{size}"})
         with open(full, "rb") as f:
-            self._send(200, raw=f.read(), ctype=MIME.get(os.path.splitext(rel)[1].lower(), "application/octet-stream"),
-                       extra={"Cache-Control": "public, max-age=2592000"})
+            self._send(200, raw=f.read(), ctype=ctype, extra=extra)
 
     # ---------- GET ----------
     def do_GET(self):
