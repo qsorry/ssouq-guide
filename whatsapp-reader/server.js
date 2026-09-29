@@ -2261,9 +2261,13 @@ app.post('/sessions/:tenant/send', async (req, res) => {
         if (buffer.length === 0 || buffer.length > MAX_SEND_MEDIA_BYTES) {
             return res.status(422).json({ error: 'media_invalid' });
         }
-        payload = /^image\//.test(String(req.body?.media_mime || 'image/jpeg'))
+        const mime = String(req.body?.media_mime || 'image/jpeg');
+        // إضافة ssouq-guide: فيديو MP4 يُرسل مقطعًا يُشغَّل (فيديو الفرز في منشور القناة)، لا ملفًّا.
+        payload = /^image\//.test(mime)
             ? { image: buffer, caption: body }
-            : { document: buffer, mimetype: String(req.body.media_mime), fileName: String(req.body?.media_filename || 'attachment'), caption: body };
+            : /^video\/mp4/.test(mime)
+                ? { video: buffer, mimetype: 'video/mp4', caption: body }
+                : { document: buffer, mimetype: mime, fileName: String(req.body?.media_filename || 'attachment'), caption: body };
     }
 
     // `mentions` (bare phone digits) @-tags group members: WhatsApp only pings

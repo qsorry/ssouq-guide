@@ -62,9 +62,15 @@ DEFAULT_TEXT = ("مبروك {name} 🎉\n"
                 "فزت في مسابقة سمارت سوق لتوقّع نتيجة مباراة {match}.\n"
                 "النتيجة: {score}\n"
                 "جائزتك: {prize}\n\n"
-                "رُد على هذه الرسالة لاستلامها.\n"
+                "{claim}\n"
                 "كيف تم الفرز: {link}")
+# {claim} في رسالة الفائز: كيف تصله جائزته — اشتراكٌ يُرسل له (هدية الفائز) أو ردٌّ يستلمها به
+CLAIM_REPLY = "رُد على هذه الرسالة لاستلامها."
+CLAIM_GIFT = "بيانات اشتراكك وطريقة تفعيله تصلك هنا على واتساب 👇"
+_OLD_TEXT = DEFAULT_TEXT.replace("{claim}", CLAIM_REPLY)     # الافتراضي قبل {claim}: يُقرأ الافتراضيَّ الجديد
 DEFAULTS = {"notify": True, "text": DEFAULT_TEXT, "admin_phone": ""}
+GIFT_STALE = 15 * 60            # إنشاء هديةٍ لم يُعرف مصيره بعد هذا (انقطع الخادم في منتصفه) يُعدّ متعثّرًا
+POSTS_MAX = 20                  # منشورات التهنئة المحفوظة لكل مسابقة
 
 # شروط المسابقة كما تظهر للزائر (صفحة المسابقة وبطاقة المباراة)
 RULES = [
@@ -183,6 +189,8 @@ def load_settings(data_dir):
     out = dict(DEFAULTS)
     out["notify"] = bool(s.get("notify", DEFAULTS["notify"]))
     out["text"] = str(s.get("text") or DEFAULTS["text"])[:1000]
+    if out["text"].strip() == _OLD_TEXT:
+        out["text"] = DEFAULT_TEXT
     out["admin_phone"] = norm_phone(s.get("admin_phone", ""))
     return out
 
@@ -232,7 +240,7 @@ def save_settings(data_dir, new):
         raise ValueError("رقم واتساب المدير غير صحيح")
     with _lock:
         old = _read(os.path.join(_dir(data_dir), SETTINGS)) or {}
-        s.update({k: v for k, v in old.items() if k.startswith("reader_")})
+        s.update({k: v for k, v in old.items() if k.startswith(("reader_", "gift_"))})
         _write(os.path.join(_dir(data_dir), SETTINGS), s)
     return load_settings(data_dir)
 
@@ -759,6 +767,7 @@ def messages(rec, settings, link):
     match = f"{mt.get('home', '')} و{mt.get('away', '')}"
     score = f"{mt.get('home', '')} {h} – {a} {mt.get('away', '')}"
     out = []
+    claim = CLAIM_GIFT if gift_of(rec) else CLAIM_REPLY
     if settings.get("notify"):
         for p in d["picks"]:
             e = by.get(p["n"])
@@ -766,7 +775,7 @@ def messages(rec, settings, link):
                 out.append({"to": e["phone"], "kind": "winner", "n": e["n"],
                             "text": _fill(settings.get("text") or DEFAULT_TEXT, name=short_name(e["name"]),
                                           match=match, score=score, prize=rec.get("prize") or "", link=link,
-                                          prize_link=rec.get("prize_url") or "")})
+                                          prize_link=rec.get("prize_url") or "", claim=claim)})
     if settings.get("admin_phone"):
         won = "، ".join(f"{by[p['n']]['name']} ({by[p['n']]['phone']}) #{p['n']}" for p in d["picks"] if p["n"] in by)
         out.append({"to": settings["admin_phone"], "kind": "admin",
@@ -784,6 +793,169 @@ def mark_sent(data_dir, eid, results):
         now = round(time.time(), 3)
         rec.setdefault("sent", []).extend(dict(r, at=now) for r in results)
         _save(data_dir, rec)
+
+
+# ---------- هدية الفائز: اشتراكٌ يُنشأ له ويُرسل على رقمه ----------
+# المدير يختار للمسابقة الحساب والبوابة والباقة ومدة الهدية (باقة ١٥ شهرًا يُعطى منها ١٢ مثلًا، بنظام
+# الاشتراكات المجزّأة) — قبل الفرز فتُرسل وحدها بعده، أو بعده فتُرسل الآن. والإنشاء نفسه في xm_lines (يلمس
+# اللوحة)؛ وهنا ما يُحفظ: الاختيار (`gift`)، ولكل فائزٍ برقم توقّعه اشتراكه وحال رسالته (`gifts`).
+GIFT_KEYS = ("account_id", "account", "gate_id", "gate", "package_id", "package", "months", "label")
+
+
+def gift_of(rec):
+    """هدية المسابقة كما اختارها المدير، أو None."""
+    g = (rec or {}).get("gift")
+    return g if isinstance(g, dict) and g.get("gate_id") and g.get("package_id") else None
+
+
+def set_gift(data_dir, eid, spec, now=None):
+    """يحفظ هدية المسابقة (أو يمسحها بـ None) ← السجل، أو None إن لم تكن مسابقة. ويُحفظ الاختيار آخرَ
+    هديةٍ فيُقترح في المسابقة التالية."""
+    now = time.time() if now is None else now
+    with _lock:
+        rec = load(data_dir, eid)
+        if not rec:
+            return None
+        if spec:
+            rec["gift"] = dict({k: spec.get(k, "") for k in GIFT_KEYS}, at=round(now, 3))
+            p = os.path.join(_dir(data_dir), SETTINGS)
+            s = _read(p) or {}
+            s["gift_last"] = {k: spec.get(k, "") for k in GIFT_KEYS}
+            _write(p, s)
+        else:
+            rec.pop("gift", None)
+        _save(data_dir, rec)
+        return rec
+
+
+def last_gift(data_dir):
+    """آخر هديةٍ اختارها المدير (لتُقترح)، أو None."""
+    g = (_read(os.path.join(_dir(data_dir), SETTINGS)) or {}).get("gift_last")
+    return g if isinstance(g, dict) and g.get("gate_id") else None
+
+
+def gift_claim(data_dir, eid, n, force=False, now=None):
+    """يحجز إنشاء هدية الفائز n *قبل* لمس اللوحة، فلا يُنشأ له اشتراكان ← (الحال، الهدية):
+    go (احجز وأنشئ) · have (أُنشئت: تُرسل رسالتها فقط) · busy (تُنشأ الآن) · failed (فشلت — لا تُعاد
+    إلا بيد المدير: force). والحجز الذي انقطع في منتصفه لا يُعرف أأُنشئ الاشتراك أم لا: يصير فشلًا يُنبَّه فيه
+    المدير إلى مراجعة اللوحة قبل الإعادة."""
+    now = time.time() if now is None else now
+    key = str(n)
+    with _lock:
+        rec = load(data_dir, eid)
+        if not rec:
+            return "failed", {"error": "لا مسابقة"}
+        gs = rec.setdefault("gifts", {})
+        g = gs.get(key)
+        if g and g.get("st") == "created":
+            return "have", g
+        if g and g.get("st") == "creating":
+            if now - (g.get("at") or 0) < GIFT_STALE:
+                return "busy", g
+            g.update(st="failed", error="انقطع الإنشاء قبل أن يُعرف مصيره — ابحث عنه في اللوحة قبل إعادة المحاولة")
+            _save(data_dir, rec)
+        if g and g.get("st") == "failed" and not force:
+            return "failed", g
+        by = {e["n"]: e for e in rec.get("entries") or []}
+        e = by.get(int(n)) if str(n).isdigit() else None
+        gs[key] = {"st": "creating", "at": round(now, 3), "tries": int((g or {}).get("tries") or 0) + 1,
+                   "name": (e or {}).get("name", ""), "to": (e or {}).get("phone", "")}
+        _save(data_dir, rec)
+        return "go", gs[key]
+
+
+def _gift_update(data_dir, eid, n, **kw):
+    with _lock:
+        rec = load(data_dir, eid)
+        g = ((rec or {}).get("gifts") or {}).get(str(n))
+        if g is None:
+            return None
+        g.update(kw)
+        _save(data_dir, rec)
+        return g
+
+
+def gift_done(data_dir, eid, n, info, now=None):
+    """أُنشئ اشتراك الهدية: بياناته (اليوزر والباسورد والهوست والباقة والمدة والبوابة وتجزئته) تُدوَّن للفائز."""
+    now = time.time() if now is None else now
+    return _gift_update(data_dir, eid, n, st="created", error="", created=round(now, 3), **info)
+
+
+def gift_fail(data_dir, eid, n, error, now=None):
+    now = time.time() if now is None else now
+    return _gift_update(data_dir, eid, n, st="failed", error=str(error or "تعذّر الإنشاء")[:300], failed=round(now, 3))
+
+
+def gift_sent(data_dir, eid, n, ok, error="", now=None):
+    """نتيجة رسالة الهدية (بيانات الاشتراك وطريقة التثبيت) على رقم الفائز."""
+    now = time.time() if now is None else now
+    with _lock:
+        rec = load(data_dir, eid)
+        g = ((rec or {}).get("gifts") or {}).get(str(n))
+        if g is None:
+            return None
+        g["sent"] = {"ok": bool(ok), "error": "" if ok else str(error or "تعذّر الإرسال")[:200], "at": round(now, 3)}
+        g["sends"] = int(g.get("sends") or 0) + 1
+        _save(data_dir, rec)
+        return g
+
+
+def winners_n(rec):
+    """أرقام توقّعات الفائزين في الفرز الحالي، بترتيبهم."""
+    by = {e["n"] for e in (rec or {}).get("entries") or []}
+    return [p["n"] for p in ((rec or {}).get("draw") or {}).get("picks", []) if p["n"] in by]
+
+
+# ---------- تهنئة الفائزين في قناة واتساب ----------
+def _predictions(n):
+    """«3 توقّعات» و«40 توقّعًا» و«توقّعين» — العدد بتمييزه."""
+    return ("توقّعٍ واحد" if n == 1 else "توقّعين" if n == 2 else f"{n} توقّعات" if 3 <= n <= 10
+            else f"{n} توقّعًا")
+
+
+def winners_post(rec, link, more=""):
+    """منشور القناة بعد الفرز (يُنشر مع فيديو الفرز): الفائزون بأسمائهم الأولى وأرقامهم مخفيّةً — كتقرير
+    الفرز العام — وتوقّع كلٍّ منهم، والجائزة، ورابط صفحة الفرز، ورابط المسابقات القادمة. والرقم المخفيّ معزولٌ
+    من اليسار لليمين (LRI…PDI)، وإلا قُلب في السطر العربي فصار ‎«022•••••05»."""
+    d = rec.get("draw")
+    if not d:
+        return ""
+    mt = rec.get("match") or {}
+    by = {e["n"]: e for e in rec.get("entries") or []}
+    h, a = d["score"]
+    home, away = mt.get("home", ""), mt.get("away", "")
+    won = [(p, by[p["n"]]) for p in d["picks"] if p["n"] in by]
+    medals = ("🥇", "🥈", "🥉")
+    if won:
+        lines = [("🏆 مبروك للفائز" if len(won) == 1 else "🏆 مبروك للفائزين") + " في مسابقة سمارت سوق 🎉",
+                 f"⚽ {home} {h} – {a} {away}" + (f" · {mt['cup']}" if mt.get("cup") else ""), ""]
+        for i, (p, e) in enumerate(won):
+            mark = medals[i] if len(won) > 1 and i < len(medals) else ("🎉" if len(won) == 1 else f"{i + 1}.")
+            lines.append(f"{mark} {short_name(e['name'])} (\u2066{mask_phone(e['phone'])}\u2069) — توقّع {e['h']} – {e['a']}"
+                         + ("" if p.get("tier") == "exact" else " (أصاب الفائز)"))
+        lines += ["", f"🎁 الجائزة: {rec.get('prize') or ''}",
+                  f"أصاب النتيجة بالضبط {d['exact']} من {_predictions(d['count'])}، والفائز بقرعةٍ آليّة ثابتة "
+                  "يتحقّق منها الجميع."]
+    else:
+        lines = [f"انتهت مسابقة سمارت سوق على مباراة {home} و{away}",
+                 f"⚽ النتيجة: {home} {h} – {a} {away}", "",
+                 f"لم يُصب أحدٌ النتيجة بالضبط من {_predictions(d['count'])}، فلا فائز هذه المرة."]
+    lines += ["", f"🎬 شاهد كيف تم الفرز: {link}"]
+    if more:
+        lines.append(f"🔮 توقّع المباراة القادمة واربح: {more}")
+    return "\n".join(lines)
+
+
+def log_post(data_dir, eid, entry, now=None):
+    """نتيجة منشور التهنئة في القناة ← السجل (آخر POSTS_MAX منها)."""
+    now = time.time() if now is None else now
+    with _lock:
+        rec = load(data_dir, eid)
+        if not rec:
+            return None
+        rec["posts"] = ((rec.get("posts") or []) + [dict(entry, at=round(now, 3))])[-POSTS_MAX:]
+        _save(data_dir, rec)
+        return rec
 
 
 # ---------- الإدارة ----------
@@ -898,7 +1070,8 @@ def admin_detail(data_dir, eid, m, now=None):
             "entries": [{k: e.get(k) for k in ("n", "name", "phone", "h", "a", "at", "promo")} for e in rec["entries"]],
             "won": won, "draw": {k: v for k, v in d.items() if k != "picks"} if d else None,
             "tickets": dict(collections.Counter(t["st"] for t in (rec.get("tickets") or {}).values())),
-            "sent": rec.get("sent") or [], "public": public(rec, m, now)}
+            "sent": rec.get("sent") or [], "public": public(rec, m, now),
+            "gift": gift_of(rec), "gifts": rec.get("gifts") or {}, "posts": rec.get("posts") or []}
 
 
 def export_sheets(data_dir, eid=""):
@@ -906,14 +1079,19 @@ def export_sheets(data_dir, eid=""):
     ids = [eid_of(eid)] if eid else sorted(summaries(data_dir), key=lambda x: int(x))
     sheets = []
     head = ["رقم التوقّع", "الاسم", "واتساب", "توقّع صاحب الأرض", "توقّع الضيف", "وقت التسجيل (السعودية)",
-            "يقبل العروض", "فائز"]
+            "يقبل العروض", "فائز", "هدية: اسم المستخدم", "هدية: الاشتراك"]
     for i in ids:
         rec = load(data_dir, i)
         if not rec:
             continue
         mt = rec.get("match") or {}
         won = {p["n"] for p in (rec.get("draw") or {}).get("picks", [])}
-        rows = [[e["n"], e["name"], e["phone"], e["h"], e["a"], _when(e["at"]), "نعم" if e.get("promo") else "لا",
-                 "فائز" if e["n"] in won else ""] for e in rec["entries"]]
+        gifts = {k: g for k, g in (rec.get("gifts") or {}).items() if g.get("st") == "created"}
+        rows = []
+        for e in rec["entries"]:
+            g = gifts.get(str(e["n"])) or {}
+            rows.append([e["n"], e["name"], e["phone"], e["h"], e["a"], _when(e["at"]),
+                         "نعم" if e.get("promo") else "لا", "فائز" if e["n"] in won else "",
+                         g.get("username", ""), g.get("label", "")])
         sheets.append((f"{mt.get('home', '')} - {mt.get('away', '')}"[:28] or i, head, rows))
     return sheets
