@@ -27,9 +27,11 @@ admin.ssouq.com/content، أو يُحفظ رابطه فيُسحب منه كل ي
 سكربت؛ وسكربتها الصغير يفتح القسم في مكانه ويبحث مع الكتابة من الواجهات نفسها.
 
 التخزين في data/content/: ‏<السيرفر>.json لكل سيرفر، و‏<السيرفر>.adult.json بما أُسقط منه للكبار،
-و‏<السيرفر>.seen.json بما رُئي منه و‏<السيرفر>.news.json بما جدّ فيه سحبًا بعد سحب، وsettings.json بالسيرفرات
-وروابطها وما أخفاه المدير من أقسام ومن يصله التنبيه وقناة واتساب. بلا مكتبات خارجية.
+و‏<السيرفر>.seen.json بما رُئي منه و‏<السيرفر>.news.json بما جدّ فيه سحبًا بعد سحب، و‏<السيرفر>.sum.json بملخّصه (أعداده
+وأقسامه) فتُفتح صفحة المدير بلا قراءة فهرسه الكبير، وsettings.json بالسيرفرات وروابطها وما أخفاه المدير من أقسام ومن يصله
+التنبيه وقناة واتساب. بلا مكتبات خارجية.
 """
+import bisect
 import codecs
 import hashlib
 import io
@@ -100,6 +102,10 @@ UA = "VLC/3.0.20 LibVLC/3.0.20"   # لوحات Xtream تقبل المشغّلا�
 _lock = threading.RLock()     # الإعداد: قراءةٌ ثم كتابة
 _busy = {}                    # السيرفر ← {stage, bytes, at} ما دام يُقرأ ملفه
 _cache = {}                   # السيرفر ← (البصمة، العرض المشتق)
+_building = {}                # السيرفر ← قفل بناء عرضه: بناءٌ واحد في وقته، ومن طلبه معه ينتظره ولا يبني مثله
+_sums = {}                    # السيرفر ← (البصمة، ملخّصه) — آخر ما عُرف، من العرض أو من ملفه على القرص
+_warming = set()              # سيرفراتٌ تُبنى عروضها في الخلفية الآن
+_files = {}                   # ملفٌّ صغير يُقرأ مع كل تحميلٍ لصفحة المدير ← (نسخته، ما فيه)
 _found = {}                   # كاش البحث: (السيرفر، البصمة، الكلمات) ← النتيجة
 
 # تنبيه المدير بما أُسقط للكبار — يضبطهما الخادم (xm_lines)، وبدونهما لا تنبيه:
@@ -539,6 +545,12 @@ def _news_path(data_dir, key):
     return os.path.join(_dir(data_dir), key + ".news.json")
 
 
+def _sum_path(data_dir, key):
+    """ملخّص الفهرس (أعداده وأقسامه وحال ملفه) لصفحة المدير والرئيسية والمتجر — يُكتب مع كل بناءٍ لعرضه، فيبقى بعد
+    إعادة تشغيل الخادم ولا تنتظر الصفحة قراءة الفهرس الكبير."""
+    return os.path.join(_dir(data_dir), key + ".sum.json")
+
+
 def _read(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -546,6 +558,21 @@ def _read(path):
         return d if isinstance(d, dict) else None
     except (OSError, ValueError):
         return None
+
+
+def _read_ro(path):
+    """‏_read لما يُقرأ ولا يُعدَّل (سجلّ الجديد وما أُسقط للكبار، مع كل تحميلٍ لصفحة المدير) — مرةً لكل نسخةٍ من الملف."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        _files.pop(path, None)
+        return None
+    ver, c = (st.st_ino, st.st_mtime_ns, st.st_size), _files.get(path)
+    if c and c[0] == ver:
+        return c[1]
+    d = _read(path)
+    _files[path] = (ver, d)
+    return d
 
 
 def _write(path, obj):
@@ -916,18 +943,28 @@ def clear(data_dir, key, drop=False):
                 r.update(url="", error="", try_at=0.0, hidden=[])
         _save(data_dir, rows)
         for path in (_cat_path(data_dir, key), _adult_path(data_dir, key), _seen_path(data_dir, key),
-                     _news_path(data_dir, key)):
+                     _news_path(data_dir, key), _sum_path(data_dir, key)):
             try:
                 os.remove(path)
             except OSError:
                 pass
         _cache.pop(key, None)
+        _sums.pop(key, None)
 
 
 # ================= العرض المشتق (للصفحة والبحث) =================
+SUM_V = 1                            # نسخة الملخّص: تُزاد إن تغيّر ما فيه أو طريقة العدّ، فيُعاد بناء ما حُفظ قبلها
+
+
+def _sig(st, srv):
+    """بصمة العرض: نسخة ملف الفهرس (رقمه على القرص — ‏_write يكتب ملفًّا جديدًا كل مرة — ووقته وحجمه) وما أُخفي منه."""
+    return [st.st_ino, st.st_mtime_ns, st.st_size, list(srv["hidden"])]
+
+
 def _view(data_dir, key):
-    """← (السيرفر، العرض): أقسامه الظاهرة وأعداده وفهرس البحث — يُبنى مرةً لكل نسخةٍ من الملف
-    وما أُخفي منه، ويبقى في الذاكرة."""
+    """← (السيرفر، العرض): أقسامه الظاهرة وأعداده وفهرس البحث — يُبنى مرةً لكل نسخةٍ من الملف وما أُخفي منه، ويبقى
+    في الذاكرة، ويُحفظ ملخّصه على القرص. وبناءٌ واحد لكل سيرفرٍ في وقته: من يطلبه وهو يُبنى ينتظره ثم يأخذه، فلا تبني
+    الطلبات الفهرسَ نفسه معًا (بعد إعادة التشغيل أو سحبٍ جديد) فيطول انتظارها كلها."""
     srv = _server(data_dir, key)
     if not srv:
         return None, None
@@ -935,16 +972,124 @@ def _view(data_dir, key):
         st = os.stat(_cat_path(data_dir, key))
     except OSError:
         return srv, None
-    sig = (st.st_mtime_ns, st.st_size, tuple(srv["hidden"]))
+    c = _cache.get(key)
+    if c and c[0] == _sig(st, srv):
+        return srv, c[1]
+    with _lock:
+        lock = _building.setdefault(key, threading.Lock())
+    with lock:
+        srv = _server(data_dir, key)
+        if not srv:
+            return None, None
+        try:
+            with open(_cat_path(data_dir, key), encoding="utf-8") as f:
+                sig = _sig(os.fstat(f.fileno()), srv)      # بصمة ما يُقرأ نفسه، ولو استُبدل الملف بعدها
+                c = _cache.get(key)
+                if c and c[0] == sig:                      # بناه من سبق وهذا ينتظره
+                    return srv, c[1]
+                try:
+                    cat = json.load(f)
+                except ValueError:
+                    cat = None
+        except OSError:
+            return srv, None
+        try:
+            v = _build(cat, set(srv["hidden"])) if isinstance(cat, dict) else None   # والتالف يُحفظ بلا عرض فلا يُعاد
+        except Exception:
+            _sums[key] = (sig, None)                       # فلا تنتظره صفحة المدير أبدًا، ويُحاوَل ثانيةً مع الطلب التالي
+            raise
+        m = _summarize(v) if v else None
+        _cache[key], _sums[key] = (sig, v), (sig, m)
+        if m:
+            try:
+                _write(_sum_path(data_dir, key), dict(m, v=SUM_V, sig=sig))
+            except OSError:
+                pass
+    return srv, v
+
+
+def _summarize(v):
+    """ما تحتاجه صفحة المدير والرئيسية والمتجر وقائمة السيرفرات من العرض ← {has, at, counts، cat: حال الملف،
+    groups: {النوع: [[id، الاسم، عدد عناصره]]}} — بالأقسام كلها، والمخفي منها معها."""
+    cat = v["cat"]
+    return {"has": _has(v), "at": v["at"], "counts": v["counts"],
+            "cat": {k: cat[k] for k in ("source", "label", "entries", "n", "skipped", "api", "old") if k in cat},
+            "groups": {k: [[g.get("id"), g.get("name"), len(g.get("items") or [])] for g in cat.get(k) or []]
+                       for k in KINDS}}
+
+
+def _summary(data_dir, key, srv=None, wait=True):
+    """ملخّص محتوى السيرفر (‏_summarize) لنسخة ملفه الآن ← (الملخّص أو None بلا محتوى، حديث؟) — من العرض إن بُني وإلا من
+    ملفه الصغير، بلا قراءة الفهرس الكبير. وما لم يُبنَ لها بعد (أول مرة، أو بعد سحبٍ أو إخفاء قسم) يُبنى الآن (‏wait)، أو
+    يُعاد آخر ملخّصٍ عُرف له (أو None) ويُبنى في الخلفية — لصفحة المدير، فتُفتح فورًا وتُكمل أعدادها بعد لحظات."""
+    srv = srv or _server(data_dir, key)
+    if not srv:
+        return None, True
+    try:
+        sig = _sig(os.stat(_cat_path(data_dir, key)), srv)
+    except OSError:
+        return None, True
+    m = _sums.get(key)
+    if not m or m[0] != sig:
+        rec = _read(_sum_path(data_dir, key))
+        if rec and rec.get("v") == SUM_V and isinstance(rec.get("counts"), dict) and isinstance(rec.get("groups"), dict) \
+                and (rec.get("sig") == sig or not m):
+            m = (rec.get("sig"), rec)
+            if m[0] == sig:
+                _sums[key] = m
+    if m and m[0] == sig:
+        return m[1], True
+    if wait:
+        v = _view(data_dir, key)[1]
+        return (_summarize(v) if v else None), True
+    warm(data_dir, [key])
+    return (m[1] if m else None), False
+
+
+def has(data_dir, key, srv=None):
+    """للسيرفر محتوى يُنشر؟ — من ملخّصه، فلا يُبنى عرض كل سيرفرٍ لقائمة السيرفرات في صفحة غيره."""
+    m = _summary(data_dir, key, srv)[0]
+    return bool(m and m["has"])
+
+
+def _ready(data_dir, key):
+    """العرض إن كان مبنيًّا لنسخة الملف الآن، بلا انتظار ← العرض، أو None بلا محتوى، أو False إن لم يُبنَ بعد (ويُبنى
+    في الخلفية)."""
+    srv = _server(data_dir, key)
+    if not srv:
+        return None
+    try:
+        sig = _sig(os.stat(_cat_path(data_dir, key)), srv)
+    except OSError:
+        return None
     c = _cache.get(key)
     if c and c[0] == sig:
-        return srv, c[1]
-    cat = _read(_cat_path(data_dir, key))
-    if not cat:
-        return srv, None
-    v = _build(cat, set(srv["hidden"]))
-    _cache[key] = (sig, v)
-    return srv, v
+        return c[1]
+    warm(data_dir, [key])
+    return False
+
+
+def warm(data_dir, keys=None):
+    """يبني عروض السيرفرات (وملخّصاتها) في الخلفية واحدًا بعد واحد، وما يُبنى منها الآن لا يُعاد ← الخيط أو None — عند
+    إقلاع الخادم فلا ينتظرها أول زائرٍ ولا صفحة المدير، ولما طلبته صفحة المدير ولم يُبنَ بعد."""
+    with _lock:
+        keys = [k for k in (keys if keys is not None else [s["key"] for s in _load(data_dir)]) if k not in _warming]
+        _warming.update(keys)
+    if not keys:
+        return None
+
+    def run():
+        for k in keys:
+            try:
+                _view(data_dir, k)
+            except Exception:  # noqa: BLE001 — فهرسٌ لا يُبنى لا يوقف غيره، ويُبنى حين يُطلب
+                pass
+            finally:
+                with _lock:
+                    _warming.discard(k)
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return t
 
 
 def _upgrade(cat):
@@ -1155,7 +1300,7 @@ def select(v, kind, gid="", year=0, genre="", rating=0, sort="new"):
 def first_key(data_dir):
     """أول سيرفرٍ له محتوى — إليه يذهب ‏/content."""
     for s in servers(data_dir):
-        if _has(_view(data_dir, s["key"])[1]):
+        if has(data_dir, s["key"], s):
             return s["key"]
     return ""
 
@@ -1586,55 +1731,58 @@ def _regroup(cat, kind, names, cids, flagged):
 
 
 # ================= الواجهات الأخرى =================
-def brief(data_dir):
-    """للرئيسية ومسار الشراء: السيرفرات التي لها محتوى وأعدادها."""
+def brief(data_dir, wait=True):
+    """للرئيسية ومسار الشراء وبطاقة المتجر: السيرفرات التي لها محتوى وأعدادها — من ملخّص كلٍّ منها. وبلا انتظار
+    (‏wait=False، لصفحة المدير): آخر ما عُرف، وسيرفرٌ لم يُعرف له ملخّصٌ بعد لا يُذكر حتى يُبنى."""
     out = []
     for s in servers(data_dir):
-        v = _view(data_dir, s["key"])[1]
-        if _has(v):
-            out.append({"key": s["key"], "name": s["name"], "url": f"{PATH}/{s['key']}", "at": int(v["at"]),
-                        "series": v["counts"]["series"], "seasons": v["counts"]["seasons"],
-                        "episodes": v["counts"]["episodes"], "movies": v["counts"]["movie"],
-                        "channels": v["counts"]["live"]})
+        m = _summary(data_dir, s["key"], s, wait)[0]
+        if m and m["has"]:
+            c = m["counts"]
+            out.append({"key": s["key"], "name": s["name"], "url": f"{PATH}/{s['key']}", "at": int(m["at"]),
+                        "series": c["series"], "seasons": c["seasons"], "episodes": c["episodes"],
+                        "movies": c["movie"], "channels": c["live"]})
     return {"ok": True, "servers": out}
 
 
 def sitemap(data_dir):
-    return [(f"{PATH}/{s['key']}", "daily", "0.7") for s in servers(data_dir)
-            if _has(_view(data_dir, s["key"])[1])]
+    return [(f"{PATH}/{s['key']}", "daily", "0.7") for s in servers(data_dir) if has(data_dir, s["key"], s)]
 
 
 def _adult_view(data_dir, key):
     """ما أُسقط من ملف السيرفر للكبار وآخر تنبيهٍ به — لصفحة المدير وحدها."""
-    rec = _read(_adult_path(data_dir, key))
+    rec = _read_ro(_adult_path(data_dir, key))
     return {k: rec.get(k) for k in ("count", "groups", "titles", "panel", "more", "at", "source", "alert")} if rec else None
 
 
 def admin_state(data_dir):
     """صفحة المدير: كل سيرفر بحاله وأعداده وأقسامه كلها (المخفية معلَّمة) وما أُسقط منه للكبار وما جدّ في
-    آخر سحب — ورابطه مخفيًّا. ومعها لمن يصل تنبيه الكبار، وقناة واتساب ومنشورها."""
+    آخر سحب — ورابطه مخفيًّا. ومعها لمن يصل تنبيه الكبار، وقناة واتساب ومنشورها. ولا تنتظر بناء عرض: الأعداد والأقسام
+    من ملخّص كل سيرفر، وما لم يُبنَ لنسخة ملفه الحالية بعد يُعلَّم ‏loading ويُبنى في الخلفية، فتعود إليه الصفحة بعد لحظات."""
     try:
         alert = alert_info() if alert_info else None
     except Exception:  # noqa: BLE001 — حال التنبيه لا يُسقط الصفحة
         alert = None
     out = []
     for s in servers(data_dir):
-        v = _view(data_dir, s["key"])[1]
-        cat = v["cat"] if v else {}
+        m, fresh = _summary(data_dir, s["key"], s, wait=False)
+        m = m or {}
+        cat = m.get("cat") or {}
         hidden = set(s["hidden"])
         url = crypto_store.decrypt(s["url"], data_dir) if s["url"] else ""
         out.append({
             "key": s["key"], "name": s["name"], "full": s["full"], "buy": s["buy"], "page": f"{PATH}/{s['key']}",
-            "has": _has(v), "at": v["at"] if v else 0, "source": cat.get("source", ""), "label": cat.get("label", ""),
-            "counts": v["counts"] if v else None, "entries": cat.get("entries", 0), "n": cat.get("n", {}),
-            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "old": bool(cat.get("old")),
+            "has": bool(m.get("has")), "at": m.get("at", 0), "source": cat.get("source", ""), "label": cat.get("label", ""),
+            "counts": m.get("counts"), "entries": cat.get("entries", 0), "n": cat.get("n", {}),
+            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "old": bool(cat.get("old")), "loading": not fresh,
             "adult": _adult_view(data_dir, s["key"]),
-            "news": (_read(_news_path(data_dir, s["key"])) or {}).get("last"),
+            "news": (_read_ro(_news_path(data_dir, s["key"])) or {}).get("last"),
             "url": mask_url(url) if url else "", "try_at": s["try_at"],
             "error": s["error"], "busy": dict(_busy[s["key"]]) if s["key"] in _busy else None,
-            "groups": {k: [[g["id"], g["name"], len(g["items"]), g["id"] in hidden] for g in cat.get(k) or []]
+            "groups": {k: [[g, name, n, g in hidden] for g, name, n in (m.get("groups") or {}).get(k) or []]
                        for k in KINDS}})
-    return {"servers": out, "refresh_hours": REFRESH // 3600, "alert": alert, "channel": channel_state(data_dir)}
+    return {"servers": out, "refresh_hours": REFRESH // 3600, "alert": alert,
+            "channel": channel_state(data_dir, wait=False)}
 
 
 # ================= الجديد: ما أضيف في كل سحب، ومنشوره اليومي في قناة واتساب =================
@@ -1739,13 +1887,14 @@ def _news_start(rec):
     return min(ts) if ts else _float((rec.get("last") or {}).get("at")) or None
 
 
-def _pending(data_dir, key, since, until, hidden=()):
+def _pending(data_dir, key, since, until, hidden=(), wait=True):
     """ما جدّ في السيرفر في (since, until] ← (الأفلام، المسلسلات الجديدة، مسلسلاتٌ جدّت حلقاتها)، كلٌّ {بصمة: عنصر}:
     من السجلّ الفيلم والمسلسل مرة، وحلقات المسلسل من كل سحبٍ مجموعةً بموسمها {الموسم: [زادت، صارت، جديد؟]} (والمسلسل
     الجديد يضمّ ما جدّ من حلقاته بعده) — وما قبل بداية السجلّ (أو بلا سجلٍّ بعد) من تاريخ الإضافة في واجهة السيرفر
-    كما في «أضيف مؤخرًا» في الصفحة (‏_panel). وما أقسامه كلها مخفيةٌ من الصفحة لا يُعدّ."""
+    كما في «أضيف مؤخرًا» في الصفحة (‏_panel). وما أقسامه كلها مخفيةٌ من الصفحة لا يُعدّ. وبلا انتظار (‏wait=False) ← None
+    إن احتاج عرض السيرفر ولم يُبنَ بعد."""
     movies, fresh, more = {}, {}, {}
-    rec = _read(_news_path(data_dir, key)) or {}
+    rec = _read_ro(_news_path(data_dir, key)) or {}
     for e in rec.get("log") or []:
         if not isinstance(e, dict) or not e.get("h") or not since < (e.get("t") or 0) <= until:
             continue
@@ -1768,40 +1917,59 @@ def _pending(data_dir, key, since, until, hidden=()):
     start = _news_start(rec)
     edge = until if start is None else min(until, start)
     if since < edge:                         # ما قبل السجلّ: لا يلتقي به (السجلّ ما لم يكن في سحب بدايته)
-        pm, ps = _panel(data_dir, key, since, edge, set(movies) | set(fresh) | set(more))
-        movies.update(pm)
-        more.update(ps)
+        got = _panel(data_dir, key, since, edge, set(movies) | set(fresh) | set(more), wait)
+        if got is None:
+            return None
+        movies.update(got[0])
+        more.update(got[1])
     return movies, fresh, more
 
 
-def _panel(data_dir, key, since, until, known=()):
+def _panel(data_dir, key, since, until, known=(), wait=True):
     """ما أضافته لوحة السيرفر في (since, until] بتاريخه من واجهة Xtream (‏a: إضافة الفيلم، وآخر تحديثٍ للمسلسل) —
     ما يعرضه «أضيف مؤخرًا» في الصفحة — من أقسامها الظاهرة، بلا ما في known ← (أفلام، مسلسلات) كعناصر _pending، والمسلسل
     بموسمه الأخير وحلقاته (‏cur) إذ لا يُعرف كم جدّ منها. ونوعٌ غيّرت اللوحة تواريخه كلها (أكثر من NEWS_FLOOD ومن
-    نصفه) لا يُعدّ منه شيء."""
-    v = _view(data_dir, key)[1]
+    نصفه) لا يُعدّ منه شيء. وبلا انتظار (‏wait=False) ← None إن لم يُبنَ عرض السيرفر بعد."""
+    v = _view(data_dir, key)[1] if wait else _ready(data_dir, key)
+    if v is False:
+        return None
     out = {"movie": {}, "series": {}}
     if not v:
         return out["movie"], out["series"]
     for kind, got in out.items():
-        for g in v["kinds"][kind]:
-            for it in g["items"]:
-                a = it.get("a") or 0
-                if not since < a <= until:
-                    continue
-                h = _gid(kind, _ikey(kind, it))
-                if h in known:
-                    continue
-                x = got.get(h)
-                if x is None:
-                    x = got[h] = dict(_slim({"h": h, "n": it.get("n"), "y": it.get("y"), "r": it.get("r"), "a": a}), gs=[])
-                    if kind == "series":
-                        ss = [(s, n) for s, n in it.get("s") or () if s] or [(0, sum(n for _s, n in it.get("s") or ()))]
-                        x.update(add={}, cur=list(max(ss)))
-                x["gs"].append(g["id"])
+        gs = v["kinds"][kind]
+        for gi, ii in _added(v, kind, since, until):
+            g, it = gs[gi], gs[gi]["items"][ii]
+            h = _gid(kind, _ikey(kind, it))
+            if h in known:
+                continue
+            x = got.get(h)
+            if x is None:
+                x = got[h] = dict(_slim({"h": h, "n": it.get("n"), "y": it.get("y"), "r": it.get("r"), "a": it["a"]}), gs=[])
+                if kind == "series":
+                    ss = [(s, n) for s, n in it.get("s") or () if s] or [(0, sum(n for _s, n in it.get("s") or ()))]
+                    x.update(add={}, cur=list(max(ss)))
+            x["gs"].append(g["id"])
         if len(got) > max(NEWS_FLOOD, v["counts"][kind] // 2):
             got.clear()
     return out["movie"], out["series"]
+
+
+_INF = float("inf")
+
+
+def _added(v, kind, since, until):
+    """مواضع عناصر النوع التي أضافتها لوحة السيرفر في (since, until] ← [(القسم، العنصر)] بترتيب الصفحة — من قائمةٍ مرتّبةٍ
+    بتاريخ الإضافة تُبنى أول مرة، فلا يُمرّ على الفهرس كله مع كل تحميلٍ لصفحة المدير."""
+    dated = v.get("_dated")
+    if dated is None:
+        dated = v["_dated"] = {k: sorted((it["a"], gi, ii) for gi, g in enumerate(v["kinds"][k])
+                                         for ii, it in enumerate(g["items"])
+                                         if isinstance(it.get("a"), (int, float)) and it["a"] > 0)
+                               for k in ("movie", "series")}
+    lst = dated[kind]
+    lo, hi = bisect.bisect_right(lst, (since, _INF)), bisect.bisect_right(lst, (until, _INF))
+    return sorted((gi, ii) for _a, gi, ii in lst[lo:hi])
 
 
 def _tally(movies, fresh, more):
@@ -2061,14 +2229,19 @@ def channel_tick(data_dir, now=None):
     return channel_run(data_dir, now=now)
 
 
-def channel_state(data_dir):
-    """قناة واتساب لصفحة المدير: إعدادها وآخر منشورٍ فيها، وأعداد ما جدّ منذه (‏pending) من سيرفراتها."""
+def channel_state(data_dir, wait=True):
+    """قناة واتساب لصفحة المدير: إعدادها وآخر منشورٍ فيها، وأعداد ما جدّ منذه (‏pending) من سيرفراتها — لقناةٍ مربوطة.
+    وبلا انتظار (‏wait=False): ‏pending ‏None إن احتاج عرض سيرفرٍ لم يُبنَ بعد، ويُبنى في الخلفية."""
     c = channel(data_dir)
     until = time.time()
     since = max(c["since"], until - CHANNEL_WINDOW)
-    pending = {"movie": 0, "series": 0, "eps": 0}
-    for s in servers(data_dir):
+    pending, wanting = {"movie": 0, "series": 0, "eps": 0}, False
+    for s in servers(data_dir) if c["jid"] else ():
         if s["key"] in c["servers"]:
-            n = _tally(*_pending(data_dir, s["key"], since, until, set(s["hidden"])))
+            got = _pending(data_dir, s["key"], since, until, set(s["hidden"]), wait)
+            if got is None:
+                wanting = True
+                continue
+            n = _tally(*got)
             pending = {k: pending[k] + n[k] for k in pending}
-    return dict({k: v for k, v in c.items() if k != "since"}, pending=pending, since=since)
+    return dict({k: v for k, v in c.items() if k != "since"}, pending=None if wanting else pending, since=since)

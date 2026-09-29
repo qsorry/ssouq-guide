@@ -432,10 +432,11 @@ def _dec(data_dir, v):
     return crypto_store.decrypt(v, data_dir) if isinstance(v, str) and v else ""
 
 
-def _contents(data_dir):
-    """السيرفرات التي لها محتوى ← {المفتاح: {name, at, counts, sig}} — الأعداد كما في صفحة المحتوى (بلا المخفي)."""
+def _contents(data_dir, wait=True):
+    """السيرفرات التي لها محتوى ← {المفتاح: {name, at, counts, sig}} — الأعداد كما في صفحة المحتوى (بلا المخفي). وبلا
+    انتظار (‏wait=False، لبطاقة صفحة المدير): آخر ما عُرف من أعداد كل سيرفر (‏content.brief)."""
     out = {}
-    for x in content.brief(data_dir)["servers"]:
+    for x in content.brief(data_dir, wait)["servers"]:
         counts = {k: int(x[k]) for k in ("movies", "series", "channels", "episodes", "seasons")}
         out[x["key"]] = {"name": x["name"], "at": int(x["at"]), "counts": counts,
                          "sig": "|".join(str(v) for v in [int(x["at"])] + list(counts.values()))}
@@ -460,7 +461,7 @@ def state(data_dir):
     """لبطاقة المتجر في صفحة المحتوى: الربط (بلا أسرار)، والمنتجات المربوطة بحالها، وآخر تحديث."""
     s = _load(data_dir)
     a = s["auth"]
-    cur = _contents(data_dir)
+    cur = _contents(data_dir, wait=False)
     names = {x["key"]: x["name"] for x in content.servers(data_dir)}
     links = []
     for l in s["links"]:
