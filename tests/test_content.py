@@ -525,6 +525,28 @@ def unit_render():
     check("لا رابط ولا بيانات دخول ولا وسم من الملف", "pass456" not in html and "user123" not in html and "panel.example" not in html
           and "<script>alert(1)" not in html and "&lt;script&gt;alert(1)&lt;/script&gt;" in html)
 
+    print("الإعلان")
+    ad = html[html.index('<aside class="ad"'):html.index("</aside>", html.index('<aside class="ad"'))]
+    rows = [m.start() for m in re.finditer('<section class="row">', html)]
+    check("بين الصفوف بعد أولها، مرةً واحدة", html.count('<aside class="ad"') == 1
+          and rows[0] < html.index('<aside class="ad"') < rows[1])
+    check("باقات السيرفر نفسه بأسعارها وخصمها وحملة content-ad", "كل هذا المحتوى في اشتراك سمارت" in ad
+          and ad.count('class="adplan"') == 3 and ad.count("utm_campaign=content-ad") == 4 and "-50%" in ad
+          and "<s>92</s>" in ad and "اشترك في سمارت</a>" in ad and "9 مسلسلات بمواسمها" in ad, ad[:300])
+    code, html2 = page(d, "smart", t="series")
+    check("وفي صفحة النوع بعد أول صف", html2.count('<aside class="ad"') == 1
+          and html2.index('<section class="row">') < html2.index('<aside class="ad"'))
+    check("ولا إعلان في صفحةٍ غير موجودة", '<aside class="ad"' not in page(d, "smart", t="series", g="0000000000")[1])
+    seed(d, "casper", SAMPLE)
+    cad = page(d, "casper")[1]
+    check("سيرفرٌ بلا باقاتٍ في المتجر: إعلان الموقع", "اشتراكات سمارت سوق" in cad and "p153695876" in cad
+          and "اشترك الآن</a>" in cad and "كل هذا المحتوى في اشتراك كاسبر" not in cad)
+    C.save_server(d, {"key": "casper", "name": "كاسبر", "full": "CASPER FLIX", "buy": "https://ssouq.com/casper"})
+    cad = page(d, "casper")[1]
+    check("وبرابط شرائه من صفحة المدير: زرّه وحده", "كل هذا المحتوى في اشتراك كاسبر" in cad and 'class="adplan"' not in cad
+          and 'href="https://ssouq.com/casper?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in cad)
+    C.clear(d, "casper")
+
     print("صفحة النوع والقسم")
     code, html = page(d, "smart", t="series")
     check("صفحة المسلسلات: الأقسام صورًا ثم صفٌّ لكل قسم", code == 200 and html.count('<a class="chip"') == 7
@@ -598,6 +620,26 @@ def unit_render():
     r = P.api_search(d, "falcon", "film")["html"]
     check("الواسع: أولها وعددها كله", len(titles(r)) == C.SEARCH_MAX and "(650)" in r and "و610 نتائج أخرى" in r, r[:160])
     check("كل الكلمات", titles(P.api_search(d, "falcon", "film 0007")["html"]) == ["Film 0007"])
+    print("خطأٌ في حرف")
+    check("كلمتان بينهما تعديلٌ واحد", [C._near(a, b) for a, b in (("ياب", "باب"), ("breakng", "breaking"), ("abdc", "abcd"),
+                                                                 ("باب", "باب"), ("abc", "abxy"), ("ab", "ba"))]
+          == [True, True, True, False, False, True])
+    r = P.api_search(d, "smart", "ياب الحارة")["html"]
+    check("«ياب الحارة» ← «باب الحارة»، ويقول ذلك", titles(r) == ["باب الحارة"] and "نتائج «باب الحارة» في سمارت" in r
+          and "لا يوجد «ياب الحارة» كما كُتب، فهذه نتائج أقرب اسمٍ إليه." in r, r[:300])
+    r = P.api_search(d, "smart", "المؤسص عثمان")["html"]
+    check("والكلمة المصحَّحة كما في الاسم (بهمزتها)", titles(r) == ["المؤسس عثمان"] and "نتائج «المؤسس عثمان»" in r, r[:200])
+    r = P.api_search(d, "smart", "braking bad")["html"]
+    check("وبالإنجليزية، ومعها أين يوجد", titles(r) == ["Breaking Bad"] and "نتائج «Breaking bad»" in r
+          and '<a href="/content/falcon?q=Breaking%20bad">' in r, r[-300:])
+    check("وفي كلمتين معًا", titles(P.api_search(d, "smart", "breakng bda")["html"]) == ["Breaking Bad"])
+    check("ولا يُصحَّح ما لا يقرب شيئًا، ولا الكلمة القصيرة", titles(P.api_search(d, "smart", "zzzz qqqq")["html"]) == []
+          and C.suggest("smart", C._view(d, "smart")[1], "xy") == ""
+          and C.suggest("smart", C._view(d, "smart")[1], "breaking") == "")
+    t0 = time.time()
+    r = P.api_search(d, "falcon", "flim 0007")["html"]
+    check("وفي قسمٍ كبير (650 فيلمًا) بسرعة", titles(r) == ["Film 0007"] and time.time() - t0 < 1, round(time.time() - t0, 3))
+
     r = P.api_search(d, "smart", "mbc")["html"]
     check("القنوات لا تُبحث، والنتيجة تدلّ على تبويبها", "لا يوجد «mbc» في سمارت" in r and titles(r) == []
           and 'والقنوات في <a class="link" href="/content/smart?t=live">تبويبها</a>' in r, r[-200:])

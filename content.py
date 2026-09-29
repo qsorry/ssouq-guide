@@ -1049,6 +1049,63 @@ def _search(key, v, q):
     return out, total
 
 
+def _near(a, b):
+    """بين الكلمتين تعديلٌ واحد: حرفٌ مختلف («ياب» «باب») أو زائد أو ناقص، أو حرفان متجاوران مقلوبان."""
+    la, lb = len(a), len(b)
+    if la > lb:
+        a, b, la, lb = b, a, lb, la
+    if lb - la > 1 or a == b:
+        return False
+    i = 0
+    while i < la and a[i] == b[i]:
+        i += 1
+    if la < lb:
+        return a[i:] == b[i + 1:]
+    return a[i + 1:] == b[i + 1:] or (i + 1 < la and a[i] == b[i + 1] and a[i + 1] == b[i] and a[i + 2:] == b[i + 2:])
+
+
+def _vocab(v):
+    """كلمات أسماء المسلسلات والأفلام بطولها، الأكثر تكرارًا أولًا — لتصحيح خطأٍ في كتابة البحث. تُبنى أول مرة."""
+    voc = v.get("_vocab")
+    if voc is None:
+        freq = {}
+        for kind in SEARCH_KINDS:
+            for norm, _, _ in v["index"][kind]:
+                for w in norm.split():
+                    if len(w) >= 3 and not w.isdigit():
+                        freq[w] = freq.get(w, 0) + 1
+        voc = {}
+        for w, n in freq.items():
+            voc.setdefault(len(w), []).append((n, w))
+        for lst in voc.values():
+            lst.sort(key=lambda x: (-x[0], x[1]))
+        v["_vocab"] = voc
+    return voc
+
+
+def suggest(key, v, q):
+    """أقرب بحثٍ له نتائج لبحثٍ بلا نتائج — خطأٌ في حرفٍ واحد من كلمة («ياب الحارة» ← «باب الحارة»، «braking bad»
+    ← «breaking bad»): لكل كلمةٍ من ثلاثة أحرفٍ فأكثر أقرب كلمات الأسماء إليها الأكثر تكرارًا، ويُجرَّب تصحيح كلمةٍ
+    ثم كلمتين. ← الكلمات المصحَّحة نصًّا، أو "" إن لم يُعرف."""
+    words = _words(q)
+    if not words or len(words) > 4 or _search(key, v, q)[1]:
+        return ""
+    voc = _vocab(v)
+    alts = []
+    for w in words:
+        near = sorted(((n, x) for size in (len(w) - 1, len(w), len(w) + 1) for n, x in voc.get(size, ())
+                       if _near(w, x)), key=lambda p: (-p[0], p[1])) if len(w) >= 3 and not w.isdigit() else []
+        alts.append([x for _, x in near[:3]])
+    tries = [{i: a} for i in range(len(words)) for a in alts[i]]
+    tries += [{i: a, j: b} for i in range(len(words)) for j in range(i + 1, len(words))
+              for a in alts[i][:2] for b in alts[j][:2]]
+    for t in tries[:24]:
+        fixed = " ".join(t.get(i, w) for i, w in enumerate(words))
+        if _search(key, v, fixed)[1]:
+            return fixed
+    return ""
+
+
 def select(v, kind, gid="", year=0, genre="", rating=0, sort="new"):
     """عناصر نوعٍ (أو قسمٍ منه) بمرشّحات الصفحة ← [(القسم، العنصر)] مرتّبة، بلا تكرارٍ بين الأقسام."""
     gs = v["kinds"][kind]

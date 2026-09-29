@@ -277,6 +277,15 @@ function playlist(movies) {
       check(`بلا تمرير أفقي: ${u}`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     }
     await page.goto(APP + '/content/falcon');
+    const adPos = await page.evaluate(() => {
+      const a = document.querySelector('.col .ad'), rows = document.querySelectorAll('.col .row');
+      const r = a.getBoundingClientRect();
+      return {plans: a.querySelectorAll('.adplan').length, after: rows[0].getBoundingClientRect().top < r.top,
+              before: r.bottom <= rows[1].getBoundingClientRect().top, fits: r.left >= 0 && r.right <= innerWidth,
+              tagged: [...a.querySelectorAll('a[target]')].every(x => x.href.includes('utm_campaign=content-ad'))};
+    });
+    check('الإعلان على الجوال بعد أول صف: باقات فالكون بحملتها', adPos.plans === 3 && adPos.after && adPos.before && adPos.fits
+          && adPos.tagged, JSON.stringify(adPos));
     const st = await page.evaluate(() => {
       const box = document.querySelector('.stats').getBoundingClientRect();
       const tiles = [...document.querySelectorAll('.stat')].map(t => t.getBoundingClientRect());

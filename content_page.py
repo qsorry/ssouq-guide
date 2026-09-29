@@ -329,15 +329,59 @@ def _recent_list(key, v, kinds):
     return f'<section class="panel"><h2>{_i("new")} أضيف مؤخرًا</h2><ol class="recent">{"".join(rows)}</ol></section>'
 
 
-def _utm(url):
-    """روابط المتجر بحملة هذه الصفحة لتُعرف المبيعات منها، وغيرها كما هي."""
+def _utm(url, campaign=""):
+    """روابط المتجر بحملة هذه الصفحة (أو ‏campaign) لتُعرف المبيعات منها، وغيرها كما هي."""
+    campaign = campaign or C.UTM_CAMPAIGN
     host = (re.match(r"^https?://([^/?#:]+)", url or "") or [None, ""])[1].lower()
     if host != "ssouq.com" and not host.endswith(".ssouq.com"):
         return url
     if "utm_campaign=" in url:
-        return re.sub(r"utm_campaign=[^&#]*", "utm_campaign=" + C.UTM_CAMPAIGN, url)
+        return re.sub(r"utm_campaign=[^&#]*", "utm_campaign=" + campaign, url)
     return (url + ("&" if "?" in url else "?")
-            + "utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=" + C.UTM_CAMPAIGN)
+            + "utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=" + campaign)
+
+
+AD_CAMPAIGN = "content-ad"      # نقرات الإعلان منفصلةً في تقارير المتجر عن باقات الجانب (‏content)
+
+
+def _money(v):
+    try:
+        return float(str(v).replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _ad(srv, c):
+    """إعلان الاشتراك بين صفوف المحتوى — يراه زائر الجوال قبل أن يصل إلى الجانب: باقات السيرفر نفسه من CATALOG
+    (‏C.PLANS) بأسعارها وخصمها، أو رابط شرائه من صفحة المدير، أو باقات إعلان الموقع (‏tournament.ADS) لسيرفرٍ
+    بلا هذا ولا ذاك. وروابطه بحملة ‏content-ad."""
+    catalog = {p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])}
+    own = [catalog[i] for i in C.PLANS.get(srv["key"], ()) if i in catalog]
+    plans = own or ([] if srv["buy"] else [catalog[i] for i in tournament.ADS if i in catalog])
+    if not plans and not srv["buy"]:
+        return ""
+    cards = []
+    for p in plans[:3]:
+        price, was = _money(p.get("price")), _money(p.get("was"))
+        off = round((1 - price / was) * 100) if was > price > 0 else 0
+        cards.append(f'<a class="adplan" href="{_esc(_utm(p["url"], AD_CAMPAIGN))}" target="_blank" rel="noopener">'
+                     + (f'<span class="off">-{off}%</span>' if off >= 5 else "")
+                     + f'<img src="{_esc(p["img"])}" alt="" width="56" height="56" loading="lazy">'
+                     f'<span class="t"><b>{_esc(p["name"])}</b><small>{_esc(p.get("tag") or p.get("dur") or "")}</small></span>'
+                     f'<em>{_esc(p["price"])} ر.س' + (f'<s>{_esc(p["was"])}</s>' if off >= 5 else "") + "</em></a>")
+    name = _esc(srv["name"])
+    buy = _utm(srv["buy"], AD_CAMPAIGN) if srv["buy"] else _utm(plans[0]["url"], AD_CAMPAIGN)
+    mine = bool(own or srv["buy"])
+    summary = _summary_text(c)
+    return (f'<aside class="ad" aria-label="إعلان: {"اشتراك " + name if mine else "اشتراكات سمارت سوق"}">'
+            '<div class="adtext"><span class="eyebrow">إعلان</span>'
+            + (f'<h2>كل هذا المحتوى في اشتراك {name}</h2><p>{_esc(summary)} — ' if mine
+               else '<h2>اشتراكات سمارت سوق</h2><p>')
+            + 'دفعة واحدة بلا تجديد تلقائي، وتفعيل خلال دقائق، ودعم فني مباشر على واتساب.</p>'
+            f'<div class="adbtns"><a class="btn" href="{_esc(buy)}" target="_blank" rel="noopener">'
+            + (f"اشترك في {name}" if mine else "اشترك الآن") + '</a>'
+            '<a class="btn ghost" href="/#buy">ساعدني في الاختيار</a></div></div>'
+            + (f'<div class="adplans">{"".join(cards)}</div>' if cards else "") + "</aside>")
 
 
 def _cta(srv):
@@ -383,6 +427,19 @@ def results_html(data_dir, key, srv, v, q):
     if not C._words(q):
         return ""
     hits, total = C._search(key, v, q)
+    fixed = C.suggest(key, v, q) if not total else ""        # «ياب الحارة» ← «باب الحارة»
+    shown = q
+    if fixed:
+        hits, total = C._search(key, v, fixed)
+        surf = {}                    # الكلمة المصحَّحة كما في أسماء النتائج («الموسس» ← «المؤسس»)
+        for kind in C.SEARCH_KINDS:
+            for gi, ii in hits[kind][0][:12]:
+                for t in v["kinds"][kind][gi]["items"][ii].get("n", "").split():
+                    surf.setdefault(C._norm(t), t)
+        typed, fx = q.split(), fixed.split()
+        shown = (" ".join(t if C._norm(t) == f else surf.get(f, f) for t, f in zip(typed, fx))
+                 if len(typed) == len(fx) else " ".join(surf.get(f, f) for f in fx))
+    look = fixed or q
     parts = []
     for kind in C.KINDS:
         top, n = hits[kind]
@@ -395,9 +452,13 @@ def results_html(data_dir, key, srv, v, q):
     elsewhere = []
     for s in C.servers(data_dir):
         ov = C._view(data_dir, s["key"])[1] if s["key"] != key else None
-        n = C._search(s["key"], ov, q)[1] if C._has(ov) else 0
+        if not C._has(ov):
+            continue
+        there = look if C._search(s["key"], ov, look)[1] or total else (C.suggest(s["key"], ov, q) or q)
+        n = C._search(s["key"], ov, there)[1]
         if n:
-            elsewhere.append(f'<a href="{C.PATH}/{s["key"]}?q={quote(q)}">{_logo(s["key"], s["name"], "lg sm")}'
+            elsewhere.append(f'<a href="{C.PATH}/{s["key"]}?q={quote(shown if there == look else there)}">'
+                             f'{_logo(s["key"], s["name"], "lg sm")}'
                              f'{_esc(s["name"])} ({n:,})</a>')
     other = (f'<p class="other">{"ويوجد أيضًا في" if total else "لكنه موجود في"}: {" · ".join(elsewhere)}</p>'
              if elsewhere else "")
@@ -407,8 +468,9 @@ def results_html(data_dir, key, srv, v, q):
                    'بالعربية' + (f' — والقنوات في <a class="link" href="{C.PATH}/{key}?t=live">تبويبها</a>'
                                 if v["kinds"]["live"] else "") + '.</p>')
                 + "</section>")
-    return (f'<section class="results"><div class="rh"><h2>نتائج «{_esc(q)}» في {_esc(srv["name"])} '
-            f'<small>{C._count(total, C.N_RESULTS)}</small></h2></div>{"".join(parts)}{other}</section>')
+    fix = f'<p class="fix">لا يوجد «{_esc(q)}» كما كُتب، فهذه نتائج أقرب اسمٍ إليه.</p>' if fixed else ""
+    return (f'<section class="results"><div class="rh"><h2>نتائج «{_esc(shown)}» في {_esc(srv["name"])} '
+            f'<small>{C._count(total, C.N_RESULTS)}</small></h2></div>{fix}{"".join(parts)}{other}</section>')
 
 
 def api_search(data_dir, key, q):
@@ -451,7 +513,9 @@ def render(data_dir, key, query):
     gi = v["byid"][kind].get(gid) if kind and gid else None
     if kind and gid and gi is None:
         code = 404
+    spot = 99                                   # موضع الإعلان بين عناصر main (آخرها إن لم يُحدَّد)
     if t == "" and not gid:
+        spot = 1                                # بعد أول صف
         head = _hero(key, v) + _stats(c) + _kinds(base, v, t)
         for k in ("movie", "series", "live"):
             if v["recent"][k]:
@@ -466,6 +530,7 @@ def render(data_dir, key, query):
                                  _link(base, t=k, g=g["id"]), f'عرض الكل ({len(g["items"]):,})'))
         side += [_recent_list(key, v, ("movie", "series")), cta]
     elif t == "new":
+        spot = 2                                # بعد أول شبكة
         head = _stats(c) + _kinds(base, v, t)
         main.append(f'<div class="gh"><h1>{_i("new")} أضيف مؤخرًا في {_esc(name)}</h1>'
                     '<span class="sub">الأحدث أولًا، بترتيب إضافتها إلى السيرفر</span></div>')
@@ -501,6 +566,7 @@ def render(data_dir, key, query):
     else:                                   # صفحة النوع: الأقسام صورًا ثم صفٌّ لكل قسم
         kind = kind or kinds[0]
         t = kind
+        spot = 2                                # بعد الأقسام صورًا وأول صف
         head = _stats(c) + _kinds(base, v, t)
         miss = '<p class="empty">هذا القسم لم يعد موجودًا، واختر من الأقسام الحالية.</p>' if code == 404 else ""
         main.append(miss + _chips(key, base, v, kind))
@@ -512,6 +578,9 @@ def render(data_dir, key, query):
             main.append(f'<p class="empty"><a class="link" href="{_link(base, t=kind, all=1)}">كل أقسام '
                         f'{C.KIND_TAB[kind]} ({len(v["kinds"][kind]):,}) ←</a></p>')
         side += [_filters(base, v, kind, cur), _recent_list(key, v, (kind,)), cta]
+    ad = _ad(srv, c)
+    if ad and code == 200:
+        main.insert(min(spot, len(main)), ad)
     summary = _summary_text(c)
     what = " و".join(x for k, x in (("series", "المسلسلات بمواسمها"), ("movie", "الأفلام"), ("live", "القنوات")) if c[k])
     title = f"محتوى اشتراك {name}: {what} | سمارت سوق"
@@ -723,6 +792,32 @@ button{font:inherit;color:inherit}
 .card.ch .pos{aspect-ratio:1;background:#eef3fb}
 .card.ch .pos img{object-fit:contain;padding:14%}
 .card.ch .ph{color:#1d2c4f;font-size:1.4rem}
+/* الإعلان */
+.ad{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.45fr);gap:20px;align-items:center;margin:26px 0;padding:22px;
+  border-radius:20px;border:1px solid rgba(246,195,67,.38);
+  background:radial-gradient(520px 220px at 100% 0,rgba(246,195,67,.16),transparent 62%),linear-gradient(135deg,#15305e,#0b1530)}
+.ad .eyebrow{display:inline-block;font-size:.7rem;font-weight:800;color:#1b1400;background:var(--gold);border-radius:6px;padding:2px 9px}
+.ad h2{margin:10px 0 6px;font-size:1.4rem;line-height:1.3}
+.ad p{margin:0;color:#c9d6f0;font-size:.9rem}
+.adbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.adbtns .btn{padding:11px 18px;flex:1 1 auto;white-space:nowrap}
+.adplans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.adplan{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:16px 10px 12px;
+  border-radius:16px;border:1px solid var(--line2);background:rgba(6,11,23,.55);transition:border-color .2s,transform .2s}
+.adplan:hover{border-color:var(--gold);transform:translateY(-2px)}
+.adplan img{width:56px;height:56px;border-radius:12px;object-fit:cover}
+.adplan .t{min-width:0}
+.adplan b{display:block;font-size:.86rem;line-height:1.35}
+.adplan small{display:block;color:var(--mute);font-size:.74rem}
+.adplan em{font-style:normal;font-weight:800;color:var(--gold);font-size:1.06rem;white-space:nowrap}
+.adplan s{color:var(--mute);font-weight:500;font-size:.78rem;margin-inline-start:6px}
+.adplan .off{position:absolute;top:8px;inset-inline-end:8px;background:#e5484d;color:#fff;font-size:.68rem;font-weight:800;
+  border-radius:6px;padding:1px 6px}
+@media (max-width:760px){.ad{grid-template-columns:1fr;padding:18px}}
+@media (max-width:520px){.adplans{grid-template-columns:1fr}
+  .adplan{flex-direction:row;text-align:start;padding:10px 12px;gap:12px}.adplan img{width:46px;height:46px}
+  .adplan .t{flex:1}.adplan .off{top:auto;bottom:8px;inset-inline-end:auto;inset-inline-start:8px}
+}
 /* الجانب */
 .side{display:flex;flex-direction:column;gap:16px;min-width:0}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
@@ -760,6 +855,7 @@ button{font:inherit;color:inherit}
 .results{margin:18px 0 8px;padding:18px;border-radius:18px;border:1px solid var(--line2);background:rgba(14,23,44,.72)}
 .results h3{margin:16px 0 10px;font-size:1rem}
 .results .other{margin:16px 0 0;color:var(--mute)}
+.results .fix{margin:-4px 0 8px;color:var(--gold);font-size:.92rem}
 .results .other a{display:inline-flex;align-items:center;gap:6px;color:var(--acc);font-weight:600;vertical-align:middle}
 .missing li a{display:inline-flex;align-items:center;gap:8px}
 #cres[aria-busy="true"]{opacity:.5}
