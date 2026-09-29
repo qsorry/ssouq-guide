@@ -29,7 +29,7 @@ NEW_MAX = {"movie": 48, "series": 48, "live": 24}
 NEW_DAYS = 14                # شارة «جديد» لما أضيف خلالها (بتاريخ الواجهة)
 KIND_ONE = {"movie": "فيلم", "series": "مسلسل", "live": "قناة"}
 N_GROUPS = ("قسم واحد", "قسمان", "أقسام", "قسمًا", "قسم")
-ART = {k: f"/static/img/brands/{k}.webp" for k in ("smart", "falcon", "casper")}   # شعار السيرفر في الرأس إن كان له
+ART = {k: f"/static/img/brands/{k}.webp" for k in ("smart", "falcon", "casper")}   # شعار السيرفر إن كان له
 DAYS = ("يوم", "يومين", "أيام", "يومًا", "يوم")
 WEEKS = ("أسبوع", "أسبوعين", "أسابيع", "أسبوعًا", "أسبوع")
 MONTHS = ("شهر", "شهرين", "أشهر", "شهرًا", "شهر")
@@ -77,8 +77,18 @@ def _hue(s):
     return sum(map(ord, s or "")) * 37 % 360
 
 
+def _logo(key, name, cls="lg"):
+    """شعار السيرفر (‏ART)، أو أول حرفٍ من اسمه بلونٍ منه لسيرفرٍ بلا شعار."""
+    if key in ART:
+        return f'<img class="{cls}" src="{ART[key]}" alt="" width="40" height="40" decoding="async">'
+    return f'<span class="{cls} bi" style="--h:{_hue(name)}" aria-hidden="true">{_esc((name or "•")[:1])}</span>'
+
+
 def _initials(name):
-    words = [w for w in re.split(r"[\s\-:]+", name or "") if w]
+    """حرفا الملصق بلا صورة: أول حرفٍ من أول كلمتين — بلا الأقواس والرموز، والأرقام («(2026)» «12 Strong»)
+    إلا إن لم يكن غيرها («2020»)."""
+    words = re.findall(r"[^\W_]+", C._TASHKEEL.sub("", name or ""))
+    words = [w for w in words if not w.isdigit()] or words
     return "".join(w[0] for w in words[:2]).upper() or "•"
 
 
@@ -177,8 +187,8 @@ def _header(base, srv, v, t, q, key):
             + (f'<small>{_esc(srv["full"])}</small>' if srv["full"] else "") + '</span></a>'
             f'<nav class="nav" aria-label="أقسام المحتوى">{links}</nav>'
             f'<form class="search" role="search" action="{_esc(base)}" method="get">'
-            f'<input type="search" name="q" value="{_esc(q)}" placeholder="ابحث عن فيلم أو مسلسل أو قناة…" '
-            f'aria-label="ابحث باسم المسلسل أو الفيلم أو القناة في {_esc(srv["name"])}" autocomplete="off" '
+            f'<input type="search" name="q" value="{_esc(q)}" placeholder="ابحث باسم المسلسل أو الفيلم…" '
+            f'aria-label="ابحث باسم المسلسل أو الفيلم في {_esc(srv["name"])}" autocomplete="off" '
             f'enterkeyhint="search" maxlength="{C.QUERY_MAX}"><button type="submit" aria-label="بحث">{_i("search")}</button>'
             '</form></div></header>')
 
@@ -187,8 +197,9 @@ def _servers(data_dir, key):
     shown = [s for s in C.servers(data_dir) if s["key"] == key or C._has(C._view(data_dir, s["key"])[1])]
     if len(shown) < 2:
         return ""
-    return ('<nav class="servers" aria-label="السيرفرات"><span>السيرفر:</span>' + "".join(
-        f'<a href="{C.PATH}/{s["key"]}"{" aria-current=page" if s["key"] == key else ""}>{_esc(s["name"])}</a>'
+    return ('<nav class="servers" aria-label="السيرفرات"><span class="lbl">السيرفر:</span>' + "".join(
+        f'<a href="{C.PATH}/{s["key"]}"{" aria-current=page" if s["key"] == key else ""}>{_logo(s["key"], s["name"])}'
+        f'<span><b>{_esc(s["name"])}</b>' + (f'<small>{_esc(s["full"])}</small>' if s["full"] else "") + "</span></a>"
         for s in shown) + "</nav>")
 
 
@@ -318,15 +329,59 @@ def _recent_list(key, v, kinds):
     return f'<section class="panel"><h2>{_i("new")} أضيف مؤخرًا</h2><ol class="recent">{"".join(rows)}</ol></section>'
 
 
-def _utm(url):
-    """روابط المتجر بحملة هذه الصفحة لتُعرف المبيعات منها، وغيرها كما هي."""
+def _utm(url, campaign=""):
+    """روابط المتجر بحملة هذه الصفحة (أو ‏campaign) لتُعرف المبيعات منها، وغيرها كما هي."""
+    campaign = campaign or C.UTM_CAMPAIGN
     host = (re.match(r"^https?://([^/?#:]+)", url or "") or [None, ""])[1].lower()
     if host != "ssouq.com" and not host.endswith(".ssouq.com"):
         return url
     if "utm_campaign=" in url:
-        return re.sub(r"utm_campaign=[^&#]*", "utm_campaign=" + C.UTM_CAMPAIGN, url)
+        return re.sub(r"utm_campaign=[^&#]*", "utm_campaign=" + campaign, url)
     return (url + ("&" if "?" in url else "?")
-            + "utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=" + C.UTM_CAMPAIGN)
+            + "utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=" + campaign)
+
+
+AD_CAMPAIGN = "content-ad"      # نقرات الإعلان منفصلةً في تقارير المتجر عن باقات الجانب (‏content)
+
+
+def _money(v):
+    try:
+        return float(str(v).replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _ad(srv, c):
+    """إعلان الاشتراك في أعلى الصفحة تحت السيرفرات — أول ما يراه الزائر، وعلى الجوال قبل الجانب بكثير: باقات السيرفر نفسه من CATALOG
+    (‏C.PLANS) بأسعارها وخصمها، أو رابط شرائه من صفحة المدير، أو باقات إعلان الموقع (‏tournament.ADS) لسيرفرٍ
+    بلا هذا ولا ذاك. وروابطه بحملة ‏content-ad."""
+    catalog = {p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])}
+    own = [catalog[i] for i in C.PLANS.get(srv["key"], ()) if i in catalog]
+    plans = own or ([] if srv["buy"] else [catalog[i] for i in tournament.ADS if i in catalog])
+    if not plans and not srv["buy"]:
+        return ""
+    cards = []
+    for p in plans[:3]:
+        price, was = _money(p.get("price")), _money(p.get("was"))
+        off = round((1 - price / was) * 100) if was > price > 0 else 0
+        cards.append(f'<a class="adplan" href="{_esc(_utm(p["url"], AD_CAMPAIGN))}" target="_blank" rel="noopener">'
+                     + (f'<span class="off">-{off}%</span>' if off >= 5 else "")
+                     + f'<img src="{_esc(p["img"])}" alt="" width="56" height="56" loading="lazy">'
+                     f'<span class="t"><b>{_esc(p["name"])}</b><small>{_esc(p.get("tag") or p.get("dur") or "")}</small></span>'
+                     f'<em>{_esc(p["price"])} ر.س' + (f'<s>{_esc(p["was"])}</s>' if off >= 5 else "") + "</em></a>")
+    name = _esc(srv["name"])
+    buy = _utm(srv["buy"], AD_CAMPAIGN) if srv["buy"] else _utm(plans[0]["url"], AD_CAMPAIGN)
+    mine = bool(own or srv["buy"])
+    summary = _summary_text(c)
+    return (f'<aside class="ad" aria-label="إعلان: {"اشتراك " + name if mine else "اشتراكات سمارت سوق"}">'
+            '<div class="adtext"><span class="eyebrow">إعلان</span>'
+            + (f'<h2>كل هذا المحتوى في اشتراك {name}</h2><p>{_esc(summary)} — ' if mine
+               else '<h2>اشتراكات سمارت سوق</h2><p>')
+            + 'دفعة واحدة بلا تجديد تلقائي، وتفعيل خلال دقائق، ودعم فني مباشر على واتساب.</p>'
+            f'<div class="adbtns"><a class="btn" href="{_esc(buy)}" target="_blank" rel="noopener">'
+            + (f"اشترك في {name}" if mine else "اشترك الآن") + '</a>'
+            '<a class="btn ghost" href="/#buy">ساعدني في الاختيار</a></div></div>'
+            + (f'<div class="adplans">{"".join(cards)}</div>' if cards else "") + "</aside>")
 
 
 def _cta(srv):
@@ -372,6 +427,19 @@ def results_html(data_dir, key, srv, v, q):
     if not C._words(q):
         return ""
     hits, total = C._search(key, v, q)
+    fixed = C.suggest(key, v, q) if not total else ""        # «ياب الحارة» ← «باب الحارة»
+    shown = q
+    if fixed:
+        hits, total = C._search(key, v, fixed)
+        surf = {}                    # الكلمة المصحَّحة كما في أسماء النتائج («الموسس» ← «المؤسس»)
+        for kind in C.SEARCH_KINDS:
+            for gi, ii in hits[kind][0][:12]:
+                for t in v["kinds"][kind][gi]["items"][ii].get("n", "").split():
+                    surf.setdefault(C._norm(t), t)
+        typed, fx = q.split(), fixed.split()
+        shown = (" ".join(t if C._norm(t) == f else surf.get(f, f) for t, f in zip(typed, fx))
+                 if len(typed) == len(fx) else " ".join(surf.get(f, f) for f in fx))
+    look = fixed or q
     parts = []
     for kind in C.KINDS:
         top, n = hits[kind]
@@ -384,17 +452,25 @@ def results_html(data_dir, key, srv, v, q):
     elsewhere = []
     for s in C.servers(data_dir):
         ov = C._view(data_dir, s["key"])[1] if s["key"] != key else None
-        n = C._search(s["key"], ov, q)[1] if C._has(ov) else 0
+        if not C._has(ov):
+            continue
+        there = look if C._search(s["key"], ov, look)[1] or total else (C.suggest(s["key"], ov, q) or q)
+        n = C._search(s["key"], ov, there)[1]
         if n:
-            elsewhere.append(f'<a href="{C.PATH}/{s["key"]}?q={quote(q)}">{_esc(s["name"])} ({n:,})</a>')
+            elsewhere.append(f'<a href="{C.PATH}/{s["key"]}?q={quote(shown if there == look else there)}">'
+                             f'{_logo(s["key"], s["name"], "lg sm")}'
+                             f'{_esc(s["name"])} ({n:,})</a>')
     other = (f'<p class="other">{"ويوجد أيضًا في" if total else "لكنه موجود في"}: {" · ".join(elsewhere)}</p>'
              if elsewhere else "")
     if not total:
         return (f'<section class="results"><div class="rh"><h2>لا يوجد «{_esc(q)}» في {_esc(srv["name"])}</h2></div>'
-                + (other or '<p class="empty">جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية أو بالعربية.</p>')
+                + (other or '<p class="empty">البحث باسم المسلسل أو الفيلم: جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية أو '
+                   'بالعربية' + (f' — والقنوات في <a class="link" href="{C.PATH}/{key}?t=live">تبويبها</a>'
+                                if v["kinds"]["live"] else "") + '.</p>')
                 + "</section>")
-    return (f'<section class="results"><div class="rh"><h2>نتائج «{_esc(q)}» في {_esc(srv["name"])} '
-            f'<small>{C._count(total, C.N_RESULTS)}</small></h2></div>{"".join(parts)}{other}</section>')
+    fix = f'<p class="fix">لا يوجد «{_esc(q)}» كما كُتب، فهذه نتائج أقرب اسمٍ إليه.</p>' if fixed else ""
+    return (f'<section class="results"><div class="rh"><h2>نتائج «{_esc(shown)}» في {_esc(srv["name"])} '
+            f'<small>{C._count(total, C.N_RESULTS)}</small></h2></div>{fix}{"".join(parts)}{other}</section>')
 
 
 def api_search(data_dir, key, q):
@@ -498,17 +574,18 @@ def render(data_dir, key, query):
             main.append(f'<p class="empty"><a class="link" href="{_link(base, t=kind, all=1)}">كل أقسام '
                         f'{C.KIND_TAB[kind]} ({len(v["kinds"][kind]):,}) ←</a></p>')
         side += [_filters(base, v, kind, cur), _recent_list(key, v, (kind,)), cta]
+    ad = _ad(srv, c) if code == 200 else ""    # في أعلى الصفحة تحت السيرفرات — ونتائج البحث قبله
     summary = _summary_text(c)
     what = " و".join(x for k, x in (("series", "المسلسلات بمواسمها"), ("movie", "الأفلام"), ("live", "القنوات")) if c[k])
     title = f"محتوى اشتراك {name}: {what} | سمارت سوق"
-    desc = (f"ما في اشتراك {name} قبل أن تشتري: {summary}. ابحث بالاسم عن أي مسلسل أو فيلم أو قناة"
+    desc = (f"ما في اشتراك {name} قبل أن تشتري: {summary}. ابحث باسم أي مسلسل أو فيلم"
             + (" واعرف مواسم المسلسل وحلقات كل موسم" if c["series"] else "")
             + "، وتصفّح ما أضيف مؤخرًا. يُحدَّث تلقائيًا من قائمة الاشتراك نفسها.")
     index = code == 200 and not (q or gid or get("t") or get("view") or get("p") or get("all"))
     body = (_header(base, srv, v, t, q, key) + '<main class="wrap">' + _servers(data_dir, key)
             + (f'<h1 class="sr">محتوى اشتراك {_esc(name)}</h1>' if t == "" and not gid else "")
             + '<div id="cres" aria-live="polite">' + (results_html(data_dir, key, srv, v, q) if q else "") + "</div>"
-            + head + '<div class="layout"><div class="col">' + "".join(main) + "</div>"
+            + ad + head + '<div class="layout"><div class="col">' + "".join(main) + "</div>"
             + f'<aside class="side">{"".join(side)}</aside></div></main>' + _footer(base, name, v, summary))
     return code, _doc(title, desc, guide_pages.SITE + base, index, body, key, name, cta_link), 600
 
@@ -530,7 +607,8 @@ def _footer(base, name, v, summary):
 def render_missing(data_dir, key=""):
     """لا محتوى بعد (أو سيرفرٌ لا وجود له): صفحةٌ تدلّ على ما وُجد، لا تُفهرس ← (404، بايتات)."""
     others = [s for s in C.servers(data_dir) if s["key"] != key and C._has(C._view(data_dir, s["key"])[1])]
-    links = "".join(f'<li><a class="link" href="{C.PATH}/{s["key"]}">محتوى {_esc(s["name"])}</a></li>' for s in others)
+    links = "".join(f'<li><a class="link" href="{C.PATH}/{s["key"]}">{_logo(s["key"], s["name"], "lg sm")}محتوى {_esc(s["name"])}'
+                    '</a></li>' for s in others)
     body = ('<main class="wrap"><section class="panel missing"><h1>محتوى الاشتراكات</h1>'
             '<p>لم يُنشر محتوى هذا السيرفر بعد.</p>'
             + (f'<p class="empty">وهذه السيرفرات منشورٌ محتواها:</p><ul>{links}</ul>' if links else "")
@@ -579,9 +657,20 @@ button{font:inherit;color:inherit}
 .search button{background:none;border:0;color:var(--mute);cursor:pointer;padding:4px;display:grid}
 @media (max-width:900px){.top{position:static}.top .wrap{flex-wrap:wrap;gap:8px 12px;padding-block:10px}
   .search{order:3;min-width:0;flex:1 1 100%}.nav{order:2;flex:1 1 100%}}
-.servers{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap;color:var(--mute);font-size:.88rem}
-.servers a{padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:600}
-.servers a[aria-current]{background:var(--acc);border-color:var(--acc)}
+.servers{display:flex;align-items:center;gap:10px;margin-top:16px;overflow-x:auto;scrollbar-width:none;padding:2px}
+.servers::-webkit-scrollbar{display:none}
+.servers .lbl{color:var(--mute);font-size:.88rem;flex:none}
+.servers a{display:flex;align-items:center;gap:10px;flex:none;padding:6px;padding-inline-end:16px;border-radius:14px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.servers a:hover{border-color:var(--line2)}
+.servers a[aria-current]{border-color:var(--acc);background:linear-gradient(135deg,rgba(47,140,255,.24),rgba(47,140,255,.07));
+  box-shadow:inset 0 0 0 1px var(--acc)}
+.servers b{display:block;font-size:.95rem;line-height:1.25}
+.servers small{display:block;color:var(--mute);font-size:.68rem;letter-spacing:.04em;direction:ltr;text-align:right}
+.lg{width:40px;height:40px;border-radius:10px;object-fit:cover;flex:none;background:var(--card2)}
+.lg.bi{display:grid;place-items:center;font-weight:700;color:#fff;background:linear-gradient(135deg,hsl(var(--h) 50% 34%),hsl(var(--h) 55% 18%))}
+.lg.sm{width:22px;height:22px;border-radius:6px;font-size:.72rem}
+@media (max-width:520px){.servers .lbl,.servers small{display:none}.servers a{gap:8px;padding-inline-end:12px}.servers .lg{width:34px;height:34px}}
 /* الواجهة */
 .herobox{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:14px;margin-top:16px}
 .hero{position:relative;border-radius:22px;overflow:hidden;border:1px solid var(--line);background:var(--card);min-height:340px}
@@ -631,8 +720,8 @@ button{font:inherit;color:inherit}
 .stat .i{width:34px;height:34px;color:var(--acc)}
 .stat b{display:block;font-size:1.55rem;line-height:1.2;font-variant-numeric:tabular-nums}
 .stat small{color:var(--mute)}
-@media (max-width:900px){.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:520px){.stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:900px){.stats{display:flex;flex-wrap:wrap}.stat{flex:1 1 30%;min-width:0}}   /* 3 ثم ما بقي بعرض الصف */
+@media (max-width:520px){.stats{gap:8px}
   .stat{flex-direction:column;align-items:center;text-align:center;gap:4px;padding:10px 4px}
   .stat .i{width:24px;height:24px}.stat b{font-size:1.12rem}.stat small{font-size:.74rem}
   .nav a.home{display:none}.nav a{padding:8px 9px;font-size:.9rem}}
@@ -697,6 +786,34 @@ button{font:inherit;color:inherit}
 .card.ch .pos{aspect-ratio:1;background:#eef3fb}
 .card.ch .pos img{object-fit:contain;padding:14%}
 .card.ch .ph{color:#1d2c4f;font-size:1.4rem}
+/* الإعلان */
+.ad{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.45fr);gap:20px;align-items:center;margin:16px 0 0;padding:22px;
+  border-radius:20px;border:1px solid rgba(246,195,67,.38);
+  background:radial-gradient(520px 220px at 100% 0,rgba(246,195,67,.16),transparent 62%),linear-gradient(135deg,#15305e,#0b1530)}
+.ad .eyebrow{display:inline-block;font-size:.7rem;font-weight:800;color:#1b1400;background:var(--gold);border-radius:6px;padding:2px 9px}
+.ad h2{margin:10px 0 6px;font-size:1.4rem;line-height:1.3}
+.ad p{margin:0;color:#c9d6f0;font-size:.9rem}
+.adbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.adbtns .btn{padding:11px 18px;flex:1 1 auto;white-space:nowrap}
+.adplans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.adplan{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:16px 10px 12px;
+  border-radius:16px;border:1px solid var(--line2);background:rgba(6,11,23,.55);transition:border-color .2s,transform .2s}
+.adplan:hover{border-color:var(--gold);transform:translateY(-2px)}
+.adplan img{width:56px;height:56px;border-radius:12px;object-fit:cover}
+.adplan .t{min-width:0}
+.adplan b{display:block;font-size:.86rem;line-height:1.35}
+.adplan small{display:block;color:var(--mute);font-size:.74rem}
+.adplan em{font-style:normal;font-weight:800;color:var(--gold);font-size:1.06rem;white-space:nowrap}
+.adplan s{color:var(--mute);font-weight:500;font-size:.78rem;margin-inline-start:6px}
+.adplan .off{position:absolute;top:8px;inset-inline-end:8px;background:#e5484d;color:#fff;font-size:.68rem;font-weight:800;
+  border-radius:6px;padding:1px 6px}
+@media (max-width:760px){.ad{grid-template-columns:1fr;padding:18px}}
+@media (max-width:520px){.ad{padding:14px;gap:12px}.ad h2{font-size:1.1rem;margin:8px 0 4px}   /* مختصرٌ في الأعلى */
+  .ad p{font-size:.82rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .adplans{gap:6px}.adplan{padding:12px 4px 8px;gap:4px;border-radius:12px}.adplan img{width:40px;height:40px;border-radius:9px}
+  .adplan b{font-size:.74rem}.adplan small{display:none}.adplan em{font-size:.9rem}.adplan s{display:none}
+  .adplan .off{top:4px;inset-inline-end:4px;font-size:.62rem;padding:0 4px}
+  .adbtns{margin-top:10px}.adbtns .btn{padding:10px 12px}.adbtns .ghost{flex:0 0 auto}}
 /* الجانب */
 .side{display:flex;flex-direction:column;gap:16px;min-width:0}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
@@ -734,7 +851,9 @@ button{font:inherit;color:inherit}
 .results{margin:18px 0 8px;padding:18px;border-radius:18px;border:1px solid var(--line2);background:rgba(14,23,44,.72)}
 .results h3{margin:16px 0 10px;font-size:1rem}
 .results .other{margin:16px 0 0;color:var(--mute)}
-.results .other a{color:var(--acc);font-weight:600}
+.results .fix{margin:-4px 0 8px;color:var(--gold);font-size:.92rem}
+.results .other a{display:inline-flex;align-items:center;gap:6px;color:var(--acc);font-weight:600;vertical-align:middle}
+.missing li a{display:inline-flex;align-items:center;gap:8px}
 #cres[aria-busy="true"]{opacity:.5}
 #cres:empty{display:none}
 .empty{color:var(--mute)}
@@ -823,7 +942,11 @@ JS = """
   var modal = $("#cx-modal"), last = null;
   var KIND = {movie: "فيلم", series: "مسلسل", live: "قناة"};
   var hue = function(s){ var n = 0; for (var i = 0; i < s.length; i++) n += s.charCodeAt(i); return n * 37 % 360; };
-  var ini = function(s){ return s.split(/[\\s\\-:]+/).filter(Boolean).slice(0, 2).map(function(w){ return w[0]; }).join("").toUpperCase() || "•"; };
+  var ini = function(s){      // كـ _initials في الخادم
+    var w = s.replace(/\\p{M}/gu, "").match(/[\\p{L}\\p{N}]+/gu) || [];
+    var l = w.filter(function(x){ return !/^\\p{N}+$/u.test(x); });
+    return (l.length ? l : w).slice(0, 2).map(function(x){ return x[0]; }).join("").toUpperCase() || "•";
+  };
   function open(d, from){
     var facts = [d.y, (d.g || []).join(" • ")].filter(Boolean).join(" · ");
     $(".sheet", modal).innerHTML = '<button class="x" type="button" aria-label="إغلاق">✕</button><div class="cover"></div>'
