@@ -150,7 +150,8 @@ def _summary(rec):
          "prize_img": rec.get("prize_img") or "",
          "winners": int(rec.get("winners") or 1), "extra": extra_of(rec), "mode": mode_of(rec),
          "count": len(rec.get("entries") or []),
-         "draw": bool(rec.get("draw")), "void": bool(rec.get("void")), "match": rec.get("match") or {}}
+         "draw": bool(rec.get("draw")), "void": bool(rec.get("void")), "match": rec.get("match") or {},
+         "gift": gift_of(rec)}                    # لصفحة المدير وحدها: الصفحات العامة تأخذ من الملخّص حقولها بأسمائها
     if rec.get("draw"):
         by = {e["n"]: e for e in rec["entries"]}
         s["score"] = rec["draw"]["score"]

@@ -75,7 +75,8 @@ button:disabled{opacity:.55;cursor:default}
 .tvf label{margin:0;white-space:nowrap}
 .tvf input{max-width:240px;direction:ltr;text-align:left}
 .cupname{color:var(--amber);font-weight:700}
-.mctl{display:grid;grid-template-columns:1fr 80px 150px 170px auto;gap:8px;align-items:end;margin-top:10px}
+.mctl{display:grid;grid-template-columns:1fr 80px 150px 170px;gap:8px;align-items:end;margin-top:10px}
+.mbtn{margin-top:10px}
 .mctl label{margin-top:0}
 @media (max-width:760px){.mctl{grid-template-columns:90px 1fr}.mctl .pz,.mctl .md,.mctl .acts{grid-column:1/-1}}
 .acts{display:flex;gap:6px;flex-wrap:wrap}
@@ -114,6 +115,11 @@ button:disabled{opacity:.55;cursor:default}
 .gift .acts{margin-top:6px}
 .gift .mono{margin:6px 0 0;white-space:pre-wrap}
 .gift .ph{direction:ltr;unicode-bidi:isolate;font-family:"IBM Plex Mono",monospace}
+.gline{margin-top:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:14px}
+.gline .gsum{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.9rem}
+.gline .gsum small{color:var(--mute)}
+.gline .gsum .acts{margin-inline-start:auto}
+.gline [data-gpick]{margin-top:10px}
 .warn{border-color:color-mix(in srgb,var(--amber) 55%,var(--line))}
 .warn b{color:var(--amber)}
 .warn ul{margin:6px 0 0;padding-inline-start:1.2em;color:var(--mute);font-size:.88rem}
@@ -400,10 +406,11 @@ function row(r) {
         .map(([v, t]) => `<option value="${v}" ${v === x ? "selected" : ""}>${t}</option>`).join("")}</select></div>
       <div class="md"><label>من يفوز</label><select data-f="mode">${[["exact", "من أصاب النتيجة بالضبط فقط"], ["outcome", "بالضبط، وإلا من أصاب الفائز"]]
         .map(([v, t]) => `<option value="${v}" ${v === md ? "selected" : ""}>${t}</option>`).join("")}</select></div>
-      <div class="acts">${c && c.on
+      </div>${giftLine(c, true)}
+      <div class="acts mbtn">${c && c.on
         ? `<button class="ghost" data-a="save">حفظ</button><button class="danger" data-a="off">إيقاف</button>`
-        : `<button class="go" data-a="on">افتح المسابقة</button>`}</div></div>`;
-  }
+        : `<button class="go" data-a="on">افتح المسابقة</button>`}</div>`;
+  } else if (c && c.gift && !c.draw && !c.void) ctl = giftLine(c, false);
   return `<div class="mrow" data-eid="${esc(r.eid)}">
     <div class="mhead"><div class="mi"><b>${esc(m.home)} × ${esc(m.away)}</b>
       <small><span class="cupname">${esc(m.cup || "دوري الأمم الأوروبية")}</span> · ${esc(r.when)} · ${esc(m.stage)}${esc(score)}</small>
@@ -414,6 +421,17 @@ function row(r) {
     ${r.mstate === "post" || st === "done" || st === "void" ? "" : `<div class="tvf"><label>القناة الناقلة</label>
       <input data-f="tv" list="tvlist" value="${esc(r.tv_own || "")}" placeholder="${esc(CUPTV[m.path || "/nations-league"] ? CUPTV[m.path || "/nations-league"] + " (قناة البطولة)" : "بلا قناة — اكتبها مثل AL KASS One")}" maxlength="40"></div>`}
     ${ctl}<div class="msg"></div></div>`;
+}
+
+// هدية الفائز في صفّ المباراة: تُختار مع «افتح المسابقة» (أو «حفظ») فتُنشأ للفائز وتُرسل له وحدها بعد الفرز
+function giftLine(c, edit) {
+  const g = c && c.gift;
+  const sum = g ? `<b>${esc(g.label)}</b><small>${esc(g.account)} / ${esc(g.gate)} — تُنشأ للفائز وتُرسل له وحدها بعد الفرز</small>`
+    : '<small>لم تُختر — اخترها فتُرسل للفائز وحدها بعد الفرز: اشتراكه وطريقة التثبيت على واتساب</small>';
+  return `<div class="gline"><div class="gsum">🎁 هدية الفائز: ${sum}${edit ? `<span class="acts">
+      <button class="ghost" data-a="gift">${g ? "تغيير الهدية" : "اختر الهدية"}</button>
+      <button class="ghost" data-a="gclose" hidden>إغلاق</button>${g ? '<button class="ghost" data-a="nogift">بلا هدية</button>' : ""}</span>` : ""}</div>
+    ${edit ? "<div data-gpick hidden></div>" : ""}</div>`;
 }
 
 // ---------- الجائزة: اشتراكٌ من المتجر ----------
@@ -523,12 +541,33 @@ $("rows").addEventListener("click", async e => {
     msg0.textContent = ok ? "نُسخت رسالة المباراة برابطها — الصقها في القناة." : "تعذّر النسخ التلقائي.";
     return;
   }
+  const gbox = rowEl.querySelector("[data-gpick]"), gbtn = k => rowEl.querySelector(`[data-a="${k}"]`);
+  if (a === "gift") {                                    // المنتقي بالهدية الحالية أو آخر هديةٍ اختيرت
+    const c = ((DATA.rows || []).find(x => x.eid === eid) || {}).contest;
+    rowEl.dataset.dirty = "1"; delete rowEl.dataset.nogift;
+    gbox.hidden = false; b.hidden = true; gbtn("gclose").hidden = false;
+    rowEl._gift = giftPicker(gbox, c && c.gift);
+    return;
+  }
+  if (a === "gclose" || a === "nogift") {
+    gbox.hidden = true; gbox.innerHTML = ""; rowEl._gift = null; gbtn("gclose").hidden = true; gbtn("gift").hidden = false;
+    if (a === "nogift") {
+      rowEl.dataset.dirty = "1"; rowEl.dataset.nogift = "1";
+      rowEl.querySelector(".gsum b").textContent = "تُلغى مع «حفظ»";
+    }
+    return;
+  }
   const f = k => (rowEl.querySelector(`[data-f="${k}"]`) || {}).value;
   if (a === "off" && !confirm("إيقاف المسابقة يخفيها من صفحة المباراة ولا يُفرز لها. التوقّعات تبقى محفوظة. متابعة؟")) return;
-  b.disabled = true; msg.className = "msg"; msg.textContent = "…";
   const pid = f("prize_id") || "";
-  const d = await api("/api/contest/admin/set", {m: eid, on: a !== "off", winners: f("winners"), extra: f("extra"), mode: f("mode"),
-                                                 prize_id: pid === "__text" ? "" : pid, prize: pid === "__text" || !pid ? f("prize") : ""});
+  const body = {m: eid, on: a !== "off", winners: f("winners"), extra: f("extra"), mode: f("mode"),
+                prize_id: pid === "__text" ? "" : pid, prize: pid === "__text" || !pid ? f("prize") : ""};
+  if (a !== "off" && rowEl._gift) {
+    body.gift = rowEl._gift.value();
+    if (!body.gift) { msg.className = "msg err"; msg.textContent = "أكمل اختيار الهدية (الباقة)، أو أغلقها"; return; }
+  } else if (a !== "off" && rowEl.dataset.nogift) body.gift = null;
+  b.disabled = true; msg.className = "msg"; msg.textContent = body.gift ? "نتحقّق من الهدية في اللوحة…" : "…";
+  const d = await api("/api/contest/admin/set", body);
   b.disabled = false;
   if (!d.ok) { msg.className = "msg err"; msg.textContent = d.error || "تعذّر الحفظ"; return; }
   delete rowEl.dataset.dirty;
@@ -642,7 +681,6 @@ async function view(eid) {
 }
 
 // ---------- هدية الفائز: اشتراكٌ يُنشأ بنظام الإنشاء نفسه ويُرسل على رقمه ----------
-let GATES = null;
 const GIFT_ST = {creating: "يُنشأ الآن…", failed: "تعذّر الإنشاء"};
 const monthsAr = n => n === 1 ? "شهر واحد" : n === 2 ? "شهران" : n <= 10 ? n + " أشهر" : n + " شهرًا";
 function giftBox(d, drawn) {
@@ -653,14 +691,7 @@ function giftBox(d, drawn) {
       : "اخترها الآن فتُنشأ للفائز وتُرسل له على واتساب وحدها بعد الفرز (بعد رسالة التهنئة)."}
       مثلًا: باقة 15 شهرًا ويُعطى منها 12 شهرًا بنظام الاشتراكات المجزّأة — يتغيّر اسم المستخدم عند انتهاء مدته ويبقى الباقي للبيع.</p>
     ${g ? `<p class="okline" id="gCur">الهدية: <b>${esc(g.label)}</b> · ${esc(g.account)} / ${esc(g.gate)}</p>` : ""}
-    <div class="gform">
-      <div><label for="gAcct">الحساب</label><select id="gAcct"><option value="">…</option></select></div>
-      <div><label for="gGate">البوابة</label><select id="gGate"></select></div>
-      <div><label for="gPkg">الباقة</label><select id="gPkg"></select></div>
-      <div><label for="gMonths">مدة الهدية</label><select id="gMonths"></select>
-        <input id="gOther" class="ltr" inputmode="numeric" placeholder="عدد الأشهر" hidden style="margin-top:6px"></div>
-    </div>
-    <span class="hint" id="gHint"></span>
+    <div id="gPick"></div>
     <div class="acts" style="margin-top:10px"><button class="go" id="gSave" disabled>${drawn ? "أنشئ الاشتراك وأرسله للفائز" : "احفظ الهدية"}</button>
       ${g ? '<button class="ghost" id="gClear">إلغاء الهدية</button>' : ""}</div>
     <div class="msg" id="gMsg"></div>`;
@@ -686,59 +717,80 @@ function giftRow(n, name, phone, g, current) {
     <small>${s.at ? (s.ok ? "وصلته رسالة الاشتراك وطريقة التثبيت ✓" : "لم تصله الرسالة: " + esc(s.error)) : "لم تُرسل رسالته بعد"}</small>
     <div class="acts"><button class="ghost" data-gsend="${esc(n)}" data-resend="1">أعد إرسال رسالته</button></div></div>`;
 }
-async function giftWire(d, drawn) {
-  const pick = d.gift || d.gift_last || {};
-  const say = (t, cls) => { $("gMsg").className = "msg " + (cls || ""); $("gMsg").textContent = t; };
-  const r0 = await api("/api/contest/admin/gates").catch(() => ({}));   // كل مرة: حسابٌ أُضيف للتوّ يظهر
-  GATES = r0.accounts || [];
-  if (!$("gAcct")) return;                          // أُغلقت النافذة أو فُتحت غيرها
-  if (!GATES.length) { say("لا حسابات ببوابات بعد — أضفها من «الحسابات».", "err"); return; }
-  const acctOf = () => GATES.find(a => a.id === $("gAcct").value);
-  let PKGS = [], SPLIT = null;
-  $("gAcct").innerHTML = '<option value="">اختر الحساب</option>' + GATES.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+// منتقي الهدية: الحساب ← البوابة ← الباقة (من اللوحة نفسها) ← المدة (كاملة، أو جزءٌ من باقة 15 شهرًا).
+// واحدٌ لصفّ المباراة (مع «افتح المسابقة») وللتفاصيل؛ ويُملأ بالهدية الحالية، وإلا بآخر هديةٍ اختيرت.
+const GIFT_FORM = `<div class="gform">
+    <div><label>الحساب</label><select data-g="acct"><option value="">…</option></select></div>
+    <div><label>البوابة</label><select data-g="gate"></select></div>
+    <div><label>الباقة</label><select data-g="pkg"></select></div>
+    <div><label>مدة الهدية</label><select data-g="months"></select>
+      <input data-g="other" class="ltr" inputmode="numeric" placeholder="عدد الأشهر" hidden style="margin-top:6px"></div>
+  </div><span class="hint" data-g="hint"></span>`;
+function giftPicker(box, pick, onChange) {
+  box.innerHTML = GIFT_FORM;
+  pick = pick || {};
+  const q = k => box.querySelector(`[data-g="${k}"]`);
+  const say = (t, err) => { q("hint").textContent = t; q("hint").style.color = err ? "var(--err)" : ""; };
+  let PKGS = [], SPLIT = null, accts = [];
+  const acctOf = () => accts.find(a => a.id === q("acct").value);
+  const pkgOf = () => PKGS.find(x => String(x.id) === q("pkg").value);
+  const changed = () => { if (onChange) onChange(!!pkgOf()); };
   const months = () => {
-    const p = PKGS.find(x => String(x.id) === $("gPkg").value);
+    const p = pkgOf();
     const opts = ['<option value="0">الباقة كاملة</option>'];
-    if (p && p.split) opts.push(...SPLIT.slices.map(s => `<option value="${s}">${monthsAr(s)} منها</option>`), '<option value="other">مدة أخرى…</option>');
-    $("gMonths").innerHTML = opts.join("");
+    if (p && p.split) opts.push(...SPLIT.slices.map(n => `<option value="${n}">${monthsAr(n)} منها</option>`), '<option value="other">مدة أخرى…</option>');
+    q("months").innerHTML = opts.join("");
     const want = String(pick.months || 0);
-    if ([...$("gMonths").options].some(o => o.value === want)) $("gMonths").value = want;
-    else if (p && p.split && +want) { $("gMonths").value = "other"; $("gOther").value = want; }
-    $("gOther").hidden = $("gMonths").value !== "other";
-    $("gHint").textContent = !p ? "" : p.split ? `باقة ${p.months} شهرًا: أعطِ الفائز جزءًا منها (حتى ${SPLIT.max_slice} شهرًا) ويبقى الباقي للبيع.`
-      : SPLIT && SPLIT.split ? "تُعطى كاملة — التجزئة لباقات 15 شهرًا." : (acctOf() && !acctOf().split ? "تُعطى كاملة — افتح «الاشتراكات المجزّأة» لهذا الحساب لتعطي جزءًا من باقة 15 شهرًا." : "تُعطى كاملة.");
-    $("gSave").disabled = !p;
+    if ([...q("months").options].some(o => o.value === want)) q("months").value = want;
+    else if (p && p.split && +want) { q("months").value = "other"; q("other").value = want; }
+    q("other").hidden = q("months").value !== "other";
+    say(!p ? "" : p.split ? `باقة ${p.months} شهرًا: أعطِ الفائز جزءًا منها (حتى ${SPLIT.max_slice} شهرًا) ويبقى الباقي للبيع.`
+      : SPLIT && SPLIT.split ? "تُعطى كاملة — التجزئة لباقات 15 شهرًا." : (acctOf() && !acctOf().split ? "تُعطى كاملة — افتح «الاشتراكات المجزّأة» لهذا الحساب لتعطي جزءًا من باقة 15 شهرًا." : "تُعطى كاملة."));
+    changed();
   };
   const pkgs = async () => {
-    PKGS = []; $("gPkg").innerHTML = ""; $("gMonths").innerHTML = ""; $("gSave").disabled = true;
-    if (!$("gGate").value) return;
-    $("gPkg").innerHTML = "<option>يُجلب من اللوحة…</option>";
-    const r = await api(`/api/contest/admin/packages?a=${encodeURIComponent($("gAcct").value)}&g=${encodeURIComponent($("gGate").value)}`);
-    if (!$("gPkg")) return;
-    if (!r.ok) { $("gPkg").innerHTML = ""; say(r.error || "تعذّر جلب الباقات", "err"); $("gMsg").dataset.pkg = "1"; return; }
-    if ($("gMsg").dataset.pkg) { say(""); delete $("gMsg").dataset.pkg; }   // يمسح خطأ الباقات وحده، لا نتيجة الإرسال
+    PKGS = []; q("pkg").innerHTML = ""; q("months").innerHTML = ""; changed();
+    if (!q("gate").value) return;
+    q("pkg").innerHTML = "<option>يُجلب من اللوحة…</option>"; say("");
+    const r = await api(`/api/contest/admin/packages?a=${encodeURIComponent(q("acct").value)}&g=${encodeURIComponent(q("gate").value)}`);
+    if (!box.isConnected) return;
+    if (!r.ok) { q("pkg").innerHTML = ""; say(r.error || "تعذّر جلب الباقات", true); return; }
     PKGS = r.packages || []; SPLIT = r;
-    $("gPkg").innerHTML = '<option value="">اختر الباقة</option>' + PKGS.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.split ? " ✂" : ""}</option>`).join("");
-    if (PKGS.some(p => String(p.id) === String(pick.package_id))) $("gPkg").value = String(pick.package_id);
+    q("pkg").innerHTML = '<option value="">اختر الباقة</option>' + PKGS.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.split ? " ✂" : ""}</option>`).join("");
+    if (PKGS.some(p => String(p.id) === String(pick.package_id))) q("pkg").value = String(pick.package_id);
     months();
   };
   const gates = () => {
     const a = acctOf();
-    $("gGate").innerHTML = '<option value="">اختر البوابة</option>' + (a ? a.gates : []).map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join("");
-    if (a && a.gates.some(g => g.id === pick.gate_id)) $("gGate").value = pick.gate_id;
+    q("gate").innerHTML = '<option value="">اختر البوابة</option>' + (a ? a.gates : []).map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join("");
+    if (a && a.gates.some(g => g.id === pick.gate_id)) q("gate").value = pick.gate_id;
     return pkgs();
   };
-  $("gAcct").onchange = gates; $("gGate").onchange = pkgs; $("gPkg").onchange = months;
-  $("gMonths").onchange = () => { $("gOther").hidden = $("gMonths").value !== "other"; };
-  if (GATES.some(a => a.id === pick.account_id)) $("gAcct").value = pick.account_id;
-  gates();
+  const ready = (async () => {
+    const r = await api("/api/contest/admin/gates").catch(() => ({}));   // كل مرة: حسابٌ أُضيف للتوّ يظهر
+    accts = r.accounts || [];
+    if (!pick.gate_id && r.last) pick = r.last;           // بلا هدية: آخر هديةٍ اختيرت، كما هي الآن
+    if (!box.isConnected) return;
+    if (!accts.length) { say("لا حسابات ببوابات بعد — أضفها من «الحسابات».", true); return; }
+    q("acct").innerHTML = '<option value="">اختر الحساب</option>' + accts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+    q("acct").onchange = gates; q("gate").onchange = pkgs; q("pkg").onchange = months;
+    q("months").onchange = () => { q("other").hidden = q("months").value !== "other"; changed(); };
+    if (accts.some(a => a.id === pick.account_id)) q("acct").value = pick.account_id;
+    await gates();
+  })();
+  return {ready, value: () => pkgOf() ? {account_id: q("acct").value, gate_id: q("gate").value, package_id: q("pkg").value,
+                                          months: q("months").value === "other" ? q("other").value.trim() : q("months").value} : null};
+}
+
+async function giftWire(d, drawn) {
+  const say = (t, cls) => { $("gMsg").className = "msg " + (cls || ""); $("gMsg").textContent = t; };
+  const pk = giftPicker($("gPick"), d.gift, ok => { if ($("gSave")) $("gSave").disabled = !ok; });
   const done = r => (r.gifts || []).map(x => `${x.name}: ` + (x.ok ? (x.already ? "وصلته من قبل ✓" : "أُنشئ اشتراكه (" + x.username + ") ووصلته رسالته ✓") : x.error)).join("\n");
   $("gSave").onclick = async () => {
-    const mv = $("gMonths").value === "other" ? $("gOther").value.trim() : $("gMonths").value;
+    const v = pk.value(); if (!v) return;
     if (drawn && !confirm("يُنشأ الاشتراك على اللوحة لكل فائزٍ لم يُنشأ له (ويُخصم رصيده)، ويُرسل له على واتساب. متابعة؟")) return;
     $("gSave").disabled = true; say(drawn ? "نُنشئ الاشتراك ونرسله…" : "نتحقّق من الباقة في اللوحة…");
-    const r = await api("/api/contest/admin/gift", {m: d.eid, account_id: $("gAcct").value, gate_id: $("gGate").value,
-                                                   package_id: $("gPkg").value, months: mv, send: drawn});
+    const r = await api("/api/contest/admin/gift", {m: d.eid, ...v, send: drawn});
     $("gSave").disabled = false;
     if (!r.ok) return say(r.error || "تعذّر الحفظ", "err");
     const msg = drawn ? done(r) : "حُفظت ✓ — تُنشأ للفائز وتُرسل له بعد الفرز.";

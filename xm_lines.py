@@ -2309,6 +2309,32 @@ def contest_deliver(eid, force=False, only=None, resend=False):
     return out
 
 
+def gift_spec(g):
+    """هدية الفائز كما اختارها المدير ({account_id, gate_id, package_id, months}) بعد التحقّق منها على اللوحة:
+    الباقة موجودة، والجزء صالح بقواعد التجزئة نفسها ← (الهدية، 200، "") أو (None، رمز HTTP، السبب)."""
+    acct, gate = gift_gate(load_store(), g.get("account_id"), g.get("gate_id"))
+    if not gate:
+        return None, 400, "اختر الحساب والبوابة"
+    try:
+        pkgs = get_packages(gate)
+    except Exception as e:
+        return None, 502, gift_error(e, acct, gate)
+    pkg = next((p for p in pkgs if str(p["id"]) == str(g.get("package_id"))), None)
+    if not pkg:
+        return None, 400, "اختر الباقة"
+    months = split_subs.parse_months(g.get("months") or 0)
+    if months is None:
+        return None, 400, "مدة الهدية بالأشهر الكاملة"
+    if months:
+        why = split_create_error(acct, gate, pkg, months)
+        if why:
+            return None, 400, why
+    label = ("%s من %s" % (split_subs.months_ar(months), pkg.get("name", ""))) if months else pkg.get("name", "")
+    return ({"account_id": acct["id"], "account": acct.get("name", ""), "gate_id": gate["id"],
+             "gate": gate.get("name", ""), "package_id": str(pkg["id"]), "package": pkg.get("name", ""),
+             "months": months, "label": label}, 200, "")
+
+
 CHANNEL_VIDEO_MAX = 30 * 1024 * 1024        # فيديو منشور القناة (تقبل الخدمة حتى 32 ميغابايت)
 
 
@@ -3541,10 +3567,9 @@ class Handler(BaseHTTPRequestHandler):
             d["post_text"] = contest.winners_post(rec, d["link"], f"https://{SITE_HOST}/predict")
             ch = content.channel(DATA_DIR)
             d["channel"] = {"linked": bool(ch["jid"]), "name": ch["name"], "role": ch["role"]}
-            d["gift_last"] = contest.last_gift(DATA_DIR)
             return self._send(200, d)
         if path == "/api/contest/admin/gates":          # الحسابات وبواباتها لهدية الفائز
-            return self._send(200, {"ok": True, "accounts": gift_targets()})
+            return self._send(200, {"ok": True, "accounts": gift_targets(), "last": contest.last_gift(DATA_DIR)})
         if path == "/api/contest/admin/packages":       # باقات بوابةٍ لهدية الفائز (من اللوحة نفسها)
             acct, gate = gift_gate(load_store(), self._q("a"), self._q("g"))
             if not gate:
@@ -3746,8 +3771,18 @@ class Handler(BaseHTTPRequestHandler):
                            or (saved if saved and saved["id"] == pid else None))
                 if not product:
                     return self._send(400, {"error": "هذا الاشتراك غير موجود في المتجر الآن — حدّث القائمة"})
+            # هدية الفائز مع فتح المسابقة: تُتحقّق على اللوحة قبل الفتح، فهديةٌ لا تصلح لا تفتح مسابقةً بلا هديتها.
+            # وغيابها يُبقي ما كان، وnull يلغيها، والإيقاف لا يمسّها
+            spec, clear = None, "gift" in req and not req["gift"]
+            if req.get("on") and isinstance(req.get("gift"), dict) and req["gift"]:
+                spec, gcode, gerr = gift_spec(req["gift"])
+                if not spec:
+                    return self._send(gcode, {"error": "هدية الفائز: " + gerr})
             code, res = contest.configure(DATA_DIR, m, bool(req.get("on")), req.get("prize"), req.get("winners"),
                                           product=product, extra=req.get("extra"), mode=req.get("mode"))
+            if code == 200 and req.get("on") and (spec or clear):
+                contest.set_gift(DATA_DIR, m["id"], spec)
+                res["contest"] = contest.summaries(DATA_DIR).get(m["id"], res.get("contest"))
             return self._send(code, res)
         if path == "/api/contest/admin/settle":       # «افرز الآن»: ما تفعله الدورة كل دقيقة
             rec, drawn = contest.settle(DATA_DIR, contest.eid_of(req.get("m")), m)
@@ -3781,35 +3816,17 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "not found"})
 
     def _contest_gift(self, req):
-        """يحفظ هدية المسابقة بعد التحقّق منها على اللوحة (الباقة موجودة، والجزء صالح بقواعد التجزئة) —
-        قبل الفرز فتُرسل وحدها بعده، أو بعده مع send فتُرسل للفائزين الآن. وclear يمسحها."""
+        """يحفظ هدية المسابقة بعد التحقّق منها على اللوحة (gift_spec) — قبل الفرز فتُرسل وحدها بعده، أو بعده
+        مع send فتُرسل للفائزين الآن. وclear يمسحها."""
         rec = contest.load(DATA_DIR, req.get("m"))
         if not rec:
             return self._send(404, {"error": "لا مسابقة على هذه المباراة"})
         if req.get("clear"):
             contest.set_gift(DATA_DIR, rec["eid"], None)
             return self._send(200, {"ok": True, "gift": None})
-        acct, gate = gift_gate(load_store(), req.get("account_id"), req.get("gate_id"))
-        if not gate:
-            return self._send(400, {"error": "اختر الحساب والبوابة"})
-        try:
-            pkgs = get_packages(gate)
-        except Exception as e:
-            return self._send(502, {"error": gift_error(e, acct, gate)})
-        pkg = next((p for p in pkgs if str(p["id"]) == str(req.get("package_id"))), None)
-        if not pkg:
-            return self._send(400, {"error": "اختر الباقة"})
-        months = split_subs.parse_months(req.get("months") or 0)
-        if months is None:
-            return self._send(400, {"error": "مدة الهدية بالأشهر الكاملة"})
-        if months:
-            why = split_create_error(acct, gate, pkg, months)
-            if why:
-                return self._send(400, {"error": why})
-        label = ("%s من %s" % (split_subs.months_ar(months), pkg.get("name", ""))) if months else pkg.get("name", "")
-        spec = {"account_id": acct["id"], "account": acct.get("name", ""), "gate_id": gate["id"],
-                "gate": gate.get("name", ""), "package_id": str(pkg["id"]), "package": pkg.get("name", ""),
-                "months": months, "label": label}
+        spec, code, err = gift_spec(req)
+        if not spec:
+            return self._send(code, {"error": err})
         rec = contest.set_gift(DATA_DIR, rec["eid"], spec)
         res = {"ok": True, "gift": contest.gift_of(rec)}
         if req.get("send") and rec.get("draw"):
