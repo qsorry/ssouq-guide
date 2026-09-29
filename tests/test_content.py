@@ -446,6 +446,223 @@ def unit_adult():
         shutil.rmtree(d, ignore_errors=True)
 
 
+NEWS_BASE = ("#EXTM3U\n" + entry("MBC 1", "AR | MBC", n=1)
+             + entry("The Batman (2022)", "VOD | English Movies", "movie", 10)
+             + entry("Breaking Bad S01 E01", "SERIES | Drama", "series", 20)
+             + entry("Breaking Bad S01 E02", "SERIES | Drama", "series", 21)
+             + entry("The Boys S04 E01", "SERIES | Drama", "series", 22))
+NEWS_MORE = (NEWS_BASE + entry("Dune: Part Two (2024)", "VOD | English Movies", "movie", 30)
+             + entry("ولاد رزق 3 (2024)", "أفلام عربية", "movie", 31)
+             + entry("The Batman (2022) 4K", "VOD | 4K", "movie", 32)             # الفيلم نفسه بجودةٍ أخرى: ليس جديدًا
+             + entry("Shogun S01 E01", "SERIES | Drama", "series", 40)
+             + entry("Shogun S01 E02", "SERIES | Drama", "series", 41)
+             + entry("Breaking Bad S01 E03", "SERIES | Drama", "series", 42)
+             + entry("Breaking Bad S01 E03", "SERIES | Drama", "series", 43)      # الحلقة نفسها بجودتين: مرة
+             + entry("Breaking Bad S02 E01", "SERIES | Drama", "series", 44)      # موسمٌ جديد
+             + entry("The Boys S04 E02", "SERIES | Drama", "series", 45)
+             + entry("The Boys S04 E01", "Netflix", "series", 48)                 # والمسلسل في قسمٍ ثانٍ كذلك
+             + entry("The Boys S04 E02", "Netflix", "series", 49)
+             + entry("beIN SPORTS 9", "beIN SPORTS", n=46)                        # القنوات لا تُعدّ
+             + entry("xXx (2002)", "VOD | English Movies", "movie", 47))          # للكبار: لا يُسجَّل
+
+
+def logged(d, key):
+    return (C._read(C._news_path(d, key)) or {}).get("log") or []
+
+
+def unit_news():
+    print("الجديد في كل سحب")
+    d = fresh()
+    r = seed(d, "casper", NEWS_BASE)
+    check("أول فهرسٍ بدايةٌ لا جديد فيها", r["news"].get("first") is True and not logged(d, "casper")
+          and os.path.exists(C._seen_path(d, "casper")), r["news"])
+    r = seed(d, "casper", NEWS_MORE)
+    n = r["news"]
+    check("الجديد: فيلمان ومسلسل و5 حلقات", (n.get("movie"), n.get("series"), n.get("eps"), n.get("first")) == (2, 1, 5, None), n)
+    by = {e["n"]: e for e in logged(d, "casper")}
+    check("الأفلام باسمها وسنتها، والجودة الأخرى ليست جديدًا", sorted(k for k, e in by.items() if e["k"] == "movie")
+          == ["Dune: Part Two", "ولاد رزق 3"] and by["Dune: Part Two"]["y"] == 2024, sorted(by))
+    check("والمسلسل الجديد بمواسمه", by["Shogun"].get("new") == 1 and by["Shogun"]["s"] == [[1, 2]], by.get("Shogun"))
+    check("والحلقات: ما زاد في كل موسم، والموسم الجديد معلَّم، والمكرّرة مرة",
+          by["Breaking Bad"]["add"] == [[1, 1, 3, 0], [2, 1, 1, 1]] and "new" not in by["Breaking Bad"], by.get("Breaking Bad"))
+    check("والمسلسل في قسمين بقسميه", by["The Boys"]["add"] == [[4, 1, 2, 0]] and len(by["The Boys"]["gs"]) == 2, by.get("The Boys"))
+    check("لا قنوات ولا ما أُسقط للكبار", "beIN SPORTS 9" not in by and "xXx" not in by)
+    check("وما جدّ في آخر سحبٍ لصفحة المدير", next(s for s in C.admin_state(d)["servers"] if s["key"] == "casper")["news"] == n)
+    r = seed(d, "casper", NEWS_MORE)
+    check("الملف نفسه ثانيةً: لا جديد", not any(r["news"].get(k) for k in ("movie", "series", "eps")) and len(logged(d, "casper")) == 5,
+          r["news"])
+    seed(d, "casper", NEWS_MORE.replace(entry("Dune: Part Two (2024)", "VOD | English Movies", "movie", 30), ""))
+    r = seed(d, "casper", NEWS_MORE)
+    check("ما غاب ثم عاد ليس جديدًا", not r["news"].get("movie") and len(logged(d, "casper")) == 5, r["news"])
+
+    renamed = "#EXTM3U\n" + "".join(entry(f"Clip {i:03d} (2020)", "VOD | New Pack", "movie", 500 + i) for i in range(C.NEWS_FLOOD + 1))
+    r = seed(d, "casper", NEWS_MORE + renamed)
+    check("أكثر من الحدّ ومن نصف النوع دفعةً واحدة: بدايةٌ جديدة لا جديد", r["news"].get("flood") == [["movie", C.NEWS_FLOOD + 1]]
+          and not r["news"].get("movie") and len(logged(d, "casper")) == 5, r["news"])
+    r = seed(d, "casper", NEWS_MORE + renamed)
+    check("وما فيه رُئي", not r["news"].get("movie") and not r["news"].get("flood"), r["news"])
+
+    d2 = fresh()
+    seed(d2, "smart", NEWS_BASE)
+    os.remove(C._seen_path(d2, "smart"))             # نسخةٌ قبل هذه الميزة: الفهرس وحده
+    r = seed(d2, "smart", NEWS_MORE)
+    check("قبل الذاكرة: يُقارن بالفهرس السابق فيُعرف الجديد من أول سحب", r["news"].get("movie") == 2 and not r["news"].get("first"),
+          r["news"])
+    C._write(C._cat_path(d2, "kon"), {"key": "kon", "at": time.time(), "entries": 1, "n": {"movie": 1}, "skipped": {},
+                                      "movie": [{"id": C._gid("movie", "Films"), "name": "Films", "items": ["Old Film (2019) FHD"]}]})
+    r = seed(d2, "kon", NEWS_MORE)
+    check("وفهرس النسخة الأولى (قُرئت أسماؤه بغير القراءة الحالية) لا يُقارن به: بداية", r["news"].get("first") is True
+          and not logged(d2, "kon"), r["news"])
+    C.clear(d2, "smart")
+    check("مسح المحتوى يمسح ما رُئي وما جدّ", not os.path.exists(C._seen_path(d2, "smart"))
+          and not os.path.exists(C._news_path(d2, "smart")))
+    r = seed(d2, "smart", NEWS_MORE)
+    check("وما بعده بداية", r["news"].get("first") is True, r["news"])
+    old = C._record_news
+    C._record_news = lambda *a: 1 / 0
+    try:
+        r = seed(d2, "smart", NEWS_MORE)
+        check("فشل التسجيل لا يُسقط الإدخال", r["entries"] > 0 and "division" in r["news"].get("error", ""), r["news"])
+    finally:
+        C._record_news = old
+    shutil.rmtree(d, ignore_errors=True)
+    shutil.rmtree(d2, ignore_errors=True)
+
+
+def journal(d, key, entries):
+    """سجلّ جديدٍ مصنوع لسيرفر — لاختبار المنشور بلا ملفات."""
+    C._write(C._news_path(d, key), {"log": entries, "last": {}})
+
+
+def unit_channel():
+    print("منشور «أضيف مؤخرًا» في قناة واتساب")
+    for raw, want in [("https://whatsapp.com/channel/0029Va4K0PZ5a245NkngBA2M", ("invite", "0029Va4K0PZ5a245NkngBA2M")),
+                      ("https://www.whatsapp.com/channel/0029Va4K0PZ5a245NkngBA2M/?utm=x", ("invite", "0029Va4K0PZ5a245NkngBA2M")),
+                      (" whatsapp.com/channel/0029VaAbCdEf12345678 ", ("invite", "0029VaAbCdEf12345678")),
+                      ("0029Va4K0PZ5a245NkngBA2M", ("invite", "0029Va4K0PZ5a245NkngBA2M")),
+                      ("120363000000000001@newsletter", ("jid", "120363000000000001@newsletter")),
+                      ("120363000000000001", ("jid", "120363000000000001@newsletter")),
+                      ("https://chat.whatsapp.com/AbCdEf123", None), ("", None), ("hello", None)]:
+        check(f"الرابط «{raw.strip()[:40]}»", C.channel_ref(raw) == want, C.channel_ref(raw))
+
+    d = fresh()
+    T = time.time()
+    yr = time.gmtime(T + C.RIYADH).tm_year
+    journal(d, "casper", [
+        {"t": T - 60, "k": "movie", "h": "m1", "n": "Old Classic", "y": 1972, "r": 9.2, "gs": ["g1"]},
+        {"t": T - 60, "k": "movie", "h": "m2", "n": "New Hit", "y": yr, "r": 7.1, "gs": ["g1"]},
+        {"t": T - 60, "k": "movie", "h": "m3", "n": "New Better", "y": yr - 1, "r": 8.4, "gs": ["g1"]},
+        {"t": T - 60, "k": "movie", "h": "m4", "n": "M*A*S*H_2", "gs": ["g1"]},
+        {"t": T - 60, "k": "movie", "h": "m5", "n": "Hidden Movie", "y": yr, "gs": ["gh"]},
+        {"t": T - 60, "k": "series", "new": 1, "h": "s1", "n": "Shogun", "y": yr - 2, "r": 8.7, "gs": ["g2"], "s": [[1, 10]]},
+        {"t": T - 60, "k": "series", "new": 1, "h": "s2", "n": "The Office", "y": 2005, "r": 8.9, "gs": ["g2"],
+         "s": [[1, 6], [2, 22], [3, 23]]},
+        {"t": T - 60, "k": "series", "h": "s3", "n": "The Boys", "r": 8.7, "gs": ["g2"], "add": [[4, 3, 5, 0]]},
+        {"t": T - 60, "k": "series", "h": "s4", "n": "House of the Dragon", "r": 8.4, "gs": ["g2"], "add": [[2, 8, 8, 1]]},
+        {"t": T - 60, "k": "series", "h": "s5", "n": "قيامة أرطغرل", "gs": ["g3"], "add": [[0, 2, 47, 0]]},
+        {"t": T - 30, "k": "series", "h": "s3", "n": "The Boys", "r": 8.7, "gs": ["g2"], "add": [[4, 1, 6, 0]]},
+        {"t": T - 20, "k": "series", "h": "s1", "n": "Shogun", "gs": ["g2"], "add": [[1, 2, 12, 0]]},
+        {"t": T - 10 * 86400, "k": "movie", "h": "old", "n": "Too Old", "gs": ["g1"]}])
+    C.set_hidden(d, "casper", "gh", True)
+    text, n = C.channel_text(d, ["casper"], T - 3 * 86400, T, now=T)
+    lines = text.split("\n")
+    check("العنوان باسم السيرفر وتاريخ اليوم بتوقيت السعودية", lines[:2] == ["🆕 *أضيف مؤخرًا في كاسبر*", "🗓️ " + C.ar_date(T)], lines[:2])
+    check("والأعداد: المخفي والقديم لا يُعدّان، وحلقات المسلسل الجديد منها", n == {"movie": 4, "series": 2, "eps": 77}
+          and "✨ الجديد: 4 أفلام · مسلسلان · 77 حلقة" in lines, (n, lines[3:5]))
+    R = C.RLM
+    block = lambda title: lines[lines.index(title) + 1:lines.index("", lines.index(title))]  # noqa: E731
+    check("الأفلام: الإصدارات الحديثة أولًا ثم الأعلى تقييمًا، وعلامات التنسيق في الاسم لا تنسّق",
+          block("🎬 *أفلام جديدة*") == [f"{R}• New Better ({yr - 1}) ⭐ 8.4", f"{R}• New Hit ({yr}) ⭐ 7.1",
+                                        f"{R}• Old Classic (1972) ⭐ 9.2", f"{R}• M∗A∗S∗H 2"], block("🎬 *أفلام جديدة*"))
+    check("المسلسلات الجديدة بمواسمها أو حلقاتها، وما جدّ بعدها من حلقاتٍ فيها",
+          block("📺 *مسلسلات جديدة*") == [f"{R}• The Office (2005) · 3 مواسم ⭐ 8.9", f"{R}• Shogun ({yr - 2}) · 12 حلقة ⭐ 8.7"],
+          block("📺 *مسلسلات جديدة*"))
+    check("والحلقات: الموسم الجديد أولًا، وحلقات كل سحبٍ مجموعة",
+          block("🎞️ *حلقات ومواسم جديدة*") == [f"{R}• House of the Dragon · الموسم 2 (جديد) · 8 حلقات",
+                                                f"{R}• The Boys · الموسم 4 · 4 حلقات", f"{R}• قيامة أرطغرل · حلقتان"],
+          block("🎞️ *حلقات ومواسم جديدة*"))
+    check("ورابط «أضيف مؤخرًا» في صفحة السيرفر آخرًا", lines[-2:] == ["🔗 القائمة كاملة، وابحث باسم ما تريد:",
+                                                                   "https://guide.ssouq.com/content/casper?t=new"], lines[-2:])
+    check("وما قبل الفترة وبعدها لا يدخل", C.channel_text(d, ["casper"], T, T + 60)[0] == ""
+          and "Too Old" not in text and "Hidden" not in text)
+    check("والسيرفر غير المختار لا يدخل", C.channel_text(d, ["smart"], 0, T + 60)[0] == "")
+
+    journal(d, "smart", [{"t": T - 60, "k": "movie", "h": f"x{i}", "n": f"Film {i:02d}", "y": 2020, "gs": ["g"]} for i in range(12)])
+    t2, n2 = C.channel_text(d, ["smart"], T - 3600, T)
+    check("الحدّ: 8 أفلام والباقي عدد", t2.count(f"{R}• Film") == 8 and f"{R}   …و4 أفلام غيرها" in t2, t2)
+    journal(d, "smart", [{"t": T - 60, "k": "movie", "h": f"x{i}", "n": f"Film {i:02d}", "y": 2020, "gs": ["g"]} for i in range(9)])
+    t2, _ = C.channel_text(d, ["smart"], T - 3600, T)
+    check("وواحدٌ زائد يُعرض بدل «وواحدٌ غيره»", t2.count(f"{R}• Film") == 9 and "غيرها" not in t2)
+    t3, n3 = C.channel_text(d, ["smart", "casper"], T - 3 * 86400, T, now=T)
+    l3 = t3.split("\n")
+    check("سيرفران: عنوانٌ عام، وقسمٌ لكلٍّ بترتيب الصفحة وأعداده ورابطه",
+          l3[0] == "🆕 *أضيف مؤخرًا*" and l3.count(C.SEP) == 2 and l3.index("📡 *كاسبر*") < l3.index("📡 *سمارت*")
+          and "✨ 9 أفلام" in l3 and "🔗 القائمة كاملة: https://guide.ssouq.com/content/smart?t=new" in l3
+          and "🔗 القائمة كاملة: https://guide.ssouq.com/content/casper?t=new" in l3 and n3["movie"] == 13, t3[:300])
+    check("وسطور كل قسمٍ أقلّ", t3.count(f"{R}• Film") == 5 and "…و4 أفلام غيرها" in t3, t3.count(f"{R}• Film"))
+
+    print("القناة: ربطها ومنشورها في ساعته")
+    posts = []
+
+    def sender(jid, text):
+        posts.append((jid, text))
+        return {"ok": True}
+
+    C.channel_sender = sender
+    try:
+        check("بلا قناة: لا منشور", C.channel_run(d)["error"] == "اربط قناة واتساب أولًا" and not posts)
+        C.save_channel(d, jid="120363000000000001@newsletter")
+        check("وبلا سيرفرات: يقول ذلك", C.channel_run(d, manual=True)["error"] == "اختر السيرفرات في المنشور واحفظ" and not posts)
+        C.save_channel(d, jid="")
+        c = C.link_channel(d, "120363000000000001@newsletter", "سمارت سوق", "0029VaSsouqNews000000000", "ADMIN", 1520)
+        check("ربط القناة: أول منشورٍ بما جدّ في اليوم الذي قبله", c["jid"] == "120363000000000001@newsletter"
+              and abs(c["since"] - (time.time() - C.CHANNEL_FIRST)) < 5 and c["role"] == "ADMIN" and c["subs"] == 1520, c)
+        C.save_channel(d, on=True, servers=["casper"], hour=21)
+        day0 = (int(T) + C.RIYADH) // 86400 * 86400 - C.RIYADH       # منتصف ليل اليوم بتوقيت السعودية
+        check("قبل ساعته: لا شيء", C.channel_tick(d, now=day0 + 20 * 3600 + 3000) is None and not posts)
+        res = C.channel_tick(d, now=day0 + 21 * 3600 + 60)
+        check("في ساعته: يُنشر في القناة ما جدّ", res["ok"] and len(posts) == 1 and posts[0][0] == "120363000000000001@newsletter"
+              and posts[0][1].startswith("🆕 *أضيف مؤخرًا في كاسبر*") and res["n"]["movie"] == 4, res)
+        c = C.channel(d)
+        check("ويُحفظ: اليوم وما نُشر، وما بعده جديدٌ لم يُنشر", c["day"] == C._day(day0 + 21 * 3600 + 60) and c["posted"]["ok"]
+              and c["since"] >= T and C.channel_state(d)["pending"] == {"movie": 0, "series": 0, "eps": 0}, c)
+        check("وفي اليوم نفسه لا يُعاد", C.channel_tick(d, now=day0 + 23 * 3600) is None and len(posts) == 1)
+        check("و«انشر الآن» بلا جديد: لا شيء", C.channel_run(d, manual=True) == {"ok": False, "empty": True,
+                                                                                 "error": "لا جديد منذ آخر منشور"})
+        res = C.channel_tick(d, now=day0 + 86400 + 22 * 3600)
+        check("وفي الغد بلا جديد: لا يُنشر، ويُعلَّم يومه", res == {"ok": True, "empty": True} and len(posts) == 1
+              and C.channel(d)["last"]["empty"] and C.channel(d)["day"] == C._day(day0 + 86400 + 22 * 3600))
+        seed(d, "casper", NEWS_BASE)
+        seed(d, "casper", NEWS_MORE)
+        check("وما جدّ بعدها في حال القناة", C.channel_state(d)["pending"] == {"movie": 2, "series": 1, "eps": 5},
+              C.channel_state(d)["pending"])
+        C.channel_sender = lambda j, t: {"ok": False, "error": "رقم المسابقة غير مربوط"}
+        d3 = day0 + 2 * 86400 + 21 * 3600
+        res = C.channel_tick(d, now=d3)
+        check("الفشل يُحفظ سببه ولا يُعلَّم اليوم", res["ok"] is False and res["error"] == "رقم المسابقة غير مربوط"
+              and C.channel(d)["day"] != C._day(d3) and C.channel_state(d)["pending"]["movie"] == 2, res)
+        C.channel_sender = sender
+        check("ولا يُعاد قبل نصف ساعة", C.channel_tick(d, now=d3 + 600) is None and len(posts) == 1)
+        res = C.channel_tick(d, now=d3 + C.CHANNEL_RETRY + 60)
+        check("ثم يُعاد فيُنشر", res["ok"] and len(posts) == 2 and "Dune: Part Two (2024)" in posts[1][1]
+              and "🎞️ *حلقات ومواسم جديدة*" in posts[1][1], res)
+        C.save_channel(d, on=False)
+        check("والموقوف لا يُنشر", C.channel_tick(d, now=day0 + 5 * 86400 + 22 * 3600) is None)
+        check("والمعاينة لآخر أيامٍ وإن نُشر ما فيها", "Dune: Part Two" in C.channel_preview(d, ["casper"], days=1)["text"]
+              and C.channel_preview(d)["text"] == "")
+        check("وحال القناة لصفحة المدير", C.admin_state(d)["channel"]["jid"] == "120363000000000001@newsletter"
+              and "since" in C.admin_state(d)["channel"])
+        C.channel_sender = lambda j, t: 1 / 0
+        C.save_channel(d, since=0)
+        res = C.channel_run(d, manual=True)
+        check("والاستثناء يُحفظ سببه ولا يُسقط شيئًا", res["ok"] is False and "division" in res["error"], res)
+        c = C.link_channel(d, "120363000000000009@newsletter", "أخرى")
+        check("وقناةٌ أخرى تبدأ من جديد", c["posted"] is None and c["last"] is None and c["day"] == "" and c["since"] > T - 2 * 86400, c)
+    finally:
+        C.channel_sender = None
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def big(n_movies=650, prefix="Film"):
     return "#EXTM3U\n" + "".join(entry(f"{prefix} {i:04d} (2020)", "VOD | Big", "movie", 1000 + i) for i in range(n_movies))
 
@@ -1324,16 +1541,125 @@ def live_alert():
         shutil.rmtree(data, ignore_errors=True)
 
 
+def live_channel():
+    """قناة واتساب على خادمٍ حيّ: ربطها برابطها (يسأل عنه رقم المسابقة)، والمعاينة (وإلى واتسابي)، و«انشر الآن»
+    يصل القناة فعلًا — من خدمة واتساب وهمية."""
+    print("خادمٌ حيّ: منشور «أضيف مؤخرًا» في قناة واتساب")
+    port, wport = 9793, 9794
+    data = tempfile.mkdtemp(prefix="content_channel_")
+    reader = f"http://127.0.0.1:{wport}"
+    rdp = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_reader.py"), str(wport), "rdr_chan"])
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("WHATSAPP_READER_", "SALLA_ADMIN_TOKEN"))}
+    env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
+               WHATSAPP_READER_URL=reader, WHATSAPP_READER_SECRET="rdr_chan")
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env)
+    adm = f"http://127.0.0.1:{port}/admin"
+    admin_ch = "https://whatsapp.com/channel/0029VaSsouqNews000000000"
+
+    def rd(method, path, body=None):
+        rq = urllib.request.Request(reader + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                    headers={"Content-Type": "application/json", "X-Reader-Secret": "rdr_chan"})
+        with urllib.request.urlopen(rq, timeout=20) as r:
+            return json.loads(r.read())
+
+    def upload(text):
+        return json.loads(req(adm + "/api/content/admin/upload?s=casper&name=casper.m3u", text.encode(), True)[1])
+
+    def link(body):
+        return jpost(adm + "/api/content/admin/channel", dict({"servers": ["casper"], "hour": 21, "on": True}, **body))
+
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/robots.txt", timeout=2)
+                rd("GET", "/_test/log")
+                break
+            except Exception:
+                time.sleep(.2)
+        check("للمدير وحده", all(jpost(adm + "/api/content/admin/" + x, {}, auth=False)[0] == 401
+                                  for x in ("channel", "channel-preview", "channel-post")))
+        code, d = link({"link": admin_ch})
+        check("بلا رقم مسابقةٍ مربوط: يقول ذلك", code == 400 and "رقم المسابقة غير مربوط" in d.get("error", ""), d)
+        jpost(adm + "/api/contest/admin/wa/connect", {"number": "0500000009"})
+        rd("POST", "/_test/scan/ssouq-guide--contest", {})
+        req(adm + "/api/contest/admin", auth=True)          # صفحة المسابقة تجدّد حال الرقم
+        for body, err in [({"link": "https://chat.whatsapp.com/AbCdEf123"}, "الصق رابط القناة"),
+                          ({"link": "https://whatsapp.com/channel/0029VaUnknown0000000000"}, "لم تُعرف القناة"),
+                          ({"link": admin_ch, "servers": ["nope"]}, "اختر السيرفرات"),
+                          ({"link": admin_ch, "servers": [{"x": 1}]}, "اختر السيرفرات"),
+                          ({"link": admin_ch, "hour": 24}, "اختر ساعة المنشور"),
+                          ({"link": admin_ch, "servers": []}, "سيرفرًا واحدًا على الأقل")]:
+            code, d = link(body)
+            check(f"يُرفض: {err}", code == 400 and err in d.get("error", ""), d)
+        code, d = link({"link": "https://whatsapp.com/channel/0029VaFollowOnly00000000"})
+        check("قناةٌ الرقمُ متابعٌ فيها: تُحفظ ودوره فيها", code == 200 and d["channel"]["role"] == "SUBSCRIBER"
+              and d["channel"]["jid"] == "120363000000000002@newsletter", d.get("channel"))
+        code, d = link({"link": admin_ch + "/", "hour": 20})
+        c = d.get("channel") or {}
+        check("وقناةٌ هو مشرفٌ فيها: معرّفها واسمها ومتابعوها من رابطها",
+              code == 200 and c["jid"] == "120363000000000001@newsletter" and c["name"] == "سمارت سوق | الجديد"
+              and c["role"] == "ADMIN" and c["subs"] == 1520 and c["invite"] == "0029VaSsouqNews000000000"
+              and c["on"] is True and c["hour"] == 20 and c["servers"] == ["casper"] and c["posted"] is None, c)
+        before = len(rd("GET", "/_test/log")["sent"])
+        check("والربط لا ينشر شيئًا", before == 0)
+
+        r = upload(NEWS_BASE)
+        check("أول ملفٍ بداية", r["result"]["news"].get("first") is True, r["result"].get("news"))
+        r = upload(NEWS_MORE)
+        check("والثاني بما جدّ فيه", (r["result"]["news"].get("movie"), r["result"]["news"].get("eps")) == (2, 5), r["result"].get("news"))
+        st = json.loads(req(adm + "/api/content/admin", auth=True)[1])
+        check("وحال القناة: ما جدّ منذ ربطها", st["channel"]["pending"] == {"movie": 2, "series": 1, "eps": 5}, st["channel"])
+        code, d = jpost(adm + "/api/content/admin/channel-preview", {})
+        text = d["preview"]["text"]
+        check("المعاينة: المنشور كما سيُنشر", code == 200 and text.startswith("🆕 *أضيف مؤخرًا في كاسبر*")
+              and "Dune: Part Two (2024)" in text and "Shogun · حلقتان" in text
+              and "Breaking Bad · المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new")
+              and len(rd("GET", "/_test/log")["sent"]) == 0, text)
+        code, d = jpost(adm + "/api/content/admin/channel-preview", {"servers": ["smart"]})
+        check("وبسيرفراتٍ لم تُحفظ", code == 200 and d["preview"]["text"] == "")
+        code, d = jpost(adm + "/api/content/admin/channel-preview", {"me": True})
+        check("وإلى واتسابي بلا رقمٍ لي: يقول ذلك", d["me"]["ok"] is False and "لا رقم واتساب لك" in d["me"]["error"], d.get("me"))
+        jpost(adm + "/api/content/admin/alert", {"mail": "", "wa": "0551112222"})
+        code, d = jpost(adm + "/api/content/admin/channel-preview", {"me": True})
+        sent = rd("GET", "/_test/log")["sent"]
+        check("وإلى واتسابي: تصلني المعاينة كما هي", d["me"] == {"ok": True, "to": "966551112222"} and len(sent) == 1
+              and sent[0] == {"to": "966551112222", "body": text}, d.get("me"))
+        code, d = jpost(adm + "/api/content/admin/channel-post", {})
+        sent = rd("GET", "/_test/log")["sent"]
+        check("«انشر الآن»: يصل القناة بمعرّفها", code == 200 and d["ok"] and len(sent) == 2
+              and sent[1] == {"to": "120363000000000001@newsletter", "body": text}, (code, d.get("post"), sent[-1:]))
+        c = d.get("channel") or {}
+        check("ويُحفظ ما نُشر، ولا جديد بعده", c["posted"]["ok"] and c["posted"]["manual"] is True
+              and c["posted"]["n"] == {"movie": 2, "series": 1, "eps": 5}
+              and c["pending"] == {"movie": 0, "series": 0, "eps": 0} and c["day"] == "", c)
+        code, d = jpost(adm + "/api/content/admin/channel-post", {})
+        check("وثانيةً بلا جديد: لا يُنشر", code == 400 and d["error"] == "لا جديد منذ آخر منشور"
+              and len(rd("GET", "/_test/log")["sent"]) == 2, d.get("error"))
+        code, d = link({"link": admin_ch, "on": False})
+        check("الإيقاف يُبقي القناة", code == 200 and d["channel"]["on"] is False and d["channel"]["posted"]["ok"], d.get("channel"))
+        code, d = link({"link": ""})
+        check("والرابط الفارغ يفصلها", code == 200 and d["channel"]["jid"] == "" and d["channel"]["on"] is False, d.get("channel"))
+    finally:
+        p.terminate()
+        p.wait(timeout=10)
+        rdp.terminate()
+        rdp.wait(timeout=10)
+        shutil.rmtree(data, ignore_errors=True)
+
+
 def main():
     unit_parse()
     unit_store()
     unit_adult()
+    unit_news()
+    unit_channel()
     unit_render()
     unit_images()
     unit_fetch()
     unit_enrich()
     live()
     live_alert()
+    live_channel()
     print(f"\nResult: {_p} passed, {_f} failed")
     sys.exit(1 if _f else 0)
 

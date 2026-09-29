@@ -1,6 +1,7 @@
 // Browser test of the content page (/content): the admin page uploads an M3U (gzip-compressed in the
 // browser), lists what it dropped as adult, saves and tests who gets the adult alert, hides a group,
-// and saves an Xtream link whose panel API adds ratings, genres and dates; the
+// saves an Xtream link whose panel API adds ratings, genres and dates, and links a WhatsApp channel whose
+// daily "أضيف مؤخرًا" post it previews as a WhatsApp bubble and posts (mock WhatsApp service); the
 // homepage, menu, buy flow and plans screen link the page only once a server has content; the hero
 // carousel, the details window with each season's episodes, "أضيف مؤخرًا", row arrows, a category grid
 // with pages, the filters, search as you type (and where else a name exists), panel images through our
@@ -11,7 +12,7 @@ const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const ROOT = path.dirname(__dirname);
-const APP_PORT = 9797, MOCK_PORT = 9798;
+const APP_PORT = 9797, MOCK_PORT = 9798, READER_PORT = 9789;
 const SHOTS = process.env.SHOTS_DIR || '';
 const EXE = execSync("ls -d /opt/pw-browsers/chromium*/chrome-linux/chrome 2>/dev/null | head -1").toString().trim();
 let pass = 0, fail = 0;
@@ -34,11 +35,23 @@ function playlist(movies) {
   return s;
 }
 
+// سيرفر كون لمنشور القناة: ملفٌ أول، ثم هو وما جدّ فيه (فيلمان ومسلسلٌ جديد وحلقةٌ جديدة)
+function konList(more) {
+  const H = 'http://panel.example:8080', C = 'user123/pass456';
+  const e = (title, group, kind, n) => `#EXTINF:-1 tvg-logo="${H}/i/${n}.png" group-title="${group}",${title}\n${H}/${kind}/${C}/${n}.mkv\n`;
+  let s = '#EXTM3U\n' + e('The Batman (2022)', 'VOD | EN', 'movie', 1) + e('The Boys S04 E01', 'Series', 'series', 2);
+  if (more) s += e('Dune: Part Two (2024)', 'VOD | EN', 'movie', 3) + e('ولاد رزق 3 (2024)', 'أفلام عربية', 'movie', 4)
+    + e('The Boys S04 E02', 'Series', 'series', 5) + e('Shogun S01 E01', 'Series', 'series', 6);
+  return s;
+}
+
 (async () => {
   const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'uicontent_'));
   const app = spawn('python3', [path.join(ROOT, 'xm_lines.py'), 'web'], {stdio: 'ignore', env: {...process.env,
-    XM_DATA: DATA, XM_BIND: '127.0.0.1', XM_PORT: String(APP_PORT), XM_ADMIN_PASSWORD: 'envpass123', CONTENT_IMG_PRIVATE: '1'}});
+    XM_DATA: DATA, XM_BIND: '127.0.0.1', XM_PORT: String(APP_PORT), XM_ADMIN_PASSWORD: 'envpass123', CONTENT_IMG_PRIVATE: '1',
+    WHATSAPP_READER_URL: `http://127.0.0.1:${READER_PORT}`, WHATSAPP_READER_SECRET: 'rdr_ui'}});
   const mock = spawn('python3', [path.join(ROOT, 'tests', 'mock_xtream.py'), String(MOCK_PORT)], {stdio: 'ignore'});
+  const reader = spawn('python3', [path.join(ROOT, 'tests', 'mock_reader.py'), String(READER_PORT), 'rdr_ui'], {stdio: 'ignore'});
   await up(`http://127.0.0.1:${APP_PORT}/robots.txt`);
   await up(`http://127.0.0.1:${MOCK_PORT}/images/1.png`);
   const browser = await chromium.launch({executablePath: EXE, args: ['--no-sandbox']});
@@ -308,6 +321,58 @@ function playlist(movies) {
     check('الواجهة بعرض الشاشة وتحتها الأعداد', tl.w <= 360 && tl.top, JSON.stringify(tl));
     await shot(page, 'content-mobile');
 
+    console.log('قناة واتساب: «أضيف مؤخرًا» كل يوم');
+    const auth = {Authorization: 'Basic ' + Buffer.from('admin:envpass123').toString('base64')};
+    const rh = {'X-Reader-Secret': 'rdr_ui', 'Content-Type': 'application/json'};
+    const post = (p, body) => fetch(APP + '/admin' + p, {method: 'POST', headers: {...auth, 'Content-Type': 'application/json'},
+      body: JSON.stringify(body)}).then(r => r.json());
+    const upload = text => fetch(APP + '/admin/api/content/admin/upload?s=kon&name=kon.m3u', {method: 'POST',
+      headers: {...auth, 'Content-Type': 'application/octet-stream'}, body: text}).then(r => r.json());
+    const rlog = () => fetch(`http://127.0.0.1:${READER_PORT}/_test/log`, {headers: rh}).then(r => r.json());
+    await post('/api/contest/admin/wa/connect', {number: '0500000009'});
+    await fetch(`http://127.0.0.1:${READER_PORT}/_test/scan/ssouq-guide--contest`, {method: 'POST', headers: rh, body: '{}'});
+    await fetch(APP + '/admin/api/contest/admin', {headers: auth});      // صفحة المسابقة تجدّد حال الرقم
+    await upload(konList(false));
+    const up = await upload(konList(true));
+    check('الرفع الثاني بما جدّ فيه', up.result && up.result.news.movie === 2 && up.result.news.eps === 2, JSON.stringify(up.result && up.result.news));
+    await ap.goto(APP + '/admin/content');
+    await ap.waitForSelector('#chan:not([hidden]) #cSrv input');
+    check('وما جدّ في آخر سحبٍ على بطاقة السيرفر', (await ap.textContent('[data-k="kon"] .meta')).includes('الجديد فيه: فيلمان · مسلسل واحد · حلقتان'),
+          await ap.textContent('[data-k="kon"] .meta'));
+    check('قبل الربط: غير مربوطة، والسيرفرات كلها، والساعة 9 مساءً', (await ap.textContent('#cChip')) === 'غير مربوطة'
+          && (await ap.$$eval('#cSrv input', i => i.filter(x => x.checked).length)) === 4 && await ap.inputValue('#cHour') === '21'
+          && (await ap.textContent('#cLinkHint')).includes('نسخ الرابط'));
+    await ap.fill('#cLink', 'https://whatsapp.com/channel/0029VaSsouqNews000000000');
+    for (const k of ['casper', 'smart', 'falcon']) await ap.uncheck(`#cSrv input[value="${k}"]`);
+    await ap.check('#cOn');
+    await ap.click('#cSave');
+    await ap.waitForFunction(() => document.querySelector('#cLinkHint').textContent.includes('مشرفٌ فيها'), null, {timeout: 15000});
+    const hint = await ap.textContent('#cLinkHint');
+    check('الحفظ: القناة باسمها ومتابعيها، ورقم المسابقة مشرفٌ فيها', hint.includes('«سمارت سوق | الجديد»') && hint.includes('1,520 متابع')
+          && (await ap.textContent('#cChip')) === 'كل يوم 9 مساءً', hint);
+    const last0 = await ap.textContent('#cLast');
+    check('وما جدّ منذ ربطها وموعد المنشور', last0.includes('الجديد منذ آخر منشور: فيلمان · مسلسل واحد · حلقتان')
+          && last0.includes('المنشور القادم:'), last0);
+    await ap.click('#cPrev');
+    await ap.waitForSelector('#cBox:not([hidden])');
+    const bub = await ap.$eval('#cText', e => ({html: e.innerHTML, text: e.textContent, href: (e.querySelector('a') || {}).href}));
+    check('المعاينة فقاعة واتساب: العريض عريض، والرابط رابط', bub.html.includes('<b>أضيف مؤخرًا في كون</b>')
+          && bub.html.includes('<b>أفلام جديدة</b>') && bub.text.includes('Dune: Part Two (2024)') && bub.text.includes('Shogun · حلقة واحدة')
+          && bub.href === 'https://guide.ssouq.com/content/kon?t=new', bub.text.slice(0, 160));
+    check('وحجمها', (await ap.textContent('#cSize')).includes('فيلمان · مسلسل واحد · حلقتان'));
+    check('بلا تمرير أفقي والمعاينة ظاهرة', await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth
+          && document.querySelector('#cText').getBoundingClientRect().right <= innerWidth));
+    if (SHOTS) await ap.locator('#chan').screenshot({path: path.join(SHOTS, 'content-channel.png')});
+    ap.once('dialog', d => d.accept());
+    await ap.click('#cPost');
+    await ap.waitForFunction(() => document.querySelector('#cMsg').textContent.includes('نُشر في القناة'), null, {timeout: 15000});
+    const sentCh = (await rlog()).sent.filter(x => x.to.endsWith('@newsletter'));
+    check('«انشر الآن» يصل القناة بما في المعاينة', sentCh.length === 1 && sentCh[0].to === '120363000000000001@newsletter'
+          && sentCh[0].body.startsWith('🆕 *أضيف مؤخرًا في كون*') && sentCh[0].body.includes('Dune: Part Two (2024)'), JSON.stringify(sentCh).slice(0, 200));
+    const last1 = await ap.textContent('#cLast');
+    check('وآخر منشورٍ يدويًّا، ولا جديد بعده', last1.includes('آخر منشور:') && last1.includes('(يدويًّا)')
+          && last1.includes('لا جديد منذ آخر منشور'), last1);
+
     check('بلا أخطاء سكربت', errors.length === 0, errors.join(' | '));
   } catch (e) {
     check('بلا استثناء', false, e.message);
@@ -315,6 +380,7 @@ function playlist(movies) {
     await browser.close();
     app.kill();
     mock.kill();
+    reader.kill();
     fs.rmSync(DATA, {recursive: true, force: true});
     console.log(`\nResult: ${pass} passed, ${fail} failed`);
     process.exit(fail ? 1 : 0);

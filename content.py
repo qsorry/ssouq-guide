@@ -20,11 +20,15 @@ admin.ssouq.com/content، أو يُحفظ رابطه فيُسحب منه كل ي
 وأسماءٌ حُذفت من أقسامٍ عادية (قد يكون بينها فيلمٌ عادي)، وأفلامٌ علّمتها واجهة السيرفر للكبار. وإن ظهر في سحبٍ ما لم يكن في سابقه وصل
 المديرَ تنبيهٌ به بالبريد وواتساب (‏notifier يضبطه الخادم).
 
+وكل سحبٍ يُقارن بما رُئي من ملف السيرفر قبله فيُسجَّل ما جدّ فيه: أفلامٌ ومسلسلاتٌ جديدة، ومواسمُ وحلقاتٌ جديدة
+لمسلسلاتٍ قائمة. ومنه منشور «أضيف مؤخرًا» في قناة واتساب كل يومٍ في ساعته (‏channel_sender يضبطه الخادم).
+
 والصفحة تُرسم على الخادم كلها — الأقسام وأعدادها، وقائمة كل قسم بصفحاتها، والبحث — فتعمل بلا
 سكربت؛ وسكربتها الصغير يفتح القسم في مكانه ويبحث مع الكتابة من الواجهات نفسها.
 
 التخزين في data/content/: ‏<السيرفر>.json لكل سيرفر، و‏<السيرفر>.adult.json بما أُسقط منه للكبار،
-وsettings.json بالسيرفرات وروابطها وما أخفاه المدير من أقسام ومن يصله التنبيه. بلا مكتبات خارجية.
+و‏<السيرفر>.seen.json بما رُئي منه و‏<السيرفر>.news.json بما جدّ فيه سحبًا بعد سحب، وsettings.json بالسيرفرات
+وروابطها وما أخفاه المدير من أقسام ومن يصله التنبيه وقناة واتساب. بلا مكتبات خارجية.
 """
 import codecs
 import hashlib
@@ -44,6 +48,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 import crypto_store
+import guide_pages
 
 PATH = "/content"
 DIR = "content"
@@ -523,6 +528,16 @@ def _adult_path(data_dir, key):
     return os.path.join(_dir(data_dir), key + ".adult.json")
 
 
+def _seen_path(data_dir, key):
+    """بصمات ما رُئي في ملف السيرفر (لمعرفة الجديد في كل سحب) — يُقرأ ويُكتب وقت الإدخال وحده."""
+    return os.path.join(_dir(data_dir), key + ".seen.json")
+
+
+def _news_path(data_dir, key):
+    """ما جدّ في ملف السيرفر سحبًا بعد سحب — لمنشور القناة ولصفحة المدير، ولا تقرؤه الصفحة العامة."""
+    return os.path.join(_dir(data_dir), key + ".news.json")
+
+
 def _read(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -670,15 +685,23 @@ def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
                 cat["api"] = {"ok": False, "error": _fetch_error(e)}
         now = time.time()
         cat.update(key=key, at=now, source=source, label=str(label or "")[:80])
+        # ما رُئي قبل هذه الميزة: الفهرس السابق نفسه (يُقرأ مرة، قبل أن يُستبدل)، فيُعرف الجديد من أول سحب — بالقراءة
+        # الحالية وحدها (‏"v":2): فهرس النسخة الأولى قُرئت أسماؤه بغيرها، فيبدو ما فيه جديدًا؛ وبعده بداية
+        prev = (None if os.path.exists(_seen_path(data_dir, key)) or _cat_old(data_dir, key)
+                else _read(_cat_path(data_dir, key)))
         _write(_cat_path(data_dir, key), cat)
         _cache.pop(key, None)
         _settle(data_dir, key, "")
+        try:
+            news = _record_news(data_dir, key, cat, prev)
+        except Exception as e:  # noqa: BLE001 — تسجيل الجديد لا يُسقط الإدخال، وسببه للمدير
+            news = {"error": str(e)[:200]}
         new = _record_adult(data_dir, key, p.dropped(flagged), source, now)
         if new and notifier:
             subject, body = alert_text(_server(data_dir, key)["name"], new, cat["skipped"]["adult"])
             threading.Thread(target=_alert, args=(data_dir, key, subject, body), daemon=True).start()
         _view(data_dir, key)                    # يُبنى فهرس البحث الآن، فلا ينتظره أول زائر
-        return {"entries": cat["entries"], "n": cat["n"], "skipped": cat["skipped"], "api": cat.get("api")}
+        return {"entries": cat["entries"], "n": cat["n"], "skipped": cat["skipped"], "api": cat.get("api"), "news": news}
     finally:
         if not claimed:
             _release(key)
@@ -895,7 +918,8 @@ def clear(data_dir, key, drop=False):
             if r["key"] == key:
                 r.update(url="", error="", try_at=0.0, hidden=[])
         _save(data_dir, rows)
-        for path in (_cat_path(data_dir, key), _adult_path(data_dir, key)):
+        for path in (_cat_path(data_dir, key), _adult_path(data_dir, key), _seen_path(data_dir, key),
+                     _news_path(data_dir, key)):
             try:
                 os.remove(path)
             except OSError:
@@ -1590,8 +1614,8 @@ def _adult_view(data_dir, key):
 
 
 def admin_state(data_dir):
-    """صفحة المدير: كل سيرفر بحاله وأعداده وأقسامه كلها (المخفية معلَّمة) وما أُسقط منه للكبار —
-    ورابطه مخفيًّا. ومعها لمن يصل تنبيه الكبار."""
+    """صفحة المدير: كل سيرفر بحاله وأعداده وأقسامه كلها (المخفية معلَّمة) وما أُسقط منه للكبار وما جدّ في
+    آخر سحب — ورابطه مخفيًّا. ومعها لمن يصل تنبيه الكبار، وقناة واتساب ومنشورها."""
     try:
         alert = alert_info() if alert_info else None
     except Exception:  # noqa: BLE001 — حال التنبيه لا يُسقط الصفحة
@@ -1608,8 +1632,392 @@ def admin_state(data_dir):
             "counts": v["counts"] if v else None, "entries": cat.get("entries", 0), "n": cat.get("n", {}),
             "skipped": cat.get("skipped", {}), "api": cat.get("api"), "old": bool(cat.get("old")),
             "adult": _adult_view(data_dir, s["key"]),
+            "news": (_read(_news_path(data_dir, s["key"])) or {}).get("last"),
             "url": mask_url(url) if url else "", "try_at": s["try_at"],
             "error": s["error"], "busy": dict(_busy[s["key"]]) if s["key"] in _busy else None,
             "groups": {k: [[g["id"], g["name"], len(g["items"]), g["id"] in hidden] for g in cat.get(k) or []]
                        for k in KINDS}})
-    return {"servers": out, "refresh_hours": REFRESH // 3600, "alert": alert}
+    return {"servers": out, "refresh_hours": REFRESH // 3600, "alert": alert, "channel": channel_state(data_dir)}
+
+
+# ================= الجديد: ما أضيف في كل سحب، ومنشوره اليومي في قناة واتساب =================
+# كل إدخالٍ (رفعٌ أو سحب) يُقارن فهرسه بما رُئي من ملف السيرفر قبله: الفيلم جديدٌ باسمه وسنته، والمسلسل
+# باسمه، والحلقات بما زاد على أكثر ما رُئي من كل موسم. وما غاب ثم عاد ليس جديدًا، وأول فهرسٍ بدايةٌ لا جديد
+# فيها. والقنوات لا تُعدّ: قنوات المباريات والأحداث تتبدّل أسماؤها كل يوم.
+NEWS_KEEP = 14 * 86400        # ما جدّ يبقى في السجلّ أسبوعين
+NEWS_LOG = 5000               # وحدّ السجلّ (الأحدث)
+NEWS_SEEN = 100000            # بصمات ما رُئي لكل نوع: ما في الملف الآن كله، ثم الأحدث مما غاب
+NEWS_FLOOD = 300              # أكثر من هذا ومن نصف النوع جديدًا في سحبٍ واحد: ملفٌّ تغيّرت أسماؤه لا جديد — بدايةٌ جديدة
+_news_lock = threading.Lock() # السجلّ: الإدخال يكتب فيه والمنشور يقطعه عند لحظة، فلا يتداخلان (ولا ينتظرهما زوّار الصفحة)
+
+
+def _news_state(cat):
+    """الفهرس ← {movie: {بصمة: رصيد}، series: {…}}، والرصيد {it: العنصر، gs: أقسامه، s: {الموسم: الحلقات}} —
+    والاسم في قسمين عنصرٌ واحد بأقسامه كلها ومواسمه منها كلها، كما في العرض."""
+    out = {"movie": {}, "series": {}}
+    for kind in out:
+        for g in cat.get(kind) or []:
+            for it in g.get("items") or []:
+                if not isinstance(it, dict) or not it.get("n"):
+                    continue
+                rec = out[kind].setdefault(_gid(kind, _ikey(kind, it)), {"it": it, "gs": [], "s": {}})
+                if g.get("id") and g["id"] not in rec["gs"]:
+                    rec["gs"].append(g["id"])
+                for s, n in it.get("s") or ():
+                    if n > rec["s"].get(s, 0):
+                        rec["s"][s] = n
+    return out
+
+
+def _record_news(data_dir, key, cat, prev=None):
+    """يسجّل ما جدّ في الفهرس عمّا رُئي من ملف السيرفر قبله ← ملخّصه {at, movie, series, eps, first?, flood?}.
+    وبلا ذاكرةٍ بعدُ يُقارن بالفهرس السابق (‏prev) إن كان، وإلا فهو بدايةٌ لا جديد فيها. وما جدّ بأكثر من
+    NEWS_FLOOD ومن نصف نوعه بدايةٌ جديدة: يُحفظ أنه رُئي ولا يُعدّ جديدًا."""
+    cur = _news_state(cat)
+    with _news_lock:
+        now = time.time()                    # داخل القفل: منشور القناة يقطع السجلّ عند لحظةٍ لا يتخطّاها سحب
+        mem = _read(_seen_path(data_dir, key))
+        if mem is None and prev and prev.get("v") == 2:
+            base = _news_state(prev)
+            mem = {"movie": list(base["movie"]), "series": {h: sorted(r["s"].items()) for h, r in base["series"].items()}}
+        first = mem is None
+        mem = mem or {}
+        seen_m = [h for h in mem.get("movie") or [] if isinstance(h, str)]
+        seen_s = {h: {int(s): int(n) for s, n in v} for h, v in (mem.get("series") or {}).items() if isinstance(v, list)}
+        known = set(seen_m)
+        movies = [] if first else [h for h in cur["movie"] if h not in known]
+        fresh, more = [], []
+        for h, rec in ([] if first else cur["series"].items()):
+            was = seen_s.get(h)
+            if was is None:
+                fresh.append(h)
+                continue
+            # [الموسم، كم زاد، كم صار، موسمٌ جديد؟]
+            add = [[s, n - was.get(s, 0), n, int(s not in was)] for s, n in sorted(rec["s"].items()) if n > was.get(s, 0)]
+            if add:
+                more.append((h, add))
+        flood = []
+        for kind, got, total in (("movie", movies, len(cur["movie"])), ("series", fresh, len(cur["series"])),
+                                 ("eps", more, len(cur["series"]))):
+            if len(got) > max(NEWS_FLOOD, total // 2):
+                flood.append([kind, len(got)])
+                got.clear()
+        entries = []
+        for h in movies:
+            it = cur["movie"][h]["it"]
+            entries.append(_slim({"t": now, "k": "movie", "h": h, "n": it["n"], "y": it.get("y"), "r": it.get("r"),
+                                  "gs": cur["movie"][h]["gs"]}))
+        for h in fresh:
+            rec = cur["series"][h]
+            entries.append(_slim({"t": now, "k": "series", "new": 1, "h": h, "n": rec["it"]["n"], "y": rec["it"].get("y"),
+                                  "r": rec["it"].get("r"), "gs": rec["gs"], "s": sorted(rec["s"].items())}))
+        for h, add in more:
+            rec = cur["series"][h]
+            entries.append(_slim({"t": now, "k": "series", "h": h, "n": rec["it"]["n"], "y": rec["it"].get("y"),
+                                  "r": rec["it"].get("r"), "gs": rec["gs"], "add": add}))
+        # ما في الملف الآن آخرًا (فلا يُقصّ)، وقبله ما غاب منه بترتيبه — والقصّ من أقدمه
+        seen_m = [h for h in seen_m if h not in cur["movie"]] + list(cur["movie"])
+        for h, rec in cur["series"].items():
+            was = seen_s.pop(h, {})
+            for s, n in rec["s"].items():
+                was[s] = max(was.get(s, 0), n)
+            seen_s[h] = was
+        _write(_seen_path(data_dir, key), {"movie": seen_m[-NEWS_SEEN:],
+                                            "series": {h: sorted(v.items()) for h, v in list(seen_s.items())[-NEWS_SEEN:]}})
+        eps = sum(sum(cur["series"][h]["s"].values()) for h in fresh) + sum(a[1] for _h, add in more for a in add)
+        last = _slim({"at": now, "movie": len(movies), "series": len(fresh), "eps": eps, "first": first, "flood": flood})
+        log = [e for e in (_read(_news_path(data_dir, key)) or {}).get("log") or []
+               if isinstance(e, dict) and (e.get("t") or 0) >= now - NEWS_KEEP] + entries
+        _write(_news_path(data_dir, key), {"log": log[-NEWS_LOG:], "last": last})
+    return last
+
+
+def _pending(data_dir, key, since, until, hidden=()):
+    """ما سُجّل من جديد السيرفر في (since, until] ← (الأفلام، المسلسلات الجديدة، مسلسلاتٌ جدّت حلقاتها)، كلٌّ
+    {بصمة: عنصر}: الفيلم والمسلسل مرة، وحلقات المسلسل من كل سحبٍ مجموعةً بموسمها {الموسم: [زادت، صارت، جديد؟]}
+    (والمسلسل الجديد يضمّ ما جدّ من حلقاته بعده). وما أقسامه كلها مخفيةٌ من الصفحة لا يُعدّ."""
+    movies, fresh, more = {}, {}, {}
+    for e in (_read(_news_path(data_dir, key)) or {}).get("log") or []:
+        if not isinstance(e, dict) or not e.get("h") or not since < (e.get("t") or 0) <= until:
+            continue
+        if e.get("gs") and all(g in hidden for g in e["gs"]):
+            continue
+        h = e["h"]
+        if e.get("k") == "movie":
+            movies[h] = e
+        elif e.get("new"):
+            fresh[h] = dict(e, s={int(s): n for s, n in e.get("s") or ()})
+        elif h in fresh:
+            for s, _d, n, _new in e.get("add") or ():
+                fresh[h]["s"][int(s)] = max(fresh[h]["s"].get(int(s), 0), n)
+        else:
+            m = more.setdefault(h, {"add": {}})
+            m.update({k: e.get(k) for k in ("h", "n", "y", "r", "gs")})
+            for s, d, n, new in e.get("add") or ():
+                a = m["add"].setdefault(int(s), [0, 0, 0])
+                a[0], a[1], a[2] = a[0] + d, max(a[1], n), a[2] or new
+    return movies, fresh, more
+
+
+def _tally(movies, fresh, more):
+    """الأعداد {movie، series، eps}: الحلقات ما في المسلسلات الجديدة وما جدّ في غيرها."""
+    return {"movie": len(movies), "series": len(fresh),
+            "eps": sum(sum(x["s"].values()) for x in fresh.values()) + sum(a[0] for x in more.values() for a in x["add"].values())}
+
+
+# ----- المنشور: «أضيف مؤخرًا» بتنسيق واتساب -----
+RIYADH = 3 * 3600             # توقيت السعودية (بلا توقيتٍ صيفي)
+_DAYS = ("الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت", "الأحد")
+_MONTHS = ("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر")
+POST_LINES = {"movie": 8, "series": 5, "eps": 8}   # سطور كل قسمٍ لسيرفرٍ واحد، وتقلّ بعدد السيرفرات (ولا تنقص عن 3)
+POST_NAME = 60                # طول الاسم في السطر
+RLM = "‏"                # أول سطر العنصر: يبقى من اليمين وإن بدأ باسمٍ إنجليزي
+SEP = "━━━━━━━━━━━━"
+_WA_MARKS = str.maketrans({"*": "∗", "_": " ", "~": "-", "`": "'"})   # علامات تنسيق واتساب في الأسماء لا تنسّق شيئًا
+
+
+def _local(ts):
+    return time.gmtime(ts + RIYADH)
+
+
+def _day(ts):
+    """يوم الوقت بتوقيت السعودية «2026-09-29» — يوم المنشور المجدول."""
+    return time.strftime("%Y-%m-%d", _local(ts))
+
+
+def ar_date(ts):
+    """«الثلاثاء 29 سبتمبر 2026» بتوقيت السعودية."""
+    t = _local(ts)
+    return f"{_DAYS[t.tm_wday]} {t.tm_mday} {_MONTHS[t.tm_mon - 1]} {t.tm_year}"
+
+
+def _wa(s):
+    return " ".join(str(s or "").translate(_WA_MARKS).split())
+
+
+def _title(x, year=True):
+    n = _wa(x.get("n"))
+    n = n if len(n) <= POST_NAME else n[:POST_NAME - 1].rstrip() + "…"
+    return f"{n} ({x['y']})" if year and x.get("y") else n
+
+
+def _stars(x):
+    return f" ⭐ {float(x['r']):.1f}" if x.get("r") else ""
+
+
+def _movie_line(x):
+    return _title(x) + _stars(x)
+
+
+def _series_line(x):
+    """«Shōgun (2024) · 10 حلقات ⭐ 8.7» — والمسلسل بأكثر من موسمٍ بعدد مواسمه."""
+    seasons = [s for s in x["s"] if s]
+    size = _count(len(seasons), N_SEASONS) if len(seasons) > 1 else _count(sum(x["s"].values()), N_EPISODES)
+    return f"{_title(x)} · {size}{_stars(x)}"
+
+
+def _more_line(x):
+    """«The Boys · الموسم 4 · 3 حلقات» · «House of the Dragon · الموسم 2 (جديد) · 8 حلقات»."""
+    ss = sorted(s for s in x["add"] if s)
+    if len(ss) == 1:
+        where = f"الموسم {ss[0]}" + (" (جديد)" if x["add"][ss[0]][2] else "")
+    else:
+        where = "المواسم " + "، ".join(map(str, ss[:-1])) + f" و{ss[-1]}" if ss else ""
+    eps = _count(sum(a[0] for a in x["add"].values()), N_EPISODES)
+    return " · ".join(p for p in (_title(x, year=False), where, eps) if p)
+
+
+def _lines(rows, limit, line, forms):
+    """سطور القسم بأوّلها والباقي عدد — وواحدٌ زائد يُعرض بدل «ووحدٌ غيره»."""
+    if len(rows) == limit + 1:
+        limit += 1
+    out = [f"{RLM}• {line(x)}" for x in rows[:limit]]
+    if len(rows) > limit:
+        out.append(f"{RLM}   …و{_count(len(rows) - limit, forms)} غيرها")
+    return out
+
+
+def _counts(n):
+    return " · ".join(p for p in (_count(n["movie"], N_MOVIES) if n["movie"] else "",
+                                  _count(n["series"], N_SERIES) if n["series"] else "",
+                                  _count(n["eps"], N_EPISODES) if n["eps"] else "") if p)
+
+
+def channel_text(data_dir, keys, since, until, now=None):
+    """منشور «أضيف مؤخرًا» لما سُجّل في (since, until] من السيرفرات keys (بترتيبها في الصفحة) ← (النص، الأعداد
+    {movie، series، eps}) — والنص فارغٌ إن لم يجدّ شيء. الإصدارات الحديثة أولًا ثم الأعلى تقييمًا، والمواسم
+    الجديدة أولًا، ولكل سيرفرٍ رابط «أضيف مؤخرًا» في صفحته."""
+    now = now or time.time()
+    parts, total = [], {"movie": 0, "series": 0, "eps": 0}
+    for s in servers(data_dir):
+        if s["key"] not in keys:
+            continue
+        movies, fresh, more = _pending(data_dir, s["key"], since, until, set(s["hidden"]))
+        if movies or fresh or more:
+            n = _tally(movies, fresh, more)
+            parts.append((s, movies, fresh, more, n))
+            total = {k: total[k] + n[k] for k in total}
+    if not parts:
+        return "", total
+    yr = _local(now).tm_year
+
+    def rank(x):
+        y = x.get("y") or 0
+        return y < yr - 1, -(x.get("r") or 0), -y, _norm(x.get("n", ""))
+
+    def rank_more(x):
+        return (not any(a[2] for a in x["add"].values()), -(x.get("r") or 0),
+                -sum(a[0] for a in x["add"].values()), _norm(x.get("n", "")))
+
+    single = len(parts) == 1
+    lim = {k: max(3, v * 2 // (len(parts) + 1)) for k, v in POST_LINES.items()}
+    out = [f"🆕 *أضيف مؤخرًا{' في ' + _wa(parts[0][0]['name']) if single else ''}*", f"🗓️ {ar_date(now)}"]
+    for s, movies, fresh, more, n in parts:
+        out += ["", f"✨ الجديد: {_counts(n)}"] if single else ["", SEP, f"📡 *{_wa(s['name'])}*", f"✨ {_counts(n)}"]
+        if movies:
+            out += ["", "🎬 *أفلام جديدة*"] + _lines(sorted(movies.values(), key=rank), lim["movie"], _movie_line, N_MOVIES)
+        if fresh:
+            out += ["", "📺 *مسلسلات جديدة*"] + _lines(sorted(fresh.values(), key=rank), lim["series"], _series_line, N_SERIES)
+        if more:
+            out += ["", "🎞️ *حلقات ومواسم جديدة*"] + _lines(sorted(more.values(), key=rank_more), lim["eps"],
+                                                             _more_line, N_SERIES)
+        link = f"{guide_pages.SITE}{PATH}/{s['key']}?t=new"
+        out += ["", "🔗 القائمة كاملة، وابحث باسم ما تريد:", link] if single else ["", f"🔗 القائمة كاملة: {link}"]
+    return "\n".join(out), total
+
+
+# ----- قناة واتساب: ربطها، ومنشورها اليومي في ساعته -----
+CHANNEL_HOUR = 21             # ساعة المنشور الافتراضية بتوقيت السعودية (9 مساءً)
+CHANNEL_RETRY = 1800          # منشور اليوم إن لم يُرسل يُعاد بعد نصف ساعة، في يومه
+CHANNEL_WINDOW = 3 * 86400    # ولا يعود أبعد من ثلاثة أيام: قناةٌ توقّفت أسبوعًا لا تنشر أسبوعًا دفعةً
+CHANNEL_FIRST = 86400         # وأول منشورٍ بعد ربط القناة بما جدّ في اليوم الذي قبله
+_JID = re.compile(r"\d{5,30}@newsletter")
+_INVITE = re.compile(r"(?:https?://)?(?:www\.)?whatsapp\.com/channel/([A-Za-z0-9]{10,40})", re.I)
+channel_sender = None         # (معرّف القناة، النص) ← {ok, error} — يضبطه الخادم: من رقم المسابقة المربوط
+_posting = threading.Lock()   # منشورٌ واحد في وقته: المجدول و«انشر الآن» لا يلتقيان
+
+
+def channel_ref(v):
+    """ما يلصقه المدير ← ("invite"، الرمز) من رابط القناة (‏whatsapp.com/channel/<الرمز>)، أو ("jid"، المعرّف) من
+    معرّفها (‏…@newsletter أو أرقامه)، أو None."""
+    v = str(v or "").strip()
+    m = _INVITE.search(v)
+    if m:
+        return "invite", m.group(1)
+    j = re.sub(r"\s+", "", v).lower()
+    if _JID.fullmatch(j):
+        return "jid", j
+    if re.fullmatch(r"\d{5,30}", j):
+        return "jid", j + "@newsletter"
+    if re.fullmatch(r"0029[A-Za-z0-9]{6,36}", v):
+        return "invite", v
+    return None
+
+
+def channel(data_dir):
+    """قناة واتساب كما حُفظت ← {on, jid, name, invite, role, subs, servers, hour, since, day, last, posted}: day يوم
+    آخر منشورٍ مجدول (أُرسل أو لم يجدّ فيه شيء)، وsince ما بعده جديدٌ لم يُنشر، وlast آخر محاولة وposted آخر ما نُشر."""
+    c = (_read(os.path.join(_dir(data_dir), SETTINGS)) or {}).get("channel")
+    c = c if isinstance(c, dict) else {}
+    jid, hour = str(c.get("jid") or ""), c.get("hour")
+    return {"on": bool(c.get("on")), "jid": jid if _JID.fullmatch(jid) else "", "name": str(c.get("name") or "")[:100],
+            "invite": str(c.get("invite") or "")[:60], "role": str(c.get("role") or "")[:20], "subs": int(_float(c.get("subs"))),
+            "servers": [k for k in c.get("servers") or [] if isinstance(k, str) and key_ok(k) == k][:MAX_SERVERS],
+            "hour": hour if type(hour) is int and 0 <= hour <= 23 else CHANNEL_HOUR,
+            "since": _float(c.get("since")), "day": str(c.get("day") or "")[:10],
+            "last": c.get("last") if isinstance(c.get("last"), dict) else None,
+            "posted": c.get("posted") if isinstance(c.get("posted"), dict) else None}
+
+
+def save_channel(data_dir, **kw):
+    """يحفظ ما تغيّر من إعداد القناة (والباقي كما هو) ← الإعداد كله. والتحقّق من القيم على الخادم قبله."""
+    with _lock:
+        path = os.path.join(_dir(data_dir), SETTINGS)
+        s = _read(path) or {}
+        c = s.get("channel") if isinstance(s.get("channel"), dict) else {}
+        c.update(kw)
+        s["channel"] = c
+        _write(path, s)
+    return channel(data_dir)
+
+
+def link_channel(data_dir, jid, name="", invite="", role="", subs=0):
+    """يحفظ القناة التي عرفها رقم المسابقة. وقناةٌ غير المحفوظة تبدأ من جديد: أول منشورٍ بما جدّ في اليوم الذي قبله."""
+    extra = {} if jid == channel(data_dir)["jid"] else {"since": time.time() - CHANNEL_FIRST, "day": "", "last": None,
+                                                         "posted": None}
+    return save_channel(data_dir, jid=jid, name=str(name or "")[:100], invite=str(invite or "")[:60],
+                        role=str(role or "")[:20], subs=int(_float(subs)), **extra)
+
+
+def channel_preview(data_dir, keys=None, days=0, now=None):
+    """المنشور كما سيُنشر الآن ← {text, n, since, until}: ما جدّ منذ آخر منشور (وأبعده CHANNEL_WINDOW)، أو ما جدّ
+    في آخر `days` يومًا للمعاينة. وkeys سيرفراتٌ غير المحفوظة (ما اختاره المدير ولم يحفظه بعد)."""
+    c = channel(data_dir)
+    keys = [k for k in keys if isinstance(k, str)] if isinstance(keys, list) else c["servers"]
+    with _news_lock:
+        until = time.time()
+        since = until - min(int(days), NEWS_KEEP // 86400) * 86400 if days else max(c["since"], until - CHANNEL_WINDOW)
+        text, n = channel_text(data_dir, keys, since, until, now)
+    return {"text": text, "n": n, "since": since, "until": until}
+
+
+def channel_run(data_dir, manual=False, now=None):
+    """ينشر في القناة ما جدّ منذ آخر منشور ← {ok, empty?, error?, n?}. ويوم المجدول يُعلَّم (أُرسل أو لم يجدّ شيء)
+    فلا يُعاد، وفشله يُعاد بعد CHANNEL_RETRY؛ و«انشر الآن» (‏manual) لا يمسّ اليوم، وبلا جديدٍ لا يُحفظ."""
+    if not _posting.acquire(blocking=False):
+        return {"ok": False, "error": "يُنشر الآن في القناة"}
+    try:
+        now = now or time.time()
+        c = channel(data_dir)
+        if not c["jid"]:
+            return {"ok": False, "error": "اربط قناة واتساب أولًا"}
+        if not c["servers"]:
+            return {"ok": False, "error": "اختر السيرفرات في المنشور واحفظ"}
+        with _news_lock:                     # لحظة القطع داخل القفل: ما سُجّل بعدها للمنشور التالي
+            until = time.time()
+            text, n = channel_text(data_dir, c["servers"], max(c["since"], until - CHANNEL_WINDOW), until, now)
+        if not text:
+            if manual:
+                return {"ok": False, "empty": True, "error": "لا جديد منذ آخر منشور"}
+            save_channel(data_dir, day=_day(now), last={"at": now, "ok": True, "empty": True})
+            return {"ok": True, "empty": True}
+        try:
+            res = channel_sender(c["jid"], text) if channel_sender else {"error": "النشر غير مضبوط على هذا الخادم"}
+        except Exception as e:  # noqa: BLE001 — الفشل يُحفظ سببه ويُعاد
+            res = {"error": str(e)[:200]}
+        ok = bool(isinstance(res, dict) and res.get("ok"))
+        last = {"at": now, "ok": ok, "n": n, "manual": manual,
+                "error": "" if ok else str((res if isinstance(res, dict) else {}).get("error") or "تعذّر النشر")[:200]}
+        upd = {"last": last}
+        if ok:
+            upd.update(since=until, posted=last, **({} if manual else {"day": _day(now)}))
+        save_channel(data_dir, **upd)
+        return dict(last)
+    finally:
+        _posting.release()
+
+
+def channel_tick(data_dir, now=None):
+    """دورة الخلفية: منشور اليوم إن كانت القناة مفعّلة، وبلغت ساعته بتوقيت السعودية، ولم يُنشر اليوم — وفشلٌ
+    قبل أقل من CHANNEL_RETRY ينتظر. ← نتيجة المنشور أو None."""
+    now = now or time.time()
+    c = channel(data_dir)
+    if not (c["on"] and c["jid"] and c["servers"]) or _local(now).tm_hour < c["hour"] or c["day"] == _day(now):
+        return None
+    last = c["last"] or {}
+    if not last.get("manual") and not last.get("ok") and now - (last.get("at") or 0) < CHANNEL_RETRY:
+        return None
+    return channel_run(data_dir, now=now)
+
+
+def channel_state(data_dir):
+    """قناة واتساب لصفحة المدير: إعدادها وآخر منشورٍ فيها، وأعداد ما جدّ منذه (‏pending) من سيرفراتها."""
+    c = channel(data_dir)
+    until = time.time()
+    since = max(c["since"], until - CHANNEL_WINDOW)
+    pending = {"movie": 0, "series": 0, "eps": 0}
+    for s in servers(data_dir):
+        if s["key"] in c["servers"]:
+            n = _tally(*_pending(data_dir, s["key"], since, until, set(s["hidden"])))
+            pending = {k: pending[k] + n[k] for k in pending}
+    return dict({k: v for k, v in c.items() if k != "since"}, pending=pending, since=since)

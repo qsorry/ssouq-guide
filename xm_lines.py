@@ -2251,11 +2251,84 @@ def content_send(subject, body):
     return out
 
 
+def _reader_error(r):
+    """سبب فشل إرسالٍ من رقم المسابقة بالعربية: وإن كانت الخدمة نفسها لا تُجيب فسببها لا خطأ الشبكة."""
+    err = str(r.get("error") or "تعذّر الإرسال")
+    rs = reader_status()
+    return rs["error"] if not rs.get("ok") and rs.get("error") else err
+
+
+def content_channel_send(jid, text):
+    """منشور «أضيف مؤخرًا» في قناة واتساب من رقم المسابقة (مشرفٌ فيها) ← {ok, error}."""
+    r = reader_send(jid, text)
+    return {"ok": True} if r.get("ok") else {"ok": False, "error": _reader_error(r)[:200]}
+
+
+def content_channel_lookup(ref):
+    """قناة واتساب من رابطها أو معرّفها (‏content.channel_ref) يسأل عنها رقم المسابقة ← {ok, jid, name, role, subs,
+    invite} أو {ok: False, error}. وخدمةٌ بلا البحث عن القنوات (أقدم من إضافته) تقبل المعرّف كما هو بلا تحقّق."""
+    kind, val = ref
+    code, d, err = reader_call("GET", f"/sessions/{contest.READER_TENANT}/newsletter?" + urlencode({kind: val}), timeout=25)
+    e = str(d.get("error") or "") if isinstance(d, dict) else ""
+    if code == 200 and isinstance(d, dict) and content._JID.fullmatch(str(d.get("id") or "")):
+        return {"ok": True, "jid": d["id"], "name": str(d.get("name") or ""), "role": str(d.get("role") or "").upper(),
+                "subs": d.get("subscribers") or 0, "invite": str(d.get("invite") or (val if kind == "invite" else ""))}
+    if err == "not_configured" or e in ("no_session", "not_connected"):
+        return {"ok": False, "error": "رقم المسابقة غير مربوط الآن — اربطه من صفحة المسابقة، فمنه يُنشر في القناة"}
+    if e in ("channel_not_found", "invalid"):
+        return {"ok": False, "error": "لم تُعرف القناة — انسخ رابطها من واتساب: القناة ← مشاركة ← نسخ الرابط"}
+    if code == 404:                             # خدمةٌ أقدم من البحث عن القنوات
+        if kind == "jid":
+            return {"ok": True, "jid": val, "name": "", "role": "", "subs": 0, "invite": ""}
+        return {"ok": False, "error": "خدمة الواتساب لا تعرف قنوات واتساب (نسخةٌ أقدم) — الصق معرّف القناة (…@newsletter) بدل رابطها"}
+    detail = str(d.get("detail") or "") if isinstance(d, dict) and e == "lookup_failed" else err
+    return {"ok": False, "error": ("تعذّر الوصول إلى القناة: " + detail if detail else "تعذّر الوصول إلى القناة")[:200]}
+
+
+def content_channel_save(body):
+    """قناة واتساب من صفحة المحتوى: رابطها (ويُسأل عنه رقم المسابقة إن تغيّر أو طُلب التحقّق)، والسيرفرات في منشورها،
+    وساعته، وتفعيله ← رسالة الخطأ أو "". والرابط الفارغ يفصل القناة."""
+    link = str(body.get("link") or "").strip()
+    cur = content.channel(DATA_DIR)
+    keys = {s["key"] for s in content.servers(DATA_DIR)}
+    pick = body.get("servers")
+    if pick is not None and (not isinstance(pick, list) or any(not isinstance(k, str) or k not in keys for k in pick)):
+        return "اختر السيرفرات من القائمة"
+    try:
+        hour = int(body.get("hour", cur["hour"]))
+    except (TypeError, ValueError):
+        hour = -1
+    if not 0 <= hour <= 23:
+        return "اختر ساعة المنشور"
+    servers = list(pick if pick is not None else cur["servers"])
+    on = bool(body.get("on"))
+    if not link:
+        content.save_channel(DATA_DIR, jid="", name="", invite="", role="", subs=0, on=False, servers=servers, hour=hour)
+        return ""
+    ref = content.channel_ref(link)
+    if not ref:
+        return "الصق رابط القناة كما تنسخه من واتساب: https://whatsapp.com/channel/…"
+    if on and not servers:
+        return "اختر سيرفرًا واحدًا على الأقل لمنشور القناة"
+    same = (ref[0] == "jid" and ref[1] == cur["jid"]) or (ref[0] == "invite" and ref[1] == cur["invite"] and cur["jid"])
+    if not same or body.get("verify"):
+        ch = content_channel_lookup(ref)
+        if not ch["ok"]:
+            return ch["error"]
+        content.link_channel(DATA_DIR, ch["jid"], ch["name"], ch["invite"], ch["role"], ch["subs"])
+    content.save_channel(DATA_DIR, on=on, servers=servers, hour=hour)
+    return ""
+
+
 def _content_loop():
     time.sleep(60)                  # بعد الإقلاع بدقيقة، لا معه
     while True:
         try:
             content.tick(DATA_DIR)
+        except Exception:
+            pass
+        try:
+            content.channel_tick(DATA_DIR)  # منشور «أضيف مؤخرًا» في قناة واتساب إن حانت ساعته — بعد السحب، فيضمّ ما جدّ فيه
         except Exception:
             pass
         time.sleep(CONTENT_TICK)
@@ -2264,6 +2337,7 @@ def _content_loop():
 def start_content_worker():
     content.notifier = content_send         # ما جدّ للكبار في ملف سيرفر: بالبريد وواتساب
     content.alert_info = content_alert_info
+    content.channel_sender = content_channel_send   # منشور القناة: من رقم المسابقة
     threading.Thread(target=_content_loop, daemon=True).start()
 
 
@@ -3237,6 +3311,32 @@ class Handler(BaseHTTPRequestHandler):
                 res = content_send("تجربة تنبيه محتوى الكبار",
                                    "رسالةٌ تجريبية من صفحة محتوى السيرفرات: إن وصلتك فتنبيه محتوى الكبار يصل إليك هنا.")
                 return self._send(200, {"ok": True, "test": res, **content.admin_state(DATA_DIR)})
+            elif path == "/api/content/admin/channel":      # قناة واتساب: رابطها والسيرفرات وساعة المنشور وتفعيله
+                err = content_channel_save(body)
+                if err:
+                    raise ValueError(err)
+            elif path == "/api/content/admin/channel-preview":   # المنشور كما سيُنشر (أو ما جدّ في آخر أيام)، وإلى واتسابي
+                try:
+                    days = max(0, int(body.get("days") or 0))
+                except (TypeError, ValueError):
+                    days = 0
+                pv = content.channel_preview(DATA_DIR, body.get("servers"), days)
+                out = {"ok": True, "preview": pv}
+                if body.get("me"):
+                    wa = content_alert_to()[1]
+                    if not wa:
+                        out["me"] = {"ok": False, "error": "لا رقم واتساب لك — احفظه في «تنبيه محتوى الكبار» أسفل الصفحة"}
+                    elif not pv["text"]:
+                        out["me"] = {"ok": False, "to": wa, "error": "لا جديد في المعاينة يُرسل"}
+                    else:
+                        r = reader_send(wa, pv["text"])
+                        out["me"] = {"ok": True, "to": wa} if r.get("ok") else {"ok": False, "to": wa, "error": _reader_error(r)[:200]}
+                return self._send(200, out)
+            elif path == "/api/content/admin/channel-post":  # «انشر الآن»: ما جدّ منذ آخر منشور، في القناة
+                res = content.channel_run(DATA_DIR, manual=True)
+                return self._send(200 if res.get("ok") else 400,
+                                  {"ok": bool(res.get("ok")), "post": res, **content.admin_state(DATA_DIR),
+                                   **({} if res.get("ok") else {"error": res.get("error") or "تعذّر النشر"})})
             else:
                 return self._send(404, {"error": "not found"})
         except content.Busy:
