@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
-"""صفحة المحتوى كما يراها الزائر (‏/content/<السيرفر>) بتصميم تطبيقات المشاهدة.
+"""صفحة المحتوى كما يراها الزائر (‏/content/<السيرفر>) بتصميم تطبيقات المشاهدة — وبالإنجليزية على
+‏/en/content/<السيرفر>: الصفحة نفسها من اليسار، وزرٌّ في رأس كلٍّ منهما إلى الأخرى بما فيها من قسمٍ وبحث.
 
 رأسٌ بالأقسام والبحث، وواجهةٌ متحرّكة بأحدث ما أضيف، وخانات الأعداد، وتبويب لكل نوع ومعه «أضيف مؤخرًا»،
 وأقسام السيرفر صورًا، وصفّ ملصقات لكل قسم، وجانبٌ بالتصفية (السنة والقسم والتصنيف والتقييم) وقائمة
 «أضيف مؤخرًا» وباقات الاشتراك، ونافذة تفاصيل فيها المواسم وحلقات كل موسم.
 
 البيانات من content.py، والصفحة كلها تُرسم على الخادم وتعمل بلا سكربت (روابط ‏?t= ?g= ?view=grid ?q=)؛
-والسكربت للحركة والنافذة والبحث مع الكتابة. والصفحة الرئيسية لكل سيرفر وحدها تُفهرس.
+والسكربت للحركة والنافذة والبحث مع الكتابة. والصفحة الرئيسية لكل سيرفر وحدها تُفهرس، بلغتيها (‏hreflang).
+وأسماء المسلسلات والأفلام والأقسام كما في ملف السيرفر في اللغتين: لا تُترجم.
 """
+import datetime
 import json
 import re
 import time
@@ -34,6 +37,78 @@ DAYS = ("يوم", "يومين", "أيام", "يومًا", "يوم")
 WEEKS = ("أسبوع", "أسبوعين", "أسابيع", "أسبوعًا", "أسبوع")
 MONTHS = ("شهر", "شهرين", "أشهر", "شهرًا", "شهر")
 YEARS = ("سنة", "سنتين", "سنوات", "سنة", "سنة")
+QUERY = ("t", "g", "p", "q", "view", "y", "genre", "r", "sort", "all")   # ما تقرؤه الصفحة من الرابط، ويحمله زرّ اللغة
+
+# ---- الإنجليزية ----
+KIND_TAB_EN = {"series": "Series", "movie": "Movies", "live": "Channels"}
+KIND_ONE_EN = {"movie": "Movie", "series": "Series", "live": "Channel"}
+N_AR = {"series": C.N_SERIES, "movie": C.N_MOVIES, "live": C.N_CHANNELS, "seasons": C.N_SEASONS,
+        "episodes": C.N_EPISODES, "results": C.N_RESULTS, "groups": N_GROUPS}
+N_EN = {"series": ("series", "series"), "movie": ("movie", "movies"), "live": ("channel", "channels"),
+        "seasons": ("season", "seasons"), "episodes": ("episode", "episodes"), "results": ("result", "results"),
+        "groups": ("category", "categories")}
+MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+BRAND_EN = "Smart Souq"
+# باقات CATALOG بالإنجليزية: اسمها «Falcon · 15 months» من اسم السيرفر ومدّتها، إلا ما هنا، ووسمها مترجمًا أو مدّتها
+PLAN_EN = {"سنة كاملة": "Full year", "سنة ترفيهية": "Entertainment year", "سنتان": "2 years", "يوم تجريبي": "1-day trial"}
+PLAN_FOR_EN = (("لجهازين", "for 2 devices"), ("لسامسونج و LG", "for Samsung & LG"))
+TAG_EN = {"الأقصر مدة": "Shortest", "الأكثر توازنًا": "Best balance", "الأوفر": "Best value", "جهازان": "2 devices",
+          "جرّب أولًا": "Try it first", "الأكثر مبيعًا": "Best seller", "أفلام ومسلسلات": "Movies & series",
+          "3 أشهر هدية": "3 months free"}
+_DUR_EN = (("ساع", "hour"), ("يوم", "day"), ("أسبوع|أسابيع", "week"), ("شهر|أشهر", "month"), ("سنة|سنت|سنوات", "year"))
+
+
+class Lang:
+    """لغة الصفحة: ‏tr("نصٌّ عربي", "English") يختار أحدهما — ومعها ما يختلف بينهما: مسار الصفحة، والعدد ومعدوده،
+    واسم النوع، واسم السيرفر."""
+
+    def __init__(self, code):
+        self.code, self.en = code, code == "en"
+        self.dir = "ltr" if self.en else "rtl"
+        self.path = C.PATH_EN if self.en else C.PATH
+
+    def __call__(self, ar, en):
+        return en if self.en else ar
+
+    def count(self, n, what):
+        """«3 مواسم» · «3 seasons» — ‏what من ‏N_AR."""
+        if self.en:
+            return f"{n:,} {N_EN[what][n != 1]}"
+        return C._count(n, N_AR[what])
+
+    def unit(self, n, what):
+        """معدود العدد وحده لخانات الأرقام: «مواسم» · «seasons»."""
+        return N_EN[what][n != 1] if self.en else C._unit(n, N_AR[what])
+
+    def tab(self, kind):
+        return (KIND_TAB_EN if self.en else C.KIND_TAB)[kind]
+
+    def one(self, kind):
+        return (KIND_ONE_EN if self.en else KIND_ONE)[kind]
+
+    def name(self, srv):
+        return C.en_name(srv) if self.en else srv["name"]
+
+    def full(self, srv):
+        """السطر تحت اسم السيرفر — إلا إن كان هو اسمه (سيرفرٌ بلا اسمٍ إنجليزي يُسمّى به)."""
+        return "" if srv["full"].casefold() == self.name(srv).casefold() else srv["full"]
+
+    def join(self, parts):
+        """«أ وب وج» · «A, B and C»."""
+        parts = list(parts)
+        if not self.en:
+            return " و".join(parts)
+        return " and ".join([", ".join(parts[:-1]), parts[-1]] if len(parts) > 2 else parts)
+
+    def quote(self, s):
+        return f"“{s}”" if self.en else f"«{s}»"
+
+
+AR, EN = Lang("ar"), Lang("en")
+
+
+def lang_of(code):
+    return EN if code == "en" else AR
 
 ICON = {
     "movie": '<path d="M4 11h16v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="m4 11-.6-2.5a1 1 0 0 1 .7-1.2l13.6-3.7a1 1 0 0 1 1.2.7l.7 2.5"/><path d="m8 6.3 2.4 3.3M13.2 4.9l2.4 3.3"/>',
@@ -49,6 +124,7 @@ ICON = {
     "chevr": '<path d="m9 18 6-6-6-6"/>',
     "x": '<path d="M6 6l12 12M18 6 6 18"/>',
     "grid": '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
 }
 STAR = ('<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2.8 2.8 5.8 6.3.9-4.6 4.4'
         ' 1.1 6.3L12 17.2l-5.6 3 1.1-6.3-4.6-4.4 6.3-.9z"/></svg>')
@@ -58,19 +134,28 @@ def _i(name, cls="i"):
     return f'<svg class="{cls}" viewBox="0 0 24 24" aria-hidden="true">{ICON[name]}</svg>'
 
 
-def _ago(ts, now=None):
-    """تاريخ الإضافة من الواجهة: «اليوم» «أمس» «منذ 3 أيام» «منذ أسبوعين» «منذ 5 أشهر»."""
+def _ago(ts, now=None, tr=AR):
+    """تاريخ الإضافة من الواجهة: «اليوم» «أمس» «منذ 3 أيام» «منذ أسبوعين» «منذ 5 أشهر» — «3 days ago» «a week ago»."""
     if not ts:
         return ""
     d = int(((now or time.time()) - ts) // 86400)
     if d < 1:
-        return "اليوم"
+        return tr("اليوم", "today")
     if d < 2:
-        return "أمس"
-    for size, forms in ((365, YEARS), (30, MONTHS), (7, WEEKS), (1, DAYS)):
+        return tr("أمس", "yesterday")
+    for size, forms, word in ((365, YEARS, "year"), (30, MONTHS, "month"), (7, WEEKS, "week"), (1, DAYS, "day")):
         if d >= size:
-            return "منذ " + C._count(d // size, forms)
+            n = d // size
+            return tr("منذ " + C._count(n, forms), f"a {word} ago" if n == 1 else f"{n} {word}s ago")
     return ""
+
+
+def _when(ts, tr=AR):
+    """وقتٌ بتوقيت السعودية: «29 سبتمبر 2026، 2:04 م» · «Sep 29, 2026, 2:04 PM»."""
+    if not tr.en:
+        return league._when(ts)
+    t = datetime.datetime.fromtimestamp(ts, league.RIYADH)
+    return f"{MONTHS_EN[t.month - 1]} {t.day}, {t.year}, {t.hour % 12 or 12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
 
 
 def _hue(s):
@@ -92,15 +177,16 @@ def _initials(name):
     return "".join(w[0] for w in words[:2]).upper() or "•"
 
 
-def _seasons(it):
-    """ملخّص المواسم ورقاقاتها: («5 مواسم · 62 حلقة»، [«الموسم 1 (7 حلقات)»، …])."""
+def _seasons(it, tr=AR):
+    """ملخّص المواسم ورقاقاتها: («5 مواسم · 62 حلقة»، [«الموسم 1 (7 حلقات)»، …]) · «Season 1 (7 episodes)»."""
     ss = it.get("s") or []
     if not ss:
         return "", []
     known = any(s for s, _ in ss)
     eps = sum(n for _, n in ss)
-    text = (C._count(len(ss), C.N_SEASONS) + " · " if known else "") + C._count(eps, C.N_EPISODES)
-    chips = [f'{f"الموسم {s}" if s else "بلا موسم"} ({C._count(n, C.N_EPISODES)})' for s, n in ss] if known else []
+    text = (tr.count(len(ss), "seasons") + " · " if known else "") + tr.count(eps, "episodes")
+    chips = [f'{tr(f"الموسم {s}", f"Season {s}") if s else tr("بلا موسم", "No season")} ({tr.count(n, "episodes")})'
+             for s, n in ss] if known else []
     return text, chips
 
 
@@ -109,11 +195,11 @@ def _fresh(it, now=None):
     return bool(a) and (now or time.time()) - a < NEW_DAYS * 86400
 
 
-def _data(key, kind, it, gname):
+def _data(key, kind, it, gname, tr=AR):
     """ما تعرضه نافذة التفاصيل — نصًّا في ‏data-d، فلا طلب ثانيًا."""
-    ss, sc = _seasons(it)
+    ss, sc = _seasons(it, tr)
     d = {"k": kind, "n": it.get("n"), "y": it.get("y"), "r": it.get("r"), "g": it.get("g"), "d": it.get("d"),
-         "c": gname, "ss": ss, "sc": sc, "a": _ago(it.get("a")),
+         "c": gname, "ss": ss, "sc": sc, "a": _ago(it.get("a"), tr=tr),
          "p": C.img_src(key, it.get("p"), "w500"), "b": C.img_src(key, it.get("b") or "", "w780")}
     return _esc(json.dumps({k: v for k, v in d.items() if v}, ensure_ascii=False, separators=(",", ":")))
 
@@ -126,7 +212,7 @@ def _pos(key, it, size="w342", lazy=True):
     return f'<span class="ph">{_esc(_initials(name))}</span>{img}', _hue(name)
 
 
-def card(key, kind, it, gname="", when=False, now=None):
+def card(key, kind, it, gname="", when=False, now=None, tr=AR):
     name = it.get("n", "")
     face, hue = _pos(key, it)
     sub = [str(it["y"])] if it.get("y") else []
@@ -134,28 +220,29 @@ def card(key, kind, it, gname="", when=False, now=None):
         ss = it.get("s") or []
         if ss:
             known = any(s for s, _ in ss)
-            sub.append(C._count(len(ss), C.N_SEASONS) if known else C._count(sum(n for _, n in ss), C.N_EPISODES))
+            sub.append(tr.count(len(ss), "seasons") if known else tr.count(sum(n for _, n in ss), "episodes"))
     if when and it.get("a"):
-        sub.append(("حُدّث " if kind == "series" else "أضيف ") + _ago(it["a"], now))
-    badge = '<span class="badge">جديد</span>' if _fresh(it, now) else ""
+        sub.append((tr("حُدّث ", "Updated ") if kind == "series" else tr("أضيف ", "Added ")) + _ago(it["a"], now, tr))
+    badge = f'<span class="badge">{tr("جديد", "New")}</span>' if _fresh(it, now) else ""
     rt = f'<p class="rt">{STAR}{it["r"]:g}</p>' if it.get("r") else ""
     tags = ('<p class="tags">' + "".join(f"<span>{_esc(g)}</span>" for g in it["g"][:2]) + "</p>") if it.get("g") else ""
-    return (f'<article class="card{" ch" if kind == "live" else ""}" tabindex="0" data-d="{_data(key, kind, it, gname)}">'
+    return (f'<article class="card{" ch" if kind == "live" else ""}" tabindex="0" data-d="{_data(key, kind, it, gname, tr)}">'
             f'<div class="pos" style="--h:{hue}">{face}{badge}</div><h3 dir="auto">{_esc(name)}</h3>'
             + (f'<p class="sub">{_esc(" · ".join(sub))}</p>' if sub else "") + rt + tags + "</article>")
 
 
-def _cards(key, v, kind, picks, when=False):
+def _cards(key, v, kind, picks, when=False, tr=AR):
     gs = v["kinds"][kind]
-    return "".join(card(key, kind, gs[gi]["items"][ii], gs[gi]["name"], when) for gi, ii in picks)
+    return "".join(card(key, kind, gs[gi]["items"][ii], gs[gi]["name"], when, tr=tr) for gi, ii in picks)
 
 
-def _row(title, inner, more_href="", more=""):
+def _row(title, inner, more_href="", more="", tr=AR):
+    """صفّ ملصقاتٍ بسهمين — وأيقونتاهما تنقلبان في الإنجليزية (‏CSS)، فالسابق إلى البداية في اللغتين."""
     return (f'<section class="row"><div class="rh"><h2>{title}</h2>'
             + (f'<a class="more" href="{more_href}">{more}</a>' if more_href else "")
-            + '<span class="rbtn"><button type="button" class="arrow prev" aria-label="السابق">'
-            + _i("chevr") + '</button><button type="button" class="arrow next" aria-label="التالي">' + _i("chev")
-            + f'</button></span></div><div class="cards">{inner}</div></section>')
+            + f'<span class="rbtn"><button type="button" class="arrow prev" aria-label="{tr("السابق", "Previous")}">'
+            + _i("chevr") + f'</button><button type="button" class="arrow next" aria-label="{tr("التالي", "Next")}">'
+            + _i("chev") + f'</button></span></div><div class="cards">{inner}</div></section>')
 
 
 def _sel(v, kind, **kw):
@@ -175,35 +262,44 @@ def _link(base, **kw):
 
 
 # ================= أجزاء الصفحة =================
-def _header(base, srv, v, t, q, key):
+def _switch(tr, href):
+    """زرّ اللغة الأخرى: «English» في العربية و«العربية» في الإنجليزية، إلى الصفحة نفسها بما فيها من قسمٍ وبحث."""
+    code, label = ("ar", "العربية") if tr.en else ("en", "English")
+    return f'<a class="lang" href="{_esc(href)}" hreflang="{code}" lang="{code}">{_i("globe")}{label}</a>'
+
+
+def _header(base, srv, v, t, q, key, tr=AR, alt=""):
     art = (f'<img src="{ART[key]}" alt="" width="42" height="42">' if key in ART
            else f'<span class="bi">{_i("series")}</span>')
-    nav = [("", "الرئيسية")] + [(k, C.KIND_TAB[k]) for k in C.KINDS if v["kinds"][k]]
+    name, full = tr.name(srv), tr.full(srv)
+    nav = [("", tr("الرئيسية", "Home"))] + [(k, tr.tab(k)) for k in C.KINDS if v["kinds"][k]]
     if any(v["recent"][k] for k in C.KINDS):
-        nav.append(("new", "أضيف مؤخرًا"))
+        nav.append(("new", tr("أضيف مؤخرًا", "New")))            # قصيرةٌ بالإنجليزية فيتّسع لها الرأس على الجوال
     links = "".join(f'<a href="{_link(base, t=k)}"{" class=home" if not k else ""}{" aria-current=page" if k == t else ""}>'
                     f'{label}</a>' for k, label in nav)
-    return (f'<header class="top"><div class="wrap"><a class="brand" href="{_esc(base)}">{art}<span><b>{_esc(srv["name"])}</b>'
-            + (f'<small>{_esc(srv["full"])}</small>' if srv["full"] else "") + '</span></a>'
-            f'<nav class="nav" aria-label="أقسام المحتوى">{links}</nav>'
+    return (f'<header class="top"><div class="wrap"><a class="brand" href="{_esc(base)}">{art}<span><b>{_esc(name)}</b>'
+            + (f'<small>{_esc(full)}</small>' if full else "") + '</span></a>'
+            f'<nav class="nav" aria-label="{tr("أقسام المحتوى", "Content sections")}">{links}</nav>'
             f'<form class="search" role="search" action="{_esc(base)}" method="get">'
-            f'<input type="search" name="q" value="{_esc(q)}" placeholder="ابحث باسم المسلسل أو الفيلم…" '
-            f'aria-label="ابحث باسم المسلسل أو الفيلم في {_esc(srv["name"])}" autocomplete="off" '
-            f'enterkeyhint="search" maxlength="{C.QUERY_MAX}"><button type="submit" aria-label="بحث">{_i("search")}</button>'
-            '</form></div></header>')
+            f'<input type="search" name="q" value="{_esc(q)}" '
+            f'placeholder="{tr("ابحث باسم المسلسل أو الفيلم…", "Search by series or movie name…")}" '
+            f'aria-label="{tr("ابحث باسم المسلسل أو الفيلم في ", "Search series and movies in ")}{_esc(name)}" autocomplete="off" '
+            f'enterkeyhint="search" maxlength="{C.QUERY_MAX}"><button type="submit" aria-label="{tr("بحث", "Search")}">'
+            f'{_i("search")}</button></form>' + (_switch(tr, alt) if alt else "") + '</div></header>')
 
 
-def _servers(data_dir, key):
+def _servers(data_dir, key, tr=AR):
     shown = [s for s in C.servers(data_dir) if s["key"] == key or C.has(data_dir, s["key"], s)]
     if len(shown) < 2:
         return ""
-    return ('<nav class="servers" aria-label="السيرفرات"><span class="lbl">السيرفر:</span>' + "".join(
-        f'<a href="{C.PATH}/{s["key"]}"{" aria-current=page" if s["key"] == key else ""}>{_logo(s["key"], s["name"])}'
-        f'<span><b>{_esc(s["name"])}</b>' + (f'<small>{_esc(s["full"])}</small>' if s["full"] else "") + "</span></a>"
-        for s in shown) + "</nav>")
+    return (f'<nav class="servers" aria-label="{tr("السيرفرات", "Servers")}"><span class="lbl">{tr("السيرفر:", "Server:")}</span>'
+            + "".join(f'<a href="{tr.path}/{s["key"]}"{" aria-current=page" if s["key"] == key else ""}>'
+                      f'{_logo(s["key"], tr.name(s))}<span><b>{_esc(tr.name(s))}</b>'
+                      + (f'<small>{_esc(tr.full(s))}</small>' if tr.full(s) else "") + "</span></a>"
+                      for s in shown) + "</nav>")
 
 
-def _hero(key, v):
+def _hero(key, v, tr=AR):
     """أحدث ما أضيف بصورته: ثلاثة أفلام ومسلسلان، أو ما وُجد منهما."""
     pools = {}
     for kind in ("movie", "series"):
@@ -220,93 +316,100 @@ def _hero(key, v):
         facts = [str(it["y"])] if it.get("y") else []
         if it.get("g"):
             facts.append(" • ".join(it["g"]))
-        ss, _ = _seasons(it)
+        ss, _ = _seasons(it, tr)
         if ss:
             facts.append(ss)
         lazy = "" if n == 0 else ' loading="lazy"'
         slides.append(
-            f'<article class="slide{" on" if n == 0 else ""}" data-d="{_data(key, kind, it, gname)}">'
+            f'<article class="slide{" on" if n == 0 else ""}" data-d="{_data(key, kind, it, gname, tr)}">'
             f'<img class="bg" src="{_esc(bg)}" alt=""{lazy}>'
-            f'<div class="info"><span class="kick">{_i("new")}أضيف مؤخرًا · {KIND_ONE[kind]}</span>'
+            f'<div class="info"><span class="kick">{_i("new")}{tr("أضيف مؤخرًا", "Recently added")} · {tr.one(kind)}</span>'
             f'<h2 dir="auto">{_esc(it["n"])}</h2>' + (f'<p class="facts">{_esc(" · ".join(facts))}</p>' if facts else "")
             + (f'<p class="rt">{STAR}{it["r"]:g}</p>' if it.get("r") else "")
             + (f'<p class="plot">{_esc(it["d"])}</p>' if it.get("d") else "")
-            + '<button type="button" class="btn">عرض التفاصيل</button></div>'
+            + f'<button type="button" class="btn">{tr("عرض التفاصيل", "View details")}</button></div>'
             f'<img class="poster" src="{_esc(C.img_src(key, it["p"], "w342"))}" alt=""{lazy}></article>')
-        dots.append(f'<button type="button" data-go="{n}" aria-label="الشريحة {n + 1}"'
+        dots.append(f'<button type="button" data-go="{n}" aria-label="{tr("الشريحة", "Slide")} {n + 1}"'
                     f'{" aria-current=true" if n == 0 else ""}></button>')
         face, hue = _pos(key, it, "w185")
         side.append(f'<button type="button" data-go="{n}"{" aria-current=true" if n == 0 else ""}>'
                     f'<span class="pos" style="--h:{hue}">{face}</span><span><b dir="auto">{_esc(it["n"])}</b>'
-                    f'<small>{_esc(" · ".join(facts[:1] + [KIND_ONE[kind]]))}</small></span></button>')
-    arrows = ('<button type="button" class="harrow prev" aria-label="السابق">' + _i("chevr") + '</button>'
-              '<button type="button" class="harrow next" aria-label="التالي">' + _i("chev") + '</button>'
+                    f'<small>{_esc(" · ".join(facts[:1] + [tr.one(kind)]))}</small></span></button>')
+    arrows = (f'<button type="button" class="harrow prev" aria-label="{tr("السابق", "Previous")}">{_i("chevr")}</button>'
+              f'<button type="button" class="harrow next" aria-label="{tr("التالي", "Next")}">{_i("chev")}</button>'
               if len(picks) > 1 else "")
-    return (f'<div class="herobox"><section class="hero" data-hero aria-roledescription="عرض" aria-label="أضيف مؤخرًا">'
+    return (f'<div class="herobox"><section class="hero" data-hero aria-roledescription="{tr("عرض", "carousel")}" '
+            f'aria-label="{tr("أضيف مؤخرًا", "Recently added")}">'
             f'{"".join(slides)}{arrows}<div class="dots">{"".join(dots) if len(picks) > 1 else ""}</div></section>'
             f'<div class="hlist">{"".join(side[:4])}</div></div>')
 
 
-def _stats(c):
-    tiles = [("movie", c["movie"], C.N_MOVIES), ("series", c["series"], C.N_SERIES), ("live", c["live"], C.N_CHANNELS),
-             ("episodes", c["episodes"], C.N_EPISODES), ("seasons", c["seasons"], C.N_SEASONS)]
+def _stats(c, tr=AR):
+    tiles = [("movie", c["movie"], "movie"), ("series", c["series"], "series"), ("live", c["live"], "live"),
+             ("episodes", c["episodes"], "episodes"), ("seasons", c["seasons"], "seasons")]
     return '<div class="stats">' + "".join(
-        f'<div class="stat">{_i(icon)}<span><b>{n:,}</b><small>{C._unit(n, forms)}</small></span></div>'
-        for icon, n, forms in tiles if n) + "</div>"
+        f'<div class="stat">{_i(icon)}<span><b>{n:,}</b><small>{tr.unit(n, what)}</small></span></div>'
+        for icon, n, what in tiles if n) + "</div>"
 
 
-def _kinds(base, v, t):
-    tabs = [(k, C.KIND_TAB[k], v["counts"][k]) for k in C.KINDS if v["kinds"][k]]
+def _kinds(base, v, t, tr=AR):
+    tabs = [(k, tr.tab(k), v["counts"][k]) for k in C.KINDS if v["kinds"][k]]
     if any(v["recent"][k] for k in C.KINDS):
-        tabs.append(("new", "أضيف مؤخرًا", 0))
-    return '<nav class="kinds" aria-label="نوع المحتوى">' + "".join(
+        tabs.append(("new", tr("أضيف مؤخرًا", "New"), 0))
+    return f'<nav class="kinds" aria-label="{tr("نوع المحتوى", "Content type")}">' + "".join(
         f'<a href="{_link(base, t=k)}"{" aria-current=page" if k == t else ""}>{_i(k)}{label}'
         + (f' <small>{n:,}</small>' if n else "") + "</a>" for k, label, n in tabs) + "</nav>"
 
 
-def _chip(key, base, v, kind, gi, g):
+def _chip(key, base, v, kind, gi, g, tr=AR):
     top = _sel(v, kind, gid=g["id"])
     pic = next((g["items"][ii].get("p") for _, ii in top[:40] if g["items"][ii].get("p")), "")
     src = C.img_src(key, pic, "w185")
     return (f'<a class="chip" href="{_link(base, t=kind, g=g["id"])}">'
             + (f'<img src="{_esc(src)}" alt="" loading="lazy">' if src else "")
-            + f'<span><b>{_esc(g["name"])}</b><small>{C._count(len(g["items"]), C.N_OF[kind])}</small></span></a>')
+            + f'<span><b>{_esc(g["name"])}</b><small>{tr.count(len(g["items"]), kind)}</small></span></a>')
 
 
-def _chips(key, base, v, kind):
+def _chips(key, base, v, kind, tr=AR):
     gs = v["kinds"][kind]
-    out = [_chip(key, base, v, kind, gi, g) for gi, g in enumerate(gs[:CHIPS_MAX])]
+    out = [_chip(key, base, v, kind, gi, g, tr) for gi, g in enumerate(gs[:CHIPS_MAX])]
     if len(gs) > CHIPS_MAX:
-        out.append(f'<a class="chip more" href="{_link(base, t=kind, all=1)}"><span>{_i("grid")}<b>كل الأقسام</b>'
-                   f'<small>{len(gs):,}</small></span></a>')
+        out.append(f'<a class="chip more" href="{_link(base, t=kind, all=1)}"><span>{_i("grid")}'
+                   f'<b>{tr("كل الأقسام", "All categories")}</b><small>{len(gs):,}</small></span></a>')
     return f'<div class="chips">{"".join(out)}</div>'
 
 
-def _filters(base, v, kind, cur):
+def _filters(base, v, kind, cur, tr=AR):
     if kind not in C.KINDS or not v["kinds"][kind]:
         return ""
     def opts(pairs, sel):
         return "".join(f'<option value="{_esc(val)}"{" selected" if str(val) == str(sel) else ""}>{_esc(label)}</option>'
                        for val, label in pairs)
+    every = tr("الكل", "All")
     parts = [f'<input type="hidden" name="t" value="{kind}"><input type="hidden" name="view" value="grid">']
     if v["years"][kind]:
-        parts.append('<label for="fy">السنة</label><select id="fy" name="y">'
-                     + opts([("", "الكل")] + [(y, y) for y in v["years"][kind]], cur["y"] or "") + "</select>")
-    parts.append('<label for="fg">القسم</label><select id="fg" name="g">'
-                 + opts([("", "كل الأقسام")] + [(g["id"], g["name"]) for g in v["kinds"][kind]], cur["g"]) + "</select>")
+        parts.append(f'<label for="fy">{tr("السنة", "Year")}</label><select id="fy" name="y">'
+                     + opts([("", every)] + [(y, y) for y in v["years"][kind]], cur["y"] or "") + "</select>")
+    parts.append(f'<label for="fg">{tr("القسم", "Category")}</label><select id="fg" name="g">'
+                 + opts([("", tr("كل الأقسام", "All categories"))] + [(g["id"], g["name"]) for g in v["kinds"][kind]],
+                        cur["g"]) + "</select>")
     if v["genres"][kind]:
-        parts.append('<label for="fn">التصنيف</label><select id="fn" name="genre">'
-                     + opts([("", "الكل")] + [(x, x) for x in v["genres"][kind]], cur["genre"]) + "</select>")
+        parts.append(f'<label for="fn">{tr("التصنيف", "Genre")}</label><select id="fn" name="genre">'
+                     + opts([("", every)] + [(x, x) for x in v["genres"][kind]], cur["genre"]) + "</select>")
     if v["rated"][kind]:
-        parts.append('<label for="fr">التقييم</label><select id="fr" name="r">'
-                     + opts([("", "الكل")] + [(n, f"{n} فأعلى") for n in (9, 8, 7, 6, 5)], cur["r"] or "") + "</select>")
-    sorts = [("new", "الأحدث إضافة"), ("az", "الاسم")] + ([("rate", "الأعلى تقييمًا")] if v["rated"][kind] else [])
-    parts.append('<label for="fs">الترتيب</label><select id="fs" name="sort">' + opts(sorts, cur["sort"]) + "</select>")
-    return (f'<section class="panel"><h2>{_i("filter")} تصفية {C.KIND_TAB[kind]}</h2><form class="filter" action="{_esc(base)}"'
-            f' method="get">{"".join(parts)}<button class="btn" type="submit">تطبيق الفلتر</button></form></section>')
+        parts.append(f'<label for="fr">{tr("التقييم", "Rating")}</label><select id="fr" name="r">'
+                     + opts([("", every)] + [(n, tr(f"{n} فأعلى", f"{n}+")) for n in (9, 8, 7, 6, 5)], cur["r"] or "")
+                     + "</select>")
+    sorts = ([("new", tr("الأحدث إضافة", "Recently added")), ("az", tr("الاسم", "Name"))]
+             + ([("rate", tr("الأعلى تقييمًا", "Top rated"))] if v["rated"][kind] else []))
+    parts.append(f'<label for="fs">{tr("الترتيب", "Sort by")}</label><select id="fs" name="sort">'
+                 + opts(sorts, cur["sort"]) + "</select>")
+    return (f'<section class="panel"><h2>{_i("filter")} {tr("تصفية " + tr.tab(kind), "Filter " + tr.tab(kind).lower())}</h2>'
+            f'<form class="filter" action="{_esc(base)}" method="get">{"".join(parts)}'
+            f'<button class="btn" type="submit">{tr("تطبيق الفلتر", "Apply filter")}</button></form></section>')
 
 
-def _recent_list(key, v, kinds):
+def _recent_list(key, v, kinds, tr=AR):
     """«أضيف مؤخرًا» في الجانب: أحدث ما في الأنواع المعطاة معًا، مرقّمًا."""
     pool = []
     for kind in kinds:
@@ -321,12 +424,13 @@ def _recent_list(key, v, kinds):
     for n, (_, kind, it, gname) in enumerate(pool[:SIDE_MAX], 1):
         face, hue = _pos(key, it, "w185")
         sub = [str(it["y"])] if it.get("y") else []
-        sub.append(_ago(it["a"]) if it.get("a") else KIND_ONE[kind])
-        rows.append(f'<li tabindex="0" data-d="{_data(key, kind, it, gname)}"><span class="n">{n}</span>'
+        sub.append(_ago(it["a"], tr=tr) if it.get("a") else tr.one(kind))
+        rows.append(f'<li tabindex="0" data-d="{_data(key, kind, it, gname, tr)}"><span class="n">{n}</span>'
                     f'<span class="pos" style="--h:{hue}">{face}</span><span class="t"><b dir="auto">{_esc(it["n"])}</b>'
                     f'<small>{_esc(" · ".join(sub))}</small></span>'
                     + (f'<span class="rt">{STAR}{it["r"]:g}</span>' if it.get("r") else "") + "</li>")
-    return f'<section class="panel"><h2>{_i("new")} أضيف مؤخرًا</h2><ol class="recent">{"".join(rows)}</ol></section>'
+    return (f'<section class="panel"><h2>{_i("new")} {tr("أضيف مؤخرًا", "Recently added")}</h2>'
+            f'<ol class="recent">{"".join(rows)}</ol></section>')
 
 
 def _utm(url, campaign=""):
@@ -351,11 +455,45 @@ def _money(v):
         return 0.0
 
 
-def _ad(srv, c):
+PITCH = ("دفعة واحدة بلا تجديد تلقائي، وتفعيل خلال دقائق، ودعم فني مباشر على واتساب.",
+         "One-time payment with no auto-renewal, activation within minutes, and live support on WhatsApp.")
+_TWO = re.compile("ساعتان|ساعتين|يومان|يومين|أسبوعان|أسبوعين|شهران|شهرين|سنتان|سنتين")
+
+
+def _catalog():
+    """باقات CATALOG بمعرّفها، ومع كلٍّ سيرفرها (‏brand) لاسمها بالإنجليزية."""
+    return {p["id"]: dict(p, brand=k) for k, b in tournament._catalog().items() for p in b.get("plans", [])}
+
+
+def _dur_en(s):
+    """مدّةٌ من CATALOG بالإنجليزية: «15 شهرًا» ← «15 months»، «شهر» ← «1 month»، «24 ساعة» ← «24 hours»."""
+    s = str(s or "").translate(C._DIG)
+    for ar, word in _DUR_EN:
+        if re.search(ar, s):
+            m = re.search(r"\d+", s)
+            n = int(m.group()) if m else 2 if _TWO.search(s) else 1
+            return f"{n} {word}" + ("" if n == 1 else "s")
+    return ""
+
+
+def _plan(p, tr=AR, srv=None):
+    """اسم الباقة وسطرها تحته كما في CATALOG («فالكون · 15 شهرًا»، «الأكثر توازنًا») — وبالإنجليزية اسم سيرفرها
+    ومدّتها («Falcon · 15 months»، «Best balance»)، ووسمٌ لم يُترجم (‏TAG_EN) مكانه المدّة."""
+    if not tr.en:
+        return p["name"], p.get("tag") or p.get("dur") or ""
+    rest = p["name"].rpartition(" · ")[2]
+    what = " ".join([PLAN_EN.get(rest) or _dur_en(rest) or _dur_en(p.get("dur"))]
+                    + [en for ar, en in PLAN_FOR_EN if ar in rest]).strip()
+    brand = (tr.name(srv) if srv and srv["key"] == p.get("brand")
+             else C.EN_NAMES.get(p.get("brand")) or str(p.get("brand") or "").title())
+    return " · ".join(x for x in (brand, what) if x), TAG_EN.get(p.get("tag") or "") or _dur_en(p.get("dur"))
+
+
+def _ad(srv, c, tr=AR):
     """إعلان الاشتراك في أعلى الصفحة تحت السيرفرات — أول ما يراه الزائر، وعلى الجوال قبل الجانب بكثير: باقات السيرفر نفسه من CATALOG
     (‏C.PLANS) بأسعارها وخصمها، أو رابط شرائه من صفحة المدير، أو باقات إعلان الموقع (‏tournament.ADS) لسيرفرٍ
     بلا هذا ولا ذاك. وروابطه بحملة ‏content-ad."""
-    catalog = {p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])}
+    catalog = _catalog()
     own = [catalog[i] for i in C.PLANS.get(srv["key"], ()) if i in catalog]
     plans = own or ([] if srv["buy"] else [catalog[i] for i in tournament.ADS if i in catalog])
     if not plans and not srv["buy"]:
@@ -364,63 +502,71 @@ def _ad(srv, c):
     for p in plans[:3]:
         price, was = _money(p.get("price")), _money(p.get("was"))
         off = round((1 - price / was) * 100) if was > price > 0 else 0
+        pname, psub = _plan(p, tr, srv)
         cards.append(f'<a class="adplan" href="{_esc(_utm(p["url"], AD_CAMPAIGN))}" target="_blank" rel="noopener">'
                      + (f'<span class="off">-{off}%</span>' if off >= 5 else "")
                      + f'<img src="{_esc(p["img"])}" alt="" width="56" height="56" loading="lazy">'
-                     f'<span class="t"><b>{_esc(p["name"])}</b><small>{_esc(p.get("tag") or p.get("dur") or "")}</small></span>'
-                     f'<em>{_esc(p["price"])} ر.س' + (f'<s>{_esc(p["was"])}</s>' if off >= 5 else "") + "</em></a>")
-    name = _esc(srv["name"])
+                     f'<span class="t"><b>{_esc(pname)}</b><small>{_esc(psub)}</small></span>'
+                     f'<em>{_esc(p["price"])} {tr("ر.س", "SAR")}' + (f'<s>{_esc(p["was"])}</s>' if off >= 5 else "")
+                     + "</em></a>")
+    name = _esc(tr.name(srv))
     buy = _utm(srv["buy"], AD_CAMPAIGN) if srv["buy"] else _utm(plans[0]["url"], AD_CAMPAIGN)
     mine = bool(own or srv["buy"])
-    summary = _summary_text(c)
-    return (f'<aside class="ad" aria-label="إعلان: {"اشتراك " + name if mine else "اشتراكات سمارت سوق"}">'
-            '<div class="adtext"><span class="eyebrow">إعلان</span>'
-            + (f'<h2>كل هذا المحتوى في اشتراك {name}</h2><p>{_esc(summary)} — ' if mine
-               else '<h2>اشتراكات سمارت سوق</h2><p>')
-            + 'دفعة واحدة بلا تجديد تلقائي، وتفعيل خلال دقائق، ودعم فني مباشر على واتساب.</p>'
+    summary = _summary_text(c, tr)
+    pitch = tr(*PITCH)
+    brand = tr("اشتراكات سمارت سوق", f"{BRAND_EN} subscriptions")
+    return (f'<aside class="ad" aria-label="{tr("إعلان: ", "Ad: ")}'
+            f'{(tr("اشتراك " + name, name + " subscription") if mine else brand)}">'
+            f'<div class="adtext"><span class="eyebrow">{tr("إعلان", "Ad")}</span>'
+            + (f'<h2>{tr(f"كل هذا المحتوى في اشتراك {name}", f"All this content in a {name} subscription")}</h2>'
+               f'<p>{_esc(summary)} — {tr(pitch, pitch[:1].lower() + pitch[1:])}' if mine else f'<h2>{brand}</h2><p>{pitch}')
+            + '</p>'
             f'<div class="adbtns"><a class="btn" href="{_esc(buy)}" target="_blank" rel="noopener">'
-            + (f"اشترك في {name}" if mine else "اشترك الآن") + '</a>'
-            '<a class="btn ghost" href="/#buy">ساعدني في الاختيار</a></div></div>'
+            + (tr(f"اشترك في {name}", f'Subscribe<span class="wide"> to {name}</span>') if mine
+               else tr("اشترك الآن", "Subscribe now")) + '</a>'
+            f'<a class="btn ghost" href="/#buy">{tr("ساعدني في الاختيار", "Help me choose")}</a></div></div>'
             + (f'<div class="adplans">{"".join(cards)}</div>' if cards else "") + "</aside>")
 
 
-def _cta(srv):
+def _cta(srv, tr=AR):
     """باقات الاشتراك: رابط شراء السيرفر من صفحة المدير، أو باقاته من CATALOG في index.html، أو الدليل.
     ← (HTML، رابط زرّ الاشتراك في النافذة)."""
-    name = _esc(srv["name"])
+    name = _esc(tr.name(srv))
     rows, first = [], ""
     if not srv["buy"]:
-        plans = {p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])}
+        plans = _catalog()
         for pid in C.PLANS.get(srv["key"], ()):
             p = plans.get(pid)
             if not p:
                 continue
             url = _utm(p["url"])
             first = first or url
+            pname, psub = _plan(p, tr, srv)
             rows.append(f'<a class="plan" href="{_esc(url)}" target="_blank" rel="noopener">'
                         f'<img src="{_esc(p["img"])}" alt="" width="42" height="42" loading="lazy">'
-                        f'<span><b>{_esc(p["name"])}</b><small>{_esc(p.get("tag") or p.get("dur") or "")}</small></span>'
-                        f'<em>{_esc(p["price"])} ر.س</em></a>')
+                        f'<span><b>{_esc(pname)}</b><small>{_esc(psub)}</small></span>'
+                        f'<em>{_esc(p["price"])} {tr("ر.س", "SAR")}</em></a>')
     buy = _utm(srv["buy"]) if srv["buy"] else ""
     link = buy or first or "/#buy"
-    html = (f'<section class="panel cta"><h2>اشترك في {name}</h2>'
-            '<p>دفعة واحدة بلا تجديد تلقائي، وتفعيل خلال دقائق، ودعم فني مباشر على واتساب.</p>'
+    subscribe = tr(f"اشترك في {name}", f"Subscribe to {name}")
+    html = (f'<section class="panel cta"><h2>{subscribe}</h2><p>{tr(*PITCH)}</p>'
             + "".join(rows)
-            + (f'<a class="btn" href="{_esc(buy)}" target="_blank" rel="noopener">اشترك في {name}</a>' if buy else "")
-            + '<div class="btns"><a class="btn ghost" href="/#buy">ساعدني في الاختيار</a>'
-            '<a class="btn ghost" href="/#plans">كل الباقات</a></div></section>')
+            + (f'<a class="btn" href="{_esc(buy)}" target="_blank" rel="noopener">{subscribe}</a>' if buy else "")
+            + f'<div class="btns"><a class="btn ghost" href="/#buy">{tr("ساعدني في الاختيار", "Help me choose")}</a>'
+            f'<a class="btn ghost" href="/#plans">{tr("كل الباقات", "All plans")}</a></div></section>')
     return html, link
 
 
-def _pager(base, page, pages, **kw):
+def _pager(base, page, pages, tr=AR, **kw):
     if pages < 2:
         return ""
-    prev = f'<a href="{_link(base, **kw, p=page - 1)}">→ السابق</a>' if page > 1 else "<span></span>"
-    nxt = f'<a href="{_link(base, **kw, p=page + 1)}">التالي ←</a>' if page < pages else "<span></span>"
-    return f'<nav class="pager" aria-label="الصفحات">{prev}<span>صفحة {page} من {pages}</span>{nxt}</nav>'
+    prev = f'<a href="{_link(base, **kw, p=page - 1)}">{tr("→ السابق", "← Previous")}</a>' if page > 1 else "<span></span>"
+    nxt = f'<a href="{_link(base, **kw, p=page + 1)}">{tr("التالي ←", "Next →")}</a>' if page < pages else "<span></span>"
+    return (f'<nav class="pager" aria-label="{tr("الصفحات", "Pages")}">{prev}'
+            f'<span>{tr(f"صفحة {page} من {pages}", f"Page {page} of {pages}")}</span>{nxt}</nav>')
 
 
-def results_html(data_dir, key, srv, v, q):
+def results_html(data_dir, key, srv, v, q, tr=AR):
     """نتائج البحث بالاسم ملصقاتٍ: لكل نوعٍ أوّل C.SEARCH_MAX بقسمها، ثم أين يوجد الاسم في السيرفرات الأخرى —
     فمن لم يجد مسلسله هنا يعرف أيّ اشتراكٍ فيه."""
     q = " ".join(str(q or "").split())[:C.QUERY_MAX]
@@ -445,10 +591,11 @@ def results_html(data_dir, key, srv, v, q):
         top, n = hits[kind]
         if not n:
             continue
-        more = (f'<p class="empty">و{C._count(n - len(top), C.N_RESULTS)} أخرى — اكتب الاسم أدقّ.</p>'
+        more = ('<p class="empty">' + tr(f"و{C._count(n - len(top), C.N_RESULTS)} أخرى — اكتب الاسم أدقّ.",
+                                         f"{n - len(top):,} more — type the name more precisely.") + "</p>"
                 if n > len(top) else "")
-        parts.append(f'<h3>{C.KIND_TAB[kind]} <small>({n:,})</small></h3>'
-                     f'<div class="grid">{_cards(key, v, kind, top)}</div>{more}')
+        parts.append(f'<h3>{tr.tab(kind)} <small>({n:,})</small></h3>'
+                     f'<div class="grid">{_cards(key, v, kind, top, tr=tr)}</div>{more}')
     elsewhere = []
     for s in C.servers(data_dir):
         ov = C._view(data_dir, s["key"])[1] if s["key"] != key else None
@@ -457,27 +604,35 @@ def results_html(data_dir, key, srv, v, q):
         there = look if C._search(s["key"], ov, look)[1] or total else (C.suggest(s["key"], ov, q) or q)
         n = C._search(s["key"], ov, there)[1]
         if n:
-            elsewhere.append(f'<a href="{C.PATH}/{s["key"]}?q={quote(shown if there == look else there)}">'
-                             f'{_logo(s["key"], s["name"], "lg sm")}'
-                             f'{_esc(s["name"])} ({n:,})</a>')
-    other = (f'<p class="other">{"ويوجد أيضًا في" if total else "لكنه موجود في"}: {" · ".join(elsewhere)}</p>'
-             if elsewhere else "")
+            elsewhere.append(f'<a href="{tr.path}/{s["key"]}?q={quote(shown if there == look else there)}">'
+                             f'{_logo(s["key"], tr.name(s), "lg sm")}'
+                             f'{_esc(tr.name(s))} ({n:,})</a>')
+    other = (f'<p class="other">{tr("ويوجد أيضًا في", "Also on") if total else tr("لكنه موجود في", "But it’s on")}: '
+             f'{" · ".join(elsewhere)}</p>' if elsewhere else "")
+    name = _esc(tr.name(srv))
     if not total:
-        return (f'<section class="results"><div class="rh"><h2>لا يوجد «{_esc(q)}» في {_esc(srv["name"])}</h2></div>'
-                + (other or '<p class="empty">البحث باسم المسلسل أو الفيلم: جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية أو '
-                   'بالعربية' + (f' — والقنوات في <a class="link" href="{C.PATH}/{key}?t=live">تبويبها</a>'
-                                if v["kinds"]["live"] else "") + '.</p>')
+        live = (tr(" — والقنوات في ", " — channels are in ") + f'<a class="link" href="{tr.path}/{key}?t=live">'
+                + tr("تبويبها", "their own tab") + "</a>" if v["kinds"]["live"] else "")
+        return (f'<section class="results"><div class="rh"><h2>'
+                f'{tr("لا يوجد ", "No results for ")}{tr.quote(_esc(q))}{tr(" في ", " in ")}{name}</h2></div>'
+                + (other or '<p class="empty">'
+                   + tr("البحث باسم المسلسل أو الفيلم: جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية أو بالعربية",
+                        "Search by series or movie name: try part of the name, or type it in English or Arabic")
+                   + live + '.</p>')
                 + "</section>")
-    fix = f'<p class="fix">لا يوجد «{_esc(q)}» كما كُتب، فهذه نتائج أقرب اسمٍ إليه.</p>' if fixed else ""
-    return (f'<section class="results"><div class="rh"><h2>نتائج «{_esc(shown)}» في {_esc(srv["name"])} '
-            f'<small>{C._count(total, C.N_RESULTS)}</small></h2></div>{fix}{"".join(parts)}{other}</section>')
+    fix = (f'<p class="fix">{tr("لا يوجد ", "No exact match for ")}{tr.quote(_esc(q))}'
+           f'{tr(" كما كُتب، فهذه نتائج أقرب اسمٍ إليه.", ", so these are the results for the closest name.")}</p>'
+           if fixed else "")
+    return (f'<section class="results"><div class="rh"><h2>{tr("نتائج ", "Results for ")}{tr.quote(_esc(shown))}'
+            f'{tr(" في ", " in ")}{name} <small>{tr.count(total, "results")}</small></h2></div>'
+            f'{fix}{"".join(parts)}{other}</section>')
 
 
-def api_search(data_dir, key, q):
+def api_search(data_dir, key, q, lang="ar"):
     srv, v = C._view(data_dir, key)
     if not C._has(v):
         return None
-    return {"ok": True, "html": results_html(data_dir, key, srv, v, q)}
+    return {"ok": True, "html": results_html(data_dir, key, srv, v, q, lang_of(lang))}
 
 
 # ================= الصفحة =================
@@ -489,12 +644,20 @@ def _int(v, lo=0, hi=10 ** 6):
     return n if lo <= n <= hi else 0
 
 
-def render(data_dir, key, query):
+def _alt(tr, key, query):
+    """الصفحة نفسها باللغة الأخرى بما فيها من قسمٍ وتصفيةٍ وبحث — لزرّ اللغة."""
+    keep = [(k, str(query.get(k) or "").strip()) for k in QUERY]
+    keep = [(k, x) for k, x in keep if x]
+    return f"{(AR if tr.en else EN).path}/{key}" + ("?" + urlencode(keep) if keep else "")
+
+
+def render(data_dir, key, query, lang="ar"):
     """صفحة السيرفر ← (رمز HTTP، بايتات، ثواني الكاش). ‏query: ‏t النوع (أو new)، g القسم، view=grid التصفية
-    (y السنة، genre التصنيف، r أدنى تقييم، sort الترتيب)، all=1 كل الأقسام، p الصفحة، q البحث."""
+    (y السنة، genre التصنيف، r أدنى تقييم، sort الترتيب)، all=1 كل الأقسام، p الصفحة، q البحث. و‏lang: ‏ar أو en."""
+    tr = lang_of(lang)
     srv, v = C._view(data_dir, key)
     if not srv or not C._has(v):
-        code, body = render_missing(data_dir, key)
+        code, body = render_missing(data_dir, key, lang)
         return code, body, 300
     get = lambda k: str(query.get(k) or "").strip()  # noqa: E731
     kinds = [k for k in C.KINDS if v["kinds"][k]]
@@ -505,117 +668,142 @@ def render(data_dir, key, query):
     cur = {"y": _int(get("y"), 1900, C.YEAR_MAX), "genre": get("genre")[:40], "r": _int(get("r"), 1, 9),
            "sort": get("sort") if get("sort") in ("new", "az", "rate") else "new", "g": gid}
     page = max(1, _int(get("p"), 1))
-    base = f"{C.PATH}/{key}"
-    c, name, code = v["counts"], srv["name"], 200
-    cta, cta_link = _cta(srv)
+    base = f"{tr.path}/{key}"
+    c, name, code = v["counts"], tr.name(srv), 200
+    cta, cta_link = _cta(srv, tr)
     main, side, head = [], [], ""
     kind = t if t in C.KINDS else ""
     gi = v["byid"][kind].get(gid) if kind and gid else None
     if kind and gid and gi is None:
         code = 404
     if t == "" and not gid:
-        head = _hero(key, v) + _stats(c) + _kinds(base, v, t)
+        head = _hero(key, v, tr) + _stats(c, tr) + _kinds(base, v, t, tr)
         for k in ("movie", "series", "live"):
             if v["recent"][k]:
-                label = {"movie": "أفلام أضيفت مؤخرًا", "series": "مسلسلات جديدة أو بحلقاتٍ جديدة",
-                         "live": "قنوات أضيفت مؤخرًا"}[k]
-                main.append(_row(label, _cards(key, v, k, v["recent"][k][:ROW_MAX], when=True),
-                                 _link(base, t="new"), "عرض الكل"))
+                label = {"movie": tr("أفلام أضيفت مؤخرًا", "Recently added movies"),
+                         "series": tr("مسلسلات جديدة أو بحلقاتٍ جديدة", "New series and new episodes"),
+                         "live": tr("قنوات أضيفت مؤخرًا", "Recently added channels")}[k]
+                main.append(_row(label, _cards(key, v, k, v["recent"][k][:ROW_MAX], when=True, tr=tr),
+                                 _link(base, t="new"), tr("عرض الكل", "View all"), tr))
         for k, n in (("movie", 3), ("series", 3), ("live", 2)):
             for g in v["kinds"][k][:n]:
                 top = _sel(v, k, gid=g["id"])[:ROW_MAX]
-                main.append(_row(f'{_esc(g["name"])} <small>· {KIND_ONE[k]}</small>', _cards(key, v, k, top),
-                                 _link(base, t=k, g=g["id"]), f'عرض الكل ({len(g["items"]):,})'))
-        side += [_recent_list(key, v, ("movie", "series")), cta]
+                main.append(_row(f'{_esc(g["name"])} <small>· {tr.one(k)}</small>', _cards(key, v, k, top, tr=tr),
+                                 _link(base, t=k, g=g["id"]), tr("عرض الكل", "View all") + f' ({len(g["items"]):,})', tr))
+        side += [_recent_list(key, v, ("movie", "series"), tr), cta]
     elif t == "new":
-        head = _stats(c) + _kinds(base, v, t)
-        main.append(f'<div class="gh"><h1>{_i("new")} أضيف مؤخرًا في {_esc(name)}</h1>'
-                    '<span class="sub">الأحدث أولًا، بترتيب إضافتها إلى السيرفر</span></div>')
+        head = _stats(c, tr) + _kinds(base, v, t, tr)
+        main.append(f'<div class="gh"><h1>{_i("new")} {tr("أضيف مؤخرًا في ", "Recently added to ")}{_esc(name)}</h1>'
+                    '<span class="sub">' + tr("الأحدث أولًا، بترتيب إضافتها إلى السيرفر",
+                                              "Newest first, in the order they were added to the server") + '</span></div>')
         for k in C.KINDS:
             if v["recent"][k]:
-                label = {"movie": "أفلام", "series": "مسلسلات جديدة أو بحلقاتٍ جديدة", "live": "قنوات"}[k]
+                label = {"movie": tr("أفلام", "Movies"), "live": tr("قنوات", "Channels"),
+                         "series": tr("مسلسلات جديدة أو بحلقاتٍ جديدة", "New series and new episodes")}[k]
                 main.append(f'<section class="row"><div class="rh"><h2>{label}</h2></div><div class="grid">'
-                            f'{_cards(key, v, k, v["recent"][k][:NEW_MAX[k]], when=True)}</div></section>')
+                            f'{_cards(key, v, k, v["recent"][k][:NEW_MAX[k]], when=True, tr=tr)}</div></section>')
         side += [cta]
     elif kind and get("all"):
-        head = _stats(c) + _kinds(base, v, t)
-        chips = "".join(_chip(key, base, v, kind, n, g) for n, g in enumerate(v["kinds"][kind]))
-        main.append(f'<div class="gh"><h1>أقسام {C.KIND_TAB[kind]}</h1><span class="sub">{C._count(len(v["kinds"][kind]), N_GROUPS)}</span>'
+        head = _stats(c, tr) + _kinds(base, v, t, tr)
+        chips = "".join(_chip(key, base, v, kind, n, g, tr) for n, g in enumerate(v["kinds"][kind]))
+        main.append(f'<div class="gh"><h1>{tr("أقسام " + tr.tab(kind), tr.one(kind) + " categories")}</h1>'
+                    f'<span class="sub">{tr.count(len(v["kinds"][kind]), "groups")}</span>'
                     f'</div><div class="chipgrid">{chips}</div>')
-        side += [_filters(base, v, kind, cur), _recent_list(key, v, (kind,)), cta]
+        side += [_filters(base, v, kind, cur, tr), _recent_list(key, v, (kind,), tr), cta]
     elif kind and (gi is not None or get("view") == "grid"):
-        head = _kinds(base, v, t)
+        head = _kinds(base, v, t, tr)
         picks = _sel(v, kind, gid=gid if gi is not None else "", year=cur["y"], genre=cur["genre"],
                      rating=cur["r"], sort=cur["sort"])
         pages = max(1, (len(picks) + GRID - 1) // GRID)
         page = min(page, pages)
-        title = _esc(v["kinds"][kind][gi]["name"]) if gi is not None else f"{C.KIND_TAB[kind]} في {_esc(name)}"
-        chosen = [str(cur["y"]) if cur["y"] else "", cur["genre"], f"تقييم {cur['r']} فأعلى" if cur["r"] else ""]
+        title = (_esc(v["kinds"][kind][gi]["name"]) if gi is not None
+                 else f'{tr.tab(kind)}{tr(" في ", " in ")}{_esc(name)}')
+        chosen = [str(cur["y"]) if cur["y"] else "", cur["genre"],
+                  tr(f"تقييم {cur['r']} فأعلى", f"rated {cur['r']}+") if cur["r"] else ""]
         chosen = " · ".join(x for x in chosen if x)
-        main.append(f'<div class="gh"><h1>{title}</h1><span class="sub">{C._count(len(picks), C.N_OF[kind])}'
+        main.append(f'<div class="gh"><h1>{title}</h1><span class="sub">{tr.count(len(picks), kind)}'
                     + (f" · {_esc(chosen)}" if chosen else "") + "</span></div>"
-                    + (f'<div class="grid">{_cards(key, v, kind, picks[(page - 1) * GRID:page * GRID])}</div>' if picks
-                       else '<p class="empty">لا نتائج بهذا الفلتر — وسّعه أو اختر «الكل».</p>')
-                    + _pager(base, page, pages, t=kind, g=gid if gi is not None else "",
+                    + (f'<div class="grid">{_cards(key, v, kind, picks[(page - 1) * GRID:page * GRID], tr=tr)}</div>'
+                       if picks else '<p class="empty">' + tr("لا نتائج بهذا الفلتر — وسّعه أو اختر «الكل».",
+                                                              "No results with this filter — widen it or choose “All”.")
+                       + "</p>")
+                    + _pager(base, page, pages, tr, t=kind, g=gid if gi is not None else "",
                              view="grid" if gi is None else "", y=cur["y"], genre=cur["genre"], r=cur["r"],
                              sort=cur["sort"] if cur["sort"] != "new" else ""))
-        side += [_filters(base, v, kind, cur), _recent_list(key, v, (kind,)), cta]
+        side += [_filters(base, v, kind, cur, tr), _recent_list(key, v, (kind,), tr), cta]
     else:                                   # صفحة النوع: الأقسام صورًا ثم صفٌّ لكل قسم
         kind = kind or kinds[0]
         t = kind
-        head = _stats(c) + _kinds(base, v, t)
-        miss = '<p class="empty">هذا القسم لم يعد موجودًا، واختر من الأقسام الحالية.</p>' if code == 404 else ""
-        main.append(miss + _chips(key, base, v, kind))
+        head = _stats(c, tr) + _kinds(base, v, t, tr)
+        miss = ('<p class="empty">' + tr("هذا القسم لم يعد موجودًا، واختر من الأقسام الحالية.",
+                                         "This category no longer exists — choose one of the current categories.")
+                + "</p>" if code == 404 else "")
+        main.append(miss + _chips(key, base, v, kind, tr))
         for g in v["kinds"][kind][:ROWS_MAX]:
             top = _sel(v, kind, gid=g["id"])[:ROW_MAX]
-            main.append(_row(_esc(g["name"]), _cards(key, v, kind, top), _link(base, t=kind, g=g["id"]),
-                             f'عرض الكل ({len(g["items"]):,})'))
+            main.append(_row(_esc(g["name"]), _cards(key, v, kind, top, tr=tr), _link(base, t=kind, g=g["id"]),
+                             tr("عرض الكل", "View all") + f' ({len(g["items"]):,})', tr))
         if len(v["kinds"][kind]) > ROWS_MAX:
-            main.append(f'<p class="empty"><a class="link" href="{_link(base, t=kind, all=1)}">كل أقسام '
-                        f'{C.KIND_TAB[kind]} ({len(v["kinds"][kind]):,}) ←</a></p>')
-        side += [_filters(base, v, kind, cur), _recent_list(key, v, (kind,)), cta]
-    ad = _ad(srv, c) if code == 200 else ""    # في أعلى الصفحة تحت السيرفرات — ونتائج البحث قبله
-    summary = _summary_text(c)
-    what = " و".join(x for k, x in (("series", "المسلسلات بمواسمها"), ("movie", "الأفلام"), ("live", "القنوات")) if c[k])
-    title = f"محتوى اشتراك {name}: {what} | سمارت سوق"
-    desc = (f"ما في اشتراك {name} قبل أن تشتري: {summary}. ابحث باسم أي مسلسل أو فيلم"
-            + (" واعرف مواسم المسلسل وحلقات كل موسم" if c["series"] else "")
-            + "، وتصفّح ما أضيف مؤخرًا. يُحدَّث تلقائيًا من قائمة الاشتراك نفسها.")
+            n = f'({len(v["kinds"][kind]):,})'
+            main.append(f'<p class="empty"><a class="link" href="{_link(base, t=kind, all=1)}">'
+                        + tr(f"كل أقسام {tr.tab(kind)} {n} ←", f"All {tr.one(kind).lower()} categories {n} →") + "</a></p>")
+        side += [_filters(base, v, kind, cur, tr), _recent_list(key, v, (kind,), tr), cta]
+    ad = _ad(srv, c, tr) if code == 200 else ""    # في أعلى الصفحة تحت السيرفرات — ونتائج البحث قبله
+    summary = _summary_text(c, tr)
+    what = tr.join(x for k, x in (("series", tr("المسلسلات بمواسمها", "series with their seasons")),
+                                  ("movie", tr("الأفلام", "movies")), ("live", tr("القنوات", "channels"))) if c[k])
+    title = tr(f"محتوى اشتراك {name}: {what} | سمارت سوق", f"{name} subscription content: {what} | {BRAND_EN}")
+    desc = (tr(f"ما في اشتراك {name} قبل أن تشتري: {summary}. ابحث باسم أي مسلسل أو فيلم",
+               f"What’s in the {name} subscription before you buy: {summary}. Search any series or movie by name")
+            + (tr(" واعرف مواسم المسلسل وحلقات كل موسم", ", see each series’ seasons and episodes") if c["series"] else "")
+            + tr("، وتصفّح ما أضيف مؤخرًا. يُحدَّث تلقائيًا من قائمة الاشتراك نفسها.",
+                 ", and browse what was recently added. Updated automatically from the subscription’s own playlist."))
     index = code == 200 and not (q or gid or get("t") or get("view") or get("p") or get("all"))
-    body = (_header(base, srv, v, t, q, key) + '<main class="wrap">' + _servers(data_dir, key)
-            + (f'<h1 class="sr">محتوى اشتراك {_esc(name)}</h1>' if t == "" and not gid else "")
-            + '<div id="cres" aria-live="polite">' + (results_html(data_dir, key, srv, v, q) if q else "") + "</div>"
+    body = (_header(base, srv, v, t, q, key, tr, _alt(tr, key, query)) + '<main class="wrap">' + _servers(data_dir, key, tr)
+            + (f'<h1 class="sr">{tr(f"محتوى اشتراك {_esc(name)}", f"{_esc(name)} subscription content")}</h1>'
+               if t == "" and not gid else "")
+            + '<div id="cres" aria-live="polite">' + (results_html(data_dir, key, srv, v, q, tr) if q else "") + "</div>"
             + ad + head + '<div class="layout"><div class="col">' + "".join(main) + "</div>"
-            + f'<aside class="side">{"".join(side)}</aside></div></main>' + _footer(base, name, v, summary))
-    return code, _doc(title, desc, guide_pages.SITE + base, index, body, key, name, cta_link), 600
+            + f'<aside class="side">{"".join(side)}</aside></div></main>' + _footer(base, name, v, summary, tr))
+    pair = [(x.code, f"{guide_pages.SITE}{x.path}/{key}") for x in (AR, EN)]
+    return code, _doc(title, desc, guide_pages.SITE + base, index, body, key, name, cta_link, tr,
+                      pair + [("x-default", pair[0][1])]), 600
 
 
-def _summary_text(c):
+def _summary_text(c, tr=AR):
     """«3,210 مسلسلات بمواسمها و45,678 فيلمًا و4,321 قناة» — بما في السيرفر وحده."""
-    bits = [f"{C._count(c['series'], C.N_SERIES)} بمواسمها" if c["series"] else "",
-            C._count(c["movie"], C.N_MOVIES) if c["movie"] else "", C._count(c["live"], C.N_CHANNELS) if c["live"] else ""]
-    return " و".join(b for b in bits if b)
+    bits = [tr.count(c["series"], "series") + tr(" بمواسمها", " with their seasons") if c["series"] else "",
+            tr.count(c["movie"], "movie") if c["movie"] else "", tr.count(c["live"], "live") if c["live"] else ""]
+    return tr.join(b for b in bits if b)
 
 
-def _footer(base, name, v, summary):
-    at = league._when(v["at"]) if v["at"] else ""
-    return (f'<footer class="foot"><div class="wrap"><p><a href="/">دليل سمارت سوق</a> ← <a href="{_esc(base)}">محتوى '
-            f'{_esc(name)}</a></p><p>{_esc(summary)} — من قائمة الاشتراك نفسها'
-            + (f' · آخر تحديث: {at} بتوقيت السعودية' if at else "") + "</p></div></footer>")
+def _footer(base, name, v, summary, tr=AR):
+    at = _when(v["at"], tr) if v["at"] else ""
+    return (f'<footer class="foot"><div class="wrap"><p><a href="/">{tr("دليل سمارت سوق", BRAND_EN + " guide")}</a> '
+            f'{tr("←", "→")} <a href="{_esc(base)}">{tr("محتوى " + _esc(name), _esc(name) + " content")}</a></p>'
+            f'<p>{_esc(summary)} — {tr("من قائمة الاشتراك نفسها", "from the subscription’s own playlist")}'
+            + (tr(f" · آخر تحديث: {at} بتوقيت السعودية", f" · Last updated: {at} (Saudi time)") if at else "")
+            + "</p></div></footer>")
 
 
-def render_missing(data_dir, key=""):
+def render_missing(data_dir, key="", lang="ar"):
     """لا محتوى بعد (أو سيرفرٌ لا وجود له): صفحةٌ تدلّ على ما وُجد، لا تُفهرس ← (404، بايتات)."""
+    tr = lang_of(lang)
     others = [s for s in C.servers(data_dir) if s["key"] != key and C.has(data_dir, s["key"], s)]
-    links = "".join(f'<li><a class="link" href="{C.PATH}/{s["key"]}">{_logo(s["key"], s["name"], "lg sm")}محتوى {_esc(s["name"])}'
-                    '</a></li>' for s in others)
-    body = ('<main class="wrap"><section class="panel missing"><h1>محتوى الاشتراكات</h1>'
-            '<p>لم يُنشر محتوى هذا السيرفر بعد.</p>'
-            + (f'<p class="empty">وهذه السيرفرات منشورٌ محتواها:</p><ul>{links}</ul>' if links else "")
-            + '<div class="btns"><a class="btn" href="/#buy">ساعدني في الاختيار</a>'
-            '<a class="btn ghost" href="/">الدليل</a></div></section></main>')
-    return 404, _doc("محتوى الاشتراكات | سمارت سوق", "المسلسلات بمواسمها والأفلام والقنوات في كل اشتراك.",
-                     guide_pages.SITE + C.PATH, False, body, key, "", "/#buy")
+    links = "".join(f'<li><a class="link" href="{tr.path}/{s["key"]}">{_logo(s["key"], tr.name(s), "lg sm")}'
+                    f'{tr("محتوى " + _esc(tr.name(s)), _esc(tr.name(s)) + " content")}</a></li>' for s in others)
+    here = f"{tr.path}/{key}" if C._server(data_dir, key) else tr.path
+    other = f"{(AR if tr.en else EN).path}" + here[len(tr.path):]
+    body = (f'<main class="wrap"><section class="panel missing"><h1>{tr("محتوى الاشتراكات", "Subscription content")}</h1>'
+            f'<p>{tr("لم يُنشر محتوى هذا السيرفر بعد.", "This server’s content hasn’t been published yet.")}</p>'
+            + (f'<p class="empty">{tr("وهذه السيرفرات منشورٌ محتواها:", "These servers have published content:")}</p>'
+               f'<ul>{links}</ul>' if links else "")
+            + f'<div class="btns"><a class="btn" href="/#buy">{tr("ساعدني في الاختيار", "Help me choose")}</a>'
+            f'<a class="btn ghost" href="/">{tr("الدليل", "Guide")}</a>{_switch(tr, other)}</div></section></main>')
+    return 404, _doc(tr("محتوى الاشتراكات | سمارت سوق", f"Subscription content | {BRAND_EN}"),
+                     tr("المسلسلات بمواسمها والأفلام والقنوات في كل اشتراك.",
+                        "Series with their seasons, movies and channels in every subscription."),
+                     guide_pages.SITE + tr.path, False, body, key, "", "/#buy", tr)
 
 
 CSS = """
@@ -655,8 +843,12 @@ button{font:inherit;color:inherit}
 .search input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--ink);font:inherit;padding:11px 0}
 .search input::placeholder{color:var(--mute)}
 .search button{background:none;border:0;color:var(--mute);cursor:pointer;padding:4px;display:grid}
+.lang{display:inline-flex;align-items:center;gap:6px;flex:none;padding:8px 12px;border-radius:10px;border:1px solid var(--line);
+  color:var(--mute);font-weight:600;font-size:.9rem;white-space:nowrap}
+.lang:hover{color:var(--ink);border-color:var(--line2)}
+.lang .i{width:17px;height:17px}
 @media (max-width:900px){.top{position:static}.top .wrap{flex-wrap:wrap;gap:8px 12px;padding-block:10px}
-  .search{order:3;min-width:0;flex:1 1 100%}.nav{order:2;flex:1 1 100%}}
+  .search{order:3;min-width:0;flex:1 1 100%}.nav{order:2;flex:1 1 100%}.top .lang{order:1;margin-inline-start:auto}}
 .servers{display:flex;align-items:center;gap:10px;margin-top:16px;overflow-x:auto;scrollbar-width:none;padding:2px}
 .servers::-webkit-scrollbar{display:none}
 .servers .lbl{color:var(--mute);font-size:.88rem;flex:none}
@@ -813,7 +1005,7 @@ button{font:inherit;color:inherit}
   .adplans{gap:6px}.adplan{padding:12px 4px 8px;gap:4px;border-radius:12px}.adplan img{width:40px;height:40px;border-radius:9px}
   .adplan b{font-size:.74rem}.adplan small{display:none}.adplan em{font-size:.9rem}.adplan s{display:none}
   .adplan .off{top:4px;inset-inline-end:4px;font-size:.62rem;padding:0 4px}
-  .adbtns{margin-top:10px}.adbtns .btn{padding:10px 12px}.adbtns .ghost{flex:0 0 auto}}
+  .adbtns{margin-top:10px}.adbtns .btn{padding:10px 12px}.adbtns .ghost{flex:0 0 auto}.adbtns .wide{display:none}}
 /* الجانب */
 .side{display:flex;flex-direction:column;gap:16px;min-width:0}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
@@ -880,6 +1072,12 @@ button{font:inherit;color:inherit}
 footer.foot{margin:40px 0 0;padding:22px 0 30px;border-top:1px solid var(--line);color:var(--mute);font-size:.85rem}
 footer.foot p{margin:4px 0}
 footer.foot a{color:var(--acc)}
+/* الإنجليزية: من اليسار — وما لم يُكتب بخصائص البداية والنهاية ينقلب هنا */
+:root[dir=ltr] .brand small,:root[dir=ltr] .servers small{text-align:left}
+:root[dir=ltr] .card h3,:root[dir=ltr] .recent b,:root[dir=ltr] .hlist b,:root[dir=ltr] .slide h2,:root[dir=ltr] .sheet h2{text-align:left}
+:root[dir=ltr] .slide::after{background:linear-gradient(90deg,rgba(6,11,23,.92),rgba(6,11,23,.55) 55%,rgba(6,11,23,.15))}
+:root[dir=ltr] .arrow .i,:root[dir=ltr] .harrow .i{transform:scaleX(-1)}
+:root[dir=ltr] .ad{background:radial-gradient(520px 220px at 0 0,rgba(246,195,67,.16),transparent 62%),linear-gradient(135deg,#15305e,#0b1530)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 """
 
@@ -887,6 +1085,12 @@ JS = """
 (function(){
   var K = document.body.getAttribute("data-server"), NAME = document.body.getAttribute("data-name"),
       CTA = document.body.getAttribute("data-cta") || "/#buy";
+  // الإنجليزية على /en/content: نصوص النافذة، والصفحة من اليسار فالتالي إلى اليمين
+  var EN = document.documentElement.lang === "en", RTL = document.documentElement.dir !== "ltr";
+  var T = EN ? {kind: {movie: "Movie", series: "Series", live: "Channel"}, close: "Close", upd: "Updated ", add: "Added ",
+                sub: "Subscribe to "}
+             : {kind: {movie: "فيلم", series: "مسلسل", live: "قناة"}, close: "إغلاق", upd: "حُدّث ", add: "أضيف ",
+                sub: "اشترك في "};
   function $(s, r){ return (r || document).querySelector(s); }
   function $$(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
@@ -928,7 +1132,7 @@ JS = """
     hero.addEventListener("touchend", function(e){
       if (x0 === null) return;
       var dx = e.changedTouches[0].clientX - x0; x0 = null;
-      if (Math.abs(dx) > 40) { hero.dataset.swiped = "1"; show(cur + (dx > 0 ? 1 : -1)); play(); }
+      if (Math.abs(dx) > 40) { hero.dataset.swiped = "1"; show(cur + ((dx > 0) === RTL ? 1 : -1)); play(); }
     }, {passive: true});
     play();
   }
@@ -936,11 +1140,10 @@ JS = """
   document.addEventListener("click", function(e){
     var a = e.target.closest(".arrow"); if (!a) return;
     var box = $(".cards", a.closest(".row")); if (!box) return;
-    box.scrollBy({left: box.clientWidth * .85 * (a.classList.contains("next") ? -1 : 1), behavior: "smooth"});
+    box.scrollBy({left: box.clientWidth * .85 * (a.classList.contains("next") ? -1 : 1) * (RTL ? 1 : -1), behavior: "smooth"});
   });
   // نافذة التفاصيل
   var modal = $("#cx-modal"), last = null;
-  var KIND = {movie: "فيلم", series: "مسلسل", live: "قناة"};
   var hue = function(s){ var n = 0; for (var i = 0; i < s.length; i++) n += s.charCodeAt(i); return n * 37 % 360; };
   var ini = function(s){      // كـ _initials في الخادم
     var w = s.replace(/\\p{M}/gu, "").match(/[\\p{L}\\p{N}]+/gu) || [];
@@ -949,17 +1152,17 @@ JS = """
   };
   function open(d, from){
     var facts = [d.y, (d.g || []).join(" • ")].filter(Boolean).join(" · ");
-    $(".sheet", modal).innerHTML = '<button class="x" type="button" aria-label="إغلاق">✕</button><div class="cover"></div>'
+    $(".sheet", modal).innerHTML = '<button class="x" type="button" aria-label="' + T.close + '">✕</button><div class="cover"></div>'
       + '<div class="body"><div class="pos" style="--h:' + hue(d.n || "") + '"><span class="ph">' + esc(ini(d.n || "")) + '</span>'
       + (d.p ? '<img src="' + esc(d.p) + '" alt="">' : '') + '</div><div class="txt">'
-      + '<span class="kick">' + esc(KIND[d.k] || "") + (d.c ? ' · ' + esc(d.c) : '') + '</span>'
+      + '<span class="kick">' + esc(T.kind[d.k] || "") + (d.c ? ' · ' + esc(d.c) : '') + '</span>'
       + '<h2 id="cx-title" dir="auto">' + esc(d.n) + '</h2>' + (facts ? '<p class="facts">' + esc(facts) + '</p>' : '')
       + (d.r ? '<p class="rt">★ ' + esc(d.r) + '</p>' : '')
       + (d.ss ? '<p class="facts">' + esc(d.ss) + '</p>' : '')
       + (d.sc ? '<div class="seasons">' + d.sc.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '')
-      + (d.a ? '<p class="empty">' + (d.k === "series" ? "حُدّث " : "أضيف ") + esc(d.a) + '</p>' : '')
+      + (d.a ? '<p class="empty">' + (d.k === "series" ? T.upd : T.add) + esc(d.a) + '</p>' : '')
       + (d.d ? '<p class="plot">' + esc(d.d) + '</p>' : '')
-      + '<a class="btn" href="' + esc(CTA) + '" target="_blank" rel="noopener">اشترك في ' + esc(NAME) + '</a></div></div>';
+      + '<a class="btn" href="' + esc(CTA) + '" target="_blank" rel="noopener">' + T.sub + esc(NAME) + '</a></div></div>';
     if (d.b || d.p) $(".cover", modal).style.backgroundImage = "url(" + JSON.stringify(d.b || d.p) + ")";
     modal.hidden = false; document.body.style.overflow = "hidden"; last = from;
     $(".x", modal).focus();
@@ -977,15 +1180,17 @@ JS = """
   });
   modal.addEventListener("click", function(e){ if (e.target === modal || e.target.closest(".x")) close(); });
   // البحث مع الكتابة
-  var f = $(".search"), box = $("#cres");
+  var f = $(".search"), box = $("#cres"), sw = $(".top .lang");
   if (f && box) {
     var inp = f.elements.q, timer2 = 0, lastq = inp.value.trim(), seq = 0;
     var run = function(){
       var v = inp.value.trim(); if (v === lastq) return; lastq = v;
-      try { history.replaceState(null, "", v ? location.pathname + "?q=" + encodeURIComponent(v) : location.pathname); } catch (e) {}
+      var at = v ? "?q=" + encodeURIComponent(v) : "";
+      try { history.replaceState(null, "", location.pathname + at); } catch (e) {}
+      if (sw) sw.href = sw.pathname + at;          // واللغة الأخرى على البحث نفسه
       if (v.replace(/\\s/g, "").length < 2) { box.innerHTML = ""; return; }
       var n = ++seq; box.setAttribute("aria-busy", "true");
-      fetch("/api/content/search?s=" + K + "&q=" + encodeURIComponent(v))
+      fetch("/api/content/search?s=" + K + (EN ? "&lang=en" : "") + "&q=" + encodeURIComponent(v))
         .then(function(r){ return r.json(); })
         .then(function(d){ if (n === seq && d && d.ok) { box.innerHTML = d.html; if (v) box.scrollIntoView({block: "nearest"}); } })
         .catch(function(){})
@@ -1003,16 +1208,20 @@ JS = """
 """
 
 
-def _doc(title, desc, url, index, body, key, name, cta):
+def _doc(title, desc, url, index, body, key, name, cta, tr=AR, alts=()):
+    """الصفحة كاملة. ‏alts: ‏[(اللغة، الرابط)] للصفحة نفسها بلغتيها (‏hreflang) — للمفهرَسة وحدها."""
     site = guide_pages.SITE
     crumbs = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
-        {"@type": "ListItem", "position": 1, "name": "دليل سمارت سوق", "item": site + "/"},
+        {"@type": "ListItem", "position": 1, "name": tr("دليل سمارت سوق", BRAND_EN + " guide"), "item": site + "/"},
         {"@type": "ListItem", "position": 2, "name": title.split(" | ")[0].split(":")[0], "item": url}]}
     ld = json.dumps(crumbs, ensure_ascii=False).replace("</", "<\\/")     # اسم سيرفرٍ فيه «</script>» لا يقطع السكربت
     robots = (f'<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">\n'
-              f'<link rel="canonical" href="{url}">' if index else '<meta name="robots" content="noindex, follow">')
+              f'<link rel="canonical" href="{url}">' + "".join(f'\n<link rel="alternate" hreflang="{h}" href="{u}">'
+                                                                for h, u in alts)
+              if index else '<meta name="robots" content="noindex, follow">')
+    locale, other = tr(("ar_SA", "en_US"), ("en_US", "ar_SA"))
     return f"""<!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="{tr.code}" dir="{tr.dir}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1022,8 +1231,9 @@ def _doc(title, desc, url, index, body, key, name, cta):
 <meta name="theme-color" content="#060b17">
 <meta name="color-scheme" content="dark">
 <meta property="og:type" content="website">
-<meta property="og:locale" content="ar_SA">
-<meta property="og:site_name" content="سمارت سوق">
+<meta property="og:locale" content="{locale}">
+<meta property="og:locale:alternate" content="{other}">
+<meta property="og:site_name" content="{tr("سمارت سوق", BRAND_EN)}">
 <meta property="og:title" content="{_esc(title)}">
 <meta property="og:description" content="{_esc(desc)}">
 <meta property="og:url" content="{url}">

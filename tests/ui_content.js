@@ -5,8 +5,10 @@
 // homepage, menu, buy flow and plans screen link the page only once a server has content; the hero
 // carousel, the details window with each season's episodes, "أضيف مؤخرًا", row arrows, a category grid
 // with pages, the filters, search as you type (and where else a name exists), panel images through our
-// server; nothing overflows a 360px screen. No internet: the playlist is written by the test and the
-// Xtream panel is tests/mock_xtream.py (TMDB posters fail offline and fall back to initials).
+// server; nothing overflows a 360px screen. And the same page in English (/en/content): left to right, the language
+// switch keeping the section and search, the details window, row arrows and swipes the other way round, search in
+// English, a compact ad on 360px; the admin saves a server's English name. No internet: the playlist is written by
+// the test and the Xtream panel is tests/mock_xtream.py (TMDB posters fail offline and fall back to initials).
 //   NODE_PATH=<dir with playwright-core> node tests/ui_content.js     (SHOTS_DIR=… for screenshots)
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
@@ -125,6 +127,18 @@ function konList(more) {
     ap.once('dialog', dlg => dlg.accept());       // «مسح محتوى هذا السيرفر؟»
     await ap.click('[data-k="kon"] [data-act="clear"]');
     await ap.waitForFunction(() => !document.querySelector('[data-k="kon"] .warnline'), null, {timeout: 8000});
+    await ap.click('[data-k="kon"] [data-act="edit"]');
+    check('«تعديل»: الاسم بالإنجليزية ورابط الصفحة الإنجليزية', await ap.getAttribute('[data-k="kon"] [data-e="en"]', 'value') === 'Kon'
+          && await ap.$$eval('[data-k="kon"] [data-editbox] input[readonly]', i => i.map(x => x.value).join('|'))
+             === 'https://guide.ssouq.com/content/kon|https://guide.ssouq.com/en/content/kon');
+    await ap.fill('[data-k="kon"] [data-e="en"]', 'Kon TV');
+    await ap.click('[data-k="kon"] [data-act="save"]');
+    await ap.waitForFunction(() => document.querySelector('[data-k="kon"] [data-msg]').textContent.trim(), null, {timeout: 8000});
+    const konEn = await ap.evaluate(async () => (await (await fetch(location.pathname.replace(/\/content$/, '/api/content/admin')))
+      .json()).servers.find(s => s.key === 'kon').en);
+    check('و«حفظ» يحفظه (كان يُرفض «سيرفر غير معروف»)', (await ap.textContent('[data-k="kon"] [data-msg]')) === 'حُفظ'
+          && konEn === 'Kon TV' && await ap.$eval('[data-k="kon"] [data-editbox]', e => e.hidden),
+          await ap.textContent('[data-k="kon"] [data-msg]'));
 
     console.log('تنبيه الكبار');
     check('بلا بريدٍ ولا رقم، ويقول ما ينقص', await ap.$eval('#alert', e => !e.hidden) && await ap.inputValue('#aMail') === ''
@@ -320,6 +334,97 @@ function konList(more) {
     });
     check('الواجهة بعرض الشاشة وتحتها الأعداد', tl.w <= 360 && tl.top, JSON.stringify(tl));
     await shot(page, 'content-mobile');
+
+    console.log('الصفحة الإنجليزية (/en/content)');
+    await dp.goto(APP + '/content/smart?t=movie');
+    await dp.click('.top .lang');
+    await dp.waitForURL(u => u.pathname === '/en/content/smart' && u.search === '?t=movie', {waitUntil: 'domcontentloaded'});
+    check('زرّ English يفتح الصفحة نفسها بالإنجليزية ومن اليسار', await dp.evaluate(() =>
+      document.documentElement.lang === 'en' && document.documentElement.dir === 'ltr')
+      && (await dp.textContent('.kinds a[aria-current]')).includes('Movies'));
+    const ebox = dp.locator('.row .cards').first();
+    await dp.locator('.row .arrow.next').first().click();
+    await dp.waitForFunction(() => document.querySelector('.row .cards').scrollLeft > 0, null, {timeout: 4000}).catch(() => {});
+    check('وسهم «التالي» يمرّر الصفّ إلى اليمين', await ebox.evaluate(b => b.scrollLeft) > 0);
+    await dp.goto(APP + '/en/content/smart');
+    check('الأعداد بالإنجليزية', (await dp.textContent('.stats')).replace(/\s/g, '').includes('2,500movies')
+          && (await dp.textContent('.stats')).replace(/\s/g, '').includes('2series'));
+    const ha = await dp.evaluate(() => {
+      const h = document.querySelector('.hero').getBoundingClientRect(), n = document.querySelector('.hero .harrow.next').getBoundingClientRect();
+      return {right: n.left > h.left + h.width / 2, first: document.querySelector('.hero .slide.on h2').textContent};
+    });
+    await dp.click('.hero .harrow.next');
+    check('الواجهة: «التالي» على اليمين ويتقدّم', ha.right && await dp.$eval('.hero .dots [aria-current]', b => b.dataset.go) === '1',
+          JSON.stringify(ha));
+    await dp.locator('.row .card', {hasText: 'Breaking Bad'}).first().click();
+    await dp.waitForSelector('#cx-modal:not([hidden])');
+    const eseasons = await dp.$$eval('#cx-modal .seasons span', s => s.map(x => x.textContent));
+    check('النافذة بالإنجليزية: المواسم وحلقاتها وزرّ الاشتراك', eseasons.join('|') === 'Season 1 (8 episodes)|Season 2 (8 episodes)|Season 3 (8 episodes)'
+          && (await dp.textContent('#cx-modal')).includes('3 seasons · 24 episodes') && (await dp.textContent('#cx-modal .kick')).startsWith('Series')
+          && (await dp.textContent('#cx-modal .btn')) === 'Subscribe to Smart' && await dp.getAttribute('#cx-modal .x', 'aria-label') === 'Close',
+          eseasons.join('|'));
+    await dp.keyboard.press('Escape');
+    await dp.fill('.search input', 'عثم');
+    await dp.waitForSelector('#cres .results', {timeout: 8000});
+    check('البحث مع الكتابة بالإنجليزية', (await dp.textContent('#cres h2')).startsWith('Results for “عثم” in Smart')
+          && (await dp.textContent('#cres')).includes('المؤسس عثمان') && dp.url().endsWith('/en/content/smart?q=' + encodeURIComponent('عثم')),
+          await dp.textContent('#cres h2'));
+    check('وزرّ العربية على البحث نفسه', (await dp.getAttribute('.top .lang', 'href')) === '/content/smart?q=' + encodeURIComponent('عثم'),
+          await dp.getAttribute('.top .lang', 'href'));
+    await dp.fill('.search input', 'breaking');
+    await dp.waitForFunction(() => document.querySelector('#cres h2').textContent.includes('“breaking”')
+      && document.querySelector('#cres').textContent.includes('Also on') && location.search === '?q=breaking', null, {timeout: 8000});
+    check('وأين يوجد في السيرفرات الأخرى', (await dp.getAttribute('#cres .other a', 'href')) === '/en/content/falcon?q=breaking'
+          && (await dp.textContent('#cres .other')).includes('Falcon'));
+    await dp.click('.top .lang');
+    await dp.waitForURL(u => u.pathname === '/content/smart' && u.search === '?q=breaking', {waitUntil: 'domcontentloaded'});
+    check('والعودة إلى العربية بالبحث نفسه', await dp.evaluate(() => document.documentElement.dir === 'rtl')
+          && (await dp.textContent('#cres')).includes('نتائج «breaking»'));
+    await dp.goto(APP + '/en/content/falcon');
+    await dp.locator('.card', {hasText: 'F1 The Movie'}).first().click();
+    await dp.waitForSelector('#cx-modal:not([hidden])');
+    const efm = await dp.textContent('#cx-modal');
+    check('سيرفرٌ مُثرًى: تاريخ الإضافة والتقييم بالإنجليزية', efm.includes('Added yesterday') && efm.includes('★ 7.8')
+          && efm.includes('Subscribe to Falcon'), efm);
+    await dp.keyboard.press('Escape');
+    await dp.goto(APP + '/en/content/smart?t=movie');
+    await dp.click('.row .more');
+    await dp.waitForURL(/g=/);
+    check('«View all»: القسم شبكةً بصفحاتها', await dp.$$eval('.col .grid .card', c => c.length) === 60
+          && (await dp.textContent('.pager')).includes('Page 1 of 42'));
+    await dp.click('.pager a:has-text("Next")');
+    await dp.waitForURL(/p=2/);
+    check('وNext', dp.url().includes('/en/content/smart?') && await dp.$eval('.col .grid .card h3', h => h.textContent) === 'Film 2439');
+    await shot(dp, 'content-en-desktop');
+
+    for (const u of ['/en/content/smart', '/en/content/smart?t=movie', '/en/content/smart?t=new', '/en/content/falcon?t=series',
+                     '/en/content/smart?t=movie&view=grid&y=2020', '/en/content/falcon']) {
+      await page.goto(APP + u);
+      check(`بالإنجليزية بلا تمرير أفقي على 360px: ${u}`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    }
+    const em = await page.evaluate(() => {
+      const nav = document.querySelector('.top .nav'), a = document.querySelector('main > .ad'), hero = document.querySelector('.hero');
+      const btns = [...a.querySelectorAll('.adbtns .btn')].map(b => b.getBoundingClientRect());
+      const r = a.getBoundingClientRect();
+      return {nav: nav.scrollWidth <= nav.clientWidth, row: btns.length === 2 && Math.round(btns[0].top) === Math.round(btns[1].top),
+              h: Math.round(r.height), above: r.bottom <= hero.getBoundingClientRect().top, sub: a.querySelector('.adbtns .btn').innerText};
+    });
+    check('على الجوال: الرأس يتّسع لأقسامه، والإعلان مختصرٌ بزرّيه في سطر', em.nav && em.row && em.h < 420 && em.above
+          && em.sub === 'Subscribe', JSON.stringify(em));
+    const swipe = dx => page.evaluate(dx => {
+      const h = document.querySelector('.hero');
+      const touch = (type, x) => {
+        const t = new Touch({identifier: 1, target: h, clientX: x, clientY: 120});
+        h.dispatchEvent(new TouchEvent(type, {touches: type === 'touchend' ? [] : [t], changedTouches: [t], bubbles: true}));
+      };
+      touch('touchstart', 200); touch('touchend', 200 + dx); delete h.dataset.swiped;
+      return +document.querySelector('.hero .dots [aria-current]').dataset.go;
+    }, dx);
+    check('السحب إلى اليسار يتقدّم بالإنجليزية', await swipe(-120) === 1 && await swipe(120) === 0);
+    await page.goto(APP + '/content/falcon');
+    check('وبالعربية السحب إلى اليمين يتقدّم', await swipe(120) === 1 && await swipe(-120) === 0);
+    await page.goto(APP + '/en/content/falcon');
+    await shot(page, 'content-en-mobile');
 
     console.log('قناة واتساب: «أضيف مؤخرًا» كل يوم');
     const auth = {Authorization: 'Basic ' + Buffer.from('admin:envpass123').toString('base64')};
