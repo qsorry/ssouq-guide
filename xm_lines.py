@@ -2355,6 +2355,7 @@ def start_content_worker():
     content.channel_sender = content_channel_send   # منشور القناة: من رقم المسابقة
     store_sync.notifier = content_send      # منتجٌ لم تُكتب أعداده وحده، أو رمز سلة لم يُجدَّد: بالبريد وواتساب
     store_sync.fallback_token = content_store_token
+    content.warm(DATA_DIR)                  # عروض السيرفرات تُبنى الآن في الخلفية، فلا ينتظرها بعد النشر أول زائرٍ ولا صفحة المدير
     threading.Thread(target=_content_loop, daemon=True).start()
 
 

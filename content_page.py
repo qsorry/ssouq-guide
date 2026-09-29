@@ -194,7 +194,7 @@ def _header(base, srv, v, t, q, key):
 
 
 def _servers(data_dir, key):
-    shown = [s for s in C.servers(data_dir) if s["key"] == key or C._has(C._view(data_dir, s["key"])[1])]
+    shown = [s for s in C.servers(data_dir) if s["key"] == key or C.has(data_dir, s["key"], s)]
     if len(shown) < 2:
         return ""
     return ('<nav class="servers" aria-label="السيرفرات"><span class="lbl">السيرفر:</span>' + "".join(
@@ -606,7 +606,7 @@ def _footer(base, name, v, summary):
 
 def render_missing(data_dir, key=""):
     """لا محتوى بعد (أو سيرفرٌ لا وجود له): صفحةٌ تدلّ على ما وُجد، لا تُفهرس ← (404، بايتات)."""
-    others = [s for s in C.servers(data_dir) if s["key"] != key and C._has(C._view(data_dir, s["key"])[1])]
+    others = [s for s in C.servers(data_dir) if s["key"] != key and C.has(data_dir, s["key"], s)]
     links = "".join(f'<li><a class="link" href="{C.PATH}/{s["key"]}">{_logo(s["key"], s["name"], "lg sm")}محتوى {_esc(s["name"])}'
                     '</a></li>' for s in others)
     body = ('<main class="wrap"><section class="panel missing"><h1>محتوى الاشتراكات</h1>'
