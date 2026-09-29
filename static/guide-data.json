@@ -71,9 +71,9 @@
      "html": "<p>افتح التطبيق فتظهر شاشة اختيار طريقة الدخول. اختر الخيار المحدَّد في الصورة: <b dir=\"ltr\">LOGIN WITH XTREAM CODES API</b>. ولا تختر <b dir=\"ltr\">LOAD YOUR PLAYLIST OR FILE/URL</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
     },
     {
-     "title": "أدخل بيانات الاشتراك",
-     "img": "/static/img/smarters-login.jpg",
-     "html": "<p>عبّئ الخانات بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة السر</code></div><div class=\"f\"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما وصلك بدون مسافات.</div><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+     "title": "أدخل بيانات الاشتراك ثم «إضافة مستخدم»",
+     "img": "/static/img/smarters-pro-login.webp",
+     "html": "<p>تظهر شاشة <b>أدخل بيانات الإشتراك الخاصة بك</b> (<b dir=\"ltr\">Enter Your Login Details</b>). اختر كل خانة واكتب فيها:</p><div class=\"fields\"><div class=\"f\"><span>أي إسم · <bdi>Any Name</bdi></span><code>أي اسم، مثلًا ssouq</code></div><div class=\"f\"><span>إسم المستخدم · <bdi>Username</bdi></span><code>اسم المستخدم</code></div><div class=\"f\"><span>كلمه السر · <bdi>Password</bdi></span><code>كلمة المرور</code></div><div class=\"f\"><span dir=\"ltr\">http://url_here.com:port</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b>إضافة مستخدم</b> (<b dir=\"ltr\">ADD USER</b>). يفتح التطبيق شاشته الرئيسية ويحمّل القنوات والأفلام والمسلسلات أول مرة، فانتظر حتى يكتمل.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة المرور في بيانات الاشتراك. انسخه كما وصلك بدون مسافات.</div><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
     }
    ]
   }
@@ -102,9 +102,34 @@
   "variants": {
    "mr7": [
     {
-     "title": "حمّل تطبيق MR7 TV عبر Downloader",
-     "img": "/static/img/tv-downloader.png",
-     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/mr7.webp\" alt=\"أيقونة MR7 TV\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">MR7 TV</b><small>عبر Downloader · تطبيقنا الخاص</small></span></div><ol><li>حمّل تطبيق <b dir=\"ltr\">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir=\"ltr\">MR7 TV</b>. ثبّته وافتحه.</p>"
+     "title": "حمّل تطبيق Downloader من Google Play",
+     "img": "/static/img/tv-dl-play.webp",
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/downloader.webp\" alt=\"أيقونة Downloader by AFTVnews\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">Downloader by AFTVnews</b><small>من Google Play · مجاني</small></span></div><ol><li>افتح متجر <b dir=\"ltr\">Google Play</b> في الشاشة وابحث عن <b dir=\"ltr\">Downloader</b>.</li><li>اختر التطبيق البرتقالي <b dir=\"ltr\">Downloader by AFTVnews</b> كما في الصورة، واضغط <b>تثبيت</b> ثم <b>فتح</b>.</li></ol><div class=\"note\">في المتجر تطبيقات مقلّدة بالاسم نفسه: الصحيح من <b dir=\"ltr\">AFTVnews</b> وأيقونته حرف D برتقالي، وهو مجاني. وإن كان عندك من قبل فانتقل للخطوة التالية.</div>"
+    },
+    {
+     "title": "افتح Downloader واضغط OK",
+     "img": "/static/img/tv-dl-welcome.webp",
+     "html": "<p>أول مرة تفتح <b dir=\"ltr\">Downloader</b> تظهر نافذة <b dir=\"ltr\">Welcome to Downloader</b>: اضغط <b dir=\"ltr\">OK</b>.</p><div class=\"note\">إن طلب إذنًا للوصول إلى الملفات فاضغط <b>سماح</b> (<b dir=\"ltr\">Allow</b>)، فهو يحتاجه ليحفظ ملف التطبيق.</div>"
+    },
+    {
+     "title": "اضغط # واكتب الكود 5574841",
+     "img": "/static/img/tv-dl-code-5574841.webp",
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/mr7.webp\" alt=\"أيقونة MR7 TV\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">MR7 TV</b><small>بالكود في Downloader · تطبيقنا الخاص</small></span></div><ol><li>في Downloader اضغط زر <b dir=\"ltr\">#</b> أعلى الشاشة بجانب خانة العنوان، فتظهر لوحة أرقام.</li><li>اكتب الكود:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><button class=\"codecopy\" type=\"button\" data-copy=\"5574841\"><code dir=\"ltr\">5574841</code><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"/><path d=\"M5 15V5a2 2 0 0 1 2-2h8\"/></svg><em>نسخ</em></button></div></div><ol start=\"3\"><li>ثم اضغط <b dir=\"ltr\">Load</b> فيبدأ تحميل التطبيق. انتظر حتى يكتمل.</li></ol><div class=\"note\">أو اكتب الكود في خانة العنوان نفسها واضغط <b dir=\"ltr\">Go</b> — النتيجة واحدة.</div>"
+    },
+    {
+     "title": "ظهرت رسالة الأمان؟ اضغط «الإعدادات»",
+     "img": "/static/img/tv-dl-blocked.webp",
+     "html": "<p>بعد التحميل تظهر رسالة: <b>«لأغراض الأمان، غير مسموح حاليًا لجهاز التلفزيون الذي تستخدمه بتثبيت تطبيقات غير معروفة من هذا المصدر»</b>.</p><p>هذا طبيعي: الشاشة تطلب موافقتك على أن يثبّت <b dir=\"ltr\">Downloader</b> التطبيقات، <b>مرة واحدة فقط</b>. اضغط <b>الإعدادات</b> (<b dir=\"ltr\">Settings</b>)، لا «إلغاء».</p><div class=\"note\">لم تظهر الرسالة وظهرت نافذة «هل تريد تثبيت هذا التطبيق؟» مباشرة؟ فقد وافقت على Downloader من قبل: انتقل إلى خطوة التثبيت. وإن ضغطت «إلغاء» بالخطأ فأعد الكود في Downloader.</div><div class=\"note\"><p><b>شاشات Google TV:</b> إن ظهرت رسالة أن تثبيت التطبيقات من مصادر غير معروفة معطّل ولم يظهر زر «الإعدادات»، فعّل وضع المطوّر مرة واحدة: <b>الإعدادات ← النظام ← لمحة</b>، ثم اضغط على <b>إصدار نظام تشغيل Android TV</b> سبع مرات حتى تظهر <b>«لقد أصبحت الآن مطور برامج!»</b>، ثم أعد الكود في Downloader.</p><img src=\"/static/img/tv-dl-devmode.webp\" alt=\"صفحة لمحة في إعدادات Google TV: إصدار نظام تشغيل Android TV ورسالة لقد أصبحت الآن مطور برامج\" loading=\"lazy\"></div>"
+    },
+    {
+     "title": "فعّل Downloader ثم ارجع",
+     "img": "/static/img/tv-dl-allow.webp",
+     "html": "<p>تُفتح صفحة <b>تثبيت التطبيقات غير المعروفة</b> (<b dir=\"ltr\">Install unknown apps</b>). اضغط على <b dir=\"ltr\">Downloader</b> فيتحوّل زرّه إلى الأزرق وتصير تحته <b>«تطبيق مسموح به»</b> (<b dir=\"ltr\">Allowed</b>).</p><p>ثم اضغط زر <b>الرجوع</b> في الريموت مرة واحدة فتعود إلى التثبيت.</p><div class=\"note\">الموافقة لـ Downloader وحده ومرة واحدة: ما تثبّته به بعد ذلك لا يسألك عنها. وتلغيها متى شئت من الإعدادات ← <b>الأمان والقيود</b> ← <b>مصادر غير معروفة</b>.</div>"
+    },
+    {
+     "title": "اضغط «تثبيت» ثم «فتح»",
+     "img": "/static/img/tv-dl-install-mr7.webp",
+     "html": "<p>تعود إلى نافذة <b dir=\"ltr\">MR7 TV</b> وفيها: <b>هل تريد تثبيت هذا التطبيق؟</b> اضغط <b>تثبيت</b> (<b dir=\"ltr\">Install</b>) وانتظر لحظات.</p><p>حين تظهر <b>«تم تثبيت التطبيق.»</b> اضغط <b>فتح</b> (<b dir=\"ltr\">Open</b>).</p><img src=\"/static/img/tv-dl-done-mr7.webp\" alt=\"نافذة تم تثبيت التطبيق وزر فتح\" loading=\"lazy\"><div class=\"note\">إن ظهرت رسالة من <b>Play للحماية</b> (<b dir=\"ltr\">Play Protect</b>) فاختر <b>فحص التطبيق</b> ثم أكمل التثبيت، أو افتح التفاصيل واختر التثبيت على أي حال (<b dir=\"ltr\">Install anyway</b>).</div><div class=\"note\">تجد <b dir=\"ltr\">MR7 TV</b> بعد ذلك في تطبيقات الشاشة. ولتوفير المساحة احذف ملف التثبيت من Downloader ← <b dir=\"ltr\">Files</b>.</div>"
     },
     {
      "title": "سجّل الدخول",
@@ -114,24 +139,54 @@
    ],
    "smarters": [
     {
-     "title": "حمّل IPTV Smarters Pro عبر Downloader",
-     "img": "/static/img/tv-downloader.png",
-     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>عبر Downloader · مجاني</small></span></div><ol><li>من متجر التطبيقات في الشاشة حمّل <b dir=\"ltr\">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><code>8744201</code></div></div>"
+     "title": "حمّل تطبيق Downloader من Google Play",
+     "img": "/static/img/tv-dl-play.webp",
+     "html": "<div class=\"vid\"><video src=\"/static/video/smarters-tv-ar.mp4?v=1\" poster=\"/static/video/smarters-tv-ar.webp?v=1\" controls playsinline preload=\"none\" width=\"720\" height=\"1280\"></video><p class=\"sub\">شاهد الخطوات كلها في أقل من دقيقتين، ثم اتبعها هنا واحدة واحدة.</p></div><div class=\"appbox\"><img src=\"/static/img/apps/downloader.webp\" alt=\"أيقونة Downloader by AFTVnews\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">Downloader by AFTVnews</b><small>من Google Play · مجاني</small></span></div><ol><li>افتح متجر <b dir=\"ltr\">Google Play</b> في الشاشة وابحث عن <b dir=\"ltr\">Downloader</b>.</li><li>اختر التطبيق البرتقالي <b dir=\"ltr\">Downloader by AFTVnews</b> كما في الصورة، واضغط <b>تثبيت</b> ثم <b>فتح</b>.</li></ol><div class=\"note\">في المتجر تطبيقات مقلّدة بالاسم نفسه: الصحيح من <b dir=\"ltr\">AFTVnews</b> وأيقونته حرف D برتقالي، وهو مجاني. وإن كان عندك من قبل فانتقل للخطوة التالية.</div>"
     },
     {
-     "title": "اسمح بالتثبيت ثم ثبّت التطبيق",
-     "img": "/static/img/smarters-tv-install.jpg",
-     "html": "<ol><li>عند التثبيت ستظهر رسالة \"غير مسموح بتثبيت تطبيقات غير معروفة\". اضغط <b>الإعدادات</b>.</li><li>فعّل زر السماح لتطبيق <b dir=\"ltr\">Downloader</b>.</li><li>ارجع وافتح Downloader من جديد، ستجد الملف في خانة <b dir=\"ltr\">Files</b>. اضغطه وثبّت التطبيق.</li></ol><p class=\"sub\">هذه النسخة المجانية بدون أي رسوم.</p>"
+     "title": "افتح Downloader واضغط OK",
+     "img": "/static/img/tv-dl-welcome.webp",
+     "html": "<p>أول مرة تفتح <b dir=\"ltr\">Downloader</b> تظهر نافذة <b dir=\"ltr\">Welcome to Downloader</b>: اضغط <b dir=\"ltr\">OK</b>.</p><div class=\"note\">إن طلب إذنًا للوصول إلى الملفات فاضغط <b>سماح</b> (<b dir=\"ltr\">Allow</b>)، فهو يحتاجه ليحفظ ملف التطبيق.</div>"
     },
     {
-     "title": "اختر LOGIN WITH XTREAM CODES API",
-     "img": "/static/img/smarters-android-type.webp",
-     "html": "<p>افتح التطبيق فتظهر شاشة اختيار طريقة الدخول. اختر الخيار المحدَّد في الصورة: <b dir=\"ltr\">LOGIN WITH XTREAM CODES API</b>. ولا تختر <b dir=\"ltr\">LOAD YOUR PLAYLIST OR FILE/URL</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>"
+     "title": "اضغط # واكتب الكود 8744201",
+     "img": "/static/img/tv-dl-code-8744201.webp",
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/smarters-pro.webp\" alt=\"أيقونة IPTV Smarters Pro\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">IPTV Smarters Pro</b><small>بالكود في Downloader · مجاني</small></span></div><ol><li>في Downloader اضغط زر <b dir=\"ltr\">#</b> أعلى الشاشة بجانب خانة العنوان، فتظهر لوحة أرقام.</li><li>اكتب الكود:</li></ol><div class=\"fields\"><div class=\"f\"><span>كود التحميل</span><button class=\"codecopy\" type=\"button\" data-copy=\"8744201\"><code dir=\"ltr\">8744201</code><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"/><path d=\"M5 15V5a2 2 0 0 1 2-2h8\"/></svg><em>نسخ</em></button></div></div><ol start=\"3\"><li>ثم اضغط <b dir=\"ltr\">Load</b> فيبدأ تحميل التطبيق (حجمه قرابة 84 ميغابايت). انتظر حتى يكتمل.</li></ol><div class=\"note\">أو اكتب الكود في خانة العنوان نفسها واضغط <b dir=\"ltr\">Go</b> — النتيجة واحدة.</div>"
     },
     {
-     "title": "أدخل بيانات الاشتراك",
-     "img": "/static/img/smarters-login.jpg",
-     "html": "<p>عبّئ الخانات بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class=\"f\"><span>Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span>Password</span><code>كلمة السر</code></div><div class=\"f\"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir=\"ltr\">ADD PLAYLIST</b>.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما وصلك بدون مسافات.</div><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+     "title": "ظهرت رسالة الأمان؟ اضغط «الإعدادات»",
+     "img": "/static/img/tv-dl-blocked.webp",
+     "html": "<p>بعد التحميل تظهر رسالة: <b>«لأغراض الأمان، غير مسموح حاليًا لجهاز التلفزيون الذي تستخدمه بتثبيت تطبيقات غير معروفة من هذا المصدر»</b>.</p><p>هذا طبيعي: الشاشة تطلب موافقتك على أن يثبّت <b dir=\"ltr\">Downloader</b> التطبيقات، <b>مرة واحدة فقط</b>. اضغط <b>الإعدادات</b> (<b dir=\"ltr\">Settings</b>)، لا «إلغاء».</p><div class=\"note\">لم تظهر الرسالة وظهرت نافذة «هل تريد تثبيت هذا التطبيق؟» مباشرة؟ فقد وافقت على Downloader من قبل: انتقل إلى خطوة التثبيت. وإن ضغطت «إلغاء» بالخطأ فأعد الكود في Downloader.</div><div class=\"note\"><p><b>شاشات Google TV:</b> إن ظهرت رسالة أن تثبيت التطبيقات من مصادر غير معروفة معطّل ولم يظهر زر «الإعدادات»، فعّل وضع المطوّر مرة واحدة: <b>الإعدادات ← النظام ← لمحة</b>، ثم اضغط على <b>إصدار نظام تشغيل Android TV</b> سبع مرات حتى تظهر <b>«لقد أصبحت الآن مطور برامج!»</b>، ثم أعد الكود في Downloader.</p><img src=\"/static/img/tv-dl-devmode.webp\" alt=\"صفحة لمحة في إعدادات Google TV: إصدار نظام تشغيل Android TV ورسالة لقد أصبحت الآن مطور برامج\" loading=\"lazy\"></div>"
+    },
+    {
+     "title": "فعّل Downloader ثم ارجع",
+     "img": "/static/img/tv-dl-allow.webp",
+     "html": "<p>تُفتح صفحة <b>تثبيت التطبيقات غير المعروفة</b> (<b dir=\"ltr\">Install unknown apps</b>). اضغط على <b dir=\"ltr\">Downloader</b> فيتحوّل زرّه إلى الأزرق وتصير تحته <b>«تطبيق مسموح به»</b> (<b dir=\"ltr\">Allowed</b>).</p><p>ثم اضغط زر <b>الرجوع</b> في الريموت مرة واحدة فتعود إلى التثبيت.</p><div class=\"note\">الموافقة لـ Downloader وحده ومرة واحدة: ما تثبّته به بعد ذلك لا يسألك عنها. وتلغيها متى شئت من الإعدادات ← <b>الأمان والقيود</b> ← <b>مصادر غير معروفة</b>.</div>"
+    },
+    {
+     "title": "اضغط «تثبيت» ثم «فتح»",
+     "img": "/static/img/tv-dl-install-smarters.webp",
+     "html": "<p>تعود إلى نافذة <b dir=\"ltr\">IPTV Smarters Pro</b> وفيها: <b>هل تريد تثبيت هذا التطبيق؟</b> اضغط <b>تثبيت</b> (<b dir=\"ltr\">Install</b>) وانتظر لحظات.</p><p>حين تظهر <b>«تم تثبيت التطبيق.»</b> اضغط <b>فتح</b> (<b dir=\"ltr\">Open</b>).</p><img src=\"/static/img/tv-dl-done-smarters.webp\" alt=\"نافذة تم تثبيت التطبيق وزر فتح\" loading=\"lazy\"><div class=\"note\">إن ظهرت رسالة من <b>Play للحماية</b> (<b dir=\"ltr\">Play Protect</b>) فاختر <b>فحص التطبيق</b> ثم أكمل التثبيت، أو افتح التفاصيل واختر التثبيت على أي حال (<b dir=\"ltr\">Install anyway</b>).</div><div class=\"note\">تجد <b dir=\"ltr\">IPTV Smarters Pro</b> بعد ذلك في تطبيقات الشاشة. ولتوفير المساحة احذف ملف التثبيت من Downloader ← <b dir=\"ltr\">Files</b>.</div>"
+    },
+    {
+     "title": "اختر TV ثم «حفظ»",
+     "img": "/static/img/tv-smarters-device.webp",
+     "html": "<p>أول مرة يُفتح <b dir=\"ltr\">IPTV Smarters Pro</b> يسأل عن نوع جهازك في شاشة <b dir=\"ltr\">Device Option</b>. اختر <b dir=\"ltr\">TV</b> ثم اضغط <b>حفظ</b> (<b dir=\"ltr\">SAVE</b>).</p>"
+    },
+    {
+     "title": "اضغط «قبول» أسفل الشروط",
+     "img": "/static/img/tv-smarters-terms.webp",
+     "html": "<p>تظهر صفحة بيضاء بشروط الاستخدام (<b dir=\"ltr\">LICENSE AGREEMENT</b>). انزل بسهم الريموت إلى أسفلها واضغط <b>قبول</b> (<b dir=\"ltr\">ACCEPT</b>).</p>"
+    },
+    {
+     "title": "اختر XTREAM CODES API",
+     "img": "/static/img/tv-smarters-route.webp",
+     "html": "<p>من الخيارين اختر الثاني: <b>تسجيل الدخول باستخدام <bdi>XTREAM CODES API</bdi></b>، وبالإنجليزية <b dir=\"ltr\">LOGIN WITH XTREAM CODES API</b>.</p><div class=\"note\">لا تختر الأول (رابط أو ملف قنوات <b dir=\"ltr\">M3U</b>): بياناتك اسم مستخدم وكلمة مرور، لا رابط قائمة.</div>"
+    },
+    {
+     "title": "أدخل بيانات الاشتراك ثم «إضافة مستخدم»",
+     "img": "/static/img/smarters-pro-login.webp",
+     "html": "<p>تظهر شاشة <b>أدخل بيانات الإشتراك الخاصة بك</b> (<b dir=\"ltr\">Enter Your Login Details</b>). اختر كل خانة واكتب فيها:</p><div class=\"fields\"><div class=\"f\"><span>أي إسم · <bdi>Any Name</bdi></span><code>أي اسم، مثلًا ssouq</code></div><div class=\"f\"><span>إسم المستخدم · <bdi>Username</bdi></span><code>اسم المستخدم</code></div><div class=\"f\"><span>كلمه السر · <bdi>Password</bdi></span><code>كلمة المرور</code></div><div class=\"f\"><span dir=\"ltr\">http://url_here.com:port</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b>إضافة مستخدم</b> (<b dir=\"ltr\">ADD USER</b>). يفتح التطبيق شاشته الرئيسية ويحمّل القنوات والأفلام والمسلسلات أول مرة، فانتظر حتى يكتمل.</p><div class=\"note\">رابط الهوست يصلك مع اسم المستخدم وكلمة المرور في بيانات الاشتراك. انسخه كما وصلك بدون مسافات.</div><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
     }
    ]
   },

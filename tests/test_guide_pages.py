@@ -127,6 +127,34 @@ def main():
     h = G.render("/samsung-lg").decode("utf-8")
     check("/samsung-lg فيها التطبيقان", "تطبيق 0Player" in h and "تطبيق SS IPTV" in h)
 
+    print("\nشاشة أندرويد: Downloader وموافقة الشاشة عليه")
+    t = data["tv"]["variants"]
+    sm, mr = t["smarters"], t["mr7"]
+    # خطوات Downloader (DL_*) واحدة للتطبيقين: الكود والتطبيق وحدهما يختلفان، والفيديو أول Smarters وحده
+    check("عشر خطوات لـ Smarters وسبع لـ MR7", len(sm) == 10 and len(mr) == 7, f"{len(sm)} · {len(mr)}")
+    check("رسالة الأمان ثم تفعيل Downloader خطوتان واحدتان في التطبيقين",
+          sm[1] == mr[1] and sm[3] == mr[3] and sm[4] == mr[4]
+          and sm[3]["title"] == "ظهرت رسالة الأمان؟ اضغط «الإعدادات»" and sm[4]["title"] == "فعّل Downloader ثم ارجع")
+    check("نص رسالة الأمان كما في ترجمة أندرويد",
+          "لأغراض الأمان، غير مسموح حاليًا لجهاز التلفزيون الذي تستخدمه بتثبيت تطبيقات غير معروفة من هذا المصدر" in sm[3]["html"]
+          and "تطبيق مسموح به" in sm[4]["html"])
+    check("كل تطبيقٍ بصورة كوده ونافذتي تثبيته",
+          sm[2]["img"].endswith("tv-dl-code-8744201.webp") and mr[2]["img"].endswith("tv-dl-code-5574841.webp")
+          and sm[5]["img"].endswith("tv-dl-install-smarters.webp") and mr[5]["img"].endswith("tv-dl-install-mr7.webp"))
+    sv = re.compile(r'^<div class="vid"><video src="/static/video/smarters-tv-ar\.mp4\?v=(\d+)" poster="/static/video/smarters-tv-ar\.webp\?v=\1"')
+    check("فيديو Smarters أول خطوة التحميل، ولا فيديو في خطوة MR7", bool(sv.match(sm[0]["html"])) and "<video" not in mr[0]["html"])
+    check("الدخول: ADD USER لا ADD PLAYLIST، وخطوته نفسها على الجوال",
+          "ADD USER" in sm[9]["html"] and "ADD PLAYLIST" not in sm[9]["html"]
+          and data["android"]["variants"]["smarters"][-1] == sm[9])
+    # فالكون وكاسبر خارج guide-data.json (سمارت وحده)، فصورهما هنا
+    check("صور كود فالكون وكاسبر ونوافذ تثبيتهما على القرص",
+          all(os.path.isfile(os.path.join(ROOT, "static/img", f)) for f in (
+              "tv-dl-code-1683248.webp", "tv-dl-code-3638997.webp", "tv-dl-install-falcon.webp", "tv-dl-done-falcon.webp",
+              "tv-dl-install-casper.webp", "tv-dl-done-casper.webp", "tv-dl-devmode.webp")))
+    h = G.render("/android-tv").decode("utf-8")
+    check("/android-tv فيها الموافقة والفيديو", "الخطوة 4 — ظهرت رسالة الأمان؟ اضغط «الإعدادات»" in h
+          and "/static/video/smarters-tv-ar.mp4" in h and "مرة واحدة فقط" in h)
+
     print("\nguide-data.json على آخر المعالج")
     node = shutil.which("node")
     if node:

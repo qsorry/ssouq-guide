@@ -1,0 +1,169 @@
+<!doctype html>
+<!-- فيديو IPTV Smarters Pro على شاشة أندرويد (static/video/smarters-tv-ar.mp4): Downloader من Google Play، والكود،
+     وموافقة الشاشة على Downloader، ثم أول فتح لـ Smarters والدخول. المشاهد والتعليقات والتكبير هنا، والمظهر
+     والرسم في engine.css و engine.js — كفيديو SS IPTV و 0Player. الصور من capture_smarters.js، ومواضعها في B.
+       node tools/video/render.js smarters -->
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="engine.css">
+<script src="engine.js"></script>
+</head>
+<body>
+<script>
+const CODE = "8744201";
+const VIDEO = { out: "smarters-tv-ar", steps: 10, icon: "../../static/img/apps/smarters-pro.webp" };
+const IMG = {
+  play:     { src: "assets/dl_play.webp", max: 1.1 },
+  welcome:  { src: "assets/dl_welcome.webp", max: 1.1 },
+  home:     { src: "assets/dl_home.webp", max: 1.3 },
+  code:     { src: `assets/dl_code-${CODE}.webp`, max: 1.1 },
+  blocked:  { src: "assets/dl_blocked.webp", max: 1.1 },
+  devmode:  { src: "assets/dl_devmode.webp", max: 1.1 },
+  allowOff: { src: "assets/dl_allow-off.webp", max: 1.1 },
+  allow:    { src: "assets/dl_allow.webp", max: 1.1 },
+  install:  { src: "assets/dl_install-smarters.webp", max: 1.1 },
+  done:     { src: "assets/dl_done-smarters.webp", max: 1.1 },
+  device:   { src: "assets/sm_device.webp", max: 1.1 },
+  terms:    { src: "assets/sm_terms.webp", max: 1.1 },
+  route:    { src: "assets/sm_route.webp", max: 1.1 },
+  login:    { src: "assets/sm_login.webp", max: 1.1 },
+  filled:   { src: "assets/sm_login-fill.webp", max: 1.1 }
+};
+// مواضع الأزرار والخانات (بكسل كل صورة، 1920×1080) كما يطبعها capture_smarters.js
+const B = {
+  play:    { title: [1090, 132, 718, 241], install: [1616, 736, 197, 88], banner: [112, 124, 448, 248] },
+  welcome: { dialog: [464, 180, 991, 719], ok: [512, 784, 896, 76] },
+  home:    { hash: [1642, 4, 112, 112] },
+  code:    { hash: [1642, 4, 112, 112], code: [420, 171, 1080, 119], load: [1352, 348, 159, 80] },
+  blocked: { dialog: [464, 318, 992, 398], settings: [1199, 572, 209, 96], cancel: [1034, 572, 145, 96] },
+  devmode: { build: [1003, 750, 714, 154], toast: [755, 946, 409, 86] },
+  allow:   { title: [1003, 122, 657, 154], row: [1003, 515, 714, 127], sw: [1052, 564, 70, 30] },
+  install: { dialog: [464, 332, 992, 395], install: [1240, 583, 168, 96] },
+  done:    { dialog: [464, 332, 992, 395], open: [1270, 583, 138, 96] },
+  device:  { card: [160, 160, 1600, 880], tv: [1260, 649, 300, 80], save: [810, 749, 300, 100] },
+  terms:   { accept: [960, 970, 960, 110], bar: [0, 970, 1920, 110] },
+  route:   { m3u: [550, 450, 820, 100], xtream: [550, 600, 820, 100] },
+  login:   { title: [0, 20, 1152, 160], name: [100, 200, 952, 160], user: [100, 380, 952, 160], pass: [100, 560, 952, 160],
+             url: [100, 740, 952, 160], add: [100, 900, 952, 160] }
+};
+// المستطيل الجامع لعدّة مستطيلات، وهامشٌ حوله — أهداف الكاميرا منها لا أرقام ثانية
+const U = (...rs) => { const x = Math.min(...rs.map(r => r[0])), y = Math.min(...rs.map(r => r[1]));
+  return [x, y, Math.max(...rs.map(r => r[0] + r[2])) - x, Math.max(...rs.map(r => r[1] + r[3])) - y]; };
+const M = (r, m) => [r[0] - m, r[1] - m, r[2] + 2 * m, r[3] + 2 * m];
+const ICON = '<img class="icon" src="../../static/img/apps/smarters-pro.webp" alt="">';
+const P = B.play, C = B.code, BL = B.blocked, AL = B.allow, L = B.login;
+const SCENES = [
+  { dur: 4.8, card: t => `${ICON}
+      <h1>تشغيل اشتراكك على شاشة أندرويد<br>بتطبيق <em dir="ltr">IPTV Smarters Pro</em></h1>
+      <div class="chips"><span>شاشات أندرويد</span><span dir="ltr">Google TV</span><span>بوكس أندرويد</span></div>
+      <p class="sub">يُثبَّت بأداة ${K("Downloader")} · كود ${K(CODE)}</p>`,
+    caps: [{ t: 0, title: "10 خطوات بالترتيب", body: "وأهمها: موافقة الشاشة على Downloader، مرة واحدة فقط 👇" }] },
+
+  { step: 1, dur: 7.4, img: "play",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.2, r: M(U(P.title, P.banner), 20) }, { t: 4.2, r: M(P.install, 160) }],
+    rings: [{ r: P.title, from: 1.9, to: 4.2 }, { r: P.install, from: 4.9 }],
+    caps: [{ t: 0, title: "حمّل Downloader من Google Play", body: `افتح المتجر في الشاشة وابحث عن ${K("Downloader")}` },
+           { t: 1.8, title: "اختر التطبيق الصحيح", body: `${K("Downloader by AFTVnews")} — أيقونته حرف D برتقالي` },
+           { t: 4.6, title: "اضغط «تثبيت» ثم «فتح»", body: "التطبيق مجاني" }] },
+
+  { step: 2, dur: 5.0, img: "welcome",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.1, r: M(B.welcome.dialog, 10) }],
+    rings: [{ r: B.welcome.ok, from: 1.9 }],
+    caps: [{ t: 0, title: "افتح Downloader", body: `أول مرة تظهر ${K("Welcome to Downloader")}` },
+           { t: 1.8, title: `اضغط ${K("OK")}`, body: "وإن طلب إذن الوصول إلى الملفات فاضغط «سماح»" }] },
+
+  { step: 3, dur: 4.4, img: "home",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.0, r: M(B.home.hash, 140) }],
+    rings: [{ r: B.home.hash, from: 1.7 }],
+    caps: [{ t: 0, title: "أدخل الكود بزر #", body: "في الشاشة الرئيسية لـ Downloader" },
+           { t: 1.6, title: `اضغط زر ${K("#")}`, body: "أعلى الشاشة بجانب خانة العنوان — فتظهر لوحة أرقام" }] },
+
+  { step: 3, dur: 7.0, img: "code",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 0.9, r: M(C.code, 30) }, { t: 3.9, r: M(U(C.code, C.load), 30) }],
+    rings: [{ r: C.code, from: 1.6, to: 3.9 }, { r: C.load, from: 4.6 }],
+    caps: [{ t: 0, title: "لوحة الأرقام", body: "اكتب الكود بأسهم الريموت و OK" },
+           { t: 1.5, title: `اكتب ${K(CODE)}`, body: "كود التحميل كما هو، سبعة أرقام" },
+           { t: 4.3, title: `ثم ${K("Load")}`, body: "يبدأ تحميل التطبيق (قرابة 84 ميغابايت) — انتظر حتى يكتمل" }] },
+
+  { step: 4, dur: 9.0, img: "blocked",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.0, r: M(BL.dialog, 10) }, { t: 5.6, r: M(U(BL.cancel, BL.settings), 70) }],
+    rings: [{ r: BL.settings, from: 6.3 }],
+    caps: [{ t: 0, title: "بعد التحميل: رسالة الأمان", body: "«لأغراض الأمان، غير مسموح حاليًا… بتثبيت تطبيقات غير معروفة من هذا المصدر»" },
+           { t: 3.2, title: "هذا طبيعي ✋", body: "الشاشة تطلب موافقتك على Downloader — مرة واحدة فقط" },
+           { t: 5.8, title: "اضغط «الإعدادات»", body: `بالإنجليزية ${K("Settings")} — لا تضغط «إلغاء»` }] },
+
+  { step: 4, dur: 7.4, img: "devmode",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.5, r: M(U(B.devmode.build, B.devmode.toast), 30) }],
+    rings: [{ r: B.devmode.build, from: 2.2 }],
+    caps: [{ t: 0, title: "شاشات Google TV فقط", body: "لم يظهر زر «الإعدادات» وظهرت رسالة أن المصادر غير المعروفة معطّلة؟" },
+           { t: 2.6, title: "فعّل وضع المطوّر مرة واحدة", body: "الإعدادات ← النظام ← لمحة ← اضغط «إصدار نظام تشغيل Android TV» 7 مرات" },
+           { t: 5.4, title: "«لقد أصبحت الآن مطور برامج!»", body: "ثم ارجع إلى Downloader وأعد الكود" }] },
+
+  { step: 5, dur: 5.2, img: "allowOff",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.0, r: M(U(AL.title, AL.row), 30) }],
+    rings: [{ r: AL.row, from: 2.6 }],
+    caps: [{ t: 0, title: "صفحة «تثبيت التطبيقات غير المعروفة»", body: `بالإنجليزية ${K("Install unknown apps")}` },
+           { t: 2.4, title: `عليها ${K("Downloader")}`, body: "وتحته: «تطبيق غير مسموح به»" }] },
+
+  { step: 5, dur: 6.4, img: "allow",
+    cam: [{ t: 0, r: M(U(AL.title, AL.row), 30), d: 0 }, { t: 0.8, r: M(AL.row, 40) }],
+    rings: [{ r: AL.sw, from: 1.3 }],
+    caps: [{ t: 0, title: "اضغط عليه", body: "يتحوّل زرّه إلى الأزرق ويصير «تطبيق مسموح به»" },
+           { t: 3.4, title: "ثم زر الرجوع ↩", body: "في الريموت، مرة واحدة — فتعود إلى التثبيت" }] },
+
+  { step: 6, dur: 4.6, img: "install",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 0.8, r: M(B.install.dialog, 10) }],
+    rings: [{ r: B.install.install, from: 1.6 }],
+    caps: [{ t: 0, title: "هل تريد تثبيت هذا التطبيق؟", body: `نافذة ${K("IPTV Smarters Pro")}` },
+           { t: 1.5, title: "اضغط «تثبيت»", body: "وانتظر لحظات حتى ينتهي" }] },
+
+  { step: 6, dur: 4.6, img: "done",
+    cam: [{ t: 0, r: M(B.done.dialog, 10), d: 0 }],
+    rings: [{ r: B.done.open, from: 0.8 }],
+    caps: [{ t: 0, title: "«تم تثبيت التطبيق.»", body: "اضغط «فتح» — والتطبيق بعدها في تطبيقات الشاشة" }] },
+
+  { step: 7, dur: 6.0, img: "device",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.2, r: M(U(B.device.tv, B.device.save), 60) }],
+    rings: [{ r: B.device.tv, from: 1.9, to: 3.6 }, { r: B.device.save, from: 3.6 }],
+    caps: [{ t: 0, title: "أول فتح لـ Smarters", body: `يسأل عن نوع جهازك: ${K("Device Option")}` },
+           { t: 1.8, title: `اختر ${K("TV")}`, body: "ثم اضغط «حفظ»" }] },
+
+  { step: 8, dur: 5.2, img: "terms",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.4, r: M(B.terms.accept, 40) }],
+    rings: [{ r: B.terms.accept, from: 2.1 }],
+    caps: [{ t: 0, title: "شروط الاستخدام", body: `صفحة بيضاء: ${K("LICENSE AGREEMENT")}` },
+           { t: 1.8, title: "انزل للأسفل واضغط «قبول»", body: `بالإنجليزية ${K("ACCEPT")}` }] },
+
+  { step: 9, dur: 5.6, img: "route",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.0, r: M(U(B.route.m3u, B.route.xtream), 60) }],
+    rings: [{ r: B.route.xtream, from: 1.8 }],
+    caps: [{ t: 0, title: "طريقة الدخول", body: "خياران على الشاشة" },
+           { t: 1.6, title: `اختر ${K("XTREAM CODES API")}`, body: "«تسجيل الدخول باستخدام XTREAM CODES API» — لا خيار M3U" }] },
+
+  { step: 10, dur: 3.6, img: "login",
+    cam: [{ t: 0, r: "full", d: 0 }],
+    rings: [{ r: U(L.name, L.url), from: 1.0 }],
+    caps: [{ t: 0, title: "أدخل بيانات الاشتراك", body: "أربع خانات، ثم «إضافة مستخدم»" }] },
+
+  { step: 10, dur: 11.4, img: "filled",
+    // الخانات عريضة والكتابة في أولها (يسارها): الكاميرا على نصفها، والحلقة على الخانة كلها
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 0.9, r: [60, 180, 820, 380] }, { t: 4.3, r: [60, 540, 820, 380] }, { t: 8.2, r: [60, 700, 1060, 380] }],
+    rings: [{ r: L.name, from: 1.6, to: 2.9 }, { r: L.user, from: 2.9, to: 4.3 }, { r: L.pass, from: 4.9, to: 6.2 }, { r: L.url, from: 6.2, to: 8.2 },
+            { r: L.add, from: 8.9 }],
+    caps: [{ t: 0, title: "اكتب في كل خانة", body: "بلوحة المفاتيح على الشاشة" },
+           { t: 1.5, title: "«أي إسم»: أي اسم", body: `مثلًا ${K("ssouq")}` },
+           { t: 2.9, title: "اسم المستخدم وكلمة المرور", body: "من رسالة اشتراكك، بلا مسافات" },
+           { t: 6.2, title: `الرابط: ${K("http://")} لا ${K("https://")}`, body: "رابط الهوست كما وصلك في بيانات الاشتراك" },
+           { t: 8.6, title: "اضغط «إضافة مستخدم»", body: `بالإنجليزية ${K("ADD USER")} — ثم انتظر تحميل القنوات أول مرة` }] },
+
+  { dur: 5.8, card: t => `<div class="tick">🎉</div>
+      <h1>جاهز! استمتع بالمشاهدة</h1>
+      <p class="sub">موافقة Downloader لا تتكرر: التطبيقات التالية<br>تُثبَّت مباشرة بـ «تثبيت» و«فتح»</p>
+      <div class="chips"><span>الدعم الفني على واتساب</span><span dir="ltr">guide.ssouq.com</span></div>`,
+    caps: [{ t: 0, title: "انتهت الخطوات", body: "الشرح المكتوب بالصور في دليل التفعيل لكل جهاز" }] }
+];
+</script>
+</body>
+</html>
