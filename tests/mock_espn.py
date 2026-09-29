@@ -14,9 +14,12 @@ GET /v2/sports/soccer/<code>/standings بشكل رد ESPN نفسه (children ←
 
 GET /site/v2/sports/soccer/uefa.nations/scoreboard?dates=2026 مباريات دوري الأمم
 بمواعيد حول «الآن» (scoreboard)، وسنة أخرى بلا مباريات؛ و…/summary?event=<المعرّف>
-ملخّص المباراة (summary). والدوال نفسها تستوردها الاختبارات بلا خادم.
+ملخّص المباراة (summary). و…/<دوري>/scoreboard?dates=YYYYMM مباريات الدوري في ذلك الشهر
+(صفحات المشاهدة: league_month) لـ ksa.1 وeng.1 وuefa.champions وafc.champions. والدوال نفسها
+تستوردها الاختبارات بلا خادم. ويُضغط الرد gzip لمن يطلبه، كما تفعل ESPN.
 """
 import datetime
+import gzip
 import json
 import sys
 import time
@@ -101,9 +104,58 @@ def gulf(dates):
     ]}
 
 
+# مباريات الدوريات حول «الآن» (صفحات المشاهدة): (اللاحقة، الدقائق من الآن، صاحب الأرض، الضيف، الأهداف،
+# الحالة، الساعة معتمدة؟). الفِرق بترتيبها في قائمة الدوري؛ و-14 يومًا جولةٌ أقدم من الأخيرة، و+20 يومًا
+# أبعد من أسبوع «القادمة»، و-5 أيام «قادمةٌ» فات موعدها ولم تُلعب (مؤجلة بلا موعد) فلا تُعرض.
+_DAY = 24 * 60
+LEAGUE_SPEC = [
+    ("01", -30, 0, 2, (1, 0), ("in", "STATUS_FIRST_HALF", "30'"), True),
+    ("02", -120, 4, 5, (2, 2), ("post", "STATUS_FULL_TIME", "90'"), True),
+    ("03", -3 * _DAY, 1, 3, (2, 1), ("post", "STATUS_FULL_TIME", "90'"), True),
+    ("04", -2 * _DAY, 6, 7, (0, 0), ("post", "STATUS_FULL_TIME", "90'"), True),
+    ("05", -14 * _DAY, 8, 0, (1, 3), ("post", "STATUS_FULL_TIME", "90'"), True),
+    ("06", 2 * _DAY, 9, 10, (0, 0), ("pre", "STATUS_SCHEDULED", "0'"), True),
+    ("07", 3 * _DAY, 2, 1, (0, 0), ("pre", "STATUS_SCHEDULED", "0'"), False),
+    ("08", 4 * _DAY, 11, 12, (0, 0), ("pre", "STATUS_POSTPONED", "0'"), True),
+    ("09", 20 * _DAY, 0, 3, (0, 0), ("pre", "STATUS_SCHEDULED", "0'"), True),
+    ("10", -5 * _DAY, 13, 14, (0, 0), ("pre", "STATUS_SCHEDULED", "0'"), True),
+]
+LEAGUE_FIX = {"ksa.1": (3000, SAUDI, "2026-27-saudi-pro-league"),
+              "eng.1": (3100, ENGLAND, "2026-27-english-premier-league"),
+              "uefa.champions": (3200, EUROPE, "league-phase"),
+              "afc.champions": (3300, WEST + EAST, "league-stage")}
+
+
+def league_events(code):
+    """مباريات LEAGUE_SPEC لدوري؛ وفي أبطال آسيا مجموعة كل مباراة من منطقة صاحب أرضها، ولأولى مباريات
+    السعودي ملعبٌ (موقع SportsEvent)."""
+    base, teams, stage = LEAGUE_FIX[code]
+    out = []
+    for suffix, mins, h, a, (hs, as_), (state, status, clock), valid in LEAGUE_SPEC:
+        (ht, hn), (at, an) = teams[h % len(teams)], teams[a % len(teams)]
+        e = _event(str(base + int(suffix)), mins, (ht, hn, hs, None, state == "post" and hs > as_),
+                   (at, an, as_, None, state == "post" and as_ > hs), stage=stage, state=state, status=status,
+                   clock=clock, time_valid=valid)
+        if code == "afc.champions":
+            e["competitions"][0]["group"] = {"name": "West Region" if (ht, hn) in WEST else "East Region"}
+        if code == "ksa.1" and suffix == "06":
+            e["competitions"][0]["venue"] = {"fullName": "Kingdom Arena", "address": {"city": "Riyadh"}}
+        out.append(e)
+    return out
+
+
+def league_month(code, ym):
+    """scoreboard?dates=YYYYMM لدوري: مبارياته التي تقع في ذلك الشهر (بتوقيت UTC)، أو None لما لا تغطيه."""
+    if code not in LEAGUE_FIX:
+        return None
+    return {"events": [e for e in league_events(code) if e["date"][:7].replace("-", "") == ym]}
+
+
 def scoreboard(code, dates):
     """مباريات دوري الأمم حول الآن: منتهية، وجارية، واستراحة، وقادمة، ومؤجلة، وأدوار
     إقصائية (ترجيح، تمديد، وأطراف لم تُعرف بعد)، وما ليس من المستوى الأول."""
+    if len(dates) == 6:                              # شهرٌ من دوري (صفحات المشاهدة)
+        return league_month(code, dates)
     if code == "global.gulf_cup":
         return gulf(dates)
     if code != "uefa.nations":
@@ -235,8 +287,13 @@ class H(BaseHTTPRequestHandler):
         elif parts[:4] == ["site", "v2", "sports", "soccer"] and len(parts) == 6 and parts[5] == "summary":
             data = summary(parts[4], (parse_qs(u.query).get("event") or [""])[0])
         body = json.dumps(data if data is not None else {"code": 400, "message": "bad league"}).encode()
+        zipped = "gzip" in (self.headers.get("Accept-Encoding") or "")
+        if zipped:
+            body = gzip.compress(body)
         self.send_response(200 if data is not None else 400)
         self.send_header("Content-Type", "application/json")
+        if zipped:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
