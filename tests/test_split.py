@@ -108,7 +108,7 @@ class TestRegister(Base):
         self.assertIn(S.DEFAULT_SLICE, S.SLICES)
         self.assertEqual(S.DEFAULT_SLICE, 6)
         v = S.view(self.d, "a1", T0)
-        self.assertEqual((v["slices"], v["default_slice"]), ([12, 6, 3, 1], 6))
+        self.assertEqual((v["slices"], v["default_slice"], v["max_slice"]), ([12, 6, 3, 1], 6, 14))
 
     def test_same_line_not_twice(self):
         a, _ = self.reg()
@@ -116,9 +116,25 @@ class TestRegister(Base):
         self.assertFalse(new)
         self.assertEqual(a["id"], b["id"])
 
-    def test_only_known_slices(self):
-        with self.assertRaises(ValueError):
-            self.reg(months=5)
+    def test_any_whole_months_within_the_line(self):
+        """«مدة أخرى»: أي عددٍ من الأشهر الكاملة من شهرٍ إلى ١٤ (١٠ أشهر مثلًا، وبالأرقام العربية)،
+        لا الخيارات السريعة وحدها — وما سواه يُرفض بسببه."""
+        r10, _ = self.reg(user="100000000010", months=10)
+        self.assertEqual((r10["slice"]["months"], S.decorate(r10, T0)["remaining_after"]), (10, 5))
+        self.assertEqual(r10["slice"]["due"], "2027-07-28 14:30")
+        r5, _ = self.reg(user="100000000005", months="٥")
+        self.assertEqual(r5["slice"]["months"], 5)
+        r14, _ = self.reg(user="100000000014", months=14)
+        self.assertEqual((r14["state"], S.decorate(r14, T0)["remaining_after"]), (S.ACTIVE, 1))
+        for bad in (0, 15, 16, -1, 2.5, "x", "", None, True):
+            with self.assertRaises(ValueError, msg=repr(bad)) as cm:
+                self.reg(user="100000000099", months=bad)
+            self.assertIn("من شهر إلى 14 شهرًا", str(cm.exception))
+
+    def test_parse_months(self):
+        self.assertEqual([S.parse_months(v) for v in (10, "10", " ١٠ ", "۱۰", 10.0)], [10] * 5)
+        self.assertEqual([S.parse_months(v) for v in ("10.5", 2.5, "عشرة", "", None, True, "-3")], [None] * 7)
+        self.assertEqual((S.slice_ok(1), S.slice_ok(14), S.slice_ok(15), S.slice_ok(0)), (True, True, False, False))
 
     def test_past_due_waits_for_operator(self):
         """خطٌّ قديم انتهى جزؤه قبل تسجيله لا يُغيَّر تلقائيًا: خطأ تاريخ لا يقطع عميلًا."""
@@ -377,6 +393,17 @@ class TestResell(Base):
         r = S.sell(self.d, "a1", r["id"], 12, customer="عميل السنة", now=due)
         self.assertEqual((r["state"], r["slice"]["months"]), (S.ACTIVE, 12))
         self.assertEqual(S.decorate(r, due)["remaining_after"], 2)
+
+    def test_sell_any_months_that_fit(self):
+        """«مدة أخرى» عند البيع: أي أشهرٍ كاملة يتّسع لها المتبقي (٨ من ٩)، وحدّها max_sell."""
+        r, due = self.rotated()                      # بعد جزء ستة: يبقى تسعة
+        self.assertEqual((S.decorate(r, due)["can_sell"], S.decorate(r, due)["max_sell"]), ([6, 3, 1], 9))
+        for bad in (10, -2, "x"):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                S.sell(self.d, "a1", r["id"], bad, now=due)
+        r = S.sell(self.d, "a1", r["id"], "٨", customer="عميل الثمانية", now=due)
+        self.assertEqual((r["state"], r["slice"]["months"]), (S.ACTIVE, 8))
+        self.assertEqual(S.decorate(r, due)["remaining_after"], 1)
 
     def test_sell_remainder(self):
         r, due = self.rotated()

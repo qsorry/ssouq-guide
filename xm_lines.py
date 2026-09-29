@@ -482,7 +482,7 @@ def clean_account(a, old=None):
         # النص كاملًا بقيم اليوزر بدل السطر الواحد. الإنشاء يبقى سطرًا.
         "copy_guide": bool(a.get("copy_guide", old.get("copy_guide", False))),
         "guide_text": _clean_guide_text(a.get("guide_text", old.get("guide_text", ""))),
-        # الاشتراكات المجزّأة (بيع ١٢ · ٦ · ٣ · شهر من باقة ١٥ شهرًا وتغيير اسم المستخدم عند
+        # الاشتراكات المجزّأة (بيع ١٢ · ٦ · ٣ · شهر أو أي مدةٍ بالأشهر من باقة ١٥ شهرًا، وتغيير اسم المستخدم عند
         # انتهاء الجزء): يفتحها المدير لعميلٍ بعينه، ومغلقةٌ لغيره فلا يتغيّر عليه شيء.
         "split": bool(a.get("split", old.get("split", False))),
     }
@@ -1779,7 +1779,7 @@ def create_lines(gate, pkg, count, username=None, password=None):
     return out, None
 
 
-# ================= الاشتراكات المجزّأة (١٢ · ٦ · ٣ · شهر من باقة ١٥ شهرًا) =================
+# ============ الاشتراكات المجزّأة (١٢ · ٦ · ٣ · شهر أو أي مدةٍ بالأشهر من باقة ١٥ شهرًا) ============
 # `split_subs.py` يحمل الأجزاء والمواعيد والإشعارات ولا يعرف شيئًا عن اللوحات؛ وهذا
 # القسم هو الجسر: يغيّر اسم المستخدم على لوحة الخط (مرح/كاسبر بجلسة ويب، وفالكون)
 # ويُرسل بريد الملخّص، ويشغّل الدورة. الميزة لكل عميلٍ على حدة (`split` في حسابه).
@@ -1813,8 +1813,8 @@ def split_create_error(acct, gate, pkg, slice_m):
     """سبب رفض إنشاءٍ مجزّأ، أو "" إن صلح."""
     if not split_on(acct):
         return "الاشتراكات المجزّأة غير مفعّلة لهذا الحساب"
-    if slice_m not in split_subs.SLICES:
-        return "نوع البيع غير صالح"
+    if not split_subs.slice_ok(slice_m):         # الخيارات السريعة أو «مدة أخرى» (١٠ أشهر مثلًا)
+        return "مدة الجزء بالأشهر الكاملة %s" % split_subs.slice_range_text()
     if not split_gate_ok(gate):
         return "التجزئة متاحة لبوابات مرح وكاسبر وفالكون فقط"
     if not split_package_ok(pkg):
@@ -2672,6 +2672,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "guide_text": guide_text_of(acct),
                                         "split": split_on(acct),
                                         "split_slices": list(split_subs.SLICES) if split_on(acct) else [],
+                                        "split_max": split_subs.MAX_SLICE if split_on(acct) else 0,
                                         "gates": gates})
             if path == "/api/mygates":            # بوابات الشخص كاملةً (لتحريرها)
                 if role != "account":
@@ -3686,7 +3687,7 @@ class Handler(BaseHTTPRequestHandler):
         notes.sort(key=lambda n: n.get("at", ""), reverse=True)
         return {"role": role, "accounts": accounts, "lines": lines, "notes": notes[:150],
                 "unread": unread, "slices": list(split_subs.SLICES),
-                "default_slice": split_subs.DEFAULT_SLICE,
+                "default_slice": split_subs.DEFAULT_SLICE, "max_slice": split_subs.MAX_SLICE,
                 "base_months": list(split_subs.BASE_MONTHS), "now": split_subs.fmt(now)}
 
     def _split_notes(self, st, role, acct):
@@ -3849,12 +3850,10 @@ class Handler(BaseHTTPRequestHandler):
         pw = str(req.get("password", "")).strip()
         if not user:
             return self._send(400, {"error": "اكتب اسم المستخدم"})
-        try:
-            months = int(req.get("months") or 0)
-        except (TypeError, ValueError):
-            months = 0
-        if months not in split_subs.SLICES:
-            return self._send(400, {"error": "اختر نوع البيع (١٢ · ٦ · ٣ · شهر)"})
+        months = split_subs.parse_months(req.get("months") or 0)
+        if not split_subs.slice_ok(months):
+            return self._send(400, {"error": "اختر الجزء المبيع أو اكتب مدته بالأشهر (%s)"
+                                             % split_subs.slice_range_text()})
         now = split_subs.now_dt()
         day = split_subs.to_date(req.get("start")) if req.get("start") else now.date()
         if not day:
@@ -3896,12 +3895,11 @@ class Handler(BaseHTTPRequestHandler):
         if not pkg:
             return self._send(400, {"error": "الباقة غير موجودة"})
         count = max(1, min(int(req.get("count", 1)), 50))
-        # بيعٌ مجزّأ (١٢ · ٦ · ٣ · شهر من باقة ١٥ شهرًا): يُفحص قبل أي إنشاء، فالرفض لا يخصم.
-        # ومنه «مدة البديل»: بديلٌ يُعطى ١٢ شهرًا من باقة ١٥ هو جزءٌ مبيعٌ كغيره.
-        try:
-            slice_m = int(req.get("slice_months") or 0)
-        except (TypeError, ValueError):
-            slice_m = -1
+        # بيعٌ مجزّأ (١٢ · ٦ · ٣ · شهر، أو «مدة أخرى» بالأشهر: ١٠ مثلًا، من باقة ١٥ شهرًا): يُفحص
+        # قبل أي إنشاء، فالرفض لا يخصم. ومنه «مدة البديل»: بديلٌ يُعطى ١٢ شهرًا من باقة ١٥ جزءٌ كغيره.
+        slice_m = split_subs.parse_months(req.get("slice_months") or 0)
+        if slice_m is None:
+            slice_m = -1                           # مكتوبٌ لا يُفهم: يُرفض بسببه لا يُتجاهَل
         if slice_m:
             why = split_create_error(acct, gate, pkg, slice_m)
             if why:

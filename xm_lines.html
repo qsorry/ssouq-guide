@@ -244,6 +244,9 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .slices span{display:inline-block;padding:8px 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--sf2);font-size:.88rem;cursor:pointer}
 .slices input:checked+span{border-color:var(--go);color:var(--go);background:color-mix(in srgb,var(--go) 12%,var(--sf2));font-weight:700}
 .slices input:focus-visible+span{outline:2px solid var(--go);outline-offset:2px}
+.slice-n{display:flex;align-items:center;gap:8px;margin-top:8px}
+.slice-n input.t{width:6.5em;text-align:center}
+.slice-n small{color:var(--mute);font-size:.8rem}
 </style>
 </head>
 <body>
@@ -291,6 +294,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
         <div id="sliceBox" hidden>
           <div class="lbl" style="margin-top:14px">نوع البيع <small>— من باقة ١٥ شهرًا</small></div>
           <div class="slices" id="slices"></div>
+          <div class="slice-n" hidden><input class="t" name="slice_n" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="10" aria-label="عدد الأشهر"><small>شهر</small></div>
           <small class="hint" id="sliceHint"></small>
         </div>
       </div>
@@ -441,6 +445,7 @@ let gates = [];
 let globalGuide = "";
 let guideText = "";                     // نص الشرح إن فعّله المدير لهذا العميل — يُنسخ من البحث بدل السطر
 let splitOn = false, splitSlices = [];  // الاشتراكات المجزّأة: يفتحها المدير لهذا العميل
+let splitMax = 14;                      // أطول «مدة أخرى» بالأشهر (والـ١٥ = الخط كاملًا)
 let curGate = "";                       // البوابة المختارة
 const KEY = () => "xm_lines_history_" + account + "_" + curGate;
 let packages = [];
@@ -459,7 +464,7 @@ async function loadGates(){
     gates = d.gates || [];
     globalGuide = d.guide_url || "";
     guideText = d.guide_text || "";
-    splitOn = !!d.split; splitSlices = d.split_slices || [];
+    splitOn = !!d.split; splitSlices = d.split_slices || []; splitMax = d.split_max || 14;
     $("lnkRemain").hidden = !splitOn; $("bellBtn").hidden = !splitOn; $("sideRemain").hidden = !splitOn;
     if (splitOn) loadNotes();
     if ($("myGuide")) $("myGuide").value = globalGuide;
@@ -633,6 +638,7 @@ async function showReplPicker(q){
     <div id="rSliceBox" hidden>
       <div class="lbl" style="margin-top:12px">مدة البديل <small>— من باقة ١٥ شهرًا</small></div>
       <div class="slices" id="rSlices"></div>
+      <div class="slice-n" hidden><input class="t" name="rslice_n" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="10" aria-label="عدد أشهر البديل"><small>شهر</small></div>
       <small class="hint" id="rSliceHint"></small>
     </div>
     ${credBox}
@@ -642,25 +648,24 @@ async function showReplPicker(q){
   const same = $("ruSame"); if (same) same.onclick = () => { const u = $("ru"); if (u){ u.value = q; u.focus(); } };
   updateReplSlice();
 }
-// ---- مدة البديل: من باقة ١٥ شهرًا يُعطى البديل جزءًا منها (١٢ · ٦ · ٣ · شهر) كنوع البيع في
-// الإنشاء — يُسجَّل، ويتغيّر اسمه وحده عند انتهاء مدته فيعود الباقي إلى «حسابات متبقية».
-// تظهر لمن فُتحت له الاشتراكات المجزّأة فقط، وعلى باقات ١٥ شهرًا (split) وحدها.
+// ---- مدة البديل: من باقة ١٥ شهرًا يُعطى البديل جزءًا منها (١٢ · ٦ · ٣ · شهر، أو «مدة أخرى» بالأشهر:
+// ١٠ مثلًا) كنوع البيع في الإنشاء — يُسجَّل، ويتغيّر اسمه وحده عند انتهاء مدته فيعود الباقي إلى
+// «حسابات متبقية». تظهر لمن فُتحت له الاشتراكات المجزّأة فقط، وعلى باقات ١٥ شهرًا (split) وحدها.
 const replPkg = () => { const s = document.querySelector('input[name="rpkg"]:checked'); return s ? (packages || []).find(p => String(p.id) === s.value) : null; };
 function replSliceMonths(){
-  const b = $("rSliceBox"); if (!b || b.hidden) return 0;
-  const s = document.querySelector('input[name="rslice"]:checked');
-  return s ? +s.value || 0 : 0;
+  const b = $("rSliceBox");
+  return !b || b.hidden ? 0 : pickedMonths("rslice");
 }
 const replGoLabel = old => { const m = replSliceMonths(); return "إنشاء البديل" + (m ? " (" + monthsAr(m) + ")" : "") + " وربطه بـ " + old; };
 function updateReplSlice(){
   const b = $("rSliceBox"); if (!b) return;
-  const p = replPkg(), on = splitOn && !!(p && p.split), keep = String(replSliceMonths());
+  const p = replPkg(), on = splitOn && !!(p && p.split), keep = b.hidden ? "0" : sliceKeep("rslice");
   b.hidden = !on;
   if (on) {
     $("rSlices").innerHTML = sliceChips("rslice", keep);
     if (!document.querySelector('input[name="rslice"]:checked')) document.querySelector('input[name="rslice"]').checked = true;
   }
-  replSliceHint();
+  syncSliceN("rslice"); replSliceHint();
 }
 function replSliceHint(){
   const h = $("rSliceHint"); if (h) h.textContent = sliceHintText(replSliceMonths(), "يُعطى البديل مدة الباقة كاملةً (١٥ شهرًا) — بلا متابعة ولا تغيير.");
@@ -670,6 +675,7 @@ async function createReplacement(oldU){
   const sel = document.querySelector('input[name="rpkg"]:checked');
   if (!sel){ if($("mkMsg")) $("mkMsg").textContent = "اختر باقة."; return; }
   const sm = replSliceMonths();                          // مدة البديل (٠ = مدة الباقة كاملة)
+  if (Number.isNaN(sm)){ if ($("mkMsg")) $("mkMsg").textContent = `اكتب مدة البديل بالأشهر من 1 إلى ${splitMax}.`; return; }
   const btn = $("mkGo"); if (btn){ btn.disabled = true; btn.textContent = "جاري الإنشاء…"; }
   try {
     const uEl = $("ru"), pEl = $("rp");
@@ -854,24 +860,42 @@ $("n").addEventListener("input", updateCta); $("n").addEventListener("change", u
 // ---- نوع البيع (الاشتراكات المجزّأة): جزءٌ من باقة ١٥ شهرًا يتغيّر اسمه عند انتهائه ----
 const monthsAr = n => n === 1 ? "شهر" : n === 2 ? "شهران" : n <= 10 ? n + " أشهر" : n + " شهرًا";
 const selectedPkg = () => { const s = document.querySelector('input[name="pkg"]:checked'); return s ? (packages || []).find(p => String(p.id) === s.value) : null; };
-// خيارات المدة (كامل · ١٢ · ٦ · ٣ · شهر) — لنوع البيع في الإنشاء ولـ«مدة البديل» معًا.
-// keep = ما كان مختارًا قبل إعادة الرسم، فتبديل باقةٍ بمثلها لا يُضيّع الاختيار.
-const sliceChips = (name, keep) => [0, ...splitSlices].map(m => `<label><input type="radio" name="${name}" value="${m}"${String(m) === keep ? " checked" : ""}><span>${m ? monthsAr(m) : "كامل ١٥ شهرًا"}</span></label>`).join("");
-const sliceHintText = (m, full) => m ? `يُنشأ بباقة ١٥ شهرًا ويُسلَّم للعميل ${monthsAr(m)}، ثم يتغيّر اسم المستخدم وحده تلقائيًا (كلمة المرور كما هي) فيصير الخط «متبقي ${monthsAr(15 - m)}» في حسابات متبقية.` : full;
+// خيارات المدة — كامل · ١٢ · ٦ · ٣ · شهر، و«مدة أخرى» بعدد أشهرٍ يُكتب في مربعها (١٠ مثلًا، حتى
+// splitMax) — لنوع البيع في الإنشاء ولـ«مدة البديل» معًا. keep = الخيار المختار قبل إعادة الرسم
+// (والعدد المكتوب باقٍ في مربعه)، فتبديل باقةٍ بمثلها لا يُضيّع شيئًا.
+const sliceChips = (name, keep) => [0, ...splitSlices].map(m => `<label><input type="radio" name="${name}" value="${m}"${String(m) === keep ? " checked" : ""}><span>${m ? monthsAr(m) : "كامل ١٥ شهرًا"}</span></label>`).join("")
+  + `<label><input type="radio" name="${name}" value="n"${keep === "n" ? " checked" : ""}><span>مدة أخرى</span></label>`;
+const sliceKeep = name => (document.querySelector(`input[name="${name}"]:checked`) || {}).value || "0";
+const latinDigits = s => String(s || "").replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
+// المدة المختارة بالأشهر: ٠ = كامل، أو من الخيارات، أو «مدة أخرى» كما كُتبت («10» أو «١٠»)؛
+// NaN = مكتوبةٌ لا تصلح (فارغة، أو خارج ١–splitMax) — فلا يُنشأ شيءٌ بها.
+function pickedMonths(name){
+  const v = sliceKeep(name);
+  if (v !== "n") return +v || 0;
+  const raw = latinDigits((document.querySelector(`input[name="${name}_n"]`) || {}).value).trim();
+  const n = /^\d{1,3}$/.test(raw) ? +raw : NaN;
+  return n >= 1 && n <= splitMax ? n : NaN;
+}
+// مربع العدد يظهر مع «مدة أخرى» (ويأخذ التركيز حين تُختار) ويختفي مع غيرها.
+function syncSliceN(name){
+  const n = document.querySelector(`input[name="${name}_n"]`); if (!n) return;
+  const on = sliceKeep(name) === "n", box = n.parentElement;
+  if (box.hidden === on) { box.hidden = !on; if (on) n.focus(); }
+}
+const sliceHintText = (m, full) => Number.isNaN(m) ? `اكتب عدد الأشهر من 1 إلى ${splitMax} — 10 مثلًا.`
+  : m ? `يُنشأ بباقة ١٥ شهرًا ويُسلَّم للعميل ${monthsAr(m)}، ثم يتغيّر اسم المستخدم وحده تلقائيًا (كلمة المرور كما هي) فيصير الخط «متبقي ${monthsAr(15 - m)}» في حسابات متبقية.` : full;
 function sliceMonths(){
-  if ($("sliceBox").hidden) return 0;
-  const s = document.querySelector('input[name="slice"]:checked');
-  return s ? +s.value || 0 : 0;
+  return $("sliceBox").hidden ? 0 : pickedMonths("slice");
 }
 function updateSliceBox(){
   const p = selectedPkg(), on = splitOn && !!(p && p.split);
-  const keep = String(sliceMonths());
+  const keep = $("sliceBox").hidden ? "0" : sliceKeep("slice");     // باقةٌ ظهر لها النوع من جديد: «كامل»
   $("sliceBox").hidden = !on;
   if (on) {
     $("slices").innerHTML = sliceChips("slice", keep);
     if (!document.querySelector('input[name="slice"]:checked')) document.querySelector('input[name="slice"]').checked = true;
   }
-  sliceHint(); updateCta();
+  syncSliceN("slice"); sliceHint(); updateCta();
 }
 function sliceHint(){
   $("sliceHint").textContent = sliceHintText(sliceMonths(), "يُباع الخط كاملًا ١٥ شهرًا كما كان — بلا متابعة ولا تغيير.");
@@ -915,12 +939,14 @@ $("notesRead").onclick = async () => { try { await fetch(B + "/api/split/read", 
 document.addEventListener("click", e => { if (!$("notesPanel").hidden && !e.target.closest("#notesPanel, #bellBtn")) { $("notesPanel").hidden = true; $("bellBtn").setAttribute("aria-expanded", "false"); } });
 setInterval(() => { if (!document.hidden) loadNotes(); }, 60000);
 $("pkgs").addEventListener("change", e => { if (e.target.name === "pkg") updateSliceBox(); });
-$("slices").addEventListener("change", () => { sliceHint(); updateCta(); });
+$("slices").addEventListener("change", () => { syncSliceN("slice"); sliceHint(); updateCta(); });
+$("sliceBox").addEventListener("input", e => { if (e.target.name === "slice_n") { sliceHint(); updateCta(); } });
 
 async function createLines(){
   const sel = document.querySelector('input[name="pkg"]:checked');
   if (!sel) { $("msg").textContent = "اختر باقة أولاً."; return; }
   if (!curGate) { $("msg").textContent = "اختر بوابة أولاً."; return; }
+  if (Number.isNaN(sliceMonths())) { $("msg").textContent = `اكتب مدة الجزء بالأشهر من 1 إلى ${splitMax}.`; return; }
   const btn = $("create"); btn.disabled = true; $("createTxt").textContent = "جاري الإنشاء…"; $("msg").textContent = ""; $("timing").hidden = true; showSplitResult(null);
   try {
     const r = await fetch(B + "/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
@@ -1005,8 +1031,9 @@ $("searchRes").addEventListener("click", e => {
 });
 $("searchRes").addEventListener("change", e => {        // باقة البديل تُظهر مدته (باقة ١٥ شهرًا) أو تخفيها
   if (e.target.name === "rpkg") updateReplSlice();
-  else if (e.target.name === "rslice") replSliceHint();
+  else if (e.target.name === "rslice") { syncSliceN("rslice"); replSliceHint(); }
 });
+$("searchRes").addEventListener("input", e => { if (e.target.name === "rslice_n") replSliceHint(); });   // «مدة أخرى» تُكتب
 $("saveGuide").onclick = saveGuide;
 $("manageGates").onclick = () => { drawer(false); openManage(); };
 $("closeManage").onclick = closeManage;
