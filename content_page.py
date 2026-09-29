@@ -187,8 +187,8 @@ def _header(base, srv, v, t, q, key):
             + (f'<small>{_esc(srv["full"])}</small>' if srv["full"] else "") + '</span></a>'
             f'<nav class="nav" aria-label="أقسام المحتوى">{links}</nav>'
             f'<form class="search" role="search" action="{_esc(base)}" method="get">'
-            f'<input type="search" name="q" value="{_esc(q)}" placeholder="ابحث عن فيلم أو مسلسل أو قناة…" '
-            f'aria-label="ابحث باسم المسلسل أو الفيلم أو القناة في {_esc(srv["name"])}" autocomplete="off" '
+            f'<input type="search" name="q" value="{_esc(q)}" placeholder="ابحث باسم المسلسل أو الفيلم…" '
+            f'aria-label="ابحث باسم المسلسل أو الفيلم في {_esc(srv["name"])}" autocomplete="off" '
             f'enterkeyhint="search" maxlength="{C.QUERY_MAX}"><button type="submit" aria-label="بحث">{_i("search")}</button>'
             '</form></div></header>')
 
@@ -403,7 +403,9 @@ def results_html(data_dir, key, srv, v, q):
              if elsewhere else "")
     if not total:
         return (f'<section class="results"><div class="rh"><h2>لا يوجد «{_esc(q)}» في {_esc(srv["name"])}</h2></div>'
-                + (other or '<p class="empty">جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية أو بالعربية.</p>')
+                + (other or '<p class="empty">البحث باسم المسلسل أو الفيلم: جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية أو '
+                   'بالعربية' + (f' — والقنوات في <a class="link" href="{C.PATH}/{key}?t=live">تبويبها</a>'
+                                if v["kinds"]["live"] else "") + '.</p>')
                 + "</section>")
     return (f'<section class="results"><div class="rh"><h2>نتائج «{_esc(q)}» في {_esc(srv["name"])} '
             f'<small>{C._count(total, C.N_RESULTS)}</small></h2></div>{"".join(parts)}{other}</section>')
@@ -513,7 +515,7 @@ def render(data_dir, key, query):
     summary = _summary_text(c)
     what = " و".join(x for k, x in (("series", "المسلسلات بمواسمها"), ("movie", "الأفلام"), ("live", "القنوات")) if c[k])
     title = f"محتوى اشتراك {name}: {what} | سمارت سوق"
-    desc = (f"ما في اشتراك {name} قبل أن تشتري: {summary}. ابحث بالاسم عن أي مسلسل أو فيلم أو قناة"
+    desc = (f"ما في اشتراك {name} قبل أن تشتري: {summary}. ابحث باسم أي مسلسل أو فيلم"
             + (" واعرف مواسم المسلسل وحلقات كل موسم" if c["series"] else "")
             + "، وتصفّح ما أضيف مؤخرًا. يُحدَّث تلقائيًا من قائمة الاشتراك نفسها.")
     index = code == 200 and not (q or gid or get("t") or get("view") or get("p") or get("all"))

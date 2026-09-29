@@ -83,6 +83,8 @@ NAME_MAX = 150
 GROUP_MAX = 100
 PAGE = 300                   # عناصر القسم في الصفحة الواحدة وفي كل «عرض المزيد»
 SEARCH_MAX = 40              # نتائج البحث المعروضة لكل نوع
+SEARCH_KINDS = ("series", "movie")   # البحث باسم المسلسل أو الفيلم وحده — لا القنوات، ومنها قنوات 24/7 تعرض
+                                     # حلقات مسلسلٍ باسمه («SOLO باب الحارة»، «… S01») فتبدو حلقاتٍ في النتائج
 QUERY_MAX = 60
 ADULT_LIST = 200             # ما يُحفظ للمدير من أقسام الكبار ومن الأسماء المحذوفة (والباقي عددٌ)
 ADULT_MARKS = 5000           # بصمات ما أُسقط، لمعرفة الجديد منه في كل سحب
@@ -972,7 +974,8 @@ def _build(cat, hidden):
         for gi, g in enumerate(gs):
             for ii, it in enumerate(g["items"]):
                 name = it.get("n", "")
-                idx.append((_norm(f"{name} {it['y']}" if it.get("y") else name), gi, ii))
+                if kind in SEARCH_KINDS:
+                    idx.append((_norm(f"{name} {it['y']}" if it.get("y") else name), gi, ii))
                 for u in (it.get("p"), it.get("b")):
                     if u and not _TMDB.match(u):
                         v["imgs"][img_hash(u)] = u

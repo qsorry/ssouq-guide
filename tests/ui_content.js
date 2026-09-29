@@ -243,8 +243,9 @@ function playlist(movies) {
     check('مسح البحث يمسح النتائج', await dp.$eval('#cres', b => getComputedStyle(b).display === 'none'));
     await dp.fill('.search input', 'mbc');
     await dp.press('.search input', 'Enter');
-    await dp.waitForFunction(() => document.querySelector('#cres').textContent.includes('MBC 1'), null, {timeout: 8000});
-    check('Enter يبحث بلا انتقال', dp.url().includes('/content/smart?q=mbc'));
+    await dp.waitForFunction(() => document.querySelector('#cres').textContent.includes('لا يوجد'), null, {timeout: 8000});
+    check('Enter يبحث بلا انتقال، والبحث باسم المسلسل أو الفيلم وحده (لا القنوات)', dp.url().includes('/content/smart?q=mbc')
+          && (await dp.textContent('#cres')).includes('والقنوات في'));
     await dp.fill('.search input', 'breaking');
     await dp.waitForFunction(() => document.querySelector('#cres').textContent.includes('ويوجد أيضًا في'), null, {timeout: 8000});
     check('وأين يوجد في السيرفرات الأخرى', (await dp.textContent('#cres .other')).includes('فالكون'));

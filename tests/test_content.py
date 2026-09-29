@@ -598,6 +598,14 @@ def unit_render():
     r = P.api_search(d, "falcon", "film")["html"]
     check("الواسع: أولها وعددها كله", len(titles(r)) == C.SEARCH_MAX and "(650)" in r and "و610 نتائج أخرى" in r, r[:160])
     check("كل الكلمات", titles(P.api_search(d, "falcon", "film 0007")["html"]) == ["Film 0007"])
+    r = P.api_search(d, "smart", "mbc")["html"]
+    check("القنوات لا تُبحث، والنتيجة تدلّ على تبويبها", "لا يوجد «mbc» في سمارت" in r and titles(r) == []
+          and 'والقنوات في <a class="link" href="/content/smart?t=live">تبويبها</a>' in r, r[-200:])
+    seed(d, "kon", "#EXTM3U\n" + entry("باب الحارة ج3 ح12", "مسلسلات شامية", "series", 1)
+         + entry("SOLO باب الحارة", "24/7", "live", 2) + entry("TU Choufli Hal S01", "TUNISIA", "live", 3))
+    check("ولا قنوات 24/7 باسم المسلسل: المسلسل وحده", titles(P.api_search(d, "kon", "باب الحارة")["html"]) == ["باب الحارة"]
+          and titles(P.api_search(d, "kon", "choufli")["html"]) == [])
+    C.clear(d, "kon")
     r = P.api_search(d, "smart", "zzzz qqqq")["html"]
     check("لا نتائج", "لا يوجد «zzzz qqqq» في سمارت" in r and "جرّب جزءًا من الاسم" in r)
     code, html = page(d, "smart", q="breaking")
