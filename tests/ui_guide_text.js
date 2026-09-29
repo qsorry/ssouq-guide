@@ -41,8 +41,8 @@ const HOST3 = 'http://smart.host:80', GUIDE3 = 'https://guide.ssouq.com/#activat
     check('client with three gates created', r.ok === true, r.error || '');
 
     // ---- صفحة الحسابات: تفعيل الخيار من المربع ----
-    await admin.evaluate(() => localStorage.setItem('xm_admin_tab', 'accounts'));
-    await admin.goto(APP + '/admin/accounts');
+    await admin.goto(APP + '/admin/accounts#accounts');   // تبويب الحسابات من عنوانه
+    await admin.reload();                                  // وبياناتٌ جديدة إن كانت الصفحة نفسها
     await admin.waitForSelector('[data-toggle]');
     await admin.click('[data-toggle]');
     await admin.click('[data-edit]');

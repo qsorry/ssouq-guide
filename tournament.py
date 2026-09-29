@@ -42,6 +42,7 @@ CUP = dict(
     group="Group A",                                   # مجموعات المستوى الأول: A1…A4
     knockout=("quarterfinals", "semifinals", "3rd-place-match", "final"),
     playoffs="relegation-playoffs", groups_word="المجموعات الأربع",
+    tv="beIN SPORTS",                                  # ناقل منتخبات UEFA في المنطقة؛ يغيّرها المدير أو يمسحها
 )
 # مركز المنتخب في مجموعته ← منطقته (نظام 2026-27: الأول والثاني إلى ربع النهائي،
 # والثالث إلى ملحق الهبوط، والرابع يهبط). ملاحظات ESPN هنا تخلط المستويات الأربعة.
@@ -72,7 +73,8 @@ def contests():
     return {}
 
 
-# القناة الناقلة لكل مباراة (يكتبها المدير): الخادم يضبط هذه فتعيد {المعرّف: القناة}.
+# القناة الناقلة (يكتبها المدير): الخادم يضبط هذه فتعيد {معرّف المباراة أو cup:<المسار>: القناة}،
+# وقناة البطولة فيها ما كتبه المدير، وإلا CUP["tv"].
 def channels():
     return {}
 
@@ -83,7 +85,7 @@ TV_ICON = ('<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width=
 
 def _tv(m):
     """سطر القناة الناقلة إن كُتبت."""
-    ch = channels().get(m["id"])
+    ch = contest.channel_for(channels(), m["id"], PATH)                # قناتها، وإلا قناة البطولة الافتراضية
     return f'<small class="tv">{TV_ICON}<span dir="ltr">{_esc(ch)}</span></small>' if ch else ""
 
 
@@ -775,8 +777,8 @@ def render_match(tail):
             f'{_esc(CUP["level"])} · {_esc(m["stage"])}</span>'
             f'<div class="match{cls}">{_team(h)}<span class="mid">{mid}{note}</span>{_team(a, True)}</div>'
             f'<p class="when">{_esc(when)}</p>'
-            + (f'<p class="when tvline">{TV_ICON}القناة الناقلة: <b dir="ltr">{_esc(channels()[m["id"]])}</b></p>'
-               if channels().get(m["id"]) else "")
+            + (f'<p class="when tvline">{TV_ICON}القناة الناقلة: <b dir="ltr">{_esc(tv_name)}</b></p>'
+               if (tv_name := contest.channel_for(channels(), m["id"], PATH)) else "")
             + (f'<p class="when">الملعب: <span dir="auto">{_esc(place)}</span></p>' if place else "") + "</section>")
     parts = [hero]
     pz = _contests(data["matches"])
@@ -1134,7 +1136,7 @@ GULF = dict(
     PATH="/gulf-cup",
     CUP=dict(code="global.gulf_cup", years=("2026",), name="كأس الخليج العربي", level="خليجي 27", season="2026",
              group="Group", knockout=("semifinals", "3rd-place-match", "final"), playoffs=None,
-             groups_word="المجموعتين"),
+             groups_word="المجموعتين", tv="AL KASS"),       # الكأس القطرية تنقل مبارياتها (One وTwo)
     RANK_ZONES={1: "sf", 2: "sf"},
     ZONES={"sf": {"label": "التأهل إلى نصف النهائي", "color": "#16A34A"}},
     UTM_CAMPAIGN="gulf-cup",
