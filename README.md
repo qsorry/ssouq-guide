@@ -603,8 +603,9 @@ python tests/test_renew.py
   ودورته بعد السحب. بياناته في `data/content/_store.json` (المنتجات المربوطة وحالها، والرمز والأسرار مشفَّرة).
 - `tools/sync_guide_data.js` يستخرج كائن `DEVICES` من `index.html` إلى `static/guide-data.json`.
 - `tools/video/` مصدر فيديوهات الدليل (`static/video/`): محرّك واحد (`engine.css` و`engine.js`)، وصفحة
-  لكل فيديو بمشاهده (`ssiptv.html` و`0player.html`)، و`render.js <الاسم>` يصوّرها، و`capture_*.js`
-  تعيد التقاط صورها، و`shots_0player.js` يبني منها صور شرح 0Player في `static/img`.
+  لكل فيديو بمشاهده (`ssiptv.html` و`0player.html` و`smarters.html`)، و`render.js <الاسم>` يصوّرها، و`capture_*.js`
+  تعيد التقاط صورها (والشاشات المرسومة في `tv_0player.html` و`tv_smarters.html`)، و`shots_0player.js`
+  و`shots_smarters.js` يبنيان منها صور الشرح في `static/img` برسّامٍ واحد (`shots_lib.js`).
 - `xm_lines.py` السيرفر (Python بدون مكتبات خارجية). الحسابات تُحفظ في `data/accounts.json`، وعدّاد أداة M3U العامة في `data/stats.json` (يظهر في الصفحة الرئيسية ويُقرأ من `/api/stats`).
 - `index.html` المعالج العام مع قسم اشتراكات المتجر (روابط شراء مباشرة إلى ssouq.com)، `static/` الصور والشعار والأيقونات (`static/icons`) و `site.webmanifest` و `sitemap.xml`.
 - `xm_lines.html` صفحة الإنشاء، `admin.html` لوحة الإدارة والحسابات (رئيسيتها: أرقام المسابقات من
@@ -817,6 +818,37 @@ Code** — وعندها تتفرّع: الباركود على يمين شاشة 
   `webos-0player-web-<الرمز>.webp`).
 - إعادة الإنتاج: `capture_0player.js` (الصور)، ثم `shots_0player.js` (صور الدليل)، ثم
   `render.js 0player` مرتين (لكل رمز).
+
+**IPTV Smarters Pro على شاشة أندرويد، وموافقة الشاشة على Downloader.** عشر خطوات، ستٌّ منها
+لأداة Downloader وتشترك فيها كل تطبيقات الشاشة التي تُثبَّت بها (`DL_*` في `index.html`: MR7 وتطبيق فالكون
+و CASPER VIP أيضًا، بكودها واسمها): Downloader من Google Play (المطوّر AFTVnews، فالمقلَّد كثير)، ثم `OK`
+في أول فتح، ثم زر **#** ولوحة الأرقام والكود **`8744201`** ثم `Load`، ثم **رسالة الأمان** «لأغراض الأمان،
+غير مسموح حاليًا لجهاز التلفزيون الذي تستخدمه بتثبيت تطبيقات غير معروفة من هذا المصدر» ← **الإعدادات**، ثم
+صفحة **تثبيت التطبيقات غير المعروفة** وتفعيل Downloader («تطبيق مسموح به») والرجوع، ثم **تثبيت** و**فتح**.
+وأربعٌ لأول فتح Smarters: `Device Option` (اختيار `TV` ثم «حفظ»)، ثم `LICENSE AGREEMENT` («قبول» أسفلها)،
+ثم **تسجيل الدخول باستخدام XTREAM CODES API**، ثم الدخول.
+
+- **كلمات النوافذ من ترجمة أندرويد نفسها** (‏`PackageInstaller` و`TvSettings` و`SettingsLib` في AOSP)،
+  وبجانبها الإنجليزية لمن شاشته بها. وشاشات **Google TV** تطلب قبل ذلك وضع المطوّر (الإعدادات ← النظام ←
+  لمحة ← «إصدار نظام تشغيل Android TV» سبع مرات)، فهو ملاحظةٌ في خطوة رسالة الأمان بصورتها، ومثله تنبيه
+  «Play للحماية» في خطوة التثبيت.
+- **الملف في ssouq.net هو IPTV Smarters Pro 3.1.5** (‏`com.nst.iptvsmarterstvbox`، يثبت على الوضع
+  الأفقي في الجوال والشاشة)، وخانات دخوله **Any Name و Username و Password و `http://url_here.com:port`**
+  ثم **ADD USER** — لا «Playlist Name» ولا «ADD PLAYLIST» كما كان الدليل يقول. فخطوة الدخول
+  (`SMARTERS_LOGIN`) وصورتها `smarters-pro-login.webp` واحدةٌ للجوال والشاشة، وتخطيطهما واحد.
+- **الصور:** لقطات Downloader 2.0 الرسمية (صفحته في Google Play، ولوحة الأرقام من مقال AFTVnews، مارس
+  2026)؛ ونوافذ النظام مرسومة بالعربية بشكل Google TV كما في لقطات AFTVnews (‏`tv_smarters.html`)؛
+  وشاشات Smarters من ملف التطبيق نفسه: تخطيطاته للتلفاز ورسومه (‏`sm_*.png`، يستخرجها
+  `capture_smarters.js` بمساراتها داخل الملف) ونصوصه العربية وقلب الاتجاه — كما تظهر على شاشةٍ لغتها عربية.
+  وصورة الكود ونافذتا التثبيت بأسماء الأكواد والتطبيقات (‏`tv-dl-code-<الكود>` و`tv-dl-install-<التطبيق>`).
+- **الفيديو** `static/video/smarters-tv-ar.mp4` بأسلوب الفيديوهين الآخرين (‏`tools/video/smarters.html`)،
+  أول الخطوات (`SMARTERS_TV_VIDEO`، و`?v=` يُرفع مع كل إنتاج).
+- إعادة الإنتاج: `capture_smarters.js` (الصور، ويحمّل ملف التطبيق)، ثم `shots_smarters.js`، ثم
+  `render.js smarters`. والاختبار `tests/ui_guide_smarters.js`: الخطوات العشر، وخطوات Downloader نفسها
+  لـ MR7 وفالكون وكاسبر بكودها واسمها، وخطوة الدخول المشتركة مع الجوال، وصفحة `/android-tv`.
+- **تنبيه للمستقبل:** سياسة Google للتحقّق من المطوّرين تبدأ في 30 سبتمبر 2026 في البرازيل وإندونيسيا
+  وسنغافورة وتايلاند، وتعمّ الأجهزة المعتمدة من 2027. فإن وصلت السعودية صار للتثبيت خطوة «التثبيت دون
+  تحقّق» عالية الاحتكاك، ويلزم تحديث خطوات `DL_*`.
 
 **الاسم القديم يبقى عاملًا.** كان اسم سمارت "مرح"، فمفتاحه في الروابط كان
 `marah`. و `legacySub()` يحوّله إلى `smart` في مسار التفعيل ومسار الشراء معًا،

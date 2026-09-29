@@ -558,8 +558,61 @@ const APP = (icon, name, where) =>
 // فتُعرَّفان هنا مرة ويشير إليهما المساران — فلا يفترقان عند أي تعديل.
 const SMARTERS_XTREAM = { title: "اختر LOGIN WITH XTREAM CODES API", img: "/static/img/smarters-android-type.webp",
   html: '<p>افتح التطبيق فتظهر شاشة اختيار طريقة الدخول. اختر الخيار المحدَّد في الصورة: <b dir="ltr">LOGIN WITH XTREAM CODES API</b>. ولا تختر <b dir="ltr">LOAD YOUR PLAYLIST OR FILE/URL</b>، فبياناتك اسم مستخدم وكلمة مرور لا رابط قائمة.</p>' };
-const SMARTERS_LOGIN = { title: "أدخل بيانات الاشتراك", img: "/static/img/smarters-login.jpg",
-  html: '<p>عبّئ الخانات بالترتيب:</p><div class="fields"><div class="f"><span>Playlist Name</span><code>أي اسم من عندك</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة السر</code></div><div class="f"><span>URL</span><code>رابط الهوست</code></div></div><p>ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</p><div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة السر في بيانات الاشتراك. انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
+// شاشة الدخول في IPTV Smarters Pro 3.1.5 (ملف ssouq.net نفسه للجوال والشاشة، والتخطيط واحد): أربع خانات ثم
+// «إضافة مستخدم». أسماؤها كما يكتبها التطبيق إن كانت لغة الجهاز عربية، وبجانبها الإنجليزية.
+const SMARTERS_LOGIN = { title: "أدخل بيانات الاشتراك ثم «إضافة مستخدم»", img: "/static/img/smarters-pro-login.webp",
+  html: '<p>تظهر شاشة <b>أدخل بيانات الإشتراك الخاصة بك</b> (<b dir="ltr">Enter Your Login Details</b>). اختر كل خانة واكتب فيها:</p>'
+    + '<div class="fields"><div class="f"><span>أي إسم · <bdi>Any Name</bdi></span><code>أي اسم، مثلًا ssouq</code></div>'
+    + '<div class="f"><span>إسم المستخدم · <bdi>Username</bdi></span><code>اسم المستخدم</code></div>'
+    + '<div class="f"><span>كلمه السر · <bdi>Password</bdi></span><code>كلمة المرور</code></div>'
+    + '<div class="f"><span dir="ltr">http://url_here.com:port</span><code>رابط الهوست</code></div></div>'
+    + '<p>ثم اضغط <b>إضافة مستخدم</b> (<b dir="ltr">ADD USER</b>). يفتح التطبيق شاشته الرئيسية ويحمّل القنوات والأفلام والمسلسلات أول مرة، فانتظر حتى يكتمل.</p>'
+    + '<div class="note">رابط الهوست يصلك مع اسم المستخدم وكلمة المرور في بيانات الاشتراك. انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
+
+// التثبيت بأداة Downloader على شاشة أندرويد — لـ IPTV Smarters Pro ولتطبيقات الاشتراكات (MR7 وفالكون و CASPER VIP):
+// Downloader من Google Play، ثم الكود بزر #، ثم موافقة الشاشة على Downloader مرة واحدة (رسالة الأمان ← «الإعدادات»
+// ← تفعيله)، ثم «تثبيت» و«فتح». كلمات النوافذ من ترجمة أندرويد العربية نفسها، وبجانبها الإنجليزية لمن شاشته بها.
+// الصور من tools/video/shots_smarters.js، وما فيه كود أو اسم تطبيق صورةٌ باسمه (tv-dl-code-<الكود>، tv-dl-install-<التطبيق>).
+const DL_PLAY = lead => ({ title: "حمّل تطبيق Downloader من Google Play", img: "/static/img/tv-dl-play.webp",
+  html: lead + APP("downloader", "Downloader by AFTVnews", "من Google Play · مجاني")
+    + '<ol><li>افتح متجر <b dir="ltr">Google Play</b> في الشاشة وابحث عن <b dir="ltr">Downloader</b>.</li>'
+    + '<li>اختر التطبيق البرتقالي <b dir="ltr">Downloader by AFTVnews</b> كما في الصورة، واضغط <b>تثبيت</b> ثم <b>فتح</b>.</li></ol>'
+    + '<div class="note">في المتجر تطبيقات مقلّدة بالاسم نفسه: الصحيح من <b dir="ltr">AFTVnews</b> وأيقونته حرف D برتقالي، وهو مجاني. وإن كان عندك من قبل فانتقل للخطوة التالية.</div>' });
+const DL_OPEN = { title: "افتح Downloader واضغط OK", img: "/static/img/tv-dl-welcome.webp",
+  html: '<p>أول مرة تفتح <b dir="ltr">Downloader</b> تظهر نافذة <b dir="ltr">Welcome to Downloader</b>: اضغط <b dir="ltr">OK</b>.</p>'
+    + '<div class="note">إن طلب إذنًا للوصول إلى الملفات فاضغط <b>سماح</b> (<b dir="ltr">Allow</b>)، فهو يحتاجه ليحفظ ملف التطبيق.</div>' };
+const DL_CODE = (code, app, size, more = "") => ({ title: `اضغط # واكتب الكود ${code}`, img: `/static/img/tv-dl-code-${code}.webp`,
+  html: app + '<ol><li>في Downloader اضغط زر <b dir="ltr">#</b> أعلى الشاشة بجانب خانة العنوان، فتظهر لوحة أرقام.</li>'
+    + '<li>اكتب الكود:</li></ol>' + COPY(code, "كود التحميل")
+    + `<ol start="3"><li>ثم اضغط <b dir="ltr">Load</b> فيبدأ تحميل التطبيق${size ? ` (حجمه قرابة ${size} ميغابايت)` : ""}. انتظر حتى يكتمل.</li></ol>`
+    + '<div class="note">أو اكتب الكود في خانة العنوان نفسها واضغط <b dir="ltr">Go</b> — النتيجة واحدة.</div>' + more });
+const DL_BLOCKED = { title: "ظهرت رسالة الأمان؟ اضغط «الإعدادات»", img: "/static/img/tv-dl-blocked.webp",
+  html: '<p>بعد التحميل تظهر رسالة: <b>«لأغراض الأمان، غير مسموح حاليًا لجهاز التلفزيون الذي تستخدمه بتثبيت تطبيقات غير معروفة من هذا المصدر»</b>.</p>'
+    + '<p>هذا طبيعي: الشاشة تطلب موافقتك على أن يثبّت <b dir="ltr">Downloader</b> التطبيقات، <b>مرة واحدة فقط</b>. اضغط <b>الإعدادات</b> (<b dir="ltr">Settings</b>)، لا «إلغاء».</p>'
+    + '<div class="note">لم تظهر الرسالة وظهرت نافذة «هل تريد تثبيت هذا التطبيق؟» مباشرة؟ فقد وافقت على Downloader من قبل: انتقل إلى خطوة التثبيت. وإن ضغطت «إلغاء» بالخطأ فأعد الكود في Downloader.</div>'
+    + '<div class="note"><p><b>شاشات Google TV:</b> إن ظهرت رسالة أن تثبيت التطبيقات من مصادر غير معروفة معطّل ولم يظهر زر «الإعدادات»، فعّل وضع المطوّر مرة واحدة: '
+    + '<b>الإعدادات ← النظام ← لمحة</b>، ثم اضغط على <b>إصدار نظام تشغيل Android TV</b> سبع مرات حتى تظهر <b>«لقد أصبحت الآن مطور برامج!»</b>، ثم أعد الكود في Downloader.</p>'
+    + '<img src="/static/img/tv-dl-devmode.webp" alt="صفحة لمحة في إعدادات Google TV: إصدار نظام تشغيل Android TV ورسالة لقد أصبحت الآن مطور برامج" loading="lazy"></div>' };
+const DL_ALLOW = { title: "فعّل Downloader ثم ارجع", img: "/static/img/tv-dl-allow.webp",
+  html: '<p>تُفتح صفحة <b>تثبيت التطبيقات غير المعروفة</b> (<b dir="ltr">Install unknown apps</b>). اضغط على <b dir="ltr">Downloader</b> فيتحوّل زرّه إلى الأزرق وتصير تحته <b>«تطبيق مسموح به»</b> (<b dir="ltr">Allowed</b>).</p>'
+    + '<p>ثم اضغط زر <b>الرجوع</b> في الريموت مرة واحدة فتعود إلى التثبيت.</p>'
+    + '<div class="note">الموافقة لـ Downloader وحده ومرة واحدة: ما تثبّته به بعد ذلك لا يسألك عنها. وتلغيها متى شئت من الإعدادات ← <b>الأمان والقيود</b> ← <b>مصادر غير معروفة</b>.</div>' };
+const DL_INSTALL = (key, name) => ({ title: "اضغط «تثبيت» ثم «فتح»", img: `/static/img/tv-dl-install-${key}.webp`,
+  html: `<p>تعود إلى نافذة <b dir="ltr">${name}</b> وفيها: <b>هل تريد تثبيت هذا التطبيق؟</b> اضغط <b>تثبيت</b> (<b dir="ltr">Install</b>) وانتظر لحظات.</p>`
+    + '<p>حين تظهر <b>«تم تثبيت التطبيق.»</b> اضغط <b>فتح</b> (<b dir="ltr">Open</b>).</p>'
+    + `<img src="/static/img/tv-dl-done-${key}.webp" alt="نافذة تم تثبيت التطبيق وزر فتح" loading="lazy">`
+    + '<div class="note">إن ظهرت رسالة من <b>Play للحماية</b> (<b dir="ltr">Play Protect</b>) فاختر <b>فحص التطبيق</b> ثم أكمل التثبيت، أو افتح التفاصيل واختر التثبيت على أي حال (<b dir="ltr">Install anyway</b>).</div>'
+    + `<div class="note">تجد <b dir="ltr">${name}</b> بعد ذلك في تطبيقات الشاشة. ولتوفير المساحة احذف ملف التثبيت من Downloader ← <b dir="ltr">Files</b>.</div>` });
+
+// أول فتح لـ IPTV Smarters Pro على الشاشة: نوع الجهاز، ثم اتفاقية الاستخدام، ثم طريقة الدخول (خياران على الشاشة
+// لا خمسة كالجوال). الصور من تخطيطات التطبيق نفسه ورسومه ونصوصه العربية (tools/video/tv_smarters.html).
+const SMARTERS_TV_DEVICE = { title: "اختر TV ثم «حفظ»", img: "/static/img/tv-smarters-device.webp",
+  html: '<p>أول مرة يُفتح <b dir="ltr">IPTV Smarters Pro</b> يسأل عن نوع جهازك في شاشة <b dir="ltr">Device Option</b>. اختر <b dir="ltr">TV</b> ثم اضغط <b>حفظ</b> (<b dir="ltr">SAVE</b>).</p>' };
+const SMARTERS_TV_TERMS = { title: "اضغط «قبول» أسفل الشروط", img: "/static/img/tv-smarters-terms.webp",
+  html: '<p>تظهر صفحة بيضاء بشروط الاستخدام (<b dir="ltr">LICENSE AGREEMENT</b>). انزل بسهم الريموت إلى أسفلها واضغط <b>قبول</b> (<b dir="ltr">ACCEPT</b>).</p>' };
+const SMARTERS_TV_XTREAM = { title: "اختر XTREAM CODES API", img: "/static/img/tv-smarters-route.webp",
+  html: '<p>من الخيارين اختر الثاني: <b>تسجيل الدخول باستخدام <bdi>XTREAM CODES API</bdi></b>، وبالإنجليزية <b dir="ltr">LOGIN WITH XTREAM CODES API</b>.</p>'
+    + '<div class="note">لا تختر الأول (رابط أو ملف قنوات <b dir="ltr">M3U</b>): بياناتك اسم مستخدم وكلمة مرور، لا رابط قائمة.</div>' };
 
 // نظام WebOS ليس في شاشات LG وحدها، فمن تعمل شاشته به يتبع الخطوات نفسها
 const WEBOS_NOTE = '<div class="note">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir="ltr">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>';
@@ -638,6 +691,11 @@ const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4?
 const ZERO_VIDEO = '<div class="vid"><video src="/static/video/0player-92929480-ar.mp4?v=1" poster="/static/video/0player-92929480-ar.webp?v=1" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الطريقتين في دقيقة ونصف، ثم اتبع الخطوات هنا واحدة واحدة.</p></div>';
+// فيديو IPTV Smarters Pro على شاشة أندرويد (Downloader وموافقة الشاشة عليه ثم الدخول) — أول الخطوات، ومصدره
+// tools/video/smarters.html. و?v= يُرفع مع كل إنتاج جديد كفيديو SS IPTV.
+const SMARTERS_TV_VIDEO = '<div class="vid"><video src="/static/video/smarters-tv-ar.mp4?v=1" poster="/static/video/smarters-tv-ar.webp?v=1" '
+  + 'controls playsinline preload="none" width="720" height="1280"></video>'
+  + '<p class="sub">شاهد الخطوات كلها في أقل من دقيقتين، ثم اتبعها هنا واحدة واحدة.</p></div>';
 // خطوة التحميل: شاشات سامسونج و LG
 const SS_IPTV_GET_WEBOS = { title: "حمّل تطبيق SS IPTV",
   html: SS_IPTV_VIDEO + APP("ss-iptv", "SS IPTV", "مجاني · من فريق SS IPTV")
@@ -703,19 +761,18 @@ const DEVICES = {
       { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro" }
     ]},
     variants: {
+      // التثبيت بـ Downloader (DL_*) واحدٌ للتطبيقين، والكود والتطبيق وحدهما يختلفان
       mr7: [
-        { title: "حمّل تطبيق MR7 TV عبر Downloader", img: "/static/img/tv-downloader.png",
-          html: APP("mr7", "MR7 TV", "عبر Downloader · تطبيقنا الخاص") + '<ol><li>حمّل تطبيق <b dir="ltr">Downloader</b> من متجر الشاشة.</li><li>افتحه واكتب الكود التالي ثم اضغط Go:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>5574841</code></div></div><p>سيُحمَّل تطبيق <b dir="ltr">MR7 TV</b>. ثبّته وافتحه.</p>' },
+        DL_PLAY(""), DL_OPEN, DL_CODE("5574841", APP("mr7", "MR7 TV", "بالكود في Downloader · تطبيقنا الخاص")),
+        DL_BLOCKED, DL_ALLOW, DL_INSTALL("mr7", "MR7 TV"),
         { title: "سجّل الدخول", img: "/static/img/tv-mr7-login.jpg",
           html: '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثانية</span><code>كلمة السر</code></div><div class="f"><span>Activation code</span><code>اتركه فارغًا</code></div></div><p>ثم اضغط <b dir="ltr">LOGIN</b>.</p>' + CREDS }
       ],
       smarters: [
-        { title: "حمّل IPTV Smarters Pro عبر Downloader", img: "/static/img/tv-downloader.png",
-          html: APP("smarters-pro", "IPTV Smarters Pro", "عبر Downloader · مجاني") + '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li><li>افتحه واكتب الكود التالي في خانة البحث:</li></ol><div class="fields"><div class="f"><span>كود التحميل</span><code>8744201</code></div></div>' },
-        { title: "اسمح بالتثبيت ثم ثبّت التطبيق", img: "/static/img/smarters-tv-install.jpg",
-          html: '<ol><li>عند التثبيت ستظهر رسالة "غير مسموح بتثبيت تطبيقات غير معروفة". اضغط <b>الإعدادات</b>.</li><li>فعّل زر السماح لتطبيق <b dir="ltr">Downloader</b>.</li><li>ارجع وافتح Downloader من جديد، ستجد الملف في خانة <b dir="ltr">Files</b>. اضغطه وثبّت التطبيق.</li></ol><p class="sub">هذه النسخة المجانية بدون أي رسوم.</p>' },
-        SMARTERS_XTREAM,
-        SMARTERS_LOGIN
+        DL_PLAY(SMARTERS_TV_VIDEO), DL_OPEN,
+        DL_CODE("8744201", APP("smarters-pro", "IPTV Smarters Pro", "بالكود في Downloader · مجاني"), 84),
+        DL_BLOCKED, DL_ALLOW, DL_INSTALL("smarters", "IPTV Smarters Pro"),
+        SMARTERS_TV_DEVICE, SMARTERS_TV_TERMS, SMARTERS_TV_XTREAM, SMARTERS_LOGIN
       ]
     },
     doneImgs: { mr7: "/static/img/tv-mr7-home.jpg" }
@@ -953,13 +1010,10 @@ const FALCON = {
     ]},
     variants: {
       falconapp: [
-        { title: "حمّل تطبيق فالكون عبر Downloader", img: "/static/img/tv-downloader.png",
-          html: APP("falcon-app", "FALCON TV PRO", "عبر Downloader · تطبيق الاشتراك")
-            + '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li>'
-            + '<li>افتحه واكتب الكود التالي في خانة البحث:</li></ol>'
-            + '<div class="fields"><div class="f"><span>كود التحميل</span><code>1683248</code></div></div>'
-            + '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/1683248" target="_blank" rel="noopener">aftv.news/1683248</a>.</p>' },
-        DEVICES.tv.variants.smarters[1],
+        DL_PLAY(""), DL_OPEN,
+        DL_CODE("1683248", APP("falcon-app", "FALCON TV PRO", "بالكود في Downloader · تطبيق الاشتراك"), 126,
+          '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/1683248" target="_blank" rel="noopener">aftv.news/1683248</a>.</p>'),
+        DL_BLOCKED, DL_ALLOW, DL_INSTALL("falcon", "FALCON IPTV PRO"),
         FALCON_LOGIN
       ],
       smarters: DEVICES.tv.variants.smarters
@@ -1068,13 +1122,10 @@ const CASPER = {
     ]},
     variants: {
       caspervip: [
-        { title: "حمّل تطبيق CASPER VIP عبر Downloader", img: "/static/img/tv-downloader.png",
-          html: APP("casper-vip", "CASPER VIP", "عبر Downloader · تطبيق الاشتراك")
-            + '<ol><li>من متجر التطبيقات في الشاشة حمّل <b dir="ltr">Downloader by AFTVnews</b>.</li>'
-            + '<li>افتحه واكتب الكود التالي في خانة البحث ثم اضغط <b dir="ltr">Go</b>:</li></ol>'
-            + COPY("3638997", "كود التحميل")
-            + '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/3638997" target="_blank" rel="noopener">aftv.news/3638997</a>.</p>' },
-        DEVICES.tv.variants.smarters[1],
+        DL_PLAY(""), DL_OPEN,
+        DL_CODE("3638997", APP("casper-vip", "CASPER VIP", "بالكود في Downloader · تطبيق الاشتراك"), 9,
+          '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/3638997" target="_blank" rel="noopener">aftv.news/3638997</a>.</p>'),
+        DL_BLOCKED, DL_ALLOW, DL_INSTALL("casper", "Casper VIP"),
         CASPER_VIP_LOGIN
       ],
       smarters: DEVICES.tv.variants.smarters
