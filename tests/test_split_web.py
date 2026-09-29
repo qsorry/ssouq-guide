@@ -5,7 +5,8 @@
 لوحاتٍ وهمية (مرح/Xtream، كاسبر، فالكون) وخادم بريدٍ وهمي، والدورة كل ثانية.
 
   • الميزة لعميلٍ بعينه: من لم تُفتح له لا يرى ولا يستطيع شيئًا.
-  • إنشاء جزء ٦/٣/شهر من باقة ١٥ شهرًا على البوابات الثلاث.
+  • إنشاء جزء ٦/٣/شهر من باقة ١٥ شهرًا على البوابات الثلاث، وبديلٍ عن رقمٍ مفقود بمدة ١٢
+    شهرًا (الربط يحمل المدة، والباقي ٣ أشهر في «حسابات متبقية»).
   • عند انتهاء الجزء يتغيّر **اسم المستخدم وحده** على اللوحة — كلمة المرور والانتهاء
     والقنوات كما هي، ولا تمديد مدفوع — ويصير الخط «متاحًا» بما تبقّى.
   • لوحةٌ تقفل الاسم أو لا تتيح التعديل: لا يُرسَل شيء، ويصير «يحتاج تدخّلًا» ثم يُؤكَّد يدويًا.
@@ -157,22 +158,29 @@ def split_file(data_dir, acct_id):
 
 
 def set_due_past(data_dir, acct_id, rid, days=1):
-    """يعيد موعد الجزء إلى الماضي — كأن ستة أشهر مضت — لتلتقطه الدورة التالية."""
+    """يعيد موعد الجزء إلى الماضي — كأن ستة أشهر مضت — لتلتقطه الدورة التالية.
+
+    الخادم يحفظ الملف نفسه في دورته (كل ثانية هنا)، وكتابتُنا من خارجه تضيع إن وقعت بين
+    قراءته وحفظه: يبقى الخط «يجري» بموعده القديم فلا تلتقطه الدورة أبدًا. فبعد الكتابة
+    ننتظر دورةً ونتحقّق أن الموعد بقي — أو أن الدورة التقطته فتجاوزه الخط — ونعيدها إن ضاع."""
     p = split_file(data_dir, acct_id)
+    past = (datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3)))
+            - datetime.timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
     for _ in range(20):
         try:
             with open(p, encoding="utf-8") as f:
                 db = json.load(f)
-            past = (datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3)))
-                    - datetime.timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
-            db["lines"][rid]["slice"]["due"] = past
+            rec = db["lines"][rid]
+            if rec.get("state") != "active" or (rec.get("slice") or {}).get("due") == past:
+                return True
+            rec["slice"]["due"] = past
             tmp = p + ".t"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(db, f, ensure_ascii=False)
             os.replace(tmp, p)
-            return True
         except (OSError, ValueError, KeyError, TypeError):
-            time.sleep(0.2)
+            pass
+        time.sleep(1.5)                          # أطول من دورة: ما ضاع يظهر قبل التحقّق التالي
     return False
 
 
@@ -263,12 +271,19 @@ def main():
         code, d = b.jreq("/admin/api/create", {"gate": gb, "package_id": "15", "count": 1, "slice_months": 6})
         check("slice creation refused before anything is created", code == 400 and "غير مفعّلة" in d.get("error", ""),
               d.get("error", ""))
+        before = len(panel_state(MARAH)["lines"])
+        code, d = b.jreq("/admin/api/create", {"gate": gb, "package_id": "15", "count": 1, "slice_months": 12,
+                                               "replaces": "555000999888"})
+        _, s = b.jreq("/admin/api/search?gate=%s&q=555000999888" % gb)
+        check("a replacement with a duration is refused too — nothing created, nothing linked",
+              code == 400 and "غير مفعّلة" in d.get("error", "") and s.get("links") == []
+              and len(panel_state(MARAH)["lines"]) == before, d.get("error", ""))
 
         print("\n== 3. العميل المفتوحة له: إنشاء أجزاء من باقة ١٥ شهرًا ==")
         a = Client()
         a.jreq("/admin/api/login", {"user": "split", "password": "pw_split"})
         _, me = a.jreq("/admin/api/me")
-        check("me: split on with 6/3/1", me.get("split") is True and me.get("split_slices") == [6, 3, 1])
+        check("me: split on with 12/6/3/1", me.get("split") is True and me.get("split_slices") == [12, 6, 3, 1])
         st, _ = a.status("/admin/remaining")
         check("remaining page opens for him", st == 200, str(st))
         g_m = gid["بوابة مرح"]
@@ -322,10 +337,45 @@ def main():
         check("Falcon: 1-month slice created (14 remain after)", code == 200 and spf.get("remaining_after") == 14,
               json.dumps(d, ensure_ascii=False)[:160])
         f_id, f_user = spf.get("id"), spf.get("username")
+
+        print("\n== 3b. بديلٌ عن رقمٍ لم يُعثر عليه: مدة البديل ١٢ شهرًا من باقة ١٥ ==")
+        old_no = "555000111222"
+        _, d = a.jreq("/admin/api/search?gate=%s&q=%s" % (g_m, old_no))
+        check("the old number is not on the panel, nothing linked yet", d.get("results") == [] and d.get("links") == [],
+              json.dumps(d, ensure_ascii=False)[:120])
+        code, d = a.jreq("/admin/api/create", {"gate": g_m, "package_id": "15", "count": 1, "replaces": old_no,
+                                               "slice_months": 12})
+        spr = (d.get("split") or [{}])[0]
+        r_line = (d.get("lines") or [{}])[0]
+        r_user = r_line.get("username", "")
+        check("replacement created on the 15-month package, given 12 months and tracked",
+              code == 200 and r_user and spr.get("id") and spr.get("months") == 12 and not d.get("error"),
+              json.dumps(d, ensure_ascii=False)[:200])
+        check("…3 months remain on the line after it", spr.get("remaining_after") == 3, str(spr.get("remaining_after")))
+        today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=3))).date()
+        due_r = datetime.date.fromisoformat(spr.get("due", "2000-01-01")[:10])
+        check("…its username changes a year from now, not after 15 months", 364 <= (due_r - today).days <= 366,
+              spr.get("due", ""))
+        check("…the history labels it with the duration given", "جزء 12 شهرًا" in r_line.get("package", ""),
+              r_line.get("package", ""))
+        check("…the link to the old number carries that label",
+              [(x["old"], x["new"], x["package"]) for x in d.get("linked", [])] == [(old_no, r_user, r_line.get("package"))],
+              json.dumps(d.get("linked"), ensure_ascii=False))
+        _, d = a.jreq("/admin/api/search?gate=%s&q=%s" % (g_m, old_no))
+        lk = (d.get("links") or [{}])[0]
+        check("searching the old number later names its replacement and the 12 months",
+              lk.get("direction") == "replaced_by" and lk.get("new") == r_user and "جزء 12 شهرًا" in lk.get("package", ""),
+              json.dumps(d.get("links"), ensure_ascii=False))
+        r_id = spr.get("id")
+
         code, d = a.jreq("/admin/api/split/state")
         lines = {l["id"]: l for l in d.get("lines", [])}
-        check("state lists the three running slices", all(lines.get(x, {}).get("state") == "active"
-                                                          for x in (m_id, c_id, f_id)), str(list(lines)))
+        check("state lists the running slices, the replacement among them",
+              all(lines.get(x, {}).get("state") == "active" for x in (m_id, c_id, f_id, r_id))
+              and lines.get(r_id, {}).get("slice", {}).get("months") == 12, str(list(lines)))
+        check("state: 12 is a sale type, and 6 stays the preselected one",
+              d.get("slices") == [12, 6, 3, 1] and d.get("default_slice") == 6,
+              "%s %s" % (d.get("slices"), d.get("default_slice")))
         check("line text ready to copy (host · user · pass · guide)",
               lines.get(m_id, {}).get("line", "").startswith("Host http://mrha.ink User %s Pass 999988887777" % m_user),
               lines.get(m_id, {}).get("line", ""))

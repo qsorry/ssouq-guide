@@ -482,7 +482,7 @@ def clean_account(a, old=None):
         # النص كاملًا بقيم اليوزر بدل السطر الواحد. الإنشاء يبقى سطرًا.
         "copy_guide": bool(a.get("copy_guide", old.get("copy_guide", False))),
         "guide_text": _clean_guide_text(a.get("guide_text", old.get("guide_text", ""))),
-        # الاشتراكات المجزّأة (بيع ٦ · ٣ · شهر من باقة ١٥ شهرًا وتغيير اسم المستخدم عند
+        # الاشتراكات المجزّأة (بيع ١٢ · ٦ · ٣ · شهر من باقة ١٥ شهرًا وتغيير اسم المستخدم عند
         # انتهاء الجزء): يفتحها المدير لعميلٍ بعينه، ومغلقةٌ لغيره فلا يتغيّر عليه شيء.
         "split": bool(a.get("split", old.get("split", False))),
     }
@@ -1779,7 +1779,7 @@ def create_lines(gate, pkg, count, username=None, password=None):
     return out, None
 
 
-# ================= الاشتراكات المجزّأة (٦ · ٣ · شهر من باقة ١٥ شهرًا) =================
+# ================= الاشتراكات المجزّأة (١٢ · ٦ · ٣ · شهر من باقة ١٥ شهرًا) =================
 # `split_subs.py` يحمل الأجزاء والمواعيد والإشعارات ولا يعرف شيئًا عن اللوحات؛ وهذا
 # القسم هو الجسر: يغيّر اسم المستخدم على لوحة الخط (مرح/كاسبر بجلسة ويب، وفالكون)
 # ويُرسل بريد الملخّص، ويشغّل الدورة. الميزة لكل عميلٍ على حدة (`split` في حسابه).
@@ -3586,6 +3586,7 @@ class Handler(BaseHTTPRequestHandler):
         notes.sort(key=lambda n: n.get("at", ""), reverse=True)
         return {"role": role, "accounts": accounts, "lines": lines, "notes": notes[:150],
                 "unread": unread, "slices": list(split_subs.SLICES),
+                "default_slice": split_subs.DEFAULT_SLICE,
                 "base_months": list(split_subs.BASE_MONTHS), "now": split_subs.fmt(now)}
 
     def _split_notes(self, st, role, acct):
@@ -3753,7 +3754,7 @@ class Handler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             months = 0
         if months not in split_subs.SLICES:
-            return self._send(400, {"error": "اختر نوع البيع (٦ · ٣ · شهر)"})
+            return self._send(400, {"error": "اختر نوع البيع (١٢ · ٦ · ٣ · شهر)"})
         now = split_subs.now_dt()
         day = split_subs.to_date(req.get("start")) if req.get("start") else now.date()
         if not day:
@@ -3795,7 +3796,8 @@ class Handler(BaseHTTPRequestHandler):
         if not pkg:
             return self._send(400, {"error": "الباقة غير موجودة"})
         count = max(1, min(int(req.get("count", 1)), 50))
-        # بيعٌ مجزّأ (٦ · ٣ · شهر من باقة ١٥ شهرًا): يُفحص قبل أي إنشاء، فالرفض لا يخصم.
+        # بيعٌ مجزّأ (١٢ · ٦ · ٣ · شهر من باقة ١٥ شهرًا): يُفحص قبل أي إنشاء، فالرفض لا يخصم.
+        # ومنه «مدة البديل»: بديلٌ يُعطى ١٢ شهرًا من باقة ١٥ هو جزءٌ مبيعٌ كغيره.
         try:
             slice_m = int(req.get("slice_months") or 0)
         except (TypeError, ValueError):
@@ -3818,7 +3820,13 @@ class Handler(BaseHTTPRequestHandler):
                                    out, gate.get("host", ""))
             except Exception:
                 pass                               # التصدير مساعدٌ لا يُفشل الإنشاء
-        replaces = str(req.get("replaces") or "").strip()   # ربط القديم بالجديد (بديل)
+        if slice_m and out:                        # السجل في المتصفح يفصل المجزّأ عن الكامل
+            label = "%s · جزء %s" % (pkg.get("name", ""), split_subs.months_ar(slice_m))
+            for r in out:
+                r["package"] = label
+        # ربط القديم بالجديد (بديل) — بعد تسمية الجزء، فيحمل الرابط المدة التي أُعطيها
+        # البديل («… · جزء 12 شهرًا») لا مدة الباقة كاملةً.
+        replaces = str(req.get("replaces") or "").strip()
         if replaces and out:
             try:
                 linked = [user_links.add(DATA_DIR, acct["id"], gate["id"],
@@ -3830,9 +3838,6 @@ class Handler(BaseHTTPRequestHandler):
         if slice_m and out:                        # يُتابَع الجزء المبيع حتى يتغيّر اسمه
             resp["split"] = split_register_created(acct, gate, pkg, slice_m, out)
             resp["split_mail"] = split_mail_status(load_store(), acct, "account")   # أيصل التذكير بالبريد؟
-            label = "%s · جزء %s" % (pkg.get("name", ""), split_subs.months_ar(slice_m))
-            for r in out:
-                r["package"] = label               # السجل في المتصفح يفصل المجزّأ عن الكامل
         self._send(200, resp)
 
 
