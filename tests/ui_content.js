@@ -87,6 +87,15 @@ function playlist(movies) {
     check('منشور بأعداده', (await ap.textContent('[data-k="smart"] .chip')).includes('منشور')
           && (await ap.textContent('[data-k="smart"] .stats')).includes('2,500'));
     check('وبلا بيانات الدخول', !(await ap.content()).includes('pass456'));
+    // محتوى قرأته النسخة الأولى (قبل الصور والتقييمات): المدير يُطلب منه إعادة رفع الملف
+    fs.writeFileSync(path.join(DATA, 'content', 'kon.json'), JSON.stringify({entries: 1, n: {series: 0, movie: 1, live: 0},
+      skipped: {}, series: [], live: [], movie: [{id: 'm0', name: 'M', items: ['Old Film (2019)']}], at: Date.now() / 1000}));
+    await ap.reload();
+    await ap.waitForSelector('[data-k="kon"] .warnline', {timeout: 8000});
+    check('المحتوى القديم: «أعد رفع الملف»', (await ap.textContent('[data-k="kon"] .warnline')).includes('أعد رفع الملف'));
+    ap.once('dialog', dlg => dlg.accept());       // «مسح محتوى هذا السيرفر؟»
+    await ap.click('[data-k="kon"] [data-act="clear"]');
+    await ap.waitForFunction(() => !document.querySelector('[data-k="kon"] .warnline'), null, {timeout: 8000});
     await ap.click('[data-k="smart"] details.groups summary');
     await ap.click('[data-k="smart"] [data-gk="series"]');
     const nf = ap.locator('[data-k="smart"] .grow', {hasText: 'Netflix'});

@@ -248,8 +248,9 @@ def _sid(url):
 
 
 def _poster(v):
-    v = (v or "").strip()
-    return v if v.lower().startswith(("http://", "https://")) and len(v) <= 600 and " " not in v else ""
+    """رابط الصورة كما يُطلب — والمسافة فيه (‏«…/logos/MBC 1.png» في لوحاتٍ كثيرة) مرمَّزة لا مُسقِطة."""
+    v = (v or "").strip().replace(" ", "%20")
+    return v if v.lower().startswith(("http://", "https://")) and len(v) <= 600 and not re.search(r"[\s\"<>]", v) else ""
 
 
 def _slim(d):
@@ -648,13 +649,14 @@ def start_refresh(data_dir, key):
 
 
 def tick(data_dir, now=None):
-    """دورة الخلفية: كل سيرفرٍ له رابط يُسحب إن مرّ يومٌ على آخر محتوى، ولا يُعاد فشلٌ قبل RETRY."""
+    """دورة الخلفية: كل سيرفرٍ له رابط يُسحب إن مرّ يومٌ على آخر محتوى — أو كان محتواه من القراءة الأولى (بلا صور
+    ولا تقييم) فيُسحب في أول دورة — ولا يُعاد فشلٌ قبل RETRY."""
     now = now or time.time()
     for s in servers(data_dir):
         if not s["url"] or s["key"] in _busy:
             continue
-        cat_at = _cat_at(data_dir, s["key"])
-        if now - cat_at >= REFRESH and now - s["try_at"] >= RETRY:
+        due = now - _cat_at(data_dir, s["key"]) >= REFRESH or _cat_old(data_dir, s["key"])
+        if due and now - s["try_at"] >= RETRY:
             refresh(data_dir, s["key"], now=now)
 
 
@@ -664,6 +666,18 @@ def _cat_at(data_dir, key):
         return os.stat(_cat_path(data_dir, key)).st_mtime
     except OSError:
         return 0.0
+
+
+_V2 = re.compile(rb'^\{\s*"v"\s*:\s*2\b')
+
+
+def _cat_old(data_dir, key):
+    """فهرسٌ قرأته النسخة الأولى (بلا صور ولا أرقام ولا تقييم) — من أول بايتاته: النسخة الحالية تبدأ بـ ‏"v":2."""
+    try:
+        with open(_cat_path(data_dir, key), "rb") as f:
+            return not _V2.match(f.read(32))
+    except OSError:
+        return False
 
 
 # ================= إدارة السيرفرات =================
@@ -780,6 +794,7 @@ def _upgrade(cat):
     السحب التالي."""
     if cat.get("v") == 2:
         return cat
+    cat["old"] = True                        # للمدير: يُعاد رفعه أو يُسحب لتظهر الصور والتقييمات
     for kind in KINDS:
         for g in cat.get(kind) or []:
             items = {}
@@ -1286,7 +1301,8 @@ def admin_state(data_dir):
             "key": s["key"], "name": s["name"], "full": s["full"], "buy": s["buy"], "page": f"{PATH}/{s['key']}",
             "has": _has(v), "at": v["at"] if v else 0, "source": cat.get("source", ""), "label": cat.get("label", ""),
             "counts": v["counts"] if v else None, "entries": cat.get("entries", 0), "n": cat.get("n", {}),
-            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "url": mask_url(url) if url else "", "try_at": s["try_at"],
+            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "old": bool(cat.get("old")),
+            "url": mask_url(url) if url else "", "try_at": s["try_at"],
             "error": s["error"], "busy": dict(_busy[s["key"]]) if s["key"] in _busy else None,
             "groups": {k: [[g["id"], g["name"], len(g["items"]), g["id"] in hidden] for g in cat.get(k) or []]
                        for k in KINDS}})

@@ -210,6 +210,9 @@ function meta(s) {
     // التقييمات والتصنيفات وتاريخ الإضافة من واجهة Xtream بالبيانات نفسها
     if (s.api && s.api.ok) out.push(`التقييمات والتصنيفات من واجهة السيرفر: ${count(s.api.movies || 0, N.movie)} و${count(s.api.series || 0, N.series)}`);
     else if (s.api) out.push(`<span class="warnline">تعذّر جلب التقييمات من واجهة السيرفر (${esc(s.api.error || "")}) — الصفحة بما في الملف</span>`);
+    // محتوى قُرئ قبل الصور والتقييمات: الرابط يُسحب وحده في دقائق، والملف يُعاد رفعه
+    if (s.old) out.push(`<span class="warnline">قُرئ هذا المحتوى قبل إضافة الصور والتقييمات — ${s.url
+      ? "يُسحب من رابطه الآن وحده (أو اضغط «اسحب الآن»)" : "أعد رفع الملف لتظهر الصور والتقييمات و«أضيف مؤخرًا»"}</span>`);
   }
   if (s.url) out.push(`الرابط <span class="mono">${esc(s.url)}</span> يُسحب كل ${DATA.refresh_hours} ساعة`);
   return out.join(" · ");

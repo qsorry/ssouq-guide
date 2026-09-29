@@ -231,6 +231,10 @@ def unit_parse():
     check("ملفٌّ فارغ أو صفحة خطأ: لا عناصر", catalog("<html>403 Forbidden</html>")["entries"] == 0
           and catalog("")["entries"] == 0)
 
+    check("رابط الصورة: المسافة مرمَّزة، وغير الرابط يسقط", C._poster(" http://h/logos/MBC 1.png ") == "http://h/logos/MBC%201.png"
+          and C._poster("https://image.tmdb.org/t/p/w600/a.jpg") == "https://image.tmdb.org/t/p/w600/a.jpg"
+          and C._poster("javascript:alert(1)") == "" and C._poster('http://h/a".png') == "" and C._poster("") == "")
+
     print("البحث والعدّ")
     check("الهمزات والتشكيل والتاء المربوطة", C._norm("أُسامة") == C._norm("اسامه") == "اسامه")
     check("حالة الأحرف والرموز والأرقام", C._norm("Breaking-Bad ᴴᴰ ٢") == "breaking bad hd 2", C._norm("Breaking-Bad ᴴᴰ ٢"))
@@ -766,6 +770,24 @@ def unit_fetch():
             check("«اسحب الآن» بلا رابط", False)
         except ValueError:
             check("«اسحب الآن» بلا رابط", True)
+
+        print("محتوى القراءة الأولى")
+        old = {"entries": 1, "n": {"series": 0, "movie": 1, "live": 0}, "skipped": {}, "series": [], "live": [],
+               "movie": [{"id": C._gid("movie", "M"), "name": "M", "items": ["Old Film (2019)"]}]}
+        state = lambda k: next(x for x in C.admin_state(d)["servers"] if x["key"] == k)  # noqa: E731
+        C._write(C._cat_path(d, "smart"), old)
+        check("بلا رابط: للمدير «أعد رفع الملف»", state("smart")["old"] is True and C._cat_old(d, "smart")
+              and not C._cat_old(d, "falcon"))
+        C.tick(d)
+        check("والدورة لا تمسّه", C._cat_old(d, "smart"))
+        C._write(C._cat_path(d, "casper"), old)
+        C.set_url(d, "casper", base + "/get.php?username=user123&password=pass456")
+        n0 = lists()
+        C.tick(d)
+        check("وبرابط: يُسحب في أول دورة لا بعد يوم", lists() == n0 + 1 and not C._cat_old(d, "casper")
+              and state("casper")["old"] is False and C._view(d, "casper")[1]["counts"]["series"] == 9)
+        C.tick(d)
+        check("ثم كل يومٍ كعادته", lists() == n0 + 1)
     finally:
         srv.shutdown()
         shutil.rmtree(d, ignore_errors=True)
