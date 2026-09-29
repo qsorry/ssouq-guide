@@ -347,6 +347,8 @@ function stats(c) {
 function chip(s) {
   if (s.busy) return `<span class="chip busy">${s.busy.stage === "connect" ? "يتصل بالسيرفر…"
     : s.busy.stage === "meta" ? "يجلب التقييمات والتصنيفات…" : "يقرأ الملف… " + mb(s.busy.bytes || 0)}</span>`;
+  // فهرسٌ لم يُحسب ملخّصه لنسخته الحالية بعد (بعد إعادة تشغيل الخادم أو سحبٍ أو إخفاء قسم): يُحسب في الخلفية
+  if (s.loading) return `<span class="chip busy">${s.has ? "تُحدَّث الأعداد…" : "يُحسب المحتوى…"}</span>`;
   return s.has ? '<span class="chip on">منشور</span>' : '<span class="chip">بلا محتوى</span>';
 }
 
@@ -510,7 +512,8 @@ function renderChannel() {
   const L = c.last;
   if (L && !L.ok) out.push(`<span class="warnline">آخر محاولة (${esc(when(L.at))}) لم تُنشر: ${esc(L.error || "")}</span>`);
   else if (L && L.empty) out.push(`موعد ${esc(when(L.at))}: لا جديد فلم يُنشر شيء`);
-  if (c.jid) out.push(tally(c.pending) ? `الجديد منذ آخر منشور: ${tally(c.pending)}` : "لا جديد منذ آخر منشور");
+  if (c.jid) out.push(!c.pending ? "يُحسب الجديد منذ آخر منشور…"
+    : tally(c.pending) ? `الجديد منذ آخر منشور: ${tally(c.pending)}` : "لا جديد منذ آخر منشور");
   if (c.on && c.jid) out.push(`المنشور القادم: ${nextPost(c)}`);
   $("cLast").innerHTML = out.join("<br>");
 }
@@ -597,6 +600,7 @@ function authHTML(a) {
 
 // حال المنتج المربوط كما حُفظ: ينتظر أول تحديثٍ بيد المدير، أو معلَّق، أو فشل، أو آخر ما كُتب فيه
 function linkStatus(l) {
+  if (!l.has && (DATA.servers || []).some(s => s.key === l.server && s.loading)) return ["يُحسب محتوى السيرفر…", ""];
   if (!l.has) return ["لا محتوى لهذا السيرفر بعد — ارفع ملفه أو ضع رابطه", "warnline"];
   if (l.error) return ["آخر محاولة لم تنجح: " + l.error, "bad"];
   if (l.held.length) return ["معلَّق: " + l.held.slice(0, 2).map(x => `${WHAT[x.what] || ""} «${x.old}» ← «${x.new}»`).join("، ")
@@ -615,7 +619,7 @@ function renderStore(force) {
     $("sOn").checked = !!st.on; $("sCid").value = st.auth.client_id || ""; SFILL = true; SDIRTY = false;
     if (!st.ready) $("sConn").open = true;
   }
-  const sig = JSON.stringify([st, SLINKS, (DATA.servers || []).map(s => s.key + ":" + s.name)]);
+  const sig = JSON.stringify([st, SLINKS, (DATA.servers || []).map(s => s.key + ":" + s.name + (s.loading ? "…" : ""))]);
   if (sig === SSIG && !force) return;          // لا يُعاد رسم ما لم يتغيّر، فلا تُغلق قائمةٌ مفتوحة
   SSIG = sig;
   const a = st.auth, chip = $("sChip"), n = st.links.length;
@@ -776,7 +780,8 @@ function render() {
     sec.innerHTML = srvHTML(s, i, ss.length);
     const m = UI[s.key].msg; if (m) sec.querySelector("[data-msg]").className = "msg" + (m[1] ? " " + m[1] : "");
   });
-  const busy = ss.some(s => s.busy);
+  // ويُسأل الخادم ثانيةً ما دام سيرفرٌ يُقرأ ملفه أو يُحسب ملخّصه أو جديد القناة
+  const busy = ss.some(s => s.busy || s.loading) || !!(DATA.channel && DATA.channel.jid && !DATA.channel.pending);
   clearTimeout(poll);
   if (busy) poll = setTimeout(load, 2000);
 }

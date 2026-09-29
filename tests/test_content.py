@@ -30,6 +30,7 @@ import html as _html
 import http.server
 import json
 import os
+import random
 import re
 import shutil
 import socketserver
@@ -138,6 +139,8 @@ def seasons(cat):
 def fresh():
     d = tempfile.mkdtemp(prefix="content_")
     C._cache.clear()
+    C._sums.clear()
+    C._files.clear()
     C._found.clear()
     C._busy.clear()
     return d
@@ -259,6 +262,16 @@ def unit_parse():
 
 def seed(d, key="smart", text=SAMPLE):
     return C.ingest(d, key, reader(text.encode("utf-8")), "file", "sample.m3u")
+
+
+def settled(d, key):
+    """حال المدير للسيرفر بعد أن يُحسب ملخّص نسخة ملفه الحالية — ‏loading ما دام يُحسب في الخلفية."""
+    for _ in range(250):
+        s = next(x for x in C.admin_state(d)["servers"] if x["key"] == key)
+        if not s["loading"]:
+            return s
+        time.sleep(.02)
+    return s
 
 
 def unit_store():
@@ -711,6 +724,181 @@ def unit_channel():
         check("وقناةٌ أخرى تبدأ من جديد", c["posted"] is None and c["last"] is None and c["day"] == "" and c["since"] > T - 2 * 86400, c)
     finally:
         C.channel_sender = None
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def restart():
+    """كأن الخادم أُعيد تشغيله: لا عرض ولا ملخّص في الذاكرة — وما على القرص باقٍ."""
+    C._cache.clear()
+    C._sums.clear()
+    C._files.clear()
+    C._found.clear()
+
+
+def panel_ref(v, since, until, known=()):
+    """‏_panel بالمرور على الفهرس كله كما كان — ليُقارَن به ما يأخذه من القائمة المرتّبة بالتاريخ."""
+    out = {"movie": {}, "series": {}}
+    for kind, got in out.items():
+        for g in v["kinds"][kind]:
+            for it in g["items"]:
+                a = it.get("a") or 0
+                if not since < a <= until:
+                    continue
+                h = C._gid(kind, C._ikey(kind, it))
+                if h in known:
+                    continue
+                x = got.get(h)
+                if x is None:
+                    x = got[h] = dict(C._slim({"h": h, "n": it.get("n"), "y": it.get("y"), "r": it.get("r"), "a": a}), gs=[])
+                    if kind == "series":
+                        ss = [(s, n) for s, n in it.get("s") or () if s] or [(0, sum(n for _s, n in it.get("s") or ()))]
+                        x.update(add={}, cur=list(max(ss)))
+                x["gs"].append(g["id"])
+        if len(got) > max(C.NEWS_FLOOD, v["counts"][kind] // 2):
+            got.clear()
+    return out["movie"], out["series"]
+
+
+def unit_summary():
+    print("صفحة المدير بلا انتظار: ملخّص كل سيرفرٍ على القرص")
+    d = fresh()
+    real, built, slow = C._build, [], [0]
+
+    def counted(cat, hidden):
+        built.append(cat.get("key"))
+        time.sleep(slow[0])
+        return real(cat, hidden)
+
+    C._build = counted
+    try:
+        seed(d)
+        seed(d, "falcon", big(40))
+        v = C._view(d, "smart")[1]
+        rec = json.load(open(C._sum_path(d, "smart"), encoding="utf-8"))
+        check("الإدخال يكتب ملخّص الفهرس: أعداده وأقسامه كلها وحال ملفه", rec["v"] == C.SUM_V and rec["has"]
+              and rec["counts"] == v["counts"] and rec["cat"]["entries"] == 25 and rec["cat"]["source"] == "file"
+              and rec["groups"]["series"] == [[g["id"], g["name"], len(g["items"])] for g in v["cat"]["series"]], rec)
+        before = C.admin_state(d)
+        restart()
+        built.clear()
+        after = C.admin_state(d)
+        check("بعد إعادة التشغيل: صفحة المدير كما كانت، من الملخّص بلا بناء عرض", after["servers"] == before["servers"]
+              and not built and not any(s["loading"] for s in after["servers"]), built)
+        check("والرئيسية والتحويل وخريطة الموقع وقائمة السيرفرات كذلك",
+              [s["key"] for s in C.brief(d)["servers"]] == ["smart", "falcon"] and C.first_key(d) == "smart"
+              and len(C.sitemap(d)) == 2 and C.has(d, "falcon") and not C.has(d, "kon")
+              and P.render_missing(d, "kon")[0] == 404 and not built, built)
+
+        print("وما لم يُبنَ بعد لا تنتظره")
+        drama = next(g for g in v["cat"]["series"] if g["name"] == "SERIES | Drama")["id"]
+        with C._lock:
+            lk = C._building.setdefault("smart", threading.Lock())
+        lk.acquire()                             # بناءٌ طويل: عرض سمارت لا يُبنى ما دام القفل
+        try:
+            C.set_hidden(d, "smart", drama, True)
+            t0 = time.time()
+            sm = next(s for s in C.admin_state(d)["servers"] if s["key"] == "smart")
+            took = time.time() - t0
+            check("إخفاء قسم: الصفحة لا تنتظر إعادة العدّ — آخر أعداده والقسم مخفيٌّ فيها، و«تُحدَّث»", took < 1
+                  and sm["loading"] and sm["counts"]["series"] == 9
+                  and next(g for g in sm["groups"]["series"] if g[0] == drama)[3] is True, (took, sm["counts"]))
+            check("وبطاقة المتجر بآخر أعداده", C.brief(d, wait=False)["servers"][0]["series"] == 9)
+        finally:
+            lk.release()
+        sm = settled(d, "smart")
+        check("ثم يُبنى في الخلفية فتكتمل", not sm["loading"] and sm["counts"]["series"] == 8
+              and C.brief(d)["servers"][0]["series"] == 8, sm["counts"])
+        C.set_hidden(d, "smart", drama, False)
+
+        print("بناءٌ واحدٌ لكل سيرفر")
+        restart()
+        built.clear()
+        slow[0], got = .3, []
+        ts = [threading.Thread(target=lambda: got.append(C._view(d, "falcon")[1])) for _ in range(5)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        slow[0] = 0
+        check("طلباتٌ معًا لعرضٍ لم يُبنَ: يُبنى مرةً ويأخذونه كلهم", built == ["falcon"] and len(got) == 5
+              and got[0] is not None and all(x is got[0] for x in got), built)
+
+        print("الإقلاع يبنيها في الخلفية")
+        restart()
+        built.clear()
+        C.warm(d).join()
+        check("عروض السيرفرات التي لها محتوى تُبنى عند الإقلاع، واحدًا بعد واحد", built == ["smart", "falcon"]
+              and all(C._ready(d, k) for k in ("smart", "falcon")) and C.warm(d, []) is None, built)
+
+        print("جديد القناة بلا انتظار")
+        C.save_channel(d, jid="120363000000000001@newsletter", servers=["smart"])
+        restart()
+        t0 = time.time()
+        c = C.channel_state(d, wait=False)
+        check("يحتاج عرضًا لم يُبنَ (ما قبل سجلّ الجديد): ‏None بلا انتظار، ويُبنى في الخلفية",
+              c["pending"] is None and time.time() - t0 < 1, c["pending"])
+        for _ in range(250):
+            if C.channel_state(d, wait=False)["pending"] is not None:
+                break
+            time.sleep(.02)
+        c = C.channel_state(d, wait=False)
+        check("ثم أعداده كما بانتظاره", isinstance(c["pending"], dict) and c["pending"] == C.channel_state(d)["pending"],
+              c["pending"])
+        C.save_channel(d, jid="")
+
+        print("فهرسٌ تالف")
+        with open(C._cat_path(d, "kon"), "w", encoding="utf-8") as f:
+            f.write("{not json")
+        kon = settled(d, "kon")
+        check("بلا محتوى، ولا يبقى «يُحسب»، ولا يُعاد قراءته", not kon["loading"] and not kon["has"]
+              and C._view(d, "kon")[1] is None and C._cache["kon"][1] is None)
+
+        print("ما أضافته اللوحة: من قائمةٍ مرتّبةٍ بتاريخه كما من الفهرس كله")
+        rnd, T = random.Random(5), int(time.time())
+        edges = [T - 86400, T - 3 * 86400, T - 5 * 86400]
+
+        def grp(kind, j, n, step):
+            """قسمٌ بعناصر بعضها في القسم الذي قبله، بتاريخ إضافةٍ عشوائي (وبعضها على حدود المدد تمامًا، وبعضها بلا تاريخ)."""
+            its = []
+            for k in range(j * step, j * step + n):
+                it = {"n": f"{kind} {k}", "y": 2000 + k % 25, "i": k + 1, "r": rnd.choice([0, 6.5, 8])}
+                if rnd.random() < .85:
+                    it["a"] = rnd.choice(edges) if rnd.random() < .1 else T - rnd.randrange(10 * 86400)
+                if kind == "series":
+                    it["s"] = [[s, rnd.randint(1, 20)] for s in range(rnd.randint(0, 2), rnd.randint(1, 4))] or [[0, 5]]
+                its.append(it)
+            return {"id": C._gid(kind, f"{kind} {j}"), "name": f"{kind} {j}", "items": its}
+        cat = {"v": 2, "entries": 0, "n": {}, "skipped": {}, "key": "casper", "at": T, "live": [],
+               "movie": [grp("movie", j, 150, 100) for j in range(4)], "series": [grp("series", j, 90, 60) for j in range(3)]}
+        C._write(C._cat_path(d, "casper"), cat)
+        v = C._view(d, "casper")[1]
+        same, sizes = [], []
+        for since, until in ((T - 86400, T), (T - 3 * 86400, T - 86400), (T - 5 * 86400, T - 3 * 86400),
+                             (T - 10 * 86400, T), (T - 86400, T - 86400), (edges[2] - 1, edges[0]), (T, T + 60)):
+            known = {C._gid("movie", C._ikey("movie", x)) for x in cat["movie"][0]["items"][:20]}
+            want, have = panel_ref(v, since, until, known), C._panel(d, "casper", since, until, known)
+            same.append(have == want and [list(x) for x in have] == [list(x) for x in want])
+            sizes.append((len(want[0]), len(want[1])))
+        check("النتائج نفسها بترتيبها، عند حدود المدة، ومع ما يُستثنى والسيل", all(same)
+              and any(m > 50 for m, _ in sizes) and any(n > 50 for _, n in sizes), (same, sizes))
+
+        print("ملخّصٌ من نسخةٍ أقدم")
+        restart()
+        C.SUM_V += 1
+        try:
+            sm = next(s for s in C.admin_state(d)["servers"] if s["key"] == "smart")
+            check("لا يُعتمد: «يُحسب» ثم يُبنى", sm["loading"] and not sm["has"])
+            sm = settled(d, "smart")
+            check("ويُكتب بالنسخة الجديدة", not sm["loading"] and sm["counts"]["series"] == 9
+                  and json.load(open(C._sum_path(d, "smart"), encoding="utf-8"))["v"] == C.SUM_V)
+        finally:
+            C.SUM_V -= 1
+
+        C.clear(d, "falcon")
+        check("مسح المحتوى يمحو ملخّصه", not os.path.exists(C._sum_path(d, "falcon")) and not C.has(d, "falcon")
+              and "falcon" not in [s["key"] for s in C.brief(d)["servers"]])
+    finally:
+        C._build = real
         shutil.rmtree(d, ignore_errors=True)
 
 
@@ -1261,7 +1449,7 @@ def unit_fetch():
         print("محتوى القراءة الأولى")
         old = {"entries": 1, "n": {"series": 0, "movie": 1, "live": 0}, "skipped": {}, "series": [], "live": [],
                "movie": [{"id": C._gid("movie", "M"), "name": "M", "items": ["Old Film (2019)"]}]}
-        state = lambda k: next(x for x in C.admin_state(d)["servers"] if x["key"] == k)  # noqa: E731
+        state = lambda k: settled(d, k)  # noqa: E731
         C._write(C._cat_path(d, "smart"), old)
         check("بلا رابط: للمدير «أعد رفع الملف»", state("smart")["old"] is True and C._cat_old(d, "smart")
               and not C._cat_old(d, "falcon"))
@@ -1413,8 +1601,15 @@ def live():
         groups = next(s for s in st["servers"] if s["key"] == "smart")["groups"]["series"]
         g, drama = (next(x for x in groups if x[1] == name) for name in ("Netflix", "SERIES | Drama"))
         code, st = jpost(adm + "/api/content/admin/hide", {"s": "smart", "g": g[0], "hidden": True})
-        check("إخفاء قسم (وما فيه وحده لا يُعدّ)", code == 200
-              and next(s for s in st["servers"] if s["key"] == "smart")["counts"]["series"] == 8)
+        sm = next(s for s in st["servers"] if s["key"] == "smart")
+        check("إخفاء قسم: يُعلَّم مخفيًّا في الرد نفسه", code == 200
+              and next(x for x in sm["groups"]["series"] if x[0] == g[0])[3] is True)
+        for _ in range(100):                  # وأعداده تُحسب في الخلفية (‏loading) فتعود إليها الصفحة
+            if not sm["loading"]:
+                break
+            time.sleep(.1)
+            sm = next(s for s in json.loads(req(adm + "/api/content/admin", auth=True)[1])["servers"] if s["key"] == "smart")
+        check("إخفاء قسم (وما فيه وحده لا يُعدّ)", not sm["loading"] and sm["counts"]["series"] == 8, sm["counts"])
 
         print("الصفحات العامة")
         op = urllib.request.build_opener(_NoRedirect)
@@ -1719,6 +1914,7 @@ def main():
     unit_news()
     unit_panel()
     unit_channel()
+    unit_summary()
     unit_render()
     unit_images()
     unit_fetch()

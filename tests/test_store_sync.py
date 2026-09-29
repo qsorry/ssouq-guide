@@ -205,6 +205,7 @@ def unit_flow():
     print("الربط والمنتجات (سلة وهمية)")
     d = tempfile.mkdtemp(prefix="store_")
     C._cache.clear()
+    C._sums.clear()
     C._busy.clear()
     srv = M.serve(0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
