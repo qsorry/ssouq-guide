@@ -24,6 +24,8 @@ admin.ssouq.com/content، أو يُحفظ رابطه فيُسحب منه كل ي
 """
 import codecs
 import hashlib
+import io
+import ipaddress
 import itertools
 import json
 import os
@@ -34,13 +36,10 @@ import time
 import unicodedata
 import zlib
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit
-from urllib.request import Request, urlopen
+from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 import crypto_store
-import guide_pages
-import league
-import tournament
 
 PATH = "/content"
 DIR = "content"
@@ -145,7 +144,7 @@ def _extinf(line):
 
 def _clean(s):
     """الاسم كما يُعرض: بلا محارف تحكّم ولا مسافات زائدة ولا بادئة لغة."""
-    s = " ".join(_CTRL.sub("", unicodedata.normalize("NFC", s or "")).split())
+    s = " ".join(_CTRL.sub("", unicodedata.normalize("NFKC", s or "")).split())
     for _ in range(3):
         m = _PREFIX.match(s)
         if not m or m.end() >= len(s):
@@ -207,8 +206,60 @@ def _gid(kind, name):
     return hashlib.sha1(f"{kind}|{name}".encode("utf-8")).hexdigest()[:10]
 
 
+# السنة من آخر الاسم: «The Batman (2022)» «Dune [2021]» «Dune - 2021» «اسم الفيلم 2023» — والتي بين قوسين من أي
+# موضع («Movie (2022) 4K»). وسنةٌ بلا قوسين بعد الحدّ المعقول جزءٌ من الاسم: «Blade Runner 2049».
+_Y = r"((?:19|20)\d{2})"
+_YEAR_PAREN = re.compile(r"\s*[\(\[]\s*" + _Y + r"\s*[\)\]]")
+_YEAR_TAIL = re.compile(r"(?:\s*[-–|]\s*|\s+)" + _Y + r"\s*$")
+YEAR_MAX = time.gmtime().tm_year + 1
+# رقم العنصر في آخر رابطه: Xtream يرقّم ما يُضاف تصاعديًّا، فالأكبر أحدث — «أضيف مؤخرًا» بلا تاريخ
+_SID = re.compile(r"/(\d{1,12})(?:\.[A-Za-z0-9]{2,5})?$")
+# رابط فيلم أو حلقة من Xtream: منه قاعدة الواجهة واسم المستخدم وكلمة المرور — في الذاكرة وقت القراءة وحدها
+_XT = re.compile(r"^(https?://[^/?#]+)/(?:movie|series)/([^/?#]+)/([^/?#]+)/\d+", re.I)
+
+
+# الجودة في آخر الاسم: «The Batman FHD» «MBC 1 HD» «Film (2020) [MULTI-SUB]» — فيُجمع الفيلم أو القناة بجوداتها
+# عنصرًا واحدًا. بحروفها الكبيرة، فلا يُمسّ آخر اسمٍ عادي (و«RAW» ليست منها: «WWE RAW»).
+_QUAL = re.compile(r"(?:[\s\-_|]*[\[(]?\s*(?:4K|8K|UHD|FHD|HD|SD|HQ|HEVC|H\.?26[45]|[xX]26[45]|(?:2160|1080|720|480)[pP]|"
+                   r"MULTI[\s-]?SUBS?|MULTI|VOSTFR|DUAL(?:[\s-]?AUDIO)?|3D|BACKUP|Backup)\s*[\])]?)+\s*$")
+
+
+def _dequal(s):
+    t = _QUAL.sub("", s).strip()
+    return t or s
+
+
+def _split_year(name):
+    """← (الاسم بلا سنة، السنة أو 0)."""
+    hits = [m for m in _YEAR_PAREN.finditer(name) if 1900 <= int(m.group(1)) <= YEAR_MAX]
+    if hits:
+        m = hits[-1]
+        base = " ".join((name[:m.start()] + " " + name[m.end():]).split())
+        return (_tidy(base), int(m.group(1))) if _tidy(base) else (name, 0)
+    m = _YEAR_TAIL.search(name)
+    if m and 1900 <= int(m.group(1)) <= YEAR_MAX and _tidy(name[:m.start()]):
+        return _tidy(name[:m.start()]), int(m.group(1))
+    return name, 0
+
+
+def _sid(url):
+    m = _SID.search(url.split("?", 1)[0].split("#", 1)[0])
+    return int(m.group(1)) if m else 0
+
+
+def _poster(v):
+    v = (v or "").strip()
+    return v if v.lower().startswith(("http://", "https://")) and len(v) <= 600 and " " not in v else ""
+
+
+def _slim(d):
+    """العنصر بلا مفاتيحه الفارغة — أصغر على القرص."""
+    return {k: v for k, v in d.items() if v}
+
+
 class Parser:
-    """يأخذ سطور الملف واحدًا واحدًا (‏line) ويُخرج الفهرس (‏result)."""
+    """يأخذ سطور الملف واحدًا واحدًا (‏line) ويُخرج الفهرس (‏result). والعنصر:
+    فيلم {n الاسم، y السنة، p الصورة، i رقمه}، وقناة {n، p، i}، ومسلسل {n، y، p، i أكبر رقم حلقة، s المواسم}."""
 
     def __init__(self):
         self.pending = None
@@ -216,6 +267,7 @@ class Parser:
         self.groups = {k: {} for k in KINDS}
         self.n = {k: 0 for k in KINDS}
         self.skipped = {"adult": 0, "sep": 0, "bad": 0}
+        self.xt = None                       # (القاعدة، المستخدم، الكلمة) لواجهة Xtream — لا تُحفظ
 
     def line(self, s):
         s = s.strip()
@@ -253,35 +305,60 @@ class Parser:
         else:
             kind = "movie" if uk in ("movie", "file") else "live"
         self.n[kind] += 1
+        if self.xt is None and uk in ("movie", "series"):
+            m = _XT.match(url)
+            if m:
+                self.xt = (m.group(1), m.group(2), m.group(3))
+        sid, poster = _sid(url), _poster(attrs.get("tvg-logo"))
         acc = self.groups[kind].setdefault(group, {})
-        if kind != "series":
-            k = _norm(name)
-            if k and k not in acc:
-                acc[k] = name
+        if kind == "live":
+            name = _dequal(name)
+            rec = acc.get(_norm(name))
+            if rec is None:
+                acc[_norm(name)] = {"n": name, "p": poster, "i": sid}
+            else:
+                rec["i"] = max(rec["i"], sid)
+                rec["p"] = rec["p"] or poster
+            return
+        if kind == "movie":
+            title, year = _split_year(_dequal(name))
+            title = _dequal(title)
+            k = f"{_norm(title)}|{year}"
+            rec = acc.get(k)
+            if rec is None:
+                acc[k] = {"n": title, "y": year, "p": poster, "i": sid}
+            else:                               # الفيلم نفسه بجودةٍ أخرى: رقمه الأحدث وأول صورة
+                rec["i"] = max(rec["i"], sid)
+                rec["p"] = rec["p"] or poster
             return
         sname, season, num = (_clean(_tidy(ep[0])), ep[1], ep[2]) if ep else (name, 0, None)
-        sname = sname or group
+        sname, year = _split_year(_dequal(sname or group))
         k = _norm(sname)
         rec = acc.get(k)
         if rec is None:
-            rec = acc[k] = [sname, {}]
-        eps = rec[1].get(season)
+            rec = acc[k] = {"n": sname, "y": year, "p": poster, "i": sid, "_s": {}}
+        else:
+            rec["i"] = max(rec["i"], sid)
+            rec["p"] = rec["p"] or poster
+            rec["y"] = rec["y"] or year
+        eps = rec["_s"].get(season)
         if eps is None:
-            eps = rec[1][season] = [set(), 0]
+            eps = rec["_s"][season] = [set(), 0]
         if num is None:
             eps[1] += 1
         else:
             eps[0].add(num)
 
     def result(self):
-        out = {"entries": sum(self.n.values()), "n": dict(self.n), "skipped": dict(self.skipped)}
+        out = {"v": 2, "entries": sum(self.n.values()), "n": dict(self.n), "skipped": dict(self.skipped)}
         for kind in KINDS:
             gs = []
             for gname, acc in self.groups[kind].items():
-                if kind == "series":
-                    items = [[v[0], [[s, len(e[0]) + e[1]] for s, e in sorted(v[1].items())]] for v in acc.values()]
-                else:
-                    items = list(acc.values())
+                items = []
+                for rec in acc.values():
+                    if kind == "series":
+                        rec = dict(rec, s=[[s, len(e[0]) + e[1]] for s, e in sorted(rec.pop("_s").items())])
+                    items.append(_slim(rec))
                 if items:
                     gs.append({"id": _gid(kind, gname), "name": gname, "items": items})
             out[kind] = gs
@@ -339,13 +416,19 @@ def iter_lines(read, progress=None, limit=MAX_BYTES, chunk=1 << 20):
     yield from buf.replace("\r", "\n").split("\n")
 
 
-def parse(read, progress=None):
+def _parse(read, progress=None):
+    """← (الفهرس، بيانات واجهة Xtream من روابط الملف أو None). الثانية للإثراء وقت القراءة وحدها،
+    ولا تدخل الفهرس."""
     p = Parser()
     for i, line in enumerate(iter_lines(read, progress)):
         if i == 0:
             line = line.lstrip("\ufeff")
         p.line(line)
-    return p.result()
+    return p.result(), p.xt
+
+
+def parse(read, progress=None):
+    return _parse(read, progress)[0]
 
 
 # ================= البحث والعدّ =================
@@ -488,9 +571,10 @@ def _release(key):
         _busy.pop(key, None)
 
 
-def ingest(data_dir, key, read, source, label="", claimed=False):
+def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
     """يقرأ ملف السيرفر (دالة قراءة) ويحفظ فهرسه ← ملخّصه. ملفٌّ بلا عناصر لا يمسح المحتوى السابق:
-    رابطٌ انتهى اشتراكه يردّ قائمةً فارغة أو صفحة خطأ."""
+    رابطٌ انتهى اشتراكه يردّ قائمةً فارغة أو صفحة خطأ. ثم يُثريه من واجهة Xtream (‏xt، أو من روابط
+    الملف نفسه) إن أمكن، وفشلها لا يمنع الحفظ."""
     if not _server(data_dir, key):
         raise ValueError("سيرفر غير معروف")
     if not claimed:
@@ -498,15 +582,22 @@ def ingest(data_dir, key, read, source, label="", claimed=False):
     try:
         state = _busy.get(key) or {}
         state["stage"] = "read"
-        cat = parse(read, progress=lambda n: state.__setitem__("bytes", n))
+        cat, found = _parse(read, progress=lambda n: state.__setitem__("bytes", n))
         if not cat["entries"]:
             raise ValueError("لا عناصر في الملف (‏#EXTINF) — تأكّد أنه قائمة M3U نفسها لا صفحة خطأ")
-        cat.update(v=1, key=key, at=time.time(), source=source, label=str(label or "")[:80])
+        api = xt or found
+        if api:
+            state["stage"] = "meta"
+            try:
+                cat["api"] = {"ok": True, **enrich(cat, api)}
+            except Exception as e:  # noqa: BLE001 — الصفحة بما في الملف، والسبب للمدير
+                cat["api"] = {"ok": False, "error": _fetch_error(e)}
+        cat.update(key=key, at=time.time(), source=source, label=str(label or "")[:80])
         _write(_cat_path(data_dir, key), cat)
         _cache.pop(key, None)
         _settle(data_dir, key, "")
         _view(data_dir, key)                    # يُبنى فهرس البحث الآن، فلا ينتظره أول زائر
-        return {"entries": cat["entries"], "n": cat["n"], "skipped": cat["skipped"]}
+        return {"entries": cat["entries"], "n": cat["n"], "skipped": cat["skipped"], "api": cat.get("api")}
     finally:
         if not claimed:
             _release(key)
@@ -538,7 +629,7 @@ def refresh(data_dir, key, claimed=False, now=None):
             return False, "لا رابط لهذا السيرفر"
         req = Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
         with urlopen(req, timeout=FETCH_TIMEOUT) as r:
-            ingest(data_dir, key, r.read, "url", mask_url(url), claimed=True)
+            ingest(data_dir, key, r.read, "url", mask_url(url), claimed=True, xt=xtream_of(url))
         return True, ""
     except Exception as e:  # noqa: BLE001 — أي فشلٍ يُحفظ نصًّا ويُعاد لاحقًا
         err = _fetch_error(e)
@@ -683,27 +774,72 @@ def _view(data_dir, key):
     return srv, v
 
 
+def _upgrade(cat):
+    """فهرسٌ من النسخة الأولى (الفيلم والقناة نصًّا، والمسلسل [الاسم، المواسم]) بصيغة العناصر الحالية."""
+    if cat.get("v") == 2:
+        return cat
+    for kind in KINDS:
+        for g in cat.get(kind) or []:
+            g["items"] = [it if isinstance(it, dict) else {"n": it[0], "s": it[1]} if isinstance(it, list)
+                          else {"n": str(it)} for it in g.get("items") or []]
+    cat["v"] = 2
+    return cat
+
+
 _versions = itertools.count(1)       # رقمٌ لكل عرضٍ يُبنى — مفتاح كاش البحث
+RECENT_MAX = 120                     # «أضيف مؤخرًا»: أحدث ما يُحفظ لكل نوع
+
+
+def _ikey(kind, it):
+    """مفتاح العنصر بين الأقسام: الفيلم باسمه وسنته، وغيره باسمه."""
+    return f"{_norm(it.get('n', ''))}|{it.get('y') or ''}" if kind == "movie" else _norm(it.get("n", ""))
 
 
 def _build(cat, hidden):
-    v = {"at": float(cat.get("at") or 0), "cat": cat, "kinds": {}, "byid": {}, "index": {}, "ver": next(_versions)}
+    cat = _upgrade(cat)
+    v = {"at": float(cat.get("at") or 0), "cat": cat, "kinds": {}, "byid": {}, "index": {}, "recent": {},
+         "years": {}, "genres": {}, "rated": {}, "imgs": {}, "ver": next(_versions)}
     for kind in KINDS:
         gs = [g for g in cat.get(kind) or [] if g.get("id") not in hidden and g.get("items")]
         v["kinds"][kind] = gs
         v["byid"][kind] = {g["id"]: i for i, g in enumerate(gs)}
-        v["index"][kind] = [(_norm(it[0] if kind == "series" else it), gi, ii)
-                            for gi, g in enumerate(gs) for ii, it in enumerate(g["items"])]
+        idx, best, years, genres, rated = [], {}, set(), {}, False
+        for gi, g in enumerate(gs):
+            for ii, it in enumerate(g["items"]):
+                name = it.get("n", "")
+                idx.append((_norm(f"{name} {it['y']}" if it.get("y") else name), gi, ii))
+                for u in (it.get("p"), it.get("b")):
+                    if u and not _TMDB.match(u):
+                        v["imgs"][img_hash(u)] = u
+                if it.get("y"):
+                    years.add(it["y"])
+                for x in it.get("g") or ():
+                    genres[x] = genres.get(x, 0) + 1
+                rated = rated or bool(it.get("r"))
+                rank = (it.get("a") or 0, it.get("i") or 0)
+                if rank != (0, 0):
+                    k = _ikey(kind, it)
+                    if k not in best or rank > best[k][0]:
+                        best[k] = (rank, gi, ii)
+        v["index"][kind] = idx
+        v["recent"][kind] = [(gi, ii) for _, gi, ii in sorted(best.values(), key=lambda b: b[0], reverse=True)[:RECENT_MAX]]
+        v["years"][kind] = sorted(years, reverse=True)
+        v["genres"][kind] = [x for x, _ in sorted(genres.items(), key=lambda kv: (-kv[1], kv[0]))[:40]]
+        v["rated"][kind] = rated
     ser = {}
-    for k, gi, ii in v["index"]["series"]:
-        d = ser.setdefault(k, {})
-        for s, n in v["kinds"]["series"][gi]["items"][ii][1]:
-            if n > d.get(s, 0):
-                d[s] = n
+    for g in v["kinds"]["series"]:
+        for it in g["items"]:
+            d = ser.setdefault(_ikey("series", it), {})
+            for s, n in it.get("s") or ():
+                if n > d.get(s, 0):
+                    d[s] = n
+    for g in v["kinds"]["series"]:             # والمسلسل في قسمين يُعرض بمواسمه كلها في كلٍّ منهما
+        for it in g["items"]:
+            it["s"] = [[s, n] for s, n in sorted(ser[_ikey("series", it)].items())]
     v["counts"] = {"series": len(ser), "seasons": sum(len(d) for d in ser.values()),
                    "episodes": sum(sum(d.values()) for d in ser.values()),
-                   "movie": len({x[0] for x in v["index"]["movie"]}),
-                   "live": len({x[0] for x in v["index"]["live"]})}
+                   "movie": len({_ikey("movie", it) for g in v["kinds"]["movie"] for it in g["items"]}),
+                   "live": len({_ikey("live", it) for g in v["kinds"]["live"] for it in g["items"]})}
     return v
 
 
@@ -717,9 +853,9 @@ def _words(q):
 
 
 def _search(key, v, q):
-    """← ({النوع: ([(القسم، العنصر)] أولها SEARCH_MAX، عددها كله)}، المجموع). كل كلمةٍ من البحث في الاسم؛
-    والمطابق تمامًا أولًا ثم ما يبدأ بها ثم ما فيه. ويُحفظ الأول وحده، فلا يملأ الذاكرةَ بحثٌ واسع
-    كـ«ال»."""
+    """← ({النوع: ([(القسم، العنصر)] أولها SEARCH_MAX، عددها كله)}، المجموع). كل كلمةٍ من البحث في الاسم
+    (والسنة)؛ والمطابق تمامًا أولًا ثم ما يبدأ بها ثم ما فيه، والاسم في قسمين نتيجةٌ واحدة. ويُحفظ الأول
+    وحده، فلا يملأ الذاكرةَ بحثٌ واسع كـ«ال»."""
     words = _words(q)
     if not words:
         return {k: ([], 0) for k in KINDS}, 0
@@ -729,9 +865,10 @@ def _search(key, v, q):
     full = " ".join(words)
     out, total = {}, 0
     for kind in KINDS:
-        tiers, n = ([], [], []), 0
+        tiers, n, seen = ([], [], []), 0, set()
         for norm, gi, ii in v["index"][kind]:
-            if all(w in norm for w in words):
+            if norm not in seen and all(w in norm for w in words):
+                seen.add(norm)
                 n += 1
                 t = tiers[0 if norm == full else 1 if norm.startswith(full) else 2]
                 if len(t) < SEARCH_MAX:
@@ -744,285 +881,29 @@ def _search(key, v, q):
     return out, total
 
 
-# ================= الرسم =================
-_esc = league._esc
-
-
-def _series_li(item, group=None):
-    name, seasons = item
-    known = [(s, n) for s, n in seasons if s]
-    eps = sum(n for _, n in seasons)
-    meta = (f"{_count(len(seasons), N_SEASONS)} · {_count(eps, N_EPISODES)}" if known
-            else _count(eps, N_EPISODES))
-    chips = "".join(f'<span>{f"الموسم {s}" if s else "بلا موسم"} <i>({_count(n, N_EPISODES)})</i></span>'
-                    for s, n in seasons) if known else ""
-    grp = f' <small class="cgn">· {_esc(group)}</small>' if group else ""
-    return (f'<li><b>{_esc(name)}</b>{grp}<small class="cm">{meta}</small>'
-            + (f'<span class="ss">{chips}</span>' if chips else "") + "</li>")
-
-
-def _flat_li(name, group=None):
-    return f'<li>{_esc(name)}' + (f' <small class="cgn">· {_esc(group)}</small>' if group else "") + "</li>"
-
-
-def _items_html(kind, items):
-    return "".join(_series_li(it) if kind == "series" else _flat_li(it) for it in items)
-
-
-def _ul(kind, inner):
-    return f'<ul class="ci{"" if kind == "series" else " flat"}">{inner}</ul>'
-
-
-def _more_btn(kind, n_left, page):
-    return (f'<button class="cmore" type="button" data-p="{page}">عرض المزيد — بقي '
-            f'{_count(n_left, N_OF[kind])}</button>') if n_left > 0 else ""
-
-
-def _slice(g, page):
-    items = g["items"]
-    page = max(1, min(page, (len(items) + PAGE - 1) // PAGE or 1))
-    part = items[(page - 1) * PAGE:page * PAGE]
-    return page, part, max(0, len(items) - page * PAGE)
-
-
-def api_group(data_dir, key, kind, gid, page=1):
-    """عناصر قسمٍ صفحةً صفحة لفتحه في مكانه ← dict أو None."""
-    srv, v = _view(data_dir, key)
-    if kind not in KINDS or not v or gid not in v["byid"][kind]:
-        return None
-    g = v["kinds"][kind][v["byid"][kind][gid]]
-    page, part, left = _slice(g, page)
-    return {"ok": True, "kind": kind, "items": _items_html(kind, part), "more": _more_btn(kind, left, page + 1)}
-
-
-def _results_html(data_dir, key, srv, v, q):
-    """نتائج البحث بالاسم: لكل نوعٍ أوّل SEARCH_MAX بقسمها (والمسلسل بمواسمه)، ثم أين يوجد الاسم
-    في السيرفرات الأخرى — فمن لم يجد مسلسله هنا يعرف أيّ اشتراكٍ فيه."""
-    q = " ".join(str(q or "").split())[:QUERY_MAX]
-    if not _words(q):
-        return ""
-    hits, total = _search(key, v, q)
-    parts = []
-    for kind in KINDS:
-        top, n = hits[kind]
-        if not n:
-            continue
-        gs = v["kinds"][kind]
-        lis = "".join(_series_li(gs[gi]["items"][ii], gs[gi]["name"]) if kind == "series"
-                      else _flat_li(gs[gi]["items"][ii], gs[gi]["name"]) for gi, ii in top)
-        more = (f'<p class="sub">و{_count(n - len(top), N_RESULTS)} أخرى — اكتب الاسم أدقّ.</p>'
-                if n > len(top) else "")
-        parts.append(f'<h3>{KIND_TAB[kind]} <small>({n:,})</small></h3>{_ul(kind, lis)}{more}')
-    elsewhere = []
-    for s in servers(data_dir):
-        ov = _view(data_dir, s["key"])[1] if s["key"] != key else None
-        n = _search(s["key"], ov, q)[1] if _has(ov) else 0
-        if n:
-            elsewhere.append(f'<a class="link" href="{PATH}/{s["key"]}?q={quote(q)}">{_esc(s["name"])} ({n:,})</a>')
-    other = (f'<p class="cother">{"ويوجد أيضًا في" if total else "لكنه موجود في"}: {" · ".join(elsewhere)}</p>'
-             if elsewhere else "")
-    if not total:
-        return (f'<section class="card cres"><h2>لا يوجد «{_esc(q)}» في {_esc(srv["name"])}</h2>'
-                + (other or '<p class="sub">جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية أو بالعربية.</p>')
-                + "</section>")
-    return (f'<section class="card cres"><h2>نتائج «{_esc(q)}» في {_esc(srv["name"])} '
-            f'<small>{_count(total, N_RESULTS)}</small></h2>{"".join(parts)}{other}</section>')
-
-
-def api_search(data_dir, key, q):
-    srv, v = _view(data_dir, key)
-    if not _has(v):
-        return None
-    return {"ok": True, "html": _results_html(data_dir, key, srv, v, q)}
-
-
-def _stats(c):
-    tiles = [(c["series"], N_SERIES), (c["seasons"], N_SEASONS), (c["episodes"], N_EPISODES),
-             (c["movie"], N_MOVIES), (c["live"], N_CHANNELS)]
-    return '<div class="cstats">' + "".join(
-        f'<div><b>{n:,}</b><small>{_unit(n, f)}</small></div>' for n, f in tiles if n) + "</div>"
-
-
-def _summary_text(c):
-    """«3,210 مسلسلات بمواسمها و45,678 فيلمًا و4,321 قناة» — بما في السيرفر وحده."""
-    bits = [f"{_count(c['series'], N_SERIES)} بمواسمها" if c["series"] else "",
-            _count(c["movie"], N_MOVIES) if c["movie"] else "", _count(c["live"], N_CHANNELS) if c["live"] else ""]
-    return " و".join(b for b in bits if b)
-
-
-def _utm(url):
-    """روابط المتجر بحملة هذه الصفحة لتُعرف المبيعات منها، وغيرها كما هي."""
-    host = (urlsplit(url).hostname or "").lower()
-    if host != "ssouq.com" and not host.endswith(".ssouq.com"):
-        return url
-    if "utm_campaign=" in url:
-        return re.sub(r"utm_campaign=[^&#]*", "utm_campaign=" + UTM_CAMPAIGN, url)
-    return (url + ("&" if "?" in url else "?")
-            + "utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=" + UTM_CAMPAIGN)
-
-
-def _cta(srv):
-    """بطاقة الاشتراك تحت المحتوى: رابط شراء السيرفر من صفحة المدير، أو باقاته من CATALOG، أو الدليل."""
-    name = _esc(srv["name"])
-    rows = []
-    if not srv["buy"]:
-        plans = {p["id"]: p for b in tournament._catalog().values() for p in b.get("plans", [])}
-        for pid in PLANS.get(srv["key"], ()):
-            p = plans.get(pid)
-            if not p:
+def select(v, kind, gid="", year=0, genre="", rating=0, sort="new"):
+    """عناصر نوعٍ (أو قسمٍ منه) بمرشّحات الصفحة ← [(القسم، العنصر)] مرتّبة، بلا تكرارٍ بين الأقسام."""
+    gs = v["kinds"][kind]
+    groups = [v["byid"][kind][gid]] if gid in v["byid"][kind] else range(len(gs))
+    seen, out = set(), []
+    for gi in groups:
+        for ii, it in enumerate(gs[gi]["items"]):
+            if year and it.get("y") != year or genre and genre not in (it.get("g") or ()) \
+                    or rating and (it.get("r") or 0) < rating:
                 continue
-            was = f'<s>{_esc(p["was"])} ر.س</s>' if p.get("was") else ""
-            rows.append(
-                f'<a class="planrow" href="{_esc(_utm(p["url"]))}" target="_blank" rel="noopener">'
-                f'<img src="{_esc(p["img"])}" alt="" width="46" height="46" loading="lazy">'
-                f'<span class="who"><b>{_esc(p["name"])}</b><small>{_esc(p.get("tag") or p.get("desc") or "")}</small></span>'
-                f'<span class="money">{_esc(p["price"])} ر.س{was}</span></a>')
-    buy = (f'<a class="btn buy" href="{_esc(_utm(srv["buy"]))}" target="_blank" rel="noopener">اشترك في {name}</a>'
-           if srv["buy"] else "")
-    return (f'<section class="card ccta"><h2>اشترك في {name}</h2>'
-            '<p class="sub">دفعة واحدة بلا تجديد تلقائي، وتفعيل خلال دقائق، ودعم فني مباشر على واتساب.</p>'
-            + (f'<div class="planlist">{"".join(rows)}</div>' if rows else "") + buy
-            + '<div class="nav"><a class="btn go" href="/#buy">ساعدني في الاختيار</a>'
-            '<a class="btn ghost" href="/#plans">كل الباقات</a></div></section>')
-
-
-CSS = """
-nav.crumb{font-size:14px;opacity:.75;margin:0 0 14px}
-.cstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:0 0 14px}
-.cstats div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 6px;text-align:center}
-.cstats b{display:block;font-size:1.2rem;line-height:1.35;color:var(--brand-text);font-variant-numeric:tabular-nums}
-.cstats small{color:var(--mute);font-size:.76rem}
-.csearch{display:flex;gap:8px;margin:0 0 14px}
-.csearch input{flex:1;min-width:0;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;
-  background:var(--card);color:var(--ink);font:inherit}
-.csearch input:focus{outline:none;border-color:var(--brand)}
-.csearch .btn{flex:0 0 auto;padding:12px 18px}
-.cres h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:1.1rem}
-.cres h2 small,.cres h3 small{color:var(--mute);font-weight:400;font-size:.8rem}
-.cres h3{font-size:1rem;margin:14px 0 2px}
-.cother{margin:12px 0 0}
-.ltabs{flex-wrap:wrap;overflow:visible;padding-inline-end:0;-webkit-mask-image:none;mask-image:none}
-.ckinds small{opacity:.8;font-weight:400;margin-inline-start:5px}
-.cg{border-top:1px solid var(--line)}
-.cg:first-child{border-top:0}
-.cg summary{display:flex;align-items:center;gap:10px;padding:12px 2px;cursor:pointer;list-style:none;font-weight:600}
-.cg summary::-webkit-details-marker{display:none}
-.cg summary::after{content:"";flex:0 0 auto;width:8px;height:8px;margin-inline-start:4px;border-right:2px solid var(--mute);
-  border-bottom:2px solid var(--mute);transform:rotate(45deg);transition:transform .15s}
-.cg[open] summary::after{transform:rotate(-135deg)}
-.cg summary span{flex:1;min-width:0;overflow-wrap:anywhere}
-.cg summary small{color:var(--mute);font-weight:400;font-size:.8rem;white-space:nowrap}
-.cgb{padding:0 0 12px}
-ul.ci{list-style:none;margin:0;padding:0}
-ul.ci li{padding:9px 0;border-top:1px dashed var(--line);overflow-wrap:anywhere}
-ul.ci li:first-child{border-top:0}
-ul.ci li b{font-weight:600}
-ul.ci .cm{display:block;color:var(--mute);font-size:.78rem}
-ul.ci .cgn{color:var(--mute);font-size:.76rem}
-.ss{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
-.ss span{font-size:.74rem;background:var(--soft);border-radius:999px;padding:3px 10px;white-space:nowrap}
-.ss i{font-style:normal;color:var(--mute)}
-ul.ci.flat{columns:2 170px;column-gap:18px}
-ul.ci.flat li{break-inside:avoid;padding:6px 0;font-size:.9rem}
-.cmore{display:block;width:100%;margin-top:8px;padding:10px;border:1.5px solid var(--line);border-radius:12px;
-  background:transparent;color:var(--brand-text);font:inherit;font-weight:600;cursor:pointer}
-.cmore:hover{border-color:var(--brand)}
-.cpager{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;font-size:.9rem}
-.cempty{color:var(--mute);font-size:.8rem;font-weight:400}
-.cmiss{margin:4px 0 0;padding-inline-start:20px;line-height:2}
-.ccta .planlist{margin:12px 0}
-.ccta a.planrow{text-decoration:none}
-.ccta .btn.buy{display:block;margin:4px 0 0}
-#cres[aria-busy="true"]{opacity:.5}
-"""
-
-JS = """
-(function(){
-  var K = document.body.getAttribute("data-server");
-  function $(s, r){ return (r || document).querySelector(s); }
-  function load(det, p){
-    var box = $(".cgb", det);
-    return fetch("/api/content/group?s=" + K + "&t=" + det.getAttribute("data-t") + "&g=" + det.getAttribute("data-g") + "&p=" + p)
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        if (!d || !d.ok) throw 0;
-        var ul = $("ul.ci", box);
-        if (!ul) { box.innerHTML = '<ul class="ci' + (d.kind === "series" ? "" : " flat") + '"></ul>'; ul = $("ul.ci", box); }
-        ul.insertAdjacentHTML("beforeend", d.items);
-        var old = $(".cmore", box); if (old) old.remove();
-        if (d.more) box.insertAdjacentHTML("beforeend", d.more);
-      })
-      .catch(function(){ var b = $(".cmore", box); if (b) b.disabled = false; });
-  }
-  document.addEventListener("toggle", function(e){
-    var det = e.target;
-    if (!det.classList || !det.classList.contains("cg") || !det.open || det.getAttribute("data-done")) return;
-    det.setAttribute("data-done", "1"); load(det, 1);
-  }, true);
-  document.addEventListener("click", function(e){
-    var b = e.target.closest && e.target.closest(".cmore[data-p]"); if (!b) return;
-    e.preventDefault(); b.disabled = true; load(b.closest(".cg"), b.getAttribute("data-p"));
-  });
-  var f = $(".csearch"); if (!f) return;
-  var inp = f.elements.q, box = document.getElementById("cres"), timer = 0, last = inp.value.trim(), seq = 0;
-  function run(){
-    var v = inp.value.trim(); if (v === last) return; last = v;
-    try { history.replaceState(null, "", v ? "?q=" + encodeURIComponent(v) : location.pathname); } catch (e) {}
-    if (v.replace(/\\s/g, "").length < 2) { box.innerHTML = ""; return; }
-    var n = ++seq; box.setAttribute("aria-busy", "true");
-    fetch("/api/content/search?s=" + K + "&q=" + encodeURIComponent(v))
-      .then(function(r){ return r.json(); })
-      .then(function(d){ if (n === seq && d && d.ok) box.innerHTML = d.html; })
-      .catch(function(){})
-      .then(function(){ if (n === seq) box.removeAttribute("aria-busy"); });
-  }
-  inp.addEventListener("input", function(){ clearTimeout(timer); timer = setTimeout(run, 250); });
-  f.addEventListener("submit", function(e){ e.preventDefault(); clearTimeout(timer); last = null; run(); });
-})();
-"""
-
-
-def _doc(title, desc, url, index, crumb, body, key=""):
-    """الصفحة كاملة. ‏`index` للصفحة الرئيسية للسيرفر وحدها؛ والقسم والبحث وما بعد الصفحة الأولى
-    لا تُفهرس ولا canonical لها (فلا تتعارض الإشارتان)."""
-    site = guide_pages.SITE
-    crumbs = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
-        {"@type": "ListItem", "position": 1, "name": "دليل سمارت سوق", "item": site + "/"},
-        {"@type": "ListItem", "position": 2, "name": title.split(" | ")[0].split(":")[0], "item": url}]}
-    robots = ('<meta name="robots" content="index, follow, max-snippet:-1">\n<link rel="canonical" href="%s">' % url
-              if index else '<meta name="robots" content="noindex, follow">')
-    return f"""<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{_esc(title)}</title>
-<meta name="description" content="{_esc(desc)}">
-{robots}
-<meta name="theme-color" content="#004D73" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0B1826" media="(prefers-color-scheme: dark)">
-<meta name="color-scheme" content="light dark">
-<meta property="og:type" content="website">
-<meta property="og:locale" content="ar_SA">
-<meta property="og:site_name" content="سمارت سوق">
-<meta property="og:title" content="{_esc(title)}">
-<meta property="og:description" content="{_esc(desc)}">
-<meta property="og:url" content="{url}">
-<meta property="og:image" content="{site}/static/og-image.png">
-<link rel="icon" href="/favicon.ico">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<script type="application/ld+json">{json.dumps(crumbs, ensure_ascii=False)}</script>
-<style>{guide_pages._style()}
-{CSS}</style>
-</head>
-<body data-server="{_esc(key)}">
-<main id="view">
-<nav class="crumb"><a class="link" href="/">دليل سمارت سوق</a> ← {crumb}</nav>
-{body}
-</main>
-<script>{JS}</script>
-</body>
-</html>""".encode("utf-8")
+            k = _ikey(kind, it)
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append((gi, ii))
+    item = lambda p: gs[p[0]]["items"][p[1]]  # noqa: E731
+    if sort == "az":
+        out.sort(key=lambda p: _norm(item(p).get("n", "")))
+    elif sort == "rate":
+        out.sort(key=lambda p: -(item(p).get("r") or 0))
+    else:
+        out.sort(key=lambda p: (item(p).get("a") or 0, item(p).get("i") or 0), reverse=True)
+    return out
 
 
 def first_key(data_dir):
@@ -1033,97 +914,331 @@ def first_key(data_dir):
     return ""
 
 
-def _tabs(data_dir, key):
-    shown = [s for s in servers(data_dir) if s["key"] == key or _has(_view(data_dir, s["key"])[1])]
-    if len(shown) < 2:
+# ================= الصور =================
+# صورة كل عنصر من ملفه (‏tvg-logo) أو من واجهة Xtream: ما على TMDB يُطلب منها مباشرةً بالمقاس المناسب، وغيره
+# (غالبًا على سيرفر اللوحة نفسه، وبـ http) يمرّ بخادمنا: فلا يظهر سيرفر اللوحة في الصفحة، ولا يحجبه المتصفح
+# في صفحة https. ويُحفظ ما جُلب في data/content/img/ بحدٍّ لحجمه، ويُصغَّر إن كانت Pillow مثبّتة.
+IMG_DIR = "img"
+IMG_MAX = 3 * 1024 * 1024            # أكبر صورةٍ تُجلب
+IMG_CACHE = int(os.environ.get("CONTENT_IMG_CACHE_MB", "400") or 400) * 1024 * 1024
+IMG_FAIL_TTL = 24 * 3600             # صورةٌ تعذّر جلبها لا يُعاد طلبها قبل يوم
+IMG_TIMEOUT = 10
+_TMDB = re.compile(r"^https?://image\.tmdb\.org/t/p/[^/]+/([^/?#]+)$", re.I)
+_img_sem = threading.BoundedSemaphore(6)     # لا تُغرق اللوحة بطلبات الصور معًا
+_img_lock = threading.Lock()
+_img_bytes = {}                              # المجلد ← حجمه
+
+
+def img_hash(url):
+    return hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+
+
+def img_src(key, url, size="w342"):
+    """رابط الصورة كما تطلبها الصفحة ← "" بلا صورة."""
+    if not url:
         return ""
-    return ('<nav class="ltabs" aria-label="السيرفرات">' + "".join(
-        f'<a href="{PATH}/{s["key"]}"{" aria-current=page" if s["key"] == key else ""}>{_esc(s["name"])}</a>'
-        for s in shown) + "</nav>")
+    m = _TMDB.match(url)
+    if m:
+        return f"https://image.tmdb.org/t/p/{size}/{m.group(1)}"
+    return f"{PATH}/{key}/img/{img_hash(url)}"
 
 
-def render_missing(data_dir, key=""):
-    """لا محتوى بعد (أو سيرفرٌ لا وجود له): صفحةٌ تدلّ على ما وُجد، لا تُفهرس ← (404، بايتات)."""
-    others = [s for s in servers(data_dir) if s["key"] != key and _has(_view(data_dir, s["key"])[1])]
-    links = "".join(f'<li><a class="link" href="{PATH}/{s["key"]}">محتوى {_esc(s["name"])}</a></li>' for s in others)
-    body = ('<h1>محتوى الاشتراكات</h1><section class="card"><p>لم يُنشر محتوى هذا السيرفر بعد.</p>'
-            + (f'<p class="sub">وهذه السيرفرات منشورٌ محتواها:</p><ul class="cmiss">{links}</ul>' if links else "")
-            + '<div class="nav"><a class="btn go" href="/#buy">ساعدني في الاختيار</a>'
-            '<a class="btn ghost" href="/">الدليل</a></div></section>')
-    return 404, _doc("محتوى الاشتراكات | سمارت سوق", "المسلسلات بمواسمها والأفلام والقنوات في كل اشتراك.",
-                     guide_pages.SITE + PATH, False, "المحتوى", body)
+IMG_PRIVATE = os.environ.get("CONTENT_IMG_PRIVATE") == "1"   # للاختبارات وحدها: صورٌ من خادمٍ وهمي محلي
 
 
-def render(data_dir, key, query):
-    """صفحة السيرفر ← (رمز HTTP، بايتات، ثواني الكاش). ‏query: t النوع، g القسم، p الصفحة، q البحث."""
-    srv, v = _view(data_dir, key)
-    if not srv or not _has(v):
-        code, body = render_missing(data_dir, key)
-        return code, body, 300
-    c, name = v["counts"], srv["name"]
-    kinds = [k for k in KINDS if v["kinds"][k]]
-    kind = query.get("t") if query.get("t") in kinds else kinds[0]
-    gid, q = str(query.get("g") or ""), " ".join(str(query.get("q") or "").split())[:QUERY_MAX]
+def _public_host(host):
+    """المضيف عنوانٌ عام — لا يُطلب من خادمنا ما في شبكته الداخلية وإن كان في ملف M3U."""
+    if IMG_PRIVATE:
+        return bool(host)
     try:
-        page = int(query.get("p") or 1)
+        infos = socket.getaddrinfo(host, None)
+    except (OSError, UnicodeError):
+        return False
+    try:
+        return bool(infos) and all(ipaddress.ip_address(i[4][0].split("%")[0]).is_global for i in infos)
     except ValueError:
-        page = 1
-    base, url = f"{PATH}/{key}", guide_pages.SITE + f"{PATH}/{key}"
-    summary = _summary_text(c)
-    full = f' <span class="season" dir="ltr">{_esc(srv["full"])}</span>' if srv["full"] else ""
-    head = (f'<h1>محتوى اشتراك {_esc(name)}{full}</h1>'
-            f'<p class="sub">{_esc(summary)} — من قائمة الاشتراك نفسها، لتعرف ما ستشاهده وتبحث عن مسلسلك '
-            f'بالاسم قبل أن تشتري.</p>' + _tabs(data_dir, key) + _stats(c)
-            + f'<form class="csearch" role="search" action="{base}" method="get">'
-            f'<input type="search" name="q" value="{_esc(q)}" placeholder="ابحث عن مسلسل أو فيلم" '
-            f'aria-label="ابحث باسم المسلسل أو الفيلم أو القناة في محتوى {_esc(name)}" autocomplete="off" enterkeyhint="search" maxlength="{QUERY_MAX}">'
-            f'<button class="btn go" type="submit">بحث</button></form>'
-            f'<div id="cres" aria-live="polite">{_results_html(data_dir, key, srv, v, q) if q else ""}</div>')
-    at = datetime_label(v["at"])
-    code, index = 200, not (q or gid or query.get("t") or query.get("p"))
-    ktabs = ('<nav class="ltabs ckinds" aria-label="نوع المحتوى">' + "".join(
-        f'<a href="{base}?t={k}"{" aria-current=page" if k == kind else ""}>{KIND_TAB[k]}'
-        f'<small>{c[k]:,}</small></a>' for k in kinds) + "</nav>")
-    gi = v["byid"][kind].get(gid) if gid else None
-    if gid and gi is None:
-        code = 404
-    if gi is not None:
-        g = v["kinds"][kind][gi]
-        page, part, left = _slice(g, page)
-        pages = (len(g["items"]) + PAGE - 1) // PAGE
-        pager = ""
-        if pages > 1:
-            prev = (f'<a class="link" href="{base}?t={kind}&amp;g={gid}&amp;p={page - 1}">→ السابق</a>'
-                    if page > 1 else "<span></span>")
-            nxt = (f'<a class="link" href="{base}?t={kind}&amp;g={gid}&amp;p={page + 1}">التالي ←</a>'
-                   if left else "<span></span>")
-            pager = f'<nav class="cpager">{prev}<span>صفحة {page} من {pages}</span>{nxt}</nav>'
-        browse = (f'<section class="card"><nav class="crumb"><a class="link" href="{base}?t={kind}">{KIND_TAB[kind]}</a>'
-                  f' ← {_esc(g["name"])}</nav><h2>{_esc(g["name"])} <small class="cempty">'
-                  f'{_count(len(g["items"]), N_OF[kind])}</small></h2>{_ul(kind, _items_html(kind, part))}{pager}</section>')
-    else:
-        rows = "".join(
-            f'<details class="cg" data-t="{kind}" data-g="{g["id"]}"><summary><span>{_esc(g["name"])}</span>'
-            f'<small>{_count(len(g["items"]), N_OF[kind])}</small></summary><div class="cgb">'
-            f'<a class="link" href="{base}?t={kind}&amp;g={g["id"]}">اعرض القائمة</a></div></details>'
-            for g in v["kinds"][kind])
-        miss = '<p class="sub">هذا القسم لم يعد موجودًا، واختر من الأقسام الحالية.</p>' if code == 404 else ""
-        browse = (f'<section class="card">{ktabs}{miss}<div class="cgroups">{rows}</div>'
-                  f'<p class="lsrc">آخر تحديث: {at} بتوقيت السعودية · من قائمة الاشتراك نفسها</p></section>')
-    what = " و".join(x for k, x in (("series", "المسلسلات بمواسمها"), ("movie", "الأفلام"), ("live", "القنوات"))
-                     if c[k])
-    title = f"محتوى اشتراك {name}: {what} | سمارت سوق"
-    desc = (f"ما في اشتراك {name} قبل أن تشتري: {summary}. ابحث بالاسم عن أي مسلسل أو فيلم أو قناة"
-            + (" واعرف مواسم المسلسل وحلقات كل موسم" if c["series"] else "")
-            + ". يُحدَّث تلقائيًا من قائمة الاشتراك نفسها.")
-    crumb = (f'<a class="link" href="{base}">محتوى {_esc(name)}</a>' if (gi is not None or q)
-             else f"محتوى {_esc(name)}")
-    body = head + browse + _cta(srv)
-    return code, _doc(title, desc, url, index and code == 200, crumb, body, key), 600
+        return False
 
 
-def datetime_label(ts):
-    return league._when(ts) if ts else ""
+class _SafeRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _public_host(urlsplit(newurl).hostname or ""):
+            raise URLError("redirect to a non-public address")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_img_opener = build_opener(_SafeRedirect)
+
+
+def _img_type(b):
+    if b[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if b[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":
+        return "image/webp"
+    if b[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return ""
+
+
+def _shrink(data, ctype):
+    """الصورة بعرض الملصق (400×600) إن كانت Pillow مثبّتة وكانت أكبر — وإلا كما هي."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return data, ctype
+    try:
+        im = Image.open(io.BytesIO(data))
+        if max(im.size) <= 600:
+            return data, ctype
+        im.thumbnail((400, 600))
+        out = io.BytesIO()
+        if im.mode in ("RGBA", "LA", "P"):
+            im.save(out, "PNG", optimize=True)
+            t = "image/png"
+        else:
+            im.convert("RGB").save(out, "JPEG", quality=82, optimize=True)
+            t = "image/jpeg"
+        return (out.getvalue(), t) if out.tell() < len(data) else (data, ctype)
+    except Exception:  # noqa: BLE001 — صورةٌ لا تُفتح تُقدَّم كما هي
+        return data, ctype
+
+
+def _img_save(folder, path, data):
+    os.makedirs(folder, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    with _img_lock:
+        if folder not in _img_bytes:
+            _img_bytes[folder] = sum(e.stat().st_size for e in os.scandir(folder) if e.is_file())
+        else:
+            _img_bytes[folder] += len(data)
+        if _img_bytes[folder] <= IMG_CACHE:
+            return
+        for e in sorted((e for e in os.scandir(folder) if e.is_file()), key=lambda e: e.stat().st_mtime):
+            if _img_bytes[folder] <= IMG_CACHE * 0.8:
+                break
+            try:
+                size = e.stat().st_size
+                os.remove(e.path)
+                _img_bytes[folder] -= size
+            except OSError:
+                pass
+
+
+def image(data_dir, key, h):
+    """صورةٌ من خادمنا ← (الرمز، البايتات، النوع): من المجلد إن جُلبت، وإلا من رابطها في فهرس السيرفر وحده."""
+    if not re.fullmatch(r"[0-9a-f]{16}", h or ""):
+        return 404, b"", ""
+    folder = os.path.join(_dir(data_dir), IMG_DIR)
+    path = os.path.join(folder, h)
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        return 200, data, _img_type(data) or "application/octet-stream"
+    except OSError:
+        pass
+    try:
+        if time.time() - os.path.getmtime(path + ".x") < IMG_FAIL_TTL:
+            return 404, b"", ""
+    except OSError:
+        pass
+    v = _view(data_dir, key)[1]
+    url = v["imgs"].get(h) if v else None
+    if not url:
+        return 404, b"", ""
+    with _img_sem:
+        try:
+            if not _public_host(urlsplit(url).hostname or ""):
+                raise URLError("non-public address")
+            with _img_opener.open(Request(url, headers={"User-Agent": UA}), timeout=IMG_TIMEOUT) as r:
+                data = r.read(IMG_MAX + 1)
+            ctype = _img_type(data)
+            if len(data) > IMG_MAX or not ctype:
+                raise ValueError("not an image")
+            data, ctype = _shrink(data, ctype)
+        except Exception:  # noqa: BLE001 — أي فشلٍ يُعلَّم فلا يُعاد قبل يوم
+            os.makedirs(folder, exist_ok=True)
+            with open(path + ".x", "wb"):
+                pass
+            return 404, b"", ""
+    _img_save(folder, path, data)
+    return 200, data, ctype
+
+
+# ================= الإثراء من واجهة Xtream =================
+# ملف M3U فيه الأسماء والمواسم والصور، ولا تقييم فيه ولا تاريخ إضافة ولا تصنيف. وسيرفرات Xtream تعطي ذلك من
+# واجهتها (‏player_api.php) بالمستخدم وكلمة المرور أنفسهما: من الرابط المحفوظ، أو من روابط الملف المرفوع وقت
+# قراءته وحدها (لا تُحفظ). طلبان: الأفلام (‏get_vod_streams) والمسلسلات (‏get_series)، يُقرأ كلٌّ منهما عنصرًا
+# عنصرًا وهو يصل. وأي فشلٍ لا يمسّ الفهرس: تبقى الصفحة بما في الملف.
+API_TIMEOUT = 45
+PLOT_MAX = 280
+
+
+def xtream_of(url):
+    """رابط M3U بصيغة Xtream (‏…/get.php?username=…&password=…) ← (القاعدة، المستخدم، الكلمة) أو None."""
+    try:
+        p = urlsplit(url)
+        q = parse_qs(p.query)
+        ok = p.hostname and p.path.rstrip("/").endswith("get.php") and q.get("username") and q.get("password")
+    except ValueError:
+        return None
+    return (f"{p.scheme}://{p.netloc}", q["username"][0], q["password"][0]) if ok else None
+
+
+def _api_open(xt, action):
+    base, user, pw = xt
+    url = f"{base}/player_api.php?" + urlencode({"username": user, "password": pw, "action": action})
+    return urlopen(Request(url, headers={"User-Agent": UA, "Accept": "application/json"}), timeout=API_TIMEOUT)
+
+
+def _json_items(read, chunk=1 << 16, limit=MAX_BYTES):
+    """عناصر مصفوفة JSON واحدًا واحدًا وهي تصل — ردّ الأفلام قد يبلغ عشرات الميجات. وردٌّ ليس مصفوفة
+    (رفض الدخول مثلًا) لا يُخرج شيئًا."""
+    dec = json.JSONDecoder()
+    text = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    st = {"buf": "", "i": 0, "total": 0, "eof": False}
+
+    def more():
+        b = read(chunk)
+        if not b:
+            st["eof"] = True
+            st["buf"] += text.decode(b"", final=True)
+            return
+        st["total"] += len(b)
+        if st["total"] > limit:
+            raise ValueError("ردّ الواجهة أكبر من الحد")
+        if st["i"] > 1 << 20:
+            st["buf"], st["i"] = st["buf"][st["i"]:], 0
+        st["buf"] += text.decode(b)
+
+    started = False
+    while True:
+        buf, i = st["buf"], st["i"]
+        while i < len(buf) and buf[i] in " \t\r\n,":
+            i += 1
+        st["i"] = i
+        if i >= len(buf):
+            if st["eof"]:
+                return
+            more()
+            continue
+        if not started:
+            if buf[i] != "[":
+                return
+            started, st["i"] = True, i + 1
+            continue
+        if buf[i] == "]":
+            return
+        try:
+            obj, end = dec.raw_decode(buf, i)
+        except ValueError:
+            if st["eof"]:
+                return
+            more()
+            continue
+        st["i"] = end
+        if isinstance(obj, dict):
+            yield obj
+
+
+def _int(v):
+    try:
+        return int(float(str(v).strip()))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _rating(v):
+    try:
+        r = float(str(v).split("/")[0].strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return 0
+    return round(r, 1) if 0 < r <= 10 else 0
+
+
+def _genres(v):
+    parts = v if isinstance(v, list) else re.split(r"\s*[,/|،]\s*", str(v or ""))
+    out = []
+    for p in parts:
+        p = " ".join(str(p).split())[:24]
+        if p and p.lower() not in {x.lower() for x in out}:
+            out.append(p)
+    return out[:3]
+
+
+def _plot(v):
+    s = " ".join(str(v or "").split())
+    return s if len(s) <= PLOT_MAX else s[:PLOT_MAX].rsplit(" ", 1)[0] + "…"
+
+
+def _year(v):
+    m = re.match(r"\s*((?:19|20)\d{2})", str(v or ""))
+    return int(m.group(1)) if m and int(m.group(1)) <= YEAR_MAX else 0
+
+
+def enrich(cat, xt):
+    """يُثري الفهرس من واجهة Xtream: تقييم الفيلم والمسلسل وتاريخ إضافته، وتصنيفه وقصته، وخلفية المسلسل —
+    ويُسقط ما تعلّمه الواجهة للكبار. ← {movies، series} عدد ما أُثري. والفشل استثناء، والفهرس كما هو قبله."""
+    movies, series = {}, {}
+    for g in cat.get("movie") or []:
+        for it in g["items"]:
+            if it.get("i"):
+                movies.setdefault(it["i"], []).append(it)
+    for g in cat.get("series") or []:
+        for it in g["items"]:
+            series.setdefault(_norm(it["n"]), []).append(it)
+    found, adult, done, heard = {}, set(), {"movies": 0, "series": 0}, 0
+    if movies:
+        with _api_open(xt, "get_vod_streams") as r:
+            for o in _json_items(r.read):
+                heard += 1
+                sid = _int(o.get("stream_id"))
+                if sid not in movies:
+                    continue
+                if str(o.get("is_adult") or "0").strip().lower() not in ("0", "", "false"):
+                    adult.add(sid)
+                    continue
+                found[sid] = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("added")), "g": _genres(o.get("genre")),
+                                    "d": _plot(o.get("plot") or o.get("description")), "p": _poster(o.get("stream_icon")),
+                                    "y": _year(o.get("year") or o.get("releasedate"))})
+    got = {}
+    if series:
+        with _api_open(xt, "get_series") as r:
+            for o in _json_items(r.read):
+                heard += 1
+                nm, yr = _split_year(_dequal(_clean(str(o.get("name") or ""))))
+                its = series.get(_norm(nm))
+                if not its:
+                    continue
+                yr = yr or _year(o.get("releaseDate") or o.get("release_date") or o.get("year"))
+                bd = o.get("backdrop_path")
+                bd = bd[0] if isinstance(bd, list) and bd else bd
+                meta = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("last_modified")), "g": _genres(o.get("genre")),
+                              "d": _plot(o.get("plot")), "b": _poster(bd if isinstance(bd, str) else ""),
+                              "p": _poster(o.get("cover")), "y": yr})
+                for it in its:                  # مسلسلان بالاسم نفسه: السنة تفصل بينهما
+                    if not (yr and it.get("y") and it["y"] != yr) and id(it) not in got:
+                        got[id(it)] = (it, meta)
+    if (movies or series) and not heard:      # رفض الدخول يُردّ كائنًا لا مصفوفة: اشتراكٌ منتهٍ أو واجهةٌ مغلقة
+        raise ValueError("الواجهة لم تُرجع شيئًا — الاشتراك منتهٍ أو السيرفر لا يتيحها")
+    # لا يُمسّ الفهرس إلا بعد أن يُقرأ الردّان كاملَين
+    for sid, meta in found.items():
+        for it in movies[sid]:
+            it.update({k: val for k, val in meta.items() if k not in ("p", "y") or not it.get(k)})
+        done["movies"] += 1
+    for it, meta in got.values():
+        it.update({k: val for k, val in meta.items() if k not in ("p", "y") or not it.get(k)})
+    done["series"] = len(got)
+    if adult:
+        for g in cat.get("movie") or []:
+            g["items"] = [x for x in g["items"] if x.get("i") not in adult]
+        cat["movie"] = [g for g in cat.get("movie") or [] if g["items"]]
+        cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(adult)
+    return done
 
 
 # ================= الواجهات الأخرى =================
@@ -1157,7 +1272,7 @@ def admin_state(data_dir):
             "key": s["key"], "name": s["name"], "full": s["full"], "buy": s["buy"], "page": f"{PATH}/{s['key']}",
             "has": _has(v), "at": v["at"] if v else 0, "source": cat.get("source", ""), "label": cat.get("label", ""),
             "counts": v["counts"] if v else None, "entries": cat.get("entries", 0), "n": cat.get("n", {}),
-            "skipped": cat.get("skipped", {}), "url": mask_url(url) if url else "", "try_at": s["try_at"],
+            "skipped": cat.get("skipped", {}), "api": cat.get("api"), "url": mask_url(url) if url else "", "try_at": s["try_at"],
             "error": s["error"], "busy": dict(_busy[s["key"]]) if s["key"] in _busy else None,
             "groups": {k: [[g["id"], g["name"], len(g["items"]), g["id"] in hidden] for g in cat.get(k) or []]
                        for k in KINDS}})

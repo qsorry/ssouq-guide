@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""صفحة المحتوى (content.py): قراءة ملفات M3U وصفحة /content ولوحة المدير، بلا إنترنت.
+"""صفحة المحتوى (content.py وcontent_page.py): قراءة ملفات M3U وإثراؤها من واجهة Xtream وصفحة /content
+ولوحة المدير، بلا إنترنت (سيرفرات IPTV وهمية على 127.0.0.1، ومنها tests/mock_xtream.py).
 
   - القراءة: النوع من رابط Xtream ومن الاسم، والمسلسل وموسمه وحلقته بصيغها (S01E01، 1x01،
-    «الموسم الخامس الحلقة 13»، «ج3 ح12»)، وبادئة اللغة، والفواصل، وأقسام الكبار، وgzip وCRLF وBOM،
-    وحدّ الحجم بعد فكّ الضغط.
-  - الأعداد: المسلسل في قسمين يُعدّ مرة، والحلقة المكرّرة مرة، والمخفي من الأقسام لا يُعدّ.
-  - الصفحة: الأقسام والقائمة بصفحاتها والبحث بالاسم وأين يوجد في السيرفرات الأخرى، ولا رابط ولا
-    بيانات دخول ولا وسم من الملف، والفهرسة للصفحة الرئيسية وحدها.
+    «الموسم الخامس الحلقة 13»، «ج3 ح12»)، والسنة والجودة («The Batman (2022) FHD»)، والصورة ورقم العنصر،
+    وبادئة اللغة، والفواصل، وأقسام الكبار، وgzip وCRLF وBOM، وحدّ الحجم بعد فكّ الضغط.
+  - الأعداد: المسلسل في قسمين يُعدّ مرة بمواسمه كلها، والحلقة المكرّرة مرة، والمخفي من الأقسام لا يُعدّ.
+  - الإثراء: التقييم والتصنيف والقصة وتاريخ الإضافة من ‏player_api.php، وما تعلّمه للكبار يسقط، وفشلها
+    لا يمنع الحفظ؛ ولا بيانات دخول في الفهرس.
+  - الصفحة: الواجهة المتحرّكة، والأعداد، و«أضيف مؤخرًا»، وصفحة النوع والقسم والتصفية وصفحاتها، والبحث
+    بالاسم وأين يوجد في السيرفرات الأخرى، ونافذة التفاصيل بمواسمها، والفهرسة للصفحة الرئيسية وحدها،
+    ولا رابط ولا بيانات دخول ولا وسم من الملف، والفهرس القديم (النسخة الأولى).
+  - الصور: TMDB مباشرةً، وغيرها عبر خادمنا بلا العناوين الداخلية، وتخزينها بحدّ، وما تعذّر لا يُعاد قبل يوم.
   - السيرفرات: الافتراضية الأربعة، والإضافة والتعديل والترتيب والمسح، والرابط مشفَّرًا ومخفيًّا،
     والسحب منه والفشل والدورة اليومية.
-  - على خادم حيّ: الرفع (خامًا ومضغوطًا) وصلاحياته، والرابط من سيرفرٍ وهمي، والصفحات والواجهات،
-    وخريطة الموقع، والنطاقان.
+  - على خادم حيّ: الرفع (خامًا ومضغوطًا) وصلاحياته، والرابط من سيرفر Xtream وهمي، والصفحات والصور
+    والواجهات، وخريطة الموقع، والنطاقان.
 
 تشغيل:  python tests/test_content.py
 """
 import base64
 import gzip
+import html as _html
 import http.server
 import json
 import os
@@ -34,8 +40,23 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
+sys.path.insert(0, HERE)
 
 import content as C  # noqa: E402
+import content_page as P  # noqa: E402
+import mock_xtream  # noqa: E402
+
+_api_open = C._api_open
+
+
+def _offline_api(xt, action):
+    """بلا إنترنت: واجهة Xtream من السيرفرات الوهمية المحلية وحدها، وغيرها (panel.example في العيّنة) يفشل فورًا."""
+    if not xt[0].startswith("http://127.0.0.1:"):
+        raise urllib.error.URLError("offline test")
+    return _api_open(xt, action)
+
+
+C._api_open = _offline_api
 
 _p = _f = 0
 
@@ -101,6 +122,14 @@ def items(cat, kind):
     return {g["name"]: g["items"] for g in cat[kind]}
 
 
+def names(cat, kind):
+    return {g["name"]: [it["n"] for it in g["items"]] for g in cat[kind]}
+
+
+def seasons(cat):
+    return {g["name"]: {it["n"]: it["s"] for it in g["items"]} for g in cat["series"]}
+
+
 def fresh():
     d = tempfile.mkdtemp(prefix="content_")
     C._cache.clear()
@@ -144,27 +173,34 @@ def unit_parse():
 
     print("الفهرس")
     cat = catalog(SAMPLE)
-    s, m, lv = items(cat, "series"), items(cat, "movie"), items(cat, "live")
+    ss, m, lv = seasons(cat), names(cat, "movie"), names(cat, "live")
     check("الأعداد الخام", cat["n"] == {"series": 15, "movie": 4, "live": 6}, cat["n"])
     check("الكبار والفواصل تسقط", cat["skipped"] == {"adult": 2, "sep": 1, "bad": 0}, cat["skipped"])
     check("قسم الكبار لا يُحفظ اسمه", "XXX | Adults" not in json.dumps(cat) and "Night Club" not in json.dumps(cat))
     check("«Movies 2018+» ليس قسم كبار", "Horror Night" in m.get("Movies 2018+", []))
-    check("«Sex Education» في قسمٍ عادي يبقى", any(it[0] == "Sex Education" for it in s["Netflix"]))
-    check("القناة المكرّرة مرة وبلا بادئة", lv["AR | MBC"] == ["MBC 1 HD"], lv["AR | MBC"])
+    check("«Sex Education» في قسمٍ عادي يبقى", "Sex Education" in ss["Netflix"])
+    check("القناة بجوداتها واحدة وبلا بادئة", lv["AR | MBC"] == ["MBC 1"] and lv["beIN SPORTS"] == ["beIN SPORTS 1"], lv)
     check("«AL Jazeera» كما هي", lv["AR | News"] == ["AL Jazeera"])
     check("بلا قسم ← «بلا قسم»", lv.get("بلا قسم") == ["Plain Channel"])
-    bb = dict((it[0], it[1]) for it in s["SERIES | Drama"])
-    check("المواسم وحلقاتها، والمكرّرة تُعدّ مرة", bb["Breaking Bad"] == [[1, 2], [2, 1]], bb.get("Breaking Bad"))
+    check("المواسم وحلقاتها، والمكرّرة تُعدّ مرة", ss["SERIES | Drama"]["Breaking Bad"] == [[1, 2], [2, 1]])
     check("الأقسام بترتيب ظهورها", [g["name"] for g in cat["series"]][:3] == ["SERIES | Drama", "Netflix", "SERIES | Comedy"])
-    check("الفيلم بفاصلته", "Love, Death & Robots: The Movie (2021)" in m["VOD | English Movies"])
+    mv = {it["n"]: it for g in cat["movie"] for it in g["items"]}
+    check("الفيلم: الاسم بلا سنة، والسنة والصورة ورقمه", mv["The Batman"] == {"n": "The Batman", "y": 2022,
+          "p": f"{HOST}/images/8.png", "i": 8}, mv.get("The Batman"))
+    check("الفيلم بفاصلته، وبلا صورةٍ لا مفتاح لها", mv["Love, Death & Robots: The Movie"] == {"n": "Love, Death & Robots: The Movie",
+          "y": 2021, "i": 9}, mv.get("Love, Death & Robots: The Movie"))
     check("«ج2» في رابط فيلم يبقى فيلمًا", m["أفلام عربية"] == ["الفيل الأزرق ج2"])
-    check("حلقةٌ برابط فيلم (لوحة قديمة) تُقرأ حلقة", ["The 100", [[1, 1]]] in s["Old panel"] and
-          ["Stranger Things", [[1, 1]]] in s["Old panel"])
-    check("الموسم بالعربية والأرقام الهندية", s["مسلسلات رمضان 2026"] == [["المؤسس عثمان", [[5, 2]]]])
-    check("الحلقة بلا موسم = الموسم 0", s["مسلسلات تركية"] == [["قيامة أرطغرل", [[0, 1]]]])
+    bb = next(it for it in items(cat, "series")["SERIES | Drama"] if it["n"] == "Breaking Bad")
+    check("المسلسل: أكبر رقم حلقةٍ وأول صورة", bb["i"] == 15 and bb["p"] == f"{HOST}/images/12.png", bb)
+    check("حلقةٌ برابط فيلم (لوحة قديمة) تُقرأ حلقة", ss["Old panel"] == {"The 100": [[1, 1]], "Stranger Things": [[1, 1]]})
+    check("الموسم بالعربية والأرقام الهندية", ss["مسلسلات رمضان 2026"] == {"المؤسس عثمان": [[5, 2]]})
+    check("الحلقة بلا موسم = الموسم 0", ss["مسلسلات تركية"] == {"قيامة أرطغرل": [[0, 1]]})
     dump = json.dumps(cat, ensure_ascii=False)
-    check("لا رابط ولا بيانات دخول ولا شعار في الفهرس", "pass456" not in dump and "panel.example" not in dump
-          and "http" not in dump, re.findall(r"http[^\"]*", dump)[:2])
+    check("لا بيانات دخول في الفهرس", "pass456" not in dump and "user123" not in dump)
+    check("ولا روابط تشغيل: الصور وحدها", all("/images/" in u for u in re.findall(r"https?://[^\"]*", dump)),
+          re.findall(r"https?://[^\"]*", dump)[:3])
+    c3, xt = C._parse(reader(SAMPLE.encode("utf-8")))
+    check("بيانات واجهة Xtream من روابط الملف، خارج الفهرس", xt == (HOST, "user123", "pass456") and c3 == cat)
 
     print("ملفات أخرى")
     other = ("\ufeff#EXTM3U\r\n#EXTINF:-1,Show S02E03\r\nhttps://cdn.example/show/203.m3u8\r\n"
@@ -172,10 +208,11 @@ def unit_parse():
              "#EXTGRP:News\r\n#EXTINF:-1,Channel One\r\nhttps://cdn.example/live/one.m3u8\r\n"
              "#EXTINF:-1,Channel Two\r\n#EXTVLCOPT:http-user-agent=x\r\nhttps://cdn.example/two.ts\r\n")
     c2 = catalog(other)
-    check("BOM وCRLF و‏#EXTGRP وسطر خيارات قبل الرابط", items(c2, "live").get("News") == ["Channel One", "Channel Two"],
-          items(c2, "live"))
-    check("بلا Xtream: الحلقة من اسمها والفيلم من امتداده", items(c2, "series") == {"بلا قسم": [["Show", [[2, 1]]]]}
-          and items(c2, "movie") == {"بلا قسم": ["Some Film (2019)"]}, (items(c2, "series"), items(c2, "movie")))
+    check("BOM وCRLF و‏#EXTGRP وسطر خيارات قبل الرابط", names(c2, "live").get("News") == ["Channel One", "Channel Two"],
+          names(c2, "live"))
+    check("بلا Xtream: الحلقة من اسمها والفيلم من امتداده", items(c2, "series") == {"بلا قسم": [{"n": "Show", "i": 203, "s": [[2, 1]]}]}
+          and items(c2, "movie") == {"بلا قسم": [{"n": "Some Film", "y": 2019}]}, (items(c2, "series"), items(c2, "movie")))
+    check("ولا بيانات واجهة بلا روابط Xtream", C._parse(reader(other.encode("utf-8")))[1] is None)
     gz = gzip.compress(SAMPLE.encode("utf-8"))
     check("gzip يُفكّ وهو يُقرأ", C.parse(reader(gz)) == cat)
     check("سطورٌ بين قطعتين", C.parse(reader(SAMPLE.encode("utf-8"))) == cat
@@ -280,7 +317,7 @@ def unit_store():
     C.set_hidden(d, "smart", drama["id"], True)
     v2 = C._view(d, "smart")[1]
     check("القسم المخفي لا يُعدّ ولا يُعرض", drama["id"] not in v2["byid"]["series"]
-          and v2["counts"]["series"] == 8 and C.api_group(d, "smart", "series", drama["id"]) is None, v2["counts"])
+          and v2["counts"]["series"] == 8 and P.render(d, "smart", {"t": "series", "g": drama["id"]})[0] == 404, v2["counts"])
     check("وحال المدير يعلّمه مخفيًّا", [g for g in next(s for s in C.admin_state(d)["servers"] if s["key"] == "smart")
                                          ["groups"]["series"] if g[0] == drama["id"]][0][3] is True)
     C.set_hidden(d, "smart", drama["id"], False)
@@ -294,78 +331,352 @@ def big(n_movies=650, prefix="Film"):
     return "#EXTM3U\n" + "".join(entry(f"{prefix} {i:04d} (2020)", "VOD | Big", "movie", 1000 + i) for i in range(n_movies))
 
 
+def titles(html):
+    """أسماء البطاقات بترتيبها."""
+    return re.findall(r'<h3 dir="auto">(.*?)</h3>', html)
+
+
+def section(html, head):
+    """الصفّ أو القسم الذي عنوانه head إلى الذي يليه."""
+    i = html.index(f"<h2>{head}</h2>")
+    j = html.find('<section class="', i)
+    return html[i:j if j > 0 else len(html)]
+
+
+def cards(html):
+    """ما في نافذة التفاصيل لكل بطاقة (‏data-d)."""
+    return [json.loads(_html.unescape(x)) for x in re.findall(r'data-d="([^"]*)"', html)]
+
+
+def page(d, key, **q):
+    code, body, _ = P.render(d, key, q)
+    return code, body.decode("utf-8")
+
+
 def unit_render():
-    print("الصفحة")
+    print("الصفحة الرئيسية للسيرفر")
     d = fresh()
     seed(d)
     seed(d, "falcon", "#EXTM3U\n" + entry("Only In Falcon S01 E01", "Falcon Series", "series", 1)
          + entry("Breaking Bad S05 E01", "Falcon Series", "series", 2) + big(650))
-    code, body, age = C.render(d, "smart", {})
+    code, body, age = P.render(d, "smart", {})
     html = body.decode("utf-8")
     check("200 ومخزَّنة عشر دقائق", code == 200 and age == 600)
     check("العنوان والوصف بالأعداد", "<title>محتوى اشتراك سمارت: المسلسلات بمواسمها والأفلام والقنوات | سمارت سوق</title>" in html
           and "9 مسلسلات بمواسمها و4 أفلام و5 قنوات" in html)
     check("تُفهرس ولها canonical", 'content="index, follow' in html and
           '<link rel="canonical" href="https://guide.ssouq.com/content/smart">' in html)
-    check("تبويب لكل سيرفرٍ له محتوى", '<a href="/content/smart" aria-current=page>سمارت</a>' in html
+    check("السيرفرات التي لها محتوى", '<a href="/content/smart" aria-current=page>سمارت</a>' in html
           and '<a href="/content/falcon">فالكون</a>' in html and "/content/kon" not in html)
-    check("خانات الأعداد", "<b>9</b><small>مسلسلات</small>" in html and "<b>11</b><small>موسمًا</small>" in html)
-    check("الأقسام بعددها وفتحها بلا سكربت", 'data-g="' in html and "اعرض القائمة</a>" in html and "مسلسلان</small>" in html)
-    check("لا رابط ولا بيانات دخول ولا وسم من الملف", "pass456" not in html and "panel.example" not in html
-          and "<script>alert(1)" not in html)
-    check("باقات سمارت من CATALOG بحملة الصفحة", "p2091471394?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content" in html)
+    check("الرأس: الأنواع و«أضيف مؤخرًا» والبحث", '<a href="/content/smart" class=home aria-current=page>الرئيسية</a>' in html
+          and '<a href="/content/smart?t=series">المسلسلات</a>' in html and '<a href="/content/smart?t=new">أضيف مؤخرًا</a>' in html
+          and '<form class="search" role="search" action="/content/smart" method="get">' in html)
+    check("خانات الأعداد", all(f"<b>{n}</b><small>{w}</small>" in html for n, w in
+                               (("4", "أفلام"), ("9", "مسلسلات"), ("5", "قنوات"), ("13", "حلقة"), ("11", "موسمًا"))))
+    check("تبويبات الأنواع بأعدادها", "المسلسلات <small>9</small></a>" in html and "الأفلام <small>4</small></a>" in html
+          and "القنوات <small>5</small></a>" in html)
+    first = re.search(r'class="slide on".*?<h2 dir="auto">(.*?)</h2>', html, re.S)
+    check("الواجهة: أحدث ما له صورة، ثلاثة أفلام ومسلسلان", html.count('<article class="slide') == 5
+          and html.count('class="slide on"') == 1 and first and first.group(1) == "Horror Night"
+          and html.count('<button type="button" data-go=') == 9, first and first.group(1))
+    check("أحدث الأفلام برقمها في اللوحة", titles(section(html, "أفلام أضيفت مؤخرًا"))
+          == ["Horror Night", "الفيل الأزرق ج2", "Love, Death &amp; Robots: The Movie", "The Batman"],
+          titles(section(html, "أفلام أضيفت مؤخرًا")))
+    rs = titles(section(html, "مسلسلات جديدة أو بحلقاتٍ جديدة"))
+    check("والمسلسلات بآخر حلقة، والمسلسل في قسمين مرة", rs[:3] == ["&lt;script&gt;alert(1)&lt;/script&gt;", "Stranger Things", "The 100"]
+          and rs.count("Breaking Bad") == 1 and len(rs) == 9, rs)
+    check("والقنوات", titles(section(html, "قنوات أضيفت مؤخرًا")) == ["beIN SPORTS 1", "AL Jazeera", "MBC 1"])
+    check("صفٌّ لكل قسم برابط «عرض الكل»", "<h2>VOD | English Movies <small>· فيلم</small></h2>" in html
+          and "عرض الكل (2)" in html and html.count('class="more"') == 3 + 3 + 3 + 2)
+    bb = next(x for x in cards(html) if x["n"] == "Breaking Bad")
+    check("المسلسل بمواسمه كلها من قسميه، وحلقات كل موسم", bb["ss"] == "3 مواسم · 4 حلقات"
+          and bb["sc"] == ["الموسم 1 (حلقتان)", "الموسم 2 (حلقة واحدة)", "الموسم 3 (حلقة واحدة)"], bb)
+    check("والبطاقة بعدد مواسمه", '<h3 dir="auto">Breaking Bad</h3><p class="sub">3 مواسم</p>' in html)
+    ertugrul = next(x for x in cards(html) if x["n"] == "قيامة أرطغرل")
+    check("وبلا موسم: حلقاته وحدها", ertugrul["ss"] == "حلقة واحدة" and "sc" not in ertugrul, ertugrul)
+    bat = next(x for x in cards(html) if x["n"] == "The Batman")
+    u8 = C.img_hash(HOST + "/images/8.png")
+    check("الفيلم بسنته وقسمه وصورته عبر خادمنا", bat == {"k": "movie", "n": "The Batman", "y": 2022, "c": "VOD | English Movies",
+                                                   "p": f"/content/smart/img/{u8}"} and f'src="/content/smart/img/{u8}"' in html, bat)
+    check("الجانب: «أضيف مؤخرًا» مرقّمة وباقات سمارت بحملة الصفحة", html.count('<span class="n">') == 6
+          and "p2091471394?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content" in html
+          and 'data-cta="https://' in html)
+    check("لا رابط ولا بيانات دخول ولا وسم من الملف", "pass456" not in html and "user123" not in html and "panel.example" not in html
+          and "<script>alert(1)" not in html and "&lt;script&gt;alert(1)&lt;/script&gt;" in html)
 
-    drama = C._view(d, "smart")[1]["kinds"]["series"][0]
-    code, body, _ = C.render(d, "smart", {"t": "series", "g": drama["id"]})
-    html = body.decode("utf-8")
-    check("صفحة القسم: المسلسل بمواسمه", code == 200 and "<b>Breaking Bad</b>" in html
-          and "الموسم 1 <i>(حلقتان)</i>" in html and "الموسم 2 <i>(حلقة واحدة)</i>" in html)
-    check("الاسم مهرَّبًا", "&lt;script&gt;alert(1)&lt;/script&gt;" in html and "<script>alert(1)" not in html)
+    print("صفحة النوع والقسم")
+    code, html = page(d, "smart", t="series")
+    check("صفحة المسلسلات: الأقسام صورًا ثم صفٌّ لكل قسم", code == 200 and html.count('<a class="chip"') == 7
+          and 'class="chip more"' not in html and html.count("عرض الكل (") == 7
+          and '<a href="/content/smart?t=series" aria-current=page>المسلسلات</a>' in html)
+    check("وتصفيتها: القسم والترتيب، وبلا سنةٍ ولا تقييمٍ لا خانة لهما", "تصفية المسلسلات" in html and 'name="g"' in html
+          and 'name="sort"' in html and 'name="y"' not in html and 'name="r"' not in html
+          and '<input type="hidden" name="t" value="series"><input type="hidden" name="view" value="grid">' in html)
     check("لا تُفهرس ولا canonical لها", 'content="noindex, follow"' in html and 'rel="canonical"' not in html)
-    code, body, _ = C.render(d, "smart", {"t": "series", "g": "0000000000"})
-    check("قسمٌ لم يعد موجودًا: 404 بالأقسام الحالية", code == 404 and "لم يعد موجودًا" in body.decode())
+    drama = C._view(d, "smart")[1]["kinds"]["series"][0]
+    code, html = page(d, "smart", t="series", g=drama["id"])
+    check("صفحة القسم: الأحدث أولًا", code == 200 and "<h1>SERIES | Drama</h1>" in html and "مسلسلان" in html
+          and titles(html.split('<aside class="side">')[0]) == ["&lt;script&gt;alert(1)&lt;/script&gt;", "Breaking Bad"],
+          titles(html))
+    check("والقسم مختارٌ في التصفية", f'<option value="{drama["id"]}" selected>SERIES | Drama</option>' in html)
+    code, html = page(d, "smart", t="series", g="0000000000")
+    check("قسمٌ لم يعد موجودًا: 404 بالأقسام الحالية", code == 404 and "لم يعد موجودًا" in html and 'class="chip"' in html)
+    code, html = page(d, "smart", t="movie", all="1")
+    check("كل الأقسام", code == 200 and "<h1>أقسام الأفلام</h1>" in html and "3 أقسام" in html
+          and html.count('<a class="chip"') == 3)
 
+    print("أضيف مؤخرًا")
+    code, html = page(d, "smart", t="new")
+    check("صفحته: الأنواع كلها الأحدث أولًا", code == 200 and "أضيف مؤخرًا في سمارت" in html
+          and '<a href="/content/smart?t=new" aria-current=page>أضيف مؤخرًا</a>' in html
+          and titles(section(html, "أفلام"))[0] == "Horror Night" and titles(section(html, "قنوات")) == ["beIN SPORTS 1", "AL Jazeera", "MBC 1"]
+          and 'content="noindex, follow"' in html)
+
+    print("التصفية")
+    code, html = page(d, "smart", t="movie", view="grid", y="2022")
+    check("بالسنة", code == 200 and "<h1>الأفلام في سمارت</h1>" in html and "فيلم واحد · 2022" in html
+          and titles(html.split('<aside class="side">')[0]) == ["The Batman"])
+    check("وبلا نتائج", "لا نتائج بهذا الفلتر" in page(d, "smart", t="movie", view="grid", y="1999")[1])
+    code, html = page(d, "smart", t="movie", view="grid", sort="az")
+    check("بالاسم", titles(html.split('<aside class="side">')[0])
+          == ["Horror Night", "Love, Death &amp; Robots: The Movie", "The Batman", "الفيل الأزرق ج2"])
+    code, html = page(d, "smart", t="movie", view="grid", y="abc", r="99", sort="evil", p="-3")
+    check("وقيمٌ غير صالحة: الكل", code == 200 and len(titles(html.split('<aside class="side">')[0])) == 4)
+    code, html = page(d, "smart", t="movie", view="grid", genre="x" * 99)
+    check("وتصنيفٌ لا وجود له: لا نتائج", code == 200 and "لا نتائج بهذا الفلتر" in html)
+    code, html = page(d, "smart", t="evil")
+    check("نوعٌ لا وجود له: الرئيسية بلا فهرسة", code == 200 and "<article class=\"slide on\"" in html
+          and 'content="noindex, follow"' in html)
+
+    print("الصفحات")
     fbig = C._view(d, "falcon")[1]["kinds"]["movie"][0]["id"]
-    g1 = C.api_group(d, "falcon", "movie", fbig, 1)
-    g3 = C.api_group(d, "falcon", "movie", fbig, 3)
-    check("القسم صفحاتٌ من 300", g1["items"].count("<li>") == 300 and 'data-p="2"' in g1["more"]
-          and "بقي 350 فيلمًا" in g1["more"] and g3["items"].count("<li>") == 50 and g3["more"] == "", g1["more"])
-    code, body, _ = C.render(d, "falcon", {"t": "movie", "g": fbig, "p": "2"})
-    html = body.decode()
-    check("وبلا سكربت: التالي والسابق", "صفحة 2 من 3" in html and f"g={fbig}&amp;p=3" in html and f"g={fbig}&amp;p=1" in html)
+    code, html = page(d, "falcon", t="movie", g=fbig, p="2")
+    main = html.split('<aside class="side">')[0]
+    check("القسم صفحاتٌ من 60", code == 200 and len(titles(main)) == P.GRID and titles(main)[0] == "Film 0589"
+          and "صفحة 2 من 11" in html and f"?t=movie&amp;g={fbig}&amp;p=3" in html and f"?t=movie&amp;g={fbig}&amp;p=1" in html,
+          titles(main)[:1])
+    code, html = page(d, "falcon", t="movie", g=fbig, p="999")
+    main = html.split('<aside class="side">')[0]
+    check("وآخرها بما بقي", "صفحة 11 من 11" in html and len(titles(main)) == 50 and titles(main)[-1] == "Film 0000"
+          and "التالي ←" not in html)
 
     print("البحث بالاسم")
-    r = C.api_search(d, "smart", "breaking")["html"]
-    check("المسلسل بقسمه ومواسمه", "<b>Breaking Bad</b>" in r and "· SERIES | Drama" in r and "· Netflix" in r
-          and "الموسم 3" in r, r[:200])
-    check("ويوجد أيضًا في السيرفرات الأخرى", 'ويوجد أيضًا في: <a class="link" href="/content/falcon?q=breaking">فالكون (1)</a>' in r)
-    r = C.api_search(d, "smart", "only in falcon")["html"]
+    r = P.api_search(d, "smart", "breaking")["html"]
+    check("المسلسل مرةً بمواسمه كلها", "نتائج «breaking» في سمارت <small>نتيجة واحدة</small>" in r
+          and "المسلسلات <small>(1)</small>" in r and titles(r) == ["Breaking Bad"]
+          and cards(r)[0]["sc"][-1] == "الموسم 3 (حلقة واحدة)", r[:300])
+    check("ويوجد أيضًا في السيرفرات الأخرى", 'ويوجد أيضًا في: <a href="/content/falcon?q=breaking">فالكون (1)</a>' in r)
+    r = P.api_search(d, "smart", "only in falcon")["html"]
     check("ما ليس هنا: أين يوجد", "لا يوجد «only in falcon» في سمارت" in r and "لكنه موجود في" in r and "فالكون (1)" in r)
-    r = C.api_search(d, "smart", "عثمان")["html"]
-    check("بالعربية", "المؤسس عثمان" in r and "الموسم 5 <i>(حلقتان)</i>" in r)
-    check("بلا همزة", "المؤسس عثمان" in C.api_search(d, "smart", "الموسس")["html"])
-    check("حرفٌ واحد لا يُبحث", C.api_search(d, "smart", "b")["html"] == "")
-    r = C.api_search(d, "falcon", "film")["html"]
-    check("الواسع: أولها وعددها كله", r.count("<li>") == C.SEARCH_MAX and "(650)" in r and "610 نتائج أخرى" in r, r[:160])
-    r = C.api_search(d, "falcon", "film 0007")["html"]
-    check("كل الكلمات، والمطابق تمامًا أولًا", "<li>Film 0007 (2020)" in r and r.count("<li>") == 1, r[-300:])
-    check("لا نتائج", "لا يوجد" in C.api_search(d, "smart", "zzzz qqqq")["html"])
-    code, body, _ = C.render(d, "smart", {"q": "breaking"})
-    check("وبلا سكربت: ?q= على الصفحة نفسها", code == 200 and "نتائج «breaking»" in body.decode()
-          and 'content="noindex, follow"' in body.decode())
+    r = P.api_search(d, "smart", "عثمان")["html"]
+    check("بالعربية", titles(r) == ["المؤسس عثمان"] and cards(r)[0]["sc"] == ["الموسم 5 (حلقتان)"])
+    check("بلا همزة", "المؤسس عثمان" in P.api_search(d, "smart", "الموسس")["html"])
+    check("وبالسنة", titles(P.api_search(d, "smart", "batman 2022")["html"]) == ["The Batman"])
+    check("حرفٌ واحد لا يُبحث", P.api_search(d, "smart", "b")["html"] == "")
+    r = P.api_search(d, "falcon", "film")["html"]
+    check("الواسع: أولها وعددها كله", len(titles(r)) == C.SEARCH_MAX and "(650)" in r and "و610 نتائج أخرى" in r, r[:160])
+    check("كل الكلمات", titles(P.api_search(d, "falcon", "film 0007")["html"]) == ["Film 0007"])
+    r = P.api_search(d, "smart", "zzzz qqqq")["html"]
+    check("لا نتائج", "لا يوجد «zzzz qqqq» في سمارت" in r and "جرّب جزءًا من الاسم" in r)
+    code, html = page(d, "smart", q="breaking")
+    check("وبلا سكربت: ?q= على الصفحة نفسها", code == 200 and '<div id="cres" aria-live="polite"><section class="results">' in html
+          and 'value="breaking"' in html and 'content="noindex, follow"' in html)
+    code, html = page(d, "smart", q='"><img src=x onerror=alert(1)>')
+    check("والبحث مهرَّبًا", "<img src=x" not in html and "&lt;img src=x onerror=alert(1)&gt;" in html)
 
     print("لا محتوى")
-    code, body = C.render_missing(d, "kon")
+    code, body = P.render_missing(d, "kon")
     check("سيرفرٌ بلا محتوى: 404 تدلّ على غيره", code == 404 and 'href="/content/smart"' in body.decode()
-          and "noindex" in body.decode())
-    check("وسيرفرٌ لا وجود له", C.render(d, "nope", {})[0] == 404 and C.api_group(d, "nope", "movie", fbig) is None
-          and C.api_search(d, "nope", "x") is None)
+          and 'href="/content/falcon"' in body.decode() and "noindex" in body.decode())
+    check("وسيرفرٌ لا وجود له", P.render(d, "nope", {})[0] == 404 and P.render(d, "kon", {})[:1] == (404,)
+          and P.api_search(d, "nope", "x") is None)
     check("‏/content إلى أوّلها", C.first_key(d) == "smart")
     b = C.brief(d)
     check("للرئيسية: السيرفرات وأعدادها", [s["key"] for s in b["servers"]] == ["smart", "falcon"]
           and b["servers"][0]["series"] == 9 and b["servers"][1]["movies"] == 650, b)
     check("خريطة الموقع", C.sitemap(d) == [("/content/smart", "daily", "0.7"), ("/content/falcon", "daily", "0.7")])
+
+    print("فهرسٌ من النسخة الأولى")
+    C._write(C._cat_path(d, "kon"), {
+        "key": "kon", "at": time.time(), "entries": 4, "n": {"series": 3, "movie": 1, "live": 0}, "skipped": {},
+        "series": [{"id": C._gid("series", "Old"), "name": "Old", "items": [["Old Show", [[1, 2], [2, 1]]]]}],
+        "movie": [{"id": C._gid("movie", "Films"), "name": "Films", "items": ["Old Film (2019)"]}], "live": []})
+    code, html = page(d, "kon")
+    check("يُعرض كما هو حتى يُسحب ثانية", code == 200 and "Old Show" in html and "موسمان" in html and "Old Film (2019)" in html
+          and C._view(d, "kon")[1]["counts"] == {"series": 1, "seasons": 2, "episodes": 3, "movie": 1, "live": 0}
+          and "?t=new" not in html and 'class="slide' not in html)
+
+    print("التاريخ")
+    now = time.time()
+    check("«أضيف»: اليوم وأمس ومنذ", [P._ago(now - x * 86400, now) for x in (.2, 1.5, 2, 3, 11, 14, 60, 400, 800)]
+          == ["اليوم", "أمس", "منذ يومين", "منذ 3 أيام", "منذ أسبوع", "منذ أسبوعين", "منذ شهرين", "منذ سنة", "منذ سنتين"]
+          and P._ago(0) == "")
     shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_images():
+    print("الصور")
+    tm = "https://image.tmdb.org/t/p/w600_and_h900_bestv2/abc.jpg"
+    check("TMDB مباشرةً بالمقاس", C.img_src("smart", tm) == "https://image.tmdb.org/t/p/w342/abc.jpg"
+          and C.img_src("smart", tm, "w780") == "https://image.tmdb.org/t/p/w780/abc.jpg")
+    u = HOST + "/images/8.png"
+    check("وغيرها عبر خادمنا بلا مضيفها", C.img_src("smart", u) == "/content/smart/img/" + C.img_hash(u)
+          and len(C.img_hash(u)) == 16 and C.img_src("smart", "") == "")
+    check("نوع الصورة من بايتاتها", C._img_type(b"\xff\xd8\xff\xe0") == "image/jpeg" and C._img_type(mock_xtream.png(1)) == "image/png"
+          and C._img_type(b"RIFF1234WEBPVP8 ") == "image/webp" and C._img_type(b"GIF89a..") == "image/gif"
+          and C._img_type(b"<html>") == "")
+    check("العناوين الداخلية لا تُطلب", not any(C._public_host(h) for h in (
+        "127.0.0.1", "10.1.2.3", "192.168.1.1", "169.254.169.254", "::1", "localhost", "panel.example"))
+          and C._public_host("8.8.8.8"))
+    try:
+        C._SafeRedirect().redirect_request(urllib.request.Request("http://8.8.8.8/a.png"), None, 302, "Found", {},
+                                           "http://169.254.169.254/latest")
+        check("ولا تحويلٌ إليها", False)
+    except urllib.error.URLError:
+        check("ولا تحويلٌ إليها", True)
+    check("وصورةٌ لا تُفتح تُقدَّم كما هي", C._shrink(b"abc", "image/png") == (b"abc", "image/png"))
+
+    srv = mock_xtream.serve(0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    d = fresh()
+    good, missing, notimg = base + "/images/7.png", base + "/nothing.png", base + "/player_api.php?username=u&password=p"
+    C.ingest(d, "smart", reader(("#EXTM3U\n" + "".join(
+        f'#EXTINF:-1 tvg-logo="{logo}" group-title="Ch",Channel {n}\n{base}/live/a/b/{n}.ts\n'
+        for n, logo in enumerate((good, missing, notimg), 1))).encode()), "file", "x.m3u")
+    folder = os.path.join(d, "content", "img")
+    try:
+        hits = len(mock_xtream.Handler.hits)
+        code, _, _ = C.image(d, "smart", C.img_hash(good))
+        check("عنوانٌ داخلي في الملف: لا يُطلب ويُعلَّم", code == 404 and len(mock_xtream.Handler.hits) == hits
+              and os.path.exists(os.path.join(folder, C.img_hash(good) + ".x")))
+        C.IMG_PRIVATE = True
+        os.remove(os.path.join(folder, C.img_hash(good) + ".x"))
+        code, data, ctype = C.image(d, "smart", C.img_hash(good))
+        check("صورةٌ تُجلب وتُحفظ", code == 200 and ctype == "image/png" and data[:4] == b"\x89PNG"
+              and os.path.exists(os.path.join(folder, C.img_hash(good))))
+        hits = len(mock_xtream.Handler.hits)
+        check("والمرة الثانية من القرص", C.image(d, "smart", C.img_hash(good))[:2] == (200, data)
+              and len(mock_xtream.Handler.hits) == hits)
+        check("وما تعذّر (404) لا يُعاد قبل يوم", C.image(d, "smart", C.img_hash(missing))[0] == 404
+              and C.image(d, "smart", C.img_hash(missing))[0] == 404 and len(mock_xtream.Handler.hits) == hits + 1)
+        check("وما ليس صورةً لا يُقدَّم", C.image(d, "smart", C.img_hash(notimg))[0] == 404)
+        check("رمزٌ ليس في الفهرس أو بصيغةٍ أخرى: 404", C.image(d, "smart", "0" * 16)[0] == 404
+              and C.image(d, "smart", "../../settings")[0] == 404 and C.image(d, "smart", C.img_hash(good).upper())[0] == 404
+              and C.image(d, "nope", "1" * 16)[0] == 404)
+    finally:
+        C.IMG_PRIVATE = False
+        srv.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+    tmp, cap = tempfile.mkdtemp(prefix="img_"), C.IMG_CACHE
+    C.IMG_CACHE = 1000
+    try:
+        for n in range(3):
+            C._img_save(tmp, os.path.join(tmp, f"{n:016x}"), bytes([n]) * 400)
+            os.utime(os.path.join(tmp, f"{n:016x}"), (1000 + n, 1000 + n))
+        check("حدّ حجم الصور: يُحذف الأقدم", sorted(os.listdir(tmp)) == [f"{1:016x}", f"{2:016x}"], os.listdir(tmp))
+    finally:
+        C.IMG_CACHE = cap
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def unit_enrich():
+    print("واجهة Xtream")
+    check("من رابط get.php", C.xtream_of("http://h.example:8080/get.php?username=a&password=b&type=m3u_plus")
+          == ("http://h.example:8080", "a", "b") and C.xtream_of("http://h.example/list.m3u") is None
+          and C.xtream_of("http://h.example/get.php?username=a") is None and C.xtream_of("nonsense") is None)
+    arr = json.dumps([{"stream_id": 1, "name": "A ] , [ {x}", "genre": "دراما"}, 5, {"stream_id": 2, "plot": "ب" * 50}],
+                     ensure_ascii=False).encode()
+    got = list(C._json_items(reader(arr), chunk=7))
+    check("مصفوفة JSON عنصرًا عنصرًا وهي تصل", [o.get("stream_id") for o in got] == [1, 2] and got[0]["genre"] == "دراما"
+          and got[0]["name"] == "A ] , [ {x}" and got[1]["plot"] == "ب" * 50, got)
+    check("وردٌّ ليس مصفوفة (رفض الدخول) لا يُخرج شيئًا", list(C._json_items(reader(b'{"user_info":{"auth":0}}'))) == [])
+    check("وردٌّ انقطع: ما اكتمل منه", [o["a"] for o in C._json_items(reader(b'[{"a":1},{"a":2},{"a":'), chunk=5)] == [1, 2])
+    try:
+        list(C._json_items(reader(b"[" + b'{"a":1},' * 1000 + b"]"), chunk=64, limit=500))
+        check("وحدّ الحجم", False)
+    except ValueError:
+        check("وحدّ الحجم", True)
+    check("التقييم من 10", [C._rating(x) for x in ("7.8", "8/10", "7,5", "0", "11", "", None, "abc")]
+          == [7.8, 8.0, 7.5, 0, 0, 0, 0, 0])
+    check("والتصنيف ثلاثةٌ بلا تكرار", C._genres("Action, Drama / Comedy | Horror") == ["Action", "Drama", "Comedy"]
+          and C._genres("تاريخي، دراما") == ["تاريخي", "دراما"] and C._genres("Drama, drama") == ["Drama"]
+          and C._genres(["A", "B"]) == ["A", "B"] and C._genres("") == [])
+    long = "كلمة " * 100
+    check("والقصة بحدّها", len(C._plot(long)) <= C.PLOT_MAX + 1 and C._plot(long).endswith("…") and C._plot(" a  b ") == "a b")
+    check("والسنة", C._year("2024-05-01") == 2024 and C._year("") == 0 and C._year("3024") == 0 and C._year(1999) == 1999)
+
+    srv = mock_xtream.serve(0)
+    down = mock_xtream.serve(0, api_down=True)
+    for s in (srv, down):
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    d = fresh()
+    try:
+        C.set_url(d, "smart", f"{base}/get.php?username=u&password=p&type=m3u_plus")
+        mock_xtream.Handler.hits.clear()
+        ok, err = C.refresh(d, "smart")
+        st = next(s for s in C.admin_state(d)["servers"] if s["key"] == "smart")
+        check("القائمة ثم الواجهة: طلبٌ للأفلام وطلبٌ للمسلسلات", ok and mock_xtream.Handler.hits
+              == ["/get.php", "/player_api.php?action=get_vod_streams", "/player_api.php?action=get_series"], mock_xtream.Handler.hits)
+        check("وحاله للمدير", st["api"] == {"ok": True, "movies": 32, "series": 10}, st["api"])
+        v = C._view(d, "smart")[1]
+        check("الأعداد", v["counts"] == {"series": 10, "seasons": 43, "episodes": 645, "movie": 32, "live": 14}, v["counts"])
+        check("وما تعلّمه الواجهة للكبار يسقط", st["skipped"]["adult"] == 3 and "Hidden Adult Film" not in json.dumps(v["cat"]))
+        mv = {it["n"]: it for g in v["kinds"]["movie"] for it in g["items"]}
+        f1 = mv["F1 The Movie"]
+        check("الفيلم: تقييمه وتصنيفه وتاريخ إضافته", f1["r"] == 7.8 and f1["g"] == ["Action", "Drama"] and f1["y"] == 2025
+              and f1["a"] == mock_xtream.NOW - 86400 and f1["p"].startswith("https://image.tmdb.org/"), f1)
+        ser = {it["n"]: it for g in v["kinds"]["series"] for it in g["items"]}
+        bb = ser["Breaking Bad"]
+        check("المسلسل: قصته وخلفيته وسنته وتاريخ آخر حلقة", bb["r"] == 9.5 and bb["y"] == 2008 and bb["d"].startswith("معلّم كيمياء")
+              and bb["b"].startswith("https://image.tmdb.org/") and bb["a"] == mock_xtream.NOW - 500 * 86400, bb)
+        check("والتصنيف بفاصلةٍ عربية", ser["المؤسس عثمان"]["g"] == ["تاريخي", "دراما"], ser["المؤسس عثمان"].get("g"))
+        rec = [v["kinds"]["movie"][gi]["items"][ii]["n"] for gi, ii in v["recent"]["movie"][:3]]
+        check("«أضيف مؤخرًا» بتاريخ الواجهة", rec == ["F1 The Movie", "M3GAN 2.0", "The Fantastic Four: First Steps"], rec)
+        rec = [v["kinds"]["series"][gi]["items"][ii]["n"] for gi, ii in v["recent"]["series"][:3]]
+        check("والمسلسل بآخر حلقة", rec == ["المؤسس عثمان", "Stranger Things", "Squid Game"], rec)
+        dump = json.dumps(v["cat"], ensure_ascii=False) + open(os.path.join(d, "content", "settings.json"), encoding="utf-8").read()
+        check("ولا بيانات دخولٍ في الفهرس ولا في الإعدادات", "password" not in dump and "/u/p/" not in dump and "username" not in dump)
+
+        code, html = page(d, "smart")
+        first = re.search(r'class="slide on".*?<h2 dir="auto">(.*?)</h2>', html, re.S)
+        check("الواجهة المتحرّكة: أحدث فيلم بتقييمه وتصنيفه", first and first.group(1) == "F1 The Movie"
+              and "2025 · Action • Drama" in html and "</svg>7.8</p>" in html)
+        check("وشارة «جديد» وتاريخ الإضافة", '<span class="badge">جديد</span>' in html and "2025 · أضيف أمس" in html
+              and "حُدّث أمس" in html)
+        check("وصور TMDB بمقاسها، وغيرها عبر خادمنا", "https://image.tmdb.org/t/p/w342/" in html and "/content/smart/img/" in html
+              and "127.0.0.1" not in html)
+        code, html = page(d, "smart", t="movie")
+        check("تصفية الأفلام: السنة والتصنيف والتقييم والترتيب", all(f'name="{n}"' in html for n in ("y", "g", "genre", "r", "sort"))
+              and '<option value="rate">الأعلى تقييمًا</option>' in html and '<option value="2025">2025</option>' in html)
+        code, html = page(d, "smart", t="movie", view="grid", genre="Horror")
+        main = html.split('<aside class="side">')[0]
+        check("بالتصنيف", titles(main) == ["M3GAN 2.0", "The Platform 2"] and "فيلمان · Horror" in html, titles(main))
+        code, html = page(d, "smart", t="movie", view="grid", r="8", sort="rate")
+        rates = [float(x) for x in re.findall(r"</svg>([\d.]+)</p>", html.split('<aside class="side">')[0])]
+        check("وبالتقييم مرتّبًا", len(rates) == 5 and rates == sorted(rates, reverse=True) and min(rates) >= 8, rates)
+
+        C.set_url(d, "falcon", f"http://127.0.0.1:{down.server_address[1]}/get.php?username=u&password=p")
+        ok, err = C.refresh(d, "falcon")
+        st = next(s for s in C.admin_state(d)["servers"] if s["key"] == "falcon")
+        check("الواجهة معطّلة: القائمة تُحفظ بما فيها والسبب للمدير", ok and st["has"] and st["api"]["ok"] is False
+              and "500" in st["api"]["error"], st["api"])
+        v2 = C._view(d, "falcon")[1]
+        check("بلا تقييمٍ ولا تاريخ، والأحدث برقمه", v2["counts"]["movie"] == 33
+              and not any(it.get("r") or it.get("a") for g in v2["kinds"]["movie"] for it in g["items"]), v2["counts"])
+
+        text = mock_xtream.build(base)[0]
+        res = C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
+        check("والملف المرفوع يُثرى من روابطه", res["api"] == {"ok": True, "movies": 32, "series": 10}, res["api"])
+        res = C.ingest(d, "kon", reader(text.replace("/u/p/", "/u/old/").encode()), "file", "kon.m3u")
+        check("واشتراكٌ في الملف لا تقبله الواجهة: السبب للمدير", res["api"]["ok"] is False
+              and "لم تُرجع شيئًا" in res["api"]["error"] and C._view(d, "kon")[1]["counts"]["movie"] == 33, res["api"])
+    finally:
+        srv.shutdown()
+        down.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
 
 
 class _M3U(http.server.BaseHTTPRequestHandler):
@@ -426,19 +737,20 @@ def unit_fetch():
 
         print("الدورة اليومية")
         C.set_url(d, "casper", base + "/get.php?username=user123&password=pass456")
-        n0 = len(_M3U.hits)
+        lists = lambda: len([h for h in _M3U.hits if h[0].startswith(("/get.php", "/nothing"))])  # noqa: E731
+        n0 = lists()
         C.tick(d)
-        check("محتوى اليوم لا يُسحب ثانية", len(_M3U.hits) == n0)
+        check("محتوى اليوم لا يُسحب ثانية", lists() == n0)
         C.tick(d, now=time.time() + C.REFRESH + 1)
-        check("بعد يوم يُسحب", len(_M3U.hits) == n0 + 1)
+        check("بعد يوم يُسحب", lists() == n0 + 1)
         C._update(d, "casper", url=C.crypto_store.encrypt(base + "/nothing-here", d))
         later = time.time() + 2 * C.REFRESH
         C.tick(d, now=later)
-        n1 = len(_M3U.hits)
+        n1 = lists()
         C.tick(d, now=later + 60)
-        check("والفشل لا يُعاد قبل RETRY", len(_M3U.hits) == n1 and C._server(d, "casper")["error"])
+        check("والفشل لا يُعاد قبل RETRY", lists() == n1 and C._server(d, "casper")["error"])
         C.tick(d, now=later + C.RETRY + 60)
-        check("ويُعاد بعده", len(_M3U.hits) == n1 + 1)
+        check("ويُعاد بعده", lists() == n1 + 1)
         try:
             C.start_refresh(d, "kon")
             check("«اسحب الآن» بلا رابط", False)
@@ -479,9 +791,11 @@ def live():
     print("خادمٌ حيّ")
     port = 9795
     data = tempfile.mkdtemp(prefix="content_live_")
-    srv, iptv = mock_iptv()
+    xt = mock_xtream.serve(0)
+    threading.Thread(target=xt.serve_forever, daemon=True).start()
+    xbase = f"http://127.0.0.1:{xt.server_address[1]}"
     env = {k: v for k, v in os.environ.items() if not k.startswith("SALLA_ADMIN_TOKEN")}
-    env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123")
+    env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123", CONTENT_IMG_PRIVATE="1")
     p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env)
     base, adm = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{port}/admin"
     try:
@@ -536,20 +850,22 @@ def live():
               and st["refresh_hours"] == 24)
 
         code, st = jpost(adm + "/api/content/admin/url",
-                         {"s": "falcon", "url": iptv + "/get.php?username=user123&password=pass456&type=m3u_plus"})
+                         {"s": "falcon", "url": xbase + "/get.php?username=u&password=p&type=m3u_plus"})
         check("الرابط يُحفظ ويُسحب في الخلفية", code == 200 and st["servers"][3]["url"].endswith("/•••")
-              and "pass456" not in json.dumps(st))
-        for _ in range(50):
+              and "username=u" not in json.dumps(st))
+        for _ in range(100):
             fal = next(s for s in json.loads(req(adm + "/api/content/admin", auth=True)[1])["servers"] if s["key"] == "falcon")
             if fal["has"] and not fal["busy"]:
                 break
             time.sleep(.1)
-        check("وصار له محتوى", fal["has"] and fal["source"] == "url", fal.get("error"))
+        check("وصار له محتوى، مُثرًى من واجهة السيرفر", fal["has"] and fal["source"] == "url"
+              and fal["api"] == {"ok": True, "movies": 32, "series": 10}, (fal.get("error"), fal.get("api")))
         code, st = jpost(adm + "/api/content/admin/refresh", {"s": "kon"})
         check("«اسحب الآن» بلا رابط", code == 400)
         code, st = jpost(adm + "/api/content/admin/server", {"new": True, "name": "نجم", "key": "najm"})
         check("إضافة سيرفر", code == 200 and st["servers"][-1]["key"] == "najm")
-        g = next(x for x in next(s for s in st["servers"] if s["key"] == "smart")["groups"]["series"] if x[1] == "Netflix")
+        groups = next(s for s in st["servers"] if s["key"] == "smart")["groups"]["series"]
+        g, drama = (next(x for x in groups if x[1] == name) for name in ("Netflix", "SERIES | Drama"))
         code, st = jpost(adm + "/api/content/admin/hide", {"s": "smart", "g": g[0], "hidden": True})
         check("إخفاء قسم (وما فيه وحده لا يُعدّ)", code == 200
               and next(s for s in st["servers"] if s["key"] == "smart")["counts"]["series"] == 8)
@@ -565,21 +881,33 @@ def live():
         code, raw, hd = req(base + "/content/smart")
         html = raw.decode()
         check("صفحة السيرفر", code == 200 and "محتوى اشتراك سمارت" in html and "public, max-age=600" in hd.get("Cache-Control", ""))
-        check("القسم المخفي ليس فيها", "Netflix" not in html)
-        check("تبويبات السيرفرات الثلاثة", all(f'href="/content/{k}"' in html for k in ("kon", "smart", "falcon")))
-        code, raw, _ = req(base + "/content/smart/")
-        check("بشرطةٍ في آخره", code == 200)
+        check("القسم المخفي ليس فيها", "Netflix" not in html and "Sex Education" not in html)
+        check("السيرفرات الثلاثة", all(f'href="/content/{k}"' in html for k in ("kon", "smart", "falcon")))
+        check("بشرطةٍ في آخره", req(base + "/content/smart/")[0] == 200)
+        code, raw, _ = req(base + f"/content/smart?t=series&g={drama[0]}")
+        check("صفحة القسم", code == 200 and "Breaking Bad" in raw.decode() and "noindex" in raw.decode())
+        code, raw, _ = req(base + "/content/smart?t=new")
+        check("وأضيف مؤخرًا", code == 200 and "أضيف مؤخرًا في سمارت" in raw.decode())
+        check("وقسمٌ لا وجود له", req(base + "/content/smart?t=series&g=nothing")[0] == 404)
         code, raw, _ = req(base + "/api/content/search?s=smart&q=" + urllib.parse.quote("باب"))
         check("البحث", code == 200 and "باب الحارة" in json.loads(raw)["html"])
-        code, raw, _ = req(base + "/api/content/search?s=kon&q=breaking")
-        check("وأين يوجد", "لكنه موجود في" in json.loads(raw)["html"] and "فالكون" in json.loads(raw)["html"]
-              and "سمارت" in json.loads(raw)["html"])
-        grp = re.search(r'data-g="(\w+)"', html).group(1)
-        code, raw, _ = req(base + f"/api/content/group?s=smart&t=series&g={grp}&p=1")
-        check("فتح القسم", code == 200 and json.loads(raw)["items"].count("<li>") >= 1)
-        check("قسمٌ أو سيرفرٌ لا وجود له", req(base + "/api/content/group?s=smart&t=series&g=xx")[0] == 404
-              and req(base + "/api/content/search?s=nope&q=xx")[0] == 404)
+        r = json.loads(req(base + "/api/content/search?s=kon&q=breaking")[1])["html"]
+        check("وأين يوجد", "لكنه موجود في" in r and "فالكون" in r and "سمارت" in r)
+        check("سيرفرٌ أو مسارٌ لا وجود له", req(base + "/api/content/search?s=nope&q=xx")[0] == 404
+              and req(base + "/content/nope")[0] == 404 and req(base + "/content/smart/extra")[0] == 404
+              and req(base + f"/api/content/group?s=smart&t=series&g={drama[0]}")[0] == 404)
         check("HEAD", req(base + "/content/smart", method="HEAD")[0] == 200)
+        code, raw, _ = req(base + "/content/falcon")
+        html = raw.decode()
+        check("سيرفرٌ مُثرًى: التقييم وشارة «جديد»", code == 200 and "F1 The Movie" in html and "</svg>7.8</p>" in html
+              and '<span class="badge">جديد</span>' in html)
+        check("ولا يظهر فيها سيرفر اللوحة ولا بيانات الدخول", "127.0.0.1" not in html and "password" not in html)
+        h = re.search(r"/content/falcon/img/([0-9a-f]{16})", html)
+        code, raw, hd = req(base + f"/content/falcon/img/{h.group(1) if h else 'x'}")
+        check("الصورة عبر خادمنا ومخزَّنة شهرًا", code == 200 and raw[:4] == b"\x89PNG" and hd.get("Content-Type") == "image/png"
+              and "max-age=2592000" in hd.get("Cache-Control", ""), (code, hd.get("Content-Type")))
+        check("ورمزٌ لا صورة له: 404", req(base + "/content/falcon/img/" + "0" * 16)[0] == 404
+              and req(base + "/content/falcon/img/zz")[0] == 404)
         sm = req(base + "/sitemap.xml")[1].decode()
         check("خريطة الموقع", "/content/smart</loc>" in sm and "/content/kon</loc>" in sm and "/content/casper" not in sm)
         b = json.loads(req(base + "/api/content")[1])
@@ -603,7 +931,7 @@ def live():
     finally:
         p.terminate()
         p.wait(timeout=10)
-        srv.shutdown()
+        xt.shutdown()
         shutil.rmtree(data, ignore_errors=True)
 
 
@@ -611,7 +939,9 @@ def main():
     unit_parse()
     unit_store()
     unit_render()
+    unit_images()
     unit_fetch()
+    unit_enrich()
     live()
     print(f"\nResult: {_p} passed, {_f} failed")
     sys.exit(1 if _f else 0)
