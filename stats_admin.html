@@ -441,7 +441,7 @@ let REGION = null;
 try { REGION = new Intl.DisplayNames(["ar"], {type: "region"}); } catch (e) {}
 const flag = c => /^[A-Z]{2}$/.test(c) ? String.fromCodePoint(...[...c].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 65)) : "🌐";
 const ccName = c => c === "??" || !c ? "غير معروفة" : c === "(other)" ? "أخرى" : (REGION ? (REGION.of(c) || c) : c);
-const PAGE_NAMES = [[/^\/$/, "الرئيسية"], [/^\/samsung-lg$/, "سامسونج و LG"], [/^\/iphone$/, "آيفون وآيباد"], [/^\/android$/, "جوال أندرويد"],
+const PAGE_NAMES = [[/^\/$/, "الرئيسية"], [/^\/samsung-lg$/, "سامسونج و LG"], [/^\/vidaa$/, "هايسنس و VIDAA"], [/^\/iphone$/, "آيفون وآيباد"], [/^\/android$/, "جوال أندرويد"],
   [/^\/android-tv$/, "شاشات أندرويد"], [/^\/windows$/, "ويندوز"], [/^\/mac$/, "ماك"], [/^\/carplay$/, "CarPlay"], [/^\/compare$/, "مقارنة الباقات"],
   [/^\/content\//, "المحتوى"], [/^\/content$/, "المحتوى"], [/^\/watch/, "المشاهدة"], [/^\/standings\//, "الترتيب"], [/^\/gulf-cup/, "كأس الخليج"],
   [/^\/nations-league/, "دوري الأمم"], [/^\/predict$/, "مسابقة التوقّعات"], [/^\/renew$/, "التجديد"]];
