@@ -359,11 +359,13 @@ details.box ol b{color:var(--ink)}
     </ol></details>
 
     <h3 id="gConnTitle">ربط Google Analytics وSearch Console بهذه الصفحة</h3>
+    <p class="hint" style="margin-top:0">اختياري: لعرض أرقام جوجل داخل هذه الصفحة، ويحتاج ملف مفتاح حساب الخدمة. أمّا وسم Google Analytics على الدليل
+      فمعرّفه (G-…) في حقل «Google Analytics 4 — معرّف القياس» أعلاه.</p>
     <p class="hint" style="margin-top:0" id="gState"></p>
     <label for="gKey">ملف مفتاح حساب الخدمة (JSON) — يُحفظ مشفَّرًا ولا يظهر بعدها</label>
     <textarea id="gKey" class="ltr" rows="4" placeholder='{"type": "service_account", "client_email": "…", "private_key": "-----BEGIN PRIVATE KEY-----…"}' spellcheck="false"></textarea>
     <div class="g2">
-      <div><label for="gGa">رقم خاصية GA4 (Property ID)</label><input id="gGa" class="ltr" inputmode="numeric" placeholder="123456789"></div>
+      <div><label for="gGa">رقم خاصية GA4 (Property ID) — أرقام فقط</label><input id="gGa" class="ltr" inputmode="numeric" placeholder="123456789"></div>
       <div><label for="gSite">موقع Search Console</label><input id="gSite" class="ltr" placeholder="https://guide.ssouq.com/"></div>
     </div>
     <div class="acts" style="margin-top:12px"><button class="go" id="gSave">حفظ الربط</button><button class="ghost" id="gCheck">اختبر الربط</button><button class="danger" id="gRemove" hidden>إزالة الربط</button></div>

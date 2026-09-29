@@ -279,6 +279,27 @@ def unit_tags():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_google_form():
+    print("ربط جوجل: ما يُكتب في الحقول")
+    d = tempfile.mkdtemp(prefix="an_")
+    try:
+        check("معرّف القياس بلا «G-» يُكمَل", A.save_tags(d, {"ga": "fcvqwzygsk"})["ga"] == "G-FCVQWZYGSK")
+        errs = []
+        for bad in ("FCVQWZYGSK", "G-FCVQWZYGSK", "G-1AB2C3D4E5"):
+            try:
+                A.save_google(d, {"ga": bad}, G.load_key)
+                errs.append("")
+            except ValueError as e:
+                errs.append(str(e))
+        check("ومعرّف القياس في حقل رقم الخاصية يُرفض ويُدلّ على حقله (ولا تُؤخذ أرقامه رقمَ خاصية)",
+              all("معرّف القياس" in e and "أعلى الصفحة" in e for e in errs) and A.public_settings(d)["google"]["ga"] == "", errs)
+        g = A.save_google(d, {"ga": " properties/282146447 ", "site": "https://guide.ssouq.com"}, G.load_key)
+        check("ورقم الخاصية بصيغة properties/…، والموقع بلا «/» في آخره يُكمَل", g["ga"] == "282146447"
+              and g["site"] == "https://guide.ssouq.com/", g)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def start_mock(pub):
     M.H.pub = pub
     srv = ThreadingHTTPServer(("127.0.0.1", 0), M.H)
@@ -580,6 +601,7 @@ def main():
     unit_classify()
     unit_hits()
     unit_tags()
+    unit_google_form()
     pem, pub = M.make_key(1024, seed=7)
     srv, base = start_mock(pub)
     try:

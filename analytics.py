@@ -680,6 +680,8 @@ def _field(key, raw):
         v = v.upper()
     if key in ("ga", "gtm", "tiktok"):
         v = v.upper() if re.fullmatch(r"[A-Za-z0-9\-]+", v) else v
+    if key == "ga" and re.fullmatch(r"[A-Z0-9]{8,12}", v):     # المعرّف بلا «G-» في أوله
+        v = "G-" + v
     if key == "clarity":
         m = re.search(r"clarity\.ms/tag/([a-z0-9]+)|[\"']clarity[\"']\s*,\s*[\"']script[\"']\s*,\s*[\"']([a-z0-9]+)", v)
         v = (m.group(1) or m.group(2)) if m else v.lower()
@@ -1005,12 +1007,17 @@ def save_google(data_dir, body, parse_key):
             g["email"] = str(sa["client_email"])[:200]
             g["project"] = str(sa.get("project_id") or "")[:100]
         if "ga" in body:
-            ga = re.sub(r"\D", "", str(body.get("ga") or "").replace("properties/", ""))
-            if body.get("ga") and not ga:
+            ga = re.sub(r"^properties/", "", re.sub(r"\s+", "", str(body.get("ga") or "")))
+            if ga and not re.fullmatch(r"\d{5,15}", ga):
+                if re.search(r"[A-Za-z]", ga):          # معرّف القياس (G-…) في غير حقله
+                    raise ValueError("هذا معرّف القياس (G-…) لا رقم الخاصية: مكانه حقل «Google Analytics 4 — معرّف القياس» "
+                                     "في «القياس» أعلى الصفحة. ورقم الخاصية أرقامٌ فقط، من «إعدادات الخاصية» في Google Analytics")
                 raise ValueError("رقم الخاصية أرقامٌ فقط (Property ID) — من إعدادات الخاصية في Google Analytics")
-            g["ga"] = ga[:20]
+            g["ga"] = ga
         if "site" in body:
             site = str(body.get("site") or "").strip()
+            if re.fullmatch(r"https?://[^\s/]+", site):     # بلا «/» في آخره: تكتبه جوجل به
+                site += "/"
             if site and not re.fullmatch(r"sc-domain:[a-z0-9.\-]+|https?://[^\s]+/", site):
                 raise ValueError("موقع Search Console: رابطٌ ينتهي بـ / (مثل https://guide.ssouq.com/) أو sc-domain:ssouq.com")
             g["site"] = site[:200]
