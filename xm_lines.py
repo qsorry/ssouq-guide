@@ -27,6 +27,7 @@ import guide_pages
 import store_sitemap
 import league
 import tournament
+import watch
 import predict_page
 import contest
 import content
@@ -2409,7 +2410,8 @@ class Handler(BaseHTTPRequestHandler):
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
         if path == "/sitemap.xml":
-            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + [(predict_page.PATH, "daily", "0.7")]
+            return self._send(200, raw=guide_pages.sitemap(league.SITEMAP + watch.SITEMAP
+                                                           + [(predict_page.PATH, "daily", "0.7")]
                                                            + [u for t in CUPS for u in t.sitemap()]
                                                            + content.sitemap(DATA_DIR)),
                               ctype="application/xml; charset=utf-8",
@@ -2443,6 +2445,16 @@ class Handler(BaseHTTPRequestHandler):
                 code, body = page
                 return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                                   extra={"Cache-Control": "public, max-age=300"} if code == 200
+                                  else {"Retry-After": str(league.RETRY)})
+        if path == watch.PATH + "/":
+            return self._redirect(watch.PATH, 301)
+        if path == watch.PATH or path.startswith(watch.PATH + "/"):   # المشاهدة: المدخل وصفحة لكل دوري وبطولة
+            page = (watch.render_hub(CUPS) if path == watch.PATH
+                    else watch.render(path[len(watch.PATH) + 1:], CUPS))
+            if page:
+                code, body, age = page
+                return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                                  extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                                   else {"Retry-After": str(league.RETRY)})
         if path in (content.PATH, content.PATH + "/"):   # محتوى الاشتراكات: إلى أول سيرفرٍ له محتوى
             key = content.first_key(DATA_DIR)

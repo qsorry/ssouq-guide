@@ -18,6 +18,7 @@ ESPN** لا باسمه (الاسم يتغيّر إملاؤه والمعرّف ث
 أنه الحالي.
 """
 import datetime
+import gzip
 import html as _html
 import json
 import os
@@ -37,6 +38,7 @@ MAX_AGE = 2 * 24 * 3600           # أقدم نسخة تُعرض إن تعذّر
 TIMEOUT = 10
 PREVIEW = 6                       # صفوف كل جدول في بطاقة الرئيسية (4 إن تعدّدت المجموعات)
 PATH = "/standings/"
+WATCH = "/watch/"                 # صفحة مشاهدة كل دوري وبطولة (watch.py، ولا تُستورد هنا: هي تستورد هذه)
 LOGO_HOST = "https://a.espncdn.com"
 RIYADH = datetime.timezone(datetime.timedelta(hours=3))
 
@@ -324,9 +326,13 @@ def get_json(path):
     """JSON من واجهات ESPN (المسار بعد API، مثل /v2/sports/soccer/ksa.1/standings)."""
     # بلا User-Agent خاص: بوابة ESPN (‏Akamai) تردّ 403 على أي وكيل مخصَّص أو
     # شبيهٍ بالمتصفح، وتقبل وكيل urllib الافتراضي (عكس سلة في store_sitemap).
-    req = urllib.request.Request(API + path, headers={"Accept": "application/json"})
+    # وبـ gzip: مباريات شهرٍ من دوري 330 ك.ب خامًا و21 ك.ب مضغوطة؛ وما لم يُضغط يُقرأ كما هو.
+    req = urllib.request.Request(API + path, headers={"Accept": "application/json", "Accept-Encoding": "gzip"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        return json.loads(r.read().decode("utf-8"))
+        raw = r.read()
+        if (r.headers.get("Content-Encoding") or "").lower() == "gzip":
+            raw = gzip.decompress(raw)
+        return json.loads(raw.decode("utf-8"))
 
 
 def _fetch(code):
@@ -515,6 +521,7 @@ nav.crumb{{font-size:14px;opacity:.75;margin:0 0 14px}}
 <nav class="crumb"><a class="link" href="/">دليل سمارت سوق</a> ← جدول الترتيب</nav>
 <h1>جدول ترتيب {_esc(name)}{_season(t)}</h1>
 <p class="sub">ترتيب الفرق كما هو الآن: النقاط وعدد المباريات والفوز والتعادل والخسارة والأهداف.{_esc(lead)}</p>
+<p class="sub"><a class="link" href="{WATCH}{t["slug"]}">مشاهدة {_esc(name)}: مباريات اليوم والقنوات الناقلة ←</a></p>
 <nav class="ltabs" aria-label="الدوريات">{tabs}</nav>
 <section class="card league">
 {body}
