@@ -1032,6 +1032,28 @@ def gift_live(base, rd, data, fport, w):
           and C.CLAIM_GIFT in got[0]["body"] and "الاشتراك: 6 أشهر" in got[1]["body"]
           and d13["gifts"]["1"]["st"] == "created" and lines() == before + 2, [x["body"][:80] for x in got])
 
+    print("الهدية مع فتح المسابقة")
+    open8 = {"m": "8", "on": True, "prize": "اشتراك 6 أشهر", "winners": 1}
+    code, res = post(base + "/admin/api/contest/admin/set", dict(open8, gift={"account_id": aid, "gate_id": gid,
+                                                                              "package_id": "169", "months": 12}), auth=True)
+    check("هديةٌ لا تصلح: لا تُفتح المسابقة، ويُقال السبب", code == 400 and res["error"].startswith("هدية الفائز: ")
+          and not (C.load(data, "8") or {}).get("on"), res)
+    code, res = post(base + "/admin/api/contest/admin/set", dict(open8, gift={"account_id": aid, "gate_id": gid,
+                                                                              "package_id": "190", "months": 6}), auth=True)
+    check("«افتح المسابقة» مع هديتها: تُفتح وتُحفظ الهدية، بلا إنشاءٍ الآن", code == 200 and res["contest"]["on"]
+          and res["contest"]["gift"]["months"] == 6 and res["contest"]["gift"]["label"].startswith("6 أشهر من")
+          and lines() == before + 2, res.get("contest"))
+    rows = {r["eid"]: r for r in json.loads(get(base + "/admin/api/contest/admin", auth=True)[1])["rows"]}
+    check("وصفّ المباراة في صفحة المدير يعرفها", (rows["8"]["contest"].get("gift") or {}).get("package_id") == "190")
+    code, body, _ = get(base + "/nations-league/8-spain-b-evil-b-co")
+    check("ولا تظهر للعموم", "عميل الهدايا" not in body.decode() and "بوابة فالكون" not in body.decode())
+    code, res = post(base + "/admin/api/contest/admin/set", dict(open8, winners=2), auth=True)
+    check("«حفظ» بلا الهدية يُبقيها", code == 200 and res["contest"]["winners"] == 2 and res["contest"]["gift"]["months"] == 6, res)
+    code, res = post(base + "/admin/api/contest/admin/set", dict(open8, gift=None), auth=True)
+    check("وnull يلغيها", code == 200 and not res["contest"]["gift"] and not C.gift_of(C.load(data, "8")), res)
+    ga = json.loads(get(base + "/admin/api/contest/admin/gates", auth=True)[1])
+    check("والمنتقي يعرف آخر هديةٍ اختيرت", ga["last"]["months"] == 6 and ga["last"]["gate_id"] == gid, ga.get("last"))
+
     print("تهنئة الفائزين في القناة")
     d1 = detail("1")
     post_text = d1["post_text"]

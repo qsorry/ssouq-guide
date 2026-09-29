@@ -350,21 +350,21 @@ print(json.dumps(rec, ensure_ascii=False))
         mode: 'falcon', api_url: falcon, api_key: 'fk', host: 'http://falcon.host', guide_url: 'https://guide.ssouq.com/#activate/falcon'}]})}); },
       `http://127.0.0.1:${FALCON_PORT}/api/v1`);
     await adm.click('.mrow[data-eid="1"] [data-a="view"]');
-    await adm.waitForSelector('#gAcct option[value]:not([value=""])', {state: 'attached', timeout:8000});
+    await adm.waitForSelector('#gBox [data-g="acct"] option[value]:not([value=""])', {state: 'attached', timeout:8000});
     check('نموذج الهدية في التفاصيل، ولم تُرسل بعد', (await adm.textContent('#gBox')).includes('لم تُرسل هديته بعد')
           && (await adm.textContent('#gSave')).includes('أنشئ الاشتراك وأرسله'));
-    await adm.selectOption('#gAcct', {label: 'عميل الهدايا'});
-    await adm.selectOption('#gGate', {label: 'بوابة فالكون'});
-    await adm.waitForSelector('#gPkg option[value="190"]', {state: 'attached', timeout:8000});
-    check('باقات اللوحة نفسها، وباقة 15 شهرًا معلَّمة للتجزئة', (await adm.textContent('#gPkg option[value="190"]')).includes('✂'));
-    await adm.selectOption('#gPkg', '190');
-    const mopts = await adm.$$eval('#gMonths option', os => os.map(o => o.textContent));
+    await adm.selectOption('#gBox [data-g="acct"]', {label: 'عميل الهدايا'});
+    await adm.selectOption('#gBox [data-g="gate"]', {label: 'بوابة فالكون'});
+    await adm.waitForSelector('#gBox [data-g="pkg"] option[value="190"]', {state: 'attached', timeout:8000});
+    check('باقات اللوحة نفسها، وباقة 15 شهرًا معلَّمة للتجزئة', (await adm.textContent('#gBox [data-g="pkg"] option[value="190"]')).includes('✂'));
+    await adm.selectOption('#gBox [data-g="pkg"]', '190');
+    const mopts = await adm.$$eval('#gBox [data-g="months"] option', os => os.map(o => o.textContent));
     check('مدة الهدية: الباقة كاملة أو جزءٌ منها', mopts[0] === 'الباقة كاملة' && mopts.includes('12 شهرًا منها')
           && mopts.includes('6 أشهر منها') && mopts.includes('مدة أخرى…'), mopts.join(' · '));
-    await adm.selectOption('#gPkg', '169');
-    check('وباقةٌ ليست 15 شهرًا: كاملةً فقط', (await adm.$$('#gMonths option')).length === 1);
-    await adm.selectOption('#gPkg', '190');
-    await adm.selectOption('#gMonths', '12');
+    await adm.selectOption('#gBox [data-g="pkg"]', '169');
+    check('وباقةٌ ليست 15 شهرًا: كاملةً فقط', (await adm.$$('#gBox [data-g="months"] option')).length === 1);
+    await adm.selectOption('#gBox [data-g="pkg"]', '190');
+    await adm.selectOption('#gBox [data-g="months"]', '12');
     adm.once('dialog', dlg => dlg.accept());
     await adm.click('#gSave');
     await adm.waitForSelector('#gBox .gift.ok', {timeout:15000});
@@ -400,8 +400,34 @@ print(json.dumps(rec, ensure_ascii=False))
           `${post.media_mime} ${post.media_size}`);
     await shot(adm, 'contest-admin-channel');
 
-    console.log('إعادة فرزٍ قديم على «النتيجة بالضبط فقط»');
+    console.log('الهدية مع فتح المسابقة: تُختار في صفّ المباراة وتُرسل وحدها بعد الفرز');
     await adm.click('#dClose');
+    await adm.waitForSelector('.mrow[data-eid="8"] [data-a="gift"]', {timeout:8000});
+    check('صفّ مباراةٍ قادمة: «🎁 هدية الفائز» لم تُختر، وزرّ «اختر الهدية»', (await adm.textContent('.mrow[data-eid="8"] .gline')).includes('لم تُختر'));
+    await adm.click('.mrow[data-eid="8"] [data-a="gift"]');
+    const R8 = '.mrow[data-eid="8"] [data-gpick]';
+    await adm.waitForSelector(R8 + ' [data-g="pkg"] option[value="190"]', {state: 'attached', timeout:8000});
+    check('المنتقي يُملأ بآخر هديةٍ اختيرت (الحساب والبوابة والباقة والمدة)',
+          await adm.$eval(R8 + ' [data-g="acct"]', s => s.selectedOptions[0].textContent) === 'عميل الهدايا'
+          && await adm.$eval(R8 + ' [data-g="pkg"]', s => s.value) === '190' && await adm.$eval(R8 + ' [data-g="months"]', s => s.value) === '12');
+    await adm.selectOption(R8 + ' [data-g="months"]', '6');
+    await adm.selectOption('.mrow[data-eid="8"] select[data-f="prize_id"]', '__text');
+    await adm.fill('.mrow[data-eid="8"] input[data-f="prize"]', 'اشتراك 6 أشهر');
+    await adm.click('.mrow[data-eid="8"] [data-a="on"]');
+    await adm.waitForFunction(() => { const g = document.querySelector('.mrow[data-eid="8"] .gline b'); return g && g.textContent.includes('6 أشهر من'); }, null, {timeout:15000});
+    const r8 = await adm.evaluate(async () => (await (await fetch('/admin/api/contest/admin/match?m=8')).json()));
+    check('«افتح المسابقة» يفتحها بهديتها: 6 أشهر من باقة 15 شهرًا على بوابة فالكون', r8.state === 'open' && r8.gift
+          && r8.gift.months === 6 && r8.gift.package_id === '190' && r8.gift.gate === 'بوابة فالكون' && r8.prize === 'اشتراك 6 أشهر',
+          JSON.stringify(r8.gift));
+    check('والصفّ يقولها: تُرسل للفائز وحدها بعد الفرز', (await adm.textContent('.mrow[data-eid="8"] .gline')).includes('تُنشأ للفائز وتُرسل له وحدها بعد الفرز')
+          && !!(await adm.$('.mrow[data-eid="8"] [data-a="nogift"]')));
+    await shot(adm, 'contest-admin-row-gift');
+    await adm.click('.mrow[data-eid="8"] [data-a="nogift"]');
+    await adm.click('.mrow[data-eid="8"] [data-a="save"]');
+    await adm.waitForFunction(() => (document.querySelector('.mrow[data-eid="8"] .gline') || {}).textContent.includes('لم تُختر'), null, {timeout:15000});
+    check('«بلا هدية» ثم «حفظ» يلغيها', !(await adm.evaluate(async () => (await (await fetch('/admin/api/contest/admin/match?m=8')).json()).gift)));
+
+    console.log('إعادة فرزٍ قديم على «النتيجة بالضبط فقط»');
     await adm.click('.mrow[data-eid="2"] [data-a="view"]');
     await adm.waitForSelector('#dRedraw', {timeout:8000});
     check('فرزٌ قديم بفائزَين ممن أصاب الفائز، وزرّ «أعد الفرز: النتيجة بالضبط فقط»', (await adm.$$('#dBody .win')).length === 2
