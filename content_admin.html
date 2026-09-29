@@ -498,7 +498,9 @@ function renderChannel() {
     hint = `القناة ${c.name ? "«" + esc(c.name) + "»" : `<span class="mono">${esc(c.jid)}</span>`}${c.subs ? " · " + num(c.subs) + " متابع" : ""}`
       + (c.role === "OWNER" ? " · رقم المسابقة مالكها ✓" : c.role === "ADMIN" ? " · رقم المسابقة مشرفٌ فيها ✓"
         : c.role ? ' · <span class="warnline">رقم المسابقة ليس مشرفًا فيها — فلا يُنشر منه</span>' : "");
-    if (c.role && !admin && from) hint += `<br>من هاتف مالك القناة: القناة ← اسمها ← دعوة مشرفين ← اختر رقم المسابقة
+    // دورٌ غير المالك والمشرف — أو لم تذكره واتساب (رقمٌ لا صلة له بالقناة) — لا يُنشر منه
+    if (!c.role && from) hint += ' · <span class="warnline">لم يُعرف أن رقم المسابقة مشرفٌ فيها — ولا يُنشر إلا من مشرف</span>';
+    if (!admin && from) hint += `<br>من هاتف مالك القناة: القناة ← اسمها ← دعوة مشرفين ← اختر رقم المسابقة
       <span class="mono">${esc(from)}</span>، واقبل الدعوة من واتسابه، ثم <button class="linkbtn" type="button" id="cVerify">تحقّق</button>.`;
   }
   if (!from) hint += `<br><span class="warnline">رقم المسابقة غير مربوط الآن — اربطه من <a href="${B}/contest">صفحة المسابقة</a>، فمنه يُنشر.</span>`;
@@ -541,7 +543,7 @@ async function preview(me) {
   $("cBox").hidden = !t;
   $("cText").innerHTML = t ? waHTML(t) : "";
   $("cSize").textContent = t ? `${tally(d.preview.n)} · ${num(t.length)} حرفًا` : "";
-  if (!t) note = "لا جديد في آخر 7 أيام — يُعرف الجديد من ثاني سحبٍ لكل سيرفر.";
+  if (!t) note = "لا جديد في آخر 7 أيام: ما أضيف يُعرف بتاريخ إضافته من واجهة السيرفر، أو بمقارنة كل سحبٍ بما قبله.";
   const m = d.me;
   if (m) note = (note ? note + "\n" : "") + (m.ok ? `أُرسلت المعاينة إلى واتسابك ✓ ${m.to}` : "لم تُرسل إلى واتسابك — " + (m.error || ""));
   cNote(note, m ? (m.ok ? "ok" : "err") : "");

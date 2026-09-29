@@ -65,8 +65,23 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await user.check('input[name="pkg"][value="190"]');
     await user.waitForSelector('#sliceBox:not([hidden])');
     const opts = await user.$$eval('#slices span', els => els.map(e => e.textContent));
-    check('picker offers كامل / 12 / 6 / 3 / شهر', opts.join('|') === 'كامل ١٥ شهرًا|12 شهرًا|6 أشهر|3 أشهر|شهر', opts.join('|'));
+    check('picker offers كامل / 12 / 6 / 3 / شهر / مدة أخرى', opts.join('|') === 'كامل ١٥ شهرًا|12 شهرًا|6 أشهر|3 أشهر|شهر|مدة أخرى', opts.join('|'));
+    // «مدة أخرى»: مربعٌ لعدد الأشهر — ١٥ ليست جزءًا فتُرفض قبل أي إرسال، و١٠ (بالأرقام العربية) تُقبل
+    check('months box hidden until «مدة أخرى»', await user.isHidden('#sliceBox .slice-n'));
+    await user.click('#slices label:nth-child(6)');
+    await user.waitForSelector('#sliceBox .slice-n:not([hidden])');
+    check('«مدة أخرى» opens the months box, focused', await user.evaluate(() => (document.activeElement || {}).name === 'slice_n'));
+    await user.fill('input[name="slice_n"]', '15');
+    check('15 months is not a part: the hint says the range', (await user.textContent('#sliceHint')).includes('من 1 إلى 14'));
+    await user.click('#create');
+    check('…and create refuses it before sending anything', (await user.textContent('#msg')).includes('من 1 إلى 14') && await user.isHidden('#resBox'),
+          await user.textContent('#msg'));
+    await user.fill('input[name="slice_n"]', '١٠');
+    check('10 months typed (Arabic digits): the button and the hint follow', (await user.textContent('#createTxt')).includes('جزء 10 أشهر')
+          && (await user.textContent('#sliceHint')).includes('متبقي 5 أشهر'), await user.textContent('#createTxt'));
+    await shot(user, 'split-create-custom');
     await user.click('#slices label:nth-child(3)');
+    check('a quick choice hides the months box again', await user.isHidden('#sliceBox .slice-n'));
     check('button names the slice', (await user.textContent('#createTxt')).includes('جزء 6 أشهر'));
     check('hint explains the username change', (await user.textContent('#sliceHint')).includes('متبقي 9 أشهر'));
     await shot(user, 'split-create-picker');
@@ -120,7 +135,20 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     check('sell offers 12 months on a line that has them', sellOpts[0] === '12 شهرًا', sellOpts.join('|'));
     check('…but 6 months stays preselected (12 is chosen on purpose)',
           await user.$eval('.sellbox input:checked', e => e.value) === '6');
-    await user.fill('.sellbox input.t', 'أبو محمد');
+    // «مدة أخرى» في البيع: حدّها ما بقي في الخط، وما زاد يُرفض قبل أي بيع
+    check('sell offers «مدة أخرى» too', sellOpts.includes('مدة أخرى'), sellOpts.join('|'));
+    await user.click('.sellbox .opt:has-text("مدة أخرى")');
+    await user.waitForSelector('.sellbox .opt-n:not([hidden])');
+    const most = +(((await user.textContent('.sellbox .opt-n')).match(/من 1 إلى (\d+)/) || [])[1] || 0);
+    check('sell: the months box names the line\'s limit', most >= 14, await user.textContent('.sellbox .opt-n'));
+    await user.fill('.sellbox .opt-n input', String(most + 5));
+    await user.click('[data-dosell]');
+    await user.waitForSelector('#toast.bad', {timeout: 3000}).catch(() => {});
+    check('sell: more months than the line has is refused before selling', (await user.textContent('#toast')).includes('من 1 إلى ' + most)
+          && await user.isVisible('.sellbox'), await user.textContent('#toast'));
+    await user.click('.sellbox .opt:has-text("6 أشهر")');
+    check('sell: back to 6 months hides the box', await user.isHidden('.sellbox .opt-n'));
+    await user.fill('.sellbox input[id^="cu_"]', 'أبو محمد');
     await user.click('[data-dosell]');
     await user.waitForSelector('#activeList .card', {timeout:10000});
     const clip = await user.evaluate(() => navigator.clipboard.readText());
@@ -220,23 +248,29 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await user.check('input[name="rpkg"][value="190"]');
     await user.waitForSelector('#rSliceBox:not([hidden])');
     const ropts = await user.$$eval('#rSlices span', els => els.map(e => e.textContent));
-    check('replacement: the 15-month package offers كامل / 12 / 6 / 3 / شهر',
-          ropts.join('|') === 'كامل ١٥ شهرًا|12 شهرًا|6 أشهر|3 أشهر|شهر', ropts.join('|'));
+    check('replacement: the 15-month package offers كامل / 12 / 6 / 3 / شهر / مدة أخرى',
+          ropts.join('|') === 'كامل ١٥ شهرًا|12 شهرًا|6 أشهر|3 أشهر|شهر|مدة أخرى', ropts.join('|'));
     check('replacement: the full 15 months by default', await user.$eval('input[name="rslice"]:checked', e => e.value) === '0'
           && (await user.textContent('#mkGo')).trim() === 'إنشاء البديل وربطه بـ ' + OLD);
     await user.click('#rSlices label:nth-child(2)');
-    check('replacement: the button names the 12 months', (await user.textContent('#mkGo')).includes('إنشاء البديل (12 شهرًا) وربطه بـ ' + OLD),
+    check('replacement: the 12-month choice names itself on the button', (await user.textContent('#mkGo')).includes('إنشاء البديل (12 شهرًا) وربطه بـ ' + OLD),
           await user.textContent('#mkGo'));
-    check('replacement: the hint says 3 months remain after it', (await user.textContent('#rSliceHint')).includes('متبقي 3 أشهر'));
+    // «مدة أخرى»: ١٠ أشهر للبديل، تُكتب بالأرقام العربية
+    await user.click('#rSlices label:nth-child(6)');
+    await user.waitForSelector('#rSliceBox .slice-n:not([hidden])');
+    await user.fill('input[name="rslice_n"]', '١٠');
+    check('replacement: the button names the 10 months', (await user.textContent('#mkGo')).includes('إنشاء البديل (10 أشهر) وربطه بـ ' + OLD),
+          await user.textContent('#mkGo'));
+    check('replacement: the hint says 5 months remain after it', (await user.textContent('#rSliceHint')).includes('متبقي 5 أشهر'));
     await shot(user, 'split-replacement-duration');
     await user.click('#mkGo');
     await user.waitForSelector('#mkSplit', {timeout: 15000});
     const rok = await user.textContent('#mkBox .msg.ok');
-    check('replacement: created and linked with its duration', rok.includes('أُنشئ البديل (12 شهرًا) وارتبط بـ ' + OLD), rok);
+    check('replacement: created and linked with its duration', rok.includes('أُنشئ البديل (10 أشهر) وارتبط بـ ' + OLD), rok);
     const rsp = await user.textContent('#mkSplit');
-    check('replacement: tracked — the username changes, then 3 months remain',
-          rsp.includes('يتغيّر اسم المستخدم تلقائيًا') && rsp.includes('متبقي 3 أشهر'), rsp);
-    check('replacement: its row names the 12 months', (await user.textContent('#mkBox table')).includes('جزء 12 شهرًا'));
+    check('replacement: tracked — the username changes, then 5 months remain',
+          rsp.includes('يتغيّر اسم المستخدم تلقائيًا') && rsp.includes('متبقي 5 أشهر'), rsp);
+    check('replacement: its row names the 10 months', (await user.textContent('#mkBox table')).includes('جزء 10 أشهر'));
     const rclip = await user.evaluate(() => navigator.clipboard.readText());
     const rUser = (await user.textContent('#mkBox table td.m')).trim();
     check('replacement: copied as usual — the guide text (on for him above) with the new user',
@@ -245,7 +279,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     await user.click('#searchBtn');                                  // البحث عن الرقم القديم من جديد
     await user.waitForSelector('#searchRes .lnk', {timeout: 8000});
     const lnk = await user.textContent('#searchRes .lnk');
-    check('searching the old number: replaced, and by how many months', lnk.includes('استُبدل بـ') && lnk.includes('جزء 12 شهرًا'), lnk);
+    check('searching the old number: replaced, and by how many months', lnk.includes('استُبدل بـ') && lnk.includes('جزء 10 أشهر'), lnk);
 
     // ---- العميل الذي لم تُفتح له ----
     await plain.goto(APP + '/admin/login');

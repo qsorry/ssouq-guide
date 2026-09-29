@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-الاشتراكات المجزّأة — بيع خطٍّ واحدٍ بباقة ١٥ شهرًا على أجزاء (١٢ شهرًا · ٦ أشهر · ٣ أشهر · شهر).
+الاشتراكات المجزّأة — بيع خطٍّ واحدٍ بباقة ١٥ شهرًا على أجزاء (١٢ شهرًا · ٦ أشهر · ٣ أشهر · شهر،
+أو أي مدةٍ أخرى بالأشهر الكاملة حتى ١٤).
 
 الخط يُنشأ بباقة ١٥ شهرًا (أرخص للشهر الواحد)، ويُباع منه جزءٌ لعميل. فإذا انتهى
 الجزء غيّر النظام **اسم المستخدم وحده** على اللوحة — كلمة المرور تبقى كما هي —
@@ -33,10 +34,13 @@ import threading
 
 import renew
 
-# أنواع البيع من الخط الأم (بالأشهر)، والخط الأم نفسه: باقات بهذه المدة تُجزّأ.
+# الخيارات السريعة لنوع البيع من الخط الأم (بالأشهر)، والخط الأم نفسه: باقات بهذه المدة تُجزّأ.
 # ١٢ شهرًا = سنةٌ للعميل من خطٍّ بباقة ١٥ شهرًا، ويبقى بعدها «متبقي ٣ أشهر» للبيع.
+# وتُقبل أي مدةٍ أخرى بالأشهر الكاملة («مدة أخرى» في الصفحات — ١٠ أشهر مثلًا) من شهرٍ إلى
+# MAX_SLICE: الخيارات السريعة اختصارٌ لا حدّ.
 SLICES = (12, 6, 3, 1)
 BASE_MONTHS = (15,)
+MAX_SLICE = max(BASE_MONTHS) - 1     # أطول جزء: ١٤ شهرًا — والـ١٥ هي الخط كاملًا لا جزءٌ منه
 # ما يُختار مسبقًا في «بيع» خطٍّ متاح وفي «إضافة خطٍّ قائم» — ستة أشهر كما كان قبل
 # إضافة ١٢، فالنقرة المعتادة لا تبيع سنةً بدل نصفها. الـ١٢ اختيارٌ صريح.
 DEFAULT_SLICE = 6
@@ -156,6 +160,33 @@ def eligible(months):
         return int(months or 0) in BASE_MONTHS
     except (TypeError, ValueError):
         return False
+
+
+_AR_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
+def parse_months(v):
+    """عدد أشهرٍ صحيح من رقمٍ أو نصٍّ مكتوب («10» أو «١٠») ← int، وإلا None (كسرٌ أو كلام)."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return int(v) if v.is_integer() else None
+    s = str(v if v is not None else "").strip().translate(_AR_DIGITS)
+    return int(s) if re.fullmatch(r"\d{1,3}", s) else None
+
+
+def slice_ok(months, base_months=None):
+    """مدةُ جزءٍ صالحة: أشهرٌ كاملة من شهرٍ إلى ما دون مدة الخط الأم (حتى ١٤ من ١٥) — من
+    الخيارات السريعة أو غيرها («مدة أخرى»: ١٠ أشهر مثلًا)."""
+    base = int(base_months or max(BASE_MONTHS))
+    return isinstance(months, int) and not isinstance(months, bool) and 1 <= months < base
+
+
+def slice_range_text(base_months=None):
+    """«من شهر إلى 14 شهرًا» — حدّا مدة الجزء في رسائل الرفض."""
+    return "من شهر إلى %s" % months_ar(int(base_months or max(BASE_MONTHS)) - 1)
 
 
 # ============================ الإعداد ============================
@@ -301,12 +332,10 @@ def register(data_dir, acct_id, gate, username, password, slice_months, *, packa
     password = str(password or "").strip()
     if not username:
         raise ValueError("اسم المستخدم مطلوب")
-    try:
-        slice_months = int(slice_months)
-    except (TypeError, ValueError):
-        raise ValueError("نوع البيع غير صالح")
-    if slice_months not in SLICES:
-        raise ValueError("نوع البيع يجب أن يكون %s أشهر" % " أو ".join(str(s) for s in SLICES))
+    months = parse_months(slice_months)
+    if not slice_ok(months, base_months):
+        raise ValueError("مدة الجزء بالأشهر الكاملة %s" % slice_range_text(base_months))
+    slice_months = months
     start = start or now
     exp = to_date(expiry) or renew.add_months(start.date(), int(base_months or 15))
     due = add_months_dt(start, slice_months)
@@ -382,12 +411,13 @@ def _get(db, rid):
 
 
 def sell(data_dir, acct_id, rid, months, customer="", now=None):
-    """يبيع جزءًا جديدًا من خطٍّ متاح. months=0 = المتبقي كاملًا (لا تغيير بعده)."""
+    """يبيع جزءًا جديدًا من خطٍّ متاح: أي مدةٍ بالأشهر الكاملة يتّسع لها الخط (من الخيارات
+    السريعة أو غيرها — ١٠ أشهر مثلًا). months=0 = المتبقي كاملًا (لا تغيير بعده)."""
     now = now or now_dt()
-    try:
-        months = int(months or 0)
-    except (TypeError, ValueError):
-        raise ValueError("نوع البيع غير صالح")
+    m = parse_months(months if months not in (None, "") else 0)
+    if m is None or not 0 <= m <= 999:          # وعددٌ هائل لا يبلغ حساب التواريخ فيُسقطه
+        raise ValueError("اكتب مدة البيع بالأشهر الكاملة، أو اختر «المتبقي كاملًا»")
+    months = m
     with _lock:
         db = load(data_dir, acct_id)
         rec = _get(db, rid)
@@ -404,9 +434,6 @@ def sell(data_dir, acct_id, rid, months, customer="", now=None):
             rec["slice"] = _slice(n, months_left(exp, now.date()), now, due, customer, final=True)
             rec["state"] = SOLD_OUT
         else:
-            if months not in SLICES:
-                raise ValueError("نوع البيع يجب أن يكون %s أشهر أو المتبقي كاملًا"
-                                 % " أو ".join(str(s) for s in SLICES))
             due = add_months_dt(now, months)
             if not _fits(due, exp):
                 raise ValueError("المتبقي (%s) أقصر من جزء %s — بِع المتبقي كاملًا"
@@ -923,10 +950,19 @@ def decorate(rec, now=None):
     if due:
         out["due_in_days"] = (due.date() - now.date()).days
         out["remaining_after"] = months_left(exp, due.date())
-    # أنواع البيع المتاحة لهذا الخط الآن (ما يتّسع له المتبقي)
+    # أنواع البيع المتاحة لهذا الخط الآن (ما يتّسع له المتبقي): الخيارات السريعة، وأطول مدةٍ
+    # بالأشهر الكاملة يتّسع لها — حدّ «مدة أخرى» عند بيعه.
     if rec.get("state") == AVAILABLE and exp:
         out["can_sell"] = [m for m in SLICES if _fits(add_months_dt(now, m), exp)]
+        out["max_sell"] = _max_fit(now, exp)
     return out
+
+
+def _max_fit(now, exp):
+    m = 0
+    while m < 60 and _fits(add_months_dt(now, m + 1), exp):
+        m += 1
+    return m
 
 
 def view(data_dir, acct_id, now=None):
@@ -935,4 +971,5 @@ def view(data_dir, acct_id, now=None):
     lines = [decorate(r, now) for r in db["lines"].values()]
     return {"cfg": db["cfg"], "lines": lines, "notes": db["notes"][:100],
             "unread": unread(db), "gates": db["gates"], "mail": db["mail"],
-            "slices": list(SLICES), "default_slice": DEFAULT_SLICE, "base_months": list(BASE_MONTHS)}
+            "slices": list(SLICES), "default_slice": DEFAULT_SLICE, "max_slice": MAX_SLICE,
+            "base_months": list(BASE_MONTHS)}

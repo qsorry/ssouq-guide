@@ -478,7 +478,8 @@ def unit_news():
           and os.path.exists(C._seen_path(d, "casper")), r["news"])
     r = seed(d, "casper", NEWS_MORE)
     n = r["news"]
-    check("الجديد: فيلمان ومسلسل و5 حلقات", (n.get("movie"), n.get("series"), n.get("eps"), n.get("first")) == (2, 1, 5, None), n)
+    check("الجديد: فيلمان و3 مسلسلات (جديدٌ واثنان زادت حلقاتهما) و5 حلقات",
+          (n.get("movie"), n.get("series"), n.get("eps"), n.get("first")) == (2, 3, 5, None), n)
     by = {e["n"]: e for e in logged(d, "casper")}
     check("الأفلام باسمها وسنتها، والجودة الأخرى ليست جديدًا", sorted(k for k, e in by.items() if e["k"] == "movie")
           == ["Dune: Part Two", "ولاد رزق 3"] and by["Dune: Part Two"]["y"] == 2024, sorted(by))
@@ -505,14 +506,13 @@ def unit_news():
     d2 = fresh()
     seed(d2, "smart", NEWS_BASE)
     os.remove(C._seen_path(d2, "smart"))             # نسخةٌ قبل هذه الميزة: الفهرس وحده
+    t0 = time.time()
     r = seed(d2, "smart", NEWS_MORE)
-    check("قبل الذاكرة: يُقارن بالفهرس السابق فيُعرف الجديد من أول سحب", r["news"].get("movie") == 2 and not r["news"].get("first"),
-          r["news"])
-    C._write(C._cat_path(d2, "kon"), {"key": "kon", "at": time.time(), "entries": 1, "n": {"movie": 1}, "skipped": {},
-                                      "movie": [{"id": C._gid("movie", "Films"), "name": "Films", "items": ["Old Film (2019) FHD"]}]})
-    r = seed(d2, "kon", NEWS_MORE)
-    check("وفهرس النسخة الأولى (قُرئت أسماؤه بغير القراءة الحالية) لا يُقارن به: بداية", r["news"].get("first") is True
-          and not logged(d2, "kon"), r["news"])
+    start = (C._read(C._news_path(d2, "smart")) or {}).get("start")
+    check("بلا ذاكرة: بدايةٌ وإن كان للسيرفر فهرسٌ قبلها (فلا يُنشر مرتين ما عرّفته واجهته قبلها)",
+          r["news"].get("first") is True and not r["news"].get("movie") and start and start >= t0 - 1, (r["news"], start))
+    seed(d2, "smart", NEWS_MORE)
+    check("ووقت البداية يبقى", (C._read(C._news_path(d2, "smart")) or {}).get("start") == start)
     C.clear(d2, "smart")
     check("مسح المحتوى يمسح ما رُئي وما جدّ", not os.path.exists(C._seen_path(d2, "smart"))
           and not os.path.exists(C._news_path(d2, "smart")))
@@ -527,6 +527,57 @@ def unit_news():
         C._record_news = old
     shutil.rmtree(d, ignore_errors=True)
     shutil.rmtree(d2, ignore_errors=True)
+
+
+def panel_cat(T, yr, movies=None):
+    """فهرسٌ مُثرًى من واجهة Xtream (‏a: إضافة الفيلم وآخر تحديثٍ للمسلسل) — كما يعرضه «أضيف مؤخرًا» في الصفحة."""
+    g = lambda kind, name, items: {"id": C._gid(kind, name), "name": name, "items": items}  # noqa: E731
+    mv = movies or [{"n": "Fresh Movie", "y": yr, "i": 10, "a": int(T - 3600), "r": 7.5},
+                    {"n": "Week Old", "y": 2024, "i": 11, "a": int(T - 5 * 86400)},
+                    {"n": "Month Old", "y": 2020, "i": 12, "a": int(T - 40 * 86400)},
+                    {"n": "No Date", "y": 2021, "i": 13}]
+    return {"v": 2, "entries": len(mv) + 4, "n": {"movie": len(mv) + 1, "series": 3, "live": 0}, "skipped": {},
+            "movie": [g("movie", "VOD | EN", mv), g("movie", "Hidden", [{"n": "Hidden New", "y": yr, "i": 14, "a": int(T - 60)}])],
+            "series": [g("series", "Series", [{"n": "The Boys", "i": 20, "a": int(T - 7200), "r": 8.7, "s": [[3, 8], [4, 5]]},
+                                              {"n": "Old Show", "i": 21, "a": int(T - 30 * 86400), "s": [[1, 10]]},
+                                              {"n": "قيامة أرطغرل", "i": 22, "a": int(T - 1800), "s": [[0, 47]]}])],
+            "live": [], "key": "falcon", "at": T}
+
+
+def unit_panel():
+    print("ما قبل السجلّ: تاريخ الإضافة في واجهة السيرفر")
+    d = fresh()
+    T = time.time()
+    yr = time.gmtime(T + C.RIYADH).tm_year
+    C._write(C._cat_path(d, "falcon"), panel_cat(T, yr))
+    C.set_hidden(d, "falcon", C._gid("movie", "Hidden"), True)
+    R = C.RLM
+    text, n = C.channel_text(d, ["falcon"], T - 86400, T, now=T)
+    check("بلا سجلٍّ بعد: ما أضافته اللوحة في اليوم، والمخفي لا يُعدّ", n == {"movie": 1, "series": 2, "eps": 0}
+          and "✨ الجديد: فيلم واحد · مسلسلان" in text and f"{R}• Fresh Movie ({yr}) ⭐ 7.5" in text
+          and "Week Old" not in text and "Hidden" not in text and "No Date" not in text, text)
+    check("والمسلسل بموسمه الأخير وحلقاته (لا يُعرف كم جدّ فيه)", f"{R}• The Boys · الموسم 4 (5 حلقات)" in text
+          and f"{R}• قيامة أرطغرل (47 حلقة)" in text and "Old Show" not in text, text)
+    text, n = C.channel_text(d, ["falcon"], T - 7 * 86400, T, now=T)
+    check("وفي أسبوع: ما أضيف فيه", n["movie"] == 2 and "Week Old (2024)" in text and "Month Old" not in text, n)
+
+    C._write(C._news_path(d, "falcon"), {"start": T - 2 * 86400, "last": {}, "log": [
+        {"t": T - 100, "k": "movie", "h": C._gid("movie", C._ikey("movie", {"n": "Week Old", "y": 2024})), "n": "Week Old",
+         "y": 2024, "gs": ["x"]},
+        {"t": T - 90, "k": "movie", "h": "jm", "n": "Journal Movie", "y": 2023, "gs": ["x"]}]})
+    text, n = C.channel_text(d, ["falcon"], T - 7 * 86400, T, now=T)
+    check("وبسجلٍّ: اللوحة لما قبل بدايته وحده، والسجلّ بعدها، والعنصر فيهما مرة",
+          n["movie"] == 2 and "Journal Movie (2023)" in text and text.count("Week Old") == 1 and "Fresh Movie" not in text
+          and "The Boys" not in text, (n, text))
+    text, n = C.channel_text(d, ["falcon"], T - 86400, T, now=T)
+    check("والمنشور اليومي بعد البداية من السجلّ وحده", n == {"movie": 2, "series": 0, "eps": 0}
+          and "Fresh Movie" not in text and "The Boys" not in text, (n, text))
+
+    many = [{"n": f"Moved {i:03d}", "y": 2019, "i": 100 + i, "a": int(T - 60)} for i in range(C.NEWS_FLOOD + 1)]
+    C._write(C._cat_path(d, "kon"), dict(panel_cat(T, yr, many), key="kon"))
+    text, n = C.channel_text(d, ["kon"], T - 86400, T, now=T)
+    check("لوحةٌ غيّرت تواريخ النوع كله: لا يُعدّ منه شيء", n["movie"] == 0 and n["series"] == 2 and "Moved" not in text, n)
+    shutil.rmtree(d, ignore_errors=True)
 
 
 def journal(d, key, entries):
@@ -567,8 +618,8 @@ def unit_channel():
     text, n = C.channel_text(d, ["casper"], T - 3 * 86400, T, now=T)
     lines = text.split("\n")
     check("العنوان باسم السيرفر وتاريخ اليوم بتوقيت السعودية", lines[:2] == ["🆕 *أضيف مؤخرًا في كاسبر*", "🗓️ " + C.ar_date(T)], lines[:2])
-    check("والأعداد: المخفي والقديم لا يُعدّان، وحلقات المسلسل الجديد منها", n == {"movie": 4, "series": 2, "eps": 77}
-          and "✨ الجديد: 4 أفلام · مسلسلان · 77 حلقة" in lines, (n, lines[3:5]))
+    check("والأعداد: المخفي والقديم لا يُعدّان، والمسلسلات ما جدّ فيه شيء، وحلقات المسلسل الجديد منها",
+          n == {"movie": 4, "series": 5, "eps": 77} and "✨ الجديد: 4 أفلام · 5 مسلسلات · 77 حلقة" in lines, (n, lines[3:5]))
     R = C.RLM
     block = lambda title: lines[lines.index(title) + 1:lines.index("", lines.index(title))]  # noqa: E731
     check("الأفلام: الإصدارات الحديثة أولًا ثم الأعلى تقييمًا، وعلامات التنسيق في الاسم لا تنسّق",
@@ -634,7 +685,7 @@ def unit_channel():
               and C.channel(d)["last"]["empty"] and C.channel(d)["day"] == C._day(day0 + 86400 + 22 * 3600))
         seed(d, "casper", NEWS_BASE)
         seed(d, "casper", NEWS_MORE)
-        check("وما جدّ بعدها في حال القناة", C.channel_state(d)["pending"] == {"movie": 2, "series": 1, "eps": 5},
+        check("وما جدّ بعدها في حال القناة", C.channel_state(d)["pending"] == {"movie": 2, "series": 3, "eps": 5},
               C.channel_state(d)["pending"])
         C.channel_sender = lambda j, t: {"ok": False, "error": "رقم المسابقة غير مربوط"}
         d3 = day0 + 2 * 86400 + 21 * 3600
@@ -758,13 +809,27 @@ def unit_render():
     check("ولا إعلان في صفحةٍ غير موجودة", '<aside class="ad"' not in page(d, "smart", t="series", g="0000000000")[1])
     seed(d, "casper", SAMPLE)
     cad = page(d, "casper")[1]
-    check("سيرفرٌ بلا باقاتٍ في المتجر: إعلان الموقع", "اشتراكات سمارت سوق" in cad and "p153695876" in cad
-          and "اشترك الآن</a>" in cad and "كل هذا المحتوى في اشتراك كاسبر" not in cad)
-    C.save_server(d, {"key": "casper", "name": "كاسبر", "full": "CASPER FLIX", "buy": "https://ssouq.com/casper"})
-    cad = page(d, "casper")[1]
-    check("وبرابط شرائه من صفحة المدير: زرّه وحده", "كل هذا المحتوى في اشتراك كاسبر" in cad and 'class="adplan"' not in cad
-          and 'href="https://ssouq.com/casper?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in cad)
+    ad = cad[cad.index('<aside class="ad"'):cad.index("</aside>", cad.index('<aside class="ad"'))]
+    adplans = ad[ad.index('<div class="adplans">'):]
+    check("وكاسبر بباقاته هو لا بباقات فالكون", "كل هذا المحتوى في اشتراك كاسبر" in ad and adplans.count('class="adplan"') == 2
+          and adplans.index("p1147637724") < adplans.index("p1557813796") and "<em>28 ر.س</em>" in adplans
+          and "<em>23 ر.س</em>" in adplans and "اشترك في كاسبر</a>" in ad and "p153695876" not in ad
+          and "اشتراكات سمارت سوق" not in ad
+          and 'href="https://ssouq.com/اشتراك-كاسبر-iptv-لمدة-12-شهر-3-أشهر-هدية/p1147637724?utm_source=guide.ssouq.com'
+              '&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in ad, ad[:300])
+    check("وفي الجانب باقاته بحملة الصفحة", 'p1557813796?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content"'
+          in cad and "اشترك في كاسبر</h2>" in cad)
     C.clear(d, "casper")
+    seed(d, "kon", SAMPLE)
+    kad = page(d, "kon")[1]
+    check("سيرفرٌ بلا باقاتٍ في المتجر: إعلان الموقع", "اشتراكات سمارت سوق" in kad and "p153695876" in kad
+          and "اشترك الآن</a>" in kad and "كل هذا المحتوى في اشتراك كون" not in kad)
+    C.save_server(d, {"key": "kon", "name": "كون", "full": "", "buy": "https://ssouq.com/kon"})
+    kad = page(d, "kon")[1]
+    check("وبرابط شرائه من صفحة المدير: زرّه وحده", "كل هذا المحتوى في اشتراك كون" in kad and 'class="adplan"' not in kad
+          and 'href="https://ssouq.com/kon?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in kad)
+    C.save_server(d, {"key": "kon", "name": "كون", "full": "", "buy": ""})
+    C.clear(d, "kon")
 
     print("صفحة النوع والقسم")
     code, html = page(d, "smart", t="series")
@@ -1608,7 +1673,7 @@ def live_channel():
         r = upload(NEWS_MORE)
         check("والثاني بما جدّ فيه", (r["result"]["news"].get("movie"), r["result"]["news"].get("eps")) == (2, 5), r["result"].get("news"))
         st = json.loads(req(adm + "/api/content/admin", auth=True)[1])
-        check("وحال القناة: ما جدّ منذ ربطها", st["channel"]["pending"] == {"movie": 2, "series": 1, "eps": 5}, st["channel"])
+        check("وحال القناة: ما جدّ منذ ربطها", st["channel"]["pending"] == {"movie": 2, "series": 3, "eps": 5}, st["channel"])
         code, d = jpost(adm + "/api/content/admin/channel-preview", {})
         text = d["preview"]["text"]
         check("المعاينة: المنشور كما سيُنشر", code == 200 and text.startswith("🆕 *أضيف مؤخرًا في كاسبر*")
@@ -1630,7 +1695,7 @@ def live_channel():
               and sent[1] == {"to": "120363000000000001@newsletter", "body": text}, (code, d.get("post"), sent[-1:]))
         c = d.get("channel") or {}
         check("ويُحفظ ما نُشر، ولا جديد بعده", c["posted"]["ok"] and c["posted"]["manual"] is True
-              and c["posted"]["n"] == {"movie": 2, "series": 1, "eps": 5}
+              and c["posted"]["n"] == {"movie": 2, "series": 3, "eps": 5}
               and c["pending"] == {"movie": 0, "series": 0, "eps": 0} and c["day"] == "", c)
         code, d = jpost(adm + "/api/content/admin/channel-post", {})
         check("وثانيةً بلا جديد: لا يُنشر", code == 400 and d["error"] == "لا جديد منذ آخر منشور"
@@ -1652,6 +1717,7 @@ def main():
     unit_store()
     unit_adult()
     unit_news()
+    unit_panel()
     unit_channel()
     unit_render()
     unit_images()
