@@ -1,0 +1,158 @@
+<!doctype html>
+<!-- فيديو 0Player (‏static/video/0player-<الرمز>-ar.mp4): المشاهد والتعليقات والتكبير هنا، والمظهر والرسم
+     في engine.css و engine.js — كفيديو SS IPTV. رمز البوابة يأتي من الرابط (?code=)، فيُنتج منه
+     فيديوهان: سمارت 92929480 وفالكون 75710072. الصور من capture_0player.js، ومواضعها في B.
+       node tools/video/render.js 0player                  # سمارت
+       node tools/video/render.js 0player code=75710072    # فالكون -->
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="engine.css">
+<script src="engine.js"></script>
+</head>
+<body>
+<script>
+const CODE = new URLSearchParams(location.search).get("code") || "92929480";
+const SUB = { "92929480": "سمارت", "75710072": "فالكون" }[CODE] || "";
+const VIDEO = { out: `0player-${CODE}-ar`, steps: 6, icon: "../../static/img/apps/0player.webp" };
+const IMG = {
+  notice: { src: "assets/0p_notice.webp", max: 1.6 },
+  home:   { src: "assets/0p_home.webp", max: 1.7 },
+  lists:  { src: "assets/0p_lists.webp", max: 1.8 },
+  dialog: { src: "assets/0p_dialog.webp", max: 1.6 },
+  filled: { src: `assets/0p_dialog-${CODE}.webp`, max: 1.6 },
+  terms:  { src: "assets/0p_terms.webp" },
+  web:    { src: `assets/0p_web-${CODE}.webp` },
+  done:   { src: "assets/0p_done.webp" }
+};
+// مواضع الأزرار والخانات (بكسل كل صورة) كما يطبعها capture_0player.js
+const B = {
+  notice: { box: [36, 300, 1848, 560], go: [971, 728, 390, 92] },
+  home:   { playlist: [614, 377, 444, 136], live: [80, 218, 518, 610] },
+  lists:  { add: [805, 404, 226, 42], reload: [805, 455, 226, 42], first: [49, 80, 300, 78] },
+  dialog: { portal: [600, 168, 310, 98], name: [60, 300, 1380, 106], code: [60, 430, 1380, 106], user: [60, 560, 1380, 106],
+            pass: [60, 690, 1380, 106], save: [60, 822, 1380, 112], qr: [1545, 470, 330, 330], scan: [1515, 340, 390, 89] },
+  terms:  { accept: [503, 1729, 535, 144] },
+  web:    { tab: [378, 274, 294, 114], name: [84, 487, 882, 138], code: [84, 721, 882, 138], user: [84, 955, 882, 138],
+            pass: [84, 1189, 882, 138], captcha: [84, 1729, 882, 138], add: [84, 2071, 882, 120] },
+  done:   { title: [283, 509, 569, 111] }
+};
+// المستطيل الجامع لعدّة مستطيلات، وهامشٌ حوله — أهداف الكاميرا منها لا أرقام ثانية
+const U = (...rs) => { const x = Math.min(...rs.map(r => r[0])), y = Math.min(...rs.map(r => r[1]));
+  return [x, y, Math.max(...rs.map(r => r[0] + r[2])) - x, Math.max(...rs.map(r => r[1] + r[3])) - y]; };
+const M = (r, m) => [r[0] - m, r[1] - m, r[2] + 2 * m, r[3] + 2 * m];
+const ICON = '<img class="icon" src="../../static/img/apps/0player.webp" alt="">';
+const D = B.dialog, W = B.web, L = B.lists;
+const WL = ([x, y, w, h]) => [x, y - 66, w, h + 66];      // خانة الموقع مع عنوانها الأزرق فوقها (Code * …)
+const SCENES = [
+  { dur: 4.6, card: t => `${ICON}
+      <h1>تشغيل اشتراكك على الشاشة<br>بتطبيق <em dir="ltr">0Player</em></h1>
+      <div class="chips"><span>سامسونج</span><span>LG</span><span dir="ltr">WebOS</span></div>
+      <p class="sub">لاشتراك ${SUB} · كود البوابة ${K(CODE)}</p>`,
+    caps: [{ t: 0, title: "6 خطوات بالترتيب", body: "بالباركود من جوالك، أو من التطبيق نفسه — لنبدأ 👇" }] },
+
+  { step: 1, dur: 6.2, card: t => `${ICON}
+      <h1 dir="ltr" style="margin-top:-4px">0Player</h1>
+      <p class="sub">ويُنطق «زيرو بلاير» · من متجر الشاشة</p>
+      <div class="rows">
+        <div class="row" style="opacity:${fade(t, 1.0)}"><b>سامسونج</b><span>من متجر التطبيقات في الشاشة</span></div>
+        <div class="row" style="opacity:${fade(t, 2.0)}"><b>LG</b><span>من متجر الشاشة<br>شاشات 2016 إلى 2025</span></div>
+      </div>`,
+    caps: [{ t: 0, title: "حمّل تطبيق 0Player", body: `ابحث في متجر الشاشة عن ${K("0Player")} وحمّله` },
+           { t: 3.4, title: "حمّل تطبيق 0Player", body: "ثم افتحه من تطبيقات الشاشة" }] },
+
+  { step: 2, dur: 7.2, img: "notice",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.1, r: M(B.notice.box, 0) }, { t: 3.9, r: M(B.notice.go, 90) }],
+    rings: [{ r: B.notice.go, from: 4.6 }],
+    caps: [{ t: 0, title: "أول ما تفتح التطبيق", body: "تظهر رسالة: لم ترفع قائمة التشغيل بعد" },
+           { t: 2.0, title: "أول ما تفتح التطبيق", body: `لا تحتاج رقمي ${K("MAC")} ومفتاح الجهاز في هذا الشرح` },
+           { t: 4.1, title: "اضغط «متابعة»", body: "لتدخل التطبيق وتضيف قائمتك" }] },
+
+  { step: 3, dur: 5.6, img: "home",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.4, r: M(B.home.playlist, 30) }],
+    rings: [{ r: B.home.playlist, from: 2.1 }],
+    caps: [{ t: 0, title: "الشاشة الرئيسية", body: "بأسهم الريموت تنتقل بين المربعات" },
+           { t: 1.8, title: `اضغط ${K("PlayList")}`, body: "وبالعربي: «قائمة التشغيل»" }] },
+
+  { step: 4, dur: 5.4, img: "lists",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.3, r: M(U(L.add, L.reload), 30) }],
+    rings: [{ r: L.add, from: 2.0 }],
+    caps: [{ t: 0, title: "شاشة قوائمك", body: `تُفتح ${K("Choose Your Playlist")}` },
+           { t: 1.8, title: `اضغط ${K("Add Playlist")}`, body: "لإضافة قائمة جديدة" }] },
+
+  { step: 4, dur: 6.8, img: "dialog",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.2, r: M(U(D.portal, [60, 168, 250, 98]), 30) }, { t: 3.9, r: "full" }],
+    rings: [{ r: D.portal, from: 1.9, to: 3.9 }, { r: U(D.name, D.save), from: 4.6 }, { r: U(D.scan, D.qr), from: 4.6 }],
+    caps: [{ t: 0, title: `شاشة ${K("Add a new playlist")}`, body: "هنا تضيف بيانات اشتراكك" },
+           { t: 1.6, title: `اختر تبويب ${K("Portal Code")}`, body: `أعلى الشاشة، بجانب ${K("XC")} و ${K("Code")}` },
+           { t: 4.1, title: "ثم طريقة من اثنتين", body: "بالباركود من جوالك، أو تكتب البيانات بالريموت" }] },
+
+  { step: 5, dur: 4.8, img: "dialog",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 0.8, r: M(U(D.scan, D.qr), 40) }],
+    rings: [{ r: D.qr, from: 1.5 }],
+    caps: [{ t: 0, title: "الطريقة الأولى: بالباركود", body: "افتح كاميرا جوالك ووجّهها إلى الباركود" },
+           { t: 2.3, title: "الطريقة الأولى: بالباركود", body: "امسح الباركود الظاهر على شاشتك، واضغط الرابط" }] },
+
+  { step: 5, dur: 3.8, img: "terms",
+    cam: [{ t: 0, r: "full", d: 0 }],
+    rings: [{ r: B.terms.accept, from: 0.9 }],
+    caps: [{ t: 0, title: "على جوالك: 0player.com", body: `إن ظهرت نافذة الشروط اضغط ${K("Accept legal terms")}` }] },
+
+  { step: 5, dur: 11.0, img: "web",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.4, r: M(W.tab, 60) }, { t: 3.2, r: M(U(WL(W.name), WL(W.code)), 30) },
+          { t: 5.4, r: M(U(WL(W.user), WL(W.pass)), 30) }, { t: 7.6, r: M(U(W.captcha, W.add), 40) }],
+    rings: [{ r: W.tab, from: 1.9, to: 3.2 }, { r: WL(W.code), from: 3.9, to: 5.4 }, { r: WL(W.user), from: 6.0, to: 7.6 }, { r: WL(W.pass), from: 6.3, to: 7.6 },
+            { r: W.captcha, from: 8.2, to: 9.4 }, { r: W.add, from: 9.4 }],
+    caps: [{ t: 0, title: "على جوالك: أضف القائمة", body: "تُفتح صفحة الإضافة لجهازك مباشرة" },
+           { t: 1.6, title: `تبويب ${K("Portal Code")}`, body: "تأكّد أنه المختار — وإلا اضغطه" },
+           { t: 3.4, title: `${K("Code")}: ${K(CODE)}`, body: `اكتب الكود كما هو، وفي ${K("Name")} أي اسم` },
+           { t: 5.6, title: "اسم المستخدم وكلمة المرور", body: "من رسالة اشتراكك، بلا مسافات" },
+           { t: 7.8, title: `اضغط ${K("ADD PLAYLIST")}`, body: `بعد كتابة حروف الصورة في ${K("Captcha")}` }] },
+
+  { step: 5, dur: 3.8, img: "done",
+    cam: [{ t: 0, r: "full", d: 0 }],
+    rings: [{ r: B.done.title, from: 0.8 }],
+    caps: [{ t: 0, title: `تظهر ${K("Playlist Added!")}`, body: "أُضيفت قائمتك — ارجع إلى الشاشة" }] },
+
+  { step: 5, dur: 5.0, img: "lists",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.0, r: M(U(L.add, L.reload), 30) }],
+    rings: [{ r: L.reload, from: 1.7 }],
+    caps: [{ t: 0, title: "على الشاشة: حدّث القوائم", body: `ارجع إلى ${K("Choose Your Playlist")}` },
+           { t: 1.6, title: `اضغط ${K("Reload")}`, body: "وبالعربي: «إعادة التحميل» — فتظهر قائمتك" }] },
+
+  { step: 5, dur: 3.0, card: t => `<div class="tick">📺</div>
+      <h1>أو الطريقة الثانية</h1>
+      <p class="sub">تكتب البيانات على الشاشة نفسها بالريموت<br>في ${K("Add a new playlist")} على تبويب ${K("Portal Code")}</p>`,
+    caps: [{ t: 0, title: "الطريقة الثانية: من التطبيق نفسه", body: "بدل الباركود — لا تحتاج الاثنتين" }] },
+
+  { step: 5, dur: 11.0, img: "filled",
+    // الخانات عريضة والكتابة في أولها: الكاميرا على نصفها الأول، والحلقة على الخانة كلها
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.0, r: [40, 290, 900, 256] }, { t: 4.6, r: [40, 550, 900, 256] }, { t: 7.6, r: [300, 800, 900, 156] }],
+    rings: [{ r: D.name, from: 1.7, to: 2.9 }, { r: D.code, from: 2.9, to: 4.6 }, { r: D.user, from: 5.3, to: 6.4 }, { r: D.pass, from: 6.4, to: 7.6 },
+            { r: D.save, from: 8.3 }],
+    caps: [{ t: 0, title: "الطريقة الثانية: بالريموت", body: "اختر كل خانة واكتب بلوحة المفاتيح على الشاشة" },
+           { t: 1.6, title: `${K("Playlist Name")}: أي اسم`, body: `مثلًا ${K("ssouq")}` },
+           { t: 2.9, title: `${K("Code")}: ${K(CODE)}`, body: `اكتب الكود ${K(CODE)} كما هو حتى يعمل اشتراكك` },
+           { t: 5.0, title: "اسم المستخدم وكلمة المرور", body: "من رسالة اشتراكك، بلا مسافات" },
+           { t: 8.0, title: `اضغط ${K("SAVE")}`, body: "لحفظ القائمة" }] },
+
+  { step: 6, dur: 4.6, img: "lists",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.0, r: M(L.first, 40) }],
+    rings: [{ r: L.first, from: 1.7 }],
+    caps: [{ t: 0, title: "اختر قائمتك", body: "تظهر في القوائم باسمها الذي كتبته — اضغطها" }] },
+
+  { step: 6, dur: 5.2, img: "home",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.2, r: M(B.home.live, 20) }],
+    rings: [{ r: B.home.live, from: 1.9 }],
+    caps: [{ t: 0, title: "شاهد", body: `من الرئيسية افتح ${K("Live TV")} أو ${K("Movies")} أو ${K("Series")}` }] },
+
+  { dur: 5.6, card: t => `<div class="tick">🎉</div>
+      <h1>جاهز! استمتع بالمشاهدة</h1>
+      <p class="sub">لم تظهر القنوات؟ تأكّد من الكود ${K(CODE)}<br>واسم المستخدم وكلمة المرور، ثم أعد فتح التطبيق</p>
+      <div class="chips"><span>الدعم الفني على واتساب</span><span dir="ltr">guide.ssouq.com</span></div>`,
+    caps: [{ t: 0, title: "انتهت الخطوات", body: "الشرح المكتوب بالصور في دليل التفعيل لكل جهاز" }] }
+];
+</script>
+</body>
+</html>

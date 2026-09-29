@@ -1,0 +1,107 @@
+<!doctype html>
+<!-- شاشتان من تطبيق 0Player على التلفاز بلا لقطة رسمية لهما، مرسومتان بمقاس الشاشة 1920×1080:
+       ?screen=notice                          أول ما يُفتح التطبيق بلا قائمة (نصّه العربي كما يظهر على
+                                               شاشة حقيقية، ورقما MAC والجهاز أمثلة كما في لقطات 0player.com)
+       ?screen=dialog[&fill=1&code=92929480]   شاشة Add a new playlist على تبويب Portal Code (مخطّطها
+                                               كمخطّط لقطة الدليل السابقة)، فارغة أو معبّأة بالرمز
+     الباركود نقشٌ عشوائي بشكل QR لا يُقرأ: الذي يُمسح هو الظاهر على شاشة المشترك.
+     يصوّرها capture_0player.js، ومقاسات الأزرار في هذه الصفحة هي ما تستعمله SCENES في 0player.html. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Noto+Sans+Arabic:wght@500;700&display=block" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#070b18}
+body{font-family:Roboto,sans-serif;color:#fff}
+.scr{position:absolute;inset:0;display:none}
+/* أول فتح: رسالة «لم ترفع قائمة التشغيل» فوق شاشة الترحيب */
+#notice{background:radial-gradient(95% 85% at 50% 42%,#3b4e6f 0%,#2b3b58 55%,#1d2940 100%)}
+#notice .logo{position:absolute;left:50%;top:170px;width:470px;transform:translateX(-50%);opacity:.5;filter:grayscale(1) brightness(1.9)}
+#notice .tag{position:absolute;top:738px;left:0;right:0;text-align:center;font-size:68px;color:#8ea6c8;letter-spacing:.5px}
+#notice .para{position:absolute;top:846px;left:170px;right:170px;text-align:center;font-size:31px;line-height:1.55;color:#eef3fb}
+#notice .ids{position:absolute;bottom:34px;left:0;right:0;text-align:center;direction:rtl;font:500 27px "Noto Sans Arabic";color:#cfdaec;word-spacing:4px}
+#notice .ids span{margin:0 26px}
+#notice .box{position:absolute;left:36px;right:36px;top:300px;height:560px;border-radius:64px;background:rgba(168,198,244,.66);
+  direction:rtl;padding:54px 160px 0;font:700 46px/1.62 "Noto Sans Arabic";color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.35)}
+#notice .box p{text-align:right}
+#notice .box .c{text-align:center}
+#notice .url{color:#FFE55A;font-family:Roboto,sans-serif;font-weight:700;direction:ltr;unicode-bidi:isolate}
+#notice .btns{position:absolute;left:0;right:0;bottom:40px;display:flex;justify-content:center;gap:22px;direction:ltr}
+#notice .btn{width:390px;height:92px;border-radius:12px;display:flex;align-items:center;justify-content:center;font:700 40px "Noto Sans Arabic";text-shadow:none}
+#notice .reload{background:#3d4352;color:#fff}
+#notice .go{background:#1230ff;color:#fff;box-shadow:0 0 0 5px rgba(255,255,255,.85)}
+/* إضافة قائمة: XC و Code و Portal Code، ثم الباركود للجوال */
+#dialog{background:radial-gradient(120% 90% at 50% -10%,#1a2fa8 0%,#0c1647 32%,#080d22 70%,#060914 100%)}
+#dialog h1{position:absolute;top:58px;left:0;right:0;text-align:center;font-size:66px;font-weight:700}
+.tabs{position:absolute;top:168px;left:60px;display:flex;gap:20px}
+.tab{width:250px;height:98px;border-radius:12px;background:#0c1120;color:#e6ebf5;font-size:40px;display:flex;align-items:center;justify-content:center}
+.tab.wide{width:310px}
+.tab.on{background:#1463F3;color:#fff}
+.field{position:absolute;left:60px;width:1380px;height:106px;border:2px solid rgba(206,218,240,.6);border-radius:14px;
+  display:flex;align-items:center;padding:0 34px;font-size:40px;color:#b9c6dd}
+.field.v{color:#fff}
+#save{position:absolute;left:60px;width:1380px;top:822px;height:112px;border-radius:14px;background:#1463F3;
+  display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:700}
+#vline{position:absolute;left:1490px;top:250px;width:2px;height:760px;background:rgba(255,255,255,.35)}
+#or{position:absolute;left:1466px;top:602px;width:50px;text-align:center;background:#080d22;font-size:36px;font-weight:500;padding:14px 0}
+#scan{position:absolute;left:1515px;width:390px;top:340px;text-align:center;font-size:33px;line-height:1.35}
+#qr{position:absolute;left:1545px;top:470px;width:330px;height:330px;border-radius:30px;background:#fff;padding:24px}
+#qr svg{width:100%;height:100%;display:block}
+</style>
+</head>
+<body>
+<div id="notice" class="scr">
+  <img class="logo" src="assets/0p_logo.png" alt="">
+  <div class="tag">Zero Player: Your Gateway to Seamless IPTV Streaming</div>
+  <div class="para">Zero Player is a cutting-edge media player designed to elevate your IPTV experience. Built for users who bring their own content, it combines advanced technology with effortless functionality to deliver unparalleled performance and reliability. Take full control of your entertainment with Zero Player.</div>
+  <div class="box">
+    <p>لم ترفع قائمة التشغيل الخاصة بك بعد. لا يوفّر تطبيقنا أي محتوى بذاته.</p>
+    <p>لاستخدام التطبيق، تحتاج إلى رفع قوائم التشغيل الخاصة بك. يمكنك ذلك بزيارة موقعنا على <span class="url">https://0player.com</span></p>
+    <p class="c">عنوان MAC لجهاز التلفاز: <span dir="ltr">00:00:00:00:00:00</span></p>
+    <p class="c">مفتاح الجهاز: 123456</p>
+    <div class="btns"><div class="btn reload" id="bReload">إعادة التحميل</div><div class="btn go" id="bGo">متابعة</div></div>
+  </div>
+  <div class="ids"><span>عنوان MAC: <span dir="ltr">00:00:00:00:00:00</span></span><span>مفتاح الجهاز: 123456</span></div>
+</div>
+
+<div id="dialog" class="scr">
+  <h1>Add a new playlist</h1>
+  <div class="tabs"><div class="tab" id="tXC">XC</div><div class="tab" id="tCode">Code</div><div class="tab wide on" id="tPortal">Portal Code</div></div>
+  <div class="field" id="fName" style="top:300px">Playlist Name</div>
+  <div class="field" id="fCode" style="top:430px">Code</div>
+  <div class="field" id="fUser" style="top:560px">Username</div>
+  <div class="field" id="fPass" style="top:690px">Password</div>
+  <div id="save">SAVE</div>
+  <div id="vline"></div><div id="or">OR</div>
+  <div id="scan">Scan to add a playlist<br>from your phone</div>
+  <div id="qr"></div>
+</div>
+
+<script>
+const q = new URLSearchParams(location.search);
+const screen = q.get("screen") || "notice";
+document.getElementById(screen).style.display = "block";
+if (screen === "dialog" && q.get("fill")) {
+  const v = { fName: "ssouq", fCode: q.get("code") || "92929480", fUser: "USERNAME", fPass: "••••••••" };
+  for (const [id, t] of Object.entries(v)) { const el = document.getElementById(id); el.textContent = t; el.classList.add("v"); }
+}
+// نقش بشكل QR (29×29): مربعات الزوايا الثلاثة وخطّا التوقيت، والباقي من مولّد ثابت — شكلٌ لا رمزٌ مقروء
+(function(){
+  const N = 29, on = new Set(); let s = 20260329;
+  const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const finder = (x0, y0) => { for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) {
+    const e = x === 0 || y === 0 || x === 6 || y === 6, c = x >= 2 && x <= 4 && y >= 2 && y <= 4; if (e || c) on.add((y0 + y) * N + x0 + x); } };
+  const reserved = (x, y) => (x < 8 && y < 8) || (x > N - 9 && y < 8) || (x < 8 && y > N - 9);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (reserved(x, y)) continue;
+    if (y === 6 || x === 6) { if ((x + y) % 2 === 0) on.add(y * N + x); continue; }
+    if (rnd() < 0.5) on.add(y * N + x);
+  }
+  finder(0, 0); finder(N - 7, 0); finder(0, N - 7);
+  let r = ""; for (const k of on) r += `<rect x="${k % N}" y="${Math.floor(k / N)}" width="1.02" height="1.02"/>`;
+  document.getElementById("qr").innerHTML = `<svg viewBox="0 0 ${N} ${N}" shape-rendering="crispEdges" fill="#111">${r}</svg>`;
+})();
+</script>
+</body>
+</html>

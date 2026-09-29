@@ -242,6 +242,8 @@ a.entry{text-decoration:none}
 .dev small{color:var(--mute);font-size:.75rem}
 .dev:last-child:nth-child(odd){grid-column:1/-1}
 .dev:hover,.dev:focus-visible{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 7%,transparent)}
+.dev.muted{border-style:dashed}
+.dev.muted svg{stroke:var(--mute)}
 .step img{width:100%;max-height:360px;object-fit:contain;border-radius:12px;background:#0b1520;margin:12px 0}
 .step img[src$="windows-badge.png"]{max-height:90px;background:#fff;padding:8px}
 .vid{margin:4px 0 16px}
@@ -292,6 +294,8 @@ a.entry{text-decoration:none}
 .pick button b{display:block}
 .pick button small{display:block;color:var(--mute);line-height:1.5}
 .pick button:hover{border-color:var(--brand)}
+.pick button svg{width:40px;height:40px;flex:0 0 auto;stroke:var(--brand-text);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pick.fork{margin:6px 0 4px}
 
 /* ---------- أداة M3U ---------- */
 .lbl{display:block;font-size:.85rem;color:var(--mute);margin:10px 0 4px}
@@ -564,8 +568,9 @@ const VIDAA_NOTE = '<div class="note">هذه الخطوات لشاشات هاي�
 
 /* ------------------------------------------------------------
    SS IPTV — مشغّل مجاني يقرأ رابط M3U، والرابط يُبنى من الهوست واسم المستخدم
-   وكلمة المرور (أداة #m3u)، فيصلح لسمارت وفالكون وكاسبر بلا رمز بوابة: خطواته
-   واحدة في الاشتراكات الثلاثة، يعرّفها DEVICES ويرثها FALCON و CASPER كما هي.
+   وكلمة المرور (أداة #m3u)، فيصلح لسمارت وفالكون بلا رمز بوابة: خطواته واحدة
+   فيهما، يعرّفها DEVICES ويرثها FALCON كما هي. وكاسبر لا يعمل على هذه الشاشات
+   أصلًا (كما تقول صفحتا منتجه في المتجر)، فلا يرثها — انظر CASPER.
    الذي يختلف خطوة التحميل وحدها: LG من متجرها — في كتالوج LG للسعودية على
    شاشات 2016–2024، وليس على موديلات 2025 (وفيها 0Player و Duplecast) —
    وسامسونج ليس في متجرها فيعمل من فلاشة (شاشات 2015–2019 كما يذكر موقعه)،
@@ -623,10 +628,16 @@ const SS_IPTV_STEPS = [
       + 'إلى <code dir="ltr">output=m3u8</code>، ثم <b dir="ltr">OK</b> و <b dir="ltr">SAVE</b>.</div>' }
 ];
 // فيديو الخطوات السبع بعناوين عربية وتكبير على كل زر — أول خطوة التحميل في المسارين.
-// عموديٌّ للجوال، ومصدره في tools/video_ssiptv (يُعاد إنتاجه منه إن تغيّرت خطوة).
-const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4" poster="/static/video/ssiptv-ar.webp" '
+// عموديٌّ للجوال، ومصدره tools/video/ssiptv.html (يُعاد إنتاجه منه إن تغيّرت خطوة). و?v= يُرفع مع كل
+// إنتاج جديد: الملفات الثابتة تُخزَّن في المتصفح 30 يومًا، والغلاف يُجلب مع كل عرضٍ للخطوة.
+const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4?v=2" poster="/static/video/ssiptv-ar.webp?v=2" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الخطوات كلها في دقيقة وربع، ثم اتبعها هنا خطوة خطوة.</p></div>';
+// فيديو خطوات 0Player — أول خطوة التحميل. اسمه يحمل رمز البوابة (…-92929480-…) فيتبدّل مع رمز فالكون
+// كصور الخانات، ومصدره tools/video/0player.html. و?v= يُرفع مع كل إنتاج جديد كفيديو SS IPTV.
+const ZERO_VIDEO = '<div class="vid"><video src="/static/video/0player-92929480-ar.mp4?v=1" poster="/static/video/0player-92929480-ar.webp?v=1" '
+  + 'controls playsinline preload="none" width="720" height="1280"></video>'
+  + '<p class="sub">شاهد الطريقتين في دقيقة ونصف، ثم اتبع الخطوات هنا واحدة واحدة.</p></div>';
 // خطوة التحميل: شاشات سامسونج و LG
 const SS_IPTV_GET_WEBOS = { title: "حمّل تطبيق SS IPTV",
   html: SS_IPTV_VIDEO + APP("ss-iptv", "SS IPTV", "مجاني · من فريق SS IPTV")
@@ -712,17 +723,57 @@ const DEVICES = {
   webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "تطبيق 0Player أو SS IPTV", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "0player", label: "0Player", sub: "الأسهل: من متجر الشاشة، برمز البوابة وبياناتك", icon: "0player" },
+      { key: "0player", label: "0Player", sub: "من متجر الشاشة: بالباركود من جوالك أو بالريموت", icon: "0player" },
       SS_IPTV_OPT
     ]},
     variants: {
+      // التحميل، ثم «متابعة» في رسالة أول فتح، ثم PlayList، ثم Add Playlist وتبويب Portal Code — وعندها
+      // تفرّعٌ (fork) إلى طريقة من اثنتين: الباركود من الجوال أو التطبيق نفسه بالريموت. كلتاهما «الخطوة 5»
+      // (num) وتنتهيان إلى الأخيرة (next)، والرجوع منهما إلى التفرّع (prev). الصور من tools/video/shots_0player.js.
       "0player": [
-        { title: "حمّل تطبيق 0Player (زيرو بلاير)", img: "/static/img/webos-0player-store.jpg",
-          html: APP("0player", "0Player", "من متجر الشاشة · مجاني") + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله.</p>' + WEBOS_NOTE },
-        { title: "أضف القائمة — الخيار الأول: من الشاشة", img: "/static/img/webos-0player-add.jpg",
-          html: '<p>لك خياران لإضافة القائمة: من الشاشة مباشرة (هذه الخطوة)، أو من الجوال (الخطوة التالية). اختر أحدهما فقط.</p><ol><li>افتح التطبيق واضغط أيقونة <b>إضافة قائمة</b> في أعلى الصفحة.</li><li>اختر تبويب <b dir="ltr">Portal Code</b>.</li></ol><img src="/static/img/webos-0player-portal-92929480.webp" alt="خانات تبويب Portal Code في 0Player، وفي خانة Code يُكتب الكود 92929480"><div class="note"><b>مهم:</b> في خانة <b dir="ltr">Code</b> اكتب الكود <b dir="ltr">92929480</b> كما هو حتى يعمل معك الاشتراك.</div><div class="fields"><div class="f"><span>Playlist Name</span><code>اكتب أي شيء، مثلًا smart</code></div><div class="f"><span>Code (الخادم)</span><code>92929480</code></div><div class="f"><span>Username</span><code>اسم المستخدم</code></div><div class="f"><span>Password</span><code>كلمة المرور</code></div></div><p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS },
-        { title: "أضف القائمة — الخيار الثاني: من الجوال عبر 0player.com",
-          html: '<p>هذا الخيار بديل للخيار الأول، فإن أضفت القائمة من الشاشة فلا تحتاجه. وإن كانت الكتابة بريموت الشاشة متعبة، أضف القائمة من متصفح جوالك بالترتيب:</p><ol><li>افتح <a class="link" href="https://0player.com/" target="_blank" rel="noopener" dir="ltr">0player.com</a> من الجوال.</li><li>أدخل عنوان <b dir="ltr">MAC</b> الظاهر في التطبيق على الشاشة لتسجيل الدخول.</li><li>اضغط الزر المحدَّد في الصورة: <b dir="ltr">Add Portal Code Playlist</b>، وفي الواجهة العربية اسمه <b>إضافة قائمة تشغيل رمز البوابة</b>.</li></ol><img src="/static/img/webos-0player-web-en.webp" alt="زر Add Portal Code Playlist في موقع 0player.com من الجوال" loading="lazy"><img src="/static/img/webos-0player-web-ar.webp" alt="زر إضافة قائمة تشغيل رمز البوابة في الواجهة العربية لموقع 0player.com" loading="lazy"><ol start="4"><li>اكتب اسمًا للقائمة، وأدخل الرمز التالي مع اسم المستخدم وكلمة السر من بيانات اشتراكك:</li></ol><div class="fields"><div class="f"><span>Code (الخادم)</span><code>92929480</code></div></div><ol start="5"><li>تظهر رسالة <b dir="ltr">Portal group retrieved successfully</b>. اضغط <b dir="ltr">Close</b>، ثم افتح التطبيق على الشاشة، أو أعد فتحه، وستجد القائمة فيه.</li></ol><img src="/static/img/webos-0player-web-done.webp" alt="رسالة نجاح إضافة القائمة في موقع 0player.com" loading="lazy">' }
+        { title: "حمّل تطبيق 0Player (زيرو بلاير)",
+          html: ZERO_VIDEO + APP("0player", "0Player", "من متجر الشاشة")
+            + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله، ثم افتحه من تطبيقاتك.</p>'
+            + '<div class="note">موجود في متجر سامسونج، وفي متجر LG لشاشات 2016 إلى 2025.</div>' + WEBOS_NOTE },
+        { title: "افتح التطبيق واضغط «متابعة»", img: "/static/img/webos-0player-notice.webp",
+          html: '<p>أول مرة تفتح التطبيق تظهر رسالة: <b>لم ترفع قائمة التشغيل الخاصة بك بعد</b>. اضغط <b>متابعة</b> لتدخل التطبيق.</p>'
+            + '<div class="note">في الرسالة عنوان <b dir="ltr">MAC</b> ومفتاح الجهاز، ولا تحتاجهما في هذا الشرح. وإن لم تظهر الرسالة فالتطبيق على الشاشة الرئيسية: انتقل للخطوة التالية.</div>' },
+        { title: "اضغط PlayList (قائمة التشغيل)", img: "/static/img/webos-0player-home.webp",
+          html: '<p>في الشاشة الرئيسية انتقل بأسهم الريموت إلى مربع <b dir="ltr">PlayList</b> — واسمه في الواجهة العربية <b>قائمة التشغيل</b> — واضغط <b dir="ltr">OK</b>.</p>' },
+        { title: "اضغط Add Playlist واختر Portal Code", img: "/static/img/webos-0player-lists.webp",
+          html: '<p>تُفتح شاشة قوائمك <b dir="ltr">Choose Your Playlist</b>. اضغط <b dir="ltr">Add Playlist</b> فتظهر شاشة <b dir="ltr">Add a new playlist</b>، واختر فيها تبويب <b dir="ltr">Portal Code</b> في الأعلى.</p>'
+            + '<img src="/static/img/webos-0player-dialog.webp" alt="شاشة Add a new playlist: تبويب Portal Code وخانات البيانات، وعلى يمينها باركود للجوال" loading="lazy">'
+            + '<p><b>ومن هنا تضيف بيانات اشتراكك بطريقة من اثنتين، اختر واحدة:</b></p>',
+          fork: [
+            { to: 4, icon: "phone", label: "بالباركود من جوالك", sub: "الأسهل: تكتب البيانات في الجوال بدل الريموت" },
+            { to: 5, icon: "tv", label: "من التطبيق نفسه", sub: "تكتب البيانات على الشاشة بالريموت" }
+          ] },
+        { title: "الطريقة الأولى: بالباركود من جوالك", num: 5, next: 6, prev: 3, img: "/static/img/webos-0player-web-92929480.webp",
+          html: '<ol><li>افتح كاميرا جوالك ووجّهها إلى الباركود على يمين شاشة <b dir="ltr">Add a new playlist</b>، ثم اضغط الرابط الذي يظهر.</li>'
+            + '<li>يُفتح موقع <b dir="ltr">0player.com</b> على صفحة جهازك مباشرة. إن ظهرت نافذة <b dir="ltr">Welcome to Zero Player</b> فاضغط <b dir="ltr">Accept legal terms</b>.</li>'
+            + '<li>تأكّد أن تبويب <b dir="ltr">Portal Code</b> هو المختار، وعبّئ الخانات كما في الصورة:</li></ol>'
+            + '<div class="fields"><div class="f"><span dir="ltr">Name</span><code>أي اسم، مثلًا ssouq</code></div></div>'
+            + COPY("92929480", "Code")
+            + '<div class="fields"><div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
+            + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
+            + '<ol start="4"><li>اكتب الحروف الظاهرة في الصورة في خانة <b dir="ltr">Captcha</b>، ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</li>'
+            + '<li>تظهر <b dir="ltr">Playlist Added!</b> فقد أُضيفت قائمتك. ارجع إلى الشاشة وأكمل الخطوة التالية.</li></ol>'
+            + '<img src="/static/img/webos-0player-web-done.webp" alt="رسالة Playlist Added! في موقع 0player.com" loading="lazy">'
+            + '<div class="note">امسح الباركود الظاهر على شاشتك أنت: فيه رقم جهازك. والباركود في صور الدليل مثالٌ لا يُمسح.</div>' + CREDS },
+        { title: "الطريقة الثانية: من التطبيق نفسه", num: 5, next: 6, prev: 3, img: "/static/img/webos-0player-portal-92929480.webp",
+          html: '<p>في شاشة <b dir="ltr">Add a new playlist</b> على تبويب <b dir="ltr">Portal Code</b> اختر كل خانة بالريموت واكتب فيها:</p>'
+            + '<div class="note"><b>مهم:</b> في خانة <b dir="ltr">Code</b> اكتب الكود <b dir="ltr">92929480</b> كما هو حتى يعمل معك الاشتراك.</div>'
+            + '<div class="fields"><div class="f"><span dir="ltr">Playlist Name</span><code>أي اسم، مثلًا ssouq</code></div>'
+            + '<div class="f"><span dir="ltr">Code</span><code dir="ltr">92929480</code></div>'
+            + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
+            + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
+            + '<p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS },
+        { title: "اختر قائمتك وشاهد", num: 6, prev: 3, img: "/static/img/webos-0player-reload.webp",
+          html: '<p>ارجع إلى شاشة قوائمك <b dir="ltr">Choose Your Playlist</b>:</p>'
+            + '<ol><li>إن أضفت القائمة بالباركود فاضغط <b dir="ltr">Reload</b> — وبالعربي <b>إعادة التحميل</b> — حتى تظهر.</li>'
+            + '<li>اختر قائمتك باسمها الذي كتبته.</li>'
+            + '<li>ومن الشاشة الرئيسية افتح <b dir="ltr">Live TV</b> للقنوات، أو <b dir="ltr">Movies</b> و <b dir="ltr">Series</b> للأفلام والمسلسلات.</li></ol>'
+            + '<div class="note">لم تظهر القائمة أو القنوات؟ أغلق التطبيق وافتحه، وتأكّد من الكود <b dir="ltr">92929480</b> واسم المستخدم وكلمة المرور بلا مسافات.</div>' }
       ],
       ssiptv: SS_IPTV(SS_IPTV_GET_WEBOS)
     }
@@ -832,9 +883,10 @@ const PROG_ACT = ["الاشتراك", "جهازك", "التطبيق", "جاهز"
    صفحات الأجهزة الثابتة (tools/sync_guide_data.js).
    وفالكون يشترك معه في أكثر الخطوات ويختلف في أربعة مواضع فقط:
    الآيفون (تطبيق آخر)، والأندرويد (تطبيق فالكون بدل MR7/NEXT+)،
-   وسامسونج و LG (رمز بوابة مختلف في 0Player). وكاسبر يختلف في ثلاثة (أسفل
-   FALCON). وويندوز وماك والسيارة و VIDAA — ومعه SS IPTV على سامسونج و LG —
-   يرثها الاثنان كما هي: كلها تدخل بالهوست واسم المستخدم وكلمة المرور.
+   وسامسونج و LG (رمز بوابة مختلف في 0Player). وكاسبر يختلف في موضعين، ولا يعمل
+   على شاشتين (أسفل FALCON). وويندوز وماك والسيارة يرثها الاثنان كما هي: كلها
+   تدخل بالهوست واسم المستخدم وكلمة المرور. و VIDAA — ومعه SS IPTV على سامسونج
+   و LG — يرثه فالكون وحده.
    ============================================================ */
 const SUBS = {
   smart:  { name: "سمارت", full: "MR7 TV",        art: "/static/img/brands/smart.webp",
@@ -842,7 +894,7 @@ const SUBS = {
   falcon: { name: "فالكون", full: "FALCON TV PRO", art: "/static/img/brands/falcon.webp",
             sub: "تطبيق فالكون أو Smarters Pro" },
   casper: { name: "كاسبر", full: "CASPER FLIX", art: "/static/img/brands/casper.webp",
-            sub: "CASPER VIP أو AroPlayer أو Duplecast" }
+            sub: "CASPER VIP أو AroPlayer أو Smarters Pro" }
 };
 const legacySub = k => k === "marah" ? "smart" : k;      // "مرح" كان اسم سمارت، فروابطه القديمة تبقى عاملة
 
@@ -915,11 +967,11 @@ const FALCON = {
   },
 
   // نفس خطوات 0Player، ورمز البوابة وحده يختلف — فيُشتقّ منها ولا يُنسخ.
-  // صورة الخانات مكتوب عليها الرمز، واسمها يحمله (webos-0player-portal-<الرمز>.webp)
+  // وما كُتب عليه الرمز من صور وفيديو اسمه يحمله (…-0player-portal-<الرمز>.webp، 0player-<الرمز>-ar.mp4)
   // فيتبدّل معه هنا تلقائيًا إلى نسخة فالكون. و SS IPTV يبقى كما هو: رابطه بلا رمز بوابة.
   webos: Object.assign({}, DEVICES.webos, {
     variants: Object.assign({}, DEVICES.webos.variants, {
-      "0player": DEVICES.webos.variants["0player"].map(s => Object.assign({}, s, { html: s.html.split("92929480").join("75710072") }))
+      "0player": DEVICES.webos.variants["0player"].map(s => JSON.parse(JSON.stringify(s).split("92929480").join("75710072")))
     })
   })
 };
@@ -928,12 +980,14 @@ const FALCON = {
    كاسبر — CASPER FLIX
    ------------------------------------------------------------
    كاسبر يرث من سمارت كل ما يدخل بالهوست واسم المستخدم وكلمة المرور
-   (ويندوز وماك كما هما)، ويختلف في ثلاثة مواضع:
+   (ويندوز وماك كما هما)، ويختلف في موضعين:
    الآيفون (تطبيق CASPER VIP من App Store، أو AroPlayer بدل VAR Player)، والأندرويد جوالًا وشاشةً
    (‏تطبيق CASPER VIP بكود Downloader ‏3638997، أو IPTV Smarters Pro —
    بلا تطبيق مرح/MR7 فهو تطبيق سمارت، وبلا NEXT+ لأنه يدخل برمز خادم
-   خاص بلوحة سمارت)، وسامسونج و LG
-   و WebOS (تطبيق Duplecast بدل 0Player، و SS IPTV بجانبه كما هو).
+   خاص بلوحة سمارت).
+   ولا يعمل على شاشات سامسونج و LG ولا الشاشات بنظام VIDAA أو WebOS — كما تقول
+   صفحتا منتجه في المتجر — فالشاشتان في آخر قائمة أجهزته بلا خطوات (off): تقولان
+   ذلك وأين يعمل، وتفتحان باقات سمارت لتلك الشاشة كما تحيل إليها صفحة المنتج.
    ============================================================ */
 // دخول تطبيق CASPER VIP — واحد على الآيفون والجوال والشاشة
 const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",
@@ -942,6 +996,10 @@ const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتر
     + '<div class="f"><span>Password</span><code>كلمة المرور</code></div></div>'
     + '<p>ثم اضغط زر الدخول.</p>'
     + '<div class="note">إن طلب التطبيق رابط الهوست فهو يصلك مع بيانات اشتراكك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
+
+// كاسبر لا يعمل على هذه الشاشات، بنصّ صفحتي منتجه في المتجر: أين لا يعمل، وأين يعمل
+const CASPER_OFF = 'اشتراك كاسبر لا يعمل على شاشات سامسونج و LG، ولا على الشاشات بنظام <b dir="ltr">VIDAA</b> أو '
+  + '<b dir="ltr">WebOS</b>. ويعمل على الكمبيوتر والماك وجوال أندرويد والآيفون والشاشات بنظام أندرويد.';
 
 const CASPER = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق CASPER VIP أو AroPlayer", choose: {
@@ -1023,52 +1081,10 @@ const CASPER = {
     }
   },
 
-  webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "تطبيق Duplecast أو SS IPTV", choose: {
-    title: "اختر التطبيق",
-    options: [
-      { key: "duplecast", label: "Duplecast", sub: "من متجر الشاشة، ببيانات اشتراكك", icon: "duplecast" },
-      SS_IPTV_OPT
-    ]},
-    variants: {
-      duplecast: [
-    { title: "حمّل تطبيق Duplecast وافتحه", img: "/static/img/webos-duplecast-scan.webp",
-      html: APP("duplecast", "Duplecast", "من متجر الشاشة")
-        + '<p>من متجر التطبيقات في الشاشة (‏<b dir="ltr">Samsung Apps</b> أو <b dir="ltr">LG Content Store</b>) '
-        + 'ابحث عن <b dir="ltr">Duplecast</b> وحمّله.</p>'
-        + '<p>افتحه أول مرة فتظهر شاشة <b dir="ltr">Scan Code</b> برمز QR. امسح الرمز بكاميرا جوالك — من الشاشة نفسها '
-        + 'أو من صورة له — فتُفتح صفحة إدارة الجهاز وبياناته مكتوبة فيها تلقائيًا.</p>' + WEBOS_NOTE },
-    { title: "اضغط Add Playlist", img: "/static/img/webos-duplecast-manage.webp",
-      html: '<p>في صفحة الإدارة يظهر رقم جهازك تحت <b dir="ltr">Manage Device</b> وحالته تحته. '
-        + 'اضغط زر <b dir="ltr">Add Playlist</b> لإضافة قائمة تشغيل جديدة.</p>'
-        + '<div class="note">يمكنك إضافة أكثر من قائمة بالطريقة نفسها. والتطبيق يبدأ بفترة تجريبية '
-        + '(‏<b dir="ltr">Status : trial</b>)، وتفعيله الدائم من زرَّي <b dir="ltr">Activate by Payment</b> و '
-        + '<b dir="ltr">Activate by code</b> في الصفحة نفسها.</div>' },
-    { title: "عبّئ بياناتك في تبويب Xtream Info", img: "/static/img/webos-duplecast-form.webp",
-      html: '<p>اختر تبويب <b dir="ltr">Xtream Info</b> ثم عبّئ الخانات:</p>'
-        + '<div class="fields"><div class="f"><span dir="ltr">Mac</span><code>يظهر تلقائيًا — لا تغيّره</code></div>'
-        + '<div class="f"><span dir="ltr">Playlist name</span><code>أي اسم من عندك</code></div>'
-        + '<div class="f"><span dir="ltr">Host</span><code>رابط الهوست بدون رقم البورت</code></div>'
-        + '<div class="f"><span dir="ltr">Port</span><code>رقم البورت وحده</code></div>'
-        + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
-        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div>'
-        + '<div class="f"><span dir="ltr">Protect this playlist</span><code>اتركه غير مفعّل</code></div></div>'
-        + '<p>ثم اضغط <b dir="ltr">Save</b>.</p>'
-        + '<div class="note">الهوست والبورت خانتان منفصلتان هنا، فلا تكتب الرقم مع الرابط: إن وصلك '
-        + '<code dir="ltr">http://host.com:8080</code> فاكتب <code dir="ltr">http://host.com</code> في '
-        + '<b dir="ltr">Host</b> و <code dir="ltr">8080</code> في <b dir="ltr">Port</b>. ومن وصله رابط بلا رقم '
-        + 'فبورته <code dir="ltr">80</code>.</div>' + HTTP_NOTE + CREDS },
-    { title: "تأكّد أن القائمة حُفظت", img: "/static/img/webos-duplecast-saved.webp",
-      html: '<p>تظهر القائمة في جدول <b dir="ltr">Playlists</b> مع رسالة <b dir="ltr">Playlist added successfully</b>. '
-        + 'وإن أخطأت في بيانٍ اضغط <b dir="ltr">Edit</b> بجانبها وصحّحه.</p>' },
-    { title: "حدّث القائمة على الشاشة", img: "/static/img/webos-duplecast-refresh.webp",
-      html: '<p>ارجع إلى الشاشة الرئيسية في التطبيق على التلفاز واضغط زر التحديث (‏<b dir="ltr">↻</b>) '
-        + 'لجلب القنوات، وانتظر قليلًا حتى تكتمل.</p>'
-        + '<div class="note">إن لم تظهر القنوات فتأكد من اتصال الشاشة بالإنترنت، ومن صحة رابط الهوست '
-        + 'واسم المستخدم وكلمة المرور.</div>' }
-      ],
-      ssiptv: DEVICES.webos.variants.ssiptv
-    }
-  }
+  // ما لا يعمل عليه كاسبر (CASPER_OFF): لا خطوات بل off — نصّ الشاشة، ومفتاحها في مسار
+  // الشراء لباقات سمارت لها. وتنزل الشاشتان إلى آخر قائمة الأجهزة.
+  webos: { icon: "smart", name: DEVICES.webos.name, sub: "لا يعمل مع كاسبر", off: { text: CASPER_OFF, buy: "webos" } },
+  vidaa: { icon: "vidaa", name: DEVICES.vidaa.name, sub: "لا يعمل مع كاسبر", off: { text: CASPER_OFF, buy: "vidaa" } }
 };
 
 /* لكل اشتراك ما يخالف فيه مسار سمارت، وما لم يُذكر فيه يُورَث كما هو */
@@ -1322,8 +1338,21 @@ function renderDevices(){
   setProg(PROG_ACT, 1);
   const S = SUBS[state.sub];
   $("#view").innerHTML = `<div class="card"><p class="sub">اشتراك ${S.name} · ${S.full}</p><h2>اختر جهازك</h2><p class="sub">اختر الجهاز الذي ستشاهد عليه وسنرشدك خطوة بخطوة.</p>
-    <div class="grid">${Object.entries(devs()).map(([k, d]) => `<button class="dev" type="button" data-dev="${k}">${ICONS[d.icon]}<b>${d.name}</b><small>${d.sub}</small></button>`).join("")}</div>
+    <div class="grid">${Object.entries(devs()).sort((a, b) => !!a[1].off - !!b[1].off)   // ما لا يعمل عليه الاشتراك في الآخر
+      .map(([k, d]) => `<button class="dev${d.off ? " muted" : ""}" type="button" data-dev="${k}">${ICONS[d.icon]}<b>${d.name}</b><small>${d.sub}</small></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
+}
+/* جهازٌ لا يعمل عليه الاشتراك (off — كاسبر على سامسونج و LG و VIDAA): لا خطوات، بل ما تقوله
+   صفحة منتجه، وزرٌّ إلى باقات سمارت لهذه الشاشة في مسار الشراء كما تحيل إليها */
+function renderOff(){
+  const d = devs()[state.dev]; setProg(PROG_ACT, 1);
+  $("#view").innerHTML = `<div class="card result">
+    <div class="tick warn">${ICONS[d.icon]}</div>
+    <h2>${SUBS[state.sub].name} لا يعمل على ${d.name}</h2>
+    <p class="sub">${d.off.text}</p>
+    <p>لهذه الشاشات اختر اشتراك سمارت المخصص لها: يعمل على الشاشة مباشرة، بلا رسيفر ولا جهاز إضافي.</p>
+    <div class="nav"><button class="btn go" type="button" data-buy="vod/${d.off.buy}/smart">باقات سمارت لشاشتك</button></div>
+    <div class="nav"><button class="btn ghost" type="button" data-back>جهاز آخر</button></div></div>`;
 }
 function renderChoose(){
   const d = devs()[state.dev]; setProg(PROG_ACT, 2);
@@ -1332,12 +1361,18 @@ function renderChoose(){
       + `<span class="who"><b>${o.label}</b><small>${o.sub}</small></span></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
+/* خطواتٌ تتفرّع: خطوةٌ فيها fork تعرض طرقها أزرارًا بدل «التالي» (data-goto إلى أول خطوات الطريقة)،
+   وخطوة الطريقة تحمل رقمها (num — الطريقتان برقمٍ واحد)، وما بعدها (next)، والرجوع منها (prev). */
+const stepNo = (list, i) => list[i].num || i + 1;
+const stepsTotal = list => Math.max(...list.map((s, i) => s.num || i + 1));
 function renderStep(){
-  const list = steps(), s = list[state.i], d = devs()[state.dev];
+  const list = steps(), s = list[state.i], d = devs()[state.dev], next = s.next ?? state.i + 1;
   setProg(PROG_ACT, 2);
-  $("#view").innerHTML = `<div class="card step"><p class="sub">${SUBS[state.sub].name} · ${d.name}${state.variant ? " · " + d.choose.options.find(o => o.key === state.variant).label : ""} · الخطوة ${state.i + 1} من ${list.length}</p>
-    <h2>${s.title}</h2>${s.img ? `<img src="${s.img}" alt="${s.title}">` : ""}${s.html}
-    <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button><button class="btn go" type="button" data-next>${state.i + 1 < list.length ? "التالي" : "أنهيت الخطوات"}</button></div></div>`;
+  const fork = s.fork ? `<div class="pick fork">${s.fork.map(o => `<button type="button" data-goto="${o.to}">${ICONS[o.icon] || ""}`
+    + `<span class="who"><b>${o.label}</b><small>${o.sub}</small></span></button>`).join("")}</div>` : "";
+  $("#view").innerHTML = `<div class="card step"><p class="sub">${SUBS[state.sub].name} · ${d.name}${state.variant ? " · " + d.choose.options.find(o => o.key === state.variant).label : ""} · الخطوة ${stepNo(list, state.i)} من ${stepsTotal(list)}</p>
+    <h2>${s.title}</h2>${s.img ? `<img src="${s.img}" alt="${s.title}">` : ""}${s.html}${fork}
+    <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button>${s.fork ? "" : `<button class="btn go" type="button" data-next>${next < list.length ? "التالي" : "أنهيت الخطوات"}</button>`}</div></div>`;
 }
 function renderActDone(){
   const d = devs()[state.dev]; setProg(PROG_ACT, 3);
@@ -1432,6 +1467,7 @@ function applyHash(){
     let i = 2;
     if (!D[seg[i]]) return;
     state.dev = seg[i]; i++;
+    if (D[state.dev].off) return;                  // لا خطوات فيه: روابط خطواته القديمة تفتح شاشته
     const v = D[state.dev].variants;
     if (v && seg[i] && v[seg[i]]) { state.variant = seg[i]; i++; }
     const n = parseInt(seg[i], 10);
@@ -1479,12 +1515,13 @@ function pageTitle(){
       if (SUBS[state.sub].maintenance) return T("اشتراك " + sub + " تحت الصيانة");
       if (!state.dev) return T("تفعيل اشتراك " + sub + ": اختر جهازك");
       const d = devs()[state.dev];
+      if (d.off) return T(sub + " لا يعمل على " + d.name);
       if (d.variants && !state.variant) return T("تفعيل " + sub + " على " + d.name + ": اختر التطبيق");
       const app = state.variant ? d.choose.options.find(o => o.key === state.variant).label : null;
       const where = (app ? app + " على " : "") + d.name;
-      const n = steps().length;
-      if (state.i >= n) return T("تم تفعيل " + sub + " على " + d.name);
-      return T("الخطوة " + (state.i + 1) + " من " + n + " · " + where + " · تفعيل " + sub);
+      const list = steps();
+      if (state.i >= list.length) return T("تم تفعيل " + sub + " على " + d.name);
+      return T("الخطوة " + stepNo(list, state.i) + " من " + stepsTotal(list) + " · " + where + " · تفعيل " + sub);
     }
     default: return SITE_TITLE;
   }
@@ -1535,6 +1572,7 @@ function paint(){
       if (!state.sub) { renderSubs(); break; }
       if (SUBS[state.sub].maintenance) { renderMaintenance(); break; }
       if (!state.dev) { renderDevices(); break; }
+      if (devs()[state.dev].off) { renderOff(); break; }
       if (devs()[state.dev].variants && !state.variant) { renderChoose(); break; }
       if (state.i >= steps().length) { renderActDone(); break; }
       renderStep(); break;
@@ -1554,7 +1592,7 @@ function sqStep(){                    // الإحصائيات: خطوات الم
     case "plans":     k = "plans_open"; break;
     case "activate": {
       if (!state.sub) { k = "activate_start"; break; }
-      if (!state.dev || SUBS[state.sub].maintenance || (devs()[state.dev].variants && !state.variant)) break;
+      if (!state.dev || SUBS[state.sub].maintenance || devs()[state.dev].off || (devs()[state.dev].variants && !state.variant)) break;
       const where = state.sub + "/" + state.dev + (state.variant ? "/" + state.variant : "");
       if (state.i >= steps().length) k = "activate_done:" + where;
       else if (state.i === 0) k = "activate_device:" + where;
@@ -1582,7 +1620,7 @@ function backState(){
     case "buy-plan":   state.screen = "buy-brand"; state.plan = null; break;
     case "buy-done":   state.screen = "buy-plan"; state.plan = null; break;
     case "activate":
-      if (state.i > 0) state.i--;
+      if (state.i > 0) state.i = (steps()[state.i] || {}).prev ?? state.i - 1;   // من خطوة طريقةٍ إلى التفرّع
       else if (state.variant) state.variant = null;
       else if (state.dev) state.dev = null;
       else if (state.sub) state.sub = null;
@@ -1628,10 +1666,15 @@ $("#view").addEventListener("click", e => {
     state.sub = SUBS[d.actsub] ? d.actsub : null;              // نوع الاشتراك معروف من مسار الشراء
     state.dev = state.sub && devs()[d.activate] ? d.activate : null;
   }
+  else if (d.buy) {                                            // من جهازٍ لا يعمل عليه الاشتراك إلى باقات شاشته
+    const [taste, bdev, brand] = d.buy.split("/");
+    Object.assign(state, { screen: "buy-plan", taste, bdev, brand, plan: null });
+  }
   else if (d.sub) { state.sub = d.sub; state.dev = null; state.variant = null; state.i = 0; }
   else if (d.dev) { state.screen = "activate"; state.dev = d.dev; state.variant = null; state.i = 0; }
   else if (d.variant) { state.variant = d.variant; state.i = 0; }
-  else if (b.hasAttribute("data-next")) state.i++;
+  else if (d.goto !== undefined) state.i = +d.goto;             // تفرّع الخطوات: أول خطوات الطريقة المختارة
+  else if (b.hasAttribute("data-next")) state.i = steps()[state.i].next ?? state.i + 1;
   else return;
   render(true); go();
 });
