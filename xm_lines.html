@@ -124,6 +124,13 @@ input.t::placeholder{color:color-mix(in srgb,var(--mute) 70%,transparent)}
 .msg.ok{color:var(--go)}
 .msg.small{font-size:.78rem;margin-top:4px}
 .msg.timing{color:var(--mute);font-size:.8rem}     /* زمن الإنشاء معلومةٌ لا خطأ — رماديّ لا أحمر */
+/* عدّاد الإنشاء الحيّ تحت الزر: شريطٌ و«أُنشئ ٧ من ٢٠» حتى يُعرف إلى أين وصلت الدفعة */
+.cprog{margin-top:12px}
+.cprog .cp-bar{height:10px;border-radius:20px;background:var(--sf2);border:1px solid var(--line);overflow:hidden}
+.cprog .cp-fill{height:100%;width:0;border-radius:20px;background:linear-gradient(90deg,var(--go2),var(--go));transition:width .4s ease}
+.cprog .cp-count{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;font-size:.88rem;color:var(--mute)}
+.cprog .cp-count b{color:var(--go);font-weight:700;font-size:1.05rem;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){.cprog .cp-fill{transition:none}}
 .lines{direction:ltr;text-align:left;font:500 .86rem/1.8 "IBM Plex Mono",Consolas,monospace;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;overflow-x:auto;white-space:pre;margin:0}
 .empty{color:var(--mute);text-align:center;padding:14px;font-size:.9rem}
 
@@ -313,6 +320,10 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
       </div>
     </div>
     <button class="go" id="create"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg><span id="createTxt">إنشاء يوزر واحد</span></button>
+    <div class="cprog" id="cprog" hidden role="status" aria-live="polite">
+      <div class="cp-bar"><div class="cp-fill" id="cpFill"></div></div>
+      <div class="cp-count"><span id="cpPhase">جاري التحضير…</span><b id="cpNum" dir="ltr">0%</b></div>
+    </div>
     <div class="msg" id="msg"></div>
     <div class="msg timing" id="timing" hidden></div>
     <div class="msg ok" id="splitMsg" hidden></div>
@@ -942,16 +953,42 @@ $("pkgs").addEventListener("change", e => { if (e.target.name === "pkg") updateS
 $("slices").addEventListener("change", () => { syncSliceN("slice"); sliceHint(); updateCta(); });
 $("sliceBox").addEventListener("input", e => { if (e.target.name === "slice_n") { sliceHint(); updateCta(); } });
 
+// ---- عدّاد الإنشاء الحيّ: الدفعة طلبٌ واحد، فتُسأل /api/create/progress كل ثانيةٍ تقريبًا
+// عمّا أُنجز («جاري الإنشاء… ٧ من ٢٠») حتى يعود الطلب. رقم الدفعة من هنا لكل ضغطة.
+let createPoll = null;
+function createProg(done, total, phase){
+  const w = phase === "confirm" ? "جاري التأكيد من اللوحة…"
+          : !done ? "جاري التحضير (الدخول للوحة)…"
+          : phase === "send" ? `أُرسل ${done} من ${total}` : `أُنشئ ${done} من ${total}`;
+  $("createTxt").textContent = phase === "confirm" ? "جاري التأكيد…" : `جاري الإنشاء… ${done} من ${total}`;
+  const pct = Math.round(done / Math.max(1, total) * 100) + "%";
+  $("cpPhase").textContent = w; $("cpNum").textContent = pct; $("cpFill").style.width = pct;
+}
+function createProgStart(job, total){
+  createProgStop();
+  if (total < 2) { $("createTxt").textContent = "جاري الإنشاء…"; return; }
+  createProg(0, total, ""); $("cprog").hidden = false;
+  createPoll = setInterval(async () => {
+    let p;
+    try { p = await (await fetch(B + "/api/create/progress?job=" + encodeURIComponent(job))).json(); } catch(e) { return; }
+    if (createPoll && p && p.running) createProg(p.done || 0, p.total || total, p.phase);
+  }, 800);
+}
+function createProgStop(){ if (createPoll) { clearInterval(createPoll); createPoll = null; } $("cprog").hidden = true; }
+
 async function createLines(){
   const sel = document.querySelector('input[name="pkg"]:checked');
   if (!sel) { $("msg").textContent = "اختر باقة أولاً."; return; }
   if (!curGate) { $("msg").textContent = "اختر بوابة أولاً."; return; }
   if (Number.isNaN(sliceMonths())) { $("msg").textContent = `اكتب مدة الجزء بالأشهر من 1 إلى ${splitMax}.`; return; }
-  const btn = $("create"); btn.disabled = true; $("createTxt").textContent = "جاري الإنشاء…"; $("msg").textContent = ""; $("timing").hidden = true; showSplitResult(null);
+  const btn = $("create"); btn.disabled = true; $("msg").textContent = ""; $("timing").hidden = true; showSplitResult(null);
+  const job = Date.now().toString(36) + Math.random().toString(36).slice(2, 10), total = countN();
+  createProgStart(job, total);
   try {
     const r = await fetch(B + "/api/create", {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({gate: curGate, package_id: sel.value, username: $("u").value.trim(), password: $("p").value.trim(), count: countN(),
-                            slice_months: sliceMonths()})});
+      body: JSON.stringify({gate: curGate, package_id: sel.value, username: $("u").value.trim(), password: $("p").value.trim(), count: total,
+                            slice_months: sliceMonths(), job})});
+    createProgStop();
     const d = chk(await r.json());
     if (d.need_captcha) { btn.disabled = false; updateCta(); showCaptcha(createLines); return; }
     showSplitResult(d.split, d.split_mail);
@@ -976,6 +1013,7 @@ async function createLines(){
     }
     if (d.error) throw new Error(d.error);
   } catch(e) { $("msg").textContent = e.message; }
+  createProgStop();
   btn.disabled = false; updateCta();
 }
 

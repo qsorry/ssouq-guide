@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 ميزات جديدة عبر بوابة فالكون وهمية: أسماء عربية، حالة (نقاط/آخر يوزر)،
-بحث بالـ user/pass، رابط شرح عام لكل البوابات، وكشف الإنشاء المباشر.
+بحث بالـ user/pass، رابط شرح عام لكل البوابات، وكشف الإنشاء المباشر،
+وعدّاد الإنشاء الحيّ لدفعةٍ جارية («جاري الإنشاء… ٧ من ٢٠»).
 تشغيل:  python tests/test_features.py
 """
-import os, sys, json, time, shutil, tempfile, subprocess, http.cookiejar, urllib.request, urllib.error
+import os, sys, json, time, shutil, tempfile, threading, subprocess, http.cookiejar, urllib.request, urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 FALCON_PORT = int(os.environ.get("FALCON_PORT", "9677")); ADMIN_PORT = int(os.environ.get("ADMIN_PORT2", "9679"))
@@ -20,13 +21,17 @@ def main():
     global _p, _f
     data_dir = tempfile.mkdtemp(prefix="feat_")
     env = dict(os.environ, XM_DATA=data_dir, XM_BIND="127.0.0.1", XM_PORT=str(ADMIN_PORT))
-    falcon = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_falcon.py"), str(FALCON_PORT), "testkey"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # كل إنشاءٍ على الفالكون الوهمية يأخذ ٠٫٣ث، فتُرى الدفعة في منتصفها (القسم ٦)
+    falcon = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_falcon.py"), str(FALCON_PORT), "testkey"],
+                              env=dict(os.environ, MOCK_FALCON_CREATE_DELAY="0.3"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     app = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    cj = http.cookiejar.CookieJar(); op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-    def jreq(path, obj=None):
+    def opener():
+        return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    op = opener()
+    def jreq(path, obj=None, via=None):
         data = json.dumps(obj).encode() if obj is not None else None
         req = urllib.request.Request(ADMIN + path, data=data, headers={"Content-Type": "application/json"}, method="POST" if obj is not None else "GET")
-        try: r = op.open(req, timeout=15); return r.getcode(), json.loads(r.read() or b"{}")
+        try: r = (via or op).open(req, timeout=15); return r.getcode(), json.loads(r.read() or b"{}")
         except urllib.error.HTTPError as e:
             try: return e.code, json.loads(e.read() or b"{}")
             except Exception: return e.code, {}
@@ -40,6 +45,9 @@ def main():
         jreq("/admin/api/setup", {"password": "admin123"})
         jreq("/admin/api/accounts", {"name": "Ali", "user": "ali", "password": "pw_ali", "gates": [
             {"name": "فالكون", "mode": "falcon", "api_url": FALCON, "api_key": "testkey"}]})
+        jreq("/admin/api/accounts", {"name": "Sara", "user": "sara", "password": "pw_sara", "gates": []})
+        code, _ = jreq("/admin/api/create/progress?job=abc")
+        admin_progress_code = code
         op.open(ADMIN + "/admin/logout")
         jreq("/admin/api/login", {"user": "ali", "password": "pw_ali"})
         _, me = jreq("/admin/api/me"); gid = me["gates"][0]["id"]
@@ -74,6 +82,33 @@ def main():
         _, s2 = jreq("/admin/api/gate-status?gate=" + gid)
         check("status now shows the new last user + fewer credits", s2.get("last_username") == "newone" and s2.get("credits") == 99.5,
               "last=%s credits=%s" % (s2.get("last_username"), s2.get("credits")))
+
+        print("\n== 6. Live create counter: the page sees how far a batch has got ==")
+        job, res, snaps = "t6job", {}, []
+        def run():
+            res["d"] = jreq("/admin/api/create", {"gate": gid, "package_id": "167", "count": 5, "job": job})[1]
+        th = threading.Thread(target=run); th.start()
+        while th.is_alive():
+            snaps.append(jreq("/admin/api/create/progress?job=" + job)[1])
+            time.sleep(0.1)
+        th.join()
+        live = [x for x in snaps if x.get("running")]
+        check("batch of 5 created", len((res.get("d") or {}).get("lines") or []) == 5, str(res.get("d"))[:120])
+        check("counter seen mid-batch (running, 0 < done < 5, total 5)",
+              any(0 < x.get("done", 0) < 5 and x.get("total") == 5 for x in live), str([x.get("done") for x in live]))
+        dones = [x.get("done", 0) for x in live]
+        check("counter only goes up", dones == sorted(dones), str(dones))
+        _, fin = jreq("/admin/api/create/progress?job=" + job)
+        check("after the batch: not running, 5 of 5", fin.get("running") is False and fin.get("done") == 5 and fin.get("total") == 5, str(fin))
+        _, d = jreq("/admin/api/create/progress?job=nosuchjob")
+        check("unknown job reads idle", d.get("idle") is True and d.get("running") is False, str(d))
+        _, d = jreq("/admin/api/create/progress?job=" + "../" + job)
+        check("a malformed job id is ignored (idle)", d.get("idle") is True, str(d))
+        sara = opener()
+        jreq("/admin/api/login", {"user": "sara", "password": "pw_sara"}, via=sara)
+        _, d = jreq("/admin/api/create/progress?job=" + job, via=sara)
+        check("another account can't read this batch's counter", d.get("idle") is True, str(d))
+        check("admin (no account) gets 403", admin_progress_code == 403, str(admin_progress_code))
     finally:
         for pr in (app, falcon):
             pr.terminate()

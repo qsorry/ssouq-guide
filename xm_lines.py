@@ -1050,6 +1050,50 @@ def export_progress(acct_id, gate_id):
     return {k: j.get(k) for k in ("running", "done", "total", "count", "error", "at")}
 
 
+# ---- عدّاد الإنشاء الحيّ ----
+# دفعةٌ من ٢٠ يوزرًا تأخذ دقيقةً أو أكثر في طلبٍ واحد، فيُسجَّل تقدّمها هنا وتقرؤه الصفحة
+# من /api/create/progress كل ثانيةٍ تقريبًا: «جاري الإنشاء… ٧ من ٢٠». المفتاح (الحساب، رقمٌ
+# تولّده الصفحة لكل ضغطة) فلا تتداخل دفعتان في تبويبين، ولا يرى حسابٌ دفعة غيره.
+_create_jobs = {}
+_create_lock = threading.Lock()
+CREATE_JOB_TTL = 600                              # ثوانٍ يبقى فيها عدّاد دفعةٍ انتهت
+
+
+def create_job_id(v):
+    v = str(v or "").strip()
+    return v if re.fullmatch(r"[A-Za-z0-9_-]{1,40}", v) else ""
+
+
+def create_job_start(acct_id, job, total):
+    """يبدأ عدّاد دفعة ويرجّع دالة التقدّم (أو None بلا رقم دفعة)."""
+    if not job:
+        return None
+    now = time.time()
+    with _create_lock:
+        for k, j in list(_create_jobs.items()):   # تنظيف ما انتهى منذ مدة
+            if not j["running"] and now - j["t"] > CREATE_JOB_TTL:
+                _create_jobs.pop(k, None)
+        rec = _create_jobs[_export_key(acct_id, job)] = {
+            "running": True, "done": 0, "total": total, "phase": "create", "t": now}
+
+    def progress(done, phase="create"):
+        rec.update({"done": min(int(done), total), "phase": phase, "t": time.time()})
+    return progress
+
+
+def create_job_end(acct_id, job, done):
+    rec = _create_jobs.get(_export_key(acct_id, job)) if job else None
+    if rec:
+        rec.update({"running": False, "done": done, "phase": "done", "t": time.time()})
+
+
+def create_progress(acct_id, job):
+    rec = _create_jobs.get(_export_key(acct_id, job)) if job else None
+    if not rec:
+        return {"running": False, "idle": True, "done": 0, "total": 0}
+    return {k: rec.get(k) for k in ("running", "done", "total", "phase")}
+
+
 # ---- سحب يوزرات لوحات المقارنة (خلفيّ) ----
 # لكل لوحةٍ بوابتُها (account_id/gate_id)؛ تُسحب يوزراتها كلها وتُخزَّن باسم
 # اللوحة، ثم تُقارَن بخطوط سلة. يمرّ على كل اللوحات المضبوطة في طلبةٍ واحدة.
@@ -1788,14 +1832,15 @@ def _create_extended(gate, pkg, base_id, times, username, password, regen=()):
                          "to": ends[-1]["after"] if ends else ""}}
 
 
-def create_lines(gate, pkg, count, username=None, password=None):
+def create_lines(gate, pkg, count, username=None, password=None, progress=None):
     """دفعة يوزرات: (النتائج، رسالة خطأ أو None). على جلسة الويب تحضير واحد للدفعة كلها
     (دخول + صفحة الإضافة مرة) ثم إرسال واحد لكل يوزر؛ وعلى API/فالكون نداء لكل يوزر
-    كما كان. يوزر يفشل في المنتصف لا يُخفي ما نجح قبله."""
+    كما كان. يوزر يفشل في المنتصف لا يُخفي ما نجح قبله. progress(done[, phase]) بعد
+    كل يوزر — لعدّاد «جاري الإنشاء… ٧ من ٢٠» في الصفحة."""
     if gate.get("mode") == "web" and count > 1 and not virtual_base(pkg["id"]):
         pairs = [(rand_digits(gate_digits(gate)), rand_digits(gate_digits(gate))) for _ in range(count)]
         out = []
-        for r in web_session(gate).create_many(pkg["id"], pairs, gate.get("host")):
+        for r in web_session(gate).create_many(pkg["id"], pairs, gate.get("host"), progress=progress):
             if r.get("error"):
                 return out, r["error"]
             line = format_line(gate, r["username"], r["password"])
@@ -1809,6 +1854,8 @@ def create_lines(gate, pkg, count, username=None, password=None):
     for i in range(count):
         try:
             out.append(create_line(gate, pkg, username if count == 1 else None, password if count == 1 else None))
+            if progress:
+                progress(len(out))
         except (xm_web.CaptchaNeeded, xm_web.LoginFailed):
             raise
         except Exception as e:
@@ -2996,6 +3043,10 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "account" or not gate:
                     return self._send(403, {"error": "غير متاح"})
                 return self._send(200, users_export.status(DATA_DIR, acct["id"], gate["id"]))
+            if path == "/api/create/progress":        # عدّاد الإنشاء الحيّ لدفعةٍ جارية
+                if role != "account" or not acct:
+                    return self._send(403, {"error": "غير متاح"})
+                return self._send(200, create_progress(acct["id"], create_job_id(self._q("job"))))
             if path == "/api/users-export/progress":  # تقدّم السحب الحيّ (عدّاد)
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
@@ -4353,9 +4404,15 @@ class Handler(BaseHTTPRequestHandler):
             if why:
                 return self._send(400, {"error": why})
         t_start = time.time()
-        out, err = create_lines(gate, pkg, count,
-                                req.get("username") if count == 1 else None,
-                                req.get("password") if count == 1 else None)
+        job = create_job_id(req.get("job"))
+        out = []
+        try:
+            out, err = create_lines(gate, pkg, count,
+                                    req.get("username") if count == 1 else None,
+                                    req.get("password") if count == 1 else None,
+                                    progress=create_job_start(acct["id"], job, count))
+        finally:
+            create_job_end(acct["id"], job, len(out))
         resp = {"lines": out, "total_ms": int((time.time() - t_start) * 1000)}
         if err:
             # ما أُنشئ قبل الخطأ أُنشئ فعلًا (وخُصم)، فيُعاد مع الخطأ لا بدلًا منه.
