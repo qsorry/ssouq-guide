@@ -801,7 +801,9 @@ def _footer(base, name, v, summary, tr=AR):
             f'{tr("←", "→")} <a href="{_esc(base)}">{tr("محتوى " + _esc(name), _esc(name) + " content")}</a></p>'
             f'<p>{_esc(summary)} — {tr("من قائمة الاشتراك نفسها", "from the subscription’s own playlist")}'
             + (tr(f" · آخر تحديث: {at} بتوقيت السعودية", f" · Last updated: {at} (Saudi time)") if at else "")
-            + "</p></div></footer>")
+            + "</p>" + ("" if tr.en else          # صفحة البلاغ عربيةٌ وحدها، وسيرفر الصفحة مختارٌ فيها
+                        f'<p><a class="link" href="/report?s={_esc(base.rsplit("/", 1)[-1])}">مشترك وفيديو لا يعمل أو يقطع؟ بلّغنا</a></p>')
+            + "</div></footer>")
 
 
 def render_missing(data_dir, key="", lang="ar"):
