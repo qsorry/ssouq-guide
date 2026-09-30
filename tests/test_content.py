@@ -1024,7 +1024,7 @@ def unit_render():
     ad = cad[cad.index('<aside class="ad"'):cad.index("</aside>", cad.index('<aside class="ad"'))]
     adplans = ad[ad.index('<div class="adplans">'):]
     check("وكاسبر بباقاته هو لا بباقات فالكون", "كل هذا المحتوى في اشتراك كاسبر" in ad and adplans.count('class="adplan"') == 2
-          and adplans.index("p1147637724") < adplans.index("p1557813796") and "<em>28 ر.س</em>" in adplans
+          and adplans.index("p1147637724") < adplans.index("p1557813796") and "<em>39 ر.س</em>" in adplans
           and "<em>23 ر.س</em>" in adplans and "اشترك في كاسبر</a>" in ad and "p153695876" not in ad
           and "adcode" not in ad and 'class="aft"' not in ad and 'class="off"' not in ad            # كاسبر بلا كود خصم
           and "اشتراكات سمارت سوق" not in ad

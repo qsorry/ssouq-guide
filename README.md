@@ -1105,15 +1105,20 @@ beIN SPORTS لدوري الأمم — ناقل منتخبات UEFA في المن
 ولا يُمسّ وضع المتجر. وبلا `?theme` تتبع جهاز الزائر؛ ولا تُعلَن `color-scheme` كي لا يرسم
 المتصفح خلف الإطار خلفيةً معتمة. وروابطها تُفتح في نافذة جديدة، ولا تُفهرس.
 
-**الطول:** تبلّغ الصفحة الحاضنة بطولها فيتّسع الإطار لها بلا تمرير داخلي. لكن
-JavaScript المخصّص مطفأ في القالب، فقد تُسقط سلة سطر `<script>`؛ لذلك في الكود طولٌ
-احتياطي بحسب العرض (عمودٌ على الجوال، عمودان من 720px) يكفي مباريات يومٍ عادي.
+**الطول:** تبلّغ الصفحة الحاضنة بطولها فيتّسع الإطار لها بلا تمرير داخلي. لكن قسم «محتوى
+HTML» في سلة يضع الكود في الصفحة كنصّ HTML (‏innerHTML داخل `salla-html-content-…`)،
+**فلا يُنفَّذ فيه `<script>` أبدًا** — بقي الإطار على طوله الاحتياطي (780px على الجوال)
+والمحتوى نحو 500px، ففراغٌ كبير تحت الودجت (30 سبتمبر 2026). أما سمات الأحداث فتعمل،
+فالمستمع يُركَّب من `onerror` صورةٍ مخفية قبل الإطار (‏`data:,` تفشل فورًا، قبل أن يحمّل
+الإطار). وفيه **`window.addEventListener`** لا `addEventListener` وحدها: داخل سمة
+الحدث تعود إلى الصورة نفسها فلا تصلها رسائل الإطار. ويبقى الطول الاحتياطي بحسب العرض
+(عمودٌ على الجوال، عمودان من 720px) إن لم تصل رسالة.
 الكود الذي يُلصق في القسم:
 
 ```html
 <style>#ssouq-nl{display:block;width:100%;height:560px;border:0}@media (max-width:719px){#ssouq-nl{height:780px}}</style>
+<img src="data:," alt="" hidden onerror="window.ssqNL||(window.ssqNL=1,window.addEventListener('message',function(e){if(e.origin==='https://guide.ssouq.com'&&e.data&&e.data.ssouqWidget){document.getElementById('ssouq-nl').style.height=e.data.ssouqWidget+'px'}}))">
 <iframe id="ssouq-nl" src="https://guide.ssouq.com/nations-league/widget?theme=dark" title="دوري الأمم الأوروبية"></iframe>
-<script>addEventListener("message",function(e){if(e.origin==="https://guide.ssouq.com"&&e.data&&e.data.ssouqWidget){document.getElementById("ssouq-nl").style.height=e.data.ssouqWidget+"px"}});</script>
 ```
 
 **بطولة أخرى** (كأس آسيا 2027 في السعودية مثلًا — جدولها كاملٌ في ESPN برمز
