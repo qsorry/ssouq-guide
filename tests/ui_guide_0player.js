@@ -1,4 +1,5 @@
-// Browser test: 0Player on Samsung/LG, for Smart, Falcon and Casper (0Player is Casper's only app there). Six steps: install (with the video), «متابعة»
+// Browser test: 0Player on Samsung/LG, for Smart, Falcon and Casper (Casper: beside Duplecast, its install step opening with a note on its own
+// Samsung/LG plans). Six steps: install (with the video), «متابعة»
 // on the first-open message, PlayList, Add Playlist + Portal Code — which forks into two methods, the QR code
 // from the phone or the app itself, both numbered «الخطوة 5 من 6» and both leading to the last step. Every image
 // and the video load; each subscription's steps carry its own code everywhere (text, images, video) and no other's.
@@ -46,13 +47,15 @@ const CODE = { smart: '92929480', falcon: '75710072', casper: '59820658' };
       check('the app choice offers 0Player, free, by QR code or remote',
         (await page.textContent('#view [data-variant="0player"] small')) === 'مجاني من متجر الشاشة: بالباركود من جوالك أو بالريموت');
       const apps = await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant));
-      check(s === 'casper' ? 'Casper: 0Player is its only app here' : '… beside Duplecast and SS IPTV',
-        apps.join() === (s === 'casper' ? '0player' : '0player,duplecast,ssiptv'), apps.join());
+      check(s === 'casper' ? 'Casper: beside Duplecast, no SS IPTV' : '… beside Duplecast and SS IPTV',
+        apps.join() === (s === 'casper' ? '0player,duplecast' : '0player,duplecast,ssiptv'), apps.join());
       await click('[data-variant="0player"]');
       const broken = [];
 
       // ١ التحميل والفيديو
       check('step 1: install, 1 of 6', (await h2()) === 'حمّل تطبيق 0Player (زيرو بلاير)' && (await sub()).includes('الخطوة 1 من 6'), await sub());
+      check(s === 'casper' ? "… opening with the note on Casper's own Samsung/LG plans" : '… with no Casper note',
+        (await page.textContent('#view')).includes('باقة كاسبر الخاصة بشاشات سامسونج و LG') === (s === 'casper'));
       const vid = await page.$eval('#view .vid video', v => ({ src: v.getAttribute('src'), poster: v.getAttribute('poster'), pre: v.getAttribute('preload') }));
       check("… with this subscription's video", vid.src === `/static/video/0player-${code}-ar.mp4?v=2` && vid.poster === `/static/video/0player-${code}-ar.webp?v=2`
         && vid.pre === 'none', JSON.stringify(vid));
