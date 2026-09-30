@@ -1125,16 +1125,18 @@ class PanelWebSession:
         prep = self._prepare_add(package_id, host)
         return self._submit_regen(prep, str(username or rand_digits()), str(password or rand_digits()), regen)
 
-    def create_many(self, package_id, pairs, host=None) -> list:
+    def create_many(self, package_id, pairs, host=None, progress=None) -> list:
         """دفعة: (اسم، كلمة مرور) مولَّدَين لكل يوزر — تحضير واحد ثم إرسال لكل زوج. يرجّع
         النتائج بالترتيب؛ والزوج الذي ترفضه اللوحة لضعفه يُستبدل ولا يوقف الدفعة. وإن فشل
         يوزر في المنتصف تُعاد النتائج الناجحة قبله مع الخطأ (نقطة اللاعودة: ما أُنشئ قد
-        خُصم، فلا يضيع)."""
+        خُصم، فلا يضيع). progress(done) بعد كل يوزرٍ مؤكَّد — لعدّاد الصفحة."""
         prep = self._prepare_add(package_id, host)
         out = []
         for u, p in pairs:
             try:
                 out.append(self._submit_regen(prep, str(u), str(p), ("username", "password")))
+                if progress:
+                    progress(len(out))
             except Exception as e:
                 out.append({"error": str(e)[:200], "username": str(u), "password": str(p)})
                 break
@@ -2177,12 +2179,13 @@ class CasperWebSession(PanelWebSession):
             "create_failed",
             "لم تُؤكِّد اللوحة إنشاء اليوزر بعد الإرسال — انتظر قليلًا ثم أعد المحاولة.")
 
-    def create_many(self, package_id, pairs, host=None) -> list:
+    def create_many(self, package_id, pairs, host=None, progress=None) -> list:
         """دفعة يوزرات على كاسبر — سريعةٌ: تحضيرٌ مرّةً (دخول + بوكيهات)، ثم لكلّ
         يوزرٍ نموذجٌ جديد (يوزرُه من اللوحة، وكلمةُ مرورِه الرقمية من عندنا) بلا
         فواصلَ زمنية، ثم **تأكيدٌ واحدٌ للدفعة كلها** (أحدث الصفوف) بدل تأكيدٍ لكل
         يوزر. اليوزرُ الذي لا يظهر يُعاد إنشاؤه مرّةً (فشلُ الإرسال لا يُنشئ ولا
-        يخصم، فالإعادة آمنة). تُعاد الناجحون أولًا، وإن بقي فاشلٌ فرسالةُ خطأٍ."""
+        يخصم، فالإعادة آمنة). تُعاد الناجحون أولًا، وإن بقي فاشلٌ فرسالةُ خطأٍ.
+        progress(done, phase): «send» بعد كل إرسال، ثم «confirm» حين يبدأ التأكيد."""
         t_login = time.time()
         self.ensure_login()
         login_ms = int((time.time() - t_login) * 1000)
@@ -2205,7 +2208,11 @@ class CasperWebSession(PanelWebSession):
                 raise
             except Exception:
                 subs.append(None)
+            if progress:
+                progress(i + 1, "send")
 
+        if progress:
+            progress(len(pairs), "confirm")
         t_conf = time.time()
         idx = self._recent_index(len([s for s in subs if s]))
         # إعادة إنشاءٍ واحدةٌ لمن لم يظهر (فشلُ إرسالٍ أو تأخّرُ ظهور)، ثم تأكيدٌ فرديّ

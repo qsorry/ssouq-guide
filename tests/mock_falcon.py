@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 """لوحة فالكون وهمية للاختبار.  python tests/mock_falcon.py 9077 testkey [nopatch]
 
-PATCH /api/v1/lines/<id> يغيّر الاسم (أو كلمة المرور) — ‏nopatch = لا مسار تعديل (405)."""
-import sys, json, secrets
+PATCH /api/v1/lines/<id> يغيّر الاسم (أو كلمة المرور) — ‏nopatch = لا مسار تعديل (405).
+MOCK_FALCON_CREATE_DELAY=<ثوانٍ> يُبطئ كل إنشاء (لرؤية عدّاد الدفعة في منتصفها)."""
+import os, sys, json, secrets, time
 from urllib.parse import urlparse, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9077
 KEY = sys.argv[2] if len(sys.argv) > 2 else "testkey"
 NOPATCH = len(sys.argv) > 3 and sys.argv[3] == "nopatch"
+CREATE_DELAY = float(os.environ.get("MOCK_FALCON_CREATE_DELAY") or 0)
 CREDITS = [100.0]
 PACKAGES = [
     {"id": 167, "package_name": "1months", "official_credits": 0.5, "max_connections": 1},
@@ -68,6 +70,8 @@ class H(BaseHTTPRequestHandler):
         pkg = next((p for p in PACKAGES if p["id"] == pid), None)
         if not pkg:
             return self._json(400, {"ok": False, "error": "package_not_available"})
+        if CREATE_DELAY:
+            time.sleep(CREATE_DELAY)
         nid = max(l["id"] for l in LINES) + 1
         line = {"id": nid, "username": body.get("username") or str(nid),
                 "password": body.get("password") or secrets.token_hex(4),

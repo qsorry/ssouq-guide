@@ -394,9 +394,11 @@ def main():
             check("second create skips discovery + confirmation waits (< 2s)", r7b["username"] == "1111111111" and dt < 2.0, "%.2fs" % dt)
             pairs = [("30000000%02d" % i, "40000000%02d" % i) for i in range(5)]
             t0 = time.time()
-            many = s7.create_many(pk[0]["id"], pairs)
+            seen7 = []
+            many = s7.create_many(pk[0]["id"], pairs, progress=seen7.append)
             dt = time.time() - t0
             check("create_many: 5 users in order, all created", [m.get("username") for m in many] == [p[0] for p in pairs], str([m.get("username") for m in many]))
+            check("create_many: live counter after each confirmed user (1..5)", seen7 == [1, 2, 3, 4, 5], str(seen7))
             check("create_many: one prepare + one request per user (< 3s for 5)", dt < 3.0, "%.2fs" % dt)
             check("a table that never finds us is given up after 3 misses", s7._meta().get("no_table_search") is True, str(s7._meta().get("confirm_misses")))
             t0 = time.time(); s7.create_many(pk[0]["id"], [("5555555555", "6666666666")] * 3); dt = time.time() - t0
@@ -545,8 +547,13 @@ def main():
 
             # الدفعة: العدد صحيح، كلٌّ بيوزرٍ فريد وكلمة مرورٍ رقمية مولّدة، بلا تكرار
             t0 = time.time()
-            many = cs.create_many("726", [(None, None)] * 5, "http://ssouqhost.vip:80")
+            seen_c = []
+            many = cs.create_many("726", [(None, None)] * 5, "http://ssouqhost.vip:80",
+                                  progress=lambda n, ph: seen_c.append((n, ph)))
             dt = time.time() - t0
+            check("create_many (casper): counter per send, then one confirm step",
+                  seen_c == [(1, "send"), (2, "send"), (3, "send"), (4, "send"), (5, "send"), (5, "confirm")],
+                  str(seen_c))
             errs = [m for m in many if m.get("error")]
             check("create_many: 5/5 created, no errors", len(many) == 5 and not errs,
                   str([m.get("error") for m in many if m.get("error")])[:120])
@@ -691,13 +698,15 @@ def main():
             pk1 = next(x for x in xm_lines.get_packages(gate) if str(x["id"]) == "1")
             seq = iter(["444555666777"])
             xm_web.rand_digits = lambda n=12: next(seq, None) or orig_rand(n)
+            seen_l = []
             try:
-                out, err = xm_lines.create_lines(gate, pk1, 3)
+                out, err = xm_lines.create_lines(gate, pk1, 3, progress=seen_l.append)
             finally:
                 xm_web.rand_digits = orig_rand
             check("xm_lines batch: 3/3 created, no error, weak one replaced",
                   err is None and len(out) == 3 and "444555666777" not in [x["username"] for x in out],
                   "%s %s" % (err, [x["username"] for x in out]))
+            check("xm_lines batch: progress reaches the counter (1, 2, 3)", seen_l == [1, 2, 3], str(seen_l))
             check("xm_lines batch: weak_retries reaches the page", sum(x.get("weak_retries", 0) for x in out) == 1,
                   str([x.get("weak_retries") for x in out]))
             check("xm_lines: an operator-typed weak username raises (never swapped for another)",
