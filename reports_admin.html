@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>بلاغات المحتوى</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&display=swap" rel="stylesheet">
+<script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
+<style>
+/* نظام تصميم الأداة نفسه (متغيّرات «حسابات متبقية») */
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--shadow:0 18px 50px rgba(0,0,0,.45)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--shadow:0 14px 40px rgba(20,40,80,.14)}}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--shadow:0 14px 40px rgba(20,40,80,.14)}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
+[hidden]{display:none!important}
+a{color:var(--go)}
+button{font:inherit;border:0;border-radius:10px;cursor:pointer;color:inherit;background:none}
+button:disabled{opacity:.55;cursor:wait}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--go);outline-offset:2px}
+svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:8px;height:62px;padding:0 16px;background:color-mix(in srgb,var(--sf) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;margin-inline-start:auto;color:inherit;text-decoration:none;line-height:1.1}
+.brand .mark{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);display:grid;place-items:center;color:#fff;flex:none}
+.brand .mark svg{width:20px;height:20px;stroke:#fff}
+.brand b{display:block;font-size:1rem}.brand small{display:block;color:var(--mute);font-size:.72rem}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);text-decoration:none;flex:none}
+.icon-btn:hover{border-color:var(--go)}
+
+main{max-width:980px;margin:0 auto;padding:18px 16px 80px}
+h1{font-size:1.45rem;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 16px;font-size:.92rem;max-width:72ch}
+.sub a{font-weight:700}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 14px}
+.tile{border:1px solid var(--line);border-radius:14px;padding:11px 13px;background:var(--sf);text-align:start;color:inherit}
+.tile:hover{border-color:var(--go)}
+.tile small{display:block;color:var(--mute);font-size:.78rem}
+.tile b{display:block;font-size:1.5rem;line-height:1.25;font-variant-numeric:tabular-nums}
+.tile[aria-pressed="true"]{border-color:var(--go);box-shadow:inset 0 0 0 1px var(--go)}
+.tile.hot b{color:var(--err)}
+.bar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.chip{padding:6px 13px;border-radius:20px;border:1px solid var(--line);background:var(--sf2);font-size:.84rem;color:var(--mute)}
+.chip[aria-pressed="true"]{border-color:var(--go);color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
+.chip em{font-style:normal;font-variant-numeric:tabular-nums;margin-inline-start:4px}
+
+.list{display:flex;flex-direction:column;gap:10px}
+.rep{display:flex;gap:12px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--sf)}
+.rep.done{opacity:.8}
+.pos{width:58px;aspect-ratio:2/3;border-radius:10px;overflow:hidden;flex:none;position:relative;background:linear-gradient(135deg,hsl(var(--h) 45% 32%),hsl(var(--h) 50% 18%));display:grid;place-items:center;color:#fff;font-weight:700}
+.pos.sq{aspect-ratio:1}
+.pos img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.body{flex:1;min-width:0}
+.t{font-weight:700;overflow-wrap:anywhere;line-height:1.4}
+.meta{color:var(--mute);font-size:.82rem;margin-top:2px;overflow-wrap:anywhere}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.tag{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;font-size:.76rem;font-weight:700;border:1px solid var(--line);color:var(--mute)}
+.tag.down{color:var(--err);border-color:color-mix(in srgb,var(--err) 50%,transparent);background:color-mix(in srgb,var(--err) 10%,transparent)}
+.tag.buffer{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,transparent);background:color-mix(in srgb,var(--amber) 10%,transparent)}
+.tag.n{color:var(--ink)}
+.tag.ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 50%,transparent)}
+.people{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.people li{font-size:.84rem;padding:6px 9px;border-radius:10px;background:var(--sf2);overflow-wrap:anywhere}
+.people a{font-weight:700;direction:ltr;unicode-bidi:isolate}
+.people small{color:var(--mute)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;border:1px solid var(--line);background:var(--sf2);font-size:.86rem;font-weight:700;color:var(--ink);text-decoration:none}
+.btn:hover{border-color:var(--go)}
+.btn.go{background:linear-gradient(135deg,var(--go),var(--go2));border-color:var(--go);color:var(--go-ink)}
+.btn.del{color:var(--err)}
+.empty{color:var(--mute);text-align:center;padding:30px 10px;border:1px dashed var(--line);border-radius:16px}
+.msg{color:var(--err);margin:0 0 10px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:12px;font-weight:700;font-size:.9rem;box-shadow:var(--shadow);z-index:60}
+@media (max-width:560px){.tiles{gap:6px}.tile{padding:9px 10px}.tile b{font-size:1.25rem}.pos{width:48px}}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="icon-btn" id="lnkOut" title="تسجيل الخروج" aria-label="تسجيل الخروج"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
+  <button class="icon-btn" id="themeBtn" title="تبديل السمة" aria-label="تبديل السمة"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <a class="icon-btn" id="lnkHome" title="الرئيسية" aria-label="الرئيسية" hidden><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5"/></svg></a>
+  <a class="brand" id="brand"><span class="mark"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4M10 9l4 2-4 2z"/></svg></span>
+    <span><b>بلاغات المحتوى</b><small id="who">سمارت سوق</small></span></a>
+</header>
+<main>
+  <h1>بلاغات المحتوى</h1>
+  <p class="sub">ما يبلّغ عنه المشتركون من <a id="lnkReport" href="https://guide.ssouq.com/report" target="_blank" rel="noopener">guide.ssouq.com/report</a>: السيرفر والقسم والمسلسل أو الفيلم والحلقة، و«لا يعمل» أو «يقطع». البلاغ المكرّر سطرٌ واحد بعدد من بلّغ. بعد الإصلاح اضغط «تم الإصلاح» وأبلغ صاحبه على واتساب.</p>
+  <div class="tiles">
+    <button class="tile hot" data-state="open" aria-pressed="true"><small>مفتوحة</small><b id="nOpen">—</b></button>
+    <button class="tile" data-state="done" aria-pressed="false"><small>تم إصلاحها</small><b id="nDone">—</b></button>
+    <button class="tile" data-state="all" aria-pressed="false"><small>الكل</small><b id="nAll">—</b></button>
+  </div>
+  <div class="bar" id="srvBar" hidden></div>
+  <p class="msg" id="msg" hidden></p>
+  <div class="list" id="list"><div class="empty">جاري التحميل…</div></div>
+</main>
+<div class="toast" id="toast" hidden></div>
+<script>
+const B = location.pathname.startsWith("/admin") ? "/admin" : "";
+// الملصقات من الدليل (‏/content/<السيرفر>/img/…): على نطاق الأداة من guide.ssouq.com، وتحت /admin من الخادم نفسه
+const SITE = B ? "" : "https://guide.ssouq.com";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = n => Number(n || 0).toLocaleString("en-US");
+const ONE = {series: "مسلسل", movie: "فيلم", live: "قناة"};
+let state = "open", server = "", data = null, role = "";
+$("lnkOut").href = B + "/logout";
+if (B) $("lnkReport").href = "/report";
+$("themeBtn").onclick = () => { const l = document.documentElement.getAttribute("data-theme") === "light"; document.documentElement.setAttribute("data-theme", l ? "dark" : "light"); try { localStorage.setItem("xm_theme", l ? "dark" : "light"); } catch {} };
+try { const p = new URLSearchParams(location.search); state = ["open", "done", "all"].includes(p.get("state")) ? p.get("state") : "open"; server = p.get("s") || ""; } catch {}
+
+function ago(ts){
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 60) return "الآن";
+  const m = Math.floor(s / 60); if (m < 60) return "منذ " + (m === 1 ? "دقيقة" : m === 2 ? "دقيقتين" : m + (m <= 10 ? " دقائق" : " دقيقة"));
+  const h = Math.floor(m / 60); if (h < 24) return "منذ " + (h === 1 ? "ساعة" : h === 2 ? "ساعتين" : h + (h <= 10 ? " ساعات" : " ساعة"));
+  const d = Math.floor(h / 24); return "منذ " + (d === 1 ? "يوم" : d === 2 ? "يومين" : d + (d <= 10 ? " أيام" : " يومًا"));
+}
+function hue(s){ let n = 0; for (const c of String(s || "")) n += c.charCodeAt(0); return n * 37 % 360; }
+function toast(t){ const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 1800); }
+// الاسم معزولٌ (‏bdi) فلا يقلب اسمٌ إنجليزي ترتيب «الموسم · الحلقة» بعده، وفي النص المنسوخ علامة RLM أول السطر
+const RLM = "\u200f";
+function what(r){
+  const name = r.title + (r.year ? ` (${r.year})` : "");
+  const ep = r.kind !== "series" ? "" : (r.season ? ` · الموسم ${r.season}` : "") + (r.ep ? ` · الحلقة ${r.ep}` : " · كل الحلقات");
+  return {html: `<bdi>${esc(name)}</bdi>${esc(ep)}`, text: RLM + name + ep};
+}
+function where(r){ return `${esc(r.sname)} · <bdi>${esc(r.group)}</bdi>`; }
+function forward(r){ return `${RLM}${r.sname} · ${r.group}\n${what(r).text} — ${(data.problems || {})[r.problem] || ""}`; }
+function fixedText(r){ return `مرحبًا 👋 تم إصلاح ما بلّغت عنه في ${r.sname}:\n${what(r).text}\nجرّبه الآن، وشكرًا لبلاغك.`; }
+
+function card(r){
+  const open = r.state === "open";
+  const people = (r.people || []).map(p => `<li>${p.phone ? `<a href="https://wa.me/${esc(p.phone)}${open ? "" : "?text=" + encodeURIComponent(fixedText(r))}" target="_blank" rel="noopener">+${esc(p.phone)}</a>` : "<small>بلا رقم</small>"}${p.note ? ` — ${esc(p.note)}` : ""} <small>· ${ago(p.at)}</small></li>`).join("");
+  const src = r.p ? (r.p.startsWith("/") ? SITE + r.p : r.p) : "";
+  return `<div class="rep${open ? "" : " done"}" data-id="${esc(r.id)}">
+    <span class="pos${r.kind === "live" ? " sq" : ""}" style="--h:${hue(r.title)}">${esc(String(r.title || "•").trim().slice(0, 1))}${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>
+    <div class="body">
+      <div class="t">${what(r).html}</div>
+      <div class="meta">${esc(ONE[r.kind] || "")} · ${where(r)} · ${ago(r.at)}${r.count > 1 ? " · آخر بلاغ " + ago(r.last) : ""}</div>
+      <div class="tags"><span class="tag ${esc(r.problem)}">${esc((data.problems || {})[r.problem] || r.problem)}</span>
+        ${r.count > 1 ? `<span class="tag n">${num(r.count)} بلاغات</span>` : ""}
+        ${open ? "" : `<span class="tag ok">✓ أُصلح ${ago(r.done_at)}${r.done_by ? " · " + esc(r.done_by) : ""}</span>`}</div>
+      ${people ? `<ul class="people">${people}</ul>` : ""}
+      <div class="acts">
+        ${open ? `<button class="btn go" data-act="done">✓ تم الإصلاح</button>` : `<button class="btn" data-act="open">إعادة فتح</button>`}
+        <button class="btn" data-act="copy">نسخ البلاغ</button>
+        ${role === "admin" ? `<button class="btn del" data-act="del">حذف</button>` : ""}
+      </div>
+    </div></div>`;
+}
+
+function draw(){
+  const d = data;
+  $("nOpen").textContent = num(d.counts.open); $("nDone").textContent = num(d.counts.done);
+  $("nAll").textContent = num(d.counts.open + d.counts.done);
+  document.title = (d.counts.open ? `(${d.counts.open}) ` : "") + "بلاغات المحتوى";
+  document.querySelectorAll("[data-state]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.state === state)));
+  const srvs = d.servers || [];
+  $("srvBar").hidden = srvs.length < 2 && !server;
+  $("srvBar").innerHTML = `<button class="chip" data-s="" aria-pressed="${!server}">كل السيرفرات</button>` + srvs.map(s =>
+    `<button class="chip" data-s="${esc(s.key)}" aria-pressed="${s.key === server}">${esc(s.name)}<em>${num(s.open)}</em></button>`).join("");
+  $("list").innerHTML = d.items.length ? d.items.map(card).join("")
+    : `<div class="empty">${state === "open" ? "لا بلاغات مفتوحة — كل شيءٍ يعمل ✓" : "لا شيء هنا بعد."}</div>`;
+}
+
+async function load(){
+  try {
+    const r = await fetch(B + "/api/reports?state=" + state + (server ? "&s=" + encodeURIComponent(server) : ""));
+    const d = await r.json();
+    if (d.login) { location.href = B + "/login"; return; }
+    if (!r.ok) throw new Error(d.error || "تعذّر التحميل");
+    data = d; role = d.role;
+    $("who").textContent = d.name || "";
+    $("lnkHome").hidden = !(d.role === "admin" || d.gates);
+    $("lnkHome").href = d.role === "admin" ? B + "/accounts" : (B || "/");
+    $("msg").hidden = true;
+    draw();
+  } catch (e) { $("msg").textContent = e.message; $("msg").hidden = false; }
+}
+
+document.querySelector(".tiles").onclick = e => {
+  const b = e.target.closest("[data-state]"); if (!b) return;
+  state = b.dataset.state; history.replaceState(null, "", "?state=" + state + (server ? "&s=" + server : "")); load();
+};
+$("srvBar").onclick = e => {
+  const b = e.target.closest("[data-s]"); if (!b) return;
+  server = b.dataset.s; history.replaceState(null, "", "?state=" + state + (server ? "&s=" + server : "")); load();
+};
+$("list").onclick = async e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const id = b.closest("[data-id]").dataset.id, r = data.items.find(x => x.id === id), act = b.dataset.act;
+  if (act === "copy") {
+    try { await navigator.clipboard.writeText(forward(r)); toast("نُسخ البلاغ"); } catch { prompt("انسخ البلاغ:", forward(r)); }
+    return;
+  }
+  if (act === "del" && !confirm("حذف هذا البلاغ نهائيًا؟")) return;
+  b.disabled = true;
+  try {
+    const res = await fetch(B + (act === "del" ? "/api/reports/delete" : "/api/reports/state"), {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({id, done: act === "done"})});
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "تعذّر الحفظ");
+    toast(act === "done" ? "✓ تم — أبلغ أصحابه من «تم إصلاحها»" : act === "open" ? "أُعيد فتحه" : "حُذف");
+    load();
+  } catch (err) { b.disabled = false; alert(err.message); }
+};
+load();
+setInterval(() => { if (!document.hidden) load(); }, 30000);
+</script>
+</body>
+</html>

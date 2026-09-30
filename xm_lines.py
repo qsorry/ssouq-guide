@@ -32,6 +32,7 @@ import predict_page
 import contest
 import content
 import content_page
+import reports
 import store_sync
 import xm_web
 import falcon_api
@@ -524,6 +525,8 @@ def clean_account(a, old=None):
         # الاشتراكات المجزّأة (بيع ١٢ · ٦ · ٣ · شهر أو أي مدةٍ بالأشهر من باقة ١٥ شهرًا، وتغيير اسم المستخدم عند
         # انتهاء الجزء): يفتحها المدير لعميلٍ بعينه، ومغلقةٌ لغيره فلا يتغيّر عليه شيء.
         "split": bool(a.get("split", old.get("split", False))),
+        # بلاغات المحتوى: موظف الدعم يرى ما يبلّغ عنه المشتركون من فيديو لا يعمل أو يقطع (‏/reports) ويعلّمه «تم الإصلاح».
+        "reports": bool(a.get("reports", old.get("reports", False))),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -1878,6 +1881,11 @@ def split_on(acct):
     return bool(acct and acct.get("split"))
 
 
+def reports_on(role, acct):
+    """بلاغات المحتوى: للمدير، ولحسابٍ فتحها له المدير من نافذة الحساب (موظف الدعم)."""
+    return role == "admin" or bool(role == "account" and acct and acct.get("reports"))
+
+
 def split_gate_ok(gate):
     return bool(gate) and gate.get("mode") in SPLIT_MODES
 
@@ -2932,6 +2940,10 @@ class Handler(BaseHTTPRequestHandler):
             if res is None:
                 return self._send(404, {"ok": False, "error": "not found"})
             return self._send(200, res, extra={"Cache-Control": "public, max-age=600"})
+        if path in (reports.PATH, reports.PATH + "/"):   # بلاغ عن فيديو لا يعمل أو يقطع (عامة، بلا دخول)
+            return self._page("report.html", cache=PUBLIC_HTML_CACHE)
+        if path.startswith("/api/report/"):     # خطواتها: السيرفرات ← الأقسام ← العناصر، والبحث بالاسم
+            return self._report_get(path)
         if path == "/renew":                    # صفحة التجديد (عامة، بلا تسجيل دخول)
             return self._page("renew.html", cache=PUBLIC_HTML_CACHE)
         if path == "/api/renew/ticket":         # متابعة طلب معلّق برقم تذكرته
@@ -2975,7 +2987,11 @@ class Handler(BaseHTTPRequestHandler):
         racs = st["accounts"] if role == "admin" else ([acct] if acct else [])
         try:
             if path == "/":
-                return self._redirect(self._url("/accounts")) if role == "admin" else self._page(PAGES["/"])
+                if role == "admin":
+                    return self._redirect(self._url("/accounts"))
+                if reports_on(role, acct) and not acct.get("gates"):   # موظف الدعم بلا بوابات: البلاغات صفحته
+                    return self._redirect(self._url("/reports"))
+                return self._page(PAGES["/"])
             if path == "/accounts":
                 return self._page(PAGES["/accounts"]) if role == "admin" else self._send(403, {"error": "للمدير فقط"})
             if path == "/api/me":
@@ -2989,6 +3005,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "guide_url": acct.get("guide_url", "") if acct else "",
                                         "guide_text": guide_text_of(acct),
                                         "split": split_on(acct),
+                                        "reports": reports_on(role, acct),
                                         "split_slices": list(split_subs.SLICES) if split_on(acct) else [],
                                         "split_max": split_subs.MAX_SLICE if split_on(acct) else 0,
                                         "gates": gates})
@@ -3116,6 +3133,14 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/content/admin":
                     return self._send(200, content_state())
                 return self._send(404, {"error": "not found"})
+            if path == "/reports" or path == "/api/reports":   # بلاغات المحتوى (للمدير وللموظف الذي فُتحت له)
+                if not reports_on(role, acct):
+                    return self._send(403, {"error": "غير متاح"})
+                if path == "/reports":
+                    return self._page("reports_admin.html")
+                d = reports.listing(DATA_DIR, self._q("state") or "open", content.key_ok(self._q("s")))
+                return self._send(200, dict(d, role=role, name=acct["name"] if acct else "المدير",
+                                            gates=len(acct.get("gates") or []) if acct else 0))
             if path == "/contest" or path.startswith("/api/contest/"):   # مسابقة التوقّعات (للمدير)
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -3907,6 +3932,59 @@ class Handler(BaseHTTPRequestHandler):
             res["gifts"] = contest_deliver(rec["eid"], force=True)
         return self._send(200, res)
 
+    # ---------- بلاغات المحتوى ----------
+    def _report_get(self, path):
+        """خطوات صفحة البلاغ من ملفات M3U: السيرفرات ← أقسام السيرفر ← عناصر القسم، والبحث بالاسم في السيرفر كله."""
+        s = self._q("s")
+        if path == "/api/report/servers":
+            res = reports.servers(DATA_DIR)
+        elif path == "/api/report/groups":
+            res = reports.groups(DATA_DIR, s)
+        elif path == "/api/report/items":
+            res = reports.items(DATA_DIR, s, self._q("t"), self._q("g"), self._q("q"), self._q("p"))
+        elif path == "/api/report/search":
+            res = reports.search(DATA_DIR, s, self._q("q"))
+        else:
+            res = None
+        if res is None:
+            return self._send(404, {"ok": False, "error": "not found"})
+        return self._send(200, res, extra={"Cache-Control": "public, max-age=300"})
+
+    def _report_post(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            n = -1
+        if not 0 <= n <= 8192:                  # عامٌّ بلا دخول: جسمٌ صغيرٌ معلومُ الطول وحده
+            return self._send(413, {"ok": False, "error": "طلب كبير"})
+        try:
+            req = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            return self._send(400, {"ok": False, "error": "طلب غير صالح"})
+        if not reports.rate_ok(self._client_ip()):
+            return self._send(429, {"ok": False, "error": "بلاغاتٌ كثيرة من جهازك — انتظر ساعة ثم أعد المحاولة."})
+        try:
+            rec, new = reports.submit(DATA_DIR, req)
+        except reports.Invalid as e:
+            return self._send(400, {"ok": False, "error": str(e)})
+        return self._send(200, {"ok": True, "new": new, "count": rec["count"], "label": reports.label(rec)})
+
+    def _reports_post(self, path, role, acct):
+        """للموظف: «تم الإصلاح» وإعادة الفتح، وللمدير الحذف."""
+        body = self._body()
+        rid = str(body.get("id", ""))
+        if path == "/api/reports/state":
+            r = reports.set_state(DATA_DIR, rid, bool(body.get("done")), acct["name"] if acct else "المدير",
+                                  body.get("reply", ""))
+            return self._send(200, {"ok": True, "item": dict(r, label=reports.label(r))}) if r \
+                else self._send(404, {"error": "لا بلاغ بهذا الرقم"})
+        if path == "/api/reports/delete":
+            if role != "admin":
+                return self._send(403, {"error": "للمدير فقط"})
+            return self._send(200, {"ok": True}) if reports.remove(DATA_DIR, rid) \
+                else self._send(404, {"error": "لا بلاغ بهذا الرقم"})
+        return self._send(404, {"error": "not found"})
+
     # ---------- تجديد الاشتراك (عام) ----------
     def _client_ip(self):
         fwd = self.headers.get("X-Forwarded-For", "")
@@ -3984,6 +4062,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._salla_webhook()
             if path in ("/api/renew/lookup", "/api/renew/claim"):
                 return self._renew_public(path)
+            if path == "/api/report":               # بلاغ المشترك (عام، بحدٍّ بالساعة)
+                return self._report_post()
             if path == "/api/contest/start":         # النتيجة والاسم من الصفحة ← رمزٌ ورسالةٌ جاهزة
                 return self._contest_start()
             if path == "/api/contest/wa-inbound":    # رسالة توقّعٍ وصلت خدمة واتساب (موقَّعة بسرّها)
@@ -4028,6 +4108,10 @@ class Handler(BaseHTTPRequestHandler):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._service_post(path, st)
+                if path.startswith("/api/reports/"):   # الموظف يعلّم البلاغ «تم الإصلاح» أو يعيد فتحه
+                    if not reports_on(role, acct):
+                        return self._send(403, {"error": "غير متاح"})
+                    return self._reports_post(path, role, acct)
                 if path.startswith("/api/mygates"):    # الشخص يدير بواباته بنفسه
                     if role != "account":
                         return self._send(403, {"error": "غير متاح"})
