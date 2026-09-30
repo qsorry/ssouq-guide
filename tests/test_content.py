@@ -1004,8 +1004,15 @@ def unit_render():
           and html.index('<nav class="servers"') < html.index('<div id="cres"') < html.index('<aside class="ad"')
           < html.index('<div class="herobox">') < html.index('<section class="row">'))
     check("باقات السيرفر نفسه بأسعارها وخصمها وحملة content-ad", "كل هذا المحتوى في اشتراك سمارت" in ad
-          and ad.count('class="adplan"') == 3 and ad.count("utm_campaign=content-ad") == 4 and "-50%" in ad
-          and "<s>92</s>" in ad and "اشترك في سمارت</a>" in ad and "9 مسلسلات بمواسمها" in ad, ad[:300])
+          and ad.count('class="adplan"') == 3 and ad.count("utm_campaign=content-ad") == 4
+          and "اشترك في سمارت</a>" in ad and "9 مسلسلات بمواسمها" in ad, ad[:300])
+    check("وخصم سمارت كود الخصم لأول طلب (promo في CATALOG): نسبته على كل باقة وما يُدفع به، والكود في النص، ولا شطب",
+          ad.count('<span class="off">-30%</span>') == 3 and "<s>" not in ad
+          and '<em>76 ر.س</em><span class="aft">53.20 ر.س بكود NEW30</span>' in ad
+          and '<em>140 ر.س</em><span class="aft">98 ر.س بكود NEW30</span>' in ad
+          and '<p class="adcode">لأول طلب: اكتب الكود <code>NEW30</code> في «عندك كوبون خصم؟» بصفحة الدفع</p>' in ad, ad)
+    check("والجانب كذلك: ما يُدفع بالكود تحت سعر كل باقة", '<em>76 ر.س<i class="aft">53.20 ر.س بكود NEW30</i></em>' in html
+          and '<em>140 ر.س<i class="aft">98 ر.س بكود NEW30</i></em>' in html)
     code, html2 = page(d, "smart", t="series")
     check("وفي صفحة النوع في أعلاها كذلك", html2.count('<aside class="ad"') == 1
           and html2.index('<aside class="ad"') < html2.index('<div class="stats">'))
@@ -1019,6 +1026,7 @@ def unit_render():
     check("وكاسبر بباقاته هو لا بباقات فالكون", "كل هذا المحتوى في اشتراك كاسبر" in ad and adplans.count('class="adplan"') == 2
           and adplans.index("p1147637724") < adplans.index("p1557813796") and "<em>28 ر.س</em>" in adplans
           and "<em>23 ر.س</em>" in adplans and "اشترك في كاسبر</a>" in ad and "p153695876" not in ad
+          and "adcode" not in ad and 'class="aft"' not in ad and 'class="off"' not in ad            # كاسبر بلا كود خصم
           and "اشتراكات سمارت سوق" not in ad
           and 'href="https://ssouq.com/اشتراك-كاسبر-iptv-لمدة-12-شهر-3-أشهر-هدية/p1147637724?utm_source=guide.ssouq.com'
               '&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in ad, ad[:300])
@@ -1237,7 +1245,9 @@ def unit_render_en():
           and '>Subscribe<span class="wide"> to Smart</span></a>' in ad and ">Help me choose</a>" in ad
           and "<b>Smart · Entertainment year</b><small>Movies &amp; series</small>" in ad
           and "<b>Smart · Full year</b><small>Best seller</small>" in ad and "<b>Smart · 30 months</b><small>Best value</small>" in ad
-          and "<em>46 SAR<s>92</s></em>" in ad and ad.count("utm_campaign=content-ad") == 4, ad[:400])
+          and '<em>76 SAR</em><span class="aft">53.20 SAR with code NEW30</span>' in ad
+          and "<p class=\"adcode\">First order: enter code <code>NEW30</code> in the coupon field at checkout</p>" in ad
+          and ad.count("utm_campaign=content-ad") == 4, ad[:400])
     check("والجانب: باقاته بحملة الصفحة، و«Subscribe to Smart»", "<h2>Subscribe to Smart</h2>" in html
           and "p2091471394?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content" in html
           and ">All plans</a>" in html and 'data-name="Smart"' in html and html.count('<span class="n">') == 6)

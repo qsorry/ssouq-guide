@@ -461,8 +461,21 @@ _TWO = re.compile("ساعتان|ساعتين|يومان|يومين|أسبوعا�
 
 
 def _catalog():
-    """باقات CATALOG بمعرّفها، ومع كلٍّ سيرفرها (‏brand) لاسمها بالإنجليزية."""
-    return {p["id"]: dict(p, brand=k) for k, b in tournament._catalog().items() for p in b.get("plans", [])}
+    """باقات CATALOG بمعرّفها، ومع كلٍّ سيرفرها (‏brand) لاسمها بالإنجليزية، وكود خصم علامته (‏promo) إن كان لها
+    ولم تُستثنَ الباقة منه (‏nopromo، كاليوم التجريبي)."""
+    return {p["id"]: dict(p, brand=k, promo=None if p.get("nopromo") else b.get("promo"))
+            for k, b in tournament._catalog().items() for p in b.get("plans", [])}
+
+
+def _promo(p, tr=AR):
+    """كود الخصم لأول طلب على باقةٍ من _catalog (‏promo في CATALOG: كوبون سلة نفسه) وما يدفعه صاحب أول طلب به:
+    «53.20 ر.س بكود NEW30» — أو "" لباقةٍ بلا كود."""
+    pr = p.get("promo")
+    if not pr:
+        return ""
+    v = round(_money(p.get("price")) * (100 - pr["pct"])) / 100
+    after = str(int(v)) if v == int(v) else f"{v:.2f}"
+    return tr(f"{after} ر.س بكود {pr['code']}", f"{after} SAR with code {pr['code']}")
 
 
 def _dur_en(s):
@@ -498,17 +511,19 @@ def _ad(srv, c, tr=AR):
     plans = own or ([] if srv["buy"] else [catalog[i] for i in tournament.ADS if i in catalog])
     if not plans and not srv["buy"]:
         return ""
-    cards = []
+    cards, code = [], None
     for p in plans[:3]:
         price, was = _money(p.get("price")), _money(p.get("was"))
         off = round((1 - price / was) * 100) if was > price > 0 else 0
+        pct = off if off >= 5 else (p["promo"]["pct"] if p.get("promo") else 0)   # الشطب أولًا، وإلا خصم الكود
+        code = code or (p.get("promo") or {}).get("code")
         pname, psub = _plan(p, tr, srv)
         cards.append(f'<a class="adplan" href="{_esc(_utm(p["url"], AD_CAMPAIGN))}" target="_blank" rel="noopener">'
-                     + (f'<span class="off">-{off}%</span>' if off >= 5 else "")
+                     + (f'<span class="off">-{pct}%</span>' if pct else "")
                      + f'<img src="{_esc(p["img"])}" alt="" width="56" height="56" loading="lazy">'
                      f'<span class="t"><b>{_esc(pname)}</b><small>{_esc(psub)}</small></span>'
                      f'<em>{_esc(p["price"])} {tr("ر.س", "SAR")}' + (f'<s>{_esc(p["was"])}</s>' if off >= 5 else "")
-                     + "</em></a>")
+                     + "</em>" + (f'<span class="aft">{_esc(_promo(p, tr))}</span>' if p.get("promo") else "") + "</a>")
     name = _esc(tr.name(srv))
     buy = _utm(srv["buy"], AD_CAMPAIGN) if srv["buy"] else _utm(plans[0]["url"], AD_CAMPAIGN)
     mine = bool(own or srv["buy"])
@@ -521,7 +536,9 @@ def _ad(srv, c, tr=AR):
             + (f'<h2>{tr(f"كل هذا المحتوى في اشتراك {name}", f"All this content in a {name} subscription")}</h2>'
                f'<p>{_esc(summary)} — {tr(pitch, pitch[:1].lower() + pitch[1:])}' if mine else f'<h2>{brand}</h2><p>{pitch}')
             + '</p>'
-            f'<div class="adbtns"><a class="btn" href="{_esc(buy)}" target="_blank" rel="noopener">'
+            + (f'<p class="adcode">{tr("لأول طلب: اكتب الكود", "First order: enter code")} <code>{_esc(code)}</code> '
+               f'{tr("في «عندك كوبون خصم؟» بصفحة الدفع", "in the coupon field at checkout")}</p>' if code else "")
+            + f'<div class="adbtns"><a class="btn" href="{_esc(buy)}" target="_blank" rel="noopener">'
             + (tr(f"اشترك في {name}", f'Subscribe<span class="wide"> to {name}</span>') if mine
                else tr("اشترك الآن", "Subscribe now")) + '</a>'
             f'<a class="btn ghost" href="/#buy">{tr("ساعدني في الاختيار", "Help me choose")}</a></div></div>'
@@ -545,7 +562,8 @@ def _cta(srv, tr=AR):
             rows.append(f'<a class="plan" href="{_esc(url)}" target="_blank" rel="noopener">'
                         f'<img src="{_esc(p["img"])}" alt="" width="42" height="42" loading="lazy">'
                         f'<span><b>{_esc(pname)}</b><small>{_esc(psub)}</small></span>'
-                        f'<em>{_esc(p["price"])} {tr("ر.س", "SAR")}</em></a>')
+                        f'<em>{_esc(p["price"])} {tr("ر.س", "SAR")}'
+                        + (f'<i class="aft">{_esc(_promo(p, tr))}</i>' if p.get("promo") else "") + '</em></a>')
     buy = _utm(srv["buy"]) if srv["buy"] else ""
     link = buy or first or "/#buy"
     subscribe = tr(f"اشترك في {name}", f"Subscribe to {name}")
@@ -999,12 +1017,17 @@ button{font:inherit;color:inherit}
 .adplan s{color:var(--mute);font-weight:500;font-size:.78rem;margin-inline-start:6px}
 .adplan .off{position:absolute;top:8px;inset-inline-end:8px;background:#e5484d;color:#fff;font-size:.68rem;font-weight:800;
   border-radius:6px;padding:1px 6px}
+.adplan .aft{font-size:.72rem;font-weight:700;line-height:1.4;color:var(--ink);background:rgba(246,195,67,.14);
+  border:1px dashed rgba(246,195,67,.55);border-radius:7px;padding:2px 7px}   /* ما يدفعه صاحب أول طلب بكود الخصم */
+.ad .adcode{margin:10px 0 0;color:var(--ink);font-size:.86rem}
+.ad .adcode code{display:inline-block;background:var(--gold);color:#1b1400;border-radius:6px;padding:1px 8px;direction:ltr;
+  font:800 .9rem/1.4 ui-monospace,Consolas,monospace;letter-spacing:.06em;user-select:all}
 @media (max-width:760px){.ad{grid-template-columns:1fr;padding:18px}}
 @media (max-width:520px){.ad{padding:14px;gap:12px}.ad h2{font-size:1.1rem;margin:8px 0 4px}   /* مختصرٌ في الأعلى */
   .ad p{font-size:.82rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .adplans{gap:6px}.adplan{padding:12px 4px 8px;gap:4px;border-radius:12px}.adplan img{width:40px;height:40px;border-radius:9px}
   .adplan b{font-size:.74rem}.adplan small{display:none}.adplan em{font-size:.9rem}.adplan s{display:none}
-  .adplan .off{top:4px;inset-inline-end:4px;font-size:.62rem;padding:0 4px}
+  .adplan .off{top:4px;inset-inline-end:4px;font-size:.62rem;padding:0 4px}.adplan .aft{font-size:.6rem;padding:1px 4px}
   .adbtns{margin-top:10px}.adbtns .btn{padding:10px 12px}.adbtns .ghost{flex:0 0 auto}.adbtns .wide{display:none}}
 /* الجانب */
 .side{display:flex;flex-direction:column;gap:16px;min-width:0}
@@ -1031,6 +1054,7 @@ button{font:inherit;color:inherit}
 .plan b{display:block;font-size:.88rem}
 .plan small{color:var(--mute);font-size:.75rem}
 .plan em{font-style:normal;font-weight:700;color:var(--gold);white-space:nowrap}
+.plan em .aft{display:block;font-style:normal;font-size:.7rem;font-weight:600;color:var(--ink)}
 .cta>.btn{width:100%;margin-top:4px}
 .btns{display:flex;gap:8px;margin-top:10px}
 .btns .btn{flex:1;padding:10px}
