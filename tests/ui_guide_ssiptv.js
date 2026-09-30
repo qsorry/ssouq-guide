@@ -103,27 +103,29 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check('result page opens the VIDAA app choice',
       new URL(page.url()).hash === '#activate/smart/vidaa' && (await h2()) === 'اختر التطبيق');
 
-    console.log('== casper: not on Samsung/LG or VIDAA, as its product pages say ==');
+    console.log('== casper: 0Player alone on Samsung/LG, and not on VIDAA ==');
     await open('#activate');
     check('Casper no longer lists Duplecast among its apps',
       (await page.textContent('#view [data-sub="casper"] small')) === 'CASPER VIP أو AroPlayer أو Smarters Pro');
     await open('#activate/casper');
     const cdev = await page.$$eval('#view .dev', b => b.map(x => ({ name: x.querySelector('b').textContent,
       muted: x.classList.contains('muted'), sub: x.querySelector('small').textContent })));
-    const off = cdev.slice(-2), on = cdev.slice(0, -2);
-    check('Casper lists Samsung/LG and VIDAA last, dimmed, "not with Casper"',
-      off.map(d => d.name).join('|') === 'سامسونج و LG و WebOS|هايسنس و VIDAA OS'
+    const off = cdev.slice(-1), on = cdev.slice(0, -1);
+    check('Casper lists VIDAA last, dimmed, "not with Casper"',
+      off.map(d => d.name).join('|') === 'هايسنس و VIDAA OS'
       && off.every(d => d.muted && d.sub === 'لا يعمل مع كاسبر') && on.length > 0 && on.every(d => !d.muted),
       cdev.map(d => d.name).join(' | '));
-    for (const [dev, name] of [['webos', 'سامسونج و LG و WebOS'], ['vidaa', 'هايسنس و VIDAA OS']]) {
+    check('… and Samsung/LG among its devices, with the free 0Player',
+      on.some(d => d.name === 'سامسونج و LG و WebOS' && d.sub === 'تطبيق 0Player المجاني'), JSON.stringify(on.map(d => d.sub)));
+    for (const [dev, name] of [['vidaa', 'هايسنس و VIDAA OS']]) {
       await open('#activate/casper');
       await page.click(`#view [data-dev="${dev}"]`);
       await page.waitForSelector('#view .card.result');
       const txt = await page.textContent('#view');
       check(`casper → ${dev}: what the product page says, and no steps`,
         (await h2()) === `كاسبر لا يعمل على ${name}` && new URL(page.url()).hash === `#activate/casper/${dev}`
-        && txt.includes('اشتراك كاسبر لا يعمل على شاشات سامسونج و LG، ولا على الشاشات بنظام VIDAA أو WebOS')
-        && txt.includes('ويعمل على الكمبيوتر والماك وجوال أندرويد والآيفون والشاشات بنظام أندرويد')
+        && txt.includes('اشتراك كاسبر لا يعمل على الشاشات بنظام VIDAA (هايسنس)')
+        && txt.includes('ويعمل على الكمبيوتر والماك وجوال أندرويد والآيفون والشاشات بنظام أندرويد، وعلى شاشات سامسونج و LG بتطبيق 0Player')
         && !(await page.$('#view [data-next], #view [data-variant]')));
       check('… with its own tab title', (await page.title()).startsWith(`كاسبر لا يعمل على ${name}`), await page.title());
       await page.click('#view [data-buy]');
@@ -163,10 +165,13 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     await open('#activate/smart/webos/0player/6');
     check("Smart's 0Player code unchanged", (await page.textContent('#view')).includes('92929480'));
     await open('#activate/casper/webos/duplecast/3');
-    check("Casper's old Duplecast link opens its not-on-this-TV screen",
-      new URL(page.url()).hash === '#activate/casper/webos' && (await h2()) === 'كاسبر لا يعمل على سامسونج و LG و WebOS');
+    check("Casper's old Duplecast link opens its Samsung/LG app choice (0Player)",
+      new URL(page.url()).hash === '#activate/casper/webos' && (await h2()) === 'اختر التطبيق');
+    await open('#activate/casper/webos/0player/6');
+    const cas = await page.textContent('#view');
+    check("Casper's 0Player has its own portal code", cas.includes('59820658') && !cas.includes('92929480') && !cas.includes('75710072'));
     await open('#activate/casper/vidaa/4');
-    check('… and so does an old Casper VIDAA step link',
+    check('an old Casper VIDAA step link opens its not-on-this-TV screen',
       new URL(page.url()).hash === '#activate/casper/vidaa' && (await h2()) === 'كاسبر لا يعمل على هايسنس و VIDAA OS');
     await open('#activate/smart/vidaa/3');
     check('an old VIDAA step link (before the app choice) opens the app choice',

@@ -134,10 +134,12 @@ def main():
           and all(z[k].get("num") == 5 and z[k].get("next") == 6 for k in (4, 5)) and z[6].get("num") == 6)
     zv = re.compile(r'<video src="/static/video/0player-92929480-ar\.mp4\?v=(\d+)" poster="/static/video/0player-92929480-ar\.webp\?v=\1"')
     check("فيديو 0Player أول خطوة التحميل، واسمه يحمل رمز سمارت", bool(zv.search(z[0]["html"])))
-    check("ولفالكون فيديوه وصوره باسم رمزه (يشتقّها المعالج بتبديل الرمز)",
-          all(os.path.isfile(os.path.join(ROOT, p)) for p in (
-              "static/video/0player-75710072-ar.mp4", "static/video/0player-75710072-ar.webp",
-              "static/img/webos-0player-portal-75710072.webp", "static/img/webos-0player-web-75710072.webp")))
+    check("ولفالكون وكاسبر فيديوهما وصورهما باسم رمزيهما (يشتقّها المعالج بتبديل الرمز)",
+          all(os.path.isfile(os.path.join(ROOT, p.format(c))) for c in ("75710072", "59820658") for p in (
+              "static/video/0player-{}-ar.mp4", "static/video/0player-{}-ar.webp",
+              "static/img/webos-0player-portal-{}.webp", "static/img/webos-0player-web-{}.webp")))
+    check("0Player مجاني: في بطاقة التطبيق وخيار التطبيق", "مجاني · من متجر الشاشة" in z[0]["html"]
+          and next(o for o in w["choose"]["options"] if o["key"] == "0player")["sub"].startswith("مجاني "))
     h = G.render("/vidaa").decode("utf-8")
     check("/vidaa تربط محرّر ss-iptv.com وأداة M3U",
           'href="https://ss-iptv.com/en/users/playlist"' in h and 'href="/#m3u"' in h)
@@ -146,6 +148,7 @@ def main():
           "لكل الاشتراكات" not in h and "سمارت أو فالكون، أما كاسبر فلا يعمل على هذه الشاشات" in h)
     h = G.render("/samsung-lg").decode("utf-8")
     check("/samsung-lg فيها التطبيقات الثلاثة", "تطبيق 0Player" in h and "تطبيق Duplecast" in h and "تطبيق SS IPTV" in h)
+    check("/samsung-lg تقول إن 0Player مجاني", "تطبيق 0Player المجاني من متجر الشاشة" in h)
     check("/vidaa فيها التطبيقان", all(x in G.render("/vidaa").decode("utf-8") for x in ("تطبيق SS IPTV", "تطبيق Duplecast")))
 
     print("\nشاشة أندرويد: Downloader وموافقة الشاشة عليه")

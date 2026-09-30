@@ -15,7 +15,7 @@ const { execSync, execFileSync } = require('child_process');
 const fs = require('fs'); const path = require('path'); const os = require('os');
 
 const A = path.join(__dirname, 'assets'), K = 3;
-const CODES = ['92929480', '75710072'];                 // رمز بوابة سمارت، ثم فالكون
+const CODES = ['92929480', '75710072', '59820658'];     // رمز بوابة سمارت، ثم فالكون، ثم كاسبر
 const LG_LISTS = 'http://ngfts.lge.com/fts/gftsDownload.lge?biz_code=APP_STORE&func_code=APP_PREVIEW&file_path=/appstore/app/preview/20260312/38815515.jpg';
 const EXE = fs.existsSync('/opt/pw-browsers/chromium/chrome-linux/chrome')
   ? '/opt/pw-browsers/chromium/chrome-linux/chrome'
