@@ -1,9 +1,10 @@
 // Browser test: SS IPTV in the activation guide, for Smart and Falcon. VIDAA asks for the app (SS IPTV
 // or Duplecast) and SS IPTV walks all seven steps to the done screen with every image loaded; Samsung/LG
 // asks for the app (0Player, Duplecast or SS IPTV); Falcon keeps its own 0Player portal code; old links
-// still open. (Duplecast's own steps: ui_guide_duplecast.js.) Casper does not run on
-// Samsung/LG or VIDAA, as its product pages in the store say, so those two say just that and open
-// Smart's plans for that TV. And the buy path: VIDAA gets the Samsung/LG plans and Smart first.
+// still open. (Duplecast's own steps: ui_guide_duplecast.js.) Casper runs on Samsung/LG with its own
+// plans for those TVs (Duplecast, and a note linking the two plans), and not on VIDAA, as its product
+// pages in the store say: VIDAA says just that and opens Smart's plans for that TV. And the buy path:
+// VIDAA gets the Samsung/LG plans and Smart first.
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -103,27 +104,39 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check('result page opens the VIDAA app choice',
       new URL(page.url()).hash === '#activate/smart/vidaa' && (await h2()) === 'اختر التطبيق');
 
-    console.log('== casper: not on Samsung/LG or VIDAA, as its product pages say ==');
+    console.log('== casper: its own plans on Samsung/LG, not on VIDAA — as its product pages say ==');
     await open('#activate');
     check('Casper no longer lists Duplecast among its apps',
       (await page.textContent('#view [data-sub="casper"] small')) === 'CASPER VIP أو AroPlayer أو Smarters Pro');
     await open('#activate/casper');
     const cdev = await page.$$eval('#view .dev', b => b.map(x => ({ name: x.querySelector('b').textContent,
       muted: x.classList.contains('muted'), sub: x.querySelector('small').textContent })));
-    const off = cdev.slice(-2), on = cdev.slice(0, -2);
-    check('Casper lists Samsung/LG and VIDAA last, dimmed, "not with Casper"',
-      off.map(d => d.name).join('|') === 'سامسونج و LG و WebOS|هايسنس و VIDAA OS'
-      && off.every(d => d.muted && d.sub === 'لا يعمل مع كاسبر') && on.length > 0 && on.every(d => !d.muted),
-      cdev.map(d => d.name).join(' | '));
-    for (const [dev, name] of [['webos', 'سامسونج و LG و WebOS'], ['vidaa', 'هايسنس و VIDAA OS']]) {
+    const off = cdev[cdev.length - 1], on = cdev.slice(0, -1), lg = cdev.find(d => d.name === 'سامسونج و LG و WebOS');
+    check('Casper lists VIDAA last, dimmed, "not with Casper"',
+      off.name === 'هايسنس و VIDAA OS' && off.muted && off.sub === 'لا يعمل مع كاسبر'
+      && on.length > 0 && on.every(d => !d.muted), cdev.map(d => d.name).join(' | '));
+    check('… and Samsung/LG with the rest: Duplecast, with its own Casper plans',
+      lg && !lg.muted && lg.sub === 'تطبيق Duplecast · بباقة كاسبر الخاصة بها', lg && lg.sub);
+    await page.click('#view [data-dev="webos"]');
+    await page.waitForSelector('#view [data-next]');
+    const lgText = await page.textContent('#view');
+    const lgLinks = await page.$$eval('#view .note a.link', a => a.map(x => x.getAttribute('href')));
+    check('casper → webos: the Duplecast steps, opening with the note on its Samsung/LG plans',
+      new URL(page.url()).hash === '#activate/casper/webos' && (await h2()) === 'حمّل تطبيق Duplecast (دبل كاست)'
+      && lgText.includes('باقة كاسبر الخاصة بشاشات سامسونج و LG') && lgText.includes('أما باقة كاسبر العادية فلا تعمل على هذه الشاشات')
+      && lgText.indexOf('باقة كاسبر الخاصة') < lgText.indexOf('Duplecast IPTV'), await h2());
+    check('… its two links are the two Casper Samsung/LG plans in the store',
+      lgLinks.filter(u => /\/p(138230620|1152389812)\?utm_source=guide\.ssouq\.com&utm_medium=referral&utm_campaign=guide$/.test(u)).length === 2,
+      lgLinks.join(' '));
+    for (const [dev, name] of [['vidaa', 'هايسنس و VIDAA OS']]) {
       await open('#activate/casper');
       await page.click(`#view [data-dev="${dev}"]`);
       await page.waitForSelector('#view .card.result');
       const txt = await page.textContent('#view');
       check(`casper → ${dev}: what the product page says, and no steps`,
         (await h2()) === `كاسبر لا يعمل على ${name}` && new URL(page.url()).hash === `#activate/casper/${dev}`
-        && txt.includes('اشتراك كاسبر لا يعمل على شاشات سامسونج و LG، ولا على الشاشات بنظام VIDAA أو WebOS')
-        && txt.includes('ويعمل على الكمبيوتر والماك وجوال أندرويد والآيفون والشاشات بنظام أندرويد')
+        && txt.includes('اشتراك كاسبر لا يعمل على الشاشات بنظام VIDAA')
+        && txt.includes('ويعمل على الكمبيوتر والماك وجوال أندرويد والآيفون والشاشات بنظام أندرويد، ولشاشات سامسونج و LG باقة كاسبر خاصة بها')
         && !(await page.$('#view [data-next], #view [data-variant]')));
       check('… with its own tab title', (await page.title()).startsWith(`كاسبر لا يعمل على ${name}`), await page.title());
       await page.click('#view [data-buy]');
@@ -163,8 +176,8 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     await open('#activate/smart/webos/0player/6');
     check("Smart's 0Player code unchanged", (await page.textContent('#view')).includes('92929480'));
     await open('#activate/casper/webos/duplecast/3');
-    check("Casper's old Duplecast link opens its not-on-this-TV screen",
-      new URL(page.url()).hash === '#activate/casper/webos' && (await h2()) === 'كاسبر لا يعمل على سامسونج و LG و WebOS');
+    check("Casper's old Duplecast link opens its Samsung/LG steps",
+      new URL(page.url()).hash === '#activate/casper/webos' && (await h2()) === 'حمّل تطبيق Duplecast (دبل كاست)');
     await open('#activate/casper/vidaa/4');
     check('… and so does an old Casper VIDAA step link',
       new URL(page.url()).hash === '#activate/casper/vidaa' && (await h2()) === 'كاسبر لا يعمل على هايسنس و VIDAA OS');
