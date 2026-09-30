@@ -642,8 +642,8 @@ const VIDAA_NOTE = '<div class="note">هذه الخطوات لشاشات هاي�
 /* ------------------------------------------------------------
    SS IPTV — مشغّل مجاني يقرأ رابط M3U، والرابط يُبنى من الهوست واسم المستخدم
    وكلمة المرور (أداة #m3u)، فيصلح لسمارت وفالكون بلا رمز بوابة: خطواته واحدة
-   فيهما، يعرّفها DEVICES ويرثها FALCON كما هي. وكاسبر لا يعمل على هذه الشاشات
-   أصلًا (كما تقول صفحتا منتجه في المتجر)، فلا يرثها — انظر CASPER.
+   فيهما، يعرّفها DEVICES ويرثها FALCON كما هي. وكاسبر لا يرثها: على سامسونج و LG
+   له 0Player وحده برمز بوابته، ولا يعمل على VIDAA — انظر CASPER.
    الذي يختلف خطوة التحميل وحدها: LG من متجرها — في كتالوج LG للسعودية على
    شاشات 2016–2024، وليس على موديلات 2025 (وفيها 0Player و Duplecast) —
    وسامسونج ليس في متجرها فيعمل من فلاشة (شاشات 2015–2019 كما يذكر موقعه)،
@@ -706,9 +706,9 @@ const SS_IPTV_STEPS = [
 const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4?v=2" poster="/static/video/ssiptv-ar.webp?v=2" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الخطوات كلها في دقيقة وربع، ثم اتبعها هنا خطوة خطوة.</p></div>';
-// فيديو خطوات 0Player — أول خطوة التحميل. اسمه يحمل رمز البوابة (…-92929480-…) فيتبدّل مع رمز فالكون
+// فيديو خطوات 0Player — أول خطوة التحميل. اسمه يحمل رمز البوابة (…-92929480-…) فيتبدّل مع رمز فالكون وكاسبر
 // كصور الخانات، ومصدره tools/video/0player.html. و?v= يُرفع مع كل إنتاج جديد كفيديو SS IPTV.
-const ZERO_VIDEO = '<div class="vid"><video src="/static/video/0player-92929480-ar.mp4?v=1" poster="/static/video/0player-92929480-ar.webp?v=1" '
+const ZERO_VIDEO = '<div class="vid"><video src="/static/video/0player-92929480-ar.mp4?v=2" poster="/static/video/0player-92929480-ar.webp?v=2" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الطريقتين في دقيقة ونصف، ثم اتبع الخطوات هنا واحدة واحدة.</p></div>';
 // فيديو IPTV Smarters Pro على شاشة أندرويد (Downloader وموافقة الشاشة عليه ثم الدخول) — أول الخطوات، ومصدره
@@ -741,7 +741,7 @@ const SS_IPTV = get => [get, ...SS_IPTV_STEPS];
 /* ------------------------------------------------------------
    Duplecast (دبل كاست) — مشغّل في متاجر سامسونج و LG و VIDAA، يدخل ببيانات Xtream نفسها: الهوست والبورت
    في خانتين، واسم المستخدم وكلمة المرور. فلا رمز بوابة فيه، وخطواته واحدة في سمارت وفالكون: يعرّفها
-   DEVICES ويرثها FALCON كما هي (وكاسبر لا يعمل على هذه الشاشات أصلًا).
+   DEVICES ويرثها FALCON كما هي (وكاسبر على سامسونج و LG بـ 0Player وحده).
    التدفّق: التطبيق من متجر الشاشة ← باركود الشاشة بالجوال (أو duplecast.com ← Manage Device) ← Add Playlist
    ← تبويب Xtream Info ← Save ← التحديث ↻ على الشاشة. ثم التفعيل: 15 يومًا مجانًا، ثم 3 دولارات للسنة من
    موقعه (Activate by Payment) — بنصّ قسم Activation في duplecast.com — أو كود تفعيل سنة من المتجر بـ16 ريال
@@ -880,7 +880,7 @@ const DEVICES = {
   webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "0Player أو Duplecast أو SS IPTV", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "0player", label: "0Player", sub: "من متجر الشاشة: بالباركود من جوالك أو بالريموت", icon: "0player" },
+      { key: "0player", label: "0Player", sub: "مجاني من متجر الشاشة: بالباركود من جوالك أو بالريموت", icon: "0player" },
       DUPLECAST_OPT,
       SS_IPTV_OPT
     ]},
@@ -890,9 +890,9 @@ const DEVICES = {
       // (num) وتنتهيان إلى الأخيرة (next)، والرجوع منهما إلى التفرّع (prev). الصور من tools/video/shots_0player.js.
       "0player": [
         { title: "حمّل تطبيق 0Player (زيرو بلاير)",
-          html: ZERO_VIDEO + APP("0player", "0Player", "من متجر الشاشة")
+          html: ZERO_VIDEO + APP("0player", "0Player", "مجاني · من متجر الشاشة")
             + '<p>من متجر التطبيقات في الشاشة ابحث عن <b dir="ltr">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله، ثم افتحه من تطبيقاتك.</p>'
-            + '<div class="note">موجود في متجر سامسونج، وفي متجر LG لشاشات 2016 إلى 2025.</div>' + WEBOS_NOTE },
+            + '<div class="note">التطبيق مجاني، وموجود في متجر سامسونج، وفي متجر LG لشاشات 2016 إلى 2025.</div>' + WEBOS_NOTE },
         { title: "افتح التطبيق واضغط «متابعة»", img: "/static/img/webos-0player-notice.webp",
           html: '<p>أول مرة تفتح التطبيق تظهر رسالة: <b>لم ترفع قائمة التشغيل الخاصة بك بعد</b>. اضغط <b>متابعة</b> لتدخل التطبيق.</p>'
             + '<div class="note">في الرسالة عنوان <b dir="ltr">MAC</b> ومفتاح الجهاز، ولا تحتاجهما في هذا الشرح. وإن لم تظهر الرسالة فالتطبيق على الشاشة الرئيسية: انتقل للخطوة التالية.</div>' },
@@ -1068,8 +1068,8 @@ function promoBox(k){
    صفحات الأجهزة الثابتة (tools/sync_guide_data.js).
    وفالكون يشترك معه في أكثر الخطوات ويختلف في أربعة مواضع فقط:
    الآيفون (تطبيق آخر)، والأندرويد (تطبيق فالكون بدل MR7/NEXT+)،
-   وسامسونج و LG (رمز بوابة مختلف في 0Player). وكاسبر يختلف في موضعين، ولا يعمل
-   على شاشتين (أسفل FALCON). وويندوز وماك والسيارة يرثها الاثنان كما هي: كلها
+   وسامسونج و LG (رمز بوابة مختلف في 0Player). وكاسبر يختلف في الآيفون والأندرويد،
+   وله 0Player وحده برمز بوابته، ولا يعمل على VIDAA (أسفل FALCON). وويندوز وماك والسيارة يرثها الاثنان كما هي: كلها
    تدخل بالهوست واسم المستخدم وكلمة المرور. و VIDAA — ومعه SS IPTV على سامسونج
    و LG — يرثه فالكون وحده.
    ============================================================ */
@@ -1091,6 +1091,10 @@ const FALCON_LOGIN = { title: "سجّل الدخول ببيانات اشتراك
     + '<p>ثم اضغط <b dir="ltr">ADD USER</b>. يُحفظ حسابك فتجده في <b dir="ltr">LIST USERS</b>، ومنه <b dir="ltr">CONNECT</b> لفتح الاشتراك.</p>'
     + '<div class="note">لا توجد في تطبيق فالكون خانة لرابط الهوست — الخادم مضبوط داخل التطبيق، فيكفيك اسم المستخدم وكلمة المرور. '
     + 'أما إن استخدمت <b dir="ltr">IPTV Smarters Pro</b> بدلًا منه فسيطلب رابط الهوست، وهو يصلك مع بيانات اشتراكك.</div>' + CREDS };
+
+// خطوات 0Player نفسها برمز بوابة آخر — تُشتقّ ولا تُنسخ. وما كُتب عليه الرمز من صور وفيديو اسمه يحمله
+// (…-0player-portal-<الرمز>.webp، 0player-<الرمز>-ar.mp4) فيتبدّل معه تلقائيًا إلى نسخة الاشتراك.
+const zeroPlayer = code => DEVICES.webos.variants["0player"].map(s => JSON.parse(JSON.stringify(s).split("92929480").join(code)));
 
 const FALCON = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق Smarters Player Lite", steps: [
@@ -1148,13 +1152,9 @@ const FALCON = {
     },
   },
 
-  // نفس خطوات 0Player، ورمز البوابة وحده يختلف — فيُشتقّ منها ولا يُنسخ.
-  // وما كُتب عليه الرمز من صور وفيديو اسمه يحمله (…-0player-portal-<الرمز>.webp، 0player-<الرمز>-ar.mp4)
-  // فيتبدّل معه هنا تلقائيًا إلى نسخة فالكون. و SS IPTV يبقى كما هو: رابطه بلا رمز بوابة.
+  // نفس خطوات 0Player برمز بوابة فالكون (zeroPlayer). و SS IPTV و Duplecast يبقيان كما هما: بلا رمز بوابة.
   webos: Object.assign({}, DEVICES.webos, {
-    variants: Object.assign({}, DEVICES.webos.variants, {
-      "0player": DEVICES.webos.variants["0player"].map(s => JSON.parse(JSON.stringify(s).split("92929480").join("75710072")))
-    })
+    variants: Object.assign({}, DEVICES.webos.variants, { "0player": zeroPlayer("75710072") })
   })
 };
 
@@ -1167,9 +1167,10 @@ const FALCON = {
    (‏تطبيق CASPER VIP بكود Downloader ‏3638997، أو IPTV Smarters Pro —
    بلا تطبيق مرح/MR7 فهو تطبيق سمارت، وبلا NEXT+ لأنه يدخل برمز خادم
    خاص بلوحة سمارت).
-   ولا يعمل على شاشات سامسونج و LG ولا الشاشات بنظام VIDAA أو WebOS — كما تقول
-   صفحتا منتجه في المتجر — فالشاشتان في آخر قائمة أجهزته بلا خطوات (off): تقولان
-   ذلك وأين يعمل، وتفتحان باقات سمارت لتلك الشاشة كما تحيل إليها صفحة المنتج.
+   وعلى شاشات سامسونج و LG و WebOS بتطبيق 0Player وحده، بخطوات سمارت نفسها ورمز
+   بوابة كاسبر 59820658 (zeroPlayer) — وفيديوه وصوره بالرمز نفسه.
+   ولا يعمل على الشاشات بنظام VIDAA (ولا 0Player في متجرها): هي في آخر قائمة أجهزته
+   بلا خطوات (off)، تقول ذلك وأين يعمل، وتفتح باقات سمارت لتلك الشاشة.
    ============================================================ */
 // دخول تطبيق CASPER VIP — واحد على الآيفون والجوال والشاشة
 const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",
@@ -1179,9 +1180,9 @@ const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتر
     + '<p>ثم اضغط زر الدخول.</p>'
     + '<div class="note">إن طلب التطبيق رابط الهوست فهو يصلك مع بيانات اشتراكك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
 
-// كاسبر لا يعمل على هذه الشاشات، بنصّ صفحتي منتجه في المتجر: أين لا يعمل، وأين يعمل
-const CASPER_OFF = 'اشتراك كاسبر لا يعمل على شاشات سامسونج و LG، ولا على الشاشات بنظام <b dir="ltr">VIDAA</b> أو '
-  + '<b dir="ltr">WebOS</b>. ويعمل على الكمبيوتر والماك وجوال أندرويد والآيفون والشاشات بنظام أندرويد.';
+// كاسبر لا يعمل على شاشات VIDAA: أين لا يعمل، وأين يعمل
+const CASPER_OFF = 'اشتراك كاسبر لا يعمل على الشاشات بنظام <b dir="ltr">VIDAA</b> (هايسنس). ويعمل على الكمبيوتر والماك '
+  + 'وجوال أندرويد والآيفون والشاشات بنظام أندرويد، وعلى شاشات سامسونج و LG بتطبيق <b dir="ltr">0Player</b>.';
 
 const CASPER = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق CASPER VIP أو AroPlayer", choose: {
@@ -1260,9 +1261,14 @@ const CASPER = {
     }
   },
 
+  // سامسونج و LG و WebOS: 0Player وحده، بخطوات سمارت ورمز بوابة كاسبر
+  webos: Object.assign({}, DEVICES.webos, { sub: "تطبيق 0Player المجاني",
+    choose: { title: DEVICES.webos.choose.title, options: DEVICES.webos.choose.options.filter(o => o.key === "0player") },
+    variants: { "0player": zeroPlayer("59820658") }
+  }),
+
   // ما لا يعمل عليه كاسبر (CASPER_OFF): لا خطوات بل off — نصّ الشاشة، ومفتاحها في مسار
-  // الشراء لباقات سمارت لها. وتنزل الشاشتان إلى آخر قائمة الأجهزة.
-  webos: { icon: "smart", name: DEVICES.webos.name, sub: "لا يعمل مع كاسبر", off: { text: CASPER_OFF, buy: "webos" } },
+  // الشراء لباقات سمارت لها. وتنزل إلى آخر قائمة الأجهزة.
   vidaa: { icon: "vidaa", name: DEVICES.vidaa.name, sub: "لا يعمل مع كاسبر", off: { text: CASPER_OFF, buy: "vidaa" } }
 };
 
@@ -1523,7 +1529,7 @@ function renderDevices(){
       .map(([k, d]) => `<button class="dev${d.off ? " muted" : ""}" type="button" data-dev="${k}">${ICONS[d.icon]}<b>${d.name}</b><small>${d.sub}</small></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
-/* جهازٌ لا يعمل عليه الاشتراك (off — كاسبر على سامسونج و LG و VIDAA): لا خطوات، بل ما تقوله
+/* جهازٌ لا يعمل عليه الاشتراك (off — كاسبر على VIDAA): لا خطوات، بل ما تقوله
    صفحة منتجه، وزرٌّ إلى باقات سمارت لهذه الشاشة في مسار الشراء كما تحيل إليها */
 function renderOff(){
   const d = devs()[state.dev]; setProg(PROG_ACT, 1);

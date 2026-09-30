@@ -1,9 +1,10 @@
 <!doctype html>
 <!-- فيديو 0Player (‏static/video/0player-<الرمز>-ar.mp4): المشاهد والتعليقات والتكبير هنا، والمظهر والرسم
      في engine.css و engine.js — كفيديو SS IPTV. رمز البوابة يأتي من الرابط (?code=)، فيُنتج منه
-     فيديوهان: سمارت 92929480 وفالكون 75710072. الصور من capture_0player.js، ومواضعها في B.
+     ثلاثة فيديوهات: سمارت 92929480 وفالكون 75710072 وكاسبر 59820658. الصور من capture_0player.js، ومواضعها في B.
        node tools/video/render.js 0player                  # سمارت
-       node tools/video/render.js 0player code=75710072    # فالكون -->
+       node tools/video/render.js 0player code=75710072    # فالكون
+       node tools/video/render.js 0player code=59820658    # كاسبر -->
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
@@ -14,7 +15,7 @@
 <body>
 <script>
 const CODE = new URLSearchParams(location.search).get("code") || "92929480";
-const SUB = { "92929480": "سمارت", "75710072": "فالكون" }[CODE] || "";
+const SUB = { "92929480": "سمارت", "75710072": "فالكون", "59820658": "كاسبر" }[CODE] || "";
 const VIDEO = { out: `0player-${CODE}-ar`, steps: 6, icon: "../../static/img/apps/0player.webp" };
 const IMG = {
   notice: { src: "assets/0p_notice.webp", max: 1.6 },
@@ -54,7 +55,7 @@ const SCENES = [
 
   { step: 1, dur: 6.2, card: t => `${ICON}
       <h1 dir="ltr" style="margin-top:-4px">0Player</h1>
-      <p class="sub">ويُنطق «زيرو بلاير» · من متجر الشاشة</p>
+      <p class="sub">ويُنطق «زيرو بلاير» · مجاني من متجر الشاشة</p>
       <div class="rows">
         <div class="row" style="opacity:${fade(t, 1.0)}"><b>سامسونج</b><span>من متجر التطبيقات في الشاشة</span></div>
         <div class="row" style="opacity:${fade(t, 2.0)}"><b>LG</b><span>من متجر الشاشة<br>شاشات 2016 إلى 2025</span></div>

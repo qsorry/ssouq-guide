@@ -92,10 +92,11 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     await open('#activate/smart/webos/duplecast/7');
     check('a link to the activation step opens it', (await h2()) === TITLES[5]);
     await open('#activate/casper/webos/duplecast/3');
-    check('Casper still does not run on Samsung/LG', new URL(page.url()).hash === '#activate/casper/webos'
-      && (await h2()) === 'كاسبر لا يعمل على سامسونج و LG و WebOS');
+    check('Casper has no Duplecast on Samsung/LG: its link opens the app choice, 0Player only',
+      new URL(page.url()).hash === '#activate/casper/webos' && (await h2()) === 'اختر التطبيق'
+      && (await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant))).join() === '0player');
     await open('#activate/casper/vidaa/duplecast');
-    check('… nor on VIDAA', new URL(page.url()).hash === '#activate/casper/vidaa' && (await h2()) === 'كاسبر لا يعمل على هايسنس و VIDAA OS');
+    check('… and does not run on VIDAA', new URL(page.url()).hash === '#activate/casper/vidaa' && (await h2()) === 'كاسبر لا يعمل على هايسنس و VIDAA OS');
 
     for (const p of ['/samsung-lg', '/vidaa']) {
       await page.goto(APP + p);

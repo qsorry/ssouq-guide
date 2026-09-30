@@ -204,7 +204,7 @@
     {
      "key": "0player",
      "label": "0Player",
-     "sub": "من متجر الشاشة: بالباركود من جوالك أو بالريموت",
+     "sub": "مجاني من متجر الشاشة: بالباركود من جوالك أو بالريموت",
      "icon": "0player"
     },
     {
@@ -225,7 +225,7 @@
    "0player": [
     {
      "title": "حمّل تطبيق 0Player (زيرو بلاير)",
-     "html": "<div class=\"vid\"><video src=\"/static/video/0player-92929480-ar.mp4?v=1\" poster=\"/static/video/0player-92929480-ar.webp?v=1\" controls playsinline preload=\"none\" width=\"720\" height=\"1280\"></video><p class=\"sub\">شاهد الطريقتين في دقيقة ونصف، ثم اتبع الخطوات هنا واحدة واحدة.</p></div><div class=\"appbox\"><img src=\"/static/img/apps/0player.webp\" alt=\"أيقونة 0Player\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">0Player</b><small>من متجر الشاشة</small></span></div><p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله، ثم افتحه من تطبيقاتك.</p><div class=\"note\">موجود في متجر سامسونج، وفي متجر LG لشاشات 2016 إلى 2025.</div><div class=\"note\">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir=\"ltr\">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>"
+     "html": "<div class=\"vid\"><video src=\"/static/video/0player-92929480-ar.mp4?v=2\" poster=\"/static/video/0player-92929480-ar.webp?v=2\" controls playsinline preload=\"none\" width=\"720\" height=\"1280\"></video><p class=\"sub\">شاهد الطريقتين في دقيقة ونصف، ثم اتبع الخطوات هنا واحدة واحدة.</p></div><div class=\"appbox\"><img src=\"/static/img/apps/0player.webp\" alt=\"أيقونة 0Player\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">0Player</b><small>مجاني · من متجر الشاشة</small></span></div><p>من متجر التطبيقات في الشاشة ابحث عن <b dir=\"ltr\">0Player</b> — ويُنطق <b>زيرو بلاير</b> — وحمّله، ثم افتحه من تطبيقاتك.</p><div class=\"note\">التطبيق مجاني، وموجود في متجر سامسونج، وفي متجر LG لشاشات 2016 إلى 2025.</div><div class=\"note\">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir=\"ltr\">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>"
     },
     {
      "title": "افتح التطبيق واضغط «متابعة»",
