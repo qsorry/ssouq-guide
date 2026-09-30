@@ -439,8 +439,8 @@ footer a{color:var(--mute)}
         <li><a class="link" href="/iphone">آيفون / آيباد: تطبيق VAR Player</a></li>
         <li><a class="link" href="/android">جوال أندرويد: NEXT+ أو IPTV Smarters Pro</a></li>
         <li><a class="link" href="/android-tv">شاشة / بوكس أندرويد: MR7 TV أو IPTV Smarters Pro</a></li>
-        <li><a class="link" href="/samsung-lg">سامسونج و LG و WebOS: تطبيق 0Player أو SS IPTV</a></li>
-        <li><a class="link" href="/vidaa">هايسنس و VIDAA OS: تطبيق SS IPTV</a></li>
+        <li><a class="link" href="/samsung-lg">سامسونج و LG و WebOS: تطبيق 0Player أو Duplecast أو SS IPTV</a></li>
+        <li><a class="link" href="/vidaa">هايسنس و VIDAA OS: تطبيق SS IPTV أو Duplecast</a></li>
         <li><a class="link" href="/windows">كمبيوتر ويندوز: IPTV Smarters Pro أو IPTVnator</a></li>
         <li><a class="link" href="/mac">ماك: IPTV Smarters Pro</a></li>
       </ul>
@@ -701,14 +701,14 @@ const SS_IPTV_GET_WEBOS = { title: "حمّل تطبيق SS IPTV",
   html: SS_IPTV_VIDEO + APP("ss-iptv", "SS IPTV", "مجاني · من فريق SS IPTV")
     + '<p><b>شاشات LG:</b> افتح متجر التطبيقات في الشاشة (<b dir="ltr">LG Content Store</b>، واسمه في الشاشات الأحدث <b dir="ltr">Apps</b>)، '
     + 'وابحث عن <b dir="ltr">SS IPTV</b> — المطوّر <b dir="ltr">SS IPTV Team</b> — وحمّله. متوفر لشاشات LG من <b>2016 إلى 2024</b>.</p>'
-    + '<div class="note">شاشة LG موديل <b>2025</b>؟ التطبيق لا يظهر في متجرها: ارجع واختر التطبيق الآخر، فهو متوفر فيها.</div>'
+    + '<div class="note">شاشة LG موديل <b>2025</b>؟ التطبيق لا يظهر في متجرها: ارجع واختر 0Player أو Duplecast، فهما متوفران فيها.</div>'
     + '<div class="note"><p><b>شاشات سامسونج:</b> التطبيق ليس في متجر سامسونج، ويعمل من فلاشة <b dir="ltr">USB</b> تبقى موصولة بالشاشة، '
     + 'على شاشات <b>2015 إلى 2019</b>:</p>'
     + '<ol><li>حمّل على الكمبيوتر <a class="link" href="https://ss-iptv.com/files/ssiptv_tizen_usb.zip" rel="noopener">ملف SS IPTV الرسمي لسامسونج (ZIP)</a>.</li>'
     + '<li>فُكّ الضغط في أول الفلاشة لا داخل مجلد، فيظهر فيها مجلد <b dir="ltr">userwidget</b>.</li>'
     + '<li>أدخل الفلاشة في الشاشة واتركها فيها، فيظهر التطبيق بين تطبيقاتك.</li></ol>'
     + '<p>وشاشات سامسونج الأقدم (2012–2014) لها <a class="link" href="https://ss-iptv.com/files/ssiptv_orsay_usb.zip" rel="noopener">ملف آخر</a> '
-    + 'بالطريقة نفسها، ومجلده <b dir="ltr">ssiptv</b>. أما سامسونج 2020 وما بعدها فليست في قائمة موقعه الرسمي: ارجع واختر التطبيق الآخر، فهو في متجر الشاشة مباشرة.</p></div>'
+    + 'بالطريقة نفسها، ومجلده <b dir="ltr">ssiptv</b>. أما سامسونج 2020 وما بعدها فليست في قائمة موقعه الرسمي: ارجع واختر 0Player أو Duplecast، فهما في متجر الشاشة مباشرة.</p></div>'
     + WEBOS_NOTE };
 // خطوة التحميل: شاشات VIDAA
 const SS_IPTV_GET_VIDAA = { title: "حمّل تطبيق SS IPTV من متجر VIDAA",
@@ -717,6 +717,86 @@ const SS_IPTV_GET_VIDAA = { title: "حمّل تطبيق SS IPTV من متجر VI
     + '<li>ابحث عن <b dir="ltr">SS IPTV</b> — المطوّر <b dir="ltr">SS IPTV Team</b> — وثبّته، ثم افتحه من تطبيقاتك.</li></ol>'
     + VIDAA_NOTE };
 const SS_IPTV = get => [get, ...SS_IPTV_STEPS];
+
+/* ------------------------------------------------------------
+   Duplecast (دبل كاست) — مشغّل في متاجر سامسونج و LG و VIDAA، يدخل ببيانات Xtream نفسها: الهوست والبورت
+   في خانتين، واسم المستخدم وكلمة المرور. فلا رمز بوابة فيه، وخطواته واحدة في سمارت وفالكون: يعرّفها
+   DEVICES ويرثها FALCON كما هي (وكاسبر لا يعمل على هذه الشاشات أصلًا).
+   التدفّق: التطبيق من متجر الشاشة ← باركود الشاشة بالجوال (أو duplecast.com ← Manage Device) ← Add Playlist
+   ← تبويب Xtream Info ← Save ← التحديث ↻ على الشاشة. ثم التفعيل: 15 يومًا مجانًا، ثم 3 دولارات للسنة من
+   موقعه (Activate by Payment) — بنصّ قسم Activation في duplecast.com — أو كود تفعيل سنة من المتجر بـ16 ريال
+   (Activate by code)، وهو منتج «أكواد» في سلة يصل كوده في المحتوى الرقمي بالطلب (DUPLECAST_BUY).
+   الصور من tools/video/shots_duplecast.js، والفيديو من tools/video/duplecast.html.
+   ------------------------------------------------------------ */
+// بعنوان STORE_UTM نفسه مكتوبًا هنا: هذه الكتلة يقرؤها sync_guide_data.js وحدها لصفحات الأجهزة الثابتة
+const DUPLECAST_BUY = "https://ssouq.com/تفعيل-duplecast-دبل-كاست-لمدة-سنة/p1575092005?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide";
+const DUPLECAST_OPT = { key: "duplecast", label: "Duplecast", sub: "من متجر الشاشة · مجاني 15 يومًا ثم 3$ للسنة", icon: "duplecast" };
+// فيديو الخطوات — أول خطوة التحميل في الجهازين، و?v= يُرفع مع كل إنتاج جديد كفيديو SS IPTV
+const DUPLECAST_VIDEO = '<div class="vid"><video src="/static/video/duplecast-ar.mp4?v=1" poster="/static/video/duplecast-ar.webp?v=1" '
+  + 'controls playsinline preload="none" width="720" height="1280"></video>'
+  + '<p class="sub">شاهد الخطوات كلها والتفعيل في أقل من دقيقة ونصف، ثم اتبعها هنا خطوة خطوة.</p></div>';
+// السعر يُقال من أول خطوة، والتفصيل في آخرها
+const DUPLECAST_PRICE = '<div class="note"><b>السعر:</b> التطبيق مجاني <b>15 يومًا</b> من أول تشغيل، ثم تفعيله <b>3 دولارات للسنة</b> لكل شاشة من موقعه الرسمي. '
+  + 'أو اشترِ <a class="link" href="' + DUPLECAST_BUY + '" target="_blank" rel="noopener">كود تفعيل سنة من متجرنا بـ 16 ريال</a> وادفع بمدى أو Apple Pay — الطريقتان في آخر خطوة.</div>';
+// خطوة التحميل: شاشات سامسونج و LG
+const DUPLECAST_GET_WEBOS = { title: "حمّل تطبيق Duplecast (دبل كاست)",
+  html: DUPLECAST_VIDEO + APP("duplecast", "Duplecast", "من متجر الشاشة · مجاني 15 يومًا")
+    + '<p>من متجر التطبيقات في الشاشة — <b dir="ltr">Samsung Apps</b> في سامسونج، و <b dir="ltr">LG Content Store</b> (واسمه في الشاشات الأحدث <b dir="ltr">Apps</b>) في LG — '
+    + 'ابحث عن <b dir="ltr">Duplecast</b> وحمّله، ثم افتحه من تطبيقاتك.</p>'
+    + '<div class="note">يُكتب <b dir="ltr">Duplecast</b> ويُنطق <b>دبل كاست</b>، وأيقونته شاشةٌ كُتب عليها <b dir="ltr">Duplecast IPTV</b>. وهو في متجر LG لشاشات 2025 أيضًا.</div>'
+    + DUPLECAST_PRICE + WEBOS_NOTE };
+// خطوة التحميل: شاشات VIDAA
+const DUPLECAST_GET_VIDAA = { title: "حمّل تطبيق Duplecast من متجر VIDAA",
+  html: DUPLECAST_VIDEO + APP("duplecast", "Duplecast", "من متجر VIDAA · مجاني 15 يومًا")
+    + '<ol><li>اضغط زر <b dir="ltr">Home</b> في الريموت، وافتح متجر التطبيقات (‏<b dir="ltr">App Store</b> أو <b dir="ltr">VIDAA Store</b> حسب إصدار الشاشة).</li>'
+    + '<li>ابحث عن <b dir="ltr">Duplecast</b> — ويُنطق <b>دبل كاست</b> — وثبّته، ثم افتحه من تطبيقاتك.</li></ol>'
+    + DUPLECAST_PRICE + VIDAA_NOTE };
+const DUPLECAST_STEPS = [
+  { title: "امسح الباركود على الشاشة بجوالك", img: "/static/img/webos-duplecast-start.webp",
+    html: '<p>أول ما يُفتح التطبيق تظهر شاشة فيها <b>باركود</b> ورقم جهازك (<b dir="ltr">MAC</b>).</p>'
+      + '<ol><li>افتح كاميرا جوالك ووجّهها إلى الباركود، ثم اضغط الرابط الذي يظهر.</li>'
+      + '<li>تُفتح صفحة جهازك في موقع <b dir="ltr">duplecast.com</b> مباشرة، ورقم جهازك مكتوب فيها.</li></ol>'
+      + '<div class="note">لم يعمل الباركود؟ افتح <a class="link" href="https://duplecast.com" target="_blank" rel="noopener">duplecast.com</a> من الجوال أو الكمبيوتر، '
+      + 'واضغط <b dir="ltr">Manage Device</b> واكتب رقم الجهاز الظاهر على شاشتك.</div>'
+      + '<div class="note">امسح الباركود الظاهر على شاشتك أنت: فيه رقم جهازك. والباركود ورقم الجهاز في صور الدليل مثالان.</div>' },
+  { title: "اضغط Add Playlist", img: "/static/img/webos-duplecast-manage.webp",
+    html: '<p>في صفحة <b dir="ltr">Manage Device</b> يظهر رقم جهازك وتحته <b dir="ltr">Status : trial</b> — أي أنه في فترة التجربة المجانية. '
+      + 'اضغط <b dir="ltr">Add Playlist</b> في قسم <b dir="ltr">Playlists</b>.</p>' },
+  { title: "عبّئ بياناتك في تبويب Xtream Info", img: "/static/img/webos-duplecast-form.webp",
+    html: '<p>اختر تبويب <b dir="ltr">Xtream Info</b> ثم عبّئ الخانات:</p>'
+      + '<div class="fields"><div class="f"><span dir="ltr">Mac</span><code>يظهر وحده — لا تغيّره</code></div>'
+      + '<div class="f"><span dir="ltr">Playlist name</span><code>أي اسم، مثلًا ssouq</code></div>'
+      + '<div class="f"><span dir="ltr">Host</span><code>رابط الهوست بدون رقم البورت</code></div>'
+      + '<div class="f"><span dir="ltr">Port</span><code>رقم البورت وحده</code></div>'
+      + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
+      + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div>'
+      + '<div class="f"><span dir="ltr">Protect this playlist</span><code>اتركه غير مفعّل</code></div></div>'
+      + '<p>ثم اضغط <b dir="ltr">Save</b>.</p>'
+      + '<div class="note">الهوست والبورت خانتان منفصلتان هنا، فلا تكتب الرقم مع الرابط: إن وصلك <code dir="ltr">http://host.com:8080</code> '
+      + 'فاكتب <code dir="ltr">http://host.com</code> في <b dir="ltr">Host</b> و <code dir="ltr">8080</code> في <b dir="ltr">Port</b>. ومن وصله رابط بلا رقم فبورته <code dir="ltr">80</code>.</div>'
+      + HTTP_NOTE + CREDS },
+  { title: "تأكّد أن القائمة حُفظت", img: "/static/img/webos-duplecast-saved.webp",
+    html: '<p>تظهر قائمتك في جدول <b dir="ltr">Playlists</b> باسمها، مع رسالة <b dir="ltr">Playlist added successfully</b>. '
+      + 'وإن أخطأت في شيء فاضغط <b dir="ltr">Edit</b> بجانبها وصحّحه.</p>' },
+  { title: "حدّث التطبيق على الشاشة وشاهد", img: "/static/img/webos-duplecast-home.webp",
+    html: '<ol><li>ارجع إلى التطبيق على الشاشة واضغط زر التحديث (<b dir="ltr">↻</b>)، أو أغلق التطبيق وافتحه من جديد.</li>'
+      + '<li>انتظر حتى تُحمَّل قائمتك، ثم افتح <b dir="ltr">LIVE TV</b> للقنوات، أو <b dir="ltr">MOVIES</b> و <b dir="ltr">SERIES</b> للأفلام والمسلسلات.</li></ol>'
+      + '<div class="note">لم تظهر القنوات؟ تأكّد أن الهوست يبدأ بـ <b dir="ltr">http</b> وأن البورت في خانته لا مع الرابط، وصحّحهما من <b dir="ltr">Edit</b> في الموقع ثم حدّث من جديد.</div>' },
+  { title: "بعد 15 يومًا فعّل التطبيق: 3 دولارات للسنة", img: "/static/img/webos-duplecast-price.webp",
+    html: '<p>التطبيق مجاني <b>15 يومًا</b> من أول تشغيل، ثم يطلب التفعيل ليستمر. وسعر التفعيل الرسمي <b>3 دولارات للسنة</b> لكل شاشة '
+      + '(و 7.5 دولار لثلاث سنوات)، كما في الصورة من موقعه. ولك طريقتان:</p>'
+      + '<p><b>الأولى: من موقعه.</b> في صفحة جهازك اضغط <b dir="ltr">Activate by Payment</b> وادفع 3 دولارات عبر <b dir="ltr">PayPal</b>.</p>'
+      + '<p><b>الثانية: بكود من متجرنا بـ 16 ريال.</b> تدفع بمدى أو Apple Pay، ويصلك كود تفعيل سنة فور الدفع في <b>المحتوى الرقمي</b> بطلبك:</p>'
+      + '<p><a class="btn go" href="' + DUPLECAST_BUY + '" target="_blank" rel="noopener">اشترِ كود تفعيل Duplecast — 16 ريال</a></p>'
+      + '<ol><li>في صفحة جهازك اضغط <b dir="ltr">Activate by code</b>.</li></ol>'
+      + '<img src="/static/img/webos-duplecast-codebtn.webp" alt="زر Activate by code في صفحة الجهاز بموقع Duplecast" loading="lazy">'
+      + '<ol start="2"><li>الصق الكود الذي وصلك في خانته، واضغط <b dir="ltr">Activate</b>.</li></ol>'
+      + '<img src="/static/img/webos-duplecast-code.webp" alt="نافذة Activate by code: خانة كود التفعيل وزر Activate" loading="lazy">'
+      + '<ol start="3"><li>تصير الحالة <b dir="ltr">Status : active</b>، وتحتها تاريخ انتهاء التفعيل بعد سنة.</li></ol>'
+      + '<img src="/static/img/webos-duplecast-active.webp" alt="صفحة الجهاز بعد التفعيل: Status : active وتاريخ الانتهاء" loading="lazy">'
+      + '<div class="note">الكود لشاشة واحدة: لكل شاشة رقم جهاز خاص بها وتفعيلٌ خاص. والتفعيل للتطبيق وحده، أما القنوات والأفلام فمن اشتراكك.</div>' }
+];
+const DUPLECAST = get => [get, ...DUPLECAST_STEPS];
 
 const DEVICES = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق VAR Player", steps: [
@@ -777,10 +857,11 @@ const DEVICES = {
     },
     doneImgs: { mr7: "/static/img/tv-mr7-home.jpg" }
   },
-  webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "تطبيق 0Player أو SS IPTV", choose: {
+  webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "0Player أو Duplecast أو SS IPTV", choose: {
     title: "اختر التطبيق",
     options: [
       { key: "0player", label: "0Player", sub: "من متجر الشاشة: بالباركود من جوالك أو بالريموت", icon: "0player" },
+      DUPLECAST_OPT,
       SS_IPTV_OPT
     ]},
     variants: {
@@ -832,11 +913,22 @@ const DEVICES = {
             + '<li>ومن الشاشة الرئيسية افتح <b dir="ltr">Live TV</b> للقنوات، أو <b dir="ltr">Movies</b> و <b dir="ltr">Series</b> للأفلام والمسلسلات.</li></ol>'
             + '<div class="note">لم تظهر القائمة أو القنوات؟ أغلق التطبيق وافتحه، وتأكّد من الكود <b dir="ltr">92929480</b> واسم المستخدم وكلمة المرور بلا مسافات.</div>' }
       ],
+      duplecast: DUPLECAST(DUPLECAST_GET_WEBOS),
       ssiptv: SS_IPTV(SS_IPTV_GET_WEBOS)
     }
   },
-  // هايسنس و VIDAA: لا 0Player في متجره، و SS IPTV فيه — والخطوات واحدة لكل الاشتراكات فتُورَث كما هي
-  vidaa: { icon: "vidaa", name: "هايسنس و VIDAA OS", sub: "تطبيق SS IPTV المجاني", steps: SS_IPTV(SS_IPTV_GET_VIDAA) },
+  // هايسنس و VIDAA: لا 0Player في متجره، و SS IPTV و Duplecast فيه — والخطوات واحدة لسمارت وفالكون فتُورَث كما هي
+  vidaa: { icon: "vidaa", name: "هايسنس و VIDAA OS", sub: "SS IPTV المجاني أو Duplecast", choose: {
+    title: "اختر التطبيق",
+    options: [
+      Object.assign({}, SS_IPTV_OPT, { sub: "مجاني برابط M3U · من متجر VIDAA" }),
+      DUPLECAST_OPT
+    ]},
+    variants: {
+      ssiptv: SS_IPTV(SS_IPTV_GET_VIDAA),
+      duplecast: DUPLECAST(DUPLECAST_GET_VIDAA)
+    }
+  },
   windows: { icon: "pc", name: "كمبيوتر ويندوز", sub: "IPTV Smarters Pro أو IPTVnator", choose: {
       title: "اختر البرنامج",
       options: [
@@ -1307,7 +1399,7 @@ function renderBuyBrand(){
   }).join("");
   const tvNote = {
     webos: `<div class="note warn">شاشات سامسونج و LG تعمل بنظام webOS، ولها في المتجر باقات مخصّصة تشتغل على الشاشة مباشرة عبر 0Player بلا رسيفر — وهي باقات "سمارت".</div>`,
-    vidaa: `<div class="note warn">شاشات هايسنس تعمل بنظام VIDAA، وتناسبها باقات "سمارت" المخصّصة للشاشات الذكية — باقات سامسونج و LG نفسها — وتشتغل على الشاشة مباشرة عبر تطبيق SS IPTV المجاني بلا رسيفر.</div>`
+    vidaa: `<div class="note warn">شاشات هايسنس تعمل بنظام VIDAA، وتناسبها باقات "سمارت" المخصّصة للشاشات الذكية — باقات سامسونج و LG نفسها — وتشتغل على الشاشة مباشرة عبر تطبيق SS IPTV المجاني أو Duplecast بلا رسيفر.</div>`
   }[state.bdev] || "";
   $("#view").innerHTML = `<div class="card">
     <h2>اختر النوع الأنسب لك</h2>
@@ -1330,7 +1422,7 @@ function renderBuyPlan(){
   const warn = (tv && state.brand === "falcon")
     ? `<div class="note warn">اخترت ${tv} مع فالكون، وفالكون يعمل بتطبيقه الخاص. تواصل مع الدعم قبل الشراء للتأكد من تثبيته على شاشتك، أو ارجع واختر "سمارت" الذي له باقات مخصّصة ${state.bdev === "webos" ? "لـ webOS" : "للشاشات الذكية"}.<br><a class="link" href="${WA_NUMBER + encodeURIComponent("مرحباً، قبل الشراء: أريد اشتراك فالكون على " + tv + "، هل يُثبَّت عليها؟")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>`
     : (state.bdev === "vidaa" && state.brand === "smart")
-    ? `<div class="note">هذه باقات سمارت للشاشات الذكية: اسمها «لسامسونج و LG» وهي نفسها لشاشات VIDAA، وتعمل عليها بتطبيق SS IPTV بدل 0Player.</div>` : "";
+    ? `<div class="note">هذه باقات سمارت للشاشات الذكية: اسمها «لسامسونج و LG» وهي نفسها لشاشات VIDAA، وتعمل عليها بتطبيق SS IPTV أو Duplecast بدل 0Player.</div>` : "";
   $("#view").innerHTML = `<div class="card">
     <h2>اختر الباقة المناسبة</h2>
     <p class="sub">بعد تحديد المحتوى والجهاز، اختر الباقة التي تناسب احتياجك من حيث المدة والسعر.</p>
@@ -1521,6 +1613,7 @@ function applyHash(){
     if (D[state.dev].off) return;                  // لا خطوات فيه: روابط خطواته القديمة تفتح شاشته
     const v = D[state.dev].variants;
     if (v && seg[i] && v[seg[i]]) { state.variant = seg[i]; i++; }
+    if (v && !state.variant) return;               // رابط خطوةٍ من قبل أن يصير للجهاز اختيار تطبيق: يفتح الاختيار
     const n = parseInt(seg[i], 10);
     if (n > 1) state.i = n - 1;
     return;

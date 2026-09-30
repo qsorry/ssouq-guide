@@ -1,0 +1,257 @@
+<!doctype html>
+<!-- شاشات Duplecast بلا لقطة رسمية لها، مرسومةٌ بمخطّط لقطات الدليل السابقة لـ Duplecast (webos-duplecast-*):
+       ?screen=start    أول فتح على التلفاز: رقم الجهاز (MAC) والباركود وحالة التجربة — 1920×1080
+       ?screen=home     الشاشة الرئيسية على التلفاز بعد إضافة القائمة، وزر التحديث ↻ — 1920×1080
+       ?screen=manage   صفحة الجهاز في duplecast.com على الجوال (Manage Device) — عرض 390
+       ?screen=form     Add Playlist على تبويب Xtream Info، معبّأة ببيانات مثال — عرض 390
+       ?screen=saved    جدول Playlists بعد الحفظ ورسالة Playlist added successfully — عرض 390
+       ?screen=code     Activate by code: خانة الكود وزر التفعيل — عرض 390
+       ?screen=active   صفحة الجهاز بعد التفعيل: Status : active وتاريخ الانتهاء — عرض 390
+       ?screen=cover    صورة منتج «تفعيل Duplecast لمدة سنة» في المتجر — 1000×1000
+     رقم الجهاز والبيانات والكود أمثلة، والباركود نقشٌ بشكل QR لا يُقرأ: الذي يُمسح هو الظاهر على شاشة المشترك.
+     وشعار Duplecast IPTV مرسوم بـ SVG بشكل أيقونته في متجر الشاشة (static/img/apps/duplecast.webp).
+     يصوّرها capture_duplecast.js ويطبع مواضع ما عليه [data-k] لتُطابَق بمستطيلات SCENES في duplecast.html. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@500;600;700&family=Cairo:wght@700;800;900&display=block" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,"Segoe UI",Roboto,sans-serif;color:#1f2d3d;background:#fff}
+.scr{display:none}
+.ar{font-family:"IBM Plex Sans Arabic",sans-serif}
+/* ===== التلفاز ===== */
+.tv{width:1920px;height:1080px;position:relative;overflow:hidden;color:#fff;
+  background:radial-gradient(110% 90% at 30% 10%,#27407a 0%,#172a55 45%,#0b1631 100%)}
+.tv .brand{position:absolute;top:56px;left:80px;display:flex;align-items:center;gap:24px}
+.tv .brand svg{width:132px;height:112px}
+.tv .brand b{font-size:54px;letter-spacing:10px;font-weight:700}
+#start .panel{position:absolute;left:80px;top:230px;width:1020px}
+#start h1{font-size:62px;font-weight:700;line-height:1.2;margin-bottom:34px}
+#start .row{display:flex;align-items:center;gap:22px;margin:0 0 22px;font-size:40px;color:#d5e1f5}
+#start .row b{color:#fff;font-weight:600}
+#start .row .n{width:64px;height:64px;border-radius:50%;background:#2f7de1;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none}
+#start .ids{position:absolute;left:80px;bottom:90px;display:flex;gap:26px}
+#start .id{background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.18);border-radius:18px;padding:22px 34px;font-size:36px;color:#c9d6ee}
+#start .id b{display:block;font-size:46px;color:#fff;letter-spacing:2px;margin-top:6px}
+#start .id.trial b{color:#ffd35a}
+#start .qrbox{position:absolute;right:120px;top:200px;width:620px;text-align:center}
+#start .qr{width:520px;height:520px;margin:0 auto;border-radius:34px;background:#fff;padding:36px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+#start .qr svg{width:100%;height:100%;display:block}
+#start .qrbox p{font-size:40px;margin-top:34px;font-weight:600}
+#start .qrbox small{display:block;font-size:32px;color:#b9c8e3;margin-top:10px}
+#home .top{position:absolute;top:70px;right:90px;display:flex;gap:26px}
+#home .ib{width:104px;height:104px;border-radius:26px;background:rgba(255,255,255,.1);border:3px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center}
+#home .ib svg{width:58px;height:58px;stroke:#fff;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+#home .ib.on{background:#2f7de1;border-color:#fff;box-shadow:0 0 0 6px rgba(47,125,225,.35)}
+#home .pl{position:absolute;left:80px;top:230px;font-size:36px;color:#c9d6ee}
+#home .pl b{color:#fff}
+#home .tiles{position:absolute;left:80px;right:80px;top:320px;display:grid;grid-template-columns:repeat(3,1fr);gap:40px}
+#home .t{height:300px;border-radius:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;font-size:48px;font-weight:700;letter-spacing:1px}
+#home .t svg{width:110px;height:110px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#home .t.s{height:260px;font-size:40px}
+#home .t.s svg{width:84px;height:84px}
+/* ===== الموقع على الجوال ===== */
+.web{width:390px;background:#eef2f7;padding-bottom:18px}
+.web .hdr{height:58px;background:#2c4674;display:flex;align-items:center;justify-content:space-between;padding:0 16px;color:#fff}
+.web .hdr b{font-size:21px;letter-spacing:3px;font-weight:700}
+.web .hdr i{width:24px;height:18px;border-top:3px solid #fff;border-bottom:3px solid #fff;position:relative}
+.web .hdr i:after{content:"";position:absolute;left:0;right:0;top:5.5px;border-top:3px solid #fff}
+.dev{margin:14px 12px 0;background:#2f4d80;border-radius:10px;color:#fff;text-align:center;padding:16px 10px 14px}
+.dev .t{font-size:19px;font-weight:600}
+.dev .m{font-size:20px;letter-spacing:1px;margin:6px 0 8px;font-weight:600}
+.dev .st{font-size:17px;font-weight:600}
+.dev .st.ok{color:#8ff0b0}
+.dev .ex{font-size:14px;margin-top:4px;color:#d6e2f5}
+.acts{display:flex;gap:8px;margin:12px 12px 0}
+.acts span{flex:1;height:44px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13.5px;font-weight:600;text-align:center;line-height:1.15;padding:0 4px}
+.acts .pay{background:#28a745;color:#fff}
+.acts .out{background:#fff;color:#243244;border:1px solid #cfd8e3}
+.acts .code{background:#1a6fe0;color:#fff}
+.card{margin:14px 12px 0;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #d9e1ea}
+.card .ch{background:#2c4674;color:#fff;font-size:16px;font-weight:600;padding:10px 14px}
+.card .cb{padding:12px}
+.addp{margin-left:auto;display:flex;width:max-content;border:1px solid #cfd8e3;border-radius:7px;padding:8px 13px;font-size:15px;font-weight:600;color:#243244;background:#fff;align-items:center;gap:7px}
+.addp:before{content:"+";font-size:18px;font-weight:700;color:#1a6fe0;line-height:1}
+table.pl{width:100%;border-collapse:collapse;margin-top:12px;font-size:13.5px}
+table.pl th{background:#f3f6fa;text-align:left;padding:8px 6px;font-weight:600;color:#43536a;border-top:1px solid #e1e7ef}
+table.pl td{padding:9px 6px;border-top:1px solid #e1e7ef}
+table.pl .e{border:1px solid #1a6fe0;color:#1a6fe0;border-radius:5px;padding:4px 8px;font-weight:600}
+table.pl .d{border:1px solid #cfd8e3;color:#6b7a8d;border-radius:5px;padding:4px 6px;margin-left:4px}
+.empty{color:#7b8898;font-size:14px;text-align:center;padding:14px 0 4px}
+.okmsg{margin-top:12px;background:#e7f6ec;border:1px solid #b9e3c6;color:#1e7b3a;border-radius:7px;padding:11px 12px;font-size:14.5px;font-weight:500}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid #e1e7ef;margin-bottom:4px}
+.tabs span{font-size:14.5px;text-align:center;padding:10px 2px;color:#5a6b80}
+.tabs span.on{color:#10233f;font-weight:700;border-bottom:3px solid #1a6fe0}
+.fl{font-size:13.5px;font-weight:600;color:#2a3a50;margin:12px 0 5px}
+.in{height:42px;border:1px solid #cdd6e1;border-radius:7px;display:flex;align-items:center;padding:0 12px;font-size:15px;color:#1f2d3d;background:#fff}
+.in.ro{background:#eceff3;color:#56647a}
+.in.ph{color:#9aa6b6}
+.chk{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14.5px;color:#2a3a50;border:1px solid #cdd6e1;border-radius:7px;padding:9px 12px;background:#f6f8fb;width:max-content}
+.chk i{width:20px;height:20px;border:2px solid #7d8ca1;border-radius:4px;display:block}
+.save{margin-top:16px;height:46px;border-radius:7px;background:#28a745;color:#fff;font-size:17px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.modal{margin:14px 12px 0;background:#fff;border-radius:12px;border:1px solid #d9e1ea;box-shadow:0 12px 30px rgba(20,40,80,.18);overflow:hidden}
+.modal .mh{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #e6ebf1;font-size:17px;font-weight:700;color:#10233f}
+.modal .mh i{font-style:normal;color:#8190a5;font-size:22px;line-height:1}
+.modal .mb{padding:14px 16px 18px}
+.modal .mb p{font-size:14px;color:#56647a;line-height:1.45}
+.btn{margin-top:14px;height:46px;border-radius:7px;background:#1a6fe0;color:#fff;font-size:16.5px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.dim{opacity:.4}
+/* ===== صورة المنتج ===== */
+#cover{width:1000px;height:1000px;position:relative;overflow:hidden;color:#fff;font-family:Cairo,"IBM Plex Sans Arabic",sans-serif;
+  background:radial-gradient(70% 55% at 85% 8%,#3b2fa6 0%,rgba(59,47,166,0) 70%),radial-gradient(60% 50% at 8% 95%,#1c3b8f 0%,rgba(28,59,143,0) 70%),#0b0f24}
+#cover .frame{position:absolute;inset:28px;border:1.5px solid rgba(255,255,255,.12);border-radius:44px}
+#cover .icon{position:absolute;left:50%;top:92px;width:330px;height:330px;margin-left:-165px;border-radius:70px;background:#fff;
+  box-shadow:0 0 90px 14px rgba(99,86,230,.55),0 24px 60px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center}
+#cover .icon svg{width:262px;height:222px}
+#cover .tag{position:absolute;top:462px;left:0;right:0;text-align:center;font:800 30px Inter,sans-serif;letter-spacing:6px;color:#c9d2ff}
+#cover h1{position:absolute;top:515px;left:0;right:0;text-align:center;font-weight:900;font-size:66px;line-height:1.25;direction:rtl}
+#cover h1 em{font-style:normal;color:#ffc94d;font-family:Inter,sans-serif;font-weight:800}
+#cover .site{position:absolute;top:618px;left:0;right:0;text-align:center;font:500 26px Inter,sans-serif;letter-spacing:7px;color:#98a3c9}
+#cover .boxes{position:absolute;left:66px;right:66px;top:680px;display:flex;gap:26px;direction:rtl}
+#cover .b{flex:1;height:132px;border-radius:24px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.14);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+#cover .b b{font-size:40px;font-weight:800}
+#cover .b span{font-size:26px;color:#aab3d6;font-weight:700}
+#cover .b.gold{border-color:rgba(255,201,77,.55);background:rgba(255,201,77,.08)}
+#cover .b.gold b{color:#ffc94d}
+#cover .foot{position:absolute;top:862px;left:0;right:0;text-align:center;font:700 26px Inter,sans-serif;color:#dfe4ff;letter-spacing:1px}
+#cover .foot i{font-style:normal;color:#8e97bd;margin:0 12px}
+</style>
+</head>
+<body>
+<!-- شعار Duplecast IPTV: إطار شاشة بشريطٍ علويّ فيه الاسم، و IPTV تحته، وقاعدة الشاشة -->
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="logo" viewBox="0 0 132 112">
+    <path d="M6 6h120v78H72l-6 4-6-4H6z" fill="#fff" stroke="#3f3b8c" stroke-width="5" stroke-linejoin="round"/>
+    <rect x="6" y="6" width="120" height="26" fill="#3f3b8c"/>
+    <text x="66" y="26.5" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-weight="600" font-size="19" fill="#fff" letter-spacing="2.6" textLength="104" lengthAdjust="spacingAndGlyphs">Duplecast</text>
+    <text x="66" y="78" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-weight="800" font-size="50" fill="#3f3b8c" textLength="92" lengthAdjust="spacingAndGlyphs">IPTV</text>
+    <path d="M40 96h52l8 10H32z" fill="#3f3b8c"/>
+  </symbol>
+</svg>
+
+<div id="start" class="scr tv">
+  <div class="brand"><svg><use href="#logo"/></svg><b>DUPLECAST</b></div>
+  <div class="panel">
+    <h1>Add your playlist from your phone</h1>
+    <div class="row"><span class="n">1</span><span>Scan the <b>QR code</b> with your phone camera</span></div>
+    <div class="row"><span class="n">2</span><span>or visit <b>duplecast.com</b> → <b>Manage Device</b></span></div>
+    <div class="row"><span class="n">3</span><span>Add your playlist, then press <b>↻ Refresh</b></span></div>
+  </div>
+  <div class="ids">
+    <div class="id" data-k="mac">MAC Address<b>00:1A:2B:3C:4D:5E</b></div>
+    <div class="id trial" data-k="trial">Status<b>Trial · 15 days</b></div>
+  </div>
+  <div class="qrbox" data-k="qrbox"><div class="qr" data-k="qr"><svg id="qrsvg" viewBox="0 0 29 29" shape-rendering="crispEdges"></svg></div>
+    <p>Scan Code</p><small>to manage this device</small></div>
+</div>
+
+<div id="home" class="scr tv">
+  <div class="brand"><svg><use href="#logo"/></svg><b>DUPLECAST</b></div>
+  <div class="top">
+    <span class="ib" data-k="refresh"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></span>
+    <span class="ib"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M4.2 7.4l2.2 1.3M17.6 15.3l2.2 1.3M4.2 16.6l2.2-1.3M17.6 8.7l2.2-1.3"/><circle cx="12" cy="12" r="7"/></svg></span>
+  </div>
+  <div class="pl" data-k="pl">Playlist: <b>ssouq</b></div>
+  <div class="tiles">
+    <div class="t" data-k="live" style="background:linear-gradient(160deg,#2f7de1,#1d57b5)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4M9 3l3 2 3-2"/></svg>LIVE TV</div>
+    <div class="t" style="background:linear-gradient(160deg,#e05252,#b23636)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5z"/></svg>MOVIES</div>
+    <div class="t" style="background:linear-gradient(160deg,#8a5ae0,#6438b8)"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 3v3M17 3v3M3 11h18"/></svg>SERIES</div>
+    <div class="t s" style="background:linear-gradient(160deg,#2ea463,#1f7d49)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>CATCH UP</div>
+    <div class="t s" style="background:linear-gradient(160deg,#2b8fb3,#1d6c8a)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h3M8 16h6"/></svg>EPG</div>
+    <div class="t s" style="background:linear-gradient(160deg,#c7503e,#9c3a2c)"><svg viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>FAVORITES</div>
+  </div>
+</div>
+
+<div id="manage" class="scr web">
+  <div class="hdr"><b>DUPLECAST</b><i></i></div>
+  <div class="dev" data-k="dev"><div class="t">Manage Device :</div><div class="m">00:1A:2B:3C:4D:5E</div><div class="st">Status : trial</div><div class="ex">Expire on : 2026-10-15</div></div>
+  <div class="acts"><span class="pay" data-k="pay">Activate by Payment</span><span class="out">Log Out</span><span class="code" data-k="code">Activate by code</span></div>
+  <div class="card"><div class="ch">Playlists</div><div class="cb">
+    <span class="addp" data-k="add">Add Playlist</span>
+    <table class="pl"><tr><th>Name</th><th>Status</th><th>Opt</th></tr></table>
+    <div class="empty">No playlists yet</div>
+  </div></div>
+</div>
+
+<div id="form" class="scr web">
+  <div class="hdr"><b>DUPLECAST</b><i></i></div>
+  <div class="card"><div class="ch">Add Playlist</div><div class="cb">
+    <div class="tabs"><span>M3U</span><span>Xtream</span><span class="on" data-k="tab">Xtream Info</span></div>
+    <div class="tabs"><span>1-Stream</span><span>Xui.One</span><span>Stalker</span></div>
+    <div data-k="mac"><div class="fl">Mac</div><div class="in ro">00:1A:2B:3C:4D:5E</div></div>
+    <div data-k="name"><div class="fl">Playlist name</div><div class="in">ssouq</div></div>
+    <div data-k="host"><div class="fl">Host</div><div class="in">http://host.example.com</div></div>
+    <div data-k="port"><div class="fl">Port</div><div class="in">8080</div></div>
+    <div data-k="user"><div class="fl">Username</div><div class="in ar">اسم المستخدم</div></div>
+    <div data-k="pass"><div class="fl">Password</div><div class="in ar">كلمة المرور</div></div>
+    <div class="chk" data-k="protect"><i></i>Protect this playlist</div>
+    <div class="save" data-k="save">Save</div>
+  </div></div>
+</div>
+
+<div id="saved" class="scr web">
+  <div class="hdr"><b>DUPLECAST</b><i></i></div>
+  <div class="dev"><div class="t">Manage Device :</div><div class="m">00:1A:2B:3C:4D:5E</div><div class="st">Status : trial</div><div class="ex">Expire on : 2026-10-15</div></div>
+  <div class="card"><div class="ch">Playlists</div><div class="cb">
+    <span class="addp">Add Playlist</span>
+    <table class="pl"><tr><th>Name</th><th>Status</th><th>Opt</th></tr>
+      <tr data-k="row"><td><b>ssouq</b></td><td>Playlist UnProtected</td><td style="white-space:nowrap"><span class="e" data-k="edit">Edit</span><span class="d">Delete</span></td></tr></table>
+    <div class="okmsg" data-k="ok">Playlist added successfully.</div>
+  </div></div>
+</div>
+
+<div id="code" class="scr web">
+  <div class="hdr"><b>DUPLECAST</b><i></i></div>
+  <div class="dev dim"><div class="t">Manage Device :</div><div class="m">00:1A:2B:3C:4D:5E</div><div class="st">Status : trial</div><div class="ex">Expire on : 2026-10-15</div></div>
+  <div class="modal" data-k="modal"><div class="mh">Activate by code<i>×</i></div><div class="mb">
+    <p>Enter the activation code you received to activate this device.</p>
+    <div data-k="field"><div class="fl">Activation code</div><div class="in">SSQ-7K4P-2XW9</div></div>
+    <div class="btn" data-k="go">Activate</div>
+  </div></div>
+</div>
+
+<div id="active" class="scr web">
+  <div class="hdr"><b>DUPLECAST</b><i></i></div>
+  <div class="dev" data-k="dev"><div class="t">Manage Device :</div><div class="m">00:1A:2B:3C:4D:5E</div><div class="st ok" data-k="st">Status : active</div><div class="ex" data-k="ex">Expire on : 2027-10-01</div></div>
+  <div class="acts"><span class="pay">Activate by Payment</span><span class="out">Log Out</span><span class="code">Activate by code</span></div>
+  <div class="card"><div class="ch">Playlists</div><div class="cb">
+    <span class="addp">Add Playlist</span>
+    <table class="pl"><tr><th>Name</th><th>Status</th><th>Opt</th></tr>
+      <tr><td><b>ssouq</b></td><td>Playlist UnProtected</td><td style="white-space:nowrap"><span class="e">Edit</span><span class="d">Delete</span></td></tr></table>
+  </div></div>
+</div>
+
+<div id="cover" class="scr">
+  <div class="frame"></div>
+  <div class="icon"><svg><use href="#logo"/></svg></div>
+  <div class="tag">SAMSUNG · LG · VIDAA</div>
+  <h1>تفعيل <em>Duplecast</em> لمدة سنة</h1>
+  <div class="site">SSOUQ.COM</div>
+  <div class="boxes">
+    <div class="b gold"><b>كود تفعيل</b><span>يصلك فورًا</span></div>
+    <div class="b"><b>سنة كاملة</b><span>من يوم التفعيل</span></div>
+    <div class="b"><b>شاشة واحدة</b><span>لكل كود</span></div>
+  </div>
+  <div class="foot">Activate by code<i>·</i>duplecast.com</div>
+</div>
+
+<script>
+// نقش QR ثابت (نفسه كل مرة): ثلاث علامات زوايا، وما بينها بتّات من مولّد عشوائي بذرته ثابتة — لا يُقرأ
+(function(){
+  const N = 29, cells = []; let s = 1234567;
+  const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const finder = (x, y) => { for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) {
+    const edge = i === 0 || i === 6 || j === 0 || j === 6, core = i >= 2 && i <= 4 && j >= 2 && j <= 4;
+    if (edge || core) cells.push([x + i, y + j]); } };
+  const inFinder = (x, y) => (x < 8 && y < 8) || (x > N - 9 && y < 8) || (x < 8 && y > N - 9);
+  finder(0, 0); finder(N - 7, 0); finder(0, N - 7);
+  for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) if (!inFinder(x, y) && rnd() < 0.48) cells.push([x, y]);
+  document.getElementById("qrsvg").innerHTML = cells.map(([x, y]) => `<rect x="${x}" y="${y}" width="1" height="1"/>`).join("");
+})();
+const screen = new URLSearchParams(location.search).get("screen") || "start";
+document.getElementById(screen).style.display = "block";
+</script>
+</body>
+</html>

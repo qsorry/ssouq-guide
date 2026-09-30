@@ -96,15 +96,35 @@ def main():
 
     print("\nSS IPTV و VIDAA")
     v, w = data["vidaa"], data["webos"]
-    check("VIDAA جهاز بخطوات SS IPTV السبع", len(v.get("steps", [])) == 7
-          and v["steps"][0]["title"] == "حمّل تطبيق SS IPTV من متجر VIDAA")
-    check("سامسونج و LG: اختيار 0Player أو SS IPTV",
-          [o["key"] for o in w["choose"]["options"]] == ["0player", "ssiptv"])
+    vs = v["variants"]["ssiptv"]
+    check("VIDAA: اختيار SS IPTV أو Duplecast", [o["key"] for o in v["choose"]["options"]] == ["ssiptv", "duplecast"])
+    check("VIDAA بخطوات SS IPTV السبع", len(vs) == 7 and vs[0]["title"] == "حمّل تطبيق SS IPTV من متجر VIDAA")
+    check("سامسونج و LG: اختيار 0Player أو Duplecast أو SS IPTV",
+          [o["key"] for o in w["choose"]["options"]] == ["0player", "duplecast", "ssiptv"])
     # التحميل وحده يختلف بين الجهازين، وما بعده خطوات واحدة
-    check("خطوات SS IPTV بعد التحميل واحدة على الجهازين", w["variants"]["ssiptv"][1:] == v["steps"][1:])
+    check("خطوات SS IPTV بعد التحميل واحدة على الجهازين", w["variants"]["ssiptv"][1:] == vs[1:])
     video = re.compile(r'^<div class="vid"><video src="/static/video/ssiptv-ar\.mp4\?v=(\d+)" poster="/static/video/ssiptv-ar\.webp\?v=\1"')
     check("فيديو الخطوات أول خطوة التحميل في المسارين، بإصدارٍ واحد للفيديو وغلافه",
-          bool(video.match(v["steps"][0]["html"])) and bool(video.match(w["variants"]["ssiptv"][0]["html"])))
+          bool(video.match(vs[0]["html"])) and bool(video.match(w["variants"]["ssiptv"][0]["html"])))
+
+    print("\nDuplecast (دبل كاست)")
+    dw, dv = w["variants"]["duplecast"], v["variants"]["duplecast"]
+    check("سبع خطوات على الجهازين، وما بعد التحميل واحد", len(dw) == 7 and len(dv) == 7 and dw[1:] == dv[1:])
+    check("التحميل من متجر الشاشة: سامسونج و LG، و VIDAA",
+          "Samsung Apps" in dw[0]["html"] and "LG Content Store" in dw[0]["html"] and "VIDAA Store" in dv[0]["html"])
+    dvid = re.compile(r'^<div class="vid"><video src="/static/video/duplecast-ar\.mp4\?v=(\d+)" poster="/static/video/duplecast-ar\.webp\?v=\1"')
+    check("فيديو Duplecast أول خطوة التحميل في الجهازين، بإصدارٍ واحد للفيديو وغلافه",
+          bool(dvid.match(dw[0]["html"])) and bool(dvid.match(dv[0]["html"]))
+          and all(os.path.isfile(os.path.join(ROOT, "static/video", f)) for f in ("duplecast-ar.mp4", "duplecast-ar.webp")))
+    # السعر يُقال من أول خطوة: 15 يومًا مجانًا ثم 3 دولارات للسنة، أو كود المتجر بـ 16 ريال
+    buy = "https://ssouq.com/تفعيل-duplecast-دبل-كاست-لمدة-سنة/p1575092005?"
+    check("السعر في خطوة التحميل: 15 يومًا مجانًا، ثم 3 دولارات للسنة، أو كود بـ 16 ريال من المتجر",
+          all(x in dw[0]["html"] for x in ("15 يومًا", "3 دولارات للسنة", "16 ريال", buy)))
+    last = dw[-1]
+    check("آخر خطوة التفعيل: الطريقتان، وزر شراء الكود، و Activate by code",
+          "3 دولارات للسنة" in last["title"] and "Activate by Payment" in last["html"]
+          and f'<a class="btn go" href="{buy}' in last["html"] and "Activate by code" in last["html"])
+    check("الهوست والبورت في خانتين، مع تنبيه http", "Port" in dw[3]["html"] and 'class="note http"' in dw[3]["html"])
 
     print("\n0Player بطريقتين")
     z = w["variants"]["0player"]
@@ -125,7 +145,8 @@ def main():
     check("/vidaa لسمارت وفالكون، وكاسبر لا يعمل عليها",
           "لكل الاشتراكات" not in h and "سمارت أو فالكون، أما كاسبر فلا يعمل على هذه الشاشات" in h)
     h = G.render("/samsung-lg").decode("utf-8")
-    check("/samsung-lg فيها التطبيقان", "تطبيق 0Player" in h and "تطبيق SS IPTV" in h)
+    check("/samsung-lg فيها التطبيقات الثلاثة", "تطبيق 0Player" in h and "تطبيق Duplecast" in h and "تطبيق SS IPTV" in h)
+    check("/vidaa فيها التطبيقان", all(x in G.render("/vidaa").decode("utf-8") for x in ("تطبيق SS IPTV", "تطبيق Duplecast")))
 
     print("\nشاشة أندرويد: Downloader وموافقة الشاشة عليه")
     t = data["tv"]["variants"]
