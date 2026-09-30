@@ -58,7 +58,11 @@ def main():
               all(k in dflt for k in ("🔗 شرح التثبيت:\n{guide}", "Host: {host}\nUser: {user}\nPass: {pass}")))
         check("default names the subscription per gate, not «كاسبر» for all",
               "واختيار سيرفر {server} ✅" in dflt and "كاسبر" not in dflt)
-        check("default keeps the warning block", "⚠️ مهم جدًا:" in dflt and dflt.endswith("خطوات التفعيل الموجودة في الدليل."))
+        check("default carries the new warning block",
+              "⚠️ *مهم جداً، اقرأ قبل التشغيل*\n❌ *احذف التطبيق القديم* من جهازك، فهو لن يعمل مع اشتراكك الجديد.\n"
+              "✅ *حمّل التطبيق الجديد* المحدد في الشرح.\n\n🚫 عدم اتباع الشرح = الاشتراك لن يعمل معك." in dflt
+              and dflt.endswith("الاشتراك لن يعمل معك."))
+        check("the old warning block is gone", "التطبيق الموصى به" not in dflt)
 
         _, d = adm("/admin/api/accounts", {"name": "كاسبر", "user": "casper", "password": "pw_casper", "gates": [CASPER_GATE]})
         cas = next(a for a in d["accounts"] if a["user"] == "casper")
@@ -86,6 +90,11 @@ def main():
         c, d = adm("/admin/api/accounts", {**body, "guide_text": dflt.replace("{server}", "كاسبر")})
         cas = next(a for a in d.get("accounts", []) if a["user"] == "casper")
         check("the old «كاسبر for all» default (stale page) also follows the default", c == 200 and cas.get("guide_text") == "")
+        c, d = adm("/admin/api/accounts", {**body, "guide_text": X._PREV_DEFAULT_GUIDE_TEXT})
+        cas = next(a for a in d.get("accounts", []) if a["user"] == "casper")
+        check("the previous default (stale page) follows the new default", c == 200 and cas.get("guide_text") == "")
+        _, m = me_c("/admin/api/me")
+        check("…so that client copies the new text", m.get("guide_text") == dflt)
 
         print("\n== 3. A custom text per client ==")
         custom = "مرحبًا 👋\r\nHost: {host}\r\nUser: {user}\r\nPass: {pass}\r\n{guide}\r\n"
