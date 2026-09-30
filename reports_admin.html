@@ -73,6 +73,30 @@ h1{font-size:1.45rem;margin:0 0 4px}
 .empty{color:var(--mute);text-align:center;padding:30px 10px;border:1px dashed var(--line);border-radius:16px}
 .msg{color:var(--err);margin:0 0 10px}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:12px;font-weight:700;font-size:.9rem;box-shadow:var(--shadow);z-index:60}
+/* تنبيه واتساب */
+.abox{border:1px solid var(--line);border-radius:16px;background:var(--sf);margin:0 0 14px}
+.abox>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:11px 13px}
+.abox>summary::-webkit-details-marker{display:none}
+.abox .bell{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--go) 14%,transparent);color:var(--go)}
+.abox .bell.off{background:color-mix(in srgb,var(--amber) 14%,transparent);color:var(--amber)}
+.abox .grow{flex:1;min-width:0}
+.abox .grow b{display:block}
+.abox .grow small{display:block;color:var(--mute);font-size:.8rem;overflow-wrap:anywhere}
+.abox .chev{color:var(--mute);transition:transform .2s}
+.abox[open] .chev{transform:rotate(180deg)}
+.abody{padding:0 13px 13px;border-top:1px solid var(--line)}
+.abody .warn{margin:10px 0 0;padding:8px 10px;border-radius:10px;font-size:.85rem;color:var(--amber);background:color-mix(in srgb,var(--amber) 10%,transparent)}
+.afield{display:block;margin:10px 0 0}
+.afield span{display:block;font-weight:700;font-size:.88rem;margin:0 0 5px}
+.afield input{width:100%;max-width:280px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--sf2);color:var(--ink);font:inherit;direction:ltr;text-align:right}
+.acheck{display:flex;align-items:center;gap:8px;margin:10px 0 0;font-size:.9rem}
+.amsg{margin:8px 0 0;font-size:.86rem;min-height:1em}
+.amsg.ok{color:var(--go)}.amsg.bad{color:var(--err)}
+.staff{margin:12px 0 0;padding:10px 0 0;border-top:1px dashed var(--line);font-size:.86rem}
+.staff b{display:block;margin:0 0 4px}
+.staff li{color:var(--mute)}
+.staff li bdi{color:var(--ink);font-weight:700}
+.wline{display:block;color:var(--amber);font-size:.78rem;margin-top:6px;overflow-wrap:anywhere}
 @media (max-width:560px){.tiles{gap:6px}.tile{padding:9px 10px}.tile b{font-size:1.25rem}.pos{width:48px}}
 </style>
 </head>
@@ -87,6 +111,19 @@ h1{font-size:1.45rem;margin:0 0 4px}
 <main>
   <h1>بلاغات المحتوى</h1>
   <p class="sub">ما يبلّغ عنه المشتركون من <a id="lnkReport" href="https://guide.ssouq.com/report" target="_blank" rel="noopener">guide.ssouq.com/report</a>: السيرفر والقسم والمسلسل أو الفيلم والحلقة، و«لا يعمل» أو «يقطع». البلاغ المكرّر سطرٌ واحد بعدد من بلّغ. بعد الإصلاح اضغط «تم الإصلاح» وأبلغ صاحبه على واتساب.</p>
+  <details class="abox" id="abox">
+    <summary><span class="bell" id="aBell"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+      <span class="grow"><b>تنبيه واتساب بكل بلاغ</b><small id="aSum">…</small></span>
+      <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="abody">
+      <p class="warn" id="aFrom" hidden></p>
+      <label class="afield"><span>رقمك على واتساب</span><input id="aWa" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="05xxxxxxxx"></label>
+      <label class="acheck"><input type="checkbox" id="aOn" checked> نبّهني بكل بلاغ جديد</label>
+      <div class="acts"><button class="btn go" id="aSave">حفظ</button><button class="btn" id="aTest">أرسل رسالة تجريبية</button></div>
+      <p class="amsg" id="aMsg"></p>
+      <div class="staff" id="aStaff" hidden></div>
+    </div>
+  </details>
   <div class="tiles">
     <button class="tile hot" data-state="open" aria-pressed="true"><small>مفتوحة</small><b id="nOpen">—</b></button>
     <button class="tile" data-state="done" aria-pressed="false"><small>تم إصلاحها</small><b id="nDone">—</b></button>
@@ -144,6 +181,7 @@ function card(r){
         ${r.count > 1 ? `<span class="tag n">${num(r.count)} بلاغات</span>` : ""}
         ${open ? "" : `<span class="tag ok">✓ أُصلح ${ago(r.done_at)}${r.done_by ? " · " + esc(r.done_by) : ""}</span>`}</div>
       ${people ? `<ul class="people">${people}</ul>` : ""}
+      ${alertLine(r)}
       <div class="acts">
         ${open ? `<button class="btn go" data-act="done">✓ تم الإصلاح</button>` : `<button class="btn" data-act="open">إعادة فتح</button>`}
         <button class="btn" data-act="copy">نسخ البلاغ</button>
@@ -151,6 +189,60 @@ function card(r){
       </div>
     </div></div>`;
 }
+
+// ما جرى لتنبيه البلاغ على واتساب: كم وصله، أو لماذا لم يصل
+function alertLine(r){
+  const w = r.wa; if (!w) return "";
+  const ok = w.sent ? `<span class="tag ok">🔔 نُبّه ${w.sent === 1 ? "موظف" : num(w.sent)} ${ago(w.at)}</span>` : "";
+  return (ok ? `<div class="tags">${ok}</div>` : "") + (w.error ? `<span class="wline">⚠ لم يصل التنبيه${w.sent ? " لبعضهم" : ""}: ${esc(w.error)}</span>` : "");
+}
+
+let alertFilled = false;
+function drawAlert(a){
+  if (!a) return;
+  const m = a.mine || {}, on = !!(m.wa && m.on);
+  $("aBell").classList.toggle("off", !on || !a.from);
+  const tel = `<bdi dir="ltr">+${esc(m.wa)}</bdi>`;
+  $("aSum").innerHTML = !m.wa ? "أضف رقمك ليصلك كل بلاغ جديد على واتساب"
+    : !m.on ? `موقوف — رقمك ${tel}` : (a.from ? `يصلك كل بلاغ على ${tel}` : `رقمك ${tel} — لا يُرسل شيء حتى يُربط رقم المسابقة`);
+  $("aFrom").hidden = !!a.from; $("aFrom").textContent = a.from_error || "";
+  if (!alertFilled) {                       // لا يُمسح ما يكتبه مع التحديث كل 30 ثانية
+    alertFilled = true;
+    $("aWa").value = m.wa ? "+" + m.wa : ""; $("aOn").checked = m.on !== false;
+    if (!m.wa) $("abox").open = true;
+  }
+  const staff = a.staff;
+  $("aStaff").hidden = !staff;
+  if (staff) $("aStaff").innerHTML = `<b>من يصله التنبيه</b><ul>` + (staff.length ? staff.map(x =>
+      `<li><bdi>${esc(x.name)}</bdi> — ${x.wa ? `+${esc(x.wa)}${x.on ? "" : " (موقوف)"}` : "بلا رقم"}</li>`).join("")
+    : "<li>لا موظفين بعد — افتح «بلاغات المحتوى» لحسابٍ من نافذة الحساب</li>")
+    + `<li><bdi>أنت (المدير)</bdi> — ${m.wa ? "+" + esc(m.wa) + (m.on ? "" : " (موقوف)") : "بلا رقم"}</li></ul>`;
+}
+async function saveAlert(){
+  const b = $("aSave"); b.disabled = true; $("aMsg").className = "amsg"; $("aMsg").textContent = "";
+  try {
+    const r = await fetch(B + "/api/reports/alert", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({wa: $("aWa").value, on: $("aOn").checked})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "تعذّر الحفظ");
+    alertFilled = false; drawAlert(d.alert);
+    $("aMsg").className = "amsg ok"; $("aMsg").textContent = "حُفظ ✓";
+  } catch (e) { $("aMsg").className = "amsg bad"; $("aMsg").textContent = e.message; }
+  b.disabled = false;
+}
+$("aSave").onclick = saveAlert;
+$("aTest").onclick = async () => {
+  await saveAlert();                        // الرقم كما كُتب، فلا تذهب التجربة إلى رقمٍ قديم
+  if ($("aMsg").classList.contains("bad")) return;
+  const b = $("aTest"); b.disabled = true; $("aMsg").className = "amsg"; $("aMsg").textContent = "يُرسل…";
+  try {
+    const r = await fetch(B + "/api/reports/alert-test", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "تعذّر الإرسال");
+    $("aMsg").className = "amsg ok"; $("aMsg").textContent = `أُرسلت إلى +${d.to} — تفقّد واتساب`;
+  } catch (e) { $("aMsg").className = "amsg bad"; $("aMsg").textContent = e.message; }
+  b.disabled = false;
+};
 
 function draw(){
   const d = data;
@@ -177,6 +269,7 @@ async function load(){
     $("lnkHome").hidden = !(d.role === "admin" || d.gates);
     $("lnkHome").href = d.role === "admin" ? B + "/accounts" : (B || "/");
     $("msg").hidden = true;
+    drawAlert(d.alert);
     draw();
   } catch (e) { $("msg").textContent = e.message; $("msg").hidden = false; }
 }

@@ -7,6 +7,8 @@
   - البلاغ: يُطابَق بالفهرس (القسم والاسم وسنة الفيلم والموسم)، وما لا يُقبل برسالته، ورقم الواتساب بصيغته الدولية،
     والمكرّر المفتوح يزيد عدده ولا يتكرّر، والحدّ بالساعة، وحدّ الحفظ.
   - الموظف: المفتوحة والمنجزة بأعدادها ولكل سيرفر، و«تم الإصلاح» وإعادة الفتح (ويُضمّ إلى مثله)، والحذف.
+  - تنبيه واتساب: نصّه، ولكل مستلمٍ مرة، والمكرّر بعد نصف ساعة لا قبلها، وحدّ الساعة، وما لم يصل بسببه ويُحفظ مع البلاغ،
+    ورقم المدير؛ وعلى خادمٍ حيّ بخدمة واتساب وهمية: يصل الموظف والمدير من رقم المسابقة، والموقوف لا يصله، والتجربة.
   - على خادم حيّ: الصفحة العامة وواجهاتها والإرسال، وصلاحيات الموظف (المدير، ومن فُتحت له، ومن لم تُفتح له)،
     وتحويل الموظف بلا بوابات إلى البلاغات، والخيار في الحساب.
 
@@ -237,6 +239,62 @@ def unit_staff():
     check("ولا يُحفظ العنوان نفسه", not any("1.2.3.4" in k for k in R._rate))
 
 
+def unit_alert():
+    print("تنبيه واتساب")
+    d = fresh()
+    seed(d)
+    drama = gid(d, "series", "SERIES | Drama")
+    base = {"s": "smart", "t": "series", "g": drama, "n": "Breaking Bad", "season": 2, "ep": 1, "problem": "down"}
+    r, new = R.submit(d, dict(base, phone="0551234567", note="شاشة *سوداء*"), now=1000)
+    R.page_url = "https://admin.ssouq.com/reports"
+    txt = R.alert_text(r, True)
+    check("نصّ التنبيه: المشكلة والسيرفر، والاسم والحلقة، والقسم، وصاحبه (وعلامات واتساب في ملاحظته لا تنسّق)، والرابط", txt == (
+        "🔔 *بلاغ جديد في سمارت: لا يعمل*\n\n\u200f🎬 Breaking Bad · الموسم 2 · الحلقة 1\n\u200f📂 مسلسل · SERIES | Drama\n"
+        "\u200f📱 +966551234567 — شاشة ∗سوداء∗\n\nالبلاغات: https://admin.ssouq.com/reports"), txt)
+    check("والمكرّر بعدده", R.alert_text(dict(r, count=3), False).startswith("🔁 *بلاغٌ متكرّر في سمارت: لا يعمل* (3 بلاغات)"))
+    check("وبلا تنبيهٍ مضبوط: لا شيء", R.alert(d, r, True) is None)
+    sent = []
+    R.sender = lambda to, text: sent.append((to, text)) or ({"ok": False, "error": "الرقم ليس على واتساب"}
+                                                          if to == "966599000000" else {"ok": True})
+    R.recipients = lambda: [("سارة", "966500000001"), ("المدير", "966500000002"), ("سارة مكرّر", "966500000001")]
+    R._alerts.clear()
+    try:
+        res = R.alert(d, r, True, now=1000)
+        check("يصل كل مستلمٍ مرة", res == {"at": 1000, "to": 2, "sent": 2, "error": ""}
+              and [x[0] for x in sent] == ["966500000001", "966500000002"] and sent[0][1] == txt, res)
+        check("ويُحفظ مع البلاغ", R.listing(d)["items"][0]["wa"] == res)
+        r2, new2 = R.submit(d, dict(base, phone="0500000009"), now=1100)
+        check("والمكرّر قبل نصف ساعة: لا تنبيه", not new2 and R.alert(d, r2, False, now=1100) is None and len(sent) == 2)
+        r3, _ = R.submit(d, base, now=1000 + R.ALERT_AGAIN)
+        res3 = R.alert(d, r3, False, now=1000 + R.ALERT_AGAIN)
+        check("وبعدها ينبّه ثانيةً بعدده وآخر من بلّغ برقمه", res3["sent"] == 2 and "(3 بلاغات)" in sent[-1][1]
+              and "+966500000009" in sent[-1][1])
+        R.recipients = lambda: [("سارة", "966500000001"), ("علي", "966599000000")]
+        r4, _ = R.submit(d, dict(base, ep=2), now=5000)
+        res4 = R.alert(d, r4, True, now=5000)
+        check("وما لم يصل: بسببه ولمن", res4["sent"] == 1 and res4["error"] == "علي: الرقم ليس على واتساب", res4)
+        R.recipients = lambda: []
+        r5, _ = R.submit(d, dict(base, ep=3), now=5100)
+        check("وبلا مستلمين: سببه", R.alert(d, r5, True, now=5100)["error"].startswith("لا أرقام للتنبيه"))
+        R.recipients = lambda: [("سارة", "966500000001")]
+        old, R.ALERT_HOUR_MAX = R.ALERT_HOUR_MAX, 2
+        R._alerts.clear()
+        try:
+            got = [R.alert(d, R.submit(d, dict(base, ep=10 + i), now=90000)[0], True, now=90000) for i in range(3)]
+            check("وحدّ الساعة يحمي الرقم (والبلاغ محفوظ)", [g["sent"] for g in got] == [1, 1, 0]
+                  and "تجاوز حدّ التنبيهات" in got[2]["error"])
+            check("ويعود في الساعة التالية", R.alert(d, R.submit(d, dict(base, ep=20), now=93700)[0], True, now=93700)["sent"] == 1)
+        finally:
+            R.ALERT_HOUR_MAX = old
+    finally:
+        R.sender = R.recipients = None
+        R.page_url = ""
+    check("رقم المدير: فارغٌ افتراضًا", R.settings(d) == {"wa": "", "on": True})
+    check("ويُحفظ بصيغته الدولية", R.save_settings(d, "0551112222", False) == {"wa": "966551112222", "on": False}
+          and R.settings(d) == {"wa": "966551112222", "on": False})
+    check("والرقم الخطأ يُرفض", "غير صحيح" in raises(R.save_settings, d, "12"))
+
+
 # ================= على خادمٍ حيّ =================
 AUTH = "Basic " + base64.b64encode(b"admin:envpass123").decode()
 
@@ -371,11 +429,117 @@ def live():
         p.wait(timeout=10)
 
 
+def live_alert():
+    print("خادمٌ حيّ: التنبيه يصل على واتساب")
+    port, wport = 9794, 9784
+    data = tempfile.mkdtemp(prefix="reports_alert_")
+    reader = f"http://127.0.0.1:{wport}"
+    rdp = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_reader.py"), str(wport), "rdr_rep"])
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("WHATSAPP_READER_", "SALLA_ADMIN_TOKEN"))}
+    env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
+               WHATSAPP_READER_URL=reader, WHATSAPP_READER_SECRET="rdr_rep")
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env)
+    base, adm = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{port}/admin"
+
+    def rd(method, path, body=None):
+        rq = urllib.request.Request(reader + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                    headers={"Content-Type": "application/json", "X-Reader-Secret": "rdr_rep"})
+        with urllib.request.urlopen(rq, timeout=20) as r:
+            return json.loads(r.read())
+
+    def sent_after(n, want, t=8.0):
+        end = time.time() + t
+        while time.time() < end:
+            log = rd("GET", "/_test/log")["sent"]
+            if len(log) >= n + want:
+                return log[n:]
+            time.sleep(.1)
+        return rd("GET", "/_test/log")["sent"][n:]
+
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(base + "/robots.txt", timeout=2)
+                rd("GET", "/_test/log")
+                break
+            except Exception:
+                time.sleep(.2)
+        req(adm + "/api/content/admin/upload?s=smart&name=s.m3u", SAMPLE.encode(), AUTH)
+        drama = next(x["id"] for x in jget(base + "/api/report/groups?s=smart")[1]["kinds"]["series"] if x["name"] == "SERIES | Drama")
+        form = {"s": "smart", "t": "series", "g": drama, "n": "Breaking Bad", "season": 1, "ep": 2, "problem": "buffer",
+                "phone": "0551234567"}
+        code, d = jpost(adm + "/api/accounts", {"name": "سارة", "user": "sara", "password": "sara1234", "reports": True,
+                                                "reports_wa": "0500000001", "gates": []}, AUTH)
+        check("رقم الموظف في نافذة الحساب (بصيغته الدولية)", code == 200
+              and next(a for a in d["accounts"] if a["user"] == "sara")["reports_wa"] == "966500000001", d)
+        code, d = jpost(adm + "/api/accounts", {"name": "علي", "user": "ali", "password": "ali12345", "reports": True,
+                                                "reports_wa": "05ab", "gates": []}, AUTH)
+        check("والرقم الخطأ يُرفض برسالته", code == 400 and d["error"].startswith("رقم واتساب الموظف"), d)
+        code, d = jget(adm + "/api/reports", AUTH)
+        check("بلا رقم مسابقةٍ مربوط: الصفحة تقول ذلك", code == 200 and d["alert"]["from"] == ""
+              and "رقم المسابقة غير مربوط" in d["alert"]["from_error"]
+              and d["alert"]["staff"] == [{"name": "سارة", "wa": "966500000001", "on": True}], d.get("alert"))
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        code, d = jpost(base + "/api/report", form)
+        time.sleep(1)
+        check("والبلاغ يُحفظ وإن لم يصل التنبيه، وسببه معه", code == 200
+              and "رقم المسابقة غير مربوط" in (jget(adm + "/api/reports", AUTH)[1]["items"][0].get("wa") or {}).get("error", "")
+              and len(rd("GET", "/_test/log")["sent"]) == n0, jget(adm + "/api/reports", AUTH)[1]["items"][0].get("wa"))
+        jpost(adm + "/api/contest/admin/wa/connect", {"number": "0500000009"}, AUTH)
+        rd("POST", "/_test/scan/ssouq-guide--contest", {})
+        req(adm + "/api/contest/admin", auth=AUTH)              # صفحة المسابقة تجدّد حال الرقم
+        code, d = jpost(adm + "/api/reports/alert", {"wa": "0551112222", "on": True}, AUTH)
+        check("المدير يحفظ رقمه، ومن أين يُرسل", code == 200 and d["alert"]["mine"] == {"wa": "966551112222", "on": True}
+              and d["alert"]["from"] == "966500000009", d)
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        code, d = jpost(base + "/api/report", dict(form, ep=3, note="يقطع كل دقيقة"))
+        got = sent_after(n0, 2)
+        check("كل بلاغٍ جديد يصل الموظف والمدير", code == 200 and sorted(x["to"] for x in got) == ["966500000001", "966551112222"]
+              and all("Breaking Bad · الموسم 1 · الحلقة 3" in x["body"] and "يقطع" in x["body"]
+                      and "+966551234567 — يقطع كل دقيقة" in x["body"] and "البلاغات: https://admin.ssouq.com/reports" in x["body"]
+                      for x in got), got)
+        item = next(x for x in jget(adm + "/api/reports", AUTH)[1]["items"] if x["ep"] == 3)
+        check("وما جرى معه في الصفحة", item["wa"]["sent"] == 2 and item["wa"]["error"] == "", item.get("wa"))
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        jpost(base + "/api/report", dict(form, ep=3))
+        time.sleep(1)
+        check("والمكرّر فورًا لا يُعيد التنبيه", len(rd("GET", "/_test/log")["sent"]) == n0)
+        sara = login(adm, "sara", "sara1234")
+        code, d = jget(adm + "/api/reports", opener=sara)
+        check("والموظف يرى رقمه، ولا يرى غيره", code == 200 and d["alert"]["mine"] == {"wa": "966500000001", "on": True}
+              and "staff" not in d["alert"])
+        code, d = jpost(adm + "/api/reports/alert", {"wa": "0500000002", "on": False}, opener=sara)
+        check("ويغيّر رقمه ويوقف تنبيهه", code == 200 and d["alert"]["mine"] == {"wa": "966500000002", "on": False}, d)
+        check("ورقمٌ خطأ ‏400", jpost(adm + "/api/reports/alert", {"wa": "123"}, opener=sara)[0] == 400)
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        jpost(base + "/api/report", dict(form, ep=4))
+        got = sent_after(n0, 1)
+        time.sleep(.5)
+        got = rd("GET", "/_test/log")["sent"][n0:]
+        check("فلا يصله، ويصل المدير", [x["to"] for x in got] == ["966551112222"], got)
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        code, d = jpost(adm + "/api/reports/alert-test", {}, opener=sara)
+        got = rd("GET", "/_test/log")["sent"][n0:]
+        check("والرسالة التجريبية إلى رقمه", code == 200 and d["ok"] and d["to"] == "966500000002"
+              and len(got) == 1 and got[0]["to"] == "966500000002" and "تنبيه بلاغات المحتوى يعمل" in got[0]["body"], (d, got))
+        code, d = jpost(adm + "/api/accounts", {"name": "علي", "user": "ali", "password": "ali12345", "gates": []}, AUTH)
+        ali = login(adm, "ali", "ali12345")
+        check("ومن لم تُفتح له البلاغات: لا تنبيه ولا تجربة", jpost(adm + "/api/reports/alert", {"wa": "0500000003"}, opener=ali)[0] == 403
+              and jpost(adm + "/api/reports/alert-test", {}, opener=ali)[0] == 403)
+    finally:
+        p.terminate()
+        p.wait(timeout=10)
+        rdp.terminate()
+        rdp.wait(timeout=10)
+
+
 def main():
     unit_steps()
     unit_submit()
     unit_staff()
+    unit_alert()
     live()
+    live_alert()
     print(f"\nResult: {_p} passed, {_f} failed")
     sys.exit(1 if _f else 0)
 

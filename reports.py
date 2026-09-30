@@ -13,7 +13,13 @@
 الموظف حسابٌ في الأداة فتح له المدير «بلاغات المحتوى» من نافذة الحساب (‏reports في الحساب): يرى المفتوحة
 والمنجزة، ويعلّم البلاغ «تم الإصلاح» أو يعيد فتحه، ويراسل صاحبه على واتساب. والمدير يرى ما يراه ويحذف.
 
-التخزين: data/reports/reports.json — الأحدث أولًا، وبحدٍّ يُسقط أقدم المنجز ثم أقدم الكل. بلا مكتبات خارجية.
+وتنبيه واتساب بكل بلاغ (‏alert، في خيطٍ مستقل فلا ينتظره المشترك): من رقم المسابقة المربوط إلى كل موظفٍ
+له رقمٌ ولم يوقفه، وإلى رقم المدير إن حفظه — بالاسم والحلقة والمشكلة والسيرفر والقسم وصاحب البلاغ ورابط الصفحة.
+والبلاغ المكرّر يُنبَّه به ثانيةً بعد نصف ساعة (بعدد من بلّغ) لا مع كل تكرار، وحدٌّ بالساعة لكل التنبيهات يحمي
+الرقم من الحظر؛ وما لم يُرسل يبقى في الصفحة بسببه. والإرسال والمستلمون يضبطهما الخادم (‏sender · recipients).
+
+التخزين: data/reports/reports.json — الأحدث أولًا، وبحدٍّ يُسقط أقدم المنجز ثم أقدم الكل؛ و‏settings.json برقم
+المدير للتنبيه. بلا مكتبات خارجية.
 """
 import hashlib
 import json
@@ -42,6 +48,14 @@ RATE = int(os.environ.get("REPORT_RATE_PER_HOUR", "10") or 10)   # بلاغات�
 
 _lock = threading.RLock()
 _rate = {}                   # بصمة العنوان:الساعة ← العدد
+
+# تنبيه واتساب — يضبطهما الخادم (xm_lines)، وبدونهما لا تنبيه:
+sender = None                # (الرقم، النص) ← {ok, error}: من رقم المسابقة
+recipients = None            # () ← [(الاسم، الرقم)] من يصله التنبيه الآن
+page_url = ""                # رابط صفحة البلاغات في التنبيه
+ALERT_AGAIN = 30 * 60        # البلاغ المكرّر يُنبَّه به ثانيةً بعدها، لا مع كل تكرار
+ALERT_HOUR_MAX = int(os.environ.get("REPORT_ALERTS_PER_HOUR", "30") or 30)   # تنبيهاتٌ بالساعة، لكل المستلمين
+_alerts = {}                 # الساعة ← عدد البلاغات التي نُبّه بها
 
 
 def _path(data_dir):
@@ -337,3 +351,109 @@ def remove(data_dir, rid):
 def open_count(data_dir):
     with _lock:
         return sum(1 for r in _load(data_dir)["items"] if r.get("state") == "open")
+
+
+# ================= تنبيه واتساب =================
+SETTINGS = "settings.json"
+
+
+def _settings_path(data_dir):
+    return os.path.join(data_dir, DIR, SETTINGS)
+
+
+def settings(data_dir):
+    """رقم المدير للتنبيه ← {wa, on}."""
+    try:
+        with open(_settings_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        d = {}
+    d = d if isinstance(d, dict) else {}
+    return {"wa": str(d.get("wa") or ""), "on": d.get("on") is not False}
+
+
+def save_settings(data_dir, wa, on=True):
+    """يحفظ رقم المدير ← الإعداد، وInvalid لرقمٍ لا يصلح."""
+    d = {"wa": phone_of(wa), "on": bool(on)}
+    p = _settings_path(data_dir)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with _lock:
+        tmp = f"{p}.{secrets.token_hex(4)}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+        os.replace(tmp, p)
+    return d
+
+
+def alert_text(r, new):
+    """نصّ التنبيه بخطّ واتساب العريض — وأول كل سطرٍ فيه اسمٌ علامة RLM فيبقى من اليمين وإن بدأ بإنجليزي."""
+    w, rlm = content._wa, "\u200f"
+    prob = PROBLEMS.get(r.get("problem"), "")
+    head = (f"🔔 *بلاغ جديد في {w(r.get('sname'))}: {prob}*" if new
+            else f"🔁 *بلاغٌ متكرّر في {w(r.get('sname'))}: {prob}* ({int(r.get('count') or 1)} بلاغات)")
+    title = w(r.get("title")) + (f" ({r['year']})" if r.get("year") else "")
+    ep = ""
+    if r.get("kind") == "series":
+        ep = (f" · الموسم {r['season']}" if r.get("season") else "") + (f" · الحلقة {r['ep']}" if r.get("ep") else " · كل الحلقات")
+    lines = [head, "", f"{rlm}🎬 {title}{ep}", f"{rlm}📂 {KIND_ONE.get(r.get('kind'), '')} · {w(r.get('group'))}"]
+    p = next((x for x in reversed(r.get("people") or []) if x.get("phone") or x.get("note")), None)
+    if p:
+        lines.append(f"{rlm}📱 " + " — ".join(b for b in (f"+{p['phone']}" if p.get("phone") else "", w(p.get("note"))) if b))
+    if page_url:
+        lines += ["", f"البلاغات: {page_url}"]
+    return "\n".join(lines)
+
+
+def _record_alert(data_dir, rid, res):
+    with _lock:
+        d = _load(data_dir)
+        r = next((x for x in d["items"] if x.get("id") == rid), None)
+        if r is not None:
+            r["wa"] = res
+            _save(data_dir, d)
+
+
+def alert(data_dir, r, new, now=None):
+    """ينبّه الموظفين بالبلاغ ← ما جرى {at, to, sent, error} ويُحفظ معه، أو None إن لم يحن (المكرّر قبل نصف ساعة)
+    أو لم يُضبط الإرسال."""
+    if not sender or not recipients:
+        return None
+    now = now or time.time()
+    last = (r.get("wa") or {}).get("at") or 0
+    if not new and last and now - last < ALERT_AGAIN:
+        return None
+    try:
+        rcpt, seen = [], set()
+        for name, wa in recipients() or ():
+            if wa and wa not in seen:
+                seen.add(wa)
+                rcpt.append((name, wa))
+    except Exception as e:  # noqa: BLE001 — لا يُسقط البلاغ
+        rcpt, err = [], str(e)[:200]
+    else:
+        err = "" if rcpt else "لا أرقام للتنبيه — أضف رقمك في صفحة البلاغات"
+    res = {"at": int(now), "to": len(rcpt), "sent": 0, "error": err}
+    if rcpt:
+        hour = int(now // 3600)
+        with _lock:
+            for h in [h for h in _alerts if h != hour]:
+                _alerts.pop(h, None)
+            over = _alerts.get(hour, 0) >= ALERT_HOUR_MAX
+            if not over:
+                _alerts[hour] = _alerts.get(hour, 0) + 1
+        if over:
+            res["error"] = f"تجاوز حدّ التنبيهات بالساعة ({ALERT_HOUR_MAX}) — البلاغ محفوظ هنا"
+        else:
+            text, errs = alert_text(r, new), []
+            for name, wa in rcpt:
+                try:
+                    out = sender(wa, text) or {}
+                except Exception as e:  # noqa: BLE001
+                    out = {"ok": False, "error": str(e)}
+                if out.get("ok"):
+                    res["sent"] += 1
+                else:
+                    errs.append(f"{name}: {out.get('error') or 'تعذّر الإرسال'}")
+            res["error"] = " · ".join(errs)[:300]
+    _record_alert(data_dir, r["id"], res)
+    return res

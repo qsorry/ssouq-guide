@@ -507,6 +507,13 @@ def guide_sub(gate, guide_url=""):
     return re.sub(r"^\s*بوابة\s+", "", str(gate.get("name", ""))).strip()
 
 
+def _report_wa(v):
+    try:
+        return reports.phone_of(v)
+    except reports.Invalid as e:
+        raise ValueError("رقم واتساب الموظف: " + str(e))
+
+
 def clean_account(a, old=None):
     """حساب = شخص له اسم دخول وكلمة مرور للأداة، وبداخله بوابات توليد.
     كل بوابة لها ربطها الخاص (انظر clean_gate)."""
@@ -527,6 +534,8 @@ def clean_account(a, old=None):
         "split": bool(a.get("split", old.get("split", False))),
         # بلاغات المحتوى: موظف الدعم يرى ما يبلّغ عنه المشتركون من فيديو لا يعمل أو يقطع (‏/reports) ويعلّمه «تم الإصلاح».
         "reports": bool(a.get("reports", old.get("reports", False))),
+        # ورقم واتسابه لتنبيهٍ بكل بلاغ (يغيّره هو من صفحة البلاغات، ويوقفه ‏reports_alert فيها).
+        "reports_wa": _report_wa(a.get("reports_wa", old.get("reports_wa", ""))),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -2481,6 +2490,45 @@ def start_contest_worker():
 CONTENT_TICK = 600                  # كل عشر دقائق: أيّ سيرفرٍ له رابط M3U مرّ يومٌ على محتواه يُسحب
 
 
+def reports_page_url():
+    return ("https://%s/reports" % ADMIN_HOST) if ADMIN_HOST else \
+        ("https://%s%s/reports" % (SITE_HOST, ADMIN_PATH))
+
+
+def report_recipients(st=None):
+    """من يصله تنبيه البلاغ ← [(الاسم، الرقم)]: كل موظفٍ فُتحت له البلاغات وله رقمٌ لم يوقف تنبيهه، ورقم المدير إن حفظه."""
+    if st is None:                  # من خيط التنبيه: القراءة تحت القفل كغيرها (load_store قد يكتب ترقيةً)
+        with _lock:
+            st = load_store()
+    out = [(a.get("name", ""), a["reports_wa"]) for a in st["accounts"]
+           if a.get("reports") and a.get("reports_wa") and a.get("reports_alert") is not False]
+    adm = reports.settings(DATA_DIR)
+    if adm["wa"] and adm["on"]:
+        out.append(("المدير", adm["wa"]))
+    return out
+
+
+def report_alert_state(role, acct, st):
+    """بطاقة «تنبيه واتساب» في صفحة البلاغات: رقمي وحاله، ومن أين يُرسل — وللمدير من يصله."""
+    mine = reports.settings(DATA_DIR) if role == "admin" else \
+        {"wa": acct.get("reports_wa", ""), "on": acct.get("reports_alert") is not False}
+    r = reader_status()
+    on = r.get("status") == "connected"
+    out = {"mine": mine, "from": r.get("number", "") if on else "",
+           "from_error": "" if on else "رقم المسابقة غير مربوط — يُربط من صفحة المسابقة، ومنه تُرسل التنبيهات"}
+    if role == "admin":
+        out["staff"] = [{"name": a.get("name", ""), "wa": a.get("reports_wa", ""), "on": a.get("reports_alert") is not False}
+                        for a in st["accounts"] if a.get("reports")]
+    return out
+
+
+def start_reports():
+    """تنبيه واتساب بكل بلاغ: من رقم المسابقة، إلى الموظفين ورقم المدير."""
+    reports.sender = reader_send
+    reports.recipients = report_recipients
+    reports.page_url = reports_page_url()
+
+
 def content_page_url():
     return ("https://%s/content" % ADMIN_HOST) if ADMIN_HOST else \
         ("https://%s%s/content" % (SITE_HOST, ADMIN_PATH))
@@ -3140,7 +3188,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._page("reports_admin.html")
                 d = reports.listing(DATA_DIR, self._q("state") or "open", content.key_ok(self._q("s")))
                 return self._send(200, dict(d, role=role, name=acct["name"] if acct else "المدير",
-                                            gates=len(acct.get("gates") or []) if acct else 0))
+                                            gates=len(acct.get("gates") or []) if acct else 0,
+                                            alert=report_alert_state(role, acct, st)))
             if path == "/contest" or path.startswith("/api/contest/"):   # مسابقة التوقّعات (للمدير)
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -3967,11 +4016,21 @@ class Handler(BaseHTTPRequestHandler):
             rec, new = reports.submit(DATA_DIR, req)
         except reports.Invalid as e:
             return self._send(400, {"ok": False, "error": str(e)})
+        # تنبيه الموظفين على واتساب — في خيطٍ مستقل، فلا ينتظره المشترك
+        threading.Thread(target=reports.alert, args=(DATA_DIR, rec, new), daemon=True).start()
         return self._send(200, {"ok": True, "new": new, "count": rec["count"], "label": reports.label(rec)})
 
-    def _reports_post(self, path, role, acct):
-        """للموظف: «تم الإصلاح» وإعادة الفتح، وللمدير الحذف."""
+    def _reports_post(self, path, role, acct, st):
+        """للموظف: «تم الإصلاح» وإعادة الفتح ورقمه للتنبيه، وللمدير الحذف."""
         body = self._body()
+        if path == "/api/reports/alert":             # رقمي للتنبيه وتشغيله (المدير في إعداد البلاغات، والموظف في حسابه)
+            if role == "admin":
+                reports.save_settings(DATA_DIR, body.get("wa", ""), body.get("on", True) is not False)
+            else:
+                acct["reports_wa"] = reports.phone_of(body.get("wa", ""))
+                acct["reports_alert"] = body.get("on", True) is not False
+                save_store(st)
+            return self._send(200, {"ok": True, "alert": report_alert_state(role, acct, st)})
         rid = str(body.get("id", ""))
         if path == "/api/reports/state":
             r = reports.set_state(DATA_DIR, rid, bool(body.get("done")), acct["name"] if acct else "المدير",
@@ -4108,10 +4167,10 @@ class Handler(BaseHTTPRequestHandler):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._service_post(path, st)
-                if path.startswith("/api/reports/"):   # الموظف يعلّم البلاغ «تم الإصلاح» أو يعيد فتحه
+                if path.startswith("/api/reports/") and path != "/api/reports/alert-test":   # «تم الإصلاح» ورقم التنبيه
                     if not reports_on(role, acct):
                         return self._send(403, {"error": "غير متاح"})
-                    return self._reports_post(path, role, acct)
+                    return self._reports_post(path, role, acct, st)
                 if path.startswith("/api/mygates"):    # الشخص يدير بواباته بنفسه
                     if role != "account":
                         return self._send(403, {"error": "غير متاح"})
@@ -4125,6 +4184,16 @@ class Handler(BaseHTTPRequestHandler):
                     acct["guide_url"] = gu
                     save_store(st)
                     return self._send(200, {"ok": True, "guide_url": gu})
+            if path == "/api/reports/alert-test":     # خارج القفل: رسالةٌ تجريبية تنتظر واتساب
+                if not reports_on(role, acct):
+                    return self._send(403, {"error": "غير متاح"})
+                wa = reports.settings(DATA_DIR)["wa"] if role == "admin" else acct.get("reports_wa", "")
+                if not wa:
+                    return self._send(400, {"error": "احفظ رقمك أولًا"})
+                r = reader_send(wa, "✅ *تنبيه بلاغات المحتوى يعمل*\n\nستصلك هنا البلاغات عن فيديو لا يعمل أو يقطع، "
+                                    "بالاسم والحلقة والمشكلة ومن بلّغ.\n\nالبلاغات: " + reports_page_url())
+                return self._send(200 if r.get("ok") else 502, {"ok": bool(r.get("ok")), "to": wa,
+                                                                 "error": str(r.get("error") or "")})
             if path.startswith("/api/content/"):      # خارج القفل: رفع ملف M3U وقراءته يطولان
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -4609,6 +4678,7 @@ def web():
     start_split_worker()
     start_contest_worker()
     start_content_worker()
+    start_reports()
     start_embedded_reader()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 

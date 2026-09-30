@@ -426,6 +426,10 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
     <div class="gate">
       <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports" style="width:auto"> بلاغات المحتوى (موظف الدعم)</label>
       <small class="hint">يرى ما يبلّغ عنه المشتركون من <b>guide.ssouq.com/report</b> — السيرفر والقسم والمسلسل أو الفيلم والحلقة، و«لا يعمل» أو «يقطع» — ويعلّمه «تم الإصلاح» ويراسل صاحبه على واتساب. ولحسابٍ بلا بوابات تُفتح له البلاغات وحدها بعد الدخول.</small>
+      <div id="acc_reports_box" hidden>
+        <label for="acc_reports_wa">رقم واتساب الموظف — يصله كل بلاغ من رقم المسابقة (اختياري، ويغيّره هو من صفحة البلاغات)</label>
+        <input id="acc_reports_wa" type="tel" inputmode="tel" placeholder="05xxxxxxxx" style="direction:ltr;text-align:right">
+      </div>
     </div>
     <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
     <div id="gates"></div>
@@ -635,6 +639,8 @@ function fill(a){
   $("acc_copy_guide").checked = !!a?.copy_guide;
   $("acc_split").checked = !!a?.split;
   $("acc_reports").checked = !!a?.reports;
+  $("acc_reports_wa").value = a?.reports_wa ? "+" + a.reports_wa : "";
+  $("acc_reports_box").hidden = !a?.reports;
   $("acc_guide_text").value = a?.guide_text || defaultGuideText;
   applyCopyGuide();
   $("password").value = "";
@@ -653,6 +659,7 @@ function applyCopyGuide(){
   if (on && !$("acc_guide_text").value.trim()) $("acc_guide_text").value = defaultGuideText;
 }
 $("acc_copy_guide").addEventListener("change", applyCopyGuide);
+$("acc_reports").addEventListener("change", () => { $("acc_reports_box").hidden = !$("acc_reports").checked; });
 $("acc_guide_reset").onclick = () => { $("acc_guide_text").value = defaultGuideText; };
 
 // ---- نافذة إضافة/تعديل الحساب ----
@@ -667,7 +674,7 @@ $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
                 password: $("password").value, guide_url: $("acc_guide").value,
                 copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value,
-                split: $("acc_split").checked, reports: $("acc_reports").checked, gates: readGates()};
+                split: $("acc_split").checked, reports: $("acc_reports").checked, reports_wa: $("acc_reports_wa").value, gates: readGates()};
   try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
   catch(e) { say($("msg"), e.message); }
 };

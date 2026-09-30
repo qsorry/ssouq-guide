@@ -153,6 +153,22 @@ function playlist(extra) {
     check('وتفاصيله', txt.includes('Breaking Bad · الموسم 1 · الحلقة 5') && txt.includes('سمارت · SERIES | Drama')
           && txt.includes('يقطع') && txt.includes('+966551234567') && txt.includes('يقطع بعد دقيقتين'), txt.slice(0, 200));
     check('ورقمه رابط واتساب', await bb.$eval('.people a', a => a.href) === 'https://wa.me/966551234567');
+    check('وما جرى لتنبيهه (بلا أرقامٍ بعد)', (await bb.$eval('.wline', e => e.textContent)).includes('لا أرقام للتنبيه'));
+    check('بطاقة تنبيه واتساب مفتوحة بلا رقم', await ep.$eval('#abox', e => e.open)
+          && (await ep.textContent('#aSum')).includes('أضف رقمك'));
+    await ep.fill('#aWa', '0500000001');
+    await ep.click('#aSave');
+    await ep.waitForFunction(() => document.getElementById('aMsg').textContent.includes('حُفظ'));
+    check('ويحفظ رقمه، ويقول إن رقم المسابقة غير مربوط', (await ep.textContent('#aSum')).includes('+966500000001')
+          && !(await ep.$eval('#aFrom', e => e.hidden)) && await ep.inputValue('#aWa') === '+966500000001');
+    await ep.fill('#aWa', '12');
+    await ep.click('#aSave');
+    await ep.waitForFunction(() => document.getElementById('aMsg').classList.contains('bad'));
+    check('والرقم الخطأ برسالته', (await ep.textContent('#aMsg')).includes('غير صحيح'));
+    await ep.fill('#aWa', '0500000001');
+    await ep.click('#aSave');
+    await ep.waitForFunction(() => document.getElementById('aMsg').textContent.includes('حُفظ'));
+    await shot(ep, 'reports-0-alert');
     check('بلا عرضٍ زائد على 390px', await wide(ep) <= 390, await wide(ep));
     await shot(ep, 'reports-1-open');
     await bb.$eval('[data-act="done"]', b => b.click());
@@ -180,10 +196,12 @@ function playlist(extra) {
     await ap.waitForSelector('[data-toggle]');
     check('وسم الحساب', (await ap.textContent('.acct')).includes('بلاغات المحتوى'));
     await ap.$eval('[data-edit]', b => b.click());
-    check('والخيار مفعّل في نافذته', await ap.$eval('#acc_reports', c => c.checked));
+    check('والخيار مفعّل في نافذته، ورقم الموظف معه', await ap.$eval('#acc_reports', c => c.checked)
+          && await ap.inputValue('#acc_reports_wa') === '+966500000001' && !(await ap.$eval('#acc_reports_box', e => e.hidden)));
     await ap.goto(APP + '/admin/reports?state=all');
     await ap.waitForSelector('.rep');
     check('والمدير يرى الكل ويحذف', (await ap.$$('.rep')).length === 2 && !!(await ap.$('[data-act="del"]')));
+    check('ومن يصله التنبيه', (await ap.textContent('#aStaff')).includes('سارة') && (await ap.textContent('#aStaff')).includes('+966500000001'));
     check('بلا أخطاء سكربت', errors.length === 0, errors.join(' | '));
   } catch (e) {
     check('بلا استثناء', false, e.stack);
