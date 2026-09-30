@@ -1,0 +1,71 @@
+<!doctype html>
+<!-- صورة منتجَي «اشتراك كاسبر لشاشات سامسونج و LG» في المتجر — 1000×1000:
+       ?m=12   لمدة 12 شهر (p1152389812)
+       ?m=6    لمدة 6 أشهر (p138230620)
+     بتصميم صورة سمارت لسامسونج و LG (smart-3m-webos.jpg) وصورة Duplecast: الأيقونة، ووسوم SAMSUNG و LG و webOS،
+     والعنوان، ومربّعات الأرقام. والأرقام من وصف المنتج (+6,100 فيلم و+1,700 مسلسل)، والتطبيقان 0Player و Duplecast.
+     وشعار Casper Flix هو static/img/brands/casper.webp، مقصوصًا بزوايا الأيقونة. يصوّرها capture_casper_webos.js. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;800;900&family=Cairo:wght@700;800;900&display=block" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b0f24}
+#cover{width:1000px;height:1000px;position:relative;overflow:hidden;color:#fff;font-family:Cairo,sans-serif;
+  background:radial-gradient(70% 55% at 85% 6%,#7a1622 0%,rgba(122,22,34,0) 70%),radial-gradient(60% 50% at 8% 96%,#1c3b8f 0%,rgba(28,59,143,0) 70%),#0b0f24}
+#cover .frame{position:absolute;inset:28px;border:1.5px solid rgba(255,255,255,.12);border-radius:44px}
+#cover .icon{position:absolute;left:50%;top:78px;width:320px;height:320px;margin-left:-160px;border-radius:70px;overflow:hidden;background:#000;
+  box-shadow:0 0 90px 12px rgba(214,40,52,.5),0 24px 60px rgba(0,0,0,.55)}
+#cover .icon img{position:absolute;left:-14px;top:-14px;width:348px;height:348px}
+#cover .chips{position:absolute;top:436px;left:0;right:0;display:flex;justify-content:center;gap:18px}
+#cover .chip{height:64px;padding:0 30px;border-radius:16px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.16);
+  display:flex;align-items:center;gap:10px}
+#cover .samsung{font:900 30px Inter,sans-serif;letter-spacing:3.5px;transform:scaleX(1.12)}
+#cover .lg{font:800 34px Inter,sans-serif}
+#cover .lg svg{width:40px;height:40px}
+#cover .webos{font:300 37px Inter,sans-serif;letter-spacing:.5px}
+#cover .webos i{font-style:normal;color:#ff5c8a}
+#cover h1{position:absolute;top:522px;left:0;right:0;text-align:center;font-weight:900;font-size:64px;line-height:1.25;direction:rtl}
+#cover h1 em{font-style:normal;color:#ffc94d}
+#cover .site{position:absolute;top:618px;left:0;right:0;text-align:center;font:500 26px Inter,sans-serif;letter-spacing:7px;color:#98a3c9}
+#cover .boxes{position:absolute;left:66px;right:66px;top:680px;display:flex;gap:26px;direction:rtl}
+#cover .b{flex:1;height:132px;border-radius:24px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.14);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+#cover .b b{font:800 42px Inter,sans-serif;direction:ltr}
+#cover .b span{font-size:26px;color:#aab3d6;font-weight:700}
+#cover .b.app b{font-size:38px}
+#cover .b.app span{direction:rtl}
+#cover .foot{position:absolute;top:866px;left:0;right:0;text-align:center;font:800 26px Inter,sans-serif;color:#dfe4ff;letter-spacing:1px}
+#cover .foot i{font-style:normal;color:#8e97bd;margin:0 12px}
+</style>
+</head>
+<body>
+<div id="cover">
+  <div class="frame"></div>
+  <div class="icon"><img src="../../static/img/brands/casper.webp" alt=""></div>
+  <div class="chips">
+    <div class="chip"><span class="samsung">SAMSUNG</span></div>
+    <div class="chip lg">
+      <!-- شعار LG: دائرة حمراء فيها الوجه (العين، وحرف L أنفًا، وحرف G محيطًا) -->
+      <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="19" fill="#c8102e"/>
+        <g fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="butt">
+          <path d="M29.2 10.8A13 13 0 1 0 33 20H23.5"/><path d="M18.6 9.5V25H24"/></g>
+        <circle cx="13.6" cy="13.8" r="2.1" fill="#fff"/></svg>LG</div>
+    <div class="chip"><span class="webos">web<i>OS</i></span></div>
+  </div>
+  <h1 id="title"></h1>
+  <div class="site">SSOUQ.COM</div>
+  <div class="boxes">
+    <div class="b"><b>+6,100</b><span>فيلم</span></div>
+    <div class="b"><b>+1,700</b><span>مسلسل</span></div>
+    <div class="b app"><b>0Player</b><span>أو Duplecast</span></div>
+  </div>
+  <div class="foot">4K<i>•</i>FHD<i>•</i>HD</div>
+</div>
+<script>
+const m = new URLSearchParams(location.search).get("m") || "12";
+document.getElementById("title").innerHTML = `اشتراك كاسبر لمدة <em>${m === "12" ? "12 شهر" : m + " أشهر"}</em>`;
+</script>
+</body>
+</html>
