@@ -4,7 +4,8 @@
        ?m=6    لمدة 6 أشهر (p138230620)
      بتصميم صورة سمارت لسامسونج و LG (smart-3m-webos.jpg) وصورة Duplecast: الأيقونة، ووسوم SAMSUNG و LG و webOS،
      والعنوان، ومربّعات الأرقام. والأرقام من وصف المنتج (+6,100 فيلم و+1,700 مسلسل)، والتطبيقان 0Player و Duplecast.
-     وشعار Casper Flix هو static/img/brands/casper.webp، مقصوصًا بزوايا الأيقونة. يصوّرها capture_casper_webos.js. -->
+     والأيقونة أيقونة IPTV Smarters Pro (assets/sm_icon.webp): مقصوصةٌ من صورة سمارت لسامسونج و LG في المتجر (296×296)
+     لأن static/img/apps/smarters-pro.webp صغيرة (160×160)، وتُقصّ زواياها بزوايا الأيقونة. يصوّرها capture_casper_webos.js. -->
 <html>
 <head>
 <meta charset="utf-8">
@@ -13,11 +14,11 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0b0f24}
 #cover{width:1000px;height:1000px;position:relative;overflow:hidden;color:#fff;font-family:Cairo,sans-serif;
-  background:radial-gradient(70% 55% at 85% 6%,#7a1622 0%,rgba(122,22,34,0) 70%),radial-gradient(60% 50% at 8% 96%,#1c3b8f 0%,rgba(28,59,143,0) 70%),#0b0f24}
+  background:radial-gradient(70% 55% at 85% 6%,#3b2fa6 0%,rgba(59,47,166,0) 70%),radial-gradient(60% 50% at 8% 96%,#1c3b8f 0%,rgba(28,59,143,0) 70%),#0b0f24}
 #cover .frame{position:absolute;inset:28px;border:1.5px solid rgba(255,255,255,.12);border-radius:44px}
-#cover .icon{position:absolute;left:50%;top:78px;width:320px;height:320px;margin-left:-160px;border-radius:70px;overflow:hidden;background:#000;
-  box-shadow:0 0 90px 12px rgba(214,40,52,.5),0 24px 60px rgba(0,0,0,.55)}
-#cover .icon img{position:absolute;left:-14px;top:-14px;width:348px;height:348px}
+#cover .icon{position:absolute;left:50%;top:78px;width:320px;height:320px;margin-left:-160px;border-radius:70px;overflow:hidden;background:#5b4de4;
+  box-shadow:0 0 90px 14px rgba(99,86,230,.55),0 24px 60px rgba(0,0,0,.5)}
+#cover .icon img{display:block;width:320px;height:320px}
 #cover .chips{position:absolute;top:436px;left:0;right:0;display:flex;justify-content:center;gap:18px}
 #cover .chip{height:64px;padding:0 30px;border-radius:16px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.16);
   display:flex;align-items:center;gap:10px}
@@ -43,7 +44,7 @@ body{background:#0b0f24}
 <body>
 <div id="cover">
   <div class="frame"></div>
-  <div class="icon"><img src="../../static/img/brands/casper.webp" alt=""></div>
+  <div class="icon"><img src="assets/sm_icon.webp" alt=""></div>
   <div class="chips">
     <div class="chip"><span class="samsung">SAMSUNG</span></div>
     <div class="chip lg">

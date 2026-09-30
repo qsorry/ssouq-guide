@@ -736,7 +736,8 @@ LG، و`vod: true` للباقة الترفيهية التي تُعرض لمن ا
 
 **ومنتجا كاسبر لسامسونج و LG في المتجر:** 12 شهرًا (‏`p1152389812`، الرابط `ssouq.com/ZqrgApn`) و6 أشهر
 (‏`p138230620`). صورتاهما `static/img/products/casper-12m-webos.jpg` و `casper-6m-webos.jpg` (1000×1000) بتصميم
-صورة سمارت لسامسونج و LG: أيقونة Casper Flix (‏`static/img/brands/casper.webp`) بتوهّج أحمر، ووسوم SAMSUNG و LG
+صورة سمارت لسامسونج و LG: أيقونة IPTV Smarters Pro بتوهّج بنفسجي (‏`tools/video/assets/sm_icon.webp`، مقصوصةٌ
+296×296 من صورة سمارت لسامسونج و LG في المتجر لأن `static/img/apps/smarters-pro.webp` صغيرة)، ووسوم SAMSUNG و LG
 و webOS، و«اشتراك كاسبر لمدة 12 شهر / 6 أشهر»، ومربّعات +6,100 فيلم و+1,700 مسلسل و 0Player أو Duplecast — أرقام
 وصف المنتج. مرسومتان في `tools/video/casper_webos_cover.html` (‏`?m=12` و `?m=6`)، ويعيد إنتاجهما
 `node tools/video/capture_casper_webos.js`، وهو يجلب خطوط Google عبر جانب Node من Playwright حين يكون وكيل HTTPS.
