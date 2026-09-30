@@ -432,11 +432,34 @@ Host: {host}
 User: {user}
 Pass: {pass}
 
+⚠️ *مهم جداً، اقرأ قبل التشغيل*
+❌ *احذف التطبيق القديم* من جهازك، فهو لن يعمل مع اشتراكك الجديد.
+✅ *حمّل التطبيق الجديد* المحدد في الشرح.
+
+🚫 عدم اتباع الشرح = الاشتراك لن يعمل معك."""
+GUIDE_TEXT_MAX = 4000
+
+# نصوص افتراضية سابقة: صفحة حسابات فُتحت قبل تغيير الافتراضي ترسله كما عرضته، فيُعامَل
+# مثل الافتراضي (يُحفظ فارغًا ويتبع الحالي) ولا يُجمَّد نصًّا خاصًّا بالعميل.
+_PREV_DEFAULT_GUIDE_TEXT = """📲 طريقة التثبيت والتفعيل
+
+🔗 شرح التثبيت:
+{guide}
+
+يرجى اتباع الخطوات الموجودة في الشرح واختيار سيرفر {server} ✅
+
+📌 بيانات الاشتراك:
+
+Host: {host}
+User: {user}
+Pass: {pass}
+
 ⚠️ مهم جدًا:
 يرجى استخدام التطبيق الموصى به في الشرح فقط، حيث إن الاشتراك لن يعمل عند استخدام تطبيق آخر.
 
 يرجى حذف أي تطبيق سابق للخدمة، ثم تثبيت التطبيق الموصى به واتباع خطوات التفعيل الموجودة في الدليل."""
-GUIDE_TEXT_MAX = 4000
+_DEFAULT_GUIDE_TEXTS = {v for t in (DEFAULT_GUIDE_TEXT, _PREV_DEFAULT_GUIDE_TEXT)
+                        for v in (t, t.replace("{server}", "كاسبر"))}
 
 
 def _clean_guide_text(v):
@@ -445,8 +468,8 @@ def _clean_guide_text(v):
     t = str(v or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if len(t) > GUIDE_TEXT_MAX:
         raise ValueError("نص الشرح طويل (الحد %d حرف)" % GUIDE_TEXT_MAX)
-    # والافتراضي قبل {server} («كاسبر» للجميع) — من صفحة حسابات فُتحت قبل التحديث — مثله.
-    return "" if t in (DEFAULT_GUIDE_TEXT, DEFAULT_GUIDE_TEXT.replace("{server}", "كاسبر")) else t
+    # والافتراضي السابق، وما قبل {server} («كاسبر» للجميع) — من صفحة حسابات فُتحت قبل التحديث — مثله.
+    return "" if t in _DEFAULT_GUIDE_TEXTS else t
 
 
 def guide_text_of(acct):
