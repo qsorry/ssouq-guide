@@ -1,9 +1,9 @@
-// Browser test: Duplecast (دبل كاست) in the activation guide, for Smart and Falcon, on Samsung/LG and on VIDAA.
+// Browser test: Duplecast (دبل كاست) in the activation guide, for Smart, Falcon and Casper, on Samsung/LG and on VIDAA.
 // Seven steps each — the install step (with the video, the price: 15 days free then $3 a year, or a 16-riyal
 // code from the store), scan the TV's barcode, Add Playlist, Xtream Info with host and port apart, saved,
 // refresh on the TV, and the activation (Activate by Payment, or Activate by code with the store's code) —
 // every image loads, the store button opens the code product, and the done screen's support message names
-// the app. Casper still doesn't run on these TVs. The static pages carry the steps too.
+// the app. The static pages carry the steps too.
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -40,7 +40,7 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
   const TITLES = ['امسح الباركود على الشاشة بجوالك', 'اضغط Add Playlist', 'عبّئ بياناتك في تبويب Xtream Info',
     'تأكّد أن القائمة حُفظت', 'حدّث التطبيق على الشاشة وشاهد', 'بعد 15 يومًا فعّل التطبيق: 3 دولارات للسنة'];
   try {
-    for (const sub of ['smart', 'falcon']) for (const [dev, first, store] of [
+    for (const sub of ['smart', 'falcon', 'casper']) for (const [dev, first, store] of [
         ['webos', 'حمّل تطبيق Duplecast (دبل كاست)', 'Samsung Apps'], ['vidaa', 'حمّل تطبيق Duplecast من متجر VIDAA', 'VIDAA Store']]) {
       console.log(`== ${sub} · ${dev} ==`);
       await open(`#activate/${sub}/${dev}`);
@@ -91,12 +91,11 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     console.log('== links ==');
     await open('#activate/smart/webos/duplecast/7');
     check('a link to the activation step opens it', (await h2()) === TITLES[5]);
-    await open('#activate/casper/webos/duplecast/3');
-    check('Casper has no Duplecast on Samsung/LG: its link opens the app choice, 0Player only',
-      new URL(page.url()).hash === '#activate/casper/webos' && (await h2()) === 'اختر التطبيق'
-      && (await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant))).join() === '0player');
-    await open('#activate/casper/vidaa/duplecast');
-    check('… and does not run on VIDAA', new URL(page.url()).hash === '#activate/casper/vidaa' && (await h2()) === 'كاسبر لا يعمل على هايسنس و VIDAA OS');
+    for (const dev of ['webos', 'vidaa']) {
+      await open(`#activate/casper/${dev}/duplecast/3`);
+      check(`Casper has Duplecast on ${dev}: its link opens the step`, new URL(page.url()).hash === `#activate/casper/${dev}/duplecast/3`
+        && (await h2()) === TITLES[1]);
+    }
 
     for (const p of ['/samsung-lg', '/vidaa']) {
       await page.goto(APP + p);

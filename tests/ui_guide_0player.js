@@ -1,4 +1,4 @@
-// Browser test: 0Player on Samsung/LG, for Smart, Falcon and Casper (0Player is Casper's only app there). Six steps: install (with the video), «متابعة»
+// Browser test: 0Player on Samsung/LG, for Smart, Falcon and Casper. Six steps: install (with the video), «متابعة»
 // on the first-open message, PlayList, Add Playlist + Portal Code — which forks into two methods, the QR code
 // from the phone or the app itself, both numbered «الخطوة 5 من 6» and both leading to the last step. Every image
 // and the video load; each subscription's steps carry its own code everywhere (text, images, video) and no other's.
@@ -46,8 +46,7 @@ const CODE = { smart: '92929480', falcon: '75710072', casper: '59820658' };
       check('the app choice offers 0Player, free, by QR code or remote',
         (await page.textContent('#view [data-variant="0player"] small')) === 'مجاني من متجر الشاشة: بالباركود من جوالك أو بالريموت');
       const apps = await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant));
-      check(s === 'casper' ? 'Casper: 0Player is its only app here' : '… beside Duplecast and SS IPTV',
-        apps.join() === (s === 'casper' ? '0player' : '0player,duplecast,ssiptv'), apps.join());
+      check('… beside Duplecast and SS IPTV', apps.join() === '0player,duplecast,ssiptv', apps.join());
       await click('[data-variant="0player"]');
       const broken = [];
 
