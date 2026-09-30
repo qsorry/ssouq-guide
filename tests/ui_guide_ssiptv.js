@@ -1,6 +1,7 @@
-// Browser test: SS IPTV in the activation guide, for Smart and Falcon. The VIDAA device walks all
-// seven steps to the done screen with every image loaded; Samsung/LG asks for the app (0Player or
-// SS IPTV); Falcon keeps its own 0Player portal code; old links still open. Casper does not run on
+// Browser test: SS IPTV in the activation guide, for Smart and Falcon. VIDAA asks for the app (SS IPTV
+// or Duplecast) and SS IPTV walks all seven steps to the done screen with every image loaded; Samsung/LG
+// asks for the app (0Player, Duplecast or SS IPTV); Falcon keeps its own 0Player portal code; old links
+// still open. (Duplecast's own steps: ui_guide_duplecast.js.) Casper does not run on
 // Samsung/LG or VIDAA, as its product pages in the store say, so those two say just that and open
 // Smart's plans for that TV. And the buy path: VIDAA gets the Samsung/LG plans and Smart first.
 const { chromium } = require('playwright-core');
@@ -45,6 +46,10 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
         devs.indexOf('هايسنس و VIDAA OS') === devs.indexOf('سامسونج و LG و WebOS') + 1, devs.join(' | '));
 
       await open(`#activate/${sub}/vidaa`);
+      const vapps = await page.$$eval('#view .pick b', b => b.map(x => x.textContent));
+      check('VIDAA asks for the app', (await h2()) === 'اختر التطبيق' && vapps.join('|') === 'SS IPTV|Duplecast', vapps.join('|'));
+      await page.click('[data-variant="ssiptv"]');
+      await page.waitForSelector('#view .card.step');
       const titles = [], broken = [];
       for (let i = 0; i < 7; i++) {
         titles.push(await h2());
@@ -55,11 +60,11 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
       }
       check('VIDAA: seven SS IPTV steps', titles[0] === 'حمّل تطبيق SS IPTV من متجر VIDAA' && titles[6] === 'افتح قائمتك على الشاشة', titles.join(' → '));
       check('VIDAA: every step image loads', !broken.length, broken.join(', '));
-      check('VIDAA: ends on the done screen', (await h2()) === 'استمتع بالمشاهدة!' && new URL(page.url()).hash === `#activate/${sub}/vidaa/8`);
+      check('VIDAA: ends on the done screen', (await h2()) === 'استمتع بالمشاهدة!' && new URL(page.url()).hash === `#activate/${sub}/vidaa/ssiptv/8`);
 
       await open(`#activate/${sub}/webos`);
       const apps = await page.$$eval('#view .pick b', b => b.map(x => x.textContent));
-      check('Samsung/LG asks for the app', apps.join('|') === '0Player|SS IPTV', apps.join('|'));
+      check('Samsung/LG asks for the app', apps.join('|') === '0Player|Duplecast|SS IPTV', apps.join('|'));
       await page.click('[data-variant="ssiptv"]');
       await page.waitForSelector('#view .card.step');
       check('Samsung/LG → SS IPTV: its install step (LG store, Samsung USB)',
@@ -94,9 +99,9 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
       (await page.textContent('#view .note.warn')).includes('اخترت شاشة سامسونج أو LG مع فالكون') && (await page.textContent('#view .note.warn')).includes('لـ webOS'));
     await open(`#buy/vod/vidaa/smart/${vPlans[vPlans.length - 1]}`);
     await page.click('[data-activate]');
-    await page.waitForSelector('#view .card.step');
-    check('result page opens the VIDAA activation steps',
-      new URL(page.url()).hash === '#activate/smart/vidaa' && (await h2()) === 'حمّل تطبيق SS IPTV من متجر VIDAA');
+    await page.waitForSelector('#view .pick');
+    check('result page opens the VIDAA app choice',
+      new URL(page.url()).hash === '#activate/smart/vidaa' && (await h2()) === 'اختر التطبيق');
 
     console.log('== casper: not on Samsung/LG or VIDAA, as its product pages say ==');
     await open('#activate');
@@ -132,7 +137,7 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     }
 
     console.log('== video ==');
-    await open('#activate/smart/vidaa');
+    await open('#activate/smart/vidaa/ssiptv');
     const vid = await page.$eval('#view .vid video', v => ({ src: v.getAttribute('src'), poster: v.getAttribute('poster'),
       playsinline: v.hasAttribute('playsinline'), controls: v.controls, preload: v.getAttribute('preload') }));
     check('the SS IPTV video heads the install step', /^\/static\/video\/ssiptv-ar\.mp4\?v=\d+$/.test(vid.src)
@@ -145,10 +150,10 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check('… and its poster loads', (await page.$eval('#view .vid video', v => fetch(v.poster).then(r => r.ok))));
 
     console.log('== links and codes ==');
-    await open('#activate/smart/vidaa/2');
+    await open('#activate/smart/vidaa/ssiptv/2');
     check('M3U step opens the M3U tool in a new tab',
       (await page.$eval('#view a.btn.go', a => a.getAttribute('href') + ' ' + a.target)) === '/#m3u _blank');
-    await open('#activate/smart/vidaa/4');
+    await open('#activate/smart/vidaa/ssiptv/4');
     check('connect step opens the SS IPTV playlist editor',
       (await page.$eval('#view a.btn.go', a => a.href)) === 'https://ss-iptv.com/en/users/playlist');
     await open('#activate/falcon/webos/0player/6');          // طريقة «من التطبيق نفسه»: فيها الرمز وصورته
@@ -163,6 +168,9 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     await open('#activate/casper/vidaa/4');
     check('… and so does an old Casper VIDAA step link',
       new URL(page.url()).hash === '#activate/casper/vidaa' && (await h2()) === 'كاسبر لا يعمل على هايسنس و VIDAA OS');
+    await open('#activate/smart/vidaa/3');
+    check('an old VIDAA step link (before the app choice) opens the app choice',
+      new URL(page.url()).hash === '#activate/smart/vidaa' && (await h2()) === 'اختر التطبيق');
     await open('#webos');
     check('old #webos link opens the app choice', new URL(page.url()).hash === '#activate/smart/webos' && (await h2()) === 'اختر التطبيق');
 

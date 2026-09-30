@@ -1,0 +1,122 @@
+<!doctype html>
+<!-- فيديو Duplecast (‏static/video/duplecast-ar.mp4): مشاهده وتعليقاته وتكبيره هنا، ومظهره ورسمه في engine.css
+     و engine.js (مشتركان مع فيديوهات الدليل الأخرى). الصور من capture_duplecast.js (مواضع B منه)، وقسم الأسعار
+     من duplecast.com نفسه. عدّل SCENES ثم: node tools/video/render.js duplecast -->
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=block" rel="stylesheet">
+<link rel="stylesheet" href="engine.css">
+<script src="engine.js"></script>
+</head>
+<body>
+<script>
+const VIDEO = { out: "duplecast-ar", steps: 7, icon: "../../static/img/apps/duplecast.webp" };
+// الصور، ولقطتا التلفاز وقسم الأسعار تُكبَّر أكثر
+const IMG = {
+  start:  { src: "assets/dc_start.webp", max: 1.7 },
+  home:   { src: "assets/dc_home.webp", max: 1.7 },
+  manage: { src: "assets/dc_manage.webp" },
+  form:   { src: "assets/dc_form.webp" },
+  saved:  { src: "assets/dc_saved.webp" },
+  code:   { src: "assets/dc_code.webp" },
+  active: { src: "assets/dc_active.webp" },
+  price:  { src: "assets/dc_price.webp", max: 1.8 }
+};
+// مواضع الأزرار (بكسل الصورة) كما يطبعها capture_duplecast.js
+const B = {
+  qr: [1230, 200, 520, 520], mac: [80, 836, 543, 154], refresh: [1596, 70, 104, 104], live: [80, 320, 560, 300],
+  add: [697, 981, 398, 111], code: [786, 648, 348, 132], tab: [755, 375, 340, 120], name: [75, 885, 1020, 189],
+  host: [75, 1110, 1020, 189], port: [75, 1335, 1020, 189], user: [75, 1560, 1020, 189], pass: [75, 1785, 1020, 189],
+  save: [75, 2184, 1020, 138], row: [75, 1061, 1020, 104], ok: [75, 1200, 1020, 123], field: [87, 1010, 996, 189],
+  go: [87, 1241, 996, 138], st: [66, 447, 1038, 123], free: [15, 119, 357, 313], year: [393, 119, 354, 313]
+};
+const ICON = '<img class="icon" src="../../static/img/apps/duplecast.webp" alt="">';
+const SCENES = [
+  { dur: 4.6, card: t => `${ICON}
+      <h1>تشغيل اشتراكك على الشاشة<br>بتطبيق <em dir="ltr">Duplecast</em></h1>
+      <div class="chips"><span>سامسونج</span><span>LG</span><span>هايسنس VIDAA</span></div>
+      <p class="sub">لاشتراك سمارت أو فالكون</p>`,
+    caps: [{ t: 0, title: "7 خطوات بالترتيب", body: "الجوال في يدك، والشاشة أمامك — لنبدأ 👇" }] },
+
+  { step: 1, dur: 7.4, card: t => `${ICON}
+      <h1 dir="ltr" style="margin-top:-4px">Duplecast</h1>
+      <p class="sub">مجاني ${K("15")} يومًا · ثم ${K("3$")} للسنة</p>
+      <div class="rows">
+        <div class="row" style="opacity:${fade(t, 1.2)}"><b>سامسونج</b><span>من متجر التطبيقات في الشاشة</span></div>
+        <div class="row" style="opacity:${fade(t, 2.0)}"><b>LG</b><span>من متجر LG في الشاشة</span></div>
+        <div class="row" style="opacity:${fade(t, 2.8)}"><b>هايسنس</b><span>من متجر VIDAA في الشاشة</span></div>
+      </div>`,
+    caps: [{ t: 0, title: "حمّل تطبيق Duplecast", body: `ابحث عنه في متجر التطبيقات في الشاشة باسم ${K("Duplecast")}` },
+           { t: 3.8, title: "حمّل تطبيق Duplecast", body: "لا تحتاج رسيفر ولا أي جهاز إضافي" }] },
+
+  { step: 2, dur: 7.4, img: "start",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.4, r: [1180, 170, 620, 590] }, { t: 4.4, r: [60, 790, 1020, 240] }],
+    rings: [{ r: B.qr, from: 2.1, to: 4.4 }, { r: B.mac, from: 5.1 }],
+    caps: [{ t: 0, title: "افتح التطبيق على الشاشة", body: "تظهر شاشة فيها باركود ورقم جهازك (MAC)" },
+           { t: 1.6, title: "امسح الباركود بجوالك", body: "وجّه كاميرا الجوال إليه ثم اضغط الرابط الذي يظهر" },
+           { t: 4.6, title: "أو من موقع التطبيق", body: `افتح ${K("duplecast.com")} ← ${K("Manage Device")} واكتب رقم جهازك` }] },
+
+  { step: 3, dur: 6.2, img: "manage",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.6, r: [560, 930, 580, 210] }],
+    rings: [{ r: B.add, from: 2.3 }],
+    caps: [{ t: 0, title: "صفحة جهازك على الجوال", body: `تُفتح ${K("Manage Device")} وحالة جهازك ${K("trial")} — تجربة` },
+           { t: 1.8, title: "أضف قائمتك", body: `اضغط ${K("Add Playlist")}` }] },
+
+  { step: 4, dur: 14.8, img: "form",
+    cam: [{ t: 0, r: [0, 160, 1170, 760], d: 0 }, { t: 2.4, r: [40, 860, 1100, 460] }, { t: 7.4, r: [40, 1310, 1100, 240] },
+          { t: 9.6, r: [40, 1540, 1100, 800] }],
+    rings: [{ r: B.tab, from: 0.6, to: 2.4 }, { r: B.name, from: 3.1, to: 5.0 }, { r: B.host, from: 4.4, to: 7.4 },
+            { r: B.port, from: 8.0, to: 9.6 }, { r: B.user, from: 10.3, to: 12.6 }, { r: B.pass, from: 10.9, to: 12.6 }, { r: B.save, from: 13.0 }],
+    caps: [{ t: 0, title: "عبّئ بيانات اشتراكك", body: `اختر تبويب ${K("Xtream Info")}` },
+           { t: 2.8, title: "عبّئ بيانات اشتراكك", body: `${K("Playlist name")}: أي اسم، مثلًا ssouq` },
+           { t: 4.4, title: "الهوست بلا رقم البورت", body: `${K("Host")}: الرابط يبدأ بـ ${K("http")} وبدون ${K(":8080")} في آخره` },
+           { t: 7.6, title: "والبورت في خانته", body: `${K("Port")}: الرقم وحده — مثلًا ${K("8080")}` },
+           { t: 9.8, title: "عبّئ بيانات اشتراكك", body: `${K("Username")} و ${K("Password")} كما وصلتك` },
+           { t: 12.8, title: "احفظ القائمة", body: `اترك ${K("Protect this playlist")} واضغط ${K("Save")}` }] },
+
+  { step: 5, dur: 5.6, img: "saved",
+    cam: [{ t: 0, r: [0, 630, 1170, 786], d: 0 }],
+    rings: [{ r: B.row, from: 0.8 }, { r: B.ok, from: 2.2 }],
+    caps: [{ t: 0, title: "حُفظت القائمة", body: "تظهر في الجدول باسمها" },
+           { t: 2.2, title: "حُفظت القائمة", body: `ورسالة ${K("Playlist added successfully")}` }] },
+
+  { step: 6, dur: 8.0, img: "home",
+    cam: [{ t: 0, r: "full", d: 0 }, { t: 1.2, r: [1420, 30, 460, 190] }, { t: 4.4, r: [60, 300, 600, 340] }],
+    rings: [{ r: B.refresh, from: 1.9, to: 4.4 }, { r: B.live, from: 5.1 }],
+    caps: [{ t: 0, title: "ارجع إلى الشاشة", body: "القائمة تصل إلى التطبيق من الموقع" },
+           { t: 1.6, title: "حدّث القائمة", body: "اضغط زر التحديث ↻ وانتظر قليلًا" },
+           { t: 4.6, title: "شاهد", body: `افتح ${K("LIVE TV")} للقنوات، أو ${K("MOVIES")} و ${K("SERIES")}` }] },
+
+  { step: 7, dur: 8.0, img: "price",
+    cam: [{ t: 0, r: [0, 100, 760, 350], d: 0 }, { t: 3.4, r: [380, 100, 380, 350] }],
+    rings: [{ r: B.free, from: 0.8, to: 3.4 }, { r: B.year, from: 4.1 }],
+    caps: [{ t: 0, title: "بعد التجربة: التفعيل", body: `التطبيق مجاني ${K("15")} يومًا من أول تشغيل` },
+           { t: 3.6, title: "3 دولارات للسنة", body: `سعر التفعيل الرسمي في ${K("duplecast.com")} — لشاشة واحدة` }] },
+
+  { step: 7, dur: 5.6, img: "manage",
+    cam: [{ t: 0, r: [0, 180, 1170, 640], d: 0 }, { t: 1.2, r: [560, 600, 600, 230] }],
+    rings: [{ r: B.code, from: 1.9 }],
+    caps: [{ t: 0, title: "أو فعّله بكود من متجرنا", body: `كود تفعيل سنة بـ ${K("16")} ريال — تدفع بمدى و Apple Pay` },
+           { t: 2.2, title: "أو فعّله بكود من متجرنا", body: `في صفحة جهازك اضغط ${K("Activate by code")}` }] },
+
+  { step: 7, dur: 6.4, img: "code",
+    cam: [{ t: 0, r: [36, 640, 1098, 820], d: 0 }],
+    rings: [{ r: B.field, from: 0.8, to: 3.4 }, { r: B.go, from: 3.6 }],
+    caps: [{ t: 0, title: "الصق الكود", body: "يصلك فور الدفع في «المحتوى الرقمي» بطلبك" },
+           { t: 3.6, title: "اضغط Activate", body: "والكود لشاشة واحدة" }] },
+
+  { step: 7, dur: 5.2, img: "active",
+    cam: [{ t: 0, r: [0, 180, 1170, 460], d: 0 }],
+    rings: [{ r: B.st, from: 0.8 }],
+    caps: [{ t: 0, title: "تم التفعيل ✅", body: `${K("Status : active")} — لسنة كاملة` }] },
+
+  { dur: 6.0, card: t => `<div class="tick">🎉</div>
+      <h1>جاهز! استمتع بالمشاهدة</h1>
+      <p class="sub">لم تظهر القنوات؟ تأكّد أن الهوست<br>يبدأ بـ ${K("http")} والبورت في خانته</p>
+      <div class="chips"><span>كود التفعيل بـ16 ريال</span><span dir="ltr">ssouq.com</span></div>`,
+    caps: [{ t: 0, title: "انتهت الخطوات", body: "الشرح المكتوب بالصور في دليل التفعيل لكل جهاز" }] }
+];
+</script>
+</body>
+</html>
