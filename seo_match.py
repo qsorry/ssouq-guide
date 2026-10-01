@@ -13,15 +13,13 @@ import re
 import unicodedata
 
 import content as C
-from seo_search import phonetic  # noqa: F401 — المفتاح الصوتي للأسماء البديلة
+from seo_search import norm, phonetic  # noqa: F401 — التطبيع (بلا فاصلة عليا) والمفتاح الصوتي
 
 _TMDB_FILE = re.compile(r"^https?://image\.tmdb\.org/t/p/[^/]+/([^/?#]+)$")
 _WORD = re.compile(r"\w+", re.U)
 _SLUG_BAD = re.compile(r"[^\w]+", re.U)
 _LATIN = re.compile(r"[A-Za-z]")
 SLUG_MAX = 80
-
-norm = C._norm
 
 
 # ================= slug =================
@@ -139,6 +137,10 @@ def pair_score(a, b, st, same_server=False):
         if (va or vb) and va != vb and norm(a.get("raw_name") or "") != norm(b.get("raw_name") or ""):
             score += st["score_version"]      # لا يختلفان إلا بلاحقة النسخة: العمل نفسه مدبلجًا ومترجمًا
             why.append("version")
+        ta, tb = a.get("season_token") or 0, b.get("season_token") or 0
+        if ta and tb and ta != tb:
+            score += st.get("score_season_split", 2)   # مدخلان للعمل نفسه برمزَي موسمين: قوائم تفرّق المواسم
+            why.append("season_split")
         return score, why
     da, db = a.get("plot") or "", b.get("plot") or ""
     if len(da) >= st["plot_min"] and len(db) >= st["plot_min"]:
@@ -205,6 +207,59 @@ def split_version(name, st):
     if "subbed_soft" in out and "subbed" in out:
         out.remove("subbed")
     return " ".join(words), out
+
+
+# ================= تنظيف اسم السيرفر: العمل ← الموسم ← النسخة ← الاسم الأصلي =================
+_SEASON_TOKEN = re.compile(r"(?<![\w])S(\d{1,2})(?![\w])", re.I)
+_SEP_TAIL = re.compile(r"[\s\-–—|·:,]+$")
+_SEP_HEAD = re.compile(r"^[\s\-–—|·:,]+")
+_YEAR_TOKEN = re.compile(r"^(?:19|20)\d\d$")
+
+
+def _strip_tail(s, st):
+    """يحذف من آخر الاسم (وأوّله) لاحقات النسخة ورموز الجودة والفواصل حتى يثبت ← (الاسم، النسخ)."""
+    versions = []
+    for _ in range(6):
+        before = s
+        s, v = split_version(s, st)
+        versions += [x for x in v if x not in versions]
+        s = C._dequal(s)
+        s = _SEP_HEAD.sub("", _SEP_TAIL.sub("", s)).strip()
+        if s == before:
+            break
+    return s, versions
+
+
+def clean_title(name, st):
+    """اسم القائمة كما تكتبه اللوحات ← مكوّناته: «التفاح الحرام مدبلج S06 YASAK ELMA Ar» ←
+    base «التفاح الحرام» · season 6 · versions [dubbed] · original «YASAK ELMA»؛ «Heart of Stone - FHD - متعدد الترجمات» ←
+    base «Heart of Stone» · versions [multi]. رمز الموسم والنسخة والجودة ليست من هوية العمل؛ والاسم الخام يبقى alias."""
+    raw = " ".join((name or "").split())
+    base, remainder, season = raw, "", 0
+    m = _SEASON_TOKEN.search(raw)
+    if m and raw[:m.start()].strip():
+        base, remainder, season = raw[:m.start()], raw[m.end():], int(m.group(1))
+    base, versions = _strip_tail(base, st)
+    original = ""
+    if remainder:
+        rem = remainder.replace(".", " ").replace("_", " ")
+        rem, v2 = _strip_tail(rem, st)
+        versions += [x for x in v2 if x not in versions]
+        tails = {t.casefold() for t in (st.get("name_tail_tokens") or [])}
+        words = rem.split()
+        while words and (words[-1].casefold() in tails or _YEAR_TOKEN.match(words[-1])):
+            words.pop()
+        rem = " ".join(words).strip()
+        if len(norm(rem)) >= 3 and norm(rem) != norm(base):
+            original = rem
+    base = base or raw
+    base2, year = C._split_year(base)
+    if year and base2:
+        base = base2
+    if original and norm(base).startswith(norm(original)):
+        original = ""
+    return {"raw": raw, "base": base, "season": season, "versions": versions, "original": original, "year": year,
+            "cleaned": norm(base) != norm(raw)}
 
 
 # ================= التجميع =================

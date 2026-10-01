@@ -11,7 +11,12 @@ import unicodedata
 
 import content as C
 
-norm = C._norm
+_APOS = re.compile(r"[\'\u2019\u02bc`]")
+
+
+def norm(s):
+    """تطبيع الطبقة: كتطبيع المحتوى لكن الفاصلة العليا تُحذف لا تُفصل («Wayne's World» = «Waynes World»)."""
+    return C._norm(_APOS.sub("", s or ""))
 
 # لاتيني ← صامت موحَّد (بعد NFKD وحذف العلامات)
 _LAT = {"b": "b", "p": "b", "v": "f", "f": "f", "w": "w", "m": "m", "n": "n", "l": "l", "r": "r",
@@ -168,8 +173,11 @@ def load(con):
 
 
 def explain(con, idx, q, st):
-    """لتقرير جودة البحث: ما يصير إليه الاسم — كيان (slug) · alias · نسخة · اقتراح · أو لا شيء."""
-    r = idx.search(q, st.get("search_max_suggest", 5), st.get("search_min_conf", 0.5))
+    """لتقرير جودة البحث: ما يصير إليه الاسم — كيان (slug) · alias · نسخة · اقتراح · أو لا شيء. لاحقة النسخة في الاستعلام
+    («طبيعة الحب مترجم») تُحذف قبل البحث، والاقتراح لا يُعرض تحت عتبة الثقة (‏search_min_conf)."""
+    import seo_match
+    q = seo_match.split_version(q, st)[0] or q
+    r = idx.search(q, st.get("search_max_suggest", 5), st.get("search_min_conf", 0.75))
 
     def ent(cid):
         row = con.execute("SELECT id, slug, title FROM content WHERE id=?", (cid,)).fetchone()

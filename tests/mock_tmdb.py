@@ -67,7 +67,7 @@ def _movie(mid, title, orig, year, lang, countries, genres, ar=None, ar_overview
 
 
 GENRE_NAMES = {28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime", 18: "Drama", 14: "Fantasy", 36: "History",
-               878: "Science Fiction", 10762: "Kids", 10759: "Action & Adventure", 10765: "Sci-Fi & Fantasy", 10768: "War & Politics", 10749: "Romance"}
+               878: "Science Fiction", 10402: "Music", 53: "Thriller", 10762: "Kids", 10759: "Action & Adventure", 10765: "Sci-Fi & Fantasy", 10768: "War & Politics", 10749: "Romance"}
 
 TV = {
     2288: _tv(2288, "Prison Break", "Prison Break", 2005, "en", ["US"], [10759, 80, 18], ar="بريزون بريك", ar_overview="قصة بريزون بريك بالعربية، طويلة بما يكفي لتكون مفيدة للقارئ العربي وللفهرسة لاحقًا. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
@@ -88,6 +88,10 @@ TV = {
               cast=[("Emilia Clarke", "Daenerys Targaryen")], creators=["David Benioff"], companies=["HBO"], popularity=180, seasons=8, eps=10),
     99001: _tv(99001, "Super Wings", "Super Wings", 2014, "ko", ["KR", "CN"], [16, 10762], ar="سوبر وينجز", cast=[], companies=["FunnyFlux"], popularity=20),
     99002: _tv(99002, "Batman Beyond", "Batman Beyond", 1999, "en", ["US"], [16, 10759], ar="باتمان", cast=[], companies=["Warner Bros. Animation"], popularity=30),
+    98001: _tv(98001, "Forbidden Fruit", "Yasak Elma", 2018, "tr", ["TR"], [18, 35], ar="التفاح الحرام", ar_overview="قصة يلدز وزينب الأختين في عالم الأثرياء، مسلسل تركي درامي كوميدي طويل القصة بما يكفي للفهرسة.",
+               alts=["Yasak Elma", "Altın Kızlar"], status="Ended", cast=[("Eda Ece", "Yıldız")], companies=["Medyapım"], popularity=60, seasons=6, eps=5),
+    98002: _tv(98002, "D.Gray-man Hallow", "D.Gray-man HALLOW", 2016, "ja", ["JP"], [16, 10759, 10765], ar="دي غراي مان هالو", ar_overview="أليـن ووكر والمعزوفين في مواجهة إيرل الألفية، أنمي ياباني طويل القصة بما يكفي للفهرسة لاحقًا.",
+               alts=["D.Gray-man Hallow"], cast=[("Ayumu Murase", "Allen Walker (voice)")], companies=["TMS Entertainment"], keywords=[210024], popularity=25),
 }
 MOVIES = {
     438631: _movie(438631, "Dune", "Dune", 2021, "en", ["US"], [878, 12], ar="كثيب", ar_overview="بول أتريديس ينتقل إلى كوكب أراكيس الصحراوي، قصة طويلة بما يكفي للفهرسة. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
@@ -99,11 +103,15 @@ MOVIES = {
                    cast=[("Cillian Murphy", "J. Robert Oppenheimer")], director="Christopher Nolan", companies=["Universal Pictures"], popularity=150),
     693134: _movie(693134, "Dune: Part Two", "Dune: Part Two", 2024, "en", ["US"], [878, 12], ar="كثيب: الجزء الثاني", cast=[("Timothée Chalamet", "Paul Atreides")], director="Denis Villeneuve", popularity=160),
     900001: _movie(900001, "One Piece Film: Red", "ONE PIECE FILM RED", 2022, "ja", ["JP"], [16, 28, 12], ar="ون بيس فيلم: ريد", cast=[("Mayumi Tanaka", "Luffy (voice)")], director="Goro Taniguchi", companies=["Toei Animation"], keywords=[210024], popularity=60),
+    8870: _movie(8870, "Wayne's World", "Wayne's World", 1992, "en", ["US"], [35, 10402], ar="عالم واين", ar_overview="واين وغارث يقدّمان برنامجًا تلفزيونيًا من القبو، كوميديا موسيقية طويلة القصة بما يكفي للفهرسة لاحقًا.",
+                 cast=[("Mike Myers", "Wayne Campbell")], director="Penelope Spheeris", popularity=45),
+    99003: _movie(99003, "Heart of Stone", "Heart of Stone", 2023, "en", ["US"], [28, 53], ar="قلب من حجر", ar_overview="عميلة استخبارات تحاول حماية سلاح خطير، فيلم أكشن طويل القصة بما يكفي للفهرسة لاحقًا.",
+                  cast=[("Gal Gadot", "Rachel Stone")], director="Tom Harper", popularity=55),
 }
 
 
 def norm(s):
-    s = unicodedata.normalize("NFKC", s or "").casefold()
+    s = unicodedata.normalize("NFKC", s or "").casefold().replace("'", "").replace("\u2019", "")   # TMDB يبحث بتسامح مع الفاصلة العليا
     return " ".join(re.sub(r"[\W_]+", " ", s).split())
 
 
