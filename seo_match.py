@@ -98,6 +98,25 @@ def jaccard(a, b):
     return len(a & b) / len(a | b)
 
 
+def sections_agree(a, b):
+    """هل المدخلان من القسم نفسه في السيرفر، أو يحملان الاسم الأصلي اللاتيني نفسه؟ (العمل نفسه بمواسمه المفرّقة يبقى في قسمه؛
+    «السجين S01» في «سورية» و«السجين S02 Mahkum» في «تركية» عملان)."""
+    ga, gb = {norm(g) for g in a.get("groups") or ()}, {norm(g) for g in b.get("groups") or ()}
+    if ga & gb:
+        return True
+    return bool(_originals(a) & _originals(b))
+
+
+def _originals(e):
+    return {norm(o) for o in (e.get("originals") or ([e["original"]] if e.get("original") else [])) if o}
+
+
+def originals_conflict(a, b):
+    """كلاهما يحمل اسمًا أصليًّا لاتينيًّا من القائمة ولا يشتركان في واحد."""
+    oa, ob = _originals(a), _originals(b)
+    return bool(oa and ob and not (oa & ob))
+
+
 DISTINCT = -1 << 20       # عنصران مختلفان يقينًا (سنتان مختلفتان: «Dune 1984» و«Dune 2021») — لا دمج ولا مراجعة
 
 
@@ -133,14 +152,20 @@ def pair_score(a, b, st, same_server=False):
         if sa and sb and any(sa.get(k) == v for k, v in sb.items()):   # موسمٌ بعدد حلقاته نفسه في القسمين
             score += st["score_seasons"]
             why.append("seasons")
+        if originals_conflict(a, b):                 # اسمان أصليان لاتينيان مختلفان («SOZ» و«Al-Ahd»): عملان بالاسم العربي نفسه
+            why.append("original_differs")
+            return (score if score >= st["merge_min"] else None), why   # لا نسخة ولا موسم يجمعانهما؛ بلا دليلٍ أقوى: مراجعة
         va, vb = a.get("versions") or [], b.get("versions") or []
         if (va or vb) and va != vb and norm(a.get("raw_name") or "") != norm(b.get("raw_name") or ""):
             score += st["score_version"]      # لا يختلفان إلا بلاحقة النسخة: العمل نفسه مدبلجًا ومترجمًا
             why.append("version")
         ta, tb = a.get("season_token") or 0, b.get("season_token") or 0
         if ta and tb and ta != tb:
-            score += st.get("score_season_split", 2)   # مدخلان للعمل نفسه برمزَي موسمين: قوائم تفرّق المواسم
-            why.append("season_split")
+            if sections_agree(a, b) or same_poster:   # مدخلان للعمل نفسه برمزَي موسمين: قوائم تفرّق المواسم — في القسم نفسه
+                score += st.get("score_season_split", 2)   # (أو بالاسم الأصلي نفسه)؛ قسمان مختلفان («تركية» و«سورية») لا يجمعهما رمز الموسم
+                why.append("season_split")
+            else:
+                why.append("season_split_sections_differ")
         return score, why
     da, db = a.get("plot") or "", b.get("plot") or ""
     if len(da) >= st["plot_min"] and len(db) >= st["plot_min"]:
@@ -358,10 +383,17 @@ def verify_tmdb(cand, entity, st):
         return False, "year"
     mine = [x for x in [entity.get("title"), entity.get("title_en"), entity.get("original_title")] + list(entity.get("aliases") or []) if x]
     theirs = [x for x in [cand.get("title"), cand.get("original_title")] + list(cand.get("aliases") or []) if x]
+    theirs_n = {norm(x) for x in theirs}
     if v.get("title", True):
-        if not ({norm(x) for x in mine} & {norm(x) for x in theirs}) and \
+        if not ({norm(x) for x in mine} & theirs_n) and \
            not ({phonetic(x) for x in mine} & {phonetic(x) for x in theirs}):
             return False, "title"
+    # اسمٌ أصلي لاتيني من القائمة («SOZ» · «Mahkum») لا يطابق المرشّح، وبلدُ المرشّح يناقض قرينة القسم: ليس هو
+    # (اسمٌ عربي عام «العهد» يطابق مسلسلًا سوريًّا وآخر تركيًّا — الأصلي والقرينة يفصلان)
+    originals = {norm(x) for x in entity.get("originals") or [] if x}
+    hint_c, cand_c = set(entity.get("hint_countries") or []), set(cand.get("countries") or [])
+    if v.get("origin", True) and originals and not (originals & theirs_n) and hint_c and cand_c and not (hint_c & cand_c):
+        return False, "origin"
     return True, "ok"
 
 

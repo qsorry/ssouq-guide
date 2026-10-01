@@ -20,7 +20,7 @@ import time
 
 DIR = "content"
 FILE = "seo.sqlite"
-VERSION = 3                    # PRAGMA user_version — يرتفع مع كل ترحيل
+VERSION = 4                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
 SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
 MANUAL = "manual"
@@ -73,7 +73,8 @@ DEFAULTS = {
     "enrich_backoff": [3600, 86400, 604800],          # ساعة، يوم، أسبوع — ثم يتوقف ويسجّل السبب
     "cache_ttl": {"ok": 30 * 86400, "miss": 30 * 86400, "error": 3600},
     "enrich_batch": 200,                              # لكل دورة (كل عشر دقائق داخل النافذة)
-    # الأنمي: Animation + لغةٌ أصلية/بلد — ويُخزَّن نوعه (ja · zh · ko) فلا يُخلط
+    # الأنمي: طبقات — is_animation (TMDB genre Animation) ← anime_family (لغةٌ أصلية/بلدُ منشأ من هذه الجداول) ← anime_kind؛
+    # Animation وحدها لا تعني أنمي، وكلمة TMDB المفتاحية «anime» لا تحسم النوع (بلا لغة/بلد: غير محسوم)
     "anime_langs": {"ja": "japanese", "zh": "chinese", "ko": "korean"},
     "anime_countries": {"JP": "japanese", "CN": "chinese", "TW": "chinese", "HK": "chinese", "KR": "korean"},
     "anime_keyword_ids": [210024],                    # TMDB keyword «anime»
@@ -129,7 +130,10 @@ CREATE TABLE IF NOT EXISTS content (
   poster TEXT, backdrop TEXT, trailer_yt TEXT,
   genres_json TEXT,                     -- التصنيفات الخام من اللوحات (والمعيارية في content_taxonomy)
   format TEXT NOT NULL DEFAULT '',      -- '' · anime_series · anime_movie · ova · special (الأنمي صفةٌ لا نوع)
-  anime_kind TEXT,                      -- japanese · chinese · korean (لا تُخلط)
+  anime_kind TEXT,                      -- japanese · chinese · korean (لا تُخلط) — فقط عند الدليل (لغة/بلد المنشأ)
+  is_animation INTEGER NOT NULL DEFAULT 0,  -- رسوم متحركة (TMDB genre Animation) — ليست أنمي بالضرورة
+  anime_family INTEGER,                 -- NULL: لم يُحسم · 0: رسومٌ ليست أنمي (إسباني/أمريكي…) · 1: أنمي (بنوعه في anime_kind)
+  episodes_official INTEGER, seasons_official INTEGER,   -- عدد الحلقات والمواسم الرسمي (TMDB) — لا يُخلط بالمدرج في القوائم
   original_language TEXT, origin_country_json TEXT, tmdb_type TEXT, popularity REAL, last_air_date TEXT,
   match TEXT NOT NULL DEFAULT 'local' CHECK (match IN ('local','xtream','tmdb','manual')),
   confidence INTEGER NOT NULL DEFAULT 0,
@@ -241,6 +245,7 @@ CREATE TABLE IF NOT EXISTS content_service (
   seasons_json TEXT, groups_json TEXT,
   versions_json TEXT, raw_names_json TEXT,       -- النسخ (dubbed · subbed · subbed_soft) والأسماء كما جاءت
   series_id INTEGER,                             -- معرّف المسلسل في لوحة Xtream (لـ get_series_info)
+  stream_ids_json TEXT,                          -- كل أرقام بثّ المدخلات المطويّة في هذا العنصر (مواسم مفرّقة بأسمائها)
   present INTEGER NOT NULL DEFAULT 1, first_seen INTEGER NOT NULL, seen_at INTEGER NOT NULL,
   PRIMARY KEY (service_key, kind, local_key)
 );
@@ -251,7 +256,8 @@ CREATE TABLE IF NOT EXISTS season (
   content_id INTEGER NOT NULL REFERENCES content(id),
   number INTEGER NOT NULL,
   name TEXT, overview_ar TEXT, overview_en TEXT, poster TEXT, air_date TEXT,
-  episode_count INTEGER NOT NULL DEFAULT 0,
+  episode_count INTEGER NOT NULL DEFAULT 0,      -- المدرج في القوائم (أكبر ما في السيرفرات؛ قد يكون أجزاءً لا حلقات)
+  episodes_official INTEGER,                     -- الرسمي من TMDB (حلقات الموسم)
   index_flag INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
   PRIMARY KEY (content_id, number)
 );
@@ -312,6 +318,10 @@ _V2_COLS = {"content": ["format TEXT NOT NULL DEFAULT ''", "anime_kind TEXT", "o
                               "confidence REAL NOT NULL DEFAULT 1.0"]}
 
 
+_V4_COLS = {"content": ["is_animation INTEGER NOT NULL DEFAULT 0", "anime_family INTEGER", "episodes_official INTEGER", "seasons_official INTEGER"],
+            "content_service": ["stream_ids_json TEXT"], "season": ["episodes_official INTEGER"]}
+
+
 def _add_cols(con, table, cols):
     have = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
     for c in cols:
@@ -327,6 +337,9 @@ def migrate(con):
         con.executescript(SCHEMA)              # الجداول الجديدة (IF NOT EXISTS)
         if v and v < 2:                        # قاعدةٌ من النسخة الأولى: أعمدةٌ تُضاف بلا إعادة بناء
             for t, cols in _V2_COLS.items():
+                _add_cols(con, t, cols)
+        if v and v < 4:                        # الرسوم/الأنمي بطبقاته، والحلقات الرسمية، وأرقام البثّ المطويّة
+            for t, cols in _V4_COLS.items():
                 _add_cols(con, t, cols)
         con.execute(f"PRAGMA user_version={VERSION}")
 
@@ -512,7 +525,7 @@ def merge_content(con, loser, winner, reason="", now=None):
                         ("content_taxonomy", "content_id, taxonomy_id, source, confidence, at"),
                         ("content_person", "content_id, person_id, role, character, ord, source"),
                         ("content_company", "content_id, company_id, role, source"),
-                        ("season", "content_id, number, name, overview_ar, overview_en, poster, air_date, episode_count, index_flag, updated_at"),
+                        ("season", "content_id, number, name, overview_ar, overview_en, poster, air_date, episode_count, episodes_official, index_flag, updated_at"),
                         ("episode", "content_id, season, number, title_ar, title_en, overview_ar, overview_en, air_date, runtime, still, index_flag, updated_at")):
         rest = cols.split(", ", 1)[1]
         con.execute(f"INSERT OR IGNORE INTO {table}({cols}) SELECT ?, {rest} FROM {table} WHERE content_id=?", (winner, loser))

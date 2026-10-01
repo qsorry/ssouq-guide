@@ -40,7 +40,9 @@ def _lat_word(w):
         if two in _LAT_DIGRAPH:
             out.append(_LAT_DIGRAPH[two]); i += 2; continue
         ch = w[i]
-        if ch in _VOWELS or ch == "'":
+        if ch == "o" and i == 0 and len(w) > 1:       # «One» «Office» «Oppenheimer»: الواو في النقحرة العربية («ون» «أوفيس»)
+            out.append("w")
+        elif ch in _VOWELS or ch == "'":
             pass
         elif ch == "c" and i + 1 < len(w) and w[i + 1] in "eiy":   # «piece» «office»: c ناعمة
             out.append("s")
@@ -62,6 +64,8 @@ def _ar_word(w):
     out = []
     if len(w) > 3 and w.startswith("ال"):          # أداة التعريف تُحذف كما تُحذف «al/the» اللاتينية
         w = w[2:]
+    if len(w) > 2 and w[0] in "اأإآ" and w[1] == "و":   # «أوفيس» «أوبنهايمر»: همزةٌ فواو = «o» اللاتينية في الأول
+        w = "و" + w[2:]
     for i, ch in enumerate(w):
         if ch in ("و", "ي") and 0 < i < len(w) - 1:   # واو وياء وسط الكلمة غالبًا مدّ («بريزن» «سوق»)
             continue
@@ -184,9 +188,25 @@ def explain(con, idx, q, st):
         vers = [(x["service_key"], x["versions_json"]) for x in con.execute(
             "SELECT service_key, versions_json FROM content_service WHERE content_id=? AND present=1", (cid,))]
         return {"id": row["id"], "slug": row["slug"], "title": row["title"], "versions": vers}
+    def grouped(ents):
+        """كياناتٌ بالاسم نفسه (العمل نفسه على سيرفرين بلا دليل دمج بعد، أو عملان متشابهان): تُجمع للعرض مرةً واحدة —
+        عرضٌ لا دمج؛ ويُذكر لماذا هما كيانان (name_only · split …) من بنود المراجعة المفتوحة."""
+        groups = {}
+        for e in ents:
+            groups.setdefault(norm(e["title"]), []).append(e["id"])
+        out = []
+        for t, ids in groups.items():
+            g = {"title": t, "ids": ids}
+            if len(ids) > 1:
+                kinds = [r[0] for r in con.execute("SELECT DISTINCT kind FROM review WHERE status='open' AND kind IN ('name_only','conflict','split_entity','same_server_ambiguous') "
+                                                   "AND payload_json LIKE ?", (f'%"name": "{ents[0]["title"]}"%',))]
+                g["why_separate"] = kinds or ["no merge evidence yet (tmdb pending)"]
+            out.append(g)
+        return out
     if r["exact"]:
-        return {"q": q, "norm": norm(q), "phonetic": phonetic(q), "result": "entity", "entities": [ent(c) for c in r["exact"]]}
+        ents = [ent(c) for c in r["exact"]]
+        return {"q": q, "norm": norm(q), "phonetic": phonetic(q), "result": "entity", "entities": ents, "grouped": grouped(ents)}
     if r["suggest"]:
-        return {"q": q, "norm": norm(q), "phonetic": phonetic(q), "result": "suggest",
-                "suggest": [dict(ent(c), confidence=conf, why=why) for c, _, conf, why in r["suggest"]]}
+        sg = [dict(ent(c), confidence=conf, why=why) for c, _, conf, why in r["suggest"]]
+        return {"q": q, "norm": norm(q), "phonetic": phonetic(q), "result": "suggest", "suggest": sg, "grouped": grouped(sg)}
     return {"q": q, "norm": norm(q), "phonetic": phonetic(q), "result": "none"}
