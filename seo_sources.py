@@ -143,9 +143,9 @@ def _http(url, headers=None, timeout=TIMEOUT):
         raise ConnectionError(str(e)[:200])
 
 
-def get_json(con, source, url, cache_key, st, rps, headers=None, now=None):
-    """ردّ JSON من الكاش إن كان صالحًا، وإلا من الشبكة (بسرعة المصدر) ثم يُخزَّن — الناجح والفارغ (404) طويلًا،
-    والخطأ قصيرًا."""
+def get_json(con, source, url, cache_key, st, rps, headers=None, now=None, write=True):
+    """ردّ JSON من الكاش إن كان صالحًا، وإلا من الشبكة (بسرعة المصدر) ثم يُخزَّن (‏write=False: قراءةٌ بلا كتابة — للفحص الأولي) —
+    الناجح والفارغ (404) طويلًا، والخطأ قصيرًا."""
     now = now or int(time.time())
     ttl = st.get("cache_ttl") or {}
     r = con.execute("SELECT body, status, at FROM api_cache WHERE key=?", (cache_key,)).fetchone()
@@ -166,6 +166,8 @@ def get_json(con, source, url, cache_key, st, rps, headers=None, now=None):
             status = 502
     if status == 429:                          # تجاوزنا السرعة: لا يُخزَّن، ويُعاد لاحقًا
         raise ConnectionError("rate limited (429)")
+    if not write:
+        return status, body, False
     con.execute("INSERT INTO api_cache(key, body, status, at) VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE SET body=excluded.body, "
                 "status=excluded.status, at=excluded.at", (cache_key, json.dumps(body, ensure_ascii=False) if body is not None else None, status, now))
     return status, body, False
@@ -395,13 +397,24 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
     if anime_kind:
         seo_db.set_membership(con, cid, seo_db.taxonomy_id(con, "hub", "anime", "anime", "أنمي", "Anime", now), "tmdb", 1, now)
         seo_db.set_membership(con, cid, seo_db.taxonomy_id(con, "anime_kind", anime_kind, anime_kind, None, anime_kind.title(), now), "tmdb", 1, now)
-    # قرائن الأقسام مقابل TMDB: اتفاقٌ يؤكّد، واختلافٌ يُعتمد فيه TMDB ويُسجَّل للمراجعة (taxonomy_mismatch)
+    # قرائن الأقسام مقابل TMDB — متحفّظًا: اتفاقٌ = confirmed؛ اختلافٌ = **مراجعة** (taxonomy_mismatch) ولا يُعتمد TMDB تلقائيًّا في
+    # البُعد المختلَف عليه (عضويّاته فيه تُعلَّم disputed فلا تدخل الهب ولا الصفحات حتى يحسمها المدير)؛ ونقص TMDB = unconfirmed
     hints = {f"{r['kind']}:{r['key']}" for r in con.execute("SELECT t.kind, t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source='hint'", (cid,))}
     confirmed = {f"{r['kind']}:{r['key']}" for r in con.execute("SELECT t.kind, t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source='tmdb'", (cid,))}
     diff = {h for h in hints if h.startswith(("hub:", "country:")) and h not in confirmed}
     if diff:
+        prefixes = set()
+        for h in diff:
+            prefixes.update(("hub:anime", "anime_kind:") if h == "hub:anime" else ("hub:", "country:"))
+        disputed = sorted(x for x in confirmed if any(x.startswith(pfx) for pfx in prefixes))
+        for x in disputed:
+            kind, key = x.split(":", 1)
+            con.execute("UPDATE content_taxonomy SET source='disputed' WHERE content_id=? AND source='tmdb' AND taxonomy_id=(SELECT id FROM taxonomy WHERE kind=? AND key=?)",
+                        (cid, kind, key))
+        if "hub:anime" in diff or "hub:anime" in disputed:
+            seo_db.apply_fields(con, "content", cid, {"format": "", "anime_kind": None}, "tmdb", now=now)   # لا صفة أنمي قبل الحسم
         _review(con, "taxonomy_mismatch", cid, e["title"], {"hints": sorted(diff), "tmdb": sorted(x for x in confirmed if x.startswith(("hub:", "country:"))),
-                                                           "decision": "tmdb", "confidence": "high"}, now)
+                                                           "disputed": disputed, "decision": "review", "confidence": "low"}, now)
     else:
         con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=? AND status='open'", (now, f"taxonomy_mismatch:{cid}"))
     con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=? AND status='open'", (now, f"taxonomy_unconfirmed:{cid}"))
@@ -489,22 +502,22 @@ def _creds(data_dir, service_key):
     return C.xtream_of(url) if url else None
 
 
-def _xt_json(con, xt, action, st, **params):
+def _xt_json(con, xt, action, st, write=True, **params):
     base, user, pw = xt
     q = urlencode({"username": user, "password": pw, "action": action, **params})
     url = f"{base}/player_api.php?{q}"
     status, body, _ = get_json(con, f"xtream:{base}", url, f"xtream:{base}:{action}:{urlencode(params)}", st, st.get("xtream_rps", 1),
-                               headers={"User-Agent": C.UA})
+                               headers={"User-Agent": C.UA}, write=write)
     if status >= 500:
         raise ConnectionError(f"xtream {status}")
     return body if status == 200 and isinstance(body, dict) else None
 
 
-def _series_map(con, xt, st):
+def _series_map(con, xt, st, write=True):
     """اسمٌ مطبَّع ← series_id من قائمة get_series (مرةً في اليوم في الكاش) — لرابطٍ بلا series_id."""
     base, user, pw = xt
     q = urlencode({"username": user, "password": pw, "action": "get_series"})
-    status, body, _ = get_json(con, f"xtream:{base}", f"{base}/player_api.php?{q}", st, st.get("xtream_rps", 1), headers={"User-Agent": C.UA})
+    status, body, _ = get_json(con, f"xtream:{base}", f"{base}/player_api.php?{q}", st, st.get("xtream_rps", 1), headers={"User-Agent": C.UA}, write=write)
     out = {}
     for o in body or [] if isinstance(body, list) else []:
         nm = M.norm(C._split_year(C._dequal(C._clean(str(o.get("name") or ""))))[0])
@@ -802,15 +815,26 @@ def sample(data_dir, spec=None, now=None):
             ids = [i for i, _ in picked]
             backoff = st.get("enrich_backoff") or [3600, 86400, 604800]
             res = {"processed": 0, "done": 0, "miss": 0, "error": 0, "skipped": 0}
+            failures = []
             for cid in ids:
-                enqueue(con, cid, ["xtream", "tmdb"], 0, now)
-                con.commit()
-                for source in ("xtream", "tmdb", "tmdb_seasons"):
-                    r = con.execute("SELECT content_id, source, attempts FROM enrich_queue WHERE content_id=? AND source=? AND state='pending'", (cid, source)).fetchone()
-                    if r and _step(con, data_dir, r, st, backoff, res, now):
-                        break
-            return {"ok": True, "at": now, "ids": ids, "run": res, "works": [describe(con, cid, st) for cid in ids],
-                    "summary": summary(con), "api": metrics()}
+                try:                                  # فشل عملٍ لا يُسقط العيّنة: يُسجَّل ويُكمَل
+                    enqueue(con, cid, ["xtream", "tmdb"], 0, now)
+                    con.commit()
+                    for source in ("xtream", "tmdb", "tmdb_seasons"):
+                        r = con.execute("SELECT content_id, source, attempts FROM enrich_queue WHERE content_id=? AND source=? AND state='pending'", (cid, source)).fetchone()
+                        if r and _step(con, data_dir, r, st, backoff, res, now):
+                            failures.append({"id": cid, "source": source, "error": "stopped (key rejected or rate limited)"})
+                            break
+                except Exception as ex:  # noqa: BLE001
+                    con.rollback()
+                    failures.append({"id": cid, "error": f"{type(ex).__name__}: {str(ex)[:200]}"})
+            works = []
+            for cid in ids:
+                try:
+                    works.append(describe(con, cid, st))
+                except Exception as ex:  # noqa: BLE001
+                    works.append({"id": cid, "error": f"{type(ex).__name__}: {str(ex)[:200]}"})
+            return {"ok": True, "at": now, "ids": ids, "run": res, "failures": failures, "works": works, "summary": summary(con), "api": metrics()}
         finally:
             con.close()
 
@@ -835,6 +859,7 @@ def describe(con, cid, st):
                 if rx.search(g) and h.get("hub"):
                     hints.add("hub:" + h["hub"])
     confirmed = {k for k, v in tax.items() if "tmdb" in v or "manual" in v}
+    disputed = {k for k, v in tax.items() if "disputed" in v}
     reviews = [r["kind"] for r in con.execute("SELECT kind FROM review WHERE status='open' AND json_extract(payload_json,'$.content_id')=?", (cid,))]
 
     def classify(hub):
@@ -846,9 +871,9 @@ def describe(con, cid, st):
         if tm:
             return {"decision": hub, "confidence": "high", "tmdb": True, "section": False, "note": "tmdb only"}
         if hint and c["match"] == "tmdb":
-            return {"decision": "not " + hub, "confidence": "high", "tmdb": False, "section": True, "note": "section stored as hint; TMDB disagrees → taxonomy_mismatch"}
+            return {"decision": "review", "confidence": "low", "tmdb": False, "section": True, "note": "section says " + hub + "; TMDB disagrees → taxonomy_mismatch (not in hub, TMDB not auto-adopted)"}
         if hint:
-            return {"decision": "none", "confidence": "low", "tmdb": None, "section": True, "note": "TMDB incomplete → needs review (taxonomy_unconfirmed)"}
+            return {"decision": "unconfirmed", "confidence": "low", "tmdb": None, "section": True, "note": "TMDB incomplete → taxonomy_unconfirmed (no automatic classification)"}
         return None
     people = {}
     for r in con.execute("SELECT p.name, cp.role FROM content_person cp JOIN person p ON p.id=cp.person_id WHERE cp.content_id=? ORDER BY cp.ord", (cid,)):
@@ -871,7 +896,7 @@ def describe(con, cid, st):
             "cast": (people.get("actor") or people.get("voice") or [])[:6], "poster": bool(c["poster"]), "backdrop": bool(c["backdrop"]),
             "seasons": con.execute("SELECT COUNT(*) FROM season WHERE content_id=?", (cid,)).fetchone()[0],
             "episodes_detailed": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=?", (cid,)).fetchone()[0],
-            "format": c["format"] or None, "anime_kind": c["anime_kind"],
+            "format": c["format"] or None, "anime_kind": c["anime_kind"], "disputed": sorted(disputed),
             "turkish": classify("turkish"), "anime": classify("anime"),
             "aliases": [r[0] for r in con.execute("SELECT alias FROM content_alias WHERE content_id=?", (cid,))],
             "versions": {r["service_key"]: json.loads(r["versions_json"]) for r in links if r["versions_json"]},
@@ -889,9 +914,9 @@ def summary(con):
             "no_tmdb": q("SELECT COUNT(*) FROM enrich_queue WHERE source='tmdb' AND state='miss'"),
             "conflicts": sum(v for k, v in rv.items() if k in ("conflict", "tmdb_ambiguous", "taxonomy_mismatch")),
             "turkish_confirmed": q("SELECT COUNT(*) FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id JOIN content c ON c.id=ct.content_id "
-                                   f"WHERE t.kind='hub' AND t.key='turkish' AND ct.source!='hint' AND c.{live.replace(' AND ', ' AND c.')}"),
+                                   f"WHERE t.kind='hub' AND t.key='turkish' AND ct.source IN ('tmdb','manual') AND c.{live.replace(' AND ', ' AND c.')}"),
             "anime_confirmed": q("SELECT COUNT(*) FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id JOIN content c ON c.id=ct.content_id "
-                                 f"WHERE t.kind='hub' AND t.key='anime' AND ct.source!='hint' AND c.{live.replace(' AND ', ' AND c.')}"),
+                                 f"WHERE t.kind='hub' AND t.key='anime' AND ct.source IN ('tmdb','manual') AND c.{live.replace(' AND ', ' AND c.')}"),
             "anime_by_kind": {r["anime_kind"]: r["n"] for r in con.execute(f"SELECT anime_kind, COUNT(*) n FROM content WHERE {live} AND anime_kind IS NOT NULL GROUP BY 1")},
             "hints_only": {r["key"]: r["n"] for r in con.execute("SELECT t.key, COUNT(*) n FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND ct.source='hint' GROUP BY t.key")},
             "aliases": q("SELECT COUNT(*) FROM content_alias"), "versions": q("SELECT COUNT(*) FROM content_service WHERE versions_json IS NOT NULL AND present=1"),
@@ -899,10 +924,63 @@ def summary(con):
             "queue": queue_stats(con), "people": q("SELECT COUNT(*) FROM person"), "episodes_detailed": q("SELECT COUNT(*) FROM episode")}
 
 
+# ================= ختم الملفات وتنقيتها =================
+def code_version():
+    """نسخة الكود: commit من git إن وُجد، وبصمة ملفات الطبقة دائمًا (داخل الحاوية لا git)."""
+    import hashlib
+    import subprocess
+    here = os.path.dirname(os.path.abspath(__file__))
+    h = hashlib.sha1()
+    for n in ("seo_db.py", "seo_match.py", "seo_build.py", "seo_search.py", "seo_sources.py", "seo_pages.py", "content.py"):
+        try:
+            with open(os.path.join(here, n), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            pass
+    commit = ""
+    try:
+        commit = subprocess.run(["git", "-C", here, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return {"commit": commit or None, "code_fingerprint": h.hexdigest()[:16]}
+
+
+def meta(data_dir):
+    return {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **code_version(), "data": os.path.basename(os.path.abspath(data_dir))}
+
+
+def secrets(data_dir):
+    """ما يجب ألّا يظهر في أي ملف: مفتاح TMDB، ومستخدمو اللوحات وكلماتهم ومضيفوها."""
+    out = set()
+    con = seo_db.connect(data_dir, create=False)
+    if con:
+        try:
+            k = tmdb_key(con, data_dir)
+            if k:
+                out.add(k)
+        finally:
+            con.close()
+    for srv in C.servers(data_dir):
+        xt = _creds(data_dir, srv["key"])
+        if xt:
+            base, user, pw = xt
+            out.update(x for x in (user, pw, base, base.split("//", 1)[-1]) if x and len(x) >= 4)
+    return out
+
+
+def _scrub(text, secs):
+    for sct in sorted(secs, key=len, reverse=True):
+        text = text.replace(sct, "•••")
+    return text
+
+
 # ================= الفحص الأولي =================
 def probe(data_dir, n=20):
-    """ماذا تعطي كل لوحة فعلًا: n فيلمًا وn مسلسلًا من كل سيرفرٍ له رابط ← الحقول الموجودة وعددها — قبل أي إثراء."""
-    con = seo_db.connect(data_dir)
+    """ماذا تعطي كل لوحة فعلًا: n فيلمًا وn مسلسلًا من كل سيرفرٍ له رابط ← الحقول الموجودة وعددها — قبل أي إثراء.
+    **قراءةٌ صرفة**: لا يكتب في القاعدة (ولا في كاش الردود)."""
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return {"error": "لم تُبنَ القاعدة بعد"}
     out = {}
     try:
         st = seo_db.settings(con)
@@ -915,16 +993,16 @@ def probe(data_dir, n=20):
             for kind, action, idf in (("movie", "get_vod_info", "vod_id"), ("series", "get_series_info", "series_id")):
                 rows = con.execute("SELECT name, stream_id, series_id FROM content_service WHERE service_key=? AND kind=? AND present=1 "
                                    "ORDER BY added DESC LIMIT ?", (srv["key"], kind, n)).fetchall()
-                smap = _series_map(con, xt, st) if kind == "series" and any(not r["series_id"] for r in rows) else {}
+                smap = _series_map(con, xt, st, write=False) if kind == "series" and any(not r["series_id"] for r in rows) else {}
                 fields, answered, eps_title, eps_plot, eps_n = {}, 0, 0, 0, 0
                 for r in rows:
                     ident = r["stream_id"] if kind == "movie" else (r["series_id"] or smap.get(M.norm(r["name"])))
                     if not ident:
                         continue
                     try:
-                        d = _xt_json(con, xt, action, st, **{idf: ident})
+                        d = _xt_json(con, xt, action, st, write=False, **{idf: ident})
                     except ConnectionError as e:
-                        rep[kind] = {"error": str(e)}
+                        rep[kind] = {"error": _scrub(str(e), secrets(data_dir))}
                         break
                     info = (d or {}).get("info") or {}
                     if not info:
@@ -941,11 +1019,53 @@ def probe(data_dir, n=20):
                 if kind not in rep:
                     rep[kind] = {"asked": len(rows), "answered": answered, "fields": dict(sorted(fields.items(), key=lambda kv: -kv[1])),
                                  **({"episodes": eps_n, "episodes_with_title": eps_title, "episodes_with_plot": eps_plot} if kind == "series" else {})}
-                con.commit()
             out[srv["key"]] = rep
         return out
     finally:
         con.close()
+
+
+def bundle(data_dir, out, n=20):
+    """لقطةٌ للمراجعة: probe وreport وsearch-report **قراءةٌ صرفة**؛ وsample وحده يثري أعماله الثلاثين. كل ملفٍ مختومٌ بالوقت
+    ونسخة الكود، ومنقًّى من المفتاح وبيانات اللوحات. فشل جزءٍ لا يمنع كتابة الباقي (يُكتب خطؤه مكانه)."""
+    import contextlib
+    import io
+    import seo_build
+    os.makedirs(out, exist_ok=True)
+    secs = secrets(data_dir)
+    stamp = meta(data_dir)
+    written = {}
+
+    def dump_json(name, fn):
+        try:
+            data = fn()
+        except Exception as ex:  # noqa: BLE001
+            data = {"error": f"{type(ex).__name__}: {str(ex)[:300]}"}
+        text = _scrub(json.dumps({"meta": stamp, **data} if isinstance(data, dict) else {"meta": stamp, "data": data}, ensure_ascii=False, indent=1), secs)
+        with open(os.path.join(out, name), "w", encoding="utf-8") as f:
+            f.write(text)
+        written[name] = len(text)
+
+    def dump_text(name, fn):
+        try:
+            text = fn()
+        except Exception as ex:  # noqa: BLE001
+            text = f"error: {type(ex).__name__}: {str(ex)[:300]}"
+        head = "# " + json.dumps(stamp, ensure_ascii=False) + "\n"
+        with open(os.path.join(out, name), "w", encoding="utf-8") as f:
+            f.write(_scrub(head + text + "\n", secs))
+        written[name] = len(text)
+
+    def search_report():
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            seo_build.main(["seo_build.py", "search-report"])
+        return buf.getvalue()
+    dump_json("probe.json", lambda: probe(data_dir, n))                 # قراءة
+    dump_json("sample.json", lambda: sample(data_dir))                  # الاستثناء الوحيد: إثراء الثلاثين
+    dump_text("report.txt", lambda: seo_build.report(data_dir))         # قراءة
+    dump_text("search-report.txt", search_report)                       # قراءة
+    return {"out": out, "files": written, **stamp}
 
 
 def main(argv):
@@ -961,22 +1081,7 @@ def main(argv):
     elif cmd == "sample":                        # عيّنة 30 عملًا تُثرى الآن وتقريرها
         print(json.dumps(sample(data_dir), ensure_ascii=False, indent=1))
     elif cmd == "bundle":                        # الملفات الخام الأربعة للمراجعة في مجلدٍ واحد: probe.json · sample.json · report.txt · search-report.txt
-        import seo_build
-        out = str(opt.get("out") or "seo-review")
-        os.makedirs(out, exist_ok=True)
-        with open(os.path.join(out, "probe.json"), "w", encoding="utf-8") as f:
-            json.dump(probe(data_dir, int(opt.get("n") or 20)), f, ensure_ascii=False, indent=1)
-        with open(os.path.join(out, "sample.json"), "w", encoding="utf-8") as f:
-            json.dump(sample(data_dir), f, ensure_ascii=False, indent=1)
-        with open(os.path.join(out, "report.txt"), "w", encoding="utf-8") as f:
-            f.write(seo_build.report(data_dir) + "\n")
-        import contextlib, io
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            seo_build.main(["seo_build.py", "search-report"])
-        with open(os.path.join(out, "search-report.txt"), "w", encoding="utf-8") as f:
-            f.write(buf.getvalue())
-        print("كُتب في", out, ":", ", ".join(sorted(os.listdir(out))))
+        print(json.dumps(bundle(data_dir, str(opt.get("out") or "seo-review"), int(opt.get("n") or 20)), ensure_ascii=False))
     elif cmd == "key":
         con = seo_db.connect(data_dir)
         set_tmdb_key(con, data_dir, str(opt.get("set") or "")); con.close()

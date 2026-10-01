@@ -628,11 +628,35 @@ def unit_enrich():
         smp = seo_sources.sample(d, {"movie": 2, "series": 2, "turkish": 3, "anime": 5})
         works = {w["title"]: w for w in smp["works"]}
         bb_ = works.get("Batman Beyond", {})
-        check("عيّنة: Batman Beyond في قسم أنمي → TMDB يقول لا أنمي: القرار «ليس أنمي» بثقة عالية والقسم hint ومراجعة taxonomy_mismatch",
-              bb_.get("anime", {}).get("decision") == "not anime" and bb_["anime"]["section"] is True and "taxonomy_mismatch" in bb_.get("reviews", []), str(bb_.get("anime")) + str(bb_.get("reviews")))
+        check("عيّنة: Batman Beyond في قسم أنمي → TMDB يقول لا أنمي: اختلافٌ = مراجعة (لا اعتماد TMDB تلقائيًّا)، خارج الهب، والقسم hint",
+              bb_.get("anime", {}).get("decision") == "review" and bb_["anime"]["confidence"] == "low" and bb_["anime"]["section"] is True
+              and "taxonomy_mismatch" in bb_.get("reviews", []) and bb_.get("format") is None, str(bb_.get("anime")) + str(bb_.get("reviews")))
+        check("وTMDB الذي خالف القسم لا يُعتمد في البُعد المختلَف عليه: لا يظهر Batman في هب الأنمي، ومعرّف TMDB نفسه مُتحقَّق",
+              "batman-beyond" not in seo_pages.handle(d, "/en/content/anime/", "en")[1].decode() and bb_.get("tmdb_id") == 99002)
         er = works.get("قيامة أرطغرل", {})
-        check("عيّنة: قيامة أرطغرل (قسم تركي، TMDB لم يحسم) → لا تصنيف تلقائي، confidence low، مراجعة taxonomy_unconfirmed",
-              er.get("turkish", {}).get("decision") == "none" and er["turkish"]["confidence"] == "low" and "taxonomy_unconfirmed" in er.get("reviews", []), str(er.get("turkish")) + str(er.get("reviews")))
+        check("عيّنة: قيامة أرطغرل (قسم تركي، TMDB لم يحسم) → unconfirmed، confidence low، مراجعة taxonomy_unconfirmed، خارج الهب",
+              er.get("turkish", {}).get("decision") == "unconfirmed" and er["turkish"]["confidence"] == "low" and "taxonomy_unconfirmed" in er.get("reviews", [])
+              and "qyama" not in seo_pages.handle(d, "/content/turkish/", "ar")[1].decode(), str(er.get("turkish")) + str(er.get("reviews")))
+        # لقطة المراجعة (bundle): probe وreport وsearch-report قراءة؛ sample وحده يثري؛ ختمٌ ولا أسرار؛ وتشغيلها مرتين بلا طلباتٍ جديدة
+        snap = lambda: {t: q(f"SELECT COUNT(*) FROM {t}")[0][0] for t in ("content", "content_alias", "api_cache", "review", "enrich_queue", "provenance", "content_taxonomy")}   # noqa: E731
+        s0 = snap(); h0 = len(mock_tmdb.Handler.hits); x0 = len(mock_xtream.Handler.hits)
+        pr = seo_sources.probe(d, 3)
+        check("probe قراءةٌ صرفة: يقرأ اللوحة (أو كاشها) ولا يكتب صفًّا واحدًا (ولا في api_cache)", snap() == s0 and pr["smart"]["movie"]["answered"] >= 1,
+              f"before={s0} after={snap()} hits={len(mock_xtream.Handler.hits) - x0}")
+        seo_build.report(d); __import__("seo_search").explain(con, seo_search.load(con), "person break", st)
+        check("report وsearch-report قراءة", snap() == s0 and len(mock_tmdb.Handler.hits) == h0)
+        outdir = tempfile.mkdtemp(prefix="bundle_")
+        b1 = seo_sources.bundle(d, outdir, n=3)
+        files = {n: open(os.path.join(outdir, n), encoding="utf-8").read() for n in ("probe.json", "sample.json", "report.txt", "search-report.txt")}
+        check("الملفات الأربعة مكتوبة ومختومة بالوقت ونسخة الكود", set(files) == set(b1["files"]) and all('"generated_at"' in t and '"code_fingerprint"' in t for t in files.values()) and b1["code_fingerprint"])
+        secs = ["testkey", "username=u", "password=p", xbase.split("//")[1]]
+        check("لا مفتاح ولا بيانات دخول ولا مضيف لوحةٍ في أي ملف", not any(sc in t for sc in secs for t in files.values()), str([sc for sc in secs if any(sc in t for t in files.values())]))
+        s1 = snap(); h1 = len(mock_tmdb.Handler.hits)
+        b2 = seo_sources.bundle(d, outdir, n=3)
+        check("تشغيل bundle مرةً ثانية: لا طلبات TMDB جديدة (الكاش) ولا كيانات أو أسماء بديلة جديدة", len(mock_tmdb.Handler.hits) == h1
+              and {k: v for k, v in snap().items() if k not in ("enrich_queue",)} == {k: v for k, v in s1.items() if k not in ("enrich_queue",)}, str((s1, snap())))
+        smp2 = json.loads(files["sample.json"])
+        check("عيّنة العيّنة: 30 عملًا على الأكثر هي كل ما أُثري، ولا فشل جزئي", len(smp2["ids"]) <= 30 and smp2["failures"] == [] and smp2["run"]["processed"] >= 0)
         ko_ = next((w for w in smp["works"] if w["tmdb_id"] == 89456), {})
         check("عيّنة: المؤسس عثمان → TMDB تركيا + قسم تركي: confirmed", ko_.get("turkish", {}).get("note") == "confirmed")
         op_ = works.get("One Piece", {})

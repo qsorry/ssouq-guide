@@ -463,7 +463,7 @@ def stats(data_dir):
             "provenance": {r["source"]: r["n"] for r in con.execute("SELECT source, COUNT(*) n FROM provenance GROUP BY source")},
             "queue": seo_sources.queue_stats(con),
             "taxonomy": {f"{r['kind']}:{r['key']}": {"confirmed": r["c"], "hint": r["h"]} for r in con.execute(
-                "SELECT t.kind, t.key, SUM(ct.source!='hint') c, SUM(ct.source='hint') h FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id "
+                "SELECT t.kind, t.key, SUM(ct.source IN ('tmdb','manual')) c, SUM(ct.source='hint') h FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id "
                 "JOIN content c ON c.id=ct.content_id AND c.merged_into IS NULL AND c.available=1 WHERE t.kind IN ('hub','anime_kind') GROUP BY 1, 2")},
             "people": q("SELECT COUNT(*) FROM person"), "episodes_detailed": q("SELECT COUNT(*) FROM episode"),
             "settings": {k: ("•••" if k in seo_db.SECRET_SETTINGS and v else v) for k, v in seo_db.settings(con).items()},

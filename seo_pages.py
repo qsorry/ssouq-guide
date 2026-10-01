@@ -232,13 +232,13 @@ def _similar(con, row, tr, st):
         return []
     qs = ",".join("?" * len(mine))
     return con.execute(f"SELECT c.*, COUNT(*) shared FROM content_taxonomy ct JOIN content c ON c.id=ct.content_id "
-                       f"WHERE ct.taxonomy_id IN ({qs}) AND ct.source!='hint' AND c.id!=? AND c.merged_into IS NULL AND c.available=1 AND c.poster IS NOT NULL "
+                       f"WHERE ct.taxonomy_id IN ({qs}) AND ct.source IN ('tmdb','manual') AND c.id!=? AND c.merged_into IS NULL AND c.available=1 AND c.poster IS NOT NULL "
                        f"GROUP BY c.id ORDER BY shared DESC, ABS(COALESCE(c.year,0)-?) ASC, COALESCE(c.rating,0) DESC LIMIT 12",
                        (*mine, row["id"], row["year"] or 0)).fetchall()
 
 
 def _tax(con, cid):
-    return con.execute("SELECT t.* FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source!='hint' ORDER BY t.kind, t.sort, t.id", (cid,)).fetchall()
+    return con.execute("SELECT t.* FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source IN ('tmdb','manual') ORDER BY t.kind, t.sort, t.id", (cid,)).fetchall()
 
 
 def _tname(t, tr):
@@ -455,7 +455,7 @@ def render_person(con, data_dir, role_path, slug, tr, st):
 def _hub_query(con, hub, section, genre=None, year=None):
     """أعمال الهب (عضوية مؤكّدة) بقسمه ← (SQL, args) بترتيبٍ ثابت: آخر إضافة ثم المعرّف."""
     sql = ("SELECT c.* FROM content c JOIN content_taxonomy ct ON ct.content_id=c.id JOIN taxonomy t ON t.id=ct.taxonomy_id "
-           "WHERE t.kind='hub' AND t.key=? AND ct.source!='hint' AND c.merged_into IS NULL AND c.available=1")
+           "WHERE t.kind='hub' AND t.key=? AND ct.source IN ('tmdb','manual') AND c.merged_into IS NULL AND c.available=1")
     args = [hub]
     if section == "series":
         sql += " AND c.type='series'"
@@ -466,7 +466,7 @@ def _hub_query(con, hub, section, genre=None, year=None):
     elif section == "completed":
         sql += " AND c.type='series' AND c.status IN ('Ended','Canceled')"
     if genre:
-        sql += " AND c.id IN (SELECT ct2.content_id FROM content_taxonomy ct2 JOIN taxonomy t2 ON t2.id=ct2.taxonomy_id WHERE t2.kind='genre' AND t2.slug=? AND ct2.source!='hint')"
+        sql += " AND c.id IN (SELECT ct2.content_id FROM content_taxonomy ct2 JOIN taxonomy t2 ON t2.id=ct2.taxonomy_id WHERE t2.kind='genre' AND t2.slug=? AND ct2.source IN ('tmdb','manual'))"
         args.append(genre)
     if year:
         sql += " AND c.year=?"
@@ -528,18 +528,18 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
                     tr("المسلسلات " + SECTION_NAMES[sec][0], SECTION_NAMES[sec][1] + " series")
                 body += (f'<section><h2><a href="{_esc(_hub_path(hub, sec, tr.code))}">{_esc(head)}</a> <small>{n:,}</small></h2>{_grid(rs, tr)}'
                          + (f'<p class="more"><a href="{_esc(_hub_path(hub, sec, tr.code))}">{_esc(tr("عرض الكل", "View all"))}</a></p>' if n > 12 else "") + "</section>")
-        gs = con.execute("SELECT t.*, COUNT(*) n FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id JOIN content c ON c.id=ct.content_id WHERE t.kind='genre' AND ct.source!='hint' "
-                         "AND c.merged_into IS NULL AND c.available=1 AND c.id IN (SELECT content_id FROM content_taxonomy ct3 JOIN taxonomy t3 ON t3.id=ct3.taxonomy_id WHERE t3.kind='hub' AND t3.key=? AND ct3.source!='hint') "
+        gs = con.execute("SELECT t.*, COUNT(*) n FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id JOIN content c ON c.id=ct.content_id WHERE t.kind='genre' AND ct.source IN ('tmdb','manual') "
+                         "AND c.merged_into IS NULL AND c.available=1 AND c.id IN (SELECT content_id FROM content_taxonomy ct3 JOIN taxonomy t3 ON t3.id=ct3.taxonomy_id WHERE t3.kind='hub' AND t3.key=? AND ct3.source IN ('tmdb','manual')) "
                          "GROUP BY t.id HAVING n>=? ORDER BY n DESC LIMIT 20", (hub, min_items)).fetchall()
         if gs:
             body += f'<section><h2>{_esc(tr("حسب النوع", "By genre"))}</h2><p class="chips">' + "".join(f'<a class="chip" href="{_esc(_hub_path(hub, "genres/" + g["slug"], tr.code))}">{_esc(_tname(g, tr))} <small>{g["n"]:,}</small></a>' for g in gs) + "</p></section>"
-        ys = con.execute("SELECT c.year, COUNT(*) n FROM content c JOIN content_taxonomy ct ON ct.content_id=c.id JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=? AND ct.source!='hint' "
+        ys = con.execute("SELECT c.year, COUNT(*) n FROM content c JOIN content_taxonomy ct ON ct.content_id=c.id JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=? AND ct.source IN ('tmdb','manual') "
                          "AND c.merged_into IS NULL AND c.available=1 AND c.year IS NOT NULL GROUP BY c.year HAVING n>=? ORDER BY c.year DESC LIMIT 30", (hub, min_items)).fetchall()
         if ys:
             body += f'<section><h2>{_esc(tr("حسب السنة", "By year"))}</h2><p class="chips">' + "".join(f'<a class="chip" href="{_esc(_hub_path(hub, "year/%d" % y["year"], tr.code))}">{y["year"]} <small>{y["n"]:,}</small></a>' for y in ys) + "</p></section>"
         for role, label in (("actor", tr("أبرز الممثلين", "Top cast")), ("director", tr("المخرجون", "Directors"))):
             ps = con.execute("SELECT p.*, cp.role, NULL character, COUNT(*) n FROM person p JOIN content_person cp ON cp.person_id=p.id JOIN content c ON c.id=cp.content_id "
-                             "WHERE cp.role IN (?, ?) AND c.merged_into IS NULL AND c.available=1 AND c.id IN (SELECT content_id FROM content_taxonomy ct3 JOIN taxonomy t3 ON t3.id=ct3.taxonomy_id WHERE t3.kind='hub' AND t3.key=? AND ct3.source!='hint') "
+                             "WHERE cp.role IN (?, ?) AND c.merged_into IS NULL AND c.available=1 AND c.id IN (SELECT content_id FROM content_taxonomy ct3 JOIN taxonomy t3 ON t3.id=ct3.taxonomy_id WHERE t3.kind='hub' AND t3.key=? AND ct3.source IN ('tmdb','manual')) "
                              "GROUP BY p.id ORDER BY n DESC, p.name LIMIT 12", (role, "voice" if role == "actor" else "creator", hub)).fetchall()
             if ps:
                 body += f'<section><h2>{_esc(label)}</h2><div class="people">{"".join(_person_chip(p, tr) for p in ps)}</div></section>'
@@ -628,7 +628,7 @@ def audit(data_dir, n=30):
                 if r["id"] not in seen:
                     seen.add(r["id"]); picks.append(r)
         q = "SELECT c.* FROM content c WHERE c.merged_into IS NULL AND c.available=1 AND c.match='tmdb'"
-        hub = " AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=? AND ct.source!='hint')"
+        hub = " AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=? AND ct.source IN ('tmdb','manual'))"
         each = max(1, n // 4)
         for key in HUBS:
             for r in con.execute(q + hub + " ORDER BY c.popularity DESC LIMIT ?", (key, each)):

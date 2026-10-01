@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS taxonomy (
 CREATE TABLE IF NOT EXISTS content_taxonomy (
   content_id INTEGER NOT NULL REFERENCES content(id),
   taxonomy_id INTEGER NOT NULL REFERENCES taxonomy(id),
-  source TEXT NOT NULL,                -- tmdb · manual · hint (القسم: قرينة لا تُدخل الهب)
+  source TEXT NOT NULL,                -- tmdb · manual · hint (القسم: قرينة لا تُدخل الهب) · disputed (TMDB خالف القسم: مراجعة، لا هب)
   confidence REAL NOT NULL DEFAULT 1.0, at INTEGER NOT NULL,
   PRIMARY KEY (content_id, taxonomy_id)
 );
@@ -485,7 +485,7 @@ def taxonomy_id(con, kind, key, slug=None, name_ar=None, name_en=None, now=None)
 
 def set_membership(con, content_id, tax_id, source, confidence=1.0, now=None):
     """عضوية عملٍ في تصنيف. ‏hint لا يكتب فوق tmdb/manual، وmanual يغلب الكل."""
-    rank = {"hint": 0, "tmdb": 1, "manual": 2}
+    rank = {"hint": 0, "disputed": 0, "tmdb": 1, "manual": 2}
     cur = con.execute("SELECT source FROM content_taxonomy WHERE content_id=? AND taxonomy_id=?", (content_id, tax_id)).fetchone()
     if cur and rank.get(cur["source"], 0) > rank.get(source, 0):
         return False
