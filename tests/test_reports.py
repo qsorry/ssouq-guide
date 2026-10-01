@@ -154,6 +154,21 @@ def unit_steps():
     check("وأحدث ما أضيف قبل الكتابة (الأكبر رقمًا أولًا)", [(x["n"], x["k"]) for x in rec["items"]][:2] == [("Osmanli", "movie"), ("Osman", "series")]
           and all("gid" in x and "g" in x for x in rec["items"]), rec)
     check("وسيرفرٌ بلا محتوى ← None", R.recent(d, "kon") is None and R.search(d, "kon", "x") is None)
+    ex = lambda *a: [(x["n"], x["k"], x.get("y") or 0) for x in R.exists(d, *a)["items"]]  # noqa: E731
+    check("موجودٌ في السيرفر؟ الاسم نفسه بنوعه وقسمه", ex("smart", "breaking bad") == [("Breaking Bad", "series", 0)]
+          and R.exists(d, "smart", "Breaking Bad")["items"][0]["gid"] == gid(d, "series", "SERIES | Drama"))
+    check("وبنوعه إن عُرف (المسلسل ليس فيلمًا)", ex("smart", "Breaking Bad", "movie") == [])
+    check("وبلا «The» أوله، وبسنته", ex("smart", "Batman", "movie") == [("The Batman", "movie", 2022)]
+          and ex("smart", "the batman", "", "2022") == [("The Batman", "movie", 2022)])
+    check("وبسنته: «Dune» 2021 لا 1984، وفرق سنةٍ يُقبل، وبلا سنةٍ كلاهما",
+          ex("smart", "Dune", "movie", 2021) == [("Dune", "movie", 2021)] and ex("smart", "Dune", "", "2020") == [("Dune", "movie", 2021)]
+          and ex("smart", "Dune", "movie", 1990) == [] and sorted(y for _, _, y in ex("smart", "Dune")) == [1984, 2021])
+    check("وجزءٌ من الاسم ليس هو", ex("smart", "Break") == [] and ex("smart", "Breaking Bad 2") == [])
+    check("وبلا همزات (قيامة ارطغرل)", ex("smart", "قيامة ارطغرل") == [("قيامة أرطغرل", "series", 0)])
+    e2 = R.exists(d, "casper", "Osman")
+    check("وفي قسمين: كلاهما", e2["total"] == 2 and [x["g"] for x in e2["items"]] == ["تركي مترجم", "تركي مدبلج"], e2)
+    check("واسمٌ من حرفٍ وسيرفرٌ بلا محتوى", R.exists(d, "smart", "D") == {"ok": True, "total": 0, "items": []}
+          and R.exists(d, "kon", "Dune") is None)
     return d
 
 
@@ -391,6 +406,22 @@ def unit_link():
     for bad in ("javascript:alert(1)", "ftp://x.com/a", "https://exa mple.com", "https://x.com/" + "a" * 500, "x.com/a", 'https://x.com/"><b>'):
         check(f"رابطٌ يُرفض: {bad[:30]}", "الرابط غير صحيح" in raises(R.link_of, bad))
     check("والفارغ لا رابط", R.link_of("  ") == "")
+    ids = {"https://www.imdb.com/title/tt0111161/?ref_=ext_shr": "tt0111161", "https://m.imdb.com/title/tt0903747": "tt0903747",
+           "https://www.imdb.com/ar/title/tt4320258/reviews/": "tt4320258", "https://imdb.com/title/tt10919420/": "tt10919420",
+           "https://www.imdb.com/name/nm0000151/": "", "https://notimdb.com/title/tt0111161/": "", "https://www.themoviedb.org/movie/278": ""}
+    got = {u: R.imdb_id(u) for u in ids}
+    check("رقم IMDb من رابطه (‏www وm والمترجم ورابط المشاركة)، ولا غيره", got == ids, got)
+    slugs = {"https://www.themoviedb.org/movie/278-the-shawshank-redemption": ("movie", "The Shawshank Redemption", 0),
+             "https://letterboxd.com/film/dune-2021/": ("movie", "Dune", 2021),
+             "https://www.themoviedb.org/tv/1396-breaking-bad/season/1": ("series", "Breaking Bad", 0),
+             "https://shahid.mbc.net/ar/series/%D9%85%D8%B3%D9%84%D8%B3%D9%84-%D8%A7%D9%84%D9%87%D9%8A%D8%A8%D8%A9/series-49923": ("series", "الهيبة", 0),
+             "https://example.com/films/Oppenheimer.html": ("movie", "Oppenheimer", 0)}
+    got = {u: (lambda g: g and (g["kind"], g["name"], g["year"]))(R.from_slug(u)) for u in slugs}
+    check("وما لا تُقرأ صفحته: اسمه ممّا في الرابط (‏TMDB وLetterboxd وشاهد)", got == slugs, got)
+    nones = ["https://www.netflix.com/sa-en/title/80057281", "https://www.youtube.com/watch?v=abc", "https://x.com/",
+             "https://x.com/movie/v/a8f3k29dk3m2", "https://example.com/watch/Oppenheimer.html", "https://x.com/news/some-page"]
+    check("ولا اسم من رابطٍ بأرقامٍ أو معرّفٍ وحده، ولا من رابطٍ ليس لمسلسلٍ أو فيلم", [R.from_slug(u) for u in nones] == [None] * 6,
+          [R.from_slug(u) for u in nones])
     d = fresh()
     seed(d)
     r, _ = R.submit(d, {"s": "smart", "t": "series", "n": "Breaking Bad", "y": "2008", "cl": "en", "problem": "add",
@@ -411,8 +442,20 @@ def unit_link():
 
     class Page(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
+            js = "application/json"
             body, ctype, code = {"/title/tt0903747/": (IMDB_PAGE, "text/html; charset=utf-8", 200),
-                                 "/img.png": ("PNG", "image/png", 200)}.get(self.path, ("nope", "text/html", 404))
+                                 "/img.png": ("PNG", "image/png", 200),
+                                 "/imdb/tt0111161.json": (json.dumps({"d": [
+                                     {"id": "tt0111161", "l": "The Shawshank Redemption", "q": "feature", "qid": "movie", "y": 1994},
+                                     {"id": "tt16970392", "l": "x", "qid": "tvEpisode"}]}), js, 200),
+                                 "/imdb/tt0903747.json": (json.dumps({"d": [{"id": "tt0903747", "l": "Breaking Bad", "qid": "tvSeries",
+                                                                             "y": 2008}]}), js, 200),
+                                 "/imdb/tt0959621.json": (json.dumps({"d": [{"id": "tt0959621", "l": "Pilot", "qid": "tvEpisode",
+                                                                             "y": 2008}]}), js, 200),
+                                 "/tvmaze/tt0903747": (json.dumps({"name": "Breaking Bad", "language": "English"}), js, 200),
+                                 "/sparql": (json.dumps({"results": {"bindings": [{"c3": {"value": "nap"}}, {"c2": {"value": "en"}}]}}),
+                                             js, 200),
+                                 }.get(self.path.split("?")[0], ("nope", "text/html", 404))
             raw = body.encode("utf-8")
             self.send_response(code)
             self.send_header("Content-Type", ctype)
@@ -434,6 +477,24 @@ def unit_link():
                                                                     "lang": "en"}, got)
             check("وصفحةٌ لا وجود لها أو ليست HTML: تعذّر", not R.lookup(base + "/missing")["ok"] and not R.lookup(base + "/img.png")["ok"])
             check("ورابطٌ غريب برسالته بالإنجليزية", R.lookup("javascript:1")["en"].startswith("Invalid link"))
+            got = R.lookup(base + "/movie/278-the-shawshank-redemption")
+            check("وصفحةٌ لا تُقرأ: الاسم ممّا في الرابط (‏guess: ليُراجع)", got == {"ok": True, "guess": True, "kind": "movie",
+                                                                                 "name": "The Shawshank Redemption", "year": 0, "lang": ""}, got)
+            apis = (R.IMDB_API, R.TVMAZE_API, R.WIKIDATA_API)
+            R.IMDB_API, R.TVMAZE_API, R.WIKIDATA_API = base + "/imdb/{id}.json", base + "/tvmaze/{id}", base + "/sparql"
+            try:
+                got = R.lookup("https://www.imdb.com/title/tt0111161/?ref_=ext_shr")
+                check("رابط IMDb (ومشاركة تطبيقه): من بياناته العامة لا صفحته، ولغة الفيلم من Wikidata",
+                      got == {"ok": True, "kind": "movie", "name": "The Shawshank Redemption", "year": 1994, "lang": "en"}, got)
+                got = R.lookup("https://m.imdb.com/title/tt0903747/")
+                check("والمسلسل بنوعه، ولغته من TVmaze", got == {"ok": True, "kind": "series", "name": "Breaking Bad", "year": 2008,
+                                                               "lang": "en"}, got)
+                check("وحلقةٌ وحدها لا يُعرف منها المسلسل", R._imdb("tt0959621") is None)
+                R.TVMAZE_API = R.WIKIDATA_API = base + "/missing"
+                got = R.lookup("https://www.imdb.com/title/tt0903747/")
+                check("ولغةٌ لا تُعرف تُترك له", got == {"ok": True, "kind": "series", "name": "Breaking Bad", "year": 2008, "lang": ""}, got)
+            finally:
+                R.IMDB_API, R.TVMAZE_API, R.WIKIDATA_API = apis
         finally:
             C.IMG_PRIVATE = old
     finally:
@@ -577,6 +638,11 @@ def live():
         code, it = jget(base + f"/api/report/items?s=smart&t=series&g={drama}")
         check("العناصر", code == 200 and it["items"][0]["n"] == "Breaking Bad" and it["items"][0]["s"] == [[1, 2], [2, 1]])
         check("والبحث", jget(base + "/api/report/search?s=smart&q=dune")[1]["total"] == 2)
+        code, ex = jget(base + "/api/report/exists?s=smart&n=" + urllib.parse.quote("The Dune") + "&t=movie&y=2021")
+        check("‏/api/report/exists: موجودٌ بقسمه", code == 200 and ex["total"] == 1 and ex["items"][0]["n"] == "Dune"
+              and ex["items"][0]["y"] == 2021 and ex["items"][0]["g"] == "VOD | English Movies", ex)
+        check("وما ليس فيه", jget(base + "/api/report/exists?s=smart&n=Oppenheimer")[1] == {"ok": True, "total": 0, "items": []}
+              and jget(base + "/api/report/exists?s=nope&n=Dune")[0] == 404)
         check("وما لا وجود له 404", jget(base + "/api/report/groups?s=nope")[0] == 404
               and jget(base + "/api/report/items?s=smart&t=series&g=zz")[0] == 404
               and jget(base + "/api/report/other")[0] == 404)

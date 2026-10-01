@@ -138,6 +138,11 @@ html[dir=ltr] .field input{text-align:left}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .hint.ok{color:var(--green)}.hint.warn{color:var(--amber)}
 #rlmsg{margin:-4px 0 12px}
+.exists{margin:-2px 0 14px;padding:12px;border-radius:14px;border:1px solid rgba(34,196,147,.45);background:rgba(34,196,147,.08)}
+.exists>b{display:block;color:var(--green);margin:0 0 4px}
+.exists>p{margin:0 0 10px;color:var(--ink)}
+.exists .hint{margin:10px 0 0}
+.lbl small{color:var(--green);font-weight:600}
 .fill{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:-4px 0 12px;padding:11px 12px;border-radius:12px;
   border:1px solid rgba(34,196,147,.55);background:rgba(34,196,147,.12);color:#c9f5e6;font-weight:700}
 .fill:hover:not(:disabled){border-color:var(--green);background:rgba(34,196,147,.2)}
@@ -342,12 +347,7 @@ html[dir=ltr] .field input{text-align:left}
         + '<input id="sq" type="search" enterkeyhint="search" placeholder="' + T("اكتب اسم المسلسل أو الفيلم", "Type the series or movie name") + '" autocomplete="off"></label>'
         + '<button class="reqbtn" type="button" data-req>' + REQ + T('لم تجده؟ اطلب إضافة مسلسل أو فيلم', 'Can’t find it? Ask us to add a series or movie') + '</button><div id="sres"></div>';
       var sq = document.getElementById("sq"), box = document.getElementById("sres");
-      var cards = function(list){
-        return '<div class="grid">' + list.map(function(it, i){
-          return '<button class="card" type="button" data-found="' + i + '">' + pos(it) + '<b dir="auto">' + esc(it.n) + '</b><small>'
-            + [one(it.k), it.y || "", seasons(it)].filter(Boolean).join(" · ") + '</small><small class="g" dir="auto">' + esc(it.g) + '</small></button>';
-        }).join("") + '</div>';
-      };
+      var cards = function(list){ return cardsOf(list, "data-found"); };
       var run = function(){
         var v = sq.value.trim(), n = ++seq;
         S.q = v;
@@ -451,9 +451,11 @@ html[dir=ltr] .field input{text-align:left}
         + '</span><input id="rl" type="url" inputmode="url" maxlength="400" placeholder="https://www.imdb.com/title/…"></label>'
         + '<button class="fill" type="button" id="rlgo" disabled>📥 ' + T("املأ البيانات من الرابط", "Fill in the details from the link") + '</button>'
         + '<p class="hint" id="rlmsg" hidden></p>'
+        + '<span class="lbl">' + T("النوع", "Type") + ' <small id="rtauto"' + (S.rtk === "link" ? '' : ' hidden') + '>· ' + T("عرفناه من الرابط", "detected from the link") + '</small></span>'
         + '<div class="types" role="group" aria-label="' + T("النوع", "Type") + '"><button type="button" data-rt="series" aria-pressed="' + (S.rt === "series") + '">' + one("series") + '</button>'
         + '<button type="button" data-rt="movie" aria-pressed="' + (S.rt === "movie") + '">' + one("movie") + '</button></div>'
         + '<label class="field"><span>' + T("الاسم", "Name") + '</span><input id="rn" maxlength="150" dir="auto" style="direction:inherit;text-align:start" placeholder="' + T("اسم المسلسل أو الفيلم", "Series or movie name") + '"></label>'
+        + '<div class="exists" id="rx" hidden></div>'
         + '<div class="two"><label class="field"><span>' + T("السنة", "Year") + '</span><select id="ry"><option value="">' + T("لا أعرف", "Not sure") + '</option>'
         + years.map(function(y){ return '<option value="' + y + '">' + y + '</option>'; }).join("") + '</select></label>'
         + '<label class="field"><span>' + T("اللغة", "Language") + '</span><select id="rc"><option value="">' + T("لا أعرف", "Not sure") + '</option>'
@@ -462,16 +464,43 @@ html[dir=ltr] .field input{text-align:left}
         + '<label class="field"><span>' + T("ملاحظة <small>(اختياري)</small>", "Note <small>(optional)</small>") + '</span><textarea id="nt" maxlength="300" placeholder="' + T("مثلًا: الموسم الجديد، أو مدبلج بالعربية", "e.g. the new season, or dubbed in Arabic") + '"></textarea></label>'
         + '<button class="send" type="button" id="send">' + T("أرسل الطلب", "Send request") + '</button><p class="err" id="serr" hidden></p>';
       var rn = document.getElementById("rn"), ry = document.getElementById("ry"), rc = document.getElementById("rc"),
-          rl = document.getElementById("rl"), msg = document.getElementById("rlmsg"), go = document.getElementById("rlgo"), seq = 0, timer = 0;
+          rl = document.getElementById("rl"), msg = document.getElementById("rlmsg"), go = document.getElementById("rlgo"), seq = 0, timer = 0,
+          rx = document.getElementById("rx"), xseq = 0, xtimer = 0, xfound = [];
       rn.value = S.rn || ""; ry.value = S.ry || ""; rc.value = S.rc || ""; rl.value = S.rl || "";
       var isLink = function(v){ return /^https?:\/\/\S+\.\S+/i.test(v.trim()); };
+      // مشاركة التطبيقات نصٌّ قبل الرابط («The Shawshank Redemption (1994) - IMDb https://…»): الرابط وحده
+      var pick = function(){
+        var v = rl.value, m = isLink(v) ? null : v.match(/https?:\/\/[^\s<>"']+/i);
+        if (m) rl.value = m[0];
+      };
       go.disabled = !isLink(rl.value);
       document.getElementById("ph").value = savedPhone();
-      rn.addEventListener("input", function(){ S.rn = rn.value; });
-      ry.addEventListener("change", function(){ S.ry = ry.value; });
+      // هل هو موجودٌ في السيرفر؟ بالاسم (ونوعه إن عُرف من الرابط أو اختاره، وسنته) — فيُبلَّغ عنه بدل طلب إضافته
+      var exists = function(){
+        var n = rn.value.trim(), k = ++xseq;
+        if (n.replace(/\s/g, "").length < 2) { rx.hidden = true; return; }
+        get("/api/report/exists?" + q({s: S.s, n: n, t: S.rtk ? S.rt : "", y: ry.value})).then(function(r){
+          if (k !== xseq) return;
+          xfound = r.items || [];
+          rx.hidden = !xfound.length;
+          if (!xfound.length) return;
+          var it = xfound[0], name = '«<bdi>' + esc(it.n) + '</bdi>»';
+          rx.innerHTML = '<b>✓ ' + (EN ? '“<bdi>' + esc(it.n) + '</bdi>” is already on ' + esc(sn()) : name + ' موجودٌ في ' + esc(sn()))
+            + (r.total > 1 ? T(r.total === 2 ? ' (في قسمين)' : ' (في ' + num(r.total) + (r.total <= 10 ? ' أقسام)' : ' قسمًا)'), ' (in ' + num(r.total) + ' sections)') : '') + '</b>'
+            + '<p>' + T('لا حاجة لطلب إضافته. إن كان لا يعمل أو يقطع فاختره وبلّغ عنه:', 'No need to request it. If it doesn’t play or keeps buffering, pick it and report it:') + '</p>'
+            + cardsOf(xfound, "data-xfound")
+            + '<p class="hint">' + T('تقصد نسخةً أخرى (بلغةٍ أخرى أو موسمًا جديدًا)؟ أرسل الطلب واكتب ذلك في الملاحظة.',
+                                     'Looking for another version (another language or a new season)? Send the request and say so in the note.') + '</p>';
+        }, function(){ if (k === xseq) rx.hidden = true; });
+      };
+      var later = function(){ clearTimeout(xtimer); xtimer = setTimeout(exists, 450); };
+      rn.addEventListener("input", function(){ S.rn = rn.value; later(); });
+      ry.addEventListener("change", function(){ S.ry = ry.value; exists(); });
       rc.addEventListener("change", function(){ S.rc = rc.value; });
-      var setType = function(t){
-        S.rt = t;
+      // النوع: يحدّده الرابط وحده (و«عرفناه من الرابط» بجانبه)، أو يختاره بنفسه
+      var setType = function(t, how){
+        S.rt = t; S.rtk = how || "pick";
+        document.getElementById("rtauto").hidden = how !== "link";
         Array.prototype.forEach.call(view.querySelectorAll("[data-rt]"), function(b){ b.setAttribute("aria-pressed", String(b.getAttribute("data-rt") === t)); });
       };
       // الرابط: يُقرأ من خادمنا فيُعبّأ النوع والاسم والسنة واللغة وحدها (وما لم يُعرف يبقى كما كتبه)
@@ -485,23 +514,28 @@ html[dir=ltr] .field input{text-align:left}
           if (n !== seq) return;
           go.disabled = false;
           if (!d.ok) { msg.className = "hint warn"; msg.textContent = EN ? d.en || d.error : d.error; return; }
-          if (d.kind === "series" || d.kind === "movie") setType(d.kind);
+          if (d.kind === "series" || d.kind === "movie") setType(d.kind, "link");
           if (d.name) { rn.value = S.rn = d.name; }
           if (d.year && ry.querySelector('option[value="' + d.year + '"]')) { ry.value = S.ry = String(d.year); }
           if (d.lang && rc.querySelector('option[value="' + d.lang + '"]')) { rc.value = S.rc = d.lang; }
           msg.className = "hint ok";
-          msg.textContent = T("✓ عبّأنا البيانات من الرابط — راجعها قبل الإرسال", "✓ Filled in from the link — check it before sending");
+          msg.textContent = d.guess ? T("✓ عبّأنا ما عرفناه من الرابط — راجع الاسم وأكمل الباقي", "✓ Filled in what the link tells us — check the name and complete the rest")
+            : T("✓ عبّأنا البيانات من الرابط — راجعها قبل الإرسال", "✓ Filled in from the link — check it before sending");
+          exists();
         }).catch(function(){ if (n === seq) { go.disabled = false; msg.className = "hint warn"; msg.textContent = T("تعذّر قراءة الرابط — اكتب البيانات بنفسك", "Couldn’t read the link — fill in the details yourself"); } });
       };
       // زرّ «املأ البيانات من الرابط» — ويُضغط وحده حين يُلصق الرابط
       go.onclick = read;
-      rl.addEventListener("input", function(){ S.rl = rl.value; go.disabled = !isLink(rl.value); msg.hidden = true; });
-      rl.addEventListener("paste", function(){ clearTimeout(timer); timer = setTimeout(function(){ go.disabled = !isLink(rl.value); if (!go.disabled) read(); }, 50); });
+      rl.addEventListener("input", function(){ pick(); S.rl = rl.value; go.disabled = !isLink(rl.value); msg.hidden = true; });
+      rl.addEventListener("paste", function(){ clearTimeout(timer); timer = setTimeout(function(){ pick(); go.disabled = !isLink(rl.value); if (!go.disabled) read(); }, 50); });
       rl.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); read(); } });
       view.onclick = function(e){
         var t = e.target.closest("[data-rt]");
-        if (t) setType(t.getAttribute("data-rt"));
+        if (t) { setType(t.getAttribute("data-rt")); exists(); return; }
+        var f = e.target.closest("[data-xfound]");          // موجود: يبلّغ عنه كما لو بحث عنه واختاره
+        if (f) { var it = xfound[+f.getAttribute("data-xfound")]; step(function(){ S.req = false; S.t = it.k; S.g = it.gid; S.gname = it.g; S.it = it; }); }
       };
+      exists();
       document.getElementById("send").onclick = function(){
         var er = document.getElementById("serr");
         S.rn = rn.value.trim();
@@ -527,6 +561,13 @@ html[dir=ltr] .field input{text-align:left}
 
   // ---- البداية: ‏?s=smart يختار السيرفر، و‏q (أو n) يبحث بالاسم، ومع ‏t و g و n (من صفحة المحتوى) يفتح العنصر نفسه،
   //      و‏add=1 يفتح طلب الإضافة ----
+  // نتائج البحث بطاقاتٍ (وصندوق «موجودٌ في السيرفر» في طلب الإضافة)
+  function cardsOf(list, attr){
+    return '<div class="grid">' + list.map(function(it, i){
+      return '<button class="card" type="button" ' + attr + '="' + i + '">' + pos(it) + '<b dir="auto">' + esc(it.n) + '</b><small>'
+        + [one(it.k), it.y || "", seasons(it)].filter(Boolean).join(" · ") + '</small><small class="g" dir="auto">' + esc(it.g) + '</small></button>';
+    }).join("") + '</div>';
+  }
   function seasons(it){
     var s = (it.s || []).filter(function(x){ return x[0]; }).length;
     return s > 1 ? s + T(" مواسم", " seasons") : "";

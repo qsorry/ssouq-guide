@@ -34,7 +34,7 @@ import unicodedata
 
 import content
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request
 
 PATH = "/report"
@@ -193,6 +193,41 @@ def search(data_dir, key, q):
                 if len(t) < SEARCH_MAX:
                     t.append((kind, gi, ii))
     hits = (tiers[0] + tiers[1] + tiers[2])[:SEARCH_MAX]
+    return {"ok": True, "total": total, "items": [_hit(srv, v, *h) for h in hits]}
+
+
+_ARTICLE = re.compile(r"^(the|a|an) ")
+EXISTS_MAX = 6
+
+
+def _bare(norm):
+    """الاسم للمطابقة: بلا «The» أوله (‏«The Batman» و«Batman» واحد)."""
+    return _ARTICLE.sub("", norm)
+
+
+def exists(data_dir, key, name, kind="", year=0):
+    """هل ما يطلب إضافته موجودٌ في السيرفر؟ ← {total, items} (‏items كنتائج البحث) أو None بلا سيرفر. الاسم نفسه
+    (بلا تشكيل ولا رموز ولا «The»)، وبنوعه إن عُرف، وبسنته إن عُرفت هي وسنة العنصر (والفرق سنةٌ واحدة يُقبل: تاريخ
+    العرض يختلف بين البلدان) — فلا يقول «موجود» لفيلمٍ أعيد إنتاجه باسمه."""
+    srv, v = _view(data_dir, key)
+    if not v:
+        return None
+    want = _bare(" ".join(content._words(str(name or "")[:content.NAME_MAX])))
+    year = _int(year, 1900, 2100) or 0
+    if len(want.replace(" ", "")) < 2:
+        return {"ok": True, "total": 0, "items": []}
+    hits, total = [], 0
+    for k in [kind] if kind in content.SEARCH_KINDS else content.SEARCH_KINDS:
+        for norm, gi, ii in v["index"][k]:
+            if want not in norm:                            # سريعٌ قبل المطابقة نفسها
+                continue
+            it = v["kinds"][k][gi]["items"][ii]
+            y = it.get("y") or 0
+            if _bare(norm[:-len(str(y)) - 1] if y else norm) != want or (year and y and abs(year - y) > 1):
+                continue
+            total += 1
+            if len(hits) < EXISTS_MAX:
+                hits.append((k, gi, ii))
     return {"ok": True, "total": total, "items": [_hit(srv, v, *h) for h in hits]}
 
 
@@ -662,6 +697,19 @@ LOOKUP_MAX = 1536 * 1024
 LOOKUP_TIMEOUT = 8
 LOOKUP_RATE = 30                  # قراءة روابط بالساعة لكل عنوان
 UA_BROWSER = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+# IMDb يحجب طلب صفحاته من الخوادم (‏202 بصفحة تحقّقٍ فارغة)، فرابطه يُقرأ من بيانات عنوانه العامة (اسمه وسنته ونوعه —
+# ما يقترحه بحث IMDb نفسه)، ولغته الأصلية برقم IMDb: للمسلسل من TVmaze، ولغيره (أو إن لم يعرفه) من Wikidata ‏(P345 ← P364).
+# والعناوين الثلاثة قابلةٌ للتغيير لاختبارٍ بلا شبكة.
+IMDB_API = os.environ.get("REPORT_IMDB_API") or "https://v3.sg.media-imdb.com/suggestion/x/{id}.json"
+TVMAZE_API = os.environ.get("REPORT_TVMAZE_API") or "https://api.tvmaze.com/lookup/shows?imdb={id}"
+WIKIDATA_API = os.environ.get("REPORT_WIKIDATA_API") or "https://query.wikidata.org/sparql"
+UA_BOT = "ssouq-guide/1.0 (https://guide.ssouq.com)"        # Wikidata تطلب تعريفًا بمن يسأل
+JSON_MAX = 256 * 1024
+_IMDB_ID = re.compile(r"/title/(tt\d{6,10})(?:[/?#]|$)")
+_IMDB_KIND = {"movie": "movie", "tvMovie": "movie", "short": "movie", "tvShort": "movie", "video": "movie",
+              "tvSeries": "series", "tvMiniSeries": "series", "tvSpecial": "series"}
+_ISO3 = {"ara": "ar", "arb": "ar", "arz": "ar", "apc": "ar", "ajp": "ar", "afb": "ar", "acm": "ar", "ary": "ar", "aeb": "ar",
+         "cmn": "zh", "yue": "zh", "pes": "fa", "prs": "fa"}
 _lookups = {}
 # اسم اللغة كما تكتبه المواقع ← رمزها في LANGS
 _LANG_NAMES = {"arabic": "ar", "english": "en", "turkish": "tr", "korean": "ko", "hindi": "hi", "spanish": "es", "castilian": "es",
@@ -776,8 +824,90 @@ def lookup_ok(ip, now=None):
         return _lookups[k] <= LOOKUP_RATE
 
 
+def _json(url, headers=None, timeout=LOOKUP_TIMEOUT):
+    """‏GET ← JSON، أو None لكل خطأ."""
+    try:
+        rq = Request(url, headers=dict({"User-Agent": UA_BROWSER, "Accept": "application/json"}, **(headers or {})))
+        with content.build_opener(content._SafeRedirect).open(rq, timeout=timeout) as r:
+            return json.loads(r.read(JSON_MAX).decode("utf-8", "replace"))
+    except (HTTPError, URLError, OSError, ValueError):
+        return None
+
+
+def imdb_id(url):
+    """رابط IMDb (‏www وm والمترجم كـ ‏/ar/title/…، ومشاركة التطبيق ‏?ref_=ext_shr) ← رقمه «tt0111161»، أو ""."""
+    u = urlsplit(url)
+    host = (u.hostname or "").lower()
+    m = _IMDB_ID.search(u.path + "/")
+    return m.group(1) if m and (host == "imdb.com" or host.endswith(".imdb.com")) else ""
+
+
+def _imdb(tt):
+    """رقم IMDb ← {kind, name, year, lang} من بياناته العامة، أو None."""
+    d = _json(IMDB_API.replace("{id}", tt))
+    x = next((x for x in (d or {}).get("d") or [] if isinstance(x, dict) and x.get("id") == tt), None)
+    kind = _IMDB_KIND.get(str((x or {}).get("qid") or ""))
+    if not x or not kind or not str(x.get("l") or "").strip():
+        return None                                  # حلقةٌ وحدها أو لعبة: لا يُعرف منها المسلسل
+    year = _int(x.get("y"), 1900, 2100) or 0
+    lang = _lang_code((_json(TVMAZE_API.replace("{id}", tt), timeout=4) or {}).get("language")) if kind == "series" else ""
+    return {"kind": kind, "name": _text(_unescape(str(x["l"])), content.NAME_MAX), "year": year, "lang": lang or _wikidata_lang(tt)}
+
+
+def _wikidata_lang(tt):
+    """اللغة الأصلية برقم IMDb من Wikidata ← رمزها في LANGS، أو "" (ولا تُعطّل البقية إن تأخرت)."""
+    q = ('SELECT ?c2 ?c3 WHERE { ?i wdt:P345 "%s"; wdt:P364 ?l . OPTIONAL { ?l wdt:P218 ?c2 } OPTIONAL { ?l wdt:P220 ?c3 } } LIMIT 5' % tt)
+    d = _json(WIKIDATA_API + "?" + urlencode({"query": q, "format": "json"}),
+              {"User-Agent": UA_BOT, "Accept": "application/sparql-results+json"}, timeout=4)
+    for b in ((d or {}).get("results") or {}).get("bindings") or []:
+        c2 = str((b.get("c2") or {}).get("value") or "").lower()
+        c3 = str((b.get("c3") or {}).get("value") or "").lower()
+        code = _lang_code(c2) or _ISO3.get(c3, "")
+        if code:
+            return code
+    return ""
+
+
+_SLUG_SKIP = {"movie", "movies", "film", "films", "tv", "series", "show", "shows", "title", "titles", "watch", "season", "episode",
+              "seasons", "episodes", "details", "info", "ar", "en", "www", "index", "html", "php", "مسلسل", "فيلم", "مسلسلات", "افلام", "أفلام"}
+
+
+def from_slug(url):
+    """حين لا تُقرأ الصفحة: الاسم ممّا في الرابط نفسه (‏/movie/278-the-shawshank-redemption ‏/film/dune-2021
+    ‏/series/مسلسل-الهيبة) ← {kind, name, year, lang}. وفي رابط مسلسلٍ أو فيلمٍ وحده (‏/movie/ ‏/tv/ ‏/film/ ‏/series/، أو
+    «مسلسل-…»)، فلا يصير آخرُ أي رابطٍ اسمًا؛ وNone لرابطٍ بأرقامٍ أو معرّفٍ وحده."""
+    from urllib.parse import unquote
+    path = urlsplit(url).path
+    kind = ("series" if re.search(r"/(tv|series|show|shows|tv-shows?)/", path.lower() + "/")
+            else "movie" if re.search(r"/(movie|movies|film|films)/", path.lower() + "/") else "")
+    for seg in reversed([x for x in path.split("/") if x]):
+        seg = re.sub(r"\.(html?|php|aspx?)$", "", unquote(seg), flags=re.I)
+        words = [w for w in re.split(r"[-_+.\s]+", seg) if w]
+        while words and (words[0].isdigit() or re.fullmatch(r"(tt|nm)\d+", words[0], re.I)):
+            words.pop(0)                             # ‏«278-…» أرقام TMDB أولها
+        year = 0
+        if len(words) > 1 and _YEAR.fullmatch(words[-1]):
+            year = int(words.pop())
+        while words and words[-1].isdigit():
+            words.pop()
+        if words and words[0] in ("مسلسل", "فيلم"):
+            kind = kind or ("series" if words[0] == "مسلسل" else "movie")
+            words.pop(0)
+        if re.fullmatch(r"[a-z]{2}([-_][a-z]{2,4})?", seg, re.I):
+            continue                                 # ‏«sa-en» «ar»: البلد واللغة
+        if not words or all(w.lower() in _SLUG_SKIP for w in words) or (len(words) == 1 and len(words[0]) <= 2) or not any(re.search(r"[^\W\d_]", w) for w in words) \
+                or any(len(w) > 24 or re.fullmatch(r"(?=.*\d)(?=.*[a-z])[a-z0-9]{8,}", w, re.I) for w in words):
+            continue                                 # كلمةٌ عامّة، أو رقمٌ أو معرّفٌ عشوائي، لا اسم
+        if not kind:
+            return None
+        name = " ".join(w[:1].upper() + w[1:] if w.isascii() and w.islower() else w for w in words)
+        return {"kind": kind, "name": _text(name, content.NAME_MAX), "year": year, "lang": ""}
+    return None
+
+
 def lookup(url):
-    """يقرأ صفحة الرابط ← {ok, kind, name, year, lang} أو {ok: False, error, en}. لا يرمي استثناءً."""
+    """يقرأ صفحة الرابط ← {ok, kind, name, year, lang} أو {ok: False, error, en}. لا يرمي استثناءً. ورابط IMDb من بياناته
+    العامة أولًا، وما لا تُقرأ صفحته يُعرف اسمه ممّا في الرابط نفسه إن كان (و‏guess: لتُراجَع)."""
     try:
         url = link_of(url)
     except Invalid as e:
@@ -785,23 +915,33 @@ def lookup(url):
     bad = {"ok": False, "error": "تعذّر قراءة الرابط — اكتب البيانات بنفسك", "en": "Couldn’t read the link — fill in the details yourself"}
     if not url:
         return {"ok": False, "error": "الصق الرابط", "en": "Paste the link"}
+    tt = imdb_id(url)
+    if tt:
+        d = _imdb(tt)
+        if d:
+            return dict(d, ok=True)
     if not content._public_host(urlsplit(url).hostname or ""):
         return bad
+    d = _page(url)
+    if d and d["name"]:
+        return dict(d, ok=True)
+    g = None if tt else from_slug(url)
+    return dict(g, ok=True, guess=True) if g else bad
+
+
+def _page(url):
     try:
         rq = Request(url, headers={"User-Agent": UA_BROWSER, "Accept": "text/html,application/xhtml+xml",
                                    "Accept-Language": "en-US,en;q=0.8,ar;q=0.6"})
         with content.build_opener(content._SafeRedirect).open(rq, timeout=LOOKUP_TIMEOUT) as r:
             if "html" not in (r.headers.get("Content-Type") or "text/html").lower():
-                return bad
+                return None
             raw = r.read(LOOKUP_MAX)
             charset = r.headers.get_content_charset() or "utf-8"
     except (HTTPError, URLError, OSError, ValueError):
-        return bad
+        return None
     try:
         html = raw.decode(charset, "replace")
     except LookupError:
         html = raw.decode("utf-8", "replace")
-    d = parse_page(html, url)
-    if not d["name"]:
-        return bad
-    return dict(d, ok=True)
+    return parse_page(html, url)
