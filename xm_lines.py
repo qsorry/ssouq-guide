@@ -39,6 +39,7 @@ import seo_build
 import seo_sources
 import seo_search
 import seo_db
+import seo_pages
 import xm_web
 import falcon_api
 import crypto_store
@@ -3112,8 +3113,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                                   extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                                   else {"Retry-After": str(league.RETRY)})
+        if path.startswith("/ar/content"):      # لا بادئة عربية: العربية على /content نفسه
+            return self._redirect(path[3:] + qs, 301)
         root = content.PATH_EN if path == content.PATH_EN or path.startswith(content.PATH_EN + "/") else content.PATH
         lang = "en" if root == content.PATH_EN else "ar"     # الصفحة نفسها بالإنجليزية على ‏/en/content
+        hit = seo_pages.handle(DATA_DIR, path, lang)        # طبقة الكيانات (معاينة، noindex): الأفلام والمسلسلات والأشخاص والهبّات
+        if hit is not None:
+            code, body, hdr = hit
+            if code == 301:
+                return self._redirect(hdr["Location"] + qs, 301)
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8", extra=hdr or {"Cache-Control": "no-store"})
         if path in (root, root + "/"):          # محتوى الاشتراكات: إلى أول سيرفرٍ له محتوى
             key = content.first_key(DATA_DIR)
             if key:
@@ -4028,6 +4037,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_sources.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-probe":     # الفحص الأولي: ماذا تعطي كل لوحة (يتصل باللوحات الآن)
                 return self._send(200, {"ok": True, "probe": seo_sources.probe(DATA_DIR, int(body.get("n") or 20))})
+            elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
+                return self._send(200, {"ok": True, "audit": seo_pages.audit(DATA_DIR, int(body.get("n") or 30))})
             elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)
                 con = seo_db.connect(DATA_DIR)
                 try:

@@ -289,6 +289,15 @@ label.force input{width:16px;height:16px;accent-color:var(--amber)}
     <div class="row" style="margin-top:10px"><input id="eQ" placeholder="جرّب البحث: person break · بريزن بريك · طبيعة الحب مدبلج" maxlength="80">
       <button class="ghost" type="button" id="eFind">ماذا يصير إليه؟</button></div>
     <p class="meta" id="eFound"></p>
+    <h3 style="margin:18px 0 6px">صفحات المعاينة (noindex)</h3>
+    <p class="sub">صفحات الأفلام والمسلسلات والأشخاص وهبّا التركي والأنمي كما ستكون — لا تُخدم إلا بتفعيل المعاينة، وكلها noindex ولا تدخل
+      خريطة الموقع ولا يُربط إليها من الصفحات العامة. افحص عيّنةً قبل أي فهرسة.</p>
+    <label class="switch"><input type="checkbox" id="ePreview"><span>فعّل المعاينة</span></label>
+    <div class="acts" style="margin-top:10px"><button class="ghost" type="button" id="eAudit">افحص عيّنة 30 عملًا</button>
+      <a class="ghost linkbtn" id="eHubTr" target="_blank" rel="noopener">هب التركي</a>
+      <a class="ghost linkbtn" id="eHubAn" target="_blank" rel="noopener">هب الأنمي</a></div>
+    <div class="msg" id="eMsg3"></div>
+    <pre class="mono" id="eOut2" hidden style="white-space:pre-wrap;max-height:360px;overflow:auto;font-size:.8rem"></pre>
   </section>
 
   <section id="alert" hidden>
@@ -840,6 +849,7 @@ function renderSeo(d) {
       ["روابط كيان↔سيرفر", d.links], ["أسماء بديلة", d.aliases], ["تحتاج مراجعة", r.open || 0], ["غائب الآن", e.unavailable]])
       + `<p class="meta">${Object.entries(d.per_service || {}).map(([k, v]) => `${esc(k)}: ${count(v.movie ? v.movie.present : 0, N.movie)} · ${count(v.series ? v.series.present : 0, N.series)}`).join(" — ")}</p>`;
   }
+  if (d.settings) $("ePreview").checked = !!d.settings.preview;
   const l = d.last;
   $("eLast").textContent = l ? (l.ok ? `آخر بناء ${when(l.at)}: ${num(l.items)} عنصرًا من ${(l.services || []).join("، ")} → ${num(l.clusters)} كيانًا (${num(l.new)} جديد · ${num(l.merged)} مدمج · ${num(l.split)} منفصل) في ${l.seconds} ث`
                                    : `فشل البناء ${when(l.at)}: ${l.error}`) : (d.built_at ? `آخر بناء ${when(d.built_at)}` : "");
@@ -877,6 +887,19 @@ $("eFind").onclick = async () => {
   const e = d.entities || d.suggest || [];
   $("eFound").textContent = d.error || (d.result === "entity" ? "كيان: " + e.map(x => `${x.title} (/${x.slug})`).join("، ")
     : d.result === "suggest" ? "هل تقصد: " + e.map(x => `${x.title} (${Math.round(x.confidence * 100)}%، ${x.why})`).join("، ") : "لا شيء");
+};
+$("eHubTr").href = SITE + "/content/turkish/"; $("eHubAn").href = SITE + "/content/anime/";
+$("ePreview").onchange = async () => {
+  const d = await api("/api/content/admin/seo-settings", {settings: {preview: $("ePreview").checked}}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg3").textContent = d.error || ($("ePreview").checked ? "المعاينة مفعّلة (noindex)" : "المعاينة موقوفة: المسارات تُرجع 404");
+};
+$("eAudit").onclick = async () => {
+  $("eMsg3").textContent = "يفحص…";
+  const d = await api("/api/content/admin/seo-audit", {n: 30}).catch(() => ({error: "تعذّر الاتصال"}));
+  const a = d.audit || {};
+  $("eMsg3").textContent = d.error || a.error || `عيّنة ${a.sample} عملًا · ${a.pages} صفحة · ناجحة ${a.pass} · فيها ملاحظات ${a.fail} · تستحق الفهرسة ${a.would_index}`;
+  const p = $("eOut2"); p.hidden = false;
+  p.textContent = (a.results || []).filter(r => r.errors.length || !r.would_index).map(r => `${r.lang} ${r.path}: ${r.errors.join(", ") || "ok"}; index=${r.would_index} (${r.why})`).join("\n") || "كل الصفحات سليمة";
 };
 $("eReview").onclick = async () => {
   const d = await api("/api/content/seo/review?limit=200").catch(() => ({error: "تعذّر الاتصال"}));

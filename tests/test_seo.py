@@ -277,12 +277,21 @@ ADMIN_PW = "envpass123"
 AUTH = "Basic " + base64.b64encode(f"admin:{ADMIN_PW}".encode()).decode()
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
 def req(base, path, data=None, auth=None, host=None):
+    """بلا اتّباع التحويلات: 301 يُرى كما هو."""
     r = urllib.request.Request(base + path, data=json.dumps(data).encode() if data is not None else None,
                                headers={**({"Authorization": auth} if auth else {}), **({"Host": host} if host else {}),
                                         **({"Content-Type": "application/json"} if data is not None else {})})
     try:
-        with urllib.request.urlopen(r, timeout=20) as resp:
+        with _opener.open(r, timeout=20) as resp:
             return resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
@@ -321,6 +330,21 @@ def live():
         check("صفحة المدير فيها بطاقة الطبقة", c == 200 and 'id="seo"' in b and "eBuild" in b)
         c, b = req(base, "/api/content/seo", host="guide.ssouq.com")
         check("لا مسار عام جديد", c == 404, str(c))
+        c, b = req(base, "/content/series/breaking-bad/", host="guide.ssouq.com")
+        check("مسارات الطبقة 404 على الموقع العام ما دامت المعاينة موقوفة", c == 404, str(c))
+        c, b = req(base, "/admin/api/content/admin/seo-settings", {"settings": {"preview": True}}, auth=AUTH)
+        c2, b2 = req(base, "/content/series/breaking-bad/", host="guide.ssouq.com")
+        check("بتفعيل المعاينة: الصفحة 200 وnoindex", c == 200 and c2 == 200 and 'content="noindex, follow"' in b2, f"{c} {c2}")
+        c, b = req(base, "/ar/content/series/breaking-bad/", host="guide.ssouq.com")
+        check("‏/ar/content/… يحوّل 301 إلى /content/…", c == 301, str(c))
+        c, b = req(base, "/content/casper", host="guide.ssouq.com")
+        check("صفحة السيرفر لم تتأثر", c == 200 and 'rel="canonical" href="https://guide.ssouq.com/content/casper"' in b)
+        c, b = req(base, "/admin/api/content/admin/seo-audit", {"n": 5}, auth=AUTH)
+        check("فحص العيّنة من الإدارة", c == 200 and json.loads(b)["audit"]["pages"] >= 2, b[:120])
+        c, b = req(base, "/admin/api/content/seo/search?q=person%20break", auth=AUTH)
+        check("تجربة البحث من الإدارة", c == 200 and json.loads(b)["result"] in ("suggest", "entity", "none"))
+        c, b = req(base, "/admin/api/content/seo/enrich", auth=AUTH)
+        check("حال الإثراء من الإدارة (بلا مفتاح)", c == 200 and json.loads(b)["has_key"] is False and "window" in json.loads(b))
         c, b = req(base, "/content/casper", host="guide.ssouq.com")
         check("صفحة السيرفر العامة كما هي (مفهرسة بـ canonical)", c == 200 and 'rel="canonical" href="https://guide.ssouq.com/content/casper"' in b, str(c))
         check("القاعدة في data/content/seo.sqlite", os.path.exists(os.path.join(d, "content", "seo.sqlite")))
@@ -544,6 +568,38 @@ def unit_enrich():
         bbid = q("SELECT id FROM content WHERE title='Breaking Bad'")[0][0]
         check("بحث: بريكنغ باد (صوتي) وبريكنج باد (ترجمة) → Breaking Bad", ex("بريكنج باد")["entities"][0]["id"] == bbid and ex("بريكنغ باد")["suggest"][0]["id"] == bbid)
         check("بحث: اسمٌ لا وجود له → لا شيء (لا كيان ولا دمج)", ex("xqzv plork")["result"] == "none")
+        # صفحات المعاينة
+        import seo_pages
+        check("بلا معاينة: مسارات الطبقة 404", seo_pages.handle(d, "/content/series/prison-break/", "ar")[0] == 404
+              and seo_pages.handle(d, "/content/casper", "ar") is None)
+        seo_db.set_setting(con, "preview", True); con.commit()
+        code, body, hdr = seo_pages.handle(d, "/content/series/prison-break/", "ar")
+        html = body.decode()
+        check("صفحة المسلسل (معاينة): 200 وnoindex وسمًا ورأسًا، canonical ذاتي، H1 واحد", code == 200 and hdr["X-Robots-Tag"] == "noindex"
+              and 'name="robots" content="noindex, follow"' in html and 'rel="canonical" href="https://guide.ssouq.com/content/series/prison-break/"' in html and html.count("<h1") == 1)
+        check("فيها: قصة H2، الأبطال بروابطهم، المواسم والحلقات، متوفر عبر كاسبر، الأسئلة الشائعة، TVSeries + BreadcrumbList + FAQPage",
+              "<h2>قصة مسلسل" in html and "/content/people/actors/wentworth-miller/" in html and 'id="seasons"' in html and "متوفر عبر" in html
+              and '"@type": "TVSeries"' in html and '"BreadcrumbList"' in html and '"FAQPage"' in html and 'utm_campaign=content-entity' in html)
+        check("hreflang للغتين فقط إن استحقّت كلتاهما الفهرسة (Prison Break نعم)", 'hreflang="en" href="https://guide.ssouq.com/en/content/series/prison-break/"' in html)
+        en = seo_pages.handle(d, "/en/content/series/prison-break/", "en")[1].decode()
+        check("النسخة الإنجليزية: lang=en، العنوان الإنجليزي، Story of", 'lang="en" dir="ltr"' in en and "<h1" in en and "Story of Prison Break" in en)
+        check("بلا شرطة أخيرة: 301 إليها", seo_pages.handle(d, "/content/series/prison-break", "ar")[:1] == (301,))
+        check("الرابط القديم المنقحر لـ Kuruluş Osman يحوّل 301 إلى الإنجليزي", seo_pages.handle(d, "/content/series/kurulus-osman/", "ar")[0] == 301)
+        check("كيانٌ مدمج يحوّل إلى الباقي", seo_pages.handle(d, "/content/series/" + q("SELECT slug FROM content WHERE merged_into IS NOT NULL LIMIT 1")[0][0] + "/", "ar")[0] == 301)
+        hub = seo_pages.handle(d, "/content/turkish/", "ar")[1].decode()
+        check("هب التركي: مقدمة، أقسام، CollectionPage + ItemList يشير إلى روابط الأعمال لا نسخها", "<h1>المسلسلات والأفلام التركية</h1>" in hub
+              and '"CollectionPage"' in hub and '"ItemList"' in hub and "/content/series/kurulus-osman-2019/" in hub and 'class="intro"' in hub)
+        an = seo_pages.handle(d, "/en/content/anime/", "en")[1].decode()
+        check("هب الأنمي بالإنجليزية يضم One Piece وAttack on Titan وفيلم الأنمي", "/en/content/series/one-piece/" in an and "/en/content/series/attack-on-titan/" in an and "/en/content/movies/one-piece-film-red/" in an)
+        check("page/1 يحوّل، وصفحةٌ خارج الحدّ 404، وقسمٌ فارغ 404", seo_pages.handle(d, "/content/anime/page/1/", "ar")[0] == 301
+              and seo_pages.handle(d, "/content/anime/page/99/", "ar")[0] == 404 and seo_pages.handle(d, "/content/anime/genres/nope/", "ar")[0] == 404)
+        pp = seo_pages.handle(d, "/content/people/actors/wentworth-miller/", "ar")[1].decode()
+        check("صفحة الممثل: أعماله بروابطها وPerson schema", '"@type": "Person"' in pp and "/content/series/prison-break/" in pp)
+        rep = seo_pages.audit(d, 12)
+        check("فحص العيّنة: كل الصفحات سليمة (status · canonical · hreflang · title · description · H1 · breadcrumb · schema · روابط · لا canonical مكرّر)",
+              rep["pages"] >= 20 and rep["fail"] == 0, str({k: v for k, v in rep.items() if k != "results"}))
+        why = {r["why"] for r in rep["results"] if not r["would_index"]}
+        check("وسياسة الفهرسة تُقيَّم بسبب لكل صفحة (قصة قصيرة، غير مطابَق، أقل من 12)", why <= {"overview_ar < 120", "overview_en < 120", "unmatched", "items < 12"}, str(why))
         con.close()
     finally:
         xt.shutdown(); tm.shutdown()

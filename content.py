@@ -585,10 +585,14 @@ def _write(path, obj):
     os.replace(tmp, path)
 
 
+RESERVED_KEYS = frozenset(("movies", "series", "people", "genres", "countries", "languages", "year", "latest", "search",
+                           "turkish", "anime", "page", "img", "api", "admin"))   # مسارات طبقة الكيانات: لا تكون اسم سيرفر
+
+
 def key_ok(v):
-    """مفتاح السيرفر حروفًا لاتينية صغيرة وأرقامًا — آخر رابط صفحته واسم ملفه، فلا يخرج من المجلد."""
+    """مفتاح السيرفر حروفًا لاتينية صغيرة وأرقامًا — آخر رابط صفحته واسم ملفه، فلا يخرج من المجلد — وليس كلمةً محجوزة."""
     s = str(v or "").strip().lower()
-    return s if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", s) else ""
+    return s if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,23}", s) and s not in RESERVED_KEYS else ""
 
 
 def _float(v):
