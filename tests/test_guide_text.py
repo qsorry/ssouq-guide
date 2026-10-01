@@ -170,6 +170,39 @@ def main():
         me_s = session(); me_s("/admin/api/login", {"user": "smart", "password": "pw_smart"})
         _, m = me_s("/admin/api/me")
         check("gate without its own link uses the client's guide link", m["gates"][0].get("guide_sub") == "سمارت", m["gates"][0].get("guide_sub"))
+
+        print("\n== 6b. Guide link per gate: the general link opens each gate's own subscription ==")
+        S = "https://" + X.SITE_HOST
+        for label, g, base, want in [
+            ("مرح by name → smart", G(name="بوابة مرح"), S + "/", S + "/#activate/smart"),
+            ("Falcon type → falcon", G(name="بوابة ١", mode="falcon"), S + "/", S + "/#activate/falcon"),
+            ("Casper panel → casper", G(name="بوابة ٢", mode="web", web_flavor="casper"), S + "/", S + "/#activate/casper"),
+            ("no trailing slash", G(name="بوابة مرح"), S, S + "/#activate/smart"),
+            ("query kept", G(name="بوابة مرح"), S + "/?r=1", S + "/?r=1#activate/smart"),
+            ("general link aimed at another subscription is re-aimed", G(name="كاسبر"), S + "/#activate/smart", S + "/#activate/casper"),
+            ("already its own subscription (with a device) is kept", G(name="كاسبر"), S + "/#activate/casper/android/2", S + "/#activate/casper/android/2"),
+            ("old marah link on a smart gate is kept", G(name="مرح"), S + "/#activate/marah", S + "/#activate/marah"),
+            ("another destination in the guide is kept", G(name="مرح"), S + "/#store", S + "/#store"),
+            ("a link outside the guide is kept", G(name="مرح"), "https://other.example/", "https://other.example/"),
+            ("unknown subscription: the general link as is", G(name="بوابة ٣"), S + "/", S + "/"),
+            ("the gate's own link wins", G(name="مرح", guide_url="https://x.example/a"), S + "/", "https://x.example/a"),
+            ("no link at all stays empty", G(name="مرح"), "", ""),
+        ]:
+            got = X.gate_guide(g, base)
+            check(label, got == want, got)
+        adm("/admin/api/accounts", {"name": "بوابات", "user": "gates", "password": "pw_gates", "guide_url": S + "/",
+                                    "gates": [{**CASPER_GATE, "name": "بوابة مرح", "web_flavor": "xtream", "guide_url": ""},
+                                              {**CASPER_GATE, "name": "بوابة ك", "guide_url": ""},
+                                              {**CASPER_GATE, "name": "بوابة خاصة", "guide_url": "https://x.example/g"}]})
+        me_g = session(); me_g("/admin/api/login", {"user": "gates", "password": "pw_gates"})
+        _, m = me_g("/admin/api/me")
+        got = [(x["name"], x.get("guide"), x.get("guide_sub")) for x in m.get("gates", [])]
+        check("create page gets each gate's own guide link",
+              got == [("بوابة مرح", S + "/#activate/smart", "سمارت"), ("بوابة ك", S + "/#activate/casper", "كاسبر"),
+                      ("بوابة خاصة", "https://x.example/g", "كاسبر")], json.dumps(got, ensure_ascii=False))
+        check("…and the general link itself is unchanged", m.get("guide_url") == S + "/", m.get("guide_url"))
+        line = X.format_line(X.with_guide({"guide_url": S + "/"}, {"name": "بوابة مرح", "host": "http://h:80"}), "u1", "p1")
+        check("a created line carries the gate's guide link", line == "Host http://h:80 User u1 Pass p1 Guide " + S + "/#activate/smart", line)
         print("\n== 7. Import carries the option (replaces all accounts — keep last) ==")
         c, d = adm("/admin/api/accounts/import", {"accounts": [
             {"name": "مستورد", "user": "imp", "password": "pw_imp", "gates": [], "copy_guide": True, "guide_text": ""}]})

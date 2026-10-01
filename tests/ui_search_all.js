@@ -18,6 +18,7 @@ const api = (page, url, body) => page.evaluate(async ([u, b]) => (await fetch(u,
 const shot = async (p, n) => { if (SHOTS) await p.screenshot({path: path.join(SHOTS, n + '.png'), fullPage: true}); };
 
 const HA = 'http://a.host:80', HB = 'http://b.host:80', GUIDE = 'https://guide.ssouq.com/';
+const GUIDE_F = GUIDE + '#activate/falcon';      // البوابات فالكون: الرابط العام موجّهًا لصفحة اشتراكها
 
 (async () => {
   const f1 = spawn('python3', [path.join(ROOT,'tests/mock_falcon.py'), String(F1_PORT), 'k1'], {stdio:'ignore'});
@@ -67,7 +68,7 @@ const HA = 'http://a.host:80', HB = 'http://b.host:80', GUIDE = 'https://guide.s
     check('found under gate ب only, though أ is selected', groups.length === 1 && groups[0].startsWith('بوابة ب'), groups.join(' | '));
     check('the summary counts the gates', (await user.textContent('#searchRes .sg-sum')).includes('وُجد في بوابة واحدة من 3'));
     const cp = await user.$eval('#searchRes button.cb', b => b.dataset.copy);
-    check('copy uses that gate\'s host, not the selected one', cp === `Host ${HB} User onlyonb Pass pwb Guide ${GUIDE}`, cp);
+    check('copy uses that gate\'s host, not the selected one', cp === `Host ${HB} User onlyonb Pass pwb Guide ${GUIDE_F}`, cp);
     const notes = await user.textContent('#searchRes .sg-notes');
     check('the unreachable gate is named with why', notes.includes('بوابة متوقّفة') && notes.includes('تعذّر البحث فيها'), notes);
     check('no «not found» card when found somewhere', !(await user.$('#mkRepl')));
@@ -120,6 +121,14 @@ const HA = 'http://a.host:80', HB = 'http://b.host:80', GUIDE = 'https://guide.s
     await search(user, OLD);
     const lg = await user.$$eval('#searchRes .sg', els => els.map(e => [e.querySelector('.sg-h').textContent.trim(), !!e.querySelector('.lnk')]));
     check('searching the old number again: its link under gate ب', lg.length === 1 && lg[0][0].startsWith('بوابة ب') && lg[0][1], JSON.stringify(lg));
+
+    // ---- رابط الشرح العام يُحفظ من الصفحة: يُوجَّه لصفحة اشتراك كل بوابة، بلا إعادة تحميل ----
+    await user.fill('#myGuide', 'https://guide.ssouq.com/?ref=x');
+    await Promise.all([user.waitForResponse(r => r.url().includes('/api/me')), user.click('#saveGuide')]);
+    await search(user, 'onlyonb');
+    const cp2 = await user.$eval('#searchRes button.cb', b => b.dataset.copy);
+    check('a new general link is used at once, aimed at the gate\'s subscription page',
+          cp2 === `Host ${HB} User onlyonb Pass pwb Guide https://guide.ssouq.com/?ref=x#activate/falcon`, cp2);
 
     // ---- الجوال ----
     await search(user, 'user003');

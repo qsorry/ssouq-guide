@@ -16,7 +16,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 """
 import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, time
 import io, zipfile
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -489,10 +489,9 @@ _SUB_WORDS = {"smart": ("smart", "marah", "mr7", "سمارت", "مرح"),
               "casper": ("casper", "كاسبر")}
 
 
-def guide_sub(gate, guide_url=""):
-    """اسم اشتراك البوابة في الدليل ({server} في نص الشرح): من رابط شرحها
-    (#activate/<الاشتراك>) لأنه ما سيفتحه العميل، وإلا من اسمها، وإلا من نوعها،
-    وآخرًا اسمها نفسه بلا «بوابة»."""
+def guide_sub_key(gate, guide_url=""):
+    """مفتاح اشتراك البوابة في الدليل (smart · falcon · casper) أو "": من رابط شرحها
+    (#activate/<الاشتراك>) لأنه ما سيفتحه العميل، وإلا من اسمها، وإلا من نوعها."""
     m = re.search(r"#activate/([a-z]+)", guide_url or gate.get("guide_url", ""))
     key = m.group(1) if m else ""
     key = "smart" if key == "marah" else key
@@ -503,9 +502,46 @@ def guide_sub(gate, guide_url=""):
         key = "falcon"
     if not key and gate.get("mode") == "web" and gate.get("web_flavor") == "casper":
         key = "casper"
+    return key
+
+
+def guide_sub(gate, guide_url=""):
+    """اسم اشتراك البوابة في الدليل ({server} في نص الشرح) — انظر guide_sub_key —
+    وآخرًا اسمها نفسه بلا «بوابة»."""
+    key = guide_sub_key(gate, guide_url)
     if key:
         return GUIDE_SUBS[key]
     return re.sub(r"^\s*بوابة\s+", "", str(gate.get("name", ""))).strip()
+
+
+def gate_guide(gate, acct_guide=""):
+    """رابط الشرح الذي يُرسل مع يوزر هذه البوابة: رابطها الخاص إن كُتب، وإلا رابط الحساب
+    العام — وإن كان الدليل نفسه (SITE_HOST) وُجِّه إلى صفحة تفعيل اشتراك البوابة
+    (#activate/smart · falcon · casper) فيفتح العميل شرح بوابته مباشرة لا الصفحة الرئيسية،
+    ولو كان العام موجّهًا لاشتراكٍ آخر. ويبقى كما كُتب: لبوابةٍ لا يُعرف اشتراكها، أو رابطٍ
+    خارج الدليل، أو وجهةٍ أخرى فيه، أو ما يوجّه لاشتراكها نفسه (ولو بجهازٍ بعده)."""
+    own = str(gate.get("guide_url") or "").strip()
+    if own:
+        return own
+    base = str(acct_guide or "").strip()
+    key = guide_sub_key(gate)
+    if not base or not key:
+        return base
+    try:
+        u = urlparse(base)
+    except ValueError:
+        return base
+    if (u.hostname or "") != SITE_HOST:
+        return base
+    m = re.match(r"activate/([a-z]+)", u.fragment)
+    if (u.fragment and not m) or (m and ("smart" if m.group(1) == "marah" else m.group(1)) == key):
+        return base
+    return urlunparse(u._replace(path=u.path or "/", fragment="activate/" + key))
+
+
+def with_guide(acct, gate):
+    """البوابة ورابط شرحها الفعلي (gate_guide) في guide_url — لكل ما يبني السطر أو نص الشرح."""
+    return {**gate, "guide_url": gate_guide(gate, (acct or {}).get("guide_url", ""))}
 
 
 def _report_servers(v):
@@ -743,9 +779,7 @@ def _gen_for_map(st, m, simulate):
     gate = find_gate(acct, m["gate_id"]) if acct else None
     if not gate:
         return {"ok": False, "error": "بوابة الربط غير موجودة (عدّل الربط)"}
-    g = gate
-    if not g.get("guide_url") and acct.get("guide_url"):
-        g = {**g, "guide_url": acct["guide_url"]}
+    g = with_guide(acct, gate)
     if simulate:
         return {"ok": True, "line": format_line(g, "TEST-USER", "TEST-PASS"),
                 "username": "TEST-USER", "password": "TEST-PASS", "simulated": True}
@@ -2063,10 +2097,8 @@ def split_find_line(gate, username):
 def split_texts(acct, gate, rec):
     """ما يُنسخ للعميل التالي ببيانات الخط الحالية: السطر، ونصّ الشرح إن فعّله المدير
     لهذا العميل (بنفس خانات صفحة الإنشاء: {host} {user} {pass} {guide} {server})."""
-    g = dict(gate)
+    g = with_guide(acct, gate)
     g["host"] = rec.get("host") or gate.get("host", "")
-    if not g.get("guide_url") and acct.get("guide_url"):
-        g["guide_url"] = acct["guide_url"]
     out = {"line": format_line(g, rec.get("username", ""), rec.get("password", "")), "message": ""}
     text = guide_text_of(acct)
     if text:
@@ -2355,8 +2387,8 @@ def gift_gate(st, account_id, gate_id):
     """(الحساب، البوابة برابط شرحها أو رابط الحساب) — أو (…، None)."""
     acct = _find_account(st, account_id)
     gate = find_gate(acct, gate_id) if acct else None
-    if gate and not gate.get("guide_url") and acct.get("guide_url"):
-        gate = {**gate, "guide_url": acct["guide_url"]}
+    if gate:
+        gate = with_guide(acct, gate)
     return acct, gate
 
 
@@ -3155,9 +3187,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/me":
                 gates = [{"id": g["id"], "name": g["name"], "mode": g["mode"],
                           "host": g["host"], "guide_url": g.get("guide_url", ""),
+                          "guide": gate_guide(g, acct.get("guide_url", "")),
                           "digits": gate_digits(g), "point_cost": g.get("point_cost", ""),
                           "web_flavor": g.get("web_flavor", ""),
-                          "guide_sub": guide_sub(g, g.get("guide_url") or acct.get("guide_url", ""))}
+                          "guide_sub": guide_sub(g, gate_guide(g, acct.get("guide_url", "")))}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
                                         "guide_url": acct.get("guide_url", "") if acct else "",
@@ -3265,7 +3298,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not gate:
                     return self._send(400, {"error": "اختر بوابة"})
                 base = {"account": acct["name"], "gate": gate["id"], "host": gate["host"],
-                        "guide_url": gate.get("guide_url") or acct.get("guide_url", "")}
+                        "guide_url": gate_guide(gate, acct.get("guide_url", ""))}
                 try:
                     pkgs = get_packages(gate)
                 except xm_web.CaptchaNeeded:
@@ -4717,9 +4750,8 @@ class Handler(BaseHTTPRequestHandler):
         gate = find_gate(acct, req.get("gate"))
         if not gate:
             return self._send(400, {"error": "اختر بوابة"})
-        # رابط الشرح: خاص بالبوابة، وإلا رابط الشخص العام لكل بواباته.
-        if not gate.get("guide_url") and acct.get("guide_url"):
-            gate = {**gate, "guide_url": acct["guide_url"]}
+        # رابط الشرح: خاص بالبوابة، وإلا رابط الشخص العام موجّهًا لاشتراك البوابة (gate_guide).
+        gate = with_guide(acct, gate)
         pkg = next((p for p in get_packages(gate) if str(p["id"]) == str(req.get("package_id"))), None)
         if not pkg:
             return self._send(400, {"error": "الباقة غير موجودة"})
