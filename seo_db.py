@@ -20,10 +20,11 @@ import time
 
 DIR = "content"
 FILE = "seo.sqlite"
-VERSION = 1                    # PRAGMA user_version — يرتفع مع كل ترحيل
+VERSION = 2                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
 SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
 MANUAL = "manual"
+PRECEDENCE = {"m3u": 0, "derived": 0, "xtream": 1, "tmdb": 2, "manual": 3}   # مصدرٌ أدنى لا يكتب فوق أعلى
 # مسارات الكيانات القادمة (المرحلة 3) — تُستعمل الآن لتسجيل تحويلات slug في ‏redirect
 PATHS = {"movie": "/content/movies/{slug}/", "series": "/content/series/{slug}/"}
 EN = "/en"
@@ -52,7 +53,27 @@ DEFAULTS = {
     "list_min_items": 12,
     "list_max_pages": 50,
     "page_size": 60,
+    # النسخ: لواحق في أسماء السيرفرات صفةٌ على رابط السيرفر لا على هوية العمل («طبيعة الحب مدبلج» = «طبيعة الحب»)
+    "version_tags": {"dubbed": ["مدبلج", "مدبلجة", "مدبلج للعربية", "dubbed", "dub", "ar dub", "arabic dub"],
+                     "subbed_soft": ["مترجم سوفت", "سوفت", "soft sub", "softsub"],
+                     "subbed": ["مترجم", "مترجمة", "subbed", "sub", "subtitled", "ar sub"]},
+    "score_version": 2,        # في السيرفر نفسه: الاسمان لا يختلفان إلا بلاحقة النسخة
+    # الإثراء (المرحلة 2): نافذة ليلية بتوقيت السعودية، وسرعات، وتباعد المحاولات، ولا يُفترض اكتماله في ليلة
+    "enrich_window": {"start": "02:00", "end": "06:00", "tz_offset": 3},
+    "xtream_rps": 1.0, "tmdb_rps": 4.0,
+    "enrich_backoff": [3600, 86400, 604800],          # ساعة، يوم، أسبوع — ثم يتوقف ويسجّل السبب
+    "cache_ttl": {"ok": 30 * 86400, "miss": 30 * 86400, "error": 3600},
+    "enrich_batch": 200,                              # لكل دورة (كل عشر دقائق داخل النافذة)
+    # الأنمي: Animation + لغةٌ أصلية/بلد — ويُخزَّن نوعه (ja · zh · ko) فلا يُخلط
+    "anime_langs": {"ja": "japanese", "zh": "chinese", "ko": "korean"},
+    "anime_countries": {"JP": "japanese", "CN": "chinese", "TW": "chinese", "HK": "chinese", "KR": "korean"},
+    "anime_keyword_ids": [210024],                    # TMDB keyword «anime»
+    "hub_countries": {"turkish": ["TR"]},             # الهب ← بلدان المنشأ
+    "search_max_suggest": 5, "search_min_conf": 0.5,
+    "tmdb_key": "",                                   # مشفَّرٌ في القاعدة (crypto_store)؛ أو TMDB_API_KEY في البيئة
+    "preview": False,                                 # صفحات الكيانات والهبّات في وضع المعاينة (noindex) — المرحلة 2
 }
+SECRET_SETTINGS = ("tmdb_key",)
 
 _locks = {}                    # مسار القاعدة ← قفل الكتابة (بناءٌ واحد في وقته)
 _lk = threading.Lock()
@@ -95,7 +116,10 @@ CREATE TABLE IF NOT EXISTS content (
   release_date TEXT, year INTEGER,
   rating REAL, votes INTEGER, runtime INTEGER, status TEXT,
   poster TEXT, backdrop TEXT, trailer_yt TEXT,
-  genres_json TEXT,                     -- التصنيفات الخام من اللوحات (الجداول المعيارية في المرحلة التالية)
+  genres_json TEXT,                     -- التصنيفات الخام من اللوحات (والمعيارية في content_taxonomy)
+  format TEXT NOT NULL DEFAULT '',      -- '' · anime_series · anime_movie · ova · special (الأنمي صفةٌ لا نوع)
+  anime_kind TEXT,                      -- japanese · chinese · korean (لا تُخلط)
+  original_language TEXT, origin_country_json TEXT, tmdb_type TEXT, popularity REAL, last_air_date TEXT,
   match TEXT NOT NULL DEFAULT 'local' CHECK (match IN ('local','xtream','tmdb','manual')),
   confidence INTEGER NOT NULL DEFAULT 0,
   available INTEGER NOT NULL DEFAULT 1,  -- 0: غاب من كل السيرفرات (لا يُحذف)
@@ -111,9 +135,92 @@ CREATE TABLE IF NOT EXISTS content_alias (
   content_id INTEGER NOT NULL REFERENCES content(id),
   alias TEXT NOT NULL, alias_norm TEXT NOT NULL,
   lang TEXT, source TEXT NOT NULL, service_key TEXT, at INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'raw',     -- raw · title · original · translation · alternative · manual
+  phonetic TEXT,                        -- المفتاح الصوتي (seo_search.phonetic): «بريزن بريك» و«Prison Break» واحد
+  verified INTEGER NOT NULL DEFAULT 1, confidence REAL NOT NULL DEFAULT 1.0,
   PRIMARY KEY (content_id, alias_norm)
 );
 CREATE INDEX IF NOT EXISTS alias_norm ON content_alias(alias_norm);
+CREATE INDEX IF NOT EXISTS alias_phonetic ON content_alias(phonetic);
+
+-- معرّفات المصادر الخارجية لأي كيان: TMDB · AniList · IMDb · Xtream … (يُضاف مصدرٌ بلا ترحيل)
+CREATE TABLE IF NOT EXISTS external_id (
+  entity TEXT NOT NULL, entity_id INTEGER NOT NULL,
+  source TEXT NOT NULL,                -- tmdb · anilist · imdb · mal · xtream:<service>
+  external_id TEXT NOT NULL,
+  verified INTEGER NOT NULL DEFAULT 0, confidence REAL NOT NULL DEFAULT 0, how TEXT, at INTEGER NOT NULL,
+  PRIMARY KEY (entity, entity_id, source)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS external_unique ON external_id(entity, source, external_id) WHERE verified=1;
+
+-- التصنيف: هبّات (turkish · anime) وأنواع وبلدان ولغات وسنوات واستوديوهات — والعمل يعضو فيها بلا نسخ
+CREATE TABLE IF NOT EXISTS taxonomy (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,                  -- hub · genre · country · language · year · studio · network · anime_kind
+  key TEXT NOT NULL,                   -- turkish · anime · 28 · TR · ja · 2024 · tmdb:1234 …
+  slug TEXT NOT NULL,
+  name_ar TEXT, name_en TEXT, intro_ar TEXT, intro_en TEXT,   -- المقدمة تحريرية من الإدارة
+  seo_title_ar TEXT, seo_title_en TEXT, meta_ar TEXT, meta_en TEXT,
+  index_flag INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+  UNIQUE (kind, key), UNIQUE (kind, slug)
+);
+CREATE TABLE IF NOT EXISTS content_taxonomy (
+  content_id INTEGER NOT NULL REFERENCES content(id),
+  taxonomy_id INTEGER NOT NULL REFERENCES taxonomy(id),
+  source TEXT NOT NULL,                -- tmdb · manual · hint (القسم: قرينة لا تُدخل الهب)
+  confidence REAL NOT NULL DEFAULT 1.0, at INTEGER NOT NULL,
+  PRIMARY KEY (content_id, taxonomy_id)
+);
+CREATE INDEX IF NOT EXISTS ct_tax ON content_taxonomy(taxonomy_id, source);
+
+CREATE TABLE IF NOT EXISTS person (
+  id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL, name_ar TEXT, name_en TEXT, original_name TEXT,
+  bio_ar TEXT, bio_en TEXT, photo TEXT, birthday TEXT, known_for TEXT,
+  index_flag INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS content_person (
+  content_id INTEGER NOT NULL REFERENCES content(id),
+  person_id INTEGER NOT NULL REFERENCES person(id),
+  role TEXT NOT NULL,                  -- actor · voice · director · writer · creator
+  character TEXT, ord INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL,
+  PRIMARY KEY (content_id, person_id, role)
+);
+CREATE INDEX IF NOT EXISTS cp_person ON content_person(person_id);
+
+CREATE TABLE IF NOT EXISTS company (
+  id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, kind TEXT NOT NULL,   -- studio · network
+  logo TEXT, country TEXT, created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS content_company (
+  content_id INTEGER NOT NULL REFERENCES content(id), company_id INTEGER NOT NULL REFERENCES company(id),
+  role TEXT NOT NULL, source TEXT NOT NULL, PRIMARY KEY (content_id, company_id, role)
+);
+
+CREATE TABLE IF NOT EXISTS episode (
+  id INTEGER PRIMARY KEY,
+  content_id INTEGER NOT NULL REFERENCES content(id), season INTEGER NOT NULL, number INTEGER NOT NULL,
+  title_ar TEXT, title_en TEXT, overview_ar TEXT, overview_en TEXT, air_date TEXT, runtime INTEGER, still TEXT,
+  index_flag INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+  UNIQUE (content_id, season, number)
+);
+
+CREATE TABLE IF NOT EXISTS genre_map (raw_norm TEXT PRIMARY KEY, taxonomy_id INTEGER REFERENCES taxonomy(id), source TEXT NOT NULL);
+
+-- قواعد أسماء الأقسام: قرائن (hint) تُعدَّل من الإدارة — ليست مصدر الحقيقة
+CREATE TABLE IF NOT EXISTS group_rule (
+  id INTEGER PRIMARY KEY, pattern TEXT NOT NULL, hint_json TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, note TEXT
+);
+
+-- طابور الإثراء القابل للاستئناف: لكل عمل ومصدر حالٌ ومحاولات وموعد
+CREATE TABLE IF NOT EXISTS enrich_queue (
+  content_id INTEGER NOT NULL REFERENCES content(id), source TEXT NOT NULL,   -- xtream · tmdb · tmdb_seasons
+  state TEXT NOT NULL DEFAULT 'pending',   -- pending · done · miss · error · skip
+  priority INTEGER NOT NULL DEFAULT 5, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL DEFAULT 0,
+  error TEXT, updated_at INTEGER NOT NULL,
+  PRIMARY KEY (content_id, source)
+);
+CREATE INDEX IF NOT EXISTS eq_state ON enrich_queue(source, state, priority, next_at);
 
 CREATE TABLE IF NOT EXISTS content_service (
   content_id INTEGER NOT NULL REFERENCES content(id),
@@ -121,6 +228,8 @@ CREATE TABLE IF NOT EXISTS content_service (
   kind TEXT NOT NULL, local_key TEXT NOT NULL,    -- مفتاح العنصر في فهرس السيرفر (content._ikey)
   name TEXT NOT NULL, year INTEGER, stream_id INTEGER, added INTEGER,
   seasons_json TEXT, groups_json TEXT,
+  versions_json TEXT, raw_names_json TEXT,       -- النسخ (dubbed · subbed · subbed_soft) والأسماء كما جاءت
+  series_id INTEGER,                             -- معرّف المسلسل في لوحة Xtream (لـ get_series_info)
   present INTEGER NOT NULL DEFAULT 1, first_seen INTEGER NOT NULL, seen_at INTEGER NOT NULL,
   PRIMARY KEY (service_key, kind, local_key)
 );
@@ -177,12 +286,29 @@ CREATE TABLE IF NOT EXISTS build_state (key TEXT PRIMARY KEY, value TEXT NOT NUL
 """
 
 
+_V2_COLS = {"content": ["format TEXT NOT NULL DEFAULT ''", "anime_kind TEXT", "original_language TEXT", "origin_country_json TEXT",
+                        "tmdb_type TEXT", "popularity REAL", "last_air_date TEXT"],
+            "content_service": ["versions_json TEXT", "raw_names_json TEXT", "series_id INTEGER"],
+            "content_alias": ["kind TEXT NOT NULL DEFAULT 'raw'", "phonetic TEXT", "verified INTEGER NOT NULL DEFAULT 1",
+                              "confidence REAL NOT NULL DEFAULT 1.0"]}
+
+
+def _add_cols(con, table, cols):
+    have = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+    for c in cols:
+        if c.split()[0] not in have:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {c}")
+
+
 def migrate(con):
     v = con.execute("PRAGMA user_version").fetchone()[0]
     if v >= VERSION:
         return
     with con:
-        con.executescript(SCHEMA)
+        con.executescript(SCHEMA)              # الجداول الجديدة (IF NOT EXISTS)
+        if v and v < 2:                        # قاعدةٌ من النسخة الأولى: أعمدةٌ تُضاف بلا إعادة بناء
+            for t, cols in _V2_COLS.items():
+                _add_cols(con, t, cols)
         con.execute(f"PRAGMA user_version={VERSION}")
 
 
@@ -249,15 +375,23 @@ def apply_fields(con, entity, entity_id, fields, source, service_key=None, now=N
     ويسجّل لكل حقلٍ تغيّر مصدره ووقته وقيمته السابقة ← الحقول التي تغيّرت. ‏fields: حقل ← قيمة، أو حقل ← (قيمة، مصدر، سيرفر).
     تستعمله المزامنة التلقائية كلها (البناء، وXtream وTMDB لاحقًا)، فلا طريق لها إلى حقلٍ يدوي."""
     now = now or int(time.time())
-    table = {"content": "content", "season": "season", "person": "person"}[entity]
+    table = {"content": "content", "season": "season", "person": "person", "episode": "episode", "taxonomy": "taxonomy"}[entity]
     row = con.execute(f"SELECT * FROM {table} WHERE id=?", (entity_id,)).fetchone()
     if row is None:
         raise ValueError("no such entity")
-    keep = manual if manual is not None else (manual_fields(con, entity, entity_id) if source != MANUAL else set())
+    if manual is not None:
+        keep = {f: MANUAL for f in manual}
+    else:
+        keep = {r["field"]: r["source"] for r in con.execute(
+            "SELECT field, source FROM provenance WHERE entity=? AND entity_id=?", (entity, entity_id))}
     sets, args, changed = [], [], []
     for field, spec in fields.items():
         v, src, svc = spec if isinstance(spec, tuple) else (spec, source, service_key)
-        if field in keep or field not in row.keys() or row[field] == v:
+        if field not in row.keys() or row[field] == v:
+            continue
+        if PRECEDENCE.get(keep.get(field, ""), -1) > PRECEDENCE.get(src, 0):   # اليدوي فوق TMDB فوق Xtream فوق الفهرس
+            continue
+        if v is None and row[field] is not None and src != MANUAL:            # مصدرٌ آلي لا يمحو قيمةً بفراغ
             continue
         sets.append(f"{field}=?"); args.append(v); changed.append(field)
         set_provenance(con, entity, entity_id, field, src, svc, now, prev=row[field])
@@ -298,3 +432,44 @@ def schema_text(con):
     """نصّ المخطط كما في القاعدة — للتقرير."""
     return "\n".join(r[0] + ";" for r in con.execute(
         "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type DESC, name"))
+
+
+# ================= المعرّفات الخارجية والتصنيف =================
+def set_external(con, entity, entity_id, source, ext_id, verified=False, confidence=0.0, how="", now=None):
+    """يسجّل معرّف مصدرٍ خارجي لكيان — والمُتحقَّق منه فريدٌ لكل مصدر (معرّفٌ واحد لا يملكه كيانان)."""
+    if verified:
+        other = con.execute("SELECT entity_id FROM external_id WHERE entity=? AND source=? AND external_id=? AND verified=1 "
+                            "AND entity_id!=?", (entity, source, str(ext_id), entity_id)).fetchone()
+        if other:
+            raise ValueError(f"{source}:{ext_id} مسجَّلٌ لكيانٍ آخر ({other[0]})")
+    con.execute("INSERT INTO external_id(entity, entity_id, source, external_id, verified, confidence, how, at) VALUES (?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(entity, entity_id, source) DO UPDATE SET external_id=excluded.external_id, verified=excluded.verified, "
+                "confidence=excluded.confidence, how=excluded.how, at=excluded.at",
+                (entity, entity_id, source, str(ext_id), 1 if verified else 0, float(confidence), how, now or int(time.time())))
+
+
+def external(con, entity, entity_id):
+    return {r["source"]: dict(r) for r in con.execute("SELECT * FROM external_id WHERE entity=? AND entity_id=?", (entity, entity_id))}
+
+
+def taxonomy_id(con, kind, key, slug=None, name_ar=None, name_en=None, now=None):
+    """معرّف صفّ التصنيف، ويُنشأ إن لم يوجد."""
+    r = con.execute("SELECT id FROM taxonomy WHERE kind=? AND key=?", (kind, str(key))).fetchone()
+    if r:
+        return r["id"]
+    slug = slug or str(key).lower()
+    cur = con.execute("INSERT INTO taxonomy(kind, key, slug, name_ar, name_en, updated_at) VALUES (?,?,?,?,?,?)",
+                      (kind, str(key), slug, name_ar, name_en, now or int(time.time())))
+    return cur.lastrowid
+
+
+def set_membership(con, content_id, tax_id, source, confidence=1.0, now=None):
+    """عضوية عملٍ في تصنيف. ‏hint لا يكتب فوق tmdb/manual، وmanual يغلب الكل."""
+    rank = {"hint": 0, "tmdb": 1, "manual": 2}
+    cur = con.execute("SELECT source FROM content_taxonomy WHERE content_id=? AND taxonomy_id=?", (content_id, tax_id)).fetchone()
+    if cur and rank.get(cur["source"], 0) > rank.get(source, 0):
+        return False
+    con.execute("INSERT INTO content_taxonomy(content_id, taxonomy_id, source, confidence, at) VALUES (?,?,?,?,?) "
+                "ON CONFLICT(content_id, taxonomy_id) DO UPDATE SET source=excluded.source, confidence=excluded.confidence, at=excluded.at",
+                (content_id, tax_id, source, float(confidence), now or int(time.time())))
+    return True

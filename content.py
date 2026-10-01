@@ -1638,7 +1638,8 @@ def enrich(cat, xt, flagged=None):
                     continue
                 found[sid] = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("added")), "g": _genres(o.get("genre")),
                                     "d": _plot(o.get("plot") or o.get("description")), "p": _poster(o.get("stream_icon")),
-                                    "y": _year(o.get("year") or o.get("releasedate")), "c": _cid(o)})
+                                    "y": _year(o.get("year") or o.get("releasedate")), "c": _cid(o),
+                                    "t": _int(o.get("tmdb_id") or o.get("tmdb"))})   # معرّف TMDB إن أعطته اللوحة (لطبقة الكيانات)
     got = {}
     if series:
         with _api_open(xt, "get_series") as r:
@@ -1653,7 +1654,8 @@ def enrich(cat, xt, flagged=None):
                 bd = bd[0] if isinstance(bd, list) and bd else bd
                 meta = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("last_modified")), "g": _genres(o.get("genre")),
                               "d": _plot(o.get("plot")), "b": _poster(bd if isinstance(bd, str) else ""),
-                              "p": _poster(o.get("cover")), "y": yr, "c": _cid(o)})
+                              "p": _poster(o.get("cover")), "y": yr, "c": _cid(o),
+                              "sid": _int(o.get("series_id")), "t": _int(o.get("tmdb") or o.get("tmdb_id"))})   # لطبقة الكيانات
                 for it in its:                  # مسلسلان بالاسم نفسه: السنة تفصل بينهما
                     if not (yr and it.get("y") and it["y"] != yr) and id(it) not in got:
                         got[id(it)] = (it, meta)

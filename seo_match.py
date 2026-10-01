@@ -8,10 +8,12 @@
 
 بلا مكتبات خارجية.
 """
+import json
 import re
 import unicodedata
 
 import content as C
+from seo_search import phonetic  # noqa: F401 — المفتاح الصوتي للأسماء البديلة
 
 _TMDB_FILE = re.compile(r"^https?://image\.tmdb\.org/t/p/[^/]+/([^/?#]+)$")
 _WORD = re.compile(r"\w+", re.U)
@@ -133,6 +135,10 @@ def pair_score(a, b, st, same_server=False):
         if sa and sb and any(sa.get(k) == v for k, v in sb.items()):   # موسمٌ بعدد حلقاته نفسه في القسمين
             score += st["score_seasons"]
             why.append("seasons")
+        va, vb = a.get("versions") or [], b.get("versions") or []
+        if (va or vb) and va != vb and norm(a.get("raw_name") or "") != norm(b.get("raw_name") or ""):
+            score += st["score_version"]      # لا يختلفان إلا بلاحقة النسخة: العمل نفسه مدبلجًا ومترجمًا
+            why.append("version")
         return score, why
     da, db = a.get("plot") or "", b.get("plot") or ""
     if len(da) >= st["plot_min"] and len(db) >= st["plot_min"]:
@@ -155,42 +161,50 @@ def bucket_key(item):
     return item["type"], norm(item["name"])
 
 
-def cluster_in_server(entries, st):
-    """مداخل سيرفرٍ واحد بنفس النوع والاسم المطبَّع (من أقسامٍ شتّى) ← (عناقيد الفهارس، أغامض؟). الصورة نفسها أو السنة
-    نفسها أو موسمٌ بعدد حلقاته تجمع؛ وسنتان مختلفتان تفرّقان يقينًا؛ وبلا قرينة: عنصران ومراجعة."""
-    uf, ambiguous = _UF(len(entries)), False
-    for x in range(len(entries)):
-        for y in range(x + 1, len(entries)):
-            score, _ = pair_score(entries[x], entries[y], st, same_server=True)
-            if score is not None and score != DISTINCT and score >= st["merge_min"]:
-                uf.union(x, y)
-    groups = {}
-    for i in range(len(entries)):
-        groups.setdefault(uf.find(i), []).append(i)
-    out = list(groups.values())
-    if len(out) > 1:
-        for g1 in range(len(out)):
-            for g2 in range(g1 + 1, len(out)):
-                score, _ = pair_score(entries[out[g1][0]], entries[out[g2][0]], st, same_server=True)
-                if score != DISTINCT:
-                    ambiguous = True
-    return out, ambiguous
+# ================= النسخ (مدبلج · مترجم · سوفت) =================
+_version_cache = {}
 
 
-def verify_tmdb(cand, entity, st):
-    """هل سجلّ TMDB (‏type · title · original_title · year · aliases) هو هذا الكيان؟ معرّفٌ من لوحةٍ خارجية لا يُعتمد
-    وحده: النوع واحد، والسنة ضمن ‏tmdb_year_tolerance، واسمٌ من أسماء الكيان يطابق عنوان TMDB أو أصله أو بدائله."""
-    v = st.get("tmdb_verify") or {}
-    if v.get("type", True) and cand.get("type") != entity.get("type"):
-        return False, "type"
-    cy, ey = cand.get("year") or 0, entity.get("year") or 0
-    if v.get("year", True) and cy and ey and abs(cy - ey) > int(v.get("year_tolerance", 1)):
-        return False, "year"
-    mine = {norm(x) for x in [entity.get("title"), entity.get("title_en"), entity.get("original_title")] + list(entity.get("aliases") or []) if x}
-    theirs = {norm(x) for x in [cand.get("title"), cand.get("original_title")] + list(cand.get("aliases") or []) if x}
-    if v.get("title", True) and not (mine & theirs):
-        return False, "title"
-    return True, "ok"
+def _version_table(st):
+    """لواحق النسخ من الإعدادات ← (لاحقة مطبَّعة ← نسخة، أطول لاحقة بالكلمات)."""
+    tags = st.get("version_tags") or {}
+    key = json.dumps(tags, sort_keys=True, ensure_ascii=False)
+    if key not in _version_cache:
+        table = {norm(t): v for v, ts in tags.items() for t in ts if norm(t)}
+        _version_cache[key] = (table, max((len(t.split()) for t in table), default=0))
+    return _version_cache[key]
+
+
+def split_version(name, st):
+    """‏«طبيعة الحب مدبلج» ← («طبيعة الحب», ["dubbed"])؛ «السعادة العائلية مترجم سوفت» ← (…, ["subbed_soft"]).
+    اللاحقة صفةٌ للنسخة لا جزءٌ من هوية العمل؛ تُحذف من آخر الاسم أو أوله (ويبقى منه كلمة على الأقل)."""
+    table, maxlen = _version_table(st)
+    words = name.split()
+    nw = [norm(w) for w in words]
+    found = []
+
+    def strip(at_end):
+        for n in range(min(maxlen, len(words) - 1), 0, -1):
+            seg = " ".join(nw[-n:] if at_end else nw[:n])
+            if seg in table and (at_end or _AR_WORD.search(seg)):   # اللاتينية في الآخر وحده («Sub Zero» فيلم)
+                found.append(table[seg])
+                if at_end:
+                    del words[-n:], nw[-n:]
+                else:
+                    del words[:n], nw[:n]
+                return True
+        return False
+    while len(words) > 1 and (strip(True) or strip(False)):
+        pass
+    if not found:
+        return name, []
+    out = []
+    for v in found:
+        if v not in out:
+            out.append(v)
+    if "subbed_soft" in out and "subbed" in out:
+        out.remove("subbed")
+    return " ".join(words), out
 
 
 # ================= التجميع =================
@@ -252,6 +266,48 @@ def cluster(items, st):
     for i in range(len(items)):
         groups.setdefault(uf.find(i), []).append(i)
     return list(groups.values()), list(reviews.values())
+
+
+def cluster_in_server(entries, st):
+    """مداخل سيرفرٍ واحد بنفس النوع والاسم المطبَّع (من أقسامٍ شتّى) ← (عناقيد الفهارس، أغامض؟). الصورة نفسها أو السنة
+    نفسها أو موسمٌ بعدد حلقاته أو اختلاف اللاحقة وحده (مدبلج/مترجم) تجمع؛ وسنتان مختلفتان تفرّقان يقينًا؛ وبلا قرينة:
+    عنصران ومراجعة."""
+    uf, ambiguous = _UF(len(entries)), False
+    for x in range(len(entries)):
+        for y in range(x + 1, len(entries)):
+            score, _ = pair_score(entries[x], entries[y], st, same_server=True)
+            if score is not None and score != DISTINCT and score >= st["merge_min"]:
+                uf.union(x, y)
+    groups = {}
+    for i in range(len(entries)):
+        groups.setdefault(uf.find(i), []).append(i)
+    out = list(groups.values())
+    if len(out) > 1:
+        for g1 in range(len(out)):
+            for g2 in range(g1 + 1, len(out)):
+                score, _ = pair_score(entries[out[g1][0]], entries[out[g2][0]], st, same_server=True)
+                if score != DISTINCT:
+                    ambiguous = True
+    return out, ambiguous
+
+
+def verify_tmdb(cand, entity, st):
+    """هل سجلّ TMDB (‏type · title · original_title · year · aliases) هو هذا الكيان؟ معرّفٌ من لوحةٍ خارجية لا يُعتمد
+    وحده: النوع واحد، والسنة ضمن ‏tmdb_year_tolerance، واسمٌ من أسماء الكيان يطابق عنوان TMDB أو أصله أو بدائله
+    (بالتطبيع، أو بالمفتاح الصوتي للأسماء العربية المنقحرة)."""
+    v = st.get("tmdb_verify") or {}
+    if v.get("type", True) and cand.get("type") != entity.get("type"):
+        return False, "type"
+    cy, ey = cand.get("year") or 0, entity.get("year") or 0
+    if v.get("year", True) and cy and ey and abs(cy - ey) > int(v.get("year_tolerance", 1)):
+        return False, "year"
+    mine = [x for x in [entity.get("title"), entity.get("title_en"), entity.get("original_title")] + list(entity.get("aliases") or []) if x]
+    theirs = [x for x in [cand.get("title"), cand.get("original_title")] + list(cand.get("aliases") or []) if x]
+    if v.get("title", True):
+        if not ({norm(x) for x in mine} & {norm(x) for x in theirs}) and \
+           not ({phonetic(x) for x in mine} & {phonetic(x) for x in theirs}):
+            return False, "title"
+    return True, "ok"
 
 
 # ================= اختيار قيم الكيان من أعضائه =================

@@ -42,19 +42,27 @@ def _signature(data_dir, srv):
     return [st.st_ino, st.st_mtime_ns, st.st_size, sorted(srv.get("hidden") or [])]
 
 
-def _entry(kind, key, g, it):
-    return {"type": kind, "service": key, "kind": kind, "name": it["n"], "year": int(it.get("y") or 0),
+def _entry(kind, key, g, it, st):
+    name, versions = M.split_version(it["n"], st)
+    return {"type": kind, "service": key, "kind": kind, "name": name, "raw_name": it["n"], "versions": versions,
+            "year": int(it.get("y") or 0),
             "poster": it.get("p") or "", "backdrop": it.get("b") or "", "plot": it.get("d") or "",
             "genres": list(it.get("g") or ()), "rating": float(it.get("r") or 0), "added": int(it.get("a") or 0),
-            "stream_id": int(it.get("i") or 0), "tmdb_id": int(it.get("t") or 0),
+            "stream_id": int(it.get("i") or 0), "tmdb_id": int(it.get("t") or 0), "series_id": int(it.get("sid") or 0),
             "seasons": {int(a): int(b) for a, b in (it.get("s") or ())}, "groups": [g["name"]] if g.get("name") else []}
 
 
 def _merge_entries(es):
     """مداخل قسمٍ أو أكثر لعنصرٍ واحد في السيرفر ← عنصرٌ واحد (أكبر ما رُئي: المواسم والتقييم والرقم؛ وأطول قصة)."""
-    rec = dict(es[0], genres=list(es[0]["genres"]), seasons=dict(es[0]["seasons"]), groups=list(es[0]["groups"]))
+    rec = dict(es[0], genres=list(es[0]["genres"]), seasons=dict(es[0]["seasons"]), groups=list(es[0]["groups"]),
+               versions=list(es[0]["versions"]), raw_names=[es[0]["raw_name"]])
     for e in es[1:]:
-        for f in ("poster", "backdrop", "plot", "year", "tmdb_id"):
+        for v in e["versions"]:
+            if v not in rec["versions"]:
+                rec["versions"].append(v)
+        if e["raw_name"] not in rec["raw_names"]:
+            rec["raw_names"].append(e["raw_name"])
+        for f in ("poster", "backdrop", "plot", "year", "tmdb_id", "series_id"):
             if not rec[f] and e[f]:
                 rec[f] = e[f]
         if len(e["plot"]) > len(rec["plot"]):
@@ -90,7 +98,8 @@ def _items_of(data_dir, srv, st):
                 continue
             for it in g.get("items") or []:
                 if isinstance(it, dict) and it.get("n"):
-                    by_name.setdefault((kind, M.norm(it["n"])), []).append(_entry(kind, key, g, it))
+                    e = _entry(kind, key, g, it, st)
+                    by_name.setdefault((kind, M.norm(e["name"])), []).append(e)
     out, reviews = [], []
     for (kind, nm), es in by_name.items():
         groups, ambiguous = M.cluster_in_server(es, st) if len(es) > 1 else ([list(range(len(es)))], False)
@@ -307,19 +316,29 @@ def _update(con, cid, members, manual, now):
 def _link(con, cid, members, now):
     con.executemany(
         "INSERT INTO content_service(content_id, service_key, kind, local_key, name, year, stream_id, added, seasons_json, "
-        "groups_json, present, first_seen, seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?) "
+        "groups_json, versions_json, raw_names_json, series_id, present, first_seen, seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?) "
         "ON CONFLICT(service_key, kind, local_key) DO UPDATE SET content_id=excluded.content_id, name=excluded.name, "
         "year=excluded.year, stream_id=excluded.stream_id, added=excluded.added, seasons_json=excluded.seasons_json, "
-        "groups_json=excluded.groups_json, present=1, seen_at=excluded.seen_at",
+        "groups_json=excluded.groups_json, versions_json=excluded.versions_json, raw_names_json=excluded.raw_names_json, "
+        "series_id=excluded.series_id, present=1, seen_at=excluded.seen_at",
         [(cid, m["service"], m["kind"], m["local_key"], m["name"], m["year"] or None, m["stream_id"] or None,
           m["added"] or None, json.dumps(sorted(m["seasons"].items())) if m["seasons"] else None,
-          json.dumps(m["groups"], ensure_ascii=False) if m["groups"] else None, now, now) for m in members])
+          json.dumps(m["groups"], ensure_ascii=False) if m["groups"] else None,
+          json.dumps(m.get("versions") or []) if m.get("versions") else None,
+          json.dumps(m.get("raw_names") or [m.get("raw_name")], ensure_ascii=False), m.get("series_id") or None, now, now)
+         for m in members])
 
 
 def _aliases(con, cid, members, now):
-    con.executemany(
-        "INSERT OR IGNORE INTO content_alias(content_id, alias, alias_norm, lang, source, service_key, at) VALUES (?,?,?,?,?,?,?)",
-        [(cid, m["name"], M.norm(m["name"]), None, "m3u", m["service"], now) for m in members if M.norm(m["name"])])
+    """الاسم بلا لاحقة (‏title) والأسماء كما جاءت من السيرفر (‏raw، بلاحقتها) — كلها إلى الكيان نفسه، بمفتاحها الصوتي."""
+    rows = []
+    for m in members:
+        names = [(m["name"], "title")] + [(r, "raw") for r in (m.get("raw_names") or [m.get("raw_name") or ""]) if r and r != m["name"]]
+        for n, kind in names:
+            if M.norm(n):
+                rows.append((cid, n, M.norm(n), None, "m3u", m["service"], now, kind, M.phonetic(n)))
+    con.executemany("INSERT OR IGNORE INTO content_alias(content_id, alias, alias_norm, lang, source, service_key, at, kind, phonetic) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)", rows)
 
 
 def _seasons(con, cid, members, now):
@@ -428,7 +447,7 @@ def stats(data_dir):
                         "resolved": q("SELECT COUNT(*) FROM review WHERE status='resolved'"),
                         "stale": q("SELECT COUNT(*) FROM review WHERE status='stale'")},
             "provenance": {r["source"]: r["n"] for r in con.execute("SELECT source, COUNT(*) n FROM provenance GROUP BY source")},
-            "settings": seo_db.settings(con),
+            "settings": {k: ("•••" if k in seo_db.SECRET_SETTINGS and v else v) for k, v in seo_db.settings(con).items()},
             "db_bytes": os.path.getsize(seo_db.path(data_dir)),
         }
     finally:
