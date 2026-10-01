@@ -369,6 +369,22 @@ def main():
               json.dumps(d.get("links"), ensure_ascii=False))
         r_id = spr.get("id")
 
+        print("\n== 3b2. البحث في كل البوابات يجد خط مرح (وإن أفسدته علامة «لا جدول») ==")
+        # بحثٌ سابقٌ على جلسة مرح المنتهية كان يُحفظ «لوحة بلا جدول» فيرجع كل بحثٍ بعده فارغًا،
+        # في كل البوابات وفي مرح وحدها. الحال كما تُركت عند العميل:
+        mpath = os.path.join(data_dir, "sessions", "gate_" + g_m + ".meta.json")
+        with open(mpath, encoding="utf-8") as f:
+            meta = json.load(f)
+        with open(mpath, "w", encoding="utf-8") as f:
+            json.dump({**meta, "no_table_search": True}, f)
+        _, d = a.jreq("/admin/api/search?gate=all&q=%s" % m_user)
+        hits = {x["id"]: [r["username"] for r in x["results"]] for x in d.get("gates", []) if x["results"]}
+        check("all gates: Marah's line is found under Marah", hits.get(g_m) == [m_user], json.dumps(d, ensure_ascii=False)[:200])
+        with open(mpath, encoding="utf-8") as f:
+            check("…and the stale flag is cleared", not json.load(f).get("no_table_search"))
+        _, d = a.jreq("/admin/api/search?gate=%s&q=%s" % (g_m, m_user))
+        check("Marah alone finds it too", [r["username"] for r in d.get("results", [])] == [m_user], str(d)[:120])
+
         print("\n== 3c. «مدة أخرى»: أي عددٍ من الأشهر — ١٠ مثلًا ==")
         old_f = "555000333444"
         code, d = a.jreq("/admin/api/create", {"gate": g_f, "package_id": "190", "count": 1, "replaces": old_f,
