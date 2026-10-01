@@ -219,6 +219,12 @@ const one = k => (KIND[k] || ["", ""])[EN ? 1 : 0];
 const PROB = {down: ["لا يعمل", "Not working"], buffer: ["يقطع", "Buffering"], subs: ["الترجمة غير صحيحة", "Wrong subtitles"],
   wrong: {series: ["الحلقة ليست هي", "Wrong episode"], movie: ["الفيلم ليس هو", "Wrong movie"], live: ["القناة ليست هي", "Wrong channel"]},
   add: {series: ["طلب إضافة مسلسل", "Request: add series"], movie: ["طلب إضافة فيلم", "Request: add movie"]}};
+// لغة المسلسل أو الفيلم في طلب الإضافة — كـ ‏reports.LANGS
+const LANGS = {ar: ["عربي", "Arabic"], en: ["إنجليزي", "English"], tr: ["تركي", "Turkish"], ko: ["كوري", "Korean"], hi: ["هندي", "Hindi"],
+  es: ["إسباني", "Spanish"], fr: ["فرنسي", "French"], ja: ["ياباني", "Japanese"], zh: ["صيني", "Chinese"], fa: ["فارسي", "Persian"],
+  ur: ["أردو", "Urdu"], de: ["ألماني", "German"], it: ["إيطالي", "Italian"], pt: ["برتغالي", "Portuguese"], ru: ["روسي", "Russian"],
+  th: ["تايلندي", "Thai"], other: ["لغة أخرى", "Other"]};
+const lname = c => (LANGS[c] || ["", ""])[EN ? 1 : 0];
 const pname = (p, k, en = EN) => { let x = PROB[p]; if (!x) return p; if (!Array.isArray(x)) x = x[k] || x.series || x.movie; return x[en ? 1 : 0]; };
 // رسائل الخادم المعروفة بالإنجليزية (تنبيهٌ لم يصل، أو رقم المسابقة)
 const TX = [["رقم المسابقة غير مربوط", "The contest WhatsApp number isn't linked"], ["لا أحد يصله تنبيه", "Nobody receives alerts for"],
@@ -278,7 +284,7 @@ function what(r, en = EN){
 }
 function where(r){ return isReq(r) ? esc(sname(r)) : `${esc(sname(r))} · <bdi>${esc(r.group)}</bdi>`; }
 function forward(r){
-  return isReq(r) ? `${EN ? "" : RLM}${pname("add", r.kind)} — ${sname(r)}:\n${what(r).text}`
+  return isReq(r) ? `${EN ? "" : RLM}${pname("add", r.kind)} — ${sname(r)}:\n${what(r).text}${r.cl ? " · " + lname(r.cl) : ""}${r.link ? "\n" + r.link : ""}`
     : `${EN ? "" : RLM}${sname(r)} · ${r.group}\n${what(r).text} — ${pname(r.problem, r.kind)}`;
 }
 const phones = r => [...new Set((r.people || []).map(p => p.phone).filter(Boolean))];
@@ -318,6 +324,7 @@ function card(r){
     <div class="body">
       <div class="t">${what(r).html}</div>
       <div class="meta">${esc(one(r.kind))} · ${where(r)} · ${ago(r.at)}${r.count > 1 ? (req ? T(" · آخر طلب ", " · last request ") : T(" · آخر بلاغ ", " · last report ")) + ago(r.last) : ""}</div>
+      ${req && (r.cl || r.link) ? `<div class="meta">${r.cl ? "🌐 " + esc(lname(r.cl)) : ""}${r.cl && r.link ? " · " : ""}${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener nofollow">🔗 ${T("رابطه", "Link")}</a>` : ""}</div>` : ""}
       <div class="tags"><span class="tag ${esc(r.problem)}">${esc(pname(r.problem, r.kind))}</span>
         ${r.count > 1 ? `<span class="tag n">${num(r.count)} ${req ? T("طلبات", "requests") : T("بلاغات", "reports")}</span>` : ""}
         ${open ? "" : `<span class="tag ok">✓ ${req ? T("أُضيف", "added") : T("أُصلح", "fixed")} ${ago(r.done_at)}${r.done_by ? " · " + esc(r.done_by) : ""}</span>`}</div>

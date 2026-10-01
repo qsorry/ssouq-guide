@@ -28,6 +28,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -359,6 +360,87 @@ def unit_notify_lang():
         R.sender = R.recipients = None
         R.page_url = ""
     check("ولغة المدير", R.save_lang(d, "en")["lang"] == "en" and R.settings(d)["lang"] == "en" and R.settings(d)["wa"] == "")
+
+
+IMDB_PAGE = """<html><head><title>Breaking Bad (TV Series 2008–2013) - IMDb</title>
+<meta property="og:title" content="Breaking Bad (TV Series 2008–2013) ⭐ 9.5 | Crime, Drama, Thriller">
+<meta property="og:type" content="video.tv_show">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TVSeries","name":"Breaking Bad","datePublished":"2008-01-20"}</script>
+</head><body><li data-testid="title-details-languages"><span>Languages</span><ul><li><a href="/x">English</a></li><li><a>Spanish</a></li></ul></li></body></html>"""
+TMDB_PAGE = """<html><head><title>Dune (2021) — The Movie Database (TMDB)</title><meta property="og:title" content="Dune">
+<meta property="og:type" content="video.movie"></head><body><p><strong><bdi>Original Language</bdi></strong> English</p></body></html>"""
+
+
+def unit_link():
+    print("رابط المسلسل أو الفيلم في طلب الإضافة، والسنة واللغة")
+    cases = {
+        "IMDb: مسلسل بسنته ولغته (JSON-LD وصفحة اللغات)": (IMDB_PAGE, "https://www.imdb.com/title/tt0903747/",
+                                                         {"kind": "series", "name": "Breaking Bad", "year": 2008, "lang": "en"}),
+        "TMDB: فيلم من رابطه، وسنته من <title>، ولغته الأصلية": (TMDB_PAGE, "https://www.themoviedb.org/movie/438631-dune",
+                                                              {"kind": "movie", "name": "Dune", "year": 2021, "lang": "en"}),
+        "JSON-LD قائمةً بلغةٍ رمزًا": ('<meta property="og:title" content="Squid Game"><script type="application/ld+json">'
+                                    '[{"@type":"WebPage"},{"@type":["TVSeries"],"name":"Squid Game","startDate":"2021-09-17","inLanguage":"ko-KR"}]</script>',
+                                    "https://www.netflix.com/title/81040344", {"kind": "series", "name": "Squid Game", "year": 2021, "lang": "ko"}),
+        "عنوانٌ عربي بنوعه وسنته بين قوسين": ('<title>المؤسس عثمان (مسلسل 2019) - ويكيبيديا</title>', "https://ar.wikipedia.org/wiki/x",
+                                          {"kind": "series", "name": "المؤسس عثمان", "year": 2019, "lang": ""}),
+        "صفحةٌ بلا شيء": ("<html><body>hi</body></html>", "https://example.com/", {"kind": "", "name": "", "year": 0, "lang": ""}),
+    }
+    for name, (html, url, want) in cases.items():
+        got = R.parse_page(html, url)
+        check(name, got == want, got)
+    for bad in ("javascript:alert(1)", "ftp://x.com/a", "https://exa mple.com", "https://x.com/" + "a" * 500, "x.com/a", 'https://x.com/"><b>'):
+        check(f"رابطٌ يُرفض: {bad[:30]}", "الرابط غير صحيح" in raises(R.link_of, bad))
+    check("والفارغ لا رابط", R.link_of("  ") == "")
+    d = fresh()
+    seed(d)
+    r, _ = R.submit(d, {"s": "smart", "t": "series", "n": "Breaking Bad", "y": "2008", "cl": "en", "problem": "add",
+                        "link": " https://www.imdb.com/title/tt0903747/ "})
+    check("طلبٌ بسنته ولغته ورابطه", r["year"] == 2008 and r["cl"] == "en" and r["link"] == "https://www.imdb.com/title/tt0903747/"
+          and R.label(r) == "Breaking Bad (2008) — طلب إضافة مسلسل", r)
+    r2, _ = R.submit(d, {"s": "smart", "t": "movie", "n": "Dune", "y": "abc", "cl": "xx", "problem": "add"})
+    check("وسنةٌ أو لغةٌ غريبة تُترك", r2["year"] == 0 and r2["cl"] == "" and r2["link"] == "")
+    check("ورابطٌ غريب يُرفض", "الرابط غير صحيح" in raises(R.submit, d, {"s": "smart", "t": "movie", "n": "Dune", "problem": "add",
+                                                                        "link": "javascript:x"}))
+    R.page_url = ""
+    t = R.alert_text(R.get(d, r["id"]), True)
+    check("والتنبيه بلغته ورابطه", "\u200f🌐 إنجليزي" in t and "🔗 https://www.imdb.com/title/tt0903747/" in t, t)
+    check("وبالإنجليزية", "🌐 English" in R.alert_text(R.get(d, r["id"]), True, "en"))
+    # قراءة الرابط من خادمٍ وهمي محلي (والعناوين الداخلية مرفوضةٌ في غير الاختبار)
+    import http.server
+    import threading
+
+    class Page(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            body, ctype, code = {"/title/tt0903747/": (IMDB_PAGE, "text/html; charset=utf-8", 200),
+                                 "/img.png": ("PNG", "image/png", 200)}.get(self.path, ("nope", "text/html", 404))
+            raw = body.encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Page)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    try:
+        check("عنوانٌ داخلي مرفوض (لا يُطلب من خادمنا)", not R.lookup(base + "/title/tt0903747/")["ok"])
+        old, C.IMG_PRIVATE = C.IMG_PRIVATE, True
+        try:
+            got = R.lookup(base + "/title/tt0903747/")
+            check("قراءة الرابط: النوع والاسم والسنة واللغة", got == {"ok": True, "kind": "series", "name": "Breaking Bad", "year": 2008,
+                                                                    "lang": "en"}, got)
+            check("وصفحةٌ لا وجود لها أو ليست HTML: تعذّر", not R.lookup(base + "/missing")["ok"] and not R.lookup(base + "/img.png")["ok"])
+            check("ورابطٌ غريب برسالته بالإنجليزية", R.lookup("javascript:1")["en"].startswith("Invalid link"))
+        finally:
+            C.IMG_PRIVATE = old
+    finally:
+        srv.shutdown()
+    R._lookups.clear()
+    check("وحدّ قراءة الروابط بالساعة", all(R.lookup_ok("1.1.1.1", now=3600) for _ in range(R.LOOKUP_RATE))
+          and not R.lookup_ok("1.1.1.1", now=3700) and R.lookup_ok("2.2.2.2", now=3700))
 
 
 def unit_alert():
@@ -757,7 +839,7 @@ def live_lead():
     rdp = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_reader.py"), str(wport), "rdr_lead"])
     env = {k: v for k, v in os.environ.items() if not k.startswith(("WHATSAPP_READER_", "SALLA_ADMIN_TOKEN"))}
     env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
-               WHATSAPP_READER_URL=reader, WHATSAPP_READER_SECRET="rdr_lead")
+               WHATSAPP_READER_URL=reader, WHATSAPP_READER_SECRET="rdr_lead", CONTENT_IMG_PRIVATE="1")
     p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env)
     base, adm = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{port}/admin"
 
@@ -866,6 +948,32 @@ def live_lead():
         fid = next(x["id"] for x in jget(adm + "/api/reports", AUTH)[1]["items"] if x["server"] == "falcon")
         check("ولا يراسل أصحاب بلاغ سيرفرٍ ليس له", jpost(adm + "/api/reports/notify", {"id": fid, "text": "x"}, opener=m1)[0] == 404
               and jpost(adm + "/api/reports/notify", {"id": fid, "text": "x"}, opener=lead)[0] == 404)
+        # رابط المسلسل أو الفيلم يعبّئ طلب الإضافة (صفحةٌ من خادمٍ وهمي محلي)
+        import http.server
+        import threading
+
+        class Page(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                raw = TMDB_PAGE.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def log_message(self, *a):
+                pass
+        ps = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Page)
+        threading.Thread(target=ps.serve_forever, daemon=True).start()
+        link = f"http://127.0.0.1:{ps.server_address[1]}/movie/438631-dune"
+        code, d = jget(base + "/api/report/lookup?url=" + urllib.parse.quote(link))
+        check("‏/api/report/lookup يقرأ الرابط", code == 200 and d == {"ok": True, "kind": "movie", "name": "Dune", "year": 2021, "lang": "en"}, d)
+        code, d = jget(base + "/api/report/lookup?url=javascript:1")
+        check("ورابطٌ غريب برسالتيه", code == 200 and not d["ok"] and d["error"].startswith("الرابط غير صحيح") and d["en"].startswith("Invalid"))
+        code, d = jpost(base + "/api/report", {"s": "smart", "t": "movie", "n": "Dune", "y": 2021, "cl": "en", "link": link, "problem": "add"})
+        item = next(x for x in jget(adm + "/api/reports?w=add", AUTH)[1]["items"] if x["title"] == "Dune")
+        check("والطلب بسنته ولغته ورابطه", code == 200 and item["year"] == 2021 and item["cl"] == "en" and item["link"] == link, item)
+        ps.shutdown()
         mid = next(x["id"] for x in jget(adm + "/api/reports", opener=lead)[1]["team"]["members"] if x["user"] == "m1")
         code, d = jpost(adm + "/api/reports/team", {"action": "delete", "id": mid}, opener=lead)
         check("والمشرف يحذف عضوه فلا يدخل بعدها", code == 200 and [x["user"] for x in d["team"]["members"]] == ["m2"]
@@ -884,6 +992,7 @@ def main():
     unit_alert()
     unit_more()
     unit_notify_lang()
+    unit_link()
     live()
     live_alert()
     live_team()

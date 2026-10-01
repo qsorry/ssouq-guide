@@ -133,6 +133,15 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
 .field input:focus,.field textarea:focus{border-color:var(--acc)}
 .field input{direction:ltr;text-align:right}
 html[dir=ltr] .field input{text-align:left}
+.field select{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--ink);font:inherit;outline:0}
+.field select:focus{border-color:var(--acc)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint.ok{color:var(--green)}.hint.warn{color:var(--amber)}
+#rlmsg{margin:-4px 0 12px}
+.fill{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:-4px 0 12px;padding:11px 12px;border-radius:12px;
+  border:1px solid rgba(34,196,147,.55);background:rgba(34,196,147,.12);color:#c9f5e6;font-weight:700}
+.fill:hover:not(:disabled){border-color:var(--green);background:rgba(34,196,147,.2)}
+.fill:disabled{opacity:.45;cursor:not-allowed}
 .field textarea{resize:vertical;min-height:70px}
 .send{width:100%;padding:13px;border-radius:14px;border:0;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-weight:700;font-size:1.02rem}
 .send:disabled{opacity:.55;cursor:not-allowed}
@@ -177,6 +186,12 @@ html[dir=ltr] .field input{text-align:left}
   function T(a, e){ return EN ? e : a; }
   var ONE = {series: "مسلسل", movie: "فيلم", live: "قناة"}, ONE_EN = {series: "Series", movie: "Movie", live: "Channel"};
   function one(k){ return (EN ? ONE_EN : ONE)[k] || ""; }
+  // لغة المسلسل أو الفيلم في طلب الإضافة — كـ ‏reports.LANGS
+  var LANGS = [["ar", "عربي", "Arabic"], ["en", "إنجليزي", "English"], ["tr", "تركي", "Turkish"], ["ko", "كوري", "Korean"],
+               ["hi", "هندي", "Hindi"], ["es", "إسباني", "Spanish"], ["fr", "فرنسي", "French"], ["ja", "ياباني", "Japanese"],
+               ["zh", "صيني", "Chinese"], ["fa", "فارسي", "Persian"], ["ur", "أردو", "Urdu"], ["de", "ألماني", "German"],
+               ["it", "إيطالي", "Italian"], ["pt", "برتغالي", "Portuguese"], ["ru", "روسي", "Russian"], ["th", "تايلندي", "Thai"],
+               ["other", "لغة أخرى", "Other"]];
   function sn(){ return EN ? S.sen || S.sname : S.sname; }
   function paint(){
     document.documentElement.lang = EN ? "en" : "ar"; document.documentElement.dir = EN ? "ltr" : "rtl";
@@ -275,7 +290,7 @@ html[dir=ltr] .field input{text-align:left}
               wrong: {series: ["الحلقة ليست هي", "Wrong episode"], movie: ["الفيلم ليس هو", "Wrong movie"], live: ["القناة ليست هي", "Wrong channel"]}};
   function pname(p, t){ var x = PROB[p]; if (!x) return ""; if (!x.length) x = x[t] || x.series; return x[EN ? 1 : 0]; }
   function what(){
-    if (S.req) return '<bdi>' + esc(S.rn) + '</bdi> — ' + T('طلب إضافة ' + ONE[S.rt], 'request to add a ' + ONE_EN[S.rt].toLowerCase());
+    if (S.req) return '<bdi>' + esc(S.rn + (S.ry ? ' (' + S.ry + ')' : '')) + '</bdi> — ' + T('طلب إضافة ' + ONE[S.rt], 'request to add a ' + ONE_EN[S.rt].toLowerCase());
     return '<bdi>' + esc(S.it.n + (S.it.y ? ' (' + S.it.y + ')' : '')) + '</bdi>' + (S.t === "series" ? ' · ' + esc(epText()) : '')
       + (S.problem ? ' — ' + pname(S.problem, S.t) : '');
   }
@@ -427,31 +442,72 @@ html[dir=ltr] .field input{text-align:left}
       };
     },
     // طلب إضافة: النوع والاسم كما يكتبه (ممّا بحث عنه) — يصل موظفي السيرفر كالبلاغ
+    // طلب إضافة: الرابط (يعبّئ الباقي وحده) ثم النوع والاسم والسنة واللغة من قائمتين — يصل موظفي السيرفر كالبلاغ
     request: function(){
+      var years = [], y0 = new Date().getFullYear() + 1;
+      for (var y = y0; y >= 1950; y--) years.push(y);
       view.innerHTML = head(3, T("طلب إضافة", "Request to add"), T("مسلسل أو فيلم ليس في ", "A series or movie that isn’t on ") + esc(sn()))
+        + '<label class="field"><span>' + T("رابطه <small>(اختياري — من IMDb أو TMDB أو غيرهما، فنعبّئ الباقي وحدنا)</small>", "Its link <small>(optional — from IMDb, TMDB or elsewhere; we fill in the rest)</small>")
+        + '</span><input id="rl" type="url" inputmode="url" maxlength="400" placeholder="https://www.imdb.com/title/…"></label>'
+        + '<button class="fill" type="button" id="rlgo" disabled>📥 ' + T("املأ البيانات من الرابط", "Fill in the details from the link") + '</button>'
+        + '<p class="hint" id="rlmsg" hidden></p>'
         + '<div class="types" role="group" aria-label="' + T("النوع", "Type") + '"><button type="button" data-rt="series" aria-pressed="' + (S.rt === "series") + '">' + one("series") + '</button>'
         + '<button type="button" data-rt="movie" aria-pressed="' + (S.rt === "movie") + '">' + one("movie") + '</button></div>'
-        + '<label class="field"><span>' + T("الاسم", "Name") + '</span><input id="rn" maxlength="150" dir="auto" style="direction:inherit;text-align:start" placeholder="' + T("اسم المسلسل أو الفيلم (وسنته إن عرفتها)", "Series or movie name (and year, if you know it)") + '"></label>'
+        + '<label class="field"><span>' + T("الاسم", "Name") + '</span><input id="rn" maxlength="150" dir="auto" style="direction:inherit;text-align:start" placeholder="' + T("اسم المسلسل أو الفيلم", "Series or movie name") + '"></label>'
+        + '<div class="two"><label class="field"><span>' + T("السنة", "Year") + '</span><select id="ry"><option value="">' + T("لا أعرف", "Not sure") + '</option>'
+        + years.map(function(y){ return '<option value="' + y + '">' + y + '</option>'; }).join("") + '</select></label>'
+        + '<label class="field"><span>' + T("اللغة", "Language") + '</span><select id="rc"><option value="">' + T("لا أعرف", "Not sure") + '</option>'
+        + LANGS.map(function(l){ return '<option value="' + l[0] + '">' + (EN ? l[2] : l[1]) + '</option>'; }).join("") + '</select></label></div>'
         + '<label class="field"><span>' + T("رقم واتسابك <small>(اختياري — لنبلغك حين يُضاف)</small>", "Your WhatsApp number <small>(optional — so we can tell you once it’s added)</small>") + '</span><input id="ph" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="' + T("05xxxxxxxx", "+966 5x xxx xxxx") + '"></label>'
         + '<label class="field"><span>' + T("ملاحظة <small>(اختياري)</small>", "Note <small>(optional)</small>") + '</span><textarea id="nt" maxlength="300" placeholder="' + T("مثلًا: الموسم الجديد، أو مدبلج بالعربية", "e.g. the new season, or dubbed in Arabic") + '"></textarea></label>'
         + '<button class="send" type="button" id="send">' + T("أرسل الطلب", "Send request") + '</button><p class="err" id="serr" hidden></p>';
-      var rn = document.getElementById("rn");
-      rn.value = S.rn || "";
+      var rn = document.getElementById("rn"), ry = document.getElementById("ry"), rc = document.getElementById("rc"),
+          rl = document.getElementById("rl"), msg = document.getElementById("rlmsg"), go = document.getElementById("rlgo"), seq = 0, timer = 0;
+      rn.value = S.rn || ""; ry.value = S.ry || ""; rc.value = S.rc || ""; rl.value = S.rl || "";
+      var isLink = function(v){ return /^https?:\/\/\S+\.\S+/i.test(v.trim()); };
+      go.disabled = !isLink(rl.value);
       document.getElementById("ph").value = savedPhone();
       rn.addEventListener("input", function(){ S.rn = rn.value; });
+      ry.addEventListener("change", function(){ S.ry = ry.value; });
+      rc.addEventListener("change", function(){ S.rc = rc.value; });
+      var setType = function(t){
+        S.rt = t;
+        Array.prototype.forEach.call(view.querySelectorAll("[data-rt]"), function(b){ b.setAttribute("aria-pressed", String(b.getAttribute("data-rt") === t)); });
+      };
+      // الرابط: يُقرأ من خادمنا فيُعبّأ النوع والاسم والسنة واللغة وحدها (وما لم يُعرف يبقى كما كتبه)
+      var read = function(){
+        var v = rl.value.trim(), n = ++seq;
+        S.rl = v;
+        if (!isLink(v)) { msg.hidden = false; msg.className = "hint warn"; msg.textContent = T("الصق رابط المسلسل أو الفيلم أولًا (يبدأ بـ https://)", "Paste the series or movie link first (it starts with https://)"); return; }
+        go.disabled = true;
+        msg.hidden = false; msg.className = "hint"; msg.innerHTML = '<span class="spin"></span> ' + T("نسحب البيانات من الرابط…", "Getting the details from the link…");
+        fetch("/api/report/lookup?url=" + encodeURIComponent(v)).then(function(r){ return r.json(); }).then(function(d){
+          if (n !== seq) return;
+          go.disabled = false;
+          if (!d.ok) { msg.className = "hint warn"; msg.textContent = EN ? d.en || d.error : d.error; return; }
+          if (d.kind === "series" || d.kind === "movie") setType(d.kind);
+          if (d.name) { rn.value = S.rn = d.name; }
+          if (d.year && ry.querySelector('option[value="' + d.year + '"]')) { ry.value = S.ry = String(d.year); }
+          if (d.lang && rc.querySelector('option[value="' + d.lang + '"]')) { rc.value = S.rc = d.lang; }
+          msg.className = "hint ok";
+          msg.textContent = T("✓ عبّأنا البيانات من الرابط — راجعها قبل الإرسال", "✓ Filled in from the link — check it before sending");
+        }).catch(function(){ if (n === seq) { go.disabled = false; msg.className = "hint warn"; msg.textContent = T("تعذّر قراءة الرابط — اكتب البيانات بنفسك", "Couldn’t read the link — fill in the details yourself"); } });
+      };
+      // زرّ «املأ البيانات من الرابط» — ويُضغط وحده حين يُلصق الرابط
+      go.onclick = read;
+      rl.addEventListener("input", function(){ S.rl = rl.value; go.disabled = !isLink(rl.value); msg.hidden = true; });
+      rl.addEventListener("paste", function(){ clearTimeout(timer); timer = setTimeout(function(){ go.disabled = !isLink(rl.value); if (!go.disabled) read(); }, 50); });
+      rl.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); read(); } });
       view.onclick = function(e){
         var t = e.target.closest("[data-rt]");
-        if (t) {
-          S.rt = t.getAttribute("data-rt");
-          Array.prototype.forEach.call(view.querySelectorAll("[data-rt]"), function(b){ b.setAttribute("aria-pressed", String(b === t)); });
-        }
+        if (t) setType(t.getAttribute("data-rt"));
       };
       document.getElementById("send").onclick = function(){
         var er = document.getElementById("serr");
         S.rn = rn.value.trim();
         if (S.rn.replace(/\s/g, "").length < 2) { er.textContent = T("اكتب اسم المسلسل أو الفيلم.", "Write the series or movie name."); er.hidden = false; rn.focus(); return; }
-        send({s: S.s, t: S.rt, n: S.rn, problem: "add", phone: document.getElementById("ph").value,
-              note: document.getElementById("nt").value}, this, er, T("أرسل الطلب", "Send request"));
+        send({s: S.s, t: S.rt, n: S.rn, y: ry.value, cl: rc.value, link: rl.value.trim(), problem: "add",
+              phone: document.getElementById("ph").value, note: document.getElementById("nt").value}, this, er, T("أرسل الطلب", "Send request"));
       };
     },
     done: function(){

@@ -36,7 +36,17 @@ function playlist(extra) {
 (async () => {
   const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'uireport_'));
   const app = spawn('python3', [path.join(ROOT, 'xm_lines.py'), 'web'], {stdio: 'ignore', env: {...process.env,
-    XM_DATA: DATA, XM_BIND: '127.0.0.1', XM_PORT: String(APP_PORT), XM_ADMIN_PASSWORD: 'envpass123'}});
+    XM_DATA: DATA, XM_BIND: '127.0.0.1', XM_PORT: String(APP_PORT), XM_ADMIN_PASSWORD: 'envpass123', CONTENT_IMG_PRIVATE: '1'}});
+  // صفحة مسلسلٍ كصفحة IMDb (‏JSON-LD وقائمة اللغات) على خادمٍ محلي — لرابط طلب الإضافة
+  const PAGES = fs.mkdtempSync(path.join(os.tmpdir(), 'uireport_pages_'));
+  fs.mkdirSync(path.join(PAGES, 'title', 'tt0903747'), {recursive: true});
+  fs.writeFileSync(path.join(PAGES, 'title', 'tt0903747', 'index.html'), `<html><head><title>Breaking Bad (TV Series 2008–2013) - IMDb</title>
+<meta property="og:title" content="Breaking Bad (TV Series 2008–2013) ⭐ 9.5 | Crime, Drama, Thriller"><meta property="og:type" content="video.tv_show">
+<script type="application/ld+json">{"@type":"TVSeries","name":"Breaking Bad","datePublished":"2008-01-20"}</script></head>
+<body><li data-testid="title-details-languages"><a href="/x">English</a></li></body></html>`);
+  const PAGES_PORT = 9776;
+  const pages = spawn('python3', ['-m', 'http.server', String(PAGES_PORT), '--bind', '127.0.0.1', '--directory', PAGES], {stdio: 'ignore'});
+  await up(`http://127.0.0.1:${PAGES_PORT}/title/tt0903747/`);
   const APP = `http://127.0.0.1:${APP_PORT}`;
   await up(APP + '/robots.txt');
   const up1 = async (key, body) => (await fetch(`${APP}/admin/api/content/admin/upload?s=${key}&name=${key}.m3u`,
@@ -134,14 +144,41 @@ function playlist(extra) {
     check('طلب الإضافة باسم ما بحث عنه، ونوعه مسلسل', await page.inputValue('#rn') === 'zzzz'
           && await page.$eval('[data-rt="series"]', b => b.getAttribute('aria-pressed')) === 'true'
           && (await page.textContent('#trail')).includes('إضافة مسلسل أو فيلم'));
+    check('والسنة قائمة («لا أعرف» ثم الأحدث)، واللغة قائمة', (await page.$$eval('#ry option', o => o.map(x => x.textContent))).slice(0, 2).join('|')
+          === 'لا أعرف|' + (new Date().getFullYear() + 1) && (await page.$$eval('#rc option', o => o.map(x => x.textContent))).slice(0, 4).join('|')
+          === 'لا أعرف|عربي|إنجليزي|تركي');
+    check('زرّ «املأ البيانات من الرابط» معطّلٌ بلا رابط', (await page.textContent('#rlgo')).includes('املأ البيانات من الرابط')
+          && await page.$eval('#rlgo', b => b.disabled));
+    await page.fill('#rl', `http://127.0.0.1:${PAGES_PORT}/title/tt0903747/`);
+    check('ويُفعَّل حين يُكتب رابط، ولا يُقرأ قبل الضغط', !(await page.$eval('#rlgo', b => b.disabled)) && await page.inputValue('#rn') === 'zzzz');
+    await page.click('#rlgo');
+    await page.waitForFunction(() => document.getElementById('rlmsg').classList.contains('ok'));
+    check('وضغطه يعبّئ كل شيءٍ وحده: النوع والاسم والسنة واللغة', await page.inputValue('#rn') === 'Breaking Bad'
+          && await page.$eval('[data-rt="series"]', b => b.getAttribute('aria-pressed')) === 'true'
+          && await page.inputValue('#ry') === '2008' && await page.inputValue('#rc') === 'en'
+          && (await page.textContent('#rlmsg')).includes('عبّأنا البيانات من الرابط'));
+    await shot(page, 'report-7a-link');
+    await page.fill('#rl', 'http://127.0.0.1:1/nothing');
+    await page.click('#rlgo');
+    await page.waitForFunction(() => document.getElementById('rlmsg').classList.contains('warn'));
+    check('ورابطٌ لا يُقرأ: يقول ذلك ويترك ما كُتب', (await page.textContent('#rlmsg')).includes('تعذّر قراءة الرابط')
+          && await page.inputValue('#rn') === 'Breaking Bad');
+    // لصق الرابط يضغط الزرّ وحده
+    await page.fill('#rl', '');
+    await page.focus('#rl');
+    await page.evaluate(u => { const el = document.getElementById('rl'); el.value = u; el.dispatchEvent(new Event('paste')); },
+                        `http://127.0.0.1:${PAGES_PORT}/title/tt0903747/`);
+    await page.waitForFunction(() => document.getElementById('rlmsg').classList.contains('ok'));
+    check('ولصق الرابط يعبّئها وحده', await page.inputValue('#ry') === '2008');
     await page.click('[data-rt="movie"]');
     await page.fill('#rn', 'Oppenheimer');
+    await page.selectOption('#ry', '2023');
     await page.fill('#nt', 'مترجم');
     await shot(page, 'report-7-request');
     await page.click('#send');
     await page.waitForSelector('.done');
     check('وصل الطلب', (await page.textContent('.done h2')) === 'وصل طلبك، شكرًا لك'
-          && (await page.textContent('.done .what')) === 'Oppenheimer — طلب إضافة فيلم');
+          && (await page.textContent('.done .what')) === 'Oppenheimer (2023) — طلب إضافة فيلم');
     await page.click('#again');
     await page.waitForSelector('#sq');
     await page.click('button.reqbtn[data-req]');
@@ -290,8 +327,9 @@ function playlist(extra) {
     await ap.goto(APP + '/admin/reports');
     await ap.waitForSelector('.rep.req');
     const rq = await ap.$eval('.rep.req', el => el.textContent.replace(/\s+/g, ' '));
-    check('الطلب بوسمه وزرّه', rq.includes('Oppenheimer') && rq.includes('طلب إضافة فيلم') && rq.includes('مترجم')
-          && rq.includes('✓ أُضيف') && rq.includes('نسخ الطلب'), rq.slice(0, 160));
+    check('الطلب بوسمه وزرّه، ولغته ورابطه', rq.includes('Oppenheimer (2023)') && rq.includes('طلب إضافة فيلم') && rq.includes('مترجم')
+          && rq.includes('✓ أُضيف') && rq.includes('نسخ الطلب') && rq.includes('🌐 إنجليزي') && rq.includes('🔗 رابطه'), rq.slice(0, 200));
+    check('ورابطه يفتح الصفحة نفسها', (await ap.$eval('.rep.req .meta a', a => a.href)) === `http://127.0.0.1:${PAGES_PORT}/title/tt0903747/`);
     check('وتصفية «طلبات إضافة» بعددها', (await ap.textContent('#whatBar')).includes('طلبات إضافة1'));
     await ap.click('#whatBar [data-w="add"]');
     await ap.waitForFunction(() => document.querySelectorAll('.rep').length === 1);
@@ -379,6 +417,7 @@ function playlist(extra) {
   } finally {
     await browser.close();
     app.kill();
+    pages.kill();
     console.log(`\nResult: ${pass} passed, ${fail} failed`);
     process.exit(fail ? 1 : 0);
   }
