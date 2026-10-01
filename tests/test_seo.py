@@ -345,6 +345,21 @@ def live():
         check("تجربة البحث من الإدارة", c == 200 and json.loads(b)["result"] in ("suggest", "entity", "none"))
         c, b = req(base, "/admin/api/content/seo/enrich", auth=AUTH)
         check("حال الإثراء من الإدارة (بلا مفتاح)", c == 200 and json.loads(b)["has_key"] is False and "window" in json.loads(b))
+        c, b = req(base, "/admin/api/content/admin/seo-bundle", {"n": 2}, auth=AUTH)
+        check("«أنتج ملفات المراجعة» يبدأ في الخلفية", c == 200 and json.loads(b)["started"] is True, b[:120])
+        for _ in range(200):
+            j = json.loads(req(base, "/admin/api/content/seo/bundle", auth=AUTH)[1])
+            if not j["running"]:
+                break
+            time.sleep(0.2)
+        check("الملفات الأربعة مكتوبة في data/content/seo-review (بلا مفتاح: العيّنة تُسجَّل skipped لا فشلًا)",
+              not j["running"] and {f["name"] for f in j["files"]} == set(seo_sources.BUNDLE_FILES) and j["last"].get("ok") is True, b[:160])
+        c, b = req(base, "/admin/api/content/seo/bundle/sample.json", auth=AUTH)
+        check("تنزيل sample.json للمدير بختمه", c == 200 and '"generated_at"' in b and '"works"' in b)
+        c, _ = req(base, "/admin/api/content/seo/bundle/sample.json")
+        c2, _ = req(base, "/admin/api/content/seo/bundle/../settings.json", auth=AUTH)
+        c3, _ = req(base, "/api/content/seo/bundle/sample.json", host="guide.ssouq.com")
+        check("بلا دخول 401، واسمٌ خارج القائمة 404، ولا مسار عام", c == 401 and c2 == 404 and c3 == 404, f"{c} {c2} {c3}")
         c, b = req(base, "/content/casper", host="guide.ssouq.com")
         check("صفحة السيرفر العامة كما هي (مفهرسة بـ canonical)", c == 200 and 'rel="canonical" href="https://guide.ssouq.com/content/casper"' in b, str(c))
         check("القاعدة في data/content/seo.sqlite", os.path.exists(os.path.join(d, "content", "seo.sqlite")))

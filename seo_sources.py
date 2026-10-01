@@ -1068,6 +1068,60 @@ def bundle(data_dir, out, n=20):
     return {"out": out, "files": written, **stamp}
 
 
+BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt")
+_bundling = {}
+
+
+def bundle_dir(data_dir):
+    return os.path.join(data_dir, "content", "seo-review")
+
+
+def start_bundle(data_dir, n=20):
+    """«أنتج ملفات المراجعة» من بطاقة الإدارة: في خيطٍ (يستغرق دقائق: الفحص بطلبٍ في الثانية لكل لوحة ثم عيّنة الثلاثين)،
+    وعمليةٌ واحدة في وقتها ← هل بدأت؟"""
+    k = os.path.abspath(data_dir)
+    t = _bundling.get(k)
+    if t and t.is_alive():
+        return False
+    _state[k + ":bundle"] = {"at": int(time.time()), "running": True}
+
+    def run_():
+        try:
+            res = bundle(data_dir, bundle_dir(data_dir), n)
+            _state[k + ":bundle"] = {"at": int(time.time()), "running": False, "ok": True, **res}
+        except Exception as e:  # noqa: BLE001
+            _state[k + ":bundle"] = {"at": int(time.time()), "running": False, "ok": False, "error": str(e)[:300]}
+    t = _bundling[k] = threading.Thread(target=run_, daemon=True)
+    t.start()
+    return True
+
+
+def bundle_state(data_dir):
+    """حال الإنتاج وآخر ملفاتٍ مكتوبة (الاسم والحجم والوقت) — لروابط التنزيل في البطاقة."""
+    k = os.path.abspath(data_dir)
+    d = bundle_dir(data_dir)
+    files = []
+    for n in BUNDLE_FILES:
+        try:
+            st_ = os.stat(os.path.join(d, n))
+            files.append({"name": n, "size": st_.st_size, "at": int(st_.st_mtime)})
+        except OSError:
+            pass
+    last = _state.get(k + ":bundle") or {}
+    return {"running": bool(_bundling.get(k) and _bundling[k].is_alive()), "last": last, "files": files}
+
+
+def bundle_file(data_dir, name):
+    """ملفٌ من ملفات المراجعة بالاسم (من القائمة وحدها) ← (bytes, نوعه) أو None."""
+    if name not in BUNDLE_FILES:
+        return None
+    try:
+        with open(os.path.join(bundle_dir(data_dir), name), "rb") as f:
+            return f.read(), ("application/json; charset=utf-8" if name.endswith(".json") else "text/plain; charset=utf-8")
+    except OSError:
+        return None
+
+
 def main(argv):
     data_dir = os.environ.get("XM_DATA") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
     cmd = argv[1] if len(argv) > 1 else "queue"

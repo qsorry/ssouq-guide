@@ -3347,6 +3347,14 @@ class Handler(BaseHTTPRequestHandler):
                         DATA_DIR, self._q("status") or "open", self._q("kind"), self._q("limit") or 100, self._q("offset") or 0)})
                 if path == "/api/content/seo/enrich":     # الإثراء: الطابور والنافذة والمفتاح وآخر دفعة
                     return self._send(200, {"ok": True, **seo_sources.state(DATA_DIR)})
+                if path == "/api/content/seo/bundle":     # ملفات المراجعة: حال إنتاجها وما كُتب منها
+                    return self._send(200, {"ok": True, **seo_sources.bundle_state(DATA_DIR)})
+                if path.startswith("/api/content/seo/bundle/"):   # تنزيل ملفٍ منها (للمدير)
+                    f = seo_sources.bundle_file(DATA_DIR, path.rsplit("/", 1)[1])
+                    if not f:
+                        return self._send(404, {"error": "not found"})
+                    return self._send(200, raw=f[0], ctype=f[1], extra={"Content-Disposition": f'attachment; filename="{path.rsplit("/", 1)[1]}"',
+                                                                          "Cache-Control": "no-store"})
                 if path == "/api/content/seo/search":     # تجربة تصحيح البحث: ما يصير إليه الاسم (كيان · اقتراح · لا شيء)
                     con = seo_db.connect(DATA_DIR, create=False)
                     if con is None:
@@ -4037,6 +4045,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_sources.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-probe":     # الفحص الأولي: ماذا تعطي كل لوحة (يتصل باللوحات الآن)
                 return self._send(200, {"ok": True, "probe": seo_sources.probe(DATA_DIR, int(body.get("n") or 20))})
+            elif path == "/api/content/admin/seo-bundle":    # «أنتج ملفات المراجعة»: probe · sample · report · search-report في الخلفية
+                started = seo_sources.start_bundle(DATA_DIR, int(body.get("n") or 20))
+                return self._send(200, {"ok": True, "started": started, **seo_sources.bundle_state(DATA_DIR)})
             elif path == "/api/content/admin/seo-sample":    # عيّنة 30 عملًا حقيقيًّا: تُثرى الآن (وحدها) وتقريرها الكامل — قبل الإثراء الجماعي
                 return self._send(200, {"ok": True, "sample": seo_sources.sample(DATA_DIR, body.get("spec") if isinstance(body.get("spec"), dict) else None)})
             elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
