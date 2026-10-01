@@ -44,6 +44,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     _gen = [0]                         # عدّاد اليوزرات المولَّدة من اللوحة
     _lock = threading.Lock()
     edits = []                         # (id, الحقول) لكل تعديلٍ وصل
+    # سلوك الدخول كما في اللوحة الحقيقية (معطَّلٌ افتراضًا فلا يتغيّر ما سبقه من اختبارات):
+    creds = None                       # (اليوزر، الباسورد) المقبولان؛ None = يُقبل أي شيء
+    block = 0                          # حالة HTTP يحجب بها Cloudflare كل طلب (403/429)، 0 = لا حجب
+    drop_logins = 0                    # كم دخولًا ناجحًا تسقط جلسته فورًا (دخولٌ آخر بالحساب)
+    logins = []                        # كل محاولة دخول: (اليوزر، قُبلت؟)
 
     def log_message(self, *a):
         pass
@@ -61,7 +66,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         return "casper_sess=1" in (self.headers.get("Cookie") or "")
 
     def _login_page(self, err=False):
+        # رفض اللوحة الحقيقية: تنبيهٌ `alert bg-danger` (لا alert-danger) فوق النموذج نفسه،
+        # وسكربت Cloudflare `challenge-platform` في كل صفحةٍ سليمة (ليس حجبًا).
         return ("<!DOCTYPE html><html><head><title>Casper Vip</title></head><body>"
+                + ("<div class=\"alert bg-danger\" role=\"alert\">"
+                   "<a href=\"#\" class=\"close\" data-dismiss=\"alert\">&times;</a>"
+                   " Login error. Please check admin name/password. </div>" if err else "")
+                + "<script src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'></script>"
                 "<form class='form-signin' method='POST'>"
                 "<input type='text' name='username' required>"
                 "<input type='password' name='password' required>"
@@ -168,7 +179,19 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "<select name=\"vodBq[]\" id=\"mag_bouquetVod\">"
                 "<option value=\"10\">Vod A</option></select>")
 
+    def _blocked(self):
+        """حجب Cloudflare لخادمنا: صفحة تحدٍّ 403 أو حدّ طلبات 429 (error code: 1015)."""
+        if not self.block:
+            return False
+        body = ("error code: 1015" if self.block == 429 else
+                "<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>"
+                "Checking your browser · Cloudflare</body></html>")
+        self._html(self.block, body)
+        return True
+
     def do_GET(self):
+        if self._blocked():
+            return
         p = self.path
         if "login.php" in p:
             return self._html(200, self._login_page())
@@ -203,11 +226,25 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(n).decode("utf-8", "replace")
+        if self._blocked():
+            return
         if "login.php" in self.path and "do_login" in body and "username=" in body:
-            # نجاح إن أُرسلت بيانات (المحاكاة لا تتحقّق من الصحّة)
+            # نجاح إن أُرسلت بيانات؛ ومع `creds` تُطابَق كاللوحة الحقيقية، والخطأ يعيد
+            # صفحة الدخول بتنبيه الرفض (200، لا تحويل).
+            f = urllib.parse.parse_qs(body, keep_blank_values=True)
+            got = ((f.get("username") or [""])[0], (f.get("password") or [""])[0])
+            ok = self.creds is None or got == tuple(self.creds)
+            with self._lock:
+                self.logins.append((got[0], ok))
+            if not ok:
+                return self._html(200, self._login_page(err=True))
+            with self._lock:
+                dropped = self.drop_logins > 0
+                if dropped:
+                    _Handler.drop_logins -= 1
             self.send_response(303)
             self.send_header("Location", self.ctx + "/index.php/home/index")
-            self.send_header("Set-Cookie", "casper_sess=1; path=/")
+            self.send_header("Set-Cookie", "casper_sess=%s; path=/" % ("0" if dropped else "1"))
             self.end_headers()
             return
         if "global_ajax/getBouquets" in self.path:
@@ -256,6 +293,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 def start(user_count=120, host="127.0.0.1", port=0):
     """يشغّل لوحة كاسبر وهمية ويعيد (server, base_url, thread)."""
     _Handler.users = _make_users(user_count)
+    _Handler.creds, _Handler.block, _Handler.drop_logins, _Handler.logins = None, 0, 0, []
     srv = http.server.ThreadingHTTPServer((host, port), _Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
