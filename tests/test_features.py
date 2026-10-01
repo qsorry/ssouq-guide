@@ -85,12 +85,14 @@ def main():
         _, d = jreq("/admin/api/myguide", {"guide_url": "https://guide.ssouq.com/"})
         check("guide saved", d.get("ok") and d.get("guide_url") == "https://guide.ssouq.com/")
         _, d = jreq("/admin/api/packages?gate=" + gid)
-        check("packages reflect the account guide", d.get("guide_url") == "https://guide.ssouq.com/")
+        check("packages reflect the account guide, aimed at the gate's subscription (falcon)",
+              d.get("guide_url") == "https://guide.ssouq.com/#activate/falcon", d.get("guide_url"))
 
         print("\n== 5. Create uses Falcon + Arabic + guide; status detects the new user ==")
         _, d = jreq("/admin/api/create", {"gate": gid, "package_id": "167", "username": "newone", "password": "np", "count": 1})
         ln = (d.get("lines") or [{}])[0].get("line", "")
-        check("line new-format with host + guide", " User newone " in ln and "s.falconiptv.ink" in ln and "Guide https://guide.ssouq.com/" in ln, ln[:70])
+        check("line new-format with host + guide", " User newone " in ln and "s.falconiptv.ink" in ln
+              and ln.endswith(" Guide https://guide.ssouq.com/#activate/falcon"), ln[-60:])
         _, s2 = jreq("/admin/api/gate-status?gate=" + gid)
         check("status now shows the new last user + fewer credits", s2.get("last_username") == "newone" and s2.get("credits") == 99.5,
               "last=%s credits=%s" % (s2.get("last_username"), s2.get("credits")))
