@@ -66,6 +66,31 @@ def main():
     finally:
         srv.shutdown()
 
+    # --- بوابة «أرشيف فقط»: البحث من اللقطة المحفوظة واللوحة مُطفأة (أُغلق الخادم) ---
+    # لا panel_base/user/pass — ومع ذلك يَبحث ولا يحاول دخولًا ولا يرمي خطأً.
+    acct = {"id": "acc1", "gates": []}
+    arch = {"id": "g1", "name": "كاسبر قديم", "mode": "web", "web_flavor": "casper",
+            "host": "http://ssouqhost.vip:80", "archive_only": True}
+    found = xm_lines.search_gate(acct, arch, "u00007")
+    check("archive-only: found in the saved snapshot with the panel down",
+          found.get("source") == "file" and found.get("archive_only") is True
+          and any(r["username"] == "u00007" for r in found.get("results", [])), str(found)[:120])
+    miss = xm_lines.search_gate(acct, arch, "no-such-user-zzz")
+    check("archive-only: a miss is 'not in archive', never a panel login error",
+          miss.get("results") == [] and miss.get("archive_only") is True
+          and "login_error" not in miss and "error" not in miss, str(miss)[:120])
+    cg = xm_lines.clean_gate(arch)
+    check("clean_gate: archive-only web gate needs no panel creds, flag kept",
+          cg["archive_only"] is True and cg["mode"] == "web", str(cg)[:120])
+    try:
+        xm_lines.clean_gate({"name": "حيّة", "mode": "web", "web_flavor": "casper",
+                             "host": "http://h:80"})
+        check("clean_gate: a NON-archive web gate still requires panel creds", False, "no raise")
+    except ValueError:
+        check("clean_gate: a NON-archive web gate still requires panel creds", True)
+    check("get_packages: archive-only gate offers none (no create)",
+          xm_lines.get_packages(arch) == [])
+
     # --- فالكون: نفس السحب الخلفي إلى Excel ---
     import threading
     from http.server import ThreadingHTTPServer
