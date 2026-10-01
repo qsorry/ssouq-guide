@@ -15,6 +15,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -57,8 +58,12 @@ def unit_match():
     print("== المطابقة ==")
     check("slug لاتيني", M.slugify("Wonder Woman (2017)") == "wonder-woman-2017" and M.slugify("Wonder Woman") == "wonder-woman")
     check("slug بلا علامات أوروبية", M.slugify("Amélie") == "amelie")
-    check("slug عربي بحروفه بلا تشكيل", M.slugify("المؤسّس عثمان") == "المؤسس-عثمان")
-    check("slug بأرقام هندية", M.slugify("ولاد رزق ٣") == "ولاد-رزق-3")
+    check("slug لاتيني دائمًا: العربي يُنقحر بلا تشكيل", M.slugify("المؤسّس عثمان") == "almwss-athman", M.slugify("المؤسّس عثمان"))
+    check("slug بأرقام هندية", M.slugify("ولاد رزق ٣") == "wlad-rzq-3")
+    check("أولوية الاسم: الإنجليزي ثم الأصلي ثم النقحرة",
+          M.slug_source({"title": "بريكنغ باد", "title_en": "Breaking Bad", "original_title": "Breaking Bad"}) == ("Breaking Bad", "en")
+          and M.slug_source({"title": "بريكنغ باد", "original_title": "Breaking Bad"}) == ("Breaking Bad", "original")
+          and M.slug_source({"title": "باب الحارة"}) == ("باب الحارة", "translit"))
     taken = {"dune"}
     check("الفريد: الاسم ثم الاسم-السنة ثم -2", M.unique_slug(taken.__contains__, "Dune", 2021) == "dune-2021"
           and M.unique_slug({"dune", "dune-2021"}.__contains__, "Dune", 2021) == "dune-2021-2")
@@ -95,10 +100,11 @@ def unit_match():
     check("يلتقيان عبر ثالث: عنقودٌ واحد بلا مراجعة", len(clusters) == 1 and not reviews)
 
 
-def _cat(movies, series, live=()):
+def _cat(movies, series, live=(), series2=()):
     return {"v": 2, "at": time.time(),
             "movie": [{"id": "m1", "name": "Movies", "items": movies}, {"id": "m2", "name": "Kids", "items": []}],
-            "series": [{"id": "s1", "name": "Series", "items": series}], "live": [{"id": "l1", "name": "Live", "items": list(live)}]}
+            "series": [{"id": "s1", "name": "Series", "items": series}, {"id": "s2", "name": "Netflix", "items": list(series2)}],
+            "live": [{"id": "l1", "name": "Live", "items": list(live)}]}
 
 
 def _write(d, key, cat):
@@ -315,9 +321,98 @@ def live():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_ten():
+    """الحالات العشر التي طلبها المالك قبل المرحلة الثانية — كلٌّ باسمها."""
+    print("== الحالات العشر ==")
+    d = tempfile.mkdtemp(prefix="seo_ten_")
+    try:
+        _dataset(d)
+        plot = "A chemistry teacher turns to making meth with a former student to secure his family"
+        with open(os.path.join(d, "content", "casper.json"), encoding="utf-8") as f:
+            cat = json.load(f)
+        # داخل السيرفر الواحد: نفس الاسم في قسمين
+        cat["series"][0]["items"] += [{"n": "Fargo", "p": "http://panel/fargo.png", "s": [[1, 10]], "i": 70},
+                                      {"n": "Lupin", "p": "http://panel/lupin1.png", "s": [[1, 5]], "i": 72},
+                                      {"n": "Shameless", "y": 2011, "s": [[1, 12]], "i": 22}]
+        cat["series"][1]["items"] = [{"n": "Fargo", "p": "http://panel/fargo.png", "s": [[1, 10], [2, 10]], "i": 71},
+                                     {"n": "Lupin", "p": "http://panel/lupin2.png", "s": [[1, 5]], "i": 73},
+                                     {"n": "Shameless", "y": 2004, "s": [[1, 7]], "i": 74},
+                                     {"n": "Narcos", "y": 2015, "s": [[1, 10]], "i": 75, "t": 63351},
+                                     {"n": "Narcos", "y": 2015, "s": [[1, 10]], "i": 76, "t": 73911}]
+        cat["series"][0]["items"] = [x for x in cat["series"][0]["items"] if not (x["n"] == "Shameless" and x["i"] == 22)] + \
+            [{"n": "Shameless", "y": 2011, "s": [[1, 12]], "i": 22}]
+        _write(d, "casper", cat)
+        res = seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        bb = q("SELECT id, slug FROM content WHERE slug='breaking-bad' AND merged_into IS NULL")
+        al = {r[0] for r in q("SELECT alias FROM content_alias WHERE content_id=?", bb[0][0])} if bb else set()
+        check("1. Breaking Bad العربي/الإنجليزي → نفس الكيان", len(bb) == 1 and "بريكنغ باد" in al and "Breaking Bad" in al
+              and len(q("SELECT 1 FROM content_service WHERE content_id=?", bb[0][0])) == 3, str(al))
+        dune = q("SELECT slug, year FROM content WHERE title='Dune' ORDER BY year")
+        check("2. Dune 1984 وDune 2021 → كيانان", [tuple(r) for r in dune] == [("dune-1984", 1984), ("dune", 2021)], str([tuple(r) for r in dune]))
+        sh = q("SELECT slug, year FROM content WHERE title='Shameless' AND merged_into IS NULL ORDER BY year")
+        check("3. مسلسل بنفس الاسم وسنوات مختلفة (في سيرفر واحد وبين السيرفرات) → كيانان",
+              [tuple(r) for r in sh] == [("shameless-2004", 2004), ("shameless", 2011)]
+              and not q("SELECT 1 FROM review WHERE status='open' AND json_extract(payload_json,'$.name')='Shameless'"), str([tuple(r) for r in sh]))
+        na = q("SELECT slug, tmdb_id, match FROM content WHERE title='Narcos' AND merged_into IS NULL ORDER BY tmdb_id")
+        check("4. نفس الاسم + TMDB IDs مختلفة → كيانان (بمعرّفيهما، match=xtream)",
+              [tuple(r) for r in na] == [("narcos", 63351, "xtream"), ("narcos-2015", 73911, "xtream")]
+              and not q("SELECT 1 FROM review WHERE status='open' AND json_extract(payload_json,'$.name')='Narcos'"), str([tuple(r) for r in na]))
+        lu = q("SELECT COUNT(*) FROM content WHERE title='Lupin' AND merged_into IS NULL")[0][0]
+        rv = q("SELECT kind FROM review WHERE status='open' AND json_extract(payload_json,'$.name')='Lupin'")
+        fa = q("SELECT COUNT(*) FROM content WHERE title='Fargo' AND merged_into IS NULL")[0][0]
+        check("5. الغامض (الاسم نفسه في قسمين بلا قرينة) → مراجعة لا دمج؛ وبالصورة نفسها (Fargo) واحد",
+              lu == 2 and [r[0] for r in rv] == ["same_server_ambiguous"] and fa == 1
+              and [r[0] for r in q("SELECT kind FROM review WHERE status='open' AND json_extract(payload_json,'$.name')='The Office'")] == ["name_only"], f"lupin={lu} fargo={fa} {rv}")
+        cid, old = bb[0][0], bb[0][1]
+        seo_db.change_slug(con, cid, "breaking-bad-tv", reason="test"); con.commit()
+        row = q("SELECT id, slug, slug_source FROM content WHERE id=?", cid)[0]
+        check("6. تغيير slug → لا يغيّر entity_id", tuple(row) == (cid, "breaking-bad-tv", "manual"))
+        rd = {r[0]: (r[1], r[2]) for r in q("SELECT path, target, code FROM redirect")}
+        check("7. تغيير slug → يسجّل redirect 301 باللغتين، والقيمة السابقة في provenance",
+              rd == {"/content/series/breaking-bad/": ("/content/series/breaking-bad-tv/", 301),
+                     "/en/content/series/breaking-bad/": ("/en/content/series/breaking-bad-tv/", 301)}
+              and json.loads(q("SELECT prev FROM provenance WHERE entity='content' AND entity_id=? AND field='slug'", cid)[0][0]) == "breaking-bad", str(rd))
+        seo_db.change_slug(con, cid, "breaking-bad-2008", reason="test2"); con.commit()
+        rd = {r[0]: r[1] for r in q("SELECT path, target FROM redirect")}
+        check("7b. تغييرٌ ثانٍ: القديمان كلاهما إلى الأحدث (لا سلسلة ولا حلقة)",
+              rd["/content/series/breaking-bad/"] == "/content/series/breaking-bad-2008/"
+              and rd["/content/series/breaking-bad-tv/"] == "/content/series/breaking-bad-2008/" and "/content/series/breaking-bad-2008/" not in rd)
+        seo_build.build(d, force=True)
+        con.close(); con = seo_db.connect(d)
+        check("6b. إعادة البناء لا تمسّ slug ولا المعرّف", tuple(q("SELECT id, slug FROM content WHERE id=?", cid)[0]) == (cid, "breaking-bad-2008"))
+        seo_db.apply_fields(con, "content", cid, {"title": "بريكنج باد", "overview_ar": "قصة يدوية"}, "manual"); con.commit()
+        changed = seo_db.apply_fields(con, "content", cid, {"title": "Breaking Bad (TMDB)", "overview_ar": "من TMDB", "overview_en": "From TMDB", "runtime": 47}, "tmdb")
+        con.commit()
+        row = q("SELECT title, overview_ar, overview_en, runtime FROM content WHERE id=?", cid)[0]
+        pv = seo_db.provenance(con, "content", cid)
+        prev = q("SELECT prev FROM provenance WHERE entity='content' AND entity_id=? AND field='overview_en'", cid)[0][0]
+        check("8. البيانات اليدوية لا تستبدلها مزامنة TMDB (والباقي يُكتب بمصدره وقيمته السابقة)",
+              tuple(row) == ("بريكنج باد", "قصة يدوية", "From TMDB", 47) and sorted(changed) == ["overview_en", "runtime"]
+              and pv["title"][0] == "manual" and pv["overview_en"][0] == "tmdb" and prev is None, str(tuple(row)))
+        seo_build.build(d, force=True)
+        con.close(); con = seo_db.connect(d)
+        check("8b. ولا يستبدلها البناء من الفهارس", q("SELECT title FROM content WHERE id=?", cid)[0][0] == "بريكنج باد")
+        check("9. الاسم الإنجليزي يولّد slug لاتينيًّا، والعربي وحده نقحرةً (مصدره مسجَّل)",
+              tuple(q("SELECT slug, slug_source FROM content WHERE title='Wonder Woman'")[0]) == ("wonder-woman", "original")
+              and all(re.fullmatch(r"[a-z0-9-]+", r[0]) for r in q("SELECT slug FROM content")))
+        _write(d, "smart", _cat([], [{"n": "Breaking Bad", "y": 2008, "s": [[1, 7]], "d": plot, "i": 60},
+                                     {"n": "بريكنج باد", "p": TMDB + "bb.jpg", "s": [[1, 7]], "i": 62}]))
+        res = seo_build.build(d)
+        con.close(); con = seo_db.connect(d)
+        n = q("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND id IN (SELECT content_id FROM content_alias WHERE alias_norm=?)", M.norm("بريكنج باد"))[0][0]
+        check("10. اسمٌ عربي جديد لعملٍ معروف (بقرينة الملصق) → alias لا كيانًا جديدًا", res["new"] == 0 and n == 1
+              and q("SELECT id FROM content WHERE id IN (SELECT content_id FROM content_alias WHERE alias_norm=?)", M.norm("بريكنج باد"))[0][0] == cid, str(res))
+        con.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     unit_match()
     unit_build()
+    unit_ten()
     live()
     print("\nResult: %d passed, %d failed" % (_p, _f))
     sys.exit(1 if _f else 0)

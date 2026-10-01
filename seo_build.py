@@ -23,8 +23,8 @@ import content as C
 import seo_db
 import seo_match as M
 
-AUTO_KINDS = ("name_only", "conflict", "year_conflict", "merged_entities", "split_entity")
-STATE_KINDS = ("name_only", "conflict", "year_conflict")     # حالٌ تزول بزوال سببها؛ والدمج والانفصال أحداثٌ تبقى حتى تُراجَع
+AUTO_KINDS = ("name_only", "conflict", "same_server_ambiguous", "merged_entities", "split_entity")
+STATE_KINDS = ("name_only", "conflict", "same_server_ambiguous")     # حالٌ تزول بزوال سببها؛ والدمج والانفصال أحداثٌ تبقى حتى تُراجَع
 REVIEW_SNIPPET = 160
 GENRES_MAX = 5
 
@@ -42,60 +42,69 @@ def _signature(data_dir, srv):
     return [st.st_ino, st.st_mtime_ns, st.st_size, sorted(srv.get("hidden") or [])]
 
 
-def _items_of(data_dir, srv):
-    """عناصر السيرفر الظاهرة (أفلامٌ ومسلسلات) موحَّدةً داخل السيرفر كما تعدّها صفحته ← (العناصر، تعارضات السنة)."""
+def _entry(kind, key, g, it):
+    return {"type": kind, "service": key, "kind": kind, "name": it["n"], "year": int(it.get("y") or 0),
+            "poster": it.get("p") or "", "backdrop": it.get("b") or "", "plot": it.get("d") or "",
+            "genres": list(it.get("g") or ()), "rating": float(it.get("r") or 0), "added": int(it.get("a") or 0),
+            "stream_id": int(it.get("i") or 0), "tmdb_id": int(it.get("t") or 0),
+            "seasons": {int(a): int(b) for a, b in (it.get("s") or ())}, "groups": [g["name"]] if g.get("name") else []}
+
+
+def _merge_entries(es):
+    """مداخل قسمٍ أو أكثر لعنصرٍ واحد في السيرفر ← عنصرٌ واحد (أكبر ما رُئي: المواسم والتقييم والرقم؛ وأطول قصة)."""
+    rec = dict(es[0], genres=list(es[0]["genres"]), seasons=dict(es[0]["seasons"]), groups=list(es[0]["groups"]))
+    for e in es[1:]:
+        for f in ("poster", "backdrop", "plot", "year", "tmdb_id"):
+            if not rec[f] and e[f]:
+                rec[f] = e[f]
+        if len(e["plot"]) > len(rec["plot"]):
+            rec["plot"] = e["plot"]
+        for x in e["genres"]:
+            if x not in rec["genres"]:
+                rec["genres"].append(x)
+        for x in e["groups"]:
+            if x not in rec["groups"]:
+                rec["groups"].append(x)
+        rec["rating"] = max(rec["rating"], e["rating"])
+        rec["added"] = max(rec["added"], e["added"])
+        rec["stream_id"] = max(rec["stream_id"], e["stream_id"])
+        for sn, n in e["seasons"].items():
+            rec["seasons"][sn] = max(rec["seasons"].get(sn, 0), n)
+    rec["min_stream"] = min(e["stream_id"] for e in es)
+    return rec
+
+
+def _items_of(data_dir, srv, st):
+    """عناصر السيرفر الظاهرة (أفلامٌ ومسلسلات) ← (العناصر، ما غمض). الاسم نفسه في قسمين **لا يُعدّ واحدًا تلقائيًّا**
+    (‏seo_match.cluster_in_server): الصورة نفسها أو السنة نفسها أو موسمٌ بحلقاته تجمع، وسنتان مختلفتان تفرّقان، وبلا
+    قرينة عنصران وبند مراجعة. ومفتاح العنصر ‏norm|year (و‏|2 |3… لمن شاركه الاسم والسنة، الأقدم رقمًا أولًا)."""
     cat = C._read(C._cat_path(data_dir, srv["key"]))
     if not cat:
         return [], []
     cat = C._upgrade(cat)
     hidden, key = set(srv.get("hidden") or []), srv["key"]
-    items, conflicts = {}, []
+    by_name = {}
     for kind in ("movie", "series"):
         for g in cat.get(kind) or []:
             if g.get("id") in hidden:
                 continue
             for it in g.get("items") or []:
-                if not isinstance(it, dict) or not it.get("n"):
-                    continue
-                lk = C._ikey(kind, it)
-                rec = items.get((kind, lk))
-                if rec is None:
-                    rec = items[(kind, lk)] = {
-                        "type": kind, "service": key, "local_key": lk, "kind": kind,
-                        "name": it["n"], "year": int(it.get("y") or 0), "years": set(),
-                        "poster": it.get("p") or "", "backdrop": it.get("b") or "", "plot": it.get("d") or "",
-                        "genres": list(it.get("g") or ()), "rating": float(it.get("r") or 0),
-                        "added": int(it.get("a") or 0), "stream_id": int(it.get("i") or 0),
-                        "seasons": {}, "groups": []}
-                if it.get("y"):
-                    rec["years"].add(int(it["y"]))
-                if g.get("name") and g["name"] not in rec["groups"]:
-                    rec["groups"].append(g["name"])
-                for f in ("poster", "backdrop", "plot"):
-                    src = {"poster": "p", "backdrop": "b", "plot": "d"}[f]
-                    if not rec[f] and it.get(src):
-                        rec[f] = it[src]
-                if len(it.get("d") or "") > len(rec["plot"]):
-                    rec["plot"] = it["d"]
-                for x in it.get("g") or ():
-                    if x not in rec["genres"]:
-                        rec["genres"].append(x)
-                rec["rating"] = max(rec["rating"], float(it.get("r") or 0))
-                rec["added"] = max(rec["added"], int(it.get("a") or 0))
-                rec["stream_id"] = max(rec["stream_id"], int(it.get("i") or 0))
-                for s, n in it.get("s") or ():
-                    rec["seasons"][int(s)] = max(rec["seasons"].get(int(s), 0), int(n))
-    out = []
-    for rec in items.values():
-        ys = rec.pop("years")
-        if len(ys) > 1:                       # مسلسلٌ باسمٍ واحد بسنتين في السيرفر نفسه (صفحته تعدّه واحدًا): يُراجَع
-            conflicts.append({"kind": "year_conflict", "key": f"year_conflict:{key}:{rec['type']}:{rec['local_key']}",
-                              "type": rec["type"], "name": rec["name"], "service": key, "years": sorted(ys)})
-            rec["year"] = 0
-        elif ys:
-            rec["year"] = ys.pop()
-        out.append(rec)
-    return out, conflicts
+                if isinstance(it, dict) and it.get("n"):
+                    by_name.setdefault((kind, M.norm(it["n"])), []).append(_entry(kind, key, g, it))
+    out, reviews = [], []
+    for (kind, nm), es in by_name.items():
+        groups, ambiguous = M.cluster_in_server(es, st) if len(es) > 1 else ([list(range(len(es)))], False)
+        recs = sorted((_merge_entries([es[i] for i in g]) for g in groups), key=lambda r: r["min_stream"])
+        seen = {}
+        for r in recs:
+            base = f"{nm}|{r['year'] or ''}"
+            n = seen[base] = seen.get(base, 0) + 1
+            r["local_key"] = base if n == 1 else f"{base}|{n}"
+            out.append(r)
+        if ambiguous:
+            reviews.append({"kind": "same_server_ambiguous", "key": f"same_server:{key}:{kind}:{nm}", "type": kind,
+                            "name": es[0]["name"], "service": key, "entries": [_snippet(r) for r in recs]})
+    return out, reviews
 
 
 def signatures(data_dir):
@@ -108,15 +117,15 @@ def signatures(data_dir):
     return out
 
 
-def load_items(data_dir):
-    """كل السيرفرات ← (العناصر، تعارضات داخل السيرفرات، البصمات)."""
+def load_items(data_dir, st):
+    """كل السيرفرات ← (العناصر، ما غمض داخل السيرفرات، البصمات)."""
     items, conflicts, sigs = [], [], {}
     for srv in C.servers(data_dir):
         sig = _signature(data_dir, srv)
         if sig is None:
             continue
         sigs[srv["key"]] = sig
-        its, cf = _items_of(data_dir, srv)
+        its, cf = _items_of(data_dir, srv, st)
         items += its
         conflicts += cf
     return items, conflicts, sigs
@@ -144,6 +153,8 @@ def _entity_fields(members):
         for g in m.get("genres") or ():
             freq[g] = freq.get(g, 0) + 1
     genres = [g for g, _ in sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))[:GENRES_MAX]]
+    ids = {m["tmdb_id"] for m in members if m.get("tmdb_id")}
+    f["tmdb_id"] = (ids.pop() if len(ids) == 1 else None, "xtream", next((m["service"] for m in members if m.get("tmdb_id")), None))
     f["genres_json"] = (json.dumps(genres, ensure_ascii=False) if genres else None,
                         "derived" if len({m["service"] for m in members if m.get("genres")}) > 1 else "xtream",
                         next((m["service"] for m in members if m.get("genres")), None))
@@ -151,7 +162,7 @@ def _entity_fields(members):
 
 
 def _snippet(m):
-    return {"service": m["service"], "name": m["name"], "year": m["year"] or None,
+    return {"service": m["service"], "name": m["name"], "year": m["year"] or None, "groups": m.get("groups") or [],
             "poster": M.poster_file(m.get("poster")) or ("panel" if m.get("poster") else ""),
             "plot": (m.get("plot") or "")[:REVIEW_SNIPPET], "genres": m.get("genres") or [],
             "seasons": len(m.get("seasons") or {}) or None}
@@ -167,8 +178,8 @@ def build(data_dir, force=False, now=None):
             t0 = time.time()
             if not force and seo_db.state(con, "built_at") and seo_db.state(con, "signatures") == signatures(data_dir):
                 return None                   # لا فهرس تغيّر: لا قراءة أصلًا (الدورة كل عشر دقائق)
-            items, conflicts, sigs = load_items(data_dir)
             st = seo_db.settings(con)
+            items, conflicts, sigs = load_items(data_dir, st)
             clusters, reviews = M.cluster(items, st)
             with con:
                 res = _apply(con, items, clusters, reviews + conflicts, sigs, now)
@@ -180,8 +191,16 @@ def build(data_dir, force=False, now=None):
 
 
 def _apply(con, items, clusters, reviews, sigs, now):
-    links = {(r["service_key"], r["kind"], r["local_key"]): r["content_id"]
-             for r in con.execute("SELECT service_key, kind, local_key, content_id FROM content_service")}
+    links, by_stream = {}, {}
+    for r in con.execute("SELECT service_key, kind, local_key, stream_id, content_id FROM content_service"):
+        links[(r["service_key"], r["kind"], r["local_key"])] = r["content_id"]
+        if r["stream_id"]:
+            by_stream[(r["service_key"], r["kind"], r["stream_id"])] = r["content_id"]
+
+    def known(m):
+        """الكيان الذي رُبط به عضوٌ من قبل: بمفتاحه، وإلا برقم بثّه (مفتاحٌ تبدّل لزوال غموضٍ أو زواله)."""
+        k = (m["service"], m["kind"], m["local_key"])
+        return links.get(k) or by_stream.get((m["service"], m["kind"], m["stream_id"]))
     merged = {r["id"]: r["merged_into"] for r in con.execute("SELECT id, merged_into FROM content WHERE merged_into IS NOT NULL")}
 
     def canon(cid):
@@ -200,13 +219,12 @@ def _apply(con, items, clusters, reviews, sigs, now):
     cid_of = {}                                   # فهرس العضو ← معرّف الكيان
     for members_idx in clusters:
         members = [items[i] for i in members_idx]
-        ids = {canon(links[(m["service"], m["kind"], m["local_key"])]) for m in members
-               if (m["service"], m["kind"], m["local_key"]) in links}
+        ids = {canon(known(m)) for m in members if known(m)}
         ids = {i for i in ids if i not in claimed}
         if not ids:
             cid = _insert(con, members, slugs, now)
             n_new += 1
-            if any((m["service"], m["kind"], m["local_key"]) in links for m in members):
+            if any(known(m) for m in members):
                 n_split += 1                      # كان عضوًا في كيانٍ ادّعاه عنقودٌ آخر: كيانٌ جديد ويُراجَع
                 extra_reviews.append({"kind": "split_entity", "key": f"split:{cid}", "type": members[0]["type"],
                                       "name": members[0]["name"], "items": members_idx, "why": ["links_moved"]})
@@ -246,15 +264,19 @@ def _apply(con, items, clusters, reviews, sigs, now):
 def _insert(con, members, slugs, now):
     f = _entity_fields(members)
     title, year = f["title"][0], f["year"][0] or 0
-    slug = M.unique_slug(lambda s: s in slugs, title, year)
+    name, src = M.slug_source({"title": title})          # الإنجليزي ثم الأصلي ثم النقحرة — ويُولَّد مرةً واحدة
+    slug = M.unique_slug(lambda s: s in slugs, name, year)
     slugs.add(slug)
     added = [m["added"] for m in members if m.get("added")]
     cur = con.execute(
-        "INSERT INTO content(type, slug, title, year, overview, rating, poster, backdrop, genres_json, match, confidence, "
-        "available, first_seen, last_seen, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,'local',?,1,?,?,?,?)",
-        (members[0]["type"], slug, title, year or None, f["overview"][0], f["rating"][0], f["poster"][0], f["backdrop"][0],
-         f["genres_json"][0], len(members), min(added) if added else now, max(added) if added else now, now, now))
+        "INSERT INTO content(type, slug, slug_source, title, year, overview, rating, poster, backdrop, genres_json, tmdb_id, "
+        "match, confidence, available, first_seen, last_seen, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)",
+        (members[0]["type"], slug, src, title, year or None, f["overview"][0], f["rating"][0], f["poster"][0], f["backdrop"][0],
+         f["genres_json"][0], f["tmdb_id"][0], "xtream" if f["tmdb_id"][0] else "local", len(members),
+         min(added) if added else now, max(added) if added else now, now, now))
     cid = cur.lastrowid
+    seo_db.set_provenance(con, "content", cid, "slug", "derived", None, now)
     for field, (v, src, svc) in f.items():
         if v is not None:
             seo_db.set_provenance(con, "content", cid, field, src, svc, now)
@@ -262,23 +284,19 @@ def _insert(con, members, slugs, now):
 
 
 def _update(con, cid, members, manual, now):
-    row = con.execute("SELECT * FROM content WHERE id=?", (cid,)).fetchone()
-    f = _entity_fields(members)
-    sets, args = [], []
-    for field, (v, src, svc) in f.items():
-        if field in manual or row[field] == v:
-            continue
-        if v is None and field in ("title",):
-            continue
-        sets.append(f"{field}=?")
-        args.append(v)
-        seo_db.set_provenance(con, "content", cid, field, src, svc, now)
+    """حقول الكيان من أعضائه عبر ‏apply_fields: الحقل اليدوي لا يُمسّ، والمتغيّر يُسجَّل بمصدره وقيمته السابقة.
+    ‏slug لا يُمسّ هنا أبدًا (يتبدّل بـ ‏change_slug وحده، بتحويل 301)."""
+    f = {k: v for k, v in _entity_fields(members).items() if not (v[0] is None and k == "title")}
+    if f["tmdb_id"][0]:
+        f["match"] = ("xtream", "derived", None)
+    seo_db.apply_fields(con, "content", cid, f, "m3u", now=now, manual=manual)
+    row = con.execute("SELECT last_seen, confidence, merged_into FROM content WHERE id=?", (cid,)).fetchone()
     added = [m["added"] for m in members if m.get("added")]
-    conf = len(members)
+    sets, args = [], []
     if added and (row["last_seen"] or 0) < max(added):
         sets.append("last_seen=?"); args.append(max(added))
-    if row["confidence"] != conf:
-        sets.append("confidence=?"); args.append(conf)
+    if row["confidence"] != len(members):
+        sets.append("confidence=?"); args.append(len(members))
     if row["merged_into"] is not None:
         sets.append("merged_into=NULL")
     if sets:
@@ -325,7 +343,7 @@ def _reviews(con, items, reviews, now):
         keys.add(r["key"])
         payload = {"type": r.get("type"), "name": r.get("name"), "why": r.get("why") or [],
                    "items": [_snippet(items[i]) for i in r.get("items") or []]}
-        for k in ("service", "years"):
+        for k in ("service", "entries"):
             if k in r:
                 payload[k] = r[k]
         con.execute(

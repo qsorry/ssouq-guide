@@ -22,7 +22,11 @@ DIR = "content"
 FILE = "seo.sqlite"
 VERSION = 1                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
-SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")
+SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
+MANUAL = "manual"
+# مسارات الكيانات القادمة (المرحلة 3) — تُستعمل الآن لتسجيل تحويلات slug في ‏redirect
+PATHS = {"movie": "/content/movies/{slug}/", "series": "/content/series/{slug}/"}
+EN = "/en"
 TYPES = ("movie", "series")
 
 # الإعدادات الافتراضية — ما في جدول seo_settings يغلبها (مفتاح ← قيمة JSON). لا شيء منها ثابتٌ في الكود المستهلك.
@@ -36,6 +40,9 @@ DEFAULTS = {
     "plot_diff": 0.1,          # وما دونه قصّتان مختلفتان: تعارض
     "plot_min": 40,            # أقل طول قصة تُقارن
     "score_genre": 1,          # تصنيفٌ مشترك
+    "score_tmdb": 5,           # ‏tmdb_id واحد (بعد التحقّق منه)
+    "score_seasons": 1,        # في السيرفر نفسه: موسمٌ بعدد حلقاته نفسه في القسمين
+    "tmdb_verify": {"type": True, "year": True, "year_tolerance": 1, "title": True},   # معرّف TMDB من لوحةٍ لا يُعتمد بلا تحقّق
     # سياسة الفهرسة (للمراحل التالية؛ تُقرأ من هنا لا من الكود)
     "index_min_overview": 120,     # أقل طول قصة باللغة لتُفهرس صفحة فيلم/مسلسل
     "index_require_poster": True,
@@ -81,6 +88,7 @@ CREATE TABLE IF NOT EXISTS content (
   type TEXT NOT NULL CHECK (type IN ('movie','series')),
   tmdb_id INTEGER, imdb_id TEXT,
   slug TEXT NOT NULL UNIQUE, slug_ar TEXT,
+  slug_source TEXT NOT NULL DEFAULT 'original',   -- en · original · translit · manual: من أيّ اسمٍ صُنع (لا يتغيّر إلا بتحويل)
   title TEXT NOT NULL,                 -- الاسم كما في القوائم (أفضل صيغة)
   title_ar TEXT, title_en TEXT, original_title TEXT,
   overview TEXT, overview_ar TEXT, overview_en TEXT,
@@ -132,6 +140,7 @@ CREATE TABLE IF NOT EXISTS provenance (
   entity TEXT NOT NULL, entity_id INTEGER NOT NULL, field TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN ('m3u','xtream','tmdb','manual','derived')),
   service_key TEXT, at INTEGER NOT NULL,
+  prev TEXT,                           -- القيمة السابقة (JSON) عند التغيير
   PRIMARY KEY (entity, entity_id, field)
 );
 
@@ -222,11 +231,67 @@ def provenance(con, entity, entity_id):
                                  (entity, entity_id))}
 
 
-def set_provenance(con, entity, entity_id, field, source, service_key=None, at=None):
-    con.execute("INSERT INTO provenance(entity, entity_id, field, source, service_key, at) VALUES (?,?,?,?,?,?) "
+def set_provenance(con, entity, entity_id, field, source, service_key=None, at=None, prev=None):
+    con.execute("INSERT INTO provenance(entity, entity_id, field, source, service_key, at, prev) VALUES (?,?,?,?,?,?,?) "
                 "ON CONFLICT(entity, entity_id, field) DO UPDATE SET source=excluded.source, "
-                "service_key=excluded.service_key, at=excluded.at",
-                (entity, entity_id, field, source, service_key, at or int(time.time())))
+                "service_key=excluded.service_key, at=excluded.at, prev=excluded.prev",
+                (entity, entity_id, field, source, service_key, at or int(time.time()),
+                 json.dumps(prev, ensure_ascii=False) if prev is not None else None))
+
+
+def manual_fields(con, entity, entity_id):
+    return {r["field"] for r in con.execute("SELECT field FROM provenance WHERE entity=? AND entity_id=? AND source=?",
+                                            (entity, entity_id, MANUAL))}
+
+
+def apply_fields(con, entity, entity_id, fields, source, service_key=None, now=None, manual=None):
+    """يكتب حقول كيانٍ من مصدرٍ ما — **ولا يمسّ ما كتبه المدير** (مصدره manual) إلا إن كان المصدر manual نفسه —
+    ويسجّل لكل حقلٍ تغيّر مصدره ووقته وقيمته السابقة ← الحقول التي تغيّرت. ‏fields: حقل ← قيمة، أو حقل ← (قيمة، مصدر، سيرفر).
+    تستعمله المزامنة التلقائية كلها (البناء، وXtream وTMDB لاحقًا)، فلا طريق لها إلى حقلٍ يدوي."""
+    now = now or int(time.time())
+    table = {"content": "content", "season": "season", "person": "person"}[entity]
+    row = con.execute(f"SELECT * FROM {table} WHERE id=?", (entity_id,)).fetchone()
+    if row is None:
+        raise ValueError("no such entity")
+    keep = manual if manual is not None else (manual_fields(con, entity, entity_id) if source != MANUAL else set())
+    sets, args, changed = [], [], []
+    for field, spec in fields.items():
+        v, src, svc = spec if isinstance(spec, tuple) else (spec, source, service_key)
+        if field in keep or field not in row.keys() or row[field] == v:
+            continue
+        sets.append(f"{field}=?"); args.append(v); changed.append(field)
+        set_provenance(con, entity, entity_id, field, src, svc, now, prev=row[field])
+    if sets:
+        sets.append("updated_at=?"); args.append(now)
+        con.execute(f"UPDATE {table} SET {', '.join(sets)} WHERE id=?", (*args, entity_id))
+    return changed
+
+
+def paths(typ, slug):
+    """روابط الكيان باللغتين (كما ستُخدم في المرحلة 3)."""
+    p = PATHS[typ].format(slug=slug)
+    return [p, EN + p]
+
+
+def change_slug(con, content_id, new_slug, source="manual", reason="", now=None):
+    """يبدّل رابط الكيان **بلا مسّ معرّفه**، ويسجّل القديم → الجديد 301 في ‏redirect (ويُحدّث ما كان يشير إلى القديم)."""
+    now = now or int(time.time())
+    row = con.execute("SELECT type, slug FROM content WHERE id=?", (content_id,)).fetchone()
+    if row is None:
+        raise ValueError("no such entity")
+    if new_slug == row["slug"]:
+        return False
+    if con.execute("SELECT 1 FROM content WHERE slug=? AND id!=?", (new_slug, content_id)).fetchone():
+        raise ValueError("slug مستعمل")
+    con.execute("UPDATE content SET slug=?, slug_source=?, updated_at=? WHERE id=?", (new_slug, source, now, content_id))
+    set_provenance(con, "content", content_id, "slug", source, None, now, prev=row["slug"])
+    for old, new in zip(paths(row["type"], row["slug"]), paths(row["type"], new_slug)):
+        con.execute("DELETE FROM redirect WHERE path=?", (new,))              # لا حلقة: الجديد لم يعد قديمًا
+        con.execute("UPDATE redirect SET target=? WHERE target=?", (new, old))   # ما كان يشير إلى القديم يقفز إلى الجديد
+        con.execute("INSERT INTO redirect(path, target, code, reason, created_at) VALUES (?,?,301,?,?) "
+                    "ON CONFLICT(path) DO UPDATE SET target=excluded.target, reason=excluded.reason, created_at=excluded.created_at",
+                    (old, new, reason or f"slug {row['slug']} → {new_slug}", now))
+    return True
 
 
 def schema_text(con):
