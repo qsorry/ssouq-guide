@@ -462,6 +462,104 @@ def _serve(srv):
     return f"http://127.0.0.1:{srv.server_address[1]}"
 
 
+def unit_production_cases():
+    """ما كشفته عيّنة الإنتاج الأولى (1 أكتوبر 2026): خطأ استدعاء Xtream، أسماء فالكون بالموسم والاسم الأصلي، لواحق
+    «متعدد الترجمات»، الفاصلة العليا، قائمة الفشل الإلزامية، فصل عدّادات العيّنة، وعتبة الاقتراح."""
+    print("== حالات الإنتاج ==")
+    st = dict(seo_db.DEFAULTS)
+    c = M.clean_title("التفاح الحرام مدبلج S06 YASAK ELMA Ar", st)
+    check("تنظيف: «التفاح الحرام مدبلج S06 YASAK ELMA Ar» ← التفاح الحرام · موسم 6 · مدبلج · الأصلي YASAK ELMA",
+          (c["base"], c["season"], c["versions"], c["original"]) == ("التفاح الحرام", 6, ["dubbed"], "YASAK ELMA"), str(c))
+    c = M.clean_title("هذا البحر سوف يفيض مدبلج S01 Deep.In.Love", st)
+    check("تنظيف: النقاط في الاسم الأصلي فراغات", (c["base"], c["original"]) == ("هذا البحر سوف يفيض", "Deep In Love"))
+    c = M.clean_title("Heart of Stone - FHD - متعدد الترجمات", st)
+    check("تنظيف: الجودة في الوسط و«متعدد الترجمات» نسخة multi", (c["base"], c["versions"]) == ("Heart of Stone", ["multi"]), str(c))
+    c = M.clean_title("وطن ع وتر 2019 S01 Watan.A.Watar.2023", st)
+    check("تنظيف: السنة من الاسم، والذيل 2023 يُحذف من الأصلي", (c["base"], c["year"], c["original"]) == ("وطن ع وتر", 2019, "Watan A Watar"), str(c))
+    c = M.clean_title("D.Gray-man HALLOW S02", st)
+    check("تنظيف: رمز الموسم في الآخر بلا أصلي", (c["base"], c["season"], c["original"]) == ("D.Gray-man HALLOW", 2, ""))
+    check("تنظيف لا يمسّ الأسماء العادية", M.clean_title("Sub Zero", st)["base"] == "Sub Zero" and M.clean_title("S01 Something", st)["base"] == "S01 Something"
+          and not M.clean_title("One Piece", st)["cleaned"])
+    check("التطبيع يحذف الفاصلة العليا: Wayne's World = Waynes World", M.norm("Wayne's World") == M.norm("Waynes World") == "waynes world")
+    xt = mock_xtream.serve(0); tm = mock_tmdb.serve(0)
+    xbase, tbase = _serve(xt), _serve(tm)
+    seo_sources.TMDB_API = tbase + "/3"
+    d = tempfile.mkdtemp(prefix="seo_prod_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "falcon", "name": "فالكون"}, {"key": "smart", "name": "سمارت"}]}, f, ensure_ascii=False)
+        C.set_url(d, "smart", f"{xbase}/get.php?username=u&password=p&type=m3u_plus")
+        C.refresh(d, "smart")
+        # فالكون كما في الإنتاج: مواسم مفرّقة بأسمائها (الموسم 0 من القارئ)، وبلا series_id
+        cat = _cat([{"n": "Heart of Stone - FHD - متعدد الترجمات", "i": 1}, {"n": "Waynes World", "i": 2}],
+                   [{"n": "التفاح الحرام مدبلج S03 YASAK ELMA Ar", "s": [[0, 81]], "i": 10, "p": "http://panel/ye.png"},
+                    {"n": "التفاح الحرام مدبلج S04 YASAK ELMA Ar", "s": [[0, 99]], "i": 11, "p": "http://panel/ye4.png"},
+                    {"n": "التفاح الحرام مدبلج S05 YASAK ELMA Ar", "s": [[0, 95]], "i": 12, "p": "http://panel/ye5.png"},
+                    {"n": "D.Gray-man HALLOW S01", "s": [[0, 103]], "i": 20}, {"n": "D.Gray-man HALLOW S02", "s": [[0, 13]], "i": 21}])
+        cat["series"][0]["name"] = "Turkish - تركية مدبلجة"
+        cat["series"][1]["name"] = "Anime - أنمي آسيوي"
+        cat["series"][1]["items"] = [x for x in cat["series"][0]["items"] if x["n"].startswith("D.Gray")]
+        cat["series"][0]["items"] = [x for x in cat["series"][0]["items"] if not x["n"].startswith("D.Gray")]
+        _write(d, "falcon", cat)
+        seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        ye = q("SELECT id, title, slug FROM content WHERE title='التفاح الحرام' AND merged_into IS NULL")
+        seasons = {r[0]: r[1] for r in q("SELECT number, episode_count FROM season WHERE content_id=?", ye[0][0])} if ye else {}
+        al = {r[0] for r in q("SELECT alias FROM content_alias WHERE content_id=?", ye[0][0])} if ye else set()
+        check("فالكون: ثلاثة مدخلات S03/S04/S05 ← كيانٌ واحد بمواسمه 3 و4 و5، الاسم الأساسي «التفاح الحرام»، والأصلي YASAK ELMA alias",
+              len(ye) == 1 and seasons == {3: 81, 4: 99, 5: 95} and "YASAK ELMA" in al and "التفاح الحرام مدبلج S03 YASAK ELMA Ar" in al, f"{[tuple(r) for r in ye]} {seasons} {al}")
+        ver = q("SELECT versions_json, raw_names_json FROM content_service WHERE content_id=?", ye[0][0])[0]
+        check("النسخة dubbed على رابط السيرفر، والأسماء الخام الثلاثة محفوظة", json.loads(ver[0]) == ["dubbed"] and len(json.loads(ver[1])) == 3)
+        dg = q("SELECT id FROM content WHERE title='D.Gray-man HALLOW' AND merged_into IS NULL")
+        check("D.Gray-man HALLOW S01 وS02 ← كيانٌ واحد بموسمين", len(dg) == 1 and {r[0] for r in q("SELECT number FROM season WHERE content_id=?", dg[0][0])} == {1, 2})
+        hs = q("SELECT title FROM content WHERE slug='heart-of-stone'")
+        check("«Heart of Stone - FHD - متعدد الترجمات» ← Heart of Stone بنسخة multi", hs and hs[0][0] == "Heart of Stone"
+              and json.loads(q("SELECT versions_json FROM content_service WHERE content_id=(SELECT id FROM content WHERE slug='heart-of-stone')")[0][0]) == ["multi"])
+        xtc = C.xtream_of(C.url_of(d, "smart"))
+        smap = seo_sources._series_map(con, xtc, st, write=False)
+        check("خريطة المسلسلات من اللوحة (الاستدعاء الذي أخطأ في الإنتاج) تعمل قراءةً", isinstance(smap, dict) and "breaking bad" in smap and q("SELECT COUNT(*) FROM api_cache")[0][0] == 0)
+        seo_sources.set_tmdb_key(con, d, "testkey"); con.commit(); con.close()
+        smp = seo_sources.sample(d, {"movie": 5, "series": 5, "turkish": 3, "anime": 3})
+        works = {w["title"]: w for w in smp["works"]}
+        check("لا فشل: failures فارغة فقط لأن run.error = 0", smp["run"]["error"] == 0 and smp["failures"] == [] and smp["errors"]["sample"] == [], str(smp["run"]))
+        check("عدّادات منفصلة: أخطاء العيّنة · أخطاء الطابور السابقة · أخطاء اللقطة", set(smp["errors"]) == {"sample", "queue_preexisting", "bundle"} and "count" in smp["errors"]["queue_preexisting"])
+        y = works.get("التفاح الحرام", {})
+        check("التفاح الحرام ← TMDB عبر الاسم الأصلي YASAK ELMA: تركي confirmed (القسم + TMDB)، والرابط من الاسم الإنجليزي (forbidden-fruit) بتحويل 301",
+              y.get("tmdb_id") == 98001 and y.get("turkish", {}).get("note") == "confirmed" and y.get("slug") == "forbidden-fruit" and y.get("slug_prev"), str({k: y.get(k) for k in ("tmdb_id", "turkish", "slug", "enrich")}))
+        g = works.get("D.Gray-man HALLOW", {})
+        check("D.Gray-man HALLOW ← TMDB: أنمي ياباني confirmed (القسم + TMDB)", g.get("tmdb_id") == 98002 and g.get("anime", {}).get("note") == "confirmed" and g.get("anime_kind") == "japanese", str(g.get("anime")))
+        w = works.get("Waynes World", {})
+        check("Waynes World ← Wayne's World (بلا فاصلة عليا)", w.get("tmdb_id") == 8870, str(w.get("enrich")))
+        h = works.get("Heart of Stone", {})
+        check("Heart of Stone بعد التنظيف ← TMDB", h.get("tmdb_id") == 99003, str(h.get("enrich")))
+        cnt = smp["counters"]
+        check("العدّادات: أسماءٌ نُظّفت، ونجاح TMDB بعد التنظيف، وتركي/أنمي confirmed", cnt["cleaned_names"] >= 3 and cnt["tmdb_after_clean"] >= 3
+              and cnt["turkish"]["confirmed"] >= 1 and cnt["anime"]["confirmed"] >= 1, str(cnt))
+        check("لكل عمل رسالة الطابور لكل مصدر", all("enrich" in w_ and "tmdb" in w_["enrich"] for w_ in smp["works"]) and y["enrich"]["tmdb"]["state"] == "done")
+        check("تغيّرات الهوية مذكورة بعددها (ترقية slug بـ 301 موثّقة)", smp["identity_changes"]["slug_changed_since_last_bundle"] >= 1 and smp["identity_changes"]["redirects_added_since_last_bundle"] >= 1, str(smp["identity_changes"]))
+        # فشلٌ حقيقي يظهر في failures بتفاصيله، ولا يُسقط العيّنة
+        con = seo_db.connect(d)
+        con.execute("UPDATE enrich_queue SET state='pending', next_at=0 WHERE source='tmdb'"); con.execute("DELETE FROM api_cache WHERE key LIKE 'tmdb:%'"); con.commit(); con.close()
+        tm.down = True
+        smp2 = seo_sources.sample(d, {"movie": 2, "series": 1, "turkish": 1, "anime": 1})
+        tm.down = False
+        check("تعطّل TMDB: run.error = عدد failures، ولكل فشل content_id وsource وoperation وerror_type وerror_message",
+              smp2["run"]["error"] >= 1 and len(smp2["failures"]) == smp2["run"]["error"]
+              and all({"content_id", "source", "operation", "error_type", "error_message"} <= set(f) for f in smp2["failures"]), str(smp2["failures"][:2]))
+        con = seo_db.connect(d)
+        idx = seo_search.load(con); st2 = seo_db.settings(con)
+        r = seo_search.explain(con, idx, "طبيعة الحب مترجم", st2)
+        check("البحث: لاحقة النسخة تُحذف من الاستعلام، ولا اقتراح تحت العتبة 0.75", r["result"] == "none" or all(x["confidence"] >= 0.75 for x in r.get("suggest", [])), str(r)[:200])
+        check("البحث بعد التنظيف: «التفاح الحرام» كيان، و«yasak elma» كيان (alias أصلي)", seo_search.explain(con, idx, "التفاح الحرام", st2)["result"] == "entity"
+              and seo_search.explain(con, idx, "yasak elma", st2)["result"] == "entity")
+        con.close()
+    finally:
+        xt.shutdown(); tm.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_enrich():
     """الإثراء من Xtream وTMDB (وهميّان، بلا إنترنت): المرشّح يُتحقَّق منه، والتصنيف، والأشخاص، والحلقات، والنافذة،
     والتباعد، والكاش — وجودة البحث على الأسماء المطلوبة."""
@@ -697,6 +795,7 @@ def main():
     unit_match()
     unit_build()
     unit_ten()
+    unit_production_cases()
     unit_enrich()
     live()
     print("\nResult: %d passed, %d failed" % (_p, _f))

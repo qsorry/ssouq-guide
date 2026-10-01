@@ -517,7 +517,8 @@ def _series_map(con, xt, st, write=True):
     """اسمٌ مطبَّع ← series_id من قائمة get_series (مرةً في اليوم في الكاش) — لرابطٍ بلا series_id."""
     base, user, pw = xt
     q = urlencode({"username": user, "password": pw, "action": "get_series"})
-    status, body, _ = get_json(con, f"xtream:{base}", f"{base}/player_api.php?{q}", st, st.get("xtream_rps", 1), headers={"User-Agent": C.UA}, write=write)
+    status, body, _ = get_json(con, f"xtream:{base}", f"{base}/player_api.php?{q}", f"xtream:{base}:get_series", st, st.get("xtream_rps", 1),
+                               headers={"User-Agent": C.UA}, write=write)
     out = {}
     for o in body or [] if isinstance(body, list) else []:
         nm = M.norm(C._split_year(C._dequal(C._clean(str(o.get("name") or ""))))[0])
@@ -716,8 +717,9 @@ def run(data_dir, limit=None, force=False, now=None):
             con.close()
 
 
-def _step(con, data_dir, r, st, backoff, res, now):
-    """عنصرٌ من الطابور في معاملته ← هل نتوقّف (مفتاحٌ مرفوض أو 429)؟"""
+def _step(con, data_dir, r, st, backoff, res, now, failures=None):
+    """عنصرٌ من الطابور في معاملته ← هل نتوقّف (مفتاحٌ مرفوض أو 429)؟ وكل فشلٍ يُضاف إلى ‏failures (إن أُعطيت) بمعرّفه
+    ومصدره وعمليته ونوع الخطأ ورسالته — فلا يكون ‏run.error > 0 مع قائمةٍ فارغة."""
     cid, source = r["content_id"], r["source"]
     if source == "tmdb" and con.execute("SELECT 1 FROM enrich_queue WHERE content_id=? AND source='xtream' AND state='pending' AND next_at<=?",
                                         (cid, now)).fetchone():
@@ -735,14 +737,19 @@ def _step(con, data_dir, r, st, backoff, res, now):
         con.execute("UPDATE enrich_queue SET next_at=?, error=?, updated_at=? WHERE content_id=? AND source=?",
                     (now + 3600, str(e)[:200], now, cid, source))
         con.commit()
+        if failures is not None:
+            failures.append({"content_id": cid, "source": source, "operation": "enrich", "error_type": "Skip", "error_message": str(e)[:200]})
         return "مفتاح" in str(e)
-    except (ConnectionError, OSError, ValueError, KeyError, TypeError) as e:
+    except Exception as e:  # noqa: BLE001 — أي فشلٍ يُسجَّل ويُؤجَّل، ولا يُسقط الدفعة
         att = r["attempts"] + 1
         state = "error" if att > len(backoff) else "pending"
         con.execute("UPDATE enrich_queue SET state=?, attempts=?, next_at=?, error=?, updated_at=? WHERE content_id=? AND source=?",
                     (state, att, now + backoff[min(att, len(backoff)) - 1], f"{type(e).__name__}: {str(e)[:180]}", now, cid, source))
         con.commit()
         res["error"] += 1
+        if failures is not None:
+            failures.append({"content_id": cid, "source": source, "operation": {"xtream": "panel info", "tmdb": "tmdb resolve/apply", "tmdb_seasons": "tmdb seasons"}.get(source, source),
+                             "error_type": type(e).__name__, "error_message": str(e)[:300]})
         return isinstance(e, ConnectionError) and "429" in str(e)
     return False
 
@@ -789,54 +796,6 @@ def state(data_dir):
 
 # ================= عيّنة حقيقية قبل الإثراء الجماعي =================
 SAMPLE_SPEC = {"movie": 10, "series": 10, "turkish": 5, "anime": 5}
-
-
-def sample(data_dir, spec=None, now=None):
-    """يختار عيّنةً من القاعدة الحقيقية (10 أفلام · 10 مسلسلات · 5 بقرينة تركي · 5 بقرينة أنمي، الأحدث إضافةً)، يثريها
-    وحدها الآن (Xtream ← TMDB ← المواسم) ← تقريرٌ لكل عمل بكل الحقول وحالات التصنيف والعدّادات وأداء الواجهات."""
-    now = int(now or time.time())
-    spec = {**SAMPLE_SPEC, **(spec or {})}
-    with seo_db.lock(data_dir):
-        con = seo_db.connect(data_dir)
-        try:
-            st = seo_db.settings(con)
-            picked, seen = [], set()
-
-            def take(label, sql, args, n):
-                for r in con.execute(sql + " ORDER BY COALESCE(c.last_seen,0) DESC, c.id DESC LIMIT ?", (*args, n * 3)):
-                    if r["id"] not in seen and len([p for p in picked if p[1] == label]) < n:
-                        seen.add(r["id"]); picked.append((r["id"], label))
-            base = "SELECT c.id FROM content c WHERE c.merged_into IS NULL AND c.available=1"
-            hub = " AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=?)"
-            take("turkish", base + hub, ("turkish",), spec["turkish"])
-            take("anime", base + hub, ("anime",), spec["anime"])
-            take("movie", base + " AND c.type='movie'", (), spec["movie"])
-            take("series", base + " AND c.type='series'", (), spec["series"])
-            ids = [i for i, _ in picked]
-            backoff = st.get("enrich_backoff") or [3600, 86400, 604800]
-            res = {"processed": 0, "done": 0, "miss": 0, "error": 0, "skipped": 0}
-            failures = []
-            for cid in ids:
-                try:                                  # فشل عملٍ لا يُسقط العيّنة: يُسجَّل ويُكمَل
-                    enqueue(con, cid, ["xtream", "tmdb"], 0, now)
-                    con.commit()
-                    for source in ("xtream", "tmdb", "tmdb_seasons"):
-                        r = con.execute("SELECT content_id, source, attempts FROM enrich_queue WHERE content_id=? AND source=? AND state='pending'", (cid, source)).fetchone()
-                        if r and _step(con, data_dir, r, st, backoff, res, now):
-                            failures.append({"id": cid, "source": source, "error": "stopped (key rejected or rate limited)"})
-                            break
-                except Exception as ex:  # noqa: BLE001
-                    con.rollback()
-                    failures.append({"id": cid, "error": f"{type(ex).__name__}: {str(ex)[:200]}"})
-            works = []
-            for cid in ids:
-                try:
-                    works.append(describe(con, cid, st))
-                except Exception as ex:  # noqa: BLE001
-                    works.append({"id": cid, "error": f"{type(ex).__name__}: {str(ex)[:200]}"})
-            return {"ok": True, "at": now, "ids": ids, "run": res, "failures": failures, "works": works, "summary": summary(con), "api": metrics()}
-        finally:
-            con.close()
 
 
 def describe(con, cid, st):
@@ -888,7 +847,16 @@ def describe(con, cid, st):
             page[lang] = {"seo_title": res[1]["title"], "meta_description": res[1]["desc"], "canonical": res[1]["canonical"],
                           "hreflang": [u for _, u in res[1]["alts"]], "json_ld": re.findall(r'"@type": "(\w+)"', html)[:6],
                           "would_index": res[1]["index_ar" if lang == "ar" else "index_en"], "why": res[1]["why"][0 if lang == "ar" else 1]}
-    return {"id": cid, "slug": c["slug"], "type": c["type"], "match": c["match"], "tmdb_id": c["tmdb_id"],
+    raw_all = [r for ln in links for r in json.loads(ln["raw_names_json"] or "[]")]
+    cleans = [M.clean_title(r, st) for r in raw_all] or [M.clean_title(c["title"], st)]
+    clean = {"raw": raw_all, "base": c["title"], "seasons_from_names": sorted({x["season"] for x in cleans if x["season"]}),
+             "originals": sorted({x["original"] for x in cleans if x["original"]}), "versions": sorted({v for x in cleans for v in x["versions"]}),
+             "cleaned": any(x["cleaned"] for x in cleans)}
+    enrich = {r["source"]: {"state": r["state"], "message": r["error"], "attempts": r["attempts"]}
+              for r in con.execute("SELECT source, state, error, attempts FROM enrich_queue WHERE content_id=?", (cid,))}
+    slug_prev = con.execute("SELECT prev FROM provenance WHERE entity='content' AND entity_id=? AND field='slug' AND prev IS NOT NULL", (cid,)).fetchone()
+    return {"id": cid, "slug": c["slug"], "slug_prev": json.loads(slug_prev[0]) if slug_prev else None, "merged_into": c["merged_into"],
+            "type": c["type"], "match": c["match"], "tmdb_id": c["tmdb_id"], "clean": clean, "enrich": enrich,
             "tmdb_candidate": {k: v for k, v in (ext.get("tmdb") or {}).items() if k in ("external_id", "verified", "how")} or None,
             "title": c["title"], "title_ar": c["title_ar"], "title_en": c["title_en"], "original_title": c["original_title"],
             "country": json.loads(c["origin_country_json"]) if c["origin_country_json"] else None, "language": c["original_language"],
@@ -1025,6 +993,95 @@ def probe(data_dir, n=20):
         con.close()
 
 
+def _tally(works, hub):
+    out = {"confirmed": 0, "tmdb_only": 0, "review": 0, "unconfirmed": 0, "none": 0}
+    for w in works:
+        c = w.get(hub)
+        if not c:
+            out["none"] += 1
+        elif c["note"] == "confirmed":
+            out["confirmed"] += 1
+        elif c["note"] == "tmdb only":
+            out["tmdb_only"] += 1
+        else:
+            out[c["decision"] if c["decision"] in out else "review"] += 1
+    return out
+
+
+def sample(data_dir, spec=None, now=None, bundle_errors=None):
+    """يختار عيّنةً من القاعدة الحقيقية (10 أفلام · 10 مسلسلات · 5 بقرينة تركي · 5 بقرينة أنمي، الأحدث إضافةً)، يثريها
+    وحدها الآن (Xtream ← TMDB ← المواسم) ← تقريرٌ لكل عمل بكل الحقول وحالات التصنيف، وعدّادات العيّنة **مفصولةً** عن
+    أخطاء الطابور السابقة وعن أخطاء اللقطة، وأداء الواجهات، وما تغيّر من هويات منذ اللقطة السابقة."""
+    now = int(now or time.time())
+    spec = {**SAMPLE_SPEC, **(spec or {})}
+    with seo_db.lock(data_dir):
+        con = seo_db.connect(data_dir)
+        try:
+            st = seo_db.settings(con)
+            with _lock:
+                _metrics.clear()                      # أداء هذه العيّنة وحدها
+            prev_at = seo_db.state(con, "bundle_at") or 0
+            picked, seen = [], set()
+
+            def take(label, sql, args, n):
+                for r in con.execute(sql + " ORDER BY COALESCE(c.last_seen,0) DESC, c.id DESC LIMIT ?", (*args, n * 3)):
+                    if r["id"] not in seen and len([p for p in picked if p[1] == label]) < n:
+                        seen.add(r["id"]); picked.append((r["id"], label))
+            base = "SELECT c.id FROM content c WHERE c.merged_into IS NULL AND c.available=1"
+            hub = " AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=?)"
+            take("turkish", base + hub, ("turkish",), spec["turkish"])
+            take("anime", base + hub, ("anime",), spec["anime"])
+            take("movie", base + " AND c.type='movie'", (), spec["movie"])
+            take("series", base + " AND c.type='series'", (), spec["series"])
+            ids = [i for i, _ in picked]
+            qs = ",".join("?" * len(ids)) or "0"
+            pre = {"count": con.execute(f"SELECT COUNT(*) FROM enrich_queue WHERE error IS NOT NULL AND error LIKE '%Error%' AND content_id NOT IN ({qs})", ids).fetchone()[0],
+                   "by_error": [dict(r) for r in con.execute(f"SELECT source, error, COUNT(*) n FROM enrich_queue WHERE error IS NOT NULL AND error LIKE '%Error%' "
+                                                            f"AND content_id NOT IN ({qs}) GROUP BY 1, 2 ORDER BY n DESC LIMIT 10", ids)]}
+            backoff = st.get("enrich_backoff") or [3600, 86400, 604800]
+            res = {"processed": 0, "done": 0, "miss": 0, "error": 0, "skipped": 0}
+            failures = []
+            for cid in ids:
+                try:                                  # فشل عملٍ لا يُسقط العيّنة: يُسجَّل ويُكمَل
+                    enqueue(con, cid, ["xtream", "tmdb"], 0, now)
+                    con.execute("UPDATE enrich_queue SET state='pending', next_at=0 WHERE content_id=? AND state IN ('miss','error')", (cid,))
+                    con.commit()
+                    for source in ("xtream", "tmdb", "tmdb_seasons"):
+                        r = con.execute("SELECT content_id, source, attempts FROM enrich_queue WHERE content_id=? AND source=? AND state='pending'", (cid, source)).fetchone()
+                        if r and _step(con, data_dir, r, st, backoff, res, now, failures):
+                            break
+                except Exception as ex:  # noqa: BLE001
+                    con.rollback()
+                    res["error"] += 1
+                    failures.append({"content_id": cid, "source": "sample", "operation": "queue", "error_type": type(ex).__name__, "error_message": str(ex)[:300]})
+            if res["error"] and not failures:          # لا يُسمح بـ error > 0 مع قائمةٍ فارغة
+                failures.append({"content_id": None, "source": "sample", "operation": "accounting", "error_type": "Unknown", "error_message": "errors counted without detail"})
+            works = []
+            for cid in ids:
+                try:
+                    works.append(describe(con, cid, st))
+                except Exception as ex:  # noqa: BLE001
+                    works.append({"id": cid, "error": f"{type(ex).__name__}: {str(ex)[:200]}"})
+            cleaned = [w for w in works if (w.get("clean") or {}).get("cleaned")]
+            counters = {
+                "cleaned_names": len(cleaned),
+                "tmdb_after_clean": sum(1 for w in cleaned if w.get("match") == "tmdb"),
+                "tmdb_matched": sum(1 for w in works if w.get("match") == "tmdb"),
+                "turkish": _tally(works, "turkish"), "anime": _tally(works, "anime"),
+            }
+            ident = {"merged_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='merged_entities' AND created_at>?", (prev_at,)).fetchone()[0],
+                     "split_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='split_entity' AND created_at>?", (prev_at,)).fetchone()[0],
+                     "slug_changed_since_last_bundle": con.execute("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL AND at>?", (prev_at,)).fetchone()[0],
+                     "redirects_added_since_last_bundle": con.execute("SELECT COUNT(*) FROM redirect WHERE created_at>?", (prev_at,)).fetchone()[0],
+                     "in_sample": [{"id": w["id"], "slug": w.get("slug"), "merged_into": w.get("merged_into")} for w in works if w.get("merged_into") or (w.get("slug_prev"))]}
+            seo_db.set_state(con, "bundle_at", now); con.commit()
+            return {"ok": True, "at": now, "ids": ids, "run": res, "failures": failures,
+                    "errors": {"sample": failures, "queue_preexisting": pre, "bundle": list(bundle_errors or [])},
+                    "counters": counters, "identity_changes": ident, "works": works, "summary": summary(con), "api": metrics()}
+        finally:
+            con.close()
+
+
 def bundle(data_dir, out, n=20):
     """لقطةٌ للمراجعة: probe وreport وsearch-report **قراءةٌ صرفة**؛ وsample وحده يثري أعماله الثلاثين. كل ملفٍ مختومٌ بالوقت
     ونسخة الكود، ومنقًّى من المفتاح وبيانات اللوحات. فشل جزءٍ لا يمنع كتابة الباقي (يُكتب خطؤه مكانه)."""
@@ -1035,12 +1092,14 @@ def bundle(data_dir, out, n=20):
     secs = secrets(data_dir)
     stamp = meta(data_dir)
     written = {}
+    bundle_errors = []
 
     def dump_json(name, fn):
         try:
             data = fn()
         except Exception as ex:  # noqa: BLE001
             data = {"error": f"{type(ex).__name__}: {str(ex)[:300]}"}
+            bundle_errors.append({"file": name, "error": data["error"]})
         text = _scrub(json.dumps({"meta": stamp, **data} if isinstance(data, dict) else {"meta": stamp, "data": data}, ensure_ascii=False, indent=1), secs)
         with open(os.path.join(out, name), "w", encoding="utf-8") as f:
             f.write(text)
@@ -1061,8 +1120,17 @@ def bundle(data_dir, out, n=20):
         with contextlib.redirect_stdout(buf):
             seo_build.main(["seo_build.py", "search-report"])
         return buf.getvalue()
-    dump_json("probe.json", lambda: probe(data_dir, n))                 # قراءة
-    dump_json("sample.json", lambda: sample(data_dir))                  # الاستثناء الوحيد: إثراء الثلاثين
+    def probe_():
+        r = probe(data_dir, n)
+        if isinstance(r, dict) and r.get("error"):
+            bundle_errors.append({"file": "probe.json", "error": r["error"]})
+        for k, v in (r.items() if isinstance(r, dict) else []):
+            for kind in ("movie", "series"):
+                if isinstance(v, dict) and isinstance(v.get(kind), dict) and v[kind].get("error"):
+                    bundle_errors.append({"file": "probe.json", "service": k, "kind": kind, "error": v[kind]["error"]})
+        return r
+    dump_json("probe.json", probe_)                                     # قراءة
+    dump_json("sample.json", lambda: sample(data_dir, bundle_errors=bundle_errors))   # الاستثناء الوحيد: إثراء الثلاثين
     dump_text("report.txt", lambda: seo_build.report(data_dir))         # قراءة
     dump_text("search-report.txt", search_report)                       # قراءة
     return {"out": out, "files": written, **stamp}

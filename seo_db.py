@@ -62,8 +62,11 @@ DEFAULTS = {
     # النسخ: لواحق في أسماء السيرفرات صفةٌ على رابط السيرفر لا على هوية العمل («طبيعة الحب مدبلج» = «طبيعة الحب»)
     "version_tags": {"dubbed": ["مدبلج", "مدبلجة", "مدبلج للعربية", "dubbed", "dub", "ar dub", "arabic dub"],
                      "subbed_soft": ["مترجم سوفت", "سوفت", "soft sub", "softsub"],
-                     "subbed": ["مترجم", "مترجمة", "subbed", "sub", "subtitled", "ar sub"]},
+                     "subbed": ["مترجم", "مترجمة", "متردم", "subbed", "sub", "subtitled", "ar sub"],
+                     "multi": ["متعدد الترجمات", "متعدد اللغات والترجمات", "متعدد اللغات", "متعددة الترجمات", "multi sub", "multi-sub", "multisub", "multi"]},
     "score_version": 2,        # في السيرفر نفسه: الاسمان لا يختلفان إلا بلاحقة النسخة
+    "score_season_split": 2,   # في السيرفر نفسه: مدخلان للعمل نفسه برمزَي موسمين مختلفين («… S03 …» و«… S04 …»)
+    "name_tail_tokens": ["ar", "en", "tr", "arabic", "english"],   # ذيولٌ في اسم السيرفر بعد الاسم الأصلي تُحذف («YASAK ELMA Ar»)
     # الإثراء (المرحلة 2): نافذة ليلية بتوقيت السعودية، وسرعات، وتباعد المحاولات، ولا يُفترض اكتماله في ليلة
     "enrich_window": {"start": "02:00", "end": "06:00", "tz_offset": 3},
     "xtream_rps": 1.0, "tmdb_rps": 4.0,
@@ -75,7 +78,7 @@ DEFAULTS = {
     "anime_countries": {"JP": "japanese", "CN": "chinese", "TW": "chinese", "HK": "chinese", "KR": "korean"},
     "anime_keyword_ids": [210024],                    # TMDB keyword «anime»
     "hub_countries": {"turkish": ["TR"]},             # الهب ← بلدان المنشأ
-    "search_max_suggest": 5, "search_min_conf": 0.5,
+    "search_max_suggest": 5, "search_min_conf": 0.75,   # اقتراحٌ تحت العتبة لا يُعرض
     "tmdb_key": "",                                   # مشفَّرٌ في القاعدة (crypto_store)؛ أو TMDB_API_KEY في البيئة
     "preview": False,                                 # صفحات الكيانات والهبّات في وضع المعاينة (noindex) — المرحلة 2
     "enrich_auto": False,                             # الإثراء الجماعي الليلي لا يبدأ قبل اعتماد العيّنة الحقيقية

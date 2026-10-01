@@ -44,25 +44,33 @@ def _signature(data_dir, srv):
 
 
 def _entry(kind, key, g, it, st):
-    name, versions = M.split_version(it["n"], st)
-    return {"type": kind, "service": key, "kind": kind, "name": name, "raw_name": it["n"], "versions": versions,
-            "year": int(it.get("y") or 0),
+    """عنصر فهرس السيرفر ← مدخلٌ باسمه الأساسي (بلا رمز موسم ولا نسخة ولا جودة)، ورمز موسمه، ونسخه، واسمه الأصلي إن
+    حملته القائمة (‏seo_match.clean_title) — والاسم الخام يبقى."""
+    c = M.clean_title(it["n"], st)
+    seasons = {int(a): int(b) for a, b in (it.get("s") or ())}
+    if c["season"] and set(seasons) <= {0, 1}:      # القائمة فرّقت المواسم باسمها: حلقات هذا المدخل كلها لموسمه
+        seasons = {c["season"]: sum(seasons.values())} if seasons else {}
+    return {"type": kind, "service": key, "kind": kind, "name": c["base"], "raw_name": c["raw"], "versions": c["versions"],
+            "season_token": c["season"], "original": c["original"], "cleaned": c["cleaned"],
+            "year": int(it.get("y") or 0) or c["year"],
             "poster": it.get("p") or "", "backdrop": it.get("b") or "", "plot": it.get("d") or "",
             "genres": list(it.get("g") or ()), "rating": float(it.get("r") or 0), "added": int(it.get("a") or 0),
             "stream_id": int(it.get("i") or 0), "tmdb_id": int(it.get("t") or 0), "series_id": int(it.get("sid") or 0),
-            "seasons": {int(a): int(b) for a, b in (it.get("s") or ())}, "groups": [g["name"]] if g.get("name") else []}
+            "seasons": seasons, "groups": [g["name"]] if g.get("name") else []}
 
 
 def _merge_entries(es):
     """مداخل قسمٍ أو أكثر لعنصرٍ واحد في السيرفر ← عنصرٌ واحد (أكبر ما رُئي: المواسم والتقييم والرقم؛ وأطول قصة)."""
     rec = dict(es[0], genres=list(es[0]["genres"]), seasons=dict(es[0]["seasons"]), groups=list(es[0]["groups"]),
-               versions=list(es[0]["versions"]), raw_names=[es[0]["raw_name"]])
+               versions=list(es[0]["versions"]), raw_names=[es[0]["raw_name"]], originals=[es[0]["original"]] if es[0]["original"] else [])
     for e in es[1:]:
         for v in e["versions"]:
             if v not in rec["versions"]:
                 rec["versions"].append(v)
         if e["raw_name"] not in rec["raw_names"]:
             rec["raw_names"].append(e["raw_name"])
+        if e["original"] and e["original"] not in rec["originals"]:
+            rec["originals"].append(e["original"])
         for f in ("poster", "backdrop", "plot", "year", "tmdb_id", "series_id"):
             if not rec[f] and e[f]:
                 rec[f] = e[f]
@@ -347,7 +355,8 @@ def _aliases(con, cid, members, now):
     """الاسم بلا لاحقة (‏title) والأسماء كما جاءت من السيرفر (‏raw، بلاحقتها) — كلها إلى الكيان نفسه، بمفتاحها الصوتي."""
     rows = []
     for m in members:
-        names = [(m["name"], "title")] + [(r, "raw") for r in (m.get("raw_names") or [m.get("raw_name") or ""]) if r and r != m["name"]]
+        names = [(m["name"], "title")] + [(r, "raw") for r in (m.get("raw_names") or [m.get("raw_name") or ""]) if r and r != m["name"]] \
+            + [(o, "original") for o in (m.get("originals") or ([m["original"]] if m.get("original") else []))]
         for n, kind in names:
             if M.norm(n):
                 rows.append((cid, n, M.norm(n), None, "m3u", m["service"], now, kind, M.phonetic(n)))
