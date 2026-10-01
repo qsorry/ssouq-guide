@@ -286,6 +286,10 @@ label.force input{width:16px;height:16px;accent-color:var(--amber)}
       <button class="ghost" type="button" id="eRun">دفعة إثراءٍ الآن</button>
       <button class="ghost" type="button" id="eQueue">حال الطابور</button></div>
     <label class="switch"><input type="checkbox" id="eAuto"><span>الإثراء الجماعي الليلي (لا يُفعَّل قبل اعتماد العيّنة الحقيقية)</span></label>
+    <div class="acts" style="margin-top:10px"><button class="go" type="button" id="eBundle">أنتج ملفات المراجعة</button>
+      <span class="hint">probe.json · sample.json · report.txt · search-report.txt — الفحص قراءةٌ صرفة، والعيّنة وحدها تُثرى؛ يستغرق دقائق</span></div>
+    <p class="meta" id="eBundleState"></p>
+    <ul class="alist" id="eBundleFiles" hidden></ul>
     <div class="msg" id="eMsg2"></div>
     <pre class="mono" id="eOut" hidden style="white-space:pre-wrap;max-height:320px;overflow:auto;font-size:.8rem"></pre>
     <div class="row" style="margin-top:10px"><input id="eQ" placeholder="جرّب البحث: person break · بريزن بريك · طبيعة الحب مدبلج" maxlength="80">
@@ -886,6 +890,21 @@ $("eAuto").onchange = async () => {
   const d = await api("/api/content/admin/seo-settings", {settings: {enrich_auto: $("eAuto").checked}}).catch(() => ({error: "تعذّر الاتصال"}));
   $("eMsg2").textContent = d.error || ($("eAuto").checked ? "الإثراء الليلي مفعّل" : "الإثراء الليلي موقوف");
 };
+let bPoll = 0;
+function renderBundle(d) {
+  const l = d.last || {};
+  $("eBundleState").textContent = d.running ? "يُنتَج الآن… (الفحص الأولي ثم عيّنة الثلاثين)"
+    : l.ok ? `أُنتجت ${when(l.at)} · الكود ${l.commit ? l.commit.slice(0, 7) : l.code_fingerprint || ""}` : l.error ? `فشل: ${l.error}` : (d.files.length ? "ملفات سابقة" : "لم تُنتج بعد");
+  const ul = $("eBundleFiles"); ul.hidden = !d.files.length;
+  ul.innerHTML = d.files.map(f => `<li><span><a class="linkbtn" href="${B}/api/content/seo/bundle/${esc(f.name)}" download>${esc(f.name)}</a></span><small>${mb(f.size)} · ${when(f.at)}</small></li>`).join("");
+  clearTimeout(bPoll); if (d.running) bPoll = setTimeout(loadBundle, 5000);
+}
+async function loadBundle() { try { renderBundle(await api("/api/content/seo/bundle")); } catch (e) {} }
+$("eBundle").onclick = async () => {
+  const d = await api("/api/content/admin/seo-bundle", {}).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { $("eBundleState").textContent = d.error; return; }
+  renderBundle(d);
+};
 $("eRun").onclick = async () => {
   const d = await api("/api/content/admin/seo-run", {}).catch(() => ({error: "تعذّر الاتصال"}));
   $("eMsg2").textContent = d.error || (d.started ? "بدأت دفعةٌ في الخلفية" : "دفعةٌ جارية أصلًا"); showOut(d.queue || d);
@@ -1094,7 +1113,7 @@ $("nAdd").onclick = async () => {
   DATA = d; render();
 };
 
-load(); loadSeo();
+load(); loadSeo(); loadBundle();
 </script>
 </body>
 </html>

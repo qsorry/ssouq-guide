@@ -1607,8 +1607,9 @@ HTML لا يُمسّ: ‏`alt` الصورة لقطةٌ من يومها):
   والعدّادات، وأداء الواجهات. ثم يُفعَّل الإثراء الليلي من البطاقة. و`/content/countries/turkey/` → 301 إلى هب التركي (لا صفحتان تتنافسان).
   والتصنيف متحفّظ: TMDB المصدر الأساسي والقسم hint؛ اتفاقهما confirmed، واختلافهما **مراجعة** (‏`taxonomy_mismatch`) تُعلَّم فيها عضويات TMDB
   المختلَف عليها `disputed` فلا تدخل الهب، ونقص TMDB `taxonomy_unconfirmed` — لا اعتماد تلقائي لرأي TMDB عند تعارض الأدلة.
-  و`python seo_sources.py bundle --out=seo-review` لقطةٌ للمراجعة: `probe.json` · `sample.json` · `report.txt` · `search-report.txt` —
-  الثلاثة الأولى قراءةٌ صرفة وsample وحده يثري الثلاثين؛ مختومةٌ بالوقت ونسخة الكود ومنقّاة من المفتاح وبيانات اللوحات.
+  و`python seo_sources.py bundle --out=seo-review` (أو زرّ «أنتج ملفات المراجعة» في البطاقة، في الخلفية، بروابط تنزيلٍ للمدير من
+  `data/content/seo-review/`) لقطةٌ للمراجعة: `probe.json` · `sample.json` · `report.txt` · `search-report.txt` — الثلاثة الأولى قراءةٌ صرفة
+  وsample وحده يثري الثلاثين؛ مختومةٌ بالوقت ونسخة الكود ومنقّاة من المفتاح وبيانات اللوحات.
 - **اللغات**: نصوص الكيانات بأي لغة في `content_text` (العربية والإنجليزية تُعكس في أعمدتها)، واللغات الفعّالة في إعداد `languages`
   والبادئة تُشتقّ منها (‏`/en` · `/tr`…) — لغةٌ جديدة لاحقًا بلا ترحيل، ولا ترجمة جماعية الآن.
 - المسارات (للمدير): `GET /api/content/seo/enrich` · `GET /api/content/seo/search?q=` · `POST /api/content/admin/seo-key` · `seo-probe` ·
