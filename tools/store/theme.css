@@ -1312,8 +1312,81 @@ details.ssq-rv summary.ssq-rv-close::marker{content:""!important}
 @keyframes ssq-rv-cycle{0%{opacity:0;visibility:hidden;transform:translateY(18px)}1%{opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto}7%{opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto}8%{opacity:0;visibility:hidden;transform:translateY(18px);pointer-events:none}100%{opacity:0;visibility:hidden;transform:translateY(18px);pointer-events:none}}
 @media (prefers-reduced-motion:reduce){details.ssq-rv .ssq-rv-card{animation-duration:0s}details.ssq-rv .ssq-rv-card:first-of-type{opacity:1;visibility:visible;transform:none;pointer-events:auto}}
 
-/* ssq: نافذة خصم العيد الوطني — تظهر في صفحة الاشتراكات فقط */
-body:has(#product-filter)::after{content:"🇸🇦 هلا بزائرنا\A استغل الفرصة: خصومات العيد الوطني\A بنسبة خصم تصل إلى 50%\A الخصم مطبّق تلقائيًا على باقات مختارة";white-space:pre-line;position:fixed;z-index:9995;bottom:20px;right:16px;left:16px;box-sizing:border-box;padding:18px 20px;direction:rtl;text-align:center;font-family:inherit;font-size:16px;line-height:1.8;font-weight:600;color:#F1F8FB;background:linear-gradient(160deg,#143E50,#0A2735);border:1px solid rgba(127,220,248,.28);border-radius:18px;box-shadow:0 16px 40px rgba(0,0,0,.5);opacity:0;visibility:hidden;transform:translateY(24px);pointer-events:none;animation:ssq-promo 16s ease forwards}
-body:has(#product-filter)::after::first-line{font-size:19px}
-@media (min-width:640px){body:has(#product-filter)::after{left:auto;right:24px;width:380px;bottom:24px}}
-@keyframes ssq-promo{0%{opacity:0;visibility:hidden;transform:translateY(24px)}8%{opacity:0;visibility:hidden;transform:translateY(24px)}12%{opacity:1;visibility:visible;transform:translateY(0)}90%{opacity:1;visibility:visible;transform:translateY(0)}100%{opacity:0;visibility:hidden;transform:translateY(24px)}}
+/* =========================================================
+   37 — صفحة الاشتراكات الرقمية (والتصنيفات والرئيسية)
+   ========================================================= */
+
+/* 37.1 — القائمة المثبّتة عند التمرير
+   الثيم لا يثبّت `.store-header` بل `.main-nav-container .inner` وحدها
+   (`.fixed-pinned` → position:fixed)، والقسم 03 يجعل `.inner` شفافة لأن
+   خلفية الرأس على `.store-header`. فتخرج الأيقونات من خلفيتها وتطفو
+   عاريةً فوق البطاقات: الشعار والسلة والحساب فوق السعر وزر الإضافة. */
+.main-nav-container.fixed-pinned .inner{
+  background:rgba(8,31,42,.96)!important;
+  border-bottom:1px solid var(--ssq-border);
+  box-shadow:0 8px 28px rgba(0,0,0,.28)!important;
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+
+/* 37.2 — بطاقات بارتفاع موحّد
+   "توحيد ارتفاع المنتجات" يمدّ البطاقة لطول أطول جاراتها في الصف، والثيم
+   يوزّع الزيادة بـ`justify-content:space-between` بين الصورة والمحتوى —
+   فيقع فراغٌ فوق العنوان (94px لبطاقة "سمارت 3 أشهر" بجانب Duplecast الذي
+   له وصف). المحتوى الآن يأخذ الزيادة، والعنوان يلي الصورة، والزر يبقى
+   في القاع (`.s-product-card-content-footer` له margin-top:auto).
+   فوق 640px الصورة نفسها مرنة حتى 15rem: تأخذ الزيادة أولًا (1000 مقابل 1)
+   كما كانت، وما يفيض عن حدّها يذهب إلى المحتوى لا إلى فراغ. */
+.s-product-card-fit-height.s-product-card-vertical .s-product-card-content{flex:1 1 auto}
+@media(min-width:640px){
+  .s-product-card-fit-height.s-product-card-vertical .s-product-card-image{flex:1000 1 0%}
+}
+
+/* 37.3 — الجوال لا "يحوم"
+   اللمس يترك `:hover` عالقًا على آخر بطاقة لُمست، فترتفع 5px عن جاراتها
+   ويضيء إطارها. الحركة لمن معه مؤشّر فقط. */
+@media(hover:none){
+  .s-product-card-entry:hover{
+    transform:none;
+    border-color:var(--ssq-border)!important;
+    box-shadow:0 10px 28px rgba(0,0,0,.22);
+  }
+  .s-product-card-entry:hover .s-product-card-image img,
+  .s-product-card-entry salla-add-product-button button.s-button-element:hover{transform:none}
+}
+
+/* 37.4 — زر الخصم العائم ونافذته (من JS المتجر: #ssq-badge و#ssq-promo)
+   السكربت يلوّنهما بـ`--color-primary`، وقد صار سماويًّا فاتحًا (#7FDCF8)
+   في 34.1 لأن الثيم يستعمله نصًّا — فيخرج الزر نصًّا أبيض على سماوي فاتح
+   لا يُقرأ، ومثله زر "نسخ الكود". والنافذة بيضاء والقسم 01 يجعل كل
+   h3 فاتحًا (#F1F8FB) فيختفي عنوانها. هنا يأخذان ألوان المتجر الداكنة. */
+#ssq-badge{
+  background:linear-gradient(135deg,#0A6E9E,#087EA9)!important;
+  color:#fff!important;
+  border:1px solid rgba(127,220,248,.35)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.35)!important;
+  padding:8px 14px!important;
+  font-size:13px!important;
+  line-height:1.4;
+}
+#ssq-promo .ssq-box{
+  background:linear-gradient(160deg,#143E50,#0A2735)!important;
+  color:var(--ssq-text)!important;
+  border:1px solid rgba(127,220,248,.28);
+  box-shadow:0 22px 60px rgba(0,0,0,.5)!important;
+}
+#ssq-promo h3{color:var(--ssq-text)!important}
+#ssq-promo p,#ssq-promo .ssq-x{color:var(--ssq-muted)!important}
+#ssq-promo .ssq-code{
+  border-color:var(--ssq-gold)!important;
+  background:rgba(4,34,55,.55);
+  color:#fff;
+}
+#ssq-promo .ssq-copy{
+  background:linear-gradient(135deg,#0A6E9E,#087EA9)!important;
+  color:#fff!important;
+}
+#ssq-promo .ssq-link{
+  border-color:var(--ssq-cyan)!important;
+  color:var(--ssq-cyan-light)!important;
+}

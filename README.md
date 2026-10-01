@@ -627,6 +627,10 @@ python tests/test_renew.py
 - `store_sync.py` أعداد المحتوى في وصف منتجات سلة: ما يُعرف في الوصف ويُبدَّل، ورمز سلة وتجديده، والمعاينة والتحديث
   ودورته بعد السحب. بياناته في `data/content/_store.json` (المنتجات المربوطة وحالها، والرمز والأسرار مشفَّرة).
 - `tools/sync_guide_data.js` يستخرج كائن `DEVICES` من `index.html` إلى `static/guide-data.json`.
+- `tools/store/theme.css` الـCSS المخصّص لمتجر ssouq.com (قالب رائد) — المرجع لما يُلصق في لوحة سلة: التصميم ←
+  تخصيص الثيم ← CSS مخصّص (يُستبدل كاملًا؛ أدوات سلة المتصلة لا تكتبه). سلة تنشره في
+  `cdn.assets.salla.network/themes/customization/831097886/1298199463/158785638.css`. وما يرسمه JS المتجر
+  (زر الخصم العائم `#ssq-badge` ونافذته `#ssq-promo`) يُلوَّن من هذا الملف في القسم 37.4.
 - `tools/video/` مصدر فيديوهات الدليل (`static/video/`): محرّك واحد (`engine.css` و`engine.js`)، وصفحة
   لكل فيديو بمشاهده (`ssiptv.html` و`0player.html` و`smarters.html`)، و`render.js <الاسم>` يصوّرها، و`capture_*.js`
   تعيد التقاط صورها (والشاشات المرسومة في `tv_0player.html` و`tv_smarters.html`)، و`shots_0player.js`
