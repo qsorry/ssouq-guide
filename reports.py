@@ -33,6 +33,9 @@ import time
 import unicodedata
 
 import content
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import Request
 
 PATH = "/report"
 DIR = "reports"
@@ -46,6 +49,13 @@ WRONG = {"series": "الحلقة ليست هي", "movie": "الفيلم ليس �
 PROBLEMS_EN = {"down": "Not working", "buffer": "Buffering", "wrong": "Wrong episode", "subs": "Wrong subtitles", "add": "Request to add"}
 KIND_EN = {"series": "series", "movie": "movie", "live": "channel"}
 WRONG_EN = {"series": "Wrong episode", "movie": "Wrong movie", "live": "Wrong channel"}
+# لغة المسلسل أو الفيلم في طلب الإضافة (قائمةٌ في الصفحة، وتُعرف من رابطه): الرمز ← (بالعربية، بالإنجليزية)
+LANGS = {"ar": ("عربي", "Arabic"), "en": ("إنجليزي", "English"), "tr": ("تركي", "Turkish"), "ko": ("كوري", "Korean"),
+         "hi": ("هندي", "Hindi"), "es": ("إسباني", "Spanish"), "fr": ("فرنسي", "French"), "ja": ("ياباني", "Japanese"),
+         "zh": ("صيني", "Chinese"), "fa": ("فارسي", "Persian"), "ur": ("أردو", "Urdu"), "de": ("ألماني", "German"),
+         "it": ("إيطالي", "Italian"), "pt": ("برتغالي", "Portuguese"), "ru": ("روسي", "Russian"), "th": ("تايلندي", "Thai"),
+         "other": ("لغة أخرى", "Other")}
+LINK_MAX = 400
 KINDS = ("series", "movie", "live")
 KEEP = 3000                  # ما يُحفظ من البلاغات، والمنجز الأقدم يُسقط أولًا
 PEOPLE_MAX = 30              # أصحاب البلاغ الواحد (بأرقامهم) — والباقي عددٌ في ‏count
@@ -267,16 +277,29 @@ def problem_name(problem, kind="", lang="ar"):
     return (PROBLEMS_EN if en else PROBLEMS).get(problem, "")
 
 
+def link_of(v):
+    """رابط المسلسل أو الفيلم كما لصقه ← "" بلا رابط، وInvalid لما ليس رابط http(s)."""
+    s = str(v or "").strip()
+    if not s:
+        return ""
+    u = urlsplit(s)
+    if u.scheme not in ("http", "https") or not u.hostname or len(s) > LINK_MAX or re.search(r"[\s<>\"']", s):
+        raise Invalid("الرابط غير صحيح — الصقه كما هو من المتصفح", "Invalid link — paste it as it is from the browser")
+    return s
+
+
 def _request(srv, form):
-    """طلب إضافة: النوع والاسم كما كتبه (والسنة إن ذكرها) — لا يُطابَق بالفهرس، فما يطلبه ليس فيه."""
+    """طلب إضافة: النوع والاسم كما كتبه، والسنة ولغته من قائمتيهما ورابطه إن وضعه — لا يُطابَق بالفهرس، فما يطلبه ليس فيه."""
     kind = str(form.get("t") or "")
     if kind not in ("series", "movie"):
         raise Invalid("اختر: مسلسل أو فيلم", "Choose: series or movie")
     name = _text(form.get("n"), content.NAME_MAX)
     if len(name.replace(" ", "")) < 2:
         raise Invalid("اكتب اسم المسلسل أو الفيلم", "Write the series or movie name")
+    cl = str(form.get("cl") or "")
     return {"server": srv["key"], "sname": srv["name"], "sname_en": content.en_name(srv), "kind": kind, "gid": "", "group": "", "title": name,
-            "year": _int(form.get("y"), 1900, 2100) or 0, "season": None, "ep": None, "problem": ADD, "p": ""}
+            "year": _int(form.get("y"), 1900, 2100) or 0, "season": None, "ep": None, "problem": ADD, "p": "",
+            "cl": cl if cl in LANGS else "", "link": link_of(form.get("link"))}
 
 
 def submit(data_dir, form, now=None):
@@ -487,7 +510,8 @@ def alert_text_en(r, new):
     if r.get("problem") == ADD:
         kind = KIND_EN.get(r.get("kind"), "")
         head = (f"🙋 *Request to add a {kind} on {srv}*" if new else f"🔁 *Request to add a {kind} on {srv}* — {n} subscribers asked")
-        lines = [head, "", f"🎬 {title}"]
+        lines = [head, "", f"🎬 {title}"] + ([f"🌐 {LANGS[r['cl']][1]}"] if r.get("cl") in LANGS else []) \
+            + ([f"🔗 {r['link']}"] if r.get("link") else [])
     else:
         prob = problem_name(r.get("problem"), r.get("kind"), "en")
         head = (f"🔔 *New report on {srv}: {prob}*" if new else f"🔁 *Repeated report on {srv}: {prob}* ({n} reports)")
@@ -513,7 +537,8 @@ def alert_text(r, new, lang="ar"):
     if r.get("problem") == ADD:                        # طلب إضافة: الاسم كما كتبه، بلا قسمٍ ولا حلقة
         kind = KIND_ONE.get(r.get("kind"), "")
         head = (f"🙋 *طلب إضافة {kind} في {srv}*" if new else f"🔁 *طلب إضافة {kind} في {srv}* — طلبه {n} مشتركين")
-        lines = [head, "", f"{rlm}🎬 {title}"]
+        lines = [head, "", f"{rlm}🎬 {title}"] + ([f"{rlm}🌐 {LANGS[r['cl']][0]}"] if r.get("cl") in LANGS else []) \
+            + ([f"🔗 {r['link']}"] if r.get("link") else [])
     else:
         prob = problem_name(r.get("problem"), r.get("kind"))
         head = (f"🔔 *بلاغ جديد في {srv}: {prob}*" if new else f"🔁 *بلاغٌ متكرّر في {srv}: {prob}* ({n} بلاغات)")
@@ -627,3 +652,156 @@ def notify(data_dir, rid, text, by="", now=None):
             rec["updates"] = ((rec.get("updates") or []) + [up])[-UPDATES_KEEP:]
             _save(data_dir, d)
     return up
+
+
+# ================= رابط المسلسل أو الفيلم: يعبّئ طلب الإضافة وحده =================
+# يُقرأ من الصفحة نفسها ما تعلنه للمحركات: JSON-LD (‏@type ‏Movie · TVSeries، والاسم وتاريخه ولغته)، ثم Open Graph (‏og:title
+# ‏og:type)، ثم <title> — كما في IMDb و TMDB و Letterboxd وأغلب مواقع الأفلام. وطلب الرابط من خادمنا بحرص: عنوانٌ عام وحده
+# (‏content._public_host، والتحويل يُفحص كذلك)، ومهلةٌ قصيرة، وأولُ 1.5 MB، وحدٌّ بالساعة لكل عنوان.
+LOOKUP_MAX = 1536 * 1024
+LOOKUP_TIMEOUT = 8
+LOOKUP_RATE = 30                  # قراءة روابط بالساعة لكل عنوان
+UA_BROWSER = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+_lookups = {}
+# اسم اللغة كما تكتبه المواقع ← رمزها في LANGS
+_LANG_NAMES = {"arabic": "ar", "english": "en", "turkish": "tr", "korean": "ko", "hindi": "hi", "spanish": "es", "castilian": "es",
+               "french": "fr", "japanese": "ja", "chinese": "zh", "mandarin": "zh", "cantonese": "zh", "persian": "fa", "farsi": "fa",
+               "urdu": "ur", "german": "de", "italian": "it", "portuguese": "pt", "russian": "ru", "thai": "th"}
+_SITE_TAIL = re.compile(r"\s+[-—|·:]\s+(IMDb|TMDB|The Movie Database.*|Letterboxd|Netflix|Wikipedia.*|ويكيبيديا.*|Shahid|شاهد|"
+                        r"OSN\+?|Prime Video|Apple TV\+?|elCinema.*|السينما\.كوم.*)\s*$", re.I)
+_TV_HINT = re.compile(r"\b(TV (Mini )?Series|TV Show|Series|Season)\b|مسلسل", re.I)
+_YEAR = re.compile(r"\b(19[0-9]{2}|20[0-9]{2})\b")
+
+
+def _lang_code(v):
+    """«English» أو «en» أو «en-US» أو {name: …} ← رمز اللغة في LANGS، أو ""."""
+    if isinstance(v, dict):
+        v = v.get("name") or v.get("alternateName") or ""
+    if isinstance(v, list):
+        return next((c for c in (_lang_code(x) for x in v) if c), "")
+    s = str(v or "").strip().lower()
+    code = s.split("-")[0].split("_")[0]
+    if code in LANGS and code != "other":
+        return code
+    return next((c for name, c in _LANG_NAMES.items() if s.startswith(name)), "")
+
+
+def _ld_items(html):
+    out = []
+    for m in re.finditer(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, re.S | re.I):
+        try:
+            d = json.loads(m.group(1).strip())
+        except ValueError:
+            continue
+        stack = d if isinstance(d, list) else [d]
+        while stack:
+            x = stack.pop(0)
+            if isinstance(x, dict):
+                out.append(x)
+                stack.extend(x.get("@graph") or [])
+    return out
+
+
+def _meta(html, prop):
+    for pat in (r'<meta[^>]+(?:property|name)=["\']%s["\'][^>]*content=["\']([^"\']*)["\']',
+                r'<meta[^>]+content=["\']([^"\']*)["\'][^>]*(?:property|name)=["\']%s["\']'):
+        m = re.search(pat % re.escape(prop), html, re.I)
+        if m:
+            return _unescape(m.group(1))
+    return ""
+
+
+def _unescape(s):
+    import html as _h
+    return " ".join(_h.unescape(s or "").split())
+
+
+def parse_page(html, url=""):
+    """صفحة المسلسل أو الفيلم ← {kind, name, year, lang} (ما عُرف منها، والفارغ لما لم يُعرف)."""
+    out = {"kind": "", "name": "", "year": 0, "lang": ""}
+    path = urlsplit(url).path.lower()
+    if re.search(r"/(tv|series|show|shows|tv-shows?)/", path + "/"):
+        out["kind"] = "series"
+    elif re.search(r"/(movie|movies|film|films)/", path + "/"):
+        out["kind"] = "movie"
+    for x in _ld_items(html):
+        t = x.get("@type")
+        t = " ".join(t) if isinstance(t, list) else str(t or "")
+        if not re.search(r"Movie|TVSeries|TVSeason|TVEpisode|CreativeWorkSeries", t):
+            continue
+        out["kind"] = out["kind"] or ("movie" if "Movie" in t else "series")
+        out["name"] = out["name"] or _unescape(str(x.get("name") or ""))
+        m = _YEAR.search(str(x.get("datePublished") or x.get("startDate") or x.get("dateCreated") or ""))
+        out["year"] = out["year"] or (int(m.group(1)) if m else 0)
+        out["lang"] = out["lang"] or _lang_code(x.get("inLanguage"))
+    og_type = _meta(html, "og:type").lower()
+    if not out["kind"] and og_type:
+        out["kind"] = "series" if ("tv" in og_type or "episode" in og_type) else "movie" if "movie" in og_type else ""
+    m = re.search(r"<title[^>]*>(.*?)</title>", html, re.S | re.I)
+    titles = [t for t in (_meta(html, "og:title"), _meta(html, "twitter:title"), _unescape(m.group(1)) if m else "") if t]
+    for i, title in enumerate(titles):                  # الاسم من أولها، والسنة والنوع ممّا بين قوسين في أيٍّ منها
+        title = re.sub(r"\s*[⭐|].*$", "", _SITE_TAIL.sub("", title)).strip()   # «… ⭐ 9.5 | Crime, Drama» في og:title عند IMDb
+        if not out["kind"] and _TV_HINT.search(title):
+            out["kind"] = "series"
+        paren = re.search(r"\s*\(([^)]*)\)\s*$", title)          # «Breaking Bad (TV Series 2008–2013)» «Dune (2021)»
+        if paren:
+            y = _YEAR.search(paren.group(1))
+            out["year"] = out["year"] or (int(y.group(1)) if y else 0)
+            if _TV_HINT.search(paren.group(1)):
+                out["kind"] = out["kind"] or "series"
+            title = title[:paren.start()].strip()
+        if i == 0 or not out["name"]:
+            out["name"] = out["name"] or title
+    if not out["lang"]:                                    # IMDb: ‏title-details-languages؛ TMDB: «Original Language»
+        m = (re.search(r'title-details-languages.*?<a[^>]*>([^<]+)</a>', html, re.S | re.I)
+             or re.search(r'Original Language\s*(?:</[^>]+>\s*)+([A-Za-z][A-Za-z ]+)', html, re.I)
+             or re.search(r'"original_language"\s*:\s*"([a-z]{2})"', html))
+        out["lang"] = _lang_code(m.group(1)) if m else ""
+    out["name"] = _text(out["name"], content.NAME_MAX)
+    if out["year"] and not 1900 <= out["year"] <= 2100:
+        out["year"] = 0
+    return out
+
+
+def lookup_ok(ip, now=None):
+    """حدّ قراءة الروابط بالساعة لكل عنوان (كحدّ البلاغات، بعدّادٍ مستقل)."""
+    if not ip:
+        return True
+    hour = int((now or time.time()) // 3600)
+    k = hashlib.sha256(str(ip).encode()).hexdigest()[:16] + ":" + str(hour)
+    with _lock:
+        for old in [x for x in _lookups if not x.endswith(":" + str(hour))]:
+            _lookups.pop(old, None)
+        _lookups[k] = _lookups.get(k, 0) + 1
+        return _lookups[k] <= LOOKUP_RATE
+
+
+def lookup(url):
+    """يقرأ صفحة الرابط ← {ok, kind, name, year, lang} أو {ok: False, error, en}. لا يرمي استثناءً."""
+    try:
+        url = link_of(url)
+    except Invalid as e:
+        return {"ok": False, "error": str(e), "en": e.en}
+    bad = {"ok": False, "error": "تعذّر قراءة الرابط — اكتب البيانات بنفسك", "en": "Couldn’t read the link — fill in the details yourself"}
+    if not url:
+        return {"ok": False, "error": "الصق الرابط", "en": "Paste the link"}
+    if not content._public_host(urlsplit(url).hostname or ""):
+        return bad
+    try:
+        rq = Request(url, headers={"User-Agent": UA_BROWSER, "Accept": "text/html,application/xhtml+xml",
+                                   "Accept-Language": "en-US,en;q=0.8,ar;q=0.6"})
+        with content.build_opener(content._SafeRedirect).open(rq, timeout=LOOKUP_TIMEOUT) as r:
+            if "html" not in (r.headers.get("Content-Type") or "text/html").lower():
+                return bad
+            raw = r.read(LOOKUP_MAX)
+            charset = r.headers.get_content_charset() or "utf-8"
+    except (HTTPError, URLError, OSError, ValueError):
+        return bad
+    try:
+        html = raw.decode(charset, "replace")
+    except LookupError:
+        html = raw.decode("utf-8", "replace")
+    d = parse_page(html, url)
+    if not d["name"]:
+        return bad
+    return dict(d, ok=True)
