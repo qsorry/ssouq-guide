@@ -507,6 +507,12 @@ def report(data_dir):
     lines.append(f"تحتاج مراجعة: {r['open']:,} — " + " · ".join(f"{k}: {n:,}" for k, n in sorted(r["by_kind"].items())))
     lines.append(f"المصادر: " + " · ".join(f"{k}: {n:,}" for k, n in sorted(s["provenance"].items())))
     lines.append(f"حجم القاعدة: {s['db_bytes'] / 1048576:.1f} MB · آخر بناء: {time.strftime('%Y-%m-%d %H:%M', time.gmtime(s['built_at']))} UTC")
+    con = seo_db.connect(data_dir, create=False)
+    if con:
+        sm = seo_sources.summary(con); con.close()
+        lines.append(f"المرحلة 2: مطابقات عالية الثقة {sm['high_confidence_matches']:,} · بلا TMDB {sm['no_tmdb']:,} · تعارضات {sm['conflicts']:,} · "
+                     f"تحتاج مراجعة {sm['needs_review']['total']:,} · تركي مؤكّد {sm['turkish_confirmed']:,} · أنمي مؤكّد {sm['anime_confirmed']:,} {sm['anime_by_kind']} · "
+                     f"قرائن أقسام بلا تأكيد {sm['hints_only']} · نسخ {sm['versions']:,} · أشخاص {sm['people']:,} · حلقات مفصّلة {sm['episodes_detailed']:,} · الطابور {sm['queue']}")
     return "\n".join(lines)
 
 

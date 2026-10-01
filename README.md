@@ -1601,8 +1601,14 @@ HTML لا يُمسّ: ‏`alt` الصورة لقطةٌ من يومها):
   بالنسخ والباقة (‏`utm_campaign=content-entity`). والهب مقدمته تحريرية (‏`taxonomy.intro_ar/intro_en`) ويشير إلى رابط العمل الواحد لا نسخةٍ
   منه. و«افحص عيّنة 30 عملًا» (أو `python seo_pages.py audit`) يفحص status · canonical · hreflang · title · description · H1 · breadcrumb ·
   schema · الروابط الداخلية · alt · لا canonical مكرّر، ويقول لكل صفحة هل تستحق الفهرسة ولماذا. و`/ar/content/…` يحوّل 301 إلى `/content/…`.
+- **قبل الإثراء الجماعي**: الإثراء الليلي **موقوفٌ افتراضيًّا** (‏`enrich_auto`) حتى تُفحص عيّنةٌ حقيقية: «عيّنة 30 عملًا» (10 أفلام · 10 مسلسلات ·
+  5 بقرينة تركي · 5 بقرينة أنمي) تُثرى وحدها فورًا ويعود تقريرها بكل الحقول لكل عمل، وحالات التصنيف (TMDB يقول أنمي والقسم لا → أنمي بثقة
+  عالية والقسم hint؛ TMDB لم يحسم والقسم يقول تركي → لا تصنيف تلقائي ومراجعة `taxonomy_unconfirmed`؛ اختلاف القسم عن TMDB → `taxonomy_mismatch`)،
+  والعدّادات، وأداء الواجهات. ثم يُفعَّل الإثراء الليلي من البطاقة. و`/content/countries/turkey/` → 301 إلى هب التركي (لا صفحتان تتنافسان).
+- **اللغات**: نصوص الكيانات بأي لغة في `content_text` (العربية والإنجليزية تُعكس في أعمدتها)، واللغات الفعّالة في إعداد `languages`
+  والبادئة تُشتقّ منها (‏`/en` · `/tr`…) — لغةٌ جديدة لاحقًا بلا ترحيل، ولا ترجمة جماعية الآن.
 - المسارات (للمدير): `GET /api/content/seo/enrich` · `GET /api/content/seo/search?q=` · `POST /api/content/admin/seo-key` · `seo-probe` ·
-  `seo-run` · `seo-settings` · `seo-audit`. والاختبارات بلوحة TMDB وهمية (‏`tests/mock_tmdb.py`) ولوحة Xtream بتفاصيلها:
+  `seo-sample` · `seo-run` · `seo-settings` · `seo-audit`. والاختبارات بلوحة TMDB وهمية (‏`tests/mock_tmdb.py`) ولوحة Xtream بتفاصيلها:
   `python tests/test_seo.py`. والتقرير: [docs/phase2-report.md](docs/phase2-report.md).
 
 

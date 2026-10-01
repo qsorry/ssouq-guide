@@ -4037,6 +4037,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_sources.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-probe":     # الفحص الأولي: ماذا تعطي كل لوحة (يتصل باللوحات الآن)
                 return self._send(200, {"ok": True, "probe": seo_sources.probe(DATA_DIR, int(body.get("n") or 20))})
+            elif path == "/api/content/admin/seo-sample":    # عيّنة 30 عملًا حقيقيًّا: تُثرى الآن (وحدها) وتقريرها الكامل — قبل الإثراء الجماعي
+                return self._send(200, {"ok": True, "sample": seo_sources.sample(DATA_DIR, body.get("spec") if isinstance(body.get("spec"), dict) else None)})
             elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
                 return self._send(200, {"ok": True, "audit": seo_pages.audit(DATA_DIR, int(body.get("n") or 30))})
             elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)

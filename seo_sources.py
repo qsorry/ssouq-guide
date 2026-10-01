@@ -62,6 +62,24 @@ GROUP_RULES = [
 
 _lock = threading.Lock()
 _last_call = {}                     # المصدر ← وقت آخر طلب (تحديد السرعة)
+_metrics = {}                       # المصدر ← {n, seconds, max, errors, cache_hits} — أداء الواجهات لتقرير العيّنة
+
+
+def _metric(source, seconds=None, status=None, cache_hit=False):
+    with _lock:
+        m = _metrics.setdefault(source, {"n": 0, "seconds": 0.0, "max": 0.0, "errors": 0, "cache_hits": 0})
+        if cache_hit:
+            m["cache_hits"] += 1
+            return
+        m["n"] += 1
+        m["seconds"] += seconds
+        m["max"] = max(m["max"], seconds)
+        if status and status >= 400:
+            m["errors"] += 1
+
+
+def metrics():
+    return {k: {**v, "avg_ms": round(1000 * v["seconds"] / v["n"]) if v["n"] else None} for k, v in _metrics.items()}
 _running = {}
 _state = {}
 
@@ -134,9 +152,12 @@ def get_json(con, source, url, cache_key, st, rps, headers=None, now=None):
     if r:
         life = ttl.get("ok", 2592000) if r["status"] == 200 else ttl.get("miss", 2592000) if r["status"] == 404 else ttl.get("error", 3600)
         if r["at"] + life > now:
+            _metric(source.split(":")[0], cache_hit=True)
             return r["status"], (json.loads(r["body"]) if r["body"] else None), True
     _wait(source, rps)
+    t0 = time.time()
     status, text = _http(url, headers)
+    _metric(source.split(":")[0], time.time() - t0, status)
     body = None
     if status == 200:
         try:
@@ -343,6 +364,9 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
     }
     # ‏title (اسم القوائم الذي يعرفه الجمهور: «طبيعة الحب») لا يُمسّ؛ TMDB يعطي title_ar/title_en جانبه
     seo_db.apply_fields(con, "content", cid, fields, "tmdb", now=now)
+    for lang_, tt, ov in (("en", title_en, d.get("overview")), ("ar", title_ar, tr_ar.get("overview"))):
+        seo_db.set_text(con, "content", cid, lang_, "title", tt, "tmdb", now)          # نصوص اللغات (content_text) — العربية والإنجليزية الآن
+        seo_db.set_text(con, "content", cid, lang_, "overview", ov, "tmdb", now)
     seo_db.set_external(con, "content", cid, "tmdb", d["id"], verified=True, confidence=1, how="verified", now=now)
     if fields["imdb_id"]:
         seo_db.set_external(con, "content", cid, "imdb", fields["imdb_id"], verified=True, confidence=1, how="tmdb", now=now)
@@ -371,6 +395,16 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
     if anime_kind:
         seo_db.set_membership(con, cid, seo_db.taxonomy_id(con, "hub", "anime", "anime", "أنمي", "Anime", now), "tmdb", 1, now)
         seo_db.set_membership(con, cid, seo_db.taxonomy_id(con, "anime_kind", anime_kind, anime_kind, None, anime_kind.title(), now), "tmdb", 1, now)
+    # قرائن الأقسام مقابل TMDB: اتفاقٌ يؤكّد، واختلافٌ يُعتمد فيه TMDB ويُسجَّل للمراجعة (taxonomy_mismatch)
+    hints = {f"{r['kind']}:{r['key']}" for r in con.execute("SELECT t.kind, t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source='hint'", (cid,))}
+    confirmed = {f"{r['kind']}:{r['key']}" for r in con.execute("SELECT t.kind, t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source='tmdb'", (cid,))}
+    diff = {h for h in hints if h.startswith(("hub:", "country:")) and h not in confirmed}
+    if diff:
+        _review(con, "taxonomy_mismatch", cid, e["title"], {"hints": sorted(diff), "tmdb": sorted(x for x in confirmed if x.startswith(("hub:", "country:"))),
+                                                           "decision": "tmdb", "confidence": "high"}, now)
+    else:
+        con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=? AND status='open'", (now, f"taxonomy_mismatch:{cid}"))
+    con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=? AND status='open'", (now, f"taxonomy_unconfirmed:{cid}"))
     # الأشخاص والشركات
     con.execute("DELETE FROM content_person WHERE content_id=? AND source IN ('tmdb','xtream')", (cid,))
     credits = d.get("credits") or d.get("aggregate_credits") or {}
@@ -623,6 +657,10 @@ def _one(con, data_dir, cid, source, st, now):
             apply_tmdb(con, data_dir, cid, d, st, now)
             con.execute("UPDATE review SET status='stale', updated_at=? WHERE key IN (?,?) AND status='open'", (now, f"tmdb_weak:{cid}", f"tmdb_ambiguous:{cid}"))
             return "done", f"tmdb {d['id']} via {how}"
+        hints = [f"{r['kind']}:{r['key']}" for r in con.execute("SELECT t.kind, t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id "
+                                                               "WHERE ct.content_id=? AND ct.source='hint' AND t.kind='hub'", (cid,))]
+        if hints:                                   # قسمٌ يقول تركي/أنمي وTMDB لم يحسم: لا تصنيف تلقائي — مراجعة
+            _review(con, "taxonomy_unconfirmed", cid, name, {"hints": hints, "tmdb": res, "decision": "none", "confidence": "low"}, now)
         if res in ("weak", "ambiguous"):
             _review(con, f"tmdb_{res}", cid, name, {"candidates": [{k: c.get(k) for k in ("id", "title", "original_title", "year")} for c in data][:5]}, now)
             return "miss", res
@@ -697,8 +735,17 @@ def _step(con, data_dir, r, st, backoff, res, now):
 
 
 def tick(data_dir):
-    """في دورة المحتوى كل عشر دقائق: دفعةٌ إن كانت النافذة مفتوحة — ولا يرفع شيئًا."""
+    """في دورة المحتوى كل عشر دقائق: دفعةٌ إن كانت النافذة مفتوحة **والإثراء التلقائي مفعّلًا** (بعد اعتماد العيّنة) — ولا يرفع شيئًا."""
     try:
+        con = seo_db.connect(data_dir, create=False)
+        if con is None:
+            return None
+        try:
+            auto = bool(seo_db.settings(con).get("enrich_auto"))
+        finally:
+            con.close()
+        if not auto:
+            return None
         return run(data_dir)
     except Exception as e:  # noqa: BLE001
         _state[os.path.abspath(data_dir)] = {"at": int(time.time()), "error": str(e)[:300]}
@@ -725,6 +772,131 @@ def state(data_dir):
     finally:
         if con:
             con.close()
+
+
+# ================= عيّنة حقيقية قبل الإثراء الجماعي =================
+SAMPLE_SPEC = {"movie": 10, "series": 10, "turkish": 5, "anime": 5}
+
+
+def sample(data_dir, spec=None, now=None):
+    """يختار عيّنةً من القاعدة الحقيقية (10 أفلام · 10 مسلسلات · 5 بقرينة تركي · 5 بقرينة أنمي، الأحدث إضافةً)، يثريها
+    وحدها الآن (Xtream ← TMDB ← المواسم) ← تقريرٌ لكل عمل بكل الحقول وحالات التصنيف والعدّادات وأداء الواجهات."""
+    now = int(now or time.time())
+    spec = {**SAMPLE_SPEC, **(spec or {})}
+    with seo_db.lock(data_dir):
+        con = seo_db.connect(data_dir)
+        try:
+            st = seo_db.settings(con)
+            picked, seen = [], set()
+
+            def take(label, sql, args, n):
+                for r in con.execute(sql + " ORDER BY COALESCE(c.last_seen,0) DESC, c.id DESC LIMIT ?", (*args, n * 3)):
+                    if r["id"] not in seen and len([p for p in picked if p[1] == label]) < n:
+                        seen.add(r["id"]); picked.append((r["id"], label))
+            base = "SELECT c.id FROM content c WHERE c.merged_into IS NULL AND c.available=1"
+            hub = " AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=?)"
+            take("turkish", base + hub, ("turkish",), spec["turkish"])
+            take("anime", base + hub, ("anime",), spec["anime"])
+            take("movie", base + " AND c.type='movie'", (), spec["movie"])
+            take("series", base + " AND c.type='series'", (), spec["series"])
+            ids = [i for i, _ in picked]
+            backoff = st.get("enrich_backoff") or [3600, 86400, 604800]
+            res = {"processed": 0, "done": 0, "miss": 0, "error": 0, "skipped": 0}
+            for cid in ids:
+                enqueue(con, cid, ["xtream", "tmdb"], 0, now)
+                con.commit()
+                for source in ("xtream", "tmdb", "tmdb_seasons"):
+                    r = con.execute("SELECT content_id, source, attempts FROM enrich_queue WHERE content_id=? AND source=? AND state='pending'", (cid, source)).fetchone()
+                    if r and _step(con, data_dir, r, st, backoff, res, now):
+                        break
+            return {"ok": True, "at": now, "ids": ids, "run": res, "works": [describe(con, cid, st) for cid in ids],
+                    "summary": summary(con), "api": metrics()}
+        finally:
+            con.close()
+
+
+def describe(con, cid, st):
+    """كل ما يُفحص في عمل العيّنة: المطابقة والمعرّف والعناوين والبلد واللغة والنوع والمخرج والممثلون والصور والمواسم والحلقات
+    والتصنيف (تركي/أنمي) بحالته والأسماء البديلة والنسخ والمصادر — وعناوين الصفحة وcanonical وhreflang وJSON-LD."""
+    import seo_pages
+    c = con.execute("SELECT * FROM content WHERE id=?", (cid,)).fetchone()
+    if not c:
+        return {"id": cid, "error": "missing"}
+    ext = seo_db.external(con, "content", cid)
+    tax = {}
+    for r in con.execute("SELECT t.kind, t.key, ct.source FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=?", (cid,)):
+        tax.setdefault(f"{r['kind']}:{r['key']}", []).append(r["source"])
+    hints = {k for k, v in tax.items() if "hint" in v and k.startswith("hub:")}
+    links = con.execute("SELECT service_key, versions_json, raw_names_json, groups_json FROM content_service WHERE content_id=? AND present=1", (cid,)).fetchall()
+    rls = rules(con)
+    for ln in links:                                  # ما تقوله أقسام السيرفرات (ولو غلبتها عضوية TMDB بعد دمج)
+        for g in json.loads(ln["groups_json"] or "[]"):
+            for rx, h in rls:
+                if rx.search(g) and h.get("hub"):
+                    hints.add("hub:" + h["hub"])
+    confirmed = {k for k, v in tax.items() if "tmdb" in v or "manual" in v}
+    reviews = [r["kind"] for r in con.execute("SELECT kind FROM review WHERE status='open' AND json_extract(payload_json,'$.content_id')=?", (cid,))]
+
+    def classify(hub):
+        key = f"hub:{hub}"
+        tm = key in confirmed
+        hint = key in hints
+        if tm and hint:
+            return {"decision": hub, "confidence": "high", "tmdb": True, "section": True, "note": "confirmed"}
+        if tm:
+            return {"decision": hub, "confidence": "high", "tmdb": True, "section": False, "note": "tmdb only"}
+        if hint and c["match"] == "tmdb":
+            return {"decision": "not " + hub, "confidence": "high", "tmdb": False, "section": True, "note": "section stored as hint; TMDB disagrees → taxonomy_mismatch"}
+        if hint:
+            return {"decision": "none", "confidence": "low", "tmdb": None, "section": True, "note": "TMDB incomplete → needs review (taxonomy_unconfirmed)"}
+        return None
+    people = {}
+    for r in con.execute("SELECT p.name, cp.role FROM content_person cp JOIN person p ON p.id=cp.person_id WHERE cp.content_id=? ORDER BY cp.ord", (cid,)):
+        people.setdefault(r["role"], []).append(r["name"])
+    pv = seo_db.provenance(con, "content", cid)
+    page = {}
+    for lang in ("ar", "en"):
+        tr = __import__("content_page").lang_of(lang)
+        res = seo_pages.render_entity(con, "", c["type"], c["slug"], tr, st)
+        if res and res[0] == "page":
+            html = res[1]["html"].decode("utf-8")
+            page[lang] = {"seo_title": res[1]["title"], "meta_description": res[1]["desc"], "canonical": res[1]["canonical"],
+                          "hreflang": [u for _, u in res[1]["alts"]], "json_ld": re.findall(r'"@type": "(\w+)"', html)[:6],
+                          "would_index": res[1]["index_ar" if lang == "ar" else "index_en"], "why": res[1]["why"][0 if lang == "ar" else 1]}
+    return {"id": cid, "slug": c["slug"], "type": c["type"], "match": c["match"], "tmdb_id": c["tmdb_id"],
+            "tmdb_candidate": {k: v for k, v in (ext.get("tmdb") or {}).items() if k in ("external_id", "verified", "how")} or None,
+            "title": c["title"], "title_ar": c["title_ar"], "title_en": c["title_en"], "original_title": c["original_title"],
+            "country": json.loads(c["origin_country_json"]) if c["origin_country_json"] else None, "language": c["original_language"],
+            "genres": json.loads(c["genres_json"]) if c["genres_json"] else None, "director": people.get("director") or people.get("creator"),
+            "cast": (people.get("actor") or people.get("voice") or [])[:6], "poster": bool(c["poster"]), "backdrop": bool(c["backdrop"]),
+            "seasons": con.execute("SELECT COUNT(*) FROM season WHERE content_id=?", (cid,)).fetchone()[0],
+            "episodes_detailed": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=?", (cid,)).fetchone()[0],
+            "format": c["format"] or None, "anime_kind": c["anime_kind"],
+            "turkish": classify("turkish"), "anime": classify("anime"),
+            "aliases": [r[0] for r in con.execute("SELECT alias FROM content_alias WHERE content_id=?", (cid,))],
+            "versions": {r["service_key"]: json.loads(r["versions_json"]) for r in links if r["versions_json"]},
+            "raw_names": {r["service_key"]: json.loads(r["raw_names_json"]) for r in links if r["raw_names_json"]},
+            "sections": {r["service_key"]: json.loads(r["groups_json"]) for r in links if r["groups_json"]},
+            "provenance": {k: v[0] for k, v in pv.items()}, "reviews": reviews, "page": page}
+
+
+def summary(con):
+    q = lambda sql, *a: con.execute(sql, a).fetchone()[0]   # noqa: E731
+    live = "merged_into IS NULL AND available=1"
+    rv = {r["kind"]: r["n"] for r in con.execute("SELECT kind, COUNT(*) n FROM review WHERE status='open' GROUP BY kind")}
+    return {"high_confidence_matches": q(f"SELECT COUNT(*) FROM content WHERE {live} AND match='tmdb'"),
+            "needs_review": {"total": sum(rv.values()), "by_kind": rv},
+            "no_tmdb": q("SELECT COUNT(*) FROM enrich_queue WHERE source='tmdb' AND state='miss'"),
+            "conflicts": sum(v for k, v in rv.items() if k in ("conflict", "tmdb_ambiguous", "taxonomy_mismatch")),
+            "turkish_confirmed": q("SELECT COUNT(*) FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id JOIN content c ON c.id=ct.content_id "
+                                   f"WHERE t.kind='hub' AND t.key='turkish' AND ct.source!='hint' AND c.{live.replace(' AND ', ' AND c.')}"),
+            "anime_confirmed": q("SELECT COUNT(*) FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id JOIN content c ON c.id=ct.content_id "
+                                 f"WHERE t.kind='hub' AND t.key='anime' AND ct.source!='hint' AND c.{live.replace(' AND ', ' AND c.')}"),
+            "anime_by_kind": {r["anime_kind"]: r["n"] for r in con.execute(f"SELECT anime_kind, COUNT(*) n FROM content WHERE {live} AND anime_kind IS NOT NULL GROUP BY 1")},
+            "hints_only": {r["key"]: r["n"] for r in con.execute("SELECT t.key, COUNT(*) n FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND ct.source='hint' GROUP BY t.key")},
+            "aliases": q("SELECT COUNT(*) FROM content_alias"), "versions": q("SELECT COUNT(*) FROM content_service WHERE versions_json IS NOT NULL AND present=1"),
+            "data_errors": [dict(r) for r in con.execute("SELECT source, error, COUNT(*) n FROM enrich_queue WHERE state='error' OR (error IS NOT NULL AND error LIKE '%Error%') GROUP BY 1, 2 ORDER BY n DESC LIMIT 10")],
+            "queue": queue_stats(con), "people": q("SELECT COUNT(*) FROM person"), "episodes_detailed": q("SELECT COUNT(*) FROM episode")}
 
 
 # ================= الفحص الأولي =================
@@ -786,6 +958,8 @@ def main(argv):
         print(json.dumps(run(data_dir, int(opt["limit"]) if opt.get("limit") else None, force=bool(opt.get("force"))), ensure_ascii=False))
     elif cmd == "queue":
         print(json.dumps(state(data_dir), ensure_ascii=False, indent=1))
+    elif cmd == "sample":                        # عيّنة 30 عملًا تُثرى الآن وتقريرها
+        print(json.dumps(sample(data_dir), ensure_ascii=False, indent=1))
     elif cmd == "key":
         con = seo_db.connect(data_dir)
         set_tmdb_key(con, data_dir, str(opt.get("set") or "")); con.close()

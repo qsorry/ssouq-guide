@@ -20,7 +20,7 @@ import time
 
 DIR = "content"
 FILE = "seo.sqlite"
-VERSION = 2                    # PRAGMA user_version — يرتفع مع كل ترحيل
+VERSION = 3                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
 SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
 MANUAL = "manual"
@@ -28,6 +28,12 @@ PRECEDENCE = {"m3u": 0, "derived": 0, "xtream": 1, "tmdb": 2, "manual": 3}   # �
 # مسارات الكيانات القادمة (المرحلة 3) — تُستعمل الآن لتسجيل تحويلات slug في ‏redirect
 PATHS = {"movie": "/content/movies/{slug}/", "series": "/content/series/{slug}/"}
 EN = "/en"
+DEFAULT_LANG = "ar"            # بلا بادئة؛ وكل لغةٍ أخرى ببادئة /xx — من إعداد languages (العربية والإنجليزية الآن)
+
+
+def lang_prefix(lang):
+    """‏ar ← "" · en ← "/en" · tr ← "/tr" …: البنية تقبل لغةً جديدة بإضافتها إلى الإعداد، بلا ترحيل."""
+    return "" if lang == DEFAULT_LANG else f"/{lang}"
 TYPES = ("movie", "series")
 
 # الإعدادات الافتراضية — ما في جدول seo_settings يغلبها (مفتاح ← قيمة JSON). لا شيء منها ثابتٌ في الكود المستهلك.
@@ -72,6 +78,8 @@ DEFAULTS = {
     "search_max_suggest": 5, "search_min_conf": 0.5,
     "tmdb_key": "",                                   # مشفَّرٌ في القاعدة (crypto_store)؛ أو TMDB_API_KEY في البيئة
     "preview": False,                                 # صفحات الكيانات والهبّات في وضع المعاينة (noindex) — المرحلة 2
+    "enrich_auto": False,                             # الإثراء الجماعي الليلي لا يبدأ قبل اعتماد العيّنة الحقيقية
+    "languages": ["ar", "en"],                        # اللغات الفعّالة (الصفحات والإثراء)؛ تُضاف tr · es · fr … بلا ترحيل
 }
 SECRET_SETTINGS = ("tmdb_key",)
 
@@ -278,6 +286,14 @@ CREATE TABLE IF NOT EXISTS redirect (
 
 CREATE TABLE IF NOT EXISTS api_cache (
   key TEXT PRIMARY KEY, body TEXT, status INTEGER NOT NULL, at INTEGER NOT NULL
+);
+
+-- نصوص الكيانات بأي لغة (العنوان والقصة ومقدمة SEO…): العربية والإنجليزية الآن (وتُعكس في أعمدة *_ar/*_en)، وأي لغةٍ
+-- لاحقة بالصفّ نفسه — بلا ترحيل
+CREATE TABLE IF NOT EXISTS content_text (
+  entity TEXT NOT NULL, entity_id INTEGER NOT NULL, lang TEXT NOT NULL, field TEXT NOT NULL,
+  value TEXT NOT NULL, source TEXT NOT NULL, updated_at INTEGER NOT NULL,
+  PRIMARY KEY (entity, entity_id, lang, field)
 );
 
 CREATE TABLE IF NOT EXISTS seo_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
@@ -513,3 +529,39 @@ def merge_content(con, loser, winner, reason="", now=None):
                                                           "items": [{"name": lrow["title"], "slug": lrow["slug"]}, {"name": wrow["title"], "slug": wrow["slug"]}]}, ensure_ascii=False), now, now))
     set_provenance(con, "content", loser, "merged_into", "derived", None, now, prev=None)
     return True
+
+
+# ================= النصوص بأي لغة =================
+_COLS = {"content": {"title": "title_{l}", "overview": "overview_{l}"}, "person": {"name": "name_{l}", "bio": "bio_{l}"},
+         "taxonomy": {"name": "name_{l}", "intro": "intro_{l}", "seo_title": "seo_title_{l}", "meta": "meta_{l}"},
+         "season": {"overview": "overview_{l}"}, "episode": {"title": "title_{l}", "overview": "overview_{l}"}}
+
+
+def set_text(con, entity, entity_id, lang, field, value, source, now=None):
+    """نصٌّ بلغةٍ ما بأسبقية المصادر (يدوي > TMDB > Xtream > الفهرس). للعربية والإنجليزية يُعكس في العمود المقابل أيضًا
+    (‏title_ar…) عبر apply_fields؛ وأي لغةٍ أخرى في ‏content_text وحده ← هل كُتب؟"""
+    now = now or int(time.time())
+    if value is None or value == "":
+        return False
+    cur = con.execute("SELECT source FROM content_text WHERE entity=? AND entity_id=? AND lang=? AND field=?", (entity, entity_id, lang, field)).fetchone()
+    if cur and PRECEDENCE.get(cur[0], 0) > PRECEDENCE.get(source, 0):
+        return False
+    con.execute("INSERT INTO content_text(entity, entity_id, lang, field, value, source, updated_at) VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT(entity, entity_id, lang, field) DO UPDATE SET value=excluded.value, source=excluded.source, updated_at=excluded.updated_at",
+                (entity, entity_id, lang, field, value, source, now))
+    col = (_COLS.get(entity) or {}).get(field)
+    if col and lang in ("ar", "en"):
+        apply_fields(con, entity, entity_id, {col.format(l=lang): value}, source, now=now)
+    return True
+
+
+def get_text(con, entity, entity_id, lang, field, default=""):
+    """النصّ بلغته: من العمود للعربية والإنجليزية، ومن content_text لغيرهما."""
+    col = (_COLS.get(entity) or {}).get(field)
+    if col and lang in ("ar", "en"):
+        table = {"content": "content", "person": "person", "taxonomy": "taxonomy", "season": "season", "episode": "episode"}[entity]
+        r = con.execute(f"SELECT {col.format(l=lang)} FROM {table} WHERE id=?", (entity_id,)).fetchone()
+        if r and r[0]:
+            return r[0]
+    r = con.execute("SELECT value FROM content_text WHERE entity=? AND entity_id=? AND lang=? AND field=?", (entity, entity_id, lang, field)).fetchone()
+    return r[0] if r else default

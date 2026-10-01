@@ -595,6 +595,54 @@ def unit_enrich():
               and seo_pages.handle(d, "/content/anime/page/99/", "ar")[0] == 404 and seo_pages.handle(d, "/content/anime/genres/nope/", "ar")[0] == 404)
         pp = seo_pages.handle(d, "/content/people/actors/wentworth-miller/", "ar")[1].decode()
         check("صفحة الممثل: أعماله بروابطها وPerson schema", '"@type": "Person"' in pp and "/content/series/prison-break/" in pp)
+        # قرارات ما بعد المرحلة 2: تركيا → الهب، لغاتٌ فعّالة، الإثراء التلقائي موقوف، العيّنة الحقيقية، البحث اقتراحًا لا كتابة
+        check("‏/content/countries/turkey/ → 301 إلى هب التركي (باللغتين)", seo_pages.handle(d, "/content/countries/turkey/", "ar")[2]["Location"] == "/content/turkish/"
+              and seo_pages.handle(d, "/en/content/countries/turkey", "en")[2]["Location"] == "/en/content/turkish/")
+        check("لغةٌ غير فعّالة (fr) 404 حتى تُضاف إلى languages؛ والبادئة تُشتقّ من اللغة", seo_pages.handle(d, "/fr/content/turkish/", "fr")[0] == 404 and seo_db.lang_prefix("fr") == "/fr")
+        seo_db.set_setting(con, "languages", ["ar", "en", "fr"]); con.commit()
+        check("وبإضافتها تُخدم بلا ترحيل", seo_pages.handle(d, "/fr/content/turkish/", "fr")[0] == 200)
+        seo_db.set_setting(con, "languages", ["ar", "en"]); con.commit()
+        ct = q("SELECT lang, field, source FROM content_text WHERE entity='content' AND entity_id=? ORDER BY lang, field", pb[0])
+        check("نصوص TMDB معكوسة في content_text (ar/en) بمصدرها — جاهزة لأي لغة", [tuple(r) for r in ct] == [("ar", "overview", "tmdb"), ("ar", "title", "tmdb"), ("en", "overview", "tmdb"), ("en", "title", "tmdb")], str([tuple(r) for r in ct]))
+        seo_db.set_text(con, "content", pb[0], "tr", "title", "Büyük Kaçış", "manual"); con.commit()
+        check("لغةٌ ثالثة تُخزَّن في content_text بلا عمود", seo_db.get_text(con, "content", pb[0], "tr", "title") == "Büyük Kaçış")
+        before = {t: q(f"SELECT COUNT(*) FROM {t}")[0][0] for t in ("content", "content_alias", "redirect", "review", "content_text")}
+        for s_ in ("person break", "بريزن بريك", "Prison Brek", "xqzv"):
+            ex(s_)
+        check("البحث اقتراحٌ فقط: لا كيان ولا alias ولا redirect ولا مراجعة تُكتب", {t: q(f"SELECT COUNT(*) FROM {t}")[0][0] for t in before} == before)
+        con.execute("UPDATE enrich_queue SET state='pending', next_at=0 WHERE content_id=? AND source='tmdb'", (q("SELECT id FROM content WHERE title='The Office'")[0][0],)); con.commit()
+        import calendar
+        night = calendar.timegm((2026, 10, 2, 0, 30, 0))
+        check("tick لا يثري شيئًا ما دام enrich_auto موقوفًا (ولو داخل النافذة)", seo_sources.tick(d) is None
+              and q("SELECT state FROM enrich_queue WHERE content_id=? AND source='tmdb'", q("SELECT id FROM content WHERE title='The Office'")[0][0])[0][0] == "pending")
+        seo_db.set_setting(con, "enrich_auto", True); con.commit()
+        r = seo_sources.run(d, limit=5, force=False, now=night)
+        check("وبتفعيله يعمل في النافذة", r["window"] is True and r["processed"] >= 1, str(r))
+        seo_db.set_setting(con, "enrich_auto", False); con.commit()
+        # حالات التصنيف في العيّنة: قسم «أنمي» يضم Batman Beyond (TMDB: رسوم أمريكية) → mismatch؛ قيامة أرطغرل (قسم تركي، بلا TMDB) → unconfirmed
+        with open(os.path.join(d, "content", "casper.json"), encoding="utf-8") as f:
+            cat = json.load(f)
+        cat["series"].append({"id": "s9", "name": "Anime أنمي", "items": [{"n": "Batman Beyond", "y": 1999, "s": [[1, 13]], "i": 90}]})
+        _write(d, "casper", cat)
+        seo_build.build(d)
+        smp = seo_sources.sample(d, {"movie": 2, "series": 2, "turkish": 3, "anime": 5})
+        works = {w["title"]: w for w in smp["works"]}
+        bb_ = works.get("Batman Beyond", {})
+        check("عيّنة: Batman Beyond في قسم أنمي → TMDB يقول لا أنمي: القرار «ليس أنمي» بثقة عالية والقسم hint ومراجعة taxonomy_mismatch",
+              bb_.get("anime", {}).get("decision") == "not anime" and bb_["anime"]["section"] is True and "taxonomy_mismatch" in bb_.get("reviews", []), str(bb_.get("anime")) + str(bb_.get("reviews")))
+        er = works.get("قيامة أرطغرل", {})
+        check("عيّنة: قيامة أرطغرل (قسم تركي، TMDB لم يحسم) → لا تصنيف تلقائي، confidence low، مراجعة taxonomy_unconfirmed",
+              er.get("turkish", {}).get("decision") == "none" and er["turkish"]["confidence"] == "low" and "taxonomy_unconfirmed" in er.get("reviews", []), str(er.get("turkish")) + str(er.get("reviews")))
+        ko_ = next((w for w in smp["works"] if w["tmdb_id"] == 89456), {})
+        check("عيّنة: المؤسس عثمان → TMDB تركيا + قسم تركي: confirmed", ko_.get("turkish", {}).get("note") == "confirmed")
+        op_ = works.get("One Piece", {})
+        check("عيّنة: One Piece بلا قسم أنمي → TMDB وحده: أنمي ياباني بثقة عالية", op_.get("anime", {}).get("decision") == "anime" and op_["anime"]["section"] is False and op_["anime_kind"] == "japanese")
+        check("تقرير العيّنة: الحقول المطلوبة لكل عمل والعدّادات وأداء الواجهات",
+              all(k in bb_ for k in ("tmdb_id", "title_ar", "title_en", "original_title", "country", "language", "genres", "director", "cast", "poster", "backdrop",
+                                     "seasons", "episodes_detailed", "aliases", "versions", "provenance", "page"))
+              and {"seo_title", "meta_description", "canonical", "hreflang", "json_ld"} <= set(bb_["page"]["ar"])
+              and {"high_confidence_matches", "needs_review", "no_tmdb", "conflicts", "turkish_confirmed", "anime_confirmed", "aliases", "versions", "data_errors"} <= set(smp["summary"])
+              and "tmdb" in smp["api"] and smp["api"]["tmdb"]["n"] >= 1, str(list(bb_.keys()))[:300])
         rep = seo_pages.audit(d, 12)
         check("فحص العيّنة: كل الصفحات سليمة (status · canonical · hreflang · title · description · H1 · breadcrumb · schema · روابط · لا canonical مكرّر)",
               rep["pages"] >= 20 and rep["fail"] == 0, str({k: v for k, v in rep.items() if k != "results"}))

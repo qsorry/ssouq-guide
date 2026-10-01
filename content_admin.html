@@ -282,8 +282,10 @@ label.force input{width:16px;height:16px;accent-color:var(--amber)}
     </div>
     <div class="acts" style="margin-top:10px"><button class="go" type="button" id="eKeySave">احفظ المفتاح</button>
       <button class="ghost" type="button" id="eProbe">فحصٌ أولي للّوحات</button>
+      <button class="ghost" type="button" id="eSample">عيّنة 30 عملًا (تُثرى الآن وحدها)</button>
       <button class="ghost" type="button" id="eRun">دفعة إثراءٍ الآن</button>
       <button class="ghost" type="button" id="eQueue">حال الطابور</button></div>
+    <label class="switch"><input type="checkbox" id="eAuto"><span>الإثراء الجماعي الليلي (لا يُفعَّل قبل اعتماد العيّنة الحقيقية)</span></label>
     <div class="msg" id="eMsg2"></div>
     <pre class="mono" id="eOut" hidden style="white-space:pre-wrap;max-height:320px;overflow:auto;font-size:.8rem"></pre>
     <div class="row" style="margin-top:10px"><input id="eQ" placeholder="جرّب البحث: person break · بريزن بريك · طبيعة الحب مدبلج" maxlength="80">
@@ -849,7 +851,7 @@ function renderSeo(d) {
       ["روابط كيان↔سيرفر", d.links], ["أسماء بديلة", d.aliases], ["تحتاج مراجعة", r.open || 0], ["غائب الآن", e.unavailable]])
       + `<p class="meta">${Object.entries(d.per_service || {}).map(([k, v]) => `${esc(k)}: ${count(v.movie ? v.movie.present : 0, N.movie)} · ${count(v.series ? v.series.present : 0, N.series)}`).join(" — ")}</p>`;
   }
-  if (d.settings) $("ePreview").checked = !!d.settings.preview;
+  if (d.settings) { $("ePreview").checked = !!d.settings.preview; $("eAuto").checked = !!d.settings.enrich_auto; }
   const l = d.last;
   $("eLast").textContent = l ? (l.ok ? `آخر بناء ${when(l.at)}: ${num(l.items)} عنصرًا من ${(l.services || []).join("، ")} → ${num(l.clusters)} كيانًا (${num(l.new)} جديد · ${num(l.merged)} مدمج · ${num(l.split)} منفصل) في ${l.seconds} ث`
                                    : `فشل البناء ${when(l.at)}: ${l.error}`) : (d.built_at ? `آخر بناء ${when(d.built_at)}` : "");
@@ -873,6 +875,16 @@ $("eProbe").onclick = async () => {
   $("eMsg2").textContent = "يسأل اللوحات…";
   const d = await api("/api/content/admin/seo-probe", {n: 20}).catch(() => ({error: "تعذّر الاتصال"}));
   $("eMsg2").textContent = d.error || ""; showOut(d.probe || d);
+};
+$("eSample").onclick = async () => {
+  $("eMsg2").textContent = "يختار 30 عملًا ويثريها الآن (قد يستغرق دقائق)…";
+  const d = await api("/api/content/admin/seo-sample", {}).catch(() => ({error: "تعذّر الاتصال"}));
+  const smp = d.sample || {};
+  $("eMsg2").textContent = d.error || `عيّنة ${(smp.ids || []).length} عملًا — ${JSON.stringify(smp.run || {})}`; showOut(smp);
+};
+$("eAuto").onchange = async () => {
+  const d = await api("/api/content/admin/seo-settings", {settings: {enrich_auto: $("eAuto").checked}}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error || ($("eAuto").checked ? "الإثراء الليلي مفعّل" : "الإثراء الليلي موقوف");
 };
 $("eRun").onclick = async () => {
   const d = await api("/api/content/admin/seo-run", {}).catch(() => ({error: "تعذّر الاتصال"}));

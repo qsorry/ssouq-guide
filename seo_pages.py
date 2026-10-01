@@ -99,18 +99,15 @@ def _loads(s, default=None):
 
 
 def _path(row, lang="ar"):
-    p = seo_db.PATHS[row["type"]].format(slug=row["slug"])
-    return (seo_db.EN + p) if lang == "en" else p
+    return seo_db.lang_prefix(lang) + seo_db.PATHS[row["type"]].format(slug=row["slug"])
 
 
 def _hub_path(hub, section="", lang="ar", page=1):
-    p = f"/content/{hub}/" + (f"{section}/" if section else "") + (f"page/{page}/" if page > 1 else "")
-    return (seo_db.EN + p) if lang == "en" else p
+    return seo_db.lang_prefix(lang) + f"/content/{hub}/" + (f"{section}/" if section else "") + (f"page/{page}/" if page > 1 else "")
 
 
 def _person_path(role, slug, lang="ar"):
-    p = f"/content/people/{PERSON_PATH.get(role, 'actors')}/{slug}/"
-    return (seo_db.EN + p) if lang == "en" else p
+    return seo_db.lang_prefix(lang) + f"/content/people/{PERSON_PATH.get(role, 'actors')}/{slug}/"
 
 
 def _card(row, tr, lazy=True):
@@ -497,7 +494,7 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
         return None
     hub_name = HUB_NAMES[hub][tr.en]
     base_path = f"/content/{hub}/" + (f"{section}/" if section else "") + (f"genres/{genre}/" if genre else f"year/{year}/" if year else "")
-    me = lambda lang, pg=1: ((seo_db.EN if lang == "en" else "") + base_path + (f"page/{pg}/" if pg > 1 else ""))   # noqa: E731
+    me = lambda lang, pg=1: (seo_db.lang_prefix(lang) + base_path + (f"page/{pg}/" if pg > 1 else ""))   # noqa: E731
     gt = con.execute("SELECT * FROM taxonomy WHERE kind='genre' AND slug=?", (genre,)).fetchone() if genre else None
     if genre and not gt:
         return None
@@ -576,21 +573,24 @@ _RX = re.compile(r"^/content/(?:(movies|series)/([a-z0-9-]+)/|people/(actors|dir
 
 def handle(data_dir, path, lang):
     """← (code, body, headers) أو None إن لم يكن من مسارات الطبقة. وبلا ‏preview: 404 لكل مساراتها (لا شيء عامٌّ بعد)."""
-    ar_path = path[len(seo_db.EN):] if lang == "en" else path
-    if not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/turkish", "/content/anime")):
+    pre = seo_db.lang_prefix(lang)
+    ar_path = path[len(pre):] if pre else path
+    if not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
         return None
     con = seo_db.connect(data_dir, create=False)
     if con is None:
         return 404, b"", {}
     try:
         st = seo_db.settings(con)
-        if not st.get("preview"):
+        if not st.get("preview") or lang not in (st.get("languages") or ["ar", "en"]):
             return 404, b"", {}
+        if ar_path.rstrip("/") == "/content/countries/turkey":   # صفحة الدولة لا تنافس الهب: 301 إليه (قرار المالك)
+            return 301, b"", {"Location": pre + "/content/turkish/"}
         if not ar_path.endswith("/"):            # الشرطة الأخيرة إلزامية
             return 301, b"", {"Location": path + "/"}
         r = con.execute("SELECT target FROM redirect WHERE path=?", (ar_path,)).fetchone()
         if r:
-            return 301, b"", {"Location": (seo_db.EN if lang == "en" else "") + r["target"]}
+            return 301, b"", {"Location": pre + r["target"]}
         m = _RX.match(ar_path)
         if not m:
             return 404, b"", {}
