@@ -55,15 +55,18 @@ def _entry(kind, key, g, it, st):
             "year": int(it.get("y") or 0) or c["year"],
             "poster": it.get("p") or "", "backdrop": it.get("b") or "", "plot": it.get("d") or "",
             "genres": list(it.get("g") or ()), "rating": float(it.get("r") or 0), "added": int(it.get("a") or 0),
-            "stream_id": int(it.get("i") or 0), "tmdb_id": int(it.get("t") or 0), "series_id": int(it.get("sid") or 0),
+            "stream_id": int(it.get("i") or 0), "stream_ids": [int(it.get("i") or 0)] if it.get("i") else [],
+            "tmdb_id": int(it.get("t") or 0), "series_id": int(it.get("sid") or 0),
             "seasons": seasons, "groups": [g["name"]] if g.get("name") else []}
 
 
 def _merge_entries(es):
     """مداخل قسمٍ أو أكثر لعنصرٍ واحد في السيرفر ← عنصرٌ واحد (أكبر ما رُئي: المواسم والتقييم والرقم؛ وأطول قصة)."""
     rec = dict(es[0], genres=list(es[0]["genres"]), seasons=dict(es[0]["seasons"]), groups=list(es[0]["groups"]),
-               versions=list(es[0]["versions"]), raw_names=[es[0]["raw_name"]], originals=[es[0]["original"]] if es[0]["original"] else [])
+               versions=list(es[0]["versions"]), raw_names=[es[0]["raw_name"]], originals=[es[0]["original"]] if es[0]["original"] else [],
+               stream_ids=list(es[0].get("stream_ids") or []))
     for e in es[1:]:
+        rec["stream_ids"] += [x for x in e.get("stream_ids") or [] if x not in rec["stream_ids"]]   # كل أرقام البثّ المطويّة: تُعرَف بها الكيانات القديمة
         for v in e["versions"]:
             if v not in rec["versions"]:
                 rec["versions"].append(v)
@@ -210,15 +213,24 @@ def build(data_dir, force=False, now=None):
 
 def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     links, by_stream = {}, {}
-    for r in con.execute("SELECT service_key, kind, local_key, stream_id, content_id FROM content_service"):
+    for r in con.execute("SELECT service_key, kind, local_key, stream_id, stream_ids_json, content_id FROM content_service"):
         links[(r["service_key"], r["kind"], r["local_key"])] = r["content_id"]
-        if r["stream_id"]:
-            by_stream[(r["service_key"], r["kind"], r["stream_id"])] = r["content_id"]
+        for sid in set(json.loads(r["stream_ids_json"] or "[]")) | ({r["stream_id"]} if r["stream_id"] else set()):
+            by_stream[(r["service_key"], r["kind"], sid)] = r["content_id"]
 
     def known(m):
-        """الكيان الذي رُبط به عضوٌ من قبل: بمفتاحه، وإلا برقم بثّه (مفتاحٌ تبدّل لزوال غموضٍ أو زواله)."""
-        k = (m["service"], m["kind"], m["local_key"])
-        return links.get(k) or by_stream.get((m["service"], m["kind"], m["stream_id"]))
+        """الكيانات التي رُبط بها عضوٌ من قبل: بمفتاحه، وبكل أرقام بثّه (مدخلاتٌ كانت كياناتٍ مفرّقة بالمواسم ثم طُويت
+        في عنصرٍ واحد: كلها تُعرَف فتُدمج بتحويلٍ ومراجعة — لا تُترك غائبةً بلا أثر)."""
+        out = set()
+        k = links.get((m["service"], m["kind"], m["local_key"]))
+        if k:
+            out.add(k)
+        for sid in m.get("stream_ids") or ([m["stream_id"]] if m.get("stream_id") else []):
+            k = by_stream.get((m["service"], m["kind"], sid))
+            if k:
+                out.add(k)
+        return out
+    live_before = {r[0] for r in con.execute("SELECT id FROM content WHERE merged_into IS NULL AND available=1")}
     merged = {r["id"]: r["merged_into"] for r in con.execute("SELECT id, merged_into FROM content WHERE merged_into IS NOT NULL")}
 
     def canon(cid):
@@ -238,26 +250,26 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     rls = seo_sources.rules(con)
     st = seo_db.settings(con)
     cid_of = {}                                   # فهرس العضو ← معرّف الكيان
+    inserted, merged_now = set(), set()
     for members_idx in clusters:
         members = [items[i] for i in members_idx]
-        ids = {canon(known(m)) for m in members if known(m)}
+        ids = {canon(k) for m in members for k in known(m)}
         ids = {i for i in ids if i not in claimed}
         if not ids:
             cid = _insert(con, members, slugs, now)
             n_new += 1
+            inserted.add(cid)
             if any(known(m) for m in members):
                 n_split += 1                      # كان عضوًا في كيانٍ ادّعاه عنقودٌ آخر: كيانٌ جديد ويُراجَع
                 extra_reviews.append({"kind": "split_entity", "key": f"split:{cid}", "type": members[0]["type"],
                                       "name": members[0]["name"], "items": members_idx, "why": ["links_moved"]})
         else:
             cid = min(ids)
-            for other in sorted(ids - {cid}):   # كيانان كانا منفصلين واجتمعت قرائنهما الآن: يبقى الأقدم
-                con.execute("UPDATE content SET merged_into=?, available=0, updated_at=? WHERE id=?", (cid, now, other))
+            for other in sorted(ids - {cid}):   # كيانان كانا منفصلين واجتمعت قرائنهما الآن: يبقى الأقدم، والآخر يُدمج فيه
+                seo_db.merge_content(con, other, cid, reason=f"links joined in build ({members[0]['service']}: {members[0]['name']})", now=now)   # 301 + بند مراجعة
                 merged[other] = cid
+                merged_now.add(other)
                 n_merged += 1
-                extra_reviews.append({"kind": "merged_entities", "key": f"merged:{cid}:{other}", "type": members[0]["type"],
-                                      "name": members[0]["name"], "items": members_idx,
-                                      "why": [f"entity {other} merged into {cid}"]})
             _update(con, cid, members, manual.get(cid, set()), now)
         claimed.add(cid)
         for i in members_idx:
@@ -282,10 +294,20 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     con.execute("UPDATE content SET available=1, updated_at=? WHERE merged_into IS NULL AND available=0 AND id IN "
                 "(SELECT content_id FROM content_service WHERE present=1)", (now,))
     n_rev = _reviews(con, items, reviews + extra_reviews, now)
+    # تسوية عدد الكيانات: من أين جاء كل فرقٍ بين ما قبل البناء وما بعده (لا «تم الدمج» وحدها)
+    live_after = {r[0] for r in con.execute("SELECT id FROM content WHERE merged_into IS NULL AND available=1")}
+    lost, gained = live_before - live_after, live_after - live_before
+    recon = {"at": now, "before": len(live_before), "after": len(live_after), "delta": len(live_after) - len(live_before),
+             "inserted": len(gained & inserted), "split": n_split, "returned": len(gained - inserted),
+             "merged": len(lost & merged_now), "went_unavailable": len(lost - merged_now),
+             "unavailable_total": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=0").fetchone()[0],
+             "merged_total": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NOT NULL").fetchone()[0]}
+    recon["explained"] = recon["inserted"] + recon["returned"] - recon["merged"] - recon["went_unavailable"] == recon["delta"]
+    seo_db.set_state(con, "reconciliation", recon)
     seo_db.set_state(con, "signatures", sigs)
     seo_db.set_state(con, "built_at", now)
     return {"items": len(items), "clusters": len(clusters), "new": n_new, "merged": n_merged, "split": n_split,
-            "reviews_open": n_rev, "services": sorted(sigs)}
+            "reviews_open": n_rev, "services": sorted(sigs), "reconciliation": recon}
 
 
 def _insert(con, members, slugs, now):
@@ -338,16 +360,17 @@ def _update(con, cid, members, manual, now):
 def _link(con, cid, members, now):
     con.executemany(
         "INSERT INTO content_service(content_id, service_key, kind, local_key, name, year, stream_id, added, seasons_json, "
-        "groups_json, versions_json, raw_names_json, series_id, present, first_seen, seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?) "
+        "groups_json, versions_json, raw_names_json, series_id, stream_ids_json, present, first_seen, seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?) "
         "ON CONFLICT(service_key, kind, local_key) DO UPDATE SET content_id=excluded.content_id, name=excluded.name, "
         "year=excluded.year, stream_id=excluded.stream_id, added=excluded.added, seasons_json=excluded.seasons_json, "
         "groups_json=excluded.groups_json, versions_json=excluded.versions_json, raw_names_json=excluded.raw_names_json, "
-        "series_id=excluded.series_id, present=1, seen_at=excluded.seen_at",
+        "series_id=excluded.series_id, stream_ids_json=excluded.stream_ids_json, present=1, seen_at=excluded.seen_at",
         [(cid, m["service"], m["kind"], m["local_key"], m["name"], m["year"] or None, m["stream_id"] or None,
           m["added"] or None, json.dumps(sorted(m["seasons"].items())) if m["seasons"] else None,
           json.dumps(m["groups"], ensure_ascii=False) if m["groups"] else None,
           json.dumps(m.get("versions") or []) if m.get("versions") else None,
-          json.dumps(m.get("raw_names") or [m.get("raw_name")], ensure_ascii=False), m.get("series_id") or None, now, now)
+          json.dumps(m.get("raw_names") or [m.get("raw_name")], ensure_ascii=False), m.get("series_id") or None,
+          json.dumps(m.get("stream_ids") or ([m["stream_id"]] if m.get("stream_id") else [])), now, now)
          for m in members])
 
 
@@ -466,6 +489,9 @@ def stats(data_dir):
             "aliases": q("SELECT COUNT(*) FROM content_alias"),
             "seasons": q("SELECT COUNT(*) FROM season"),
             "episodes": q("SELECT COALESCE(SUM(episode_count),0) FROM season"),
+            "episodes_official": q("SELECT COALESCE(SUM(episodes_official),0) FROM season"),
+            "series_with_official": q("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND episodes_official IS NOT NULL"),
+            "reconciliation": seo_db.state(con, "reconciliation"),
             "reviews": {"open": sum(reviews.values()), "by_kind": reviews,
                         "resolved": q("SELECT COUNT(*) FROM review WHERE status='resolved'"),
                         "stale": q("SELECT COUNT(*) FROM review WHERE status='stale'")},
@@ -511,7 +537,12 @@ def report(data_dir):
     for svc, d in s["per_service"].items():
         lines.append(f"  {svc}: " + " · ".join(f"{kind} {v['present']:,}" for kind, v in sorted(d.items())))
     lines.append(f"الروابط كيان↔سيرفر: {s['links']:,} · الأسماء البديلة: {s['aliases']:,} · المواسم: {s['seasons']:,} · "
-                 f"الحلقات (عدًّا): {s['episodes']:,}")
+                 f"الحلقات المدرجة في القوائم (عناصر، قد تكون أجزاءً): {s['episodes']:,} · الرسمية (TMDB، لـ {s['series_with_official']:,} مسلسلًا): {s['episodes_official']:,}")
+    rc = s.get("reconciliation")
+    if rc:
+        lines.append(f"تسوية آخر بناء: قبل {rc['before']:,} ← بعد {rc['after']:,} (الفرق {rc['delta']:+,}) = جديد {rc['inserted']:,} (منها انفصال {rc['split']:,}) "
+                     f"+ عاد {rc['returned']:,} − مدمج {rc['merged']:,} − غاب {rc['went_unavailable']:,} — {'متّسقة' if rc['explained'] else 'غير متّسقة!'} · "
+                     f"إجمالي الغائب {rc['unavailable_total']:,} · إجمالي المدمج {rc['merged_total']:,}")
     r = s["reviews"]
     lines.append(f"تحتاج مراجعة: {r['open']:,} — " + " · ".join(f"{k}: {n:,}" for k, n in sorted(r["by_kind"].items())))
     lines.append(f"المصادر: " + " · ".join(f"{k}: {n:,}" for k, n in sorted(s["provenance"].items())))
@@ -546,7 +577,7 @@ def main(argv):
             print("لم تُبنَ القاعدة بعد"); return
         idx, st = seo_search.load(con), seo_db.settings(con)
         names = [a for a in argv[2:] if not a.startswith("--")] or ["Prison Break", "person break", "Prison Brek", "بريزن بريك", "بريزون بريك",
-                                                                     "طبيعة الحب", "طبيعة الحب مدبلج", "طبيعة الحب مترجم", "One Piece", "ون بيس",
+                                                                     "طبيعة الحب", "طبيعة الحب مدبلج", "طبيعة الحب مترجم", "One Piece", "ون بيس", "وان بيس", "السجين", "العهد",
                                                                      "Dune 1984", "Dune 2021", "Breaking Bad", "بريكنغ باد", "بريكنج باد"]
         for q in names:
             print(json.dumps(seo_search.explain(con, idx, q, st), ensure_ascii=False))

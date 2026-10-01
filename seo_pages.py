@@ -262,7 +262,11 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         by_kind.setdefault(t["kind"], []).append(t)
     people = _people(con, row["id"], tr)
     seasons = con.execute("SELECT * FROM season WHERE content_id=? ORDER BY number", (row["id"],)).fetchall() if typ == "series" else []
-    n_eps = sum(s["episode_count"] for s in seasons)
+    # الحلقات: الرسمي من TMDB إن وُجد، وإلا المدرج في القوائم (عناصر قد تكون أجزاءً) — ويُقال أيّهما
+    n_official = row["episodes_official"] or (sum(s["episodes_official"] or 0 for s in seasons) or None)
+    n_listed = sum(s["episode_count"] for s in seasons)
+    n_eps = n_official or n_listed
+    eps_label = (lambda n: tr.count(n, "episodes") + ("" if n_official else tr(" في القوائم", " as listed")))
     hubs = [t for t in by_kind.get("hub", [])]
     countries = by_kind.get("country", [])
     langs = by_kind.get("language", [])
@@ -283,7 +287,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     if genres:
         desc_bits.append(tr("، ", ", ").join(_tname(g, tr) for g in genres[:3]))
     if typ == "series" and seasons:
-        desc_bits.append(tr(f"{tr.count(len(seasons), 'seasons')} و{tr.count(n_eps, 'episodes')}", f"{tr.count(len(seasons), 'seasons')}, {tr.count(n_eps, 'episodes')}"))
+        desc_bits.append(tr(f"{tr.count(len(seasons), 'seasons')} و{eps_label(n_eps)}", f"{tr.count(len(seasons), 'seasons')}, {eps_label(n_eps)}"))
     if cast:
         desc_bits.append(tr("بطولة ", "Starring ") + tr("، ", ", ").join(_pname(p, tr) for p in cast[:3]))
     desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") \
@@ -340,7 +344,8 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
                     et = (e["title_en"] if tr.en else e["title_ar"] or e["title_en"]) or ""
                     lis.append(f'<li><span>{e["number"]}</span> {_esc(et)}' + (f' <small>{_esc(e["air_date"])}</small>' if e["air_date"] else "") + "</li>")
                 ep_html = "<ol class=eps>" + "".join(lis) + "</ol>"
-            items.append(f'<details{" open" if s is seasons[0] else ""}><summary><b>{_esc(name)}</b> <small>{_esc(tr.count(s["episode_count"], "episodes"))}</small></summary>'
+            s_label = tr.count(s["episodes_official"], "episodes") if s["episodes_official"] else (tr.count(s["episode_count"], "episodes") + tr(" في القوائم", " as listed"))
+            items.append(f'<details{" open" if s is seasons[0] else ""}><summary><b>{_esc(name)}</b> <small>{_esc(s_label)}</small></summary>'
                          + (f'<p>{_esc(s["overview_en"] if tr.en else s["overview_ar"] or "")}</p>' if (s["overview_en"] if tr.en else s["overview_ar"]) else "") + ep_html + "</details>")
         seas = f'<section id="seasons"><h2>{_esc(tr(f"مواسم وحلقات مسلسل {title}", f"{title} seasons & episodes"))}</h2>{"".join(items)}</section>'
     # الصور
@@ -359,7 +364,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         faq.append((tr(f"ما قصة {kind_ar} {title}؟", f"What is {title} about?"), ov[:300]))
     if seasons:
         faq.append((tr(f"كم عدد مواسم وحلقات {title}؟", f"How many seasons and episodes does {title} have?"),
-                    tr(f"{tr.count(len(seasons), 'seasons')} و{tr.count(n_eps, 'episodes')}.", f"{tr.count(len(seasons), 'seasons')} and {tr.count(n_eps, 'episodes')}.")))
+                    tr(f"{tr.count(len(seasons), 'seasons')} و{eps_label(n_eps)}.", f"{tr.count(len(seasons), 'seasons')} and {eps_label(n_eps)}.")))
     if cast:
         faq.append((tr(f"من أبطال {title}؟", f"Who stars in {title}?"), tr("، ", ", ").join(_pname(p, tr) for p in cast[:6]) + "."))
     if director:

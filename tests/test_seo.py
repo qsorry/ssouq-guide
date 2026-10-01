@@ -560,6 +560,137 @@ def unit_production_cases():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_sample2_cases():
+    """ما كشفته عيّنة الإنتاج الثانية (2 أكتوبر 2026): دمج عملَين مختلفَين في السيرفر بدليل الموسم رغم قسمَين متعارضَين،
+    التحقّق من TMDB باسمٍ عربي عام، طبقات الأنمي (رسوم ≠ أنمي)، الحلقات الرسمية مقابل المدرجة، تسوية عدد الكيانات
+    (الكيانات المطويّة تُدمج بتحويلٍ لا تُترك غائبة)، وبحث «ون بيس»/«Prison Break» بكيانين."""
+    print("== حالات عيّنة الإنتاج الثانية ==")
+    st = dict(seo_db.DEFAULTS)
+    e = lambda name, group, sid, **kw: dict(seo_build._entry("series", "falcon", {"name": group}, {"n": name, "i": sid, **kw}, st), local_key=name)   # noqa: E731
+    a, b = e("السجين S01 Mahkum", "Turkish - تركية مترجمة", 1), e("السجين S01", "Syria - سورية", 2)
+    sc, why = M.pair_score(e("السجين S02 Mahkum", "Turkish - تركية مترجمة", 3), b, st, same_server=True)
+    check("رمزا موسمين من قسمين مختلفين لا يجمعان", "season_split_sections_differ" in why and "season_split" not in why and (sc is None or sc < st["merge_min"]), str((sc, why)))
+    sc, why = M.pair_score(e("السجين S02 Mahkum", "Turkish - تركية مترجمة", 3), a, st, same_server=True)
+    check("ورمزا موسمين من القسم نفسه يجمعان", "season_split" in why and sc >= st["merge_min"], str((sc, why)))
+    sc, why = M.pair_score(e("X S02 Yasak Elma", "تركية مدبلجة", 4), e("X S01 YASAK ELMA Ar", "تركية مترجمة", 5), st, same_server=True)
+    check("وقسمان مختلفان بالاسم الأصلي نفسه يجمعان", "season_split" in why, str((sc, why)))
+    ent = {"type": "series", "title": "العهد", "aliases": ["العهد", "العهد مترجم S01 SOZ", "SOZ"], "originals": ["SOZ"], "hint_countries": ["TR"]}
+    check("التحقّق: مرشّحٌ سوري لاسمٍ عربي عام مع أصلٍ لاتيني تركي يُرفض (origin)",
+          M.verify_tmdb({"type": "series", "title": "Alahed", "original_title": "العهد", "aliases": [], "countries": ["SY"], "year": 2018}, ent, st) == (False, "origin"))
+    check("والمرشّح التركي بالأصل نفسه يُقبل", M.verify_tmdb({"type": "series", "title": "Söz", "original_title": "Söz", "aliases": ["SOZ"], "countries": ["TR"], "year": 2017}, ent, st)[0])
+    check("البحث: «ون بيس» و«وان بيس» و«One Piece» مفتاحٌ صوتي واحد، و«أوفيس» = Office",
+          seo_search.phonetic("ون بيس") == seo_search.phonetic("One Piece") == seo_search.phonetic("وان بيس") and seo_search.phonetic("أوفيس") == seo_search.phonetic("Office"),
+          str((seo_search.phonetic("ون بيس"), seo_search.phonetic("One Piece"), seo_search.phonetic("أوفيس"), seo_search.phonetic("Office"))))
+    xt = mock_xtream.serve(0); tm = mock_tmdb.serve(0)
+    xbase, tbase = _serve(xt), _serve(tm)
+    seo_sources.TMDB_API = tbase + "/3"
+    d = tempfile.mkdtemp(prefix="seo_s2_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "falcon", "name": "فالكون"}, {"key": "smart", "name": "سمارت"}]}, f, ensure_ascii=False)
+        C.set_url(d, "smart", f"{xbase}/get.php?username=u&password=p&type=m3u_plus")
+        C.refresh(d, "smart")
+        cat = _cat([], [])
+        cat["series"] = [
+            {"id": "t", "name": "Turkish - تركية مترجمة", "items": [
+                {"n": "السجين S01 Mahkum", "s": [[0, 10]], "i": 30, "p": "http://panel/mk.png"}, {"n": "السجين S02 Mahkum", "s": [[0, 8]], "i": 31, "p": "http://panel/mk2.png"},
+                {"n": "العهد مترجم S01 SOZ", "s": [[0, 20]], "i": 32},
+                {"n": "التفاح الحرام مدبلج S03 YASAK ELMA Ar", "s": [[0, 81]], "i": 10}, {"n": "التفاح الحرام مدبلج S04 YASAK ELMA Ar", "s": [[0, 99]], "i": 11}]},
+            {"id": "sy", "name": "Syria - سورية", "items": [{"n": "السجين S01", "s": [[0, 30]], "i": 40, "p": "http://panel/sy.png"}, {"n": "العهد S01 Al-Ahd", "s": [[0, 32]], "i": 41}]},
+            {"id": "an", "name": "Anime - أنمي آسيوي", "items": [{"n": "Memorias de Idhún S01", "s": [[0, 10]], "i": 50}, {"n": "The King's Avatar S01", "s": [[0, 12]], "i": 51},
+                                                             {"n": "Lookism S01", "s": [[0, 8]], "i": 52}, {"n": "Mystery Toon S01", "s": [[0, 6]], "i": 53}, {"n": "Attack on Titan S01", "s": [[0, 25]], "i": 55}]},
+            {"id": "k", "name": "KIDS - كرتون مترجم", "items": [{"n": "Batman Beyond S01", "s": [[0, 13]], "i": 54}]},
+            {"id": "f", "name": "Series", "items": [{"n": "Foo Bar S01", "s": [[0, 5]], "i": 60, "p": "http://panel/f1.png"}]},
+            {"id": "g", "name": "Netflix", "items": [{"n": "Foo Bar S02", "s": [[0, 7]], "i": 61, "p": "http://panel/f2.png"}]}]
+        _write(d, "falcon", cat)
+        r1 = seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        sj = q("SELECT id, slug FROM content WHERE title='السجين' AND merged_into IS NULL ORDER BY id")
+        hints = {r[0]: sorted(x[0] for x in q("SELECT t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND t.kind='country'", r[0])) for r in sj}
+        check("«السجين» في «تركية» و«سورية» ← كيانان (لا دمج بدليل الموسم) وبند same_server_ambiguous، لكلٍّ قرينة بلده",
+              len(sj) == 2 and sorted(hints.values()) == [["SY"], ["TR"]] and q("SELECT 1 FROM review WHERE kind='same_server_ambiguous' AND key LIKE '%السجين%' AND status='open'"), str((sj, hints)))
+        check("«العهد» كذلك كيانان", len(q("SELECT id FROM content WHERE title='العهد' AND merged_into IS NULL")) == 2)
+        check("«Foo Bar» بموسمين في قسمين مختلفين بلا قرينة ← كيانان الآن (غموض)", len(q("SELECT id FROM content WHERE title='Foo Bar' AND merged_into IS NULL")) == 2)
+        rc = r1["reconciliation"]
+        check("تسوية البناء الأول: قبل 0، والفرق = الجديد، متّسقة", rc["before"] == 0 and rc["after"] == rc["inserted"] and rc["explained"], str(rc))
+        seo_sources.set_tmdb_key(con, d, "testkey"); con.commit(); con.close()
+        r = seo_sources.run(d, limit=400, force=True)
+        con = seo_db.connect(d)
+        st2 = seo_db.settings(con)
+        works = {}
+        for r_ in q("SELECT id FROM content WHERE merged_into IS NULL"):
+            w = seo_sources.describe(con, r_[0], st2)
+            works.setdefault(w["title"], []).append(w)
+        by_tmdb = {w["tmdb_id"]: w for ws in works.values() for w in ws if w["tmdb_id"]}
+        # مصفوفة التركي
+        mk, sy = by_tmdb.get(153515), by_tmdb.get(99006)
+        check("تركي: «السجين S01/S02 Mahkum» ← Mahkum (TR/tr) عبر الأصلي، confirmed (القسم + TMDB)، البلد TR غير منازَع",
+              mk and mk["turkish"]["note"] == "confirmed" and mk["country"] == ["TR"] and not mk["disputed"] and "Mahkum" in mk["aliases"], str(mk and (mk["turkish"], mk["disputed"], mk["enrich"])))
+        check("و«السجين S01» السوري ← المسلسل السوري (SY/ar)، لا تركي، ولا يأخذ Mahkum رغم الاسم الواحد",
+              sy and sy["country"] == ["SY"] and sy["turkish"] is None and sy["sections"] == {"falcon": ["Syria - سورية"]}, str(sy and (sy["country"], sy["turkish"], sy["enrich"])))
+        soz, ahd = by_tmdb.get(99007), by_tmdb.get(281452)
+        check("«العهد مترجم S01 SOZ» ← Söz (TR) لا Alahed السوري: الأصلي اللاتيني يُبحث به أولًا والقرينة تفصل",
+              soz and soz["turkish"]["note"] == "confirmed" and "SOZ" in soz["aliases"], str(soz and (soz["turkish"], soz["enrich"])))
+        check("و«العهد S01 Al-Ahd» السوري ← Alahed (SY)", ahd and ahd["country"] == ["SY"] and ahd["turkish"] is None, str(ahd and (ahd["country"], ahd["enrich"])))
+        ye = works.get("التفاح الحرام", [{}])[0]
+        check("التفاح الحرام (قسمٌ تركي واحد بمواسمه) ← كيانٌ واحد، تركي confirmed", len(works.get("التفاح الحرام", [])) == 1 and ye.get("turkish", {}).get("note") == "confirmed", str(ye.get("turkish")))
+        tr_m = [(w["title"], w["turkish"] and w["turkish"]["decision"]) for ws in works.values() for w in ws if w["turkish"] and "falcon" in w["sections"]]
+        check("مصفوفة التركي (فالكون): 3 confirmed · 0 review · 0 unconfirmed (لا قلب لنتيجة TMDB الصحيحة)، ولا بند taxonomy_mismatch تركي",
+              sorted(x[1] for x in tr_m) == ["turkish"] * 3 and not q("SELECT 1 FROM review WHERE kind='taxonomy_mismatch' AND status='open' AND (payload_json LIKE '%turkish%' OR payload_json LIKE '%country:TR%' OR payload_json LIKE '%country:SY%')"),
+              str(tr_m) + str([tuple(r) for r in q("SELECT kind, payload_json FROM review WHERE kind='taxonomy_mismatch' AND status='open'")]))
+        # مصفوفة الأنمي
+        idh, ka, lk, mt, bb, aot = (by_tmdb.get(i) for i in (87846, 99004, 99005, 99008, 99002, 1429))
+        check("رسومٌ إسبانية (Memorias de Idhún، ES/es + كلمة «anime»): is_animation بلا anime_family، لا format ولا anime_kind، قسم «أنمي» ← مراجعة لا هب",
+              idh and idh["is_animation"] and idh["anime_family"] == 0 and idh["format"] is None and idh["anime_kind"] is None and idh["anime"]["decision"] == "review"
+              and "hub:anime" not in {k for k in idh["aliases"]} and not q("SELECT 1 FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND t.key='anime' AND ct.source IN ('tmdb','manual')", idh["id"])
+              and q("SELECT 1 FROM review WHERE key=? AND status='open'", f"taxonomy_mismatch:{idh['id']}"), str(idh and (idh["is_animation"], idh["anime_family"], idh["format"], idh["anime_kind"], idh["anime"])))
+        check("دونغهوا صيني (zh/CN): أنمي confirmed بنوع chinese", ka and ka["anime_family"] == 1 and ka["anime_kind"] == "chinese" and ka["anime"]["note"] == "confirmed" and ka["format"] == "anime_series", str(ka and ka["anime"]))
+        check("رسوم كورية (ko/KR): أنمي confirmed بنوع korean", lk and lk["anime_kind"] == "korean" and lk["anime"]["note"] == "confirmed", str(lk and lk["anime"]))
+        check("ياباني (ja/JP): japanese confirmed", aot and aot["anime_kind"] == "japanese" and aot["anime"]["note"] == "confirmed", str(aot and aot["anime"]))
+        check("رسومٌ أمريكية في قسم «كرتون» (بلا قرينة أنمي): is_animation، لا أنمي، لا مراجعة", bb and bb["is_animation"] and bb["anime_family"] == 0 and bb["anime"] is None and bb["anime_kind"] is None, str(bb and (bb["anime_family"], bb["anime"])))
+        check("رسومٌ بلا لغةٍ ولا بلد + كلمة «anime» + قسم أنمي: غير محسوم (unconfirmed) لا «ياباني»",
+              mt and mt["anime_family"] is None and mt["anime_kind"] is None and mt["anime"]["decision"] == "unconfirmed" and q("SELECT 1 FROM review WHERE key=? AND status='open'", f"taxonomy_unconfirmed:{mt['id']}"), str(mt and (mt["anime_family"], mt["anime"])))
+        # الحلقات: رسمي مقابل مدرج
+        ep = ye.get("episodes") or {}
+        seas = {r[0]: (r[1], r[2]) for r in q("SELECT number, episode_count, episodes_official FROM season WHERE content_id=? ORDER BY number", ye["id"])}
+        check("الحلقات: الرسمي من TMDB (6×5=30) منفصلٌ عن المدرج في القوائم (81+99=180) وعن سجلات الحلقات، ولكل سيرفر عدّه",
+              ep.get("official") == 30 and ep.get("seasons_official") == 6 and ep.get("listed") == 180 and ep.get("per_service") == {"falcon": 180} and ep.get("records") == 30
+              and seas.get(3) == (81, 5) and seas.get(4) == (99, 5) and seas.get(1) == (0, 5), str((ep, seas)))
+        check("الصفحة تذكر الرسمي (30 حلقة) لا 180", "30" in ye["page"]["ar"]["meta_description"] and "180" not in ye["page"]["ar"]["meta_description"], ye["page"]["ar"]["meta_description"])
+        fb = works.get("Foo Bar", [{}])[0]
+        check("Foo Bar بلا TMDB: الصفحة تقول «في القوائم»", fb.get("episodes", {}).get("official") is None and "في القوائم" in fb["page"]["ar"]["meta_description"], fb.get("page", {}).get("ar", {}).get("meta_description"))
+        # البحث: اسمان لعملين، والتجميع للعرض
+        idx = seo_search.load(con)
+        r = seo_search.explain(con, idx, "السجين", st2)
+        check("البحث «السجين» ← كيانان بالاسم نفسه مجمّعان للعرض مع سبب الانفصال (same_server_ambiguous)",
+              r["result"] == "entity" and len(r["entities"]) == 2 and len(r["grouped"]) == 1 and "same_server_ambiguous" in r["grouped"][0]["why_separate"], str(r)[:300])
+        slug_changes = q("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL")[0][0]   # ترقيات TMDB (translit ← en) موثّقة
+        con.close()
+        # طيّ المواسم: ما كان كيانين يصير عنصرًا واحدًا ← الكيان الآخر يُدمج بتحويلٍ ومراجعة، لا يُترك غائبًا — والتسوية تفسّر الفرق
+        cat["series"][5]["items"] = []
+        cat["series"][4]["items"].append({"n": "Foo Bar S02", "s": [[0, 7]], "i": 61, "p": "http://panel/f2.png"})
+        _write(d, "falcon", cat)
+        r2 = seo_build.build(d)
+        con = seo_db.connect(d)
+        fb = q("SELECT id, merged_into, available, slug FROM content WHERE title='Foo Bar' ORDER BY id")
+        rc = r2["reconciliation"]
+        check("Foo Bar S01+S02 في قسمٍ واحد الآن ← عنصرٌ واحد: الكيان الثاني merged_into الأول مع 301 وبند merged_entities، لا غائب",
+              len(fb) == 2 and fb[1][1] == fb[0][0] and fb[0][2] == 1 and q("SELECT 1 FROM redirect WHERE path=?", f"/content/series/{fb[1][3]}/")
+              and q("SELECT 1 FROM review WHERE key=? AND status='open'", f"merged:{fb[0][0]}:{fb[1][0]}") and {r[0] for r in q("SELECT number FROM season WHERE content_id=?", fb[0][0])} == {1, 2},
+              str(([tuple(r) for r in fb], rc)))
+        check("التسوية: الفرق −1 = مدمج 1، غاب 0، متّسقة", rc["delta"] == -1 and rc["merged"] == 1 and rc["went_unavailable"] == 0 and rc["explained"], str(rc))
+        check("ولا يتغيّر slug أي كيانٍ في البناء الثاني (التغييرات كلها ترقيات TMDB الموثّقة قبله)",
+              q("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL")[0][0] == slug_changes)
+        smp = seo_sources.sample(d, {"movie": 1, "series": 2, "turkish": 2, "anime": 2})
+        check("العيّنة تحمل التسوية وعدّادات التركي/الأنمي بالحالات الثلاث", smp.get("reconciliation", {}).get("explained") and set(smp["counters"]["anime"]) >= {"confirmed", "review", "unconfirmed"}, str(smp.get("reconciliation")))
+        con.close()
+    finally:
+        xt.shutdown(); tm.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_enrich():
     """الإثراء من Xtream وTMDB (وهميّان، بلا إنترنت): المرشّح يُتحقَّق منه، والتصنيف، والأشخاص، والحلقات، والنافذة،
     والتباعد، والكاش — وجودة البحث على الأسماء المطلوبة."""
@@ -796,6 +927,7 @@ def main():
     unit_build()
     unit_ten()
     unit_production_cases()
+    unit_sample2_cases()
     unit_enrich()
     live()
     print("\nResult: %d passed, %d failed" % (_p, _f))

@@ -67,14 +67,16 @@ _metrics = {}                       # المصدر ← {n, seconds, max, errors,
 
 def _metric(source, seconds=None, status=None, cache_hit=False):
     with _lock:
-        m = _metrics.setdefault(source, {"n": 0, "seconds": 0.0, "max": 0.0, "errors": 0, "cache_hits": 0})
+        m = _metrics.setdefault(source, {"n": 0, "seconds": 0.0, "max": 0.0, "errors": 0, "not_found": 0, "cache_hits": 0})
         if cache_hit:
             m["cache_hits"] += 1
             return
         m["n"] += 1
         m["seconds"] += seconds
         m["max"] = max(m["max"], seconds)
-        if status and status >= 400:
+        if status == 404:                        # ردٌّ متوقَّع (لا شيء هناك) — يُعدّ على حدة ولا يُسمّى خطأ
+            m["not_found"] += 1
+        elif status and status >= 400:
             m["errors"] += 1
 
 
@@ -218,9 +220,11 @@ def _cand(d, typ):
         v = (t.get("data") or {}).get("title") or (t.get("data") or {}).get("name")
         if v:
             alts.append(v)
+    countries = list(d.get("origin_country") or []) + [pc.get("iso_3166_1") for pc in d.get("production_countries") or [] if pc.get("iso_3166_1")]
     return {"id": d.get("id"), "type": typ, "title": d.get("title") or d.get("name") or "",
             "original_title": d.get("original_title") or d.get("original_name") or "",
-            "year": int(date[:4]) if date[:4].isdigit() else 0, "aliases": alts}
+            "year": int(date[:4]) if date[:4].isdigit() else 0, "aliases": alts,
+            "countries": list(dict.fromkeys(countries)), "language": d.get("original_language") or ""}
 
 
 def _entity(con, cid):
@@ -229,6 +233,9 @@ def _entity(con, cid):
         return None
     e = dict(row)
     e["aliases"] = [r[0] for r in con.execute("SELECT alias FROM content_alias WHERE content_id=?", (cid,))]
+    e["originals"] = [r[0] for r in con.execute("SELECT alias FROM content_alias WHERE content_id=? AND kind='original' AND source='m3u'", (cid,))]
+    e["hint_countries"] = [r[0] for r in con.execute("SELECT t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id "
+                                                     "WHERE ct.content_id=? AND ct.source='hint' AND t.kind='country'", (cid,))]
     return e
 
 
@@ -238,7 +245,10 @@ def _strong(cand, e):
     theirs = {M.norm(x) for x in [cand.get("title"), cand.get("original_title")] + list(cand.get("aliases") or []) if x}
     exact = bool(mine & theirs)
     year_ok = not e.get("year") or not cand.get("year") or abs(e["year"] - cand["year"]) <= 1
-    return exact and year_ok and (bool(e.get("year")) or len(mine & theirs) > 0)
+    hint_c, cand_c = set(e.get("hint_countries") or []), set(cand.get("countries") or [])
+    origin_ok = not hint_c or not cand_c or bool(hint_c & cand_c) \
+        or bool({M.norm(x) for x in e.get("originals") or []} & theirs)   # الاسم الأصلي اللاتيني يطابق: القرينة لا تمنع
+    return exact and year_ok and origin_ok and (bool(e.get("year")) or len(mine & theirs) > 0)
 
 
 def resolve_tmdb(con, data_dir, cid, st, now=None):
@@ -266,7 +276,7 @@ def resolve_tmdb(con, data_dir, cid, st, now=None):
         consider(int(ext["external_id"]), "xtream")
     if verified and verified[0][3]:
         return "ok", verified[0]
-    latin = [a for a in [e.get("title")] + e["aliases"] if a and re.search(r"[A-Za-z]", a)]
+    latin = [a for a in e["originals"] + [e.get("title")] + e["aliases"] if a and re.search(r"[A-Za-z]", a)]   # الأصلي من القائمة أولًا
     arabic = [a for a in [e.get("title")] + e["aliases"] if a and re.search(r"[؀-ۿ]", a)]
     queries = [(a, "en-US") for a in dict.fromkeys(latin)][:2] + [(a, "ar-SA") for a in dict.fromkeys(arabic)][:2]
     for q, lang in queries:
@@ -340,13 +350,19 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
         if pc.get("iso_3166_1") and pc["iso_3166_1"] not in countries:
             countries.append(pc["iso_3166_1"])
     kw = {k.get("id") for k in ((d.get("keywords") or {}).get("keywords") or (d.get("keywords") or {}).get("results") or [])}
-    anime_kind = ""
-    if 16 in gids:
+    # الأنمي طبقاتٌ ثلاث: رسومٌ متحركة؟ (genre Animation) ← من عائلة الأنمي؟ (لغة المنشأ/بلده في جداول الإعدادات) ← نوعه
+    # (japanese · chinese · korean). رسومٌ إسبانية/أمريكية = is_animation بلا anime_family؛ وكلمة TMDB المفتاحية «anime»
+    # بلا لغة/بلد لا تحسم (anime_family = NULL ← مراجعة)، ولا تجعل عملًا غير يابانيّ يابانيًّا.
+    is_animation = 16 in gids
+    anime_kind, anime_family = "", 0
+    if is_animation:
         anime_kind = (st.get("anime_langs") or {}).get(lang, "")
         for c in countries:
             anime_kind = anime_kind or (st.get("anime_countries") or {}).get(c, "")
-        if not anime_kind and kw & set(st.get("anime_keyword_ids") or []):
-            anime_kind = "japanese"
+        if anime_kind:
+            anime_family = 1
+        elif not lang and not countries:
+            anime_family = None                   # TMDB لم يقل من أين: غير محسوم — والكلمة المفتاحية «anime» (kw) لا تحسمه ولا تجعله يابانيًّا
     status = d.get("status") or ""
     trailer = next((v.get("key") for v in (d.get("videos") or {}).get("results") or [] if v.get("site") == "YouTube" and v.get("type") == "Trailer"), None)
     runtime = d.get("runtime") or ((d.get("episode_run_time") or [None])[0])
@@ -361,7 +377,9 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
         "poster": _img(d.get("poster_path"), "w500"), "backdrop": _img(d.get("backdrop_path"), "w780"), "trailer_yt": trailer,
         "original_language": lang or None, "origin_country_json": json.dumps(countries) if countries else None,
         "genres_json": json.dumps([g["name"] for g in genres], ensure_ascii=False) if genres else None,
-        "format": ("anime_series" if typ == "series" else "anime_movie") if anime_kind else "", "anime_kind": anime_kind or None,
+        "format": ("anime_series" if typ == "series" else "anime_movie") if anime_family == 1 else "", "anime_kind": anime_kind or None,
+        "is_animation": 1 if is_animation else 0, "anime_family": anime_family,
+        "episodes_official": d.get("number_of_episodes") or None, "seasons_official": d.get("number_of_seasons") or None,
         "imdb_id": (d.get("external_ids") or {}).get("imdb_id") or d.get("imdb_id") or None,
     }
     # ‏title (اسم القوائم الذي يعرفه الجمهور: «طبيعة الحب») لا يُمسّ؛ TMDB يعطي title_ar/title_en جانبه
@@ -394,30 +412,44 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
     for hub, cc in (st.get("hub_countries") or {}).items():
         if set(cc) & set(countries):
             seo_db.set_membership(con, cid, seo_db.taxonomy_id(con, "hub", hub, hub, None, None, now), "tmdb", 1, now)
-    if anime_kind:
+    if anime_family == 1:
         seo_db.set_membership(con, cid, seo_db.taxonomy_id(con, "hub", "anime", "anime", "أنمي", "Anime", now), "tmdb", 1, now)
         seo_db.set_membership(con, cid, seo_db.taxonomy_id(con, "anime_kind", anime_kind, anime_kind, None, anime_kind.title(), now), "tmdb", 1, now)
-    # قرائن الأقسام مقابل TMDB — متحفّظًا: اتفاقٌ = confirmed؛ اختلافٌ = **مراجعة** (taxonomy_mismatch) ولا يُعتمد TMDB تلقائيًّا في
-    # البُعد المختلَف عليه (عضويّاته فيه تُعلَّم disputed فلا تدخل الهب ولا الصفحات حتى يحسمها المدير)؛ ونقص TMDB = unconfirmed
+    # قرائن الأقسام مقابل TMDB — متحفّظًا، وبلا قلبٍ لنتيجة TMDB الصحيحة:
+    #   • قرينةٌ يؤكّدها TMDB (قسم «تركية» وTMDB يقول TR) = confirmed — وقرينةٌ أخرى معارضة (قسم «سورية» على العمل نفسه) لا تُسقطها،
+    #     بل تُذكر في بند المراجعة (أقسامٌ مختلطة: غالبًا عملان بالاسم نفسه).
+    #   • قرينةٌ لا يؤيّدها TMDB في بُعدها كلّه (قسم «تركية» وTMDB يقول SY فقط) = مراجعة (taxonomy_mismatch)، وعضويّات TMDB في ذلك
+    #     البُعد تُعلَّم disputed فلا تدخل الهب ولا الصفحات حتى يحسمها المدير — ولا يُعتمد TMDB تلقائيًّا.
+    #   • قسمٌ يقول أنمي وTMDB يقول رسومًا من بلدٍ آخر (إسبانيا) = مراجعة بلا صفة أنمي؛ وTMDB بلا لغة/بلد = unconfirmed.
     hints = {f"{r['kind']}:{r['key']}" for r in con.execute("SELECT t.kind, t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source='hint'", (cid,))}
     confirmed = {f"{r['kind']}:{r['key']}" for r in con.execute("SELECT t.kind, t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source='tmdb'", (cid,))}
-    diff = {h for h in hints if h.startswith(("hub:", "country:")) and h not in confirmed}
-    if diff:
-        prefixes = set()
-        for h in diff:
-            prefixes.update(("hub:anime", "anime_kind:") if h == "hub:anime" else ("hub:", "country:"))
-        disputed = sorted(x for x in confirmed if any(x.startswith(pfx) for pfx in prefixes))
-        for x in disputed:
+    unsupported = {h for h in hints if h.startswith(("hub:", "country:")) and h not in confirmed}
+    hub_hints, country_hints = {h for h in hints if h.startswith("hub:")}, {h for h in hints if h.startswith("country:")}
+    disputed = set()
+    if hub_hints and not (hub_hints & confirmed):           # لا هبَّ من أقسام العمل يؤيّده TMDB: هبّات TMDB (إن كانت) محلّ نزاع
+        disputed |= {x for x in confirmed if x.startswith(("hub:", "anime_kind:"))}
+    if country_hints and not (country_hints & confirmed):   # ولا بلدَ من أقسامه يؤيّده TMDB: بلدان TMDB محلّ نزاع
+        disputed |= {x for x in confirmed if x.startswith("country:")}
+    unconfirmed_anime = "hub:anime" in hub_hints and anime_family is None
+    if unsupported and not (unconfirmed_anime and unsupported == {"hub:anime"}):
+        for x in sorted(disputed):
             kind, key = x.split(":", 1)
             con.execute("UPDATE content_taxonomy SET source='disputed' WHERE content_id=? AND source='tmdb' AND taxonomy_id=(SELECT id FROM taxonomy WHERE kind=? AND key=?)",
                         (cid, kind, key))
-        if "hub:anime" in diff or "hub:anime" in disputed:
+        if "hub:anime" in unsupported or any(x.startswith("hub:anime") for x in disputed):
             seo_db.apply_fields(con, "content", cid, {"format": "", "anime_kind": None}, "tmdb", now=now)   # لا صفة أنمي قبل الحسم
-        _review(con, "taxonomy_mismatch", cid, e["title"], {"hints": sorted(diff), "tmdb": sorted(x for x in confirmed if x.startswith(("hub:", "country:"))),
-                                                           "disputed": disputed, "decision": "review", "confidence": "low"}, now)
+        kept = sorted(x for x in confirmed if x.startswith(("hub:", "country:")) and x not in disputed)
+        _review(con, "taxonomy_mismatch", cid, e["title"], {"hints": sorted(unsupported), "tmdb": sorted(x for x in confirmed if x.startswith(("hub:", "country:"))),
+                                                           "disputed": sorted(disputed), "kept": kept, "decision": "review", "confidence": "low",
+                                                           "mixed_sections": len(country_hints) > 1 or (bool(hub_hints & confirmed) and bool(unsupported)),
+                                                           "note": ("animation but not anime per TMDB (country " + ",".join(countries) + ")") if "hub:anime" in unsupported and is_animation
+                                                           else ("sections disagree with each other; TMDB-confirmed classification kept" if kept else "section hint unsupported by TMDB")}, now)
     else:
         con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=? AND status='open'", (now, f"taxonomy_mismatch:{cid}"))
-    con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=? AND status='open'", (now, f"taxonomy_unconfirmed:{cid}"))
+    if unconfirmed_anime:
+        _review(con, "taxonomy_unconfirmed", cid, e["title"], {"hints": ["hub:anime"], "tmdb": "animation without origin language/country", "decision": "none", "confidence": "low"}, now)
+    else:
+        con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=? AND status='open'", (now, f"taxonomy_unconfirmed:{cid}"))
     # الأشخاص والشركات
     con.execute("DELETE FROM content_person WHERE content_id=? AND source IN ('tmdb','xtream')", (cid,))
     credits = d.get("credits") or d.get("aggregate_credits") or {}
@@ -425,7 +457,7 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
         pid = _person(con, p, now)
         if pid:
             ch = p.get("character") or ((p.get("roles") or [{}])[0]).get("character") or ""
-            role = "voice" if anime_kind or "(voice)" in ch.lower() else "actor"
+            role = "voice" if is_animation or "(voice)" in ch.lower() else "actor"
             con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) VALUES (?,?,?,?,?,'tmdb')",
                         (cid, pid, role, ch[:120] or None, i))
     jobs = {"Director": "director", "Writer": "writer", "Screenplay": "writer", "Story": "writer", "Novel": "writer", "Series Director": "director"}
@@ -445,7 +477,7 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
         coid = _company(con, c, "studio", now)
         if coid:
             con.execute("INSERT OR IGNORE INTO content_company(content_id, company_id, role, source) VALUES (?,?,'studio','tmdb')", (cid, coid))
-            if anime_kind:
+            if anime_family == 1:
                 seo_db.set_membership(con, cid, seo_db.taxonomy_id(con, "studio", f"tmdb:{c['id']}", M.slugify(c["name"]), c["name"], c["name"], now), "tmdb", 1, now)
     for c in (d.get("networks") or [])[:3]:
         coid = _company(con, c, "network", now)
@@ -460,10 +492,10 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
     if typ == "series":
         seasons = [s for s in d.get("seasons") or [] if s.get("season_number") is not None]
         for s in seasons:
-            con.execute("INSERT INTO season(content_id, number, name, poster, air_date, episode_count, updated_at) VALUES (?,?,?,?,?,?,?) "
+            con.execute("INSERT INTO season(content_id, number, name, poster, air_date, episode_count, episodes_official, updated_at) VALUES (?,?,?,?,?,0,?,?) "
                         "ON CONFLICT(content_id, number) DO UPDATE SET name=COALESCE(excluded.name, season.name), poster=COALESCE(excluded.poster, season.poster), "
-                        "air_date=COALESCE(excluded.air_date, season.air_date), episode_count=MAX(season.episode_count, excluded.episode_count), updated_at=excluded.updated_at",
-                        (cid, s["season_number"], s.get("name"), _img(s.get("poster_path"), "w342"), s.get("air_date"), s.get("episode_count") or 0, now))
+                        "air_date=COALESCE(excluded.air_date, season.air_date), episodes_official=excluded.episodes_official, updated_at=excluded.updated_at",
+                        (cid, s["season_number"], s.get("name"), _img(s.get("poster_path"), "w342"), s.get("air_date"), s.get("episode_count") or None, now))
         enqueue(con, cid, ["tmdb_seasons"], 5, now)
     return fields
 
@@ -483,8 +515,8 @@ def apply_seasons(con, data_dir, cid, st, now=None):
         if not d:
             continue
         tr = next(((t.get("data") or {}) for t in (d.get("translations") or {}).get("translations") or [] if t.get("iso_639_1") == "ar"), {})
-        con.execute("UPDATE season SET overview_en=COALESCE(?, overview_en), overview_ar=COALESCE(?, overview_ar), updated_at=? WHERE content_id=? AND number=?",
-                    (d.get("overview") or None, tr.get("overview") or None, now, cid, s["number"]))
+        con.execute("UPDATE season SET overview_en=COALESCE(?, overview_en), overview_ar=COALESCE(?, overview_ar), episodes_official=?, updated_at=? WHERE content_id=? AND number=?",
+                    (d.get("overview") or None, tr.get("overview") or None, len(d.get("episodes") or []) or None, now, cid, s["number"]))
         for ep in d.get("episodes") or []:
             con.execute("INSERT INTO episode(content_id, season, number, title_en, overview_en, air_date, runtime, still, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
                         "ON CONFLICT(content_id, season, number) DO UPDATE SET title_en=COALESCE(excluded.title_en, episode.title_en), "
@@ -615,13 +647,13 @@ def rules(con):
 def apply_hints(con, cid, groups, rls, st, now=None):
     """أسماء أقسام العمل في السيرفرات ← قرائن (hint) في content_taxonomy وأولويةٌ في الطابور — لا تُدخل الهب."""
     now = now or int(time.time())
-    hints = {}
+    hints = []                                        # (kind, value) — قسمان ببلدين (تركية + سورية) يُحفظان معًا لا آخرهما
     for g in groups:
         for rx, h in rls:
             if rx.search(g):
-                hints.update(h)
+                hints += [(k, v) for k, v in h.items() if (k, v) not in hints]
     prio = 5
-    for k, v in hints.items():
+    for k, v in hints:
         kind = {"country": "country", "hub": "hub", "language": "language"}.get(k)
         if kind:
             names = (COUNTRIES_AR.get(v, v), v) if kind == "country" else (LANGS_AR.get(v, v), v) if kind == "language" else (None, None)
@@ -810,7 +842,7 @@ def describe(con, cid, st):
     for r in con.execute("SELECT t.kind, t.key, ct.source FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=?", (cid,)):
         tax.setdefault(f"{r['kind']}:{r['key']}", []).append(r["source"])
     hints = {k for k, v in tax.items() if "hint" in v and k.startswith("hub:")}
-    links = con.execute("SELECT service_key, versions_json, raw_names_json, groups_json FROM content_service WHERE content_id=? AND present=1", (cid,)).fetchall()
+    links = con.execute("SELECT service_key, versions_json, raw_names_json, groups_json, seasons_json FROM content_service WHERE content_id=? AND present=1", (cid,)).fetchall()
     rls = rules(con)
     for ln in links:                                  # ما تقوله أقسام السيرفرات (ولو غلبتها عضوية TMDB بعد دمج)
         for g in json.loads(ln["groups_json"] or "[]"):
@@ -830,6 +862,11 @@ def describe(con, cid, st):
         if tm:
             return {"decision": hub, "confidence": "high", "tmdb": True, "section": False, "note": "tmdb only"}
         if hint and c["match"] == "tmdb":
+            if hub == "anime" and c["is_animation"] and c["anime_family"] is None:
+                return {"decision": "unconfirmed", "confidence": "low", "tmdb": None, "section": True, "note": "animation; TMDB gives no origin language/country → taxonomy_unconfirmed"}
+            if hub == "anime" and c["is_animation"]:
+                return {"decision": "review", "confidence": "low", "tmdb": False, "section": True,
+                        "note": "section says anime; TMDB says animation from " + (",".join(json.loads(c["origin_country_json"] or "[]")) or c["original_language"] or "?") + " (not anime family) → taxonomy_mismatch (no anime attribute)"}
             return {"decision": "review", "confidence": "low", "tmdb": False, "section": True, "note": "section says " + hub + "; TMDB disagrees → taxonomy_mismatch (not in hub, TMDB not auto-adopted)"}
         if hint:
             return {"decision": "unconfirmed", "confidence": "low", "tmdb": None, "section": True, "note": "TMDB incomplete → taxonomy_unconfirmed (no automatic classification)"}
@@ -864,7 +901,12 @@ def describe(con, cid, st):
             "cast": (people.get("actor") or people.get("voice") or [])[:6], "poster": bool(c["poster"]), "backdrop": bool(c["backdrop"]),
             "seasons": con.execute("SELECT COUNT(*) FROM season WHERE content_id=?", (cid,)).fetchone()[0],
             "episodes_detailed": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=?", (cid,)).fetchone()[0],
-            "format": c["format"] or None, "anime_kind": c["anime_kind"], "disputed": sorted(disputed),
+            "format": c["format"] or None, "anime_kind": c["anime_kind"], "is_animation": bool(c["is_animation"]), "anime_family": c["anime_family"],
+            "episodes": {"official": c["episodes_official"], "seasons_official": c["seasons_official"],
+                         "listed": con.execute("SELECT COALESCE(SUM(episode_count),0) FROM season WHERE content_id=?", (cid,)).fetchone()[0],
+                         "records": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=?", (cid,)).fetchone()[0],
+                         "per_service": {r["service_key"]: sum(n for _, n in json.loads(r["seasons_json"] or "[]")) for r in links if r["seasons_json"]}},
+            "disputed": sorted(disputed),
             "turkish": classify("turkish"), "anime": classify("anime"),
             "aliases": [r[0] for r in con.execute("SELECT alias FROM content_alias WHERE content_id=?", (cid,))],
             "versions": {r["service_key"]: json.loads(r["versions_json"]) for r in links if r["versions_json"]},
@@ -1075,7 +1117,7 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                      "redirects_added_since_last_bundle": con.execute("SELECT COUNT(*) FROM redirect WHERE created_at>?", (prev_at,)).fetchone()[0],
                      "in_sample": [{"id": w["id"], "slug": w.get("slug"), "merged_into": w.get("merged_into")} for w in works if w.get("merged_into") or (w.get("slug_prev"))]}
             seo_db.set_state(con, "bundle_at", now); con.commit()
-            return {"ok": True, "at": now, "ids": ids, "run": res, "failures": failures,
+            return {"ok": True, "at": now, "ids": ids, "run": res, "failures": failures, "reconciliation": seo_db.state(con, "reconciliation"),
                     "errors": {"sample": failures, "queue_preexisting": pre, "bundle": list(bundle_errors or [])},
                     "counters": counters, "identity_changes": ident, "works": works, "summary": summary(con), "api": metrics()}
         finally:
