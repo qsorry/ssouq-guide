@@ -393,6 +393,11 @@ def clean_gate(g, old=None):
                        or old.get("web_flavor", "") or "xtream"),
         "api_url":    str(g.get("api_url", "")).strip().rstrip("/") or old.get("api_url", ""),
         "api_key":    str(g.get("api_key", "")).strip() or old.get("api_key", ""),
+        # بوابة أرشيف فقط: البحث من اللقطة المحفوظة (users_export) دون دخولٍ للّوحة الحيّة —
+        # لبوابةٍ قديمة تعذّر تسجيل الدخول لها لكن يوزراتها محفوظة ويُحتاج البحث فيها. لا
+        # تُنشئ لايناتٍ ولا يُقرأ رصيدها. المفتاح غائب في الحمولة؟ أبقِ القديم.
+        "archive_only": (bool(g.get("archive_only")) if "archive_only" in g
+                         else bool(old.get("archive_only"))),
         # طول اليوزر والباسورد المولَّدين (أرقام) — لكل بوابة رقمها: كاسبر ١٠، وغيرها ١٢ افتراضًا.
         "digits":     _clean_digits(g.get("digits", old.get("digits"))),
         # سعر النقطة بالريال عند هذا المزوّد — يكتبه صاحب الحساب، فهو وحده يعرف
@@ -408,9 +413,11 @@ def clean_gate(g, old=None):
         raise ValueError("هوست البوابة \"%s\" مطلوب" % out["name"])
     if out["guide_url"] and not out["guide_url"].startswith(("http://", "https://")):
         raise ValueError("رابط الشرح للبوابة \"%s\" يجب أن يبدأ بـ http:// أو https://" % out["name"])
-    if mode == "web":
-        if out["web_flavor"] not in ("xtream", "casper"):
-            out["web_flavor"] = "xtream"
+    if mode == "web" and out["web_flavor"] not in ("xtream", "casper"):
+        out["web_flavor"] = "xtream"
+    if out["archive_only"]:
+        pass                                  # لا دخول للّوحة، فلا تُطلب بيانات اتصالها
+    elif mode == "web":
         if not out["panel_base"].startswith(("http://", "https://")):
             raise ValueError("رابط لوحة البوابة \"%s\" يجب أن يبدأ بـ http://" % out["name"])
         if not out["panel_user"] or not out["panel_pass"]:
@@ -1751,7 +1758,12 @@ def search_gate(acct, gate, q):
     links = user_links.find(DATA_DIR, acct["id"], gate["id"], q)
     saved = users_export.search(DATA_DIR, acct["id"], gate["id"], q)
     if saved:
-        return {"results": annotate_package_type(gate, saved), "links": links, "source": "file"}
+        return {"results": annotate_package_type(gate, saved), "links": links, "source": "file",
+                **({"archive_only": True} if gate.get("archive_only") else {})}
+    if gate.get("archive_only"):
+        # بوابة أرشيف فقط: اللقطة المحفوظة هي المصدر الوحيد — لا تُسأل اللوحة الحيّة (ولا
+        # تُرجَع رسالةُ فشل دخولٍ)، فغيابُ اليوزر هنا = غير موجودٍ في الأرشيف.
+        return {"results": [], "links": links, "source": "file", "archive_only": True}
     if gate.get("mode") == "falcon":
         try:
             return {"results": falcon_api.search(gate["api_url"], gate["api_key"], q), "links": links}
@@ -1814,6 +1826,8 @@ def virtual_packages(pkgs):
 
 
 def get_packages(gate):
+    if gate.get("archive_only"):                       # بوابة أرشيف: لا دخول ولا إنشاء
+        return []
     if gate.get("mode") == "web":                      # جلسة ويب بدل الـ API
         sess = web_session(gate)
         pkgs = [{"id": p["value"], "name": p["text"], "credits": None,
@@ -3213,6 +3227,7 @@ class Handler(BaseHTTPRequestHandler):
                           "guide": gate_guide(g, acct.get("guide_url", "")),
                           "digits": gate_digits(g), "point_cost": g.get("point_cost", ""),
                           "web_flavor": g.get("web_flavor", ""),
+                          "archive_only": bool(g.get("archive_only")),
                           "guide_sub": guide_sub(g, gate_guide(g, acct.get("guide_url", "")))}
                          for g in (acct.get("gates", []) if acct else [])]
                 return self._send(200, {"role": role, "account": acct["name"] if acct else None,
@@ -3232,6 +3247,8 @@ class Handler(BaseHTTPRequestHandler):
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
                     return self._send(403, {"error": "غير متاح"})
+                if gate.get("archive_only"):      # بوابة أرشيف: لا رصيد حيّ — البحث من المحفوظ فقط
+                    return self._send(200, {"provider": "archive", "credits": None, "archive_only": True})
                 if gate.get("mode") == "falcon":
                     return self._send(200, falcon_api.status(gate["api_url"], gate["api_key"]))
                 if gate.get("mode") == "web":     # الرصيد من صفحة اللوحة نفسها
