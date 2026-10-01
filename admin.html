@@ -86,6 +86,10 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 /* نص الشرح: عربي وأسطر لاتينية (Host/User/Pass) — كل سطر باتجاهه */
 #acc_guide_text{unicode-bidi:plaintext;text-align:start;font-size:.88rem;line-height:1.7}
 .acct .tag{color:var(--go)}
+.srvpick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.srvpick label{display:inline-flex!important;align-items:center;gap:6px;margin:0!important;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--sf2);color:var(--ink);font-weight:600;cursor:pointer}
+.srvpick label:has(input:checked){border-color:var(--go);color:var(--go)}
+.srvpick input{width:auto!important;margin:0}
 
 /* تبويبات كتطبيق: عروض + شريط سفلي + زر عائم + نافذة */
 .view{display:none} .view.on{display:block}
@@ -429,6 +433,8 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
       <div id="acc_reports_box" hidden>
         <label for="acc_reports_wa">رقم واتساب الموظف — يصله كل بلاغ من رقم المسابقة (اختياري، ويغيّره هو من صفحة البلاغات)</label>
         <input id="acc_reports_wa" type="tel" inputmode="tel" placeholder="05xxxxxxxx" style="direction:ltr;text-align:right">
+        <label>السيرفرات التي يتابعها — يرى بلاغاتها وحدها ويصله تنبيهها وحده (بلا اختيار: كل السيرفرات). وللسيرفر الواحد موظفٌ أو أكثر.</label>
+        <div class="srvpick" id="acc_reports_srv"></div>
       </div>
     </div>
     <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
@@ -459,6 +465,7 @@ const $ = id => document.getElementById(id);
 const chk = d => { if (d && d.login) location.href = B + "/login"; return d; };
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let accounts = [];
+let reportServers = [];                 // السيرفرات لاختيار سيرفرات موظف البلاغات
 let defaultGuideText = "";              // نص الشرح الافتراضي (من الخادم) — يُعبّأ به المربع
 $("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
 $("lnkRemain").href = B + "/remaining"; $("bellAdm").href = B + "/remaining#notes";
@@ -533,7 +540,7 @@ async function post(url, body){
   const d = chk(await r.json()); if (d.error) throw new Error(d.error); return d;
 }
 async function load(){
-  try { const r = await fetch(B + "/api/accounts"); const d = chk(await r.json()); if (d.error) throw new Error(d.error); accounts = d.accounts; defaultGuideText = d.default_guide_text || ""; }
+  try { const r = await fetch(B + "/api/accounts"); const d = chk(await r.json()); if (d.error) throw new Error(d.error); accounts = d.accounts; defaultGuideText = d.default_guide_text || ""; reportServers = d.report_servers || []; }
   catch(e) { $("list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   render();
 }
@@ -541,6 +548,8 @@ const gateBadge = m => m === "falcon" ? '<span class="gbadge falcon">فالكو�
   : m === "api" ? '<span class="gbadge api">API</span>' : '<span class="gbadge web">ويب</span>';
 const hostFmt = h => String(h || "").replace(/^https?:\/\//, "") || "—";
 const GLINK = '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>';
+// سيرفرات موظف البلاغات بأسمائها — والفارغة كلها
+const srvNames = keys => (keys && keys.length) ? keys.map(k => (reportServers.find(x => x.key === k) || {name: k}).name).join("، ") : "كل السيرفرات";
 function render(){
   const q = ($("acctSearch") ? $("acctSearch").value : "").trim().toLowerCase();
   const list = accounts.filter(a => !q ||
@@ -553,7 +562,7 @@ function render(){
       </div>`).join("");
     return `<div class="acct" data-acc="${a.id}">
       <div class="ahead" data-toggle="${a.id}">
-        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.reports ? ' · <span class="tag">بلاغات المحتوى</span>' : ""}</small></div>
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.reports ? ` · <span class="tag">بلاغات المحتوى: ${esc(srvNames(a.reports_servers))}</span>` : ""}</small></div>
         <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="adet">
@@ -641,6 +650,10 @@ function fill(a){
   $("acc_reports").checked = !!a?.reports;
   $("acc_reports_wa").value = a?.reports_wa ? "+" + a.reports_wa : "";
   $("acc_reports_box").hidden = !a?.reports;
+  const mine = a?.reports_servers || [];
+  $("acc_reports_srv").innerHTML = reportServers.map(x =>
+    `<label><input type="checkbox" value="${esc(x.key)}"${mine.includes(x.key) ? " checked" : ""}> ${esc(x.name)}</label>`).join("")
+    || '<small class="hint">لا سيرفرات بعد — تُضاف من صفحة المحتوى.</small>';
   $("acc_guide_text").value = a?.guide_text || defaultGuideText;
   applyCopyGuide();
   $("password").value = "";
@@ -674,7 +687,8 @@ $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
                 password: $("password").value, guide_url: $("acc_guide").value,
                 copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value,
-                split: $("acc_split").checked, reports: $("acc_reports").checked, reports_wa: $("acc_reports_wa").value, gates: readGates()};
+                split: $("acc_split").checked, reports: $("acc_reports").checked, reports_wa: $("acc_reports_wa").value,
+                reports_servers: [...$("acc_reports_srv").querySelectorAll("input:checked")].map(i => i.value), gates: readGates()};
   try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
   catch(e) { say($("msg"), e.message); }
 };
@@ -820,8 +834,14 @@ $("svcCurlBtn").onclick = async () => {
 };
 
 fill(null);
-nav(location.hash.slice(1) || "home");        // زيارةٌ جديدة: الرئيسية؛ و#accounts وأخواتها تفتح تبويبها
-load().then(loadService).then(loadSallaStatus);
+// ‏#staff (من صفحة البلاغات): الحسابات ونافذة موظفٍ جديد و«بلاغات المحتوى» مفعّلة
+const wantStaff = location.hash === "#staff";
+nav(wantStaff ? "accounts" : (location.hash.slice(1) || "home"));        // زيارةٌ جديدة: الرئيسية؛ و#accounts وأخواتها تفتح تبويبها
+load().then(() => {
+  if (!wantStaff) return;
+  openModal(null);
+  $("acc_reports").checked = true; $("acc_reports_box").hidden = false;
+}).then(loadService).then(loadSallaStatus);
 </script>
 </body>
 </html>

@@ -7,6 +7,8 @@
   - البلاغ: يُطابَق بالفهرس (القسم والاسم وسنة الفيلم والموسم)، وما لا يُقبل برسالته، ورقم الواتساب بصيغته الدولية،
     والمكرّر المفتوح يزيد عدده ولا يتكرّر، والحدّ بالساعة، وحدّ الحفظ.
   - الموظف: المفتوحة والمنجزة بأعدادها ولكل سيرفر، و«تم الإصلاح» وإعادة الفتح (ويُضمّ إلى مثله)، والحذف.
+  - لكل سيرفر موظفٌ أو أكثر: الموظف لا يرى إلا بلاغات سيرفراته ولا يمسّ غيرها ولا يصله إلا تنبيهها، ومن بلا سيرفراتٍ
+    مختارة يتابع كلها، والمدير يرى من يتابع كل سيرفر.
   - تنبيه واتساب: نصّه، ولكل مستلمٍ مرة، والمكرّر بعد نصف ساعة لا قبلها، وحدّ الساعة، وما لم يصل بسببه ويُحفظ مع البلاغ،
     ورقم المدير؛ وعلى خادمٍ حيّ بخدمة واتساب وهمية: يصل الموظف والمدير من رقم المسابقة، والموقوف لا يصله، والتجربة.
   - على خادم حيّ: الصفحة العامة وواجهاتها والإرسال، وصلاحيات الموظف (المدير، ومن فُتحت له، ومن لم تُفتح له)،
@@ -133,6 +135,17 @@ def unit_steps():
           and s["items"][0]["g"] == "SERIES | Drama" and s["items"][0]["gid"] == gid(d, "series", "SERIES | Drama")
           and s["items"][0]["s"] == [[1, 2], [2, 1]], s)
     check("والقنوات لا تدخل البحث", R.search(d, "smart", "MBC")["items"] == [])
+    check("وكلمةٌ من حرفٍ واحد: لا شيء", R.search(d, "smart", "b") == {"ok": True, "total": 0, "items": []})
+    seed(d, "casper", "#EXTM3U\n" + entry("Osman S01 E01", "تركي مترجم", "series", 1) + entry("Osman S01 E02", "تركي مترجم", "series", 2)
+         + entry("Osman S01 E01", "تركي مدبلج", "series", 3) + entry("Osmanli (2020)", "أفلام تركية", "movie", 4))
+    s2 = R.search(d, "casper", "osman")
+    check("والاسم في قسمين نتيجتان بقسميهما (المدبلج والمترجم)، والمطابق تمامًا أولًا",
+          [(x["n"], x["g"]) for x in s2["items"]] == [("Osman", "تركي مترجم"), ("Osman", "تركي مدبلج"), ("Osmanli", "أفلام تركية")]
+          and s2["total"] == 3, s2)
+    rec = R.recent(d, "casper")
+    check("وأحدث ما أضيف قبل الكتابة (الأكبر رقمًا أولًا)", [(x["n"], x["k"]) for x in rec["items"]][:2] == [("Osmanli", "movie"), ("Osman", "series")]
+          and all("gid" in x and "g" in x for x in rec["items"]), rec)
+    check("وسيرفرٌ بلا محتوى ← None", R.recent(d, "kon") is None and R.search(d, "kon", "x") is None)
     return d
 
 
@@ -221,6 +234,11 @@ def unit_staff():
     check("والحذف", R.remove(d, b["id"]) and not R.remove(d, b["id"])
           and all(x["id"] != b["id"] for x in R.listing(d, "all")["items"]))
     check("وعدد المفتوحة", R.open_count(d) == 2)
+    mine = R.listing(d, "all", only={"falcon"})
+    check("وموظف سيرفرٍ لا يرى غيره ولا يُعدّ له", [x["server"] for x in mine["items"]] == ["falcon"]
+          and mine["counts"] == {"open": 1, "done": 0} and [x["key"] for x in mine["servers"]] == ["falcon"], mine["counts"])
+    check("وبلا سيرفرات (‏only فارغة): لا شيء", R.listing(d, "all", only=set())["items"] == [])
+    check("والبلاغ برقمه لمعرفة سيرفره", R.get(d, f["id"])["server"] == "falcon" and R.get(d, "nope") is None)
     old = R.KEEP
     R.KEEP = 3
     try:
@@ -256,27 +274,29 @@ def unit_alert():
     sent = []
     R.sender = lambda to, text: sent.append((to, text)) or ({"ok": False, "error": "الرقم ليس على واتساب"}
                                                           if to == "966599000000" else {"ok": True})
-    R.recipients = lambda: [("سارة", "966500000001"), ("المدير", "966500000002"), ("سارة مكرّر", "966500000001")]
+    asked = []
+    R.recipients = lambda rep: asked.append(rep["server"]) or [("سارة", "966500000001"), ("المدير", "966500000002"),
+                                                               ("سارة مكرّر", "966500000001")]
     R._alerts.clear()
     try:
         res = R.alert(d, r, True, now=1000)
         check("يصل كل مستلمٍ مرة", res == {"at": 1000, "to": 2, "sent": 2, "error": ""}
               and [x[0] for x in sent] == ["966500000001", "966500000002"] and sent[0][1] == txt, res)
-        check("ويُحفظ مع البلاغ", R.listing(d)["items"][0]["wa"] == res)
+        check("ويُحفظ مع البلاغ، والمستلمون بسيرفر البلاغ", R.listing(d)["items"][0]["wa"] == res and asked == ["smart"])
         r2, new2 = R.submit(d, dict(base, phone="0500000009"), now=1100)
         check("والمكرّر قبل نصف ساعة: لا تنبيه", not new2 and R.alert(d, r2, False, now=1100) is None and len(sent) == 2)
         r3, _ = R.submit(d, base, now=1000 + R.ALERT_AGAIN)
         res3 = R.alert(d, r3, False, now=1000 + R.ALERT_AGAIN)
         check("وبعدها ينبّه ثانيةً بعدده وآخر من بلّغ برقمه", res3["sent"] == 2 and "(3 بلاغات)" in sent[-1][1]
               and "+966500000009" in sent[-1][1])
-        R.recipients = lambda: [("سارة", "966500000001"), ("علي", "966599000000")]
+        R.recipients = lambda rep: [("سارة", "966500000001"), ("علي", "966599000000")]
         r4, _ = R.submit(d, dict(base, ep=2), now=5000)
         res4 = R.alert(d, r4, True, now=5000)
         check("وما لم يصل: بسببه ولمن", res4["sent"] == 1 and res4["error"] == "علي: الرقم ليس على واتساب", res4)
-        R.recipients = lambda: []
+        R.recipients = lambda rep: []
         r5, _ = R.submit(d, dict(base, ep=3), now=5100)
-        check("وبلا مستلمين: سببه", R.alert(d, r5, True, now=5100)["error"].startswith("لا أرقام للتنبيه"))
-        R.recipients = lambda: [("سارة", "966500000001")]
+        check("وبلا مستلمين: سببه باسم السيرفر", R.alert(d, r5, True, now=5100)["error"].startswith("لا أحد يصله تنبيه سمارت"))
+        R.recipients = lambda rep: [("سارة", "966500000001")]
         old, R.ALERT_HOUR_MAX = R.ALERT_HOUR_MAX, 2
         R._alerts.clear()
         try:
@@ -478,7 +498,7 @@ def live_alert():
         code, d = jget(adm + "/api/reports", AUTH)
         check("بلا رقم مسابقةٍ مربوط: الصفحة تقول ذلك", code == 200 and d["alert"]["from"] == ""
               and "رقم المسابقة غير مربوط" in d["alert"]["from_error"]
-              and d["alert"]["staff"] == [{"name": "سارة", "wa": "966500000001", "on": True}], d.get("alert"))
+              and d["alert"]["staff"] == [{"name": "سارة", "wa": "966500000001", "on": True, "all": True, "servers": []}], d.get("alert"))
         n0 = len(rd("GET", "/_test/log")["sent"])
         code, d = jpost(base + "/api/report", form)
         time.sleep(1)
@@ -533,6 +553,91 @@ def live_alert():
         rdp.wait(timeout=10)
 
 
+def live_team():
+    print("خادمٌ حيّ: لكل سيرفر موظفٌ أو أكثر")
+    port, wport = 9793, 9783
+    data = tempfile.mkdtemp(prefix="reports_team_")
+    reader = f"http://127.0.0.1:{wport}"
+    rdp = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_reader.py"), str(wport), "rdr_team"])
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("WHATSAPP_READER_", "SALLA_ADMIN_TOKEN"))}
+    env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
+               WHATSAPP_READER_URL=reader, WHATSAPP_READER_SECRET="rdr_team")
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env)
+    base, adm = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{port}/admin"
+
+    def rd(method, path, body=None):
+        rq = urllib.request.Request(reader + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                    headers={"Content-Type": "application/json", "X-Reader-Secret": "rdr_team"})
+        with urllib.request.urlopen(rq, timeout=20) as r:
+            return json.loads(r.read())
+
+    def sent_to(n0, want, t=8.0):
+        """أرقام من وصلهم بعد n0 — حين يصل عددهم ‏want، ثم مهلةٌ قصيرة لما قد يزيد."""
+        end = time.time() + t
+        while time.time() < end and len(rd("GET", "/_test/log")["sent"]) < n0 + want:
+            time.sleep(.1)
+        time.sleep(.4)
+        return sorted(x["to"] for x in rd("GET", "/_test/log")["sent"][n0:])
+
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(base + "/robots.txt", timeout=2)
+                rd("GET", "/_test/log")
+                break
+            except Exception:
+                time.sleep(.2)
+        req(adm + "/api/content/admin/upload?s=smart&name=s.m3u", SAMPLE.encode(), AUTH)
+        req(adm + "/api/content/admin/upload?s=falcon&name=f.m3u",
+            ("#EXTM3U\n" + entry("Kon Show S01 E01", "Drama", "series", 1)).encode(), AUTH)
+        jpost(adm + "/api/contest/admin/wa/connect", {"number": "0500000009"}, AUTH)
+        rd("POST", "/_test/scan/ssouq-guide--contest", {})
+        req(adm + "/api/contest/admin", auth=AUTH)
+        code, d = jget(adm + "/api/accounts", AUTH)
+        check("نافذة الحساب تعرف السيرفرات", [x["key"] for x in d["report_servers"]] == ["kon", "casper", "smart", "falcon"],
+              d.get("report_servers"))
+        people = {"sara": ("سارة", "0500000001", ["smart"]), "nora": ("نورة", "0500000002", ["falcon", "../x", "falcon"]),
+                  "omar": ("عمر", "0500000003", []), "huda": ("هدى", "0500000004", ["smart"])}
+        for user, (name, wa, srv) in people.items():
+            code, d = jpost(adm + "/api/accounts", {"name": name, "user": user, "password": user + "1234", "reports": True,
+                                                    "reports_wa": wa, "reports_servers": srv, "gates": []}, AUTH)
+        acc = {a["user"]: a for a in d["accounts"]}
+        check("سيرفرات كل موظف (بلا تكرارٍ ولا مفتاحٍ غريب، والفارغة كلها)", acc["sara"]["reports_servers"] == ["smart"]
+              and acc["nora"]["reports_servers"] == ["falcon"] and acc["omar"]["reports_servers"] == [], acc["nora"])
+        code, d = jget(adm + "/api/reports", AUTH)
+        team = {t["key"]: sorted(x["name"] for x in t["people"]) for t in d["alert"]["team"]}
+        check("والمدير يرى من يتابع كل سيرفرٍ له محتوى (وللسيرفر أكثر من موظف)", team == {
+            "smart": ["سارة", "عمر", "هدى"], "falcon": ["عمر", "نورة"]}, team)
+        smart = next(x["id"] for x in jget(base + "/api/report/groups?s=smart")[1]["kinds"]["series"] if x["name"] == "SERIES | Drama")
+        falcon = jget(base + "/api/report/groups?s=falcon")[1]["kinds"]["series"][0]["id"]
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        jpost(base + "/api/report", {"s": "smart", "t": "series", "g": smart, "n": "Breaking Bad", "season": 1, "ep": 1, "problem": "down"})
+        check("بلاغ سمارت يصل موظفيه ومن يتابع الكل وحدهم", sent_to(n0, 3) == ["966500000001", "966500000003", "966500000004"])
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        jpost(base + "/api/report", {"s": "falcon", "t": "series", "g": falcon, "n": "Kon Show", "season": 1, "ep": 1, "problem": "buffer"})
+        check("وبلاغ فالكون كذلك", sent_to(n0, 2) == ["966500000002", "966500000003"])
+        sara, omar = login(adm, "sara", "sara1234"), login(adm, "omar", "omar1234")
+        code, d = jget(adm + "/api/reports?state=all", opener=sara)
+        fid = next(x["id"] for x in jget(adm + "/api/reports", AUTH)[1]["items"] if x["server"] == "falcon")
+        check("موظف سمارت لا يرى إلا بلاغاتها، ولا يُعدّ له غيرها", code == 200 and [x["server"] for x in d["items"]] == ["smart"]
+              and d["counts"] == {"open": 1, "done": 0} and d["alert"]["servers"] == ["سمارت"] and "team" not in d["alert"], d.get("counts"))
+        check("ولا يرى بلاغ فالكون بتصفيته", jget(adm + "/api/reports?s=falcon", opener=sara)[1]["items"] == [])
+        check("ولا يمسّ بلاغ فالكون برقمه", jpost(adm + "/api/reports/state", {"id": fid, "done": True}, opener=sara)[0] == 404
+              and jget(adm + "/api/reports", AUTH)[1]["counts"]["open"] == 2)
+        d = jget(adm + "/api/reports?state=all", opener=omar)[1]
+        check("ومن يتابع الكل يرى الكل ويصلحه", sorted(x["server"] for x in d["items"]) == ["falcon", "smart"]
+              and d["alert"]["servers"] == [] and jpost(adm + "/api/reports/state", {"id": fid, "done": True}, opener=omar)[0] == 200)
+        code, d = jpost(adm + "/api/accounts", {"id": acc["sara"]["id"], "name": "سارة", "user": "sara",
+                                                "reports": True, "reports_servers": ["smart", "falcon"], "gates": []}, AUTH)
+        check("وتعديل سيرفراته يحفظ رقمه", code == 200 and next(a for a in d["accounts"] if a["user"] == "sara")["reports_wa"] == "966500000001")
+        check("فيرى ما أُضيف له فورًا", sorted(x["server"] for x in jget(adm + "/api/reports?state=all", opener=sara)[1]["items"]) == ["falcon", "smart"])
+    finally:
+        p.terminate()
+        p.wait(timeout=10)
+        rdp.terminate()
+        rdp.wait(timeout=10)
+
+
 def main():
     unit_steps()
     unit_submit()
@@ -540,6 +645,7 @@ def main():
     unit_alert()
     live()
     live_alert()
+    live_team()
     print(f"\nResult: {_p} passed, {_f} failed")
     sys.exit(1 if _f else 0)
 

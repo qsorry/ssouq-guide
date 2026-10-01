@@ -92,10 +92,16 @@ h1{font-size:1.45rem;margin:0 0 4px}
 .acheck{display:flex;align-items:center;gap:8px;margin:10px 0 0;font-size:.9rem}
 .amsg{margin:8px 0 0;font-size:.86rem;min-height:1em}
 .amsg.ok{color:var(--go)}.amsg.bad{color:var(--err)}
-.staff{margin:12px 0 0;padding:10px 0 0;border-top:1px dashed var(--line);font-size:.86rem}
-.staff b{display:block;margin:0 0 4px}
-.staff li{color:var(--mute)}
-.staff li bdi{color:var(--ink);font-weight:700}
+/* الفريق لكل سيرفر (للمدير) */
+.srow{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px dashed var(--line)}
+.srow:first-of-type{border-top:0}
+.srow>b{flex:none;min-width:74px;padding-top:4px}
+.ppl{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0}
+.pp{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--sf2);font-size:.82rem}
+.pp small{color:var(--mute)}
+.pp.off{opacity:.65}
+.pp.none{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 8%,transparent)}
+.tfoot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:.84rem;color:var(--mute)}
 .wline{display:block;color:var(--amber);font-size:.78rem;margin-top:6px;overflow-wrap:anywhere}
 @media (max-width:560px){.tiles{gap:6px}.tile{padding:9px 10px}.tile b{font-size:1.25rem}.pos{width:48px}}
 </style>
@@ -121,8 +127,13 @@ h1{font-size:1.45rem;margin:0 0 4px}
       <label class="acheck"><input type="checkbox" id="aOn" checked> نبّهني بكل بلاغ جديد</label>
       <div class="acts"><button class="btn go" id="aSave">حفظ</button><button class="btn" id="aTest">أرسل رسالة تجريبية</button></div>
       <p class="amsg" id="aMsg"></p>
-      <div class="staff" id="aStaff" hidden></div>
     </div>
+  </details>
+  <details class="abox" id="tbox" hidden>
+    <summary><span class="bell"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+      <span class="grow"><b>الفريق لكل سيرفر</b><small id="tSum">…</small></span>
+      <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="abody" id="team"></div>
   </details>
   <div class="tiles">
     <button class="tile hot" data-state="open" aria-pressed="true"><small>مفتوحة</small><b id="nOpen">—</b></button>
@@ -204,19 +215,29 @@ function drawAlert(a){
   $("aBell").classList.toggle("off", !on || !a.from);
   const tel = `<bdi dir="ltr">+${esc(m.wa)}</bdi>`;
   $("aSum").innerHTML = !m.wa ? "أضف رقمك ليصلك كل بلاغ جديد على واتساب"
-    : !m.on ? `موقوف — رقمك ${tel}` : (a.from ? `يصلك كل بلاغ على ${tel}` : `رقمك ${tel} — لا يُرسل شيء حتى يُربط رقم المسابقة`);
+    : !m.on ? `موقوف — رقمك ${tel}` : (a.from ? `يصلك كل بلاغ${a.servers && a.servers.length ? " في " + esc(a.servers.join("، ")) : ""} على ${tel}`
+                                          : `رقمك ${tel} — لا يُرسل شيء حتى يُربط رقم المسابقة`);
   $("aFrom").hidden = !!a.from; $("aFrom").textContent = a.from_error || "";
   if (!alertFilled) {                       // لا يُمسح ما يكتبه مع التحديث كل 30 ثانية
     alertFilled = true;
     $("aWa").value = m.wa ? "+" + m.wa : ""; $("aOn").checked = m.on !== false;
     if (!m.wa) $("abox").open = true;
   }
-  const staff = a.staff;
-  $("aStaff").hidden = !staff;
-  if (staff) $("aStaff").innerHTML = `<b>من يصله التنبيه</b><ul>` + (staff.length ? staff.map(x =>
-      `<li><bdi>${esc(x.name)}</bdi> — ${x.wa ? `+${esc(x.wa)}${x.on ? "" : " (موقوف)"}` : "بلا رقم"}</li>`).join("")
-    : "<li>لا موظفين بعد — افتح «بلاغات المحتوى» لحسابٍ من نافذة الحساب</li>")
-    + `<li><bdi>أنت (المدير)</bdi> — ${m.wa ? "+" + esc(m.wa) + (m.on ? "" : " (موقوف)") : "بلا رقم"}</li></ul>`;
+  drawTeam(a);
+}
+// للمدير: من يتابع كل سيرفر (يرى بلاغاته ويصله تنبيهه) — وما لا أحد له تصل بلاغاته المدير وحده
+function drawTeam(a){
+  const team = a.team;
+  $("tbox").hidden = !team;
+  if (!team) return;
+  const m = a.mine || {}, you = m.wa && m.on;
+  const pill = p => `<span class="pp${p.on && p.wa ? "" : " off"}"><bdi>${esc(p.name)}</bdi> <small>${p.wa ? `<bdi dir="ltr">+${esc(p.wa)}</bdi>${p.on ? "" : " · موقوف"}` : "بلا رقم"}${p.all ? " · كل السيرفرات" : ""}</small></span>`;
+  const empty = team.filter(t => !t.people.length);
+  $("tSum").textContent = `${num((a.staff || []).length)} موظف` + (empty.length ? ` · ${empty.map(t => t.name).join("، ")} بلا أحد` : " · لكل سيرفرٍ من يتابعه");
+  $("team").innerHTML = (team.length ? team.map(t => `<div class="srow"><b>${esc(t.name)}</b><div class="ppl">${t.people.length ? t.people.map(pill).join("")
+      : `<span class="pp none">لا أحد — ${you ? "بلاغاته تصلك أنت وحدك" : "لا يصل تنبيهه أحدًا"}</span>`}</div></div>`).join("")
+    : '<p class="sub">لا سيرفرات بعد — تُضاف من صفحة المحتوى.</p>')
+    + `<div class="tfoot"><a class="btn go" href="${B}/accounts#staff">+ إضافة موظف</a><span>وتعديل سيرفرات الموظف ورقمه من نافذة حسابه في «الحسابات». وأنت (المدير) يصلك كل سيرفر${m.wa ? (m.on ? "" : " — تنبيهك موقوف") : " إن حفظت رقمك"}.</span></div>`;
 }
 async function saveAlert(){
   const b = $("aSave"); b.disabled = true; $("aMsg").className = "amsg"; $("aMsg").textContent = "";
@@ -265,7 +286,7 @@ async function load(){
     if (d.login) { location.href = B + "/login"; return; }
     if (!r.ok) throw new Error(d.error || "تعذّر التحميل");
     data = d; role = d.role;
-    $("who").textContent = d.name || "";
+    $("who").textContent = (d.name || "") + (d.alert && d.alert.servers && d.alert.servers.length ? " · " + d.alert.servers.join("، ") : "");
     $("lnkHome").hidden = !(d.role === "admin" || d.gates);
     $("lnkHome").href = d.role === "admin" ? B + "/accounts" : (B || "/");
     $("msg").hidden = true;
