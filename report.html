@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>بلّغ عن فيديو لا يعمل | سمارت سوق</title>
+<meta name="description" content="مشترك في سمارت سوق وفيديو لا يعمل أو يقطع؟ اختر السيرفر والقسم والمسلسل أو الفيلم والحلقة، ويصل بلاغك إلى فريق الدعم مباشرة.">
+<meta name="robots" content="noindex, follow">
+<meta name="theme-color" content="#060b17">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ألوان صفحة المحتوى نفسها (content_page.CSS) — فالبلاغ امتدادٌ لها */
+:root{color-scheme:dark;--bg:#060b17;--card:#0e172c;--card2:#132039;--line:#1c2a4a;--line2:#29406b;
+  --ink:#eaf0ff;--mute:#8fa2c6;--acc:#2f8cff;--acc2:#1767d8;--gold:#f6c343;--green:#22c493;--red:#f0685a;--amber:#f2b23e}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(1100px 520px at 100% -8%,rgba(47,140,255,.16),transparent 60%),
+  radial-gradient(900px 480px at 0 0,rgba(124,58,237,.10),transparent 60%),var(--bg);color:var(--ink);
+  font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px}
+/* الرأس */
+.top{position:sticky;top:0;z-index:20;background:rgba(6,11,23,.86);backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:12px;min-height:62px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .bi{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--card2);color:var(--acc)}
+.brand b{display:block;font-size:1.05rem;line-height:1.15}
+.brand small{display:block;color:var(--mute);font-size:.72rem}
+.top .sp{flex:1}
+.top a.wa{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);color:var(--mute);font-weight:600;font-size:.88rem}
+.top a.wa:hover{color:var(--ink);border-color:var(--line2)}
+main{padding:18px 0 60px}
+h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
+.lead{color:var(--mute);margin:0 0 16px}
+/* ما اختاره حتى الآن — وكل خطوةٍ منه تُرجع إليها */
+.trail{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.trail button{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:5px 11px;border-radius:999px;border:1px solid var(--line2);
+  background:rgba(47,140,255,.10);color:#cfe3ff;font-size:.84rem;font-weight:600}
+.trail button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trail button small{color:var(--mute);font-weight:500}
+.trail button:hover{border-color:var(--acc)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px}
+.step{display:flex;align-items:center;gap:10px;margin:0 0 12px}
+.step .n{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--acc);color:#fff;font-weight:700;font-size:.85rem;flex:none}
+.step h2{font-size:1.08rem;margin:0}
+.step small{display:block;color:var(--mute);font-size:.8rem;font-weight:500}
+.back{margin-inline-start:auto;display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid var(--line);border-radius:10px;padding:6px 10px;color:var(--mute);font-size:.85rem}
+.back:hover{color:var(--ink);border-color:var(--line2)}
+.empty{color:var(--mute);text-align:center;padding:22px 8px;margin:0}
+.err{color:#ffb4ab;background:rgba(240,104,90,.10);border:1px solid rgba(240,104,90,.35);border-radius:12px;padding:10px 12px;margin:10px 0 0}
+/* السيرفرات */
+.servers{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.srv{display:flex;align-items:center;gap:12px;padding:10px;border-radius:14px;border:1px solid var(--line);background:var(--card2);text-align:start}
+.srv:hover{border-color:var(--acc)}
+.srv b{font-size:1rem}
+.lg{width:44px;height:44px;border-radius:11px;object-fit:cover;flex:none;background:var(--bg)}
+.lg.bi{display:grid;place-items:center;font-weight:700;color:#fff;background:linear-gradient(135deg,hsl(var(--h) 50% 34%),hsl(var(--h) 55% 18%))}
+.find{display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:0 0 12px}
+.find:focus-within{border-color:var(--acc)}
+.find input{flex:1;min-width:0;background:none;border:0;outline:0;padding:13px 0;font-size:1rem}
+.find input::placeholder{color:var(--mute)}
+/* الملصقات */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px}
+.card{display:flex;flex-direction:column;gap:6px;padding:0;background:none;border:0;text-align:start;min-width:0}
+.pos{position:relative;aspect-ratio:2/3;border-radius:12px;overflow:hidden;border:1px solid var(--line);
+  background:linear-gradient(135deg,hsl(var(--h) 45% 28%),hsl(var(--h) 50% 14%))}
+.pos.sq{aspect-ratio:16/10}
+.pos .ph{position:absolute;inset:0;display:grid;place-items:center;font-weight:700;font-size:1.4rem;color:rgba(255,255,255,.85)}
+.pos img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pos.sq img{object-fit:contain;padding:10px;background:#0b1428}
+.card:hover .pos{border-color:var(--acc)}
+.card b{font-size:.86rem;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card small{color:var(--mute);font-size:.75rem;margin-top:-4px}
+.card small.g{font-size:.7rem;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:-6px}
+.hint{color:var(--mute);font-size:.86rem;margin:4px 0 10px}
+/* العنصر المختار */
+.pick{display:flex;gap:14px;align-items:center;margin:0 0 14px}
+.pick .pos{width:64px;flex:none}
+.pick b{display:block;font-size:1.05rem;line-height:1.35;overflow-wrap:anywhere}
+.pick small{color:var(--mute)}
+/* المواسم والحلقات */
+.lbl{display:block;font-weight:700;margin:4px 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.chips button{min-width:44px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card2);font-weight:600;font-variant-numeric:tabular-nums}
+.chips button:hover{border-color:var(--acc)}
+.chips button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#fff}
+.chips button.all{color:var(--gold)}
+.eps{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px;margin:0 0 12px}
+.eps button{padding:10px 0;border-radius:10px;border:1px solid var(--line);background:var(--card2);font-weight:600;font-variant-numeric:tabular-nums}
+.eps button:hover{border-color:var(--acc)}
+.other{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--mute);font-size:.88rem}
+.other input{width:110px;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card2);text-align:center;direction:ltr}
+.other button{padding:9px 14px;border-radius:10px;border:1px solid var(--line2);background:none;font-weight:600}
+/* المشكلة */
+.probs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
+.prob{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 10px;border-radius:16px;border:1.5px solid var(--line);background:var(--card2);text-align:center}
+.prob svg{width:30px;height:30px}
+.prob b{font-size:1.05rem}
+.prob small{color:var(--mute);font-size:.8rem}
+.prob:hover{border-color:var(--line2)}
+.prob.down[aria-pressed="true"]{border-color:var(--red);background:rgba(240,104,90,.12)}
+.prob.down svg{color:var(--red)}
+.prob.buffer[aria-pressed="true"]{border-color:var(--amber);background:rgba(242,178,62,.12)}
+.prob.buffer svg{color:var(--amber)}
+.field{display:block;margin:0 0 12px}
+.field span{display:block;font-weight:600;margin:0 0 6px}
+.field span small{color:var(--mute);font-weight:500}
+.field input,.field textarea{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card2);outline:0}
+.field input:focus,.field textarea:focus{border-color:var(--acc)}
+.field input{direction:ltr;text-align:right}
+.field textarea{resize:vertical;min-height:70px}
+.send{width:100%;padding:13px;border-radius:14px;border:0;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;font-weight:700;font-size:1.02rem}
+.send:disabled{opacity:.55;cursor:not-allowed}
+/* تمّ */
+.done{text-align:center;padding:10px 4px}
+.done .ok{width:64px;height:64px;border-radius:50%;margin:4px auto 10px;display:grid;place-items:center;background:rgba(34,196,147,.15);color:var(--green)}
+.done .ok svg{width:34px;height:34px}
+.done h2{margin:0 0 6px}
+.done p{color:var(--mute);margin:0 0 6px}
+.done .what{color:var(--ink);font-weight:600;overflow-wrap:anywhere}
+.btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:12px;border:1px solid var(--line2);background:none;font-weight:600}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.foot{color:var(--mute);font-size:.85rem;text-align:center;padding:24px 0 10px}
+.foot a{color:var(--acc)}
+.spin{display:inline-block;width:18px;height:18px;border-radius:50%;border:2px solid var(--line2);border-top-color:var(--acc);animation:sp 1s linear infinite;vertical-align:-4px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:520px){.top a.wa span{display:none}.grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.probs{gap:8px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/"><span class="bi"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4M10 9l4 2-4 2z"/></svg></span>
+    <span><b>سمارت سوق</b><small>بلاغ عن فيديو</small></span></a>
+  <span class="sp"></span>
+  <a class="wa" href="https://wa.me/966504998661" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3z"/></svg><span>الدعم على واتساب</span></a>
+</div></header>
+<main class="wrap">
+  <h1>فيديو لا يعمل أو يقطع؟</h1>
+  <p class="lead">اختر السيرفر ثم ابحث باسم المسلسل أو الفيلم واختر الحلقة، ويصل بلاغك إلى فريق الدعم مباشرةً.</p>
+  <div class="trail" id="trail" aria-label="ما اخترته"></div>
+  <section class="panel" id="view" aria-live="polite"><p class="empty"><span class="spin"></span></p></section>
+  <p class="foot">لمشكلةٍ في الاشتراك نفسه (لا يفتح شيء، أو انتهى): <a href="https://wa.me/966504998661" target="_blank" rel="noopener">راسل الدعم على واتساب</a> · <a href="/content">محتوى الاشتراكات</a></p>
+</main>
+<script>
+(function(){
+  var ONE = {series: "مسلسل", movie: "فيلم", live: "قناة"};
+  var ART = {smart: 1, falcon: 1, casper: 1};         // شعار السيرفر إن كان له (كصفحة المحتوى)
+  var S = {};                                         // ما اختاره: s, sname, t, g, gname, it, season, ep, problem
+  var cache = {}, view = document.getElementById("view"), trail = document.getElementById("trail");
+  var WAIT = '<p class="empty"><span class="spin"></span></p>';
+
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function num(n){ return Number(n || 0).toLocaleString("en-US"); }
+  function hue(s){ var n = 0; s = String(s || ""); for (var i = 0; i < s.length; i++) n += s.charCodeAt(i); return n * 37 % 360; }
+  function ini(s){
+    var w = String(s || "").replace(/\p{M}/gu, "").match(/[\p{L}\p{N}]+/gu) || [];
+    var l = w.filter(function(x){ return !/^\p{N}+$/u.test(x); });
+    return (l.length ? l : w).slice(0, 2).map(function(x){ return x[0]; }).join("").toUpperCase() || "•";
+  }
+  function get(url){
+    if (cache[url]) return Promise.resolve(cache[url]);
+    return fetch(url).then(function(r){ if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(d){ cache[url] = d; return d; });
+  }
+  function q(o){ return Object.keys(o).filter(function(k){ return o[k] !== "" && o[k] != null; })
+    .map(function(k){ return k + "=" + encodeURIComponent(o[k]); }).join("&"); }
+  function logo(key, name){
+    return ART[key] ? '<img class="lg" src="/static/img/brands/' + esc(key) + '.webp" alt="">'
+      : '<span class="lg bi" style="--h:' + hue(name) + '">' + esc(ini(name)) + '</span>';
+  }
+  function pos(it, sq){
+    return '<span class="pos' + (sq ? ' sq' : '') + '" style="--h:' + hue(it.n) + '"><span class="ph">' + esc(ini(it.n)) + '</span>'
+      + (it.p ? '<img src="' + esc(it.p) + '" alt="" loading="lazy" decoding="async">' : '') + '</span>';
+  }
+  document.addEventListener("error", function(e){ var t = e.target; if (t && t.tagName === "IMG" && t.closest(".pos")) t.remove(); }, true);
+  function head(n, title, sub){
+    return '<div class="step"><span class="n">' + n + '</span><div><h2>' + title + '</h2>' + (sub ? '<small>' + sub + '</small>' : '')
+      + '</div>' + (n > 1 ? '<button class="back" type="button" data-back>رجوع</button>' : '') + '</div>';
+  }
+  function fail(){ view.innerHTML = '<p class="err">تعذّر التحميل — تحقّق من اتصالك ثم <a href="" style="text-decoration:underline">أعد المحاولة</a>.</p>'; }
+
+  // ---- الخطوات: كل اختيارٍ يحفظ ما قبله (‏stack) وخطوةً في سجلّ المتصفح، فيرجع زرّ الرجوع خطوةً لا يخرج ----
+  var stack = [], pushed = 0;
+  function render(){ view.onclick = null; drawTrail(now()); STEPS[now()](); }
+  function step(change){
+    stack.push(JSON.stringify(S));
+    try { history.pushState({n: stack.length}, ""); pushed++; } catch (e) {}
+    change();
+    render();
+    window.scrollTo({top: 0, behavior: "smooth"});
+  }
+  function back(){
+    if (!stack.length) return;
+    S = JSON.parse(stack.pop());
+    render();
+  }
+  function now(){
+    if (!S.s) return "server";
+    if (!S.it) return "find";
+    if (S.t === "series" && S.ep == null) return "episode";
+    return S.sent ? "done" : "problem";
+  }
+  window.addEventListener("popstate", function(){ if (pushed > 0) { pushed--; back(); } });
+  view.addEventListener("click", function(e){
+    if (!e.target.closest("[data-back]")) return;
+    e.preventDefault();
+    if (pushed > 0) history.back(); else back();       // وما فُتح من رابطٍ مباشر يرجع في الصفحة
+  });
+  function drawTrail(step){
+    var b = [];
+    if (S.s) b.push(['server', 'السيرفر', S.sname]);
+    if (S.it) b.push(['item', ONE[S.t], S.it.n + (S.it.y ? ' (' + S.it.y + ')' : '')]);
+    if (S.t === "series" && S.ep != null) b.push(['episode', 'الحلقة', epText()]);
+    trail.innerHTML = step === "done" ? "" : b.map(function(x){
+      return '<button type="button" data-to="' + x[0] + '"><small>' + esc(x[1]) + ':</small><span>' + esc(x[2]) + '</span></button>';
+    }).join("");
+  }
+  trail.addEventListener("click", function(e){
+    var b = e.target.closest("[data-to]"); if (!b) return;
+    var to = b.getAttribute("data-to");
+    step(function(){
+      if (to === "server") S = {};
+      else if (to === "item") S = {s: S.s, sname: S.sname, q: S.q};
+      else if (to === "episode") { delete S.ep; }
+      delete S.problem; delete S.sent;
+    });
+  });
+  // ما اختاره سطرًا: الاسم معزولٌ (‏bdi) فلا يقلب اسمٌ إنجليزي ترتيب «الموسم · الحلقة» بعده
+  function what(){
+    return '<bdi>' + esc(S.it.n + (S.it.y ? ' (' + S.it.y + ')' : '')) + '</bdi>' + (S.t === "series" ? ' · ' + esc(epText()) : '')
+      + (S.problem ? ' — ' + (S.problem === "down" ? "لا يعمل" : "يقطع") : '');
+  }
+  function epText(){
+    var s = S.season ? "الموسم " + S.season + " · " : "";
+    return s + (S.ep ? "الحلقة " + S.ep : "كل الحلقات");
+  }
+
+  var STEPS = {
+    server: function(){
+      view.innerHTML = head(1, "اختر السيرفر", "السيرفر الذي اشتركت فيه") + WAIT;
+      get("/api/report/servers").then(function(d){
+        var list = d.servers || [];
+        if (!list.length) { view.innerHTML = head(1, "اختر السيرفر") + '<p class="empty">لا سيرفرات بعد. راسل الدعم على واتساب.</p>'; return; }
+        view.innerHTML = head(1, "اختر السيرفر", "السيرفر الذي اشتركت فيه") + '<div class="servers">' + list.map(function(s){
+          return '<button class="srv" type="button" data-s="' + esc(s.key) + '" data-name="' + esc(s.name) + '">' + logo(s.key, s.name) + '<b>' + esc(s.name) + '</b></button>';
+        }).join("") + '</div>';
+        view.onclick = function(e){
+          var b = e.target.closest("[data-s]");
+          if (b) step(function(){ S = {s: b.getAttribute("data-s"), sname: b.getAttribute("data-name")}; });
+        };
+      }, fail);
+    },
+    // البحث باسم المسلسل أو الفيلم في السيرفر كله — بلا قسم، وقبل الكتابة أحدث ما أضيف
+    find: function(){
+      var found = [], seq = 0, timer = 0;
+      view.innerHTML = head(2, "ابحث بالاسم", "اسم المسلسل أو الفيلم في " + esc(S.sname))
+        + '<label class="find"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
+        + '<input id="sq" type="search" enterkeyhint="search" placeholder="اكتب اسم المسلسل أو الفيلم" autocomplete="off"></label><div id="sres"></div>';
+      var sq = document.getElementById("sq"), box = document.getElementById("sres");
+      var cards = function(list){
+        return '<div class="grid">' + list.map(function(it, i){
+          return '<button class="card" type="button" data-found="' + i + '">' + pos(it) + '<b dir="auto">' + esc(it.n) + '</b><small>'
+            + [ONE[it.k], it.y || "", seasons(it)].filter(Boolean).join(" · ") + '</small><small class="g" dir="auto">' + esc(it.g) + '</small></button>';
+        }).join("") + '</div>';
+      };
+      var run = function(){
+        var v = sq.value.trim(), n = ++seq;
+        S.q = v;
+        if (v.replace(/\s/g, "").length < 2) {         // قبل الكتابة: أحدث ما أضيف
+          box.innerHTML = WAIT;
+          get("/api/report/recent?s=" + encodeURIComponent(S.s)).then(function(r){
+            if (n !== seq) return;
+            found = r.items || [];
+            box.innerHTML = found.length ? '<p class="hint">أو اختر من أحدث ما أضيف:</p>' + cards(found) : '';
+          }, function(){ if (n === seq) box.innerHTML = ''; });
+          return;
+        }
+        box.innerHTML = WAIT;
+        get("/api/report/search?" + q({s: S.s, q: v})).then(function(r){
+          if (n !== seq) return;
+          found = r.items || [];
+          box.innerHTML = found.length ? cards(found) + (r.total > found.length ? '<p class="hint">' + num(r.total) + ' نتيجة — اكتب الاسم أدقّ لتجده أسرع.</p>' : '')
+            : '<p class="empty">لا نتائج لـ «' + esc(v) + '» في ' + esc(S.sname) + '. جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية.</p>';
+        }, function(){ if (n === seq) box.innerHTML = '<p class="err">تعذّر البحث — أعد المحاولة.</p>'; });
+      };
+      sq.value = S.q || "";
+      sq.addEventListener("input", function(){ clearTimeout(timer); timer = setTimeout(run, 300); });
+      sq.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); run(); sq.blur(); } });
+      view.onclick = function(e){
+        var f = e.target.closest("[data-found]");
+        if (f) { var it = found[+f.getAttribute("data-found")]; step(function(){ S.t = it.k; S.g = it.gid; S.gname = it.g; S.it = it; }); }
+      };
+      run();
+      if (!S.q && window.matchMedia && matchMedia("(pointer:fine)").matches) sq.focus();   // لا تفتح لوحة المفاتيح على الجوال وحدها
+    },
+    episode: function(){
+      var ss = S.it.s || [];                            // [[الموسم، عدد حلقاته]] — والأحدث مختارٌ أولًا
+      if (S.season == null || !ss.some(function(x){ return x[0] === S.season; })) S.season = ss.length ? ss[ss.length - 1][0] : 0;
+      var draw = function(){
+        var cur = ss.filter(function(x){ return x[0] === S.season; })[0], n = cur ? cur[1] : 0;
+        var eps = []; for (var i = 1; i <= Math.min(n, 400); i++) eps.push(i);
+        view.innerHTML = head(3, "اختر الحلقة", esc(S.it.n))
+          + (ss.length > 1 || (ss.length === 1 && ss[0][0]) ? '<span class="lbl">الموسم</span><div class="chips">' + ss.map(function(x){
+              return '<button type="button" data-season="' + x[0] + '" aria-pressed="' + (x[0] === S.season) + '">' + (x[0] ? x[0] : "بلا موسم") + '</button>';
+            }).join("") + '</div>' : '')
+          + '<span class="lbl">الحلقة</span><div class="chips"><button type="button" class="all" data-ep="0">كل حلقات ' + (S.season ? 'الموسم ' + S.season : 'المسلسل') + '</button></div>'
+          + (eps.length ? '<div class="eps">' + eps.map(function(i){ return '<button type="button" data-ep="' + i + '">' + i + '</button>'; }).join("") + '</div>' : '')
+          + '<div class="other"><span>رقمٌ آخر:</span><input id="epn" inputmode="numeric" maxlength="4" placeholder="مثلًا 45"><button type="button" id="epgo">التالي</button></div>'
+          + '<p class="err" id="eperr" hidden></p>';
+        document.getElementById("epgo").onclick = function(){
+          var v = document.getElementById("epn").value.replace(/[٠-٩]/g, function(d){ return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }).trim();
+          if (!/^\d{1,4}$/.test(v) || +v < 1) { var er = document.getElementById("eperr"); er.textContent = "اكتب رقم الحلقة أرقامًا."; er.hidden = false; return; }
+          step(function(){ S.ep = +v; });
+        };
+      };
+      view.onclick = function(e){
+        var s = e.target.closest("[data-season]");
+        if (s) { S.season = +s.getAttribute("data-season"); draw(); return; }
+        var p = e.target.closest("[data-ep]");
+        if (p) { var ep = +p.getAttribute("data-ep"); step(function(){ S.ep = ep; }); }
+      };
+      draw();
+    },
+    problem: function(){
+      var n = S.t === "series" ? 4 : 3;
+      view.innerHTML = head(n, "ما المشكلة؟")
+        + '<div class="pick">' + pos(S.it, S.t === "live") + '<div><b dir="auto">' + esc(S.it.n) + (S.it.y ? ' (' + S.it.y + ')' : '') + '</b><small>'
+        + esc(S.sname) + ' · <bdi>' + esc(S.gname) + '</bdi>' + (S.t === "series" ? ' · ' + esc(epText()) : '') + '</small></div></div>'
+        + '<div class="probs" role="group" aria-label="المشكلة">'
+        + '<button type="button" class="prob down" data-p="down" aria-pressed="' + (S.problem === "down") + '"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg><b>لا يعمل</b><small>لا يفتح أبدًا أو شاشة سوداء</small></button>'
+        + '<button type="button" class="prob buffer" data-p="buffer" aria-pressed="' + (S.problem === "buffer") + '"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/><path d="M12 7v5l3 2"/></svg><b>يقطع</b><small>يعمل ثم يتوقف أو يعلّق</small></button>'
+        + '</div>'
+        + '<label class="field"><span>رقم واتسابك <small>(اختياري — لنبلغك بعد الإصلاح)</small></span><input id="ph" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="05xxxxxxxx"></label>'
+        + '<label class="field"><span>ملاحظة <small>(اختياري)</small></span><textarea id="nt" maxlength="300" placeholder="مثلًا: يقطع بعد الدقيقة 10، أو يظهر خطأ في التطبيق"></textarea></label>'
+        + '<button class="send" type="button" id="send"' + (S.problem ? '' : ' disabled') + '>أرسل البلاغ</button><p class="err" id="serr" hidden></p>';
+      try { var saved = localStorage.getItem("rp_phone"); if (saved) document.getElementById("ph").value = saved; } catch (e) {}
+      view.onclick = function(e){
+        var p = e.target.closest("[data-p]");
+        if (p) {
+          S.problem = p.getAttribute("data-p");
+          Array.prototype.forEach.call(view.querySelectorAll("[data-p]"), function(b){ b.setAttribute("aria-pressed", String(b === p)); });
+          document.getElementById("send").disabled = false;
+        }
+      };
+      document.getElementById("send").onclick = function(){
+        var btn = this, er = document.getElementById("serr"), ph = document.getElementById("ph").value.trim();
+        btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; er.hidden = true;
+        fetch("/api/report", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({
+          s: S.s, t: S.t, g: S.g, n: S.it.n, y: S.it.y || 0, season: S.t === "series" ? S.season : null,
+          ep: S.t === "series" ? S.ep : null, problem: S.problem, phone: ph, note: document.getElementById("nt").value
+        })}).then(function(r){ return r.json().catch(function(){ return {}; }); }).then(function(d){
+          if (!d.ok) throw new Error(d.error || "تعذّر الإرسال");
+          try { if (ph) localStorage.setItem("rp_phone", ph); } catch (e) {}
+          if (window.sq) try { window.sq("report", S.s + ":" + S.problem); } catch (e) {}
+          step(function(){ S.sent = d; });
+        }).catch(function(err){
+          er.textContent = err.message || "تعذّر الإرسال — أعد المحاولة."; er.hidden = false;
+          btn.disabled = false; btn.textContent = "أرسل البلاغ";
+        });
+      };
+    },
+    done: function(){
+      var d = S.sent || {};
+      view.innerHTML = '<div class="done"><div class="ok"><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div>'
+        + '<h2>وصل بلاغك، شكرًا لك</h2><p class="what">' + what() + '</p>'
+        + '<p>' + (d.count > 1 ? 'بلّغ عنه غيرك أيضًا (' + num(d.count) + ' بلاغات) — ' : '') + 'فريق الدعم يراه الآن ويعمل على إصلاحه.</p>'
+        + '<div class="btns"><button class="btn pri" type="button" id="again">بلاغ آخر في ' + esc(S.sname) + '</button>'
+        + '<a class="btn" href="https://wa.me/966504998661" target="_blank" rel="noopener">الدعم على واتساب</a></div></div>';
+      document.getElementById("again").onclick = function(){ step(function(){ S = {s: S.s, sname: S.sname, t: S.t}; }); };
+    }
+  };
+
+  // ---- البداية: ‏?s=smart يختار السيرفر، و‏q (أو n) يبحث بالاسم، ومع ‏t و g و n (من صفحة المحتوى) يفتح العنصر نفسه ----
+  function seasons(it){
+    var s = (it.s || []).filter(function(x){ return x[0]; }).length;
+    return s > 1 ? s + " مواسم" : "";
+  }
+  var P = new URLSearchParams(location.search);
+  get("/api/report/servers").then(function(d){
+    var srv = (d.servers || []).filter(function(x){ return x.key === P.get("s"); })[0]
+      || ((d.servers || []).length === 1 ? d.servers[0] : null);
+    if (!srv) return render();
+    stack.push(JSON.stringify({}));
+    S = {s: srv.key, sname: srv.name, q: (P.get("q") || P.get("n") || "").trim().slice(0, 60)};
+    if (!P.get("g") || !P.get("t") || !P.get("n")) return render();
+    get("/api/report/items?" + q({s: srv.key, t: P.get("t"), g: P.get("g"), q: P.get("n")})).then(function(r){
+      var n = P.get("n").trim().toLowerCase();
+      var it = (r.items || []).filter(function(x){ return x.n.toLowerCase() === n; })[0];
+      if (it) { stack.push(JSON.stringify(S)); S.t = P.get("t"); S.g = P.get("g"); S.gname = r.group.name; S.it = it; }
+      render();
+    }, render);
+  }, render);
+})();
+</script>
+</body>
+</html>

@@ -1,8 +1,10 @@
 // Browser test: SS IPTV in the activation guide, for Smart, Falcon and Casper. VIDAA asks for the app (SS IPTV
 // or Duplecast) and SS IPTV walks all seven steps to the done screen with every image loaded; Samsung/LG
 // asks for the app (0Player, Duplecast or SS IPTV); Falcon and Casper keep their own 0Player portal codes; old
-// links still open. (Duplecast's own steps: ui_guide_duplecast.js.) Casper runs on every TV now, so no device
-// of its is dimmed. And the buy path: VIDAA gets the Samsung/LG plans and Smart first.
+// links still open. (Duplecast's own steps: ui_guide_duplecast.js.) Casper runs on every TV: on Samsung/LG with
+// its own plans for those TVs — the same three apps as Falcon, each opening with a note linking the two plans —
+// and on VIDAA with its regular plan, so no device of its is dimmed. And the buy path: VIDAA gets the
+// Samsung/LG plans and Smart first.
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -102,7 +104,7 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check('result page opens the VIDAA app choice',
       new URL(page.url()).hash === '#activate/smart/vidaa' && (await h2()) === 'اختر التطبيق');
 
-    console.log('== casper: every TV, with the same apps as Falcon ==');
+    console.log('== casper: every TV — Samsung/LG with its own plans, VIDAA with its regular plan ==');
     await open('#activate');
     check('Casper no longer lists Duplecast among its apps',
       (await page.textContent('#view [data-sub="casper"] small')) === 'CASPER VIP أو AroPlayer أو Smarters Pro');
@@ -111,6 +113,20 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
       muted: x.classList.contains('muted'), sub: x.querySelector('small').textContent })));
     check('Casper lists every device, none dimmed or "not with Casper"',
       cdev.length === 8 && cdev.every(d => !d.muted && !d.sub.includes('لا يعمل')), cdev.map(d => d.name + ': ' + d.sub).join(' | '));
+    for (const [v, title, app] of [['0player', 'حمّل تطبيق 0Player (زيرو بلاير)', 'من متجر التطبيقات في الشاشة'],
+        ['duplecast', 'حمّل تطبيق Duplecast (دبل كاست)', 'من متجر التطبيقات في الشاشة'], ['ssiptv', 'حمّل تطبيق SS IPTV', 'شاشات LG:']]) {
+      await open(`#activate/casper/webos/${v}`);
+      const t = await page.textContent('#view');
+      const links = await page.$$eval('#view .note a.link', a => a.map(x => x.getAttribute('href')));
+      check(`… ${v} on Samsung/LG opens with the note on its Samsung/LG plans, before the app`,
+        (await h2()) === title && t.includes('باقة كاسبر الخاصة بشاشات سامسونج و LG')
+        && t.includes('أما باقة كاسبر العادية فلا تعمل على هذه الشاشات')
+        && t.indexOf('باقة كاسبر الخاصة') < t.indexOf(app), await h2());
+      check('… its two links are the two Casper Samsung/LG plans in the store',
+        links.filter(u => /\/p(138230620|1152389812)\?utm_source=guide\.ssouq\.com&utm_medium=referral&utm_campaign=guide$/.test(u)).length === 2, links.join(' '));
+    }
+    await open('#activate/casper/vidaa/ssiptv');
+    check('… but not on VIDAA: the regular plan works there', !(await page.textContent('#view')).includes('باقة كاسبر الخاصة'));
     for (const [dev, apps] of [['webos', '0player,duplecast,ssiptv'], ['vidaa', 'ssiptv,duplecast']]) {
       await open('#activate/casper');
       await page.click(`#view [data-dev="${dev}"]`);
@@ -150,8 +166,8 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     await open('#activate/smart/webos/0player/6');
     check("Smart's 0Player code unchanged", (await page.textContent('#view')).includes('92929480'));
     await open('#activate/casper/webos/duplecast/3');
-    check("Casper's Duplecast link on Samsung/LG opens that step", new URL(page.url()).hash === '#activate/casper/webos/duplecast/3'
-      && (await page.$eval('#view .card.step > .sub', e => e.textContent)).includes('الخطوة 3 من 7'));
+    check("Casper's old Duplecast link opens that Samsung/LG step",
+      new URL(page.url()).hash === '#activate/casper/webos/duplecast/3' && (await h2()) === 'اضغط Add Playlist', await h2());
     await open('#activate/casper/webos/0player/6');
     const cas = await page.textContent('#view');
     check("Casper's 0Player has its own portal code", cas.includes('59820658') && !cas.includes('92929480') && !cas.includes('75710072'));

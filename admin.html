@@ -86,6 +86,10 @@ textarea.gsel{direction:rtl;text-align:right;resize:vertical}
 /* نص الشرح: عربي وأسطر لاتينية (Host/User/Pass) — كل سطر باتجاهه */
 #acc_guide_text{unicode-bidi:plaintext;text-align:start;font-size:.88rem;line-height:1.7}
 .acct .tag{color:var(--go)}
+.srvpick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.srvpick label{display:inline-flex!important;align-items:center;gap:6px;margin:0!important;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--sf2);color:var(--ink);font-weight:600;cursor:pointer}
+.srvpick label:has(input:checked){border-color:var(--go);color:var(--go)}
+.srvpick input{width:auto!important;margin:0}
 
 /* تبويبات كتطبيق: عروض + شريط سفلي + زر عائم + نافذة */
 .view{display:none} .view.on{display:block}
@@ -281,6 +285,7 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
         <a class="lt" href="https://guide.ssouq.com/predict" target="_blank" rel="noopener"><span class="ti c-rose"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></span><span><b>صفحة المسابقات</b><small>كما يراها الزوّار</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
         <a class="lt" href="https://guide.ssouq.com/gulf-cup" target="_blank" rel="noopener"><span class="ti c-gold"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m12 7 3.6 2.6-1.4 4.2H9.8L8.4 9.6z"/></svg></span><span><b>كأس الخليج</b><small>النتائج والقنوات الناقلة</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
         <a class="lt" id="lkContent"><span class="ti c-sky"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4M10 9l4 2-4 2z"/></svg></span><span><b>محتوى السيرفرات</b><small>ملفات M3U لصفحة المحتوى</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a class="lt" id="lkReports"><span class="ti c-rose"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg></span><span><b>بلاغات المحتوى</b><small id="lkReportsN">فيديو لا يعمل أو يقطع — من المشتركين</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
         <a class="lt" href="https://guide.ssouq.com/content" target="_blank" rel="noopener"><span class="ti c-purple"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span><span><b>صفحة المحتوى</b><small>المسلسلات بمواسمها كما يراها الزوّار</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
         <a class="lt" id="lkStats"><span class="ti c-blue"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span><b>إحصائيات الدليل</b><small>الزوار ومصادرهم وربط Google Analytics</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
         <a class="lt" href="https://search.google.com/search-console" target="_blank" rel="noopener"><span class="ti c-green"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg></span><span><b>Google Search Console</b><small>البحث والأرشفة في جوجل</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
@@ -422,6 +427,16 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
       <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_split" style="width:auto"> الاشتراكات المجزّأة لهذا العميل</label>
       <small class="hint">بيع ١٢ شهرًا أو ٦ أشهر أو ٣ أو شهر (أو أي مدةٍ بالأشهر) من خطٍّ بباقة ١٥ شهرًا (مرح · كاسبر · فالكون). عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> تلقائيًا — كلمة المرور كما هي — ويصير الخط في «حسابات متبقية» جاهزًا للبيع بما تبقّى، مع إشعارٍ وتذكيرٍ بالبريد. مغلقةٌ لغيره فلا يتغيّر عليه شيء.</small>
     </div>
+    <div class="gate">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports" style="width:auto"> بلاغات المحتوى (موظف الدعم)</label>
+      <small class="hint">يرى ما يبلّغ عنه المشتركون من <b>guide.ssouq.com/report</b> — السيرفر والقسم والمسلسل أو الفيلم والحلقة، و«لا يعمل» أو «يقطع» — ويعلّمه «تم الإصلاح» ويراسل صاحبه على واتساب. ولحسابٍ بلا بوابات تُفتح له البلاغات وحدها بعد الدخول.</small>
+      <div id="acc_reports_box" hidden>
+        <label for="acc_reports_wa">رقم واتساب الموظف — يصله كل بلاغ من رقم المسابقة (اختياري، ويغيّره هو من صفحة البلاغات)</label>
+        <input id="acc_reports_wa" type="tel" inputmode="tel" placeholder="05xxxxxxxx" style="direction:ltr;text-align:right">
+        <label>السيرفرات التي يتابعها — يرى بلاغاتها وحدها ويصله تنبيهها وحده (بلا اختيار: كل السيرفرات). وللسيرفر الواحد موظفٌ أو أكثر.</label>
+        <div class="srvpick" id="acc_reports_srv"></div>
+      </div>
+    </div>
     <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
     <div id="gates"></div>
     <button class="ghost" id="addGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
@@ -450,6 +465,7 @@ const $ = id => document.getElementById(id);
 const chk = d => { if (d && d.login) location.href = B + "/login"; return d; };
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let accounts = [];
+let reportServers = [];                 // السيرفرات لاختيار سيرفرات موظف البلاغات
 let defaultGuideText = "";              // نص الشرح الافتراضي (من الخادم) — يُعبّأ به المربع
 $("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
 $("lnkRemain").href = B + "/remaining"; $("bellAdm").href = B + "/remaining#notes";
@@ -458,6 +474,11 @@ $("lkCreate").href = HOME; $("lkRenew").href = B + "/renew"; $("lkRemain").href 
 $("lkContest").href = $("navContest").href = B + "/contest"; $("lkContent").href = $("lnkContent").href = B + "/content"; $("kpiPrize").href = B + "/contest";
 $("qLinks").onclick = () => $("links").scrollIntoView({behavior: "smooth", block: "start"});
 $("kpiVisits").href = $("lkStats").href = $("lnkStats").href = B + "/stats";
+$("lkReports").href = B + "/reports";
+// بلاغات المحتوى المفتوحة على رابطها
+fetch(B + "/api/reports?state=open").then(r => r.json()).then(d => {
+  if (d && d.counts) $("lkReportsN").textContent = d.counts.open ? d.counts.open.toLocaleString("en-US") + " مفتوحة — فيديو لا يعمل أو يقطع" : "لا بلاغات مفتوحة ✓";
+}).catch(() => {});
 // زوار الدليل: اليوم ومن في الموقع الآن — من عدّاد الدليل نفسه (analytics.py)
 async function visitStats(){
   try {
@@ -519,7 +540,7 @@ async function post(url, body){
   const d = chk(await r.json()); if (d.error) throw new Error(d.error); return d;
 }
 async function load(){
-  try { const r = await fetch(B + "/api/accounts"); const d = chk(await r.json()); if (d.error) throw new Error(d.error); accounts = d.accounts; defaultGuideText = d.default_guide_text || ""; }
+  try { const r = await fetch(B + "/api/accounts"); const d = chk(await r.json()); if (d.error) throw new Error(d.error); accounts = d.accounts; defaultGuideText = d.default_guide_text || ""; reportServers = d.report_servers || []; }
   catch(e) { $("list").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   render();
 }
@@ -527,6 +548,8 @@ const gateBadge = m => m === "falcon" ? '<span class="gbadge falcon">فالكو�
   : m === "api" ? '<span class="gbadge api">API</span>' : '<span class="gbadge web">ويب</span>';
 const hostFmt = h => String(h || "").replace(/^https?:\/\//, "") || "—";
 const GLINK = '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>';
+// سيرفرات موظف البلاغات بأسمائها — والفارغة كلها
+const srvNames = keys => (keys && keys.length) ? keys.map(k => (reportServers.find(x => x.key === k) || {name: k}).name).join("، ") : "كل السيرفرات";
 function render(){
   const q = ($("acctSearch") ? $("acctSearch").value : "").trim().toLowerCase();
   const list = accounts.filter(a => !q ||
@@ -539,7 +562,7 @@ function render(){
       </div>`).join("");
     return `<div class="acct" data-acc="${a.id}">
       <div class="ahead" data-toggle="${a.id}">
-        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}</small></div>
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.reports ? ` · <span class="tag">بلاغات المحتوى: ${esc(srvNames(a.reports_servers))}</span>` : ""}</small></div>
         <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="adet">
@@ -624,6 +647,13 @@ function fill(a){
   $("acc_guide").value = a?.guide_url || "";
   $("acc_copy_guide").checked = !!a?.copy_guide;
   $("acc_split").checked = !!a?.split;
+  $("acc_reports").checked = !!a?.reports;
+  $("acc_reports_wa").value = a?.reports_wa ? "+" + a.reports_wa : "";
+  $("acc_reports_box").hidden = !a?.reports;
+  const mine = a?.reports_servers || [];
+  $("acc_reports_srv").innerHTML = reportServers.map(x =>
+    `<label><input type="checkbox" value="${esc(x.key)}"${mine.includes(x.key) ? " checked" : ""}> ${esc(x.name)}</label>`).join("")
+    || '<small class="hint">لا سيرفرات بعد — تُضاف من صفحة المحتوى.</small>';
   $("acc_guide_text").value = a?.guide_text || defaultGuideText;
   applyCopyGuide();
   $("password").value = "";
@@ -642,6 +672,7 @@ function applyCopyGuide(){
   if (on && !$("acc_guide_text").value.trim()) $("acc_guide_text").value = defaultGuideText;
 }
 $("acc_copy_guide").addEventListener("change", applyCopyGuide);
+$("acc_reports").addEventListener("change", () => { $("acc_reports_box").hidden = !$("acc_reports").checked; });
 $("acc_guide_reset").onclick = () => { $("acc_guide_text").value = defaultGuideText; };
 
 // ---- نافذة إضافة/تعديل الحساب ----
@@ -656,7 +687,8 @@ $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
                 password: $("password").value, guide_url: $("acc_guide").value,
                 copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value,
-                split: $("acc_split").checked, gates: readGates()};
+                split: $("acc_split").checked, reports: $("acc_reports").checked, reports_wa: $("acc_reports_wa").value,
+                reports_servers: [...$("acc_reports_srv").querySelectorAll("input:checked")].map(i => i.value), gates: readGates()};
   try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
   catch(e) { say($("msg"), e.message); }
 };
@@ -802,8 +834,14 @@ $("svcCurlBtn").onclick = async () => {
 };
 
 fill(null);
-nav(location.hash.slice(1) || "home");        // زيارةٌ جديدة: الرئيسية؛ و#accounts وأخواتها تفتح تبويبها
-load().then(loadService).then(loadSallaStatus);
+// ‏#staff (من صفحة البلاغات): الحسابات ونافذة موظفٍ جديد و«بلاغات المحتوى» مفعّلة
+const wantStaff = location.hash === "#staff";
+nav(wantStaff ? "accounts" : (location.hash.slice(1) || "home"));        // زيارةٌ جديدة: الرئيسية؛ و#accounts وأخواتها تفتح تبويبها
+load().then(() => {
+  if (!wantStaff) return;
+  openModal(null);
+  $("acc_reports").checked = true; $("acc_reports_box").hidden = false;
+}).then(loadService).then(loadSallaStatus);
 </script>
 </body>
 </html>

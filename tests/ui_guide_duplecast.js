@@ -3,7 +3,8 @@
 // code from the store), scan the TV's barcode, Add Playlist, Xtream Info with host and port apart, saved,
 // refresh on the TV, and the activation (Activate by Payment, or Activate by code with the store's code) —
 // every image loads, the store button opens the code product, and the done screen's support message names
-// the app. The static pages carry the steps too.
+// the app. Casper offers Duplecast on Samsung/LG with its own plans for those TVs (the same steps, after a note
+// linking them), and on VIDAA with its regular plan. The static pages carry the steps too.
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -91,11 +92,25 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     console.log('== links ==');
     await open('#activate/smart/webos/duplecast/7');
     check('a link to the activation step opens it', (await h2()) === TITLES[5]);
-    for (const dev of ['webos', 'vidaa']) {
-      await open(`#activate/casper/${dev}/duplecast/3`);
-      check(`Casper has Duplecast on ${dev}: its link opens the step`, new URL(page.url()).hash === `#activate/casper/${dev}/duplecast/3`
-        && (await h2()) === TITLES[1]);
-    }
+    await open('#activate/casper/webos/duplecast/3');
+    check("Casper's old Samsung/LG Duplecast link opens that step", new URL(page.url()).hash === '#activate/casper/webos/duplecast/3'
+      && (await h2()) === TITLES[1], await h2());
+    await open('#activate/casper/webos');
+    check('… Casper on Samsung/LG offers 0Player, Duplecast and SS IPTV', (await h2()) === 'اختر التطبيق'
+      && (await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant))).join() === '0player,duplecast,ssiptv');
+    await open('#activate/casper/webos/duplecast');
+    check("… its Duplecast opens with the note on Casper's own Samsung/LG plans",
+      (await h2()) === 'حمّل تطبيق Duplecast (دبل كاست)' && (await text()).includes('باقة كاسبر الخاصة بشاشات سامسونج و LG'));
+    const casperTitles = [];
+    for (let i = 2; i <= 7; i++) { await open(`#activate/casper/webos/duplecast/${i}`); casperTitles.push(await h2()); }
+    check('… the same seven steps as Smart, activation last', casperTitles.join('|') === TITLES.join('|'), casperTitles.join(' | '));
+    await open('#activate/casper/webos/duplecast/7');
+    check('… whose activation step still sells the code', (await page.$$eval('#view a.btn.go', a => a.map(x => x.href))).some(h => h.startsWith(BUY)));
+    await open('#activate/casper/vidaa/duplecast/3');
+    check('… and Casper has Duplecast on VIDAA too', new URL(page.url()).hash === '#activate/casper/vidaa/duplecast/3'
+      && (await h2()) === TITLES[1], await h2());
+    await open('#activate/casper/vidaa/duplecast');
+    check('… with its regular plan: no Samsung/LG plans note there', !(await text()).includes('باقة كاسبر الخاصة'));
 
     for (const p of ['/samsung-lg', '/vidaa']) {
       await page.goto(APP + p);
