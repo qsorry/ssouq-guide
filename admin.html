@@ -267,6 +267,7 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
         <button class="qt" data-nav="accounts"><span class="ti c-blue"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span><b>الحسابات</b><small>إدارة الحسابات</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
         <button class="qt" data-nav="settings"><span class="ti c-sky"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span><b>الإعدادات</b><small>الروابط وكلمة المرور</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
         <button class="qt" id="qAdd"><span class="ti c-green"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M20 8v6M23 11h-6"/></svg></span><span><b>حساب جديد</b><small>إضافة حساب</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <a class="qt" id="qReports"><span class="ti c-rose"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg></span><span><b>بلاغات المحتوى</b><small id="qReportsN">فيديو لا يعمل أو يقطع</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
         <button class="qt" id="qContest"><span class="ti c-gold"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg></span><span><b>مسابقة التوقّعات</b><small>إدارة المسابقات</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
         <button class="qt" id="qLinks"><span class="ti c-indigo"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span><span><b>روابط</b><small>روابط مهمة</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
       </div>
@@ -435,6 +436,10 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
         <input id="acc_reports_wa" type="tel" inputmode="tel" placeholder="05xxxxxxxx" style="direction:ltr;text-align:right">
         <label>السيرفرات التي يتابعها — يرى بلاغاتها وحدها ويصله تنبيهها وحده (بلا اختيار: كل السيرفرات). وللسيرفر الواحد موظفٌ أو أكثر.</label>
         <div class="srvpick" id="acc_reports_srv"></div>
+        <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports_only" style="width:auto"> صفحة البلاغات فقط</label>
+        <small class="hint">لا يرى من الأداة شيئًا غير صفحة البلاغات (لا إنشاء ولا تجديد ولا بوابات)، ويدخل إليها مباشرةً.</small>
+        <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports_lead" style="width:auto"> مشرف — يضيف فريقه ويديره</label>
+        <small class="hint">من صفحة البلاغات يضيف أعضاء فريقه بأسمائهم وكلمات مرورهم وأرقامهم، على سيرفراته وحدها، وكلهم «صفحة البلاغات فقط».</small>
       </div>
     </div>
     <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
@@ -474,10 +479,13 @@ $("lkCreate").href = HOME; $("lkRenew").href = B + "/renew"; $("lkRemain").href 
 $("lkContest").href = $("navContest").href = B + "/contest"; $("lkContent").href = $("lnkContent").href = B + "/content"; $("kpiPrize").href = B + "/contest";
 $("qLinks").onclick = () => $("links").scrollIntoView({behavior: "smooth", block: "start"});
 $("kpiVisits").href = $("lkStats").href = $("lnkStats").href = B + "/stats";
-$("lkReports").href = B + "/reports";
-// بلاغات المحتوى المفتوحة على رابطها
+$("lkReports").href = $("qReports").href = B + "/reports";
+// بلاغات المحتوى المفتوحة على رابطها، وعلى اختصارها في أعلى الرئيسية
 fetch(B + "/api/reports?state=open").then(r => r.json()).then(d => {
-  if (d && d.counts) $("lkReportsN").textContent = d.counts.open ? d.counts.open.toLocaleString("en-US") + " مفتوحة — فيديو لا يعمل أو يقطع" : "لا بلاغات مفتوحة ✓";
+  if (!d || !d.counts) return;
+  const n = d.counts.open;
+  $("lkReportsN").textContent = n ? n.toLocaleString("en-US") + " مفتوحة — فيديو لا يعمل أو يقطع" : "لا بلاغات مفتوحة ✓";
+  $("qReportsN").textContent = n ? n.toLocaleString("en-US") + " مفتوحة الآن" : "لا بلاغات مفتوحة ✓";
 }).catch(() => {});
 // زوار الدليل: اليوم ومن في الموقع الآن — من عدّاد الدليل نفسه (analytics.py)
 async function visitStats(){
@@ -562,7 +570,7 @@ function render(){
       </div>`).join("");
     return `<div class="acct" data-acc="${a.id}">
       <div class="ahead" data-toggle="${a.id}">
-        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.reports ? ` · <span class="tag">بلاغات المحتوى: ${esc(srvNames(a.reports_servers))}</span>` : ""}</small></div>
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.reports ? ` · <span class="tag">${a.reports_lead ? "مشرف " : ""}بلاغات المحتوى${a.reports_only ? " فقط" : ""}: ${esc(srvNames(a.reports_servers))}</span>` : ""}${a.lead_id ? ` · <span class="tag">فريق ${esc((accounts.find(x => x.id === a.lead_id) || {}).name || "")}</span>` : ""}</small></div>
         <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="adet">
@@ -650,6 +658,8 @@ function fill(a){
   $("acc_reports").checked = !!a?.reports;
   $("acc_reports_wa").value = a?.reports_wa ? "+" + a.reports_wa : "";
   $("acc_reports_box").hidden = !a?.reports;
+  $("acc_reports_only").checked = !!a?.reports_only;
+  $("acc_reports_lead").checked = !!a?.reports_lead;
   const mine = a?.reports_servers || [];
   $("acc_reports_srv").innerHTML = reportServers.map(x =>
     `<label><input type="checkbox" value="${esc(x.key)}"${mine.includes(x.key) ? " checked" : ""}> ${esc(x.name)}</label>`).join("")
@@ -688,7 +698,8 @@ $("save").onclick = async () => {
                 password: $("password").value, guide_url: $("acc_guide").value,
                 copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value,
                 split: $("acc_split").checked, reports: $("acc_reports").checked, reports_wa: $("acc_reports_wa").value,
-                reports_servers: [...$("acc_reports_srv").querySelectorAll("input:checked")].map(i => i.value), gates: readGates()};
+                reports_servers: [...$("acc_reports_srv").querySelectorAll("input:checked")].map(i => i.value),
+                reports_only: $("acc_reports_only").checked, reports_lead: $("acc_reports_lead").checked, gates: readGates()};
   try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
   catch(e) { say($("msg"), e.message); }
 };
@@ -840,7 +851,8 @@ nav(wantStaff ? "accounts" : (location.hash.slice(1) || "home"));        // زي
 load().then(() => {
   if (!wantStaff) return;
   openModal(null);
-  $("acc_reports").checked = true; $("acc_reports_box").hidden = false;
+  $("acc_reports").checked = true; $("acc_reports_box").hidden = false; $("acc_reports_only").checked = true;
+  $("gates").innerHTML = "";                  // موظف البلاغات بلا بوابات
 }).then(loadService).then(loadSallaStatus);
 </script>
 </body>
