@@ -267,6 +267,7 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
         <button class="qt" data-nav="accounts"><span class="ti c-blue"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span><b>الحسابات</b><small>إدارة الحسابات</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
         <button class="qt" data-nav="settings"><span class="ti c-sky"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span><b>الإعدادات</b><small>الروابط وكلمة المرور</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
         <button class="qt" id="qAdd"><span class="ti c-green"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M20 8v6M23 11h-6"/></svg></span><span><b>حساب جديد</b><small>إضافة حساب</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <a class="qt" id="qReports"><span class="ti c-rose"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg></span><span><b>بلاغات المحتوى</b><small id="qReportsN">فيديو لا يعمل أو يقطع</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
         <button class="qt" id="qContest"><span class="ti c-gold"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg></span><span><b>مسابقة التوقّعات</b><small>إدارة المسابقات</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
         <button class="qt" id="qLinks"><span class="ti c-indigo"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span><span><b>روابط</b><small>روابط مهمة</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
       </div>
@@ -478,10 +479,13 @@ $("lkCreate").href = HOME; $("lkRenew").href = B + "/renew"; $("lkRemain").href 
 $("lkContest").href = $("navContest").href = B + "/contest"; $("lkContent").href = $("lnkContent").href = B + "/content"; $("kpiPrize").href = B + "/contest";
 $("qLinks").onclick = () => $("links").scrollIntoView({behavior: "smooth", block: "start"});
 $("kpiVisits").href = $("lkStats").href = $("lnkStats").href = B + "/stats";
-$("lkReports").href = B + "/reports";
-// بلاغات المحتوى المفتوحة على رابطها
+$("lkReports").href = $("qReports").href = B + "/reports";
+// بلاغات المحتوى المفتوحة على رابطها، وعلى اختصارها في أعلى الرئيسية
 fetch(B + "/api/reports?state=open").then(r => r.json()).then(d => {
-  if (d && d.counts) $("lkReportsN").textContent = d.counts.open ? d.counts.open.toLocaleString("en-US") + " مفتوحة — فيديو لا يعمل أو يقطع" : "لا بلاغات مفتوحة ✓";
+  if (!d || !d.counts) return;
+  const n = d.counts.open;
+  $("lkReportsN").textContent = n ? n.toLocaleString("en-US") + " مفتوحة — فيديو لا يعمل أو يقطع" : "لا بلاغات مفتوحة ✓";
+  $("qReportsN").textContent = n ? n.toLocaleString("en-US") + " مفتوحة الآن" : "لا بلاغات مفتوحة ✓";
 }).catch(() => {});
 // زوار الدليل: اليوم ومن في الموقع الآن — من عدّاد الدليل نفسه (analytics.py)
 async function visitStats(){

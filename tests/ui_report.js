@@ -187,6 +187,17 @@ function playlist(extra) {
     await page.click('#send');
     check('وطلبٌ بلا اسم لا يُرسل', (await page.textContent('#serr')) === 'اكتب اسم المسلسل أو الفيلم.');
 
+    console.log('العميل: من رئيسية الدليل');
+    await page.goto(APP + '/');
+    await page.waitForSelector('#report-entry:not([hidden])', {timeout: 8000});
+    check('مدخل «فيديو لا يعمل أو يقطع؟ بلّغنا» في رئيسية الدليل', (await page.textContent('#report-entry b')) === 'فيديو لا يعمل أو يقطع؟ بلّغنا'
+          && (await page.$eval('#report-entry', a => a.getAttribute('href'))) === '/report'
+          && !(await page.$eval('#menu-report', e => e.hidden)));
+    await shot(page, 'home-entry');
+    await page.click('#report-entry');
+    await page.waitForSelector('.srv');
+    check('ويفتح صفحة البلاغ', page.url().endsWith('/report'));
+
     console.log('العميل: من صفحة المحتوى، ورابطٌ بالمسلسل نفسه');
     await page.goto(APP + '/content/smart');
     await page.click('a[href="/report?s=smart"]');
@@ -279,6 +290,8 @@ function playlist(extra) {
     await ap.waitForSelector('#lkReportsN');
     await ap.waitForFunction(() => document.getElementById('lkReportsN').textContent.includes('مفتوحة'));
     check('رابط البلاغات في الرئيسية بعدد المفتوحة', (await ap.textContent('#lkReportsN')).startsWith('2 مفتوحة'));
+    check('واختصارها في أعلى الرئيسية بعددها', (await ap.textContent('#qReportsN')) === '2 مفتوحة الآن'
+          && (await ap.$eval('#qReports', a => a.getAttribute('href'))) === '/admin/reports');
     await ap.goto(APP + '/admin/accounts#accounts');
     await ap.waitForSelector('[data-toggle]');
     check('وسم الحساب بسيرفراته', (await ap.textContent('.acct')).includes('بلاغات المحتوى: كل السيرفرات'));

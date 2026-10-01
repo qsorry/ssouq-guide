@@ -560,6 +560,9 @@ def live():
                 break
             except Exception:
                 time.sleep(.2)
+        code, raw, _ = req(base + "/")
+        check("مدخل البلاغ في رئيسية الدليل والقائمة (يظهر حين يكون للسيرفرات محتوى)", code == 200
+              and b'id="report-entry" href="/report" hidden' in raw and b'id="menu-report" hidden' in raw)
         code, raw, hdr = req(base + "/report")
         check("صفحة البلاغ عامة ولا تُفهرس", code == 200 and b"noindex" in raw and "فيديو لا يعمل".encode() in raw
               and "/api/report/servers".encode() in raw)
