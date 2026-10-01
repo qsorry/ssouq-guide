@@ -435,6 +435,10 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
         <input id="acc_reports_wa" type="tel" inputmode="tel" placeholder="05xxxxxxxx" style="direction:ltr;text-align:right">
         <label>السيرفرات التي يتابعها — يرى بلاغاتها وحدها ويصله تنبيهها وحده (بلا اختيار: كل السيرفرات). وللسيرفر الواحد موظفٌ أو أكثر.</label>
         <div class="srvpick" id="acc_reports_srv"></div>
+        <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports_only" style="width:auto"> صفحة البلاغات فقط</label>
+        <small class="hint">لا يرى من الأداة شيئًا غير صفحة البلاغات (لا إنشاء ولا تجديد ولا بوابات)، ويدخل إليها مباشرةً.</small>
+        <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports_lead" style="width:auto"> مشرف — يضيف فريقه ويديره</label>
+        <small class="hint">من صفحة البلاغات يضيف أعضاء فريقه بأسمائهم وكلمات مرورهم وأرقامهم، على سيرفراته وحدها، وكلهم «صفحة البلاغات فقط».</small>
       </div>
     </div>
     <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
@@ -562,7 +566,7 @@ function render(){
       </div>`).join("");
     return `<div class="acct" data-acc="${a.id}">
       <div class="ahead" data-toggle="${a.id}">
-        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.reports ? ` · <span class="tag">بلاغات المحتوى: ${esc(srvNames(a.reports_servers))}</span>` : ""}</small></div>
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.reports ? ` · <span class="tag">${a.reports_lead ? "مشرف " : ""}بلاغات المحتوى${a.reports_only ? " فقط" : ""}: ${esc(srvNames(a.reports_servers))}</span>` : ""}${a.lead_id ? ` · <span class="tag">فريق ${esc((accounts.find(x => x.id === a.lead_id) || {}).name || "")}</span>` : ""}</small></div>
         <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="adet">
@@ -650,6 +654,8 @@ function fill(a){
   $("acc_reports").checked = !!a?.reports;
   $("acc_reports_wa").value = a?.reports_wa ? "+" + a.reports_wa : "";
   $("acc_reports_box").hidden = !a?.reports;
+  $("acc_reports_only").checked = !!a?.reports_only;
+  $("acc_reports_lead").checked = !!a?.reports_lead;
   const mine = a?.reports_servers || [];
   $("acc_reports_srv").innerHTML = reportServers.map(x =>
     `<label><input type="checkbox" value="${esc(x.key)}"${mine.includes(x.key) ? " checked" : ""}> ${esc(x.name)}</label>`).join("")
@@ -688,7 +694,8 @@ $("save").onclick = async () => {
                 password: $("password").value, guide_url: $("acc_guide").value,
                 copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value,
                 split: $("acc_split").checked, reports: $("acc_reports").checked, reports_wa: $("acc_reports_wa").value,
-                reports_servers: [...$("acc_reports_srv").querySelectorAll("input:checked")].map(i => i.value), gates: readGates()};
+                reports_servers: [...$("acc_reports_srv").querySelectorAll("input:checked")].map(i => i.value),
+                reports_only: $("acc_reports_only").checked, reports_lead: $("acc_reports_lead").checked, gates: readGates()};
   try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
   catch(e) { say($("msg"), e.message); }
 };
@@ -840,7 +847,8 @@ nav(wantStaff ? "accounts" : (location.hash.slice(1) || "home"));        // زي
 load().then(() => {
   if (!wantStaff) return;
   openModal(null);
-  $("acc_reports").checked = true; $("acc_reports_box").hidden = false;
+  $("acc_reports").checked = true; $("acc_reports_box").hidden = false; $("acc_reports_only").checked = true;
+  $("gates").innerHTML = "";                  // موظف البلاغات بلا بوابات
 }).then(loadService).then(loadSallaStatus);
 </script>
 </body>

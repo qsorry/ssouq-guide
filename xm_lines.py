@@ -549,6 +549,10 @@ def clean_account(a, old=None):
         "reports_wa": _report_wa(a.get("reports_wa", old.get("reports_wa", ""))),
         # وسيرفراته: لا يرى إلا بلاغاتها ولا يصله إلا تنبيهها، وللسيرفر موظفٌ أو أكثر (الفارغة = كلها).
         "reports_servers": _report_servers(a.get("reports_servers", old.get("reports_servers", []))),
+        # «صفحة البلاغات فقط»: لا يفتح من الأداة غيرها (لا إنشاء ولا تجديد ولا بوابات)، ولو كانت له بوابات.
+        "reports_only": bool(a.get("reports_only", old.get("reports_only", False))),
+        # مشرف: يضيف فريقه ويديره من صفحة البلاغات، على سيرفراته وحدها (وأعضاؤه «صفحة البلاغات فقط»، ‏lead_id).
+        "reports_lead": bool(a.get("reports_lead", old.get("reports_lead", False))),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -1945,6 +1949,19 @@ def reports_on(role, acct):
     return role == "admin" or bool(role == "account" and acct and acct.get("reports"))
 
 
+def reports_only(role, acct):
+    """حساب «صفحة البلاغات فقط»: لا يفتح من الأداة غير صفحة البلاغات وواجهاتها."""
+    return role == "account" and bool(acct and acct.get("reports") and acct.get("reports_only"))
+
+
+def reports_lead(role, acct):
+    """مشرف البلاغات: يضيف فريقه ويديره على سيرفراته."""
+    return role == "account" and bool(acct and acct.get("reports") and acct.get("reports_lead"))
+
+
+ONLY_REPORTS = "هذا الحساب لصفحة البلاغات فقط"
+
+
 def split_gate_ok(gate):
     return bool(gate) and gate.get("mode") in SPLIT_MODES
 
@@ -2563,35 +2580,53 @@ def report_recipients(r=None, st=None):
         with _lock:
             st = load_store()
     key = (r or {}).get("server", "")
-    out = [(a.get("name", ""), a["reports_wa"]) for a in st["accounts"]
+    out = [(a.get("name", ""), a["reports_wa"], a.get("reports_lang") or "ar") for a in st["accounts"]
            if a.get("reports") and a.get("reports_wa") and a.get("reports_alert") is not False and (not key or _covers(a, key))]
     adm = reports.settings(DATA_DIR)
     if adm["wa"] and adm["on"]:
-        out.append(("المدير", adm["wa"]))
+        out.append(("المدير", adm["wa"], adm.get("lang") or "ar"))
     return out
+
+
+def server_names_en():
+    """السيرفر ← اسمه بالإنجليزية (كصفحة المحتوى الإنجليزية) — لصفحة البلاغات بالإنجليزية."""
+    return {x["key"]: content.en_name(x) for x in content.servers(DATA_DIR)}
+
+
+def team_view(st, lead):
+    """فريق المشرف لصفحته: أعضاؤه بأرقامهم وسيرفراتهم، وما يختار منه لهم (سيرفراته، أو كلها)."""
+    names, en = {x["key"]: x["name"] for x in content.servers(DATA_DIR)}, server_names_en()
+    scope = lead.get("reports_servers") or list(names)
+    return {"members": [{"id": a["id"], "name": a.get("name", ""), "user": a.get("user", ""), "wa": a.get("reports_wa", ""),
+                         "servers": a.get("reports_servers") or []}
+                        for a in st["accounts"] if a.get("lead_id") == lead["id"]],
+            "servers": [{"key": k, "name": names.get(k, k), "en": en.get(k, k)} for k in scope]}
 
 
 def report_alert_state(role, acct, st):
     """بطاقة «تنبيه واتساب» في صفحة البلاغات: رقمي وحاله، ومن أين يُرسل — وللمدير من يصله."""
     mine = reports.settings(DATA_DIR) if role == "admin" else \
-        {"wa": acct.get("reports_wa", ""), "on": acct.get("reports_alert") is not False}
+        {"wa": acct.get("reports_wa", ""), "on": acct.get("reports_alert") is not False, "lang": acct.get("reports_lang", "")}
     r = reader_status()
     on = r.get("status") == "connected"
     out = {"mine": mine, "from": r.get("number", "") if on else "",
            "from_error": "" if on else "رقم المسابقة غير مربوط — يُربط من صفحة المسابقة، ومنه تُرسل التنبيهات"}
-    names = {x["key"]: x["name"] for x in content.servers(DATA_DIR)}
+    names, en = {x["key"]: x["name"] for x in content.servers(DATA_DIR)}, server_names_en()
     if role == "admin":
         staff = [a for a in st["accounts"] if a.get("reports")]
+        leads = {a["id"]: a.get("name", "") for a in staff if a.get("reports_lead")}
         person = lambda a: {"name": a.get("name", ""), "wa": a.get("reports_wa", ""),  # noqa: E731
-                            "on": a.get("reports_alert") is not False, "all": not a.get("reports_servers")}
+                            "on": a.get("reports_alert") is not False, "all": not a.get("reports_servers"),
+                            "lead": bool(a.get("reports_lead")), "of": leads.get(a.get("lead_id"), "")}
         out["staff"] = [dict(person(a), servers=[names.get(k, k) for k in a.get("reports_servers") or []]) for a in staff]
         # لكل سيرفرٍ له محتوى (أو اختير لأحد) من يتابعه — وما لا أحد له تصل بلاغاته المدير وحده
         live = {x["key"] for x in content.brief(DATA_DIR, wait=False)["servers"]} \
             | {k for a in staff for k in a.get("reports_servers") or []}
-        out["team"] = [{"key": k, "name": n, "people": [person(a) for a in staff if _covers(a, k)]}
+        out["team"] = [{"key": k, "name": n, "en": en.get(k, k), "people": [person(a) for a in staff if _covers(a, k)]}
                        for k, n in names.items() if k in live]
     else:
         out["servers"] = [names.get(k, k) for k in acct.get("reports_servers") or []]   # الفارغة = كلها
+        out["servers_en"] = [en.get(k, k) for k in acct.get("reports_servers") or []]
     return out
 
 
@@ -3102,6 +3137,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._redirect(self._url()) if role else self._page(PAGES["/login"])
         if not role:
             return self._deny(path)
+        if reports_only(role, acct) and path not in ("/", "/reports", "/api/reports"):   # لا شيء غير البلاغات
+            return self._send(403, {"error": ONLY_REPORTS}) if path.startswith("/api/") else self._redirect(self._url("/reports"))
         # مساحة renew لهذه الجلسة: الأدمن عامّة، والحساب معزولة (انظر renew_ws).
         rws, rown = renew_ws(role, acct)
         rcfg = renew_cfg(st, rown)
@@ -3110,7 +3147,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/":
                 if role == "admin":
                     return self._redirect(self._url("/accounts"))
-                if reports_on(role, acct) and not acct.get("gates"):   # موظف الدعم بلا بوابات: البلاغات صفحته
+                if reports_on(role, acct) and (acct.get("reports_only") or not acct.get("gates")):   # البلاغات صفحته
                     return self._redirect(self._url("/reports"))
                 return self._page(PAGES["/"])
             if path == "/accounts":
@@ -3254,10 +3291,14 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/reports":
                     return self._page("reports_admin.html")
                 d = reports.listing(DATA_DIR, self._q("state") or "open", content.key_ok(self._q("s")),
-                                    report_scope(role, acct))
+                                    report_scope(role, acct), self._q("w") if self._q("w") in ("issue", "add") else "")
                 return self._send(200, dict(d, role=role, name=acct["name"] if acct else "المدير",
-                                            gates=len(acct.get("gates") or []) if acct else 0,
-                                            alert=report_alert_state(role, acct, st)))
+                                            gates=0 if reports_only(role, acct) else len(acct.get("gates") or []) if acct else 0,
+                                            alert=report_alert_state(role, acct, st),
+                                            team=team_view(st, acct) if reports_lead(role, acct) else None,
+                                            server_names=server_names_en(),
+                                            lang=(reports.settings(DATA_DIR).get("lang") if role == "admin"
+                                                  else acct.get("reports_lang", "")) or ""))
             if path == "/contest" or path.startswith("/api/contest/"):   # مسابقة التوقّعات (للمدير)
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -4081,15 +4122,48 @@ class Handler(BaseHTTPRequestHandler):
             req = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
             return self._send(400, {"ok": False, "error": "طلب غير صالح"})
+        en = isinstance(req, dict) and req.get("lang") == "en"     # صفحة البلاغ بالإنجليزية: رسائلها بالإنجليزية
         if not reports.rate_ok(self._client_ip()):
-            return self._send(429, {"ok": False, "error": "بلاغاتٌ كثيرة من جهازك — انتظر ساعة ثم أعد المحاولة."})
+            return self._send(429, {"ok": False, "error": "Too many reports from your device — wait an hour and try again."
+                                    if en else "بلاغاتٌ كثيرة من جهازك — انتظر ساعة ثم أعد المحاولة."})
         try:
             rec, new = reports.submit(DATA_DIR, req)
         except reports.Invalid as e:
-            return self._send(400, {"ok": False, "error": str(e)})
+            return self._send(400, {"ok": False, "error": e.en if en else str(e)})
         # تنبيه الموظفين على واتساب — في خيطٍ مستقل، فلا ينتظره المشترك
         threading.Thread(target=reports.alert, args=(DATA_DIR, rec, new), daemon=True).start()
         return self._send(200, {"ok": True, "new": new, "count": rec["count"], "label": reports.label(rec)})
+
+    def _team_post(self, body, lead, st):
+        """فريق المشرف: إضافةٌ وتعديلٌ وحذف لأعضائه وحدهم (‏lead_id)، وكلهم «صفحة البلاغات فقط» بلا بوابات، وسيرفراتهم
+        من سيرفراته (وبلا اختيارٍ سيرفراته كلها)."""
+        mine = [a for a in st["accounts"] if a.get("lead_id") == lead["id"]]
+        mid = str(body.get("id") or "")
+        old = next((a for a in mine if a["id"] == mid), None)
+        if mid and not old:
+            return self._send(404, {"error": "ليس من فريقك"})
+        if body.get("action") == "delete":
+            if not old:
+                return self._send(404, {"error": "ليس من فريقك"})
+            st["accounts"].remove(old)
+            save_store(st)
+            return self._send(200, {"ok": True, "team": team_view(st, lead)})
+        scope = lead.get("reports_servers") or []
+        srv = _report_servers(body.get("servers"))
+        if scope:                                    # لا يعطي عضوًا سيرفرًا ليس له، وبلا اختيارٍ سيرفراته كلها
+            srv = [k for k in srv if k in scope] or list(scope)
+        new = clean_account({"id": mid, "name": body.get("name", ""), "user": body.get("user", ""),
+                             "password": body.get("password", ""), "reports": True, "reports_wa": body.get("wa", ""),
+                             "reports_servers": srv, "gates": []}, old)
+        new.update(lead_id=lead["id"], reports=True, reports_only=True, reports_lead=False, gates=[])
+        if any(a["user"] == new["user"] and a["id"] != new["id"] for a in st["accounts"]):
+            return self._send(400, {"error": "اسم الدخول مستخدم لحسابٍ آخر"})
+        if old:
+            st["accounts"][st["accounts"].index(old)] = new
+        else:
+            st["accounts"].append(new)
+        save_store(st)
+        return self._send(200, {"ok": True, "team": team_view(st, lead)})
 
     def _reports_post(self, path, role, acct, st):
         """للموظف: «تم الإصلاح» وإعادة الفتح ورقمه للتنبيه، وللمدير الحذف."""
@@ -4102,6 +4176,18 @@ class Handler(BaseHTTPRequestHandler):
                 acct["reports_alert"] = body.get("on", True) is not False
                 save_store(st)
             return self._send(200, {"ok": True, "alert": report_alert_state(role, acct, st)})
+        if path == "/api/reports/lang":              # لغة صفحته وتنبيهاته على واتساب
+            lang = "en" if body.get("lang") == "en" else "ar"
+            if role == "admin":
+                reports.save_lang(DATA_DIR, lang)
+            else:
+                acct["reports_lang"] = lang
+                save_store(st)
+            return self._send(200, {"ok": True, "lang": lang})
+        if path == "/api/reports/team":              # المشرف يضيف فريقه ويديره
+            if not reports_lead(role, acct):
+                return self._send(403, {"error": "للمشرف فقط"})
+            return self._team_post(body, acct, st)
         rid = str(body.get("id", ""))
         scope = report_scope(role, acct)
         if scope is not None and (reports.get(DATA_DIR, rid) or {}).get("server") not in scope:
@@ -4228,6 +4314,8 @@ class Handler(BaseHTTPRequestHandler):
                 role, acct = self._who(st)
                 if not role:
                     return self._deny(path)
+                if reports_only(role, acct) and not path.startswith("/api/reports/"):
+                    return self._send(403, {"error": ONLY_REPORTS})
                 if path.startswith("/api/accounts"):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
@@ -4241,7 +4329,7 @@ class Handler(BaseHTTPRequestHandler):
                     if role != "admin":
                         return self._send(403, {"error": "للمدير فقط"})
                     return self._service_post(path, st)
-                if path.startswith("/api/reports/") and path != "/api/reports/alert-test":   # «تم الإصلاح» ورقم التنبيه
+                if path.startswith("/api/reports/") and path not in ("/api/reports/alert-test", "/api/reports/notify"):
                     if not reports_on(role, acct):
                         return self._send(403, {"error": "غير متاح"})
                     return self._reports_post(path, role, acct, st)
@@ -4258,6 +4346,16 @@ class Handler(BaseHTTPRequestHandler):
                     acct["guide_url"] = gu
                     save_store(st)
                     return self._send(200, {"ok": True, "guide_url": gu})
+            if path == "/api/reports/notify":         # خارج القفل: تحديثٌ لأصحاب البلاغ على واتساب (تم الإصلاح، أو نعمل عليه)
+                if not reports_on(role, acct):
+                    return self._send(403, {"error": "غير متاح"})
+                body = self._body()
+                rid = str(body.get("id", ""))
+                scope = report_scope(role, acct)
+                if not reports.get(DATA_DIR, rid) or (scope is not None and reports.get(DATA_DIR, rid)["server"] not in scope):
+                    return self._send(404, {"error": "لا بلاغ بهذا الرقم"})
+                up = reports.notify(DATA_DIR, rid, body.get("text", ""), acct["name"] if acct else "المدير")
+                return self._send(200, {"ok": up["sent"] > 0, "update": up})
             if path == "/api/reports/alert-test":     # خارج القفل: رسالةٌ تجريبية تنتظر واتساب
                 if not reports_on(role, acct):
                     return self._send(403, {"error": "غير متاح"})

@@ -51,7 +51,7 @@ function playlist(extra) {
     check('(حساب الموظف)', !!(r.accounts || []).find(a => a.user === 'sara' && a.reports));
 
     console.log('العميل: السيرفر ← البحث بالاسم ← الموسم والحلقة ← يقطع');
-    const ctx = await browser.newContext({viewport: {width: 360, height: 780}});
+    const ctx = await browser.newContext({viewport: {width: 360, height: 780}, locale: 'ar-SA'});
     const page = await ctx.newPage();
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(APP + '/report');
@@ -115,6 +115,10 @@ function playlist(extra) {
     await page.waitForSelector('.prob');
     check('والفيلم إلى المشكلة مباشرةً، ورقمه كما كتبه', (await page.textContent('.pick')).includes('Dune (2021)')
           && await page.inputValue('#ph') === '0551234567' && (await page.textContent('.step .n')) === '3');
+    check('والمشاكل الأربع، و«الفيلم ليس هو» للفيلم', (await page.$$eval('.prob b', b => b.map(x => x.textContent))).join('|')
+          === 'لا يعمل|يقطع|الفيلم ليس هو|الترجمة غير صحيحة');
+    check('بلا عرضٍ زائد على 360px (المشاكل الأربع)', await wide(page) <= 360, await wide(page));
+    await shot(page, 'report-5b-problems');
     await page.click('.prob.down');
     await page.click('#send');
     await page.waitForSelector('.done');
@@ -123,7 +127,28 @@ function playlist(extra) {
     await page.waitForSelector('#sq');
     await page.fill('#sq', 'zzzz');
     await page.waitForSelector('#sres .empty');
-    check('ولا نتائج: ما يجرّبه', (await page.textContent('#sres .empty')).includes('لا نتائج لـ «zzzz» في سمارت'));
+    check('ولا نتائج: ما يجرّبه، وطلب إضافته', (await page.textContent('#sres .empty')).includes('لا نتائج لـ «zzzz» في سمارت')
+          && (await page.textContent('#sres .empty .reqbtn')).includes('اطلب إضافة «zzzz»'));
+    await page.click('#sres .empty .reqbtn');
+    await page.waitForSelector('#rn');
+    check('طلب الإضافة باسم ما بحث عنه، ونوعه مسلسل', await page.inputValue('#rn') === 'zzzz'
+          && await page.$eval('[data-rt="series"]', b => b.getAttribute('aria-pressed')) === 'true'
+          && (await page.textContent('#trail')).includes('إضافة مسلسل أو فيلم'));
+    await page.click('[data-rt="movie"]');
+    await page.fill('#rn', 'Oppenheimer');
+    await page.fill('#nt', 'مترجم');
+    await shot(page, 'report-7-request');
+    await page.click('#send');
+    await page.waitForSelector('.done');
+    check('وصل الطلب', (await page.textContent('.done h2')) === 'وصل طلبك، شكرًا لك'
+          && (await page.textContent('.done .what')) === 'Oppenheimer — طلب إضافة فيلم');
+    await page.click('#again');
+    await page.waitForSelector('#sq');
+    await page.click('button.reqbtn[data-req]');
+    await page.waitForSelector('#rn');
+    await page.fill('#rn', ' ');
+    await page.click('#send');
+    check('وطلبٌ بلا اسم لا يُرسل', (await page.textContent('#serr')) === 'اكتب اسم المسلسل أو الفيلم.');
 
     console.log('العميل: من صفحة المحتوى، ورابطٌ بالمسلسل نفسه');
     await page.goto(APP + '/content/smart');
@@ -153,7 +178,7 @@ function playlist(extra) {
     check('وما اخترته في الأعلى يرجع إليه', (await page.$$('.srv')).length === 2 && (await page.textContent('#trail')) === '');
 
     console.log('الموظف');
-    const emp = await browser.newContext({viewport: {width: 390, height: 844}});
+    const emp = await browser.newContext({viewport: {width: 390, height: 844}, locale: 'ar-SA'});
     const ep = await emp.newPage();
     ep.on('pageerror', e => errors.push(e.message));
     await ep.goto(APP + '/admin/login');
@@ -161,10 +186,11 @@ function playlist(extra) {
     await ep.click('#go');
     await ep.waitForSelector('.rep');
     check('الموظف بلا بوابات يدخل إلى البلاغات', ep.url().endsWith('/admin/reports'));
-    check('المفتوحة بأعدادها', await ep.textContent('#nOpen') === '2' && await ep.textContent('#nDone') === '0'
-          && (await ep.title()).startsWith('(2)'));
-    const first = await ep.$eval('.rep', el => el.textContent);
-    check('البلاغ: الاسم والسيرفر والقسم والمشكلة والرقم والملاحظة', first.includes('Dune (2021)') || first.includes('Breaking Bad'));
+    check('المفتوحة بأعدادها (بلاغان وطلب)', await ep.textContent('#nOpen') === '3' && await ep.textContent('#nDone') === '0'
+          && (await ep.title()).startsWith('(3)'));
+    const all = await ep.$$eval('.rep', el => el.map(x => x.textContent).join(' '));
+    check('البلاغات والطلب الأحدث أولًا', all.includes('Dune (2021)') && all.includes('Breaking Bad')
+          && (await ep.$eval('.rep', el => el.textContent)).includes('Oppenheimer'));
     const bb = await ep.$('.rep:has-text("Breaking Bad")');
     const txt = await bb.textContent();
     check('وتفاصيله', txt.includes('Breaking Bad · الموسم 1 · الحلقة 5') && txt.includes('سمارت · SERIES | Drama')
@@ -189,12 +215,19 @@ function playlist(extra) {
     check('بلا عرضٍ زائد على 390px', await wide(ep) <= 390, await wide(ep));
     await shot(ep, 'reports-1-open');
     await bb.$eval('[data-act="done"]', b => b.click());
+    await ep.waitForSelector('#pText');
+    check('«تم الإصلاح» ولأصحابه رقم: رسالتهم أولًا، جاهزةً بلغتهم', (await ep.inputValue('#pText')).includes('تم إصلاح ما بلّغت عنه في سمارت')
+          && await ep.$eval('#pSend', c => c.checked) && (await ep.textContent('.npanel label')).includes('1 رقم'));
+    await shot(ep, 'reports-1b-fix-panel');
+    await ep.click('.npanel [data-act="confirm"]');
     await ep.waitForFunction(() => document.getElementById('nDone').textContent === '1');
-    check('«تم الإصلاح» ينقله إلى المنجزة', await ep.textContent('#nOpen') === '1' && (await ep.$$('.rep')).length === 1);
+    check('«تم الإصلاح» ينقله إلى المنجزة', await ep.textContent('#nOpen') === '2' && (await ep.$$('.rep')).length === 2);
     await ep.click('[data-state="done"]');
     await ep.waitForSelector('.rep.done');
     const dn = await ep.$eval('.rep.done', el => el.textContent);
-    check('وفيها من أصلحه', dn.includes('أُصلح') && dn.includes('سارة'));
+    check('وفيها من أصلحه، وما جرى لرسالته (رقم المسابقة غير مربوط هنا)', dn.includes('أُصلح') && dn.includes('سارة')
+          && dn.includes('آخر رسالة لأصحابه') && dn.includes('وصلت 0 من 1'), dn.replace(/\s+/g, ' ').slice(0, 300));
+    check('و«أبلغ أصحابه» بعد الإصلاح', !!(await ep.$('.rep.done [data-act="tell"]')));
     const wa = await ep.$eval('.rep.done .people a', a => a.href);
     check('ورابط واتساب برسالة «تم الإصلاح» جاهزة', wa.startsWith('https://wa.me/966551234567?text=')
           && decodeURIComponent(wa).includes('تم إصلاح ما بلّغت عنه في سمارت'), wa.slice(0, 80));
@@ -202,13 +235,13 @@ function playlist(extra) {
     await shot(ep, 'reports-2-done');
 
     console.log('المدير');
-    const ad = await browser.newContext({viewport: {width: 390, height: 844}, extraHTTPHeaders: {Authorization: AUTH}});
+    const ad = await browser.newContext({viewport: {width: 390, height: 844}, locale: 'ar-SA', extraHTTPHeaders: {Authorization: AUTH}});
     const ap = await ad.newPage();
     ap.on('pageerror', e => errors.push(e.message));
     await ap.goto(APP + '/admin/accounts');
     await ap.waitForSelector('#lkReportsN');
     await ap.waitForFunction(() => document.getElementById('lkReportsN').textContent.includes('مفتوحة'));
-    check('رابط البلاغات في الرئيسية بعدد المفتوحة', (await ap.textContent('#lkReportsN')).startsWith('1 مفتوحة'));
+    check('رابط البلاغات في الرئيسية بعدد المفتوحة', (await ap.textContent('#lkReportsN')).startsWith('2 مفتوحة'));
     await ap.goto(APP + '/admin/accounts#accounts');
     await ap.waitForSelector('[data-toggle]');
     check('وسم الحساب بسيرفراته', (await ap.textContent('.acct')).includes('بلاغات المحتوى: كل السيرفرات'));
@@ -226,7 +259,7 @@ function playlist(extra) {
     await shot(ap, 'staff-0-account');
     await ap.goto(APP + '/admin/reports?state=all');
     await ap.waitForSelector('.rep');
-    check('والمدير يرى الكل ويحذف', (await ap.$$('.rep')).length === 2 && !!(await ap.$('[data-act="del"]')));
+    check('والمدير يرى الكل ويحذف', (await ap.$$('.rep')).length === 3 && !!(await ap.$('[data-act="del"]')));
     await ap.click('#tbox summary');
     const rows = await ap.$$eval('#team .srow', r => r.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
     check('والفريق لكل سيرفرٍ له محتوى: سارة على سمارت، وفالكون بلا أحد', rows.length === 2
@@ -253,6 +286,93 @@ function playlist(extra) {
     await ep.waitForSelector('#who');
     await ep.waitForFunction(() => document.getElementById('who').textContent.includes('سمارت'));
     check('والموظف يرى سيرفراته تحت اسمه، ولا يرى بلاغ فالكون', (await ep.textContent('#who')) === 'سارة · سمارت');
+    console.log('طلبات الإضافة عند المدير');
+    await ap.goto(APP + '/admin/reports');
+    await ap.waitForSelector('.rep.req');
+    const rq = await ap.$eval('.rep.req', el => el.textContent.replace(/\s+/g, ' '));
+    check('الطلب بوسمه وزرّه', rq.includes('Oppenheimer') && rq.includes('طلب إضافة فيلم') && rq.includes('مترجم')
+          && rq.includes('✓ أُضيف') && rq.includes('نسخ الطلب'), rq.slice(0, 160));
+    check('وتصفية «طلبات إضافة» بعددها', (await ap.textContent('#whatBar')).includes('طلبات إضافة1'));
+    await ap.click('#whatBar [data-w="add"]');
+    await ap.waitForFunction(() => document.querySelectorAll('.rep').length === 1);
+    check('فلا يبقى إلا الطلب', !!(await ap.$('.rep.req')) && ap.url().includes('w=add'));
+    await ap.click('#whatBar [data-w="issue"]');
+    await ap.waitForFunction(() => !document.querySelector('.rep.req'));
+    check('و«مشاكل» بلا طلبات', (await ap.$$('.rep')).length >= 1);
+    await shot(ap, 'staff-2-requests');
+    console.log('مشرفٌ يضيف فريقه');
+    const lr = await (await fetch(`${APP}/admin/api/accounts`, {method: 'POST', headers: {Authorization: AUTH, 'Content-Type': 'application/json'},
+      body: JSON.stringify({name: 'مشرف فالكون', user: 'lead1', password: 'lead1234', reports: true, reports_only: true, reports_lead: true,
+                            reports_servers: ['falcon'], gates: []})})).json();
+    check('(حساب المشرف)', !!(lr.accounts || []).find(a => a.user === 'lead1' && a.reports_lead));
+    const lc = await browser.newContext({viewport: {width: 390, height: 844}, locale: 'ar-SA'});
+    const lp = await lc.newPage();
+    lp.on('pageerror', e => errors.push(e.message));
+    await lp.goto(APP + '/admin/login');
+    await lp.fill('#u', 'lead1'); await lp.fill('#p', 'lead1234');
+    await lp.click('#go');
+    await lp.waitForSelector('#mbox:not([hidden])');
+    check('المشرف يرى «فريقي» وسيرفره تحت اسمه، ولا رابط لغير البلاغات', (await lp.textContent('#who')).includes('فالكون')
+          && (await lp.textContent('#who')).includes('مشرف') && await lp.$eval('#lnkHome', e => e.hidden));
+    await lp.click('#mbox summary');
+    await lp.click('#mAdd');
+    check('ونموذج العضو بسيرفراته وحدها', (await lp.$$eval('#mSrv label', l => l.map(x => x.textContent.trim()))).join('|') === 'فالكون');
+    await lp.fill('#mName', 'عضو'); await lp.fill('#mUser', 'm1'); await lp.fill('#mPass', 'm1pass'); await lp.fill('#mWa', '0500000011');
+    await lp.click('#mSave');
+    await lp.waitForSelector('#mList .mrow');
+    const mr = await lp.textContent('#mList .mrow');
+    check('فيُضاف عضوه برقمه وسيرفره', mr.includes('عضو') && mr.includes('m1') && mr.includes('+966500000011') && mr.includes('فالكون'), mr);
+    await shot(lp, 'lead-1-team');
+    await lp.goto(APP + '/admin/renew');
+    check('و«صفحة البلاغات فقط»: غيرها يرجع إليها', lp.url().endsWith('/admin/reports'));
+
+    console.log('بالإنجليزية');
+    const enc = await browser.newContext({viewport: {width: 360, height: 780}, locale: 'en-US'});
+    const enp = await enc.newPage();
+    enp.on('pageerror', e => errors.push(e.message));
+    await enp.goto(APP + '/report');
+    await enp.waitForSelector('.srv');
+    check('صفحة البلاغ عربيةٌ افتراضًا ولو كان المتصفح إنجليزيًّا', (await enp.textContent('h1')) === 'فيديو لا يعمل أو يقطع؟');
+    await enp.click('#langBtn');
+    await enp.waitForFunction(() => document.documentElement.dir === 'ltr');
+    check('وزرّ اللغة يقلبها إلى الإنجليزية', (await enp.textContent('h1')) === 'Video not working or buffering?'
+          && (await enp.$$eval('.srv b', b => b.map(x => x.textContent))).sort().join('|') === 'Falcon|Smart'
+          && (await enp.textContent('#langBtn')) === 'العربية');
+    await enp.click('.srv[data-s="smart"]');
+    await enp.waitForSelector('#sq');
+    await enp.fill('#sq', 'dune');
+    await enp.waitForFunction(() => document.querySelectorAll('#sres .card').length === 1);
+    check('والبحث بالإنجليزية', (await enp.textContent('.step h2')) === 'Search by name' && (await enp.textContent('#sres .card small')).startsWith('Movie · 2021'));
+    await enp.click('#sres .card');
+    await enp.waitForSelector('.prob');
+    check('والمشاكل بالإنجليزية', (await enp.$$eval('.prob b', b => b.map(x => x.textContent))).join('|') === 'Not working|Buffering|Wrong movie|Wrong subtitles');
+    await enp.click('.prob.subs');
+    await enp.fill('#ph', '0551234567');
+    await shot(enp, 'report-en-problem');
+    await enp.click('#send');
+    await enp.waitForSelector('.done');
+    check('ووصل بالإنجليزية', (await enp.textContent('.done h2')) === 'Report received — thank you'
+          && (await enp.textContent('.done .what')) === 'Dune (2021) — Wrong subtitles');
+    check('بلا عرضٍ زائد على 360px (بالإنجليزية)', await wide(enp) <= 360, await wide(enp));
+    await enp.reload();
+    await enp.waitForSelector('.srv, #sq');
+    check('واللغة محفوظةٌ في متصفحه', (await enp.textContent('h1')) === 'Video not working or buffering?');
+    const ens = await browser.newContext({viewport: {width: 390, height: 844}, locale: 'en-US', extraHTTPHeaders: {Authorization: AUTH}});
+    const esp = await ens.newPage();
+    esp.on('pageerror', e => errors.push(e.message));
+    await esp.goto(APP + '/admin/reports');
+    await esp.waitForSelector('.rep');
+    const dn2 = await esp.$eval('.rep', el => el.textContent.replace(/\s+/g, ' '));
+    check('صفحة الموظف بلغة متصفحه (إنجليزي): البلاغ والمشكلة بالإنجليزية', (await esp.textContent('h1')) === 'Content reports'
+          && dn2.includes('Dune (2021)') && dn2.includes('Wrong subtitles') && dn2.includes('Movie · Smart'), dn2.slice(0, 200));
+    await esp.click('.rep [data-act="update"]');
+    await esp.waitForSelector('#pText');
+    check('ورسالة التحديث بلغة صاحب البلاغ (إنجليزي)', (await esp.inputValue('#pText')).startsWith('Hello 👋 We got your report on Smart'));
+    await shot(esp, 'reports-en');
+    await esp.click('.npanel [data-act="cancel"]');
+    await esp.click('#langBtn');
+    await esp.waitForFunction(() => document.documentElement.dir === 'rtl');
+    check('وزرّ اللغة يقلبها إلى العربية', (await esp.textContent('h1')) === 'بلاغات المحتوى' && (await esp.textContent('.rep .tag')).includes('الترجمة غير صحيحة'));
     check('بلا أخطاء سكربت', errors.length === 0, errors.join(' | '));
   } catch (e) {
     check('بلا استثناء', false, e.stack + (errors.length ? '\n  أخطاء الصفحة: ' + errors.join(' | ') : ''));
