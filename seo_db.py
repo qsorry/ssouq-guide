@@ -407,7 +407,8 @@ def paths(typ, slug):
     return [p, EN + p]
 
 
-def change_slug(con, content_id, new_slug, source="manual", reason="", now=None):
+def change_slug(con, content_id, new_slug, source="manual", reason="", now=None, slug_source=None):
+    """‏source: من كتب (manual · tmdb) للمصدر؛ ‏slug_source: من أي اسمٍ صُنع (en · original · translit · manual)."""
     """يبدّل رابط الكيان **بلا مسّ معرّفه**، ويسجّل القديم → الجديد 301 في ‏redirect (ويُحدّث ما كان يشير إلى القديم)."""
     now = now or int(time.time())
     row = con.execute("SELECT type, slug FROM content WHERE id=?", (content_id,)).fetchone()
@@ -417,7 +418,7 @@ def change_slug(con, content_id, new_slug, source="manual", reason="", now=None)
         return False
     if con.execute("SELECT 1 FROM content WHERE slug=? AND id!=?", (new_slug, content_id)).fetchone():
         raise ValueError("slug مستعمل")
-    con.execute("UPDATE content SET slug=?, slug_source=?, updated_at=? WHERE id=?", (new_slug, source, now, content_id))
+    con.execute("UPDATE content SET slug=?, slug_source=?, updated_at=? WHERE id=?", (new_slug, slug_source or source, now, content_id))
     set_provenance(con, "content", content_id, "slug", source, None, now, prev=row["slug"])
     for old, new in zip(paths(row["type"], row["slug"]), paths(row["type"], new_slug)):
         con.execute("DELETE FROM redirect WHERE path=?", (new,))              # لا حلقة: الجديد لم يعد قديمًا
@@ -457,7 +458,10 @@ def taxonomy_id(con, kind, key, slug=None, name_ar=None, name_en=None, now=None)
     r = con.execute("SELECT id FROM taxonomy WHERE kind=? AND key=?", (kind, str(key))).fetchone()
     if r:
         return r["id"]
-    slug = slug or str(key).lower()
+    base = slug or str(key).lower()
+    slug, n = base, 2
+    while con.execute("SELECT 1 FROM taxonomy WHERE kind=? AND slug=?", (kind, slug)).fetchone():   # استوديوهان باسمٍ واحد
+        slug, n = f"{base}-{n}", n + 1
     cur = con.execute("INSERT INTO taxonomy(kind, key, slug, name_ar, name_en, updated_at) VALUES (?,?,?,?,?,?)",
                       (kind, str(key), slug, name_ar, name_en, now or int(time.time())))
     return cur.lastrowid
@@ -472,4 +476,40 @@ def set_membership(con, content_id, tax_id, source, confidence=1.0, now=None):
     con.execute("INSERT INTO content_taxonomy(content_id, taxonomy_id, source, confidence, at) VALUES (?,?,?,?,?) "
                 "ON CONFLICT(content_id, taxonomy_id) DO UPDATE SET source=excluded.source, confidence=excluded.confidence, at=excluded.at",
                 (content_id, tax_id, source, float(confidence), now or int(time.time())))
+    return True
+
+
+def merge_content(con, loser, winner, reason="", now=None):
+    """كيانان تبيّن أنهما عملٌ واحد (معرّف TMDB مُتحقَّق واحد): يبقى ‏winner ويُعلَّم ‏loser مدمجًا فيه — روابط السيرفرات
+    والأسماء والتصنيف والأشخاص والمواسم تنتقل، ورابط المدمج يحوَّل 301، ويُسجَّل الدمج للمراجعة. لا حذف لصفّ الكيان."""
+    now = now or int(time.time())
+    if loser == winner:
+        return False
+    lrow, wrow = (con.execute("SELECT type, slug, title FROM content WHERE id=?", (i,)).fetchone() for i in (loser, winner))
+    if not lrow or not wrow or lrow["type"] != wrow["type"]:
+        raise ValueError("لا يُدمج نوعان مختلفان")
+    con.execute("UPDATE content_service SET content_id=? WHERE content_id=?", (winner, loser))
+    for table, cols in (("content_alias", "content_id, alias, alias_norm, lang, source, service_key, at, kind, phonetic, verified, confidence"),
+                        ("content_taxonomy", "content_id, taxonomy_id, source, confidence, at"),
+                        ("content_person", "content_id, person_id, role, character, ord, source"),
+                        ("content_company", "content_id, company_id, role, source"),
+                        ("season", "content_id, number, name, overview_ar, overview_en, poster, air_date, episode_count, index_flag, updated_at"),
+                        ("episode", "content_id, season, number, title_ar, title_en, overview_ar, overview_en, air_date, runtime, still, index_flag, updated_at")):
+        rest = cols.split(", ", 1)[1]
+        con.execute(f"INSERT OR IGNORE INTO {table}({cols}) SELECT ?, {rest} FROM {table} WHERE content_id=?", (winner, loser))
+        con.execute(f"DELETE FROM {table} WHERE content_id=?", (loser,))
+    con.execute("DELETE FROM external_id WHERE entity='content' AND entity_id=? AND (verified=0 OR source IN "
+                "(SELECT source FROM external_id WHERE entity='content' AND entity_id=?))", (loser, winner))
+    con.execute("UPDATE external_id SET entity_id=? WHERE entity='content' AND entity_id=?", (winner, loser))
+    con.execute("DELETE FROM enrich_queue WHERE content_id=?", (loser,))
+    con.execute("UPDATE content SET merged_into=?, available=0, updated_at=? WHERE id=?", (winner, now, loser))
+    for old, new in zip(paths(lrow["type"], lrow["slug"]), paths(wrow["type"], wrow["slug"])):
+        con.execute("UPDATE redirect SET target=? WHERE target=?", (new, old))
+        con.execute("INSERT INTO redirect(path, target, code, reason, created_at) VALUES (?,?,301,?,?) ON CONFLICT(path) DO UPDATE SET "
+                    "target=excluded.target, reason=excluded.reason, created_at=excluded.created_at", (old, new, reason or f"merged {loser} → {winner}", now))
+    con.execute("INSERT INTO review(kind, key, payload_json, status, created_at, updated_at) VALUES ('merged_entities', ?, ?, 'open', ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET payload_json=excluded.payload_json, updated_at=excluded.updated_at",
+                (f"merged:{winner}:{loser}", json.dumps({"name": wrow["title"], "type": wrow["type"], "why": [reason or "same verified tmdb id"],
+                                                          "items": [{"name": lrow["title"], "slug": lrow["slug"]}, {"name": wrow["title"], "slug": wrow["slug"]}]}, ensure_ascii=False), now, now))
+    set_provenance(con, "content", loser, "merged_into", "derived", None, now, prev=None)
     return True

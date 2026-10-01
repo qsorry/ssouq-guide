@@ -101,8 +101,8 @@ def _lev(a, b, cap=3):
 class Index:
     """فهرس الأسماء في الذاكرة من ‏content_alias: بالتطبيع، وبالمفتاح الصوتي، وبالكلمات — يُبنى من القاعدة بعد كل بناء."""
 
-    def __init__(self, rows):
-        self.by_norm, self.by_phon, self.names = {}, {}, {}
+    def __init__(self, rows, years=None):
+        self.by_norm, self.by_phon, self.names, self.years = {}, {}, {}, years or {}
         for cid, alias, an, ph, kind in rows:
             self.by_norm.setdefault(an, set()).add(cid)
             if ph:
@@ -122,6 +122,16 @@ class Index:
         qn, qp = norm(q), phonetic(q)
         if not qn:
             return {"exact": [], "suggest": []}
+        m = re.fullmatch(r"(.+?)\s+((?:19|20)\d\d)", qn)     # «Dune 1984»: الاسم ثم السنة تميّز
+        if m and qn not in self.by_norm:
+            r = self.search(m.group(1), max_suggest, min_conf)
+            y = int(m.group(2))
+            ex = [c for c in r["exact"] if self.years.get(c) == y]
+            sg = [x for x in r["suggest"] if self.years.get(x[0]) == y]
+            if ex:
+                return {"exact": ex, "suggest": []}
+            if sg or r["exact"] or r["suggest"]:
+                return {"exact": [], "suggest": sg or [(c, self.title(c), 0.7, "name, other year") for c in r["exact"]][:max_suggest] or r["suggest"]}
         if qn in self.by_norm:
             return {"exact": sorted(self.by_norm[qn]), "suggest": []}
         found = {}
@@ -153,7 +163,8 @@ class Index:
 def load(con):
     rows = con.execute("SELECT a.content_id, a.alias, a.alias_norm, a.phonetic, a.kind FROM content_alias a "
                        "JOIN content c ON c.id=a.content_id WHERE c.merged_into IS NULL").fetchall()
-    return Index([tuple(r) for r in rows])
+    years = {r[0]: r[1] for r in con.execute("SELECT id, year FROM content WHERE merged_into IS NULL AND year IS NOT NULL")}
+    return Index([tuple(r) for r in rows], years)
 
 
 def explain(con, idx, q, st):

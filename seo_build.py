@@ -22,6 +22,7 @@ import time
 import content as C
 import seo_db
 import seo_match as M
+import seo_sources
 
 AUTO_KINDS = ("name_only", "conflict", "same_server_ambiguous", "merged_entities", "split_entity")
 STATE_KINDS = ("name_only", "conflict", "same_server_ambiguous")     # حالٌ تزول بزوال سببها؛ والدمج والانفصال أحداثٌ تبقى حتى تُراجَع
@@ -191,7 +192,7 @@ def build(data_dir, force=False, now=None):
             items, conflicts, sigs = load_items(data_dir, st)
             clusters, reviews = M.cluster(items, st)
             with con:
-                res = _apply(con, items, clusters, reviews + conflicts, sigs, now)
+                res = _apply(con, data_dir, items, clusters, reviews + conflicts, sigs, now)
             res["seconds"] = round(time.time() - t0, 2)
             _last[os.path.abspath(data_dir)] = {"ok": True, "at": now, **res}
             return res
@@ -199,7 +200,7 @@ def build(data_dir, force=False, now=None):
             con.close()
 
 
-def _apply(con, items, clusters, reviews, sigs, now):
+def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     links, by_stream = {}, {}
     for r in con.execute("SELECT service_key, kind, local_key, stream_id, content_id FROM content_service"):
         links[(r["service_key"], r["kind"], r["local_key"])] = r["content_id"]
@@ -225,6 +226,9 @@ def _apply(con, items, clusters, reviews, sigs, now):
         manual.setdefault(r["entity_id"], set()).add(r["field"])
     claimed, extra_reviews = set(), []
     n_new = n_merged = n_split = 0
+    seo_sources.seed_rules(con, now)
+    rls = seo_sources.rules(con)
+    st = seo_db.settings(con)
     cid_of = {}                                   # فهرس العضو ← معرّف الكيان
     for members_idx in clusters:
         members = [items[i] for i in members_idx]
@@ -254,6 +258,12 @@ def _apply(con, items, clusters, reviews, sigs, now):
         _aliases(con, cid, members, now)
         if members[0]["type"] == "series":
             _seasons(con, cid, members, now)
+        groups = [g for m in members for g in m.get("groups") or []]
+        prio = seo_sources.apply_hints(con, cid, groups, rls, st, now)       # قرائن الأقسام (لا تُدخل الهب) والأولوية
+        if any(m.get("added") and m["added"] > now - 30 * 86400 for m in members):
+            prio = min(prio, 2)                                             # الأحدث إضافةً قبل الباقي
+        has_xt = any(C.url_of(data_dir, m["service"]) for m in members)
+        seo_sources.enqueue(con, cid, (["xtream"] if has_xt else []) + ["tmdb"], prio, now)
     # ما لم يُرَ في هذا البناء من روابط السيرفرات الموجودة: غائبٌ (لا يُحذف)
     seen_keys = {(m["service"], m["kind"], m["local_key"]) for m in items}
     for k, cid in links.items():
@@ -282,10 +292,13 @@ def _insert(con, members, slugs, now):
         "match, confidence, available, first_seen, last_seen, created_at, updated_at) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)",
         (members[0]["type"], slug, src, title, year or None, f["overview"][0], f["rating"][0], f["poster"][0], f["backdrop"][0],
-         f["genres_json"][0], f["tmdb_id"][0], "xtream" if f["tmdb_id"][0] else "local", len(members),
+         f["genres_json"][0], None, "local", len(members),
          min(added) if added else now, max(added) if added else now, now, now))
     cid = cur.lastrowid
     seo_db.set_provenance(con, "content", cid, "slug", "derived", None, now)
+    cand = f.pop("tmdb_id")[0]
+    if cand:                                   # معرّف اللوحة مرشَّحٌ لا يُعتمد حتى يتحقّق (seo_sources.resolve_tmdb)
+        seo_db.set_external(con, "content", cid, "tmdb", cand, verified=False, confidence=0.5, how="xtream-list", now=now)
     for field, (v, src, svc) in f.items():
         if v is not None:
             seo_db.set_provenance(con, "content", cid, field, src, svc, now)
@@ -296,8 +309,9 @@ def _update(con, cid, members, manual, now):
     """حقول الكيان من أعضائه عبر ‏apply_fields: الحقل اليدوي لا يُمسّ، والمتغيّر يُسجَّل بمصدره وقيمته السابقة.
     ‏slug لا يُمسّ هنا أبدًا (يتبدّل بـ ‏change_slug وحده، بتحويل 301)."""
     f = {k: v for k, v in _entity_fields(members).items() if not (v[0] is None and k == "title")}
-    if f["tmdb_id"][0]:
-        f["match"] = ("xtream", "derived", None)
+    cand = f.pop("tmdb_id")[0]
+    if cand and not seo_db.external(con, "content", cid).get("tmdb", {}).get("verified"):
+        seo_db.set_external(con, "content", cid, "tmdb", cand, verified=False, confidence=0.5, how="xtream-list", now=now)
     seo_db.apply_fields(con, "content", cid, f, "m3u", now=now, manual=manual)
     row = con.execute("SELECT last_seen, confidence, merged_into FROM content WHERE id=?", (cid,)).fetchone()
     added = [m["added"] for m in members if m.get("added")]
@@ -447,6 +461,11 @@ def stats(data_dir):
                         "resolved": q("SELECT COUNT(*) FROM review WHERE status='resolved'"),
                         "stale": q("SELECT COUNT(*) FROM review WHERE status='stale'")},
             "provenance": {r["source"]: r["n"] for r in con.execute("SELECT source, COUNT(*) n FROM provenance GROUP BY source")},
+            "queue": seo_sources.queue_stats(con),
+            "taxonomy": {f"{r['kind']}:{r['key']}": {"confirmed": r["c"], "hint": r["h"]} for r in con.execute(
+                "SELECT t.kind, t.key, SUM(ct.source!='hint') c, SUM(ct.source='hint') h FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id "
+                "JOIN content c ON c.id=ct.content_id AND c.merged_into IS NULL AND c.available=1 WHERE t.kind IN ('hub','anime_kind') GROUP BY 1, 2")},
+            "people": q("SELECT COUNT(*) FROM person"), "episodes_detailed": q("SELECT COUNT(*) FROM episode"),
             "settings": {k: ("•••" if k in seo_db.SECRET_SETTINGS and v else v) for k, v in seo_db.settings(con).items()},
             "db_bytes": os.path.getsize(seo_db.path(data_dir)),
         }
@@ -505,6 +524,18 @@ def main(argv):
         con = seo_db.connect(data_dir, create=False)
         if con and opt.get("schema"):
             print("\n" + seo_db.schema_text(con))
+    elif cmd == "search-report":                 # جودة البحث: ما يصير إليه كل اسم (كيان · اقتراح · لا شيء)
+        import seo_search
+        con = seo_db.connect(data_dir, create=False)
+        if con is None:
+            print("لم تُبنَ القاعدة بعد"); return
+        idx, st = seo_search.load(con), seo_db.settings(con)
+        names = [a for a in argv[2:] if not a.startswith("--")] or ["Prison Break", "person break", "Prison Brek", "بريزن بريك", "بريزون بريك",
+                                                                     "طبيعة الحب", "طبيعة الحب مدبلج", "طبيعة الحب مترجم", "One Piece", "ون بيس",
+                                                                     "Dune 1984", "Dune 2021", "Breaking Bad", "بريكنغ باد", "بريكنج باد"]
+        for q in names:
+            print(json.dumps(seo_search.explain(con, idx, q, st), ensure_ascii=False))
+        con.close()
     elif cmd == "review":
         for r in reviews(data_dir, kind=str(opt.get("kind") or ""), limit=int(opt.get("limit") or 50)):
             print(json.dumps(r, ensure_ascii=False))

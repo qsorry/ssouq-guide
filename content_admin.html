@@ -273,6 +273,22 @@ label.force input{width:16px;height:16px;accent-color:var(--amber)}
     <div class="msg" id="eMsg"></div>
     <ul class="alist" id="eList" hidden></ul>
     <p class="meta" id="eLast"></p>
+    <h3 style="margin:18px 0 6px">الإثراء من TMDB ولوحات Xtream</h3>
+    <p class="sub">يعمل وحده في نافذةٍ ليلية (02:00–06:00 بتوقيت السعودية افتراضًا) بطابورٍ يُستأنف من حيث توقّف ولا يكرّر طلبًا، ولا يُفترض أن يكتمل في ليلة.
+      مفتاح TMDB يُحفظ مشفَّرًا ولا يُعرض. معرّف اللوحة مرشّحٌ لا يُعتمد حتى يتحقّق من النوع والسنة والاسم.</p>
+    <div class="form">
+      <div><label for="eKey">مفتاح TMDB API</label><input id="eKey" class="ltr" type="password" maxlength="512" placeholder="••••" autocomplete="off">
+        <span class="hint" id="eKeyHint"></span></div>
+    </div>
+    <div class="acts" style="margin-top:10px"><button class="go" type="button" id="eKeySave">احفظ المفتاح</button>
+      <button class="ghost" type="button" id="eProbe">فحصٌ أولي للّوحات</button>
+      <button class="ghost" type="button" id="eRun">دفعة إثراءٍ الآن</button>
+      <button class="ghost" type="button" id="eQueue">حال الطابور</button></div>
+    <div class="msg" id="eMsg2"></div>
+    <pre class="mono" id="eOut" hidden style="white-space:pre-wrap;max-height:320px;overflow:auto;font-size:.8rem"></pre>
+    <div class="row" style="margin-top:10px"><input id="eQ" placeholder="جرّب البحث: person break · بريزن بريك · طبيعة الحب مدبلج" maxlength="80">
+      <button class="ghost" type="button" id="eFind">ماذا يصير إليه؟</button></div>
+    <p class="meta" id="eFound"></p>
   </section>
 
   <section id="alert" hidden>
@@ -837,6 +853,30 @@ $("eBuild").onclick = async () => {
   if (d.error) { $("eMsg").textContent = d.error; return; }
   $("eMsg").textContent = d.started ? "بدأ البناء في الخلفية…" : "بناءٌ جارٍ أصلًا";
   renderSeo(d);
+};
+$("eKeySave").onclick = async () => {
+  const d = await api("/api/content/admin/seo-key", {key: $("eKey").value.trim()}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error ? d.error : (d.has_key ? "حُفظ المفتاح مشفَّرًا" : "أُزيل المفتاح"); $("eKey").value = "";
+};
+const showOut = o => { const p = $("eOut"); p.hidden = false; p.textContent = typeof o === "string" ? o : JSON.stringify(o, null, 1); };
+$("eProbe").onclick = async () => {
+  $("eMsg2").textContent = "يسأل اللوحات…";
+  const d = await api("/api/content/admin/seo-probe", {n: 20}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error || ""; showOut(d.probe || d);
+};
+$("eRun").onclick = async () => {
+  const d = await api("/api/content/admin/seo-run", {}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error || (d.started ? "بدأت دفعةٌ في الخلفية" : "دفعةٌ جارية أصلًا"); showOut(d.queue || d);
+};
+$("eQueue").onclick = async () => {
+  const d = await api("/api/content/seo/enrich").catch(() => ({error: "تعذّر الاتصال"}));
+  $("eKeyHint").textContent = d.has_key ? "المفتاح محفوظ" : "لا مفتاح بعد"; showOut(d);
+};
+$("eFind").onclick = async () => {
+  const d = await api("/api/content/seo/search?q=" + encodeURIComponent($("eQ").value.trim())).catch(() => ({error: "تعذّر الاتصال"}));
+  const e = d.entities || d.suggest || [];
+  $("eFound").textContent = d.error || (d.result === "entity" ? "كيان: " + e.map(x => `${x.title} (/${x.slug})`).join("، ")
+    : d.result === "suggest" ? "هل تقصد: " + e.map(x => `${x.title} (${Math.round(x.confidence * 100)}%، ${x.why})`).join("، ") : "لا شيء");
 };
 $("eReview").onclick = async () => {
   const d = await api("/api/content/seo/review?limit=200").catch(() => ({error: "تعذّر الاتصال"}));

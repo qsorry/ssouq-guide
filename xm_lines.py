@@ -36,6 +36,9 @@ import content_page
 import reports
 import store_sync
 import seo_build
+import seo_sources
+import seo_search
+import seo_db
 import xm_web
 import falcon_api
 import crypto_store
@@ -2826,6 +2829,7 @@ def _content_loop():
         except Exception:
             pass
         seo_build.tick(DATA_DIR)            # طبقة الكيانات (‏seo.sqlite): تُبنى إن تغيّر فهرسٌ — ولا ترفع شيئًا
+        seo_sources.tick(DATA_DIR)          # الإثراء من Xtream وTMDB: دفعةٌ داخل النافذة الليلية وحدها
         time.sleep(CONTENT_TICK)
 
 
@@ -3332,6 +3336,16 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/content/seo/review":     # ما يحتاج مراجعة يدوية (الاسم وحده، أو تعارض)
                     return self._send(200, {"ok": True, "reviews": seo_build.reviews(
                         DATA_DIR, self._q("status") or "open", self._q("kind"), self._q("limit") or 100, self._q("offset") or 0)})
+                if path == "/api/content/seo/enrich":     # الإثراء: الطابور والنافذة والمفتاح وآخر دفعة
+                    return self._send(200, {"ok": True, **seo_sources.state(DATA_DIR)})
+                if path == "/api/content/seo/search":     # تجربة تصحيح البحث: ما يصير إليه الاسم (كيان · اقتراح · لا شيء)
+                    con = seo_db.connect(DATA_DIR, create=False)
+                    if con is None:
+                        return self._send(200, {"ok": True, "result": "none", "q": self._q("q")})
+                    try:
+                        return self._send(200, {"ok": True, **seo_search.explain(con, seo_search.load(con), self._q("q")[:80], seo_db.settings(con))})
+                    finally:
+                        con.close()
                 return self._send(404, {"error": "not found"})
             if path == "/reports" or path == "/api/reports":   # بلاغات المحتوى (للمدير وللموظف الذي فُتحت له)
                 if not reports_on(role, acct):
@@ -4002,6 +4016,28 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/content/admin/seo-build":     # «ابنِ طبقة الكيانات الآن»: في الخلفية، وبناءٌ واحد في وقته
                 started = seo_build.start_build(DATA_DIR, force=bool(body.get("force", True)))
                 return self._send(200, {"ok": True, "started": started, **seo_build.stats(DATA_DIR)})
+            elif path == "/api/content/admin/seo-key":       # مفتاح TMDB: يُحفظ مشفَّرًا ولا يُعرض
+                con = seo_db.connect(DATA_DIR)
+                try:
+                    seo_sources.set_tmdb_key(con, DATA_DIR, body.get("key") or "")
+                finally:
+                    con.close()
+                return self._send(200, {"ok": True, **seo_sources.state(DATA_DIR)})
+            elif path == "/api/content/admin/seo-run":       # دفعة إثراءٍ الآن خارج النافذة (في الخلفية)
+                started = seo_sources.start_run(DATA_DIR, int(body.get("limit") or 0) or None)
+                return self._send(200, {"ok": True, "started": started, **seo_sources.state(DATA_DIR)})
+            elif path == "/api/content/admin/seo-probe":     # الفحص الأولي: ماذا تعطي كل لوحة (يتصل باللوحات الآن)
+                return self._send(200, {"ok": True, "probe": seo_sources.probe(DATA_DIR, int(body.get("n") or 20))})
+            elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)
+                con = seo_db.connect(DATA_DIR)
+                try:
+                    for k, v in (body.get("settings") or {}).items():
+                        if k in seo_db.SECRET_SETTINGS:
+                            continue
+                        seo_db.set_setting(con, k, v)
+                finally:
+                    con.close()
+                return self._send(200, {"ok": True, **seo_build.stats(DATA_DIR)})
             elif path == "/api/content/admin/store-run":     # «حدّث الآن»: يكتب في المنتجات ويعتمدها، فتُحدَّث بعده وحدها
                 ids = body.get("ids") if isinstance(body.get("ids"), list) else None
                 res = store_sync.run(DATA_DIR, ids, manual=True, force=bool(body.get("force")))
