@@ -960,6 +960,23 @@ def main(argv):
         print(json.dumps(state(data_dir), ensure_ascii=False, indent=1))
     elif cmd == "sample":                        # عيّنة 30 عملًا تُثرى الآن وتقريرها
         print(json.dumps(sample(data_dir), ensure_ascii=False, indent=1))
+    elif cmd == "bundle":                        # الملفات الخام الأربعة للمراجعة في مجلدٍ واحد: probe.json · sample.json · report.txt · search-report.txt
+        import seo_build
+        out = str(opt.get("out") or "seo-review")
+        os.makedirs(out, exist_ok=True)
+        with open(os.path.join(out, "probe.json"), "w", encoding="utf-8") as f:
+            json.dump(probe(data_dir, int(opt.get("n") or 20)), f, ensure_ascii=False, indent=1)
+        with open(os.path.join(out, "sample.json"), "w", encoding="utf-8") as f:
+            json.dump(sample(data_dir), f, ensure_ascii=False, indent=1)
+        with open(os.path.join(out, "report.txt"), "w", encoding="utf-8") as f:
+            f.write(seo_build.report(data_dir) + "\n")
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            seo_build.main(["seo_build.py", "search-report"])
+        with open(os.path.join(out, "search-report.txt"), "w", encoding="utf-8") as f:
+            f.write(buf.getvalue())
+        print("كُتب في", out, ":", ", ".join(sorted(os.listdir(out))))
     elif cmd == "key":
         con = seo_db.connect(data_dir)
         set_tmdb_key(con, data_dir, str(opt.get("set") or "")); con.close()
