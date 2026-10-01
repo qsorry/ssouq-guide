@@ -507,6 +507,16 @@ def guide_sub(gate, guide_url=""):
     return re.sub(r"^\s*بوابة\s+", "", str(gate.get("name", ""))).strip()
 
 
+def _report_servers(v):
+    """سيرفرات الموظف في البلاغات: مفاتيحها بلا تكرار — والقائمة الفارغة كلها."""
+    out = []
+    for k in (v if isinstance(v, (list, tuple)) else []):
+        k = content.key_ok(k)
+        if k and k not in out:
+            out.append(k)
+    return out[:content.MAX_SERVERS]
+
+
 def _report_wa(v):
     try:
         return reports.phone_of(v)
@@ -536,6 +546,8 @@ def clean_account(a, old=None):
         "reports": bool(a.get("reports", old.get("reports", False))),
         # ورقم واتسابه لتنبيهٍ بكل بلاغ (يغيّره هو من صفحة البلاغات، ويوقفه ‏reports_alert فيها).
         "reports_wa": _report_wa(a.get("reports_wa", old.get("reports_wa", ""))),
+        # وسيرفراته: لا يرى إلا بلاغاتها ولا يصله إلا تنبيهها، وللسيرفر موظفٌ أو أكثر (الفارغة = كلها).
+        "reports_servers": _report_servers(a.get("reports_servers", old.get("reports_servers", []))),
     }
     if not out["name"]:
         raise ValueError("الاسم مطلوب")
@@ -2495,13 +2507,26 @@ def reports_page_url():
         ("https://%s%s/reports" % (SITE_HOST, ADMIN_PATH))
 
 
-def report_recipients(st=None):
-    """من يصله تنبيه البلاغ ← [(الاسم، الرقم)]: كل موظفٍ فُتحت له البلاغات وله رقمٌ لم يوقف تنبيهه، ورقم المدير إن حفظه."""
+def report_scope(role, acct):
+    """سيرفرات من يرى البلاغات ← None للكل (المدير، وموظفٌ بلا سيرفراتٍ مختارة)، أو مجموعة مفاتيحها."""
+    if role == "admin" or not acct or not acct.get("reports_servers"):
+        return None
+    return set(acct["reports_servers"])
+
+
+def _covers(a, key):
+    return not a.get("reports_servers") or key in a["reports_servers"]
+
+
+def report_recipients(r=None, st=None):
+    """من يصله تنبيه البلاغ ← [(الاسم، الرقم)]: كل موظفٍ فُتحت له البلاغات وسيرفرُ البلاغ من سيرفراته، وله رقمٌ لم يوقف
+    تنبيهه — ورقم المدير إن حفظه (يصله كل سيرفر)."""
     if st is None:                  # من خيط التنبيه: القراءة تحت القفل كغيرها (load_store قد يكتب ترقيةً)
         with _lock:
             st = load_store()
+    key = (r or {}).get("server", "")
     out = [(a.get("name", ""), a["reports_wa"]) for a in st["accounts"]
-           if a.get("reports") and a.get("reports_wa") and a.get("reports_alert") is not False]
+           if a.get("reports") and a.get("reports_wa") and a.get("reports_alert") is not False and (not key or _covers(a, key))]
     adm = reports.settings(DATA_DIR)
     if adm["wa"] and adm["on"]:
         out.append(("المدير", adm["wa"]))
@@ -2516,9 +2541,19 @@ def report_alert_state(role, acct, st):
     on = r.get("status") == "connected"
     out = {"mine": mine, "from": r.get("number", "") if on else "",
            "from_error": "" if on else "رقم المسابقة غير مربوط — يُربط من صفحة المسابقة، ومنه تُرسل التنبيهات"}
+    names = {x["key"]: x["name"] for x in content.servers(DATA_DIR)}
     if role == "admin":
-        out["staff"] = [{"name": a.get("name", ""), "wa": a.get("reports_wa", ""), "on": a.get("reports_alert") is not False}
-                        for a in st["accounts"] if a.get("reports")]
+        staff = [a for a in st["accounts"] if a.get("reports")]
+        person = lambda a: {"name": a.get("name", ""), "wa": a.get("reports_wa", ""),  # noqa: E731
+                            "on": a.get("reports_alert") is not False, "all": not a.get("reports_servers")}
+        out["staff"] = [dict(person(a), servers=[names.get(k, k) for k in a.get("reports_servers") or []]) for a in staff]
+        # لكل سيرفرٍ له محتوى (أو اختير لأحد) من يتابعه — وما لا أحد له تصل بلاغاته المدير وحده
+        live = {x["key"] for x in content.brief(DATA_DIR, wait=False)["servers"]} \
+            | {k for a in staff for k in a.get("reports_servers") or []}
+        out["team"] = [{"key": k, "name": n, "people": [person(a) for a in staff if _covers(a, k)]}
+                       for k, n in names.items() if k in live]
+    else:
+        out["servers"] = [names.get(k, k) for k in acct.get("reports_servers") or []]   # الفارغة = كلها
     return out
 
 
@@ -3186,7 +3221,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403, {"error": "غير متاح"})
                 if path == "/reports":
                     return self._page("reports_admin.html")
-                d = reports.listing(DATA_DIR, self._q("state") or "open", content.key_ok(self._q("s")))
+                d = reports.listing(DATA_DIR, self._q("state") or "open", content.key_ok(self._q("s")),
+                                    report_scope(role, acct))
                 return self._send(200, dict(d, role=role, name=acct["name"] if acct else "المدير",
                                             gates=len(acct.get("gates") or []) if acct else 0,
                                             alert=report_alert_state(role, acct, st)))
@@ -3210,7 +3246,8 @@ class Handler(BaseHTTPRequestHandler):
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
                 return self._send(200, {"accounts": [redact_account(a) for a in st["accounts"]],
-                                        "default_guide_text": DEFAULT_GUIDE_TEXT})
+                                        "default_guide_text": DEFAULT_GUIDE_TEXT,
+                                        "report_servers": [{"key": x["key"], "name": x["name"]} for x in content.servers(DATA_DIR)]})
             if path == "/api/service":
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
@@ -3993,6 +4030,8 @@ class Handler(BaseHTTPRequestHandler):
             res = reports.items(DATA_DIR, s, self._q("t"), self._q("g"), self._q("q"), self._q("p"))
         elif path == "/api/report/search":
             res = reports.search(DATA_DIR, s, self._q("q"))
+        elif path == "/api/report/recent":
+            res = reports.recent(DATA_DIR, s)
         else:
             res = None
         if res is None:
@@ -4032,6 +4071,9 @@ class Handler(BaseHTTPRequestHandler):
                 save_store(st)
             return self._send(200, {"ok": True, "alert": report_alert_state(role, acct, st)})
         rid = str(body.get("id", ""))
+        scope = report_scope(role, acct)
+        if scope is not None and (reports.get(DATA_DIR, rid) or {}).get("server") not in scope:
+            return self._send(404, {"error": "لا بلاغ بهذا الرقم"})     # بلاغ سيرفرٍ ليس من سيرفراته
         if path == "/api/reports/state":
             r = reports.set_state(DATA_DIR, rid, bool(body.get("done")), acct["name"] if acct else "المدير",
                                   body.get("reply", ""))

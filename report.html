@@ -64,24 +64,10 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
 .srv b{font-size:1rem}
 .lg{width:44px;height:44px;border-radius:11px;object-fit:cover;flex:none;background:var(--bg)}
 .lg.bi{display:grid;place-items:center;font-weight:700;color:#fff;background:linear-gradient(135deg,hsl(var(--h) 50% 34%),hsl(var(--h) 55% 18%))}
-/* الأنواع والأقسام */
-.tabs{display:flex;gap:6px;margin:0 0 12px;overflow-x:auto;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tabs button{flex:none;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:none;color:var(--mute);font-weight:600}
-.tabs button[aria-pressed="true"]{border-color:var(--acc);color:#fff;background:linear-gradient(135deg,rgba(47,140,255,.28),rgba(47,140,255,.08))}
-.tabs button em{font-style:normal;color:var(--mute);font-weight:500;font-size:.8rem;margin-inline-start:4px}
 .find{display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:0 0 12px}
 .find:focus-within{border-color:var(--acc)}
-.find input{flex:1;min-width:0;background:none;border:0;outline:0;padding:11px 0}
+.find input{flex:1;min-width:0;background:none;border:0;outline:0;padding:13px 0;font-size:1rem}
 .find input::placeholder{color:var(--mute)}
-.list{display:flex;flex-direction:column;gap:6px}
-.row{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card2);text-align:start}
-.row:hover{border-color:var(--acc)}
-.row .t{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}
-.row .c{color:var(--mute);font-size:.82rem;flex:none;font-variant-numeric:tabular-nums}
-.row .chev{color:var(--mute)}
-.or{display:flex;align-items:center;gap:10px;color:var(--mute);font-size:.84rem;margin:14px 0 10px}
-.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 /* الملصقات */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px}
 .card{display:flex;flex-direction:column;gap:6px;padding:0;background:none;border:0;text-align:start;min-width:0}
@@ -94,8 +80,8 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
 .card:hover .pos{border-color:var(--acc)}
 .card b{font-size:.86rem;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card small{color:var(--mute);font-size:.75rem;margin-top:-4px}
-.more{display:block;width:100%;margin-top:14px;padding:11px;border-radius:12px;border:1px solid var(--line2);background:none;color:var(--ink);font-weight:600}
-.more:hover{border-color:var(--acc)}
+.card small.g{font-size:.7rem;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:-6px}
+.hint{color:var(--mute);font-size:.86rem;margin:4px 0 10px}
 /* العنصر المختار */
 .pick{display:flex;gap:14px;align-items:center;margin:0 0 14px}
 .pick .pos{width:64px;flex:none}
@@ -160,14 +146,13 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
 </div></header>
 <main class="wrap">
   <h1>فيديو لا يعمل أو يقطع؟</h1>
-  <p class="lead">اختر السيرفر ثم القسم ثم المسلسل أو الفيلم والحلقة، ويصل بلاغك إلى فريق الدعم مباشرةً.</p>
+  <p class="lead">اختر السيرفر ثم ابحث باسم المسلسل أو الفيلم واختر الحلقة، ويصل بلاغك إلى فريق الدعم مباشرةً.</p>
   <div class="trail" id="trail" aria-label="ما اخترته"></div>
   <section class="panel" id="view" aria-live="polite"><p class="empty"><span class="spin"></span></p></section>
   <p class="foot">لمشكلةٍ في الاشتراك نفسه (لا يفتح شيء، أو انتهى): <a href="https://wa.me/966504998661" target="_blank" rel="noopener">راسل الدعم على واتساب</a> · <a href="/content">محتوى الاشتراكات</a></p>
 </main>
 <script>
 (function(){
-  var KIND = {series: "مسلسلات", movie: "أفلام", live: "قنوات"};
   var ONE = {series: "مسلسل", movie: "فيلم", live: "قناة"};
   var ART = {smart: 1, falcon: 1, casper: 1};         // شعار السيرفر إن كان له (كصفحة المحتوى)
   var S = {};                                         // ما اختاره: s, sname, t, g, gname, it, season, ep, problem
@@ -222,8 +207,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
   }
   function now(){
     if (!S.s) return "server";
-    if (!S.g) return "group";
-    if (!S.it) return "item";
+    if (!S.it) return "find";
     if (S.t === "series" && S.ep == null) return "episode";
     return S.sent ? "done" : "problem";
   }
@@ -236,7 +220,6 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
   function drawTrail(step){
     var b = [];
     if (S.s) b.push(['server', 'السيرفر', S.sname]);
-    if (S.g) b.push(['group', ONE[S.t] ? KIND[S.t] : 'القسم', S.gname]);
     if (S.it) b.push(['item', ONE[S.t], S.it.n + (S.it.y ? ' (' + S.it.y + ')' : '')]);
     if (S.t === "series" && S.ep != null) b.push(['episode', 'الحلقة', epText()]);
     trail.innerHTML = step === "done" ? "" : b.map(function(x){
@@ -248,8 +231,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
     var to = b.getAttribute("data-to");
     step(function(){
       if (to === "server") S = {};
-      else if (to === "group") S = {s: S.s, sname: S.sname, t: S.t};
-      else if (to === "item") { delete S.it; delete S.season; delete S.ep; }
+      else if (to === "item") S = {s: S.s, sname: S.sname, q: S.q};
       else if (to === "episode") { delete S.ep; }
       delete S.problem; delete S.sent;
     });
@@ -279,88 +261,48 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
         };
       }, fail);
     },
-    group: function(){
-      view.innerHTML = head(2, "اختر القسم", "كما في تطبيقك") + WAIT;
-      get("/api/report/groups?s=" + encodeURIComponent(S.s)).then(function(d){
-        var kinds = ["series", "movie", "live"].filter(function(k){ return (d.kinds[k] || []).length; });
-        if (!kinds.length) { view.innerHTML = head(2, "اختر القسم") + '<p class="empty">لا أقسام في هذا السيرفر.</p>'; return; }
-        var cur = kinds.indexOf(S.t) >= 0 ? S.t : kinds[0];
-        var draw = function(){
-          var gs = d.kinds[cur] || [];
-          view.innerHTML = head(2, "اختر القسم", "كما في تطبيقك")
-            + '<div class="tabs" role="group" aria-label="النوع">' + kinds.map(function(k){
-                return '<button type="button" data-kind="' + k + '" aria-pressed="' + (k === cur) + '">' + KIND[k] + '<em>' + num(d.kinds[k].length) + '</em></button>';
-              }).join("") + '</div>'
-            + (gs.length > 8 ? '<label class="find"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="gq" type="search" placeholder="ابحث في أسماء الأقسام" autocomplete="off"></label>' : '')
-            + '<div class="list" id="glist">' + gs.map(function(g){
-                return '<button class="row" type="button" data-g="' + esc(g.id) + '" data-name="' + esc(g.name) + '"><span class="t" dir="auto">' + esc(g.name)
-                  + '</span><span class="c">' + num(g.n) + '</span><svg class="i chev" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>';
-              }).join("") + '</div>'
-            + (cur !== "live" ? '<div class="or">أو ابحث بالاسم في ' + esc(S.sname) + ' كله</div>'
-              + '<label class="find"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="sq" type="search" placeholder="اسم المسلسل أو الفيلم" autocomplete="off"></label><div id="sres"></div>' : '');
-          var gq = document.getElementById("gq");
-          if (gq) gq.addEventListener("input", function(){
-            var v = gq.value.trim().toLowerCase();
-            Array.prototype.forEach.call(document.querySelectorAll("#glist .row"), function(r){
-              r.hidden = v && r.getAttribute("data-name").toLowerCase().indexOf(v) < 0;
-            });
-          });
-          var sq = document.getElementById("sq"), timer = 0, seq = 0;
-          if (sq) sq.addEventListener("input", function(){
-            clearTimeout(timer);
-            timer = setTimeout(function(){
-              var v = sq.value.trim(), box = document.getElementById("sres"), n = ++seq;
-              if (v.replace(/\s/g, "").length < 2) { box.innerHTML = ""; return; }
-              box.innerHTML = WAIT;
-              get("/api/report/search?" + q({s: S.s, q: v})).then(function(r){
-                if (n !== seq) return;
-                found = r.items || [];
-                box.innerHTML = found.length ? '<div class="grid">' + found.map(function(it, i){
-                  return '<button class="card" type="button" data-found="' + i + '">' + pos(it) + '<b dir="auto">' + esc(it.n) + '</b><small>'
-                    + esc(ONE[it.k]) + (it.y ? ' · ' + it.y : '') + ' · ' + esc(it.g) + '</small></button>';
-                }).join("") + '</div>' : '<p class="empty">لا نتائج لـ «' + esc(v) + '» في ' + esc(S.sname) + '.</p>';
-              }, function(){ if (n === seq) box.innerHTML = '<p class="err">تعذّر البحث.</p>'; });
-            }, 300);
-          });
-        };
-        var found = [];
-        view.onclick = function(e){
-          var k = e.target.closest("[data-kind]");
-          if (k) { cur = k.getAttribute("data-kind"); draw(); return; }
-          var g = e.target.closest("[data-g]");
-          if (g) { step(function(){ S.t = cur; S.g = g.getAttribute("data-g"); S.gname = g.getAttribute("data-name"); }); return; }
-          var f = e.target.closest("[data-found]");
-          if (f) { var it = found[+f.getAttribute("data-found")]; step(function(){ S.t = it.k; S.g = it.gid; S.gname = it.g; S.it = it; }); }
-        };
-        draw();
-      }, fail);
-    },
-    item: function(){
-      var title = S.t === "series" ? "اختر المسلسل" : S.t === "movie" ? "اختر الفيلم" : "اختر القناة";
-      var page = 0, filter = "", items = [], seq = 0;
-      view.innerHTML = head(3, title, esc(S.gname)) + '<label class="find"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
-        + '<input id="iq" type="search" placeholder="ابحث في هذا القسم" autocomplete="off"></label><div id="ilist">' + WAIT + '</div>';
-      var box = document.getElementById("ilist"), iq = document.getElementById("iq"), timer = 0;
-      var load = function(more){
-        var n = ++seq;
-        if (!more) { page = 0; items = []; box.innerHTML = WAIT; }
-        get("/api/report/items?" + q({s: S.s, t: S.t, g: S.g, q: filter, p: page || ""})).then(function(d){
+    // البحث باسم المسلسل أو الفيلم في السيرفر كله — بلا قسم، وقبل الكتابة أحدث ما أضيف
+    find: function(){
+      var found = [], seq = 0, timer = 0;
+      view.innerHTML = head(2, "ابحث بالاسم", "اسم المسلسل أو الفيلم في " + esc(S.sname))
+        + '<label class="find"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
+        + '<input id="sq" type="search" enterkeyhint="search" placeholder="اكتب اسم المسلسل أو الفيلم" autocomplete="off"></label><div id="sres"></div>';
+      var sq = document.getElementById("sq"), box = document.getElementById("sres");
+      var cards = function(list){
+        return '<div class="grid">' + list.map(function(it, i){
+          return '<button class="card" type="button" data-found="' + i + '">' + pos(it) + '<b dir="auto">' + esc(it.n) + '</b><small>'
+            + [ONE[it.k], it.y || "", seasons(it)].filter(Boolean).join(" · ") + '</small><small class="g" dir="auto">' + esc(it.g) + '</small></button>';
+        }).join("") + '</div>';
+      };
+      var run = function(){
+        var v = sq.value.trim(), n = ++seq;
+        S.q = v;
+        if (v.replace(/\s/g, "").length < 2) {         // قبل الكتابة: أحدث ما أضيف
+          box.innerHTML = WAIT;
+          get("/api/report/recent?s=" + encodeURIComponent(S.s)).then(function(r){
+            if (n !== seq) return;
+            found = r.items || [];
+            box.innerHTML = found.length ? '<p class="hint">أو اختر من أحدث ما أضيف:</p>' + cards(found) : '';
+          }, function(){ if (n === seq) box.innerHTML = ''; });
+          return;
+        }
+        box.innerHTML = WAIT;
+        get("/api/report/search?" + q({s: S.s, q: v})).then(function(r){
           if (n !== seq) return;
-          items = items.concat(d.items || []);
-          box.innerHTML = items.length ? '<div class="grid">' + items.map(function(it, i){
-            return '<button class="card" type="button" data-i="' + i + '">' + pos(it, S.t === "live") + '<b dir="auto">' + esc(it.n) + '</b>'
-              + (it.y || (it.s && it.s.length) ? '<small>' + [it.y || "", seasons(it)].filter(Boolean).join(" · ") + '</small>' : '') + '</button>';
-          }).join("") + '</div>' + (d.more ? '<button class="more" type="button" data-more>المزيد (' + num(d.total - items.length) + ')</button>' : '')
-            : '<p class="empty">' + (filter ? 'لا شيء بهذا الاسم في هذا القسم.' : 'القسم فارغ.') + '</p>';
-        }, function(){ if (n === seq) fail(); });
+          found = r.items || [];
+          box.innerHTML = found.length ? cards(found) + (r.total > found.length ? '<p class="hint">' + num(r.total) + ' نتيجة — اكتب الاسم أدقّ لتجده أسرع.</p>' : '')
+            : '<p class="empty">لا نتائج لـ «' + esc(v) + '» في ' + esc(S.sname) + '. جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية.</p>';
+        }, function(){ if (n === seq) box.innerHTML = '<p class="err">تعذّر البحث — أعد المحاولة.</p>'; });
       };
-      iq.addEventListener("input", function(){ clearTimeout(timer); timer = setTimeout(function(){ filter = iq.value.trim(); load(false); }, 300); });
+      sq.value = S.q || "";
+      sq.addEventListener("input", function(){ clearTimeout(timer); timer = setTimeout(run, 300); });
+      sq.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); run(); sq.blur(); } });
       view.onclick = function(e){
-        if (e.target.closest("[data-more]")) { page++; load(true); return; }
-        var c = e.target.closest("[data-i]");
-        if (c) { var it = items[+c.getAttribute("data-i")]; step(function(){ S.it = it; }); }
+        var f = e.target.closest("[data-found]");
+        if (f) { var it = found[+f.getAttribute("data-found")]; step(function(){ S.t = it.k; S.g = it.gid; S.gname = it.g; S.it = it; }); }
       };
-      load(false);
+      run();
+      if (!S.q && window.matchMedia && matchMedia("(pointer:fine)").matches) sq.focus();   // لا تفتح لوحة المفاتيح على الجوال وحدها
     },
     episode: function(){
       var ss = S.it.s || [];                            // [[الموسم، عدد حلقاته]] — والأحدث مختارٌ أولًا
@@ -368,7 +310,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
       var draw = function(){
         var cur = ss.filter(function(x){ return x[0] === S.season; })[0], n = cur ? cur[1] : 0;
         var eps = []; for (var i = 1; i <= Math.min(n, 400); i++) eps.push(i);
-        view.innerHTML = head(4, "اختر الحلقة", esc(S.it.n))
+        view.innerHTML = head(3, "اختر الحلقة", esc(S.it.n))
           + (ss.length > 1 || (ss.length === 1 && ss[0][0]) ? '<span class="lbl">الموسم</span><div class="chips">' + ss.map(function(x){
               return '<button type="button" data-season="' + x[0] + '" aria-pressed="' + (x[0] === S.season) + '">' + (x[0] ? x[0] : "بلا موسم") + '</button>';
             }).join("") + '</div>' : '')
@@ -391,7 +333,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
       draw();
     },
     problem: function(){
-      var n = S.t === "series" ? 5 : 4;
+      var n = S.t === "series" ? 4 : 3;
       view.innerHTML = head(n, "ما المشكلة؟")
         + '<div class="pick">' + pos(S.it, S.t === "live") + '<div><b dir="auto">' + esc(S.it.n) + (S.it.y ? ' (' + S.it.y + ')' : '') + '</b><small>'
         + esc(S.sname) + ' · <bdi>' + esc(S.gname) + '</bdi>' + (S.t === "series" ? ' · ' + esc(epText()) : '') + '</small></div></div>'
@@ -439,7 +381,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
     }
   };
 
-  // ---- البداية: ‏?s=smart يختار السيرفر، ومعه ‏t و g و n (من صفحة المحتوى) يفتح العنصر نفسه ----
+  // ---- البداية: ‏?s=smart يختار السيرفر، و‏q (أو n) يبحث بالاسم، ومع ‏t و g و n (من صفحة المحتوى) يفتح العنصر نفسه ----
   function seasons(it){
     var s = (it.s || []).filter(function(x){ return x[0]; }).length;
     return s > 1 ? s + " مواسم" : "";
@@ -449,15 +391,13 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
     var srv = (d.servers || []).filter(function(x){ return x.key === P.get("s"); })[0]
       || ((d.servers || []).length === 1 ? d.servers[0] : null);
     if (!srv) return render();
-    S = {s: srv.key, sname: srv.name};
     stack.push(JSON.stringify({}));
-    if (!P.get("g") || !P.get("t")) return render();
-    get("/api/report/items?" + q({s: srv.key, t: P.get("t"), g: P.get("g"), q: P.get("n") || ""})).then(function(r){
-      stack.push(JSON.stringify(S));
-      S.t = P.get("t"); S.g = P.get("g"); S.gname = r.group.name;
-      var n = (P.get("n") || "").trim().toLowerCase();
+    S = {s: srv.key, sname: srv.name, q: (P.get("q") || P.get("n") || "").trim().slice(0, 60)};
+    if (!P.get("g") || !P.get("t") || !P.get("n")) return render();
+    get("/api/report/items?" + q({s: srv.key, t: P.get("t"), g: P.get("g"), q: P.get("n")})).then(function(r){
+      var n = P.get("n").trim().toLowerCase();
       var it = (r.items || []).filter(function(x){ return x.n.toLowerCase() === n; })[0];
-      if (it) { stack.push(JSON.stringify(S)); S.it = it; }
+      if (it) { stack.push(JSON.stringify(S)); S.t = P.get("t"); S.g = P.get("g"); S.gname = r.group.name; S.it = it; }
       render();
     }, render);
   }, render);

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """بلاغات المحتوى (‏/report): المشترك يبلّغ عن فيديو لا يعمل أو يقطع، ويراه الموظف في admin.ssouq.com/reports.
 
-العميل يختار من ملفات M3U نفسها (‏content.py) خطوةً بعد خطوة، فلا يكتب اسمًا بيده ولا يخطئ فيه:
-  السيرفر ← القسم (أقسام المسلسلات والأفلام والقنوات كما سمّاها السيرفر، بلا ما أخفاه المدير)
-  ← المسلسل أو الفيلم أو القناة ← الموسم والحلقة (للمسلسل) ← المشكلة: «لا يعمل» أو «يقطع».
+العميل يختار من ملفات M3U نفسها (‏content.py) خطوةً بعد خطوة، فلا يكتب اسمًا لا وجود له:
+  السيرفر ← البحث باسم المسلسل أو الفيلم (وقبل الكتابة أحدث ما أضيف؛ ولكل نتيجةٍ قسمها، بلا ما أخفاه المدير)
+  ← الموسم والحلقة (للمسلسل) ← المشكلة: «لا يعمل» أو «يقطع». (وخطوات القسم ثم عناصره باقيةٌ في الواجهة لرابط صفحة المحتوى.)
 ورقم واتسابه وملاحظته اختياريان، ليُبلَّغ بعد الإصلاح.
 
 والبلاغ يُطابَق بما في الفهرس (القسم والاسم والموسم) فلا يُحفظ إلا ما في السيرفر حقًّا. والبلاغ نفسه
@@ -11,7 +11,8 @@
 سطرًا واحدًا لكل حلقةٍ معطّلة بعدد من بلّغ عنها. وحدّ المحاولات بالساعة لكل عنوان (مجزّأً لا مخزَّنًا).
 
 الموظف حسابٌ في الأداة فتح له المدير «بلاغات المحتوى» من نافذة الحساب (‏reports في الحساب): يرى المفتوحة
-والمنجزة، ويعلّم البلاغ «تم الإصلاح» أو يعيد فتحه، ويراسل صاحبه على واتساب. والمدير يرى ما يراه ويحذف.
+والمنجزة، ويعلّم البلاغ «تم الإصلاح» أو يعيد فتحه، ويراسل صاحبه على واتساب. ولكل موظفٍ سيرفراته (‏reports_servers،
+وبلا اختيارٍ كلها): لا يرى إلا بلاغاتها ولا يصله إلا تنبيهها، وللسيرفر الواحد موظفٌ أو أكثر. والمدير يرى الكل ويحذف.
 
 وتنبيه واتساب بكل بلاغ (‏alert، في خيطٍ مستقل فلا ينتظره المشترك): من رقم المسابقة المربوط إلى كل موظفٍ
 له رقمٌ ولم يوقفه، وإلى رقم المدير إن حفظه — بالاسم والحلقة والمشكلة والسيرفر والقسم وصاحب البلاغ ورابط الصفحة.
@@ -51,7 +52,7 @@ _rate = {}                   # بصمة العنوان:الساعة ← العد
 
 # تنبيه واتساب — يضبطهما الخادم (xm_lines)، وبدونهما لا تنبيه:
 sender = None                # (الرقم، النص) ← {ok, error}: من رقم المسابقة
-recipients = None            # () ← [(الاسم، الرقم)] من يصله التنبيه الآن
+recipients = None            # (البلاغ) ← [(الاسم، الرقم)] من يصله تنبيه سيرفره الآن
 page_url = ""                # رابط صفحة البلاغات في التنبيه
 ALERT_AGAIN = 30 * 60        # البلاغ المكرّر يُنبَّه به ثانيةً بعدها، لا مع كل تكرار
 ALERT_HOUR_MAX = int(os.environ.get("REPORT_ALERTS_PER_HOUR", "30") or 30)   # تنبيهاتٌ بالساعة، لكل المستلمين
@@ -147,18 +148,42 @@ def items(data_dir, key, kind, gid, q="", page=0):
             "items": [_item(srv["key"], kind, g["items"][ii]) for _, ii in rows]}
 
 
+def _hit(srv, v, kind, gi, ii):
+    g = v["kinds"][kind][gi]
+    return dict(_item(srv["key"], kind, g["items"][ii], g["name"]), k=kind, gid=g["id"])
+
+
 def search(data_dir, key, q):
-    """البحث باسم المسلسل أو الفيلم في السيرفر كله (بلا اختيار القسم) — ولكلٍّ قسمه ← None بلا سيرفر."""
+    """البحث باسم المسلسل أو الفيلم في السيرفر كله، بلا اختيار القسم ← {total, items} أو None بلا سيرفر. ولكلّ نتيجةٍ
+    قسمها، والاسم في قسمين نتيجتان (لا كبحث صفحة المحتوى): المدبلج والمترجم من المسلسل نفسه قد يعمل أحدهما ولا يعمل
+    الآخر. والمطابق تمامًا أولًا ثم ما يبدأ بالكلمة ثم ما فيه، والمسلسلات قبل الأفلام في كلٍّ منها."""
     srv, v = _view(data_dir, key)
     if not v:
         return None
-    found, total = content._search(srv["key"], v, str(q or "")[:content.QUERY_MAX])
-    out = []
+    words = content._words(str(q or "")[:content.QUERY_MAX])
+    if not words:
+        return {"ok": True, "total": 0, "items": []}
+    full = " ".join(words)
+    tiers, total = ([], [], []), 0
     for kind in content.SEARCH_KINDS:
-        for gi, ii in found[kind][0][:SEARCH_MAX]:
-            g = v["kinds"][kind][gi]
-            out.append(dict(_item(srv["key"], kind, g["items"][ii], g["name"]), k=kind, gid=g["id"]))
-    return {"ok": True, "total": total, "items": out}
+        for norm, gi, ii in v["index"][kind]:
+            if all(w in norm for w in words):
+                total += 1
+                t = tiers[0 if norm == full else 1 if norm.startswith(full) else 2]
+                if len(t) < SEARCH_MAX:
+                    t.append((kind, gi, ii))
+    hits = (tiers[0] + tiers[1] + tiers[2])[:SEARCH_MAX]
+    return {"ok": True, "total": total, "items": [_hit(srv, v, *h) for h in hits]}
+
+
+def recent(data_dir, key, n=18):
+    """أحدث ما أضيف من مسلسلاتٍ وأفلام (بتاريخ الواجهة، وإلا برقم العنصر) — تحت البحث قبل أن يكتب شيئًا."""
+    srv, v = _view(data_dir, key)
+    if not v:
+        return None
+    rank = lambda h: (lambda it: (it.get("a") or 0, it.get("i") or 0))(v["kinds"][h[0]][h[1]]["items"][h[2]])  # noqa: E731
+    hits = sorted([(kind, gi, ii) for kind in content.SEARCH_KINDS for gi, ii in v["recent"][kind][:n]], key=rank, reverse=True)
+    return {"ok": True, "items": [_hit(srv, v, *h) for h in hits[:n]]}
 
 
 # ================= البلاغ =================
@@ -291,10 +316,13 @@ def label(r):
 
 
 # ================= للموظف =================
-def listing(data_dir, state="open", server=""):
-    """البلاغات للموظف: ‏open المفتوحة، ‏done المنجزة، ‏all الكل — بأعدادها لكل حالٍ ولكل سيرفر."""
+def listing(data_dir, state="open", server="", only=None):
+    """البلاغات للموظف: ‏open المفتوحة، ‏done المنجزة، ‏all الكل — بأعدادها لكل حالٍ ولكل سيرفر. و‏only سيرفرات الموظف
+    (‏None = كلها): لا يرى غيرها ولا يُعدّ."""
     with _lock:
         rows = _load(data_dir)["items"]
+    if only is not None:
+        rows = [r for r in rows if r.get("server") in only]
     counts = {"open": 0, "done": 0}
     by_server = {}
     for r in rows:
@@ -335,6 +363,13 @@ def set_state(data_dir, rid, done, by="", reply="", now=None):
                 r = twin
         _save(data_dir, d)
         return dict(r)
+
+
+def get(data_dir, rid):
+    """البلاغ برقمه ← نسخةٌ منه أو None (لمعرفة سيرفره قبل أن يمسّه موظف)."""
+    with _lock:
+        r = next((x for x in _load(data_dir)["items"] if x.get("id") == rid), None)
+    return dict(r) if r else None
 
 
 def remove(data_dir, rid):
@@ -424,14 +459,14 @@ def alert(data_dir, r, new, now=None):
         return None
     try:
         rcpt, seen = [], set()
-        for name, wa in recipients() or ():
+        for name, wa in recipients(r) or ():
             if wa and wa not in seen:
                 seen.add(wa)
                 rcpt.append((name, wa))
     except Exception as e:  # noqa: BLE001 — لا يُسقط البلاغ
         rcpt, err = [], str(e)[:200]
     else:
-        err = "" if rcpt else "لا أرقام للتنبيه — أضف رقمك في صفحة البلاغات"
+        err = "" if rcpt else f"لا أحد يصله تنبيه {r.get('sname') or 'هذا السيرفر'} — أضف رقمًا لموظفه أو رقمك"
     res = {"at": int(now), "to": len(rcpt), "sent": 0, "error": err}
     if rcpt:
         hour = int(now // 3600)
