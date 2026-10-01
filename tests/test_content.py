@@ -1028,7 +1028,7 @@ def unit_render():
           and "<em>23 ر.س</em>" in adplans and "اشترك في كاسبر</a>" in ad and "p153695876" not in ad
           and "adcode" not in ad and 'class="aft"' not in ad and 'class="off"' not in ad            # كاسبر بلا كود خصم
           and "اشتراكات سمارت سوق" not in ad
-          and 'href="https://ssouq.com/اشتراك-كاسبر-iptv-لمدة-12-شهر-3-أشهر-هدية/p1147637724?utm_source=guide.ssouq.com'
+          and 'href="https://ssouq.com/اشتراك-كاسبر-iptv-لمدة-12-شهر/p1147637724?utm_source=guide.ssouq.com'
               '&amp;utm_medium=referral&amp;utm_campaign=content-ad"' in ad, ad[:300])
     check("وفي الجانب باقاته بحملة الصفحة", 'p1557813796?utm_source=guide.ssouq.com&amp;utm_medium=referral&amp;utm_campaign=content"'
           in cad and "اشترك في كاسبر</h2>" in cad)
