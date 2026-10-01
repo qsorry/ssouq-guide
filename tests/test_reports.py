@@ -110,7 +110,7 @@ def unit_steps():
     d = fresh()
     check("بلا محتوى: لا سيرفرات", R.servers(d) == {"ok": True, "servers": []})
     seed(d)
-    check("السيرفر الذي له محتوى وحده", R.servers(d)["servers"] == [{"key": "smart", "name": "سمارت"}], R.servers(d))
+    check("السيرفر الذي له محتوى وحده", R.servers(d)["servers"] == [{"key": "smart", "name": "سمارت", "en": "Smart"}], R.servers(d))
     check("سيرفرٌ بلا محتوى أو مفتاحٌ غريب ← None", R.groups(d, "kon") is None and R.groups(d, "../x") is None)
     hidden = next(g for g in R.groups(d, "smart")["kinds"]["series"] if g["name"] == "Hidden Group")
     C.set_hidden(d, "smart", hidden["id"], True)
@@ -167,7 +167,8 @@ def unit_submit():
     r, new = R.submit(d, dict(base, phone="0551234567", note="شاشة سوداء"), now=1000)
     check("بلاغٌ جديد بما في الفهرس", new and r["count"] == 1 and r["state"] == "open" and r["title"] == "Breaking Bad"
           and r["season"] == 2 and r["ep"] == 1 and r["sname"] == "سمارت" and r["group"] == "SERIES | Drama"
-          and r["people"] == [{"at": 1000, "phone": "966551234567", "note": "شاشة سوداء"}], r)
+          and r["people"] == [{"at": 1000, "phone": "966551234567", "note": "شاشة سوداء", "lang": "ar"}] and r["lang"] == "ar"
+          and r["sname_en"] == "Smart", r)
     check("ونصّه للموظف", R.label(r) == "Breaking Bad · الموسم 2 · الحلقة 1 — لا يعمل", R.label(r))
     r2, new2 = R.submit(d, dict(base, n="breaking  bad", phone="+966 55 123 4567"), now=1100)
     check("المكرّر المفتوح يزيد عدده ولا يتكرّر (والرقم نفسه مرة)", not new2 and r2["id"] == r["id"] and r2["count"] == 2
@@ -305,6 +306,61 @@ def unit_more():
     check("وتنبيه «الحلقة ليست هي»", R.alert_text(w, True).startswith("🔔 *بلاغ جديد في سمارت: الحلقة ليست هي*"))
 
 
+def unit_notify_lang():
+    print("رسالةٌ لأصحاب البلاغ، والإنجليزية")
+    d = fresh()
+    seed(d)
+    drama = gid(d, "series", "SERIES | Drama")
+    base = {"s": "smart", "t": "series", "g": drama, "n": "Breaking Bad", "season": 2, "ep": 1, "problem": "down"}
+    r, _ = R.submit(d, dict(base, phone="0551234567", lang="en"), now=100)
+    R.submit(d, dict(base, phone="0500000001"), now=110)
+    R.submit(d, dict(base, phone="0551234567", note="again"), now=120)
+    check("لغة صفحة المشترك مع بلاغه (وأولها للبلاغ)", r["lang"] == "en" and R.get(d, r["id"])["people"][0]["lang"] == "en"
+          and R.get(d, r["id"])["people"][1]["lang"] == "ar")
+    for form, en in [(dict(base, season=9), "Choose the season"), (dict(base, problem="x"), "Choose the problem"),
+                     (dict(base, phone="12"), "Invalid WhatsApp number"), ({"s": "smart", "problem": "add", "t": "live", "n": "x"}, "Choose: series or movie")]:
+        try:
+            R.submit(d, form)
+            check(f"خطأٌ بالإنجليزية: {en}", False)
+        except R.Invalid as e:
+            check(f"خطأٌ بالإنجليزية: {en}", e.en.startswith(en) and str(e) != e.en, e.en)
+    sent = []
+    R.sender = lambda to, text: sent.append((to, text)) or ({"ok": False, "error": "الرقم ليس على واتساب"} if to == "966500000001" else {"ok": True})
+    try:
+        up = R.notify(d, r["id"], "  تم الإصلاح ✅  \n\n\n\n جرّبه الآن\u202e  ", "سارة", now=500)
+        check("الرسالة لكل رقمٍ مرة، بأسطرها بلا رموز الاتجاه", sorted(x[0] for x in sent) == ["966500000001", "966551234567"]
+              and sent[0][1] == "تم الإصلاح ✅\n\nجرّبه الآن" and up["to"] == 2 and up["sent"] == 1 and up["by"] == "سارة", (up, sent))
+        check("وما لم يصل بسببه ورقمه", up["error"] == "+966500000001: الرقم ليس على واتساب", up["error"])
+        check("وتُحفظ مع البلاغ", R.get(d, r["id"])["updates"] == [up])
+        check("وبلا نصٍّ تُرفض", "اكتب نصّ الرسالة" in raises(R.notify, d, r["id"], " \n "))
+        r2, _ = R.submit(d, dict(base, ep=2), now=600)
+        check("وبلاغٌ بلا أرقام: لا رسالة", "لا أرقام" in raises(R.notify, d, r2["id"], "x"))
+        check("وبلاغٌ لا وجود له", "لا بلاغ" in raises(R.notify, d, "nope", "x"))
+        R.sender = lambda to, text: sent.append((to, text)) or {"ok": True}
+        for i in range(R.UPDATES_KEEP + 3):
+            R.notify(d, r["id"], f"update {i}", now=700 + i)
+        check("ويُحفظ آخرها بحدّ", len(R.get(d, r["id"])["updates"]) == R.UPDATES_KEEP
+              and R.get(d, r["id"])["updates"][-1]["text"] == f"update {R.UPDATES_KEEP + 2}")
+        # التنبيه بلغة كل موظف
+        sent.clear()
+        R.recipients = lambda rep: [("سارة", "966500000001"), ("John", "966500000002", "en"), ("Ali", "966500000003", "ar")]
+        R.page_url = "https://admin.ssouq.com/reports"
+        R._alerts.clear()
+        R.alert(d, R.get(d, r["id"]), True, now=900)
+        by = {to: text for to, text in sent}
+        check("التنبيه بلغة كل موظف (والعربية افتراضًا)", by["966500000001"].startswith("🔔 *بلاغ جديد في سمارت: لا يعمل*")
+              and by["966500000003"] == by["966500000001"]
+              and by["966500000002"] == "🔔 *New report on Smart: Not working*\n\n🎬 Breaking Bad · S2 · E1\n📂 series · SERIES | Drama\n"
+                                        "📱 +966500000001\n\nReports: https://admin.ssouq.com/reports", by.get("966500000002"))   # آخر من بلّغ برقمه
+        q, _ = R.submit(d, {"s": "smart", "t": "movie", "n": "Oppenheimer", "problem": "add"}, now=950)
+        check("وطلب الإضافة بالإنجليزية", R.alert_text(q, True, "en") == "🙋 *Request to add a movie on Smart*\n\n🎬 Oppenheimer\n\n"
+              "Reports: https://admin.ssouq.com/reports" and R.problem_name("wrong", "movie", "en") == "Wrong movie")
+    finally:
+        R.sender = R.recipients = None
+        R.page_url = ""
+    check("ولغة المدير", R.save_lang(d, "en")["lang"] == "en" and R.settings(d)["lang"] == "en" and R.settings(d)["wa"] == "")
+
+
 def unit_alert():
     print("تنبيه واتساب")
     d = fresh()
@@ -357,9 +413,9 @@ def unit_alert():
     finally:
         R.sender = R.recipients = None
         R.page_url = ""
-    check("رقم المدير: فارغٌ افتراضًا", R.settings(d) == {"wa": "", "on": True})
-    check("ويُحفظ بصيغته الدولية", R.save_settings(d, "0551112222", False) == {"wa": "966551112222", "on": False}
-          and R.settings(d) == {"wa": "966551112222", "on": False})
+    check("رقم المدير: فارغٌ افتراضًا", R.settings(d) == {"wa": "", "on": True, "lang": ""})
+    check("ويُحفظ بصيغته الدولية", R.save_settings(d, "0551112222", False) == {"wa": "966551112222", "on": False, "lang": ""}
+          and R.settings(d) == {"wa": "966551112222", "on": False, "lang": ""})
     check("والرقم الخطأ يُرفض", "غير صحيح" in raises(R.save_settings, d, "12"))
 
 
@@ -429,7 +485,7 @@ def live():
         code, raw, _ = req(adm + "/api/content/admin/upload?s=smart&name=s.m3u", SAMPLE.encode(), AUTH)
         check("(رفع ملف السيرفر)", code == 200, raw[:200])
         srv = jget(base + "/api/report/servers")[1]
-        check("السيرفرات", srv["servers"] == [{"key": "smart", "name": "سمارت"}], srv)
+        check("السيرفرات", srv["servers"] == [{"key": "smart", "name": "سمارت", "en": "Smart"}], srv)
         code, g = jget(base + "/api/report/groups?s=smart")
         drama = next(x["id"] for x in g["kinds"]["series"] if x["name"] == "SERIES | Drama")
         check("الأقسام", code == 200 and len(g["kinds"]["movie"]) == 1)
@@ -495,7 +551,8 @@ def live():
         code, raw, _ = req(base + "/content/smart")
         check("ورابط البلاغ في صفحة المحتوى (العربية)", code == 200 and b'href="/report?s=smart"' in raw)
         code, raw, _ = req(base + "/en/content/smart")
-        check("ولا في الإنجليزية (صفحة البلاغ عربية)", code == 200 and b"/report?s=" not in raw)
+        check("وفي الإنجليزية إلى صفحة البلاغ بالإنجليزية", code == 200 and b'href="/report?s=smart&amp;lang=en"' in raw
+              and "Report it".encode() in raw)
         hits = [jpost(base + "/api/report", dict(form, ep=3), headers={"X-Forwarded-For": "9.9.9.9"})[0] for _ in range(13)]
         check("وحدّ البلاغات بالساعة لكل عنوان (429)", hits[:12] == [200] * 12 and hits[12] == 429, hits)
     finally:
@@ -552,7 +609,7 @@ def live_alert():
         code, d = jget(adm + "/api/reports", AUTH)
         check("بلا رقم مسابقةٍ مربوط: الصفحة تقول ذلك", code == 200 and d["alert"]["from"] == ""
               and "رقم المسابقة غير مربوط" in d["alert"]["from_error"]
-              and d["alert"]["staff"] == [{"name": "سارة", "wa": "966500000001", "on": True, "all": True, "servers": []}], d.get("alert"))
+              and d["alert"]["staff"] == [{"name": "سارة", "wa": "966500000001", "on": True, "all": True, "lead": False, "of": "", "servers": []}], d.get("alert"))
         n0 = len(rd("GET", "/_test/log")["sent"])
         code, d = jpost(base + "/api/report", form)
         time.sleep(1)
@@ -563,7 +620,7 @@ def live_alert():
         rd("POST", "/_test/scan/ssouq-guide--contest", {})
         req(adm + "/api/contest/admin", auth=AUTH)              # صفحة المسابقة تجدّد حال الرقم
         code, d = jpost(adm + "/api/reports/alert", {"wa": "0551112222", "on": True}, AUTH)
-        check("المدير يحفظ رقمه، ومن أين يُرسل", code == 200 and d["alert"]["mine"] == {"wa": "966551112222", "on": True}
+        check("المدير يحفظ رقمه، ومن أين يُرسل", code == 200 and d["alert"]["mine"] == {"wa": "966551112222", "on": True, "lang": ""}
               and d["alert"]["from"] == "966500000009", d)
         n0 = len(rd("GET", "/_test/log")["sent"])
         code, d = jpost(base + "/api/report", dict(form, ep=3, note="يقطع كل دقيقة"))
@@ -580,10 +637,10 @@ def live_alert():
         check("والمكرّر فورًا لا يُعيد التنبيه", len(rd("GET", "/_test/log")["sent"]) == n0)
         sara = login(adm, "sara", "sara1234")
         code, d = jget(adm + "/api/reports", opener=sara)
-        check("والموظف يرى رقمه، ولا يرى غيره", code == 200 and d["alert"]["mine"] == {"wa": "966500000001", "on": True}
+        check("والموظف يرى رقمه، ولا يرى غيره", code == 200 and d["alert"]["mine"] == {"wa": "966500000001", "on": True, "lang": ""}
               and "staff" not in d["alert"])
         code, d = jpost(adm + "/api/reports/alert", {"wa": "0500000002", "on": False}, opener=sara)
-        check("ويغيّر رقمه ويوقف تنبيهه", code == 200 and d["alert"]["mine"] == {"wa": "966500000002", "on": False}, d)
+        check("ويغيّر رقمه ويوقف تنبيهه", code == 200 and d["alert"]["mine"] == {"wa": "966500000002", "on": False, "lang": ""}, d)
         check("ورقمٌ خطأ ‏400", jpost(adm + "/api/reports/alert", {"wa": "123"}, opener=sara)[0] == 400)
         n0 = len(rd("GET", "/_test/log")["sent"])
         jpost(base + "/api/report", dict(form, ep=4))
@@ -692,15 +749,145 @@ def live_team():
         rdp.wait(timeout=10)
 
 
+def live_lead():
+    print("خادمٌ حيّ: المشرف وفريقه، و«صفحة البلاغات فقط»، ورسالة أصحاب البلاغ، والإنجليزية")
+    port, wport = 9792, 9782
+    data = tempfile.mkdtemp(prefix="reports_lead_")
+    reader = f"http://127.0.0.1:{wport}"
+    rdp = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_reader.py"), str(wport), "rdr_lead"])
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("WHATSAPP_READER_", "SALLA_ADMIN_TOKEN"))}
+    env.update(XM_DATA=data, XM_BIND="127.0.0.1", XM_PORT=str(port), XM_ADMIN_PASSWORD="envpass123",
+               WHATSAPP_READER_URL=reader, WHATSAPP_READER_SECRET="rdr_lead")
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env)
+    base, adm = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{port}/admin"
+
+    def rd(method, path, body=None):
+        rq = urllib.request.Request(reader + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                    headers={"Content-Type": "application/json", "X-Reader-Secret": "rdr_lead"})
+        with urllib.request.urlopen(rq, timeout=20) as r:
+            return json.loads(r.read())
+
+    def sent_since(n0, want, t=8.0):
+        end = time.time() + t
+        while time.time() < end and len(rd("GET", "/_test/log")["sent"]) < n0 + want:
+            time.sleep(.1)
+        time.sleep(.3)
+        return rd("GET", "/_test/log")["sent"][n0:]
+
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(base + "/robots.txt", timeout=2)
+                rd("GET", "/_test/log")
+                break
+            except Exception:
+                time.sleep(.2)
+        req(adm + "/api/content/admin/upload?s=smart&name=s.m3u", SAMPLE.encode(), AUTH)
+        req(adm + "/api/content/admin/upload?s=falcon&name=f.m3u", ("#EXTM3U\n" + entry("Kon Show S01 E01", "Drama", "series", 1)).encode(), AUTH)
+        jpost(adm + "/api/contest/admin/wa/connect", {"number": "0500000009"}, AUTH)
+        rd("POST", "/_test/scan/ssouq-guide--contest", {})
+        req(adm + "/api/contest/admin", auth=AUTH)
+        code, d = jpost(adm + "/api/accounts", {"name": "مشرف سمارت", "user": "lead1", "password": "lead1234", "reports": True,
+                                                "reports_only": True, "reports_lead": True, "reports_servers": ["smart"],
+                                                "reports_wa": "0500000010", "gates": []}, AUTH)
+        lead_acc = next(a for a in d["accounts"] if a["user"] == "lead1")
+        check("المدير يجعل حسابًا مشرفًا و«صفحة البلاغات فقط»", code == 200 and lead_acc["reports_lead"] and lead_acc["reports_only"])
+        jpost(adm + "/api/accounts", {"name": "موظف عادي", "user": "plain", "password": "plain1234", "reports": True, "gates": []}, AUTH)
+        lead = login(adm, "lead1", "lead1234")
+        code, _, h = req(adm + "/", opener=lead)
+        check("المشرف يدخل إلى البلاغات", code == 302 and h["Location"] == "/admin/reports")
+        blocked = {"/renew": req(adm + "/renew", opener=lead), "/remaining": req(adm + "/remaining", opener=lead),
+                   "/accounts": req(adm + "/accounts", opener=lead)}
+        check("و«صفحة البلاغات فقط»: كل صفحةٍ غيرها تحوّل إليها", all(c == 302 and hh["Location"] == "/admin/reports"
+                                                                   for c, _, hh in blocked.values()), {k: v[0] for k, v in blocked.items()})
+        apis = [jget(adm + "/api/me", opener=lead), jget(adm + "/api/renew/config", opener=lead), jget(adm + "/api/split/state", opener=lead),
+                jpost(adm + "/api/mygates", {"gates": []}, opener=lead), jpost(adm + "/api/myguide", {"guide_url": ""}, opener=lead),
+                jpost(adm + "/api/create", {"gate": "x"}, opener=lead), jpost(adm + "/api/accounts", {"name": "x"}, opener=lead)]
+        check("وكل واجهةٍ غيرها ‏403", all(c == 403 and dd.get("error") == "هذا الحساب لصفحة البلاغات فقط" for c, dd in apis),
+              [c for c, _ in apis])
+        code, d = jget(adm + "/api/reports", opener=lead)
+        check("والبلاغات وفريقه (فارغًا) وسيرفراته", code == 200 and d["team"] == {"members": [], "servers": [
+            {"key": "smart", "name": "سمارت", "en": "Smart"}]} and d["server_names"]["falcon"] == "Falcon", d.get("team"))
+        code, d = jpost(adm + "/api/reports/team", {"action": "save", "name": "عضو", "user": "m1", "password": "m1pass",
+                                                     "wa": "0500000011", "servers": ["smart", "falcon"]}, opener=lead)
+        mem = d.get("team", {}).get("members", [{}])[0]
+        check("المشرف يضيف عضوًا (وسيرفرٌ ليس له لا يُعطى)", code == 200 and mem.get("user") == "m1" and mem.get("servers") == ["smart"]
+              and mem.get("wa") == "966500000011", d)
+        code, d = jpost(adm + "/api/reports/team", {"action": "save", "name": "عضو٢", "user": "m2", "password": "m2pass", "servers": []},
+                        opener=lead)
+        check("وبلا اختيارٍ: سيرفراته كلها لا كل السيرفرات", code == 200
+              and next(x for x in d["team"]["members"] if x["user"] == "m2")["servers"] == ["smart"])
+        check("واسم دخولٍ مستخدم ‏400", jpost(adm + "/api/reports/team", {"action": "save", "name": "x", "user": "plain", "password": "xxxx1"},
+                                                opener=lead)[0] == 400)
+        check("ولا يمسّ حسابًا ليس من فريقه", jpost(adm + "/api/reports/team", {"action": "save", "id": lead_acc["id"], "name": "x",
+                                                                               "user": "x", "password": "xxxx1"}, opener=lead)[0] == 404)
+        accs = {a["user"]: a for a in jget(adm + "/api/accounts", AUTH)[1]["accounts"]}
+        check("وعضوه «صفحة البلاغات فقط» بلا بواباتٍ ولا إشراف، ومنسوبٌ إليه", accs["m1"]["reports_only"] and not accs["m1"]["reports_lead"]
+              and accs["m1"]["gates"] == [] and accs["m1"]["lead_id"] == lead_acc["id"])
+        m1 = login(adm, "m1", "m1pass")
+        check("والعضو يدخل إلى البلاغات ولا شيء غيرها، ولا يدير فريقًا", req(adm + "/", opener=m1)[2].get("Location") == "/admin/reports"
+              and jget(adm + "/api/me", opener=m1)[0] == 403
+              and jpost(adm + "/api/reports/team", {"action": "save", "name": "x", "user": "m9", "password": "xxxx1"}, opener=m1)[0] == 403)
+        plain = login(adm, "plain", "plain1234")
+        check("وموظفٌ غير مشرف لا يدير فريقًا، ويرى غير البلاغات", jpost(adm + "/api/reports/team", {"action": "save"}, opener=plain)[0] == 403
+              and jget(adm + "/api/me", opener=plain)[0] == 200)
+        team = {t["key"]: [(x["name"], x["lead"], x["of"]) for x in t["people"]] for t in jget(adm + "/api/reports", AUTH)[1]["alert"]["team"]}
+        check("والمدير يرى المشرف وفريقه على السيرفر", sorted(team["smart"]) == sorted([("مشرف سمارت", True, ""), ("عضو", False, "مشرف سمارت"),
+                                                                                    ("عضو٢", False, "مشرف سمارت"), ("موظف عادي", False, "")]), team)
+        # بلاغٌ بالإنجليزية: خطؤه بالإنجليزية، والتنبيه بلغة كل موظف
+        smart = next(x["id"] for x in jget(base + "/api/report/groups?s=smart")[1]["kinds"]["series"] if x["name"] == "SERIES | Drama")
+        code, d = jpost(base + "/api/report", {"s": "smart", "t": "series", "g": smart, "n": "Breaking Bad", "season": 9, "ep": 1,
+                                                "problem": "down", "lang": "en"})
+        check("خطأ البلاغ بالإنجليزية", code == 400 and d["error"] == "Choose the season", d)
+        check("وصفحة الموظف تحفظ لغته", jpost(adm + "/api/reports/lang", {"lang": "en"}, opener=m1)[1].get("lang") == "en"
+              and jget(adm + "/api/reports", opener=m1)[1]["lang"] == "en")
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        code, d = jpost(base + "/api/report", {"s": "smart", "t": "series", "g": smart, "n": "Breaking Bad", "season": 1, "ep": 2,
+                                                "problem": "subs", "phone": "0551234567", "lang": "en"})
+        got = {x["to"]: x["body"] for x in sent_since(n0, 2)}
+        check("التنبيه: بالإنجليزية لمن اختارها، وبالعربية لغيره", code == 200 and got.get("966500000011", "").startswith(
+            "🔔 *New report on Smart: Wrong subtitles*") and got.get("966500000010", "").startswith("🔔 *بلاغ جديد في سمارت: الترجمة غير صحيحة*"),
+              got)
+        rid = next(x["id"] for x in jget(adm + "/api/reports", opener=m1)[1]["items"] if x["ep"] == 2)
+        check("وللبلاغ لغة صاحبه", jget(adm + "/api/reports", opener=m1)[1]["items"][0]["lang"] == "en")
+        # «تم الإصلاح» ورسالةٌ لصاحبه
+        check("العضو يعلّمه «تم الإصلاح»", jpost(adm + "/api/reports/state", {"id": rid, "done": True}, opener=m1)[0] == 200)
+        n0 = len(rd("GET", "/_test/log")["sent"])
+        code, d = jpost(adm + "/api/reports/notify", {"id": rid, "text": "Hello 👋 What you reported on Smart is fixed."}, opener=m1)
+        got = rd("GET", "/_test/log")["sent"][n0:]
+        check("ويرسل لصاحبه على واتساب من رقم المسابقة", code == 200 and d["ok"] and d["update"]["sent"] == 1 and d["update"]["by"] == "عضو"
+              and [x["to"] for x in got] == ["966551234567"] and got[0]["body"] == "Hello 👋 What you reported on Smart is fixed.", (d, got))
+        upd = next(x for x in jget(adm + "/api/reports?state=done", AUTH)[1]["items"] if x["id"] == rid)["updates"]
+        check("ويظهر للمدير ما أُرسل ومن أرسله", len(upd) == 1 and upd[0]["sent"] == 1 and upd[0]["by"] == "عضو")
+        check("وبلا نصٍّ ‏400", jpost(adm + "/api/reports/notify", {"id": rid, "text": " "}, opener=m1)[0] == 400)
+        falcon = jget(base + "/api/report/groups?s=falcon")[1]["kinds"]["series"][0]["id"]
+        jpost(base + "/api/report", {"s": "falcon", "t": "series", "g": falcon, "n": "Kon Show", "season": 1, "ep": 1, "problem": "down",
+                                     "phone": "0551234567"})
+        fid = next(x["id"] for x in jget(adm + "/api/reports", AUTH)[1]["items"] if x["server"] == "falcon")
+        check("ولا يراسل أصحاب بلاغ سيرفرٍ ليس له", jpost(adm + "/api/reports/notify", {"id": fid, "text": "x"}, opener=m1)[0] == 404
+              and jpost(adm + "/api/reports/notify", {"id": fid, "text": "x"}, opener=lead)[0] == 404)
+        mid = next(x["id"] for x in jget(adm + "/api/reports", opener=lead)[1]["team"]["members"] if x["user"] == "m1")
+        code, d = jpost(adm + "/api/reports/team", {"action": "delete", "id": mid}, opener=lead)
+        check("والمشرف يحذف عضوه فلا يدخل بعدها", code == 200 and [x["user"] for x in d["team"]["members"]] == ["m2"]
+              and jget(adm + "/api/reports", opener=m1)[0] == 401 and login(adm, "m1", "m1pass") is None)
+    finally:
+        p.terminate()
+        p.wait(timeout=10)
+        rdp.terminate()
+        rdp.wait(timeout=10)
+
+
 def main():
     unit_steps()
     unit_submit()
     unit_staff()
     unit_alert()
     unit_more()
+    unit_notify_lang()
     live()
     live_alert()
     live_team()
+    live_lead()
     print(f"\nResult: {_p} passed, {_f} failed")
     sys.exit(1 if _f else 0)
 

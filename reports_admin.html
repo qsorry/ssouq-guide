@@ -92,7 +92,9 @@ h1{font-size:1.45rem;margin:0 0 4px}
 .abody .warn{margin:10px 0 0;padding:8px 10px;border-radius:10px;font-size:.85rem;color:var(--amber);background:color-mix(in srgb,var(--amber) 10%,transparent)}
 .afield{display:block;margin:10px 0 0}
 .afield span{display:block;font-weight:700;font-size:.88rem;margin:0 0 5px}
-.afield input{width:100%;max-width:280px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--sf2);color:var(--ink);font:inherit;direction:ltr;text-align:right}
+.afield input{width:100%;max-width:280px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--sf2);color:var(--ink);font:inherit;direction:ltr;text-align:left}
+html[dir=rtl] .afield input.tel{text-align:right}
+.afield input.txt{direction:inherit;text-align:start}
 .acheck{display:flex;align-items:center;gap:8px;margin:10px 0 0;font-size:.9rem}
 .amsg{margin:8px 0 0;font-size:.86rem;min-height:1em}
 .amsg.ok{color:var(--go)}.amsg.bad{color:var(--err)}
@@ -108,46 +110,96 @@ h1{font-size:1.45rem;margin:0 0 4px}
 .tfoot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:.84rem;color:var(--mute)}
 .wline{display:block;color:var(--amber);font-size:.78rem;margin-top:6px;overflow-wrap:anywhere}
 @media (max-width:560px){.tiles{gap:6px}.tile{padding:9px 10px}.tile b{font-size:1.25rem}.pos{width:48px}}
+/* اللغة */
+.lang{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);font-weight:700;font-size:.86rem;color:var(--ink);flex:none}
+.lang:hover{border-color:var(--go)}
+/* لوحة الرسالة في البلاغ: تم الإصلاح، أو تحديث */
+.npanel{margin-top:10px;padding:10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--go) 45%,transparent);background:color-mix(in srgb,var(--go) 6%,var(--sf2))}
+.npanel label{display:block;font-weight:700;font-size:.84rem;margin:0 0 6px}
+.npanel textarea{width:100%;min-height:96px;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--sf);color:var(--ink);font:inherit;font-size:.88rem;resize:vertical}
+.npanel .acheck{margin:8px 0 0}
+.npanel .nmsg{margin:6px 0 0;font-size:.84rem}
+.npanel .nmsg.bad{color:var(--err)}.npanel .nmsg.ok{color:var(--go)}
+.upd{display:block;color:var(--mute);font-size:.78rem;margin-top:6px;overflow-wrap:anywhere}
+.upd b{color:var(--go)}
+/* فريقي (للمشرف) */
+.mrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 0;border-top:1px dashed var(--line)}
+.mrow:first-child{border-top:0}
+.mrow .mi{flex:1;min-width:160px}
+.mrow .mi b{display:block}
+.mrow .mi small{color:var(--mute);font-size:.8rem}
+.mform{margin-top:10px;padding:10px;border-radius:12px;background:var(--sf2);border:1px solid var(--line)}
+.mform .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mform .afield{margin:8px 0 0}
+.mform .afield input{max-width:none}
+.srvpick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.srvpick label{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--sf);font-weight:600;font-size:.84rem;cursor:pointer}
+.srvpick label:has(input:checked){border-color:var(--go);color:var(--go)}
+@media (max-width:560px){.mform .g2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header class="top">
-  <a class="icon-btn" id="lnkOut" title="تسجيل الخروج" aria-label="تسجيل الخروج"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
-  <button class="icon-btn" id="themeBtn" title="تبديل السمة" aria-label="تبديل السمة"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
-  <a class="icon-btn" id="lnkHome" title="الرئيسية" aria-label="الرئيسية" hidden><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5"/></svg></a>
+  <a class="icon-btn" id="lnkOut" data-title="تسجيل الخروج|Log out"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
+  <button class="icon-btn" id="themeBtn" data-title="تبديل السمة|Theme"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <button class="lang" id="langBtn" type="button">English</button>
+  <a class="icon-btn" id="lnkHome" data-title="الرئيسية|Home" hidden><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5"/></svg></a>
   <a class="brand" id="brand"><span class="mark"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4M10 9l4 2-4 2z"/></svg></span>
-    <span><b>بلاغات المحتوى</b><small id="who">سمارت سوق</small></span></a>
+    <span><b data-t="بلاغات المحتوى|Content reports"></b><small id="who">Smart Souq</small></span></a>
 </header>
 <main>
-  <h1>بلاغات المحتوى</h1>
-  <p class="sub">ما يبلّغ عنه المشتركون من <a id="lnkReport" href="https://guide.ssouq.com/report" target="_blank" rel="noopener">guide.ssouq.com/report</a>: السيرفر والمسلسل أو الفيلم والحلقة، والمشكلة: «لا يعمل» أو «يقطع» أو «الحلقة ليست هي» أو «الترجمة غير صحيحة»؛ و<b>طلبات إضافة</b> ما ليس في السيرفر. المكرّر سطرٌ واحد بعدد من بلّغ. بعد الإصلاح (أو الإضافة) اضغط الزرّ الأخضر وأبلغ صاحبه على واتساب.</p>
+  <h1 data-t="بلاغات المحتوى|Content reports"></h1>
+  <p class="sub" id="intro"></p>
   <details class="abox" id="abox">
     <summary><span class="bell" id="aBell"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
-      <span class="grow"><b>تنبيه واتساب بكل بلاغ</b><small id="aSum">…</small></span>
+      <span class="grow"><b data-t="تنبيه واتساب بكل بلاغ|WhatsApp alert for every report"></b><small id="aSum">…</small></span>
       <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
     <div class="abody">
       <p class="warn" id="aFrom" hidden></p>
-      <label class="afield"><span>رقمك على واتساب</span><input id="aWa" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="05xxxxxxxx"></label>
-      <label class="acheck"><input type="checkbox" id="aOn" checked> نبّهني بكل بلاغ جديد</label>
-      <div class="acts"><button class="btn go" id="aSave">حفظ</button><button class="btn" id="aTest">أرسل رسالة تجريبية</button></div>
+      <label class="afield"><span data-t="رقمك على واتساب|Your WhatsApp number"></span><input class="tel" id="aWa" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="05xxxxxxxx"></label>
+      <label class="acheck"><input type="checkbox" id="aOn" checked> <span data-t="نبّهني بكل بلاغ جديد|Alert me on every new report"></span></label>
+      <div class="acts"><button class="btn go" id="aSave" data-t="حفظ|Save"></button><button class="btn" id="aTest" data-t="أرسل رسالة تجريبية|Send a test message"></button></div>
       <p class="amsg" id="aMsg"></p>
+    </div>
+  </details>
+  <details class="abox" id="mbox" hidden>
+    <summary><span class="bell"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M20 8v6M23 11h-6"/></svg></span>
+      <span class="grow"><b data-t="فريقي|My team"></b><small id="mSum">…</small></span>
+      <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
+    <div class="abody">
+      <div id="mList"></div>
+      <button class="btn go" id="mAdd" type="button" style="margin-top:10px"></button>
+      <div class="mform" id="mForm" hidden>
+        <input type="hidden" id="mId">
+        <div class="g2">
+          <label class="afield"><span data-t="الاسم|Name"></span><input class="txt" id="mName" maxlength="60"></label>
+          <label class="afield"><span data-t="اسم الدخول|Login username"></span><input id="mUser" autocomplete="off" maxlength="40"></label>
+          <label class="afield"><span data-t="كلمة المرور|Password"></span><input id="mPass" autocomplete="new-password" maxlength="60"></label>
+          <label class="afield"><span data-t="رقم واتسابه (للتنبيه)|WhatsApp number (alerts)"></span><input class="tel" id="mWa" type="tel" inputmode="tel" maxlength="20" placeholder="05xxxxxxxx"></label>
+        </div>
+        <label class="afield"><span data-t="سيرفراته (بلا اختيار: كل سيرفراتك)|Servers (none = all your servers)"></span></label>
+        <div class="srvpick" id="mSrv"></div>
+        <div class="acts"><button class="btn go" id="mSave" data-t="حفظ العضو|Save member"></button><button class="btn" id="mCancel" data-t="إلغاء|Cancel"></button></div>
+        <p class="amsg" id="mMsg"></p>
+      </div>
+      <p class="sub" style="margin:10px 0 0;font-size:.82rem" data-t="أعضاء فريقك يدخلون بهذا الاسم وكلمة المرور، ولا يرون إلا صفحة البلاغات وسيرفراتهم.|Your team members log in with this username and password and only see this reports page, for their servers."></p>
     </div>
   </details>
   <details class="abox" id="tbox" hidden>
     <summary><span class="bell"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-      <span class="grow"><b>الفريق لكل سيرفر</b><small id="tSum">…</small></span>
+      <span class="grow"><b data-t="الفريق لكل سيرفر|Team per server"></b><small id="tSum">…</small></span>
       <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></summary>
     <div class="abody" id="team"></div>
   </details>
   <div class="tiles">
-    <button class="tile hot" data-state="open" aria-pressed="true"><small>مفتوحة</small><b id="nOpen">—</b></button>
-    <button class="tile" data-state="done" aria-pressed="false"><small>تم إصلاحها</small><b id="nDone">—</b></button>
-    <button class="tile" data-state="all" aria-pressed="false"><small>الكل</small><b id="nAll">—</b></button>
+    <button class="tile hot" data-state="open" aria-pressed="true"><small data-t="مفتوحة|Open"></small><b id="nOpen">—</b></button>
+    <button class="tile" data-state="done" aria-pressed="false"><small data-t="تم إصلاحها|Fixed"></small><b id="nDone">—</b></button>
+    <button class="tile" data-state="all" aria-pressed="false"><small data-t="الكل|All"></small><b id="nAll">—</b></button>
   </div>
   <div class="bar" id="whatBar"></div>
   <div class="bar" id="srvBar" hidden></div>
   <p class="msg" id="msg" hidden></p>
-  <div class="list" id="list"><div class="empty">جاري التحميل…</div></div>
+  <div class="list" id="list"><div class="empty">…</div></div>
 </main>
 <div class="toast" id="toast" hidden></div>
 <script>
@@ -157,69 +209,134 @@ const SITE = B ? "" : "https://guide.ssouq.com";
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num = n => Number(n || 0).toLocaleString("en-US");
-const ONE = {series: "مسلسل", movie: "فيلم", live: "قناة"};
-let state = "open", server = "", what_ = "", data = null, role = "";      // what_: ‏issue المشاكل، ‏add طلبات الإضافة
+// ---- اللغة: العربية أو الإنجليزية — ما اختاره في متصفحه، وإلا ما حفظه في حسابه، وإلا لغة متصفحه ----
+let EN = false, langSet = false;
+try { const l = localStorage.getItem("rp_lang"); if (l) { EN = l === "en"; langSet = true; } } catch {}
+if (!langSet) EN = !/^ar/i.test(navigator.language || "ar");
+const T = (a, e) => EN ? e : a;
+const KIND = {series: ["مسلسل", "Series"], movie: ["فيلم", "Movie"], live: ["قناة", "Channel"]};
+const one = k => (KIND[k] || ["", ""])[EN ? 1 : 0];
+const PROB = {down: ["لا يعمل", "Not working"], buffer: ["يقطع", "Buffering"], subs: ["الترجمة غير صحيحة", "Wrong subtitles"],
+  wrong: {series: ["الحلقة ليست هي", "Wrong episode"], movie: ["الفيلم ليس هو", "Wrong movie"], live: ["القناة ليست هي", "Wrong channel"]},
+  add: {series: ["طلب إضافة مسلسل", "Request: add series"], movie: ["طلب إضافة فيلم", "Request: add movie"]}};
+const pname = (p, k, en = EN) => { let x = PROB[p]; if (!x) return p; if (!Array.isArray(x)) x = x[k] || x.series || x.movie; return x[en ? 1 : 0]; };
+// رسائل الخادم المعروفة بالإنجليزية (تنبيهٌ لم يصل، أو رقم المسابقة)
+const TX = [["رقم المسابقة غير مربوط", "The contest WhatsApp number isn't linked"], ["لا أحد يصله تنبيه", "Nobody receives alerts for"],
+  ["أضف رقمًا لموظفه أو رقمك", "add a number for its staff or yours"], ["الرقم ليس على واتساب", "number isn't on WhatsApp"],
+  ["تجاوز حدّ التنبيهات بالساعة", "Hourly alert limit reached"], ["البلاغ محفوظ هنا", "the report is saved here"],
+  ["يُربط من صفحة المسابقة، ومنه تُرسل التنبيهات", "link it on the contest page; alerts are sent from it"],
+  ["تعذّر الإرسال", "Couldn't send"], ["الإرسال غير مضبوط", "Sending isn't set up"]];
+const tx = s => EN ? TX.reduce((a, [ar, en]) => a.split(ar).join(en), String(s || "")) : String(s || "");
+let state = "open", server = "", what_ = "", data = null, role = "", panel = null, edit = null;   // what_: issue · add
 $("lnkOut").href = B + "/logout";
-if (B) $("lnkReport").href = "/report";
 $("themeBtn").onclick = () => { const l = document.documentElement.getAttribute("data-theme") === "light"; document.documentElement.setAttribute("data-theme", l ? "dark" : "light"); try { localStorage.setItem("xm_theme", l ? "dark" : "light"); } catch {} };
 try { const p = new URLSearchParams(location.search); state = ["open", "done", "all"].includes(p.get("state")) ? p.get("state") : "open"; server = p.get("s") || "";
   what_ = ["issue", "add"].includes(p.get("w")) ? p.get("w") : ""; } catch {}
 const query = () => "?state=" + state + (server ? "&s=" + encodeURIComponent(server) : "") + (what_ ? "&w=" + what_ : "");
+function paint(){                                   // نصوص الصفحة الثابتة باللغة المختارة
+  document.documentElement.lang = EN ? "en" : "ar"; document.documentElement.dir = EN ? "ltr" : "rtl";
+  document.querySelectorAll("[data-t]").forEach(el => { el.textContent = el.dataset.t.split("|")[EN ? 1 : 0]; });
+  document.querySelectorAll("[data-title]").forEach(el => { const t = el.dataset.title.split("|")[EN ? 1 : 0]; el.title = t; el.setAttribute("aria-label", t); });
+  $("langBtn").textContent = EN ? "العربية" : "English";
+  const link = `<a id="lnkReport" href="${B ? "/report" : "https://guide.ssouq.com/report"}${EN ? "?lang=en" : ""}" target="_blank" rel="noopener">guide.ssouq.com/report</a>`;
+  $("intro").innerHTML = T(`ما يبلّغ عنه المشتركون من ${link}: السيرفر والمسلسل أو الفيلم والحلقة، والمشكلة: «لا يعمل» أو «يقطع» أو «الحلقة ليست هي» أو «الترجمة غير صحيحة»؛ و<b>طلبات إضافة</b> ما ليس في السيرفر. المكرّر سطرٌ واحد بعدد من بلّغ. بعد الإصلاح اضغط الزرّ الأخضر، فتصل أصحابَه رسالةٌ على واتساب.`,
+    `What subscribers report from ${link}: the server, the series or movie and the episode, and the problem — not working, buffering, wrong episode or wrong subtitles — plus <b>requests to add</b> what isn't on the server. Repeats show once, with how many reported. Once fixed, press the green button and the reporters get a WhatsApp message.`);
+  $("mAdd").textContent = T("+ إضافة عضو", "+ Add member");
+}
+$("langBtn").onclick = () => {
+  EN = !EN; langSet = true;
+  try { localStorage.setItem("rp_lang", EN ? "en" : "ar"); } catch {}
+  fetch(B + "/api/reports/lang", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({lang: EN ? "en" : "ar"})}).catch(() => {});
+  paint(); alertFilled = false; if (data) { drawAlert(data.alert); drawMine(data.team); draw(); }
+};
 
 function ago(ts){
   const s = Math.max(0, Date.now() / 1000 - ts);
+  if (EN) {
+    if (s < 60) return "just now";
+    const m = Math.floor(s / 60); if (m < 60) return m + " min ago";
+    const h = Math.floor(m / 60); if (h < 24) return h + (h === 1 ? " hour ago" : " hours ago");
+    const d = Math.floor(h / 24); return d + (d === 1 ? " day ago" : " days ago");
+  }
   if (s < 60) return "الآن";
   const m = Math.floor(s / 60); if (m < 60) return "منذ " + (m === 1 ? "دقيقة" : m === 2 ? "دقيقتين" : m + (m <= 10 ? " دقائق" : " دقيقة"));
   const h = Math.floor(m / 60); if (h < 24) return "منذ " + (h === 1 ? "ساعة" : h === 2 ? "ساعتين" : h + (h <= 10 ? " ساعات" : " ساعة"));
   const d = Math.floor(h / 24); return "منذ " + (d === 1 ? "يوم" : d === 2 ? "يومين" : d + (d <= 10 ? " أيام" : " يومًا"));
 }
 function hue(s){ let n = 0; for (const c of String(s || "")) n += c.charCodeAt(0); return n * 37 % 360; }
-function toast(t){ const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 1800); }
-// الاسم معزولٌ (‏bdi) فلا يقلب اسمٌ إنجليزي ترتيب «الموسم · الحلقة» بعده، وفي النص المنسوخ علامة RLM أول السطر
-const RLM = "\u200f";
+function toast(t){ const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2200); }
+// الاسم معزولٌ (‏bdi) فلا يقلب اسمٌ إنجليزي ترتيب «الموسم · الحلقة» بعده، وفي النص المنسوخ علامة RLM أول السطر العربي
+const RLM = "‏";
 const isReq = r => r.problem === "add";          // طلب إضافة مسلسلٍ أو فيلم (اسمٌ كتبه المشترك)
-function what(r){
+const sname = r => EN ? ((data && data.server_names || {})[r.server] || r.sname) : r.sname;
+function what(r, en = EN){
   const name = r.title + (r.year ? ` (${r.year})` : "");
-  const ep = r.kind !== "series" || isReq(r) ? "" : (r.season ? ` · الموسم ${r.season}` : "") + (r.ep ? ` · الحلقة ${r.ep}` : " · كل الحلقات");
-  return {html: `<bdi>${esc(name)}</bdi>${esc(ep)}`, text: RLM + name + ep};
+  const ep = r.kind !== "series" || isReq(r) ? "" : en
+    ? (r.season ? ` · S${r.season}` : "") + (r.ep ? ` · E${r.ep}` : " · all episodes")
+    : (r.season ? ` · الموسم ${r.season}` : "") + (r.ep ? ` · الحلقة ${r.ep}` : " · كل الحلقات");
+  return {html: `<bdi>${esc(name)}</bdi>${esc(ep)}`, text: (en ? "" : RLM) + name + ep};
 }
-function where(r){ return isReq(r) ? esc(r.sname) : `${esc(r.sname)} · <bdi>${esc(r.group)}</bdi>`; }
+function where(r){ return isReq(r) ? esc(sname(r)) : `${esc(sname(r))} · <bdi>${esc(r.group)}</bdi>`; }
 function forward(r){
-  return isReq(r) ? `${RLM}${r.ptext} في ${r.sname}:\n${what(r).text}` : `${RLM}${r.sname} · ${r.group}\n${what(r).text} — ${r.ptext}`;
+  return isReq(r) ? `${EN ? "" : RLM}${pname("add", r.kind)} — ${sname(r)}:\n${what(r).text}`
+    : `${EN ? "" : RLM}${sname(r)} · ${r.group}\n${what(r).text} — ${pname(r.problem, r.kind)}`;
 }
+const phones = r => [...new Set((r.people || []).map(p => p.phone).filter(Boolean))];
+// رسالة صاحب البلاغ بلغته (لغة الصفحة التي بلّغ منها): تم الإصلاح، أو نعمل عليه
 function fixedText(r){
-  return isReq(r) ? `مرحبًا 👋 أضفنا ما طلبته في ${r.sname}:\n${what(r).text}\nابحث عنه في تطبيقك، وشكرًا لطلبك.`
-    : `مرحبًا 👋 تم إصلاح ما بلّغت عنه في ${r.sname}:\n${what(r).text}\nجرّبه الآن، وشكرًا لبلاغك.`;
+  const en = r.lang === "en", s = en ? ((data && data.server_names || {})[r.server] || r.sname) : r.sname, w = what(r, en).text;
+  if (isReq(r)) return en ? `Hello 👋 We've added what you requested on ${s}:\n${w}\nFind it in your app — thanks for the request.`
+    : `مرحبًا 👋 أضفنا ما طلبته في ${s}:\n${w}\nابحث عنه في تطبيقك، وشكرًا لطلبك.`;
+  return en ? `Hello 👋 What you reported on ${s} is fixed:\n${w}\nTry it now — thanks for the report.`
+    : `مرحبًا 👋 تم إصلاح ما بلّغت عنه في ${s}:\n${w}\nجرّبه الآن، وشكرًا لبلاغك.`;
+}
+function progressText(r){
+  const en = r.lang === "en", s = en ? ((data && data.server_names || {})[r.server] || r.sname) : r.sname, w = what(r, en).text;
+  if (isReq(r)) return en ? `Hello 👋 We got your request on ${s}:\n${w}\nWe're working on adding it and will let you know.`
+    : `مرحبًا 👋 وصلنا طلبك في ${s}:\n${w}\nنعمل على إضافته، وسنبلغك حين يُضاف.`;
+  return en ? `Hello 👋 We got your report on ${s}:\n${w}\nWe're working on it now and will let you know once it's fixed.`
+    : `مرحبًا 👋 وصلنا بلاغك في ${s}:\n${w}\nنعمل على إصلاحه الآن، وسنبلغك حين يُصلح.`;
 }
 
 function card(r){
-  const open = r.state === "open";
-  const people = (r.people || []).map(p => `<li>${p.phone ? `<a href="https://wa.me/${esc(p.phone)}${open ? "" : "?text=" + encodeURIComponent(fixedText(r))}" target="_blank" rel="noopener">+${esc(p.phone)}</a>` : "<small>بلا رقم</small>"}${p.note ? ` — ${esc(p.note)}` : ""} <small>· ${ago(p.at)}</small></li>`).join("");
+  const open = r.state === "open", req = isReq(r), ph = phones(r);
+  const people = (r.people || []).map(p => `<li>${p.phone ? `<a href="https://wa.me/${esc(p.phone)}${open ? "" : "?text=" + encodeURIComponent(fixedText(r))}" target="_blank" rel="noopener">+${esc(p.phone)}</a>` : `<small>${T("بلا رقم", "no number")}</small>`}${p.note ? ` — ${esc(p.note)}` : ""} <small>· ${ago(p.at)}</small></li>`).join("");
   const src = r.p ? (r.p.startsWith("/") ? SITE + r.p : r.p) : "";
-  const req = isReq(r);
+  const last = (r.updates || []).slice(-1)[0];
+  const upd = last ? `<span class="upd">📨 ${T("آخر رسالة لأصحابه", "Last message to reporters")} ${ago(last.at)}${last.by ? " · " + esc(last.by) : ""} — <b>${T(`وصلت ${num(last.sent)} من ${num(last.to)}`, `delivered ${num(last.sent)}/${num(last.to)}`)}</b></span>`
+    + (last.error ? `<span class="wline">⚠ ${esc(tx(last.error))}</span>` : "") : "";
+  const p = panel && panel.id === r.id ? panel : null;
+  const pane = !p ? "" : `<div class="npanel">
+      <label>${p.kind === "update" ? T("تحديثٌ لأصحابه على واتساب", "Update to the reporters on WhatsApp") : T("رسالة لأصحابه بعد الإصلاح", "Message to the reporters once fixed")} (${T(`${num(ph.length)} رقم`, `${num(ph.length)} number${ph.length === 1 ? "" : "s"}`)})</label>
+      <textarea id="pText" maxlength="600" dir="auto">${esc(p.text)}</textarea>
+      ${p.kind === "done" ? `<label class="acheck"><input type="checkbox" id="pSend"${p.send ? " checked" : ""}> ${T("أرسلها لهم على واتساب الآن", "Send it to them on WhatsApp now")}</label>` : ""}
+      <div class="acts"><button class="btn go" data-act="${p.kind === "update" ? "send" : "confirm"}">${p.kind === "update" ? T("أرسل التحديث", "Send update") : req ? T("✓ أُضيف", "✓ Added") : T("✓ تم الإصلاح", "✓ Fixed")}</button>
+        <button class="btn" data-act="cancel">${T("إلغاء", "Cancel")}</button></div>
+      <p class="nmsg" id="pMsg"></p></div>`;
   return `<div class="rep${open ? "" : " done"}${req ? " req" : ""}" data-id="${esc(r.id)}">
     <span class="pos${r.kind === "live" ? " sq" : ""}" style="--h:${hue(r.title)}">${esc(String(r.title || "•").trim().slice(0, 1))}${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>
     <div class="body">
       <div class="t">${what(r).html}</div>
-      <div class="meta">${esc(ONE[r.kind] || "")} · ${where(r)} · ${ago(r.at)}${r.count > 1 ? (req ? " · آخر طلب " : " · آخر بلاغ ") + ago(r.last) : ""}</div>
-      <div class="tags"><span class="tag ${esc(r.problem)}">${esc(r.ptext || r.problem)}</span>
-        ${r.count > 1 ? `<span class="tag n">${num(r.count)} ${req ? "طلبات" : "بلاغات"}</span>` : ""}
-        ${open ? "" : `<span class="tag ok">✓ ${req ? "أُضيف" : "أُصلح"} ${ago(r.done_at)}${r.done_by ? " · " + esc(r.done_by) : ""}</span>`}</div>
+      <div class="meta">${esc(one(r.kind))} · ${where(r)} · ${ago(r.at)}${r.count > 1 ? (req ? T(" · آخر طلب ", " · last request ") : T(" · آخر بلاغ ", " · last report ")) + ago(r.last) : ""}</div>
+      <div class="tags"><span class="tag ${esc(r.problem)}">${esc(pname(r.problem, r.kind))}</span>
+        ${r.count > 1 ? `<span class="tag n">${num(r.count)} ${req ? T("طلبات", "requests") : T("بلاغات", "reports")}</span>` : ""}
+        ${open ? "" : `<span class="tag ok">✓ ${req ? T("أُضيف", "added") : T("أُصلح", "fixed")} ${ago(r.done_at)}${r.done_by ? " · " + esc(r.done_by) : ""}</span>`}</div>
       ${people ? `<ul class="people">${people}</ul>` : ""}
-      ${alertLine(r)}
-      <div class="acts">
-        ${open ? `<button class="btn go" data-act="done">✓ ${req ? "أُضيف" : "تم الإصلاح"}</button>` : `<button class="btn" data-act="open">إعادة فتح</button>`}
-        <button class="btn" data-act="copy">${req ? "نسخ الطلب" : "نسخ البلاغ"}</button>
-        ${role === "admin" ? `<button class="btn del" data-act="del">حذف</button>` : ""}
-      </div>
+      ${alertLine(r)}${upd}
+      ${pane || `<div class="acts">
+        ${open ? `<button class="btn go" data-act="done">${req ? T("✓ أُضيف", "✓ Added") : T("✓ تم الإصلاح", "✓ Fixed")}</button>` : `<button class="btn" data-act="open">${T("إعادة فتح", "Reopen")}</button>`}
+        ${ph.length ? `<button class="btn" data-act="${open ? "update" : "tell"}">📨 ${open ? T("أرسل تحديثًا", "Send update") : T("أبلغ أصحابه", "Tell reporters")}</button>` : ""}
+        <button class="btn" data-act="copy">${req ? T("نسخ الطلب", "Copy request") : T("نسخ البلاغ", "Copy report")}</button>
+        ${role === "admin" ? `<button class="btn del" data-act="del">${T("حذف", "Delete")}</button>` : ""}
+      </div>`}
     </div></div>`;
 }
 
 // ما جرى لتنبيه البلاغ على واتساب: كم وصله، أو لماذا لم يصل
 function alertLine(r){
   const w = r.wa; if (!w) return "";
-  const ok = w.sent ? `<span class="tag ok">🔔 نُبّه ${w.sent === 1 ? "موظف" : num(w.sent)} ${ago(w.at)}</span>` : "";
-  return (ok ? `<div class="tags">${ok}</div>` : "") + (w.error ? `<span class="wline">⚠ لم يصل التنبيه${w.sent ? " لبعضهم" : ""}: ${esc(w.error)}</span>` : "");
+  const ok = w.sent ? `<span class="tag ok">🔔 ${T("نُبّه", "alerted")} ${num(w.sent)} ${ago(w.at)}</span>` : "";
+  return (ok ? `<div class="tags">${ok}</div>` : "") + (w.error ? `<span class="wline">⚠ ${T("لم يصل التنبيه", "Alert not delivered")}${w.sent ? T(" لبعضهم", " to some") : ""}: ${esc(tx(w.error))}</span>` : "");
 }
 
 let alertFilled = false;
@@ -227,15 +344,16 @@ function drawAlert(a){
   if (!a) return;
   const m = a.mine || {}, on = !!(m.wa && m.on);
   $("aBell").classList.toggle("off", !on || !a.from);
-  const tel = `<bdi dir="ltr">+${esc(m.wa)}</bdi>`;
-  $("aSum").innerHTML = !m.wa ? "أضف رقمك ليصلك كل بلاغ جديد على واتساب"
-    : !m.on ? `موقوف — رقمك ${tel}` : (a.from ? `يصلك كل بلاغ${a.servers && a.servers.length ? " في " + esc(a.servers.join("، ")) : ""} على ${tel}`
-                                          : `رقمك ${tel} — لا يُرسل شيء حتى يُربط رقم المسابقة`);
-  $("aFrom").hidden = !!a.from; $("aFrom").textContent = a.from_error || "";
+  const tel = `<bdi dir="ltr">+${esc(m.wa)}</bdi>`, srvs = a.servers && a.servers.length ? esc((EN ? a.servers_en || a.servers : a.servers).join(EN ? ", " : "، ")) : "";
+  $("aSum").innerHTML = !m.wa ? T("أضف رقمك ليصلك كل بلاغ جديد على واتساب", "Add your number to get every new report on WhatsApp")
+    : !m.on ? T(`موقوف — رقمك ${tel}`, `Off — your number ${tel}`)
+    : a.from ? T(`يصلك كل بلاغ${srvs ? " في " + srvs : ""} على ${tel}`, `Every report${srvs ? " on " + srvs : ""} reaches you on ${tel}`)
+    : T(`رقمك ${tel} — لا يُرسل شيء حتى يُربط رقم المسابقة`, `Your number ${tel} — nothing is sent until the contest number is linked`);
+  $("aFrom").hidden = !!a.from; $("aFrom").textContent = tx(a.from_error || "");
   if (!alertFilled) {                       // لا يُمسح ما يكتبه مع التحديث كل 30 ثانية
     alertFilled = true;
     $("aWa").value = m.wa ? "+" + m.wa : ""; $("aOn").checked = m.on !== false;
-    if (!m.wa) $("abox").open = true;
+    if (!m.wa && !$("abox").dataset.seen) { $("abox").open = true; $("abox").dataset.seen = 1; }
   }
   drawTeam(a);
 }
@@ -245,23 +363,76 @@ function drawTeam(a){
   $("tbox").hidden = !team;
   if (!team) return;
   const m = a.mine || {}, you = m.wa && m.on;
-  const pill = p => `<span class="pp${p.on && p.wa ? "" : " off"}"><bdi>${esc(p.name)}</bdi> <small>${p.wa ? `<bdi dir="ltr">+${esc(p.wa)}</bdi>${p.on ? "" : " · موقوف"}` : "بلا رقم"}${p.all ? " · كل السيرفرات" : ""}</small></span>`;
+  const pill = p => `<span class="pp${p.on && p.wa ? "" : " off"}">${p.lead ? "★ " : ""}<bdi>${esc(p.name)}</bdi> <small>${p.wa ? `<bdi dir="ltr">+${esc(p.wa)}</bdi>${p.on ? "" : T(" · موقوف", " · off")}` : T("بلا رقم", "no number")}${p.all ? T(" · كل السيرفرات", " · all servers") : ""}${p.lead ? T(" · مشرف", " · lead") : ""}${p.of ? T(" · فريق ", " · team of ") + esc(p.of) : ""}</small></span>`;
   const empty = team.filter(t => !t.people.length);
-  $("tSum").textContent = `${num((a.staff || []).length)} موظف` + (empty.length ? ` · ${empty.map(t => t.name).join("، ")} بلا أحد` : " · لكل سيرفرٍ من يتابعه");
-  $("team").innerHTML = (team.length ? team.map(t => `<div class="srow"><b>${esc(t.name)}</b><div class="ppl">${t.people.length ? t.people.map(pill).join("")
-      : `<span class="pp none">لا أحد — ${you ? "بلاغاته تصلك أنت وحدك" : "لا يصل تنبيهه أحدًا"}</span>`}</div></div>`).join("")
-    : '<p class="sub">لا سيرفرات بعد — تُضاف من صفحة المحتوى.</p>')
-    + `<div class="tfoot"><a class="btn go" href="${B}/accounts#staff">+ إضافة موظف</a><span>وتعديل سيرفرات الموظف ورقمه من نافذة حسابه في «الحسابات». وأنت (المدير) يصلك كل سيرفر${m.wa ? (m.on ? "" : " — تنبيهك موقوف") : " إن حفظت رقمك"}.</span></div>`;
+  const nm = t => EN ? t.en || t.name : t.name;
+  $("tSum").textContent = T(`${num((a.staff || []).length)} موظف`, `${num((a.staff || []).length)} staff`)
+    + (empty.length ? T(` · ${empty.map(nm).join("، ")} بلا أحد`, ` · nobody on ${empty.map(nm).join(", ")}`) : T(" · لكل سيرفرٍ من يتابعه", " · every server is covered"));
+  $("team").innerHTML = (team.length ? team.map(t => `<div class="srow"><b>${esc(nm(t))}</b><div class="ppl">${t.people.length ? t.people.map(pill).join("")
+      : `<span class="pp none">${T("لا أحد", "Nobody")} — ${you ? T("بلاغاته تصلك أنت وحدك", "its reports reach only you") : T("لا يصل تنبيهه أحدًا", "its alerts reach no one")}</span>`}</div></div>`).join("")
+    : `<p class="sub">${T("لا سيرفرات بعد — تُضاف من صفحة المحتوى.", "No servers yet — add them on the content page.")}</p>`)
+    + `<div class="tfoot"><a class="btn go" href="${B}/accounts#staff">${T("+ إضافة موظف", "+ Add staff")}</a><span>${T("وتعديل سيرفرات الموظف ورقمه، وجعله مشرفًا يضيف فريقه، من نافذة حسابه في «الحسابات». وأنت (المدير) يصلك كل سيرفر", "Edit a staff member's servers and number, or make them a lead who adds their own team, from their account in Accounts. You (admin) get every server")}${m.wa ? (m.on ? "" : T(" — تنبيهك موقوف", " — your alerts are off")) : T(" إن حفظت رقمك", " once you save your number")}.</span></div>`;
+}
+// للمشرف: فريقه — يضيف أعضاءه ويعدّلهم ويحذفهم، على سيرفراته وحدها
+function drawMine(t){
+  $("mbox").hidden = !t;
+  if (!t) return;
+  const names = Object.fromEntries((t.servers || []).map(s => [s.key, EN ? s.en || s.name : s.name]));
+  const srvs = keys => (keys && keys.length ? keys : (t.servers || []).map(s => s.key)).map(k => names[k] || k).join(EN ? ", " : "، ");
+  $("mSum").textContent = t.members.length ? T(`${num(t.members.length)} عضو`, `${num(t.members.length)} member${t.members.length === 1 ? "" : "s"}`)
+    : T("أضف فريقك ليتابع سيرفراتك معك", "Add your team to follow your servers with you");
+  $("mList").innerHTML = t.members.map(x => `<div class="mrow" data-m="${esc(x.id)}"><div class="mi"><b><bdi>${esc(x.name)}</bdi></b><small>${T("الدخول", "login")}: <bdi>${esc(x.user)}</bdi> · ${x.wa ? `<bdi dir="ltr">+${esc(x.wa)}</bdi>` : T("بلا رقم", "no number")} · ${esc(srvs(x.servers))}</small></div>
+      <button class="btn" data-medit="${esc(x.id)}">${T("تعديل", "Edit")}</button><button class="btn del" data-mdel="${esc(x.id)}">${T("حذف", "Remove")}</button></div>`).join("")
+    || `<p class="sub" style="margin:8px 0 0">${T("لا أعضاء بعد.", "No members yet.")}</p>`;
+  if (!$("mForm").hidden) drawSrvPick(edit ? edit.servers : []);
+}
+function drawSrvPick(sel){
+  const t = data.team;
+  $("mSrv").innerHTML = (t.servers || []).map(s => `<label><input type="checkbox" value="${esc(s.key)}"${(sel || []).includes(s.key) ? " checked" : ""}> ${esc(EN ? s.en || s.name : s.name)}</label>`).join("");
+}
+function memberForm(x){
+  edit = x || null;
+  $("mForm").hidden = false; $("mMsg").textContent = ""; $("mMsg").className = "amsg";
+  $("mId").value = x ? x.id : ""; $("mName").value = x ? x.name : ""; $("mUser").value = x ? x.user : "";
+  $("mPass").value = ""; $("mPass").placeholder = x ? T("اتركها فارغةً للإبقاء عليها", "Leave empty to keep it") : T("4 أحرف على الأقل", "At least 4 characters");
+  $("mWa").value = x && x.wa ? "+" + x.wa : "";
+  drawSrvPick(x ? x.servers : []);
+  $("mName").focus();
+}
+$("mAdd").onclick = () => memberForm(null);
+$("mCancel").onclick = () => { $("mForm").hidden = true; edit = null; };
+$("mSave").onclick = async () => {
+  const b = $("mSave"); b.disabled = true;
+  try {
+    const d = await post("/api/reports/team", {action: "save", id: $("mId").value, name: $("mName").value, user: $("mUser").value,
+      password: $("mPass").value, wa: $("mWa").value, servers: [...$("mSrv").querySelectorAll("input:checked")].map(i => i.value)});
+    data.team = d.team; $("mForm").hidden = true; edit = null; drawMine(d.team); toast(T("حُفظ العضو ✓", "Member saved ✓")); load();
+  } catch (e) { $("mMsg").className = "amsg bad"; $("mMsg").textContent = e.message; }
+  b.disabled = false;
+};
+$("mList").onclick = async e => {
+  const ed = e.target.closest("[data-medit]"), del = e.target.closest("[data-mdel]");
+  if (ed) memberForm(data.team.members.find(x => x.id === ed.dataset.medit));
+  if (del) {
+    const x = data.team.members.find(m => m.id === del.dataset.mdel);
+    if (!confirm(T(`حذف «${x.name}» من فريقك؟ لن يستطيع الدخول بعدها.`, `Remove "${x.name}" from your team? They won't be able to log in.`))) return;
+    try { const d = await post("/api/reports/team", {action: "delete", id: x.id}); data.team = d.team; drawMine(d.team); load(); }
+    catch (err) { alert(err.message); }
+  }
+};
+async function post(url, body){
+  const r = await fetch(B + url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const d = await r.json().catch(() => ({}));
+  if (d.login) { location.href = B + "/login"; throw new Error("…"); }
+  if (!r.ok) throw new Error(d.error || T("تعذّر الحفظ", "Couldn't save"));
+  return d;
 }
 async function saveAlert(){
   const b = $("aSave"); b.disabled = true; $("aMsg").className = "amsg"; $("aMsg").textContent = "";
   try {
-    const r = await fetch(B + "/api/reports/alert", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({wa: $("aWa").value, on: $("aOn").checked})});
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "تعذّر الحفظ");
+    const d = await post("/api/reports/alert", {wa: $("aWa").value, on: $("aOn").checked});
     alertFilled = false; drawAlert(d.alert);
-    $("aMsg").className = "amsg ok"; $("aMsg").textContent = "حُفظ ✓";
+    $("aMsg").className = "amsg ok"; $("aMsg").textContent = T("حُفظ ✓", "Saved ✓");
   } catch (e) { $("aMsg").className = "amsg bad"; $("aMsg").textContent = e.message; }
   b.disabled = false;
 }
@@ -269,12 +440,12 @@ $("aSave").onclick = saveAlert;
 $("aTest").onclick = async () => {
   await saveAlert();                        // الرقم كما كُتب، فلا تذهب التجربة إلى رقمٍ قديم
   if ($("aMsg").classList.contains("bad")) return;
-  const b = $("aTest"); b.disabled = true; $("aMsg").className = "amsg"; $("aMsg").textContent = "يُرسل…";
+  const b = $("aTest"); b.disabled = true; $("aMsg").className = "amsg"; $("aMsg").textContent = T("يُرسل…", "Sending…");
   try {
     const r = await fetch(B + "/api/reports/alert-test", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
     const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "تعذّر الإرسال");
-    $("aMsg").className = "amsg ok"; $("aMsg").textContent = `أُرسلت إلى +${d.to} — تفقّد واتساب`;
+    if (!d.ok) throw new Error(tx(d.error) || T("تعذّر الإرسال", "Couldn't send"));
+    $("aMsg").className = "amsg ok"; $("aMsg").textContent = T(`أُرسلت إلى +${d.to} — تفقّد واتساب`, `Sent to +${d.to} — check WhatsApp`);
   } catch (e) { $("aMsg").className = "amsg bad"; $("aMsg").textContent = e.message; }
   b.disabled = false;
 };
@@ -283,17 +454,21 @@ function draw(){
   const d = data;
   $("nOpen").textContent = num(d.counts.open); $("nDone").textContent = num(d.counts.done);
   $("nAll").textContent = num(d.counts.open + d.counts.done);
-  document.title = (d.counts.open ? `(${d.counts.open}) ` : "") + "بلاغات المحتوى";
+  document.title = (d.counts.open ? `(${d.counts.open}) ` : "") + T("بلاغات المحتوى", "Content reports");
   document.querySelectorAll("[data-state]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.state === state)));
   const c = d.counts;
-  $("whatBar").innerHTML = [["", "الكل"], ["issue", "مشاكل", c.issue], ["add", "طلبات إضافة", c.add]].map(([k, t, n]) =>
+  $("whatBar").innerHTML = [["", T("الكل", "All")], ["issue", T("مشاكل", "Problems"), c.issue], ["add", T("طلبات إضافة", "Add requests"), c.add]].map(([k, t, n]) =>
     `<button class="chip" data-w="${k}" aria-pressed="${what_ === k}">${t}${n ? `<em>${num(n)}</em>` : ""}</button>`).join("");
   const srvs = d.servers || [];
   $("srvBar").hidden = srvs.length < 2 && !server;
-  $("srvBar").innerHTML = `<button class="chip" data-s="" aria-pressed="${!server}">كل السيرفرات</button>` + srvs.map(s =>
-    `<button class="chip" data-s="${esc(s.key)}" aria-pressed="${s.key === server}">${esc(s.name)}<em>${num(s.open)}</em></button>`).join("");
+  $("srvBar").innerHTML = `<button class="chip" data-s="" aria-pressed="${!server}">${T("كل السيرفرات", "All servers")}</button>` + srvs.map(s =>
+    `<button class="chip" data-s="${esc(s.key)}" aria-pressed="${s.key === server}">${esc(EN ? (d.server_names || {})[s.key] || s.name : s.name)}<em>${num(s.open)}</em></button>`).join("");
   $("list").innerHTML = d.items.length ? d.items.map(card).join("")
-    : `<div class="empty">${state !== "open" ? "لا شيء هنا بعد." : what_ === "add" ? "لا طلبات إضافة مفتوحة." : "لا بلاغات مفتوحة — كل شيءٍ يعمل ✓"}</div>`;
+    : `<div class="empty">${state !== "open" ? T("لا شيء هنا بعد.", "Nothing here yet.") : what_ === "add" ? T("لا طلبات إضافة مفتوحة.", "No open add requests.") : T("لا بلاغات مفتوحة — كل شيءٍ يعمل ✓", "No open reports — everything works ✓")}</div>`;
+  const ta = $("pText");
+  if (ta) ta.addEventListener("input", () => { panel.text = ta.value; });
+  const cb = $("pSend");
+  if (cb) cb.addEventListener("change", () => { panel.send = cb.checked; });
 }
 
 async function load(){
@@ -301,49 +476,72 @@ async function load(){
     const r = await fetch(B + "/api/reports" + query());
     const d = await r.json();
     if (d.login) { location.href = B + "/login"; return; }
-    if (!r.ok) throw new Error(d.error || "تعذّر التحميل");
+    if (!r.ok) throw new Error(d.error || T("تعذّر التحميل", "Couldn't load"));
     data = d; role = d.role;
-    $("who").textContent = (d.name || "") + (d.alert && d.alert.servers && d.alert.servers.length ? " · " + d.alert.servers.join("، ") : "");
+    if (!langSet && d.lang) { EN = d.lang === "en"; langSet = true; paint(); }   // لغته المحفوظة في حسابه
+    const sv = d.alert && d.alert.servers && d.alert.servers.length ? (EN ? d.alert.servers_en || d.alert.servers : d.alert.servers).join(EN ? ", " : "، ") : "";
+    $("who").textContent = (d.name || "") + (sv ? " · " + sv : "") + (d.team ? T(" · مشرف", " · lead") : "");
     $("lnkHome").hidden = !(d.role === "admin" || d.gates);
     $("lnkHome").href = d.role === "admin" ? B + "/accounts" : (B || "/");
     $("msg").hidden = true;
     drawAlert(d.alert);
+    drawMine(d.team);
     draw();
   } catch (e) { $("msg").textContent = e.message; $("msg").hidden = false; }
 }
 
 document.querySelector(".tiles").onclick = e => {
   const b = e.target.closest("[data-state]"); if (!b) return;
-  state = b.dataset.state; history.replaceState(null, "", query()); load();
+  state = b.dataset.state; panel = null; history.replaceState(null, "", query()); load();
 };
 $("srvBar").onclick = e => {
   const b = e.target.closest("[data-s]"); if (!b) return;
-  server = b.dataset.s; history.replaceState(null, "", query()); load();
+  server = b.dataset.s; panel = null; history.replaceState(null, "", query()); load();
 };
 $("whatBar").onclick = e => {
   const b = e.target.closest("[data-w]"); if (!b) return;
-  what_ = b.dataset.w; history.replaceState(null, "", query()); load();
+  what_ = b.dataset.w; panel = null; history.replaceState(null, "", query()); load();
 };
+// يرسل الرسالة لأصحاب البلاغ ← ما جرى، ويقوله في اللوحة أو في إشعار
+async function notify(id, text){
+  const d = await post("/api/reports/notify", {id, text});
+  const u = d.update;
+  return u.sent ? T(`✓ وصلت ${num(u.sent)} من ${num(u.to)}`, `✓ Delivered ${num(u.sent)}/${num(u.to)}`) + (u.error ? " — ⚠ " + tx(u.error) : "")
+    : "⚠ " + (tx(u.error) || T("لم تصل", "Not delivered"));
+}
 $("list").onclick = async e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
   const id = b.closest("[data-id]").dataset.id, r = data.items.find(x => x.id === id), act = b.dataset.act;
   if (act === "copy") {
-    try { await navigator.clipboard.writeText(forward(r)); toast("نُسخ البلاغ"); } catch { prompt("انسخ البلاغ:", forward(r)); }
+    try { await navigator.clipboard.writeText(forward(r)); toast(T("نُسخ", "Copied")); } catch { prompt(T("انسخ:", "Copy:"), forward(r)); }
     return;
   }
-  if (act === "del" && !confirm("حذف هذا البلاغ نهائيًا؟")) return;
+  if (act === "cancel") { panel = null; draw(); return; }
+  // تم الإصلاح ولأصحابه أرقام: لوحة الرسالة أولًا؛ وتحديثٌ أثناء العمل أو بعده كذلك
+  if (act === "done" && phones(r).length) { panel = {id, kind: "done", text: fixedText(r), send: true}; draw(); return; }
+  if (act === "update") { panel = {id, kind: "update", text: progressText(r)}; draw(); return; }
+  if (act === "tell") { panel = {id, kind: "update", text: fixedText(r)}; draw(); return; }
+  if (act === "send") {
+    b.disabled = true;
+    try { const m = await notify(id, $("pText").value); panel = null; toast(m); load(); }
+    catch (err) { b.disabled = false; $("pMsg").className = "nmsg bad"; $("pMsg").textContent = err.message; }
+    return;
+  }
+  if (act === "del" && !confirm(T("حذف هذا البلاغ نهائيًا؟", "Delete this report for good?"))) return;
   b.disabled = true;
   try {
-    const res = await fetch(B + (act === "del" ? "/api/reports/delete" : "/api/reports/state"), {method: "POST",
-      headers: {"Content-Type": "application/json"}, body: JSON.stringify({id, done: act === "done"})});
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error || "تعذّر الحفظ");
-    toast(act === "done" ? "✓ تم — أبلغ أصحابه من «تم إصلاحها»" : act === "open" ? "أُعيد فتحه" : "حُذف");
-    load();
+    const done = act === "done" || act === "confirm";
+    await post(act === "del" ? "/api/reports/delete" : "/api/reports/state", {id, done});
+    let m = act === "del" ? T("حُذف", "Deleted") : !done ? T("أُعيد فتحه", "Reopened") : T("✓ تم", "✓ Done");
+    if (act === "confirm" && $("pSend") && $("pSend").checked) {
+      try { m += " · " + await notify(id, $("pText").value); } catch (err) { m += " · ⚠ " + err.message; }
+    }
+    panel = null; toast(m); load();
   } catch (err) { b.disabled = false; alert(err.message); }
 };
+paint();
 load();
-setInterval(() => { if (!document.hidden) load(); }, 30000);
+setInterval(() => { if (!document.hidden && !panel && $("mForm").hidden) load(); }, 30000);   // لا تحديث وهو يكتب
 </script>
 </body>
 </html>

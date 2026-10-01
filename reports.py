@@ -42,6 +42,10 @@ PROBLEMS = {"down": "لا يعمل", "buffer": "يقطع", "wrong": "الحلق�
 ADD = "add"                  # طلب إضافة مسلسلٍ أو فيلمٍ ليس في السيرفر: اسمٌ يكتبه، لا عنصرٌ من الفهرس
 KIND_ONE = {"series": "مسلسل", "movie": "فيلم", "live": "قناة"}
 WRONG = {"series": "الحلقة ليست هي", "movie": "الفيلم ليس هو", "live": "القناة ليست هي"}
+# بالإنجليزية: لصفحة البلاغ وصفحة الموظف وتنبيهه بلغته
+PROBLEMS_EN = {"down": "Not working", "buffer": "Buffering", "wrong": "Wrong episode", "subs": "Wrong subtitles", "add": "Request to add"}
+KIND_EN = {"series": "series", "movie": "movie", "live": "channel"}
+WRONG_EN = {"series": "Wrong episode", "movie": "Wrong movie", "live": "Wrong channel"}
 KINDS = ("series", "movie", "live")
 KEEP = 3000                  # ما يُحفظ من البلاغات، والمنجز الأقدم يُسقط أولًا
 PEOPLE_MAX = 30              # أصحاب البلاغ الواحد (بأرقامهم) — والباقي عددٌ في ‏count
@@ -105,7 +109,9 @@ def _img(key, it):
 
 def servers(data_dir):
     """السيرفرات التي لها محتوى — الخطوة الأولى."""
-    return {"ok": True, "servers": [{"key": s["key"], "name": s["name"]} for s in content.brief(data_dir)["servers"]]}
+    en = {s["key"]: content.en_name(s) for s in content.servers(data_dir)}
+    return {"ok": True, "servers": [{"key": s["key"], "name": s["name"], "en": en.get(s["key"], s["name"])}
+                                    for s in content.brief(data_dir)["servers"]]}
 
 
 def _view(data_dir, key):
@@ -196,7 +202,11 @@ _CTRL = re.compile(r"[\u0000-\u0008\u000b-\u001f\u007f​-‏‪-‮⁦-⁩]")
 
 
 class Invalid(ValueError):
-    """بلاغٌ لا يُقبل — ورسالته للعميل كما هي."""
+    """بلاغٌ لا يُقبل — ورسالته للعميل كما هي، بالعربية (‏str) وبالإنجليزية (‏en) لصفحة البلاغ الإنجليزية."""
+
+    def __init__(self, ar, en=""):
+        super().__init__(ar)
+        self.en = en or ar
 
 
 def phone_of(v):
@@ -205,14 +215,14 @@ def phone_of(v):
     if not s:
         return ""
     if not s.isdigit():
-        raise Invalid("رقم الواتساب أرقامٌ فقط")
+        raise Invalid("رقم الواتساب أرقامٌ فقط", "The WhatsApp number must be digits only")
     s = s[2:] if s.startswith("00") else s
     if len(s) == 10 and s.startswith("05"):
         s = "966" + s[1:]
     elif len(s) == 9 and s.startswith("5"):
         s = "966" + s
     if not 8 <= len(s) <= 15:
-        raise Invalid("رقم الواتساب غير صحيح — اكتبه كما في واتساب: 05xxxxxxxx")
+        raise Invalid("رقم الواتساب غير صحيح — اكتبه كما في واتساب: 05xxxxxxxx", "Invalid WhatsApp number — write it as in WhatsApp, with the country code")
     return s
 
 
@@ -247,24 +257,25 @@ def _mark(r):
                                        r["season"], r["ep"], r["problem"]))
 
 
-def problem_name(problem, kind=""):
-    """اسم المشكلة كما يُعرض: «الحلقة ليست هي» للمسلسل و«الفيلم ليس هو» للفيلم، و«طلب إضافة مسلسل»."""
+def problem_name(problem, kind="", lang="ar"):
+    """اسم المشكلة كما يُعرض: «الحلقة ليست هي» للمسلسل و«الفيلم ليس هو» للفيلم، و«طلب إضافة مسلسل» — وبالإنجليزية."""
+    en = lang == "en"
     if problem == "wrong":
-        return WRONG.get(kind, PROBLEMS["wrong"])
+        return (WRONG_EN if en else WRONG).get(kind, (PROBLEMS_EN if en else PROBLEMS)["wrong"])
     if problem == ADD:
-        return f"طلب إضافة {KIND_ONE.get(kind, '')}".strip()
-    return PROBLEMS.get(problem, "")
+        return f"Request to add a {KIND_EN.get(kind, '')}".strip() if en else f"طلب إضافة {KIND_ONE.get(kind, '')}".strip()
+    return (PROBLEMS_EN if en else PROBLEMS).get(problem, "")
 
 
 def _request(srv, form):
     """طلب إضافة: النوع والاسم كما كتبه (والسنة إن ذكرها) — لا يُطابَق بالفهرس، فما يطلبه ليس فيه."""
     kind = str(form.get("t") or "")
     if kind not in ("series", "movie"):
-        raise Invalid("اختر: مسلسل أو فيلم")
+        raise Invalid("اختر: مسلسل أو فيلم", "Choose: series or movie")
     name = _text(form.get("n"), content.NAME_MAX)
     if len(name.replace(" ", "")) < 2:
-        raise Invalid("اكتب اسم المسلسل أو الفيلم")
-    return {"server": srv["key"], "sname": srv["name"], "kind": kind, "gid": "", "group": "", "title": name,
+        raise Invalid("اكتب اسم المسلسل أو الفيلم", "Write the series or movie name")
+    return {"server": srv["key"], "sname": srv["name"], "sname_en": content.en_name(srv), "kind": kind, "gid": "", "group": "", "title": name,
             "year": _int(form.get("y"), 1900, 2100) or 0, "season": None, "ep": None, "problem": ADD, "p": ""}
 
 
@@ -273,29 +284,29 @@ def submit(data_dir, form, now=None):
     form = form if isinstance(form, dict) else {}
     srv, v = _view(data_dir, form.get("s"))
     if not v:
-        raise Invalid("اختر السيرفر من القائمة")
+        raise Invalid("اختر السيرفر من القائمة", "Choose the server from the list")
     kind = str(form.get("t") or "")
     problem = str(form.get("problem") or "")
     if problem not in PROBLEMS:
-        raise Invalid("اختر المشكلة")
+        raise Invalid("اختر المشكلة", "Choose the problem")
     if problem == ADD:
         return _store(data_dir, _request(srv, form), form, now)
     g, it = _find(v, kind, str(form.get("g") or ""), _text(form.get("n"), content.NAME_MAX),
                   _int(form.get("y"), 0, 3000) or 0)
     if g is None:
-        raise Invalid("اختر القسم من القائمة")
+        raise Invalid("اختر القسم من القائمة", "Choose the category from the list")
     if it is None:
-        raise Invalid("اختر المسلسل أو الفيلم من القائمة")
+        raise Invalid("اختر المسلسل أو الفيلم من القائمة", "Choose the series or movie from the list")
     season = ep = None
     if kind == "series":
         seasons = [s for s, _ in _seasons(it)]
         season = _int(form.get("season"), 0, 999)
         if seasons and season not in seasons:
-            raise Invalid("اختر الموسم")
+            raise Invalid("اختر الموسم", "Choose the season")
         ep = _int(form.get("ep"), 0, EP_MAX)           # ‏0 = الحلقات كلها
         if ep is None:
-            raise Invalid("اختر الحلقة")
-    rec = {"server": srv["key"], "sname": srv["name"], "kind": kind, "gid": g["id"], "group": g["name"],
+            raise Invalid("اختر الحلقة", "Choose the episode")
+    rec = {"server": srv["key"], "sname": srv["name"], "sname_en": content.en_name(srv), "kind": kind, "gid": g["id"], "group": g["name"],
            "title": it.get("n", ""), "year": it.get("y") or 0, "season": season, "ep": ep, "problem": problem,
            "p": _img(srv["key"], it)}
     return _store(data_dir, rec, form, now)
@@ -306,7 +317,9 @@ def _store(data_dir, rec, form, now=None):
     phone = phone_of(form.get("phone"))
     note = _text(form.get("note"), NOTE_MAX)
     now = now or time.time()
-    person = {"at": int(now), "phone": phone, "note": note}
+    lang = "en" if form.get("lang") == "en" else "ar"          # لغة صفحته: بها رسالة «تم الإصلاح» إليه
+    rec["lang"] = lang
+    person = {"at": int(now), "phone": phone, "note": note, "lang": lang}
     with _lock:
         d = _load(data_dir)
         mark = _mark(rec)
@@ -441,12 +454,21 @@ def settings(data_dir):
     except (OSError, ValueError):
         d = {}
     d = d if isinstance(d, dict) else {}
-    return {"wa": str(d.get("wa") or ""), "on": d.get("on") is not False}
+    return {"wa": str(d.get("wa") or ""), "on": d.get("on") is not False, "lang": "en" if d.get("lang") == "en" else ""}
+
+
+def save_lang(data_dir, lang):
+    """لغة صفحة المدير وتنبيهاته."""
+    d = settings(data_dir)
+    return _save_settings(data_dir, dict(d, lang="en" if lang == "en" else "ar"))
 
 
 def save_settings(data_dir, wa, on=True):
     """يحفظ رقم المدير ← الإعداد، وInvalid لرقمٍ لا يصلح."""
-    d = {"wa": phone_of(wa), "on": bool(on)}
+    return _save_settings(data_dir, dict(settings(data_dir), wa=phone_of(wa), on=bool(on)))
+
+
+def _save_settings(data_dir, d):
     p = _settings_path(data_dir)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with _lock:
@@ -457,8 +479,34 @@ def save_settings(data_dir, wa, on=True):
     return d
 
 
-def alert_text(r, new):
+def alert_text_en(r, new):
+    """التنبيه بالإنجليزية لمن اختارها في صفحته."""
+    w = content._wa
+    n, srv = int(r.get("count") or 1), w(r.get("sname_en") or r.get("sname"))
+    title = w(r.get("title")) + (f" ({r['year']})" if r.get("year") else "")
+    if r.get("problem") == ADD:
+        kind = KIND_EN.get(r.get("kind"), "")
+        head = (f"🙋 *Request to add a {kind} on {srv}*" if new else f"🔁 *Request to add a {kind} on {srv}* — {n} subscribers asked")
+        lines = [head, "", f"🎬 {title}"]
+    else:
+        prob = problem_name(r.get("problem"), r.get("kind"), "en")
+        head = (f"🔔 *New report on {srv}: {prob}*" if new else f"🔁 *Repeated report on {srv}: {prob}* ({n} reports)")
+        ep = ""
+        if r.get("kind") == "series":
+            ep = (f" · S{r['season']}" if r.get("season") else "") + (f" · E{r['ep']}" if r.get("ep") else " · all episodes")
+        lines = [head, "", f"🎬 {title}{ep}", f"📂 {KIND_EN.get(r.get('kind'), '')} · {w(r.get('group'))}"]
+    p = next((x for x in reversed(r.get("people") or []) if x.get("phone") or x.get("note")), None)
+    if p:
+        lines.append("📱 " + " — ".join(b for b in (f"+{p['phone']}" if p.get("phone") else "", w(p.get("note"))) if b))
+    if page_url:
+        lines += ["", f"Reports: {page_url}"]
+    return "\n".join(lines)
+
+
+def alert_text(r, new, lang="ar"):
     """نصّ التنبيه بخطّ واتساب العريض — وأول كل سطرٍ فيه اسمٌ علامة RLM فيبقى من اليمين وإن بدأ بإنجليزي."""
+    if lang == "en":
+        return alert_text_en(r, new)
     w, rlm = content._wa, "\u200f"
     n, srv = int(r.get("count") or 1), w(r.get("sname"))
     title = w(r.get("title")) + (f" ({r['year']})" if r.get("year") else "")
@@ -501,10 +549,10 @@ def alert(data_dir, r, new, now=None):
         return None
     try:
         rcpt, seen = [], set()
-        for name, wa in recipients(r) or ():
+        for name, wa, *more in recipients(r) or ():       # (الاسم، الرقم[، لغته])
             if wa and wa not in seen:
                 seen.add(wa)
-                rcpt.append((name, wa))
+                rcpt.append((name, wa, more[0] if more else "ar"))
     except Exception as e:  # noqa: BLE001 — لا يُسقط البلاغ
         rcpt, err = [], str(e)[:200]
     else:
@@ -521,8 +569,9 @@ def alert(data_dir, r, new, now=None):
         if over:
             res["error"] = f"تجاوز حدّ التنبيهات بالساعة ({ALERT_HOUR_MAX}) — البلاغ محفوظ هنا"
         else:
-            text, errs = alert_text(r, new), []
-            for name, wa in rcpt:
+            texts, errs = {}, []
+            for name, wa, lang in rcpt:
+                text = texts.get(lang) or texts.setdefault(lang, alert_text(r, new, lang))
                 try:
                     out = sender(wa, text) or {}
                 except Exception as e:  # noqa: BLE001
@@ -534,3 +583,47 @@ def alert(data_dir, r, new, now=None):
             res["error"] = " · ".join(errs)[:300]
     _record_alert(data_dir, r["id"], res)
     return res
+
+
+# ================= تحديثٌ لصاحب البلاغ =================
+UPDATE_MAX = 600             # نصّ التحديث
+UPDATES_KEEP = 20            # ما يُحفظ من تحديثات البلاغ الواحد
+
+
+def _msg(v, limit):
+    """نصّ رسالةٍ بأسطره: بلا رموز تحكّم، وكل سطرٍ بمسافاتٍ مفردة، وبلا أسطرٍ فارغةٍ متتالية."""
+    lines = [" ".join(_CTRL.sub("", unicodedata.normalize("NFC", ln)).split()) for ln in str(v or "").splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()[:limit]
+
+
+def notify(data_dir, rid, text, by="", now=None):
+    """يرسل التحديث (تم الإصلاح، أو نعمل عليه) إلى أصحاب البلاغ على واتساب، كلُّ رقمٍ مرة ← {at, by, to, sent, error, text}،
+    ويُحفظ مع البلاغ (آخر ‏UPDATES_KEEP). وInvalid بلا نصٍّ أو بلا أرقام."""
+    r = get(data_dir, rid)
+    if not r:
+        raise Invalid("لا بلاغ بهذا الرقم", "No such report")
+    text = _msg(text, UPDATE_MAX)
+    if not text:
+        raise Invalid("اكتب نصّ الرسالة", "Write the message")
+    phones = list(dict.fromkeys(p["phone"] for p in r.get("people") or [] if p.get("phone")))
+    if not phones:
+        raise Invalid("لا أرقام لأصحاب هذا البلاغ — لم يكتب أحدهم رقمه", "No numbers for this report — nobody left one")
+    up = {"at": int(now or time.time()), "by": str(by)[:60], "to": len(phones), "sent": 0, "error": "", "text": text}
+    errs = []
+    for wa in phones:
+        try:
+            out = (sender(wa, text) if sender else {"ok": False, "error": "الإرسال غير مضبوط"}) or {}
+        except Exception as e:  # noqa: BLE001
+            out = {"ok": False, "error": str(e)}
+        if out.get("ok"):
+            up["sent"] += 1
+        else:
+            errs.append(f"+{wa}: {out.get('error') or 'تعذّر الإرسال'}")
+    up["error"] = " · ".join(dict.fromkeys(errs))[:300]
+    with _lock:
+        d = _load(data_dir)
+        rec = next((x for x in d["items"] if x.get("id") == rid), None)
+        if rec is not None:
+            rec["updates"] = ((rec.get("updates") or []) + [up])[-UPDATES_KEEP:]
+            _save(data_dir, d)
+    return up

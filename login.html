@@ -25,16 +25,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--go);outline-off
 </head>
 <body>
 <main><section>
-  <h1>تسجيل الدخول</h1>
-  <p>ادخل ببيانات حسابك. المدير يدخل باسم <b dir="ltr">admin</b>.</p>
+  <h1>تسجيل الدخول <small lang="en" style="font-weight:400;opacity:.65;font-size:.6em">· Log in</small></h1>
+  <p>ادخل ببيانات حسابك. المدير يدخل باسم <b dir="ltr">admin</b>.<br><span lang="en" dir="ltr" style="opacity:.75">Log in with your account details.</span></p>
   <!-- نموذجٌ حقيقيّ بحقولٍ مسمّاة (name) + autocomplete + إرسالٍ حقيقي: شرطُ كروم
        لعرض «حفظ كلمة المرور»؛ ومع Credential Management API يُطلب الحفظ صراحةً. -->
   <form id="f" method="post" action="api/login" autocomplete="on">
-    <label for="u">اسم الدخول</label>
+    <label for="u">اسم الدخول <span lang="en" style="opacity:.65">· Username</span></label>
     <input id="u" name="username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required>
-    <label for="p">كلمة المرور</label>
+    <label for="p">كلمة المرور <span lang="en" style="opacity:.65">· Password</span></label>
     <input id="p" name="password" type="password" autocomplete="current-password" required>
-    <button id="go" type="submit">دخول</button>
+    <button id="go" type="submit">دخول · Log in</button>
   </form>
   <div class="msg" id="msg"></div>
 </section></main>
