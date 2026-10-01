@@ -266,6 +266,34 @@ def main():
         s2 = xm_web.PanelWebSession(acct, data_dir)
         check("reloaded session authenticated", s2.is_authenticated())
 
+        print("\n== 4b. Search reaches a gate that was not opened (expired session) ==")
+        # البحث في كل البوابات يصل بوابةً لم تُفتح: بلا دخولٍ كان الجدول يرجع تحويلًا لصفحة الدخول،
+        # فيُقرأ «لوحة بلا جدول» وتُحفظ العلامة — فيرجع كل بحثٍ بعدها فارغًا (اليوزر في مرح لا يظهر).
+        s._save_meta(no_table_search=True)                  # بوابةٌ أفسدتها تلك العلامة من قبل
+        rows = s.search("webuser1")
+        check("search still asks the panel and finds the user", [r["username"] for r in rows] == ["webuser1"], str(rows)[:80])
+        check("…and a find clears the stale «no table» flag", not s._meta().get("no_table_search"))
+        os.remove(s.jar_path)                               # جلسةٌ منتهية: لا كوكيز
+        cold = xm_web.PanelWebSession(acct, data_dir)
+        t = cold._table_query("webuser1", 10, force=True)
+        check("a redirect to the login page is not taken for «no table»", t["rows"] == []
+              and not cold._meta().get("no_table_search"), str(cold._meta().get("no_table_search")))
+        xm_web.solve_captcha = lambda img: ""               # لا OCR: الدخول يحتاج إنسانًا
+        cold.use_ocr = True
+        try:
+            cold.search("webuser1")
+            check("search on an expired session logs in first (needs the code), not «not found»", False, "returned rows")
+        except xm_web.CaptchaNeeded:
+            check("search on an expired session logs in first (needs the code), not «not found»", True)
+        check("…and still no «no table» flag", not cold._meta().get("no_table_search"))
+        late = xm_web.PanelWebSession(acct, data_dir)       # طلبٌ بُني قبل أن يدخل غيره…
+        s._save_cookies()                                   # …ثم دخل طلبٌ آخر وحفظ جلسته
+        logins = []
+        late.login = lambda *a, **k: logins.append(1)
+        late.ensure_login()
+        check("a request that waited on the login lock takes the new session, no second login",
+              logins == [] and late.is_authenticated(), str(logins))
+
         # ---- 5) fallback بشري: OCR يفشل → CaptchaNeeded → إدخال يدوي ----
         print("\n== 5. Human fallback when OCR fails ==")
         data_dir2 = tempfile.mkdtemp(prefix="xmweb2_")

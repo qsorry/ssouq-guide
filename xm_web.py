@@ -692,20 +692,23 @@ class PanelWebSession:
 
     def is_authenticated(self) -> bool:
         r = self._request("/")
+        if self._auth_wall(r):
+            return False
+        return r.get("status", 0) < 400
+
+    def _auth_wall(self, r) -> bool:
+        """ردٌّ يقف دون اللوحة: صفحة الدخول أو بوابة التحقّق البشري، أو تحويلٌ إليهما =
+        غير مُصادَق."""
         loc = (r.get("location", "") or r.get("final_url", "")).lower()
         if "/login" in loc or "check.html" in loc:
-            return False
+            return True
         body = self._text(r)
         low = body.lower()
-        # صفحة الدخول أو بوابة التحقّق البشري = غير مُصادَق
         if 'id="login_form"' in body or ('name="password"' in low and "captcha" in low) \
                 or ('type="password"' in low and "<form" in low):
-            return False
-        for gate in ("xm_simple_security_check", "verifying your browser",
-                     "security verification", "check.html", "token.php"):
-            if gate in low:
-                return False
-        return r.get("status", 0) < 400
+            return True
+        return any(gate in low for gate in ("xm_simple_security_check", "verifying your browser",
+                                            "security verification", "check.html", "token.php"))
 
     _LOGIN_LOCKS = {}
     _LOCKS_GUARD = __import__("threading").Lock()
@@ -719,9 +722,19 @@ class PanelWebSession:
         قفل لكل بوابة: صفحة الإنشاء تطلب الرصيد والباقات معًا، فلو دخل الاثنان في آن واحد
         كتب كلٌّ جلسته فوق جلسة الآخر وظهر أحدهما "بيانات غير صحيحة" بلا سبب."""
         with self._login_lock():
+            self._reload_cookies()
             if self.is_authenticated():
                 return
             self.login()  # آلي؛ قد يرمي CaptchaNeeded
+
+    def _reload_cookies(self):
+        """كوكيز البوابة من ملفها من جديد: طلبٌ انتظر القفل بينما دخل طلبٌ آخر يأخذ
+        الجلسة الجديدة بدل أن يحكم بانتهائها من نسخته القديمة فيدخل مرةً ثانية."""
+        try:
+            if os.path.exists(self.jar_path):
+                self.cj.load(ignore_discard=True, ignore_expires=True)
+        except Exception:
+            pass
 
     # ---- اكتشاف صفحة الإضافة ----
     _PKG_SELECT = re.compile(
@@ -1629,8 +1642,11 @@ class PanelWebSession:
             j = json.loads(self._text(r))
         except ValueError:
             # ليست JSON (404 أو صفحة HTML): اللوحة بلا جدول DataTables (Xtream Codes الأصلي).
-            # نحفظ ذلك فلا نكرر النداء ولا ننتظر تأكيدًا لن يأتي بعد كل إنشاء.
-            if r.get("status", 0) < 500:
+            # نحفظ ذلك فلا نكرر النداء ولا ننتظر تأكيدًا لن يأتي بعد كل إنشاء — إلا إن
+            # كان الرد تحويلًا أو صفحة دخول: تلك جلسةٌ منتهية لا لوحةٌ بلا جدول، ولو حُفظت
+            # لصار كل بحثٍ بعدها فارغًا بلا سؤال اللوحة.
+            st = r.get("status", 0)
+            if st < 500 and not (300 <= st < 400 or self._auth_wall(r)):
                 self._save_meta(no_table_search=True)
             return {"rows": [], "total": None, **({"raw": []} if raw else {})}
         rows, raws = [], []
@@ -1747,11 +1763,18 @@ class PanelWebSession:
         return rows[0] if rows else {}
 
     def search(self, query: str, limit: int = 50) -> list:
-        """بحث بالـ username أو الـ password عبر بحث الجدول نفسه (يفتّش كل الأعمدة)."""
+        """بحث بالـ username أو الـ password عبر بحث الجدول نفسه (يفتّش كل الأعمدة).
+        يدخل أولًا: البحث في كل البوابات يصل بوابةً لم تُفتح فجلستها منتهية، وبلا دخولٍ
+        يرجع الجدول تحويلًا لصفحة الدخول فيبدو «لم يُعثر». ويسأل اللوحة دائمًا (force)
+        فلا تُسكته علامة «لا جدول»، ونتيجةٌ وُجدت تُثبت أن الجدول يعمل فتُمحى العلامة."""
         query = str(query or "").strip()
         if not query:
             return []
-        return [self._row_out(r) for r in self._table_query(query, limit)["rows"]]
+        self.ensure_login()                   # قد يرمي CaptchaNeeded / LoginFailed
+        rows = self._table_query(query, limit, force=True)["rows"]
+        if rows and self._meta().get("no_table_search"):
+            self._save_meta(no_table_search=False, table_search_ok=True, confirm_misses=0)
+        return [self._row_out(r) for r in rows]
 
     @staticmethod
     def _row_out(r: dict) -> dict:
@@ -1854,6 +1877,7 @@ class CasperWebSession(PanelWebSession):
 
     def ensure_login(self):
         with self._login_lock():
+            self._reload_cookies()
             if self.is_authenticated():
                 return
             self.login()
