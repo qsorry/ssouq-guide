@@ -49,6 +49,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     block = 0                          # حالة HTTP يحجب بها Cloudflare كل طلب (403/429)، 0 = لا حجب
     drop_logins = 0                    # كم دخولًا ناجحًا تسقط جلسته فورًا (دخولٌ آخر بالحساب)
     logins = []                        # كل محاولة دخول: (اليوزر، قُبلت؟)
+    no_form = False                    # login.php يردّ 200 بلا نموذج دخول (دومين/مسار خطأ: ليست صفحة كاسبر)
+    cf_page = False                    # login.php يردّ 200 بتحدٍّ بشري من Cloudflare ("Just a moment")
 
     def log_message(self, *a):
         pass
@@ -194,6 +196,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             return
         p = self.path
         if "login.php" in p:
+            if self.cf_page:              # تحدٍّ بشري بصفحة 200 (لا حجب بحالة ≥ 400)
+                return self._html(200, "<!DOCTYPE html><html><head><title>Just a moment...</title>"
+                                       "</head><body>Checking your browser · cf-chl</body></html>")
+            if self.no_form:              # 200 بلا نموذج دخول: ليست صفحة كاسبر (دومين/مسار خطأ)
+                return self._html(200, "<!DOCTYPE html><html><body><h1>Welcome</h1></body></html>")
             return self._html(200, self._login_page())
         if not self._authed():
             self.send_response(303)
@@ -294,6 +301,7 @@ def start(user_count=120, host="127.0.0.1", port=0):
     """يشغّل لوحة كاسبر وهمية ويعيد (server, base_url, thread)."""
     _Handler.users = _make_users(user_count)
     _Handler.creds, _Handler.block, _Handler.drop_logins, _Handler.logins = None, 0, 0, []
+    _Handler.no_form, _Handler.cf_page = False, False
     srv = http.server.ThreadingHTTPServer((host, port), _Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
