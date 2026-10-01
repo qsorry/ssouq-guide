@@ -214,6 +214,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .seg button+button{border-inline-start:1px solid var(--line)}
 .seg button.on{background:color-mix(in srgb,var(--go) 14%,transparent);color:var(--go);font-weight:700}
 .sg-sum{color:var(--mute);font-size:.82rem;margin-bottom:10px}
+.src-note{color:var(--mute);font-size:.8rem;margin:2px 0 10px}
 .sg{margin-bottom:14px}
 .sg-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:.92rem;margin-bottom:8px}
 .sg-h::before{content:attr(data-glyph);width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:.75rem;color:#fff;background:var(--blue);flex:none}
@@ -641,6 +642,9 @@ function missCard(q, all){
     <div id="mkBox" hidden></div>
   </div>`;
 }
+// نتيجةٌ جاءت من ملف التصدير المحفوظ (فورية بلا سؤال اللوحة): نُشير إليها بهدوء، فحقل
+// «الحالة» لا تحمله اللقطة والانتهاء منها قد يسبق اللوحة قليلًا — والسحب الكامل يحدّثهما.
+const fileNote = `<div class="src-note">من الملف المحفوظ — فوريّ بلا انتظار اللوحة. لأحدث «حالة» وانتهاء، اسحب البوابة كاملةً.</div>`;
 const resTable = (rows, gid) => `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
   rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
     return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
@@ -677,7 +681,8 @@ async function doSearch(){
     if (d.need_login){ $("searchRes").innerHTML = L + '<div class="empty">سجّل الدخول إلى اللوحة أولًا (حمّل الباقات واكتب الكود).</div>'; return; }
     if (d.error || d.login_error){ $("searchRes").innerHTML = L + '<div class="empty">'+esc(d.error||d.login_error)+'</div>'; return; }
     const rows = d.results || [];
-    $("searchRes").innerHTML = L + (rows.length ? resTable(rows) : missCard(q));
+    const note = (d.source === "file" && rows.length) ? fileNote : "";
+    $("searchRes").innerHTML = L + note + (rows.length ? resTable(rows) : missCard(q));
   } catch(e){ $("searchRes").innerHTML = '<div class="empty">تعذّر البحث.</div>'; }
 }
 // كل البوابات في طلبٍ واحد (يبحث الخادم فيها بالتوازي): نتيجة كل بوابة تحت اسمها، والمختارة
@@ -697,7 +702,7 @@ async function searchAllGates(q, seq){
     const groups = list.filter(g => rowsOf(g).length || (g.links || []).length).map(g => {
       const gm = gateOf(g.id), n = rowsOf(g).length;
       return `<div class="sg"><div class="sg-h" data-mode="${esc(gm.mode || "")}" data-glyph="${esc((g.name || "?").trim().slice(0,1))}">${esc(g.name)}
-        <small>${n ? "(" + n + ")" : ""}${g.id === curGate ? " · المختارة" : ""}</small></div>${renderLinks(g.links)}${n ? resTable(rowsOf(g), g.id) : ""}</div>`;
+        <small>${n ? "(" + n + ")" : ""}${g.id === curGate ? " · المختارة" : ""}</small></div>${renderLinks(g.links)}${n && g.source === "file" ? fileNote : ""}${n ? resTable(rowsOf(g), g.id) : ""}</div>`;
     }).join("");
     const noteHtml = notes.length ? `<div class="sg-notes">${notes.map(g => {
       const why = g.need_login ? "لم يُبحث فيها — تحتاج دخولًا إلى اللوحة (كود التحقّق)"

@@ -105,6 +105,31 @@ def main():
         check("last_conn date kept", lr["n2"]["last_conn"] == "2026-09-20 14:30", lr["n2"]["last_conn"])
         check("last_conn missing -> blank", lr["n3"]["last_conn"] == "", repr(lr["n3"]["last_conn"]))
         check("آخر اتصال is a column header", "آخر اتصال" in users_export.HEADERS)
+
+        # البحث في اللقطة المحفوظة (بلا شبكة): بالـ username وبالـ password، احتواءً وبلا حساسية حروف
+        S, SG = "acctS", "gateS"
+        users_export.replace_all(d, S, SG, "لوحة", [
+            {"username": "AB1234", "password": "secret-zyx", "package": "15 Months", "exp": "2027-01-01"},
+            {"username": "CD5678", "password": "pw-zzz", "package": "1 Year"},
+        ], host="http://h")
+        by_user = users_export.search(d, S, SG, "ab1234")
+        check("search by username (case-insensitive)",
+              [r["username"] for r in by_user] == ["AB1234"], str(by_user)[:100])
+        by_pass = users_export.search(d, S, SG, "secret-zyx")
+        check("search by password finds its user", [r["username"] for r in by_pass] == ["AB1234"])
+        part = users_export.search(d, S, SG, "56")
+        check("partial match (contains)", [r["username"] for r in part] == ["CD5678"], str(part)[:80])
+        row = by_user[0]
+        check("result carries fields the UI shows + status placeholder",
+              row.get("password") == "secret-zyx" and row.get("package") == "15 Months"
+              and row.get("exp") == "2027-01-01" and row.get("status") == "", str(row)[:120])
+        check("empty query -> no results", users_export.search(d, S, SG, "   ") == [])
+        check("no match -> empty (caller falls back to the panel)",
+              users_export.search(d, S, SG, "nope999") == [])
+        check("missing file -> empty, no raise", users_export.search(d, S, "neverPulled", "ab1234") == [])
+        both = users_export.search(d, S, SG, "z")           # في باسوردِ الصفّين
+        check("limit caps results", len(users_export.search(d, S, SG, "z", limit=1)) == 1
+              and len(both) == 2, "both=%d" % len(both))
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

@@ -1737,8 +1737,16 @@ def annotate_package_type(gate, rows, pkgs=None):
 def search_gate(acct, gate, q):
     """بحث بوابة واحدة بالـ username/password، ومعه روابط الاستبدال (قديم↔جديد) لهذا
     الرقم فيها — لتتبّع «استُبدل بـ / بديل عن». لا يرمي: ما يمنع البحث يُرجَع حالةً
-    (need_login / login_error / error / unsupported) بجانب النتائج."""
+    (need_login / login_error / error / unsupported) بجانب النتائج.
+
+    اللقطة المحفوظة أولًا: يوزراتُ البوابة مخزَّنةٌ عندنا في ملف التصدير (تُحدَّث عند
+    السحب الكامل وعند كل إنشاء)، فنبحث فيها أولًا — يوزرٌ وباسوردٌ بلا شبكة ولا انتظار
+    جلسة اللوحة. وما لم يوجد في الملف (أو لم يُصدَّر بعد) تُسأل عنه اللوحة كما كان،
+    فلا يضيع يوزرٌ أُنشئ على اللوحة مباشرةً أو قبل أول تصدير."""
     links = user_links.find(DATA_DIR, acct["id"], gate["id"], q)
+    saved = users_export.search(DATA_DIR, acct["id"], gate["id"], q)
+    if saved:
+        return {"results": annotate_package_type(gate, saved), "links": links, "source": "file"}
     if gate.get("mode") == "falcon":
         try:
             return {"results": falcon_api.search(gate["api_url"], gate["api_key"], q), "links": links}
