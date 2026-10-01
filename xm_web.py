@@ -1835,6 +1835,9 @@ class CasperWebSession(PanelWebSession):
             r = self._request(self._u("index.php/home/index"))
         except Exception:
             return False                      # دومينٌ ميّت/تعذّر الوصول → غير مُصادَق
+        return self._authed(r)
+
+    def _authed(self, r) -> bool:
         loc = (r.get("location", "") or r.get("final_url", "")).lower()
         if "login.php" in loc or "auth=0" in loc:
             return False
@@ -1843,37 +1846,94 @@ class CasperWebSession(PanelWebSession):
             return False
         return r.get("status", 0) < 400
 
-    def _login_one(self) -> bool:
-        """محاولة دخولٍ واحدة على الدومين الحالي (self.base)."""
-        page = self._text(self._request(self.login_path))
+    @staticmethod
+    def _refusal(r):
+        """ردٌّ يمنع الدخول قبل أن تُفحص البيانات أصلًا: حدّ طلبات أو حجب Cloudflare أو
+        خطأ خادم → (الرمز، السبب بكلماته)، أو None لردٍّ عادي. يُحكم بالحالة وحدها (≥ 400):
+        Cloudflare يحقن `challenge-platform` في صفحات اللوحة السليمة أيضًا."""
+        st = r.get("status", 0)
+        if st < 400:
+            return None
+        low = (r.get("body") or b"")[:20000].decode("utf-8", "replace").lower()
+        if st == 429 or "error code: 1015" in low:
+            return "blocked", "اللوحة تحدّ الطلبات من الخادم الآن (HTTP %d) — انتظر دقائق ثم أعد المحاولة" % st
+        if any(m in low for m in ("cloudflare", "just a moment", "cf-chl", "attention required",
+                                  "you have been blocked")):
+            return "blocked", "حماية Cloudflare على اللوحة تحجب الخادم الآن (HTTP %d) — ليست البيانات" % st
+        return "http", "ردّت اللوحة HTTP %d" % st
+
+    @staticmethod
+    def _login_alert(html: str) -> str:
+        """نص رفض اللوحة في صفحة الدخول ("Login error. Please check admin name/password."):
+        تنبيهٌ `alert` بأي لون (اللوحة تكتبه `alert bg-danger` لا `alert-danger`)."""
+        m = re.search(r'<div[^>]*class=["\'][^"\']*\balert\b[^"\']*["\'][^>]*>(.*?)</div>',
+                      html or "", re.I | re.S)
+        if not m or "alert-success" in m.group(0).lower():
+            return ""
+        txt = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", m.group(1))))
+        return txt.strip(" ×")[:160]
+
+    def _login_one(self):
+        """محاولة دخولٍ واحدة على الدومين الحالي (self.base) → (الرمز، السبب): ("", "") إن
+        دخلت، وإلا السبب كما ردّت به اللوحة — رسالة رفضها (credentials)، أو حجبٌ قبل أن
+        تُفحص البيانات (blocked/http)، أو جلسةٌ قبلتها ثم أسقطتها (dropped). كان كل فشلٍ
+        "بيانات مرفوضة" فلا يُعرف أهي كلمة المرور أم حجب الخادم."""
+        r = self._request(self.login_path)
+        refused = self._refusal(r)
+        if refused:
+            return refused
+        page = self._text(r)
         form = self._parse_login_form(page) if 'name="password"' in page.lower() else {}
         fields = dict(form.get("fields") or {})
         fields[form.get("user_field") or "username"] = self.acct.get("user", "")
         fields[form.get("pass_field") or "password"] = self.acct.get("password", "")
         fields.setdefault("maa", "do_login")
-        self._request(self.login_path, data=fields,
-                      headers={"Referer": self._abs(self.login_path)})
-        return self.is_authenticated()
+        post = self._request(self.login_path, data=fields,
+                             headers={"Referer": self._abs(self.login_path)})
+        refused = self._refusal(post)
+        if refused:
+            return refused
+        answer = self._text(post)
+        alert = self._login_alert(answer) if "do_login" in answer.lower() else ""
+        if alert:                             # تنبيهٌ على صفحة الدخول نفسها = رفضٌ للبيانات
+            return "credentials", "رفضت اللوحة اسم الدخول أو كلمة المرور (%s)" % alert
+        home = self._request(self._u("index.php/home/index"))
+        if self._authed(home):
+            return "", ""
+        refused = self._refusal(home)
+        if refused:
+            return refused
+        loc = (post.get("location") or "").lower()
+        if 300 <= post.get("status", 0) < 400 and loc and "login.php" not in loc:
+            # حوّلت إلى اللوحة (قبلت البيانات) ثم أعادتنا للدخول: الجلسة سقطت بعد قبولها.
+            return "dropped", ("قبلت اللوحة البيانات ثم أعادتنا لصفحة الدخول — دخولٌ آخر بالحساب "
+                               "نفسه (بوابةٌ ثانية على اللوحة نفسها أو متصفّح) يُخرج هذه الجلسة")
+        return "login", "بقيت اللوحة على صفحة الدخول بلا رسالة"
 
     def login(self, captcha: str = None, auto_attempts: int = 3) -> bool:
         """يُسجّل الدخول مُجرّبًا الدومينات المتاحة (الناجحُ سابقًا أولًا) حتى ينجح
-        أحدها، ثم يحفظه. لا كود تحقّق ولا OCR — لوحة كاسبر لا تطلبه."""
+        أحدها، ثم يحفظه. لا كود تحقّق ولا OCR — لوحة كاسبر لا تطلبه. وجلسةٌ قبلتها
+        اللوحة ثم أسقطتها تُعاد مرةً واحدة (دخولٌ آخر بالحساب سبقها بلحظة). وإن فشلت
+        كلها فالرسالة سببُ كل دومين، ورمزها credentials إن رفضت لوحةٌ البيانات صراحةً."""
         last = self._meta().get("casper_base")
         order = ([last] if last and last in self.candidates else []) + \
                 [c for c in self.candidates if c != last]
-        errs = []
+        errs, codes = [], []
         for raw in order:
             self._use_base(raw)
             try:
-                if self._login_one():
+                code, why = self._login_one()
+                if code == "dropped":
+                    code, why = self._login_one()
+                if not code:
                     self._save_meta(casper_base=raw)
                     return True
-                errs.append("%s: بيانات مرفوضة" % self.base)
             except Exception as e:
-                errs.append("%s: %s" % (self.base, str(e)[:60]))
-        raise LoginFailed("credentials",
-                          "تعذّر الدخول إلى لوحة كاسبر على أي دومين — تحقّق من الرابط والبيانات (%s)"
-                          % " · ".join(errs[:4]))
+                code, why = "network", str(e)[:60]
+            codes.append(code)
+            errs.append("%s: %s" % (self.base, why))
+        code = next((c for c in ("credentials", "blocked") if c in codes), codes[0] if codes else "login")
+        raise LoginFailed(code, "تعذّر الدخول إلى لوحة كاسبر — %s" % " · ".join(errs[:4]))
 
     def ensure_login(self):
         with self._login_lock():

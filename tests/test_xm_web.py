@@ -605,7 +605,94 @@ def main():
             cas_srv.shutdown()
             shutil.rmtree(data_dir7, ignore_errors=True)
 
-        # == 9. يوزر «ضعيف» (مرح: Week username): يُستبدل المولَّد ولا تتوقّف الدفعة ==
+        # == 8c. دخول كاسبر يقول سببه: كان كل فشلٍ «بيانات مرفوضة» ==
+        # بعد البحث في كل البوابات ظهرت «تعذّر الدخول إلى لوحة كاسبر… بيانات مرفوضة» بلا أن يُعرف
+        # أهي كلمة المرور أم حجب Cloudflare للخادم أم جلسةٌ أسقطها دخولٌ آخر بالحساب.
+        print("\n== 8c. Casper login names its real reason (panel text, Cloudflare, dropped session) ==")
+        cas_srv, cas_base, _ = mock_casper.start(user_count=5)
+        H = mock_casper._Handler
+        data_dir7c = tempfile.mkdtemp(prefix="xmweb_casper_login_")
+
+        def cas(pw=PASS, base=cas_base, sid="c8c"):
+            shutil.rmtree(os.path.join(data_dir7c, "sessions"), ignore_errors=True)   # جلسةٌ من الصفر
+            return xm_web.CasperWebSession({"id": sid, "user": USER, "password": pw,
+                                            "panel_base": base, "host": "http://h"}, data_dir7c)
+
+        def fail(s):
+            try:
+                s.login()
+                return None
+            except xm_web.LoginFailed as e:
+                return e
+
+        try:
+            H.creds = (USER, PASS)
+            H.logins = []
+            check("right password logs in (Cloudflare's challenge-platform script on a 200 page is no block)",
+                  cas().login() is True and H.logins == [(USER, True)], str(H.logins))
+
+            H.logins = []
+            e = fail(cas(pw="wrong"))
+            msg = str(e) if e else ""
+            check("wrong password: code credentials, the panel's own text, no more 'بيانات مرفوضة'",
+                  e is not None and e.code == "credentials" and "رفضت اللوحة اسم الدخول أو كلمة المرور" in msg
+                  and "Login error. Please check admin name/password." in msg and "بيانات مرفوضة" not in msg, msg)
+            check("a rejected password is sent once, not retried", H.logins == [(USER, False)], str(H.logins))
+
+            H.block, H.logins = 403, []
+            e = fail(cas())
+            msg = str(e) if e else ""
+            check("Cloudflare 403: code blocked, says Cloudflare and that it is not the credentials",
+                  e is not None and e.code == "blocked" and "Cloudflare" in msg and "HTTP 403" in msg
+                  and "ليست البيانات" in msg, msg)
+            check("...and no password was sent to a blocked panel", H.logins == [], str(H.logins))
+
+            H.block = 429
+            e = fail(cas())
+            msg = str(e) if e else ""
+            check("rate limit 429: code blocked, says wait", e is not None and e.code == "blocked"
+                  and "HTTP 429" in msg and "انتظر" in msg, msg)
+            H.block = 0
+
+            H.drop_logins, H.logins = 1, []
+            check("session dropped right after an accepted login: retried once, then in",
+                  cas().login() is True and H.logins == [(USER, True), (USER, True)], str(H.logins))
+
+            H.drop_logins, H.logins = 5, []
+            e = fail(cas())
+            msg = str(e) if e else ""
+            check("dropped every time: code dropped, says another login with the same account",
+                  e is not None and e.code == "dropped" and "قبلت اللوحة البيانات" in msg
+                  and "دخولٌ آخر بالحساب" in msg, msg)
+            check("...after exactly two attempts (no login storm)", len(H.logins) == 2, str(H.logins))
+            H.drop_logins = 0
+
+            dead = "http://127.0.0.1:9/iptv"                # دومينٌ قديم ميّت + الحالي يرفض البيانات
+            e = fail(cas(pw="wrong", base=dead + " " + cas_base))
+            msg = str(e) if e else ""
+            check("several domains: each named with its reason; a real rejection wins the code",
+                  e is not None and e.code == "credentials" and "127.0.0.1:9" in msg
+                  and "Login error" in msg, msg)
+
+            # طبقة xm_lines: ما تراه صفحة الإنشاء في «البحث في كل البوابات» وفي بطاقة البوابة
+            import xm_lines  # noqa: E402
+            orig_dd = xm_lines.DATA_DIR
+            xm_lines.DATA_DIR = data_dir7c
+            try:
+                gate = {"id": "kc", "name": "بوابة كاسبر", "mode": "web", "web_flavor": "casper",
+                        "host": "http://ssouqhost.vip:80", "panel_base": cas_base,
+                        "panel_user": USER, "panel_pass": "wrong"}
+                out = xm_lines.search_gate({"id": "a1", "gates": [gate]}, gate, "u0001")
+                check("search in all gates shows the panel's reason for the Casper gate",
+                      "Login error" in out.get("login_error", "") and not out.get("results"), str(out)[:160])
+            finally:
+                xm_lines.DATA_DIR = orig_dd
+        finally:
+            H.creds, H.block, H.drop_logins = None, 0, 0
+            cas_srv.shutdown()
+            shutil.rmtree(data_dir7c, ignore_errors=True)
+
+        # == 9.يوزر «ضعيف» (مرح: Week username): يُستبدل المولَّد ولا تتوقّف الدفعة ==
         # كانت دفعة من ١٠ تتوقّف عند ٥: رفضت اللوحة السادس لضعفه، وقرأ المصنِّفُ «username»
         # في الرسالة فعدّها خطأ دخول فانتظر ~١٢ ثانية تأكيدًا ثم أوقف الدفعة.
         print("\n== 9. Weak username (Marah 'Week username'): replace it, don't stop the batch ==")
