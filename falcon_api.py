@@ -151,6 +151,8 @@ def search(base, key, query, max_pages=12, per=50):
     if not query:
         return []
     d = _request(base, key, "/lines?per=%d&q=%s" % (per, urllib.parse.quote(query)))
+    if d.get("ok") is False:          # مفتاحٌ مرفوض وأشباهه: خطأٌ يُذكر، لا «لم يُعثر» كاذبة
+        raise FalconError("فالكون /lines: " + str(d.get("error")))
     rows = d.get("lines", []) or []
     if rows:
         return [_line_row(r) for r in rows[:50]]
