@@ -1807,6 +1807,9 @@ class CasperWebSession(PanelWebSession):
     مسافة أو سطر): تُجرّب حتى ينجح أحدها، ويُحفظ الناجح فيُبدأ به لاحقًا — فلا
     يُعاد الضبط مع كل تغيير دومين."""
 
+    # علامة وجود نموذج الدخول: حقل كلمة المرور بأيّ اقتباس (كما يكتشفه _parse_login_form).
+    _PW_INPUT = re.compile(r"""type=["']password["']""", re.I)
+
     def __init__(self, account, data_dir, use_ocr=False):
         super().__init__(account, data_dir, use_ocr=use_ocr)
         raw_all = str(account.get("panel_base") or account.get("login_url") or "").strip()
@@ -1863,6 +1866,17 @@ class CasperWebSession(PanelWebSession):
         return "http", "ردّت اللوحة HTTP %d" % st
 
     @staticmethod
+    def _challenge(html: str) -> str:
+        """تحدٍّ بشري من Cloudflare بصفحةٍ حالتها < 400 (لا يلتقطه `_refusal` الذي يحكم
+        بالحالة وحدها): عباراتٌ قاطعة لا تظهر في صفحة اللوحة السليمة — فهذي تحقن سكربت
+        `challenge-platform` و«cloudflare» وحدهما، فلا يُحكم بهما هنا. فارغٌ = لا تحدٍّ."""
+        low = (html or "")[:20000].lower()
+        if any(m in low for m in ("just a moment", "cf-chl", "attention required",
+                                  "you have been blocked", "error code: 1015")):
+            return "تحدّي Cloudflare بشريّ على اللوحة الآن (صفحة تحقّق) — افتح الدومين بالمتصفّح مرّةً ثم أعد المحاولة"
+        return ""
+
+    @staticmethod
     def _login_alert(html: str) -> str:
         """نص رفض اللوحة في صفحة الدخول ("Login error. Please check admin name/password."):
         تنبيهٌ `alert` بأي لون (اللوحة تكتبه `alert bg-danger` لا `alert-danger`)."""
@@ -1876,14 +1890,23 @@ class CasperWebSession(PanelWebSession):
     def _login_one(self):
         """محاولة دخولٍ واحدة على الدومين الحالي (self.base) → (الرمز، السبب): ("", "") إن
         دخلت، وإلا السبب كما ردّت به اللوحة — رسالة رفضها (credentials)، أو حجبٌ قبل أن
-        تُفحص البيانات (blocked/http)، أو جلسةٌ قبلتها ثم أسقطتها (dropped). كان كل فشلٍ
-        "بيانات مرفوضة" فلا يُعرف أهي كلمة المرور أم حجب الخادم."""
+        تُفحص البيانات (blocked/http)، أو جلسةٌ قبلتها ثم أسقطتها (dropped)، أو لم تظهر
+        صفحة الدخول أصلًا (noform: دومينٌ تغيّر أو عنوانٌ ناقص مسار السياق …/iptv). كان
+        كل فشلٍ "بيانات مرفوضة" فلا يُعرف أهي كلمة المرور أم حجب الخادم."""
         r = self._request(self.login_path)
         refused = self._refusal(r)
         if refused:
             return refused
         page = self._text(r)
-        form = self._parse_login_form(page) if 'name="password"' in page.lower() else {}
+        if not self._PW_INPUT.search(page):
+            # ردّت 200 بلا نموذج دخول: لسنا على صفحة كاسبر — لا جدوى من إرسال البيانات.
+            ch = self._challenge(page)
+            if ch:
+                return "blocked", ch
+            return "noform", ("لم تظهر صفحة دخول كاسبر على هذا الدومين — غالبًا الدومين تغيّر، "
+                              "أو العنوان ناقصٌ مسار السياق (…/iptv)، أو صفحة تحقّقٍ بشري. "
+                              "بدّل الدومين في إعداد البوابة")
+        form = self._parse_login_form(page)
         fields = dict(form.get("fields") or {})
         fields[form.get("user_field") or "username"] = self.acct.get("user", "")
         fields[form.get("pass_field") or "password"] = self.acct.get("password", "")
@@ -1908,7 +1931,12 @@ class CasperWebSession(PanelWebSession):
             # حوّلت إلى اللوحة (قبلت البيانات) ثم أعادتنا للدخول: الجلسة سقطت بعد قبولها.
             return "dropped", ("قبلت اللوحة البيانات ثم أعادتنا لصفحة الدخول — دخولٌ آخر بالحساب "
                                "نفسه (بوابةٌ ثانية على اللوحة نفسها أو متصفّح) يُخرج هذه الجلسة")
-        return "login", "بقيت اللوحة على صفحة الدخول بلا رسالة"
+        if self._PW_INPUT.search(answer):
+            # أعادت صفحة الدخول (بنموذجها) دون تنبيه خطأ: رفضٌ صامتٌ لا نراه — غالبًا بيانات
+            # خاطئة أو حسابٌ منتهٍ على هذه البوابة، أو جلسةٌ لم تُقبل.
+            return "login", ("أعادت اللوحة صفحة الدخول دون رسالة خطأ — تحقّق من اسم الدخول "
+                             "وكلمة المرور وصلاحية الحساب على هذه البوابة")
+        return "login", "بقيت اللوحة على صفحة الدخول بلا رسالة (HTTP %d)" % post.get("status", 0)
 
     def login(self, captcha: str = None, auto_attempts: int = 3) -> bool:
         """يُسجّل الدخول مُجرّبًا الدومينات المتاحة (الناجحُ سابقًا أولًا) حتى ينجح
