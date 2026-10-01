@@ -208,6 +208,23 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .miss-h{font-weight:700;font-size:1rem;margin-bottom:4px}
 .miss-p{color:var(--mute);font-size:.85rem;margin:0 0 12px}
 .miss #mkBox{text-align:start}
+/* البحث في كل البوابات: مفتاح النطاق، ونتيجة كل بوابة تحت اسمها */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--sf2)}
+.seg button{padding:6px 12px;font-size:.82rem;border-radius:0;color:var(--mute)}
+.seg button+button{border-inline-start:1px solid var(--line)}
+.seg button.on{background:color-mix(in srgb,var(--go) 14%,transparent);color:var(--go);font-weight:700}
+.sg-sum{color:var(--mute);font-size:.82rem;margin-bottom:10px}
+.sg{margin-bottom:14px}
+.sg-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:.92rem;margin-bottom:8px}
+.sg-h::before{content:attr(data-glyph);width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:.75rem;color:#fff;background:var(--blue);flex:none}
+.sg-h[data-mode="falcon"]::before{background:linear-gradient(135deg,#0ea5e9,#1e40af)}
+.sg-h[data-mode="web"]::before{background:linear-gradient(135deg,#f59e0b,#dc2626)}
+.sg-h[data-mode="api"]::before{background:linear-gradient(135deg,var(--purple),#4c1d95)}
+.sg-h small{color:var(--mute);font-weight:500;font-size:.78rem}
+.sg-notes{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.sg-note{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--mute);background:var(--sf2);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.sg-note.warn-t{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent)}
+.sg-note .ghost{padding:4px 10px;font-size:.78rem;margin-inline-start:auto}
 /* بطاقة ملف Excel */
 #xlsxPanel .xp-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
 #xlsxPanel .xp-ic{width:46px;height:46px;border-radius:13px;flex:none;display:grid;place-items:center;color:var(--go);background:color-mix(in srgb,var(--go) 16%,transparent);border:1px solid color-mix(in srgb,var(--go) 40%,transparent)}
@@ -336,7 +353,9 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
   </section>
 
   <section class="panel" id="searchBox" hidden>
-    <div class="ph"><h2>بحث في البوابة</h2></div>
+    <div class="ph"><h2 id="searchTtl">بحث في البوابة</h2>
+      <div class="seg" id="searchScope" role="group" aria-label="نطاق البحث" hidden><button type="button" data-scope="all">كل البوابات</button><button type="button" data-scope="one">البوابة المختارة</button></div>
+    </div>
     <div class="inline"><input class="t" id="searchQ" placeholder="ابحث بيوزر أو باسورد"><button class="ghost" id="searchBtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>بحث</button></div>
     <div id="searchRes" style="margin-top:10px"></div>
   </section>
@@ -495,7 +514,7 @@ async function loadGates(){
   }
   $("gateTabs").innerHTML = gates.map(g =>
     `<button class="gate-tab${g.id===curGate?" on":""}" data-gate="${g.id}" data-mode="${esc(g.mode)}" data-glyph="${esc((g.name||"?").trim().slice(0,1))}">${esc(g.name)}</button>`).join("");
-  $("statusBox").hidden = false; $("searchBox").hidden = false;
+  $("statusBox").hidden = false; $("searchBox").hidden = false; renderScope();
   renderGateHeader(); fetchPackages(); loadGateStatus(); loadXlsxStatus();
 }
 function renderGateHeader(){
@@ -512,15 +531,19 @@ function renderGateHeader(){
   setBadge("…", "");
 }
 function setBadge(txt, cls){ const b = $("heroBadge"); b.className = "badge " + cls; b.querySelector("span").textContent = txt; }
-function selectGate(id){
+// keepSearch: تبديلٌ من داخل نتائج البحث الشامل (بوابة البديل، فتح بوابةٍ تحتاج دخولًا) لا يمسحها.
+// يُرجّع وعد تحميل الباقات، فيُنتظر حين تلزم باقات البوابة الجديدة.
+function selectGate(id, keepSearch){
   drawer(false);
-  if (id === curGate) return;
+  if (id === curGate) return Promise.resolve();
   curGate = id;
   $("timing").hidden = true; showSplitResult(null);
   try { localStorage.setItem("xm_curgate_" + account, id); } catch {}
   document.querySelectorAll(".gate-tab").forEach(b => b.classList.toggle("on", b.dataset.gate === id));
-  $("resBox").hidden = true; $("msg").textContent = ""; $("searchRes").innerHTML = ""; $("searchQ").value = "";
-  renderGateHeader(); fetchPackages(); renderHistory(); loadGateStatus(); loadXlsxStatus();
+  $("resBox").hidden = true; $("msg").textContent = "";
+  if (!keepSearch) { $("searchRes").innerHTML = ""; $("searchQ").value = ""; }
+  renderGateHeader(); const pk = fetchPackages(); renderHistory(); loadGateStatus(); loadXlsxStatus();
+  return pk;
 }
 
 // ---- حالة البوابة: النقاط + آخر يوزر + تحذير التغيّر منذ آخر جلسة ----
@@ -575,15 +598,18 @@ function renderToday(s){
     </tbody></table></div></div>`;
   box.querySelector("#copyToday").onclick = () => copy(list.map(lineOf).join("\n"));
 }
-const lineOf = x => { const g = gates.find(g => g.id === curGate) || {}; const guide = g.guide_url || globalGuide || "";
+const gateOf = id => gates.find(g => g.id === (id || curGate)) || {};
+const lineIn = (x, g) => { const guide = g.guide_url || globalGuide || "";
   return `Host ${g.host || ""} User ${x.username} Pass ${x.password}` + (guide ? ` Guide ${guide}` : ""); };
+const lineOf = x => lineIn(x, gateOf());
 // ما يُنسخ من البحث (نتائجه واليوزر البديل): نص الشرح إن فعّله المدير لهذا العميل (بقيم
 // اليوزر)، وإلا السطر كما كان. الإنشاء والسجل واشتراكات اليوم تنسخ السطر دائمًا.
 // الهوست من البوابة، وإلا من سطر الإنشاء نفسه (فالكون بلا هوست يقرؤه من /me لحظة الإنشاء).
 // {server} اسم اشتراك البوابة كما في الدليل (سمارت/فالكون/كاسبر) — يحسبه الخادم من رابط شرحها.
-const msgOf = x => {
-  if (!guideText) return x.line || lineOf(x);
-  const g = gates.find(g => g.id === curGate) || {};
+// gid = بوابة الصف (البحث في كل البوابات)، وإلا المختارة.
+const msgOf = (x, gid) => {
+  const g = gateOf(gid);
+  if (!guideText) return x.line || lineIn(x, g);
   const v = {host: g.host || partOf(x, "host", /^Host\s+(\S+)/), user: partOf(x, "username", /User\s+(\S+)/),
              pass: partOf(x, "password", /Pass\s+(\S+)/), guide: g.guide_url || globalGuide || partOf(x, "guide", /Guide\s+(\S+)/),
              server: g.guide_sub || ""};
@@ -604,17 +630,41 @@ function linkNote(l){
     : `<div class="lnk">🔁 <b class="go-t">${nw}</b> بديلٌ عن الرقم القديم <b>${old}</b>${pk}${at}</div>`;
 }
 const renderLinks = links => (links && links.length) ? `<div class="lnks">${links.map(linkNote).join("")}</div>` : "";
-function missCard(q){
+function missCard(q, all){
   return `<div class="miss">
-    <div class="miss-h">لم يُعثر على «${esc(q)}»</div>
+    <div class="miss-h">لم يُعثر على «${esc(q)}»${all ? " في أي بوابة" : ""}</div>
     <p class="miss-p">أنشئ يوزرًا بديلًا واربطه بهذا الرقم — لو رجعت إليه لاحقًا عرفتَ بديله.</p>
     <button class="ghost" id="mkRepl">إنشاء يوزر بديل</button>
     <div id="mkBox" hidden></div>
   </div>`;
 }
+const resTable = (rows, gid) => `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
+  rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
+    return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
+      <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(msgOf(x, gid))}">${copyIcon}</button></td></tr>`; }).join("") + `</tbody></table></div>`;
+
+// ---- نطاق البحث: كل بوابات العميل معًا (الافتراضي) أو المختارة وحدها — يُتذكّر لكل متصفح ----
+let searchAll = true; try { searchAll = localStorage.getItem("xm_search_scope") !== "one"; } catch {}
+const allScope = () => searchAll && gates.length > 1;
+function renderScope(){
+  $("searchScope").hidden = gates.length < 2;
+  $("searchScope").querySelectorAll("button").forEach(b => b.classList.toggle("on", (b.dataset.scope === "all") === allScope()));
+  $("searchTtl").textContent = allScope() ? "بحث في كل البوابات" : "بحث في البوابة";
+}
+$("searchScope").onclick = e => {
+  const b = e.target.closest("button[data-scope]"); if (!b || (b.dataset.scope === "all") === allScope()) return;
+  searchAll = b.dataset.scope === "all";
+  try { localStorage.setItem("xm_search_scope", searchAll ? "all" : "one"); } catch {}
+  renderScope();
+  if ($("searchQ").value.trim()) doSearch(); else $("searchRes").innerHTML = "";
+};
+const gatesAr = n => n === 1 ? "بوابة واحدة" : n === 2 ? "بوابتين" : n <= 10 ? n + " بوابات" : n + " بوابة";
+
+let searchSeq = 0;                                         // آخر بحثٍ طُلب: ردُّ ما قبله لا يُعرض
 async function doSearch(){
-  const q = $("searchQ").value.trim();
+  const q = $("searchQ").value.trim(), seq = ++searchSeq;
   if (!q){ $("searchRes").innerHTML = ""; return; }
+  if (allScope()) return searchAllGates(q, seq);
   $("searchRes").innerHTML = '<div class="empty">جاري البحث…</div>';
   try {
     const r = await fetch(B + "/api/search?gate=" + encodeURIComponent(curGate) + "&q=" + encodeURIComponent(q));
@@ -624,18 +674,55 @@ async function doSearch(){
     if (d.need_login){ $("searchRes").innerHTML = L + '<div class="empty">سجّل الدخول إلى اللوحة أولًا (حمّل الباقات واكتب الكود).</div>'; return; }
     if (d.error || d.login_error){ $("searchRes").innerHTML = L + '<div class="empty">'+esc(d.error||d.login_error)+'</div>'; return; }
     const rows = d.results || [];
-    $("searchRes").innerHTML = L + (rows.length ? `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
-      rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
-        return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
-          <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(msgOf(x))}">${copyIcon}</button></td></tr>`; }).join("") + `</tbody></table></div>`
-      : missCard(q));
+    $("searchRes").innerHTML = L + (rows.length ? resTable(rows) : missCard(q));
   } catch(e){ $("searchRes").innerHTML = '<div class="empty">تعذّر البحث.</div>'; }
+}
+// كل البوابات في طلبٍ واحد (يبحث الخادم فيها بالتوازي): نتيجة كل بوابة تحت اسمها، والمختارة
+// أولًا؛ وما لم يُبحث فيه (يحتاج دخولًا، تعذّر، غير متاح) يُذكر باسمه — فلا يُفهم «لم يُعثر» على
+// أنه غير موجودٍ في بوابةٍ لم تُفحص أصلًا.
+async function searchAllGates(q, seq){
+  $("searchRes").innerHTML = `<div class="empty">جاري البحث في ${gatesAr(gates.length)}…</div>`;
+  try {
+    const r = await fetch(B + "/api/search?gate=all&q=" + encodeURIComponent(q));
+    const d = chk(await r.json());
+    if (seq !== searchSeq) return;                         // طُلب بحثٌ آخر في أثنائه
+    if (d.error){ $("searchRes").innerHTML = '<div class="empty">'+esc(d.error)+'</div>'; return; }
+    const list = (d.gates || []).slice().sort((a, b) => (b.id === curGate) - (a.id === curGate));
+    const rowsOf = g => g.results || [];
+    const found = list.filter(g => rowsOf(g).length);
+    const notes = list.filter(g => !rowsOf(g).length && (g.need_login || g.login_error || g.error || g.unsupported));
+    const groups = list.filter(g => rowsOf(g).length || (g.links || []).length).map(g => {
+      const gm = gateOf(g.id), n = rowsOf(g).length;
+      return `<div class="sg"><div class="sg-h" data-mode="${esc(gm.mode || "")}" data-glyph="${esc((g.name || "?").trim().slice(0,1))}">${esc(g.name)}
+        <small>${n ? "(" + n + ")" : ""}${g.id === curGate ? " · المختارة" : ""}</small></div>${renderLinks(g.links)}${n ? resTable(rowsOf(g), g.id) : ""}</div>`;
+    }).join("");
+    const noteHtml = notes.length ? `<div class="sg-notes">${notes.map(g => {
+      const why = g.need_login ? "لم يُبحث فيها — تحتاج دخولًا إلى اللوحة (كود التحقّق)"
+                : g.unsupported ? "البحث غير متاح لهذه البوابة"
+                : "تعذّر البحث فيها: " + esc(g.login_error || g.error);
+      return `<div class="sg-note${g.unsupported ? "" : " warn-t"}"><b>${esc(g.name)}</b> ${why}${g.need_login ? `<button class="ghost" data-open-gate="${esc(g.id)}">فتح البوابة</button>` : ""}</div>`;
+    }).join("")}</div>` : "";
+    const sum = found.length ? `<div class="sg-sum">وُجد في ${gatesAr(found.length)} من ${list.length}</div>` : "";
+    $("searchRes").innerHTML = sum + groups + noteHtml + (found.length ? "" : missCard(q, true));
+  } catch(e){ $("searchRes").innerHTML = '<div class="empty">تعذّر البحث.</div>'; }
+}
+// البديل يُنشأ في بوابةٍ واحدة: في البحث الشامل تُختار هنا (المختارة افتراضًا)، فتُحمَّل باقاتها.
+let replQ = "";
+async function switchReplGate(id){
+  const box = $("mkBox"); if (!box) return;
+  box.innerHTML = '<div class="empty">جاري تحميل باقات البوابة…</div>';
+  await selectGate(id, true);
+  if (!packages.length){ box.innerHTML = '<div class="empty">تعذّر تحميل باقات هذه البوابة — إن طُلب كود التحقّق فاكتبه، ثم اضغط «إنشاء يوزر بديل» من جديد.</div>'; return; }
+  showReplPicker(replQ);
 }
 async function showReplPicker(q){
   const box = $("mkBox"); if (!box) return;
+  replQ = q;
   box.hidden = false;
   if (!packages || !packages.length){ box.innerHTML = '<div class="empty">جاري تحميل الباقات…</div>'; await fetchPackages(); }
   if (!packages || !packages.length){ box.innerHTML = '<div class="empty">تعذّر تحميل الباقات — اختر بوابة أولًا.</div>'; return; }
+  const gatePick = allScope() ? `<div class="lbl" style="margin-top:10px">بوابة البديل:</div>
+    <div class="slices" id="rGates">${gates.map(g => `<label><input type="radio" name="rgate" value="${esc(g.id)}"${g.id === curGate ? " checked" : ""}><span>${esc(g.name)}</span></label>`).join("")}</div>` : "";
   const casper = gateIsCasper();
   const credBox = casper
     ? `<label class="f" for="rp" style="margin-top:10px">Password مخصص (أرقام، فارغ = تلقائي)</label>
@@ -648,7 +735,7 @@ async function showReplPicker(q){
        </div>
        <label class="f" for="rp" style="margin-top:8px">Password مخصص (فارغ = تلقائي)</label>
        <input class="t" id="rp" inputmode="numeric" autocomplete="off" placeholder="فارغ = تُولَّد تلقائيًا">`;
-  box.innerHTML = `<div class="lbl" style="margin-top:10px">اختر المدة/الباقة للبديل:</div>
+  box.innerHTML = gatePick + `<div class="lbl" style="margin-top:10px">اختر المدة/الباقة للبديل:</div>
     <div class="pkgs">${packages.map((p,i)=>`<label class="pkg"><input type="radio" name="rpkg" value="${esc(p.id)}" ${i===0?"checked":""}>${calIcon}<b>${esc(p.name)}</b><small>${p.hint?esc(p.hint):(p.credits!=null?esc(String(p.credits))+" كريدت":"")}</small></label>`).join("")}</div>
     <div id="rSliceBox" hidden>
       <div class="lbl" style="margin-top:12px">مدة البديل <small>— من باقة ١٥ شهرًا</small></div>
@@ -844,10 +931,13 @@ async function fetchPackages(){
     return;
   }
   if (!curGate) { $("pkgs").innerHTML = '<div class="empty">اختر بوابة أولاً.</div>'; return; }
+  packages = [];                                     // لا تبقى باقات البوابة السابقة حتى تصل الجديدة
   $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
   $("sliceBox").hidden = true; updateCta();          // نوع البيع يتبع باقات البوابة الجديدة
   try {
-    const r = await fetch(B + "/api/packages?gate=" + encodeURIComponent(curGate)); const d = chk(await r.json());
+    const gid = curGate;
+    const r = await fetch(B + "/api/packages?gate=" + encodeURIComponent(gid)); const d = chk(await r.json());
+    if (gid !== curGate) return;                     // بُدّلت البوابة في أثنائه: باقاتها يجلبها طلبها
     if (d.need_captcha) { showCaptcha(fetchPackages); $("pkgs").innerHTML = '<div class="empty">بانتظار كود التحقّق…</div>'; return; }
     if (d.login_error) throw new Error(d.login_error);
     if (d.error) throw new Error(d.error);
@@ -1068,11 +1158,16 @@ $("searchQ").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(
 $("searchRes").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.copy) { copy(b.dataset.copy); return; }
+  if (b.dataset.openGate) {                              // بوابةٌ تحتاج دخولًا: تُفتح فيُطلب كودها
+    if (b.dataset.openGate === curGate) fetchPackages(); else selectGate(b.dataset.openGate, true);
+    return;
+  }
   if (b.id === "mkRepl") { showReplPicker($("searchQ").value.trim()); return; }
   if (b.id === "mkGo") { createReplacement(b.dataset.old); return; }
 });
 $("searchRes").addEventListener("change", e => {        // باقة البديل تُظهر مدته (باقة ١٥ شهرًا) أو تخفيها
-  if (e.target.name === "rpkg") updateReplSlice();
+  if (e.target.name === "rgate") switchReplGate(e.target.value);
+  else if (e.target.name === "rpkg") updateReplSlice();
   else if (e.target.name === "rslice") { syncSliceN("rslice"); replSliceHint(); }
 });
 $("searchRes").addEventListener("input", e => { if (e.target.name === "rslice_n") replSliceHint(); });   // «مدة أخرى» تُكتب

@@ -20,6 +20,7 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from concurrent.futures import ThreadPoolExecutor
 
 import copy
 
@@ -1683,6 +1684,43 @@ def annotate_package_type(gate, rows, pkgs=None):
     return rows
 
 
+def search_gate(acct, gate, q):
+    """بحث بوابة واحدة بالـ username/password، ومعه روابط الاستبدال (قديم↔جديد) لهذا
+    الرقم فيها — لتتبّع «استُبدل بـ / بديل عن». لا يرمي: ما يمنع البحث يُرجَع حالةً
+    (need_login / login_error / error / unsupported) بجانب النتائج."""
+    links = user_links.find(DATA_DIR, acct["id"], gate["id"], q)
+    if gate.get("mode") == "falcon":
+        try:
+            return {"results": falcon_api.search(gate["api_url"], gate["api_key"], q), "links": links}
+        except falcon_api.FalconError as e:
+            return {"results": [], "links": links, "error": str(e)}
+        except Exception:
+            return {"results": [], "links": links, "error": "تعذّر البحث في اللوحة"}
+    if gate.get("mode") == "web":         # بحث جدول اللوحة نفسه
+        try:
+            return {"results": annotate_package_type(gate, web_session(gate).search(q)), "links": links}
+        except xm_web.CaptchaNeeded:
+            return {"results": [], "links": links, "need_login": True}
+        except xm_web.LoginFailed as e:
+            return {"results": [], "links": links, "login_error": str(e)}
+        except Exception:
+            return {"results": [], "links": links, "error": "تعذّر البحث في اللوحة"}
+    return {"results": [], "links": links, "unsupported": True}
+
+
+def search_all_gates(acct, gates, q):
+    """البحث في كل بوابات العميل معًا (بالتوازي، فالزمن زمن أبطئها لا مجموعها) — نتيجة
+    كل بوابة باسمها ومعرّفها وبترتيب بواباته، وما تعذّر في بوابةٍ لا يُسقط البقية."""
+    def one(g):
+        try:
+            out = search_gate(acct, g, q)
+        except Exception:
+            out = {"results": [], "links": [], "error": "تعذّر البحث في اللوحة"}
+        return {"id": g["id"], "name": g.get("name", ""), **out}
+    with ThreadPoolExecutor(max_workers=min(8, len(gates))) as ex:
+        return list(ex.map(one, gates))
+
+
 def virtual_base(pkg_id):
     """معرّف الباقة الافتراضية 'x2:15' → ('15', عدد مرات التمديد)؛ وإلا None."""
     pid = str(pkg_id or "")
@@ -3083,26 +3121,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"provider": gate.get("mode"), "credits": None,
                                         "unsupported": True})
             if path == "/api/search":             # بحث بالـ username/password
+                q = self._q("q").strip()
+                if self._q("gate") == "all":      # كل بوابات العميل معًا، نتيجةٌ لكل بوابة
+                    gates = acct.get("gates", []) if acct else []
+                    if role != "account" or not gates:
+                        return self._send(403, {"error": "غير متاح"})
+                    if not q:
+                        return self._send(200, {"all": True, "gates": []})
+                    return self._send(200, {"all": True, "gates": search_all_gates(acct, gates, q)})
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
                     return self._send(403, {"error": "غير متاح"})
-                q = self._q("q").strip()
                 if not q:
                     return self._send(200, {"results": []})
-                # روابط الاستبدال (قديم↔جديد) لهذا الرقم — لتتبّع «استُبدل بـ / بديل عن»
-                links = user_links.find(DATA_DIR, acct["id"], gate["id"], q)
-                if gate.get("mode") == "falcon":
-                    return self._send(200, {"results": falcon_api.search(gate["api_url"], gate["api_key"], q), "links": links})
-                if gate.get("mode") == "web":     # بحث جدول اللوحة نفسه
-                    try:
-                        return self._send(200, {"results": annotate_package_type(gate, web_session(gate).search(q)), "links": links})
-                    except xm_web.CaptchaNeeded:
-                        return self._send(200, {"results": [], "links": links, "need_login": True})
-                    except xm_web.LoginFailed as e:
-                        return self._send(200, {"results": [], "links": links, "login_error": str(e)})
-                    except Exception:
-                        return self._send(200, {"results": [], "links": links, "error": "تعذّر البحث في اللوحة"})
-                return self._send(200, {"results": [], "links": links, "unsupported": True})
+                return self._send(200, search_gate(acct, gate, q))
             if path == "/api/users-export/status":   # حالة ملف الإكسل لهذه البوابة
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
