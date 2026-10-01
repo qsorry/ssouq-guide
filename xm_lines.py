@@ -35,6 +35,11 @@ import content
 import content_page
 import reports
 import store_sync
+import seo_build
+import seo_sources
+import seo_search
+import seo_db
+import seo_pages
 import xm_web
 import falcon_api
 import crypto_store
@@ -2824,6 +2829,8 @@ def _content_loop():
             store_sync.tick(DATA_DIR)       # أعداد المحتوى في وصف منتجات المتجر — بعد السحب، فتُكتب أعداده الجديدة
         except Exception:
             pass
+        seo_build.tick(DATA_DIR)            # طبقة الكيانات (‏seo.sqlite): تُبنى إن تغيّر فهرسٌ — ولا ترفع شيئًا
+        seo_sources.tick(DATA_DIR)          # الإثراء من Xtream وTMDB: دفعةٌ داخل النافذة الليلية وحدها
         time.sleep(CONTENT_TICK)
 
 
@@ -3106,8 +3113,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(code, raw=body, ctype="text/html; charset=utf-8",
                                   extra={"Cache-Control": f"public, max-age={age}"} if code == 200
                                   else {"Retry-After": str(league.RETRY)})
+        if path.startswith("/ar/content"):      # لا بادئة عربية: العربية على /content نفسه
+            return self._redirect(path[3:] + qs, 301)
         root = content.PATH_EN if path == content.PATH_EN or path.startswith(content.PATH_EN + "/") else content.PATH
         lang = "en" if root == content.PATH_EN else "ar"     # الصفحة نفسها بالإنجليزية على ‏/en/content
+        hit = seo_pages.handle(DATA_DIR, path, lang)        # طبقة الكيانات (معاينة، noindex): الأفلام والمسلسلات والأشخاص والهبّات
+        if hit is not None:
+            code, body, hdr = hit
+            if code == 301:
+                return self._redirect(hdr["Location"] + qs, 301)
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8", extra=hdr or {"Cache-Control": "no-store"})
         if path in (root, root + "/"):          # محتوى الاشتراكات: إلى أول سيرفرٍ له محتوى
             key = content.first_key(DATA_DIR)
             if key:
@@ -3325,6 +3340,21 @@ class Handler(BaseHTTPRequestHandler):
                     return self._page("content_admin.html")
                 if path == "/api/content/admin":
                     return self._send(200, content_state())
+                if path == "/api/content/seo":            # طبقة الكيانات: أعدادها وحال بنائها (لا تبني)
+                    return self._send(200, seo_build.stats(DATA_DIR))
+                if path == "/api/content/seo/review":     # ما يحتاج مراجعة يدوية (الاسم وحده، أو تعارض)
+                    return self._send(200, {"ok": True, "reviews": seo_build.reviews(
+                        DATA_DIR, self._q("status") or "open", self._q("kind"), self._q("limit") or 100, self._q("offset") or 0)})
+                if path == "/api/content/seo/enrich":     # الإثراء: الطابور والنافذة والمفتاح وآخر دفعة
+                    return self._send(200, {"ok": True, **seo_sources.state(DATA_DIR)})
+                if path == "/api/content/seo/search":     # تجربة تصحيح البحث: ما يصير إليه الاسم (كيان · اقتراح · لا شيء)
+                    con = seo_db.connect(DATA_DIR, create=False)
+                    if con is None:
+                        return self._send(200, {"ok": True, "result": "none", "q": self._q("q")})
+                    try:
+                        return self._send(200, {"ok": True, **seo_search.explain(con, seo_search.load(con), self._q("q")[:80], seo_db.settings(con))})
+                    finally:
+                        con.close()
                 return self._send(404, {"error": "not found"})
             if path == "/reports" or path == "/api/reports":   # بلاغات المحتوى (للمدير وللموظف الذي فُتحت له)
                 if not reports_on(role, acct):
@@ -3992,6 +4022,35 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/content/admin/store-preview":    # ما سيتغيّر في وصف كل منتج — بلا كتابة
                 ids = body.get("ids") if isinstance(body.get("ids"), list) else None
                 return self._send(200, store_sync.preview(DATA_DIR, ids))
+            elif path == "/api/content/admin/seo-build":     # «ابنِ طبقة الكيانات الآن»: في الخلفية، وبناءٌ واحد في وقته
+                started = seo_build.start_build(DATA_DIR, force=bool(body.get("force", True)))
+                return self._send(200, {"ok": True, "started": started, **seo_build.stats(DATA_DIR)})
+            elif path == "/api/content/admin/seo-key":       # مفتاح TMDB: يُحفظ مشفَّرًا ولا يُعرض
+                con = seo_db.connect(DATA_DIR)
+                try:
+                    seo_sources.set_tmdb_key(con, DATA_DIR, body.get("key") or "")
+                finally:
+                    con.close()
+                return self._send(200, {"ok": True, **seo_sources.state(DATA_DIR)})
+            elif path == "/api/content/admin/seo-run":       # دفعة إثراءٍ الآن خارج النافذة (في الخلفية)
+                started = seo_sources.start_run(DATA_DIR, int(body.get("limit") or 0) or None)
+                return self._send(200, {"ok": True, "started": started, **seo_sources.state(DATA_DIR)})
+            elif path == "/api/content/admin/seo-probe":     # الفحص الأولي: ماذا تعطي كل لوحة (يتصل باللوحات الآن)
+                return self._send(200, {"ok": True, "probe": seo_sources.probe(DATA_DIR, int(body.get("n") or 20))})
+            elif path == "/api/content/admin/seo-sample":    # عيّنة 30 عملًا حقيقيًّا: تُثرى الآن (وحدها) وتقريرها الكامل — قبل الإثراء الجماعي
+                return self._send(200, {"ok": True, "sample": seo_sources.sample(DATA_DIR, body.get("spec") if isinstance(body.get("spec"), dict) else None)})
+            elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
+                return self._send(200, {"ok": True, "audit": seo_pages.audit(DATA_DIR, int(body.get("n") or 30))})
+            elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)
+                con = seo_db.connect(DATA_DIR)
+                try:
+                    for k, v in (body.get("settings") or {}).items():
+                        if k in seo_db.SECRET_SETTINGS:
+                            continue
+                        seo_db.set_setting(con, k, v)
+                finally:
+                    con.close()
+                return self._send(200, {"ok": True, **seo_build.stats(DATA_DIR)})
             elif path == "/api/content/admin/store-run":     # «حدّث الآن»: يكتب في المنتجات ويعتمدها، فتُحدَّث بعده وحدها
                 ids = body.get("ids") if isinstance(body.get("ids"), list) else None
                 res = store_sync.run(DATA_DIR, ids, manual=True, force=bool(body.get("force")))

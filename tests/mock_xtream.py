@@ -109,7 +109,8 @@ def build(host, plain=False):
                   f"{host}/movie/{USER}/{PASS}/{sid}.mkv"]
         vod[sid] = {"num": sid, "name": title, "stream_type": "movie", "stream_id": sid, "stream_icon": logo,
                     "rating": str(rating), "rating_5based": rating / 2, "added": str(NOW - ago * 86400), "genre": genre,
-                    "is_adult": "0", "category_id": CATS["vod"][group], "container_extension": "mkv"}
+                    "is_adult": "0", "category_id": CATS["vod"][group], "container_extension": "mkv",
+                    **({"tmdb_id": INFO[name]["tmdb_id"]} if name in INFO and "tmdb_id" in INFO[name] else {})}
     sid += 1                                   # فيلمٌ في قسمٍ عادي تعلّمه الواجهة للكبار: يُسقط بالإثراء
     lines += [ext('group-title="أفلام عربية"', "Hidden Adult Film"), f"{host}/movie/{USER}/{PASS}/{sid}.mp4"]
     vod[sid] = {"stream_id": sid, "name": "Hidden Adult Film", "is_adult": "1", "category_id": CATS["vod"]["أفلام عربية"]}
@@ -125,7 +126,8 @@ def build(host, plain=False):
                        "plot": PLOTS.get(name, f"{name}: القصة كاملة بمواسمها."), "cast": "", "director": "",
                        "genre": genre, "releaseDate": f"{year}-01-20", "last_modified": str(NOW - ago * 86400),
                        "rating": str(rating), "rating_5based": rating / 2, "backdrop_path": [TMDB + poster],
-                       "youtube_trailer": "", "episode_run_time": "50", "category_id": CATS["series"][group]})
+                       "youtube_trailer": "", "episode_run_time": "50", "category_id": CATS["series"][group],
+                       **({"tmdb": INFO[name]["tmdb"]} if name in INFO and "tmdb" in INFO[name] else {})})
     return "\n".join(lines) + "\n", vod, series, live
 
 
@@ -144,6 +146,15 @@ def png(seed, w=120, h=120):
         return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+# تفاصيل تعطيها اللوحة لبعض الأعمال (get_vod_info · get_series_info) — ومعرّف TMDB منها «مرشّح» لا يُعتمد بلا تحقّق
+INFO = {
+    "Oppenheimer": {"tmdb_id": "872585", "cast": "Cillian Murphy, Emily Blunt, Matt Damon", "director": "Christopher Nolan", "country": "United States"},
+    "Dune: Part Two": {"tmdb_id": "693134", "cast": "Timothée Chalamet, Zendaya", "director": "Denis Villeneuve", "country": "US"},
+    "Game of Thrones": {"tmdb": "1399", "cast": "Emilia Clarke, Kit Harington", "country": "US", "ep_titles": True},
+    "Breaking Bad": {"tmdb": "999999", "cast": "Bryan Cranston", "country": "US"},      # معرّفٌ خاطئ من اللوحة: يجب ألّا يُعتمد
+}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -177,6 +188,25 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/player_api.php":
             if self.server.api_down:
                 return self._send(500, b"error")
+            if q.get("action") == "get_vod_info":        # تفاصيل فيلم (المرحلة 2): معرّف TMDB والممثلون والمخرج والبلد
+                o = vod.get(int(q.get("vod_id") or 0))
+                if not o:
+                    return self._send(200, b"[]", "application/json")
+                info = INFO.get(o["name"].rsplit(" (", 1)[0], {})
+                return self._send(200, json.dumps({"info": {"name": o["name"], "plot": "Plot of " + o["name"], "genre": o.get("genre", ""),
+                                                            "releasedate": f"{o['name'][-5:-1]}-05-01", "duration_secs": 7200, "rating": o["rating"],
+                                                            "backdrop_path": [o["stream_icon"]], "youtube_trailer": "", **info},
+                                                   "movie_data": {"stream_id": o["stream_id"]}}, ensure_ascii=False).encode(), "application/json")
+            if q.get("action") == "get_series_info":     # تفاصيل مسلسل بحلقاته
+                o = next((x for x in series if x["series_id"] == int(q.get("series_id") or 0)), None)
+                if not o:
+                    return self._send(200, b"[]", "application/json")
+                info = INFO.get(o["name"], {})
+                eps = {str(sn): [{"id": sn * 1000 + e, "episode_num": e, "title": f"{o['name']} S{sn:02d}E{e:02d}" if not info.get("ep_titles") else f"Episode title {sn}-{e}",
+                                  "info": {"plot": f"What happens in episode {e} of season {sn}" if info.get("ep_titles") else "", "releasedate": f"{2010 + sn}-01-{e:02d}",
+                                           "duration_secs": 2700, "season": sn}} for e in range(1, 4)] for sn in (1, 2)}
+                return self._send(200, json.dumps({"info": {**{k: v for k, v in o.items() if k not in ("series_id",)}, **info}, "episodes": eps},
+                                                  ensure_ascii=False).encode(), "application/json")
             data = {"get_vod_streams": list(vod.values()), "get_series": series, "get_live_streams": live,
                     "get_vod_categories": categories("vod"), "get_series_categories": categories("series"),
                     "get_live_categories": categories("live")}.get(q.get("action"), [])

@@ -1,0 +1,692 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""طبقة الكيانات (‏seo_db · seo_match · seo_build): الفيلم أو المسلسل كيانٌ واحد مهما تعدّدت سيرفراته — بلا إنترنت.
+
+  - المطابقة محافظة: الاسم وحده لا يدمج (‏name_only للمراجعة)، والسنة أو ملصق TMDB أو القصة تدمج، وسنتان
+    مختلفتان فيلمان مختلفان بلا مراجعة، وقصّتان مختلفتان تعارضٌ يُراجَع، والاسم العربي يلتقي بالإنجليزي عبر الملصق.
+  - البناء: من فهارس السيرفرات نفسها ولا يمسّها (بصمتها قبل وبعد)، تزايدي (لا يُعاد ما لم يتغيّر ملف)، ثابت
+    (المعرّف وslug لا يتغيّران)، ما غاب يُعلَّم ولا يُحذف، الأقسام المخفية لا تدخل، القنوات لا تدخل، والحقل اليدوي لا
+    يُكتب فوقه، ومصدر كل حقل مسجَّل، والمواسم والأسماء البديلة.
+  - على خادم حيّ: ‏/api/content/seo و‏/review للمدير وحده، و«ابنِ الآن» من صفحة المدير، ولا مسار عام جديد.
+
+تشغيل:  python tests/test_seo.py
+"""
+import base64
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+os.environ["CONTENT_IMG_PRIVATE"] = "1"
+import threading  # noqa: E402
+
+import mock_tmdb  # noqa: E402
+import mock_xtream  # noqa: E402
+import content as C  # noqa: E402
+import seo_search  # noqa: E402
+import seo_sources  # noqa: E402
+import seo_build  # noqa: E402
+import seo_db  # noqa: E402
+import seo_match as M  # noqa: E402
+
+_p = _f = 0
+
+
+def check(label, cond, extra=""):
+    global _p, _f
+    if cond:
+        _p += 1
+        print("  PASS  " + label + (("  (%s)" % extra) if extra else ""))
+    else:
+        _f += 1
+        print("  FAIL  " + label + (("  (%s)" % extra) if extra else ""))
+
+
+TMDB = "https://image.tmdb.org/t/p/w500/"
+ST = dict(seo_db.DEFAULTS)
+
+
+def it(typ, name, service, year=0, poster="", plot="", genres=(), seasons=None, **kw):
+    return {"type": typ, "kind": typ, "name": name, "service": service, "local_key": C._ikey(typ, {"n": name, "y": year}),
+            "year": year, "poster": poster, "backdrop": "", "plot": plot, "genres": list(genres), "rating": 0,
+            "added": 0, "stream_id": 0, "seasons": seasons or {}, "groups": [], **kw}
+
+
+def unit_match():
+    print("== المطابقة ==")
+    check("slug لاتيني", M.slugify("Wonder Woman (2017)") == "wonder-woman-2017" and M.slugify("Wonder Woman") == "wonder-woman")
+    check("slug بلا علامات أوروبية", M.slugify("Amélie") == "amelie")
+    check("slug لاتيني دائمًا: العربي يُنقحر بلا تشكيل", M.slugify("المؤسّس عثمان") == "almwss-athman", M.slugify("المؤسّس عثمان"))
+    check("slug بأرقام هندية", M.slugify("ولاد رزق ٣") == "wlad-rzq-3")
+    check("أولوية الاسم: الإنجليزي ثم الأصلي ثم النقحرة",
+          M.slug_source({"title": "بريكنغ باد", "title_en": "Breaking Bad", "original_title": "Breaking Bad"}) == ("Breaking Bad", "en")
+          and M.slug_source({"title": "بريكنغ باد", "original_title": "Breaking Bad"}) == ("Breaking Bad", "original")
+          and M.slug_source({"title": "باب الحارة"}) == ("باب الحارة", "translit"))
+    taken = {"dune"}
+    check("الفريد: الاسم ثم الاسم-السنة ثم -2", M.unique_slug(taken.__contains__, "Dune", 2021) == "dune-2021"
+          and M.unique_slug({"dune", "dune-2021"}.__contains__, "Dune", 2021) == "dune-2021-2")
+    a, b = it("movie", "Dune", "casper", 2021), it("movie", "Dune", "falcon", 1984)
+    check("سنتان مختلفتان: مختلفان يقينًا", M.pair_score(a, b, ST)[0] == M.DISTINCT)
+    a, b = it("movie", "Dune", "casper", 2021), it("movie", "Dune", "falcon", 2021)
+    check("نفس السنة تدمج", M.pair_score(a, b, ST)[0] >= ST["merge_min"])
+    a, b = it("series", "The Office", "casper"), it("series", "The Office", "falcon")
+    s, why = M.pair_score(a, b, ST)
+    check("الاسم وحده لا يدمج", s is not None and s < ST["merge_min"] and not why)
+    a, b = it("series", "Breaking Bad", "casper", poster=TMDB + "bb.jpg"), it("series", "بريكنغ باد", "falcon", poster=TMDB + "bb.jpg")
+    check("ملصق TMDB واحد يدمج ولو اختلف الاسم", M.pair_score(a, b, ST)[0] >= ST["merge_min"])
+    a, b = it("series", "X", "casper", poster="http://p1/1.png"), it("series", "X", "falcon", poster="http://p2/1.png")
+    check("صور اللوحات لا تُقارن", "poster" not in M.pair_score(a, b, ST)[1])
+    p1 = "A chemistry teacher turns to making meth with a former student to secure his family"
+    a, b = it("series", "X", "casper", plot=p1), it("series", "X", "falcon", plot=p1 + " after a cancer diagnosis")
+    check("قصّة واحدة تدمج", M.pair_score(a, b, ST)[0] >= ST["merge_min"])
+    a, b = it("series", "X", "casper", plot=p1), it("series", "X", "falcon", plot="Mockumentary about office workers in a paper company in Scranton Pennsylvania")
+    check("قصّتان مختلفتان: تعارضٌ يُراجَع", M.pair_score(a, b, ST)[0] is None)
+    a, b = it("movie", "Dune", "casper", 2021, poster=TMDB + "d.jpg"), it("movie", "Dune", "falcon", 1984, poster=TMDB + "d.jpg")
+    check("سنتان مختلفتان بملصقٍ واحد: تعارض (خطأ سنة)", M.pair_score(a, b, ST)[0] is None)
+    a, b = it("movie", "X", "casper", genres=["Action"]), it("movie", "X", "falcon", genres=["action", "Drama"])
+    check("التصنيف قرينة لا تكفي وحدها", 0 < M.pair_score(a, b, ST)[0] < ST["merge_min"])
+    items = [it("series", "Breaking Bad", "casper", poster=TMDB + "bb.jpg", plot=p1), it("series", "بريكنغ باد", "falcon", poster=TMDB + "bb.jpg"),
+             it("series", "Breaking Bad", "smart", 2008, plot=p1), it("series", "The Office", "casper"), it("series", "The Office", "falcon"),
+             it("movie", "Dune", "casper", 2021), it("movie", "Dune", "falcon", 1984), it("movie", "Dune", "smart", 2021)]
+    clusters, reviews = M.cluster(items, ST)
+    sizes = sorted(len(c) for c in clusters)
+    check("التجميع: بريكنغ باد واحدٌ في ثلاثة (الملصق ثم الاسم)، Dune 2021 في اثنين، Dune 1984 وحده، The Office اثنان",
+          sizes == [1, 1, 1, 2, 3], str(sizes))
+    check("مراجعةٌ واحدة: The Office بالاسم وحده", [r["kind"] for r in reviews] == ["name_only"] and reviews[0]["name"] == "The Office")
+    a, b, c = it("series", "Y", "casper", plot=p1), it("series", "Y", "falcon", 2009), it("series", "Y", "smart", 2009, plot=p1)
+    clusters, reviews = M.cluster([a, b, c], ST)
+    check("يلتقيان عبر ثالث: عنقودٌ واحد بلا مراجعة", len(clusters) == 1 and not reviews)
+
+
+def _cat(movies, series, live=(), series2=()):
+    return {"v": 2, "at": time.time(),
+            "movie": [{"id": "m1", "name": "Movies", "items": movies}, {"id": "m2", "name": "Kids", "items": []}],
+            "series": [{"id": "s1", "name": "Series", "items": series}, {"id": "s2", "name": "Netflix", "items": list(series2)}],
+            "live": [{"id": "l1", "name": "Live", "items": list(live)}]}
+
+
+def _write(d, key, cat):
+    p = os.path.join(d, "content", key + ".json")
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(cat, f, ensure_ascii=False)
+    os.utime(p, (time.time() + 2, time.time() + 2))    # بصمةٌ جديدة ولو كُتب في الثانية نفسها
+
+
+def _hash(d):
+    out = {}
+    for n in sorted(os.listdir(os.path.join(d, "content"))):
+        if n.endswith(".json"):
+            with open(os.path.join(d, "content", n), "rb") as f:
+                out[n] = hashlib.sha1(f.read()).hexdigest()
+    return out
+
+
+def _dataset(d):
+    os.makedirs(os.path.join(d, "content"), exist_ok=True)
+    with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+        json.dump({"servers": [{"key": "casper", "name": "كاسبر", "hidden": ["m2"]}, {"key": "falcon", "name": "فالكون"},
+                               {"key": "smart", "name": "سمارت"}]}, f, ensure_ascii=False)
+    plot = "A chemistry teacher turns to making meth with a former student to secure his family"
+    _write(d, "casper", _cat(
+        [{"n": "Wonder Woman", "y": 2017, "p": TMDB + "ww.jpg", "r": 7.2, "i": 10, "a": 100, "g": ["Action"]},
+         {"n": "Dune", "y": 2021, "p": TMDB + "d.jpg", "d": "Paul Atreides travels to Arrakis the desert planet", "i": 11}],
+        [{"n": "Breaking Bad", "p": TMDB + "bb.jpg", "s": [[1, 7], [2, 13]], "d": plot, "i": 20, "r": 9.4},
+         {"n": "The Office", "s": [[1, 6]], "i": 21},
+         {"n": "Shameless", "y": 2011, "s": [[1, 12]], "i": 22}],
+        [{"n": "MBC 1", "i": 99}]))
+    with open(os.path.join(d, "content", "casper.json"), encoding="utf-8") as f:
+        cat = json.load(f)
+    cat["movie"][1]["items"] = [{"n": "Hidden Kids Movie", "y": 2020, "i": 12}]      # قسمٌ أخفاه المدير
+    _write(d, "casper", cat)
+    _write(d, "falcon", _cat(
+        [{"n": "Wonder Woman", "y": 2017, "p": "http://panel/1.png", "r": 6.9, "i": 30, "a": 200, "g": ["Adventure", "Action"]},
+         {"n": "Dune", "y": 1984, "p": TMDB + "d84.jpg", "i": 31}],
+        [{"n": "بريكنغ باد", "p": TMDB + "bb.jpg", "s": [[1, 7], [2, 13], [3, 13]], "i": 40},
+         {"n": "The Office", "s": [[1, 14]], "d": "Mockumentary on a group of office workers in Scranton", "i": 41},
+         {"n": "Shameless", "y": 2004, "s": [[1, 7]], "i": 42}]))
+    _write(d, "smart", _cat(
+        [{"n": "Wonder Woman", "p": TMDB + "ww.jpg", "i": 50}],
+        [{"n": "Breaking Bad", "y": 2008, "s": [[1, 7]], "d": plot, "i": 60}]))
+
+
+def unit_build():
+    print("== البناء ==")
+    d = tempfile.mkdtemp(prefix="seo_")
+    try:
+        _dataset(d)
+        before = _hash(d)
+        res = seo_build.build(d)
+        check("يبني من ثلاثة سيرفرات", res and res["services"] == ["casper", "falcon", "smart"] and res["items"] == 12, str(res))
+        check("فهارس السيرفرات لم تُمسّ", _hash(d) == before)
+        s = seo_build.stats(d)
+        e = s["entities"]
+        check("8 كيانات: 3 أفلام (Wonder Woman، Dune 2021، Dune 1984) و5 مسلسلات", e["total"] == 8 and e["movie"] == 3 and e["series"] == 5, str(e))
+        check("Wonder Woman في ثلاثة سيرفرات (السنة، ثم الملصق لمن بلا سنة)", s["by_services"]["movie"].get("3") == 1, str(s["by_services"]))
+        check("بريكنغ باد واحدٌ في ثلاثة: الملصق جمع العربي بالإنجليزي، والقصة جمعت سمارت", s["by_services"]["series"].get("3") == 1)
+        check("القنوات لا تدخل، والقسم المخفي لا يدخل", s["links"] == 12 and e["total"] == 8)
+        rv = seo_build.reviews(d)
+        check("للمراجعة: The Office بالاسم وحده فقط (Dune وShameless بسنتين: مختلفان بلا مراجعة)",
+              [r["kind"] for r in rv] == ["name_only"] and rv[0]["name"] == "The Office", json.dumps(rv, ensure_ascii=False)[:200])
+        con = seo_db.connect(d)
+        bb = con.execute("SELECT * FROM content WHERE slug='breaking-bad'").fetchone()
+        check("الكيان: الاسم الأكثر تكرارًا، والسنة من سمارت، والتقييم الأعلى، والقصة", bb and bb["year"] == 2008 and bb["rating"] == 9.4
+              and bb["overview"].startswith("A chemistry") and bb["confidence"] == 3)
+        pv = seo_db.provenance(con, "content", bb["id"])
+        check("مصدر كل حقل مسجَّل: السنة من سمارت (m3u)، التقييم من كاسبر (xtream)، المواسم محسوبة",
+              pv["year"][:2] == ("m3u", "smart") and pv["rating"][:2] == ("xtream", "casper") and pv["seasons"][0] == "derived", str(pv))
+        seasons = {r["number"]: r["episode_count"] for r in con.execute("SELECT number, episode_count FROM season WHERE content_id=?", (bb["id"],))}
+        check("المواسم أكبر ما رُئي في كل سيرفر", seasons == {1: 7, 2: 13, 3: 13}, str(seasons))
+        al = {r["alias"] for r in con.execute("SELECT alias FROM content_alias WHERE content_id=?", (bb["id"],))}
+        check("الأسماء البديلة: الإنجليزي والعربي", al == {"Breaking Bad", "بريكنغ باد"}, str(al))
+        ww = con.execute("SELECT poster, year FROM content WHERE slug='wonder-woman'").fetchone()
+        check("الملصق المفضَّل من TMDB لا من اللوحة", ww["poster"].startswith(TMDB) and ww["year"] == 2017)
+        slugs = {r["slug"] for r in con.execute("SELECT slug FROM content")}
+        check("slug فريد: dune وdune-1984 وبالعربي", {"dune", "dune-1984", "the-office", "the-office-2"} <= slugs, str(slugs))
+        ids = {r["slug"]: r["id"] for r in con.execute("SELECT id, slug FROM content")}
+        con.close()
+
+        check("تزايدي: لا يُعاد البناء ما لم يتغيّر شيء", seo_build.build(d) is None)
+        res = seo_build.build(d, force=True)
+        con = seo_db.connect(d)
+        check("إعادة البناء بالقوة: لا جديد ولا مدمج، والمعرّفات وslug كما هي", res["new"] == 0 and res["merged"] == 0
+              and {r["slug"]: r["id"] for r in con.execute("SELECT id, slug FROM content")} == ids)
+        # المدير يغلب: عنوانٌ يدوي لا يكتب البناء فوقه
+        con.execute("UPDATE content SET title='بريكنج باد' WHERE id=?", (ids["breaking-bad"],))
+        seo_db.set_provenance(con, "content", ids["breaking-bad"], "title", "manual")
+        con.commit(); con.close()
+        seo_build.build(d, force=True)
+        con = seo_db.connect(d)
+        check("الحقل اليدوي يبقى بعد البناء", con.execute("SELECT title FROM content WHERE id=?", (ids["breaking-bad"],)).fetchone()[0] == "بريكنج باد")
+        con.close()
+        # يغيب فيلمٌ من سمارت ويصل مسلسلٌ جديد: يُعلَّم الغائب ولا يُحذف، ويُبنى لتغيّر الملف
+        plot = "A chemistry teacher turns to making meth with a former student to secure his family"
+        _write(d, "smart", _cat([], [{"n": "Breaking Bad", "y": 2008, "s": [[1, 7]], "d": plot, "i": 60}, {"n": "Shōgun", "y": 2024, "s": [[1, 10]], "i": 61}]))
+        res = seo_build.build(d)
+        con = seo_db.connect(d)
+        ww = con.execute("SELECT confidence FROM content WHERE slug='wonder-woman'").fetchone()
+        link = con.execute("SELECT present FROM content_service WHERE service_key='smart' AND kind='movie'").fetchone()
+        check("ما غاب من سيرفرٍ: رابطه present=0 (لا يُحذف) والكيان باقٍ بسيرفريه", res["new"] == 1 and link["present"] == 0 and ww["confidence"] == 2)
+        check("الجديد كيانٌ جديد بـ slug", con.execute("SELECT slug FROM content WHERE title='Shōgun'").fetchone()[0] == "shogun")
+        # تغيّرت قرائن عضوٍ (ضاعت قصّته) فلم يعد يلتقي بكيانه: ينفصل كيانًا جديدًا ويُسجَّل (لا يُدمج بالاسم وحده)
+        _write(d, "smart", _cat([], [{"n": "Breaking Bad", "y": 2008, "s": [[1, 7]], "i": 60}, {"n": "Shōgun", "y": 2024, "s": [[1, 10]], "i": 61}]))
+        res = seo_build.build(d)
+        con.close(); con = seo_db.connect(d)
+        check("فقدان القرينة يفصل العضو كيانًا جديدًا مسجَّلًا للمراجعة", res["split"] == 1 and res["new"] == 1
+              and con.execute("SELECT COUNT(*) FROM review WHERE kind='split_entity' AND status='open'").fetchone()[0] == 1
+              and con.execute("SELECT COUNT(*) FROM content WHERE slug LIKE 'breaking-bad%' AND merged_into IS NULL").fetchone()[0] == 2)
+        _write(d, "smart", _cat([], [{"n": "Breaking Bad", "y": 2008, "s": [[1, 7]], "d": plot, "i": 60}, {"n": "Shōgun", "y": 2024, "s": [[1, 10]], "i": 61}]))
+        seo_build.build(d)
+        con.close(); con = seo_db.connect(d)
+        check("وبعودتها يعود إلى كيانه الأصلي والمنفصل يُعلَّم مدمجًا فيه", res and
+              con.execute("SELECT COUNT(*) FROM content WHERE slug LIKE 'breaking-bad%' AND merged_into IS NOT NULL").fetchone()[0] == 1
+              and con.execute("SELECT status FROM review WHERE kind='split_entity'").fetchone()[0] == "stale")
+        # يغيب كيانٌ من كل السيرفرات: available=0 لا حذف
+        for k in ("casper", "falcon"):
+            with open(os.path.join(d, "content", k + ".json"), encoding="utf-8") as f:
+                cat = json.load(f)
+            cat["series"][0]["items"] = [x for x in cat["series"][0]["items"] if x["n"] != "Shameless"]
+            _write(d, k, cat)
+        seo_build.build(d)
+        con.close(); con = seo_db.connect(d)
+        sh = con.execute("SELECT COUNT(*), SUM(available) FROM content WHERE title='Shameless'").fetchone()
+        check("ما غاب من كل السيرفرات يبقى بمعرّفه وavailable=0", sh[0] == 2 and sh[1] == 0, str(tuple(sh)))
+        check("بند المراجعة يبقى ثابتًا بين البناءات (لا يتكرّر)",
+              con.execute("SELECT COUNT(*) FROM review WHERE kind='name_only' AND status='open'").fetchone()[0] == 1)
+        # الإعدادات تُعدَّل بلا كود
+        seo_db.set_setting(con, "merge_min", 0)
+        con.close()
+        seo_build.build(d, force=True)
+        con = seo_db.connect(d)
+        check("بعتبة 0 يُدمج The Office ويُسجَّل الدمج للمراجعة، ويبقى الكيان المدمج بمعرّفه",
+              con.execute("SELECT COUNT(*) FROM content WHERE slug LIKE 'the-office%' AND merged_into IS NOT NULL").fetchone()[0] == 1
+              and con.execute("SELECT COUNT(*) FROM review WHERE key LIKE 'merged:%' AND status='open'").fetchone()[0] == 2
+              and con.execute("SELECT status FROM review WHERE kind='name_only'").fetchone()[0] == "stale")
+        try:
+            seo_db.set_setting(con, "nope", 1); bad = False
+        except ValueError:
+            bad = True
+        check("إعدادٌ غير معروف يُرفض", bad)
+        con.close()
+        rep = seo_build.report(d)
+        check("التقرير نصٌّ بالأعداد", "الكيانات الموحّدة" in rep and "تحتاج مراجعة" in rep)
+        # سيرفرٌ بفهرسٍ من النسخة الأولى
+        _write(d, "falcon", {"v": 1, "movie": [{"id": "m1", "name": "Movies", "items": ["Old Movie (2001) FHD", "Old Movie (2001) HD"]}],
+                             "series": [{"id": "s1", "name": "S", "items": [["Old Show (2003)", [[1, 5]]]]}], "live": []})
+        res = seo_build.build(d)
+        con = seo_db.connect(d)
+        om = con.execute("SELECT slug, year FROM content WHERE title='Old Movie'").fetchone()
+        check("فهرس النسخة الأولى يُقرأ بسنته وجودته مفصولتين", om and om["year"] == 2001 and om["slug"] == "old-movie")
+        con.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+# ================= على خادمٍ حيّ =================
+PORT = 9593
+ADMIN_PW = "envpass123"
+AUTH = "Basic " + base64.b64encode(f"admin:{ADMIN_PW}".encode()).decode()
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
+def req(base, path, data=None, auth=None, host=None):
+    """بلا اتّباع التحويلات: 301 يُرى كما هو."""
+    r = urllib.request.Request(base + path, data=json.dumps(data).encode() if data is not None else None,
+                               headers={**({"Authorization": auth} if auth else {}), **({"Host": host} if host else {}),
+                                        **({"Content-Type": "application/json"} if data is not None else {})})
+    try:
+        with _opener.open(r, timeout=20) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")
+
+
+def live():
+    print("== على خادم حيّ ==")
+    d = tempfile.mkdtemp(prefix="seo_live_")
+    _dataset(d)
+    env = dict(os.environ, XM_DATA=d, XM_BIND="127.0.0.1", XM_PORT=str(PORT), XM_ADMIN_PASSWORD=ADMIN_PW)
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    base = f"http://127.0.0.1:{PORT}"
+    try:
+        for _ in range(100):
+            try:
+                urllib.request.urlopen(base + "/robots.txt", timeout=2); break
+            except Exception:  # noqa: BLE001
+                time.sleep(0.15)
+        c, b = req(base, "/admin/api/content/seo")
+        check("الأعداد للمدير وحده (بلا دخول: 401)", c == 401, str(c))
+        c, b = req(base, "/admin/api/content/seo", auth=AUTH)
+        j = json.loads(b)
+        check("قبل البناء: built=false", c == 200 and j["ok"] and not j["built"], b[:120])
+        c, b = req(base, "/admin/api/content/admin/seo-build", {"force": True}, auth=AUTH)
+        check("«ابنِ الآن» يبدأ في الخلفية", c == 200 and json.loads(b)["started"])
+        for _ in range(100):
+            j = json.loads(req(base, "/admin/api/content/seo", auth=AUTH)[1])
+            if j.get("built") and not j.get("running"):
+                break
+            time.sleep(0.1)
+        check("بعد البناء: 8 كيانات و3 سيرفرات", j.get("built") and j["entities"]["total"] == 8 and j["services"] == ["casper", "falcon", "smart"], b[:200])
+        c, b = req(base, "/admin/api/content/seo/review?kind=name_only", auth=AUTH)
+        check("قائمة المراجعة", c == 200 and [r["name"] for r in json.loads(b)["reviews"]] == ["The Office"], b[:200])
+        c, b = req(base, "/admin/content", auth=AUTH)
+        check("صفحة المدير فيها بطاقة الطبقة", c == 200 and 'id="seo"' in b and "eBuild" in b)
+        c, b = req(base, "/api/content/seo", host="guide.ssouq.com")
+        check("لا مسار عام جديد", c == 404, str(c))
+        c, b = req(base, "/content/series/breaking-bad/", host="guide.ssouq.com")
+        check("مسارات الطبقة 404 على الموقع العام ما دامت المعاينة موقوفة", c == 404, str(c))
+        c, b = req(base, "/admin/api/content/admin/seo-settings", {"settings": {"preview": True}}, auth=AUTH)
+        c2, b2 = req(base, "/content/series/breaking-bad/", host="guide.ssouq.com")
+        check("بتفعيل المعاينة: الصفحة 200 وnoindex", c == 200 and c2 == 200 and 'content="noindex, follow"' in b2, f"{c} {c2}")
+        c, b = req(base, "/ar/content/series/breaking-bad/", host="guide.ssouq.com")
+        check("‏/ar/content/… يحوّل 301 إلى /content/…", c == 301, str(c))
+        c, b = req(base, "/content/casper", host="guide.ssouq.com")
+        check("صفحة السيرفر لم تتأثر", c == 200 and 'rel="canonical" href="https://guide.ssouq.com/content/casper"' in b)
+        c, b = req(base, "/admin/api/content/admin/seo-audit", {"n": 5}, auth=AUTH)
+        check("فحص العيّنة من الإدارة", c == 200 and json.loads(b)["audit"]["pages"] >= 2, b[:120])
+        c, b = req(base, "/admin/api/content/seo/search?q=person%20break", auth=AUTH)
+        check("تجربة البحث من الإدارة", c == 200 and json.loads(b)["result"] in ("suggest", "entity", "none"))
+        c, b = req(base, "/admin/api/content/seo/enrich", auth=AUTH)
+        check("حال الإثراء من الإدارة (بلا مفتاح)", c == 200 and json.loads(b)["has_key"] is False and "window" in json.loads(b))
+        c, b = req(base, "/content/casper", host="guide.ssouq.com")
+        check("صفحة السيرفر العامة كما هي (مفهرسة بـ canonical)", c == 200 and 'rel="canonical" href="https://guide.ssouq.com/content/casper"' in b, str(c))
+        check("القاعدة في data/content/seo.sqlite", os.path.exists(os.path.join(d, "content", "seo.sqlite")))
+    finally:
+        p.terminate(); p.wait(timeout=10)
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_ten():
+    """الحالات العشر التي طلبها المالك قبل المرحلة الثانية — كلٌّ باسمها."""
+    print("== الحالات العشر ==")
+    d = tempfile.mkdtemp(prefix="seo_ten_")
+    try:
+        _dataset(d)
+        plot = "A chemistry teacher turns to making meth with a former student to secure his family"
+        with open(os.path.join(d, "content", "casper.json"), encoding="utf-8") as f:
+            cat = json.load(f)
+        # داخل السيرفر الواحد: نفس الاسم في قسمين
+        cat["series"][0]["items"] += [{"n": "Fargo", "p": "http://panel/fargo.png", "s": [[1, 10]], "i": 70},
+                                      {"n": "Lupin", "p": "http://panel/lupin1.png", "s": [[1, 5]], "i": 72},
+                                      {"n": "Shameless", "y": 2011, "s": [[1, 12]], "i": 22}]
+        cat["series"][1]["items"] = [{"n": "Fargo", "p": "http://panel/fargo.png", "s": [[1, 10], [2, 10]], "i": 71},
+                                     {"n": "Lupin", "p": "http://panel/lupin2.png", "s": [[1, 5]], "i": 73},
+                                     {"n": "Shameless", "y": 2004, "s": [[1, 7]], "i": 74},
+                                     {"n": "Narcos", "y": 2015, "s": [[1, 10]], "i": 75, "t": 63351},
+                                     {"n": "Narcos", "y": 2015, "s": [[1, 10]], "i": 76, "t": 73911}]
+        cat["series"][0]["items"] = [x for x in cat["series"][0]["items"] if not (x["n"] == "Shameless" and x["i"] == 22)] + \
+            [{"n": "Shameless", "y": 2011, "s": [[1, 12]], "i": 22}]
+        _write(d, "casper", cat)
+        res = seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        bb = q("SELECT id, slug FROM content WHERE slug='breaking-bad' AND merged_into IS NULL")
+        al = {r[0] for r in q("SELECT alias FROM content_alias WHERE content_id=?", bb[0][0])} if bb else set()
+        check("1. Breaking Bad العربي/الإنجليزي → نفس الكيان", len(bb) == 1 and "بريكنغ باد" in al and "Breaking Bad" in al
+              and len(q("SELECT 1 FROM content_service WHERE content_id=?", bb[0][0])) == 3, str(al))
+        dune = q("SELECT slug, year FROM content WHERE title='Dune' ORDER BY year")
+        check("2. Dune 1984 وDune 2021 → كيانان", [tuple(r) for r in dune] == [("dune-1984", 1984), ("dune", 2021)], str([tuple(r) for r in dune]))
+        sh = q("SELECT slug, year FROM content WHERE title='Shameless' AND merged_into IS NULL ORDER BY year")
+        check("3. مسلسل بنفس الاسم وسنوات مختلفة (في سيرفر واحد وبين السيرفرات) → كيانان",
+              [tuple(r) for r in sh] == [("shameless-2004", 2004), ("shameless", 2011)]
+              and not q("SELECT 1 FROM review WHERE status='open' AND json_extract(payload_json,'$.name')='Shameless'"), str([tuple(r) for r in sh]))
+        na = q("SELECT c.slug, c.tmdb_id, c.match, x.external_id, x.verified FROM content c JOIN external_id x ON x.entity='content' AND x.entity_id=c.id "
+               "AND x.source='tmdb' WHERE c.title='Narcos' AND c.merged_into IS NULL ORDER BY x.external_id")
+        check("4. نفس الاسم + TMDB IDs مختلفة → كيانان؛ ومعرّف اللوحة مرشَّحٌ غير مُتحقَّق (لا يُكتب في الكيان قبل التحقق)",
+              [tuple(r) for r in na] == [("narcos", None, "local", "63351", 0), ("narcos-2015", None, "local", "73911", 0)]
+              and not q("SELECT 1 FROM review WHERE status='open' AND json_extract(payload_json,'$.name')='Narcos'"), str([tuple(r) for r in na]))
+        lu = q("SELECT COUNT(*) FROM content WHERE title='Lupin' AND merged_into IS NULL")[0][0]
+        rv = q("SELECT kind FROM review WHERE status='open' AND json_extract(payload_json,'$.name')='Lupin'")
+        fa = q("SELECT COUNT(*) FROM content WHERE title='Fargo' AND merged_into IS NULL")[0][0]
+        check("5. الغامض (الاسم نفسه في قسمين بلا قرينة) → مراجعة لا دمج؛ وبالصورة نفسها (Fargo) واحد",
+              lu == 2 and [r[0] for r in rv] == ["same_server_ambiguous"] and fa == 1
+              and [r[0] for r in q("SELECT kind FROM review WHERE status='open' AND json_extract(payload_json,'$.name')='The Office'")] == ["name_only"], f"lupin={lu} fargo={fa} {rv}")
+        cid, old = bb[0][0], bb[0][1]
+        seo_db.change_slug(con, cid, "breaking-bad-tv", reason="test"); con.commit()
+        row = q("SELECT id, slug, slug_source FROM content WHERE id=?", cid)[0]
+        check("6. تغيير slug → لا يغيّر entity_id", tuple(row) == (cid, "breaking-bad-tv", "manual"))
+        rd = {r[0]: (r[1], r[2]) for r in q("SELECT path, target, code FROM redirect")}
+        check("7. تغيير slug → يسجّل redirect 301 باللغتين، والقيمة السابقة في provenance",
+              rd == {"/content/series/breaking-bad/": ("/content/series/breaking-bad-tv/", 301),
+                     "/en/content/series/breaking-bad/": ("/en/content/series/breaking-bad-tv/", 301)}
+              and json.loads(q("SELECT prev FROM provenance WHERE entity='content' AND entity_id=? AND field='slug'", cid)[0][0]) == "breaking-bad", str(rd))
+        seo_db.change_slug(con, cid, "breaking-bad-2008", reason="test2"); con.commit()
+        rd = {r[0]: r[1] for r in q("SELECT path, target FROM redirect")}
+        check("7b. تغييرٌ ثانٍ: القديمان كلاهما إلى الأحدث (لا سلسلة ولا حلقة)",
+              rd["/content/series/breaking-bad/"] == "/content/series/breaking-bad-2008/"
+              and rd["/content/series/breaking-bad-tv/"] == "/content/series/breaking-bad-2008/" and "/content/series/breaking-bad-2008/" not in rd)
+        seo_build.build(d, force=True)
+        con.close(); con = seo_db.connect(d)
+        check("6b. إعادة البناء لا تمسّ slug ولا المعرّف", tuple(q("SELECT id, slug FROM content WHERE id=?", cid)[0]) == (cid, "breaking-bad-2008"))
+        seo_db.apply_fields(con, "content", cid, {"title": "بريكنج باد", "overview_ar": "قصة يدوية"}, "manual"); con.commit()
+        changed = seo_db.apply_fields(con, "content", cid, {"title": "Breaking Bad (TMDB)", "overview_ar": "من TMDB", "overview_en": "From TMDB", "runtime": 47}, "tmdb")
+        con.commit()
+        row = q("SELECT title, overview_ar, overview_en, runtime FROM content WHERE id=?", cid)[0]
+        pv = seo_db.provenance(con, "content", cid)
+        prev = q("SELECT prev FROM provenance WHERE entity='content' AND entity_id=? AND field='overview_en'", cid)[0][0]
+        check("8. البيانات اليدوية لا تستبدلها مزامنة TMDB (والباقي يُكتب بمصدره وقيمته السابقة)",
+              tuple(row) == ("بريكنج باد", "قصة يدوية", "From TMDB", 47) and sorted(changed) == ["overview_en", "runtime"]
+              and pv["title"][0] == "manual" and pv["overview_en"][0] == "tmdb" and prev is None, str(tuple(row)))
+        seo_build.build(d, force=True)
+        con.close(); con = seo_db.connect(d)
+        check("8b. ولا يستبدلها البناء من الفهارس", q("SELECT title FROM content WHERE id=?", cid)[0][0] == "بريكنج باد")
+        check("9. الاسم الإنجليزي يولّد slug لاتينيًّا، والعربي وحده نقحرةً (مصدره مسجَّل)",
+              tuple(q("SELECT slug, slug_source FROM content WHERE title='Wonder Woman'")[0]) == ("wonder-woman", "original")
+              and all(re.fullmatch(r"[a-z0-9-]+", r[0]) for r in q("SELECT slug FROM content")))
+        _write(d, "smart", _cat([], [{"n": "Breaking Bad", "y": 2008, "s": [[1, 7]], "d": plot, "i": 60},
+                                     {"n": "بريكنج باد", "p": TMDB + "bb.jpg", "s": [[1, 7]], "i": 62}]))
+        res = seo_build.build(d)
+        con.close(); con = seo_db.connect(d)
+        n = q("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND id IN (SELECT content_id FROM content_alias WHERE alias_norm=?)", M.norm("بريكنج باد"))[0][0]
+        check("10. اسمٌ عربي جديد لعملٍ معروف (بقرينة الملصق) → alias لا كيانًا جديدًا", res["new"] == 0 and n == 1
+              and q("SELECT id FROM content WHERE id IN (SELECT content_id FROM content_alias WHERE alias_norm=?)", M.norm("بريكنج باد"))[0][0] == cid, str(res))
+        con.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _serve(srv):
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{srv.server_address[1]}"
+
+
+def unit_enrich():
+    """الإثراء من Xtream وTMDB (وهميّان، بلا إنترنت): المرشّح يُتحقَّق منه، والتصنيف، والأشخاص، والحلقات، والنافذة،
+    والتباعد، والكاش — وجودة البحث على الأسماء المطلوبة."""
+    print("== الإثراء والتصنيف والبحث ==")
+    xt = mock_xtream.serve(0); tm = mock_tmdb.serve(0)
+    xbase, tbase = _serve(xt), _serve(tm)
+    seo_sources.TMDB_API = tbase + "/3"
+    os.environ["TMDB_API_KEY"] = ""
+    d = tempfile.mkdtemp(prefix="seo_enr_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "smart", "name": "سمارت"}, {"key": "casper", "name": "كاسبر"}]}, f, ensure_ascii=False)
+        C.set_url(d, "smart", f"{xbase}/get.php?username=u&password=p&type=m3u_plus")
+        ok, err = C.refresh(d, "smart")
+        check("سمارت يُسحب من اللوحة الوهمية (ومعرّفات TMDB في الفهرس)", ok, err)
+        _write(d, "casper", _cat([{"n": "Dune", "y": 1984, "i": 11}, {"n": "Dune", "y": 2021, "i": 12, "p": TMDB + "d.jpg"}, {"n": "ون بيس فيلم ريد", "y": 2022, "i": 13}],
+                                 [{"n": "طبيعة الحب مدبلج", "s": [[1, 39]], "i": 20, "p": "http://panel/tah.png"},
+                                  {"n": "طبيعة الحب مترجم", "s": [[1, 39], [2, 12]], "i": 21, "p": "http://panel/tah.png"},
+                                  {"n": "One Piece", "s": [[1, 61]], "i": 22}, {"n": "Prison Break", "y": 2005, "s": [[1, 22]], "i": 23},
+                                  {"n": "The Office", "s": [[1, 6]], "i": 24}, {"n": "Attack on Titan", "s": [[1, 25]], "i": 25}],
+                                 series2=[{"n": "Kuruluş Osman مترجم", "s": [[1, 27]], "i": 26, "p": "http://panel/ko.png"}]))
+        res = seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        tah = q("SELECT id, slug, slug_source FROM content WHERE title='طبيعة الحب' AND merged_into IS NULL")
+        vers = q("SELECT versions_json, raw_names_json FROM content_service WHERE content_id=?", tah[0][0]) if tah else []
+        check("النسخ: «طبيعة الحب مدبلج» و«… مترجم» كيانٌ واحد (الصورة نفسها)، والنسختان على رابط السيرفر، والأسماء الخام aliases",
+              len(tah) == 1 and vers and sorted(json.loads(vers[0][0])) == ["dubbed", "subbed"] and len(json.loads(vers[0][1])) == 2
+              and {r[0] for r in q("SELECT alias FROM content_alias WHERE content_id=?", tah[0][0])} == {"طبيعة الحب", "طبيعة الحب مدبلج", "طبيعة الحب مترجم"},
+              str([tuple(r) for r in tah]) + str([tuple(r) for r in vers]))
+        check("slug منقحر مؤقتًا للعربي الأصيل، ومصدره مسجَّل", tah and tah[0][2] == "translit" and re.fullmatch(r"[a-z0-9-]+", tah[0][1]))
+        ko = q("SELECT id, slug FROM content WHERE title='Kuruluş Osman'")
+        check("لاحقة النسخة تُحذف من اسم لاتيني أيضًا، والslug بلا علامات", ko and ko[0][1] == "kurulus-osman", str([tuple(r) for r in ko]))
+        gh = q("SELECT c.id, x.external_id, x.verified FROM content c JOIN external_id x ON x.entity='content' AND x.entity_id=c.id WHERE c.title='Game of Thrones'")
+        check("معرّف اللوحة من القائمة (tmdb) مرشَّحٌ غير مُتحقَّق", gh and gh[0][1] == "1399" and gh[0][2] == 0, str([tuple(r) for r in gh]))
+        hints = q("SELECT t.kind, t.key, ct.source FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id JOIN content c ON c.id=ct.content_id WHERE c.title='المؤسس عثمان'")
+        check("قرينة القسم «مسلسلات تركية مدبلجة» ← hint لا عضوية", sorted(tuple(r) for r in hints) == [("country", "TR", "hint"), ("hub", "turkish", "hint")], str(hints))
+        qs = seo_sources.queue_stats(con)
+        check("الطابور: xtream لمن له رابط (سمارت) وtmdb للكل، بانتظار النافذة", qs.get("tmdb", {}).get("pending", 0) >= 17 and qs.get("xtream", {}).get("pending", 0) >= 20, str(qs))
+        st = seo_db.settings(con)
+        import calendar
+        noon = calendar.timegm((2026, 10, 2, 9, 0, 0))        # 12:00 بتوقيت السعودية
+        night = calendar.timegm((2026, 10, 2, 0, 30, 0))      # 03:30 بتوقيت السعودية
+        check("النافذة: 02:00–06:00 بتوقيت السعودية", seo_sources.window_open(st, now=noon) is False and seo_sources.window_open(st, now=night) is True)
+        r = seo_sources.run(d, force=False, now=noon)
+        check("خارج النافذة لا يعمل بلا force", r["processed"] == 0 and r["window"] is False, str(r))
+        check("بلا مفتاح TMDB: يُتخطّى بلا عدّه فشلًا", seo_sources.run(d, limit=3, force=True)["skipped"] >= 1)
+        seo_sources.set_tmdb_key(con, d, "testkey"); con.commit()
+        check("المفتاح مشفَّر في القاعدة ومقنَّع في الإحصاءات", seo_db.settings(con)["tmdb_key"] != "testkey" and seo_sources.tmdb_key(con, d) == "testkey"
+              and seo_build.stats(d)["settings"]["tmdb_key"] == "•••")
+        con.close()
+        r = seo_sources.run(d, limit=200, force=True)
+        con = seo_db.connect(d)
+        check("دفعة كاملة بالقوة", r["processed"] >= 20 and r["error"] == 0, str(r))
+        pb = q("SELECT c.id, c.tmdb_id, c.match, c.title_ar, c.title_en, c.overview_ar, c.status, c.slug, c.format FROM content c WHERE c.slug='prison-break'")[0]
+        check("Prison Break: TMDB مُتحقَّق، عنوانٌ عربي وقصة عربية، ومنتهٍ", tuple(pb[1:4]) == (2288, "tmdb", "بريزون بريك") and pb[5].startswith("قصة") and pb[6] == "Ended" and pb[8] == "")
+        people = q("SELECT p.name, cp.role, cp.character FROM content_person cp JOIN person p ON p.id=cp.person_id WHERE cp.content_id=? ORDER BY cp.role, cp.ord", pb[0])
+        check("الأشخاص من TMDB: ممثلان بشخصيتيهما ومبتكر وكاتب", [(r[0], r[1]) for r in people] == [("Wentworth Miller", "actor"), ("Dominic Purcell", "actor"), ("Paul Scheuring", "creator"), ("Some Writer", "writer")], str([tuple(r) for r in people]))
+        op = q("SELECT format, anime_kind, status FROM content WHERE slug='one-piece'")[0]
+        tax = {f"{r[0]}:{r[1]}" for r in q("SELECT t.kind, t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id JOIN content c ON c.id=ct.content_id WHERE c.slug='one-piece' AND ct.source='tmdb'")}
+        check("One Piece: أنمي ياباني (format + anime_kind) في هب الأنمي، مستمر، بالاستوديو والنوع والسنة واللغة والبلد",
+              tuple(op) == ("anime_series", "japanese", "Returning Series") and {"hub:anime", "anime_kind:japanese", "country:JP", "language:ja", "year:1999", "genre:16", "studio:tmdb:3785400"} <= tax, str(tax))
+        ko = q("SELECT slug, slug_source, title_ar, title_en FROM content WHERE tmdb_id=89456")[0]
+        tax = {f"{r[0]}:{r[1]}:{r[2]}" for r in q("SELECT t.kind, t.key, ct.source FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id JOIN content c ON c.id=ct.content_id WHERE c.tmdb_id=89456")}
+        check("المؤسس عثمان (قسم تركي، اسم عربي) ← TMDB عبر البحث العربي: هب التركي مؤكّدًا (tmdb) بعد القرينة (hint)",
+              "hub:turkish:tmdb" in tax and "country:TR:tmdb" in tax and ko[2] == "المؤسس عثمان" and ko[3] == "Kuruluş Osman", str(tax))
+        check("ترقية الرابط: من النقحرة إلى الاسم الإنجليزي (kurulus-osman-2019 لأن kurulus-osman مأخوذ) مع 301",
+              ko[0] == "kurulus-osman-2019" and ko[1] == "en" and q("SELECT target FROM redirect WHERE path LIKE '/content/series/%'")
+              and all(r[0] == "/content/series/kurulus-osman-2019/" for r in q("SELECT target FROM redirect WHERE path NOT LIKE '/en/%' AND target LIKE '%kurulus%'")), str(tuple(ko)))
+        tah = q("SELECT tmdb_id, title_en, slug FROM content WHERE title='طبيعة الحب' AND merged_into IS NULL")[0]
+        check("طبيعة الحب ← Love Is in the Air عبر بديل العنوان العربي، والرابط إنجليزي", tah[0] == 120089 and tah[2] == "love-is-in-the-air", str(tuple(tah)))
+        bb = q("SELECT c.tmdb_id, c.match FROM content c WHERE c.title='Breaking Bad'")[0]
+        check("معرّف اللوحة الخاطئ (999999) رُفض بالتحقّق واعتُمد البحث (1396)", tuple(bb) == (1396, "tmdb"), str(tuple(bb)))
+        off = q("SELECT tmdb_id FROM content WHERE title='The Office'")[0]
+        rv = q("SELECT kind, payload_json FROM review WHERE kind='tmdb_ambiguous' AND status='open'")
+        check("The Office: مرشّحان قويان (US وUK) ← مراجعة لا تخمين", off[0] is None and len(rv) == 1 and len(json.loads(rv[0][1])["candidates"]) == 2)
+        dn = q("SELECT year, tmdb_id, slug FROM content WHERE title='Dune' ORDER BY year")
+        check("Dune 1984 → 841 وDune 2021 → 438631 بالسنة (slug لكلٍّ)", [tuple(r[:2]) for r in dn] == [(1984, 841), (2021, 438631)] and dn[0][2] != dn[1][2], str([tuple(r) for r in dn]))
+        opr = q("SELECT slug, tmdb_id, format FROM content WHERE tmdb_id=900001")
+        check("«ون بيس فيلم ريد» (عربي) ← One Piece Film: Red فيلم أنمي، slug إنجليزي", opr and opr[0][0] == "one-piece-film-red" and opr[0][2] == "anime_movie", str(opr))
+        gh = q("SELECT c.id, c.tmdb_id FROM content c WHERE c.title='Game of Thrones'")[0]
+        eps = q("SELECT season, number, title_en, overview_en FROM episode WHERE content_id=? ORDER BY season, number", gh[0])
+        check("حلقات من TMDB (بعد مواسمه) بعناوين وملخصات", gh[1] == 1399 and len(eps) >= 8 and all(e[2] and e[3] for e in eps), str(len(eps)))
+        pv = seo_db.provenance(con, "content", gh[0])
+        check("المصدر: القصة من TMDB فوق Xtream فوق الفهرس، والقيمة السابقة محفوظة",
+              pv["overview_en"][0] == "tmdb" and pv["overview"][0] in ("xtream", "m3u")
+              and q("SELECT prev FROM provenance WHERE entity='content' AND entity_id=? AND field='poster'", gh[0])[0][0] is not None, str({k: v[0] for k, v in pv.items()}))
+        xp = q("SELECT COUNT(*) FROM content_person WHERE source='xtream'")[0][0]
+        check("أشخاص Xtream يبقون لمن لا TMDB له فقط", xp >= 0 and not q("SELECT 1 FROM content_person WHERE content_id=? AND source='xtream'", pb[0]))
+        hits = len(mock_tmdb.Handler.hits)
+        r = seo_sources.run(d, limit=200, force=True)
+        check("لا تكرار: الدفعة التالية لا تطلب شيئًا جديدًا (الكاش والطابور)", len(mock_tmdb.Handler.hits) == hits and r["processed"] == 0, str(r))
+        # التباعد عند تعطّل TMDB
+        con.execute("UPDATE enrich_queue SET state='pending', next_at=0 WHERE content_id=? AND source='tmdb'", (off[0] if False else q("SELECT id FROM content WHERE title='The Office'")[0][0],))
+        con.execute("DELETE FROM api_cache WHERE key LIKE 'tmdb:%'"); con.commit()
+        tm.down = True
+        r = seo_sources.run(d, limit=5, force=True)
+        row = q("SELECT state, attempts, next_at, error FROM enrich_queue WHERE source='tmdb' AND attempts>0 AND state='pending' ORDER BY updated_at DESC LIMIT 1")
+        check("تعطّل TMDB: خطأٌ مسجَّل ومحاولةٌ لاحقة بعد ساعة (backoff)", r["error"] >= 1 and row and row[0][2] > time.time() + 3000 and "503" in (row[0][3] or ""), str([tuple(x) for x in row]))
+        tm.down = False
+        # جودة البحث
+        idx = seo_search.load(con)
+        ex = lambda s: seo_search.explain(con, idx, s, st)   # noqa: E731
+        pbid = pb[0]
+        check("بحث: Prison Break كيانٌ مباشر", ex("Prison Break")["result"] == "entity" and ex("Prison Break")["entities"][0]["id"] == pbid)
+        check("بحث: «person break» اقتراح (صوتي) لا كيان", ex("person break")["result"] == "suggest" and ex("person break")["suggest"][0]["id"] == pbid and ex("person break")["suggest"][0]["why"] == "phonetic")
+        check("بحث: «Prison Brek» اقتراح", ex("Prison Brek")["suggest"][0]["id"] == pbid)
+        check("بحث: «بريزن بريك» اقتراحٌ صوتي، و«بريزون بريك» كيانٌ مباشر (ترجمة TMDB alias)",
+              ex("بريزن بريك")["suggest"][0]["id"] == pbid and ex("بريزون بريك")["result"] == "entity" and ex("بريزون بريك")["entities"][0]["id"] == pbid)
+        t1 = q("SELECT id FROM content WHERE title='طبيعة الحب' AND merged_into IS NULL")[0][0]
+        check("بحث: «طبيعة الحب» و«… مدبلج» و«… مترجم» كلها الكيان نفسه بنسختيه", all(ex(s)["result"] == "entity" and ex(s)["entities"][0]["id"] == t1 for s in ("طبيعة الحب", "طبيعة الحب مدبلج", "طبيعة الحب مترجم"))
+              and sorted(json.loads(ex("طبيعة الحب")["entities"][0]["versions"][0][1])) == ["dubbed", "subbed"])
+        opid = q("SELECT id FROM content WHERE slug='one-piece'")[0][0]
+        check("بحث: One Piece وون بيس (ترجمة TMDB) الكيان نفسه", ex("One Piece")["entities"][0]["id"] == opid and ex("ون بيس")["entities"][0]["id"] == opid)
+        dune = {r[0]: r[1] for r in q("SELECT year, id FROM content WHERE title='Dune'")}
+        hit = lambda s: (ex(s).get("entities") or ex(s).get("suggest") or [{}])[0].get("id")   # noqa: E731
+        check("بحث: Dune 1984 وDune 2021 كيانان مختلفان", hit("Dune 1984") == dune[1984] and hit("Dune 2021") == dune[2021] and dune[1984] != dune[2021])
+        bbid = q("SELECT id FROM content WHERE title='Breaking Bad'")[0][0]
+        check("بحث: بريكنغ باد (صوتي) وبريكنج باد (ترجمة) → Breaking Bad", ex("بريكنج باد")["entities"][0]["id"] == bbid and ex("بريكنغ باد")["suggest"][0]["id"] == bbid)
+        check("بحث: اسمٌ لا وجود له → لا شيء (لا كيان ولا دمج)", ex("xqzv plork")["result"] == "none")
+        # صفحات المعاينة
+        import seo_pages
+        check("بلا معاينة: مسارات الطبقة 404", seo_pages.handle(d, "/content/series/prison-break/", "ar")[0] == 404
+              and seo_pages.handle(d, "/content/casper", "ar") is None)
+        seo_db.set_setting(con, "preview", True); con.commit()
+        code, body, hdr = seo_pages.handle(d, "/content/series/prison-break/", "ar")
+        html = body.decode()
+        check("صفحة المسلسل (معاينة): 200 وnoindex وسمًا ورأسًا، canonical ذاتي، H1 واحد", code == 200 and hdr["X-Robots-Tag"] == "noindex"
+              and 'name="robots" content="noindex, follow"' in html and 'rel="canonical" href="https://guide.ssouq.com/content/series/prison-break/"' in html and html.count("<h1") == 1)
+        check("فيها: قصة H2، الأبطال بروابطهم، المواسم والحلقات، متوفر عبر كاسبر، الأسئلة الشائعة، TVSeries + BreadcrumbList + FAQPage",
+              "<h2>قصة مسلسل" in html and "/content/people/actors/wentworth-miller/" in html and 'id="seasons"' in html and "متوفر عبر" in html
+              and '"@type": "TVSeries"' in html and '"BreadcrumbList"' in html and '"FAQPage"' in html and 'utm_campaign=content-entity' in html)
+        check("hreflang للغتين فقط إن استحقّت كلتاهما الفهرسة (Prison Break نعم)", 'hreflang="en" href="https://guide.ssouq.com/en/content/series/prison-break/"' in html)
+        en = seo_pages.handle(d, "/en/content/series/prison-break/", "en")[1].decode()
+        check("النسخة الإنجليزية: lang=en، العنوان الإنجليزي، Story of", 'lang="en" dir="ltr"' in en and "<h1" in en and "Story of Prison Break" in en)
+        check("بلا شرطة أخيرة: 301 إليها", seo_pages.handle(d, "/content/series/prison-break", "ar")[:1] == (301,))
+        check("الرابط القديم المنقحر لـ Kuruluş Osman يحوّل 301 إلى الإنجليزي", seo_pages.handle(d, "/content/series/kurulus-osman/", "ar")[0] == 301)
+        check("كيانٌ مدمج يحوّل إلى الباقي", seo_pages.handle(d, "/content/series/" + q("SELECT slug FROM content WHERE merged_into IS NOT NULL LIMIT 1")[0][0] + "/", "ar")[0] == 301)
+        hub = seo_pages.handle(d, "/content/turkish/", "ar")[1].decode()
+        check("هب التركي: مقدمة، أقسام، CollectionPage + ItemList يشير إلى روابط الأعمال لا نسخها", "<h1>المسلسلات والأفلام التركية</h1>" in hub
+              and '"CollectionPage"' in hub and '"ItemList"' in hub and "/content/series/kurulus-osman-2019/" in hub and 'class="intro"' in hub)
+        an = seo_pages.handle(d, "/en/content/anime/", "en")[1].decode()
+        check("هب الأنمي بالإنجليزية يضم One Piece وAttack on Titan وفيلم الأنمي", "/en/content/series/one-piece/" in an and "/en/content/series/attack-on-titan/" in an and "/en/content/movies/one-piece-film-red/" in an)
+        check("page/1 يحوّل، وصفحةٌ خارج الحدّ 404، وقسمٌ فارغ 404", seo_pages.handle(d, "/content/anime/page/1/", "ar")[0] == 301
+              and seo_pages.handle(d, "/content/anime/page/99/", "ar")[0] == 404 and seo_pages.handle(d, "/content/anime/genres/nope/", "ar")[0] == 404)
+        pp = seo_pages.handle(d, "/content/people/actors/wentworth-miller/", "ar")[1].decode()
+        check("صفحة الممثل: أعماله بروابطها وPerson schema", '"@type": "Person"' in pp and "/content/series/prison-break/" in pp)
+        # قرارات ما بعد المرحلة 2: تركيا → الهب، لغاتٌ فعّالة، الإثراء التلقائي موقوف، العيّنة الحقيقية، البحث اقتراحًا لا كتابة
+        check("‏/content/countries/turkey/ → 301 إلى هب التركي (باللغتين)", seo_pages.handle(d, "/content/countries/turkey/", "ar")[2]["Location"] == "/content/turkish/"
+              and seo_pages.handle(d, "/en/content/countries/turkey", "en")[2]["Location"] == "/en/content/turkish/")
+        check("لغةٌ غير فعّالة (fr) 404 حتى تُضاف إلى languages؛ والبادئة تُشتقّ من اللغة", seo_pages.handle(d, "/fr/content/turkish/", "fr")[0] == 404 and seo_db.lang_prefix("fr") == "/fr")
+        seo_db.set_setting(con, "languages", ["ar", "en", "fr"]); con.commit()
+        check("وبإضافتها تُخدم بلا ترحيل", seo_pages.handle(d, "/fr/content/turkish/", "fr")[0] == 200)
+        seo_db.set_setting(con, "languages", ["ar", "en"]); con.commit()
+        ct = q("SELECT lang, field, source FROM content_text WHERE entity='content' AND entity_id=? ORDER BY lang, field", pb[0])
+        check("نصوص TMDB معكوسة في content_text (ar/en) بمصدرها — جاهزة لأي لغة", [tuple(r) for r in ct] == [("ar", "overview", "tmdb"), ("ar", "title", "tmdb"), ("en", "overview", "tmdb"), ("en", "title", "tmdb")], str([tuple(r) for r in ct]))
+        seo_db.set_text(con, "content", pb[0], "tr", "title", "Büyük Kaçış", "manual"); con.commit()
+        check("لغةٌ ثالثة تُخزَّن في content_text بلا عمود", seo_db.get_text(con, "content", pb[0], "tr", "title") == "Büyük Kaçış")
+        before = {t: q(f"SELECT COUNT(*) FROM {t}")[0][0] for t in ("content", "content_alias", "redirect", "review", "content_text")}
+        for s_ in ("person break", "بريزن بريك", "Prison Brek", "xqzv"):
+            ex(s_)
+        check("البحث اقتراحٌ فقط: لا كيان ولا alias ولا redirect ولا مراجعة تُكتب", {t: q(f"SELECT COUNT(*) FROM {t}")[0][0] for t in before} == before)
+        con.execute("UPDATE enrich_queue SET state='pending', next_at=0 WHERE content_id=? AND source='tmdb'", (q("SELECT id FROM content WHERE title='The Office'")[0][0],)); con.commit()
+        import calendar
+        night = calendar.timegm((2026, 10, 2, 0, 30, 0))
+        check("tick لا يثري شيئًا ما دام enrich_auto موقوفًا (ولو داخل النافذة)", seo_sources.tick(d) is None
+              and q("SELECT state FROM enrich_queue WHERE content_id=? AND source='tmdb'", q("SELECT id FROM content WHERE title='The Office'")[0][0])[0][0] == "pending")
+        seo_db.set_setting(con, "enrich_auto", True); con.commit()
+        r = seo_sources.run(d, limit=5, force=False, now=night)
+        check("وبتفعيله يعمل في النافذة", r["window"] is True and r["processed"] >= 1, str(r))
+        seo_db.set_setting(con, "enrich_auto", False); con.commit()
+        # حالات التصنيف في العيّنة: قسم «أنمي» يضم Batman Beyond (TMDB: رسوم أمريكية) → mismatch؛ قيامة أرطغرل (قسم تركي، بلا TMDB) → unconfirmed
+        with open(os.path.join(d, "content", "casper.json"), encoding="utf-8") as f:
+            cat = json.load(f)
+        cat["series"].append({"id": "s9", "name": "Anime أنمي", "items": [{"n": "Batman Beyond", "y": 1999, "s": [[1, 13]], "i": 90}]})
+        _write(d, "casper", cat)
+        seo_build.build(d)
+        smp = seo_sources.sample(d, {"movie": 2, "series": 2, "turkish": 3, "anime": 5})
+        works = {w["title"]: w for w in smp["works"]}
+        bb_ = works.get("Batman Beyond", {})
+        check("عيّنة: Batman Beyond في قسم أنمي → TMDB يقول لا أنمي: اختلافٌ = مراجعة (لا اعتماد TMDB تلقائيًّا)، خارج الهب، والقسم hint",
+              bb_.get("anime", {}).get("decision") == "review" and bb_["anime"]["confidence"] == "low" and bb_["anime"]["section"] is True
+              and "taxonomy_mismatch" in bb_.get("reviews", []) and bb_.get("format") is None, str(bb_.get("anime")) + str(bb_.get("reviews")))
+        check("وTMDB الذي خالف القسم لا يُعتمد في البُعد المختلَف عليه: لا يظهر Batman في هب الأنمي، ومعرّف TMDB نفسه مُتحقَّق",
+              "batman-beyond" not in seo_pages.handle(d, "/en/content/anime/", "en")[1].decode() and bb_.get("tmdb_id") == 99002)
+        er = works.get("قيامة أرطغرل", {})
+        check("عيّنة: قيامة أرطغرل (قسم تركي، TMDB لم يحسم) → unconfirmed، confidence low، مراجعة taxonomy_unconfirmed، خارج الهب",
+              er.get("turkish", {}).get("decision") == "unconfirmed" and er["turkish"]["confidence"] == "low" and "taxonomy_unconfirmed" in er.get("reviews", [])
+              and "qyama" not in seo_pages.handle(d, "/content/turkish/", "ar")[1].decode(), str(er.get("turkish")) + str(er.get("reviews")))
+        # لقطة المراجعة (bundle): probe وreport وsearch-report قراءة؛ sample وحده يثري؛ ختمٌ ولا أسرار؛ وتشغيلها مرتين بلا طلباتٍ جديدة
+        snap = lambda: {t: q(f"SELECT COUNT(*) FROM {t}")[0][0] for t in ("content", "content_alias", "api_cache", "review", "enrich_queue", "provenance", "content_taxonomy")}   # noqa: E731
+        s0 = snap(); h0 = len(mock_tmdb.Handler.hits); x0 = len(mock_xtream.Handler.hits)
+        pr = seo_sources.probe(d, 3)
+        check("probe قراءةٌ صرفة: يقرأ اللوحة (أو كاشها) ولا يكتب صفًّا واحدًا (ولا في api_cache)", snap() == s0 and pr["smart"]["movie"]["answered"] >= 1,
+              f"before={s0} after={snap()} hits={len(mock_xtream.Handler.hits) - x0}")
+        seo_build.report(d); __import__("seo_search").explain(con, seo_search.load(con), "person break", st)
+        check("report وsearch-report قراءة", snap() == s0 and len(mock_tmdb.Handler.hits) == h0)
+        outdir = tempfile.mkdtemp(prefix="bundle_")
+        b1 = seo_sources.bundle(d, outdir, n=3)
+        files = {n: open(os.path.join(outdir, n), encoding="utf-8").read() for n in ("probe.json", "sample.json", "report.txt", "search-report.txt")}
+        check("الملفات الأربعة مكتوبة ومختومة بالوقت ونسخة الكود", set(files) == set(b1["files"]) and all('"generated_at"' in t and '"code_fingerprint"' in t for t in files.values()) and b1["code_fingerprint"])
+        secs = ["testkey", "username=u", "password=p", xbase.split("//")[1]]
+        check("لا مفتاح ولا بيانات دخول ولا مضيف لوحةٍ في أي ملف", not any(sc in t for sc in secs for t in files.values()), str([sc for sc in secs if any(sc in t for t in files.values())]))
+        s1 = snap(); h1 = len(mock_tmdb.Handler.hits)
+        b2 = seo_sources.bundle(d, outdir, n=3)
+        check("تشغيل bundle مرةً ثانية: لا طلبات TMDB جديدة (الكاش) ولا كيانات أو أسماء بديلة جديدة", len(mock_tmdb.Handler.hits) == h1
+              and {k: v for k, v in snap().items() if k not in ("enrich_queue",)} == {k: v for k, v in s1.items() if k not in ("enrich_queue",)}, str((s1, snap())))
+        smp2 = json.loads(files["sample.json"])
+        check("عيّنة العيّنة: 30 عملًا على الأكثر هي كل ما أُثري، ولا فشل جزئي", len(smp2["ids"]) <= 30 and smp2["failures"] == [] and smp2["run"]["processed"] >= 0)
+        ko_ = next((w for w in smp["works"] if w["tmdb_id"] == 89456), {})
+        check("عيّنة: المؤسس عثمان → TMDB تركيا + قسم تركي: confirmed", ko_.get("turkish", {}).get("note") == "confirmed")
+        op_ = works.get("One Piece", {})
+        check("عيّنة: One Piece بلا قسم أنمي → TMDB وحده: أنمي ياباني بثقة عالية", op_.get("anime", {}).get("decision") == "anime" and op_["anime"]["section"] is False and op_["anime_kind"] == "japanese")
+        check("تقرير العيّنة: الحقول المطلوبة لكل عمل والعدّادات وأداء الواجهات",
+              all(k in bb_ for k in ("tmdb_id", "title_ar", "title_en", "original_title", "country", "language", "genres", "director", "cast", "poster", "backdrop",
+                                     "seasons", "episodes_detailed", "aliases", "versions", "provenance", "page"))
+              and {"seo_title", "meta_description", "canonical", "hreflang", "json_ld"} <= set(bb_["page"]["ar"])
+              and {"high_confidence_matches", "needs_review", "no_tmdb", "conflicts", "turkish_confirmed", "anime_confirmed", "aliases", "versions", "data_errors"} <= set(smp["summary"])
+              and "tmdb" in smp["api"] and smp["api"]["tmdb"]["n"] >= 1, str(list(bb_.keys()))[:300])
+        rep = seo_pages.audit(d, 12)
+        check("فحص العيّنة: كل الصفحات سليمة (status · canonical · hreflang · title · description · H1 · breadcrumb · schema · روابط · لا canonical مكرّر)",
+              rep["pages"] >= 20 and rep["fail"] == 0, str({k: v for k, v in rep.items() if k != "results"}))
+        why = {r["why"] for r in rep["results"] if not r["would_index"]}
+        check("وسياسة الفهرسة تُقيَّم بسبب لكل صفحة (قصة قصيرة، غير مطابَق، أقل من 12)", why <= {"overview_ar < 120", "overview_en < 120", "unmatched", "items < 12"}, str(why))
+        con.close()
+    finally:
+        xt.shutdown(); tm.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def main():
+    unit_match()
+    unit_build()
+    unit_ten()
+    unit_enrich()
+    live()
+    print("\nResult: %d passed, %d failed" % (_p, _f))
+    sys.exit(1 if _f else 0)
+
+
+if __name__ == "__main__":
+    main()

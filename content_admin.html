@@ -263,6 +263,45 @@ label.force input{width:16px;height:16px;accent-color:var(--amber)}
     <p class="meta" id="sLast"></p>
   </section>
 
+  <section id="seo">
+    <h2><span>طبقة الكيانات لمحرّكات البحث</span><span class="chip" id="eChip"></span></h2>
+    <p class="sub">الفيلم أو المسلسل كيانٌ واحد مهما تعدّدت السيرفرات التي فيها: يُبنى من فهارس السيرفرات نفسها (ولا يمسّها)
+      في قاعدةٍ مشتقّة بعد كل سحب، وما لم تكفِ قرائنه للتوحيد يُترك هنا للمراجعة بدل دمجه. لا تُنشأ منه صفحاتٌ عامة بعد.</p>
+    <div id="eStats"></div>
+    <div class="acts" style="margin-top:12px"><button class="ghost" type="button" id="eBuild">ابنِ الآن من الفهارس</button>
+      <button class="ghost" type="button" id="eReview">اعرض ما يحتاج مراجعة</button></div>
+    <div class="msg" id="eMsg"></div>
+    <ul class="alist" id="eList" hidden></ul>
+    <p class="meta" id="eLast"></p>
+    <h3 style="margin:18px 0 6px">الإثراء من TMDB ولوحات Xtream</h3>
+    <p class="sub">يعمل وحده في نافذةٍ ليلية (02:00–06:00 بتوقيت السعودية افتراضًا) بطابورٍ يُستأنف من حيث توقّف ولا يكرّر طلبًا، ولا يُفترض أن يكتمل في ليلة.
+      مفتاح TMDB يُحفظ مشفَّرًا ولا يُعرض. معرّف اللوحة مرشّحٌ لا يُعتمد حتى يتحقّق من النوع والسنة والاسم.</p>
+    <div class="form">
+      <div><label for="eKey">مفتاح TMDB API</label><input id="eKey" class="ltr" type="password" maxlength="512" placeholder="••••" autocomplete="off">
+        <span class="hint" id="eKeyHint"></span></div>
+    </div>
+    <div class="acts" style="margin-top:10px"><button class="go" type="button" id="eKeySave">احفظ المفتاح</button>
+      <button class="ghost" type="button" id="eProbe">فحصٌ أولي للّوحات</button>
+      <button class="ghost" type="button" id="eSample">عيّنة 30 عملًا (تُثرى الآن وحدها)</button>
+      <button class="ghost" type="button" id="eRun">دفعة إثراءٍ الآن</button>
+      <button class="ghost" type="button" id="eQueue">حال الطابور</button></div>
+    <label class="switch"><input type="checkbox" id="eAuto"><span>الإثراء الجماعي الليلي (لا يُفعَّل قبل اعتماد العيّنة الحقيقية)</span></label>
+    <div class="msg" id="eMsg2"></div>
+    <pre class="mono" id="eOut" hidden style="white-space:pre-wrap;max-height:320px;overflow:auto;font-size:.8rem"></pre>
+    <div class="row" style="margin-top:10px"><input id="eQ" placeholder="جرّب البحث: person break · بريزن بريك · طبيعة الحب مدبلج" maxlength="80">
+      <button class="ghost" type="button" id="eFind">ماذا يصير إليه؟</button></div>
+    <p class="meta" id="eFound"></p>
+    <h3 style="margin:18px 0 6px">صفحات المعاينة (noindex)</h3>
+    <p class="sub">صفحات الأفلام والمسلسلات والأشخاص وهبّا التركي والأنمي كما ستكون — لا تُخدم إلا بتفعيل المعاينة، وكلها noindex ولا تدخل
+      خريطة الموقع ولا يُربط إليها من الصفحات العامة. افحص عيّنةً قبل أي فهرسة.</p>
+    <label class="switch"><input type="checkbox" id="ePreview"><span>فعّل المعاينة</span></label>
+    <div class="acts" style="margin-top:10px"><button class="ghost" type="button" id="eAudit">افحص عيّنة 30 عملًا</button>
+      <a class="ghost linkbtn" id="eHubTr" target="_blank" rel="noopener">هب التركي</a>
+      <a class="ghost linkbtn" id="eHubAn" target="_blank" rel="noopener">هب الأنمي</a></div>
+    <div class="msg" id="eMsg3"></div>
+    <pre class="mono" id="eOut2" hidden style="white-space:pre-wrap;max-height:360px;overflow:auto;font-size:.8rem"></pre>
+  </section>
+
   <section id="alert" hidden>
     <h2>تنبيه محتوى الكبار</h2>
     <p class="sub">إن ظهر في ملف سيرفرٍ شيءٌ للكبار لم يكن في سحبه السابق، يُحذف من الصفحة ولا يُنشر، ويصلك تنبيهٌ بما هو —
@@ -795,6 +834,94 @@ async function load() {
   catch (e) { if (e.message !== "login") $("list").innerHTML = '<section><p class="empty">تعذّر التحميل</p></section>'; }
 }
 
+// ----- طبقة الكيانات (seo.sqlite): أعدادها وبناؤها وما يحتاج مراجعة -----
+const RKIND = {name_only: "الاسم وحده (بلا قرينة)", conflict: "تعارض", year_conflict: "سنتان في سيرفرٍ واحد",
+               merged_entities: "دُمج كيانان", split_entity: "انفصل كيان"};
+let ePoll = 0;
+function renderSeo(d) {
+  const chip = $("eChip"), e = d.entities || {};
+  chip.textContent = d.running ? "يُبنى الآن…" : d.built ? "مبنيّة" : "لم تُبنَ بعد";
+  chip.className = "chip " + (d.running ? "busy" : d.built ? "on" : "");
+  if (!d.built) { $("eStats").innerHTML = '<p class="empty">تُبنى وحدها بعد أول سحبٍ (خلال عشر دقائق من الإقلاع)، أو الآن بالزرّ.</p>'; }
+  else {
+    const r = d.reviews || {}, bs = d.by_services || {};
+    const shared = t => Object.entries(bs[t] || {}).filter(([n]) => +n > 1).reduce((a, [, k]) => a + k, 0);
+    $("eStats").innerHTML = stats([["كيانات", e.total], ["أفلام", e.movie], ["مسلسلات", e.series],
+      ["أفلام في أكثر من سيرفر", shared("movie")], ["مسلسلات في أكثر من سيرفر", shared("series")],
+      ["روابط كيان↔سيرفر", d.links], ["أسماء بديلة", d.aliases], ["تحتاج مراجعة", r.open || 0], ["غائب الآن", e.unavailable]])
+      + `<p class="meta">${Object.entries(d.per_service || {}).map(([k, v]) => `${esc(k)}: ${count(v.movie ? v.movie.present : 0, N.movie)} · ${count(v.series ? v.series.present : 0, N.series)}`).join(" — ")}</p>`;
+  }
+  if (d.settings) { $("ePreview").checked = !!d.settings.preview; $("eAuto").checked = !!d.settings.enrich_auto; }
+  const l = d.last;
+  $("eLast").textContent = l ? (l.ok ? `آخر بناء ${when(l.at)}: ${num(l.items)} عنصرًا من ${(l.services || []).join("، ")} → ${num(l.clusters)} كيانًا (${num(l.new)} جديد · ${num(l.merged)} مدمج · ${num(l.split)} منفصل) في ${l.seconds} ث`
+                                   : `فشل البناء ${when(l.at)}: ${l.error}`) : (d.built_at ? `آخر بناء ${when(d.built_at)}` : "");
+  clearTimeout(ePoll);
+  if (d.running) ePoll = setTimeout(loadSeo, 2000);
+}
+async function loadSeo() { try { renderSeo(await api("/api/content/seo")); } catch (e) { if (e.message !== "login") $("eMsg").textContent = "تعذّر تحميل الطبقة"; } }
+$("eBuild").onclick = async () => {
+  $("eMsg").textContent = "";
+  const d = await api("/api/content/admin/seo-build", {force: true}).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { $("eMsg").textContent = d.error; return; }
+  $("eMsg").textContent = d.started ? "بدأ البناء في الخلفية…" : "بناءٌ جارٍ أصلًا";
+  renderSeo(d);
+};
+$("eKeySave").onclick = async () => {
+  const d = await api("/api/content/admin/seo-key", {key: $("eKey").value.trim()}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error ? d.error : (d.has_key ? "حُفظ المفتاح مشفَّرًا" : "أُزيل المفتاح"); $("eKey").value = "";
+};
+const showOut = o => { const p = $("eOut"); p.hidden = false; p.textContent = typeof o === "string" ? o : JSON.stringify(o, null, 1); };
+$("eProbe").onclick = async () => {
+  $("eMsg2").textContent = "يسأل اللوحات…";
+  const d = await api("/api/content/admin/seo-probe", {n: 20}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error || ""; showOut(d.probe || d);
+};
+$("eSample").onclick = async () => {
+  $("eMsg2").textContent = "يختار 30 عملًا ويثريها الآن (قد يستغرق دقائق)…";
+  const d = await api("/api/content/admin/seo-sample", {}).catch(() => ({error: "تعذّر الاتصال"}));
+  const smp = d.sample || {};
+  $("eMsg2").textContent = d.error || `عيّنة ${(smp.ids || []).length} عملًا — ${JSON.stringify(smp.run || {})}`; showOut(smp);
+};
+$("eAuto").onchange = async () => {
+  const d = await api("/api/content/admin/seo-settings", {settings: {enrich_auto: $("eAuto").checked}}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error || ($("eAuto").checked ? "الإثراء الليلي مفعّل" : "الإثراء الليلي موقوف");
+};
+$("eRun").onclick = async () => {
+  const d = await api("/api/content/admin/seo-run", {}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error || (d.started ? "بدأت دفعةٌ في الخلفية" : "دفعةٌ جارية أصلًا"); showOut(d.queue || d);
+};
+$("eQueue").onclick = async () => {
+  const d = await api("/api/content/seo/enrich").catch(() => ({error: "تعذّر الاتصال"}));
+  $("eKeyHint").textContent = d.has_key ? "المفتاح محفوظ" : "لا مفتاح بعد"; showOut(d);
+};
+$("eFind").onclick = async () => {
+  const d = await api("/api/content/seo/search?q=" + encodeURIComponent($("eQ").value.trim())).catch(() => ({error: "تعذّر الاتصال"}));
+  const e = d.entities || d.suggest || [];
+  $("eFound").textContent = d.error || (d.result === "entity" ? "كيان: " + e.map(x => `${x.title} (/${x.slug})`).join("، ")
+    : d.result === "suggest" ? "هل تقصد: " + e.map(x => `${x.title} (${Math.round(x.confidence * 100)}%، ${x.why})`).join("، ") : "لا شيء");
+};
+$("eHubTr").href = SITE + "/content/turkish/"; $("eHubAn").href = SITE + "/content/anime/";
+$("ePreview").onchange = async () => {
+  const d = await api("/api/content/admin/seo-settings", {settings: {preview: $("ePreview").checked}}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg3").textContent = d.error || ($("ePreview").checked ? "المعاينة مفعّلة (noindex)" : "المعاينة موقوفة: المسارات تُرجع 404");
+};
+$("eAudit").onclick = async () => {
+  $("eMsg3").textContent = "يفحص…";
+  const d = await api("/api/content/admin/seo-audit", {n: 30}).catch(() => ({error: "تعذّر الاتصال"}));
+  const a = d.audit || {};
+  $("eMsg3").textContent = d.error || a.error || `عيّنة ${a.sample} عملًا · ${a.pages} صفحة · ناجحة ${a.pass} · فيها ملاحظات ${a.fail} · تستحق الفهرسة ${a.would_index}`;
+  const p = $("eOut2"); p.hidden = false;
+  p.textContent = (a.results || []).filter(r => r.errors.length || !r.would_index).map(r => `${r.lang} ${r.path}: ${r.errors.join(", ") || "ok"}; index=${r.would_index} (${r.why})`).join("\n") || "كل الصفحات سليمة";
+};
+$("eReview").onclick = async () => {
+  const d = await api("/api/content/seo/review?limit=200").catch(() => ({error: "تعذّر الاتصال"}));
+  const ul = $("eList"); ul.hidden = false;
+  if (d.error) { ul.innerHTML = `<li>${esc(d.error)}</li>`; return; }
+  ul.innerHTML = (d.reviews || []).map(r => `<li><span><b>${esc(r.name)}</b> <small>${esc(RKIND[r.kind] || r.kind)}${r.why && r.why.length ? " · " + esc(r.why.join(", ")) : ""}</small><br>` +
+    (r.items || []).map(i => `${esc(i.service)}: ${esc(i.name)}${i.year ? " (" + i.year + ")" : ""}${i.seasons ? " · " + count(i.seasons, ["موسم واحد", "موسمان", "مواسم", "موسمًا", "موسم"]) : ""}`).join(" — ") +
+    (r.years ? ` — السنوات: ${r.years.join("، ")}` : "") + `</span></li>`).join("") || "<li>لا شيء يحتاج مراجعة</li>";
+};
+
 function say(key, text, cls) {
   UI[key].msg = text ? [text, cls || ""] : null;
   const sec = document.querySelector(`[data-k="${CSS.escape(key)}"]`);
@@ -967,7 +1094,7 @@ $("nAdd").onclick = async () => {
   DATA = d; render();
 };
 
-load();
+load(); loadSeo();
 </script>
 </body>
 </html>
