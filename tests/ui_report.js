@@ -36,7 +36,10 @@ function playlist(extra) {
 (async () => {
   const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'uireport_'));
   const app = spawn('python3', [path.join(ROOT, 'xm_lines.py'), 'web'], {stdio: 'ignore', env: {...process.env,
-    XM_DATA: DATA, XM_BIND: '127.0.0.1', XM_PORT: String(APP_PORT), XM_ADMIN_PASSWORD: 'envpass123', CONTENT_IMG_PRIVATE: '1'}});
+    XM_DATA: DATA, XM_BIND: '127.0.0.1', XM_PORT: String(APP_PORT), XM_ADMIN_PASSWORD: 'envpass123', CONTENT_IMG_PRIVATE: '1',
+    // بيانات IMDb العامة ولغته من الخادم المحلي نفسه (لا شبكة في الاختبار)
+    REPORT_IMDB_API: 'http://127.0.0.1:9776/imdb/{id}.json', REPORT_TVMAZE_API: 'http://127.0.0.1:9776/tvmaze/{id}.json',
+    REPORT_WIKIDATA_API: 'http://127.0.0.1:9776/sparql.json'}});
   // صفحة مسلسلٍ كصفحة IMDb (‏JSON-LD وقائمة اللغات) على خادمٍ محلي — لرابط طلب الإضافة
   const PAGES = fs.mkdtempSync(path.join(os.tmpdir(), 'uireport_pages_'));
   fs.mkdirSync(path.join(PAGES, 'title', 'tt0903747'), {recursive: true});
@@ -44,6 +47,10 @@ function playlist(extra) {
 <meta property="og:title" content="Breaking Bad (TV Series 2008–2013) ⭐ 9.5 | Crime, Drama, Thriller"><meta property="og:type" content="video.tv_show">
 <script type="application/ld+json">{"@type":"TVSeries","name":"Breaking Bad","datePublished":"2008-01-20"}</script></head>
 <body><li data-testid="title-details-languages"><a href="/x">English</a></li></body></html>`);
+  fs.mkdirSync(path.join(PAGES, 'imdb'));
+  fs.writeFileSync(path.join(PAGES, 'imdb', 'tt0111161.json'),
+    JSON.stringify({d: [{id: 'tt0111161', l: 'The Shawshank Redemption', q: 'feature', qid: 'movie', y: 1994}]}));
+  fs.writeFileSync(path.join(PAGES, 'sparql.json'), JSON.stringify({results: {bindings: [{c2: {value: 'en'}, c3: {value: 'eng'}}]}}));
   const PAGES_PORT = 9776;
   const pages = spawn('python3', ['-m', 'http.server', String(PAGES_PORT), '--bind', '127.0.0.1', '--directory', PAGES], {stdio: 'ignore'});
   await up(`http://127.0.0.1:${PAGES_PORT}/title/tt0903747/`);
@@ -170,8 +177,45 @@ function playlist(extra) {
                         `http://127.0.0.1:${PAGES_PORT}/title/tt0903747/`);
     await page.waitForFunction(() => document.getElementById('rlmsg').classList.contains('ok'));
     check('ولصق الرابط يعبّئها وحده', await page.inputValue('#ry') === '2008');
+    await page.waitForSelector('#rx:not([hidden]) .card');
+    check('والنوع من الرابط وحده: «عرفناه من الرابط»', !(await page.$eval('#rtauto', e => e.hidden))
+          && (await page.textContent('#rtauto')).includes('عرفناه من الرابط'));
+    check('وهو موجودٌ في السيرفر: «موجودٌ في سمارت» ببطاقته، لا حاجة لطلبه', (await page.textContent('#rx b')).includes('Breaking Bad» موجودٌ في سمارت')
+          && (await page.textContent('#rx')).includes('لا حاجة لطلب إضافته') && (await page.$$('#rx .card')).length === 1
+          && (await page.textContent('#rx .card')).includes('SERIES | Drama'));
+    check('بلا عرضٍ زائد على 360px (موجود)', await wide(page) <= 360, await wide(page));
+    await shot(page, 'report-7b-exists');
+    await page.click('#rx .card');
+    await page.waitForSelector('.eps button');
+    check('ولمس بطاقته يفتح حلقاته للبلاغ عنه', (await page.textContent('#trail')).includes('Breaking Bad')
+          && !(await page.textContent('#trail')).includes('إضافة مسلسل أو فيلم'));
+    await page.goBack();
+    await page.waitForSelector('#rx:not([hidden]) .card');
+    check('والرجوع يعيد الطلب كما كان', await page.inputValue('#rn') === 'Breaking Bad' && !(await page.$eval('#rtauto', e => e.hidden)));
+    // مشاركة IMDb من تطبيقه: نصٌّ قبل الرابط (ويحجب IMDb صفحاته عن الخوادم، فيُقرأ من بياناته العامة برقمه)
+    await page.evaluate(u => { const el = document.getElementById('rl'); el.value = u; el.dispatchEvent(new Event('paste')); },
+                        'The Shawshank Redemption (1994) - IMDb https://www.imdb.com/title/tt0111161/?ref_=ext_shr');
+    await page.waitForFunction(() => document.getElementById('rlmsg').classList.contains('ok')
+                               && document.getElementById('rn').value === 'The Shawshank Redemption');
+    check('ومشاركة IMDb من تطبيقه (نصٌّ ثم الرابط): الرابط وحده، ويعبّئ كل شيء: فيلم، والاسم والسنة واللغة',
+          await page.inputValue('#rl') === 'https://www.imdb.com/title/tt0111161/?ref_=ext_shr'
+          && await page.$eval('[data-rt="movie"]', b => b.getAttribute('aria-pressed')) === 'true'
+          && await page.inputValue('#ry') === '1994' && await page.inputValue('#rc') === 'en'
+          && !(await page.$eval('#rtauto', e => e.hidden)));
+    await page.waitForFunction(() => document.getElementById('rx').hidden);
+    check('وما ليس في السيرفر: لا «موجود»', await page.$eval('#rx', e => e.hidden));
+    await shot(page, 'report-7c-imdb');
+    await page.click('[data-rt="movie"]');
+    check('واختيار النوع بنفسه يُسقط «عرفناه من الرابط»', await page.$eval('#rtauto', e => e.hidden));
+    await page.fill('#rn', 'Breaking Bad');
+    await page.waitForTimeout(900);
+    check('واسمٌ بنوعٍ آخر (فيلم) ليس هو', await page.$eval('#rx', e => e.hidden));
+    await page.click('[data-rt="series"]');
+    await page.waitForSelector('#rx:not([hidden])');
+    check('وبنوعه (مسلسل): موجود، مع الكتابة بلا رابط', (await page.textContent('#rx b')).includes('موجودٌ في سمارت'));
     await page.click('[data-rt="movie"]');
     await page.fill('#rn', 'Oppenheimer');
+    await page.waitForFunction(() => document.getElementById('rx').hidden);
     await page.selectOption('#ry', '2023');
     await page.fill('#nt', 'مترجم');
     await shot(page, 'report-7-request');
@@ -342,7 +386,7 @@ function playlist(extra) {
     const rq = await ap.$eval('.rep.req', el => el.textContent.replace(/\s+/g, ' '));
     check('الطلب بوسمه وزرّه، ولغته ورابطه', rq.includes('Oppenheimer (2023)') && rq.includes('طلب إضافة فيلم') && rq.includes('مترجم')
           && rq.includes('✓ أُضيف') && rq.includes('نسخ الطلب') && rq.includes('🌐 إنجليزي') && rq.includes('🔗 رابطه'), rq.slice(0, 200));
-    check('ورابطه يفتح الصفحة نفسها', (await ap.$eval('.rep.req .meta a', a => a.href)) === `http://127.0.0.1:${PAGES_PORT}/title/tt0903747/`);
+    check('ورابطه يفتح الصفحة نفسها (آخر ما لصقه: IMDb)', (await ap.$eval('.rep.req .meta a', a => a.href)) === 'https://www.imdb.com/title/tt0111161/?ref_=ext_shr');
     check('وتصفية «طلبات إضافة» بعددها', (await ap.textContent('#whatBar')).includes('طلبات إضافة1'));
     await ap.click('#whatBar [data-w="add"]');
     await ap.waitForFunction(() => document.querySelectorAll('.rep').length === 1);

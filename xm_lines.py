@@ -4138,6 +4138,8 @@ class Handler(BaseHTTPRequestHandler):
             res = reports.search(DATA_DIR, s, self._q("q"))
         elif path == "/api/report/recent":
             res = reports.recent(DATA_DIR, s)
+        elif path == "/api/report/exists":      # طلب الإضافة: هل هو موجودٌ في السيرفر؟ (فيُبلَّغ عنه بدل طلبه)
+            res = reports.exists(DATA_DIR, s, self._q("n"), self._q("t"), self._q("y"))
         elif path == "/api/report/lookup":      # رابط المسلسل أو الفيلم ← نوعه واسمه وسنته ولغته لطلب الإضافة
             if not reports.lookup_ok(self._client_ip()):
                 return self._send(429, {"ok": False, "error": "روابط كثيرة من جهازك — انتظر ساعة، أو اكتب البيانات بنفسك",
