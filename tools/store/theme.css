@@ -1,0 +1,1319 @@
+/* =========================================================
+   SMART SOUQ — FINAL STORE DESIGN
+   Dark / Premium / Clean / RTL + Salla
+   ========================================================= */
+
+:root{
+  --ssq-bg:#081F2A;
+  --ssq-bg-2:#0A2735;
+  --ssq-surface:#103546;
+  --ssq-surface-2:#143E50;
+  --ssq-surface-3:#17485C;
+  --ssq-border:rgba(127,220,248,.16);
+  --ssq-border-hover:rgba(127,220,248,.42);
+  --ssq-text:#F1F8FB;
+  --ssq-muted:#A9C7D6;
+  --ssq-muted-2:#7FA5B5;
+  --ssq-cyan:#4FC3E8;
+  --ssq-cyan-light:#7FDCF8;
+  --ssq-gold:#E9B44C;
+  --ssq-danger:#FF8B8B;
+  --ssq-radius-sm:10px;
+  --ssq-btn-h:46px;
+  --ssq-btn-radius:12px;
+  --ssq-radius:16px;
+  --ssq-radius-lg:22px;
+  --ssq-shadow:0 12px 30px rgba(0,0,0,.22);
+  --ssq-shadow-hover:0 20px 45px rgba(0,0,0,.32);
+  --ssq-transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease,background .22s ease;
+}
+
+/* 01 — GLOBAL */
+html{scroll-behavior:smooth}
+body,body.index{
+  background:
+    radial-gradient(900px 420px at 85% -10%,rgba(79,195,232,.12),transparent 65%),
+    radial-gradient(700px 380px at 5% 30%,rgba(10,110,158,.10),transparent 65%),
+    var(--ssq-bg)!important;
+  color:var(--ssq-text)!important;
+}
+#main-content,.app-inner{background:transparent!important}
+h1,h2,h3,h4,h5,h6,label,legend,strong,b{color:var(--ssq-text)!important}
+p,small{color:var(--ssq-muted)}
+a{transition:var(--ssq-transition)}
+
+/* 02 — LIGHT SURFACES */
+.bg-white,.bg-light,.bg-gray-50,.bg-gray-100,.bg-slate-50,.bg-neutral-50{
+  background-color:var(--ssq-surface)!important;
+  color:var(--ssq-text)!important;
+}
+
+/* 03 — HEADER */
+.store-header{
+  position:relative;
+  z-index:100;
+  background:rgba(8,31,42,.96)!important;
+  border-bottom:1px solid var(--ssq-border);
+  box-shadow:0 8px 28px rgba(0,0,0,.18);
+}
+.top-navbar,.main-nav-container,.main-nav-container .inner,
+salla-advertisement,salla-advertisement>*{
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.store-header a,.store-header span,.store-header i,.store-header button{
+  color:var(--ssq-text)!important;
+}
+.store-header .navbar-brand img{
+  border-radius:12px;
+  background:#fff;
+  padding:3px;
+  box-shadow:0 4px 16px rgba(0,0,0,.25);
+}
+.header-btn__icon{
+  background:var(--ssq-surface)!important;
+  border:1px solid var(--ssq-border)!important;
+  color:var(--ssq-text)!important;
+  border-radius:12px;
+}
+.s-cart-summary-total{
+  color:var(--ssq-cyan-light)!important;
+  font-weight:800!important;
+}
+.s-cart-summary-count{color:#fff!important}
+
+/* 04 — USER MENU (بلا position، والخلفية داخل المكوّن فقط) */
+salla-user-menu *{background-color:transparent!important;color:var(--ssq-text)!important;border-color:var(--ssq-border)!important}
+salla-user-menu ul,salla-user-menu nav,salla-user-menu [role="menu"],
+salla-user-menu [class*="menu-list"],salla-user-menu [class*="dropdown"],
+salla-user-menu [class*="panel"]{
+  background-color:var(--ssq-surface)!important;
+  border-color:var(--ssq-border)!important;
+}
+salla-user-menu a,salla-user-menu span,salla-user-menu p,salla-user-menu li{
+  color:var(--ssq-text)!important;
+}
+salla-user-menu [class*="logout"],salla-user-menu [class*="danger"]{color:var(--ssq-danger)!important}
+salla-user-menu img{background:transparent!important}
+
+/* 05 — MOBILE MENU */
+.mm-ocd__content,.mm-spn,.mm-spn ul,.mm-spn li{
+  background:var(--ssq-bg-2)!important;
+  color:var(--ssq-text)!important;
+}
+.mm-spn a,.mm-spn span{color:var(--ssq-text)!important}
+.mm-spn li:after{border-color:var(--ssq-border)!important}
+
+/* 06 — HERO */
+.index [component-id="227561609"]{
+  position:relative;
+  z-index:1;
+  overflow:hidden;
+  animation:ssqFade .7s ease both;
+}
+.index [component-id="227561609"]::after{
+  content:"";
+  position:absolute;
+  width:420px;height:420px;
+  top:-220px;left:-150px;
+  background:radial-gradient(circle,rgba(79,195,232,.14),transparent 70%);
+  pointer-events:none;
+}
+.index [component-id="227561609"] h1,
+.index [component-id="227561609"] h2{
+  color:var(--ssq-text)!important;
+  font-weight:900!important;
+  letter-spacing:-.6px;
+}
+.index [component-id="227561609"] p{color:var(--ssq-muted)!important}
+
+/* 07 — PRIMARY CTA — نظام زر واحد
+   القاعدة: يُلوَّن الزرّ نفسه فقط. ما بداخله (النص، الأيقونة، svg) يرث اللون
+   ولا يأخذ خلفية ولا إطارًا ولا ارتفاعًا — المحدِّد القديم `.s-button-primary *`
+   كان يرسم تدرّجًا وإطارًا وradius وmin-height على كل عنصر داخل الزر، فتظهر
+   "علبة" حول الكلمة ويتضخّم الزر إلى 64px بدل 46. */
+.s-button-primary,.s-button-solid,
+.s-product-card-entry salla-add-product-button button.s-button-element,
+.product-single .s-product-card-entry salla-add-product-button button.s-button-element{
+  background:linear-gradient(135deg,#0A6E9E,#087EA9)!important;
+  color:#fff!important;
+  border:1px solid rgba(127,220,248,.18)!important;
+  border-radius:var(--ssq-btn-radius)!important;
+  font-weight:800!important;
+  min-height:var(--ssq-btn-h);
+  padding-block:0!important;
+  line-height:1.25;
+  box-shadow:0 7px 18px rgba(0,0,0,.18);
+  transition:var(--ssq-transition);
+}
+.s-button-primary:hover,.s-button-solid:hover,
+.s-product-card-entry salla-add-product-button button.s-button-element:hover{
+  transform:translateY(-2px);
+  box-shadow:0 12px 25px rgba(0,0,0,.28);
+  filter:brightness(1.07);
+}
+.s-button-primary:disabled,.s-button-solid:disabled,
+.s-button-primary.disabled,.s-button-solid.disabled{
+  filter:grayscale(.35) brightness(.85);
+  box-shadow:none;
+  transform:none;
+}
+
+/* 07.1 — داخل الزر: نصّ وأيقونة فقط
+   يمنع أي قاعدة لاحقة من تلوين أبناء الزر، ويضبط المسافة بين الأيقونة والكلمة. */
+.s-button-element>*,.s-button-element .s-button-text,
+.s-button-element .s-button-text *{
+  background:none!important;
+  border:0!important;
+  border-radius:0!important;
+  min-height:0!important;
+  box-shadow:none!important;
+}
+.s-button-element .s-button-text{
+  display:inline-flex!important;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  line-height:1.25;
+}
+.s-button-element .s-button-text>svg{width:1.15em;height:1.15em;flex:none}
+.s-button-primary .s-button-text,.s-button-solid .s-button-text,
+.s-button-primary .s-button-text *,.s-button-solid .s-button-text *{color:#fff!important}
+
+/* 07.2 — الأزرار الأيقونية (المشاركة، التكبير…) مربّعة بمقاسها
+   ولا ترث ارتفاع الزر النصّي، وإلا صارت بيضاوية. */
+.s-button-icon,.s-button-element.s-button-icon{min-height:0!important}
+
+/* 08 — FEATURES / TRUST */
+.s-block--features__item{
+  background:linear-gradient(145deg,rgba(20,62,80,.95),rgba(14,48,63,.95));
+  border:1px solid var(--ssq-border);
+  border-radius:var(--ssq-radius);
+  padding:20px!important;
+  box-shadow:var(--ssq-shadow);
+  transition:var(--ssq-transition);
+}
+.s-block--features__item:hover{
+  transform:translateY(-3px);
+  border-color:var(--ssq-border-hover);
+  box-shadow:var(--ssq-shadow-hover);
+}
+.s-block--features__item h2,.s-block--features__item h3,
+.s-block--features__item strong,.s-block--features__item b{
+  color:var(--ssq-text)!important;
+}
+.s-block--features__item p{color:var(--ssq-muted)!important}
+
+/* 09 — SECTION TITLES */
+.s-block{margin-bottom:clamp(45px,6vw,80px)}
+.s-block__title{margin-bottom:24px}
+.s-block__title h2{
+  position:relative;
+  color:var(--ssq-text)!important;
+  font-size:clamp(21px,2.5vw,30px);
+  font-weight:900;
+  letter-spacing:-.3px;
+  padding-bottom:12px;
+}
+.s-block__title h2::after{
+  content:"";
+  position:absolute;
+  right:0;bottom:0;
+  width:46px;height:3px;
+  border-radius:99px;
+  background:linear-gradient(90deg,var(--ssq-cyan),var(--ssq-gold));
+}
+.s-block__title a{
+  color:var(--ssq-cyan-light)!important;
+  font-weight:700;
+}
+
+/* 10 — DEVICE SELECTION */
+.index [component-id="472936931"]{
+  animation:ssqRise .65s .15s ease both;
+}
+.index [component-id="472936931"] a{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:92px;
+  padding:18px!important;
+  border-radius:18px!important;
+  background:linear-gradient(145deg,var(--ssq-surface-2),var(--ssq-surface))!important;
+  border:1px solid var(--ssq-border)!important;
+  color:var(--ssq-text)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.16);
+  transition:var(--ssq-transition);
+}
+.index [component-id="472936931"] a:hover{
+  transform:translateY(-4px);
+  background:linear-gradient(145deg,var(--ssq-surface-3),var(--ssq-surface-2))!important;
+  border-color:var(--ssq-border-hover)!important;
+  box-shadow:var(--ssq-shadow-hover);
+}
+
+/* 11 — PRODUCT CARDS */
+.s-product-card-entry{
+  position:relative;
+  background:linear-gradient(160deg,#143E50,#0F3040)!important;
+  border:1px solid var(--ssq-border)!important;
+  border-radius:var(--ssq-radius-lg)!important;
+  overflow:hidden;
+  box-shadow:0 10px 28px rgba(0,0,0,.22);
+  transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease;
+}
+.s-product-card-entry:hover{
+  transform:translateY(-5px);
+  border-color:var(--ssq-border-hover)!important;
+  box-shadow:0 20px 40px rgba(0,0,0,.32);
+}
+.s-product-card-image{
+  background:
+    radial-gradient(circle at 50% 35%,rgba(79,195,232,.14),transparent 68%),
+    #0D2B39!important;
+  padding:12px;
+}
+.s-product-card-image img{
+  border-radius:14px;
+  transition:transform .3s ease;
+}
+.s-product-card-entry:hover .s-product-card-image img{transform:scale(1.025)}
+
+/* 12 — PRODUCT TEXT */
+.s-product-card-content-title,.s-product-card-content-title a{
+  color:var(--ssq-text)!important;
+  font-weight:800;
+  line-height:1.6;
+}
+.s-product-card-content-sub,.s-product-card-content-subtitle,
+.s-product-card-promotion-title{color:var(--ssq-muted)!important}
+
+/* 13 — PRODUCT PRICE */
+.s-product-card-sale-price h4,.s-product-card-starting-price h4,
+.s-product-card-price{
+  color:var(--ssq-cyan-light)!important;
+  font-size:20px!important;
+  font-weight:900!important;
+}
+.s-product-card-sale-price span{
+  color:var(--ssq-muted-2)!important;
+  text-decoration:line-through!important;
+}
+
+/* 14 — زر بطاقة المنتج
+   الثيم يصدره fill="outline"، ونحن نجعله ممتلئًا — وبالشكل نفسه على الرئيسية
+   والتصنيفات وداخل صفحة المنتج. القسم 23 (.product-single .s-button-outline)
+   كان أقوى تخصيصًا من محدِّد البطاقة القديم، فينقلب الزر إلى مفرّغ سماوي
+   داخل صفحة المنتج وحدها بينما يبقى متدرّجًا في الرئيسية. */
+.s-product-card-entry salla-add-product-button button.s-button-element,
+.product-single .s-product-card-entry salla-add-product-button button.s-button-element{
+  font-size:13px!important;
+  padding-inline:12px!important;
+}
+
+/* 15 — HIDE WISHLIST */
+.s-product-card-wishlist-btn,salla-add-to-wishlist,.btn--wishlist{
+  display:none!important;
+}
+
+/* 16 — MAIN PROMOTIONAL BANNER */
+.index [component-id="648090848"] .full-banner-entry{
+  position:relative;
+  overflow:hidden;
+  border-radius:24px;
+  background:
+    radial-gradient(circle at 85% 20%,rgba(79,195,232,.20),transparent 35%),
+    linear-gradient(135deg,#092735 0%,#103E52 60%,#086E9D 100%)!important;
+  box-shadow:0 20px 50px rgba(0,0,0,.26);
+}
+.index [component-id="648090848"] .full-banner-entry h2{
+  color:#fff!important;
+  font-weight:900!important;
+  letter-spacing:-.5px;
+}
+.index [component-id="648090848"] .full-banner-entry a{
+  min-height:48px;
+  padding-inline:26px;
+  border-radius:13px;
+  background:var(--ssq-gold)!important;
+  color:#092330!important;
+  font-weight:900;
+  box-shadow:0 9px 22px rgba(233,180,76,.18);
+}
+
+/* 17 — OTHER BANNERS */
+.index [component-id="1602060170"] .banner-entry,
+.index [component-id="1003656507"] .banner--fixed{
+  border-radius:18px;
+  overflow:hidden;
+  background:var(--ssq-surface)!important;
+  border:1px solid var(--ssq-border);
+  box-shadow:var(--ssq-shadow);
+  transition:var(--ssq-transition);
+}
+.index [component-id="1602060170"] .banner-entry:hover,
+.index [component-id="1003656507"] .banner--fixed:hover{
+  transform:translateY(-4px);
+  box-shadow:var(--ssq-shadow-hover);
+}
+
+/* 18 — REVIEWS */
+.s-reviews-testimonial,.s-reviews-container,
+.s-reviews-container .swiper-slide{
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.s-reviews-testimonial__inner{
+  display:flex;
+  flex-direction:column!important;
+  align-items:center;
+  text-align:center;
+  gap:10px;
+  width:100%!important;
+  padding:22px 18px!important;
+  background:linear-gradient(145deg,var(--ssq-surface-2),var(--ssq-surface))!important;
+  border:1px solid var(--ssq-border);
+  border-radius:18px;
+  box-shadow:var(--ssq-shadow);
+  position:relative;
+  overflow:hidden;
+  transition:var(--ssq-transition);
+}
+.s-reviews-testimonial__inner::before{
+  content:"";
+  position:absolute;
+  top:0;right:0;left:0;
+  height:3px;
+  background:linear-gradient(90deg,var(--ssq-cyan),var(--ssq-gold));
+}
+.s-reviews-testimonial__inner:hover{
+  transform:translateY(-4px);
+  border-color:var(--ssq-border-hover);
+}
+.s-reviews-testimonial__avatar{
+  width:68px!important;
+  height:68px!important;
+  margin:0!important;
+}
+.s-reviews-testimonial__avatar img{
+  border-radius:50%;
+  border:2px solid var(--ssq-border);
+}
+.s-reviews-testimonial__text{
+  color:var(--ssq-text)!important;
+  line-height:1.9;
+  width:100%;
+  white-space:normal!important;
+}
+.s-reviews-testimonial__text p{
+  margin:0!important;
+  color:var(--ssq-text)!important;
+}
+.s-reviews-testimonial__info h2{
+  color:var(--ssq-text)!important;
+  font-size:15px!important;
+  font-weight:800!important;
+}
+
+/* 19 — CART */
+.cart .s-cart-summary,.cart .cart-item,.cart table,
+.cart tbody,.cart tr,.cart td,.cart th{
+  background:var(--ssq-surface)!important;
+  color:var(--ssq-text)!important;
+  border-color:var(--ssq-border)!important;
+}
+.cart .total,.cart [class*="total"],.cart .s-cart-summary-total,
+.cart .cart-item__total{
+  color:var(--ssq-cyan-light)!important;
+  font-weight:900!important;
+}
+
+/* 20 — PRODUCT PAGE */
+.product-single .article--main,.product-single .product__description{
+  background:linear-gradient(145deg,var(--ssq-surface),#0E3040)!important;
+  border:1px solid var(--ssq-border);
+  border-radius:18px;
+  padding:18px;
+}
+.product-single .article--main *,
+.product-single .product__description *{
+  background:transparent!important;
+  border-color:var(--ssq-border)!important;
+  color:var(--ssq-text)!important;
+}
+.product-single .article--main a,.product-single .product__description a{
+  color:var(--ssq-cyan-light)!important;
+}
+.product-single [data-testid="store-product-price"],
+.product-single [data-testid="store-product-price"] *{
+  color:var(--ssq-cyan-light)!important;
+  font-weight:900!important;
+}
+
+/* 21 — QUANTITY */
+.s-quantity-input-container{
+  background:var(--ssq-surface-2)!important;
+  border:1px solid var(--ssq-border)!important;
+  border-radius:12px!important;
+}
+.s-quantity-input-input{
+  background:transparent!important;
+  color:var(--ssq-text)!important;
+  -webkit-text-fill-color:var(--ssq-text)!important;
+  font-weight:900;
+}
+.s-quantity-input-button{
+  background:var(--ssq-surface)!important;
+  color:var(--ssq-text)!important;
+  border-color:var(--ssq-border)!important;
+}
+
+/* 22 — صندوق الشراء وشريطه المثبّت
+   نقطة الانكسار هي المفتاح: الثيم يجعل `.sticky-product-bar` شريطًا مثبّتًا
+   أسفل الشاشة داخل `@media(max-width:640px)` وحدها؛ وفوق ذلك هو صندوق
+   الإضافة العادي داخل الصفحة — ومربّع الكمية الوحيد في الصفحة يسكن بداخله.
+   لذلك صار كل تنسيق "الصف الواحد" وخانة السعر داخل النطاق نفسه: كان
+   يُطبَّق على المقاسات كلها، فيُلبس صفحةَ سطح المكتب شكلَ شريط عائم، ويخفي
+   عنها مربّع الكمية، ويحجز 7rem فراغًا أسفلها بلا سبب. */
+
+/* سلة تضع داخل `salla-add-product-button` ثلاثة عناصر: الدفع السريع
+   (mini-checkout) وزر الإضافة وApple Pay. التنسيق الحالي يُبقي زر الإضافة
+   وحده — نخفي الاثنين الآخرين باسمهما لا بترتيبهما، لأن
+   `>*:nth-child(n+2)` يطفئ أيضًا أي عنصر تضيفه سلة مستقبلًا.
+   لإعادة أيٍّ منهما (Apple Pay مثلًا) يكفي حذف سطره من هنا. */
+.product-single .sticky-product-bar salla-mini-checkout-widget,
+.product-single .sticky-product-bar salla-quick-buy{display:none!important}
+
+/* فوق 640px: صندوق عادي — كمية ظاهرة وزر بعرض كامل، بلا خانة سعر مكرّرة */
+.product-single .sticky-product-bar{
+  background:var(--ssq-surface)!important;
+  border:1px solid var(--ssq-border)!important;
+  border-radius:var(--ssq-radius)!important;
+  box-shadow:var(--ssq-shadow);
+  padding:16px!important;
+}
+.product-single .sticky-product-bar salla-add-product-button,
+.product-single .sticky-product-bar .s-add-product-button-main,
+.product-single .sticky-product-bar .s-button-wrap{width:100%!important}
+.product-single .sticky-product-bar salla-add-product-button button.s-button-element{
+  width:100%!important;
+  min-height:var(--ssq-btn-h);
+  font-size:15px!important;
+}
+
+@media(max-width:640px){
+  .is-sticky-product-bar.product-single{padding-bottom:7rem}
+
+  .is-sticky-product-bar .sticky-product-bar{
+    display:flex!important;
+    flex-direction:row!important;
+    flex-wrap:wrap!important;
+    align-items:center!important;
+    gap:10px!important;
+    padding:10px 12px!important;
+    background:rgba(16,53,70,.97)!important;
+    border:0!important;
+    border-top:1px solid var(--ssq-border)!important;
+    border-radius:0!important;
+    box-shadow:0 -12px 35px rgba(0,0,0,.28);
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+    opacity:1!important;
+    transform:none!important;
+  }
+
+  /* الكمية تخرج من الشريط المثبّت وحده (تبقى في صندوق الصفحة فوق 640px) */
+  .is-sticky-product-bar .sticky-product-bar__quantity,
+  .is-sticky-product-bar .sticky-product-bar .form-label{display:none!important}
+
+  /* صف واحد: السعر خانةً مستقلة والزر يملأ الباقي — والاثنان بارتفاع واحد
+     (`align-items:stretch` بدل `center`: كانت الخانة 46px بجانب زر 66px). */
+  .is-sticky-product-bar .sticky-product-bar salla-add-product-button{
+    display:grid!important;
+    grid-template-columns:auto minmax(0,1fr);
+    align-items:stretch;
+    gap:8px;
+    width:100%!important;
+    flex:1 1 100%!important;
+    margin:0!important;
+    opacity:1!important;
+    transform:none!important;
+  }
+  .is-sticky-product-bar .sticky-product-bar salla-add-product-button::before{
+    content:attr(amount) " ر.س";
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:var(--ssq-btn-h);
+    padding:0 14px;
+    background:linear-gradient(145deg,var(--ssq-surface-2),var(--ssq-surface));
+    border:1px solid var(--ssq-border);
+    border-radius:var(--ssq-btn-radius);
+    color:var(--ssq-cyan-light);
+    font-size:17px;
+    font-weight:900;
+    white-space:nowrap;
+    pointer-events:none;
+  }
+  /* سلة تفرض `width:50%!important` على زر الإضافة ما لم يكن معه
+     `.w-full`، لأنها تحسب له جارًا؛ وقد أخفينا الجار، فيأخذ العرض كاملًا. */
+  .is-sticky-product-bar .sticky-product-bar .s-add-product-button-main,
+  .is-sticky-product-bar .sticky-product-bar .s-button-wrap{
+    display:flex!important;
+    min-width:0;
+    width:100%!important;
+  }
+  .is-sticky-product-bar .sticky-product-bar button.s-button-element{
+    width:100%!important;
+    min-height:var(--ssq-btn-h);
+    font-size:15px!important;
+  }
+
+  /* الكلمة تعود إلى الزر: سلة تُخفي النص وتُبقي الأيقونة حين يقف الدفع
+     السريع بجانبه — وقد أخفيناه، فيصير الزر أيقونةً صمّاء بلا سبب. */
+  .is-sticky-product-bar .sticky-product-bar .s-add-product-button-sr-only{
+    position:static!important;
+    width:auto!important;
+    height:auto!important;
+    margin:0!important;
+    padding:0!important;
+    clip:auto!important;
+    clip-path:none!important;
+    overflow:visible!important;
+    white-space:nowrap!important;
+  }
+}
+
+/* 23 — SECONDARY BUTTONS
+   تخصّ أزرار صفحة المنتج الثانوية وحدها؛ أزرار بطاقات المنتجات المعروضة
+   داخل الصفحة (منتجات مشابهة/شوهدت مؤخرًا) يحكمها القسم 07 بتخصيص أعلى. */
+.product-single .s-button-outline,
+.product-single .s-button-light,
+.product-single .s-button-white,
+.product-single .s-button-secondary{
+  background:var(--ssq-surface-2)!important;
+  color:var(--ssq-cyan-light)!important;
+  border:1px solid var(--ssq-cyan)!important;
+  border-radius:var(--ssq-btn-radius)!important;
+  min-height:var(--ssq-btn-h);
+  font-weight:800;
+}
+
+/* 24 — FORMS */
+input,select,textarea,.form-input,.s-search-input{
+  background:var(--ssq-surface-2)!important;
+  color:var(--ssq-text)!important;
+  border:1px solid var(--ssq-border)!important;
+  border-radius:12px!important;
+}
+input:focus,select:focus,textarea:focus{
+  border-color:var(--ssq-cyan)!important;
+  box-shadow:0 0 0 3px rgba(79,195,232,.10)!important;
+  outline:none!important;
+}
+input::placeholder,textarea::placeholder{color:var(--ssq-muted-2)!important}
+
+/* 25 — MODALS / TOASTS */
+.s-modal,.s-modal-content,.modal-content,
+.s-rating-modal-wrap,.s-add-product-toast{
+  background:var(--ssq-surface)!important;
+  color:var(--ssq-text)!important;
+  border:1px solid var(--ssq-border)!important;
+  border-radius:18px!important;
+  box-shadow:0 22px 60px rgba(0,0,0,.42)!important;
+}
+.s-add-product-toast *{color:var(--ssq-text)!important}
+
+/* 26 — FOOTER */
+.store-footer{
+  position:relative;
+  margin-top:70px;
+  background:linear-gradient(180deg,#0A2B39,#061B25)!important;
+  border-top:1px solid var(--ssq-border);
+}
+.store-footer::before{
+  content:"";
+  position:absolute;
+  top:0;left:0;right:0;
+  height:2px;
+  background:linear-gradient(90deg,transparent,var(--ssq-cyan),var(--ssq-gold),transparent);
+}
+.store-footer a,.store-footer p,.store-footer li,.store-footer span{
+  color:var(--ssq-muted)!important;
+}
+.store-footer a:hover{color:var(--ssq-cyan-light)!important}
+
+/* 27 — TABLES / BRANDS */
+table,thead,tbody,tr,td,th{
+  background:transparent!important;
+  color:var(--ssq-text)!important;
+  border-color:var(--ssq-border)!important;
+}
+.brands-index .brand-item,.brands-index .brands-nav__item,.brands-index .brand-char{
+  background:var(--ssq-surface)!important;
+  color:var(--ssq-text)!important;
+  border:1px solid var(--ssq-border)!important;
+  border-radius:14px;
+}
+
+/* 28 — COMMENTS */
+.s-comments-container,.s-comments-product,.s-comments-page,salla-comments{
+  background:transparent!important;
+  color:var(--ssq-text)!important;
+}
+.s-comments-container *,salla-comments *{
+  border-color:var(--ssq-border)!important;
+}
+.s-comments-container p,.s-comments-container span,.s-comments-container small,
+.s-comments-container strong,salla-comments p,salla-comments span,
+salla-comments small,salla-comments strong{
+  color:var(--ssq-text)!important;
+}
+.s-comments-container button,salla-comments button{
+  background:linear-gradient(135deg,#0A6E9E,#087EA9)!important;
+  color:#fff!important;
+  border-radius:12px!important;
+}
+
+/* 29 — OUT OF STOCK */
+.out-of-stock,.out-of-stock *{color:var(--ssq-danger)!important}
+
+/* 30 — MOBILE */
+@media(max-width:640px){
+  body{overflow-x:hidden}
+  .s-block{margin-bottom:38px}
+  .s-block__title{margin-bottom:18px}
+  .s-block__title h2{font-size:22px}
+  .s-product-card-entry{border-radius:16px}
+  .s-product-card-image{padding:9px}
+  .s-product-card-content-title{font-size:14px}
+  .s-product-card-sale-price h4,.s-product-card-price{font-size:18px!important}
+  .index [component-id="472936931"] a{
+    min-height:78px;
+    border-radius:15px!important;
+    padding:12px!important;
+  }
+  .index [component-id="648090848"] .full-banner-entry{
+    border-radius:18px;
+  }
+  .s-reviews-testimonial__inner{padding:20px 14px!important}
+  .store-footer{margin-top:45px}
+}
+
+/* 31 — REDUCED MOTION */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    scroll-behavior:auto!important;
+    transition-duration:.01ms!important;
+  }
+}
+
+/* 32 — ANIMATIONS */
+@keyframes ssqFade{
+  from{opacity:0}
+  to{opacity:1}
+}
+@keyframes ssqRise{
+  from{opacity:0;transform:translateY(18px)}
+  to{opacity:1;transform:none}
+}
+
+/* 33 — SMALL DETAILS */
+::selection{
+  background:rgba(79,195,232,.28);
+  color:#fff;
+}
+::-webkit-scrollbar{width:7px}
+::-webkit-scrollbar-track{background:#071C26}
+::-webkit-scrollbar-thumb{
+  background:#20576C;
+  border-radius:99px;
+}
+::-webkit-scrollbar-thumb:hover{background:var(--ssq-cyan)}
+
+/* =========================================================
+   34 — صفحة الطلب والمحتوى الرقمي
+   ========================================================= */
+
+/* 34.1 — متغيّرات الثيم
+   ‎#004d73 كان يُستعمل نصًّا في 25 قاعدة داخل الثيم فيختفي على الداكن */
+body,:root{
+  --color-primary:#7FDCF8;
+  --color-primary-dark:#4FC3E8;
+  --color-primary-light:#A9E4F8;
+  --color-primary-reverse:#CFF3FF;
+  --color-text:#F1F8FB;
+  --color-main:#4FC3E8;
+  --color-grey:#A9C7D6;
+  --color-light-grey:#27607A;
+}
+/* المواضع التي تستعمل اللون خلفيةً تبقى بترولية */
+.bg-primary,.btn--primary,.icon-trigger .tooltip-content,.icon-trigger .tooltip-content:after,
+.s-block--features__item .feature-icon,.brands-nav__item.is-selected,.virtooal--action button,
+#blog-like.liked i,.btn--outline-primary:hover,.btn--outline:hover,.bg-store-color{
+  background:linear-gradient(135deg,#0A6E9E,#087EA9)!important;
+  color:#fff!important;
+}
+
+/* 34.2 — الأكواد: Host · Username · Password
+   سلة تكتبها text-red-600 ومعها hover:text-red-800،
+   و[class*="text-red-8"] كان يلتقط اسم الـhover نفسه فتبقى سلمونية دائمًا.
+   لذلك تُستهدف بأسمائها الصريحة لا بمطابقة جزء من الاسم. */
+.text-red-600,.text-red-700,.text-red-800{color:var(--ssq-cyan-light)!important}
+.text-red-600:hover,.text-red-700:hover,.text-red-800:hover{color:#fff!important}
+.decoration-dotted{text-decoration-color:rgba(127,220,248,.5)!important}
+.font-mono{
+  color:var(--ssq-cyan-light)!important;
+  letter-spacing:.4px;
+  word-break:break-all;
+}
+.copy-icon,i[class*="sicon-copy"]{color:var(--ssq-cyan)!important}
+
+/* 34.3 — الأحمر الذي يجب أن يبقى أحمر */
+.text-red-400,.text-red-500,.text-red-900,
+.out-of-stock,.out-of-stock *{color:var(--ssq-danger)!important}
+.border-red-300,.border-red-200{border-color:rgba(255,139,139,.55)!important}
+
+/* 34.4 — نصوص وحدود بطاقات المحتوى الرقمي (مكتوبة لخلفية بيضاء) */
+.text-gray-900,.text-gray-800,.text-gray-700,.text-slate-800,.text-slate-900{color:var(--ssq-text)!important}
+.text-gray-600,.text-gray-500,.text-gray-400,.color-grey{color:var(--ssq-muted)!important}
+.bg-gray-200,.bg-gray-300{background-color:var(--ssq-surface-3)!important;color:var(--ssq-text)!important}
+.border-gray-100,.border-gray-200,.border-slate-200{border-color:var(--ssq-border)!important}
+.text-blue-600,.text-blue-700{color:var(--ssq-cyan-light)!important}
+
+/* 34.5 — بطاقة "شكرًا لتسوّقكم" (الثيم يكتبها بخلفية #fff) */
+.thankyou-block{
+  background:linear-gradient(145deg,var(--ssq-surface-2),var(--ssq-surface))!important;
+  border:1px solid var(--ssq-border);
+  border-radius:18px;
+  color:var(--ssq-text)!important;
+}
+.thankyou-block *{color:var(--ssq-text)!important}
+.thankyou-block [class*="opacity-"]{opacity:1!important}
+.thankyou-block small,.thankyou-block .color-grey{color:var(--ssq-muted)!important}
+/* علامة النجاح: الثيم يضعها #22c55e داخل دائرة #dcfce7 */
+.thankyou-block.sent,.thankyou-block.sent:before{color:#6EE7A8!important}
+.thankyou-block.sent:before{background:rgba(110,231,168,.14)!important}
+
+/* 34.6 — مسار التنقّل ورأس الطلب */
+.thankyou-breadcrumbs a,.thankyou-breadcrumbs li{color:var(--ssq-cyan-light)!important;opacity:1!important}
+.thankyou-breadcrumbs svg{fill:var(--ssq-cyan-light)!important;opacity:1!important}
+.single-order-header-item,.single-order-header-item *{color:var(--ssq-text)!important}
+
+/* 34.7 — الروابط الخارجية */
+a[href^="http"],a[href^="www"]{
+  color:var(--ssq-cyan-light)!important;
+  text-decoration-color:rgba(127,220,248,.45)!important;
+}
+.store-header a[href^="http"],.store-footer a[href^="http"],.mm-spn a[href^="http"],
+salla-user-menu a[href^="http"],.s-product-card-entry a[href^="http"]{color:var(--ssq-text)!important}
+.full-banner-entry a[href^="http"],.banner-entry a[href^="http"]{color:#092330!important}
+
+/* 34.8 — حقل بريد "إرسال الفاتورة": كان النص يخرج من الإطار */
+input[type="email"]{direction:ltr;text-align:start;min-width:0}
+
+/* 34.10 — عناوين الحقول بلغتين
+   النص داخل ملف الأكواد يبقى Host / User لأن البريد لا يصله CSS */
+.font-mono>span:not([class]):nth-child(1),
+.font-mono>span:not([class]):nth-child(3){font-size:0!important}
+.font-mono>span:not([class])::before,
+div.font-mono:not(.text-ellipsis)::before{
+  display:block;
+  font-family:var(--font-main),DINNextLTArabic,-apple-system,sans-serif;
+  font-size:13.5px;font-weight:700;color:var(--ssq-muted);letter-spacing:normal;
+  line-height:1.5;margin-bottom:2px;
+}
+.font-mono>span:not([class]):nth-child(1)::before{content:"الخادم · Host"}
+.font-mono>span:not([class]):nth-child(3)::before{content:"اسم المستخدم · User"}
+
+/* صف كلمة المرور: سلة تكتب عنوانه داخل الشارة، فنرفعه فوق البطاقة
+   ونوحّد شارته مع بقية الصفوف (div وحده، لا الشارة التي هي span) */
+div.font-mono:not(.text-ellipsis)::before{content:"كلمة المرور · Password"}
+div.font-mono:not(.text-ellipsis)>.inline-flex>.font-mono.mx-1{font-size:0!important}
+div.font-mono:not(.text-ellipsis)>.inline-flex>.font-mono.mx-1::before{
+  content:"الكود";
+  font-family:var(--font-main),DINNextLTArabic,-apple-system,sans-serif;
+  font-size:11px;font-weight:700;color:var(--ssq-muted);letter-spacing:normal;
+}
+
+/* الرابط كان ينكسر سطرين على الجوال */
+@media(max-width:640px){
+  .font-mono>.inline-flex>.break-all,
+  .font-mono>a>.break-all,
+  .font-mono>span.inline-flex>.break-all{font-size:14px!important;letter-spacing:0!important}
+}
+/* =========================================================
+   35 — بطاقة "تقييم المنتج" (صفحة الطلب)
+   الثيم يرسمها تدرّجًا من --color-primary إلى --color-primary-dark ونصًّا
+   بـ --color-primary-reverse؛ وهي المتغيّرات التي صارت سماوية فاتحة في 34.1
+   لأن الثيم يستعملها نصًّا في عشرات المواضع. هنا وحدها تُستعمل خلفيةً، فتخرج
+   البطاقة لوحًا سماويًّا. الحل بالبطاقة لا بالمتغيّرات.
+   ========================================================= */
+.rating-header{
+  background:linear-gradient(145deg,var(--ssq-surface-2),var(--ssq-surface))!important;
+  border:1px solid var(--ssq-border);
+  border-radius:var(--ssq-radius)!important;
+  box-shadow:var(--ssq-shadow);
+  color:var(--ssq-text)!important;
+  overflow:hidden;
+}
+/* الشريط العلوي نفسه المستعمل في آراء العملاء (18) — ليقرأ الاثنان كعائلة واحدة */
+.rating-header::before{
+  content:"";
+  position:absolute;
+  top:0;right:0;left:0;
+  height:3px;
+  background:linear-gradient(90deg,var(--ssq-cyan),var(--ssq-gold));
+}
+.rating-header h1,.rating-header h2,.rating-header h3,.rating-header h4,
+.rating-header strong,.rating-header b{color:var(--ssq-text)!important}
+.rating-header p,.rating-header small{color:var(--ssq-muted)!important}
+.rating-header [class*="opacity-"]{opacity:1!important}
+
+/* الزر: زر الموقع الأساسي نفسه (07) صراحةً، مهما أصدره الثيم */
+.rating-header salla-button button.s-button-element,
+.rating-header .s-button-element{
+  background:linear-gradient(135deg,#0A6E9E,#087EA9)!important;
+  border:1px solid rgba(127,220,248,.18)!important;
+  border-radius:var(--ssq-btn-radius)!important;
+  min-height:var(--ssq-btn-h);
+  font-weight:800!important;
+}
+.rating-header .s-button-element,
+.rating-header .s-button-element .s-button-text,
+.rating-header .s-button-element .s-button-text *{color:#fff!important}
+/* 34.11 — كلمة المرور ورابط الشرح
+   نص العمود A:  Host <url> User <user> Password <pass> Guide <url>
+   والعمود C فارغ — نُقلت كلمة المرور إلى النص لتسبق الشرح، لأن سلة
+   تعرض العمود C بعد كل ما في العمود A دائماً.
+   الكلمات إنجليزية لأن بريد الطلب لا يصله CSS (كما في 34.10). */
+.font-mono>span:not([class]):nth-child(5),
+.font-mono>span:not([class]):nth-child(7){font-size:0!important}
+.font-mono>span:not([class]):nth-child(5)::before{content:"كلمة المرور · Password"}
+.font-mono>span:not([class]):nth-child(7)::before{content:"شرح التثبيت · Guide"}
+/* =========================================================
+   34.12 — خانات بيانات الاشتراك
+   يحوّل صفوف الأكواد المسطّحة إلى خانات مؤطّرة كما كانت،
+   مع إبقاء العناوين الثنائية التي يكتبها 34.10 فوق كل خانة.
+   ========================================================= */
+
+/* العنوان يتنفّس فوق خانته */
+.font-mono>span:not([class])::before,
+div.font-mono:not(.text-ellipsis)::before{
+  margin-top:16px;
+  margin-bottom:7px!important;
+}
+
+/* الخانة: صفّ واحد يضمّ الأيقونة والشارة والقيمة */
+.font-mono>.inline-flex,
+.font-mono>a,
+div.font-mono:not(.text-ellipsis)>.inline-flex{
+  display:flex!important;
+  align-items:center;
+  gap:10px;
+  width:100%;
+  box-sizing:border-box;
+  padding:11px 14px;
+  background:linear-gradient(145deg,var(--ssq-surface-2),var(--ssq-surface));
+  border:1px solid var(--ssq-border);
+  border-radius:12px;
+  box-shadow:0 4px 14px rgba(0,0,0,.14);
+  transition:var(--ssq-transition);
+}
+.font-mono>.inline-flex:hover,
+.font-mono>a:hover,
+div.font-mono:not(.text-ellipsis)>.inline-flex:hover{
+  border-color:var(--ssq-border-hover)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.20);
+}
+
+/* شارة "الكود" — حجمها ثابت لا تتمدّد */
+.font-mono .font-mono.mx-1{
+  flex:none;
+  margin:0!important;
+  padding:4px 10px;
+  background:rgba(127,220,248,.10);
+  border:1px solid var(--ssq-border);
+  border-radius:8px;
+  line-height:1.6;
+}
+
+/* القيمة تأخذ ما تبقّى، وتلتفّ ولا تخرج */
+.font-mono .break-all{
+  flex:1 1 auto;
+  min-width:0;
+  text-align:start;
+  word-break:normal!important;
+  overflow-wrap:anywhere;
+}
+
+/* أيقونة النسخ في طرف الخانة */
+.font-mono .copy-icon,
+.font-mono i[class*="sicon-copy"]{
+  flex:none;
+  font-size:17px;
+  opacity:.85;
+  transition:opacity .2s ease,transform .2s ease;
+}
+.font-mono .copy-icon:hover,
+.font-mono i[class*="sicon-copy"]:hover{
+  opacity:1;
+  transform:scale(1.12);
+}
+
+@media(max-width:640px){
+  .font-mono>.inline-flex,
+  .font-mono>a,
+  div.font-mono:not(.text-ellipsis)>.inline-flex{
+    padding:10px 12px;
+    gap:8px;
+    border-radius:11px;
+  }
+}
+/* =========================================================
+   34.13 — صف شرح التثبيت
+   رابط يُضغط لا كود يُنسخ، فشارة "الكود" فيه بلا معنى —
+   وسلة نفسها لم تضع له أيقونة نسخ كبقية الصفوف.
+   المواقع الزوجية هي القيم: 2 الخادم · 4 المستخدم ·
+   6 كلمة المرور · 8 الشرح.
+   حذف الكتلة كاملةً يُعيد الشارة كما كانت.
+   ========================================================= */
+.font-mono>*:nth-child(8) .font-mono.mx-1{display:none!important}
+/* =========================================================
+   36 — SMART SOUQ ORDER PAGE
+   FINAL BALANCED VERSION
+   ========================================================= */
+
+/* الصفحة */
+body:has(.single-order-header-item),
+body:has(.thankyou-block){
+  background:
+    radial-gradient(
+      650px 320px at 50% -8%,
+      rgba(79,195,232,.07),
+      transparent 70%
+    ),
+    #061923!important;
+}
+
+
+/* بطاقة المنتج الرئيسية */
+.thankyou-block{
+  background:
+    linear-gradient(
+      145deg,
+      #123A4A 0%,
+      #103445 100%
+    )!important;
+
+  border:1px solid rgba(127,220,248,.14)!important;
+  border-radius:20px!important;
+
+  box-shadow:
+    0 16px 40px rgba(0,0,0,.25)!important;
+
+  position:relative;
+}
+
+
+/* الخط العلوي */
+.thankyou-block::after{
+  content:"";
+  position:absolute;
+  top:0;
+  left:10%;
+  right:10%;
+  height:2px;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(79,195,232,.75),
+      rgba(233,180,76,.75),
+      transparent
+    );
+
+  opacity:.65;
+}
+
+
+/* رأس المنتج */
+.single-order-header-item{
+  background:
+    linear-gradient(
+      145deg,
+      #164557,
+      #12394A
+    )!important;
+
+  border:1px solid rgba(127,220,248,.14)!important;
+  border-radius:15px!important;
+
+  padding:15px!important;
+
+  box-shadow:
+    0 8px 22px rgba(0,0,0,.18)!important;
+}
+
+
+/* اسم المنتج */
+.single-order-header-item h1,
+.single-order-header-item h2,
+.single-order-header-item h3,
+.single-order-header-item strong,
+.single-order-header-item b{
+  color:#F5FAFC!important;
+  font-weight:800!important;
+}
+
+
+/* =========================================================
+   عناوين Host / User / Password / Guide
+   ========================================================= */
+
+.font-mono>span:not([class])::before,
+div.font-mono:not(.text-ellipsis)::before{
+  color:#73D0EC!important;
+
+  font-size:12.5px!important;
+  font-weight:700!important;
+
+  opacity:.95;
+}
+
+
+/* =========================================================
+   خانات البيانات
+   ========================================================= */
+
+.font-mono>.inline-flex,
+.font-mono>a,
+div.font-mono:not(.text-ellipsis)>.inline-flex{
+
+  background:
+    linear-gradient(
+      145deg,
+      #194B5D,
+      #164253
+    )!important;
+
+  border:1px solid rgba(127,220,248,.18)!important;
+
+  border-radius:12px!important;
+
+  box-shadow:
+    0 4px 14px rgba(0,0,0,.16)!important;
+
+  min-height:46px;
+
+  transition:
+    background .2s ease,
+    border-color .2s ease,
+    transform .2s ease;
+}
+
+
+/* Hover */
+.font-mono>.inline-flex:hover,
+.font-mono>a:hover,
+div.font-mono:not(.text-ellipsis)>.inline-flex:hover{
+
+  background:
+    linear-gradient(
+      145deg,
+      #1C5366,
+      #184858
+    )!important;
+
+  border-color:rgba(127,220,248,.32)!important;
+
+  transform:translateY(-1px);
+}
+
+
+/* =========================================================
+   القيمة
+   ========================================================= */
+
+.font-mono .break-all,
+.font-mono>a .break-all{
+
+  color:#F5FAFC!important;
+
+  font-weight:700!important;
+
+  font-size:15px!important;
+
+  letter-spacing:.15px;
+}
+
+
+/* =========================================================
+   زر "الكود"
+   ========================================================= */
+
+.font-mono .font-mono.mx-1{
+
+  background:
+    rgba(79,195,232,.08)!important;
+
+  border:1px solid rgba(127,220,248,.25)!important;
+
+  color:#79D8F2!important;
+
+  border-radius:8px!important;
+
+  padding:3px 9px!important;
+
+  font-size:11px!important;
+
+  font-weight:700!important;
+
+  line-height:1.5!important;
+}
+
+
+/* =========================================================
+   أيقونة النسخ
+   ========================================================= */
+
+.font-mono .copy-icon,
+.font-mono i[class*="sicon-copy"]{
+
+  color:#69C7E4!important;
+
+  background:transparent!important;
+
+  padding:3px!important;
+
+  font-size:17px!important;
+
+  opacity:.9;
+}
+
+.font-mono .copy-icon:hover,
+.font-mono i[class*="sicon-copy"]:hover{
+
+  color:#FFFFFF!important;
+
+  transform:scale(1.08);
+}
+
+
+/* =========================================================
+   Guide
+   ========================================================= */
+
+.font-mono>*:nth-child(8) .break-all{
+
+  color:#E9C86F!important;
+
+  font-weight:800!important;
+}
+
+
+/* رابط Guide نفسه */
+.font-mono>a[href*="guide"]{
+
+  color:#E9C86F!important;
+}
+
+
+/* =========================================================
+   الفواصل
+   ========================================================= */
+
+body:has(.single-order-header-item) hr{
+
+  border-color:rgba(127,220,248,.10)!important;
+
+  opacity:1!important;
+}
+
+
+/* =========================================================
+   نجاح الطلب
+   ========================================================= */
+
+.thankyou-block.sent{
+
+  border-color:
+    rgba(110,231,168,.20)!important;
+}
+
+.thankyou-block.sent:before{
+
+  background:
+    rgba(110,231,168,.10)!important;
+
+  color:#6EE7A8!important;
+}
+
+
+/* =========================================================
+   الجوال
+   ========================================================= */
+
+@media(max-width:640px){
+
+  .thankyou-block{
+    border-radius:18px!important;
+
+    box-shadow:
+      0 12px 32px rgba(0,0,0,.24)!important;
+  }
+
+  .single-order-header-item{
+    padding:13px!important;
+    border-radius:14px!important;
+  }
+
+  .font-mono>.inline-flex,
+  .font-mono>a,
+  div.font-mono:not(.text-ellipsis)>.inline-flex{
+
+    min-height:46px;
+
+    padding:10px 12px!important;
+
+    border-radius:11px!important;
+  }
+
+  .font-mono .break-all,
+  .font-mono>a .break-all{
+
+    font-size:14px!important;
+  }
+
+  .font-mono .font-mono.mx-1{
+
+    padding:3px 8px!important;
+    font-size:10.5px!important;
+  }
+}
+/* ssq: نافذة التقييمات العائمة */
+details.ssq-rv{display:block!important;position:fixed!important;bottom:96px!important;right:12px!important;left:12px!important;top:auto!important;width:auto!important;height:auto!important;z-index:9990!important;direction:rtl!important;text-align:right!important;pointer-events:none;font-family:inherit;margin:0!important;padding:0!important;border:0!important;background:none!important;box-shadow:none!important}
+details.ssq-rv:not([open]){display:none!important}
+@media (min-width:640px){details.ssq-rv{left:auto!important;right:20px!important;width:360px!important;bottom:28px!important}}
+details.ssq-rv .ssq-rv-card{position:absolute!important;bottom:0!important;right:0!important;left:0!important;top:auto!important;width:auto!important;height:auto!important;min-height:0!important;box-sizing:border-box!important;line-height:1.4!important;background:#103546!important;background-color:#103546!important;color:#F1F8FB!important;border:1px solid rgba(127,220,248,.16)!important;border-radius:16px!important;padding:14px 16px 14px 48px!important;margin:0!important;box-shadow:0 12px 32px rgba(0,0,0,.45)!important;text-align:right!important;overflow:hidden!important;opacity:0;visibility:hidden;transform:translateY(18px);animation:ssq-rv-cycle 90s linear infinite;pointer-events:none}
+details.ssq-rv .ssq-rv-head{display:flex!important;align-items:center!important;gap:10px!important;margin:0!important;padding:0!important;background:none!important}
+details.ssq-rv .ssq-rv-avatar{flex:none!important;width:36px!important;height:36px!important;border-radius:50%!important;background:#143E50!important;background-color:#143E50!important;color:#4FC3E8!important;border:1px solid rgba(127,220,248,.22)!important;font-weight:700!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:16px!important;line-height:1!important;margin:0!important;padding:0!important}
+details.ssq-rv .ssq-rv-name{font-weight:700!important;line-height:1.4!important;font-size:15px!important;color:#F1F8FB!important;background:none!important;margin:0!important;padding:0!important}
+details.ssq-rv .ssq-rv-city{font-size:12px!important;line-height:1.4!important;color:#A9C7D6!important;background:none!important;margin:0!important;margin-inline-start:auto!important;padding:0!important}
+details.ssq-rv .ssq-rv-stars{color:#E9B44C!important;font-size:15px!important;letter-spacing:2px!important;margin:6px 0 4px!important;padding:0!important;background:none!important;line-height:1.2!important}
+details.ssq-rv .ssq-rv-text{margin:0 0 10px!important;padding:0!important;font-size:14px!important;line-height:1.6!important;color:#A9C7D6!important;background:none!important;display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden!important;text-align:right!important}
+details.ssq-rv .ssq-rv-badge{display:inline-block!important;background:rgba(79,195,232,.12)!important;background-color:rgba(79,195,232,.12)!important;color:#7FDCF8!important;border:1px solid rgba(127,220,248,.35)!important;border-radius:999px!important;padding:3px 10px!important;margin:0!important;font-size:12px!important;font-weight:600!important;line-height:1.4!important}
+details.ssq-rv summary.ssq-rv-close{position:absolute!important;left:12px!important;right:auto!important;top:auto!important;bottom:12px!important;width:26px!important;height:26px!important;border-radius:50%!important;background:#143E50!important;background-color:#143E50!important;color:#A9C7D6!important;font-size:18px!important;line-height:26px!important;text-align:center!important;list-style:none!important;cursor:pointer!important;pointer-events:auto!important;z-index:2!important;user-select:none;padding:0!important;margin:0!important;border:0!important;display:block!important}
+details.ssq-rv summary.ssq-rv-close::-webkit-details-marker{display:none!important}
+details.ssq-rv summary.ssq-rv-close::marker{content:""!important}
+@keyframes ssq-rv-cycle{0%{opacity:0;visibility:hidden;transform:translateY(18px)}1%{opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto}7%{opacity:1;visibility:visible;transform:translateY(0);pointer-events:auto}8%{opacity:0;visibility:hidden;transform:translateY(18px);pointer-events:none}100%{opacity:0;visibility:hidden;transform:translateY(18px);pointer-events:none}}
+@media (prefers-reduced-motion:reduce){details.ssq-rv .ssq-rv-card{animation-duration:0s}details.ssq-rv .ssq-rv-card:first-of-type{opacity:1;visibility:visible;transform:none;pointer-events:auto}}
+
+/* ssq: نافذة خصم العيد الوطني — تظهر في صفحة الاشتراكات فقط */
+body:has(#product-filter)::after{content:"🇸🇦 هلا بزائرنا\A استغل الفرصة: خصومات العيد الوطني\A بنسبة خصم تصل إلى 50%\A الخصم مطبّق تلقائيًا على باقات مختارة";white-space:pre-line;position:fixed;z-index:9995;bottom:20px;right:16px;left:16px;box-sizing:border-box;padding:18px 20px;direction:rtl;text-align:center;font-family:inherit;font-size:16px;line-height:1.8;font-weight:600;color:#F1F8FB;background:linear-gradient(160deg,#143E50,#0A2735);border:1px solid rgba(127,220,248,.28);border-radius:18px;box-shadow:0 16px 40px rgba(0,0,0,.5);opacity:0;visibility:hidden;transform:translateY(24px);pointer-events:none;animation:ssq-promo 16s ease forwards}
+body:has(#product-filter)::after::first-line{font-size:19px}
+@media (min-width:640px){body:has(#product-filter)::after{left:auto;right:24px;width:380px;bottom:24px}}
+@keyframes ssq-promo{0%{opacity:0;visibility:hidden;transform:translateY(24px)}8%{opacity:0;visibility:hidden;transform:translateY(24px)}12%{opacity:1;visibility:visible;transform:translateY(0)}90%{opacity:1;visibility:visible;transform:translateY(0)}100%{opacity:0;visibility:hidden;transform:translateY(24px)}}
