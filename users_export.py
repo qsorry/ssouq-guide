@@ -134,6 +134,28 @@ def merge(data_dir, acct_id, gate_id, gate_name, new_rows, host=""):
     return _save(data_dir, acct_id, gate_id, gate_name, rows)
 
 
+def search(data_dir, acct_id, gate_id, q, limit=50):
+    """بحثٌ في لقطة البوابة المحفوظة بالـ username أو الـ password — بلا شبكة ولا جلسة،
+    فهو أسرع من سؤال اللوحة. يُرجَع كلُّ صفٍّ بشكل صف جدول اللوحة (نفس المفاتيح التي
+    تعرضها الواجهة) ليُعرَض كأنّه جاء منها. المطابقة بالاحتواء (جزءٌ من الاسم يكفي)،
+    بحروفٍ صغيرة. لا يرمي إن غاب الملف — يرجع قائمةً فارغة فيتولّى النداء البحثَ في اللوحة."""
+    needle = str(q or "").strip().lower()
+    if not needle:
+        return []
+    out = []
+    for r in load(paths(data_dir, acct_id, gate_id)[0]):
+        u, p = str(r.get("username") or ""), str(r.get("password") or "")
+        if needle in u.lower() or needle in p.lower():
+            out.append({"username": u, "password": p,
+                        "package": r.get("package", ""), "exp": r.get("exp", ""),
+                        "created": r.get("created", ""), "connections": r.get("connections", ""),
+                        "last_conn": r.get("last_conn", ""), "active": r.get("active", ""),
+                        "host": r.get("host", ""), "status": ""})
+            if len(out) >= limit:
+                break
+    return out
+
+
 def status(data_dir, acct_id, gate_id):
     """{exists, count, updated_at} — لعرض حالة الملف في الواجهة."""
     jsonl_path, xlsx_path = paths(data_dir, acct_id, gate_id)

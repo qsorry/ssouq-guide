@@ -17,6 +17,7 @@
 import datetime
 import email
 import email.policy
+import glob
 import http.cookiejar
 import json
 import os
@@ -369,7 +370,7 @@ def main():
               json.dumps(d.get("links"), ensure_ascii=False))
         r_id = spr.get("id")
 
-        print("\n== 3b2. البحث في كل البوابات يجد خط مرح (وإن أفسدته علامة «لا جدول») ==")
+        print("\n== 3b2. البحث يجد خط مرح رغم علامة «لا جدول» (من الملف فورًا، ومن اللوحة بعد حذفه) ==")
         # بحثٌ سابقٌ على جلسة مرح المنتهية كان يُحفظ «لوحة بلا جدول» فيرجع كل بحثٍ بعده فارغًا،
         # في كل البوابات وفي مرح وحدها. الحال كما تُركت عند العميل:
         mpath = os.path.join(data_dir, "sessions", "gate_" + g_m + ".meta.json")
@@ -377,9 +378,20 @@ def main():
             meta = json.load(f)
         with open(mpath, "w", encoding="utf-8") as f:
             json.dump({**meta, "no_table_search": True}, f)
+        # (أ) اللقطة المحفوظة تتجاوز العلامة أصلًا: خطٌّ مُصدَّر يُوجد فورًا بلا لمس اللوحة،
+        #     فلا تبلغه العلامة. والعلامة تبقى كما هي (لم نحتج اللوحة لنمحوها).
+        _, d = a.jreq("/admin/api/search?gate=%s&q=%s" % (g_m, m_user))
+        check("an exported line is found from the file, stale flag notwithstanding",
+              d.get("source") == "file" and [r["username"] for r in d.get("results", [])] == [m_user], str(d)[:140])
+        with open(mpath, encoding="utf-8") as f:
+            check("…file hit leaves the panel flag untouched", json.load(f).get("no_table_search") is True)
+        # (ب) خطٌّ ليس في الملف يصل اللوحةَ رغم العلامة فيُوجد، وتُمحى العلامة (الإصلاح الأصلي).
+        #     نحذف لقطة البوابة لنفرض مسار اللوحة — كأنّ الخط لم يُصدَّر بعد.
+        for fp in glob.glob(os.path.join(data_dir, "users_export", "*%s*" % g_m)):
+            os.remove(fp)
         _, d = a.jreq("/admin/api/search?gate=all&q=%s" % m_user)
         hits = {x["id"]: [r["username"] for r in x["results"]] for x in d.get("gates", []) if x["results"]}
-        check("all gates: Marah's line is found under Marah", hits.get(g_m) == [m_user], json.dumps(d, ensure_ascii=False)[:200])
+        check("all gates: Marah's line is found under Marah (via the panel)", hits.get(g_m) == [m_user], json.dumps(d, ensure_ascii=False)[:200])
         with open(mpath, encoding="utf-8") as f:
             check("…and the stale flag is cleared", not json.load(f).get("no_table_search"))
         _, d = a.jreq("/admin/api/search?gate=%s&q=%s" % (g_m, m_user))

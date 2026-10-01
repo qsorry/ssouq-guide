@@ -167,6 +167,34 @@ def main():
         code, _ = jreq("/admin/api/search?gate=all&q=user003", via=sara)
         check("an account without gates gets 403", code == 403, str(code))
         check("admin (no account) gets 403 for all gates too", admin_search_all_code == 403, str(admin_search_all_code))
+
+        print("\n== 8. Search uses the saved export file first (fast, no panel) ==")
+        # قبل السحب: ملف g1 لا يحوي user003 → يُسأل عنه اللوحةُ كما كان (بلا source=file)
+        _, d = jreq("/admin/api/search?gate=" + g1 + "&q=user003", via=multi)
+        check("before export: served from the panel (no file source)",
+              [r["username"] for r in d.get("results", [])] == ["user003"] and d.get("source") != "file", str(d)[:140])
+        # السحب الكامل (الفتح) يملأ الملف من اللوحة
+        _, d = jreq("/admin/api/users-export/pull", {"gate": g1}, via=multi)
+        check("full pull started", bool(d.get("ok") or d.get("running")), str(d)[:120])
+        pr = {}
+        for _ in range(100):
+            _, pr = jreq("/admin/api/users-export/progress?gate=" + g1, via=multi)
+            if pr.get("running") is False and (pr.get("count") or pr.get("done")):
+                break
+            time.sleep(0.1)
+        check("export file built (>=5 lines, no error)", (pr.get("count") or 0) >= 5 and not pr.get("error"), str(pr)[:160])
+        # بعد السحب: نفس البحث يُخدَم من الملف المحفوظ — بلا نداءِ اللوحة
+        _, d = jreq("/admin/api/search?gate=" + g1 + "&q=user003", via=multi)
+        check("after export: served from the saved file, same user found",
+              d.get("source") == "file" and [r["username"] for r in d.get("results", [])] == ["user003"], str(d)[:160])
+        # البحث بالباسورد يعمل من الملف (اللوحة الخادمية تبحث بالاسم وحده) — دليلٌ أنّ المصدر هو الملف
+        _, d = jreq("/admin/api/search?gate=" + g1 + "&q=pass003", via=multi)
+        check("password lookup served from the file (panel q is username-only)",
+              d.get("source") == "file" and [r["username"] for r in d.get("results", [])] == ["user003"], str(d)[:160])
+        # ما ليس في الملف يتولّاه النداءُ اللوحةَ — لا نتيجةٌ كاذبة، ولا source=file
+        _, d = jreq("/admin/api/search?gate=" + g1 + "&q=nosuchuser999", via=multi)
+        check("a miss still falls back to the panel (no false hit, no file source)",
+              d.get("results") == [] and d.get("source") != "file", str(d)[:120])
     finally:
         for pr in (app, falcon, falcon2):
             pr.terminate()
