@@ -35,6 +35,7 @@ import content
 import content_page
 import reports
 import store_sync
+import seo_build
 import xm_web
 import falcon_api
 import crypto_store
@@ -2824,6 +2825,7 @@ def _content_loop():
             store_sync.tick(DATA_DIR)       # أعداد المحتوى في وصف منتجات المتجر — بعد السحب، فتُكتب أعداده الجديدة
         except Exception:
             pass
+        seo_build.tick(DATA_DIR)            # طبقة الكيانات (‏seo.sqlite): تُبنى إن تغيّر فهرسٌ — ولا ترفع شيئًا
         time.sleep(CONTENT_TICK)
 
 
@@ -3325,6 +3327,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._page("content_admin.html")
                 if path == "/api/content/admin":
                     return self._send(200, content_state())
+                if path == "/api/content/seo":            # طبقة الكيانات: أعدادها وحال بنائها (لا تبني)
+                    return self._send(200, seo_build.stats(DATA_DIR))
+                if path == "/api/content/seo/review":     # ما يحتاج مراجعة يدوية (الاسم وحده، أو تعارض)
+                    return self._send(200, {"ok": True, "reviews": seo_build.reviews(
+                        DATA_DIR, self._q("status") or "open", self._q("kind"), self._q("limit") or 100, self._q("offset") or 0)})
                 return self._send(404, {"error": "not found"})
             if path == "/reports" or path == "/api/reports":   # بلاغات المحتوى (للمدير وللموظف الذي فُتحت له)
                 if not reports_on(role, acct):
@@ -3992,6 +3999,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/content/admin/store-preview":    # ما سيتغيّر في وصف كل منتج — بلا كتابة
                 ids = body.get("ids") if isinstance(body.get("ids"), list) else None
                 return self._send(200, store_sync.preview(DATA_DIR, ids))
+            elif path == "/api/content/admin/seo-build":     # «ابنِ طبقة الكيانات الآن»: في الخلفية، وبناءٌ واحد في وقته
+                started = seo_build.start_build(DATA_DIR, force=bool(body.get("force", True)))
+                return self._send(200, {"ok": True, "started": started, **seo_build.stats(DATA_DIR)})
             elif path == "/api/content/admin/store-run":     # «حدّث الآن»: يكتب في المنتجات ويعتمدها، فتُحدَّث بعده وحدها
                 ids = body.get("ids") if isinstance(body.get("ids"), list) else None
                 res = store_sync.run(DATA_DIR, ids, manual=True, force=bool(body.get("force")))

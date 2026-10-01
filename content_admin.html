@@ -263,6 +263,18 @@ label.force input{width:16px;height:16px;accent-color:var(--amber)}
     <p class="meta" id="sLast"></p>
   </section>
 
+  <section id="seo">
+    <h2><span>طبقة الكيانات لمحرّكات البحث</span><span class="chip" id="eChip"></span></h2>
+    <p class="sub">الفيلم أو المسلسل كيانٌ واحد مهما تعدّدت السيرفرات التي فيها: يُبنى من فهارس السيرفرات نفسها (ولا يمسّها)
+      في قاعدةٍ مشتقّة بعد كل سحب، وما لم تكفِ قرائنه للتوحيد يُترك هنا للمراجعة بدل دمجه. لا تُنشأ منه صفحاتٌ عامة بعد.</p>
+    <div id="eStats"></div>
+    <div class="acts" style="margin-top:12px"><button class="ghost" type="button" id="eBuild">ابنِ الآن من الفهارس</button>
+      <button class="ghost" type="button" id="eReview">اعرض ما يحتاج مراجعة</button></div>
+    <div class="msg" id="eMsg"></div>
+    <ul class="alist" id="eList" hidden></ul>
+    <p class="meta" id="eLast"></p>
+  </section>
+
   <section id="alert" hidden>
     <h2>تنبيه محتوى الكبار</h2>
     <p class="sub">إن ظهر في ملف سيرفرٍ شيءٌ للكبار لم يكن في سحبه السابق، يُحذف من الصفحة ولا يُنشر، ويصلك تنبيهٌ بما هو —
@@ -795,6 +807,46 @@ async function load() {
   catch (e) { if (e.message !== "login") $("list").innerHTML = '<section><p class="empty">تعذّر التحميل</p></section>'; }
 }
 
+// ----- طبقة الكيانات (seo.sqlite): أعدادها وبناؤها وما يحتاج مراجعة -----
+const RKIND = {name_only: "الاسم وحده (بلا قرينة)", conflict: "تعارض", year_conflict: "سنتان في سيرفرٍ واحد",
+               merged_entities: "دُمج كيانان", split_entity: "انفصل كيان"};
+let ePoll = 0;
+function renderSeo(d) {
+  const chip = $("eChip"), e = d.entities || {};
+  chip.textContent = d.running ? "يُبنى الآن…" : d.built ? "مبنيّة" : "لم تُبنَ بعد";
+  chip.className = "chip " + (d.running ? "busy" : d.built ? "on" : "");
+  if (!d.built) { $("eStats").innerHTML = '<p class="empty">تُبنى وحدها بعد أول سحبٍ (خلال عشر دقائق من الإقلاع)، أو الآن بالزرّ.</p>'; }
+  else {
+    const r = d.reviews || {}, bs = d.by_services || {};
+    const shared = t => Object.entries(bs[t] || {}).filter(([n]) => +n > 1).reduce((a, [, k]) => a + k, 0);
+    $("eStats").innerHTML = stats([["كيانات", e.total], ["أفلام", e.movie], ["مسلسلات", e.series],
+      ["أفلام في أكثر من سيرفر", shared("movie")], ["مسلسلات في أكثر من سيرفر", shared("series")],
+      ["روابط كيان↔سيرفر", d.links], ["أسماء بديلة", d.aliases], ["تحتاج مراجعة", r.open || 0], ["غائب الآن", e.unavailable]])
+      + `<p class="meta">${Object.entries(d.per_service || {}).map(([k, v]) => `${esc(k)}: ${count(v.movie ? v.movie.present : 0, N.movie)} · ${count(v.series ? v.series.present : 0, N.series)}`).join(" — ")}</p>`;
+  }
+  const l = d.last;
+  $("eLast").textContent = l ? (l.ok ? `آخر بناء ${when(l.at)}: ${num(l.items)} عنصرًا من ${(l.services || []).join("، ")} → ${num(l.clusters)} كيانًا (${num(l.new)} جديد · ${num(l.merged)} مدمج · ${num(l.split)} منفصل) في ${l.seconds} ث`
+                                   : `فشل البناء ${when(l.at)}: ${l.error}`) : (d.built_at ? `آخر بناء ${when(d.built_at)}` : "");
+  clearTimeout(ePoll);
+  if (d.running) ePoll = setTimeout(loadSeo, 2000);
+}
+async function loadSeo() { try { renderSeo(await api("/api/content/seo")); } catch (e) { if (e.message !== "login") $("eMsg").textContent = "تعذّر تحميل الطبقة"; } }
+$("eBuild").onclick = async () => {
+  $("eMsg").textContent = "";
+  const d = await api("/api/content/admin/seo-build", {force: true}).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { $("eMsg").textContent = d.error; return; }
+  $("eMsg").textContent = d.started ? "بدأ البناء في الخلفية…" : "بناءٌ جارٍ أصلًا";
+  renderSeo(d);
+};
+$("eReview").onclick = async () => {
+  const d = await api("/api/content/seo/review?limit=200").catch(() => ({error: "تعذّر الاتصال"}));
+  const ul = $("eList"); ul.hidden = false;
+  if (d.error) { ul.innerHTML = `<li>${esc(d.error)}</li>`; return; }
+  ul.innerHTML = (d.reviews || []).map(r => `<li><span><b>${esc(r.name)}</b> <small>${esc(RKIND[r.kind] || r.kind)}${r.why && r.why.length ? " · " + esc(r.why.join(", ")) : ""}</small><br>` +
+    (r.items || []).map(i => `${esc(i.service)}: ${esc(i.name)}${i.year ? " (" + i.year + ")" : ""}${i.seasons ? " · " + count(i.seasons, ["موسم واحد", "موسمان", "مواسم", "موسمًا", "موسم"]) : ""}`).join(" — ") +
+    (r.years ? ` — السنوات: ${r.years.join("، ")}` : "") + `</span></li>`).join("") || "<li>لا شيء يحتاج مراجعة</li>";
+};
+
 function say(key, text, cls) {
   UI[key].msg = text ? [text, cls || ""] : null;
   const sec = document.querySelector(`[data-k="${CSS.escape(key)}"]`);
@@ -967,7 +1019,7 @@ $("nAdd").onclick = async () => {
   DATA = d; render();
 };
 
-load();
+load(); loadSeo();
 </script>
 </body>
 </html>
