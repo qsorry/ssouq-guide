@@ -397,7 +397,7 @@ a.entry{text-decoration:none}
 @media (max-width:519px){.standings .gfga{display:none}}
 
 /* ---------- روابط صفحة المحتوى (/content): لا تظهر إلا لسيرفرٍ له محتوى ---------- */
-[data-content][hidden],[data-content-list][hidden],#content-entry[hidden]{display:none}
+[data-content][hidden],[data-content-list][hidden],#content-entry[hidden],#report-entry[hidden]{display:none}
 .clink{display:inline-block;font-size:.8rem;font-weight:600;margin-inline-start:8px;vertical-align:2px}
 
 footer{max-width:680px;margin:0 auto;padding:0 16px 30px;color:var(--mute);font-size:.8rem;text-align:center}
@@ -434,6 +434,7 @@ footer a{color:var(--mute)}
       <li><button type="button" data-nav="m3u">رابط M3U<em>أداة مجانية</em></button></li>
       <li><button type="button" data-nav="plans">كل الباقات<em>13 باقة</em></button></li>
       <li id="menu-content" hidden><a href="/content">محتوى الاشتراكات<em>ابحث عن مسلسلك بالاسم</em></a></li>
+      <li id="menu-report" hidden><a href="/report">بلّغ عن فيديو لا يعمل<em>أو يقطع، أو اطلب إضافة مسلسل</em></a></li>
       <li><a href="/watch">مشاهدة المباريات<em>مباريات اليوم والقنوات الناقلة</em></a></li>
       <li><a href="/predict">مسابقة التوقّعات<em>توقّع النتيجة واربح اشتراكًا</em></a></li>
       <li><a href="/gulf-cup">كأس الخليج العربي<em>خليجي 27 — النتائج والمباريات</em></a></li>
@@ -1345,6 +1346,8 @@ function renderHome(){
       <span><b>أريد رابط M3U</b><small>ولّد الرابط من بيانات اشتراكك داخل متصفحك</small></span><span class="chev"></span></button>
     <a class="entry" id="content-entry" href="/content" hidden><span class="bubble">${ICONS.film}</span>
       <span><b>ماذا في الاشتراك؟ ابحث قبل أن تشتري</b><small>المسلسلات بمواسمها والأفلام والقنوات</small></span><span class="chev"></span></a>
+    <a class="entry" id="report-entry" href="/report" hidden><span class="bubble">${ICONS.wrench}</span>
+      <span><b>فيديو لا يعمل أو يقطع؟ بلّغنا</b><small>ابحث باسم المسلسل أو الفيلم ويصل بلاغك للدعم مباشرةً، أو اطلب إضافة ما ليس فيه</small></span><span class="chev"></span></a>
   </div>
   <div class="trust">
     <div>${ICONS.headset}<b>دعم فني مباشر</b>على واتساب</div>
@@ -1731,6 +1734,9 @@ function fillContent(){
   contentGot.then(list => {
     const by = {}; list.forEach(s => { by[s.key] = s; });
     $("#menu-content").hidden = !list.length;
+    $("#menu-report").hidden = !list.length;                // صفحة البلاغ تختار من محتوى السيرفرات نفسه
+    const rep = $("#report-entry");
+    if (rep) rep.hidden = !list.length;
     const home = $("#content-entry");
     if (home && list.length) {
       home.querySelector("small").textContent = "المسلسلات بمواسمها والأفلام والقنوات في "
