@@ -16,7 +16,7 @@
 <style>
 /* ألوان صفحة المحتوى نفسها (content_page.CSS) — فالبلاغ امتدادٌ لها */
 :root{color-scheme:dark;--bg:#060b17;--card:#0e172c;--card2:#132039;--line:#1c2a4a;--line2:#29406b;
-  --ink:#eaf0ff;--mute:#8fa2c6;--acc:#2f8cff;--acc2:#1767d8;--gold:#f6c343;--green:#22c493;--red:#f0685a;--amber:#f2b23e}
+  --ink:#eaf0ff;--mute:#8fa2c6;--acc:#2f8cff;--acc2:#1767d8;--gold:#f6c343;--green:#22c493;--red:#f0685a;--amber:#f2b23e;--violet:#8b7cf6}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;background:radial-gradient(1100px 520px at 100% -8%,rgba(47,140,255,.16),transparent 60%),
   radial-gradient(900px 480px at 0 0,rgba(124,58,237,.10),transparent 60%),var(--bg);color:var(--ink);
@@ -111,6 +111,19 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
 .prob.down svg{color:var(--red)}
 .prob.buffer[aria-pressed="true"]{border-color:var(--amber);background:rgba(242,178,62,.12)}
 .prob.buffer svg{color:var(--amber)}
+.prob.wrong[aria-pressed="true"]{border-color:var(--violet);background:rgba(139,124,246,.14)}
+.prob.wrong svg{color:var(--violet)}
+.prob.subs[aria-pressed="true"]{border-color:var(--acc);background:rgba(47,140,255,.14)}
+.prob.subs svg{color:var(--acc)}
+/* طلب إضافة */
+.reqbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:0 0 14px;padding:11px 12px;border-radius:12px;
+  border:1px dashed var(--line2);background:rgba(34,196,147,.06);color:#bff3df;font-weight:600}
+.reqbtn:hover{border-color:var(--green)}
+.reqbtn svg{color:var(--green)}
+.empty .reqbtn{margin:12px 0 0}
+.types{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
+.types button{padding:12px;border-radius:14px;border:1.5px solid var(--line);background:var(--card2);font-weight:700}
+.types button[aria-pressed="true"]{border-color:var(--green);background:rgba(34,196,147,.12)}
 .field{display:block;margin:0 0 12px}
 .field span{display:block;font-weight:600;margin:0 0 6px}
 .field span small{color:var(--mute);font-weight:500}
@@ -146,7 +159,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
 </div></header>
 <main class="wrap">
   <h1>فيديو لا يعمل أو يقطع؟</h1>
-  <p class="lead">اختر السيرفر ثم ابحث باسم المسلسل أو الفيلم واختر الحلقة، ويصل بلاغك إلى فريق الدعم مباشرةً.</p>
+  <p class="lead">اختر السيرفر ثم ابحث باسم المسلسل أو الفيلم واختر الحلقة، ويصل بلاغك إلى فريق الدعم مباشرةً. وما لم تجده اطلب إضافته.</p>
   <div class="trail" id="trail" aria-label="ما اخترته"></div>
   <section class="panel" id="view" aria-live="polite"><p class="empty"><span class="spin"></span></p></section>
   <p class="foot">لمشكلةٍ في الاشتراك نفسه (لا يفتح شيء، أو انتهى): <a href="https://wa.me/966504998661" target="_blank" rel="noopener">راسل الدعم على واتساب</a> · <a href="/content">محتوى الاشتراكات</a></p>
@@ -207,6 +220,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
   }
   function now(){
     if (!S.s) return "server";
+    if (S.req) return S.sent ? "done" : "request";
     if (!S.it) return "find";
     if (S.t === "series" && S.ep == null) return "episode";
     return S.sent ? "done" : "problem";
@@ -220,6 +234,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
   function drawTrail(step){
     var b = [];
     if (S.s) b.push(['server', 'السيرفر', S.sname]);
+    if (S.req) b.push(['item', 'طلب', 'إضافة مسلسل أو فيلم']);
     if (S.it) b.push(['item', ONE[S.t], S.it.n + (S.it.y ? ' (' + S.it.y + ')' : '')]);
     if (S.t === "series" && S.ep != null) b.push(['episode', 'الحلقة', epText()]);
     trail.innerHTML = step === "done" ? "" : b.map(function(x){
@@ -237,10 +252,32 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
     });
   });
   // ما اختاره سطرًا: الاسم معزولٌ (‏bdi) فلا يقلب اسمٌ إنجليزي ترتيب «الموسم · الحلقة» بعده
+  // المشاكل كما تُعرض — و«ليست هي» بنوع العنصر
+  var PROB = {down: "لا يعمل", buffer: "يقطع", subs: "الترجمة غير صحيحة",
+              wrong: {series: "الحلقة ليست هي", movie: "الفيلم ليس هو", live: "القناة ليست هي"}};
+  function pname(p, t){ var x = PROB[p]; return typeof x === "object" ? x[t] || x.series : x || ""; }
   function what(){
+    if (S.req) return '<bdi>' + esc(S.rn) + '</bdi> — طلب إضافة ' + ONE[S.rt];
     return '<bdi>' + esc(S.it.n + (S.it.y ? ' (' + S.it.y + ')' : '')) + '</bdi>' + (S.t === "series" ? ' · ' + esc(epText()) : '')
-      + (S.problem ? ' — ' + (S.problem === "down" ? "لا يعمل" : "يقطع") : '');
+      + (S.problem ? ' — ' + pname(S.problem, S.t) : '');
   }
+  // الإرسال: البلاغ وطلب الإضافة معًا
+  function send(body, btn, er, text){
+    var ph = (body.phone || "").trim();
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; er.hidden = true;
+    fetch("/api/report", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
+      .then(function(r){ return r.json().catch(function(){ return {}; }); }).then(function(d){
+        if (!d.ok) throw new Error(d.error || "تعذّر الإرسال");
+        try { if (ph) localStorage.setItem("rp_phone", ph); } catch (e) {}
+        if (window.sq) try { window.sq("report", S.s + ":" + body.problem); } catch (e) {}
+        step(function(){ S.sent = d; });
+      }).catch(function(err){
+        er.textContent = err.message || "تعذّر الإرسال — أعد المحاولة."; er.hidden = false;
+        btn.disabled = false; btn.textContent = text;
+      });
+  }
+  function savedPhone(){ try { return localStorage.getItem("rp_phone") || ""; } catch (e) { return ""; } }
+  var REQ = '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>';
   function epText(){
     var s = S.season ? "الموسم " + S.season + " · " : "";
     return s + (S.ep ? "الحلقة " + S.ep : "كل الحلقات");
@@ -266,7 +303,8 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
       var found = [], seq = 0, timer = 0;
       view.innerHTML = head(2, "ابحث بالاسم", "اسم المسلسل أو الفيلم في " + esc(S.sname))
         + '<label class="find"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
-        + '<input id="sq" type="search" enterkeyhint="search" placeholder="اكتب اسم المسلسل أو الفيلم" autocomplete="off"></label><div id="sres"></div>';
+        + '<input id="sq" type="search" enterkeyhint="search" placeholder="اكتب اسم المسلسل أو الفيلم" autocomplete="off"></label>'
+        + '<button class="reqbtn" type="button" data-req>' + REQ + 'لم تجده؟ اطلب إضافة مسلسل أو فيلم</button><div id="sres"></div>';
       var sq = document.getElementById("sq"), box = document.getElementById("sres");
       var cards = function(list){
         return '<div class="grid">' + list.map(function(it, i){
@@ -291,13 +329,15 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
           if (n !== seq) return;
           found = r.items || [];
           box.innerHTML = found.length ? cards(found) + (r.total > found.length ? '<p class="hint">' + num(r.total) + ' نتيجة — اكتب الاسم أدقّ لتجده أسرع.</p>' : '')
-            : '<p class="empty">لا نتائج لـ «' + esc(v) + '» في ' + esc(S.sname) + '. جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية.</p>';
+            : '<div class="empty">لا نتائج لـ «' + esc(v) + '» في ' + esc(S.sname) + '. جرّب جزءًا من الاسم، أو اكتبه بالإنجليزية.'
+              + '<button class="reqbtn" type="button" data-req>' + REQ + 'اطلب إضافة «' + esc(v) + '»</button></div>';
         }, function(){ if (n === seq) box.innerHTML = '<p class="err">تعذّر البحث — أعد المحاولة.</p>'; });
       };
       sq.value = S.q || "";
       sq.addEventListener("input", function(){ clearTimeout(timer); timer = setTimeout(run, 300); });
       sq.addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); run(); sq.blur(); } });
       view.onclick = function(e){
+        if (e.target.closest("[data-req]")) { step(function(){ S.req = true; S.rn = S.q || ""; S.rt = S.rt || "series"; }); return; }
         var f = e.target.closest("[data-found]");
         if (f) { var it = found[+f.getAttribute("data-found")]; step(function(){ S.t = it.k; S.g = it.gid; S.gname = it.g; S.it = it; }); }
       };
@@ -340,11 +380,14 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
         + '<div class="probs" role="group" aria-label="المشكلة">'
         + '<button type="button" class="prob down" data-p="down" aria-pressed="' + (S.problem === "down") + '"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg><b>لا يعمل</b><small>لا يفتح أبدًا أو شاشة سوداء</small></button>'
         + '<button type="button" class="prob buffer" data-p="buffer" aria-pressed="' + (S.problem === "buffer") + '"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/><path d="M12 7v5l3 2"/></svg><b>يقطع</b><small>يعمل ثم يتوقف أو يعلّق</small></button>'
+        + '<button type="button" class="prob wrong" data-p="wrong" aria-pressed="' + (S.problem === "wrong") + '"><svg class="i" viewBox="0 0 24 24"><path d="M17 3l4 4-4 4M3 7h18M7 21l-4-4 4-4M21 17H3"/></svg><b>' + pname("wrong", S.t) + '</b><small>'
+        + (S.t === "series" ? 'تفتح حلقةٌ أخرى غير المختارة' : 'يفتح ' + (S.t === "live" ? 'قناةٌ أخرى' : 'فيلمٌ آخر')) + '</small></button>'
+        + '<button type="button" class="prob subs" data-p="subs" aria-pressed="' + (S.problem === "subs") + '"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4M14 15h3M7 11h2M12 11h5"/></svg><b>الترجمة غير صحيحة</b><small>غير متزامنة أو مفقودة أو بلغةٍ أخرى</small></button>'
         + '</div>'
         + '<label class="field"><span>رقم واتسابك <small>(اختياري — لنبلغك بعد الإصلاح)</small></span><input id="ph" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="05xxxxxxxx"></label>'
         + '<label class="field"><span>ملاحظة <small>(اختياري)</small></span><textarea id="nt" maxlength="300" placeholder="مثلًا: يقطع بعد الدقيقة 10، أو يظهر خطأ في التطبيق"></textarea></label>'
         + '<button class="send" type="button" id="send"' + (S.problem ? '' : ' disabled') + '>أرسل البلاغ</button><p class="err" id="serr" hidden></p>';
-      try { var saved = localStorage.getItem("rp_phone"); if (saved) document.getElementById("ph").value = saved; } catch (e) {}
+      document.getElementById("ph").value = savedPhone();
       view.onclick = function(e){
         var p = e.target.closest("[data-p]");
         if (p) {
@@ -354,34 +397,54 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
         }
       };
       document.getElementById("send").onclick = function(){
-        var btn = this, er = document.getElementById("serr"), ph = document.getElementById("ph").value.trim();
-        btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; er.hidden = true;
-        fetch("/api/report", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({
-          s: S.s, t: S.t, g: S.g, n: S.it.n, y: S.it.y || 0, season: S.t === "series" ? S.season : null,
-          ep: S.t === "series" ? S.ep : null, problem: S.problem, phone: ph, note: document.getElementById("nt").value
-        })}).then(function(r){ return r.json().catch(function(){ return {}; }); }).then(function(d){
-          if (!d.ok) throw new Error(d.error || "تعذّر الإرسال");
-          try { if (ph) localStorage.setItem("rp_phone", ph); } catch (e) {}
-          if (window.sq) try { window.sq("report", S.s + ":" + S.problem); } catch (e) {}
-          step(function(){ S.sent = d; });
-        }).catch(function(err){
-          er.textContent = err.message || "تعذّر الإرسال — أعد المحاولة."; er.hidden = false;
-          btn.disabled = false; btn.textContent = "أرسل البلاغ";
-        });
+        send({s: S.s, t: S.t, g: S.g, n: S.it.n, y: S.it.y || 0, season: S.t === "series" ? S.season : null,
+              ep: S.t === "series" ? S.ep : null, problem: S.problem, phone: document.getElementById("ph").value,
+              note: document.getElementById("nt").value}, this, document.getElementById("serr"), "أرسل البلاغ");
+      };
+    },
+    // طلب إضافة: النوع والاسم كما يكتبه (ممّا بحث عنه) — يصل موظفي السيرفر كالبلاغ
+    request: function(){
+      view.innerHTML = head(3, "طلب إضافة", "مسلسل أو فيلم ليس في " + esc(S.sname))
+        + '<div class="types" role="group" aria-label="النوع"><button type="button" data-rt="series" aria-pressed="' + (S.rt === "series") + '">مسلسل</button>'
+        + '<button type="button" data-rt="movie" aria-pressed="' + (S.rt === "movie") + '">فيلم</button></div>'
+        + '<label class="field"><span>الاسم</span><input id="rn" maxlength="150" dir="auto" style="direction:inherit;text-align:start" placeholder="اسم المسلسل أو الفيلم (وسنته إن عرفتها)"></label>'
+        + '<label class="field"><span>رقم واتسابك <small>(اختياري — لنبلغك حين يُضاف)</small></span><input id="ph" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="05xxxxxxxx"></label>'
+        + '<label class="field"><span>ملاحظة <small>(اختياري)</small></span><textarea id="nt" maxlength="300" placeholder="مثلًا: الموسم الجديد، أو مدبلج بالعربية"></textarea></label>'
+        + '<button class="send" type="button" id="send">أرسل الطلب</button><p class="err" id="serr" hidden></p>';
+      var rn = document.getElementById("rn");
+      rn.value = S.rn || "";
+      document.getElementById("ph").value = savedPhone();
+      rn.addEventListener("input", function(){ S.rn = rn.value; });
+      view.onclick = function(e){
+        var t = e.target.closest("[data-rt]");
+        if (t) {
+          S.rt = t.getAttribute("data-rt");
+          Array.prototype.forEach.call(view.querySelectorAll("[data-rt]"), function(b){ b.setAttribute("aria-pressed", String(b === t)); });
+        }
+      };
+      document.getElementById("send").onclick = function(){
+        var er = document.getElementById("serr");
+        S.rn = rn.value.trim();
+        if (S.rn.replace(/\s/g, "").length < 2) { er.textContent = "اكتب اسم المسلسل أو الفيلم."; er.hidden = false; rn.focus(); return; }
+        send({s: S.s, t: S.rt, n: S.rn, problem: "add", phone: document.getElementById("ph").value,
+              note: document.getElementById("nt").value}, this, er, "أرسل الطلب");
       };
     },
     done: function(){
       var d = S.sent || {};
       view.innerHTML = '<div class="done"><div class="ok"><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div>'
-        + '<h2>وصل بلاغك، شكرًا لك</h2><p class="what">' + what() + '</p>'
-        + '<p>' + (d.count > 1 ? 'بلّغ عنه غيرك أيضًا (' + num(d.count) + ' بلاغات) — ' : '') + 'فريق الدعم يراه الآن ويعمل على إصلاحه.</p>'
-        + '<div class="btns"><button class="btn pri" type="button" id="again">بلاغ آخر في ' + esc(S.sname) + '</button>'
+        + (S.req ? '<h2>وصل طلبك، شكرًا لك</h2><p class="what">' + what() + '</p>'
+            + '<p>' + (d.count > 1 ? 'طلبه غيرك أيضًا (' + num(d.count) + ' طلبات) — ' : '') + 'فريق الدعم يراه الآن.</p>'
+          : '<h2>وصل بلاغك، شكرًا لك</h2><p class="what">' + what() + '</p>'
+            + '<p>' + (d.count > 1 ? 'بلّغ عنه غيرك أيضًا (' + num(d.count) + ' بلاغات) — ' : '') + 'فريق الدعم يراه الآن ويعمل على إصلاحه.</p>')
+        + '<div class="btns"><button class="btn pri" type="button" id="again">' + (S.req ? 'طلب أو بلاغ آخر' : 'بلاغ آخر') + ' في ' + esc(S.sname) + '</button>'
         + '<a class="btn" href="https://wa.me/966504998661" target="_blank" rel="noopener">الدعم على واتساب</a></div></div>';
-      document.getElementById("again").onclick = function(){ step(function(){ S = {s: S.s, sname: S.sname, t: S.t}; }); };
+      document.getElementById("again").onclick = function(){ step(function(){ S = {s: S.s, sname: S.sname}; }); };
     }
   };
 
-  // ---- البداية: ‏?s=smart يختار السيرفر، و‏q (أو n) يبحث بالاسم، ومع ‏t و g و n (من صفحة المحتوى) يفتح العنصر نفسه ----
+  // ---- البداية: ‏?s=smart يختار السيرفر، و‏q (أو n) يبحث بالاسم، ومع ‏t و g و n (من صفحة المحتوى) يفتح العنصر نفسه،
+  //      و‏add=1 يفتح طلب الإضافة ----
   function seasons(it){
     var s = (it.s || []).filter(function(x){ return x[0]; }).length;
     return s > 1 ? s + " مواسم" : "";
@@ -393,6 +456,7 @@ h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:6px 0 4px}
     if (!srv) return render();
     stack.push(JSON.stringify({}));
     S = {s: srv.key, sname: srv.name, q: (P.get("q") || P.get("n") || "").trim().slice(0, 60)};
+    if (P.get("add")) { stack.push(JSON.stringify(S)); S.req = true; S.rn = S.q; S.rt = P.get("t") === "movie" ? "movie" : "series"; return render(); }
     if (!P.get("g") || !P.get("t") || !P.get("n")) return render();
     get("/api/report/items?" + q({s: srv.key, t: P.get("t"), g: P.get("g"), q: P.get("n")})).then(function(r){
       var n = P.get("n").trim().toLowerCase();

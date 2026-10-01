@@ -3,7 +3,8 @@
 
 العميل يختار من ملفات M3U نفسها (‏content.py) خطوةً بعد خطوة، فلا يكتب اسمًا لا وجود له:
   السيرفر ← البحث باسم المسلسل أو الفيلم (وقبل الكتابة أحدث ما أضيف؛ ولكل نتيجةٍ قسمها، بلا ما أخفاه المدير)
-  ← الموسم والحلقة (للمسلسل) ← المشكلة: «لا يعمل» أو «يقطع». (وخطوات القسم ثم عناصره باقيةٌ في الواجهة لرابط صفحة المحتوى.)
+  ← الموسم والحلقة (للمسلسل) ← المشكلة: «لا يعمل» أو «يقطع» أو «الحلقة ليست هي» (الفيلم ليس هو) أو «الترجمة غير صحيحة».
+وما لم يجده يطلب إضافته (‏add): مسلسلٌ أو فيلم باسمٍ يكتبه، ويصل موظفي سيرفره كالبلاغ. (وخطوات القسم ثم عناصره باقيةٌ في الواجهة لرابط صفحة المحتوى.)
 ورقم واتسابه وملاحظته اختياريان، ليُبلَّغ بعد الإصلاح.
 
 والبلاغ يُطابَق بما في الفهرس (القسم والاسم والموسم) فلا يُحفظ إلا ما في السيرفر حقًّا. والبلاغ نفسه
@@ -36,8 +37,11 @@ import content
 PATH = "/report"
 DIR = "reports"
 FILE = "reports.json"
-PROBLEMS = {"down": "لا يعمل", "buffer": "يقطع"}
+PROBLEMS = {"down": "لا يعمل", "buffer": "يقطع", "wrong": "الحلقة ليست هي", "subs": "الترجمة غير صحيحة",
+            "add": "طلب إضافة"}
+ADD = "add"                  # طلب إضافة مسلسلٍ أو فيلمٍ ليس في السيرفر: اسمٌ يكتبه، لا عنصرٌ من الفهرس
 KIND_ONE = {"series": "مسلسل", "movie": "فيلم", "live": "قناة"}
+WRONG = {"series": "الحلقة ليست هي", "movie": "الفيلم ليس هو", "live": "القناة ليست هي"}
 KINDS = ("series", "movie", "live")
 KEEP = 3000                  # ما يُحفظ من البلاغات، والمنجز الأقدم يُسقط أولًا
 PEOPLE_MAX = 30              # أصحاب البلاغ الواحد (بأرقامهم) — والباقي عددٌ في ‏count
@@ -243,8 +247,29 @@ def _mark(r):
                                        r["season"], r["ep"], r["problem"]))
 
 
+def problem_name(problem, kind=""):
+    """اسم المشكلة كما يُعرض: «الحلقة ليست هي» للمسلسل و«الفيلم ليس هو» للفيلم، و«طلب إضافة مسلسل»."""
+    if problem == "wrong":
+        return WRONG.get(kind, PROBLEMS["wrong"])
+    if problem == ADD:
+        return f"طلب إضافة {KIND_ONE.get(kind, '')}".strip()
+    return PROBLEMS.get(problem, "")
+
+
+def _request(srv, form):
+    """طلب إضافة: النوع والاسم كما كتبه (والسنة إن ذكرها) — لا يُطابَق بالفهرس، فما يطلبه ليس فيه."""
+    kind = str(form.get("t") or "")
+    if kind not in ("series", "movie"):
+        raise Invalid("اختر: مسلسل أو فيلم")
+    name = _text(form.get("n"), content.NAME_MAX)
+    if len(name.replace(" ", "")) < 2:
+        raise Invalid("اكتب اسم المسلسل أو الفيلم")
+    return {"server": srv["key"], "sname": srv["name"], "kind": kind, "gid": "", "group": "", "title": name,
+            "year": _int(form.get("y"), 1900, 2100) or 0, "season": None, "ep": None, "problem": ADD, "p": ""}
+
+
 def submit(data_dir, form, now=None):
-    """بلاغٌ من الصفحة ← (البلاغ، جديد؟). وInvalid بما لا يُقبل."""
+    """بلاغٌ أو طلب إضافة من الصفحة ← (البلاغ، جديد؟). وInvalid بما لا يُقبل."""
     form = form if isinstance(form, dict) else {}
     srv, v = _view(data_dir, form.get("s"))
     if not v:
@@ -252,7 +277,9 @@ def submit(data_dir, form, now=None):
     kind = str(form.get("t") or "")
     problem = str(form.get("problem") or "")
     if problem not in PROBLEMS:
-        raise Invalid("اختر المشكلة: لا يعمل أو يقطع")
+        raise Invalid("اختر المشكلة")
+    if problem == ADD:
+        return _store(data_dir, _request(srv, form), form, now)
     g, it = _find(v, kind, str(form.get("g") or ""), _text(form.get("n"), content.NAME_MAX),
                   _int(form.get("y"), 0, 3000) or 0)
     if g is None:
@@ -268,12 +295,17 @@ def submit(data_dir, form, now=None):
         ep = _int(form.get("ep"), 0, EP_MAX)           # ‏0 = الحلقات كلها
         if ep is None:
             raise Invalid("اختر الحلقة")
-    phone = phone_of(form.get("phone"))
-    note = _text(form.get("note"), NOTE_MAX)
-    now = now or time.time()
     rec = {"server": srv["key"], "sname": srv["name"], "kind": kind, "gid": g["id"], "group": g["name"],
            "title": it.get("n", ""), "year": it.get("y") or 0, "season": season, "ep": ep, "problem": problem,
            "p": _img(srv["key"], it)}
+    return _store(data_dir, rec, form, now)
+
+
+def _store(data_dir, rec, form, now=None):
+    """يحفظ البلاغ، أو يضمّه إلى مثله المفتوح (يزيد عدده ويُضاف رقم صاحبه) ← (البلاغ، جديد؟)."""
+    phone = phone_of(form.get("phone"))
+    note = _text(form.get("note"), NOTE_MAX)
+    now = now or time.time()
     person = {"at": int(now), "phone": phone, "note": note}
     with _lock:
         d = _load(data_dir)
@@ -306,27 +338,31 @@ def submit(data_dir, form, now=None):
 
 
 def label(r):
-    """«Breaking Bad · الموسم 2 · الحلقة 5 — يقطع» — للموظف ولرسالة واتساب."""
+    """«Breaking Bad · الموسم 2 · الحلقة 5 — يقطع»، و«Shogun — طلب إضافة مسلسل» — للموظف ولرسالة واتساب."""
     bits = [r.get("title", "") + (f" ({r['year']})" if r.get("year") else "")]
-    if r.get("kind") == "series":
+    if r.get("kind") == "series" and r.get("problem") != ADD:
         if r.get("season"):
             bits.append(f"الموسم {r['season']}")
         bits.append("كل الحلقات" if not r.get("ep") else f"الحلقة {r['ep']}")
-    return " · ".join(bits) + " — " + PROBLEMS.get(r.get("problem"), "")
+    return " · ".join(bits) + " — " + problem_name(r.get("problem"), r.get("kind"))
 
 
 # ================= للموظف =================
-def listing(data_dir, state="open", server="", only=None):
+def listing(data_dir, state="open", server="", only=None, what=""):
     """البلاغات للموظف: ‏open المفتوحة، ‏done المنجزة، ‏all الكل — بأعدادها لكل حالٍ ولكل سيرفر. و‏only سيرفرات الموظف
-    (‏None = كلها): لا يرى غيرها ولا يُعدّ."""
+    (‏None = كلها): لا يرى غيرها ولا يُعدّ. و‏what: ‏issue المشاكل وحدها، ‏add طلبات الإضافة وحدها (وأعداد المفتوح منهما)."""
     with _lock:
         rows = _load(data_dir)["items"]
     if only is not None:
         rows = [r for r in rows if r.get("server") in only]
-    counts = {"open": 0, "done": 0}
+    counts = {"open": 0, "done": 0, "issue": 0, "add": 0}
     by_server = {}
     for r in rows:
         st = "open" if r.get("state") == "open" else "done"
+        if st == "open":
+            counts["add" if r.get("problem") == ADD else "issue"] += 1
+        if what and (r.get("problem") == ADD) != (what == "add"):
+            continue
         counts[st] += 1
         if st == "open":
             s = by_server.setdefault(r.get("server", ""), {"key": r.get("server", ""), "name": r.get("sname", ""), "open": 0})
@@ -334,7 +370,8 @@ def listing(data_dir, state="open", server="", only=None):
     pick = [r for r in rows if (state == "all" or (r.get("state") == "open") == (state != "done"))
             and (not server or r.get("server") == server)]
     return {"ok": True, "counts": counts, "servers": sorted(by_server.values(), key=lambda s: -s["open"]),
-            "problems": PROBLEMS, "items": [dict(r, label=label(r)) for r in pick]}
+            "problems": PROBLEMS, "items": [dict(r, label=label(r), ptext=problem_name(r.get("problem"), r.get("kind")))
+                                            for r in pick if not what or (r.get("problem") == ADD) == (what == "add")]}
 
 
 def set_state(data_dir, rid, done, by="", reply="", now=None):
@@ -423,14 +460,19 @@ def save_settings(data_dir, wa, on=True):
 def alert_text(r, new):
     """نصّ التنبيه بخطّ واتساب العريض — وأول كل سطرٍ فيه اسمٌ علامة RLM فيبقى من اليمين وإن بدأ بإنجليزي."""
     w, rlm = content._wa, "\u200f"
-    prob = PROBLEMS.get(r.get("problem"), "")
-    head = (f"🔔 *بلاغ جديد في {w(r.get('sname'))}: {prob}*" if new
-            else f"🔁 *بلاغٌ متكرّر في {w(r.get('sname'))}: {prob}* ({int(r.get('count') or 1)} بلاغات)")
+    n, srv = int(r.get("count") or 1), w(r.get("sname"))
     title = w(r.get("title")) + (f" ({r['year']})" if r.get("year") else "")
-    ep = ""
-    if r.get("kind") == "series":
-        ep = (f" · الموسم {r['season']}" if r.get("season") else "") + (f" · الحلقة {r['ep']}" if r.get("ep") else " · كل الحلقات")
-    lines = [head, "", f"{rlm}🎬 {title}{ep}", f"{rlm}📂 {KIND_ONE.get(r.get('kind'), '')} · {w(r.get('group'))}"]
+    if r.get("problem") == ADD:                        # طلب إضافة: الاسم كما كتبه، بلا قسمٍ ولا حلقة
+        kind = KIND_ONE.get(r.get("kind"), "")
+        head = (f"🙋 *طلب إضافة {kind} في {srv}*" if new else f"🔁 *طلب إضافة {kind} في {srv}* — طلبه {n} مشتركين")
+        lines = [head, "", f"{rlm}🎬 {title}"]
+    else:
+        prob = problem_name(r.get("problem"), r.get("kind"))
+        head = (f"🔔 *بلاغ جديد في {srv}: {prob}*" if new else f"🔁 *بلاغٌ متكرّر في {srv}: {prob}* ({n} بلاغات)")
+        ep = ""
+        if r.get("kind") == "series":
+            ep = (f" · الموسم {r['season']}" if r.get("season") else "") + (f" · الحلقة {r['ep']}" if r.get("ep") else " · كل الحلقات")
+        lines = [head, "", f"{rlm}🎬 {title}{ep}", f"{rlm}📂 {KIND_ONE.get(r.get('kind'), '')} · {w(r.get('group'))}"]
     p = next((x for x in reversed(r.get("people") or []) if x.get("phone") or x.get("note")), None)
     if p:
         lines.append(f"{rlm}📱 " + " — ".join(b for b in (f"+{p['phone']}" if p.get("phone") else "", w(p.get("note"))) if b))

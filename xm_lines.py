@@ -3254,7 +3254,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/reports":
                     return self._page("reports_admin.html")
                 d = reports.listing(DATA_DIR, self._q("state") or "open", content.key_ok(self._q("s")),
-                                    report_scope(role, acct))
+                                    report_scope(role, acct), self._q("w") if self._q("w") in ("issue", "add") else "")
                 return self._send(200, dict(d, role=role, name=acct["name"] if acct else "المدير",
                                             gates=len(acct.get("gates") or []) if acct else 0,
                                             alert=report_alert_state(role, acct, st)))

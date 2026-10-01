@@ -9,6 +9,8 @@
   - الموظف: المفتوحة والمنجزة بأعدادها ولكل سيرفر، و«تم الإصلاح» وإعادة الفتح (ويُضمّ إلى مثله)، والحذف.
   - لكل سيرفر موظفٌ أو أكثر: الموظف لا يرى إلا بلاغات سيرفراته ولا يمسّ غيرها ولا يصله إلا تنبيهها، ومن بلا سيرفراتٍ
     مختارة يتابع كلها، والمدير يرى من يتابع كل سيرفر.
+  - المشاكل الأربع («الحلقة ليست هي» و«الفيلم ليس هو» بالنوع، و«الترجمة غير صحيحة»)، وطلب إضافة مسلسلٍ أو فيلمٍ ليس
+    في السيرفر: اسمه كما كتبه، والمكرّر يزيد عدده، وتصفيته وحده، وتنبيهه.
   - تنبيه واتساب: نصّه، ولكل مستلمٍ مرة، والمكرّر بعد نصف ساعة لا قبلها، وحدّ الساعة، وما لم يصل بسببه ويُحفظ مع البلاغ،
     ورقم المدير؛ وعلى خادمٍ حيّ بخدمة واتساب وهمية: يصل الموظف والمدير من رقم المسابقة، والموقوف لا يصله، والتجربة.
   - على خادم حيّ: الصفحة العامة وواجهاتها والإرسال، وصلاحيات الموظف (المدير، ومن فُتحت له، ومن لم تُفتح له)،
@@ -88,6 +90,11 @@ def seed(d, key="smart", text=SAMPLE):
 
 def gid(d, kind, name, key="smart"):
     return next(g["id"] for g in R.groups(d, key)["kinds"][kind] if g["name"] == name)
+
+
+def od(c):
+    """(المفتوحة، المنجزة) من أعداد الصفحة — ومعها أعداد المشاكل والطلبات."""
+    return c.get("open"), c.get("done")
 
 
 def raises(fn, *a, **k):
@@ -215,14 +222,14 @@ def unit_staff():
                         "season": 1, "ep": 1, "problem": "buffer"}, now=300)
     ls = R.listing(d)
     check("المفتوحة الأحدث أولًا بأعدادها ولكل سيرفر", [x["id"] for x in ls["items"]] == [f["id"], b["id"], a["id"]]
-          and ls["counts"] == {"open": 3, "done": 0} and ls["servers"] == [
+          and od(ls["counts"]) == (3, 0) and ls["servers"] == [
               {"key": "smart", "name": "سمارت", "open": 2}, {"key": "falcon", "name": "فالكون", "open": 1}]
           and ls["items"][0]["label"] == "Kon Show · الموسم 1 · الحلقة 1 — يقطع", ls)
     check("وتصفيتها بالسيرفر", [x["id"] for x in R.listing(d, server="falcon")["items"]] == [f["id"]])
     done = R.set_state(d, a["id"], True, "سارة", now=500)
     check("«تم الإصلاح» بمن ومتى", done["state"] == "done" and done["done_by"] == "سارة" and done["done_at"] == 500)
     ls = R.listing(d)
-    check("فتخرج من المفتوحة إلى المنجزة", ls["counts"] == {"open": 2, "done": 1}
+    check("فتخرج من المفتوحة إلى المنجزة", od(ls["counts"]) == (2, 1)
           and [x["id"] for x in R.listing(d, "done")["items"]] == [a["id"]] and len(R.listing(d, "all")["items"]) == 3)
     again, new = R.submit(d, dict(base, phone="0500000002"), now=600)
     check("وبلاغٌ جديدٌ بمثله بعد إصلاحه بلاغٌ جديد", new and again["id"] != a["id"])
@@ -236,7 +243,7 @@ def unit_staff():
     check("وعدد المفتوحة", R.open_count(d) == 2)
     mine = R.listing(d, "all", only={"falcon"})
     check("وموظف سيرفرٍ لا يرى غيره ولا يُعدّ له", [x["server"] for x in mine["items"]] == ["falcon"]
-          and mine["counts"] == {"open": 1, "done": 0} and [x["key"] for x in mine["servers"]] == ["falcon"], mine["counts"])
+          and od(mine["counts"]) == (1, 0) and [x["key"] for x in mine["servers"]] == ["falcon"], mine["counts"])
     check("وبلا سيرفرات (‏only فارغة): لا شيء", R.listing(d, "all", only=set())["items"] == [])
     check("والبلاغ برقمه لمعرفة سيرفره", R.get(d, f["id"])["server"] == "falcon" and R.get(d, "nope") is None)
     old = R.KEEP
@@ -255,6 +262,47 @@ def unit_staff():
           and not R.rate_ok("1.2.3.4", 3, now=7300) and R.rate_ok("5.6.7.8", 3, now=7300)
           and R.rate_ok("1.2.3.4", 3, now=10900) and R.rate_ok("", 0))
     check("ولا يُحفظ العنوان نفسه", not any("1.2.3.4" in k for k in R._rate))
+
+
+def unit_more():
+    print("«الحلقة ليست هي» و«الترجمة غير صحيحة»، وطلب الإضافة")
+    d = fresh()
+    seed(d)
+    drama = gid(d, "series", "SERIES | Drama")
+    mv = gid(d, "movie", "VOD | English Movies")
+    base = {"s": "smart", "t": "series", "g": drama, "n": "Breaking Bad", "season": 2, "ep": 1}
+    w, _ = R.submit(d, dict(base, problem="wrong"), now=100)
+    sub, _ = R.submit(d, dict(base, problem="subs"), now=110)
+    check("«الحلقة ليست هي» و«الترجمة غير صحيحة» للمسلسل", R.label(w) == "Breaking Bad · الموسم 2 · الحلقة 1 — الحلقة ليست هي"
+          and R.label(sub) == "Breaking Bad · الموسم 2 · الحلقة 1 — الترجمة غير صحيحة", (R.label(w), R.label(sub)))
+    m, _ = R.submit(d, {"s": "smart", "t": "movie", "g": mv, "n": "Dune", "y": 2021, "problem": "wrong"}, now=120)
+    check("و«الفيلم ليس هو» للفيلم", R.label(m) == "Dune (2021) — الفيلم ليس هو" and R.problem_name("wrong", "live") == "القناة ليست هي")
+    req, new = R.submit(d, {"s": "smart", "t": "series", "n": "  Shōgun   (2024) ", "problem": "add", "phone": "0551234567",
+                            "note": "الموسم الجديد"}, now=130)
+    check("طلب إضافة: الاسم كما كتبه، بلا قسمٍ ولا حلقةٍ ولا صورة", new and req["problem"] == "add" and req["title"] == "Shōgun (2024)"
+          and req["group"] == "" and req["season"] is None and req["ep"] is None and req["p"] == ""
+          and R.label(req) == "Shōgun (2024) — طلب إضافة مسلسل", req)
+    again, new2 = R.submit(d, {"s": "smart", "t": "series", "n": "shōgun (2024)", "problem": "add", "phone": "0500000001"}, now=140)
+    check("وطلبه مرةً أخرى يزيد عدده ورقمه", not new2 and again["id"] == req["id"] and again["count"] == 2 and len(again["people"]) == 2)
+    mreq, new3 = R.submit(d, {"s": "smart", "t": "movie", "n": "Shōgun (2024)", "problem": "add"}, now=150)
+    check("والفيلم بالاسم نفسه طلبٌ آخر", new3 and R.label(mreq) == "Shōgun (2024) — طلب إضافة فيلم")
+    for name, (form, want) in {"نوعٌ غير مسلسلٍ أو فيلم": ({"t": "live", "n": "MBC"}, "مسلسل أو فيلم"),
+                               "بلا اسم": ({"t": "series", "n": " ا "}, "اكتب اسم"),
+                               "بلا سيرفر": ({"s": "nope", "t": "series", "n": "Shogun"}, "اختر السيرفر")}.items():
+        msg = raises(R.submit, d, dict({"s": "smart", "problem": "add"}, **form))
+        check(f"طلبٌ يُرفض: {name}", want in msg, msg)
+    ls = R.listing(d)
+    check("وعدد المشاكل والطلبات المفتوحة معًا", ls["counts"]["issue"] == 3 and ls["counts"]["add"] == 2 and len(ls["items"]) == 5
+          and next(x for x in ls["items"] if x["id"] == m["id"])["ptext"] == "الفيلم ليس هو", ls["counts"])
+    only = R.listing(d, what="add")
+    check("وتصفية طلبات الإضافة وحدها", [x["problem"] for x in only["items"]] == ["add", "add"] and only["counts"]["open"] == 2
+          and R.listing(d, what="issue")["counts"]["open"] == 3 and all(x["problem"] != "add" for x in R.listing(d, what="issue")["items"]))
+    R.page_url = ""
+    t = R.alert_text(R.get(d, req["id"]), True)
+    check("وتنبيه الطلب: النوع والسيرفر والاسم ومن طلبه", t.startswith("🙋 *طلب إضافة مسلسل في سمارت*")
+          and "\u200f🎬 Shōgun (2024)" in t and "📂" not in t and "+966500000001" in t, t)
+    check("ومكرّره بعدده", R.alert_text(R.get(d, req["id"]), False).startswith("🔁 *طلب إضافة مسلسل في سمارت* — طلبه 2 مشتركين"))
+    check("وتنبيه «الحلقة ليست هي»", R.alert_text(w, True).startswith("🔔 *بلاغ جديد في سمارت: الحلقة ليست هي*"))
 
 
 def unit_alert():
@@ -399,6 +447,12 @@ def live():
         check("والمكرّر يزيد عدده", code == 200 and not d["new"] and d["count"] == 2, d)
         code, d = jpost(base + "/api/report", dict(form, season=9))
         check("وما لا يُقبل 400 برسالته", code == 400 and d["error"] == "اختر الموسم", d)
+        code, d = jpost(base + "/api/report", {"s": "smart", "t": "movie", "n": "Oppenheimer", "problem": "add"})
+        check("وطلب الإضافة", code == 200 and d["label"] == "Oppenheimer — طلب إضافة فيلم", d)
+        dd = jget(adm + "/api/reports?w=add", AUTH)[1]
+        check("والمدير يصفّي الطلبات وحدها", [x["title"] for x in dd["items"]] == ["Oppenheimer"] and dd["counts"]["add"] == 1
+              and dd["items"][0]["ptext"] == "طلب إضافة فيلم", dd.get("counts"))
+        jpost(adm + "/api/reports/delete", {"id": dd["items"][0]["id"]}, AUTH)
         code, raw, _ = req(base + "/api/report", b"not json", headers={"Content-Type": "application/json"})
         check("وطلبٌ ليس JSON ‏400", code == 400)
         code, raw, _ = req(base + "/api/report", b"{" + b" " * 9000 + b"}", headers={"Content-Type": "application/json"})
@@ -414,7 +468,7 @@ def live():
         check("والمدير يفتحها", code == 200 and "بلاغات المحتوى".encode() in raw)
         code, d = jget(adm + "/api/reports", AUTH)
         rid = d["items"][0]["id"] if d.get("items") else ""
-        check("ويرى البلاغ بعدده وأصحابه", code == 200 and d["role"] == "admin" and d["counts"] == {"open": 1, "done": 0}
+        check("ويرى البلاغ بعدده وأصحابه", code == 200 and d["role"] == "admin" and od(d["counts"]) == (1, 0)
               and d["items"][0]["count"] == 2 and d["items"][0]["people"][0]["phone"] == "966551234567"
               and d["items"][0]["people"][0]["note"] == "يقطع كل دقيقة", d)
         sara = login(adm, "sara", "sara1234")
@@ -426,7 +480,7 @@ def live():
               and len(d["items"]) == 1)
         code, d = jpost(adm + "/api/reports/state", {"id": rid, "done": True}, opener=sara)
         check("ويعلّم «تم الإصلاح» باسمه", code == 200 and d["item"]["state"] == "done" and d["item"]["done_by"] == "سارة", d)
-        check("فيصير في المنجزة", jget(adm + "/api/reports?state=done", opener=sara)[1]["counts"] == {"open": 0, "done": 1})
+        check("فيصير في المنجزة", od(jget(adm + "/api/reports?state=done", opener=sara)[1]["counts"]) == (0, 1))
         check("ولا يحذف (للمدير وحده)", jpost(adm + "/api/reports/delete", {"id": rid}, opener=sara)[0] == 403)
         check("وبلاغٌ لا وجود له 404", jpost(adm + "/api/reports/state", {"id": "nope", "done": True}, opener=sara)[0] == 404)
         ali = login(adm, "ali", "ali12345")
@@ -620,7 +674,7 @@ def live_team():
         code, d = jget(adm + "/api/reports?state=all", opener=sara)
         fid = next(x["id"] for x in jget(adm + "/api/reports", AUTH)[1]["items"] if x["server"] == "falcon")
         check("موظف سمارت لا يرى إلا بلاغاتها، ولا يُعدّ له غيرها", code == 200 and [x["server"] for x in d["items"]] == ["smart"]
-              and d["counts"] == {"open": 1, "done": 0} and d["alert"]["servers"] == ["سمارت"] and "team" not in d["alert"], d.get("counts"))
+              and od(d["counts"]) == (1, 0) and d["alert"]["servers"] == ["سمارت"] and "team" not in d["alert"], d.get("counts"))
         check("ولا يرى بلاغ فالكون بتصفيته", jget(adm + "/api/reports?s=falcon", opener=sara)[1]["items"] == [])
         check("ولا يمسّ بلاغ فالكون برقمه", jpost(adm + "/api/reports/state", {"id": fid, "done": True}, opener=sara)[0] == 404
               and jget(adm + "/api/reports", AUTH)[1]["counts"]["open"] == 2)
@@ -643,6 +697,7 @@ def main():
     unit_submit()
     unit_staff()
     unit_alert()
+    unit_more()
     live()
     live_alert()
     live_team()

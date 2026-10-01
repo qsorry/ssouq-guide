@@ -115,6 +115,10 @@ function playlist(extra) {
     await page.waitForSelector('.prob');
     check('والفيلم إلى المشكلة مباشرةً، ورقمه كما كتبه', (await page.textContent('.pick')).includes('Dune (2021)')
           && await page.inputValue('#ph') === '0551234567' && (await page.textContent('.step .n')) === '3');
+    check('والمشاكل الأربع، و«الفيلم ليس هو» للفيلم', (await page.$$eval('.prob b', b => b.map(x => x.textContent))).join('|')
+          === 'لا يعمل|يقطع|الفيلم ليس هو|الترجمة غير صحيحة');
+    check('بلا عرضٍ زائد على 360px (المشاكل الأربع)', await wide(page) <= 360, await wide(page));
+    await shot(page, 'report-5b-problems');
     await page.click('.prob.down');
     await page.click('#send');
     await page.waitForSelector('.done');
@@ -123,7 +127,28 @@ function playlist(extra) {
     await page.waitForSelector('#sq');
     await page.fill('#sq', 'zzzz');
     await page.waitForSelector('#sres .empty');
-    check('ولا نتائج: ما يجرّبه', (await page.textContent('#sres .empty')).includes('لا نتائج لـ «zzzz» في سمارت'));
+    check('ولا نتائج: ما يجرّبه، وطلب إضافته', (await page.textContent('#sres .empty')).includes('لا نتائج لـ «zzzz» في سمارت')
+          && (await page.textContent('#sres .empty .reqbtn')).includes('اطلب إضافة «zzzz»'));
+    await page.click('#sres .empty .reqbtn');
+    await page.waitForSelector('#rn');
+    check('طلب الإضافة باسم ما بحث عنه، ونوعه مسلسل', await page.inputValue('#rn') === 'zzzz'
+          && await page.$eval('[data-rt="series"]', b => b.getAttribute('aria-pressed')) === 'true'
+          && (await page.textContent('#trail')).includes('إضافة مسلسل أو فيلم'));
+    await page.click('[data-rt="movie"]');
+    await page.fill('#rn', 'Oppenheimer');
+    await page.fill('#nt', 'مترجم');
+    await shot(page, 'report-7-request');
+    await page.click('#send');
+    await page.waitForSelector('.done');
+    check('وصل الطلب', (await page.textContent('.done h2')) === 'وصل طلبك، شكرًا لك'
+          && (await page.textContent('.done .what')) === 'Oppenheimer — طلب إضافة فيلم');
+    await page.click('#again');
+    await page.waitForSelector('#sq');
+    await page.click('button.reqbtn[data-req]');
+    await page.waitForSelector('#rn');
+    await page.fill('#rn', ' ');
+    await page.click('#send');
+    check('وطلبٌ بلا اسم لا يُرسل', (await page.textContent('#serr')) === 'اكتب اسم المسلسل أو الفيلم.');
 
     console.log('العميل: من صفحة المحتوى، ورابطٌ بالمسلسل نفسه');
     await page.goto(APP + '/content/smart');
@@ -161,10 +186,11 @@ function playlist(extra) {
     await ep.click('#go');
     await ep.waitForSelector('.rep');
     check('الموظف بلا بوابات يدخل إلى البلاغات', ep.url().endsWith('/admin/reports'));
-    check('المفتوحة بأعدادها', await ep.textContent('#nOpen') === '2' && await ep.textContent('#nDone') === '0'
-          && (await ep.title()).startsWith('(2)'));
-    const first = await ep.$eval('.rep', el => el.textContent);
-    check('البلاغ: الاسم والسيرفر والقسم والمشكلة والرقم والملاحظة', first.includes('Dune (2021)') || first.includes('Breaking Bad'));
+    check('المفتوحة بأعدادها (بلاغان وطلب)', await ep.textContent('#nOpen') === '3' && await ep.textContent('#nDone') === '0'
+          && (await ep.title()).startsWith('(3)'));
+    const all = await ep.$$eval('.rep', el => el.map(x => x.textContent).join(' '));
+    check('البلاغات والطلب الأحدث أولًا', all.includes('Dune (2021)') && all.includes('Breaking Bad')
+          && (await ep.$eval('.rep', el => el.textContent)).includes('Oppenheimer'));
     const bb = await ep.$('.rep:has-text("Breaking Bad")');
     const txt = await bb.textContent();
     check('وتفاصيله', txt.includes('Breaking Bad · الموسم 1 · الحلقة 5') && txt.includes('سمارت · SERIES | Drama')
@@ -190,7 +216,7 @@ function playlist(extra) {
     await shot(ep, 'reports-1-open');
     await bb.$eval('[data-act="done"]', b => b.click());
     await ep.waitForFunction(() => document.getElementById('nDone').textContent === '1');
-    check('«تم الإصلاح» ينقله إلى المنجزة', await ep.textContent('#nOpen') === '1' && (await ep.$$('.rep')).length === 1);
+    check('«تم الإصلاح» ينقله إلى المنجزة', await ep.textContent('#nOpen') === '2' && (await ep.$$('.rep')).length === 2);
     await ep.click('[data-state="done"]');
     await ep.waitForSelector('.rep.done');
     const dn = await ep.$eval('.rep.done', el => el.textContent);
@@ -208,7 +234,7 @@ function playlist(extra) {
     await ap.goto(APP + '/admin/accounts');
     await ap.waitForSelector('#lkReportsN');
     await ap.waitForFunction(() => document.getElementById('lkReportsN').textContent.includes('مفتوحة'));
-    check('رابط البلاغات في الرئيسية بعدد المفتوحة', (await ap.textContent('#lkReportsN')).startsWith('1 مفتوحة'));
+    check('رابط البلاغات في الرئيسية بعدد المفتوحة', (await ap.textContent('#lkReportsN')).startsWith('2 مفتوحة'));
     await ap.goto(APP + '/admin/accounts#accounts');
     await ap.waitForSelector('[data-toggle]');
     check('وسم الحساب بسيرفراته', (await ap.textContent('.acct')).includes('بلاغات المحتوى: كل السيرفرات'));
@@ -226,7 +252,7 @@ function playlist(extra) {
     await shot(ap, 'staff-0-account');
     await ap.goto(APP + '/admin/reports?state=all');
     await ap.waitForSelector('.rep');
-    check('والمدير يرى الكل ويحذف', (await ap.$$('.rep')).length === 2 && !!(await ap.$('[data-act="del"]')));
+    check('والمدير يرى الكل ويحذف', (await ap.$$('.rep')).length === 3 && !!(await ap.$('[data-act="del"]')));
     await ap.click('#tbox summary');
     const rows = await ap.$$eval('#team .srow', r => r.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
     check('والفريق لكل سيرفرٍ له محتوى: سارة على سمارت، وفالكون بلا أحد', rows.length === 2
@@ -253,6 +279,20 @@ function playlist(extra) {
     await ep.waitForSelector('#who');
     await ep.waitForFunction(() => document.getElementById('who').textContent.includes('سمارت'));
     check('والموظف يرى سيرفراته تحت اسمه، ولا يرى بلاغ فالكون', (await ep.textContent('#who')) === 'سارة · سمارت');
+    console.log('طلبات الإضافة عند المدير');
+    await ap.goto(APP + '/admin/reports');
+    await ap.waitForSelector('.rep.req');
+    const rq = await ap.$eval('.rep.req', el => el.textContent.replace(/\s+/g, ' '));
+    check('الطلب بوسمه وزرّه', rq.includes('Oppenheimer') && rq.includes('طلب إضافة فيلم') && rq.includes('مترجم')
+          && rq.includes('✓ أُضيف') && rq.includes('نسخ الطلب'), rq.slice(0, 160));
+    check('وتصفية «طلبات إضافة» بعددها', (await ap.textContent('#whatBar')).includes('طلبات إضافة1'));
+    await ap.click('#whatBar [data-w="add"]');
+    await ap.waitForFunction(() => document.querySelectorAll('.rep').length === 1);
+    check('فلا يبقى إلا الطلب', !!(await ap.$('.rep.req')) && ap.url().includes('w=add'));
+    await ap.click('#whatBar [data-w="issue"]');
+    await ap.waitForFunction(() => !document.querySelector('.rep.req'));
+    check('و«مشاكل» بلا طلبات', (await ap.$$('.rep')).length >= 1);
+    await shot(ap, 'staff-2-requests');
     check('بلا أخطاء سكربت', errors.length === 0, errors.join(' | '));
   } catch (e) {
     check('بلا استثناء', false, e.stack + (errors.length ? '\n  أخطاء الصفحة: ' + errors.join(' | ') : ''));

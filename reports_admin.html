@@ -9,9 +9,9 @@
 <script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 <style>
 /* نظام تصميم الأداة نفسه (متغيّرات «حسابات متبقية») */
-:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--shadow:0 18px 50px rgba(0,0,0,.45)}
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--shadow:0 14px 40px rgba(20,40,80,.14)}}
-:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--shadow:0 14px 40px rgba(20,40,80,.14)}
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}
 *{box-sizing:border-box}
 html{background:var(--bg)}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
@@ -59,6 +59,10 @@ h1{font-size:1.45rem;margin:0 0 4px}
 .tag{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;font-size:.76rem;font-weight:700;border:1px solid var(--line);color:var(--mute)}
 .tag.down{color:var(--err);border-color:color-mix(in srgb,var(--err) 50%,transparent);background:color-mix(in srgb,var(--err) 10%,transparent)}
 .tag.buffer{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,transparent);background:color-mix(in srgb,var(--amber) 10%,transparent)}
+.tag.wrong{color:var(--purple);border-color:color-mix(in srgb,var(--purple) 50%,transparent);background:color-mix(in srgb,var(--purple) 10%,transparent)}
+.tag.subs{color:var(--blue);border-color:color-mix(in srgb,var(--blue) 50%,transparent);background:color-mix(in srgb,var(--blue) 10%,transparent)}
+.tag.add{color:var(--go);border-color:color-mix(in srgb,var(--go) 50%,transparent);background:color-mix(in srgb,var(--go) 10%,transparent)}
+.rep.req .pos{background:linear-gradient(135deg,color-mix(in srgb,var(--go) 55%,#0b3),color-mix(in srgb,var(--go) 30%,#031))}
 .tag.n{color:var(--ink)}
 .tag.ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 50%,transparent)}
 .people{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
@@ -116,7 +120,7 @@ h1{font-size:1.45rem;margin:0 0 4px}
 </header>
 <main>
   <h1>بلاغات المحتوى</h1>
-  <p class="sub">ما يبلّغ عنه المشتركون من <a id="lnkReport" href="https://guide.ssouq.com/report" target="_blank" rel="noopener">guide.ssouq.com/report</a>: السيرفر والقسم والمسلسل أو الفيلم والحلقة، و«لا يعمل» أو «يقطع». البلاغ المكرّر سطرٌ واحد بعدد من بلّغ. بعد الإصلاح اضغط «تم الإصلاح» وأبلغ صاحبه على واتساب.</p>
+  <p class="sub">ما يبلّغ عنه المشتركون من <a id="lnkReport" href="https://guide.ssouq.com/report" target="_blank" rel="noopener">guide.ssouq.com/report</a>: السيرفر والمسلسل أو الفيلم والحلقة، والمشكلة: «لا يعمل» أو «يقطع» أو «الحلقة ليست هي» أو «الترجمة غير صحيحة»؛ و<b>طلبات إضافة</b> ما ليس في السيرفر. المكرّر سطرٌ واحد بعدد من بلّغ. بعد الإصلاح (أو الإضافة) اضغط الزرّ الأخضر وأبلغ صاحبه على واتساب.</p>
   <details class="abox" id="abox">
     <summary><span class="bell" id="aBell"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
       <span class="grow"><b>تنبيه واتساب بكل بلاغ</b><small id="aSum">…</small></span>
@@ -140,6 +144,7 @@ h1{font-size:1.45rem;margin:0 0 4px}
     <button class="tile" data-state="done" aria-pressed="false"><small>تم إصلاحها</small><b id="nDone">—</b></button>
     <button class="tile" data-state="all" aria-pressed="false"><small>الكل</small><b id="nAll">—</b></button>
   </div>
+  <div class="bar" id="whatBar"></div>
   <div class="bar" id="srvBar" hidden></div>
   <p class="msg" id="msg" hidden></p>
   <div class="list" id="list"><div class="empty">جاري التحميل…</div></div>
@@ -153,11 +158,13 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num = n => Number(n || 0).toLocaleString("en-US");
 const ONE = {series: "مسلسل", movie: "فيلم", live: "قناة"};
-let state = "open", server = "", data = null, role = "";
+let state = "open", server = "", what_ = "", data = null, role = "";      // what_: ‏issue المشاكل، ‏add طلبات الإضافة
 $("lnkOut").href = B + "/logout";
 if (B) $("lnkReport").href = "/report";
 $("themeBtn").onclick = () => { const l = document.documentElement.getAttribute("data-theme") === "light"; document.documentElement.setAttribute("data-theme", l ? "dark" : "light"); try { localStorage.setItem("xm_theme", l ? "dark" : "light"); } catch {} };
-try { const p = new URLSearchParams(location.search); state = ["open", "done", "all"].includes(p.get("state")) ? p.get("state") : "open"; server = p.get("s") || ""; } catch {}
+try { const p = new URLSearchParams(location.search); state = ["open", "done", "all"].includes(p.get("state")) ? p.get("state") : "open"; server = p.get("s") || "";
+  what_ = ["issue", "add"].includes(p.get("w")) ? p.get("w") : ""; } catch {}
+const query = () => "?state=" + state + (server ? "&s=" + encodeURIComponent(server) : "") + (what_ ? "&w=" + what_ : "");
 
 function ago(ts){
   const s = Math.max(0, Date.now() / 1000 - ts);
@@ -170,32 +177,39 @@ function hue(s){ let n = 0; for (const c of String(s || "")) n += c.charCodeAt(0
 function toast(t){ const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 1800); }
 // الاسم معزولٌ (‏bdi) فلا يقلب اسمٌ إنجليزي ترتيب «الموسم · الحلقة» بعده، وفي النص المنسوخ علامة RLM أول السطر
 const RLM = "\u200f";
+const isReq = r => r.problem === "add";          // طلب إضافة مسلسلٍ أو فيلم (اسمٌ كتبه المشترك)
 function what(r){
   const name = r.title + (r.year ? ` (${r.year})` : "");
-  const ep = r.kind !== "series" ? "" : (r.season ? ` · الموسم ${r.season}` : "") + (r.ep ? ` · الحلقة ${r.ep}` : " · كل الحلقات");
+  const ep = r.kind !== "series" || isReq(r) ? "" : (r.season ? ` · الموسم ${r.season}` : "") + (r.ep ? ` · الحلقة ${r.ep}` : " · كل الحلقات");
   return {html: `<bdi>${esc(name)}</bdi>${esc(ep)}`, text: RLM + name + ep};
 }
-function where(r){ return `${esc(r.sname)} · <bdi>${esc(r.group)}</bdi>`; }
-function forward(r){ return `${RLM}${r.sname} · ${r.group}\n${what(r).text} — ${(data.problems || {})[r.problem] || ""}`; }
-function fixedText(r){ return `مرحبًا 👋 تم إصلاح ما بلّغت عنه في ${r.sname}:\n${what(r).text}\nجرّبه الآن، وشكرًا لبلاغك.`; }
+function where(r){ return isReq(r) ? esc(r.sname) : `${esc(r.sname)} · <bdi>${esc(r.group)}</bdi>`; }
+function forward(r){
+  return isReq(r) ? `${RLM}${r.ptext} في ${r.sname}:\n${what(r).text}` : `${RLM}${r.sname} · ${r.group}\n${what(r).text} — ${r.ptext}`;
+}
+function fixedText(r){
+  return isReq(r) ? `مرحبًا 👋 أضفنا ما طلبته في ${r.sname}:\n${what(r).text}\nابحث عنه في تطبيقك، وشكرًا لطلبك.`
+    : `مرحبًا 👋 تم إصلاح ما بلّغت عنه في ${r.sname}:\n${what(r).text}\nجرّبه الآن، وشكرًا لبلاغك.`;
+}
 
 function card(r){
   const open = r.state === "open";
   const people = (r.people || []).map(p => `<li>${p.phone ? `<a href="https://wa.me/${esc(p.phone)}${open ? "" : "?text=" + encodeURIComponent(fixedText(r))}" target="_blank" rel="noopener">+${esc(p.phone)}</a>` : "<small>بلا رقم</small>"}${p.note ? ` — ${esc(p.note)}` : ""} <small>· ${ago(p.at)}</small></li>`).join("");
   const src = r.p ? (r.p.startsWith("/") ? SITE + r.p : r.p) : "";
-  return `<div class="rep${open ? "" : " done"}" data-id="${esc(r.id)}">
+  const req = isReq(r);
+  return `<div class="rep${open ? "" : " done"}${req ? " req" : ""}" data-id="${esc(r.id)}">
     <span class="pos${r.kind === "live" ? " sq" : ""}" style="--h:${hue(r.title)}">${esc(String(r.title || "•").trim().slice(0, 1))}${src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : ""}</span>
     <div class="body">
       <div class="t">${what(r).html}</div>
-      <div class="meta">${esc(ONE[r.kind] || "")} · ${where(r)} · ${ago(r.at)}${r.count > 1 ? " · آخر بلاغ " + ago(r.last) : ""}</div>
-      <div class="tags"><span class="tag ${esc(r.problem)}">${esc((data.problems || {})[r.problem] || r.problem)}</span>
-        ${r.count > 1 ? `<span class="tag n">${num(r.count)} بلاغات</span>` : ""}
-        ${open ? "" : `<span class="tag ok">✓ أُصلح ${ago(r.done_at)}${r.done_by ? " · " + esc(r.done_by) : ""}</span>`}</div>
+      <div class="meta">${esc(ONE[r.kind] || "")} · ${where(r)} · ${ago(r.at)}${r.count > 1 ? (req ? " · آخر طلب " : " · آخر بلاغ ") + ago(r.last) : ""}</div>
+      <div class="tags"><span class="tag ${esc(r.problem)}">${esc(r.ptext || r.problem)}</span>
+        ${r.count > 1 ? `<span class="tag n">${num(r.count)} ${req ? "طلبات" : "بلاغات"}</span>` : ""}
+        ${open ? "" : `<span class="tag ok">✓ ${req ? "أُضيف" : "أُصلح"} ${ago(r.done_at)}${r.done_by ? " · " + esc(r.done_by) : ""}</span>`}</div>
       ${people ? `<ul class="people">${people}</ul>` : ""}
       ${alertLine(r)}
       <div class="acts">
-        ${open ? `<button class="btn go" data-act="done">✓ تم الإصلاح</button>` : `<button class="btn" data-act="open">إعادة فتح</button>`}
-        <button class="btn" data-act="copy">نسخ البلاغ</button>
+        ${open ? `<button class="btn go" data-act="done">✓ ${req ? "أُضيف" : "تم الإصلاح"}</button>` : `<button class="btn" data-act="open">إعادة فتح</button>`}
+        <button class="btn" data-act="copy">${req ? "نسخ الطلب" : "نسخ البلاغ"}</button>
         ${role === "admin" ? `<button class="btn del" data-act="del">حذف</button>` : ""}
       </div>
     </div></div>`;
@@ -271,17 +285,20 @@ function draw(){
   $("nAll").textContent = num(d.counts.open + d.counts.done);
   document.title = (d.counts.open ? `(${d.counts.open}) ` : "") + "بلاغات المحتوى";
   document.querySelectorAll("[data-state]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.state === state)));
+  const c = d.counts;
+  $("whatBar").innerHTML = [["", "الكل"], ["issue", "مشاكل", c.issue], ["add", "طلبات إضافة", c.add]].map(([k, t, n]) =>
+    `<button class="chip" data-w="${k}" aria-pressed="${what_ === k}">${t}${n ? `<em>${num(n)}</em>` : ""}</button>`).join("");
   const srvs = d.servers || [];
   $("srvBar").hidden = srvs.length < 2 && !server;
   $("srvBar").innerHTML = `<button class="chip" data-s="" aria-pressed="${!server}">كل السيرفرات</button>` + srvs.map(s =>
     `<button class="chip" data-s="${esc(s.key)}" aria-pressed="${s.key === server}">${esc(s.name)}<em>${num(s.open)}</em></button>`).join("");
   $("list").innerHTML = d.items.length ? d.items.map(card).join("")
-    : `<div class="empty">${state === "open" ? "لا بلاغات مفتوحة — كل شيءٍ يعمل ✓" : "لا شيء هنا بعد."}</div>`;
+    : `<div class="empty">${state !== "open" ? "لا شيء هنا بعد." : what_ === "add" ? "لا طلبات إضافة مفتوحة." : "لا بلاغات مفتوحة — كل شيءٍ يعمل ✓"}</div>`;
 }
 
 async function load(){
   try {
-    const r = await fetch(B + "/api/reports?state=" + state + (server ? "&s=" + encodeURIComponent(server) : ""));
+    const r = await fetch(B + "/api/reports" + query());
     const d = await r.json();
     if (d.login) { location.href = B + "/login"; return; }
     if (!r.ok) throw new Error(d.error || "تعذّر التحميل");
@@ -297,11 +314,15 @@ async function load(){
 
 document.querySelector(".tiles").onclick = e => {
   const b = e.target.closest("[data-state]"); if (!b) return;
-  state = b.dataset.state; history.replaceState(null, "", "?state=" + state + (server ? "&s=" + server : "")); load();
+  state = b.dataset.state; history.replaceState(null, "", query()); load();
 };
 $("srvBar").onclick = e => {
   const b = e.target.closest("[data-s]"); if (!b) return;
-  server = b.dataset.s; history.replaceState(null, "", "?state=" + state + (server ? "&s=" + server : "")); load();
+  server = b.dataset.s; history.replaceState(null, "", query()); load();
+};
+$("whatBar").onclick = e => {
+  const b = e.target.closest("[data-w]"); if (!b) return;
+  what_ = b.dataset.w; history.replaceState(null, "", query()); load();
 };
 $("list").onclick = async e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
