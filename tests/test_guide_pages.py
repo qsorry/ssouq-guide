@@ -143,9 +143,7 @@ def main():
     h = G.render("/vidaa").decode("utf-8")
     check("/vidaa تربط محرّر ss-iptv.com وأداة M3U",
           'href="https://ss-iptv.com/en/users/playlist"' in h and 'href="/#m3u"' in h)
-    # كصفحتي منتج كاسبر في المتجر: لا يعمل على VIDAA، فلا تقول الصفحة «لكل الاشتراكات»
-    check("/vidaa لسمارت وفالكون، وكاسبر لا يعمل عليها",
-          "لكل الاشتراكات" not in h and "سمارت أو فالكون، أما كاسبر فلا يعمل على هذه الشاشات" in h)
+    check("/vidaa للاشتراكات الثلاثة", "والاثنان لاشتراكات سمارت وفالكون وكاسبر." in h and "أما كاسبر فلا يعمل" not in h)
     h = G.render("/samsung-lg").decode("utf-8")
     check("/samsung-lg فيها التطبيقات الثلاثة", "تطبيق 0Player" in h and "تطبيق Duplecast" in h and "تطبيق SS IPTV" in h)
     check("/samsung-lg تقول إن 0Player مجاني", "تطبيق 0Player المجاني من متجر الشاشة" in h)

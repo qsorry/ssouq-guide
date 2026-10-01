@@ -1,10 +1,10 @@
-// Browser test: Duplecast (دبل كاست) in the activation guide, for Smart and Falcon, on Samsung/LG and on VIDAA.
+// Browser test: Duplecast (دبل كاست) in the activation guide, for Smart, Falcon and Casper, on Samsung/LG and on VIDAA.
 // Seven steps each — the install step (with the video, the price: 15 days free then $3 a year, or a 16-riyal
 // code from the store), scan the TV's barcode, Add Playlist, Xtream Info with host and port apart, saved,
 // refresh on the TV, and the activation (Activate by Payment, or Activate by code with the store's code) —
 // every image loads, the store button opens the code product, and the done screen's support message names
-// the app. Casper offers Duplecast on Samsung/LG next to 0Player, with its own plans for those TVs (the same
-// steps, after a note linking them), and still not on VIDAA. The static pages carry the steps too.
+// the app. Casper offers Duplecast on Samsung/LG with its own plans for those TVs (the same steps, after a note
+// linking them), and on VIDAA with its regular plan. The static pages carry the steps too.
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -41,7 +41,7 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
   const TITLES = ['امسح الباركود على الشاشة بجوالك', 'اضغط Add Playlist', 'عبّئ بياناتك في تبويب Xtream Info',
     'تأكّد أن القائمة حُفظت', 'حدّث التطبيق على الشاشة وشاهد', 'بعد 15 يومًا فعّل التطبيق: 3 دولارات للسنة'];
   try {
-    for (const sub of ['smart', 'falcon']) for (const [dev, first, store] of [
+    for (const sub of ['smart', 'falcon', 'casper']) for (const [dev, first, store] of [
         ['webos', 'حمّل تطبيق Duplecast (دبل كاست)', 'Samsung Apps'], ['vidaa', 'حمّل تطبيق Duplecast من متجر VIDAA', 'VIDAA Store']]) {
       console.log(`== ${sub} · ${dev} ==`);
       await open(`#activate/${sub}/${dev}`);
@@ -96,8 +96,8 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check("Casper's old Samsung/LG Duplecast link opens that step", new URL(page.url()).hash === '#activate/casper/webos/duplecast/3'
       && (await h2()) === TITLES[1], await h2());
     await open('#activate/casper/webos');
-    check('… Casper on Samsung/LG offers 0Player and Duplecast', (await h2()) === 'اختر التطبيق'
-      && (await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant))).join() === '0player,duplecast');
+    check('… Casper on Samsung/LG offers 0Player, Duplecast and SS IPTV', (await h2()) === 'اختر التطبيق'
+      && (await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant))).join() === '0player,duplecast,ssiptv');
     await open('#activate/casper/webos/duplecast');
     check("… its Duplecast opens with the note on Casper's own Samsung/LG plans",
       (await h2()) === 'حمّل تطبيق Duplecast (دبل كاست)' && (await text()).includes('باقة كاسبر الخاصة بشاشات سامسونج و LG'));
@@ -106,8 +106,11 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check('… the same seven steps as Smart, activation last', casperTitles.join('|') === TITLES.join('|'), casperTitles.join(' | '));
     await open('#activate/casper/webos/duplecast/7');
     check('… whose activation step still sells the code', (await page.$$eval('#view a.btn.go', a => a.map(x => x.href))).some(h => h.startsWith(BUY)));
+    await open('#activate/casper/vidaa/duplecast/3');
+    check('… and Casper has Duplecast on VIDAA too', new URL(page.url()).hash === '#activate/casper/vidaa/duplecast/3'
+      && (await h2()) === TITLES[1], await h2());
     await open('#activate/casper/vidaa/duplecast');
-    check('… and does not run on VIDAA', new URL(page.url()).hash === '#activate/casper/vidaa' && (await h2()) === 'كاسبر لا يعمل على هايسنس و VIDAA OS');
+    check('… with its regular plan: no Samsung/LG plans note there', !(await text()).includes('باقة كاسبر الخاصة'));
 
     for (const p of ['/samsung-lg', '/vidaa']) {
       await page.goto(APP + p);
