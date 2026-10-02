@@ -504,13 +504,21 @@ def start_build(data_dir, force=True):
     return True
 
 
-def stats(data_dir):
-    """أعداد الطبقة لصفحة المدير والتقرير — من القاعدة وحدها، ولا تبني."""
+_stats_cache = {}             # مسار البيانات ← (وقت، إحصاءات): أثناء البناء تُعاد آخر إحصاءاتٍ محسوبة بدل انتظار استعلاماتٍ ثقيلة
+
+
+def stats(data_dir, light=False):
+    """أعداد الطبقة لصفحة المدير والتقرير — من القاعدة وحدها، ولا تبني. ‏light أو بناءٌ جارٍ: آخر نسخةٍ محسوبة (إن وُجدت)
+    مع حال التشغيل، فلا ينتظر المدير دقائق حتى تُحسب الأعداد على قاعدةٍ كبيرة."""
     con = seo_db.connect(data_dir, create=False)
     k = os.path.abspath(data_dir)
     running = bool(_running.get(k) and _running[k].is_alive())
     if con is None:
         return {"ok": True, "built": False, "running": running, "last": _last.get(k)}
+    cached = _stats_cache.get(k)
+    if cached and (light or running or time.time() - cached[0] < 15):
+        con.close()
+        return {**cached[1], "running": running, "last": _last.get(k), "cached_at": int(cached[0])}
     try:
         q = lambda sql, *a: con.execute(sql, a).fetchone()[0]   # noqa: E731
         live = "merged_into IS NULL AND available=1"
@@ -523,7 +531,7 @@ def stats(data_dir):
                              f"GROUP BY c.type, n"):
             shared.setdefault(r["type"], {})[str(r["n"])] = r["k"]
         reviews = {r["kind"]: r["n"] for r in con.execute("SELECT kind, COUNT(*) n FROM review WHERE status='open' GROUP BY kind")}
-        return {
+        out = {
             "ok": True, "built": bool(seo_db.state(con, "built_at")), "running": running, "last": _last.get(k),
             "built_at": seo_db.state(con, "built_at"), "services": sorted(seo_db.state(con, "signatures") or {}),
             "entities": {"total": q(f"SELECT COUNT(*) FROM content WHERE {live}"),
@@ -554,6 +562,8 @@ def stats(data_dir):
             "settings": {k: ("•••" if k in seo_db.SECRET_SETTINGS and v else v) for k, v in seo_db.settings(con).items()},
             "db_bytes": os.path.getsize(seo_db.path(data_dir)),
         }
+        _stats_cache[k] = (time.time(), out)
+        return out
     finally:
         con.close()
 

@@ -212,8 +212,12 @@ def _services(con, cid, tr):
 def _people(con, cid, tr):
     rows = con.execute("SELECT p.id, p.slug, p.name, p.name_ar, p.name_en, p.photo, cp.role, cp.character FROM content_person cp JOIN person p ON p.id=cp.person_id "
                        "WHERE cp.content_id=? ORDER BY CASE cp.role WHEN 'director' THEN 0 WHEN 'creator' THEN 1 WHEN 'writer' THEN 2 ELSE 3 END, cp.ord", (cid,)).fetchall()
-    by = {}
+    by, seen = {}, set()
     for r in rows:
+        k = (r["role"], r["id"])
+        if k in seen:
+            continue
+        seen.add(k)
         by.setdefault(r["role"], []).append(r)
     return by
 

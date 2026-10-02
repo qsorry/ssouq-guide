@@ -527,9 +527,16 @@ def merge_content(con, loser, winner, reason="", now=None):
     if not lrow or not wrow or lrow["type"] != wrow["type"]:
         raise ValueError("لا يُدمج نوعان مختلفان")
     con.execute("UPDATE content_service SET content_id=? WHERE content_id=?", (winner, loser))
+    # أشخاص العمل المدمج: صفّ اسمٍ من اللوحة لا ينتقل إن كان للفائز أدوارٌ من TMDB (TMDB يغلب الأسماء) أو شخصٌ بالاسم نفسه أصلًا
+    # (العمل نفسه = الشخص نفسه) — وإلا تكرّر «Wentworth Miller» ثلاثًا في «بطولة»
+    con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) "
+                "SELECT ?, cp.person_id, cp.role, cp.character, cp.ord, cp.source FROM content_person cp JOIN person p ON p.id=cp.person_id WHERE cp.content_id=? "
+                "AND NOT EXISTS (SELECT 1 FROM content_person w JOIN person wp ON wp.id=w.person_id WHERE w.content_id=? AND wp.name_norm=p.name_norm AND wp.name_norm IS NOT NULL) "
+                "AND NOT (cp.source='xtream' AND EXISTS (SELECT 1 FROM content_person w WHERE w.content_id=? AND w.source='tmdb'))", (winner, loser, winner, winner))
+    con.execute("DELETE FROM content_person WHERE content_id=?", (loser,))
+    con.execute("DELETE FROM person WHERE id NOT IN (SELECT person_id FROM content_person) AND NOT EXISTS (SELECT 1 FROM external_id x WHERE x.entity='person' AND x.entity_id=person.id)")
     for table, cols in (("content_alias", "content_id, alias, alias_norm, lang, source, service_key, at, kind, phonetic, verified, confidence"),
                         ("content_taxonomy", "content_id, taxonomy_id, source, confidence, at"),
-                        ("content_person", "content_id, person_id, role, character, ord, source"),
                         ("content_company", "content_id, company_id, role, source"),
                         ("season", "content_id, number, name, overview_ar, overview_en, poster, air_date, episode_count, episodes_official, index_flag, updated_at"),
                         ("episode", "content_id, season, number, title_ar, title_en, overview_ar, overview_en, air_date, runtime, still, source, index_flag, updated_at")):
