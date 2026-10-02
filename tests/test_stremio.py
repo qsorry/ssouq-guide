@@ -79,6 +79,18 @@ def unit():
         shutil.rmtree(d2, ignore_errors=True)
         import crypto_store
         check("رمز استعمالٍ آخر لا يصلح للإضافة", S.read_token(d, crypto_store.seal_token("a.b\nu\np", d, "other")) is None)
+        lk = S.make_token(d, "mrha.ink:80", "0501", "pw!/+&", key="Kx_1-abcd")
+        check("رمزٌ بقفل حسابه: البيانات نفسها وقفله معها، ورمزٌ آخر", S.read_token_key(d, lk) == (cfg, "Kx_1-abcd") and lk != t
+              and S.read_token(d, lk) == cfg and S.read_token_key(d, t) == (cfg, None))
+        check("وقفلٌ آخر = رمزٌ آخر", S.make_token(d, "mrha.ink:80", "0501", "pw!/+&", key="Kx_1-abce") != lk)
+        try:
+            S.make_token(d, "mrha.ink:80", "0501", "pw", key="a b\n")
+            check("قفلٌ بحروفٍ غريبة يُرفض", False)
+        except ValueError:
+            check("قفلٌ بحروفٍ غريبة يُرفض", True)
+        check("رمزٌ بحقلٍ رابعٍ فارغ يُرفض", S.read_token(d, crypto_store.seal_token("a.b\nu\np\n", d, S.LABEL)) is None)
+        c, b = S.handle(d, f"/stremio/{lk}/manifest.json", "https://g", None, lambda c_, k: k == "newer")[:2]
+        check("رمزٌ أُوقف قفله ← 404 برسالته (قبل أي طلبٍ للسيرفر)", c == 404 and "أُوقف هذا الرابط" in b.decode(), b.decode()[:80])
         for u, p in (("", "p"), ("u", ""), ("u u", "p"), ("u", "p\nx"), ("u" * 200, "p")):
             try:
                 S.make_token(d, "a.b", u, p)
@@ -166,6 +178,29 @@ def against_mock():
             t.join()
         n = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_series")) - before
         check("8 طلباتٍ معًا = طلبٌ واحد للسيرفر", n == 1, str(n))
+
+        print("== قائمةٌ كاملة يتعثّر فيها السيرفر (كاسبر يردّ 503 لأفلامه) ← قسمًا قسمًا ==")
+        srv.full_fails = {"get_vod_streams"}
+        with S._lock:
+            S._lists.pop((cfg, "movie"), None)
+        before = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_vod_streams"))
+        L = S.lists(cfg, "movie")
+        n_parts = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_vod_streams")) - before
+        check("كل الأفلام تُجمع من أقسامها (بلا الكبار ولا تكرار)", len(L.items) == n_vod and len({it.id for it in L.items}) == n_vod
+              and n_parts == 1 + len(mock_xtream.MOVIES) + 1, f"{len(L.items)} / {n_vod} · {n_parts} طلبات")
+        check("والبحث فيها يعمل", [m["name"] for m in S.catalog(cfg, "movie", "sq_movies", {"search": "oppenheimer"})["metas"]] == ["Oppenheimer (2023)"])
+        srv.api_down = True
+        with S._lock:
+            S._lists.pop((cfg, "movie"), None)
+        t0 = time.time()
+        try:
+            S.lists(cfg, "movie")
+            check("وتعثّر الأقسام أيضًا ← خطأ (لا قائمةٌ ناقصة تُحفظ)", False)
+        except S.XtreamError:
+            check("وتعثّر الأقسام أيضًا ← خطأ (لا قائمةٌ ناقصة تُحفظ)", (cfg, "movie") not in S._lists, f"{time.time() - t0:.1f}s")
+        srv.api_down, srv.full_fails = False, set()
+        with S._lock:
+            S._lists.pop((cfg, "movie"), None)
 
         print("== الـmanifest ==")
         man = S.manifest(cfg, "https://guide.ssouq.com", "سمارت")

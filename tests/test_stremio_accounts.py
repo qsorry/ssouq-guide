@@ -254,9 +254,9 @@ def through_server():
         g1 = next((g for g in r.get("gates", []) if g["id"] == "g1"), {})
         check("بوابات العميل بعدد حساباتها", c == 200 and g1.get("name") == "بوابة مرح" and g1.get("count") == 1
               and [g["id"] for g in r["gates"]] == ["g1", "g2", "g3"], json.dumps(r, ensure_ascii=False)[:160])
-        check("حسابات البوابة: الإيميل وكلمة المرور ورابط التثبيت وعدد البريد", acc.get("email") == "u@tv.ssouq.com" and acc.get("password") == "p"
-              and acc.get("link", "").startswith("https://guide.ssouq.com/stremio/") and acc.get("mail_count") == 1 and acc.get("last_mail"),
-              json.dumps(acc, ensure_ascii=False)[:200])
+        check("حسابات البوابة: الإيميل وكلمة المرور وعدد البريد، والإضافة مقفلةٌ عليه بلا رابط تثبيت", acc.get("email") == "u@tv.ssouq.com"
+              and acc.get("password") == "p" and acc.get("locked") is True and acc.get("link") == "" and acc.get("mail_count") == 1
+              and acc.get("last_mail"), json.dumps(acc, ensure_ascii=False)[:200])
         c, r = post("/api/stremio/accounts", None, op2)
         check("حسابٌ آخر يرى بواباته وحدها بلا حسابات غيره", c == 200 and r["accounts"] == [] and r["gates"][0]["count"] == 0, json.dumps(r, ensure_ascii=False)[:120])
         c, r = post("/api/stremio/accounts?gate=nope", None)
@@ -297,8 +297,8 @@ def through_server():
               and acc.get("email") == line["username"] + "@tv.ssouq.com" and acc.get("password") == line.get("password"),
               json.dumps(r, ensure_ascii=False)[:200])
         col = api.collections.get(acc.get("email"), [{}])
-        check("والإضافة مثبّتةٌ أوله، والسطر برابط تثبيته", col[0].get("manifest", {}).get("id", "").startswith("com.ssouq.xtream.")
-              and line.get("stremio", "").startswith("https://guide.ssouq.com/stremio/") and line.get("line", "").startswith("Host "))
+        check("والإضافة مثبّتةٌ أوله، والسطر بلا رابط تثبيتٍ عامّ (مقفلةٌ على حسابه)", col[0].get("manifest", {}).get("id", "").startswith("com.ssouq.xtream.")
+              and "stremio" not in line and line.get("line", "").startswith("Host "), json.dumps(line, ensure_ascii=False)[:160])
         c, r = post("/api/stremio/accounts?gate=g2", None)
         check("ويظهر في قائمة بوابته", c == 200 and [a["username"] for a in r["accounts"]] == [line.get("username")]
               and next(g for g in r["gates"] if g["id"] == "g2")["count"] == 1)
@@ -360,6 +360,37 @@ def through_server():
         check("ولا جلسة Stremio مفتوحة بعده", not api.sessions)
         c, r = post("/api/stremio/reinstall", {"gate": "g1", "username": "nobody"})
         check("يوزرٌ بلا حساب ← 404", c == 404, str(c))
+
+        print("== الإضافة مقفلةٌ على حسابها: لا تُنقل لحسابٍ آخر ==")
+        root = f"http://127.0.0.1:{PORT}"
+        local = lambda tu: root + tu[tu.index("/stremio/"):]
+
+        def code_of(url):
+            try:
+                return urllib.request.urlopen(url, timeout=30).getcode()
+            except urllib.error.HTTPError as e:
+                return e.code
+        os.environ["XM_DATA"] = d
+        public = S.make_token(d, xt_host, "u", "p")       # رابط اليوزر العام (كما في رسالة الاشتراك)
+        old = ours("u@tv.ssouq.com")[0]["transportUrl"]
+        check("إضافة الحساب تعمل، ورابط اليوزر العام لا (فلا يُثبَّت في حسابٍ آخر)",
+              code_of(local(old)) == 200 and code_of(f"{root}/stremio/{public}/manifest.json") == 404)
+        api.down = True
+        c, r = post("/api/stremio/lock", {"gate": "g1", "username": "u"})
+        api.down = False
+        check("تغيير القفل وStremio لا يردّ ← 502، والإضافة كما هي تعمل", c == 502 and code_of(local(old)) == 200, str(c))
+        c, r = post("/api/stremio/lock", {"gate": "g1", "username": "u"})
+        new = [a["transportUrl"] for a in ours("u@tv.ssouq.com")]
+        check("«تغيير رابط الإضافة»: رابطٌ جديد في الحساب مكان القديم", c == 200 and r.get("locked") is True and len(new) == 1
+              and new[0] != old, json.dumps(r, ensure_ascii=False))
+        check("والنسخة التي نُقلت لحسابٍ آخر (بالرابط القديم) تتوقف، والجديدة تعمل",
+              code_of(local(old)) == 404 and code_of(local(new[0])) == 200 and code_of(local(new[0]).replace("manifest.json", "status.json")) == 200)
+        c, r = post("/api/stremio/lock", {"gate": "g1", "username": "u"}, op2)
+        check("حسابٌ آخر لا يغيّر قفلها", c == 404, str(c))
+        c, r = post("/api/stremio/lock", {"gate": "g1", "username": "u"}, op3)
+        check("ومن لم يُفتح له ← 403", c == 403)
+        c, r = post("/api/stremio/lock", {"gate": "g1", "username": "nobody"})
+        check("يوزرٌ بلا حساب ← 404", c == 404)
     finally:
         falcon.terminate()
         app.terminate()
@@ -374,6 +405,8 @@ def through_server():
     rows = X.with_stremio({"host": xt_host}, [{"username": "u", "password": "p"}, {"username": "zz", "password": "p"}])
     check("الصف الذي له حساب يحمله (‏{stremio_email} ‏{stremio_pass})", rows[0].get("stremio_email") == "u@tv.ssouq.com"
           and rows[0].get("stremio_pass") == "NewPass9" and "stremio_email" not in rows[1])   # كلمة المرور بعد تغييرها
+    check("وبلا رابط تثبيتٍ عامّ (إضافته مقفلةٌ على حسابه)، ويوزرٌ بلا حساب برابطه", "stremio" not in rows[0]
+          and rows[1].get("stremio", "").startswith("https://guide.ssouq.com/stremio/"))
     shutil.rmtree(d, ignore_errors=True)
 
 

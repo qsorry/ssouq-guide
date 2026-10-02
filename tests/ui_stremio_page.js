@@ -104,6 +104,14 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('«تحديث الإضافة» reinstalls it and says whether categories came back (this mock still rejects the line)',
           /لم يُرجع أقسامًا/.test(await user.textContent('#toast')) && await user.isVisible('#list [data-re]:not([disabled])'),
           await user.textContent('#toast'));
+    check('the add-on is locked to its account from the start (no public install link on the card)',
+          /مقفلةٌ على هذا الحساب/.test(await user.textContent('#list .card .meta')) && (await user.$$('#list .card [data-what="نُسخ الرابط"]')).length === 0
+          && (await user.textContent('#list [data-lock]')).includes('تغيير رابط الإضافة'));
+    let lockAsk = '';
+    user.once('dialog', d => { lockAsk = d.message(); d.accept(); });
+    await user.click('#list [data-lock]');
+    await user.waitForFunction(() => /قُفلت الإضافة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 10000});
+    check('«تغيير رابط الإضافة» asks first, then stops any copy moved to another account', /تتوقف أي نسخةٍ/.test(lockAsk), lockAsk.slice(0, 60));
 
     console.log('== a batch: 3 at once ==');
     await user.fill('#n', '3'); await user.dispatchEvent('#n', 'input');

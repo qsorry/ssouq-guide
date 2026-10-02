@@ -185,6 +185,23 @@ def known(data_dir, host_key, usernames):
     return out
 
 
+_locks = {"mtime": None, "map": {}}
+
+
+def addon_key(data_dir, host_key, username):
+    """قفل إضافة حساب يوزرٍ (أو None لحسابٍ غير مقفل أو لا حساب) — يُسأل في كل طلبٍ للإضافة، ففهرسه في الذاكرة
+    ما دام الملف لم يتغيّر."""
+    try:
+        mtime = os.path.getmtime(_path(data_dir))
+    except OSError:
+        return None
+    with _lock:
+        if _locks["mtime"] != (data_dir, mtime):
+            _locks["map"] = {k: r["addon_key"] for k, r in _load(data_dir).items() if isinstance(r, dict) and r.get("addon_key")}
+            _locks["mtime"] = (data_dir, mtime)
+        return _locks["map"].get(_key(host_key, username))
+
+
 _emails = {"mtime": None, "map": {}}
 
 

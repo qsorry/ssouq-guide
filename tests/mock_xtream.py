@@ -219,9 +219,13 @@ class Handler(BaseHTTPRequestHandler):
                                            "duration_secs": 2700, "season": sn}} for e in range(1, 4)] for sn in (1, 2)}
                 return self._send(200, json.dumps({"info": {**{k: v for k, v in o.items() if k not in ("series_id",)}, **info}, "episodes": eps},
                                                   ensure_ascii=False).encode(), "application/json")
+            if q.get("action") in getattr(self.server, "full_fails", ()) and not q.get("category_id"):
+                return self._send(503, b"Service Unavailable")    # كاسبر: القائمة الكبيرة كاملةً تتعثّر
             data = {"get_vod_streams": list(vod.values()), "get_series": series, "get_live_streams": live,
                     "get_vod_categories": categories("vod"), "get_series_categories": categories("series"),
                     "get_live_categories": categories("live")}.get(q.get("action"), [])
+            if q.get("category_id") and isinstance(data, list):  # قسمٌ واحد
+                data = [x for x in data if str(x.get("category_id")) == q["category_id"]]
             return self._send(200, json.dumps(data, ensure_ascii=False).encode(), "application/json")
         return self._send(404, b"not found")
 
@@ -229,7 +233,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(port, api_down=False):
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     srv.api_down = api_down
-    srv.users, srv.pending = {USER: PASS}, {}
+    srv.users, srv.pending, srv.full_fails = {USER: PASS}, {}, set()
     return srv
 
 

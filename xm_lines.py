@@ -776,6 +776,8 @@ def with_stremio(gate, rows):
             a = accs.get(r["username"])
             if a:
                 r["stremio_email"], r["stremio_pass"] = a["email"], a["password"]
+                if a.get("addon_key"):             # إضافته مقفلةٌ على حسابه: رابط اليوزر العام لا يعمل
+                    r.pop("stremio", None)
     return rows
 
 
@@ -798,6 +800,12 @@ def start_mail():
         return None
 
 
+def stremio_token_ok(cfg, key):
+    """رمز إضافةٍ ساري؟ يوزرٌ حسابه الجاهز مقفل: رمز قفله الحالي وحده (رابط اليوزر العام ونسخٌ نُقلت بقفلٍ قديم
+    تتوقف)؛ وغير المقفل: رمزه العام كما كان."""
+    return key == stremio_accounts.addon_key(DATA_DIR, stremio_addon.host_key(cfg.host), cfg.user)
+
+
 def stremio_account(acct, gate, username, password, line=""):
     """حساب Stremio جاهز ليوزر (الإيميل = اليوزر على دومين المتجر، وكلمة المرور = الباسورد) وإضافة محتواه مثبّتةٌ
     فيه — المحفوظ إن سبق. ← (الحساب، أُنشئ الآن؟). ‏ValueError · stremio_accounts.StremioError برسالةٍ للعرض."""
@@ -805,10 +813,12 @@ def stremio_account(acct, gate, username, password, line=""):
     hk = stremio_addon.host_key(host)
     if not hk:
         raise ValueError("البوابة بلا هوست")
-    tok = stremio_addon.make_token(DATA_DIR, host, username, password)
+    key = secrets.token_urlsafe(9)              # مقفلةٌ على حسابها من أول تثبيت: رابطها لها وحدها
+    tok = stremio_addon.make_token(DATA_DIR, host, username, password, key=key)
     descriptor, built = stremio_descriptor(tok, host)
     rec, created = stremio_accounts.ensure(DATA_DIR, hk, str(username), str(password), descriptor,
-                                           owner={"acct": acct.get("id"), "gate": gate.get("id"), "token": tok})
+                                           owner={"acct": acct.get("id"), "gate": gate.get("id"), "token": tok,
+                                                  "addon_key": key, "locked_at": int(time.time())})
     if built:                                   # ثُبّتت الإضافة الآن: أكاملة؟ (وإلا تُعلَّم ليُحدَّث تثبيتها)
         stremio_accounts.note(DATA_DIR, hk, str(username), addon_full=built[-1], addon_at=int(time.time()))
         rec = stremio_accounts.get(DATA_DIR, hk, str(username)) or rec
@@ -870,6 +880,25 @@ def stremio_reinstall(acct, gate_id, username):
     return stremio_accounts.get(DATA_DIR, hk, username)
 
 
+def stremio_lock(acct, gate_id, username):
+    """«قفل الإضافة» (أو تغيير قفلها): رمزٌ جديد لإضافة الحساب تُعاد به في Stremio، ثم يُحفظ قفله — فيتوقف كل رابطٍ
+    قبله: رابط اليوزر العام وأي نسخةٍ نُقلت لحسابٍ آخر. يُحفظ بعد نجاح التثبيت، فتعثّر Stremio لا يوقف إضافة العميل.
+    ← الحساب. ‏ValueError · StremioError برسالةٍ للعرض."""
+    hit = stremio_accounts.owned(DATA_DIR, acct["id"], gate_id, username)
+    cfg = stremio_addon.read_token(DATA_DIR, hit[1].get("token")) if hit else None
+    if not cfg:
+        raise ValueError("لا حساب Stremio لهذا اليوزر")
+    hk = hit[0]
+    key = secrets.token_urlsafe(9)
+    tok = stremio_addon.make_token(DATA_DIR, cfg.host, cfg.user, cfg.pw, key=key)
+    descriptor, built = stremio_descriptor(tok, cfg.host)
+    stremio_accounts.reinstall(DATA_DIR, hk, username, descriptor)
+    now = int(time.time())
+    stremio_accounts.note(DATA_DIR, hk, username, token=tok, addon_key=key, locked_at=now,
+                          **({"addon_full": built[-1], "addon_at": now} if built else {}))
+    return stremio_accounts.get(DATA_DIR, hk, username)
+
+
 STREMIO_EXP_STALE = 12 * 3600                   # تاريخ انتهاءٍ أقدم من هذا يُعاد فحصه عند فتح الصفحة
 
 
@@ -926,6 +955,8 @@ def stremio_create(acct, gate, package_id, username=None, password=None):
     try:
         rec, _ = stremio_account(acct, gate, line["username"], line["password"], line.get("line", ""))
         resp["stremio_account"] = {"email": rec["email"], "password": rec["password"]}
+        if rec.get("addon_key"):                # مقفلةٌ على حسابه: لا رابط تثبيتٍ عامّ يُعطى معه
+            resp["line"].pop("stremio", None)
     except (ValueError, stremio_accounts.StremioError, stremio_addon.XtreamError) as e:
         resp["stremio_error"] = f"أُنشئ اليوزر، وتعذّر حساب Stremio: {e}"
     return 200, resp
@@ -954,7 +985,9 @@ def stremio_page_data(acct, gate_id):
                      "created": r.get("created", ""), "ts": r.get("ts") or 0, "changed": r.get("changed", ""),
                      "exp": r.get("exp"), "status": r.get("status", ""), "exp_checked": r.get("exp_checked") or 0,
                      "addon_full": r.get("addon_full"), "addon_at": r.get("addon_at") or 0,
-                     "link": stremio_addon.links(base, r["token"])["page"] if r.get("token") else "",
+                     "locked": bool(r.get("addon_key")), "locked_at": r.get("locked_at") or 0,
+                     # المقفلة بلا رابط تثبيت: لا تُنقل لحسابٍ آخر
+                     "link": stremio_addon.links(base, r["token"])["page"] if r.get("token") and not r.get("addon_key") else "",
                      "mail_count": len(mail), "last_mail": mail[0]["date"] if mail else ""})
     return {"gates": gates, "gate": gate_id, "accounts": rows, "domain": stremio_accounts.DOMAIN,
             "receiving": bool(MAIL_PORT), "now": int(now), "stale_after": STREMIO_EXP_STALE}
@@ -3865,7 +3898,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stremio_get(self, path):
         self._inject = False
-        code, body, ctype, hdr = stremio_addon.handle(DATA_DIR, path, self._public_base(), stremio_label)
+        code, body, ctype, hdr = stremio_addon.handle(DATA_DIR, path, self._public_base(), stremio_label, stremio_token_ok)
         return self._send(code, raw=body, ctype=ctype, extra=hdr)
 
     def _stremio_link(self):
@@ -4884,6 +4917,19 @@ class Handler(BaseHTTPRequestHandler):
                 except stremio_accounts.StremioError as e:
                     return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
                 return self._send(200, {"ok": True, "addon_full": bool(rec.get("addon_full")), "email": rec["email"]})
+            if path == "/api/stremio/lock":       # خارج القفل: «قفل الإضافة» — رمزٌ جديد ويتوقف كل ما قبله
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
+                req = self._body()
+                try:
+                    rec = stremio_lock(acct, str(req.get("gate") or ""), str(req.get("username") or "").strip())
+                except ValueError as e:
+                    return self._send(404, {"ok": False, "error": str(e)})
+                except stremio_accounts.StremioError as e:
+                    return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
+                return self._send(200, {"ok": True, "locked": True, "addon_full": bool(rec.get("addon_full"))})
             if path == "/api/stremio/refresh":    # خارج القفل: انتهاء حسابات بوابةٍ من سيرفرها (stale = ما قدُم وحده)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -4929,7 +4975,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
                 except stremio_addon.XtreamError as e:
                     return self._send(502, {"ok": False, "error": str(e)})
-                return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"], "created": created})
+                return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"], "created": created,
+                                        "locked": bool(rec.get("addon_key"))})
             if path == "/api/stremio/password":   # كلمة مرورٍ جديدة غُيّرت في Stremio: تُجرَّب ثم تُحفظ
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})

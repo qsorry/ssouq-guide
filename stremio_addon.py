@@ -105,25 +105,35 @@ def host_key(h):
     return urlsplit(n).hostname if n else ""
 
 
-def make_token(data_dir, host, user, pw):
-    """(الهوست، اليوزر، الباسورد) ← رمز الرابط. ‏ValueError لبياناتٍ لا تصلح."""
+def make_token(data_dir, host, user, pw, key=None):
+    """(الهوست، اليوزر، الباسورد) ← رمز الرابط. ‏key: قفل إضافة حسابٍ جاهز — رمزه لا يعمل إلا ما دام قفله هو
+    المحفوظ لحسابه (تغييره يوقف كل نسخةٍ نُقلت لحسابٍ آخر). ‏ValueError لبياناتٍ لا تصلح."""
     host, user, pw = norm_host(host), str(user or "").strip(), str(pw or "").strip()
     if not host or not user or not pw or any(len(x) > 128 or re.search(r"\s", x) for x in (user, pw)):
         raise ValueError("بيانات الاشتراك غير صالحة")
+    if key is not None and not re.fullmatch(r"[A-Za-z0-9_-]{4,32}", str(key)):
+        raise ValueError("قفلٌ غير صالح")
     h = host[len("http://"):] if host.startswith("http://") else host    # ‏http الافتراضي يُختصر من الرمز
-    return crypto_store.seal_token("\n".join((h, user, pw)), data_dir, LABEL)
+    return crypto_store.seal_token("\n".join((h, user, pw) + ((str(key),) if key is not None else ())), data_dir, LABEL)
+
+
+def read_token_key(data_dir, token):
+    """الرمز ← (‏Cfg، قفله أو None)، أو (None، None) لرمزٍ معبوثٍ به أو من مفتاحٍ آخر."""
+    token = str(token or "")
+    if not 20 <= len(token) <= 400 or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
+        return None, None
+    parts = (crypto_store.open_token(token, data_dir, LABEL) or "").split("\n")
+    if len(parts) not in (3, 4) or (len(parts) == 4 and not parts[3]):
+        return None, None
+    host = norm_host(parts[0])
+    if not (host and parts[1] and parts[2]):
+        return None, None
+    return Cfg(host, parts[1], parts[2]), (parts[3] if len(parts) == 4 else None)
 
 
 def read_token(data_dir, token):
     """الرمز ← ‏Cfg، أو None لرمزٍ معبوثٍ به أو من مفتاحٍ آخر."""
-    token = str(token or "")
-    if not 20 <= len(token) <= 400 or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
-        return None
-    parts = (crypto_store.open_token(token, data_dir, LABEL) or "").split("\n")
-    if len(parts) != 3:
-        return None
-    host = norm_host(parts[0])
-    return Cfg(host, parts[1], parts[2]) if host and parts[1] and parts[2] else None
+    return read_token_key(data_dir, token)[0]
 
 
 _LINE = re.compile(r"(?is)\bhost\b\s*[:=]?\s*(\S+).*?\buser(?:name)?\b\s*[:=]?\s*(\S+).*?\bpass(?:word)?\b\s*[:=]?\s*(\S+)")
@@ -370,11 +380,50 @@ def categories(cfg, kind):
     return _cached(_cats, (cfg, kind), TTL, lambda: _list_of(_api(cfg, _ACTION[kind][0])), 2000)
 
 
+PART_WORKERS = 4                     # طلبات الأقسام معًا حين تتعثّر القائمة كاملة
+
+
+def _all_items(cfg, kind, cats):
+    """كل عناصر النوع بطلبٍ واحد؛ وسيرفرٌ يتعثّر في القائمة كاملة (كاسبر يردّ 503 لقائمة أفلامه الكبيرة) ← قسمًا
+    قسمًا (‏category_id، كلٌّ بمحاولتين بعده) ثم تُجمع بترتيب أقسامه بلا تكرار. تعثّر قسمٍ بعدها ← XtreamError."""
+    action, key = _ACTION[kind][1], _ACTION[kind][2]
+    try:
+        return _list_of(_api(cfg, action))
+    except AuthError:
+        raise
+    except XtreamError:
+        ids = list(dict.fromkeys(str(c["category_id"]) for c in cats
+                                 if isinstance(c, dict) and str(c.get("category_id") or "").strip()))
+        if not ids:
+            raise
+
+    def part(cid):
+        for attempt in range(3):
+            try:
+                return _list_of(_api(cfg, action, category_id=cid))
+            except AuthError:
+                raise
+            except XtreamError:
+                if attempt == 2:
+                    raise
+                time.sleep(1 + attempt)
+    with ThreadPoolExecutor(max_workers=min(PART_WORKERS, len(ids))) as ex:
+        parts = list(ex.map(part, ids))
+    seen, out = set(), []
+    for items in parts:
+        for it in items:
+            k = it.get(key) if isinstance(it, dict) else None
+            if k is None or k not in seen:
+                seen.add(k)
+                out.append(it)
+    return out
+
+
 def lists(cfg, kind):
-    """كل عناصر النوع (‏movie · series · tv) — من الذاكرة إن حديثة، وإلا من السيرفر بطلبٍ واحد."""
+    """كل عناصر النوع (‏movie · series · tv) — من الذاكرة إن حديثة، وإلا من السيرفر بطلبٍ واحد (أو قسمًا قسمًا)."""
     def load():
         cats = categories(cfg, kind)
-        return Lists(kind, cats, _list_of(_api(cfg, _ACTION[kind][1])))
+        return Lists(kind, cats, _all_items(cfg, kind, cats))
     return _cached(_lists, (cfg, kind), TTL, load, LISTS_MAX)
 
 
@@ -830,9 +879,10 @@ def page():
         return 200, f.read(), "text/html; charset=utf-8", {**_PAGE_HDR, "Cache-Control": "no-store"}
 
 
-def handle(data_dir, path, base, label_for=None):
+def handle(data_dir, path, base, label_for=None, allowed=None):
     """طلب GET تحت ‏/stremio ← (الرمز، الجسم، النوع، الترويسات)، أو None لمسارٍ ليس لها.
-    ‏label_for(host) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio."""
+    ‏label_for(host) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
+    ‏allowed(cfg، القفل) هل الرمز ساري — رمزٌ أُوقف (قفل حسابه تغيّر) يُردّ كرمزٍ غير صالح."""
     if path != PATH and not path.startswith(PATH + "/"):
         return None
     parts = [unquote(p) for p in path[len(PATH):].split("/") if p != ""]
@@ -840,9 +890,11 @@ def handle(data_dir, path, base, label_for=None):
         return 302, b"", "text/plain; charset=utf-8", {**_PAGE_HDR, "Location": CONFIGURE_URL, "Cache-Control": "no-store"}
     if not parts or len(parts) == 1:
         return page()                                    # الصفحة العامة، وصفحة التثبيت برمزها
-    cfg = read_token(data_dir, parts[0])
+    cfg, key = read_token_key(data_dir, parts[0])
     if not cfg:
         return _json(404, {"ok": False, "error": "رابطٌ غير صالح — اطلب رابطًا جديدًا"})
+    if allowed and not allowed(cfg, key):
+        return _json(404, {"ok": False, "error": "أُوقف هذا الرابط — الإضافة مقفلةٌ على حسابها"})
     rest = parts[1:]
     if not rest[-1].endswith(".json"):
         return _json(404, {"error": "not found"})
