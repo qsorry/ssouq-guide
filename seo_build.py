@@ -30,6 +30,26 @@ REVIEW_SNIPPET = 160
 GENRES_MAX = 5
 
 _running = {}                 # مسار البيانات ← خيط البناء الجاري (زرّ «ابنِ الآن»)
+_progress = {}                # مسار البيانات ← {stage, done, total, percent, started, elapsed}: عدّاد البناء لبطاقة الإدارة
+
+STAGES = (("indexes", "قراءة الفهارس", 10), ("cluster", "العنقدة", 25), ("apply", "كتابة الكيانات", 55), ("finish", "المراجعات والتسوية", 10))
+
+
+def _prog(data_dir, stage, done=0, total=0):
+    """تحديث عدّاد البناء: المرحلة ومقدارها ← نسبةٌ مئوية تراكمية حسب أوزان المراحل."""
+    k = os.path.abspath(data_dir)
+    p = _progress.setdefault(k, {"started": time.time()})
+    pct, found = 0, False
+    for key, _, w in STAGES:
+        if key == stage:
+            pct += w * (done / total if total else 0); found = True; break
+        pct += w
+    p.update({"stage": stage, "stage_name": dict((a, b) for a, b, _ in STAGES).get(stage, stage), "done": done, "total": total,
+              "percent": int(min(100, pct)) if found else 100, "elapsed": int(time.time() - p["started"])})
+
+
+def progress(data_dir):
+    return _progress.get(os.path.abspath(data_dir))
 _last = {}                    # مسار البيانات ← نتيجة آخر بناء أو خطؤه (لصفحة المدير)
 
 
@@ -141,7 +161,9 @@ def signatures(data_dir):
 def load_items(data_dir, st):
     """كل السيرفرات ← (العناصر، ما غمض داخل السيرفرات، البصمات)."""
     items, conflicts, sigs = [], [], {}
-    for srv in C.servers(data_dir):
+    servers = C.servers(data_dir)
+    for i, srv in enumerate(servers):
+        _prog(data_dir, "indexes", i, len(servers))
         sig = _signature(data_dir, srv)
         if sig is None:
             continue
@@ -200,12 +222,16 @@ def build(data_dir, force=False, now=None):
             if not force and seo_db.state(con, "built_at") and seo_db.state(con, "signatures") == signatures(data_dir):
                 return None                   # لا فهرس تغيّر: لا قراءة أصلًا (الدورة كل عشر دقائق)
             st = seo_db.settings(con)
+            _progress[os.path.abspath(data_dir)] = {"started": time.time()}
             items, conflicts, sigs = load_items(data_dir, st)
+            _prog(data_dir, "cluster", 0, 1)
             clusters, reviews = M.cluster(items, st)
+            _prog(data_dir, "apply", 0, max(1, len(clusters)))
             with con:
                 res = _apply(con, data_dir, items, clusters, reviews + conflicts, sigs, now)
                 res["phonetic_refreshed"] = refresh_phonetic(con)
                 res["person_norm_refreshed"] = refresh_person_norm(con)
+            _prog(data_dir, "finish", 1, 1)
             res["seconds"] = round(time.time() - t0, 2)
             _last[os.path.abspath(data_dir)] = {"ok": True, "at": now, **res}
             with con:
@@ -298,7 +324,9 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     cid_of = {}                                   # فهرس العضو ← معرّف الكيان
     inserted, merged_now = set(), set()
     claimed_by = {}                               # الكيان ← فهارس أعضاء العنقود الذي ادّعاه في هذا البناء
-    for members_idx in clusters:
+    for ci_, members_idx in enumerate(clusters):
+        if ci_ % 500 == 0:
+            _prog(data_dir, "apply", ci_, len(clusters))
         members = [items[i] for i in members_idx]
         ids_all = {canon(k) for m in members for k in known(m)}
         ids = {i for i in ids_all if i not in claimed}
@@ -351,6 +379,7 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
                 "(SELECT content_id FROM content_service WHERE present=1)", (now,))
     con.execute("UPDATE content SET available=1, updated_at=? WHERE merged_into IS NULL AND available=0 AND id IN "
                 "(SELECT content_id FROM content_service WHERE present=1)", (now,))
+    _prog(data_dir, "finish", 0, 1)
     n_rev = _reviews(con, items, reviews + extra_reviews, now)
     # تسوية عدد الكيانات: من أين جاء كل فرقٍ بين ما قبل البناء وما بعده (لا «تم الدمج» وحدها)
     live_after = {r[0] for r in con.execute("SELECT id FROM content WHERE merged_into IS NULL AND available=1")}
@@ -555,7 +584,7 @@ def stats(data_dir, light=False):
     cached = _stats_cache.get(k)
     if cached and (light or running or time.time() - cached[0] < 15):
         con.close()
-        return {**cached[1], "running": running, "last": last, "cached_at": int(cached[0])}
+        return {**cached[1], "running": running, "last": last, "cached_at": int(cached[0]), "progress": progress(data_dir) if running else None}
     try:
         q = lambda sql, *a: con.execute(sql, a).fetchone()[0]   # noqa: E731
         live = "merged_into IS NULL AND available=1"
@@ -569,7 +598,7 @@ def stats(data_dir, light=False):
             shared.setdefault(r["type"], {})[str(r["n"])] = r["k"]
         reviews = {r["kind"]: r["n"] for r in con.execute("SELECT kind, COUNT(*) n FROM review WHERE status='open' GROUP BY kind")}
         out = {
-            "ok": True, "built": bool(seo_db.state(con, "built_at")), "running": running, "last": last,
+            "ok": True, "built": bool(seo_db.state(con, "built_at")), "running": running, "last": last, "progress": progress(data_dir) if running else None,
             "built_at": seo_db.state(con, "built_at"), "services": sorted(seo_db.state(con, "signatures") or {}),
             "entities": {"total": q(f"SELECT COUNT(*) FROM content WHERE {live}"),
                          "movie": q(f"SELECT COUNT(*) FROM content WHERE {live} AND type='movie'"),
