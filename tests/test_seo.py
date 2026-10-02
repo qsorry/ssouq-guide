@@ -804,6 +804,9 @@ def unit_sample3_cases():
         q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
         pb0 = q("SELECT id FROM content WHERE title='Prison Break' AND merged_into IS NULL")
         check("قبل الإثراء: Prison Break ثلاثة كيانات (كاسبر، وفالكون S01 وS05 في قسمين بلا دليل) — لا دمج بالاسم", len(pb0) == 3, str(pb0))
+        for r_ in pb0:                                    # كما في الإنتاج: لوحة كل سيرفر أعطت أسماء الممثلين قبل TMDB
+            seo_sources._people_xtream(con, r_[0], {"cast": "Wentworth Miller, Dominic Purcell", "director": ""}, 900)
+        con.commit()
         seo_sources.set_tmdb_key(con, d, "testkey"); con.commit(); con.close()
         smp = seo_sources.sample(d, {"movie": 2, "series": 3, "turkish": 1, "anime": 1, "titles": ["Prison Break", "One Piece", "ون بيس"]})
         con = seo_db.connect(d)
@@ -815,6 +818,10 @@ def unit_sample3_cases():
         check("A) Prison Break: بعد TMDB (2288 لكلٍّ) ← كيانٌ واحد حيّ، والآخران merged_into بتحويل 301، خدماته كاسبر+فالكون، ومواسمه 1 و5 (المواسم انتقلت)",
               len(pb) == 3 and len(live) == 1 and live[0][2] == 2288 and all(r[3] == live[0][0] for r in pb if r[3] is not None)
               and srv == ["casper", "falcon", "falcon"] and {1, 5} <= seas and len(q("SELECT 1 FROM redirect WHERE target LIKE '%prison%'")) >= 2, str((pb, srv, seas)))
+        wm_rows = q("SELECT p.id, p.name, cp.source FROM content_person cp JOIN person p ON p.id=cp.person_id WHERE cp.content_id=? AND p.name_norm='miller wentworth'", live[0][0])
+        pb_desc = seo_pages.render_entity(con, d, "series", live[0][1], __import__("content_page").lang_of("ar"), st2)[1]["desc"]
+        check("دمج الكيانات الثلاثة لا يكرّر الممثل: صفّ TMDB وحده يبقى (أسماء اللوحة من المدمجين تُسقط)، و«بطولة» تذكر Wentworth Miller مرةً واحدة",
+              len(wm_rows) == 1 and wm_rows[0][2] == "tmdb" and pb_desc.count("Wentworth Miller") == 1, str((wm_rows, pb_desc)))
         rs = smp["resolution"]
         check("تقرير التوحيد في العيّنة: Prison Break قبل 3 ← بعد كيانٌ حيٌّ واحد بمعرّفه (one entity per tmdb id)",
               rs["Prison Break"]["live_entities"] == 1 and rs["Prison Break"]["verdict"] == "one entity per tmdb id" and len(rs["Prison Break"]["merged"]) == 2, str(rs["Prison Break"]))
