@@ -6,7 +6,7 @@ const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const ROOT = path.dirname(__dirname);
-const F1_PORT = 9775, F2_PORT = 9776, API_PORT = 9777, APP_PORT = 9778, MAIL_PORT = 9779, XT_PORT = 9780;
+const F1_PORT = 9775, F2_PORT = 9776, API_PORT = 9777, APP_PORT = 9778, MAIL_PORT = 9779, XT_PORT = 9780, ADDON_PORT = 9781;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stremiopage_'));
 const SHOTS = process.env.SHOTS_DIR || '';
 const EXE = execSync("ls -d /opt/pw-browsers/chromium*/chrome-linux/chrome 2>/dev/null | head -1").toString().trim();
@@ -28,10 +28,11 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     spawn('python3', [path.join(ROOT,'tests/mock_stremio_api.py'), String(API_PORT)], {stdio:'ignore'}),
     // سيرفر Xtream وهمي هوستًا للبوابتين: منه يُقرأ انتهاء اليوزرات (يرفض غير u/p، فتُصنَّف «منتهية»)
     spawn('python3', [path.join(ROOT,'tests/mock_xtream.py'), String(XT_PORT)], {stdio:'ignore'}),
+    spawn('python3', [path.join(ROOT,'tests/mock_addon.py'), String(ADDON_PORT)], {stdio:'ignore'}),
   ];
   const app = spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web'], {stdio:'ignore', env:{...process.env, XM_DATA:dataDir,
     XM_BIND:'127.0.0.1', XM_PORT:String(APP_PORT), XM_MAIL_PORT:String(MAIL_PORT), STREMIO_API:`http://127.0.0.1:${API_PORT}`,
-    STREMIO_ACTIVATION_WAIT:'0.1'}});
+    STREMIO_ACTIVATION_WAIT:'0.1', STREMIO_EXTRAS_ALLOW_LOCAL:'1'}});
   procs.push(app);
   await up(`http://127.0.0.1:${APP_PORT}/admin/login`);
   const browser = await chromium.launch({executablePath: EXE, args:['--no-sandbox']});
@@ -255,6 +256,25 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('«إلغاء التحويل» puts them back', !(await user.textContent('#hostList')).includes('يعمل الآن من'));
     await shot(user, 'stremio-hosts');
     await user.click('#hostClose');
+
+    console.log('== another add-on (like AIOMetadata) in new and existing accounts ==');
+    await user.fill('#extUrl', `http://127.0.0.1:${ADDON_PORT}/needs/manifest.json`); await user.click('#extAdd');
+    await user.waitForFunction(() => /تحتاج إعدادًا/.test(document.querySelector('#extMsg')?.textContent || ''), null, {timeout: 8000});
+    check('an add-on that still needs setup is refused with the reason', true);
+    let extAsk = '';
+    user.once('dialog', d => { extAsk = d.message(); d.accept(); });
+    await user.fill('#extUrl', `http://127.0.0.1:${ADDON_PORT}/aio/manifest.json`); await user.click('#extAdd');
+    await user.waitForFunction(() => /ثُبّتت AIOMetadata في الحسابات/.test(document.querySelector('#extJob')?.textContent || ''), null, {timeout: 30000});
+    const jobT = (await user.textContent('#extJob')).replace(/\s+/g, ' ');
+    check('added: it offers the existing accounts, installs in all of them in the background', /الحسابات السابقة/.test(extAsk)
+          && /(\d+) من \1/.test(jobT) && !/تعذّر/.test(jobT), jobT + ' | ' + extAsk.slice(0, 60));
+    check('and the list shows it (for every new account)', (await user.textContent('#extList')).includes('AIOMetadata')
+          && (await user.textContent('#extList')).includes('تُثبَّت في كل حسابٍ جديد'));
+    await shot(user, 'stremio-extras');
+    user.once('dialog', d => d.accept());
+    await user.click('#extList [data-xdel]');
+    await user.waitForFunction(() => /لا إضافات أخرى بعد/.test(document.querySelector('#extList')?.textContent || ''), null, {timeout: 8000});
+    check('«حذف من القائمة»', true);
     check('no page errors', errs.length === 0, errs.join(' | '));
   } catch (e) { fail++; console.log('  FAIL  exception:', e.message); }
   finally {

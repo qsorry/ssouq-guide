@@ -25,6 +25,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
 
+import mock_addon  # noqa: E402
 import mock_stremio_api  # noqa: E402
 import mock_xtream  # noqa: E402
 import stremio_accounts as A  # noqa: E402
@@ -190,7 +191,7 @@ def through_server():
                                                {"id": "a3", "name": "بلا Stremio", "user": "nost", "password": "pw333333",
                                                 "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]}]}, f)
     env = dict(os.environ, XM_DATA=d, XM_BIND="127.0.0.1", XM_PORT=str(PORT), XM_ADMIN_PASSWORD="adminpw1", STREMIO_API=api_url,
-               XM_MAIL_PORT=str(MAIL_PORT), STREMIO_ACTIVATION_WAIT="0.2,0.2,0.2")
+               XM_MAIL_PORT=str(MAIL_PORT), STREMIO_ACTIVATION_WAIT="0.2,0.2,0.2", STREMIO_EXTRAS_ALLOW_LOCAL="1")
     env.pop("XM_SECRET_KEY", None)
     app = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -524,6 +525,55 @@ def through_server():
               and sa.get("password") == "Fam54321" and api.users.get("family2@tv.ssouq.com") == "Fam54321", json.dumps(r, ensure_ascii=False)[:200])
         c, r = post("/api/stremio/custom", {"email": "x9", "password": "Fam12345", "line_gate": "g1", "line_username": "u9b", "line_password": "x"}, op3)
         check("ومن لم يُفتح له ← 403", c == 403)
+
+        print("== إضافاتٌ أخرى (مثل AIOMetadata) في الحسابات الجديدة والسابقة ==")
+        aio_srv = mock_addon.serve()
+        threading.Thread(target=aio_srv.serve_forever, daemon=True).start()
+        aio = f"http://127.0.0.1:{aio_srv.server_address[1]}/aio/manifest.json"
+        mine = lambda: sorted({e.lower() for e in api.collections if e.endswith("@tv.ssouq.com") and e != "taken@tv.ssouq.com"})
+        has_aio = lambda e: [a["manifest"]["id"] for a in api.collections.get(e, [])].count("community.aiometadata")
+
+        def wait_job():
+            for _ in range(200):
+                c_, r_ = post("/api/stremio/extras", None)
+                if not (r_.get("job") or {}).get("running"):
+                    return r_
+                time.sleep(0.1)
+            return r_
+        c, r = post("/api/stremio/extras", {"action": "add", "url": f"http://127.0.0.1:{aio_srv.server_address[1]}/needs/manifest.json"})
+        check("إضافةٌ تحتاج إعدادًا ← 400 برسالته", c == 400 and "تحتاج إعدادًا" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/extras", {"action": "add", "url": local(ours("u@tv.ssouq.com")[0]["transportUrl"])})
+        check("وإضافتنا نفسها ← 400", c == 400 and "إضافتنا" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/extras", {"action": "add", "url": aio})
+        aid = r.get("added")
+        check("«إضافة»: تُقرأ وتُحفظ باسمها، ومعها عدد الحسابات", c == 200 and [x["name"] for x in r.get("extras", [])] == ["AIOMetadata"]
+              and r.get("accounts") == len(mine()), json.dumps(r, ensure_ascii=False)[:200])
+        c, r = post("/api/stremio/extras", {"action": "apply", "id": aid})
+        check("«تثبيت في كل الحسابات» يبدأ في الخلفية", c == 200 and (r.get("job") or {}).get("total") == len(mine()), json.dumps(r.get("job"), ensure_ascii=False))
+        r = wait_job()
+        j = r.get("job") or {}
+        check("وتنتهي: كل الحسابات السابقة فيها الإضافة مرةً واحدة", j.get("running") is False and j.get("done") == j.get("total") == len(mine())
+              and j.get("failed") == [] and all(has_aio(e) == 1 for e in mine()), json.dumps(j, ensure_ascii=False))
+        col = [a["manifest"]["id"] for a in api.collections["ahmed.family@tv.ssouq.com"]]
+        check("بعد إضافاتنا مباشرةً (قبل Cinemeta)", col.index("community.aiometadata") == 2 and col[0].startswith("com.ssouq.") and col[1].startswith("com.ssouq."), str(col))
+        c, r = post("/api/stremio/extras", {"action": "apply", "id": aid})
+        r = wait_job()
+        check("وإعادتها لا تكرّر شيئًا", r["job"]["changed"] == 0 and all(has_aio(e) == 1 for e in mine()))
+        xt.users["n1"] = "n1p"
+        c, r = post("/api/stremio/account", {"gate": "g1", "username": "n1", "password": "n1p"})
+        check("وكل حسابٍ جديد تأتيه معه", c == 200 and has_aio("n1@tv.ssouq.com") == 1)
+        c, r = post("/api/stremio/extras", {"action": "apply", "id": aid, "remove": True})
+        r = wait_job()
+        check("«إسقاط من كل الحسابات»", r["job"]["op"] == "remove" and all(has_aio(e) == 0 for e in mine()), json.dumps(r["job"], ensure_ascii=False))
+        c, r = post("/api/stremio/extras", {"action": "remove", "id": aid})
+        xt.users["n2"] = "n2p"
+        post("/api/stremio/account", {"gate": "g1", "username": "n2", "password": "n2p"})
+        check("و«حذف من القائمة»: لا تأتي الجديدة بعده", c == 200 and r.get("extras") == [] and has_aio("n2@tv.ssouq.com") == 0)
+        c, r = post("/api/stremio/extras", None, op2)
+        check("وقائمة كل عميلٍ له وحده", c == 200 and r.get("extras") == [] and r.get("accounts") == 0)
+        c, r = post("/api/stremio/extras", {"action": "add", "url": aio}, op3)
+        check("ومن لم يُفتح له ← 403", c == 403)
+        aio_srv.shutdown()
     finally:
         falcon.terminate()
         app.terminate()

@@ -138,6 +138,14 @@ select.t{width:auto}
 .mailin input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);padding:9px 11px;font:600 .92rem "IBM Plex Mono",monospace}
 .mailin span{padding:0 11px;color:var(--mute);font:.86rem "IBM Plex Mono",monospace;white-space:nowrap}
 .mailin:focus-within{border-color:var(--purple)}
+.ext{display:flex;gap:12px;align-items:flex-start}
+.ext img,.ext .ph{width:44px;height:44px;border-radius:10px;object-fit:contain;background:var(--sf);border:1px solid var(--line);flex:none}
+.ext .tx{flex:1;min-width:0}
+.ext .tx b{display:block}
+.ext .u{display:block;direction:ltr;text-align:left;font:.76rem "IBM Plex Mono",monospace;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ext .d{font-size:.8rem;color:var(--mute);margin-top:2px}
+.jobln{font-size:.86rem;margin-top:10px}
+.jobln details{margin-top:4px;font-size:.8rem;color:var(--mute)}
 .tabs2{display:flex;gap:6px;margin:12px 0 8px}
 .tabs2 button{flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--line);background:var(--sf2);font-weight:700;font-size:.88rem;color:var(--mute)}
 .tabs2 button.on{border-color:var(--purple);color:var(--ink);background:color-mix(in srgb,var(--purple) 14%,var(--sf))}
@@ -210,6 +218,19 @@ select.t{width:auto}
     </div>
     <div class="expc" id="expChips" role="group" aria-label="الانتهاء"></div>
     <div id="list"><div class="empty">جاري التحميل…</div></div>
+  </section>
+
+  <section id="extSec">
+    <h2>إضافات أخرى في الحسابات <small>مثل AIOMetadata</small></h2>
+    <p class="sub" style="margin:0 0 10px">الصق رابط manifest الإضافة (بعد إعدادها في صفحتها): تُثبَّت في <b>كل حسابٍ جديد</b> تلقائيًا
+      (ومع «ربط خط آخر» و«تحديث الإضافة»)، وبزرٍّ واحد في <b>كل الحسابات السابقة</b>.</p>
+    <form class="row" id="extForm">
+      <input class="t ltr" id="extUrl" placeholder="https://…/manifest.json" autocomplete="off" spellcheck="false">
+      <button class="btn" id="extAdd">إضافة</button>
+    </form>
+    <div class="err" id="extMsg"></div>
+    <div id="extJob"></div>
+    <div id="extList"></div>
   </section>
 </main>
 
@@ -653,6 +674,65 @@ async function setHost(key, btn, off){
   } catch(e) { $("hostMsg").textContent = e.message; btn.disabled = false; }
 }
 $("hostBtn").onclick = openHosts;
+
+// ---- «إضافات أخرى»: تُثبَّت مع كل حسابٍ جديد، وبزرٍّ في كل السابقة (عمليةٌ في الخلفية تُتابَع هنا) ----
+let EXT = {extras: [], job: null, accounts: 0}, EXT_POLL = 0;
+function renderExt(){
+  const j = EXT.job, running = !!(j && j.running);
+  $("extList").innerHTML = EXT.extras.length ? `<div class="cards">${EXT.extras.map(e => `<div class="card"><div class="ext">
+      ${safeUrl(e.logo) ? `<img src="${esc(e.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="ph"></span>'}
+      <div class="tx"><b>${esc(e.name)} <small class="hint" style="display:inline">${esc(e.version)}</small></b>
+        <span class="u" title="${esc(e.url)}">${esc(e.url)}</span>
+        ${e.description ? `<div class="d">${esc(e.description)}</div>` : ""}
+        <div class="meta"><span class="ok">✓ تُثبَّت في كل حسابٍ جديد</span><span>أُضيفت ${esc(e.added)}</span></div>
+        <div class="acts" style="margin-top:8px">
+          <button class="acc" data-xapply="${esc(e.id)}"${running ? " disabled" : ""}>تثبيت في كل الحسابات (${EXT.accounts})</button>
+          <button class="ghost" data-xdrop="${esc(e.id)}"${running ? " disabled" : ""}>إسقاط من كل الحسابات</button>
+          <button class="ghost" data-xdel="${esc(e.id)}">حذف من القائمة</button>
+        </div></div></div></div>`).join("")}</div>`
+    : '<div class="empty">لا إضافات أخرى بعد — الصق رابط manifest إضافةٍ أعلاه.</div>';
+  if (!j) { $("extJob").innerHTML = ""; return; }
+  const verb = j.op === "remove" ? "إسقاط" : "تثبيت", pct = j.total ? Math.round(100 * j.done / j.total) : 0;
+  const fails = (j.failed || []).length;
+  $("extJob").innerHTML = `<div class="jobln">${running
+      ? `جاري ${verb} <b>${esc(j.name)}</b>: ${j.done} من ${j.total} حساب${fails ? ` · <span style="color:var(--err)">تعذّر ${fails}</span>` : ""}`
+      : `${j.op === "remove" ? "أُسقطت" : "ثُبّتت"} <b>${esc(j.name)}</b> في الحسابات: ${j.done - fails} من ${j.total} (تغيّر ${j.changed})${fails ? ` · <span style="color:var(--err)">تعذّر ${fails}</span>` : " ✓"}`}
+    ${fails ? `<details><summary>ما تعذّر</summary>${j.failed.map(f => `<div class="ltr">${esc(f.email)} — ${esc(f.error)}</div>`).join("")}</details>` : ""}</div>
+    ${running ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ""}`;
+}
+async function loadExt(){
+  try { EXT = await api("/api/stremio/extras"); renderExt(); } catch(e) { $("extMsg").textContent = e.message; }
+  clearTimeout(EXT_POLL);
+  if (EXT.job && EXT.job.running) EXT_POLL = setTimeout(loadExt, 1500);   // تقدّم العملية حتى تنتهي
+}
+async function extDo(body, btn, ok){
+  if (btn) btn.disabled = true; $("extMsg").textContent = "";
+  try { EXT = await api("/api/stremio/extras", body); renderExt(); if (ok) toast(ok); if (EXT.job && EXT.job.running) loadExt(); return true; }
+  catch(e) { $("extMsg").textContent = e.message; return false; }
+  finally { if (btn) btn.disabled = false; }
+}
+$("extForm").onsubmit = async e => {
+  e.preventDefault();
+  const url = $("extUrl").value.trim(); if (!url) { $("extMsg").textContent = "الصق رابط manifest الإضافة."; return; }
+  $("extMsg").textContent = "نقرأ الإضافة…";
+  if (!await extDo({action: "add", url}, $("extAdd"))) return;
+  $("extUrl").value = "";
+  const added = EXT.extras.find(x => x.id === EXT.added) || EXT.extras[EXT.extras.length - 1];
+  if (added && EXT.accounts && confirm(`أُضيفت «${added.name}»: تُثبَّت في كل حسابٍ جديد.\nتثبيتها الآن في الحسابات السابقة (${EXT.accounts})؟`))
+    extDo({action: "apply", id: added.id}, null, "بدأ تثبيتها في الحسابات السابقة");
+  else toast("أُضيفت — تُثبَّت في كل حسابٍ جديد");
+};
+$("extList").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const x = EXT.extras.find(y => y.id === (b.dataset.xapply || b.dataset.xdrop || b.dataset.xdel)); if (!x) return;
+  if (b.dataset.xapply && confirm(`تثبيت «${x.name}» في كل حسابات Stremio (${EXT.accounts})؟ (ما فيه منها يبقى كما هو)`))
+    extDo({action: "apply", id: x.id}, b, "بدأ التثبيت في الحسابات");
+  else if (b.dataset.xdrop && confirm(`إسقاط «${x.name}» من كل حسابات Stremio (${EXT.accounts})؟`))
+    extDo({action: "apply", id: x.id, remove: true}, b, "بدأ الإسقاط من الحسابات");
+  else if (b.dataset.xdel && confirm(`حذف «${x.name}» من القائمة؟ لا تُثبَّت في الجديدة بعده (وما في الحسابات يبقى — «إسقاط من كل الحسابات» يزيله).`))
+    extDo({action: "remove", id: x.id}, b, "حُذفت من القائمة");
+});
+loadExt();
 $("hostClose").onclick = () => $("hostOverlay").hidden = true;
 $("hostOverlay").addEventListener("click", e => { if (e.target === $("hostOverlay")) $("hostOverlay").hidden = true; });
 
