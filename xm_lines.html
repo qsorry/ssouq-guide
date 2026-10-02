@@ -148,6 +148,11 @@ input.t::placeholder{color:color-mix(in srgb,var(--mute) 70%,transparent)}
 .tbl .sb{width:34px;height:30px;border-radius:8px;border:1px solid var(--line);display:inline-grid;place-items:center;color:#8b7cf6}
 .tbl .sb:hover{border-color:#8b7cf6}
 .tbl .sb svg{fill:currentColor;stroke:none}
+.tbl .sa{width:34px;height:30px;border-radius:8px;border:1px dashed var(--line);display:inline-grid;place-items:center;color:var(--mute)}
+.tbl .sa.on{border-style:solid;color:#8b7cf6}
+.tbl .sa:hover{border-color:#8b7cf6}
+.tbl .sa.busy{opacity:.5;cursor:wait}
+.lines.acc{direction:rtl;text-align:right;white-space:pre-wrap;font-family:inherit}
 .pill{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.74rem;border:1px solid var(--line);color:var(--mute);background:var(--sf)}
 .pill.ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,transparent);background:color-mix(in srgb,var(--go) 12%,transparent)}
 .pill.bad{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,transparent);background:color-mix(in srgb,var(--err) 12%,transparent)}
@@ -359,6 +364,9 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
       <div class="ph" style="margin-top:12px"><h2>روابط Stremio</h2><button class="copy" id="copyStremio">نسخ الكل</button></div>
       <p class="msg small" style="margin:0 0 6px">رابطٌ لكل يوزر: يفتحه العميل فيضيف محتوى اشتراكه كله (أفلام · مسلسلات · قنوات) إلى Stremio.</p>
       <pre class="lines" id="resSt"></pre>
+      <div class="ph" style="margin-top:12px"><h2>حسابات Stremio جاهزة</h2><button class="copy" id="stAccBtn">إنشاء ونسخ</button></div>
+      <p class="msg small" style="margin:0 0 6px">لمن يريد: إيميلٌ (اليوزر @ssouq.com) وكلمة مرور (الباسورد) يدخل بهما Stremio فيجد المحتوى مثبّتًا — بلا رابطٍ ولا تثبيت.</p>
+      <pre class="lines acc" id="resAcc" hidden></pre>
     </div>
   </section>
 
@@ -631,12 +639,40 @@ const msgOf = (x, gid) => {
   if (!guideText) return x.line || lineIn(x, g);
   const v = {host: g.host || partOf(x, "host", /^Host\s+(\S+)/), user: partOf(x, "username", /User\s+(\S+)/),
              pass: partOf(x, "password", /Pass\s+(\S+)/), guide: guideOf(g) || partOf(x, "guide", /Guide\s+(\S+)/),
-             server: g.guide_sub || "", stremio: x.stremio || ""};
-  return guideText.replace(/\{(host|user|pass|guide|server|stremio)\}/g, (_, k) => v[k]);
+             server: g.guide_sub || "", stremio: x.stremio || "",
+             stremio_email: x.stremio_email || "", stremio_pass: x.stremio_pass || ""};
+  return guideText.replace(/\{(host|user|pass|guide|server|stremio_email|stremio_pass|stremio)\}/g, (_, k) => v[k]);
 };
 // زرّ نسخ رابط تثبيت Stremio لصفٍّ له رابط (يصنعه الخادم بعد الإنشاء والبحث)
 const stIcon = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>';
 const stremioBtn = x => x.stremio ? `<button class="sb" title="نسخ رابط Stremio (يضيف محتوى الاشتراك كله إلى Stremio)" data-copy="${esc(x.stremio)}">${stIcon}</button>` : "";
+// حساب Stremio جاهز (إيميل = اليوزر @ssouq.com، وكلمة المرور = الباسورد): يُنشأ بالضغطة الأولى ويُنسخ نصّه للعميل،
+// وبعدها يُنسخ وحده. يدخل به العميل Stremio فيجد المحتوى مثبّتًا.
+const stAccText = (email, pass) => `🎬 حسابك في Stremio — المحتوى جاهزٌ فيه:\nالإيميل: ${email}\nكلمة المرور: ${pass}\n\n`
+  + `حمّل Stremio من stremio.com/downloads وسجّل الدخول بهما، تجد الأفلام والمسلسلات والقنوات في الرئيسية.`;
+const accIcon = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>';
+const stremioAccBtn = (x, gid) => x.stremio_email
+  ? `<button class="sa on" title="نسخ حساب Stremio (${esc(x.stremio_email)})" data-copy="${esc(stAccText(x.stremio_email, x.stremio_pass))}">${accIcon}</button>`
+  : x.stremio ? `<button class="sa" title="إنشاء حساب Stremio جاهز (إيميل وكلمة مرور) ونسخه" data-gate="${esc(gid || curGate)}"
+      data-u="${esc(x.username)}" data-p="${esc(x.password)}" data-line="${esc(x.line || "")}">${accIcon}</button>` : "";
+async function stremioAcc(gate, username, password, line){
+  const r = await fetch(B + "/api/stremio/account", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({gate, username, password, line: line || ""})});
+  const d = chk(await r.json());
+  if (!d.ok) throw new Error(d.error || "تعذّر إنشاء حساب Stremio");
+  return d;
+}
+async function makeStremioAcc(b){
+  if (b.disabled) return;
+  b.disabled = true; b.classList.add("busy");
+  try {
+    const d = await stremioAcc(b.dataset.gate, b.dataset.u, b.dataset.p, b.dataset.line);
+    const t = stAccText(d.email, d.password);
+    b.dataset.copy = t; b.classList.add("on"); b.title = `نسخ حساب Stremio (${d.email})`;
+    await copy(t); toast(d.created ? "أُنشئ حساب Stremio ونُسخ" : "حساب Stremio موجود — نُسخ");
+  } catch(e) { toast(e.message); }
+  finally { b.disabled = false; b.classList.remove("busy"); }
+}
 const cpTitle = t => guideText ? "نسخ نص الشرح" : t;
 // كاسبر يولّد اسم اليوزر بنفسه ولا يقبل اسمًا مختارًا؛ تُطبَّق كلمة المرور فقط. باقي البوابات تقبل الاثنين.
 const gateIsCasper = id => { const g = gates.find(g => g.id === (id||curGate)) || {}; return g.mode === "web" && g.web_flavor === "casper"; };
@@ -666,7 +702,7 @@ const fileNote = `<div class="src-note">من الملف المحفوظ — فو�
 const resTable = (rows, gid) => `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
   rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
     return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
-      <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(msgOf(x, gid))}">${copyIcon}</button> ${stremioBtn(x)}</td></tr>`; }).join("") + `</tbody></table></div>`;
+      <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(msgOf(x, gid))}">${copyIcon}</button> ${stremioBtn(x)} ${stremioAccBtn(x, gid)}</td></tr>`; }).join("") + `</tbody></table></div>`;
 
 // ---- نطاق البحث: كل بوابات العميل معًا (الافتراضي) أو المختارة وحدها — يُتذكّر لكل متصفح ----
 let searchAll = true; try { searchAll = localStorage.getItem("xm_search_scope") !== "one"; } catch {}
@@ -823,7 +859,7 @@ async function createReplacement(oldU){
       const sp = splitResult(d.split, d.split_mail);    // متى يتغيّر اسمه وما يبقى — أو لماذا لم يُسجَّل
       if ($("mkBox")) $("mkBox").innerHTML = `<div class="msg ok" style="margin-top:8px">أُنشئ البديل${sm ? " (" + monthsAr(sm) + ")" : ""} وارتبط بـ ${esc(oldU)} ✓ (نُسخ ${guideText ? "نص الشرح" : "السطر الكامل"})</div>
         <div class="tw"><table class="tbl"><tbody><tr><td class="m">${nu}</td><td class="m">${np}</td><td>${esc(String(lines[0].package||""))}</td>
-        <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(full)}">${copyIcon}</button> ${stremioBtn(lines[0])}</td></tr></tbody></table></div>`
+        <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(full)}">${copyIcon}</button> ${stremioBtn(lines[0])} ${stremioAccBtn(lines[0], curGate)}</td></tr></tbody></table></div>`
         + (sp ? `<div class="msg${sp.ok ? " ok" : ""}" id="mkSplit" style="margin-top:8px">${sp.html}</div>` : "");
     }
     if (d.error) throw new Error(d.error);
@@ -1126,6 +1162,7 @@ async function createLines(){
       const st = lines.filter(x => x.stremio);              // رابط تثبيت Stremio لكل يوزر
       $("resSt").textContent = st.map(x => `${x.username}  ${x.stremio}`).join("\n");
       $("resStremio").hidden = !st.length;
+      lastLines = st; lastGate = curGate; $("resAcc").hidden = true; $("resAcc").textContent = "";
       $("resBox").hidden = false; $("u").value = ""; $("p").value = "";
       renderHistory(); loadGateStatus(); loadXlsxStatus();
       copy($("res").textContent);
@@ -1180,6 +1217,24 @@ $("hist").addEventListener("click", e => {
 });
 $("copyRes").onclick = () => copy($("res").textContent);
 $("copyStremio").onclick = () => copy($("resSt").textContent);
+// حسابات Stremio لليوزرات الجديدة: واحدًا واحدًا (الخادم يسجّل حسابًا في الوقت)، ثم يُنسخ نصّها كله
+let lastLines = [], lastGate = "";
+$("stAccBtn").onclick = async () => {
+  const b = $("stAccBtn"), out = [];
+  if (b.disabled || !lastLines.length) return;
+  b.disabled = true;
+  for (const [i, x] of lastLines.entries()) {
+    b.textContent = `جاري الإنشاء… ${i + 1} من ${lastLines.length}`;
+    try {
+      const d = await stremioAcc(lastGate, x.username, x.password, x.line);
+      x.stremio_email = d.email; x.stremio_pass = d.password;
+      out.push(stAccText(d.email, d.password));
+    } catch(e) { out.push(`${x.username}: ${e.message}`); }
+    $("resAcc").textContent = out.join("\n\n— — —\n\n"); $("resAcc").hidden = false;
+  }
+  await copy($("resAcc").textContent);
+  b.disabled = false; b.textContent = "نسخ";
+};
 $("copyAll").onclick = () => { const h = load(); if (!h.length) return toast("لا يوجد ما يُنسخ"); copy(h.map(x=>x.line).join("\n")); };
 $("create").onclick = createLines;
 $("capSubmit").onclick = submitCaptcha;
@@ -1192,6 +1247,7 @@ $("searchBtn").onclick = doSearch;
 $("searchQ").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
 $("searchRes").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
+  if (b.classList.contains("sa") && !b.dataset.copy) { makeStremioAcc(b); return; }
   if (b.dataset.copy) { copy(b.dataset.copy); return; }
   if (b.dataset.openGate) {                              // بوابةٌ تحتاج دخولًا: تُفتح فيُطلب كودها
     if (b.dataset.openGate === curGate) fetchPackages(); else selectGate(b.dataset.openGate, true);

@@ -89,6 +89,10 @@ const GUIDE_F = GUIDE + '#activate/falcon';      // البوابات فالكو�
     await user.click('#searchRes button.sb >> nth=0');
     await sleep(150);
     check('the Stremio button copies the link', (await user.evaluate(() => navigator.clipboard.readText())) === sts[0]);
+    // وزرّ «حساب Stremio جاهز» لكل صف (لا يُضغط هنا: يسجّل في Stremio؛ اختباره في tests/test_stremio_accounts.py)
+    const accs = await user.$$eval('#searchRes button.sa', bs => bs.map(b => [b.dataset.u, b.dataset.gate]));
+    check('each row offers a ready Stremio account for its own gate', accs.length === 2 && accs.every(a => a[0] === 'user003')
+          && accs[0][1] !== accs[1][1], JSON.stringify(accs));
     await shot(user, 'search-all');
 
     // ---- نطاق «البوابة المختارة» يعيد البحث فيها وحدها، ويُتذكَّر ----

@@ -56,6 +56,7 @@ import split_subs
 import analytics
 import google_api
 import stremio_addon
+import stremio_accounts
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
@@ -737,16 +738,52 @@ def stremio_link(host, username, password):
     return stremio_addon.links(STREMIO_PUBLIC or f"https://{SITE_HOST}", tok)["page"]
 
 
+def _row_host(gate, row):
+    """هوست الصف: من سطره إن كان فيه — ما يصل العميل فعلًا، وفالكون يعرف هوسته من لوحته لحظة الإنشاء — وإلا
+    من البوابة."""
+    m = re.match(r"\s*Host\s+(\S+)", str((row or {}).get("line") or ""))
+    return m.group(1) if m else gate.get("host", "")
+
+
 def with_stremio(gate, rows):
-    """يضيف رابط Stremio لكل صفٍّ فيه يوزر وباسورد (الإنشاء والبحث). الهوست من سطر الصف إن كان فيه — ما
-    يصل العميل فعلًا، وفالكون يعرف هوسته من لوحته لحظة الإنشاء — وإلا من البوابة."""
-    for r in rows or []:
-        if isinstance(r, dict) and r.get("username") and r.get("password") and not r.get("stremio"):
-            m = re.match(r"\s*Host\s+(\S+)", str(r.get("line") or ""))
-            link = stremio_link(m.group(1) if m else gate.get("host", ""), r["username"], r["password"])
+    """يضيف لكل صفٍّ فيه يوزر وباسورد (الإنشاء والبحث) رابط تثبيت Stremio، وحساب Stremio الجاهز إن أُنشئ له."""
+    full = [r for r in rows or [] if isinstance(r, dict) and r.get("username") and r.get("password")]
+    for r in full:
+        if not r.get("stremio"):
+            link = stremio_link(_row_host(gate, r), r["username"], r["password"])
             if link:
                 r["stremio"] = link
+    by_host = {}
+    for r in full:
+        by_host.setdefault(stremio_addon.host_key(_row_host(gate, r)), []).append(r)
+    for hk, rs in by_host.items():
+        if not hk:
+            continue
+        accs = stremio_accounts.known(DATA_DIR, hk, [r["username"] for r in rs])
+        for r in rs:
+            a = accs.get(r["username"])
+            if a:
+                r["stremio_email"], r["stremio_pass"] = a["email"], a["password"]
     return rows
+
+
+def stremio_account(acct, gate, username, password, line=""):
+    """حساب Stremio جاهز ليوزر (الإيميل = اليوزر على دومين المتجر، وكلمة المرور = الباسورد) وإضافة محتواه مثبّتةٌ
+    فيه — المحفوظ إن سبق. ← (الحساب، أُنشئ الآن؟). ‏ValueError · stremio_accounts.StremioError برسالةٍ للعرض."""
+    host = _row_host(gate, {"line": line})
+    hk = stremio_addon.host_key(host)
+    if not hk:
+        raise ValueError("البوابة بلا هوست")
+    tok = stremio_addon.make_token(DATA_DIR, host, username, password)
+
+    def descriptor():
+        cfg = stremio_addon.read_token(DATA_DIR, tok)
+        base = STREMIO_PUBLIC or f"https://{SITE_HOST}"
+        return {"manifest": stremio_addon.manifest(cfg, base, stremio_label(host)),
+                "transportUrl": stremio_addon.links(base, tok)["manifest"],
+                "flags": {"official": False, "protected": False}}
+    return stremio_accounts.ensure(DATA_DIR, hk, str(username), str(password), descriptor,
+                                   owner={"acct": acct.get("id"), "gate": gate.get("id")})
 
 
 # ================= خدمة سلة → واتساب (تسليم تلقائي) =================
@@ -4633,6 +4670,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, start_users_export(acct["id"], gate["id"], gate))
             if path.startswith("/api/split/"):        # خارج القفل: تغيير الاسم يلمس اللوحة
                 return self._split_post(path, st, role, acct)
+            if path == "/api/stremio/account":    # خارج القفل: حساب Stremio جاهز ليوزر (ينتظر Stremio)
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                req = self._body()
+                gate = find_gate(acct, req.get("gate"))
+                if not gate:
+                    return self._send(400, {"error": "اختر بوابة"})
+                try:
+                    rec, created = stremio_account(acct, gate, str(req.get("username") or "").strip(),
+                                                   str(req.get("password") or "").strip(), str(req.get("line") or ""))
+                except ValueError as e:
+                    return self._send(429 if "حدّها" in str(e) else 400, {"ok": False, "error": str(e)})
+                except stremio_accounts.StremioError as e:
+                    return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
+                except stremio_addon.XtreamError as e:
+                    return self._send(502, {"ok": False, "error": str(e)})
+                return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"], "created": created})
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
