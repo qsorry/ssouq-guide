@@ -634,6 +634,105 @@ def apply_seasons(con, data_dir, cid, st, now=None):
     return n
 
 
+# ================= تطبيع هوية كيانٍ واحد بقرار المالك =================
+TMDB_FIELDS = ("tmdb_id", "title_en", "title_ar", "original_title", "overview_en", "overview_ar", "release_date", "year", "runtime", "status",
+               "tmdb_type", "rating", "votes", "popularity", "last_air_date", "poster", "backdrop", "trailer_yt", "original_language",
+               "origin_country_json", "genres_json", "format", "anime_kind", "is_animation", "anime_family", "episodes_official", "seasons_official")
+
+
+def normalize_identity(data_dir, cid, tmdb_id, now=None):
+    """قرار المالك لكيانٍ واحد: معرّف TMDB الذي يحمله جدول المعرّفات **مُتحقَّقًا** يُثبَّت على صفّ الكيان وتُنسخ حقول TMDB من
+    مصدرها (التفاصيل والمواسم) — ولا شيء غير ذلك: لا دمج ولا انقسام ولا تبديل رابط ولا تحويل ولا مساس بعضوية السيرفرات ولا
+    بكيانٍ آخر. كل ثابتٍ يُقارن قبل وبعد، وأي مخالفة = تراجعٌ كامل (rollback) ورفض. التجميد يبقى. ← QA صغير مكتوب في ملف."""
+    now = now or int(time.time())
+    cid, tmdb_id = int(cid), int(tmdb_id)
+    with seo_db.lock(data_dir):
+        con = seo_db.connect(data_dir)
+        try:
+            st = seo_db.settings(con)
+            key = tmdb_key(con, data_dir)
+            c = con.execute("SELECT * FROM content WHERE id=?", (cid,)).fetchone()
+            if not c:
+                return {"ok": False, "error": f"no entity {cid}"}
+            if c["merged_into"] is not None:
+                return {"ok": False, "error": f"entity {cid} is merged into {c['merged_into']}"}
+            ext = seo_db.external(con, "content", cid)
+            held = ext.get("tmdb") or {}
+            if str(held.get("external_id")) != str(tmdb_id) or not held.get("verified"):
+                return {"ok": False, "error": f"id table does not hold tmdb {tmdb_id} verified for entity {cid}", "held": {k: v.get("external_id") for k, v in ext.items()}}
+            if not key:
+                return {"ok": False, "error": "no TMDB key"}
+
+            def snap():
+                paths = seo_db.paths(c["type"], con.execute("SELECT slug FROM content WHERE id=?", (cid,)).fetchone()[0])
+                return {"slug": con.execute("SELECT slug FROM content WHERE id=?", (cid,)).fetchone()[0],
+                        "merged_into": con.execute("SELECT merged_into FROM content WHERE id=?", (cid,)).fetchone()[0],
+                        "canonical": seo_db.PATHS[c["type"]].format(slug=con.execute("SELECT slug FROM content WHERE id=?", (cid,)).fetchone()[0]),
+                        "redirects_to": [tuple(r) for r in con.execute(f"SELECT path, target, code FROM redirect WHERE target IN ({','.join('?' * len(paths))}) ORDER BY path", paths)],
+                        "redirects_total": con.execute("SELECT COUNT(*) FROM redirect").fetchone()[0],
+                        "membership": [tuple(r) for r in con.execute("SELECT service_key, kind, local_key, stream_id, present FROM content_service WHERE content_id=? ORDER BY 1,2,3", (cid,))],
+                        "entities": con.execute("SELECT COUNT(*) FROM content").fetchone()[0],
+                        "merged_total": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NOT NULL").fetchone()[0],
+                        "split_reviews": con.execute("SELECT COUNT(*) FROM review WHERE kind='split_entity'").fetchone()[0],
+                        "imdb": (seo_db.external(con, "content", cid).get("imdb") or {}).get("external_id")}
+            before = snap()
+            d = tmdb_details(con, key, c["type"], tmdb_id, st)
+            if not d or int(d.get("id") or 0) != tmdb_id:
+                return {"ok": False, "error": f"TMDB did not return {tmdb_id}", "tmdb": (d or {}).get("id")}
+            apply_tmdb(con, data_dir, cid, d, st, now)
+            seasons = 0
+            if c["type"] == "series":
+                try:
+                    seasons = apply_seasons(con, data_dir, cid, st, now)
+                except Skip:
+                    seasons = 0
+            con.execute("UPDATE enrich_queue SET state='done', next_at=0, error=?, updated_at=? WHERE content_id=? AND source IN ('tmdb','tmdb_seasons')",
+                        ("owner identity normalization", now, cid))
+            after = snap()
+            violations = [k for k in ("slug", "merged_into", "canonical", "redirects_to", "redirects_total", "membership", "entities", "merged_total", "split_reviews") if before[k] != after[k]]
+            if before["imdb"] and after["imdb"] != before["imdb"]:
+                violations.append("imdb")
+            if violations:
+                con.rollback()
+                return {"ok": False, "error": "invariant violated — rolled back", "violations": violations, "before": {k: before[k] for k in violations}, "after": {k: after[k] for k in violations}}
+            con.commit()
+            row = con.execute("SELECT * FROM content WHERE id=?", (cid,)).fetchone()
+            ext2 = seo_db.external(con, "content", cid)
+            qa = {"ok": True, "at": now, "entity_id": cid, "tmdb_id": row["tmdb_id"], "imdb_id": (ext2.get("imdb") or {}).get("external_id"), "match": row["match"],
+                  "title": row["title"], "title_en": row["title_en"], "title_ar": row["title_ar"], "year": row["year"],
+                  "tmdb_fields_populated": [f for f in TMDB_FIELDS if row[f] not in (None, "", 0)], "tmdb_fields_empty": [f for f in TMDB_FIELDS if row[f] in (None, "")],
+                  "seasons_episodes_written": seasons, "seasons_official": row["seasons_official"], "episodes_official": row["episodes_official"],
+                  "canonical": {"before": before["canonical"], "after": after["canonical"], "unchanged": before["canonical"] == after["canonical"]},
+                  "slug": {"before": before["slug"], "after": after["slug"], "unchanged": before["slug"] == after["slug"]},
+                  "redirects": {"to_entity_before": len(before["redirects_to"]), "to_entity_after": len(after["redirects_to"]), "total_before": before["redirects_total"], "total_after": after["redirects_total"],
+                                "unchanged": before["redirects_to"] == after["redirects_to"] and before["redirects_total"] == after["redirects_total"]},
+                  "membership": {"before": before["membership"], "after": after["membership"], "unchanged": before["membership"] == after["membership"]},
+                  "merge": after["merged_total"] - before["merged_total"], "split": after["split_reviews"] - before["split_reviews"],
+                  "new_redirects": after["redirects_total"] - before["redirects_total"], "entities_delta": after["entities"] - before["entities"],
+                  "frozen": cid in frozen_ids(st), "code_fingerprint": code_version()["code_fingerprint"]}
+            out = os.path.join(bundle_dir(data_dir), f"normalize-{cid}.json")
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            with open(out, "w", encoding="utf-8") as f:
+                json.dump(qa, f, ensure_ascii=False, indent=1, default=str)
+            return qa
+        finally:
+            con.close()
+
+
+def normalizations(data_dir):
+    """سجلّات التطبيع المكتوبة (normalize-<id>.json) — لتقرير qa.json ولتقدير كتابات TMDB المعتمدة على كيانٍ مجمّد."""
+    out = []
+    d = bundle_dir(data_dir)
+    for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if n.startswith("normalize-") and n.endswith(".json"):
+            try:
+                with open(os.path.join(d, n), encoding="utf-8") as f:
+                    out.append(json.load(f))
+            except (OSError, ValueError):
+                pass
+    return out
+
+
 # ================= Xtream =================
 def classify_provider_error(msg):
     """تصنيف خطأ لوحة Xtream/TMDB لتقرير الفحص: من رمز HTTP في الرسالة («xtream 503») أو نصّ الشبكة — ليس فشل مطابقة ولا

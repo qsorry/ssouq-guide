@@ -882,6 +882,67 @@ def unit_full_scan():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_normalize():
+    """تطبيع هوية كيانٍ واحد بقرار المالك: معرّف TMDB المُتحقَّق في جدول المعرّفات يُثبَّت على الصفّ وتُنسخ حقول TMDB — بلا دمج ولا
+    انقسام ولا تبديل رابط ولا تحويل ولا مساس بالعضوية؛ رفضٌ لمعرّفٍ لا يحمله الجدول؛ وqa.json يحمل السجلّ والأساس وفرقه."""
+    print("== تطبيع الهوية بقرار المالك ==")
+    xt = mock_xtream.serve(0); tm = mock_tmdb.serve(0)
+    xbase, tbase = _serve(xt), _serve(tm)
+    seo_sources.TMDB_API = tbase + "/3"
+    d = tempfile.mkdtemp(prefix="seo_norm_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "falcon", "name": "فالكون"}]}, f, ensure_ascii=False)
+        _write(d, "casper", _cat([], [{"n": "Prison Break", "y": 2005, "s": [[1, 22]], "i": 23, "p": "http://panel/pb.png"}]))
+        cat = _cat([], []); cat["series"] = [{"id": "s", "name": "Series", "items": [{"n": "Prison Break S01 Prison.Break", "s": [[0, 22]], "i": 70, "p": "http://panel/pb1.png"}]}]
+        _write(d, "falcon", cat)
+        seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        seo_sources.set_tmdb_key(con, d, "testkey"); seo_db.set_setting(con, "preview", True); con.commit()
+        st = seo_db.settings(con)
+        pb = q("SELECT id, slug FROM content WHERE title='Prison Break' AND merged_into IS NULL ORDER BY id")
+        check("قبل: كيانان بلا دليل (كاسبر وفالكون)", len(pb) == 2, str(pb))
+        loser, winner = pb[0][0], pb[1][0]
+        seo_sources._one(con, d, loser, "tmdb", st, 1000); con.commit()                 # الخاسر أُثري (TMDB 2288 + IMDb)
+        seo_db.merge_content(con, loser, winner, reason="test: like production", now=1001); con.commit()   # الفائز يرث جدول المعرّفات لا الحقول
+        w0 = q("SELECT tmdb_id, match, slug, title_en FROM content WHERE id=?", winner)[0]
+        ext0 = seo_db.external(con, "content", winner)
+        check("حالة الإنتاج مُعادة: الفائز يحمل tmdb 2288 وimdb في جدول المعرّفات مُتحقَّقَين وصفّه بلا tmdb_id", w0[0] is None and w0[1] == "local" and ext0["tmdb"]["external_id"] == "2288" and ext0["tmdb"]["verified"] == 1 and ext0.get("imdb"), str((dict(w0), {k: v["external_id"] for k, v in ext0.items()})))
+        seo_db.set_setting(con, "identity_freeze", [winner]); seo_db.set_state(con, "bundle_at", 1500); con.commit()   # لقطةٌ سابقة بعد الدمج وقبل التطبيع
+        red0 = q("SELECT path, target FROM redirect ORDER BY path"); mem0 = q("SELECT service_key, local_key, present FROM content_service WHERE content_id=? ORDER BY 1,2", winner)
+        n0 = q("SELECT COUNT(*) FROM content")[0][0]
+        bad = seo_sources.normalize_identity(d, winner, 99999)
+        check("رفض: معرّفٌ لا يحمله جدول المعرّفات مُتحقَّقًا", bad["ok"] is False and "does not hold" in bad["error"], str(bad))
+        con.close()
+        res = seo_sources.normalize_identity(d, winner, 2288, now=2000)
+        con = seo_db.connect(d)
+        w1 = q("SELECT tmdb_id, match, slug, title_en, year, poster, overview_en, status, episodes_official FROM content WHERE id=?", winner)[0]
+        check("التطبيع: tmdb_id=2288 على الصفّ، match=tmdb، الحقول منسوخة من TMDB (عنوان، سنة، ملصق، قصة، حالة)، وIMDb محفوظ، والمواسم كُتبت",
+              res["ok"] and w1[0] == 2288 and w1[1] == "tmdb" and w1[3] and w1[4] == 2005 and w1[5] and w1[6] and res["imdb_id"] == ext0["imdb"]["external_id"]
+              and "tmdb_id" in res["tmdb_fields_populated"] and res["seasons_episodes_written"] >= 1 and res["frozen"] is True, str(res)[:700])
+        check("الثوابت: الرابط ثابت، canonical ثابت، التحويلات كما هي (عدًّا ونصًّا)، العضوية كما هي، لا دمج ولا انقسام ولا كيان جديد ولا تحويل جديد",
+              w1[2] == w0[2] and res["slug"]["unchanged"] and res["canonical"]["unchanged"] and res["redirects"]["unchanged"] and q("SELECT path, target FROM redirect ORDER BY path") == red0
+              and q("SELECT service_key, local_key, present FROM content_service WHERE content_id=? ORDER BY 1,2", winner) == mem0 and res["membership"]["unchanged"]
+              and res["merge"] == 0 and res["split"] == 0 and res["new_redirects"] == 0 and res["entities_delta"] == 0 and q("SELECT COUNT(*) FROM content")[0][0] == n0, str(res)[:500])
+        check("السجلّ مكتوب (normalize-<id>.json) ويُقرأ", any(n["entity_id"] == winner and n["ok"] for n in seo_sources.normalizations(d)))
+        qa = seo_qa.run(d, {"movie": 1, "series": 1, "turkish": 1, "anime": 1, "titles": []})
+        fz = qa["freeze"]["items"][0]
+        check("qa.json بعد التطبيع: التجميد قائم، كتابة TMDB معتمدة (approved_normalization) فلا تُعدّ خرقًا، ولا تحويل جديد؛ وقسم normalizations حاضر",
+              fz["id"] == winner and fz["tmdb_written_since_previous_snapshot"] and fz["approved_normalization"] and fz["ok"] and fz["new_redirects_since_previous_snapshot"] == 0 and qa["normalizations"][0]["entity_id"] == winner, str(fz)[:400])
+        bl = qa["baseline"]
+        check("الأساس: يُكتب في أول لقطة (set_now) بلا فروق", bl["set_now"] and bl["entities_changed"] == 0 and bl["entities_new"] == 0 and bl["redirects"]["changed"] is False, str({k: v for k, v in bl.items() if k not in ('changed_examples',)})[:300])
+        con.execute("UPDATE content SET available=0 WHERE id=?", (winner,)); con.commit()
+        qa2 = seo_qa.run(d, {"movie": 1, "series": 1, "turkish": 1, "anime": 1, "titles": []})
+        bl2 = qa2["baseline"]
+        check("أي تغييرٍ لاحق يظهر في diff واضح (كيانٌ واحد تغيّر حقل available) مع مثاله", not bl2["set_now"] and bl2["entities_changed"] == 1 and bl2["changed_by_field"]["available"] == 1 and bl2["changed_examples"][0]["id"] == winner, str({k: v for k, v in bl2.items() if k != 'changed_examples'})[:300])
+        con.close()
+    finally:
+        xt.shutdown(); tm.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_identity_cases():
     """الانقسامات مفسَّرة: من أين، ولماذا (غاب الدليل أم تناقض)، وبلا تغيير URL؛ رقم بثٍّ أعيد استعماله لعملٍ آخر لا يُربط؛ والعنوان لا يتقلّب."""
     print("== الهوية: الانقسام وإعادة استعمال رقم البثّ وثبات العنوان ==")
@@ -1456,6 +1517,7 @@ def main():
     unit_sample3_cases()
     unit_identity_cases()
     unit_freeze()
+    unit_normalize()
     unit_full_scan()
     unit_migrate()
     unit_enrich()
