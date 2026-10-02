@@ -220,7 +220,7 @@ def owned_all(data_dir, acct_id):
     with _lock:
         d = _load(data_dir)
     recs = [_plain(data_dir, r) for r in d.values() if isinstance(r, dict) and r.get("acct") == acct_id]
-    return sorted(recs, key=lambda r: r.get("created", ""), reverse=True)
+    return sorted(recs, key=lambda r: (r.get("ts") or 0, r.get("created", "")), reverse=True)
 
 
 def set_password(data_dir, host_key, username, password):
@@ -299,6 +299,7 @@ def ensure(data_dir, host_key, username, password, descriptor, owner=None):
             logout(auth)
         rec = {"email": email, "password": crypto_store.encrypt(pw, data_dir), "username": username,
                "host": host_key, "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M"),
+               "ts": round(time.time(), 3),             # للترتيب: حساباتٌ كثيرة في الدقيقة نفسها
                **({"adopted": True} if adopted else {}), **(owner or {})}
         with _lock:
             d = _load(data_dir)

@@ -71,19 +71,36 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     const chips = await user.$$eval('#gates .gate', bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
     check('one place per gate, with its count', chips.length === 2 && chips[0] === 'بوابة أ 0' && chips[1] === 'بوابة ب 0', chips.join(' | '));
     check('the gate list starts empty, and says how to add', /ابحث عن اليوزر/.test(await user.textContent('#list')));
-    check('no way to create an account outside a search result', (await user.$$('[data-make]')).length === 0);
+    check('no Stremio account for an existing line without searching it first', (await user.$$('[data-make]')).length === 0);
+
+    console.log('== «إنشاء يوزر Stremio»: line in the gate → mail (Stremio account) → add-on ==');
+    await user.waitForSelector('#pkgs input[name="pkg"]', {timeout: 8000});
+    const pk = await user.$$eval('#pkgs .opt span', ss => ss.map(x => x.textContent.trim()));
+    check('the gate packages are offered', pk.length >= 2, pk.join(' | '));
+    let asked = '';
+    user.once('dialog', d => { asked = d.message(); d.accept(); });
+    await user.click('#mkBtn');
+    await user.waitForSelector('#mkRes .card.made', {timeout: 20000});
+    check('asked to confirm (it costs the package)', /بوابة أ/.test(asked) && /تُخصم/.test(asked), asked.slice(0, 60));
+    const made = (await user.textContent('#mkRes')).replace(/\s+/g, ' ');
+    const newUser = (await user.textContent('#mkRes .creds .mono')).trim();
+    check('one press: a new line in the gate, its mail and the add-on', newUser && made.includes(newUser + '@tv.ssouq.com') && made.includes('✓ يوزر · بريد · إضافة'), made.slice(0, 160));
+    const clip0 = await user.evaluate(() => navigator.clipboard.readText());
+    check('the customer text is copied', clip0.includes(newUser + '@tv.ssouq.com'), clip0.slice(0, 60));
+    await user.waitForFunction(() => document.querySelector('#gates .gate.on .count')?.textContent === '1', null, {timeout: 8000});
+    check('and it is listed under gate أ', (await user.$$('#list .card')).length === 1);
 
     await user.fill('#q', 'user003'); await user.click('#findBtn');
     await user.waitForSelector('#res [data-make]', {timeout: 8000});
     check('search in gate أ finds the line, with create + link', await user.isVisible('#res [data-make]')
           && (await user.getAttribute('#res [data-copy]', 'data-copy')).startsWith('https://guide.ssouq.com/stremio/'));
     await user.click('#res [data-make]');
-    await user.waitForFunction(() => document.querySelector('#gates .gate.on .count')?.textContent === '1', null, {timeout: 15000});
+    await user.waitForFunction(() => document.querySelector('#gates .gate.on .count')?.textContent === '2', null, {timeout: 15000});
     const clip = await user.evaluate(() => navigator.clipboard.readText());
     check('created from the search result, and its text copied', /user003@tv\.ssouq\.com/.test(clip) && /كلمة المرور: pass003/.test(clip), clip.slice(0, 80));
     check('the result card now copies the account and opens its mail', await user.isVisible('#res [data-mail]'));
     const rows = await user.$$eval('#list .card', cs => cs.map(c => c.textContent.replace(/\s+/g, ' ')));
-    check('it is listed under gate أ', rows.length === 1 && rows[0].includes('user003@tv.ssouq.com') && rows[0].includes('لا بريد'), rows.join(' | '));
+    check('it is listed under gate أ (newest first)', rows.length === 2 && rows[0].includes('user003@tv.ssouq.com') && rows[0].includes('لا بريد'), rows.join(' | '));
 
     console.log('== per-gate places ==');
     await user.click('#gates .gate:nth-child(2)');
@@ -96,7 +113,8 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await user.click('#gates .gate:nth-child(1)');
     await user.waitForFunction(() => /البريد 1/.test(document.querySelector('#list')?.textContent || ''), null, {timeout: 8000});
     check('the gate list shows the received mail count', true);
-    await user.click('#list [data-mail]');
+    check('gate ب: the create section loads its own packages', true);
+    await user.click('#list [data-mail="user003"]');
     await user.waitForSelector('#mailList .mail', {timeout: 8000});
     check('the mail overlay shows the account and the message with its link',
           (await user.textContent('#mailAddr')).includes('user003@tv.ssouq.com')

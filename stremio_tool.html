@@ -71,6 +71,19 @@ select.t{width:auto}
 .meta span:not(:last-child)::after{content:"·";margin:0 7px;opacity:.7}
 .meta .ok{color:var(--go)}
 .meta .new{color:var(--purple);font-weight:700}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.opt{position:relative}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt span{display:inline-block;padding:8px 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--sf2);font-size:.88rem;cursor:pointer}
+.opt input:checked+span{border-color:var(--purple);color:var(--ink);background:color-mix(in srgb,var(--purple) 16%,var(--sf));font-weight:700}
+.opt input:focus-visible+span{outline:2px solid var(--purple);outline-offset:2px}
+.acc.big{padding:11px 20px;font-size:.95rem}
+.card.made{border-color:var(--purple);background:color-mix(in srgb,var(--purple) 8%,var(--sf2))}
+.meta .bad{color:var(--err)}
+.steps{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;font-size:.8rem;color:var(--mute)}
+.steps span{padding:3px 10px;border-radius:20px;border:1px solid var(--line);background:var(--sf2)}
+.cap-img{display:flex;gap:8px;align-items:center;margin:8px 0}
+.cap-img img{max-width:100%;border-radius:8px;background:#fff;min-height:44px}
 .empty{color:var(--mute);text-align:center;padding:16px;font-size:.9rem;border:1.5px dashed var(--line);border-radius:14px;margin-top:12px}
 .err{color:var(--err);font-size:.86rem;margin-top:10px;overflow-wrap:anywhere}
 .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -118,13 +131,21 @@ select.t{width:auto}
 
 <main>
   <h1>Stremio — الحسابات والروابط</h1>
-  <p class="sub">لكل بوابة مكانها: ابحث عن اليوزر في بوابته، ومن نتيجته تنسخ رابط تثبيت Stremio أو تُنشئ له حسابًا جاهزًا
-    (الإيميل <b class="mono" id="dom">@tv.ssouq.com</b> وكلمة المرور باسورده) — ثم تجده في قائمة البوابة مع بريده.</p>
+  <p class="sub">لكل بوابة مكانها: «إنشاء يوزر Stremio» يُنشئ يوزرًا جديدًا في البوابة وبريده (الإيميل <b class="mono" id="dom">@tv.ssouq.com</b>
+    وكلمة المرور باسورده) ويثبّت فيه الإضافة — بضغطةٍ واحدة. وليوزرٍ موجود: ابحث عنه وأنشئ حسابه من نتيجته. وكلها في قائمة البوابة مع بريدها.</p>
 
   <div class="gates" id="gates" role="tablist" aria-label="البوابات"></div>
 
+  <section id="mkSec">
+    <h2>إنشاء يوزر Stremio في <span id="gName0">البوابة</span></h2>
+    <div class="steps"><span>١ · يوزر في البوابة</span><span>٢ · البريد (حساب Stremio)</span><span>٣ · الإضافة المتفق عليها</span></div>
+    <div id="pkgs"><div class="empty">جاري تحميل الباقات…</div></div>
+    <div class="row" style="margin-top:12px"><button class="acc big" id="mkBtn" disabled>إنشاء يوزر Stremio</button></div>
+    <div id="mkRes"></div>
+  </section>
+
   <section>
-    <h2>بحث في <span id="gName">البوابة</span></h2>
+    <h2>يوزر موجود؟ ابحث في <span id="gName">البوابة</span></h2>
     <form class="row" id="findForm">
       <input class="t ltr" id="q" placeholder="يوزر أو باسورد" autocomplete="off" inputmode="text">
       <button class="btn" id="findBtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>بحث</button>
@@ -163,6 +184,17 @@ select.t{width:auto}
     </details>
     <div class="err" id="mailMsg"></div>
     <div class="acts"><button class="ghost" id="mailRefresh">تحديث</button><button class="ghost" id="mailClose">إغلاق</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="capOverlay" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="capTtl">
+    <h3 id="capTtl">كود التحقّق</h3>
+    <p class="hint">جلسة البوابة انتهت ولم يُقرأ الكود آليًا — اكتب الكود الظاهر في الصورة.</p>
+    <div class="cap-img"><img id="capImg" alt="captcha"><button class="ghost" id="capReload" title="تحديث">↻</button></div>
+    <input class="t ltr" id="capInput" inputmode="numeric" placeholder="الكود" autocomplete="off">
+    <div class="err" id="capMsg"></div>
+    <div class="acts"><button class="btn" id="capOk">دخول</button><button class="ghost" id="capCancel">إلغاء</button></div>
   </div>
 </div>
 
@@ -225,15 +257,21 @@ async function load(gate){
   $("gates").innerHTML = D.gates.length ? D.gates.map(g => `<button class="gate${g.id === GATE ? " on" : ""}" role="tab" aria-selected="${g.id === GATE}"
       data-gate="${esc(g.id)}">${esc(g.name || "بوابة")} <span class="count">${g.count}</span></button>`).join("")
     : '<div class="empty">لا بوابات في حسابك بعد — أضفها من صفحة الإنشاء.</div>';
-  $("gName").textContent = $("gName2").textContent = gateName();
+  $("gName").textContent = $("gName2").textContent = $("gName0").textContent = gateName();
   renderList();
+}
+async function selectGate(gate){
+  HITS = []; MADE = null; $("res").innerHTML = ""; $("mkRes").innerHTML = ""; $("q").value = "";
+  await load(gate);
+  loadPkgs();
 }
 function renderList(){
   const f = norm($("filter").value), by = $("sort").value;
   let rows = (D && D.accounts || []).filter(a => !f || norm(a.username).includes(f) || norm(a.email).includes(f));
-  const cmp = {new: (a, b) => b.created.localeCompare(a.created), old: (a, b) => a.created.localeCompare(b.created),
+  const age = (a, b) => (a.ts - b.ts) || a.created.localeCompare(b.created);     // ts: الثانية التي أُنشئ فيها
+  const cmp = {new: (a, b) => age(b, a), old: (a, b) => age(a, b),
                user: (a, b) => a.username.localeCompare(b.username, "en", {numeric: true}),
-               mail: (a, b) => (b.last_mail || "").localeCompare(a.last_mail || "") || b.created.localeCompare(a.created)}[by];
+               mail: (a, b) => (b.last_mail || "").localeCompare(a.last_mail || "") || age(b, a)}[by];
   rows = rows.slice().sort(cmp);
   $("nAcc").textContent = (D && D.accounts || []).length;
   $("list").innerHTML = rows.length ? `<div class="cards">${rows.map(a => `<div class="card">
@@ -251,7 +289,98 @@ function renderList(){
     </div>`).join("")}</div>`
     : `<div class="empty">${f ? "لا حساب يطابق التصفية." : "لا حسابات Stremio في هذه البوابة بعد — ابحث عن اليوزر أعلاه وأنشئ حسابه من نتيجته."}</div>`;
 }
-$("gates").addEventListener("click", e => { const b = e.target.closest("[data-gate]"); if (b && b.dataset.gate !== GATE) { HITS = []; $("res").innerHTML = ""; $("q").value = ""; load(b.dataset.gate); } });
+$("gates").addEventListener("click", e => { const b = e.target.closest("[data-gate]"); if (b && b.dataset.gate !== GATE) selectGate(b.dataset.gate); });
+
+// ---- «إنشاء يوزر Stremio»: يوزرٌ في البوابة بالباقة ← البريد (حساب Stremio) ← الإضافة، بطلبٍ واحد ----
+let PKGS = [], MADE = null;
+async function loadPkgs(){
+  const g = ((D && D.gates) || []).find(x => x.id === GATE) || {}, gid = GATE;
+  $("mkBtn").disabled = true; PKGS = [];
+  if (!gid) { $("pkgs").innerHTML = ""; return; }
+  if (g.archive_only) { $("pkgs").innerHTML = '<div class="empty">بوابة أرشيف — الإنشاء غير متاح فيها؛ ابحث عن يوزراتها بالأسفل.</div>'; return; }
+  $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
+  try {
+    const d = await api("/api/packages?gate=" + encodeURIComponent(gid));
+    if (gid !== GATE) return;                       // بُدّلت البوابة في أثنائه
+    if (d.need_captcha) { $("pkgs").innerHTML = '<div class="empty">بانتظار كود التحقّق…</div>'; showCap(loadPkgs); return; }
+    if (d.login_error) throw new Error(d.login_error);
+    PKGS = d.packages || [];
+    $("pkgs").innerHTML = PKGS.length ? `<div class="opts" role="radiogroup" aria-label="الباقة">${PKGS.map((p, i) => `<label class="opt">
+        <input type="radio" name="pkg" value="${esc(p.id)}"${i === 0 ? " checked" : ""}><span>${esc(p.name)}</span></label>`).join("")}</div>`
+      : '<div class="empty">لا باقات في هذه البوابة.</div>';
+    $("mkBtn").disabled = !PKGS.length;
+  } catch(e) { $("pkgs").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+$("mkBtn").onclick = () => {
+  const sel = document.querySelector('input[name="pkg"]:checked'); if (!sel) return;
+  const pkg = PKGS.find(p => String(p.id) === sel.value) || {};
+  if (!confirm(`إنشاء يوزر Stremio جديد بباقة «${pkg.name || ""}» في ${gateName()}؟\nيُنشأ اليوزر في البوابة (وتُخصم باقته)، ثم بريده وحساب Stremio والإضافة.`)) return;
+  createStremio(sel.value);
+};
+async function createStremio(pid){
+  const b = $("mkBtn"); b.disabled = true; b.textContent = "جاري الإنشاء… اليوزر ثم البريد والإضافة";
+  $("mkRes").innerHTML = "";
+  try {
+    const d = await api("/api/stremio/create", {gate: GATE, package_id: pid});
+    if (d.need_captcha) { showCap(() => createStremio(pid)); return; }
+    if (d.login_error) throw new Error(d.login_error);
+    MADE = d; showMade();
+    if (d.stremio_account) await copy(accText(d.stremio_account.email, d.stremio_account.password), "أُنشئ يوزر Stremio ونُسخ حسابه");
+    else toast("أُنشئ اليوزر، وتعذّر حساب Stremio — أعد المحاولة", true);
+    load(GATE);
+  } catch(e) { $("mkRes").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  finally { b.disabled = !PKGS.length; b.textContent = "إنشاء يوزر Stremio"; }
+}
+function showMade(){
+  const L = (MADE && MADE.line) || {}, A = MADE && MADE.stremio_account;
+  $("mkRes").innerHTML = `<div class="cards"><div class="card made">
+      <div class="row1">
+        <div class="creds"><span>اليوزر <b class="mono">${esc(L.username)}</b></span><span>الباسورد <b class="mono">${esc(L.password)}</b></span>
+          ${A ? `<span>Stremio <b class="mono">${esc(A.email)}</b></span>` : ""}</div>
+        <div class="acts">
+          ${A ? `<button class="acc" data-copy="${esc(accText(A.email, A.password))}" data-what="نُسخ الحساب">${I.copy}نسخ للعميل</button>`
+              : `<button class="acc" data-retry="1">${I.user}إعادة إنشاء حساب Stremio</button>`}
+          ${L.stremio ? `<button class="ghost st" data-copy="${esc(L.stremio)}" data-what="نُسخ الرابط">${I.link}الرابط</button>` : ""}
+          ${L.line ? `<button class="ghost" data-copy="${esc(L.line)}" data-what="نُسخ السطر">${I.copy}السطر</button>` : ""}
+        </div>
+      </div>
+      <div class="meta">${L.package ? `<span>${esc(L.package)}</span>` : ""}${A ? '<span class="ok">✓ يوزر · بريد · إضافة</span>'
+        : `<span class="bad">${esc(MADE.stremio_error || "")}</span>`}</div>
+    </div></div>`;
+}
+async function retryMade(btn){
+  const L = (MADE && MADE.line) || {}; if (!L.username) return;
+  btn.disabled = true; btn.textContent = "جاري الإنشاء…";
+  try {
+    const d = await api("/api/stremio/account", {gate: GATE, username: L.username, password: L.password, line: L.line || ""});
+    MADE.stremio_account = {email: d.email, password: d.password}; delete MADE.stremio_error;
+    showMade(); await copy(accText(d.email, d.password), "أُنشئ حساب Stremio ونُسخ"); load(GATE);
+  } catch(e) { toast(e.message, true); btn.disabled = false; btn.textContent = "إعادة إنشاء حساب Stremio"; }
+}
+
+// ---- كود التحقّق لبوابة ويبٍ انتهت جلستها ----
+let CAP_RETRY = null;
+async function loadCap(){
+  const img = $("capImg"); img.removeAttribute("src"); $("capMsg").textContent = "";
+  try {
+    const r = await fetch(B + "/api/web/captcha?gate=" + encodeURIComponent(GATE) + "&t=" + Date.now());
+    if (!(r.headers.get("Content-Type") || "").startsWith("image/")) { const d = await r.json().catch(() => ({})); throw new Error(d.error || "تعذّر جلب صورة الكود"); }
+    img.src = URL.createObjectURL(await r.blob());
+  } catch(e) { $("capMsg").textContent = e.message; }
+}
+function showCap(retry){ CAP_RETRY = retry; $("capInput").value = ""; $("capOverlay").hidden = false; loadCap(); $("capInput").focus(); }
+function hideCap(){ $("capOverlay").hidden = true; CAP_RETRY = null; }
+$("capReload").onclick = loadCap;
+$("capCancel").onclick = hideCap;
+$("capOk").onclick = async () => {
+  const code = $("capInput").value.trim(); if (!code) { $("capMsg").textContent = "اكتب الكود"; return; }
+  try {
+    const d = await api("/api/web/login", {gate: GATE, captcha: code});
+    if (!d.ok) throw new Error(d.error || "الكود غير صحيح");
+    const again = CAP_RETRY; hideCap(); if (again) again();
+  } catch(e) { $("capMsg").textContent = e.message; loadCap(); }
+};
+$("capInput").addEventListener("keydown", e => { if (e.key === "Enter") $("capOk").click(); });
 $("filter").addEventListener("input", renderList);
 $("sort").addEventListener("change", renderList);
 
@@ -303,6 +432,7 @@ document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.copy) copy(b.dataset.copy, b.dataset.what);
   else if (b.dataset.make) makeAccount(+b.dataset.make, b);
+  else if (b.dataset.retry) retryMade(b);
   else if (b.dataset.mail) openMail(b.dataset.mail);
 });
 
@@ -350,7 +480,7 @@ $("mailSavePw").onclick = async () => {
 };
 
 let start = ""; try { start = localStorage.getItem(GKEY) || ""; } catch {}
-load(start);
+selectGate(start);
 </script>
 </body>
 </html>
