@@ -865,6 +865,12 @@ def unit_sample3_cases():
         con = seo_db.connect(d)
         pp = seo_pages.render_person(con, d, "actors", wm, tr_ar, st2)[1]
         html = pp["html"].decode()
+        hl = pbw["page"]["ar"]["hreflang"]
+        check("HREFLANG: ar وen وx-default بلا تكرار رمز، وx-default = النسخة العربية الافتراضية (بلا بادئة)، والتقرير يعرضها برموزها",
+              pbw["page"]["ar"]["hreflang_ok"] and [h["lang"] for h in hl] == ["ar", "en", "x-default"] and hl[2]["url"] == hl[0]["url"] and "/en/" in hl[1]["url"] and "/en/" not in hl[0]["url"], str(hl))
+        ra = smp["identity_changes"]["redirects_added"]
+        check("REDIRECTS: كل تحويلٍ منذ اللقطة بسببه ووجهته، مباشرٌ إلى الكيان النهائي وبلا سلسلة؛ وعددها = redirects_added_since_last_bundle",
+              ra and len(ra) == smp["identity_changes"]["redirects_added_since_last_bundle"] and all(x["direct_to_final"] and not x["chain"] and x["code"] == 301 for x in ra), str(ra)[:300])
         check("D) صفحة الممثل: أعماله كلها (Prison Break + ONE PIECE الحيّ)، canonical، hreflang عربي/إنجليزي، BreadcrumbList، Person، noindex، وروابط إلى صفحات أعماله",
               pp["works"] == 2 and pp["canonical"].endswith(f"/content/people/actors/{wm}/") and len(pp["alts"]) == 3 and '"BreadcrumbList"' in html and '"@type": "Person"' in html
               and "noindex" in html and f"/content/series/{live[0][1]}/" in html and pp["index_ar"], str({k: pp[k] for k in ("works", "canonical", "alts", "index_ar")}))

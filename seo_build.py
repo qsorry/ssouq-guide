@@ -210,6 +210,7 @@ def build(data_dir, force=False, now=None):
             _last[os.path.abspath(data_dir)] = {"ok": True, "at": now, **res}
             with con:
                 seo_db.set_state(con, "last_build", _last[os.path.abspath(data_dir)])   # تبقى بعد إعادة تشغيل الخادم (النشر)
+            _stats_cache.pop(os.path.abspath(data_dir), None)      # الأعداد المحفوظة قبل البناء لم تعد صالحة
             return res
         finally:
             con.close()
