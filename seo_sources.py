@@ -60,6 +60,9 @@ GROUP_RULES = [
     (r"arab|عرب", {"language": "ar"}),
 ]
 
+CREW_ROLES = {"Director": "director", "Series Director": "director", "Writer": "writer", "Screenplay": "screenwriter", "Story": "writer",
+              "Novel": "writer", "Teleplay": "writer", "Comic Book": "writer", "Characters": "writer", "Original Story": "writer", "Author": "writer"}
+
 _lock = threading.Lock()
 _last_call = {}                     # المصدر ← وقت آخر طلب (تحديد السرعة)
 _metrics = {}                       # المصدر ← {n, seconds, max, errors, cache_hits} — أداء الواجهات لتقرير العيّنة
@@ -290,10 +293,43 @@ def resolve_tmdb(con, data_dir, cid, st, now=None):
     if len(ids) == 1:
         return "ok", strong[0]
     if len(ids) > 1:
+        best = _evidence(con, cid, e, strong, st)
+        if best:
+            return "ok", (best[0], best[1], best[2] + "+evidence", True)
         return "ambiguous", [v[0] for v in strong]
     if verified:
         return "weak", [v[0] for v in verified]
     return "miss", []
+
+
+def _evidence(con, cid, e, strong, st):
+    """مرشّحان قويان بالاسم («One Piece» 1999 و2023): قرائن الكيان نفسه تفصل — قرينة قسم «أنمي» مقابل نوع Animation،
+    وعدد مواسم القائمة مقابل مواسم المرشّح، وحجم الحلقات المدرجة مقابل الرسمية. يُختار من ينفرد بأعلى درجة؛ وإلا مراجعة."""
+    hints = {r[0] for r in con.execute("SELECT t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source='hint' AND t.kind='hub'", (cid,))}
+    seasons = [r[0] for r in con.execute("SELECT number FROM season WHERE content_id=? AND number > 0", (cid,))]
+    listed = con.execute("SELECT COALESCE(SUM(episode_count),0) FROM season WHERE content_id=?", (cid,)).fetchone()[0]
+    scored = []
+    for v in strong:
+        d, s, why = v[1], 0, []
+        gids = {g.get("id") for g in d.get("genres") or []}
+        if "anime" in hints:
+            s += 2 if 16 in gids else -2
+            why.append("anime_hint" if 16 in gids else "not_animation")
+        if seasons and d.get("number_of_seasons"):
+            if int(d["number_of_seasons"]) >= max(seasons):
+                s += 1; why.append("seasons_fit")
+            else:
+                s -= 2; why.append("fewer_seasons_than_listed")
+        if listed and d.get("number_of_episodes"):
+            if listed <= 3 * int(d["number_of_episodes"]) + 5:
+                s += 1; why.append("episodes_fit")
+            else:
+                s -= 1; why.append("more_listed_than_official")
+        scored.append((s, v, why))
+    scored.sort(key=lambda x: -x[0])
+    if len(scored) > 1 and scored[0][0] > scored[1][0] and scored[0][2]:
+        return scored[0][1]
+    return None
 
 
 def _img(path, size):
@@ -304,18 +340,38 @@ def _slug_for(con, table, name):
     return M.unique_slug(lambda s: con.execute(f"SELECT 1 FROM {table} WHERE slug=?", (s,)).fetchone() is not None, name)
 
 
+def _find_person(con, name):
+    """شخصٌ قائم بمفتاح اسمه (‏seo_match.person_key) بلا معرّف TMDB بعد — أو بمعرّفٍ إن كان الاسم نفسه: الأول فالأقدم."""
+    key = M.person_key(name)
+    if not key:
+        return None
+    r = con.execute("SELECT p.id FROM person p WHERE p.name_norm=? ORDER BY (SELECT COUNT(*) FROM external_id x WHERE x.entity='person' AND x.entity_id=p.id) DESC, p.id LIMIT 1", (key,)).fetchone()
+    return r["id"] if r else None
+
+
 def _person(con, p, now):
-    """صفّ الشخص بمعرّف TMDB (يُنشأ مرةً)."""
+    """صفّ الشخص: بمعرّف TMDB أولًا (الشخص الواحد صفٌّ واحد مهما تعدّدت أسماؤه)، وإلا شخصٌ قائم بالاسم نفسه من لوحة Xtream
+    (يُرقّى بالمعرّف والصورة بدل أن يُنشأ توأمه)، وإلا صفٌّ جديد."""
     r = con.execute("SELECT entity_id FROM external_id WHERE entity='person' AND source='tmdb' AND external_id=?", (str(p["id"]),)).fetchone()
     if r:
         return r["entity_id"]
     name = p.get("name") or p.get("original_name") or ""
     if not name:
         return None
-    cur = con.execute("INSERT INTO person(slug, name, name_en, original_name, photo, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-                      (_slug_for(con, "person", name), name, name, p.get("original_name"), _img(p.get("profile_path"), "w185"), now, now))
-    seo_db.set_external(con, "person", cur.lastrowid, "tmdb", p["id"], verified=True, confidence=1, how="tmdb", now=now)
-    return cur.lastrowid
+    pid = None
+    for nm in (name, p.get("original_name") or ""):
+        pid = pid or (_find_person(con, nm) if nm else None)
+    if pid and con.execute("SELECT 1 FROM external_id WHERE entity='person' AND entity_id=? AND source='tmdb'", (pid,)).fetchone():
+        pid = None                                     # اسمٌ واحد لشخصين مختلفين في TMDB (معرّفان): صفّان
+    if pid:
+        con.execute("UPDATE person SET name_en=COALESCE(name_en, ?), original_name=COALESCE(original_name, ?), photo=COALESCE(photo, ?), updated_at=? WHERE id=?",
+                    (name, p.get("original_name"), _img(p.get("profile_path"), "w185"), now, pid))
+    else:
+        cur = con.execute("INSERT INTO person(slug, name, name_en, original_name, photo, name_norm, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                          (_slug_for(con, "person", name), name, name, p.get("original_name"), _img(p.get("profile_path"), "w185"), M.person_key(name), now, now))
+        pid = cur.lastrowid
+    seo_db.set_external(con, "person", pid, "tmdb", p["id"], verified=True, confidence=1, how="tmdb", now=now)
+    return pid
 
 
 def _company(con, c, kind, now):
@@ -460,14 +516,15 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
             role = "voice" if is_animation or "(voice)" in ch.lower() else "actor"
             con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) VALUES (?,?,?,?,?,'tmdb')",
                         (cid, pid, role, ch[:120] or None, i))
-    jobs = {"Director": "director", "Writer": "writer", "Screenplay": "writer", "Story": "writer", "Novel": "writer", "Series Director": "director"}
+    # الكاتب نموذجٌ مستقل: writer (Writer · Story · Novel · Teleplay · Comic Book · Characters) · screenwriter (Screenplay) · creator (created_by)
+    # — ولا يُخلط بالمخرج أو الممثل لتشابه الاسم: الدور في content_person والشخص واحد بمعرّفه
     for p in credits.get("crew") or []:
-        job = p.get("job") or ((p.get("jobs") or [{}])[0]).get("job")
-        role = jobs.get(job)
-        if role:
-            pid = _person(con, p, now)
-            if pid:
-                con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) VALUES (?,?,?,NULL,0,'tmdb')", (cid, pid, role))
+        for job in [p.get("job")] + [j.get("job") for j in p.get("jobs") or []]:
+            role = CREW_ROLES.get(job or "")
+            if role:
+                pid = _person(con, p, now)
+                if pid:
+                    con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) VALUES (?,?,?,NULL,0,'tmdb')", (cid, pid, role))
     for p in d.get("created_by") or []:
         pid = _person(con, p, now)
         if pid:
@@ -518,10 +575,10 @@ def apply_seasons(con, data_dir, cid, st, now=None):
         con.execute("UPDATE season SET overview_en=COALESCE(?, overview_en), overview_ar=COALESCE(?, overview_ar), episodes_official=?, updated_at=? WHERE content_id=? AND number=?",
                     (d.get("overview") or None, tr.get("overview") or None, len(d.get("episodes") or []) or None, now, cid, s["number"]))
         for ep in d.get("episodes") or []:
-            con.execute("INSERT INTO episode(content_id, season, number, title_en, overview_en, air_date, runtime, still, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
+            con.execute("INSERT INTO episode(content_id, season, number, title_en, overview_en, air_date, runtime, still, updated_at, source) VALUES (?,?,?,?,?,?,?,?,?,'tmdb') "
                         "ON CONFLICT(content_id, season, number) DO UPDATE SET title_en=COALESCE(excluded.title_en, episode.title_en), "
                         "overview_en=COALESCE(excluded.overview_en, episode.overview_en), air_date=COALESCE(excluded.air_date, episode.air_date), "
-                        "runtime=COALESCE(excluded.runtime, episode.runtime), still=COALESCE(excluded.still, episode.still), updated_at=excluded.updated_at",
+                        "runtime=COALESCE(excluded.runtime, episode.runtime), still=COALESCE(excluded.still, episode.still), updated_at=excluded.updated_at, source='tmdb'",
                         (cid, s["number"], ep.get("episode_number"), ep.get("name") or None, ep.get("overview") or None, ep.get("air_date") or None,
                          ep.get("runtime") or None, _img(ep.get("still_path"), "w300"), now))
             n += 1
@@ -565,9 +622,8 @@ def _people_xtream(con, cid, info, now):
     con.execute("DELETE FROM content_person WHERE content_id=? AND source='xtream'", (cid,))
     for role, raw in (("actor", info.get("cast") or info.get("actors") or ""), ("director", info.get("director") or "")):
         for i, name in enumerate([x.strip() for x in re.split(r"[,،/]", str(raw)) if x.strip()][:12]):
-            r = con.execute("SELECT id FROM person WHERE name=?", (name,)).fetchone()
-            pid = r["id"] if r else con.execute("INSERT INTO person(slug, name, created_at, updated_at) VALUES (?,?,?,?)",
-                                                (_slug_for(con, "person", name), name, now, now)).lastrowid
+            pid = _find_person(con, name) or con.execute("INSERT INTO person(slug, name, name_norm, created_at, updated_at) VALUES (?,?,?,?,?)",
+                                                         (_slug_for(con, "person", name), name, M.person_key(name), now, now)).lastrowid
             con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) VALUES (?,?,?,NULL,?,'xtream')", (cid, pid, role, i))
 
 
@@ -615,7 +671,7 @@ def apply_xtream(con, data_dir, cid, st, now=None):
                     num = ep.get("episode_num")
                     if not str(num or "").isdigit():
                         continue
-                    con.execute("INSERT INTO episode(content_id, season, number, title_en, overview_en, air_date, runtime, still, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
+                    con.execute("INSERT INTO episode(content_id, season, number, title_en, overview_en, air_date, runtime, still, updated_at, source) VALUES (?,?,?,?,?,?,?,?,?,'xtream') "
                                 "ON CONFLICT(content_id, season, number) DO UPDATE SET title_en=COALESCE(episode.title_en, excluded.title_en), "
                                 "overview_en=COALESCE(episode.overview_en, excluded.overview_en), air_date=COALESCE(episode.air_date, excluded.air_date), "
                                 "runtime=COALESCE(episode.runtime, excluded.runtime), still=COALESCE(episode.still, excluded.still)",
@@ -717,6 +773,28 @@ def _one(con, data_dir, cid, source, st, now):
     return "skip", "unknown source"
 
 
+def reclassify(con, data_dir, st, limit=500, now=None):
+    """أعمالٌ أُثريت بكودٍ أقدم (لا طبقات أنمي في إثباتاتها): تُعاد كتابة حقول TMDB وتصنيفها من **الكاش** (بلا طلبات) حتى لا يبقى
+    عملٌ بصفة «أنمي» من قاعدةٍ قديمة أو بندُ نزاعٍ لم يعد قائمًا ← عدد ما أُعيد."""
+    now = now or int(time.time())
+    key = tmdb_key(con, data_dir)
+    if not key:
+        return 0
+    n = 0
+    for r in con.execute("SELECT id, type, tmdb_id FROM content WHERE match='tmdb' AND tmdb_id IS NOT NULL AND merged_into IS NULL AND id NOT IN "
+                         "(SELECT entity_id FROM provenance WHERE entity='content' AND field='is_animation') LIMIT ?", (limit,)).fetchall():
+        try:
+            d = tmdb_details(con, key, r["type"], r["tmdb_id"], st)
+            if d:
+                apply_tmdb(con, data_dir, r["id"], d, st, now)
+                n += 1
+        except Exception:  # noqa: BLE001 — لا يُعطّل الدورة؛ يُعاد في المرة التالية
+            con.rollback()
+            continue
+    con.commit()
+    return n
+
+
 def run(data_dir, limit=None, force=False, now=None):
     """دفعةٌ من الطابور (داخل النافذة، أو ‏force) ← {processed, done, miss, error, skipped}. كل عنصرٍ في معاملته."""
     now = int(now or time.time())
@@ -730,6 +808,7 @@ def run(data_dir, limit=None, force=False, now=None):
                 return res
             limit = int(limit or st.get("enrich_batch", 200))
             backoff = st.get("enrich_backoff") or [3600, 86400, 604800]
+            res["reclassified"] = reclassify(con, data_dir, st, now=now)
             seen, stop = set(), False
             while not stop and len(seen) < limit:
                 rows = [r for r in con.execute(
@@ -827,7 +906,17 @@ def state(data_dir):
 
 
 # ================= عيّنة حقيقية قبل الإثراء الجماعي =================
-SAMPLE_SPEC = {"movie": 10, "series": 10, "turkish": 5, "anime": 5}
+SAMPLE_SPEC = {"movie": 10, "series": 10, "turkish": 5, "anime": 5,
+               "titles": ["Prison Break", "One Piece", "ون بيس"]}   # أعمالٌ بأسمائها تُثرى مع العيّنة لإثبات توحيد الهوية بالمعرّف
+
+
+def _by_title(con, title):
+    """كل الكيانات (الحيّة والمدمجة) التي تحمل هذا الاسم alias ← لتقرير توحيد الهوية."""
+    return [dict(r) for r in con.execute(
+        "SELECT DISTINCT c.id, c.slug, c.title, c.year, c.tmdb_id, c.match, c.merged_into, "
+        "(SELECT GROUP_CONCAT(service_key) FROM content_service s WHERE s.content_id=c.id AND s.present=1) services, "
+        "(SELECT COUNT(*) FROM season s WHERE s.content_id=c.id) seasons "
+        "FROM content c JOIN content_alias a ON a.content_id=c.id WHERE a.alias_norm=? ORDER BY c.id", (M.norm(title),))]
 
 
 def describe(con, cid, st):
@@ -905,6 +994,8 @@ def describe(con, cid, st):
             "episodes": {"official": c["episodes_official"], "seasons_official": c["seasons_official"],
                          "listed": con.execute("SELECT COALESCE(SUM(episode_count),0) FROM season WHERE content_id=?", (cid,)).fetchone()[0],
                          "records": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=?", (cid,)).fetchone()[0],
+                         "records_by_source": {r[0] or "unknown": r[1] for r in con.execute("SELECT source, COUNT(*) FROM episode WHERE content_id=? GROUP BY source", (cid,))},
+                         "specials": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=? AND season=0", (cid,)).fetchone()[0],
                          "per_service": {r["service_key"]: sum(n for _, n in json.loads(r["seasons_json"] or "[]")) for r in links if r["seasons_json"]}},
             "disputed": sorted(disputed),
             "turkish": classify("turkish"), "anime": classify("anime"),
@@ -912,7 +1003,44 @@ def describe(con, cid, st):
             "versions": {r["service_key"]: json.loads(r["versions_json"]) for r in links if r["versions_json"]},
             "raw_names": {r["service_key"]: json.loads(r["raw_names_json"]) for r in links if r["raw_names_json"]},
             "sections": {r["service_key"]: json.loads(r["groups_json"]) for r in links if r["groups_json"]},
-            "provenance": {k: v[0] for k, v in pv.items()}, "reviews": reviews, "page": page}
+            "relations": relations(con, cid, st), "provenance": {k: v[0] for k, v in pv.items()}, "reviews": reviews, "page": page}
+
+
+def relations(con, cid, st):
+    """علاقات العمل الحقيقية في القاعدة (لا نصوصًا في JSON): الممثلون والمخرجون والكتّاب (بأدوارهم) والشركات — لكلٍّ معرّفه
+    ومصدره وعدد أعماله الأخرى ومسار صفحته وهل تُعرض (ويُفحص أنها تُرسم فعلًا)."""
+    import seo_pages
+    out = {"actors": [], "directors": [], "writers": [], "companies": []}
+    groups = {"actor": "actors", "voice": "actors", "director": "directors", "writer": "writers", "screenwriter": "writers", "creator": "writers"}
+    for r in con.execute("SELECT p.id, p.slug, p.name, cp.role, cp.source, (SELECT COUNT(DISTINCT content_id) FROM content_person WHERE person_id=p.id) works, "
+                         "(SELECT external_id FROM external_id x WHERE x.entity='person' AND x.entity_id=p.id AND x.source='tmdb') tmdb "
+                         "FROM content_person cp JOIN person p ON p.id=cp.person_id WHERE cp.content_id=? ORDER BY cp.role, cp.ord", (cid,)):
+        g = groups.get(r["role"])
+        if g and len(out[g]) < 4:
+            res = seo_pages.render_person(con, "", seo_pages.PERSON_PATH[r["role"]], r["slug"], __import__("content_page").lang_of("ar"), st)
+            out[g].append({"person_id": r["id"], "name": r["name"], "role": r["role"], "source": r["source"], "tmdb": r["tmdb"], "works": r["works"],
+                           "page": seo_pages._person_path(r["role"], r["slug"], "ar"), "renders": bool(res), "would_index": bool(res and res[1]["index_ar"])})
+    for r in con.execute("SELECT co.id, co.slug, co.name, co.kind, co.logo, co.country, cc.role, (SELECT COUNT(DISTINCT content_id) FROM content_company WHERE company_id=co.id) works "
+                         "FROM content_company cc JOIN company co ON co.id=cc.company_id WHERE cc.content_id=?", (cid,)):
+        res = seo_pages.render_company(con, "", r["slug"], __import__("content_page").lang_of("ar"), st)
+        out["companies"].append({"company_id": r["id"], "name": r["name"], "role": r["role"], "logo": bool(r["logo"]), "country": r["country"], "works": r["works"],
+                                 "page": seo_pages._company_path(r["slug"], "ar"), "renders": bool(res), "would_index": bool(res and res[1]["index_ar"])})
+    return out
+
+
+def people_qa(con, st):
+    """شبكة الأشخاص والشركات في القاعدة كلها: الأعداد بالأدوار، التوحيد (أشخاصٌ بمفتاح اسمٍ واحد صفًّا واحدًا)، ومن له معرّف TMDB."""
+    q = lambda sql, *a: con.execute(sql, a).fetchone()[0]   # noqa: E731
+    dup = q("SELECT COUNT(*) FROM (SELECT name_norm FROM person WHERE name_norm IS NOT NULL GROUP BY name_norm HAVING COUNT(*) > 1 "
+            "AND COUNT(*) > (SELECT COUNT(DISTINCT x.external_id) FROM external_id x JOIN person p2 ON p2.id=x.entity_id WHERE x.entity='person' AND x.source='tmdb' AND p2.name_norm=person.name_norm))")
+    return {"persons": q("SELECT COUNT(*) FROM person"), "with_tmdb_id": q("SELECT COUNT(*) FROM external_id WHERE entity='person' AND source='tmdb'"),
+            "by_role": {r[0]: r[1] for r in con.execute("SELECT role, COUNT(*) FROM content_person GROUP BY role")},
+            "by_source": {r[0]: r[1] for r in con.execute("SELECT source, COUNT(*) FROM content_person GROUP BY source")},
+            "same_name_rows_without_distinct_tmdb_ids": dup,      # يجب أن يكون صفرًا: الاسم الواحد صفٌّ واحد ما لم يفرّقهما معرّف TMDB
+            "companies": q("SELECT COUNT(*) FROM company"), "company_links": q("SELECT COUNT(*) FROM content_company"),
+            "companies_by_kind": {r[0]: r[1] for r in con.execute("SELECT kind, COUNT(*) FROM company GROUP BY kind")},
+            "persons_with_2plus_works": q("SELECT COUNT(*) FROM (SELECT person_id FROM content_person GROUP BY person_id HAVING COUNT(DISTINCT content_id) >= 2)"),
+            "companies_with_2plus_works": q("SELECT COUNT(*) FROM (SELECT company_id FROM content_company GROUP BY company_id HAVING COUNT(DISTINCT content_id) >= 2)")}
 
 
 def summary(con):
@@ -1071,6 +1199,13 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                         seen.add(r["id"]); picked.append((r["id"], label))
             base = "SELECT c.id FROM content c WHERE c.merged_into IS NULL AND c.available=1"
             hub = " AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=?)"
+            resolution = {}
+            for t in spec.get("titles") or []:
+                before = _by_title(con, t)
+                resolution[t] = {"before": before}
+                for r in before:
+                    if r["merged_into"] is None and r["id"] not in seen:
+                        seen.add(r["id"]); picked.append((r["id"], "title"))
             take("turkish", base + hub, ("turkish",), spec["turkish"])
             take("anime", base + hub, ("anime",), spec["anime"])
             take("movie", base + " AND c.type='movie'", (), spec["movie"])
@@ -1082,6 +1217,7 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                                                             f"AND content_id NOT IN ({qs}) GROUP BY 1, 2 ORDER BY n DESC LIMIT 10", ids)]}
             backoff = st.get("enrich_backoff") or [3600, 86400, 604800]
             res = {"processed": 0, "done": 0, "miss": 0, "error": 0, "skipped": 0}
+            res["reclassified"] = reclassify(con, data_dir, st, now=now)      # ما أُثري بكودٍ أقدم: تصنيفه يُعاد من الكاش
             failures = []
             for cid in ids:
                 try:                                  # فشل عملٍ لا يُسقط العيّنة: يُسجَّل ويُكمَل
@@ -1098,6 +1234,15 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                     failures.append({"content_id": cid, "source": "sample", "operation": "queue", "error_type": type(ex).__name__, "error_message": str(ex)[:300]})
             if res["error"] and not failures:          # لا يُسمح بـ error > 0 مع قائمةٍ فارغة
                 failures.append({"content_id": None, "source": "sample", "operation": "accounting", "error_type": "Unknown", "error_message": "errors counted without detail"})
+            for t, r in resolution.items():
+                before_ids = [x["id"] for x in r["before"]]
+                after = _by_title(con, t) + [dict(x) for x in con.execute(      # المدمج فقد أسماءه (انتقلت إلى الباقي): يُتابَع بمعرّفه
+                    f"SELECT id, slug, title, year, tmdb_id, match, merged_into, NULL services, 0 seasons FROM content WHERE merged_into IS NOT NULL AND id IN ({','.join('?' * len(before_ids)) or '0'})", before_ids)]
+                live = [x for x in after if x["merged_into"] is None]
+                r.update({"after": after, "live_entities": len(live),
+                          "merged": [{"id": x["id"], "into": x["merged_into"]} for x in after if x["merged_into"] is not None],
+                          "verdict": ("one entity per tmdb id" if len({x["tmdb_id"] for x in live if x["tmdb_id"]}) == len(live) and all(x["tmdb_id"] for x in live)
+                                      else "still separate: " + ", ".join(f"{x['id']}:{x['match']}" for x in live if not x["tmdb_id"]))})
             works = []
             for cid in ids:
                 try:
@@ -1118,6 +1263,7 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                      "in_sample": [{"id": w["id"], "slug": w.get("slug"), "merged_into": w.get("merged_into")} for w in works if w.get("merged_into") or (w.get("slug_prev"))]}
             seo_db.set_state(con, "bundle_at", now); con.commit()
             return {"ok": True, "at": now, "ids": ids, "run": res, "failures": failures, "reconciliation": seo_db.state(con, "reconciliation"),
+                    "resolution": resolution, "people": people_qa(con, st),
                     "errors": {"sample": failures, "queue_preexisting": pre, "bundle": list(bundle_errors or [])},
                     "counters": counters, "identity_changes": ident, "works": works, "summary": summary(con), "api": metrics()}
         finally:

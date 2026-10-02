@@ -30,6 +30,7 @@ _AR = {"ب": "b", "پ": "b", "ت": "t", "ة": "", "ث": "t", "ج": "j", "چ": "c
        "أ": "", "إ": "", "آ": "", "ا": "", "ؤ": "w", "ئ": "y"}
 _VOWELS = set("aeiou")
 _WORD = re.compile(r"[^\W_]+", re.U)
+PHONETIC_VERSION = 2          # يرتفع مع كل تغييرٍ في المفتاح الصوتي: البناء يعيد حساب مفاتيح الأسماء المخزَّنة
 
 
 def _lat_word(w):
@@ -142,7 +143,10 @@ class Index:
             if sg or r["exact"] or r["suggest"]:
                 return {"exact": [], "suggest": sg or [(c, self.title(c), 0.7, "name, other year") for c in r["exact"]][:max_suggest] or r["suggest"]}
         if qn in self.by_norm:
-            return {"exact": sorted(self.by_norm[qn]), "suggest": []}
+            exact = sorted(self.by_norm[qn])
+            # كياناتٌ أخرى بالصوت نفسه واسمٍ مختلف («ون بيس» ← One Piece): تُعرض جانب الدقيق اقتراحًا — لا دمج
+            also = [(c, self.title(c), 0.9, "phonetic") for c in sorted(self.by_phon.get(qp, ())) if c not in exact and norm(self.title(c)) != qn]
+            return {"exact": exact, "suggest": [], "also": also[:max_suggest]}
         found = {}
         for cid in self.by_phon.get(qp, ()):
             found[cid] = (0.95, "phonetic")
@@ -198,14 +202,21 @@ def explain(con, idx, q, st):
         for t, ids in groups.items():
             g = {"title": t, "ids": ids}
             if len(ids) > 1:
-                kinds = [r[0] for r in con.execute("SELECT DISTINCT kind FROM review WHERE status='open' AND kind IN ('name_only','conflict','split_entity','same_server_ambiguous') "
-                                                   "AND payload_json LIKE ?", (f'%"name": "{ents[0]["title"]}"%',))]
-                g["why_separate"] = kinds or ["no merge evidence yet (tmdb pending)"]
+                tm = [r[0] for r in con.execute(f"SELECT tmdb_id FROM content WHERE id IN ({','.join('?' * len(ids))})", ids)]
+                if all(tm) and len(set(tm)) == len(tm):
+                    g["why_separate"] = ["different tmdb ids"]           # أعمالٌ مختلفة فعلًا بمعرّفاتها
+                else:
+                    kinds = [r[0] for r in con.execute("SELECT DISTINCT kind FROM review WHERE status='open' AND kind IN ('name_only','conflict','split_entity','same_server_ambiguous') "
+                                                       "AND payload_json LIKE ?", (f'%"name": "{ents[0]["title"]}"%',))]
+                    g["why_separate"] = kinds or ["no merge evidence yet (tmdb pending)"]
             out.append(g)
         return out
     if r["exact"]:
         ents = [ent(c) for c in r["exact"]]
-        return {"q": q, "norm": norm(q), "phonetic": phonetic(q), "result": "entity", "entities": ents, "grouped": grouped(ents)}
+        out = {"q": q, "norm": norm(q), "phonetic": phonetic(q), "result": "entity", "entities": ents, "grouped": grouped(ents)}
+        if r.get("also"):
+            out["also"] = [dict(ent(c), confidence=conf, why=why) for c, _, conf, why in r["also"]]
+        return out
     if r["suggest"]:
         sg = [dict(ent(c), confidence=conf, why=why) for c, _, conf, why in r["suggest"]]
         return {"q": q, "norm": norm(q), "phonetic": phonetic(q), "result": "suggest", "suggest": sg, "grouped": grouped(sg)}

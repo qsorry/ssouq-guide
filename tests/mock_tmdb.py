@@ -19,7 +19,14 @@ from urllib.parse import parse_qs, urlsplit
 KEY = "testkey"
 
 
+def _pid(name):
+    """معرّف الشخص ثابتٌ باسمه (الشخص الواحد معرّفٌ واحد في كل الأعمال — كما في TMDB)."""
+    import hashlib
+    return int(hashlib.md5(name.encode("utf-8")).hexdigest()[:6], 16)
+
+
 def _p(name, pid, job=None, char=None):
+    pid = _pid(name)
     d = {"id": pid, "name": name, "original_name": name, "profile_path": f"/p{pid}.jpg"}
     if job:
         d["job"] = job
@@ -29,7 +36,7 @@ def _p(name, pid, job=None, char=None):
 
 
 def _tv(tid, name, orig, year, lang, countries, genres, ar=None, ar_overview="", alts=(), status="Ended", seasons=2, eps=3,
-        cast=(), creators=(), companies=(), keywords=(), popularity=50.0, type_="Scripted"):
+        cast=(), creators=(), companies=(), keywords=(), popularity=50.0, type_="Scripted", writers=(("Some Writer", "Writer"),)):
     return {"id": tid, "name": name, "original_name": orig, "first_air_date": f"{year}-01-10", "last_air_date": f"{year + 1}-05-01",
             "original_language": lang, "origin_country": list(countries), "genres": [{"id": g, "name": GENRE_NAMES[g]} for g in genres],
             "overview": f"{name}: an English overview long enough to be indexed when the time comes, about {name.lower()} and its world, "
@@ -41,7 +48,7 @@ def _tv(tid, name, orig, year, lang, countries, genres, ar=None, ar_overview="",
             "translations": {"translations": [{"iso_639_1": "ar", "data": {"name": ar or "", "overview": ar_overview}}]},
             "alternative_titles": {"results": [{"iso_3166_1": "XX", "title": a} for a in alts]},
             "aggregate_credits": {"cast": [dict(_p(n, i + tid * 10), roles=[{"character": c}]) for i, (n, c) in enumerate(cast)],
-                                  "crew": [dict(_p("Some Writer", tid * 10 + 99), jobs=[{"job": "Writer"}])]},
+                                  "crew": [dict(_p(n, tid * 10 + 99 - i if n != "Vince Gilligan" else 1396 * 10 + 50), jobs=[{"job": j}]) for i, (n, j) in enumerate(writers)]},
             "created_by": [_p(n, tid * 10 + 50 + i) for i, n in enumerate(creators)],
             "production_companies": [{"id": tid * 100 + i, "name": c, "logo_path": None, "origin_country": countries[0] if countries else ""} for i, c in enumerate(companies)],
             "networks": [], "keywords": {"results": [{"id": k, "name": "kw"} for k in keywords]},
@@ -73,9 +80,10 @@ TV = {
     2288: _tv(2288, "Prison Break", "Prison Break", 2005, "en", ["US"], [10759, 80, 18], ar="بريزون بريك", ar_overview="قصة بريزون بريك بالعربية، طويلة بما يكفي لتكون مفيدة للقارئ العربي وللفهرسة لاحقًا. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
               alts=["Prison Break: Sequel"], cast=[("Wentworth Miller", "Michael Scofield"), ("Dominic Purcell", "Lincoln Burrows")], creators=["Paul Scheuring"], companies=["20th Century Fox Television"], popularity=90),
     1396: _tv(1396, "Breaking Bad", "Breaking Bad", 2008, "en", ["US"], [18, 80], ar="بريكنج باد", ar_overview="قصة بريكنج باد بالعربية، معلّم كيمياء يتحوّل إلى صناعة المخدرات، طويلة بما يكفي. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
-              cast=[("Bryan Cranston", "Walter White"), ("Aaron Paul", "Jesse Pinkman")], creators=["Vince Gilligan"], companies=["Sony Pictures Television"], popularity=95),
+              cast=[("Bryan Cranston", "Walter White"), ("Aaron Paul", "Jesse Pinkman")], creators=["Vince Gilligan"], companies=["Sony Pictures Television"], popularity=95,
+              writers=(("Vince Gilligan", "Writer"), ("Some Writer", "Screenplay"))),
     37854: _tv(37854, "One Piece", "ONE PIECE", 1999, "ja", ["JP"], [10759, 16, 35], ar="ون بيس", ar_overview="مغامرات لوفي وطاقم قبعة القش بحثًا عن الكنز الأسطوري ون بيس، قصة طويلة بما يكفي. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
-               status="Returning Series", cast=[("Mayumi Tanaka", "Monkey D. Luffy (voice)")], companies=["Toei Animation"], keywords=[210024], popularity=200, seasons=3, eps=4),
+               status="Returning Series", cast=[("Mayumi Tanaka", "Monkey D. Luffy (voice)")], companies=["Toei Animation"], keywords=[210024], popularity=200, seasons=3, eps=40),
     1429: _tv(1429, "Attack on Titan", "進撃の巨人", 2013, "ja", ["JP"], [10759, 16, 10765], ar="هجوم العمالقة", ar_overview="البشر يعيشون خلف جدران عملاقة خوفًا من العمالقة، قصة طويلة بما يكفي للفهرسة. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
               alts=["Shingeki no Kyojin"], cast=[("Yuki Kaji", "Eren Yeager (voice)")], companies=["Wit Studio"], keywords=[210024], popularity=150),
     89456: _tv(89456, "Kuruluş Osman", "Kuruluş Osman", 2019, "tr", ["TR"], [18, 10759, 36], ar="المؤسس عثمان", ar_overview="قصة عثمان بن أرطغرل ونشأة الدولة العثمانية، مسلسل تركي تاريخي طويل القصة بما يكفي. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
@@ -109,6 +117,10 @@ TV = {
     87846: _tv(87846, "The Idhun Chronicles", "Memorias de Idhún", 2020, "es", ["ES"], [16, 10765, 10759], ar="ذكريات إيدون", ar_overview="ثلاثة شبان يقاومون طاغية عالم إيدون السحري، رسوم إسبانية مقتبسة من روايات لاورا غاييغو، طويلة القصة بما يكفي للفهرسة لاحقًا.",
                keywords=[210024], popularity=22),
     99008: _tv(99008, "Mystery Toon", "Mystery Toon", 2010, "", [], [16], ar="ميستري تون", keywords=[210024], popularity=5),
+    # One Piece الحيّ (2023): الاسم نفسه والترجمة العربية نفسها — السنة أو مواسم القائمة أو قرينة «أنمي» تفصل
+    111110: _tv(111110, "ONE PIECE", "ONE PIECE", 2023, "en", ["US", "JP"], [10759, 18], ar="ون بيس", ar_overview="اقتباسٌ حيّ لمغامرات لوفي وطاقم قبعة القش، قصة طويلة بما يكفي للفهرسة لاحقًا في الصفحات بكل تفاصيلها.",
+                status="Returning Series", cast=[("Iñaki Godoy", "Monkey D. Luffy"), ("Wentworth Miller", "Cameo")], companies=["Tomorrow Studios"], popularity=150, seasons=1, eps=8),
+    99009: _tv(99009, "Stub Show", "Stub Show", 2020, "ar", ["JO"], [18], ar="مسلسل ناقص", seasons=1, eps=1, popularity=3),
 }
 MOVIES = {
     438631: _movie(438631, "Dune", "Dune", 2021, "en", ["US"], [878, 12], ar="كثيب", ar_overview="بول أتريديس ينتقل إلى كوكب أراكيس الصحراوي، قصة طويلة بما يكفي للفهرسة. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",

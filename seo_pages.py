@@ -33,8 +33,10 @@ HUB_SECTIONS = ("series", "movies", "ongoing", "completed")
 SECTION_NAMES = {"series": ("المسلسلات", "Series"), "movies": ("الأفلام", "Movies"), "ongoing": ("المستمرة", "Ongoing"),
                  "completed": ("المكتملة", "Completed")}
 ROLE_NAMES = {"actor": ("الممثلون", "Cast"), "voice": ("مؤدّو الأصوات", "Voice cast"), "director": ("المخرج", "Director"),
-              "writer": ("الكاتب", "Writer"), "creator": ("المبتكر", "Creator")}
-PERSON_PATH = {"actor": "actors", "voice": "actors", "director": "directors", "writer": "directors", "creator": "directors"}
+              "writer": ("الكاتب", "Writer"), "screenwriter": ("كاتب السيناريو", "Screenwriter"), "creator": ("المبتكر", "Creator")}
+PERSON_PATH = {"actor": "actors", "voice": "actors", "director": "directors", "writer": "writers", "screenwriter": "writers", "creator": "writers"}
+PATH_ROLES = {"actors": ("actor", "voice"), "directors": ("director",), "writers": ("writer", "screenwriter", "creator")}
+PATH_NAMES = {"actors": ("الممثلون", "Actors"), "directors": ("المخرجون", "Directors"), "writers": ("الكتّاب", "Writers")}
 # مقدمات تحريرية افتراضية (يحرّرها المدير من taxonomy.intro_*)
 HUB_INTRO = {
     "turkish": ("دليلك إلى المسلسلات والأفلام التركية المتوفرة في اشتراكات سمارت سوق: الأعمال المدبلجة والمترجمة، الدراما التاريخية "
@@ -106,8 +108,12 @@ def _hub_path(hub, section="", lang="ar", page=1):
     return seo_db.lang_prefix(lang) + f"/content/{hub}/" + (f"{section}/" if section else "") + (f"page/{page}/" if page > 1 else "")
 
 
-def _person_path(role, slug, lang="ar"):
-    return seo_db.lang_prefix(lang) + f"/content/people/{PERSON_PATH.get(role, 'actors')}/{slug}/"
+def _person_path(role, slug, lang="ar", page=1):
+    return seo_db.lang_prefix(lang) + f"/content/people/{PERSON_PATH.get(role, 'actors')}/{slug}/" + (f"page/{page}/" if page > 1 else "")
+
+
+def _company_path(slug, lang="ar", page=1):
+    return seo_db.lang_prefix(lang) + f"/content/companies/{slug}/" + (f"page/{page}/" if page > 1 else "")
 
 
 def _card(row, tr, lazy=True):
@@ -212,6 +218,11 @@ def _people(con, cid, tr):
     return by
 
 
+def _companies(con, cid):
+    return con.execute("SELECT co.id, co.slug, co.name, co.kind, co.logo, co.country, cc.role FROM content_company cc JOIN company co ON co.id=cc.company_id "
+                       "WHERE cc.content_id=? ORDER BY CASE cc.role WHEN 'studio' THEN 0 ELSE 1 END, co.id", (cid,)).fetchall()
+
+
 def _pname(p, tr):
     return (p["name_en"] if tr.en else p["name_ar"]) or p["name"]
 
@@ -265,6 +276,8 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     # الحلقات: الرسمي من TMDB إن وُجد، وإلا المدرج في القوائم (عناصر قد تكون أجزاءً) — ويُقال أيّهما
     n_official = row["episodes_official"] or (sum(s["episodes_official"] or 0 for s in seasons) or None)
     n_listed = sum(s["episode_count"] for s in seasons)
+    if n_official and n_listed and n_official < 3 and n_listed > 3 * n_official:
+        n_official = None                        # سجلّ TMDB ناقص (حلقة واحدة لعملٍ بعشرات الحلقات في القوائم): لا يُعرض رقمًا رسميًّا
     n_eps = n_official or n_listed
     eps_label = (lambda n: tr.count(n, "episodes") + ("" if n_official else tr(" في القوائم", " as listed")))
     hubs = [t for t in by_kind.get("hub", [])]
@@ -330,6 +343,13 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         ppl += f'<section><h2>{_esc(ROLE_NAMES[director["role"]][tr.en])}</h2><div class="people">{_person_chip(director, tr, title)}</div></section>'
     if cast:
         ppl += f'<section><h2>{_esc(tr(f"أبطال {kind_ar} {title}", f"Cast of {title}"))}</h2><div class="people">{"".join(_person_chip(p, tr, title) for p in cast[:12])}</div></section>'
+    writers = [p for r in ("creator", "writer", "screenwriter") for p in people.get(r) or [] if not (director and p["id"] == director["id"])]
+    if writers:
+        ppl += f'<section><h2>{_esc(tr("الكتّاب", "Writers"))}</h2><div class="people">{"".join(_person_chip(p, tr, title) for p in writers[:8])}</div></section>'
+    companies = _companies(con, row["id"])
+    if companies:   # الشركة المنتجة كيانٌ بصفحته — ليست سيرفر الاشتراك (Casper/Smart/Falcon = توفّر)
+        ppl += (f'<section><h2>{_esc(tr("الإنتاج", "Production"))}</h2><p class="chips">'
+                + "".join(f'<a class="chip" href="{_esc(_company_path(c["slug"], tr.code))}">{_esc(c["name"])}</a>' for c in companies) + "</p></section>")
     # المواسم والحلقات
     seas = ""
     if seasons:
@@ -345,6 +365,8 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
                     lis.append(f'<li><span>{e["number"]}</span> {_esc(et)}' + (f' <small>{_esc(e["air_date"])}</small>' if e["air_date"] else "") + "</li>")
                 ep_html = "<ol class=eps>" + "".join(lis) + "</ol>"
             s_label = tr.count(s["episodes_official"], "episodes") if s["episodes_official"] else (tr.count(s["episode_count"], "episodes") + tr(" في القوائم", " as listed"))
+            if s["number"] == 0:
+                name = tr("حلقات خاصة", "Specials")
             items.append(f'<details{" open" if s is seasons[0] else ""}><summary><b>{_esc(name)}</b> <small>{_esc(s_label)}</small></summary>'
                          + (f'<p>{_esc(s["overview_en"] if tr.en else s["overview_ar"] or "")}</p>' if (s["overview_en"] if tr.en else s["overview_ar"]) else "") + ep_html + "</details>")
         seas = f'<section id="seasons"><h2>{_esc(tr(f"مواسم وحلقات مسلسل {title}", f"{title} seasons & episodes"))}</h2>{"".join(items)}</section>'
@@ -391,6 +413,10 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         ld["director" if director["role"] == "director" else "creator"] = {"@type": "Person", "name": _pname(director, tr), "url": SITE + _person_path(director["role"], director["slug"], tr.code)}
     if cast:
         ld["actor"] = [{"@type": "Person", "name": _pname(p, tr), "url": SITE + _person_path(p["role"], p["slug"], tr.code)} for p in cast[:12]]
+    if writers:
+        ld["author"] = [{"@type": "Person", "name": _pname(p, tr), "url": SITE + _person_path(p["role"], p["slug"], tr.code)} for p in writers[:8]]
+    if companies:
+        ld["productionCompany"] = [{"@type": "Organization", "name": c["name"], "url": SITE + _company_path(c["slug"], tr.code)} for c in companies]
     if row["rating"] and row["votes"]:
         ld["aggregateRating"] = {"@type": "AggregateRating", "ratingValue": row["rating"], "bestRating": 10, "ratingCount": row["votes"]}
     if typ == "series" and seasons:
@@ -419,41 +445,125 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
 
 
 # ================= الشخص =================
-def render_person(con, data_dir, role_path, slug, tr, st):
+def _paginate(rows, page, st):
+    size = max(1, int(st.get("page_size", 60)))
+    pages = max(1, (len(rows) + size - 1) // size)
+    if page < 1 or page > pages:
+        return None, pages
+    return rows[(page - 1) * size: page * size], pages
+
+
+def _page_links(path_of, tr, page, pages):
+    """rel=prev/next في الرأس، وروابط الصفحات في الجسم."""
+    head = (f'<link rel="prev" href="{_esc(SITE + path_of(tr.code, page - 1))}">' if page > 1 else "") + (f'<link rel="next" href="{_esc(SITE + path_of(tr.code, page + 1))}">' if page < pages else "")
+    nav = ""
+    if pages > 1:
+        nav = '<nav class="pages">' + "".join(f'<a href="{_esc(path_of(tr.code, n))}"{" aria-current=page" if n == page else ""}>{n}</a>' for n in range(1, pages + 1)) + "</nav>"
+    return head, nav
+
+
+def render_person(con, data_dir, role_path, slug, tr, st, page=1):
+    """صفحة الشخص: كل أعماله (بأدواره: تمثيلًا وإخراجًا وكتابة) من content_person — لا نصوصًا؛ مرقّمة الصفحات؛ noindex أثناء المراجعة؛
+    ولا تُعدّ ذات محتوى (فهرسة) تحت person_min_works. المسار بحسب الدور المطلوب (actors · directors · writers) ويجب أن يحمله الشخص."""
     _services.data_dir = data_dir
     p = con.execute("SELECT * FROM person WHERE slug=?", (slug,)).fetchone()
-    if not p:
+    if not p or role_path not in PATH_ROLES:
         return None
-    works = con.execute("SELECT c.*, cp.role, cp.character FROM content_person cp JOIN content c ON c.id=cp.content_id WHERE cp.person_id=? AND c.merged_into IS NULL AND c.available=1 "
-                        "ORDER BY COALESCE(c.year,0) DESC", (p["id"],)).fetchall()
-    role = "director" if role_path == "directors" else "actor"
+    roles_here = PATH_ROLES[role_path]
+    rows = con.execute("SELECT c.*, cp.role, cp.character FROM content_person cp JOIN content c ON c.id=cp.content_id WHERE cp.person_id=? AND c.merged_into IS NULL AND c.available=1 "
+                       "ORDER BY COALESCE(c.year,0) DESC, c.id", (p["id"],)).fetchall()
+    if not any(w["role"] in roles_here for w in rows):
+        return None                                  # ليس له هذا الدور: المسار الصحيح لدوره هو الذي يُربط به
+    role = next(w["role"] for w in rows if w["role"] in roles_here)
+    seen, works = set(), []
+    for w in rows:                                   # العمل مرةً واحدة ولو تعدّدت أدواره فيه
+        if w["id"] not in seen:
+            seen.add(w["id"]); works.append(w)
+    roles_of = {}
+    for w in rows:
+        roles_of.setdefault(w["id"], []).append(w["role"])
+    page_rows, pages = _paginate(works, page, st)
+    if page_rows is None:
+        return None
     name = _pname(p, tr)
     movies = [w for w in works if w["type"] == "movie"]
     series = [w for w in works if w["type"] == "series"]
-    page_title = f"{name} | " + tr("الأفلام والمسلسلات", "Movies & Series")
+    path_of = lambda lang, n: _person_path(role, slug, lang, n)   # noqa: E731
+    page_title = f"{name} | " + tr("الأفلام والمسلسلات", "Movies & Series") + (tr(f" — صفحة {page}", f" — page {page}") if page > 1 else "")
     desc = tr(f"أعمال {name}: {tr.count(len(movies), 'movie')} و{tr.count(len(series), 'series')} متوفرة في اشتراكات سمارت سوق.",
               f"{name}: {tr.count(len(movies), 'movie')} and {tr.count(len(series), 'series')} available on Smart Souq subscriptions.")
-    crumb_html, crumb_ld = _crumbs([(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (tr("الممثلون", "Actors") if role == "actor" else tr("المخرجون", "Directors"), ""), (name, "")])
+    crumb_html, crumb_ld = _crumbs([(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (PATH_NAMES[role_path][tr.en], ""), (name, "")])
     photo = _img(p["photo"], "w342")
     bio = (p["bio_en"] if tr.en else p["bio_ar"]) or ""
-    body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, _person_path(role, slug, "en" if not tr.en else "ar"))}</div>'
+    role_line = tr("، ", ", ").join(sorted({ROLE_NAMES[r][tr.en] for w in rows for r in [w["role"]] if r in ROLE_NAMES}))
+    head_extra, nav = _page_links(path_of, tr, page, pages)
+    sections = ""
+    for label, typ in ((tr("الأفلام", "Movies"), "movie"), (tr("المسلسلات", "Series"), "series")):
+        rs = [w for w in page_rows if w["type"] == typ]
+        if rs:
+            sections += f'<section><h3>{_esc(label)}</h3>{_grid(rs, tr)}</section>'
+    body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, path_of("en" if not tr.en else "ar", page))}</div>'
             f'<section class="hero person-hero"><div class="wrap hd"><div class="pos">{f"<img src={chr(34)}{_esc(photo)}{chr(34)} alt={chr(34)}{_esc(name)}{chr(34)} width=342 height=513>" if photo else f"<span class=ph>{_esc(P._initials(name))}</span>"}</div>'
             f'<div class="meta"><h1 dir="auto">{_esc(name)}</h1>' + (f'<p class="orig">{_esc(p["original_name"])}</p>' if p["original_name"] and p["original_name"] != name else "")
+            + (f'<p class="chips"><span class="chip">{_esc(role_line)}</span></p>' if role_line else "")
             + (f'<p dir="auto">{_esc(bio)}</p>' if bio else "") + "</div></div></section>"
-            + f'<h2>{_esc(tr(f"أعمال {name}", f"{name} works"))}</h2>'
-            + (f'<section><h3>{_esc(tr("الأفلام", "Movies"))}</h3>{_grid(movies, tr)}</section>' if movies else "")
-            + (f'<section><h3>{_esc(tr("المسلسلات", "Series"))}</h3>{_grid(series, tr)}</section>' if series else "")
+            + f'<h2>{_esc(tr(f"أعمال {name}", f"{name} works"))} <small>{_esc(tr.count(len(works), "work") if "work" in P.N_AR else str(len(works)))}</small></h2>' + sections + nav
             + "</main>" + _footer(tr))
     ld = {"@context": "https://schema.org", "@type": "Person", "name": name, "url": SITE + _person_path(role, slug, tr.code)}
     if photo:
         ld["image"] = photo
     if bio:
         ld["description"] = bio
-    canonical = SITE + _person_path(role, slug, tr.code)
+    if role_line:
+        ld["jobTitle"] = role_line
+    canonical = SITE + path_of(tr.code, page)
     ok = len(works) >= int(st.get("person_min_works", 2)) or bool(bio and photo)
-    alts = [("ar", SITE + _person_path(role, slug, "ar")), ("en", SITE + _person_path(role, slug, "en")), ("x-default", SITE + _person_path(role, slug, "ar"))] if ok else []
-    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], og_image=photo, og_type="profile", noindex=True),
-                    "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok, "why": ("ok" if ok else "few works",) * 2}
+    alts = [("ar", SITE + path_of("ar", page)), ("en", SITE + path_of("en", page)), ("x-default", SITE + path_of("ar", page))] if ok else []
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], og_image=photo, og_type="profile", noindex=True, extra_head=head_extra),
+                    "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok, "why": ("ok" if ok else "few works",) * 2,
+                    "pages": pages, "works": len(works)}
+
+
+def render_company(con, data_dir, slug, tr, st, page=1):
+    """صفحة الشركة المنتجة (استوديو/شبكة) بأعمالها من content_company — Organization؛ لا تُخلط بسيرفرات الاشتراك."""
+    _services.data_dir = data_dir
+    co = con.execute("SELECT * FROM company WHERE slug=?", (slug,)).fetchone()
+    if not co:
+        return None
+    works = con.execute("SELECT DISTINCT c.* FROM content_company cc JOIN content c ON c.id=cc.content_id WHERE cc.company_id=? AND c.merged_into IS NULL AND c.available=1 "
+                        "ORDER BY COALESCE(c.year,0) DESC, c.id", (co["id"],)).fetchall()
+    page_rows, pages = _paginate(works, page, st)
+    if page_rows is None:
+        return None
+    name = co["name"]
+    path_of = lambda lang, n: _company_path(slug, lang, n)   # noqa: E731
+    kind = tr("شبكة", "Network") if co["kind"] == "network" else tr("شركة إنتاج", "Production company")
+    page_title = f"{name} | " + tr("أعمال الشركة", "Productions") + (tr(f" — صفحة {page}", f" — page {page}") if page > 1 else "")
+    movies, series = [w for w in works if w["type"] == "movie"], [w for w in works if w["type"] == "series"]
+    desc = tr(f"أعمال {name} ({kind}): {tr.count(len(movies), 'movie')} و{tr.count(len(series), 'series')} متوفرة في اشتراكات سمارت سوق.",
+              f"{name} ({kind}): {tr.count(len(movies), 'movie')} and {tr.count(len(series), 'series')} available on Smart Souq subscriptions.")
+    crumb_html, crumb_ld = _crumbs([(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (tr("شركات الإنتاج", "Production companies"), ""), (name, "")])
+    logo = _img(co["logo"], "w185")
+    head_extra, nav = _page_links(path_of, tr, page, pages)
+    sections = ""
+    for label, typ in ((tr("الأفلام", "Movies"), "movie"), (tr("المسلسلات", "Series"), "series")):
+        rs = [w for w in page_rows if w["type"] == typ]
+        if rs:
+            sections += f'<section><h3>{_esc(label)}</h3>{_grid(rs, tr)}</section>'
+    body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, path_of("en" if not tr.en else "ar", page))}</div>'
+            f'<section class="hero person-hero"><div class="wrap hd"><div class="pos logo">{f"<img src={chr(34)}{_esc(logo)}{chr(34)} alt={chr(34)}{_esc(name)}{chr(34)} width=185 height=185>" if logo else f"<span class=ph>{_esc(P._initials(name))}</span>"}</div>'
+            f'<div class="meta"><h1 dir="auto">{_esc(name)}</h1><p class="chips"><span class="chip">{_esc(kind)}</span>'
+            + (f'<span class="chip">{_esc(co["country"])}</span>' if co["country"] else "") + "</p></div></div></section>"
+            + f'<h2>{_esc(tr(f"أعمال {name}", f"{name} productions"))}</h2>' + sections + nav + "</main>" + _footer(tr))
+    ld = {"@context": "https://schema.org", "@type": "Organization", "name": name, "url": SITE + _company_path(slug, tr.code)}
+    if logo:
+        ld["logo"] = logo
+    canonical = SITE + path_of(tr.code, page)
+    ok = len(works) >= int(st.get("company_min_works", 2))
+    alts = [("ar", SITE + path_of("ar", page)), ("en", SITE + path_of("en", page)), ("x-default", SITE + path_of("ar", page))] if ok else []
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], og_image=logo, noindex=True, extra_head=head_extra),
+                    "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok, "why": ("ok" if ok else "few works",) * 2,
+                    "pages": pages, "works": len(works)}
 
 
 # ================= الهب =================
@@ -572,7 +682,7 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
 
 
 # ================= التوجيه =================
-_RX = re.compile(r"^/content/(?:(movies|series)/([a-z0-9-]+)/|people/(actors|directors)/([a-z0-9-]+)/|"
+_RX = re.compile(r"^/content/(?:(movies|series)/([a-z0-9-]+)/|people/(actors|directors|writers)/([a-z0-9-]+)/(?:page/(\d+)/)?|companies/([a-z0-9-]+)/(?:page/(\d+)/)?|"
                  r"(turkish|anime)/(?:(series|movies|ongoing|completed)/)?(?:(genres|year)/([a-z0-9-]+)/)?(?:page/(\d+)/)?)$")
 
 
@@ -580,7 +690,7 @@ def handle(data_dir, path, lang):
     """← (code, body, headers) أو None إن لم يكن من مسارات الطبقة. وبلا ‏preview: 404 لكل مساراتها (لا شيء عامٌّ بعد)."""
     pre = seo_db.lang_prefix(lang)
     ar_path = path[len(pre):] if pre else path
-    if not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
+    if not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/companies/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
         return None
     con = seo_db.connect(data_dir, create=False)
     if con is None:
@@ -600,14 +710,16 @@ def handle(data_dir, path, lang):
         if not m:
             return 404, b"", {}
         tr = P.lang_of(lang)
-        typ, slug, role_path, pslug, hub, section, subk, subv, page = m.groups()
+        typ, slug, role_path, pslug, ppage, cslug, cpage, hub, section, subk, subv, page = m.groups()
+        if (ppage or cpage or page) == "1":
+            return 301, b"", {"Location": path.replace("page/1/", "")}
         if typ:
             res = render_entity(con, data_dir, "movie" if typ == "movies" else "series", slug, tr, st)
         elif role_path:
-            res = render_person(con, data_dir, role_path, pslug, tr, st)
+            res = render_person(con, data_dir, role_path, pslug, tr, st, int(ppage or 1))
+        elif cslug:
+            res = render_company(con, data_dir, cslug, tr, st, int(cpage or 1))
         else:
-            if page == "1":
-                return 301, b"", {"Location": path.replace("page/1/", "")}
             res = render_hub(con, data_dir, hub, section or "", (subk, subv) if subk else None, int(page or 1), tr, st)
         if not res:
             return 404, b"", {}

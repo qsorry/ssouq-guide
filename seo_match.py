@@ -107,6 +107,12 @@ def sections_agree(a, b):
     return bool(_originals(a) & _originals(b))
 
 
+def person_key(name):
+    """مفتاح توحيد الشخص بالاسم: التطبيع (بلا تشكيلٍ ولا فاصلة عليا ولا علامات) وكلماتٌ مرتّبة (ترتيب الاسم لا يفرّق).
+    الاسم العربي والإنجليزي للشخص نفسه لا يجمعهما إلا معرّف TMDB (ترجماته) — لا تخمين."""
+    return " ".join(sorted(norm(name).split()))
+
+
 def _originals(e):
     return {norm(o) for o in (e.get("originals") or ([e["original"]] if e.get("original") else [])) if o}
 
