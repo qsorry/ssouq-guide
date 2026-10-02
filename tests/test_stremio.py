@@ -174,7 +174,9 @@ def against_mock():
         cat = {c["type"]: c for c in man["catalogs"]}
         opts = cat["movie"]["extra"][0]["options"]
         check("أقسام الأفلام كلها تصنيفات", opts == list(mock_xtream.MOVIES), str(opts))
-        check("أقسام القنوات بلا قسم الكبار", cat["tv"]["extra"][0]["options"] == list(mock_xtream.CHANNELS))
+        check("أقسام المسلسلات تصنيفاتٌ كذلك", cat["series"]["extra"][0]["options"] == list(mock_xtream.SERIES))
+        check("والقنوات كلها تصنيفٌ واحد (بحثٌ وصفحات، بلا قائمة أقسام)", [e["name"] for e in cat["tv"]["extra"]] == ["search", "skip"]
+              and cat["tv"]["extraSupported"] == ["search", "skip"], str(cat["tv"]["extra"]))
         check("لا تصنيفٌ مطلوب (الكتالوجات في الرئيسية) والبحث والصفحات مدعومة",
               all(not e["isRequired"] for c in man["catalogs"] for e in c["extra"])
               and all({"search", "skip"} <= set(c["extraSupported"]) for c in man["catalogs"]))
@@ -188,7 +190,10 @@ def against_mock():
         alls, _ = walk(cfg, "series")
         check("كل المسلسلات", len(alls) == len(series), f"{len(alls)} / {len(series)}")
         allt, _ = walk(cfg, "tv")
-        check("كل القنوات (بلا الكبار)", len(allt) == n_live, f"{len(allt)} / {n_live}")
+        check("كل القنوات (بلا الكبار) في كتالوجها الواحد", len(allt) == n_live, f"{len(allt)} / {n_live}")
+        check("بترتيب السيرفر (أقسامها متجاورة)", [m["name"] for m in allt[:2]] == mock_xtream.CHANNELS["beIN SPORTS"][:2], str([m["name"] for m in allt[:2]]))
+        old_mf, _ = walk(cfg, "tv", genre="MBC")
+        check("وطلب تصنيفٍ من manifest قديم في Stremio ما زال يعمل", [m["name"] for m in old_mf] == mock_xtream.CHANNELS["MBC"])
         check("الأحدث أولًا", allm[0]["name"].startswith("F1 The Movie"), allm[0]["name"])
         g = "مسلسلات تركية مدبلجة"
         gs, _ = walk(cfg, "series", genre=g)

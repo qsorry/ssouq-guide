@@ -8,8 +8,8 @@
 100 عنصر (‏CATALOG_PAGE_SIZE في stremio-core) — فكل صفحةٍ هنا 100 تمامًا إلا الأخيرة، والقائمة كاملةً من
 السيرفر بطلبٍ واحد لكل نوع (‏get_vod_streams · get_series · get_live_streams)، لا قسمًا قسمًا.
 
-  الكتالوجات     ثلاثة: أفلام · مسلسلات · قنوات. بلا تصنيف = الكل (الأحدث إضافةً أولًا)، وأقسام السيرفر كلها
-                 تصنيفاتٌ (genre) في صفحة «اكتشف»، والبحث بالاسم في الثلاثة.
+  الكتالوجات     ثلاثة: أفلام · مسلسلات · قنوات. بلا تصنيف = الكل (الأحدث إضافةً أولًا)، وأقسام الأفلام والمسلسلات
+                 تصنيفاتٌ (genre) في صفحة «اكتشف»، والقنوات كلها تصنيفٌ واحد؛ والبحث بالاسم في الثلاثة.
   التفاصيل      الفيلم من get_vod_info، والمسلسل بمواسمه وحلقاته من get_series_info، والقناة من القائمة.
   التشغيل       روابط السيرفر نفسه: ‏/movie/ · ‏/series/ · ‏/live/ (‏HLS ثم TS حسب ما يسمح به الاشتراك).
 
@@ -39,7 +39,7 @@ import crypto_store
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.0.0"
+VERSION = "1.1.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -57,6 +57,8 @@ _ACTION = {"movie": ("get_vod_categories", "get_vod_streams", "stream_id"),
            "series": ("get_series_categories", "get_series", "series_id"),
            "tv": ("get_live_categories", "get_live_streams", "stream_id")}
 CATALOG = {"movie": "sq_movies", "series": "sq_series", "tv": "sq_live"}
+# أقسام السيرفر تصنيفاتٌ للأفلام والمسلسلات؛ والقنوات تصنيفٌ واحد: كلها في كتالوجها بترتيب السيرفر وبحثٍ بالاسم
+GENRE_TYPES = ("movie", "series")
 _TITLE = {"movie": "أفلام", "series": "مسلسلات", "tv": "قنوات"}
 _CODE = {"movie": "m", "series": "s", "tv": "l"}   # بادئة المعرّف بعد بادئة السيرفر؛ و‏e للحلقة
 
@@ -450,7 +452,7 @@ def manifest(cfg, base, label=""):
     for kind in TYPES:
         seen, genres = set(), []
         try:                             # اشتراكٌ منتهٍ تُثبَّت إضافته ولا تُرفض: يعمل كما هو متى جُدِّد
-            for c in ([] if denied else categories(cfg, kind)):
+            for c in ([] if denied or kind not in GENRE_TYPES else categories(cfg, kind)):
                 name = " ".join(str(c.get("category_name") or "").split()) if isinstance(c, dict) else ""
                 if name and name not in seen and not _adult_cat(c):
                     seen.add(name)
@@ -468,8 +470,8 @@ def manifest(cfg, base, label=""):
         "id": f"com.ssouq.xtream.{uid}",
         "version": VERSION,
         "name": BRAND + tag,
-        "description": "كل محتوى اشتراكك في Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها والقنوات المباشرة، "
-                       "بأقسام السيرفر نفسها وبحثٍ بالاسم.",
+        "description": "كل محتوى اشتراكك في Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها بأقسام السيرفر نفسها، "
+                       "والقنوات المباشرة كلها في تصنيفٍ واحد، وبحثٌ بالاسم.",
         "logo": f"{base}/static/icons/icon-512.png",
         "background": f"{base}/static/og-image.png",
         "types": list(TYPES),
