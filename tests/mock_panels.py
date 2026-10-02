@@ -7,6 +7,7 @@
   Panel.info[series_id]                       get_series_info: {"info": …, "episodes": {"1": [...]}}
   Panel.dead                                  روابط تشغيل معطّلة (رقم العنصر أو الحلقة) ← 404
   Panel.rejected = True                       الاشتراك مرفوض (‏auth 0)
+  Panel.slow[action] = ثوانٍ · Panel.down       سيرفرٌ بطيء في إجراء، أو يردّ 503 له (كاسبر وقائمة أفلامه)
   Panel.hits                                  مسارات الطلبات (لعدّ الفحص)
   vod[...]["info_genre"]                      تصنيف الفيلم في تفاصيله وحدها (لوحاتٌ لا تذكره في القائمة)
 
@@ -29,6 +30,7 @@ class Panel:
         self.info = {}
         self.dead = set()
         self.rejected = False
+        self.slow, self.down = {}, set()
         self.exp = int(time.time()) + 30 * 86400
         self.hits = []
         self.lock = threading.Lock()
@@ -83,6 +85,10 @@ class Handler(BaseHTTPRequestHandler):
         if q.get("username") != p.user or q.get("password") != p.pw or p.rejected:
             return self._send(200, json.dumps({"user_info": {"auth": 0}}).encode())
         act = q.get("action", "")
+        if act in p.slow:
+            time.sleep(p.slow[act])
+        if act in p.down:
+            return self._send(503, b"")
         if not act:
             return self._send(200, json.dumps({"user_info": {"username": p.user, "auth": 1, "status": "Active",
                                                              "exp_date": str(p.exp), "max_connections": "1",
