@@ -159,6 +159,14 @@ def unit():
     check("تاريخٌ لا يُفهم يُحذف (لا يُسقط صفحة المسلسل)", S._released("0000-00-00") is None and S._released("") is None)
 
 
+def raises_auth(fn):
+    try:
+        fn()
+    except S.AuthError:
+        return True
+    return False
+
+
 # ================= مقابل السيرفر الوهمي =================
 def against_mock():
     srv = mock_xtream.serve(0)
@@ -183,10 +191,42 @@ def against_mock():
         n = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_series")) - before
         check("8 طلباتٍ معًا = طلبٌ واحد للسيرفر", n == 1, str(n))
 
+        print("== بحثٌ أسرع: قائمةٌ واحدة لمشتركي الباقة، وتحديثٌ في الخلفية، وفهرسٌ جاهز ==")
+        srv.users["u3"] = "p3"
+        other = S.Cfg(cfg.host, "u3", "p3")
+        hits = lambda: sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_series"))
+        before = hits()
+        Ls, Lo = S.lists(cfg, "series"), S.lists(other, "series")
+        check("مشتركٌ آخر بالباقة نفسها على السيرفر نفسه: القائمة نفسها بلا تحميلٍ ثانٍ", Lo is Ls and hits() == before, str(hits() - before))
+        check("وفهرس البحث جاهزٌ مع التحميل (أول بحثٍ لا يبنيه)", Ls._keys is not None and len(Ls._keys) == len(Ls.items))
+        check("بصمة الباقة: الأقسام نفسها ← البصمة نفسها، وأقسامٌ أخرى ← غيرها",
+              S._bouquet([{"category_id": "2"}, {"category_id": "1"}]) == S._bouquet([{"category_id": 1}, {"category_id": 2}])
+              != S._bouquet([{"category_id": "1"}]))
+        with S._lock:
+            key = S._list_keys[(cfg, "series")]
+            S._lists[key] = (S._lists[key][0] - S.TTL - 1, Ls)               # قديمة
+        t0 = time.time()
+        again = S.lists(other, "series")
+        quick = time.time() - t0
+        for _ in range(50):
+            if S._lists[key][1] is not Ls:
+                break
+            time.sleep(0.05)
+        check("قديمةٌ تُعرض فورًا وتُحدَّث في الخلفية (لا ينتظر البحث السيرفر)", again is Ls and quick < 0.5
+              and S._lists[key][1] is not Ls and time.time() - S._lists[key][0] < 5, f"{quick:.2f}s")
+        info_hits = lambda: sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_series_info"))
+        sid = S.lists(cfg, "series").items[0].id
+        S._details(cfg, "get_series_info", "series_id", sid)
+        before = info_hits()
+        S._details(other, "get_series_info", "series_id", sid)
+        check("وتفاصيل المسلسل واحدةٌ لمشتركي السيرفر", info_hits() == before)
+        check("تحميل قوائم اشتراكٍ مسبقًا (الأنواع الثلاثة)", S.warm(other) == 3 and all(S.has_lists(other, k) for k in S.TYPES))
+        check("ومشتركٌ يرفضه السيرفر لا يأخذ قائمة غيره", raises_auth(lambda: S.lists(S.Cfg(cfg.host, "u3", "wrong"), "series")))
+
         print("== قائمةٌ كاملة يتعثّر فيها السيرفر (كاسبر يردّ 503 لأفلامه) ← قسمًا قسمًا ==")
         srv.full_fails = {"get_vod_streams"}
-        with S._lock:
-            S._lists.pop((cfg, "movie"), None)
+        S.drop_lists(cfg, "movie")
+        S.drop_lists(other, "movie")                         # حمّلها التحميل المسبق أعلاه لمشترك الباقة نفسها
         before = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_vod_streams"))
         L = S.lists(cfg, "movie")
         n_parts = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_vod_streams")) - before
@@ -194,17 +234,15 @@ def against_mock():
               and n_parts == 1 + len(mock_xtream.MOVIES) + 1, f"{len(L.items)} / {n_vod} · {n_parts} طلبات")
         check("والبحث فيها يعمل", [m["name"] for m in S.catalog(cfg, "movie", "sq_movies", {"search": "oppenheimer"})["metas"]] == ["Oppenheimer (2023)"])
         srv.api_down = True
-        with S._lock:
-            S._lists.pop((cfg, "movie"), None)
+        S.drop_lists(cfg, "movie")
         t0 = time.time()
         try:
             S.lists(cfg, "movie")
             check("وتعثّر الأقسام أيضًا ← خطأ (لا قائمةٌ ناقصة تُحفظ)", False)
         except S.XtreamError:
-            check("وتعثّر الأقسام أيضًا ← خطأ (لا قائمةٌ ناقصة تُحفظ)", (cfg, "movie") not in S._lists, f"{time.time() - t0:.1f}s")
+            check("وتعثّر الأقسام أيضًا ← خطأ (لا قائمةٌ ناقصة تُحفظ)", not S.has_lists(cfg, "movie"), f"{time.time() - t0:.1f}s")
         srv.api_down, srv.full_fails = False, set()
-        with S._lock:
-            S._lists.pop((cfg, "movie"), None)
+        S.drop_lists(cfg, "movie")
 
         print("== الـmanifest ==")
         man = S.manifest(cfg, "https://guide.ssouq.com", "سمارت")
@@ -238,20 +276,22 @@ def against_mock():
             down.shutdown()
         check("وسيرفرٌ لا يردّ: «error» (لا فائدة من إعادته فورًا)", st == "error", st)
         empty = S.Cfg(cfg.host, "empty", "x")
+        for k in ("series", "tv"):
+            S.set_lists(empty, k, S.Lists(k, [], []))
         with S._lock:
-            for k in S.TYPES:
-                S._lists[(empty, k)] = (time.time(), S.Lists(k, [], []))
-            S._lists[(empty, "movie")] = (time.time(), S._lists[(cfg, "movie")][1])
+            S._list_keys[(empty, "movie")] = S._list_keys[(cfg, "movie")]     # قائمة باقته محمّلةٌ بمحتواها
             S._cats[(empty, "series")] = (time.time(), [])
         e2 = S.Cfg(cfg.host, "empty2", "x")
         with S._lock:
             for k in S.TYPES:
-                S._lists[(e2, k)] = (time.time(), S.Lists(k, [], []))
+                S._cats[(e2, k)] = (time.time(), [])          # قبلته اللوحة بلا أقسام بعد
+        for k in S.TYPES:
+            S.set_lists(e2, k, S.Lists(k, [], []))
         check("وقوائم فارغةٌ كلها (يوزرٌ قبلته اللوحة ولم تُسنِد له باقته بعد) كذلك «pending»",
               S.build_manifest(e2, "https://g", "")[1] == "pending")
         S.forget_empty(empty)
         with S._lock:
-            kept = [k for k in S.TYPES if (empty, k) in S._lists]
+            kept = [k for k in S.TYPES if S._list_keys.get((empty, k)) in S._lists]
             cats_gone = (empty, "series") not in S._cats
         check("إعادة القراءة تنسى الفارغ وحده (وما حُمّل بمحتواه يبقى)", kept == ["movie"] and cats_gone, str(kept))
         check("والقنوات كلها تصنيفٌ واحد (بحثٌ وصفحات، بلا قائمة أقسام)", [e["name"] for e in cat["tv"]["extra"]] == ["search", "skip"]
@@ -290,12 +330,10 @@ def against_mock():
 
         print("== صفحات 100 كما يعدّها Stremio ==")
         many = S.Lists("movie", [], [{"stream_id": i, "name": f"F{i}", "added": str(i)} for i in range(1, 251)])
-        with S._lock:
-            S._lists[(cfg, "movie")] = (time.time(), many)
+        S.set_lists(cfg, "movie", many)
         got, pages = walk(cfg, "movie")
         check("250 فيلمًا = 100 + 100 + 50", len(got) == 250 and pages == 3 and len({m["id"] for m in got}) == 250, f"{len(got)} في {pages}")
-        with S._lock:
-            S._lists.pop((cfg, "movie"), None)
+        S.drop_lists(cfg, "movie")
 
         print("== التفاصيل ==")
         mm = S.meta(cfg, "movie", m0["id"])["meta"]
@@ -333,7 +371,7 @@ def against_mock():
               str([x["title"] for x in sl]))
         odd = S.read_token(d, S.make_token(d, host, "u/x", "p&y"))
         with S._lock:                                        # قائمته في الذاكرة (السيرفر الوهمي لا يعرف هذا اليوزر)
-            S._lists[(odd, "movie")] = S._lists[(cfg, "movie")]
+            S._list_keys[(odd, "movie")] = S._list_keys[(cfg, "movie")]
         check("يوزرٌ أو باسوردٌ بحروفٍ خاصة يُرمَّز في الرابط", "/movie/u%2Fx/p%26y/" in S.streams(odd, "movie", m0["id"])["streams"][0]["url"])
 
         print("== الحالة والأخطاء ==")
@@ -355,8 +393,9 @@ def against_mock():
         S.lists(cfg, "series")                               # في الذاكرة
         srv.api_down = True
         with S._lock:
-            t, val = S._lists[(cfg, "series")]
-            S._lists[(cfg, "series")] = (t - S.TTL - 1, val)  # انتهى عمرها
+            key = S._list_keys[(cfg, "series")]
+            t, val = S._lists[key]
+            S._lists[key] = (t - S.TTL - 1, val)             # انتهى عمرها
         stale = S.catalog(cfg, "series", "sq_series", {})["metas"]
         check("السيرفر سقط والقائمة قديمة: تُعرض كما هي لا تختفي", len(stale) == len(series))
         try:
