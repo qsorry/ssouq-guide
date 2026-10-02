@@ -587,6 +587,10 @@ def unit_sample2_cases():
     check("التحقّق: مرشّحٌ سوري لاسمٍ عربي عام مع أصلٍ لاتيني تركي يُرفض (origin)",
           M.verify_tmdb({"type": "series", "title": "Alahed", "original_title": "العهد", "aliases": [], "countries": ["SY"], "year": 2018}, ent, st) == (False, "origin"))
     check("والمرشّح التركي بالأصل نفسه يُقبل", M.verify_tmdb({"type": "series", "title": "Söz", "original_title": "Söz", "aliases": ["SOZ"], "countries": ["TR"], "year": 2017}, ent, st)[0])
+    ce = seo_sources.classify_provider_error
+    check("تصنيف أخطاء اللوحة: 503 = provider_unavailable (مؤقّت) · 401 = authentication · 429 = rate_limit · timed out = network",
+          ce("xtream 503")["class"] == "provider_unavailable" and ce("xtream 503")["severity"] == "temporary" and ce("xtream 401")["class"] == "authentication"
+          and ce("xtream 429")["class"] == "rate_limit" and ce("timed out")["class"] == "network", str(ce("xtream 503")))
     check("البحث: «ون بيس» و«وان بيس» و«One Piece» مفتاحٌ صوتي واحد، و«أوفيس» = Office",
           seo_search.phonetic("ون بيس") == seo_search.phonetic("One Piece") == seo_search.phonetic("وان بيس") and seo_search.phonetic("أوفيس") == seo_search.phonetic("Office"),
           str((seo_search.phonetic("ون بيس"), seo_search.phonetic("One Piece"), seo_search.phonetic("أوفيس"), seo_search.phonetic("Office"))))
@@ -692,10 +696,16 @@ def unit_sample2_cases():
               and q("SELECT 1 FROM review WHERE key=? AND status='open'", f"merged:{fb[0][0]}:{fb[1][0]}") and {r[0] for r in q("SELECT number FROM season WHERE content_id=?", fb[0][0])} == {1, 2},
               str(([tuple(r) for r in fb], rc)))
         check("التسوية: الفرق −1 = مدمج 1، غاب 0، متّسقة", rc["delta"] == -1 and rc["merged"] == 1 and rc["went_unavailable"] == 0 and rc["explained"], str(rc))
+        hist = seo_db.state(con, "reconciliations") or []
+        check("تاريخ التسويات: بناءان مسجَّلان بترتيبهما", len(hist) == 2 and hist[-1]["merged"] == 1 and hist[0]["before"] == 0, str(hist))
         check("ولا يتغيّر slug أي كيانٍ في البناء الثاني (التغييرات كلها ترقيات TMDB الموثّقة قبله)",
               q("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL")[0][0] == slug_changes)
         smp = seo_sources.sample(d, {"movie": 1, "series": 2, "turkish": 2, "anime": 2})
         check("العيّنة تحمل التسوية وعدّادات التركي/الأنمي بالحالات الثلاث", smp.get("reconciliation", {}).get("explained") and set(smp["counters"]["anime"]) >= {"confirmed", "review", "unconfirmed"}, str(smp.get("reconciliation")))
+
+        ic = smp["identity_changes"]
+        check("عدّادات الهوية مُعرَّفة ومتصالحة: بنود الانقسام منذ اللقطة = مجموع «انفصال» في بناءاتها، وتاريخ البناءات موجود",
+              "definitions" in ic and ic["split_reviews_opened_since_last_bundle"] == ic["split_sum_over_builds"] == ic["splits"]["total"] and len(ic["builds_since_last_bundle"]) >= 1, str({k: ic[k] for k in ("split_reviews_opened_since_last_bundle", "split_sum_over_builds", "builds_since_last_bundle")}))
         con.close()
     finally:
         xt.shutdown(); tm.shutdown()
@@ -931,6 +941,8 @@ def unit_sample3_cases():
         check("«وان بيس» ← اقتراحٌ صوتي للكيانين المُتحقَّقين وغير المحسوم بهويته", r["result"] == "suggest" and {op[0][0], op[1][0]} <= {x["id"] for x in r["suggest"]} and all("identity" in x for x in r["suggest"]), str(r)[:200])
         pbp = pbw["page"]["ar"]["meta_description"]
         pbh = seo_pages.render_entity(con, d, "series", live[0][1], tr_en, st2)[1]["html"].decode()
+        check("PRISON BREAK SEO: الخاصة تظهر صفًّا مستقلًا «Specials: 2» ولا تُعدّ موسمًا؛ «6 seasons»-نمط (3 هنا) غائب من الصفحة كلها",
+              "<dt>Specials</dt><dd>2</dd>" in pbh and "3 seasons" not in pbh and "3 مواسم" not in seo_pages.render_entity(con, d, "series", live[0][1], tr_ar, st2)[1]["html"].decode(), "")
         check("EPISODE SEMANTICS: Prison Break (موسمان + حلقتان خاصتان في TMDB): لا «3 seasons» في العنوان/الوصف/JSON-LD بل «2 seasons»؛ الخاصة حقلٌ مستقل؛ لا حقل seasons عام",
               "3 seasons" not in pbh and '"numberOfSeasons": 2' in pbh and pbe["official_season_count"] == 2 and pbe["special_season_count" if "special_season_count" in pbe else "official_season_count"] in (1, 2)
               and pbw["special_season_count"] == 1 and pbe["special_episode_count"] == 2 and pbe["episode_record_count"] == pbe["official_episode_count"] + 2 and "seasons" not in pbw, str({k: v for k, v in pbe.items() if k != "season_episode_count"}))
@@ -938,6 +950,14 @@ def unit_sample3_cases():
               and pbe["available_season_count"] == len([k for k, v in pbe["season_episode_count"].items() if k != "0" and v["available"]]) and pbe["available_season_count"] == 2, str((pbp, pbe["season_episode_count"])))
         check("صفحات الأشخاص والشركات في العيّنة: كل فئة مفحوصة باللغتين (تُرسم، أعمالٌ وروابط، canonical، hreflang، schema، noindex، ترقيم)",
               smp["people_pages"] and all(c.get("renders") and c["links_to_works"] and c["breadcrumb"] and c["schema"] and c["noindex"] and c["paginated_ok"] for row in smp["people_pages"] for c in row["checks"].values()), str(smp["people_pages"])[:400])
+        con.close()
+        _write(d, "falcon", cat)                                   # إعادة بناء بلا تغيير في القوائم: الهوية المُتحقَّقة تثبت
+        r3 = seo_build.build(d, force=True)
+        con = seo_db.connect(d)
+        pb3 = q("SELECT id, merged_into FROM content WHERE title='Prison Break' ORDER BY id")
+        check("هوية TMDB المُتحقَّقة لا تُفكّ: إعادة البناء لا تنتزع فالكون من Prison Break (لا كيان رابع، لا انقسام، لا تحويل جديد)، والتسوية تعدّ ما ثُبّت",
+              len(pb3) == 3 and r3["split"] == 0 and r3["reconciliation"]["kept_by_verified_identity"] >= 1 and not q("SELECT 1 FROM review WHERE kind='split_entity' AND status='open' AND payload_json LIKE '%Prison Break%'"),
+              str((pb3, r3["split"], r3["reconciliation"].get("kept_by_verified_identity"))))
         con.close()
     finally:
         xt.shutdown(); tm.shutdown()
@@ -1148,6 +1168,19 @@ def unit_enrich():
         check("الملفات الأربعة مكتوبة ومختومة بالوقت ونسخة الكود", set(files) == set(b1["files"]) and all('"generated_at"' in t and '"code_fingerprint"' in t for t in files.values()) and b1["code_fingerprint"])
         secs = ["testkey", "username=u", "password=p", xbase.split("//")[1]]
         check("لا مفتاح ولا بيانات دخول ولا مضيف لوحةٍ في أي ملف", not any(sc in t for sc in secs for t in files.values()), str([sc for sc in secs if any(sc in t for t in files.values())]))
+        bid = b1["bundle_id"]
+        check("اللقطة الواحدة: معرّف bundle_id واحد في الملفات الأربعة وbundle.json", bid and all(bid in t for t in files.values()) and bid in open(os.path.join(outdir, "bundle.json"), encoding="utf-8").read(), bid)
+        real_sample = seo_sources.sample
+        seo_sources.sample = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom in sample"))
+        try:
+            bx = seo_sources.bundle(d, outdir, n=3)
+        finally:
+            seo_sources.sample = real_sample
+        fx = {n: open(os.path.join(outdir, n), encoding="utf-8").read() for n in seo_sources.BUNDLE_FILES}
+        check("فشل العيّنة لا يترك ملفاتٍ من لقطةٍ سابقة: الخمسة بختم اللقطة الفاشلة نفسها، وsample.json يحمل الخطأ وتتبّعه، وbundle.json يسجّله",
+              all(bx["bundle_id"] in t for t in fx.values()) and "boom in sample" in fx["sample.json"] and "traceback" in fx["sample.json"] and any(e["file"] == "sample.json" for e in bx["errors"]), str(bx["errors"])[:200])
+        b1 = seo_sources.bundle(d, outdir, n=3)
+        files = {n: open(os.path.join(outdir, n), encoding="utf-8").read() for n in ("probe.json", "sample.json", "report.txt", "search-report.txt")}
         s1 = snap(); h1 = len(mock_tmdb.Handler.hits)
         b2 = seo_sources.bundle(d, outdir, n=3)
         check("تشغيل bundle مرةً ثانية: لا طلبات TMDB جديدة (الكاش) ولا كيانات أو أسماء بديلة جديدة", len(mock_tmdb.Handler.hits) == h1
