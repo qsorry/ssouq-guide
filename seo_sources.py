@@ -1358,7 +1358,7 @@ def code_version():
     import subprocess
     here = os.path.dirname(os.path.abspath(__file__))
     h = hashlib.sha1()
-    for n in ("seo_db.py", "seo_match.py", "seo_build.py", "seo_search.py", "seo_sources.py", "seo_pages.py", "content.py"):
+    for n in ("seo_db.py", "seo_match.py", "seo_build.py", "seo_search.py", "seo_sources.py", "seo_pages.py", "seo_qa.py", "content.py"):
         try:
             with open(os.path.join(here, n), "rb") as f:
                 h.update(f.read())
