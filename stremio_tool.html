@@ -302,6 +302,15 @@ h1{font-size:1.3rem;margin:0 0 2px}
   <div id="viewAddons" hidden>
   <h1>الإضافات واللوحات</h1>
   <p class="sub">ما تضيفه هنا يصل كل اليوزرات: الحاليين بضغطة، والجدد تلقائيًا. ورابط لوحةٍ تغيّره هنا يتغيّر للجميع.</p>
+  <section id="updSec">
+    <h2>تحديث الإضافة لكل الحسابات</h2>
+    <p class="hint" style="margin:-6px 0 12px">أحدث نسخةٍ من إضافتنا في كل حسابات Stremio دفعةً واحدة: المكتبة الموحدة، وصفّ «الحسابات»،
+      والأعداد والأقسام. في الخلفية، كلٌّ في مكانه من الحساب، والإضافات الأخرى كما هي. يظهر الجديد عند العميل بعد إعادة فتح Stremio.</p>
+    <button class="acc big" id="updBtn" disabled>تحديث الإضافة لكل الحسابات</button>
+    <div class="err" id="updMsg"></div>
+    <div id="updJob"></div>
+  </section>
+
   <section id="extSec">
     <h2>إضافة لجميع اليوزرات</h2>
     <p class="hint" style="margin:-6px 0 12px">اكتب اسم الإضافة (مثل AIOMetadata) أو الصق رابطها — تُثبَّت في كل حساباتك الآن وفي كل حسابٍ جديد.</p>
@@ -777,6 +786,32 @@ async function extDo(body, btn, ok){
   }
   finally { if (btn) btn.disabled = false; }
 }
+// ---- «تحديث الإضافة لكل الحسابات»: أحدث نسخةٍ من إضافتنا في كل حسابات Stremio، في الخلفية بتقدّمها ----
+let UPD = {job: null, accounts: 0}, UPD_POLL = 0;
+function renderUpd(){
+  const j = UPD.job, running = !!(j && j.running), b = $("updBtn");
+  b.disabled = running || !UPD.accounts;
+  b.textContent = running ? "جاري التحديث…" : `تحديث الإضافة لكل الحسابات (${UPD.accounts})`;
+  if (!j) { $("updJob").innerHTML = UPD.accounts ? "" : '<div class="empty">لا حسابات Stremio بعد.</div>'; return; }
+  const fails = (j.failed || []).length, pct = j.total ? Math.round(100 * j.done / j.total) : 0;
+  $("updJob").innerHTML = `<div class="jobln">${running
+      ? `جاري التحديث: ${j.done} من ${j.total} حساب${fails ? ` · <span style="color:var(--err)">تعذّر ${fails}</span>` : ""}`
+      : `حُدّثت الإضافة في ${j.changed} من ${j.total} حساب (إضافاتها: ${j.lines})${fails ? ` · <span style="color:var(--err)">تعذّر ${fails}</span>` : " ✓"}`}
+    ${fails ? `<details><summary>ما تعذّر</summary>${j.failed.map(f => `<div class="ltr">${esc(f.email)} — ${esc(f.error)}</div>`).join("")}</details>` : ""}</div>
+    ${running ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ""}`;
+}
+async function loadUpd(){
+  try { UPD = await api("/api/stremio/update-all"); renderUpd(); } catch(e) { $("updMsg").textContent = e.message; }
+  clearTimeout(UPD_POLL);
+  if (UPD.job && UPD.job.running) UPD_POLL = setTimeout(loadUpd, 1500);   // تقدّم التحديث حتى ينتهي
+}
+$("updBtn").onclick = async () => {
+  if (!confirm(`تحديث إضافتنا في كل حسابات Stremio (${UPD.accounts})؟\nتُثبَّت أحدث نسخةٍ منها في مكانها من كل حساب (والإضافات الأخرى كما هي)، ويظهر الجديد عند العميل بعد إعادة فتح Stremio.`)) return;
+  $("updBtn").disabled = true; $("updMsg").textContent = "";
+  try { UPD = await api("/api/stremio/update-all", {}); renderUpd(); toast("بدأ التحديث في كل الحسابات"); loadUpd(); }
+  catch(e) { $("updMsg").textContent = e.message; if (e.data && "accounts" in e.data) { UPD = e.data; renderUpd(); } }
+};
+
 // حقلٌ واحد: رابطٌ ← «إضافة»، واسمٌ ← «بحث» في دليل إضافات Stremio (الرسمي والمجتمع)
 const isLink = v => /^(https?|stremio):\/\//i.test(v.trim());
 $("extUrl").addEventListener("input", () => { $("extAdd").textContent = isLink($("extUrl").value) ? "إضافة للجميع" : "بحث"; });
@@ -1140,7 +1175,7 @@ $("tabAcc").href = B + "/stremio"; $("tabAdd").href = B + "/stremio/addons";
 $(VIEW === "addons" ? "tabAdd" : "tabAcc").classList.add("on");
 $(VIEW === "addons" ? "tabAdd" : "tabAcc").setAttribute("aria-current", "page");
 $("viewAccounts").hidden = VIEW !== "accounts"; $("viewAddons").hidden = VIEW !== "addons";
-if (VIEW === "addons") { loadExt(); loadPanels(); }
+if (VIEW === "addons") { loadUpd(); loadExt(); loadPanels(); }
 else { let start = ""; try { start = localStorage.getItem(GKEY) || ""; } catch {} selectGate(start); }
 </script>
 </body>
