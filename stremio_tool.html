@@ -138,6 +138,7 @@ select.t{width:auto}
 .mailin input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);padding:9px 11px;font:600 .92rem "IBM Plex Mono",monospace}
 .mailin span{padding:0 11px;color:var(--mute);font:.86rem "IBM Plex Mono",monospace;white-space:nowrap}
 .mailin:focus-within{border-color:var(--purple)}
+a.acc{text-decoration:none;border-radius:10px}
 .ext{display:flex;gap:12px;align-items:flex-start}
 .ext img,.ext .ph{width:44px;height:44px;border-radius:10px;object-fit:contain;background:var(--sf);border:1px solid var(--line);flex:none}
 .ext .tx{flex:1;min-width:0}
@@ -163,6 +164,75 @@ select.t{width:auto}
   section{padding:13px}
   .ghost,.acc{padding:7px 9px}
 }
+
+/* ===== ترتيبٌ للجوال أولًا: صفحتان، وبطاقةٌ بإجراءٍ رئيسي وقائمةٍ للباقي ===== */
+main{max-width:760px}
+h1{font-size:1.3rem;margin:0 0 2px}
+.sub{font-size:.88rem;margin:0 0 14px}
+.vtabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 16px;padding:4px;border:1px solid var(--line);border-radius:14px;background:var(--sf)}
+.vtabs a{display:flex;align-items:center;justify-content:center;min-height:40px;padding:6px 10px;border-radius:10px;font-weight:700;font-size:.9rem;color:var(--mute);text-decoration:none;text-align:center}
+.vtabs a.on{background:linear-gradient(135deg,var(--purple),#5b4bd1);color:#fff}
+.gates,.expc{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.gates::-webkit-scrollbar,.expc::-webkit-scrollbar{display:none}
+.gate,.expc button{flex:none}
+.gate{min-height:42px}
+.mkrow{margin-top:12px}
+.mkrow .acc{flex:1;justify-content:center;min-height:42px}
+.linkbtn{display:block;margin:12px auto 0;color:var(--purple);font-size:.86rem;font-weight:500;text-decoration:underline;text-underline-offset:4px;padding:4px 8px}
+.ibtn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--sf);display:inline-grid;place-items:center;color:var(--ink);flex:none;position:relative}
+.ibtn:hover{border-color:var(--purple);color:var(--purple)}
+.ibtn svg{width:20px;height:20px}
+.ibtn .n{position:absolute;top:-6px;inset-inline-end:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--purple);color:#fff;font:700 .68rem/18px "IBM Plex Sans Arabic",sans-serif;text-align:center}
+/* بطاقة الحساب: اليوزر وحاله، ثم الإيميل وكلمة المرور، ثم الوسوم، ثم «نسخ الحساب» والبريد و⋯ */
+.acct{display:grid;gap:10px;padding:12px 14px}
+.acct .ah{display:flex;align-items:center;gap:8px;min-width:0}
+.acct .user{font-size:1rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{flex:none;font-size:.74rem;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--go)}.pill.warn{color:var(--amber)}.pill.bad{color:var(--err)}.pill.mute{color:var(--mute)}
+.kv{display:grid;gap:3px;margin:0}
+.kv div{display:flex;align-items:baseline;gap:10px;min-width:0}
+.kv dt{flex:none;width:78px;color:var(--mute);font-size:.78rem}
+.kv dd{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:.74rem;line-height:1.5;padding:2px 9px;border-radius:8px;background:var(--sf);border:1px solid var(--line);color:var(--mute);white-space:nowrap}
+.tag.ok{color:var(--go)}.tag.new{color:var(--purple)}
+.tag.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}
+.tag.bad{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+.abar{display:flex;gap:8px;align-items:center}
+.abar .acc{flex:1;justify-content:center;min-height:42px}
+.acct .lines{margin-top:0}
+/* قائمة الإجراءات: من الأسفل على الجوال، ووسط الشاشة على الحاسب */
+.sheet{position:fixed;inset:0;z-index:55;background:rgba(2,8,20,.55);display:flex;align-items:flex-end;justify-content:center}
+.sbox{background:var(--sf);border:1px solid var(--line);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:8px 12px calc(12px + env(safe-area-inset-bottom));box-shadow:var(--shadow);max-height:85vh;overflow:auto}
+.sbox .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 10px}
+.sbox .shd{padding:0 8px 10px;border-bottom:1px solid var(--line);margin-bottom:6px;min-width:0}
+.sbox .shd b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbox .shd span{display:block;font-size:.8rem;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:plaintext;text-align:right}
+.sitem{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:8px 10px;border-radius:12px;text-align:start;font-size:.95rem}
+.sitem:hover{background:var(--sf2)}
+.sitem svg{width:20px;height:20px;color:var(--purple);flex:none}
+.sitem small{display:block;color:var(--mute);font-size:.76rem;line-height:1.4}
+.sitem.danger,.sitem.danger svg{color:var(--err)}
+.sclose{width:100%;margin-top:6px;min-height:44px;justify-content:center}
+@media (min-width:721px){.sheet{align-items:center;padding:16px}.sbox{border-radius:18px}.sbox .grab{display:none}}
+.cards>*{min-width:0}                  /* نصٌّ طويلٌ بلا التفاف (رابط) لا يوسّع البطاقة ولا الصفحة */
+.ext .u{max-width:100%}
+/* صفحة الإضافات واللوحات */
+.ext .d{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ext .tags{margin-top:6px}
+.pan{display:grid;gap:8px}
+.pan .ah{display:flex;align-items:center;gap:8px}
+.pan .ah b{flex:1;min-width:0}
+.pan .now{direction:ltr;text-align:left;font:600 .86rem "IBM Plex Mono",monospace;overflow-wrap:anywhere;color:var(--ink)}
+.pan .row .acc{min-height:42px}
+@media (max-width:720px){
+  .card .acts{width:100%}
+  .card .acts>*{flex:1 1 auto;justify-content:center}
+  .tools{flex-wrap:nowrap}
+  .tools #filter{flex:1 1 auto;min-width:0}
+  .tools #sort{flex:0 0 42%;width:42%}
+  h2 .ghost{padding:6px 10px}
+}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
 </head>
@@ -174,21 +244,22 @@ select.t{width:auto}
 </header>
 
 <main>
-  <h1>Stremio — الحسابات والروابط</h1>
-  <p class="sub">لكل بوابة مكانها: «إنشاء يوزر Stremio» يُنشئ يوزرًا جديدًا في البوابة وبريده (الإيميل <b class="mono" id="dom">@tv.ssouq.com</b>
-    وكلمة المرور باسورده) ويثبّت فيه الإضافة — بضغطةٍ واحدة. وليوزرٍ موجود: ابحث عنه وأنشئ حسابه من نتيجته. وكلها في قائمة البوابة مع بريدها.</p>
+  <nav class="vtabs" aria-label="الصفحات"><a id="tabAcc">الحسابات</a><a id="tabAdd">الإضافات واللوحات</a></nav>
+  <div id="viewAccounts">
+  <h1>حسابات Stremio</h1>
+  <p class="sub">لكل بوابةٍ حساباتها. الإيميل يوزر البوابة على <b class="mono" id="dom">@tv.ssouq.com</b> وكلمة المرور باسورده.</p>
 
   <div class="gates" id="gates" role="tablist" aria-label="البوابات"></div>
 
   <section id="mkSec">
     <h2>إنشاء يوزر Stremio في <span id="gName0">البوابة</span></h2>
-    <div class="steps"><span>١ · يوزر في البوابة</span><span>٢ · البريد (حساب Stremio)</span><span>٣ · الإضافة المتفق عليها</span></div>
+    <p class="hint" style="margin:-6px 0 12px">يوزرٌ في البوابة ← بريده (حساب Stremio) ← الإضافة، بضغطةٍ واحدة.</p>
     <div id="pkgs"><div class="empty">جاري تحميل الباقات…</div></div>
-    <div class="row" style="margin-top:12px;flex-wrap:wrap">
+    <div class="row mkrow">
       <span class="cnt" role="group" aria-label="العدد"><button type="button" id="nMinus" aria-label="أقل">−</button><input id="n" value="1" inputmode="numeric" aria-label="عدد اليوزرات (حتى 30)"><button type="button" id="nPlus" aria-label="أكثر">+</button></span>
       <button class="acc big" id="mkBtn" disabled>إنشاء يوزر Stremio</button>
     </div>
-    <button class="ghost st" id="customBtn" style="margin-top:10px" title="إيميلٌ وكلمة مرورٍ تختارهما، وتُربط به خطوطٌ من بواباتك">أو: حساب Stremio بإيميلٍ تختاره…</button>
+    <button class="linkbtn" id="customBtn" title="إيميلٌ وكلمة مرورٍ تختارهما، وتُربط به خطوطٌ من بواباتك">أو: حساب Stremio بإيميلٍ تختاره</button>
     <div class="prog" id="mkProg" hidden><i id="mkBar" style="width:0"></i></div>
     <div id="mkRes"></div>
   </section>
@@ -203,8 +274,7 @@ select.t{width:auto}
   </section>
 
   <section>
-    <h2>حسابات Stremio في <span id="gName2">البوابة</span> <span class="count" id="nAcc">0</span><span class="grow"></span>
-      <button class="ghost" id="hostBtn" title="سيرفرٌ غيّر عنوانه: كل حساباته على الهوست الجديد دفعةً واحدة">تغيير الهوست</button>
+    <h2>حسابات <span id="gName2">البوابة</span> <span class="count" id="nAcc">0</span><span class="grow"></span>
       <button class="ghost" id="expBtn" title="يقرأ تاريخ انتهاء كل يوزر من السيرفر">تحديث الانتهاء</button></h2>
     <div class="tools">
       <input class="t ltr" id="filter" placeholder="تصفية بيوزر أو إيميل" autocomplete="off">
@@ -219,19 +289,36 @@ select.t{width:auto}
     <div class="expc" id="expChips" role="group" aria-label="الانتهاء"></div>
     <div id="list"><div class="empty">جاري التحميل…</div></div>
   </section>
+  </div>
 
+  <div id="viewAddons" hidden>
+  <h1>الإضافات واللوحات</h1>
+  <p class="sub">ما تضيفه هنا يصل كل اليوزرات: الحاليين بضغطة، والجدد تلقائيًا. ورابط لوحةٍ تغيّره هنا يتغيّر للجميع.</p>
   <section id="extSec">
-    <h2>إضافات أخرى في الحسابات <small>مثل AIOMetadata</small></h2>
-    <p class="sub" style="margin:0 0 10px">الصق رابط manifest الإضافة (بعد إعدادها في صفحتها): تُثبَّت في <b>كل حسابٍ جديد</b> تلقائيًا
-      (ومع «ربط خط آخر» و«تحديث الإضافة»)، وبزرٍّ واحد في <b>كل الحسابات السابقة</b>.</p>
+    <h2>إضافة لجميع اليوزرات</h2>
+    <p class="hint" style="margin:-6px 0 12px">اكتب اسم الإضافة (مثل AIOMetadata) أو الصق رابطها — تُثبَّت في كل حساباتك الآن وفي كل حسابٍ جديد.</p>
     <form class="row" id="extForm">
-      <input class="t ltr" id="extUrl" placeholder="https://…/manifest.json" autocomplete="off" spellcheck="false">
-      <button class="btn" id="extAdd">إضافة</button>
+      <input class="t" id="extUrl" placeholder="اسم الإضافة (مثل AIOMetadata) أو رابط manifest" autocomplete="off" spellcheck="false">
+      <button class="btn" id="extAdd">بحث</button>
     </form>
     <div class="err" id="extMsg"></div>
+    <div id="extHits"></div>
+  </section>
+
+  <section id="extActive">
+    <h2>الإضافات المفعّلة <span class="count" id="nExt">0</span></h2>
     <div id="extJob"></div>
     <div id="extList"></div>
   </section>
+
+  <section id="panelSec">
+    <h2>روابط اللوحات</h2>
+    <p class="hint" style="margin:-6px 0 12px">لوحةٌ غيّرت رابطها (مثل مرح)؟ اكتب الجديد واضغط «تغيير للجميع»: كل يوزراتها تعمل منه
+      فورًا بلا إعادة تثبيت، ويُحفظ في البوابة لليوزرات الجديدة. يُجرَّب بيوزرٍ منها أولًا.</p>
+    <div class="err" id="panelMsg"></div>
+    <div id="panelList"><div class="empty">جاري التحميل…</div></div>
+  </section>
+  </div>
 </main>
 
 <div class="overlay" id="mailOverlay" hidden>
@@ -282,14 +369,12 @@ select.t{width:auto}
   </div>
 </div>
 
-<div class="overlay" id="hostOverlay" hidden>
-  <div class="box" role="dialog" aria-modal="true" aria-labelledby="hostTtl">
-    <h3 id="hostTtl">تغيير الهوست — كل الحسابات دفعةً واحدة</h3>
-    <p class="hint">سيرفرٌ غيّر عنوانه؟ اكتب هوسته الجديد: كل حسابات Stremio عليه (في بواباتك كلها) تعمل منه فورًا — بلا إعادة
-      تثبيت، والمكتبة و«تابع المشاهدة» كما هي. يُجرَّب بيوزرٍ منها قبل الحفظ. (وللخطوط الجديدة: حدّث هوست البوابة في إعدادها.)</p>
-    <div id="hostList"><div class="empty">جاري التحميل…</div></div>
-    <div class="err" id="hostMsg"></div>
-    <div class="acts"><button class="ghost" id="hostClose">إغلاق</button></div>
+<div class="sheet" id="sheet" hidden>
+  <div class="sbox" role="dialog" aria-modal="true" aria-labelledby="sheetTtl">
+    <div class="grab"></div>
+    <div class="shd"><b id="sheetTtl"></b><span id="sheetSub"></span></div>
+    <div id="sheetList"></div>
+    <button class="ghost sclose" id="sheetClose">إغلاق</button>
   </div>
 </div>
 
@@ -348,7 +433,11 @@ const I = {
   copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
   mail: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
   sync: '<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg>',
-  lock: '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'};
+  lock: '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
+  unlink: '<svg viewBox="0 0 24 24"><path d="M9 15l6-6M7 12l-2 2a4 4 0 0 0 5.7 5.7l2-2M17 12l2-2a4 4 0 0 0-5.7-5.7l-2 2M3 3l18 18"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'};
 const gateName = () => ((D && D.gates.find(g => g.id === GATE)) || {}).name || "البوابة";
 
 // ---- البوابات والقائمة ----
@@ -396,6 +485,14 @@ function expText(a){
   return d < 0 ? `<span class="bad">انتهى ${date} · منذ ${-d} يوم</span>`
     : `<span class="${d <= 7 ? "bad" : d <= 30 ? "warn" : "ok"}">ينتهي ${date} · ${d === 0 ? "اليوم" : "بعد " + d + " يوم"}</span>`;
 }
+function expPill(a){
+  if (!a.exp_checked) return ["mute", "لم يُفحص", "الانتهاء لم يُفحص بعد"];
+  if (a.status === "رُفض") return ["bad", "يرفضه السيرفر", "السيرفر يرفض اليوزر (منتهٍ أو موقوف)"];
+  if (!a.exp) return ["ok", "غير محدود", "بلا تاريخ انتهاء"];
+  const d = Math.floor((a.exp - nowS()) / DAY), date = new Date(a.exp * 1000).toISOString().slice(0, 10);
+  return d < 0 ? ["bad", `انتهى منذ ${-d} يوم`, "انتهى " + date]
+    : [d <= 7 ? "bad" : d <= 30 ? "warn" : "ok", d === 0 ? "ينتهي اليوم" : `ينتهي بعد ${d} يوم`, "ينتهي " + date];
+}
 const expKey = a => a.status === "رُفض" ? -Infinity : !a.exp_checked ? Infinity - 1 : !a.exp ? Infinity : a.exp;
 async function refreshExp(stale){
   const b = $("expBtn"); b.disabled = true; b.textContent = "جاري الفحص…";
@@ -424,25 +521,21 @@ function renderList(){
                mail: (a, b) => (b.last_mail || "").localeCompare(a.last_mail || "") || age(b, a)}[by];
   rows = rows.slice().sort(cmp);
   $("nAcc").textContent = (D && D.accounts || []).length;
-  $("list").innerHTML = rows.length ? `<div class="cards">${rows.map(a => `<div class="card">
-      <div class="row1">
-        <div class="creds"><span>اليوزر <b class="mono">${esc(a.username)}</b></span>
-          <span>الإيميل <b class="mono">${esc(a.email)}</b></span><span>كلمة المرور <b class="mono">${esc(a.password)}</b></span></div>
-        <div class="acts">
-          <button class="acc" data-copy="${esc(accText(a.email, a.password))}" data-what="نُسخ الحساب">${I.copy}نسخ الحساب</button>
-          ${a.link ? `<button class="ghost st" data-copy="${esc(a.link)}" data-what="نُسخ الرابط">${I.link}الرابط</button>` : ""}
-          <button class="ghost st" data-mail="${esc(a.username)}">${I.mail}البريد${a.mail_count ? " " + a.mail_count : ""}</button>
-          <button class="ghost st" data-re="${esc(a.username)}" title="يعيد تثبيت الإضافة في الحساب بأحدث الأقسام والأعداد">${I.sync}تحديث الإضافة</button>
-          <button class="ghost st" data-lock="${esc(a.username)}" title="رابطٌ جديد لإضافة الحساب: تتوقف أي نسخةٍ منها نُقلت لحسابٍ آخر">${I.lock}${a.locked ? "تغيير رابط الإضافة" : "قفل الإضافة"}</button>
-          <button class="ghost st" data-linkto="${esc(a.username)}" title="خطٌّ من بوابةٍ أخرى (مرح · كاسبر · فالكون…) في الحساب نفسه">${I.link}ربط خط آخر</button>
-          ${a.linked ? `<button class="ghost" data-unlink="${esc(a.username)}" title="تُسقط إضافة هذا الخط من الحساب">فصل الخط</button>` : ""}
-        </div>
-      </div>
-      <div class="meta">${expText(a)}${a.locked ? '<span class="ok">🔒 الإضافة مقفلةٌ على هذا الحساب</span>' : ""}${a.addon_full === false ? '<span class="bad">الإضافة ثُبّتت بلا أقسام — اضغط «تحديث الإضافة»</span>' : ""}<span>أُنشئ ${esc(a.created)}</span>${a.changed ? `<span class="ok">غُيّرت كلمة المرور ${esc(a.changed)}</span>` : ""}
-        ${a.mail_count ? `<span class="new">آخر بريد ${esc(a.last_mail)}</span>` : "<span>لا بريد</span>"}</div>
-      ${(a.lines || []).length ? `<div class="lines"><span>خطوط الحساب:</span>${a.lines.map(l => `<button class="${l.self ? "me" : ""}"
+  $("list").innerHTML = rows.length ? `<div class="cards">${rows.map(a => { const [pc, pt, pd] = expPill(a); return `<div class="card acct">
+      <div class="ah"><b class="mono user">${esc(a.username)}</b><span class="pill ${pc}" title="${esc(pd)}">${esc(pt)}</span></div>
+      <dl class="kv"><div><dt>الإيميل</dt><dd class="mono">${esc(a.email)}</dd></div><div><dt>كلمة المرور</dt><dd class="mono">${esc(a.password)}</dd></div></dl>
+      <div class="tags">${a.locked ? '<span class="tag ok">🔒 مقفلة على الحساب</span>' : ""}${a.addon_full === false
+          ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ الإضافة بلا أقسام</span>' : ""}${a.changed
+          ? `<span class="tag">كلمة المرور غُيّرت ${esc(a.changed)}</span>` : ""}${a.mail_count
+          ? `<span class="tag new">✉ آخر بريد ${esc(a.last_mail)}</span>` : ""}<span class="tag">أُنشئ ${esc(a.created)}</span></div>
+      ${(a.lines || []).length ? `<div class="lines">${a.lines.map(l => `<button class="${l.self ? "me" : ""}"
           data-goto="${esc(l.gate)}" data-gu="${esc(l.username)}" title="${l.main ? "صاحب الحساب" : "خطٌّ مرتبط"} — ${l.self ? "هذا الخط" : "انتقل إليه"}"><i class="${lineDot(l)}"></i>${esc(l.gate_name || "بوابة")} · ${esc(l.username)}${l.main ? " ★" : ""}</button>`).join("")}</div>` : ""}
-    </div>`).join("")}</div>`
+      <div class="abar">
+        <button class="acc" data-copy="${esc(accText(a.email, a.password))}" data-what="نُسخ الحساب">${I.copy}نسخ الحساب</button>
+        <button class="ibtn" data-mail="${esc(a.username)}" title="البريد" aria-label="البريد">${I.mail}${a.mail_count ? `<span class="n">${a.mail_count}</span>` : ""}</button>
+        <button class="ibtn" data-more="${esc(a.username)}" title="المزيد" aria-label="المزيد">${I.more}</button>
+      </div>
+    </div>`; }).join("")}</div>`
     : `<div class="empty">${f || EXPF !== "all" ? "لا حساب يطابق التصفية." : "لا حسابات Stremio في هذه البوابة بعد — أنشئ يوزر Stremio أعلاه، أو ابحث عن يوزرٍ موجود."}</div>`;
   // ما لم يُفحص انتهاؤه أو قدُم فحصه يُعاد في الخلفية مرةً لكل بوابة في هذه الزيارة
   const stale = all.some(a => !a.exp_checked || nowS() - a.exp_checked > (D.stale_after || 43200));
@@ -619,7 +712,11 @@ async function makeAccount(i, btn){
 }
 document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
-  if (b.dataset.copy) copy(b.dataset.copy, b.dataset.what);
+  if (b.classList.contains("sitem")) hideSheet();
+  if (b.dataset.more) openAcctMenu(b.dataset.more);
+  else if (b.dataset.xmore) openExtMenu(b.dataset.xmore);
+  else if (b.dataset.xapply || b.dataset.xdrop || b.dataset.xdel) extAction(b);
+  else if (b.dataset.copy) copy(b.dataset.copy, b.dataset.what);
   else if (b.dataset.make) makeAccount(+b.dataset.make, b);
   else if (b.dataset.retry) retryMade(+b.dataset.retry, b);
   else if (b.dataset.copyall) copy(allText(), "نُسخت الحسابات");
@@ -632,65 +729,21 @@ document.addEventListener("click", e => {
   else if (b.dataset.lg) { LINK.gate = b.dataset.lg; LINK.hits = []; $("linkHits").innerHTML = ""; renderLinkGates(); if (LINK.mode === "new") loadLinkPkgs(); }
   else if (b.dataset.lm) setLinkMode(b.dataset.lm);
   else if (b.dataset.lnk) linkHit(+b.dataset.lnk, b);
-  else if (b.dataset.hset) setHost(b.dataset.hset, b, false);
-  else if (b.dataset.hoff) setHost(b.dataset.hoff, b, true);
 });
 
-// ---- «تغيير الهوست»: سيرفرٌ غيّر عنوانه ← كل حساباته تُخدَم من الجديد (يُجرَّب أولًا، ويُلغى بزرّ) ----
-let HOSTS = [];
-function renderHosts(){
-  $("hostList").innerHTML = HOSTS.length ? `<div class="cards">${HOSTS.map(h => `<div class="card">
-      <div class="creds"><span>الهوست <b class="mono">${esc(h.host)}</b></span>
-        <span>${h.count} حساب${h.gates.length ? " · " + esc(h.gates.join(" · ")) : ""}</span>
-        ${h.to ? `<span>يعمل الآن من <b class="mono" style="color:var(--go)">${esc(h.to)}</b></span>` : ""}</div>
-      <div class="row" style="margin-top:8px;flex-wrap:wrap">
-        <input class="t ltr" data-hin="${esc(h.key)}" placeholder="الهوست الجديد — http://new.example:80" value="${esc(h.to)}" autocomplete="off">
-        <button class="acc" data-hset="${esc(h.key)}">تطبيق على ${h.count}</button>
-        ${h.to ? `<button class="ghost" data-hoff="${esc(h.key)}">إلغاء التحويل</button>` : ""}
-      </div></div>`).join("")}</div>`
-    : '<div class="empty">لا حسابات Stremio بعد.</div>';
-}
-async function openHosts(){
-  $("hostMsg").textContent = ""; $("hostList").innerHTML = '<div class="empty">جاري التحميل…</div>'; $("hostOverlay").hidden = false;
-  try { HOSTS = (await api("/api/stremio/hosts")).hosts || []; renderHosts(); }
-  catch(e) { $("hostList").innerHTML = ""; $("hostMsg").textContent = e.message; }
-}
-async function setHost(key, btn, off){
-  const h = HOSTS.find(x => x.key === key); if (!h) return;
-  const to = off ? "" : (document.querySelector(`[data-hin="${CSS.escape(key)}"]`)?.value || "").trim();
-  if (!off && !to) { $("hostMsg").textContent = "اكتب الهوست الجديد."; return; }
-  if (!confirm(off ? `إلغاء التحويل: تعود ${h.count} حساب إلى ${h.host}؟` : `تعمل ${h.count} حساب Stremio على ${h.host} من ${to} — دفعةً واحدة؟`)) return;
-  btn.disabled = true; $("hostMsg").textContent = off ? "" : "نجرّب الهوست الجديد بيوزرٍ من الحسابات…";
-  const send = force => api("/api/stremio/host", {from: key, to, force});
-  try {
-    let d;
-    try { d = await send(false); }
-    catch(e) {
-      if (off || !/لم يقبل/.test(e.message) || !confirm(e.message + "\n\nحفظه على أي حال؟")) throw e;
-      d = await send(true);
-    }
-    HOSTS = d.hosts || []; renderHosts(); $("hostMsg").textContent = "";
-    toast(d.to ? `${d.count} حساب تعمل الآن من ${d.to}` : `عادت ${d.count} حساب إلى هوستها`);
-  } catch(e) { $("hostMsg").textContent = e.message; btn.disabled = false; }
-}
-$("hostBtn").onclick = openHosts;
 
 // ---- «إضافات أخرى»: تُثبَّت مع كل حسابٍ جديد، وبزرٍّ في كل السابقة (عمليةٌ في الخلفية تُتابَع هنا) ----
 let EXT = {extras: [], job: null, accounts: 0}, EXT_POLL = 0;
 function renderExt(){
   const j = EXT.job, running = !!(j && j.running);
+  $("nExt").textContent = EXT.extras.length;
   $("extList").innerHTML = EXT.extras.length ? `<div class="cards">${EXT.extras.map(e => `<div class="card"><div class="ext">
-      ${safeUrl(e.logo) ? `<img src="${esc(e.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="ph"></span>'}
+      ${safeUrl(e.logo) ? `<img src="${esc(e.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=ph></span>'">` : '<span class="ph"></span>'}
       <div class="tx"><b>${esc(e.name)} <small class="hint" style="display:inline">${esc(e.version)}</small></b>
         <span class="u" title="${esc(e.url)}">${esc(e.url)}</span>
-        ${e.description ? `<div class="d">${esc(e.description)}</div>` : ""}
-        <div class="meta"><span class="ok">✓ تُثبَّت في كل حسابٍ جديد</span><span>أُضيفت ${esc(e.added)}</span></div>
-        <div class="acts" style="margin-top:8px">
-          <button class="acc" data-xapply="${esc(e.id)}"${running ? " disabled" : ""}>تثبيت في كل الحسابات (${EXT.accounts})</button>
-          <button class="ghost" data-xdrop="${esc(e.id)}"${running ? " disabled" : ""}>إسقاط من كل الحسابات</button>
-          <button class="ghost" data-xdel="${esc(e.id)}">حذف من القائمة</button>
-        </div></div></div></div>`).join("")}</div>`
-    : '<div class="empty">لا إضافات أخرى بعد — الصق رابط manifest إضافةٍ أعلاه.</div>';
+        <div class="tags"><span class="tag ok">✓ لكل حسابٍ جديد</span><span class="tag">أُضيفت ${esc(e.added)}</span></div></div>
+      <button class="ibtn" data-xmore="${esc(e.id)}" title="المزيد" aria-label="المزيد"${running ? " disabled" : ""}>${I.more}</button></div></div>`).join("")}</div>`
+    : '<div class="empty">لا إضافات بعد — ابحث عن إضافةٍ أعلاه (مثل AIOMetadata) أو الصق رابطها.</div>';
   if (!j) { $("extJob").innerHTML = ""; return; }
   const verb = j.op === "remove" ? "إسقاط" : "تثبيت", pct = j.total ? Math.round(100 * j.done / j.total) : 0;
   const fails = (j.failed || []).length;
@@ -711,30 +764,63 @@ async function extDo(body, btn, ok){
   catch(e) { $("extMsg").textContent = e.message; return false; }
   finally { if (btn) btn.disabled = false; }
 }
+// حقلٌ واحد: رابطٌ ← «إضافة»، واسمٌ ← «بحث» في دليل إضافات Stremio (الرسمي والمجتمع)
+const isLink = v => /^(https?|stremio):\/\//i.test(v.trim());
+$("extUrl").addEventListener("input", () => { $("extAdd").textContent = isLink($("extUrl").value) ? "إضافة للجميع" : "بحث"; });
+let EXT_HITS = [];
+function renderExtHits(){
+  const have = new Set(EXT.extras.map(x => x.url));
+  $("extHits").innerHTML = EXT_HITS.length ? `<div class="cards" style="margin-top:10px">${EXT_HITS.map((h, i) => `<div class="card"><div class="ext">
+      ${safeUrl(h.logo) ? `<img src="${esc(h.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=ph></span>'">` : '<span class="ph"></span>'}
+      <div class="tx"><b>${esc(h.name)} <small class="hint" style="display:inline">${esc(h.version)}</small></b>
+        <span class="u">${esc(h.host)}</span>
+        ${h.description ? `<div class="d">${esc(h.description)}</div>` : ""}
+        <div class="acts" style="margin-top:8px">${have.has(h.url) ? '<span class="hint" style="color:var(--go)">✓ في القائمة</span>'
+          : h.needs_config ? `${safeUrl(h.configure) ? `<a class="acc" href="${esc(h.configure)}" target="_blank" rel="noopener noreferrer">افتح صفحة الإعداد ↗</a>` : ""}
+              <span class="hint">تحتاج إعدادًا: أكمله في صفحتها، ثم انسخ رابط التثبيت والصقه هنا.</span>`
+          : `<button class="acc" data-xhit="${i}">${I.plus}إضافة لجميع اليوزرات${EXT.accounts ? ` (${EXT.accounts})` : ""}</button>`}</div></div></div></div>`).join("")}</div>` : "";
+}
+async function extSearch(q){
+  const b = $("extAdd"); b.disabled = true; $("extMsg").textContent = "نبحث في دليل الإضافات…"; EXT_HITS = []; renderExtHits();
+  try {
+    EXT_HITS = (await api("/api/stremio/extras/search?q=" + encodeURIComponent(q))).results || [];
+    $("extMsg").textContent = EXT_HITS.length ? "" : "لا إضافة بهذا الاسم — جرّب اسمًا آخر أو الصق رابطها.";
+    renderExtHits();
+  } catch(e) { $("extMsg").textContent = e.message; }
+  finally { b.disabled = false; }
+}
+$("extHits").addEventListener("click", e => {
+  const b = e.target.closest("[data-xhit]"); if (!b) return;
+  const h = EXT_HITS[+b.dataset.xhit]; if (h) addExt(h.url, b, h.name);
+});
 $("extForm").onsubmit = async e => {
   e.preventDefault();
-  const url = $("extUrl").value.trim(); if (!url) { $("extMsg").textContent = "الصق رابط manifest الإضافة."; return; }
-  $("extMsg").textContent = "نقرأ الإضافة…";
-  if (!await extDo({action: "add", url}, $("extAdd"))) return;
-  $("extUrl").value = "";
-  const added = EXT.extras.find(x => x.id === EXT.added) || EXT.extras[EXT.extras.length - 1];
-  if (added && EXT.accounts && confirm(`أُضيفت «${added.name}»: تُثبَّت في كل حسابٍ جديد.\nتثبيتها الآن في الحسابات السابقة (${EXT.accounts})؟`))
-    extDo({action: "apply", id: added.id}, null, "بدأ تثبيتها في الحسابات السابقة");
-  else toast("أُضيفت — تُثبَّت في كل حسابٍ جديد");
+  const v = $("extUrl").value.trim(); if (!v) { $("extMsg").textContent = "اكتب اسم الإضافة أو الصق رابطها."; return; }
+  if (isLink(v)) addExt(v, $("extAdd")); else extSearch(v);
 };
-$("extList").addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b) return;
+async function addExt(url, btn, name){
+  if (!confirm(`إضافة ${name ? "«" + name + "»" : "هذه الإضافة"} لجميع اليوزرات؟\nتُثبَّت الآن في كل حسابات Stremio (${EXT.accounts})، وفي كل حسابٍ جديد بعدها.`)) return;
+  $("extMsg").textContent = "نقرأ الإضافة…";
+  if (!await extDo({action: "add", url, apply: true}, btn, "بدأت إضافتها لجميع اليوزرات")) return;
+  $("extUrl").value = ""; $("extAdd").textContent = "بحث"; EXT_HITS = []; renderExtHits();
+}
+function openExtMenu(id){
+  const x = EXT.extras.find(y => y.id === id); if (!x) return;
+  openSheet(x.name, x.url, [
+    sitem(`data-xapply="${esc(x.id)}"`, I.sync, `تثبيت في جميع اليوزرات (${EXT.accounts})`, "ما فيه منها يبقى كما هو"),
+    sitem(`data-xdrop="${esc(x.id)}"`, I.unlink, "إزالة من جميع اليوزرات", "تُسقط من كل الحسابات", "danger"),
+    sitem(`data-xdel="${esc(x.id)}"`, I.trash, "حذف من القائمة", "لا تُثبَّت في الجديدة بعده", "danger"),
+  ]);
+}
+function extAction(b){
   const x = EXT.extras.find(y => y.id === (b.dataset.xapply || b.dataset.xdrop || b.dataset.xdel)); if (!x) return;
-  if (b.dataset.xapply && confirm(`تثبيت «${x.name}» في كل حسابات Stremio (${EXT.accounts})؟ (ما فيه منها يبقى كما هو)`))
-    extDo({action: "apply", id: x.id}, b, "بدأ التثبيت في الحسابات");
-  else if (b.dataset.xdrop && confirm(`إسقاط «${x.name}» من كل حسابات Stremio (${EXT.accounts})؟`))
-    extDo({action: "apply", id: x.id, remove: true}, b, "بدأ الإسقاط من الحسابات");
-  else if (b.dataset.xdel && confirm(`حذف «${x.name}» من القائمة؟ لا تُثبَّت في الجديدة بعده (وما في الحسابات يبقى — «إسقاط من كل الحسابات» يزيله).`))
-    extDo({action: "remove", id: x.id}, b, "حُذفت من القائمة");
-});
-loadExt();
-$("hostClose").onclick = () => $("hostOverlay").hidden = true;
-$("hostOverlay").addEventListener("click", e => { if (e.target === $("hostOverlay")) $("hostOverlay").hidden = true; });
+  if (b.dataset.xapply && confirm(`تثبيت «${x.name}» في جميع اليوزرات (${EXT.accounts})؟ (ما فيه منها يبقى كما هو)`))
+    extDo({action: "apply", id: x.id}, null, "بدأ التثبيت في جميع اليوزرات");
+  else if (b.dataset.xdrop && confirm(`إزالة «${x.name}» من جميع اليوزرات (${EXT.accounts})؟`))
+    extDo({action: "apply", id: x.id, remove: true}, null, "بدأت الإزالة من جميع اليوزرات");
+  else if (b.dataset.xdel && confirm(`حذف «${x.name}» من القائمة؟ لا تُثبَّت في الجديدة بعده (وما في الحسابات يبقى — «إزالة من جميع اليوزرات» يزيلها).`))
+    extDo({action: "remove", id: x.id}, null, "حُذفت من القائمة");
+}
 
 // ---- خطوط الحساب: أكثر من بوابة (مرح · كاسبر · فالكون…) في حساب Stremio واحد — كل خطٍّ إضافته وكتالوجاته ----
 const lineDot = l => ({exp: "bad", d7: "bad", d30: "warn", ok: "ok"})[bucket(l)] || "";
@@ -883,6 +969,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("linkOv
 async function lockAddon(username, btn){
   if (!confirm(`يتغيّر رابط إضافة ${username}@… وتُعاد في حسابه — وتتوقف أي نسخةٍ منها في حسابٍ آخر، ورابط تثبيته القديم. متابعة؟`)) return;
   const label = btn.innerHTML; btn.disabled = true; btn.textContent = "جاري القفل…";
+  toast("جاري تغيير رابط الإضافة…");
   try {
     const d = await api("/api/stremio/lock", {gate: GATE, username});
     const a = ((D && D.accounts) || []).find(x => x.username === username);
@@ -892,9 +979,34 @@ async function lockAddon(username, btn){
   } catch(e) { toast(e.message, true); btn.disabled = false; btn.innerHTML = label; }
 }
 
+// ---- قائمة الإجراءات (⋯): من الأسفل على الجوال — وما فيها يعمل بأزرار data-* نفسها ----
+function openSheet(title, sub, items){
+  $("sheetTtl").textContent = title; $("sheetSub").textContent = sub || "";
+  $("sheetList").innerHTML = items.filter(Boolean).join("");
+  $("sheet").hidden = false;
+  $("sheetList").querySelector("button")?.focus();
+}
+function hideSheet(){ $("sheet").hidden = true; }
+$("sheetClose").onclick = hideSheet;
+$("sheet").addEventListener("click", e => { if (e.target === $("sheet")) hideSheet(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("sheet").hidden) hideSheet(); });
+const sitem = (attrs, icon, title, note, cls) => `<button class="sitem${cls ? " " + cls : ""}" ${attrs}>${icon}<span>${title}${note ? `<small>${note}</small>` : ""}</span></button>`;
+function openAcctMenu(username){
+  const a = ((D && D.accounts) || []).find(x => x.username === username); if (!a) return;
+  const u = esc(a.username);
+  openSheet(a.username, a.email, [
+    sitem(`data-re="${u}"`, I.sync, "تحديث الإضافة", "بأحدث الأقسام والأعداد"),
+    sitem(`data-lock="${u}"`, I.lock, a.locked ? "تغيير رابط الإضافة" : "قفل الإضافة", "يوقف أي نسخةٍ منها نُقلت لحسابٍ آخر"),
+    sitem(`data-linkto="${u}"`, I.plus, "ربط خط آخر", "خطٌّ من بوابةٍ أخرى في الحساب نفسه"),
+    a.link ? sitem(`data-copy="${esc(a.link)}" data-what="نُسخ الرابط"`, I.link, "نسخ رابط التثبيت", "") : "",
+    a.linked ? sitem(`data-unlink="${u}"`, I.unlink, "فصل الخط", "تُسقط إضافته من الحساب", "danger") : "",
+  ]);
+}
+
 // ---- «تحديث الإضافة»: تُعاد في حساب Stremio بأحدث أقسام السيرفر وأعدادها (يظهر في التطبيق بعد إعادة فتحه) ----
 async function reinstall(username, btn){
   const label = btn.innerHTML; btn.disabled = true; btn.textContent = "جاري التحديث…";
+  toast("جاري تحديث الإضافة…");
   try {
     const d = await api("/api/stremio/reinstall", {gate: GATE, username});
     const a = ((D && D.accounts) || []).find(x => x.username === username);
@@ -947,8 +1059,61 @@ $("mailSavePw").onclick = async () => {
   finally { b.disabled = false; }
 };
 
-let start = ""; try { start = localStorage.getItem(GKEY) || ""; } catch {}
-selectGate(start);
+// ---- روابط اللوحات: رابطٌ جديد لبوابة ← البوابة وكل حسابات سيرفرها (ومثلها لهوستٍ ليس رابط بوابة) ----
+let PAN = {gates: [], others: []};
+function renderPanels(){
+  const input = k => `<input class="t ltr" data-pin="${esc(k)}" placeholder="الرابط الجديد — http://new.example:80" autocomplete="off" spellcheck="false">`;
+  const card = (title, host, count, note, key, btns) => `<div class="card pan">
+      <div class="ah"><b>${esc(title)}</b><span class="pill mute">${count} حساب</span></div>
+      <div class="now">${esc(host || "—")}</div>${note}
+      <div class="row">${input(key)}${btns}</div></div>`;
+  const rows = PAN.gates.map(g => card(g.name || "بوابة", g.host, g.count, "", "g:" + g.id,
+      `<button class="acc" data-pg="${esc(g.id)}"${g.host ? "" : " disabled"}>تغيير للجميع</button>`))
+    .concat(PAN.others.map(h => card("هوستٌ في الحسابات", h.host, h.count,
+      h.to ? `<div class="tags"><span class="tag ok">يعمل الآن من ${esc(h.to)}</span></div>` : "", "h:" + h.key,
+      `<button class="acc" data-po="${esc(h.key)}">تغيير للجميع</button>${h.to ? `<button class="ghost" data-poff="${esc(h.key)}">إلغاء</button>` : ""}`)));
+  $("panelList").innerHTML = rows.length ? `<div class="cards">${rows.join("")}</div>` : '<div class="empty">لا بوابات بعد.</div>';
+}
+async function loadPanels(){
+  try { PAN = await api("/api/stremio/panels"); renderPanels(); } catch(e) { $("panelMsg").textContent = e.message; }
+}
+async function panelChange(kind, key, btn){
+  const off = kind === "off", g = PAN.gates.find(x => x.id === key), h = PAN.others.find(x => x.key === key);
+  const to = off ? "" : (document.querySelector(`[data-pin="${CSS.escape((kind === "g" ? "g:" : "h:") + key)}"]`)?.value || "").trim();
+  if (!off && !to) { $("panelMsg").textContent = "اكتب الرابط الجديد."; return; }
+  const count = (g || h || {}).count || 0;
+  if (!confirm(off ? `إلغاء التحويل: تعود ${count} حساب إلى ${h.host}؟`
+      : `تغيير رابط ${g ? g.name : h.host} إلى ${to} — لكل يوزراتها (${count})${g ? " واليوزرات الجديدة" : ""}؟`)) return;
+  btn.disabled = true; $("panelMsg").textContent = off ? "" : "نجرّب الرابط الجديد بيوزرٍ من الحسابات…";
+  const send = force => kind === "g" ? api("/api/stremio/panel-host", {gate: key, host: to, force})
+                                     : api("/api/stremio/host", {from: key, to, force});
+  try {
+    let d;
+    try { d = await send(false); }
+    catch(e) {
+      if (off || !/لم يقبل/.test(e.message) || !confirm(e.message + "\n\nحفظه على أي حال؟")) throw e;
+      d = await send(true);
+    }
+    $("panelMsg").textContent = "";
+    await loadPanels();
+    toast(off ? "عادت إلى هوستها" : `تغيّر الرابط لجميع اليوزرات (${d.count})`);
+  } catch(e) { $("panelMsg").textContent = e.message; btn.disabled = false; }
+}
+$("panelList").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.pg) panelChange("g", b.dataset.pg, b);
+  else if (b.dataset.po) panelChange("h", b.dataset.po, b);
+  else if (b.dataset.poff) panelChange("off", b.dataset.poff, b);
+});
+
+// ---- الصفحتان: الحسابات (/stremio) والإضافات واللوحات (/stremio/addons) ----
+const VIEW = /\/stremio\/addons\/?$/.test(location.pathname) ? "addons" : "accounts";
+$("tabAcc").href = B + "/stremio"; $("tabAdd").href = B + "/stremio/addons";
+$(VIEW === "addons" ? "tabAdd" : "tabAcc").classList.add("on");
+$(VIEW === "addons" ? "tabAdd" : "tabAcc").setAttribute("aria-current", "page");
+$("viewAccounts").hidden = VIEW !== "accounts"; $("viewAddons").hidden = VIEW !== "addons";
+if (VIEW === "addons") { loadExt(); loadPanels(); }
+else { let start = ""; try { start = localStorage.getItem(GKEY) || ""; } catch {} selectGate(start); }
 </script>
 </body>
 </html>

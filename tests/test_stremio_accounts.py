@@ -569,11 +569,37 @@ def through_server():
         xt.users["n2"] = "n2p"
         post("/api/stremio/account", {"gate": "g1", "username": "n2", "password": "n2p"})
         check("و«حذف من القائمة»: لا تأتي الجديدة بعده", c == 200 and r.get("extras") == [] and has_aio("n2@tv.ssouq.com") == 0)
+        c, r = post("/api/stremio/extras", {"action": "add", "url": aio, "apply": True})
+        r = wait_job()
+        check("«إضافة لجميع اليوزرات»: تُضاف وتُثبَّت في كل الحسابات بطلبٍ واحد", c == 200 and r["job"]["op"] == "install"
+              and r["job"]["done"] == len(mine()) and all(has_aio(e) == 1 for e in mine()), json.dumps(r.get("job"), ensure_ascii=False))
         c, r = post("/api/stremio/extras", None, op2)
         check("وقائمة كل عميلٍ له وحده", c == 200 and r.get("extras") == [] and r.get("accounts") == 0)
         c, r = post("/api/stremio/extras", {"action": "add", "url": aio}, op3)
         check("ومن لم يُفتح له ← 403", c == 403)
         aio_srv.shutdown()
+
+        print("== رابط لوحةٍ يتغيّر للجميع (مثل مرح) ==")
+        c, r = post("/api/stremio/panels", None)
+        g1p = next((g for g in r.get("gates", []) if g["id"] == "g1"), {})
+        n127 = next((h["count"] for h in post("/api/stremio/hosts", None)[1]["hosts"] if h["key"] == "127.0.0.1"), 0)
+        check("روابط اللوحات: كل بوابة بهوستها وعدد حسابات سيرفرها", c == 200 and g1p.get("host") == xt_host and g1p.get("count") == n127 > 0,
+              json.dumps(r, ensure_ascii=False)[:200])
+        c, r = post("/api/stremio/panel-host", {"gate": "g1", "host": "http://127.0.0.1:1"})
+        check("رابطٌ لا يقبل يوزراتها ← 400 ولا يتغيّر شيء", c == 400 and "لم يقبل" in r.get("error", "")
+              and post("/api/mygates", None)[1]["gates"][0]["host"] == xt_host, json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/panel-host", {"gate": "g1", "host": "ftp://x"})
+        check("ورابطٌ غير صالح ← 400", c == 400 and "غير صالح" in r.get("error", ""))
+        c, r = post("/api/stremio/panel-host", {"gate": "nope", "host": new_host})
+        check("وبوابةٌ ليست له ← 400", c == 400)
+        c, r = post("/api/stremio/panel-host", {"gate": "g1", "host": new_host})
+        mg = {g["id"]: g.get("host") for g in post("/api/mygates", None)[1]["gates"]}
+        check("«تغيير للجميع»: البوابة (ومثيلاتها على السيرفر نفسه) بالرابط الجديد لليوزرات الجديدة", c == 200 and r.get("gates_changed") == 3
+              and mg["g1"] == mg["g2"] == mg["g3"] == new_host, json.dumps(mg))
+        check("وكل حسابات سيرفرها تعمل منه فورًا بلا إعادة تثبيت", r.get("count") == n127 and stream_url()[1].startswith(new_host + "/movie/"),
+              json.dumps(r, ensure_ascii=False)[:160])
+        c, r = post("/api/stremio/panel-host", {"gate": "g1", "host": new_host}, op3)
+        check("ومن لم يُفتح له ← 403", c == 403)
     finally:
         falcon.terminate()
         app.terminate()

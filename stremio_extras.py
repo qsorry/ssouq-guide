@@ -9,6 +9,7 @@
 
 import datetime
 import hashlib
+import re
 import http.client
 import ipaddress
 import json
@@ -31,6 +32,13 @@ WORKERS = 3                                   # حساباتٌ معًا في ا�
 # الاختبارات تقرأ إضافةً وهميةً على هذا الجهاز؛ وفي التشغيل لا يُقرأ رابطٌ إلى شبكةٍ داخلية
 ALLOW_LOCAL = os.environ.get("STREMIO_EXTRAS_ALLOW_LOCAL") == "1"
 UA = "Mozilla/5.0 (compatible; ssouq-stremio/1.0)"
+# دليل الإضافات للبحث بالاسم: الرسمي (ما يعرضه Stremio) ودليل المجتمع (stremio-addons.net)
+CATALOGS = [u.strip() for u in os.environ.get(
+    "STREMIO_ADDON_CATALOGS",
+    "https://api.strem.io/addonscollection.json,https://stremio-addons.net/api/addon_catalog/all/stremio-addons.net.json",
+).split(",") if u.strip()]
+DIR_TTL = 6 * 3600
+DIR_BYTES = 6 * 1024 * 1024
 
 _lock = threading.Lock()
 
@@ -94,22 +102,33 @@ class _Checked(HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def fetch(url):
-    """رابط manifest ← وصف الإضافة للتثبيت ‏{transportUrl, manifest, flags}. ‏ValueError برسالةٍ للعرض: رابطٌ لا يصلح،
-    أو لا يردّ، أو ليس manifest إضافة، أو إضافةٌ تحتاج إعدادًا (يُلصق رابطها بعد الإعداد)."""
-    url = norm_url(url)
+def _get(url, limit):
+    """GET لرابطٍ عام (لا الجهاز ولا شبكةٌ داخلية، ولا تحويلٌ إليها) ← البايتات. ‏ValueError برسالةٍ للعرض."""
     if not _public(urlsplit(url).hostname):
         raise ValueError("رابطٌ إلى شبكةٍ داخلية لا يُقرأ")
     try:
         with build_opener(_Checked).open(Request(url, headers={"User-Agent": UA, "Accept": "application/json"}),
                                          timeout=TIMEOUT) as r:
-            raw = r.read(MAX_BYTES + 1)
+            raw = r.read(limit + 1)
     except HTTPError as e:
         raise ValueError(f"الإضافة ردّت بخطأ {e.code} — تأكّد من الرابط") from None
     except (URLError, OSError, http.client.HTTPException):
         raise ValueError("تعذّر الوصول إلى الإضافة — تأكّد من الرابط") from None
-    if len(raw) > MAX_BYTES:
+    if len(raw) > limit:
         raise ValueError("ردّ الإضافة أكبر من المسموح")
+    return raw
+
+
+def _usable(m):
+    """إضافةٌ تعمل كما هي: لها موارد ولا تطلب إعدادًا (AIOMetadata بلا إعدادٍ manifestها بلا موارد)."""
+    return bool(m.get("resources")) and not (m.get("behaviorHints") or {}).get("configurationRequired")
+
+
+def fetch(url):
+    """رابط manifest ← وصف الإضافة للتثبيت ‏{transportUrl, manifest, flags}. ‏ValueError برسالةٍ للعرض: رابطٌ لا يصلح،
+    أو لا يردّ، أو ليس manifest إضافة، أو إضافةٌ تحتاج إعدادًا (يُلصق رابطها بعد الإعداد)."""
+    url = norm_url(url)
+    raw = _get(url, MAX_BYTES)
     try:
         m = json.loads(raw.decode("utf-8", "replace"))
     except ValueError:
@@ -117,11 +136,72 @@ def fetch(url):
     if not (isinstance(m, dict) and m.get("id") and m.get("name") and isinstance(m.get("resources"), list)
             and isinstance(m.get("types"), list)):
         raise ValueError("الرابط لا يعيد manifest إضافة")
-    if (m.get("behaviorHints") or {}).get("configurationRequired"):
-        raise ValueError("هذه الإضافة تحتاج إعدادًا: افتح صفحة إعدادها، وأكمله، ثم الصق رابط manifest الذي تعطيه")
+    if not _usable(m):
+        raise ValueError("هذه الإضافة تحتاج إعدادًا: افتح صفحة إعدادها، وأكمله، ثم الصق رابط التثبيت (manifest) الذي تعطيه")
     if str(m["id"]).startswith(stremio_accounts.OURS):
         raise ValueError("هذه إضافتنا نفسها — تُثبَّت وحدها مع كل حساب")
     return {"transportUrl": url, "manifest": m, "flags": {"official": False, "protected": False}}
+
+
+# ================= البحث بالاسم في دليل الإضافات =================
+_dir = {"t": 0, "items": []}
+_dir_lock = threading.Lock()
+
+
+def _brief(url, m):
+    bh = m.get("behaviorHints") or {}
+    conf = bool(bh.get("configurable") or bh.get("configurationRequired"))
+    return {"url": url, "id": str(m.get("id", "")), "name": str(m.get("name", ""))[:80], "version": str(m.get("version", ""))[:20],
+            "description": " ".join(str(m.get("description") or "").split())[:240], "logo": str(m.get("logo") or ""),
+            "host": urlsplit(url).hostname or "", "needs_config": not _usable(m),
+            "configure": url[:-len("manifest.json")] + "configure" if conf and url.endswith("/manifest.json") else ""}
+
+
+def directory():
+    """دليل الإضافات (الرسمي ودليل المجتمع) — يُقرأ ويُحفظ 6 ساعات؛ ومصدرٌ لا يردّ يُتخطّى."""
+    with _dir_lock:
+        if _dir["items"] and time.time() - _dir["t"] < DIR_TTL:
+            return _dir["items"]
+        items, seen = [], set()
+        for src in CATALOGS:
+            try:
+                d = json.loads(_get(src, DIR_BYTES).decode("utf-8", "replace"))
+            except (ValueError, UnicodeError):
+                continue
+            for a in (d.get("addons") if isinstance(d, dict) else d) or []:
+                url, m = (a.get("transportUrl"), a.get("manifest")) if isinstance(a, dict) else (None, None)
+                if not (isinstance(url, str) and url.startswith(("https://", "http://")) and isinstance(m, dict)
+                        and m.get("id") and m.get("name")) or url in seen:
+                    continue
+                seen.add(url)
+                items.append(_brief(url, m))
+        if items:
+            _dir.update(t=time.time(), items=items)
+        return _dir["items"]
+
+
+def _compact(s):
+    return re.sub(r"[^0-9a-z\u0600-\u06ff]", "", str(s).lower())
+
+
+def search(q, limit=24):
+    """إضافاتٌ بالاسم («AIOMetadata» تجد «AIO Metadata» بمضيفيها): الاسم أولًا ثم المعرّف والوصف؛ والتي تعمل كما هي
+    قبل التي تحتاج إعدادًا. ‏ValueError: الدليل لا يردّ."""
+    cq, words = _compact(q), str(q or "").lower().split()
+    if len(cq) < 2:
+        return []
+    items = directory()
+    if not items:
+        raise ValueError("تعذّر الوصول إلى دليل الإضافات — الصق رابط manifest الإضافة مباشرةً")
+    hits = []
+    for it in items:
+        name = _compact(it["name"])
+        rank = 0 if name.startswith(cq) else 1 if cq in name else \
+            2 if cq in _compact(it["id"]) or all(w in f"{it['name']} {it['id']} {it['description']}".lower() for w in words) else None
+        if rank is not None:
+            hits.append((rank, it["needs_config"], it["name"].lower(), it))
+    hits.sort(key=lambda h: h[:3])
+    return [h[3] for h in hits[:limit]]
 
 
 # ================= القائمة =================

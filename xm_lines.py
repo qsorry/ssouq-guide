@@ -901,6 +901,80 @@ def stremio_hosts(acct):
     return sorted(out.values(), key=lambda h: -h["count"])
 
 
+def stremio_panels(acct):
+    """روابط لوحات العميل لصفحة الإضافات: كل بوابةٍ بهوستها (ما يتصل به المشتركون) وعدد حسابات Stremio على سيرفرها
+    (بعد التحويل)؛ وهوستاتٌ أخرى في الحسابات لا تطابق بوابة (خطوطٌ بهوستٍ من لوحتها)."""
+    routes, hosts = stremio_routes(acct["id"]), stremio_hosts(acct)
+    now = lambda h: stremio_addon.host_key(h["to"] or h["host"])     # سيرفر الحساب الآن
+    gates, seen = [], set()
+    for g in acct.get("gates") or []:
+        hk = stremio_addon.host_key(g.get("host"))
+        mine = [h for h in hosts if hk and now(h) == hk]
+        seen.update(h["key"] for h in mine)
+        gates.append({"id": g["id"], "name": g.get("name", ""), "host": stremio_addon.norm_host(g.get("host")) or "",
+                      "count": sum(h["count"] for h in mine), "archive_only": bool(g.get("archive_only"))})
+    others = [h for h in hosts if h["key"] not in seen]
+    return {"gates": gates, "others": others, "routes": routes}
+
+
+def _host_ok(cfgs, new):
+    """هل يقبل الهوست الجديد يوزرًا من هذه (حتى 3)؟ ‏(True إن لم يكن ما يُجرَّب)."""
+    if not cfgs:
+        return True
+    for cfg in cfgs[:3]:
+        try:
+            stremio_addon.account(stremio_addon.routed(cfg, new), fresh=True)
+            return True
+        except stremio_addon.XtreamError:
+            continue
+    return False
+
+
+def stremio_panel_host(acct, gate_id, new_host, force=False):
+    """«تغيير رابط اللوحة للجميع»: هوست بوابةٍ (ومثيلاتها على السيرفر نفسه) يصير الجديد — فاليوزرات الجديدة به — وكل
+    حسابات Stremio للعميل على هذا السيرفر تعمل منه فورًا (تحويلٌ بلا إعادة تثبيت). يُجرَّب بيوزرٍ منها أولًا (إلا
+    force). ← (عدد الحسابات، عدد البوابات، الهوست الجديد). ‏ValueError برسالةٍ للعرض."""
+    gate = find_gate(acct, gate_id)
+    if not gate:
+        raise ValueError("البوابة غير موجودة")
+    cur = stremio_addon.norm_host(gate.get("host"))
+    if not cur:
+        raise ValueError("البوابة بلا هوست — أضِفه من إعداد البوابة")
+    new = stremio_addon.norm_host(new_host) if str(new_host or "").strip() else None
+    if not new:
+        raise ValueError("هوستٌ غير صالح — مثل http://new.example:80")
+    cur_hk, new_hk = stremio_addon.host_key(cur), stremio_addon.host_key(new)
+    routes = stremio_routes(acct["id"])
+    origins, cfgs = set(), []                    # حسابات السيرفر الآن (بهوستها الأصلي أو محوَّلةً إليه)
+    for r in stremio_accounts.owned_all(DATA_DIR, acct["id"]):
+        cfg = stremio_addon.read_token(DATA_DIR, r.get("token")) if r.get("token") else None
+        if not cfg:
+            continue
+        hk = stremio_addon.host_key(cfg.host)
+        if stremio_addon.host_key(routes.get(hk) or cfg.host) == cur_hk:
+            origins.add(hk)
+            cfgs.append(cfg)
+    if new != cur and not force and not _host_ok(cfgs, new):
+        raise ValueError(f"الهوست الجديد لم يقبل يوزرات الحسابات (جُرّب {min(3, len(cfgs))}) — تأكّد منه")
+    for hk in origins:                           # كلٌّ إلى الجديد (ومن عاد إلى هوسته الأصلي بلا تحويل)
+        save_route(acct["id"], hk, "" if hk == new_hk and new == _origin_host(cfgs, hk) else new)
+    with _lock:
+        st = load_store()
+        a = next((x for x in st.get("accounts", []) if x.get("id") == acct["id"]), None)
+        n_gates = 0
+        for g in (a or {}).get("gates") or []:
+            if stremio_addon.host_key(g.get("host")) == cur_hk:
+                g["host"] = new
+                n_gates += 1
+        if n_gates:
+            save_store(st)
+    return len(cfgs), n_gates, new
+
+
+def _origin_host(cfgs, hk):
+    return next((c.host for c in cfgs if stremio_addon.host_key(c.host) == hk), None)
+
+
 def stremio_set_host(acct, old_hk, new_host, force=False):
     """«تغيير الهوست» لكل حسابات Stremio للعميل على سيرفرٍ دفعةً واحدة: تُخدَم من الهوست الجديد فورًا (بلا إعادة
     تثبيت، والمكتبة و«تابع المشاهدة» كما هي). يُجرَّب الجديد أولًا بيوزراتٍ منها — لا يُحفظ هوستٌ لا يقبلها (إلا
@@ -3815,7 +3889,7 @@ class Handler(BaseHTTPRequestHandler):
                                                 "error": "تعذّر قراءة الرصيد من اللوحة"})
                 return self._send(200, {"provider": gate.get("mode"), "credits": None,
                                         "unsupported": True})
-            if path == "/stremio":                # صفحة Stremio: حسابات كل بوابة وروابطها وبريدها (لمن فُتح له)
+            if path in ("/stremio", "/stremio/addons"):   # صفحة Stremio: الحسابات، وصفحة الإضافات وروابط اللوحات
                 if role != "account" or not stremio_on(acct):
                     return self._redirect(self._url())
                 return self._page("stremio_tool.html")
@@ -3834,6 +3908,21 @@ class Handler(BaseHTTPRequestHandler):
                 if not stremio_on(acct):
                     return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
                 return self._send(200, stremio_extras_data(acct))
+            if path == "/api/stremio/extras/search":   # البحث بالاسم في دليل إضافات Stremio (الرسمي والمجتمع)
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
+                try:
+                    return self._send(200, {"results": stremio_extras.search(self._q("q"))})
+                except ValueError as e:
+                    return self._send(502, {"error": str(e)})
+            if path == "/api/stremio/panels":     # روابط لوحات العميل وحسابات كلٍّ (صفحة الإضافات)
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
+                return self._send(200, stremio_panels(acct))
             if path == "/api/stremio/hosts":      # هوستات حسابات Stremio للعميل وتحويلاتها («تغيير الهوست»)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -5188,8 +5277,10 @@ class Handler(BaseHTTPRequestHandler):
                 req = self._body()
                 act = str(req.get("action") or "")
                 try:
-                    if act == "add":
+                    if act == "add":                # ومع apply: «إضافة لجميع اليوزرات» — وتثبيتها في الحالية الآن
                         e = stremio_extras.add(DATA_DIR, acct["id"], req.get("url"))
+                        if req.get("apply") and stremio_extras_data(acct)["accounts"]:
+                            stremio_extras.start(DATA_DIR, acct["id"], e["id"])
                         return self._send(200, {"ok": True, "added": e["id"], **stremio_extras_data(acct)})
                     if act == "remove":
                         stremio_extras.remove(DATA_DIR, acct["id"], str(req.get("id") or ""))
@@ -5223,6 +5314,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(502, {"ok": False, "error": str(e)})
                 return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"],
                                         "gate": line_gate["id"], "username": lu})
+            if path == "/api/stremio/panel-host":  # خارج القفل: «تغيير رابط اللوحة للجميع» — البوابة وكل حسابات سيرفرها
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
+                req = self._body()
+                try:
+                    n, g, to = stremio_panel_host(acct, str(req.get("gate") or ""), str(req.get("host") or ""), bool(req.get("force")))
+                except ValueError as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
+                fresh = next((a for a in load_store().get("accounts", []) if a.get("id") == acct["id"]), acct)
+                return self._send(200, {"ok": True, "count": n, "gates_changed": g, "to": to, **stremio_panels(fresh)})
             if path == "/api/stremio/host":       # خارج القفل: «تغيير الهوست» لحسابات سيرفرٍ دفعةً واحدة (يُجرَّب أولًا)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
