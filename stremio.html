@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>اشتراكك في Stremio | سمارت سوق</title>
-<meta name="description" content="أضف محتوى اشتراكك كله إلى Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها والقنوات المباشرة، بأقسام السيرفر نفسها.">
+<meta name="description" content="أضف محتوى اشتراكك كله إلى Stremio بترتيب تطبيقات IPTV: الحسابات ثم المسلسلات بمواسمها وحلقاتها والأفلام والبث المباشر، بأقسام السيرفر نفسها.">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#060b17">
@@ -116,8 +116,8 @@ ol.steps a{color:#b9ccff;text-decoration:underline}
           <div><b id="name"></b><span class="pill" id="state"></span> <span class="muted" id="exp"></span></div></div>
         <div class="warn" id="authWarn" hidden></div>
         <div class="stats">
-          <div class="stat"><b id="cMovie">—</b><span>فيلم</span></div>
           <div class="stat"><b id="cSeries">—</b><span>مسلسل</span></div>
+          <div class="stat"><b id="cMovie">—</b><span>فيلم</span></div>
           <div class="stat"><b id="cTv">—</b><span>قناة</span></div>
         </div>
         <div class="row">
@@ -131,7 +131,8 @@ ol.steps a{color:#b9ccff;text-decoration:underline}
         <ol class="steps">
           <li>حمّل Stremio من <a href="https://www.stremio.com/downloads" target="_blank" rel="noopener noreferrer">stremio.com/downloads</a> وسجّل الدخول بحسابك (أو أنشئ حسابًا مجانيًا).</li>
           <li>اضغط «تثبيت في تطبيق Stremio» ثم <b>Install</b>. على التلفزيون: ثبّتها من الجوال أو المتصفح بالحساب نفسه فتظهر على الشاشة وحدها.</li>
-          <li>في الرئيسية تجد <b id="rows">الأفلام والمسلسلات والقنوات</b>، وأقسام الأفلام والمسلسلات في «اكتشف» (Discover) من قائمة التصنيف، والقنوات كلها في تصنيفٍ واحد، والبحث يشمل الثلاثة.</li>
+          <li>في الرئيسية بترتيب تطبيقات IPTV: <b>الحسابات</b> (اشتراكك وكم باقي، وزرّ التجديد) ثم <b id="rows">المسلسلات والأفلام والبث المباشر</b>. وأقسام السيرفر في «اكتشف» (Discover) من قائمة التصنيف، وتصنيف الفيلم في صفحته («جريمة») يعرض كل أفلامه، والبحث يشمل كل اشتراكاتك.</li>
+          <li>اختر «⚡ تلقائي» أول قائمة التشغيل: يشغّل المترجم بالعربية بأعلى جودةٍ متاحة، وينتقل للمصدر التالي إن تعطّل. ولتظهر <b>الترجمة العربية تلقائيًا</b> في الملفات بترجماتٍ مضمَّنة: إعدادات Stremio ← المشغّل ← لغة الترجمة ← <b>العربية</b> (مرةً على كل جهاز).</li>
         </ol>
         <p class="muted" style="margin:10px 0 0">إن كانت عندك إضافةٌ أخرى لهذا الاشتراك (مثل Xtremio) فاحذفها حتى لا يتكرّر المحتوى. والرابط خاصٌّ بك: فيه اشتراكك، فلا تشاركه.</p>
       </div>
@@ -167,7 +168,7 @@ async function showInstall(){
   }
   $("loading").hidden = true; $("card").hidden = false;
   $("name").textContent = d.name || "سمارت سوق";
-  $("rows").textContent = d.label ? `«أفلام · ${d.label}» و«مسلسلات · ${d.label}» و«قنوات · ${d.label}»` : "الأفلام والمسلسلات والقنوات";
+  $("rows").textContent = d.label ? `المسلسلات والأفلام والبث المباشر («${d.label}»)` : "المسلسلات والأفلام والبث المباشر";
   const st = $("state");
   if (d.auth === false) { st.textContent = "غير فعّال"; st.className = "pill off"; }
   else if (d.auth) { st.textContent = d.active ? "نشط" : (d.status || "—"); st.className = "pill " + (d.active ? "on" : "off"); }
