@@ -108,7 +108,7 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await user.waitForSelector('#sheet:not([hidden]) [data-re]', {timeout: 5000});
     const menuT = (await user.textContent('#sheetList')).replace(/\s+/g, ' ');
     check('⋯ opens the actions sheet: update add-on, change its link, link another line', /تحديث الإضافة/.test(menuT)
-          && /تغيير رابط الإضافة/.test(menuT) && /ربط خط آخر/.test(menuT), menuT.slice(0, 120));
+          && /إيقاف الإضافة في الحسابات الأخرى/.test(menuT) && /ربط خط آخر/.test(menuT), menuT.slice(0, 120));
     await shot(user, 'stremio-menu');
     await user.click('#sheet [data-re]');
     await user.waitForFunction(() => /حُدّثت الإضافة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 10000});
@@ -116,14 +116,14 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
           /لم يُرجع أقسامًا/.test(await user.textContent('#toast')) && await user.isHidden('#sheet'),
           await user.textContent('#toast'));
     check('the add-on is locked to its account from the start (no public install link on the card)',
-          /مقفلة على الحساب/.test(await user.textContent('#list .card .tags')) && (await user.$$('#list .card [data-what="نُسخ الرابط"]')).length === 0
+          /تعمل في حساب العميل فقط/.test(await user.textContent('#list .card .tags')) && (await user.$$('#list .card [data-what="نُسخ الرابط"]')).length === 0
           && !/نسخ رابط التثبيت/.test(menuT));
     let lockAsk = '';
     user.once('dialog', d => { lockAsk = d.message(); d.accept(); });
     await user.click('#list .card:first-child [data-more]');
     await user.click('#sheet [data-lock]');
-    await user.waitForFunction(() => /قُفلت الإضافة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 10000});
-    check('«تغيير رابط الإضافة» asks first, then stops any copy moved to another account', /تتوقف أي نسخةٍ/.test(lockAsk), lockAsk.slice(0, 60));
+    await user.waitForFunction(() => /تعمل في حساب العميل فقط/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 10000});
+    check('«إيقاف الإضافة في الحسابات الأخرى» asks first in plain words, then stops copies in other accounts', /فستتوقف عنده/.test(lockAsk) && /تبقى تعمل في حساب العميل/.test(lockAsk), lockAsk.slice(0, 60));
 
     console.log('== a batch: 3 at once ==');
     await user.fill('#n', '3'); await user.dispatchEvent('#n', 'input');
@@ -283,7 +283,8 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     user.once('dialog', d => d.accept());
     await user.fill('#extUrl', `http://127.0.0.1:${ADDON_PORT}/needs/manifest.json`); await user.click('#extAdd');
     await user.waitForFunction(() => /تحتاج إعدادًا/.test(document.querySelector('#extMsg')?.textContent || ''), null, {timeout: 8000});
-    check('an add-on that still needs setup is refused with the reason', true);
+    check('an add-on that still needs setup is refused with the reason and a button to its setup page',
+          (await user.getAttribute('#extMsg a.acc', 'href')) === `http://127.0.0.1:${ADDON_PORT}/needs/configure`);
     await user.fill('#extUrl', 'AIOMetadata');
     check('typing a name turns the button into a search', (await user.textContent('#extAdd')).trim() === 'بحث');
     await user.click('#extAdd');
@@ -292,6 +293,9 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('searching «AIOMetadata» finds it in the add-on directory (and «AIO Metadata» that still needs setup)',
           hitsT.length === 2 && hitsT[0].startsWith('AIOMetadata') && /افتح صفحة الإعداد/.test(hitsT[1]), hitsT.join(' | ').slice(0, 200));
     check('the one needing setup links to its setup page', (await user.getAttribute('#extHits a.acc', 'href')) === `http://127.0.0.1:${ADDON_PORT}/aiobase/configure`);
+    check('…with two steps and a field for its install link, and its other hosts folded (one card, not one per host)',
+          await user.isVisible('#extHits [data-xpaste="1"]') && await user.isVisible('#extHits [data-xinst="1"]')
+          && (await user.textContent('#extHits details.hosts summary')).includes('(1)'));
     await shot(user, 'stremio-extras-search');
     let extAsk = '';
     user.once('dialog', d => { extAsk = d.message(); d.accept(); });

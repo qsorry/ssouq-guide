@@ -26,6 +26,7 @@ def _dir(host):
                                                                                             "description": "The official metadata add-on"}}]
     community = {"addons": [{"transportUrl": f"{host}/aiobase/manifest.json", "manifest": BASE},
                             {"transportUrl": f"{host}/aio/manifest.json", "manifest": AIO},             # مكرّرة في المصدرين
+                            {"transportUrl": "https://aio2.example.com/stremio/manifest.json", "manifest": BASE},   # مضيفٌ آخر لها
                             {"transportUrl": "https://subs.example.com/manifest.json",
                              "manifest": {"id": "community.arsubs", "name": "ترجمة عربية", "resources": ["subtitles"], "description": "Arabic subtitles"}},
                             {"transportUrl": "javascript:alert(1)", "manifest": {"id": "x", "name": "bad"}}]}
@@ -49,6 +50,8 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/aio/manifest.json":
             return self._send(200, AIO)
         if u.path == "/aiobase/manifest.json":
+            return self._send(200, BASE)
+        if u.path == "/manifest.json" and getattr(self.server, "root", False):   # جذر المضيف: AIOMetadata بلا إعداد
             return self._send(200, BASE)
         if u.path in ("/official.json", "/community.json"):
             official, community = _dir(f"http://{self.headers.get('Host')}")

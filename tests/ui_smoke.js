@@ -50,12 +50,26 @@ async function waitUp(url) { for (let i=0;i<80;i++){ try{ execSync(`curl -s -o /
     await page.waitForTimeout(400);
     const listTxt = await page.textContent('#list');
     check('admin list shows both gate names', listTxt.includes('بوابة مرح') && listTxt.includes('بوابة فالكون'));
-    // the dashboard home: welcome banner, stat cards, shortcuts, latest accounts and admin links
+    // the dashboard home: welcome banner, stat cards, ONE grouped admin menu (each page once), latest accounts
     await page.evaluate(() => nav('home'));
     await page.waitForFunction(() => document.getElementById('statPrize').textContent !== '—', null, {timeout: 8000});
-    check('dashboard: banner, 4 stat cards (visitors too), 7 shortcuts (content reports too), admin links',
+    const menu = await page.$$eval('#links .grp', gs => gs.map(g => ({h: g.querySelector('h2').firstChild.textContent.trim(),
+      rows: [...g.querySelectorAll('.nrow')].map(a => a.getAttribute('href'))})));
+    const hrefs = menu.flatMap(g => g.rows);
+    check('dashboard: banner, 4 stat cards (visitors too), one grouped admin menu: every page once (content reports too), no second shortcut list',
       (await page.textContent('.hero h1')).includes('مرحباً بك في لوحة الإدارة') && (await page.$$('.kpis .kpi')).length === 4
-      && (await page.$$('.qgrid .qt')).length === 7 && (await page.$$('#links .lt')).length >= 4);
+      && menu.length >= 4 && menu.every(g => g.h && g.rows.length) && hrefs.length >= 11 && new Set(hrefs).size === hrefs.length
+      && ['/admin', '/admin/renew', '/admin/remaining', '/admin/contest', '/admin/content', '/admin/reports', '/admin/stats']
+           .every(h => hrefs.includes(h))
+      && (await page.$$('.qgrid, .lgrid')).length === 0 && (await page.$$('[data-view="settings"] .nrow, [data-view="settings"] .linkrow')).length === 0,
+      menu.map(g => g.h + ':' + g.rows.length).join(' · '));
+    // «حساب جديد» من الرئيسية يفتح النافذة، وزرّ ✕ فيها يغلقها (كان تغيير العنوان يمحو الزرّ)
+    await page.click('#qAdd');
+    await page.waitForSelector('#acctModal:not([hidden])');
+    check('«حساب جديد» opens the account window; its ✕ is there and closes it', (await page.textContent('#formTitle')) === 'إضافة حساب'
+      && await page.isVisible('#acctClose') && await page.isHidden('#accDanger'));
+    await page.click('#acctClose');
+    await page.waitForSelector('#acctModal', {state: 'hidden'});
     check('dashboard: accounts and gates counted, prizes from the contest summary',
       (await page.textContent('#statAcc')) === '1' && (await page.textContent('#statGates')) === '2'
       && (await page.textContent('#statPrize')) === '0');

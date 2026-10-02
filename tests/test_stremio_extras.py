@@ -53,6 +53,23 @@ def main():
     check("manifest الإضافة ← وصفها للتثبيت", d["transportUrl"] == base + "/aio/manifest.json" and d["manifest"]["name"] == "AIOMetadata"
           and d["flags"] == {"official": False, "protected": False})
     check("إضافةٌ تحتاج إعدادًا تُرفض (يُلصق رابطها بعد الإعداد)", raises(lambda: X.fetch(base + "/needs/manifest.json"), "تحتاج إعدادًا"))
+    try:
+        X.fetch(base + "/needs/manifest.json")
+    except X.NeedsSetup as e:
+        conf = e.configure
+    check("ومعها رابط صفحة إعدادها", conf == base + "/needs/configure", conf)
+    srv.root = True                  # «…/stremio/manifest.json» بلا رمز (ما لصقه العميل لـ AIOMetadata) ← 404، والجذر إضافةٌ تحتاج إعدادًا
+    try:
+        X.fetch(base + "/stremio/manifest.json")
+        conf = None
+    except X.NeedsSetup as e:
+        conf = e.configure
+    srv.root = False
+    check("رابطٌ بلا رمز إعداد (404) وجذره إضافةٌ تحتاج إعدادًا ← «تحتاج إعدادًا» بصفحة إعدادها في الجذر", conf == base + "/configure", str(conf))
+    check("صفحة الإعداد: بجانب manifest، و«/stremio/manifest.json» بلا رمز في الجذر",
+          X.configure_url("https://aio.example.com/stremio/manifest.json") == "https://aio.example.com/configure"
+          and X.configure_url("https://aio.example.com/stremio/abc-123/manifest.json") == "https://aio.example.com/stremio/abc-123/configure"
+          and X.configure_url("https://torrentio.strem.fun/manifest.json") == "https://torrentio.strem.fun/configure")
     check("وصفحةٌ ليست manifest", raises(lambda: X.fetch(base + "/html/manifest.json"), "لا يعيد manifest"))
     check("ورابطٌ لا يوجد", raises(lambda: X.fetch(base + "/nope/manifest.json"), "404"))
     X.ALLOW_LOCAL = False
@@ -66,11 +83,14 @@ def main():
     X._dir.update(t=0, items=[])
     items = X.directory()
     check("الدليلان معًا بلا تكرار، ومصدرٌ لا يردّ يُتخطّى، ورابطٌ ليس http يُسقط",
-          sorted(i["name"] for i in items) == ["AIO Metadata", "AIOMetadata", "Cinemeta", "ترجمة عربية"], str([i["name"] for i in items]))
+          sorted(i["name"] for i in items) == ["AIO Metadata", "AIO Metadata", "AIOMetadata", "Cinemeta", "ترجمة عربية"], str([i["name"] for i in items]))
     r = X.search("AIOMetadata")
     check("«AIOMetadata» تجد «AIO Metadata» أيضًا، والتي تعمل كما هي أولًا", [(h["name"], h["needs_config"]) for h in r]
           == [("AIOMetadata", False), ("AIO Metadata", True)], str([(h["name"], h["needs_config"]) for h in r]))
     check("والتي تحتاج إعدادًا معها رابط صفحة إعدادها", r[1]["configure"] == base + "/aiobase/configure" and r[1]["host"] == "127.0.0.1")
+    check("والإضافة الواحدة على مضيفين كثيرين نتيجةٌ واحدة ومعها الباقون (بصفحات إعدادهم)", len(r) == 2
+          and [(h["host"], h["configure"]) for h in r[1]["hosts"]] == [("aio2.example.com", "https://aio2.example.com/configure")],
+          str(r[1].get("hosts")))
     check("وبالعربية وبالوصف", [h["name"] for h in X.search("ترجمة")] == ["ترجمة عربية"] and [h["name"] for h in X.search("official metadata")] == ["Cinemeta"])
     check("حرفٌ واحد لا يُبحث به", X.search("a") == [])
     check("وإضافتها بلا إعداد تُرفض (لا موارد)", raises(lambda: X.fetch(base + "/aiobase/manifest.json"), "تحتاج إعدادًا"))
