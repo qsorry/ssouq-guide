@@ -532,7 +532,7 @@ function renderList(){
   $("list").innerHTML = rows.length ? `<div class="cards">${rows.map(a => { const [pc, pt, pd] = expPill(a); return `<div class="card acct">
       <div class="ah"><b class="mono user">${esc(a.username)}</b><span class="pill ${pc}" title="${esc(pd)}">${esc(pt)}</span></div>
       <dl class="kv"><div><dt>الإيميل</dt><dd class="mono">${esc(a.email)}</dd></div><div><dt>كلمة المرور</dt><dd class="mono">${esc(a.password)}</dd></div></dl>
-      <div class="tags">${a.locked ? '<span class="tag ok">🔒 مقفلة على الحساب</span>' : ""}${a.addon_full === false
+      <div class="tags">${a.locked ? '<span class="tag ok">🔒 تعمل في حساب العميل فقط</span>' : ""}${a.addon_full === false
           ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ الإضافة بلا أقسام</span>' : ""}${a.changed
           ? `<span class="tag">كلمة المرور غُيّرت ${esc(a.changed)}</span>` : ""}${a.mail_count
           ? `<span class="tag new">✉ آخر بريد ${esc(a.last_mail)}</span>` : ""}<span class="tag">أُنشئ ${esc(a.created)}</span></div>
@@ -992,17 +992,17 @@ $("linkClose").onclick = hideLink;
 $("linkOverlay").addEventListener("click", e => { if (e.target === $("linkOverlay")) hideLink(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("linkOverlay").hidden && $("capOverlay").hidden) hideLink(); });
 
-// ---- «قفل الإضافة»: رابطٌ جديد لإضافة الحساب، فتتوقف كل نسخةٍ نُقلت لحسابٍ آخر (ورابط اليوزر العام) ----
+// ---- «إيقاف الإضافة في الحسابات الأخرى»: رابطٌ جديد لإضافة الحساب، فتتوقف عند من نسخها لحسابٍ آخر (ورابط اليوزر العام) ----
 async function lockAddon(username, btn){
-  if (!confirm(`يتغيّر رابط إضافة ${username}@… وتُعاد في حسابه — وتتوقف أي نسخةٍ منها في حسابٍ آخر، ورابط تثبيته القديم. متابعة؟`)) return;
-  const label = btn.innerHTML; btn.disabled = true; btn.textContent = "جاري القفل…";
-  toast("جاري تغيير رابط الإضافة…");
+  if (!confirm(`إن نسخ أحدٌ إضافة ${username} إلى حساب Stremio آخر فستتوقف عنده.\nوتبقى تعمل في حساب العميل كما هي، ولا يحتاج العميل أن يفعل شيئًا.\n\nهل تريد المتابعة؟`)) return;
+  const label = btn.innerHTML; btn.disabled = true; btn.textContent = "جاري الإيقاف…";
+  toast("جاري إيقاف الإضافة في الحسابات الأخرى…");
   try {
     const d = await api("/api/stremio/lock", {gate: GATE, username});
     const a = ((D && D.accounts) || []).find(x => x.username === username);
     if (a) { a.locked = true; a.link = ""; a.addon_full = d.addon_full; }
     renderList();
-    toast("قُفلت الإضافة على الحساب — وتوقفت النسخ المنقولة");
+    toast("تم — الإضافة الآن تعمل في حساب العميل فقط");
   } catch(e) { toast(e.message, true); btn.disabled = false; btn.innerHTML = label; }
 }
 
@@ -1023,7 +1023,7 @@ function openAcctMenu(username){
   const u = esc(a.username);
   openSheet(a.username, a.email, [
     sitem(`data-re="${u}"`, I.sync, "تحديث الإضافة", "بأحدث الأقسام والأعداد"),
-    sitem(`data-lock="${u}"`, I.lock, a.locked ? "تغيير رابط الإضافة" : "قفل الإضافة", "يوقف أي نسخةٍ منها نُقلت لحسابٍ آخر"),
+    sitem(`data-lock="${u}"`, I.lock, "إيقاف الإضافة في الحسابات الأخرى", "إن نسخها أحدٌ إلى حسابه تتوقف عنده، وتبقى تعمل عند العميل"),
     sitem(`data-linkto="${u}"`, I.plus, "ربط خط آخر", "خطٌّ من بوابةٍ أخرى في الحساب نفسه"),
     a.link ? sitem(`data-copy="${esc(a.link)}" data-what="نُسخ الرابط"`, I.link, "نسخ رابط التثبيت", "") : "",
     a.linked ? sitem(`data-unlink="${u}"`, I.unlink, "فصل الخط", "تُسقط إضافته من الحساب", "danger") : "",

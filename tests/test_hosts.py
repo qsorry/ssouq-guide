@@ -105,7 +105,7 @@ def main():
         check("الكوكي على Path=/ لا /admin", "Path=/;" in cook and "Path=/admin" not in cook, cook.split(";")[1:2])
         tok = cook.split(";")[0]
         c, _, body, _ = req(base, "/accounts", TOOL, cookie=tok)
-        check("صفحة الحسابات على /accounts", c == 200 and "إدارة الحسابات" in body, str(c))
+        check("صفحة الحسابات على /accounts", c == 200 and "<title>لوحة الإدارة" in body, str(c))
         c, _, body, _ = req(base, "/api/accounts", TOOL, cookie=tok)
         check("‏API من الجذر", c == 200 and "accounts" in body, str(c))
         c, loc, _, _ = req(base, "/admin/accounts", TOOL)
