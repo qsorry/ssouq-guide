@@ -1016,6 +1016,9 @@ def unit_sample3_cases():
         check("FINAL QA: Prison Break (فالكون صفّان) — كيانٌ واحد، رابطٌ ثابت، canonical، عربي/إنجليزي، hreflang متبادل، schema، التوفّر بلا تكرار، فالكون مرةً واحدة، لا روابط مكرّرة، noindex",
               all(t["ok"] for t in qt.values()) and qt["falcon_once"]["detail"] and '"falcon_rows": 2' in qt["falcon_once"]["detail"], str([t for t in qt.values() if not t["ok"]])[:500])
         check("FINAL QA: العيّنة بمجموعاتها، كل الاختبارات ناجحة، ولا blocker", qa["ok"] and qa["tests"]["fail"] == 0 and qa["sample"]["by_group"]["series"] == 3 and qa["blockers"] == [], str((qa["tests"], qa["blockers"]))[:600])
+        check("hreflang في العيّنة: عدّ الحالات من حقل hreflang_mode لكل عمل (لا من نصٍّ مبتور) ومجموعها = عدد الأعمال، وbilingual ≥ 1",
+              sum(qa["hreflang"]["sample_by_mode"].values()) == qa["sample"]["n"] and qa["hreflang"]["sample_by_mode"]["bilingual"] >= 1 and qa["hreflang"]["sample_failures"] == 0
+              and all("hreflang_mode" in w for w in qa["works"]), str(qa["hreflang"]))
         rd = qa["redirects"]
         check("FINAL QA: التحويلات كلها مباشرة إلى صفحةٍ حيّة (سلاسل 0)، تُخدم 301 باللغتين، ولم يُنشأ تحويلٌ جديد", rd["chains"] == 0 and rd["targets_not_live"] == 0 and rd["served_direct"] == rd["served_checked"] >= 4 and rd["created_during_qa"] == 0, str(rd)[:400])
         sm = qa["sitemap"]
@@ -1300,6 +1303,15 @@ def unit_enrich():
               cov["coverage_complete"] and cov["population"] == cov["entities_checked"] >= 2 and cov["by_mode"]["bilingual"] >= 1 and (cov["by_mode"]["single:ar"] + cov["by_mode"]["single:en"]) >= 1
               and cov["failures_total"] == 0 and sum(cov["eligibility_all_live"].values()) == con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=1").fetchone()[0]
               and cov["tests"][0]["ok"], str({k: v for k, v in cov.items() if k not in ("failures",)})[:500])
+        cm = cov["metrics"]
+        check("التغطية: المقاييس الصريحة (كيانات canonical، مسارات AR/EN و200، أزواج ثنائية، hreflang كامل/ناقص، x-default، canonical ذاتي/مطابق/مكرّر، اللغة، HTTP، استعلامات، تحويلات قديمة، النسبة) كلها صفر فشل و100%، والبوابات الخمس ناجحة، وأمثلة HTML فعلية للحالتين",
+              cm["coverage_pct"] == 100.0 and cm["ar_routes"] == cm["en_routes"] == cm["ar_routes_200"] == cm["en_routes_200"] == cov["population"] and cm["hreflang_complete"] == cov["by_mode"]["bilingual"] >= 1
+              and cm["hreflang_incomplete"] == cm["missing_x_default"] == cm["reciprocity_failures"] == cm["canonical_self_failures"] == cm["canonical_mismatch"] == cm["duplicate_canonical"] == cm["language_mismatch"] == cm["http_non_200"] == cm["faceted_or_query_urls"] == cm["old_redirect_urls_in_sitemap"] == cm["single_language_pages_with_stray_alternates"] == 0
+              and cm["would_index_true_pages"] == cov["sitemap_urls"] and all(t["ok"] for t in cov["tests"]) and len(cov["tests"]) == 5
+              and set(cov["examples"]) == {"bilingual", "single"} and sum('hreflang="x-default"' in x for x in cov["examples"]["bilingual"]["html"]["ar"]) == 1 and not any("alternate" in x for x in cov["examples"]["single"]["html"]["ar"] + cov["examples"]["single"]["html"]["en"]),
+              str((cm, {k: v["html"] for k, v in cov["examples"].items()}))[:900])
+        cov2 = seo_qa.coverage(d, con, st_)
+        check("التغطية حتمية: تشغيلٌ ثانٍ يعطي المقاييس نفسها", cov2["metrics"] == cm and cov2["by_mode"] == cov["by_mode"], str(cov2["metrics"])[:300])
         con.close()
     finally:
         xt.shutdown(); tm.shutdown()
