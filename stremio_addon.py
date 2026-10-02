@@ -47,7 +47,7 @@ RETRY = 60                           # فشل التحديث وفي الذاكر
 ACCOUNT_TTL = 300                    # حالة الاشتراك (‏user_info)
 INFO_TTL = 6 * 3600                  # تفاصيل فيلمٍ أو مسلسل
 INFO_MAX = 3000
-LISTS_MAX = int(os.environ.get("STREMIO_CACHE", "12"))    # قوائم (اشتراك × نوع) في الذاكرة معًا
+LISTS_MAX = int(os.environ.get("STREMIO_CACHE", "18"))    # قوائم (سيرفر × باقة × نوع) في الذاكرة معًا
 API_TIMEOUT = 60
 MAX_BYTES = 256 << 20
 UA = C.UA                            # لوحات Xtream تقبل المشغّلات وقد تردّ غيرها
@@ -323,14 +323,19 @@ class Lists:
         """اسم قسم العنصر كما في السيرفر (أو "")."""
         return self._cat_name.get(it.cat, "") if it else ""
 
+    def prepare(self):
+        """فهرس البحث (الأسماء بلا تشكيل ولا همزات) — يُبنى مرةً مع التحميل."""
+        with self._klock:
+            if self._keys is None:
+                self._keys = [_norm(it.name) for it in self.items]
+        return self
+
     def search(self, q):
         """كل الكلمات في الاسم (بلا تشكيل ولا همزات ولا حالة أحرف): المطابق ثم ما يبدأ بها ثم ما يحويها."""
         words = _norm(q).split()
         if not words:
             return []
-        with self._klock:
-            if self._keys is None:
-                self._keys = [_norm(it.name) for it in self.items]
+        self.prepare()
         phrase = " ".join(words)
         hits = []
         for it, k in zip(self.items, self._keys):
@@ -341,20 +346,16 @@ class Lists:
         return [h[2] for h in hits]
 
 
-_cats = OrderedDict()                # (cfg، النوع) ← (الوقت، الأقسام)
-_lists = OrderedDict()               # (cfg، النوع) ← (الوقت، Lists)
-_loading = {}                        # (cfg، النوع) ← قفل التحميل: طلباتٌ متزامنة تنتظر تحميلًا واحدًا
+_cats = OrderedDict()                # (cfg، النوع) ← (الوقت، الأقسام) — لكل مشترك: منها باقته وصلاحية اشتراكه
+_lists = OrderedDict()               # (الهوست، النوع، بصمة الأقسام) ← (الوقت، Lists) — مشتركةٌ بين مشتركي الباقة
+_list_keys = OrderedDict()           # (cfg، النوع) ← مفتاح قائمته في _lists
+_loading = {}                        # المفتاح ← قفل التحميل: طلباتٌ متزامنة تنتظر تحميلًا واحدًا
 
 
-def _cached(store, key, ttl, load, cap):
-    """قيمةٌ محفوظة ما دامت حديثة؛ وإلا تُحمَّل مرةً واحدة مهما تزامنت الطلبات. فشل التحميل وعندنا نسخة: تُعرض
-    ويُعاد بعد دقيقة — فلا يختفي المحتوى لانقطاعٍ عابر في السيرفر."""
-    with _lock:
-        hit = store.get(key)
-        if hit and time.time() - hit[0] < ttl:
-            store.move_to_end(key)
-            return hit[1]
-        lk = _loading.setdefault((id(store), key), threading.Lock())
+def _fill(store, key, ttl, load, cap, lk, shared=False, short=None):
+    """التحميل نفسه تحت قفله: يُحفظ قبل فكّ القفل فلا يبدأ طلبٌ لاحق تحميلًا ثانيًا. فشل السيرفر وعندنا نسخة: تُعرض
+    ويُعاد بعد دقيقة. ورفض الاشتراك يُسقط نسخته — إلا المشتركة (رفض مشتركٍ واحد لا يُسقط قائمة الباقة). ‏short(val):
+    قيمةٌ تُحفظ دقيقةً لا أكثر (فارغةٌ ليوزرٍ لم يُفعَّل بعد)."""
     with lk:
         with _lock:
             hit = store.get(key)
@@ -362,19 +363,19 @@ def _cached(store, key, ttl, load, cap):
                 return hit[1]
         try:
             val = load()
-        except AuthError:
-            with _lock:
-                store.pop(key, None)
-            raise
-        except XtreamError:
+        except (AuthError, XtreamError) as e:
+            if isinstance(e, AuthError) and not (shared and hit):
+                with _lock:
+                    store.pop(key, None)
+                raise
             if not hit:
                 raise
             with _lock:
                 store[key] = (time.time() - ttl + RETRY, hit[1])
             return hit[1]
-        else:                            # يُحفظ قبل فكّ قفل التحميل: لا يبدأ طلبٌ لاحق تحميلًا ثانيًا
+        else:
             with _lock:
-                store[key] = (time.time(), val)
+                store[key] = (time.time() - (ttl - RETRY if short and short(val) else 0), val)
                 store.move_to_end(key)
                 while len(store) > cap:
                     store.popitem(last=False)
@@ -384,8 +385,38 @@ def _cached(store, key, ttl, load, cap):
                 _loading.pop((id(store), key), None)
 
 
+def _cached(store, key, ttl, load, cap, shared=False, short=None):
+    """قيمةٌ محفوظة ما دامت حديثة؛ وقديمةٌ تُعرض فورًا ويُحدَّث نسختها في الخلفية (فلا ينتظر أحدٌ تحميل السيرفر
+    إلا أول مرة)؛ ولا شيء ← تُحمَّل مرةً واحدة مهما تزامنت الطلبات."""
+    with _lock:
+        hit = store.get(key)
+        if hit and time.time() - hit[0] < ttl:
+            store.move_to_end(key)
+            return hit[1]
+        busy = (id(store), key) in _loading
+        lk = _loading.setdefault((id(store), key), threading.Lock())
+        if hit:
+            store.move_to_end(key)
+    if hit:                              # قديمة: تُعرض، ويُحدَّث في الخلفية (إلا وتحديثٌ جارٍ)
+        if not busy:
+            def bg():
+                try:
+                    _fill(store, key, ttl, load, cap, lk, shared, short)
+                except Exception:
+                    pass
+            threading.Thread(target=bg, daemon=True, name="stremio-refresh").start()
+        return hit[1]
+    return _fill(store, key, ttl, load, cap, lk, shared, short)
+
+
 def categories(cfg, kind):
-    return _cached(_cats, (cfg, kind), TTL, lambda: _list_of(_api(cfg, _ACTION[kind][0])), 2000)
+    return _cached(_cats, (cfg, kind), TTL, lambda: _list_of(_api(cfg, _ACTION[kind][0])), 2000, short=lambda v: not v)
+
+
+def _bouquet(cats):
+    """بصمة باقة المشترك: أقسامه — من لهم الأقسام نفسها على السيرفر نفسه يرون العناصر نفسها."""
+    ids = sorted({str(c.get("category_id")) for c in cats or [] if isinstance(c, dict)})
+    return hashlib.sha1(",".join(ids).encode()).hexdigest()[:16]
 
 
 PART_WORKERS = 4                     # طلبات الأقسام معًا حين تتعثّر القائمة كاملة
@@ -427,19 +458,74 @@ def _all_items(cfg, kind, cats):
     return out
 
 
+def _lkey(cfg, kind, cats=None):
+    """مفتاح قائمة المشترك في _lists (‏None إن لم تُعرف أقسامه بعد)."""
+    with _lock:
+        if cats is None:
+            return _list_keys.get((cfg, kind))
+        key = (host_key(cfg.host), kind, _bouquet(cats))
+        _list_keys[(cfg, kind)] = key
+        _list_keys.move_to_end((cfg, kind))
+        while len(_list_keys) > 20000:
+            _list_keys.popitem(last=False)
+        return key
+
+
 def lists(cfg, kind):
-    """كل عناصر النوع (‏movie · series · tv) — من الذاكرة إن حديثة، وإلا من السيرفر بطلبٍ واحد (أو قسمًا قسمًا)."""
+    """كل عناصر النوع (‏movie · series · tv). مشتركةٌ بين مشتركي الباقة نفسها على السيرفر نفسه (تحميلٌ واحد لهم كلهم
+    لا لكل مشترك)، وقديمتها تُعرض فورًا وتُحدَّث في الخلفية — فالبحث والتصفّح لا ينتظران السيرفر إلا أول مرة. وأقسام
+    المشترك نفسه تُقرأ له (منها باقته، وتتحقّق من اشتراكه)."""
+    cats = categories(cfg, kind)
+    key = _lkey(cfg, kind, cats)
+
     def load():
-        cats = categories(cfg, kind)
-        return Lists(kind, cats, _all_items(cfg, kind, cats))
-    return _cached(_lists, (cfg, kind), TTL, load, LISTS_MAX)
+        L = Lists(kind, cats, _all_items(cfg, kind, cats))
+        L.prepare()                      # فهرس البحث مع التحميل: أول بحثٍ لا يبنيه
+        return L
+    return _cached(_lists, key, TTL, load, LISTS_MAX, shared=True, short=lambda L: not L.items)
+
+
+def warm(cfg):
+    """يحمّل قوائم اشتراكٍ (الأنواع الثلاثة) مسبقًا — لسيرفرات الحسابات عند التشغيل وكل حين، فيجدها أول بحث. ← كم
+    حُمّل."""
+    n = 0
+    for kind in TYPES:
+        try:
+            lists(cfg, kind)
+            n += 1
+        except XtreamError:
+            pass
+    return n
 
 
 def _cached_lists(cfg, kind):
     """القوائم إن كانت في الذاكرة فقط (بلا تحميل) — للتفاصيل والتشغيل حين يكفي غيرها."""
+    key = _lkey(cfg, kind)
     with _lock:
-        hit = _lists.get((cfg, kind))
+        hit = _lists.get(key) if key else None
     return hit[1] if hit else None
+
+
+def set_lists(cfg, kind, L, age=0):
+    """يضع قائمةً لمشتركٍ في الذاكرة (للاختبارات): بعمرٍ age ثانية."""
+    key = _lkey(cfg, kind) or _lkey(cfg, kind, [])
+    with _lock:
+        _lists[key] = (time.time() - age, L)
+
+
+def drop_lists(cfg, kind):
+    """ينسى قائمة مشتركٍ ومفتاحها وأقسامه (للاختبارات ولإعادة القراءة)."""
+    with _lock:
+        key = _list_keys.pop((cfg, kind), None)
+        cats = _cats.pop((cfg, kind), None)
+        if not key and cats:                 # لم يُطلب بعد: مفتاح باقته من أقسامه
+            key = (host_key(cfg.host), kind, _bouquet(cats[1]))
+        if key:
+            _lists.pop(key, None)
+
+
+def has_lists(cfg, kind):
+    return _cached_lists(cfg, kind) is not None
 
 
 _info = OrderedDict()                # (الهوست، الإجراء، المعرّف) ← (الوقت، الرد)
@@ -447,7 +533,7 @@ _info = OrderedDict()                # (الهوست، الإجراء، المع
 
 def _details(cfg, action, field, iid):
     """تفاصيل فيلمٍ أو مسلسل (تُحفظ ساعات) — وفشلها None لا خطأ: تبقى بيانات القائمة."""
-    key = (cfg, action, iid)
+    key = (host_key(cfg.host), action, iid)      # تفاصيل العنصر واحدةٌ لكل مشتركي السيرفر
     with _lock:
         hit = _info.get(key)
         if hit and time.time() - hit[0] < INFO_TTL:
@@ -471,7 +557,7 @@ def _details(cfg, action, field, iid):
 def reset():
     """تفريغ الذاكرة (للاختبارات)."""
     with _lock:
-        for s in (_accounts, _cats, _lists, _info, _rate):
+        for s in (_accounts, _cats, _lists, _list_keys, _info, _rate):
             s.clear()
         _loading.clear()
 
@@ -597,10 +683,11 @@ def forget_empty(cfg):
     with _lock:
         _accounts.pop(cfg, None)
         for kind in TYPES:
-            for store, empty in ((_cats, lambda v: not v), (_lists, lambda v: not v.items)):
-                hit = store.get((cfg, kind))
+            for store, key, empty in ((_cats, (cfg, kind), lambda v: not v),
+                                      (_lists, _list_keys.get((cfg, kind)), lambda v: not v.items)):
+                hit = store.get(key) if key else None
                 if hit and empty(hit[1]):
-                    store.pop((cfg, kind), None)
+                    store.pop(key, None)
 
 
 def parse_extra(s):

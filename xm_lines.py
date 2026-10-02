@@ -933,6 +933,39 @@ def stremio_set_host(acct, old_hk, new_host, force=False):
     return len(recs), new
 
 
+STREMIO_WARM_EVERY = int(os.environ.get("STREMIO_WARM_EVERY", "1200"))   # ثوانٍ؛ 0 = بلا تحميلٍ مسبق
+
+
+def stremio_warm_cfgs():
+    """اشتراكٌ لكل سيرفرٍ في حسابات Stremio (أحدث حسابٍ لم يرفضه السيرفر، على هوسته بعد التحويل) — تُحمَّل به
+    قوائم باقته مسبقًا فيجدها البحث والتصفّح."""
+    best = {}
+    for r in stremio_accounts.all_records(DATA_DIR):
+        cfg = stremio_cfg(r.get("token")) if r.get("token") else None
+        if not cfg:
+            continue
+        hk, score = stremio_addon.host_key(cfg.host), (r.get("status") != "رُفض", r.get("ts") or 0)
+        if hk not in best or score > best[hk][0]:
+            best[hk] = (score, cfg)
+    return [cfg for _, cfg in best.values()]
+
+
+def start_stremio_warm():
+    """قوائم سيرفرات الحسابات في الذاكرة من التشغيل وتُجدَّد كل حين (‏STREMIO_WARM_EVERY) — البحث فوريٌّ من أول طلب."""
+    if STREMIO_WARM_EVERY <= 0:
+        return
+
+    def run():
+        while True:
+            try:
+                for cfg in stremio_warm_cfgs():
+                    stremio_addon.warm(cfg)
+            except Exception as e:                      # لا يُسقط شيئًا
+                print(f"تحميل قوائم Stremio مسبقًا: {e}", flush=True)
+            time.sleep(STREMIO_WARM_EVERY)
+    threading.Thread(target=run, daemon=True, name="stremio-warm").start()
+
+
 def stremio_token_ok(cfg, key):
     """رمز إضافةٍ ساري؟ يوزرٌ حسابه الجاهز مقفل: رمز قفله الحالي وحده (رابط اليوزر العام ونسخٌ نُقلت بقفلٍ قديم
     تتوقف)؛ وغير المقفل: رمزه العام كما كان."""
@@ -5756,6 +5789,7 @@ def web():
     start_reports()
     start_embedded_reader()
     start_mail()
+    start_stremio_warm()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 

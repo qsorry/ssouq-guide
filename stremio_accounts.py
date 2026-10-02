@@ -320,6 +320,13 @@ def owned(data_dir, acct_id, gate_id, username):
     return None
 
 
+def all_records(data_dir):
+    """كل حسابات Stremio (لكل العملاء) بلا كلمات مرورها — لتحميل قوائم سيرفراتها مسبقًا."""
+    with _lock:
+        d = _load(data_dir)
+    return [{k: v for k, v in r.items() if k != "password"} for r in d.values() if isinstance(r, dict)]
+
+
 def owned_all(data_dir, acct_id):
     """كل حسابات Stremio التي أنشأها هذا الحساب (كلمات المرور مفكوكة) — لصفحة Stremio: الأحدث أولًا."""
     with _lock:
