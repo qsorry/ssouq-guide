@@ -171,15 +171,27 @@ def check_redirects(data_dir, con, sample_ids, limit=200):
             else:
                 fails.append({"path": pre + r["path"], "code": code, "location": hdr.get("Location"), "expected": pre + r["target"]})
     audit = audit_redirect_targets(data_dir, con) if bad_target else {"total_non_live": 0, "audited": 0, "audit_complete": True, "by_classification": {c: 0 for c in CLASSES}, "with_identity_alternative": 0, "route_404": 0, "items": []}
+    unresolved = [it for it in audit["items"] if not it["resolved_to_final"]]        # 404 · مسارٌ مفقود · سلسلة · كيانٌ مفقود · مدمجٌ لا يصل إلى canonical النهائي
+    unavailable = [it for it in audit["items"] if it["classification"] == "TARGET_UNAVAILABLE_BUT_CANONICAL"]
+    canonical_live = [it for it in audit["items"] if it["route_status"] == 200 and it["canonical_self"] and not it["route_chain"]]
     n_before = len(rows)
     n_after = con.execute("SELECT COUNT(*) FROM redirect").fetchone()[0]
     return {"total": n_before, "ar_rows": len(ar_rows), "en_rows": len(en_rows), "chains": len(chains), "chain_examples": chains[:10],
             "targets_not_live": len(bad_target), "targets_not_live_examples": bad_target[:10], "targets_not_live_audit": audit, "en_rows_mismatching_ar": en_mismatch[:10],
             "served_checked": served, "served_direct": direct, "failures": fails[:20], "created_during_qa": n_after - n_before,
+            "catalog_availability": {"targets_not_in_live_set": len(bad_target), "targets_available_false": len(unavailable), "distinct_entities_available_false": len({it["target_entity_id"] for it in unavailable}),
+                                     "blocker": False, "note": "availability is a catalog state (available=0 = absent from all servers now), not a routing fault; detail in targets_not_live_audit"},
             "tests": [_t("redirect_chain_zero", not chains, {"chains": len(chains)}),
-                      _t("redirect_targets_live", not bad_target, {"not_live": len(bad_target), "by_classification": audit["by_classification"], "with_identity_alternative": audit["with_identity_alternative"]}),
-                      _t("redirect_targets_resolve", not any(audit["by_classification"].get(c) for c in ("TARGET_MERGED", "TARGET_REDIRECT_CHAIN", "TARGET_ROUTE_MISSING", "TARGET_ENTITY_MISSING", "OTHER")),
-                         {c: audit["by_classification"].get(c, 0) for c in CLASSES}),
+                      # يفشل فقط عند: 404 · مسارٌ مفقود · 301 إلى تحويلٍ آخر · كيانٌ مفقود · مدمجٌ لا يصل إلى canonical النهائي. 200 canonical = ناجح ولو available=0
+                      _t("redirect_targets_resolve", not unresolved, {"unresolved": len(unresolved), "by_classification": {c: audit["by_classification"].get(c, 0) for c in CLASSES},
+                                                                      "examples": [{"to": it["to"], "class": it["classification"], "route": it["route_status"]} for it in unresolved[:5]]}),
+                      # كل هدفٍ خارج مجموعة «الحيّ» بتعريف القاعدة: المسار 200 والصفحة تعلن canonical نفسه وبلا سلسلة (أو 301 مباشر إلى canonical النهائي لمدمج)
+                      _t("redirect_targets_canonical_live", all(it["resolved_to_final"] for it in audit["items"]),
+                         {"checked": audit["audited"], "http_200_canonical_self": len(canonical_live), "direct_301_to_final": sum(1 for it in audit["items"] if it["route_status"] == 301 and it["resolved_to_final"]),
+                          "failing": len(unresolved), "audit_complete": audit["audit_complete"]}),
+                      # مقياسٌ لا blocker: كم هدفًا كيانه غائبٌ من السيرفرات الآن (available=0) مع بقائه canonical نفسه
+                      _t("redirect_targets_catalog_availability", True, {"targets_available_false": len(unavailable), "distinct_entities": len({it["target_entity_id"] for it in unavailable}),
+                                                                          "with_identity_alternative": audit["with_identity_alternative"], "metric_only": True}),
                       _t("redirect_en_rows_match_ar", not en_mismatch, {"mismatch": len(en_mismatch)}),
                       _t("redirect_served_direct", not fails and (served > 0 or not ar_rows), {"checked": served, "direct": direct, "failures": len(fails)}),
                       _t("no_new_redirects", n_after == n_before, {"before": n_before, "after": n_after})]}
@@ -261,6 +273,12 @@ def audit_redirect_targets(data_dir, con, limit=None):
             item["final_canonical_entity_id"] = fin["id"]
             item["final_canonical_url"] = SITE + seo_pages._path(fin, lang)
             item["final_available"] = bool(fin["available"])
+        item["canonical_self"] = False                 # الصفحة المخدومة تعلن canonical = رابط الهدف نفسه (من الرسم لا من القاعدة)
+        if trow and code == 200:
+            res = seo_pages.render_entity(con, data_dir, trow["type"], trow["slug"], P.lang_of(lang), seo_db.settings(con))
+            item["canonical_self"] = bool(res and res[0] == "page" and res[1]["canonical"] == SITE + r["target"])
+        item["resolved_to_final"] = bool(code == 200 and item["canonical_self"] and (not fin or fin["id"] == (trow["id"] if trow else None))) or bool(
+            code == 301 and not chain and item["final_canonical_url"] and loc == item["final_canonical_url"][len(SITE):])
         strong = [a for a in item["canonical_alternative"] if a["evidence"] != "same name only (no identity evidence)"]
         if trow and trow["merged_into"] is not None:
             cls = "TARGET_MERGED"
