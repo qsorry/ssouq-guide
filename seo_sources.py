@@ -635,6 +635,27 @@ def apply_seasons(con, data_dir, cid, st, now=None):
 
 
 # ================= Xtream =================
+def classify_provider_error(msg):
+    """تصنيف خطأ لوحة Xtream/TMDB لتقرير الفحص: من رمز HTTP في الرسالة («xtream 503») أو نصّ الشبكة — ليس فشل مطابقة ولا
+    بياناتٍ: لا يُعلَّم محتوًى مفقودًا بسببه، والإثراء يبقي الصفّ pending بتباعده (لا دورة إعادة جماعية)."""
+    m = re.search(r"\b(\d{3})\b", msg or "")
+    code = int(m.group(1)) if m else None
+    if code in (401, 403):
+        cls = "authentication"
+    elif code == 429:
+        cls = "rate_limit"
+    elif code and code >= 500:
+        cls = "provider_unavailable"
+    elif code and code >= 400:
+        cls = "client_error"
+    elif re.search(r"timed out|timeout|refused|unreachable|name or service|reset|EOF|ssl", msg or "", re.I):
+        cls = "network"
+    else:
+        cls = "unknown"
+    return {"class": cls, "http_status": code, "severity": "temporary" if cls in ("provider_unavailable", "rate_limit", "network") else "needs_attention",
+            "effect": "blocked for now: no content marked missing or unmatched because of this; enrichment rows keep state pending with backoff; probe is read-only"}
+
+
 def _creds(data_dir, service_key):
     url = C.url_of(data_dir, service_key)
     return C.xtream_of(url) if url else None
@@ -1094,9 +1115,20 @@ def splits_report(con, since):
         if not origins and new:                         # بندٌ قديم بلا «from»: الأصل المحتمل = كيانٌ حيّ بالاسم نفسه على سيرفرٍ آخر
             origins = [x[0] for x in con.execute("SELECT DISTINCT c.id FROM content c JOIN content_alias a ON a.content_id=c.id WHERE a.alias_norm=? AND c.id!=? AND c.merged_into IS NULL LIMIT 3", (M.norm(new["title"]), cid))]
         olds = [dict(con.execute("SELECT id, slug, title, year, tmdb_id FROM content WHERE id=?", (o,)).fetchone() or {"id": o}) for o in origins]
-        examples.append({"old_entity": olds, "new_entity": dict(new) if new else {"id": cid}, "reason": p.get("cause") or ["legacy (cause not recorded)"], "pair": p.get("pair"),
-                         "services": p.get("services"), "old_slug": [o.get("slug") for o in olds], "new_slug": new["slug"] if new else None,
-                         "old_url_changed": False, "redirect": None, "note": "split = new entity with a new URL; the origin keeps its URL (no redirect involved)"})
+        final = dict(new) if new else {"id": cid}
+        hops = 0
+        while final.get("merged_into") and hops < 10:                   # الكيان النهائي بعد الدمج (إن دُمج الجديد لاحقًا بالمعرّف)
+            final = dict(con.execute("SELECT id, slug, title, year, tmdb_id, merged_into FROM content WHERE id=?", (final["merged_into"],)).fetchone()); hops += 1
+        typ = con.execute("SELECT type FROM content WHERE id=?", (cid,)).fetchone()
+        new_path = seo_db.PATHS[typ["type"]].format(slug=new["slug"]) if new and typ else None
+        red = con.execute("SELECT target FROM redirect WHERE path=?", (new_path,)).fetchone() if new_path else None
+        final_path = seo_db.PATHS[typ["type"]].format(slug=final["slug"]) if typ and final.get("slug") else None
+        examples.append({"old_entity": olds, "new_entity": dict(new) if new else {"id": cid}, "final_entity": {k: final.get(k) for k in ("id", "slug", "tmdb_id")},
+                         "reason": p.get("cause") or ["legacy (cause not recorded)"], "pair": p.get("pair"), "services": p.get("services"),
+                         "old_slug": [o.get("slug") for o in olds], "new_slug": new["slug"] if new else None, "final_slug": final.get("slug"),
+                         "old_url_changed": False, "redirect": {"from": new_path, "to": red["target"], "direct_to_final": red["target"] == final_path,
+                                                                "chain": bool(con.execute("SELECT 1 FROM redirect WHERE path=?", (red["target"],)).fetchone())} if red else None,
+                         "canonical": final_path, "note": "split = new entity with a new URL; the origin keeps its URL; if the new one is later merged by verified id its URL redirects to the final canonical"})
     return {"total": len(rows), "by_cause": by_cause, "by_service": by_service, "by_day": by_day, "examples": examples,
             "url_changes": 0, "redirects_created": 0}
 
@@ -1322,7 +1354,7 @@ def probe(data_dir, n=20):
                     try:
                         d = _xt_json(con, xt, action, st, write=False, **{idf: ident})
                     except ConnectionError as e:
-                        rep[kind] = {"error": _scrub(str(e), secrets(data_dir))}
+                        rep[kind] = {"error": _scrub(str(e), secrets(data_dir)), **classify_provider_error(str(e))}
                         break
                     info = (d or {}).get("info") or {}
                     if not info:
@@ -1459,11 +1491,18 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                 "tmdb_matched": sum(1 for w in works if w.get("match") == "tmdb"),
                 "turkish": _tally(works, "turkish"), "anime": _tally(works, "anime"),
             }
-            ident = {"splits": splits_report(con, prev_at), "slug_changes": slug_changes_report(con, prev_at),
+            builds = [b for b in (seo_db.state(con, "reconciliations") or []) if b.get("at", 0) > prev_at]
+            ident = {"definitions": {
+                         "split_reviews_opened_since_last_bundle": "عدد بنود split_entity التي فُتحت منذ اللقطة السابقة — عبر **كل** البناءات بينهما (بناءٌ كل عشر دقائق عند تغيّر فهرس)، لا آخر بناء وحده",
+                         "builds_since_last_bundle": "تسوية كل بناءٍ منذ اللقطة السابقة (قبل/بعد/جديد/انفصال/مدمج/غاب)؛ مجموع «انفصال» فيها = بنود الانقسام الجديدة",
+                         "reconciliation": "آخر بناءٍ وحده"},
+                     "builds_since_last_bundle": builds,
+                     "split_sum_over_builds": sum(b.get("split", 0) for b in builds),
+                     "splits": splits_report(con, prev_at), "slug_changes": slug_changes_report(con, prev_at),
                      "redirect_chains": con.execute("SELECT COUNT(*) FROM redirect a JOIN redirect b ON b.path=a.target").fetchone()[0],   # يجب أن يكون صفرًا: القديم ← النهائي مباشرة
                      "stream_id_reused_last_build": (seo_db.state(con, "reconciliation") or {}).get("stream_id_reused"),
                      "merged_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='merged_entities' AND created_at>?", (prev_at,)).fetchone()[0],
-                     "split_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='split_entity' AND created_at>?", (prev_at,)).fetchone()[0],
+                     "split_reviews_opened_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='split_entity' AND created_at>?", (prev_at,)).fetchone()[0],
                      "slug_changed_since_last_bundle": con.execute("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL AND at>?", (prev_at,)).fetchone()[0],
                      "redirects_added_since_last_bundle": con.execute("SELECT COUNT(*) FROM redirect WHERE created_at>?", (prev_at,)).fetchone()[0],
                      "in_sample": [{"id": w["id"], "slug": w.get("slug"), "merged_into": w.get("merged_into")} for w in works if w.get("merged_into") or (w.get("slug_prev"))]}
@@ -1482,19 +1521,26 @@ def bundle(data_dir, out, n=20):
     import contextlib
     import io
     import seo_build
+    import traceback
     os.makedirs(out, exist_ok=True)
     secs = secrets(data_dir)
     stamp = meta(data_dir)
+    stamp["bundle_id"] = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())      # معرّف اللقطة الواحد في الملفات الأربعة
     written = {}
     bundle_errors = []
+    for name in BUNDLE_FILES:                      # أولًا: لا يبقى ملفٌ من لقطةٍ سابقة — كلٌّ يُستبدل بختم هذه اللقطة ولو فشل جزءٌ لاحقًا
+        with open(os.path.join(out, name), "w", encoding="utf-8") as f:
+            f.write(("# " if name.endswith(".txt") else "") + json.dumps({**stamp, "status": "not generated yet (bundle in progress or aborted)"}, ensure_ascii=False) + "\n")
 
     def dump_json(name, fn):
         try:
             data = fn()
+            text = json.dumps({"meta": stamp, **data} if isinstance(data, dict) else {"meta": stamp, "data": data}, ensure_ascii=False, indent=1, default=str)
         except Exception as ex:  # noqa: BLE001
-            data = {"error": f"{type(ex).__name__}: {str(ex)[:300]}"}
-            bundle_errors.append({"file": name, "error": data["error"]})
-        text = _scrub(json.dumps({"meta": stamp, **data} if isinstance(data, dict) else {"meta": stamp, "data": data}, ensure_ascii=False, indent=1), secs)
+            err = f"{type(ex).__name__}: {str(ex)[:300]}"
+            bundle_errors.append({"file": name, "error": err, "traceback": traceback.format_exc()[-1500:]})
+            text = json.dumps({"meta": stamp, "error": err, "traceback": traceback.format_exc()[-1500:]}, ensure_ascii=False, indent=1)
+        text = _scrub(text, secs)
         with open(os.path.join(out, name), "w", encoding="utf-8") as f:
             f.write(text)
         written[name] = len(text)
@@ -1503,7 +1549,8 @@ def bundle(data_dir, out, n=20):
         try:
             text = fn()
         except Exception as ex:  # noqa: BLE001
-            text = f"error: {type(ex).__name__}: {str(ex)[:300]}"
+            text = f"error: {type(ex).__name__}: {str(ex)[:300]}\n{traceback.format_exc()[-1500:]}"
+            bundle_errors.append({"file": name, "error": f"{type(ex).__name__}: {str(ex)[:300]}"})
         head = "# " + json.dumps(stamp, ensure_ascii=False) + "\n"
         with open(os.path.join(out, name), "w", encoding="utf-8") as f:
             f.write(_scrub(head + text + "\n", secs))
@@ -1524,13 +1571,15 @@ def bundle(data_dir, out, n=20):
                     bundle_errors.append({"file": "probe.json", "service": k, "kind": kind, "error": v[kind]["error"]})
         return r
     dump_json("probe.json", probe_)                                     # قراءة
-    dump_json("sample.json", lambda: sample(data_dir, bundle_errors=bundle_errors))   # الاستثناء الوحيد: إثراء الثلاثين
-    dump_text("report.txt", lambda: seo_build.report(data_dir))         # قراءة
+    dump_text("report.txt", lambda: seo_build.report(data_dir))         # قراءة — قبل العيّنة: التقرير يصف القاعدة التي تُعيَّن منها
     dump_text("search-report.txt", search_report)                       # قراءة
-    return {"out": out, "files": written, **stamp}
+    dump_json("sample.json", lambda: sample(data_dir, bundle_errors=bundle_errors))   # الاستثناء الوحيد: إثراء الثلاثين
+    with open(os.path.join(out, "bundle.json"), "w", encoding="utf-8") as f:    # ملخّص اللقطة: الختم والملفات وأخطاؤها
+        f.write(json.dumps({"meta": stamp, "files": written, "errors": bundle_errors}, ensure_ascii=False, indent=1))
+    return {"out": out, "files": written, "errors": bundle_errors, **stamp}
 
 
-BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt")
+BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "bundle.json")
 _bundling = {}
 
 
@@ -1552,7 +1601,8 @@ def start_bundle(data_dir, n=20):
             res = bundle(data_dir, bundle_dir(data_dir), n)
             _state[k + ":bundle"] = {"at": int(time.time()), "running": False, "ok": True, **res}
         except Exception as e:  # noqa: BLE001
-            _state[k + ":bundle"] = {"at": int(time.time()), "running": False, "ok": False, "error": str(e)[:300]}
+            import traceback
+            _state[k + ":bundle"] = {"at": int(time.time()), "running": False, "ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}", "traceback": traceback.format_exc()[-1500:]}
     t = _bundling[k] = threading.Thread(target=run_, daemon=True)
     t.start()
     return True

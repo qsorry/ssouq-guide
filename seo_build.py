@@ -224,13 +224,17 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     for r in con.execute("SELECT content_id, alias_norm FROM content_alias"):
         alias_of.setdefault(r["content_id"], set()).add(r["alias_norm"])
     stream_reuse = []                             # رقم بثٍّ عاد باسمٍ آخر تمامًا: اللوحة أعادت استعماله لعملٍ آخر — لا يُربط
+    known_cache = {}
 
     def known(m):
         """الكيانات التي رُبط بها عضوٌ من قبل: بمفتاحه، وبكل أرقام بثّه (مدخلاتٌ كانت كياناتٍ مفرّقة بالمواسم ثم طُويت
         في عنصرٍ واحد: كلها تُعرَف فتُدمج بتحويلٍ ومراجعة — لا تُترك غائبةً بلا أثر). رقم البثّ وحده لا يكفي: يجب أن يبقى
         الاسم من أسماء الكيان، وإلا فاللوحة أعادت استعمال الرقم لعملٍ آخر (6616: «محكوم - السجين» ← «المحنك»)."""
-        out = set()
-        k = links.get((m["service"], m["kind"], m["local_key"]))
+        ck = (m["service"], m["kind"], m["local_key"])
+        if ck in known_cache:                     # يُسأل مرتين (تثبيت الهوية ثم الحلقة): نتيجةٌ واحدة وتسجيلٌ واحد لإعادة الاستعمال
+            return known_cache[ck]
+        out = known_cache[ck] = set()
+        k = links.get(ck)
         if k:
             out.add(k)
         nm = M.norm(m["name"])
@@ -261,6 +265,33 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     seo_sources.seed_rules(con, now)
     rls = seo_sources.rules(con)
     st = seo_db.settings(con)
+    # هوية TMDB المُتحقَّقة لا تُفكّ بغياب دليل القوائم: عناقيد أعضاؤها كانوا معًا في كيانٍ واحد بمعرّفٍ مُتحقَّق تبقى معًا ما لم
+    # **يتناقض** الدليل (سنتان/معرّفان مختلفان أو قصّتان) — وإلا انقسم عضو فالكون كل بناء ثم عاد مدمجًا بالمعرّف نفسه (دوّامة
+    # «انفصال ← دمج» برابطٍ جديد وتحويلٍ جديد في كل مرة، كما في Prison Break وOne Piece).
+    verified = {r[0] for r in con.execute("SELECT id FROM content WHERE match='tmdb' AND tmdb_id IS NOT NULL AND merged_into IS NULL")}
+    owners, kept_by_identity = {}, 0
+    for ci, members_idx in enumerate(clusters):
+        for k in {canon(k) for i in members_idx for k in known(items[i])} & verified:
+            owners.setdefault(k, []).append(ci)
+    parent = list(range(len(clusters)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for k, cis in owners.items():
+        base = cis[0]
+        for ci in cis[1:]:
+            sc, _ = M.pair_score(items[clusters[base][0]], items[clusters[ci][0]], st)
+            if sc is not None and sc != M.DISTINCT and find(ci) != find(base):
+                parent[find(ci)] = find(base)
+                kept_by_identity += 1
+    if kept_by_identity:
+        grouped = {}
+        for ci, members_idx in enumerate(clusters):
+            grouped.setdefault(find(ci), []).extend(members_idx)
+        clusters = list(grouped.values())
     cid_of = {}                                   # فهرس العضو ← معرّف الكيان
     inserted, merged_now = set(), set()
     claimed_by = {}                               # الكيان ← فهارس أعضاء العنقود الذي ادّعاه في هذا البناء
@@ -328,7 +359,9 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
              "merged_total": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NOT NULL").fetchone()[0]}
     recon["explained"] = recon["inserted"] + recon["returned"] - recon["merged"] - recon["went_unavailable"] == recon["delta"]
     recon["stream_id_reused"] = len(stream_reuse)
+    recon["kept_by_verified_identity"] = kept_by_identity
     seo_db.set_state(con, "reconciliation", recon)
+    seo_db.set_state(con, "reconciliations", ((seo_db.state(con, "reconciliations") or []) + [recon])[-100:])   # تاريخ البناءات: يفسّر العدّادات بين لقطتين
     seo_db.set_state(con, "stream_reuse", stream_reuse[:200])
     seo_db.set_state(con, "signatures", sigs)
     seo_db.set_state(con, "built_at", now)

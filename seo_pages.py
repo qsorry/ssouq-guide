@@ -286,6 +286,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         n_official = None                        # سجلّ TMDB ناقص (حلقة واحدة لعملٍ بعشرات الحلقات في القوائم): لا يُعرض رقمًا رسميًّا
     n_eps = n_official or n_listed
     n_seasons = row["seasons_official"] if n_official and row["seasons_official"] else len([s for s in seasons if s["number"] > 0])
+    n_specials = next((s["episodes_official"] or 0 for s in seasons if s["number"] == 0), 0)   # الموسم 0 = الحلقات الخاصة: صفٌّ مستقل، لا موسم
     _srv_names = [tr.name(s) for s in C.servers(_services.data_dir) if s["key"] in {ln[0] for ln in con.execute("SELECT service_key FROM content_service WHERE content_id=? AND present=1", (row["id"],))}]
     listed_tail = tr(f" مدرجة على {_srv_names[0]}", f" listed on {_srv_names[0]}") if len(_srv_names) == 1 else tr(" في القوائم", " as listed")
     eps_label = (lambda n: tr.count(n, "episodes") + ("" if n_official else listed_tail))
@@ -332,6 +333,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
              (tr("التقييم", "Rating"), f"{row['rating']:g}/10" if row["rating"] else ""),
              (tr("الحالة", "Status"), tr("مستمر", "Ongoing") if row["status"] in ("Returning Series", "In Production") else tr("منتهٍ", "Ended") if row["status"] in ("Ended", "Canceled") else "") if typ == "series" else ("", ""),
              (tr("المواسم", "Seasons"), str(n_seasons) if seasons else ""), (tr("الحلقات", "Episodes"), (str(n_eps) if n_official else eps_label(n_eps)) if n_eps else ""),
+             (tr("الحلقات الخاصة", "Specials"), str(n_specials) if n_specials else ""),
              (ROLE_NAMES[director["role"]][tr.en] if director else "", f'<a href="{_esc(_person_path(director["role"], director["slug"], tr.code))}">{_esc(_pname(director, tr))}</a>' if director else "")]
     facts = [(k, v) for k, v in facts if k and v]
     facts_html = "".join(f"<dt>{_esc(k)}</dt><dd>{v if v.startswith('<a') else _esc(v)}</dd>" for k, v in facts)
