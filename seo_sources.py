@@ -1601,7 +1601,7 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
 
 
 def bundle(data_dir, out, n=20):
-    """لقطةٌ للمراجعة: probe وreport وsearch-report **قراءةٌ صرفة**؛ وsample وحده يثري أعماله الثلاثين. كل ملفٍ مختومٌ بالوقت
+    """لقطةٌ للمراجعة: probe وreport وsearch-report وqa (الفحص النهائي بخريطةٍ تجريبية) **قراءةٌ صرفة**؛ وsample وحده يثري أعماله الثلاثين. كل ملفٍ مختومٌ بالوقت
     ونسخة الكود، ومنقًّى من المفتاح وبيانات اللوحات. فشل جزءٍ لا يمنع كتابة الباقي (يُكتب خطؤه مكانه)."""
     import contextlib
     import io
@@ -1620,6 +1620,12 @@ def bundle(data_dir, out, n=20):
     for name in BUNDLE_FILES:                      # أولًا: لا يبقى ملفٌ من لقطةٍ سابقة — كلٌّ يُستبدل بختم هذه اللقطة ولو فشل جزءٌ لاحقًا
         with open(os.path.join(out, name), "w", encoding="utf-8") as f:
             f.write(("# " if name.endswith(".txt") else "") + json.dumps({**stamp, "status": "not generated yet (bundle in progress or aborted)"}, ensure_ascii=False) + "\n")
+    for name in BUNDLE_EXTRA:
+        try:
+            os.remove(os.path.join(out, name))
+        except OSError:
+            pass
+    probe_result = {}
 
     def dump_json(name, fn):
         try:
@@ -1652,6 +1658,7 @@ def bundle(data_dir, out, n=20):
         return buf.getvalue()
     def probe_():
         r = probe(data_dir, n)
+        probe_result.update(r if isinstance(r, dict) else {})
         if isinstance(r, dict) and r.get("error"):
             bundle_errors.append({"file": "probe.json", "error": r["error"]})
         for k, v in (r.items() if isinstance(r, dict) else []):
@@ -1663,13 +1670,21 @@ def bundle(data_dir, out, n=20):
     stage("report"); dump_text("report.txt", lambda: seo_build.report(data_dir))         # قراءة — قبل العيّنة: التقرير يصف القاعدة التي تُعيَّن منها
     stage("search-report"); dump_text("search-report.txt", search_report)                # قراءة
     stage("sample"); dump_json("sample.json", lambda: sample(data_dir, bundle_errors=bundle_errors))   # الاستثناء الوحيد: إثراء الثلاثين
+    import seo_qa
+    stage("qa"); dump_json("qa.json", lambda: seo_qa.run(data_dir, probe=probe_result, sitemap_out=os.path.join(out, "sitemap-staging.xml")))   # قراءة: الفحص النهائي وخريطةٌ تجريبية لا تُخدم
+    for name in BUNDLE_EXTRA:
+        try:
+            written[name] = os.path.getsize(os.path.join(out, name))
+        except OSError:
+            pass
     _bundle_stage.pop(os.path.abspath(data_dir), None)
     with open(os.path.join(out, "bundle.json"), "w", encoding="utf-8") as f:    # ملخّص اللقطة: الختم والملفات وأخطاؤها
         f.write(json.dumps({"meta": stamp, "files": written, "errors": bundle_errors}, ensure_ascii=False, indent=1))
     return {"out": out, "files": written, "errors": bundle_errors, **stamp}
 
 
-BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "bundle.json")
+BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "qa.json", "bundle.json")
+BUNDLE_EXTRA = ("sitemap-staging.xml",)       # خريطة الموقع التجريبية من الفحص النهائي: تُنزَّل من البطاقة ولا تُخدم على الموقع
 _bundling = {}
 _bundle_stage = {}            # مسار البيانات ← دالة تحديث مرحلة اللقطة (تستعملها العيّنة لعدّ أعمالها)
 
@@ -1704,7 +1719,7 @@ def bundle_state(data_dir):
     k = os.path.abspath(data_dir)
     d = bundle_dir(data_dir)
     files = []
-    for n in BUNDLE_FILES:
+    for n in BUNDLE_FILES + BUNDLE_EXTRA:
         try:
             st_ = os.stat(os.path.join(d, n))
             files.append({"name": n, "size": st_.st_size, "at": int(st_.st_mtime)})
@@ -1716,11 +1731,11 @@ def bundle_state(data_dir):
 
 def bundle_file(data_dir, name):
     """ملفٌ من ملفات المراجعة بالاسم (من القائمة وحدها) ← (bytes, نوعه) أو None."""
-    if name not in BUNDLE_FILES:
+    if name not in BUNDLE_FILES + BUNDLE_EXTRA:
         return None
     try:
         with open(os.path.join(bundle_dir(data_dir), name), "rb") as f:
-            return f.read(), ("application/json; charset=utf-8" if name.endswith(".json") else "text/plain; charset=utf-8")
+            return f.read(), ("application/json; charset=utf-8" if name.endswith(".json") else "application/xml; charset=utf-8" if name.endswith(".xml") else "text/plain; charset=utf-8")
     except OSError:
         return None
 
