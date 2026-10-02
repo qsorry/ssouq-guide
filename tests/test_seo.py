@@ -34,6 +34,7 @@ import mock_tmdb  # noqa: E402
 import mock_xtream  # noqa: E402
 import content as C  # noqa: E402
 import seo_pages  # noqa: E402
+import seo_qa  # noqa: E402
 import seo_search  # noqa: E402
 import seo_sources  # noqa: E402
 import seo_build  # noqa: E402
@@ -354,7 +355,11 @@ def live():
                 break
             time.sleep(0.2)
         check("الملفات الأربعة مكتوبة في data/content/seo-review (بلا مفتاح: العيّنة تُسجَّل skipped لا فشلًا)",
-              not j["running"] and {f["name"] for f in j["files"]} == set(seo_sources.BUNDLE_FILES) and j["last"].get("ok") is True, b[:160])
+              not j["running"] and {f["name"] for f in j["files"]} == set(seo_sources.BUNDLE_FILES + seo_sources.BUNDLE_EXTRA) and j["last"].get("ok") is True, b[:160])
+        c, b = req(base, "/admin/api/content/seo/bundle/sitemap-staging.xml", auth=AUTH)
+        check("خريطة الموقع التجريبية تُنزَّل من البطاقة (XML) ولا تُخدم على الموقع", c == 200 and b.startswith("<?xml") and "<urlset" in b, b[:120])
+        c, b = req(base, "/admin/api/content/seo/bundle/qa.json", auth=AUTH)
+        check("qa.json بختمه وملخّص اختباراته", c == 200 and '"generated_at"' in b and '"tests"' in b and '"indexnow"' in b, b[:160])
         c, b = req(base, "/admin/api/content/seo/bundle/sample.json", auth=AUTH)
         check("تنزيل sample.json للمدير بختمه", c == 200 and '"generated_at"' in b and '"works"' in b)
         c, _ = req(base, "/admin/api/content/seo/bundle/sample.json")
@@ -971,6 +976,25 @@ def unit_sample3_cases():
               and pbe["available_season_count"] == len([k for k, v in pbe["season_episode_count"].items() if k != "0" and v["available"]]) and pbe["available_season_count"] == 2, str((pbp, pbe["season_episode_count"])))
         check("صفحات الأشخاص والشركات في العيّنة: كل فئة مفحوصة باللغتين (تُرسم، أعمالٌ وروابط، canonical، hreflang، schema، noindex، ترقيم)",
               smp["people_pages"] and all(c.get("renders") and c["links_to_works"] and c["breadcrumb"] and c["schema"] and c["noindex"] and c["paginated_ok"] for row in smp["people_pages"] for c in row["checks"].values()), str(smp["people_pages"])[:400])
+        seo_db.set_setting(con, "preview", True); con.commit()
+        snap_q = lambda: [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "content_alias", "provenance")]   # noqa: E731
+        s_before = snap_q()
+        qa = seo_qa.run(d, {"movie": 2, "series": 3, "turkish": 1, "anime": 1}, probe={"casper": {"movie": {"error": "xtream 503", **seo_sources.classify_provider_error("xtream 503")}}},
+                        sitemap_out=os.path.join(d, "sitemap-staging.xml"))
+        qpb = next(w for w in qa["works"] if w["slug"] == live[0][1])
+        qt = {t["test"]: t for t in qpb["tests"]}
+        check("FINAL QA: Prison Break (فالكون صفّان) — كيانٌ واحد، رابطٌ ثابت، canonical، عربي/إنجليزي، hreflang متبادل، schema، التوفّر بلا تكرار، فالكون مرةً واحدة، لا روابط مكرّرة، noindex",
+              all(t["ok"] for t in qt.values()) and qt["falcon_once"]["detail"] and '"falcon_rows": 2' in qt["falcon_once"]["detail"], str([t for t in qt.values() if not t["ok"]])[:500])
+        check("FINAL QA: العيّنة بمجموعاتها، كل الاختبارات ناجحة، ولا blocker", qa["ok"] and qa["tests"]["fail"] == 0 and qa["sample"]["by_group"]["series"] == 3 and qa["blockers"] == [], str((qa["tests"], qa["blockers"]))[:600])
+        rd = qa["redirects"]
+        check("FINAL QA: التحويلات كلها مباشرة إلى صفحةٍ حيّة (سلاسل 0)، تُخدم 301 باللغتين، ولم يُنشأ تحويلٌ جديد", rd["chains"] == 0 and rd["targets_not_live"] == 0 and rd["served_direct"] == rd["served_checked"] >= 4 and rd["created_during_qa"] == 0, str(rd)[:400])
+        sm = qa["sitemap"]
+        check("FINAL QA: خريطة الموقع التجريبية في ملفٍ لا يُخدم: canonical فقط، لا تكرار، لا استعلامات/تصفّح، لا مسارات تحويل، وتعدّ الكيانات المستحقّة باللغتين",
+              os.path.exists(os.path.join(d, "sitemap-staging.xml")) and all(t["ok"] for t in sm["tests"]) and sm["urls"] >= 2 and sm["urls"] == sm["by_lang"]["ar"] + sm["by_lang"]["en"] and not sm["served"], str({k: v for k, v in sm.items() if k != "tests"})[:300])
+        ix = qa["indexnow"]
+        check("FINAL QA: IndexNow تجربةٌ بلا إرسال: لا طلب، الروابط على النطاق، والمفتاح لا يُولَّد في الفحص", not ix["sent"] and all(t["ok"] for t in ix["tests"]) and ix["key_present"] is False and ix["payload_preview"]["urlList_count"] == sm["urls"], str(ix)[:300])
+        check("FINAL QA: لا أخطاء rps جديدة، وكاسبر 503 = provider_unavailable بلا غيابٍ ولا دمج، والفحص قراءةٌ صرفة (الأعداد قبل = بعد)",
+              qa["queue"]["new_rps_errors_since_last_bundle"] == 0 and all(t["ok"] for t in qa["casper"]["tests"]) and qa["read_only"]["ok"] and snap_q() == s_before, str((qa["queue"], qa["casper"], s_before, snap_q()))[:400])
         con.close()
         _write(d, "falcon", cat)                                   # إعادة بناء بلا تغيير في القوائم: الهوية المُتحقَّقة تثبت
         r3 = seo_build.build(d, force=True)
@@ -1185,8 +1209,9 @@ def unit_enrich():
         check("report وsearch-report قراءة", snap() == s0 and len(mock_tmdb.Handler.hits) == h0)
         outdir = tempfile.mkdtemp(prefix="bundle_")
         b1 = seo_sources.bundle(d, outdir, n=3)
-        files = {n: open(os.path.join(outdir, n), encoding="utf-8").read() for n in ("probe.json", "sample.json", "report.txt", "search-report.txt")}
-        check("الملفات الأربعة مكتوبة ومختومة بالوقت ونسخة الكود", set(files) == set(b1["files"]) and all('"generated_at"' in t and '"code_fingerprint"' in t for t in files.values()) and b1["code_fingerprint"])
+        files = {n: open(os.path.join(outdir, n), encoding="utf-8").read() for n in ("probe.json", "sample.json", "report.txt", "search-report.txt", "qa.json")}
+        check("الملفات مكتوبة ومختومة بالوقت ونسخة الكود (ومعها qa.json وخريطة الموقع التجريبية)", set(files) | {"sitemap-staging.xml"} == set(b1["files"]) and all('"generated_at"' in t and '"code_fingerprint"' in t for t in files.values()) and b1["code_fingerprint"]
+              and os.path.exists(os.path.join(outdir, "sitemap-staging.xml")), str(b1["files"]))
         secs = ["testkey", "username=u", "password=p", xbase.split("//")[1]]
         check("لا مفتاح ولا بيانات دخول ولا مضيف لوحةٍ في أي ملف", not any(sc in t for sc in secs for t in files.values()), str([sc for sc in secs if any(sc in t for t in files.values())]))
         bid = b1["bundle_id"]
