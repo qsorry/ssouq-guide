@@ -818,8 +818,15 @@ def _review(con, kind, cid, name, payload, now):
                 (kind, f"{kind}:{cid}", json.dumps({"name": name, "content_id": cid, **payload}, ensure_ascii=False), now, now))
 
 
+def frozen_ids(st):
+    """معرّفات الكيانات المجمّدة (identity_freeze) أثناء مراجعة المالك."""
+    return {int(x) for x in (st.get("identity_freeze") or []) if str(x).lstrip("-").isdigit()}
+
+
 def _one(con, data_dir, cid, source, st, now):
-    """عنصرٌ واحد من الطابور ← الحال الجديدة (done · miss · pending) ورسالة."""
+    """عنصرٌ واحد من الطابور ← الحال الجديدة (done · miss · pending) ورسالة. الكيان المجمّد لا يُمسّ (لا TMDB ولا Xtream ولا دمج)."""
+    if cid in frozen_ids(st):
+        return "miss", "frozen: identity_freeze (no enrichment, no merge, no slug change)"
     if source == "xtream":
         n = apply_xtream(con, data_dir, cid, st, now)
         return ("done" if n else "miss"), f"{n} servers"
@@ -830,6 +837,8 @@ def _one(con, data_dir, cid, source, st, now):
             cand, d, how, _ = data
             owner = con.execute("SELECT entity_id FROM external_id WHERE entity='content' AND source='tmdb' AND external_id=? AND verified=1 AND entity_id!=?",
                                 (str(d["id"]), cid)).fetchone()
+            if owner and owner[0] in frozen_ids(st):    # الحامل مجمّد: لا دمجٌ فيه أثناء المراجعة
+                return "miss", f"frozen owner {owner[0]} holds tmdb {d['id']} (identity_freeze): no merge"
             if owner:                                   # العمل نفسه بكيانٍ آخر مُتحقَّق (اسمٌ عربي هنا ولاتيني هناك): يُدمجان
                 seo_db.merge_content(con, cid, owner[0], reason=f"same tmdb {d['id']}", now=now)
                 return "done", f"merged into {owner[0]} (tmdb {d['id']})"
@@ -863,6 +872,8 @@ def reclassify(con, data_dir, st, limit=500, now=None):
     n = 0
     for r in con.execute("SELECT id, type, tmdb_id FROM content WHERE match='tmdb' AND tmdb_id IS NOT NULL AND merged_into IS NULL AND id NOT IN "
                          "(SELECT entity_id FROM provenance WHERE entity='content' AND field='is_animation') LIMIT ?", (limit,)).fetchall():
+        if r["id"] in frozen_ids(st):
+            continue
         try:
             d = tmdb_details(con, key, r["type"], r["tmdb_id"], st)
             if d:
@@ -1486,14 +1497,15 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                 for r in con.execute(sql + " ORDER BY COALESCE(c.last_seen,0) DESC, c.id DESC LIMIT ?", (*args, n * 3)):
                     if r["id"] not in seen and len([p for p in picked if p[1] == label]) < n:
                         seen.add(r["id"]); picked.append((r["id"], label))
-            base = "SELECT c.id FROM content c WHERE c.merged_into IS NULL AND c.available=1"
+            fz = ",".join(str(i) for i in frozen_ids(st)) or "0"
+            base = f"SELECT c.id FROM content c WHERE c.merged_into IS NULL AND c.available=1 AND c.id NOT IN ({fz})"   # المجمّد لا يدخل العيّنة (لا إثراء)
             hub = " AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=?)"
             resolution = {}
             for t in spec.get("titles") or []:
                 before = _by_title(con, t)
                 resolution[t] = {"before": before}
                 for r in before:
-                    if r["merged_into"] is None and r["id"] not in seen:
+                    if r["merged_into"] is None and r["id"] not in seen and r["id"] not in frozen_ids(st):
                         seen.add(r["id"]); picked.append((r["id"], "title"))
             take("turkish", base + hub, ("turkish",), spec["turkish"])
             take("anime", base + hub, ("anime",), spec["anime"])

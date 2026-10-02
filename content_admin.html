@@ -288,6 +288,9 @@ label.force input{width:16px;height:16px;accent-color:var(--amber)}
       <button class="ghost" type="button" id="eRun">دفعة إثراءٍ الآن</button>
       <button class="ghost" type="button" id="eQueue">حال الطابور</button></div>
     <label class="switch"><input type="checkbox" id="eAuto"><span>الإثراء الجماعي الليلي (لا يُفعَّل قبل اعتماد العيّنة الحقيقية)</span></label>
+    <div class="acts" style="margin-top:8px"><input id="eFreeze" placeholder="تجميد الهوية: معرّفات كيانات مفصولة بفواصل (مثل 55005)" style="flex:1;min-width:260px">
+      <button class="ghost" type="button" id="eFreezeSave">احفظ التجميد</button>
+      <span class="hint">الكيان المجمّد لا ينقسم ولا يُدمج ولا يتبدّل رابطه ولا يُكتب له TMDB حتى يُرفع التجميد</span></div>
     <div class="acts" style="margin-top:10px"><button class="go" type="button" id="eBundle">أنتج ملفات المراجعة</button>
       <span class="hint">probe.json · sample.json · report.txt · search-report.txt — الفحص قراءةٌ صرفة، والعيّنة وحدها تُثرى؛ يستغرق دقائق</span></div>
     <p class="meta" id="eBundleState"></p>
@@ -864,7 +867,8 @@ function renderSeo(d) {
       ["روابط كيان↔سيرفر", d.links], ["أسماء بديلة", d.aliases], ["تحتاج مراجعة", r.open || 0], ["غائب الآن", e.unavailable]])
       + `<p class="meta">${Object.entries(d.per_service || {}).map(([k, v]) => `${esc(k)}: ${count(v.movie ? v.movie.present : 0, N.movie)} · ${count(v.series ? v.series.present : 0, N.series)}`).join(" — ")}</p>`;
   }
-  if (d.settings) { $("ePreview").checked = !!d.settings.preview; $("eAuto").checked = !!d.settings.enrich_auto; }
+  if (d.settings) { $("ePreview").checked = !!d.settings.preview; $("eAuto").checked = !!d.settings.enrich_auto;
+    if (document.activeElement !== $("eFreeze")) $("eFreeze").value = (d.settings.identity_freeze || []).join(", "); }
   const l = d.last;
   $("eLast").textContent = l ? (l.ok ? `آخر بناء ${when(l.at)}: ${num(l.items)} عنصرًا من ${(l.services || []).join("، ")} → ${num(l.clusters)} كيانًا (${num(l.new)} جديد · ${num(l.merged)} مدمج · ${num(l.split)} منفصل) في ${l.seconds} ث`
                                    : `فشل البناء ${when(l.at)}: ${l.error}`) : (d.built_at ? `آخر بناء ${when(d.built_at)}` : "");
@@ -898,6 +902,13 @@ $("eSample").onclick = async () => {
   const d = await api("/api/content/admin/seo-sample", {}).catch(() => ({error: "تعذّر الاتصال"}));
   const smp = d.sample || {};
   $("eMsg2").textContent = d.error || `عيّنة ${(smp.ids || []).length} عملًا — ${JSON.stringify(smp.run || {})}`; showOut(smp);
+};
+$("eFreezeSave").onclick = async () => {
+  const ids = $("eFreeze").value.split(/[\s,،]+/).filter(x => /^\d+$/.test(x)).map(Number);
+  const d = await api("/api/content/admin/seo-settings", {settings: {identity_freeze: ids}}).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { alert(d.error); return; }
+  $("eFreeze").value = ids.join(", ");
+  loadSeo();
 };
 $("eAuto").onchange = async () => {
   const d = await api("/api/content/admin/seo-settings", {settings: {enrich_auto: $("eAuto").checked}}).catch(() => ({error: "تعذّر الاتصال"}));

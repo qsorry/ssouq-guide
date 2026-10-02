@@ -205,7 +205,7 @@ def check_work(data_dir, con, item, st, srv_names):
     live_same = [r["id"] for r in con.execute("SELECT id FROM content WHERE tmdb_id=? AND type=? AND merged_into IS NULL", (row["tmdb_id"], row["type"]))] if row["tmdb_id"] else [row["id"]]
     tests.append(_t("one_entity", row["merged_into"] is None and row["available"] == 1 and live_same == [row["id"]],
                     {"tmdb_id": row["tmdb_id"], "live_with_same_tmdb_id": live_same}))
-    prov = con.execute("SELECT at, prev FROM provenance WHERE entity='content' AND entity_id=? AND field='slug'", (row["id"],)).fetchone()
+    prov = con.execute("SELECT at, prev FROM provenance WHERE entity='content' AND entity_id=? AND field='slug' AND prev IS NOT NULL", (row["id"],)).fetchone()   # تبديلٌ فعلي لا إنشاء
     bundle_at = seo_db.state(con, "bundle_at") or 0
     stale = con.execute("SELECT 1 FROM redirect WHERE path=?", (seo_db.PATHS[row["type"]].format(slug=row["slug"]),)).fetchone()
     tests.append(_t("slug_stable", not stale and not (prov and prov["at"] > bundle_at),
@@ -532,6 +532,52 @@ def check_casper(con, probe):
                       _t("casper_503_changes_no_matching", (rec.get("merged") or 0) == 0 and (rec.get("split") or 0) <= 1, {"merged": rec.get("merged"), "split": rec.get("split")})]}
 
 
+def check_freeze(con, st):
+    """الكيانات المجمّدة (identity_freeze): حالها الآن، وأنه لم يحدث لها منذ اللقطة السابقة انقسامٌ ولا دمج ولا تبديل رابط ولا تحويلٌ
+    جديد ولا كتابة TMDB — لقطةٌ ثابتة قابلة للتحقّق."""
+    bundle_at = seo_db.state(con, "bundle_at") or 0
+    rec = seo_db.state(con, "reconciliation") or {}
+    items = []
+    for fid in sorted(seo_sources.frozen_ids(st)):
+        c = con.execute("SELECT id, type, slug, title, tmdb_id, match, merged_into, available, updated_at FROM content WHERE id=?", (fid,)).fetchone()
+        if not c:
+            items.append({"id": fid, "exists": False, "ok": False}); continue
+        ext = [dict(r) for r in con.execute("SELECT source, external_id, verified FROM external_id WHERE entity='content' AND entity_id=?", (fid,))]
+        paths_ = seo_db.paths(c["type"], c["slug"])
+        red_total = con.execute(f"SELECT COUNT(*) FROM redirect WHERE target IN ({','.join('?' * len(paths_))})", paths_).fetchone()[0]
+        red_new = con.execute(f"SELECT COUNT(*) FROM redirect WHERE target IN ({','.join('?' * len(paths_))}) AND created_at>?", (*paths_, bundle_at)).fetchone()[0]
+        slug_prov = con.execute("SELECT at, prev FROM provenance WHERE entity='content' AND entity_id=? AND field='slug' AND prev IS NOT NULL", (fid,)).fetchone()   # تبديلٌ فعلي لا إنشاء
+        tmdb_prov = con.execute("SELECT at FROM provenance WHERE entity='content' AND entity_id=? AND field='tmdb_id'", (fid,)).fetchone()
+        merged_in = con.execute("SELECT COUNT(*) FROM content WHERE merged_into=? AND updated_at>?", (fid, bundle_at)).fetchone()[0]
+        splits = con.execute("SELECT COUNT(*) FROM review WHERE kind='split_entity' AND created_at>? AND payload_json LIKE ?", (bundle_at, f'%"from": [{fid}]%')).fetchone()[0]
+        members = con.execute("SELECT service_key, COUNT(*) n FROM content_service WHERE content_id=? AND present=1 GROUP BY 1", (fid,)).fetchall()
+        it = {"id": fid, "exists": True, "title": c["title"], "entity_state": "merged" if c["merged_into"] is not None else "live" if c["available"] else "unavailable",
+              "merged_into": c["merged_into"], "slug": c["slug"], "tmdb_id_on_content": c["tmdb_id"], "match": c["match"], "external_ids": ext,
+              "members": {r["service_key"]: r["n"] for r in members}, "redirect_count_to_entity": red_total, "new_redirects_since_previous_snapshot": red_new,
+              "slug_changed_since_previous_snapshot": bool(slug_prov and slug_prov["at"] > bundle_at), "tmdb_written_since_previous_snapshot": bool(tmdb_prov and tmdb_prov["at"] > bundle_at),
+              "merged_into_it_since_previous_snapshot": merged_in, "split_reviews_since_previous_snapshot": splits,
+              "kept_by_freeze_last_build": rec.get("kept_by_freeze"), "freeze_conflicts_last_build": [x for x in (rec.get("freeze_conflicts") or []) if fid in (x.get("frozen"), x.get("other"))]}
+        it["ok"] = c["merged_into"] is None and red_new == 0 and not it["slug_changed_since_previous_snapshot"] and not it["tmdb_written_since_previous_snapshot"] and merged_in == 0 and splits == 0
+        items.append(it)
+    return {"frozen": [it["id"] for it in items], "items": items, "previous_snapshot_at": bundle_at,
+            "tests": [_t("identity_freeze_respected", all(it["ok"] for it in items), {"frozen": len(items), "violations": [it["id"] for it in items if not it["ok"]]})] if items else []}
+
+
+def release_blockers(cov, fz, cs):
+    """عوائق الإصدار (لا فشل اختبارات): التغطية على كامل السكّان غير مثبتة، كياناتٌ مجمّدة قيد المراجعة، مزوّدٌ متعطّل."""
+    out = []
+    m = cov["metrics"]
+    if m["tested_population"] < m["total_canonical_entities"]:
+        out.append({"gate": "Global SEO Coverage", "status": "NOT PROVEN",
+                    "detail": f"100% of current intended population ({m['tested_population']} entities / {m['tested_population'] * 2} routes) — not the {m['total_canonical_entities']} live canonical entities"})
+    if fz["frozen"]:
+        out.append({"gate": "Identity freeze (owner review)", "status": "FROZEN", "detail": f"entities {fz['frozen']} frozen: no merge/split/slug/redirect/TMDB until the owner decides"})
+    probe = cs.get("probe") if isinstance(cs.get("probe"), dict) else {}
+    if any(isinstance(v, dict) and v.get("class") == "provider_unavailable" for v in probe.values()):
+        out.append({"gate": "Casper", "status": "provider_unavailable (temporary)", "detail": "503 from the panel; nothing marked missing/unmatched; no matching change"})
+    return out
+
+
 def run(data_dir, spec=None, probe=None, sitemap_out=None):
     con = seo_db.connect(data_dir, create=False)
     if con is None:
@@ -548,12 +594,17 @@ def run(data_dir, spec=None, probe=None, sitemap_out=None):
         q = check_queue(con)
         cs = check_casper(con, probe)
         cov = coverage(data_dir, con, st)
+        fz = check_freeze(con, st)
         snap_after = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "content_alias")]
         ro = _t("read_only", snap_before == snap_after, {"before": snap_before, "after": snap_after})
-        all_tests = [t for w in works for t in w["tests"]] + red["tests"] + sm["tests"] + ix["tests"] + q["tests"] + cs["tests"] + cov["tests"] + [ro]
+        all_tests = [t for w in works for t in w["tests"]] + red["tests"] + sm["tests"] + ix["tests"] + q["tests"] + cs["tests"] + cov["tests"] + fz["tests"] + [ro]
+        rb = release_blockers(cov, fz, cs)
         fails = [t for t in all_tests if not t["ok"]]
         work_fail = [{"id": w["id"], "slug": w["slug"], "group": w["group"], "failed": [t["test"] for t in w["tests"] if not t["ok"]]} for w in works if any(not t["ok"] for t in w["tests"])]
-        return {"ok": not fails, "sample": {"n": len(works), "by_group": {g: sum(1 for w in works if w["group"] == g) for g in ("movie", "series", "turkish", "anime", "title")},
+        return {"ok": not fails, "summary": {"automated_qa": f"{len(all_tests) - len(fails)}/{len(all_tests)} PASS", "test_failures": len(fails), "release_blockers": len(rb),
+                                            "phase_3": "BLOCKED" if rb or fails else "gates passed (owner decision required)"},
+                "release_blockers": rb, "freeze": fz,
+                "sample": {"n": len(works), "by_group": {g: sum(1 for w in works if w["group"] == g) for g in ("movie", "series", "turkish", "anime", "title")},
                                             "would_index_both": sum(1 for w in works if w.get("would_index", {}).get("ar") and w.get("would_index", {}).get("en"))},
                 "tests": {"total": len(all_tests), "pass": len(all_tests) - len(fails), "fail": len(fails)},
                 "blockers": [{"test": t["test"], "detail": t["detail"]} for t in fails if not t["test"].startswith(("slug_stable",))][:50],
