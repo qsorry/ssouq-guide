@@ -388,6 +388,14 @@ def live():
         check("أرشيف اللقطة يُنزَّل من البطاقة باسم seo-review-<bundle_id>.zip", zname == f"seo-review-{j['last']['bundle_id']}.zip" and c == 200 and b[:2] == "PK", str((zname, c, b[:4])))
         c, b = req(base, "/admin/api/content/seo/bundle/sitemap-staging.xml", auth=AUTH)
         check("خريطة الموقع التجريبية تُنزَّل من البطاقة (XML) ولا تُخدم على الموقع", c == 200 and b.startswith("<?xml") and "<urlset" in b, b[:120])
+        c, b = req(base, "/admin/api/content/admin/seo-scan", {"action": "start"}, auth=AUTH)
+        check("فحص السكّان كاملًا يبدأ من البطاقة في الخلفية", c == 200 and json.loads(b)["started"] is True, b[:160])
+        for _ in range(200):
+            j = json.loads(req(base, "/admin/api/content/seo/scan", auth=AUTH)[1])
+            if not j["running"]:
+                break
+            time.sleep(0.2)
+        check("وينتهي مكتملًا بحكم PASS على كل الكيانات الحيّة", not j["running"] and j["status"] == "complete" and j["verdict"] == "PASS" and j["remaining_entities"] == 0 and j["tested_entities"] == j["entities_total"] > 0, b[:200])
         c, b = req(base, "/admin/api/content/seo/bundle/qa.json", auth=AUTH)
         check("qa.json بختمه وملخّص اختباراته", c == 200 and '"generated_at"' in b and '"tests"' in b and '"indexnow"' in b, b[:160])
         c, b = req(base, "/admin/api/content/seo/bundle/sample.json", auth=AUTH)
@@ -791,6 +799,54 @@ def unit_freeze():
               and rb.get("Casper", "").startswith("provider_unavailable") and qa["summary"]["phase_3"] == "BLOCKED" and qa["freeze"]["frozen"] == [foo[0]], str(qa["summary"]) + str(rb))
         con.close()
     finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_full_scan():
+    """فحص السكّان كاملًا: كل الكيانات الحيّة بصفحتيها، على دفعات، بنقطة استئناف (إيقافٌ ثم استكمال = النتيجة نفسها)، قراءةٌ صرفة،
+    ويدخل qa.json بحكمٍ لا يكون PASS إلا مكتملًا بلا فشل — ويرفع عائق التغطية حين يكتمل."""
+    print("== فحص السكّان كاملًا ==")
+    import seo_scan
+    d = tempfile.mkdtemp(prefix="seo_scan_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "falcon", "name": "فالكون"}]}, f, ensure_ascii=False)
+        _write(d, "casper", _cat([{"n": f"Film {i}", "y": 2000 + i, "i": 100 + i, "p": TMDB + f"f{i}.jpg"} for i in range(7)],
+                                 [{"n": f"Show {i}", "s": [[1, 5]], "i": 200 + i, "p": TMDB + f"s{i}.jpg"} for i in range(6)]))
+        _write(d, "falcon", _cat([{"n": "Film 0", "y": 2000, "i": 300, "p": TMDB + "f0.jpg"}], []))
+        seo_build.build(d)
+        con = seo_db.connect(d)
+        seo_db.set_setting(con, "preview", True); con.commit()
+        snap = lambda: [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "content_alias", "provenance")]   # noqa: E731
+        total = con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=1").fetchone()[0]
+        s0 = snap()
+        seo_scan.BATCH = 4
+        calls = []
+        s1 = seo_scan.run(d, stop=lambda: len(calls) >= 1, progress=lambda s: calls.append(s["tested_entities"]), resume=False)   # دفعةٌ ثم إيقاف
+        check("إيقافٌ بعد دفعة: الحال paused، ونقطة الاستئناف محفوظة بعدد ما فُحص، ولا شيء كُتب في القاعدة",
+              s1["status"] == "paused" and 0 < s1["tested_entities"] < total and seo_scan.load(d)["last_id"] == s1["last_id"] and snap() == s0, str((s1["status"], s1["tested_entities"], total)))
+        s2 = seo_scan.run(d, resume=True)
+        sm = seo_scan.summary(s2)
+        check("الاستئناف يُكمل حتى النهاية: tested_entities = كل الحيّ، tested_routes = ضعفه، 100%، متبقٍّ 0، الحكم PASS، وكل مسارٍ 200 بوسم noindex وcanonical ذاتي",
+              s2["status"] == "complete" and sm["tested_entities"] == total == s2["entities_total"] and sm["tested_routes"] == 2 * total and sm["coverage_percent"] == 100.0 and sm["remaining_entities"] == 0
+              and sm["verdict"] == "PASS" and sm["failures"] == 0 and sm["errors"] == 0 and sm["ar"]["http_200"] == sm["en"]["http_200"] == total and sm["ar"]["noindex"] == sm["en"]["noindex"] == total
+              and sm["ar"]["canonical_failures"] == sm["en"]["canonical_failures"] == 0 and sm["duplicates"] == {"duplicate_canonical": 0, "faceted_query": 0, "old_redirect_urls": 0}, str(sm)[:600])
+        s3 = seo_scan.run(d, resume=False)
+        check("حتمي: تشغيلٌ كامل من الصفر يعطي العدّادات نفسها التي أعطاها الإيقاف ثم الاستئناف",
+              all(s3[k] == s2[k] for k in ("tested_entities", "tested_routes", "failures", "errors", "ar", "en", "hreflang", "duplicates")), str((s2["hreflang"], s3["hreflang"])))
+        check("قراءةٌ صرفة بعد الفحص كلّه", snap() == s0, str((s0, snap())))
+        qa = seo_qa.run(d, {"movie": 1, "series": 1, "turkish": 1, "anime": 1, "titles": []})
+        fp = qa["full_population"]
+        check("qa.json: full_population من نقطة الاستئناف (لا إعادة فحص)، الاختبار global_full_population_coverage ناجح، وعائق التغطية غير مذكور في release_blockers",
+              fp["verdict"] == "PASS" and fp["tested_entities"] == total and fp["tests"][0]["ok"] and not any(b["gate"] == "Global SEO Coverage" for b in qa["release_blockers"]), str((fp["verdict"], qa["release_blockers"])))
+        os.remove(seo_scan.path_(d))
+        qa2 = seo_qa.run(d, {"movie": 1, "series": 1, "turkish": 1, "anime": 1, "titles": []})
+        check("بلا فحصٍ كامل: الحكم NOT PROVEN، الاختبار يفشل، والعائق مذكور «never run»",
+              qa2["full_population"]["verdict"] == "NOT PROVEN" and not qa2["full_population"]["tests"][0]["ok"] and any(b["gate"] == "Global SEO Coverage" and "never run" in b["detail"] for b in qa2["release_blockers"]), str(qa2["release_blockers"]))
+        con.close()
+    finally:
+        seo_scan.BATCH = 200
         shutil.rmtree(d, ignore_errors=True)
 
 
@@ -1368,6 +1424,7 @@ def main():
     unit_sample3_cases()
     unit_identity_cases()
     unit_freeze()
+    unit_full_scan()
     unit_migrate()
     unit_enrich()
     live()

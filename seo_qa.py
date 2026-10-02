@@ -563,13 +563,21 @@ def check_freeze(con, st):
             "tests": [_t("identity_freeze_respected", all(it["ok"] for it in items), {"frozen": len(items), "violations": [it["id"] for it in items if not it["ok"]]})] if items else []}
 
 
-def release_blockers(cov, fz, cs):
-    """عوائق الإصدار (لا فشل اختبارات): التغطية على كامل السكّان غير مثبتة، كياناتٌ مجمّدة قيد المراجعة، مزوّدٌ متعطّل."""
+def release_blockers(cov, fz, cs, fp=None):
+    """عوائق الإصدار (لا فشل اختبارات): التغطية على كامل السكّان غير مثبتة (ما لم يكتمل فحص السكّان كاملًا بلا فشل)، كياناتٌ
+    مجمّدة قيد المراجعة، مزوّدٌ متعطّل."""
     out = []
     m = cov["metrics"]
-    if m["tested_population"] < m["total_canonical_entities"]:
+    fp = fp or {}
+    if fp.get("verdict") == "PASS" and fp.get("entities_total") == m["total_canonical_entities"]:
+        pass                                      # مثبتة: فحص السكّان كاملًا مكتملٌ بلا فشل على العدد الحالي
+    elif fp.get("verdict") == "PASS":
+        out.append({"gate": "Global SEO Coverage", "status": "STALE", "detail": f"full scan passed on {fp.get('entities_total')} entities; live canonical entities now {m['total_canonical_entities']} — re-run the full scan"})
+    elif fp.get("status") in ("running", "paused", "complete", "error"):
+        out.append({"gate": "Global SEO Coverage", "status": "NOT PROVEN", "detail": f"full scan {fp['status']}: {fp.get('tested_entities')}/{fp.get('entities_total')} entities ({fp.get('coverage_percent')}%), remaining {fp.get('remaining_entities')}, failures {fp.get('failures')}, errors {fp.get('errors')}"})
+    else:
         out.append({"gate": "Global SEO Coverage", "status": "NOT PROVEN",
-                    "detail": f"100% of current intended population ({m['tested_population']} entities / {m['tested_population'] * 2} routes) — not the {m['total_canonical_entities']} live canonical entities"})
+                    "detail": f"100% of current intended population ({m['tested_population']} entities / {m['tested_population'] * 2} routes) — not the {m['total_canonical_entities']} live canonical entities; full-population scan never run"})
     if fz["frozen"]:
         out.append({"gate": "Identity freeze (owner review)", "status": "FROZEN", "detail": f"entities {fz['frozen']} frozen: no merge/split/slug/redirect/TMDB until the owner decides"})
     probe = cs.get("probe") if isinstance(cs.get("probe"), dict) else {}
@@ -595,15 +603,21 @@ def run(data_dir, spec=None, probe=None, sitemap_out=None):
         cs = check_casper(con, probe)
         cov = coverage(data_dir, con, st)
         fz = check_freeze(con, st)
+        import seo_scan
+        fp = seo_scan.summary(seo_scan.load(data_dir))
+        fp["tests"] = [_t("global_full_population_coverage", fp.get("verdict") == "PASS",
+                          {"verdict": fp.get("verdict"), "status": fp.get("status"), "tested_entities": fp.get("tested_entities"), "entities_total": fp.get("entities_total"),
+                           "remaining_entities": fp.get("remaining_entities"), "failures": fp.get("failures"), "errors": fp.get("errors")})]
         snap_after = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "content_alias")]
         ro = _t("read_only", snap_before == snap_after, {"before": snap_before, "after": snap_after})
-        all_tests = [t for w in works for t in w["tests"]] + red["tests"] + sm["tests"] + ix["tests"] + q["tests"] + cs["tests"] + cov["tests"] + fz["tests"] + [ro]
-        rb = release_blockers(cov, fz, cs)
+        # فحص السكّان كاملًا بوابة إصدار: يُعدّ اختبارًا آليًّا حين يكون له تشغيلٌ (مكتمل أو ناقص)، ولا يُعدّ فشل اختبار إن لم يُشغَّل بعد (عائق إصدار فقط)
+        all_tests = [t for w in works for t in w["tests"]] + red["tests"] + sm["tests"] + ix["tests"] + q["tests"] + cs["tests"] + cov["tests"] + fz["tests"] + (fp["tests"] if fp.get("status") != "never run" else []) + [ro]
+        rb = release_blockers(cov, fz, cs, fp)
         fails = [t for t in all_tests if not t["ok"]]
         work_fail = [{"id": w["id"], "slug": w["slug"], "group": w["group"], "failed": [t["test"] for t in w["tests"] if not t["ok"]]} for w in works if any(not t["ok"] for t in w["tests"])]
         return {"ok": not fails, "summary": {"automated_qa": f"{len(all_tests) - len(fails)}/{len(all_tests)} PASS", "test_failures": len(fails), "release_blockers": len(rb),
                                             "phase_3": "BLOCKED" if rb or fails else "gates passed (owner decision required)"},
-                "release_blockers": rb, "freeze": fz,
+                "release_blockers": rb, "freeze": fz, "full_population": fp,
                 "sample": {"n": len(works), "by_group": {g: sum(1 for w in works if w["group"] == g) for g in ("movie", "series", "turkish", "anime", "title")},
                                             "would_index_both": sum(1 for w in works if w.get("would_index", {}).get("ar") and w.get("would_index", {}).get("en"))},
                 "tests": {"total": len(all_tests), "pass": len(all_tests) - len(fails), "fail": len(fails)},

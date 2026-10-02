@@ -36,6 +36,7 @@ import content_page
 import reports
 import store_sync
 import seo_build
+import seo_scan
 import seo_sources
 import seo_search
 import seo_db
@@ -4042,6 +4043,8 @@ class Handler(BaseHTTPRequestHandler):
                         DATA_DIR, self._q("status") or "open", self._q("kind"), self._q("limit") or 100, self._q("offset") or 0)})
                 if path == "/api/content/seo/enrich":     # الإثراء: الطابور والنافذة والمفتاح وآخر دفعة
                     return self._send(200, {"ok": True, **seo_sources.state(DATA_DIR)})
+                if path == "/api/content/seo/scan":       # فحص السكّان كاملًا: الحال والعدّادات (قراءة)
+                    return self._send(200, {"ok": True, **seo_scan.state(DATA_DIR)})
                 if path == "/api/content/seo/bundle":     # ملفات المراجعة: حال إنتاجها وما كُتب منها
                     return self._send(200, {"ok": True, **seo_sources.bundle_state(DATA_DIR)})
                 if path.startswith("/api/content/seo/bundle/"):   # تنزيل ملفٍ منها (للمدير)
@@ -4777,6 +4780,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_sources.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-probe":     # الفحص الأولي: ماذا تعطي كل لوحة (يتصل باللوحات الآن)
                 return self._send(200, {"ok": True, "probe": seo_sources.probe(DATA_DIR, int(body.get("n") or 20))})
+            elif path == "/api/content/admin/seo-scan":      # فحص السكّان كاملًا (قراءةٌ صرفة): ابدأ/استأنف · أوقف مؤقتًا · ابدأ من جديد
+                act = str(body.get("action") or "start")
+                if act == "pause":
+                    seo_scan.pause(DATA_DIR); started = False
+                elif act == "reset":
+                    seo_scan.pause(DATA_DIR)
+                    try:
+                        os.remove(seo_scan.path_(DATA_DIR))
+                    except OSError:
+                        pass
+                    started = False
+                else:
+                    started = seo_scan.start(DATA_DIR, resume=True)
+                return self._send(200, {"ok": True, "started": started, **seo_scan.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-bundle":    # «أنتج ملفات المراجعة»: probe · sample · report · search-report في الخلفية
                 started = seo_sources.start_bundle(DATA_DIR, int(body.get("n") or 20))
                 return self._send(200, {"ok": True, "started": started, **seo_sources.bundle_state(DATA_DIR)})
