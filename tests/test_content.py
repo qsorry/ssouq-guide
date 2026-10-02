@@ -1023,9 +1023,9 @@ def unit_render():
     cad = page(d, "casper")[1]
     ad = cad[cad.index('<aside class="ad"'):cad.index("</aside>", cad.index('<aside class="ad"'))]
     adplans = ad[ad.index('<div class="adplans">'):]
-    check("وكاسبر بباقاته هو لا بباقات فالكون", "كل هذا المحتوى في اشتراك كاسبر" in ad and adplans.count('class="adplan"') == 2
-          and adplans.index("p1147637724") < adplans.index("p1557813796") and "<em>39 ر.س</em>" in adplans
-          and "<em>23 ر.س</em>" in adplans and "اشترك في كاسبر</a>" in ad and "p153695876" not in ad
+    check("وكاسبر بباقاته هو لا بباقات فالكون", "كل هذا المحتوى في اشتراك كاسبر" in ad and adplans.count('class="adplan"') == 3
+          and adplans.index("p1147637724") < adplans.index("p1557813796") < adplans.index("p1826378298")
+          and "<em>39 ر.س</em>" in adplans and "<em>23 ر.س</em>" in adplans and "<em>19 ر.س</em>" in adplans and "اشترك في كاسبر</a>" in ad and "p153695876" not in ad
           and "adcode" not in ad and 'class="aft"' not in ad and 'class="off"' not in ad            # كاسبر بلا كود خصم
           and "اشتراكات سمارت سوق" not in ad
           and 'href="https://ssouq.com/اشتراك-كاسبر-iptv-لمدة-12-شهر/p1147637724?utm_source=guide.ssouq.com'
