@@ -256,6 +256,26 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('the second tab is its own page (/stremio/addons)', new URL(user.url()).pathname === '/admin/stremio/addons'
           && await user.isHidden('#viewAccounts') && (await user.getAttribute('#tabAdd', 'aria-current')) === 'page');
 
+    console.log('== «تحديث الإضافة لكل الحسابات» ==');
+    check('the update-all button says how many Stremio accounts', /تحديث الإضافة لكل الحسابات \(\d+\)/.test(await user.textContent('#updBtn'))
+          && await user.isEnabled('#updBtn'), await user.textContent('#updBtn'));
+    let updAsk = '';
+    user.once('dialog', d => { updAsk = d.message(); d.accept(); });
+    await user.click('#updBtn');
+    await user.waitForFunction(() => /حُدّثت الإضافة في/.test(document.querySelector('#updJob')?.textContent || ''), null, {timeout: 30000});
+    const updT = (await user.textContent('#updJob')).replace(/\s+/g, ' ');
+    check('one confirmation, then every account is updated in the background, with the result',
+          /كل حسابات Stremio/.test(updAsk) && /حُدّثت الإضافة في (\d+) من \1 حساب/.test(updT) && !/تعذّر/.test(updT)
+          && await user.isEnabled('#updBtn'), updT + ' | ' + updAsk.slice(0, 50));
+    await shot(user, 'stremio-update-all');
+    if (SHOTS) {                                   // والجوال: الزرّ ونتيجته في أول الصفحة
+      const vp = user.viewportSize();
+      await user.setViewportSize({width: 390, height: 844});
+      await user.evaluate(() => window.scrollTo(0, 0));
+      await user.screenshot({path: path.join(SHOTS, 'stremio-update-all-phone.png')});
+      await user.setViewportSize(vp);
+    }
+
     console.log('== change a panel link for all users at once ==');
     const pans = await user.$$eval('#panelList .pan', cs => cs.map(c => c.textContent.replace(/\s+/g, ' ').trim()));
     check('each gate with its link and the number of its accounts', pans.length === 2 && pans[0].includes('بوابة أ') && pans[0].includes(`http://127.0.0.1:${XT_PORT}`)
