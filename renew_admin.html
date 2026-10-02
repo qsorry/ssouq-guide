@@ -2,412 +2,598 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>خدمة التجديد</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 <style>
-/* نظام تصميم لوحة اليوزر نفسه (نفس المتغيّرات) + أسماء بديلة ليعمل الستايل القديم */
-:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45);
+/* نظام تصميم صفحات الأداة نفسه (content_admin.html) — داكنٌ افتراضيًّا، وفاتحٌ بسمة الجهاز أو بالزرّ. والجوال أولًا:
+   عمودٌ بحافةٍ 16px، والأكثر استعمالًا أولًا (البيانات، فالتحليل، فقائمة التجديد)، والنادر في كتلٍ مطويّة تحمل حالها في سطرها،
+   وأزرارٌ بشبكةٍ ثابتة لا تلتفّ عشوائيًّا، ومربّعات العلامة مفاتيح، والجداول بطاقاتٍ على الجوال */
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45);color-scheme:dark;
   --paper:var(--bg);--card:var(--sf);--copy:var(--amber);--s1:var(--blue);--s2:var(--err)}
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}}
-:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14);color-scheme:light}}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14);color-scheme:light}
 *{box-sizing:border-box}
-html{background:var(--bg)}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
-/* الهيدر الثابت — مطابق للوحة اليوزر */
-.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;height:62px;padding:0 18px;background:color-mix(in srgb,var(--sf) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;margin-inline-start:auto}
-.brand .mark{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);display:grid;place-items:center;color:#fff}
-.brand b{font-size:1rem;display:block;line-height:1} .brand small{color:var(--mute);font-size:.72rem}
-.nav{display:flex;gap:4px} .nav a{padding:8px 12px;border-radius:10px;color:var(--mute);font-weight:500;text-decoration:none;font-size:.9rem}
-.nav a.on{color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
-.nav a:hover{color:var(--ink)}
-.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);cursor:pointer;text-decoration:none}
-.icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.nav a svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px;margin-inline-end:5px}
-@media (max-width:640px){.brand small{display:none}}
-/* شريط تنقّل سفلي (مثل لوحة الإدارة) */
-.bnav{position:fixed;inset-inline:0;bottom:0;z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
-.bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;color:var(--mute);font-size:.7rem;font-weight:500;border-radius:12px;text-decoration:none}
-.bnav a svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.bnav a.on{color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
-main{max-width:900px;margin:0 auto;padding:20px 16px 96px}
-h1{font-size:1.4rem;margin:0 0 4px}
-.sub{color:var(--mute);margin:0 0 20px;font-size:.95rem}
-.sub a{color:var(--go)}
-section{background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
-h2{font-size:1.05rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-h2 small{font-weight:400;font-size:.8rem;color:var(--mute)}
-h3{font-size:.92rem;margin:18px 0 8px;color:var(--mute);font-weight:600}
-label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
-input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--sf2);color:var(--ink);font:inherit}
-input{direction:ltr;text-align:left}
-input[type=checkbox]{width:auto;margin:0 0 0 7px;vertical-align:-2px}
-select{direction:rtl;text-align:right}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
-.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 10px}
-@media (max-width:560px){.g2,.g3{grid-template-columns:1fr}}
-button{font:inherit;border:0;border-radius:10px;cursor:pointer}
-button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--copy);outline-offset:2px}
-.go{width:100%;margin-top:14px;padding:13px;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;border-radius:12px;box-shadow:0 8px 20px color-mix(in srgb,var(--go) 30%,transparent)}
-.go:disabled{opacity:.6;cursor:progress}
-.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);padding:7px 13px;font-size:.85rem}
-.ghost:hover{border-color:var(--go);color:var(--go)}
-.msg{font-size:.9rem;margin-top:10px;white-space:pre-wrap}
-.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
-.chk{font-size:.87rem;color:var(--ink);margin-top:9px;display:block;cursor:pointer}
-
-/* منطقة الرفع */
-.drop{border:2px dashed var(--line);border-radius:14px;padding:26px 16px;text-align:center;
-  color:var(--mute);cursor:pointer;transition:border-color .15s,background .15s}
-.drop:hover,.drop.over{border-color:var(--go);background:color-mix(in srgb,var(--go) 6%,transparent);color:var(--go)}
-.drop b{display:block;color:var(--ink);font-size:1rem;margin-bottom:3px}
-.files{margin:12px 0 0;font-size:.85rem}
-.files div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line)}
-.files div:last-child{border-bottom:0}
-.files .n{overflow-wrap:anywhere;direction:ltr;text-align:left;flex:1}
-.files .t{color:var(--mute);flex:0 0 auto;font-size:.8rem}
-
-/* أرقام */
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:0 0 14px}
-.tile{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--sf2)}
-.tile .k{font-size:.78rem;color:var(--mute)}
-.tile .v{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.25}
-.tile.hero{background:linear-gradient(135deg,var(--go),var(--go2));border-color:var(--go);color:var(--go-ink)}
-.tile.hero .k{color:#cdeee8}
-
-table{width:100%;border-collapse:collapse;font-size:.87rem}
-th,td{padding:8px 9px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
-th{font-weight:600;color:var(--mute);font-size:.8rem;white-space:nowrap}
-tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
-td.name{white-space:normal;min-width:190px;line-height:1.45}
-.scroll{overflow-x:auto}
-input.pt{width:80px;padding:5px 7px;text-align:center;direction:ltr}
-.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:.76rem;font-weight:600}
-.pill.done{background:color-mix(in srgb,var(--go) 18%,transparent);color:var(--go)}
-.pill.queued{background:color-mix(in srgb,var(--copy) 20%,transparent);color:var(--copy)}
-.pill.stuck,.pill.rejected{background:color-mix(in srgb,var(--err) 16%,transparent);color:var(--err)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+html{background:var(--bg);scroll-padding-top:90px;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh;overflow-x:hidden}
 .hidden{display:none !important}
-.spin{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-top-color:transparent;
-  border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-inline-end:6px}
+a{color:var(--go)}
+svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font:inherit;border:0;border-radius:12px;cursor:pointer;color:inherit;background:none}
+button:disabled{opacity:.55;cursor:progress}
+:is(button,a,summary,input,select,textarea,.drop):focus-visible{outline:2px solid var(--go);outline-offset:2px}
+.mono,code{direction:ltr;unicode-bidi:isolate;font:500 .8rem "IBM Plex Mono",Consolas,monospace;overflow-wrap:anywhere}
+.ltr{direction:ltr;unicode-bidi:isolate}
+
+/* ===== الرأس العائم والشريط السفلي (بتصميم صفحات الأداة) ===== */
+.top{position:sticky;top:8px;z-index:30;display:flex;align-items:center;gap:8px;height:66px;margin:8px 10px 0;padding:0 12px;border:1px solid var(--line);border-radius:20px;
+  background:color-mix(in srgb,var(--sf) 90%,transparent);backdrop-filter:blur(10px);box-shadow:0 10px 30px -18px rgba(0,0,0,.6)}
+.top .sp{flex:1}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;line-height:1.1;min-width:0;color:inherit;text-decoration:none}
+.brand .mark{width:46px;height:46px;border-radius:14px;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);box-shadow:0 6px 18px color-mix(in srgb,var(--go) 45%,transparent);
+  display:grid;place-items:center;color:#fff;flex:none}
+.brand .mark svg{width:22px;height:22px}
+.brand b{display:block;font-size:1.12rem}
+.brand small{display:block;color:var(--mute);font-size:.76rem;font-weight:400;margin-top:3px}
+.icon-btn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none;cursor:pointer;text-decoration:none}
+.icon-btn:hover{border-color:var(--go)}
+.icon-btn.out:hover{border-color:var(--err);color:var(--err)}
+.bnav{position:fixed;inset-inline:8px;bottom:8px;z-index:40;display:flex;gap:2px;padding:6px;border:1px solid var(--line);border-radius:20px;
+  background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);margin-bottom:env(safe-area-inset-bottom)}
+.bnav a{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 10px;color:var(--mute);
+  font-size:.74rem;font-weight:600;border-radius:12px;text-decoration:none}
+.bnav a svg{width:22px;height:22px}
+.bnav a:hover{color:var(--ink)}
+.bnav a.on{color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
+@media (min-width:760px){.bnav{max-width:640px;margin-inline:auto}}
+
+/* ===== الهيكل: عمودٌ في الوسط، وحافةٌ 16px على الجوال ===== */
+.wrap{max-width:880px;margin:0 auto;padding:16px 16px 112px}
+section{background:var(--sf);border:1px solid var(--line);border-radius:20px;padding:16px;margin:0 0 14px}
+.hero{position:relative;overflow:hidden;padding:18px;border:0;border-radius:22px;color:#fff;margin-bottom:12px;
+  background:radial-gradient(60% 90% at 0% 100%,rgba(34,196,147,.45),transparent 60%),radial-gradient(50% 80% at 100% 0%,rgba(139,124,246,.55),transparent 60%),
+    linear-gradient(120deg,#0b5f73 0%,#1e3a8a 55%,#4c1d95 100%)}
+.hero::before{content:"";position:absolute;inset:0;opacity:.35;pointer-events:none;background:repeating-linear-gradient(115deg,transparent 0 22px,rgba(255,255,255,.06) 22px 23px)}
+.hero .hrow{position:relative;display:flex;align-items:center;gap:10px}
+.hero h1{flex:1;min-width:0;margin:0;font-size:clamp(1.25rem,5.4vw,1.8rem);line-height:1.3}
+.hero p{position:relative;margin:6px 0 0;color:#D6E4FF;font-size:.86rem;line-height:1.7;max-width:62ch}
+.hero .pub{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border-radius:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);
+  color:#fff;font-weight:600;font-size:.82rem;text-decoration:none;white-space:nowrap}
+.hero .pub:hover{background:rgba(255,255,255,.22)}
+/* حال الخدمة: ثلاث خاناتٍ لا تلتفّ */
+.hstrip{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px;border:1px solid rgba(255,255,255,.22);border-radius:14px;background:rgba(6,14,40,.28);overflow:hidden}
+.hstrip div{padding:8px 4px;text-align:center;min-width:0}
+.hstrip div+div{border-inline-start:1px solid rgba(255,255,255,.18)}
+.hstrip b{display:block;font-size:.95rem;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.hstrip small{display:block;color:#C9D8F5;font-size:.7rem}
+.hstrip b.off{color:#ffd27a}
+@media (min-width:640px){.hero{padding:26px 28px}}
+/* أقسام الصفحة: صفٌّ يُمرَّر أفقيًّا ولا يلتفّ */
+.jump{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px 14px;padding:2px 16px 4px}
+.jump::-webkit-scrollbar{display:none}
+.jump a{flex:none;display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);
+  background:var(--sf);color:var(--ink);font-size:.84rem;font-weight:500;white-space:nowrap;text-decoration:none}
+.jump a svg{color:var(--mute);width:17px;height:17px}
+.jump a:hover{border-color:var(--go)}
+
+/* رأس كل بطاقة: أيقونة، والعنوان وسطره، وزرٌّ أو شارةٌ في آخره */
+.shead{display:flex;align-items:center;gap:12px;margin:0 0 14px}
+.shead h2{flex:1;min-width:0;margin:0;font-size:1.06rem;line-height:1.35}
+.shead h2 small{display:block;color:var(--mute);font-weight:400;font-size:.78rem;margin-top:2px}
+.sic{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:#fff;flex:none}
+.sic svg{width:21px;height:21px}
+.bi{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;color:#fff;flex:none}
+.bi svg{width:18px;height:18px}
+.c-purple{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}.c-blue{background:linear-gradient(135deg,#3b82f6,#1d4ed8)}
+.c-green{background:linear-gradient(135deg,#22c493,#0f7a58)}.c-gold{background:linear-gradient(135deg,#f5b342,#b7791f)}
+.c-teal{background:linear-gradient(135deg,#14b8a6,#0f766e)}.c-rose{background:linear-gradient(135deg,#f472b6,#be185d)}
+.c-indigo{background:linear-gradient(135deg,#6366f1,#3730a3)}.c-slate{background:linear-gradient(135deg,#64748b,#334155)}
+h3{font-size:.95rem;margin:0}
+.blockh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+.blockh small{color:var(--mute);font-size:.76rem}
+
+/* الشارات: حالٌ واحدة الشكل في الصفحة كلها */
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;line-height:1.5;border-radius:999px;padding:2px 10px;
+  border:1px solid var(--line);color:var(--mute);background:var(--sf2);white-space:nowrap;max-width:100%}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.pill:empty{display:none}
+.pill.ok,.pill.done{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,var(--line));background:color-mix(in srgb,var(--go) 10%,var(--sf2))}
+.pill.warn,.pill.queued{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--line));background:color-mix(in srgb,var(--amber) 9%,var(--sf2))}
+.pill.bad,.pill.stuck,.pill.rejected{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line));background:color-mix(in srgb,var(--err) 9%,var(--sf2))}
+.pill.purple{color:var(--purple);border-color:color-mix(in srgb,var(--purple) 45%,var(--line));background:color-mix(in srgb,var(--purple) 10%,var(--sf2))}
+.c-bad{color:var(--err)}.c-warn{color:var(--amber)}.c-ok{color:var(--go)}
+
+/* الخانات والأزرار: 44px للّمس */
+label{display:block;font-size:.8rem;color:var(--mute);margin:12px 0 6px}
+input,select,textarea{width:100%;min-height:44px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;background:var(--sf2);color:var(--ink);font:inherit;font-size:.92rem}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--go)}
+input.ltr,textarea.ltr{text-align:left}
+input[type=number]{text-align:center;direction:ltr}
+input::placeholder,textarea::placeholder{color:color-mix(in srgb,var(--mute) 75%,transparent)}
+.go,.ghost,.danger{min-height:44px;padding:8px 16px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;
+  font-size:.88rem;font-weight:600;line-height:1.3;text-align:center;text-decoration:none}
+.go{background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;box-shadow:0 8px 20px -10px color-mix(in srgb,var(--go) 70%,transparent)}
+.go:disabled{box-shadow:none}
+.ghost{background:var(--sf2);border:1px solid var(--line);color:var(--ink)}
+.ghost:hover{border-color:var(--go);color:var(--go)}
+.ghost.red{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+.ghost.sm{min-height:40px;padding:6px 12px;font-size:.82rem;flex:none}
+/* صفّ الأزرار: عمودان على الجوال (والزرّ الوحيد بعرضها)، وصفٌّ واحد على الحاسوب */
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.acts>*{flex:1 1 calc(50% - 4px);min-width:0}
+@media (max-width:639px){.acts>.wide{flex-basis:100%}}
+@media (min-width:640px){.acts>*{flex:0 0 auto;min-width:140px}}
+.form2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px}
+.hint{display:block;color:var(--mute);font-size:.8rem;margin:0 0 4px;line-height:1.75}
+.hint b{color:var(--ink);font-weight:600}
+.msg{font-size:.86rem;margin:10px 0 0;white-space:pre-wrap;color:var(--mute);overflow-wrap:anywhere}
+.msg:empty{display:none}
+.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
+.meta{color:var(--mute);font-size:.82rem;margin:10px 0 0;overflow-wrap:anywhere;line-height:1.7}
+.meta:empty{display:none}
+.empty{color:var(--mute);text-align:center;padding:18px 14px;font-size:.86rem;line-height:1.7;border:1.5px dashed var(--line);border-radius:14px;margin:0}
+.bar{height:8px;border-radius:99px;background:var(--sf2);overflow:hidden;margin-top:10px;border:1px solid var(--line)}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--go),var(--purple));transition:width .3s}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-inline-end:6px}
 @keyframes sp{to{transform:rotate(360deg)}}
-.note{font-size:.84rem;color:var(--mute);margin:8px 0 0;line-height:1.65}
+/* مفتاح تشغيل بدل مربّع العلامة، في سطرٍ يُلمس كله */
+label.switch{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:54px;margin:12px 0 0;padding:8px 14px;border:1px solid var(--line);
+  border-radius:14px;background:var(--sf2);color:var(--ink);font-size:.9rem;cursor:pointer}
+label.switch small{display:block;color:var(--mute);font-size:.76rem;line-height:1.45}
+label.switch+label.switch{margin-top:8px}
+.tog{appearance:none;-webkit-appearance:none;flex:none;width:46px;min-height:0;height:28px;margin:0;padding:0;border:0;border-radius:999px;background:color-mix(in srgb,var(--mute) 45%,var(--sf2));
+  position:relative;cursor:pointer;transition:background .15s}
+.tog::before{content:"";position:absolute;top:3px;inset-inline-start:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:inset-inline-start .15s}
+.tog:checked{background:var(--go)}
+.tog.amber:checked{background:var(--amber)}
+.tog:checked::before{inset-inline-start:21px}
+@media (prefers-reduced-motion:reduce){.tog,.tog::before,.bar i{transition:none}}
+/* إعدادٌ رقمي: الاسم وخانته في سطرٍ واحد */
+.nrow{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;margin-top:8px;padding-block:6px;padding-inline:14px 6px;
+  border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+.nrow label{margin:0;color:var(--ink);font-size:.88rem;line-height:1.45}
+.nrow label small{display:block;color:var(--mute);font-size:.74rem}
+.nrow input{width:92px;flex:none;background:var(--sf)}
+
+/* الكتل المطويّة: سطرٌ بارتفاع 58px، وحالها في سطرها، وسهمٌ في آخره */
+details>summary{list-style:none;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+.fold>summary{display:flex;align-items:center;gap:10px;min-height:46px;padding:6px 14px;font-weight:500;font-size:.9rem}
+.fold>summary::after{content:"";flex:none;width:8px;height:8px;margin-inline-start:auto;border:solid currentColor;border-width:0 0 2px 2px;transform:rotate(-45deg) translateY(-2px);
+  opacity:.55;transition:transform .15s}
+.fold[open]>summary::after{transform:rotate(135deg) translateY(-2px)}
+.fold>summary .st{flex:1;min-width:0;display:flex;flex-direction:column}
+.fold>summary .st b{font-weight:600;font-size:.94rem}
+.fold>summary small{color:var(--mute);font-weight:400;font-size:.78rem;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fold>summary small.ok{color:var(--go)} .fold>summary small.err{color:var(--err)}
+.fold[open]>summary small[data-sum]{display:none}
+.fold>summary .pill{flex:none}
+.fold>.din{padding:0 14px 14px}
+details.blk{margin:16px -16px 0;border-top:1px solid var(--line)}
+details.blk+details.blk{margin-top:0}
+details.blk:last-child{margin-bottom:-6px}
+details.blk>summary{padding:10px 16px;min-height:62px}
+details.blk>.din{padding:2px 16px 12px}
+details.blk[open]>summary{padding-bottom:6px}
+details.inner{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+details.inner>summary{font-size:.88rem}
+details.inner>summary small{display:inline;-webkit-line-clamp:none}
+details.inner input,details.inner select{background:var(--sf)}
+details.opts{margin-top:10px}
+details.opts>summary{display:inline-flex;min-height:40px;padding:0 2px;color:var(--mute);font-size:.84rem}
+details.opts>summary::after{margin-inline-start:6px}
+details.opts>.din{padding:0}
+.steps{margin:0;padding-inline-start:20px;font-size:.84rem;line-height:1.7}
+.steps li{margin:4px 0}
+
+/* ===== الرفع ===== */
+.drop{display:flex;align-items:center;gap:12px;min-height:78px;padding:12px 14px;border:1.5px dashed var(--line);border-radius:16px;background:var(--sf2);
+  color:var(--ink);cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--go);background:color-mix(in srgb,var(--go) 7%,var(--sf2))}
+.drop .di{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:color-mix(in srgb,var(--go) 15%,transparent);color:var(--go);flex:none}
+.drop .di svg{width:22px;height:22px}
+.drop b{display:block;font-size:.92rem;line-height:1.45}
+.drop small{display:block;color:var(--mute);font-size:.76rem;line-height:1.5;margin-top:2px}
+.files{margin:8px 0 0;border:1px solid var(--line);border-radius:14px;background:var(--sf2);overflow:hidden}
+.files:empty{display:none}
+.files>div{display:flex;align-items:center;gap:10px;min-height:50px;padding-block:4px;padding-inline:12px 4px;border-top:1px solid var(--line);font-size:.85rem}
+.files>div:first-child{border-top:0}
+.files .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:left}
+.files .t{color:var(--mute);font-size:.76rem;white-space:nowrap}
+.files button{width:42px;height:42px;display:grid;place-items:center;color:var(--err);flex:none}
+.files button:hover{background:color-mix(in srgb,var(--err) 10%,transparent)}
+
+/* ===== الأرقام ===== */
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (min-width:640px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.stat{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-width:0}
+.stat small{display:block;color:var(--mute);font-size:.74rem;line-height:1.4}
+.stat b{display:block;font-size:1.3rem;line-height:1.35;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat.money{background:linear-gradient(135deg,var(--go),var(--go2));border-color:transparent;color:var(--go-ink)}
+.stat.money small{color:inherit;opacity:.8}
+.strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:14px;background:var(--sf2);overflow:hidden;margin-top:14px}
+.strip:empty{display:none}
+.strip .stat{border:0;border-radius:0;background:none;text-align:center;padding:9px 2px}
+.strip .stat+.stat{border-inline-start:1px solid var(--line)}
+.strip .stat b{font-size:1.05rem}
+.strip .stat small{font-size:.7rem}
 .bars{display:flex;align-items:flex-end;gap:2px;height:110px;margin:10px 0 4px}
 .bars i{flex:1;background:var(--s1);border-radius:3px 3px 0 0;min-height:2px;position:relative}
 .bars i.past{background:var(--s2)}
 .bars i:hover::after{content:attr(data-t);position:absolute;bottom:100%;right:50%;transform:translateX(50%);
   background:var(--ink);color:var(--card);padding:4px 8px;border-radius:6px;font-size:.72rem;white-space:nowrap;z-index:3}
 .axis{display:flex;justify-content:space-between;font-size:.72rem;color:var(--mute)}
-.card{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:14px}
-a{color:var(--go)}
+/* المرشّحات: صفٌّ يُمرَّر أفقيًّا */
+.fchips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:12px -16px 0;padding:2px 16px}
+.fchips::-webkit-scrollbar{display:none}
+.fchips:empty{display:none}
+.fchip{flex:none;display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--sf2);
+  font-size:.84rem;color:var(--mute);white-space:nowrap}
+.fchip:hover{color:var(--ink)}
+.fchip em{font-style:normal;font-variant-numeric:tabular-nums;font-size:.74rem;min-width:22px;padding:0 6px;border-radius:9px;background:var(--sf);color:var(--ink);text-align:center}
+.fchip[aria-pressed="true"]{border-color:color-mix(in srgb,var(--go) 60%,var(--line));color:var(--go);background:color-mix(in srgb,var(--go) 12%,var(--sf2));font-weight:600}
+
+/* ===== الجداول: جدولٌ على الحاسوب، وبطاقةٌ لكل صفّ على الجوال ===== */
+table{width:100%;border-collapse:collapse;font-size:.86rem}
+th,td{padding:9px 8px;text-align:start;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;vertical-align:middle}
+th{font-weight:600;color:var(--mute);font-size:.78rem;white-space:nowrap}
+tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
+.scroll{overflow-x:auto;margin-top:12px}
+table.kv td:last-child{text-align:end}
+table.kv tr:last-child td{border-bottom:0}
+td.em{font-weight:700}
+td .dl{font-weight:700;white-space:nowrap}
+tr.none td{text-align:center;color:var(--mute)}
+input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
+@media (max-width:639px){
+  .rt thead{display:none}
+  .rt,.rt tbody,.rt tfoot{display:block}
+  .rt tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;padding:11px 12px;margin:0 0 8px;border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+  .rt td{display:block;padding:0;border:0;min-width:0;overflow-wrap:anywhere;font-size:.84rem;line-height:1.5}
+  .rt td:empty{display:none}
+  .rt td[data-l]::before{content:attr(data-l);display:block;color:var(--mute);font-size:.68rem;font-weight:500;line-height:1.35}
+  .rt td.u{text-align:right}
+  .rt tr.none{display:block;text-align:center}
+  .rt tfoot tr{background:color-mix(in srgb,var(--go) 8%,var(--sf2));border-color:color-mix(in srgb,var(--go) 35%,var(--line))}
+  /* المقارنة: الحال والأيام، ثم اليوزر، ثم الجوال والطلب واللوحة، ثم المدتان والانتهاء */
+  .cmp tr{grid-template-areas:"k k d" "u u u" "ph o pn" "sm pm ex"}
+  .cmp .k{grid-area:k}.cmp .d{grid-area:d;justify-self:end}.cmp .u{grid-area:u;font-weight:700;font-size:.92rem}
+  .cmp .ph{grid-area:ph}.cmp .o{grid-area:o}.cmp .pn{grid-area:pn}.cmp .sm{grid-area:sm}.cmp .pm{grid-area:pm}.cmp .ex{grid-area:ex}
+  /* الطابور: اليوزر ومدته، ثم الحال وسببها، ثم الوقت والطلب، ثم «إعادة» */
+  .q tr{grid-template-areas:"u u t" "st st st" "at at o" "act act act"}
+  .q .u{grid-area:u;font-weight:700}.q .t{grid-area:t;justify-self:end}.q .st{grid-area:st}.q .at{grid-area:at}.q .o{grid-area:o}.q .act{grid-area:act}
+  .q .act .ghost{width:100%}
+  /* التكلفة: الباقة ونقاطها، ثم يوزراتها ومجموع نقاطها وكلفتها */
+  .cost tr{grid-template-areas:"n n in" "u p c";align-items:center}
+  .cost .n{grid-area:n;font-weight:700}.cost .in{grid-area:in;justify-self:end}.cost .u{grid-area:u}.cost .p{grid-area:p}.cost .c{grid-area:c}
+  .cost tfoot td{font-weight:700}
+  /* الباقات المباعة: الاسم، ثم المدة والمُباع والسارِي */
+  .prod tr{grid-template-areas:"nm nm nm" "du n a"}
+  .prod .nm{grid-area:nm;font-weight:600}.prod .du{grid-area:du}.prod .n{grid-area:n}.prod .a{grid-area:a}
+}
+@media (min-width:640px){td.name{min-width:190px}.rt .u{direction:ltr;text-align:left}}
+
+/* ===== اللوحات وربط الباقات ===== */
+#panelsBox .card{padding:12px;margin:0 0 8px;border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+#panelsBox .card label:first-child{margin-top:0}
+#panelsBox input,#panelsBox select,#panelsBox textarea{background:var(--sf)}
+.prow1{display:flex;gap:8px}
+.prow1 input{flex:1;min-width:0}
+.prow1 .icon-btn{width:44px;height:44px;color:var(--err);background:var(--sf)}
+.prow1 .icon-btn:hover{border-color:var(--err)}
+.res{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+.res:empty{display:none}
+.res li{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--sf2);font-size:.85rem;overflow-wrap:anywhere}
+.tiers{display:grid;gap:8px;margin-top:12px}
+.tier{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center}
+.tier.one{grid-template-columns:52px minmax(0,1fr)}
+.tier .tb{display:grid;place-items:center;height:44px;border-radius:12px;background:var(--sf2);border:1px solid var(--line);font-weight:700;font-size:.8rem;white-space:nowrap}
+.tier.th{font-size:.74rem;color:var(--mute);margin-bottom:-4px}
+.ppv{display:flex;align-items:center;gap:10px;margin-top:12px}
+.ppv label{margin:0;flex:1;color:var(--ink);font-size:.88rem}
+.ppv input{width:92px;flex:none}
 </style>
 </head>
 <body>
 <header class="top">
-  <button class="icon-btn" id="themeBtn" title="الوضع الليلي/النهاري"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
-  <a class="icon-btn" href="/logout" id="lnkOut" title="خروج"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
-  <a class="brand" id="lnkBrand"><span class="mark"><svg viewBox="0 0 24 24" style="width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span><span><b>سمارت سوق</b><small>التجديد</small></span></a>
+  <a class="brand" id="lnkBrand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span>
+    <span><b>سمارت سوق</b><small>التجديد</small></span></a>
+  <span class="sp"></span>
+  <a class="icon-btn out" href="/logout" id="lnkOut" title="خروج" aria-label="خروج"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></a>
+  <button class="icon-btn" id="themeBtn" type="button" title="الوضع الليلي/النهاري" aria-label="الوضع الليلي/النهاري"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
 </header>
-<main>
-  <h1>التجديد والمقارنة</h1>
-  <p class="sub">
-    ارفع ملفات سلة أو اسحبها، قارِن يوزراتك باللوحات، وجهّز قائمة التجديد.
-    <span class="admin-only">· <a href="/renew" id="lnkPub" target="_blank">صفحة العميل</a></span>
-  </p>
+<main class="wrap">
+  <section class="hero">
+    <div class="hrow"><h1>التجديد والمقارنة</h1>
+      <span class="admin-only"><a class="pub" href="/renew" id="lnkPub" target="_blank" rel="noopener">صفحة العميل <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a></span></div>
+    <p>ارفع ملفات سلة أو اسحبها، قارِن يوزراتك باللوحات، وجهّز قائمة التجديد.</p>
+    <div class="hstrip">
+      <div><b id="hIdx">—</b><small>طلبات الفهرس</small></div>
+      <div><b id="hOn">—</b><small>صفحة التجديد</small></div>
+      <div><b id="hDry">—</b><small>الوضع</small></div>
+    </div>
+  </section>
+  <nav class="jump" aria-label="أقسام الصفحة">
+    <a href="#secData"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>البيانات</a>
+    <a href="#secAn" id="jAn" class="hidden"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg>التحليل</a>
+    <a href="#secCmp"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>قائمة التجديد</a>
+    <a href="#secQ" class="admin-only"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></svg>الطلبات</a>
+    <a href="#secCfg"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>الإعداد</a>
+  </nav>
 
-  <!-- ===================== ١· رفع الملفات ===================== -->
-  <section>
-    <h2>١· رفع ملفات سلة <small>الطلبات والمنتجات · CSV و XLSX — تُميَّز تلقائيًا</small></h2>
-
+  <!-- ===================== البيانات: الرفع، ثم بقية المصادر مطويّة ===================== -->
+  <section id="secData">
+    <div class="shead"><span class="sic c-blue"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg></span>
+      <h2>رفع ملفات سلة<small>الطلبات والمنتجات · CSV و XLSX — تُميَّز تلقائيًا</small></h2></div>
     <div class="drop" id="drop" tabindex="0" role="button">
-      <b>اسحب الملفات هنا أو اضغط للاختيار</b>
-      ملف الطلبات وملف المنتجات — ‏CSV أو XLSX · يمكن اختيار عدة ملفات دفعة واحدة
+      <span class="di"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M12 18v-6M9 15l3-3 3 3"/></svg></span>
+      <span><b>اسحب الملفات هنا أو اضغط للاختيار</b><small>ملف الطلبات وملف المنتجات · عدة ملفات دفعة واحدة</small></span>
     </div>
     <input type="file" id="pick" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple class="hidden">
     <div class="files" id="fileList"></div>
-
-    <label class="chk"><input type="checkbox" id="apply" checked>
-      اعتماده فهرسًا تعمل عليه صفحة العميل</label>
-    <label class="chk"><input type="checkbox" id="includeFalcon">
-      تضمين طلبات فالكون (تُستبعد افتراضيًا — لوحتها قائمة بذاتها)</label>
-    <label class="chk"><input type="checkbox" id="keepUnconfirmed">
-      تضمين الملغي وغير المدفوع (للفحص فقط)</label>
-
-    <button class="go" id="up" disabled>ارفع وحلّل</button>
+    <label class="switch"><span>اعتماده فهرسًا تعمل عليه صفحة العميل</span><input type="checkbox" class="tog" id="apply" checked></label>
+    <details class="opts fold"><summary>خيارات القراءة</summary>
+      <div class="din">
+        <label class="switch"><span>تضمين طلبات فالكون<small>تُستبعد افتراضيًا — لوحتها قائمة بذاتها</small></span><input type="checkbox" class="tog" id="includeFalcon"></label>
+        <label class="switch"><span>تضمين الملغي وغير المدفوع<small>للفحص فقط</small></span><input type="checkbox" class="tog amber" id="keepUnconfirmed"></label>
+      </div>
+    </details>
+    <div class="acts"><button class="go" id="up" type="button" disabled>ارفع وحلّل</button></div>
     <p class="msg" id="upMsg"></p>
-    <p class="note" id="idxNote"></p>
-  </section>
+    <p class="meta" id="idxNote"></p>
 
-  <!-- ===================== السحب المباشر ===================== -->
-  <section>
-    <h2>أو: اسحب من سلة مباشرة <small>بلا ملفات — وأكمل مما لا يُصدَّر</small></h2>
-    <p class="note" style="margin-top:0">
-      تصدير سلة لا يُخرج <b>سجلّ الطلب</b>، وبيانات الاشتراك تُكتب فيه تعليقًا
-      (<code>Host: … Username: … Password: …</code>). والسحب من الواجهة يأتي بالطلبات
-      كلها ومعها سجلّها، فيُعرف يوزر العميل وباسورده ولا يُطلب منه كتابتهما.
-    </p>
-    <label class="chk"><input type="checkbox" id="pullHistory" checked>
-      اقرأ سجلّ كل طلب لاستخراج اليوزر والباسورد <b>(يطول — نداءٌ لكل طلب)</b></label>
-    <label class="chk"><input type="checkbox" id="pullApply" checked>
-      اعتماده فهرسًا تعمل عليه صفحة العميل</label>
-    <div class="row">
-      <button class="ghost" id="pull" type="button">ابدأ السحب</button>
-      <button class="ghost" id="pullStop" type="button" class="hidden">إيقاف</button>
-    </div>
-    <p class="msg" id="pullMsg"></p>
-    <div id="pullBar" class="hidden" style="margin-top:10px">
-      <div style="height:8px;background:var(--line);border-radius:99px;overflow:hidden">
-        <div id="pullFill" style="height:100%;width:0;background:var(--go);transition:width .3s"></div>
+    <details class="blk fold" id="blkPull">
+      <summary><span class="bi c-teal"><svg viewBox="0 0 24 24"><path d="M20 16.6A5 5 0 0 0 18 7h-1.3A8 8 0 1 0 4 15.3M12 12v9M8 17l4 4 4-4"/></svg></span>
+        <span class="st"><b>أو اسحب من سلة مباشرة</b><small data-sum="pullMsg">بلا ملفات — وأكمل مما لا يُصدَّر</small></span></summary>
+      <div class="din">
+        <p class="hint">التصدير لا يُخرج <b>سجلّ الطلب</b>، وفيه يُكتب الاشتراك (<code>Host · Username · Password</code>).
+          السحب يأتي بالطلبات كلها ومعها سجلّها، فيُعرف يوزر العميل وباسورده ولا يُطلب منه كتابتهما.</p>
+        <label class="switch"><span>اقرأ سجلّ كل طلب<small>لاستخراج اليوزر والباسورد — يطول: نداءٌ لكل طلب</small></span><input type="checkbox" class="tog" id="pullHistory" checked></label>
+        <label class="switch"><span>اعتماده فهرسًا تعمل عليه صفحة العميل</span><input type="checkbox" class="tog" id="pullApply" checked></label>
+        <div class="acts"><button class="go" id="pull" type="button">ابدأ السحب</button>
+          <button class="ghost hidden" id="pullStop" type="button">إيقاف</button></div>
+        <p class="msg" id="pullMsg"></p>
+        <div class="bar hidden" id="pullBar"><i id="pullFill"></i></div>
       </div>
-    </div>
-  </section>
-
-  <!-- ===================== خطوط اللوحة ===================== -->
-  <section>
-    <h2>وأهمّها: صدِّر خطوط اللوحة <small>المصدر الكامل الوحيد لليوزر والباسورد</small></h2>
-    <p class="note" style="margin-top:0">
-      سلة تعرف <b>ماذا</b> اشترى العميل، ولا تعرف <b>بأيّ يوزر</b> سُلّم — إلا حيث
-      كُتب يدويًا. واللوحة تعرف كل خط بيوزره وباسورده وانتهائه. فبتصديرها مرةً
-      يصير التعرّف على العميل لحظيًّا بلا نداء للوحة وقت الطلب.
-    </p>
-    <div class="row">
-      <button class="ghost" id="lines" type="button">صدِّر الخطوط من لوحة البحث</button>
-      <button class="ghost hidden" id="linesStop" type="button">إيقاف</button>
-    </div>
-    <p class="msg" id="linesMsg"></p>
-  </section>
-
-  <!-- ===================== الحصاد ===================== -->
-  <section class="admin-only">
-    <h2>احصد الاعتمادات <small>الجلسة نافذةٌ تنتهي — استنفدها جمعًا</small></h2>
-    <p class="note" style="margin-top:0">
-      جلسة لوحة سلة تنتهي خلال ساعات. فبدل أن يعتمد عليها العميل وقت طلبه،
-      يُجمع فيها كل ما يُستطاع <b>ويُخزَّن على القرص</b> — وبعدها لا تُسأل اللوحة
-      عمّا حُصد ولو ماتت الجلسة. يعمل بعدّة خيوط، ويُحفظ تقدّمه أولًا بأول،
-      <b>ويُستأنف من حيث وقف</b> إن انقطع أو انتهت الجلسة.
-    </p>
-    <h3>النطاق — ابدأ بما يستحقّ</h3>
-    <p class="note" style="margin-top:0">
-      النافذة ساعات والطلبات عشرات الألوف، فالحصاد الأعمى يحرقها على ما لا يهمّ.
-      اختر <b>من تاريخ</b> فيُقرأ ما بعده فقط — والأحدث أولًا، لأنه أطولها بقاءً.
-    </p>
-    <div class="g3">
-      <div><label for="hFrom">من تاريخ</label><input type="date" id="hFrom"></div>
-      <div><label for="hTo">إلى تاريخ (اختياري)</label><input type="date" id="hTo"></div>
-      <div><label>&nbsp;</label>
-        <label class="chk" style="margin:0"><input type="checkbox" id="hActive" checked>
-          السارية فقط — المنتهي لا يُجدَّد</label></div>
-    </div>
-    <p class="note" id="harvPreview" style="margin-top:8px">—</p>
-
-    <div class="row">
-      <button class="ghost" id="harv" type="button">ابدأ الحصاد</button>
-      <button class="ghost hidden" id="harvStop" type="button">إيقاف</button>
-      <button class="ghost" id="harvRetry" type="button">أعِد على من لم يُعطِ شيئًا</button>
-    </div>
-    <p class="msg" id="harvMsg"></p>
-    <div id="harvBar" class="hidden" style="margin-top:10px">
-      <div style="height:8px;background:var(--line);border-radius:99px;overflow:hidden">
-        <div id="harvFill" style="height:100%;width:0;background:var(--go);transition:width .3s"></div>
+    </details>
+    <details class="blk fold" id="blkLines">
+      <summary><span class="bi c-purple"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+        <span class="st"><b>وأهمّها: خطوط اللوحة</b><small data-sum="linesMsg">المصدر الكامل الوحيد لليوزر والباسورد</small></span></summary>
+      <div class="din">
+        <p class="hint">سلة تعرف <b>ماذا</b> اشترى العميل لا <b>بأيّ يوزر</b> سُلّم — إلا حيث كُتب يدويًا. واللوحة تعرف كل خط بيوزره وباسورده
+          وانتهائه، فبتصديرها مرةً يُعرف العميل لحظيًّا بلا نداءٍ للوحة وقت الطلب.</p>
+        <div class="acts"><button class="go" id="lines" type="button">صدِّر الخطوط من لوحة البحث</button>
+          <button class="ghost hidden" id="linesStop" type="button">إيقاف</button></div>
+        <p class="msg" id="linesMsg"></p>
       </div>
-    </div>
-  </section>
-
-  <!-- ===================== مقارنة اللوحات ===================== -->
-  <section>
-    <h2>قارِن سلة باللوحات <small>يوزرٌ مباعٌ في سلة — أموجودٌ على لوحته؟ وبالمدة نفسها؟</small></h2>
-
-    <h3>اللوحات وهوستاتها <small style="font-weight:400">كل لوحة دخولٌ واحد وعدّة هوستات للعملاء تتبعها</small></h3>
-    <div id="panelsBox"></div>
-    <div class="row" style="margin-top:8px">
-      <button class="ghost" id="addPanel" type="button">+ أضف لوحة</button>
-      <button class="go" id="savePanels" type="button">احفظ اللوحات</button>
-    </div>
-    <p class="msg" id="panelsMsg"></p>
-
-    <h3>اسحب يوزرات اللوحات <small style="font-weight:400">مرّةً تُجمع، ثم تُقارَن بلا انتظار</small></h3>
-    <div class="row">
-      <button class="ghost" id="pullPanels" type="button">اسحب يوزرات كل اللوحات</button>
-      <button class="ghost hidden" id="pullPanelsStop" type="button">إيقاف</button>
-      <a class="ghost" id="dlUsers" href="#" type="button">تنزيل اليوزرات Excel</a>
-    </div>
-    <p class="msg" id="panelsMsg2"></p>
-    <div id="panelsBar" class="hidden" style="margin-top:10px">
-      <div style="height:8px;background:#e5e7eb;border-radius:6px;overflow:hidden">
-        <div id="panelsFill" style="height:100%;width:0;background:var(--go);transition:width .3s"></div>
+    </details>
+    <details class="blk fold admin-only" id="blkHarv">
+      <summary><span class="bi c-gold"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.7-4 3-9 3s-9-1.3-9-3M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/></svg></span>
+        <span class="st"><b>احصد الاعتمادات</b><small data-sum="harvMsg">الجلسة نافذةٌ تنتهي — استنفدها جمعًا</small></span></summary>
+      <div class="din">
+        <p class="hint">جلسة لوحة سلة تنتهي خلال ساعات، فيُجمع فيها ما يُستطاع <b>ويُخزَّن على القرص</b> فلا تُسأل اللوحة عمّا حُصد ولو ماتت الجلسة.
+          يعمل بعدّة خيوط <b>ويُستأنف من حيث وقف</b>. ابدأ بما يستحقّ: <b>من تاريخ</b> فيُقرأ ما بعده فقط، والأحدث أولًا.</p>
+        <div class="form2">
+          <div><label for="hFrom">من تاريخ</label><input type="date" id="hFrom"></div>
+          <div><label for="hTo">إلى تاريخ (اختياري)</label><input type="date" id="hTo"></div>
+        </div>
+        <label class="switch"><span>السارية فقط<small>المنتهي لا يُجدَّد</small></span><input type="checkbox" class="tog" id="hActive" checked></label>
+        <p class="meta" id="harvPreview">—</p>
+        <div class="acts"><button class="go wide" id="harv" type="button">ابدأ الحصاد</button>
+          <button class="ghost hidden" id="harvStop" type="button">إيقاف</button>
+          <button class="ghost" id="harvRetry" type="button">أعِد على من لم يُعطِ شيئًا</button></div>
+        <p class="msg" id="harvMsg"></p>
+        <div class="bar hidden" id="harvBar"><i id="harvFill"></i></div>
       </div>
-    </div>
-    <div id="panelsResults"></div>
-
-    <h3>النتيجة <small style="font-weight:400">الأهمّ أولًا: فروق المدّة ثم المفقود</small>
-      <a class="ghost" id="dlRenewal" href="#" style="margin-right:8px">تنزيل قائمة التجديد Excel</a>
-      <a class="ghost" id="dlCompare" href="#" style="margin-right:8px">تنزيل المقارنة Excel</a>
-      <button class="ghost" id="doCompare" type="button">حدّث المقارنة</button></h3>
-    <label style="max-width:280px">«قريبٌ من الانتهاء» خلال (أيام)
-      <input type="number" id="renewalDays" min="1" max="365" value="45" style="width:90px"></label>
-    <div class="tiles" id="cmpTiles"></div>
-    <div class="row" id="cmpFilters" style="margin:8px 0;gap:6px;flex-wrap:wrap"></div>
-    <div class="scroll"><table>
-      <thead><tr><th>الحالة</th><th>اليوزر</th><th>جوال العميل</th><th>الطلب</th>
-        <th>اللوحة</th><th>سلة</th><th>اللوحة</th><th>انتهاء اللوحة</th><th>أيام</th></tr></thead>
-      <tbody id="cmpBody"></tbody></table></div>
-    <p class="msg" id="cmpMsg"></p>
+    </details>
   </section>
 
-  <!-- ===================== ٢· التحليل ===================== -->
+  <!-- ===================== التحليل (بعد أول رفعٍ أو سحب) ===================== -->
   <section id="secAn" class="hidden">
-    <h2>٢· التحليل <small id="anWhen"></small>
-      <button class="ghost" id="dl" type="button">تنزيل التقرير</button></h2>
-
-    <div class="tiles" id="tiles"></div>
-
-    <h3>التنظيف — ما استُبعد ولماذا</h3>
-    <div class="scroll"><table><tbody id="cleanBody"></tbody></table></div>
-
-    <h3>التكلفة الفعلية — عدّل النقاط فيتغيّر كل شيء</h3>
-    <div class="scroll"><table>
-      <thead><tr><th>الباقة المطلوبة</th><th>يوزرات</th><th>نقاط الباقة</th><th>النقاط</th><th>ر.س</th></tr></thead>
-      <tbody id="costBody"></tbody>
-      <tfoot><tr><td>الإجمالي</td><td id="cU"></td><td></td><td id="cP"></td><td id="cC"></td></tr></tfoot>
-    </table></div>
-    <div class="row">
-      <label style="margin:0;color:var(--ink)">قيمة النقطة
-        <input class="pt" type="number" id="ppv" value="2" min="0" step="0.25"> ر.س</label>
-      <button class="ghost" data-preset="marh" type="button">أسعار مرح</button>
-      <button class="ghost" data-preset="month" type="button">نقطة لكل شهر</button>
-    </div>
-    <p class="note">النقاط أرقام لوحة مرح نفسها، تُقرأ من أسماء باقاتها عند جلبها في
-      الخطوة ٣. <b>الجهازان ليسا ضِعفًا</b>: السنة أربع نقاط والسنة بجهازين ست لا ثمانٍ.
-      وقيمة النقطة بالريال يكتبها صاحب الحساب في بوابته.</p>
-
-    <h3>متى تنتهي الاشتراكات</h3>
+    <div class="shead"><span class="sic c-green"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg></span>
+      <h2>التحليل<small id="anWhen"></small></h2>
+      <button class="ghost sm" id="dl" type="button" title="تنزيل التقرير"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>التقرير</button></div>
+    <div class="stats" id="tiles"></div>
+    <div class="blockh"><h3>متى تنتهي الاشتراكات</h3><small>الأحمر ما مضى</small></div>
     <div class="bars" id="bars"></div>
     <div class="axis" id="axis"></div>
-
-    <h3>الاعتمادات المكتوبة في الطلبات <small style="font-weight:400">من كتب اشتراكه في الطلب لا يُطلب منه كتابته</small></h3>
-    <div id="credBox"></div>
-
-    <h3>الباقات المباعة</h3>
-    <div class="scroll"><table>
-      <thead><tr><th>المنتج</th><th>المدة</th><th>مُباع</th><th>سارٍ</th></tr></thead>
-      <tbody id="prodBody"></tbody></table></div>
+    <details class="blk fold">
+      <summary><span class="st"><b>التكلفة الفعلية</b><small>عدّل النقاط فيتغيّر كل شيء</small></span></summary>
+      <div class="din">
+        <div class="scroll"><table class="rt cost">
+          <thead><tr><th>الباقة المطلوبة</th><th>يوزرات</th><th>نقاط الباقة</th><th>النقاط</th><th>ر.س</th></tr></thead>
+          <tbody id="costBody"></tbody>
+          <tfoot><tr><td class="n">الإجمالي</td><td class="u" data-l="يوزرات" id="cU"></td><td class="in"></td><td class="p" data-l="النقاط" id="cP"></td><td class="c" data-l="ر.س" id="cC"></td></tr></tfoot>
+        </table></div>
+        <div class="ppv"><label for="ppv">قيمة النقطة (ر.س)</label><input class="pt" type="number" id="ppv" value="2" min="0" step="0.25"></div>
+        <div class="acts"><button class="ghost" data-preset="marh" type="button">أسعار مرح</button>
+          <button class="ghost" data-preset="month" type="button">نقطة لكل شهر</button></div>
+        <p class="hint" style="margin-top:12px">النقاط أرقام لوحة مرح نفسها، تُقرأ من أسماء باقاتها عند جلبها في الإعداد. <b>الجهازان ليسا ضِعفًا</b>:
+          السنة أربع نقاط والسنة بجهازين ست لا ثمانٍ. وقيمة النقطة بالريال يكتبها صاحب الحساب في بوابته.</p>
+      </div>
+    </details>
+    <details class="blk fold">
+      <summary><span class="st"><b>التنظيف</b><small>ما استُبعد ولماذا</small></span></summary>
+      <div class="din"><table class="kv"><tbody id="cleanBody"></tbody></table></div>
+    </details>
+    <details class="blk fold">
+      <summary><span class="st"><b>الاعتمادات المكتوبة في الطلبات</b><small>من كتب اشتراكه في الطلب لا يُطلب منه كتابته</small></span></summary>
+      <div class="din" id="credBox"></div>
+    </details>
+    <details class="blk fold">
+      <summary><span class="st"><b>الباقات المباعة</b><small id="prodSum"></small></span></summary>
+      <div class="din"><div class="scroll"><table class="rt prod">
+        <thead><tr><th>المنتج</th><th>المدة</th><th>مُباع</th><th>سارٍ</th></tr></thead>
+        <tbody id="prodBody"></tbody></table></div></div>
+    </details>
   </section>
 
-  <!-- ===================== ٣· الربط ===================== -->
-  <section>
-    <h2>٣· الربط والإعداد</h2>
+  <!-- ===================== قائمة التجديد: مقارنة سلة باللوحات ===================== -->
+  <section id="secCmp">
+    <div class="shead"><span class="sic c-rose"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg></span>
+      <h2>قارِن سلة باللوحات<small>يوزرٌ مباعٌ في سلة — أموجودٌ على لوحته؟ وبالمدة نفسها؟</small></h2></div>
+    <div class="nrow"><label for="renewalDays">«قريبٌ من الانتهاء» خلال<small>أيام</small></label>
+      <input type="number" id="renewalDays" min="1" max="365" value="45"></div>
+    <div class="acts"><button class="go" id="doCompare" type="button">حدّث المقارنة</button></div>
+    <div class="strip" id="cmpTiles"></div>
+    <div class="fchips" id="cmpFilters"></div>
+    <p class="empty" id="cmpEmpty" style="margin-top:12px">اضغط «حدّث المقارنة» لترى الأهمّ أولًا: فروق المدّة ثم المفقود، ومن انتهى أو قرب.</p>
+    <div class="scroll hidden" id="cmpWrap"><table class="rt cmp">
+      <thead><tr><th>الحالة</th><th>اليوزر</th><th>جوال العميل</th><th>الطلب</th>
+        <th>اللوحة</th><th>مدة سلة</th><th>مدة اللوحة</th><th>انتهاء اللوحة</th><th>أيام</th></tr></thead>
+      <tbody id="cmpBody"></tbody></table></div>
+    <div class="acts"><button class="ghost hidden" id="cmpMore" type="button"></button></div>
+    <p class="msg" id="cmpMsg"></p>
+    <div class="acts">
+      <a class="ghost wide" id="dlRenewal" href="#"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تنزيل قائمة التجديد Excel</a>
+      <a class="ghost wide" id="dlCompare" href="#"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تنزيل المقارنة Excel</a>
+    </div>
 
-    <label for="sallaToken">رمز سلة (Admin API) — لسحب طلباتك من سلة مباشرة</label>
-    <input id="sallaToken" autocomplete="off" placeholder="ory_at_… أو رمز التطبيق الخاص">
-
-    <div class="g2">
-      <div>
-        <label for="srcGate">لوحة البحث عن اشتراك العميل</label>
-        <select id="srcGate"></select>
+    <details class="blk fold" id="blkUsers">
+      <summary><span class="bi c-indigo"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        <span class="st"><b>اسحب يوزرات اللوحات</b><small data-sum="panelsMsg2">مرّةً تُجمع، ثم تُقارَن بلا انتظار</small></span></summary>
+      <div class="din">
+        <div class="acts" style="margin-top:4px"><button class="go wide" id="pullPanels" type="button">اسحب يوزرات كل اللوحات</button>
+          <button class="ghost hidden" id="pullPanelsStop" type="button">إيقاف</button>
+          <a class="ghost" id="dlUsers" href="#"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تنزيل اليوزرات Excel</a></div>
+        <p class="msg" id="panelsMsg2"></p>
+        <div class="bar hidden" id="panelsBar"><i id="panelsFill"></i></div>
+        <div id="panelsResults"></div>
       </div>
-      <div>
-        <label for="tgtGate">بوابة مرح (وجهة الإنشاء)</label>
-        <select id="tgtGate"></select>
+    </details>
+    <details class="blk fold" id="blkPanels">
+      <summary><span class="bi c-slate"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+        <span class="st"><b>اللوحات وهوستاتها</b><small id="panelsSum">كل لوحة دخولٌ واحد وعدّة هوستات للعملاء تتبعها</small></span></summary>
+      <div class="din">
+        <div id="panelsBox"></div>
+        <div class="acts"><button class="go" id="savePanels" type="button">احفظ اللوحات</button>
+          <button class="ghost" id="addPanel" type="button">+ أضف لوحة</button></div>
+        <p class="msg" id="panelsMsg"></p>
       </div>
-    </div>
-    <p class="note">بوابات فالكون لا تصلح طرفًا هنا — عملاؤها خارج هذا التجديد.</p>
-
-    <h3>ربط المدة بباقة على مرح
-      <button class="ghost" id="fetchPkgs" type="button" style="margin-right:8px">جلب الباقات من مرح</button></h3>
-    <p class="msg" id="pkgMsg"></p>
-    <div id="pkgMap"></div>
-    <p class="note">المتبقّي يُرقّى لأصغر باقة تغطّيه، فالمدد غير المربوطة تبقى معلّقة في الطابور.</p>
-
-    <h3>عند انقطاع الاتصال بمرح</h3>
-    <div class="g3">
-      <div><label for="promise">يُوعَد العميل بالتفعيل خلال (ساعة)</label>
-        <input type="number" id="promise" min="1" max="240" value="12"></div>
-      <div><label for="retry">إعادة المحاولة كل (دقيقة)</label>
-        <input type="number" id="retry" min="1" max="1440" value="10"></div>
-      <div><label for="rate">حد محاولات التعرّف لكل عنوان/ساعة</label>
-        <input type="number" id="rate" min="1" max="10000" value="12"></div>
-    </div>
-
-    <h3>جلسة لوحة سلة <small style="font-weight:400">تقرأ ما لا تُخرجه الواجهة</small></h3>
-    <p class="note" style="margin-top:0">
-      بطاقة الاشتراك تظهر كاملةً في لوحة سلة ولا تُخرجها الواجهة دائمًا.
-      <b>ولا دخول آليّ ممكن</b>: كود الـSMS كنا سنتعامل معه كما نتعامل مع كابتشا
-      مرح، لكن <b>Cloudflare Turnstile يسبقه</b> ورمزُه لا يُصدَر إلا لمتصفّح حقيقي،
-      ومن ورائه مفتاحُ مرورٍ مربوطٌ بجهازك. فادخل بمتصفّحك وأعطنا جلستك:
-    </p>
-    <ol class="note" style="margin:0 0 10px;padding-inline-start:20px">
-      <li>افتح <a href="https://s.salla.sa/orders" target="_blank" rel="noopener">s.salla.sa/orders</a>
-          في كروم على الحاسب، وسجّل دخولك كالمعتاد.</li>
-      <li>‏<code>F12</code> ← تبويب <b>Network</b> ← حدّث الصفحة.</li>
-      <li>انقر أي نداء بزرّ الفأرة الأيمن ← <b>Copy</b> ← <b>Copy as cURL</b>.</li>
-      <li>الصقه كما هو في الحقل أدناه — نستخرج الكوكيز منه وحدنا.</li>
-    </ol>
-    <p class="note" style="margin:0">
-      تُحفظ مشفَّرة ولا تُرسَل للمتصفّح أبدًا، وتنتهي بانتهاء جلستك فيصلك بريدٌ
-      يطلب لصقها من جديد. والتجديد لا يتوقّف حينها: اللوحة ثالثُ المصادر.
-    </p>
-    <p class="note" style="margin:0 0 6px">
-      <b>طريقٌ أسهل:</b> إضافة المتصفّح «جلسة سلة → أداة ssouq» تلتقط الكوكيز
-      وترسلها هنا بنقرة، بلا لصق.
-    </p>
-    <div class="row" style="margin:0 0 10px">
-      <a class="ghost" id="dlExt" href="#" role="button" style="text-decoration:none">⬇︎ تحميل الإضافة (ZIP)</a>
-    </div>
-    <ol class="note" style="margin:0 0 10px;padding-inline-start:20px">
-      <li>حمّل الملف و<b>فكّ ضغطه</b> (كليك يمين ← استخراج الكل) — يظهر مجلّد فيه
-          <code>manifest.json</code> مباشرةً.</li>
-      <li>افتح <code>chrome://extensions</code> ← فعّل <b>وضع المطوّر</b>.</li>
-      <li>‏<b>تحميل غير مضغوط</b> ← اختر <b>المجلّد الذي يحوي <code>manifest.json</code></b>
-          (لا ملفّ الـZIP نفسه، ولا مجلّدًا فوقه).</li>
-      <li>افتح الإضافة ← اضبط عنوان الأداة واسم الدخول وكلمة المرور ← احفظ.</li>
-    </ol>
-    <label for="panelCookie">الصق «Copy as cURL» — أو ترويسة Cookie وحدها</label>
-    <input id="panelCookie" autocomplete="off" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'">
-    <div class="row admin-only"><button class="ghost" id="panelTest" type="button">اختبار الجلسة</button></div>
-    <p class="msg" id="panelMsg"></p>
-
-    <h3>بريد التنبيه — يصلك حين ينقطع الوصل</h3>
-    <div class="g2">
-      <div><label for="smtpHost">خادم SMTP</label><input id="smtpHost" placeholder="smtp.gmail.com"></div>
-      <div><label for="smtpPort">المنفذ</label><input type="number" id="smtpPort" value="587"></div>
-      <div><label for="smtpUser">اسم الدخول</label><input id="smtpUser" autocomplete="off"></div>
-      <div><label for="smtpPass">كلمة المرور</label><input type="password" id="smtpPass" autocomplete="new-password" placeholder="اتركها فارغة لتبقى كما هي"></div>
-      <div><label for="mailFrom">المُرسِل</label><input id="mailFrom" placeholder="alerts@ssouq.com"></div>
-      <div><label for="mailTo">يُرسَل إلى</label><input id="mailTo" placeholder="you@ssouq.com"></div>
-    </div>
-    <label class="chk"><input type="checkbox" id="smtpTls" checked> STARTTLS (المنفذ 465 يستخدم SSL تلقائيًا)</label>
-
-    <h3>التشغيل</h3>
-    <label class="chk"><input type="checkbox" id="dryRun" checked>
-      وضع التجربة — لا يُلمس مرح، تُسجَّل الطلبات فقط</label>
-    <label class="chk"><input type="checkbox" id="enabled">
-      تفعيل صفحة التجديد للعملاء</label>
-
-    <button class="go" id="save">حفظ الإعداد</button>
-    <div class="row">
-      <button class="ghost admin-only" id="testMail" type="button">اختبار بريد التنبيه</button>
-    </div>
-    <p class="msg" id="cfgMsg"></p>
+    </details>
   </section>
 
-  <!-- ===================== ٤· الطابور ===================== -->
-  <section class="admin-only">
-    <h2>٤· الطلبات <small id="qCounts"></small>
-      <button class="ghost" id="runQ" type="button">تفريغ الطابور الآن</button></h2>
-    <div class="scroll"><table>
+  <!-- ===================== الطلبات (للمدير) ===================== -->
+  <section id="secQ" class="admin-only">
+    <div class="shead"><span class="sic c-indigo"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></svg></span>
+      <h2>الطلبات<small>ما طلبه العملاء من صفحة التجديد</small></h2></div>
+    <div class="fchips" id="qCounts" style="margin-top:0"></div>
+    <div class="scroll"><table class="rt q">
       <thead><tr><th>الوقت</th><th>الطلب</th><th>اليوزر</th><th>المدة</th><th>الحالة</th><th></th></tr></thead>
       <tbody id="qBody"></tbody></table></div>
+    <div class="acts"><button class="go" id="runQ" type="button">تفريغ الطابور الآن</button></div>
     <p class="msg" id="qMsg"></p>
+  </section>
+
+  <!-- ===================== الإعداد: كتلٌ مطويّة بحالها، ثم التشغيل والحفظ ===================== -->
+  <section id="secCfg">
+    <div class="shead"><span class="sic c-gold"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></span>
+      <h2>الربط والإعداد<small>يُحفظ كله بزرّ «حفظ الإعداد» في آخره</small></h2></div>
+    <label class="switch"><span>تفعيل صفحة التجديد للعملاء</span><input type="checkbox" class="tog" id="enabled"></label>
+    <label class="switch"><span>وضع التجربة<small>لا يُلمس مرح — تُسجَّل الطلبات فقط</small></span><input type="checkbox" class="tog amber" id="dryRun" checked></label>
+
+    <details class="blk fold" id="cfgSalla">
+      <summary><span class="bi c-teal"><svg viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg></span>
+        <span class="st"><b>رمز سلة (Admin API)</b><small>لسحب طلباتك من سلة مباشرة</small></span><span class="pill" id="stSalla"></span></summary>
+      <div class="din">
+        <label for="sallaToken" style="margin-top:0">الرمز</label>
+        <input id="sallaToken" class="ltr" autocomplete="off" placeholder="ory_at_… أو رمز التطبيق الخاص">
+      </div>
+    </details>
+    <details class="blk fold" id="cfgGates">
+      <summary><span class="bi c-blue"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></svg></span>
+        <span class="st"><b>البوابتان</b><small>لوحة البحث، ووجهة الإنشاء على مرح</small></span><span class="pill" id="stGates"></span></summary>
+      <div class="din">
+        <label for="srcGate" style="margin-top:0">لوحة البحث عن اشتراك العميل</label>
+        <select id="srcGate"></select>
+        <label for="tgtGate">بوابة مرح (وجهة الإنشاء)</label>
+        <select id="tgtGate"></select>
+        <p class="hint" style="margin-top:8px">بوابات فالكون لا تصلح طرفًا هنا — عملاؤها خارج هذا التجديد.</p>
+      </div>
+    </details>
+    <details class="blk fold" id="cfgPkgs">
+      <summary><span class="bi c-purple"><svg viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg></span>
+        <span class="st"><b>ربط المدة بباقة على مرح</b><small>المدد غير المربوطة تبقى معلّقة في الطابور</small></span><span class="pill" id="stPkgs"></span></summary>
+      <div class="din">
+        <div class="acts" style="margin-top:4px"><button class="ghost" id="fetchPkgs" type="button">جلب الباقات من مرح</button></div>
+        <p class="msg" id="pkgMsg"></p>
+        <div class="tiers" id="pkgMap"></div>
+        <p class="hint" style="margin-top:10px">المتبقّي يُرقّى لأصغر باقة تغطّيه، فالمدد غير المربوطة تبقى معلّقة في الطابور.</p>
+      </div>
+    </details>
+    <details class="blk fold" id="cfgOff">
+      <summary><span class="bi c-rose"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>
+        <span class="st"><b>عند انقطاع الاتصال بمرح</b><small id="offSum">الوعد، وإعادة المحاولة، وحدّ التعرّف</small></span></summary>
+      <div class="din">
+        <div class="nrow" style="margin-top:0"><label for="promise">يُوعَد العميل بالتفعيل خلال<small>ساعة</small></label><input type="number" id="promise" min="1" max="240" value="12"></div>
+        <div class="nrow"><label for="retry">إعادة المحاولة كل<small>دقيقة</small></label><input type="number" id="retry" min="1" max="1440" value="10"></div>
+        <div class="nrow"><label for="rate">حد محاولات التعرّف<small>لكل عنوان في الساعة</small></label><input type="number" id="rate" min="1" max="10000" value="12"></div>
+      </div>
+    </details>
+    <details class="blk fold" id="cfgPanel">
+      <summary><span class="bi c-slate"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/></svg></span>
+        <span class="st"><b>جلسة لوحة سلة</b><small>تقرأ ما لا تُخرجه الواجهة</small></span><span class="pill" id="stPanel"></span></summary>
+      <div class="din">
+        <p class="hint">بطاقة الاشتراك تظهر كاملةً في لوحة سلة ولا تُخرجها الواجهة دائمًا. <b>ولا دخول آليّ ممكن</b>: Cloudflare Turnstile يسبق كود الـSMS
+          ولا يُصدَر رمزه إلا لمتصفّح حقيقي مربوطٍ بجهازك — فادخل بمتصفّحك وأعطنا جلستك. تُحفظ مشفَّرة ولا تُرسَل للمتصفّح، وحين تنتهي يصلك بريدٌ
+          لتلصقها من جديد؛ والتجديد لا يتوقّف: اللوحة ثالثُ المصادر.</p>
+        <details class="inner fold">
+          <summary><span class="st"><b>الأسهل: إضافة المتصفّح</b><small>«جلسة سلة → أداة ssouq» تلتقط الكوكيز وترسلها بنقرة</small></span></summary>
+          <div class="din">
+            <ol class="steps">
+              <li>حمّل الملف و<b>فكّ ضغطه</b> (كليك يمين ← استخراج الكل) — يظهر مجلّد فيه <code>manifest.json</code> مباشرةً.</li>
+              <li>افتح <code>chrome://extensions</code> ← فعّل <b>وضع المطوّر</b>.</li>
+              <li><b>تحميل غير مضغوط</b> ← اختر <b>المجلّد الذي يحوي <code>manifest.json</code></b> (لا ملفّ الـZIP نفسه، ولا مجلّدًا فوقه).</li>
+              <li>افتح الإضافة ← اضبط عنوان الأداة واسم الدخول وكلمة المرور ← احفظ.</li>
+            </ol>
+            <div class="acts"><a class="ghost" id="dlExt" href="#" role="button"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تحميل الإضافة (ZIP)</a></div>
+          </div>
+        </details>
+        <details class="inner fold">
+          <summary><span class="st"><b>أو انسخها يدويًا</b><small>Copy as cURL من كروم على الحاسب</small></span></summary>
+          <div class="din">
+            <ol class="steps">
+              <li>افتح <a href="https://s.salla.sa/orders" target="_blank" rel="noopener">s.salla.sa/orders</a> في كروم على الحاسب، وسجّل دخولك كالمعتاد.</li>
+              <li><code>F12</code> ← تبويب <b>Network</b> ← حدّث الصفحة.</li>
+              <li>انقر أي نداء بزرّ الفأرة الأيمن ← <b>Copy</b> ← <b>Copy as cURL</b>.</li>
+              <li>الصقه كما هو في الحقل أدناه — نستخرج الكوكيز منه وحدنا.</li>
+            </ol>
+          </div>
+        </details>
+        <label for="panelCookie">الصق «Copy as cURL» — أو ترويسة Cookie وحدها</label>
+        <input id="panelCookie" class="ltr" autocomplete="off" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'">
+        <div class="acts admin-only"><button class="ghost" id="panelTest" type="button">اختبار الجلسة</button></div>
+        <p class="msg" id="panelMsg"></p>
+      </div>
+    </details>
+    <details class="blk fold" id="cfgMail">
+      <summary><span class="bi c-green"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+        <span class="st"><b>بريد التنبيه</b><small>يصلك حين ينقطع الوصل</small></span><span class="pill" id="stMail"></span></summary>
+      <div class="din">
+        <div class="form2">
+          <div><label for="smtpHost" style="margin-top:0">خادم SMTP</label><input id="smtpHost" class="ltr" placeholder="smtp.gmail.com"></div>
+          <div><label for="smtpPort" style="margin-top:0">المنفذ</label><input type="number" id="smtpPort" value="587"></div>
+          <div><label for="smtpUser">اسم الدخول</label><input id="smtpUser" class="ltr" autocomplete="off"></div>
+          <div><label for="smtpPass">كلمة المرور</label><input type="password" id="smtpPass" class="ltr" autocomplete="new-password" placeholder="اتركها فارغة لتبقى كما هي"></div>
+          <div><label for="mailFrom">المُرسِل</label><input id="mailFrom" class="ltr" placeholder="alerts@ssouq.com"></div>
+          <div><label for="mailTo">يُرسَل إلى</label><input id="mailTo" class="ltr" placeholder="you@ssouq.com"></div>
+        </div>
+        <label class="switch"><span>STARTTLS<small>المنفذ 465 يستخدم SSL تلقائيًا</small></span><input type="checkbox" class="tog" id="smtpTls" checked></label>
+      </div>
+    </details>
+
+    <div class="acts" style="margin-top:22px"><button class="go" id="save" type="button">حفظ الإعداد</button>
+      <button class="ghost admin-only" id="testMail" type="button">اختبار بريد التنبيه</button></div>
+    <p class="msg" id="cfgMsg"></p>
   </section>
 </main>
 
 <!-- شريط التنقّل السفلي (مثل لوحة الإدارة) -->
 <nav class="bnav">
   <a id="lnkHome"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>الإنشاء</a>
-  <a class="on"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>التجديد</a>
+  <a class="on" aria-current="page"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>التجديد</a>
   <a id="lnkRemain" class="hidden"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h10"/><circle cx="18" cy="17" r="3"/></svg>المتبقية</a>
   <a id="lnkAcc" class="admin-only"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/></svg>الحسابات</a>
 </nav>
@@ -419,6 +605,7 @@ const $ = s => document.querySelector(s);
 const AR = n => new Intl.NumberFormat('ar-SA',{maximumFractionDigits:2}).format(n || 0);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const IC_TRASH = '<svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
 
 // روابط الهيدر (مطابقة للوحة اليوزر)
 { const set=(id,p)=>{const a=$('#'+id); if(a) a.href=B+p;};
@@ -429,13 +616,14 @@ fetch(B + '/api/split/notes').then(r => r.json()).then(d => { if (d && d.enabled
 // على نطاق الأداة، /renew هو هذه الصفحة نفسها — فصفحة العميل على الموقع العام.
 $('#lnkPub').href = B ? '/renew' : 'https://guide.ssouq.com/renew';
 
-// مبدّل الثيم (يُحفظ محليًا) — كما في لوحة اليوزر
+// مبدّل الثيم (يُحفظ محليًا): بلا سمةٍ محفوظة تتبع الصفحة سمة الجهاز، والزرّ يقلب ما يُرى الآن
 (function(){
   const KEY='xm_theme';   // موحّد مع لوحة الإدارة وصفحة اليوزر
   try{ const t=localStorage.getItem(KEY); if(t) document.documentElement.setAttribute('data-theme',t); }catch(e){}
   const btn=$('#themeBtn'); if(btn) btn.onclick=()=>{
     const cur=document.documentElement.getAttribute('data-theme');
-    const nx = cur==='light' ? 'dark' : 'light';
+    const light = cur ? cur==='light' : matchMedia('(prefers-color-scheme: light)').matches;
+    const nx = light ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme',nx);
     try{ localStorage.setItem(KEY,nx); }catch(e){}
   };
@@ -453,7 +641,12 @@ const post = (path, body) => api(path, {method:'POST',
 function note(el, text, ok){
   el.textContent = text || '';
   el.className = 'msg' + (text ? (ok ? ' ok' : ' err') : '');
+  // والحال نفسها في سطر كتلتها المطويّة (إن كان لها سطر): تُرى ولو طُويت
+  const s = el.id && document.querySelector(`[data-sum="${el.id}"]`);
+  if (s && text){ s.textContent = String(text).split('\n')[0]; s.className = ok ? 'ok' : 'err'; }
 }
+// ما يجري الآن (سحبٌ أو تصديرٌ أو حصاد) يفتح كتلته المطويّة
+const unfold = id => { const d = $(id); if (d) d.open = true; };
 
 /* ============ ١· الرفع ============ */
 let picked = [];
@@ -471,9 +664,8 @@ function addFiles(list){
   for (const f of list) if (!picked.some(p => p.name === f.name && p.size === f.size)) picked.push(f);
   $('#fileList').innerHTML = picked.map((f, i) =>
     `<div><span class="n">${esc(f.name)}</span>
-      <span class="t">${AR(Math.round(f.size/1024))} ك.ب
-      <button class="ghost" data-rm="${i}" type="button" style="padding:2px 8px;margin-right:6px">حذف</button>
-      </span></div>`).join('');
+      <span class="t">${AR(Math.round(f.size/1024))} ك.ب</span>
+      <button data-rm="${i}" type="button" title="حذف" aria-label="حذف ${esc(f.name)}">${IC_TRASH}</button></div>`).join('');
   document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
     picked.splice(+b.dataset.rm, 1); addFiles([]); });
   $('#up').disabled = !picked.length;
@@ -505,6 +697,8 @@ function showIndex(ix){
   $('#idxNote').textContent = ix.count
     ? `الفهرس الحالي: ${AR(ix.count)} طلبًا · آخر بناء ${ix.built || '—'}`
     : 'لا فهرس بعد — صفحة العميل لن تتعرّف على أحد حتى تعتمد ملفًا.';
+  $('#hIdx').textContent = ix.count ? AR(ix.count) : 'لا فهرس';
+  $('#hIdx').className = ix.count ? '' : 'off';
 }
 
 /* ============ الحصاد ============ */
@@ -550,6 +744,7 @@ async function watchHarvest(once){
   $('#harvFill').style.width = pct + '%';
 
   if (d.running){
+    unfold('#blkHarv');
     note($('#harvMsg'), `جارٍ الحصاد… ${AR(d.done)} من ${AR(d.total)} (${pct}٪)`
       + ` · ${AR(sv.found || 0)} باعتماد`, true);
     clearTimeout(harvTimer);
@@ -586,7 +781,7 @@ $('#linesStop').onclick = async () => {
 async function watchLines(){
   const d = await api('/api/renew/lines-status');
   if (d.error && !d.running) { note($('#linesMsg'), d.error); }
-  else if (d.running) note($('#linesMsg'), `جارٍ التصدير… ${AR(d.done)} خطًّا`, true);
+  else if (d.running){ unfold('#blkLines'); note($('#linesMsg'), `جارٍ التصدير… ${AR(d.done)} خطًّا`, true); }
   const sv = d.saved || {};
   if (!d.running){
     clearTimeout(linesTimer);
@@ -632,6 +827,7 @@ async function watchPull(once){
   }
   if (d.error) note($('#pullMsg'), d.error);
 
+  if (d.running) unfold('#blkPull');
   if (d.running && !once){
     clearTimeout(pullTimer);
     pullTimer = setTimeout(watchPull, 2000);
@@ -661,14 +857,15 @@ function render(a){
   if (!a) return;
   AN = a;
   $('#secAn').classList.remove('hidden');
-  $('#anWhen').textContent = 'تاريخ الاستعلام ' + a.today;
+  $('#jAn').classList.remove('hidden');
+  $('#anWhen').innerHTML = 'تاريخ الاستعلام <bdi dir="ltr">' + esc(a.today) + '</bdi>';
 
   $('#tiles').innerHTML = [
     ['يوزرات سارية', AR(a.units.active)],
     ['عملاء فريدون', AR(a.units.phones_active)],
     ['منتهية', AR(a.units.expired)],
-  ].map(t => `<div class="tile"><p class="k">${t[0]}</p><p class="v">${t[1]}</p></div>`).join('')
-   + `<div class="tile hero"><p class="k">التكلفة الفعلية</p><p class="v" id="heroCost">—</p></div>`;
+  ].map(t => `<div class="stat"><small>${t[0]}</small><b>${t[1]}</b></div>`).join('')
+   + `<div class="stat money"><small>التكلفة الفعلية</small><b id="heroCost">—</b></div>`;
 
   const sk = a.orders.skipped || {};
   $('#cleanBody').innerHTML = [
@@ -689,21 +886,22 @@ function render(a){
 
   const c = a.creds || {with_credentials: 0, hosts: []};
   $('#credBox').innerHTML = c.with_credentials
-    ? `<p class="note" style="margin-top:0">${AR(c.with_credentials)} يوزرًا من ${AR(a.units.all)}
+    ? `<p class="hint">${AR(c.with_credentials)} يوزرًا من ${AR(a.units.all)}
          يحمل طلبُه يوزره وباسورده — هؤلاء يُجدَّدون بضغطة واحدة بلا أن يكتبوا شيئًا.</p>
-       <div class="scroll"><table>
-         <thead><tr><th>الهوست القديم</th><th>عدد</th></tr></thead><tbody>
-         ${c.hosts.map(h => `<tr><td style="direction:ltr;text-align:left">${esc(h.k)}</td>
+       <table class="kv">
+         <thead><tr><th>الهوست القديم</th><th style="text-align:end">عدد</th></tr></thead><tbody>
+         ${c.hosts.map(h => `<tr><td class="mono">${esc(h.k)}</td>
             <td>${AR(h.n)}</td></tr>`).join('')
-            || '<tr><td colspan="2" style="color:var(--mute)">لا هوست مكتوب</td></tr>'}
-       </tbody></table></div>`
-    : `<p class="note" style="margin-top:0">لا طلب يحمل يوزرًا أو باسوردًا.
+            || '<tr class="none"><td colspan="2">لا هوست مكتوب</td></tr>'}
+       </tbody></table>`
+    : `<p class="hint">لا طلب يحمل يوزرًا أو باسوردًا.
          سلة لا تُخزّنهما، فيكتبهما العميل أو تُقرأ من اللوحة القديمة.</p>`;
 
+  $('#prodSum').textContent = `${AR(a.products.length)} باقة · ${AR(a.products.reduce((s, p) => s + (p.n || 0), 0))} مُباعًا`;
   $('#prodBody').innerHTML = a.products.map(p =>
-    `<tr><td class="name">${esc(p.name)}${p.inferred ? ' <span style="color:var(--copy)">⟨مُستنتج⟩</span>' : ''}</td>
-      <td>${p.months} شهر${p.devices >= 2 ? ' · جهازين' : ''}</td>
-      <td>${AR(p.n)}</td><td>${AR(p.active)}</td></tr>`).join('');
+    `<tr><td class="nm name">${esc(p.name)}${p.inferred ? ' <span class="c-warn">⟨مُستنتج⟩</span>' : ''}</td>
+      <td class="du" data-l="المدة">${p.months} شهر${p.devices >= 2 ? ' · جهازين' : ''}</td>
+      <td class="n" data-l="مُباع">${AR(p.n)}</td><td class="a" data-l="سارٍ">${AR(p.active)}</td></tr>`).join('');
 
   cost();
 }
@@ -716,9 +914,9 @@ function cost(){
     const k = t.months + '|' + (t.devices >= 2 ? 2 : 1);
     const per = pts[k] != null ? pts[k] : 0;
     const p = per * t.n; tp += p; tu += t.n;
-    return `<tr><td>${t.months} شهر${t.devices >= 2 ? ' · جهازين' : ''}</td><td>${AR(t.n)}</td>
-      <td><input class="pt" type="number" data-k="${k}" value="${per}" min="0" step="0.5"></td>
-      <td>${AR(p)}</td><td>${AR(p*pv)}</td></tr>`;
+    return `<tr><td class="n">${t.months} شهر${t.devices >= 2 ? ' · جهازين' : ''}</td><td class="u" data-l="يوزرات">${AR(t.n)}</td>
+      <td class="in"><input class="pt" type="number" data-k="${k}" value="${per}" min="0" step="0.5" aria-label="نقاط باقة ${t.months} شهر"></td>
+      <td class="p" data-l="النقاط">${AR(p)}</td><td class="c" data-l="ر.س">${AR(p*pv)}</td></tr>`;
   }).join('');
   $('#cU').textContent = AR(tu); $('#cP').textContent = AR(tp); $('#cC').textContent = AR(tp*pv);
   const hero = $('#heroCost');
@@ -738,6 +936,13 @@ $('#dlExt').onclick = e => { e.preventDefault(); location.href = B + '/api/renew
 
 /* ============ ٣· الإعداد ============ */
 let GATES = [], TIERS = [1,3,6,12,15,30], CFG = null;
+
+// بوابتا البحث والإنشاء كما حُفظتا — تُضبطان بعد أن تمتلئ القائمتان (وإلا ظهرتا فارغتين وأفرغهما الحفظ)
+function setGates(){
+  if (!CFG) return;
+  $('#srcGate').value = CFG.source.account_id ? CFG.source.account_id + '|' + CFG.source.gate_id : '';
+  $('#tgtGate').value = CFG.target.account_id ? CFG.target.account_id + '|' + CFG.target.gate_id : '';
+}
 
 async function loadGates(){
   GATES = [];
@@ -759,6 +964,26 @@ async function loadGates(){
       GATES.filter(g => !g.falcon).map(g =>
         `<option value="${g.account_id}|${g.gate_id}">${esc(g.label)}</option>`).join('');
   });
+  setGates();
+}
+
+// حال الإعداد شاراتٍ: في رأس الصفحة، وفي سطر كل كتلةٍ مطويّة — فيُعرف الناقص بلا فتحها
+function cfgState(){
+  if (!CFG) return;
+  const pill = (id, ok, yes, no) => { const e = $(id); e.textContent = ok ? yes : no; e.className = 'pill ' + (ok ? 'ok' : 'warn'); };
+  pill('#stSalla', CFG.has_salla_token, 'محفوظ', 'غير مضبوط');
+  const gOk = !!(CFG.source.gate_id && CFG.target.gate_id);
+  pill('#stGates', gOk, 'مضبوطتان', 'اختر البوابتين');
+  const nPk = TIERS.filter(t => (CFG.packages || {})[t]).length;
+  pill('#stPkgs', nPk === TIERS.length, 'كلها مربوطة', `${AR(nPk)} من ${AR(TIERS.length)}`);
+  pill('#stPanel', CFG.has_panel_cookie, 'محفوظة', 'غير مضبوطة');
+  pill('#stMail', !!(CFG.alert.host && CFG.alert.to), 'مضبوط', 'غير مضبوط');
+  $('#offSum').textContent = `الوعد ${AR(CFG.promise_hours)} ساعة · إعادةٌ كل ${AR(CFG.retry_minutes)} دقيقة · ${AR(CFG.rate_per_hour)} محاولة/ساعة`;
+  $('#hOn').textContent = CFG.enabled ? 'مفعّلة' : 'موقوفة';
+  $('#hOn').className = CFG.enabled ? '' : 'off';
+  $('#hDry').textContent = CFG.dry_run ? 'تجربة' : 'فعلي';
+  $('#hDry').className = CFG.dry_run ? 'off' : '';
+  if (!gOk) $('#cfgGates').open = true;      // البوابتان شرطٌ للتجديد: كتلتهما مفتوحةٌ ما نقصتا
 }
 
 let IS_ADMIN = false;
@@ -770,8 +995,7 @@ async function loadCfg(){
   // خدمة العميل المشتركة (حصاد/طابور/اختبارات) للمدير فقط — تُخفى عن اليوزر.
   if (!IS_ADMIN) document.querySelectorAll('.admin-only').forEach(e => e.classList.add('hidden'));
   showIndex(d.index);
-  $('#srcGate').value = CFG.source.account_id ? CFG.source.account_id + '|' + CFG.source.gate_id : '';
-  $('#tgtGate').value = CFG.target.account_id ? CFG.target.account_id + '|' + CFG.target.gate_id : '';
+  setGates();
   $('#promise').value = CFG.promise_hours; $('#retry').value = CFG.retry_minutes;
   $('#rate').value = CFG.rate_per_hour;
   if (CFG.renewal_days) $('#renewalDays').value = CFG.renewal_days;
@@ -788,21 +1012,20 @@ async function loadCfg(){
     ? '••• محفوظ — اتركه فارغًا ليبقى' : 'ory_at_… أو رمز التطبيق الخاص';
   $('#dryRun').checked = !!CFG.dry_run; $('#enabled').checked = !!CFG.enabled;
   drawPkgMap();
+  cfgState();
 }
 
 let PKGS = null;            // باقات مرح حين تُجلب
 
+// ربط المدد: سطرٌ لكل مدة (شارتها ثم خانتاها)، لا قائمةٌ طويلة من الخانات
 function drawPkgMap(){
   const p = (CFG && CFG.packages) || {};
-  $('#pkgMap').innerHTML = TIERS.map(t => {
+  const rows = TIERS.map(t => {
     const cur = p[t] || {};
     if (!PKGS){
-      return `<div class="g2" style="align-items:end">
-        <div><label>باقة ${t} شهر — المعرّف على مرح</label>
-          <input data-pk="${t}" value="${esc(cur.id || '')}" placeholder="اجلب الباقات أو اكتب المعرّف"></div>
-        <div><label>اسمها (للسجل)</label>
-          <input data-pn="${t}" value="${esc(cur.name || '')}" placeholder="اسم الباقة"></div>
-      </div>`;
+      return `<div class="tier"><span class="tb">${t} شهر</span>
+        <input data-pk="${t}" class="ltr" value="${esc(cur.id || '')}" placeholder="المعرّف" aria-label="باقة ${t} شهر — المعرّف على مرح">
+        <input data-pn="${t}" dir="auto" value="${esc(cur.name || '')}" placeholder="اسم الباقة" aria-label="باقة ${t} شهر — اسمها (للسجل)"></div>`;
     }
     // الباقات المقترحة أولًا: ما طابق المدة بجهاز واحد
     const fit = PKGS.filter(k => k.months === t && k.devices < 2);
@@ -810,13 +1033,14 @@ function drawPkgMap(){
     const opt = k => `<option value="${esc(k.id)}" ${k.id === cur.id ? 'selected' : ''}
         data-name="${esc(k.name)}" data-credits="${k.credits == null ? '' : k.credits}"
       >${esc(k.name)}${k.credits ? ` — ${AR(k.credits)} نقطة` : ''}</option>`;
-    return `<div><label>باقة ${t} شهر</label>
-      <select data-pk="${t}">
+    return `<div class="tier one"><span class="tb">${t} شهر</span>
+      <select data-pk="${t}" aria-label="باقة ${t} شهر">
         <option value="">— بلا ربط (تبقى معلّقة) —</option>
         ${fit.map(opt).join('')}
         ${fit.length && rest.length ? '<optgroup label="باقات أخرى">' + rest.map(opt).join('') + '</optgroup>' : rest.map(opt).join('')}
       </select></div>`;
   }).join('');
+  $('#pkgMap').innerHTML = (PKGS ? '' : '<div class="tier th"><span></span><span>المعرّف على مرح</span><span>اسمها (للسجل)</span></div>') + rows;
   if (PKGS) syncPointsFromPackages();
 }
 
@@ -888,6 +1112,7 @@ $('#save').onclick = async () => {
   $('#sallaToken').placeholder = CFG.has_salla_token
     ? '••• محفوظ — اتركه فارغًا ليبقى' : 'ory_at_… أو رمز التطبيق الخاص';
   $('#smtpPass').placeholder = CFG.alert.has_password ? '••• محفوظة — اتركها فارغة لتبقى' : 'كلمة مرور البريد';
+  cfgState();
   note($('#cfgMsg'), 'حُفظ الإعداد ✓', true);
 };
 
@@ -910,17 +1135,18 @@ async function loadQueue(){
   const d = await api('/api/renew/queue');
   if (d.error) return note($('#qMsg'), d.error);
   const c = d.counts || {};
-  $('#qCounts').textContent = Object.keys(c).length
-    ? Object.entries(c).map(([k,v]) => `${label(k)} ${AR(v)}`).join(' · ') : 'لا طلبات بعد';
+  $('#qCounts').innerHTML = Object.keys(c).length
+    ? Object.entries(c).map(([k,v]) => `<span class="pill ${esc(k)}">${label(k)} ${AR(v)}</span>`).join('')
+    : '<span class="pill">لا طلبات بعد</span>';
   $('#qBody').innerHTML = (d.rows || []).map(r => `
-    <tr><td>${esc(r.at)}</td><td>${esc(r.order || '—')}</td>
-      <td style="direction:ltr;text-align:left">${esc(r.username)}</td>
-      <td>${r.tier} شهر</td>
-      <td><span class="pill ${r.state}">${label(r.state)}</span>
+    <tr><td class="at" data-l="الوقت"><span class="ltr">${esc(r.at)}</span></td><td class="o" data-l="الطلب">${esc(r.order || '—')}</td>
+      <td class="u mono">${esc(r.username)}</td>
+      <td class="t">${r.tier} شهر</td>
+      <td class="st"><span class="pill ${esc(r.state)}">${label(r.state)}</span>
         ${r.last_error ? `<br><small style="color:var(--mute)">${esc(r.last_error.slice(0,70))}</small>` : ''}</td>
-      <td>${r.state !== 'done'
-        ? `<button class="ghost" data-retry="${esc(r.key)}" type="button">إعادة</button>` : ''}</td></tr>`).join('')
-    || '<tr><td colspan="6" style="text-align:center;color:var(--mute)">لا طلبات</td></tr>';
+      <td class="act">${r.state !== 'done'
+        ? `<button class="ghost sm" data-retry="${esc(r.key)}" type="button">إعادة</button>` : ''}</td></tr>`).join('')
+    || '<tr class="none"><td colspan="6">لا طلبات</td></tr>';
   document.querySelectorAll('[data-retry]').forEach(b => b.onclick = async () => {
     const d2 = await post('/api/renew/retry', {key: b.dataset.retry});
     note($('#qMsg'), d2.error || 'أُعيد إلى الطابور ✓', !d2.error);
@@ -940,14 +1166,16 @@ $('#runQ').onclick = async () => {
 
 /* ============ مقارنة اللوحات ============ */
 let PANELS = [];               // لوحات المقارنة كما حُفظت
+// لكل صنفٍ شارتُه (ok · warn · bad · purple، وبلا صنفٍ رمادية) — بألوان السمة لا بألوانٍ ثابتة
 const CMP_KIND = {
-  duration_mismatch: {t: 'فرق مدّة', c: '#b45309'},
-  missing_on_panel:  {t: 'مفقود على اللوحة', c: '#b91c1c'},
-  wrong_panel:       {t: 'لوحة مختلفة', c: '#7c3aed'},
-  host_unmapped:     {t: 'هوست غير مربوط', c: '#6b7280'},
-  ok:                {t: 'مطابق', c: '#15803d'},
+  duration_mismatch: {t: 'فرق مدّة', c: 'warn'},
+  missing_on_panel:  {t: 'مفقود على اللوحة', c: 'bad'},
+  wrong_panel:       {t: 'لوحة مختلفة', c: 'purple'},
+  host_unmapped:     {t: 'هوست غير مربوط', c: ''},
+  ok:                {t: 'مطابق', c: 'ok'},
 };
-let cmpAll = [], cmpFilter = '';
+const CMP_STEP = 50;           // الصفوف تُعرض خمسين خمسين (حتى ١٠٠٠)، والكل في Excel
+let cmpAll = [], cmpFilter = '', cmpShown = CMP_STEP;
 
 let WEBGATES = [];   // بوابات الويب لهذه المساحة (من /api/renew/panels، بمعرّف الحساب الصحيح)
 function webGateOptions(sel){
@@ -964,19 +1192,22 @@ function panelRow(p){
   const gv = p.account_id ? p.account_id + '|' + p.gate_id : '';
   const div = document.createElement('div');
   div.className = 'card';
-  div.style.marginBottom = '8px';
   div.innerHTML = `
-    <div class="g2">
-      <div><label>اسم اللوحة</label>
-        <input class="pName" value="${esc(p.name)}" placeholder="كاسبر / مرح / c4k"></div>
-      <div><label>بوابة السحب</label>
-        <select class="pGate">${webGateOptions(gv)}</select></div>
-    </div>
-    <label style="margin-top:6px">هوستات العملاء التابعة لها <small style="font-weight:400">هوستٌ في كل سطر — يُطابَق بها الطلب في سلة</small></label>
-    <textarea class="pHosts" rows="3" style="width:100%;direction:ltr" placeholder="sub.kasper.tv&#10;kasper2.tv">${esc((p.hosts || []).join('\n'))}</textarea>
-    <div class="row" style="margin-top:6px"><button class="ghost pDel" type="button">حذف اللوحة</button></div>`;
+    <label>اسم اللوحة</label>
+    <div class="prow1"><input class="pName" dir="auto" value="${esc(p.name)}" placeholder="كاسبر / مرح / c4k" aria-label="اسم اللوحة">
+      <button class="icon-btn pDel" type="button" title="حذف اللوحة" aria-label="حذف اللوحة">${IC_TRASH}</button></div>
+    <label>بوابة السحب</label>
+    <select class="pGate" aria-label="بوابة السحب">${webGateOptions(gv)}</select>
+    <label>هوستات العملاء التابعة لها — هوستٌ في كل سطر يُطابَق به الطلب في سلة</label>
+    <textarea class="pHosts ltr" rows="2" aria-label="هوستات العملاء" placeholder="sub.kasper.tv&#10;kasper2.tv">${esc((p.hosts || []).join('\n'))}</textarea>`;
   div.querySelector('.pDel').onclick = () => div.remove();
   return div;
+}
+
+// سطر كتلة اللوحات: كم لوحةً وأسماؤها
+function panelsSum(){
+  $('#panelsSum').textContent = PANELS.length
+    ? `${AR(PANELS.length)} لوحة: ${PANELS.map(p => p.name).join('، ')}` : 'لا لوحات بعد — أضف لوحةً وهوستاتها';
 }
 
 async function loadPanels(){
@@ -987,6 +1218,7 @@ async function loadPanels(){
   const box = $('#panelsBox'); box.innerHTML = '';
   if (!PANELS.length) box.appendChild(panelRow());
   else PANELS.forEach(p => box.appendChild(panelRow(p)));
+  panelsSum();
   renderPanelSaved(d.lines || {}, d.store || {});
 }
 
@@ -1011,6 +1243,7 @@ $('#savePanels').onclick = async () => {
   btn.disabled = false;
   if (d.error) return note($('#panelsMsg'), d.error);
   PANELS = d.panels || [];
+  panelsSum();
   note($('#panelsMsg'), `حُفظت ${AR(PANELS.length)} لوحة ✓`, true);
 };
 
@@ -1030,19 +1263,19 @@ $('#pullPanelsStop').onclick = async () => {
 
 function panelsResultsHtml(res){
   if (!res || !res.length) return '';
-  return '<div class="scroll" style="margin-top:8px"><table><tbody>' + res.map(r =>
-    `<tr><td>${esc(r.panel)}</td><td>${r.ok
-      ? `<span style="color:#15803d">${AR(r.count)} يوزر ✓</span>`
-      : `<span style="color:#b91c1c">${esc(r.error || 'فشل')}</span>`}</td></tr>`).join('')
-    + '</tbody></table></div>';
+  return '<ul class="res">' + res.map(r =>
+    `<li><span>${esc(r.panel)}</span>${r.ok
+      ? `<span class="c-ok">${AR(r.count)} يوزر ✓</span>`
+      : `<span class="c-bad">${esc(r.error || 'فشل')}</span>`}</li>`).join('')
+    + '</ul>';
 }
 
 async function watchPanels(){
   const d = await api('/api/renew/panels-status');
   const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
   $('#panelsFill').style.width = pct + '%';
-  if (d.running) note($('#panelsMsg2'),
-    `جارٍ سحب «${esc(d.panel || '—')}»… ${AR(d.done)} يوزر`, true);
+  if (d.running){ unfold('#blkUsers'); note($('#panelsMsg2'),
+    `جارٍ سحب «${esc(d.panel || '—')}»… ${AR(d.done)} يوزر`, true); }
   $('#panelsResults').innerHTML = panelsResultsHtml(d.results);
   if (d.running){
     clearTimeout(panelsTimer);
@@ -1058,20 +1291,19 @@ async function watchPanels(){
 
 function renderCompare(res){
   cmpAll = res.rows || [];
+  cmpShown = CMP_STEP;
   const s = res.summary || {};
+  $('#cmpEmpty').classList.add('hidden');
+  $('#cmpWrap').classList.remove('hidden');
+  // أرقامٌ أربعة لا تتكرّر في المرشّحات؛ وأعداد كل صنفٍ على مرشّحه
   const tiles = [
     ['خطوط سلة', s.store_lines || 0, ''],
-    ['منتهٍ', s.expired || 0, '#b91c1c'],
-    ['قريب الانتهاء', s.expiring_soon || 0, '#b45309'],
-    ['فرق مدّة', s.duration_mismatch || 0, CMP_KIND.duration_mismatch.c],
-    ['مفقود', s.missing_on_panel || 0, CMP_KIND.missing_on_panel.c],
-    ['لوحة مختلفة', s.wrong_panel || 0, CMP_KIND.wrong_panel.c],
-    ['هوست غير مربوط', s.host_unmapped || 0, CMP_KIND.host_unmapped.c],
-    ['مطابق', s.ok || 0, CMP_KIND.ok.c],
+    ['منتهٍ', s.expired || 0, 'c-bad'],
+    ['قريب الانتهاء', s.expiring_soon || 0, 'c-warn'],
     ['بلا يوزر', s.no_username || 0, ''],
   ];
   $('#cmpTiles').innerHTML = tiles.map(t =>
-    `<div class="tile"><p class="k">${t[0]}</p><p class="v" ${t[2] ? `style="color:${t[2]}"` : ''}>${AR(t[1])}</p></div>`).join('');
+    `<div class="stat"><b class="${t[2]}">${AR(t[1])}</b><small>${t[0]}</small></div>`).join('');
   // مرشّحات: أصنافُ المطابقة + حالاتُ الانتهاء (للتجديد)
   const chips = [
     {k: '', t: 'الكل', n: cmpAll.length},
@@ -1085,9 +1317,11 @@ function renderCompare(res){
     {k: 'ok', t: CMP_KIND.ok.t, n: s.ok || 0},
   ];
   $('#cmpFilters').innerHTML = chips.map(c =>
-    `<button class="ghost" data-k="${c.k}" style="${cmpFilter === c.k ? 'border-color:var(--go);font-weight:700' : ''}">${c.t} (${AR(c.n)})</button>`).join('');
+    `<button class="fchip" type="button" data-k="${c.k}" aria-pressed="${cmpFilter === c.k}">${c.t}<em>${AR(c.n)}</em></button>`).join('');
   $('#cmpFilters').querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
-    cmpFilter = b.dataset.k; drawCmpRows();
+    cmpFilter = b.dataset.k; cmpShown = CMP_STEP;
+    $('#cmpFilters').querySelectorAll('[data-k]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    drawCmpRows();
   });
   drawCmpRows();
 }
@@ -1101,28 +1335,32 @@ function cmpMatch(r){
 }
 
 function drawCmpRows(){
-  const rows = cmpAll.filter(cmpMatch);
-  $('#cmpBody').innerHTML = rows.slice(0, 1000).map(r => {
-    const k = CMP_KIND[r.kind] || {t: r.kind, c: '#000'};
+  const rows = cmpAll.filter(cmpMatch), n = Math.min(rows.length, cmpShown, 1000);
+  $('#cmpBody').innerHTML = rows.slice(0, n).map(r => {
+    const k = CMP_KIND[r.kind] || {t: r.kind, c: ''};
     const dm = r.kind === 'duration_mismatch';
     const dleft = r.days_left == null ? '—'
-      : (r.days_left < 0 ? `<span style="color:#b91c1c;font-weight:700">منتهٍ ${AR(-r.days_left)}ي</span>`
-         : (r.expiring_soon ? `<span style="color:#b45309;font-weight:700">${AR(r.days_left)}ي</span>` : `${AR(r.days_left)}ي`));
+      : (r.days_left < 0 ? `<span class="dl c-bad">منتهٍ ${AR(-r.days_left)}ي</span>`
+         : (r.expiring_soon ? `<span class="dl c-warn">${AR(r.days_left)}ي</span>` : `${AR(r.days_left)}ي`));
     return `<tr>
-      <td><span style="color:${k.c};font-weight:600">${k.t}</span></td>
-      <td style="direction:ltr;text-align:left">${esc(r.username)}</td>
-      <td style="direction:ltr;text-align:left">${esc(r.phone || '—')}</td>
-      <td>${esc(r.order || '—')}</td>
-      <td>${esc(r.found_panel_name || r.panel_name || '—')}</td>
-      <td ${dm ? 'style="font-weight:700"' : ''}>${r.store_months || '—'}</td>
-      <td ${dm ? 'style="font-weight:700;color:' + k.c + '"' : ''}>${r.panel_months || '—'}</td>
-      <td style="direction:ltr;text-align:left;color:var(--mute)">${esc((r.panel_exp || '—').slice(0,10))}</td>
-      <td>${dleft}</td></tr>`;
-  }).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--mute)">لا صفوف</td></tr>';
+      <td class="k"><span class="pill ${k.c}">${k.t}</span></td>
+      <td class="u mono">${esc(r.username)}</td>
+      <td class="ph" data-l="الجوال"><span class="ltr">${esc(r.phone || '—')}</span></td>
+      <td class="o" data-l="الطلب">${esc(r.order || '—')}</td>
+      <td class="pn" data-l="اللوحة">${esc(r.found_panel_name || r.panel_name || '—')}</td>
+      <td class="sm${dm ? ' em' : ''}" data-l="مدة سلة">${r.store_months || '—'}</td>
+      <td class="pm${dm ? ' em c-warn' : ''}" data-l="مدة اللوحة">${r.panel_months || '—'}</td>
+      <td class="ex" data-l="انتهاء اللوحة" style="color:var(--mute)"><span class="ltr">${esc((r.panel_exp || '—').slice(0,10))}</span></td>
+      <td class="d">${dleft}</td></tr>`;
+  }).join('') || '<tr class="none"><td colspan="9">لا صفوف</td></tr>';
+  const left = Math.min(rows.length, 1000) - n;
+  $('#cmpMore').classList.toggle('hidden', left <= 0);
+  $('#cmpMore').textContent = `اعرض ${AR(Math.min(left, CMP_STEP))} أخرى · باقٍ ${AR(left)}`;
   if (rows.length > 1000)
-    note($('#cmpMsg'), `عُرض أول ١٠٠٠ من ${AR(rows.length)} — نزّل Excel للكل.`, true);
+    note($('#cmpMsg'), `يُعرض أول ١٠٠٠ من ${AR(rows.length)} — نزّل Excel للكل.`, true);
   else note($('#cmpMsg'), '');
 }
+$('#cmpMore').onclick = () => { cmpShown += CMP_STEP; drawCmpRows(); };
 
 const daysQ = () => { const v = +$('#renewalDays').value; return v >= 1 ? '?days=' + v : ''; };
 
