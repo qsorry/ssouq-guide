@@ -95,8 +95,13 @@ def logout(auth):
         pass                             # الخروج تنظيفٌ لا يُفشل شيئًا
 
 
-def install(auth, descriptor):
-    """يثبّت إضافتنا أولَ قائمة الحساب، ويُسقط إضافةً سابقةً لنا على السيرفر نفسه (نفس بادئة المعرّفات)."""
+def _ours(a):
+    return str((a.get("manifest") or {}).get("id", "")).startswith(OURS)
+
+
+def install(auth, descriptor, first=True):
+    """يثبّت إضافتنا أولَ قائمة الحساب (أو بعد إضافاتنا فيه: خطٌّ يُربط بحسابٍ فيه غيره)، ويحلّ محلّ إضافةٍ سابقةٍ
+    لنا على السيرفر نفسه (نفس بادئة المعرّفات) في مكانها."""
     res = _call("addonCollectionGet", {"type": "AddonCollectionGet", "authKey": auth, "update": True})
     addons = res.get("addons") if isinstance(res, dict) else None
     addons = [a for a in (addons or []) if isinstance(a, dict)]
@@ -107,8 +112,24 @@ def install(auth, descriptor):
         return a.get("transportUrl") == descriptor["transportUrl"] or (
             str(m.get("id", "")).startswith(OURS) and pre & set(m.get("idPrefixes") or []))
     keep = [a for a in addons if not ours(a)]
-    _call("addonCollectionSet", {"type": "AddonCollectionSet", "authKey": auth, "addons": [descriptor] + keep})
+    old = next((n for n, a in enumerate(addons) if ours(a)), None)
+    if old is not None:                              # تحديثٌ لإضافةٍ فيه: مكانها نفسه
+        at = sum(1 for a in addons[:old] if not ours(a))
+    else:
+        at = 0 if first else max((n + 1 for n, a in enumerate(keep) if _ours(a)), default=0)
+    _call("addonCollectionSet", {"type": "AddonCollectionSet", "authKey": auth, "addons": keep[:at] + [descriptor] + keep[at:]})
     return len(keep) + 1
+
+
+def uninstall(auth, prefixes):
+    """يُسقط من الحساب إضافتنا لسيرفرٍ (ببادئة معرّفاته) — خطٌّ فُصل عن الحساب. ← كم أُسقط."""
+    res = _call("addonCollectionGet", {"type": "AddonCollectionGet", "authKey": auth, "update": True})
+    addons = [a for a in ((res.get("addons") if isinstance(res, dict) else None) or []) if isinstance(a, dict)]
+    pre = set(prefixes or [])
+    keep = [a for a in addons if not (_ours(a) and pre & set((a.get("manifest") or {}).get("idPrefixes") or []))]
+    if len(keep) != len(addons):
+        _call("addonCollectionSet", {"type": "AddonCollectionSet", "authKey": auth, "addons": keep})
+    return len(addons) - len(keep)
 
 
 # ================= الإيميل وكلمة المرور =================
@@ -185,21 +206,31 @@ def known(data_dir, host_key, usernames):
     return out
 
 
-_locks = {"mtime": None, "map": {}}
+_idx = {"mtime": None, "map": {}}
 
 
-def addon_key(data_dir, host_key, username):
-    """قفل إضافة حساب يوزرٍ (أو None لحسابٍ غير مقفل أو لا حساب) — يُسأل في كل طلبٍ للإضافة، ففهرسه في الذاكرة
-    ما دام الملف لم يتغيّر."""
+def _indexed(data_dir, host_key, username):
+    """(قفل الإضافة، صاحب الحساب في الأداة) ليوزرٍ — يُسأل في كل طلبٍ للإضافة، ففهرسه في الذاكرة ما دام الملف لم
+    يتغيّر. ‏(None، None) لا حساب."""
     try:
         mtime = os.path.getmtime(_path(data_dir))
     except OSError:
-        return None
+        return None, None
     with _lock:
-        if _locks["mtime"] != (data_dir, mtime):
-            _locks["map"] = {k: r["addon_key"] for k, r in _load(data_dir).items() if isinstance(r, dict) and r.get("addon_key")}
-            _locks["mtime"] = (data_dir, mtime)
-        return _locks["map"].get(_key(host_key, username))
+        if _idx["mtime"] != (data_dir, mtime):
+            _idx["map"] = {k: (r.get("addon_key"), r.get("acct")) for k, r in _load(data_dir).items() if isinstance(r, dict)}
+            _idx["mtime"] = (data_dir, mtime)
+        return _idx["map"].get(_key(host_key, username), (None, None))
+
+
+def addon_key(data_dir, host_key, username):
+    """قفل إضافة حساب يوزرٍ، أو None لحسابٍ غير مقفل أو لا حساب."""
+    return _indexed(data_dir, host_key, username)[0]
+
+
+def acct_of(data_dir, host_key, username):
+    """حساب الأداة الذي أنشأ حساب Stremio ليوزرٍ (لتحويل هوسته)، أو None."""
+    return _indexed(data_dir, host_key, username)[1]
 
 
 _emails = {"mtime": None, "map": {}}
@@ -266,6 +297,82 @@ def reinstall(data_dir, host_key, username, descriptor):
     return rec
 
 
+MAX_LINES = int(os.environ.get("STREMIO_MAX_LINES", "8"))   # خطوطٌ (سيرفرات) في حساب Stremio واحد
+
+
+def group(data_dir, host_key, username):
+    """حساب Stremio وكل خطوطه: [صاحب الحساب، ثم الخطوط المرتبطة به بترتيب ربطها] — كلمات المرور مفكوكة، وكلٌّ معه
+    "key" مفتاحه. ‏[] لا حساب."""
+    with _lock:
+        d = _load(data_dir)
+    k = _key(host_key, username)
+    if not isinstance(d.get(k), dict):
+        return []
+    root = d[k].get("linked_to") if d[k].get("linked_to") in d else k
+    kids = sorted(((kk, r) for kk, r in d.items() if isinstance(r, dict) and r.get("linked_to") == root),
+                  key=lambda x: x[1].get("ts") or 0)
+    return [{**_plain(data_dir, r), "key": kk} for kk, r in [(root, d[root])] + kids]
+
+
+def link(data_dir, root_host_key, root_username, host_key, username, descriptor, owner=None):
+    """يربط خطًّا (يوزرًا على سيرفرٍ آخر) بحساب Stremio قائم: تُثبَّت إضافته فيه بجانب إضافاتنا الأخرى، ويُحفظ له
+    حسابٌ بإيميل صاحب الحساب وكلمة مروره (‏linked_to). ← (الخط، رُبط الآن؟). ‏ValueError: لا حساب، أو لليوزر حسابٌ
+    آخر، أو في الحساب خطٌّ من السيرفر نفسه (إضافتهما تتزاحمان)، أو بلغ الحدّ. ‏StremioError برسالةٍ للعرض."""
+    with _signup:
+        with _lock:
+            d = _load(data_dir)
+        rk = _key(root_host_key, root_username)
+        root = d.get(rk)
+        if not isinstance(root, dict):
+            raise ValueError("لا حساب Stremio لهذا اليوزر")
+        if root.get("linked_to") in d:             # خطٌّ مرتبط: يُربط الجديد بصاحب حسابه
+            rk = root["linked_to"]
+            root = d[rk]
+        k = _key(host_key, username)
+        cur = d.get(k)
+        if isinstance(cur, dict):
+            if k == rk or cur.get("linked_to") == rk:
+                return _plain(data_dir, cur), False
+            raise ValueError(f"لليوزر {username} حساب Stremio آخر ({cur.get('email', '')})")
+        members = [root] + [r for r in d.values() if isinstance(r, dict) and r.get("linked_to") == rk]
+        if any(r.get("host") == host_key for r in members):
+            raise ValueError("في هذا الحساب خطٌّ من السيرفر نفسه — اربط خطًّا من سيرفرٍ آخر")
+        if len(members) >= MAX_LINES:
+            raise ValueError(f"بلغ الحساب حدّه ({MAX_LINES} خطوط)")
+        email = root["email"]
+        auth = login(email, crypto_store.decrypt(root.get("password", ""), data_dir))
+        try:
+            install(auth, descriptor(), first=False)
+        finally:
+            logout(auth)
+        rec = {"email": email, "password": root.get("password", ""), "username": username, "host": host_key,
+               "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M"),
+               "ts": round(time.time(), 3), **(owner or {}), "linked_to": rk}
+        with _lock:
+            d = _load(data_dir)
+            d[k] = rec
+            _save(data_dir, d)
+        return _plain(data_dir, rec), True
+
+
+def unlink(data_dir, host_key, username, prefixes):
+    """يفصل خطًّا مرتبطًا عن حسابه: تُسقط إضافته من الحساب ويُنسى. ‏ValueError لخطٍّ غير مرتبط (صاحب الحساب لا
+    يُفصل)، وStremioError برسالةٍ للعرض (ولا يُنسى شيء)."""
+    rec = get(data_dir, host_key, username)
+    if not rec or not rec.get("linked_to"):
+        raise ValueError("هذا الخط ليس مرتبطًا بحسابٍ آخر")
+    auth = login(rec["email"], rec["password"])
+    try:
+        uninstall(auth, prefixes)
+    finally:
+        logout(auth)
+    with _lock:
+        d = _load(data_dir)
+        d.pop(_key(host_key, username), None)
+        _save(data_dir, d)
+    return rec
+
+
 def set_password(data_dir, host_key, username, password):
     """كلمة مرورٍ جديدة غيّرها العميل أو الموظف في Stremio (من رابط «نسيت كلمة المرور»): تُجرَّب بالدخول أولًا،
     ثم تُحفظ مشفَّرة. ‏ValueError إن لم يكن له حساب، وStremioError إن رفضها Stremio."""
@@ -280,11 +387,12 @@ def set_password(data_dir, host_key, username, password):
     except StremioError as e:
         raise StremioError("Stremio لم يقبل كلمة المرور هذه — تأكّد أنها الجديدة" if "password" in str(e).lower() else str(e),
                            e.code, e.raw) from None
+    enc, when = crypto_store.encrypt(password, data_dir), datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
     with _lock:
         d = _load(data_dir)
-        r = d.get(_key(host_key, username))
-        r["password"] = crypto_store.encrypt(password, data_dir)
-        r["changed"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
+        for r in d.values():                         # الحساب نفسه بكل خطوطه المرتبطة
+            if isinstance(r, dict) and r.get("email") == rec["email"]:
+                r["password"], r["changed"] = enc, when
         _save(data_dir, d)
     return get(data_dir, host_key, username)
 

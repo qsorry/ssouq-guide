@@ -89,6 +89,10 @@ def unit():
         except ValueError:
             check("قفلٌ بحروفٍ غريبة يُرفض", True)
         check("رمزٌ بحقلٍ رابعٍ فارغ يُرفض", S.read_token(d, crypto_store.seal_token("a.b\nu\np\n", d, S.LABEL)) is None)
+        rt = S.routed(cfg, "new.host:8080")
+        check("تحويل الهوست: الطلبات إلى الجديد، وبادئة المعرّفات كما هي (المكتبة و«تابع المشاهدة» تبقى)",
+              rt.host == "http://new.host:8080" and rt.origin == cfg.host and S.prefix(rt) == S.prefix(cfg) and rt.user == cfg.user
+              and S.routed(rt, "http://third.host") .origin == cfg.host and S.routed(cfg, cfg.host) is cfg, str(rt))
         c, b = S.handle(d, f"/stremio/{lk}/manifest.json", "https://g", None, lambda c_, k: k == "newer")[:2]
         check("رمزٌ أُوقف قفله ← 404 برسالته (قبل أي طلبٍ للسيرفر)", c == 404 and "أُوقف هذا الرابط" in b.decode(), b.decode()[:80])
         for u, p in (("", "p"), ("u", ""), ("u u", "p"), ("u", "p\nx"), ("u" * 200, "p")):

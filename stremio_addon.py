@@ -64,7 +64,9 @@ _TITLE = {"movie": "أفلام", "series": "مسلسلات", "tv": "قنوات"}
 _UNIT = {"movie": "فيلم", "series": "مسلسل", "tv": "قناة"}
 _CODE = {"movie": "m", "series": "s", "tv": "l"}   # بادئة المعرّف بعد بادئة السيرفر؛ و‏e للحلقة
 
-Cfg = namedtuple("Cfg", "host user pw")
+# ‏origin: هوست الرمز حين يُحوَّل الاشتراك إلى هوستٍ جديد (السيرفر نفسه غيّر عنوانه) — منه بادئة المعرّفات ومعرّف
+# الإضافة فتبقى المكتبة و«تابع المشاهدة»؛ والطلبات وروابط التشغيل إلى host.
+Cfg = namedtuple("Cfg", "host user pw origin", defaults=(None,))
 Item = namedtuple("Item", "id name poster cat added rating ext plot year genre")
 
 
@@ -157,7 +159,13 @@ def parse_line(text):
 def prefix(cfg):
     """بادئة معرّفات السيرفر في Stremio — بالهوست وحده: اشتراكٌ جديد على السيرفر نفسه يُبقي المكتبة
     و«تابع المشاهدة» كما هما، وسيرفران مختلفان لا يتداخلان."""
-    return "sq" + hashlib.sha256(host_key(cfg.host).encode()).hexdigest()[:6] + ":"
+    return "sq" + hashlib.sha256(host_key(cfg.origin or cfg.host).encode()).hexdigest()[:6] + ":"
+
+
+def routed(cfg, host):
+    """الاشتراك نفسه على هوستٍ جديد (تحويل الهوست): الطلبات إليه، والمعرّفات كما كانت."""
+    host = norm_host(host)
+    return Cfg(host, cfg.user, cfg.pw, cfg.origin or cfg.host) if host and host != cfg.host else cfg
 
 
 # ================= واجهة Xtream =================
@@ -542,7 +550,7 @@ def build_manifest(cfg, base, label=""):
     جُدِّد. الحال: "ok" حُمّلت الأنواع كلها وفيها محتوى · "pending" رُفض الاشتراك أو جاء فارغًا (يوزرٌ لم يُفعَّل بعد:
     يُعاد بعد قليل) · "error" تعذّر نوعٌ من السيرفر نفسه (انقطاعٌ أو مهلة: الإعادة الفورية لا تفيد)."""
     pre = prefix(cfg)
-    uid = hashlib.sha256(f"{cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
+    uid = hashlib.sha256(f"{cfg.origin or cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
     tag = f" · {label}" if label else ""
 
     def one(kind):
@@ -879,10 +887,11 @@ def page():
         return 200, f.read(), "text/html; charset=utf-8", {**_PAGE_HDR, "Cache-Control": "no-store"}
 
 
-def handle(data_dir, path, base, label_for=None, allowed=None):
+def handle(data_dir, path, base, label_for=None, allowed=None, route=None):
     """طلب GET تحت ‏/stremio ← (الرمز، الجسم، النوع، الترويسات)، أو None لمسارٍ ليس لها.
-    ‏label_for(host) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
-    ‏allowed(cfg، القفل) هل الرمز ساري — رمزٌ أُوقف (قفل حسابه تغيّر) يُردّ كرمزٍ غير صالح."""
+    ‏label_for(cfg) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
+    ‏allowed(cfg، القفل) هل الرمز ساري — رمزٌ أُوقف (قفل حسابه تغيّر) يُردّ كرمزٍ غير صالح.
+    ‏route(cfg) الاشتراك على هوسته الحالي (‏routed) إن غيّر السيرفر عنوانه، أو كما هو."""
     if path != PATH and not path.startswith(PATH + "/"):
         return None
     parts = [unquote(p) for p in path[len(PATH):].split("/") if p != ""]
@@ -902,9 +911,14 @@ def handle(data_dir, path, base, label_for=None, allowed=None):
     label = ""
     if rest[0] in ("manifest", "status") and label_for:
         try:
-            label = label_for(cfg.host) or ""
+            label = label_for(cfg) or ""
         except Exception:
             label = ""
+    if route:
+        try:
+            cfg = route(cfg) or cfg
+        except Exception:
+            pass
     try:
         if rest == ["manifest"]:
             return _json(200, manifest(cfg, base, label), 3600)
