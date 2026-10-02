@@ -907,7 +907,7 @@ let bPoll = 0;
 function renderBundle(d) {
   const l = d.last || {};
   const ST = {probe: "الفحص الأولي للّوحات", report: "التقرير", "search-report": "تقرير البحث", sample: "عيّنة الأعمال"};
-  $("eBundleState").textContent = d.running ? `يُنتَج الآن… ${ST[l.stage] || ""}${l.stage === "sample" && l.total ? ` (${num(l.done)}/${num(l.total)} عملًا)` : ""}${l.elapsed ? ` · منذ ${num(l.elapsed)} ث` : ""}"
+  $("eBundleState").textContent = d.running ? `يُنتَج الآن… ${ST[l.stage] || ""}${l.stage === "sample" && l.total ? ` (${num(l.done)}/${num(l.total)} عملًا)` : ""}${l.elapsed ? ` · منذ ${num(l.elapsed)} ث` : ""}`
     : l.ok ? `أُنتجت ${when(l.at)} · الكود ${l.commit ? l.commit.slice(0, 7) : l.code_fingerprint || ""}` : l.error ? `فشل: ${l.error}` : (d.files.length ? "ملفات سابقة" : "لم تُنتج بعد");
   const ul = $("eBundleFiles"); ul.hidden = !d.files.length;
   ul.innerHTML = d.files.map(f => `<li><span><a class="linkbtn" href="${B}/api/content/seo/bundle/${esc(f.name)}" download>${esc(f.name)}</a></span><small>${mb(f.size)} · ${when(f.at)}</small></li>`).join("");
