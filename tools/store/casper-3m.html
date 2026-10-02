@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- غلاف باقتي كاسبر 3 أشهر في المتجر (1000×1000) على تصميم غلاف باقتي سامسونج و LG (6 أشهر وسنة):
-     ?v=webos لباقة شاشات سامسونج و LG، وبلا معامل للباقة العادية (أندرويد · آيفون · كمبيوتر).
-     يُصوَّر بمتصفح بهذا المقاس ثم يُحفظ JPG في static/img/products/casper-3m.jpg و casper-3m-webos.jpg،
+     ?v=webos لباقة شاشات سامسونج و LG، وبلا معامل للباقة العادية (أندرويد · آيفون · كمبيوتر)؛ و&icon=smarters
+     بأيقونة IPTV Smarters Pro بدل شعار كاسبر (الصورة الرئيسية كما في باقات 6 أشهر وسنة، وأيقونتها مقصوصة من غلافها).
+     يُصوَّر بمتصفح بهذا المقاس ثم يُحفظ JPG في static/img/products/casper-3m[-webos][-smarters].jpg،
      ويأخذه المتجر من jsDelivr برقم الـ commit. --><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <style>
 @font-face{font-family:Plex;src:url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-arabic-500-normal.woff2) format("woff2"),url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-latin-500-normal.woff2) format("woff2");font-weight:500}
@@ -18,6 +19,11 @@ body{font-family:Plex,sans-serif;color:#fff;position:relative;background:#0b0f1f
 .logo{position:absolute;left:50%;top:78px;width:320px;height:320px;margin-left:-160px;border-radius:68px;overflow:hidden;
   box-shadow:0 0 90px rgba(220,38,38,.45),0 18px 40px rgba(0,0,0,.5)}
 .logo img{width:100%;height:100%;display:block;transform:scale(1.07)}
+.smarters .logo{box-shadow:0 0 90px rgba(99,102,241,.6),0 18px 40px rgba(0,0,0,.5)}
+.smarters .logo img{transform:none}
+.smarters .bg{background:radial-gradient(620px 520px at 88% 6%,rgba(67,56,202,.55),transparent 70%),
+             radial-gradient(640px 560px at 4% 98%,rgba(30,64,175,.55),transparent 70%),
+             linear-gradient(160deg,#121735 0%,#0b0f1f 55%,#0c1430 100%)}
 .chips{position:absolute;top:436px;left:0;right:0;display:flex;justify-content:center;gap:18px;direction:ltr}
 .chip{height:64px;padding:0 24px;display:flex;align-items:center;gap:10px;border-radius:14px;
   background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.12);font-size:30px;font-weight:700;color:#fff}
@@ -36,7 +42,7 @@ h1 em{font-style:normal;color:#f6c344}
 .q{position:absolute;top:866px;left:0;right:0;text-align:center;font-size:23px;font-weight:700;color:#dfe5f7;direction:ltr;word-spacing:4px}
 </style></head><body>
 <div class="bg"></div><div class="card"></div>
-<div class="logo"><img src="../../static/img/brands/casper.webp" alt=""></div>
+<div class="logo"><img id="logo" src="../../static/img/brands/casper.webp" alt=""></div>
 <div class="chips" id="chips"></div>
 <h1>اشتراك كاسبر لمدة <em>3 أشهر</em></h1>
 <div class="site">SSOUQ.COM</div>
@@ -47,7 +53,8 @@ h1 em{font-style:normal;color:#f6c344}
 </div>
 <div class="q">4K &nbsp;•&nbsp; FHD &nbsp;•&nbsp; HD</div>
 <script>
-const webos = new URLSearchParams(location.search).get('v') === 'webos';
+const q = new URLSearchParams(location.search), webos = q.get('v') === 'webos';
+if (q.get('icon') === 'smarters') { document.body.classList.add('smarters'); document.getElementById('logo').src = 'smarters-pro.jpg'; }
 document.getElementById('chips').innerHTML = webos
   ? '<div class="chip sam">SAMSUNG</div><div class="chip lg"><i>LG</i>LG</div><div class="chip web">web<b>OS</b></div>'
   : '<div class="chip">Android</div><div class="chip">iPhone</div><div class="chip">PC · Mac</div>';
