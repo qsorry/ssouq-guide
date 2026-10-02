@@ -2,7 +2,7 @@
 // or Duplecast) and SS IPTV walks all seven steps to the done screen with every image loaded; Samsung/LG
 // asks for the app (0Player, Duplecast or SS IPTV); Falcon and Casper keep their own 0Player portal codes; old
 // links still open. (Duplecast's own steps: ui_guide_duplecast.js.) Casper runs on every TV: on Samsung/LG with
-// its own plans for those TVs — the same three apps as Falcon, each opening with a note linking the two plans —
+// its own plans for those TVs — the same three apps as Falcon, each opening with a note linking its plans —
 // and on VIDAA with its regular plan, so no device of its is dimmed. And the buy path: VIDAA gets the
 // Samsung/LG plans and Smart first.
 const { chromium } = require('playwright-core');
@@ -122,8 +122,8 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
         (await h2()) === title && t.includes('باقة كاسبر الخاصة بشاشات سامسونج و LG')
         && t.includes('أما باقة كاسبر العادية فلا تعمل على هذه الشاشات')
         && t.indexOf('باقة كاسبر الخاصة') < t.indexOf(app), await h2());
-      check('… its two links are the two Casper Samsung/LG plans in the store',
-        links.filter(u => /\/p(138230620|1152389812)\?utm_source=guide\.ssouq\.com&utm_medium=referral&utm_campaign=guide$/.test(u)).length === 2, links.join(' '));
+      check('… its three links are the three Casper Samsung/LG plans in the store (3 and 6 months, a year)',
+        links.filter(u => /\/p(143101956|138230620|1152389812)\?utm_source=guide\.ssouq\.com&utm_medium=referral&utm_campaign=guide$/.test(u)).length === 3, links.join(' '));
     }
     await open('#activate/casper/vidaa/ssiptv');
     check('… but not on VIDAA: the regular plan works there', !(await page.textContent('#view')).includes('باقة كاسبر الخاصة'));

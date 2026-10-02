@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- صورة «آخر تحديث للأفلام / للمسلسلات» لوصف منتجات كاسبر ومعرضها في سلة (1000×1000، كصور 29 سبتمبر).
+     كل ما يتغيّر في الرابط: ?kind=movies|series&n=7,338&date=الجمعة 2 أكتوبر 2026&shot=<لقطة التطبيق 2000×918>
+     ويُصوَّر بـ tools/store/render.js ثم يُحفظ JPG في static/img/store/ ويرفعه المتجر من رابطه. -->
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<style>
+@font-face{font-family:Plex;src:url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-arabic-600-normal.woff2) format("woff2"),url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-latin-600-normal.woff2) format("woff2");font-weight:600}
+@font-face{font-family:Plex;src:url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-arabic-700-normal.woff2) format("woff2"),url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-latin-700-normal.woff2) format("woff2");font-weight:700}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1000px;height:1000px;overflow:hidden}
+body{font-family:Plex,sans-serif;color:#fff;position:relative;
+  background:linear-gradient(180deg,#17142f 0%,#221a4f 38%,#34209a 78%,#4425c4 100%)}
+body:before{content:"";position:absolute;width:760px;height:760px;left:-260px;top:-300px;border-radius:50%;
+  background:radial-gradient(circle,rgba(125,95,255,.22),transparent 65%)}
+body:after{content:"";position:absolute;width:820px;height:820px;right:-320px;bottom:-380px;border-radius:50%;
+  background:radial-gradient(circle,rgba(150,110,255,.30),transparent 65%)}
+.top{position:absolute;left:50%;top:32px;transform:translateX(-50%);width:600px;height:118px;border-radius:60px;z-index:2;
+  background:linear-gradient(180deg,#fbe2a0 0%,#f2c96f 55%,#e7b452 100%);box-shadow:0 10px 26px rgba(0,0,0,.35);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;color:#24170a}
+.top h1{font-size:50px;line-height:1.05;font-weight:700}
+.top p{font-size:25px;font-weight:700;margin-top:4px}
+.hero{position:absolute;top:168px;left:0;right:0;display:flex;align-items:baseline;justify-content:center;gap:28px;z-index:2}
+.num{font-size:132px;line-height:1;font-weight:700;direction:ltr;letter-spacing:-2px}
+.noun{font-size:78px;line-height:1;font-weight:700}
+.logo{width:104px;height:104px;border-radius:20px;background:#000 url(../../static/img/brands/casper.webp) center/86% no-repeat;
+  box-shadow:0 8px 20px rgba(0,0,0,.4);align-self:center}
+.sub{position:absolute;top:298px;left:0;right:0;text-align:center;font-size:27px;font-weight:600;color:#e7e1ff;z-index:2}
+.sub b{direction:ltr;unicode-bidi:isolate}
+.delta{display:inline-block;margin-inline-start:12px;padding:2px 14px;border-radius:999px;background:rgba(73,214,138,.16);
+  border:1.5px solid rgba(73,214,138,.6);color:#7ff0b0;font-size:23px;font-weight:700;vertical-align:3px}
+.delta[hidden]{display:none}
+.delta bdi{direction:ltr}
+.shot{position:absolute;left:42px;top:356px;width:916px;height:420px;border-radius:18px;overflow:hidden;z-index:2;
+  border:2px solid rgba(255,255,255,.32);box-shadow:0 18px 40px rgba(0,0,0,.45);background:#000}
+.shot img{display:block;width:100%;height:100%;object-fit:cover}
+.shot i{position:absolute;left:5%;top:31.4%;width:31.8%;height:12.2%;border:4px solid #f2c96f;border-radius:10px;
+  box-shadow:0 0 0 3px rgba(242,201,111,.25),0 0 22px rgba(242,201,111,.55)}
+.foot{position:absolute;left:50%;top:806px;transform:translateX(-50%);height:84px;padding:0 40px;border-radius:42px;z-index:2;
+  display:flex;align-items:center;gap:16px;white-space:nowrap;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.28);
+  font-size:36px;font-weight:700}
+.foot .g{color:#f2c96f;direction:ltr;unicode-bidi:isolate}
+.foot svg{width:40px;height:40px;flex:none}
+.site{position:absolute;left:0;right:0;top:900px;text-align:center;font-size:54px;font-weight:700;direction:ltr;z-index:2}
+</style></head><body>
+<div class="top"><h1 id="title"></h1><p id="date"></p></div>
+<div class="hero"><span class="num" id="n"></span><span class="noun" id="noun"></span><span class="logo"></span></div>
+<p class="sub">في مكتبة سيرفر كاسبر · <b>CASPER FLIX</b><span class="delta" id="delta" hidden></span></p>
+<div class="shot"><img id="shot" alt=""><i></i></div>
+<div class="foot">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#f2c96f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 21v-5h-5"/></svg>
+  <span>تحديثات يومية حتى <span class="g">20,000</span> فيلم ومسلسل</span>
+</div>
+<div class="site">ssouq.com</div>
+<script>
+const q = new URLSearchParams(location.search), series = q.get("kind") === "series";
+document.getElementById("title").textContent = series ? "آخر تحديث للمسلسلات" : "آخر تحديث للأفلام";
+document.getElementById("noun").textContent = series ? "مسلسل" : "فيلم";
+document.getElementById("n").textContent = q.get("n") || "";
+document.getElementById("date").textContent = q.get("date") || "";
+document.getElementById("shot").src = q.get("shot") || "";
+// ‏delta=1,154&since=29 سبتمبر ← «+1,154 منذ 29 سبتمبر»
+if (q.get("delta")) {
+  const d = document.getElementById("delta");
+  d.innerHTML = '<bdi>+' + q.get("delta") + '</bdi> منذ ' + (q.get("since") || "");
+  d.hidden = false;
+}
+</script>
+</body></html>

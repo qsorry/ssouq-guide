@@ -674,6 +674,25 @@ def main():
                   e is not None and e.code == "credentials" and "127.0.0.1:9" in msg
                   and "Login error" in msg, msg)
 
+            # صفحة 200 بلا نموذج دخول (دومين تغيّر أو عنوان ناقص /iptv): لا تُرسل بيانات،
+            # والسبب يسمّى noform ويقترح تبديل الدومين — بدل «بقيت على صفحة الدخول بلا رسالة».
+            H.no_form, H.logins = True, []
+            e = fail(cas())
+            msg = str(e) if e else ""
+            check("no login form on a 200 page: code noform, suggests the domain/context, no blind post",
+                  e is not None and e.code == "noform" and "بدّل الدومين" in msg
+                  and "iptv" in msg and H.logins == [], "%s | logins=%s" % (msg, H.logins))
+            H.no_form = False
+
+            # تحدٍّ بشري من Cloudflare بصفحة 200 (لا حجب بحالة ≥ 400): يُميَّز حجبًا لا noform.
+            H.cf_page, H.logins = True, []
+            e = fail(cas())
+            msg = str(e) if e else ""
+            check("Cloudflare human challenge on a 200 page: code blocked, says it is a challenge, no post",
+                  e is not None and e.code == "blocked" and "Cloudflare" in msg and H.logins == [],
+                  "%s | logins=%s" % (msg, H.logins))
+            H.cf_page = False
+
             # طبقة xm_lines: ما تراه صفحة الإنشاء في «البحث في كل البوابات» وفي بطاقة البوابة
             import xm_lines  # noqa: E402
             orig_dd = xm_lines.DATA_DIR

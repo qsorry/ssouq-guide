@@ -436,6 +436,10 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
         <label class="f" for="g_api_url">رابط API</label><input class="t" id="g_api_url" placeholder="http://server/xxx/reseller/index.php">
         <label class="f" for="g_api_key">مفتاح API</label><input class="t" id="g_api_key" type="password" autocomplete="off">
       </div>
+      <label class="f" for="g_archive_only" style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;cursor:pointer">
+        <input type="checkbox" id="g_archive_only" style="width:auto;margin-top:3px">
+        <span>أرشيف فقط — ابحث عن اليوزرات من المحفوظ دون الدخول إلى اللوحة<br><small style="color:var(--mute)">لبوابةٍ قديمة لا تُسجّل الدخول؛ الإنشاء وقراءة الرصيد معطَّلان. بيانات اللوحة غير مطلوبة.</small></span>
+      </label>
       <label class="f" for="g_host">الهوست (يظهر في السطر)</label><input class="t" id="g_host" placeholder="http://ssouqhost.vip">
       <label class="f" for="g_digits">طول اليوزر والباسورد (أرقام، 6–20) — فارغ = 12</label><input class="t" id="g_digits" inputmode="numeric" placeholder="12">
       <label class="f" for="g_point_cost">سعر النقطة عند هذا المزوّد (ريال)</label><input class="t" id="g_point_cost" inputmode="decimal" placeholder="2">
@@ -554,6 +558,7 @@ const stat = (l, v, cls="") => `<div class="stat ${cls}"><small>${l}</small><b${
 async function loadGateStatus(){
   const gate = gates.find(g => g.id === curGate) || {};
   $("statusWarn").hidden = true; $("gateStatus").innerHTML = ""; $("todayBox").hidden = true; $("todayBox").innerHTML = "";
+  if (gate.archive_only){ setBadge("أرشيف", ""); $("gateStatus").innerHTML = '<div class="stat empty">بوابة أرشيف — البحث من اليوزرات المحفوظة فقط (لا دخول للّوحة)</div>'; return; }
   if (gate.mode !== "falcon" && gate.mode !== "web"){ setBadge("بلا حالة", ""); $("gateStatus").innerHTML = '<div class="stat empty">حالة النقاط غير متاحة لهذه البوابة</div>'; return; }
   setBadge("جاري القراءة…", "");
   $("gateStatus").innerHTML = '<div class="stat empty">جاري قراءة الرصيد من اللوحة…</div>';
@@ -883,6 +888,7 @@ function gateForm(g){
   $("g_api_url").value=g.api_url||""; $("g_api_key").value=""; $("g_api_key").placeholder=g.has_api_key?"محفوظ — اتركه فارغًا للإبقاء":"";
   $("g_host").value=g.host||""; $("g_guide").value=g.guide_url||""; $("g_digits").value=g.digits||"";
   $("g_point_cost").value = (g.point_cost ?? "");
+  $("g_archive_only").checked = !!g.archive_only;
   applyGateMode(); $("gateEditor").hidden=false; $("gateMsg").textContent="";
 }
 function readGateForm(){
@@ -890,6 +896,7 @@ function readGateForm(){
     web_flavor:$("g_web_flavor").value,
     panel_base:$("g_panel_base").value, panel_user:$("g_panel_user").value, panel_pass:$("g_panel_pass").value,
     api_url:$("g_api_url").value, api_key:$("g_api_key").value, host:$("g_host").value, guide_url:$("g_guide").value,
+    archive_only:$("g_archive_only").checked,
     digits:$("g_digits").value, point_cost:$("g_point_cost").value};
 }
 // قالب كاسبر Casper الحالي: c4kpanel/boss4k بجلسة ويب بلا كود تحقّق، ويوزر/باسورد ١٠ أرقام.
@@ -940,6 +947,8 @@ async function fetchPackages(){
     return;
   }
   if (!curGate) { $("pkgs").innerHTML = '<div class="empty">اختر بوابة أولاً.</div>'; return; }
+  const ag = gates.find(g => g.id === curGate) || {};
+  if (ag.archive_only){ packages = []; $("pkgs").innerHTML = '<div class="empty">بوابة أرشيف — الإنشاء غير متاح؛ استخدم البحث عن اليوزرات المحفوظة.</div>'; $("sliceBox").hidden = true; updateCta(); return; }
   packages = [];                                     // لا تبقى باقات البوابة السابقة حتى تصل الجديدة
   $("pkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
   $("sliceBox").hidden = true; updateCta();          // نوع البيع يتبع باقات البوابة الجديدة
