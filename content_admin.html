@@ -492,6 +492,17 @@ details.card>.din{padding:0 16px 16px}
         <pre class="mono dump" id="eOut" hidden></pre>
       </div>
     </details>
+    <details class="blk fold" id="blkScan">
+      <summary><span><b>فحص السكّان كاملًا</b><small class="lbl-en">full-population SEO coverage</small></span></summary>
+      <div class="din">
+        <p class="sub">كل كيانٍ حيٍّ بصفحتيه (نحو 116 ألف مسار) على دفعات في الخلفية — قراءةٌ صرفة، يُستأنف من حيث توقّف؛ يستغرق ساعات.</p>
+        <div class="acts"><button class="go" type="button" id="eScanStart">ابدأ / استأنف</button>
+          <button class="ghost" type="button" id="eScanPause">أوقف مؤقتًا</button>
+          <button class="ghost" type="button" id="eScanReset">ابدأ من جديد</button></div>
+        <div class="bar" id="eScanBar" hidden><i id="eScanFill"></i></div>
+        <p class="meta" id="eScanState"></p>
+      </div>
+    </details>
     <details class="blk fold" id="blkBundle">
       <summary><span><b>ملفات المراجعة</b><small class="lbl-en">probe.json · sample.json · report.txt · search-report.txt</small></span></summary>
       <div class="din">
@@ -1139,6 +1150,19 @@ $("eAuto").onchange = async () => {
   const d = await api("/api/content/admin/seo-settings", {settings: {enrich_auto: $("eAuto").checked}}).catch(() => ({error: "تعذّر الاتصال"}));
   $("eMsg2").textContent = d.error || ($("eAuto").checked ? "الإثراء الليلي مفعّل" : "الإثراء الليلي موقوف");
 };
+let scPoll = 0;
+function renderScan(d) {
+  const pct = d.entities_total ? Math.round(1000 * d.tested_entities / d.entities_total) / 10 : 0;
+  $("eScanBar").hidden = !d.tested_entities; $("eScanFill").style.width = pct + "%";
+  const v = d.verdict === "PASS" ? "ناجح" : d.verdict === "FAIL" ? "فشل" : d.verdict === "INCOMPLETE" ? "غير مكتمل" : "لم يُثبت";
+  $("eScanState").textContent = d.error && !d.status ? d.error : d.status === "never run" ? "لم يُشغَّل بعد"
+    : `${d.running ? "يفحص الآن… " : d.status === "paused" ? "موقوف مؤقتًا · " : d.status === "complete" ? "اكتمل · " : d.status === "error" ? "خطأ · " : ""}${num(d.tested_entities)} / ${num(d.entities_total)} كيانًا (${pct}%) · ${num(d.tested_routes)} مسارًا · فشل ${num(d.failures)} · أخطاء ${num(d.errors)} · متبقٍّ ${num(d.remaining_entities)} · ${Math.round((d.seconds || 0) / 60)} د · الحكم: ${v}${d.error ? " · " + d.error : ""}`;
+  clearTimeout(scPoll); if (d.running) scPoll = setTimeout(loadScan, 3000);
+}
+async function loadScan() { try { renderScan(await api("/api/content/seo/scan")); } catch (e) {} }
+$("eScanStart").onclick = async () => { renderScan(await api("/api/content/admin/seo-scan", {action: "start"}).catch(() => ({error: "تعذّر الاتصال"}))); };
+$("eScanPause").onclick = async () => { renderScan(await api("/api/content/admin/seo-scan", {action: "pause"}).catch(() => ({error: "تعذّر الاتصال"}))); setTimeout(loadScan, 1500); };
+$("eScanReset").onclick = async () => { if (!confirm("يحذف نتائج الفحص الحالية ويبدأ من الصفر؟")) return; renderScan(await api("/api/content/admin/seo-scan", {action: "reset"}).catch(() => ({error: "تعذّر الاتصال"}))); };
 let bPoll = 0;
 function renderBundle(d) {
   const l = d.last || {};
@@ -1386,7 +1410,7 @@ $("nAdd").onclick = async () => {
   DATA = d; render();
 };
 
-load(); loadSeo(); loadBundle();
+load(); loadSeo(); loadBundle(); loadScan();
 </script>
 </body>
 </html>
