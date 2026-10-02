@@ -491,7 +491,9 @@ async function api(path, body){
 }
 // النص الذي يُرسل للعميل مع حسابه الجاهز
 const accText = (email, pass) => `🎬 حسابك في Stremio — المحتوى جاهزٌ فيه:\nالإيميل: ${email}\nكلمة المرور: ${pass}\n\n`
-  + `حمّل Stremio من stremio.com/downloads وسجّل الدخول بهما، تجد الأفلام والمسلسلات والقنوات في الرئيسية.`;
+  + `حمّل Stremio من stremio.com/downloads وسجّل الدخول بهما، تجد الأفلام والمسلسلات والقنوات في الرئيسية.\n\n`
+  + `• الترجمة العربية تلقائيًا: إعدادات Stremio ← المشغّل ← لغة الترجمة ← العربية.\n`
+  + `• الأسماء تحت الصور على تلفاز أندرويد: إعدادات Stremio ← فعّل «Show title under catalog items».`;
 const I = {
   link: '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
   user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',

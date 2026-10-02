@@ -1150,6 +1150,8 @@ _STATUS = {"active": "نشط", "expired": "منتهٍ", "banned": "موقوف", 
 # لغة الترجمة إعدادٌ في Stremio على كل جهاز (لا يُضبط من الحساب): «تلقائي» يختار المترجم بالعربية، وهذا يكمّله للترجمات
 # المضمَّنة في الملف (سوفت)
 SUBS_TIP = "للترجمة العربية تلقائيًا: إعدادات Stremio ← المشغّل ← لغة الترجمة ← العربية (مرةً على كل جهاز)"
+# إعدادٌ في تطبيق Stremio على تلفاز أندرويد نفسه (من نسخته 1.9.0) — لا يُضبط من الإضافة ولا من الحساب
+TITLE_TIP = "لتظهر الأسماء تحت الصور على تلفاز أندرويد: إعدادات Stremio ← فعّل «Show title under catalog items» (مرةً على كل جهاز)"
 DAY = 86400
 
 
@@ -1204,7 +1206,7 @@ def account_card(line, pre, base, now=None):
     counts = [f"{_fmt(len(L.items))} {_UNIT[k]}" for k in ORDER for L in [_cached_lists(cfg, k)] if L and L.items]
     if counts:
         facts.append("المحتوى: " + " · ".join(counts))
-    facts.append(SUBS_TIP)
+    facts += [SUBS_TIP, TITLE_TIP]
     lid = line_id(pre, cfg)
     return _clean({"id": lid, "type": ACCOUNTS, "name": f"{line.get('label') or cfg.user} · {short}",
                    "poster": f"{base}{art}" if art.startswith("/") else f"{base}/static/icons/icon-512.png",
