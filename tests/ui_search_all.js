@@ -40,7 +40,7 @@ const GUIDE_F = GUIDE + '#activate/falcon';      // البوابات فالكو�
   try {
     await admin.goto(APP + '/admin/setup');
     await api(admin, '/admin/api/setup', {password:'admin123'});
-    let r = await api(admin, '/admin/api/accounts', {name:'عميل البوابات', user:'multi', password:'pw_multi', guide_url: GUIDE,
+    let r = await api(admin, '/admin/api/accounts', {name:'عميل البوابات', user:'multi', password:'pw_multi', guide_url: GUIDE, stremio: true,
       gates:[{name:'بوابة أ', mode:'falcon', api_url:F1, api_key:'k1', host:HA},
              {name:'بوابة ب', mode:'falcon', api_url:F2, api_key:'k2', host:HB},
              {name:'بوابة متوقّفة', mode:'falcon', api_url:'http://127.0.0.1:9/api/v1', api_key:'x', host:'http://c.host:80'}]});
@@ -157,6 +157,8 @@ const GUIDE_F = GUIDE + '#activate/falcon';      // البوابات فالكو�
     check('one gate: no scope switch, the old title', await one.isHidden('#searchScope') && (await one.textContent('#searchTtl')).trim() === 'بحث في البوابة');
     await search(one, 'user002');
     check('one gate: plain results table', !(await one.$('#searchRes .sg')) && (await one.$$('#searchRes button.cb')).length === 1);
+    // Stremio يفتحه المدير لعميلٍ بعينه: هذا العميل لم يُفتح له، فلا رابط ولا حساب ولا بريد في نتائجه
+    check('Stremio off for this client: no Stremio buttons', (await one.$$('#searchRes button.sb, #searchRes button.sa, #searchRes button.sm')).length === 0);
   } catch (e) { fail++; console.log('  FAIL  exception:', e.message); }
   finally {
     await browser.close(); f1.kill(); f2.kill(); app.kill();
