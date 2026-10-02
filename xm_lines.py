@@ -817,12 +817,42 @@ def stremio_account(acct, gate, username, password, line=""):
                                    owner={"acct": acct.get("id"), "gate": gate.get("id"), "token": tok})
 
 
+def stremio_create(acct, gate, package_id, username=None, password=None):
+    """«إنشاء يوزر Stremio» بضغطةٍ واحدة: يوزرٌ جديد في البوابة بالباقة، ثم حساب Stremio له (الإيميل = اليوزر
+    @tv.ssouq.com وكلمة المرور = باسورده) وإضافة المحتوى مثبّتةٌ فيه. ← (رمز الحالة، الرد).
+    اليوزر يُنشأ أولًا ويُخصم، فإن تعثّر Stremio بعده لا يضيع: يعود السطر ومعه stremio_error، ويُكمَل الحساب من
+    البحث أو بزرّ «إعادة المحاولة». ‏CaptchaNeeded · LoginFailed تُرمى لمن ينادي (كما في الإنشاء)."""
+    if gate.get("archive_only"):
+        return 400, {"ok": False, "error": "بوابة أرشيف — الإنشاء غير متاح فيها"}
+    gate = with_guide(acct, gate)
+    pkg = next((p for p in get_packages(gate) if str(p["id"]) == str(package_id)), None)
+    if not pkg:
+        return 400, {"ok": False, "error": "اختر باقة"}
+    out, err = create_lines(gate, pkg, 1, username or None, password or None)
+    if not out:
+        return 502, {"ok": False, "error": err or "تعذّر إنشاء اليوزر في البوابة"}
+    try:                                        # تعبئة ملف الإكسل كأي إنشاء
+        users_export.merge(DATA_DIR, acct["id"], gate["id"], gate.get("name"), out, gate.get("host", ""))
+    except Exception:
+        pass
+    line = out[0]
+    with_stremio(gate, [line])
+    resp = {"ok": True, "line": {k: line.get(k) for k in ("line", "username", "password", "package", "stremio") if line.get(k)}}
+    try:
+        rec, _ = stremio_account(acct, gate, line["username"], line["password"], line.get("line", ""))
+        resp["stremio_account"] = {"email": rec["email"], "password": rec["password"]}
+    except (ValueError, stremio_accounts.StremioError, stremio_addon.XtreamError) as e:
+        resp["stremio_error"] = f"أُنشئ اليوزر، وتعذّر حساب Stremio: {e}"
+    return 200, resp
+
+
 def stremio_page_data(acct, gate_id):
     """صفحة Stremio للعميل: بواباته بعدد حساباتها، وحسابات البوابة المختارة (الأحدث أولًا) برابط تثبيتها
     وعدد ما وصل بريدها."""
     recs = stremio_accounts.owned_all(DATA_DIR, acct["id"])
     base = STREMIO_PUBLIC or f"https://{SITE_HOST}"
-    gates = [{"id": g["id"], "name": g.get("name", ""), "count": sum(1 for r in recs if r.get("gate") == g["id"])}
+    gates = [{"id": g["id"], "name": g.get("name", ""), "count": sum(1 for r in recs if r.get("gate") == g["id"]),
+              "mode": g.get("mode", ""), "archive_only": bool(g.get("archive_only"))}
              for g in acct.get("gates") or []]
     rows = []
     for r in recs:
@@ -830,7 +860,7 @@ def stremio_page_data(acct, gate_id):
             continue
         mail = mail_inbox.messages(DATA_DIR, r["email"])
         rows.append({"username": r.get("username", ""), "email": r["email"], "password": r["password"],
-                     "created": r.get("created", ""), "changed": r.get("changed", ""),
+                     "created": r.get("created", ""), "ts": r.get("ts") or 0, "changed": r.get("changed", ""),
                      "link": stremio_addon.links(base, r["token"])["page"] if r.get("token") else "",
                      "mail_count": len(mail), "last_mail": mail[0]["date"] if mail else ""})
     return {"gates": gates, "gate": gate_id, "accounts": rows, "domain": stremio_accounts.DOMAIN,
@@ -4748,6 +4778,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, start_users_export(acct["id"], gate["id"], gate))
             if path.startswith("/api/split/"):        # خارج القفل: تغيير الاسم يلمس اللوحة
                 return self._split_post(path, st, role, acct)
+            if path == "/api/stremio/create":     # خارج القفل: «إنشاء يوزر Stremio» — يوزرٌ في البوابة ثم حسابه
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
+                req = self._body()
+                gate = find_gate(acct, req.get("gate"))
+                if not gate:
+                    return self._send(400, {"ok": False, "error": "اختر بوابة"})
+                try:
+                    code, res = stremio_create(acct, gate, req.get("package_id"),
+                                               str(req.get("username") or "").strip(), str(req.get("password") or "").strip())
+                except xm_web.CaptchaNeeded:
+                    return self._send(200, {"ok": False, "need_captcha": True})
+                except xm_web.LoginFailed as e:
+                    return self._send(200, {"ok": False, "login_error": str(e)})
+                return self._send(code, res)
             if path == "/api/stremio/account":    # خارج القفل: حساب Stremio جاهز ليوزر (ينتظر Stremio)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})

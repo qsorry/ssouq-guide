@@ -32,6 +32,7 @@ import stremio_addon as S  # noqa: E402
 
 PORT = int(os.environ.get("STREMIO_ACC_TEST_PORT", "9593"))
 MAIL_PORT = int(os.environ.get("STREMIO_MAIL_TEST_PORT", "9594"))
+FALCON_PORT = int(os.environ.get("STREMIO_FALCON_TEST_PORT", "9595"))
 _p = _f = 0
 
 
@@ -176,7 +177,10 @@ def through_server():
     d = tempfile.mkdtemp(prefix="stracc_web_")
     with open(os.path.join(d, "accounts.json"), "w", encoding="utf-8") as f:
         json.dump({"admin": None, "accounts": [{"id": "a1", "name": "MR7", "user": "mr7", "password": "pw123456", "stremio": True,
-                                                "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]},
+                                                "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host},
+                                                          {"id": "g2", "name": "بوابة فالكون", "mode": "falcon", "host": xt_host,
+                                                           "api_url": f"http://127.0.0.1:{FALCON_PORT}/api/v1", "api_key": "fk"},
+                                                          {"id": "g3", "name": "أرشيف", "mode": "web", "host": xt_host, "archive_only": True}]},
                                                {"id": "a2", "name": "Other", "user": "other", "password": "pw654321", "stremio": True,
                                                 "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]},
                                                {"id": "a3", "name": "بلا Stremio", "user": "nost", "password": "pw333333",
@@ -186,6 +190,8 @@ def through_server():
     env.pop("XM_SECRET_KEY", None)
     app = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    falcon = subprocess.Popen([sys.executable, os.path.join(HERE, "mock_falcon.py"), str(FALCON_PORT), "fk"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     base = f"http://127.0.0.1:{PORT}/admin"
     op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
@@ -244,7 +250,9 @@ def through_server():
         print("== صفحة Stremio: مكانٌ لكل بوابة ==")
         c, r = post("/api/stremio/accounts?gate=g1", None)
         acc = (r.get("accounts") or [{}])[0]
-        check("بوابات العميل بعدد حساباتها", c == 200 and r["gates"] == [{"id": "g1", "name": "بوابة مرح", "count": 1}], json.dumps(r, ensure_ascii=False)[:160])
+        g1 = next((g for g in r.get("gates", []) if g["id"] == "g1"), {})
+        check("بوابات العميل بعدد حساباتها", c == 200 and g1.get("name") == "بوابة مرح" and g1.get("count") == 1
+              and [g["id"] for g in r["gates"]] == ["g1", "g2", "g3"], json.dumps(r, ensure_ascii=False)[:160])
         check("حسابات البوابة: الإيميل وكلمة المرور ورابط التثبيت وعدد البريد", acc.get("email") == "u@tv.ssouq.com" and acc.get("password") == "p"
               and acc.get("link", "").startswith("https://guide.ssouq.com/stremio/") and acc.get("mail_count") == 1 and acc.get("last_mail"),
               json.dumps(acc, ensure_ascii=False)[:200])
@@ -272,7 +280,35 @@ def through_server():
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "u2", "password": "p2"})
         check("Stremio لا يردّ ← 502 برسالة", c == 502 and r["error"].startswith("Stremio:"), json.dumps(r, ensure_ascii=False))
         api.down = False
+
+        print("== «إنشاء يوزر Stremio»: يوزرٌ في البوابة ← البريد ← الإضافة ==")
+        c, r = post("/api/stremio/create", {"gate": "g2", "package_id": "167"})
+        line, acc = r.get("line") or {}, r.get("stremio_account") or {}
+        check("بضغطةٍ واحدة: يوزرٌ جديد في البوابة وحساب Stremio له", c == 200 and r.get("ok") and line.get("username")
+              and acc.get("email") == line["username"] + "@tv.ssouq.com" and acc.get("password") == line.get("password"),
+              json.dumps(r, ensure_ascii=False)[:200])
+        col = api.collections.get(acc.get("email"), [{}])
+        check("والإضافة مثبّتةٌ أوله، والسطر برابط تثبيته", col[0].get("manifest", {}).get("id", "").startswith("com.ssouq.xtream.")
+              and line.get("stremio", "").startswith("https://guide.ssouq.com/stremio/") and line.get("line", "").startswith("Host "))
+        c, r = post("/api/stremio/accounts?gate=g2", None)
+        check("ويظهر في قائمة بوابته", c == 200 and [a["username"] for a in r["accounts"]] == [line.get("username")]
+              and next(g for g in r["gates"] if g["id"] == "g2")["count"] == 1)
+        api.down = True
+        c, r = post("/api/stremio/create", {"gate": "g2", "package_id": "167"})
+        kept = r.get("line") or {}
+        check("Stremio تعثّر بعد إنشاء اليوزر: اليوزر لا يضيع (يعود مع السبب)", c == 200 and r.get("ok") and kept.get("username")
+              and "stremio_account" not in r and "تعذّر حساب Stremio" in r.get("stremio_error", ""), json.dumps(r, ensure_ascii=False)[:200])
+        api.down = False
+        c, r = post("/api/stremio/account", {"gate": "g2", "username": kept.get("username"), "password": kept.get("password"), "line": kept.get("line", "")})
+        check("و«إعادة المحاولة» تكمل حسابه", c == 200 and r.get("email") == kept.get("username") + "@tv.ssouq.com")
+        c, r = post("/api/stremio/create", {"gate": "g2", "package_id": "999"})
+        check("باقةٌ لا توجد ← 400 ولا يُنشأ شيء", c == 400 and "باقة" in r.get("error", ""))
+        c, r = post("/api/stremio/create", {"gate": "g3", "package_id": "1"})
+        check("بوابة أرشيف ← 400", c == 400 and "أرشيف" in r.get("error", ""))
+        c, r = post("/api/stremio/create", {"gate": "g2", "package_id": "167"}, op3)
+        check("ومن لم يُفتح له ← 403", c == 403)
     finally:
+        falcon.terminate()
         app.terminate()
         app.wait(timeout=10)
         api.shutdown()
