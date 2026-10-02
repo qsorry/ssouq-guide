@@ -1155,8 +1155,9 @@ function renderScan(d) {
   const pct = d.entities_total ? Math.round(1000 * d.tested_entities / d.entities_total) / 10 : 0;
   $("eScanBar").hidden = !d.tested_entities; $("eScanFill").style.width = pct + "%";
   const v = d.verdict === "PASS" ? "ناجح" : d.verdict === "FAIL" ? "فشل" : d.verdict === "INCOMPLETE" ? "غير مكتمل" : "لم يُثبت";
-  $("eScanState").textContent = d.error && !d.status ? d.error : d.status === "never run" ? "لم يُشغَّل بعد"
-    : `${d.running ? "يفحص الآن… " : d.status === "paused" ? "موقوف مؤقتًا · " : d.status === "complete" ? "اكتمل · " : d.status === "error" ? "خطأ · " : ""}${num(d.tested_entities)} / ${num(d.entities_total)} كيانًا (${pct}%) · ${num(d.tested_routes)} مسارًا · فشل ${num(d.failures)} · أخطاء ${num(d.errors)} · متبقٍّ ${num(d.remaining_entities)} · ${Math.round((d.seconds || 0) / 60)} د · الحكم: ${v}${d.error ? " · " + d.error : ""}`;
+  $("eScanState").textContent = d.error && !d.status ? d.error : d.status === "never run" ? (d.running ? "بدأ للتو… يُحضّر الدفعة الأولى" : "لم يُشغَّل بعد")
+    : `${d.running ? "يفحص الآن… " : d.status === "paused" ? "موقوف مؤقتًا · " : d.status === "complete" ? "اكتمل · " : d.status === "error" ? "خطأ · " : ""}${num(d.tested_entities)} / ${num(d.entities_total)} كيانًا (${pct}%) · ${num(d.tested_routes)} مسارًا · فشل ${num(d.failures)} · أخطاء ${num(d.errors)} · متبقٍّ ${num(d.remaining_entities)}${d.eta_minutes ? ` · يتبقّى نحو ${num(d.eta_minutes)} د` : ""} · مضى ${Math.round((d.seconds || 0) / 60)} د · الحكم: ${v}${d.error ? " · " + d.error : ""}`;
+  $("eScanBar").hidden = !(d.tested_entities || d.running);
   clearTimeout(scPoll); if (d.running) scPoll = setTimeout(loadScan, 3000);
 }
 async function loadScan() { try { renderScan(await api("/api/content/seo/scan")); } catch (e) {} }

@@ -846,7 +846,7 @@ def unit_full_scan():
               qa2["full_population"]["verdict"] == "NOT PROVEN" and not qa2["full_population"]["tests"][0]["ok"] and any(b["gate"] == "Global SEO Coverage" and "never run" in b["detail"] for b in qa2["release_blockers"]), str(qa2["release_blockers"]))
         con.close()
     finally:
-        seo_scan.BATCH = 200
+        seo_scan.BATCH = 50
         shutil.rmtree(d, ignore_errors=True)
 
 

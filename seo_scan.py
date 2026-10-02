@@ -23,7 +23,7 @@ import seo_pages
 import seo_qa
 import seo_sources
 
-BATCH = 200                      # كيانًا في الدفعة (×2 مسار) ثم نقطة استئناف
+BATCH = 50                       # كيانًا في الدفعة (×2 مسار) ثم نقطة استئناف — صغيرة ليتحرّك العدّاد كل نصف دقيقة تقريبًا
 PAUSE = 0.05                     # ثانية بين الدفعات: لا يستأثر الخيط بالخادم
 _threads, _stop = {}, {}
 _lock = threading.Lock()
@@ -140,6 +140,8 @@ def run(data_dir, stop=None, progress=None, resume=True):
         s["status"] = "running"
         s["started_at"] = s["started_at"] or int(time.time())
         s["code_fingerprint"] = fp
+        s["updated_at"] = int(time.time())
+        _save(data_dir, s)                      # فورًا: البطاقة ترى «يفحص الآن 0 / N» قبل أول دفعة
         redirect_paths = {r["path"] for r in con.execute("SELECT path FROM redirect")}
         canon_seen = {}
         if s["last_id"]:                        # عند الاستئناف: canonical ما سبق فحصه يُعاد بناؤه من الروابط لا من الرسم (كشف التكرار)
@@ -195,9 +197,10 @@ def summary(s):
     remaining = max(0, total - s["tested_entities"])
     complete = s["status"] == "complete" and remaining == 0
     verdict = "PASS" if complete and s["failures"] == 0 and s["errors"] == 0 else ("FAIL" if complete else "INCOMPLETE")
+    eta = round(s["seconds"] / s["tested_entities"] * remaining / 60) if s["tested_entities"] and remaining else 0
     return {"status": s["status"], "verdict": verdict, "code_fingerprint": s["code_fingerprint"], "started_at": s["started_at"], "updated_at": s["updated_at"], "finished_at": s.get("finished_at"),
             "entities_total": total, "routes_total": s["routes_total"], "tested_entities": s["tested_entities"], "tested_routes": s["tested_routes"],
-            "coverage_percent": pct, "remaining_entities": remaining, "remaining_routes": remaining * 2, "failures": s["failures"], "errors": s["errors"],
+            "coverage_percent": pct, "remaining_entities": remaining, "remaining_routes": remaining * 2, "eta_minutes": eta, "failures": s["failures"], "errors": s["errors"],
             "seconds": s["seconds"], "batches": s["batches"], "ar": s["ar"], "en": s["en"], "hreflang": s["hreflang"], "duplicates": s["duplicates"],
             "failure_examples": s["failure_examples"][:20], "error_examples": s["error_examples"][:10], "entities_total_now": s.get("entities_total_now"),
             "read_only": "render only; no entity, source row, merge, split, enrichment, redirect or slug is written"}
