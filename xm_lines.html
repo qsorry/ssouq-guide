@@ -144,6 +144,10 @@ input.t::placeholder{color:color-mix(in srgb,var(--mute) 70%,transparent)}
 .tbl .n{color:var(--mute);font-size:.78rem}
 .tbl .cb{width:34px;height:30px;border-radius:8px;border:1px solid var(--line);display:inline-grid;place-items:center;color:var(--mute)}
 .tbl .cb:hover{color:var(--go);border-color:var(--go)}
+/* زرّ رابط Stremio بجانب زرّ النسخ (صنفٌ مستقل: ‏.cb زرّ نسخ السطر وحده) */
+.tbl .sb{width:34px;height:30px;border-radius:8px;border:1px solid var(--line);display:inline-grid;place-items:center;color:#8b7cf6}
+.tbl .sb:hover{border-color:#8b7cf6}
+.tbl .sb svg{fill:currentColor;stroke:none}
 .pill{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.74rem;border:1px solid var(--line);color:var(--mute);background:var(--sf)}
 .pill.ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,transparent);background:color-mix(in srgb,var(--go) 12%,transparent)}
 .pill.bad{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,transparent);background:color-mix(in srgb,var(--err) 12%,transparent)}
@@ -351,6 +355,11 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
   <section class="panel" id="resBox" hidden>
     <div class="ph"><h2>اليوزرات الجديدة</h2><button class="copy" id="copyRes">نسخ الكل</button></div>
     <pre class="lines" id="res"></pre>
+    <div id="resStremio" hidden>
+      <div class="ph" style="margin-top:12px"><h2>روابط Stremio</h2><button class="copy" id="copyStremio">نسخ الكل</button></div>
+      <p class="msg small" style="margin:0 0 6px">رابطٌ لكل يوزر: يفتحه العميل فيضيف محتوى اشتراكه كله (أفلام · مسلسلات · قنوات) إلى Stremio.</p>
+      <pre class="lines" id="resSt"></pre>
+    </div>
   </section>
 
   <section class="panel" id="searchBox" hidden>
@@ -615,15 +624,19 @@ const lineOf = x => lineIn(x, gateOf());
 // اليوزر)، وإلا السطر كما كان. الإنشاء والسجل واشتراكات اليوم تنسخ السطر دائمًا.
 // الهوست من البوابة، وإلا من سطر الإنشاء نفسه (فالكون بلا هوست يقرؤه من /me لحظة الإنشاء).
 // {server} اسم اشتراك البوابة كما في الدليل (سمارت/فالكون/كاسبر) — يحسبه الخادم من رابط شرحها.
+// {stremio} رابط صفحة تثبيت محتوى الاشتراك في Stremio — يصنعه الخادم لكل يوزر (الإنشاء والبحث).
 // gid = بوابة الصف (البحث في كل البوابات)، وإلا المختارة.
 const msgOf = (x, gid) => {
   const g = gateOf(gid);
   if (!guideText) return x.line || lineIn(x, g);
   const v = {host: g.host || partOf(x, "host", /^Host\s+(\S+)/), user: partOf(x, "username", /User\s+(\S+)/),
              pass: partOf(x, "password", /Pass\s+(\S+)/), guide: guideOf(g) || partOf(x, "guide", /Guide\s+(\S+)/),
-             server: g.guide_sub || ""};
-  return guideText.replace(/\{(host|user|pass|guide|server)\}/g, (_, k) => v[k]);
+             server: g.guide_sub || "", stremio: x.stremio || ""};
+  return guideText.replace(/\{(host|user|pass|guide|server|stremio)\}/g, (_, k) => v[k]);
 };
+// زرّ نسخ رابط تثبيت Stremio لصفٍّ له رابط (يصنعه الخادم بعد الإنشاء والبحث)
+const stIcon = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>';
+const stremioBtn = x => x.stremio ? `<button class="sb" title="نسخ رابط Stremio (يضيف محتوى الاشتراك كله إلى Stremio)" data-copy="${esc(x.stremio)}">${stIcon}</button>` : "";
 const cpTitle = t => guideText ? "نسخ نص الشرح" : t;
 // كاسبر يولّد اسم اليوزر بنفسه ولا يقبل اسمًا مختارًا؛ تُطبَّق كلمة المرور فقط. باقي البوابات تقبل الاثنين.
 const gateIsCasper = id => { const g = gates.find(g => g.id === (id||curGate)) || {}; return g.mode === "web" && g.web_flavor === "casper"; };
@@ -653,7 +666,7 @@ const fileNote = `<div class="src-note">من الملف المحفوظ — فو�
 const resTable = (rows, gid) => `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
   rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
     return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
-      <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(msgOf(x, gid))}">${copyIcon}</button></td></tr>`; }).join("") + `</tbody></table></div>`;
+      <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(msgOf(x, gid))}">${copyIcon}</button> ${stremioBtn(x)}</td></tr>`; }).join("") + `</tbody></table></div>`;
 
 // ---- نطاق البحث: كل بوابات العميل معًا (الافتراضي) أو المختارة وحدها — يُتذكّر لكل متصفح ----
 let searchAll = true; try { searchAll = localStorage.getItem("xm_search_scope") !== "one"; } catch {}
@@ -810,7 +823,7 @@ async function createReplacement(oldU){
       const sp = splitResult(d.split, d.split_mail);    // متى يتغيّر اسمه وما يبقى — أو لماذا لم يُسجَّل
       if ($("mkBox")) $("mkBox").innerHTML = `<div class="msg ok" style="margin-top:8px">أُنشئ البديل${sm ? " (" + monthsAr(sm) + ")" : ""} وارتبط بـ ${esc(oldU)} ✓ (نُسخ ${guideText ? "نص الشرح" : "السطر الكامل"})</div>
         <div class="tw"><table class="tbl"><tbody><tr><td class="m">${nu}</td><td class="m">${np}</td><td>${esc(String(lines[0].package||""))}</td>
-        <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(full)}">${copyIcon}</button></td></tr></tbody></table></div>`
+        <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(full)}">${copyIcon}</button> ${stremioBtn(lines[0])}</td></tr></tbody></table></div>`
         + (sp ? `<div class="msg${sp.ok ? " ok" : ""}" id="mkSplit" style="margin-top:8px">${sp.html}</div>` : "");
     }
     if (d.error) throw new Error(d.error);
@@ -1110,6 +1123,9 @@ async function createLines(){
     if (lines.length) {
       const h = load(); lines.forEach(x => h.unshift(x)); save(h);
       $("res").textContent = lines.map(x=>x.line).join("\n");
+      const st = lines.filter(x => x.stremio);              // رابط تثبيت Stremio لكل يوزر
+      $("resSt").textContent = st.map(x => `${x.username}  ${x.stremio}`).join("\n");
+      $("resStremio").hidden = !st.length;
       $("resBox").hidden = false; $("u").value = ""; $("p").value = "";
       renderHistory(); loadGateStatus(); loadXlsxStatus();
       copy($("res").textContent);
@@ -1163,6 +1179,7 @@ $("hist").addEventListener("click", e => {
   else if (b.dataset.pkg) copy(load().filter(x => pkgKey(x) === b.dataset.pkg).map(x=>x.line).join("\n"));
 });
 $("copyRes").onclick = () => copy($("res").textContent);
+$("copyStremio").onclick = () => copy($("resSt").textContent);
 $("copyAll").onclick = () => { const h = load(); if (!h.length) return toast("لا يوجد ما يُنسخ"); copy(h.map(x=>x.line).join("\n")); };
 $("create").onclick = createLines;
 $("capSubmit").onclick = submitCaptcha;

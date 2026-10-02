@@ -82,6 +82,13 @@ const GUIDE_F = GUIDE + '#activate/falcon';      // البوابات فالكو�
     await user.click('#searchRes button.cb >> nth=1');
     await sleep(150);
     check('clipboard holds gate ب\'s line', (await user.evaluate(() => navigator.clipboard.readText())) === cps[1]);
+    // زرّ Stremio بجانب كل صف: رابط صفحة تثبيتٍ لكل بوابة (هوستان مختلفان = رابطان مختلفان)
+    const sts = await user.$$eval('#searchRes button.sb', bs => bs.map(b => b.dataset.copy));
+    check('each row has its own Stremio install link', sts.length === 2 && sts.every(x => x.startsWith('https://guide.ssouq.com/stremio/'))
+          && sts[0] !== sts[1], sts.join(' / '));
+    await user.click('#searchRes button.sb >> nth=0');
+    await sleep(150);
+    check('the Stremio button copies the link', (await user.evaluate(() => navigator.clipboard.readText())) === sts[0]);
     await shot(user, 'search-all');
 
     // ---- نطاق «البوابة المختارة» يعيد البحث فيها وحدها، ويُتذكَّر ----
