@@ -388,6 +388,7 @@ def live():
         check("أرشيف اللقطة يُنزَّل من البطاقة باسم seo-review-<bundle_id>.zip", zname == f"seo-review-{j['last']['bundle_id']}.zip" and c == 200 and b[:2] == "PK", str((zname, c, b[:4])))
         c, b = req(base, "/admin/api/content/seo/bundle/sitemap-staging.xml", auth=AUTH)
         check("خريطة الموقع التجريبية تُنزَّل من البطاقة (XML) ولا تُخدم على الموقع", c == 200 and b.startswith("<?xml") and "<urlset" in b, b[:120])
+        req(base, "/admin/api/content/admin/seo-settings", {"settings": {"scan_quiet_hours": {"start": 0, "end": 0, "utc_offset": 3}}}, auth=AUTH)   # الاختبار بلا قيد وقت
         c, b = req(base, "/admin/api/content/admin/seo-scan", {"action": "start"}, auth=AUTH)
         check("فحص السكّان كاملًا يبدأ من البطاقة في الخلفية", c == 200 and json.loads(b)["started"] is True, b[:160])
         for _ in range(200):
@@ -818,6 +819,11 @@ def unit_full_scan():
         seo_build.build(d)
         con = seo_db.connect(d)
         seo_db.set_setting(con, "preview", True); con.commit()
+        st0 = seo_db.settings(con)
+        check("وقت الهدوء الافتراضي 12 ص – 12 ظ بتوقيت السعودية: 03:00 UTC (6 ص) داخلٌ، 10:00 UTC (1 ظ) خارجٌ، و22:00 UTC (1 ص) داخلٌ؛ ونافذةٌ فارغة = بلا قيد",
+              seo_scan.in_quiet_hours(st0, 3 * 3600) and not seo_scan.in_quiet_hours(st0, 10 * 3600) and seo_scan.in_quiet_hours(st0, 22 * 3600)
+              and seo_scan.in_quiet_hours({"scan_quiet_hours": {"start": 5, "end": 5, "utc_offset": 3}}) and seo_scan.quiet_label(st0).startswith("12 ص – 12 ظ"), seo_scan.quiet_label(st0))
+        seo_db.set_setting(con, "scan_quiet_hours", {"start": 0, "end": 0, "utc_offset": 3}); con.commit()     # الاختبار لا يعتمد على ساعة الجدار
         snap = lambda: [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "content_alias", "provenance")]   # noqa: E731
         total = con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=1").fetchone()[0]
         s0 = snap()
@@ -840,13 +846,39 @@ def unit_full_scan():
         fp = qa["full_population"]
         check("qa.json: full_population من نقطة الاستئناف (لا إعادة فحص)، الاختبار global_full_population_coverage ناجح، وعائق التغطية غير مذكور في release_blockers",
               fp["verdict"] == "PASS" and fp["tested_entities"] == total and fp["tests"][0]["ok"] and not any(b["gate"] == "Global SEO Coverage" for b in qa["release_blockers"]), str((fp["verdict"], qa["release_blockers"])))
+        # الحارس: فحصٌ «جارٍ» في الملف بلا خيط (سقط الخادم) يُستأنف وحده ويكتمل؛ الموقوف بيد المدير لا يُمسّ؛ ونقطةٌ بلا مفتاح (قبل المفتاح) تُكمَل لا تُصفَّر
+        ck = seo_scan.load(d); ck.update({"status": "running", "last_id": s2["last_id"] // 2, "tested_entities": 3, "tested_routes": 6, "failures": 0, "errors": 0}); ck.pop("scan_key", None)
+        seo_scan._save(d, ck)
+        started = seo_scan.watchdog_tick(d)
+        for _ in range(100):
+            if not seo_scan.state(d)["running"]:
+                break
+            time.sleep(0.1)
+        w = seo_scan.load(d)
+        check("الحارس يستأنف فحصًا كان جاريًا عند إعادة التشغيل حتى يكتمل من نقطته (لا من الصفر)، ويختمه بمفتاح التوافق ويسجّل بصمات الكود المساهمة",
+              started and w["status"] == "complete" and w["tested_entities"] > 3 and w["tested_entities"] < total + 3 and w["scan_key"] == seo_scan.scan_key() and len(w["code_fingerprints"]) >= 1, str({k: w[k] for k in ("status", "tested_entities", "scan_key")}))
+        ck = seo_scan.load(d); ck["status"] = "paused"; seo_scan._save(d, ck)
+        check("الموقوف مؤقتًا بيد المدير لا يستأنفه الحارس", seo_scan.watchdog_tick(d) is False and seo_scan.load(d)["status"] == "paused")
+        seo_db.set_setting(con, "scan_quiet_hours", {"start": 23, "end": 23, "utc_offset": 0}); con.commit()   # نافذةٌ فارغة = بلا قيد — ثم نافذةٌ مغلقة الآن
+        hh = time.gmtime().tm_hour
+        seo_db.set_setting(con, "scan_quiet_hours", {"start": (hh + 2) % 24, "end": (hh + 3) % 24, "utc_offset": 0}); con.commit()
+        ck = seo_scan.load(d); ck.update({"status": "running", "last_id": 0, "tested_entities": 0, "tested_routes": 0}); seo_scan._save(d, ck)
+        stops = []
+        seo_scan.WAIT_SLEEP = 0.1
+        sw = seo_scan.run(d, stop=lambda: len(stops) >= 1 or stops.append(1), resume=True)   # أول نظرة: خارج النافذة ← waiting ثم الإيقاف
+        check("خارج وقت الهدوء: الحال waiting بلا فحص (0 كيان) والتقدّم محفوظ، والحارس يعدّه قابلًا للاستئناف", sw["status"] in ("waiting", "paused") and seo_scan.load(d)["tested_entities"] == 0
+              and seo_scan.state(d)["in_quiet_hours"] is False, str((sw["status"], seo_scan.state(d)["quiet_hours"])))
+        seo_db.set_setting(con, "scan_quiet_hours", {"start": 0, "end": 0, "utc_offset": 3}); con.commit()
+        ck["status"] = "running"; ck["scan_key"] = "0:deadbeef"; seo_scan._save(d, ck)
+        s4 = seo_scan.run(d, resume=True)
+        check("مفتاح توافقٍ مختلف (منطق الرسم تغيّر) ← يبدأ من الصفر لا يخلط", s4["tested_entities"] == total and s4["code_fingerprints"] == [seo_sources.code_version()["code_fingerprint"]], str(s4["tested_entities"]))
         os.remove(seo_scan.path_(d))
         qa2 = seo_qa.run(d, {"movie": 1, "series": 1, "turkish": 1, "anime": 1, "titles": []})
         check("بلا فحصٍ كامل: الحكم NOT PROVEN، الاختبار يفشل، والعائق مذكور «never run»",
               qa2["full_population"]["verdict"] == "NOT PROVEN" and not qa2["full_population"]["tests"][0]["ok"] and any(b["gate"] == "Global SEO Coverage" and "never run" in b["detail"] for b in qa2["release_blockers"]), str(qa2["release_blockers"]))
         con.close()
     finally:
-        seo_scan.BATCH = 200
+        seo_scan.BATCH = 50; seo_scan.WAIT_SLEEP = 30
         shutil.rmtree(d, ignore_errors=True)
 
 

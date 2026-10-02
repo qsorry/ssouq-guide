@@ -119,6 +119,25 @@ def _get(url, limit):
     return raw
 
 
+class NeedsSetup(ValueError):
+    """إضافةٌ تحتاج إعدادًا قبل تثبيتها — ومعها رابط صفحة إعدادها (‏configure)."""
+
+    def __init__(self, configure=""):
+        super().__init__("هذه الإضافة تحتاج إعدادًا: افتح صفحة إعدادها وأكمله، ثم انسخ رابط التثبيت الذي تعطيك"
+                         " (فيه رمزك، مثل …/stremio/<رمز>/manifest.json) والصقه هنا")
+        self.configure = configure
+
+
+def configure_url(url):
+    """صفحة إعداد إضافةٍ من رابط manifestها: بجانبه (…/configure) كما في Stremio؛ و«…/stremio/manifest.json» بلا رمز
+    (AIOMetadata وأمثالها) صفحتها في الجذر (/configure)."""
+    p = urlsplit(url)
+    path = p.path[:-len("manifest.json")] if p.path.endswith("manifest.json") else p.path.rstrip("/") + "/"
+    if path.rstrip("/").endswith("/stremio"):
+        path = path.rstrip("/")[:-len("stremio")]
+    return urlunsplit((p.scheme, p.netloc, path.rstrip("/") + "/configure", "", ""))
+
+
 def _usable(m):
     """إضافةٌ تعمل كما هي: لها موارد ولا تطلب إعدادًا (AIOMetadata بلا إعدادٍ manifestها بلا موارد)."""
     return bool(m.get("resources")) and not (m.get("behaviorHints") or {}).get("configurationRequired")
@@ -128,7 +147,12 @@ def fetch(url):
     """رابط manifest ← وصف الإضافة للتثبيت ‏{transportUrl, manifest, flags}. ‏ValueError برسالةٍ للعرض: رابطٌ لا يصلح،
     أو لا يردّ، أو ليس manifest إضافة، أو إضافةٌ تحتاج إعدادًا (يُلصق رابطها بعد الإعداد)."""
     url = norm_url(url)
-    raw = _get(url, MAX_BYTES)
+    try:
+        raw = _get(url, MAX_BYTES)
+    except ValueError as e:
+        if "404" in str(e) and urlsplit(url).path != "/manifest.json":
+            _root_hint(url)              # رابطٌ بلا رمز إعداد؟ manifest الجذر يدلّ على صفحة إعدادها
+        raise
     try:
         m = json.loads(raw.decode("utf-8", "replace"))
     except ValueError:
@@ -137,10 +161,22 @@ def fetch(url):
             and isinstance(m.get("types"), list)):
         raise ValueError("الرابط لا يعيد manifest إضافة")
     if not _usable(m):
-        raise ValueError("هذه الإضافة تحتاج إعدادًا: افتح صفحة إعدادها، وأكمله، ثم الصق رابط التثبيت (manifest) الذي تعطيه")
+        raise NeedsSetup(configure_url(url))
     if str(m["id"]).startswith(stremio_accounts.OURS):
         raise ValueError("هذه إضافتنا نفسها — تُثبَّت وحدها مع كل حساب")
     return {"transportUrl": url, "manifest": m, "flags": {"official": False, "protected": False}}
+
+
+def _root_hint(url):
+    """رابط إضافةٍ لا يوجد (‏404): إن كان في جذر مضيفه manifest إضافةٍ تحتاج إعدادًا ← NeedsSetup بصفحة إعدادها."""
+    p = urlsplit(url)
+    root = urlunsplit((p.scheme, p.netloc, "/manifest.json", "", ""))
+    try:
+        m = json.loads(_get(root, MAX_BYTES).decode("utf-8", "replace"))
+    except (ValueError, UnicodeError):
+        return
+    if isinstance(m, dict) and m.get("id") and not _usable(m):
+        raise NeedsSetup(urlunsplit((p.scheme, p.netloc, "/configure", "", "")))
 
 
 # ================= البحث بالاسم في دليل الإضافات =================
@@ -154,7 +190,7 @@ def _brief(url, m):
     return {"url": url, "id": str(m.get("id", "")), "name": str(m.get("name", ""))[:80], "version": str(m.get("version", ""))[:20],
             "description": " ".join(str(m.get("description") or "").split())[:240], "logo": str(m.get("logo") or ""),
             "host": urlsplit(url).hostname or "", "needs_config": not _usable(m),
-            "configure": url[:-len("manifest.json")] + "configure" if conf and url.endswith("/manifest.json") else ""}
+            "configure": configure_url(url) if conf and url.endswith("/manifest.json") else ""}
 
 
 def directory():
@@ -185,8 +221,9 @@ def _compact(s):
 
 
 def search(q, limit=24):
-    """إضافاتٌ بالاسم («AIOMetadata» تجد «AIO Metadata» بمضيفيها): الاسم أولًا ثم المعرّف والوصف؛ والتي تعمل كما هي
-    قبل التي تحتاج إعدادًا. ‏ValueError: الدليل لا يردّ."""
+    """إضافاتٌ بالاسم («AIOMetadata» تجد «AIO Metadata»): الاسم أولًا ثم المعرّف والوصف، والتي تعمل كما هي قبل التي
+    تحتاج إعدادًا. الإضافة الواحدة على مضيفين كثيرين نتيجةٌ واحدة (أولهم) ومعها الباقون في ‏hosts. ‏ValueError: الدليل
+    لا يردّ."""
     cq, words = _compact(q), str(q or "").lower().split()
     if len(cq) < 2:
         return []
@@ -201,7 +238,15 @@ def search(q, limit=24):
         if rank is not None:
             hits.append((rank, it["needs_config"], it["name"].lower(), it))
     hits.sort(key=lambda h: h[:3])
-    return [h[3] for h in hits[:limit]]
+    out, by_id = [], {}
+    for *_, it in hits:
+        first = by_id.get(it["id"])
+        if first is None:
+            by_id[it["id"]] = first = dict(it, hosts=[])
+            out.append(first)
+        elif it["host"] != first["host"] and all(h["host"] != it["host"] for h in first["hosts"]):
+            first["hosts"].append({k: it[k] for k in ("host", "url", "configure", "needs_config")})
+    return out[:limit]
 
 
 # ================= القائمة =================

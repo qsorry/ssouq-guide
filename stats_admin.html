@@ -2,89 +2,224 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>إحصائيات الدليل</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 <style>
-/* نظام تصميم صفحات الأداة نفسه (admin.html · contest_admin.html) — داكنٌ افتراضيًّا، متوافقٌ مع الجوال.
+/* نظام تصميم صفحات الأداة نفسه (admin.html · content_admin.html) — داكنٌ افتراضيًّا، وفاتحٌ بسمة الجهاز أو بالزرّ، والجوال أولًا:
+   ما يُتابَع كل يوم أولًا (الأرقام والرسوم)، ثم أرقام جوجل، والإعداد في أقسامٍ مطويّة لا يُفتح منها وحده إلا ما يحتاج انتباهًا.
    ولونا الرسوم (--s1 الزوار، --s2 المشاهدات) مُتحقَّقٌ منهما لعمى الألوان ولتباينهما على سطح الوضعين. */
 :root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45);
-  --s1:#3987e5;--s2:#d95926;--wash:rgba(57,135,229,.17)}
+  --s1:#3987e5;--s2:#d95926;--wash:rgba(57,135,229,.17);color-scheme:dark}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14);
+  --s1:#2a78d6;--s2:#eb6834;--wash:rgba(42,120,214,.13);color-scheme:light}}
 :root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14);
-  --s1:#2a78d6;--s2:#eb6834;--wash:rgba(42,120,214,.13)}
+  --s1:#2a78d6;--s2:#eb6834;--wash:rgba(42,120,214,.13);color-scheme:light}
 *{box-sizing:border-box}
-html{background:var(--bg);scroll-padding-top:90px}
+html{background:var(--bg);scroll-padding-top:90px;-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
 [hidden]{display:none!important}
 a{color:var(--go);text-decoration:none}
-svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.top{position:sticky;top:8px;z-index:30;display:flex;align-items:center;gap:8px;height:66px;margin:8px 10px 0;padding:0 12px;background:color-mix(in srgb,var(--sf) 90%,transparent);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:20px;box-shadow:0 10px 30px -18px rgba(0,0,0,.6)}
+svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font:inherit;border:0;border-radius:12px;cursor:pointer;color:inherit;background:none}
+button:disabled{opacity:.55;cursor:default}
+:is(button,a,summary,input,select,textarea):focus-visible{outline:2px solid var(--go);outline-offset:2px}
+.ltr{direction:ltr;text-align:left}
+.mono{direction:ltr;unicode-bidi:isolate;font:500 .8rem "IBM Plex Mono",Consolas,monospace;overflow-wrap:anywhere}
+
+/* ===== الرأس العائم والشريط السفلي (بتصميم لوحة الإدارة) ===== */
+.top{position:sticky;top:8px;z-index:30;display:flex;align-items:center;gap:8px;height:66px;margin:8px 10px 0;padding:0 12px;border:1px solid var(--line);border-radius:20px;
+  background:color-mix(in srgb,var(--sf) 90%,transparent);backdrop-filter:blur(10px);box-shadow:0 10px 30px -18px rgba(0,0,0,.6)}
 .top .sp{flex:1}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;line-height:1.1}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;line-height:1.1;min-width:0}
 .brand .mark{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;color:#fff;flex:none;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);box-shadow:0 6px 18px color-mix(in srgb,var(--go) 45%,transparent)}
 .brand .mark svg{width:22px;height:22px}
 .brand b{display:block;font-size:1.12rem}
 .brand small{display:block;color:var(--mute);font-size:.76rem;font-weight:400}
-.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none;cursor:pointer}
+.icon-btn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none;cursor:pointer}
 .icon-btn:hover{border-color:var(--go)}
 .icon-btn.out:hover{border-color:var(--err);color:var(--err)}
-.wrap{max-width:1040px;margin:0 auto;padding:16px 14px 110px}
-section{background:var(--sf);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:16px;min-width:0}
-h2{font-size:1.08rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-h3{font-size:.98rem;margin:16px 0 8px}
-label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
-input,select,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--sf2);color:var(--ink);font:inherit}
-textarea{resize:vertical;line-height:1.6}
-input:focus,select:focus,textarea:focus{outline:0;border-color:var(--go)}
-.ltr{direction:ltr;text-align:left}
-button{font:inherit;border:0;border-radius:10px;cursor:pointer;color:inherit;background:none}
-button:disabled{opacity:.55;cursor:default}
-.go{padding:11px 16px;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;border-radius:12px}
-.ghost{background:var(--sf2);border:1px solid var(--line);color:var(--ink);padding:8px 13px;font-size:.85rem;display:inline-flex;align-items:center;gap:6px;border-radius:10px}
-.ghost:hover{border-color:var(--go);color:var(--go)}
-.danger{background:var(--sf2);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:8px 13px;font-size:.85rem}
-.msg{font-size:.88rem;margin-top:8px;min-height:1.3em;white-space:pre-wrap;color:var(--mute)}
-.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
-.hint{display:block;color:var(--mute);font-size:.8rem;margin-top:4px}
-.empty{color:var(--mute);text-align:center;padding:14px;font-size:.9rem}
-.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
-.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 12px}
-@media (max-width:620px){.g2,.g3{grid-template-columns:1fr}}
-/* الواجهة */
-.hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:12px;padding:22px 18px;border:0;border-radius:22px;color:#fff;min-height:140px;
+.bnav{position:fixed;inset-inline:8px;bottom:8px;z-index:40;display:flex;gap:2px;padding:6px;border:1px solid var(--line);border-radius:20px;
+  background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);margin-bottom:env(safe-area-inset-bottom)}
+.bnav a{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 10px;color:var(--mute);
+  font-size:.74rem;font-weight:600;border-radius:12px;text-decoration:none}
+.bnav a svg{width:22px;height:22px}
+.bnav a:hover{color:var(--ink)}
+@media (min-width:760px){.bnav{max-width:640px;margin-inline:auto}}
+
+/* ===== الهيكل: عمودٌ في الوسط، وحافةٌ 16px على الجوال ===== */
+.wrap{max-width:940px;margin:0 auto;padding:16px 16px 112px}
+section,.card{background:var(--sf);border:1px solid var(--line);border-radius:20px;padding:16px;margin:0 0 14px;min-width:0}
+/* الواجهة: العنوان ومن في الموقع الآن، والمدة شريطًا مقسّمًا لا يلتفّ */
+.hero{position:relative;overflow:hidden;padding:18px 16px 16px;border:0;border-radius:22px;color:#fff;margin-bottom:12px;
   background:radial-gradient(60% 90% at 0% 100%,rgba(34,196,147,.45),transparent 60%),radial-gradient(50% 80% at 100% 0%,rgba(79,140,255,.55),transparent 60%),
     linear-gradient(120deg,#0b5f73 0%,#1e3a8a 55%,#312e81 100%)}
 .hero::before{content:"";position:absolute;inset:0;opacity:.35;pointer-events:none;background:repeating-linear-gradient(115deg,transparent 0 22px,rgba(255,255,255,.06) 22px 23px)}
-.hero .ht{position:relative;flex:1;min-width:0}
-.hero h1{margin:0 0 6px;font-size:clamp(1.25rem,5.2vw,1.85rem);line-height:1.3}
-.hero p{margin:0;color:#D6E4FF;font-size:.9rem}
-.hero .art{position:relative;flex:0 0 auto;width:120px;height:auto;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
-@media (min-width:640px){.hero{padding:28px}.hero .art{width:200px}}
-@media (max-width:420px){.hero .art{display:none}}
-.livepill{display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.14);color:#fff;font-weight:700;font-size:.86rem}
+.hero>*{position:relative}
+.htop{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap}
+.hero h1{margin:0;font-size:clamp(1.25rem,5.4vw,1.75rem);line-height:1.3}
+.hero p{margin:6px 0 0;color:#D6E4FF;font-size:.86rem;line-height:1.7;max-width:60ch}
+.livepill{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 12px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);
+  color:#fff;font-weight:700;font-size:.82rem;white-space:nowrap;font-variant-numeric:tabular-nums}
 .livepill i{width:9px;height:9px;border-radius:50%;background:#34d399;box-shadow:0 0 0 0 rgba(52,211,153,.7);animation:pulse 2s infinite}
 @keyframes pulse{70%{box-shadow:0 0 0 9px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+.range{display:flex;gap:8px;align-items:stretch;margin-top:14px}
+.range .segs{flex:1;min-width:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;padding:4px;border-radius:14px;background:rgba(8,20,42,.3);border:1px solid rgba(255,255,255,.2)}
+.range .segs button{min-height:40px;padding:0 2px;border-radius:10px;color:#D6E4FF;font-weight:600;font-size:.84rem;white-space:nowrap}
+.range .segs button:hover{color:#fff;background:rgba(255,255,255,.08)}
+.range .segs button.on{background:#fff;color:#12213a;font-weight:700;box-shadow:0 4px 12px -4px rgba(0,0,0,.45)}
+.range .hbtn{flex:none;width:50px;border-radius:14px;display:grid;place-items:center;background:rgba(8,20,42,.3);border:1px solid rgba(255,255,255,.2);color:#fff}
+.range .hbtn:hover{background:rgba(255,255,255,.14)}
+.range .hbtn svg{width:20px;height:20px}
+.hero .art{display:none}
+@media (min-width:760px){
+  .hero{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:28px;padding:24px 28px}
+  .hero>:not(.art){grid-column:1}
+  .hero .art{display:block;grid-column:2;grid-row:1/span 3;align-self:center;width:170px;height:auto;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
+  .range{max-width:520px}
+}
 @media (prefers-reduced-motion:reduce){.livepill i{animation:none}}
-/* المدة: صفٌّ واحد فوق كل ما تحكمه */
-.range{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
-.range button{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--sf);color:var(--mute);font-weight:600;font-size:.86rem}
-.range button.on{background:color-mix(in srgb,var(--go) 16%,var(--sf));color:var(--ink);border-color:var(--go)}
-.range .sp{flex:1}
-.range small{color:var(--mute);font-size:.8rem}
+/* أقسام الصفحة: صفٌّ يُمرَّر أفقيًّا ولا يلتفّ */
+.jump{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px 12px;padding:2px 16px 4px}
+.jump::-webkit-scrollbar{display:none}
+.jump a{flex:none;display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);
+  background:var(--sf);color:var(--ink);font-size:.84rem;font-weight:500;white-space:nowrap}
+.jump a svg{color:var(--mute);width:17px;height:17px}
+.jump a:hover{border-color:var(--go)}
+.grouph{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:24px 4px 10px}
+.grouph h2{margin:0;font-size:1rem}
+.grouph small{color:var(--mute);font-size:.76rem}
 .loading .dim{opacity:.55;transition:opacity .2s}
-/* بطاقات الأرقام */
-.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
-@media (max-width:760px){.kpis{grid-template-columns:1fr 1fr}}
+
+/* ===== بطاقات الأرقام: عمودان على الجوال، وأربعٌ على الحاسوب ===== */
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
+@media (min-width:760px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .kpi{display:flex;flex-direction:column;gap:2px;padding:14px;border-radius:18px;border:1px solid var(--line);background:var(--sf);min-width:0}
-.kpi small{color:var(--mute);font-size:.8rem}
-.kpi b{font-size:1.7rem;line-height:1.25}
-.kpi em{font-style:normal;color:var(--mute);font-size:.76rem;line-height:1.4}
+.kpi small{display:flex;align-items:center;gap:7px;color:var(--mute);font-size:.8rem;line-height:1.4}
+.kpi small i{width:8px;height:8px;border-radius:50%;flex:none}
+.kpi b{font-size:1.65rem;line-height:1.25;font-variant-numeric:tabular-nums}
+.kpi em{font-style:normal;color:var(--mute);font-size:.74rem;line-height:1.45}
+.k1{background:var(--s1)} .k2{background:var(--s2)} .k3{background:var(--purple)} .k4{background:var(--go)}
 .delta{font-weight:700;white-space:nowrap}
 .delta.up{color:var(--go)} .delta.down{color:var(--err)}
-/* الرسوم */
+
+/* ===== رأس البطاقة ===== */
+.chead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin:0 0 12px}
+.chead h2{margin:0;font-size:1.04rem;line-height:1.35;min-width:0}
+.chead h2 small{display:block;color:var(--mute);font-weight:400;font-size:.76rem;margin-top:2px}
+.shead{display:flex;align-items:center;gap:12px;margin:0 0 14px}
+.shead .tt{flex:1;min-width:0}
+.shead h2{margin:0;font-size:1.06rem;line-height:1.35}
+.sline{display:flex;align-items:center;gap:6px 8px;margin-top:4px;flex-wrap:wrap}
+.sline small{color:var(--mute);font-size:.76rem}
+.sic{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:#fff;flex:none}
+.sic svg{width:21px;height:21px}
+.c-purple{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}.c-blue{background:linear-gradient(135deg,#3b82f6,#1d4ed8)}
+.c-green{background:linear-gradient(135deg,#22c493,#0f7a58)}.c-gold{background:linear-gradient(135deg,#f5b342,#b7791f)}
+.c-teal{background:linear-gradient(135deg,#14b8a6,#0f766e)}.c-rose{background:linear-gradient(135deg,#f472b6,#be185d)}
+.c-indigo{background:linear-gradient(135deg,#6366f1,#3730a3)}
+h3{font-size:.94rem;margin:0}
+.blockh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+.blockh small{color:var(--mute);font-size:.76rem}
+.blockh:first-child{margin-top:0;padding-top:0;border-top:0}
+
+/* الشارات: نقطةٌ ولونٌ واحد لكل حال */
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;line-height:1.5;border-radius:999px;padding:3px 10px;flex:none;
+  border:1px solid var(--line);color:var(--mute);background:var(--sf2);white-space:nowrap;max-width:100%}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip:empty{display:none}
+.chip.ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,var(--line));background:color-mix(in srgb,var(--go) 10%,var(--sf2))}
+.chip.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--line));background:color-mix(in srgb,var(--amber) 9%,var(--sf2))}
+.chip.bad{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line));background:color-mix(in srgb,var(--err) 9%,var(--sf2))}
+
+/* قائمة «⋯» */
+.kebab{position:relative;flex:none;align-self:flex-start}
+.kebab>summary{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink)}
+.kebab>summary svg{width:20px;height:20px;fill:currentColor;stroke:none}
+.kebab[open]>summary,.kebab>summary:hover{border-color:var(--go);color:var(--go)}
+.menu{position:absolute;top:calc(100% + 6px);inset-inline-end:0;z-index:25;width:min(250px,calc(100vw - 48px));padding:6px;border:1px solid var(--line);border-radius:16px;
+  background:var(--sf);box-shadow:var(--shadow)}
+.menu a{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border-radius:10px;color:var(--ink);font-size:.9rem;text-align:start}
+.menu a:hover{background:var(--sf2)}
+.menu svg{width:18px;height:18px;color:var(--mute)}
+
+/* الخانات والأزرار: 44px للّمس */
+label{display:block;font-size:.8rem;color:var(--mute);margin:12px 0 6px}
+input,select,textarea{width:100%;min-height:44px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;background:var(--sf2);color:var(--ink);font:inherit;font-size:.92rem}
+textarea{resize:vertical;line-height:1.6;font-size:.82rem}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--go)}
+input::placeholder,textarea::placeholder{color:color-mix(in srgb,var(--mute) 75%,transparent)}
+.go,.ghost,.danger{min-height:44px;padding:8px 16px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;
+  font-size:.88rem;font-weight:600;line-height:1.3;text-align:center;text-decoration:none}
+.go{background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;box-shadow:0 8px 20px -10px color-mix(in srgb,var(--go) 70%,transparent)}
+.ghost{background:var(--sf2);border:1px solid var(--line);color:var(--ink)}
+.ghost:hover{border-color:var(--go);color:var(--go)}
+.danger{background:var(--sf2);border:1px solid color-mix(in srgb,var(--err) 45%,var(--line));color:var(--err)}
+.danger:hover{border-color:var(--err)}
+/* صفّ الأزرار: شبكةٌ بعمودين على الجوال (والأول بعرضها إن كان العدد فرديًّا)، وصفٌّ واحد على الحاسوب */
+.acts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+.acts>:first-child:nth-last-child(odd){grid-column:1/-1}
+@media (min-width:640px){.acts{display:flex;flex-wrap:wrap}.acts>*{flex:0 0 auto;min-width:132px}}
+.fld{display:flex;gap:8px;align-items:stretch}
+.fld>input{flex:1;min-width:0}
+.fld>button{flex:none;white-space:nowrap}
+.form{display:grid;grid-template-columns:1fr;gap:0 12px}
+@media (min-width:640px){.form{grid-template-columns:1fr 1fr}}
+@media (min-width:760px){.form.c3{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.form>div{min-width:0}
+.hint{display:block;color:var(--mute);font-size:.78rem;margin-top:6px;line-height:1.6}
+.sub a{white-space:nowrap;text-decoration:underline;text-underline-offset:3px}
+.sub{color:var(--mute);margin:0 0 4px;font-size:.86rem;line-height:1.75}
+.lead{margin:0;font-size:.9rem;line-height:1.75}
+.msg{font-size:.86rem;margin-top:10px;white-space:pre-wrap;color:var(--mute);overflow-wrap:anywhere}
+.msg:empty{display:none}
+.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
+.empty{color:var(--mute);text-align:center;padding:16px;font-size:.88rem;border:1.5px dashed var(--line);border-radius:14px;margin:0}
+.errbox{color:var(--ink);font-size:.86rem;margin:0 0 10px;padding:10px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--err) 45%,var(--line));
+  background:color-mix(in srgb,var(--err) 9%,var(--sf2));overflow-wrap:anywhere}
+.errbox b{font-weight:600}
+/* مفتاح تشغيل بدل مربّع العلامة، في سطرٍ يُلمس كله */
+.switch{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:54px;margin:12px 0 0;padding:8px 14px;border:1px solid var(--line);
+  border-radius:14px;background:var(--sf2);color:var(--ink);font-size:.9rem;cursor:pointer}
+.switch small{display:block;color:var(--mute);font-size:.76rem;line-height:1.45}
+.tog{appearance:none;-webkit-appearance:none;flex:none;width:46px;min-height:0;height:28px;margin:0;padding:0;border:0;border-radius:999px;background:color-mix(in srgb,var(--mute) 45%,var(--sf2));
+  position:relative;cursor:pointer;transition:background .15s}
+.tog::before{content:"";position:absolute;top:3px;inset-inline-start:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:inset-inline-start .15s}
+.tog:checked{background:var(--go)}
+.tog:checked::before{inset-inline-start:21px}
+@media (prefers-reduced-motion:reduce){.tog,.tog::before{transition:none}}
+
+/* ===== الأقسام المطويّة: سطرٌ بارتفاع 46px وسهمٌ في آخره ===== */
+details>summary{list-style:none;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+.fold>summary{display:flex;align-items:center;gap:8px;min-height:46px;padding:6px 14px;font-weight:500;font-size:.9rem}
+.fold>summary::after{content:"";flex:none;width:8px;height:8px;margin-inline-start:auto;border:solid currentColor;border-width:0 0 2px 2px;transform:rotate(-45deg) translateY(-2px);
+  opacity:.55;transition:transform .15s}
+.fold[open]>summary::after{transform:rotate(135deg) translateY(-2px)}
+.fold>summary small{color:var(--mute);font-weight:400;font-size:.78rem}
+.fold>.din{padding:0 14px 14px}
+details.card{padding:0}
+details.card>summary{gap:12px;padding:12px 16px;min-height:68px}
+details.card>summary .tt{flex:1;min-width:0;display:flex;flex-direction:column}
+details.card>summary b{font-size:1rem;font-weight:700;line-height:1.35}
+details.card>summary small{line-height:1.45}
+details.card>summary .sline{margin-top:3px}
+details.card>.din{padding:0 16px 16px}
+details.card.need{border-color:color-mix(in srgb,var(--amber) 50%,var(--line))}
+details.box{margin-top:14px;border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+details.box>summary{color:var(--go)}
+.steps{margin:0;padding-inline-start:20px;font-size:.85rem;color:var(--mute)}
+.steps li{margin:6px 0}
+.steps b{color:var(--ink);font-weight:600}
+
+/* ===== الرسوم ===== */
+.legend{display:flex;gap:6px 14px;flex-wrap:wrap;justify-content:flex-end;font-size:.8rem;color:var(--mute);padding-top:3px}
+.legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.legend i{width:16px;height:3px;border-radius:2px;display:inline-block}
+.legend:empty{display:none}
+.bg1{background:var(--s1)} .bg2{background:var(--s2)}
 .chart{position:relative;direction:ltr;margin-top:4px;min-height:60px}
 .chart svg{display:block;width:100%;height:auto;overflow:visible;fill:initial;stroke:none;stroke-width:1;vertical-align:top}   /* لا يرث قاعدة الأيقونات */
 .chart .gl{stroke:var(--line);stroke-width:1}
@@ -103,29 +238,32 @@ button:disabled{opacity:.55;cursor:default}
 .tip .h{color:var(--mute);display:block}
 .tip b{font-size:.98rem}
 .tip .k{display:inline-block;width:14px;height:2px;border-radius:2px;vertical-align:middle;margin-inline-end:6px}
-.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--mute);margin-top:4px}
-.legend span{display:inline-flex;align-items:center;gap:6px}
-.legend i{width:16px;height:2px;border-radius:2px;display:inline-block}
-.bg1{background:var(--s1)} .bg2{background:var(--s2)}
-details.tv{margin-top:10px}
-details.tv summary{cursor:pointer;color:var(--mute);font-size:.82rem}
+.cnote{display:block;color:var(--mute);font-size:.78rem;margin:8px 0 0;line-height:1.6}
+.cnote:empty{display:none}
+details.tv{margin-top:8px}
+details.tv>summary{display:inline-flex;align-items:center;gap:6px;min-height:40px;color:var(--mute);font-size:.82rem}
+details.tv>summary::before{content:"";width:6px;height:6px;border:solid currentColor;border-width:0 0 1.5px 1.5px;transform:rotate(-45deg);transition:transform .15s}
+details.tv[open]>summary::before{transform:rotate(135deg)}
 .tbl{width:100%;border-collapse:collapse;font-size:.84rem}
-.tbl th,.tbl td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:start;white-space:nowrap}
+.tbl th,.tbl td{padding:8px;border-bottom:1px solid var(--line);text-align:start;white-space:nowrap}
 .tbl th{color:var(--mute);font-weight:500;position:sticky;top:0;background:var(--sf)}
 .tbl td.n,.tbl th.n{text-align:end;font-variant-numeric:tabular-nums}
-.tbl td.q{white-space:normal;min-width:160px}
-.tblbox{max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:8px}
-/* القوائم المرتّبة: شريطٌ خفيف بطول القيمة تحت الاسم */
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-@media (max-width:760px){.grid2{grid-template-columns:1fr}}
-.grid2 section{margin:0}
-.seg{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--sf2)}
-.seg button{padding:4px 10px;font-size:.78rem;color:var(--mute);border-radius:8px;font-weight:600}
-.seg button.on{background:var(--sf);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.tblbox{max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:4px}
+
+/* ===== القوائم المرتّبة: شريطٌ خفيف بطول القيمة تحت الاسم ===== */
+.grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:14px}
+.grid2>section{margin:0}
+@media (min-width:760px){.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* تبويبات البطاقة: صفٌّ مقسّم يُمرَّر أفقيًّا إن ضاق ولا يلتفّ */
+.seg{display:flex;gap:2px;padding:3px;margin:0 0 10px;border:1px solid var(--line);border-radius:12px;background:var(--sf2);overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg button{flex:1 0 auto;min-height:40px;padding:0 12px;border-radius:9px;font-size:.82rem;color:var(--mute);font-weight:600;white-space:nowrap}
+.seg button:hover{color:var(--ink)}
+.seg button.on{background:var(--sf);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.22)}
 .rows{display:flex;flex-direction:column;gap:3px}
 .rhead{display:flex;gap:10px;color:var(--mute);font-size:.74rem;padding:0 10px 4px}
 .rhead span:first-child{flex:1}
-.rw{position:relative;display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:10px;min-height:34px;color:var(--ink)}
+.rw{position:relative;display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:10px;min-height:40px;color:var(--ink);font-size:.9rem}
 .rw .fill{position:absolute;top:0;bottom:0;inset-inline-start:0;background:var(--wash);border-radius:10px}
 .rw>*:not(.fill){position:relative}
 .rw .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -134,65 +272,91 @@ details.tv summary{cursor:pointer;color:var(--mute);font-size:.82rem}
 .rw .v2{color:var(--mute);font-size:.76rem;min-width:52px;text-align:end;font-variant-numeric:tabular-nums}
 a.rw:hover{background:color-mix(in srgb,var(--sf2) 70%,transparent)}
 button.rw{width:100%;text-align:start}
+button.rw:hover{background:color-mix(in srgb,var(--sf2) 70%,transparent)}
 .rw .flag{font-size:1.05rem}
 .path{direction:ltr;unicode-bidi:isolate;font-family:"IBM Plex Mono",Consolas,monospace;font-size:.76rem;color:var(--mute)}
-.more{margin-top:6px;font-size:.8rem;color:var(--mute);background:none;padding:4px 10px}
-.more:hover{color:var(--go)}
-.sub{padding:4px 0 6px;margin-inline-start:18px;border-inline-start:2px solid var(--line)}
-.sub .rw{min-height:28px;font-size:.86rem}
+.more{display:flex;align-items:center;justify-content:center;width:100%;min-height:40px;margin-top:6px;padding:0 12px;font-size:.82rem;color:var(--mute);
+  border:1px dashed var(--line);border-radius:10px}
+.more:hover{color:var(--go);border-color:var(--go)}
+.sub2{padding:4px 0 6px;margin-inline-start:18px;border-inline-start:2px solid var(--line)}
+.sub2 .rw{min-height:34px;font-size:.84rem}
+.rows h3{margin:14px 0 6px;font-size:.88rem}
 /* رحلة الزائر */
-.fun{margin-top:6px}
-.fun h4{margin:10px 0 6px;font-size:.88rem}
-.fstep{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;margin:4px 0}
-.fstep .fb{grid-column:1/-1;height:8px;border-radius:4px;background:var(--sf2);overflow:hidden}
+.fun h4{margin:16px 0 8px;font-size:.84rem;color:var(--mute);font-weight:600}
+.fun h4:first-child{margin-top:0}
+.fstep{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;margin:0 0 10px}
+.fstep .fb{grid-column:1/-1;height:6px;border-radius:4px;background:var(--sf2);overflow:hidden}
 .fstep .fb i{display:block;height:100%;background:var(--s1);border-start-end-radius:4px;border-end-end-radius:4px}
-.fstep span{font-size:.86rem}
+.fstep span{font-size:.86rem;min-width:0}
 .fstep b{font-variant-numeric:tabular-nums}
-.fstep small{color:var(--mute);font-size:.74rem;margin-inline-start:6px}
-/* جوجل */
-.gkpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
-@media (max-width:620px){.gkpis{grid-template-columns:1fr 1fr}}
+.fstep small{color:var(--mute);font-size:.74rem;margin-inline-start:6px;white-space:nowrap;unicode-bidi:isolate}
+
+/* ===== جوجل ===== */
+.ggrid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:14px}
+.ggrid>section{margin:0}
+@media (min-width:760px){.ggrid.off{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.gkpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+@media (min-width:640px){.gkpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .gk{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-width:0}
 .gk small{display:block;color:var(--mute);font-size:.76rem}
-.gk b{display:block;font-size:1.3rem;line-height:1.3}
-.gk em{font-style:normal;font-size:.74rem}
-.chip{display:inline-flex;align-items:center;gap:5px;font-size:.74rem;font-weight:700;border-radius:999px;padding:2px 10px;border:1px solid var(--line);color:var(--mute)}
-.chip.ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 50%,var(--line))}
-.chip.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,var(--line))}
-.chip.bad{color:var(--err);border-color:color-mix(in srgb,var(--err) 50%,var(--line))}
-.note{background:var(--sf2);border:1px dashed var(--line);border-radius:14px;padding:12px 14px;margin:8px 0;font-size:.88rem}
-.note b{color:var(--ink)}
-.errbox{background:color-mix(in srgb,var(--err) 10%,var(--sf2));border:1px solid color-mix(in srgb,var(--err) 45%,var(--line));border-radius:12px;padding:10px 12px;margin:8px 0;font-size:.86rem}
-.errbox a{word-break:break-all}
-.wins li{margin:4px 0;font-size:.88rem}
-.wins .q{font-weight:700}
-.pick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.pick button{background:var(--sf2);border:1px solid var(--line);padding:6px 10px;font-size:.8rem;border-radius:10px;text-align:start}
-.pick button:hover{border-color:var(--go)}
-.pick button small{display:block;color:var(--mute);font-size:.72rem}
-/* زيادة الزوار */
+.gk b{display:block;font-size:1.3rem;line-height:1.3;font-variant-numeric:tabular-nums}
+.gk em{font-style:normal;font-size:.74rem;color:var(--mute)}
+.rt{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;margin:0 0 6px;font-size:.84rem;color:var(--mute)}
+.rt i{width:8px;height:8px;border-radius:50%;background:var(--go);flex:none}
+.rt b{color:var(--ink)}
+.rt small{flex-basis:100%;font-size:.76rem;overflow-wrap:anywhere}
+.gcta .acts{margin-top:12px}
+.wins{margin:14px 0 4px;padding:12px;border-radius:14px;background:color-mix(in srgb,var(--go) 6%,var(--sf2));border:1px solid color-mix(in srgb,var(--go) 28%,var(--line))}
+.wins h3{font-size:.92rem}
+.wins .hint{margin:4px 0 8px}
+.wins ul{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:6px}
+.wins ul:last-child{margin-bottom:0}
+.wins li{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 10px;padding:8px 10px;border-radius:10px;background:var(--sf);border:1px solid var(--line);font-size:.86rem;min-width:0}
+.wins li>:first-child{min-width:0;overflow-wrap:anywhere}
+.wins li small{color:var(--mute);font-size:.76rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* جدولٌ على الحاسوب، وبطاقاتٌ على الجوال: الاسم سطرٌ كامل وتحته الأرقام بعناوينها */
+.rtbl{width:100%;border-collapse:collapse;font-size:.85rem}
+.rtbl th,.rtbl td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:start}
+.rtbl th{color:var(--mute);font-weight:500;font-size:.78rem}
+.rtbl .n{text-align:end;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rtbl td:first-child{overflow-wrap:anywhere}
+.rtbl a.path{color:var(--go)}
+@media (max-width:639px){
+  .rtbl,.rtbl tbody{display:block}
+  .rtbl thead{display:none}
+  .rtbl tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 8px;padding:10px 12px;margin:0 0 8px;border:1px solid var(--line);border-radius:12px;background:var(--sf2)}
+  .rtbl.c3 tr{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .rtbl td{padding:0;border:0}
+  .rtbl td:first-child{grid-column:1/-1;font-weight:600}
+  .rtbl td.n{text-align:start;font-weight:700}
+  .rtbl td.n::before{content:attr(data-l);display:block;color:var(--mute);font-size:.7rem;font-weight:400}
+}
+.smaps{display:grid;gap:8px}
+.smap{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--sf2)}
+.smap .nm{flex:1;min-width:0;overflow-wrap:anywhere;font-size:.84rem}
+.smap .nm small{display:block;color:var(--mute);font-size:.74rem}
+/* زيادة الزوار: خطوةٌ في كل سطر بحالها */
 .checks{list-style:none;margin:0;padding:0}
-.checks li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
-.checks li:first-child{border-top:0}
+.checks li{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.checks li:first-child{border-top:0;padding-top:4px}
 .checks .ic{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:.8rem;font-weight:700;border:1.5px solid var(--line);color:var(--mute)}
-.checks .ic.ok{border-color:var(--go);color:var(--go)}
-.checks b{display:block;font-size:.92rem}
-.checks small{display:block;color:var(--mute);font-size:.8rem}
-.out{display:flex;gap:8px;margin-top:10px}
-.out input{direction:ltr;text-align:left;font-family:"IBM Plex Mono",Consolas,monospace;font-size:.8rem}
-details.box{border:1px solid var(--line);border-radius:14px;background:var(--sf2);padding:0 14px;margin-top:12px}
-details.box summary{cursor:pointer;padding:12px 0;font-weight:700;font-size:.92rem}
-details.box ol{margin:0 0 12px;padding-inline-start:1.3em;font-size:.88rem;color:var(--mute)}
-details.box ol li{margin:6px 0}
-details.box ol b{color:var(--ink)}
-/* الشريط السفلي العائم */
-.bnav{position:fixed;inset-inline:8px;bottom:8px;z-index:40;display:flex;gap:2px;padding:6px;border:1px solid var(--line);border-radius:20px;
-  background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);margin-bottom:env(safe-area-inset-bottom)}
-.bnav a{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 10px;color:var(--mute);
-  font-size:.74rem;font-weight:600;border-radius:12px;text-decoration:none}
-.bnav a svg{width:22px;height:22px}
-.bnav a:hover{color:var(--ink)}
-@media (min-width:760px){.bnav{max-width:640px;margin-inline:auto}}
+.checks .ic.ok{border-color:var(--go);color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
+.checks .ct{flex:1;min-width:0}
+.checks b{display:block;font-size:.9rem;font-weight:600}
+.checks li.ok b{color:var(--mute);font-weight:500}
+.checks small{display:block;color:var(--mute);font-size:.78rem;line-height:1.55}
+.checks .ghost{min-height:40px;padding:0 14px;font-size:.82rem}
+/* ربط جوجل */
+.acct{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+.acct p{flex:1 1 230px;min-width:0;margin:0;font-size:.84rem;color:var(--mute);line-height:1.6}
+.acct p b{display:block;color:var(--ink);font-size:.76rem;margin:2px 0}
+.acct p small{display:block;font-size:.76rem}
+.acct .danger{min-height:40px;padding:0 12px;font-size:.82rem;flex:none}
+#gPick h3{margin:16px 0 8px;font-size:.88rem}
+.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.pick button{min-height:48px;padding:8px 12px;background:var(--sf2);border:1.5px solid var(--line);border-radius:12px;text-align:start;font-size:.86rem;overflow-wrap:anywhere}
+.pick button:hover{border-color:var(--go)}
+.pick button small{display:block;color:var(--mute);font-size:.74rem}
 </style>
 </head>
 <body>
@@ -205,9 +369,13 @@ details.box ol b{color:var(--ink)}
 </header>
 <main class="wrap" id="main">
   <section class="hero">
-    <div class="ht"><h1>إحصائيات الدليل</h1>
-      <p>زوّار <bdi>guide.ssouq.com</bdi>: من أين جاؤوا، وماذا قرؤوا، وكم ذهب منهم إلى المتجر — بعدّادٍ من خادمنا بلا كوكيز، ومعه Google Analytics وSearch Console إن رُبطا.</p>
+    <div class="htop"><h1>إحصائيات الدليل</h1>
       <span class="livepill" id="livePill" title="من فتح صفحةً من الدليل في آخر خمس دقائق"><i></i><span id="liveN">—</span> في الموقع الآن</span></div>
+    <p>زوّار <bdi>guide.ssouq.com</bdi>: من أين جاؤوا، وماذا قرؤوا، وكم ذهب إلى المتجر — بعدّادٍ من خادمنا بلا كوكيز.</p>
+    <div class="range" role="group" aria-label="المدة">
+      <div class="segs"><button data-days="1">اليوم</button><button data-days="7">7 أيام</button><button data-days="30" class="on">30 يومًا</button><button data-days="90">90 يومًا</button></div>
+      <button class="hbtn" id="reload" title="تحديث" aria-label="تحديث"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12a9 9 0 0 1 15.5-6.2M18 2v4h-4M6 22v-4h4"/></svg></button>
+    </div>
     <svg class="art" viewBox="0 0 200 140" aria-hidden="true" style="fill:initial;stroke:none"><defs>
 <linearGradient id="sbar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93C5FD"/><stop offset="1" stop-color="#6366F1"/></linearGradient>
 <linearGradient id="sscr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0F1E48"/><stop offset="1" stop-color="#1B1147"/></linearGradient></defs>
@@ -219,167 +387,202 @@ details.box ol b{color:var(--ink)}
 <rect x="134" y="66" width="14" height="42" rx="3" fill="url(#sbar)"/><rect x="160" y="44" width="14" height="64" rx="3" fill="url(#sbar)"/></svg>
   </section>
 
-  <div class="range" role="group" aria-label="المدة">
-    <button data-days="1">اليوم</button><button data-days="7">7 أيام</button><button data-days="30" class="on">30 يومًا</button><button data-days="90">90 يومًا</button>
-    <span class="sp"></span><small id="rangeTxt"></small>
-    <button class="ghost" id="reload" title="تحديث"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12a9 9 0 0 1 15.5-6.2M18 2v4h-4M6 22v-4h4"/></svg></button>
-  </div>
-
   <div class="dim">
   <div class="kpis">
-    <div class="kpi"><small>الزوّار</small><b id="kUv">—</b><em id="dUv"></em></div>
-    <div class="kpi"><small>الزيارات (دخولٌ من خارج الموقع)</small><b id="kIn">—</b><em id="dIn"></em></div>
-    <div class="kpi"><small>مشاهدات الصفحات</small><b id="kPv">—</b><em id="dPv"></em></div>
-    <div class="kpi"><small>نقرات الشراء (إلى المتجر)</small><b id="kSt">—</b><em id="dSt"></em></div>
+    <div class="kpi"><small><i class="k1"></i>الزوّار</small><b id="kUv">—</b><em id="dUv"></em></div>
+    <div class="kpi"><small><i class="k3"></i>الزيارات من الخارج</small><b id="kIn">—</b><em id="dIn"></em></div>
+    <div class="kpi"><small><i class="k2"></i>مشاهدات الصفحات</small><b id="kPv">—</b><em id="dPv"></em></div>
+    <div class="kpi" title="نقراتٌ من الدليل إلى المتجر"><small><i class="k4"></i>نقرات الشراء</small><b id="kSt">—</b><em id="dSt"></em></div>
   </div>
 
   <section id="trendSec">
-    <h2><span id="trendTitle">الزوار والمشاهدات</span><span class="legend" id="trendLegend"></span></h2>
+    <div class="chead"><h2><span id="trendTitle">الزوار والمشاهدات</span><small id="rangeTxt"></small></h2><span class="legend" id="trendLegend"></span></div>
     <div class="chart" id="trend" tabindex="0" aria-label="رسم الزوار والمشاهدات"></div>
-    <p class="hint" id="trendNote"></p>
+    <p class="cnote" id="trendNote"></p>
     <details class="tv"><summary>عرض كجدول</summary><div class="tblbox"><table class="tbl" id="trendTbl"></table></div></details>
   </section>
 
+  <nav class="jump" aria-label="أقسام الصفحة">
+    <a href="#srcSec"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>المصادر</a>
+    <a href="#pgSec"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5"/></svg>الصفحات</a>
+    <a href="#evSec"><svg viewBox="0 0 24 24"><path d="m9 9 5 12 1.8-5.2L21 14zM7.2 2.2 8 5.1M5.1 8l-2.9-.8M14 4.1 12 6.2M6.2 12l-2.1 2"/></svg>التفاعل</a>
+    <a href="#devSec"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>الجمهور</a>
+    <a href="#botSec"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>الأرشفة</a>
+    <a href="#gaSec"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>جوجل</a>
+    <a href="#setup"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>الإعداد</a>
+  </nav>
+
   <div class="grid2">
-    <section>
-      <h2>من أين جاؤوا <span class="seg" data-list="src"><button data-k="sources" class="on">المصادر</button><button data-k="refs">المواقع</button><button data-k="utm">الحملات</button></span></h2>
+    <section id="srcSec">
+      <div class="chead"><h2>من أين جاؤوا</h2></div>
+      <div class="seg" data-list="src"><button data-k="sources" class="on">المصادر</button><button data-k="refs">المواقع</button><button data-k="utm">الحملات</button></div>
       <div class="rhead"><span id="srcHead">المصدر</span><span>الزيارات</span></div>
       <div class="rows" id="lSrc"></div>
     </section>
-    <section>
-      <h2>الصفحات <span class="seg" data-list="pages"><button data-k="pages" class="on">الأكثر مشاهدة</button><button data-k="landing">صفحات الدخول</button></span></h2>
+    <section id="pgSec">
+      <div class="chead"><h2>الصفحات</h2></div>
+      <div class="seg" data-list="pages"><button data-k="pages" class="on">الأكثر مشاهدة</button><button data-k="landing">صفحات الدخول</button></div>
       <div class="rhead" id="pagesHead"></div>
       <div class="rows" id="lPages"></div>
     </section>
-    <section>
-      <h2>النقرات والتفاعل</h2>
+    <section id="evSec">
+      <div class="chead"><h2>النقرات والتفاعل<small>اضغط سطرًا لتفاصيله — «نقرات الشراء» لكل باقة</small></h2></div>
       <div class="rows" id="lEvents"></div>
-      <p class="hint">اضغط على «نقرات الشراء» لترى كل باقة، وعلى غيرها لتفاصيله.</p>
     </section>
-    <section>
-      <h2>رحلة الزائر في الرئيسية</h2>
+    <section id="funSec">
+      <div class="chead"><h2>رحلة الزائر في الرئيسية</h2></div>
       <div class="fun" id="funnels"></div>
     </section>
-    <section>
-      <h2>الأجهزة <span class="seg" data-list="dev"><button data-k="devices" class="on">النوع</button><button data-k="os">النظام</button></span></h2>
+    <section id="devSec">
+      <div class="chead"><h2>الأجهزة</h2></div>
+      <div class="seg" data-list="dev"><button data-k="devices" class="on">النوع</button><button data-k="os">النظام</button></div>
       <div class="rhead"><span>الجهاز</span><span>الزوار</span></div>
       <div class="rows" id="lDev"></div>
     </section>
-    <section>
-      <h2>الدول</h2>
-      <div class="rhead"><span>الدولة (تقريبية من توقيت الجهاز)</span><span>الزوار</span></div>
+    <section id="ccSec">
+      <div class="chead"><h2>الدول<small>تقريبية من توقيت الجهاز</small></h2></div>
+      <div class="rhead"><span>الدولة</span><span>الزوار</span></div>
       <div class="rows" id="lCc"></div>
     </section>
-    <section>
-      <h2>أوقات الذروة <small class="hint" style="margin:0">بتوقيت السعودية</small></h2>
+    <section id="hrSec">
+      <div class="chead"><h2>أوقات الذروة<small>المشاهدات بالساعة، بتوقيت السعودية</small></h2></div>
       <div class="chart" id="hours" tabindex="0" aria-label="المشاهدات حسب الساعة"></div>
-      <p class="hint" id="hoursNote"></p>
+      <p class="cnote" id="hoursNote"></p>
     </section>
-    <section>
-      <h2>الأرشفة والمشاركة <span class="seg" data-list="bots"><button data-k="search" class="on">محركات البحث</button><button data-k="ai">الذكاء الاصطناعي</button><button data-k="share">المشاركات</button></span></h2>
+    <section id="botSec">
+      <div class="chead"><h2>الأرشفة والمشاركة</h2></div>
+      <div class="seg" data-list="bots"><button data-k="search" class="on">محركات البحث</button><button data-k="ai">الذكاء الاصطناعي</button><button data-k="share">المشاركات</button></div>
       <div class="rhead"><span id="botHead">الزاحف</span><span>الطلبات</span></div>
       <div class="rows" id="lBots"></div>
-      <p class="hint" id="botNote"></p>
+      <p class="cnote" id="botNote"></p>
     </section>
   </div>
   </div>
 
-  <!-- جوجل -->
-  <section id="gaSec">
-    <h2><span>Google Analytics</span><span class="acts"><span class="chip" id="gaChip">…</span><a class="ghost" href="https://analytics.google.com/" target="_blank" rel="noopener">افتح Analytics</a></span></h2>
-    <div id="gaBody"><p class="empty">نحمّل…</p></div>
-  </section>
-  <section id="gscSec">
-    <h2><span>Google Search Console — ماذا يبحث الناس قبل أن يصلوا</span><span class="acts"><span class="chip" id="gscChip">…</span><a class="ghost" href="https://search.google.com/search-console" target="_blank" rel="noopener">افتح Search Console</a></span></h2>
-    <div id="gscBody"><p class="empty">نحمّل…</p></div>
-  </section>
+  <!-- جوجل: أرقامه إن رُبط، وإلا بطاقتان قصيرتان بخطوة الربط -->
+  <div class="ggrid off" id="gGrid">
+    <section id="gaSec">
+      <div class="shead"><span class="sic c-gold"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+        <div class="tt"><h2>Google Analytics</h2><div class="sline"><span class="chip" id="gaChip">…</span><small>للمدة نفسها</small></div></div>
+        <details class="kebab"><summary title="خيارات" aria-label="خيارات Google Analytics"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></summary><div class="menu">
+          <a href="https://analytics.google.com/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>افتح Analytics</a>
+          <a href="#gConnTitle"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>إعداد الربط</a>
+        </div></details></div>
+      <div id="gaBody"><p class="empty">نحمّل…</p></div>
+    </section>
+    <section id="gscSec">
+      <div class="shead"><span class="sic c-blue"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
+        <div class="tt"><h2>Search Console</h2><div class="sline"><span class="chip" id="gscChip">…</span><small>البحث في جوجل</small></div></div>
+        <details class="kebab"><summary title="خيارات" aria-label="خيارات Search Console"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></summary><div class="menu">
+          <a href="https://search.google.com/search-console" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>افتح Search Console</a>
+          <a href="#gConnTitle"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>إعداد الربط</a>
+        </div></details></div>
+      <div id="gscBody"><p class="empty">نحمّل…</p></div>
+    </section>
+  </div>
 
-  <!-- زيادة الزوار -->
-  <section id="growSec">
-    <h2>زيادة الزوار</h2>
-    <ul class="checks" id="checks"></ul>
-  </section>
+  <!-- الإعداد والأدوات: مطويّةٌ، ويُفتح منها وحده ما يحتاج انتباهًا -->
+  <div class="grouph" id="setup"><h2>الإعداد والأدوات</h2><small>يُفتح وحده ما يحتاج انتباهًا</small></div>
 
-  <div class="grid2">
-    <section id="ixSec">
-      <h2>IndexNow — أرشفة فورية في Bing <span class="chip" id="ixChip">…</span></h2>
-      <p class="hint" style="margin-top:0">يبلّغ Bing وYandex وNaver وSeznam بصفحات الدليل فور تغيّرها بدل انتظار زيارة الزاحف — ويستفيد منه ChatGPT وCopilot لأن بحثهما من Bing. الصفحات التي تتغيّر يوميًا (المحتوى والمباريات والترتيب) تُرسَل وحدها كل صباح — بعد أول إرسالٍ ناجح منك هنا.</p>
-      <label class="chk" style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:.9rem;cursor:pointer"><input type="checkbox" id="ixAuto" style="width:18px;height:18px;accent-color:var(--go)"> إرسالٌ يوميّ تلقائي</label>
-      <div class="acts" style="margin-top:10px"><button class="go" id="ixSend">أرسل كل الصفحات الآن</button><a class="ghost" id="ixKey" target="_blank" rel="noopener">ملف المفتاح</a></div>
+  <details class="card fold" id="growSec">
+    <summary><span class="sic c-green"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg></span>
+      <span class="tt"><b>زيادة الزوار</b><span class="sline"><span class="chip" id="growChip"></span><small>خطواتٌ لأرشفةٍ أسرع وزوارٍ أكثر</small></span></span></summary>
+    <div class="din"><ul class="checks" id="checks"></ul></div>
+  </details>
+
+  <details class="card fold" id="connSec">
+    <summary><span class="sic c-purple"><svg viewBox="0 0 24 24"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01"/></svg></span>
+      <span class="tt"><b>المعرّفات والبيكسلات</b><span class="sline"><span class="chip" id="tagChip"></span><small>GA4 والبيكسلات والتحقّق</small></span></span></summary>
+    <div class="din">
+      <p class="sub">تُضاف وحدها إلى كل صفحات الدليل (لا لوحة الإدارة). الصق المعرّف أو الكود كاملًا فيُستخرج منه، والخانة الفارغة تُزال.</p>
+      <div class="blockh"><h3>القياس</h3></div>
+      <div class="form c3">
+        <div class="tagf"><label for="t_ga">Google Analytics 4 — معرّف القياس</label><input id="t_ga" data-tag="ga" class="ltr" placeholder="G-XXXXXXXXXX"></div>
+        <div class="tagf"><label for="t_gtm">Google Tag Manager (اختياري)</label><input id="t_gtm" data-tag="gtm" class="ltr" placeholder="GTM-XXXXXXX"></div>
+        <div class="tagf"><label for="t_clarity">Microsoft Clarity — خرائط النقر</label><input id="t_clarity" data-tag="clarity" class="ltr" placeholder="abcd1234ef"></div>
+      </div>
+      <div class="blockh"><h3>بيكسلات الإعلانات</h3><small>لإعادة استهداف من قرأ الدليل</small></div>
+      <div class="form c3">
+        <div class="tagf"><label for="t_snap">سناب شات</label><input id="t_snap" data-tag="snap" class="ltr" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
+        <div class="tagf"><label for="t_tiktok">تيك توك</label><input id="t_tiktok" data-tag="tiktok" class="ltr" placeholder="CXXXXXXXXXXXXXXXXXXX"></div>
+        <div class="tagf"><label for="t_meta">ميتا (فيسبوك وإنستغرام)</label><input id="t_meta" data-tag="meta" class="ltr" placeholder="123456789012345"></div>
+      </div>
+      <div class="blockh"><h3>التحقّق من ملكية الموقع</h3></div>
+      <div class="form">
+        <div class="tagf"><label for="t_gsv">Google Search Console — وسم HTML</label><input id="t_gsv" data-tag="gsv" class="ltr" placeholder='<meta name="google-site-verification" content="…">'></div>
+        <div class="tagf"><label for="t_bing">Bing Webmaster — msvalidate.01</label><input id="t_bing" data-tag="bing" class="ltr" placeholder='<meta name="msvalidate.01" content="…">'></div>
+      </div>
+      <div class="acts"><button class="go" id="tagSave">حفظ</button></div>
+      <div class="msg" id="tagMsg"></div>
+      <details class="box fold"><summary>من أين أجد هذه المعرّفات؟</summary><div class="din"><ol class="steps">
+        <li><b>Google Analytics 4:</b> analytics.google.com ← الإدارة ← مصادر البيانات ← الويب ← «معرّف القياس» (يبدأ بـ G-). إن لم تكن لك خاصية: أنشئها بموقع <bdi>https://guide.ssouq.com</bdi>.</li>
+        <li><b>Search Console:</b> search.google.com/search-console ← إضافة موقع ← «بادئة عنوان URL» ← <bdi>https://guide.ssouq.com/</bdi> ← طريقة «علامة HTML» ← انسخ الوسم هنا واحفظ، ثم اضغط «تحقّق» هناك.</li>
+        <li><b>Bing:</b> bing.com/webmasters ← أسهل طريق «استيراد من Google Search Console» (بعد تحقّق جوجل) فلا تحتاج وسمًا؛ وإلا طريقة «HTML Meta Tag».</li>
+        <li><b>Clarity:</b> clarity.microsoft.com ← مشروع جديد ← الإعدادات ← «Project ID».</li>
+        <li><b>البيكسلات:</b> من مدير إعلانات كلّ منصة (Snap Ads Manager · TikTok Events Manager · Meta Events Manager) ← معرّف البيكسل. تُسجّل زيارة كل صفحة (PageView) لتبني منها جمهورًا تعيد استهدافه.</li>
+      </ol></div></details>
+    </div>
+  </details>
+
+  <details class="card fold" id="gConn">
+    <summary><span class="sic c-gold"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span>
+      <span class="tt"><b id="gConnTitle">ربط جوجل بهذه الصفحة</b><span class="sline"><span class="chip" id="gConnChip"></span><small>حساب خدمة لأرقام جوجل هنا</small></span></span></summary>
+    <div class="din">
+      <div class="acct"><p id="gState"></p><button class="danger" id="gRemove" hidden>إزالة الربط</button></div>
+      <label for="gKey">ملف مفتاح حساب الخدمة (JSON)</label>
+      <textarea id="gKey" class="ltr" rows="4" placeholder='{"type": "service_account", "client_email": "…", "private_key": "-----BEGIN PRIVATE KEY-----…"}' spellcheck="false"></textarea>
+      <span class="hint">يُحفظ مشفَّرًا ولا يظهر بعدها.</span>
+      <div class="form">
+        <div><label for="gGa">رقم خاصية GA4 (Property ID)</label><input id="gGa" class="ltr" inputmode="numeric" placeholder="123456789"></div>
+        <div><label for="gSite">موقع Search Console</label><input id="gSite" class="ltr" placeholder="https://guide.ssouq.com/"></div>
+      </div>
+      <div class="acts"><button class="go" id="gSave">حفظ الربط</button><button class="ghost" id="gCheck">اختبر الربط</button></div>
+      <div class="msg" id="gMsg"></div>
+      <div id="gPick"></div>
+      <details class="box fold" id="gHelp"><summary>خطوات الربط<small>— مرة واحدة، دقائق</small></summary><div class="din"><ol class="steps">
+        <li><b>مشروع في Google Cloud:</b> <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">أنشئ مشروعًا</a> (أي اسم).</li>
+        <li><b>فعّل الواجهات:</b> <a href="https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com" target="_blank" rel="noopener">Google Analytics Data API</a> ·
+          <a href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noopener">Google Search Console API</a> ·
+          <a href="https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com" target="_blank" rel="noopener">Google Analytics Admin API</a> (ليظهر رقم الخاصية وحده).</li>
+        <li><b>حساب خدمة:</b> <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener">IAM ← حسابات الخدمة</a> ← أنشئ حسابًا ← «المفاتيح» ← إضافة مفتاح ← JSON. ينزل ملف: افتحه وانسخ محتواه كله في المربع أعلاه واحفظ.</li>
+        <li><b>في Google Analytics:</b> الإدارة ← «إدارة الوصول إلى الخاصية» ← + ← الصق بريد حساب الخدمة (يظهر هنا بعد الحفظ) بدور «مُشاهد».</li>
+        <li><b>في Search Console:</b> الإعدادات ← «المستخدمون والأذونات» ← إضافة مستخدم ← البريد نفسه بإذن «كامل» (ليُرسل خريطة الموقع؛ و«مقيَّد» يكفي للقراءة).</li>
+        <li>اضغط <b>«اختبر الربط»</b> واختر الخاصية والموقع من القائمة، ثم <b>«حفظ الربط»</b>.</li>
+      </ol></div></details>
+    </div>
+  </details>
+
+  <details class="card fold" id="ixSec">
+    <summary><span class="sic c-teal"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></span>
+      <span class="tt"><b>IndexNow</b><span class="sline"><span class="chip" id="ixChip">…</span><small>أرشفةٌ فورية في Bing</small></span></span></summary>
+    <div class="din">
+      <p class="sub">يبلّغ Bing وYandex وNaver وSeznam بالصفحات فور تغيّرها بدل انتظار الزاحف — ومن Bing يبحث ChatGPT وCopilot.
+        <a id="ixKey" target="_blank" rel="noopener">ملف المفتاح</a></p>
+      <label class="switch"><span>إرسالٌ يوميّ تلقائي<small>المحتوى والمباريات والترتيب كل صباح، بعد أول إرسالٍ ناجح منك</small></span><input type="checkbox" class="tog" id="ixAuto"></label>
+      <div class="acts"><button class="go" id="ixSend">أرسل كل الصفحات الآن</button></div>
       <div class="msg" id="ixMsg"></div>
-    </section>
-    <section id="utmSec">
-      <h2>رابط بتتبّع الحملة</h2>
-      <p class="hint" style="margin-top:0">انشر هذا الرابط بدل الرابط العادي (في حالة واتساب أو سناب أو إعلان)، فتظهر زياراته باسم حملته في «الحملات» هنا وفي Google Analytics.</p>
-      <div class="g2">
+    </div>
+  </details>
+
+  <details class="card fold" id="utmSec">
+    <summary><span class="sic c-rose"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span>
+      <span class="tt"><b>رابط بتتبّع الحملة</b><small>لواتساب وسناب والإعلانات</small></span></summary>
+    <div class="din">
+      <p class="sub">انشره بدل الرابط العادي، فتظهر زياراته باسم حملته في «الحملات» هنا وفي Google Analytics.</p>
+      <div class="form">
         <div><label for="uPage">الصفحة</label><select id="uPage" class="ltr"></select></div>
         <div><label for="uSrc">أين ستنشره</label><select id="uSrc">
           <option value="whatsapp">واتساب</option><option value="snapchat">سناب شات</option><option value="tiktok">تيك توك</option>
           <option value="instagram">إنستغرام</option><option value="x">إكس (تويتر)</option><option value="youtube">يوتيوب</option>
           <option value="telegram">تيليجرام</option><option value="facebook">فيسبوك</option><option value="sms">رسالة SMS</option>
           <option value="email">البريد</option><option value="qr">رمز QR مطبوع</option></select></div>
-      </div>
-      <div class="g2">
         <div><label for="uCamp">اسم الحملة</label><input id="uCamp" class="ltr" placeholder="ramadan-offer" maxlength="40"></div>
         <div><label for="uPaid">النوع</label><select id="uPaid"><option value="">نشرٌ مجاني</option><option value="paid">إعلانٌ مدفوع</option></select></div>
       </div>
-      <div class="out"><input id="uOut" readonly aria-label="الرابط"><button class="ghost" id="uCopy">نسخ</button></div>
-    </section>
-  </div>
-
-  <!-- الربط والتتبّع -->
-  <section id="connSec">
-    <h2>الربط والتتبّع</h2>
-    <p class="hint" style="margin-top:0">كل ما تكتبه هنا يُضاف وحده إلى كل صفحات الدليل (لا صفحات لوحة الإدارة). الصق المعرّف أو الكود كاملًا — يُستخرج المعرّف منه. والحقل الفارغ يُزال.</p>
-    <h3>القياس</h3>
-    <div class="g3">
-      <div class="tagf"><label for="t_ga">Google Analytics 4 — معرّف القياس</label><input id="t_ga" data-tag="ga" class="ltr" placeholder="G-XXXXXXXXXX"></div>
-      <div class="tagf"><label for="t_gtm">Google Tag Manager (اختياري)</label><input id="t_gtm" data-tag="gtm" class="ltr" placeholder="GTM-XXXXXXX"></div>
-      <div class="tagf"><label for="t_clarity">Microsoft Clarity — خرائط النقر (مجاني)</label><input id="t_clarity" data-tag="clarity" class="ltr" placeholder="abcd1234ef"></div>
+      <label for="uOut">الرابط</label>
+      <div class="fld"><input id="uOut" class="ltr mono" readonly><button class="go" id="uCopy">نسخ</button></div>
     </div>
-    <h3>بيكسلات الإعلانات — لإعادة استهداف من قرأ الدليل</h3>
-    <div class="g3">
-      <div class="tagf"><label for="t_snap">سناب شات Pixel</label><input id="t_snap" data-tag="snap" class="ltr" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
-      <div class="tagf"><label for="t_tiktok">تيك توك Pixel</label><input id="t_tiktok" data-tag="tiktok" class="ltr" placeholder="CXXXXXXXXXXXXXXXXXXX"></div>
-      <div class="tagf"><label for="t_meta">ميتا (فيسبوك وإنستغرام) Pixel</label><input id="t_meta" data-tag="meta" class="ltr" placeholder="123456789012345"></div>
-    </div>
-    <h3>التحقّق من ملكية الموقع</h3>
-    <div class="g2">
-      <div class="tagf"><label for="t_gsv">Google Search Console — وسم HTML (content)</label><input id="t_gsv" data-tag="gsv" class="ltr" placeholder='<meta name="google-site-verification" content="…">'></div>
-      <div class="tagf"><label for="t_bing">Bing Webmaster Tools — msvalidate.01</label><input id="t_bing" data-tag="bing" class="ltr" placeholder='<meta name="msvalidate.01" content="…">'></div>
-    </div>
-    <div class="acts" style="margin-top:14px"><button class="go" id="tagSave">حفظ</button></div>
-    <div class="msg" id="tagMsg"></div>
-    <details class="box"><summary>من أين أجد هذه المعرّفات؟</summary><ol>
-      <li><b>Google Analytics 4:</b> analytics.google.com ← الإدارة ← مصادر البيانات ← الويب ← «معرّف القياس» (يبدأ بـ G-). إن لم تكن لك خاصية: أنشئها بموقع <bdi>https://guide.ssouq.com</bdi>.</li>
-      <li><b>Search Console:</b> search.google.com/search-console ← إضافة موقع ← «بادئة عنوان URL» ← <bdi>https://guide.ssouq.com/</bdi> ← طريقة «علامة HTML» ← انسخ الوسم هنا واحفظ، ثم اضغط «تحقّق» هناك.</li>
-      <li><b>Bing:</b> bing.com/webmasters ← أسهل طريق «استيراد من Google Search Console» (بعد تحقّق جوجل) فلا تحتاج وسمًا؛ وإلا طريقة «HTML Meta Tag».</li>
-      <li><b>Clarity:</b> clarity.microsoft.com ← مشروع جديد ← الإعدادات ← «Project ID».</li>
-      <li><b>البيكسلات:</b> من مدير إعلانات كلّ منصة (Snap Ads Manager · TikTok Events Manager · Meta Events Manager) ← معرّف البيكسل. تُسجّل زيارة كل صفحة (PageView) لتبني منها جمهورًا تعيد استهدافه.</li>
-    </ol></details>
-
-    <h3 id="gConnTitle">ربط Google Analytics وSearch Console بهذه الصفحة</h3>
-    <p class="hint" style="margin-top:0" id="gState"></p>
-    <label for="gKey">ملف مفتاح حساب الخدمة (JSON) — يُحفظ مشفَّرًا ولا يظهر بعدها</label>
-    <textarea id="gKey" class="ltr" rows="4" placeholder='{"type": "service_account", "client_email": "…", "private_key": "-----BEGIN PRIVATE KEY-----…"}' spellcheck="false"></textarea>
-    <div class="g2">
-      <div><label for="gGa">رقم خاصية GA4 (Property ID)</label><input id="gGa" class="ltr" inputmode="numeric" placeholder="123456789"></div>
-      <div><label for="gSite">موقع Search Console</label><input id="gSite" class="ltr" placeholder="https://guide.ssouq.com/"></div>
-    </div>
-    <div class="acts" style="margin-top:12px"><button class="go" id="gSave">حفظ الربط</button><button class="ghost" id="gCheck">اختبر الربط</button><button class="danger" id="gRemove" hidden>إزالة الربط</button></div>
-    <div class="msg" id="gMsg"></div>
-    <div id="gPick"></div>
-    <details class="box" id="gHelp"><summary>خطوات الربط (مرة واحدة، دقائق)</summary><ol>
-      <li><b>مشروع في Google Cloud:</b> <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">أنشئ مشروعًا</a> (أي اسم).</li>
-      <li><b>فعّل الواجهات:</b> <a href="https://console.cloud.google.com/apis/library/analyticsdata.googleapis.com" target="_blank" rel="noopener">Google Analytics Data API</a> ·
-        <a href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noopener">Google Search Console API</a> ·
-        <a href="https://console.cloud.google.com/apis/library/analyticsadmin.googleapis.com" target="_blank" rel="noopener">Google Analytics Admin API</a> (ليظهر رقم الخاصية وحده).</li>
-      <li><b>حساب خدمة:</b> <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener">IAM ← حسابات الخدمة</a> ← أنشئ حسابًا ← «المفاتيح» ← إضافة مفتاح ← JSON. ينزل ملف: افتحه وانسخ محتواه كله في المربع أعلاه واحفظ.</li>
-      <li><b>في Google Analytics:</b> الإدارة ← «إدارة الوصول إلى الخاصية» ← + ← الصق بريد حساب الخدمة (يظهر هنا بعد الحفظ) بدور «مُشاهد».</li>
-      <li><b>في Search Console:</b> الإعدادات ← «المستخدمون والأذونات» ← إضافة مستخدم ← البريد نفسه بإذن «كامل» (ليُرسل خريطة الموقع؛ و«مقيَّد» يكفي للقراءة).</li>
-      <li>اضغط <b>«اختبر الربط»</b> واختر الخاصية والموقع من القائمة، ثم <b>«حفظ الربط»</b>.</li>
-    </ol></details>
-  </section>
+  </details>
 </main>
 
 <nav class="bnav">
@@ -399,13 +602,17 @@ const pct = (a, b) => b ? Math.round(a * 1000 / b) / 10 : 0;
 let SITE = "https://guide.ssouq.com";
 let DAYS = 30, REP = null, SET = null, GOO = null;
 const OPEN = {};                     // القوائم المفتوحة «عرض الكل»
-const TAB = {src: "sources", pages: "pages", dev: "devices", bots: "search"};
+const TAB = {src: "sources", pages: "pages", dev: "devices", bots: "search", ga: "ch", gsc: "q"};
+const LIM = () => innerWidth < 640 ? 6 : 8;   // سطور كل قائمة قبل «عرض الكل»: أقلّ على الجوال
 
 $("lnkHome").href = B + "/accounts"; $("lnkOut").href = B + "/logout"; $("lnkContest").href = B + "/contest";
 document.querySelectorAll(".bnav [data-tab]").forEach(a => { a.href = B + "/accounts#" + a.dataset.tab; });
+// السمة: تتبع الجهاز حتى يختار المدير بالزرّ، ثم تُحفظ (xm_theme نفسه في كل صفحات الأداة)
 $("themeBtn").onclick = () => {
-  const d = document.documentElement, t = d.getAttribute("data-theme") === "light" ? "" : "light";
-  t ? d.setAttribute("data-theme", t) : d.removeAttribute("data-theme");
+  const d = document.documentElement, cur = d.getAttribute("data-theme");
+  const light = cur ? cur === "light" : matchMedia("(prefers-color-scheme: light)").matches;
+  const t = light ? "dark" : "light";
+  d.setAttribute("data-theme", t);
   try { localStorage.setItem("xm_theme", t); } catch (e) {}
   if (REP) drawCharts();
 };
@@ -417,6 +624,7 @@ async function api(path, body) {
   return d;
 }
 function say(el, t, ok) { el.textContent = t; el.className = "msg " + (ok === true ? "ok" : ok === false ? "err" : ""); }
+function chip(el, t, cls) { el.textContent = t; el.className = "chip" + (cls ? " " + cls : ""); }
 
 // ================= الأسماء =================
 const SRC = {google: "جوجل", bing: "بينج", yahoo: "ياهو", duckduckgo: "DuckDuckGo", yandex: "ياندكس", chatgpt: "ChatGPT",
@@ -446,19 +654,21 @@ const PAGE_NAMES = [[/^\/$/, "الرئيسية"], [/^\/samsung-lg$/, "سامسو
   [/^\/content\//, "المحتوى"], [/^\/content$/, "المحتوى"], [/^\/watch/, "المشاهدة"], [/^\/standings\//, "الترتيب"], [/^\/gulf-cup/, "كأس الخليج"],
   [/^\/nations-league/, "دوري الأمم"], [/^\/predict$/, "مسابقة التوقّعات"], [/^\/renew$/, "التجديد"]];
 const pageName = p => { for (const [rx, n] of PAGE_NAMES) if (rx.test(p)) return n; return ""; };
-const fmtDur = s => !s ? "—" : s < 60 ? s + "\u00a0ث" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + "\u00a0د";   // العدد ووحدته لا يفترقان
+const fmtDur = s => !s ? "—" : s < 60 ? s + " ث" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + " د";   // العدد ووحدته لا يفترقان
 const dayLbl = d => { const [y, m, dd] = d.split("-"); return +dd + "/" + +m; };
 const WDAY = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
 const dayLong = d => { const t = new Date(d + "T12:00:00Z"); return WDAY[t.getUTCDay()] + " " + dayLbl(d); };
 
 // ================= التحميل =================
+const markRange = d => document.querySelectorAll(".range [data-days]").forEach(x => { const on = +x.dataset.days === d; x.classList.toggle("on", on); x.setAttribute("aria-pressed", on); });
 document.querySelectorAll(".range [data-days]").forEach(b => b.onclick = () => {
   DAYS = +b.dataset.days;
-  document.querySelectorAll(".range [data-days]").forEach(x => x.classList.toggle("on", x === b));
+  markRange(DAYS);
   try { localStorage.setItem("sq_days", String(DAYS)); } catch (e) {}
   load(); loadGoogle();
 });
-try { const d = +localStorage.getItem("sq_days"); if ([1, 7, 30, 90].includes(d)) { DAYS = d; document.querySelectorAll(".range [data-days]").forEach(x => x.classList.toggle("on", +x.dataset.days === d)); } } catch (e) {}
+try { const d = +localStorage.getItem("sq_days"); if ([1, 7, 30, 90].includes(d)) DAYS = d; } catch (e) {}
+markRange(DAYS);
 $("reload").onclick = () => { load(); loadGoogle(true); };
 
 async function load() {
@@ -489,7 +699,7 @@ function render() {
   $("kSt").textContent = num(t.store);
   $("dSt").innerHTML = t.uv ? `${pct(t.store, t.uv)}% من الزوار` : "";
   $("liveN").textContent = num(REP.live.n);
-  drawCharts(); lists(); events(); funnels();
+  drawCharts(); lists(); events(); funnels(); checks();
 }
 
 // ================= الرسوم (SVG بالعرض الحقيقي فلا يصغر النص في الجوال) =================
@@ -588,7 +798,7 @@ function drawCharts() {
       + REP.daily.slice().reverse().map(r => `<tr><td>${dayLong(r.d)}</td><td class=n>${num(r.uv)}</td><td class=n>${num(r.in)}</td><td class=n>${num(r.pv)}</td></tr>`).join("");
   }
   const fresh = REP.first === REP.today && !t.pv;
-  $("trendNote").textContent = fresh ? "بدأ العدّ اليوم: تظهر الأرقام مع أول زيارة للدليل، وتكتمل الرسوم مع الأيام." :
+  $("trendNote").textContent = fresh ? "بدأ العدّ اليوم: تظهر الأرقام مع أول زيارة، وتكتمل الرسوم مع الأيام." :
     REP.first > REP.from ? `العدّ بدأ ${dayLong(REP.first)} — ما قبله بلا أرقام.` : "";
   barChart($("hours"), REP.hours, {h: 150, unit: "مشاهدة", xl: i => i % 6 === 0 ? String(i) : "", tl: i => `الساعة ${hr(i)}`});
   const top = REP.hours.indexOf(Math.max(...REP.hours));
@@ -600,20 +810,45 @@ addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => { i
 // ================= القوائم =================
 function rowsHtml(key, items, fmt) {
   if (!items.length) return '<p class="empty">لا أرقام بعد في هذه المدة.</p>';
-  const max = Math.max(...items.map(r => r[1])), lim = OPEN[key] ? items.length : 8;
+  const max = Math.max(...items.map(r => r[1])), n = LIM(), lim = OPEN[key] ? items.length : n;
   let h = items.slice(0, lim).map(r => fmt(r, `<span class="fill" style="width:${(r[1] * 100 / max).toFixed(1)}%"></span>`)).join("");
-  if (items.length > 8) h += `<button class="more" data-more="${key}">${OPEN[key] ? "أقلّ" : `عرض الكل (${items.length})`}</button>`;
+  if (items.length > n) h += `<button class="more" data-more="${key}">${OPEN[key] ? "أقلّ" : `عرض الكل (${items.length})`}</button>`;
   return h;
 }
+// تبويب بطاقة جوجل: كل اللوحات في الصفحة، ويظهر منها المختار
+function panes(seg, k) {
+  seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  seg.parentNode.querySelectorAll(`.pane[data-of="${seg.dataset.pane}"]`).forEach(p => { p.hidden = p.dataset.k !== k; });
+}
+// روابط «#…» داخل الصفحة: تفتح القسم المطويّ الذي فيه الهدف، ثم تمرّر إليه (وتضع المؤشر في الخانة)
+function reveal(id) {
+  const t = id && document.getElementById(id); if (!t) return;
+  for (let d = t.closest("details"); d; d = d.parentElement.closest("details")) d.open = true;
+  const field = t.matches("input,select,textarea");
+  t.scrollIntoView({block: field ? "center" : "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+  if (field) t.focus({preventScroll: true});
+}
+const TOUCHED = {};                  // الأقسام التي فتحها المدير أو طواها بيده: لا تُفتح بعدها وحدها
 document.addEventListener("click", e => {
+  // قائمة «⋯»: تُغلق بالنقر خارجها أو على رابطٍ فيها
+  document.querySelectorAll("details.kebab[open]").forEach(k => { if (!k.contains(e.target) || e.target.closest(".menu a")) k.open = false; });
+  const a = e.target.closest('a[href^="#"]');
+  if (a && a.getAttribute("href").length > 1) { e.preventDefault(); reveal(a.getAttribute("href").slice(1)); return; }
+  const f = e.target.closest("details.card > summary");
+  if (f) { TOUCHED[f.parentNode.id] = true; return; }
   const m = e.target.closest("[data-more]");
   if (m) { OPEN[m.dataset.more] = !OPEN[m.dataset.more]; lists(); events(); if (m.dataset.more.startsWith("ga-")) renderGoogle(); return; }
+  const p = e.target.closest(".seg[data-pane] button");
+  if (p) { TAB[p.parentNode.dataset.pane] = p.dataset.k; panes(p.parentNode, p.dataset.k); return; }
   const s = e.target.closest(".seg[data-list] button");
   if (s) {
     const seg = s.parentNode; TAB[seg.dataset.list] = s.dataset.k;
     seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === s));
     lists(); return;
   }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") document.querySelectorAll("details.kebab[open]").forEach(k => { k.open = false; k.querySelector("summary").focus(); });
 });
 
 const cell = (name, sub, v, fill, v2, href) => {
@@ -638,16 +873,16 @@ function lists() {
   $("lCc").innerHTML = rowsHtml("cc", REP.countries, (r, f) => cell(`<span class="flag">${flag(r[0])}</span> ${esc(ccName(r[0]))}`, "", r[1], f));
   const bk = TAB.bots;
   if (bk === "share") {
-    $("botHead").textContent = "المنصة (كل معاينةٍ رابطٌ لُصق في محادثة)";
+    $("botHead").textContent = "المنصة";
     const b = REP.bots.filter(x => x[2] === "share");
     $("lBots").innerHTML = rowsHtml("bots-share", b.map(x => [x[0], x[1]]), (r, f) => cell(esc(r[0]), "", r[1], f))
       + (REP.shared.length ? `<h3>أكثر الصفحات مشاركة</h3>` + rowsHtml("shared", REP.shared, (r, f) => cell(`<span class="path">${esc(r[0])}</span>`, esc(pageName(r[0])), r[1], f, undefined, r[0] === "(other)" ? "" : SITE + r[0])) : "");
-    $("botNote").textContent = "حين يلصق أحدٌ رابط صفحةٍ في واتساب أو غيره يجلبها التطبيق ليعرض معاينتها — فهي عددٌ تقريبيّ لمرّات المشاركة.";
+    $("botNote").textContent = "كل معاينةٍ رابطُ صفحةٍ لُصق في واتساب أو غيره فجلبه التطبيق: عددٌ تقريبيّ لمرّات المشاركة.";
   } else {
     $("botHead").textContent = KIND[bk];
     const b = REP.bots.filter(x => x[2] === bk);
     $("lBots").innerHTML = rowsHtml("bots-" + bk, b.map(x => [x[0], x[1]]), (r, f) => cell(esc(r[0]), "", r[1], f));
-    $("botNote").textContent = bk === "search" ? "زيارات زواحف محركات البحث للأرشفة — لا تدخل أعداد الزوار. غيابها طويلًا علامةُ مشكلة أرشفة."
+    $("botNote").textContent = bk === "search" ? "زواحف البحث للأرشفة — لا تدخل أعداد الزوار. غيابها طويلًا علامةُ مشكلة أرشفة."
       : "مساعدو الذكاء الاصطناعي يقرؤون الدليل ليجيبوا عنه — ظهورك في إجاباتهم مصدر زوّارٍ جديد.";
   }
 }
@@ -665,7 +900,7 @@ function events() {
   const max = Math.max(...ev.map(e => e.c));
   $("lEvents").innerHTML = ev.map(e => {
     const open = OPEN["ev-" + e.n], f = `<span class="fill" style="width:${(e.c * 100 / max).toFixed(1)}%"></span>`;
-    const sub = open && e.top.length ? `<div class="sub">${e.top.map(t => `<div class="rw"><span class="nm">${esc(t[0] === "(other)" ? "أخرى" : labelOf(e.n, t[0]))}${e.n === "store_click" && REP.products[t[0]] ? ` <small class="path">${esc(t[0])}</small>` : ""}</span><span class="v">${num(t[1])}</span></div>`).join("")}</div>` : "";
+    const sub = open && e.top.length ? `<div class="sub2">${e.top.map(t => `<div class="rw"><span class="nm">${esc(t[0] === "(other)" ? "أخرى" : labelOf(e.n, t[0]))}${e.n === "store_click" && REP.products[t[0]] ? ` <small class="path">${esc(t[0])}</small>` : ""}</span><span class="v">${num(t[1])}</span></div>`).join("")}</div>` : "";
     return `<button class="rw" data-ev="${esc(e.n)}" aria-expanded="${open ? "true" : "false"}">${f}<span class="nm">${esc(EV[e.n] || e.n)}${e.top.length ? ` <small>${open ? "▴" : "▾"}</small>` : ""}</span><span class="v">${num(e.c)}</span></button>${sub}`;
   }).join("");
 }
@@ -682,7 +917,7 @@ function funnels() {
   $("funnels").innerHTML = F.map(([name, steps]) => {
     const top = Math.max(1, steps[0][1]);
     return `<h4>${esc(name)}</h4>` + steps.map((s, i) => `<div class="fstep"><span>${esc(s[0])}${i ? `<small>${pct(s[1], steps[i - 1][1] || 0)}% من السابقة</small>` : ""}</span><b>${num(s[1])}</b><div class="fb"><i style="width:${Math.min(100, s[1] * 100 / top).toFixed(1)}%"></i></div></div>`).join("");
-  }).join("") + `<p class="hint">نقرات الشراء من كل الصفحات (لا المعالج وحده) في «النقرات والتفاعل».</p>`;
+  }).join("") + `<p class="cnote">نقرات الشراء من كل الصفحات (لا المعالج وحده) في «النقرات والتفاعل».</p>`;
 }
 
 // ================= جوجل =================
@@ -693,7 +928,7 @@ async function loadGoogle(fresh) {
   renderGoogle(); checks();
 }
 function gErr(e) {
-  return `<div class="errbox">${esc(e.error || e.msg || "خطأ")}${e.hint ? `<br><b>${esc(e.hint)}</b>` : ""}${e.url ? `<br><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.url)}</a>` : ""}</div>`;
+  return `<div class="errbox"><bdi>${esc(e.error || e.msg || "خطأ")}</bdi>${e.hint ? `<br><b>${esc(e.hint)}</b>` : ""}${e.url ? `<br><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.url)}</a>` : ""}</div>`;
 }
 const gk = (label, v, sub) => `<div class="gk"><small>${esc(label)}</small><b>${v}</b>${sub ? `<em>${sub}</em>` : ""}</div>`;
 function gDelta(cur, prev, lowerBetter) {
@@ -703,69 +938,88 @@ function gDelta(cur, prev, lowerBetter) {
   const good = lowerBetter ? p < 0 : p > 0;
   return `<span class="delta ${good ? "up" : "down"}">${p > 0 ? "▲" : "▼"} ${Math.abs(p)}%</span>`;
 }
+// تبويباتٌ ولوحاتها لبطاقة جوجل: [المفتاح، الاسم، المحتوى]
+function tabbed(name, items) {
+  const k = items.some(i => i[0] === TAB[name]) ? TAB[name] : items[0][0];
+  return `<div class="seg" data-pane="${name}">${items.map(i => `<button data-k="${i[0]}"${i[0] === k ? ' class="on"' : ""}>${i[1]}</button>`).join("")}</div>`
+    + items.map(i => `<div class="pane" data-of="${name}" data-k="${i[0]}"${i[0] === k ? "" : " hidden"}>${i[2]}</div>`).join("");
+}
+// جدولٌ يصير بطاقاتٍ على الجوال: cols = [[العنوان، رقمي؟]…]، وrow يعيد خلايا السطر
+function rtable(key, cols, items, row, emptyTxt) {
+  if (!items.length) return `<p class="empty">${emptyTxt}</p>`;
+  const n = LIM(), shown = OPEN[key] ? items : items.slice(0, n);
+  return `<table class="rtbl c${cols.length - 1}"><thead><tr>${cols.map(c => `<th${c[1] ? " class=n" : ""}>${c[0]}</th>`).join("")}</tr></thead><tbody>`
+    + shown.map(r => "<tr>" + row(r).map((v, i) => i ? `<td class=n data-l="${cols[i][0]}">${v}</td>` : `<td>${v}</td>`).join("") + "</tr>").join("") + "</tbody></table>"
+    + (items.length > n ? `<button class="more" data-more="${key}">${OPEN[key] ? "أقلّ" : `عرض الكل (${items.length})`}</button>` : "");
+}
+const gLink = (t, cls) => `<a class="${cls || "go"}" href="#gConnTitle">${t}</a>`;
 function renderGoogle() {
   const g = GOO || {};
+  $("gGrid").classList.toggle("off", !(g.connected && g.ok));
   if (!g.connected) {
-    $("gaChip").textContent = "غير مربوط"; $("gaChip").className = "chip";
-    $("gscChip").textContent = "غير مربوط"; $("gscChip").className = "chip";
-    const tagged = SET && SET.tags.ga;
-    $("gaBody").innerHTML = `<div class="note">${tagged ? `<b>وسم GA4 (${esc(SET.tags.ga)}) في كل صفحات الدليل</b> — أرقامه في Google Analytics نفسه.` : "<b>لم يُضف Google Analytics بعد.</b> أضف معرّف القياس (G-…) في «الربط والتتبّع» فيبدأ جمع أرقام جوجل."}
-      <br>ولترى أرقامه هنا (الدول والقنوات و«الآن») اربط حساب خدمة من <a href="#gConnTitle">«ربط Google Analytics وSearch Console»</a> بالأسفل.</div>`;
-    $("gscBody").innerHTML = `<div class="note"><b>Search Console يكشف ما يكتبه الناس في جوجل فيظهر لهم الدليل</b>، وترتيبك في كل بحث، والصفحات التي تُرى ولا تُنقر — وهي أسرع طريقٍ لزوارٍ أكثر.
-      <br>تحقّق من الموقع بوسم HTML في «الربط والتتبّع»، ثم اربط حساب الخدمة بالأسفل لتظهر الأرقام هنا.</div>`;
+    chip($("gaChip"), "غير مربوط"); chip($("gscChip"), "غير مربوط");
+    const tagged = SET && SET.tags.ga, verified = SET && SET.tags.gsv;
+    $("gaBody").innerHTML = `<div class="gcta"><p class="lead">${tagged ? `وسم GA4 <bdi class="mono">${esc(SET.tags.ga)}</bdi> في كل صفحات الدليل — أرقامه في Google Analytics نفسه.` : "<b>لم يُضف Google Analytics بعد.</b> أضف معرّف القياس (G-…) فيبدأ جمع أرقام جوجل."}</p>
+      <span class="hint">ولترى هنا الدول والقنوات و«الآن»: اربط حساب خدمة.</span>
+      <div class="acts">${tagged ? gLink("اربط جوجل") : `<a class="go" href="#t_ga">أضف معرّف القياس</a>${gLink("اربط جوجل", "ghost")}`}</div></div>`;
+    $("gscBody").innerHTML = `<div class="gcta"><p class="lead"><b>ما يكتبه الناس في جوجل فيظهر لهم الدليل</b>، وترتيبك في كل بحث، والصفحات التي تُرى ولا تُنقر.</p>
+      <span class="hint">أسرع طريقٍ لزوارٍ أكثر: تحقّق من الموقع بوسم HTML، ثم اربط حساب الخدمة.</span>
+      <div class="acts">${verified ? gLink("اربط جوجل") : `<a class="go" href="#t_gsv">أضف وسم التحقّق</a>${gLink("اربط جوجل", "ghost")}`}</div></div>`;
     return;
   }
   if (!g.ok) {
-    $("gaChip").textContent = "خطأ في الربط"; $("gaChip").className = "chip bad";
-    $("gscChip").textContent = "خطأ في الربط"; $("gscChip").className = "chip bad";
-    $("gaBody").innerHTML = gErr(g); $("gscBody").innerHTML = gErr(g); return;
+    chip($("gaChip"), "خطأ في الربط", "bad"); chip($("gscChip"), "خطأ في الربط", "bad");
+    const fix = `<div class="acts">${gLink("افتح إعداد الربط", "ghost")}</div>`;
+    $("gaBody").innerHTML = gErr(g) + fix; $("gscBody").innerHTML = gErr(g) + fix; return;
   }
   // GA4
   const ga = g.ga;
-  if (!ga) { $("gaChip").textContent = "بلا خاصية"; $("gaChip").className = "chip warn"; $("gaBody").innerHTML = `<div class="note">اكتب رقم خاصية GA4 في الربط بالأسفل (أو اختره بعد «اختبر الربط»).</div>`; }
-  else if (ga.error) { $("gaChip").textContent = "خطأ"; $("gaChip").className = "chip bad"; $("gaBody").innerHTML = gErr(ga.error); }
+  if (!ga) { chip($("gaChip"), "بلا خاصية", "warn"); $("gaBody").innerHTML = `<div class="gcta"><p class="lead">اكتب رقم خاصية GA4 في الربط، أو اختره بعد «اختبر الربط».</p><div class="acts">${gLink("افتح إعداد الربط")}</div></div>`; }
+  else if (ga.error) { chip($("gaChip"), "خطأ", "bad"); $("gaBody").innerHTML = gErr(ga.error) + `<div class="acts">${gLink("افتح إعداد الربط", "ghost")}</div>`; }
   else {
-    $("gaChip").textContent = "مربوط"; $("gaChip").className = "chip ok";
+    chip($("gaChip"), "مربوط", "ok");
     const t = ga.totals, rt = ga.realtime;
     $("gaBody").innerHTML = `<div class="gkpis">${gk("المستخدمون", num(t.users))}${gk("الجلسات", num(t.sessions))}${gk("المشاهدات", num(t.views))}${gk("نسبة التفاعل", Math.round(t.engagement * 100) + "%")}</div>
-      ${rt ? `<p class="hint" style="margin-top:0">الآن (آخر 30 دقيقة): <b style="color:var(--ink)">${num(rt.users)}</b> مستخدم${rt.pages.length ? " · " + rt.pages.slice(0, 3).map(p => esc(p[0]) + " (" + num(p[1]) + ")").join(" · ") : ""}</p>` : ""}
+      ${rt ? `<p class="rt"><i></i>الآن (آخر 30 دقيقة): <b>${num(rt.users)}</b> مستخدم${rt.pages.length ? `<small>${rt.pages.slice(0, 3).map(p => esc(p[0]) + " (" + num(p[1]) + ")").join(" · ")}</small>` : ""}</p>` : ""}
       <div class="chart" id="gaChart" tabindex="0" aria-label="مستخدمو Google Analytics يوميًا"></div>
-      <div class="grid2" style="margin:12px 0 0">
-        <div><h3>القنوات</h3><div class="rows">${rowsHtml("ga-ch", ga.channels, (r, f) => cell(esc(CH[r[0]] || r[0]), "", r[1], f))}</div></div>
-        <div><h3>المصادر</h3><div class="rows">${rowsHtml("ga-src", ga.sources, (r, f) => cell(`<bdi>${esc(r[0])}</bdi>`, "", r[1], f))}</div></div>
-        <div><h3>الدول</h3><div class="rows">${rowsHtml("ga-cc", ga.countries, (r, f) => cell(`<span class="flag">${flag(r[0])}</span> ${esc(ccName(r[0]))}`, "", r[1], f))}</div></div>
-        <div><h3>الصفحات</h3><div class="rows">${rowsHtml("ga-pg", ga.pages, (r, f) => cell(`<span class="path">${esc(r[0])}</span>`, esc(pageName(r[0])), r[1], f, undefined, SITE + r[0]))}</div></div>
-      </div>`;
+      <div class="blockh"><h3>تفاصيل المدة</h3></div>
+      ${tabbed("ga", [
+        ["ch", "القنوات", `<div class="rows">${rowsHtml("ga-ch", ga.channels, (r, f) => cell(esc(CH[r[0]] || r[0]), "", r[1], f))}</div>`],
+        ["src", "المصادر", `<div class="rows">${rowsHtml("ga-src", ga.sources, (r, f) => cell(`<bdi>${esc(r[0])}</bdi>`, "", r[1], f))}</div>`],
+        ["cc", "الدول", `<div class="rows">${rowsHtml("ga-cc", ga.countries, (r, f) => cell(`<span class="flag">${flag(r[0])}</span> ${esc(ccName(r[0]))}`, "", r[1], f))}</div>`],
+        ["pg", "الصفحات", `<div class="rows">${rowsHtml("ga-pg", ga.pages, (r, f) => cell(`<span class="path">${esc(r[0])}</span>`, esc(pageName(r[0])), r[1], f, undefined, SITE + r[0]))}</div>`]])}`;
   }
   // Search Console
   const sc = g.gsc;
-  if (!sc) { $("gscChip").textContent = "بلا موقع"; $("gscChip").className = "chip warn"; $("gscBody").innerHTML = `<div class="note">اكتب موقع Search Console في الربط بالأسفل (أو اختره بعد «اختبر الربط»).</div>`; }
-  else if (sc.error) { $("gscChip").textContent = "خطأ"; $("gscChip").className = "chip bad"; $("gscBody").innerHTML = gErr(sc.error); }
+  if (!sc) { chip($("gscChip"), "بلا موقع", "warn"); $("gscBody").innerHTML = `<div class="gcta"><p class="lead">اكتب موقع Search Console في الربط، أو اختره بعد «اختبر الربط».</p><div class="acts">${gLink("افتح إعداد الربط")}</div></div>`; }
+  else if (sc.error) { chip($("gscChip"), "خطأ", "bad"); $("gscBody").innerHTML = gErr(sc.error) + `<div class="acts">${gLink("افتح إعداد الربط", "ghost")}</div>`; }
   else {
-    $("gscChip").textContent = "مربوط"; $("gscChip").className = "chip ok";
+    chip($("gscChip"), "مربوط", "ok");
     const t = sc.totals, p = sc.prev;
     const near = sc.queries.filter(q => q[4] >= 4 && q[4] <= 20 && q[2] >= 5).sort((a, b) => b[2] - a[2]).slice(0, 6);
     const lowCtr = sc.pages.filter(q => q[2] >= 50 && q[3] < 0.02).sort((a, b) => b[2] - a[2]).slice(0, 5);
-    const sm = sc.sitemaps || [];
+    const sm = sc.sitemaps || [], rel = u => u.replace(/^https?:\/\/[^/]+/, "") || "/";
     $("gscBody").innerHTML = `<div class="gkpis">${gk("النقرات من جوجل", num(t.clicks), gDelta(t.clicks, p.clicks))}${gk("مرات الظهور", num(t.impressions), gDelta(t.impressions, p.impressions))}
         ${gk("نسبة النقر", (t.ctr * 100).toFixed(1) + "%", gDelta(t.ctr, p.ctr))}${gk("متوسط الترتيب", t.position ? t.position.toFixed(1) : "—", gDelta(t.position, p.position, true))}</div>
-      <p class="hint" style="margin-top:0">${esc(sc.from)} — ${esc(sc.to)} · آخر يومين تكتمل أرقامهما عند جوجل بعد تأخير.</p>
+      <span class="hint" style="margin:0 0 4px"><bdi>${esc(sc.from)}</bdi> — <bdi>${esc(sc.to)}</bdi> · آخر يومين يكتملان عند جوجل بعد تأخير.</span>
       <div class="chart" id="gscChart" tabindex="0" aria-label="النقرات من جوجل يوميًا"></div>
-      ${near.length || lowCtr.length ? `<div class="note"><b>فرصٌ سريعة لزوارٍ أكثر</b><ul class="wins">
-        ${near.map(q => `<li><span class="q">«${esc(q[0])}»</span> — ترتيبك ${q[4]} ويُرى ${num(q[2])} مرة: قريبٌ من أعلى الصفحة الأولى؛ اذكر العبارة في عنوان صفحتها ووصفها ونصّها.</li>`).join("")}
-        ${lowCtr.map(q => `<li><span class="path">${esc(q[0].replace(/^https?:\/\/[^/]+/, ""))}</span> — تُرى ${num(q[2])} مرة وتُنقر ${(q[3] * 100).toFixed(1)}% فقط: عنوانٌ ووصفٌ أوضح يرفعان النقر.</li>`).join("")}
-      </ul></div>` : ""}
-      <h3>ما بحثوا عنه</h3>
-      <div class="tblbox"><table class="tbl"><tr><th>البحث</th><th class=n>النقرات</th><th class=n>الظهور</th><th class=n>النقر</th><th class=n>الترتيب</th></tr>
-        ${sc.queries.slice(0, 100).map(q => `<tr><td class="q">${esc(q[0])}</td><td class=n>${num(q[1])}</td><td class=n>${num(q[2])}</td><td class=n>${(q[3] * 100).toFixed(1)}%</td><td class=n>${q[4]}</td></tr>`).join("") || `<tr><td colspan=5 class="empty">لا بحث بعد في هذه المدة.</td></tr>`}</table></div>
-      <h3>الصفحات في نتائج البحث</h3>
-      <div class="tblbox"><table class="tbl"><tr><th>الصفحة</th><th class=n>النقرات</th><th class=n>الظهور</th><th class=n>الترتيب</th></tr>
-        ${sc.pages.map(q => `<tr><td><a class="path" href="${esc(q[0])}" target="_blank" rel="noopener">${esc(q[0].replace(/^https?:\/\/[^/]+/, "") || "/")}</a></td><td class=n>${num(q[1])}</td><td class=n>${num(q[2])}</td><td class=n>${q[4]}</td></tr>`).join("") || `<tr><td colspan=4 class="empty">—</td></tr>`}</table></div>
-      <h3>خرائط الموقع عند جوجل</h3>
-      ${sm.length ? `<div class="rows">${sm.map(s => `<div class="rw"><span class="nm"><span class="path">${esc(s.path)}</span><small>${s.downloaded ? "قرأتها جوجل " + esc(s.downloaded.slice(0, 10)) : "لم تُقرأ بعد"}${s.urls ? " · " + num(s.urls) + " صفحة" : ""}</small></span>
-          <span class="chip ${s.errors ? "bad" : s.warnings ? "warn" : "ok"}">${s.errors ? "✕ " + s.errors + " خطأ" : s.warnings ? "! " + s.warnings + " تنبيه" : "✓ سليمة"}</span></div>`).join("")}</div>` : `<p class="hint">لم تُرسَل خريطة الموقع إلى جوجل بعد.</p>`}
+      ${near.length || lowCtr.length ? `<div class="wins"><h3>فرصٌ سريعة لزوارٍ أكثر</h3>
+        ${near.length ? `<span class="hint">قريبةٌ من أعلى الصفحة الأولى: اذكر العبارة في عنوان صفحتها ووصفها ونصّها.</span>
+          <ul>${near.map(q => `<li><b>«${esc(q[0])}»</b><small>ترتيب ${q[4]} · يُرى ${num(q[2])} مرة</small></li>`).join("")}</ul>` : ""}
+        ${lowCtr.length ? `<span class="hint">تُرى كثيرًا وتُنقر قليلًا: عنوانٌ ووصفٌ أوضح يرفعان النقر.</span>
+          <ul>${lowCtr.map(q => `<li><span class="path">${esc(rel(q[0]))}</span><small>يُرى ${num(q[2])} مرة · نقر ${(q[3] * 100).toFixed(1)}% فقط</small></li>`).join("")}</ul>` : ""}
+      </div>` : ""}
+      <div class="blockh"><h3>البحث والصفحات</h3></div>
+      ${tabbed("gsc", [
+        ["q", "ما بحثوا عنه", rtable("ga-q", [["البحث"], ["النقرات", 1], ["الظهور", 1], ["النقر", 1], ["الترتيب", 1]], sc.queries.slice(0, 100),
+          q => [esc(q[0]), num(q[1]), num(q[2]), (q[3] * 100).toFixed(1) + "%", q[4]], "لا بحث بعد في هذه المدة.")],
+        ["p", "الصفحات في نتائج البحث", rtable("ga-p", [["الصفحة"], ["النقرات", 1], ["الظهور", 1], ["الترتيب", 1]], sc.pages,
+          q => [`<a class="path" href="${esc(q[0])}" target="_blank" rel="noopener">${esc(rel(q[0]))}</a>`, num(q[1]), num(q[2]), q[4]], "لا صفحات بعد في هذه المدة.")]])}
+      <div class="blockh"><h3>خرائط الموقع عند جوجل</h3></div>
+      ${sm.length ? `<div class="smaps">${sm.map(s => `<div class="smap"><span class="nm"><span class="path">${esc(rel(s.path))}</span><small>${s.downloaded ? "قرأتها جوجل " + esc(s.downloaded.slice(0, 10)) : "لم تُقرأ بعد"}${s.urls ? " · " + num(s.urls) + " صفحة" : ""}</small></span>
+          <span class="chip ${s.errors ? "bad" : s.warnings ? "warn" : "ok"}">${s.errors ? s.errors + " خطأ" : s.warnings ? s.warnings + " تنبيه" : "سليمة"}</span></div>`).join("")}</div>` : `<p class="hint">لم تُرسَل خريطة الموقع إلى جوجل بعد.</p>`}
       ${sc.sitemaps_error ? gErr(sc.sitemaps_error) : ""}
-      <div class="acts" style="margin-top:10px"><button class="ghost" id="smSend">أرسل خريطتي الموقع إلى جوجل</button></div><div class="msg" id="smMsg"></div>`;
+      <div class="acts"><button class="${sm.length ? "ghost" : "go"}" id="smSend">أرسل خريطتي الموقع إلى جوجل</button></div><div class="msg" id="smMsg"></div>`;
     $("smSend").onclick = sendSitemaps;
   }
   drawGoogleCharts();
@@ -792,14 +1046,14 @@ async function sendSitemaps() {
   $("smSend").disabled = false;
 }
 
-// ================= زيادة الزوار: قائمة خطوات بحالها =================
+// ================= زيادة الزوار: قائمة خطوات بحالها، وحال الإعداد في رؤوس أقسامه =================
 function checks() {
   if (!SET) return;
   const t = SET.tags, g = SET.google, ix = SET.indexnow, G = GOO || {};
   const scOk = G.ok && G.gsc && !G.gsc.error, smOk = scOk && (G.gsc.sitemaps || []).some(s => /sitemap\.xml$/.test(s.path));
   const items = [
     [!!t.gsv || scOk, "تحقّق من الدليل في Google Search Console", "أهم خطوة: ترى ما يبحث عنه الناس وتصلح ما يمنع الأرشفة.", "#t_gsv"],
-    [smOk, "أرسل خريطة الموقع إلى جوجل", "خريطةٌ فيها كل الصفحات (الأجهزة والمحتوى والمباريات) فتُؤرشف أسرع.", "#gscSec"],
+    [smOk, "أرسل خريطة الموقع إلى جوجل", "كل الصفحات (الأجهزة والمحتوى والمباريات) في خريطة، فتُؤرشف أسرع.", "#gscSec"],
     [!!t.bing || !!(ix.last && ix.last.ok), "Bing وIndexNow", "استورد الموقع من Search Console في Bing Webmaster، وIndexNow يبلّغه بكل تغيير.", "#ixSec"],
     [!!t.ga, "Google Analytics 4 في كل الصفحات", "الدول والأعمار والاهتمامات، وربطه بإعلانات جوجل.", "#t_ga"],
     [!!(g.has_key && (g.ga || g.site)), "أرقام جوجل في هذه الصفحة", "Analytics وSearch Console هنا بلا تنقّل.", "#gConnTitle"],
@@ -808,8 +1062,24 @@ function checks() {
     [REP && REP.sources.some(s => ["whatsapp", "snapchat", "tiktok", "instagram", "x"].includes(s[0])) || REP && REP.utm.length > 0,
       "انشر روابط بتتبّع الحملة", "رابطٌ لكل منصة يُظهر أيّها يجلب زوارًا فعلًا.", "#utmSec"],
   ];
-  $("checks").innerHTML = items.map(([ok, b, s, href]) => `<li><span class="ic ${ok ? "ok" : ""}" aria-label="${ok ? "تم" : "لم يتم"}">${ok ? "✓" : ""}</span>
-    <span style="flex:1"><b>${esc(b)}</b><small>${esc(s)}</small></span>${ok ? "" : `<a class="ghost" href="${href}">ابدأ</a>`}</li>`).join("");
+  const done = items.filter(i => i[0]).length;
+  $("checks").innerHTML = items.map(([ok, b, s, href]) => `<li${ok ? ' class="ok"' : ""}><span class="ic ${ok ? "ok" : ""}" aria-label="${ok ? "تم" : "لم يتم"}">${ok ? "✓" : ""}</span>
+    <span class="ct"><b>${esc(b)}</b><small>${esc(s)}</small></span>${ok ? "" : `<a class="ghost" href="${href}">ابدأ</a>`}</li>`).join("");
+  chip($("growChip"), done === items.length ? "اكتملت" : `${done} من ${items.length}`, done === items.length ? "ok" : "");
+  const tagNeed = !t.ga ? "ينقصه GA4" : !(t.gsv || scOk) ? "ينقصه التحقّق" : "";
+  chip($("tagChip"), tagNeed || `مضافة: ${Object.values(t).filter(Boolean).length}`, tagNeed ? "warn" : "ok");
+  const gBad = G.connected && (!G.ok || !!(G.ga && G.ga.error) || !!(G.gsc && G.gsc.error));
+  const gNeed = !g.has_key ? "غير مربوط" : gBad ? "خطأ" : !g.ga && !g.site ? "اختر الخاصية والموقع" : !g.ga ? "بلا خاصية" : !g.site ? "بلا موقع" : "";
+  chip($("gConnChip"), gNeed || "مربوط", gNeed ? (gBad ? "bad" : "warn") : "ok");
+  const l = ix.last;
+  attend("connSec", tagNeed); attend("gConn", gNeed); attend("ixSec", l ? !l.ok : ix.auto);
+}
+// يُفتح القسم المطويّ وحده إن احتاج انتباهًا (غير مربوط، أو خطأ، أو إعدادٌ ناقص) ما لم يفتحه المدير أو يطوه بيده — ولا يُطوى وحده.
+// وينتظر أرقام جوجل: فخطؤها وحال التحقّق منها
+function attend(id, need) {
+  const d = $(id);
+  d.classList.toggle("need", !!need);
+  if (need && GOO !== null && !TOUCHED[id]) d.open = true;
 }
 
 // ================= الإعداد: المعرّفات، وربط جوجل، وIndexNow =================
@@ -819,7 +1089,7 @@ async function loadSettings() {
   SITE = "https://" + (SET.site || "guide.ssouq.com");
   document.querySelectorAll("[data-tag]").forEach(i => { if (document.activeElement !== i) i.value = SET.tags[i.dataset.tag] || ""; });
   const g = SET.google;
-  $("gState").innerHTML = g.has_key ? `المفتاح محفوظ لحساب الخدمة <b class="ltr" style="direction:ltr;unicode-bidi:isolate">${esc(g.email)}</b> — أضف هذا البريد مستخدمًا في Analytics وSearch Console.` : "لا ربط بعد.";
+  $("gState").innerHTML = g.has_key ? `المفتاح محفوظ لحساب الخدمة <b class="mono">${esc(g.email)}</b><small>أضف هذا البريد مستخدمًا في Analytics وSearch Console.</small>` : "لا ربط بعد.";
   $("gKey").placeholder = g.has_key ? "محفوظ — اتركه فارغًا للإبقاء عليه، أو الصق مفتاحًا جديدًا" : $("gKey").placeholder;
   if (document.activeElement !== $("gGa")) $("gGa").value = g.ga || "";
   if (document.activeElement !== $("gSite")) $("gSite").value = g.site || "";
@@ -836,8 +1106,7 @@ async function loadSettings() {
 }
 function ixState(ix) {
   const l = ix.last;
-  $("ixChip").textContent = !l ? "لم يُرسل بعد" : l.ok ? "آخر إرسال ناجح" : "آخر إرسال تعذّر";
-  $("ixChip").className = "chip " + (!l ? "" : l.ok ? "ok" : "bad");
+  chip($("ixChip"), !l ? "لم يُرسل بعد" : l.ok ? "آخر إرسال ناجح" : "آخر إرسال تعذّر", !l ? (ix.auto ? "warn" : "") : l.ok ? "ok" : "bad");
   if (!l && ix.auto) say($("ixMsg"), "اضغط «أرسل كل الصفحات الآن» مرةً، فيبدأ الإرسال اليومي بعدها وحده.");
   if (l) say($("ixMsg"), `${l.kind === "auto" ? "تلقائي" : "يدوي"} · ${new Date(l.at * 1000).toLocaleString("en-GB", {timeZone: "Asia/Riyadh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})} · ${num(l.n)} صفحة · ${l.msg}${l.code ? " (" + l.code + ")" : ""}`, l.ok);
 }
@@ -925,7 +1194,7 @@ async function liveTick() {
 setInterval(liveTick, 20000);
 setInterval(() => { if (DAYS === 1 && !document.hidden) load(); }, 120000);
 
-loadSettings().catch(() => {}).then(() => { load(); loadGoogle(); });
+loadSettings().catch(() => {}).then(() => { load(); loadGoogle(); if (location.hash) reveal(decodeURIComponent(location.hash.slice(1))); });
 </script>
 </body>
 </html>

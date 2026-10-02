@@ -109,6 +109,7 @@ print(json.dumps(rec, ensure_ascii=False))
     check('الجائزة: اشتراكات المتجر بأسعارها، والنافد معلَّم، وجائزةٌ أخرى', opts.some(([v, t]) => v === '1001'
           && t.includes('اشتراك سمارت 3 أشهر') && t.includes('79 ر.س')) && opts.some(([v, t]) => v === '1002' && t.includes('نافد'))
           && !opts.some(([v]) => v === '1003') && opts.some(([v]) => v === '__text'), JSON.stringify(opts).slice(0, 120));
+    await adm.click('.mrow[data-eid="6"] .mset > summary');     // إعداد المسابقة مطويٌّ في بطاقة المباراة
     await adm.selectOption('.mrow[data-eid="6"] select[data-f="prize_id"]', '1001');
     check('اختياره يُظهر رابطه', (await adm.getAttribute('.mrow[data-eid="6"] [data-f="plink"]', 'href')) === 'https://ssouq.com/smart-3m/p1001'
           && await adm.isVisible('.mrow[data-eid="6"] [data-f="plink"]'));
@@ -127,10 +128,12 @@ print(json.dumps(rec, ensure_ascii=False))
     await adm.click('.mrow[data-eid="6"] [data-a="copy"]');
     await adm.waitForFunction(() => document.querySelector('.mrow[data-eid="6"] .msg').textContent.includes('نُسخت'), null, {timeout:5000});
     check('«نسخ رسالتها للقناة»: رسالة المباراة برابطها الخاص', (await adm.evaluate(() => navigator.clipboard.readText())) === ann);
+    await adm.click('.mrow[data-eid="6"] .mset > summary');     // بعد الفتح تُطوى الإعدادات: تُفتح للتعديل
     await adm.selectOption('.mrow[data-eid="6"] select[data-f="extra"]', '10');
     await adm.click('.mrow[data-eid="6"] [data-a="save"]');
     await adm.waitForFunction(() => document.getElementById('annText').value.includes('بعد صافرة البداية بـ 10 دقائق'), null, {timeout:8000});
     check('خيار الإقفال بعد البداية بـ 10 دقائق يُحفظ ويظهر في الرسالة', (await adm.$eval('.mrow[data-eid="6"] select[data-f="extra"]', s => s.value)) === '10');
+    await adm.click('.mrow[data-eid="6"] .mset > summary');
     await adm.selectOption('.mrow[data-eid="6"] select[data-f="extra"]', '0');
     await adm.click('.mrow[data-eid="6"] [data-a="save"]');
     await adm.waitForFunction(() => document.getElementById('annText').value.includes('تُغلق التوقعات مع صافرة بداية المباراة'), null, {timeout:8000});
@@ -147,6 +150,7 @@ print(json.dumps(rec, ensure_ascii=False))
           (await adm.textContent('.mrow[data-eid="103"] .cupname')) === 'كأس الخليج العربي'
           && (await adm.textContent('.mrow[data-eid="6"] .cupname')) === 'دوري الأمم الأوروبية'
           && (await adm.getAttribute('.mrow[data-eid="103"] a[href*="#predict"]', 'href')).includes('/gulf-cup/103-saudi-arabia-iraq'));
+    await adm.click('.mrow[data-eid="103"] [data-a="tv"]');     // شارة القناة تفتح خانتها
     await adm.fill('.mrow[data-eid="103"] [data-f="tv"]', 'AL KASS One');
     await adm.press('.mrow[data-eid="103"] [data-f="tv"]', 'Tab');
     await adm.waitForFunction(() => document.querySelector('.mrow[data-eid="103"] .msg').textContent.includes('حُفظت القناة'), null, {timeout:8000});
@@ -164,6 +168,7 @@ print(json.dumps(rec, ensure_ascii=False))
     check('قناة كل بطولة جاهزة في رأس المباريات', (await adm.inputValue('#cupTv [data-cup="/gulf-cup"]')) === 'AL KASS'
           && (await adm.inputValue('#cupTv [data-cup="/nations-league"]')) === 'beIN SPORTS'
           && (await adm.getAttribute('.mrow[data-eid="6"] [data-f="tv"]', 'placeholder')) === 'beIN SPORTS (قناة البطولة)');
+    await adm.click('#tvSec > summary');                         // قنوات البطولات في الإعدادات المطويّة
     await adm.fill('#cupTv [data-cup="/nations-league"]', 'beIN SPORTS 1');
     await adm.press('#cupTv [data-cup="/nations-league"]', 'Enter');
     await adm.waitForFunction(() => document.querySelector('#cupTvMsg').textContent.includes('حُفظت: beIN SPORTS 1'), null, {timeout:8000});
@@ -402,6 +407,7 @@ print(json.dumps(rec, ensure_ascii=False))
 
     console.log('الهدية مع فتح المسابقة: تُختار في صفّ المباراة وتُرسل وحدها بعد الفرز');
     await adm.click('#dClose');
+    await adm.click('.mrow[data-eid="8"] .mset > summary');
     await adm.waitForSelector('.mrow[data-eid="8"] [data-a="gift"]', {timeout:8000});
     check('صفّ مباراةٍ قادمة: «🎁 هدية الفائز» لم تُختر، وزرّ «اختر الهدية»', (await adm.textContent('.mrow[data-eid="8"] .gline')).includes('لم تُختر'));
     await adm.click('.mrow[data-eid="8"] [data-a="gift"]');
@@ -422,6 +428,7 @@ print(json.dumps(rec, ensure_ascii=False))
     check('والصفّ يقولها: تُرسل للفائز وحدها بعد الفرز', (await adm.textContent('.mrow[data-eid="8"] .gline')).includes('تُنشأ للفائز وتُرسل له وحدها بعد الفرز')
           && !!(await adm.$('.mrow[data-eid="8"] [data-a="nogift"]')));
     await shot(adm, 'contest-admin-row-gift');
+    await adm.click('.mrow[data-eid="8"] .mset > summary');
     await adm.click('.mrow[data-eid="8"] [data-a="nogift"]');
     await adm.click('.mrow[data-eid="8"] [data-a="save"]');
     await adm.waitForFunction(() => (document.querySelector('.mrow[data-eid="8"] .gline') || {}).textContent.includes('لم تُختر'), null, {timeout:15000});

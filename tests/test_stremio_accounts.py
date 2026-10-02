@@ -389,7 +389,7 @@ def through_server():
         check("تغيير القفل وStremio لا يردّ ← 502، والإضافة كما هي تعمل", c == 502 and code_of(local(old)) == 200, str(c))
         c, r = post("/api/stremio/lock", {"gate": "g1", "username": "u"})
         new = [a["transportUrl"] for a in ours("u@tv.ssouq.com")]
-        check("«تغيير رابط الإضافة»: رابطٌ جديد في الحساب مكان القديم", c == 200 and r.get("locked") is True and len(new) == 1
+        check("«إيقاف الإضافة في الحسابات الأخرى»: رابطٌ جديد في الحساب مكان القديم", c == 200 and r.get("locked") is True and len(new) == 1
               and new[0] != old, json.dumps(r, ensure_ascii=False))
         check("والنسخة التي نُقلت لحسابٍ آخر (بالرابط القديم) تتوقف، والجديدة تعمل",
               code_of(local(old)) == 404 and code_of(local(new[0])) == 200 and code_of(local(new[0]).replace("manifest.json", "status.json")) == 200)
@@ -575,7 +575,8 @@ def through_server():
                 time.sleep(0.1)
             return r_
         c, r = post("/api/stremio/extras", {"action": "add", "url": f"http://127.0.0.1:{aio_srv.server_address[1]}/needs/manifest.json"})
-        check("إضافةٌ تحتاج إعدادًا ← 400 برسالته", c == 400 and "تحتاج إعدادًا" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        check("إضافةٌ تحتاج إعدادًا ← 400 برسالته ورابط صفحة إعدادها", c == 400 and "تحتاج إعدادًا" in r.get("error", "")
+              and r.get("configure", "").endswith("/needs/configure"), json.dumps(r, ensure_ascii=False))
         c, r = post("/api/stremio/extras", {"action": "add", "url": local(ours("u@tv.ssouq.com")[0]["transportUrl"])})
         check("وإضافتنا نفسها ← 400", c == 400 and "إضافتنا" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
         c, r = post("/api/stremio/extras", {"action": "add", "url": aio})

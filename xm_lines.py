@@ -5397,8 +5397,8 @@ class Handler(BaseHTTPRequestHandler):
                     if act == "apply":
                         stremio_extras.start(DATA_DIR, acct["id"], str(req.get("id") or ""), bool(req.get("remove")))
                         return self._send(200, {"ok": True, **stremio_extras_data(acct)})
-                except ValueError as e:
-                    return self._send(400, {"ok": False, "error": str(e)})
+                except ValueError as e:              # وإضافةٌ تحتاج إعدادًا: ومعها رابط صفحة إعدادها
+                    return self._send(400, {"ok": False, "error": str(e), "configure": getattr(e, "configure", "")})
                 return self._send(400, {"ok": False, "error": "طلبٌ غير معروف"})
             if path == "/api/stremio/custom":     # خارج القفل: حسابٌ بإيميلٍ وكلمة مرورٍ تختارهما، وأول خطوطه يوزرٌ موجود
                 if role != "account":
@@ -6002,6 +6002,7 @@ def web():
     start_embedded_reader()
     start_mail()
     start_stremio_warm()
+    seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 

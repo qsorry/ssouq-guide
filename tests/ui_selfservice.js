@@ -52,7 +52,9 @@ async function up(u){ for(let i=0;i<80;i++){ try{execSync(`curl -s -o /dev/null 
 
     // data encrypted at rest
     const raw=fs.readFileSync(path.join(dataDir,'accounts.json'),'utf8');
-    check('panel pass + tool pass encrypted on disk', !raw.includes('secret') && !raw.includes('998661') && raw.includes('enc:1:'));
+    // كل القيم النصية في الملف — لا أسماء المفاتيح («salla_secret» و«secret» في إعداد خدمة سلة اسمان فارغان لا كلمتا مرور)
+    const vals=[]; (function walk(o){ if(typeof o==='string') vals.push(o); else if(o&&typeof o==='object') Object.values(o).forEach(walk); })(JSON.parse(raw));
+    check('panel pass + tool pass encrypted on disk', !vals.some(v=>v.includes('secret')) && !raw.includes('998661') && raw.includes('enc:1:'));
   }catch(e){ fail++; console.log('  FAIL exception:',e.message); }
   finally{ await browser.close(); panel.kill(); app.kill(); fs.rmSync(dataDir,{recursive:true,force:true}); }
   console.log(`\nResult: ${pass} passed, ${fail} failed`); process.exit(fail?1:0);

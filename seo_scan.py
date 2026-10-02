@@ -23,10 +23,49 @@ import seo_pages
 import seo_qa
 import seo_sources
 
-BATCH = 200                      # كيانًا في الدفعة (×2 مسار) ثم نقطة استئناف
+BATCH = 50                       # كيانًا في الدفعة (×2 مسار) ثم نقطة استئناف — صغيرة ليتحرّك العدّاد كل نصف دقيقة تقريبًا
 PAUSE = 0.05                     # ثانية بين الدفعات: لا يستأثر الخيط بالخادم
+SCAN_VERSION = 1                 # يُرفع عند تغيّر منطق الفحص نفسه؛ ومعه بصمة ملفات الرسم تحدّد «هل النتائج قابلة للاستكمال»
+WAIT_SLEEP = 30                  # ثانية بين نظرات الانتظار خارج وقت الهدوء
+WATCHDOG_EVERY = 60              # ثانية: الحارس يستأنف فحصًا كان جاريًا حين أُعيد تشغيل الخادم (نشرٌ أو سقوط) — بلا ضغطة
 _threads, _stop = {}, {}
 _lock = threading.Lock()
+
+
+def quiet_window(st):
+    """نافذة الهدوء من الإعدادات ← (بداية، نهاية، إزاحة UTC بالساعات)؛ الافتراضي 0–12 بتوقيت السعودية."""
+    q = st.get("scan_quiet_hours") if isinstance(st.get("scan_quiet_hours"), dict) else {}
+    return int(q.get("start", 0)), int(q.get("end", 12)), float(q.get("utc_offset", 3))
+
+
+def in_quiet_hours(st, now=None):
+    """هل نحن داخل وقت الهدوء؟ (نافذةٌ قد تعبر منتصف الليل)."""
+    start, end, off = quiet_window(st)
+    if start == end:
+        return True                             # نافذةٌ فارغة = بلا قيد
+    h = (time.gmtime((now if now is not None else time.time()) + off * 3600).tm_hour)
+    return start <= h < end if start < end else (h >= start or h < end)
+
+
+def quiet_label(st):
+    start, end, off = quiet_window(st)
+    fmt = lambda h: f"{(h % 12) or 12} {'ص' if h % 24 < 12 else 'ظ' if h % 24 == 12 else 'م'}"   # noqa: E731
+    return f"{fmt(start)} – {fmt(end)} (UTC{off:+g})"
+
+
+def scan_key():
+    """مفتاح التوافق: نسخة منطق الفحص + بصمة ملفات **الرسم** (seo_pages · content_page · seo_db). ما دام ثابتًا فالنتائج
+    قابلة للاستكمال عبر النشر، ولو تغيّرت بصمة الكود الكلية (تقارير، بطاقة، إثراء…). تغيّره = نتائج غير قابلة للخلط: من الصفر."""
+    import hashlib
+    here = os.path.dirname(os.path.abspath(__file__))
+    h = hashlib.sha1()
+    for n in ("seo_pages.py", "content_page.py", "seo_db.py"):
+        try:
+            with open(os.path.join(here, n), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            pass
+    return f"{SCAN_VERSION}:{h.hexdigest()[:12]}"
 
 
 def path_(data_dir):
@@ -135,11 +174,19 @@ def run(data_dir, stop=None, progress=None, resume=True):
         st = seo_db.settings(con)
         s = load(data_dir) if resume else None
         fp = seo_sources.code_version()["code_fingerprint"]
-        if not s or s.get("status") == "complete" or s.get("code_fingerprint") != fp:
-            s = _empty(con, st)                 # من البداية: فحصٌ جديد أو كودٌ تغيّر (نتائج كودٍ آخر لا تُكمَل)
+        sk = scan_key()
+        compatible = bool(s) and (s.get("scan_key") in (None, sk))   # بلا مفتاح = نقطة استئنافٍ من قبل المفتاح (رسمٌ لم يتغيّر): تُكمَل مرةً وتُختم
+        if not s or s.get("status") == "complete" or not compatible:
+            s = _empty(con, st)                 # من البداية: فحصٌ جديد أو منطق الرسم/الفحص تغيّر (نتائج لا تُخلط)
         s["status"] = "running"
         s["started_at"] = s["started_at"] or int(time.time())
+        s["scan_key"] = sk
         s["code_fingerprint"] = fp
+        fps = s.setdefault("code_fingerprints", [])
+        if fp not in fps:
+            fps.append(fp)                      # كل بصمات الكود التي ساهمت (شفافية: الاستكمال عبر النشر)
+        s["updated_at"] = int(time.time())
+        _save(data_dir, s)                      # فورًا: البطاقة ترى «يفحص الآن 0 / N» قبل أول دفعة
         redirect_paths = {r["path"] for r in con.execute("SELECT path FROM redirect")}
         canon_seen = {}
         if s["last_id"]:                        # عند الاستئناف: canonical ما سبق فحصه يُعاد بناؤه من الروابط لا من الرسم (كشف التكرار)
@@ -151,6 +198,13 @@ def run(data_dir, stop=None, progress=None, resume=True):
             if stop and stop():
                 s["status"] = "paused"; s["updated_at"] = int(time.time()); _save(data_dir, s)
                 return s
+            if not in_quiet_hours(st):          # خارج وقت الهدوء: ينتظر بلا فقدان تقدّم (الحال «waiting» ويُستأنف وحده حين تحين النافذة)
+                if s["status"] != "waiting":
+                    s["status"] = "waiting"; s["quiet_hours"] = quiet_label(st); s["updated_at"] = int(time.time()); _save(data_dir, s)
+                time.sleep(WAIT_SLEEP)
+                continue
+            if s["status"] != "running":
+                s["status"] = "running"; s["updated_at"] = int(time.time()); _save(data_dir, s)
             t0 = time.time()
             rows = con.execute("SELECT * FROM content WHERE merged_into IS NULL AND available=1 AND id>? ORDER BY id LIMIT ?", (s["last_id"], BATCH)).fetchall()
             if not rows:
@@ -195,9 +249,11 @@ def summary(s):
     remaining = max(0, total - s["tested_entities"])
     complete = s["status"] == "complete" and remaining == 0
     verdict = "PASS" if complete and s["failures"] == 0 and s["errors"] == 0 else ("FAIL" if complete else "INCOMPLETE")
+    eta = round(s["seconds"] / s["tested_entities"] * remaining / 60) if s["tested_entities"] and remaining else 0
     return {"status": s["status"], "verdict": verdict, "code_fingerprint": s["code_fingerprint"], "started_at": s["started_at"], "updated_at": s["updated_at"], "finished_at": s.get("finished_at"),
             "entities_total": total, "routes_total": s["routes_total"], "tested_entities": s["tested_entities"], "tested_routes": s["tested_routes"],
-            "coverage_percent": pct, "remaining_entities": remaining, "remaining_routes": remaining * 2, "failures": s["failures"], "errors": s["errors"],
+            "coverage_percent": pct, "remaining_entities": remaining, "remaining_routes": remaining * 2, "eta_minutes": eta, "failures": s["failures"], "errors": s["errors"],
+            "scan_key": s.get("scan_key"), "code_fingerprints": s.get("code_fingerprints", [s["code_fingerprint"]]),
             "seconds": s["seconds"], "batches": s["batches"], "ar": s["ar"], "en": s["en"], "hreflang": s["hreflang"], "duplicates": s["duplicates"],
             "failure_examples": s["failure_examples"][:20], "error_examples": s["error_examples"][:10], "entities_total_now": s.get("entities_total_now"),
             "read_only": "render only; no entity, source row, merge, split, enrichment, redirect or slug is written"}
@@ -228,10 +284,43 @@ def pause(data_dir):
     _stop[os.path.abspath(data_dir)] = True
 
 
+def watchdog_tick(data_dir):
+    """الحارس: فحصٌ حاله في الملف «جارٍ» بلا خيطٍ حيّ (أُعيد تشغيل الخادم أثناءه) يُستأنف وحده ← هل استُؤنف؟
+    الموقوف مؤقتًا بيد المدير (paused) والمكتمل والخاطئ لا يُمسّان."""
+    k = os.path.abspath(data_dir)
+    t = _threads.get(k)
+    if t and t.is_alive():
+        return False
+    s = load(data_dir)
+    if not s or s.get("status") not in ("running", "waiting"):
+        return False
+    return start(data_dir, resume=True)
+
+
+def start_watchdog(data_dir):
+    """خيط الحارس (من الخادم عند الإقلاع): يستأنف الفحص الجاري بعد أي إعادة تشغيل، نشرًا كان أو سقوطًا — ولو كان المدير بعيدًا."""
+    def loop():
+        time.sleep(15)                          # بعد إقلاع الخادم بقليل
+        while True:
+            try:
+                watchdog_tick(data_dir)
+            except Exception:  # noqa: BLE001 — الحارس لا يسقط
+                pass
+            time.sleep(WATCHDOG_EVERY)
+    threading.Thread(target=loop, daemon=True, name="seo-scan-watchdog").start()
+
+
 def state(data_dir):
     k = os.path.abspath(data_dir)
     s = load(data_dir)
-    return {"running": bool(_threads.get(k) and _threads[k].is_alive()), **summary(s)}
+    con = seo_db.connect(data_dir, create=False)
+    try:
+        st = seo_db.settings(con) if con else {}
+    finally:
+        if con:
+            con.close()
+    return {"running": bool(_threads.get(k) and _threads[k].is_alive()), "auto_resume": True, "watchdog_every": WATCHDOG_EVERY,
+            "quiet_hours": quiet_label(st), "in_quiet_hours": in_quiet_hours(st), **summary(s)}
 
 
 def main(argv):

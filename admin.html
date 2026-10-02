@@ -2,227 +2,319 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>لوحة الإدارة — سمارت سوق</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <script>try{var t=localStorage.getItem("xm_theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
 <style>
-/* نفس نظام تصميم صفحة اليوزر (xm_lines) — داكنٌ افتراضيًّا، متوافقٌ مع الجوال */
-:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--copy:#f2b23e;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45)}
-:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--copy:#b45309;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14)}
+/* نظام تصميم صفحات الأداة نفسه (content_admin.html · contest_admin.html) — داكنٌ افتراضيًّا، وفاتحٌ بسمة الجهاز أو بالزرّ،
+   والجوال أولًا: عمودٌ واحد بحافةٍ 16px، وخاناتٌ وأزرارٌ بارتفاع 44px، ومفاتيح تشغيلٍ بدل مربّعات العلامة، وزرٌّ رئيسيٌّ واحد لكل بطاقة */
+:root{--bg:#08142a;--sf:#0e1d3a;--sf2:#132648;--line:#1f3560;--ink:#e7eef9;--mute:#8fa2c4;--go:#22c493;--go2:#18a87b;--go-ink:#052a1d;--copy:#f2b23e;--amber:#f2b23e;--err:#f0685a;--blue:#4f8cff;--purple:#8b7cf6;--shadow:0 18px 50px rgba(0,0,0,.45);color-scheme:dark}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--copy:#b45309;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14);color-scheme:light}}
+:root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--copy:#b45309;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14);color-scheme:light}
 *{box-sizing:border-box}
-html{background:var(--bg)}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh}
+html{background:var(--bg);-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh;overflow-x:hidden}
 [hidden]{display:none!important}
 a{color:var(--go);text-decoration:none}
-svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+svg{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font:inherit;border:0;border-radius:12px;cursor:pointer;color:inherit;background:none}
+button:disabled{opacity:.5;cursor:default}
+:is(button,a,summary,input,select,textarea,[tabindex]):focus-visible{outline:2px solid var(--go);outline-offset:2px}
+bdi{unicode-bidi:isolate}
 
-/* الرأس */
-.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:8px;height:60px;padding:0 14px;background:color-mix(in srgb,var(--sf) 90%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:10px;margin-inline-start:auto;font-weight:700;line-height:1.1}
-.brand .mark{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);display:grid;place-items:center;color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--go) 45%,transparent);flex:none}
-.brand b{display:block;font-size:1.02rem}
-.brand small{display:block;color:var(--mute);font-size:.7rem;font-weight:400}
-.nav{display:flex;gap:2px;flex-wrap:wrap}
-.nav a{padding:8px 10px;border-radius:10px;color:var(--mute);font-weight:500;font-size:.86rem;display:inline-flex;align-items:center;gap:5px}
-.nav a:hover{color:var(--ink);background:var(--sf2)}
-.nav a.out:hover{color:var(--err)}
-.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none}
+/* ===== الرأس العائم والشريط السفلي ===== */
+.top{position:sticky;top:8px;z-index:30;display:flex;align-items:center;gap:8px;height:66px;margin:8px 10px 0;padding:0 12px;border:1px solid var(--line);border-radius:20px;
+  background:color-mix(in srgb,var(--sf) 90%,transparent);backdrop-filter:blur(10px);box-shadow:0 10px 30px -18px rgba(0,0,0,.6)}
+.top .sp{flex:1}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;line-height:1.1;min-width:0}
+.brand .mark{width:46px;height:46px;border-radius:14px;background:radial-gradient(circle at 30% 30%,var(--go),var(--go2) 60%,#0b6b4c);box-shadow:0 6px 18px color-mix(in srgb,var(--go) 45%,transparent);
+  display:grid;place-items:center;color:#fff;flex:none}
+.brand .mark svg{width:22px;height:22px}
+.brand b{display:block;font-size:1.12rem}
+.brand small{display:block;color:var(--mute);font-size:.76rem;font-weight:400}
+.icon-btn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none;cursor:pointer}
 .icon-btn:hover{border-color:var(--go)}
 /* جرس الاشتراكات المجزّأة: شارةٌ بعدد غير المقروء */
 .bell{position:relative}
 .bell .dot{position:absolute;top:-6px;inset-inline-end:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--err);color:#fff;font-size:.7rem;font-weight:700;display:grid;place-items:center;border:2px solid var(--sf)}
+/* الشريط السفلي: العنصر الحاليّ بخلفيةٍ ونقطة */
+.bnav{position:fixed;inset-inline:8px;bottom:8px;z-index:40;display:flex;gap:2px;padding:6px;border:1px solid var(--line);border-radius:20px;
+  background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);margin-bottom:env(safe-area-inset-bottom)}
+.bnav>*{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 10px;color:var(--mute);
+  font-size:.74rem;font-weight:600;border-radius:12px;text-decoration:none;white-space:nowrap}
+.bnav svg{width:22px;height:22px}
+.bnav>*:hover{color:var(--ink)}
+.bnav button.on{color:var(--go);background:color-mix(in srgb,var(--go) 16%,transparent)}
+.bnav button.on::after{content:"";position:absolute;bottom:3px;width:5px;height:5px;border-radius:50%;background:var(--go)}
+@media (min-width:760px){.bnav{max-width:640px;margin-inline:auto}}
+.fab{position:fixed;inset-inline-end:16px;bottom:96px;z-index:41;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);
+  display:grid;place-items:center;box-shadow:0 12px 28px color-mix(in srgb,var(--go) 45%,transparent)}
+.fab svg{width:26px;height:26px}
+body:has(.fab:not([hidden])) .wrap{padding-bottom:176px}          /* لا يغطّي الزرّ العائم آخر حساب */
 
-/* الهيكل */
-.wrap{max-width:760px;margin:0 auto;padding:16px 14px 60px}
-h1{font-size:1.35rem;margin:0 0 4px}
-.sub{color:var(--mute);margin:0 0 16px;font-size:.9rem}
-section{background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-h2{font-size:1.08rem;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-label{display:block;font-size:.8rem;color:var(--mute);margin-top:10px}
-input,select,textarea{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--sf2);color:var(--ink);font:inherit}
-input{direction:ltr;text-align:left}
-select{cursor:pointer}
-textarea{direction:rtl;text-align:right;resize:vertical}
-input:focus,select:focus,textarea:focus{outline:0;border-color:var(--go)}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
-@media (max-width:520px){.g2{grid-template-columns:1fr}}
-button{font:inherit;border:0;border-radius:10px;cursor:pointer;color:inherit;background:none}
-button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--go);outline-offset:2px}
-.go{width:100%;margin-top:16px;padding:14px;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;font-size:1.02rem;border-radius:14px;box-shadow:0 10px 26px color-mix(in srgb,var(--go) 35%,transparent)}
-.go:active{opacity:.9}
-.ghost{background:var(--sf2);border:1px solid var(--line);color:var(--ink);padding:8px 13px;font-size:.85rem;display:inline-flex;align-items:center;gap:6px}
-.ghost:hover{border-color:var(--go);color:var(--go)}
-.danger{background:var(--sf2);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:8px 13px;font-size:.85rem}
-.danger:hover{background:color-mix(in srgb,var(--err) 12%,var(--sf2))}
-.msg{font-size:.9rem;margin-top:10px;min-height:1.4em;white-space:pre-wrap;color:var(--mute)}
-.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
-
-/* بطاقات الأرقام */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
-.stat{background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
-.stat small{display:block;color:var(--mute);font-size:.76rem}
-.stat b{display:block;font-size:1.5rem;line-height:1.35;font-variant-numeric:tabular-nums}
-.stat b.mono{font-size:.95rem;font-weight:700;padding-top:6px}
-.stat.on b{color:var(--go)}
-
-/* الحسابات + البوابات */
-.acct{border-top:1px dashed var(--line);padding:14px 0;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
-.acct:first-child{border-top:0;padding-top:4px}
-.acct .i{flex:1;min-width:200px}
-.acct b{display:block;font-size:1.02rem}
-.acct code{direction:ltr;display:block;font:500 .78rem/1.7 "IBM Plex Mono",Consolas,monospace;color:var(--mute);overflow-wrap:anywhere}
-.acct code.g{color:var(--ink);margin-top:3px}
-.acct .b{display:flex;gap:6px;flex-wrap:wrap}
-.empty{color:var(--mute);text-align:center;padding:14px;font-size:.9rem}
-.gate{border:1.5px solid var(--line);border-radius:14px;padding:14px;margin-top:12px;background:var(--sf2)}
-.gate .gh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
-.gate .gh b{color:var(--ink)}
-.gate .rm{background:var(--sf);border:1px solid color-mix(in srgb,var(--err) 50%,var(--line));color:var(--err);padding:5px 11px;font-size:.8rem}
-.gsel{width:100%}
-textarea.gsel{direction:rtl;text-align:right;resize:vertical}
-.hint{display:block;color:var(--mute);font-size:.76rem;margin-top:4px}
-/* نص الشرح: عربي وأسطر لاتينية (Host/User/Pass) — كل سطر باتجاهه */
-#acc_guide_text{unicode-bidi:plaintext;text-align:start;font-size:.88rem;line-height:1.7}
-.acct .tag{color:var(--go)}
-.srvpick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.srvpick label{display:inline-flex!important;align-items:center;gap:6px;margin:0!important;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--sf2);color:var(--ink);font-weight:600;cursor:pointer}
-.srvpick label:has(input:checked){border-color:var(--go);color:var(--go)}
-.srvpick input{width:auto!important;margin:0}
-
-/* تبويبات كتطبيق: عروض + شريط سفلي + زر عائم + نافذة */
+/* ===== الهيكل: عمودٌ في الوسط، وحافةٌ 16px على الجوال ===== */
+.wrap{max-width:880px;margin:0 auto;padding:16px 16px 112px}
 .view{display:none} .view.on{display:block}
-.wrap{padding-bottom:96px}
-.quick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.quick button{display:flex;align-items:center;gap:8px;justify-content:center;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--sf2);color:var(--ink);font-weight:600}
-.quick button:hover{border-color:var(--go);color:var(--go)}
-.bnav{position:fixed;inset-inline:0;bottom:0;z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
-.bnav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;color:var(--mute);font-size:.68rem;border-radius:12px}
-.bnav button svg{width:22px;height:22px}
-.bnav button.on{color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
-.fab{position:fixed;inset-inline-end:16px;bottom:80px;z-index:41;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-size:2rem;line-height:1;display:grid;place-items:center;box-shadow:0 12px 28px color-mix(in srgb,var(--go) 45%,transparent)}
-.modal{position:fixed;inset:0;z-index:50;background:rgba(4,10,22,.6);display:flex;align-items:flex-end;justify-content:center}
-.sheet{background:var(--sf);width:100%;max-width:640px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;box-shadow:var(--shadow)}
-.sheet section{border:0;border-radius:0;margin:0}
-@media(min-width:640px){.modal{align-items:center;padding:18px}.sheet{border-radius:20px}}
-.sheet h2{position:sticky;top:0;background:var(--sf);padding-bottom:10px;z-index:1}
-.sheet h2 .x{margin-inline-start:auto;background:var(--sf2);border:1px solid var(--line);color:var(--ink);width:34px;height:34px;border-radius:10px;font-size:1rem}
-/* صفوف البوابات المُصمَّمة */
-.gate-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:12px;background:var(--sf2);margin-top:8px}
+section,.card{background:var(--sf);border:1px solid var(--line);border-radius:20px;padding:16px;margin:0 0 14px}
+/* رأس كل بطاقة: أيقونة، والعنوان وسطره، وأدواتها في آخره */
+.shead{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+.shead h2{flex:1;min-width:0;margin:0;font-size:1.06rem;line-height:1.35}
+.shead h2 small{display:block;color:var(--mute);font-weight:400;font-size:.78rem;margin-top:2px}
+.shead>.chip,.shead>.hact,.shead>button{flex:none}
+.hact{display:flex;gap:6px}
+.sic,.av{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:#fff;flex:none}
+.sic svg{width:21px;height:21px}
+.av{border-radius:50%;font-weight:700;font-size:1.08rem}
+.c-purple{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}.c-blue{background:linear-gradient(135deg,#3b82f6,#1d4ed8)}
+.c-sky{background:linear-gradient(135deg,#0ea5e9,#0369a1)}.c-green{background:linear-gradient(135deg,#22c493,#0f7a58)}
+.c-gold{background:linear-gradient(135deg,#f5b342,#b7791f)}.c-indigo{background:linear-gradient(135deg,#6366f1,#3730a3)}
+.c-teal{background:linear-gradient(135deg,#14b8a6,#0f766e)}.c-rose{background:linear-gradient(135deg,#f472b6,#be185d)}
+.sub{color:var(--mute);margin:-2px 0 14px;font-size:.86rem;line-height:1.75}
+h3{font-size:.95rem;margin:0}
+.blockh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:20px 0 4px;padding-top:16px;border-top:1px solid var(--line)}
+.blockh small{color:var(--mute);font-size:.76rem}
+.blockh+.sub{margin-top:4px}
+
+/* الشارات */
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;line-height:1.5;border-radius:999px;padding:3px 10px;
+  border:1px solid var(--line);color:var(--mute);background:var(--sf2);white-space:nowrap;max-width:100%}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip:empty{display:none}
+.chip.on{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,var(--line));background:color-mix(in srgb,var(--go) 10%,var(--sf2))}
+.chip.busy{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--line));background:color-mix(in srgb,var(--amber) 9%,var(--sf2))}
+
+/* الخانات والأزرار: 44px للّمس */
+label{display:block;font-size:.8rem;color:var(--mute);margin:12px 0 6px}
+input,select,textarea{width:100%;min-height:44px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;background:var(--sf2);color:var(--ink);font:inherit;font-size:.92rem}
+input:not([type=checkbox]):not(.rtl){direction:ltr;text-align:left}     /* روابط ويوزرات وأرقام */
+input.rtl{direction:rtl;text-align:right}                                 /* الأسماء العربية */
+select{cursor:pointer}
+textarea{direction:rtl;text-align:right;resize:vertical;line-height:1.7}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--go)}
+input::placeholder,textarea::placeholder{color:color-mix(in srgb,var(--mute) 75%,transparent)}
+input[readonly]{color:var(--mute)}
+.go,.ghost,.danger{min-height:44px;padding:8px 16px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;
+  font-size:.88rem;font-weight:600;line-height:1.3;text-align:center;text-decoration:none}
+.go{background:linear-gradient(135deg,var(--go),var(--go2));color:var(--go-ink);font-weight:700;box-shadow:0 8px 20px -10px color-mix(in srgb,var(--go) 70%,transparent)}
+.go:active{opacity:.9}
+.ghost{background:var(--sf2);border:1px solid var(--line);color:var(--ink)}
+.ghost:hover{border-color:var(--go);color:var(--go)}
+.danger{background:var(--sf2);border:1px solid color-mix(in srgb,var(--err) 45%,var(--line));color:var(--err)}
+.danger:hover{border-color:var(--err);background:color-mix(in srgb,var(--err) 10%,var(--sf2))}
+.sm{min-height:40px;padding:0 12px;font-size:.8rem}
+.wide{width:100%;margin-top:10px}
+/* صفّ الأزرار: شبكةٌ بعمودين على الجوال (والأول بعرضها إن كان العدد فرديًّا)، وصفٌّ واحد على الحاسوب */
+.acts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+.acts>:first-child:nth-last-child(odd){grid-column:1/-1}
+@media (min-width:640px){.acts{display:flex;flex-wrap:wrap}.acts>*{flex:0 0 auto;min-width:132px}}
+/* خانةٌ وزرّها في سطرٍ واحد */
+.fld{display:flex;gap:8px;align-items:stretch}
+.fld>input{flex:1;min-width:0}
+.fld>button{flex:none;white-space:nowrap}
+/* الحقول: عمودٌ على الجوال، وعمودان من 640px */
+.form{display:grid;grid-template-columns:1fr;gap:0 12px}
+@media (min-width:640px){.form{grid-template-columns:1fr 1fr}}
+.hint{display:block;color:var(--mute);font-size:.78rem;margin-top:6px;line-height:1.6}
+.msg{font-size:.86rem;margin-top:10px;white-space:pre-wrap;color:var(--mute);overflow-wrap:anywhere}
+.msg:empty{display:none}
+.msg.err{color:var(--err)} .msg.ok{color:var(--go)}
+.empty{color:var(--mute);text-align:center;padding:16px;font-size:.88rem;border:1.5px dashed var(--line);border-radius:14px;margin:0}
+/* مفتاح تشغيل بدل مربّع العلامة، في سطرٍ يُلمس كله */
+.switch{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:54px;margin:12px 0 0;padding:10px 14px;border:1px solid var(--line);
+  border-radius:14px;background:var(--sf2);color:var(--ink);font-size:.9rem;cursor:pointer}
+.switch>span{flex:1;min-width:0}
+.switch>span>b{display:block;font-weight:600}
+.switch small{display:block;color:var(--mute);font-size:.76rem;line-height:1.6;margin-top:2px}
+.switch small b{color:var(--ink);font-weight:600}
+.switch:has(small){align-items:flex-start}                                     /* شرحٌ طويل: المفتاح بمحاذاة العنوان */
+.switch:has(small) .tog{margin-top:1px}
+.switch+.switch{margin-top:8px}
+.tog{appearance:none;-webkit-appearance:none;flex:none;width:46px;min-height:0;height:28px;margin:0;padding:0;border:0;border-radius:999px;background:color-mix(in srgb,var(--mute) 45%,var(--sf2));
+  position:relative;cursor:pointer;transition:background .15s}
+.tog::before{content:"";position:absolute;top:3px;inset-inline-start:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:inset-inline-start .15s}
+.tog:checked{background:var(--go)}
+.tog.amber:checked{background:var(--amber)}
+.tog:checked::before{inset-inline-start:21px}
+@media (prefers-reduced-motion:reduce){.tog,.tog::before,.adet,.chev{transition:none}}
+/* الملخّصات القابلة للطيّ: سطرٌ بارتفاع 46px وسهمٌ في آخره */
+details>summary{list-style:none;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+.fold>summary{display:flex;align-items:center;gap:8px;min-height:46px;padding:6px 14px;font-weight:500;font-size:.9rem}
+.fold>summary::after{content:"";flex:none;width:8px;height:8px;margin-inline-start:auto;border:solid currentColor;border-width:0 0 2px 2px;transform:rotate(-45deg) translateY(-2px);
+  opacity:.55;transition:transform .15s}
+.fold[open]>summary::after{transform:rotate(135deg) translateY(-2px)}
+.fold>summary small{color:var(--mute);font-weight:400;font-size:.78rem}
+.fold>.din{padding:0 14px 14px}
+details.box{margin-top:12px;border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+details.box input:not(.tog),details.box select{background:var(--sf)}
+details.box .din>label:first-child{margin-top:0}
+/* قائمة «⋯» للأدوات الثانوية */
+.more{position:relative;flex:none}
+.more>summary{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink)}
+.more>summary svg{width:20px;height:20px;fill:currentColor;stroke:none}
+.more[open]>summary,.more>summary:hover{border-color:var(--go);color:var(--go)}
+.menu{position:absolute;top:calc(100% + 6px);inset-inline-end:0;z-index:25;width:min(240px,calc(100vw - 48px));padding:6px;border:1px solid var(--line);border-radius:16px;
+  background:var(--sf);box-shadow:var(--shadow)}
+.menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border-radius:10px;color:var(--ink);font-size:.9rem;text-align:start}
+.menu button:hover{background:var(--sf2)}
+.menu svg{width:18px;height:18px;color:var(--mute)}
+
+/* ===== الرئيسية ===== */
+.hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:10px;padding:18px 16px;border:0;border-radius:22px;color:#fff;margin-bottom:12px;
+  background:radial-gradient(60% 90% at 0% 100%,rgba(34,196,147,.45),transparent 60%),radial-gradient(50% 80% at 100% 0%,rgba(139,124,246,.55),transparent 60%),
+    linear-gradient(120deg,#0b5f73 0%,#1e3a8a 55%,#4c1d95 100%)}
+.hero::before{content:"";position:absolute;inset:0;opacity:.35;pointer-events:none;background:repeating-linear-gradient(115deg,transparent 0 22px,rgba(255,255,255,.06) 22px 23px)}
+.hero .ht{position:relative;flex:1;min-width:0}
+.hero h1{margin:0 0 6px;font-size:clamp(1.2rem,5vw,1.8rem);line-height:1.35}
+.hero p{margin:0;color:#D6E4FF;font-size:.86rem;line-height:1.7}
+.hero .art{position:relative;flex:0 0 auto;width:104px;height:auto;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
+@media (min-width:640px){.hero{padding:26px 28px}.hero .art{width:220px}}
+/* الأرقام: بطاقتان في السطر على الجوال وأربعٌ على الحاسوب، والأيقونة فوق الرقم */
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 14px}
+@media (min-width:760px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.kpi{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:14px;border-radius:18px;border:1px solid var(--line);
+  background:var(--sf);color:var(--ink);text-align:start;min-width:0}
+.kpi:hover{border-color:var(--go)}
+.kpi .kic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none}
+.kpi .kic svg{width:20px;height:20px}
+.kpi .kt{min-width:0;width:100%}
+.kpi small{display:block;color:var(--mute);font-size:.8rem}
+.kpi b{display:block;font-size:1.45rem;line-height:1.3;font-variant-numeric:tabular-nums}
+.kpi b.txt{font-size:1.15rem;padding-top:3px}
+.kpi em{display:block;font-style:normal;color:var(--mute);font-size:.76rem;line-height:1.45}
+.kpi .go-ch{position:absolute;top:14px;inset-inline-end:12px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--sf2);color:var(--mute)}
+.kpi .go-ch svg{width:16px;height:16px}
+.k1{background:linear-gradient(160deg,color-mix(in srgb,var(--purple) 20%,var(--sf)),var(--sf))}
+.k1 .kic{background:color-mix(in srgb,var(--purple) 26%,transparent);color:color-mix(in srgb,var(--purple) 65%,var(--ink))}
+.k2{background:linear-gradient(160deg,color-mix(in srgb,var(--blue) 18%,var(--sf)),var(--sf))}
+.k2 .kic{background:color-mix(in srgb,var(--blue) 24%,transparent);color:color-mix(in srgb,var(--blue) 70%,var(--ink))}
+.k3{background:linear-gradient(160deg,color-mix(in srgb,var(--go) 16%,var(--sf)),var(--sf))}
+.k3 .kic{background:color-mix(in srgb,var(--go) 24%,transparent);color:var(--go)}
+.k3.on b{color:var(--go)}
+.k4{background:linear-gradient(160deg,color-mix(in srgb,var(--amber) 15%,var(--sf)),var(--sf))}
+.k4 .kic{background:color-mix(in srgb,var(--amber) 24%,transparent);color:var(--amber)}
+/* تنبيه: بلاغاتٌ مفتوحة تنتظر (يظهر وحده حين يوجد ما يُتابَع) */
+.alert{display:flex;align-items:center;gap:12px;min-height:56px;margin:0 0 14px;padding:10px 14px;border-radius:16px;color:var(--ink);
+  border:1px solid color-mix(in srgb,var(--err) 40%,var(--line));background:color-mix(in srgb,var(--err) 8%,var(--sf))}
+.alert .aic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--err) 18%,transparent);color:var(--err)}
+.alert .aic svg{width:20px;height:20px}
+.alert .at{flex:1;min-width:0}
+.alert b{display:block;font-size:.92rem}
+.alert small{display:block;color:var(--err);font-size:.8rem;font-weight:600}
+.alert>svg:last-child{width:18px;height:18px;color:var(--mute)}
+/* قائمة الإدارة: كل صفحةٍ مرّةً واحدة في مجموعتها — عمودٌ على الجوال وعمودان على الحاسوب */
+@media (min-width:760px){.menu-cols{columns:2;column-gap:14px}}
+.grp{break-inside:avoid;padding:14px 16px 4px;--c:var(--go)}
+.grp>h2{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 0 2px;font-size:1rem}
+.grp>h2 small{color:var(--mute);font-weight:400;font-size:.76rem}
+.grp.subs{--c:var(--go)} .grp.cont{--c:var(--blue)} .grp.cup{--c:var(--amber)} .grp.anl{--c:var(--purple)}
+.nrow,.ra{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:10px 0;color:var(--ink);text-align:start;border-top:1px solid var(--line);border-radius:0}
+.grp>h2+.nrow,.ra:first-child{border-top:0}
+.nrow .ti{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--c) 15%,var(--sf2));color:var(--c)}
+.nrow .ti svg{width:20px;height:20px}
+.nrow .nt,.ra .ri{flex:1;min-width:0}
+.nrow b,.ra b{display:block;font-size:.94rem;font-weight:600;line-height:1.45}
+.nrow small,.ra small{display:block;color:var(--mute);font-size:.78rem;line-height:1.5}
+.nrow>svg:last-child,.ra>svg:last-child{width:18px;height:18px;color:var(--mute)}
+.nrow:hover b,.ra:hover b{color:var(--go)}
+.nrow.ext>svg:last-child{width:16px;height:16px}
+
+/* ===== الحسابات ===== */
+#acctSearch{margin-bottom:6px}
+.acct{border-top:1px solid var(--line)}
+.acct:first-child{border-top:0}
+.ahead{display:flex;align-items:center;gap:12px;min-height:66px;padding:10px 0;cursor:pointer}
+.ai{flex:1;min-width:0}
+.ai b{display:block;font-size:.98rem;line-height:1.45}
+.ai small{display:block;color:var(--mute);font-size:.8rem}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tag{display:inline-block;font-size:.72rem;font-weight:600;line-height:1.5;padding:1px 9px;border-radius:999px;color:var(--go);
+  background:color-mix(in srgb,var(--go) 10%,var(--sf2));border:1px solid color-mix(in srgb,var(--go) 35%,var(--line));max-width:100%;overflow-wrap:anywhere}
+.chev{width:20px;height:20px;color:var(--mute);transition:transform .2s}
+.acct.open .chev{transform:rotate(180deg)}
+.adet{max-height:0;overflow:hidden;transition:max-height .3s ease}
+.acct.open .adet{max-height:2400px;padding-bottom:14px}
+.adet .acts{margin-top:10px}
+/* صفوف البوابات في القائمة */
+.gate-row{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--sf2);margin-top:8px}
 .gbadge{flex:none;font-size:.72rem;font-weight:700;color:#fff;padding:4px 9px;border-radius:8px}
 .gbadge.web{background:linear-gradient(135deg,#f59e0b,#dc2626)}
 .gbadge.api{background:linear-gradient(135deg,var(--purple),#4c1d95)}
 .gbadge.falcon{background:linear-gradient(135deg,#0ea5e9,#1e40af)}
 .gr-i{flex:1;min-width:0}
 .gr-i b{display:block;font-size:.92rem}
-.gr-i small{display:block;color:var(--mute);font:500 .76rem/1.5 "IBM Plex Mono",Consolas,monospace;direction:ltr;text-align:start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gr-guide{flex:none;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);display:grid;place-items:center;color:var(--go)}
-/* حساب قابل للطيّ */
-.acct{display:block;border-top:1px solid var(--line);padding:0}
-.acct:first-child{border-top:0}
-.ahead{display:flex;align-items:center;gap:10px;padding:14px 2px;cursor:pointer}
-.ai{flex:1;min-width:0}.ai b{display:block;font-size:1.02rem}.ai small{display:block;color:var(--mute);font-size:.82rem}
-.chev{width:20px;height:20px;color:var(--mute);transition:transform .2s;flex:none}
-.acct.open .chev{transform:rotate(180deg)}
-.adet{max-height:0;overflow:hidden;transition:max-height .3s ease}
-.acct.open .adet{max-height:2000px;padding-bottom:14px}
-.adet .b{display:flex;gap:8px;margin-top:10px}
-.linkrow{width:100%;justify-content:space-between;margin-top:8px;padding:13px 14px;text-decoration:none}
-.searchbar{margin-bottom:12px}
+.gr-i small{display:block;color:var(--mute);font:500 .76rem/1.5 "IBM Plex Mono",Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gr-guide{flex:none;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);display:grid;place-items:center;color:var(--go)}
 
-/* ===== لوحة القيادة (الرئيسية) ===== */
-.wrap{max-width:980px}
-.top{top:8px;margin:8px 10px 0;height:66px;border:1px solid var(--line);border-radius:20px;padding:0 12px;
-  box-shadow:0 10px 30px -18px rgba(0,0,0,.6)}
-.top .sp{flex:1}
-.brand{margin:0}
-.brand .mark{width:46px;height:46px;border-radius:14px}
-.brand .mark svg{width:22px;height:22px}
-.brand b{font-size:1.12rem}
-.brand small{font-size:.76rem}
-.hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:12px;padding:22px 18px;border:0;
-  border-radius:22px;color:#fff;min-height:150px;
-  background:radial-gradient(60% 90% at 0% 100%,rgba(34,196,147,.45),transparent 60%),
-    radial-gradient(50% 80% at 100% 0%,rgba(139,124,246,.55),transparent 60%),
-    linear-gradient(120deg,#0b5f73 0%,#1e3a8a 55%,#4c1d95 100%)}
-.hero::before{content:"";position:absolute;inset:0;opacity:.35;pointer-events:none;
-  background:repeating-linear-gradient(115deg,transparent 0 22px,rgba(255,255,255,.06) 22px 23px)}
-.hero .ht{position:relative;flex:1;min-width:0}
-.hero h1{margin:0 0 6px;font-size:clamp(1.25rem,5.2vw,1.85rem);line-height:1.3}
-.hero p{margin:0;color:#D6E4FF;font-size:.92rem}
-.hero .art{position:relative;flex:0 0 auto;width:150px;height:auto;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
-@media (min-width:640px){.hero{padding:30px 30px;min-height:190px}.hero .art{width:250px}}
-.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
-@media (max-width:900px){.kpis{grid-template-columns:1fr 1fr}}
-@media (min-width:901px){.kpis .kpi em{white-space:normal;line-height:1.35}}   /* أربع بطاقات: السطر الثاني يلتفّ ولا يُقصّ */
-.kpi{position:relative;display:flex;align-items:center;gap:12px;padding:14px;border-radius:18px;border:1px solid var(--line);
-  background:var(--sf);color:var(--ink);text-align:start;min-width:0}
-.kpi:hover{border-color:var(--go)}
-.kpi .kic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;flex:none}
-.kpi .kic svg{width:24px;height:24px}
-.kpi .kt{flex:1;min-width:0}
-.kpi small{display:block;color:var(--mute);font-size:.8rem}
-.kpi b{display:block;font-size:1.7rem;line-height:1.25;font-variant-numeric:tabular-nums}
-.kpi em{display:block;font-style:normal;color:var(--mute);font-size:.76rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kpi .go-ch{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--sf2);color:var(--mute);flex:none}
-.kpi .go-ch svg{width:16px;height:16px}
-.k1{background:linear-gradient(160deg,color-mix(in srgb,var(--purple) 22%,var(--sf)),var(--sf))}
-.k1 .kic{background:color-mix(in srgb,var(--purple) 30%,transparent);color:#C4B5FD}
-.k2{background:linear-gradient(160deg,color-mix(in srgb,var(--blue) 20%,var(--sf)),var(--sf))}
-.k2 .kic{background:color-mix(in srgb,var(--blue) 28%,transparent);color:#93C5FD}
-.k3{background:linear-gradient(160deg,color-mix(in srgb,var(--go) 18%,var(--sf)),var(--sf))}
-.k3 .kic{background:color-mix(in srgb,var(--go) 26%,transparent);color:var(--go)}
-.k3.on b{color:var(--go)}
-.k4{background:linear-gradient(160deg,color-mix(in srgb,var(--amber) 16%,var(--sf)),var(--sf))}
-.k4 .kic{background:color-mix(in srgb,var(--amber) 26%,transparent);color:var(--amber)}
-.kpi b.txt{font-size:1.2rem;padding-top:4px}
-@media (max-width:620px){.kpi{flex-direction:column;align-items:flex-start;gap:8px;padding:12px}
-  .kpi .kic{width:40px;height:40px;border-radius:12px}.kpi .kic svg{width:20px;height:20px}
-  .kpi .go-ch{position:absolute;top:12px;inset-inline-end:10px;width:26px;height:26px}.kpi b{font-size:1.45rem}
-  .kpi em{white-space:normal;line-height:1.35}}
-.qgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-@media (max-width:720px){.qgrid{grid-template-columns:1fr 1fr}}
-.qt{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--sf2);
-  color:var(--ink);text-align:start;min-width:0}
-.qt:hover{border-color:var(--go)}
-.qt .ti{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;flex:none;color:#fff}
-.qt .ti svg{width:22px;height:22px}
-.qt span{flex:1;min-width:0}
-.qt b{display:block;font-size:.95rem}
-.qt small{display:block;color:var(--mute);font-size:.76rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.qt>svg:last-child,.lt>svg:last-child,.ra>svg:last-child{width:18px;height:18px;color:var(--mute);flex:none}
-@media (max-width:420px){.qt{gap:8px;padding:10px}.qt .ti{width:40px;height:40px}.qt>svg:last-child{display:none}}
-.c-purple{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}.c-blue{background:linear-gradient(135deg,#3b82f6,#1d4ed8)}
-.c-sky{background:linear-gradient(135deg,#0ea5e9,#0369a1)}.c-green{background:linear-gradient(135deg,#22c493,#0f7a58)}
-.c-gold{background:linear-gradient(135deg,#f5b342,#b7791f)}.c-indigo{background:linear-gradient(135deg,#6366f1,#3730a3)}
-.c-teal{background:linear-gradient(135deg,#14b8a6,#0f766e)}.c-rose{background:linear-gradient(135deg,#f472b6,#be185d)}
-h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
-.ra{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--sf2);
-  margin-top:8px;width:100%;color:var(--ink);text-align:start}
-.ra:first-child{margin-top:0}
-.ra:hover{border-color:var(--go)}
-.av{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:1.1rem;color:#fff;flex:none}
-.ra .ri{flex:1;min-width:0}
-.ra .ri b{display:block}
-.ra .ri small{display:block;color:var(--mute);font-size:.8rem}
-.ra .ri .tag{color:var(--go)}
-.lgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-@media (max-width:560px){.lgrid{grid-template-columns:1fr}}
-.lt{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--sf2);color:var(--ink)}
-.lt:hover{border-color:var(--go)}
-.lt .ti{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;flex:none;color:#fff}
-.lt .ti svg{width:21px;height:21px}
-.lt span{flex:1;min-width:0}.lt b{display:block;font-size:.95rem}.lt small{display:block;color:var(--mute);font-size:.78rem}
-/* الشريط السفلي: العنصر الحاليّ بخلفيةٍ ونقطة */
-.bnav{inset-inline:8px;bottom:8px;border:1px solid var(--line);border-radius:20px;padding:6px}
-.bnav button,.bnav a{position:relative;font-size:.74rem;font-weight:600;padding:8px 2px 10px}
-.bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--mute);border-radius:12px;text-decoration:none}
-.bnav a svg{width:22px;height:22px}
-.bnav button.on{background:color-mix(in srgb,var(--go) 16%,transparent)}
-.bnav button.on::after{content:"";position:absolute;bottom:3px;width:5px;height:5px;border-radius:50%;background:var(--go)}
-@media (min-width:760px){.bnav{max-width:640px;margin:0 auto}}
-.fab{bottom:92px}
+/* ===== ربط سلة ===== */
+.statbox{margin:0 0 4px;padding:12px 14px;border-radius:14px;background:var(--sf2);border:1px solid var(--line)}
+.statbox .msg{margin:0}
+.maprow{margin-top:10px;padding:4px 12px 12px;border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+.maprow input:not(.tog),.maprow select{background:var(--sf)}
+.rowh{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px}
+.rowh b{font-size:.9rem}
+.logrow{padding:10px 0;border-top:1px solid var(--line)}
+.logrow:first-child{border-top:0}
+.logrow b{display:block;font-size:.9rem}
+.logrow code{display:block;direction:ltr;text-align:left;font:500 .76rem/1.7 "IBM Plex Mono",Consolas,monospace;color:var(--mute);overflow-wrap:anywhere}
+.logrow code.g{color:var(--ink);margin-top:3px}
+
+/* ===== الإعدادات ===== */
+.out-row{width:100%}
+
+/* ===== نافذة الحساب: ملء الشاشة على الجوال، ونافذةٌ في الوسط على الحاسوب ===== */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(4,10,22,.6);display:flex;align-items:stretch;justify-content:center}
+.sheet{display:flex;flex-direction:column;width:100%;height:100%;background:var(--bg);box-shadow:var(--shadow)}
+@media (min-width:640px){.modal{align-items:center;padding:18px}.sheet{max-width:640px;height:auto;max-height:92vh;border:1px solid var(--line);border-radius:20px;overflow:hidden}}
+.shtop{flex:none;display:flex;align-items:center;gap:10px;min-height:62px;padding:8px 12px 8px 16px;padding-top:calc(8px + env(safe-area-inset-top));
+  border-bottom:1px solid var(--line);background:var(--sf)}
+.shtop h2{flex:1;min-width:0;margin:0;font-size:1.06rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shtop .icon-btn{width:44px;height:44px}
+.sbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 16px 18px}
+@media (min-width:640px){.sbody{padding:16px}}
+.sfoot{flex:none;padding:10px 16px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--sf)}
+.sfoot .msg{margin:0 0 8px}
+.sfoot .acts{display:flex;margin-top:0}
+.sfoot .acts>*{flex:1 1 0;min-width:0}
+/* مجموعات النافذة: البيانات · البوابات · الميزات والصلاحيات · منطقة الخطر */
+.eg{background:var(--sf);border:1px solid var(--line);border-radius:18px;padding:14px;margin:0 0 12px}
+.egh{display:flex;align-items:center;gap:10px;margin:0 0 4px}
+.egh .sic{width:36px;height:36px;border-radius:11px}
+.egh .sic svg{width:18px;height:18px}
+.egh h3{flex:1;min-width:0;font-size:.98rem;line-height:1.35}
+.egh h3 small{display:block;color:var(--mute);font-weight:400;font-size:.76rem}
+.eg.dz{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+.eg.dz h3{color:var(--err)}
+.eg.dz .sub{margin:8px 0 0}
+.eg .switch{margin-top:10px}
+/* ميزةٌ ومربّع إعدادها يتّصلان حين تُفعَّل */
+.feat .fbox{padding:4px 14px 14px;border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;background:var(--sf2)}
+.feat:has(.fbox:not([hidden]))>.switch{border-radius:14px 14px 0 0;border-bottom-style:dashed}
+.fbox input:not(.tog):not([type=checkbox]),.fbox textarea{background:var(--sf)}
+.fbox .switch{background:var(--sf);margin-top:10px}
+#acc_guide_text{unicode-bidi:plaintext;text-align:start;font-size:.88rem;line-height:1.7}   /* عربي وأسطر لاتينية (Host/User/Pass) — كل سطر باتجاهه */
+.srvpick{display:flex;flex-wrap:wrap;gap:8px}
+.srvpick label{display:inline-flex;align-items:center;gap:8px;margin:0;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--sf);
+  color:var(--ink);font-weight:600;font-size:.86rem;cursor:pointer}
+.srvpick label:has(input:checked){border-color:var(--go);color:var(--go);background:color-mix(in srgb,var(--go) 10%,var(--sf))}
+.srvpick input{width:18px;height:18px;min-height:0;margin:0;accent-color:var(--go)}
+/* بوابةٌ في النافذة: سطرٌ مطويّ باسمها وهوستها، يُفتح للتعديل */
+details.gate{margin-top:10px;border:1px solid var(--line);border-radius:14px;background:var(--sf2)}
+details.gate[open]{border-color:color-mix(in srgb,var(--go) 35%,var(--line))}
+details.gate>summary{display:flex;align-items:center;gap:10px;min-height:58px;padding:8px 12px}
+details.gate>summary::after{content:"";flex:none;width:8px;height:8px;border:solid var(--mute);border-width:0 0 2px 2px;transform:rotate(-45deg) translateY(-2px);transition:transform .15s}
+details.gate[open]>summary::after{transform:rotate(135deg) translateY(-2px)}
+.gs{flex:1;min-width:0}
+.gs b{display:block;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gs small{display:block;color:var(--mute);font-size:.76rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gbody{padding:2px 12px 12px;border-top:1px solid var(--line)}
+.gbody input:not(.tog),.gbody select{background:var(--sf)}
+.gbody details.box{background:var(--sf)}
+.gbody details.box input:not(.tog){background:var(--sf2)}
+.presets{display:grid;gap:8px}
+.presets .ghost{width:100%;font-weight:500;font-size:.82rem;white-space:normal}
 </style>
 </head>
 <body>
@@ -230,11 +322,12 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
   <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span>
     <span><b>سمارت سوق</b><small id="viewTitle">لوحة الإدارة</small></span></div>
   <span class="sp"></span>
-  <a class="icon-btn bell" id="bellAdm" hidden title="إشعارات الحسابات المتبقية" aria-label="الإشعارات"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot" id="bellAdmN" hidden>0</span></a>
+  <a class="icon-btn bell" id="bellAdm" data-to="/remaining#notes" hidden title="إشعارات الحسابات المتبقية" aria-label="الإشعارات"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot" id="bellAdmN" hidden>0</span></a>
   <button class="icon-btn" id="themeBtn" title="تبديل السمة" aria-label="تبديل السمة"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
 </header>
 <main class="wrap">
-  <!-- الرئيسية -->
+  <!-- الرئيسية: الأرقام، ثم ما ينتظر، ثم قائمةٌ واحدة بمجموعاتها (كل صفحةٍ مرّة)، ثم آخر الحسابات.
+       تبويبات هذه الصفحة (الحسابات · ربط سلة · الإعدادات) في الشريط السفلي وبطاقات الأرقام، فلا تتكرّر في القائمة. -->
   <div class="view on" data-view="home">
     <section class="hero">
       <div class="ht"><h1>مرحباً بك في لوحة الإدارة</h1><p>تابع أداء الموقع، وأدر حساباتك ومسابقاتك بسهولة.</p></div>
@@ -255,129 +348,143 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
 <rect x="20" y="95" width="52" height="18" rx="4" fill="#2A1D07"/><path d="M46 26l4 8 8 1-6 6 2 8-8-4-8 4 2-8-6-6 8-1z" fill="#FFF6D6" opacity=".9"/></g></svg>
     </section>
     <div class="kpis">
-      <a class="kpi k1" id="kpiPrize"><span class="kic"><svg viewBox="0 0 24 24"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg></span><span class="kt"><small>الجوائز</small><b id="statPrize">—</b><em id="statPrizeSub">مسابقة مفتوحة</em></span><span class="go-ch"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span></a>
+      <a class="kpi k1" id="kpiPrize" data-to="/contest"><span class="kic"><svg viewBox="0 0 24 24"><path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/></svg></span><span class="kt"><small>الجوائز</small><b id="statPrize">—</b><em id="statPrizeSub">مسابقة مفتوحة</em></span><span class="go-ch"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span></a>
       <button class="kpi k2" data-nav="accounts"><span class="kic"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="kt"><small>الحسابات</small><b id="statAcc">—</b><em><span id="statGates">—</span> بوابة</em></span><span class="go-ch"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span></button>
-      <button class="kpi k3" data-nav="salla" id="statSvcCard"><span class="kic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="kt"><small>خدمة سلة</small><b id="statSvc" class="txt">—</b><em>التسليم على واتساب</em></span><span class="go-ch"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span></button>
-      <a class="kpi k4" id="kpiVisits"><span class="kic"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span class="kt"><small>زوار الدليل اليوم</small><b id="statVisits">—</b><em id="statVisitsSub">إحصائيات الدليل</em></span><span class="go-ch"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span></a>
+      <button class="kpi k3" data-nav="salla" id="statSvcCard"><span class="kic"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span><span class="kt"><small>خدمة سلة</small><b id="statSvc" class="txt">—</b><em>التسليم على واتساب</em></span><span class="go-ch"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span></button>
+      <a class="kpi k4" id="kpiVisits" data-to="/stats"><span class="kic"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span class="kt"><small>زوار الدليل اليوم</small><b id="statVisits">—</b><em id="statVisitsSub">إحصائيات الدليل</em></span><span class="go-ch"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></span></a>
     </div>
+    <a class="alert" id="qReports" data-to="/reports" hidden><span class="aic"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg></span>
+      <span class="at"><b>بلاغات محتوى تنتظر</b><small id="qReportsN">فيديو لا يعمل أو يقطع</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+
+    <div class="menu-cols" id="links">
+      <section class="grp subs">
+        <h2>الاشتراكات<small>الإنشاء والتجديد والمتبقّي</small></h2>
+        <a class="nrow" id="lkCreate" data-to="/"><span class="ti"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg></span><span class="nt"><b>صفحة الإنشاء</b><small>إنشاء اشتراك جديد</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a class="nrow" id="lkRenew" data-to="/renew"><span class="ti"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12a9 9 0 0 1 15.5-6.2M18 2v4h-4M6 22v-4h4"/></svg></span><span class="nt"><b>خدمة التجديد</b><small>تجديد الاشتراكات</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a class="nrow" id="lkRemain" data-to="/remaining"><span class="ti"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span class="nt"><b>حسابات متبقية</b><small>الاشتراكات المجزّأة</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a class="nrow ext" href="https://guide.ssouq.com/stremio" target="_blank" rel="noopener"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></svg></span><span class="nt"><b>صفحة Stremio</b><small>يضيف منها المشترك اشتراكه إلى Stremio</small></span><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </section>
+      <section class="grp cont">
+        <h2>المحتوى والصفحات<small>ملفات السيرفرات وما يراه الزوّار</small></h2>
+        <a class="nrow" id="lkContent" data-to="/content"><span class="ti"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4M10 9l4 2-4 2z"/></svg></span><span class="nt"><b>محتوى السيرفرات</b><small>ملفات M3U لصفحة المحتوى</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a class="nrow ext" href="https://guide.ssouq.com/content" target="_blank" rel="noopener"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span><span class="nt"><b>صفحة المحتوى</b><small>المسلسلات بمواسمها كما يراها الزوّار</small></span><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </section>
+      <section class="grp cup">
+        <h2>المسابقة<small>التوقّعات والجوائز</small></h2>
+        <a class="nrow" id="lkContest" data-to="/contest"><span class="ti"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg></span><span class="nt"><b>مسابقة توقّع النتيجة</b><small>إدارة المسابقات والجوائز</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a class="nrow ext" href="https://guide.ssouq.com/predict" target="_blank" rel="noopener"><span class="ti"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nt"><b>صفحة المسابقات</b><small>كما يراها الزوّار</small></span><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        <a class="nrow ext" href="https://guide.ssouq.com/gulf-cup" target="_blank" rel="noopener"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m12 7 3.6 2.6-1.4 4.2H9.8L8.4 9.6z"/></svg></span><span class="nt"><b>كأس الخليج</b><small>النتائج والقنوات الناقلة</small></span><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </section>
+      <section class="grp anl">
+        <h2>التحليلات والبلاغات<small>الزوار وجوجل وما يبلّغ عنه المشتركون</small></h2>
+        <a class="nrow" id="lkReports" data-to="/reports"><span class="ti"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg></span><span class="nt"><b>بلاغات المحتوى</b><small id="lkReportsN">فيديو لا يعمل أو يقطع — من المشتركين</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a class="nrow" id="lkStats" data-to="/stats"><span class="ti"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span class="nt"><b>إحصائيات الدليل</b><small>الزوار ومصادرهم وربط Google Analytics</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+        <a class="nrow ext" href="https://search.google.com/search-console" target="_blank" rel="noopener"><span class="ti"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg></span><span class="nt"><b>Google Search Console</b><small>البحث والأرشفة في جوجل</small></span><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </section>
+    </div>
+
     <section>
-      <h2>اختصارات سريعة</h2>
-      <div class="qgrid">
-        <button class="qt" data-nav="salla"><span class="ti c-purple"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span><span><b>ربط سلة</b><small>ربط متجرك والتسليم</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-        <button class="qt" data-nav="accounts"><span class="ti c-blue"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span><b>الحسابات</b><small>إدارة الحسابات</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-        <button class="qt" data-nav="settings"><span class="ti c-sky"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span><b>الإعدادات</b><small>الروابط وكلمة المرور</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-        <button class="qt" id="qAdd"><span class="ti c-green"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M20 8v6M23 11h-6"/></svg></span><span><b>حساب جديد</b><small>إضافة حساب</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-        <a class="qt" id="qReports"><span class="ti c-rose"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg></span><span><b>بلاغات المحتوى</b><small id="qReportsN">فيديو لا يعمل أو يقطع</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <button class="qt" id="qContest"><span class="ti c-gold"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg></span><span><b>مسابقة التوقّعات</b><small>إدارة المسابقات</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-        <button class="qt" id="qLinks"><span class="ti c-indigo"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span><span><b>روابط</b><small>روابط مهمة</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-      </div>
-    </section>
-    <section>
-      <h2>آخر الحسابات <button class="ghost sm" data-nav="accounts">عرض الكل <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button></h2>
+      <div class="shead"><h2>آخر الحسابات</h2>
+        <span class="hact"><button class="ghost sm" id="qAdd" type="button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>حساب جديد</button>
+          <button class="ghost sm" data-nav="accounts" type="button">الكل</button></span></div>
       <div id="recent"><div class="empty">جاري التحميل…</div></div>
-    </section>
-    <section id="links">
-      <h2>روابط الإدارة</h2>
-      <div class="lgrid">
-        <a class="lt" id="lkCreate"><span class="ti c-green"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg></span><span><b>صفحة الإنشاء</b><small>إنشاء اشتراك جديد</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" id="lkRenew"><span class="ti c-teal"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12a9 9 0 0 1 15.5-6.2M18 2v4h-4M6 22v-4h4"/></svg></span><span><b>خدمة التجديد</b><small>تجديد الاشتراكات</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" id="lkRemain"><span class="ti c-blue"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span><b>حسابات متبقية</b><small>الاشتراكات المجزّأة</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" id="lkContest"><span class="ti c-indigo"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span><b>مسابقة توقّع النتيجة</b><small>إدارة المسابقات والجوائز</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" href="https://guide.ssouq.com/predict" target="_blank" rel="noopener"><span class="ti c-rose"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></span><span><b>صفحة المسابقات</b><small>كما يراها الزوّار</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" href="https://guide.ssouq.com/gulf-cup" target="_blank" rel="noopener"><span class="ti c-gold"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m12 7 3.6 2.6-1.4 4.2H9.8L8.4 9.6z"/></svg></span><span><b>كأس الخليج</b><small>النتائج والقنوات الناقلة</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" id="lkContent"><span class="ti c-sky"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4M10 9l4 2-4 2z"/></svg></span><span><b>محتوى السيرفرات</b><small>ملفات M3U لصفحة المحتوى</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" id="lkReports"><span class="ti c-rose"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg></span><span><b>بلاغات المحتوى</b><small id="lkReportsN">فيديو لا يعمل أو يقطع — من المشتركين</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" href="https://guide.ssouq.com/content" target="_blank" rel="noopener"><span class="ti c-purple"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span><span><b>صفحة المحتوى</b><small>المسلسلات بمواسمها كما يراها الزوّار</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" id="lkStats"><span class="ti c-blue"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span><b>إحصائيات الدليل</b><small>الزوار ومصادرهم وربط Google Analytics</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-        <a class="lt" href="https://search.google.com/search-console" target="_blank" rel="noopener"><span class="ti c-green"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg></span><span><b>Google Search Console</b><small>البحث والأرشفة في جوجل</small></span><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-      </div>
     </section>
   </div>
 
   <!-- الحسابات -->
   <div class="view" data-view="accounts">
   <section>
-    <h2>الحسابات <span><button class="ghost" id="exp">تصدير</button> <button class="ghost" id="imp">استيراد</button><input type="file" id="file" accept="application/json" hidden></span></h2>
-    <input id="acctSearch" class="searchbar" placeholder="ابحث بالاسم أو اسم الدخول">
+    <div class="shead"><span class="sic c-blue"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+      <h2>الحسابات<small id="accCount">…</small></h2>
+      <details class="more"><summary title="تصدير واستيراد" aria-label="تصدير واستيراد"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></summary>
+        <div class="menu">
+          <button id="exp" type="button"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>تصدير الحسابات</button>
+          <button id="imp" type="button"><svg viewBox="0 0 24 24"><path d="M12 21V9M7 14l5-5 5 5M5 3h14"/></svg>استيراد من ملف</button>
+        </div></details>
+      <input type="file" id="file" accept="application/json" hidden></div>
+    <input id="acctSearch" class="rtl" type="search" placeholder="ابحث بالاسم أو اسم الدخول" aria-label="ابحث في الحسابات">
+    <div class="msg" id="listMsg"></div>
     <div id="list"><div class="empty">جاري التحميل…</div></div>
   </section>
   </div>
 
-  <!-- ربط سلة -->
+  <!-- ربط سلة ← واتساب -->
   <div class="view" data-view="salla">
+  <!-- ربط سلة بضغطة واحدة (بإضافة المتصفح / جلسة اللوحة) -->
   <section>
-    <h2>خدمة سلة ← واتساب <span><button class="ghost" id="svcReload">تحديث السجل</button></span></h2>
-    <p class="sub" style="margin:0 0 10px">تسليم الاشتراك تلقائيًا على واتساب لأي عميل يشتري من متجرك في سلة.</p>
-
-    <!-- ربط سلة بضغطة واحدة (بإضافة المتصفح / جلسة اللوحة) -->
-    <div style="background:var(--sf2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px">
-      <b style="display:block;margin-bottom:4px">ربط سلة بضغطة واحدة</b>
-      <p class="sub" style="margin:0 0 10px">سجّل دخولك للوحة سلة في متصفّحك، ثم اربط بالإضافة. تُستخدم نفس الجلسة للتسليم التلقائي وللتجديد — بلا توكن ولا أسرار.</p>
-      <p class="msg" id="svcSallaStatus">…</p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
-        <a class="ghost" id="svcDlExt">⬇ تنزيل الإضافة</a>
-        <button class="ghost" id="svcSallaTest" type="button">اختبار الربط</button>
-      </div>
-      <label>أو الصق «Copy as cURL» من لوحة سلة (بديل الإضافة)</label>
-      <div style="display:flex;gap:8px">
-        <input id="svcCurl" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'">
-        <button class="ghost" id="svcCurlBtn" type="button" style="white-space:nowrap">ربط</button>
-      </div>
-    </div>
-
-    <div class="g2">
-      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="svcEnabled" style="width:auto"> تشغيل الخدمة</label>
-      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="svcDry" style="width:auto"> وضع تجريبي (لا توليد/إرسال فعلي)</label>
-    </div>
-    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="svcPoll" style="width:auto"> سحب دوري من سلة (بالجلسة المربوطة أو توكن الإدارة)</label>
-
-    <details class="adv" style="margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--sf2);padding:0 12px">
-    <summary style="cursor:pointer;padding:12px 0;color:var(--mute)">إعداد متقدّم — ويبهوك سلة (بديل)</summary>
-    <label>رابط الويبهوك — ضعه في سلة: المتجر ← الإعدادات ← الويبهوك (حدث order.created و order.updated)</label>
-    <input id="svcHook" readonly value="https://guide.ssouq.com/salla/webhook" onclick="this.select()" style="margin-bottom:10px">
-
-    <div class="g2">
-      <div><label for="svcSecret">سر الويبهوك (Signature)</label><input id="svcSecret" type="password" autocomplete="off"></div>
-      <div><label for="svcToken">توكن إدارة سلة (اختياري — للسحب الدوري)</label><input id="svcToken" type="password" autocomplete="off"></div>
-    </div>
+    <div class="shead"><span class="sic c-purple"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></span>
+      <h2>ربط سلة بضغطة واحدة<small>نفس الجلسة للتسليم التلقائي وللتجديد</small></h2></div>
+    <p class="sub">سجّل دخولك للوحة سلة في متصفّحك، ثم اربط بالإضافة. تُستخدم نفس الجلسة للتسليم التلقائي وللتجديد — بلا توكن ولا أسرار.</p>
+    <div class="statbox"><p class="msg" id="svcSallaStatus">…</p></div>
+    <div class="acts"><a class="go" id="svcDlExt" data-to="/api/renew/extension.zip"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>تنزيل الإضافة</a>
+      <button class="ghost" id="svcSallaTest" type="button">اختبار الربط</button></div>
+    <details class="box fold"><summary>الربط بلصق cURL<small>— بديل الإضافة</small></summary>
+      <div class="din"><label for="svcCurl">أو الصق «Copy as cURL» من لوحة سلة (بديل الإضافة)</label><div class="fld"><input id="svcCurl" placeholder="curl 'https://s.salla.sa/…' -H 'cookie: …'" aria-label="Copy as cURL">
+        <button class="ghost" id="svcCurlBtn" type="button">ربط</button></div></div>
     </details>
+  </section>
 
-    <label style="margin-top:14px;font-weight:700;color:var(--ink)">قناة واتساب</label>
+  <!-- إعداد الخدمة: كله يُحفظ بزرٍّ واحد -->
+  <section>
+    <div class="shead"><span class="sic c-green"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.5A8.4 8.4 0 1 1 21 11.5z"/></svg></span>
+      <h2>خدمة سلة ← واتساب<small>تسليم الاشتراك تلقائيًا على واتساب لأي عميل يشتري من متجرك في سلة</small></h2><span class="chip" id="svcChip"></span></div>
+    <label class="switch"><span><b>تشغيل الخدمة</b></span><input type="checkbox" class="tog" id="svcEnabled"></label>
+    <label class="switch"><span><b>وضع تجريبي</b><small>لا توليد ولا إرسال فعلي</small></span><input type="checkbox" class="tog amber" id="svcDry"></label>
+    <label class="switch"><span><b>سحب دوري من سلة</b><small>بالجلسة المربوطة أو توكن الإدارة</small></span><input type="checkbox" class="tog" id="svcPoll"></label>
+
+    <div class="blockh"><h3>قناة واتساب</h3></div>
     <label for="svcWaType">الطريقة</label>
-    <select id="svcWaType" class="gsel">
+    <select id="svcWaType">
       <option value="none">تجريبي (بلا إرسال)</option>
       <option value="cloud">WhatsApp Cloud API (رسمي)</option>
       <option value="http">بوابة HTTP خاصة (رابطك)</option>
     </select>
     <div id="svcWaCloud" hidden>
       <label for="svcWaToken">Access Token</label><input id="svcWaToken" type="password" autocomplete="off">
-      <div class="g2"><div><label for="svcWaPhone">Phone Number ID</label><input id="svcWaPhone"></div>
+      <div class="form"><div><label for="svcWaPhone">Phone Number ID</label><input id="svcWaPhone"></div>
         <div><label for="svcWaVer">الإصدار</label><input id="svcWaVer" placeholder="v21.0"></div></div>
     </div>
     <div id="svcWaHttp" hidden>
       <label for="svcWaUrl">رابط الإرسال — خدمة Baileys: POST ‏{to, text}</label><input id="svcWaUrl" placeholder="https://wa-service/send">
       <label for="svcWaSecret">سر البوابة (WA_SECRET) — يُرسَل في Authorization</label><input id="svcWaSecret" type="password" autocomplete="off">
-      <button type="button" class="ghost" id="svcWaCheck" style="margin-top:10px">فحص اتصال واتساب (Baileys)</button>
+      <button type="button" class="ghost wide" id="svcWaCheck">فحص اتصال واتساب (Baileys)</button>
       <div class="msg" id="svcWaStatus"></div>
     </div>
+    <label for="svcTpl">نص الرسالة — ‏{line} السطر · ‏{name} اسم العميل</label>
+    <textarea id="svcTpl" rows="4"></textarea>
 
-    <label for="svcTpl" style="margin-top:14px">نص الرسالة — ‏{line} السطر · ‏{name} اسم العميل</label>
-    <textarea id="svcTpl" rows="3" class="gsel"></textarea>
-
-    <label style="margin-top:14px;font-weight:700;color:var(--ink)">ربط منتجات سلة بالبوابات</label>
-    <p class="sub" style="margin:0 0 6px">كل منتج (بمعرّفه في سلة) ← الحساب والبوابة والباقة التي يُولَّد منها الاشتراك.</p>
+    <div class="blockh"><h3>ربط منتجات سلة بالبوابات</h3></div>
+    <p class="sub">كل منتج (بمعرّفه في سلة) ← الحساب والبوابة والباقة التي يُولَّد منها الاشتراك.</p>
     <div id="svcMap"></div>
-    <button class="ghost" id="svcAddMap" style="width:100%;margin-top:8px">+ إضافة ربط منتج</button>
+    <button class="ghost wide" id="svcAddMap" type="button">+ إضافة ربط منتج</button>
 
-    <button class="go" id="svcSave">حفظ الخدمة</button>
+    <details class="box fold adv"><summary>إعداد متقدّم — ويبهوك سلة<small>(بديل)</small></summary>
+      <div class="din">
+        <label for="svcHook">رابط الويبهوك — ضعه في سلة: المتجر ← الإعدادات ← الويبهوك (حدث order.created و order.updated)</label>
+        <input id="svcHook" readonly value="https://guide.ssouq.com/salla/webhook" onclick="this.select()">
+        <div class="form">
+          <div><label for="svcSecret">سر الويبهوك (Signature)</label><input id="svcSecret" type="password" autocomplete="off"></div>
+          <div><label for="svcToken">توكن إدارة سلة (اختياري — للسحب الدوري)</label><input id="svcToken" type="password" autocomplete="off"></div>
+        </div>
+      </div>
+    </details>
+
+    <div class="acts"><button class="go" id="svcSave" type="button">حفظ الخدمة</button></div>
     <div class="msg" id="svcMsg"></div>
+  </section>
 
-    <label style="margin-top:14px;font-weight:700;color:var(--ink)">اختبار الإرسال</label>
-    <div class="g2"><div><label for="svcTestPhone">رقم واتساب</label><input id="svcTestPhone" placeholder="05xxxxxxxx"></div>
-      <div style="display:flex;align-items:flex-end"><button class="ghost" id="svcTest" style="width:100%;padding:10px">إرسال رسالة اختبار</button></div></div>
+  <section>
+    <div class="shead"><span class="sic c-teal"><svg viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg></span>
+      <h2>اختبار الإرسال<small>رسالةٌ تجريبية بالقناة المحفوظة</small></h2></div>
+    <label for="svcTestPhone">رقم واتساب</label>
+    <div class="fld"><input id="svcTestPhone" type="tel" inputmode="tel" placeholder="05xxxxxxxx">
+      <button class="ghost" id="svcTest" type="button">إرسال اختبار</button></div>
     <div class="msg" id="svcTestMsg"></div>
+  </section>
 
-    <label style="margin-top:14px;font-weight:700;color:var(--ink)">سجل التسليم</label>
+  <section>
+    <div class="shead"><span class="sic c-indigo"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+      <h2>سجل التسليم<small>آخر 30 طلبًا</small></h2><button class="ghost sm" id="svcReload" type="button">تحديث السجل</button></div>
     <div id="svcLog"><div class="empty">—</div></div>
   </section>
   </div>
@@ -385,90 +492,112 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
   <!-- الإعدادات -->
   <div class="view" data-view="settings">
   <section>
-    <h2>روابط</h2>
-    <a class="ghost linkrow" id="lnkHome"><span>صفحة الإنشاء</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
-    <a class="ghost linkrow" id="lnkRenew"><span>خدمة التجديد</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
-    <a class="ghost linkrow" id="lnkRemain"><span>حسابات متبقية (الاشتراكات المجزّأة)</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
-    <a class="ghost linkrow" id="lnkContest"><span>مسابقة توقّع النتيجة</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
-    <a class="ghost linkrow" id="lnkContent"><span>محتوى السيرفرات (ملفات M3U)</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
-    <a class="ghost linkrow" id="lnkStats"><span>إحصائيات الدليل وربط Google Analytics</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a>
-    <a class="ghost linkrow out" id="lnkOut"><span>تسجيل الخروج</span><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></a>
+    <div class="shead"><span class="sic c-indigo"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+      <h2>كلمة مرور المدير<small>يطلب المتصفح الدخول من جديد بعد تغييرها</small></h2></div>
+    <label for="apw">كلمة مرور جديدة (6 أحرف على الأقل)</label><input id="apw" type="password" autocomplete="new-password">
+    <div class="acts"><button class="go" id="apwBtn" type="button">تغيير كلمة المرور</button></div>
+    <div class="msg" id="apwMsg"></div>
   </section>
   <section>
-    <h2>كلمة مرور المدير</h2>
-    <label for="apw">كلمة مرور جديدة (6 أحرف على الأقل)</label><input id="apw" type="password" autocomplete="new-password">
-    <button class="go" id="apwBtn">تغيير</button>
-    <div class="msg" id="apwMsg"></div>
+    <div class="shead"><span class="sic c-rose"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
+      <h2>الجلسة<small>الخروج من لوحة الإدارة على هذا المتصفّح</small></h2></div>
+    <a class="danger out-row" id="lnkOut" data-to="/logout"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>تسجيل الخروج</a>
   </section>
   </div>
 </main>
 
-<!-- نافذة إضافة/تعديل حساب -->
-<div class="modal" id="acctModal" hidden><div class="sheet">
-  <section>
-    <h2 id="formTitle">إضافة حساب <button class="x" id="acctClose" type="button" title="إغلاق">✕</button></h2>
+<!-- نافذة إضافة/تعديل حساب: البيانات · البوابات · الميزات والصلاحيات · منطقة الخطر، والحفظ ثابتٌ في أسفلها -->
+<div class="modal" id="acctModal" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="formTitle">
+  <div class="shtop"><h2 id="formTitle">إضافة حساب</h2>
+    <button class="icon-btn" id="acctClose" type="button" title="إغلاق" aria-label="إغلاق"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="sbody">
     <input type="hidden" id="id">
-    <p class="sub" style="margin:0 0 10px">دخول الشخص للأداة، وبداخله بوابات — كل بوابة لها ربطها وهوستها ورابط شرحها.</p>
-    <label for="name">اسم الحساب (الشخص)</label><input id="name" placeholder="مثال: أحمد">
-    <div class="g2">
-      <div><label for="user">اسم الدخول للأداة</label><input id="user" autocomplete="off" placeholder="user1"></div>
-      <div><label for="password">كلمة مرور الدخول</label><input id="password" autocomplete="new-password" placeholder="4 أحرف على الأقل"></div>
+    <div class="eg">
+      <div class="egh"><span class="sic c-blue"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/></svg></span>
+        <h3>البيانات الأساسية<small>دخول الشخص للأداة</small></h3></div>
+      <label for="name">اسم الحساب (الشخص)</label><input id="name" class="rtl" placeholder="مثال: أحمد">
+      <div class="form">
+        <div><label for="user">اسم الدخول للأداة</label><input id="user" autocomplete="off" placeholder="user1"></div>
+        <div><label for="password">كلمة مرور الدخول</label><input id="password" autocomplete="new-password" placeholder="4 أحرف على الأقل"></div>
+      </div>
+      <label for="acc_guide">رابط الشرح لكل البوابات (اختياري)</label><input id="acc_guide" placeholder="https://guide.ssouq.com/">
     </div>
-    <label for="acc_guide">رابط الشرح لكل البوابات (اختياري)</label><input id="acc_guide" placeholder="https://guide.ssouq.com/">
-    <div class="gate">
-      <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_copy_guide" style="width:auto"> نسخ نص الشرح في البحث لهذا العميل</label>
-      <small class="hint">في البحث (زر النسخ في النتائج واليوزر البديل) يُنسخ هذا النص كاملًا بدل السطر. إنشاء اليوزرات يبقى سطرًا كما هو.</small>
-      <div id="acc_guide_box" hidden>
-        <label for="acc_guide_text">نص الشرح — ‏<b>{guide}</b> رابط الشرح · ‏<b>{server}</b> اسم الاشتراك كما في الشرح (سمارت/فالكون/كاسبر، من رابط شرح البوابة) · ‏<b>{host}</b> الهوست · ‏<b>{user}</b> اليوزر · ‏<b>{pass}</b> الباسورد · ‏<b>{stremio}</b> رابط تثبيت المحتوى في Stremio · ‏<b>{stremio_email}</b> ‏<b>{stremio_pass}</b> حساب Stremio الجاهز (بعد إنشائه)</label>
-        <textarea id="acc_guide_text" rows="14"></textarea>
-        <button type="button" class="ghost" id="acc_guide_reset" style="margin-top:8px">استرجاع النص الافتراضي</button>
+
+    <div class="eg">
+      <div class="egh"><span class="sic c-gold"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg></span>
+        <h3>البوابات<small>كل بوابة لها ربطها وهوستها ورابط شرحها</small></h3></div>
+      <div id="gates"></div>
+      <button class="ghost wide" id="addGate" type="button">+ إضافة بوابة</button>
+    </div>
+
+    <div class="eg">
+      <div class="egh"><span class="sic c-green"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <h3>الميزات والصلاحيات<small>مغلقةٌ لغيره فلا يتغيّر عليه شيء</small></h3></div>
+      <div class="feat">
+        <label class="switch"><span><b>نسخ نص الشرح في البحث لهذا العميل</b>
+          <small>في البحث (زر النسخ في النتائج واليوزر البديل) يُنسخ هذا النص كاملًا بدل السطر. إنشاء اليوزرات يبقى سطرًا كما هو.</small></span>
+          <input type="checkbox" class="tog" id="acc_copy_guide"></label>
+        <div class="fbox" id="acc_guide_box" hidden>
+          <label for="acc_guide_text">نص الشرح — ‏<b>{guide}</b> رابط الشرح · ‏<b>{server}</b> اسم الاشتراك كما في الشرح (سمارت/فالكون/كاسبر، من رابط شرح البوابة) · ‏<b>{host}</b> الهوست · ‏<b>{user}</b> اليوزر · ‏<b>{pass}</b> الباسورد · ‏<b>{stremio}</b> رابط تثبيت المحتوى في Stremio · ‏<b>{stremio_email}</b> ‏<b>{stremio_pass}</b> حساب Stremio الجاهز (بعد إنشائه)</label>
+          <textarea id="acc_guide_text" rows="12"></textarea>
+          <button type="button" class="ghost wide" id="acc_guide_reset">استرجاع النص الافتراضي</button>
+        </div>
+      </div>
+      <div class="feat">
+        <label class="switch"><span><b>الاشتراكات المجزّأة لهذا العميل</b>
+          <small>بيع ١٢ شهرًا أو ٦ أشهر أو ٣ أو شهر (أو أي مدةٍ بالأشهر) من خطٍّ بباقة ١٥ شهرًا (مرح · كاسبر · فالكون). عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> تلقائيًا — كلمة المرور كما هي — ويصير الخط في «حسابات متبقية» جاهزًا للبيع بما تبقّى، مع إشعارٍ وتذكيرٍ بالبريد. مغلقةٌ لغيره فلا يتغيّر عليه شيء.</small></span>
+          <input type="checkbox" class="tog" id="acc_split"></label>
+      </div>
+      <div class="feat">
+        <label class="switch"><span><b>Stremio لهذا العميل</b>
+          <small>رابط تثبيت محتوى الاشتراك في Stremio لكل يوزرٍ يُنشأ أو يُبحث عنه، وحساب Stremio جاهز (إيميل وكلمة مرور) وبريده. وتقبل الصفحة العامة <b><bdi>/stremio</bdi></b> سيرفرات بواباته. مغلقٌ لغيره فلا يتغيّر عليه شيء (والروابط التي أُعطيت تبقى تعمل).</small></span>
+          <input type="checkbox" class="tog" id="acc_stremio"></label>
+      </div>
+      <div class="feat">
+        <label class="switch"><span><b>بلاغات المحتوى (موظف الدعم)</b>
+          <small>يرى ما يبلّغ عنه المشتركون من <b>guide.ssouq.com/report</b> — السيرفر والقسم والمسلسل أو الفيلم والحلقة، و«لا يعمل» أو «يقطع» — ويعلّمه «تم الإصلاح» ويراسل صاحبه على واتساب. ولحسابٍ بلا بوابات تُفتح له البلاغات وحدها بعد الدخول.</small></span>
+          <input type="checkbox" class="tog" id="acc_reports"></label>
+        <div class="fbox" id="acc_reports_box" hidden>
+          <label for="acc_reports_wa">رقم واتساب الموظف — يصله كل بلاغ من رقم المسابقة (اختياري، ويغيّره هو من صفحة البلاغات)</label>
+          <input id="acc_reports_wa" type="tel" inputmode="tel" placeholder="05xxxxxxxx" style="direction:ltr;text-align:right">
+          <label>السيرفرات التي يتابعها — يرى بلاغاتها وحدها ويصله تنبيهها وحده (بلا اختيار: كل السيرفرات). وللسيرفر الواحد موظفٌ أو أكثر.</label>
+          <div class="srvpick" id="acc_reports_srv"></div>
+          <label class="switch"><span><b>صفحة البلاغات فقط</b>
+            <small>لا يرى من الأداة شيئًا غير صفحة البلاغات (لا إنشاء ولا تجديد ولا بوابات)، ويدخل إليها مباشرةً.</small></span>
+            <input type="checkbox" class="tog" id="acc_reports_only"></label>
+          <label class="switch"><span><b>مشرف — يضيف فريقه ويديره</b>
+            <small>من صفحة البلاغات يضيف أعضاء فريقه بأسمائهم وكلمات مرورهم وأرقامهم، على سيرفراته وحدها، وكلهم «صفحة البلاغات فقط».</small></span>
+            <input type="checkbox" class="tog" id="acc_reports_lead"></label>
+        </div>
       </div>
     </div>
-    <div class="gate">
-      <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_split" style="width:auto"> الاشتراكات المجزّأة لهذا العميل</label>
-      <small class="hint">بيع ١٢ شهرًا أو ٦ أشهر أو ٣ أو شهر (أو أي مدةٍ بالأشهر) من خطٍّ بباقة ١٥ شهرًا (مرح · كاسبر · فالكون). عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> تلقائيًا — كلمة المرور كما هي — ويصير الخط في «حسابات متبقية» جاهزًا للبيع بما تبقّى، مع إشعارٍ وتذكيرٍ بالبريد. مغلقةٌ لغيره فلا يتغيّر عليه شيء.</small>
+
+    <div class="eg dz" id="accDanger" hidden>
+      <div class="egh"><span class="sic c-rose"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg></span>
+        <h3>منطقة الخطر<small>لا رجعة فيها</small></h3></div>
+      <p class="sub">حذف الحساب يحذف دخوله وبواباته من الأداة.</p>
+      <div class="acts"><button class="danger" id="accDel" type="button">حذف هذا الحساب</button></div>
     </div>
-    <div class="gate">
-      <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_stremio" style="width:auto"> Stremio لهذا العميل</label>
-      <small class="hint">رابط تثبيت محتوى الاشتراك في Stremio لكل يوزرٍ يُنشأ أو يُبحث عنه، وحساب Stremio جاهز (إيميل وكلمة مرور) وبريده. وتقبل الصفحة العامة <b>/stremio</b> سيرفرات بواباته. مغلقٌ لغيره فلا يتغيّر عليه شيء (والروابط التي أُعطيت تبقى تعمل).</small>
-    </div>
-    <div class="gate">
-      <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports" style="width:auto"> بلاغات المحتوى (موظف الدعم)</label>
-      <small class="hint">يرى ما يبلّغ عنه المشتركون من <b>guide.ssouq.com/report</b> — السيرفر والقسم والمسلسل أو الفيلم والحلقة، و«لا يعمل» أو «يقطع» — ويعلّمه «تم الإصلاح» ويراسل صاحبه على واتساب. ولحسابٍ بلا بوابات تُفتح له البلاغات وحدها بعد الدخول.</small>
-      <div id="acc_reports_box" hidden>
-        <label for="acc_reports_wa">رقم واتساب الموظف — يصله كل بلاغ من رقم المسابقة (اختياري، ويغيّره هو من صفحة البلاغات)</label>
-        <input id="acc_reports_wa" type="tel" inputmode="tel" placeholder="05xxxxxxxx" style="direction:ltr;text-align:right">
-        <label>السيرفرات التي يتابعها — يرى بلاغاتها وحدها ويصله تنبيهها وحده (بلا اختيار: كل السيرفرات). وللسيرفر الواحد موظفٌ أو أكثر.</label>
-        <div class="srvpick" id="acc_reports_srv"></div>
-        <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports_only" style="width:auto"> صفحة البلاغات فقط</label>
-        <small class="hint">لا يرى من الأداة شيئًا غير صفحة البلاغات (لا إنشاء ولا تجديد ولا بوابات)، ويدخل إليها مباشرةً.</small>
-        <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports_lead" style="width:auto"> مشرف — يضيف فريقه ويديره</label>
-        <small class="hint">من صفحة البلاغات يضيف أعضاء فريقه بأسمائهم وكلمات مرورهم وأرقامهم، على سيرفراته وحدها، وكلهم «صفحة البلاغات فقط».</small>
-      </div>
-    </div>
-    <label style="margin-top:16px;font-weight:700;color:var(--ink)">البوابات</label>
-    <div id="gates"></div>
-    <button class="ghost" id="addGate" style="width:100%;margin-top:8px">+ إضافة بوابة</button>
-    <button class="go" id="save">حفظ الحساب</button>
-    <button class="ghost" id="cancel" style="width:100%;margin-top:8px">إلغاء</button>
+  </div>
+  <div class="sfoot">
     <div class="msg" id="msg"></div>
-  </section>
+    <div class="acts"><button class="go" id="save" type="button">حفظ الحساب</button><button class="ghost" id="cancel" type="button">إلغاء</button></div>
+  </div>
 </div></div>
 
 <!-- شريط التنقّل السفلي -->
 <nav class="bnav">
   <button data-nav="home"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5"/></svg>الرئيسية</button>
   <button data-nav="accounts"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8"/></svg>الحسابات</button>
-  <a id="navContest"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>المسابقة</a>
+  <a id="navContest" data-to="/contest"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>المسابقة</a>
   <button data-nav="salla"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg>ربط سلة</button>
   <button data-nav="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>الإعدادات</button>
 </nav>
-<button class="fab" id="fabAdd" title="إضافة حساب" hidden>+</button>
+<button class="fab" id="fabAdd" title="إضافة حساب" aria-label="إضافة حساب" hidden><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
 <script>
 // الأداة تُقدَّم من الجذر على نطاقها (admin.ssouq.com) وتحت /admin على الموقع العام،
 // فتُبنى كل عناوينها على B بدل تثبيت "/admin" في كل نداء.
 const B = location.pathname.startsWith("/admin") ? "/admin" : "";
-document.getElementById("lnkRenew").href = B + "/renew";
 const HOME = B || "/";
 const $ = id => document.getElementById(id);
 const chk = d => { if (d && d.login) location.href = B + "/login"; return d; };
@@ -476,20 +605,15 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 let accounts = [];
 let reportServers = [];                 // السيرفرات لاختيار سيرفرات موظف البلاغات
 let defaultGuideText = "";              // نص الشرح الافتراضي (من الخادم) — يُعبّأ به المربع
-$("lnkHome").href = HOME; $("lnkOut").href = B + "/logout";
-$("lnkRemain").href = B + "/remaining"; $("bellAdm").href = B + "/remaining#notes";
-$("lnkContest").href = B + "/contest"; $("qContest").onclick = () => { location.href = B + "/contest"; };
-$("lkCreate").href = HOME; $("lkRenew").href = B + "/renew"; $("lkRemain").href = B + "/remaining";
-$("lkContest").href = $("navContest").href = B + "/contest"; $("lkContent").href = $("lnkContent").href = B + "/content"; $("kpiPrize").href = B + "/contest";
-$("qLinks").onclick = () => $("links").scrollIntoView({behavior: "smooth", block: "start"});
-$("kpiVisits").href = $("lkStats").href = $("lnkStats").href = B + "/stats";
-$("lkReports").href = $("qReports").href = B + "/reports";
-// بلاغات المحتوى المفتوحة على رابطها، وعلى اختصارها في أعلى الرئيسية
+// روابط صفحات الأداة من data-to: "/" صفحة الإنشاء، وما سواه تحت B
+document.querySelectorAll("[data-to]").forEach(a => { a.href = a.dataset.to === "/" ? HOME : B + a.dataset.to; });
+// بلاغات المحتوى المفتوحة: عددها على رابطها في القائمة، وتنبيهٌ في أعلى الرئيسية ما دام فيها مفتوح
 fetch(B + "/api/reports?state=open").then(r => r.json()).then(d => {
   if (!d || !d.counts) return;
   const n = d.counts.open;
   $("lkReportsN").textContent = n ? n.toLocaleString("en-US") + " مفتوحة — فيديو لا يعمل أو يقطع" : "لا بلاغات مفتوحة ✓";
   $("qReportsN").textContent = n ? n.toLocaleString("en-US") + " مفتوحة الآن" : "لا بلاغات مفتوحة ✓";
+  $("qReports").hidden = !n;
 }).catch(() => {});
 // زوار الدليل: اليوم ومن في الموقع الآن — من عدّاد الدليل نفسه (analytics.py)
 async function visitStats(){
@@ -521,23 +645,40 @@ async function bellAdm(){
 }
 bellAdm(); setInterval(bellAdm, 60000);
 
-// تبديل السمة (يُحفَظ) — نفس مبدأ صفحة اليوزر
+// تبديل السمة (يُحفَظ) — بلا سمةٍ محفوظة تتبع الصفحة سمة الجهاز؛ والزرّ يقلب ما يُرى الآن
 $("themeBtn").onclick = () => {
-  const light = document.documentElement.getAttribute("data-theme") === "light";
-  document.documentElement.setAttribute("data-theme", light ? "dark" : "light");
-  try { localStorage.setItem("xm_theme", light ? "dark" : "light"); } catch {}
+  const d = document.documentElement, cur = d.getAttribute("data-theme");
+  const light = cur ? cur === "light" : matchMedia("(prefers-color-scheme: light)").matches;
+  const t = light ? "dark" : "light";
+  d.setAttribute("data-theme", t);
+  try { localStorage.setItem("xm_theme", t); } catch (e) {}
 };
+// قائمة «⋯»: تُغلق بالضغط خارجها أو على أحد بنودها
+document.addEventListener("click", e => {
+  document.querySelectorAll("details.more[open]").forEach(m => { if (!m.contains(e.target) || e.target.closest(".menu button")) m.open = false; });
+});
 const AVC = ["#22c493,#0f7a58", "#3b82f6,#1d4ed8", "#8b5cf6,#6d28d9", "#f5b342,#b7791f", "#f472b6,#be185d", "#14b8a6,#0f766e"];
+// الحرف الأول من الاسم في دائرة بلون ترتيب الحساب — نفسه في «آخر الحسابات» وفي القائمة
+const avatar = a => `<span class="av" style="background:linear-gradient(135deg,${AVC[Math.max(0, accounts.indexOf(a)) % AVC.length]})">${esc((String(a.name || "?").trim()[0] || "?").toUpperCase())}</span>`;
+// ميزات الحساب شاراتٍ تحت سطر الدخول — في «آخر الحسابات» وفي القائمة
+const srvNames = keys => (keys && keys.length) ? keys.map(k => (reportServers.find(x => x.key === k) || {name: k}).name).join("، ") : "كل السيرفرات";   // سيرفرات موظف البلاغات بأسمائها — والفارغة كلها
+function tagsOf(a){
+  const t = [a.copy_guide && "نسخ نص الشرح", a.split && "اشتراكات مجزّأة", a.stremio && "Stremio",
+    a.reports && `${a.reports_lead ? "مشرف " : ""}بلاغات المحتوى${a.reports_only ? " فقط" : ""}: ${srvNames(a.reports_servers)}`,
+    a.lead_id && `فريق ${(accounts.find(x => x.id === a.lead_id) || {}).name || ""}`].filter(Boolean);
+  return t.length ? `<span class="tags">${t.map(x => `<span class="tag">${esc(x)}</span>`).join("")}</span>` : "";
+}
 function updateStats(){
+  const gates = accounts.reduce((n, a) => n + ((a.gates || []).length), 0);
   $("statAcc").textContent = accounts.length;
-  $("statGates").textContent = accounts.reduce((n, a) => n + ((a.gates || []).length), 0);
-  // آخر الحسابات: أحدث ثلاثة، بحرف الاسم الأول في دائرة، والضغط يفتحه في تبويب الحسابات
+  $("statGates").textContent = gates;
+  $("accCount").textContent = accounts.length + " حساب · " + gates + " بوابة";
+  // آخر الحسابات: أحدث ثلاثة، والضغط يفتحه في تبويب الحسابات
   const last = accounts.slice(-3).reverse();
-  $("recent").innerHTML = last.length ? last.map((a, i) => `<button class="ra" data-open="${esc(a.id)}">
-      <span class="av" style="background:linear-gradient(135deg,${AVC[(accounts.length - 1 - i) % AVC.length]})">${esc((String(a.name || "?").trim()[0] || "?").toUpperCase())}</span>
-      <span class="ri"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates || []).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}</small></span>
+  $("recent").innerHTML = last.length ? last.map(a => `<button class="ra" data-open="${esc(a.id)}">${avatar(a)}
+      <span class="ri"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates || []).length} بوابة</small>${tagsOf(a)}</span>
       <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>`).join("")
-    : '<div class="empty">لا حسابات بعد — «حساب جديد» من الاختصارات.</div>';
+    : '<div class="empty">لا حسابات بعد — أضف أولها من «حساب جديد».</div>';
 }
 $("recent").onclick = e => {
   const b = e.target.closest("[data-open]"); if (!b) return;
@@ -560,8 +701,6 @@ const gateBadge = m => m === "falcon" ? '<span class="gbadge falcon">فالكو�
   : m === "api" ? '<span class="gbadge api">API</span>' : '<span class="gbadge web">ويب</span>';
 const hostFmt = h => String(h || "").replace(/^https?:\/\//, "") || "—";
 const GLINK = '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>';
-// سيرفرات موظف البلاغات بأسمائها — والفارغة كلها
-const srvNames = keys => (keys && keys.length) ? keys.map(k => (reportServers.find(x => x.key === k) || {name: k}).name).join("، ") : "كل السيرفرات";
 function render(){
   const q = ($("acctSearch") ? $("acctSearch").value : "").trim().toLowerCase();
   const list = accounts.filter(a => !q ||
@@ -569,33 +708,39 @@ function render(){
   $("list").innerHTML = list.length ? list.map(a => {
     const gates = (a.gates || []).map(g => `
       <div class="gate-row">${gateBadge(g.mode)}
-        <div class="gr-i"><b>${esc(g.name)}</b><small>${esc(hostFmt(g.host))}</small></div>
+        <div class="gr-i"><b>${esc(g.name)}</b><small><bdi>${esc(hostFmt(g.host))}</bdi></small></div>
         ${g.guide_url ? `<a class="gr-guide" href="${esc(g.guide_url)}" target="_blank" rel="noopener" title="رابط الشرح">${GLINK}</a>` : ""}
       </div>`).join("");
     return `<div class="acct" data-acc="${a.id}">
-      <div class="ahead" data-toggle="${a.id}">
-        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.stremio ? ' · <span class="tag">Stremio</span>' : ""}${a.reports ? ` · <span class="tag">${a.reports_lead ? "مشرف " : ""}بلاغات المحتوى${a.reports_only ? " فقط" : ""}: ${esc(srvNames(a.reports_servers))}</span>` : ""}${a.lead_id ? ` · <span class="tag">فريق ${esc((accounts.find(x => x.id === a.lead_id) || {}).name || "")}</span>` : ""}</small></div>
+      <div class="ahead" data-toggle="${a.id}" role="button" tabindex="0" aria-expanded="false">${avatar(a)}
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة</small>${tagsOf(a)}</div>
         <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="adet">
         ${gates || '<div class="empty">لا بوابات</div>'}
-        <div class="b"><button class="ghost" data-edit="${a.id}">تعديل</button><button class="danger" data-del="${a.id}">حذف</button></div>
+        <div class="acts"><button class="ghost" data-edit="${a.id}">تعديل</button><button class="danger" data-del="${a.id}">حذف</button></div>
       </div></div>`;
   }).join("") : `<div class="empty">${q ? "لا حسابات مطابقة." : "لا توجد حسابات بعد — اضغط زر (+) لإضافة حساب."}</div>`;
   updateStats();
 }
 
-// ---- بوابة واحدة في النموذج ----
+// ---- بوابة واحدة في النموذج: سطرٌ مطويٌّ باسمها وهوستها (والجديدة مفتوحة) ----
 function gateRow(g){
+  const isNew = !g;
   g = g || {mode:"web"};
-  const el = document.createElement("div");
+  const el = document.createElement("details");
   el.className = "gate";
+  el.open = isNew;
   el.innerHTML = `
-    <div class="gh"><b>بوابة</b><button type="button" class="rm">حذف البوابة</button></div>
+    <summary><span data-badge>${gateBadge(g.mode)}</span><span class="gs"><b data-sum-name></b><small><bdi data-sum-host></bdi></small></span></summary>
+    <div class="gbody">
     <input type="hidden" data-f="id" value="${esc(g.id||"")}">
-    <button type="button" class="ghost preset-kasper" style="width:100%;margin-bottom:8px">تعبئة بوابة كاسبر (all-iptvs.com:2082 · جلسة ويب · 10 أرقام)</button>
-    <button type="button" class="ghost preset-c4k" style="width:100%;margin-bottom:8px">تعبئة بوابة كاسبر Casper (الدومين الحالي: https://boss4k.vip/iptv · بلا كود تحقّق · 10 أرقام)</button>
-    <label>اسم البوابة</label><input data-f="name" value="${esc(g.name||"")}" placeholder="بوابة مرح">
+    <details class="box fold"><summary>تعبئة سريعة من قالب<small>— كاسبر</small></summary>
+      <div class="din presets">
+        <button type="button" class="ghost preset-kasper">تعبئة بوابة كاسبر (all-iptvs.com:2082 · جلسة ويب · 10 أرقام)</button>
+        <button type="button" class="ghost preset-c4k">تعبئة بوابة كاسبر Casper (الدومين الحالي: https://boss4k.vip/iptv · بلا كود تحقّق · 10 أرقام)</button>
+      </div></details>
+    <label>اسم البوابة</label><input data-f="name" class="rtl" value="${esc(g.name||"")}" placeholder="بوابة مرح">
     <label>طريقة الربط</label>
     <select data-f="mode">
       <option value="web"${(g.mode==="web"||!g.mode)?" selected":""}>Xtream — جلسة ويب (دخول + كود تحقّق)</option>
@@ -608,8 +753,9 @@ function gateRow(g){
         <option value="xtream"${(g.web_flavor!=="casper")?" selected":""}>Xtream — بحث الجدول (مرح/all-iptvs)</option>
         <option value="casper"${(g.web_flavor==="casper")?" selected":""}>كاسبر / c4kpanel — index.php/users (بلا كود تحقّق)</option>
       </select>
-      <label>رابط اللوحة <small style="color:var(--mute)">— كاسبر تُغيّر دومينها؛ يمكن كتابة عدّة دومينات (بفاصلة) فيُجرَّب الناجح</small></label><input data-f="panel_base" value="${esc(g.panel_base||"")}" placeholder="https://boss4k.vip/iptv , https://c4kpanel.com/iptv">
-      <div class="g2">
+      <label>رابط اللوحة</label><input data-f="panel_base" value="${esc(g.panel_base||"")}" placeholder="https://boss4k.vip/iptv , https://c4kpanel.com/iptv">
+      <small class="hint">كاسبر تُغيّر دومينها؛ يمكن كتابة عدّة دومينات (بفاصلة) فيُجرَّب الناجح</small>
+      <div class="form">
         <div><label>اسم الدخول للوحة</label><input data-f="panel_user" value="${esc(g.panel_user||"")}" autocomplete="off"></div>
         <div><label>كلمة مرور اللوحة</label><input data-f="panel_pass" value="" placeholder="${g.has_panel_pass?'محفوظة — اتركه فارغًا للإبقاء':''}" autocomplete="new-password"></div>
       </div>
@@ -619,30 +765,46 @@ function gateRow(g){
       <label>مفتاح API</label><input data-f="api_key" value="" placeholder="${g.has_api_key?'محفوظ — اتركه فارغًا للإبقاء':''}" autocomplete="off">
     </div>
     <label>الهوست (يظهر في السطر)</label><input data-f="host" value="${esc(g.host||"")}" placeholder="http://ssouqhost.vip">
-    <label>طول اليوزر والباسورد (أرقام، 6–20) — فارغ = 12</label><input data-f="digits" value="${esc(g.digits||"")}" inputmode="numeric" placeholder="12">
     <label>رابط الشرح (Guide) — اتركه فارغاً لإخفائه</label><input data-f="guide_url" value="${esc(g.guide_url||"")}" placeholder="https://guide.ssouq.com/">
-    <label>سعر النقطة عند هذا المزوّد (ريال) — منه تُحسب تكلفة التجديد</label><input data-f="point_cost" value="${esc(g.point_cost??"")}" inputmode="decimal" placeholder="2">`;
+    <details class="box fold" data-more${(g.digits || (g.point_cost ?? "") !== "") ? " open" : ""}><summary>طول اليوزر وسعر النقطة<small>— متقدّم</small></summary>
+      <div class="din">
+        <label>طول اليوزر والباسورد (أرقام، 6–20) — فارغ = 12</label><input data-f="digits" value="${esc(g.digits||"")}" inputmode="numeric" placeholder="12">
+        <label>سعر النقطة عند هذا المزوّد (ريال) — منه تُحسب تكلفة التجديد</label><input data-f="point_cost" value="${esc(g.point_cost??"")}" inputmode="decimal" placeholder="2">
+      </div></details>
+    <div class="acts"><button type="button" class="danger rm">حذف البوابة</button></div>
+    </div>`;
   const sel = el.querySelector('[data-f="mode"]');
+  const f = n => el.querySelector(`[data-f="${n}"]`);
+  // سطر البوابة المطويّ يتبع اسمها وهوستها وطريقة ربطها
+  const sum = () => {
+    el.querySelector("[data-sum-name]").textContent = f("name").value.trim() || "بوابة جديدة";
+    el.querySelector("[data-sum-host]").textContent = hostFmt(f("host").value.trim());
+    el.querySelector("[data-badge]").innerHTML = gateBadge(sel.value);
+  };
   const applyGateMode = () => {
     const web = sel.value === "web";
     el.querySelector("[data-web]").hidden = !web;
     el.querySelector("[data-api]").hidden = web;
+    sum();
   };
   sel.addEventListener("change", applyGateMode); applyGateMode();
+  f("name").addEventListener("input", sum); f("host").addEventListener("input", sum);
   el.querySelector(".rm").onclick = () => el.remove();
   // قالب كاسبر: لوحة Xtream-Masters على all-iptvs.com:2082 بجلسة ويب (كمرح)، ويوزر/باسورد من ١٠ أرقام.
   el.querySelector(".preset-kasper").onclick = () => {
-    const set = (f, v) => { el.querySelector(`[data-f="${f}"]`).value = v; };
+    const set = (k, v) => { f(k).value = v; };
     set("name", "بوابة كاسبر"); set("mode", "web"); set("web_flavor", "xtream");
     set("panel_base", "http://all-iptvs.com:2082"); set("digits", "10");
-    applyGateMode(); el.querySelector('[data-f="panel_user"]').focus();
+    el.querySelector("[data-more]").open = true;
+    applyGateMode(); f("panel_user").focus();
   };
   // قالب c4kpanel: لوحة كاسبر PHP بلا كود تحقّق، قائمة يوزرات بترقيم index.php/users.
   el.querySelector(".preset-c4k").onclick = () => {
-    const set = (f, v) => { el.querySelector(`[data-f="${f}"]`).value = v; };
+    const set = (k, v) => { f(k).value = v; };
     set("name", "بوابة كاسبر"); set("mode", "web"); set("web_flavor", "casper");
     set("panel_base", "https://boss4k.vip/iptv"); set("digits", "10");
-    applyGateMode(); el.querySelector('[data-f="panel_user"]').focus();
+    el.querySelector("[data-more]").open = true;
+    applyGateMode(); f("panel_user").focus();
   };
   return el;
 }
@@ -676,8 +838,10 @@ function fill(a){
   $("gates").innerHTML = "";
   const gates = (a && a.gates && a.gates.length) ? a.gates : [null];
   gates.forEach(g => $("gates").appendChild(gateRow(g)));
+  // العنوان وحده (زرّ الإغلاق بجانبه لا داخله، فلا يمحوه تغيير العنوان)
   $("formTitle").textContent = a ? "تعديل: " + a.name : "إضافة حساب";
   $("cancel").hidden = !a;
+  $("accDanger").hidden = !a;
 }
 $("addGate").onclick = () => $("gates").appendChild(gateRow(null));
 // نسخ نص الشرح: المربع يظهر مع الخيار، وفارغُه يُعبّأ بالنص الافتراضي.
@@ -691,12 +855,13 @@ $("acc_reports").addEventListener("change", () => { $("acc_reports_box").hidden 
 $("acc_guide_reset").onclick = () => { $("acc_guide_text").value = defaultGuideText; };
 
 // ---- نافذة إضافة/تعديل الحساب ----
-function openModal(a){ fill(a); say($("msg"), "", true); $("acctModal").hidden = false; document.body.style.overflow = "hidden"; }
+function openModal(a){ fill(a); say($("msg"), "", true); $("acctModal").hidden = false; document.body.style.overflow = "hidden"; $("acctModal").querySelector(".sbody").scrollTop = 0; }
 function closeModal(){ $("acctModal").hidden = true; document.body.style.overflow = ""; }
 $("fabAdd").onclick = () => openModal(null);
 $("qAdd").onclick = () => openModal(null);
 $("acctClose").onclick = closeModal;
 $("acctModal").onclick = e => { if (e.target === $("acctModal")) closeModal(); };
+addEventListener("keydown", e => { if (e.key === "Escape" && !$("acctModal").hidden) closeModal(); });
 
 $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
@@ -709,18 +874,23 @@ $("save").onclick = async () => {
   catch(e) { say($("msg"), e.message); }
 };
 $("cancel").onclick = closeModal;
+// حذف حساب: من قائمته أو من «منطقة الخطر» في نافذته
+async function delAccount(a){
+  if (!a || !confirm(`حذف الحساب "${a.name}"؟`)) return false;
+  try { const d = await post(B + "/api/accounts/delete", {id: a.id}); accounts = d.accounts; render(); return true; } catch(err) { alert(err.message); return false; }
+}
+$("accDel").onclick = async () => { if (await delAccount(accounts.find(x => x.id === $("id").value))) closeModal(); };
 $("acctSearch").addEventListener("input", render);
 $("list").onclick = async e => {
   const b = e.target.closest("button");
   if (b && b.dataset.edit) { openModal(accounts.find(a => a.id === b.dataset.edit)); return; }
-  if (b && b.dataset.del) {
-    const a = accounts.find(x => x.id === b.dataset.del);
-    if (!confirm(`حذف الحساب "${a.name}"؟`)) return;
-    try { const d = await post(B + "/api/accounts/delete", {id: a.id}); accounts = d.accounts; render(); } catch(err) { alert(err.message); }
-    return;
-  }
+  if (b && b.dataset.del) { delAccount(accounts.find(x => x.id === b.dataset.del)); return; }
   const t = e.target.closest("[data-toggle]");
-  if (t) t.closest(".acct").classList.toggle("open");
+  if (t) t.setAttribute("aria-expanded", t.closest(".acct").classList.toggle("open"));
+};
+$("list").onkeydown = e => {
+  const t = e.target.closest("[data-toggle]");
+  if (t && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); t.click(); }
 };
 
 // ---- التنقّل بين التبويبات ----
@@ -748,8 +918,8 @@ $("file").onchange = async () => {
   try {
     const d = JSON.parse(await f.text());
     if (!confirm("الاستيراد يستبدل كل الحسابات الحالية. متابعة؟")) return;
-    const r = await post(B + "/api/accounts/import", {accounts: d.accounts || d}); accounts = r.accounts; render(); say($("msg"), "تم الاستيراد", true);
-  } catch(e) { say($("msg"), e.message); }
+    const r = await post(B + "/api/accounts/import", {accounts: d.accounts || d}); accounts = r.accounts; render(); say($("listMsg"), "تم الاستيراد", true);
+  } catch(e) { say($("listMsg"), e.message); }
   $("file").value = "";
 };
 $("apwBtn").onclick = async () => {
@@ -760,14 +930,14 @@ $("apwBtn").onclick = async () => {
 function applyWaType(){ const t=$("svcWaType").value; $("svcWaCloud").hidden=t!=="cloud"; $("svcWaHttp").hidden=t!=="http"; }
 function svcMapRow(m){
   m = m || {};
-  const el=document.createElement("div"); el.className="gate";
+  const el=document.createElement("div"); el.className="maprow";
   const accOpts=accounts.map(a=>`<option value="${esc(a.id)}"${a.id===m.account_id?" selected":""}>${esc(a.name)}</option>`).join("");
-  el.innerHTML=`<div class="gh"><b>ربط منتج</b><button type="button" class="rm">حذف</button></div>
-    <label>معرّف المنتج في سلة (Product ID)</label><input data-f="product_id" value="${esc(m.product_id||"")}" placeholder="1234567890">
-    <div class="g2"><div><label>الحساب</label><select data-f="account_id"><option value="">—</option>${accOpts}</select></div>
-      <div><label>البوابة</label><select data-f="gate_id"></select></div></div>
-    <div class="g2"><div><label>معرّف الباقة (Package ID)</label><input data-f="package_id" value="${esc(m.package_id||"")}"></div>
-      <div><label>اسم الباقة</label><input data-f="package_name" value="${esc(m.package_name||"")}" style="direction:rtl;text-align:right"></div></div>`;
+  el.innerHTML=`<div class="rowh"><b>ربط منتج</b><button type="button" class="danger sm rm">حذف</button></div>
+    <label style="margin-top:4px">معرّف المنتج في سلة (Product ID)</label><input data-f="product_id" value="${esc(m.product_id||"")}" placeholder="1234567890">
+    <div class="form"><div><label>الحساب</label><select data-f="account_id"><option value="">—</option>${accOpts}</select></div>
+      <div><label>البوابة</label><select data-f="gate_id"></select></div>
+      <div><label>معرّف الباقة (Package ID)</label><input data-f="package_id" value="${esc(m.package_id||"")}"></div>
+      <div><label>اسم الباقة</label><input data-f="package_name" class="rtl" value="${esc(m.package_name||"")}"></div></div>`;
   const accSel=el.querySelector('[data-f="account_id"]'), gateSel=el.querySelector('[data-f="gate_id"]');
   const fillGates=()=>{ const a=accounts.find(x=>x.id===accSel.value); const gs=(a&&a.gates)||[];
     gateSel.innerHTML='<option value="">—</option>'+gs.map(g=>`<option value="${esc(g.id)}"${g.id===m.gate_id?" selected":""}>${esc(g.name)} (${g.mode})</option>`).join(""); };
@@ -790,6 +960,8 @@ async function loadService(){
     $("svcEnabled").checked=!!d.enabled; $("svcDry").checked=!!d.dry_run; $("svcPoll").checked=!!d.poll;
     $("statSvc").textContent = d.enabled ? (d.dry_run ? "تجريبي" : "نشطة") : "متوقفة";
     $("statSvcCard").classList.toggle("on", !!d.enabled && !d.dry_run);
+    $("svcChip").textContent = $("statSvc").textContent;                     // حال الخدمة المحفوظة على رأس بطاقتها
+    $("svcChip").className = "chip" + (d.enabled ? (d.dry_run ? " busy" : " on") : "");
     $("svcTpl").value=d.template||"";
     $("svcSecret").value=""; $("svcSecret").placeholder=d.has_salla_secret?"محفوظ — اتركه فارغًا للإبقاء":"";
     $("svcToken").value=""; $("svcToken").placeholder=d.has_salla_token?"محفوظ — اتركه فارغًا للإبقاء":"";
@@ -810,8 +982,8 @@ async function loadLog(){
     const S={sent:"✅ أُرسل",dry:"🧪 تجريبي",partial:"⚠ جزئي",failed:"❌ فشل",no_match:"— لا ربط",no_phone:"— بلا رقم",unpaid:"— غير مدفوع",disabled:"متوقّف"};
     $("svcLog").innerHTML = rows.length ? rows.slice(0,30).map(r=>{
       const lines=(r.lines||[]).map(l=> l.error?("⚠ "+esc(l.error)):esc(l.line||"")).join("<br>");
-      return `<div class="acct"><div class="i"><b>#${esc(r.reference||r.order_id)} — ${esc(S[r.status]||r.status)}</b>
-        <code>${esc(r.at||"")} · ${esc(r.phone||"")} · ${esc(r.name||"")}</code>${lines?`<code class="g">${lines}</code>`:""}</div></div>`;
+      return `<div class="logrow"><b>#${esc(r.reference||r.order_id)} — ${esc(S[r.status]||r.status)}</b>
+        <code>${esc(r.at||"")} · ${esc(r.phone||"")} · ${esc(r.name||"")}</code>${lines?`<code class="g">${lines}</code>`:""}</div>`;
     }).join("") : '<div class="empty">لا عمليات بعد.</div>';
   } catch(e){ $("svcLog").innerHTML='<div class="empty">تعذّر تحميل السجل</div>'; }
 }
@@ -829,7 +1001,6 @@ $("svcWaCheck").onclick=async()=>{ $("svcWaStatus").className="msg"; $("svcWaSta
   }catch(e){ say($("svcWaStatus"), e.message); } };
 
 // ---- ربط سلة بضغطة واحدة (جلسة اللوحة عبر الإضافة / cURL) ----
-$("svcDlExt").href = B + "/api/renew/extension.zip";
 async function loadSallaStatus(){
   const el = $("svcSallaStatus");
   el.className = "msg"; el.textContent = "جارِ التحقّق…";

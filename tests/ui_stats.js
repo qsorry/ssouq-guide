@@ -7,7 +7,10 @@
 //  - connecting: GA4 pasted as the full gtag snippet (lands in the guide's pages), the service-account JSON (an RSA key
 //    made by Node here, parsed by our pure-Python reader) → «اختبر الربط» → pick the property and site → GA4 and Search
 //    Console with quick wins and sitemaps → «أرسل خريطتي الموقع»; IndexNow «أرسل الآن»; the campaign-link builder;
-//  - the admin dashboard's 4th card counts today's visitors; nothing overflows a 360px screen; no script error.
+//  - the setup sections are folded, and those needing attention (GA4 missing, Google not connected, IndexNow never sent)
+//    open by themselves; Google Analytics' lists are tabs;
+//  - the admin dashboard's 4th card counts today's visitors; nothing overflows a 390px or 360px screen, and the controls
+//    are ≥ 40px tall on a phone; no script error.
 // No internet: Google and IndexNow are tests/mock_google.py.
 //   NODE_PATH=<dir with playwright-core> node tests/ui_stats.js     (SHOTS_DIR=… for screenshots)
 const { chromium } = require('playwright-core');
@@ -140,6 +143,12 @@ const evc = (r, n) => ((r.events || []).find(e => e.n === n) || {c: 0}).c;
     check('الأرشفة: زحف جوجل', (await ap.textContent('#lBots')).includes('Google'));
     if (SHOTS) await ap.screenshot({path: path.join(SHOTS, 'stats-top.png')});
 
+    // ---------- الإعداد: مطويّ، ويُفتح وحده ما يحتاج انتباهًا ----------
+    await ap.waitForFunction(() => document.querySelector('#gConn').open && document.querySelector('#connSec').open);
+    const folds = await ap.evaluate(() => Object.fromEntries(['connSec', 'gConn', 'ixSec', 'growSec', 'utmSec'].map(id => [id, document.getElementById(id).open])));
+    check('الإعداد الناقص مفتوحٌ وحده (GA4 وربط جوجل وIndexNow)، والباقي مطويّ',
+          folds.connSec && folds.gConn && folds.ixSec && !folds.growSec && !folds.utmSec, JSON.stringify(folds));
+
     // ---------- الربط ----------
     await ap.fill('#t_ga', GA_SNIP);
     await ap.click('#tagSave');
@@ -166,6 +175,9 @@ const evc = (r, n) => ((r.events || []).find(e => e.n === n) || {c: 0}).c;
     await ap.waitForFunction(() => document.querySelector('#gaChip').textContent === 'مربوط' && document.querySelector('#gscChip').textContent === 'مربوط', null, {timeout: 15000});
     const ga = await ap.textContent('#gaBody');
     check('Google Analytics: المستخدمون والقنوات والدول و«الآن»', ga.includes('728') && ga.includes('بحث مجاني') && ga.includes('السعودية') && ga.includes('آخر 30 دقيقة'), ga.slice(0, 160));
+    await ap.click('#gaBody .seg[data-pane="ga"] [data-k="cc"]');
+    check('وقوائمه تبويبات: «الدول» تظهر وحدها', await ap.isVisible('#gaBody .pane[data-k="cc"]') && await ap.isHidden('#gaBody .pane[data-k="ch"]')
+          && (await ap.textContent('#gaBody .pane[data-k="cc"]')).includes('السعودية'));
     const gsc = await ap.textContent('#gscBody');
     check('Search Console: البحث وفرصٌ سريعة', gsc.includes('اشتراك iptv') && gsc.includes('فرصٌ سريعة') && gsc.includes('ترتيب دوري روشن'), gsc.slice(0, 160));
     await ap.click('#smSend');
@@ -176,6 +188,7 @@ const evc = (r, n) => ((r.events || []).find(e => e.n === n) || {c: 0}).c;
     await ap.waitForFunction(() => !document.querySelector('#ixSend').disabled && document.querySelector('#ixMsg').textContent.includes('يدوي'), null, {timeout: 15000});
     check('IndexNow: «أرسل كل الصفحات الآن»', (await ap.textContent('#ixMsg')).includes('استُلمت')
           && (await ap.textContent('#ixChip')) === 'آخر إرسال ناجح', await ap.textContent('#ixMsg'));
+    await ap.click('#utmSec > summary');                  // أداةٌ لا إعداد: مطويّةٌ حتى تُفتح
     await ap.selectOption('#uSrc', 'snapchat');
     await ap.fill('#uCamp', 'Eid Sale');
     await ap.selectOption('#uPaid', 'paid');
@@ -183,8 +196,20 @@ const evc = (r, n) => ((r.events || []).find(e => e.n === n) || {c: 0}).c;
     check('رابط الحملة', utm.includes('utm_source=snapchat') && utm.includes('utm_medium=paid_social') && utm.includes('utm_campaign=eid-sale'), utm);
     const done = await ap.$$eval('#checks .ic.ok', els => els.length);
     check('خطوات زيادة الزوار بحالها', done >= 4, done);
+    await ap.click('#connSec > summary');                 // يطويه المدير بيده، فلا يُفتح وحده بعدها
+    await ap.click('#growSec > summary');
+    await ap.click('#checks a[href="#t_snap"]');
+    await ap.waitForFunction(() => document.activeElement && document.activeElement.id === 't_snap');
+    check('«ابدأ» يفتح القسم المطويّ ويضع المؤشر في خانته', await ap.evaluate(() => document.querySelector('#connSec').open));
     if (SHOTS) await ap.locator('#gscSec').screenshot({path: path.join(SHOTS, 'stats-gsc.png')});
 
+    await ap.setViewportSize({width: 390, height: 844});
+    await sleep(300);
+    check('بلا تمرير أفقي على 390px', await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const small = await ap.evaluate(() => [...document.querySelectorAll('#main :is(button, a.rw, a.go, a.ghost, .jump a, summary), .top .icon-btn, .bnav a')]
+      .filter(e => e.offsetParent !== null && !e.closest('.menu')).map(e => [e, e.getBoundingClientRect().height]).filter(([, h]) => h < 40)
+      .map(([e, h]) => (e.id || e.className || e.tagName) + ':' + Math.round(h)));
+    check('على الجوال: الأزرار والتبويبات وسطور القوائم ≥ 40px', small.length === 0, small.join(' '));
     await ap.setViewportSize({width: 360, height: 780});
     await sleep(300);
     check('بلا تمرير أفقي على 360px', await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
