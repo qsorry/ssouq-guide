@@ -58,6 +58,7 @@ import analytics
 import google_api
 import stremio_addon
 import stremio_accounts
+import stremio_categories
 import stremio_extras
 import mail_inbox
 
@@ -918,8 +919,66 @@ def stremio_lines(cfg):
     for r in stremio_accounts.group(DATA_DIR, hk, cfg.user):
         c = stremio_addon.read_token(DATA_DIR, r["token"]) if r.get("token") else None
         if c:
-            out.append(stremio_line(c, r))
-    return out or [stremio_line(cfg, rec)]
+            ln = stremio_line(c, r)
+            if r.get("linked_to") and _ver(r.get("addon_v")) >= STREMIO_OWN_STREAMS:
+                ln["own"] = True                # إضافته تعرض مصادره (زرٌّ باسمه فوق قائمة التشغيل)، فلا تتكرّر عند صاحبه
+            out.append(ln)
+    out = out or [stremio_line(cfg, rec)]
+    out[0]["cats"] = stremio_categories.get(DATA_DIR, rec.get("acct"))   # تصنيفات سمارت سوق لحساب الأداة
+    return out
+
+
+STREMIO_OWN_STREAMS = (1, 5, 0)                 # من هذه النسخة تعرض إضافة الخط المرتبط مصادره في أعمال المكتبة الموحدة
+
+
+def _ver(v):
+    try:
+        return tuple(int(x) for x in str(v or "").split("."))
+    except ValueError:
+        return ()
+
+
+def stremio_categories_data(acct, cats=None):
+    """صفحة «التصنيفات»: تصنيفات سمارت سوق للعميل، ومعاينتها على حساب Stremio من حساباته قوائمُه في الذاكرة — كم في كل
+    تصنيف، وكم في «أخرى»، وأقسام اللوحات التي لم تدخل تصنيفًا (لتُضاف كلماتها). ‏cats: معاينةٌ قبل الحفظ."""
+    saved = stremio_categories.get(DATA_DIR, acct["id"])
+    cats = saved if cats is None else cats
+    out = {"cats": cats, "edited": stremio_categories.edited(DATA_DIR, acct["id"]), "kinds": stremio_categories.KIND_AR,
+           "others": stremio_categories.OTHERS, "preview": {}, "sample": ""}
+    for r in stremio_accounts.owned_all(DATA_DIR, acct["id"]):
+        cfg = stremio_addon.read_token(DATA_DIR, r["token"]) if r.get("token") and not r.get("linked_to") else None
+        lines = stremio_lines(cfg) if cfg else None
+        if not lines or not any(all(stremio_addon.has_lists(ln["cfg"], k) for ln in lines) for k in stremio_addon.TYPES):
+            continue
+        lines = [{**lines[0], "cats": cats}] + lines[1:]
+        out["sample"] = r.get("email") or r.get("username") or ""
+        for kind in stremio_addon.TYPES:
+            if not all(stremio_addon.has_lists(ln["cfg"], kind) for ln in lines):
+                continue
+            try:
+                lib = stremio_addon.library(lines, kind)
+            except stremio_addon.XtreamError:
+                continue
+            by = stremio_addon._cat_index(lines, lib, kind)["by"]
+            loose = {}
+            for w in by.get(stremio_categories.OTHERS_ID, []):
+                for c in {x.cat for x in w.sources if x.cat}:
+                    loose[c] = loose.get(c, 0) + 1
+            out["preview"][kind] = {"total": len(lib.works), "counts": {k: len(v) for k, v in by.items()},
+                                    "loose": sorted(loose.items(), key=lambda kv: -kv[1])[:20]}
+        break
+    return out
+
+
+def stremio_group_of(cfg):
+    """خطوط حساب Stremio لخطٍّ مرتبط (صاحبه أولًا) — تعرض بها إضافته مصادره في أعمال المكتبة؛ وغيره ← None."""
+    hk = stremio_addon.host_key(cfg.host)
+    rec = stremio_accounts.get(DATA_DIR, hk, cfg.user)
+    if not rec or not rec.get("linked_to"):
+        return None
+    grp = stremio_accounts.group(DATA_DIR, hk, cfg.user)
+    root = stremio_addon.read_token(DATA_DIR, grp[0]["token"]) if grp and grp[0].get("token") else None
+    return stremio_lines(root) if root else None
 
 
 def stremio_extras_data(acct):
@@ -1102,6 +1161,25 @@ def start_stremio_warm():
     threading.Thread(target=run, daemon=True, name="stremio-warm").start()
 
 
+def start_stremio_genres():
+    """تصنيفات الأفلام من تفاصيلها في الخلفية (سيرفراتٌ لا تذكرها في القائمة، فيجد «جريمة» كل أفلامها): دفعةٌ لكل سيرفر
+    بالتناوب، بتمهّل (‏STREMIO_GENRE_RPS، ‏0 = لا)، ومن قوائم الذاكرة وحدها؛ وما اكتمل ينتظر التحميل المسبق التالي."""
+    if stremio_addon.GENRE_RPS <= 0 or STREMIO_WARM_EVERY <= 0:
+        return
+
+    def run():
+        time.sleep(300)                                 # بعد أول تحميلٍ مسبق للقوائم (والخادم مستقر)
+        while True:
+            n = 0
+            try:
+                for cfg in stremio_warm_cfgs():
+                    n += stremio_addon.crawl_genres(cfg, DATA_DIR)
+            except Exception as e:                      # لا يُسقط شيئًا
+                print(f"تصنيفات أفلام Stremio: {e}", flush=True)
+            time.sleep(5 if n else max(STREMIO_WARM_EVERY, 600))
+    threading.Thread(target=run, daemon=True, name="stremio-genres").start()
+
+
 def stremio_token_ok(cfg, key):
     """رمز إضافةٍ ساري؟ يوزرٌ حسابه الجاهز مقفل: رمز قفله الحالي وحده (رابط اليوزر العام ونسخٌ نُقلت بقفلٍ قديم
     تتوقف)؛ وغير المقفل: رمزه العام كما كان."""
@@ -1123,7 +1201,7 @@ def stremio_account(acct, gate, username, password, line="", email=None, stremio
                                                   "addon_key": key, "locked_at": int(time.time())}, email=email,
                                            extras=stremio_extras.descriptors(DATA_DIR, acct.get("id")))
     if built:                                   # ثُبّتت الإضافة الآن: أكاملة؟ (وإلا تُعلَّم ليُحدَّث تثبيتها)
-        stremio_accounts.note(DATA_DIR, hk, str(username), addon_full=built[-1], addon_at=int(time.time()))
+        stremio_accounts.note(DATA_DIR, hk, str(username), addon_full=built[-1], addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
         rec = stremio_accounts.get(DATA_DIR, hk, str(username)) or rec
     if created or not rec.get("exp_checked"):
         stremio_check_exp(rec)                  # انتهاء اليوزر من السيرفر لحظة إنشاء حسابه
@@ -1183,7 +1261,7 @@ def stremio_reinstall(acct, gate_id, username):
     descriptor, built = stremio_descriptor(rec["token"], cfg.host if cfg else gate.get("host", ""), gate)
     stremio_accounts.reinstall(DATA_DIR, hk, username, descriptor, stremio_extras.descriptors(DATA_DIR, acct["id"]))
     if built:
-        stremio_accounts.note(DATA_DIR, hk, username, addon_full=built[-1], addon_at=int(time.time()))
+        stremio_accounts.note(DATA_DIR, hk, username, addon_full=built[-1], addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
     stremio_check_exp(rec)                      # وحاله وانتهاؤه من السيرفر الآن (يوزرٌ فُعّل بعد إنشاء حسابه)
     return stremio_accounts.get(DATA_DIR, hk, username)
 
@@ -1243,7 +1321,7 @@ def stremio_update_all(acct):
                     n += 1
                     if built:
                         stremio_accounts.note(DATA_DIR, r.get("host", ""), r.get("username", ""),
-                                              addon_full=built[-1], addon_at=int(time.time()))
+                                              addon_full=built[-1], addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
             finally:
                 stremio_accounts.logout(auth)
         except stremio_accounts.StremioError as e:
@@ -1284,7 +1362,7 @@ def stremio_lock(acct, gate_id, username):
     stremio_accounts.reinstall(DATA_DIR, hk, username, descriptor, stremio_extras.descriptors(DATA_DIR, acct["id"]))
     now = int(time.time())
     stremio_accounts.note(DATA_DIR, hk, username, token=tok, addon_key=key, locked_at=now,
-                          **({"addon_full": built[-1], "addon_at": now} if built else {}))
+                          **({"addon_full": built[-1], "addon_at": now, "addon_v": stremio_addon.VERSION} if built else {}))
     return stremio_accounts.get(DATA_DIR, hk, username)
 
 
@@ -1329,7 +1407,7 @@ def stremio_link_line(acct, gate_id, username, line_gate, line_username, line_pa
                                                "addon_key": key, "locked_at": int(time.time())},
                                         extras=stremio_extras.descriptors(DATA_DIR, acct["id"]))
     if built:
-        stremio_accounts.note(DATA_DIR, hk, str(line_username), addon_full=built[-1], addon_at=int(time.time()))
+        stremio_accounts.note(DATA_DIR, hk, str(line_username), addon_full=built[-1], addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
     if linked:
         stremio_check_exp(stremio_accounts.get(DATA_DIR, hk, str(line_username)) or rec)
         stremio_refresh_root(acct, hk, str(line_username))     # المكتبة الموحدة بالخط الجديد
@@ -1353,7 +1431,7 @@ def stremio_refresh_root(acct, hk, username):
     except (ValueError, stremio_accounts.StremioError):
         return False
     if built:
-        stremio_accounts.note(DATA_DIR, root["host"], root["username"], addon_full=built[-1], addon_at=int(time.time()))
+        stremio_accounts.note(DATA_DIR, root["host"], root["username"], addon_full=built[-1], addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
     return True
 
 
@@ -4063,7 +4141,7 @@ class Handler(BaseHTTPRequestHandler):
                                                 "error": "تعذّر قراءة الرصيد من اللوحة"})
                 return self._send(200, {"provider": gate.get("mode"), "credits": None,
                                         "unsupported": True})
-            if path in ("/stremio", "/stremio/addons"):   # صفحة Stremio: الحسابات، وصفحة الإضافات وروابط اللوحات
+            if path in ("/stremio", "/stremio/addons", "/stremio/categories"):   # صفحة Stremio: الحسابات، والإضافات واللوحات، والتصنيفات
                 if role != "account" or not stremio_on(acct):
                     return self._redirect(self._url())
                 return self._page("stremio_tool.html")
@@ -4082,6 +4160,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not stremio_on(acct):
                     return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
                 return self._send(200, stremio_extras_data(acct))
+            if path == "/api/stremio/categories":   # «التصنيفات»: تصنيفات سمارت سوق ومعاينتها
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
+                return self._send(200, stremio_categories_data(acct))
             if path == "/api/stremio/update-all":   # «تحديث الإضافة لكل الحسابات»: حال آخر عملية وعدد الحسابات
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -4432,7 +4516,7 @@ class Handler(BaseHTTPRequestHandler):
     def _stremio_get(self, path):
         self._inject = False
         code, body, ctype, hdr = stremio_addon.handle(DATA_DIR, path, self._public_base(), stremio_cfg_label, stremio_token_ok,
-                                                      stremio_route, stremio_lines)
+                                                      stremio_route, stremio_lines, stremio_group_of)
         return self._send(code, raw=body, ctype=ctype, extra=hdr)
 
     def _stremio_link(self):
@@ -4959,6 +5043,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_sources.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-probe":     # الفحص الأولي: ماذا تعطي كل لوحة (يتصل باللوحات الآن)
                 return self._send(200, {"ok": True, "probe": seo_sources.probe(DATA_DIR, int(body.get("n") or 20))})
+            elif path == "/api/content/admin/seo-normalize": # قرار المالك: تثبيت معرّف TMDB المُتحقَّق على صفّ كيانٍ واحد ونسخ حقوله (لا دمج/انقسام/رابط/تحويل)
+                try:
+                    res = seo_sources.normalize_identity(DATA_DIR, int(body.get("id")), int(body.get("tmdb_id")))
+                except (TypeError, ValueError) as e:
+                    return self._send(400, {"error": f"معرّفان رقميان مطلوبان: {e}"})
+                return self._send(200 if res.get("ok") else 409, res)
             elif path == "/api/content/admin/seo-scan":      # فحص السكّان كاملًا (قراءةٌ صرفة): ابدأ/استأنف · أوقف مؤقتًا · ابدأ من جديد
                 act = str(body.get("action") or "start")
                 if act == "pause":
@@ -5465,6 +5555,28 @@ class Handler(BaseHTTPRequestHandler):
                 except stremio_accounts.StremioError as e:
                     return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
                 return self._send(200, {"ok": True, "addon_full": bool(rec.get("addon_full")), "email": rec["email"]})
+            if path == "/api/stremio/categories":   # خارج القفل: حفظ التصنيفات، أو معاينتها قبل الحفظ، أو الافتراضي
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
+                req = self._body()
+                if not isinstance(req, dict):
+                    return self._send(400, {"ok": False, "error": "طلبٌ غير صالح"})
+                try:
+                    if req.get("reset"):
+                        stremio_categories.reset(DATA_DIR, acct["id"])
+                        cats = None
+                    elif req.get("preview"):
+                        cats = stremio_categories.clean(req.get("cats"))
+                    else:
+                        stremio_categories.save(DATA_DIR, acct["id"], req.get("cats"))
+                        cats = None
+                except ValueError as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
+                if cats is None:
+                    stremio_addon.forget_lines()
+                return self._send(200, {"ok": True, "saved": not req.get("preview"), **stremio_categories_data(acct, cats)})
             if path == "/api/stremio/update-all":   # خارج القفل: «تحديث الإضافة لكل الحسابات» في الخلفية
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -6099,6 +6211,7 @@ def web():
     start_embedded_reader()
     start_mail()
     start_stremio_warm()
+    start_stremio_genres()
     seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 

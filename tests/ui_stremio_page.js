@@ -276,6 +276,57 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
       await user.setViewportSize(vp);
     }
 
+    console.log('== «التصنيفات»: تصنيفات سمارت سوق لكل البوابات ==');
+    await user.click('#tabCat');
+    await user.waitForSelector('#viewCats:not([hidden]) #catList .cat', {timeout: 8000});
+    check('its own page (/stremio/categories), series first, defaults with their counts',
+          new URL(user.url()).pathname === '/admin/stremio/categories' && (await user.getAttribute('#tabCat', 'aria-current')) === 'page'
+          && (await user.inputValue('#catList .cat:first-child input[data-f=name]')) === 'رمضان'
+          && (await user.textContent('#catState')).includes('الافتراضية'), await user.textContent('#catState'));
+    // اليوزرات هنا يرفضها سيرفر Xtream الوهمي (فلا قوائم في الذاكرة): الأعداد «—» والصفحة تقول متى تظهر
+    const counted = await user.$$eval('#catList .cat .count', cs => cs.filter(c => /\d/.test(c.textContent)).length);
+    const othersT = await user.textContent('#catOthers');
+    check('counts from an account whose lists are loaded — or, with none loaded yet, a note saying when they appear',
+          counted > 0 ? /في «أخرى»: \d/.test(othersT) : /بعد أول تحميلٍ لقوائم حسابٍ/.test(othersT), othersT);
+    if (SHOTS) {
+      const vp = user.viewportSize();
+      await user.setViewportSize({width: 390, height: 844});
+      await user.evaluate(() => window.scrollTo(0, 0));
+      await user.screenshot({path: path.join(SHOTS, 'stremio-categories-phone.png'), fullPage: true});
+      await user.setViewportSize(vp);
+    }
+    check('compact cards: name, count and «صفٌّ في الرئيسية»; the keywords fold behind a button',
+          await user.isHidden('#catList .cat:first-child input[data-f=keys]') && await user.isVisible('#catList .cat:first-child input[data-f=home]'));
+    await user.click('#catKinds [data-k=movie]');
+    await user.click('#catList .cat:first-child [data-ex]');
+    check('the type tabs: movies, whose keywords open with the work-genre field', (await user.textContent('#catTtl')) === 'الأفلام'
+          && await user.isVisible('#catList .cat:first-child input[data-f=keys]') && await user.isVisible('#catList .cat:first-child input[data-f=genres]'));
+    await user.click('#catKinds [data-k=series]');
+    await user.click('#catAdd');
+    await user.fill('#catList .cat:last-child input[data-f=name]', 'مختارات');
+    await user.fill('#catList .cat:last-child input[data-f=keys]', 'أجنبية');
+    await user.waitForTimeout(900);                 // المعاينة بعد التوقف عن الكتابة
+    check('a new category: the page says it is unsaved, and the live preview raises no error',
+          (await user.textContent('#catState')).includes('لم تُحفظ') && !(await user.textContent('#catMsg')).trim()
+          && (counted === 0 || /\d/.test(await user.textContent('#catList .cat:last-child .count'))));
+    await user.click('#catList .cat:last-child [data-mv="-1"]');
+    check('▲ moves it up', (await user.inputValue('#catList .cat:nth-last-child(2) input[data-f=name]')) === 'مختارات');
+    await user.click('#catSave');
+    await user.waitForSelector('#catAfter:not([hidden])', {timeout: 8000});
+    check('saved: a pointer to «تحديث الإضافة لكل الحسابات» for the new home rows',
+          (await user.textContent('#catState')).includes('محفوظة') && (await user.getAttribute('#catUpd', 'href')) === '/admin/stremio/addons');
+    await shot(user, 'stremio-categories');
+    await user.reload();
+    await user.waitForSelector('#catList .cat', {timeout: 8000});
+    const names = await user.$$eval('#catList .cat input[data-f=name]', xs => xs.map(x => x.value));
+    check('kept after reload, in its place', names.includes('مختارات') && names.indexOf('مختارات') === names.length - 2, names.join('،'));
+    user.once('dialog', d => d.accept());
+    await user.click('#catReset');
+    await user.waitForFunction(() => /الافتراضية/.test(document.querySelector('#catState')?.textContent || ''), null, {timeout: 8000});
+    check('«إعادة التصنيفات الافتراضية»', !(await user.$$eval('#catList .cat input[data-f=name]', xs => xs.map(x => x.value))).includes('مختارات'));
+    await user.click('#tabAdd');
+    await user.waitForSelector('#viewAddons:not([hidden]) #panelList [data-pg]', {timeout: 8000});
+
     console.log('== change a panel link for all users at once ==');
     const pans = await user.$$eval('#panelList .pan', cs => cs.map(c => c.textContent.replace(/\s+/g, ' ').trim()));
     check('each gate with its link and the number of its accounts', pans.length === 2 && pans[0].includes('بوابة أ') && pans[0].includes(`http://127.0.0.1:${XT_PORT}`)

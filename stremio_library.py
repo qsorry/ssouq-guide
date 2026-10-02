@@ -44,6 +44,62 @@ _QUALITY = [("4K", re.compile(r"(?i)(?<![a-z0-9])(?:4k|8k|uhd|2160p?)(?![a-z0-9]
             ("SD", re.compile(r"(?i)(?<![a-z0-9])(?:sd|480p?|360p?)(?![a-z0-9])"))]
 QUALITY_RANK = {"4K": 4, "FHD": 3, "HD": 2, "": 1, "SD": 0}
 
+# التصنيف بلغتين: «Crime» و«جريمة» و«الجريمة» تصنيفٌ واحد يُعرض بالعربية — بواباتٌ تكتب حقل genre بالإنجليزية وأخرى
+# بالعربية. ومركّبات TMDB تُفرد («Action & Adventure» ← أكشن · مغامرة). وما ليس هنا يبقى كما كتبته اللوحة.
+_GENRE_SYN = {
+    "أكشن": "action|اكشن|الاكشن|حركة|حركه|أفلام أكشن",
+    "مغامرة": "adventure|مغامرات|مغامره",
+    "رسوم متحركة": "animation|animated|cartoon|cartoons|انيميشن|أنيميشن|انميشن|كرتون|رسوم متحركه",
+    "أنمي": "anime|انمي|انيمي",
+    "كوميديا": "comedy|كوميدي|كوميدية|كوميدى|كوميدي",
+    "جريمة": "crime|جريمه|جرائم|الجريمة|الجريمه",
+    "وثائقي": "documentary|documentaries|وثائقية|وثائقى|وثائقيات",
+    "دراما": "drama|درامي|دراما اجتماعية|soap",
+    "عائلي": "family|عائلية|عائلة|عائلى",
+    "أطفال": "kids|children|اطفال",
+    "فانتازيا": "fantasy|فنتازيا|فانتازي|خيال|خيالي",
+    "خيال علمي": "science fiction|sci-fi|sci fi|scifi|خيال علمى",
+    "تاريخي": "history|historical|تاريخ|تاريخية|تاريخى",
+    "حرب": "war|حربي|حروب|حربية",
+    "سياسة": "politics|political|سياسي|سياسية",
+    "رعب": "horror|الرعب",
+    "إثارة": "thriller|suspense|اثارة|إثاره|تشويق|اثاره",
+    "غموض": "mystery|لغز|الغموض",
+    "رومانسي": "romance|romantic|رومانسية|رومانس|رومانسى|رومانسيه",
+    "موسيقى": "music|musical|موسيقي|موسيقية|موسيقيه",
+    "غربي": "western|ويسترن|غربى",
+    "رياضة": "sport|sports|رياضي|رياضية",
+    "سيرة ذاتية": "biography|biographical|سيرة|سيرة ذاتيه",
+    "فيلم تلفزيوني": "tv movie",
+    "واقعي": "reality|reality tv|تلفزيون الواقع",
+    "حواري": "talk|talk show|برامج حوارية",
+    "أخبار": "news|اخبار",
+}
+_GENRE_COMBO = {"action & adventure": ("أكشن", "مغامرة"), "sci-fi & fantasy": ("خيال علمي", "فانتازيا"),
+                "war & politics": ("حرب", "سياسة"), "أكشن ومغامرة": ("أكشن", "مغامرة"), "أكشن وإثارة": ("أكشن", "إثارة"),
+                "خيال علمي وفانتازيا": ("خيال علمي", "فانتازيا"), "غموض وإثارة": ("غموض", "إثارة")}
+_GENRE = {norm(t): (ar,) for ar, syn in _GENRE_SYN.items() for t in [ar] + syn.split("|")}
+_GENRE.update({norm(k): v for k, v in _GENRE_COMBO.items()})
+
+
+def genre_names(raw):
+    """حقل genre (أو أكثر، مفصولةً بفواصل) ← التصنيفات بأسمائها العربية الموحدة، بلا تكرار وبترتيبها: «Crime, دراما,
+    Drama» ← [جريمة، دراما]."""
+    out, seen = [], set()
+    for t in re.split(r"[,،/|]", str(raw or "")):
+        t = t.strip()
+        for n in _GENRE.get(norm(t), (t,)) if t else ():
+            k = norm(n)
+            if k and k not in seen:
+                seen.add(k)
+                out.append(n)
+    return out[:12]
+
+
+def genre_keys(raw):
+    """مفاتيح المطابقة للتصنيفات («Crime» و«جريمة» مفتاحٌ واحد)."""
+    return {norm(n) for n in genre_names(raw)}
+
 # «الموسم الأول» · «الموسم 2» · «الجزء الثالث» · «Season 3» — الموسم صفةٌ للمصدر لا من هوية العمل
 _ORD = {"الاول": 1, "الثاني": 2, "الثالث": 3, "الرابع": 4, "الخامس": 5, "السادس": 6, "السابع": 7, "الثامن": 8,
         "التاسع": 9, "العاشر": 10, "الحادي عشر": 11, "الثاني عشر": 12, "الثالث عشر": 13, "الرابع عشر": 14,
@@ -140,10 +196,11 @@ class Work:
         self.year = next((str(s.key.year) for s in [a] + self.sources if s.key.year), None) if kind != "tv" else None
         self.rating = first("rating")
         self.plot = first("plot") or ""
-        self.genre = first("genre") or ""
+        genres = genre_names(", ".join(s.item.genre for s in [a] + self.sources if s.item.genre))   # بلغتين ← واحد
+        self.genre = ", ".join(genres)
         self.added = max(s.item.added for s in sources)
         self.cats = {norm(s.cat) for s in sources if s.cat}
-        self.tags = {norm(t) for s in sources for t in re.split(r"[,،/|]", s.item.genre or "") if t.strip()}
+        self.tags = {norm(n) for n in genres}
         self.labels = list(dict.fromkeys(s.label for s in self.sources if s.label))
         self._names = None
         self._pkeys = None
@@ -299,7 +356,12 @@ class Library:
         self.by_src = {(s.hk, s.item.id): w for w in works for s in w.sources}
         self.genres = genres                                      # [(اسم القسم، عدد الأعمال)] بترتيب الخطوط
         self.labels = list(dict.fromkeys(lb for w in works for lb in w.labels))
+        self._num = {id(w): n for n, w in enumerate(self.latest, 1)} if kind == "tv" else {}
         self._lock = threading.Lock()
+
+    def number(self, w):
+        """رقم القناة: مكانها في القائمة الموحدة (بترتيب السيرفر) — كأرقام القنوات في تطبيقات IPTV."""
+        return self._num.get(id(w), 0)
 
     def find(self, hk, iid):
         return self.by_src.get((hk, iid))
@@ -312,8 +374,9 @@ class Library:
         return [w for w in self.latest if label in w.labels]
 
     def tagged(self, g):
-        n = norm(g)
-        return [w for w in self.latest if n in w.tags]
+        """أعمال تصنيفٍ («جريمة» = «Crime») بالأحدث."""
+        ks = genre_keys(g)
+        return [w for w in self.latest if w.tags & ks]
 
     def search(self, q):
         """كل الكلمات في اسمٍ من أسماء العمل (أسماء مصادره الأصلية ومفتاحه): المطابق ثم ما يبدأ بها ثم ما يحويها؛ ثم بالمفتاح

@@ -9,6 +9,7 @@
   Panel.rejected = True                       الاشتراك مرفوض (‏auth 0)
   Panel.slow[action] = ثوانٍ · Panel.down       سيرفرٌ بطيء في إجراء، أو يردّ 503 له (كاسبر وقائمة أفلامه)
   Panel.hits                                  مسارات الطلبات (لعدّ الفحص)
+  vod[...]["info_genre"]                      تصنيف الفيلم في تفاصيله وحدها (لوحاتٌ لا تذكره في القائمة)
 
     srv = serve(Panel("smart")); host = f"http://127.0.0.1:{srv.server_address[1]}"
 """
@@ -100,7 +101,7 @@ class Handler(BaseHTTPRequestHandler):
             data = p.info.get(int(q.get("series_id", 0)), {})
         if act == "get_vod_info":
             v = next((x for x in p.vod if str(x["stream_id"]) == q.get("vod_id")), None)
-            data = {"info": {"name": v["name"], "plot": "plot", "genre": v.get("genre", ""),
+            data = {"info": {"name": v["name"], "plot": "plot", "genre": v.get("info_genre", v.get("genre", "")),
                              **({"video": {"height": v["height"]}} if v.get("height") else {})},
                     "movie_data": {"stream_id": v["stream_id"], "name": v["name"],
                                    "container_extension": v.get("container_extension", "mp4")}} if v else {}
