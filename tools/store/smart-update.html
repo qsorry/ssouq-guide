@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- صورة «مكتبة الأفلام / المسلسلات» لوصف منتجات سمارت (مرح) في سلة — 900×900 بتصميم صورها السابقة (21,122 فيلم).
+     كل ما يتغيّر في الرابط: ?kind=movies|series&n=21,293&date=الجمعة 2 أكتوبر 2026&shot=<لقطة التطبيق 2000×918>
+     ويُصوَّر بـ tools/store/render.js ثم يُحفظ JPG في static/img/store/ ويرفعه المتجر من رابطه. -->
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<style>
+@font-face{font-family:Plex;src:url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-arabic-600-normal.woff2) format("woff2"),url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-latin-600-normal.woff2) format("woff2");font-weight:600}
+@font-face{font-family:Plex;src:url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-arabic-700-normal.woff2) format("woff2"),url(https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5/files/ibm-plex-sans-arabic-latin-700-normal.woff2) format("woff2");font-weight:700}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:900px;height:900px;overflow:hidden}
+body{font-family:Plex,sans-serif;color:#fff;position:relative;background:linear-gradient(180deg,#161a3d 0%,#121535 45%,#0c0f26 100%)}
+body:before{content:"";position:absolute;width:720px;height:720px;right:-260px;top:-330px;border-radius:50%;
+  background:radial-gradient(circle,rgba(110,95,230,.26),transparent 65%)}
+body:after{content:"";position:absolute;width:640px;height:640px;left:-300px;bottom:-320px;border-radius:50%;
+  background:radial-gradient(circle,rgba(70,80,200,.18),transparent 65%)}
+.logo{position:absolute;left:403px;top:43px;width:94px;height:94px;border-radius:21px;z-index:2;
+  background:url(../../static/img/store/smarters-logo.png) center/100% no-repeat;box-shadow:0 8px 22px rgba(0,0,0,.35)}
+h1{position:absolute;top:160px;left:0;right:0;text-align:center;font-size:40px;line-height:1.2;font-weight:700;z-index:2}
+.hero{position:absolute;top:218px;left:0;right:0;display:flex;align-items:baseline;justify-content:center;gap:18px;z-index:2}
+.num{font-size:76px;line-height:1;font-weight:700;direction:ltr;letter-spacing:-1px;
+  background:linear-gradient(180deg,#e9e3ff 0%,#b9a8ff 60%,#8f7cff 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.noun{font-size:42px;line-height:1;font-weight:700}
+.shot{position:absolute;left:37px;top:315px;width:826px;height:379px;border-radius:18px;overflow:hidden;z-index:2;
+  border:1.5px solid rgba(255,255,255,.22);box-shadow:0 16px 36px rgba(0,0,0,.45);background:#000}
+.shot img{display:block;width:100%;height:100%;object-fit:cover}
+.shot i{position:absolute;left:5%;top:31.4%;width:31.8%;height:12.2%;border:3.5px solid #b9a8ff;border-radius:9px;
+  box-shadow:0 0 0 3px rgba(185,168,255,.22),0 0 20px rgba(185,168,255,.55)}
+.cap{position:absolute;top:722px;left:0;right:0;text-align:center;font-size:25px;font-weight:700;color:#cfcaff;z-index:2}
+.date{position:absolute;top:782px;left:50%;transform:translateX(-50%);white-space:nowrap;z-index:2;padding:8px 26px;border-radius:999px;
+  background:rgba(185,168,255,.12);border:1.5px solid rgba(185,168,255,.45);font-size:22px;font-weight:600;color:#e4defc}
+.date[hidden]{display:none}
+</style></head><body>
+<div class="logo"></div>
+<h1 id="title"></h1>
+<div class="hero"><span class="num" id="n"></span><span class="noun" id="noun"></span></div>
+<div class="shot"><img id="shot" alt=""><i></i></div>
+<p class="cap" id="cap"></p>
+<p class="date" id="date" hidden></p>
+<script>
+const q = new URLSearchParams(location.search), series = q.get("kind") === "series";
+document.getElementById("title").textContent = series ? "مكتبة المسلسلات" : "مكتبة الأفلام";
+document.getElementById("noun").textContent = series ? "مسلسل" : "فيلم";
+document.getElementById("n").textContent = q.get("n") || "";
+document.getElementById("cap").textContent = "صورة حقيقية من داخل التطبيق • " + (series ? "حلقات جديدة أسبوعيًا" : "تُحدَّث أولًا بأول");
+document.getElementById("shot").src = q.get("shot") || "";
+if (q.get("date")) { const d = document.getElementById("date"); d.textContent = "آخر تحديث: " + q.get("date"); d.hidden = false; }
+</script>
+</body></html>
