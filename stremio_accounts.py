@@ -142,6 +142,36 @@ def email_for(username, domain=None):
     return f"{local[:64]}@{domain or DOMAIN}"
 
 
+def custom_email(name, domain=None):
+    """إيميلٌ يختاره الموظف لحساب Stremio: اسمٌ (أو اسم@دومين بريدنا — ليصل بريده هنا) بحروفٍ لاتينية صغيرة وأرقام
+    و. _ - (3–64). ‏ValueError برسالةٍ للعرض."""
+    dom = domain or DOMAIN
+    s = str(name or "").strip().lower()
+    if "@" in s:
+        s, at = s.rsplit("@", 1)
+        if at != dom:
+            raise ValueError(f"الإيميل على دومين بريدنا وحده (@{dom}) — ليصل بريده هنا")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,62}[a-z0-9]", s) or ".." in s:
+        raise ValueError("اسم الإيميل: حروفٌ لاتينية وأرقام و. _ - (3 أحرف فأكثر)")
+    return f"{s}@{dom}"
+
+
+def custom_password(password):
+    """كلمة مرورٍ يختارها الموظف كما هي (6–64 بلا مسافات). ‏ValueError برسالةٍ للعرض."""
+    pw = str(password or "")
+    if not 6 <= len(pw) <= 64 or re.search(r"\s", pw):
+        raise ValueError("كلمة المرور: 6 أحرف فأكثر بلا مسافات")
+    return pw
+
+
+def email_taken(data_dir, email):
+    """هل لإيميلٍ حسابٌ عندنا (لأي يوزر)؟"""
+    email = str(email or "").strip().lower()
+    with _lock:
+        d = _load(data_dir)
+    return any(isinstance(r, dict) and str(r.get("email", "")).lower() == email for r in d.values())
+
+
 def _exists(e):
     """ردّ Stremio لإيميلٍ مسجّل: ‏{"code": 36, "existingUser": true, "message": "User with this email already exists"}."""
     t = str(e).lower()
@@ -409,21 +439,25 @@ def rate_ok(now=None, limit=None):
         return True
 
 
-def ensure(data_dir, host_key, username, password, descriptor, owner=None):
+def ensure(data_dir, host_key, username, password, descriptor, owner=None, email=None):
     """حساب Stremio ليوزر: المحفوظ كما هو، وإلا يُسجَّل (أو يُستعاد إن سبق تسجيله بكلمة مرورنا) وتُثبَّت فيه
-    الإضافة ويُحفظ. ‏descriptor دالةٌ تبني وصف الإضافة (لا يُبنى إلا عند الحاجة). ← (الحساب، أُنشئ الآن؟).
-    StremioError برسالةٍ للعرض، وValueError ليوزرٍ لا يصلح أو حدٍّ تجاوزه."""
+    الإضافة ويُحفظ. ‏descriptor دالةٌ تبني وصف الإضافة (لا يُبنى إلا عند الحاجة). ‏email: إيميلٌ يختاره الموظف
+    (‏custom_email) بدل إيميل اليوزر، وpassword حينها كلمة مروره كما كُتبت (بلا «A»). ← (الحساب، أُنشئ الآن؟).
+    StremioError برسالةٍ للعرض، وValueError ليوزرٍ لا يصلح أو حدٍّ تجاوزه أو إيميلٍ مستخدم."""
     rec = get(data_dir, host_key, username)
     if rec:
         return rec, False
-    email = email_for(username)
-    password = str(password or "").strip()
+    custom = email is not None
+    email = custom_email(email) if custom else email_for(username)
+    password = custom_password(password) if custom else str(password or "").strip()
     if not password:
         raise ValueError("اليوزر بلا باسورد")
     with _signup:
         rec = get(data_dir, host_key, username)      # طلبٌ سبقه وهو ينتظر
         if rec:
             return rec, False
+        if custom and email_taken(data_dir, email):
+            raise ValueError(f"الإيميل {email} لحسابٍ آخر عندنا — اختر اسمًا آخر، أو اربط الخط بذلك الحساب")
         if not rate_ok():
             raise ValueError(f"بلغت حسابات Stremio حدّها لهذه الساعة ({PER_HOUR}) — حاول بعد قليل")
         pw, auth, adopted = password, None, False
@@ -431,7 +465,7 @@ def ensure(data_dir, host_key, username, password, descriptor, owner=None):
             auth = register(email, pw)
         except StremioError as e:
             if _exists(e):                           # سُجّل من قبل (من هنا أو يدويًا): نجرّب كلمتَي مرورنا
-                for cand in (pw, pw + SUFFIX) if SUFFIX else (pw,):
+                for cand in (pw, pw + SUFFIX) if SUFFIX and not custom else (pw,):
                     try:
                         auth, pw, adopted = login(email, cand), cand, True
                         break
@@ -439,7 +473,7 @@ def ensure(data_dir, host_key, username, password, descriptor, owner=None):
                         continue
                 if not auth:
                     raise StremioError(f"الإيميل {email} مسجّلٌ في Stremio بكلمة مرورٍ أخرى") from None
-            elif SUFFIX and not pw.endswith(SUFFIX) and (_weak(e) or pw.isdigit()):
+            elif SUFFIX and not custom and not pw.endswith(SUFFIX) and (_weak(e) or pw.isdigit()):
                 pw = pw + SUFFIX                     # رفض Stremio كلمة المرور (أو كانت أرقامًا فقط): يُضاف حرفٌ كبير
                 auth = register(email, pw)
             else:
@@ -451,7 +485,7 @@ def ensure(data_dir, host_key, username, password, descriptor, owner=None):
         rec = {"email": email, "password": crypto_store.encrypt(pw, data_dir), "username": username,
                "host": host_key, "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M"),
                "ts": round(time.time(), 3),             # للترتيب: حساباتٌ كثيرة في الدقيقة نفسها
-               **({"adopted": True} if adopted else {}), **(owner or {})}
+               **({"adopted": True} if adopted else {}), **({"custom": True} if custom else {}), **(owner or {})}
         with _lock:
             d = _load(data_dir)
             d[_key(host_key, username)] = rec

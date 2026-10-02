@@ -213,6 +213,27 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await user.waitForFunction(() => document.querySelectorAll('#list .card .lines button').length === 2, null, {timeout: 8000});
     check('and the card now lists both lines', (await user.textContent('#list .card .lines')).includes('بوابة ب ·'));
 
+    console.log('== a Stremio account with an email and password I choose ==');
+    await user.click('#gates .gate:nth-child(1)');
+    await user.waitForFunction(() => document.querySelector('#gates .gate.on')?.textContent.includes('بوابة أ'), null, {timeout: 8000});
+    await user.click('#customBtn');
+    await user.waitForSelector('#customFields:not([hidden])', {timeout: 5000});
+    check('the window asks for the email (on our mail domain) and password', (await user.textContent('#linkTtl')).includes('بإيميلٍ تختاره')
+          && (await user.textContent('#cDom')) === '@tv.ssouq.com');
+    await user.fill('#linkQ', 'user001'); await user.click('#linkFindBtn');
+    await user.waitForSelector('#linkHits [data-lnk]', {timeout: 8000});
+    await user.click('#linkHits [data-lnk]');
+    check('it checks the email first', /اسم الإيميل/.test(await user.textContent('#linkMsg')));
+    await user.fill('#cEmail', 'family.ali'); await user.fill('#cPass', 'Ali12345');
+    await shot(user, 'stremio-custom');
+    await user.click('#linkHits [data-lnk]');
+    await user.waitForFunction(() => /أُنشئ الحساب family\.ali@tv\.ssouq\.com/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 15000});
+    const clipC = await user.evaluate(() => navigator.clipboard.readText());
+    check('the account is created with that email and password, and its text copied', clipC.includes('family.ali@tv.ssouq.com') && clipC.includes('Ali12345'), clipC.slice(0, 80));
+    await user.fill('#filter', 'family.ali'); await user.dispatchEvent('#filter', 'input');
+    await user.waitForFunction(() => (document.querySelector('#list')?.textContent || '').includes('family.ali@tv.ssouq.com'), null, {timeout: 8000});
+    check('and listed in the gate with its first line (user001)', (await user.textContent('#list .card')).includes('user001'));
+
     console.log('== change the host for all accounts at once ==');
     await user.click('#hostBtn');
     await user.waitForSelector('#hostList [data-hset]', {timeout: 8000});

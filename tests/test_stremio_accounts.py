@@ -485,6 +485,45 @@ def through_server():
         check("حسابٌ آخر لا يحوّل حسابات غيره", c == 400 and "لا حسابات" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
         c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": new_host}, op3)
         check("ومن لم يُفتح له ← 403", c == 403)
+
+        print("== حساب Stremio بإيميلٍ وكلمة مرورٍ تختارهما ==")
+        xt.users["k3"], xt.users["u9"] = "k3p", "u9p"
+        c, r = post("/api/stremio/custom", {"email": "Ahmed.Family", "password": "Fam12345", "line_gate": "g4",
+                                            "line_username": "k3", "line_password": "k3p"})
+        check("إيميلٌ تختاره وكلمة مروره، وأول خطوطه يوزرٌ موجود في بوابة", c == 200 and r.get("email") == "ahmed.family@tv.ssouq.com"
+              and r.get("password") == "Fam12345" and api.users.get("ahmed.family@tv.ssouq.com") == "Fam12345"
+              and [a["manifest"]["name"] for a in ours("ahmed.family@tv.ssouq.com")] == ["سمارت سوق · كاسبر"], json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/accounts?gate=g4", None)
+        k3 = next((a for a in r.get("accounts", []) if a["username"] == "k3"), {})
+        check("ويظهر في بوابة خطه بإيميله وكلمة مروره، مقفلًا", k3.get("email") == "ahmed.family@tv.ssouq.com" and k3.get("password") == "Fam12345"
+              and k3.get("locked") is True, json.dumps(k3, ensure_ascii=False)[:200])
+        c, r = post("/api/stremio/link", {"gate": "g4", "username": "k3", "line_gate": "g1", "line_username": "u9", "line_password": "u9p"})
+        check("وتُربط به خطوط بواباتٍ أخرى", c == 200 and r.get("linked") is True and r.get("email") == "ahmed.family@tv.ssouq.com"
+              and [a["manifest"]["name"] for a in ours("ahmed.family@tv.ssouq.com")] == ["سمارت سوق · كاسبر", "سمارت سوق · سمارت"])
+        with smtplib.SMTP("127.0.0.1", MAIL_PORT, timeout=10) as sm:
+            sm.mail("no-reply@strem.io")
+            check("وبريده يصل خادمنا", sm.rcpt("ahmed.family@tv.ssouq.com")[0] == 250)
+        bad = [post("/api/stremio/custom", {"email": e, "password": p_, "line_gate": "g1", "line_username": "u9b", "line_password": "x"})
+               for e, p_ in (("a b", "Fam12345"), ("x@gmail.com", "Fam12345"), ("ok.name", "123"), ("Ahmed.Family", "Fam12345"))]
+        check("إيميلٌ لا يصلح، أو على دومينٍ آخر، أو كلمة مرورٍ قصيرة، أو إيميلٌ مستخدمٌ عندنا ← 400",
+              [c for c, _ in bad] == [400] * 4 and "دومين" in bad[1][1]["error"] and "6" in bad[2][1]["error"] and "لحسابٍ آخر" in bad[3][1]["error"],
+              json.dumps([r_.get("error") for _, r_ in bad], ensure_ascii=False))
+        c, r = post("/api/stremio/custom", {"email": "newname", "password": "Fam12345", "line_gate": "g1", "line_username": "late", "line_password": "lp"})
+        check("ويوزرٌ له حسابٌ من قبل ← 400 (يُربط بحسابه بدل ذلك)", c == 400 and "من قبل" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        api.users["taken@tv.ssouq.com"] = "Someone1"
+        xt.users["u8"] = "u8p"
+        c, r = post("/api/stremio/custom", {"email": "taken", "password": "Fam12345", "line_gate": "g1", "line_username": "u8", "line_password": "u8p"})
+        check("إيميلٌ مسجّلٌ في Stremio بكلمة مرورٍ أخرى ← 502 برسالته ولا يُحفظ", c == 502 and "كلمة مرورٍ أخرى" in r.get("error", "")
+              and post("/api/stremio/account", {"gate": "g1", "username": "u8", "password": "u8p"})[1].get("email") == "u8@tv.ssouq.com",
+              json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/create", {"gate": "g5", "package_id": "167", "custom_email": "a b", "custom_password": "Fam12345"})
+        check("«خطٌّ جديد» بإيميلٍ لا يصلح ← 400 قبل إنشاء اليوزر", c == 400 and "اسم الإيميل" in r.get("error", ""))
+        c, r = post("/api/stremio/create", {"gate": "g5", "package_id": "167", "custom_email": "family2", "custom_password": "Fam54321"})
+        sa = r.get("stremio_account") or {}
+        check("«خطٌّ جديد»: يوزرٌ في البوابة وحسابه بالإيميل المختار", c == 200 and sa.get("email") == "family2@tv.ssouq.com"
+              and sa.get("password") == "Fam54321" and api.users.get("family2@tv.ssouq.com") == "Fam54321", json.dumps(r, ensure_ascii=False)[:200])
+        c, r = post("/api/stremio/custom", {"email": "x9", "password": "Fam12345", "line_gate": "g1", "line_username": "u9b", "line_password": "x"}, op3)
+        check("ومن لم يُفتح له ← 403", c == 403)
     finally:
         falcon.terminate()
         app.terminate()

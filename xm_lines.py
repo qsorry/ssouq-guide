@@ -932,7 +932,7 @@ def stremio_token_ok(cfg, key):
     return key == stremio_accounts.addon_key(DATA_DIR, stremio_addon.host_key(cfg.host), cfg.user)
 
 
-def stremio_account(acct, gate, username, password, line=""):
+def stremio_account(acct, gate, username, password, line="", email=None, stremio_password=None):
     """حساب Stremio جاهز ليوزر (الإيميل = اليوزر على دومين المتجر، وكلمة المرور = الباسورد) وإضافة محتواه مثبّتةٌ
     فيه — المحفوظ إن سبق. ← (الحساب، أُنشئ الآن؟). ‏ValueError · stremio_accounts.StremioError برسالةٍ للعرض."""
     host = _row_host(gate, {"line": line})
@@ -942,9 +942,9 @@ def stremio_account(acct, gate, username, password, line=""):
     key = secrets.token_urlsafe(9)              # مقفلةٌ على حسابها من أول تثبيت: رابطها لها وحدها
     tok = stremio_addon.make_token(DATA_DIR, host, username, password, key=key)
     descriptor, built = stremio_descriptor(tok, host, gate)
-    rec, created = stremio_accounts.ensure(DATA_DIR, hk, str(username), str(password), descriptor,
+    rec, created = stremio_accounts.ensure(DATA_DIR, hk, str(username), str(stremio_password if email else password), descriptor,
                                            owner={"acct": acct.get("id"), "gate": gate.get("id"), "token": tok,
-                                                  "addon_key": key, "locked_at": int(time.time())})
+                                                  "addon_key": key, "locked_at": int(time.time())}, email=email)
     if built:                                   # ثُبّتت الإضافة الآن: أكاملة؟ (وإلا تُعلَّم ليُحدَّث تثبيتها)
         stremio_accounts.note(DATA_DIR, hk, str(username), addon_full=built[-1], addon_at=int(time.time()))
         rec = stremio_accounts.get(DATA_DIR, hk, str(username)) or rec
@@ -1025,6 +1025,27 @@ def stremio_lock(acct, gate_id, username):
     return stremio_accounts.get(DATA_DIR, hk, username)
 
 
+def stremio_custom_check(gate, line_username, email, password, line=""):
+    """قبل «حسابٍ بإيميلٍ تختاره»: الإيميل وكلمة المرور صالحان، والإيميل غير مستخدمٍ عندنا، واليوزر (إن عُرف) بلا
+    حسابٍ قبله. ← الإيميل كاملًا. ‏ValueError برسالةٍ للعرض."""
+    full = stremio_accounts.custom_email(email)
+    stremio_accounts.custom_password(password)
+    if stremio_accounts.email_taken(DATA_DIR, full):
+        raise ValueError(f"الإيميل {full} لحسابٍ آخر عندنا — اختر اسمًا آخر، أو اربط الخط بذلك الحساب")
+    hk = stremio_addon.host_key(_row_host(gate, {"line": line}))
+    if line_username and stremio_accounts.get(DATA_DIR, hk, str(line_username)):
+        raise ValueError(f"لليوزر {line_username} حساب Stremio من قبل — اربط خطوطًا أخرى به من بطاقته («ربط خط آخر»)")
+    return full
+
+
+def stremio_custom(acct, gate, email, password, line_username, line_password, line=""):
+    """حساب Stremio بإيميلٍ وكلمة مرورٍ يختارهما الموظف، أول خطوطه يوزرٌ موجود في بوابة (وتُربط به بعده خطوط
+    بواباتٍ أخرى بـ«ربط خط آخر»). ← الحساب. ‏ValueError · StremioError برسالةٍ للعرض."""
+    full = stremio_custom_check(gate, line_username, email, password, line)
+    rec, _ = stremio_account(acct, gate, line_username, line_password, line, email=full, stremio_password=password)
+    return rec
+
+
 def stremio_link_line(acct, gate_id, username, line_gate, line_username, line_password, line=""):
     """يربط خطًّا من بوابةٍ (مرح · كاسبر · فالكون…) بحساب Stremio ليوزرٍ آخر: إضافته تُثبَّت في الحساب نفسه بجانب
     إضافاته — فيدخل العميل بحسابٍ واحد ويتنقّل بين السيرفرات. ← (الخط، رُبط الآن؟). ‏ValueError · StremioError."""
@@ -1091,13 +1112,18 @@ def stremio_refresh_exp(acct, gate_id, stale_only=False):
         return sum(1 for ok in ex.map(stremio_check_exp, recs) if ok)
 
 
-def stremio_create(acct, gate, package_id, username=None, password=None, link_to=None):
+def stremio_create(acct, gate, package_id, username=None, password=None, link_to=None, custom=None):
     """«إنشاء يوزر Stremio» بضغطةٍ واحدة: يوزرٌ جديد في البوابة بالباقة، ثم حساب Stremio له (الإيميل = اليوزر
     @tv.ssouq.com وكلمة المرور = باسورده) وإضافة المحتوى مثبّتةٌ فيه. ← (رمز الحالة، الرد).
     اليوزر يُنشأ أولًا ويُخصم، فإن تعثّر Stremio بعده لا يضيع: يعود السطر ومعه stremio_error، ويُكمَل الحساب من
     البحث أو بزرّ «إعادة المحاولة». ‏CaptchaNeeded · LoginFailed تُرمى لمن ينادي (كما في الإنشاء)."""
     if gate.get("archive_only"):
         return 400, {"ok": False, "error": "بوابة أرشيف — الإنشاء غير متاح فيها"}
+    if custom:                                  # حسابٌ بإيميلٍ تختاره: يُتحقَّق منه قبل إنشاء اليوزر (وخصمه)
+        try:
+            custom = (stremio_custom_check(gate, "", custom[0], custom[1]), custom[1])
+        except ValueError as e:
+            return 400, {"ok": False, "error": str(e)}
     if link_to:                                 # يُتحقَّق قبل إنشاء اليوزر (وخصمه): الحساب موجود ولا خطّ له من سيرفرها
         hit = stremio_accounts.owned(DATA_DIR, acct["id"], link_to[0], link_to[1])
         if not hit:
@@ -1121,6 +1147,9 @@ def stremio_create(acct, gate, package_id, username=None, password=None, link_to
     try:
         if link_to:                             # خطٌّ جديد يُربط بحساب Stremio قائم (سيرفرٌ آخر للعميل نفسه)
             rec, _ = stremio_link_line(acct, link_to[0], link_to[1], gate, line["username"], line["password"], line.get("line", ""))
+        elif custom:
+            rec, _ = stremio_account(acct, gate, line["username"], line["password"], line.get("line", ""),
+                                     email=custom[0], stremio_password=custom[1])
         else:
             rec, _ = stremio_account(acct, gate, line["username"], line["password"], line.get("line", ""))
         resp["stremio_account"] = {"email": rec["email"], "password": rec["password"], "linked": bool(rec.get("linked_to"))}
@@ -5103,6 +5132,29 @@ class Handler(BaseHTTPRequestHandler):
                 except stremio_accounts.StremioError as e:
                     return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
                 return self._send(200, {"ok": True, "addon_full": bool(rec.get("addon_full")), "email": rec["email"]})
+            if path == "/api/stremio/custom":     # خارج القفل: حسابٌ بإيميلٍ وكلمة مرورٍ تختارهما، وأول خطوطه يوزرٌ موجود
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
+                req = self._body()
+                line_gate = find_gate(acct, req.get("line_gate"))
+                if not line_gate:
+                    return self._send(400, {"ok": False, "error": "اختر بوابة الخط"})
+                lu, lp = str(req.get("line_username") or "").strip(), str(req.get("line_password") or "").strip()
+                if not lu or not lp:
+                    return self._send(400, {"ok": False, "error": "اختر خطًّا من البحث"})
+                try:
+                    rec = stremio_custom(acct, line_gate, str(req.get("email") or ""), str(req.get("password") or ""),
+                                         lu, lp, str(req.get("line") or ""))
+                except ValueError as e:
+                    return self._send(429 if "حدّها" in str(e) else 400, {"ok": False, "error": str(e)})
+                except stremio_accounts.StremioError as e:
+                    return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
+                except stremio_addon.XtreamError as e:
+                    return self._send(502, {"ok": False, "error": str(e)})
+                return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"],
+                                        "gate": line_gate["id"], "username": lu})
             if path == "/api/stremio/host":       # خارج القفل: «تغيير الهوست» لحسابات سيرفرٍ دفعةً واحدة (يُجرَّب أولًا)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -5172,9 +5224,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, {"ok": False, "error": "اختر بوابة"})
                 link_to = (str(req.get("link_gate") or ""), str(req.get("link_username") or "").strip()) \
                     if req.get("link_username") else None
+                custom = (str(req.get("custom_email") or ""), str(req.get("custom_password") or "")) \
+                    if req.get("custom_email") else None
                 try:
                     code, res = stremio_create(acct, gate, req.get("package_id"),
-                                               str(req.get("username") or "").strip(), str(req.get("password") or "").strip(), link_to)
+                                               str(req.get("username") or "").strip(), str(req.get("password") or "").strip(),
+                                               link_to, custom)
                 except xm_web.CaptchaNeeded:
                     return self._send(200, {"ok": False, "need_captcha": True})
                 except xm_web.LoginFailed as e:
