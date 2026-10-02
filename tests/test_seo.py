@@ -252,10 +252,14 @@ def unit_build():
         au = seo_qa.audit_redirect_targets(d, con)
         by = {it["to"]: it for it in au["items"]}
         g = by.get("/content/series/ghost-none/"); u = by.get(seo_db.PATHS["series"].format(slug=shr["slug"]))
-        check("تدقيق الأهداف غير الحية: الغائب = كيانٌ موجود بمعرّفه، 200، غير مدمج، available=0، التوصية keep as-is؛ والمفقود = لا كيان، 404، fix route generation؛ وبلا كتابة",
-              au["count"] == 2 and au["by_state"] == {"unavailable": 1, "missing": 1} and u and u["target_entity_exists"] and u["target_entity_id"] == shr["id"] and u["route"]["code"] == 200
-              and u["unavailable"] and not u["merged"] and u["recommendation"].startswith("keep as-is") and g and not g["target_entity_exists"] and g["route"]["code"] == 404
-              and g["recommendation"].startswith("fix route generation") and con.execute("SELECT COUNT(*) FROM redirect").fetchone()[0] == n_red, str(au)[:600])
+        check("تدقيق الأهداف غير الحية: كاملٌ (audit_complete) بمجموع التصنيفات = العدد؛ الغائب = TARGET_UNAVAILABLE_BUT_CANONICAL بمعرّفه و200 وcanonical نفسه وkeep as-is؛ "
+              "والمفقود = TARGET_ENTITY_MISSING و404 وتحقيق في التوليد؛ وبلا كتابة",
+              au["total_non_live"] == 2 and au["audit_complete"] and au["sum_by_classification"] == 2 and au["by_classification"]["TARGET_UNAVAILABLE_BUT_CANONICAL"] == 1
+              and au["by_classification"]["TARGET_ENTITY_MISSING"] == 1 and u and u["entity_exists"] and u["target_entity_id"] == shr["id"] and u["route_status"] == 200
+              and u["available"] is False and u["merged_into"] is None and u["final_canonical_entity_id"] == shr["id"] and u["final_canonical_url"] == u["canonical_url"]
+              and u["recommendation"].startswith("keep as-is") and g and not g["entity_exists"] and g["route_status"] == 404 and "fix route generation" in g["recommendation"]
+              and all(k in u for k in ("from", "to", "redirect_reason", "target_current_slug", "last_seen", "route_redirect_target", "reason_non_live", "classification"))
+              and au["redirect_rows_after"] == au["redirect_rows_before"] == n_red, str(au)[:700])
         con.execute("DELETE FROM redirect WHERE reason='test'"); seo_db.set_setting(con, "preview", False); con.commit()
         check("بند المراجعة يبقى ثابتًا بين البناءات (لا يتكرّر)",
               con.execute("SELECT COUNT(*) FROM review WHERE kind='name_only' AND status='open'").fetchone()[0] == 1)

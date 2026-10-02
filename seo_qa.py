@@ -5,6 +5,7 @@
 
     python seo_qa.py                       # التقرير JSON
     python seo_qa.py --sitemap=staging.xml  # ومعه خريطة الموقع التجريبية في ملفٍ (لا تُخدم)
+    python seo_qa.py --redirects=audit.json # تدقيق التحويلات غير الحية كلها وحده (16 حقلًا وتصنيفٌ لكلٍّ)
 """
 import json
 import os
@@ -169,16 +170,16 @@ def check_redirects(data_dir, con, sample_ids, limit=200):
                 direct += 1
             else:
                 fails.append({"path": pre + r["path"], "code": code, "location": hdr.get("Location"), "expected": pre + r["target"]})
-    audit = audit_redirect_targets(data_dir, con) if bad_target else {"count": 0, "by_state": {}, "with_identity_alternative": 0, "route_404": 0, "items": []}
+    audit = audit_redirect_targets(data_dir, con) if bad_target else {"total_non_live": 0, "audited": 0, "audit_complete": True, "by_classification": {c: 0 for c in CLASSES}, "with_identity_alternative": 0, "route_404": 0, "items": []}
     n_before = len(rows)
     n_after = con.execute("SELECT COUNT(*) FROM redirect").fetchone()[0]
     return {"total": n_before, "ar_rows": len(ar_rows), "en_rows": len(en_rows), "chains": len(chains), "chain_examples": chains[:10],
             "targets_not_live": len(bad_target), "targets_not_live_examples": bad_target[:10], "targets_not_live_audit": audit, "en_rows_mismatching_ar": en_mismatch[:10],
             "served_checked": served, "served_direct": direct, "failures": fails[:20], "created_during_qa": n_after - n_before,
             "tests": [_t("redirect_chain_zero", not chains, {"chains": len(chains)}),
-                      _t("redirect_targets_live", not bad_target, {"not_live": len(bad_target), "by_state": audit["by_state"], "route_404": audit["route_404"], "with_identity_alternative": audit["with_identity_alternative"]}),
-                      _t("redirect_targets_resolve", audit["route_404"] == 0 and audit["by_state"].get("merged", 0) == 0 and audit["by_state"].get("missing", 0) == 0,
-                         {"route_404": audit["route_404"], "merged_not_repointed": audit["by_state"].get("merged", 0), "missing": audit["by_state"].get("missing", 0)}),
+                      _t("redirect_targets_live", not bad_target, {"not_live": len(bad_target), "by_classification": audit["by_classification"], "with_identity_alternative": audit["with_identity_alternative"]}),
+                      _t("redirect_targets_resolve", not any(audit["by_classification"].get(c) for c in ("TARGET_MERGED", "TARGET_REDIRECT_CHAIN", "TARGET_ROUTE_MISSING", "TARGET_ENTITY_MISSING", "OTHER")),
+                         {c: audit["by_classification"].get(c, 0) for c in CLASSES}),
                       _t("redirect_en_rows_match_ar", not en_mismatch, {"mismatch": len(en_mismatch)}),
                       _t("redirect_served_direct", not fails and (served > 0 or not ar_rows), {"checked": served, "direct": direct, "failures": len(fails)}),
                       _t("no_new_redirects", n_after == n_before, {"before": n_before, "after": n_after})]}
@@ -194,35 +195,47 @@ def _final_entity(con, cid, hops=10):
     return row, n
 
 
-def audit_redirect_targets(data_dir, con, limit=100):
-    """تدقيقٌ (قراءةٌ صرفة) لكل تحويلٍ هدفه ليس صفحةً حيّة: ما الهدف؟ أموجودٌ كيانه؟ ما حاله (مدمج/غائب/مفقود)؟ ماذا يعيد
-    المسار؟ ما الكيان النهائي canonical؟ أثمّة بديلٌ حيّ بدليل هوية؟ ولماذا عُدّ غير حيّ، وما التصحيح المقترح — بلا تنفيذ."""
+CLASSES = ("VALID_LIVE_TARGET", "TARGET_UNAVAILABLE_BUT_CANONICAL", "TARGET_MERGED", "TARGET_REDIRECT_CHAIN", "TARGET_ROUTE_MISSING", "TARGET_ENTITY_MISSING", "OTHER")
+
+
+def audit_redirect_targets(data_dir, con, limit=None):
+    """تدقيقٌ (قراءةٌ صرفة) لكل تحويلٍ هدفه ليس صفحةً حيّة — **كلها** لا عيّنة (audit_complete عندها فقط). لكل هدف: الكيان
+    ومعرّفه وslug الحالي وحاله (متاح/مدمج/آخر رؤية)، وجواب المسار **من الخدمة نفسها** (200/301 بوجهته/404)، وcanonical الكيان،
+    والكيان النهائي بتتبّع merged_into كاملًا (أو تاريخ slug إن اختفى الرابط)، والبدائل الحيّة بدليل هوية، والسبب والتوصية
+    وتصنيفٌ واحد من CLASSES — بلا تنفيذ."""
     rows = con.execute("SELECT path, target, reason, created_at FROM redirect ORDER BY target, path").fetchall()
-    targets = {r["path"] for r in rows}
+    targets = {r["path"]: r["target"] for r in rows}
     live = set()
     for r in con.execute("SELECT type, slug FROM content WHERE merged_into IS NULL AND available=1"):
         live.update(seo_db.paths(r["type"], r["slug"]))
+    non_live = [r for r in rows if r["target"] not in live and r["target"] not in targets]
     out = []
-    for r in rows:
-        if r["target"] in live or r["target"] in targets:
-            continue
+    for r in non_live[:limit] if limit else non_live:
         en = r["target"].startswith(seo_db.EN + "/")
+        lang = "en" if en else "ar"
         ar_target = r["target"][len(seo_db.EN):] if en else r["target"]
         m = re.match(r"^/content/(movies|series)/([a-z0-9-]+)/$", ar_target)
         typ, slug = ("movie" if m.group(1) == "movies" else "series", m.group(2)) if m else (None, None)
         trow = con.execute("SELECT id, type, slug, merged_into, available, tmdb_id, title, last_seen, match FROM content WHERE type=? AND slug=?", (typ, slug)).fetchone() if typ else None
-        code, _, hdr = seo_pages.handle(data_dir, r["target"], "en" if en else "ar") or (None, b"", {})
-        item = {"from": r["path"], "to": r["target"], "redirect_reason": r["reason"], "target_entity_exists": bool(trow), "target_entity_id": trow["id"] if trow else None,
-                "current_slug": trow["slug"] if trow else None, "route": {"code": code, "location": hdr.get("Location")},
-                "merged": bool(trow and trow["merged_into"] is not None), "unavailable": bool(trow and not trow["available"] and trow["merged_into"] is None),
+        code, _, hdr = seo_pages.handle(data_dir, r["target"], lang) or (None, b"", {})
+        loc = hdr.get("Location") if code == 301 else None
+        chain = bool(loc and (loc[len(seo_db.EN):] if loc.startswith(seo_db.EN + "/") else loc) in targets)
+        item = {"from": r["path"], "to": r["target"], "redirect_reason": r["reason"], "lang": lang,
+                "target_entity_id": trow["id"] if trow else None, "target_current_slug": trow["slug"] if trow else None, "entity_exists": bool(trow),
+                "available": bool(trow["available"]) if trow else None, "merged_into": trow["merged_into"] if trow else None,
                 "last_seen": time.strftime("%Y-%m-%d %H:%M", time.gmtime(trow["last_seen"])) if trow and trow["last_seen"] else None,
-                "tmdb_id": trow["tmdb_id"] if trow else None}
-        alt = []
+                "tmdb_id": trow["tmdb_id"] if trow else None, "route_status": code, "route_redirect_target": loc, "route_chain": chain,
+                "canonical_url": SITE + seo_pages._path(trow, lang) if trow else None,
+                "final_canonical_entity_id": None, "final_canonical_url": None, "merge_path": [], "canonical_alternative": []}
+        fin = None
         if trow:
-            fin, hops = _final_entity(con, trow["id"])
-            if fin and fin["id"] != trow["id"]:
-                item["final_entity"] = {"id": fin["id"], "slug": fin["slug"], "available": bool(fin["available"]), "hops": hops,
-                                        "canonical": SITE + seo_pages._path(fin, "en" if en else "ar")}
+            fin, path_ids = trow, [trow["id"]]
+            while fin and fin["merged_into"] is not None and len(path_ids) < 12:
+                fin = con.execute("SELECT id, type, slug, merged_into, available, tmdb_id, title, last_seen, match FROM content WHERE id=?", (fin["merged_into"],)).fetchone()
+                if fin:
+                    path_ids.append(fin["id"])
+            item["merge_path"] = path_ids
+            alt = []
             if trow["tmdb_id"]:
                 alt += [{"id": a["id"], "slug": a["slug"], "evidence": "same tmdb id"} for a in con.execute(
                     "SELECT id, slug FROM content WHERE tmdb_id=? AND type=? AND merged_into IS NULL AND available=1 AND id!=?", (trow["tmdb_id"], trow["type"], trow["id"]))]
@@ -233,43 +246,62 @@ def audit_redirect_targets(data_dir, con, limit=100):
                 "SELECT DISTINCT c.id, c.slug FROM content_alias a JOIN content_alias b ON b.alias_norm=a.alias_norm AND b.content_id!=a.content_id "
                 "JOIN content c ON c.id=b.content_id AND c.type=? AND c.merged_into IS NULL AND c.available=1 WHERE a.content_id=? LIMIT 5", (trow["type"], trow["id"]))
                     if a["id"] not in {x["id"] for x in alt}]
+            item["canonical_alternative"] = alt[:5]
         else:
             prov = con.execute("SELECT entity_id FROM provenance WHERE entity='content' AND field='slug' AND prev=?", (json.dumps(slug),)).fetchone() if slug else None
             if prov:
-                fin, hops = _final_entity(con, prov["entity_id"])
-                if fin:
-                    item["final_entity"] = {"id": fin["id"], "slug": fin["slug"], "available": bool(fin["available"]), "hops": hops, "via": "provenance (previous slug)",
-                                            "canonical": SITE + seo_pages._path(fin, "en" if en else "ar")}
-        item["canonical_alternative"] = alt[:5]
-        strong = [a for a in alt if a["evidence"] != "same name only (no identity evidence)"]
-        if not trow and not item.get("final_entity"):
-            item["why_not_live"] = "no entity carries this slug and no slug history leads to one"
-            item["recommendation"] = "fix route generation: investigate how the redirect got this target before touching the row" if code != 200 else "keep as-is (route still answers 200)"
-        elif not trow:
-            item["why_not_live"] = "slug no longer exists; slug history leads to a current entity"
-            item["recommendation"] = f"update target → {item['final_entity']['canonical']} (after review)"
-        elif item["merged"]:
-            item["why_not_live"] = "target entity was merged into another entity (redirect not re-pointed)"
-            item["recommendation"] = f"update target → final entity {item['final_entity']['id']} ({item['final_entity']['slug']}) — and fix merge_content re-pointing" if item.get("final_entity") else "fix route generation"
-        elif item["unavailable"]:
-            item["why_not_live"] = "target entity exists but is absent from all servers now (available=0): page answers 200 noindex, not in sitemap; it stays the canonical entity"
-            item["recommendation"] = ("review merge candidates by identity evidence first; the redirect then follows the merge (do not re-point by hand)" if strong
-                                      else "keep as-is (canonical entity unchanged; returns to live when the catalog lists it again)")
-        elif code != 200:
-            item["why_not_live"] = f"entity is live but the route answers {code}"
+                fin = con.execute("SELECT id, type, slug, merged_into, available, tmdb_id, title, last_seen, match FROM content WHERE id=?", (prov["entity_id"],)).fetchone()
+                item["merge_path"] = [fin["id"]] if fin else []
+                while fin and fin["merged_into"] is not None and len(item["merge_path"]) < 12:
+                    fin = con.execute("SELECT id, type, slug, merged_into, available, tmdb_id, title, last_seen, match FROM content WHERE id=?", (fin["merged_into"],)).fetchone()
+                    if fin:
+                        item["merge_path"].append(fin["id"])
+                item["slug_history"] = "provenance: previous slug of entity %s" % prov["entity_id"]
+        if fin:
+            item["final_canonical_entity_id"] = fin["id"]
+            item["final_canonical_url"] = SITE + seo_pages._path(fin, lang)
+            item["final_available"] = bool(fin["available"])
+        strong = [a for a in item["canonical_alternative"] if a["evidence"] != "same name only (no identity evidence)"]
+        if trow and trow["merged_into"] is not None:
+            cls = "TARGET_MERGED"
+            item["reason_non_live"] = "target entity is merged into %s (merge path %s); the route answers %s → %s" % (trow["merged_into"], item["merge_path"], code, loc)
+            item["recommendation"] = ("update target → %s (final canonical) — and fix merge re-pointing in merge_content" % item["final_canonical_url"]) if fin and fin["merged_into"] is None else "fix route generation (merge path does not end at a live entity)"
+        elif chain:
+            cls = "TARGET_REDIRECT_CHAIN"
+            item["reason_non_live"] = "the route answers 301 to %s which is itself a redirect path" % loc
+            item["recommendation"] = "update target → %s (final canonical)" % (item["final_canonical_url"] or targets.get(loc))
+        elif not trow and code == 404:
+            cls = "TARGET_ENTITY_MISSING"
+            item["reason_non_live"] = "no entity carries this slug" + (" (slug history leads to entity %s)" % fin["id"] if fin else " and no slug history leads to one")
+            item["recommendation"] = ("update target → %s (after review)" % item["final_canonical_url"]) if fin else "investigate how this target was generated before touching the row (fix route generation)"
+        elif trow and code == 404:
+            cls = "TARGET_ROUTE_MISSING"
+            item["reason_non_live"] = "entity exists but the route answers 404"
             item["recommendation"] = "fix route generation"
-        else:
-            item["why_not_live"] = "unknown — entity live and route 200 (re-run audit)"
+        elif trow and not trow["available"] and code == 200:
+            cls = "TARGET_UNAVAILABLE_BUT_CANONICAL"
+            item["reason_non_live"] = "entity exists and is its own canonical, but it is absent from all servers now (available=0): route live 200 (noindex, outside sitemap)"
+            item["recommendation"] = ("keep as-is; review merge candidates by identity evidence first (%s) — the redirect then follows the merge, never re-pointed by hand" % ", ".join(f"{a['id']}:{a['slug']} [{a['evidence']}]" for a in strong)
+                                      if strong else "keep as-is (canonical entity unchanged; becomes live again when a catalog lists it)")
+        elif trow and trow["available"] and code == 200:
+            cls = "VALID_LIVE_TARGET"
+            item["reason_non_live"] = "none: live entity and route 200 (state changed since the live set was computed)"
             item["recommendation"] = "keep as-is"
+        else:
+            cls = "OTHER"
+            item["reason_non_live"] = "entity_exists=%s available=%s route=%s" % (bool(trow), item["available"], code)
+            item["recommendation"] = "investigate"
+        item["classification"] = cls
         out.append(item)
-        if len(out) >= limit:
-            break
-    by = {}
-    for it in out:
-        k = "merged" if it["merged"] else "unavailable" if it["unavailable"] else "missing" if not it["target_entity_exists"] else "other"
-        by[k] = by.get(k, 0) + 1
-    return {"count": len(out), "by_state": by, "with_identity_alternative": sum(1 for it in out if any(a["evidence"] != "same name only (no identity evidence)" for a in it["canonical_alternative"])),
-            "route_404": sum(1 for it in out if it["route"]["code"] == 404), "items": out}
+    by_class = {c: sum(1 for it in out if it["classification"] == c) for c in CLASSES}
+    ents = {it["target_entity_id"] for it in out if it["target_entity_id"] is not None}
+    by_lang = {l: sum(1 for it in out if it["lang"] == l) for l in ("ar", "en")}
+    pairs = sum(1 for it in out if it["lang"] == "ar" and any(o["lang"] == "en" and o["to"] == seo_db.EN + it["to"] for o in out))
+    return {"total_non_live": len(non_live), "audited": len(out), "audit_complete": len(out) == len(non_live), "by_classification": by_class,
+            "sum_by_classification": sum(by_class.values()), "distinct_target_entities": len(ents), "by_lang": by_lang, "ar_en_pairs": pairs,
+            "with_identity_alternative": sum(1 for it in out if any(a["evidence"] != "same name only (no identity evidence)" for a in it["canonical_alternative"])),
+            "route_404": sum(1 for it in out if it["route_status"] == 404), "redirect_rows_before": len(rows), "redirect_rows_after": con.execute("SELECT COUNT(*) FROM redirect").fetchone()[0],
+            "items": out}
 
 
 def sitemap_urls(con, st):
@@ -399,6 +431,20 @@ def run(data_dir, spec=None, probe=None, sitemap_out=None):
 def main(argv):
     data_dir = os.environ.get("XM_DATA") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
     opt = {a.lstrip("-").split("=")[0]: (a.split("=", 1)[1] if "=" in a else True) for a in argv[1:] if a.startswith("--")}
+    if opt.get("redirects"):                   # python seo_qa.py --redirects[=out.json]: تدقيق الأهداف غير الحية وحده (قراءةٌ صرفة)
+        con = seo_db.connect(data_dir, create=False)
+        try:
+            rep = {"meta": seo_sources.meta(data_dir), "redirect_targets_audit": audit_redirect_targets(data_dir, con)}
+        finally:
+            con.close()
+        text = json.dumps(rep, ensure_ascii=False, indent=1, default=str)
+        if isinstance(opt["redirects"], str):
+            with open(opt["redirects"], "w", encoding="utf-8") as f:
+                f.write(text)
+            print(opt["redirects"])
+        else:
+            print(text)
+        return
     rep = run(data_dir, sitemap_out=str(opt["sitemap"]) if opt.get("sitemap") else None)
     print(json.dumps({"meta": seo_sources.meta(data_dir), **rep}, ensure_ascii=False, indent=1, default=str))
 
