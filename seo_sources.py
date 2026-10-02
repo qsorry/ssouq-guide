@@ -1620,7 +1620,7 @@ def bundle(data_dir, out, n=20):
     for name in BUNDLE_FILES:                      # أولًا: لا يبقى ملفٌ من لقطةٍ سابقة — كلٌّ يُستبدل بختم هذه اللقطة ولو فشل جزءٌ لاحقًا
         with open(os.path.join(out, name), "w", encoding="utf-8") as f:
             f.write(("# " if name.endswith(".txt") else "") + json.dumps({**stamp, "status": "not generated yet (bundle in progress or aborted)"}, ensure_ascii=False) + "\n")
-    for name in BUNDLE_EXTRA:
+    for name in BUNDLE_EXTRA + tuple(n for n in os.listdir(out) if _ZIP_RX.fullmatch(n)):   # ولا أرشيف لقطةٍ سابقة
         try:
             os.remove(os.path.join(out, name))
         except OSError:
@@ -1680,7 +1680,25 @@ def bundle(data_dir, out, n=20):
     _bundle_stage.pop(os.path.abspath(data_dir), None)
     with open(os.path.join(out, "bundle.json"), "w", encoding="utf-8") as f:    # ملخّص اللقطة: الختم والملفات وأخطاؤها
         f.write(json.dumps({"meta": stamp, "files": written, "errors": bundle_errors}, ensure_ascii=False, indent=1))
-    return {"out": out, "files": written, "errors": bundle_errors, **stamp}
+    zip_name = bundle_zip(out, stamp["bundle_id"])                               # الملفات كلها في أرشيفٍ واحد بأسماءٍ تحمل معرّف اللقطة
+    return {"out": out, "files": written, "errors": bundle_errors, "zip": zip_name, **stamp}
+
+
+_ZIP_RX = re.compile(r"seo-review-\d{8}T\d{6}Z\.zip")
+
+
+def bundle_zip(out, bundle_id):
+    """أرشيف اللقطة: `seo-review-<bundle_id>.zip` وفيه كل ملفٍ باسمه ومعرّف اللقطة (`qa_<bundle_id>.json` …) فلا تختلط
+    نسخ اللقطات عند التنزيل ← اسم الأرشيف."""
+    import zipfile
+    name = f"seo-review-{bundle_id}.zip"
+    with zipfile.ZipFile(os.path.join(out, name), "w", zipfile.ZIP_DEFLATED) as z:
+        for n in BUNDLE_FILES + BUNDLE_EXTRA:
+            path = os.path.join(out, n)
+            if os.path.exists(path):
+                stem, ext = n.rsplit(".", 1)
+                z.write(path, f"{stem}_{bundle_id}.{ext}")
+    return name
 
 
 BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "qa.json", "bundle.json")
@@ -1719,7 +1737,8 @@ def bundle_state(data_dir):
     k = os.path.abspath(data_dir)
     d = bundle_dir(data_dir)
     files = []
-    for n in BUNDLE_FILES + BUNDLE_EXTRA:
+    zips = sorted(n for n in (os.listdir(d) if os.path.isdir(d) else []) if _ZIP_RX.fullmatch(n))
+    for n in tuple(zips[-1:]) + BUNDLE_FILES + BUNDLE_EXTRA:
         try:
             st_ = os.stat(os.path.join(d, n))
             files.append({"name": n, "size": st_.st_size, "at": int(st_.st_mtime)})
@@ -1731,11 +1750,12 @@ def bundle_state(data_dir):
 
 def bundle_file(data_dir, name):
     """ملفٌ من ملفات المراجعة بالاسم (من القائمة وحدها) ← (bytes, نوعه) أو None."""
-    if name not in BUNDLE_FILES + BUNDLE_EXTRA:
+    if name not in BUNDLE_FILES + BUNDLE_EXTRA and not _ZIP_RX.fullmatch(name):
         return None
     try:
         with open(os.path.join(bundle_dir(data_dir), name), "rb") as f:
-            return f.read(), ("application/json; charset=utf-8" if name.endswith(".json") else "application/xml; charset=utf-8" if name.endswith(".xml") else "text/plain; charset=utf-8")
+            return f.read(), ("application/json; charset=utf-8" if name.endswith(".json") else "application/xml; charset=utf-8" if name.endswith(".xml")
+                              else "application/zip" if name.endswith(".zip") else "text/plain; charset=utf-8")
     except OSError:
         return None
 
