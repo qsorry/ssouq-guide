@@ -8,6 +8,7 @@
   player_api.php?…&action=get_series       تصنيف المسلسلات وقصتها وتقييمها وتاريخ آخر حلقة وقسمها
   player_api.php?…&action=get_live_streams شعار كل قناةٍ وقسمها
   player_api.php?…&action=get_*_categories الأقسام بأرقامها وترتيبها
+  player_api.php?username=u&password=p      حالة الاشتراك (‏user_info: نشط، وينتهي بعد سنة، و‏HLS وTS) — لإضافة Stremio
   images/<الاسم>.png                        صورةٌ مولَّدة (للمرور بخادمنا)
   وكلمة مرورٍ أخرى: 403 (اشتراكٌ منتهٍ)، وwant=api-down: الواجهة 500 والقائمة سليمة.
 
@@ -188,6 +189,12 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/player_api.php":
             if self.server.api_down:
                 return self._send(500, b"error")
+            if not q.get("action"):                      # حالة الاشتراك كما تردّها اللوحات بلا إجراء
+                return self._send(200, json.dumps({
+                    "user_info": {"username": USER, "password": PASS, "auth": 1, "status": "Active", "exp_date": str(NOW + 365 * DAY),
+                                  "is_trial": "0", "max_connections": "1", "allowed_output_formats": ["m3u8", "ts"]},
+                    "server_info": {"url": "127.0.0.1", "port": str(self.server.server_address[1]), "server_protocol": "http"}}).encode(),
+                    "application/json")
             if q.get("action") == "get_vod_info":        # تفاصيل فيلم (المرحلة 2): معرّف TMDB والممثلون والمخرج والبلد
                 o = vod.get(int(q.get("vod_id") or 0))
                 if not o:

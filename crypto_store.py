@@ -97,3 +97,45 @@ def decrypt(value, data_dir: str):
 
 def is_encrypted(value) -> bool:
     return isinstance(value, str) and value.startswith(_MARK)
+
+
+# ---------- رمزٌ حتمي قصير لرابطٍ علني (رابط إضافة Stremio) ----------
+# بناء SIV فوق الأدوات نفسها: المتّجه الابتدائي = HMAC للنص الصريح، فالنص نفسه يعطي الرمز نفسه دائمًا
+# (يُنسخ الرابط مرتين فيبقى واحدًا ولا تتكرّر الإضافة في Stremio)، والمتّجه نفسه هو وسم السلامة:
+# يُفكّ ثم يُعاد حسابه، فأي حرفٍ عُبث به يُرفض. مفتاحاه مشتقّان من المفتاح الرئيسي بوسم الاستعمال
+# (‏label) فلا يصلح رمز استعمالٍ في غيره. والرمز base64 للعناوين بلا حشو.
+_SIV = 16
+
+
+def _label_keys(data_dir: str, label: str):
+    mk = _master_key(data_dir)
+    lb = label.encode("utf-8")
+    return hashlib.sha256(b"siv-enc:" + lb + mk).digest(), hashlib.sha256(b"siv-mac:" + lb + mk).digest()
+
+
+def seal_token(value: str, data_dir: str, label: str) -> str:
+    """نصٌّ ← رمزٌ قصير صالح في العنوان، حتميّ (النص نفسه = الرمز نفسه) ومحميٌّ من العبث."""
+    enc_key, mac_key = _label_keys(data_dir, label)
+    pt = value.encode("utf-8")
+    iv = hmac.new(mac_key, pt, hashlib.sha256).digest()[:_SIV]
+    ct = bytes(a ^ b for a, b in zip(pt, _keystream(enc_key, iv, len(pt))))
+    return base64.urlsafe_b64encode(iv + ct).decode("ascii").rstrip("=")
+
+
+def open_token(token: str, data_dir: str, label: str):
+    """الرمز ← نصّه، أو None إن عُبث به أو صدر بمفتاحٍ آخر أو لم يكن رمزًا أصلًا."""
+    try:
+        raw = base64.urlsafe_b64decode(str(token) + "=" * (-len(str(token)) % 4))
+    except Exception:
+        return None
+    if len(raw) <= _SIV:
+        return None
+    enc_key, mac_key = _label_keys(data_dir, label)
+    iv, ct = raw[:_SIV], raw[_SIV:]
+    pt = bytes(a ^ b for a, b in zip(ct, _keystream(enc_key, iv, len(ct))))
+    if not hmac.compare_digest(iv, hmac.new(mac_key, pt, hashlib.sha256).digest()[:_SIV]):
+        return None
+    try:
+        return pt.decode("utf-8")
+    except UnicodeDecodeError:
+        return None

@@ -151,10 +151,18 @@ def main():
         u, pw = (lines[0].get("username", ""), lines[0].get("password", "")) if lines else ("", "")
         check("username generated on our side: exactly 10 digits", u.isdigit() and len(u) == 10, u)
         check("password generated on our side: exactly 10 digits", pw.isdigit() and len(pw) == 10, pw)
+        # كل يوزرٍ يُنشأ له رابط تثبيت Stremio على الموقع العام، وبياناته مختومةٌ فيه
+        sys.path.insert(0, ROOT)
+        import stremio_addon
+        st_link = lines[0].get("stremio", "") if lines else ""
+        st_cfg = stremio_addon.read_token(data_dir, st_link.rsplit("/", 1)[-1]) if st_link else None
+        check("created line carries its Stremio install link", st_link.startswith("https://guide.ssouq.com/stremio/")
+              and st_cfg == stremio_addon.Cfg("http://mrha.ink", u, pw), st_link[:60])
         code, d = jreq("/admin/api/create", {"gate": gid, "package_id": "1", "username": "", "password": "", "count": 4})
         ls = d.get("lines", [])
         check("batch of 4 via API: 4 distinct 10-digit users", len(ls) == 4 and len({x["username"] for x in ls}) == 4
               and all(x["username"].isdigit() and len(x["username"]) == 10 for x in ls), json.dumps(d, ensure_ascii=False)[:100])
+        check("each line of a batch has its own Stremio link", len({x.get("stremio") for x in ls}) == 4 and all(x.get("stremio") for x in ls))
 
         print("\n== 4b. Virtual 30-month package: create with 15 months then extend once ==")
         code, d = jreq("/admin/api/create", {"gate": gid, "package_id": "x2:15", "username": "", "password": "", "count": 2})

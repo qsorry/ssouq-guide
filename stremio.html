@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>اشتراكك في Stremio | سمارت سوق</title>
+<meta name="description" content="أضف محتوى اشتراكك كله إلى Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها والقنوات المباشرة، بأقسام السيرفر نفسها.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#060b17">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ألوان صفحة المحتوى والبلاغ نفسها — فالصفحة امتدادٌ لهما */
+:root{color-scheme:dark;--bg:#060b17;--card:#0e172c;--card2:#132039;--line:#1c2a4a;--line2:#29406b;
+  --ink:#eaf0ff;--mute:#8fa2c6;--acc:#2f8cff;--acc2:#1767d8;--green:#22c493;--red:#f0685a;--amber:#f2b23e;--violet:#8b7cf6}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(1100px 520px at 100% -8%,rgba(139,124,246,.16),transparent 60%),
+  radial-gradient(900px 480px at 0 0,rgba(47,140,255,.10),transparent 60%),var(--bg);color:var(--ink);
+  font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px}
+.top{position:sticky;top:0;z-index:20;background:rgba(6,11,23,.86);backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:12px;min-height:62px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .bi{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--card2);color:var(--violet)}
+.brand b{display:block;font-size:1.05rem;line-height:1.15}
+.brand small{display:block;color:var(--mute);font-size:.72rem}
+main{padding:22px 0 60px}
+h1{font-size:clamp(1.35rem,4vw,1.8rem);line-height:1.3;margin:4px 0 4px}
+.lead{color:var(--mute);margin:0 0 18px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin:0 0 14px}
+label{display:block;font-weight:600;font-size:.9rem;margin:0 0 6px}
+textarea,input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:0}
+textarea{min-height:120px;resize:vertical;direction:ltr;text-align:left;font-family:"IBM Plex Mono",Consolas,monospace;font-size:.86rem}
+input{direction:ltr;text-align:left}
+textarea:focus,input:focus{border-color:var(--acc)}
+.or{display:flex;align-items:center;gap:10px;color:var(--mute);font-size:.82rem;margin:14px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.grid3 > div{min-width:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:12px;padding:12px 16px;font-weight:700;width:100%}
+.btn.pri{background:linear-gradient(135deg,var(--violet),var(--acc2));color:#fff}
+.btn.sec{background:var(--card2);border:1px solid var(--line2);color:var(--ink)}
+.btn:disabled{opacity:.6;cursor:wait}
+.row{display:grid;gap:10px;margin-top:14px}
+.err{color:var(--red);margin:10px 0 0;font-weight:600}
+.warn{background:rgba(242,178,62,.10);border:1px solid rgba(242,178,62,.35);color:#ffd68a;border-radius:12px;padding:10px 12px;margin:0 0 12px}
+.ok{color:var(--green)}
+.muted{color:var(--mute);font-size:.86rem}
+.head{display:flex;align-items:center;gap:12px;margin:0 0 14px}
+.head img{width:52px;height:52px;border-radius:14px;flex:none;background:var(--bg)}
+.head b{display:block;font-size:1.12rem}
+.pill{display:inline-block;padding:1px 10px;border-radius:10px;font-size:.78rem;border:1px solid var(--line2);color:var(--mute)}
+.pill.on{color:var(--green);border-color:rgba(34,196,147,.5);background:rgba(34,196,147,.10)}
+.pill.off{color:var(--red);border-color:rgba(240,104,90,.5);background:rgba(240,104,90,.10)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 4px}
+.stat{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px;text-align:center}
+.stat b{display:block;font-size:1.35rem;font-variant-numeric:tabular-nums}
+.stat span{color:var(--mute);font-size:.82rem}
+ol.steps{margin:0;padding:0 18px 0 0}
+ol.steps li{margin:0 0 8px}
+ol.steps a{color:#b9ccff;text-decoration:underline}
+.spin{width:22px;height:22px;border-radius:50%;border:3px solid var(--line2);border-top-color:var(--violet);animation:r 1s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes r{to{transform:rotate(360deg)}}
+.toast{position:fixed;inset-inline:0;bottom:18px;margin:auto;width:max-content;max-width:90vw;background:var(--card2);border:1px solid var(--line2);border-radius:12px;padding:8px 14px;opacity:0;transition:.2s;pointer-events:none}
+.toast.on{opacity:1}
+@media (max-width:540px){.grid3{grid-template-columns:1fr}.stat b{font-size:1.1rem}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/"><span class="bi"><svg class="i" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/></svg></span>
+    <span><b>سمارت سوق</b><small>اشتراكك في Stremio</small></span></a>
+</div></header>
+
+<main class="wrap">
+  <!-- الصفحة العامة: رسالة الاشتراك ← رابط التثبيت -->
+  <section id="form" hidden>
+    <h1>شاهد اشتراكك في Stremio</h1>
+    <p class="lead">كل الأفلام، والمسلسلات بمواسمها وحلقاتها، والقنوات المباشرة — بأقسام السيرفر نفسها وبحثٍ بالاسم، في تطبيق Stremio على الجوال والتلفزيون والكمبيوتر.</p>
+    <div class="panel">
+      <label for="line">الصق رسالة اشتراكك كما وصلتك</label>
+      <textarea id="line" placeholder="Host http://… User … Pass …" autocomplete="off" spellcheck="false"></textarea>
+      <div class="or">أو اكتب البيانات</div>
+      <div class="grid3">
+        <div><label for="host">الهوست</label><input id="host" placeholder="http://…" autocomplete="off" spellcheck="false"></div>
+        <div><label for="user">اليوزر</label><input id="user" autocomplete="off" spellcheck="false"></div>
+        <div><label for="pass">الباسورد</label><input id="pass" autocomplete="off" spellcheck="false"></div>
+      </div>
+      <div class="row"><button class="btn pri" id="go">أنشئ رابط Stremio</button></div>
+      <p class="err" id="formErr" hidden></p>
+    </div>
+    <p class="muted">لا تُحفظ بياناتك عندنا: الرابط نفسه يحملها مشفَّرة، فاحتفظ به ولا تشاركه.</p>
+  </section>
+
+  <!-- صفحة التثبيت لرابطٍ بعينه -->
+  <section id="inst" hidden>
+    <div class="panel" id="loading"><span class="spin"></span> <span class="muted">نجهّز محتوى اشتراكك… قد يأخذ ذلك ثوانيَ في أول مرة.</span></div>
+    <div id="bad" class="panel" hidden><p class="err" id="badMsg" style="margin:0"></p>
+      <div class="row"><a class="btn sec" href="/stremio">اطلب رابطًا جديدًا</a></div></div>
+    <div id="card" hidden>
+      <h1>اشتراكك جاهزٌ لـ Stremio</h1>
+      <p class="lead">زرٌّ واحد يضيف محتوى اشتراكك كله إلى Stremio — ويظهر على كل أجهزتك المسجّلة بالحساب نفسه.</p>
+      <div class="panel">
+        <div class="head"><img src="/static/icons/icon-192.png" alt="">
+          <div><b id="name"></b><span class="pill" id="state"></span> <span class="muted" id="exp"></span></div></div>
+        <div class="warn" id="authWarn" hidden></div>
+        <div class="stats">
+          <div class="stat"><b id="cMovie">—</b><span>فيلم</span></div>
+          <div class="stat"><b id="cSeries">—</b><span>مسلسل</span></div>
+          <div class="stat"><b id="cTv">—</b><span>قناة</span></div>
+        </div>
+        <div class="row">
+          <a class="btn pri" id="install" href="#">تثبيت في تطبيق Stremio</a>
+          <a class="btn sec" id="web" href="#" target="_blank" rel="noopener noreferrer">تثبيت من Stremio Web (المتصفح)</a>
+          <button class="btn sec" id="copy">نسخ رابط الإضافة</button>
+        </div>
+      </div>
+      <div class="panel">
+        <b>الخطوات</b>
+        <ol class="steps">
+          <li>حمّل Stremio من <a href="https://www.stremio.com/downloads" target="_blank" rel="noopener noreferrer">stremio.com/downloads</a> وسجّل الدخول بحسابك (أو أنشئ حسابًا مجانيًا).</li>
+          <li>اضغط «تثبيت في تطبيق Stremio» ثم <b>Install</b>. على التلفزيون: ثبّتها من الجوال أو المتصفح بالحساب نفسه فتظهر على الشاشة وحدها.</li>
+          <li>في الرئيسية تجد <b id="rows">الأفلام والمسلسلات والقنوات</b>، وكل أقسام السيرفر في «اكتشف» (Discover) من قائمة التصنيف، والبحث يشمل الثلاثة.</li>
+        </ol>
+        <p class="muted" style="margin:10px 0 0">إن كانت عندك إضافةٌ أخرى لهذا الاشتراك (مثل Xtremio) فاحذفها حتى لا يتكرّر المحتوى. والرابط خاصٌّ بك: فيه اشتراكك، فلا تشاركه.</p>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast">تم النسخ</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const parts = location.pathname.split("/").filter(Boolean);       // ["stremio", <رمز>, "configure"?]
+const token = parts.length >= 2 && parts[1] !== "configure" ? parts[1] : "";
+const nf = n => (n == null ? "—" : Number(n).toLocaleString("en-US"));   // أرقام الموقع نفسها («21,293»)
+
+function toast(t){ const e = $("toast"); e.textContent = t || "تم النسخ"; e.classList.add("on"); setTimeout(() => e.classList.remove("on"), 1400); }
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  toast();
+}
+
+async function showInstall(){
+  $("inst").hidden = false;
+  let d;
+  try {
+    const r = await fetch(`/stremio/${encodeURIComponent(token)}/status.json`, {cache: "no-store"});
+    d = await r.json();
+    if (r.status === 404) throw new Error(d.error || "رابطٌ غير صالح");
+  } catch (e) {
+    $("loading").hidden = true; $("bad").hidden = false;
+    $("badMsg").textContent = e.message && !/fetch|JSON/i.test(e.message) ? e.message : "تعذّر الاتصال — حدّث الصفحة بعد قليل";
+    return;
+  }
+  $("loading").hidden = true; $("card").hidden = false;
+  $("name").textContent = d.name || "سمارت سوق";
+  $("rows").textContent = d.label ? `«أفلام · ${d.label}» و«مسلسلات · ${d.label}» و«قنوات · ${d.label}»` : "الأفلام والمسلسلات والقنوات";
+  const st = $("state");
+  if (d.auth === false) { st.textContent = "غير فعّال"; st.className = "pill off"; }
+  else if (d.auth) { st.textContent = d.active ? "نشط" : (d.status || "—"); st.className = "pill " + (d.active ? "on" : "off"); }
+  else { st.textContent = "تعذّر الفحص"; st.className = "pill"; }
+  $("exp").textContent = d.exp ? `· ينتهي ${d.exp}` : "";
+  if (!d.ok) {
+    $("authWarn").hidden = false;
+    $("authWarn").textContent = d.auth === false
+      ? "السيرفر لا يقبل هذا الاشتراك الآن (منتهٍ أو موقوف). ثبّت الإضافة إن شئت — تعمل وحدها متى جُدِّد الاشتراك."
+      : `تعذّر الوصول إلى السيرفر الآن (${d.error || "خطأ"}). يمكنك التثبيت، ويظهر المحتوى متى عاد السيرفر.`;
+  }
+  const c = d.counts || {};
+  $("cMovie").textContent = nf(c.movie); $("cSeries").textContent = nf(c.series); $("cTv").textContent = nf(c.tv);
+  $("install").href = d.install; $("web").href = d.web;
+  $("copy").onclick = () => copy(d.manifest);
+}
+
+function showForm(){
+  $("form").hidden = false;
+  $("go").onclick = async () => {
+    const line = $("line").value.trim(), host = $("host").value.trim(), user = $("user").value.trim(), pass = $("pass").value.trim();
+    const err = $("formErr"); err.hidden = true;
+    if (!line && !(host && user && pass)) { err.textContent = "الصق رسالة اشتراكك، أو اكتب الهوست واليوزر والباسورد."; err.hidden = false; return; }
+    const b = $("go"); b.disabled = true; b.textContent = "نتحقّق من اشتراكك…";
+    try {
+      const r = await fetch("/api/stremio/link", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(host && user && pass ? {host, user, pass} : {line})});
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "تعذّر إنشاء الرابط");
+      location.href = d.page;
+    } catch (e) { err.textContent = e.message; err.hidden = false; }
+    finally { b.disabled = false; b.textContent = "أنشئ رابط Stremio"; }
+  };
+}
+
+token ? showInstall() : showForm();
+</script>
+</body>
+</html>

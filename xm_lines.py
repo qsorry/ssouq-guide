@@ -55,6 +55,8 @@ import salla_web
 import split_subs
 import analytics
 import google_api
+import stremio_addon
+import stremio_accounts
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
@@ -696,6 +698,92 @@ def format_line(gate, username, password):
     if guide:
         line += " Guide " + guide
     return line
+
+
+# ================= إضافة Stremio (stremio_addon.py) =================
+# كل يوزرٍ يُنشأ (مرح، كاسبر، فالكون، أي بوابة) له رابط صفحة تثبيتٍ على الموقع العام: زرٌّ يضيف محتوى اشتراكه
+# كله إلى Stremio. الرابط من خادمنا والبيانات مختومةٌ فيه (لا تُقرأ منه). ‏STREMIO_PUBLIC_URL أصلُ الروابط
+# المنسوخة من الأداة (الافتراضي الموقع العام)، و‏STREMIO_HOSTS سيرفراتٌ تقبلها الصفحة العامة غير هوستات البوابات.
+STREMIO_PUBLIC = os.environ.get("STREMIO_PUBLIC_URL", "").strip().rstrip("/")
+STREMIO_HOSTS = {stremio_addon.host_key(h) for h in os.environ.get("STREMIO_HOSTS", "").split(",") if h.strip()} - {""}
+
+
+def stremio_servers(st=None):
+    """سيرفرات بواباتنا: اسم كل هوست ← اسم اشتراكه في الدليل (سمارت · كاسبر · فالكون)."""
+    st = st or load_store()
+    out = {}
+    for a in st.get("accounts", []):
+        for g in a.get("gates") or []:
+            k = stremio_addon.host_key(g.get("host"))
+            if k and k not in out:
+                out[k] = guide_sub(g, gate_guide(g, a.get("guide_url", "")))
+    return out
+
+
+def stremio_allowed(host):
+    k = stremio_addon.host_key(host)
+    return bool(k) and (k in STREMIO_HOSTS or k in stremio_servers())
+
+
+def stremio_label(host):
+    return stremio_servers().get(stremio_addon.host_key(host), "")
+
+
+def stremio_link(host, username, password):
+    """رابط صفحة تثبيت Stremio ليوزرٍ على هوست — و"" لهوستٍ فارغ أو بياناتٍ لا تصلح (لا يُفشل شيئًا)."""
+    try:
+        tok = stremio_addon.make_token(DATA_DIR, host, username, password)
+    except ValueError:
+        return ""
+    return stremio_addon.links(STREMIO_PUBLIC or f"https://{SITE_HOST}", tok)["page"]
+
+
+def _row_host(gate, row):
+    """هوست الصف: من سطره إن كان فيه — ما يصل العميل فعلًا، وفالكون يعرف هوسته من لوحته لحظة الإنشاء — وإلا
+    من البوابة."""
+    m = re.match(r"\s*Host\s+(\S+)", str((row or {}).get("line") or ""))
+    return m.group(1) if m else gate.get("host", "")
+
+
+def with_stremio(gate, rows):
+    """يضيف لكل صفٍّ فيه يوزر وباسورد (الإنشاء والبحث) رابط تثبيت Stremio، وحساب Stremio الجاهز إن أُنشئ له."""
+    full = [r for r in rows or [] if isinstance(r, dict) and r.get("username") and r.get("password")]
+    for r in full:
+        if not r.get("stremio"):
+            link = stremio_link(_row_host(gate, r), r["username"], r["password"])
+            if link:
+                r["stremio"] = link
+    by_host = {}
+    for r in full:
+        by_host.setdefault(stremio_addon.host_key(_row_host(gate, r)), []).append(r)
+    for hk, rs in by_host.items():
+        if not hk:
+            continue
+        accs = stremio_accounts.known(DATA_DIR, hk, [r["username"] for r in rs])
+        for r in rs:
+            a = accs.get(r["username"])
+            if a:
+                r["stremio_email"], r["stremio_pass"] = a["email"], a["password"]
+    return rows
+
+
+def stremio_account(acct, gate, username, password, line=""):
+    """حساب Stremio جاهز ليوزر (الإيميل = اليوزر على دومين المتجر، وكلمة المرور = الباسورد) وإضافة محتواه مثبّتةٌ
+    فيه — المحفوظ إن سبق. ← (الحساب، أُنشئ الآن؟). ‏ValueError · stremio_accounts.StremioError برسالةٍ للعرض."""
+    host = _row_host(gate, {"line": line})
+    hk = stremio_addon.host_key(host)
+    if not hk:
+        raise ValueError("البوابة بلا هوست")
+    tok = stremio_addon.make_token(DATA_DIR, host, username, password)
+
+    def descriptor():
+        cfg = stremio_addon.read_token(DATA_DIR, tok)
+        base = STREMIO_PUBLIC or f"https://{SITE_HOST}"
+        return {"manifest": stremio_addon.manifest(cfg, base, stremio_label(host)),
+                "transportUrl": stremio_addon.links(base, tok)["manifest"],
+                "flags": {"official": False, "protected": False}}
+    return stremio_accounts.ensure(DATA_DIR, hk, str(username), str(password), descriptor,
+                                   owner={"acct": acct.get("id"), "gate": gate.get("id")})
 
 
 # ================= خدمة سلة → واتساب (تسليم تلقائي) =================
@@ -1789,6 +1877,7 @@ def search_all_gates(acct, gates, q):
     def one(g):
         try:
             out = search_gate(acct, g, q)
+            with_stremio(g, out.get("results"))
         except Exception:
             out = {"results": [], "links": [], "error": "تعذّر البحث في اللوحة"}
         return {"id": g["id"], "name": g.get("name", ""), **out}
@@ -3060,6 +3149,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redirect((path[len(ADMIN_PATH):] or "/") + qs, 301)  # العنوان القديم
             return self._tool_get(path)
         # ----- الجزء العام -----
+        if path == stremio_addon.PATH or path.startswith(stremio_addon.PATH + "/"):
+            return self._stremio_get(path)      # إضافة Stremio: بلا عدّاد ولا زواحف (في الرابط رمز الاشتراك)
         if not path.startswith(("/static/", "/api/", ADMIN_PATH + "/")) and "/img/" not in path:
             analytics.crawl(DATA_DIR, self.headers.get("User-Agent", ""), path)   # محركات البحث ومعاينات المشاركة
         self._inject = not path.endswith("/widget")     # والودجت في رئيسية المتجر لا يُعدّ زيارةً للدليل
@@ -3279,7 +3370,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(403, {"error": "غير متاح"})
                 if not q:
                     return self._send(200, {"results": []})
-                return self._send(200, search_gate(acct, gate, q))
+                out = search_gate(acct, gate, q)
+                with_stremio(gate, out.get("results"))   # رابط تثبيت Stremio لكل نتيجة
+                return self._send(200, out)
             if path == "/api/users-export/status":   # حالة ملف الإكسل لهذه البوابة
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate:
@@ -3560,6 +3653,42 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, {"error": str(e)})
 
     # ---------- HEAD ----------
+    # ---------- إضافة Stremio ----------
+    def _public_base(self):
+        """أصل الموقع كما وصله الطلب (‏https خلف Traefik) — منه تُبنى روابط التثبيت في الصفحة والـmanifest."""
+        host = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or SITE_HOST).split(",")[0].strip()
+        if not re.fullmatch(r"[A-Za-z0-9.\-]+(?::\d+)?|\[[0-9A-Fa-f:]+\](?::\d+)?", host):
+            host = SITE_HOST
+        proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+        return ("https" if proto == "https" else "http") + "://" + host
+
+    def _stremio_get(self, path):
+        self._inject = False
+        code, body, ctype, hdr = stremio_addon.handle(DATA_DIR, path, self._public_base(), stremio_label)
+        return self._send(code, raw=body, ctype=ctype, extra=hdr)
+
+    def _stremio_link(self):
+        """الصفحة العامة: رسالة الاشتراك أو بياناته ← رابط التثبيت (بحدٍّ بالساعة لكل عنوان)."""
+        if not stremio_addon.rate_ok(self._client_ip()):
+            return self._send(429, {"ok": False, "error": "محاولات كثيرة من جهازك — انتظر ساعة ثم أعد المحاولة"})
+        try:
+            req = self._body()
+        except ValueError:
+            req = None
+        if not isinstance(req, dict):
+            return self._send(400, {"ok": False, "error": "طلب غير صالح"})
+        code, res = stremio_addon.link(DATA_DIR, self._public_base(), req, stremio_allowed)
+        return self._send(code, res)
+
+    def do_OPTIONS(self):
+        # Stremio Web يسأل الإضافة من نطاقٍ آخر: الإذن (CORS) لمساراتها وحدها
+        path = self.path.split("?", 1)[0]
+        if path.startswith(stremio_addon.PATH + "/"):
+            return self._send(204, raw=b"", ctype="text/plain",
+                              extra={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*",
+                                     "Access-Control-Allow-Methods": "GET, OPTIONS", "Access-Control-Max-Age": "86400"})
+        return self._send(404, raw=b"", ctype="text/plain")
+
     def do_HEAD(self):
         # BaseHTTPRequestHandler يرجع 501 لأي method غير معرّفة، وبعض الزواحف
         # والمراقبات تستعمل HEAD. نعيد ترويسات GET نفسها بلا جسم.
@@ -4418,6 +4547,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._renew_public(path)
             if path == "/api/report":               # بلاغ المشترك (عام، بحدٍّ بالساعة)
                 return self._report_post()
+            if path == "/api/stremio/link":         # إضافة Stremio: رسالة الاشتراك ← رابط التثبيت
+                return self._stremio_link()
             if path == "/api/contest/start":         # النتيجة والاسم من الصفحة ← رمزٌ ورسالةٌ جاهزة
                 return self._contest_start()
             if path == "/api/contest/wa-inbound":    # رسالة توقّعٍ وصلت خدمة واتساب (موقَّعة بسرّها)
@@ -4539,6 +4670,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, start_users_export(acct["id"], gate["id"], gate))
             if path.startswith("/api/split/"):        # خارج القفل: تغيير الاسم يلمس اللوحة
                 return self._split_post(path, st, role, acct)
+            if path == "/api/stremio/account":    # خارج القفل: حساب Stremio جاهز ليوزر (ينتظر Stremio)
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                req = self._body()
+                gate = find_gate(acct, req.get("gate"))
+                if not gate:
+                    return self._send(400, {"error": "اختر بوابة"})
+                try:
+                    rec, created = stremio_account(acct, gate, str(req.get("username") or "").strip(),
+                                                   str(req.get("password") or "").strip(), str(req.get("line") or ""))
+                except ValueError as e:
+                    return self._send(429 if "حدّها" in str(e) else 400, {"ok": False, "error": str(e)})
+                except stremio_accounts.StremioError as e:
+                    return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
+                except stremio_addon.XtreamError as e:
+                    return self._send(502, {"ok": False, "error": str(e)})
+                return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"], "created": created})
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -4872,6 +5020,7 @@ class Handler(BaseHTTPRequestHandler):
                                     progress=create_job_start(acct["id"], job, count))
         finally:
             create_job_end(acct["id"], job, len(out))
+        with_stremio(gate, out)                    # رابط تثبيت Stremio لكل يوزر (‏{stremio} في نص الشرح)
         resp = {"lines": out, "total_ms": int((time.time() - t_start) * 1000)}
         if err:
             # ما أُنشئ قبل الخطأ أُنشئ فعلًا (وخُصم)، فيُعاد مع الخطأ لا بدلًا منه.
