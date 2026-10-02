@@ -4,8 +4,9 @@
 حساب Stremio جاهز للعميل: إيميلٌ وكلمة مرور يدخل بهما Stremio على أي جهاز فيجد محتوى اشتراكه كله مثبّتًا —
 بلا رابطٍ ولا «تثبيت».
 
-  الإيميل       يوزر البوابة على دومين المتجر: ‏<اليوزر>@ssouq.com (‏STREMIO_EMAIL_DOMAIN). Stremio لا يطلب تفعيل
-                الإيميل، فلا يُنشأ صندوق بريد؛ وتوجيه البريد الشامل (catch-all) على الدومين اختياريٌّ لاستعادة كلمة المرور.
+  الإيميل       يوزر البوابة على الدومين الفرعي للبريد: ‏<اليوزر>@tv.ssouq.com (‏STREMIO_EMAIL_DOMAIN). Stremio لا يطلب
+                تفعيل الإيميل، فلا يُنشأ صندوق بريد؛ وما يصل لهذه العناوين (رابط «نسيت كلمة المرور») يستقبله خادمنا
+                (‏mail_inbox) ويظهر في الأداة عند اليوزر.
   كلمة المرور   باسورد البوابة نفسه — وإن رفضها Stremio أُضيف إليها «A» (‏STREMIO_PASS_SUFFIX) وأعيد المحاولة.
   الإضافة       إضافة المحتوى (‏stremio_addon) تُثبَّت في الحساب أولَ قائمته، وتحلّ محلّ إضافةٍ سابقةٍ لنا على السيرفر
                 نفسه (يوزرٌ بديل)، وتبقى إضافات Stremio الافتراضية كما هي.
@@ -30,7 +31,7 @@ from urllib.request import Request, urlopen
 import crypto_store
 
 API = os.environ.get("STREMIO_API", "https://api.strem.io").rstrip("/")
-DOMAIN = os.environ.get("STREMIO_EMAIL_DOMAIN", "ssouq.com").strip().lower().lstrip("@")
+DOMAIN = os.environ.get("STREMIO_EMAIL_DOMAIN", "tv.ssouq.com").strip().lower().lstrip("@")
 SUFFIX = os.environ.get("STREMIO_PASS_SUFFIX", "A")
 PER_HOUR = int(os.environ.get("STREMIO_SIGNUPS_PER_HOUR", "30"))
 TIMEOUT = 25
@@ -182,6 +183,59 @@ def known(data_dir, host_key, usernames):
         if rec:
             out[u] = _plain(data_dir, rec)
     return out
+
+
+_emails = {"mtime": None, "map": {}}
+
+
+def by_email(data_dir, addr):
+    """الحساب الذي له هذا الإيميل (بلا كلمة مرور)، أو None — يسأله مستقبِل البريد عن كل مستلم، فالفهرس يُبنى
+    مرةً لكل تعديلٍ في الملف."""
+    try:
+        mtime = os.path.getmtime(_path(data_dir))
+    except OSError:
+        return None
+    with _lock:
+        if _emails["mtime"] != (data_dir, mtime):
+            _emails["map"] = {str(r.get("email", "")).lower(): {k: v for k, v in r.items() if k != "password"}
+                              for r in _load(data_dir).values() if isinstance(r, dict)}
+            _emails["mtime"] = (data_dir, mtime)
+        return _emails["map"].get(str(addr or "").strip().lower())
+
+
+def owned(data_dir, acct_id, gate_id, username):
+    """حساب Stremio ليوزرٍ أنشأه هذا الحساب من هذه البوابة ← (مفتاح السيرفر، الحساب)، أو None — فلا يرى أحدٌ
+    بريد يوزرات غيره."""
+    with _lock:
+        d = _load(data_dir)
+    for rec in d.values():
+        if (isinstance(rec, dict) and rec.get("username") == username and rec.get("acct") == acct_id
+                and rec.get("gate") == gate_id):
+            return rec.get("host"), _plain(data_dir, rec)
+    return None
+
+
+def set_password(data_dir, host_key, username, password):
+    """كلمة مرورٍ جديدة غيّرها العميل أو الموظف في Stremio (من رابط «نسيت كلمة المرور»): تُجرَّب بالدخول أولًا،
+    ثم تُحفظ مشفَّرة. ‏ValueError إن لم يكن له حساب، وStremioError إن رفضها Stremio."""
+    password = str(password or "").strip()
+    rec = get(data_dir, host_key, username)
+    if not rec:
+        raise ValueError("لا حساب Stremio لهذا اليوزر")
+    if not password:
+        raise ValueError("اكتب كلمة المرور الجديدة")
+    try:
+        logout(login(rec["email"], password))
+    except StremioError as e:
+        raise StremioError("Stremio لم يقبل كلمة المرور هذه — تأكّد أنها الجديدة" if "password" in str(e).lower() else str(e),
+                           e.code, e.raw) from None
+    with _lock:
+        d = _load(data_dir)
+        r = d.get(_key(host_key, username))
+        r["password"] = crypto_store.encrypt(password, data_dir)
+        r["changed"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")
+        _save(data_dir, d)
+    return get(data_dir, host_key, username)
 
 
 def rate_ok(now=None, limit=None):

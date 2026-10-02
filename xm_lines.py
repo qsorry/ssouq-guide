@@ -57,6 +57,7 @@ import analytics
 import google_api
 import stremio_addon
 import stremio_accounts
+import mail_inbox
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
 # أسرار اللوحات تبقى مشفَّرة (نحتاجها للدخول للّوحة) لكنها لا تُرسَل للمتصفح.
@@ -765,6 +766,25 @@ def with_stremio(gate, rows):
             if a:
                 r["stremio_email"], r["stremio_pass"] = a["email"], a["password"]
     return rows
+
+
+# بريد حسابات Stremio على خادمنا (‏mail_inbox): المنفذ من XM_MAIL_PORT (‏25 في الحاوية؛ فارغ = لا استقبال)
+MAIL_PORT = os.environ.get("XM_MAIL_PORT", "").strip()
+
+
+def start_mail():
+    """مستقبِل بريد عناوين حسابات Stremio (‏<اليوزر>@tv.ssouq.com) — يقبل عناوين حساباتنا وحدها. فشله (منفذٌ
+    محجوز) لا يُسقط الموقع."""
+    if not MAIL_PORT:
+        return None
+    try:
+        srv = mail_inbox.start(DATA_DIR, int(MAIL_PORT), [stremio_accounts.DOMAIN],
+                               lambda addr: stremio_accounts.by_email(DATA_DIR, addr) is not None)
+        print(f"بريد Stremio يستقبل على المنفذ {MAIL_PORT} لـ @{stremio_accounts.DOMAIN}", flush=True)
+        return srv
+    except (OSError, ValueError) as e:
+        print(f"بريد Stremio لم يعمل (المنفذ {MAIL_PORT}): {e}", flush=True)
+        return None
 
 
 def stremio_account(acct, gate, username, password, line=""):
@@ -3356,6 +3376,15 @@ class Handler(BaseHTTPRequestHandler):
                                                 "error": "تعذّر قراءة الرصيد من اللوحة"})
                 return self._send(200, {"provider": gate.get("mode"), "credits": None,
                                         "unsupported": True})
+            if path == "/api/stremio/mail":       # بريد حساب Stremio ليوزرٍ (رابط «نسيت كلمة المرور»)
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                hit = stremio_accounts.owned(DATA_DIR, acct["id"], self._q("gate"), self._q("username").strip())
+                if not hit:
+                    return self._send(404, {"error": "لا حساب Stremio لهذا اليوزر"})
+                rec = hit[1]
+                return self._send(200, {"email": rec["email"], "password": rec["password"], "receiving": bool(MAIL_PORT),
+                                        "messages": mail_inbox.messages(DATA_DIR, rec["email"])})
             if path == "/api/search":             # بحث بالـ username/password
                 q = self._q("q").strip()
                 if self._q("gate") == "all":      # كل بوابات العميل معًا، نتيجةٌ لكل بوابة
@@ -4687,6 +4716,20 @@ class Handler(BaseHTTPRequestHandler):
                 except stremio_addon.XtreamError as e:
                     return self._send(502, {"ok": False, "error": str(e)})
                 return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"], "created": created})
+            if path == "/api/stremio/password":   # كلمة مرورٍ جديدة غُيّرت في Stremio: تُجرَّب ثم تُحفظ
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                req = self._body()
+                hit = stremio_accounts.owned(DATA_DIR, acct["id"], str(req.get("gate") or ""), str(req.get("username") or "").strip())
+                if not hit:
+                    return self._send(404, {"ok": False, "error": "لا حساب Stremio لهذا اليوزر"})
+                try:
+                    rec = stremio_accounts.set_password(DATA_DIR, hit[0], hit[1]["username"], req.get("password"))
+                except ValueError as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
+                except stremio_accounts.StremioError as e:
+                    return self._send(400 if "كلمة المرور" in str(e) else 502, {"ok": False, "error": f"Stremio: {e}"})
+                return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"]})
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -5135,6 +5178,7 @@ def web():
     start_content_worker()
     start_reports()
     start_embedded_reader()
+    start_mail()
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 
