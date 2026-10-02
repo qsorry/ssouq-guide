@@ -488,6 +488,9 @@ details.card>.din{padding:0 16px 16px}
         <div class="fld"><input id="eFreeze" placeholder="معرّفات كيانات مفصولة بفواصل (مثل 55005)">
           <button class="ghost" type="button" id="eFreezeSave">احفظ التجميد</button></div>
         <span class="hint">الكيان المجمّد لا ينقسم ولا يُدمج ولا يتبدّل رابطه ولا يُكتب له TMDB حتى يُرفع التجميد</span>
+      <div class="acts" style="margin-top:8px"><input id="eNormId" placeholder="معرّف الكيان" style="width:130px"><input id="eNormTmdb" placeholder="معرّف TMDB المُتحقَّق" style="width:170px">
+        <button class="ghost" type="button" id="eNormalize">ثبّت الهوية بقرار المالك</button>
+        <span class="hint">ينسخ حقول TMDB إلى صفّ الكيان فقط — لا دمج ولا انقسام ولا رابط ولا تحويل؛ أي مخالفة = تراجعٌ كامل</span></div>
         <div class="msg" id="eMsg2"></div>
         <pre class="mono dump" id="eOut" hidden></pre>
       </div>
@@ -1138,6 +1141,13 @@ $("eSample").onclick = async () => {
   const d = await api("/api/content/admin/seo-sample", {}).catch(() => ({error: "تعذّر الاتصال"}));
   const smp = d.sample || {};
   $("eMsg2").textContent = d.error || `عيّنة ${(smp.ids || []).length} عملًا — ${JSON.stringify(smp.run || {})}`; showOut(smp);
+};
+$("eNormalize").onclick = async () => {
+  const id = $("eNormId").value.trim(), t = $("eNormTmdb").value.trim();
+  if (!/^\d+$/.test(id) || !/^\d+$/.test(t) || !confirm(`تثبيت الكيان ${id} على TMDB ${t}؟ (قرار المالك)`)) return;
+  const d = await api("/api/content/admin/seo-normalize", {id: Number(id), tmdb_id: Number(t)}).catch(() => ({error: "تعذّر الاتصال"}));
+  $("eMsg2").textContent = d.error ? `رُفض: ${d.error}` : `تمّ: ${id} ← TMDB ${d.tmdb_id} · ${d.tmdb_fields_populated.length} حقلًا · الرابط ${d.slug.unchanged ? "ثابت" : "تغيّر!"} · تحويلات جديدة ${d.new_redirects}`;
+  showOut(d); loadSeo();
 };
 $("eFreezeSave").onclick = async () => {
   const ids = $("eFreeze").value.split(/[\s,،]+/).filter(x => /^\d+$/.test(x)).map(Number);

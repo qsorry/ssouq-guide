@@ -5043,6 +5043,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_sources.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-probe":     # الفحص الأولي: ماذا تعطي كل لوحة (يتصل باللوحات الآن)
                 return self._send(200, {"ok": True, "probe": seo_sources.probe(DATA_DIR, int(body.get("n") or 20))})
+            elif path == "/api/content/admin/seo-normalize": # قرار المالك: تثبيت معرّف TMDB المُتحقَّق على صفّ كيانٍ واحد ونسخ حقوله (لا دمج/انقسام/رابط/تحويل)
+                try:
+                    res = seo_sources.normalize_identity(DATA_DIR, int(body.get("id")), int(body.get("tmdb_id")))
+                except (TypeError, ValueError) as e:
+                    return self._send(400, {"error": f"معرّفان رقميان مطلوبان: {e}"})
+                return self._send(200 if res.get("ok") else 409, res)
             elif path == "/api/content/admin/seo-scan":      # فحص السكّان كاملًا (قراءةٌ صرفة): ابدأ/استأنف · أوقف مؤقتًا · ابدأ من جديد
                 act = str(body.get("action") or "start")
                 if act == "pause":
