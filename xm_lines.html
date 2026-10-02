@@ -153,6 +153,23 @@ input.t::placeholder{color:color-mix(in srgb,var(--mute) 70%,transparent)}
 .tbl .sa:hover{border-color:#8b7cf6}
 .tbl .sa.busy{opacity:.5;cursor:wait}
 .lines.acc{direction:rtl;text-align:right;white-space:pre-wrap;font-family:inherit}
+.tbl .sm{width:34px;height:30px;border-radius:8px;border:1px solid var(--line);display:inline-grid;place-items:center;color:#8b7cf6}
+.tbl .sm:hover{border-color:#8b7cf6}
+.mail-box{max-width:560px}
+.mail-addr{margin:0 0 12px;display:grid;gap:4px}
+.mail-addr div{display:flex;gap:10px;align-items:baseline}
+.mail-addr span{color:var(--mute);font-size:.8rem;min-width:72px}
+.mail-addr code{direction:ltr;font:600 .86rem "IBM Plex Mono",Consolas,monospace;color:var(--ink);word-break:break-all}
+.mail-pw{display:flex;gap:8px;align-items:stretch}
+.mail-pw input{flex:1;min-width:0;margin:0}
+.mail-pw button{flex:none;width:auto;margin:0;padding:10px 18px}
+.mail{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 8px}
+.mail-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.mail-h span,.mail-f{color:var(--mute);font-size:.78rem}
+.mail-l{display:block;direction:ltr;text-align:left;margin:6px 0 0;padding:6px 10px;border-radius:8px;background:color-mix(in srgb,#8b7cf6 14%,transparent);color:var(--ink);font-size:.8rem;word-break:break-all}
+.mail pre{white-space:pre-wrap;font-size:.8rem;max-height:220px;overflow:auto}
+.mail-help{margin:8px 0 0;font-size:.86rem}
+.mail-help ol{margin:6px 0;padding-inline-start:18px}
 .pill{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.74rem;border:1px solid var(--line);color:var(--mute);background:var(--sf)}
 .pill.ok{color:var(--go);border-color:color-mix(in srgb,var(--go) 45%,transparent);background:color-mix(in srgb,var(--go) 12%,transparent)}
 .pill.bad{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,transparent);background:color-mix(in srgb,var(--err) 12%,transparent)}
@@ -365,7 +382,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
       <p class="msg small" style="margin:0 0 6px">رابطٌ لكل يوزر: يفتحه العميل فيضيف محتوى اشتراكه كله (أفلام · مسلسلات · قنوات) إلى Stremio.</p>
       <pre class="lines" id="resSt"></pre>
       <div class="ph" style="margin-top:12px"><h2>حسابات Stremio جاهزة</h2><button class="copy" id="stAccBtn">إنشاء ونسخ</button></div>
-      <p class="msg small" style="margin:0 0 6px">لمن يريد: إيميلٌ (اليوزر @ssouq.com) وكلمة مرور (الباسورد) يدخل بهما Stremio فيجد المحتوى مثبّتًا — بلا رابطٍ ولا تثبيت.</p>
+      <p class="msg small" style="margin:0 0 6px">لمن يريد: إيميلٌ (اليوزر @tv.ssouq.com) وكلمة مرور (الباسورد) يدخل بهما Stremio فيجد المحتوى مثبّتًا — بلا رابطٍ ولا تثبيت.</p>
       <pre class="lines acc" id="resAcc" hidden></pre>
     </div>
   </section>
@@ -476,6 +493,24 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
     <input class="t" id="capInput" inputmode="numeric" placeholder="اكتب الكود من الصورة" autocomplete="off">
     <div class="msg" id="capMsg"></div>
     <div class="cap-actions"><button class="go" id="capSubmit">دخول</button><button class="ghost" id="capCancel">إلغاء</button></div>
+  </div>
+</div>
+<div class="overlay" id="mailOverlay" hidden>
+  <div class="box mail-box">
+    <h3>بريد حساب Stremio</h3>
+    <div class="mail-addr" id="mailAddr"></div>
+    <div id="mailList"></div>
+    <details class="mail-help">
+      <summary>تغيير كلمة المرور</summary>
+      <ol>
+        <li>في Stremio اضغط <b>Forgot password</b> واكتب الإيميل أعلاه.</li>
+        <li>بعد دقيقة اضغط «تحديث» هنا: تصل الرسالة برابطها — افتحه واكتب كلمة المرور الجديدة.</li>
+        <li>احفظها هنا (تُجرَّب على Stremio أولًا)، فيُنسخ للعميل الحساب الصحيح.</li>
+      </ol>
+      <div class="mail-pw"><input class="t" id="mailNewPw" placeholder="كلمة المرور الجديدة" autocomplete="off"><button class="go" id="mailSavePw">حفظ</button></div>
+    </details>
+    <div class="msg" id="mailMsg"></div>
+    <div class="cap-actions"><button class="ghost" id="mailRefresh">تحديث</button><button class="ghost" id="mailClose">إغلاق</button></div>
   </div>
 </div>
 <div class="toast" id="toast">تم النسخ</div>
@@ -646,13 +681,16 @@ const msgOf = (x, gid) => {
 // زرّ نسخ رابط تثبيت Stremio لصفٍّ له رابط (يصنعه الخادم بعد الإنشاء والبحث)
 const stIcon = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>';
 const stremioBtn = x => x.stremio ? `<button class="sb" title="نسخ رابط Stremio (يضيف محتوى الاشتراك كله إلى Stremio)" data-copy="${esc(x.stremio)}">${stIcon}</button>` : "";
-// حساب Stremio جاهز (إيميل = اليوزر @ssouq.com، وكلمة المرور = الباسورد): يُنشأ بالضغطة الأولى ويُنسخ نصّه للعميل،
+// حساب Stremio جاهز (إيميل = اليوزر @tv.ssouq.com، وكلمة المرور = الباسورد): يُنشأ بالضغطة الأولى ويُنسخ نصّه للعميل،
 // وبعدها يُنسخ وحده. يدخل به العميل Stremio فيجد المحتوى مثبّتًا.
 const stAccText = (email, pass) => `🎬 حسابك في Stremio — المحتوى جاهزٌ فيه:\nالإيميل: ${email}\nكلمة المرور: ${pass}\n\n`
   + `حمّل Stremio من stremio.com/downloads وسجّل الدخول بهما، تجد الأفلام والمسلسلات والقنوات في الرئيسية.`;
 const accIcon = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>';
+// ✉️ بريد الحساب على خادمنا: رابط «نسيت كلمة المرور» يصل هنا، وتُحفظ كلمة المرور الجديدة
+const mailIcon = '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>';
+const mailBtn = (u, gid) => `<button class="sm" title="بريد حساب Stremio (رابط «نسيت كلمة المرور» وكلمة المرور الجديدة)" data-gate="${esc(gid || curGate)}" data-u="${esc(u)}">${mailIcon}</button>`;
 const stremioAccBtn = (x, gid) => x.stremio_email
-  ? `<button class="sa on" title="نسخ حساب Stremio (${esc(x.stremio_email)})" data-copy="${esc(stAccText(x.stremio_email, x.stremio_pass))}">${accIcon}</button>`
+  ? `<button class="sa on" title="نسخ حساب Stremio (${esc(x.stremio_email)})" data-copy="${esc(stAccText(x.stremio_email, x.stremio_pass))}">${accIcon}</button> ${mailBtn(x.username, gid)}`
   : x.stremio ? `<button class="sa" title="إنشاء حساب Stremio جاهز (إيميل وكلمة مرور) ونسخه" data-gate="${esc(gid || curGate)}"
       data-u="${esc(x.username)}" data-p="${esc(x.password)}" data-line="${esc(x.line || "")}">${accIcon}</button>` : "";
 async function stremioAcc(gate, username, password, line){
@@ -669,6 +707,7 @@ async function makeStremioAcc(b){
     const d = await stremioAcc(b.dataset.gate, b.dataset.u, b.dataset.p, b.dataset.line);
     const t = stAccText(d.email, d.password);
     b.dataset.copy = t; b.classList.add("on"); b.title = `نسخ حساب Stremio (${d.email})`;
+    if (!b.parentElement.querySelector(".sm")) b.insertAdjacentHTML("afterend", " " + mailBtn(b.dataset.u, b.dataset.gate));
     await copy(t); toast(d.created ? "أُنشئ حساب Stremio ونُسخ" : "حساب Stremio موجود — نُسخ");
   } catch(e) { toast(e.message); }
   finally { b.disabled = false; b.classList.remove("busy"); }
@@ -1217,6 +1256,54 @@ $("hist").addEventListener("click", e => {
 });
 $("copyRes").onclick = () => copy($("res").textContent);
 $("copyStremio").onclick = () => copy($("resSt").textContent);
+// ---- بريد حساب Stremio: ما وصل لإيميله على خادمنا (رابط «نسيت كلمة المرور»)، وحفظ كلمة المرور الجديدة ----
+let mailCtx = null;
+const safeUrl = u => /^https?:\/\//i.test(String(u || ""));
+async function openMail(gate, username, btn){
+  mailCtx = {gate, username, btn};
+  $("mailMsg").textContent = ""; $("mailNewPw").value = ""; $("mailAddr").innerHTML = "";
+  $("mailOverlay").classList.add("show"); $("mailOverlay").hidden = false;
+  await loadMail();
+}
+const showMailAddr = (email, pw) => { $("mailAddr").innerHTML =
+  `<div><span>الإيميل</span><code>${esc(email)}</code></div><div><span>كلمة المرور</span><code>${esc(pw)}</code></div>`; };
+function hideMail(){ $("mailOverlay").classList.remove("show"); $("mailOverlay").hidden = true; mailCtx = null; }
+async function loadMail(){
+  if (!mailCtx) return;
+  $("mailList").innerHTML = '<div class="empty">جاري التحميل…</div>';
+  try {
+    const r = await fetch(B + `/api/stremio/mail?gate=${encodeURIComponent(mailCtx.gate)}&username=${encodeURIComponent(mailCtx.username)}`);
+    const d = chk(await r.json()); if (d.error) throw new Error(d.error);
+    showMailAddr(d.email, d.password);
+    const ms = d.messages || [];
+    $("mailList").innerHTML = ms.length ? ms.map(m => {
+      const links = (m.links || []).filter(safeUrl);
+      return `<div class="mail"><div class="mail-h"><b>${esc(m.subject || "(بلا عنوان)")}</b><span>${esc(m.date || "")}</span></div>
+        <div class="mail-f">${esc(m.from || "")}</div>
+        ${links.slice(0, 4).map(u => `<a class="mail-l" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(u.length > 60 ? u.slice(0, 60) + "…" : u)}</a>`).join("")}
+        <details><summary>النص كاملًا</summary><pre>${esc(m.text || "")}</pre></details></div>`; }).join("")
+      : `<div class="empty">${d.receiving ? "لا رسائل بعد. اطلب «Forgot password» في Stremio بهذا الإيميل ثم اضغط «تحديث»." : "استقبال البريد غير مفعّل على الخادم بعد (المنفذ 25)."}</div>`;
+  } catch(e) { $("mailList").innerHTML = ""; $("mailMsg").textContent = e.message; }
+}
+$("mailRefresh").onclick = loadMail;
+$("mailClose").onclick = hideMail;
+$("mailOverlay").addEventListener("click", e => { if (e.target === $("mailOverlay")) hideMail(); });
+$("mailSavePw").onclick = async () => {
+  const pw = $("mailNewPw").value.trim();
+  if (!pw || !mailCtx) { $("mailMsg").textContent = "اكتب كلمة المرور الجديدة."; return; }
+  const b = $("mailSavePw"); b.disabled = true; $("mailMsg").textContent = "نجرّبها على Stremio…";
+  try {
+    const r = await fetch(B + "/api/stremio/password", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({gate: mailCtx.gate, username: mailCtx.username, password: pw})});
+    const d = chk(await r.json()); if (!d.ok) throw new Error(d.error || "تعذّر الحفظ");
+    $("mailMsg").textContent = "حُفظت كلمة المرور الجديدة ✓"; $("mailNewPw").value = "";
+    const acc = mailCtx.btn && mailCtx.btn.parentElement.querySelector(".sa");
+    if (acc) acc.dataset.copy = stAccText(d.email, d.password);
+    showMailAddr(d.email, d.password);
+  } catch(e) { $("mailMsg").textContent = e.message; }
+  finally { b.disabled = false; }
+};
+
 // حسابات Stremio لليوزرات الجديدة: واحدًا واحدًا (الخادم يسجّل حسابًا في الوقت)، ثم يُنسخ نصّها كله
 let lastLines = [], lastGate = "";
 $("stAccBtn").onclick = async () => {
@@ -1248,6 +1335,7 @@ $("searchQ").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(
 $("searchRes").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.classList.contains("sa") && !b.dataset.copy) { makeStremioAcc(b); return; }
+  if (b.classList.contains("sm")) { openMail(b.dataset.gate, b.dataset.u, b); return; }
   if (b.dataset.copy) { copy(b.dataset.copy); return; }
   if (b.dataset.openGate) {                              // بوابةٌ تحتاج دخولًا: تُفتح فيُطلب كودها
     if (b.dataset.openGate === curGate) fetchPackages(); else selectGate(b.dataset.openGate, true);

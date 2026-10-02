@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-حسابات Stremio الجاهزة (‏stremio_accounts.py): الإيميل = اليوزر @ssouq.com وكلمة المرور = الباسورد (و«A» إن
+حسابات Stremio الجاهزة (‏stremio_accounts.py): الإيميل = اليوزر @tv.ssouq.com وكلمة المرور = الباسورد (و«A» إن
 رفضها Stremio)، والإضافة مثبّتةٌ أولَ الحساب، والحفظ المشفَّر، وحساب سبق تسجيله، والحدّ بالساعة — مقابل واجهة
 Stremio وهمية وسيرفر Xtream وهمي (بلا إنترنت)، ثم عبر الخادم بزرّ الأداة.
 
@@ -18,6 +18,7 @@ import time
 import urllib.error
 import urllib.request
 import http.cookiejar
+import smtplib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -30,6 +31,7 @@ import stremio_accounts as A  # noqa: E402
 import stremio_addon as S  # noqa: E402
 
 PORT = int(os.environ.get("STREMIO_ACC_TEST_PORT", "9593"))
+MAIL_PORT = int(os.environ.get("STREMIO_MAIL_TEST_PORT", "9594"))
 _p = _f = 0
 
 
@@ -66,8 +68,8 @@ def descriptor_for(xt_host, d, user="u", pw="p"):
 
 def unit():
     print("== الإيميل ==")
-    check("اليوزر @ssouq.com", A.email_for("0504998661ali") == "0504998661ali@ssouq.com")
-    check("حروفٌ كبيرة ومسافات ورموز تُنظَّف", A.email_for(" Ab C+1/ ") == "abc1@ssouq.com")
+    check("اليوزر @tv.ssouq.com", A.email_for("0504998661ali") == "0504998661ali@tv.ssouq.com")
+    check("حروفٌ كبيرة ومسافات ورموز تُنظَّف", A.email_for(" Ab C+1/ ") == "abc1@tv.ssouq.com")
     check("دومينٌ آخر", A.email_for("123", "tv.example.com") == "123@tv.example.com")
     check("يوزرٌ بلا حرفٍ صالح ← ValueError", raises(lambda: A.email_for("أحمد"), ValueError))
 
@@ -81,9 +83,9 @@ def against_mocks():
     try:
         print("== حسابٌ جديد ==")
         rec, created = A.ensure(d, "127.0.0.1", "0504998661ali", "0568803105", descriptor_for(xt_host, d))
-        check("أُنشئ: الإيميل اليوزر وكلمة المرور الباسورد نفسه", created and rec["email"] == "0504998661ali@ssouq.com"
-              and rec["password"] == "0568803105" and api.users.get("0504998661ali@ssouq.com") == "0568803105", json.dumps(rec)[:120])
-        col = api.collections["0504998661ali@ssouq.com"]
+        check("أُنشئ: الإيميل اليوزر وكلمة المرور الباسورد نفسه", created and rec["email"] == "0504998661ali@tv.ssouq.com"
+              and rec["password"] == "0568803105" and api.users.get("0504998661ali@tv.ssouq.com") == "0568803105", json.dumps(rec)[:120])
+        col = api.collections["0504998661ali@tv.ssouq.com"]
         check("إضافتنا أولَ الحساب وإضافات Stremio الافتراضية باقية",
               col[0]["manifest"]["id"].startswith("com.ssouq.xtream.") and [a["manifest"]["name"] for a in col[1:]] == ["Cinemeta", "OpenSubtitles v3"],
               str([a["manifest"]["name"] for a in col]))
@@ -102,33 +104,33 @@ def against_mocks():
         print("== كلمة مرورٍ يرفضها Stremio ==")
         api.require_letter = True
         rec, _ = A.ensure(d, "127.0.0.1", "777001", "12345678", descriptor_for(xt_host, d, "777001", "12345678"))
-        check("أرقامٌ فقط ورفضها Stremio ← يُضاف «A»", rec["password"] == "12345678A" and api.users["777001@ssouq.com"] == "12345678A")
+        check("أرقامٌ فقط ورفضها Stremio ← يُضاف «A»", rec["password"] == "12345678A" and api.users["777001@tv.ssouq.com"] == "12345678A")
         api.require_letter = False
         e36 = A.StremioError("User with this email already exists", 36, {"code": 36, "existingUser": True})
         check("ردّ Stremio الحقيقي للإيميل المسجّل يُعرف (بعلامته لا بنصّه وحده)", A._exists(e36)
               and A._exists(A.StremioError("x", 36, {"existingUser": True})) and not A._exists(A.StremioError("User not found", 2, {})))
 
         print("== إيميلٌ مسجّلٌ من قبل ==")
-        api.users["555@ssouq.com"] = "pass555A"
-        api.collections["555@ssouq.com"] = []
+        api.users["555@tv.ssouq.com"] = "pass555A"
+        api.collections["555@tv.ssouq.com"] = []
         rec, created = A.ensure(d, "127.0.0.1", "555", "pass555", descriptor_for(xt_host, d, "555", "pass555"))
         check("سُجّل بكلمة مرورنا (بـA): يُستعاد ويُثبَّت فيه", created and rec.get("adopted") and rec["password"] == "pass555A"
-              and api.collections["555@ssouq.com"][0]["manifest"]["id"].startswith("com.ssouq.xtream."))
-        api.users["666@ssouq.com"] = "someone-else"
+              and api.collections["555@tv.ssouq.com"][0]["manifest"]["id"].startswith("com.ssouq.xtream."))
+        api.users["666@tv.ssouq.com"] = "someone-else"
         msg = raises(lambda: A.ensure(d, "127.0.0.1", "666", "p666", descriptor_for(xt_host, d, "666", "p666")), A.StremioError)
         check("مسجّلٌ بكلمة مرورٍ أخرى ← رسالةٌ واضحة ولا يُحفظ", msg and "بكلمة مرورٍ أخرى" in msg and not A.get(d, "127.0.0.1", "666"), str(msg))
 
         print("== يوزرٌ بديل على السيرفر نفسه ==")
-        auth = A.login("0504998661ali@ssouq.com", "0568803105")
+        auth = A.login("0504998661ali@tv.ssouq.com", "0568803105")
         A.install(auth, descriptor_for(xt_host, d, "u", "p")())       # إضافة يوزرٍ آخر على السيرفر نفسه
-        col = api.collections["0504998661ali@ssouq.com"]
+        col = api.collections["0504998661ali@tv.ssouq.com"]
         ours = [a for a in col if a["manifest"]["id"].startswith("com.ssouq.xtream.")]
         check("تحلّ محلّ إضافتنا السابقة (لا تكرار للمحتوى)", len(ours) == 1 and col[0] is not None and "/stremio/" in col[0]["transportUrl"]
               and len(col) == 3, str([a["manifest"]["name"] for a in col]))
         other = {"manifest": {"id": "com.ssouq.xtream.other", "idPrefixes": ["sq999999:"], "name": "x"}, "transportUrl": "https://g/x/manifest.json"}
-        api.collections["0504998661ali@ssouq.com"].append(other)
+        api.collections["0504998661ali@tv.ssouq.com"].append(other)
         A.install(auth, descriptor_for(xt_host, d, "u", "p")())
-        check("وإضافتنا لسيرفرٍ آخر تبقى", any(a["transportUrl"] == "https://g/x/manifest.json" for a in api.collections["0504998661ali@ssouq.com"]))
+        check("وإضافتنا لسيرفرٍ آخر تبقى", any(a["transportUrl"] == "https://g/x/manifest.json" for a in api.collections["0504998661ali@tv.ssouq.com"]))
         A.logout(auth)
 
         print("== الحدود والأعطال ==")
@@ -161,10 +163,10 @@ def _install_fails_then_recovers(api, d, xt_host):
         return False
     except S.XtreamError:
         pass
-    if A.get(d, "127.0.0.1", "905") or "905@ssouq.com" not in api.users or api.sessions:
+    if A.get(d, "127.0.0.1", "905") or "905@tv.ssouq.com" not in api.users or api.sessions:
         return False
     rec, created = A.ensure(d, "127.0.0.1", "905", "pw9059", descriptor_for(xt_host, d, "905", "pw9059"))
-    return created and rec.get("adopted") and api.collections["905@ssouq.com"][0]["manifest"]["id"].startswith("com.ssouq.xtream.")
+    return created and rec.get("adopted") and api.collections["905@tv.ssouq.com"][0]["manifest"]["id"].startswith("com.ssouq.xtream.")
 
 
 def through_server():
@@ -174,18 +176,22 @@ def through_server():
     d = tempfile.mkdtemp(prefix="stracc_web_")
     with open(os.path.join(d, "accounts.json"), "w", encoding="utf-8") as f:
         json.dump({"admin": None, "accounts": [{"id": "a1", "name": "MR7", "user": "mr7", "password": "pw123456",
+                                                "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]},
+                                               {"id": "a2", "name": "Other", "user": "other", "password": "pw654321",
                                                 "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]}]}, f)
-    env = dict(os.environ, XM_DATA=d, XM_BIND="127.0.0.1", XM_PORT=str(PORT), XM_ADMIN_PASSWORD="adminpw1", STREMIO_API=api_url)
+    env = dict(os.environ, XM_DATA=d, XM_BIND="127.0.0.1", XM_PORT=str(PORT), XM_ADMIN_PASSWORD="adminpw1", STREMIO_API=api_url,
+               XM_MAIL_PORT=str(MAIL_PORT))
     env.pop("XM_SECRET_KEY", None)
     app = subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     base = f"http://127.0.0.1:{PORT}/admin"
     op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
-    def post(path, obj):
-        r = urllib.request.Request(base + path, data=json.dumps(obj).encode(), headers={"Content-Type": "application/json"}, method="POST")
+    def post(path, obj, opener=None):
+        r = urllib.request.Request(base + path, data=json.dumps(obj).encode() if obj is not None else None,
+                                   headers={"Content-Type": "application/json"}, method="POST" if obj is not None else "GET")
         try:
-            x = op.open(r, timeout=30)
+            x = (opener or op).open(r, timeout=30)
             return x.getcode(), json.loads(x.read())
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
@@ -202,13 +208,39 @@ def through_server():
         c, r = post("/api/login", {"user": "mr7", "password": "pw123456"})
         check("دخول الحساب", c == 200 and r.get("role") == "account", json.dumps(r)[:80])
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "u", "password": "p"})
-        check("زرّ «حساب Stremio» ← إيميلٌ وكلمة مرور", c == 200 and r.get("ok") and r["email"] == "u@ssouq.com" and r["password"] == "p"
+        check("زرّ «حساب Stremio» ← إيميلٌ وكلمة مرور", c == 200 and r.get("ok") and r["email"] == "u@tv.ssouq.com" and r["password"] == "p"
               and r["created"] is True, json.dumps(r, ensure_ascii=False))
-        col = api.collections.get("u@ssouq.com") or [{}]
+        col = api.collections.get("u@tv.ssouq.com") or [{}]
         check("وإضافة المحتوى مثبّتةٌ في الحساب باسم السيرفر", col[0].get("manifest", {}).get("name") == "سمارت سوق · سمارت",
               col[0].get("manifest", {}).get("name"))
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "u", "password": "p"})
         check("المرة الثانية: الحساب نفسه بلا إنشاء", c == 200 and r["created"] is False and len(api.users) == 1)
+
+        print("== البريد على خادمنا ==")
+        link = "https://www.stremio.com/reset-password/tok123"
+        with smtplib.SMTP("127.0.0.1", MAIL_PORT, timeout=10) as s:
+            s.sendmail("no-reply@strem.io", ["u@tv.ssouq.com"], f"Subject: Reset your password\r\n\r\nOpen {link}\r\n")
+            s.mail("x@example.com")
+            check("عنوانٌ ليس لحسابٍ عندنا يُرفض عند الاستلام", s.rcpt("nobody@tv.ssouq.com")[0] == 550)
+        c, r = post("/api/stremio/mail?gate=g1&username=u", None)
+        check("الرسالة تظهر عند اليوزر في الأداة برابطها", c == 200 and r["receiving"] and r["email"] == "u@tv.ssouq.com"
+              and r["messages"][0]["subject"] == "Reset your password" and r["messages"][0]["links"] == [link], json.dumps(r, ensure_ascii=False)[:200])
+        op2 = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        post("/api/login", {"user": "other", "password": "pw654321"}, op2)
+        c, r = post("/api/stremio/mail?gate=g1&username=u", None, op2)
+        check("حسابٌ آخر لا يرى بريد يوزرات غيره", c == 404, str(c))
+        c, r = post("/api/stremio/password", {"gate": "g1", "username": "u", "password": "x"}, op2)
+        check("ولا يغيّر كلمة مرورها", c == 404, str(c))
+
+        print("== كلمة مرورٍ جديدة ==")
+        api.users["u@tv.ssouq.com"] = "NewPass9"                     # غيّرها الموظف في Stremio من رابط البريد
+        c, r = post("/api/stremio/password", {"gate": "g1", "username": "u", "password": "WrongOne"})
+        check("كلمةٌ لا يقبلها Stremio لا تُحفظ", c == 400 and "لم يقبل" in r["error"], json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/password", {"gate": "g1", "username": "u", "password": "NewPass9"})
+        check("الجديدة تُجرَّب ثم تُحفظ", c == 200 and r["ok"] and r["password"] == "NewPass9", json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/account", {"gate": "g1", "username": "u", "password": "p"})
+        check("ونسخ الحساب بعدها بكلمة المرور الجديدة", c == 200 and r["password"] == "NewPass9" and r["created"] is False)
+        check("لا جلسة Stremio مفتوحة بعد الفحص", not api.sessions)
         c, r = post("/api/stremio/account", {"gate": "nope", "username": "u", "password": "p"})
         check("بوابةٌ ليست له ← 400", c == 400)
         api.down = True
@@ -226,8 +258,8 @@ def through_server():
     import xm_lines as X
     X.DATA_DIR = d
     rows = X.with_stremio({"host": xt_host}, [{"username": "u", "password": "p"}, {"username": "zz", "password": "p"}])
-    check("الصف الذي له حساب يحمله (‏{stremio_email} ‏{stremio_pass})", rows[0].get("stremio_email") == "u@ssouq.com"
-          and rows[0].get("stremio_pass") == "p" and "stremio_email" not in rows[1])
+    check("الصف الذي له حساب يحمله (‏{stremio_email} ‏{stremio_pass})", rows[0].get("stremio_email") == "u@tv.ssouq.com"
+          and rows[0].get("stremio_pass") == "NewPass9" and "stremio_email" not in rows[1])   # كلمة المرور بعد تغييرها
     shutil.rmtree(d, ignore_errors=True)
 
 
