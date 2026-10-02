@@ -845,6 +845,7 @@ let ePoll = 0;
 function renderSeo(d) {
   const chip = $("eChip"), e = d.entities || {};
   chip.textContent = d.running ? "يُبنى الآن…" : d.built ? "مبنيّة" : "لم تُبنَ بعد";
+  if (d.code_fingerprint) chip.title = "الكود " + d.code_fingerprint;
   chip.className = "chip " + (d.running ? "busy" : d.built ? "on" : "");
   if (!d.built) { $("eStats").innerHTML = '<p class="empty">تُبنى وحدها بعد أول سحبٍ (خلال عشر دقائق من الإقلاع)، أو الآن بالزرّ.</p>'; }
   else {
@@ -862,13 +863,17 @@ function renderSeo(d) {
   clearTimeout(ePoll);
   if (d.running) ePoll = setTimeout(loadSeo, 2000);
 }
-async function loadSeo() { try { renderSeo(await api("/api/content/seo")); } catch (e) { if (e.message !== "login") $("eMsg").textContent = "تعذّر تحميل الطبقة"; } }
+async function loadSeo() {
+  if (!$("eChip").textContent) { $("eChip").textContent = "جارٍ التحميل…"; $("eChip").className = "chip busy"; }
+  try { renderSeo(await api("/api/content/seo")); } catch (e) { if (e.message !== "login") { $("eMsg").textContent = "تعذّر تحميل الطبقة: " + e.message; $("eChip").textContent = "خطأ"; } }
+}
 $("eBuild").onclick = async () => {
-  $("eMsg").textContent = "";
+  $("eMsg").textContent = "يُرسل طلب البناء…"; $("eChip").textContent = "يُبنى الآن…"; $("eChip").className = "chip busy";
   const d = await api("/api/content/admin/seo-build", {force: true}).catch(() => ({error: "تعذّر الاتصال"}));
   if (d.error) { $("eMsg").textContent = d.error; return; }
-  $("eMsg").textContent = d.started ? "بدأ البناء في الخلفية…" : "بناءٌ جارٍ أصلًا";
-  renderSeo(d);
+  $("eMsg").textContent = d.started ? "بدأ البناء في الخلفية… (قاعدةٌ كبيرة: دقائق؛ الأعداد تتحدّث وحدها حين ينتهي)" : "بناءٌ جارٍ أصلًا — الأعداد تتحدّث حين ينتهي";
+  try { renderSeo(d); } catch (e) { $("eMsg").textContent += " — " + e.message; }
+  clearTimeout(ePoll); ePoll = setTimeout(loadSeo, 3000);
 };
 $("eKeySave").onclick = async () => {
   const d = await api("/api/content/admin/seo-key", {key: $("eKey").value.trim()}).catch(() => ({error: "تعذّر الاتصال"}));

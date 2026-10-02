@@ -36,7 +36,7 @@ def _p(name, pid, job=None, char=None):
 
 
 def _tv(tid, name, orig, year, lang, countries, genres, ar=None, ar_overview="", alts=(), status="Ended", seasons=2, eps=3,
-        cast=(), creators=(), companies=(), keywords=(), popularity=50.0, type_="Scripted", writers=(("Some Writer", "Writer"),)):
+        cast=(), creators=(), companies=(), keywords=(), popularity=50.0, type_="Scripted", writers=(("Some Writer", "Writer"),), specials=0):
     return {"id": tid, "name": name, "original_name": orig, "first_air_date": f"{year}-01-10", "last_air_date": f"{year + 1}-05-01",
             "original_language": lang, "origin_country": list(countries), "genres": [{"id": g, "name": GENRE_NAMES[g]} for g in genres],
             "overview": f"{name}: an English overview long enough to be indexed when the time comes, about {name.lower()} and its world, "
@@ -44,7 +44,8 @@ def _tv(tid, name, orig, year, lang, countries, genres, ar=None, ar_overview="",
             "status": status, "type": type_, "vote_average": 8.4, "vote_count": 1200, "popularity": popularity,
             "poster_path": f"/tv{tid}.jpg", "backdrop_path": f"/tvb{tid}.jpg", "episode_run_time": [45],
             "number_of_seasons": seasons, "number_of_episodes": seasons * eps,
-            "seasons": [{"season_number": n, "name": f"Season {n}", "episode_count": eps, "air_date": f"{year + n - 1}-01-10", "poster_path": f"/s{tid}{n}.jpg"} for n in range(1, seasons + 1)],
+            "seasons": [{"season_number": n, "name": f"Season {n}", "episode_count": eps, "air_date": f"{year + n - 1}-01-10", "poster_path": f"/s{tid}{n}.jpg"} for n in range(1, seasons + 1)]
+                       + ([{"season_number": 0, "name": "Specials", "episode_count": specials, "air_date": f"{year}-06-01", "poster_path": None}] if specials else []),
             "translations": {"translations": [{"iso_639_1": "ar", "data": {"name": ar or "", "overview": ar_overview}}]},
             "alternative_titles": {"results": [{"iso_3166_1": "XX", "title": a} for a in alts]},
             "aggregate_credits": {"cast": [dict(_p(n, i + tid * 10), roles=[{"character": c}]) for i, (n, c) in enumerate(cast)],
@@ -78,7 +79,7 @@ GENRE_NAMES = {28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80:
 
 TV = {
     2288: _tv(2288, "Prison Break", "Prison Break", 2005, "en", ["US"], [10759, 80, 18], ar="بريزون بريك", ar_overview="قصة بريزون بريك بالعربية، طويلة بما يكفي لتكون مفيدة للقارئ العربي وللفهرسة لاحقًا. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
-              alts=["Prison Break: Sequel"], cast=[("Wentworth Miller", "Michael Scofield"), ("Dominic Purcell", "Lincoln Burrows")], creators=["Paul Scheuring"], companies=["20th Century Fox Television"], popularity=90),
+              alts=["Prison Break: Sequel"], cast=[("Wentworth Miller", "Michael Scofield"), ("Dominic Purcell", "Lincoln Burrows")], creators=["Paul Scheuring"], companies=["20th Century Fox Television"], popularity=90, specials=2),
     1396: _tv(1396, "Breaking Bad", "Breaking Bad", 2008, "en", ["US"], [18, 80], ar="بريكنج باد", ar_overview="قصة بريكنج باد بالعربية، معلّم كيمياء يتحوّل إلى صناعة المخدرات، طويلة بما يكفي. تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق، وتتطوّر الشخصيات حلقةً بعد حلقة حتى النهاية.",
               cast=[("Bryan Cranston", "Walter White"), ("Aaron Paul", "Jesse Pinkman")], creators=["Vince Gilligan"], companies=["Sony Pictures Television"], popularity=95,
               writers=(("Vince Gilligan", "Writer"), ("Some Writer", "Screenplay"))),
@@ -199,8 +200,11 @@ class Handler(BaseHTTPRequestHandler):
             if not d:
                 return self._send(404, {"status_code": 34})
             n = int(m.group(2))
+            count = next((s["episode_count"] for s in d["seasons"] if s["season_number"] == n), None)
+            if count is None:
+                return self._send(404, {"status_code": 34})
             eps = [{"episode_number": e, "name": f"{d['name']} — Episode {e}", "overview": f"In episode {e} of season {n}, things happen that are described here in enough words to be a real summary.",
-                    "air_date": f"{2000 + n}-02-{e:02d}", "runtime": 44, "still_path": f"/st{n}{e}.jpg"} for e in range(1, (d["seasons"][0]["episode_count"] if d["seasons"] else 3) + 1)]
+                    "air_date": f"{2000 + n}-02-{e:02d}", "runtime": 44, "still_path": f"/st{n}{e}.jpg"} for e in range(1, count + 1)]
             return self._send(200, {"season_number": n, "overview": f"Season {n} overview", "episodes": eps,
                                     "translations": {"translations": [{"iso_639_1": "ar", "data": {"overview": f"ملخص الموسم {n}"}}]}})
         m = re.fullmatch(r"/3/(movie|tv)/(\d+)", u.path)

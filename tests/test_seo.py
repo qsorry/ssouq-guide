@@ -428,6 +428,9 @@ def unit_ten():
         check("7b. تغييرٌ ثانٍ: القديمان كلاهما إلى الأحدث (لا سلسلة ولا حلقة)",
               rd["/content/series/breaking-bad/"] == "/content/series/breaking-bad-2008/"
               and rd["/content/series/breaking-bad-tv/"] == "/content/series/breaking-bad-2008/" and "/content/series/breaking-bad-2008/" not in rd)
+        scr = seo_sources.slug_changes_report(con, 0)
+        check("7c. تقرير تبديلات slug: الكيان والقديم والجديد وهدف التحويل، مباشرٌ بلا سلسلة", scr and all(x["direct"] and not x["chain"] for x in scr) and scr[-1]["new_slug"] == "breaking-bad-2008"
+              and con.execute("SELECT COUNT(*) FROM redirect a JOIN redirect b ON b.path=a.target").fetchone()[0] == 0, str(scr))
         seo_build.build(d, force=True)
         con.close(); con = seo_db.connect(d)
         check("6b. إعادة البناء لا تمسّ slug ولا المعرّف", tuple(q("SELECT id, slug FROM content WHERE id=?", cid)[0]) == (cid, "breaking-bad-2008"))
@@ -549,6 +552,11 @@ def unit_production_cases():
         check("تعطّل TMDB: run.error = عدد failures، ولكل فشل content_id وsource وoperation وerror_type وerror_message",
               smp2["run"]["error"] >= 1 and len(smp2["failures"]) == smp2["run"]["error"]
               and all({"content_id", "source", "operation", "error_type", "error_message"} <= set(f) for f in smp2["failures"]), str(smp2["failures"][:2]))
+        con = seo_db.connect(d); con.execute("DELETE FROM api_cache WHERE key LIKE 'tmdb:%' AND status >= 500"); con.commit(); con.close()   # ردود التعطّل المخزَّنة (في الإنتاج لم تُخزَّن: الخطأ كان قبل الطلب)
+        smp3 = seo_sources.sample(d, {"movie": 1, "series": 1, "turkish": 0, "anime": 0, "titles": []})
+        pre = smp3["errors"]["queue_preexisting"]
+        check("أخطاء الطابور السابقة: عدٌّ بحالها وتاريخها، وثلاثةٌ منها تُعاد الآن بالكود الحالي فتزول (retry_probe)",
+              pre["count"] >= 1 and "by_state" in pre and pre["recorded_between"] and pre["retry_probe"] and all(x["after_state"] in ("done", "miss") and "Error" not in (x["after_message"] or "") for x in pre["retry_probe"]), str(pre["retry_probe"]))
         con = seo_db.connect(d)
         idx = seo_search.load(con); st2 = seo_db.settings(con)
         r = seo_search.explain(con, idx, "طبيعة الحب مترجم", st2)
@@ -660,6 +668,8 @@ def unit_sample2_cases():
               ep.get("official_episode_count") == 30 and ep.get("official_season_count") == 6 and ep.get("available_episode_count") == 180 and ep.get("service_episode_count") == {"falcon": 180} and ep.get("episode_record_count") == 30
               and seas.get(3) == (81, 5) and seas.get(4) == (99, 5) and seas.get(1) == (0, 5), str((ep, seas)))
         check("الصفحة تذكر الرسمي (30 حلقة) لا 180", "30" in ye["page"]["ar"]["meta_description"] and "180" not in ye["page"]["ar"]["meta_description"], ye["page"]["ar"]["meta_description"])
+        yeh = seo_pages.render_entity(con, d, "series", ye["slug"], __import__("content_page").lang_of("en"), st2)[1]["html"].decode()
+        check("D.GRAY-MAN RULE: الرسمي (30) في JSON-LD وليس المتاح (180) — والمتاح يظهر «as listed» في المواسم فقط", '"numberOfEpisodes": 30' in yeh and '"numberOfEpisodes": 180' not in yeh and "180 episodes" not in yeh.split("<dl")[0], "")
         fb = works.get("Foo Bar", [{}])[0]
         check("Foo Bar بلا TMDB: الصفحة تقول «مدرجة على فالكون» (سيرفر واحد) لا رقمًا رسميًّا", fb.get("episodes", {}).get("official_episode_count") is None and "مدرجة على فالكون" in fb["page"]["ar"]["meta_description"], fb.get("page", {}).get("ar", {}).get("meta_description"))
         # البحث: اسمان لعملين، والتجميع للعرض
@@ -689,6 +699,50 @@ def unit_sample2_cases():
         con.close()
     finally:
         xt.shutdown(); tm.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_identity_cases():
+    """الانقسامات مفسَّرة: من أين، ولماذا (غاب الدليل أم تناقض)، وبلا تغيير URL؛ رقم بثٍّ أعيد استعماله لعملٍ آخر لا يُربط؛ والعنوان لا يتقلّب."""
+    print("== الهوية: الانقسام وإعادة استعمال رقم البثّ وثبات العنوان ==")
+    d = tempfile.mkdtemp(prefix="seo_id_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "falcon", "name": "فالكون"}]}, f, ensure_ascii=False)
+        _write(d, "casper", _cat([{"n": "Alpha Film", "y": 2010, "i": 90, "p": TMDB + "alpha.jpg"}], [{"n": "Foo Show", "s": [[1, 10]], "i": 50, "p": TMDB + "foo.jpg"}, {"n": "ون بيس", "s": [[1, 5]], "i": 51, "p": TMDB + "op.jpg"}]))
+        _write(d, "falcon", _cat([], [{"n": "Foo Show", "s": [[1, 10]], "i": 60, "p": TMDB + "foo.jpg"}, {"n": "One Piece", "s": [[1, 5]], "i": 61, "p": TMDB + "op.jpg"}]))
+        seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        foo = q("SELECT id, slug, title FROM content WHERE title='Foo Show' AND merged_into IS NULL")
+        check("كاسبر وفالكون بالملصق نفسه ← كيانٌ واحد", len(foo) == 1 and len(q("SELECT 1 FROM content_service WHERE content_id=?", foo[0][0])) == 2)
+        op = q("SELECT id, title FROM content WHERE title IN ('ون بيس','One Piece') AND merged_into IS NULL")
+        check("«ون بيس» و«One Piece» بالملصق نفسه ← كيانٌ واحد بعنوانٍ أول", len(op) == 1)
+        t0 = op[0][1]
+        con.close()
+        # كاسبر يُحدَّث بلا ملصقات (لوحةٌ متدهورة) ورقم البثّ 90 يحمل الآن عملًا آخر تمامًا
+        _write(d, "casper", _cat([{"n": "Zeta Different", "y": 2019, "i": 90}], [{"n": "Foo Show", "s": [[1, 10]], "i": 50}, {"n": "ون بيس", "s": [[1, 5]], "i": 51, "p": TMDB + "op.jpg"}]))
+        r2 = seo_build.build(d)
+        con = seo_db.connect(d)
+        foo2 = q("SELECT id, slug, title, available FROM content WHERE title='Foo Show' AND merged_into IS NULL ORDER BY id")
+        rv = q("SELECT payload_json FROM review WHERE kind='split_entity' AND status='open'")
+        p = json.loads(rv[0][0]) if rv else {}
+        check("غاب الدليل (الملصق) ← كاسبر ينفصل كيانًا جديدًا (سياسة الدليل كما هي) — وبند الانقسام يحمل الأصل والسبب no_evidence والسيرفر",
+              len(foo2) == 2 and len(rv) == 1 and p.get("from") == [foo[0][0]] and p.get("cause") == ["no_evidence"] and p.get("services") in (["casper"], ["falcon"]), str((foo2, p)))
+        check("الانقسام لا يمسّ URL الأصل ولا يُنشئ تحويلًا", foo2[0][1] == foo[0][1] and not q("SELECT 1 FROM redirect"))
+        rep = seo_sources.splits_report(con, 0)
+        ex = rep["examples"][0]
+        check("تقرير الانقسامات: العدد والسبب والسيرفر واليوم ومثالٌ (الأصل ← الجديد، القديم والجديد من slug، بلا تغيير URL)",
+              rep["total"] == 1 and rep["by_cause"] == {"no_evidence": 1} and list(rep["by_service"].values()) == [1] and ex["old_entity"][0]["id"] == foo[0][0]
+              and ex["old_slug"] == [foo[0][1]] and ex["new_slug"] != foo[0][1] and ex["old_url_changed"] is False and rep["url_changes"] == 0, str(rep)[:400])
+        za = q("SELECT id, title, available FROM content WHERE title IN ('Alpha Film','Zeta Different') ORDER BY id")
+        check("رقم البثّ 90 عاد باسمٍ آخر: لا يُربط بـ Alpha Film (يبقى بعنوانه، غائبًا) بل كيانٌ جديد — وعدد إعادة الاستعمال في التسوية",
+              [(r[1], r[2]) for r in za] == [("Alpha Film", 0), ("Zeta Different", 1)] and r2["reconciliation"]["stream_id_reused"] == 1, str((za, r2["reconciliation"])))
+        op2 = q("SELECT id, title FROM content WHERE id=?", op[0][0])
+        check("العنوان المستقرّ لا يتقلّب بين السيرفرات في إعادة البناء", op2[0][1] == t0, str((t0, op2)))
+        con.close()
+    finally:
         shutil.rmtree(d, ignore_errors=True)
 
 
@@ -750,6 +804,9 @@ def unit_sample3_cases():
         q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
         pb0 = q("SELECT id FROM content WHERE title='Prison Break' AND merged_into IS NULL")
         check("قبل الإثراء: Prison Break ثلاثة كيانات (كاسبر، وفالكون S01 وS05 في قسمين بلا دليل) — لا دمج بالاسم", len(pb0) == 3, str(pb0))
+        for r_ in pb0:                                    # كما في الإنتاج: لوحة كل سيرفر أعطت أسماء الممثلين قبل TMDB
+            seo_sources._people_xtream(con, r_[0], {"cast": "Wentworth Miller, Dominic Purcell", "director": ""}, 900)
+        con.commit()
         seo_sources.set_tmdb_key(con, d, "testkey"); con.commit(); con.close()
         smp = seo_sources.sample(d, {"movie": 2, "series": 3, "turkish": 1, "anime": 1, "titles": ["Prison Break", "One Piece", "ون بيس"]})
         con = seo_db.connect(d)
@@ -761,6 +818,10 @@ def unit_sample3_cases():
         check("A) Prison Break: بعد TMDB (2288 لكلٍّ) ← كيانٌ واحد حيّ، والآخران merged_into بتحويل 301، خدماته كاسبر+فالكون، ومواسمه 1 و5 (المواسم انتقلت)",
               len(pb) == 3 and len(live) == 1 and live[0][2] == 2288 and all(r[3] == live[0][0] for r in pb if r[3] is not None)
               and srv == ["casper", "falcon", "falcon"] and {1, 5} <= seas and len(q("SELECT 1 FROM redirect WHERE target LIKE '%prison%'")) >= 2, str((pb, srv, seas)))
+        wm_rows = q("SELECT p.id, p.name, cp.source FROM content_person cp JOIN person p ON p.id=cp.person_id WHERE cp.content_id=? AND p.name_norm='miller wentworth'", live[0][0])
+        pb_desc = seo_pages.render_entity(con, d, "series", live[0][1], __import__("content_page").lang_of("ar"), st2)[1]["desc"]
+        check("دمج الكيانات الثلاثة لا يكرّر الممثل: صفّ TMDB وحده يبقى (أسماء اللوحة من المدمجين تُسقط)، و«بطولة» تذكر Wentworth Miller مرةً واحدة",
+              len(wm_rows) == 1 and wm_rows[0][2] == "tmdb" and pb_desc.count("Wentworth Miller") == 1, str((wm_rows, pb_desc)))
         rs = smp["resolution"]
         check("تقرير التوحيد في العيّنة: Prison Break قبل 3 ← بعد كيانٌ حيٌّ واحد بمعرّفه (one entity per tmdb id)",
               rs["Prison Break"]["live_entities"] == 1 and rs["Prison Break"]["verdict"] == "one entity per tmdb id" and len(rs["Prison Break"]["merged"]) == 2, str(rs["Prison Break"]))
@@ -869,6 +930,10 @@ def unit_sample3_cases():
         r = ex("وان بيس")
         check("«وان بيس» ← اقتراحٌ صوتي للكيانين المُتحقَّقين وغير المحسوم بهويته", r["result"] == "suggest" and {op[0][0], op[1][0]} <= {x["id"] for x in r["suggest"]} and all("identity" in x for x in r["suggest"]), str(r)[:200])
         pbp = pbw["page"]["ar"]["meta_description"]
+        pbh = seo_pages.render_entity(con, d, "series", live[0][1], tr_en, st2)[1]["html"].decode()
+        check("EPISODE SEMANTICS: Prison Break (موسمان + حلقتان خاصتان في TMDB): لا «3 seasons» في العنوان/الوصف/JSON-LD بل «2 seasons»؛ الخاصة حقلٌ مستقل؛ لا حقل seasons عام",
+              "3 seasons" not in pbh and '"numberOfSeasons": 2' in pbh and pbe["official_season_count"] == 2 and pbe["special_season_count" if "special_season_count" in pbe else "official_season_count"] in (1, 2)
+              and pbw["special_season_count"] == 1 and pbe["special_episode_count"] == 2 and pbe["episode_record_count"] == pbe["official_episode_count"] + 2 and "seasons" not in pbw, str({k: v for k, v in pbe.items() if k != "season_episode_count"}))
         check("Prison Break: المواسم بلا الموسم 0 (الخاصة) والرقم الرسمي في الوصف، وعدّ المتاح من القوائم وحدها", f"{tr_ar.count(pbe['official_season_count'] or 0, 'seasons')}" in pbp
               and pbe["available_season_count"] == len([k for k, v in pbe["season_episode_count"].items() if k != "0" and v["available"]]) and pbe["available_season_count"] == 2, str((pbp, pbe["season_episode_count"])))
         check("صفحات الأشخاص والشركات في العيّنة: كل فئة مفحوصة باللغتين (تُرسم، أعمالٌ وروابط، canonical، hreflang، schema، noindex، ترقيم)",
@@ -1095,7 +1160,7 @@ def unit_enrich():
         check("عيّنة: One Piece بلا قسم أنمي → TMDB وحده: أنمي ياباني بثقة عالية", op_.get("anime", {}).get("decision") == "anime" and op_["anime"]["section"] is False and op_["anime_kind"] == "japanese")
         check("تقرير العيّنة: الحقول المطلوبة لكل عمل والعدّادات وأداء الواجهات",
               all(k in bb_ for k in ("tmdb_id", "title_ar", "title_en", "original_title", "country", "language", "genres", "director", "cast", "poster", "backdrop",
-                                     "seasons", "episodes_detailed", "aliases", "versions", "provenance", "page"))
+                                     "special_season_count", "episodes_detailed", "aliases", "versions", "provenance", "page"))
               and {"seo_title", "meta_description", "canonical", "hreflang", "json_ld"} <= set(bb_["page"]["ar"])
               and {"high_confidence_matches", "needs_review", "no_tmdb", "conflicts", "turkish_confirmed", "anime_confirmed", "aliases", "versions", "data_errors"} <= set(smp["summary"])
               and "tmdb" in smp["api"] and smp["api"]["tmdb"]["n"] >= 1, str(list(bb_.keys()))[:300])
@@ -1117,6 +1182,7 @@ def main():
     unit_production_cases()
     unit_sample2_cases()
     unit_sample3_cases()
+    unit_identity_cases()
     unit_migrate()
     unit_enrich()
     live()
