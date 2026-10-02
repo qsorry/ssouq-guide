@@ -180,7 +180,11 @@ def through_server():
                                                 "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host},
                                                           {"id": "g2", "name": "بوابة فالكون", "mode": "falcon", "host": xt_host,
                                                            "api_url": f"http://127.0.0.1:{FALCON_PORT}/api/v1", "api_key": "fk"},
-                                                          {"id": "g3", "name": "أرشيف", "mode": "web", "host": xt_host, "archive_only": True}]},
+                                                          {"id": "g3", "name": "أرشيف", "mode": "web", "host": xt_host, "archive_only": True},
+                                                          # سيرفرٌ آخر (localhost) — لربط خطوطٍ من أكثر من بوابة في حسابٍ واحد
+                                                          {"id": "g4", "name": "بوابة كاسبر", "mode": "web", "host": xt_host.replace("127.0.0.1", "localhost")},
+                                                          {"id": "g5", "name": "بوابة فالكون 2", "mode": "falcon", "host": xt_host.replace("127.0.0.1", "localhost"),
+                                                           "api_url": f"http://127.0.0.1:{FALCON_PORT}/api/v1", "api_key": "fk"}]},
                                                {"id": "a2", "name": "Other", "user": "other", "password": "pw654321", "stremio": True,
                                                 "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]},
                                                {"id": "a3", "name": "بلا Stremio", "user": "nost", "password": "pw333333",
@@ -253,7 +257,7 @@ def through_server():
         acc = (r.get("accounts") or [{}])[0]
         g1 = next((g for g in r.get("gates", []) if g["id"] == "g1"), {})
         check("بوابات العميل بعدد حساباتها", c == 200 and g1.get("name") == "بوابة مرح" and g1.get("count") == 1
-              and [g["id"] for g in r["gates"]] == ["g1", "g2", "g3"], json.dumps(r, ensure_ascii=False)[:160])
+              and [g["id"] for g in r["gates"]] == ["g1", "g2", "g3", "g4", "g5"], json.dumps(r, ensure_ascii=False)[:160])
         check("حسابات البوابة: الإيميل وكلمة المرور وعدد البريد، والإضافة مقفلةٌ عليه بلا رابط تثبيت", acc.get("email") == "u@tv.ssouq.com"
               and acc.get("password") == "p" and acc.get("locked") is True and acc.get("link") == "" and acc.get("mail_count") == 1
               and acc.get("last_mail"), json.dumps(acc, ensure_ascii=False)[:200])
@@ -391,6 +395,62 @@ def through_server():
         check("ومن لم يُفتح له ← 403", c == 403)
         c, r = post("/api/stremio/lock", {"gate": "g1", "username": "nobody"})
         check("يوزرٌ بلا حساب ← 404", c == 404)
+
+        print("== أكثر من بوابة في حساب Stremio واحد (مرح · كاسبر · فالكون…) ==")
+        xt.users["k1"] = "kp"
+        c, r = post("/api/stremio/link", {"gate": "g1", "username": "u", "line_gate": "g4", "line_username": "k1", "line_password": "kp"})
+        names = [a["manifest"]["name"] for a in ours("u@tv.ssouq.com")]
+        check("خطٌّ من بوابة كاسبر يُربط بحساب يوزر مرح: يدخل العميل بالإيميل نفسه", c == 200 and r.get("linked") is True
+              and r.get("email") == "u@tv.ssouq.com" and r.get("password") == "NewPass9", json.dumps(r, ensure_ascii=False))
+        check("وإضافته في الحساب نفسه بعد إضافة مرح، باسم سيرفرها", names == ["سمارت سوق · سمارت", "سمارت سوق · كاسبر"], str(names))
+        k1m = ours("u@tv.ssouq.com")[1]["manifest"]
+        check("فكتالوجاته تتميّز («أفلام · كاسبر (N)») ويتنقّل العميل بينها", k1m["catalogs"][0]["name"].startswith("أفلام · كاسبر (")
+              and set(k1m["idPrefixes"]).isdisjoint(ours("u@tv.ssouq.com")[0]["manifest"]["idPrefixes"]), k1m["catalogs"][0]["name"])
+        check("والإضافتان تعملان", all(code_of(local(a["transportUrl"])) == 200 for a in ours("u@tv.ssouq.com")))
+        c, r = post("/api/stremio/accounts?gate=g4", None)
+        k = next((a for a in r.get("accounts", []) if a["username"] == "k1"), {})
+        check("الخط في قائمة بوابته: مرتبطٌ، وخطوط الحساب كلها للتنقّل", k.get("linked") is True and k.get("email") == "u@tv.ssouq.com"
+              and [(l["gate"], l["username"], l["main"], l["self"]) for l in k.get("lines", [])] == [("g1", "u", True, False), ("g4", "k1", False, True)]
+              and k["lines"][1]["gate_name"] == "بوابة كاسبر", json.dumps(k, ensure_ascii=False)[:300])
+        c, r = post("/api/stremio/accounts?gate=g1", None)
+        u0 = next(a for a in r["accounts"] if a["username"] == "u")
+        check("وعلى بطاقة صاحب الحساب كذلك", [l["username"] for l in u0["lines"]] == ["u", "k1"] and u0["lines"][0]["self"] and not u0["linked"])
+        c, r = post("/api/stremio/link", {"gate": "g1", "username": "u", "line_gate": "g4", "line_username": "k1", "line_password": "kp"})
+        check("ربطه مرةً ثانية: كما هو", c == 200 and r.get("linked") is False and len(ours("u@tv.ssouq.com")) == 2)
+        c, r = post("/api/stremio/account", {"gate": "g4", "username": "k1", "password": "kp"})
+        check("ونسخ حساب الخط: حساب صاحبه", c == 200 and r.get("email") == "u@tv.ssouq.com" and r.get("created") is False)
+        c, r = post("/api/stremio/link", {"gate": "g1", "username": "u", "line_gate": "g2", "line_username": "zz", "line_password": "p"})
+        check("خطٌّ ثانٍ من السيرفر نفسه ← 400 (إضافتاهما تتزاحمان)", c == 400 and "السيرفر نفسه" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/link", {"gate": "g4", "username": "k1", "line_gate": "g1", "line_username": "late", "line_password": "lp"})
+        check("ويوزرٌ له حسابه ← 400", c == 400 and "حساب Stremio آخر" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/link", {"gate": "g1", "username": "u", "line_gate": "g1", "line_username": "k2", "line_password": "x"}, op2)
+        check("وحسابٌ آخر لا يربط بحسابات غيره", c == 400 and "لا حساب" in r.get("error", ""), str(c))
+        api.users["u@tv.ssouq.com"] = "Third3"
+        c, r = post("/api/stremio/password", {"gate": "g1", "username": "u", "password": "Third3"})
+        c, r = post("/api/stremio/accounts?gate=g4", None)
+        check("كلمة مرورٍ جديدة للحساب تصل خطوطه كلها", next(a for a in r["accounts"] if a["username"] == "k1")["password"] == "Third3")
+        c, r = post("/api/stremio/lock", {"gate": "g4", "username": "k1"})
+        check("وتغيير رابط إضافة الخط يُبقيها مكانها", c == 200 and [a["manifest"]["name"] for a in ours("u@tv.ssouq.com")] == names)
+
+        c, r = post("/api/stremio/create", {"gate": "g2", "package_id": "167", "link_gate": "g1", "link_username": "u"})
+        check("«خطٌّ جديد» من سيرفرٍ في الحساب ← 400 قبل إنشاء اليوزر", c == 400 and "سيرفر هذه البوابة" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/create", {"gate": "g5", "package_id": "167", "link_gate": "g1", "link_username": "late"})
+        acc5, line5 = r.get("stremio_account") or {}, r.get("line") or {}
+        check("«خطٌّ جديد»: يوزرٌ في بوابة فالكون يُنشأ ويُربط بحساب late", c == 200 and r.get("ok") and acc5.get("email") == "late@tv.ssouq.com"
+              and acc5.get("linked") is True and len(ours("late@tv.ssouq.com")) == 2   # (هوست g5 هو هوست كاسبر هنا: اسمه منه)
+              and ours("late@tv.ssouq.com")[1]["manifest"]["name"] == "سمارت سوق · كاسبر",
+              json.dumps(r, ensure_ascii=False)[:200])
+        c, r = post("/api/stremio/create", {"gate": "g5", "package_id": "167", "link_gate": "g1", "link_username": "nobody"})
+        check("وحسابٌ لا يوجد ← 400 قبل إنشاء اليوزر", c == 400 and "لا حساب" in r.get("error", ""))
+
+        c, r = post("/api/stremio/unlink", {"gate": "g1", "username": "u"})
+        check("صاحب الحساب لا يُفصل", c == 400, str(c))
+        c, r = post("/api/stremio/unlink", {"gate": "g4", "username": "k1"})
+        check("«فصل الخط»: تُسقط إضافته من الحساب ويُنسى", c == 200 and [a["manifest"]["name"] for a in ours("u@tv.ssouq.com")] == ["سمارت سوق · سمارت"])
+        c, r = post("/api/stremio/accounts?gate=g4", None)
+        check("ويخرج من قائمة بوابته", r.get("accounts") == [] and next(g for g in r["gates"] if g["id"] == "g4")["count"] == 0)
+        c, r = post("/api/stremio/unlink", {"gate": "g4", "username": "k1"}, op3)
+        check("ومن لم يُفتح له ← 403", c == 403)
     finally:
         falcon.terminate()
         app.terminate()
@@ -404,7 +464,7 @@ def through_server():
     X.DATA_DIR = d
     rows = X.with_stremio({"host": xt_host}, [{"username": "u", "password": "p"}, {"username": "zz", "password": "p"}])
     check("الصف الذي له حساب يحمله (‏{stremio_email} ‏{stremio_pass})", rows[0].get("stremio_email") == "u@tv.ssouq.com"
-          and rows[0].get("stremio_pass") == "NewPass9" and "stremio_email" not in rows[1])   # كلمة المرور بعد تغييرها
+          and rows[0].get("stremio_pass") == "Third3" and "stremio_email" not in rows[1])   # كلمة المرور بعد تغييرها
     check("وبلا رابط تثبيتٍ عامّ (إضافته مقفلةٌ على حسابه)، ويوزرٌ بلا حساب برابطه", "stremio" not in rows[0]
           and rows[1].get("stremio", "").startswith("https://guide.ssouq.com/stremio/"))
     shutil.rmtree(d, ignore_errors=True)

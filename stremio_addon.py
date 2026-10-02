@@ -881,7 +881,7 @@ def page():
 
 def handle(data_dir, path, base, label_for=None, allowed=None):
     """طلب GET تحت ‏/stremio ← (الرمز، الجسم، النوع، الترويسات)، أو None لمسارٍ ليس لها.
-    ‏label_for(host) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
+    ‏label_for(cfg) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
     ‏allowed(cfg، القفل) هل الرمز ساري — رمزٌ أُوقف (قفل حسابه تغيّر) يُردّ كرمزٍ غير صالح."""
     if path != PATH and not path.startswith(PATH + "/"):
         return None
@@ -902,7 +902,7 @@ def handle(data_dir, path, base, label_for=None, allowed=None):
     label = ""
     if rest[0] in ("manifest", "status") and label_for:
         try:
-            label = label_for(cfg.host) or ""
+            label = label_for(cfg) or ""
         except Exception:
             label = ""
     try:

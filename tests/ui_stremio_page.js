@@ -172,6 +172,46 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await user.selectOption('#sort', 'mail');
     check('sort by mail keeps the list', (await user.$$('#list .card')).length === 1);
     await shot(user, 'stremio-page');
+
+    console.log('== one Stremio account, lines from several gates ==');
+    await user.fill('#filter', 'user003'); await user.dispatchEvent('#filter', 'input');
+    await user.click('#list [data-linkto="user003"]');
+    await user.waitForSelector('#linkOverlay:not([hidden])', {timeout: 5000});
+    const lg = await user.$$eval('#linkGates button', bs => bs.map(b => [b.textContent.trim(), b.disabled, b.classList.contains('on')]));
+    check('the link picker offers the other gate (this one is already in the account)',
+          JSON.stringify(lg) === JSON.stringify([['بوابة أ', true, false], ['بوابة ب', false, true]]), JSON.stringify(lg));
+    await user.fill('#linkQ', 'user003'); await user.click('#linkFindBtn');
+    await user.waitForSelector('#linkHits [data-lnk]', {timeout: 8000});
+    await user.click('#linkHits [data-lnk]');
+    await user.waitForFunction(() => /رُبط user003 بالحساب/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 15000});
+    await user.waitForFunction(() => document.querySelectorAll('#list .card .lines button').length === 2, null, {timeout: 8000});
+    const chipsL = await user.$$eval('#list .card .lines button', bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
+    check('an existing line from gate ب is linked: the card lists the account lines', chipsL[0] === 'بوابة أ · user003 ★' && chipsL[1] === 'بوابة ب · user003', chipsL.join(' | '));
+    await user.click('#list .card .lines button:nth-of-type(2)');
+    await user.waitForFunction(() => document.querySelector('#gates .gate.on')?.textContent.includes('بوابة ب') && document.querySelector('#list [data-unlink]'), null, {timeout: 8000});
+    check('its chip moves to that line in gate ب (linked, same login)', (await user.inputValue('#filter')) === 'user003'
+          && (await user.textContent('#list .card')).includes('user003@tv.ssouq.com'));
+    await shot(user, 'stremio-lines');
+    user.once('dialog', d => d.accept());
+    await user.click('#list [data-unlink]');
+    await user.waitForFunction(() => /فُصل الخط/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 10000});
+    await user.waitForFunction(() => document.querySelector('#gates .gate.on .count')?.textContent === '0', null, {timeout: 8000});
+    check('«فصل الخط» removes it from the account and gate ب', true);
+
+    await user.click('#gates .gate:nth-child(1)');
+    await user.waitForFunction(() => document.querySelector('#gates .gate.on')?.textContent.includes('بوابة أ'), null, {timeout: 8000});
+    await user.fill('#filter', newUser); await user.dispatchEvent('#filter', 'input');
+    await user.click(`#list [data-linkto="${newUser}"]`);
+    await user.click('[data-lm="new"]');
+    await user.waitForSelector('#linkPkgs input[name="lpkg"]', {timeout: 8000});
+    let askNew = '';
+    user.once('dialog', d => { askNew = d.message(); d.accept(); });
+    await user.click('#linkMk');
+    await user.waitForFunction(() => /ورُبط بالحساب/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 20000});
+    check('«خطٌّ جديد»: asks (it costs the package), creates the line in gate ب and links it',
+          /بوابة ب/.test(askNew) && /تُخصم/.test(askNew), askNew.slice(0, 80));
+    await user.waitForFunction(() => document.querySelectorAll('#list .card .lines button').length === 2, null, {timeout: 8000});
+    check('and the card now lists both lines', (await user.textContent('#list .card .lines')).includes('بوابة ب ·'));
     check('no page errors', errs.length === 0, errs.join(' | '));
   } catch (e) { fail++; console.log('  FAIL  exception:', e.message); }
   finally {

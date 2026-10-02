@@ -120,6 +120,22 @@ select.t{width:auto}
 .mail-help ol{margin:6px 0;padding-inline-start:18px}
 .box .acts{margin-top:12px}
 
+/* خطوط الحساب: سيرفراتٌ في حساب Stremio واحد */
+.lines{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.lines>span{font-size:.78rem;color:var(--mute)}
+.lines button{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:20px;border:1px solid var(--line);background:var(--sf);font-size:.8rem;color:var(--ink)}
+.lines button:hover{border-color:var(--purple)}
+.lines button.me{border-color:var(--purple);background:color-mix(in srgb,var(--purple) 14%,var(--sf));font-weight:700}
+.lines i{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
+.lines i.ok{background:var(--go)}.lines i.warn{background:var(--amber)}.lines i.bad{background:var(--err)}
+.lgates{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0}
+.lgates button{padding:7px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--sf2);font-size:.86rem;font-weight:700;color:var(--ink)}
+.lgates button.on{border-color:var(--purple);background:color-mix(in srgb,var(--purple) 16%,var(--sf))}
+.lgates button:disabled{opacity:.45;cursor:not-allowed}
+.tabs2{display:flex;gap:6px;margin:12px 0 8px}
+.tabs2 button{flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--line);background:var(--sf2);font-weight:700;font-size:.88rem;color:var(--mute)}
+.tabs2 button.on{border-color:var(--purple);color:var(--ink);background:color-mix(in srgb,var(--purple) 14%,var(--sf))}
+
 .bnav{position:fixed;inset-inline:0;bottom:0;z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
 .bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;color:var(--mute);font-size:.7rem;font-weight:500;border-radius:12px;text-decoration:none}
 .bnav a svg{width:22px;height:22px}
@@ -205,6 +221,31 @@ select.t{width:auto}
     </details>
     <div class="err" id="mailMsg"></div>
     <div class="acts"><button class="ghost" id="mailRefresh">تحديث</button><button class="ghost" id="mailClose">إغلاق</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="linkOverlay" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="linkTtl">
+    <h3 id="linkTtl">ربط خطٍّ آخر بالحساب</h3>
+    <p class="hint" id="linkFor"></p>
+    <div class="lgates" id="linkGates" role="radiogroup" aria-label="بوابة الخط"></div>
+    <div class="tabs2" role="tablist">
+      <button type="button" data-lm="find" class="on" role="tab">خطٌّ موجود</button>
+      <button type="button" data-lm="new" role="tab">خطٌّ جديد</button>
+    </div>
+    <div id="linkFind">
+      <form class="row" id="linkFindForm">
+        <input class="t ltr" id="linkQ" placeholder="يوزر أو باسورد" autocomplete="off">
+        <button class="btn" id="linkFindBtn">بحث</button>
+      </form>
+      <div id="linkHits"></div>
+    </div>
+    <div id="linkNew" hidden>
+      <div id="linkPkgs"></div>
+      <div class="row" style="margin-top:12px"><button class="acc big" id="linkMk" disabled>إنشاء خطٍّ وربطه بالحساب</button></div>
+    </div>
+    <div class="err" id="linkMsg"></div>
+    <div class="acts"><button class="ghost" id="linkClose">إغلاق</button></div>
   </div>
 </div>
 
@@ -349,10 +390,14 @@ function renderList(){
           <button class="ghost st" data-mail="${esc(a.username)}">${I.mail}البريد${a.mail_count ? " " + a.mail_count : ""}</button>
           <button class="ghost st" data-re="${esc(a.username)}" title="يعيد تثبيت الإضافة في الحساب بأحدث الأقسام والأعداد">${I.sync}تحديث الإضافة</button>
           <button class="ghost st" data-lock="${esc(a.username)}" title="رابطٌ جديد لإضافة الحساب: تتوقف أي نسخةٍ منها نُقلت لحسابٍ آخر">${I.lock}${a.locked ? "تغيير رابط الإضافة" : "قفل الإضافة"}</button>
+          <button class="ghost st" data-linkto="${esc(a.username)}" title="خطٌّ من بوابةٍ أخرى (مرح · كاسبر · فالكون…) في الحساب نفسه">${I.link}ربط خط آخر</button>
+          ${a.linked ? `<button class="ghost" data-unlink="${esc(a.username)}" title="تُسقط إضافة هذا الخط من الحساب">فصل الخط</button>` : ""}
         </div>
       </div>
       <div class="meta">${expText(a)}${a.locked ? '<span class="ok">🔒 الإضافة مقفلةٌ على هذا الحساب</span>' : ""}${a.addon_full === false ? '<span class="bad">الإضافة ثُبّتت بلا أقسام — اضغط «تحديث الإضافة»</span>' : ""}<span>أُنشئ ${esc(a.created)}</span>${a.changed ? `<span class="ok">غُيّرت كلمة المرور ${esc(a.changed)}</span>` : ""}
         ${a.mail_count ? `<span class="new">آخر بريد ${esc(a.last_mail)}</span>` : "<span>لا بريد</span>"}</div>
+      ${(a.lines || []).length ? `<div class="lines"><span>خطوط الحساب:</span>${a.lines.map(l => `<button class="${l.self ? "me" : ""}"
+          data-goto="${esc(l.gate)}" data-gu="${esc(l.username)}" title="${l.main ? "صاحب الحساب" : "خطٌّ مرتبط"} — ${l.self ? "هذا الخط" : "انتقل إليه"}"><i class="${lineDot(l)}"></i>${esc(l.gate_name || "بوابة")} · ${esc(l.username)}${l.main ? " ★" : ""}</button>`).join("")}</div>` : ""}
     </div>`).join("")}</div>`
     : `<div class="empty">${f || EXPF !== "all" ? "لا حساب يطابق التصفية." : "لا حسابات Stremio في هذه البوابة بعد — أنشئ يوزر Stremio أعلاه، أو ابحث عن يوزرٍ موجود."}</div>`;
   // ما لم يُفحص انتهاؤه أو قدُم فحصه يُعاد في الخلفية مرةً لكل بوابة في هذه الزيارة
@@ -537,7 +582,114 @@ document.addEventListener("click", e => {
   else if (b.dataset.mail) openMail(b.dataset.mail);
   else if (b.dataset.re) reinstall(b.dataset.re, b);
   else if (b.dataset.lock) lockAddon(b.dataset.lock, b);
+  else if (b.dataset.linkto) openLink(b.dataset.linkto);
+  else if (b.dataset.unlink) unlinkLine(b.dataset.unlink, b);
+  else if (b.dataset.goto) gotoLine(b.dataset.goto, b.dataset.gu);
+  else if (b.dataset.lg) { LINK.gate = b.dataset.lg; LINK.hits = []; $("linkHits").innerHTML = ""; renderLinkGates(); if (LINK.mode === "new") loadLinkPkgs(); }
+  else if (b.dataset.lm) setLinkMode(b.dataset.lm);
+  else if (b.dataset.lnk) linkHit(+b.dataset.lnk, b);
 });
+
+// ---- خطوط الحساب: أكثر من بوابة (مرح · كاسبر · فالكون…) في حساب Stremio واحد — كل خطٍّ إضافته وكتالوجاته ----
+const lineDot = l => ({exp: "bad", d7: "bad", d30: "warn", ok: "ok"})[bucket(l)] || "";
+async function gotoLine(gate, username){
+  if (gate !== GATE) await selectGate(gate);
+  $("filter").value = username; EXPF = "all"; renderList();
+  document.querySelector("#list .card")?.scrollIntoView({behavior: "smooth", block: "center"});
+}
+async function unlinkLine(username, btn){
+  if (!confirm(`فصل الخط ${username} عن حسابه في Stremio؟ تُسقط إضافته من الحساب (ويبقى اليوزر في البوابة).`)) return;
+  btn.disabled = true;
+  try { await api("/api/stremio/unlink", {gate: GATE, username}); toast("فُصل الخط عن الحساب"); load(GATE); }
+  catch(e) { toast(e.message, true); btn.disabled = false; }
+}
+let LINK = null;            // {username, email, gate, mode, hits, pkgs, taken}
+function openLink(username){
+  const a = ((D && D.accounts) || []).find(x => x.username === username); if (!a) return;
+  const taken = new Set((a.lines || []).length ? a.lines.map(l => l.gate) : [GATE]);
+  const free = D.gates.filter(g => !taken.has(g.id));
+  LINK = {username, email: a.email, gate: (free[0] || {}).id || "", mode: "find", hits: [], pkgs: [], taken};
+  $("linkFor").innerHTML = `الحساب <b class="mono">${esc(a.email)}</b>: يدخل به العميل مرةً واحدة، ويجد كل سيرفرٍ في Stremio
+    كتالوجاتٍ باسمه («أفلام · كاسبر») يتنقّل بينها من «اكتشف» أو الرئيسية.`;
+  $("linkQ").value = ""; $("linkHits").innerHTML = ""; $("linkMsg").textContent = "";
+  renderLinkGates(); setLinkMode("find");
+  $("linkOverlay").hidden = false; $("linkQ").focus();
+}
+function hideLink(){ $("linkOverlay").hidden = true; LINK = null; }
+function renderLinkGates(){
+  $("linkGates").innerHTML = D.gates.map(g => `<button type="button" data-lg="${esc(g.id)}" role="radio" aria-checked="${g.id === LINK.gate}"
+      class="${g.id === LINK.gate ? "on" : ""}"${LINK.taken.has(g.id) ? ' disabled title="في الحساب خطٌّ منها"' : ""}>${esc(g.name || "بوابة")}</button>`).join("");
+  if (!LINK.gate) $("linkMsg").textContent = "كل بوابات العميل في هذا الحساب.";
+}
+function setLinkMode(m){
+  LINK.mode = m;
+  document.querySelectorAll("[data-lm]").forEach(b => { b.classList.toggle("on", b.dataset.lm === m); b.setAttribute("aria-selected", b.dataset.lm === m); });
+  $("linkFind").hidden = m !== "find"; $("linkNew").hidden = m !== "new";
+  if (m === "new") loadLinkPkgs();
+}
+$("linkFindForm").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("linkQ").value.trim(); if (!q || !LINK || !LINK.gate) return;
+  const b = $("linkFindBtn"); b.disabled = true; $("linkMsg").textContent = ""; $("linkHits").innerHTML = '<div class="empty">جاري البحث…</div>';
+  try {
+    const d = await api("/api/search?gate=" + encodeURIComponent(LINK.gate) + "&q=" + encodeURIComponent(q));
+    LINK.hits = (d.results || []).filter(x => x.username && x.password);
+    $("linkHits").innerHTML = LINK.hits.length ? `<div class="cards">${LINK.hits.map((x, i) => `<div class="card"><div class="row1">
+        <div class="creds"><span>اليوزر <b class="mono">${esc(x.username)}</b></span><span>الباسورد <b class="mono">${esc(x.password)}</b></span></div>
+        <div class="acts">${x.stremio_email ? `<span class="hint">له حساب Stremio: ${esc(x.stremio_email)}</span>`
+          : `<button class="acc" data-lnk="${i}">${I.link}ربط بالحساب</button>`}</div></div></div>`).join("")}</div>`
+      : `<div class="empty">${d.need_login ? "البوابة تحتاج كود تحقّق — افتحها من صفحة الإنشاء ثم ابحث هنا." : esc(d.login_error || "لا نتائج.")}</div>`;
+  } catch(err) { $("linkHits").innerHTML = ""; $("linkMsg").textContent = err.message; }
+  finally { b.disabled = false; }
+};
+async function linkHit(i, btn){
+  const x = LINK && LINK.hits[i]; if (!x) return;
+  btn.disabled = true; btn.textContent = "جاري الربط…"; $("linkMsg").textContent = "";
+  try {
+    const d = await api("/api/stremio/link", {gate: GATE, username: LINK.username, line_gate: LINK.gate,
+                                              line_username: x.username, line_password: x.password, line: x.line || ""});
+    toast(d.linked ? `رُبط ${x.username} بالحساب — يجده العميل فيه بعد إعادة فتح Stremio` : "الخط مرتبطٌ بالحساب من قبل");
+    hideLink(); load(GATE);
+  } catch(e) { $("linkMsg").textContent = e.message; btn.disabled = false; btn.innerHTML = I.link + "ربط بالحساب"; }
+}
+async function loadLinkPkgs(){
+  if (!LINK) return;
+  const g = D.gates.find(x => x.id === LINK.gate) || {}, gid = LINK.gate;
+  $("linkMk").disabled = true; LINK.pkgs = [];
+  if (!gid) { $("linkPkgs").innerHTML = ""; return; }
+  if (g.archive_only) { $("linkPkgs").innerHTML = '<div class="empty">بوابة أرشيف — الإنشاء غير متاح فيها؛ اربط خطًّا موجودًا منها.</div>'; return; }
+  $("linkPkgs").innerHTML = '<div class="empty">جاري تحميل الباقات…</div>';
+  try {
+    const d = await api("/api/packages?gate=" + encodeURIComponent(gid));
+    if (!LINK || gid !== LINK.gate) return;
+    if (d.need_captcha) { $("linkPkgs").innerHTML = '<div class="empty">بانتظار كود التحقّق…</div>'; showCap(loadLinkPkgs); return; }
+    if (d.login_error) throw new Error(d.login_error);
+    LINK.pkgs = d.packages || [];
+    $("linkPkgs").innerHTML = LINK.pkgs.length ? `<div class="opts" role="radiogroup" aria-label="الباقة">${LINK.pkgs.map((p, i) => `<label class="opt">
+        <input type="radio" name="lpkg" value="${esc(p.id)}"${i === 0 ? " checked" : ""}><span>${esc(p.name)}</span></label>`).join("")}</div>`
+      : '<div class="empty">لا باقات في هذه البوابة.</div>';
+    $("linkMk").disabled = !LINK.pkgs.length;
+  } catch(e) { $("linkPkgs").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+async function linkCreate(){
+  const sel = document.querySelector('input[name="lpkg"]:checked'); if (!sel || !LINK) return;
+  const pkg = LINK.pkgs.find(p => String(p.id) === sel.value) || {}, g = D.gates.find(x => x.id === LINK.gate) || {};
+  if (!confirm(`إنشاء خطٍّ بباقة «${pkg.name || ""}» في ${g.name || "البوابة"} وربطه بحساب ${LINK.email}؟\nيُنشأ اليوزر في البوابة (وتُخصم باقته)، ثم تُثبَّت إضافته في الحساب نفسه.`)) return;
+  const b = $("linkMk"); b.disabled = true; b.textContent = "جاري الإنشاء والربط…"; $("linkMsg").textContent = "";
+  try {
+    const d = await api("/api/stremio/create", {gate: LINK.gate, package_id: sel.value, link_gate: GATE, link_username: LINK.username});
+    if (d.need_captcha) { showCap(linkCreate); return; }
+    if (d.login_error) throw new Error(d.login_error);
+    if (d.stremio_error) { $("linkMsg").textContent = `${d.stremio_error} — اليوزر ${(d.line || {}).username || ""} محفوظ؛ ابحث عنه هنا واربطه.`; setLinkMode("find"); return; }
+    toast(`أُنشئ الخط ${(d.line || {}).username || ""} في ${g.name || "البوابة"} ورُبط بالحساب`);
+    hideLink(); load(GATE);
+  } catch(e) { $("linkMsg").textContent = e.message; }
+  finally { b.disabled = false; b.textContent = "إنشاء خطٍّ وربطه بالحساب"; }
+}
+$("linkMk").onclick = linkCreate;
+$("linkClose").onclick = hideLink;
+$("linkOverlay").addEventListener("click", e => { if (e.target === $("linkOverlay")) hideLink(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("linkOverlay").hidden && $("capOverlay").hidden) hideLink(); });
 
 // ---- «قفل الإضافة»: رابطٌ جديد لإضافة الحساب، فتتوقف كل نسخةٍ نُقلت لحسابٍ آخر (ورابط اليوزر العام) ----
 async function lockAddon(username, btn){
