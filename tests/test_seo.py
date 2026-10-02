@@ -657,11 +657,11 @@ def unit_sample2_cases():
         ep = ye.get("episodes") or {}
         seas = {r[0]: (r[1], r[2]) for r in q("SELECT number, episode_count, episodes_official FROM season WHERE content_id=? ORDER BY number", ye["id"])}
         check("الحلقات: الرسمي من TMDB (6×5=30) منفصلٌ عن المدرج في القوائم (81+99=180) وعن سجلات الحلقات، ولكل سيرفر عدّه",
-              ep.get("official") == 30 and ep.get("seasons_official") == 6 and ep.get("listed") == 180 and ep.get("per_service") == {"falcon": 180} and ep.get("records") == 30
+              ep.get("official_episode_count") == 30 and ep.get("official_season_count") == 6 and ep.get("available_episode_count") == 180 and ep.get("service_episode_count") == {"falcon": 180} and ep.get("episode_record_count") == 30
               and seas.get(3) == (81, 5) and seas.get(4) == (99, 5) and seas.get(1) == (0, 5), str((ep, seas)))
         check("الصفحة تذكر الرسمي (30 حلقة) لا 180", "30" in ye["page"]["ar"]["meta_description"] and "180" not in ye["page"]["ar"]["meta_description"], ye["page"]["ar"]["meta_description"])
         fb = works.get("Foo Bar", [{}])[0]
-        check("Foo Bar بلا TMDB: الصفحة تقول «في القوائم»", fb.get("episodes", {}).get("official") is None and "في القوائم" in fb["page"]["ar"]["meta_description"], fb.get("page", {}).get("ar", {}).get("meta_description"))
+        check("Foo Bar بلا TMDB: الصفحة تقول «مدرجة على فالكون» (سيرفر واحد) لا رقمًا رسميًّا", fb.get("episodes", {}).get("official_episode_count") is None and "مدرجة على فالكون" in fb["page"]["ar"]["meta_description"], fb.get("page", {}).get("ar", {}).get("meta_description"))
         # البحث: اسمان لعملين، والتجميع للعرض
         idx = seo_search.load(con)
         r = seo_search.explain(con, idx, "السجين", st2)
@@ -733,9 +733,12 @@ def unit_sample3_cases():
             json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "falcon", "name": "فالكون"}, {"key": "smart", "name": "سمارت"}]}, f, ensure_ascii=False)
         C.set_url(d, "smart", f"{xbase}/get.php?username=u&password=p&type=m3u_plus")
         C.refresh(d, "smart")
-        _write(d, "casper", _cat([], [{"n": "Prison Break", "y": 2005, "s": [[1, 22]], "i": 23, "p": "http://panel/pb.png"},
-                                     {"n": "One Piece", "s": [[1, 61], [2, 50]], "i": 22}, {"n": "ون بيس", "s": [[1, 61], [2, 50], [3, 40]], "i": 24},
-                                     {"n": "Stub Show", "s": [[1, 54]], "i": 25}]))
+        ccat = _cat([], [{"n": "Prison Break", "y": 2005, "s": [[1, 22]], "i": 23, "p": "http://panel/pb.png"},
+                         {"n": "One Piece", "s": [[1, 61], [2, 50]], "i": 22}, {"n": "ون بيس", "s": [[1, 61], [2, 50], [3, 40]], "i": 24},
+                         {"n": "Stub Show", "s": [[1, 54]], "i": 25}])
+        ccat["series"][1]["name"] = "NETFLIX نتفلكس |AR|"
+        ccat["series"][1]["items"] = [{"n": "One Piece", "s": [[1, 8], [2, 8]], "i": 26}]      # كما في الإنتاج (7074): لا سنة، موسمان من 8
+        _write(d, "casper", ccat)
         cat = _cat([], [])
         cat["series"] = [{"id": "s", "name": "Series", "items": [{"n": "Prison Break S01 Prison.Break", "s": [[0, 22]], "i": 70, "p": "http://panel/pb1.png"}]},
                          {"id": "n", "name": "Netflix", "items": [{"n": "Prison Break S05 Prison.Break", "s": [[0, 9]], "i": 71, "p": "http://panel/pb5.png"},
@@ -764,9 +767,9 @@ def unit_sample3_cases():
         op = q("SELECT id, title, year, tmdb_id, merged_into FROM content WHERE tmdb_id IN (37854, 111110) AND merged_into IS NULL ORDER BY tmdb_id")
         links = {r[3]: sorted(x[0] for x in q("SELECT service_key FROM content_service WHERE content_id=? AND present=1", r[0])) for r in op}
         al = {r[0] for r in q("SELECT alias FROM content_alias WHERE content_id=(SELECT id FROM content WHERE tmdb_id=37854 AND merged_into IS NULL)")}
-        check("B) One Piece: كيانان بمعرّفين (1999 أنمي: كاسبر One Piece + كاسبر «ون بيس» + فالكون ONE PIECE S01 — 2023 الحيّ: فالكون One Piece S01)، و«ون بيس» alias على الأنمي لا كيانًا",
+        check("B) One Piece: كيانان بمعرّفين (1999 أنمي: كاسبر One Piece + كاسبر «ون بيس» + فالكون ONE PIECE S01 — 2023 الحيّ: فالكون One Piece S01)، و«ون بيس» alias على الأنمي لا كيانًا، وكاسبر NETFLIX بلا حسم",
               [r[3] for r in op] == [37854, 111110] and links[37854] == ["casper", "casper", "falcon"] and links[111110] == ["falcon"] and "ون بيس" in al
-              and not q("SELECT 1 FROM content WHERE title='ون بيس' AND merged_into IS NULL"), str((op, links, sorted(al)[:6])))
+              and not q("SELECT 1 FROM content WHERE title='ون بيس' AND merged_into IS NULL") and len(q("SELECT 1 FROM content WHERE title='One Piece' AND match='local' AND merged_into IS NULL")) == 1, str((op, links, sorted(al)[:6])))
         msgs = [x[0] for x in q("SELECT error FROM enrich_queue WHERE source='tmdb' AND content_id IN (SELECT id FROM content WHERE tmdb_id=37854)")]
         check("التوحيد بالدليل لا بالاسم: «One Piece» بلا سنة بين مرشّحين قويين حُسم بمواسم القائمة/قرينة أنمي (via search…+evidence)",
               any("+evidence" in (m_ or "") for m_ in msgs), str(msgs))
@@ -817,14 +820,36 @@ def unit_sample3_cases():
         check("E) Bryan Cranston من لوحة Xtream (بالاسم) ثم TMDB (بالمعرّف) ← صفٌّ واحد حمل المعرّف", len(bc) == 1 and bc[0][2] is not None, str(bc))
         check("مفتاح الاسم: ترتيبٌ وتشكيلٌ وفاصلة عليا لا تفرّق", M.person_key("Miller, Wentworth") == M.person_key("Wentworth Miller") and M.person_key("O'Neil") == M.person_key("ONeil"))
         pq = seo_sources.people_qa(con, st2)
-        check("إحصاء الشبكة: لا صفّين لاسمٍ واحد بلا معرّفين مختلفين، وأدوار writer/screenwriter/creator منفصلة، والعيّنة تحمل الإحصاء",
-              pq["same_name_rows_without_distinct_tmdb_ids"] == 0 and {"writer", "screenwriter", "creator", "actor", "director"} <= set(pq["by_role"]) and "persons" in smp["people"], str(pq))
+        check("إحصاء الشبكة: كل تشابه أسماءٍ بلا معرّفات مميِّزة له بند person_same_name (لا دمج تلقائي)، وأدوار writer/screenwriter/creator منفصلة، والعيّنة تحمل الإحصاء",
+              pq["same_name_rows_without_distinct_tmdb_ids"] == pq["same_name_reviews_open"] and {"writer", "screenwriter", "creator", "actor", "director"} <= set(pq["by_role"]) and "persons" in smp["people"], str(pq))
+        # الاسم وحده لا يدمج: «John Smith» من اللوحة في عملين مختلفين بلا TMDB ← صفّان وبند مراجعة
+        dummies = []
+        for i in (1, 2):
+            dummies.append(con.execute("INSERT INTO content(type, slug, title, created_at, updated_at) VALUES ('series', ?, ?, 1, 1)", (f"dedup-test-{i}", f"Dedup Test {i}")).lastrowid)
+            seo_sources._people_xtream(con, dummies[-1], {"cast": "John Smith, Someone Else", "director": ""}, 1000 + i)
+        con.commit()
+        js = q("SELECT id FROM person WHERE name_norm='john smith'")
+        seo_sources.review_same_names(con); con.commit()
+        check("PEOPLE DEDUP: شخصان بالاسم نفسه بلا معرّف TMDB في عملين ← صفّان لا يُدمجان، وبند person_same_name مفتوح لهما",
+              len(js) == 2 and q("SELECT 1 FROM review WHERE key='person_same_name:john smith' AND status='open'"), str(js))
+        seo_sources._people_xtream(con, dummies[0], {"cast": "John Smith", "director": ""}, 1003); con.commit()
+        check("وإعادة الإثراء للعمل نفسه تعيد استعمال صفّه لا تُنشئ ثالثًا، وتحذف الاسم اليتيم", len(q("SELECT id FROM person WHERE name_norm='john smith'")) == 2 and not q("SELECT 1 FROM person WHERE name='Someone Else' AND id NOT IN (SELECT person_id FROM content_person)"))
+        # مرشّحٌ غير محسوم: «One Piece» على كاسبر في قسم NETFLIX بموسمين من 8 — الأدلّة القوية متعادلة؛ بنية المواسم ترجّح 2023 ولا تعتمد
+        up = next((w for w in smp["works"] if w["title"] == "One Piece" and w["match"] == "local"), None)
+        rs_ = up and up["resolution_state"]
+        check("CASPER ONE PIECE: unresolved_candidate بأدلّة كل مرشّح ومن يحمل معرّفه، likely = 2023 (بنية المواسم 2×8) بلا اعتماد، وغير قابل للفهرسة",
+              rs_ and rs_["state"] == "unresolved_candidate" and rs_["likely"] == 111110 and {c["id"] for c in rs_["candidates"]} == {37854, 111110}
+              and all(c["held_by_entity"] for c in rs_["candidates"]) and all(c["evidence"] for c in rs_["candidates"]) and rs_["indexable"] is False and up["page"]["ar"]["would_index"] is False,
+              json.dumps(rs_, ensure_ascii=False))
         # F) الحلقات
         stub = next(w for w in smp["works"] if w.get("tmdb_id") == 99009)
         check("F) سجلّ TMDB ناقص (حلقة واحدة) لعملٍ بـ 54 في القوائم: الصفحة لا تعرض 1 رسميًّا بل «54 في القوائم»، والحقول منفصلة",
-              stub["episodes"]["official"] == 1 and stub["episodes"]["listed"] == 54 and "54 حلقة في القوائم" in stub["page"]["ar"]["meta_description"], stub["page"]["ar"]["meta_description"])
+              stub["episodes"]["official_episode_count"] == 1 and stub["episodes"]["available_episode_count"] == 54 and "54 حلقة مدرجة على كاسبر" in stub["page"]["ar"]["meta_description"]
+              and stub["episodes"]["seo_uses"].startswith("official"), stub["page"]["ar"]["meta_description"])
         pbe = pbw["episodes"]
-        check("سجلات الحلقات بمصدرها (tmdb/xtream) والخاصة على حدة", "records_by_source" in pbe and "specials" in pbe and pbe["records_by_source"].get("tmdb", 0) >= 1, str(pbe))
+        check("الحقول النهائية منفصلة: official/available/service/record(by source)/special، والسجلات بمصدرها",
+              {"official_episode_count", "official_season_count", "available_episode_count", "available_season_count", "service_episode_count", "season_episode_count",
+               "episode_record_count", "episode_records_by_source", "special_episode_count"} <= set(pbe) and pbe["episode_records_by_source"].get("tmdb", 0) >= 1, str(pbe))
         # G) البحث
         idx = seo_search.load(con)
         ex = lambda s_: seo_search.explain(con, idx, s_, st2)   # noqa: E731
@@ -835,12 +860,19 @@ def unit_sample3_cases():
               all((x["result"] == "suggest" and len(x["suggest"]) == 1 and x["suggest"][0]["id"] == live[0][0]) or (x["result"] == "entity" and [e_["id"] for e_ in x["entities"]] == [live[0][0]]) for x in vs.values()),
               str({k: (v["result"], [(s["id"], s["slug"], s["confidence"]) for s in v.get("suggest", [])]) for k, v in vs.items()}))   # «بريزون بريك» ترجمة TMDB نفسها ← الكيان مباشرة
         r = ex("One Piece")
-        check("«One Piece» ← كيانان لعملين مختلفين فعلًا، مجمّعان مع السبب «different tmdb ids»", r["result"] == "entity" and len(r["entities"]) == 2 and r["grouped"][0]["why_separate"] == ["different tmdb ids"], str(r)[:300])
+        ids_ = {e_["identity"]: e_.get("tmdb_id") for e_ in r["entities"]}
+        check("«One Piece» ← ثلاثة كيانات بهويتها الصريحة: 1999 = 37854 verified · 2023 = 111110 verified · كاسبر unresolved_candidate (لا يوحي البحث أنها عملٌ واحد)",
+              r["result"] == "entity" and len(r["entities"]) == 3 and {e_["tmdb_id"] for e_ in r["entities"] if e_["identity"] == "verified"} == {37854, 111110} and "unresolved_candidate" in ids_, str(r)[:400])
         r = ex("ون بيس")
         check("«ون بيس» ← alias من ترجمة TMDB على العملين (الأنمي والحيّ يحملان الاسم العربي نفسه): كيانان مجمّعان بسبب «different tmdb ids»، لا كيان «ون بيس» مستقل",
               r["result"] == "entity" and {x["id"] for x in r["entities"]} == {op[0][0], op[1][0]} and r["grouped"][0]["why_separate"] == ["different tmdb ids"], str(r)[:300])
         r = ex("وان بيس")
-        check("«وان بيس» ← اقتراحٌ صوتي للكيانين", r["result"] == "suggest" and {x["id"] for x in r["suggest"]} == {op[0][0], op[1][0]}, str(r)[:200])
+        check("«وان بيس» ← اقتراحٌ صوتي للكيانين المُتحقَّقين وغير المحسوم بهويته", r["result"] == "suggest" and {op[0][0], op[1][0]} <= {x["id"] for x in r["suggest"]} and all("identity" in x for x in r["suggest"]), str(r)[:200])
+        pbp = pbw["page"]["ar"]["meta_description"]
+        check("Prison Break: المواسم بلا الموسم 0 (الخاصة) والرقم الرسمي في الوصف، وعدّ المتاح من القوائم وحدها", f"{tr_ar.count(pbe['official_season_count'] or 0, 'seasons')}" in pbp
+              and pbe["available_season_count"] == len([k for k, v in pbe["season_episode_count"].items() if k != "0" and v["available"]]) and pbe["available_season_count"] == 2, str((pbp, pbe["season_episode_count"])))
+        check("صفحات الأشخاص والشركات في العيّنة: كل فئة مفحوصة باللغتين (تُرسم، أعمالٌ وروابط، canonical، hreflang، schema، noindex، ترقيم)",
+              smp["people_pages"] and all(c.get("renders") and c["links_to_works"] and c["breadcrumb"] and c["schema"] and c["noindex"] and c["paginated_ok"] for row in smp["people_pages"] for c in row["checks"].values()), str(smp["people_pages"])[:400])
         con.close()
     finally:
         xt.shutdown(); tm.shutdown()

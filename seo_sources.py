@@ -293,24 +293,27 @@ def resolve_tmdb(con, data_dir, cid, st, now=None):
     if len(ids) == 1:
         return "ok", strong[0]
     if len(ids) > 1:
-        best = _evidence(con, cid, e, strong, st)
+        best, details, likely = _evidence(con, cid, e, strong, st)
         if best:
             return "ok", (best[0], best[1], best[2] + "+evidence", True)
-        return "ambiguous", [v[0] for v in strong]
+        return "ambiguous", [dict(v[0], evidence=next((x for x in details if x["id"] == v[0]["id"]), None), likely=(v[0]["id"] == likely)) for v in strong]
     if verified:
         return "weak", [v[0] for v in verified]
     return "miss", []
 
 
 def _evidence(con, cid, e, strong, st):
-    """مرشّحان قويان بالاسم («One Piece» 1999 و2023): قرائن الكيان نفسه تفصل — قرينة قسم «أنمي» مقابل نوع Animation،
-    وعدد مواسم القائمة مقابل مواسم المرشّح، وحجم الحلقات المدرجة مقابل الرسمية. يُختار من ينفرد بأعلى درجة؛ وإلا مراجعة."""
+    """مرشّحان قويان بالاسم («One Piece» 1999 و2023): قرائن الكيان نفسه تفصل — قرينة قسم «أنمي» مقابل نوع Animation، وعدد
+    مواسم القائمة مقابل مواسم المرشّح، وحجم الحلقات المدرجة مقابل الرسمية (قرائن **قوية** تحسم من ينفرد بأعلى درجة).
+    وبنية المواسم (حلقات كل موسم في القائمة مقابل حلقات موسم المرشّح) قرينةٌ **مرجِّحة** فقط: ترتّب «الأرجح» في بند المراجعة
+    ولا تعتمد مطابقةً وحدها — لا دمج بالتخمين. ← (المختار أو None، تفاصيل كل مرشّح للتقرير)."""
     hints = {r[0] for r in con.execute("SELECT t.key FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source='hint' AND t.kind='hub'", (cid,))}
-    seasons = [r[0] for r in con.execute("SELECT number FROM season WHERE content_id=? AND number > 0", (cid,))]
-    listed = con.execute("SELECT COALESCE(SUM(episode_count),0) FROM season WHERE content_id=?", (cid,)).fetchone()[0]
+    per_season = {r[0]: r[1] for r in con.execute("SELECT number, episode_count FROM season WHERE content_id=? AND number > 0 AND episode_count > 0", (cid,))}
+    seasons = list(per_season)
+    listed = sum(per_season.values())
     scored = []
     for v in strong:
-        d, s, why = v[1], 0, []
+        d, s, why, soft = v[1], 0, [], 0
         gids = {g.get("id") for g in d.get("genres") or []}
         if "anime" in hints:
             s += 2 if 16 in gids else -2
@@ -325,11 +328,21 @@ def _evidence(con, cid, e, strong, st):
                 s += 1; why.append("episodes_fit")
             else:
                 s -= 1; why.append("more_listed_than_official")
-        scored.append((s, v, why))
-    scored.sort(key=lambda x: -x[0])
-    if len(scored) > 1 and scored[0][0] > scored[1][0] and scored[0][2]:
-        return scored[0][1]
-    return None
+        official_seasons = {int(x["season_number"]): int(x.get("episode_count") or 0) for x in d.get("seasons") or [] if x.get("season_number")}
+        for n, k in per_season.items():                 # بنية المواسم: الموسم المدرج بعدد حلقاته ضمن [الرسمي، 3×الرسمي] = موافق
+            o = official_seasons.get(n)
+            if o and o <= k <= 3 * o:
+                soft += 1
+        if soft:
+            why.append(f"season_structure:{soft}/{len(per_season)}")
+        scored.append({"id": v[0]["id"], "title": v[0]["title"], "year": v[0]["year"], "score": s, "structure": soft, "why": why, "_v": v})
+    scored.sort(key=lambda x: (-x["score"], -x["structure"]))
+    best = None
+    if len(scored) > 1 and scored[0]["score"] > scored[1]["score"] and scored[0]["why"]:
+        best = scored[0]["_v"]
+    details = [{k: x[k] for k in ("id", "title", "year", "score", "structure", "why")} for x in scored]
+    likely = details[0]["id"] if not best and len(details) > 1 and details[0]["structure"] > details[1]["structure"] else None
+    return best, details, likely
 
 
 def _img(path, size):
@@ -340,18 +353,26 @@ def _slug_for(con, table, name):
     return M.unique_slug(lambda s: con.execute(f"SELECT 1 FROM {table} WHERE slug=?", (s,)).fetchone() is not None, name)
 
 
-def _find_person(con, name):
-    """شخصٌ قائم بمفتاح اسمه (‏seo_match.person_key) بلا معرّف TMDB بعد — أو بمعرّفٍ إن كان الاسم نفسه: الأول فالأقدم."""
+def _name_row(con, name, cid):
+    """صفّ «اسمٍ» من لوحة Xtream (بلا معرّف) مرتبطٌ بهذا العمل نفسه — الاسم وحده ليس هويةً تجمع عملين."""
     key = M.person_key(name)
     if not key:
         return None
-    r = con.execute("SELECT p.id FROM person p WHERE p.name_norm=? ORDER BY (SELECT COUNT(*) FROM external_id x WHERE x.entity='person' AND x.entity_id=p.id) DESC, p.id LIMIT 1", (key,)).fetchone()
+    pid = (_name_row.prior.get(cid) or {}).get(key)
+    if pid and not con.execute("SELECT 1 FROM external_id x WHERE x.entity='person' AND x.entity_id=?", (pid,)).fetchone():
+        return pid
+    r = con.execute("SELECT p.id FROM person p JOIN content_person cp ON cp.person_id=p.id WHERE p.name_norm=? AND cp.content_id=? "
+                    "AND NOT EXISTS (SELECT 1 FROM external_id x WHERE x.entity='person' AND x.entity_id=p.id) LIMIT 1", (key, cid)).fetchone()
     return r["id"] if r else None
 
 
-def _person(con, p, now):
-    """صفّ الشخص: بمعرّف TMDB أولًا (الشخص الواحد صفٌّ واحد مهما تعدّدت أسماؤه)، وإلا شخصٌ قائم بالاسم نفسه من لوحة Xtream
-    (يُرقّى بالمعرّف والصورة بدل أن يُنشأ توأمه)، وإلا صفٌّ جديد."""
+_name_row.prior = {}        # العمل ← {مفتاح الاسم: صفّ الاسم} أثناء كتابة أدوار TMDB له
+
+
+def _person(con, p, now, cid=None):
+    """صفّ الشخص بمعرّف TMDB (الشخص الواحد صفٌّ واحد مهما تعدّدت أسماؤه). صفّ «اسمٍ» من اللوحة يُرقّى بالمعرّف **فقط** إن كان
+    مرتبطًا بالعمل نفسه (الاسم نفسه في العمل نفسه = الشخص نفسه)؛ وإلا صفٌّ جديد — فالاسم وحده لا يدمج شخصين، ويبقى
+    التشابه بندَ مراجعة (person_same_name) حتى يوجد دليل هوية خارجي."""
     r = con.execute("SELECT entity_id FROM external_id WHERE entity='person' AND source='tmdb' AND external_id=?", (str(p["id"]),)).fetchone()
     if r:
         return r["entity_id"]
@@ -359,10 +380,9 @@ def _person(con, p, now):
     if not name:
         return None
     pid = None
-    for nm in (name, p.get("original_name") or ""):
-        pid = pid or (_find_person(con, nm) if nm else None)
-    if pid and con.execute("SELECT 1 FROM external_id WHERE entity='person' AND entity_id=? AND source='tmdb'", (pid,)).fetchone():
-        pid = None                                     # اسمٌ واحد لشخصين مختلفين في TMDB (معرّفان): صفّان
+    if cid:
+        for nm in (name, p.get("original_name") or ""):
+            pid = pid or (_name_row(con, nm, cid) if nm else None)
     if pid:
         con.execute("UPDATE person SET name_en=COALESCE(name_en, ?), original_name=COALESCE(original_name, ?), photo=COALESCE(photo, ?), updated_at=? WHERE id=?",
                     (name, p.get("original_name"), _img(p.get("profile_path"), "w185"), now, pid))
@@ -372,6 +392,30 @@ def _person(con, p, now):
         pid = cur.lastrowid
     seo_db.set_external(con, "person", pid, "tmdb", p["id"], verified=True, confidence=1, how="tmdb", now=now)
     return pid
+
+
+def review_same_names(con, now=None):
+    """أسماءٌ متكرّرة بلا معرّفاتٍ مميِّزة (صفّان فأكثر لمفتاح اسمٍ واحد وعدد معرّفات TMDB أقل): بند مراجعة لكلٍّ — لا دمج تلقائي.
+    ← عدد البنود المفتوحة."""
+    now = now or int(time.time())
+    groups = con.execute("SELECT name_norm, COUNT(*) n, GROUP_CONCAT(id) ids FROM person WHERE name_norm IS NOT NULL AND name_norm != '' GROUP BY name_norm HAVING COUNT(*) > 1").fetchall()
+    open_keys = set()
+    for g in groups:
+        ids = [int(x) for x in g["ids"].split(",")]
+        tm = {r[0] for r in con.execute(f"SELECT external_id FROM external_id WHERE entity='person' AND source='tmdb' AND entity_id IN ({','.join('?' * len(ids))})", ids)}
+        if len(tm) >= len(ids):
+            continue                                   # كلٌّ بمعرّفه: أشخاصٌ مختلفون بالاسم نفسه
+        rows = [dict(r) for r in con.execute(f"SELECT p.id, p.name, p.slug, (SELECT external_id FROM external_id x WHERE x.entity='person' AND x.entity_id=p.id AND x.source='tmdb') tmdb, "
+                                             f"(SELECT COUNT(*) FROM content_person cp WHERE cp.person_id=p.id) works FROM person p WHERE p.id IN ({','.join('?' * len(ids))})", ids)]
+        key = f"person_same_name:{g['name_norm']}"
+        open_keys.add(key)
+        con.execute("INSERT INTO review(kind, key, payload_json, status, created_at, updated_at) VALUES ('person_same_name', ?, ?, 'open', ?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET payload_json=excluded.payload_json, updated_at=excluded.updated_at, status=CASE WHEN review.status='resolved' THEN 'resolved' ELSE 'open' END",
+                    (key, json.dumps({"name": g["name_norm"], "rows": rows, "decision": "review", "note": "same name, no distinct external ids — not merged automatically"}, ensure_ascii=False), now, now))
+    for r in con.execute("SELECT key FROM review WHERE kind='person_same_name' AND status='open'").fetchall():
+        if r["key"] not in open_keys:
+            con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=?", (now, r["key"]))
+    return len(open_keys)
 
 
 def _company(con, c, kind, now):
@@ -507,10 +551,13 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
     else:
         con.execute("UPDATE review SET status='stale', updated_at=? WHERE key=? AND status='open'", (now, f"taxonomy_unconfirmed:{cid}"))
     # الأشخاص والشركات
+    _name_row.prior[cid] = {r["name_norm"]: r["id"] for r in con.execute(      # صفوف أسماء هذا العمل من اللوحة قبل استبدال الأدوار: تُرقّى بمعرّف TMDB (العمل نفسه = الشخص نفسه)
+        "SELECT p.id, p.name_norm FROM person p WHERE p.name_norm IS NOT NULL AND NOT EXISTS (SELECT 1 FROM external_id x WHERE x.entity='person' AND x.entity_id=p.id) "
+        "AND p.id IN (SELECT person_id FROM content_person WHERE content_id=?)", (cid,))}
     con.execute("DELETE FROM content_person WHERE content_id=? AND source IN ('tmdb','xtream')", (cid,))
     credits = d.get("credits") or d.get("aggregate_credits") or {}
     for i, p in enumerate((credits.get("cast") or [])[:15]):
-        pid = _person(con, p, now)
+        pid = _person(con, p, now, cid)
         if pid:
             ch = p.get("character") or ((p.get("roles") or [{}])[0]).get("character") or ""
             role = "voice" if is_animation or "(voice)" in ch.lower() else "actor"
@@ -522,13 +569,15 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
         for job in [p.get("job")] + [j.get("job") for j in p.get("jobs") or []]:
             role = CREW_ROLES.get(job or "")
             if role:
-                pid = _person(con, p, now)
+                pid = _person(con, p, now, cid)
                 if pid:
                     con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) VALUES (?,?,?,NULL,0,'tmdb')", (cid, pid, role))
     for p in d.get("created_by") or []:
-        pid = _person(con, p, now)
+        pid = _person(con, p, now, cid)
         if pid:
             con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) VALUES (?,?,'creator',NULL,0,'tmdb')", (cid, pid))
+    _name_row.prior.pop(cid, None)
+    con.execute("DELETE FROM person WHERE id NOT IN (SELECT person_id FROM content_person) AND NOT EXISTS (SELECT 1 FROM external_id x WHERE x.entity='person' AND x.entity_id=person.id)")
     con.execute("DELETE FROM content_company WHERE content_id=? AND source='tmdb'", (cid,))
     for c in (d.get("production_companies") or [])[:5]:
         coid = _company(con, c, "studio", now)
@@ -619,12 +668,19 @@ def _series_map(con, xt, st, write=True):
 def _people_xtream(con, cid, info, now):
     if con.execute("SELECT 1 FROM content_person WHERE content_id=? AND source='tmdb'", (cid,)).fetchone():
         return
+    old = [r[0] for r in con.execute("SELECT person_id FROM content_person WHERE content_id=? AND source='xtream'", (cid,))]
     con.execute("DELETE FROM content_person WHERE content_id=? AND source='xtream'", (cid,))
     for role, raw in (("actor", info.get("cast") or info.get("actors") or ""), ("director", info.get("director") or "")):
         for i, name in enumerate([x.strip() for x in re.split(r"[,،/]", str(raw)) if x.strip()][:12]):
-            pid = _find_person(con, name) or con.execute("INSERT INTO person(slug, name, name_norm, created_at, updated_at) VALUES (?,?,?,?,?)",
-                                                         (_slug_for(con, "person", name), name, M.person_key(name), now, now)).lastrowid
+            # اسمٌ من اللوحة بلا معرّف: صفٌّ لهذا العمل (يُعاد استعماله له وحده)؛ لا يُربط بصفّ اسمٍ مماثل لعملٍ آخر ولا بشخصٍ
+            # مُعرَّف في TMDB — التشابه يُراجَع (person_same_name) ولا يُدمج
+            key = M.person_key(name)
+            r = con.execute(f"SELECT id FROM person WHERE name_norm=? AND id IN ({','.join('?' * len(old)) or '0'}) AND NOT EXISTS "
+                            f"(SELECT 1 FROM external_id x WHERE x.entity='person' AND x.entity_id=person.id) LIMIT 1", (key, *old)).fetchone()
+            pid = r["id"] if r else con.execute("INSERT INTO person(slug, name, name_norm, created_at, updated_at) VALUES (?,?,?,?,?)",
+                                               (_slug_for(con, "person", name), name, key, now, now)).lastrowid
             con.execute("INSERT OR IGNORE INTO content_person(content_id, person_id, role, character, ord, source) VALUES (?,?,?,NULL,?,'xtream')", (cid, pid, role, i))
+    con.execute("DELETE FROM person WHERE id NOT IN (SELECT person_id FROM content_person) AND NOT EXISTS (SELECT 1 FROM external_id x WHERE x.entity='person' AND x.entity_id=person.id)")
 
 
 def apply_xtream(con, data_dir, cid, st, now=None):
@@ -764,7 +820,10 @@ def _one(con, data_dir, cid, source, st, now):
         if hints:                                   # قسمٌ يقول تركي/أنمي وTMDB لم يحسم: لا تصنيف تلقائي — مراجعة
             _review(con, "taxonomy_unconfirmed", cid, name, {"hints": hints, "tmdb": res, "decision": "none", "confidence": "low"}, now)
         if res in ("weak", "ambiguous"):
-            _review(con, f"tmdb_{res}", cid, name, {"candidates": [{k: c.get(k) for k in ("id", "title", "original_title", "year")} for c in data][:5]}, now)
+            holders = {str(r["external_id"]): r["entity_id"] for r in con.execute("SELECT external_id, entity_id FROM external_id WHERE entity='content' AND source='tmdb' AND verified=1")}
+            _review(con, f"tmdb_{res}", cid, name, {"state": "unresolved_candidate", "why": "several verified candidates by name; strong evidence (anime hint, season/episode counts) does not separate them" if res == "ambiguous" else "candidate not strong (year/name/origin)",
+                                                      "likely": next((c["id"] for c in data if c.get("likely")), None),
+                                                      "candidates": [{**{k: c.get(k) for k in ("id", "title", "original_title", "year")}, "evidence": c.get("evidence"), "held_by_entity": holders.get(str(c.get("id")))} for c in data][:5]}, now)
             return "miss", res
         return "miss", "no candidate"
     if source == "tmdb_seasons":
@@ -791,6 +850,16 @@ def reclassify(con, data_dir, st, limit=500, now=None):
         except Exception:  # noqa: BLE001 — لا يُعطّل الدورة؛ يُعاد في المرة التالية
             con.rollback()
             continue
+    # سجلات حلقاتٍ من قبل عمود المصدر: تُعاد حلقات TMDB من الكاش فتُعلَّم tmdb، وما بقي بلا مصدر كتبته اللوحة (الكاتبان الوحيدان)
+    for r in con.execute("SELECT DISTINCT content_id FROM episode WHERE source IS NULL LIMIT ?", (limit,)).fetchall():
+        try:
+            if con.execute("SELECT 1 FROM content WHERE id=? AND tmdb_id IS NOT NULL", (r[0],)).fetchone():
+                apply_seasons(con, data_dir, r[0], st, now)
+            con.execute("UPDATE episode SET source='xtream' WHERE content_id=? AND source IS NULL", (r[0],))
+        except Exception:  # noqa: BLE001
+            con.rollback()
+            continue
+    review_same_names(con, now)
     con.commit()
     return n
 
@@ -822,6 +891,7 @@ def run(data_dir, limit=None, force=False, now=None):
                     if _step(con, data_dir, r, st, backoff, res, now):
                         stop = True
                         break
+            res["same_name_reviews"] = review_same_names(con, now); con.commit()
             _state[os.path.abspath(data_dir)] = {"at": now, **res}
             return res
         finally:
@@ -991,12 +1061,8 @@ def describe(con, cid, st):
             "seasons": con.execute("SELECT COUNT(*) FROM season WHERE content_id=?", (cid,)).fetchone()[0],
             "episodes_detailed": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=?", (cid,)).fetchone()[0],
             "format": c["format"] or None, "anime_kind": c["anime_kind"], "is_animation": bool(c["is_animation"]), "anime_family": c["anime_family"],
-            "episodes": {"official": c["episodes_official"], "seasons_official": c["seasons_official"],
-                         "listed": con.execute("SELECT COALESCE(SUM(episode_count),0) FROM season WHERE content_id=?", (cid,)).fetchone()[0],
-                         "records": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=?", (cid,)).fetchone()[0],
-                         "records_by_source": {r[0] or "unknown": r[1] for r in con.execute("SELECT source, COUNT(*) FROM episode WHERE content_id=? GROUP BY source", (cid,))},
-                         "specials": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=? AND season=0", (cid,)).fetchone()[0],
-                         "per_service": {r["service_key"]: sum(n for _, n in json.loads(r["seasons_json"] or "[]")) for r in links if r["seasons_json"]}},
+            "resolution_state": resolution_state(con, cid, c),
+            "episodes": episode_counts(con, cid, c, links),
             "disputed": sorted(disputed),
             "turkish": classify("turkish"), "anime": classify("anime"),
             "aliases": [r[0] for r in con.execute("SELECT alias FROM content_alias WHERE content_id=?", (cid,))],
@@ -1004,6 +1070,78 @@ def describe(con, cid, st):
             "raw_names": {r["service_key"]: json.loads(r["raw_names_json"]) for r in links if r["raw_names_json"]},
             "sections": {r["service_key"]: json.loads(r["groups_json"]) for r in links if r["groups_json"]},
             "relations": relations(con, cid, st), "provenance": {k: v[0] for k, v in pv.items()}, "reviews": reviews, "page": page}
+
+
+def episode_counts(con, cid, c, links):
+    """حقول العدّ منفصلةً نهائيًّا — ولا يتحوّل مشتقٌّ إلى رسمي:
+    official_* من TMDB وحده · available_* من قوائم M3U (أكبر ما في السيرفرات؛ الموسم 0 لا يُعدّ موسمًا) · service_* لكل سيرفر ·
+    episode_record_count سجلات جدول الحلقات بمصدرها · special_episode_count حلقات الموسم 0."""
+    per_service = {r["service_key"]: {int(s): n for s, n in json.loads(r["seasons_json"] or "[]")} for r in links if r["seasons_json"]}
+    by_season = {}
+    for d in per_service.values():
+        for s, n in d.items():
+            by_season[s] = max(by_season.get(s, 0), n)
+    by_source = {r[0] or "unknown": r[1] for r in con.execute("SELECT source, COUNT(*) FROM episode WHERE content_id=? GROUP BY source", (cid,))}
+    return {"official_episode_count": c["episodes_official"], "official_season_count": c["seasons_official"],
+            "available_episode_count": sum(n for s, n in by_season.items() if s > 0), "available_season_count": len([s for s in by_season if s > 0]),
+            "available_source": "m3u listing (max per season across services)", "service_episode_count": {k: sum(v.values()) for k, v in per_service.items()},
+            "season_episode_count": {str(s): {"official": r[0], "available": by_season.get(s, 0)} for s, r in
+                                     ((x[0], (x[1],)) for x in con.execute("SELECT number, episodes_official FROM season WHERE content_id=? ORDER BY number", (cid,)))},
+            "episode_record_count": sum(by_source.values()), "episode_records_by_source": by_source,
+            "special_episode_count": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=? AND season=0", (cid,)).fetchone()[0],
+            "seo_uses": "official" if c["episodes_official"] else "available (labelled 'listed')"}
+
+
+def resolution_state(con, cid, c):
+    """verified (معرّف TMDB مُتحقَّق) · unresolved_candidate (مرشّحون بلا حسم: بند tmdb_ambiguous/weak بأدلّته والأرجح ومن يحمل كل معرّف) ·
+    unmatched (لا مرشّح) — ولا يُفهرس إلا verified."""
+    if c["match"] == "tmdb" and c["tmdb_id"]:
+        return {"state": "verified", "tmdb_id": c["tmdb_id"]}
+    r = con.execute("SELECT kind, payload_json FROM review WHERE status='open' AND kind IN ('tmdb_ambiguous','tmdb_weak') AND key IN (?, ?)",
+                    (f"tmdb_ambiguous:{cid}", f"tmdb_weak:{cid}")).fetchone()
+    if r:
+        p = json.loads(r["payload_json"])
+        cands = p.get("candidates") or []
+        for cnd in cands:                              # من يحمل كل معرّف **الآن** (قد يُثرى كيانٌ آخر بعد كتابة البند)
+            h = con.execute("SELECT entity_id FROM external_id WHERE entity='content' AND source='tmdb' AND verified=1 AND external_id=?", (str(cnd.get("id")),)).fetchone()
+            cnd["held_by_entity"] = h["entity_id"] if h else None
+        return {"state": "unresolved_candidate", "kind": r["kind"], "why": p.get("why"), "likely": p.get("likely"), "candidates": cands, "indexable": False}
+    return {"state": "unmatched", "indexable": False}
+
+
+def people_pages_qa(con, st, n=3):
+    """صفحات الأشخاص والشركات على البيانات الحقيقية: لكل فئة (ممثل · مخرج · كاتب · شركة) عيّنةٌ ممّن له عملان فأكثر — تُرسم
+    باللغتين ويُفحص: الأعمال تظهر وتُربط، canonical، hreflang، Breadcrumb وPerson/Organization، الترقيم إن لزم، noindex."""
+    import seo_pages
+    out = []
+    size = max(1, int(st.get("page_size", 60)))
+    groups = (("actors", "actor", "voice"), ("directors", "director"), ("writers", "writer", "screenwriter", "creator"))
+    picks = []
+    for g in groups:
+        qs = ",".join("?" * (len(g) - 1))
+        for r in con.execute(f"SELECT p.slug, p.name, COUNT(DISTINCT cp.content_id) n FROM person p JOIN content_person cp ON cp.person_id=p.id JOIN content c ON c.id=cp.content_id "
+                             f"WHERE cp.role IN ({qs}) AND c.merged_into IS NULL AND c.available=1 GROUP BY p.id ORDER BY n DESC, p.id LIMIT ?", (*g[1:], n)):
+            picks.append(("person", g[0], r["slug"], r["name"], r["n"]))
+    for r in con.execute("SELECT co.slug, co.name, COUNT(DISTINCT cc.content_id) n FROM company co JOIN content_company cc ON cc.company_id=co.id JOIN content c ON c.id=cc.content_id "
+                         "WHERE c.merged_into IS NULL AND c.available=1 GROUP BY co.id ORDER BY n DESC, co.id LIMIT ?", (n,)):
+        picks.append(("company", "companies", r["slug"], r["name"], r["n"]))
+    for kind, path, slug, name, works in picks:
+        row = {"kind": kind, "path": path, "name": name, "works": works, "checks": {}}
+        for lang in ("ar", "en"):
+            tr = __import__("content_page").lang_of(lang)
+            res = seo_pages.render_person(con, "", path, slug, tr, st) if kind == "person" else seo_pages.render_company(con, "", slug, tr, st)
+            if not res:
+                row["checks"][lang] = {"renders": False}
+                continue
+            html = res[1]["html"].decode("utf-8")
+            prefix = "/en" if lang == "en" else ""
+            row["checks"][lang] = {"renders": True, "works_on_page": res[1]["works"], "links_to_works": html.count(prefix + "/content/movies/") + html.count(prefix + "/content/series/") > 0,
+                                   "canonical": res[1]["canonical"], "hreflang": len(res[1]["alts"]), "breadcrumb": '"BreadcrumbList"' in html,
+                                   "schema": "Person" if '"@type": "Person"' in html else "Organization" if '"@type": "Organization"' in html else None,
+                                   "pages": res[1]["pages"], "paginated_ok": res[1]["pages"] == max(1, -(-res[1]["works"] // size)),
+                                   "noindex": "noindex" in html, "would_index": res[1]["index_ar" if lang == "ar" else "index_en"], "why": res[1]["why"][0]}
+        out.append(row)
+    return out
 
 
 def relations(con, cid, st):
@@ -1036,7 +1174,8 @@ def people_qa(con, st):
     return {"persons": q("SELECT COUNT(*) FROM person"), "with_tmdb_id": q("SELECT COUNT(*) FROM external_id WHERE entity='person' AND source='tmdb'"),
             "by_role": {r[0]: r[1] for r in con.execute("SELECT role, COUNT(*) FROM content_person GROUP BY role")},
             "by_source": {r[0]: r[1] for r in con.execute("SELECT source, COUNT(*) FROM content_person GROUP BY source")},
-            "same_name_rows_without_distinct_tmdb_ids": dup,      # يجب أن يكون صفرًا: الاسم الواحد صفٌّ واحد ما لم يفرّقهما معرّف TMDB
+            "same_name_rows_without_distinct_tmdb_ids": dup,      # تشابه أسماءٍ بلا معرّفات مميِّزة: بنود person_same_name — لا دمج تلقائي
+            "same_name_reviews_open": q("SELECT COUNT(*) FROM review WHERE kind='person_same_name' AND status='open'"),
             "companies": q("SELECT COUNT(*) FROM company"), "company_links": q("SELECT COUNT(*) FROM content_company"),
             "companies_by_kind": {r[0]: r[1] for r in con.execute("SELECT kind, COUNT(*) FROM company GROUP BY kind")},
             "persons_with_2plus_works": q("SELECT COUNT(*) FROM (SELECT person_id FROM content_person GROUP BY person_id HAVING COUNT(DISTINCT content_id) >= 2)"),
@@ -1249,6 +1388,7 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                     works.append(describe(con, cid, st))
                 except Exception as ex:  # noqa: BLE001
                     works.append({"id": cid, "error": f"{type(ex).__name__}: {str(ex)[:200]}"})
+            review_same_names(con, now); con.commit()
             cleaned = [w for w in works if (w.get("clean") or {}).get("cleaned")]
             counters = {
                 "cleaned_names": len(cleaned),
@@ -1263,7 +1403,7 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                      "in_sample": [{"id": w["id"], "slug": w.get("slug"), "merged_into": w.get("merged_into")} for w in works if w.get("merged_into") or (w.get("slug_prev"))]}
             seo_db.set_state(con, "bundle_at", now); con.commit()
             return {"ok": True, "at": now, "ids": ids, "run": res, "failures": failures, "reconciliation": seo_db.state(con, "reconciliation"),
-                    "resolution": resolution, "people": people_qa(con, st),
+                    "resolution": resolution, "people": people_qa(con, st), "people_pages": people_pages_qa(con, st),
                     "errors": {"sample": failures, "queue_preexisting": pre, "bundle": list(bundle_errors or [])},
                     "counters": counters, "identity_changes": ident, "works": works, "summary": summary(con), "api": metrics()}
         finally:

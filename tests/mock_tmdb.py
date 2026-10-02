@@ -119,7 +119,7 @@ TV = {
     99008: _tv(99008, "Mystery Toon", "Mystery Toon", 2010, "", [], [16], ar="ميستري تون", keywords=[210024], popularity=5),
     # One Piece الحيّ (2023): الاسم نفسه والترجمة العربية نفسها — السنة أو مواسم القائمة أو قرينة «أنمي» تفصل
     111110: _tv(111110, "ONE PIECE", "ONE PIECE", 2023, "en", ["US", "JP"], [10759, 18], ar="ون بيس", ar_overview="اقتباسٌ حيّ لمغامرات لوفي وطاقم قبعة القش، قصة طويلة بما يكفي للفهرسة لاحقًا في الصفحات بكل تفاصيلها.",
-                status="Returning Series", cast=[("Iñaki Godoy", "Monkey D. Luffy"), ("Wentworth Miller", "Cameo")], companies=["Tomorrow Studios"], popularity=150, seasons=1, eps=8),
+                status="Returning Series", cast=[("Iñaki Godoy", "Monkey D. Luffy"), ("Wentworth Miller", "Cameo")], companies=["Tomorrow Studios"], popularity=150, seasons=2, eps=8),
     99009: _tv(99009, "Stub Show", "Stub Show", 2020, "ar", ["JO"], [18], ar="مسلسل ناقص", seasons=1, eps=1, popularity=3),
 }
 MOVIES = {

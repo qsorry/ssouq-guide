@@ -188,10 +188,12 @@ def explain(con, idx, q, st):
     r = idx.search(q, st.get("search_max_suggest", 5), st.get("search_min_conf", 0.75))
 
     def ent(cid):
-        row = con.execute("SELECT id, slug, title FROM content WHERE id=?", (cid,)).fetchone()
+        row = con.execute("SELECT id, slug, title, year, tmdb_id, match FROM content WHERE id=?", (cid,)).fetchone()
         vers = [(x["service_key"], x["versions_json"]) for x in con.execute(
             "SELECT service_key, versions_json FROM content_service WHERE content_id=? AND present=1", (cid,))]
-        return {"id": row["id"], "slug": row["slug"], "title": row["title"], "versions": vers}
+        state = "verified" if row["match"] == "tmdb" and row["tmdb_id"] else \
+            ("unresolved_candidate" if con.execute("SELECT 1 FROM review WHERE status='open' AND key IN (?,?)", (f"tmdb_ambiguous:{cid}", f"tmdb_weak:{cid}")).fetchone() else "unmatched")
+        return {"id": row["id"], "slug": row["slug"], "title": row["title"], "year": row["year"], "tmdb_id": row["tmdb_id"], "identity": state, "versions": vers}
     def grouped(ents):
         """كياناتٌ بالاسم نفسه (العمل نفسه على سيرفرين بلا دليل دمج بعد، أو عملان متشابهان): تُجمع للعرض مرةً واحدة —
         عرضٌ لا دمج؛ ويُذكر لماذا هما كيانان (name_only · split …) من بنود المراجعة المفتوحة."""
