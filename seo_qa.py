@@ -75,6 +75,60 @@ def _page(data_dir, con, row, lang, st):
     return {**res[1], "text": res[1]["html"].decode("utf-8"), "code": code, "headers": hdr, "served": body}
 
 
+ALT_RX = re.compile(r'<link rel="alternate" hreflang="([^"]+)" href="([^"]+)">')
+
+
+def hreflang_check(pages):
+    """قاعدة hreflang (المواصفة §hreflang في phase2-design): المجموعة ar/en/x-default **متبادلةً** في الصفحتين حين تستحق اللغتان
+    الفهرسة؛ وحين تستحق لغةٌ واحدة لا تُرسل أي وسم alternate (hreflang إلى صفحة noindex يُهمَل ويُعدّ خطأً) وتبقى كل صفحة canonical
+    لنفسها مع رابط تبديل اللغة. يُفحص السلوك المطلوب في الحالتين لا يُتخطّى ← (ناجح؟، التفصيل بـ hreflang_mode)."""
+    ok_ar, ok_en = bool(pages["ar"]["index_ar"]), bool(pages["en"]["index_en"])
+    tags = {l: dict(ALT_RX.findall(p["text"])) for l, p in pages.items()}
+    canon_self = all(f'rel="canonical" href="{p["canonical"]}"' in p["text"] for p in pages.values())
+    switch = all('class="lang"' in p["text"] for p in pages.values())
+    detail = {"eligibility": {"ar": pages["ar"]["why"][0], "en": pages["en"]["why"][1]}, "tags": tags}
+    if ok_ar and ok_en:
+        want = {"ar": pages["ar"]["canonical"], "en": pages["en"]["canonical"], "x-default": pages["ar"]["canonical"]}
+        ok = tags["ar"] == want and tags["en"] == want and canon_self
+        detail.update({"hreflang_mode": "bilingual", "expected": want, "reciprocal": tags["ar"] == tags["en"] == want})
+    else:
+        ok = not tags["ar"] and not tags["en"] and canon_self and switch
+        detail.update({"hreflang_mode": "single:" + ("ar" if ok_ar else "en" if ok_en else "none"), "rule": "one eligible language → no alternate tags on either page; canonical self; language switch link",
+                       "no_alternate_tags": not tags["ar"] and not tags["en"], "canonical_self": canon_self, "language_switch": switch})
+    return ok, detail
+
+
+def coverage(data_dir, con, st, limit=1500):
+    """تغطيةٌ شاملة لا عيّنة: كل كيانٍ حيّ يستحق الفهرسة بلغةٍ واحدة على الأقل (ما ستحمله خريطة المرحلة 3) تُرسم صفحتاه وتُفحص
+    قاعدة hreflang وcanonical عليه؛ ومع ذلك أهلية اللغات على القاعدة كلها (بلا رسم). `limit` يحمي من رسم آلاف الصفحات: ما لم
+    يُرسم يُعدّ ويُعلَن coverage_complete=false."""
+    elig = {"both": 0, "ar_only": 0, "en_only": 0, "none": 0}
+    pop = []
+    for r in con.execute("SELECT * FROM content WHERE merged_into IS NULL AND available=1 ORDER BY id"):
+        a, e = seo_pages.indexable(r, "ar", st)[0], seo_pages.indexable(r, "en", st)[0]
+        elig["both" if a and e else "ar_only" if a else "en_only" if e else "none"] += 1
+        if a or e:
+            pop.append(r)
+    smap = {u for u, _, _ in sitemap_urls(con, st)}
+    checked, fails, modes = 0, [], {"bilingual": 0, "single:ar": 0, "single:en": 0}
+    for r in pop[:limit]:
+        pages = {l: _page(data_dir, con, r, l, st) for l in ("ar", "en")}
+        if not all(p and p["code"] == 200 for p in pages.values()):
+            fails.append({"id": r["id"], "slug": r["slug"], "problem": "render", "codes": {l: (p["code"] if p else None) for l, p in pages.items()}}); continue
+        ok, det = hreflang_check(pages)
+        modes[det["hreflang_mode"]] = modes.get(det["hreflang_mode"], 0) + 1
+        canon = all(p["canonical"] == SITE + seo_pages._path(r, l) for l, p in pages.items())
+        in_map = all((p["canonical"] in smap) == bool(p["index_ar"] if l == "ar" else p["index_en"]) for l, p in pages.items())
+        checked += 1
+        if not (ok and canon and in_map):
+            fails.append({"id": r["id"], "slug": r["slug"], "hreflang_ok": ok, "canonical_ok": canon, "sitemap_membership_ok": in_map, "mode": det["hreflang_mode"]})
+    complete = checked + len([f for f in fails if f.get("problem") == "render"]) >= len(pop)
+    return {"eligibility_all_live": elig, "population": len(pop), "entities_checked": checked, "pages_rendered": checked * 2, "by_mode": modes, "coverage_complete": complete,
+            "failures": fails[:20], "failures_total": len(fails), "sitemap_urls": len(smap),
+            "rule": "hreflang set (ar, en, x-default=ar) reciprocal on both pages iff both languages are indexable; otherwise no alternate tags, canonical self, language switch link",
+            "tests": [_t("global_hreflang_canonical_coverage", not fails and complete, {"population": len(pop), "checked": checked, "failures": len(fails), "complete": complete, "by_mode": modes})]}
+
+
 def check_work(data_dir, con, item, st, srv_names):
     """كل اختبارات العمل الواحد ← {id, …, tests: [...]}."""
     row = con.execute("SELECT * FROM content WHERE id=?", (item["id"],)).fetchone()
@@ -97,16 +151,7 @@ def check_work(data_dir, con, item, st, srv_names):
         return {**item, "tests": tests}
     canon_ok = all(p["canonical"] == SITE + seo_pages._path(row, l) and f'rel="canonical" href="{p["canonical"]}"' in p["text"] for l, p in pages.items())
     tests.append(_t("canonical", canon_ok, {l: p["canonical"] for l, p in pages.items()}))
-    both = pages["ar"]["index_ar"] and pages["en"]["index_en"]
-    alts = {l: dict(p["alts"]) for l, p in pages.items()}
-    if both:
-        recip = (alts["ar"] == alts["en"] and alts["ar"].get("ar") == pages["ar"]["canonical"] and alts["ar"].get("en") == pages["en"]["canonical"]
-                 and alts["ar"].get("x-default") == pages["ar"]["canonical"]
-                 and all(f'hreflang="{c}" href="{u}"' in p["text"] for p in pages.values() for c, u in alts["ar"].items()))
-        tests.append(_t("hreflang_reciprocal", recip, alts["ar"]))
-    else:
-        tests.append(_t("hreflang_reciprocal", not alts["ar"] and not alts["en"],
-                        {"skipped": "one language only", "why": pages["ar"]["why"], "alts": alts}))
+    tests.append(_t("hreflang_reciprocal", *hreflang_check(pages)))
     want = "Movie" if row["type"] == "movie" else "TVSeries"
     sch = []
     for l, p in pages.items():
@@ -431,16 +476,19 @@ def run(data_dir, spec=None, probe=None, sitemap_out=None):
         ix = indexnow_dry_run(data_dir, [u for u, _, _ in sitemap_urls(con, st)])
         q = check_queue(con)
         cs = check_casper(con, probe)
+        cov = coverage(data_dir, con, st)
         snap_after = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "content_alias")]
         ro = _t("read_only", snap_before == snap_after, {"before": snap_before, "after": snap_after})
-        all_tests = [t for w in works for t in w["tests"]] + red["tests"] + sm["tests"] + ix["tests"] + q["tests"] + cs["tests"] + [ro]
+        all_tests = [t for w in works for t in w["tests"]] + red["tests"] + sm["tests"] + ix["tests"] + q["tests"] + cs["tests"] + cov["tests"] + [ro]
         fails = [t for t in all_tests if not t["ok"]]
         work_fail = [{"id": w["id"], "slug": w["slug"], "group": w["group"], "failed": [t["test"] for t in w["tests"] if not t["ok"]]} for w in works if any(not t["ok"] for t in w["tests"])]
         return {"ok": not fails, "sample": {"n": len(works), "by_group": {g: sum(1 for w in works if w["group"] == g) for g in ("movie", "series", "turkish", "anime", "title")},
                                             "would_index_both": sum(1 for w in works if w.get("would_index", {}).get("ar") and w.get("would_index", {}).get("en"))},
                 "tests": {"total": len(all_tests), "pass": len(all_tests) - len(fails), "fail": len(fails)},
                 "blockers": [{"test": t["test"], "detail": t["detail"]} for t in fails if not t["test"].startswith(("slug_stable",))][:50],
-                "failed_works": work_fail, "works": works, "redirects": red, "sitemap": sm, "indexnow": ix, "queue": q, "casper": cs, "read_only": ro,
+                "hreflang": {"sample_by_mode": {m: sum(1 for w in works for t in w["tests"] if t["test"] == "hreflang_reciprocal" and f'"hreflang_mode": "{m}"' in t["detail"]) for m in ("bilingual", "single:ar", "single:en")},
+                             "rule": cov["rule"]},
+                "failed_works": work_fail, "works": works, "redirects": red, "sitemap": sm, "indexnow": ix, "queue": q, "casper": cs, "coverage": cov, "read_only": ro,
                 "not_done_by_design": ["no production indexing", "no sitemap deploy", "no IndexNow submission", "no mass enrichment", "no slug change", "no merge", "no source row deleted"]}
     finally:
         con.close()

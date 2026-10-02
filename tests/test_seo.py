@@ -382,7 +382,10 @@ def live():
                 break
             time.sleep(0.2)
         check("الملفات الأربعة مكتوبة في data/content/seo-review (بلا مفتاح: العيّنة تُسجَّل skipped لا فشلًا)",
-              not j["running"] and {f["name"] for f in j["files"]} == set(seo_sources.BUNDLE_FILES + seo_sources.BUNDLE_EXTRA) and j["last"].get("ok") is True, b[:160])
+              not j["running"] and {f["name"] for f in j["files"] if not f["name"].endswith(".zip")} == set(seo_sources.BUNDLE_FILES + seo_sources.BUNDLE_EXTRA) and j["last"].get("ok") is True, b[:160])
+        zname = next((f["name"] for f in j["files"] if f["name"].endswith(".zip")), "")
+        c, b = req(base, f"/admin/api/content/seo/bundle/{zname}", auth=AUTH)
+        check("أرشيف اللقطة يُنزَّل من البطاقة باسم seo-review-<bundle_id>.zip", zname == f"seo-review-{j['last']['bundle_id']}.zip" and c == 200 and b[:2] == "PK", str((zname, c, b[:4])))
         c, b = req(base, "/admin/api/content/seo/bundle/sitemap-staging.xml", auth=AUTH)
         check("خريطة الموقع التجريبية تُنزَّل من البطاقة (XML) ولا تُخدم على الموقع", c == 200 and b.startswith("<?xml") and "<urlset" in b, b[:120])
         c, b = req(base, "/admin/api/content/seo/bundle/qa.json", auth=AUTH)
@@ -1239,6 +1242,11 @@ def unit_enrich():
         files = {n: open(os.path.join(outdir, n), encoding="utf-8").read() for n in ("probe.json", "sample.json", "report.txt", "search-report.txt", "qa.json")}
         check("الملفات مكتوبة ومختومة بالوقت ونسخة الكود (ومعها qa.json وخريطة الموقع التجريبية)", set(files) | {"sitemap-staging.xml"} == set(b1["files"]) and all('"generated_at"' in t and '"code_fingerprint"' in t for t in files.values()) and b1["code_fingerprint"]
               and os.path.exists(os.path.join(outdir, "sitemap-staging.xml")), str(b1["files"]))
+        import zipfile
+        zf = zipfile.ZipFile(os.path.join(outdir, b1["zip"]))
+        check("الأرشيف seo-review-<bundle_id>.zip يحمل الملفات كلها بأسماءٍ تحمل معرّف اللقطة (qa_<id>.json …)، ولا يبقى أرشيف لقطةٍ سابقة",
+              b1["zip"] == f"seo-review-{b1['bundle_id']}.zip" and set(zf.namelist()) == {f"{n.rsplit('.', 1)[0]}_{b1['bundle_id']}.{n.rsplit('.', 1)[1]}" for n in seo_sources.BUNDLE_FILES + seo_sources.BUNDLE_EXTRA}
+              and len([n for n in os.listdir(outdir) if n.endswith(".zip")]) == 1, str(zf.namelist()))
         secs = ["testkey", "username=u", "password=p", xbase.split("//")[1]]
         check("لا مفتاح ولا بيانات دخول ولا مضيف لوحةٍ في أي ملف", not any(sc in t for sc in secs for t in files.values()), str([sc for sc in secs if any(sc in t for t in files.values())]))
         bid = b1["bundle_id"]
@@ -1275,6 +1283,23 @@ def unit_enrich():
               rep["pages"] >= 20 and rep["fail"] == 0, str({k: v for k, v in rep.items() if k != "results"}))
         why = {r["why"] for r in rep["results"] if not r["would_index"]}
         check("وسياسة الفهرسة تُقيَّم بسبب لكل صفحة (قصة قصيرة، غير مطابَق، أقل من 12)", why <= {"overview_ar < 120", "overview_en < 120", "unmatched", "items < 12"}, str(why))
+        # قاعدة hreflang: لغتان مستحقّتان ← مجموعة متبادلة؛ لغةٌ واحدة ← لا وسم alternate في الصفحتين مع canonical ذاتي ورابط تبديل — تُفحص لا تُتخطّى، وعلى التغطية كلها
+        st_ = seo_db.settings(con)
+        single = [r for r in con.execute("SELECT * FROM content WHERE merged_into IS NULL AND available=1") if seo_pages.indexable(r, "ar", st_)[0] != seo_pages.indexable(r, "en", st_)[0]]
+        both_ = [r for r in con.execute("SELECT * FROM content WHERE merged_into IS NULL AND available=1") if seo_pages.indexable(r, "ar", st_)[0] and seo_pages.indexable(r, "en", st_)[0]]
+        hs = {}
+        for r in (single[:1] + both_[:1]):
+            pg = {l: seo_qa._page(d, con, r, l, st_) for l in ("ar", "en")}
+            hs[r["id"]] = seo_qa.hreflang_check(pg) + (pg,)
+        s_ok, s_det, s_pg = hs[single[0]["id"]]; b_ok, b_det, _ = hs[both_[0]["id"]]
+        check("hreflang: عملٌ بلغةٍ مستحقّة واحدة → الصفحتان 200 بلا أي <link rel=alternate hreflang> وcanonical ذاتي ورابط تبديل (single)، وعملٌ باللغتين → المجموعة ar/en/x-default متبادلة (bilingual)",
+              single and both_ and s_ok and s_det["hreflang_mode"].startswith("single:") and s_det["no_alternate_tags"] and all(p["code"] == 200 for p in s_pg.values())
+              and b_ok and b_det["hreflang_mode"] == "bilingual" and b_det["reciprocal"], str((s_det, b_det))[:500])
+        cov = seo_qa.coverage(d, con, st_)
+        check("التغطية الشاملة: كل كيانٍ مستحقٍّ بلغةٍ على الأقل رُسم وفُحص (coverage_complete)، الأهلية على القاعدة كلها مصنّفة، عضوية الخريطة تطابق الأهلية، ولا فشل",
+              cov["coverage_complete"] and cov["population"] == cov["entities_checked"] >= 2 and cov["by_mode"]["bilingual"] >= 1 and (cov["by_mode"]["single:ar"] + cov["by_mode"]["single:en"]) >= 1
+              and cov["failures_total"] == 0 and sum(cov["eligibility_all_live"].values()) == con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=1").fetchone()[0]
+              and cov["tests"][0]["ok"], str({k: v for k, v in cov.items() if k not in ("failures",)})[:500])
         con.close()
     finally:
         xt.shutdown(); tm.shutdown()
