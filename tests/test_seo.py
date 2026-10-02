@@ -242,6 +242,21 @@ def unit_build():
         con.close(); con = seo_db.connect(d)
         sh = con.execute("SELECT COUNT(*), SUM(available) FROM content WHERE title='Shameless'").fetchone()
         check("ما غاب من كل السيرفرات يبقى بمعرّفه وavailable=0", sh[0] == 2 and sh[1] == 0, str(tuple(sh)))
+        # تدقيق التحويلات غير الحية (قراءةٌ صرفة): هدفٌ لكيانٍ غاب (الصفحة 200 noindex، الكيان يبقى canonical ← يُبقى كما هو)،
+        # وهدفٌ لا كيان له (404 ← يُحقَّق في توليده) — ولا يُكتب شيء
+        shr = con.execute("SELECT id, type, slug FROM content WHERE title='Shameless' AND merged_into IS NULL ORDER BY id").fetchone()
+        con.execute("INSERT INTO redirect(path, target, code, reason, created_at) VALUES ('/content/series/shameless-old/', ?, 301, 'test', 1)", (seo_db.PATHS["series"].format(slug=shr["slug"]),))
+        con.execute("INSERT INTO redirect(path, target, code, reason, created_at) VALUES ('/content/series/ghost-old/', '/content/series/ghost-none/', 301, 'test', 1)")
+        seo_db.set_setting(con, "preview", True); con.commit()
+        n_red = con.execute("SELECT COUNT(*) FROM redirect").fetchone()[0]
+        au = seo_qa.audit_redirect_targets(d, con)
+        by = {it["to"]: it for it in au["items"]}
+        g = by.get("/content/series/ghost-none/"); u = by.get(seo_db.PATHS["series"].format(slug=shr["slug"]))
+        check("تدقيق الأهداف غير الحية: الغائب = كيانٌ موجود بمعرّفه، 200، غير مدمج، available=0، التوصية keep as-is؛ والمفقود = لا كيان، 404، fix route generation؛ وبلا كتابة",
+              au["count"] == 2 and au["by_state"] == {"unavailable": 1, "missing": 1} and u and u["target_entity_exists"] and u["target_entity_id"] == shr["id"] and u["route"]["code"] == 200
+              and u["unavailable"] and not u["merged"] and u["recommendation"].startswith("keep as-is") and g and not g["target_entity_exists"] and g["route"]["code"] == 404
+              and g["recommendation"].startswith("fix route generation") and con.execute("SELECT COUNT(*) FROM redirect").fetchone()[0] == n_red, str(au)[:600])
+        con.execute("DELETE FROM redirect WHERE reason='test'"); seo_db.set_setting(con, "preview", False); con.commit()
         check("بند المراجعة يبقى ثابتًا بين البناءات (لا يتكرّر)",
               con.execute("SELECT COUNT(*) FROM review WHERE kind='name_only' AND status='open'").fetchone()[0] == 1)
         # الإعدادات تُعدَّل بلا كود
