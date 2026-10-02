@@ -467,6 +467,47 @@ def through_server():
         check("وتغيير رابط إضافة الخط يُبقيها مكانها (وبلا «الحسابات»)", c == 200 and [a["manifest"]["name"] for a in ours("u@tv.ssouq.com")] == names
               and S.ACCOUNTS not in ours("u@tv.ssouq.com")[1]["manifest"]["types"])
 
+        print("== «تحديث الإضافة لكل الحسابات» ==")
+        c, r = post("/api/stremio/update-all", None)
+        n_accts = r.get("accounts", 0)
+        check("عدد حسابات Stremio للعميل (الحساب مرةً مهما كثرت خطوطه)، وبلا عمليةٍ بعد", c == 200 and n_accts >= 2 and r.get("job") is None,
+              json.dumps(r, ensure_ascii=False))
+        col = api.collections["u@tv.ssouq.com"]
+        others_before = [a["manifest"]["name"] for a in col if not a.get("manifest", {}).get("id", "").startswith("com.ssouq.")]
+        for a in ours("u@tv.ssouq.com"):                  # إضافتان من نسخةٍ قديمة (قبل المكتبة الموحدة)
+            a["manifest"] = {**a["manifest"], "version": "1.0.0", "catalogs": [{"type": "movie", "id": "sq_movies", "name": "أفلام · قديم"}]}
+        c, r = post("/api/stremio/update-all", {})
+        check("يبدأ في الخلفية", c == 200 and r.get("ok") and r["job"]["total"] == n_accts, json.dumps(r, ensure_ascii=False)[:200])
+        for _ in range(200):
+            c, r = post("/api/stremio/update-all", None)
+            if not (r.get("job") or {}).get("running"):
+                break
+            time.sleep(0.1)
+        j = r.get("job") or {}
+        check("وينتهي: كل الحسابات حُدّثت بلا تعثّر، وكل خطوطها", not j.get("running") and j.get("done") == j.get("total") == n_accts
+              and j.get("changed") == n_accts and j.get("failed") == [] and j.get("lines", 0) > n_accts, json.dumps(j, ensure_ascii=False))
+        root_m, k1m = ours("u@tv.ssouq.com")[0]["manifest"], ours("u@tv.ssouq.com")[1]["manifest"]
+        check("إضافة صاحب الحساب بأحدث نسخة: المكتبة الموحدة و«الحسابات»", root_m["version"] == S.VERSION
+              and root_m["catalogs"][0]["type"] == S.ACCOUNTS and root_m["catalogs"][1]["name"].startswith("سمارت سوق ("), root_m["catalogs"][1]["name"])
+        check("وإضافة الخط المرتبط بلا كتالوجات", k1m["version"] == S.VERSION and k1m["catalogs"] == [])
+        col = api.collections["u@tv.ssouq.com"]
+        check("كلٌّ في مكانه، والإضافات الأخرى كما هي", [a["manifest"]["name"] for a in ours("u@tv.ssouq.com")] == names
+              and [a["manifest"]["name"] for a in col if not a.get("manifest", {}).get("id", "").startswith("com.ssouq.")] == others_before,
+              str([a["manifest"]["name"] for a in col]))
+        check("وخرج من كل الجلسات", not api.sessions)
+        api.down = True
+        c, r = post("/api/stremio/update-all", {})
+        for _ in range(200):
+            c, r = post("/api/stremio/update-all", None)
+            if not (r.get("job") or {}).get("running"):
+                break
+            time.sleep(0.1)
+        api.down = False
+        check("Stremio لا يردّ: كل حسابٍ في «ما تعذّر» بإيميله وسببه (لا يتوقف)", len(r["job"]["failed"]) == n_accts and r["job"]["changed"] == 0
+              and all(f.get("email") and f.get("error") for f in r["job"]["failed"]), json.dumps(r["job"], ensure_ascii=False)[:200])
+        c, r = post("/api/stremio/update-all", {}, op3)
+        check("ومن لم يُفتح له Stremio ← 403", c == 403)
+
         c, r = post("/api/stremio/create", {"gate": "g2", "package_id": "167", "link_gate": "g1", "link_username": "u"})
         check("«خطٌّ جديد» من سيرفرٍ في الحساب ← 400 قبل إنشاء اليوزر", c == 400 and "سيرفر هذه البوابة" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
         c, r = post("/api/stremio/create", {"gate": "g5", "package_id": "167", "link_gate": "g1", "link_username": "late"})

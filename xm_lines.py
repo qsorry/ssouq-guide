@@ -1135,12 +1135,12 @@ def stremio_account(acct, gate, username, password, line="", email=None, stremio
 STREMIO_ACTIVATION_WAIT = tuple(float(x) for x in os.environ.get("STREMIO_ACTIVATION_WAIT", "2,3,4,6").split(",") if x.strip())
 
 
-def stremio_descriptor(tok, host, gate=None, accounts=None):
+def stremio_descriptor(tok, host, gate=None, accounts=None, patient=True):
     """(دالةٌ تبني وصف الإضافة للتثبيت، وقائمةٌ يُلحق بها «اكتملت؟» لكل ما بُني). يوزرٌ لم يُفعَّل بعد (يرفضه السيرفر
     أو تأتي قوائمه فارغة — كما حدث في مرح فثُبّتت إضافته بلا أقسام) يُنتظر له ويُعاد بناؤها؛ وسيرفرٌ لا يردّ أصلًا ←
     تُثبَّت كما هي بلا انتظار (وتُعلَّم ليُحدَّث تثبيتها). صاحب الحساب (أو يوزرٌ وحده): المكتبة الموحدة لخطوطه و«الحسابات»؛
     والخط المرتبط: بلا كتالوجات (محتواه في مكتبة صاحبه) — يُعرف من ‏stremio_lines، و«ربط خط آخر» يمرّر accounts=False
-    (حسابه لم يُحفظ بعد)."""
+    (حسابه لم يُحفظ بعد). ‏patient=False: بلا انتظار التفعيل (التحديث لكل الحسابات: يوزرٌ منتهٍ يُثبَّت كما هو فورًا)."""
     built = []
 
     def descriptor():
@@ -1150,7 +1150,7 @@ def stremio_descriptor(tok, host, gate=None, accounts=None):
         lines = None if accounts is False else (stremio_lines(cfg0) if cfg0 else [{"cfg": cfg, "label": label}])
         acc = lines is not None
         man = state = None
-        for wait in (0,) + STREMIO_ACTIVATION_WAIT:
+        for wait in (0,) + (STREMIO_ACTIVATION_WAIT if patient else ()):
             if wait:
                 time.sleep(wait)
                 stremio_addon.forget_empty(cfg)
@@ -1186,6 +1186,87 @@ def stremio_reinstall(acct, gate_id, username):
         stremio_accounts.note(DATA_DIR, hk, username, addon_full=built[-1], addon_at=int(time.time()))
     stremio_check_exp(rec)                      # وحاله وانتهاؤه من السيرفر الآن (يوزرٌ فُعّل بعد إنشاء حسابه)
     return stremio_accounts.get(DATA_DIR, hk, username)
+
+
+# «تحديث الإضافة لكل الحسابات»: أحدث نسخةٍ من إضافتنا في كل حسابات Stremio للعميل دفعةً واحدة، في الخلفية — المكتبة
+# الموحدة وصفّ «الحسابات» والأعداد والأقسام و«مصدر: …». حساب Stremio يُدخل مرةً واحدة وتُحدَّث فيه إضافات خطوطه كلها
+# (صاحبه بمكتبته، والخط المرتبط بلا كتالوجات)، كلٌّ في مكانه من الحساب؛ والإضافات الأخرى كما هي (وما نقص منها يُثبَّت).
+STREMIO_UPDATE_WORKERS = 3                      # حساباتٌ معًا (لطفًا بـ Stremio)
+_upd_jobs = {}                                  # حساب الأداة ← حال آخر عملية
+_upd_lock = threading.Lock()
+
+
+def stremio_update_groups(acct_id):
+    """حسابات Stremio للعميل ← {الإيميل: [خطوطه، صاحب الحساب أولًا]} (ما له رمزٌ وكلمة مرور)."""
+    groups = {}
+    for r in stremio_accounts.owned_all(DATA_DIR, acct_id):
+        if r.get("token") and r.get("email") and r.get("password"):
+            groups.setdefault(r["email"].lower(), []).append(r)
+    for rs in groups.values():
+        rs.sort(key=lambda r: (bool(r.get("linked_to")), r.get("ts") or 0))
+    return groups
+
+
+def stremio_update_job(acct_id):
+    with _upd_lock:
+        j = _upd_jobs.get(acct_id)
+        return {**j, "failed": list(j["failed"])} if j else None
+
+
+def stremio_update_data(acct):
+    return {"job": stremio_update_job(acct["id"]), "accounts": len(stremio_update_groups(acct["id"]))}
+
+
+def stremio_update_all(acct):
+    """يبدأ «تحديث الإضافة لكل الحسابات» في الخلفية ← حاله. ‏ValueError: عمليةٌ جارية، أو لا حسابات."""
+    groups = stremio_update_groups(acct["id"])
+    if not groups:
+        raise ValueError("لا حسابات Stremio بعد")
+    with _upd_lock:
+        if (_upd_jobs.get(acct["id"]) or {}).get("running"):
+            raise ValueError("تحديثٌ جارٍ — انتظر انتهاءه")
+        j = _upd_jobs[acct["id"]] = {"total": len(groups), "done": 0, "changed": 0, "lines": 0, "failed": [], "running": True,
+                                     "started": int(time.time()), "finished": 0}
+    extras = stremio_extras.descriptors(DATA_DIR, acct["id"])
+
+    def one(rs):
+        n, err = 0, None
+        try:
+            auth = stremio_accounts.login(rs[0]["email"], rs[0]["password"])
+            try:
+                for r in rs:
+                    cfg = stremio_addon.read_token(DATA_DIR, r["token"])
+                    gate = find_gate(acct, r.get("gate")) or {}
+                    descriptor, built = stremio_descriptor(r["token"], cfg.host if cfg else gate.get("host", ""), gate,
+                                                           patient=False)
+                    stremio_accounts.install(auth, descriptor(), first=not r.get("linked_to"), extras=extras)
+                    n += 1
+                    if built:
+                        stremio_accounts.note(DATA_DIR, r.get("host", ""), r.get("username", ""),
+                                              addon_full=built[-1], addon_at=int(time.time()))
+            finally:
+                stremio_accounts.logout(auth)
+        except stremio_accounts.StremioError as e:
+            err = str(e)
+        except Exception as e:                  # حسابٌ يتعثّر لا يوقف الباقي
+            err = f"تعذّر: {type(e).__name__}"
+        with _upd_lock:
+            j["done"] += 1
+            j["lines"] += n
+            j["changed"] += 1 if n and not err else 0
+            if err:
+                j["failed"].append({"email": rs[0]["email"], "error": err})
+
+    def run():
+        try:
+            with ThreadPoolExecutor(max_workers=STREMIO_UPDATE_WORKERS) as ex:
+                list(ex.map(one, groups.values()))
+        finally:
+            stremio_addon.forget_lines()
+            with _upd_lock:
+                j["running"], j["finished"] = False, int(time.time())
+    threading.Thread(target=run, daemon=True, name="stremio-update-all").start()
+    return stremio_update_job(acct["id"])
 
 
 def stremio_lock(acct, gate_id, username):
@@ -4001,6 +4082,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not stremio_on(acct):
                     return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
                 return self._send(200, stremio_extras_data(acct))
+            if path == "/api/stremio/update-all":   # «تحديث الإضافة لكل الحسابات»: حال آخر عملية وعدد الحسابات
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
+                return self._send(200, stremio_update_data(acct))
             if path == "/api/stremio/extras/search":   # البحث بالاسم في دليل إضافات Stremio (الرسمي والمجتمع)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -5378,6 +5465,16 @@ class Handler(BaseHTTPRequestHandler):
                 except stremio_accounts.StremioError as e:
                     return self._send(502, {"ok": False, "error": f"Stremio: {e}"})
                 return self._send(200, {"ok": True, "addon_full": bool(rec.get("addon_full")), "email": rec["email"]})
+            if path == "/api/stremio/update-all":   # خارج القفل: «تحديث الإضافة لكل الحسابات» في الخلفية
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
+                try:
+                    stremio_update_all(acct)
+                except ValueError as e:
+                    return self._send(400, {"ok": False, "error": str(e), **stremio_update_data(acct)})
+                return self._send(200, {"ok": True, **stremio_update_data(acct)})
             if path == "/api/stremio/extras":     # خارج القفل: إضافةٌ أخرى للقائمة، أو حذفها، أو تثبيتها في السابقة كلها
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
