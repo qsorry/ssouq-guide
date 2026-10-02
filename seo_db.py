@@ -339,20 +339,14 @@ def migrate(con):
     if v >= VERSION:
         return
     with con:
-        con.executescript(SCHEMA)              # الجداول الجديدة (IF NOT EXISTS)
-        if v and v < 2:                        # قاعدةٌ من النسخة الأولى: أعمدةٌ تُضاف بلا إعادة بناء
-            for t, cols in _V2_COLS.items():
-                _add_cols(con, t, cols)
-        if v and v < 4:                        # الرسوم/الأنمي بطبقاته، والحلقات الرسمية، وأرقام البثّ المطويّة
-            for t, cols in _V4_COLS.items():
-                _add_cols(con, t, cols)
-        if v and v < 5:                        # مصدر سجل الحلقة
-            for t, cols in _V5_COLS.items():
-                _add_cols(con, t, cols)
-        if v and v < 6:                        # مفتاح اسم الشخص (يُملأ في البناء التالي)
-            for t, cols in _V6_COLS.items():
-                _add_cols(con, t, cols)
-            con.execute("CREATE INDEX IF NOT EXISTS person_norm ON person(name_norm)")
+        # الأعمدة الجديدة على الجداول القائمة **قبل** نصّ المخطط: فيه فهارس على أعمدةٍ جديدة (person.name_norm) تفشل على قاعدةٍ قديمة
+        if v:                                  # قاعدةٌ قائمة: أعمدةٌ تُضاف بلا إعادة بناء (الجداول الناقصة ينشئها المخطط بعدها)
+            for ver, cols_by_table in ((2, _V2_COLS), (4, _V4_COLS), (5, _V5_COLS), (6, _V6_COLS)):
+                if v < ver:
+                    for t, cols in cols_by_table.items():
+                        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)).fetchone():
+                            _add_cols(con, t, cols)
+        con.executescript(SCHEMA)              # الجداول والفهارس الجديدة (IF NOT EXISTS)
         con.execute(f"PRAGMA user_version={VERSION}")
 
 

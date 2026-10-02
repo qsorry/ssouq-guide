@@ -692,6 +692,33 @@ def unit_sample2_cases():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_migrate():
+    """قاعدةٌ من إصدارٍ أقدم (بلا أعمدة الإصدارات 4–6) تُرحَّل بلا خطأ — ما فشل في الإنتاج: فهرس person_norm قبل العمود."""
+    print("== الترحيل ==")
+    d = tempfile.mkdtemp(prefix="seo_mig_")
+    try:
+        con = seo_db.connect(d)
+        for sql in ("DROP INDEX IF EXISTS person_norm", "ALTER TABLE person DROP COLUMN name_norm", "ALTER TABLE episode DROP COLUMN source",
+                    "ALTER TABLE content DROP COLUMN is_animation", "ALTER TABLE content DROP COLUMN anime_family", "ALTER TABLE content DROP COLUMN episodes_official",
+                    "ALTER TABLE content DROP COLUMN seasons_official", "ALTER TABLE season DROP COLUMN episodes_official", "ALTER TABLE content_service DROP COLUMN stream_ids_json",
+                    "PRAGMA user_version=3"):
+            con.execute(sql)
+        con.commit(); con.close()
+        try:
+            con = seo_db.connect(d)
+            cols = {t: {r[1] for r in con.execute(f"PRAGMA table_info({t})")} for t in ("person", "episode", "content", "season", "content_service")}
+            ok = ("name_norm" in cols["person"] and "source" in cols["episode"] and {"is_animation", "anime_family", "episodes_official", "seasons_official"} <= cols["content"]
+                  and "episodes_official" in cols["season"] and "stream_ids_json" in cols["content_service"]
+                  and con.execute("PRAGMA user_version").fetchone()[0] == seo_db.VERSION
+                  and con.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='person_norm'").fetchone())
+            con.close()
+            check("قاعدة الإصدار 3 ← الإصدار الحالي: الأعمدة كلها والفهرس person_norm بلا خطأ", bool(ok), str(cols))
+        except Exception as ex:  # noqa: BLE001
+            check("قاعدة الإصدار 3 ← الإصدار الحالي: الأعمدة كلها والفهرس person_norm بلا خطأ", False, f"{type(ex).__name__}: {ex}")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_sample3_cases():
     """ما طلبته مراجعة العيّنة الثالثة: Prison Break وOne Piece كيانًا واحدًا لكل معرّف TMDB (لا دمج بالاسم)، «ون بيس» alias،
     شبكة الأشخاص (ممثل · مخرج · كاتب · شركة) علاقاتٍ حقيقية بصفحاتٍ وروابط، توحيد الشخص، الحلقات، ومصفوفة البحث."""
@@ -1058,6 +1085,7 @@ def main():
     unit_production_cases()
     unit_sample2_cases()
     unit_sample3_cases()
+    unit_migrate()
     unit_enrich()
     live()
     print("\nResult: %d passed, %d failed" % (_p, _f))
