@@ -594,6 +594,8 @@ def clean_account(a, old=None):
         # الاشتراكات المجزّأة (بيع ١٢ · ٦ · ٣ · شهر أو أي مدةٍ بالأشهر من باقة ١٥ شهرًا، وتغيير اسم المستخدم عند
         # انتهاء الجزء): يفتحها المدير لعميلٍ بعينه، ومغلقةٌ لغيره فلا يتغيّر عليه شيء.
         "split": bool(a.get("split", old.get("split", False))),
+        # Stremio (روابط التثبيت، وحسابات Stremio الجاهزة وبريدها): يفتحه المدير لعميلٍ بعينه، ومغلقٌ لغيره.
+        "stremio": bool(a.get("stremio", old.get("stremio", False))),
         # بلاغات المحتوى: موظف الدعم يرى ما يبلّغ عنه المشتركون من فيديو لا يعمل أو يقطع (‏/reports) ويعلّمه «تم الإصلاح».
         "reports": bool(a.get("reports", old.get("reports", False))),
         # ورقم واتسابه لتنبيهٍ بكل بلاغ (يغيّره هو من صفحة البلاغات، ويوقفه ‏reports_alert فيها).
@@ -709,11 +711,19 @@ STREMIO_PUBLIC = os.environ.get("STREMIO_PUBLIC_URL", "").strip().rstrip("/")
 STREMIO_HOSTS = {stremio_addon.host_key(h) for h in os.environ.get("STREMIO_HOSTS", "").split(",") if h.strip()} - {""}
 
 
-def stremio_servers(st=None):
-    """سيرفرات بواباتنا: اسم كل هوست ← اسم اشتراكه في الدليل (سمارت · كاسبر · فالكون)."""
+def stremio_on(acct):
+    """هل فُتح Stremio لهذا العميل؟ (المدير يفتحه من نافذة الحساب — مغلقٌ افتراضًا)"""
+    return bool(acct and acct.get("stremio"))
+
+
+def stremio_servers(st=None, enabled_only=False):
+    """سيرفرات بواباتنا: اسم كل هوست ← اسم اشتراكه في الدليل (سمارت · كاسبر · فالكون). و‏enabled_only: بوابات
+    العملاء الذين فُتح لهم Stremio وحدهم (ما تقبله الصفحة العامة)."""
     st = st or load_store()
     out = {}
     for a in st.get("accounts", []):
+        if enabled_only and not stremio_on(a):
+            continue
         for g in a.get("gates") or []:
             k = stremio_addon.host_key(g.get("host"))
             if k and k not in out:
@@ -722,8 +732,9 @@ def stremio_servers(st=None):
 
 
 def stremio_allowed(host):
+    """الصفحة العامة تقبل سيرفرات العملاء الذين فُتح لهم Stremio (وما في STREMIO_HOSTS) وحدها."""
     k = stremio_addon.host_key(host)
-    return bool(k) and (k in STREMIO_HOSTS or k in stremio_servers())
+    return bool(k) and (k in STREMIO_HOSTS or k in stremio_servers(enabled_only=True))
 
 
 def stremio_label(host):
@@ -1897,7 +1908,8 @@ def search_all_gates(acct, gates, q):
     def one(g):
         try:
             out = search_gate(acct, g, q)
-            with_stremio(g, out.get("results"))
+            if stremio_on(acct):
+                with_stremio(g, out.get("results"))
         except Exception:
             out = {"results": [], "links": [], "error": "تعذّر البحث في اللوحة"}
         return {"id": g["id"], "name": g.get("name", ""), **out}
@@ -3345,6 +3357,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "guide_url": acct.get("guide_url", "") if acct else "",
                                         "guide_text": guide_text_of(acct),
                                         "split": split_on(acct),
+                                        "stremio": stremio_on(acct),
                                         "reports": reports_on(role, acct),
                                         "split_slices": list(split_subs.SLICES) if split_on(acct) else [],
                                         "split_max": split_subs.MAX_SLICE if split_on(acct) else 0,
@@ -3379,6 +3392,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/stremio/mail":       # بريد حساب Stremio ليوزرٍ (رابط «نسيت كلمة المرور»)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
                 hit = stremio_accounts.owned(DATA_DIR, acct["id"], self._q("gate"), self._q("username").strip())
                 if not hit:
                     return self._send(404, {"error": "لا حساب Stremio لهذا اليوزر"})
@@ -3400,7 +3415,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not q:
                     return self._send(200, {"results": []})
                 out = search_gate(acct, gate, q)
-                with_stremio(gate, out.get("results"))   # رابط تثبيت Stremio لكل نتيجة
+                if stremio_on(acct):                  # رابط تثبيت Stremio لكل نتيجة (لمن فُتح له)
+                    with_stremio(gate, out.get("results"))
                 return self._send(200, out)
             if path == "/api/users-export/status":   # حالة ملف الإكسل لهذه البوابة
                 gate = find_gate(acct, self._q("gate")) if acct else None
@@ -4702,6 +4718,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/stremio/account":    # خارج القفل: حساب Stremio جاهز ليوزر (ينتظر Stremio)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
                 req = self._body()
                 gate = find_gate(acct, req.get("gate"))
                 if not gate:
@@ -4719,6 +4737,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/stremio/password":   # كلمة مرورٍ جديدة غُيّرت في Stremio: تُجرَّب ثم تُحفظ
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
                 req = self._body()
                 hit = stremio_accounts.owned(DATA_DIR, acct["id"], str(req.get("gate") or ""), str(req.get("username") or "").strip())
                 if not hit:
@@ -5063,7 +5083,8 @@ class Handler(BaseHTTPRequestHandler):
                                     progress=create_job_start(acct["id"], job, count))
         finally:
             create_job_end(acct["id"], job, len(out))
-        with_stremio(gate, out)                    # رابط تثبيت Stremio لكل يوزر (‏{stremio} في نص الشرح)
+        if stremio_on(acct):                       # رابط تثبيت Stremio لكل يوزر (‏{stremio} في نص الشرح)
+            with_stremio(gate, out)
         resp = {"lines": out, "total_ms": int((time.time() - t_start) * 1000)}
         if err:
             # ما أُنشئ قبل الخطأ أُنشئ فعلًا (وخُصم)، فيُعاد مع الخطأ لا بدلًا منه.

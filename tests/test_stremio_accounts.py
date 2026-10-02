@@ -175,9 +175,11 @@ def through_server():
     api_url, xt_host = start(api), start(xt)
     d = tempfile.mkdtemp(prefix="stracc_web_")
     with open(os.path.join(d, "accounts.json"), "w", encoding="utf-8") as f:
-        json.dump({"admin": None, "accounts": [{"id": "a1", "name": "MR7", "user": "mr7", "password": "pw123456",
+        json.dump({"admin": None, "accounts": [{"id": "a1", "name": "MR7", "user": "mr7", "password": "pw123456", "stremio": True,
                                                 "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]},
-                                               {"id": "a2", "name": "Other", "user": "other", "password": "pw654321",
+                                               {"id": "a2", "name": "Other", "user": "other", "password": "pw654321", "stremio": True,
+                                                "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]},
+                                               {"id": "a3", "name": "بلا Stremio", "user": "nost", "password": "pw333333",
                                                 "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]}]}, f)
     env = dict(os.environ, XM_DATA=d, XM_BIND="127.0.0.1", XM_PORT=str(PORT), XM_ADMIN_PASSWORD="adminpw1", STREMIO_API=api_url,
                XM_MAIL_PORT=str(MAIL_PORT))
@@ -205,6 +207,15 @@ def through_server():
         print("== عبر الأداة ==")
         c, _ = post("/api/stremio/account", {"gate": "g1", "username": "u", "password": "p"})
         check("بلا دخول ← مرفوض", c == 401, str(c))
+        op3 = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        post("/api/login", {"user": "nost", "password": "pw333333"}, op3)
+        c, r = post("/api/me", None, op3)
+        check("عميلٌ لم يفتح له المدير Stremio: ‏/api/me يقول ذلك", c == 200 and r.get("stremio") is False, json.dumps(r)[:80])
+        codes = [post(p, b, op3)[0] for p, b in (("/api/stremio/account", {"gate": "g1", "username": "u", "password": "p"}),
+                                                  ("/api/stremio/password", {"gate": "g1", "username": "u", "password": "p"}),
+                                                  ("/api/stremio/mail?gate=g1&username=u", None))]
+        check("ولا حساب Stremio ولا بريده ولا كلمة مروره ← 403", codes == [403, 403, 403], str(codes))
+        check("ولم يُسجَّل في Stremio شيء", not api.users)
         c, r = post("/api/login", {"user": "mr7", "password": "pw123456"})
         check("دخول الحساب", c == 200 and r.get("role") == "account", json.dumps(r)[:80])
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "u", "password": "p"})

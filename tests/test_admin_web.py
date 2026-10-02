@@ -84,7 +84,7 @@ def main():
         code, d = jreq("/admin/api/setup", {"password": "admin123"})
         check("admin setup ok", code == 200 and d.get("ok"))
         code, d = jreq("/admin/api/accounts", {
-            "name": "MR7", "user": PUSER, "password": PPASS,
+            "name": "MR7", "user": PUSER, "password": PPASS, "stremio": True,
             "gates": [{"name": "بوابة كاسبر", "mode": "web", "host": "http://mrha.ink",
                        "panel_base": PANEL, "panel_user": PUSER, "panel_pass": PPASS,
                        "guide_url": "https://guide.ssouq.com/", "digits": "10"}],

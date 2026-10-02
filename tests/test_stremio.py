@@ -298,8 +298,10 @@ def through_server():
     mock = f"127.0.0.1:{srv.server_address[1]}"
     d = tempfile.mkdtemp(prefix="stremio_web_")
     with open(os.path.join(d, "accounts.json"), "w", encoding="utf-8") as f:
-        json.dump({"admin": None, "accounts": [{"id": "a1", "name": "MR7", "user": "mr7", "password": "pw123456",
-                                                "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": f"http://{mock}"}]}]},
+        json.dump({"admin": None, "accounts": [{"id": "a1", "name": "MR7", "user": "mr7", "password": "pw123456", "stremio": True,
+                                                "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": f"http://{mock}"}]},
+                                               {"id": "a9", "name": "بلا Stremio", "user": "nost", "password": "pw999999",
+                                                "gates": [{"id": "g9", "name": "بوابة كاسبر", "mode": "web", "host": "http://other.example:8080"}]}]},
                   f, ensure_ascii=False)
     env = dict(os.environ, XM_DATA=d, XM_BIND="127.0.0.1", XM_PORT=str(PORT), XM_ADMIN_PASSWORD="adminpw1")
     env.pop("XM_SECRET_KEY", None)
@@ -331,6 +333,8 @@ def through_server():
         check("البيانات نفسها مكتوبةً ← الرابط نفسه", c == 200 and json.loads(b2).get("token") == tok)
         c, _, b = http(base, "/api/stremio/link", {"host": "example.com", "user": "u", "pass": "p"})
         check("سيرفرٌ ليس من سيرفراتنا يُرفض (لا تُسأل عناوين الإنترنت)", c == 400 and "ليس من سيرفراتنا" in json.loads(b)["error"])
+        c, _, b = http(base, "/api/stremio/link", {"host": "other.example:8080", "user": "u", "pass": "p"})
+        check("وسيرفر عميلٍ لم يُفتح له Stremio لا تقبله الصفحة العامة", c == 400 and "ليس من سيرفراتنا" in json.loads(b)["error"])
         c, _, b = http(base, "/api/stremio/link", {"host": mock, "user": "u", "pass": "wrong"})
         check("بياناتٌ يرفضها السيرفر", c == 400 and "رفض" in json.loads(b)["error"], b.decode()[:120])
         c, _, b = http(base, "/api/stremio/link", {"line": "مرحبا"})

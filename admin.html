@@ -429,6 +429,10 @@ h2 .sm{padding:6px 12px;font-size:.8rem;border-radius:12px}
       <small class="hint">بيع ١٢ شهرًا أو ٦ أشهر أو ٣ أو شهر (أو أي مدةٍ بالأشهر) من خطٍّ بباقة ١٥ شهرًا (مرح · كاسبر · فالكون). عند انتهاء الجزء يتغيّر <b>اسم المستخدم وحده</b> تلقائيًا — كلمة المرور كما هي — ويصير الخط في «حسابات متبقية» جاهزًا للبيع بما تبقّى، مع إشعارٍ وتذكيرٍ بالبريد. مغلقةٌ لغيره فلا يتغيّر عليه شيء.</small>
     </div>
     <div class="gate">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_stremio" style="width:auto"> Stremio لهذا العميل</label>
+      <small class="hint">رابط تثبيت محتوى الاشتراك في Stremio لكل يوزرٍ يُنشأ أو يُبحث عنه، وحساب Stremio جاهز (إيميل وكلمة مرور) وبريده. وتقبل الصفحة العامة <b>/stremio</b> سيرفرات بواباته. مغلقٌ لغيره فلا يتغيّر عليه شيء (والروابط التي أُعطيت تبقى تعمل).</small>
+    </div>
+    <div class="gate">
       <label style="display:flex;gap:8px;align-items:center;margin-top:0;color:var(--ink);font-weight:700"><input type="checkbox" id="acc_reports" style="width:auto"> بلاغات المحتوى (موظف الدعم)</label>
       <small class="hint">يرى ما يبلّغ عنه المشتركون من <b>guide.ssouq.com/report</b> — السيرفر والقسم والمسلسل أو الفيلم والحلقة، و«لا يعمل» أو «يقطع» — ويعلّمه «تم الإصلاح» ويراسل صاحبه على واتساب. ولحسابٍ بلا بوابات تُفتح له البلاغات وحدها بعد الدخول.</small>
       <div id="acc_reports_box" hidden>
@@ -570,7 +574,7 @@ function render(){
       </div>`).join("");
     return `<div class="acct" data-acc="${a.id}">
       <div class="ahead" data-toggle="${a.id}">
-        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.reports ? ` · <span class="tag">${a.reports_lead ? "مشرف " : ""}بلاغات المحتوى${a.reports_only ? " فقط" : ""}: ${esc(srvNames(a.reports_servers))}</span>` : ""}${a.lead_id ? ` · <span class="tag">فريق ${esc((accounts.find(x => x.id === a.lead_id) || {}).name || "")}</span>` : ""}</small></div>
+        <div class="ai"><b>${esc(a.name)}</b><small>دخول: <bdi>${esc(a.user)}</bdi>${a.has_password ? " · 🔒" : ""} · ${(a.gates||[]).length} بوابة${a.copy_guide ? ' · <span class="tag">نسخ نص الشرح</span>' : ""}${a.split ? ' · <span class="tag">اشتراكات مجزّأة</span>' : ""}${a.stremio ? ' · <span class="tag">Stremio</span>' : ""}${a.reports ? ` · <span class="tag">${a.reports_lead ? "مشرف " : ""}بلاغات المحتوى${a.reports_only ? " فقط" : ""}: ${esc(srvNames(a.reports_servers))}</span>` : ""}${a.lead_id ? ` · <span class="tag">فريق ${esc((accounts.find(x => x.id === a.lead_id) || {}).name || "")}</span>` : ""}</small></div>
         <svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="adet">
@@ -655,6 +659,7 @@ function fill(a){
   $("acc_guide").value = a?.guide_url || "";
   $("acc_copy_guide").checked = !!a?.copy_guide;
   $("acc_split").checked = !!a?.split;
+  $("acc_stremio").checked = !!a?.stremio;
   $("acc_reports").checked = !!a?.reports;
   $("acc_reports_wa").value = a?.reports_wa ? "+" + a.reports_wa : "";
   $("acc_reports_box").hidden = !a?.reports;
@@ -697,7 +702,7 @@ $("save").onclick = async () => {
   const body = {id: $("id").value, name: $("name").value, user: $("user").value,
                 password: $("password").value, guide_url: $("acc_guide").value,
                 copy_guide: $("acc_copy_guide").checked, guide_text: $("acc_guide_text").value,
-                split: $("acc_split").checked, reports: $("acc_reports").checked, reports_wa: $("acc_reports_wa").value,
+                split: $("acc_split").checked, stremio: $("acc_stremio").checked, reports: $("acc_reports").checked, reports_wa: $("acc_reports_wa").value,
                 reports_servers: [...$("acc_reports_srv").querySelectorAll("input:checked")].map(i => i.value),
                 reports_only: $("acc_reports_only").checked, reports_lead: $("acc_reports_lead").checked, gates: readGates()};
   try { const d = await post(B + "/api/accounts", body); accounts = d.accounts; render(); closeModal(); }
