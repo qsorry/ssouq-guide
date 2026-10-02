@@ -541,6 +541,12 @@ def merge_content(con, loser, winner, reason="", now=None):
     con.execute("UPDATE external_id SET entity_id=? WHERE entity='content' AND entity_id=?", (winner, loser))
     con.execute("DELETE FROM enrich_queue WHERE content_id=?", (loser,))
     con.execute("UPDATE content SET merged_into=?, available=0, updated_at=? WHERE id=?", (winner, now, loser))
+    by_season = {}                                     # المدرج في القوائم بعد انتقال الروابط: أكبر ما في كل موسم عبر السيرفرات
+    for r in con.execute("SELECT seasons_json FROM content_service WHERE content_id=? AND present=1", (winner,)):
+        for s, n in json.loads(r["seasons_json"] or "[]"):
+            by_season[int(s)] = max(by_season.get(int(s), 0), int(n))
+    con.executemany("INSERT INTO season(content_id, number, episode_count, updated_at) VALUES (?,?,?,?) ON CONFLICT(content_id, number) DO UPDATE SET "
+                    "episode_count=excluded.episode_count, updated_at=excluded.updated_at", [(winner, s, n, now) for s, n in by_season.items()])
     for old, new in zip(paths(lrow["type"], lrow["slug"]), paths(wrow["type"], wrow["slug"])):
         con.execute("UPDATE redirect SET target=? WHERE target=?", (new, old))
         con.execute("INSERT INTO redirect(path, target, code, reason, created_at) VALUES (?,?,301,?,?) ON CONFLICT(path) DO UPDATE SET "

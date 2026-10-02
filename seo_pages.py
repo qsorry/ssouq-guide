@@ -274,12 +274,17 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     people = _people(con, row["id"], tr)
     seasons = con.execute("SELECT * FROM season WHERE content_id=? ORDER BY number", (row["id"],)).fetchall() if typ == "series" else []
     # الحلقات: الرسمي من TMDB إن وُجد، وإلا المدرج في القوائم (عناصر قد تكون أجزاءً) — ويُقال أيّهما
+    # قاعدة الرقم: الرسمي (TMDB) إن وُجد وكان موثوقًا؛ وإلا المدرج في القوائم بصياغةٍ صريحة «X حلقة مدرجة على فالكون» — ولا يصير
+    # المدرج رسميًّا في العنوان أو الوصف أو JSON-LD. والموسم 0 (الخاصة) لا يُعدّ موسمًا.
     n_official = row["episodes_official"] or (sum(s["episodes_official"] or 0 for s in seasons) or None)
-    n_listed = sum(s["episode_count"] for s in seasons)
+    n_listed = sum(s["episode_count"] for s in seasons if s["number"] > 0)
     if n_official and n_listed and n_official < 3 and n_listed > 3 * n_official:
         n_official = None                        # سجلّ TMDB ناقص (حلقة واحدة لعملٍ بعشرات الحلقات في القوائم): لا يُعرض رقمًا رسميًّا
     n_eps = n_official or n_listed
-    eps_label = (lambda n: tr.count(n, "episodes") + ("" if n_official else tr(" في القوائم", " as listed")))
+    n_seasons = row["seasons_official"] if n_official and row["seasons_official"] else len([s for s in seasons if s["number"] > 0])
+    _srv_names = [tr.name(s) for s in C.servers(_services.data_dir) if s["key"] in {ln[0] for ln in con.execute("SELECT service_key FROM content_service WHERE content_id=? AND present=1", (row["id"],))}]
+    listed_tail = tr(f" مدرجة على {_srv_names[0]}", f" listed on {_srv_names[0]}") if len(_srv_names) == 1 else tr(" في القوائم", " as listed")
+    eps_label = (lambda n: tr.count(n, "episodes") + ("" if n_official else listed_tail))
     hubs = [t for t in by_kind.get("hub", [])]
     countries = by_kind.get("country", [])
     langs = by_kind.get("language", [])
@@ -300,7 +305,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     if genres:
         desc_bits.append(tr("، ", ", ").join(_tname(g, tr) for g in genres[:3]))
     if typ == "series" and seasons:
-        desc_bits.append(tr(f"{tr.count(len(seasons), 'seasons')} و{eps_label(n_eps)}", f"{tr.count(len(seasons), 'seasons')}, {eps_label(n_eps)}"))
+        desc_bits.append(tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}", f"{tr.count(n_seasons, 'seasons')}, {eps_label(n_eps)}"))
     if cast:
         desc_bits.append(tr("بطولة ", "Starring ") + tr("، ", ", ").join(_pname(p, tr) for p in cast[:3]))
     desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") \
@@ -322,7 +327,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
              (tr("المدة", "Runtime"), tr(f"{row['runtime']} دقيقة", f"{row['runtime']} min") if row["runtime"] else ""),
              (tr("التقييم", "Rating"), f"{row['rating']:g}/10" if row["rating"] else ""),
              (tr("الحالة", "Status"), tr("مستمر", "Ongoing") if row["status"] in ("Returning Series", "In Production") else tr("منتهٍ", "Ended") if row["status"] in ("Ended", "Canceled") else "") if typ == "series" else ("", ""),
-             (tr("المواسم", "Seasons"), str(len(seasons)) if seasons else ""), (tr("الحلقات", "Episodes"), str(n_eps) if n_eps else ""),
+             (tr("المواسم", "Seasons"), str(n_seasons) if seasons else ""), (tr("الحلقات", "Episodes"), (str(n_eps) if n_official else eps_label(n_eps)) if n_eps else ""),
              (ROLE_NAMES[director["role"]][tr.en] if director else "", f'<a href="{_esc(_person_path(director["role"], director["slug"], tr.code))}">{_esc(_pname(director, tr))}</a>' if director else "")]
     facts = [(k, v) for k, v in facts if k and v]
     facts_html = "".join(f"<dt>{_esc(k)}</dt><dd>{v if v.startswith('<a') else _esc(v)}</dd>" for k, v in facts)
@@ -386,7 +391,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         faq.append((tr(f"ما قصة {kind_ar} {title}؟", f"What is {title} about?"), ov[:300]))
     if seasons:
         faq.append((tr(f"كم عدد مواسم وحلقات {title}؟", f"How many seasons and episodes does {title} have?"),
-                    tr(f"{tr.count(len(seasons), 'seasons')} و{eps_label(n_eps)}.", f"{tr.count(len(seasons), 'seasons')} and {eps_label(n_eps)}.")))
+                    tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}.", f"{tr.count(n_seasons, 'seasons')} and {eps_label(n_eps)}.")))
     if cast:
         faq.append((tr(f"من أبطال {title}؟", f"Who stars in {title}?"), tr("، ", ", ").join(_pname(p, tr) for p in cast[:6]) + "."))
     if director:
@@ -419,9 +424,9 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         ld["productionCompany"] = [{"@type": "Organization", "name": c["name"], "url": SITE + _company_path(c["slug"], tr.code)} for c in companies]
     if row["rating"] and row["votes"]:
         ld["aggregateRating"] = {"@type": "AggregateRating", "ratingValue": row["rating"], "bestRating": 10, "ratingCount": row["votes"]}
-    if typ == "series" and seasons:
-        ld["numberOfSeasons"] = len(seasons)
-        ld["numberOfEpisodes"] = n_eps
+    if typ == "series" and n_official:            # في البيانات المهيكلة الرسمي وحده؛ المدرج لا يُقدَّم عددًا رسميًّا
+        ld["numberOfSeasons"] = n_seasons
+        ld["numberOfEpisodes"] = n_official
     if countries:
         ld["countryOfOrigin"] = [{"@type": "Country", "name": _tname(c, tr)} for c in countries]
     if row["runtime"] and typ == "movie":
