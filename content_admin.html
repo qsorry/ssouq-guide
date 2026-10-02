@@ -271,6 +271,8 @@ label.force input{width:16px;height:16px;accent-color:var(--amber)}
     <div class="acts" style="margin-top:12px"><button class="ghost" type="button" id="eBuild">ابنِ الآن من الفهارس</button>
       <button class="ghost" type="button" id="eReview">اعرض ما يحتاج مراجعة</button></div>
     <div class="msg" id="eMsg"></div>
+    <div id="eProgress" hidden style="margin:8px 0"><div style="height:8px;border-radius:6px;background:var(--card2);overflow:hidden"><div id="eProgressBar" style="height:100%;width:0;background:var(--ok,#2ecc71);transition:width .6s"></div></div>
+      <p class="meta" id="eProgressText"></p></div>
     <ul class="alist" id="eList" hidden></ul>
     <p class="meta" id="eLast"></p>
     <h3 style="margin:18px 0 6px">الإثراء من TMDB ولوحات Xtream</h3>
@@ -844,7 +846,13 @@ const RKIND = {name_only: "الاسم وحده (بلا قرينة)", conflict: "
 let ePoll = 0;
 function renderSeo(d) {
   const chip = $("eChip"), e = d.entities || {};
-  chip.textContent = d.running ? "يُبنى الآن…" : d.built ? "مبنيّة" : "لم تُبنَ بعد";
+  const pg = d.progress || null;
+  chip.textContent = d.running ? (pg ? `يُبنى الآن… ${pg.percent}%` : "يُبنى الآن…") : d.built ? "مبنيّة" : "لم تُبنَ بعد";
+  $("eProgress").hidden = !(d.running && pg);
+  if (d.running && pg) {
+    $("eProgressBar").style.width = pg.percent + "%";
+    $("eProgressText").textContent = `${pg.stage_name}${pg.total > 1 ? ` (${num(pg.done)}/${num(pg.total)})` : ""} · ${pg.percent}% · منذ ${pg.elapsed} ث`;
+  }
   if (d.code_fingerprint) chip.title = "الكود " + d.code_fingerprint;
   chip.className = "chip " + (d.running ? "busy" : d.built ? "on" : "");
   if (!d.built) { $("eStats").innerHTML = '<p class="empty">تُبنى وحدها بعد أول سحبٍ (خلال عشر دقائق من الإقلاع)، أو الآن بالزرّ.</p>'; }
@@ -898,11 +906,12 @@ $("eAuto").onchange = async () => {
 let bPoll = 0;
 function renderBundle(d) {
   const l = d.last || {};
-  $("eBundleState").textContent = d.running ? "يُنتَج الآن… (الفحص الأولي ثم عيّنة الثلاثين)"
+  const ST = {probe: "الفحص الأولي للّوحات", report: "التقرير", "search-report": "تقرير البحث", sample: "عيّنة الأعمال"};
+  $("eBundleState").textContent = d.running ? `يُنتَج الآن… ${ST[l.stage] || ""}${l.stage === "sample" && l.total ? ` (${num(l.done)}/${num(l.total)} عملًا)` : ""}${l.elapsed ? ` · منذ ${num(l.elapsed)} ث` : ""}"
     : l.ok ? `أُنتجت ${when(l.at)} · الكود ${l.commit ? l.commit.slice(0, 7) : l.code_fingerprint || ""}` : l.error ? `فشل: ${l.error}` : (d.files.length ? "ملفات سابقة" : "لم تُنتج بعد");
   const ul = $("eBundleFiles"); ul.hidden = !d.files.length;
   ul.innerHTML = d.files.map(f => `<li><span><a class="linkbtn" href="${B}/api/content/seo/bundle/${esc(f.name)}" download>${esc(f.name)}</a></span><small>${mb(f.size)} · ${when(f.at)}</small></li>`).join("");
-  clearTimeout(bPoll); if (d.running) bPoll = setTimeout(loadBundle, 5000);
+  clearTimeout(bPoll); if (d.running) bPoll = setTimeout(loadBundle, 2000);
 }
 async function loadBundle() { try { renderBundle(await api("/api/content/seo/bundle")); } catch (e) {} }
 $("eBundle").onclick = async () => {

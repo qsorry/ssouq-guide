@@ -696,6 +696,9 @@ def unit_sample2_cases():
               and q("SELECT 1 FROM review WHERE key=? AND status='open'", f"merged:{fb[0][0]}:{fb[1][0]}") and {r[0] for r in q("SELECT number FROM season WHERE content_id=?", fb[0][0])} == {1, 2},
               str(([tuple(r) for r in fb], rc)))
         check("التسوية: الفرق −1 = مدمج 1، غاب 0، متّسقة", rc["delta"] == -1 and rc["merged"] == 1 and rc["went_unavailable"] == 0 and rc["explained"], str(rc))
+        pg = seo_build.progress(d)
+        check("عدّاد البناء: بعد الاكتمال المرحلة الأخيرة 100% مع الوقت المنقضي، ومراحله الأربع بأوزانٍ مجموعها 100",
+              pg and pg["stage"] == "finish" and pg["percent"] == 100 and "elapsed" in pg and sum(w for _, _, w in seo_build.STAGES) == 100, str(pg))
         hist = seo_db.state(con, "reconciliations") or []
         check("تاريخ التسويات: بناءان مسجَّلان بترتيبهما", len(hist) == 2 and hist[-1]["merged"] == 1 and hist[0]["before"] == 0, str(hist))
         seo_build._last.clear(); seo_build._stats_cache.clear()           # كأن الخادم أُعيد تشغيله بعد النشر

@@ -1457,7 +1457,10 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
             res = {"processed": 0, "done": 0, "miss": 0, "error": 0, "skipped": 0}
             res["reclassified"] = reclassify(con, data_dir, st, now=now)      # ما أُثري بكودٍ أقدم: تصنيفه يُعاد من الكاش
             failures = []
-            for cid in ids:
+            stage_ = _bundle_stage.get(os.path.abspath(data_dir))
+            for wi, cid in enumerate(ids):
+                if stage_:
+                    stage_("sample", wi, len(ids))
                 try:                                  # فشل عملٍ لا يُسقط العيّنة: يُسجَّل ويُكمَل
                     enqueue(con, cid, ["xtream", "tmdb"], 0, now)
                     con.execute("UPDATE enrich_queue SET state='pending', next_at=0 WHERE content_id=? AND state IN ('miss','error')", (cid,))
@@ -1537,6 +1540,10 @@ def bundle(data_dir, out, n=20):
     stamp["bundle_id"] = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())      # معرّف اللقطة الواحد في الملفات الأربعة
     written = {}
     bundle_errors = []
+    bk = os.path.abspath(data_dir) + ":bundle"
+    def stage(name, done=0, total=0):
+        _state[bk] = {**(_state.get(bk) or {}), "running": True, "stage": name, "done": done, "total": total, "elapsed": int(time.time() - (_state.get(bk) or {}).get("at", time.time()))}
+    _bundle_stage[os.path.abspath(data_dir)] = stage
     for name in BUNDLE_FILES:                      # أولًا: لا يبقى ملفٌ من لقطةٍ سابقة — كلٌّ يُستبدل بختم هذه اللقطة ولو فشل جزءٌ لاحقًا
         with open(os.path.join(out, name), "w", encoding="utf-8") as f:
             f.write(("# " if name.endswith(".txt") else "") + json.dumps({**stamp, "status": "not generated yet (bundle in progress or aborted)"}, ensure_ascii=False) + "\n")
@@ -1579,10 +1586,11 @@ def bundle(data_dir, out, n=20):
                 if isinstance(v, dict) and isinstance(v.get(kind), dict) and v[kind].get("error"):
                     bundle_errors.append({"file": "probe.json", "service": k, "kind": kind, "error": v[kind]["error"]})
         return r
-    dump_json("probe.json", probe_)                                     # قراءة
-    dump_text("report.txt", lambda: seo_build.report(data_dir))         # قراءة — قبل العيّنة: التقرير يصف القاعدة التي تُعيَّن منها
-    dump_text("search-report.txt", search_report)                       # قراءة
-    dump_json("sample.json", lambda: sample(data_dir, bundle_errors=bundle_errors))   # الاستثناء الوحيد: إثراء الثلاثين
+    stage("probe"); dump_json("probe.json", probe_)                                     # قراءة
+    stage("report"); dump_text("report.txt", lambda: seo_build.report(data_dir))         # قراءة — قبل العيّنة: التقرير يصف القاعدة التي تُعيَّن منها
+    stage("search-report"); dump_text("search-report.txt", search_report)                # قراءة
+    stage("sample"); dump_json("sample.json", lambda: sample(data_dir, bundle_errors=bundle_errors))   # الاستثناء الوحيد: إثراء الثلاثين
+    _bundle_stage.pop(os.path.abspath(data_dir), None)
     with open(os.path.join(out, "bundle.json"), "w", encoding="utf-8") as f:    # ملخّص اللقطة: الختم والملفات وأخطاؤها
         f.write(json.dumps({"meta": stamp, "files": written, "errors": bundle_errors}, ensure_ascii=False, indent=1))
     return {"out": out, "files": written, "errors": bundle_errors, **stamp}
@@ -1590,6 +1598,7 @@ def bundle(data_dir, out, n=20):
 
 BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "bundle.json")
 _bundling = {}
+_bundle_stage = {}            # مسار البيانات ← دالة تحديث مرحلة اللقطة (تستعملها العيّنة لعدّ أعمالها)
 
 
 def bundle_dir(data_dir):
