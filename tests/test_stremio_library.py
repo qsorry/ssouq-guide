@@ -206,7 +206,7 @@ def through_addon():
         check("والقسم بعدده من أي بوابة", [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {"genre": "مسلسلات مترجمة (1)"}, pre)["metas"]]
               == ["علي كارا"])
         man = S.manifest(c1, "https://g", "سمارت", lines=lines)
-        cat = {c["type"]: c for c in man["catalogs"]}
+        cat = {c["type"]: c for c in man["catalogs"] if not c["id"].startswith(S.CAT_PREFIX)}
         opts = next(e["options"] for e in cat["series"]["extra"] if e["name"] == "genre")
         check("الـmanifest: الصفوف باسم المتجر وعدد الأعمال الموحدة، و«مصدر: …» لكل بوابة",
               cat["series"]["name"] == "سمارت سوق (3)" and cat["movie"]["name"] == "سمارت سوق (1)" and cat["tv"]["name"] == "سمارت سوق (1)"
@@ -216,6 +216,9 @@ def through_addon():
         shell = S.manifest(c2, "https://g", "كاسبر", accounts=False, catalogs=False)
         check("وإضافة الخط المرتبط بلا كتالوجات (تفاصيل ما في مكتبة Stremio ببادئتها تبقى)",
               shell["catalogs"] == [] and shell["resources"][1]["idPrefixes"] == [S.prefix(c2)])
+        check("ومصادره في أعمال المكتبة (بادئة صاحب الحساب): مصادر إضافته لكل بادئاتنا",
+              shell["resources"][2] == {"name": "stream", "types": shell["types"], "idPrefixes": [S.prefix(c2), "sq"]}
+              and man["resources"][2]["idPrefixes"] == [pre], json.dumps(shell["resources"][2], ensure_ascii=False))
 
         print("== صفحة العمل: مصادره وحلقاتها ==")
         m = S.lib_meta(lines, "series", ali["id"], "https://g/stremio/T/manifest.json", pre)["meta"]
@@ -285,6 +288,35 @@ def through_addon():
             S._accounts.clear()
         S._probes.clear()
 
+        print("== القنوات: أقسامها تصنيفات، وملصقٌ مرسوم باسمها ورقمها وختم جودتها ==")
+        tcat = next(c for c in S.manifest(c1, "https://g", "سمارت", lines=lines)["catalogs"] if c["type"] == "tv")
+        check("أقسام القنوات في التصنيف بأعدادها", next(e["options"] for e in tcat["extra"] if e["name"] == "genre")[0] == "رياضة (1)",
+              json.dumps(tcat["extra"], ensure_ascii=False)[:200])
+        mk = S._poster_maker(d, "https://g")
+        lvp = S.lib_catalog(lines, "tv", "sq_live", {}, pre, mk)["metas"]
+        check("بطاقة القناة بملصقٍ من الموقع (رابطه مختوم)", lvp[0]["poster"].startswith("https://g/stremio/p/") and lvp[0]["poster"].endswith(".png"))
+        tok_p = lvp[0]["poster"].rsplit("/", 1)[1][:-4]
+        raw = S.crypto_store.open_token(tok_p, d, S.POSTER_LABEL)
+        check("ومعطياته: رقمها في القائمة، وأعلى جودات مصادرها (FHD من كاسبر)، وقسمها واسمها", raw == "1\nFHD\nرياضة\nbeIN SPORTS 1", repr(raw))
+        check("والرابط نفسه للقناة نفسها (يحفظه Stremio)", S.lib_catalog(lines, "tv", "sq_live", {}, pre, mk)["metas"][0]["poster"] == lvp[0]["poster"])
+        mtv = S.lib_meta(lines, "tv", lvp[0]["id"], "https://g/stremio/T/manifest.json", pre, mk)["meta"]
+        check("وصفحتها بالملصق نفسه", mtv["poster"] == lvp[0]["poster"])
+        code, body, ctype, hdr = S.poster_response(d, tok_p)
+        check("‏/stremio/p/<رمز>.png ← الصورة (PNG بـ Pillow، وإلا SVG)، تُحفظ شهرًا",
+              code == 200 and (body[:8] == b"\x89PNG\r\n\x1a\n" if ctype == "image/png" else ctype == "image/svg+xml" and b"<svg" in body)
+              and "immutable" in hdr["Cache-Control"], f"{ctype} {len(body)}")
+        bad = tok_p[:-2] + ("AA" if not tok_p.endswith("AA") else "BB")
+        check("ورابطٌ معبوثٌ به (نصٌّ لم يصدر منّا) ← 404", S.poster_response(d, bad)[0] == 404 and S.poster_response(d, "x")[0] == 404)
+        code, body, ctype, hdr = S.handle(d, f"/stremio/p/{tok_p}.png", "https://g")
+        check("وعبر المسارات", code == 200 and ctype in ("image/png", "image/svg+xml") and hdr.get("Access-Control-Allow-Origin") == "*")
+        import stremio_posters as P
+        check("اسم الملصق بلا بادئة اللغة ولا رمز الجودة (الختم يقولها)", P.display_name("AR: MBC 1 HD") == "MBC 1"
+              and P.display_name("beIN SPORTS 1 FHD") == "beIN SPORTS 1")
+        svg = P._svg("قناة السعودية", 37, "4K", "قنوات عربية").decode()
+        check("والتصميم نفسه بلا Pillow (SVG): الرقم والختم والاسم والقسم", ">37<" in svg and ">4K<" in svg and "قناة السعودية" in svg
+              and "قنوات عربية" in svg and 'direction="rtl"' in svg)
+        check("وبلا ختمٍ لجودةٍ لا تُعرف", "rotate(" not in P._svg("Al Jazeera", 3, "", "").decode())
+
         print("== عبر المسارات ==")
         tok = S.make_token(d, h1, "u", "p")
         s1b = MP.serve(smart, port=s1.server_address[1])  # سمارت عاد
@@ -298,6 +330,37 @@ def through_addon():
         tok2 = S.make_token(d, h2, "cu", "cp")
         code, body, _, _ = S.handle(d, f"/stremio/{tok2}/catalog/series/sq_series.json", "https://g", lines_for=lf)
         check("كتالوج إضافة الخط المرتبط ← فارغ (صفوفه القديمة تختفي)", code == 200 and json.loads(body)["metas"] == [])
+
+        print("== لكل بوابةٍ زرّها فوق قائمة التشغيل (إضافة الخط المرتبط تعرض مصادره) ==")
+        own = [lines[0], {**lines[1], "own": True}, {**lines[2], "own": True}]
+        S.forget_lines()
+        lf2 = lambda cfg: own if S.host_key(cfg.host) == "127.0.0.1" else None
+        gf = lambda cfg: own if S.host_key(cfg.host) != "127.0.0.1" else None
+        mid_q = quote(mv[0]["id"], safe="")
+        code, body, _, _ = S.handle(d, f"/stremio/{tok}/stream/movie/{mid_q}.json", "https://g", lines_for=lf2, group_for=gf)
+        root_st = json.loads(body)["streams"]
+        check("صاحب الحساب: «تلقائي» (يجرّب المصادر كلها) ومصادر خطّه وحده", code == 200
+              and [x["name"] for x in root_st] == ["سمارت سوق", "سمارت"], json.dumps([x["name"] for x in root_st], ensure_ascii=False))
+        code, body, _, _ = S.handle(d, f"/stremio/{tok2}/stream/movie/{mid_q}.json", "https://g", lines_for=lf2, group_for=gf)
+        cp_st = json.loads(body)["streams"]
+        check("وإضافة كاسبر: مصدر كاسبر وحده في العمل نفسه (زرّ «سمارت سوق · كاسبر»)", code == 200
+              and [x["name"] for x in cp_st] == ["كاسبر"] and cp_st[0]["url"] == f"{h2}/movie/cu/cp/201.mp4", body.decode()[:200])
+        tok3 = S.make_token(d, h3, "fu", "fp")
+        code, body, _, _ = S.handle(d, f"/stremio/{tok3}/stream/series/{quote(ep, safe='')}.json", "https://g", lines_for=lf2, group_for=gf)
+        fc_st = json.loads(body)["streams"]
+        check("وفالكون: حلقته من عمل المسلسل الموحد", code == 200 and [x["name"] for x in fc_st] == ["فالكون"]
+              and fc_st[0]["url"].startswith(f"{h3}/series/fu/fp/"), body.decode()[:200])
+        code, body, _, _ = S.handle(d, f"/stremio/{tok2}/stream/movie/sqffffff:m:1.json", "https://g", lines_for=lf2, group_for=gf)
+        check("ومعرّفٌ من إضافةٍ أخرى ← لا مصادر", code == 200 and json.loads(body)["streams"] == [])
+        code, body, _, _ = S.handle(d, f"/stremio/{tok2}/stream/movie/{quote(S.prefix(c2), safe='')}m:201.json", "https://g",
+                                    lines_for=lf2, group_for=gf)
+        check("ومعرّفه القديم ببادئته يعمل كما كان", code == 200 and json.loads(body)["streams"][0]["url"] == f"{h2}/movie/cu/cp/201.mp4", body.decode()[:200])
+        S.forget_lines()
+        code, body, _, _ = S.handle(d, f"/stremio/{tok}/stream/movie/{mid_q}.json", "https://g", lines_for=lf)
+        check("وإضافة خطٍّ مرتبط لم تُحدَّث بعد (بلا own): مصادره عند صاحب الحساب كما كانت",
+              [x["name"] for x in json.loads(body)["streams"]][0] == "سمارت سوق"
+              and sorted(x["name"] for x in json.loads(body)["streams"][1:]) == sorted(["سمارت", "كاسبر", "فالكون"]), body.decode()[:300])
+        S.forget_lines()
         code, body, _, _ = S.handle(d, f"/stremio/{tok}/meta/series/{quote(ali['id'], safe='')}.json", "https://g", lines_for=lf)
         check("والمعرّف القديم يفتح العمل الموحد بمصادره كلها", code == 200 and len(json.loads(body)["meta"]["videos"]) == 9)
 
@@ -327,9 +390,164 @@ def through_addon():
         shutil.rmtree(d, ignore_errors=True)
 
 
+CATALOG = S.CATALOG
+
+
+def movie_genres():
+    print("== تصنيف العمل بلغتين، وكل أفلامه (من تفاصيلها حين لا تذكره القائمة) ==")
+    S.reset()
+    a, b = MP.Panel("ga"), MP.Panel("gb", "bu", "bp")
+    for p in (a, b):
+        p.cat("vod", 10, "أفلام")
+        p.cat("series", 1, "مسلسلات")
+    a.vod = [{"stream_id": 1, "name": "Heat (1995)", "category_id": "10", "added": "10", "info_genre": "Crime, Drama"},
+             {"stream_id": 2, "name": "Up (2009)", "category_id": "10", "added": "20", "info_genre": "Animation"},
+             {"stream_id": 3, "name": "Se7en (1995)", "category_id": "10", "added": "30", "genre": "Crime"}]
+    b.vod = [{"stream_id": 7, "name": "الجزيرة (2007)", "category_id": "10", "added": "40", "info_genre": "جريمة، دراما"}]
+    a.series = [{"series_id": 1, "name": "Dark", "category_id": "1", "last_modified": "5", "genre": "Drama, Mystery"}]
+    b.series = [{"series_id": 5, "name": "الهيبة", "category_id": "1", "last_modified": "9", "genre": "دراما، إثارة"},
+                {"series_id": 6, "name": "Friends", "category_id": "1", "last_modified": "8", "genre": "Comedy"}]
+    sa, sb = MP.serve(a), MP.serve(b, bind="127.0.0.2")
+    ca = S.Cfg(f"http://127.0.0.1:{sa.server_address[1]}", "u", "p")
+    cb = S.Cfg(f"http://127.0.0.2:{sb.server_address[1]}", "bu", "bp")
+    lines = [{"cfg": ca, "label": "سمارت"}, {"cfg": cb, "label": "فالكون"}]
+    pre = S.prefix(ca)
+    d = tempfile.mkdtemp(prefix="stremio_genres_")
+    names = lambda kind, g: [m["name"] for m in S.lib_catalog(lines, kind, CATALOG[kind], {"genre": g}, pre)["metas"]]
+    try:
+        for c in (ca, cb):
+            S.warm(c)
+        check("المسلسلات: «دراما» ← ما كُتب «Drama» في بوابةٍ و«دراما» في أخرى", names("series", "دراما") == ["الهيبة", "Dark"]
+              and names("series", "Drama") == names("series", "دراما"), str(names("series", "دراما")))
+        check("و«Mystery» = «غموض»، و«Comedy» = «كوميديا»", names("series", "غموض") == ["Dark"] == names("series", "Mystery")
+              and names("series", "كوميديا") == ["Friends"])
+        check("الأفلام قبل الجمع: ما في القائمة وحده", names("movie", "جريمة") == ["Se7en (1995)"], str(names("movie", "جريمة")))
+        n_info = lambda p: sum(1 for h in p.hits if h == "/player_api.php")
+        n = S.crawl_genres(ca, d, rps=1000) + S.crawl_genres(cb, d, rps=1000)
+        check("الجمع في الخلفية: تفاصيل ما لا تصنيف له في القائمة وحده (3 أفلام)", n == 3, str(n))
+        before = n_info(a) + n_info(b)
+        check("ولا يُطلب فيلمٌ مرتين", S.crawl_genres(ca, d, rps=1000) + S.crawl_genres(cb, d, rps=1000) == 0 and n_info(a) + n_info(b) == before)
+        check("«جريمة» ← كل أفلامها من البوابتين بالأحدث (و«Crime» النتيجة نفسها)",
+              names("movie", "جريمة") == ["الجزيرة (2007)", "Se7en (1995)", "Heat (1995)"] and names("movie", "Crime") == names("movie", "جريمة"),
+              str(names("movie", "جريمة")))
+        check("و«رسوم متحركة» من «Animation»", names("movie", "رسوم متحركة") == ["Up (2009)"])
+        heat = next(m for m in S.lib_catalog(lines, "movie", "sq_movies", {}, pre)["metas"] if m["name"] == "Heat (1995)")
+        hm = S.lib_meta(lines, "movie", heat["id"], "https://g/stremio/T/manifest.json", pre)["meta"]
+        check("صفحة الفيلم: تصنيفاته بالعربية روابطَ", hm["genres"] == ["جريمة", "دراما"]
+              and [x["name"] for x in hm["links"] if x["category"] == "Genres"] == ["جريمة", "دراما"]
+              and [x for x in hm["links"] if x["category"] == "Genres"][-1]["url"].endswith("?genre=" + quote("دراما", safe="")),
+              json.dumps(hm.get("links"), ensure_ascii=False)[:300])
+        check("وفي ملفٍّ على القرص لكل سيرفر", len(os.listdir(os.path.join(d, "stremio_genres"))) == 2)
+        S.reset()
+        S.genre_dir(d)
+        check("يُقرأ بعد إعادة التشغيل", S.genre_ids(ca, "Crime") == {1} and S.genre_ids(cb, "جريمة") == {7})
+        check("و‏STREMIO_GENRE_RPS=0 ← لا جمع", S.crawl_genres(ca, d, rps=0) == 0)
+        S.warm(ca)
+        check("وخطٌّ وحده (بلا مكتبة) كذلك", [it.name for it in S._tagged(ca, "movie", S.lists(ca, "movie"), "crime")] == ["Se7en (1995)", "Heat (1995)"])
+    finally:
+        for srv in (sa, sb):
+            srv.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def categories():
+    print("== تصنيفات سمارت سوق: واحدةٌ لكل البوابات، صفوفٌ في الرئيسية، وتُحرَّر ==")
+    import stremio_categories as K
+    S.reset()
+    a, b = MP.Panel("ca"), MP.Panel("cb", "bu", "bp")
+    a.cat("series", 1, "مسلسلات تركية")
+    a.cat("series", 2, "مسلسلات رمضان 2026")
+    a.cat("series", 3, "Kurdish Series")
+    b.cat("series", 1, "TR | Turkish")
+    b.cat("series", 2, "مسلسلات تركية مدبلجة عربي")
+    b.cat("series", 3, "مسلسلات عربية")
+    a.cat("vod", 10, "أفلام")
+    b.cat("vod", 20, "VOD | HORROR")
+    a.cat("live", 30, "beIN SPORTS")
+    b.cat("live", 40, "قنوات MBC")
+    a.series = [{"series_id": 1, "name": "علي كارا", "category_id": "1", "releaseDate": "2024", "last_modified": "50"},
+                {"series_id": 2, "name": "مسلسل رمضاني", "category_id": "2", "last_modified": "40"},
+                {"series_id": 3, "name": "Kurdish Show", "category_id": "3", "last_modified": "30"}]
+    b.series = [{"series_id": 11, "name": "Ali Kara - Arabic Sub", "category_id": "1", "releaseDate": "2024", "last_modified": "45"},
+                {"series_id": 12, "name": "مسلسل مدبلج", "category_id": "2", "last_modified": "35"},
+                {"series_id": 13, "name": "مسلسل عربي", "category_id": "3", "last_modified": "20"}]
+    a.vod = [{"stream_id": 1, "name": "Speed (1994)", "category_id": "10", "added": "10", "genre": "Action"}]
+    b.vod = [{"stream_id": 5, "name": "Scream (1996)", "category_id": "20", "added": "20"}]
+    a.live = [{"stream_id": 7, "name": "beIN SPORTS 1 HD", "category_id": "30"}]
+    b.live = [{"stream_id": 8, "name": "MBC 1", "category_id": "40"}]
+    sa, sb = MP.serve(a), MP.serve(b, bind="127.0.0.2")
+    ca = S.Cfg(f"http://127.0.0.1:{sa.server_address[1]}", "u", "p")
+    cb = S.Cfg(f"http://127.0.0.2:{sb.server_address[1]}", "bu", "bp")
+    lines = [{"cfg": ca, "label": "سمارت"}, {"cfg": cb, "label": "فالكون"}]
+    pre = S.prefix(ca)
+    d = tempfile.mkdtemp(prefix="stremio_cats_")
+    try:
+        for c in (ca, cb):
+            S.warm(c)
+        row = lambda kind, cid, ln=lines: [m["name"] for m in S.lib_catalog(ln, kind, CATALOG[kind], {}, pre)["metas"]] if cid is None else \
+            [m["name"] for m in S.lib_catalog(ln, kind, S.CAT_PREFIX + cid, {}, pre)["metas"]]
+        check("«مسلسلات تركية» في سمارت و«TR | Turkish» في فالكون ← «تركي»، والعمل مرةً واحدة", row("series", "s_turkish") == ["علي كارا", "مسلسل مدبلج"],
+              str(row("series", "s_turkish")))
+        check("و«-ترك» تُخرج «تركية مدبلجة عربي» من «عربي»", row("series", "s_arabic") == ["مسلسل عربي"], str(row("series", "s_arabic")))
+        check("و«رمضان 2026» ← «رمضان»", row("series", "s_ramadan") == ["مسلسل رمضاني"])
+        check("وما لم يدخل تصنيفًا ← «أخرى» (من «اكتشف»)", [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {"genre": "أخرى (1)"}, pre)["metas"]]
+              == ["Kurdish Show"])
+        check("الأفلام: تصنيف العمل نفسه («Action» ← «أكشن») وقسم اللوحة («VOD | HORROR» ← «رعب»)",
+              row("movie", "m_action") == ["Speed (1994)"] and row("movie", "m_horror") == ["Scream (1996)"])
+        check("والقنوات: «beIN SPORTS» ← «رياضة»، و«قنوات MBC» ← «عربية»", row("tv", "t_sports") == ["beIN SPORTS 1 HD"] and row("tv", "t_arabic") == ["MBC 1"])
+        check("وتصنيفٌ حُذف ← صفّه فارغ (يختفي من Stremio)", row("series", "nope") == [])
+        man = S.manifest(ca, "https://g", "سمارت", lines=lines)
+        rows = [(c["type"], c["name"]) for c in man["catalogs"] if c["id"].startswith(S.CAT_PREFIX)]
+        check("الـmanifest: صفوف الرئيسية ما فيه محتوى من تصنيفات «في الرئيسية» بترتيبها",
+              rows == [("series", "رمضان"), ("series", "تركي"), ("series", "عربي"), ("movie", "أكشن"), ("movie", "رعب"), ("tv", "رياضة"), ("tv", "عربية")],
+              json.dumps(rows, ensure_ascii=False))
+        sopts = next(e["options"] for c in man["catalogs"] if c["id"] == "sq_series" for e in c["extra"] if e["name"] == "genre")
+        check("وقائمة «اكتشف»: تصنيفاتنا بأعدادها (وما ليس في الرئيسية منها: «مدبلج»)، ثم «أخرى»، ثم «مصدر: …»",
+              sopts == ["رمضان (1)", "تركي (2)", "عربي (1)", "مدبلج (1)", "أخرى (1)", "مصدر: سمارت", "مصدر: فالكون"], json.dumps(sopts, ensure_ascii=False))
+        mk = S._poster_maker(d, "https://g")
+        lv = S.lib_catalog(lines, "tv", "sq_live", {}, pre, mk)["metas"]
+        raw = S.crypto_store.open_token(lv[0]["poster"].rsplit("/", 1)[1][:-4], d, S.POSTER_LABEL)
+        check("وملصق القناة بتصنيفها الموحد", raw.split("\n")[2] == "رياضة", repr(raw))
+
+        print("== تحرير التصنيفات ==")
+        mine = [{"id": "s_kurd", "kind": "series", "name": "كردي", "keys": "kurdish, كردي", "home": True},
+                {"kind": "series", "name": "تركي", "keys": "ترك, turk, tr", "home": False},
+                {"kind": "series", "name": "مخفي", "keys": "رمضان", "home": True, "on": False}]
+        own = [{**lines[0], "cats": K.clean(mine)}, lines[1]]
+        man2 = S.manifest(ca, "https://g", "سمارت", lines=own)
+        rows2 = [(c["type"], c["name"]) for c in man2["catalogs"] if c["id"].startswith(S.CAT_PREFIX)]
+        sopts2 = next(e["options"] for c in man2["catalogs"] if c["id"] == "sq_series" for e in c["extra"] if e["name"] == "genre")
+        check("تصنيفات العميل: صفّ «كردي» وحده، و«تركي» في «اكتشف» وحدها، والمخفي لا يظهر", rows2 == [("series", "كردي")]
+              and sopts2[:3] == ["كردي (1)", "تركي (2)", "أخرى (2)"], json.dumps([rows2, sopts2], ensure_ascii=False))
+        check("ومحتوى صفّه من الخادم فورًا", row("series", "s_kurd", own) == ["Kurdish Show"])
+        bad = lambda cats: (lambda: K.clean(cats))
+        def raises(f):
+            try:
+                f()
+            except ValueError:
+                return True
+            return False
+        check("التحقّق: اسمٌ مكرّر في النوع، و«أخرى»، ونوعٌ غير معروف، واسمٌ فارغ ← خطأ",
+              raises(bad([{"kind": "series", "name": "أ", "keys": "x"}, {"kind": "series", "name": "أ", "keys": "y"}]))
+              and raises(bad([{"kind": "movie", "name": "أخرى", "keys": "x"}])) and raises(bad([{"kind": "x", "name": "أ"}]))
+              and raises(bad([{"kind": "tv", "name": " "}])) and raises(bad([{"kind": "tv", "name": f"ت{i}"} for i in range(31)])))
+        check("والاسم نفسه في نوعين مسموح، ومعرّفٌ يُصنع لما لا معرّف له", len({c["id"] for c in K.clean(
+              [{"kind": "series", "name": "تركي"}, {"kind": "movie", "name": "تركي"}])}) == 2)
+        K.save(d, "acct1", mine)
+        check("الحفظ لحساب الأداة والقراءة", [c["name"] for c in K.get(d, "acct1")] == ["كردي", "تركي", "مخفي"] and K.edited(d, "acct1")
+              and [c["name"] for c in K.get(d, "acct2")] == [c["name"] for c in K.DEFAULTS] and not K.edited(d, "acct2"))
+        check("و«الافتراضي» يعيده", [c["name"] for c in K.reset(d, "acct1")] == [c["name"] for c in K.DEFAULTS] and not K.edited(d, "acct1"))
+    finally:
+        for srv in (sa, sb):
+            srv.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     matching()
     through_addon()
+    movie_genres()
+    categories()
     print("\n" + "-" * 40)
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
     sys.exit(1 if _f else 0)

@@ -241,6 +241,31 @@ h1{font-size:1.3rem;margin:0 0 2px}
   .tools #sort{flex:0 0 42%;width:42%}
   h2 .ghost{padding:6px 10px}
 }
+/* صفحة التصنيفات */
+.vtabs{grid-template-columns:repeat(3,1fr)}
+.cat{display:grid;gap:8px}
+.cat.off{opacity:.6}
+.cat .crow{display:flex;align-items:center;gap:8px}
+.cat .crow .t{flex:1;min-width:0;font-weight:700}
+.cat .ord{display:flex;flex-direction:column;gap:2px;flex:none}
+.cat .ord button{width:30px;height:20px;border-radius:6px;border:1px solid var(--line);background:var(--sf);display:grid;place-items:center;color:var(--mute);font-size:.62rem;line-height:1}
+.cat .ord button:hover:not(:disabled){border-color:var(--purple);color:var(--purple)}
+.cat .ord button:disabled{opacity:.3;cursor:default}
+.cat .fld{display:grid;gap:3px;font-size:.76rem;color:var(--mute)}
+.cat .fld .t{font-size:.88rem;padding:7px 10px}
+.cat .sw{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:.84rem}
+.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;min-height:32px}
+.chk input{width:18px;height:18px;accent-color:var(--purple)}
+.cat .sw .exb{margin-inline-start:auto;color:var(--purple);font-size:.8rem;font-weight:500;padding:6px 8px;border-radius:8px}
+.cat .sw .exb:hover{background:var(--sf)}
+.cat .ex{display:grid;gap:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.cat .ex .del{justify-self:start;color:var(--err);font-size:.8rem;padding:4px 0}
+.count.home{color:var(--purple);border-color:color-mix(in srgb,var(--purple) 45%,var(--line))}
+.loose .hrow select{max-width:46%;font-size:.8rem;padding:5px 8px}
+.loose .hrow span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:plaintext}
+.savebar{position:sticky;bottom:72px;z-index:20;display:flex;gap:8px;align-items:center;margin:4px 0 16px;padding:10px 12px;border-radius:16px;border:1px solid var(--line);background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(8px);box-shadow:var(--shadow)}
+.savebar .btn{flex:1;justify-content:center;min-height:44px}
+.savebar span{font-size:.8rem;color:var(--mute);flex:1}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
 </head>
@@ -252,7 +277,7 @@ h1{font-size:1.3rem;margin:0 0 2px}
 </header>
 
 <main>
-  <nav class="vtabs" aria-label="الصفحات"><a id="tabAcc">الحسابات</a><a id="tabAdd">الإضافات واللوحات</a></nav>
+  <nav class="vtabs" aria-label="الصفحات"><a id="tabAcc">الحسابات</a><a id="tabCat">التصنيفات</a><a id="tabAdd">الإضافات واللوحات</a></nav>
   <div id="viewAccounts">
   <h1>حسابات Stremio</h1>
   <p class="sub">لكل بوابةٍ حساباتها. الإيميل يوزر البوابة على <b class="mono" id="dom">@tv.ssouq.com</b> وكلمة المرور باسورده.</p>
@@ -297,6 +322,29 @@ h1{font-size:1.3rem;margin:0 0 2px}
     <div class="expc" id="expChips" role="group" aria-label="الانتهاء"></div>
     <div id="list"><div class="empty">جاري التحميل…</div></div>
   </section>
+  </div>
+
+  <div id="viewCats" hidden>
+  <h1>التصنيفات</h1>
+  <p class="sub">تصنيفات سمارت سوق واحدةٌ لكل البوابات: قسم كل لوحةٍ يدخل التصنيف الذي في اسمه كلمةٌ من كلماته («مسلسلات تركية» و«TR | Turkish» ← «تركي»).
+    «صفٌّ في الرئيسية» يظهر صفًّا مستقلًّا في رئيسية Stremio، والباقي في «اكتشف».</p>
+  <div class="tabs2" id="catKinds" role="tablist" aria-label="النوع"></div>
+  <section>
+    <h2><span class="grow" id="catTtl">المسلسلات</span><small id="catSample"></small></h2>
+    <div class="cards" id="catList" style="margin-top:0"><div class="empty">جاري التحميل…</div></div>
+    <button class="ghost st" id="catAdd" style="margin-top:10px">+ تصنيفٌ جديد</button>
+    <div class="hint" id="catOthers"></div>
+  </section>
+  <section class="loose" id="catLoose" hidden>
+    <h2>أقسامٌ لم تدخل تصنيفًا <small>(في «أخرى»)</small></h2>
+    <p class="hint" style="margin:-6px 0 8px">اختر لكلٍّ تصنيفه فيُضاف اسمه إلى كلماته.</p>
+    <div id="catLooseList"></div>
+  </section>
+  <div class="savebar"><span id="catState">لا تغييرات</span><button class="btn" id="catSave" disabled>حفظ</button></div>
+  <div class="err" id="catMsg"></div>
+  <p class="hint" id="catAfter" hidden>حُفظت. محتوى كل تصنيفٍ يتغيّر عند العملاء فورًا؛ والصفوف الجديدة في الرئيسية تصلهم بـ
+    <a id="catUpd">«تحديث الإضافة لكل الحسابات»</a>.</p>
+  <button class="linkbtn" id="catReset">إعادة التصنيفات الافتراضية</button>
   </div>
 
   <div id="viewAddons" hidden>
@@ -1169,13 +1217,133 @@ $("panelList").addEventListener("click", e => {
   else if (b.dataset.poff) panelChange("off", b.dataset.poff, b);
 });
 
-// ---- الصفحتان: الحسابات (/stremio) والإضافات واللوحات (/stremio/addons) ----
-const VIEW = /\/stremio\/addons\/?$/.test(location.pathname) ? "addons" : "accounts";
-$("tabAcc").href = B + "/stremio"; $("tabAdd").href = B + "/stremio/addons";
-$(VIEW === "addons" ? "tabAdd" : "tabAcc").classList.add("on");
-$(VIEW === "addons" ? "tabAdd" : "tabAcc").setAttribute("aria-current", "page");
-$("viewAccounts").hidden = VIEW !== "accounts"; $("viewAddons").hidden = VIEW !== "addons";
+// ---- «التصنيفات»: تصنيفات سمارت سوق لكل البوابات، وصفوف الرئيسية، ومعاينتها على حسابٍ من الحسابات ----
+const KINDS = [["series", "المسلسلات"], ["movie", "الأفلام"], ["tv", "القنوات"]];
+let CAT = null, CAT_KIND = "series", CAT_DIRTY = false, CAT_T = 0, CAT_SEQ = 0;
+const CAT_OPEN = new Set();                       // بطاقاتٌ مفتوحة على كلمات ربطها
+const catTerms = c => String(c.keys || "").split(/[,،|\n]/).filter(x => x.trim()).length;
+const catOf = i => CAT.cats[+i];
+function catCount(c){ const p = CAT.preview[c.kind]; return p ? (p.counts[c.id] || 0) : null; }
+function renderCatCounts(){
+  document.querySelectorAll("#catList .cat").forEach(el => {
+    const c = catOf(el.dataset.i), n = catCount(c), b = el.querySelector(".count");
+    b.textContent = n == null ? "—" : n.toLocaleString("en"); b.classList.toggle("home", !!c.home);
+    b.title = n == null ? "المعاينة بعد تحميل قوائم حسابٍ من حساباتك" : (c.home ? "صفٌّ في الرئيسية" : "في «اكتشف»");
+  });
+  const p = CAT.preview[CAT_KIND];
+  $("catSample").textContent = CAT.sample ? `معاينة: ${CAT.sample}` : "";
+  $("catOthers").textContent = p ? `في «${CAT.others}»: ${(p.counts.others || 0).toLocaleString("en")} من ${p.total.toLocaleString("en")}`
+    : "الأعداد تظهر بعد أول تحميلٍ لقوائم حسابٍ من حساباتك (افتح Stremio بأحدها).";
+  const loose = p ? p.loose : [], mine = CAT.cats.map((c, i) => [c, i]).filter(([c]) => c.kind === CAT_KIND && c.on !== false);
+  $("catLoose").hidden = !loose.length;
+  $("catLooseList").innerHTML = loose.map(([name, n]) => `<div class="hrow"><span>${esc(name)}</span><span class="count">${n}</span>
+    <select class="t" data-loose="${esc(name)}"><option value="">أضف إلى…</option>${mine.map(([c, i]) => `<option value="${i}">${esc(c.name)}</option>`).join("")}</select></div>`).join("");
+}
+function renderCats(){
+  $("catKinds").innerHTML = KINDS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${k === CAT_KIND}" class="${k === CAT_KIND ? "on" : ""}" data-k="${k}">${l}</button>`).join("");
+  $("catTtl").textContent = KINDS.find(k => k[0] === CAT_KIND)[1];
+  const mine = CAT.cats.map((c, i) => [c, i]).filter(([c]) => c.kind === CAT_KIND);
+  $("catList").innerHTML = mine.length ? mine.map(([c, i], j) => `<div class="card cat${c.on === false ? " off" : ""}" data-i="${i}">
+      <div class="crow">
+        <div class="ord"><button type="button" data-mv="-1" ${j === 0 ? "disabled" : ""} aria-label="أعلى">▲</button><button type="button" data-mv="1" ${j === mine.length - 1 ? "disabled" : ""} aria-label="أسفل">▼</button></div>
+        <input class="t" data-f="name" value="${esc(c.name)}" maxlength="40" aria-label="اسم التصنيف">
+        <span class="count">—</span>
+      </div>
+      <div class="sw">
+        <label class="chk"><input type="checkbox" data-f="home" ${c.home ? "checked" : ""}>صفٌّ في الرئيسية</label>
+        <label class="chk"><input type="checkbox" data-f="on" ${c.on !== false ? "checked" : ""}>ظاهر</label>
+        <button type="button" class="exb" data-ex="1" aria-expanded="${CAT_OPEN.has(c.id)}">كلمات الربط (${catTerms(c)}) ${CAT_OPEN.has(c.id) ? "▴" : "▾"}</button>
+      </div>
+      <div class="ex" ${CAT_OPEN.has(c.id) ? "" : "hidden"}>
+        <label class="fld"><span>من أسماء أقسام اللوحات${CAT_KIND === "tv" ? " وأسماء القنوات" : ""} — وكلمةٌ بـ«-» قبلها تُخرج</span>
+          <input class="t" data-f="keys" value="${esc(c.keys)}" placeholder="ترك، turk، tr، -مدبلج" spellcheck="false"></label>
+        ${CAT_KIND !== "tv" ? `<label class="fld"><span>ومن تصنيف العمل نفسه (اختياري)</span><input class="t" data-f="genres" value="${esc(c.genres || "")}" placeholder="أكشن، رعب"></label>` : ""}
+        <button type="button" class="del" data-del="1">حذف التصنيف</button>
+      </div></div>`).join("") : '<div class="empty">لا تصنيفات لهذا النوع — أضف واحدًا.</div>';
+  renderCatCounts(); renderCatState();
+}
+function renderCatState(){
+  $("catSave").disabled = !CAT_DIRTY;
+  $("catState").textContent = CAT_DIRTY ? "تغييراتٌ لم تُحفظ" : (CAT.edited ? "تصنيفاتك محفوظة" : "التصنيفات الافتراضية");
+}
+function catChanged(preview){
+  CAT_DIRTY = true; $("catAfter").hidden = true; renderCatState();
+  if (preview) { clearTimeout(CAT_T); CAT_T = setTimeout(catPreview, 600); }
+}
+async function catPreview(){
+  const seq = ++CAT_SEQ;
+  try {
+    const d = await api("/api/stremio/categories", {cats: CAT.cats, preview: true});
+    if (seq !== CAT_SEQ) return;
+    CAT.preview = d.preview; CAT.sample = d.sample; $("catMsg").textContent = ""; renderCatCounts();
+  } catch(e) { if (seq === CAT_SEQ) $("catMsg").textContent = e.message; }
+}
+async function loadCats(){
+  try { CAT = await api("/api/stremio/categories"); CAT_DIRTY = false; renderCats(); }
+  catch(e) { $("catList").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+$("catKinds").onclick = e => { const b = e.target.closest("button[data-k]"); if (b && CAT) { CAT_KIND = b.dataset.k; renderCats(); } };
+$("catList").addEventListener("input", e => {
+  const f = e.target.dataset.f, card = e.target.closest(".cat"); if (!f || !card) return;
+  const c = catOf(card.dataset.i);
+  c[f] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+  if (f === "on") card.classList.toggle("off", !c.on);
+  if (f === "keys") card.querySelector("[data-ex]").textContent = `كلمات الربط (${catTerms(c)}) ▴`;
+  if (f === "home") renderCatCounts();
+  catChanged(f !== "home" && f !== "name");
+});
+$("catList").addEventListener("click", e => {
+  const card = e.target.closest(".cat"); if (!card) return;
+  const i = +card.dataset.i, mv = e.target.closest("[data-mv]"), del = e.target.closest("[data-del]"), ex = e.target.closest("[data-ex]");
+  if (ex) {
+    const id = catOf(i).id; CAT_OPEN.has(id) ? CAT_OPEN.delete(id) : CAT_OPEN.add(id);
+    const open = CAT_OPEN.has(id); card.querySelector(".ex").hidden = !open;
+    ex.setAttribute("aria-expanded", open); ex.textContent = `كلمات الربط (${catTerms(catOf(i))}) ${open ? "▴" : "▾"}`;
+    if (open) card.querySelector("input[data-f=keys]").focus();
+  } else if (mv) {
+    const same = CAT.cats.map((c, k) => k).filter(k => CAT.cats[k].kind === CAT_KIND), pos = same.indexOf(i), j = same[pos + (+mv.dataset.mv)];
+    if (j == null) return;
+    [CAT.cats[i], CAT.cats[j]] = [CAT.cats[j], CAT.cats[i]]; renderCats(); catChanged(false);
+  } else if (del) {
+    if (!confirm(`حذف تصنيف «${catOf(i).name}»؟ ما فيه يذهب إلى تصنيفٍ آخر يطابقه أو «${CAT.others}».`)) return;
+    CAT.cats.splice(i, 1); renderCats(); catChanged(true);
+  }
+});
+$("catAdd").onclick = () => {
+  const names = new Set(CAT.cats.filter(c => c.kind === CAT_KIND).map(c => c.name));
+  let name = "تصنيفٌ جديد", n = 2; while (names.has(name)) name = `تصنيفٌ جديد ${n++}`;
+  const id = CAT_KIND[0] + "_n" + Date.now().toString(36);
+  CAT.cats.push({id, kind: CAT_KIND, name, keys: "", genres: "", home: true, on: true}); CAT_OPEN.add(id);
+  renderCats(); catChanged(false);
+  const inp = document.querySelector("#catList .cat:last-child input[data-f=name]"); if (inp) { inp.focus(); inp.select(); }
+};
+$("catLooseList").addEventListener("change", e => {
+  const sel = e.target.closest("select[data-loose]"); if (!sel || sel.value === "") return;
+  const c = catOf(sel.value), name = sel.dataset.loose;
+  c.keys = c.keys ? `${c.keys}، ${name}` : name; CAT_OPEN.add(c.id);
+  renderCats(); catChanged(true); toast(`«${name}» ← ${c.name}`);
+});
+$("catSave").onclick = async () => {
+  $("catSave").disabled = true; $("catMsg").textContent = "";
+  try { CAT = await api("/api/stremio/categories", {cats: CAT.cats}); CAT_DIRTY = false; renderCats(); $("catAfter").hidden = false; toast("حُفظت التصنيفات"); }
+  catch(e) { $("catMsg").textContent = e.message; $("catSave").disabled = false; }
+};
+$("catReset").onclick = async () => {
+  if (!confirm("إعادة التصنيفات الافتراضية؟ يُحذف كل ما غيّرته فيها.")) return;
+  try { CAT = await api("/api/stremio/categories", {reset: true}); CAT_DIRTY = false; renderCats(); $("catAfter").hidden = false; toast("عادت التصنيفات الافتراضية"); }
+  catch(e) { $("catMsg").textContent = e.message; }
+};
+window.addEventListener("beforeunload", e => { if (CAT_DIRTY) { e.preventDefault(); e.returnValue = ""; } });
+
+// ---- الصفحات: الحسابات (/stremio) والتصنيفات (/stremio/categories) والإضافات واللوحات (/stremio/addons) ----
+const VIEW = /\/stremio\/addons\/?$/.test(location.pathname) ? "addons" : /\/stremio\/categories\/?$/.test(location.pathname) ? "cats" : "accounts";
+$("tabAcc").href = B + "/stremio"; $("tabAdd").href = B + "/stremio/addons"; $("tabCat").href = B + "/stremio/categories";
+$("catUpd").href = B + "/stremio/addons";
+const TAB = {addons: "tabAdd", cats: "tabCat", accounts: "tabAcc"}[VIEW];
+$(TAB).classList.add("on"); $(TAB).setAttribute("aria-current", "page");
+$("viewAccounts").hidden = VIEW !== "accounts"; $("viewAddons").hidden = VIEW !== "addons"; $("viewCats").hidden = VIEW !== "cats";
 if (VIEW === "addons") { loadUpd(); loadExt(); loadPanels(); }
+else if (VIEW === "cats") loadCats();
 else { let start = ""; try { start = localStorage.getItem(GKEY) || ""; } catch {} selectGate(start); }
 </script>
 </body>
