@@ -5910,6 +5910,7 @@ def web():
     start_embedded_reader()
     start_mail()
     start_stremio_warm()
+    seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 

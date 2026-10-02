@@ -495,7 +495,7 @@ details.card>.din{padding:0 16px 16px}
     <details class="blk fold" id="blkScan">
       <summary><span><b>فحص السكّان كاملًا</b><small class="lbl-en">full-population SEO coverage</small></span></summary>
       <div class="din">
-        <p class="sub">كل كيانٍ حيٍّ بصفحتيه (نحو 116 ألف مسار) على دفعات في الخلفية — قراءةٌ صرفة، يُستأنف من حيث توقّف؛ يستغرق ساعات.</p>
+        <p class="sub">كل كيانٍ حيٍّ بصفحتيه (نحو 116 ألف مسار) على دفعات في الخلفية — قراءةٌ صرفة، يستغرق ساعات. يعمل في وقت الهدوء فقط (12 صباحًا – 12 ظهرًا بتوقيت السعودية) وينتظر خارجه بلا فقدان تقدّم. إن أُعيد تشغيل الخادم (نشرٌ أو سقوط) يستأنفه حارسٌ وحده خلال دقيقة من حيث توقّف؛ «أوقف مؤقتًا» وحده يمنع الاستئناف.</p>
         <div class="acts"><button class="go" type="button" id="eScanStart">ابدأ / استأنف</button>
           <button class="ghost" type="button" id="eScanPause">أوقف مؤقتًا</button>
           <button class="ghost" type="button" id="eScanReset">ابدأ من جديد</button></div>
@@ -1155,8 +1155,9 @@ function renderScan(d) {
   const pct = d.entities_total ? Math.round(1000 * d.tested_entities / d.entities_total) / 10 : 0;
   $("eScanBar").hidden = !d.tested_entities; $("eScanFill").style.width = pct + "%";
   const v = d.verdict === "PASS" ? "ناجح" : d.verdict === "FAIL" ? "فشل" : d.verdict === "INCOMPLETE" ? "غير مكتمل" : "لم يُثبت";
-  $("eScanState").textContent = d.error && !d.status ? d.error : d.status === "never run" ? "لم يُشغَّل بعد"
-    : `${d.running ? "يفحص الآن… " : d.status === "paused" ? "موقوف مؤقتًا · " : d.status === "complete" ? "اكتمل · " : d.status === "error" ? "خطأ · " : ""}${num(d.tested_entities)} / ${num(d.entities_total)} كيانًا (${pct}%) · ${num(d.tested_routes)} مسارًا · فشل ${num(d.failures)} · أخطاء ${num(d.errors)} · متبقٍّ ${num(d.remaining_entities)} · ${Math.round((d.seconds || 0) / 60)} د · الحكم: ${v}${d.error ? " · " + d.error : ""}`;
+  $("eScanState").textContent = d.error && !d.status ? d.error : d.status === "never run" ? (d.running ? "بدأ للتو… يُحضّر الدفعة الأولى" : "لم يُشغَّل بعد")
+    : `${d.running && d.status === "waiting" ? `ينتظر وقت الهدوء ${d.quiet_hours} · ` : d.running ? "يفحص الآن… " : d.status === "paused" ? "موقوف مؤقتًا · " : d.status === "complete" ? "اكتمل · " : d.status === "error" ? "خطأ · " : d.status === "waiting" ? "كان ينتظر وقت الهدوء · " : ""}${num(d.tested_entities)} / ${num(d.entities_total)} كيانًا (${pct}%) · ${num(d.tested_routes)} مسارًا · فشل ${num(d.failures)} · أخطاء ${num(d.errors)} · متبقٍّ ${num(d.remaining_entities)}${d.eta_minutes ? ` · يتبقّى نحو ${num(d.eta_minutes)} د` : ""} · مضى ${Math.round((d.seconds || 0) / 60)} د · الحكم: ${v}${d.error ? " · " + d.error : ""}`;
+  $("eScanBar").hidden = !(d.tested_entities || d.running);
   clearTimeout(scPoll); if (d.running) scPoll = setTimeout(loadScan, 3000);
 }
 async function loadScan() { try { renderScan(await api("/api/content/seo/scan")); } catch (e) {} }
