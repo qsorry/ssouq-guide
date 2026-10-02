@@ -1058,7 +1058,7 @@ def describe(con, cid, st):
             "country": json.loads(c["origin_country_json"]) if c["origin_country_json"] else None, "language": c["original_language"],
             "genres": json.loads(c["genres_json"]) if c["genres_json"] else None, "director": people.get("director") or people.get("creator"),
             "cast": (people.get("actor") or people.get("voice") or [])[:6], "poster": bool(c["poster"]), "backdrop": bool(c["backdrop"]),
-            "seasons": con.execute("SELECT COUNT(*) FROM season WHERE content_id=?", (cid,)).fetchone()[0],
+            "special_season_count": con.execute("SELECT COUNT(*) FROM season WHERE content_id=? AND number=0", (cid,)).fetchone()[0],   # الموسم 0 وحده؛ عدّ المواسم في episodes.*
             "episodes_detailed": con.execute("SELECT COUNT(*) FROM episode WHERE content_id=?", (cid,)).fetchone()[0],
             "format": c["format"] or None, "anime_kind": c["anime_kind"], "is_animation": bool(c["is_animation"]), "anime_family": c["anime_family"],
             "resolution_state": resolution_state(con, cid, c),
@@ -1070,6 +1070,49 @@ def describe(con, cid, st):
             "raw_names": {r["service_key"]: json.loads(r["raw_names_json"]) for r in links if r["raw_names_json"]},
             "sections": {r["service_key"]: json.loads(r["groups_json"]) for r in links if r["groups_json"]},
             "relations": relations(con, cid, st), "provenance": {k: v[0] for k, v in pv.items()}, "reviews": reviews, "page": page}
+
+
+def splits_report(con, since):
+    """الانقسامات منذ اللقطة السابقة: كم، ومتى (باليوم)، وعلى أي سيرفر، ولماذا (contradiction: سنتان/معرّفان مختلفان ·
+    conflict: قصتان مختلفتان · no_evidence: غاب الدليل الذي كان يجمعهما · legacy: بندٌ من قبل تسجيل السبب)، وهل مسّت URL
+    (لا: الانقسام كيانٌ جديد برابطٍ جديد والأصل يحتفظ برابطه)، وعشرة أمثلة: الأصل ← الجديد."""
+    rows = con.execute("SELECT key, payload_json, created_at FROM review WHERE kind='split_entity' AND created_at>? ORDER BY created_at DESC", (since,)).fetchall()
+    by_cause, by_service, by_day, examples = {}, {}, {}, []
+    for r in rows:
+        p = json.loads(r["payload_json"])
+        cause = ",".join(p.get("cause") or ["legacy"])
+        by_cause[cause] = by_cause.get(cause, 0) + 1
+        for s in p.get("services") or sorted({i.get("service") for i in p.get("items") or [] if i.get("service")}):
+            by_service[s] = by_service.get(s, 0) + 1
+        day = time.strftime("%Y-%m-%d", time.gmtime(r["created_at"]))
+        by_day[day] = by_day.get(day, 0) + 1
+    for r in rows[:10]:
+        p = json.loads(r["payload_json"])
+        cid = int(r["key"].split(":")[1])
+        new = con.execute("SELECT id, slug, title, year, tmdb_id, merged_into FROM content WHERE id=?", (cid,)).fetchone()
+        origins = p.get("from") or []
+        if not origins and new:                         # بندٌ قديم بلا «from»: الأصل المحتمل = كيانٌ حيّ بالاسم نفسه على سيرفرٍ آخر
+            origins = [x[0] for x in con.execute("SELECT DISTINCT c.id FROM content c JOIN content_alias a ON a.content_id=c.id WHERE a.alias_norm=? AND c.id!=? AND c.merged_into IS NULL LIMIT 3", (M.norm(new["title"]), cid))]
+        olds = [dict(con.execute("SELECT id, slug, title, year, tmdb_id FROM content WHERE id=?", (o,)).fetchone() or {"id": o}) for o in origins]
+        examples.append({"old_entity": olds, "new_entity": dict(new) if new else {"id": cid}, "reason": p.get("cause") or ["legacy (cause not recorded)"], "pair": p.get("pair"),
+                         "services": p.get("services"), "old_slug": [o.get("slug") for o in olds], "new_slug": new["slug"] if new else None,
+                         "old_url_changed": False, "redirect": None, "note": "split = new entity with a new URL; the origin keeps its URL (no redirect involved)"})
+    return {"total": len(rows), "by_cause": by_cause, "by_service": by_service, "by_day": by_day, "examples": examples,
+            "url_changes": 0, "redirects_created": 0}
+
+
+def slug_changes_report(con, since):
+    """كل تبديل slug منذ اللقطة: الكيان، القديم، الجديد، هدف التحويل، وهل هو مباشر (القديم ← النهائي بلا سلسلة)."""
+    out = []
+    for r in con.execute("SELECT entity_id, prev, at, source FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL AND at>?", (since,)):
+        c = con.execute("SELECT id, type, slug, title FROM content WHERE id=?", (r["entity_id"],)).fetchone()
+        old = json.loads(r["prev"])
+        old_path = seo_db.PATHS[c["type"]].format(slug=old)
+        red = con.execute("SELECT target FROM redirect WHERE path=?", (old_path,)).fetchone()
+        final = seo_db.PATHS[c["type"]].format(slug=c["slug"])
+        out.append({"entity_id": c["id"], "title": c["title"], "old_slug": old, "new_slug": c["slug"], "source": r["source"], "redirect_target": red["target"] if red else None,
+                    "direct": bool(red and red["target"] == final), "chain": bool(red and con.execute("SELECT 1 FROM redirect WHERE path=?", (red["target"],)).fetchone())})
+    return out
 
 
 def episode_counts(con, cid, c, links):
@@ -1351,9 +1394,29 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
             take("series", base + " AND c.type='series'", (), spec["series"])
             ids = [i for i, _ in picked]
             qs = ",".join("?" * len(ids)) or "0"
-            pre = {"count": con.execute(f"SELECT COUNT(*) FROM enrich_queue WHERE error IS NOT NULL AND error LIKE '%Error%' AND content_id NOT IN ({qs})", ids).fetchone()[0],
+            backoff = st.get("enrich_backoff") or [3600, 86400, 604800]
+            pre_rows = con.execute(f"SELECT content_id, source, attempts, state, error, updated_at, next_at FROM enrich_queue WHERE error IS NOT NULL AND error LIKE '%Error%' AND content_id NOT IN ({qs}) ORDER BY updated_at", ids).fetchall()
+            pre = {"count": len(pre_rows),
                    "by_error": [dict(r) for r in con.execute(f"SELECT source, error, COUNT(*) n FROM enrich_queue WHERE error IS NOT NULL AND error LIKE '%Error%' "
-                                                            f"AND content_id NOT IN ({qs}) GROUP BY 1, 2 ORDER BY n DESC LIMIT 10", ids)]}
+                                                            f"AND content_id NOT IN ({qs}) GROUP BY 1, 2 ORDER BY n DESC LIMIT 10", ids)],
+                   "by_state": {k: sum(1 for r in pre_rows if r["state"] == k) for k in ("pending", "error")},
+                   "recorded_between": [time.strftime("%Y-%m-%d %H:%M", time.gmtime(pre_rows[0]["updated_at"])), time.strftime("%Y-%m-%d %H:%M", time.gmtime(pre_rows[-1]["updated_at"]))] if pre_rows else None,
+                   "code_fix_note": "get_json() missing 'rps': raised by the old seo_sources._series_map (fixed 2 Oct, PR 165); every current get_json call passes rps; rows keep the old text until their backoff retry",
+                   "retry_probe": []}
+            probe_res = {"processed": 0, "done": 0, "miss": 0, "error": 0, "skipped": 0}
+            for r in pre_rows[:3]:                     # ثلاثة من الصفوف القديمة تُعاد الآن بالكود الحالي: هل يزول الخطأ؟
+                before = r["error"]
+                con.execute("UPDATE enrich_queue SET state='pending', next_at=0 WHERE content_id=? AND source=?", (r["content_id"], r["source"]))
+                row = con.execute("SELECT content_id, source, attempts FROM enrich_queue WHERE content_id=? AND source=?", (r["content_id"], r["source"])).fetchone()
+                err, fl = None, []
+                try:
+                    _step(con, data_dir, row, st, backoff, probe_res, now, fl)
+                except Exception as ex:  # noqa: BLE001
+                    con.rollback(); err = f"{type(ex).__name__}: {str(ex)[:200]}"
+                after = con.execute("SELECT state, error FROM enrich_queue WHERE content_id=? AND source=?", (r["content_id"], r["source"])).fetchone()
+                pre["retry_probe"].append({"content_id": r["content_id"], "source": r["source"], "before": before, "after_state": after["state"], "after_message": after["error"],
+                                           "probe_error": err, "failures": fl})
+            con.commit()
             backoff = st.get("enrich_backoff") or [3600, 86400, 604800]
             res = {"processed": 0, "done": 0, "miss": 0, "error": 0, "skipped": 0}
             res["reclassified"] = reclassify(con, data_dir, st, now=now)      # ما أُثري بكودٍ أقدم: تصنيفه يُعاد من الكاش
@@ -1396,7 +1459,10 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                 "tmdb_matched": sum(1 for w in works if w.get("match") == "tmdb"),
                 "turkish": _tally(works, "turkish"), "anime": _tally(works, "anime"),
             }
-            ident = {"merged_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='merged_entities' AND created_at>?", (prev_at,)).fetchone()[0],
+            ident = {"splits": splits_report(con, prev_at), "slug_changes": slug_changes_report(con, prev_at),
+                     "redirect_chains": con.execute("SELECT COUNT(*) FROM redirect a JOIN redirect b ON b.path=a.target").fetchone()[0],   # يجب أن يكون صفرًا: القديم ← النهائي مباشرة
+                     "stream_id_reused_last_build": (seo_db.state(con, "reconciliation") or {}).get("stream_id_reused"),
+                     "merged_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='merged_entities' AND created_at>?", (prev_at,)).fetchone()[0],
                      "split_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='split_entity' AND created_at>?", (prev_at,)).fetchone()[0],
                      "slug_changed_since_last_bundle": con.execute("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL AND at>?", (prev_at,)).fetchone()[0],
                      "redirects_added_since_last_bundle": con.execute("SELECT COUNT(*) FROM redirect WHERE created_at>?", (prev_at,)).fetchone()[0],

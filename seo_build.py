@@ -220,17 +220,27 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
         for sid in set(json.loads(r["stream_ids_json"] or "[]")) | ({r["stream_id"]} if r["stream_id"] else set()):
             by_stream[(r["service_key"], r["kind"], sid)] = r["content_id"]
 
+    alias_of = {}
+    for r in con.execute("SELECT content_id, alias_norm FROM content_alias"):
+        alias_of.setdefault(r["content_id"], set()).add(r["alias_norm"])
+    stream_reuse = []                             # رقم بثٍّ عاد باسمٍ آخر تمامًا: اللوحة أعادت استعماله لعملٍ آخر — لا يُربط
+
     def known(m):
         """الكيانات التي رُبط بها عضوٌ من قبل: بمفتاحه، وبكل أرقام بثّه (مدخلاتٌ كانت كياناتٍ مفرّقة بالمواسم ثم طُويت
-        في عنصرٍ واحد: كلها تُعرَف فتُدمج بتحويلٍ ومراجعة — لا تُترك غائبةً بلا أثر)."""
+        في عنصرٍ واحد: كلها تُعرَف فتُدمج بتحويلٍ ومراجعة — لا تُترك غائبةً بلا أثر). رقم البثّ وحده لا يكفي: يجب أن يبقى
+        الاسم من أسماء الكيان، وإلا فاللوحة أعادت استعمال الرقم لعملٍ آخر (6616: «محكوم - السجين» ← «المحنك»)."""
         out = set()
         k = links.get((m["service"], m["kind"], m["local_key"]))
         if k:
             out.add(k)
+        nm = M.norm(m["name"])
         for sid in m.get("stream_ids") or ([m["stream_id"]] if m.get("stream_id") else []):
             k = by_stream.get((m["service"], m["kind"], sid))
-            if k:
-                out.add(k)
+            if k and k not in out:
+                if nm in alias_of.get(canon(k), set()) or M.phonetic(m["name"]) in {M.phonetic(a) for a in alias_of.get(canon(k), set())}:
+                    out.add(k)
+                else:
+                    stream_reuse.append({"service": m["service"], "stream_id": sid, "name": m["name"], "old_entity": canon(k)})
         return out
     live_before = {r[0] for r in con.execute("SELECT id FROM content WHERE merged_into IS NULL AND available=1")}
     merged = {r["id"]: r["merged_into"] for r in con.execute("SELECT id, merged_into FROM content WHERE merged_into IS NOT NULL")}
@@ -253,18 +263,29 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     st = seo_db.settings(con)
     cid_of = {}                                   # فهرس العضو ← معرّف الكيان
     inserted, merged_now = set(), set()
+    claimed_by = {}                               # الكيان ← فهارس أعضاء العنقود الذي ادّعاه في هذا البناء
     for members_idx in clusters:
         members = [items[i] for i in members_idx]
-        ids = {canon(k) for m in members for k in known(m)}
-        ids = {i for i in ids if i not in claimed}
+        ids_all = {canon(k) for m in members for k in known(m)}
+        ids = {i for i in ids_all if i not in claimed}
         if not ids:
             cid = _insert(con, members, slugs, now)
             n_new += 1
             inserted.add(cid)
-            if any(known(m) for m in members):
-                n_split += 1                      # كان عضوًا في كيانٍ ادّعاه عنقودٌ آخر: كيانٌ جديد ويُراجَع
+            if ids_all:
+                n_split += 1                      # كان عضوًا في كيانٍ ادّعاه عنقودٌ آخر: كيانٌ جديد ويُراجَع — ولماذا لم يبقَ معه
+                causes, why = set(), []
+                for old in sorted(ids_all):
+                    other = [items[i] for i in claimed_by.get(old, [])]
+                    if not other:
+                        continue
+                    sc, w = M.pair_score(members[0], other[0], st)
+                    causes.add("contradiction" if sc == M.DISTINCT else "conflict" if sc is None else "no_evidence")
+                    why += w
                 extra_reviews.append({"kind": "split_entity", "key": f"split:{cid}", "type": members[0]["type"],
-                                      "name": members[0]["name"], "items": members_idx, "why": ["links_moved"]})
+                                      "name": members[0]["name"], "items": members_idx, "from": sorted(ids_all),
+                                      "cause": sorted(causes) or ["unknown"], "pair": sorted(set(why)),
+                                      "services": sorted({m["service"] for m in members}), "why": ["links_moved"]})
         else:
             cid = min(ids)
             for other in sorted(ids - {cid}):   # كيانان كانا منفصلين واجتمعت قرائنهما الآن: يبقى الأقدم، والآخر يُدمج فيه
@@ -274,6 +295,7 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
                 n_merged += 1
             _update(con, cid, members, manual.get(cid, set()), now)
         claimed.add(cid)
+        claimed_by[cid] = list(members_idx)
         for i in members_idx:
             cid_of[i] = cid
         _link(con, cid, members, now)
@@ -305,7 +327,9 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
              "unavailable_total": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=0").fetchone()[0],
              "merged_total": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NOT NULL").fetchone()[0]}
     recon["explained"] = recon["inserted"] + recon["returned"] - recon["merged"] - recon["went_unavailable"] == recon["delta"]
+    recon["stream_id_reused"] = len(stream_reuse)
     seo_db.set_state(con, "reconciliation", recon)
+    seo_db.set_state(con, "stream_reuse", stream_reuse[:200])
     seo_db.set_state(con, "signatures", sigs)
     seo_db.set_state(con, "built_at", now)
     return {"items": len(items), "clusters": len(clusters), "new": n_new, "merged": n_merged, "split": n_split,
@@ -361,6 +385,10 @@ def _update(con, cid, members, manual, now):
     """حقول الكيان من أعضائه عبر ‏apply_fields: الحقل اليدوي لا يُمسّ، والمتغيّر يُسجَّل بمصدره وقيمته السابقة.
     ‏slug لا يُمسّ هنا أبدًا (يتبدّل بـ ‏change_slug وحده، بتحويل 301)."""
     f = {k: v for k, v in _entity_fields(members).items() if not (v[0] is None and k == "title")}
+    cur = con.execute("SELECT title FROM content WHERE id=?", (cid,)).fetchone()
+    names = {M.norm(m["name"]): m for m in members}
+    if cur and cur["title"] and M.norm(cur["title"]) in names and "title" in f:
+        f["title"] = (cur["title"], "m3u", names[M.norm(cur["title"])]["service"])   # العنوان المستقرّ يبقى ما دام من أسماء الأعضاء (لا يتقلّب بين السيرفرات)
     cand = f.pop("tmdb_id")[0]
     if cand and not seo_db.external(con, "content", cid).get("tmdb", {}).get("verified"):
         seo_db.set_external(con, "content", cid, "tmdb", cand, verified=False, confidence=0.5, how="xtream-list", now=now)
@@ -430,7 +458,7 @@ def _reviews(con, items, reviews, now):
         keys.add(r["key"])
         payload = {"type": r.get("type"), "name": r.get("name"), "why": r.get("why") or [],
                    "items": [_snippet(items[i]) for i in r.get("items") or []]}
-        for k in ("service", "entries"):
+        for k in ("service", "entries", "from", "cause", "pair", "services"):
             if k in r:
                 payload[k] = r[k]
         con.execute(
