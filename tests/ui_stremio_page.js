@@ -32,7 +32,8 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
   ];
   const app = spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web'], {stdio:'ignore', env:{...process.env, XM_DATA:dataDir,
     XM_BIND:'127.0.0.1', XM_PORT:String(APP_PORT), XM_MAIL_PORT:String(MAIL_PORT), STREMIO_API:`http://127.0.0.1:${API_PORT}`,
-    STREMIO_ACTIVATION_WAIT:'0.1', STREMIO_EXTRAS_ALLOW_LOCAL:'1'}});
+    STREMIO_ACTIVATION_WAIT:'0.1', STREMIO_EXTRAS_ALLOW_LOCAL:'1',
+    STREMIO_ADDON_CATALOGS:`http://127.0.0.1:${ADDON_PORT}/official.json,http://127.0.0.1:${ADDON_PORT}/community.json`}});
   procs.push(app);
   await up(`http://127.0.0.1:${APP_PORT}/admin/login`);
   const browser = await chromium.launch({executablePath: EXE, args:['--no-sandbox']});
@@ -261,9 +262,18 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await user.fill('#extUrl', `http://127.0.0.1:${ADDON_PORT}/needs/manifest.json`); await user.click('#extAdd');
     await user.waitForFunction(() => /تحتاج إعدادًا/.test(document.querySelector('#extMsg')?.textContent || ''), null, {timeout: 8000});
     check('an add-on that still needs setup is refused with the reason', true);
+    await user.fill('#extUrl', 'AIOMetadata');
+    check('typing a name turns the button into a search', (await user.textContent('#extAdd')).trim() === 'بحث');
+    await user.click('#extAdd');
+    await user.waitForSelector('#extHits .card', {timeout: 10000});
+    const hitsT = await user.$$eval('#extHits .card', cs => cs.map(c => c.textContent.replace(/\s+/g, ' ').trim()));
+    check('searching «AIOMetadata» finds it in the add-on directory (and «AIO Metadata» that still needs setup)',
+          hitsT.length === 2 && hitsT[0].startsWith('AIOMetadata') && /افتح صفحة الإعداد/.test(hitsT[1]), hitsT.join(' | ').slice(0, 200));
+    check('the one needing setup links to its setup page', (await user.getAttribute('#extHits a.acc', 'href')) === `http://127.0.0.1:${ADDON_PORT}/aiobase/configure`);
+    await shot(user, 'stremio-extras-search');
     let extAsk = '';
     user.once('dialog', d => { extAsk = d.message(); d.accept(); });
-    await user.fill('#extUrl', `http://127.0.0.1:${ADDON_PORT}/aio/manifest.json`); await user.click('#extAdd');
+    await user.click('#extHits [data-xhit="0"]');
     await user.waitForFunction(() => /ثُبّتت AIOMetadata في الحسابات/.test(document.querySelector('#extJob')?.textContent || ''), null, {timeout: 30000});
     const jobT = (await user.textContent('#extJob')).replace(/\s+/g, ' ');
     check('added: it offers the existing accounts, installs in all of them in the background', /الحسابات السابقة/.test(extAsk)

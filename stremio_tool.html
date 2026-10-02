@@ -138,6 +138,7 @@ select.t{width:auto}
 .mailin input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);padding:9px 11px;font:600 .92rem "IBM Plex Mono",monospace}
 .mailin span{padding:0 11px;color:var(--mute);font:.86rem "IBM Plex Mono",monospace;white-space:nowrap}
 .mailin:focus-within{border-color:var(--purple)}
+a.acc{text-decoration:none;border-radius:10px}
 .ext{display:flex;gap:12px;align-items:flex-start}
 .ext img,.ext .ph{width:44px;height:44px;border-radius:10px;object-fit:contain;background:var(--sf);border:1px solid var(--line);flex:none}
 .ext .tx{flex:1;min-width:0}
@@ -222,13 +223,14 @@ select.t{width:auto}
 
   <section id="extSec">
     <h2>إضافات أخرى في الحسابات <small>مثل AIOMetadata</small></h2>
-    <p class="sub" style="margin:0 0 10px">الصق رابط manifest الإضافة (بعد إعدادها في صفحتها): تُثبَّت في <b>كل حسابٍ جديد</b> تلقائيًا
+    <p class="sub" style="margin:0 0 10px">ابحث باسم الإضافة أو الصق رابطها: تُثبَّت في <b>كل حسابٍ جديد</b> تلقائيًا
       (ومع «ربط خط آخر» و«تحديث الإضافة»)، وبزرٍّ واحد في <b>كل الحسابات السابقة</b>.</p>
     <form class="row" id="extForm">
-      <input class="t ltr" id="extUrl" placeholder="https://…/manifest.json" autocomplete="off" spellcheck="false">
-      <button class="btn" id="extAdd">إضافة</button>
+      <input class="t" id="extUrl" placeholder="اسم الإضافة (مثل AIOMetadata) أو رابط manifest" autocomplete="off" spellcheck="false">
+      <button class="btn" id="extAdd">بحث</button>
     </form>
     <div class="err" id="extMsg"></div>
+    <div id="extHits"></div>
     <div id="extJob"></div>
     <div id="extList"></div>
   </section>
@@ -690,7 +692,7 @@ function renderExt(){
           <button class="ghost" data-xdrop="${esc(e.id)}"${running ? " disabled" : ""}>إسقاط من كل الحسابات</button>
           <button class="ghost" data-xdel="${esc(e.id)}">حذف من القائمة</button>
         </div></div></div></div>`).join("")}</div>`
-    : '<div class="empty">لا إضافات أخرى بعد — الصق رابط manifest إضافةٍ أعلاه.</div>';
+    : '<div class="empty">لا إضافات أخرى بعد — ابحث عن إضافةٍ باسمها أعلاه (مثل AIOMetadata) أو الصق رابطها.</div>';
   if (!j) { $("extJob").innerHTML = ""; return; }
   const verb = j.op === "remove" ? "إسقاط" : "تثبيت", pct = j.total ? Math.round(100 * j.done / j.total) : 0;
   const fails = (j.failed || []).length;
@@ -711,17 +713,49 @@ async function extDo(body, btn, ok){
   catch(e) { $("extMsg").textContent = e.message; return false; }
   finally { if (btn) btn.disabled = false; }
 }
+// حقلٌ واحد: رابطٌ ← «إضافة»، واسمٌ ← «بحث» في دليل إضافات Stremio (الرسمي والمجتمع)
+const isLink = v => /^(https?|stremio):\/\//i.test(v.trim());
+$("extUrl").addEventListener("input", () => { $("extAdd").textContent = isLink($("extUrl").value) ? "إضافة" : "بحث"; });
+let EXT_HITS = [];
+function renderExtHits(){
+  const have = new Set(EXT.extras.map(x => x.url));
+  $("extHits").innerHTML = EXT_HITS.length ? `<div class="cards" style="margin-top:10px">${EXT_HITS.map((h, i) => `<div class="card"><div class="ext">
+      ${safeUrl(h.logo) ? `<img src="${esc(h.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="ph"></span>'}
+      <div class="tx"><b>${esc(h.name)} <small class="hint" style="display:inline">${esc(h.version)}</small></b>
+        <span class="u">${esc(h.host)}</span>
+        ${h.description ? `<div class="d">${esc(h.description)}</div>` : ""}
+        <div class="acts" style="margin-top:8px">${have.has(h.url) ? '<span class="hint" style="color:var(--go)">✓ في القائمة</span>'
+          : h.needs_config ? `${safeUrl(h.configure) ? `<a class="acc" href="${esc(h.configure)}" target="_blank" rel="noopener noreferrer">افتح صفحة الإعداد ↗</a>` : ""}
+              <span class="hint">تحتاج إعدادًا: أكمله في صفحتها، ثم انسخ رابط التثبيت والصقه هنا.</span>`
+          : `<button class="acc" data-xhit="${i}">إضافة</button>`}</div></div></div></div>`).join("")}</div>` : "";
+}
+async function extSearch(q){
+  const b = $("extAdd"); b.disabled = true; $("extMsg").textContent = "نبحث في دليل الإضافات…"; EXT_HITS = []; renderExtHits();
+  try {
+    EXT_HITS = (await api("/api/stremio/extras/search?q=" + encodeURIComponent(q))).results || [];
+    $("extMsg").textContent = EXT_HITS.length ? "" : "لا إضافة بهذا الاسم — جرّب اسمًا آخر أو الصق رابطها.";
+    renderExtHits();
+  } catch(e) { $("extMsg").textContent = e.message; }
+  finally { b.disabled = false; }
+}
+$("extHits").addEventListener("click", e => {
+  const b = e.target.closest("[data-xhit]"); if (!b) return;
+  const h = EXT_HITS[+b.dataset.xhit]; if (h) addExt(h.url, b);
+});
 $("extForm").onsubmit = async e => {
   e.preventDefault();
-  const url = $("extUrl").value.trim(); if (!url) { $("extMsg").textContent = "الصق رابط manifest الإضافة."; return; }
+  const v = $("extUrl").value.trim(); if (!v) { $("extMsg").textContent = "اكتب اسم الإضافة أو الصق رابطها."; return; }
+  if (isLink(v)) addExt(v, $("extAdd")); else extSearch(v);
+};
+async function addExt(url, btn){
   $("extMsg").textContent = "نقرأ الإضافة…";
-  if (!await extDo({action: "add", url}, $("extAdd"))) return;
-  $("extUrl").value = "";
+  if (!await extDo({action: "add", url}, btn)) return;
+  $("extUrl").value = ""; $("extAdd").textContent = "بحث"; EXT_HITS = []; renderExtHits();
   const added = EXT.extras.find(x => x.id === EXT.added) || EXT.extras[EXT.extras.length - 1];
   if (added && EXT.accounts && confirm(`أُضيفت «${added.name}»: تُثبَّت في كل حسابٍ جديد.\nتثبيتها الآن في الحسابات السابقة (${EXT.accounts})؟`))
     extDo({action: "apply", id: added.id}, null, "بدأ تثبيتها في الحسابات السابقة");
   else toast("أُضيفت — تُثبَّت في كل حسابٍ جديد");
-};
+}
 $("extList").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   const x = EXT.extras.find(y => y.id === (b.dataset.xapply || b.dataset.xdrop || b.dataset.xdel)); if (!x) return;

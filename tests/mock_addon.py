@@ -2,6 +2,8 @@
   /aio/manifest.json     إضافةٌ مُعدّة (بيانات أفلامٍ ومسلسلات بمعرّفات tt)
   /needs/manifest.json   إضافةٌ تحتاج إعدادًا (configurationRequired)
   /html/manifest.json    صفحة HTML لا manifest
+  /aiobase/manifest.json AIOMetadata بلا إعداد (لا موارد — كما على elfhosted)
+  /official.json         دليلٌ كالرسمي (قائمة)، و/community.json كدليل المجتمع ({addons: [...]})
   /hop                   تحويلٌ (302) إلى ?to=
 """
 import json
@@ -12,6 +14,22 @@ from urllib.parse import parse_qs, urlsplit
 AIO = {"id": "community.aiometadata", "version": "1.9.0", "name": "AIOMetadata", "description": "Metadata for everything",
        "logo": "https://example.com/aio.png", "resources": ["catalog", "meta"], "types": ["movie", "series"],
        "idPrefixes": ["tt", "tmdb:"], "catalogs": [], "behaviorHints": {"configurable": True}}
+
+
+BASE = {**AIO, "name": "AIO Metadata", "id": "com.aio.metadata", "resources": [], "logo": "",
+        "behaviorHints": {"configurable": True, "configurationRequired": False}}
+
+
+def _dir(host):
+    official = [{"transportUrl": f"{host}/aio/manifest.json", "transportName": "http", "manifest": AIO},
+                {"transportUrl": "https://v3-cinemeta.strem.io/manifest.json", "manifest": {"id": "com.linvo.cinemeta", "name": "Cinemeta",
+                                                                                            "description": "The official metadata add-on"}}]
+    community = {"addons": [{"transportUrl": f"{host}/aiobase/manifest.json", "manifest": BASE},
+                            {"transportUrl": f"{host}/aio/manifest.json", "manifest": AIO},             # مكرّرة في المصدرين
+                            {"transportUrl": "https://subs.example.com/manifest.json",
+                             "manifest": {"id": "community.arsubs", "name": "ترجمة عربية", "resources": ["subtitles"], "description": "Arabic subtitles"}},
+                            {"transportUrl": "javascript:alert(1)", "manifest": {"id": "x", "name": "bad"}}]}
+    return official, community
 
 
 class H(BaseHTTPRequestHandler):
@@ -30,6 +48,11 @@ class H(BaseHTTPRequestHandler):
         u = urlsplit(self.path)
         if u.path == "/aio/manifest.json":
             return self._send(200, AIO)
+        if u.path == "/aiobase/manifest.json":
+            return self._send(200, BASE)
+        if u.path in ("/official.json", "/community.json"):
+            official, community = _dir(f"http://{self.headers.get('Host')}")
+            return self._send(200, official if u.path == "/official.json" else community)
         if u.path == "/needs/manifest.json":
             return self._send(200, {**AIO, "id": "community.needs", "name": "Needs Config",
                                     "behaviorHints": {"configurable": True, "configurationRequired": True}})

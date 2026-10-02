@@ -3834,6 +3834,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not stremio_on(acct):
                     return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
                 return self._send(200, stremio_extras_data(acct))
+            if path == "/api/stremio/extras/search":   # البحث بالاسم في دليل إضافات Stremio (الرسمي والمجتمع)
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
+                try:
+                    return self._send(200, {"results": stremio_extras.search(self._q("q"))})
+                except ValueError as e:
+                    return self._send(502, {"error": str(e)})
             if path == "/api/stremio/hosts":      # هوستات حسابات Stremio للعميل وتحويلاتها («تغيير الهوست»)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})

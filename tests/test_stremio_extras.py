@@ -61,6 +61,23 @@ def main():
         urllib.request.Request("https://aio.example.com/m"), None, 302, "Found", {}, "http://169.254.169.254/latest"), "لا يُقرأ"))
     X.ALLOW_LOCAL = True
 
+    print("== البحث بالاسم في دليل الإضافات ==")
+    X.CATALOGS = [base + "/official.json", base + "/missing.json", base + "/community.json"]
+    X._dir.update(t=0, items=[])
+    items = X.directory()
+    check("الدليلان معًا بلا تكرار، ومصدرٌ لا يردّ يُتخطّى، ورابطٌ ليس http يُسقط",
+          sorted(i["name"] for i in items) == ["AIO Metadata", "AIOMetadata", "Cinemeta", "ترجمة عربية"], str([i["name"] for i in items]))
+    r = X.search("AIOMetadata")
+    check("«AIOMetadata» تجد «AIO Metadata» أيضًا، والتي تعمل كما هي أولًا", [(h["name"], h["needs_config"]) for h in r]
+          == [("AIOMetadata", False), ("AIO Metadata", True)], str([(h["name"], h["needs_config"]) for h in r]))
+    check("والتي تحتاج إعدادًا معها رابط صفحة إعدادها", r[1]["configure"] == base + "/aiobase/configure" and r[1]["host"] == "127.0.0.1")
+    check("وبالعربية وبالوصف", [h["name"] for h in X.search("ترجمة")] == ["ترجمة عربية"] and [h["name"] for h in X.search("official metadata")] == ["Cinemeta"])
+    check("حرفٌ واحد لا يُبحث به", X.search("a") == [])
+    check("وإضافتها بلا إعداد تُرفض (لا موارد)", raises(lambda: X.fetch(base + "/aiobase/manifest.json"), "تحتاج إعدادًا"))
+    X.CATALOGS = [base + "/missing.json"]
+    X._dir.update(t=0, items=[])
+    check("والدليل كله لا يردّ ← رسالةٌ تقترح لصق الرابط", raises(lambda: X.search("aio"), "الصق رابط"))
+
     print("== القائمة ==")
     dd = tempfile.mkdtemp(prefix="extras_")
     try:
