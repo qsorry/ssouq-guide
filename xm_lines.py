@@ -3340,8 +3340,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._page("content_admin.html")
                 if path == "/api/content/admin":
                     return self._send(200, content_state())
-                if path == "/api/content/seo":            # طبقة الكيانات: أعدادها وحال بنائها (لا تبني)
-                    return self._send(200, seo_build.stats(DATA_DIR))
+                if path == "/api/content/seo":            # طبقة الكيانات: أعدادها وحال بنائها (لا تبني) — وبصمة الكود المنشور
+                    return self._send(200, {**seo_build.stats(DATA_DIR), **seo_sources.code_version()})
                 if path == "/api/content/seo/review":     # ما يحتاج مراجعة يدوية (الاسم وحده، أو تعارض)
                     return self._send(200, {"ok": True, "reviews": seo_build.reviews(
                         DATA_DIR, self._q("status") or "open", self._q("kind"), self._q("limit") or 100, self._q("offset") or 0)})
@@ -4032,7 +4032,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, store_sync.preview(DATA_DIR, ids))
             elif path == "/api/content/admin/seo-build":     # «ابنِ طبقة الكيانات الآن»: في الخلفية، وبناءٌ واحد في وقته
                 started = seo_build.start_build(DATA_DIR, force=bool(body.get("force", True)))
-                return self._send(200, {"ok": True, "started": started, **seo_build.stats(DATA_DIR)})
+                return self._send(200, {"ok": True, "started": started, **seo_build.stats(DATA_DIR, light=True)})   # ردٌّ فوري: لا انتظار للأعداد
             elif path == "/api/content/admin/seo-key":       # مفتاح TMDB: يُحفظ مشفَّرًا ولا يُعرض
                 con = seo_db.connect(DATA_DIR)
                 try:
