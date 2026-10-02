@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+from urllib.parse import quote
 import urllib.request
 import http.cookiejar
 import smtplib
@@ -91,8 +92,9 @@ def against_mocks():
         check("إضافتنا أولَ الحساب وإضافات Stremio الافتراضية باقية",
               col[0]["manifest"]["id"].startswith("com.ssouq.xtream.") and [a["manifest"]["name"] for a in col[1:]] == ["Cinemeta", "OpenSubtitles v3"],
               str([a["manifest"]["name"] for a in col]))
-        check("الإضافة برابطها على الموقع ووصفها كاملًا (الكتالوجات الثلاثة)",
-              col[0]["transportUrl"].startswith("https://guide.ssouq.com/stremio/") and len(col[0]["manifest"]["catalogs"]) == 3
+        check("الإضافة برابطها على الموقع ووصفها كاملًا (الحسابات ثم المسلسلات ثم الأفلام ثم البث)",
+              col[0]["transportUrl"].startswith("https://guide.ssouq.com/stremio/")
+              and [c["type"] for c in col[0]["manifest"]["catalogs"]] == [S.ACCOUNTS, "series", "movie", "tv"]
               and col[0]["flags"] == {"official": False, "protected": False})
         check("خرج من الجلسة بعد التثبيت", not api.sessions)
         raw = json.load(open(os.path.join(d, "stremio_accounts.json"), encoding="utf-8"))
@@ -347,7 +349,7 @@ def through_server():
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "late", "password": "lp"})
         m = (ours("late@tv.ssouq.com") or [{}])[0].get("manifest", {})
         check("يُنتظر حتى يقبله السيرفر ثم تُثبَّت الإضافة بأقسامها وأعدادها", c == 200 and xt.pending["late"] == 0
-              and len(genre_opts(m)) == 2 and all(genre_opts(m)) and m["catalogs"][0]["name"].endswith(")"), json.dumps(m, ensure_ascii=False)[:200])
+              and len(genre_opts(m)) == 2 and all(genre_opts(m)) and m["catalogs"][1]["name"].endswith(")"), json.dumps(m, ensure_ascii=False)[:200])
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "nv", "password": "np"})   # يرفضه السيرفر طوال الانتظار
         m = (ours("nv@tv.ssouq.com") or [{}])[0].get("manifest", {})
         check("وما بقي مرفوضًا: الحساب يُنشأ والإضافة تُثبَّت بلا أقسام", c == 200 and r.get("email") == "nv@tv.ssouq.com" and not genre_opts(m))
@@ -405,9 +407,21 @@ def through_server():
               and r.get("email") == "u@tv.ssouq.com" and r.get("password") == "NewPass9", json.dumps(r, ensure_ascii=False))
         check("وإضافته في الحساب نفسه بعد إضافة مرح، باسم سيرفرها", names == ["سمارت سوق · سمارت", "سمارت سوق · كاسبر"], str(names))
         k1m = ours("u@tv.ssouq.com")[1]["manifest"]
-        check("فكتالوجاته تتميّز («أفلام · كاسبر (N)») ويتنقّل العميل بينها", k1m["catalogs"][0]["name"].startswith("أفلام · كاسبر (")
+        check("فكتالوجاته تتميّز («كاسبر (N) - المسلسلات») ويتنقّل العميل بينها", k1m["catalogs"][0]["name"].startswith("كاسبر (")
               and set(k1m["idPrefixes"]).isdisjoint(ours("u@tv.ssouq.com")[0]["manifest"]["idPrefixes"]), k1m["catalogs"][0]["name"])
         check("والإضافتان تعملان", all(code_of(local(a["transportUrl"])) == 200 for a in ours("u@tv.ssouq.com")))
+        root_m = ours("u@tv.ssouq.com")[0]
+        check("«الحسابات» في إضافة صاحب الحساب وحدها (الخط المرتبط بلاها، فلا يتكرّر صفّها)",
+              root_m["manifest"]["catalogs"][0]["type"] == S.ACCOUNTS and [c["type"] for c in k1m["catalogs"]] == ["series", "movie", "tv"]
+              and S.ACCOUNTS not in k1m["types"], str([c["type"] for c in k1m["catalogs"]]))
+        acc_url = lambda a: local(a["transportUrl"]).replace("manifest.json", f"catalog/{quote(S.ACCOUNTS, safe='')}/{S.ACCOUNTS_ID}.json")
+        cards = json.loads(urllib.request.urlopen(acc_url(root_m), timeout=20).read())["metas"]
+        check("وفيها خطوط الحساب كلها بترتيب ربطها، باسم كل سيرفرٍ وكم باقي، ويوزر كلٍّ", [c["name"].split(" · ")[0] for c in cards] == ["سمارت", "كاسبر"]
+              and "اليوزر: u" in cards[0]["description"] and "اليوزر: k1" in cards[1]["description"]
+              and all(" · باقي " in c["name"] for c in cards), json.dumps([c["name"] for c in cards], ensure_ascii=False))
+        check("وطلب «الحسابات» من إضافة الخط ← 404", code_of(acc_url(ours("u@tv.ssouq.com")[1])) == 404)
+        check("وإضافة الخط نفسها كما يقرؤها Stremio من رابطها: بلا «الحسابات»",
+              S.ACCOUNTS not in json.loads(urllib.request.urlopen(local(ours("u@tv.ssouq.com")[1]["transportUrl"]), timeout=20).read())["types"])
         c, r = post("/api/stremio/accounts?gate=g4", None)
         k = next((a for a in r.get("accounts", []) if a["username"] == "k1"), {})
         check("الخط في قائمة بوابته: مرتبطٌ، وخطوط الحساب كلها للتنقّل", k.get("linked") is True and k.get("email") == "u@tv.ssouq.com"
@@ -431,7 +445,8 @@ def through_server():
         c, r = post("/api/stremio/accounts?gate=g4", None)
         check("كلمة مرورٍ جديدة للحساب تصل خطوطه كلها", next(a for a in r["accounts"] if a["username"] == "k1")["password"] == "Third3")
         c, r = post("/api/stremio/lock", {"gate": "g4", "username": "k1"})
-        check("وتغيير رابط إضافة الخط يُبقيها مكانها", c == 200 and [a["manifest"]["name"] for a in ours("u@tv.ssouq.com")] == names)
+        check("وتغيير رابط إضافة الخط يُبقيها مكانها (وبلا «الحسابات»)", c == 200 and [a["manifest"]["name"] for a in ours("u@tv.ssouq.com")] == names
+              and S.ACCOUNTS not in ours("u@tv.ssouq.com")[1]["manifest"]["types"])
 
         c, r = post("/api/stremio/create", {"gate": "g2", "package_id": "167", "link_gate": "g1", "link_username": "u"})
         check("«خطٌّ جديد» من سيرفرٍ في الحساب ← 400 قبل إنشاء اليوزر", c == 400 and "سيرفر هذه البوابة" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
