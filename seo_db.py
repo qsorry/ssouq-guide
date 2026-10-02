@@ -20,7 +20,7 @@ import time
 
 DIR = "content"
 FILE = "seo.sqlite"
-VERSION = 4                    # PRAGMA user_version — يرتفع مع كل ترحيل
+VERSION = 6                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
 SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
 MANUAL = "manual"
@@ -192,8 +192,10 @@ CREATE TABLE IF NOT EXISTS person (
   id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL, name_ar TEXT, name_en TEXT, original_name TEXT,
   bio_ar TEXT, bio_en TEXT, photo TEXT, birthday TEXT, known_for TEXT,
+  name_norm TEXT,                      -- مفتاح الاسم (seo_match.person_key): بلا ترتيبٍ ولا تشكيلٍ ولا فاصلة عليا — للتوحيد قبل معرّف TMDB
   index_flag INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS person_norm ON person(name_norm);
 CREATE TABLE IF NOT EXISTS content_person (
   content_id INTEGER NOT NULL REFERENCES content(id),
   person_id INTEGER NOT NULL REFERENCES person(id),
@@ -216,6 +218,7 @@ CREATE TABLE IF NOT EXISTS episode (
   id INTEGER PRIMARY KEY,
   content_id INTEGER NOT NULL REFERENCES content(id), season INTEGER NOT NULL, number INTEGER NOT NULL,
   title_ar TEXT, title_en TEXT, overview_ar TEXT, overview_en TEXT, air_date TEXT, runtime INTEGER, still TEXT,
+  source TEXT,                                   -- tmdb · xtream: من أين جاء السجل (الموسم 0 = حلقات خاصة)
   index_flag INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
   UNIQUE (content_id, season, number)
 );
@@ -318,6 +321,8 @@ _V2_COLS = {"content": ["format TEXT NOT NULL DEFAULT ''", "anime_kind TEXT", "o
                               "confidence REAL NOT NULL DEFAULT 1.0"]}
 
 
+_V5_COLS = {"episode": ["source TEXT"]}
+_V6_COLS = {"person": ["name_norm TEXT"]}
 _V4_COLS = {"content": ["is_animation INTEGER NOT NULL DEFAULT 0", "anime_family INTEGER", "episodes_official INTEGER", "seasons_official INTEGER"],
             "content_service": ["stream_ids_json TEXT"], "season": ["episodes_official INTEGER"]}
 
@@ -341,6 +346,13 @@ def migrate(con):
         if v and v < 4:                        # الرسوم/الأنمي بطبقاته، والحلقات الرسمية، وأرقام البثّ المطويّة
             for t, cols in _V4_COLS.items():
                 _add_cols(con, t, cols)
+        if v and v < 5:                        # مصدر سجل الحلقة
+            for t, cols in _V5_COLS.items():
+                _add_cols(con, t, cols)
+        if v and v < 6:                        # مفتاح اسم الشخص (يُملأ في البناء التالي)
+            for t, cols in _V6_COLS.items():
+                _add_cols(con, t, cols)
+            con.execute("CREATE INDEX IF NOT EXISTS person_norm ON person(name_norm)")
         con.execute(f"PRAGMA user_version={VERSION}")
 
 
@@ -526,7 +538,7 @@ def merge_content(con, loser, winner, reason="", now=None):
                         ("content_person", "content_id, person_id, role, character, ord, source"),
                         ("content_company", "content_id, company_id, role, source"),
                         ("season", "content_id, number, name, overview_ar, overview_en, poster, air_date, episode_count, episodes_official, index_flag, updated_at"),
-                        ("episode", "content_id, season, number, title_ar, title_en, overview_ar, overview_en, air_date, runtime, still, index_flag, updated_at")):
+                        ("episode", "content_id, season, number, title_ar, title_en, overview_ar, overview_en, air_date, runtime, still, source, index_flag, updated_at")):
         rest = cols.split(", ", 1)[1]
         con.execute(f"INSERT OR IGNORE INTO {table}({cols}) SELECT ?, {rest} FROM {table} WHERE content_id=?", (winner, loser))
         con.execute(f"DELETE FROM {table} WHERE content_id=?", (loser,))

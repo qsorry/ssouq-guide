@@ -204,6 +204,8 @@ def build(data_dir, force=False, now=None):
             clusters, reviews = M.cluster(items, st)
             with con:
                 res = _apply(con, data_dir, items, clusters, reviews + conflicts, sigs, now)
+                res["phonetic_refreshed"] = refresh_phonetic(con)
+                res["person_norm_refreshed"] = refresh_person_norm(con)
             res["seconds"] = round(time.time() - t0, 2)
             _last[os.path.abspath(data_dir)] = {"ok": True, "at": now, **res}
             return res
@@ -308,6 +310,26 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     seo_db.set_state(con, "built_at", now)
     return {"items": len(items), "clusters": len(clusters), "new": n_new, "merged": n_merged, "split": n_split,
             "reviews_open": n_rev, "services": sorted(sigs), "reconciliation": recon}
+
+
+def refresh_phonetic(con):
+    """تغيّر المفتاح الصوتي في الكود (‏seo_search.PHONETIC_VERSION) ← تُعاد مفاتيح كل الأسماء المخزَّنة مرةً واحدة، فلا يبقى
+    اسمٌ قديم بمفتاحٍ قديم («One Piece» = «n bs» بينما الجديد «wn bs»). ← عدد ما أُعيد."""
+    import seo_search
+    if seo_db.state(con, "phonetic_version") == seo_search.PHONETIC_VERSION:
+        return 0
+    rows = con.execute("SELECT rowid, alias, phonetic FROM content_alias").fetchall()
+    upd = [(seo_search.phonetic(r["alias"]), r["rowid"]) for r in rows if seo_search.phonetic(r["alias"]) != (r["phonetic"] or "")]
+    con.executemany("UPDATE content_alias SET phonetic=? WHERE rowid=?", upd)
+    seo_db.set_state(con, "phonetic_version", seo_search.PHONETIC_VERSION)
+    return len(upd)
+
+
+def refresh_person_norm(con):
+    """مفتاح اسم الشخص لمن لا مفتاح له (قاعدةٌ أقدم) — مرةً واحدة."""
+    rows = con.execute("SELECT id, name FROM person WHERE name_norm IS NULL").fetchall()
+    con.executemany("UPDATE person SET name_norm=? WHERE id=?", [(M.person_key(r["name"]), r["id"]) for r in rows])
+    return len(rows)
 
 
 def _insert(con, members, slugs, now):

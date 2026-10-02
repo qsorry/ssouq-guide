@@ -33,6 +33,7 @@ import threading  # noqa: E402
 import mock_tmdb  # noqa: E402
 import mock_xtream  # noqa: E402
 import content as C  # noqa: E402
+import seo_pages  # noqa: E402
 import seo_search  # noqa: E402
 import seo_sources  # noqa: E402
 import seo_build  # noqa: E402
@@ -664,8 +665,8 @@ def unit_sample2_cases():
         # البحث: اسمان لعملين، والتجميع للعرض
         idx = seo_search.load(con)
         r = seo_search.explain(con, idx, "السجين", st2)
-        check("البحث «السجين» ← كيانان بالاسم نفسه مجمّعان للعرض مع سبب الانفصال (same_server_ambiguous)",
-              r["result"] == "entity" and len(r["entities"]) == 2 and len(r["grouped"]) == 1 and "same_server_ambiguous" in r["grouped"][0]["why_separate"], str(r)[:300])
+        check("البحث «السجين» ← كيانان بالاسم نفسه مجمّعان للعرض مع سبب الانفصال (معرّفان مختلفان بعد الإثراء)",
+              r["result"] == "entity" and len(r["entities"]) == 2 and len(r["grouped"]) == 1 and r["grouped"][0]["why_separate"] == ["different tmdb ids"], str(r)[:300])
         slug_changes = q("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL")[0][0]   # ترقيات TMDB (translit ← en) موثّقة
         con.close()
         # طيّ المواسم: ما كان كيانين يصير عنصرًا واحدًا ← الكيان الآخر يُدمج بتحويلٍ ومراجعة، لا يُترك غائبًا — والتسوية تفسّر الفرق
@@ -685,6 +686,134 @@ def unit_sample2_cases():
               q("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL")[0][0] == slug_changes)
         smp = seo_sources.sample(d, {"movie": 1, "series": 2, "turkish": 2, "anime": 2})
         check("العيّنة تحمل التسوية وعدّادات التركي/الأنمي بالحالات الثلاث", smp.get("reconciliation", {}).get("explained") and set(smp["counters"]["anime"]) >= {"confirmed", "review", "unconfirmed"}, str(smp.get("reconciliation")))
+        con.close()
+    finally:
+        xt.shutdown(); tm.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_sample3_cases():
+    """ما طلبته مراجعة العيّنة الثالثة: Prison Break وOne Piece كيانًا واحدًا لكل معرّف TMDB (لا دمج بالاسم)، «ون بيس» alias،
+    شبكة الأشخاص (ممثل · مخرج · كاتب · شركة) علاقاتٍ حقيقية بصفحاتٍ وروابط، توحيد الشخص، الحلقات، ومصفوفة البحث."""
+    print("== حالات عيّنة الإنتاج الثالثة ==")
+    xt = mock_xtream.serve(0); tm = mock_tmdb.serve(0)
+    xbase, tbase = _serve(xt), _serve(tm)
+    seo_sources.TMDB_API = tbase + "/3"
+    d = tempfile.mkdtemp(prefix="seo_s3_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "falcon", "name": "فالكون"}, {"key": "smart", "name": "سمارت"}]}, f, ensure_ascii=False)
+        C.set_url(d, "smart", f"{xbase}/get.php?username=u&password=p&type=m3u_plus")
+        C.refresh(d, "smart")
+        _write(d, "casper", _cat([], [{"n": "Prison Break", "y": 2005, "s": [[1, 22]], "i": 23, "p": "http://panel/pb.png"},
+                                     {"n": "One Piece", "s": [[1, 61], [2, 50]], "i": 22}, {"n": "ون بيس", "s": [[1, 61], [2, 50], [3, 40]], "i": 24},
+                                     {"n": "Stub Show", "s": [[1, 54]], "i": 25}]))
+        cat = _cat([], [])
+        cat["series"] = [{"id": "s", "name": "Series", "items": [{"n": "Prison Break S01 Prison.Break", "s": [[0, 22]], "i": 70, "p": "http://panel/pb1.png"}]},
+                         {"id": "n", "name": "Netflix", "items": [{"n": "Prison Break S05 Prison.Break", "s": [[0, 9]], "i": 71, "p": "http://panel/pb5.png"},
+                                                                  {"n": "One Piece S01", "y": 2023, "s": [[0, 8]], "i": 73}]},
+                         {"id": "a", "name": "Anime - أنمي", "items": [{"n": "ONE PIECE S01 One.Piece", "s": [[0, 61]], "i": 72}]}]
+        _write(d, "falcon", cat)
+        seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        pb0 = q("SELECT id FROM content WHERE title='Prison Break' AND merged_into IS NULL")
+        check("قبل الإثراء: Prison Break ثلاثة كيانات (كاسبر، وفالكون S01 وS05 في قسمين بلا دليل) — لا دمج بالاسم", len(pb0) == 3, str(pb0))
+        seo_sources.set_tmdb_key(con, d, "testkey"); con.commit(); con.close()
+        smp = seo_sources.sample(d, {"movie": 2, "series": 3, "turkish": 1, "anime": 1, "titles": ["Prison Break", "One Piece", "ون بيس"]})
+        con = seo_db.connect(d)
+        st2 = seo_db.settings(con)
+        pb = q("SELECT id, slug, tmdb_id, merged_into FROM content WHERE title='Prison Break' ORDER BY id")
+        live = [r for r in pb if r[3] is None]
+        srv = sorted(x[0] for x in q("SELECT service_key FROM content_service WHERE content_id=? AND present=1", live[0][0])) if live else []
+        seas = {r[0] for r in q("SELECT number FROM season WHERE content_id=?", live[0][0])} if live else set()
+        check("A) Prison Break: بعد TMDB (2288 لكلٍّ) ← كيانٌ واحد حيّ، والآخران merged_into بتحويل 301، خدماته كاسبر+فالكون، ومواسمه 1 و5 (المواسم انتقلت)",
+              len(pb) == 3 and len(live) == 1 and live[0][2] == 2288 and all(r[3] == live[0][0] for r in pb if r[3] is not None)
+              and srv == ["casper", "falcon", "falcon"] and {1, 5} <= seas and len(q("SELECT 1 FROM redirect WHERE target LIKE '%prison%'")) >= 2, str((pb, srv, seas)))
+        rs = smp["resolution"]
+        check("تقرير التوحيد في العيّنة: Prison Break قبل 3 ← بعد كيانٌ حيٌّ واحد بمعرّفه (one entity per tmdb id)",
+              rs["Prison Break"]["live_entities"] == 1 and rs["Prison Break"]["verdict"] == "one entity per tmdb id" and len(rs["Prison Break"]["merged"]) == 2, str(rs["Prison Break"]))
+        op = q("SELECT id, title, year, tmdb_id, merged_into FROM content WHERE tmdb_id IN (37854, 111110) AND merged_into IS NULL ORDER BY tmdb_id")
+        links = {r[3]: sorted(x[0] for x in q("SELECT service_key FROM content_service WHERE content_id=? AND present=1", r[0])) for r in op}
+        al = {r[0] for r in q("SELECT alias FROM content_alias WHERE content_id=(SELECT id FROM content WHERE tmdb_id=37854 AND merged_into IS NULL)")}
+        check("B) One Piece: كيانان بمعرّفين (1999 أنمي: كاسبر One Piece + كاسبر «ون بيس» + فالكون ONE PIECE S01 — 2023 الحيّ: فالكون One Piece S01)، و«ون بيس» alias على الأنمي لا كيانًا",
+              [r[3] for r in op] == [37854, 111110] and links[37854] == ["casper", "casper", "falcon"] and links[111110] == ["falcon"] and "ون بيس" in al
+              and not q("SELECT 1 FROM content WHERE title='ون بيس' AND merged_into IS NULL"), str((op, links, sorted(al)[:6])))
+        msgs = [x[0] for x in q("SELECT error FROM enrich_queue WHERE source='tmdb' AND content_id IN (SELECT id FROM content WHERE tmdb_id=37854)")]
+        check("التوحيد بالدليل لا بالاسم: «One Piece» بلا سنة بين مرشّحين قويين حُسم بمواسم القائمة/قرينة أنمي (via search…+evidence)",
+              any("+evidence" in (m_ or "") for m_ in msgs), str(msgs))
+        # C) العلاقات والصفحات
+        pbw = next(w for w in smp["works"] if w.get("tmdb_id") == 2288)
+        rel = pbw["relations"]
+        check("C) Prison Break ← ممثلان (TMDB) ومبتكر وكاتب وشركة، كلٌّ بمعرّفه ومسار صفحته وتُرسم",
+              [a["name"] for a in rel["actors"]] == ["Wentworth Miller", "Dominic Purcell"] and {w_["name"] for w_ in rel["writers"]} == {"Paul Scheuring", "Some Writer"}
+              and rel["companies"][0]["name"] == "20th Century Fox Television" and all(x["renders"] for g in rel.values() for x in g)
+              and rel["actors"][0]["page"].startswith("/content/people/actors/") and rel["writers"][0]["page"].startswith("/content/people/writers/") and rel["companies"][0]["page"].startswith("/content/companies/"), json.dumps(rel, ensure_ascii=False)[:400])
+        tr_ar, tr_en = __import__("content_page").lang_of("ar"), __import__("content_page").lang_of("en")
+        ent = seo_pages.render_entity(con, d, "series", live[0][1], tr_ar, st2)[1]["html"].decode()
+        wm = q("SELECT slug FROM person WHERE name='Wentworth Miller'")[0][0]
+        co = q("SELECT slug FROM company WHERE name='20th Century Fox Television'")[0][0]
+        check("روابط صفحة العمل: الممثل ← /people/actors/، الكاتب ← /people/writers/، الشركة ← /companies/ (والسيرفرات في «متوفر عبر» لا في الإنتاج)",
+              f"/content/people/actors/{wm}/" in ent and "/content/people/writers/" in ent and f"/content/companies/{co}/" in ent and '"productionCompany"' in ent and '"author"' in ent, "")
+        con.close()
+        seo_sources.run(d, limit=400, force=True)          # بقية الأعمال (Breaking Bad من سمارت…) لشبكة الأشخاص كاملة
+        con = seo_db.connect(d)
+        pp = seo_pages.render_person(con, d, "actors", wm, tr_ar, st2)[1]
+        html = pp["html"].decode()
+        check("D) صفحة الممثل: أعماله كلها (Prison Break + ONE PIECE الحيّ)، canonical، hreflang عربي/إنجليزي، BreadcrumbList، Person، noindex، وروابط إلى صفحات أعماله",
+              pp["works"] == 2 and pp["canonical"].endswith(f"/content/people/actors/{wm}/") and len(pp["alts"]) == 3 and '"BreadcrumbList"' in html and '"@type": "Person"' in html
+              and "noindex" in html and f"/content/series/{live[0][1]}/" in html and pp["index_ar"], str({k: pp[k] for k in ("works", "canonical", "alts", "index_ar")}))
+        check("مسار الدور يجب أن يحمله الشخص: Wentworth Miller ليس في /people/directors/ (404)", seo_pages.render_person(con, d, "directors", wm, tr_ar, st2) is None)
+        vg = q("SELECT id, slug FROM person WHERE name='Vince Gilligan'")
+        roles = sorted(r[0] for r in q("SELECT role FROM content_person WHERE person_id=?", vg[0][0])) if vg else []
+        check("WRITER MODEL: Vince Gilligan صفٌّ واحد بدورَين creator وwriter (بمعرّف TMDB الواحد)، وSome Writer في Breaking Bad screenwriter",
+              len(vg) == 1 and roles == ["creator", "writer"] and q("SELECT 1 FROM content_person cp JOIN person p ON p.id=cp.person_id WHERE p.name='Some Writer' AND cp.role='screenwriter'"), str((vg, roles)))
+        wp = seo_pages.render_person(con, d, "writers", vg[0][1], tr_en, st2)[1]
+        check("صفحة الكاتب الإنجليزية: /en/content/people/writers/…، jobTitle في Person", wp["canonical"].endswith(f"/en/content/people/writers/{vg[0][1]}/") and '"jobTitle"' in wp["html"].decode())
+        cp = seo_pages.render_company(con, d, co, tr_ar, st2)[1]
+        chtml = cp["html"].decode()
+        check("صفحة الشركة: Organization، breadcrumb، canonical، رابط العمل، وعملٌ واحد ← بلا فهرسة (few works) لكنها تُرسم noindex",
+              '"@type": "Organization"' in chtml and '"BreadcrumbList"' in chtml and cp["canonical"].endswith(f"/content/companies/{co}/") and f"/content/series/{live[0][1]}/" in chtml
+              and cp["index_ar"] is False and "noindex" in chtml, str({k: cp[k] for k in ("canonical", "index_ar", "works")}))
+        check("الشركة ليست سيرفرًا: Casper/Smart/Falcon لا تظهر في company", not q("SELECT 1 FROM company WHERE lower(name) IN ('casper','smart','falcon','كاسبر','سمارت','فالكون')"))
+        # pagination
+        con.execute("INSERT INTO seo_settings(key, value, updated_at) VALUES ('page_size', '1', 0) ON CONFLICT(key) DO UPDATE SET value='1'"); con.commit()
+        st_small = seo_db.settings(con)
+        p1 = seo_pages.render_person(con, d, "actors", wm, tr_ar, st_small)[1]; p2 = seo_pages.render_person(con, d, "actors", wm, tr_ar, st_small, 2)[1]
+        check("ترقيم الصفحات: صفحتان بعملٍ لكلٍّ، rel=next في الأولى وrel=prev في الثانية، canonical بالصفحة، والثالثة 404",
+              p1["pages"] == 2 and 'rel="next"' in p1["html"].decode() and 'rel="prev"' in p2["html"].decode() and p2["canonical"].endswith("/page/2/")
+              and seo_pages.render_person(con, d, "actors", wm, tr_ar, st_small, 3) is None)
+        con.execute("DELETE FROM seo_settings WHERE key='page_size'"); con.commit()
+        # E) توحيد الشخص
+        bc = q("SELECT p.id, p.name_norm, (SELECT external_id FROM external_id x WHERE x.entity='person' AND x.entity_id=p.id AND x.source='tmdb') FROM person p WHERE p.name_norm='bryan cranston'")
+        check("E) Bryan Cranston من لوحة Xtream (بالاسم) ثم TMDB (بالمعرّف) ← صفٌّ واحد حمل المعرّف", len(bc) == 1 and bc[0][2] is not None, str(bc))
+        check("مفتاح الاسم: ترتيبٌ وتشكيلٌ وفاصلة عليا لا تفرّق", M.person_key("Miller, Wentworth") == M.person_key("Wentworth Miller") and M.person_key("O'Neil") == M.person_key("ONeil"))
+        pq = seo_sources.people_qa(con, st2)
+        check("إحصاء الشبكة: لا صفّين لاسمٍ واحد بلا معرّفين مختلفين، وأدوار writer/screenwriter/creator منفصلة، والعيّنة تحمل الإحصاء",
+              pq["same_name_rows_without_distinct_tmdb_ids"] == 0 and {"writer", "screenwriter", "creator", "actor", "director"} <= set(pq["by_role"]) and "persons" in smp["people"], str(pq))
+        # F) الحلقات
+        stub = next(w for w in smp["works"] if w.get("tmdb_id") == 99009)
+        check("F) سجلّ TMDB ناقص (حلقة واحدة) لعملٍ بـ 54 في القوائم: الصفحة لا تعرض 1 رسميًّا بل «54 في القوائم»، والحقول منفصلة",
+              stub["episodes"]["official"] == 1 and stub["episodes"]["listed"] == 54 and "54 حلقة في القوائم" in stub["page"]["ar"]["meta_description"], stub["page"]["ar"]["meta_description"])
+        pbe = pbw["episodes"]
+        check("سجلات الحلقات بمصدرها (tmdb/xtream) والخاصة على حدة", "records_by_source" in pbe and "specials" in pbe and pbe["records_by_source"].get("tmdb", 0) >= 1, str(pbe))
+        # G) البحث
+        idx = seo_search.load(con)
+        ex = lambda s_: seo_search.explain(con, idx, s_, st2)   # noqa: E731
+        r = ex("Prison Break")
+        check("G) «Prison Break» ← كيانٌ واحد", r["result"] == "entity" and len(r["entities"]) == 1, str(r)[:200])
+        vs = {s_: ex(s_) for s_ in ("Prison Brek", "person break", "بريزن بريك", "بريزون بريك")}
+        check("«Prison Brek» و«person break» و«بريزن بريك» و«بريزون بريك» ← اقتراحٌ واحد (0.95) للكيان نفسه",
+              all((x["result"] == "suggest" and len(x["suggest"]) == 1 and x["suggest"][0]["id"] == live[0][0]) or (x["result"] == "entity" and [e_["id"] for e_ in x["entities"]] == [live[0][0]]) for x in vs.values()),
+              str({k: (v["result"], [(s["id"], s["slug"], s["confidence"]) for s in v.get("suggest", [])]) for k, v in vs.items()}))   # «بريزون بريك» ترجمة TMDB نفسها ← الكيان مباشرة
+        r = ex("One Piece")
+        check("«One Piece» ← كيانان لعملين مختلفين فعلًا، مجمّعان مع السبب «different tmdb ids»", r["result"] == "entity" and len(r["entities"]) == 2 and r["grouped"][0]["why_separate"] == ["different tmdb ids"], str(r)[:300])
+        r = ex("ون بيس")
+        check("«ون بيس» ← alias من ترجمة TMDB على العملين (الأنمي والحيّ يحملان الاسم العربي نفسه): كيانان مجمّعان بسبب «different tmdb ids»، لا كيان «ون بيس» مستقل",
+              r["result"] == "entity" and {x["id"] for x in r["entities"]} == {op[0][0], op[1][0]} and r["grouped"][0]["why_separate"] == ["different tmdb ids"], str(r)[:300])
+        r = ex("وان بيس")
+        check("«وان بيس» ← اقتراحٌ صوتي للكيانين", r["result"] == "suggest" and {x["id"] for x in r["suggest"]} == {op[0][0], op[1][0]}, str(r)[:200])
         con.close()
     finally:
         xt.shutdown(); tm.shutdown()
@@ -928,6 +1057,7 @@ def main():
     unit_ten()
     unit_production_cases()
     unit_sample2_cases()
+    unit_sample3_cases()
     unit_enrich()
     live()
     print("\nResult: %d passed, %d failed" % (_p, _f))
