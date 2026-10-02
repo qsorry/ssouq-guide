@@ -10,8 +10,9 @@
 
   الكتالوجات     بترتيب تطبيقات IPTV: الحسابات · المسلسلات · الأفلام · البث المباشر. «الحسابات» حال الاشتراك
                  (الحالة والانتهاء والمتبقّي والاتصالات) لكل خطوط حساب Stremio، ورابط التجديد. والمحتوى بلا تصنيف
-                 = الكل (الأحدث إضافةً أولًا)، وأقسام الأفلام والمسلسلات تصنيفاتٌ (genre) في صفحة «اكتشف»، والقنوات
-                 كلها تصنيفٌ واحد؛ والبحث بالاسم في الثلاثة (صفوفه بالترتيب نفسه).
+                 = الكل (الأحدث إضافةً أولًا، والقنوات بترتيب السيرفر)، وأقسام السيرفر تصنيفاتٌ (genre) في صفحة
+                 «اكتشف» للثلاثة؛ والبحث بالاسم في الثلاثة (صفوفه بالترتيب نفسه). وملصق القناة مرسوم: اسمها ورقمها
+                 وختم جودتها (‏stremio_posters).
   التفاصيل      الفيلم من get_vod_info، والمسلسل بمواسمه وحلقاته من get_series_info، والقناة من القائمة.
   التشغيل       روابط السيرفر نفسه: ‏/movie/ · ‏/series/ · ‏/live/ (‏HLS ثم TS حسب ما يسمح به الاشتراك).
 
@@ -40,11 +41,12 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 import content as C
 import crypto_store
 import stremio_library as LIB
+import stremio_posters as POSTERS
 
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.4.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.5.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -68,8 +70,10 @@ ORDER = ("series", "movie", "tv")
 ACCOUNTS = "الحسابات"
 ACCOUNTS_ID = "sq_accounts"
 ACCOUNTS_AGE = 300                   # عمر صفّ «الحسابات» عند Stremio (ثوانٍ): المتبقّي يتغيّر كل يوم
-# أقسام السيرفر تصنيفاتٌ للأفلام والمسلسلات؛ والقنوات تصنيفٌ واحد: كلها في كتالوجها بترتيب السيرفر وبحثٍ بالاسم
+# أقسام السيرفر تصنيفاتٌ في الثلاثة (والقنوات بلا تصنيف = كلها بترتيب السيرفر)؛ وتصنيف العمل نفسه («جريمة» في صفحته)
+# للأفلام والمسلسلات وحدها
 GENRE_TYPES = ("movie", "series")
+POSTER_LABEL = "poster"              # وسم رمز ملصق القناة (‏/stremio/p/<رمز>.png)
 _UNIT = {"movie": "فيلم", "series": "مسلسل", "tv": "قناة"}
 _CODE = {"movie": "m", "series": "s", "tv": "l"}   # بادئة المعرّف بعد بادئة السيرفر؛ و‏e للحلقة
 
@@ -649,13 +653,11 @@ def _kind_info(cfg, kind):
     أعداد، وإلا لا شيء. ‏AuthError تصعد: اشتراكٌ يرفضه السيرفر."""
     try:
         L = lists(cfg, kind)
-        return [(g, len(L.by_genre[g])) for g in L.genres] if kind in GENRE_TYPES else [], len(L.items)
+        return [(g, len(L.by_genre[g])) for g in L.genres], len(L.items)
     except AuthError:
         raise
     except XtreamError:
         pass
-    if kind not in GENRE_TYPES:
-        return [], None
     try:
         seen, out = set(), []
         for c in categories(cfg, kind):
@@ -680,14 +682,14 @@ def _lib_info(lines, kind):
         lib = library(lines, kind)
     except XtreamError:
         return None
-    return (lib.genres if kind in GENRE_TYPES else []), len(lib.works), lib.labels
+    return lib.genres, len(lib.works), lib.labels
 
 
 def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True):
     """(وصف الإضافة، حاله) بترتيب تطبيقات IPTV: «الحسابات» (‏accounts: لصاحب حساب Stremio أو رابطٍ وحده — والخط
     المرتبط بلاها، فلا يتكرّر صفّها) ثم المسلسلات ثم الأفلام ثم البث المباشر، باسم السيرفر وعدد محتوى كلٍّ («سمارت
-    (10,329)»، ويُلحق Stremio النوع)، وأقسام الأفلام والمسلسلات تصنيفاتٌ بعدد كلٍّ («مسلسلات تركية (855)»)، والقنوات
-    تصنيفٌ واحد. الأنواع الثلاثة تُحمَّل معًا. فشل نوعٍ لا يُسقط الإضافة: يبقى كتالوجه بلا أعداد أو بلا تصنيفات؛
+    (10,329)»، ويُلحق Stremio النوع)، وأقسام السيرفر تصنيفاتٌ بعدد كلٍّ («مسلسلات تركية (855)» · «رياضة (120)»).
+    الأنواع الثلاثة تُحمَّل معًا. فشل نوعٍ لا يُسقط الإضافة: يبقى كتالوجه بلا أعداد أو بلا تصنيفات؛
     واشتراكٌ يرفضه السيرفر تُثبَّت إضافته كما هي وتعمل متى جُدِّد. الحال: "ok" حُمّلت الأنواع كلها وفيها محتوى ·
     "pending" رُفض الاشتراك أو جاء فارغًا (يوزرٌ لم يُفعَّل بعد: يُعاد بعد قليل) · "error" تعذّر نوعٌ من السيرفر نفسه
     (انقطاعٌ أو مهلة: الإعادة الفورية لا تفيد).
@@ -740,7 +742,7 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
                  "بترتيب تطبيقات IPTV: الحسابات ثم المسلسلات ثم الأفلام ثم البث المباشر، والبحث في كل الاشتراكات معًا.")
     else:
         about = "اشتراكك في Stremio بترتيب تطبيقات IPTV: " + ("الحسابات (حال اشتراكك وانتهاؤه)، ثم " if accounts else "") + \
-            "المسلسلات بمواسمها وحلقاتها، والأفلام بأقسام السيرفر نفسها، والبث المباشر كله في تصنيفٍ واحد، والبحث بالاسم في الثلاثة."
+            "المسلسلات بمواسمها وحلقاتها، والأفلام والبث المباشر بأقسام السيرفر نفسها، والبحث بالاسم في الثلاثة."
     return {
         "id": f"com.ssouq.xtream.{uid}",
         "version": VERSION,
@@ -1255,8 +1257,17 @@ def _sources_line(w):
     return " · ".join(out)
 
 
-def work_preview(pre, w, multi):
-    """بطاقة العمل: بمصدرٍ واحد كما كانت بطاقة عنصره، وبمصادر شتّى بأسمائها في وصفها (يظهر في «اكتشف» بجانب الملصق)."""
+def channel_poster(lib, w, poster_url):
+    """ملصق القناة المرسوم (‏stremio_posters): اسمها ورقمها في القائمة الموحدة وختم أعلى جوداتها وقسمها — أو None."""
+    if not poster_url or w.kind != "tv":
+        return None
+    best = max(w.sources, key=lambda s: LIB.QUALITY_RANK.get(s.key.quality, 1)).key.quality
+    return poster_url(w.name, lib.number(w), best, w.anchor.cat or "")
+
+
+def work_preview(pre, w, multi, poster=None):
+    """بطاقة العمل: بمصدرٍ واحد كما كانت بطاقة عنصره، وبمصادر شتّى بأسمائها في وصفها (يظهر في «اكتشف» بجانب الملصق).
+    ‏poster: ملصقٌ مرسوم يحلّ محلّ صورة السيرفر (القنوات)."""
     it = w.anchor.item
     if len(w.sources) == 1:
         m = _preview(pre, w.kind, it)
@@ -1268,6 +1279,8 @@ def work_preview(pre, w, multi):
     if multi and w.kind != "tv":
         line = "المصادر: " + _sources_line(w)
         m["description"] = f"{m['description']} — {line}" if m.get("description") else line
+    if poster:
+        m["poster"] = poster
     return m
 
 
@@ -1289,7 +1302,7 @@ def _lib_tagged(lines, lib, kind, g):
     return seq + sorted(more, key=lambda w: -w.added)
 
 
-def lib_catalog(lines, kind, cid, extra, pre):
+def lib_catalog(lines, kind, cid, extra, pre, poster_url=None):
     """صفحةٌ من كتالوج المكتبة الموحدة: بحثٌ في كل الخطوط معًا (العمل مرةً واحدة)، أو قسم، أو «مصدر: …»، أو تصنيف عمل،
     أو الكل — 100 عملٍ من ‏skip."""
     if kind not in CATALOG or cid != CATALOG[kind]:
@@ -1308,7 +1321,7 @@ def lib_catalog(lines, kind, cid, extra, pre):
         seq = lib.latest
     multi = len(lines) > 1
     page = seq[skip:skip + PAGE]
-    metas = [work_preview(pre, w, multi) for w in page]
+    metas = [work_preview(pre, w, multi, channel_poster(lib, w, poster_url)) for w in page]
     if kind == "tv":
         for m, w in zip(metas, page):
             if w.anchor.cat:
@@ -1351,7 +1364,7 @@ def _series_sources(lines, w):
         return list(ex.map(one, w.sources))
 
 
-def lib_meta(lines, kind, sid, man, pre):
+def lib_meta(lines, kind, sid, man, pre, poster_url=None):
     """تفاصيل عملٍ في المكتبة: من أفضل مصادره، ومصادره كلها روابطَ في صفحته؛ والمسلسل بحلقات مصادره كلها (الحلقة الواحدة مرةً
     واحدة، ولكلٍّ مصادرها في التشغيل)."""
     w, _ = _work(lines, kind, pre, sid)
@@ -1373,6 +1386,9 @@ def lib_meta(lines, kind, sid, man, pre):
         cat = L.cat_of(it)
         m = _clean({**_preview(pre, "tv", it), "id": wid, "name": w.name, "description": cat, "genres": [cat] if cat else [],
                     "links": _links(man, "tv", it.name, None, [cat] if cat else []), "behaviorHints": {"defaultVideoId": wid}})
+        pst = channel_poster(library(lines, "tv"), w, poster_url)
+        if pst:
+            m["poster"] = pst
         return {"meta": _with_sources(m, w, man, multi)}
     per = _series_sources(lines, w)
     if len(w.sources) == 1 and w.anchor.line == 0:              # مصدرٌ واحد في خط صاحب الحساب: كما كان (معرّفات حلقاته)
@@ -1674,6 +1690,25 @@ def _lines_of(cfg0, cfg, label, lines_for):
     return val
 
 
+def _poster_maker(data_dir, base):
+    """(اسم، رقم، جودة، قسم) ← رابط ملصق القناة على الموقع: معطياته مختومةٌ في الرابط (حتمي: القناة نفسها = الرابط نفسه،
+    فيحفظه Stremio)، فلا يُرسم بالرابط نصٌّ لم يصدر منّا."""
+    def make(name, num, quality, cat):
+        tok = crypto_store.seal_token(f"{int(num or 0)}\n{quality or ''}\n{cat or ''}\n{name}", data_dir, POSTER_LABEL)
+        return f"{base}{PATH}/p/{tok}.png"
+    return make
+
+
+def poster_response(data_dir, tok):
+    """‏/stremio/p/<رمز>.png ← صورة الملصق (PNG، أو SVG بلا Pillow)، تُحفظ عند Stremio شهرًا (معطياتها في رابطها)."""
+    raw = crypto_store.open_token(tok, data_dir, POSTER_LABEL) if 20 <= len(tok) <= 900 else None
+    bits = raw.split("\n", 3) if raw else []
+    if len(bits) != 4 or not bits[3].strip():
+        return 404, b"", "text/plain; charset=utf-8", {**_CORS, "Cache-Control": "no-store"}
+    body, ctype = POSTERS.render(bits[3], _int(bits[0], 0), bits[1], bits[2])
+    return 200, body, ctype, {**_CORS, "Cache-Control": "public, max-age=2592000, immutable"}
+
+
 def forget_lines():
     """ينسى خطوط الحسابات المحفوظة ثوانيَ — بعد ربط خطٍّ أو فصله تظهر المكتبة الجديدة من أول طلب."""
     with _lock:
@@ -1692,6 +1727,8 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
     parts = [unquote(p) for p in path[len(PATH):].split("/") if p != ""]
     if parts and len(parts) <= 2 and parts[-1] == "configure":   # زرّ «Configure» في Stremio ← موقع المتجر
         return 302, b"", "text/plain; charset=utf-8", {**_PAGE_HDR, "Location": CONFIGURE_URL, "Cache-Control": "no-store"}
+    if len(parts) == 2 and parts[0] == "p" and parts[1].endswith(".png"):   # ملصق قناةٍ مرسوم (رابطه مختومٌ منّا)
+        return poster_response(data_dir, parts[1][:-len(".png")])
     if not parts or len(parts) == 1:
         return page()                                    # الصفحة العامة، وصفحة التثبيت برمزها
     cfg, key = read_token_key(data_dir, parts[0])
@@ -1750,11 +1787,12 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
             if lines is None:                            # الخط المرتبط: صفوفه القديمة تختفي (محتواه في المكتبة الموحدة)
                 return _json(200, {"metas": []}, 900) if rest[1] in CATALOG else _json(404, {"metas": []})
             extra = parse_extra(path.rsplit("/", 1)[-1][:-5]) if len(rest) == 4 else {}
-            res = lib_catalog(lines, rest[1], rest[2], extra, pre)
+            res = lib_catalog(lines, rest[1], rest[2], extra, pre, _poster_maker(data_dir, base))
             return _json(200, res, 900) if res is not None else _json(404, {"metas": []})
         if rest[0] == "meta" and len(rest) == 3:
             man = links(base, parts[0])["manifest"]
-            res = meta(cfg, rest[1], rest[2], man) if lines is None else lib_meta(lines, rest[1], rest[2], man, pre)
+            res = meta(cfg, rest[1], rest[2], man) if lines is None else \
+                lib_meta(lines, rest[1], rest[2], man, pre, _poster_maker(data_dir, base))
             return _json(200, res, 3600) if res else _json(404, {"meta": None})
         if rest[0] == "stream" and len(rest) == 3:
             if lines is None:

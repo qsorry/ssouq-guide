@@ -285,6 +285,35 @@ def through_addon():
             S._accounts.clear()
         S._probes.clear()
 
+        print("== القنوات: أقسامها تصنيفات، وملصقٌ مرسوم باسمها ورقمها وختم جودتها ==")
+        tcat = next(c for c in S.manifest(c1, "https://g", "سمارت", lines=lines)["catalogs"] if c["type"] == "tv")
+        check("أقسام القنوات في التصنيف بأعدادها", next(e["options"] for e in tcat["extra"] if e["name"] == "genre")[0] == "رياضة (1)",
+              json.dumps(tcat["extra"], ensure_ascii=False)[:200])
+        mk = S._poster_maker(d, "https://g")
+        lvp = S.lib_catalog(lines, "tv", "sq_live", {}, pre, mk)["metas"]
+        check("بطاقة القناة بملصقٍ من الموقع (رابطه مختوم)", lvp[0]["poster"].startswith("https://g/stremio/p/") and lvp[0]["poster"].endswith(".png"))
+        tok_p = lvp[0]["poster"].rsplit("/", 1)[1][:-4]
+        raw = S.crypto_store.open_token(tok_p, d, S.POSTER_LABEL)
+        check("ومعطياته: رقمها في القائمة، وأعلى جودات مصادرها (FHD من كاسبر)، وقسمها واسمها", raw == "1\nFHD\nرياضة\nbeIN SPORTS 1", repr(raw))
+        check("والرابط نفسه للقناة نفسها (يحفظه Stremio)", S.lib_catalog(lines, "tv", "sq_live", {}, pre, mk)["metas"][0]["poster"] == lvp[0]["poster"])
+        mtv = S.lib_meta(lines, "tv", lvp[0]["id"], "https://g/stremio/T/manifest.json", pre, mk)["meta"]
+        check("وصفحتها بالملصق نفسه", mtv["poster"] == lvp[0]["poster"])
+        code, body, ctype, hdr = S.poster_response(d, tok_p)
+        check("‏/stremio/p/<رمز>.png ← الصورة (PNG بـ Pillow، وإلا SVG)، تُحفظ شهرًا",
+              code == 200 and (body[:8] == b"\x89PNG\r\n\x1a\n" if ctype == "image/png" else ctype == "image/svg+xml" and b"<svg" in body)
+              and "immutable" in hdr["Cache-Control"], f"{ctype} {len(body)}")
+        bad = tok_p[:-2] + ("AA" if not tok_p.endswith("AA") else "BB")
+        check("ورابطٌ معبوثٌ به (نصٌّ لم يصدر منّا) ← 404", S.poster_response(d, bad)[0] == 404 and S.poster_response(d, "x")[0] == 404)
+        code, body, ctype, hdr = S.handle(d, f"/stremio/p/{tok_p}.png", "https://g")
+        check("وعبر المسارات", code == 200 and ctype in ("image/png", "image/svg+xml") and hdr.get("Access-Control-Allow-Origin") == "*")
+        import stremio_posters as P
+        check("اسم الملصق بلا بادئة اللغة ولا رمز الجودة (الختم يقولها)", P.display_name("AR: MBC 1 HD") == "MBC 1"
+              and P.display_name("beIN SPORTS 1 FHD") == "beIN SPORTS 1")
+        svg = P._svg("قناة السعودية", 37, "4K", "قنوات عربية").decode()
+        check("والتصميم نفسه بلا Pillow (SVG): الرقم والختم والاسم والقسم", ">37<" in svg and ">4K<" in svg and "قناة السعودية" in svg
+              and "قنوات عربية" in svg and 'direction="rtl"' in svg)
+        check("وبلا ختمٍ لجودةٍ لا تُعرف", "rotate(" not in P._svg("Al Jazeera", 3, "", "").decode())
+
         print("== عبر المسارات ==")
         tok = S.make_token(d, h1, "u", "p")
         s1b = MP.serve(smart, port=s1.server_address[1])  # سمارت عاد

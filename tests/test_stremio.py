@@ -304,8 +304,9 @@ def against_mock():
             kept = [k for k in S.TYPES if S._list_keys.get((empty, k)) in S._lists]
             cats_gone = (empty, "series") not in S._cats
         check("إعادة القراءة تنسى الفارغ وحده (وما حُمّل بمحتواه يبقى)", kept == ["movie"] and cats_gone, str(kept))
-        check("والقنوات كلها تصنيفٌ واحد (بحثٌ وصفحات، بلا قائمة أقسام)", [e["name"] for e in cat["tv"]["extra"]] == ["search", "skip"]
-              and cat["tv"]["extraSupported"] == ["search", "skip"], str(cat["tv"]["extra"]))
+        topts = cat["tv"]["extra"][0].get("options") or []
+        check("وأقسام القنوات تصنيفاتٌ كذلك بأعدادها (بلا قسم الكبار)، والبحث والصفحات", [e["name"] for e in cat["tv"]["extra"]] == ["genre", "search", "skip"]
+              and [S._COUNT.sub("", o) for o in topts] == list(mock_xtream.CHANNELS) and sum(map(n_of, topts)) == n_live, str(topts))
         check("لا تصنيفٌ مطلوب (الكتالوجات في الرئيسية) والبحث والصفحات مدعومة في المحتوى",
               all(not e["isRequired"] for c in man["catalogs"] for e in c["extra"])
               and all({"search", "skip"} <= set(c["extraSupported"]) for c in man["catalogs"][1:]))

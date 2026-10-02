@@ -299,7 +299,12 @@ class Library:
         self.by_src = {(s.hk, s.item.id): w for w in works for s in w.sources}
         self.genres = genres                                      # [(اسم القسم، عدد الأعمال)] بترتيب الخطوط
         self.labels = list(dict.fromkeys(lb for w in works for lb in w.labels))
+        self._num = {id(w): n for n, w in enumerate(self.latest, 1)} if kind == "tv" else {}
         self._lock = threading.Lock()
+
+    def number(self, w):
+        """رقم القناة: مكانها في القائمة الموحدة (بترتيب السيرفر) — كأرقام القنوات في تطبيقات IPTV."""
+        return self._num.get(id(w), 0)
 
     def find(self, hk, iid):
         return self.by_src.get((hk, iid))

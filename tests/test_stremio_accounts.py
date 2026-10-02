@@ -350,7 +350,7 @@ def through_server():
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "late", "password": "lp"})
         m = (ours("late@tv.ssouq.com") or [{}])[0].get("manifest", {})
         check("يُنتظر حتى يقبله السيرفر ثم تُثبَّت الإضافة بأقسامها وأعدادها", c == 200 and xt.pending["late"] == 0
-              and len(genre_opts(m)) == 2 and all(genre_opts(m)) and m["catalogs"][1]["name"].endswith(")"), json.dumps(m, ensure_ascii=False)[:200])
+              and len(genre_opts(m)) == 3 and all(genre_opts(m)) and m["catalogs"][1]["name"].endswith(")"), json.dumps(m, ensure_ascii=False)[:200])
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "nv", "password": "np"})   # يرفضه السيرفر طوال الانتظار
         m = (ours("nv@tv.ssouq.com") or [{}])[0].get("manifest", {})
         check("وما بقي مرفوضًا: الحساب يُنشأ والإضافة تُثبَّت بلا أقسام", c == 200 and r.get("email") == "nv@tv.ssouq.com" and not genre_opts(m))
@@ -361,7 +361,7 @@ def through_server():
         c, r = post("/api/stremio/reinstall", {"gate": "g1", "username": "nv"})
         m = [a["manifest"] for a in ours("nv@tv.ssouq.com")]
         check("«تحديث الإضافة» يعيد تثبيتها بأقسامها — نسخةً واحدة مكان القديمة", c == 200 and r.get("addon_full") is True
-              and len(m) == 1 and all(genre_opts(m[0])) and len(genre_opts(m[0])) == 2, json.dumps(r, ensure_ascii=False))
+              and len(m) == 1 and all(genre_opts(m[0])) and len(genre_opts(m[0])) == 3, json.dumps(r, ensure_ascii=False))
         c, r = post("/api/stremio/accounts?gate=g1", None)
         nv = next(a for a in r["accounts"] if a["username"] == "nv")
         check("ويزول التعليم، ويُقرأ حاله من السيرفر من جديد", nv.get("addon_full") is True and nv.get("status") == "Active", json.dumps(nv, ensure_ascii=False)[:200])
