@@ -99,9 +99,35 @@ def _ours(a):
     return str((a.get("manifest") or {}).get("id", "")).startswith(OURS)
 
 
-def install(auth, descriptor, first=True):
+def _with_extras(addons, extras):
+    """القائمة ومعها ما ليس فيها من «الإضافات الأخرى» (بالرابط أو بالمعرّف) — بعد إضافاتنا مباشرة (قبل Cinemeta
+    وغيرها: إضافة بياناتٍ مثل AIOMetadata تُقدَّم عليها)."""
+    urls = {a.get("transportUrl") for a in addons}
+    ids = {(a.get("manifest") or {}).get("id") for a in addons}
+    add = [e for e in extras or () if e.get("transportUrl") not in urls and (e.get("manifest") or {}).get("id") not in ids]
+    if not add:
+        return addons
+    at = max((n + 1 for n, a in enumerate(addons) if _ours(a)), default=0)
+    return addons[:at] + list(add) + addons[at:]
+
+
+def set_extras(auth, extras, remove=False):
+    """«الإضافات الأخرى» في حسابٍ: تُثبَّت ما ليس فيه منها، أو تُسقط (بروابطها). ← كم تغيّر."""
+    res = _call("addonCollectionGet", {"type": "AddonCollectionGet", "authKey": auth, "update": True})
+    addons = [a for a in ((res.get("addons") if isinstance(res, dict) else None) or []) if isinstance(a, dict)]
+    if remove:
+        urls = {e.get("transportUrl") for e in extras}
+        new = [a for a in addons if a.get("transportUrl") not in urls]
+    else:
+        new = _with_extras(addons, extras)
+    if len(new) != len(addons):
+        _call("addonCollectionSet", {"type": "AddonCollectionSet", "authKey": auth, "addons": new})
+    return abs(len(new) - len(addons))
+
+
+def install(auth, descriptor, first=True, extras=()):
     """يثبّت إضافتنا أولَ قائمة الحساب (أو بعد إضافاتنا فيه: خطٌّ يُربط بحسابٍ فيه غيره)، ويحلّ محلّ إضافةٍ سابقةٍ
-    لنا على السيرفر نفسه (نفس بادئة المعرّفات) في مكانها."""
+    لنا على السيرفر نفسه (نفس بادئة المعرّفات) في مكانها؛ ومعها «الإضافات الأخرى» (‏extras) ما لم تكن فيه."""
     res = _call("addonCollectionGet", {"type": "AddonCollectionGet", "authKey": auth, "update": True})
     addons = res.get("addons") if isinstance(res, dict) else None
     addons = [a for a in (addons or []) if isinstance(a, dict)]
@@ -117,8 +143,9 @@ def install(auth, descriptor, first=True):
         at = sum(1 for a in addons[:old] if not ours(a))
     else:
         at = 0 if first else max((n + 1 for n, a in enumerate(keep) if _ours(a)), default=0)
-    _call("addonCollectionSet", {"type": "AddonCollectionSet", "authKey": auth, "addons": keep[:at] + [descriptor] + keep[at:]})
-    return len(keep) + 1
+    new = _with_extras(keep[:at] + [descriptor] + keep[at:], extras)
+    _call("addonCollectionSet", {"type": "AddonCollectionSet", "authKey": auth, "addons": new})
+    return len(new)
 
 
 def uninstall(auth, prefixes):
@@ -140,6 +167,36 @@ def email_for(username, domain=None):
     if not local:
         raise ValueError("يوزرٌ لا يصلح اسمًا لإيميل")
     return f"{local[:64]}@{domain or DOMAIN}"
+
+
+def custom_email(name, domain=None):
+    """إيميلٌ يختاره الموظف لحساب Stremio: اسمٌ (أو اسم@دومين بريدنا — ليصل بريده هنا) بحروفٍ لاتينية صغيرة وأرقام
+    و. _ - (3–64). ‏ValueError برسالةٍ للعرض."""
+    dom = domain or DOMAIN
+    s = str(name or "").strip().lower()
+    if "@" in s:
+        s, at = s.rsplit("@", 1)
+        if at != dom:
+            raise ValueError(f"الإيميل على دومين بريدنا وحده (@{dom}) — ليصل بريده هنا")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,62}[a-z0-9]", s) or ".." in s:
+        raise ValueError("اسم الإيميل: حروفٌ لاتينية وأرقام و. _ - (3 أحرف فأكثر)")
+    return f"{s}@{dom}"
+
+
+def custom_password(password):
+    """كلمة مرورٍ يختارها الموظف كما هي (6–64 بلا مسافات). ‏ValueError برسالةٍ للعرض."""
+    pw = str(password or "")
+    if not 6 <= len(pw) <= 64 or re.search(r"\s", pw):
+        raise ValueError("كلمة المرور: 6 أحرف فأكثر بلا مسافات")
+    return pw
+
+
+def email_taken(data_dir, email):
+    """هل لإيميلٍ حسابٌ عندنا (لأي يوزر)؟"""
+    email = str(email or "").strip().lower()
+    with _lock:
+        d = _load(data_dir)
+    return any(isinstance(r, dict) and str(r.get("email", "")).lower() == email for r in d.values())
 
 
 def _exists(e):
@@ -284,14 +341,14 @@ def note(data_dir, host_key, username, **fields):
     return True
 
 
-def reinstall(data_dir, host_key, username, descriptor):
+def reinstall(data_dir, host_key, username, descriptor, extras=()):
     """يعيد تثبيت الإضافة في حسابٍ محفوظ (بأحدث أقسامها وأعدادها) — تحلّ محلّ نسختنا السابقة فيه."""
     rec = get(data_dir, host_key, username)
     if not rec:
         raise ValueError("لا حساب Stremio لهذا اليوزر")
     auth = login(rec["email"], rec["password"])
     try:
-        install(auth, descriptor())
+        install(auth, descriptor(), extras=extras)
     finally:
         logout(auth)
     return rec
@@ -314,7 +371,7 @@ def group(data_dir, host_key, username):
     return [{**_plain(data_dir, r), "key": kk} for kk, r in [(root, d[root])] + kids]
 
 
-def link(data_dir, root_host_key, root_username, host_key, username, descriptor, owner=None):
+def link(data_dir, root_host_key, root_username, host_key, username, descriptor, owner=None, extras=()):
     """يربط خطًّا (يوزرًا على سيرفرٍ آخر) بحساب Stremio قائم: تُثبَّت إضافته فيه بجانب إضافاتنا الأخرى، ويُحفظ له
     حسابٌ بإيميل صاحب الحساب وكلمة مروره (‏linked_to). ← (الخط، رُبط الآن؟). ‏ValueError: لا حساب، أو لليوزر حسابٌ
     آخر، أو في الحساب خطٌّ من السيرفر نفسه (إضافتهما تتزاحمان)، أو بلغ الحدّ. ‏StremioError برسالةٍ للعرض."""
@@ -342,7 +399,7 @@ def link(data_dir, root_host_key, root_username, host_key, username, descriptor,
         email = root["email"]
         auth = login(email, crypto_store.decrypt(root.get("password", ""), data_dir))
         try:
-            install(auth, descriptor(), first=False)
+            install(auth, descriptor(), first=False, extras=extras)
         finally:
             logout(auth)
         rec = {"email": email, "password": root.get("password", ""), "username": username, "host": host_key,
@@ -409,21 +466,25 @@ def rate_ok(now=None, limit=None):
         return True
 
 
-def ensure(data_dir, host_key, username, password, descriptor, owner=None):
+def ensure(data_dir, host_key, username, password, descriptor, owner=None, email=None, extras=()):
     """حساب Stremio ليوزر: المحفوظ كما هو، وإلا يُسجَّل (أو يُستعاد إن سبق تسجيله بكلمة مرورنا) وتُثبَّت فيه
-    الإضافة ويُحفظ. ‏descriptor دالةٌ تبني وصف الإضافة (لا يُبنى إلا عند الحاجة). ← (الحساب، أُنشئ الآن؟).
-    StremioError برسالةٍ للعرض، وValueError ليوزرٍ لا يصلح أو حدٍّ تجاوزه."""
+    الإضافة ويُحفظ. ‏descriptor دالةٌ تبني وصف الإضافة (لا يُبنى إلا عند الحاجة). ‏email: إيميلٌ يختاره الموظف
+    (‏custom_email) بدل إيميل اليوزر، وpassword حينها كلمة مروره كما كُتبت (بلا «A»). ← (الحساب، أُنشئ الآن؟).
+    StremioError برسالةٍ للعرض، وValueError ليوزرٍ لا يصلح أو حدٍّ تجاوزه أو إيميلٍ مستخدم."""
     rec = get(data_dir, host_key, username)
     if rec:
         return rec, False
-    email = email_for(username)
-    password = str(password or "").strip()
+    custom = email is not None
+    email = custom_email(email) if custom else email_for(username)
+    password = custom_password(password) if custom else str(password or "").strip()
     if not password:
         raise ValueError("اليوزر بلا باسورد")
     with _signup:
         rec = get(data_dir, host_key, username)      # طلبٌ سبقه وهو ينتظر
         if rec:
             return rec, False
+        if custom and email_taken(data_dir, email):
+            raise ValueError(f"الإيميل {email} لحسابٍ آخر عندنا — اختر اسمًا آخر، أو اربط الخط بذلك الحساب")
         if not rate_ok():
             raise ValueError(f"بلغت حسابات Stremio حدّها لهذه الساعة ({PER_HOUR}) — حاول بعد قليل")
         pw, auth, adopted = password, None, False
@@ -431,7 +492,7 @@ def ensure(data_dir, host_key, username, password, descriptor, owner=None):
             auth = register(email, pw)
         except StremioError as e:
             if _exists(e):                           # سُجّل من قبل (من هنا أو يدويًا): نجرّب كلمتَي مرورنا
-                for cand in (pw, pw + SUFFIX) if SUFFIX else (pw,):
+                for cand in (pw, pw + SUFFIX) if SUFFIX and not custom else (pw,):
                     try:
                         auth, pw, adopted = login(email, cand), cand, True
                         break
@@ -439,19 +500,19 @@ def ensure(data_dir, host_key, username, password, descriptor, owner=None):
                         continue
                 if not auth:
                     raise StremioError(f"الإيميل {email} مسجّلٌ في Stremio بكلمة مرورٍ أخرى") from None
-            elif SUFFIX and not pw.endswith(SUFFIX) and (_weak(e) or pw.isdigit()):
+            elif SUFFIX and not custom and not pw.endswith(SUFFIX) and (_weak(e) or pw.isdigit()):
                 pw = pw + SUFFIX                     # رفض Stremio كلمة المرور (أو كانت أرقامًا فقط): يُضاف حرفٌ كبير
                 auth = register(email, pw)
             else:
                 raise
         try:
-            install(auth, descriptor())
+            install(auth, descriptor(), extras=extras)
         finally:
             logout(auth)
         rec = {"email": email, "password": crypto_store.encrypt(pw, data_dir), "username": username,
                "host": host_key, "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M"),
                "ts": round(time.time(), 3),             # للترتيب: حساباتٌ كثيرة في الدقيقة نفسها
-               **({"adopted": True} if adopted else {}), **(owner or {})}
+               **({"adopted": True} if adopted else {}), **({"custom": True} if custom else {}), **(owner or {})}
         with _lock:
             d = _load(data_dir)
             d[_key(host_key, username)] = rec
