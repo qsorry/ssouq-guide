@@ -951,6 +951,15 @@ def unit_sample3_cases():
               r["result"] == "entity" and {x["id"] for x in r["entities"]} == {op[0][0], op[1][0]} and r["grouped"][0]["why_separate"] == ["different tmdb ids"], str(r)[:300])
         r = ex("وان بيس")
         check("«وان بيس» ← اقتراحٌ صوتي للكيانين المُتحقَّقين وغير المحسوم بهويته", r["result"] == "suggest" and {op[0][0], op[1][0]} <= {x["id"] for x in r["suggest"]} and all("identity" in x for x in r["suggest"]), str(r)[:200])
+        sr = pbw["service_rows"]; cl = pbw["same_service_rows"]
+        check("SOURCE ROWS: Prison Break صفوفه بهوية كل صفّ (السيرفر، اللوحة، المفتاح، أرقام البثّ، القسم، الأسماء الخام)، وفالكون بصفّين من قسمين مختلفين مصنَّفين different_sections لا تكرارًا",
+              len([r for r in sr if r["present"]]) == 3 and all(k in sr[0] for k in ("panel", "local_key", "stream_ids", "sections", "raw_names")) and cl.get("falcon") == "different_sections"
+              and {r["stream_ids"][0] for r in sr if r["service"] == "falcon"} == {70, 71}, str((sr, cl)))
+        sra = smp["source_rows"]
+        check("تدقيق صفوف المصدر في القاعدة كلها: العدد بالتصنيف وبالسيرفر، وأمثلة بصفوفها، وتعريفات وآثار", sra["entities_with_multiple_rows_per_service"] >= 1 and "different_sections" in sra["by_class"]
+              and sra["examples"] and "effects" in sra, str({k: v for k, v in sra.items() if k != "examples"}))
+        r_ = seo_search.explain(con, seo_search.load(con), "Prison Break", st2)["entities"][0]
+        check("البحث: كل سيرفر مرةً واحدة بعدد صفوفه ونسخه (smart 1، falcon 2) إلى جانب الصفوف الخام", [(s_["service"], s_["rows"]) for s_ in r_["services"]] == [("casper", 1), ("falcon", 2)] or [(s_["service"], s_["rows"]) for s_ in r_["services"]] == [("falcon", 2), ("casper", 1)], str(r_["services"]))
         pbp = pbw["page"]["ar"]["meta_description"]
         pbh = seo_pages.render_entity(con, d, "series", live[0][1], tr_en, st2)[1]["html"].decode()
         check("PRISON BREAK SEO: الخاصة تظهر صفًّا مستقلًا «Specials: 2» ولا تُعدّ موسمًا؛ «6 seasons»-نمط (3 هنا) غائب من الصفحة كلها",

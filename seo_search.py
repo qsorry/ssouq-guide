@@ -6,6 +6,7 @@
 والأخطاء الإملائية الأبعد بمسافة تحريرٍ ≤ 2 على المفتاح. والنتيجة اقتراح («هل تقصد…؟») بثقةٍ، لا كيانٌ جديد ولا دمج —
 المطابقة بين الكيانات تبقى كما في ‏seo_match. وبلا مكتبات خارجية.
 """
+import json
 import re
 import unicodedata
 
@@ -193,7 +194,15 @@ def explain(con, idx, q, st):
             "SELECT service_key, versions_json FROM content_service WHERE content_id=? AND present=1", (cid,))]
         state = "verified" if row["match"] == "tmdb" and row["tmdb_id"] else \
             ("unresolved_candidate" if con.execute("SELECT 1 FROM review WHERE status='open' AND key IN (?,?)", (f"tmdb_ambiguous:{cid}", f"tmdb_weak:{cid}")).fetchone() else "unmatched")
-        return {"id": row["id"], "slug": row["slug"], "title": row["title"], "year": row["year"], "tmdb_id": row["tmdb_id"], "identity": state, "versions": vers}
+        srcs = {}
+        for x in con.execute("SELECT service_key, local_key, versions_json FROM content_service WHERE content_id=? AND present=1 ORDER BY service_key, local_key", (cid,)):
+            srcs.setdefault(x["service_key"], {"service": x["service_key"], "rows": 0, "versions": []})
+            srcs[x["service_key"]]["rows"] += 1
+            for v in json.loads(x["versions_json"] or "[]"):
+                if v not in srcs[x["service_key"]]["versions"]:
+                    srcs[x["service_key"]]["versions"].append(v)
+        return {"id": row["id"], "slug": row["slug"], "title": row["title"], "year": row["year"], "tmdb_id": row["tmdb_id"], "identity": state,
+                "services": list(srcs.values()), "versions": vers}   # services: كل سيرفر مرةً بعدد صفوفه ونسخه؛ versions: الصفوف الخام كما هي
     def grouped(ents):
         """كياناتٌ بالاسم نفسه (العمل نفسه على سيرفرين بلا دليل دمج بعد، أو عملان متشابهان): تُجمع للعرض مرةً واحدة —
         عرضٌ لا دمج؛ ويُذكر لماذا هما كيانان (name_only · split …) من بنود المراجعة المفتوحة."""
