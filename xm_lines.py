@@ -745,7 +745,7 @@ def gate_label(gate):
 
 
 def stremio_label(host, gate=None):
-    """اسم السيرفر في Stremio (‏«أفلام · كاسبر»): من الدليل، وإلا اسم البوابة — فخطوط حسابٍ واحد تتميّز."""
+    """اسم السيرفر في Stremio (‏«كاسبر (10,329) - المسلسلات»): من الدليل، وإلا اسم البوابة — فخطوط حسابٍ واحد تتميّز."""
     return stremio_servers().get(stremio_addon.host_key(host), "") or gate_label(gate)
 
 
@@ -862,6 +862,7 @@ def save_route(acct_id, old_hk, new_host):
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(d, f, ensure_ascii=False, indent=1)
         os.replace(tmp, ROUTES_FILE)
+    stremio_addon.forget_lines()                 # خطوط المكتبات الموحدة بهوستها الجديد من أول طلب
 
 
 def stremio_route(cfg):
@@ -876,6 +877,49 @@ def stremio_cfg(tok):
     """رمز إضافة حسابٍ ← اشتراكه على هوسته الحالي (بعد التحويل)، أو None."""
     cfg = stremio_addon.read_token(DATA_DIR, tok) if tok else None
     return stremio_route(cfg) if cfg else None
+
+
+STREMIO_ART = {k: f"/static/img/brands/{k}.webp" for k in ("smart", "falcon", "casper")}   # شعارات سيرفرات الدليل
+
+
+def _stremio_gate(hk, rec=None):
+    """(حساب الأداة، البوابة) لخطٍّ: بوابة حسابه المحفوظة، وإلا أول بوابةٍ على سيرفره، وإلا (None، None)."""
+    accts = load_store().get("accounts", [])
+    if rec and rec.get("acct"):
+        a = next((a for a in accts if a.get("id") == rec["acct"]), None)
+        g = find_gate(a, rec.get("gate")) if a else None
+        if g:
+            return a, g
+    for a in accts:
+        for g in a.get("gates") or []:
+            if stremio_addon.host_key(g.get("host")) == hk:
+                return a, g
+    return None, None
+
+
+def stremio_line(cfg, rec=None):
+    """خطٌّ لصفّ «الحسابات» في Stremio: اشتراكه على هوسته الحالي، واسم سيرفره، وشعاره إن كان من سيرفرات الدليل."""
+    a, g = _stremio_gate(stremio_addon.host_key(cfg.host), rec)
+    art = STREMIO_ART.get(guide_sub_key(g, gate_guide(g, a.get("guide_url", "")))) if g else None
+    return {"cfg": stremio_route(cfg), "label": stremio_cfg_label(cfg), "art": art or ""}
+
+
+def stremio_lines(cfg):
+    """خطوط «الحسابات» لإضافةٍ (برمزها قبل التحويل): صاحب حساب Stremio يعرضها كلها — هو ثم ما رُبط به بترتيب ربطه،
+    كقائمة الحسابات في تطبيقات IPTV — والخط المرتبط ← None (صفّها عند صاحب حسابه، فلا يتكرّر)، ورابطٌ بلا حساب ← خطّه
+    وحده."""
+    hk = stremio_addon.host_key(cfg.host)
+    rec = stremio_accounts.get(DATA_DIR, hk, cfg.user)
+    if not rec:
+        return [stremio_line(cfg)]
+    if rec.get("linked_to"):
+        return None
+    out = []
+    for r in stremio_accounts.group(DATA_DIR, hk, cfg.user):
+        c = stremio_addon.read_token(DATA_DIR, r["token"]) if r.get("token") else None
+        if c:
+            out.append(stremio_line(c, r))
+    return out or [stremio_line(cfg, rec)]
 
 
 def stremio_extras_data(acct):
@@ -1025,6 +1069,21 @@ def stremio_warm_cfgs():
     return [cfg for _, cfg in best.values()]
 
 
+def stremio_group_lines():
+    """خطوط كل حساب Stremio (صاحبه أولًا) — تُبنى مكتباتها الموحدة مسبقًا (ما كانت قوائم خطوطه في الذاكرة)."""
+    out, seen = [], set()
+    for r in stremio_accounts.all_records(DATA_DIR):
+        if r.get("linked_to") or not r.get("token"):
+            continue
+        cfg = stremio_addon.read_token(DATA_DIR, r["token"])
+        lines = stremio_lines(cfg) if cfg else None
+        sig = tuple((stremio_addon.host_key(ln["cfg"].host), ln["cfg"].user) for ln in lines or [])
+        if lines and sig not in seen:
+            seen.add(sig)
+            out.append(lines)
+    return out
+
+
 def start_stremio_warm():
     """قوائم سيرفرات الحسابات في الذاكرة من التشغيل وتُجدَّد كل حين (‏STREMIO_WARM_EVERY) — البحث فوريٌّ من أول طلب."""
     if STREMIO_WARM_EVERY <= 0:
@@ -1035,6 +1094,8 @@ def start_stremio_warm():
             try:
                 for cfg in stremio_warm_cfgs():
                     stremio_addon.warm(cfg)
+                for lines in stremio_group_lines():     # ومكتبات الحسابات الموحدة (المطابقة مسبقًا)
+                    stremio_addon.warm_library(lines)
             except Exception as e:                      # لا يُسقط شيئًا
                 print(f"تحميل قوائم Stremio مسبقًا: {e}", flush=True)
             time.sleep(STREMIO_WARM_EVERY)
@@ -1074,15 +1135,20 @@ def stremio_account(acct, gate, username, password, line="", email=None, stremio
 STREMIO_ACTIVATION_WAIT = tuple(float(x) for x in os.environ.get("STREMIO_ACTIVATION_WAIT", "2,3,4,6").split(",") if x.strip())
 
 
-def stremio_descriptor(tok, host, gate=None):
+def stremio_descriptor(tok, host, gate=None, accounts=None):
     """(دالةٌ تبني وصف الإضافة للتثبيت، وقائمةٌ يُلحق بها «اكتملت؟» لكل ما بُني). يوزرٌ لم يُفعَّل بعد (يرفضه السيرفر
     أو تأتي قوائمه فارغة — كما حدث في مرح فثُبّتت إضافته بلا أقسام) يُنتظر له ويُعاد بناؤها؛ وسيرفرٌ لا يردّ أصلًا ←
-    تُثبَّت كما هي بلا انتظار (وتُعلَّم ليُحدَّث تثبيتها)."""
+    تُثبَّت كما هي بلا انتظار (وتُعلَّم ليُحدَّث تثبيتها). صاحب الحساب (أو يوزرٌ وحده): المكتبة الموحدة لخطوطه و«الحسابات»؛
+    والخط المرتبط: بلا كتالوجات (محتواه في مكتبة صاحبه) — يُعرف من ‏stremio_lines، و«ربط خط آخر» يمرّر accounts=False
+    (حسابه لم يُحفظ بعد)."""
     built = []
 
     def descriptor():
         cfg = stremio_cfg(tok)
         base, label = STREMIO_PUBLIC or f"https://{SITE_HOST}", stremio_label(host, gate)
+        cfg0 = stremio_addon.read_token(DATA_DIR, tok)
+        lines = None if accounts is False else (stremio_lines(cfg0) if cfg0 else [{"cfg": cfg, "label": label}])
+        acc = lines is not None
         man = state = None
         for wait in (0,) + STREMIO_ACTIVATION_WAIT:
             if wait:
@@ -1094,11 +1160,11 @@ def stremio_descriptor(tok, host, gate=None):
                 continue                         # لم يُفعَّل بعد: ننتظر ونعيد
             except stremio_addon.XtreamError:
                 break                            # السيرفر لا يردّ: لا فائدة من الانتظار
-            man, state = stremio_addon.build_manifest(cfg, base, label)
+            man, state = stremio_addon.build_manifest(cfg, base, label, acc, lines, acc)
             if state != "pending":
                 break
         if man is None:
-            man, state = stremio_addon.build_manifest(cfg, base, label)
+            man, state = stremio_addon.build_manifest(cfg, base, label, acc, lines, acc)
         built.append(state == "ok")
         return {"manifest": man, "transportUrl": stremio_addon.links(base, tok)["manifest"],
                 "flags": {"official": False, "protected": False}}
@@ -1176,7 +1242,7 @@ def stremio_link_line(acct, gate_id, username, line_gate, line_username, line_pa
         raise ValueError("البوابة بلا هوست")
     key = secrets.token_urlsafe(9)
     tok = stremio_addon.make_token(DATA_DIR, host, line_username, line_password, key=key)
-    descriptor, built = stremio_descriptor(tok, host, line_gate)
+    descriptor, built = stremio_descriptor(tok, host, line_gate, accounts=False)
     rec, linked = stremio_accounts.link(DATA_DIR, hit[0], username, hk, str(line_username), descriptor,
                                         owner={"acct": acct["id"], "gate": line_gate.get("id"), "token": tok,
                                                "addon_key": key, "locked_at": int(time.time())},
@@ -1185,7 +1251,29 @@ def stremio_link_line(acct, gate_id, username, line_gate, line_username, line_pa
         stremio_accounts.note(DATA_DIR, hk, str(line_username), addon_full=built[-1], addon_at=int(time.time()))
     if linked:
         stremio_check_exp(stremio_accounts.get(DATA_DIR, hk, str(line_username)) or rec)
+        stremio_refresh_root(acct, hk, str(line_username))     # المكتبة الموحدة بالخط الجديد
     return stremio_accounts.get(DATA_DIR, hk, str(line_username)) or rec, linked
+
+
+def stremio_refresh_root(acct, hk, username):
+    """بعد ربط خطٍّ أو فصله: إضافة صاحب حساب Stremio تُعاد بمكتبته الموحدة الجديدة (أعدادها وأقسامها و«مصدر: …»).
+    كتالوجاتها تعرض الخطوط كلها قبل ذلك (المكتبة تُقرأ من الخادم)، فتعثّرها لا يُفشل شيئًا ← أُعيدت؟"""
+    stremio_addon.forget_lines()
+    grp = stremio_accounts.group(DATA_DIR, hk, username)
+    root = grp[0] if grp else None
+    cfg = stremio_addon.read_token(DATA_DIR, root.get("token", "")) if root and root.get("token") else None
+    if not cfg:
+        return False
+    gate = find_gate(acct, root.get("gate")) or {}
+    descriptor, built = stremio_descriptor(root["token"], cfg.host, gate)
+    try:
+        stremio_accounts.reinstall(DATA_DIR, root["host"], root["username"], descriptor,
+                                   stremio_extras.descriptors(DATA_DIR, acct["id"]))
+    except (ValueError, stremio_accounts.StremioError):
+        return False
+    if built:
+        stremio_accounts.note(DATA_DIR, root["host"], root["username"], addon_full=built[-1], addon_at=int(time.time()))
+    return True
 
 
 def stremio_unlink(acct, gate_id, username):
@@ -1194,7 +1282,11 @@ def stremio_unlink(acct, gate_id, username):
     cfg = stremio_addon.read_token(DATA_DIR, hit[1].get("token")) if hit else None
     if not cfg:
         raise ValueError("لا حساب Stremio لهذا اليوزر")
-    return stremio_accounts.unlink(DATA_DIR, hit[0], username, [stremio_addon.prefix(cfg)])
+    grp = stremio_accounts.group(DATA_DIR, hit[0], username)
+    rec = stremio_accounts.unlink(DATA_DIR, hit[0], username, [stremio_addon.prefix(cfg)])
+    if grp and (grp[0].get("host"), grp[0].get("username")) != (hit[0], username):
+        stremio_refresh_root(acct, grp[0]["host"], grp[0]["username"])   # المكتبة الموحدة بلا الخط المفصول
+    return rec
 
 
 STREMIO_EXP_STALE = 12 * 3600                   # تاريخ انتهاءٍ أقدم من هذا يُعاد فحصه عند فتح الصفحة
@@ -4253,7 +4345,7 @@ class Handler(BaseHTTPRequestHandler):
     def _stremio_get(self, path):
         self._inject = False
         code, body, ctype, hdr = stremio_addon.handle(DATA_DIR, path, self._public_base(), stremio_cfg_label, stremio_token_ok,
-                                                      stremio_route)
+                                                      stremio_route, stremio_lines)
         return self._send(code, raw=body, ctype=ctype, extra=hdr)
 
     def _stremio_link(self):

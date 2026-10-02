@@ -8,8 +8,10 @@
 100 عنصر (‏CATALOG_PAGE_SIZE في stremio-core) — فكل صفحةٍ هنا 100 تمامًا إلا الأخيرة، والقائمة كاملةً من
 السيرفر بطلبٍ واحد لكل نوع (‏get_vod_streams · get_series · get_live_streams)، لا قسمًا قسمًا.
 
-  الكتالوجات     ثلاثة: أفلام · مسلسلات · قنوات. بلا تصنيف = الكل (الأحدث إضافةً أولًا)، وأقسام الأفلام والمسلسلات
-                 تصنيفاتٌ (genre) في صفحة «اكتشف»، والقنوات كلها تصنيفٌ واحد؛ والبحث بالاسم في الثلاثة.
+  الكتالوجات     بترتيب تطبيقات IPTV: الحسابات · المسلسلات · الأفلام · البث المباشر. «الحسابات» حال الاشتراك
+                 (الحالة والانتهاء والمتبقّي والاتصالات) لكل خطوط حساب Stremio، ورابط التجديد. والمحتوى بلا تصنيف
+                 = الكل (الأحدث إضافةً أولًا)، وأقسام الأفلام والمسلسلات تصنيفاتٌ (genre) في صفحة «اكتشف»، والقنوات
+                 كلها تصنيفٌ واحد؛ والبحث بالاسم في الثلاثة (صفوفه بالترتيب نفسه).
   التفاصيل      الفيلم من get_vod_info، والمسلسل بمواسمه وحلقاته من get_series_info، والقناة من القائمة.
   التشغيل       روابط السيرفر نفسه: ‏/movie/ · ‏/series/ · ‏/live/ (‏HLS ثم TS حسب ما يسمح به الاشتراك).
 
@@ -23,6 +25,7 @@
 import datetime
 import hashlib
 import http.client
+import itertools
 import json
 import os
 import re
@@ -32,15 +35,16 @@ from collections import OrderedDict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 import content as C
 import crypto_store
+import stremio_library as LIB
 
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.2.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.4.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -58,16 +62,21 @@ _ACTION = {"movie": ("get_vod_categories", "get_vod_streams", "stream_id"),
            "series": ("get_series_categories", "get_series", "series_id"),
            "tv": ("get_live_categories", "get_live_streams", "stream_id")}
 CATALOG = {"movie": "sq_movies", "series": "sq_series", "tv": "sq_live"}
+# ترتيب الكتالوجات كتطبيقات IPTV: «الحسابات» أولًا (إن كانت لهذه الإضافة) ثم المسلسلات ثم الأفلام ثم البث المباشر
+ORDER = ("series", "movie", "tv")
+# «الحسابات» نوعٌ خاصّ (Stremio يقبل أي نوع): يظهر باسمه في «اكتشف»، ولا يختلط بالمحتوى ولا يدخل البحث
+ACCOUNTS = "الحسابات"
+ACCOUNTS_ID = "sq_accounts"
+ACCOUNTS_AGE = 300                   # عمر صفّ «الحسابات» عند Stremio (ثوانٍ): المتبقّي يتغيّر كل يوم
 # أقسام السيرفر تصنيفاتٌ للأفلام والمسلسلات؛ والقنوات تصنيفٌ واحد: كلها في كتالوجها بترتيب السيرفر وبحثٍ بالاسم
 GENRE_TYPES = ("movie", "series")
-_TITLE = {"movie": "أفلام", "series": "مسلسلات", "tv": "قنوات"}
 _UNIT = {"movie": "فيلم", "series": "مسلسل", "tv": "قناة"}
 _CODE = {"movie": "m", "series": "s", "tv": "l"}   # بادئة المعرّف بعد بادئة السيرفر؛ و‏e للحلقة
 
 # ‏origin: هوست الرمز حين يُحوَّل الاشتراك إلى هوستٍ جديد (السيرفر نفسه غيّر عنوانه) — منه بادئة المعرّفات ومعرّف
 # الإضافة فتبقى المكتبة و«تابع المشاهدة»؛ والطلبات وروابط التشغيل إلى host.
 Cfg = namedtuple("Cfg", "host user pw origin", defaults=(None,))
-Item = namedtuple("Item", "id name poster cat added rating ext plot year genre")
+Item = namedtuple("Item", "id name poster cat added rating ext plot year genre tmdb imdb", defaults=(0, ""))
 
 
 class XtreamError(Exception):
@@ -269,6 +278,17 @@ def _norm(s):
     return C._norm(s)
 
 
+_serials = itertools.count(1)
+_TT = re.compile(r"tt\d{5,10}")
+
+
+def _ids(x):
+    """(معرّف TMDB، معرّف IMDb) من عنصر القائمة إن أعطتهما اللوحة — هويةٌ للمطابقة بين البوابات."""
+    t = _int(x.get("tmdb") or x.get("tmdb_id"), 0)
+    m = _TT.search(str(x.get("imdb") or x.get("imdb_id") or ""))
+    return (t if t > 0 else 0), (m.group(0) if m else "")
+
+
 class Lists:
     """عناصر نوعٍ واحد لاشتراكٍ واحد: بترتيب السيرفر، وبالأحدث، وبالقسم، وبالمعرّف، والبحث."""
 
@@ -296,11 +316,13 @@ class Lists:
                 plot = " ".join(str(x.get("plot") or "").split())
                 items.append(Item(iid, name, str(x.get("cover") or ""), cat, _int(x.get("last_modified")),
                                   _rating(x.get("rating")), "", plot[:200] + ("…" if len(plot) > 200 else ""),
-                                  _year(name, x.get("releaseDate") or x.get("release_date")), str(x.get("genre") or "")))
+                                  _year(name, x.get("releaseDate") or x.get("release_date")), str(x.get("genre") or ""),
+                                  *_ids(x)))
             else:
                 items.append(Item(iid, name, str(x.get("stream_icon") or ""), cat, _int(x.get("added")),
                                   _rating(x.get("rating")) if kind == "movie" else None,
-                                  _ext(x.get("container_extension")), "", _year(name) if kind == "movie" else None, ""))
+                                  _ext(x.get("container_extension")), "", _year(name) if kind == "movie" else None,
+                                  str(x.get("genre") or "") if kind == "movie" else "", *(_ids(x) if kind == "movie" else ())))
         self.items = items                                   # ترتيب السيرفر (ترتيب تطبيقات IPTV)
         self.by_id = {it.id: it for it in items}
         by_genre = OrderedDict()
@@ -317,7 +339,18 @@ class Lists:
         # «الكل»: الأحدث إضافةً أولًا للأفلام والمسلسلات؛ والقنوات بترتيب السيرفر (أقسامها متجاورة)
         self.latest = items if kind == "tv" else sorted(items, key=lambda it: -it.added)
         self._keys = None
+        self._tags = None
         self._klock = threading.Lock()
+        self._mkeys = None
+        self._mlock = threading.Lock()
+        self.serial = next(_serials)                          # نسخة القائمة: تغيّرها يعيد بناء المكتبة الموحدة
+
+    def match_keys(self, fn):
+        """مفاتيح مطابقة العناصر (‏stremio_library.item_key) — تُحسب مرةً لكل نسخةٍ من القائمة."""
+        with self._mlock:
+            if self._mkeys is None:
+                self._mkeys = [fn(it, self.cat_of(it)) for it in self.items]
+        return self._mkeys
 
     def cat_of(self, it):
         """اسم قسم العنصر كما في السيرفر (أو "")."""
@@ -329,6 +362,18 @@ class Lists:
             if self._keys is None:
                 self._keys = [_norm(it.name) for it in self.items]
         return self
+
+    def tagged(self, g):
+        """عناصر تصنيف الفيلم أو المسلسل («جريمة» · «Crime»، من حقل genre في قائمة السيرفر) بالأحدث — فهرسه يُبنى مرةً
+        عند أول طلب."""
+        with self._klock:
+            if self._tags is None:
+                tags = {}
+                for it in self.latest:
+                    for t in _split(it.genre):
+                        tags.setdefault(_norm(t), []).append(it)
+                self._tags = tags
+        return self._tags.get(_norm(g), [])
 
     def search(self, q):
         """كل الكلمات في الاسم (بلا تشكيل ولا همزات ولا حالة أحرف): المطابق ثم ما يبدأ بها ثم ما يحويها."""
@@ -557,7 +602,7 @@ def _details(cfg, action, field, iid):
 def reset():
     """تفريغ الذاكرة (للاختبارات)."""
     with _lock:
-        for s in (_accounts, _cats, _lists, _list_keys, _info, _rate):
+        for s in (_accounts, _cats, _lists, _list_keys, _info, _rate, _libs, _probes, _lines_cache):
             s.clear()
         _loading.clear()
 
@@ -625,16 +670,30 @@ def _kind_info(cfg, kind):
         return [], None
 
 
-def manifest(cfg, base, label=""):
-    return build_manifest(cfg, base, label)[0]
+def manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True):
+    return build_manifest(cfg, base, label, accounts, lines, catalogs)[0]
 
 
-def build_manifest(cfg, base, label=""):
-    """(وصف الإضافة، حاله): ثلاثة كتالوجات بعدد محتوى كلٍّ في اسمه («أفلام · سمارت (21,293)»)، وأقسام الأفلام
-    والمسلسلات تصنيفاتٌ بعدد كلٍّ («مسلسلات تركية (855)»)، والقنوات تصنيفٌ واحد. الأنواع الثلاثة تُحمَّل معًا. فشل نوعٍ
-    لا يُسقط الإضافة: يبقى كتالوجه بلا أعداد أو بلا تصنيفات؛ واشتراكٌ يرفضه السيرفر تُثبَّت إضافته كما هي وتعمل متى
-    جُدِّد. الحال: "ok" حُمّلت الأنواع كلها وفيها محتوى · "pending" رُفض الاشتراك أو جاء فارغًا (يوزرٌ لم يُفعَّل بعد:
-    يُعاد بعد قليل) · "error" تعذّر نوعٌ من السيرفر نفسه (انقطاعٌ أو مهلة: الإعادة الفورية لا تفيد)."""
+def _lib_info(lines, kind):
+    """(الأقسام بأعدادها، المجموع، أسماء الخطوط) لنوعٍ من المكتبة الموحدة — أو None إن تعذّرت كل خطوطها."""
+    try:
+        lib = library(lines, kind)
+    except XtreamError:
+        return None
+    return (lib.genres if kind in GENRE_TYPES else []), len(lib.works), lib.labels
+
+
+def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True):
+    """(وصف الإضافة، حاله) بترتيب تطبيقات IPTV: «الحسابات» (‏accounts: لصاحب حساب Stremio أو رابطٍ وحده — والخط
+    المرتبط بلاها، فلا يتكرّر صفّها) ثم المسلسلات ثم الأفلام ثم البث المباشر، باسم السيرفر وعدد محتوى كلٍّ («سمارت
+    (10,329)»، ويُلحق Stremio النوع)، وأقسام الأفلام والمسلسلات تصنيفاتٌ بعدد كلٍّ («مسلسلات تركية (855)»)، والقنوات
+    تصنيفٌ واحد. الأنواع الثلاثة تُحمَّل معًا. فشل نوعٍ لا يُسقط الإضافة: يبقى كتالوجه بلا أعداد أو بلا تصنيفات؛
+    واشتراكٌ يرفضه السيرفر تُثبَّت إضافته كما هي وتعمل متى جُدِّد. الحال: "ok" حُمّلت الأنواع كلها وفيها محتوى ·
+    "pending" رُفض الاشتراك أو جاء فارغًا (يوزرٌ لم يُفعَّل بعد: يُعاد بعد قليل) · "error" تعذّر نوعٌ من السيرفر نفسه
+    (انقطاعٌ أو مهلة: الإعادة الفورية لا تفيد).
+    ‏lines: خطوط الحساب (صاحبه أولًا) ← الأعداد والأقسام من المكتبة الموحدة، وبأكثر من خط: الكتالوج باسم المتجر وفي التصنيف
+    «مصدر: كاسبر» لكل خط. ‏catalogs=False: إضافة خطٍّ مرتبط — بلا كتالوجات (محتواه في مكتبة صاحب الحساب)، وتبقى تفاصيل
+    ما في مكتبة Stremio ببادئتها وتشغيله."""
     pre = prefix(cfg)
     uid = hashlib.sha256(f"{cfg.origin or cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
     tag = f" · {label}" if label else ""
@@ -647,29 +706,49 @@ def build_manifest(cfg, base, label=""):
             return [], None, "auth"
     with ThreadPoolExecutor(max_workers=len(TYPES)) as ex:
         info = dict(zip(TYPES, ex.map(one, TYPES)))
-    cats, totals = [], []
-    for kind in TYPES:
+    cats = [{"type": ACCOUNTS, "id": ACCOUNTS_ID, "name": BRAND, "extra": [], "extraSupported": []}] if accounts else []
+    totals = []
+    multi = bool(lines and len(lines) > 1)
+    for kind in ORDER:
         genres, total, _ = info[kind]
-        opts = [f"{g} ({_fmt(n)})" if n is not None else g for g, n in genres]
+        srcs = []
+        if lines and catalogs:
+            li = _lib_info(lines, kind)
+            if li:
+                genres, total, labels = li
+                srcs = [SRC_TAG + lb for lb in labels] if multi else []
+        if not catalogs:
+            if total:
+                totals.append(f"{_fmt(total)} {_UNIT[kind]}")
+            continue
+        opts = [f"{g} ({_fmt(n)})" if n is not None else g for g, n in genres] + srcs
         extra = ([{"name": "genre", "options": opts, "isRequired": False}] if opts else []) + \
             [{"name": "search", "isRequired": False}, {"name": "skip", "isRequired": False}]
+        # الاسم بلا كلمة النوع: Stremio يُلحق النوع بلغة واجهته («سمارت (10,329) - المسلسلات» · «… - Series»)
         cats.append({"type": kind, "id": CATALOG[kind], "extra": extra, "extraSupported": [e["name"] for e in extra],
-                     "name": _TITLE[kind] + tag + (f" ({_fmt(total)})" if total else "")})
+                     "name": (BRAND if multi else label or BRAND) + (f" ({_fmt(total)})" if total else "")})
         if total:
             totals.append(f"{_fmt(total)} {_UNIT[kind]}")
     errs = {info[k][2] for k in TYPES}
     state = "error" if "error" in errs else "pending" if "auth" in errs or not totals else "ok"
-    res = {"types": list(TYPES), "idPrefixes": [pre]}
+    types = ([ACCOUNTS] if accounts else []) + list(ORDER)
+    res = {"types": types, "idPrefixes": [pre]}
+    if not catalogs:
+        about = "خطٌّ ضمن مكتبة حسابك الموحدة: محتواه مع باقي اشتراكاتك في صفوف «" + BRAND + "»، بلا تكرار."
+    elif multi:
+        about = ("مكتبةٌ واحدة لكل اشتراكاتك: العمل مرةً واحدة ومصادره كلها معه، و«تلقائي» ينتقل للمصدر التالي إن تعطّل؛ "
+                 "بترتيب تطبيقات IPTV: الحسابات ثم المسلسلات ثم الأفلام ثم البث المباشر، والبحث في كل الاشتراكات معًا.")
+    else:
+        about = "اشتراكك في Stremio بترتيب تطبيقات IPTV: " + ("الحسابات (حال اشتراكك وانتهاؤه)، ثم " if accounts else "") + \
+            "المسلسلات بمواسمها وحلقاتها، والأفلام بأقسام السيرفر نفسها، والبث المباشر كله في تصنيفٍ واحد، والبحث بالاسم في الثلاثة."
     return {
         "id": f"com.ssouq.xtream.{uid}",
         "version": VERSION,
         "name": BRAND + tag,
-        "description": (" · ".join(totals) + " — " if totals else "")
-                       + "كل محتوى اشتراكك في Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها بأقسام السيرفر نفسها، "
-                       "والقنوات المباشرة كلها في تصنيفٍ واحد، وبحثٌ بالاسم.",
+        "description": (" · ".join(totals) + " — " if totals else "") + about,
         "logo": f"{base}/static/icons/icon-512.png",
         "background": f"{base}/static/og-image.png",
-        "types": list(TYPES),
+        "types": types,
         "idPrefixes": [pre],
         "resources": ["catalog", {"name": "meta", **res}, {"name": "stream", **res}],
         "catalogs": cats,
@@ -705,7 +784,7 @@ def catalog(cfg, kind, cid, extra):
         seq = L.search(extra["search"])
     elif extra.get("genre"):
         g = " ".join(extra["genre"].split())          # بعددٍ («… (855)») من manifest اليوم، أو بلا عدد من أقدم
-        seq = L.by_genre.get(g) or L.by_genre.get(_COUNT.sub("", g), [])
+        seq = L.by_genre.get(g) or L.by_genre.get(_COUNT.sub("", g)) or _tagged(cfg, kind, L, g)
     else:
         seq = L.latest
     pre = prefix(cfg)
@@ -715,6 +794,36 @@ def catalog(cfg, kind, cid, extra):
             if L.cat_of(it):
                 m["description"] = L.cat_of(it)
     return {"metas": metas}
+
+
+def _tagged(cfg, kind, L, g):
+    """تصنيف الفيلم أو المسلسل (رابطٌ في صفحته: «جريمة» ← كل ما في الاشتراك منه): من قائمة السيرفر، ومعها أفلامٌ عُرف
+    تصنيفها من تفاصيلها المحفوظة (سيرفراتٌ لا تذكره في القائمة) — فالفيلم الذي فُتح منه الرابط فيها على الأقل."""
+    if kind not in GENRE_TYPES:
+        return []
+    seq = L.tagged(g)
+    if kind != "movie":
+        return seq
+    want, hk, have = _norm(g), host_key(cfg.host), {it.id for it in seq}
+    with _lock:
+        known = [(k[2], d) for k, (_, d) in _info.items() if k[0] == hk and k[1] == "get_vod_info"]
+    more = []
+    for iid, d in known:
+        info = d.get("info") if isinstance(d.get("info"), dict) else {}
+        it = L.by_id.get(iid)
+        if it and iid not in have and want in {_norm(t) for t in _split(info.get("genre"))}:
+            more.append(it)
+    return seq + sorted(more, key=lambda it: -it.added)
+
+
+def _links(man, kind, name, rating, genres):
+    """روابط صفحة العنصر: تصنيفاته إلى كتالوجنا مصفًّى بها (Stremio يربط التصنيفات وحدها بـ Cinemeta، فلا تُظهر محتوى
+    الاشتراك)، والتقييم إلى بحث IMDb بالاسم. ‏man: رابط الـmanifest كما ثُبّت (‏None: بلا روابط)."""
+    if not man:
+        return None
+    url = f"stremio:///discover/{quote(man, safe='')}/{kind}/{CATALOG[kind]}?genre="
+    out = [{"name": rating, "category": "imdb", "url": "https://imdb.com/find/?q=" + quote(name, safe="")}] if rating else []
+    return out + [{"name": g, "category": "Genres", "url": url + quote(g, safe="")} for g in genres]
 
 
 def _parse_id(cfg, sid):
@@ -740,7 +849,7 @@ def _ep_title(title, series, season, episode):
     return t if re.search(r"[^\W\d_]", t) else f"الحلقة {episode}"
 
 
-def _movie_meta(cfg, pre, num):
+def _movie_meta(cfg, pre, num, man=None):
     d = _details(cfg, "get_vod_info", "vod_id", num) or {}
     info = d.get("info") if isinstance(d.get("info"), dict) else {}
     md = d.get("movie_data") if isinstance(d.get("movie_data"), dict) else {}
@@ -754,33 +863,31 @@ def _movie_meta(cfg, pre, num):
     name = " ".join(str(md.get("name") or (it.name if it else "") or info.get("name") or "").split())
     secs = _int(info.get("duration_secs"))
     trailer = str(info.get("youtube_trailer") or "").strip()
+    rating = _rating(info.get("rating")) or (it.rating if it else None)
+    genres = _split(info.get("genre")) or _split(it.genre if it else "")
     return _clean({
         "id": f"{pre}m:{num}", "type": "movie", "name": name,
         "poster": str(info.get("movie_image") or info.get("cover_big") or (it.poster if it else "") or ""),
         "background": _first(info.get("backdrop_path")), "posterShape": "poster",
         "description": " ".join(str(info.get("plot") or info.get("description") or "").split()),
-        "releaseInfo": _year(name, info.get("releasedate")), "imdbRating": _rating(info.get("rating")) or (it.rating if it else None),
-        "runtime": f"{secs // 60} min" if secs >= 60 else None,
-        "genres": _split(info.get("genre")), "cast": _split(info.get("cast") or info.get("actors")),
+        "releaseInfo": _year(name, info.get("releasedate")), "imdbRating": rating,
+        "runtime": f"{secs // 60} min" if secs >= 60 else None, "links": _links(man, "movie", name, rating, genres),
+        "genres": genres, "cast": _split(info.get("cast") or info.get("actors")),
         "director": _split(info.get("director")), "country": str(info.get("country") or "").strip(),
         "trailers": [{"source": trailer, "type": "Trailer"}] if re.fullmatch(r"[\w-]{6,20}", trailer) else [],
         "behaviorHints": {"defaultVideoId": f"{pre}m:{num}"},
     })
 
 
-def _series_meta(cfg, pre, num):
-    d = _details(cfg, "get_series_info", "series_id", num)
-    if not d:
-        L = lists(cfg, "series")
-        it = L.by_id.get(num)
-        return _clean({**_preview(pre, "series", it), "videos": []}) if it else None
-    info = d.get("info") if isinstance(d.get("info"), dict) else {}
-    L = _cached_lists(cfg, "series")
-    it = L.by_id.get(num) if L else None
-    name = " ".join(str(info.get("name") or (it.name if it else "")).split())
-    eps = d.get("episodes")
+Ep = namedtuple("Ep", "season episode eid ext video height", defaults=(0,))
+
+
+def _episodes(d, name, season_as=0):
+    """تفاصيل المسلسل ← حلقاته بترتيب (الموسم، الحلقة): رقمها في السيرفر وامتدادها وما يعرضه Stremio (‏video بلا id).
+    ‏season_as: مدخلٌ لموسمٍ واحد («علي كارا الموسم الثاني») ترقّم لوحته حلقاته موسمًا أول ← يُعاد ترقيمه بموسمه."""
+    eps = d.get("episodes") if isinstance(d, dict) else None
     groups = eps.items() if isinstance(eps, dict) else [("", eps if isinstance(eps, list) else [])]
-    videos, seen = [], set()
+    out, seen = [], set()
     for skey, arr in groups:
         for n, e in enumerate(arr if isinstance(arr, list) else [], 1):
             if not isinstance(e, dict):
@@ -793,43 +900,64 @@ def _series_meta(cfg, pre, num):
             season = _int(e.get("season"), None)
             season = season if season is not None else _int(ei.get("season"), _int(skey, 1))
             episode = _int(e.get("episode_num"), 0) or n
-            ext = _ext(e.get("container_extension")) or "mp4"
-            videos.append(_clean({
-                "id": f"{pre}e:{eid}:{ext}", "title": _ep_title(e.get("title"), name, season, episode),
+            out.append(Ep(season, episode, eid, _ext(e.get("container_extension")) or "mp4", {
+                "title": _ep_title(e.get("title"), name, season, episode),
                 "season": season, "episode": episode, "released": _released(ei.get("releasedate") or ei.get("air_date")),
-                "thumbnail": str(ei.get("movie_image") or ""), "overview": " ".join(str(ei.get("plot") or "").split()),
-            }))
-    videos.sort(key=lambda v: (v["season"], v["episode"]))
+                "thumbnail": str(ei.get("movie_image") or ""), "overview": " ".join(str(ei.get("plot") or "").split())},
+                _height(ei)))
+    if season_as and out and len({e.season for e in out}) == 1 and out[0].season != season_as:
+        out = [e._replace(season=season_as, video={**e.video, "season": season_as}) for e in out]
+    out.sort(key=lambda e: (e.season, e.episode))
+    return out
+
+
+def _series_meta(cfg, pre, num, man=None):
+    d = _details(cfg, "get_series_info", "series_id", num)
+    if not d:
+        L = lists(cfg, "series")
+        it = L.by_id.get(num)
+        return _clean({**_preview(pre, "series", it), "videos": [],
+                       "links": _links(man, "series", it.name, it.rating, _split(it.genre))}) if it else None
+    info = d.get("info") if isinstance(d.get("info"), dict) else {}
+    L = _cached_lists(cfg, "series")
+    it = L.by_id.get(num) if L else None
+    name = " ".join(str(info.get("name") or (it.name if it else "")).split())
+    videos = [_clean({"id": f"{pre}e:{e.eid}:{e.ext}", **e.video}) for e in _episodes(d, name)]
     trailer = str(info.get("youtube_trailer") or "").strip()
     run = _int(info.get("episode_run_time"))
+    rating = _rating(info.get("rating"))
+    genres = _split(info.get("genre")) or _split(it.genre if it else "")
     return _clean({
         "id": f"{pre}s:{num}", "type": "series", "name": name,
         "poster": str(info.get("cover") or (it.poster if it else "") or ""), "posterShape": "poster",
         "background": _first(info.get("backdrop_path")),
         "description": " ".join(str(info.get("plot") or "").split()),
         "releaseInfo": _year(name, info.get("releaseDate") or info.get("release_date")),
-        "imdbRating": _rating(info.get("rating")), "runtime": f"{run} min" if run > 0 else None,
-        "genres": _split(info.get("genre")), "cast": _split(info.get("cast")), "director": _split(info.get("director")),
+        "imdbRating": rating, "runtime": f"{run} min" if run > 0 else None, "links": _links(man, "series", name, rating, genres),
+        "genres": genres, "cast": _split(info.get("cast")), "director": _split(info.get("director")),
         "trailers": [{"source": trailer, "type": "Trailer"}] if re.fullmatch(r"[\w-]{6,20}", trailer) else [],
         "videos": videos,
     })
 
 
-def meta(cfg, kind, sid):
+def meta(cfg, kind, sid, man=None):
+    """تفاصيل عنصر. ‏man رابط الـmanifest كما ثُبّت: منه روابط التصنيفات إلى كتالوجنا (انظر _links)."""
     p = _parse_id(cfg, sid)
     if not p:
         return None
     code, num, _ = p
     pre = prefix(cfg)
     if code == "m" and kind == "movie":
-        m = _movie_meta(cfg, pre, num)
+        m = _movie_meta(cfg, pre, num, man)
     elif code == "s" and kind == "series":
-        m = _series_meta(cfg, pre, num)
+        m = _series_meta(cfg, pre, num, man)
     elif code == "l" and kind == "tv":
         L = lists(cfg, "tv")
         it = L.by_id.get(num)
-        # بلا «logo»: صفحة Stremio تعرضه مكان الاسم، فتظهر صورة القناة وحدها؛ واسم قسمها يميّزها
-        m = _clean({**_preview(pre, "tv", it), "description": L.cat_of(it), "genres": [L.cat_of(it)] if L.cat_of(it) else [],
+        cat = L.cat_of(it)
+        # بلا «logo»: صفحة Stremio تعرضه مكان الاسم، فتظهر صورة القناة وحدها؛ واسم قسمها يميّزها، ورابطه كل قنوات القسم
+        m = _clean({**_preview(pre, "tv", it), "description": cat, "genres": [cat] if cat else [],
+                    "links": _links(man, "tv", it.name, None, [cat] if cat else []),
                     "behaviorHints": {"defaultVideoId": f"{pre}l:{num}"}}) if it else None
     else:
         m = None
@@ -882,6 +1010,553 @@ def streams(cfg, kind, sid):
         return {"streams": [{"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "name": BRAND, "title": ch + label[f],
                              "behaviorHints": {"notWebReady": True}} for f in _formats(cfg)]}
     return None
+
+
+# ================= «الحسابات»: حال خطوط حساب Stremio كشاشة الحساب في تطبيقات IPTV =================
+# ‏lines: [{"cfg": اشتراك الخط على هوسته الحالي، "label": اسم سيرفره، "art": شعاره (مسارٌ على الموقع) أو ""}] — صاحب
+# حساب Stremio أولًا ثم ما رُبط به. المعرّفات ببادئة الإضافة التي تعرضها، فتفاصيلها وتجديدها يُطلبان منها.
+_STATUS = {"active": "نشط", "expired": "منتهٍ", "banned": "موقوف", "disabled": "موقوف"}
+# لغة الترجمة إعدادٌ في Stremio على كل جهاز (لا يُضبط من الحساب): «تلقائي» يختار المترجم بالعربية، وهذا يكمّله للترجمات
+# المضمَّنة في الملف (سوفت)
+SUBS_TIP = "للترجمة العربية تلقائيًا: إعدادات Stremio ← المشغّل ← لغة الترجمة ← العربية (مرةً على كل جهاز)"
+DAY = 86400
+
+
+def line_id(pre, cfg):
+    """معرّف خطٍّ في «الحسابات»: من سيرفره الأصلي ويوزره — يبقى كما هو بتحويل الهوست."""
+    return f"{pre}a:" + hashlib.sha256(f"{host_key(cfg.origin or cfg.host)}\n{cfg.user}".encode()).hexdigest()[:10]
+
+
+def remaining(exp, now=None):
+    """تاريخ الانتهاء (ثوانٍ) ← «باقي 59 يومًا» بعدده الصحيح بالعربية (جزء اليوم يومٌ)، و«منتهٍ» لما مضى."""
+    left = exp - (time.time() if now is None else now)
+    if left <= 0:
+        return "منتهٍ"
+    d = -int(-left // DAY)
+    if d <= 2:
+        return ("باقي يوم", "باقي يومان")[d - 1]
+    r = d % 100
+    unit = "أيام" if 3 <= r <= 10 else "يوم" if d > 10 and r in (0, 1, 2) else "يومًا"
+    return f"باقي {_fmt(d)} {unit}"
+
+
+def account_card(line, pre, base, now=None):
+    """خطٌّ ← بطاقته في «الحسابات»: اسم سيرفره بحاله («مرح · باقي 59 يومًا»)، وتفاصيله كشاشة الحساب في تطبيقات
+    IPTV (الحالة، والانتهاء، والاتصالات، واليوزر، والمحتوى). بلا كلمة المرور."""
+    cfg = line["cfg"]
+    art = str(line.get("art") or "")
+    facts, date = [], None
+    try:
+        ui, _ = account(cfg)
+    except AuthError:
+        short = "منتهٍ أو موقوف"
+        facts.append("السيرفر لا يقبل الاشتراك الآن (منتهٍ أو موقوف) — جدّده فيعود المحتوى كما هو")
+    except XtreamError:
+        short = "تعذّر الفحص"
+        facts.append("تعذّر الوصول إلى السيرفر الآن — حاول بعد قليل")
+    else:
+        st = str(ui.get("status") or "").strip()
+        st_ar = _STATUS.get(st.lower(), st or "—")
+        exp = _int(ui.get("exp_date"), 0)
+        left = remaining(exp, now) if exp > 0 else "غير محدود"
+        short = left if st.lower() == "active" else st_ar
+        facts.append(f"الحالة: {st_ar}" + (" (تجريبي)" if str(ui.get("is_trial")) == "1" else ""))
+        if exp > 0:
+            date = datetime.datetime.fromtimestamp(exp, datetime.timezone.utc).strftime("%Y-%m-%d")
+            facts.append(f"ينتهي {date} ({left})")
+        else:
+            facts.append("بلا تاريخ انتهاء")
+        maxc, act = _int(ui.get("max_connections"), 0), ui.get("active_cons")
+        if maxc:
+            facts.append(f"الاتصالات: {_int(act)} من {maxc}" if str(act or "").strip() != "" else f"الاتصالات المسموحة: {maxc}")
+    facts.append(f"اليوزر: {cfg.user}")
+    counts = [f"{_fmt(len(L.items))} {_UNIT[k]}" for k in ORDER for L in [_cached_lists(cfg, k)] if L and L.items]
+    if counts:
+        facts.append("المحتوى: " + " · ".join(counts))
+    facts.append(SUBS_TIP)
+    lid = line_id(pre, cfg)
+    return _clean({"id": lid, "type": ACCOUNTS, "name": f"{line.get('label') or cfg.user} · {short}",
+                   "poster": f"{base}{art}" if art.startswith("/") else f"{base}/static/icons/icon-512.png",
+                   "posterShape": "square", "releaseInfo": f"حتى {date}" if date else None, "description": " · ".join(facts),
+                   "behaviorHints": {"defaultVideoId": lid}})
+
+
+def accounts_catalog(lines, pre, base):
+    """صفّ «الحسابات»: بطاقات الخطوط بترتيبها (حالها يُقرأ معًا، ومحفوظٌ دقائق)."""
+    lines = list(lines or [])
+    if not lines:
+        return {"metas": []}
+    with ThreadPoolExecutor(max_workers=min(8, len(lines))) as ex:
+        return {"metas": list(ex.map(lambda ln: account_card(ln, pre, base), lines))}
+
+
+def _line_of(lines, pre, sid):
+    return next((ln for ln in lines or [] if line_id(pre, ln["cfg"]) == sid), None)
+
+
+def accounts_meta(lines, pre, base, sid):
+    ln = _line_of(lines, pre, sid)
+    return {"meta": account_card(ln, pre, base)} if ln else None
+
+
+def accounts_streams(lines, pre, sid):
+    """«تجديد الاشتراك» في صفحة الخط: يفتح المتجر في المتصفح (‏externalUrl) — كزرّ التجديد في تطبيقات IPTV."""
+    if not _line_of(lines, pre, sid):
+        return None
+    return {"streams": [{"name": BRAND, "title": "تجديد الاشتراك\nمن متجر سمارت سوق", "externalUrl": CONFIGURE_URL}]}
+
+
+# ================= المكتبة الموحدة: خطوط الحساب كلها مكتبةً واحدة (stremio_library) =================
+# إضافة صاحب حساب Stremio تعرض كل خطوطه مكتبةً واحدة: العمل الواحد مرةً واحدة مهما اختلف اسمه بين البوابات، ومصادره
+# كلها في صفحته وفي قائمة التشغيل، و«تلقائي» أولها: يجرّب المصادر بالترتيب وينتقل للتالي إن تعطّل. وإضافة الخط المرتبط
+# بلا كتالوجات (محتواه في المكتبة)، ويبقى عندها ما في مكتبة Stremio ببادئتها.
+#   معرّف العمل: من مصدره المرساة — في خط صاحب الحساب بالصيغة القديمة نفسها («sqXXXX:s:123»، فلا تتغيّر المكتبة و«تابع
+#   المشاهدة»)، وفي غيره «sqXXXX:ws:<بصمة السيرفر>.<رقمه>»؛ وأي مصدرٍ في العمل يدلّ عليه. والحلقة «…:we:<بصمة>.<رقم>:<موسم>:<حلقة>».
+LIB_MAX = 64                         # مكتبات (باقات الخطوط × نوع) في الذاكرة
+SRC_TAG = "مصدر: "                   # تصنيف «مصدر: كاسبر» ← كل ما في الخط
+PROBE_TIMEOUT = float(os.environ.get("STREMIO_PROBE_TIMEOUT", "4"))   # مهلة فحص المصدر قبل الانتقال للتالي (ثوانٍ)
+PROBE_TTL = 60                       # نتيجة فحص رابطٍ تُحفظ دقيقة
+PROBE_MAX = 4                        # مصادر تُفحص للتشغيل التلقائي على الأكثر
+_libs = OrderedDict()                # (النوع، بصمة الخطوط) ← (نسخ القوائم، Library)
+_lib_busy = set()
+_probes = {}                         # الرابط ← (الوقت، يعمل؟)
+
+
+def line_hk(cfg):
+    """بصمة سيرفر الخط (من هوسته الأصلي) — في معرّفات المكتبة ومصادرها."""
+    return hashlib.sha256(host_key(cfg.origin or cfg.host).encode()).hexdigest()[:6]
+
+
+def _lib_parts(lines, kind):
+    """قوائم الخطوط لنوعٍ بالتوازي ← [(رقم الخط، بصمته، اسمه، Lists أو None)]؛ وخطٌّ يتعثّر يُتخطّى (والمكتبة بباقيها)،
+    وكلها تتعثّر ← الخطأ."""
+    errs = []
+
+    def one(arg):
+        li, ln = arg
+        try:
+            L = lists(ln["cfg"], kind)
+        except XtreamError as e:
+            errs.append(e)
+            L = None
+        return li, line_hk(ln["cfg"]), ln.get("label") or "", L
+    if len(lines) == 1:
+        parts = [one((0, lines[0]))]
+    else:
+        with ThreadPoolExecutor(max_workers=min(4, len(lines))) as ex:
+            parts = list(ex.map(one, enumerate(lines)))
+    if errs and all(L is None for *_, L in parts):
+        raise errs[0]
+    return parts
+
+
+def library(lines, kind):
+    """مكتبة خطوط الحساب الموحدة لنوع. تُبنى مرةً لكل نسخةٍ من قوائم خطوطها: تجدُّد قائمة خطٍّ (إضافةٌ أو حذفٌ أو تعديلٌ في
+    السيرفر) يعيد بناءها في الخلفية والقديمة تُعرض حتى تكتمل."""
+    parts = _lib_parts(lines, kind)
+    # مفتاحها: سيرفر كل خطٍّ واسمه وقائمته (باقته) — حساباتٌ بالباقات نفسها تشترك في مكتبةٍ واحدة
+    gkey = (kind,) + tuple((line_hk(ln["cfg"]), ln.get("label") or "", _lkey(ln["cfg"], kind)) for ln in lines)
+    lsig = tuple(L.serial if L else 0 for *_, L in parts)
+    with _lock:
+        hit = _libs.get(gkey)
+        if hit:
+            _libs.move_to_end(gkey)
+    if hit and (hit[0] == lsig or not any(lsig)):
+        return hit[1]
+
+    def store(lib):
+        with _lock:
+            _libs[gkey] = (lsig, lib)
+            _libs.move_to_end(gkey)
+            while len(_libs) > LIB_MAX:
+                _libs.popitem(last=False)
+    if hit:
+        with _lock:
+            busy = gkey in _lib_busy
+            _lib_busy.add(gkey)
+        if not busy:
+            def bg():
+                try:
+                    store(LIB.build(kind, parts))
+                except Exception:
+                    pass
+                finally:
+                    with _lock:
+                        _lib_busy.discard(gkey)
+            threading.Thread(target=bg, daemon=True, name="stremio-library").start()
+        return hit[1]
+    lib = LIB.build(kind, parts)
+    store(lib)
+    return lib
+
+
+def warm_library(lines):
+    """يبني مكتبات حسابٍ مسبقًا — لكل نوعٍ قوائم خطوطه كلها في الذاكرة (فلا يسأل السيرفرات شيئًا جديدًا)؛ فأول تصفّحٍ أو
+    بحثٍ لا ينتظر المطابقة. ← كم بُني."""
+    n = 0
+    for kind in TYPES:
+        if all(has_lists(ln["cfg"], kind) for ln in lines):
+            try:
+                library(lines, kind)
+                n += 1
+            except XtreamError:
+                pass
+    return n
+
+
+def work_id(pre, w):
+    s = w.anchor
+    code = _CODE[w.kind]
+    return f"{pre}{code}:{s.item.id}" if s.line == 0 else f"{pre}w{code}:{s.hk}.{s.item.id}"
+
+
+_KIND_OF = {"m": "movie", "s": "series", "l": "tv"}
+
+
+def _ref(lines, pre, sid):
+    """معرّفٌ في المكتبة ← (النوع، بصمة سيرفر المصدر، رقمه، (الموسم، الحلقة) أو None)، أو None."""
+    sid = str(sid)
+    if not sid.startswith(pre):
+        return None
+    p = sid[len(pre):].split(":")
+    if len(p) == 2 and p[0] in _KIND_OF:
+        num = _int(p[1], None)
+        return (_KIND_OF[p[0]], line_hk(lines[0]["cfg"]), num, None) if num is not None else None
+    if len(p) == 2 and p[0] in ("wm", "ws", "wl") and "." in p[1]:
+        hk, num = p[1].split(".", 1)
+        num = _int(num, None)
+        return (_KIND_OF[p[0][1]], hk, num, None) if num is not None and re.fullmatch(r"[0-9a-f]{6}", hk) else None
+    if len(p) == 4 and p[0] == "we" and "." in p[1]:
+        hk, num = p[1].split(".", 1)
+        num, se, ep = _int(num, None), _int(p[2], None), _int(p[3], None)
+        return ("series", hk, num, (se, ep)) if None not in (num, se, ep) and re.fullmatch(r"[0-9a-f]{6}", hk) else None
+    return None
+
+
+def _work(lines, kind, pre, sid):
+    """معرّف ← (العمل، (الموسم، الحلقة) أو None) أو (None، None)."""
+    r = _ref(lines, pre, sid)
+    if not r or r[0] != kind:
+        return None, None
+    return library(lines, kind).find(r[1], r[2]), r[3]
+
+
+def _versions_ar(versions):
+    return list(dict.fromkeys(LIB.VERSION_AR[v] for v in versions if v in LIB.VERSION_AR))
+
+
+def _sources_line(w):
+    """«سمارت · كاسبر (مترجم) · فالكون ×2» — مؤشّر المصادر في وصف البطاقة."""
+    out = []
+    for lb in w.labels:
+        ss = [x for x in w.sources if x.label == lb]
+        vers = _versions_ar([v for x in ss for v in x.key.versions])
+        out.append(lb + (f" ({'، '.join(vers)})" if vers else "") + (f" ×{len(ss)}" if len(ss) > 1 else ""))
+    return " · ".join(out)
+
+
+def work_preview(pre, w, multi):
+    """بطاقة العمل: بمصدرٍ واحد كما كانت بطاقة عنصره، وبمصادر شتّى بأسمائها في وصفها (يظهر في «اكتشف» بجانب الملصق)."""
+    it = w.anchor.item
+    if len(w.sources) == 1:
+        m = _preview(pre, w.kind, it)
+        m["id"] = work_id(pre, w)
+    else:
+        m = _clean({"id": work_id(pre, w), "type": w.kind, "name": w.name, "poster": w.poster,
+                    "posterShape": "square" if w.kind == "tv" else "poster", "releaseInfo": w.year,
+                    "imdbRating": w.rating, "description": w.plot or None, "genres": _split(w.genre)})
+    if multi and w.kind != "tv":
+        line = "المصادر: " + _sources_line(w)
+        m["description"] = f"{m['description']} — {line}" if m.get("description") else line
+    return m
+
+
+def _lib_tagged(lines, lib, kind, g):
+    """تصنيف الفيلم أو المسلسل في المكتبة: من قوائم الخطوط، ومعها أفلامٌ عُرف تصنيفها من تفاصيلها المحفوظة."""
+    seq = lib.tagged(g)
+    if kind != "movie":
+        return seq
+    want, have, more = _norm(g), {id(w) for w in seq}, []
+    hosts = {host_key(ln["cfg"].host): line_hk(ln["cfg"]) for ln in lines}
+    with _lock:
+        known = [(hosts[k[0]], k[2], d) for k, (_, d) in _info.items() if k[0] in hosts and k[1] == "get_vod_info"]
+    for hk, iid, d in known:
+        info = d.get("info") if isinstance(d.get("info"), dict) else {}
+        w = lib.find(hk, iid)
+        if w and id(w) not in have and want in {_norm(t) for t in _split(info.get("genre"))}:
+            have.add(id(w))
+            more.append(w)
+    return seq + sorted(more, key=lambda w: -w.added)
+
+
+def lib_catalog(lines, kind, cid, extra, pre):
+    """صفحةٌ من كتالوج المكتبة الموحدة: بحثٌ في كل الخطوط معًا (العمل مرةً واحدة)، أو قسم، أو «مصدر: …»، أو تصنيف عمل،
+    أو الكل — 100 عملٍ من ‏skip."""
+    if kind not in CATALOG or cid != CATALOG[kind]:
+        return None
+    lib = library(lines, kind)
+    skip = max(0, _int(extra.get("skip"), 0))
+    if extra.get("search"):
+        seq = lib.search(extra["search"])
+    elif extra.get("genre"):
+        g = " ".join(extra["genre"].split())
+        if g.startswith(SRC_TAG.strip()):
+            seq = lib.from_source(_COUNT.sub("", g[len(SRC_TAG.strip()):]).strip())
+        else:
+            seq = lib.in_category(g) or lib.in_category(_COUNT.sub("", g)) or _lib_tagged(lines, lib, kind, g)
+    else:
+        seq = lib.latest
+    multi = len(lines) > 1
+    page = seq[skip:skip + PAGE]
+    metas = [work_preview(pre, w, multi) for w in page]
+    if kind == "tv":
+        for m, w in zip(metas, page):
+            if w.anchor.cat:
+                m["description"] = w.anchor.cat
+    return {"metas": metas}
+
+
+def _src_links(man, w, extra=None):
+    """المصادر روابطَ في صفحة العمل (فئة «المصادر»): كل بوابةٍ بنسختها، والضغط عليها ← كل ما في ذلك الخط."""
+    if not man:
+        return []
+    url = f"stremio:///discover/{quote(man, safe='')}/{w.kind}/{CATALOG[w.kind]}?genre="
+    out = []
+    for lb in w.labels:
+        ss = [x for x in w.sources if x.label == lb]
+        bits = _versions_ar([v for x in ss for v in x.key.versions]) + [q for q in dict.fromkeys(x.key.quality for x in ss) if q]
+        name = " · ".join([lb] + bits + ([extra[lb]] if extra and extra.get(lb) else []))
+        out.append({"name": name, "category": "المصادر", "url": url + quote(SRC_TAG + lb, safe="")})
+    return out
+
+
+def _with_sources(m, w, man, multi, extra=None):
+    if multi or len(w.sources) > 1:
+        m["links"] = (m.get("links") or []) + _src_links(man, w, extra)
+    return m
+
+
+def _series_sources(lines, w):
+    """حلقات كل مصدرٍ من مصادر المسلسل (تفاصيله تُقرأ معًا وتُحفظ ساعات) ← [(المصدر، [Ep])] بترتيب المصادر."""
+    def one(src):
+        cfg = lines[src.line]["cfg"]
+        try:
+            d = _details(cfg, "get_series_info", "series_id", src.item.id)
+        except XtreamError:
+            d = None
+        info = d.get("info") if isinstance(d, dict) and isinstance(d.get("info"), dict) else {}
+        name = " ".join(str(info.get("name") or src.item.name).split())
+        return src, (_episodes(d, name, src.key.season) if d else []), d
+    with ThreadPoolExecutor(max_workers=min(6, len(w.sources))) as ex:
+        return list(ex.map(one, w.sources))
+
+
+def lib_meta(lines, kind, sid, man, pre):
+    """تفاصيل عملٍ في المكتبة: من أفضل مصادره، ومصادره كلها روابطَ في صفحته؛ والمسلسل بحلقات مصادره كلها (الحلقة الواحدة مرةً
+    واحدة، ولكلٍّ مصادرها في التشغيل)."""
+    w, _ = _work(lines, kind, pre, sid)
+    if w is None:
+        return meta(lines[0]["cfg"], kind, sid, man) if _parse_id(lines[0]["cfg"], sid) else None
+    multi, top = len(lines) > 1, w.sources[0]
+    cfg, wid = lines[top.line]["cfg"], work_id(pre, w)
+    if kind == "movie":
+        m = _movie_meta(cfg, pre, top.item.id, man)
+        if not m:
+            return None
+        m.update({"id": wid, "behaviorHints": {"defaultVideoId": wid}})
+        if len(w.sources) > 1:
+            m["name"] = w.name
+        return {"meta": _with_sources(m, w, man, multi)}
+    if kind == "tv":
+        L = _cached_lists(cfg, "tv") or lists(cfg, "tv")
+        it = L.by_id.get(top.item.id) or top.item
+        cat = L.cat_of(it)
+        m = _clean({**_preview(pre, "tv", it), "id": wid, "name": w.name, "description": cat, "genres": [cat] if cat else [],
+                    "links": _links(man, "tv", it.name, None, [cat] if cat else []), "behaviorHints": {"defaultVideoId": wid}})
+        return {"meta": _with_sources(m, w, man, multi)}
+    per = _series_sources(lines, w)
+    if len(w.sources) == 1 and w.anchor.line == 0:              # مصدرٌ واحد في خط صاحب الحساب: كما كان (معرّفات حلقاته)
+        m = _series_meta(cfg, pre, top.item.id, man)
+        return {"meta": _with_sources(m, w, man, multi)} if m else None
+    best = next((src for src, _, d in per if d), per[0][0])      # أول مصدرٍ قُرئت تفاصيله: منه بيانات الصفحة
+    m = _series_meta(lines[best.line]["cfg"], pre, best.item.id, man)
+    if not m:
+        return None
+    a = w.anchor
+    videos, seen, have = [], set(), OrderedDict()
+    for src, eps, _ in per:
+        have.setdefault(src.label, set()).update((e.season, e.episode) for e in eps)   # البوابة بمداخلها كلها
+        for e in eps:
+            if (e.season, e.episode) in seen:
+                continue
+            seen.add((e.season, e.episode))
+            videos.append(_clean({"id": f"{pre}we:{a.hk}.{a.item.id}:{e.season}:{e.episode}", **e.video}))
+    videos.sort(key=lambda v: (v["season"], v["episode"]))
+    counts = {}
+    for lb, got in have.items():
+        seasons = sorted({se for se, _ in got})
+        if seasons:
+            sp = f"S{seasons[0]:02d}" + (f"–S{seasons[-1]:02d}" if len(seasons) > 1 else "")
+            counts[lb] = f"{sp} · {_eps_count(len(got))}"
+    m.update({"id": wid, "name": w.name if len(w.sources) > 1 else m.get("name"), "videos": videos})
+    return {"meta": _with_sources(m, w, man, multi, counts)}
+
+
+def _eps_count(n):
+    return "حلقة واحدة" if n == 1 else "حلقتان" if n == 2 else f"{n} حلقات" if 3 <= n % 100 <= 10 else f"{_fmt(n)} حلقة"
+
+
+def _height(info):
+    """ارتفاع الصورة من تفاصيل الملف كما يقرؤها السيرفر (‏info.video.height، وإلا العرض) — الجودة الحقيقية لا ما في الاسم."""
+    v = info.get("video") if isinstance(info, dict) and isinstance(info.get("video"), dict) else {}
+    h, w = _int(v.get("height"), 0), _int(v.get("width"), 0)
+    return h or (w * 9 // 16 if w else 0)
+
+
+def _quality(src, height=0):
+    """جودة المصدر: من الملف نفسه إن عُرف ارتفاعه (‏2160 ← 4K · 1080 ← FHD · 720 ← HD · أقلّ ← SD)، وإلا من اسمه وقسمه."""
+    if height >= 1800:
+        return "4K"
+    if height >= 1000:
+        return "FHD"
+    if height >= 700:
+        return "HD"
+    if height > 0:
+        return "SD"
+    return src.key.quality
+
+
+def _lang_rank(versions):
+    """الترجمة العربية أولًا: مترجمٌ (أو سوفت أو متعدد الترجمات) ← 0، وما لا يُعرف ← 1، والمدبلج ← 2."""
+    v = set(versions or ())
+    return 0 if v & {"subbed", "subbed_soft", "multi"} else 2 if "dubbed" in v else 1
+
+
+def _status_rank(cfg):
+    """0 الاشتراك فعّال · 1 لا يُعرف (السيرفر لا يردّ) · 2 يرفضه السيرفر — المصادر تُرتَّب به."""
+    try:
+        ui, _ = account(cfg)
+        return 0 if str(ui.get("status", "")).lower() in ("active", "") else 2
+    except AuthError:
+        return 2
+    except XtreamError:
+        return 1
+
+
+def candidates(lines, kind, sid, pre):
+    """مصادر تشغيل عنصرٍ في المكتبة بترتيب الأفضل ← [{url, name, title, binge, rank}]، أو None لمعرّفٍ ليس من المكتبة
+    (حلقةٌ بصيغتها القديمة: تشغيلها كما كان). الترتيب — وبه يختار «تلقائي»: الاشتراك فعّال ← الترجمة العربية (مترجم ·
+    سوفت · متعدد الترجمات، ثم ما لا يُعرف، ثم المدبلج) ← الجودة الأعلى (من الملف نفسه إن عرفها السيرفر، وإلا من اسمه) ←
+    ترتيب الخطوط."""
+    w, ep = _work(lines, kind, pre, sid)
+    if w is None:
+        return None
+    ranks = {}
+    with ThreadPoolExecutor(max_workers=min(6, len(lines))) as ex:
+        for li, r in zip(range(len(lines)), ex.map(lambda ln: _status_rank(ln["cfg"]), lines)):
+            ranks[li] = r
+    files = {}                                         # المصدر ← (الرابط، الامتداد، الارتفاع، الحلقة)
+    if kind == "series":
+        for src, eps, _ in _series_sources(lines, w):
+            e = next((x for x in eps if (x.season, x.episode) == ep), None)
+            if e:
+                files[src] = (e.eid, e.ext, e.height, e)
+    elif kind == "movie":
+        def one(src):
+            d = _details(lines[src.line]["cfg"], "get_vod_info", "vod_id", src.item.id) or {}
+            md = d.get("movie_data") if isinstance(d.get("movie_data"), dict) else {}
+            return src, (src.item.id, src.item.ext or _ext(md.get("container_extension")) or "mp4", _height(d.get("info")), None)
+        with ThreadPoolExecutor(max_workers=min(6, len(w.sources))) as ex:
+            files = dict(ex.map(one, w.sources))
+    else:
+        files = {src: (src.item.id, "", 0, None) for src in w.sources}
+    qual = {src: _quality(src, f[2]) for src, f in files.items()}
+    order = sorted(files, key=lambda x: (ranks.get(x.line, 1), _lang_rank(x.key.versions),
+                                         -LIB.QUALITY_RANK.get(qual[x], 1), x.line, x.item.id))
+    out = []
+    for src in order:
+        cfg = lines[src.line]["cfg"]
+        u, pw = quote(cfg.user, safe=""), quote(cfg.pw, safe="")
+        label, rank = src.label or BRAND, ranks.get(src.line, 1)
+        num, ext, height, e = files[src]
+        bits = [x for x in [qual[src] + (f" ({height}p)" if height else "")] + _versions_ar(src.key.versions) if x]
+        warn = "⚠️ الاشتراك منتهٍ — " if rank == 2 else ""
+        if kind == "movie":
+            out.append({"url": f"{cfg.host}/movie/{u}/{pw}/{num}.{ext}", "name": label, "rank": rank,
+                        "title": warn + f"{src.item.name}\n" + " · ".join(bits + [ext.upper()]), "binge": None})
+        elif kind == "series":
+            out.append({"url": f"{cfg.host}/series/{u}/{pw}/{num}.{ext}", "name": label, "rank": rank,
+                        "title": warn + f"{src.item.name}\n" + " · ".join(bits + [f"S{e.season:02d}E{e.episode:02d}", ext.upper()]),
+                        "binge": f"ssouq-{src.hk}-{'-'.join(src.key.versions) or 'x'}"})
+        else:
+            for f in _formats(cfg):
+                out.append({"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "name": label, "rank": rank,
+                            "title": warn + f"{src.item.name}\n" + " · ".join(bits + ["بث مباشر", {"m3u8": "HLS", "ts": "TS"}[f]]),
+                            "binge": None})
+    return out
+
+
+def lib_streams(lines, kind, sid, pre, play_url):
+    """قائمة التشغيل: «تلقائي» أولها حين تتعدّد المصادر (يجرّبها بالترتيب وينتقل للتالي إن تعطّل)، ثم كل مصدرٍ ببوابته
+    واسمه الأصلي وجودته ونسخته."""
+    cands = candidates(lines, kind, sid, pre)
+    if cands is None:
+        return streams(lines[0]["cfg"], kind, sid)
+    out = []
+    if len(cands) > 1:
+        out.append({"url": play_url, "name": BRAND, "title": "⚡ تلقائي — المترجم بالعربية بأعلى جودة\nإن تعطّل مصدرٌ انتقل للتالي",
+                    "behaviorHints": {"notWebReady": True, "bingeGroup": "ssouq-auto"}})
+    for c in cands:
+        hints = {"notWebReady": True}
+        if c["binge"]:
+            hints["bingeGroup"] = c["binge"]
+        out.append({"url": c["url"], "name": c["name"], "title": c["title"], "behaviorHints": hints})
+    return {"streams": out}
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+_probe_opener = build_opener(_NoRedirect)
+
+
+def probe(url):
+    """هل يردّ المصدر؟ طلبٌ واحد قصير (أول بايتين) بلا اتّباع التحويل: 200/206 أو تحويلٌ إلى خادم البث ← يعمل؛ ورفضٌ أو
+    غيابٌ (4xx/5xx) أو مهلةٌ أو انقطاع ← معطّل. النتيجة تُحفظ دقيقة."""
+    now = time.time()
+    with _lock:
+        hit = _probes.get(url)
+    if hit and now - hit[0] < PROBE_TTL:
+        return hit[1]
+    try:
+        r = _probe_opener.open(Request(url, headers={"User-Agent": UA, "Range": "bytes=0-1"}), timeout=PROBE_TIMEOUT)
+        ok = r.getcode() < 400
+        r.close()
+    except HTTPError as e:
+        ok = e.code in (301, 302, 303, 307, 308)
+    except (URLError, OSError, ValueError, http.client.HTTPException):
+        ok = False
+    with _lock:
+        _probes[url] = (now, ok)
+        if len(_probes) > 5000:
+            for k in [k for k, (t, _) in _probes.items() if now - t > PROBE_TTL]:
+                _probes.pop(k, None)
+    return ok
+
+
+def play(lines, kind, sid, pre):
+    """«تلقائي»: أول مصدرٍ يعمل (الاشتراك فعّال أولًا) ← رابطه؛ ومعطّلٌ ← التالي. كلها معطّلة ← الأول (يُظهر المشغّل خطأه).
+    ← الرابط أو None."""
+    cands = candidates(lines, kind, sid, pre)
+    if not cands:
+        return None
+    ok_first = [c for c in cands if c["rank"] < 2] or cands
+    for c in ok_first[:PROBE_MAX]:
+        if probe(c["url"]):
+            return c["url"]
+    return ok_first[0]["url"]
 
 
 # ================= حالة الاشتراك للصفحة، والروابط =================
@@ -974,11 +1649,44 @@ def page():
         return 200, f.read(), "text/html; charset=utf-8", {**_PAGE_HDR, "Cache-Control": "no-store"}
 
 
-def handle(data_dir, path, base, label_for=None, allowed=None, route=None):
+LINES_TTL = 15                       # خطوط حسابٍ تُقرأ مرةً كل ربع دقيقة (لا مع كل صفحةٍ من الكتالوج)
+_lines_cache = OrderedDict()
+
+
+def _lines_of(cfg0, cfg, label, lines_for):
+    """خطوط الإضافة (انظر handle) — محفوظةٌ ثوانيَ."""
+    if not lines_for:
+        return [{"cfg": cfg, "label": label}]
+    now = time.time()
+    with _lock:
+        hit = _lines_cache.get(cfg0)
+    if hit and now - hit[0] < LINES_TTL:
+        return hit[1]
+    try:
+        val = lines_for(cfg0)
+    except Exception:
+        val = hit[1] if hit else [{"cfg": cfg, "label": label}]
+    with _lock:
+        _lines_cache[cfg0] = (now, val)
+        _lines_cache.move_to_end(cfg0)
+        while len(_lines_cache) > 2000:
+            _lines_cache.popitem(last=False)
+    return val
+
+
+def forget_lines():
+    """ينسى خطوط الحسابات المحفوظة ثوانيَ — بعد ربط خطٍّ أو فصله تظهر المكتبة الجديدة من أول طلب."""
+    with _lock:
+        _lines_cache.clear()
+
+
+def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines_for=None):
     """طلب GET تحت ‏/stremio ← (الرمز، الجسم، النوع، الترويسات)، أو None لمسارٍ ليس لها.
     ‏label_for(cfg) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
     ‏allowed(cfg، القفل) هل الرمز ساري — رمزٌ أُوقف (قفل حسابه تغيّر) يُردّ كرمزٍ غير صالح.
-    ‏route(cfg) الاشتراك على هوسته الحالي (‏routed) إن غيّر السيرفر عنوانه، أو كما هو."""
+    ‏route(cfg) الاشتراك على هوسته الحالي (‏routed) إن غيّر السيرفر عنوانه، أو كما هو.
+    ‏lines_for(cfg) خطوط حساب Stremio لهذه الإضافة (صاحب الحساب أولًا): مكتبتها الموحدة و«الحسابات» (انظر
+    accounts_catalog · library)؛ أو None لخطٍّ مرتبطٍ بحساب (بلا كتالوجات: محتواه في مكتبة صاحب الحساب). بلاه: الخط وحده."""
     if path != PATH and not path.startswith(PATH + "/"):
         return None
     parts = [unquote(p) for p in path[len(PATH):].split("/") if p != ""]
@@ -992,33 +1700,68 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None):
     if allowed and not allowed(cfg, key):
         return _json(404, {"ok": False, "error": "أُوقف هذا الرابط — الإضافة مقفلةٌ على حسابها"})
     rest = parts[1:]
-    if not rest[-1].endswith(".json"):
-        return _json(404, {"error": "not found"})
-    rest[-1] = rest[-1][:-len(".json")]
+    is_play = rest[0] == "play" and len(rest) == 3            # «تلقائي»: /play/<النوع>/<المعرّف> ← تحويلٌ إلى مصدرٍ يعمل
+    if not is_play:
+        if not rest[-1].endswith(".json"):
+            return _json(404, {"error": "not found"})
+        rest[-1] = rest[-1][:-len(".json")]
+    acc = len(rest) > 1 and rest[1] == ACCOUNTS
+    need_lines = rest[0] in ("manifest", "catalog", "meta", "stream", "play")
     label = ""
-    if rest[0] in ("manifest", "status") and label_for:
+    if (rest[0] in ("manifest", "status") or acc or (need_lines and not lines_for)) and label_for:
         try:
             label = label_for(cfg) or ""
         except Exception:
             label = ""
+    cfg0 = cfg
     if route:
         try:
             cfg = route(cfg) or cfg
         except Exception:
             pass
+    # خطوط الحساب: صاحبه (أو رابطٌ وحده) ← مكتبةٌ موحدة و«الحسابات»؛ والخط المرتبط ← None (محتواه في مكتبة صاحبه)
+    lines = _lines_of(cfg0, cfg, label, lines_for) if need_lines else None
+    pre = prefix(cfg)
     try:
         if rest == ["manifest"]:
-            return _json(200, manifest(cfg, base, label), 3600)
+            return _json(200, manifest(cfg, base, label, accounts=lines is not None, lines=lines, catalogs=lines is not None), 3600)
         if rest == ["status"]:
             return _json(200, status(cfg, base, parts[0], label))
+        if acc:                                          # «الحسابات»: حال خطوط الحساب، وتجديدها
+            if lines is None:
+                res = None
+            elif rest[0] == "catalog" and len(rest) == 3 and rest[2] == ACCOUNTS_ID:
+                return _json(200, accounts_catalog(lines, pre, base), ACCOUNTS_AGE)
+            elif rest[0] == "meta" and len(rest) == 3:
+                res = accounts_meta(lines, pre, base, rest[2])
+            elif rest[0] == "stream" and len(rest) == 3:
+                res = accounts_streams(lines, pre, rest[2])
+            else:
+                res = None
+            if res:
+                return _json(200, res, ACCOUNTS_AGE)
+            return _json(404, {"metas": []} if rest[0] == "catalog" else {"meta": None} if rest[0] == "meta" else {"streams": []})
+        if is_play:
+            url = play(lines, rest[1], rest[2], pre) if lines is not None else None
+            if not url:
+                return _json(404, {"error": "not found"})
+            return 302, b"", "text/plain; charset=utf-8", {**_CORS, **_PAGE_HDR, "Location": url, "Cache-Control": "no-store"}
         if rest[0] == "catalog" and len(rest) in (3, 4):
-            res = catalog(cfg, rest[1], rest[2], parse_extra(path.rsplit("/", 1)[-1][:-5]) if len(rest) == 4 else {})
+            if lines is None:                            # الخط المرتبط: صفوفه القديمة تختفي (محتواه في المكتبة الموحدة)
+                return _json(200, {"metas": []}, 900) if rest[1] in CATALOG else _json(404, {"metas": []})
+            extra = parse_extra(path.rsplit("/", 1)[-1][:-5]) if len(rest) == 4 else {}
+            res = lib_catalog(lines, rest[1], rest[2], extra, pre)
             return _json(200, res, 900) if res is not None else _json(404, {"metas": []})
         if rest[0] == "meta" and len(rest) == 3:
-            res = meta(cfg, rest[1], rest[2])
+            man = links(base, parts[0])["manifest"]
+            res = meta(cfg, rest[1], rest[2], man) if lines is None else lib_meta(lines, rest[1], rest[2], man, pre)
             return _json(200, res, 3600) if res else _json(404, {"meta": None})
         if rest[0] == "stream" and len(rest) == 3:
-            res = streams(cfg, rest[1], rest[2])
+            if lines is None:
+                res = streams(cfg, rest[1], rest[2])
+            else:
+                res = lib_streams(lines, rest[1], rest[2], pre,
+                                  f"{base}{PATH}/{parts[0]}/play/{quote(rest[1], safe='')}/{quote(rest[2], safe='')}")
             return _json(200, res, 600) if res else _json(404, {"streams": []})
     except AuthError as e:
         return _json(403, {"error": str(e)})

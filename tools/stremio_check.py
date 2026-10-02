@@ -69,6 +69,9 @@ class Direct:
     def expected(self, kind):
         return len(S.lists(self.cfg, kind).items)
 
+    def accounts(self, cid):
+        return S.accounts_catalog([{"cfg": self.cfg, "label": ""}], S.prefix(self.cfg), "https://guide.ssouq.com")["metas"]
+
 
 class Remote:
     """الإضافة المنشورة عبر HTTP كما يطلبها Stremio — الأعداد تُقارن بحالة الاشتراك (‏status.json)."""
@@ -101,6 +104,9 @@ class Remote:
             return self.get(f"/stream/{kind}/{quote(mid, safe='')}.json").get("streams") or []
         except urllib.error.HTTPError:
             return []
+
+    def accounts(self, cid):
+        return self.get(f"/catalog/{quote(S.ACCOUNTS, safe='')}/{cid}.json").get("metas") or []
 
     def expected(self, kind):
         if self._status is None:
@@ -139,6 +145,11 @@ def main():
     print(f"الإضافة: {man['name']}  ({man['id']})  البادئة {man['idPrefixes']}")
     for c in man["catalogs"]:
         kind, cid = c["type"], c["id"]
+        if kind == S.ACCOUNTS:                  # «الحسابات»: حال الخطوط لا محتوى
+            cards = src.accounts(cid)
+            bad += not cards
+            print(f"\n[{kind}] {len(cards)} خط: " + " | ".join(hide(m.get("name", "")) for m in cards))
+            continue
         genres = next((e.get("options") or [] for e in c["extra"] if e["name"] == "genre"), [])
         t = time.time()
         allm, pages = walk(src, kind, cid)
