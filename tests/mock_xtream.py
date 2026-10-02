@@ -179,7 +179,12 @@ class Handler(BaseHTTPRequestHandler):
         if u.path.startswith("/images/"):
             n = int("".join(c for c in u.path if c.isdigit()) or 1)
             return self._send(200, png(n), "image/png")
-        if u.path in ("/get.php", "/player_api.php") and (q.get("username") != USER or q.get("password") != PASS):
+        users = getattr(self.server, "users", {USER: PASS})
+        pending = getattr(self.server, "pending", {})          # يوزرٌ لم تُفعّله اللوحة بعد: يُرفض أول N طلبات
+        late = u.path == "/player_api.php" and pending.get(q.get("username"), 0) > 0
+        if late:
+            pending[q.get("username")] -= 1
+        if u.path in ("/get.php", "/player_api.php") and (late or users.get(q.get("username")) != q.get("password")):
             if u.path == "/player_api.php":
                 return self._send(200, json.dumps({"user_info": {"auth": 0}}).encode(), "application/json")
             return self._send(403, b"Forbidden")
@@ -224,6 +229,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(port, api_down=False):
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     srv.api_down = api_down
+    srv.users, srv.pending = {USER: PASS}, {}
     return srv
 
 

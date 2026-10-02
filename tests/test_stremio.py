@@ -8,6 +8,7 @@
     python tests/test_stremio.py
 """
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -173,8 +174,47 @@ def against_mock():
               and man["resources"][0] == "catalog" and {r["name"] for r in man["resources"][1:]} == {"meta", "stream"})
         cat = {c["type"]: c for c in man["catalogs"]}
         opts = cat["movie"]["extra"][0]["options"]
-        check("أقسام الأفلام كلها تصنيفات", opts == list(mock_xtream.MOVIES), str(opts))
-        check("أقسام المسلسلات تصنيفاتٌ كذلك", cat["series"]["extra"][0]["options"] == list(mock_xtream.SERIES))
+        n_of = lambda o: int(re.search(r"\(([\d,]+)\)$", o).group(1).replace(",", ""))
+        check("أقسام الأفلام كلها تصنيفات", [S._COUNT.sub("", o) for o in opts] == list(mock_xtream.MOVIES), str(opts))
+        check("وبجانب كل قسمٍ عدد أفلامه (مجموعها = كل الأفلام بلا الكبار)",
+              all(re.search(r" \([\d,]+\)$", o) for o in opts) and sum(map(n_of, opts)) == n_vod, str(opts))
+        sopts = cat["series"]["extra"][0]["options"]
+        check("أقسام المسلسلات تصنيفاتٌ كذلك بأعدادها", [S._COUNT.sub("", o) for o in sopts] == list(mock_xtream.SERIES)
+              and sum(map(n_of, sopts)) == len(series), str(sopts))
+        check("عدد المحتوى في اسم كل كتالوج", [c["name"] for c in man["catalogs"]] ==
+              [f"أفلام · سمارت ({n_vod})", f"مسلسلات · سمارت ({len(series)})", f"قنوات · سمارت ({n_live})"],
+              str([c["name"] for c in man["catalogs"]]))
+        check("وفي وصف الإضافة", man["description"].startswith(f"{n_vod} فيلم · {len(series)} مسلسل · {n_live} قناة — "),
+              man["description"][:60])
+        check("الأعداد بفواصل الآلاف", S._fmt(21293) == "21,293" and S._COUNT.sub("", "أفلام عربية (1,234)") == "أفلام عربية")
+        check("إضافةٌ مكتملة", S.build_manifest(cfg, "https://g", "")[1] == "ok")
+        nob, st = S.build_manifest(S.Cfg(cfg.host, "nobody", "x"), "https://g", "")
+        check("واشتراكٌ يرفضه السيرفر (لم يُفعَّل بعد): تُبنى بلا أقسامٍ ولا أعداد وحالها «pending» فيُعاد بناؤها",
+              st == "pending" and nob["catalogs"][0]["name"] == "أفلام" and not any(len(c["extra"]) > 2 for c in nob["catalogs"]), st)
+        down = mock_xtream.serve(0, api_down=True)
+        threading.Thread(target=down.serve_forever, daemon=True).start()
+        try:
+            st = S.build_manifest(S.Cfg(f"http://127.0.0.1:{down.server_address[1]}", mock_xtream.USER, mock_xtream.PASS), "https://g", "")[1]
+        finally:
+            down.shutdown()
+        check("وسيرفرٌ لا يردّ: «error» (لا فائدة من إعادته فورًا)", st == "error", st)
+        empty = S.Cfg(cfg.host, "empty", "x")
+        with S._lock:
+            for k in S.TYPES:
+                S._lists[(empty, k)] = (time.time(), S.Lists(k, [], []))
+            S._lists[(empty, "movie")] = (time.time(), S._lists[(cfg, "movie")][1])
+            S._cats[(empty, "series")] = (time.time(), [])
+        e2 = S.Cfg(cfg.host, "empty2", "x")
+        with S._lock:
+            for k in S.TYPES:
+                S._lists[(e2, k)] = (time.time(), S.Lists(k, [], []))
+        check("وقوائم فارغةٌ كلها (يوزرٌ قبلته اللوحة ولم تُسنِد له باقته بعد) كذلك «pending»",
+              S.build_manifest(e2, "https://g", "")[1] == "pending")
+        S.forget_empty(empty)
+        with S._lock:
+            kept = [k for k in S.TYPES if (empty, k) in S._lists]
+            cats_gone = (empty, "series") not in S._cats
+        check("إعادة القراءة تنسى الفارغ وحده (وما حُمّل بمحتواه يبقى)", kept == ["movie"] and cats_gone, str(kept))
         check("والقنوات كلها تصنيفٌ واحد (بحثٌ وصفحات، بلا قائمة أقسام)", [e["name"] for e in cat["tv"]["extra"]] == ["search", "skip"]
               and cat["tv"]["extraSupported"] == ["search", "skip"], str(cat["tv"]["extra"]))
         check("لا تصنيفٌ مطلوب (الكتالوجات في الرئيسية) والبحث والصفحات مدعومة",
@@ -198,6 +238,8 @@ def against_mock():
         g = "مسلسلات تركية مدبلجة"
         gs, _ = walk(cfg, "series", genre=g)
         check("قسمٌ واحد", {m["name"] for m in gs} == {"المؤسس عثمان", "قيامة أرطغرل"}, str([m["name"] for m in gs]))
+        gc = next(o for o in sopts if o.startswith(g + " ("))
+        check("واسم القسم بعدده كما يرسله Stremio", walk(cfg, "series", genre=gc)[0] == gs, gc)
         check("قسمٌ لا يُعرف = لا شيء", walk(cfg, "movie", genre="nope")[0] == [])
         found = S.catalog(cfg, "series", "sq_series", {"search": "breaking"})["metas"]
         check("البحث", [m["name"] for m in found] == ["Breaking Bad"], str(found))
@@ -230,7 +272,10 @@ def against_mock():
               and v[0]["overview"].startswith("What happens"), json.dumps(v[0], ensure_ascii=False))
         check("معرّف الحلقة يحمل امتدادها", v[0]["id"].startswith(pre + "e:") and v[0]["id"].endswith(":mp4"), v[0]["id"])
         lt = S.meta(cfg, "tv", allt[0]["id"])["meta"]
-        check("القناة: اسمها وشعارها", lt["name"] == allt[0]["name"] and lt["posterShape"] == "square" and lt["logo"].endswith(".png"))
+        check("القناة: اسمها وصورتها مربّعة (بلا logo يحلّ محلّ الاسم في صفحتها)", lt["name"] == allt[0]["name"]
+              and lt["posterShape"] == "square" and lt["poster"].endswith(".png") and "logo" not in lt, json.dumps(lt, ensure_ascii=False))
+        check("وقسمها وصفًا وتصنيفًا", lt["description"] == "beIN SPORTS" and lt["genres"] == ["beIN SPORTS"]
+              and allt[0]["description"] == "beIN SPORTS", json.dumps(lt, ensure_ascii=False))
         check("معرّفٌ لسيرفرٍ آخر أو نوعٌ لا يطابق ← None",
               S.meta(cfg, "movie", "sq000000:m:1") is None and S.meta(cfg, "series", m0["id"]) is None)
 
@@ -245,6 +290,8 @@ def against_mock():
         sl = S.streams(cfg, "tv", allt[0]["id"])["streams"]
         lnum = allt[0]["id"].rsplit(":", 1)[1]
         check("القناة: HLS ثم TS", [x["url"] for x in sl] == [f"{host}/live/u/p/{lnum}.m3u8", f"{host}/live/u/p/{lnum}.ts"], str(sl))
+        check("واسم القناة في عنوان التشغيل (لا يُخلط بين القنوات)", all(x["title"].startswith(allt[0]["name"] + "\n") for x in sl),
+              str([x["title"] for x in sl]))
         odd = S.read_token(d, S.make_token(d, host, "u/x", "p&y"))
         with S._lock:                                        # قائمته في الذاكرة (السيرفر الوهمي لا يعرف هذا اليوزر)
             S._lists[(odd, "movie")] = S._lists[(cfg, "movie")]

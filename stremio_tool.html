@@ -79,7 +79,21 @@ select.t{width:auto}
 .opt input:focus-visible+span{outline:2px solid var(--purple);outline-offset:2px}
 .acc.big{padding:11px 20px;font-size:.95rem}
 .card.made{border-color:var(--purple);background:color-mix(in srgb,var(--purple) 8%,var(--sf2))}
-.meta .bad{color:var(--err)}
+.meta .bad{color:var(--err);font-weight:500}
+.meta .warn{color:var(--amber);font-weight:500}
+.cnt{display:inline-flex;align-items:center;border:1.5px solid var(--line);border-radius:10px;background:var(--sf);overflow:hidden}
+.cnt button{width:36px;height:40px;font-size:1.1rem;color:var(--mute)}
+.cnt button:hover{color:var(--ink);background:var(--sf2)}
+.cnt input{width:52px;height:40px;border:0;background:transparent;color:var(--ink);text-align:center;font:700 1rem "IBM Plex Mono",monospace}
+.prog{height:6px;border-radius:4px;background:var(--sf2);overflow:hidden;margin-top:10px}
+.prog i{display:block;height:100%;background:linear-gradient(90deg,var(--purple),var(--go));transition:width .3s}
+.expc{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0}
+.expc button{padding:6px 12px;border-radius:20px;border:1px solid var(--line);background:var(--sf2);font-size:.84rem;color:var(--mute)}
+.expc button b{font-variant-numeric:tabular-nums;margin-inline-start:4px;color:var(--ink)}
+.expc button.on{border-color:var(--purple);color:var(--ink);background:color-mix(in srgb,var(--purple) 14%,var(--sf))}
+.expc button[data-b="exp"] b,.expc button[data-b="d7"] b{color:var(--err)}
+.expc button[data-b="d30"] b{color:var(--amber)}
+.gate .due{font-size:.74rem;font-weight:700;color:#fff;background:var(--err);border-radius:10px;padding:1px 7px}
 .steps{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;font-size:.8rem;color:var(--mute)}
 .steps span{padding:3px 10px;border-radius:20px;border:1px solid var(--line);background:var(--sf2)}
 .cap-img{display:flex;gap:8px;align-items:center;margin:8px 0}
@@ -140,7 +154,11 @@ select.t{width:auto}
     <h2>إنشاء يوزر Stremio في <span id="gName0">البوابة</span></h2>
     <div class="steps"><span>١ · يوزر في البوابة</span><span>٢ · البريد (حساب Stremio)</span><span>٣ · الإضافة المتفق عليها</span></div>
     <div id="pkgs"><div class="empty">جاري تحميل الباقات…</div></div>
-    <div class="row" style="margin-top:12px"><button class="acc big" id="mkBtn" disabled>إنشاء يوزر Stremio</button></div>
+    <div class="row" style="margin-top:12px;flex-wrap:wrap">
+      <span class="cnt" role="group" aria-label="العدد"><button type="button" id="nMinus" aria-label="أقل">−</button><input id="n" value="1" inputmode="numeric" aria-label="عدد اليوزرات (حتى 30)"><button type="button" id="nPlus" aria-label="أكثر">+</button></span>
+      <button class="acc big" id="mkBtn" disabled>إنشاء يوزر Stremio</button>
+    </div>
+    <div class="prog" id="mkProg" hidden><i id="mkBar" style="width:0"></i></div>
     <div id="mkRes"></div>
   </section>
 
@@ -154,16 +172,19 @@ select.t{width:auto}
   </section>
 
   <section>
-    <h2>حسابات Stremio في <span id="gName2">البوابة</span> <span class="count" id="nAcc">0</span><span class="grow"></span></h2>
+    <h2>حسابات Stremio في <span id="gName2">البوابة</span> <span class="count" id="nAcc">0</span><span class="grow"></span>
+      <button class="ghost" id="expBtn" title="يقرأ تاريخ انتهاء كل يوزر من السيرفر">تحديث الانتهاء</button></h2>
     <div class="tools">
       <input class="t ltr" id="filter" placeholder="تصفية بيوزر أو إيميل" autocomplete="off">
       <select class="t" id="sort" aria-label="الترتيب">
         <option value="new">الأحدث أولًا</option>
         <option value="old">الأقدم أولًا</option>
         <option value="user">باليوزر</option>
+        <option value="exp">الأقرب انتهاءً</option>
         <option value="mail">من وصله بريد أولًا</option>
       </select>
     </div>
+    <div class="expc" id="expChips" role="group" aria-label="الانتهاء"></div>
     <div id="list"><div class="empty">جاري التحميل…</div></div>
   </section>
 </main>
@@ -240,7 +261,8 @@ const I = {
   link: '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
   user: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
-  mail: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>'};
+  mail: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  sync: '<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></svg>'};
 const gateName = () => ((D && D.gates.find(g => g.id === GATE)) || {}).name || "البوابة";
 
 // ---- البوابات والقائمة ----
@@ -254,23 +276,65 @@ async function load(gate){
   GATE = D.gate;
   try { localStorage.setItem(GKEY, GATE); } catch {}
   $("dom").textContent = "@" + (D.domain || "tv.ssouq.com");
-  $("gates").innerHTML = D.gates.length ? D.gates.map(g => `<button class="gate${g.id === GATE ? " on" : ""}" role="tab" aria-selected="${g.id === GATE}"
-      data-gate="${esc(g.id)}">${esc(g.name || "بوابة")} <span class="count">${g.count}</span></button>`).join("")
-    : '<div class="empty">لا بوابات في حسابك بعد — أضفها من صفحة الإنشاء.</div>';
+  $("gates").innerHTML = gatesHtml();
   $("gName").textContent = $("gName2").textContent = $("gName0").textContent = gateName();
   renderList();
 }
+function gatesHtml(){
+  return D.gates.length ? D.gates.map(g => `<button class="gate${g.id === GATE ? " on" : ""}" role="tab" aria-selected="${g.id === GATE}"
+      data-gate="${esc(g.id)}">${esc(g.name || "بوابة")} <span class="count">${g.count}</span>${g.due ? `<span class="due" title="منتهية أو تنتهي خلال ٧ أيام">⚠ ${g.due}</span>` : ""}</button>`).join("")
+    : '<div class="empty">لا بوابات في حسابك بعد — أضفها من صفحة الإنشاء.</div>';
+}
 async function selectGate(gate){
-  HITS = []; MADE = null; $("res").innerHTML = ""; $("mkRes").innerHTML = ""; $("q").value = "";
+  HITS = []; MADE = []; EXPF = "all"; $("res").innerHTML = ""; $("mkRes").innerHTML = ""; $("q").value = "";
   await load(gate);
   loadPkgs();
 }
+// ---- الانتهاء: من السيرفر نفسه، يُحفظ مع الحساب ويُعاد فحصه إن قدُم ----
+const DAY = 86400;
+let EXPF = "all", AUTO_EXP = "";
+const nowS = () => (D && D.now) || Math.floor(Date.now() / 1000);
+function bucket(a){
+  if (!a.exp_checked) return "unk";
+  if (a.status === "رُفض") return "exp";
+  if (!a.exp) return "ok";                                   // غير محدود
+  const d = (a.exp - nowS()) / DAY;
+  return d < 0 ? "exp" : d <= 7 ? "d7" : d <= 30 ? "d30" : "ok";
+}
+const BUCKETS = [["all", "الكل"], ["exp", "منتهية"], ["d7", "خلال ٧ أيام"], ["d30", "خلال ٣٠ يومًا"], ["ok", "سارية"], ["unk", "لم تُفحص"]];
+function expText(a){
+  if (!a.exp_checked) return "<span>الانتهاء لم يُفحص بعد</span>";
+  if (a.status === "رُفض") return '<span class="bad">السيرفر يرفض اليوزر (منتهٍ أو موقوف)</span>';
+  if (!a.exp) return '<span class="ok">غير محدود</span>';
+  const d = Math.floor((a.exp - nowS()) / DAY), date = new Date(a.exp * 1000).toISOString().slice(0, 10);
+  return d < 0 ? `<span class="bad">انتهى ${date} · منذ ${-d} يوم</span>`
+    : `<span class="${d <= 7 ? "bad" : d <= 30 ? "warn" : "ok"}">ينتهي ${date} · ${d === 0 ? "اليوم" : "بعد " + d + " يوم"}</span>`;
+}
+const expKey = a => a.status === "رُفض" ? -Infinity : !a.exp_checked ? Infinity - 1 : !a.exp ? Infinity : a.exp;
+async function refreshExp(stale){
+  const b = $("expBtn"); b.disabled = true; b.textContent = "جاري الفحص…";
+  try {
+    const d = await api("/api/stremio/refresh", {gate: GATE, stale: !!stale});
+    if (d.gate === GATE) { D = d; $("gates").innerHTML = gatesHtml(); renderList(); }
+    if (!stale) toast(`فُحص انتهاء ${d.checked} حساب`);
+  } catch(e) { if (!stale) toast(e.message, true); }
+  finally { b.disabled = false; b.textContent = "تحديث الانتهاء"; }
+}
+$("expBtn").onclick = () => refreshExp(false);
+$("expChips").addEventListener("click", e => { const b = e.target.closest("[data-b]"); if (b) { EXPF = b.dataset.b; renderList(); } });
+
 function renderList(){
-  const f = norm($("filter").value), by = $("sort").value;
-  let rows = (D && D.accounts || []).filter(a => !f || norm(a.username).includes(f) || norm(a.email).includes(f));
+  const f = norm($("filter").value), by = $("sort").value, all = (D && D.accounts) || [];
+  const counts = {all: all.length};
+  all.forEach(a => { const k = bucket(a); counts[k] = (counts[k] || 0) + 1; });
+  $("expChips").innerHTML = all.length ? BUCKETS.filter(([k]) => k === "all" || counts[k]).map(([k, t]) =>
+    `<button data-b="${k}" class="${EXPF === k ? "on" : ""}">${t}<b>${counts[k] || 0}</b></button>`).join("") : "";
+  if (EXPF !== "all" && !counts[EXPF]) EXPF = "all";
+  let rows = all.filter(a => (!f || norm(a.username).includes(f) || norm(a.email).includes(f)) && (EXPF === "all" || bucket(a) === EXPF));
   const age = (a, b) => (a.ts - b.ts) || a.created.localeCompare(b.created);     // ts: الثانية التي أُنشئ فيها
   const cmp = {new: (a, b) => age(b, a), old: (a, b) => age(a, b),
                user: (a, b) => a.username.localeCompare(b.username, "en", {numeric: true}),
+               exp: (a, b) => (expKey(a) - expKey(b)) || age(b, a),
                mail: (a, b) => (b.last_mail || "").localeCompare(a.last_mail || "") || age(b, a)}[by];
   rows = rows.slice().sort(cmp);
   $("nAcc").textContent = (D && D.accounts || []).length;
@@ -282,17 +346,30 @@ function renderList(){
           <button class="acc" data-copy="${esc(accText(a.email, a.password))}" data-what="نُسخ الحساب">${I.copy}نسخ الحساب</button>
           ${a.link ? `<button class="ghost st" data-copy="${esc(a.link)}" data-what="نُسخ الرابط">${I.link}الرابط</button>` : ""}
           <button class="ghost st" data-mail="${esc(a.username)}">${I.mail}البريد${a.mail_count ? " " + a.mail_count : ""}</button>
+          <button class="ghost st" data-re="${esc(a.username)}" title="يعيد تثبيت الإضافة في الحساب بأحدث الأقسام والأعداد">${I.sync}تحديث الإضافة</button>
         </div>
       </div>
-      <div class="meta"><span>أُنشئ ${esc(a.created)}</span>${a.changed ? `<span class="ok">غُيّرت كلمة المرور ${esc(a.changed)}</span>` : ""}
+      <div class="meta">${expText(a)}${a.addon_full === false ? '<span class="bad">الإضافة ثُبّتت بلا أقسام — اضغط «تحديث الإضافة»</span>' : ""}<span>أُنشئ ${esc(a.created)}</span>${a.changed ? `<span class="ok">غُيّرت كلمة المرور ${esc(a.changed)}</span>` : ""}
         ${a.mail_count ? `<span class="new">آخر بريد ${esc(a.last_mail)}</span>` : "<span>لا بريد</span>"}</div>
     </div>`).join("")}</div>`
-    : `<div class="empty">${f ? "لا حساب يطابق التصفية." : "لا حسابات Stremio في هذه البوابة بعد — ابحث عن اليوزر أعلاه وأنشئ حسابه من نتيجته."}</div>`;
+    : `<div class="empty">${f || EXPF !== "all" ? "لا حساب يطابق التصفية." : "لا حسابات Stremio في هذه البوابة بعد — أنشئ يوزر Stremio أعلاه، أو ابحث عن يوزرٍ موجود."}</div>`;
+  // ما لم يُفحص انتهاؤه أو قدُم فحصه يُعاد في الخلفية مرةً لكل بوابة في هذه الزيارة
+  const stale = all.some(a => !a.exp_checked || nowS() - a.exp_checked > (D.stale_after || 43200));
+  if (stale && AUTO_EXP !== GATE) { AUTO_EXP = GATE; refreshExp(true); }
 }
 $("gates").addEventListener("click", e => { const b = e.target.closest("[data-gate]"); if (b && b.dataset.gate !== GATE) selectGate(b.dataset.gate); });
 
 // ---- «إنشاء يوزر Stremio»: يوزرٌ في البوابة بالباقة ← البريد (حساب Stremio) ← الإضافة، بطلبٍ واحد ----
-let PKGS = [], MADE = null;
+let PKGS = [], MADE = [];                      // نتائج الدفعة: {line, stremio_account | stremio_error}
+const MAXN = 30;
+const latin = v => String(v || "").replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660);
+const countN = () => Math.min(MAXN, Math.max(1, parseInt(latin($("n").value), 10) || 1));
+const plural = n => n === 1 ? "يوزر Stremio" : n === 2 ? "يوزرَي Stremio" : n <= 10 ? n + " يوزرات Stremio" : n + " يوزر Stremio";
+function mkLabel(){ $("mkBtn").textContent = "إنشاء " + plural(countN()); }
+$("nMinus").onclick = () => { $("n").value = Math.max(1, countN() - 1); mkLabel(); };
+$("nPlus").onclick = () => { $("n").value = Math.min(MAXN, countN() + 1); mkLabel(); };
+$("n").addEventListener("input", mkLabel);
+$("n").addEventListener("change", () => { $("n").value = countN(); mkLabel(); });
 async function loadPkgs(){
   const g = ((D && D.gates) || []).find(x => x.id === GATE) || {}, gid = GATE;
   $("mkBtn").disabled = true; PKGS = [];
@@ -313,48 +390,68 @@ async function loadPkgs(){
 }
 $("mkBtn").onclick = () => {
   const sel = document.querySelector('input[name="pkg"]:checked'); if (!sel) return;
-  const pkg = PKGS.find(p => String(p.id) === sel.value) || {};
-  if (!confirm(`إنشاء يوزر Stremio جديد بباقة «${pkg.name || ""}» في ${gateName()}؟\nيُنشأ اليوزر في البوابة (وتُخصم باقته)، ثم بريده وحساب Stremio والإضافة.`)) return;
-  createStremio(sel.value);
+  const pkg = PKGS.find(p => String(p.id) === sel.value) || {}, n = countN();
+  if (!confirm(`إنشاء ${plural(n)} بباقة «${pkg.name || ""}» في ${gateName()}؟\n`
+             + `يُنشأ ${n === 1 ? "اليوزر" : "كل يوزر"} في البوابة (وتُخصم باقته)، ثم بريده وحساب Stremio والإضافة.`)) return;
+  MADE = []; createBatch(sel.value, n);
 };
-async function createStremio(pid){
-  const b = $("mkBtn"); b.disabled = true; b.textContent = "جاري الإنشاء… اليوزر ثم البريد والإضافة";
-  $("mkRes").innerHTML = "";
+// الدفعة واحدًا واحدًا (الخادم يسجّل حسابًا في الوقت): تعطّل اللوحة يوقفها عند آخر ما نجح، وتعثّر Stremio وحده
+// لا يوقفها (اليوزر محفوظ بزرّ «إعادة»)، وكود التحقّق يُطلب ثم تكمل من حيث وقفت.
+async function createBatch(pid, n){
+  const b = $("mkBtn"); b.disabled = true; $("mkProg").hidden = false;
+  let stop = "", waiting = false;
   try {
-    const d = await api("/api/stremio/create", {gate: GATE, package_id: pid});
-    if (d.need_captcha) { showCap(() => createStremio(pid)); return; }
-    if (d.login_error) throw new Error(d.login_error);
-    MADE = d; showMade();
-    if (d.stremio_account) await copy(accText(d.stremio_account.email, d.stremio_account.password), "أُنشئ يوزر Stremio ونُسخ حسابه");
-    else toast("أُنشئ اليوزر، وتعذّر حساب Stremio — أعد المحاولة", true);
+    while (MADE.length < n) {
+      b.textContent = `جاري الإنشاء… ${MADE.length + 1} من ${n}`;
+      $("mkBar").style.width = (MADE.length / n * 100) + "%";
+      let d;
+      try { d = await api("/api/stremio/create", {gate: GATE, package_id: pid}); }
+      catch(e) { stop = e.message; break; }
+      if (d.need_captcha) { waiting = true; showCap(() => createBatch(pid, n)); return; }
+      if (d.login_error) { stop = d.login_error; break; }
+      MADE.push(d); showMade(n);
+    }
+    $("mkBar").style.width = "100%";
+    const ok = MADE.filter(x => x.stremio_account);
+    if (ok.length) await copy(allText(), ok.length === 1 ? "أُنشئ يوزر Stremio ونُسخ حسابه" : `أُنشئ ${ok.length} وأُنسخت حساباتهم`);
+    if (stop) toast("توقّفت الدفعة: " + stop, true);
+    else if (ok.length < MADE.length) toast(`${MADE.length - ok.length} يوزر بلا حساب Stremio — أعد المحاولة لهم`, true);
     load(GATE);
-  } catch(e) { $("mkRes").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
-  finally { b.disabled = !PKGS.length; b.textContent = "إنشاء يوزر Stremio"; }
+  } finally {
+    b.disabled = !PKGS.length; mkLabel();
+    if (!waiting) { setTimeout(() => { $("mkProg").hidden = true; }, 900); showMade(n, stop); }
+  }
 }
-function showMade(){
-  const L = (MADE && MADE.line) || {}, A = MADE && MADE.stremio_account;
-  $("mkRes").innerHTML = `<div class="cards"><div class="card made">
+const allText = () => MADE.filter(x => x.stremio_account).map(x => accText(x.stremio_account.email, x.stremio_account.password)).join("\n\n— — —\n\n");
+function showMade(n, stop){
+  if (!MADE.length && !stop) { $("mkRes").innerHTML = ""; return; }
+  const ok = MADE.filter(x => x.stremio_account).length;
+  $("mkRes").innerHTML = `<div class="row" style="margin-top:12px;justify-content:space-between;flex-wrap:wrap">
+      <b>أُنشئ ${MADE.length}${n > 1 ? " من " + n : ""} · بحساب Stremio ${ok}</b>
+      ${ok > 1 ? `<button class="acc" data-copyall="1">${I.copy}نسخ الكل (${ok})</button>` : ""}</div>`
+    + (stop ? `<div class="err">توقّفت الدفعة بعد ${MADE.length}: ${esc(stop)}</div>` : "")
+    + `<div class="cards">${MADE.map((d, i) => { const L = d.line || {}, A = d.stremio_account; return `<div class="card made">
       <div class="row1">
         <div class="creds"><span>اليوزر <b class="mono">${esc(L.username)}</b></span><span>الباسورد <b class="mono">${esc(L.password)}</b></span>
           ${A ? `<span>Stremio <b class="mono">${esc(A.email)}</b></span>` : ""}</div>
         <div class="acts">
           ${A ? `<button class="acc" data-copy="${esc(accText(A.email, A.password))}" data-what="نُسخ الحساب">${I.copy}نسخ للعميل</button>`
-              : `<button class="acc" data-retry="1">${I.user}إعادة إنشاء حساب Stremio</button>`}
+              : `<button class="acc" data-retry="${i}">${I.user}إعادة إنشاء حساب Stremio</button>`}
           ${L.stremio ? `<button class="ghost st" data-copy="${esc(L.stremio)}" data-what="نُسخ الرابط">${I.link}الرابط</button>` : ""}
           ${L.line ? `<button class="ghost" data-copy="${esc(L.line)}" data-what="نُسخ السطر">${I.copy}السطر</button>` : ""}
         </div>
       </div>
       <div class="meta">${L.package ? `<span>${esc(L.package)}</span>` : ""}${A ? '<span class="ok">✓ يوزر · بريد · إضافة</span>'
-        : `<span class="bad">${esc(MADE.stremio_error || "")}</span>`}</div>
-    </div></div>`;
+        : `<span class="bad">${esc(d.stremio_error || "")}</span>`}</div>
+    </div>`; }).join("")}</div>`;
 }
-async function retryMade(btn){
-  const L = (MADE && MADE.line) || {}; if (!L.username) return;
+async function retryMade(i, btn){
+  const d = MADE[i], L = (d && d.line) || {}; if (!L.username) return;
   btn.disabled = true; btn.textContent = "جاري الإنشاء…";
   try {
-    const d = await api("/api/stremio/account", {gate: GATE, username: L.username, password: L.password, line: L.line || ""});
-    MADE.stremio_account = {email: d.email, password: d.password}; delete MADE.stremio_error;
-    showMade(); await copy(accText(d.email, d.password), "أُنشئ حساب Stremio ونُسخ"); load(GATE);
+    const r = await api("/api/stremio/account", {gate: GATE, username: L.username, password: L.password, line: L.line || ""});
+    d.stremio_account = {email: r.email, password: r.password}; delete d.stremio_error;
+    showMade(MADE.length); await copy(accText(r.email, r.password), "أُنشئ حساب Stremio ونُسخ"); load(GATE);
   } catch(e) { toast(e.message, true); btn.disabled = false; btn.textContent = "إعادة إنشاء حساب Stremio"; }
 }
 
@@ -432,9 +529,23 @@ document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.copy) copy(b.dataset.copy, b.dataset.what);
   else if (b.dataset.make) makeAccount(+b.dataset.make, b);
-  else if (b.dataset.retry) retryMade(b);
+  else if (b.dataset.retry) retryMade(+b.dataset.retry, b);
+  else if (b.dataset.copyall) copy(allText(), "نُسخت الحسابات");
   else if (b.dataset.mail) openMail(b.dataset.mail);
+  else if (b.dataset.re) reinstall(b.dataset.re, b);
 });
+
+// ---- «تحديث الإضافة»: تُعاد في حساب Stremio بأحدث أقسام السيرفر وأعدادها (يظهر في التطبيق بعد إعادة فتحه) ----
+async function reinstall(username, btn){
+  const label = btn.innerHTML; btn.disabled = true; btn.textContent = "جاري التحديث…";
+  try {
+    const d = await api("/api/stremio/reinstall", {gate: GATE, username});
+    const a = ((D && D.accounts) || []).find(x => x.username === username);
+    if (a) a.addon_full = d.addon_full;
+    renderList();
+    toast(d.addon_full ? "حُدّثت الإضافة — أعد فتح Stremio لتظهر الأقسام" : "حُدّثت الإضافة، لكن السيرفر لم يُرجع أقسامًا الآن", !d.addon_full);
+  } catch(e) { toast(e.message, true); btn.disabled = false; btn.innerHTML = label; }
+}
 
 // ---- بريد الحساب على خادمنا (رابط «نسيت كلمة المرور») وحفظ كلمة المرور الجديدة ----
 async function openMail(username){

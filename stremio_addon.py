@@ -29,6 +29,7 @@ import re
 import threading
 import time
 from collections import OrderedDict, namedtuple
+from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -39,7 +40,7 @@ import crypto_store
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.1.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.2.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -60,6 +61,7 @@ CATALOG = {"movie": "sq_movies", "series": "sq_series", "tv": "sq_live"}
 # أقسام السيرفر تصنيفاتٌ للأفلام والمسلسلات؛ والقنوات تصنيفٌ واحد: كلها في كتالوجها بترتيب السيرفر وبحثٍ بالاسم
 GENRE_TYPES = ("movie", "series")
 _TITLE = {"movie": "أفلام", "series": "مسلسلات", "tv": "قنوات"}
+_UNIT = {"movie": "فيلم", "series": "مسلسل", "tv": "قناة"}
 _CODE = {"movie": "m", "series": "s", "tv": "l"}   # بادئة المعرّف بعد بادئة السيرفر؛ و‏e للحلقة
 
 Cfg = namedtuple("Cfg", "host user pw")
@@ -292,11 +294,16 @@ class Lists:
             if g:
                 by_genre[g].append(it)
         self.by_genre = OrderedDict((g, v) for g, v in by_genre.items() if v)
+        self._cat_name = cat_name
         self.genres = list(self.by_genre)
         # «الكل»: الأحدث إضافةً أولًا للأفلام والمسلسلات؛ والقنوات بترتيب السيرفر (أقسامها متجاورة)
         self.latest = items if kind == "tv" else sorted(items, key=lambda it: -it.added)
         self._keys = None
         self._klock = threading.Lock()
+
+    def cat_of(self, it):
+        """اسم قسم العنصر كما في السيرفر (أو "")."""
+        return self._cat_name.get(it.cat, "") if it else ""
 
     def search(self, q):
         """كل الكلمات في الاسم (بلا تشكيل ولا همزات ولا حالة أحرف): المطابق ثم ما يبدأ بها ثم ما يحويها."""
@@ -442,35 +449,80 @@ def _preview(pre, kind, it):
                    "imdbRating": it.rating, "description": it.plot or None, "genres": _split(it.genre)})
 
 
+_COUNT = re.compile(r"\s*\([\d,]+\)$")       # «مسلسلات تركية (855)» ← عدد القسم في قائمة التصنيف
+
+
+def _fmt(n):
+    return f"{n:,}"
+
+
+def _kind_info(cfg, kind):
+    """(الأقسام بأعدادها، المجموع) لنوعٍ — من القوائم نفسها (ما يُعرض فعلًا، بلا الكبار)، وإلا أسماء الأقسام بلا
+    أعداد، وإلا لا شيء. ‏AuthError تصعد: اشتراكٌ يرفضه السيرفر."""
+    try:
+        L = lists(cfg, kind)
+        return [(g, len(L.by_genre[g])) for g in L.genres] if kind in GENRE_TYPES else [], len(L.items)
+    except AuthError:
+        raise
+    except XtreamError:
+        pass
+    if kind not in GENRE_TYPES:
+        return [], None
+    try:
+        seen, out = set(), []
+        for c in categories(cfg, kind):
+            name = " ".join(str(c.get("category_name") or "").split()) if isinstance(c, dict) else ""
+            if name and name not in seen and not _adult_cat(c):
+                seen.add(name)
+                out.append((name, None))
+        return out, None
+    except AuthError:
+        raise
+    except XtreamError:
+        return [], None
+
+
 def manifest(cfg, base, label=""):
-    """وصف الإضافة: ثلاثة كتالوجات، وأقسام السيرفر تصنيفاتٍ فيها. فشل أقسام نوعٍ لا يُسقط الإضافة: يبقى
-    كتالوجه بلا تصنيفات."""
+    return build_manifest(cfg, base, label)[0]
+
+
+def build_manifest(cfg, base, label=""):
+    """(وصف الإضافة، حاله): ثلاثة كتالوجات بعدد محتوى كلٍّ في اسمه («أفلام · سمارت (21,293)»)، وأقسام الأفلام
+    والمسلسلات تصنيفاتٌ بعدد كلٍّ («مسلسلات تركية (855)»)، والقنوات تصنيفٌ واحد. الأنواع الثلاثة تُحمَّل معًا. فشل نوعٍ
+    لا يُسقط الإضافة: يبقى كتالوجه بلا أعداد أو بلا تصنيفات؛ واشتراكٌ يرفضه السيرفر تُثبَّت إضافته كما هي وتعمل متى
+    جُدِّد. الحال: "ok" حُمّلت الأنواع كلها وفيها محتوى · "pending" رُفض الاشتراك أو جاء فارغًا (يوزرٌ لم يُفعَّل بعد:
+    يُعاد بعد قليل) · "error" تعذّر نوعٌ من السيرفر نفسه (انقطاعٌ أو مهلة: الإعادة الفورية لا تفيد)."""
     pre = prefix(cfg)
     uid = hashlib.sha256(f"{cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
     tag = f" · {label}" if label else ""
-    cats, denied = [], False
-    for kind in TYPES:
-        seen, genres = set(), []
-        try:                             # اشتراكٌ منتهٍ تُثبَّت إضافته ولا تُرفض: يعمل كما هو متى جُدِّد
-            for c in ([] if denied or kind not in GENRE_TYPES else categories(cfg, kind)):
-                name = " ".join(str(c.get("category_name") or "").split()) if isinstance(c, dict) else ""
-                if name and name not in seen and not _adult_cat(c):
-                    seen.add(name)
-                    genres.append(name)
+
+    def one(kind):
+        try:
+            genres, total = _kind_info(cfg, kind)
+            return genres, total, "error" if total is None else None
         except AuthError:
-            denied = True
-        except XtreamError:
-            pass
-        extra = ([{"name": "genre", "options": genres, "isRequired": False}] if genres else []) + \
+            return [], None, "auth"
+    with ThreadPoolExecutor(max_workers=len(TYPES)) as ex:
+        info = dict(zip(TYPES, ex.map(one, TYPES)))
+    cats, totals = [], []
+    for kind in TYPES:
+        genres, total, _ = info[kind]
+        opts = [f"{g} ({_fmt(n)})" if n is not None else g for g, n in genres]
+        extra = ([{"name": "genre", "options": opts, "isRequired": False}] if opts else []) + \
             [{"name": "search", "isRequired": False}, {"name": "skip", "isRequired": False}]
-        cats.append({"type": kind, "id": CATALOG[kind], "name": _TITLE[kind] + tag, "extra": extra,
-                     "extraSupported": [e["name"] for e in extra]})
+        cats.append({"type": kind, "id": CATALOG[kind], "extra": extra, "extraSupported": [e["name"] for e in extra],
+                     "name": _TITLE[kind] + tag + (f" ({_fmt(total)})" if total else "")})
+        if total:
+            totals.append(f"{_fmt(total)} {_UNIT[kind]}")
+    errs = {info[k][2] for k in TYPES}
+    state = "error" if "error" in errs else "pending" if "auth" in errs or not totals else "ok"
     res = {"types": list(TYPES), "idPrefixes": [pre]}
     return {
         "id": f"com.ssouq.xtream.{uid}",
         "version": VERSION,
         "name": BRAND + tag,
-        "description": "كل محتوى اشتراكك في Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها بأقسام السيرفر نفسها، "
+        "description": (" · ".join(totals) + " — " if totals else "")
+                       + "كل محتوى اشتراكك في Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها بأقسام السيرفر نفسها، "
                        "والقنوات المباشرة كلها في تصنيفٍ واحد، وبحثٌ بالاسم.",
         "logo": f"{base}/static/icons/icon-512.png",
         "background": f"{base}/static/og-image.png",
@@ -479,7 +531,19 @@ def manifest(cfg, base, label=""):
         "resources": ["catalog", {"name": "meta", **res}, {"name": "stream", **res}],
         "catalogs": cats,
         "behaviorHints": {"configurable": True, "configurationRequired": False},
-    }
+    }, state
+
+
+def forget_empty(cfg):
+    """ينسى حالة اشتراكٍ وما حُفظ له فارغًا من أقسامٍ وقوائم (يوزرٌ لم يُفعَّل بعد) — فيُقرأ من السيرفر من جديد،
+    وما حُمّل بمحتواه يبقى."""
+    with _lock:
+        _accounts.pop(cfg, None)
+        for kind in TYPES:
+            for store, empty in ((_cats, lambda v: not v), (_lists, lambda v: not v.items)):
+                hit = store.get((cfg, kind))
+                if hit and empty(hit[1]):
+                    store.pop((cfg, kind), None)
 
 
 def parse_extra(s):
@@ -496,11 +560,17 @@ def catalog(cfg, kind, cid, extra):
     if extra.get("search"):
         seq = L.search(extra["search"])
     elif extra.get("genre"):
-        seq = L.by_genre.get(" ".join(extra["genre"].split()), [])
+        g = " ".join(extra["genre"].split())          # بعددٍ («… (855)») من manifest اليوم، أو بلا عدد من أقدم
+        seq = L.by_genre.get(g) or L.by_genre.get(_COUNT.sub("", g), [])
     else:
         seq = L.latest
     pre = prefix(cfg)
-    return {"metas": [_preview(pre, kind, it) for it in seq[skip:skip + PAGE]]}
+    metas = [_preview(pre, kind, it) for it in seq[skip:skip + PAGE]]
+    if kind == "tv":                                  # القناة: اسم قسمها وصفًا يميّزها عن مثيلاتها
+        for m, it in zip(metas, seq[skip:skip + PAGE]):
+            if L.cat_of(it):
+                m["description"] = L.cat_of(it)
+    return {"metas": metas}
 
 
 def _parse_id(cfg, sid):
@@ -612,8 +682,10 @@ def meta(cfg, kind, sid):
     elif code == "s" and kind == "series":
         m = _series_meta(cfg, pre, num)
     elif code == "l" and kind == "tv":
-        it = lists(cfg, "tv").by_id.get(num)
-        m = _clean({**_preview(pre, "tv", it), "logo": it.poster,
+        L = lists(cfg, "tv")
+        it = L.by_id.get(num)
+        # بلا «logo»: صفحة Stremio تعرضه مكان الاسم، فتظهر صورة القناة وحدها؛ واسم قسمها يميّزها
+        m = _clean({**_preview(pre, "tv", it), "description": L.cat_of(it), "genres": [L.cat_of(it)] if L.cat_of(it) else [],
                     "behaviorHints": {"defaultVideoId": f"{pre}l:{num}"}}) if it else None
     else:
         m = None
@@ -659,8 +731,11 @@ def streams(cfg, kind, sid):
         return {"streams": [{"url": f"{cfg.host}/series/{u}/{pw}/{num}.{ext}", "name": BRAND,
                              "title": f"تشغيل · {ext.upper()}", "behaviorHints": hints}]}
     if code == "l" and kind == "tv":
+        L = _cached_lists(cfg, "tv")
+        it = L.by_id.get(num) if L else None
+        ch = f"{it.name}\n" if it else ""              # اسم القناة فوق نوع البث في قائمة التشغيل
         label = {"m3u8": "بث مباشر · HLS", "ts": "بث مباشر · TS"}
-        return {"streams": [{"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "name": BRAND, "title": label[f],
+        return {"streams": [{"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "name": BRAND, "title": ch + label[f],
                              "behaviorHints": {"notWebReady": True}} for f in _formats(cfg)]}
     return None
 
