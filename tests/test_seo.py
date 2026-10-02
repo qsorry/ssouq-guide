@@ -260,6 +260,14 @@ def unit_build():
               and u["recommendation"].startswith("keep as-is") and g and not g["entity_exists"] and g["route_status"] == 404 and "fix route generation" in g["recommendation"]
               and all(k in u for k in ("from", "to", "redirect_reason", "target_current_slug", "last_seen", "route_redirect_target", "reason_non_live", "classification"))
               and au["redirect_rows_after"] == au["redirect_rows_before"] == n_red, str(au)[:700])
+        check("الفصل: الغائب 200 وcanonical نفسه = resolved_to_final (ينجح resolve وcanonical_live)، والمفقود 404 لا يُحلّ (يُفشلهما)، والتوفّر مقياسٌ لا blocker",
+              u["resolved_to_final"] and u["canonical_self"] and not g["resolved_to_final"] and not g["canonical_self"], str((u.get("resolved_to_final"), u.get("canonical_self"), g.get("resolved_to_final"))))
+        qa_r = seo_qa.check_redirects(d, con, [])
+        qt_ = {t["test"]: t for t in qa_r["tests"]}
+        check("check_redirects: redirect_targets_resolve وredirect_targets_canonical_live يفشلان بالمفقود وحده (1 unresolved من 2)، وredirect_targets_catalog_availability ناجحٌ دائمًا بعدّ الغائب 1، ولا اختبار باسم redirect_targets_live",
+              not qt_["redirect_targets_resolve"]["ok"] and '"unresolved": 1' in qt_["redirect_targets_resolve"]["detail"] and not qt_["redirect_targets_canonical_live"]["ok"]
+              and qt_["redirect_targets_catalog_availability"]["ok"] and '"targets_available_false": 1' in qt_["redirect_targets_catalog_availability"]["detail"]
+              and "redirect_targets_live" not in qt_ and qa_r["catalog_availability"]["blocker"] is False, str(qt_)[:600])
         con.execute("DELETE FROM redirect WHERE reason='test'"); seo_db.set_setting(con, "preview", False); con.commit()
         check("بند المراجعة يبقى ثابتًا بين البناءات (لا يتكرّر)",
               con.execute("SELECT COUNT(*) FROM review WHERE kind='name_only' AND status='open'").fetchone()[0] == 1)
