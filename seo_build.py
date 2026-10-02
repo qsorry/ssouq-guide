@@ -298,9 +298,11 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     # **يتناقض** الدليل (سنتان/معرّفان مختلفان أو قصّتان) — وإلا انقسم عضو فالكون كل بناء ثم عاد مدمجًا بالمعرّف نفسه (دوّامة
     # «انفصال ← دمج» برابطٍ جديد وتحويلٍ جديد في كل مرة، كما في Prison Break وOne Piece).
     verified = {r[0] for r in con.execute("SELECT id FROM content WHERE match='tmdb' AND tmdb_id IS NOT NULL AND merged_into IS NULL")}
-    owners, kept_by_identity = {}, 0
+    # التجميد (identity_freeze): كيانٌ قيد مراجعة المالك يبقى بأعضائه كما هو مهما قال الدليل — لا انقسام ولا دمج ولا تحويل
+    frozen = {int(x) for x in (st.get("identity_freeze") or []) if str(x).lstrip("-").isdigit()}
+    owners, kept_by_identity, kept_by_freeze = {}, 0, 0
     for ci, members_idx in enumerate(clusters):
-        for k in {canon(k) for i in members_idx for k in known(items[i])} & verified:
+        for k in {canon(k) for i in members_idx for k in known(items[i])} & (verified | frozen):
             owners.setdefault(k, []).append(ci)
     parent = list(range(len(clusters)))
 
@@ -312,17 +314,22 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     for k, cis in owners.items():
         base = cis[0]
         for ci in cis[1:]:
+            if k in frozen:                       # مجمّد: يبقى معًا بلا نظرٍ في الدليل
+                if find(ci) != find(base):
+                    parent[find(ci)] = find(base)
+                    kept_by_freeze += 1
+                continue
             sc, _ = M.pair_score(items[clusters[base][0]], items[clusters[ci][0]], st)
             if sc is not None and sc != M.DISTINCT and find(ci) != find(base):
                 parent[find(ci)] = find(base)
                 kept_by_identity += 1
-    if kept_by_identity:
+    if kept_by_identity or kept_by_freeze:
         grouped = {}
         for ci, members_idx in enumerate(clusters):
             grouped.setdefault(find(ci), []).extend(members_idx)
         clusters = list(grouped.values())
     cid_of = {}                                   # فهرس العضو ← معرّف الكيان
-    inserted, merged_now = set(), set()
+    inserted, merged_now, freeze_conflicts = set(), set(), []
     claimed_by = {}                               # الكيان ← فهارس أعضاء العنقود الذي ادّعاه في هذا البناء
     for ci_, members_idx in enumerate(clusters):
         if ci_ % 500 == 0:
@@ -349,8 +356,11 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
                                       "cause": sorted(causes) or ["unknown"], "pair": sorted(set(why)),
                                       "services": sorted({m["service"] for m in members}), "why": ["links_moved"]})
         else:
-            cid = min(ids)
+            cid = min(ids & frozen) if ids & frozen else min(ids)
             for other in sorted(ids - {cid}):   # كيانان كانا منفصلين واجتمعت قرائنهما الآن: يبقى الأقدم، والآخر يُدمج فيه
+                if cid in frozen or other in frozen:   # مجمّد: لا دمجٌ فيه ولا منه؛ يُسجَّل للمالك ويبقى الآخر كيانًا مستقلًا
+                    freeze_conflicts.append({"frozen": cid if cid in frozen else other, "other": other if cid in frozen else cid, "name": members[0]["name"]})
+                    continue
                 seo_db.merge_content(con, other, cid, reason=f"links joined in build ({members[0]['service']}: {members[0]['name']})", now=now)   # 301 + بند مراجعة
                 merged[other] = cid
                 merged_now.add(other)
@@ -392,6 +402,9 @@ def _apply(con, data_dir, items, clusters, reviews, sigs, now):
     recon["explained"] = recon["inserted"] + recon["returned"] - recon["merged"] - recon["went_unavailable"] == recon["delta"]
     recon["stream_id_reused"] = len(stream_reuse)
     recon["kept_by_verified_identity"] = kept_by_identity
+    recon["kept_by_freeze"] = kept_by_freeze
+    recon["frozen"] = sorted(frozen)
+    recon["freeze_conflicts"] = freeze_conflicts[:20]
     seo_db.set_state(con, "reconciliation", recon)
     seo_db.set_state(con, "reconciliations", ((seo_db.state(con, "reconciliations") or []) + [recon])[-100:])   # تاريخ البناءات: يفسّر العدّادات بين لقطتين
     seo_db.set_state(con, "stream_reuse", stream_reuse[:200])

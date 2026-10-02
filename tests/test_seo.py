@@ -753,6 +753,47 @@ def unit_sample2_cases():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_freeze():
+    """التجميد (identity_freeze): الكيان قيد مراجعة المالك لا ينقسم ولو غاب الدليل، ولا يُدمج، ولا يُثرى، ولا يتبدّل رابطه ولا يُنشأ له
+    تحويل — والفحص يثبت ذلك لقطةً ثابتة، وعوائق الإصدار مفصولةٌ عن فشل الاختبارات."""
+    print("== تجميد الهوية ==")
+    d = tempfile.mkdtemp(prefix="seo_fz_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "falcon", "name": "فالكون"}]}, f, ensure_ascii=False)
+        _write(d, "casper", _cat([], [{"n": "Foo Show", "s": [[1, 10]], "i": 50, "p": TMDB + "foo.jpg"}]))
+        _write(d, "falcon", _cat([], [{"n": "Foo Show", "s": [[1, 10]], "i": 60, "p": TMDB + "foo.jpg"}]))
+        seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        foo = q("SELECT id, slug FROM content WHERE title='Foo Show' AND merged_into IS NULL")[0]
+        seo_db.set_setting(con, "identity_freeze", [foo[0]]); seo_db.set_setting(con, "preview", True); con.commit(); con.close()
+        _write(d, "casper", _cat([], [{"n": "Foo Show", "s": [[1, 10]], "i": 50}]))        # غاب الملصق: بلا تجميد ينفصل كاسبر كيانًا جديدًا
+        r2 = seo_build.build(d)
+        con = seo_db.connect(d)
+        st = seo_db.settings(con)
+        foo2 = q("SELECT id, slug, merged_into FROM content WHERE title='Foo Show' ORDER BY id")
+        check("مجمّد: غياب الدليل لا يفصل عضو كاسبر (كيانٌ واحد بأعضائه، لا بند انقسام، لا تحويل)، والتسوية تعدّ kept_by_freeze",
+              len(foo2) == 1 and foo2[0][1] == foo[1] and len(q("SELECT 1 FROM content_service WHERE content_id=? AND present=1", foo[0])) == 2 and not q("SELECT 1 FROM review WHERE kind='split_entity'")
+              and not q("SELECT 1 FROM redirect") and r2["reconciliation"]["kept_by_freeze"] >= 1 and r2["reconciliation"]["frozen"] == [foo[0]], str((foo2, r2["reconciliation"])))
+        state, msg = seo_sources._one(con, d, foo[0], "tmdb", st, 1000)
+        check("مجمّد: الإثراء لا يمسّه (لا TMDB ولا Xtream ولا دمج)", state == "miss" and msg.startswith("frozen") and q("SELECT tmdb_id FROM content WHERE id=?", foo[0])[0][0] is None, str((state, msg)))
+        fz = seo_qa.check_freeze(con, st)
+        it = fz["items"][0]
+        check("لقطة التجميد: الحال والرابط ومعرّف TMDB وعدد التحويلات، ولا جديد منذ اللقطة السابقة (تحويل 0، رابط لم يتبدّل، لا كتابة TMDB، لا دمج، لا انقسام)، والاختبار ناجح",
+              it["entity_state"] == "live" and it["slug"] == foo[1] and it["redirect_count_to_entity"] == 0 and it["new_redirects_since_previous_snapshot"] == 0 and not it["slug_changed_since_previous_snapshot"]
+              and not it["tmdb_written_since_previous_snapshot"] and it["split_reviews_since_previous_snapshot"] == 0 and it["ok"] and fz["tests"][0]["ok"], str(it)[:400])
+        qa = seo_qa.run(d, {"movie": 1, "series": 1, "turkish": 1, "anime": 1, "titles": []}, probe={"casper": {"movie": {"error": "xtream 503", **seo_sources.classify_provider_error("xtream 503")}}})
+        rb = {b["gate"]: b["status"] for b in qa["release_blockers"]}
+        check("عوائق الإصدار مفصولةٌ عن الاختبارات: automated_qa كلها ناجحة، وrelease_blockers ثلاثة (التغطية NOT PROVEN · التجميد FROZEN · كاسبر provider_unavailable)، وphase_3 BLOCKED، والمجمّد خارج العيّنة",
+              qa["summary"]["test_failures"] == 0 and qa["summary"]["release_blockers"] == 3 and rb.get("Global SEO Coverage") == "NOT PROVEN" and rb.get("Identity freeze (owner review)") == "FROZEN"
+              and rb.get("Casper", "").startswith("provider_unavailable") and qa["summary"]["phase_3"] == "BLOCKED" and qa["freeze"]["frozen"] == [foo[0]], str(qa["summary"]) + str(rb))
+        con.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_identity_cases():
     """الانقسامات مفسَّرة: من أين، ولماذا (غاب الدليل أم تناقض)، وبلا تغيير URL؛ رقم بثٍّ أعيد استعماله لعملٍ آخر لا يُربط؛ والعنوان لا يتقلّب."""
     print("== الهوية: الانقسام وإعادة استعمال رقم البثّ وثبات العنوان ==")
@@ -1326,6 +1367,7 @@ def main():
     unit_sample2_cases()
     unit_sample3_cases()
     unit_identity_cases()
+    unit_freeze()
     unit_migrate()
     unit_enrich()
     live()
