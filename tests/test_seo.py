@@ -698,6 +698,9 @@ def unit_sample2_cases():
         check("التسوية: الفرق −1 = مدمج 1، غاب 0، متّسقة", rc["delta"] == -1 and rc["merged"] == 1 and rc["went_unavailable"] == 0 and rc["explained"], str(rc))
         hist = seo_db.state(con, "reconciliations") or []
         check("تاريخ التسويات: بناءان مسجَّلان بترتيبهما", len(hist) == 2 and hist[-1]["merged"] == 1 and hist[0]["before"] == 0, str(hist))
+        seo_build._last.clear(); seo_build._stats_cache.clear()           # كأن الخادم أُعيد تشغيله بعد النشر
+        st_ = seo_build.stats(d)
+        check("نتيجة آخر بناء تبقى بعد إعادة التشغيل (من القاعدة): الأعداد والثواني لا الوقت وحده", st_["last"] and st_["last"].get("ok") and "seconds" in st_["last"] and st_["last"]["merged"] == 1, str(st_["last"]))
         check("ولا يتغيّر slug أي كيانٍ في البناء الثاني (التغييرات كلها ترقيات TMDB الموثّقة قبله)",
               q("SELECT COUNT(*) FROM provenance WHERE entity='content' AND field='slug' AND prev IS NOT NULL")[0][0] == slug_changes)
         smp = seo_sources.sample(d, {"movie": 1, "series": 2, "turkish": 2, "anime": 2})
