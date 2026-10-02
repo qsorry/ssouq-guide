@@ -125,8 +125,10 @@ function konList(more) {
     await ap.waitForSelector('[data-k="kon"] .warnline', {timeout: 8000});
     check('المحتوى القديم: «أعد رفع الملف»', (await ap.textContent('[data-k="kon"] .warnline')).includes('أعد رفع الملف'));
     ap.once('dialog', dlg => dlg.accept());       // «مسح محتوى هذا السيرفر؟»
+    await ap.click('[data-k="kon"] details.more summary');     // «امسح المحتوى» في قائمة «⋯»
     await ap.click('[data-k="kon"] [data-act="clear"]');
     await ap.waitForFunction(() => !document.querySelector('[data-k="kon"] .warnline'), null, {timeout: 8000});
+    await ap.click('[data-k="kon"] details.more summary');     // و«عدّل» فيها
     await ap.click('[data-k="kon"] [data-act="edit"]');
     check('«تعديل»: الاسم بالإنجليزية ورابط الصفحة الإنجليزية', await ap.getAttribute('[data-k="kon"] [data-e="en"]', 'value') === 'Kon'
           && await ap.$$eval('[data-k="kon"] [data-editbox] input[readonly]', i => i.map(x => x.value).join('|'))
