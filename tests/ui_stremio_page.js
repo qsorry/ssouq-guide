@@ -212,6 +212,28 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
           /بوابة ب/.test(askNew) && /تُخصم/.test(askNew), askNew.slice(0, 80));
     await user.waitForFunction(() => document.querySelectorAll('#list .card .lines button').length === 2, null, {timeout: 8000});
     check('and the card now lists both lines', (await user.textContent('#list .card .lines')).includes('بوابة ب ·'));
+
+    console.log('== change the host for all accounts at once ==');
+    await user.click('#hostBtn');
+    await user.waitForSelector('#hostList [data-hset]', {timeout: 8000});
+    const hosts = await user.$$eval('#hostList .card .creds', cs => cs.map(c => c.textContent.replace(/\s+/g, ' ').trim()));
+    check('the host window lists each server with its account count', hosts.some(t => t.includes(`http://127.0.0.1:${XT_PORT}`) && /\d+ حساب/.test(t)), hosts.join(' | '));
+    const first = await user.getAttribute('#hostList [data-hset]', 'data-hset');
+    await user.fill(`[data-hin="${first}"]`, `http://localhost:${XT_PORT}`);
+    const asked2 = [];
+    const onDlg = d => { asked2.push(d.message()); d.accept(); };
+    user.on('dialog', onDlg);
+    await user.click(`[data-hset="${first}"]`);
+    await user.waitForFunction(() => /تعمل الآن من/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 15000});
+    check('asks, tries the new host on the lines (this mock rejects them), asks again, then saves for all',
+          asked2.length === 2 && /دفعةً واحدة/.test(asked2[0]) && /لم يقبل/.test(asked2[1])
+          && /يعمل الآن من/.test(await user.textContent('#hostList')), asked2.join(' | ').slice(0, 160));
+    await user.click(`[data-hoff="${first}"]`);
+    await user.waitForFunction(() => /عادت/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 10000});
+    user.off('dialog', onDlg);
+    check('«إلغاء التحويل» puts them back', !(await user.textContent('#hostList')).includes('يعمل الآن من'));
+    await shot(user, 'stremio-hosts');
+    await user.click('#hostClose');
     check('no page errors', errs.length === 0, errs.join(' | '));
   } catch (e) { fail++; console.log('  FAIL  exception:', e.message); }
   finally {

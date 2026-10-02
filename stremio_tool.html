@@ -189,6 +189,7 @@ select.t{width:auto}
 
   <section>
     <h2>حسابات Stremio في <span id="gName2">البوابة</span> <span class="count" id="nAcc">0</span><span class="grow"></span>
+      <button class="ghost" id="hostBtn" title="سيرفرٌ غيّر عنوانه: كل حساباته على الهوست الجديد دفعةً واحدة">تغيير الهوست</button>
       <button class="ghost" id="expBtn" title="يقرأ تاريخ انتهاء كل يوزر من السيرفر">تحديث الانتهاء</button></h2>
     <div class="tools">
       <input class="t ltr" id="filter" placeholder="تصفية بيوزر أو إيميل" autocomplete="off">
@@ -246,6 +247,17 @@ select.t{width:auto}
     </div>
     <div class="err" id="linkMsg"></div>
     <div class="acts"><button class="ghost" id="linkClose">إغلاق</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="hostOverlay" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="hostTtl">
+    <h3 id="hostTtl">تغيير الهوست — كل الحسابات دفعةً واحدة</h3>
+    <p class="hint">سيرفرٌ غيّر عنوانه؟ اكتب هوسته الجديد: كل حسابات Stremio عليه (في بواباتك كلها) تعمل منه فورًا — بلا إعادة
+      تثبيت، والمكتبة و«تابع المشاهدة» كما هي. يُجرَّب بيوزرٍ منها قبل الحفظ. (وللخطوط الجديدة: حدّث هوست البوابة في إعدادها.)</p>
+    <div id="hostList"><div class="empty">جاري التحميل…</div></div>
+    <div class="err" id="hostMsg"></div>
+    <div class="acts"><button class="ghost" id="hostClose">إغلاق</button></div>
   </div>
 </div>
 
@@ -588,7 +600,50 @@ document.addEventListener("click", e => {
   else if (b.dataset.lg) { LINK.gate = b.dataset.lg; LINK.hits = []; $("linkHits").innerHTML = ""; renderLinkGates(); if (LINK.mode === "new") loadLinkPkgs(); }
   else if (b.dataset.lm) setLinkMode(b.dataset.lm);
   else if (b.dataset.lnk) linkHit(+b.dataset.lnk, b);
+  else if (b.dataset.hset) setHost(b.dataset.hset, b, false);
+  else if (b.dataset.hoff) setHost(b.dataset.hoff, b, true);
 });
+
+// ---- «تغيير الهوست»: سيرفرٌ غيّر عنوانه ← كل حساباته تُخدَم من الجديد (يُجرَّب أولًا، ويُلغى بزرّ) ----
+let HOSTS = [];
+function renderHosts(){
+  $("hostList").innerHTML = HOSTS.length ? `<div class="cards">${HOSTS.map(h => `<div class="card">
+      <div class="creds"><span>الهوست <b class="mono">${esc(h.host)}</b></span>
+        <span>${h.count} حساب${h.gates.length ? " · " + esc(h.gates.join(" · ")) : ""}</span>
+        ${h.to ? `<span>يعمل الآن من <b class="mono" style="color:var(--go)">${esc(h.to)}</b></span>` : ""}</div>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap">
+        <input class="t ltr" data-hin="${esc(h.key)}" placeholder="الهوست الجديد — http://new.example:80" value="${esc(h.to)}" autocomplete="off">
+        <button class="acc" data-hset="${esc(h.key)}">تطبيق على ${h.count}</button>
+        ${h.to ? `<button class="ghost" data-hoff="${esc(h.key)}">إلغاء التحويل</button>` : ""}
+      </div></div>`).join("")}</div>`
+    : '<div class="empty">لا حسابات Stremio بعد.</div>';
+}
+async function openHosts(){
+  $("hostMsg").textContent = ""; $("hostList").innerHTML = '<div class="empty">جاري التحميل…</div>'; $("hostOverlay").hidden = false;
+  try { HOSTS = (await api("/api/stremio/hosts")).hosts || []; renderHosts(); }
+  catch(e) { $("hostList").innerHTML = ""; $("hostMsg").textContent = e.message; }
+}
+async function setHost(key, btn, off){
+  const h = HOSTS.find(x => x.key === key); if (!h) return;
+  const to = off ? "" : (document.querySelector(`[data-hin="${CSS.escape(key)}"]`)?.value || "").trim();
+  if (!off && !to) { $("hostMsg").textContent = "اكتب الهوست الجديد."; return; }
+  if (!confirm(off ? `إلغاء التحويل: تعود ${h.count} حساب إلى ${h.host}؟` : `تعمل ${h.count} حساب Stremio على ${h.host} من ${to} — دفعةً واحدة؟`)) return;
+  btn.disabled = true; $("hostMsg").textContent = off ? "" : "نجرّب الهوست الجديد بيوزرٍ من الحسابات…";
+  const send = force => api("/api/stremio/host", {from: key, to, force});
+  try {
+    let d;
+    try { d = await send(false); }
+    catch(e) {
+      if (off || !/لم يقبل/.test(e.message) || !confirm(e.message + "\n\nحفظه على أي حال؟")) throw e;
+      d = await send(true);
+    }
+    HOSTS = d.hosts || []; renderHosts(); $("hostMsg").textContent = "";
+    toast(d.to ? `${d.count} حساب تعمل الآن من ${d.to}` : `عادت ${d.count} حساب إلى هوستها`);
+  } catch(e) { $("hostMsg").textContent = e.message; btn.disabled = false; }
+}
+$("hostBtn").onclick = openHosts;
+$("hostClose").onclick = () => $("hostOverlay").hidden = true;
+$("hostOverlay").addEventListener("click", e => { if (e.target === $("hostOverlay")) $("hostOverlay").hidden = true; });
 
 // ---- خطوط الحساب: أكثر من بوابة (مرح · كاسبر · فالكون…) في حساب Stremio واحد — كل خطٍّ إضافته وكتالوجاته ----
 const lineDot = l => ({exp: "bad", d7: "bad", d30: "warn", ok: "ok"})[bucket(l)] || "";

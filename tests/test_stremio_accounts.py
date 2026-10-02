@@ -451,6 +451,40 @@ def through_server():
         check("ويخرج من قائمة بوابته", r.get("accounts") == [] and next(g for g in r["gates"] if g["id"] == "g4")["count"] == 0)
         c, r = post("/api/stremio/unlink", {"gate": "g4", "username": "k1"}, op3)
         check("ومن لم يُفتح له ← 403", c == 403)
+
+        print("== تغيير الهوست لكل الحسابات دفعةً واحدة ==")
+        new_host = xt_host.replace("127.0.0.1", "localhost")
+        c, r = post("/api/stremio/hosts", None)
+        h127 = next((h for h in r.get("hosts", []) if h["key"] == "127.0.0.1"), {})
+        check("هوستات الحسابات بعددها وبواباتها", c == 200 and h127.get("host") == xt_host and h127.get("count", 0) >= 5
+              and "بوابة مرح" in h127.get("gates", []) and h127.get("to") == "", json.dumps(r, ensure_ascii=False)[:200])
+        tu = local(ours("u@tv.ssouq.com")[0]["transportUrl"])
+
+        def stream_url():
+            meta_id = json.loads(urllib.request.urlopen(tu.replace("manifest.json", "catalog/movie/sq_movies.json"), timeout=30).read())["metas"][0]["id"]
+            st = json.loads(urllib.request.urlopen(tu.replace("manifest.json", f"stream/movie/{meta_id}.json"), timeout=30).read())
+            return meta_id, st["streams"][0]["url"]
+        id0, url0 = stream_url()
+        c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": "http://127.0.0.1:1"})
+        check("هوستٌ جديد لا يقبل يوزرات الحسابات ← 400 ولا يُحفظ", c == 400 and "لم يقبل" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": "ftp://x"})
+        check("وهوستٌ غير صالح ← 400", c == 400 and "غير صالح" in r.get("error", ""))
+        c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": new_host})
+        check("«تغيير الهوست»: كل حسابات الهوست دفعةً واحدة", c == 200 and r.get("count") == h127["count"] and r.get("to") == new_host
+              and next(h for h in r["hosts"] if h["key"] == "127.0.0.1")["to"] == new_host, json.dumps(r, ensure_ascii=False)[:200])
+        id1, url1 = stream_url()
+        check("فالإضافة نفسها (بلا إعادة تثبيت) تعمل من الجديد، ومعرّفاتها كما هي", url1.startswith(new_host + "/movie/") and id1 == id0
+              and url0.startswith(xt_host + "/movie/"), f"{url0} → {url1}")
+        c, r = post("/api/stremio/accounts?gate=g1", None)
+        check("وانتهاء اليوزرات يُقرأ من الجديد", c == 200 and post("/api/stremio/refresh", {"gate": "g1"})[1].get("checked", 0) >= 1)
+        c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": "http://127.0.0.1:1", "force": True})
+        check("ويُحفظ هوستٌ لم يُجرَّب إن أُكّد", c == 200 and r.get("to") == "http://127.0.0.1:1")
+        c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": ""})
+        check("«إلغاء التحويل»: تعود إلى هوستها", c == 200 and r.get("to") == "" and stream_url()[1].startswith(xt_host + "/movie/"))
+        c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": new_host}, op2)
+        check("حسابٌ آخر لا يحوّل حسابات غيره", c == 400 and "لا حسابات" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": new_host}, op3)
+        check("ومن لم يُفتح له ← 403", c == 403)
     finally:
         falcon.terminate()
         app.terminate()
