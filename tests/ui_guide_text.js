@@ -72,6 +72,23 @@ const HOST3 = 'http://smart.host:80', GUIDE3 = 'https://guide.ssouq.com/#activat
     check('create: clipboard holds the line', (await clip()) === res);
     check('history row copies the line', (await user.$eval('#hist button.cb', b => b.dataset.line)) === res);
 
+    // ---- السجل: الباقة واليوم يُطويان ويُفتحان، وزرّ النسخ في العنوان لا يطويهما ----
+    check('history: newest package and its newest day open by default', !!(await user.$('#hist details.pkgGroup[open] > details.day[open]')));
+    await user.evaluate(() => navigator.clipboard.writeText(''));
+    await user.click('#hist details.day > summary button.copy');
+    await sleep(150);
+    check('history: «نسخ اليوم» copies and leaves the day open', (await clip()) === res && !!(await user.$('#hist details.day[open]')));
+    await user.click('#hist details.day > summary .fh');
+    check('history: tapping the day title folds it', !(await user.$('#hist details.day[open]')) && await user.isHidden('#hist button.cb'));
+    await user.reload();
+    await user.waitForSelector('#hist details.pkgGroup', {timeout: 8000});
+    check('history: the fold is remembered after reload', !(await user.$('#hist details.day[open]')) && !!(await user.$('#hist details.pkgGroup[open]')));
+    await user.click('#hist details.pkgGroup > summary .fh');
+    check('history: tapping the package title folds the whole package', !(await user.$('#hist details.pkgGroup[open]')));
+    await user.click('#hist details.pkgGroup > summary .fh');
+    await user.click('#hist details.day > summary .fh');
+    check('history: both open again', !!(await user.$('#hist details.pkgGroup[open] > details.day[open]')) && await user.isVisible('#hist button.cb'));
+
     // ---- البحث: نص الشرح ----
     await user.fill('#searchQ', 'user003');
     await user.click('#searchBtn');
