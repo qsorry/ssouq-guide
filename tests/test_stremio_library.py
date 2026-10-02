@@ -327,9 +327,105 @@ def through_addon():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def slow_line():
+    """خطٌّ بطيءٌ أو متعثّر لا يؤخّر المكتبة: كاسبر يتعثّر في قائمة أفلامه — كان صفّ الأفلام كله ينتظره حتى يفشل، مع كل
+    طلب، فلا تظهر الأفلام."""
+    print("== خطٌّ بطيء أو متعثّر ==")
+    S.reset()
+    smart, casper = MP.Panel("smart"), MP.Panel("casper", "cu", "cp")
+    for p in (smart, casper):
+        p.cat("vod", 10, "أفلام")
+        p.cat("series", 1, "مسلسلات")
+    smart.vod = [{"stream_id": 101, "name": "فيلم سمارت (2024)", "category_id": "10", "added": "100", "container_extension": "mkv"}]
+    casper.vod = [{"stream_id": 201, "name": "فيلم كاسبر (2023)", "category_id": "10", "added": "90", "container_extension": "mp4"}]
+    smart.series = [{"series_id": 1, "name": "مسلسل سمارت", "category_id": "1", "last_modified": "100"},
+                    {"series_id": 2, "name": "علي كارا", "category_id": "1", "releaseDate": "2024", "last_modified": "50"}]
+    casper.series = [{"series_id": 11, "name": "مسلسل كاسبر", "category_id": "1", "last_modified": "90"},
+                     {"series_id": 12, "name": "علي كارا (مترجم)", "category_id": "1", "releaseDate": "2024", "last_modified": "40"}]
+    smart.episodes(2, {1: 2})
+    casper.episodes(12, {1: 4})
+    s1, s2 = MP.serve(smart), MP.serve(casper, bind="127.0.0.2")
+    c1 = S.Cfg(f"http://127.0.0.1:{s1.server_address[1]}", "u", "p")
+    c2 = S.Cfg(f"http://127.0.0.2:{s2.server_address[1]}", "cu", "cp")
+    lines = [{"cfg": c1, "label": "سمارت"}, {"cfg": c2, "label": "كاسبر"}]
+    pre = S.prefix(c1)
+    wait0 = S.LIB_WAIT
+    S.LIB_WAIT = 0.5
+    try:
+        casper.slow["get_vod_streams"] = 2.0
+        t = time.time()
+        mv = S.lib_catalog(lines, "movie", "sq_movies", {}, pre)["metas"]
+        took = time.time() - t
+        check("قائمة كاسبر بطيئة: صفّ الأفلام لا ينتظرها — يُعرض بعد ثوانٍ بالخط الجاهز", took < 1.5
+              and [m["name"] for m in mv] == ["فيلم سمارت (2024)"], f"{took:.1f} ث")
+        t = time.time()
+        S.lib_catalog(lines, "movie", "sq_movies", {}, pre)
+        check("والطلب التالي فوري (لا ينتظر تحميلًا بدأه طلبٌ قبله)", time.time() - t < 0.3, f"{time.time() - t:.2f} ث")
+        got = []
+        for _ in range(100):
+            time.sleep(0.05)
+            got = [m["name"] for m in S.lib_catalog(lines, "movie", "sq_movies", {}, pre)["metas"]]
+            if len(got) == 2:
+                break
+        check("ويدخل كاسبر المكتبة حين تصل قائمته", got == ["فيلم سمارت (2024)", "فيلم كاسبر (2023)"], str(got))
+        S.drop_lists(c2, "movie")
+        S.lib_catalog(lines, "movie", "sq_movies", {}, pre)
+        man = S.manifest(c1, "https://g", "سمارت", lines=lines)
+        cat = {c["type"]: c for c in man["catalogs"]}
+        check("والـmanifest (يُثبَّت مرة) ينتظر الخطوط كلها: أعداده و«مصدر: …» منها كلها",
+              cat["movie"]["name"] == "سمارت سوق (2)" and "مصدر: كاسبر" in next(e["options"] for e in cat["movie"]["extra"] if e["name"] == "genre"),
+              cat["movie"]["name"])
+
+        ali = next(m for m in S.lib_catalog(lines, "series", "sq_series", {}, pre)["metas"] if m["name"] == "علي كارا")
+        casper.slow["get_series_info"] = 2.0
+        t = time.time()
+        vids = S.lib_meta(lines, "series", ali["id"], None, pre)["meta"]["videos"]
+        took = time.time() - t
+        check("صفحة مسلسلٍ مصدره في كاسبر بطيء: تُفتح بعد ثوانٍ بحلقات المصدر الجاهز", took < 1.5 and len(vids) == 2,
+              f"{took:.1f} ث، {len(vids)} حلقات")
+        for _ in range(100):
+            time.sleep(0.05)
+            vids = S.lib_meta(lines, "series", ali["id"], None, pre)["meta"]["videos"]
+            if len(vids) == 4:
+                break
+        check("وحلقات كاسبر تظهر حين تصل تفاصيله", len(vids) == 4, str(len(vids)))
+
+        casper.down.add("get_series")                     # تعثّرٌ دائم (القائمة كاملةً وقسمًا قسمًا)
+        S.drop_lists(c2, "series")
+        S.lib_catalog(lines, "series", "sq_series", {}, pre)   # السابقة تُعرض حتى يُعاد البناء
+        for _ in range(200):
+            time.sleep(0.05)
+            f = S._line_jobs.get((c2, "series"))
+            if f and f.done() and [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {}, pre)["metas"]] == ["مسلسل سمارت", "علي كارا"]:
+                break
+        n = len(casper.hits)
+        t = time.time()
+        ser = S.lib_catalog(lines, "series", "sq_series", {}, pre)["metas"]
+        check("قائمة مسلسلات كاسبر تتعثّر: الصفّ بالخط الجاهز، وتعثّره يُذكر دقيقة (الطلب التالي فوري ولا يسأل كاسبر من جديد)",
+              time.time() - t < 0.3 and len(casper.hits) == n and [m["name"] for m in ser] == ["مسلسل سمارت", "علي كارا"],
+              f"{time.time() - t:.2f} ث، {len(casper.hits) - n} طلبات، {[m['name'] for m in ser]}")
+        smart.down.add("get_series")
+        with S._lock:
+            S._lists.clear()
+            S._list_keys.clear()
+            S._cats.clear()
+            S._libs.clear()
+        try:
+            S.lib_catalog(lines, "series", "sq_series", {}, pre)
+            ok = False
+        except S.XtreamError:
+            ok = True
+        check("وكل الخطوط تتعثّر ← الخطأ (لا كتالوجٌ فارغ)", ok)
+    finally:
+        S.LIB_WAIT = wait0
+        for srv in (s1, s2):
+            srv.shutdown()
+
+
 def main():
     matching()
     through_addon()
+    slow_line()
     print("\n" + "-" * 40)
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
     sys.exit(1 if _f else 0)

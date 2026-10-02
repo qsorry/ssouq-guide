@@ -32,7 +32,7 @@ import re
 import threading
 import time
 from collections import OrderedDict, namedtuple
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
@@ -602,7 +602,7 @@ def _details(cfg, action, field, iid):
 def reset():
     """تفريغ الذاكرة (للاختبارات)."""
     with _lock:
-        for s in (_accounts, _cats, _lists, _list_keys, _info, _rate, _libs, _probes, _lines_cache):
+        for s in (_accounts, _cats, _lists, _list_keys, _info, _rate, _libs, _probes, _lines_cache, _line_jobs):
             s.clear()
         _loading.clear()
 
@@ -677,7 +677,7 @@ def manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True):
 def _lib_info(lines, kind):
     """(الأقسام بأعدادها، المجموع، أسماء الخطوط) لنوعٍ من المكتبة الموحدة — أو None إن تعذّرت كل خطوطها."""
     try:
-        lib = library(lines, kind)
+        lib = library(lines, kind, full=True)          # الـmanifest يُثبَّت مرة: بأقسام خطوطه كلها وأعدادها
     except XtreamError:
         return None
     return (lib.genres if kind in GENRE_TYPES else []), len(lib.works), lib.labels
@@ -1117,8 +1117,13 @@ SRC_TAG = "مصدر: "                   # تصنيف «مصدر: كاسبر» �
 PROBE_TIMEOUT = float(os.environ.get("STREMIO_PROBE_TIMEOUT", "4"))   # مهلة فحص المصدر قبل الانتقال للتالي (ثوانٍ)
 PROBE_TTL = 60                       # نتيجة فحص رابطٍ تُحفظ دقيقة
 PROBE_MAX = 4                        # مصادر تُفحص للتشغيل التلقائي على الأكثر
+# خطٌّ بطيءٌ لا يؤخّر المكتبة: سيرفرٌ يتعثّر في قائمته (كاسبر يردّ 503 لقائمة أفلامه فتُحمَّل قسمًا قسمًا) كان يُبقي صفّ
+# الأفلام كله ينتظره حتى يفشل، مع كل طلب — فلا تظهر الأفلام. الآن تنتظره المكتبة ثوانيَ ثم تُعرض بالخطوط الجاهزة، ويكمل
+# تحميله في الخلفية فيدخلها حين يصل؛ وكذلك تفاصيل مصادر المسلسل وحال خطوط قائمة التشغيل.
+LIB_WAIT = float(os.environ.get("STREMIO_LIB_WAIT", "5"))
 _libs = OrderedDict()                # (النوع، بصمة الخطوط) ← (نسخ القوائم، Library)
 _lib_busy = set()
+_line_jobs = {}                      # (cfg، النوع) ← تحميل قائمة خطٍّ للمكتبة (جارٍ، أو فشلٌ يُذكر دقيقة)
 _probes = {}                         # الرابط ← (الوقت، يعمل؟)
 
 
@@ -1127,33 +1132,90 @@ def line_hk(cfg):
     return hashlib.sha256(host_key(cfg.origin or cfg.host).encode()).hexdigest()[:6]
 
 
-def _lib_parts(lines, kind):
-    """قوائم الخطوط لنوعٍ بالتوازي ← [(رقم الخط، بصمته، اسمه، Lists أو None)]؛ وخطٌّ يتعثّر يُتخطّى (والمكتبة بباقيها)،
-    وكلها تتعثّر ← الخطأ."""
-    errs = []
+def _bg(fn, *args):
+    """‏fn(*args) في خيطٍ في الخلفية ← Future. يكمل ولو لم ينتظره أحد (فيجد الطلب التالي نتيجته في الذاكرة)."""
+    f = Future()
 
-    def one(arg):
-        li, ln = arg
+    def run():
         try:
-            L = lists(ln["cfg"], kind)
-        except XtreamError as e:
-            errs.append(e)
-            L = None
-        return li, line_hk(ln["cfg"]), ln.get("label") or "", L
-    if len(lines) == 1:
-        parts = [one((0, lines[0]))]
+            f.set_result(fn(*args))
+        except BaseException as e:   # noqa: BLE001 — الخطأ لمن ينتظره
+            f.set_exception(e)
+    threading.Thread(target=run, daemon=True, name="stremio-bg").start()
+    return f
+
+
+def _settle(futs, ok, fresh=None):
+    """ينتظر ما بدأ الآن (‏fresh، افتراضًا futs كلها) حتى LIB_WAIT ثانية — وما بدأه طلبٌ قبله لا يُنتظر ثانيةً؛ وإن لم يجهز
+    بعدها ما يُعرض (‏ok) فأولَ ما يجهز، أو حتى تنتهي كلها."""
+    wait(futs if fresh is None else fresh, timeout=LIB_WAIT)
+    pending = [f for f in futs if not f.done()]
+    while pending and not any(f.done() and ok(f) for f in futs):
+        pending = list(wait(pending, return_when=FIRST_COMPLETED)[1])
+
+
+def _line_job(cfg, kind):
+    """تحميل قائمة خطٍّ للمكتبة ← (Future، بدأ الآن؟): واحدٌ مهما تزامنت الطلبات؛ وتعثّر السيرفر يُذكر دقيقة (‏RETRY) فلا يعيد كل
+    طلبٍ انتظاره. ورفض الاشتراك لا يُذكر (يُفعَّل اليوزر فيعمل من الطلب التالي)."""
+    k = (cfg, kind)
+    with _lock:
+        f = _line_jobs.get(k)
+        if f and (not f.done() or time.time() - f.failed < RETRY):
+            return f, False
+        f = _line_jobs[k] = Future()
+        f.failed = 0
+
+    def run():
+        try:
+            L = lists(cfg, kind)
+        except BaseException as e:   # noqa: BLE001
+            with _lock:
+                if isinstance(e, XtreamError) and not isinstance(e, AuthError):
+                    f.failed = time.time()
+                elif _line_jobs.get(k) is f:
+                    _line_jobs.pop(k, None)
+            f.set_exception(e)
+        else:
+            with _lock:
+                if _line_jobs.get(k) is f:
+                    _line_jobs.pop(k, None)
+            f.set_result(L)
+    threading.Thread(target=run, daemon=True, name="stremio-line").start()
+    return f, True
+
+
+def _lib_parts(lines, kind, full=False):
+    """قوائم الخطوط لنوعٍ معًا ← [(رقم الخط، بصمته، اسمه، Lists أو None)]. خطٌّ لم تصل قائمته بعد LIB_WAIT ثانية ‏None
+    هذه المرة (ما دام غيره جاهزًا) ويكمل تحميله في الخلفية — إلا ‏full: تُنتظر كلها؛ وخطٌّ يتعثّر يُتخطّى (والمكتبة
+    بباقيها)، وكلها تتعثّر ← الخطأ."""
+    started = [_line_job(ln["cfg"], kind) for ln in lines]
+    jobs = [f for f, _ in started]
+    if full:
+        wait(jobs)
     else:
-        with ThreadPoolExecutor(max_workers=min(4, len(lines))) as ex:
-            parts = list(ex.map(one, enumerate(lines)))
+        _settle(jobs, lambda f: f.exception() is None, [f for f, fresh in started if fresh])
+    parts, errs = [], []
+    for li, (ln, f) in enumerate(zip(lines, jobs)):
+        L = None
+        if f.done():
+            e = f.exception()
+            if e is None:
+                L = f.result()
+            elif isinstance(e, XtreamError):
+                errs.append(e)
+            else:
+                raise e
+        parts.append((li, line_hk(ln["cfg"]), ln.get("label") or "", L))
     if errs and all(L is None for *_, L in parts):
         raise errs[0]
     return parts
 
 
-def library(lines, kind):
+def library(lines, kind, full=False):
     """مكتبة خطوط الحساب الموحدة لنوع. تُبنى مرةً لكل نسخةٍ من قوائم خطوطها: تجدُّد قائمة خطٍّ (إضافةٌ أو حذفٌ أو تعديلٌ في
-    السيرفر) يعيد بناءها في الخلفية والقديمة تُعرض حتى تكتمل."""
-    parts = _lib_parts(lines, kind)
+    السيرفر) يعيد بناءها في الخلفية والقديمة تُعرض حتى تكتمل. ‏full: بقوائم خطوطها كلها (تُنتظر)، ومحفوظةٌ ينقصها خطٌّ وصل
+    الآن تُبنى الآن لا في الخلفية."""
+    parts = _lib_parts(lines, kind, full)
     # مفتاحها: سيرفر كل خطٍّ واسمه وقائمته (باقته) — حساباتٌ بالباقات نفسها تشترك في مكتبةٍ واحدة
     gkey = (kind,) + tuple((line_hk(ln["cfg"]), ln.get("label") or "", _lkey(ln["cfg"], kind)) for ln in lines)
     lsig = tuple(L.serial if L else 0 for *_, L in parts)
@@ -1163,6 +1225,8 @@ def library(lines, kind):
             _libs.move_to_end(gkey)
     if hit and (hit[0] == lsig or not any(lsig)):
         return hit[1]
+    if full and hit and any(new and not old for old, new in zip(hit[0], lsig)):
+        hit = None
 
     def store(lib):
         with _lock:
@@ -1337,7 +1401,8 @@ def _with_sources(m, w, man, multi, extra=None):
 
 
 def _series_sources(lines, w):
-    """حلقات كل مصدرٍ من مصادر المسلسل (تفاصيله تُقرأ معًا وتُحفظ ساعات) ← [(المصدر، [Ep])] بترتيب المصادر."""
+    """حلقات كل مصدرٍ من مصادر المسلسل (تفاصيله تُقرأ معًا وتُحفظ ساعات) ← [(المصدر، [Ep]، التفاصيل أو None)] بترتيب
+    المصادر. مصدرٌ لم تصل تفاصيله بعد LIB_WAIT ثانية (ما دام غيره وصل) بلا حلقاتٍ هذه المرة، ويكمل في الخلفية."""
     def one(src):
         cfg = lines[src.line]["cfg"]
         try:
@@ -1347,8 +1412,14 @@ def _series_sources(lines, w):
         info = d.get("info") if isinstance(d, dict) and isinstance(d.get("info"), dict) else {}
         name = " ".join(str(info.get("name") or src.item.name).split())
         return src, (_episodes(d, name, src.key.season) if d else []), d
-    with ThreadPoolExecutor(max_workers=min(6, len(w.sources))) as ex:
-        return list(ex.map(one, w.sources))
+    jobs = [_bg(one, src) for src in w.sources]
+    _settle(jobs, lambda f: f.exception() is None and f.result()[2])
+    out = []
+    for src, f in zip(w.sources, jobs):
+        if f.done() and f.exception() is not None and not isinstance(f.exception(), XtreamError):
+            raise f.exception()
+        out.append(f.result() if f.done() and f.exception() is None else (src, [], None))
+    return out
 
 
 def lib_meta(lines, kind, sid, man, pre):
@@ -1451,10 +1522,9 @@ def candidates(lines, kind, sid, pre):
     w, ep = _work(lines, kind, pre, sid)
     if w is None:
         return None
-    ranks = {}
-    with ThreadPoolExecutor(max_workers=min(6, len(lines))) as ex:
-        for li, r in zip(range(len(lines)), ex.map(lambda ln: _status_rank(ln["cfg"]), lines)):
-            ranks[li] = r
+    jobs = [_bg(_status_rank, ln["cfg"]) for ln in lines]           # حال كل خط — ولا يُنتظر خطٌّ لا يردّ (1: لا يُعرف)
+    wait(jobs, timeout=LIB_WAIT)
+    ranks = {li: f.result() if f.done() and f.exception() is None else 1 for li, f in enumerate(jobs)}
     files = {}                                         # المصدر ← (الرابط، الامتداد، الارتفاع، الحلقة)
     if kind == "series":
         for src, eps, _ in _series_sources(lines, w):
@@ -1463,11 +1533,16 @@ def candidates(lines, kind, sid, pre):
                 files[src] = (e.eid, e.ext, e.height, e)
     elif kind == "movie":
         def one(src):
-            d = _details(lines[src.line]["cfg"], "get_vod_info", "vod_id", src.item.id) or {}
+            try:
+                d = _details(lines[src.line]["cfg"], "get_vod_info", "vod_id", src.item.id) or {}
+            except XtreamError:
+                d = {}
             md = d.get("movie_data") if isinstance(d.get("movie_data"), dict) else {}
             return src, (src.item.id, src.item.ext or _ext(md.get("container_extension")) or "mp4", _height(d.get("info")), None)
-        with ThreadPoolExecutor(max_workers=min(6, len(w.sources))) as ex:
-            files = dict(ex.map(one, w.sources))
+        jobs = [_bg(one, src) for src in w.sources]                    # تفاصيل الملف (الجودة): لا يُنتظر مصدرٌ لا يردّ
+        wait(jobs, timeout=LIB_WAIT)
+        files = dict(f.result() if f.done() and f.exception() is None else (src, (src.item.id, src.item.ext or "mp4", 0, None))
+                     for src, f in zip(w.sources, jobs))
     else:
         files = {src: (src.item.id, "", 0, None) for src in w.sources}
     qual = {src: _quality(src, f[2]) for src, f in files.items()}
