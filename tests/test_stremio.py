@@ -220,7 +220,7 @@ def against_mock():
         check("لا تصنيفٌ مطلوب (الكتالوجات في الرئيسية) والبحث والصفحات مدعومة",
               all(not e["isRequired"] for c in man["catalogs"] for e in c["extra"])
               and all({"search", "skip"} <= set(c["extraSupported"]) for c in man["catalogs"]))
-        check("زرّ الإعداد (Configure) يفتح صفحة الاشتراك", man["behaviorHints"]["configurable"] is True)
+        check("زرّ الإعداد (Configure) ظاهرٌ في Stremio (يفتح موقع المتجر)", man["behaviorHints"]["configurable"] is True)
         uid = S.manifest(S.Cfg(cfg.host, "other", "x"), "https://g", "")["id"]
         check("معرّف الإضافة لكل اشتراك (اشتراكان في حسابٍ واحد لا يتصادمان)", uid != man["id"])
 
@@ -417,8 +417,18 @@ def through_server():
         c, _, b = http(base, f"/stremio/{tok}/status.json")
         st = json.loads(b)
         check("حالة الاشتراك لصفحته", c == 200 and st["ok"] and st["counts"]["series"] == 10 and st["label"] == "سمارت", b.decode()[:160])
-        c, _, b = http(base, f"/stremio/{tok}/configure")
-        check("زرّ Configure في Stremio ← صفحة الاشتراك", c == 200 and b"<html" in b)
+        class _Stay(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        try:
+            urllib.request.build_opener(_Stay).open(base + f"/stremio/{tok}/configure", timeout=20)
+            c, loc = 200, ""
+        except urllib.error.HTTPError as e:
+            c, loc = e.code, e.headers.get("Location", "")
+        check("زرّ Configure في Stremio ← موقع سمارت سوق (لا صفحة التثبيت: لا نسخ رابطٍ ولا تثبيت في حسابٍ آخر)",
+              c == 302 and loc == "https://ssouq.com/", f"{c} {loc}")
+        c, _, b = http(base, f"/stremio/{tok}")
+        check("وصفحة التثبيت برمزها باقيةٌ للأداة", c == 200 and b"<html" in b)
         c, _, _ = http(base, f"/stremio/{tok[:-3]}xyz/manifest.json")
         check("رمزٌ معبوثٌ به ← 404", c == 404)
         c, _, _ = http(base, f"/stremio/{tok}/meta/movie/sq000000:m:1.json")

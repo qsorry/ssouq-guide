@@ -816,6 +816,8 @@ _JSON = "application/json; charset=utf-8"
 _CORS = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"}
 _PAGE_HDR = {"X-Robots-Tag": "noindex, nofollow", "Referrer-Policy": "no-referrer"}
 _HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stremio.html")
+# زرّ «Configure» في Stremio يفتح موقع المتجر — لا صفحة التثبيت (فيها نسخ الرابط والتثبيت في حسابٍ آخر)
+CONFIGURE_URL = (os.environ.get("STREMIO_CONFIGURE_URL") or os.environ.get("SALLA_STORE_URL") or "https://ssouq.com").rstrip("/") + "/"
 
 
 def _json(code, obj, age=0):
@@ -834,8 +836,10 @@ def handle(data_dir, path, base, label_for=None):
     if path != PATH and not path.startswith(PATH + "/"):
         return None
     parts = [unquote(p) for p in path[len(PATH):].split("/") if p != ""]
-    if not parts or (len(parts) in (1, 2) and parts[-1] in (parts[0], "configure")):
-        return page()                                    # الصفحة العامة، وصفحة التثبيت وزرّ «Configure» في Stremio
+    if parts and len(parts) <= 2 and parts[-1] == "configure":   # زرّ «Configure» في Stremio ← موقع المتجر
+        return 302, b"", "text/plain; charset=utf-8", {**_PAGE_HDR, "Location": CONFIGURE_URL, "Cache-Control": "no-store"}
+    if not parts or len(parts) == 1:
+        return page()                                    # الصفحة العامة، وصفحة التثبيت برمزها
     cfg = read_token(data_dir, parts[0])
     if not cfg:
         return _json(404, {"ok": False, "error": "رابطٌ غير صالح — اطلب رابطًا جديدًا"})
