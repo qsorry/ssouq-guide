@@ -240,6 +240,20 @@ def through_server():
         post("/api/login", {"user": "other", "password": "pw654321"}, op2)
         c, r = post("/api/stremio/mail?gate=g1&username=u", None, op2)
         check("حسابٌ آخر لا يرى بريد يوزرات غيره", c == 404, str(c))
+
+        print("== صفحة Stremio: مكانٌ لكل بوابة ==")
+        c, r = post("/api/stremio/accounts?gate=g1", None)
+        acc = (r.get("accounts") or [{}])[0]
+        check("بوابات العميل بعدد حساباتها", c == 200 and r["gates"] == [{"id": "g1", "name": "بوابة مرح", "count": 1}], json.dumps(r, ensure_ascii=False)[:160])
+        check("حسابات البوابة: الإيميل وكلمة المرور ورابط التثبيت وعدد البريد", acc.get("email") == "u@tv.ssouq.com" and acc.get("password") == "p"
+              and acc.get("link", "").startswith("https://guide.ssouq.com/stremio/") and acc.get("mail_count") == 1 and acc.get("last_mail"),
+              json.dumps(acc, ensure_ascii=False)[:200])
+        c, r = post("/api/stremio/accounts", None, op2)
+        check("حسابٌ آخر يرى بواباته وحدها بلا حسابات غيره", c == 200 and r["accounts"] == [] and r["gates"][0]["count"] == 0, json.dumps(r, ensure_ascii=False)[:120])
+        c, r = post("/api/stremio/accounts?gate=nope", None)
+        check("بوابةٌ ليست له ← 404", c == 404)
+        c, r = post("/api/stremio/accounts", None, op3)
+        check("ومن لم يُفتح له ← 403", c == 403)
         c, r = post("/api/stremio/password", {"gate": "g1", "username": "u", "password": "x"}, op2)
         check("ولا يغيّر كلمة مرورها", c == 404, str(c))
 

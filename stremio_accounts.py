@@ -215,6 +215,14 @@ def owned(data_dir, acct_id, gate_id, username):
     return None
 
 
+def owned_all(data_dir, acct_id):
+    """كل حسابات Stremio التي أنشأها هذا الحساب (كلمات المرور مفكوكة) — لصفحة Stremio: الأحدث أولًا."""
+    with _lock:
+        d = _load(data_dir)
+    recs = [_plain(data_dir, r) for r in d.values() if isinstance(r, dict) and r.get("acct") == acct_id]
+    return sorted(recs, key=lambda r: r.get("created", ""), reverse=True)
+
+
 def set_password(data_dir, host_key, username, password):
     """كلمة مرورٍ جديدة غيّرها العميل أو الموظف في Stremio (من رابط «نسيت كلمة المرور»): تُجرَّب بالدخول أولًا،
     ثم تُحفظ مشفَّرة. ‏ValueError إن لم يكن له حساب، وStremioError إن رفضها Stremio."""

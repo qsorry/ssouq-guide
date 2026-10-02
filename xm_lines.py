@@ -814,7 +814,27 @@ def stremio_account(acct, gate, username, password, line=""):
                 "transportUrl": stremio_addon.links(base, tok)["manifest"],
                 "flags": {"official": False, "protected": False}}
     return stremio_accounts.ensure(DATA_DIR, hk, str(username), str(password), descriptor,
-                                   owner={"acct": acct.get("id"), "gate": gate.get("id")})
+                                   owner={"acct": acct.get("id"), "gate": gate.get("id"), "token": tok})
+
+
+def stremio_page_data(acct, gate_id):
+    """صفحة Stremio للعميل: بواباته بعدد حساباتها، وحسابات البوابة المختارة (الأحدث أولًا) برابط تثبيتها
+    وعدد ما وصل بريدها."""
+    recs = stremio_accounts.owned_all(DATA_DIR, acct["id"])
+    base = STREMIO_PUBLIC or f"https://{SITE_HOST}"
+    gates = [{"id": g["id"], "name": g.get("name", ""), "count": sum(1 for r in recs if r.get("gate") == g["id"])}
+             for g in acct.get("gates") or []]
+    rows = []
+    for r in recs:
+        if r.get("gate") != gate_id:
+            continue
+        mail = mail_inbox.messages(DATA_DIR, r["email"])
+        rows.append({"username": r.get("username", ""), "email": r["email"], "password": r["password"],
+                     "created": r.get("created", ""), "changed": r.get("changed", ""),
+                     "link": stremio_addon.links(base, r["token"])["page"] if r.get("token") else "",
+                     "mail_count": len(mail), "last_mail": mail[0]["date"] if mail else ""})
+    return {"gates": gates, "gate": gate_id, "accounts": rows, "domain": stremio_accounts.DOMAIN,
+            "receiving": bool(MAIL_PORT)}
 
 
 # ================= خدمة سلة → واتساب (تسليم تلقائي) =================
@@ -3389,6 +3409,19 @@ class Handler(BaseHTTPRequestHandler):
                                                 "error": "تعذّر قراءة الرصيد من اللوحة"})
                 return self._send(200, {"provider": gate.get("mode"), "credits": None,
                                         "unsupported": True})
+            if path == "/stremio":                # صفحة Stremio: حسابات كل بوابة وروابطها وبريدها (لمن فُتح له)
+                if role != "account" or not stremio_on(acct):
+                    return self._redirect(self._url())
+                return self._page("stremio_tool.html")
+            if path == "/api/stremio/accounts":   # حسابات Stremio لبوابةٍ من بوابات العميل
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
+                gid = self._q("gate") or ((acct.get("gates") or [{}])[0].get("id") or "")
+                if gid and not find_gate(acct, gid):
+                    return self._send(404, {"error": "البوابة غير موجودة"})
+                return self._send(200, stremio_page_data(acct, gid))
             if path == "/api/stremio/mail":       # بريد حساب Stremio ليوزرٍ (رابط «نسيت كلمة المرور»)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
