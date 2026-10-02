@@ -1,0 +1,316 @@
+# -*- coding: utf-8 -*-
+"""الفحص النهائي قبل المرحلة 3 (**قراءةٌ صرفة**): عيّنة 30 عملًا بصفحاتها، والتحويلات، وخريطة موقعٍ تجريبية لا تُخدم،
+وتجربة IndexNow بلا إرسال، وأخطاء الطابور، وحال كاسبر — كلٌّ اختبارٌ له ناجح/فاشل وتفصيله. لا يكتب في القاعدة شيئًا:
+لا دمج ولا روابط ولا تحويلات ولا إثراء، ولا يُرسل إلى أي خدمة.
+
+    python seo_qa.py                       # التقرير JSON
+    python seo_qa.py --sitemap=staging.xml  # ومعه خريطة الموقع التجريبية في ملفٍ (لا تُخدم)
+"""
+import json
+import os
+import re
+import sys
+import time
+
+import analytics
+import content as C
+import content_page as P
+import seo_db
+import seo_pages
+import seo_sources
+
+SITE = seo_pages.SITE
+HOST = SITE.split("//", 1)[1]
+SPEC = {"movie": 10, "series": 10, "turkish": 5, "anime": 5, "titles": ["Prison Break", "One Piece"]}   # أعمالٌ بأسمائها تُفحص دائمًا (فالكون بصفّين)
+LD_RX = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.S)
+SRV_RX = re.compile(r'<ul class="srv">(.*?)</ul>', re.S)
+
+
+def _t(name, ok, detail=""):
+    return {"test": name, "ok": bool(ok), "detail": detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False, default=str)[:400]}
+
+
+def _lds(html):
+    out = []
+    for s in LD_RX.findall(html):
+        try:
+            out.append(json.loads(s.replace("<\\/", "</")))
+        except ValueError:
+            out.append(None)
+    return out
+
+
+def pick(con, spec=None):
+    """العيّنة: 10 أفلام · 10 مسلسلات · 5 تركي · 5 أنمي — من الحيّ المتاح، المطابَق بـ TMDB أولًا (صفحاته تُقيَّم كما ستُفهرس)،
+    ثم غيره إن قلّ. التركي والأنمي من عضوية الهب (مؤكّدةً أو قرينةً)."""
+    spec = {**SPEC, **(spec or {})}
+    picked, seen = [], set()
+    base = "SELECT c.id, c.type, c.slug FROM content c WHERE c.merged_into IS NULL AND c.available=1"
+    hub = " AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE t.kind='hub' AND t.key=?)"
+
+    for t in spec.get("titles") or []:
+        for r in seo_sources._by_title(con, t):
+            if r["merged_into"] is None and r["id"] not in seen:
+                seen.add(r["id"]); picked.append({"id": r["id"], "type": con.execute("SELECT type FROM content WHERE id=?", (r["id"],)).fetchone()[0], "slug": r["slug"], "group": "title"})
+
+    def take(label, where, args, n):
+        for order in (" AND c.match='tmdb' ORDER BY COALESCE(c.popularity,0) DESC, c.id", " ORDER BY COALESCE(c.last_seen,0) DESC, c.id DESC"):
+            for r in con.execute(base + where + order + " LIMIT ?", (*args, n * 3)):
+                if r["id"] not in seen and sum(1 for p in picked if p["group"] == label) < n:
+                    seen.add(r["id"]); picked.append({"id": r["id"], "type": r["type"], "slug": r["slug"], "group": label})
+    take("turkish", hub, ("turkish",), spec["turkish"])
+    take("anime", hub, ("anime",), spec["anime"])
+    take("movie", " AND c.type='movie'", (), spec["movie"])
+    take("series", " AND c.type='series'", (), spec["series"])
+    return picked
+
+
+def _page(data_dir, con, row, lang, st):
+    tr = P.lang_of(lang)
+    res = seo_pages.render_entity(con, data_dir, row["type"], row["slug"], tr, st)
+    if not res or res[0] != "page":
+        return None
+    code, body, hdr = seo_pages.handle(data_dir, seo_pages._path(row, lang), lang)
+    return {**res[1], "text": res[1]["html"].decode("utf-8"), "code": code, "headers": hdr, "served": body}
+
+
+def check_work(data_dir, con, item, st, srv_names):
+    """كل اختبارات العمل الواحد ← {id, …, tests: [...]}."""
+    row = con.execute("SELECT * FROM content WHERE id=?", (item["id"],)).fetchone()
+    tests = []
+    live_same = [r["id"] for r in con.execute("SELECT id FROM content WHERE tmdb_id=? AND type=? AND merged_into IS NULL", (row["tmdb_id"], row["type"]))] if row["tmdb_id"] else [row["id"]]
+    tests.append(_t("one_entity", row["merged_into"] is None and row["available"] == 1 and live_same == [row["id"]],
+                    {"tmdb_id": row["tmdb_id"], "live_with_same_tmdb_id": live_same}))
+    prov = con.execute("SELECT at, prev FROM provenance WHERE entity='content' AND entity_id=? AND field='slug'", (row["id"],)).fetchone()
+    bundle_at = seo_db.state(con, "bundle_at") or 0
+    stale = con.execute("SELECT 1 FROM redirect WHERE path=?", (seo_db.PATHS[row["type"]].format(slug=row["slug"]),)).fetchone()
+    tests.append(_t("slug_stable", not stale and not (prov and prov["at"] > bundle_at),
+                    {"slug": row["slug"], "slug_source": row["slug_source"], "changed_since_last_bundle": bool(prov and prov["at"] > bundle_at),
+                     "previous": prov["prev"] if prov else None, "slug_is_old_redirect": bool(stale)}))
+    pages = {}
+    for lang in ("ar", "en"):
+        pages[lang] = _page(data_dir, con, row, lang, st)
+    ok_pages = all(p and p["code"] == 200 and p["text"].count("<h1") == 1 and p["title"] and p["desc"] for p in pages.values())
+    tests.append(_t("ar_en_render", ok_pages, {l: (p["code"] if p else None) for l, p in pages.items()}))
+    if not ok_pages:
+        return {**item, "tests": tests}
+    canon_ok = all(p["canonical"] == SITE + seo_pages._path(row, l) and f'rel="canonical" href="{p["canonical"]}"' in p["text"] for l, p in pages.items())
+    tests.append(_t("canonical", canon_ok, {l: p["canonical"] for l, p in pages.items()}))
+    both = pages["ar"]["index_ar"] and pages["en"]["index_en"]
+    alts = {l: dict(p["alts"]) for l, p in pages.items()}
+    if both:
+        recip = (alts["ar"] == alts["en"] and alts["ar"].get("ar") == pages["ar"]["canonical"] and alts["ar"].get("en") == pages["en"]["canonical"]
+                 and alts["ar"].get("x-default") == pages["ar"]["canonical"]
+                 and all(f'hreflang="{c}" href="{u}"' in p["text"] for p in pages.values() for c, u in alts["ar"].items()))
+        tests.append(_t("hreflang_reciprocal", recip, alts["ar"]))
+    else:
+        tests.append(_t("hreflang_reciprocal", not alts["ar"] and not alts["en"],
+                        {"skipped": "one language only", "why": pages["ar"]["why"], "alts": alts}))
+    want = "Movie" if row["type"] == "movie" else "TVSeries"
+    sch = []
+    for l, p in pages.items():
+        lds = _lds(p["text"])
+        main = next((x for x in lds if isinstance(x, dict) and x.get("@type") == want), None)
+        crumbs = any(isinstance(x, dict) and x.get("@type") == "BreadcrumbList" for x in lds)
+        official = row["episodes_official"] or con.execute("SELECT SUM(episodes_official) FROM season WHERE content_id=?", (row["id"],)).fetchone()[0]
+        counts_ok = row["type"] == "movie" or official or ("numberOfEpisodes" not in (main or {}))
+        sch.append(bool(main) and crumbs and None not in lds and main.get("url") == p["canonical"] and counts_ok)
+    tests.append(_t("schema", all(sch), {"type": want, "ar_en": sch}))
+    rows = con.execute("SELECT service_key, COUNT(*) n FROM content_service WHERE content_id=? AND present=1 GROUP BY 1", (row["id"],)).fetchall()
+    per_service = {r["service_key"]: r["n"] for r in rows}
+    avail = {}
+    for l, p in pages.items():
+        m = SRV_RX.search(p["text"])
+        items = re.findall(r"<li>.*?<b>(.*?)</b>", m.group(1), re.S) if m else []
+        avail[l] = items
+    expected = [srv_names[l][k] for l in ("ar", "en") for k in per_service if k in srv_names[l]]
+    uniq = all(len(v) == len(set(v)) and len(v) == len([k for k in per_service if k in srv_names[l]]) for l, v in avail.items())
+    tests.append(_t("availability_unique", uniq, {"rows_per_service": per_service, "shown": avail}))
+    if per_service.get("falcon", 0) >= 2:
+        f_ar, f_en = srv_names["ar"].get("falcon"), srv_names["en"].get("falcon")
+        tests.append(_t("falcon_once", avail["ar"].count(f_ar) == 1 and avail["en"].count(f_en) == 1
+                        and pages["ar"]["text"].count(f"اشتراكات {f_ar}") <= 1 and f"{f_ar}، {f_ar}" not in pages["ar"]["text"] and f"{f_en}, {f_en}" not in pages["en"]["text"],
+                        {"falcon_rows": per_service["falcon"], "shown_ar": avail["ar"].count(f_ar), "shown_en": avail["en"].count(f_en)}))
+    else:
+        tests.append(_t("falcon_once", True, {"skipped": "falcon rows < 2", "falcon_rows": per_service.get("falcon", 0)}))
+    dup = con.execute(
+        "SELECT DISTINCT o.content_id, c.slug FROM content_service s JOIN content_service o ON o.service_key=s.service_key AND o.kind=s.kind AND o.content_id!=s.content_id AND o.present=1 "
+        "AND o.stream_id IS NOT NULL AND o.stream_id=s.stream_id JOIN content c ON c.id=o.content_id AND c.merged_into IS NULL WHERE s.content_id=? AND s.present=1", (row["id"],)).fetchall()
+    tests.append(_t("no_service_duplicate_urls", not dup, {"other_live_entities_sharing_a_stream": [dict(r) for r in dup]}))
+    noindex = all('name="robots" content="noindex, follow"' in p["text"] and p["headers"].get("X-Robots-Tag") == "noindex" for p in pages.values())
+    tests.append(_t("noindex", noindex, {l: p["headers"].get("X-Robots-Tag") for l, p in pages.items()}))
+    return {**item, "title": row["title"], "tmdb_id": row["tmdb_id"], "match": row["match"], "would_index": {"ar": pages["ar"]["index_ar"], "en": pages["en"]["index_en"]},
+            "why": {"ar": pages["ar"]["why"][0], "en": pages["en"]["why"][1]}, "urls": {l: p["canonical"] for l, p in pages.items()}, "tests": tests}
+
+
+def check_redirects(data_dir, con, sample_ids, limit=200):
+    """كل صفوف ‏redirect (العربية والإنجليزية معًا كما يسجّلها change_slug/merge): الهدف صفحةٌ حيّة (لا تحويلٌ آخر = سلسلة،
+    ولا كيانٌ مدمج/غائب)، وكل صفٍّ عربيّ تخدمه الطبقة 301 مباشرةً إلى هدفه باللغتين (كلّ ما يخصّ أعمال العيّنة، وعيّنةٌ من
+    الباقي)، وصفّ الإنجليزية يطابق صفّ العربية. لا يُنشئ تحويلًا."""
+    rows = con.execute("SELECT path, target, code, reason, created_at FROM redirect ORDER BY created_at DESC").fetchall()
+    targets = {r["path"]: r["target"] for r in rows}
+    chains = [{"from": r["path"], "to": r["target"], "then": targets[r["target"]]} for r in rows if r["target"] in targets]
+    live = set()
+    for r in con.execute("SELECT type, slug FROM content WHERE merged_into IS NULL AND available=1"):
+        live.update(seo_db.paths(r["type"], r["slug"]))
+    bad_target = [{"from": r["path"], "to": r["target"]} for r in rows if r["target"] not in live and r["target"] not in targets]
+    en_rows = [r for r in rows if r["path"].startswith(seo_db.EN + "/")]
+    ar_rows = [r for r in rows if not r["path"].startswith(seo_db.EN + "/")]
+    en_mismatch = [{"en": r["path"], "to": r["target"]} for r in en_rows
+                   if targets.get(r["path"][len(seo_db.EN):]) != r["target"][len(seo_db.EN):] if r["target"].startswith(seo_db.EN + "/")]
+    sample_paths = {p for t, s in con.execute(f"SELECT type, slug FROM content WHERE id IN ({','.join('?' * len(sample_ids)) or '0'})", sample_ids) for p in seo_db.paths(t, s)}
+    todo = [r for r in ar_rows if r["target"] in sample_paths] + [r for r in ar_rows if r["target"] not in sample_paths][:limit]
+    served, direct, fails = 0, 0, []
+    for r in todo:
+        for lang, pre in (("ar", ""), ("en", seo_db.EN)):
+            code, _, hdr = seo_pages.handle(data_dir, pre + r["path"], lang) or (None, b"", {})
+            served += 1
+            if code == 301 and hdr.get("Location") == pre + r["target"] and (pre + r["target"]) in live:
+                direct += 1
+            else:
+                fails.append({"path": pre + r["path"], "code": code, "location": hdr.get("Location"), "expected": pre + r["target"]})
+    n_before = len(rows)
+    n_after = con.execute("SELECT COUNT(*) FROM redirect").fetchone()[0]
+    return {"total": n_before, "ar_rows": len(ar_rows), "en_rows": len(en_rows), "chains": len(chains), "chain_examples": chains[:10],
+            "targets_not_live": len(bad_target), "targets_not_live_examples": bad_target[:10], "en_rows_mismatching_ar": en_mismatch[:10],
+            "served_checked": served, "served_direct": direct, "failures": fails[:20], "created_during_qa": n_after - n_before,
+            "tests": [_t("redirect_chain_zero", not chains, {"chains": len(chains)}),
+                      _t("redirect_targets_live", not bad_target, {"not_live": len(bad_target)}),
+                      _t("redirect_en_rows_match_ar", not en_mismatch, {"mismatch": len(en_mismatch)}),
+                      _t("redirect_served_direct", not fails and (served > 0 or not ar_rows), {"checked": served, "direct": direct, "failures": len(fails)}),
+                      _t("no_new_redirects", n_after == n_before, {"before": n_before, "after": n_after})]}
+
+
+def sitemap_urls(con, st):
+    """روابط الكيانات التي تستحق الفهرسة بسياسة ‏seo_settings (كما ستدخل خريطة المرحلة 3) ← [(loc, lang, id)]. الهبّات
+    وصفحات الأشخاص خارجها الآن (قرارها مع المرحلة 3)."""
+    out = []
+    for r in con.execute("SELECT * FROM content WHERE merged_into IS NULL AND available=1 ORDER BY id"):
+        for lang in ("ar", "en"):
+            if seo_pages.indexable(r, lang, st)[0]:
+                out.append((SITE + seo_pages._path(r, lang), lang, r["id"]))
+    return out
+
+
+def sitemap_xml(urls):
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    rows = [f"  <url>\n    <loc>{seo_pages._esc(u)}</loc>\n    <lastmod>{today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>" for u, _, _ in urls]
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(rows) + "\n</urlset>\n"
+
+
+def check_sitemap(data_dir, con, st, out_path=None):
+    """خريطةٌ تجريبية في ملفٍ لا يُخدم ولا يُرسَل: كلّ loc رابطٌ canonical واحد لكيانٍ حيّ (لا استعلامات ولا تصفّح page/
+    ولا تحويلات قديمة ولا كيانين على رابطٍ واحد)."""
+    urls = sitemap_urls(con, st)
+    locs = [u for u, _, _ in urls]
+    dup_loc = {u for u in locs if locs.count(u) > 1}
+    redirects = {r["path"] for r in con.execute("SELECT path FROM redirect")}
+    faceted = [u for u in locs if "?" in u or "#" in u or "/page/" in u or "/genres/" in u or "/year/" in u]
+    non_canon = [u for u in locs if not u.startswith(SITE + "/") or not u.endswith("/") or "//" in u[len(SITE) + 1:]]
+    old = [u for u in locs if u[len(SITE):].replace(seo_db.EN, "", 1) in redirects]
+    by_id = {}
+    for u, lang, cid in urls:
+        by_id.setdefault((cid, lang), []).append(u)
+    multi = {k: v for k, v in by_id.items() if len(v) > 1}
+    by_lang = {"ar": sum(1 for _, l, _ in urls if l == "ar"), "en": sum(1 for _, l, _ in urls if l == "en")}
+    xml = sitemap_xml(urls)
+    try:                                          # الخريطة العامة (الدليل وصفحات السيرفرات) تُبنى للمقارنة فقط: لا صفحة كيانٍ فيها
+        import guide_pages
+        public_xml = guide_pages.sitemap(C.sitemap(data_dir))
+        public_xml = public_xml.decode("utf-8", "replace") if isinstance(public_xml, bytes) else str(public_xml)
+    except Exception as ex:  # noqa: BLE001
+        public_xml = f"error: {type(ex).__name__}: {ex}"
+    leaked = [u for u in locs if u in public_xml]
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(xml)
+    return {"urls": len(urls), "by_lang": by_lang, "entities": len({cid for _, _, cid in urls}), "bytes": len(xml), "file": out_path, "served": False, "submitted": False,
+            "sample": locs[:10],
+            "tests": [_t("sitemap_canonical_only", not non_canon, {"bad": non_canon[:5]}),
+                      _t("sitemap_no_duplicate_urls", not dup_loc and not multi, {"dup": sorted(dup_loc)[:5], "entity_with_two_urls": len(multi)}),
+                      _t("sitemap_no_faceted_or_query_urls", not faceted, {"bad": faceted[:5]}),
+                      _t("sitemap_no_old_redirect_paths", not old, {"bad": old[:5]}),
+                      _t("sitemap_not_served", not leaked and "/content/movies/" not in public_xml and "/content/series/" not in public_xml,
+                         {"entity_urls_in_public_sitemap": len(leaked), "public_sitemap_ok": not str(public_xml).startswith("error"), "staging_file": out_path})]}
+
+
+def indexnow_dry_run(data_dir, urls):
+    """الحمولة كما سيرسلها ‏analytics.submit — بلا إرسال، وبلا توليد مفتاحٍ إن لم يكن."""
+    ix = analytics.indexnow(data_dir, create=False)
+    key = ix["key"]
+    on_host = [u for u in dict.fromkeys(urls) if u.startswith(f"https://{HOST}/")]
+    off = [u for u in urls if not u.startswith(f"https://{HOST}/")]
+    key_path = f"/{key}.txt" if key else None
+    key_served = bool(key) and analytics.indexnow_key_file(data_dir, key_path) == key
+    payload = {"host": HOST, "key": "•••" if key else "", "keyLocation": f"https://{HOST}/{'•••' if key else ''}.txt", "urlList": on_host[:10000]}
+    return {"sent": False, "endpoint": analytics.INDEXNOW_URL, "key_present": bool(key), "key_file_route_ok": key_served, "auto": ix["auto"], "confirmed": ix["confirmed"],
+            "last_real_submission": ix["last"], "payload_preview": {**payload, "urlList": payload["urlList"][:5], "urlList_count": len(payload["urlList"])},
+            "tests": [_t("indexnow_not_sent", True, "dry-run: no request made"),
+                      _t("indexnow_urls_on_host", not off and len(on_host) <= 10000, {"off_host": off[:3], "count": len(on_host)}),
+                      _t("indexnow_key_ready", key_served or not key, {"key_present": bool(key), "route_ok": key_served, "note": "" if key else "no key yet: generated on first real use (Phase 3)"})]}
+
+
+def check_queue(con):
+    """أخطاء الطابور: لا خطأ ‏rps جديدًا منذ اللقطة السابقة؛ القديم يبقى (لا تنظيف قسريّ)."""
+    bundle_at = seo_db.state(con, "bundle_at") or 0
+    old = con.execute("SELECT COUNT(*) FROM enrich_queue WHERE error LIKE '%rps%'").fetchone()[0]
+    new = con.execute("SELECT COUNT(*) FROM enrich_queue WHERE error LIKE '%rps%' AND updated_at>? AND attempts>0 AND state='error'", (bundle_at,)).fetchone()[0]
+    newest = con.execute("SELECT MAX(updated_at) FROM enrich_queue WHERE error LIKE '%rps%'").fetchone()[0]
+    by = [dict(r) for r in con.execute("SELECT source, state, COUNT(*) n FROM enrich_queue WHERE error LIKE '%rps%' GROUP BY 1, 2")]
+    return {"historical_rps_rows": old, "new_rps_errors_since_last_bundle": new, "newest_rps_row_at": newest, "by_source_state": by, "cleanup": "not forced (history kept)",
+            "tests": [_t("no_new_rps_errors", new == 0, {"new": new, "historical": old})]}
+
+
+def check_casper(con, probe):
+    """كاسبر 503: provider_unavailable مؤقّت — لا شيء غاب بسببه ولا تغيّرت مطابقة."""
+    rec = seo_db.state(con, "reconciliation") or {}
+    present = con.execute("SELECT COUNT(*) FROM content_service WHERE service_key='casper' AND present=1").fetchone()[0]
+    p = (probe or {}).get("casper") or {}
+    errs = {k: v for k, v in p.items() if isinstance(v, dict) and v.get("error")}
+    classes = {k: v.get("class") for k, v in errs.items()}
+    return {"probe": {k: {"error": v.get("error"), "class": v.get("class"), "severity": v.get("severity")} for k, v in errs.items()} or "no error in this probe",
+            "casper_rows_present": present, "last_build_went_unavailable": rec.get("went_unavailable"), "last_build_merged": rec.get("merged"),
+            "tests": [_t("casper_503_is_provider_unavailable", all(c == "provider_unavailable" for c in classes.values()), classes),
+                      _t("casper_503_marks_nothing_missing", present > 0 and (rec.get("went_unavailable") or 0) == 0, {"present": present, "went_unavailable": rec.get("went_unavailable")}),
+                      _t("casper_503_changes_no_matching", (rec.get("merged") or 0) == 0 and (rec.get("split") or 0) <= 1, {"merged": rec.get("merged"), "split": rec.get("split")})]}
+
+
+def run(data_dir, spec=None, probe=None, sitemap_out=None):
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return {"error": "لم تُبنَ القاعدة"}
+    try:
+        st = seo_db.settings(con)
+        srv_names = {l: {s["key"]: P.lang_of(l).name(s) for s in C.servers(data_dir)} for l in ("ar", "en")}
+        snap_before = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "content_alias")]
+        items = pick(con, spec)
+        works = [check_work(data_dir, con, it, st, srv_names) for it in items]
+        red = check_redirects(data_dir, con, [w["id"] for w in works])
+        sm = check_sitemap(data_dir, con, st, sitemap_out)
+        ix = indexnow_dry_run(data_dir, [u for u, _, _ in sitemap_urls(con, st)])
+        q = check_queue(con)
+        cs = check_casper(con, probe)
+        snap_after = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "content_alias")]
+        ro = _t("read_only", snap_before == snap_after, {"before": snap_before, "after": snap_after})
+        all_tests = [t for w in works for t in w["tests"]] + red["tests"] + sm["tests"] + ix["tests"] + q["tests"] + cs["tests"] + [ro]
+        fails = [t for t in all_tests if not t["ok"]]
+        work_fail = [{"id": w["id"], "slug": w["slug"], "group": w["group"], "failed": [t["test"] for t in w["tests"] if not t["ok"]]} for w in works if any(not t["ok"] for t in w["tests"])]
+        return {"ok": not fails, "sample": {"n": len(works), "by_group": {g: sum(1 for w in works if w["group"] == g) for g in ("movie", "series", "turkish", "anime", "title")},
+                                            "would_index_both": sum(1 for w in works if w.get("would_index", {}).get("ar") and w.get("would_index", {}).get("en"))},
+                "tests": {"total": len(all_tests), "pass": len(all_tests) - len(fails), "fail": len(fails)},
+                "blockers": [{"test": t["test"], "detail": t["detail"]} for t in fails if not t["test"].startswith(("slug_stable",))][:50],
+                "failed_works": work_fail, "works": works, "redirects": red, "sitemap": sm, "indexnow": ix, "queue": q, "casper": cs, "read_only": ro,
+                "not_done_by_design": ["no production indexing", "no sitemap deploy", "no IndexNow submission", "no mass enrichment", "no slug change", "no merge", "no source row deleted"]}
+    finally:
+        con.close()
+
+
+def main(argv):
+    data_dir = os.environ.get("XM_DATA") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+    opt = {a.lstrip("-").split("=")[0]: (a.split("=", 1)[1] if "=" in a else True) for a in argv[1:] if a.startswith("--")}
+    rep = run(data_dir, sitemap_out=str(opt["sitemap"]) if opt.get("sitemap") else None)
+    print(json.dumps({"meta": seo_sources.meta(data_dir), **rep}, ensure_ascii=False, indent=1, default=str))
+
+
+if __name__ == "__main__":
+    main(sys.argv)

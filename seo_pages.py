@@ -191,14 +191,16 @@ def _services(con, cid, tr):
         return "", []
     cat = P._catalog()
     VER = {"dubbed": ("مدبلج", "Dubbed"), "subbed": ("مترجم", "Subtitled"), "subbed_soft": ("مترجم (سوفت)", "Soft-subtitled")}
-    out, names = [], []
+    by_srv = {}                                    # السيرفر مرةً واحدة مهما تعدّدت صفوفه (قسمان في قوائمه): نسخه اتحاد نسخ صفوفه
     for ln in links:
-        srv = srvs.get(ln["service_key"])
-        if not srv:
-            continue
+        vs = by_srv.setdefault(ln["service_key"], [])
+        vs.extend(v for v in _loads(ln["versions_json"]) if v in VER and v not in vs)
+    out, names = [], []
+    for key in [s["key"] for s in srvs.values() if s["key"] in by_srv]:
+        srv = srvs[key]
         name = tr.name(srv)
         names.append(name)
-        vers = " · ".join(VER[v][tr.en] for v in _loads(ln["versions_json"]) if v in VER)
+        vers = " · ".join(VER[v][tr.en] for v in by_srv[key])
         plans = [cat[i] for i in C.PLANS.get(srv["key"], ()) if i in cat][:1]
         url = srv.get("buy") or (plans[0]["url"] if plans else "/#buy")
         price = f'{P._money(plans[0]["price"]):g} {tr("ر.س", "SAR")}' if plans and P._money(plans[0]["price"]) else ""

@@ -1010,7 +1010,77 @@ def _by_title(con, title):
         "FROM content c JOIN content_alias a ON a.content_id=c.id WHERE a.alias_norm=? ORDER BY c.id", (M.norm(title),))]
 
 
-def describe(con, cid, st):
+def panel_ids(data_dir):
+    """هوية اللوحة لكل سيرفر بلا كشف مضيفها: بصمة قصيرة لمضيف Xtream (أو «m3u-only» لسيرفرٍ بقائمةٍ بلا لوحة)."""
+    import hashlib
+    out = {}
+    for srv in C.servers(data_dir):
+        xt = _creds(data_dir, srv["key"])
+        out[srv["key"]] = ("panel:" + hashlib.sha1(xt[0].encode("utf-8")).hexdigest()[:8]) if xt else "m3u-only"
+    return out
+
+
+def service_rows(con, cid, panels=None):
+    """صفوف المصدر للكيان كما هي (صفٌّ لكل سجلّ قائمة): السيرفر وهوية لوحته ومفتاح السجلّ وأرقام بثّه ومعرّف مسلسله وأقسامه
+    وأسماؤه الخام ونسخه ومواسمه — فلا يبدو تعدّد الصفوف لسيرفرٍ واحد تكرارًا عرضيًّا بلا سبب."""
+    rows = []
+    for r in con.execute("SELECT service_key, kind, local_key, stream_id, stream_ids_json, series_id, groups_json, raw_names_json, versions_json, seasons_json, present, first_seen, seen_at "
+                         "FROM content_service WHERE content_id=? ORDER BY service_key, local_key", (cid,)):
+        rows.append({"service": r["service_key"], "panel": (panels or {}).get(r["service_key"]), "local_key": r["local_key"], "stream_id": r["stream_id"],
+                     "stream_ids": json.loads(r["stream_ids_json"] or "[]"), "series_id": r["series_id"], "sections": json.loads(r["groups_json"] or "[]"),
+                     "raw_names": json.loads(r["raw_names_json"] or "[]"), "versions": json.loads(r["versions_json"] or "[]"),
+                     "listed_episodes": sum(n for _, n in json.loads(r["seasons_json"] or "[]")), "present": bool(r["present"]), "first_seen": r["first_seen"], "seen_at": r["seen_at"]})
+    return rows
+
+
+def classify_same_service_rows(rows):
+    """صفوف سيرفرٍ واحد للكيان نفسه ← لماذا هي صفوفٌ لا صفّ: duplicate_same_streams (أرقام البثّ نفسها: تكرارٌ في الطبقة) ·
+    version_variants (نسخٌ مختلفة: مدبلج/مترجم) · different_sections (سجلّان في قسمين: قوائم السيرفر تكرّر العمل) ·
+    same_section_distinct_streams (قسمٌ واحد وبثٌّ مختلف: لم يُطويا — مرشّح للطيّ بالسياسة)."""
+    by = {}
+    for r in rows:
+        if r["present"]:
+            by.setdefault(r["service"], []).append(r)
+    out = {}
+    for svc, rs in by.items():
+        if len(rs) < 2:
+            continue
+        a, b = rs[0], rs[1]
+        sa, sb = set(a["stream_ids"] or [a["stream_id"]]), set(b["stream_ids"] or [b["stream_id"]])
+        if sa & sb:
+            out[svc] = "duplicate_same_streams"
+        elif set(a["versions"]) != set(b["versions"]) and (a["versions"] or b["versions"]):
+            out[svc] = "version_variants"
+        elif set(a["sections"]) & set(b["sections"]):
+            out[svc] = "same_section_distinct_streams"
+        else:
+            out[svc] = "different_sections"
+    return out
+
+
+def source_rows_audit(con, panels, examples=10):
+    """القاعدة كلها: كيانات لها أكثر من صفٍّ لسيرفرٍ واحد — العدد بالتصنيف وبالسيرفر، وأمثلة بصفوفها كاملة. قراءةٌ صرفة."""
+    ids = [r[0] for r in con.execute("SELECT DISTINCT content_id FROM (SELECT content_id FROM content_service WHERE present=1 GROUP BY content_id, service_key HAVING COUNT(*) > 1) ORDER BY content_id")]
+    by_class, by_service, ex = {}, {}, []
+    for cid in ids:
+        rows = service_rows(con, cid, panels)
+        cls = classify_same_service_rows(rows)
+        for svc, c in cls.items():
+            by_class[c] = by_class.get(c, 0) + 1
+            by_service[svc] = by_service.get(svc, 0) + 1
+        if len(ex) < examples:
+            c_ = con.execute("SELECT id, slug, title, tmdb_id FROM content WHERE id=?", (cid,)).fetchone()
+            ex.append({"entity": dict(c_), "classes": cls, "rows": [r for r in rows if r["present"]]})
+    return {"entities_with_multiple_rows_per_service": len(ids), "by_class": by_class, "by_service": by_service, "examples": ex,
+            "definitions": {"duplicate_same_streams": "الصفّان يحملان رقم بثٍّ مشترك: تكرارٌ في طبقة SEO (يُبلَّغ ولا يُصلَح تلقائيًّا)",
+                            "version_variants": "نسختان (مدبلج/مترجم…) للعمل نفسه في السيرفر: مقصود",
+                            "different_sections": "سجلّان للعمل نفسه في قسمين مختلفين من قوائم السيرفر: صفّان مقصودان لسجلّين حقيقيين",
+                            "same_section_distinct_streams": "سجلّان في القسم نفسه ببثٍّ مختلف لم يُطويا: مرشّح للطيّ — يُراجَع"},
+            "effects": {"availability_display": "الصفحة تعرض السيرفر مرةً واحدة باتحاد نسخه (لا تكرار)", "versions": "تُجمع من كل الصفوف",
+                        "entity_matching": "لا أثر: الهوية بالكيان لا بالصفوف", "sitemap": "لا أثر: رابطٌ واحد للكيان", "seo_rendering": "لا أثر: صفحةٌ واحدة؛ الحلقات المتاحة = أكبر ما في الصفوف لكل موسم"}}
+
+
+def describe(con, cid, st, panels=None):
     """كل ما يُفحص في عمل العيّنة: المطابقة والمعرّف والعناوين والبلد واللغة والنوع والمخرج والممثلون والصور والمواسم والحلقات
     والتصنيف (تركي/أنمي) بحالته والأسماء البديلة والنسخ والمصادر — وعناوين الصفحة وcanonical وhreflang وJSON-LD."""
     import seo_pages
@@ -1094,6 +1164,7 @@ def describe(con, cid, st):
             "versions": {r["service_key"]: json.loads(r["versions_json"]) for r in links if r["versions_json"]},
             "raw_names": {r["service_key"]: json.loads(r["raw_names_json"]) for r in links if r["raw_names_json"]},
             "sections": {r["service_key"]: json.loads(r["groups_json"]) for r in links if r["groups_json"]},
+            "service_rows": service_rows(con, cid, panels), "same_service_rows": classify_same_service_rows(service_rows(con, cid, panels)),
             "relations": relations(con, cid, st), "provenance": {k: v[0] for k, v in pv.items()}, "reviews": reviews, "page": page}
 
 
@@ -1484,10 +1555,11 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                           "merged": [{"id": x["id"], "into": x["merged_into"]} for x in after if x["merged_into"] is not None],
                           "verdict": ("one entity per tmdb id" if len({x["tmdb_id"] for x in live if x["tmdb_id"]}) == len(live) and all(x["tmdb_id"] for x in live)
                                       else "still separate: " + ", ".join(f"{x['id']}:{x['match']}" for x in live if not x["tmdb_id"]))})
+            panels = panel_ids(data_dir)
             works = []
             for cid in ids:
                 try:
-                    works.append(describe(con, cid, st))
+                    works.append(describe(con, cid, st, panels))
                 except Exception as ex:  # noqa: BLE001
                     works.append({"id": cid, "error": f"{type(ex).__name__}: {str(ex)[:200]}"})
             review_same_names(con, now); con.commit()
@@ -1521,6 +1593,7 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
             seo_db.set_state(con, "bundle_at", now); con.commit()
             return {"ok": True, "at": now, "ids": ids, "run": res, "failures": failures, "reconciliation": seo_db.state(con, "reconciliation"),
                     "resolution": resolution, "people": people_qa(con, st), "people_pages": people_pages_qa(con, st),
+                    "source_rows": source_rows_audit(con, panels),
                     "errors": {"sample": failures, "queue_preexisting": pre, "bundle": list(bundle_errors or [])},
                     "counters": counters, "identity_changes": ident, "works": works, "summary": summary(con), "api": metrics()}
         finally:
@@ -1528,7 +1601,7 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
 
 
 def bundle(data_dir, out, n=20):
-    """لقطةٌ للمراجعة: probe وreport وsearch-report **قراءةٌ صرفة**؛ وsample وحده يثري أعماله الثلاثين. كل ملفٍ مختومٌ بالوقت
+    """لقطةٌ للمراجعة: probe وreport وsearch-report وqa (الفحص النهائي بخريطةٍ تجريبية) **قراءةٌ صرفة**؛ وsample وحده يثري أعماله الثلاثين. كل ملفٍ مختومٌ بالوقت
     ونسخة الكود، ومنقًّى من المفتاح وبيانات اللوحات. فشل جزءٍ لا يمنع كتابة الباقي (يُكتب خطؤه مكانه)."""
     import contextlib
     import io
@@ -1547,6 +1620,12 @@ def bundle(data_dir, out, n=20):
     for name in BUNDLE_FILES:                      # أولًا: لا يبقى ملفٌ من لقطةٍ سابقة — كلٌّ يُستبدل بختم هذه اللقطة ولو فشل جزءٌ لاحقًا
         with open(os.path.join(out, name), "w", encoding="utf-8") as f:
             f.write(("# " if name.endswith(".txt") else "") + json.dumps({**stamp, "status": "not generated yet (bundle in progress or aborted)"}, ensure_ascii=False) + "\n")
+    for name in BUNDLE_EXTRA:
+        try:
+            os.remove(os.path.join(out, name))
+        except OSError:
+            pass
+    probe_result = {}
 
     def dump_json(name, fn):
         try:
@@ -1579,6 +1658,7 @@ def bundle(data_dir, out, n=20):
         return buf.getvalue()
     def probe_():
         r = probe(data_dir, n)
+        probe_result.update(r if isinstance(r, dict) else {})
         if isinstance(r, dict) and r.get("error"):
             bundle_errors.append({"file": "probe.json", "error": r["error"]})
         for k, v in (r.items() if isinstance(r, dict) else []):
@@ -1590,13 +1670,21 @@ def bundle(data_dir, out, n=20):
     stage("report"); dump_text("report.txt", lambda: seo_build.report(data_dir))         # قراءة — قبل العيّنة: التقرير يصف القاعدة التي تُعيَّن منها
     stage("search-report"); dump_text("search-report.txt", search_report)                # قراءة
     stage("sample"); dump_json("sample.json", lambda: sample(data_dir, bundle_errors=bundle_errors))   # الاستثناء الوحيد: إثراء الثلاثين
+    import seo_qa
+    stage("qa"); dump_json("qa.json", lambda: seo_qa.run(data_dir, probe=probe_result, sitemap_out=os.path.join(out, "sitemap-staging.xml")))   # قراءة: الفحص النهائي وخريطةٌ تجريبية لا تُخدم
+    for name in BUNDLE_EXTRA:
+        try:
+            written[name] = os.path.getsize(os.path.join(out, name))
+        except OSError:
+            pass
     _bundle_stage.pop(os.path.abspath(data_dir), None)
     with open(os.path.join(out, "bundle.json"), "w", encoding="utf-8") as f:    # ملخّص اللقطة: الختم والملفات وأخطاؤها
         f.write(json.dumps({"meta": stamp, "files": written, "errors": bundle_errors}, ensure_ascii=False, indent=1))
     return {"out": out, "files": written, "errors": bundle_errors, **stamp}
 
 
-BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "bundle.json")
+BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "qa.json", "bundle.json")
+BUNDLE_EXTRA = ("sitemap-staging.xml",)       # خريطة الموقع التجريبية من الفحص النهائي: تُنزَّل من البطاقة ولا تُخدم على الموقع
 _bundling = {}
 _bundle_stage = {}            # مسار البيانات ← دالة تحديث مرحلة اللقطة (تستعملها العيّنة لعدّ أعمالها)
 
@@ -1631,7 +1719,7 @@ def bundle_state(data_dir):
     k = os.path.abspath(data_dir)
     d = bundle_dir(data_dir)
     files = []
-    for n in BUNDLE_FILES:
+    for n in BUNDLE_FILES + BUNDLE_EXTRA:
         try:
             st_ = os.stat(os.path.join(d, n))
             files.append({"name": n, "size": st_.st_size, "at": int(st_.st_mtime)})
@@ -1643,11 +1731,11 @@ def bundle_state(data_dir):
 
 def bundle_file(data_dir, name):
     """ملفٌ من ملفات المراجعة بالاسم (من القائمة وحدها) ← (bytes, نوعه) أو None."""
-    if name not in BUNDLE_FILES:
+    if name not in BUNDLE_FILES + BUNDLE_EXTRA:
         return None
     try:
         with open(os.path.join(bundle_dir(data_dir), name), "rb") as f:
-            return f.read(), ("application/json; charset=utf-8" if name.endswith(".json") else "text/plain; charset=utf-8")
+            return f.read(), ("application/json; charset=utf-8" if name.endswith(".json") else "application/xml; charset=utf-8" if name.endswith(".xml") else "text/plain; charset=utf-8")
     except OSError:
         return None
 
