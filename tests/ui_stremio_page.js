@@ -6,7 +6,7 @@ const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const ROOT = path.dirname(__dirname);
-const F1_PORT = 9775, F2_PORT = 9776, API_PORT = 9777, APP_PORT = 9778, MAIL_PORT = 9779;
+const F1_PORT = 9775, F2_PORT = 9776, API_PORT = 9777, APP_PORT = 9778, MAIL_PORT = 9779, XT_PORT = 9780;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stremiopage_'));
 const SHOTS = process.env.SHOTS_DIR || '';
 const EXE = execSync("ls -d /opt/pw-browsers/chromium*/chrome-linux/chrome 2>/dev/null | head -1").toString().trim();
@@ -26,9 +26,12 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     spawn('python3', [path.join(ROOT,'tests/mock_falcon.py'), String(F1_PORT), 'k1'], {stdio:'ignore'}),
     spawn('python3', [path.join(ROOT,'tests/mock_falcon.py'), String(F2_PORT), 'k2'], {stdio:'ignore'}),
     spawn('python3', [path.join(ROOT,'tests/mock_stremio_api.py'), String(API_PORT)], {stdio:'ignore'}),
+    // سيرفر Xtream وهمي هوستًا للبوابتين: منه يُقرأ انتهاء اليوزرات (يرفض غير u/p، فتُصنَّف «منتهية»)
+    spawn('python3', [path.join(ROOT,'tests/mock_xtream.py'), String(XT_PORT)], {stdio:'ignore'}),
   ];
   const app = spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web'], {stdio:'ignore', env:{...process.env, XM_DATA:dataDir,
-    XM_BIND:'127.0.0.1', XM_PORT:String(APP_PORT), XM_MAIL_PORT:String(MAIL_PORT), STREMIO_API:`http://127.0.0.1:${API_PORT}`}});
+    XM_BIND:'127.0.0.1', XM_PORT:String(APP_PORT), XM_MAIL_PORT:String(MAIL_PORT), STREMIO_API:`http://127.0.0.1:${API_PORT}`,
+    STREMIO_ACTIVATION_WAIT:'0.1'}});
   procs.push(app);
   await up(`http://127.0.0.1:${APP_PORT}/admin/login`);
   const browser = await chromium.launch({executablePath: EXE, args:['--no-sandbox']});
@@ -41,8 +44,8 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await api(admin, '/admin/api/setup', {password:'admin123'});
     const F = p => `http://127.0.0.1:${p}/api/v1`;
     let r = await api(admin, '/admin/api/accounts', {name:'عميل Stremio', user:'multi', password:'pw_multi', stremio: true,
-      gates:[{name:'بوابة أ', mode:'falcon', api_url:F(F1_PORT), api_key:'k1', host:'http://a.host:80'},
-             {name:'بوابة ب', mode:'falcon', api_url:F(F2_PORT), api_key:'k2', host:'http://b.host:80'}]});
+      gates:[{name:'بوابة أ', mode:'falcon', api_url:F(F1_PORT), api_key:'k1', host:`http://127.0.0.1:${XT_PORT}`},
+             {name:'بوابة ب', mode:'falcon', api_url:F(F2_PORT), api_key:'k2', host:'http://localhost:' + XT_PORT}]});
     const gates = (r.accounts.find(a => a.user === 'multi') || {}).gates || [];
     await api(admin, '/admin/api/accounts', {name:'بلا Stremio', user:'one', password:'pw_one',
       gates:[{name:'بوابته', mode:'falcon', api_url:F(F1_PORT), api_key:'k1', host:'http://a.host:80'}]});
@@ -70,7 +73,7 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('reached from the create page header link', new URL(user.url()).pathname === '/admin/stremio', user.url());
     const chips = await user.$$eval('#gates .gate', bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
     check('one place per gate, with its count', chips.length === 2 && chips[0] === 'بوابة أ 0' && chips[1] === 'بوابة ب 0', chips.join(' | '));
-    check('the gate list starts empty, and says how to add', /ابحث عن اليوزر/.test(await user.textContent('#list')));
+    check('the gate list starts empty, and says how to add', /أنشئ يوزر Stremio أعلاه/.test(await user.textContent('#list')));
     check('no Stremio account for an existing line without searching it first', (await user.$$('[data-make]')).length === 0);
 
     console.log('== «إنشاء يوزر Stremio»: line in the gate → mail (Stremio account) → add-on ==');
@@ -89,18 +92,55 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('the customer text is copied', clip0.includes(newUser + '@tv.ssouq.com'), clip0.slice(0, 60));
     await user.waitForFunction(() => document.querySelector('#gates .gate.on .count')?.textContent === '1', null, {timeout: 8000});
     check('and it is listed under gate أ', (await user.$$('#list .card')).length === 1);
+    await user.waitForFunction(() => /السيرفر يرفض|ينتهي|انتهى/.test(document.querySelector('#list .card .meta')?.textContent || ''), null, {timeout: 10000});
+    check('its expiry is read from the server (this mock rejects it → expired)', /السيرفر يرفض اليوزر/.test(await user.textContent('#list .card .meta')));
+    const chips1 = (await user.textContent('#expChips')).replace(/\s+/g, ' ');
+    check('expiry chips classify the accounts', /الكل ?1/.test(chips1) && /منتهية ?1/.test(chips1), chips1);
+    check('the gate tab flags it (⚠ due)', /⚠ 1/.test(await user.textContent('#gates .gate.on')));
+    check('an add-on installed without categories (line not active yet) is flagged',
+          /الإضافة ثُبّتت بلا أقسام/.test(await user.textContent('#list .card .meta')));
+    await user.click('#list [data-re]');
+    await user.waitForFunction(() => /حُدّثت الإضافة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 10000});
+    check('«تحديث الإضافة» reinstalls it and says whether categories came back (this mock still rejects the line)',
+          /لم يُرجع أقسامًا/.test(await user.textContent('#toast')) && await user.isVisible('#list [data-re]:not([disabled])'),
+          await user.textContent('#toast'));
+    check('the add-on is locked to its account from the start (no public install link on the card)',
+          /مقفلةٌ على هذا الحساب/.test(await user.textContent('#list .card .meta')) && (await user.$$('#list .card [data-what="نُسخ الرابط"]')).length === 0
+          && (await user.textContent('#list [data-lock]')).includes('تغيير رابط الإضافة'));
+    let lockAsk = '';
+    user.once('dialog', d => { lockAsk = d.message(); d.accept(); });
+    await user.click('#list [data-lock]');
+    await user.waitForFunction(() => /قُفلت الإضافة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 10000});
+    check('«تغيير رابط الإضافة» asks first, then stops any copy moved to another account', /تتوقف أي نسخةٍ/.test(lockAsk), lockAsk.slice(0, 60));
+
+    console.log('== a batch: 3 at once ==');
+    await user.fill('#n', '3'); await user.dispatchEvent('#n', 'input');
+    check('the button says how many', (await user.textContent('#mkBtn')).includes('3 يوزرات Stremio'), await user.textContent('#mkBtn'));
+    user.once('dialog', d => d.accept());
+    await user.click('#mkBtn');
+    await user.waitForFunction(() => /أُنشئ 3 من 3/.test(document.querySelector('#mkRes')?.textContent || ''), null, {timeout: 30000});
+    check('three lines, each with its mail and add-on', (await user.$$('#mkRes .card.made')).length === 3
+          && (await user.$$eval('#mkRes .meta', ms => ms.filter(m => m.textContent.includes('✓ يوزر · بريد · إضافة')).length)) === 3);
+    check('one button copies all three', (await user.textContent('[data-copyall]')).includes('(3)'));
+    const clip3 = await user.evaluate(() => navigator.clipboard.readText());
+    check('all three accounts were copied', (clip3.match(/@tv\.ssouq\.com/g) || []).length === 3, String((clip3.match(/@tv\.ssouq\.com/g) || []).length));
+    await user.waitForFunction(() => document.querySelector('#gates .gate.on .count')?.textContent === '4', null, {timeout: 8000});
+    check('the gate count follows (1 + 3)', true);
+    await user.selectOption('#sort', 'exp');
+    check('sort by nearest expiry', (await user.$$('#list .card')).length === 4);
+    await user.selectOption('#sort', 'new');
 
     await user.fill('#q', 'user003'); await user.click('#findBtn');
     await user.waitForSelector('#res [data-make]', {timeout: 8000});
     check('search in gate أ finds the line, with create + link', await user.isVisible('#res [data-make]')
           && (await user.getAttribute('#res [data-copy]', 'data-copy')).startsWith('https://guide.ssouq.com/stremio/'));
     await user.click('#res [data-make]');
-    await user.waitForFunction(() => document.querySelector('#gates .gate.on .count')?.textContent === '2', null, {timeout: 15000});
+    await user.waitForFunction(() => document.querySelector('#gates .gate.on .count')?.textContent === '5', null, {timeout: 15000});
     const clip = await user.evaluate(() => navigator.clipboard.readText());
     check('created from the search result, and its text copied', /user003@tv\.ssouq\.com/.test(clip) && /كلمة المرور: pass003/.test(clip), clip.slice(0, 80));
     check('the result card now copies the account and opens its mail', await user.isVisible('#res [data-mail]'));
     const rows = await user.$$eval('#list .card', cs => cs.map(c => c.textContent.replace(/\s+/g, ' ')));
-    check('it is listed under gate أ (newest first)', rows.length === 2 && rows[0].includes('user003@tv.ssouq.com') && rows[0].includes('لا بريد'), rows.join(' | '));
+    check('it is listed under gate أ (newest first)', rows.length === 5 && rows[0].includes('user003@tv.ssouq.com') && rows[0].includes('لا بريد'), rows.join(' | ').slice(0, 200));
 
     console.log('== per-gate places ==');
     await user.click('#gates .gate:nth-child(2)');
@@ -127,7 +167,7 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     console.log('== filter and sort ==');
     await user.fill('#filter', 'zzz');
     check('filter with no match says so', /لا حساب يطابق/.test(await user.textContent('#list')));
-    await user.fill('#filter', '003');
+    await user.fill('#filter', 'user003');
     check('filter by username', (await user.$$('#list .card')).length === 1);
     await user.selectOption('#sort', 'mail');
     check('sort by mail keeps the list', (await user.$$('#list .card')).length === 1);

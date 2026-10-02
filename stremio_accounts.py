@@ -33,7 +33,7 @@ import crypto_store
 API = os.environ.get("STREMIO_API", "https://api.strem.io").rstrip("/")
 DOMAIN = os.environ.get("STREMIO_EMAIL_DOMAIN", "tv.ssouq.com").strip().lower().lstrip("@")
 SUFFIX = os.environ.get("STREMIO_PASS_SUFFIX", "A")
-PER_HOUR = int(os.environ.get("STREMIO_SIGNUPS_PER_HOUR", "30"))
+PER_HOUR = int(os.environ.get("STREMIO_SIGNUPS_PER_HOUR", "60"))   # دفعةٌ من 30 وما يتبعها في الساعة نفسها
 TIMEOUT = 25
 OURS = "com.ssouq.xtream."           # بادئة معرّف إضافتنا (stremio_addon.manifest)
 
@@ -185,6 +185,23 @@ def known(data_dir, host_key, usernames):
     return out
 
 
+_locks = {"mtime": None, "map": {}}
+
+
+def addon_key(data_dir, host_key, username):
+    """قفل إضافة حساب يوزرٍ (أو None لحسابٍ غير مقفل أو لا حساب) — يُسأل في كل طلبٍ للإضافة، ففهرسه في الذاكرة
+    ما دام الملف لم يتغيّر."""
+    try:
+        mtime = os.path.getmtime(_path(data_dir))
+    except OSError:
+        return None
+    with _lock:
+        if _locks["mtime"] != (data_dir, mtime):
+            _locks["map"] = {k: r["addon_key"] for k, r in _load(data_dir).items() if isinstance(r, dict) and r.get("addon_key")}
+            _locks["mtime"] = (data_dir, mtime)
+        return _locks["map"].get(_key(host_key, username))
+
+
 _emails = {"mtime": None, "map": {}}
 
 
@@ -221,6 +238,32 @@ def owned_all(data_dir, acct_id):
         d = _load(data_dir)
     recs = [_plain(data_dir, r) for r in d.values() if isinstance(r, dict) and r.get("acct") == acct_id]
     return sorted(recs, key=lambda r: (r.get("ts") or 0, r.get("created", "")), reverse=True)
+
+
+def note(data_dir, host_key, username, **fields):
+    """يحفظ مع الحساب ما يُعرف عنه لاحقًا (انتهاء يوزره وحاله) — بلا مسّ كلمة المرور."""
+    fields.pop("password", None)
+    with _lock:
+        d = _load(data_dir)
+        r = d.get(_key(host_key, username))
+        if not r:
+            return False
+        r.update(fields)
+        _save(data_dir, d)
+    return True
+
+
+def reinstall(data_dir, host_key, username, descriptor):
+    """يعيد تثبيت الإضافة في حسابٍ محفوظ (بأحدث أقسامها وأعدادها) — تحلّ محلّ نسختنا السابقة فيه."""
+    rec = get(data_dir, host_key, username)
+    if not rec:
+        raise ValueError("لا حساب Stremio لهذا اليوزر")
+    auth = login(rec["email"], rec["password"])
+    try:
+        install(auth, descriptor())
+    finally:
+        logout(auth)
+    return rec
 
 
 def set_password(data_dir, host_key, username, password):

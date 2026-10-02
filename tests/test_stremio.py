@@ -8,6 +8,7 @@
     python tests/test_stremio.py
 """
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -78,6 +79,18 @@ def unit():
         shutil.rmtree(d2, ignore_errors=True)
         import crypto_store
         check("رمز استعمالٍ آخر لا يصلح للإضافة", S.read_token(d, crypto_store.seal_token("a.b\nu\np", d, "other")) is None)
+        lk = S.make_token(d, "mrha.ink:80", "0501", "pw!/+&", key="Kx_1-abcd")
+        check("رمزٌ بقفل حسابه: البيانات نفسها وقفله معها، ورمزٌ آخر", S.read_token_key(d, lk) == (cfg, "Kx_1-abcd") and lk != t
+              and S.read_token(d, lk) == cfg and S.read_token_key(d, t) == (cfg, None))
+        check("وقفلٌ آخر = رمزٌ آخر", S.make_token(d, "mrha.ink:80", "0501", "pw!/+&", key="Kx_1-abce") != lk)
+        try:
+            S.make_token(d, "mrha.ink:80", "0501", "pw", key="a b\n")
+            check("قفلٌ بحروفٍ غريبة يُرفض", False)
+        except ValueError:
+            check("قفلٌ بحروفٍ غريبة يُرفض", True)
+        check("رمزٌ بحقلٍ رابعٍ فارغ يُرفض", S.read_token(d, crypto_store.seal_token("a.b\nu\np\n", d, S.LABEL)) is None)
+        c, b = S.handle(d, f"/stremio/{lk}/manifest.json", "https://g", None, lambda c_, k: k == "newer")[:2]
+        check("رمزٌ أُوقف قفله ← 404 برسالته (قبل أي طلبٍ للسيرفر)", c == 404 and "أُوقف هذا الرابط" in b.decode(), b.decode()[:80])
         for u, p in (("", "p"), ("u", ""), ("u u", "p"), ("u", "p\nx"), ("u" * 200, "p")):
             try:
                 S.make_token(d, "a.b", u, p)
@@ -166,6 +179,29 @@ def against_mock():
         n = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_series")) - before
         check("8 طلباتٍ معًا = طلبٌ واحد للسيرفر", n == 1, str(n))
 
+        print("== قائمةٌ كاملة يتعثّر فيها السيرفر (كاسبر يردّ 503 لأفلامه) ← قسمًا قسمًا ==")
+        srv.full_fails = {"get_vod_streams"}
+        with S._lock:
+            S._lists.pop((cfg, "movie"), None)
+        before = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_vod_streams"))
+        L = S.lists(cfg, "movie")
+        n_parts = sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_vod_streams")) - before
+        check("كل الأفلام تُجمع من أقسامها (بلا الكبار ولا تكرار)", len(L.items) == n_vod and len({it.id for it in L.items}) == n_vod
+              and n_parts == 1 + len(mock_xtream.MOVIES) + 1, f"{len(L.items)} / {n_vod} · {n_parts} طلبات")
+        check("والبحث فيها يعمل", [m["name"] for m in S.catalog(cfg, "movie", "sq_movies", {"search": "oppenheimer"})["metas"]] == ["Oppenheimer (2023)"])
+        srv.api_down = True
+        with S._lock:
+            S._lists.pop((cfg, "movie"), None)
+        t0 = time.time()
+        try:
+            S.lists(cfg, "movie")
+            check("وتعثّر الأقسام أيضًا ← خطأ (لا قائمةٌ ناقصة تُحفظ)", False)
+        except S.XtreamError:
+            check("وتعثّر الأقسام أيضًا ← خطأ (لا قائمةٌ ناقصة تُحفظ)", (cfg, "movie") not in S._lists, f"{time.time() - t0:.1f}s")
+        srv.api_down, srv.full_fails = False, set()
+        with S._lock:
+            S._lists.pop((cfg, "movie"), None)
+
         print("== الـmanifest ==")
         man = S.manifest(cfg, "https://guide.ssouq.com", "سمارت")
         check("الاسم بالسيرفر", man["name"] == "سمارت سوق · سمارت", man["name"])
@@ -173,12 +209,53 @@ def against_mock():
               and man["resources"][0] == "catalog" and {r["name"] for r in man["resources"][1:]} == {"meta", "stream"})
         cat = {c["type"]: c for c in man["catalogs"]}
         opts = cat["movie"]["extra"][0]["options"]
-        check("أقسام الأفلام كلها تصنيفات", opts == list(mock_xtream.MOVIES), str(opts))
-        check("أقسام القنوات بلا قسم الكبار", cat["tv"]["extra"][0]["options"] == list(mock_xtream.CHANNELS))
+        n_of = lambda o: int(re.search(r"\(([\d,]+)\)$", o).group(1).replace(",", ""))
+        check("أقسام الأفلام كلها تصنيفات", [S._COUNT.sub("", o) for o in opts] == list(mock_xtream.MOVIES), str(opts))
+        check("وبجانب كل قسمٍ عدد أفلامه (مجموعها = كل الأفلام بلا الكبار)",
+              all(re.search(r" \([\d,]+\)$", o) for o in opts) and sum(map(n_of, opts)) == n_vod, str(opts))
+        sopts = cat["series"]["extra"][0]["options"]
+        check("أقسام المسلسلات تصنيفاتٌ كذلك بأعدادها", [S._COUNT.sub("", o) for o in sopts] == list(mock_xtream.SERIES)
+              and sum(map(n_of, sopts)) == len(series), str(sopts))
+        check("عدد المحتوى في اسم كل كتالوج", [c["name"] for c in man["catalogs"]] ==
+              [f"أفلام · سمارت ({n_vod})", f"مسلسلات · سمارت ({len(series)})", f"قنوات · سمارت ({n_live})"],
+              str([c["name"] for c in man["catalogs"]]))
+        check("وفي وصف الإضافة", man["description"].startswith(f"{n_vod} فيلم · {len(series)} مسلسل · {n_live} قناة — "),
+              man["description"][:60])
+        check("الأعداد بفواصل الآلاف", S._fmt(21293) == "21,293" and S._COUNT.sub("", "أفلام عربية (1,234)") == "أفلام عربية")
+        check("إضافةٌ مكتملة", S.build_manifest(cfg, "https://g", "")[1] == "ok")
+        nob, st = S.build_manifest(S.Cfg(cfg.host, "nobody", "x"), "https://g", "")
+        check("واشتراكٌ يرفضه السيرفر (لم يُفعَّل بعد): تُبنى بلا أقسامٍ ولا أعداد وحالها «pending» فيُعاد بناؤها",
+              st == "pending" and nob["catalogs"][0]["name"] == "أفلام" and not any(len(c["extra"]) > 2 for c in nob["catalogs"]), st)
+        down = mock_xtream.serve(0, api_down=True)
+        threading.Thread(target=down.serve_forever, daemon=True).start()
+        try:
+            st = S.build_manifest(S.Cfg(f"http://127.0.0.1:{down.server_address[1]}", mock_xtream.USER, mock_xtream.PASS), "https://g", "")[1]
+        finally:
+            down.shutdown()
+        check("وسيرفرٌ لا يردّ: «error» (لا فائدة من إعادته فورًا)", st == "error", st)
+        empty = S.Cfg(cfg.host, "empty", "x")
+        with S._lock:
+            for k in S.TYPES:
+                S._lists[(empty, k)] = (time.time(), S.Lists(k, [], []))
+            S._lists[(empty, "movie")] = (time.time(), S._lists[(cfg, "movie")][1])
+            S._cats[(empty, "series")] = (time.time(), [])
+        e2 = S.Cfg(cfg.host, "empty2", "x")
+        with S._lock:
+            for k in S.TYPES:
+                S._lists[(e2, k)] = (time.time(), S.Lists(k, [], []))
+        check("وقوائم فارغةٌ كلها (يوزرٌ قبلته اللوحة ولم تُسنِد له باقته بعد) كذلك «pending»",
+              S.build_manifest(e2, "https://g", "")[1] == "pending")
+        S.forget_empty(empty)
+        with S._lock:
+            kept = [k for k in S.TYPES if (empty, k) in S._lists]
+            cats_gone = (empty, "series") not in S._cats
+        check("إعادة القراءة تنسى الفارغ وحده (وما حُمّل بمحتواه يبقى)", kept == ["movie"] and cats_gone, str(kept))
+        check("والقنوات كلها تصنيفٌ واحد (بحثٌ وصفحات، بلا قائمة أقسام)", [e["name"] for e in cat["tv"]["extra"]] == ["search", "skip"]
+              and cat["tv"]["extraSupported"] == ["search", "skip"], str(cat["tv"]["extra"]))
         check("لا تصنيفٌ مطلوب (الكتالوجات في الرئيسية) والبحث والصفحات مدعومة",
               all(not e["isRequired"] for c in man["catalogs"] for e in c["extra"])
               and all({"search", "skip"} <= set(c["extraSupported"]) for c in man["catalogs"]))
-        check("زرّ الإعداد (Configure) يفتح صفحة الاشتراك", man["behaviorHints"]["configurable"] is True)
+        check("زرّ الإعداد (Configure) ظاهرٌ في Stremio (يفتح موقع المتجر)", man["behaviorHints"]["configurable"] is True)
         uid = S.manifest(S.Cfg(cfg.host, "other", "x"), "https://g", "")["id"]
         check("معرّف الإضافة لكل اشتراك (اشتراكان في حسابٍ واحد لا يتصادمان)", uid != man["id"])
 
@@ -188,11 +265,16 @@ def against_mock():
         alls, _ = walk(cfg, "series")
         check("كل المسلسلات", len(alls) == len(series), f"{len(alls)} / {len(series)}")
         allt, _ = walk(cfg, "tv")
-        check("كل القنوات (بلا الكبار)", len(allt) == n_live, f"{len(allt)} / {n_live}")
+        check("كل القنوات (بلا الكبار) في كتالوجها الواحد", len(allt) == n_live, f"{len(allt)} / {n_live}")
+        check("بترتيب السيرفر (أقسامها متجاورة)", [m["name"] for m in allt[:2]] == mock_xtream.CHANNELS["beIN SPORTS"][:2], str([m["name"] for m in allt[:2]]))
+        old_mf, _ = walk(cfg, "tv", genre="MBC")
+        check("وطلب تصنيفٍ من manifest قديم في Stremio ما زال يعمل", [m["name"] for m in old_mf] == mock_xtream.CHANNELS["MBC"])
         check("الأحدث أولًا", allm[0]["name"].startswith("F1 The Movie"), allm[0]["name"])
         g = "مسلسلات تركية مدبلجة"
         gs, _ = walk(cfg, "series", genre=g)
         check("قسمٌ واحد", {m["name"] for m in gs} == {"المؤسس عثمان", "قيامة أرطغرل"}, str([m["name"] for m in gs]))
+        gc = next(o for o in sopts if o.startswith(g + " ("))
+        check("واسم القسم بعدده كما يرسله Stremio", walk(cfg, "series", genre=gc)[0] == gs, gc)
         check("قسمٌ لا يُعرف = لا شيء", walk(cfg, "movie", genre="nope")[0] == [])
         found = S.catalog(cfg, "series", "sq_series", {"search": "breaking"})["metas"]
         check("البحث", [m["name"] for m in found] == ["Breaking Bad"], str(found))
@@ -225,7 +307,10 @@ def against_mock():
               and v[0]["overview"].startswith("What happens"), json.dumps(v[0], ensure_ascii=False))
         check("معرّف الحلقة يحمل امتدادها", v[0]["id"].startswith(pre + "e:") and v[0]["id"].endswith(":mp4"), v[0]["id"])
         lt = S.meta(cfg, "tv", allt[0]["id"])["meta"]
-        check("القناة: اسمها وشعارها", lt["name"] == allt[0]["name"] and lt["posterShape"] == "square" and lt["logo"].endswith(".png"))
+        check("القناة: اسمها وصورتها مربّعة (بلا logo يحلّ محلّ الاسم في صفحتها)", lt["name"] == allt[0]["name"]
+              and lt["posterShape"] == "square" and lt["poster"].endswith(".png") and "logo" not in lt, json.dumps(lt, ensure_ascii=False))
+        check("وقسمها وصفًا وتصنيفًا", lt["description"] == "beIN SPORTS" and lt["genres"] == ["beIN SPORTS"]
+              and allt[0]["description"] == "beIN SPORTS", json.dumps(lt, ensure_ascii=False))
         check("معرّفٌ لسيرفرٍ آخر أو نوعٌ لا يطابق ← None",
               S.meta(cfg, "movie", "sq000000:m:1") is None and S.meta(cfg, "series", m0["id"]) is None)
 
@@ -240,6 +325,8 @@ def against_mock():
         sl = S.streams(cfg, "tv", allt[0]["id"])["streams"]
         lnum = allt[0]["id"].rsplit(":", 1)[1]
         check("القناة: HLS ثم TS", [x["url"] for x in sl] == [f"{host}/live/u/p/{lnum}.m3u8", f"{host}/live/u/p/{lnum}.ts"], str(sl))
+        check("واسم القناة في عنوان التشغيل (لا يُخلط بين القنوات)", all(x["title"].startswith(allt[0]["name"] + "\n") for x in sl),
+              str([x["title"] for x in sl]))
         odd = S.read_token(d, S.make_token(d, host, "u/x", "p&y"))
         with S._lock:                                        # قائمته في الذاكرة (السيرفر الوهمي لا يعرف هذا اليوزر)
             S._lists[(odd, "movie")] = S._lists[(cfg, "movie")]
@@ -365,8 +452,18 @@ def through_server():
         c, _, b = http(base, f"/stremio/{tok}/status.json")
         st = json.loads(b)
         check("حالة الاشتراك لصفحته", c == 200 and st["ok"] and st["counts"]["series"] == 10 and st["label"] == "سمارت", b.decode()[:160])
-        c, _, b = http(base, f"/stremio/{tok}/configure")
-        check("زرّ Configure في Stremio ← صفحة الاشتراك", c == 200 and b"<html" in b)
+        class _Stay(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        try:
+            urllib.request.build_opener(_Stay).open(base + f"/stremio/{tok}/configure", timeout=20)
+            c, loc = 200, ""
+        except urllib.error.HTTPError as e:
+            c, loc = e.code, e.headers.get("Location", "")
+        check("زرّ Configure في Stremio ← موقع سمارت سوق (لا صفحة التثبيت: لا نسخ رابطٍ ولا تثبيت في حسابٍ آخر)",
+              c == 302 and loc == "https://ssouq.com/", f"{c} {loc}")
+        c, _, b = http(base, f"/stremio/{tok}")
+        check("وصفحة التثبيت برمزها باقيةٌ للأداة", c == 200 and b"<html" in b)
         c, _, _ = http(base, f"/stremio/{tok[:-3]}xyz/manifest.json")
         check("رمزٌ معبوثٌ به ← 404", c == 404)
         c, _, _ = http(base, f"/stremio/{tok}/meta/movie/sq000000:m:1.json")

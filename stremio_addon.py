@@ -8,8 +8,8 @@
 100 عنصر (‏CATALOG_PAGE_SIZE في stremio-core) — فكل صفحةٍ هنا 100 تمامًا إلا الأخيرة، والقائمة كاملةً من
 السيرفر بطلبٍ واحد لكل نوع (‏get_vod_streams · get_series · get_live_streams)، لا قسمًا قسمًا.
 
-  الكتالوجات     ثلاثة: أفلام · مسلسلات · قنوات. بلا تصنيف = الكل (الأحدث إضافةً أولًا)، وأقسام السيرفر كلها
-                 تصنيفاتٌ (genre) في صفحة «اكتشف»، والبحث بالاسم في الثلاثة.
+  الكتالوجات     ثلاثة: أفلام · مسلسلات · قنوات. بلا تصنيف = الكل (الأحدث إضافةً أولًا)، وأقسام الأفلام والمسلسلات
+                 تصنيفاتٌ (genre) في صفحة «اكتشف»، والقنوات كلها تصنيفٌ واحد؛ والبحث بالاسم في الثلاثة.
   التفاصيل      الفيلم من get_vod_info، والمسلسل بمواسمه وحلقاته من get_series_info، والقناة من القائمة.
   التشغيل       روابط السيرفر نفسه: ‏/movie/ · ‏/series/ · ‏/live/ (‏HLS ثم TS حسب ما يسمح به الاشتراك).
 
@@ -29,6 +29,7 @@ import re
 import threading
 import time
 from collections import OrderedDict, namedtuple
+from concurrent.futures import ThreadPoolExecutor
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -39,7 +40,7 @@ import crypto_store
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.0.0"
+VERSION = "1.2.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -57,7 +58,10 @@ _ACTION = {"movie": ("get_vod_categories", "get_vod_streams", "stream_id"),
            "series": ("get_series_categories", "get_series", "series_id"),
            "tv": ("get_live_categories", "get_live_streams", "stream_id")}
 CATALOG = {"movie": "sq_movies", "series": "sq_series", "tv": "sq_live"}
+# أقسام السيرفر تصنيفاتٌ للأفلام والمسلسلات؛ والقنوات تصنيفٌ واحد: كلها في كتالوجها بترتيب السيرفر وبحثٍ بالاسم
+GENRE_TYPES = ("movie", "series")
 _TITLE = {"movie": "أفلام", "series": "مسلسلات", "tv": "قنوات"}
+_UNIT = {"movie": "فيلم", "series": "مسلسل", "tv": "قناة"}
 _CODE = {"movie": "m", "series": "s", "tv": "l"}   # بادئة المعرّف بعد بادئة السيرفر؛ و‏e للحلقة
 
 Cfg = namedtuple("Cfg", "host user pw")
@@ -101,25 +105,35 @@ def host_key(h):
     return urlsplit(n).hostname if n else ""
 
 
-def make_token(data_dir, host, user, pw):
-    """(الهوست، اليوزر، الباسورد) ← رمز الرابط. ‏ValueError لبياناتٍ لا تصلح."""
+def make_token(data_dir, host, user, pw, key=None):
+    """(الهوست، اليوزر، الباسورد) ← رمز الرابط. ‏key: قفل إضافة حسابٍ جاهز — رمزه لا يعمل إلا ما دام قفله هو
+    المحفوظ لحسابه (تغييره يوقف كل نسخةٍ نُقلت لحسابٍ آخر). ‏ValueError لبياناتٍ لا تصلح."""
     host, user, pw = norm_host(host), str(user or "").strip(), str(pw or "").strip()
     if not host or not user or not pw or any(len(x) > 128 or re.search(r"\s", x) for x in (user, pw)):
         raise ValueError("بيانات الاشتراك غير صالحة")
+    if key is not None and not re.fullmatch(r"[A-Za-z0-9_-]{4,32}", str(key)):
+        raise ValueError("قفلٌ غير صالح")
     h = host[len("http://"):] if host.startswith("http://") else host    # ‏http الافتراضي يُختصر من الرمز
-    return crypto_store.seal_token("\n".join((h, user, pw)), data_dir, LABEL)
+    return crypto_store.seal_token("\n".join((h, user, pw) + ((str(key),) if key is not None else ())), data_dir, LABEL)
+
+
+def read_token_key(data_dir, token):
+    """الرمز ← (‏Cfg، قفله أو None)، أو (None، None) لرمزٍ معبوثٍ به أو من مفتاحٍ آخر."""
+    token = str(token or "")
+    if not 20 <= len(token) <= 400 or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
+        return None, None
+    parts = (crypto_store.open_token(token, data_dir, LABEL) or "").split("\n")
+    if len(parts) not in (3, 4) or (len(parts) == 4 and not parts[3]):
+        return None, None
+    host = norm_host(parts[0])
+    if not (host and parts[1] and parts[2]):
+        return None, None
+    return Cfg(host, parts[1], parts[2]), (parts[3] if len(parts) == 4 else None)
 
 
 def read_token(data_dir, token):
     """الرمز ← ‏Cfg، أو None لرمزٍ معبوثٍ به أو من مفتاحٍ آخر."""
-    token = str(token or "")
-    if not 20 <= len(token) <= 400 or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
-        return None
-    parts = (crypto_store.open_token(token, data_dir, LABEL) or "").split("\n")
-    if len(parts) != 3:
-        return None
-    host = norm_host(parts[0])
-    return Cfg(host, parts[1], parts[2]) if host and parts[1] and parts[2] else None
+    return read_token_key(data_dir, token)[0]
 
 
 _LINE = re.compile(r"(?is)\bhost\b\s*[:=]?\s*(\S+).*?\buser(?:name)?\b\s*[:=]?\s*(\S+).*?\bpass(?:word)?\b\s*[:=]?\s*(\S+)")
@@ -290,11 +304,16 @@ class Lists:
             if g:
                 by_genre[g].append(it)
         self.by_genre = OrderedDict((g, v) for g, v in by_genre.items() if v)
+        self._cat_name = cat_name
         self.genres = list(self.by_genre)
         # «الكل»: الأحدث إضافةً أولًا للأفلام والمسلسلات؛ والقنوات بترتيب السيرفر (أقسامها متجاورة)
         self.latest = items if kind == "tv" else sorted(items, key=lambda it: -it.added)
         self._keys = None
         self._klock = threading.Lock()
+
+    def cat_of(self, it):
+        """اسم قسم العنصر كما في السيرفر (أو "")."""
+        return self._cat_name.get(it.cat, "") if it else ""
 
     def search(self, q):
         """كل الكلمات في الاسم (بلا تشكيل ولا همزات ولا حالة أحرف): المطابق ثم ما يبدأ بها ثم ما يحويها."""
@@ -361,11 +380,50 @@ def categories(cfg, kind):
     return _cached(_cats, (cfg, kind), TTL, lambda: _list_of(_api(cfg, _ACTION[kind][0])), 2000)
 
 
+PART_WORKERS = 4                     # طلبات الأقسام معًا حين تتعثّر القائمة كاملة
+
+
+def _all_items(cfg, kind, cats):
+    """كل عناصر النوع بطلبٍ واحد؛ وسيرفرٌ يتعثّر في القائمة كاملة (كاسبر يردّ 503 لقائمة أفلامه الكبيرة) ← قسمًا
+    قسمًا (‏category_id، كلٌّ بمحاولتين بعده) ثم تُجمع بترتيب أقسامه بلا تكرار. تعثّر قسمٍ بعدها ← XtreamError."""
+    action, key = _ACTION[kind][1], _ACTION[kind][2]
+    try:
+        return _list_of(_api(cfg, action))
+    except AuthError:
+        raise
+    except XtreamError:
+        ids = list(dict.fromkeys(str(c["category_id"]) for c in cats
+                                 if isinstance(c, dict) and str(c.get("category_id") or "").strip()))
+        if not ids:
+            raise
+
+    def part(cid):
+        for attempt in range(3):
+            try:
+                return _list_of(_api(cfg, action, category_id=cid))
+            except AuthError:
+                raise
+            except XtreamError:
+                if attempt == 2:
+                    raise
+                time.sleep(1 + attempt)
+    with ThreadPoolExecutor(max_workers=min(PART_WORKERS, len(ids))) as ex:
+        parts = list(ex.map(part, ids))
+    seen, out = set(), []
+    for items in parts:
+        for it in items:
+            k = it.get(key) if isinstance(it, dict) else None
+            if k is None or k not in seen:
+                seen.add(k)
+                out.append(it)
+    return out
+
+
 def lists(cfg, kind):
-    """كل عناصر النوع (‏movie · series · tv) — من الذاكرة إن حديثة، وإلا من السيرفر بطلبٍ واحد."""
+    """كل عناصر النوع (‏movie · series · tv) — من الذاكرة إن حديثة، وإلا من السيرفر بطلبٍ واحد (أو قسمًا قسمًا)."""
     def load():
         cats = categories(cfg, kind)
-        return Lists(kind, cats, _list_of(_api(cfg, _ACTION[kind][1])))
+        return Lists(kind, cats, _all_items(cfg, kind, cats))
     return _cached(_lists, (cfg, kind), TTL, load, LISTS_MAX)
 
 
@@ -440,36 +498,81 @@ def _preview(pre, kind, it):
                    "imdbRating": it.rating, "description": it.plot or None, "genres": _split(it.genre)})
 
 
+_COUNT = re.compile(r"\s*\([\d,]+\)$")       # «مسلسلات تركية (855)» ← عدد القسم في قائمة التصنيف
+
+
+def _fmt(n):
+    return f"{n:,}"
+
+
+def _kind_info(cfg, kind):
+    """(الأقسام بأعدادها، المجموع) لنوعٍ — من القوائم نفسها (ما يُعرض فعلًا، بلا الكبار)، وإلا أسماء الأقسام بلا
+    أعداد، وإلا لا شيء. ‏AuthError تصعد: اشتراكٌ يرفضه السيرفر."""
+    try:
+        L = lists(cfg, kind)
+        return [(g, len(L.by_genre[g])) for g in L.genres] if kind in GENRE_TYPES else [], len(L.items)
+    except AuthError:
+        raise
+    except XtreamError:
+        pass
+    if kind not in GENRE_TYPES:
+        return [], None
+    try:
+        seen, out = set(), []
+        for c in categories(cfg, kind):
+            name = " ".join(str(c.get("category_name") or "").split()) if isinstance(c, dict) else ""
+            if name and name not in seen and not _adult_cat(c):
+                seen.add(name)
+                out.append((name, None))
+        return out, None
+    except AuthError:
+        raise
+    except XtreamError:
+        return [], None
+
+
 def manifest(cfg, base, label=""):
-    """وصف الإضافة: ثلاثة كتالوجات، وأقسام السيرفر تصنيفاتٍ فيها. فشل أقسام نوعٍ لا يُسقط الإضافة: يبقى
-    كتالوجه بلا تصنيفات."""
+    return build_manifest(cfg, base, label)[0]
+
+
+def build_manifest(cfg, base, label=""):
+    """(وصف الإضافة، حاله): ثلاثة كتالوجات بعدد محتوى كلٍّ في اسمه («أفلام · سمارت (21,293)»)، وأقسام الأفلام
+    والمسلسلات تصنيفاتٌ بعدد كلٍّ («مسلسلات تركية (855)»)، والقنوات تصنيفٌ واحد. الأنواع الثلاثة تُحمَّل معًا. فشل نوعٍ
+    لا يُسقط الإضافة: يبقى كتالوجه بلا أعداد أو بلا تصنيفات؛ واشتراكٌ يرفضه السيرفر تُثبَّت إضافته كما هي وتعمل متى
+    جُدِّد. الحال: "ok" حُمّلت الأنواع كلها وفيها محتوى · "pending" رُفض الاشتراك أو جاء فارغًا (يوزرٌ لم يُفعَّل بعد:
+    يُعاد بعد قليل) · "error" تعذّر نوعٌ من السيرفر نفسه (انقطاعٌ أو مهلة: الإعادة الفورية لا تفيد)."""
     pre = prefix(cfg)
     uid = hashlib.sha256(f"{cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
     tag = f" · {label}" if label else ""
-    cats, denied = [], False
-    for kind in TYPES:
-        seen, genres = set(), []
-        try:                             # اشتراكٌ منتهٍ تُثبَّت إضافته ولا تُرفض: يعمل كما هو متى جُدِّد
-            for c in ([] if denied else categories(cfg, kind)):
-                name = " ".join(str(c.get("category_name") or "").split()) if isinstance(c, dict) else ""
-                if name and name not in seen and not _adult_cat(c):
-                    seen.add(name)
-                    genres.append(name)
+
+    def one(kind):
+        try:
+            genres, total = _kind_info(cfg, kind)
+            return genres, total, "error" if total is None else None
         except AuthError:
-            denied = True
-        except XtreamError:
-            pass
-        extra = ([{"name": "genre", "options": genres, "isRequired": False}] if genres else []) + \
+            return [], None, "auth"
+    with ThreadPoolExecutor(max_workers=len(TYPES)) as ex:
+        info = dict(zip(TYPES, ex.map(one, TYPES)))
+    cats, totals = [], []
+    for kind in TYPES:
+        genres, total, _ = info[kind]
+        opts = [f"{g} ({_fmt(n)})" if n is not None else g for g, n in genres]
+        extra = ([{"name": "genre", "options": opts, "isRequired": False}] if opts else []) + \
             [{"name": "search", "isRequired": False}, {"name": "skip", "isRequired": False}]
-        cats.append({"type": kind, "id": CATALOG[kind], "name": _TITLE[kind] + tag, "extra": extra,
-                     "extraSupported": [e["name"] for e in extra]})
+        cats.append({"type": kind, "id": CATALOG[kind], "extra": extra, "extraSupported": [e["name"] for e in extra],
+                     "name": _TITLE[kind] + tag + (f" ({_fmt(total)})" if total else "")})
+        if total:
+            totals.append(f"{_fmt(total)} {_UNIT[kind]}")
+    errs = {info[k][2] for k in TYPES}
+    state = "error" if "error" in errs else "pending" if "auth" in errs or not totals else "ok"
     res = {"types": list(TYPES), "idPrefixes": [pre]}
     return {
         "id": f"com.ssouq.xtream.{uid}",
         "version": VERSION,
         "name": BRAND + tag,
-        "description": "كل محتوى اشتراكك في Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها والقنوات المباشرة، "
-                       "بأقسام السيرفر نفسها وبحثٍ بالاسم.",
+        "description": (" · ".join(totals) + " — " if totals else "")
+                       + "كل محتوى اشتراكك في Stremio: الأفلام والمسلسلات بمواسمها وحلقاتها بأقسام السيرفر نفسها، "
+                       "والقنوات المباشرة كلها في تصنيفٍ واحد، وبحثٌ بالاسم.",
         "logo": f"{base}/static/icons/icon-512.png",
         "background": f"{base}/static/og-image.png",
         "types": list(TYPES),
@@ -477,7 +580,19 @@ def manifest(cfg, base, label=""):
         "resources": ["catalog", {"name": "meta", **res}, {"name": "stream", **res}],
         "catalogs": cats,
         "behaviorHints": {"configurable": True, "configurationRequired": False},
-    }
+    }, state
+
+
+def forget_empty(cfg):
+    """ينسى حالة اشتراكٍ وما حُفظ له فارغًا من أقسامٍ وقوائم (يوزرٌ لم يُفعَّل بعد) — فيُقرأ من السيرفر من جديد،
+    وما حُمّل بمحتواه يبقى."""
+    with _lock:
+        _accounts.pop(cfg, None)
+        for kind in TYPES:
+            for store, empty in ((_cats, lambda v: not v), (_lists, lambda v: not v.items)):
+                hit = store.get((cfg, kind))
+                if hit and empty(hit[1]):
+                    store.pop((cfg, kind), None)
 
 
 def parse_extra(s):
@@ -494,11 +609,17 @@ def catalog(cfg, kind, cid, extra):
     if extra.get("search"):
         seq = L.search(extra["search"])
     elif extra.get("genre"):
-        seq = L.by_genre.get(" ".join(extra["genre"].split()), [])
+        g = " ".join(extra["genre"].split())          # بعددٍ («… (855)») من manifest اليوم، أو بلا عدد من أقدم
+        seq = L.by_genre.get(g) or L.by_genre.get(_COUNT.sub("", g), [])
     else:
         seq = L.latest
     pre = prefix(cfg)
-    return {"metas": [_preview(pre, kind, it) for it in seq[skip:skip + PAGE]]}
+    metas = [_preview(pre, kind, it) for it in seq[skip:skip + PAGE]]
+    if kind == "tv":                                  # القناة: اسم قسمها وصفًا يميّزها عن مثيلاتها
+        for m, it in zip(metas, seq[skip:skip + PAGE]):
+            if L.cat_of(it):
+                m["description"] = L.cat_of(it)
+    return {"metas": metas}
 
 
 def _parse_id(cfg, sid):
@@ -610,8 +731,10 @@ def meta(cfg, kind, sid):
     elif code == "s" and kind == "series":
         m = _series_meta(cfg, pre, num)
     elif code == "l" and kind == "tv":
-        it = lists(cfg, "tv").by_id.get(num)
-        m = _clean({**_preview(pre, "tv", it), "logo": it.poster,
+        L = lists(cfg, "tv")
+        it = L.by_id.get(num)
+        # بلا «logo»: صفحة Stremio تعرضه مكان الاسم، فتظهر صورة القناة وحدها؛ واسم قسمها يميّزها
+        m = _clean({**_preview(pre, "tv", it), "description": L.cat_of(it), "genres": [L.cat_of(it)] if L.cat_of(it) else [],
                     "behaviorHints": {"defaultVideoId": f"{pre}l:{num}"}}) if it else None
     else:
         m = None
@@ -657,8 +780,11 @@ def streams(cfg, kind, sid):
         return {"streams": [{"url": f"{cfg.host}/series/{u}/{pw}/{num}.{ext}", "name": BRAND,
                              "title": f"تشغيل · {ext.upper()}", "behaviorHints": hints}]}
     if code == "l" and kind == "tv":
+        L = _cached_lists(cfg, "tv")
+        it = L.by_id.get(num) if L else None
+        ch = f"{it.name}\n" if it else ""              # اسم القناة فوق نوع البث في قائمة التشغيل
         label = {"m3u8": "بث مباشر · HLS", "ts": "بث مباشر · TS"}
-        return {"streams": [{"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "name": BRAND, "title": label[f],
+        return {"streams": [{"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "name": BRAND, "title": ch + label[f],
                              "behaviorHints": {"notWebReady": True}} for f in _formats(cfg)]}
     return None
 
@@ -739,6 +865,8 @@ _JSON = "application/json; charset=utf-8"
 _CORS = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*"}
 _PAGE_HDR = {"X-Robots-Tag": "noindex, nofollow", "Referrer-Policy": "no-referrer"}
 _HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stremio.html")
+# زرّ «Configure» في Stremio يفتح موقع المتجر — لا صفحة التثبيت (فيها نسخ الرابط والتثبيت في حسابٍ آخر)
+CONFIGURE_URL = (os.environ.get("STREMIO_CONFIGURE_URL") or os.environ.get("SALLA_STORE_URL") or "https://ssouq.com").rstrip("/") + "/"
 
 
 def _json(code, obj, age=0):
@@ -751,17 +879,22 @@ def page():
         return 200, f.read(), "text/html; charset=utf-8", {**_PAGE_HDR, "Cache-Control": "no-store"}
 
 
-def handle(data_dir, path, base, label_for=None):
+def handle(data_dir, path, base, label_for=None, allowed=None):
     """طلب GET تحت ‏/stremio ← (الرمز، الجسم، النوع، الترويسات)، أو None لمسارٍ ليس لها.
-    ‏label_for(host) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio."""
+    ‏label_for(host) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
+    ‏allowed(cfg، القفل) هل الرمز ساري — رمزٌ أُوقف (قفل حسابه تغيّر) يُردّ كرمزٍ غير صالح."""
     if path != PATH and not path.startswith(PATH + "/"):
         return None
     parts = [unquote(p) for p in path[len(PATH):].split("/") if p != ""]
-    if not parts or (len(parts) in (1, 2) and parts[-1] in (parts[0], "configure")):
-        return page()                                    # الصفحة العامة، وصفحة التثبيت وزرّ «Configure» في Stremio
-    cfg = read_token(data_dir, parts[0])
+    if parts and len(parts) <= 2 and parts[-1] == "configure":   # زرّ «Configure» في Stremio ← موقع المتجر
+        return 302, b"", "text/plain; charset=utf-8", {**_PAGE_HDR, "Location": CONFIGURE_URL, "Cache-Control": "no-store"}
+    if not parts or len(parts) == 1:
+        return page()                                    # الصفحة العامة، وصفحة التثبيت برمزها
+    cfg, key = read_token_key(data_dir, parts[0])
     if not cfg:
         return _json(404, {"ok": False, "error": "رابطٌ غير صالح — اطلب رابطًا جديدًا"})
+    if allowed and not allowed(cfg, key):
+        return _json(404, {"ok": False, "error": "أُوقف هذا الرابط — الإضافة مقفلةٌ على حسابها"})
     rest = parts[1:]
     if not rest[-1].endswith(".json"):
         return _json(404, {"error": "not found"})
