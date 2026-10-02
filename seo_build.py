@@ -208,6 +208,8 @@ def build(data_dir, force=False, now=None):
                 res["person_norm_refreshed"] = refresh_person_norm(con)
             res["seconds"] = round(time.time() - t0, 2)
             _last[os.path.abspath(data_dir)] = {"ok": True, "at": now, **res}
+            with con:
+                seo_db.set_state(con, "last_build", _last[os.path.abspath(data_dir)])   # تبقى بعد إعادة تشغيل الخادم (النشر)
             return res
         finally:
             con.close()
@@ -548,10 +550,11 @@ def stats(data_dir, light=False):
     running = bool(_running.get(k) and _running[k].is_alive())
     if con is None:
         return {"ok": True, "built": False, "running": running, "last": _last.get(k)}
+    last = _last.get(k) or seo_db.state(con, "last_build")    # من الذاكرة، وإلا من القاعدة (بعد إعادة التشغيل)
     cached = _stats_cache.get(k)
     if cached and (light or running or time.time() - cached[0] < 15):
         con.close()
-        return {**cached[1], "running": running, "last": _last.get(k), "cached_at": int(cached[0])}
+        return {**cached[1], "running": running, "last": last, "cached_at": int(cached[0])}
     try:
         q = lambda sql, *a: con.execute(sql, a).fetchone()[0]   # noqa: E731
         live = "merged_into IS NULL AND available=1"
@@ -565,7 +568,7 @@ def stats(data_dir, light=False):
             shared.setdefault(r["type"], {})[str(r["n"])] = r["k"]
         reviews = {r["kind"]: r["n"] for r in con.execute("SELECT kind, COUNT(*) n FROM review WHERE status='open' GROUP BY kind")}
         out = {
-            "ok": True, "built": bool(seo_db.state(con, "built_at")), "running": running, "last": _last.get(k),
+            "ok": True, "built": bool(seo_db.state(con, "built_at")), "running": running, "last": last,
             "built_at": seo_db.state(con, "built_at"), "services": sorted(seo_db.state(con, "signatures") or {}),
             "entities": {"total": q(f"SELECT COUNT(*) FROM content WHERE {live}"),
                          "movie": q(f"SELECT COUNT(*) FROM content WHERE {live} AND type='movie'"),
