@@ -219,6 +219,14 @@ h1{font-size:1.3rem;margin:0 0 2px}
 .ext .u{max-width:100%}
 /* صفحة الإضافات واللوحات */
 .ext .d{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.steps2{margin:10px 0 0;padding-inline-start:20px;display:grid;gap:10px;font-size:.86rem}
+.steps2 li>span{display:block;color:var(--mute);margin-bottom:6px}
+.steps2 .acc{min-height:42px;justify-content:center}
+.hosts{margin-top:10px;font-size:.84rem}
+.hosts summary{cursor:pointer;color:var(--mute);padding:6px 0}
+.hrow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+.hrow .mono{font-size:.8rem;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.hrow .acc,.hrow .ghost{flex:none;padding:6px 10px;font-size:.8rem}
 .ext .tags{margin-top:6px}
 .pan{display:grid;gap:8px}
 .pan .ah{display:flex;align-items:center;gap:8px}
@@ -421,7 +429,7 @@ async function api(path, body){
   const r = await fetch(B + path, body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
   let d = {}; try { d = await r.json(); } catch {}
   if (d && d.login) { location.href = B + "/login"; throw new Error("سجّل الدخول"); }
-  if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+  if (!r.ok) throw Object.assign(new Error(d.error || ("HTTP " + r.status)), {data: d});
   return d;
 }
 // النص الذي يُرسل للعميل مع حسابه الجاهز
@@ -761,7 +769,12 @@ async function loadExt(){
 async function extDo(body, btn, ok){
   if (btn) btn.disabled = true; $("extMsg").textContent = "";
   try { EXT = await api("/api/stremio/extras", body); renderExt(); if (ok) toast(ok); if (EXT.job && EXT.job.running) loadExt(); return true; }
-  catch(e) { $("extMsg").textContent = e.message; return false; }
+  catch(e) {                                  // إضافةٌ تحتاج إعدادًا: الرسالة ومعها زرّ صفحة إعدادها
+    const conf = e.data && e.data.configure;
+    $("extMsg").innerHTML = esc(e.message) + (safeUrl(conf) ? `<div style="margin-top:8px"><a class="acc" href="${esc(conf)}" target="_blank"
+      rel="noopener noreferrer">افتح صفحة الإعداد ↗</a></div>` : "");
+    return false;
+  }
   finally { if (btn) btn.disabled = false; }
 }
 // حقلٌ واحد: رابطٌ ← «إضافة»، واسمٌ ← «بحث» في دليل إضافات Stremio (الرسمي والمجتمع)
@@ -770,15 +783,24 @@ $("extUrl").addEventListener("input", () => { $("extAdd").textContent = isLink($
 let EXT_HITS = [];
 function renderExtHits(){
   const have = new Set(EXT.extras.map(x => x.url));
+  const setupLink = (url, label) => safeUrl(url) ? `<a class="acc" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>` : "";
   $("extHits").innerHTML = EXT_HITS.length ? `<div class="cards" style="margin-top:10px">${EXT_HITS.map((h, i) => `<div class="card"><div class="ext">
       ${safeUrl(h.logo) ? `<img src="${esc(h.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<span class=ph></span>'">` : '<span class="ph"></span>'}
       <div class="tx"><b>${esc(h.name)} <small class="hint" style="display:inline">${esc(h.version)}</small></b>
         <span class="u">${esc(h.host)}</span>
         ${h.description ? `<div class="d">${esc(h.description)}</div>` : ""}
-        <div class="acts" style="margin-top:8px">${have.has(h.url) ? '<span class="hint" style="color:var(--go)">✓ في القائمة</span>'
-          : h.needs_config ? `${safeUrl(h.configure) ? `<a class="acc" href="${esc(h.configure)}" target="_blank" rel="noopener noreferrer">افتح صفحة الإعداد ↗</a>` : ""}
-              <span class="hint">تحتاج إعدادًا: أكمله في صفحتها، ثم انسخ رابط التثبيت والصقه هنا.</span>`
-          : `<button class="acc" data-xhit="${i}">${I.plus}إضافة لجميع اليوزرات${EXT.accounts ? ` (${EXT.accounts})` : ""}</button>`}</div></div></div></div>`).join("")}</div>` : "";
+      </div></div>
+      ${have.has(h.url) ? '<div class="tags" style="margin-top:8px"><span class="tag ok">✓ مفعّلة لجميع اليوزرات</span></div>'
+        : h.needs_config ? `<ol class="steps2">
+            <li><span>افتح صفحة إعدادها وأكمله (احفظ الإعداد فيها).</span>${setupLink(h.configure, "افتح صفحة الإعداد ↗")}</li>
+            <li><span>انسخ «رابط التثبيت» الذي تعطيك (…/manifest.json) والصقه هنا:</span>
+              <div class="row"><input class="t ltr" data-xpaste="${i}" placeholder="https://…/manifest.json" autocomplete="off" spellcheck="false">
+                <button class="acc" data-xinst="${i}">تثبيت للجميع</button></div></li></ol>`
+        : `<div class="acts" style="margin-top:8px"><button class="acc" data-xhit="${i}">${I.plus}إضافة لجميع اليوزرات${EXT.accounts ? ` (${EXT.accounts})` : ""}</button></div>`}
+      ${(h.hosts || []).length ? `<details class="hosts"><summary>على مضيفين آخرين (${h.hosts.length})</summary>${h.hosts.map(o => `<div class="hrow">
+          <span class="mono">${esc(o.host)}</span>${o.needs_config ? setupLink(o.configure, "صفحة الإعداد ↗")
+            : `<button class="ghost" data-xurl="${esc(o.url)}" data-xname="${esc(h.name)}">إضافة</button>`}</div>`).join("")}</details>` : ""}
+    </div>`).join("")}</div>` : "";
 }
 async function extSearch(q){
   const b = $("extAdd"); b.disabled = true; $("extMsg").textContent = "نبحث في دليل الإضافات…"; EXT_HITS = []; renderExtHits();
@@ -790,8 +812,13 @@ async function extSearch(q){
   finally { b.disabled = false; }
 }
 $("extHits").addEventListener("click", e => {
-  const b = e.target.closest("[data-xhit]"); if (!b) return;
-  const h = EXT_HITS[+b.dataset.xhit]; if (h) addExt(h.url, b, h.name);
+  const b = e.target.closest("[data-xhit], [data-xinst], [data-xurl]"); if (!b) return;
+  if (b.dataset.xurl) return addExt(b.dataset.xurl, b, b.dataset.xname);
+  const h = EXT_HITS[+(b.dataset.xhit || b.dataset.xinst)]; if (!h) return;
+  if (b.dataset.xhit) return addExt(h.url, b, h.name);
+  const v = (document.querySelector(`[data-xpaste="${b.dataset.xinst}"]`)?.value || "").trim();   // رابطها بعد الإعداد
+  if (!isLink(v)) { $("extMsg").textContent = `الصق رابط تثبيت ${h.name} بعد إعدادها (يبدأ بـ https:// أو stremio://).`; return; }
+  addExt(v, b, h.name);
 });
 $("extForm").onsubmit = async e => {
   e.preventDefault();

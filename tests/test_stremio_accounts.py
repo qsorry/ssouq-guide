@@ -541,7 +541,8 @@ def through_server():
                 time.sleep(0.1)
             return r_
         c, r = post("/api/stremio/extras", {"action": "add", "url": f"http://127.0.0.1:{aio_srv.server_address[1]}/needs/manifest.json"})
-        check("إضافةٌ تحتاج إعدادًا ← 400 برسالته", c == 400 and "تحتاج إعدادًا" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        check("إضافةٌ تحتاج إعدادًا ← 400 برسالته ورابط صفحة إعدادها", c == 400 and "تحتاج إعدادًا" in r.get("error", "")
+              and r.get("configure", "").endswith("/needs/configure"), json.dumps(r, ensure_ascii=False))
         c, r = post("/api/stremio/extras", {"action": "add", "url": local(ours("u@tv.ssouq.com")[0]["transportUrl"])})
         check("وإضافتنا نفسها ← 400", c == 400 and "إضافتنا" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
         c, r = post("/api/stremio/extras", {"action": "add", "url": aio})

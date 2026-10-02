@@ -283,7 +283,8 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     user.once('dialog', d => d.accept());
     await user.fill('#extUrl', `http://127.0.0.1:${ADDON_PORT}/needs/manifest.json`); await user.click('#extAdd');
     await user.waitForFunction(() => /تحتاج إعدادًا/.test(document.querySelector('#extMsg')?.textContent || ''), null, {timeout: 8000});
-    check('an add-on that still needs setup is refused with the reason', true);
+    check('an add-on that still needs setup is refused with the reason and a button to its setup page',
+          (await user.getAttribute('#extMsg a.acc', 'href')) === `http://127.0.0.1:${ADDON_PORT}/needs/configure`);
     await user.fill('#extUrl', 'AIOMetadata');
     check('typing a name turns the button into a search', (await user.textContent('#extAdd')).trim() === 'بحث');
     await user.click('#extAdd');
@@ -292,6 +293,9 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('searching «AIOMetadata» finds it in the add-on directory (and «AIO Metadata» that still needs setup)',
           hitsT.length === 2 && hitsT[0].startsWith('AIOMetadata') && /افتح صفحة الإعداد/.test(hitsT[1]), hitsT.join(' | ').slice(0, 200));
     check('the one needing setup links to its setup page', (await user.getAttribute('#extHits a.acc', 'href')) === `http://127.0.0.1:${ADDON_PORT}/aiobase/configure`);
+    check('…with two steps and a field for its install link, and its other hosts folded (one card, not one per host)',
+          await user.isVisible('#extHits [data-xpaste="1"]') && await user.isVisible('#extHits [data-xinst="1"]')
+          && (await user.textContent('#extHits details.hosts summary')).includes('(1)'));
     await shot(user, 'stremio-extras-search');
     let extAsk = '';
     user.once('dialog', d => { extAsk = d.message(); d.accept(); });
