@@ -1061,8 +1061,12 @@ def describe(con, cid, st):
         res = seo_pages.render_entity(con, "", c["type"], c["slug"], tr, st)
         if res and res[0] == "page":
             html = res[1]["html"].decode("utf-8")
+            codes = [c_ for c_, _ in res[1]["alts"]]
             page[lang] = {"seo_title": res[1]["title"], "meta_description": res[1]["desc"], "canonical": res[1]["canonical"],
-                          "hreflang": [u for _, u in res[1]["alts"]], "json_ld": re.findall(r'"@type": "(\w+)"', html)[:6],
+                          "hreflang": [{"lang": c_, "url": u} for c_, u in res[1]["alts"]],
+                          "hreflang_ok": len(codes) == len(set(codes)) and set(codes) <= {"ar", "en", "x-default"}
+                          and dict(res[1]["alts"]).get("x-default") == dict(res[1]["alts"]).get("ar"),   # x-default = النسخة الافتراضية (العربية بلا بادئة)
+                          "json_ld": re.findall(r'"@type": "(\w+)"', html)[:6],
                           "would_index": res[1]["index_ar" if lang == "ar" else "index_en"], "why": res[1]["why"][0 if lang == "ar" else 1]}
     raw_all = [r for ln in links for r in json.loads(ln["raw_names_json"] or "[]")]
     cleans = [M.clean_title(r, st) for r in raw_all] or [M.clean_title(c["title"], st)]
@@ -1500,6 +1504,11 @@ def sample(data_dir, spec=None, now=None, bundle_errors=None):
                      "split_sum_over_builds": sum(b.get("split", 0) for b in builds),
                      "splits": splits_report(con, prev_at), "slug_changes": slug_changes_report(con, prev_at),
                      "redirect_chains": con.execute("SELECT COUNT(*) FROM redirect a JOIN redirect b ON b.path=a.target").fetchone()[0],   # يجب أن يكون صفرًا: القديم ← النهائي مباشرة
+                     "redirects_added": [{"from": r["path"], "to": r["target"], "code": r["code"], "reason": r["reason"],
+                                          "direct_to_final": not con.execute("SELECT 1 FROM redirect WHERE path=?", (r["target"],)).fetchone()
+                                          and bool(con.execute("SELECT 1 FROM content WHERE merged_into IS NULL AND (? LIKE '%/' || slug || '/')", (r["target"],)).fetchone()),
+                                          "chain": bool(con.execute("SELECT 1 FROM redirect WHERE path=?", (r["target"],)).fetchone())}
+                                         for r in con.execute("SELECT path, target, code, reason FROM redirect WHERE created_at>? ORDER BY created_at, path", (prev_at,))],
                      "stream_id_reused_last_build": (seo_db.state(con, "reconciliation") or {}).get("stream_id_reused"),
                      "merged_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='merged_entities' AND created_at>?", (prev_at,)).fetchone()[0],
                      "split_reviews_opened_since_last_bundle": con.execute("SELECT COUNT(*) FROM review WHERE kind='split_entity' AND created_at>?", (prev_at,)).fetchone()[0],
