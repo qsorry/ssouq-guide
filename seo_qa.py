@@ -532,6 +532,75 @@ def check_casper(con, probe):
                       _t("casper_503_changes_no_matching", (rec.get("merged") or 0) == 0 and (rec.get("split") or 0) <= 1, {"merged": rec.get("merged"), "split": rec.get("split")})]}
 
 
+def data_dir_of(con):
+    """مجلد البيانات من مسار القاعدة المفتوحة (seo.sqlite في data/content/)."""
+    row = con.execute("PRAGMA database_list").fetchone()
+    return os.path.dirname(os.path.dirname(row[2])) if row and row[2] else "data"
+
+
+def baseline_state(con, st, data_dir):
+    """لقطة أساس (قراءةٌ صرفة): لكل كيانٍ حيّ سلسلةٌ مضغوطة (slug · tmdb · imdb · merged · available · بصمة عضويته)، وبصمة
+    التحويلات كلها، وأعداد الأهلية، وبصمة الكود، وحجم القاعدة — فيظهر أي تغييرٍ لاحق في diff واضح."""
+    import hashlib
+    ent = {}
+    imdb = {r["entity_id"]: r["external_id"] for r in con.execute("SELECT entity_id, external_id FROM external_id WHERE entity='content' AND source='imdb'")}
+    mem = {}
+    for r in con.execute("SELECT content_id, service_key, kind, local_key, present FROM content_service ORDER BY 1,2,3,4"):
+        mem.setdefault(r["content_id"], []).append(f"{r['service_key']}:{r['kind']}:{r['local_key']}:{r['present']}")
+    elig = {"ar": 0, "en": 0, "both": 0}
+    for r in con.execute("SELECT * FROM content WHERE merged_into IS NULL ORDER BY id"):
+        mh = hashlib.sha1("|".join(mem.get(r["id"], [])).encode()).hexdigest()[:8]
+        ent[str(r["id"])] = f"{r['slug']}|{r['tmdb_id'] or ''}|{imdb.get(r['id'], '')}|{r['available']}|{mh}"
+        if r["available"]:
+            a, e = seo_pages.indexable(r, "ar", st)[0], seo_pages.indexable(r, "en", st)[0]
+            elig["ar"] += a; elig["en"] += e; elig["both"] += (a and e)
+    red = [f"{r['path']}>{r['target']}" for r in con.execute("SELECT path, target FROM redirect ORDER BY path")]
+    db = seo_db.path(data_dir)
+    return {"at": int(time.time()), "code_fingerprint": seo_sources.code_version()["code_fingerprint"], "entities_live": len(ent), "merged": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NOT NULL").fetchone()[0],
+            "redirects": len(red), "redirects_hash": hashlib.sha1("\n".join(red).encode()).hexdigest()[:16], "eligibility": elig,
+            "index_live": bool(st.get("index_live")), "db_bytes": os.path.getsize(db) if os.path.exists(db) else None, "entities": ent}
+
+
+def baseline_compare(base, cur):
+    """الفرق بين الأساس والحال: كيانات جديدة/مفقودة/متغيّرة (بالحقل)، التحويلات، الأهلية."""
+    b, c = base.get("entities", {}), cur.get("entities", {})
+    fields = ("slug", "tmdb_id", "imdb_id", "available", "membership")
+    changed, by_field = [], {f: 0 for f in fields}
+    for k in b.keys() & c.keys():
+        if b[k] != c[k]:
+            pb, pc = b[k].split("|"), c[k].split("|")
+            diff = [fields[i] for i in range(len(fields)) if pb[i] != pc[i]]
+            for f in diff:
+                by_field[f] += 1
+            if len(changed) < 50:
+                changed.append({"id": int(k), "fields": diff, "before": b[k], "after": c[k]})
+    return {"baseline_at": base.get("at"), "baseline_fingerprint": base.get("code_fingerprint"), "current_fingerprint": cur.get("code_fingerprint"),
+            "entities_new": len(c.keys() - b.keys()), "entities_gone": len(b.keys() - c.keys()), "entities_changed": sum(1 for k in b.keys() & c.keys() if b[k] != c[k]),
+            "changed_by_field": by_field, "changed_examples": changed, "new_examples": sorted(int(k) for k in c.keys() - b.keys())[:20], "gone_examples": sorted(int(k) for k in b.keys() - c.keys())[:20],
+            "redirects": {"before": base.get("redirects"), "after": cur.get("redirects"), "changed": base.get("redirects_hash") != cur.get("redirects_hash")},
+            "eligibility": {"before": base.get("eligibility"), "after": cur.get("eligibility")}, "index_live": {"before": base.get("index_live"), "after": cur.get("index_live")},
+            "db_bytes": {"before": base.get("db_bytes"), "after": cur.get("db_bytes")}}
+
+
+def baseline(con, st, data_dir):
+    """يكتب الأساس مرةً واحدة (baseline.json في مجلد المراجعة) ثم يقارن كل لقطةٍ لاحقة به."""
+    cur = baseline_state(con, st, data_dir)
+    p = os.path.join(seo_sources.bundle_dir(data_dir), "baseline.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            base = json.load(f)
+        set_now = False
+    except (OSError, ValueError):
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(cur, f, ensure_ascii=False)
+        base, set_now = cur, True
+    out = baseline_compare(base, cur)
+    out["set_now"] = set_now
+    out["file"] = p
+    return out
+
+
 def check_freeze(con, st):
     """الكيانات المجمّدة (identity_freeze): حالها الآن، وأنه لم يحدث لها منذ اللقطة السابقة انقسامٌ ولا دمج ولا تبديل رابط ولا تحويلٌ
     جديد ولا كتابة TMDB — لقطةٌ ثابتة قابلة للتحقّق."""
@@ -557,7 +626,9 @@ def check_freeze(con, st):
               "slug_changed_since_previous_snapshot": bool(slug_prov and slug_prov["at"] > bundle_at), "tmdb_written_since_previous_snapshot": bool(tmdb_prov and tmdb_prov["at"] > bundle_at),
               "merged_into_it_since_previous_snapshot": merged_in, "split_reviews_since_previous_snapshot": splits,
               "kept_by_freeze_last_build": rec.get("kept_by_freeze"), "freeze_conflicts_last_build": [x for x in (rec.get("freeze_conflicts") or []) if fid in (x.get("frozen"), x.get("other"))]}
-        it["ok"] = c["merged_into"] is None and red_new == 0 and not it["slug_changed_since_previous_snapshot"] and not it["tmdb_written_since_previous_snapshot"] and merged_in == 0 and splits == 0
+        approved = [n for n in seo_sources.normalizations(data_dir_of(con)) if n.get("entity_id") == fid and tmdb_prov and n.get("at", 0) >= tmdb_prov["at"] - 5]
+        it["approved_normalization"] = bool(approved)
+        it["ok"] = c["merged_into"] is None and red_new == 0 and not it["slug_changed_since_previous_snapshot"] and (not it["tmdb_written_since_previous_snapshot"] or bool(approved)) and merged_in == 0 and splits == 0
         items.append(it)
     return {"frozen": [it["id"] for it in items], "items": items, "previous_snapshot_at": bundle_at,
             "tests": [_t("identity_freeze_respected", all(it["ok"] for it in items), {"frozen": len(items), "violations": [it["id"] for it in items if not it["ok"]]})] if items else []}
@@ -603,6 +674,7 @@ def run(data_dir, spec=None, probe=None, sitemap_out=None):
         cs = check_casper(con, probe)
         cov = coverage(data_dir, con, st)
         fz = check_freeze(con, st)
+        bl = baseline(con, st, data_dir)
         import seo_scan
         fp = seo_scan.summary(seo_scan.load(data_dir))
         fp["tests"] = [_t("global_full_population_coverage", fp.get("verdict") == "PASS",
@@ -617,7 +689,7 @@ def run(data_dir, spec=None, probe=None, sitemap_out=None):
         work_fail = [{"id": w["id"], "slug": w["slug"], "group": w["group"], "failed": [t["test"] for t in w["tests"] if not t["ok"]]} for w in works if any(not t["ok"] for t in w["tests"])]
         return {"ok": not fails, "summary": {"automated_qa": f"{len(all_tests) - len(fails)}/{len(all_tests)} PASS", "test_failures": len(fails), "release_blockers": len(rb),
                                             "phase_3": "BLOCKED" if rb or fails else "gates passed (owner decision required)"},
-                "release_blockers": rb, "freeze": fz, "full_population": fp,
+                "release_blockers": rb, "freeze": fz, "full_population": fp, "normalizations": seo_sources.normalizations(data_dir), "baseline": bl,
                 "sample": {"n": len(works), "by_group": {g: sum(1 for w in works if w["group"] == g) for g in ("movie", "series", "turkish", "anime", "title")},
                                             "would_index_both": sum(1 for w in works if w.get("would_index", {}).get("ar") and w.get("would_index", {}).get("en"))},
                 "tests": {"total": len(all_tests), "pass": len(all_tests) - len(fails), "fail": len(fails)},
