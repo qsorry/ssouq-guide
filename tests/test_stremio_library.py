@@ -298,6 +298,41 @@ def through_addon():
         check("كتالوجاتٌ لكل خطٍّ باسم القسم والسيرفر", nm == ["مسلسلات (سمارت)", "أفلام (سمارت)", "بث مباشر (سمارت)", "مسلسلات (كاسبر)",
                                                               "أفلام (كاسبر)", "بث مباشر (كاسبر)", "مسلسلات (فالكون)", "أفلام (فالكون)",
                                                               "بث مباشر (فالكون)"] and nman["idPrefixes"] == [pre, pre2, pre3], str(nm))
+        print("== الـmanifest محفوظ: فورًا بعد إعادة النشر، وبلا نسخةٍ نسخةٌ سريعة بمعرّفات الكتالوجات نفسها ==")
+        with S._lock:
+            S._mans.clear()                               # كإعادة تشغيل: الذاكرة فارغة والقرص فيه آخر نسخة
+        orig_bm, built_n = S.build_manifest, []
+
+        def slow_bm(*a, **k):
+            if not (len(a) > 8 and a[8]) and not k.get("quick"):
+                built_n.append(1)
+                time.sleep(0.6)
+            return orig_bm(*a, **k)
+        S.build_manifest = slow_bm
+        try:
+            t0 = time.time()
+            code, again_man, hdr = get(tok, "manifest.json", nlf)
+            check("بعد إعادة التشغيل: آخر نسخةٍ من القرص فورًا (لا ينتظر بناء المكتبات)", code == 200 and again_man == nman
+                  and time.time() - t0 < 0.5 and not built_n, f"{time.time() - t0:.2f}s")
+            with S._lock:
+                S._mans.clear()
+            for f in os.listdir(os.path.join(d, "stremio_lists", "manifests")):
+                os.remove(os.path.join(d, "stremio_lists", "manifests", f))
+            S.MANIFEST_WAIT, wait0 = 0.05, S.MANIFEST_WAIT
+            code, qman, hdr = get(tok, "manifest.json", nlf)
+            S.MANIFEST_WAIT = wait0
+            qids = [c["id"] for c in qman["catalogs"]]
+            check("وبلا نسخةٍ والبناء طويل: نسخةٌ سريعة فورًا بكتالوجات كل سيرفرٍ بمعرّفاتها نفسها (فتجد المجلدات إضافتها)، وتُطلب قريبًا",
+                  code == 200 and qman["id"] == nman["id"] and all(c["id"] in qids for c in nman["catalogs"] if c["id"].startswith("sq_"))
+                  and "max-age=60" in hdr.get("Cache-Control", ""), str(hdr.get("Cache-Control")))
+            for _ in range(60):
+                if S._mans:
+                    break
+                time.sleep(0.05)
+            code, full_man, _ = get(tok, "manifest.json", nlf)
+            check("ويكمل البناء في الخلفية: الطلب التالي بالنسخة الكاملة", code == 200 and full_man == nman and len(built_n) == 1)
+        finally:
+            S.build_manifest = orig_bm
         fid = next(c["id"] for c in nman["catalogs"] if c["name"] == "مسلسلات (فالكون)")
         code, fs, _ = get(tok, f"catalog/series/{fid}.json", nlf)
         check("وكتالوج فالكون فيها: ما في فالكون وحده بمعرّفاته", fid == "sq_series_" + S.line_hk(c3)
