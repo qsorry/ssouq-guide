@@ -1468,7 +1468,7 @@ def code_version():
     import subprocess
     here = os.path.dirname(os.path.abspath(__file__))
     h = hashlib.sha1()
-    for n in ("seo_db.py", "seo_match.py", "seo_build.py", "seo_search.py", "seo_sources.py", "seo_pages.py", "seo_qa.py", "seo_scan.py", "content.py"):
+    for n in ("seo_db.py", "seo_match.py", "seo_build.py", "seo_search.py", "seo_sources.py", "seo_pages.py", "seo_qa.py", "seo_scan.py", "seo_release.py", "content.py"):
         try:
             with open(os.path.join(here, n), "rb") as f:
                 h.update(f.read())
@@ -1814,6 +1814,7 @@ def bundle_zip(out, bundle_id):
 
 BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "qa.json", "bundle.json")
 BUNDLE_EXTRA = ("sitemap-staging.xml",)       # خريطة الموقع التجريبية من الفحص النهائي: تُنزَّل من البطاقة ولا تُخدم على الموقع
+_RELEASE_RX = re.compile(r"release-[\w.-]+\.(?:json|txt)")   # تقارير النشر الإنتاجي (seo_release): release-phase4.json · release-batch-1.json · release-final.txt …
 _bundling = {}
 _bundle_stage = {}            # مسار البيانات ← دالة تحديث مرحلة اللقطة (تستعملها العيّنة لعدّ أعمالها)
 
@@ -1849,7 +1850,8 @@ def bundle_state(data_dir):
     d = bundle_dir(data_dir)
     files = []
     zips = sorted(n for n in (os.listdir(d) if os.path.isdir(d) else []) if _ZIP_RX.fullmatch(n))
-    for n in tuple(zips[-1:]) + BUNDLE_FILES + BUNDLE_EXTRA:
+    rel = sorted(n for n in (os.listdir(d) if os.path.isdir(d) else []) if _RELEASE_RX.fullmatch(n))
+    for n in tuple(zips[-1:]) + BUNDLE_FILES + BUNDLE_EXTRA + tuple(rel):
         try:
             st_ = os.stat(os.path.join(d, n))
             files.append({"name": n, "size": st_.st_size, "at": int(st_.st_mtime)})
@@ -1861,7 +1863,7 @@ def bundle_state(data_dir):
 
 def bundle_file(data_dir, name):
     """ملفٌ من ملفات المراجعة بالاسم (من القائمة وحدها) ← (bytes, نوعه) أو None."""
-    if name not in BUNDLE_FILES + BUNDLE_EXTRA and not _ZIP_RX.fullmatch(name):
+    if name not in BUNDLE_FILES + BUNDLE_EXTRA and not _ZIP_RX.fullmatch(name) and not _RELEASE_RX.fullmatch(name):
         return None
     try:
         with open(os.path.join(bundle_dir(data_dir), name), "rb") as f:

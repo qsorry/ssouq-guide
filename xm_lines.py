@@ -37,6 +37,7 @@ import reports
 import store_sync
 import seo_build
 import seo_scan
+import seo_release
 import seo_sources
 import seo_search
 import seo_db
@@ -134,9 +135,10 @@ for _cup in CUPS:
 
 
 def sitemap_extra():
-    """صفحات الوحدات في خريطة الموقع ← [(المسار، changefreq، priority)] — بعد الرئيسية وصفحات الأجهزة."""
+    """صفحات الوحدات في خريطة الموقع ← [(المسار، changefreq، priority)] — بعد الرئيسية وصفحات الأجهزة. وصفحات الكيانات
+    المعتمدة المستحقّة (seo_release، المرحلة 5) — فارغةٌ ما لم يُفعَّل sitemap_live بعد بوابتها."""
     return (league.SITEMAP + watch.SITEMAP + [(predict_page.PATH, "daily", "0.7")]
-            + [u for t in CUPS for u in t.sitemap()] + content.sitemap(DATA_DIR))
+            + [u for t in CUPS for u in t.sitemap()] + content.sitemap(DATA_DIR) + seo_release.sitemap_entries(DATA_DIR))
 
 
 def site_pages():
@@ -4485,6 +4487,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": True, **seo_scan.state(DATA_DIR)})
                 if path == "/api/content/seo/bundle":     # ملفات المراجعة: حال إنتاجها وما كُتب منها
                     return self._send(200, {"ok": True, **seo_sources.bundle_state(DATA_DIR)})
+                if path == "/api/content/seo/release":    # النشر الإنتاجي (المراحل 4–9): حال المراحل والدفعات والأعلام (قراءة)
+                    return self._send(200, {"ok": True, **seo_release.status(DATA_DIR)})
                 if path.startswith("/api/content/seo/bundle/"):   # تنزيل ملفٍ منها (للمدير)
                     f = seo_sources.bundle_file(DATA_DIR, path.rsplit("/", 1)[1])
                     if not f:
@@ -5238,6 +5242,15 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     started = seo_scan.start(DATA_DIR, resume=True)
                 return self._send(200, {"ok": True, "started": started, **seo_scan.state(DATA_DIR)})
+            elif path == "/api/content/admin/seo-release":   # النشر الإنتاجي: go (4←5←6←7) · phase4…phase7 · batch · expand · final — في الخلفية، بوابةٌ فاشلة = STOP
+                act = str(body.get("action") or "")
+                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "batch", "expand", "final"):
+                    return self._send(400, {"error": "action غير معروف"})
+                if act in ("go", "phase4") and not re.fullmatch(r"\d{8}T\d{6}Z", str(body.get("snapshot") or "")):
+                    return self._send(400, {"error": "معرّف اللقطة (نقطة الاستئناف) مطلوب: مثل 20261003T004434Z"})
+                started = seo_release.start(DATA_DIR, act, snapshot=body.get("snapshot"), expected=int(body["expected"]) if body.get("expected") else None,
+                                            http=bool(body.get("http")), n=int(body.get("n") or 100), max=int(body["max"]) if body.get("max") else None)
+                return self._send(200, {"ok": True, "started": started, **seo_release.status(DATA_DIR)})
             elif path == "/api/content/admin/seo-bundle":    # «أنتج ملفات المراجعة»: probe · sample · report · search-report في الخلفية
                 started = seo_sources.start_bundle(DATA_DIR, int(body.get("n") or 20))
                 return self._send(200, {"ok": True, "started": started, **seo_sources.bundle_state(DATA_DIR)})

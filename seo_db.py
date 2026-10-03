@@ -82,6 +82,8 @@ DEFAULTS = {
     "search_max_suggest": 5, "search_min_conf": 0.75,   # اقتراحٌ تحت العتبة لا يُعرض
     "tmdb_key": "",                                   # مشفَّرٌ في القاعدة (crypto_store)؛ أو TMDB_API_KEY في البيئة
     "preview": False,                                 # صفحات الكيانات والهبّات في وضع المعاينة (noindex) — المرحلة 2
+    "index_live": False,                              # المرحلة 4: الصفحات **المعتمدة** (build_state.index_approved) تُخدم index؛ ما عداها noindex كما كان
+    "sitemap_live": False,                            # المرحلة 5: المعتمد المستحقّ يدخل /sitemap.xml العامة (بعد بوابة المرحلة 5 وحدها)
     "identity_freeze": [],                            # معرّفات كياناتٍ مجمّدة أثناء مراجعة المالك: لا انقسام ولا دمج ولا تبديل رابط ولا تحويل ولا كتابة TMDB
     "scan_quiet_hours": {"start": 0, "end": 12, "utc_offset": 3},   # فحص السكّان كاملًا يعمل في وقت الهدوء فقط: من 12 صباحًا إلى 12 ظهرًا بتوقيت السعودية (UTC+3)
     "enrich_auto": False,                             # الإثراء الجماعي الليلي لا يبدأ قبل اعتماد العيّنة الحقيقية
