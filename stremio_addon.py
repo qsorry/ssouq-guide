@@ -2757,6 +2757,13 @@ def play_gate(ln, kind, sid, client, dry=False):
     return SESS.check(acct, client.get("ip", ""), client.get("ua", ""), sid, _CTYPE.get(kind, "movie"), _panel_max(ln["cfg"]), dry=dry)
 
 
+def session_alert(verdict, play_url):
+    """أول سطرٍ في قائمة التشغيل حين يُرفض هذا الجهاز: الرسالة واضحةً قبل الضغط (وضغطه ← فيديو التنبيه)."""
+    left = f"\nالأجهزة: {verdict.get('active_devices')} من {verdict.get('max_devices')}" if verdict.get("reason") == SESS.LIMIT_REASON else ""
+    return {"url": play_url, "name": "⚠️ " + BRAND, "title": (verdict.get("message") or SESS.MSG[SESS.LIMIT_REASON]) + left,
+            "behaviorHints": {"notWebReady": True, "bingeGroup": "ssouq-session"}}
+
+
 def _denied(base, verdict):
     """رفض التشغيل: تحويلٌ إلى فيديو التنبيه (احتياطًا للعرض)، والحالة كاملةً في الترويسة ‏X-Ssouq-Session."""
     body = {k: verdict.get(k) for k in ("allowed", "reason", "active_devices", "max_devices")}
@@ -2891,6 +2898,11 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
             play_url = f"{base}{PATH}/{parts[0]}/play/{quote(rest[1], safe='')}/{quote(rest[2], safe='')}"
             r = _route(books, family, rest[2])
             res = lib_streams(r[0], rest[1], r[2], r[1], play_url) if r else {"streams": []}
+            verdict = play_gate(r[0][0], rest[1], r[2], client, dry=True) if r and res else None
+            if verdict is not None:                      # «session»: الحال الآن — والقائمة لا تُحفظ (تتغيّر بتغيّر الأجهزة)
+                if not verdict["allowed"]:
+                    res["streams"].insert(0, session_alert(verdict, play_url))
+                return _json(200, res)
             return _json(200, res, 600) if res else _json(404, {"streams": []})
     except AuthError as e:
         return _json(403, {"error": str(e)})

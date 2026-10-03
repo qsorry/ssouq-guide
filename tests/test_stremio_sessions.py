@@ -45,9 +45,9 @@ def core():
               SS.ua_class("NuvioTV/1.0 okhttp/4.12.0") == SS.ua_class("NuvioTV/1.3 okhttp/4.12.1"))
         check("IPv6: أول 64 بتًّا (عناوين الخصوصية تتبدّل داخلها)", SS.ip_net("2001:db8:1:2::abcd") == SS.ip_net("2001:db8:1:2:ffff::1")
               and SS.ip_net("2001:db8:1:2::1") != SS.ip_net("2001:db8:1:3::1"))
-        check("البصمة نفسها للجهاز نفسه، وغيرها لشبكةٍ أخرى أو تطبيقٍ آخر",
-              SS.device_key(A, "1.2.3.4", NUVIO_PHONE) == SS.device_key(A, "1.2.3.4", NUVIO_PHONE)
-              != SS.device_key(A, "5.6.7.8", NUVIO_PHONE) and SS.device_key(A, "1.2.3.4", NUVIO_PHONE) != SS.device_key(A, "1.2.3.4", NUVIO_TV))
+        check("البصمة من الشبكة: نفسها للجهاز نفسه وإن اختلف User-Agent مكوّناته (التطبيق والمشغّل)، وغيرها لشبكةٍ أخرى",
+              SS.device_key(A, "1.2.3.4", NUVIO_PHONE) == SS.device_key(A, "1.2.3.4", "okhttp/4.12.0")
+              != SS.device_key(A, "5.6.7.8", NUVIO_PHONE))
         check("وبصمة اشتراكٍ آخر غيرها", SS.device_key(A, "1.2.3.4", NUVIO_PHONE) != SS.device_key("x|y", "1.2.3.4", NUVIO_PHONE))
 
         print("== الحد: Device A يُسمح، وDevice B يُرفض، وA لا يُقطع ==")
@@ -55,8 +55,8 @@ def core():
         r1 = SS.check(A, "1.2.3.4", NUVIO_PHONE, "s:1:1:1", "series", now=1000)
         check("الجهاز A ← سماح وجلسةٌ جديدة بمعرّفٍ عشوائي", r1["allowed"] and r1["reason"] is None and len(r1["session_id"]) >= 20
               and r1["active_devices"] == 1 and r1["max_devices"] == 1, json.dumps(r1))
-        r1b = SS.check(A, "1.2.3.4", NUVIO_PHONE, "s:1:1:2", "series", now=1300)
-        check("والجهاز نفسه بحلقةٍ أخرى ← الجلسة نفسها (ليس جهازًا جديدًا لتغيّر المحتوى)", r1b["allowed"] and r1b["session_id"] == r1["session_id"])
+        r1b = SS.check(A, "1.2.3.4", "okhttp/4.12.0", "s:1:1:2", "series", now=1300)
+        check("والجهاز نفسه بحلقةٍ أخرى (ومكوّنٍ آخر يطلب) ← الجلسة نفسها، لا جهازٌ جديد", r1b["allowed"] and r1b["session_id"] == r1["session_id"])
         r2 = SS.check(A, "9.9.9.9", NUVIO_TV, "m:5", "movie", now=1400)
         check("الجهاز B ← رفضٌ بحالةٍ واضحة", r2 == {"allowed": False, "reason": "CONCURRENT_DEVICE_LIMIT", "active_devices": 1, "max_devices": 1,
                                                   "session_id": None, "message": "الحساب مستخدم حاليًا على جهاز آخر."}, json.dumps(r2, ensure_ascii=False))
@@ -186,6 +186,14 @@ def through_play():
               {"allowed": False, "reason": "CONCURRENT_DEVICE_LIMIT", "active_devices": 1, "max_devices": 1}, json.dumps(verdict))
         check("وتحويله إلى فيديو التنبيه (احتياطًا للعرض)، لا إلى اللوحة", hb.get("Location") == "https://g/static/stremio/alert-limit.mp4"
               and host not in hb.get("Location", "") and hb.get("Cache-Control") == "no-store")
+        code, sl, hs = get(f"stream/movie/{quote(mids[0], safe='')}.json", B_)
+        check("وقائمة التشغيل للجهاز B: أول سطرٍ الرسالة بعدد الأجهزة، ولا تُحفظ", sl["streams"][0]["name"].startswith("⚠️")
+              and sl["streams"][0]["title"].startswith("الحساب مستخدم حاليًا على جهاز آخر.") and "1 من 1" in sl["streams"][0]["title"]
+              and hs.get("Cache-Control") == "no-store" and len(sl["streams"]) == len(st["streams"]) + 1, json.dumps(sl["streams"][0], ensure_ascii=False))
+        code, sa, _ = get(f"stream/movie/{quote(mids[0], safe='')}.json", A_)
+        check("وللجهاز A: القائمة كما هي بلا رسالة", [x["url"] for x in sa["streams"]] == [x["url"] for x in st["streams"]])
+        check("وفيديوهات التنبيه موجودة على الموقع (‏static/stremio)", all(os.path.getsize(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+              "static", "stremio", f)) > 1000 for f in S.ALERT_FILE.values()))
         code, _, ha2 = get(play2, A_)
         check("والجهاز A بفيلمٍ آخر ← يُسمح (جلسته نفسها)", code == 302 and ha2.get("Location", "").startswith(host)
               and len(SS.sessions([acct])) == 1 and SS.sessions([acct])[0]["content_id"] == mids[1])
@@ -197,6 +205,9 @@ def through_play():
         check("والجهاز B الآن ← يُسمح", get(play1, B_)[2].get("Location") == panel_url)
         SS.set_account(acct, variant="standard")
         check("والعودة إلى «standard» ← كما كانت لكل جهاز", get(play1, A_)[2].get("Location") == panel_url)
+        code, sx, hx = get(f"stream/movie/{quote(mids[0], safe='')}.json", B_)
+        check("و«standard»: قائمة التشغيل تُحفظ كما كانت (10 دقائق) بلا رسالة", "max-age=600" in hx.get("Cache-Control", "")
+              and not sx["streams"][0]["name"].startswith("⚠️"))
         code, man, _ = get("manifest.json")
         check("ومعرّف الإضافة لم يتغيّر بالنسخة", man["id"] == S.manifest_id(cfg))
     finally:
