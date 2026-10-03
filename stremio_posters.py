@@ -23,7 +23,8 @@ import content as C
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_BOLD = os.path.join(HERE, "static", "fonts", "IBMPlexSansArabic-Bold.ttf")
 FONT_SEMI = os.path.join(HERE, "static", "fonts", "IBMPlexSansArabic-SemiBold.ttf")
-SIZE = 400                          # مربّعٌ كما تعرض Stremio بطاقات القنوات (‏posterShape: square)
+SIZE = 400                          # مربّعٌ (نسخٌ قديمة ‏posterShape: square)
+WIDE = 711                          # والعريض 16:9 (‏landscape): التصميم نفسه في وسطه وخلفيته ممتدّة
 CACHE_MAX = 600
 
 try:
@@ -177,19 +178,49 @@ def _svg(name, num, quality, cat):
     return "".join(parts).encode("utf-8")
 
 
-def render(name, num=0, quality="", cat=""):
-    """ملصق القناة ← (البايتات، نوعها). PNG متى أمكن (Pillow، ومع raqm للعربية)، وإلا SVG."""
+def _widen_png(data, name, cat):
+    """المربّع في وسط لوحةٍ عريضةٍ بتدرّجه نفسه."""
+    sq = Image.open(io.BytesIO(data)).convert("RGB")
+    top, bottom = _palette(cat, name)
+    grad = Image.new("RGB", (1, SIZE))
+    for y in range(SIZE):
+        t = y / (SIZE - 1)
+        grad.putpixel((0, y), tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)))
+    img = grad.resize((WIDE, SIZE))
+    img.paste(sq, ((WIDE - SIZE) // 2, 0))
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+def _widen_svg(data, name, cat):
+    top, bottom = _palette(cat, name)
+    x = (WIDE - SIZE) / 2
+    body = data.decode("utf-8").split(">", 1)[1].rsplit("</svg>", 1)[0]
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDE}" height="{SIZE}" viewBox="{-x} 0 {WIDE} {SIZE}">'
+            f'<defs><linearGradient id="gw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb{top}"/>'
+            f'<stop offset="1" stop-color="rgb{bottom}"/></linearGradient></defs><rect x="{-x}" width="{WIDE}" height="{SIZE}" fill="url(#gw)"/>'
+            + body + "</svg>").encode("utf-8")
+
+
+def render(name, num=0, quality="", cat="", wide=False):
+    """ملصق القناة ← (البايتات، نوعها). PNG متى أمكن (Pillow، ومع raqm للعربية)، وإلا SVG. ‏wide: عريض 16:9."""
     name = display_name(name)
     key = (name, int(num or 0), quality or "", cat or "")
     with _lock:
-        hit = _cache.get(key)
+        hit = _cache.get(key + (wide,))
         if hit:
-            _cache.move_to_end(key)
+            _cache.move_to_end(key + (wide,))
             return hit
     if PIL_OK and (RAQM or not (_AR.search(name) or _AR.search(cat or ""))):
         val = (_png(*key), "image/png")
+        if wide:
+            val = (_widen_png(val[0], name, cat), "image/png")
     else:
         val = (_svg(*key), "image/svg+xml")
+        if wide:
+            val = (_widen_svg(val[0], name, cat), "image/svg+xml")
+    key = key + (wide,)
     with _lock:
         _cache[key] = val
         while len(_cache) > CACHE_MAX:

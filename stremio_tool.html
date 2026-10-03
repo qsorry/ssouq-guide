@@ -253,6 +253,9 @@ h1{font-size:1.3rem;margin:0 0 2px}
 .vtabs{grid-template-columns:repeat(3,1fr)}
 .cat{display:grid;gap:8px}
 .cat.off{opacity:.6}
+.cat.sub{margin-inline-start:26px;border-inline-start:3px solid color-mix(in srgb,var(--purple) 55%,var(--line))}
+.cat .lvl{font-size:.72rem;color:var(--purple);white-space:nowrap}
+.cat .sw .addsub{font-size:.8rem;padding:5px 9px}
 .cat .crow{display:flex;align-items:center;gap:8px}
 .cat .crow .t{flex:1;min-width:0;font-weight:700}
 .cat .ord{display:flex;flex-direction:column;gap:2px;flex:none}
@@ -341,9 +344,12 @@ h1{font-size:1.3rem;margin:0 0 2px}
 
   <div id="viewCats" hidden>
   <h1>التصنيفات</h1>
-  <p class="sub">تصنيفات سمارت سوق واحدةٌ لكل البوابات: قسم كل لوحةٍ يدخل التصنيف الذي في اسمه كلمةٌ من كلماته («مسلسلات تركية» و«TR | Turkish» ← «تركي»).</p>
-  <p class="sub"><b>الرئيسية أقسام:</b> «الحسابات» ثم <b>المسلسلات</b> ثم <b>الأفلام</b> ثم <b>القنوات</b> (الأحدث أولًا). وتصنيفات كل قسمٍ داخله:
-    «اكتشف» ← القسم ← «تصنيف»، بالترتيب هنا. و«صفٌّ في الرئيسية أيضًا» اختياري لتصنيفٍ تريد إبرازه (رمضان في رمضان).
+  <p class="sub">تصنيفات سمارت سوق واحدةٌ لكل البوابات: قسم كل لوحةٍ يدخل التصنيف الذي في اسمه كلمةٌ من كلماته («مسلسلات تركية» و«TR | Turkish» ← «تركي»).
+    <b>لكل سيرفرٍ أقسامه وحده</b> بهذه التصنيفات («أفلام (سمارت)» · «أفلام (فالكون)»)، لا دمج بينها.</p>
+  <p class="sub"><b>رئيسيةٌ وفرعيةٌ تحتها:</b> «تركي» ← «يعرض الآن مترجم» · «يعرض الآن مدبلج» · «مترجم» · «مدبلج»؛ والفرعي من أعمال رئيسيّه وحدها بكلماته
+    («مدبلج» تحت «تركي» = التركي المدبلج). في Stremio: «اكتشف» ← النوع ← التصنيف الرئيسي ← الفرعي؛ وفي Nuvio مجلدٌ لكل رئيسي تبويباته الفرعية.
+    والقنوات أقسام لوحتها («MBC» · «MBC HD») بطاقةً بشعار شركتها، وتصنيفات القنوات هنا ترتّبها (الرياضة أولًا…).
+    و«صفٌّ في الرئيسية أيضًا» اختياري لتصنيفٍ تريد إبرازه (رمضان في رمضان).
     <b>البحث في تصنيفٍ وحده:</b> يكتب العميل اسمه ثم نقطتين ثم ما يبحث عنه — «تركي: اخي» · «2026: اخي» (سنة) · «فالكون: اخي» (مصدر).</p>
   <div class="tabs2" id="catKinds" role="tablist" aria-label="النوع"></div>
   <section>
@@ -369,8 +375,8 @@ h1{font-size:1.3rem;margin:0 0 2px}
   <p class="sub">ما تضيفه هنا يصل كل اليوزرات: الحاليين بضغطة، والجدد تلقائيًا. ورابط لوحةٍ تغيّره هنا يتغيّر للجميع.</p>
   <section id="updSec">
     <h2>تحديث الإضافة لكل الحسابات</h2>
-    <p class="hint" style="margin:-6px 0 12px">أحدث نسخةٍ من إضافتنا في كل حسابات Stremio دفعةً واحدة: المكتبة الموحدة، وصفّ «الحسابات»،
-      والأعداد والأقسام. في الخلفية، كلٌّ في مكانه من الحساب، والإضافات الأخرى كما هي. يظهر الجديد عند العميل بعد إعادة فتح Stremio.</p>
+    <p class="hint" style="margin:-6px 0 12px">أحدث نسخةٍ من إضافتنا في كل حسابات Stremio دفعةً واحدة: أقسام كل سيرفرٍ وحده، وصفّ «الحسابات»،
+      والتصنيفات الرئيسية والفرعية والأعداد. في الخلفية، كلٌّ في مكانه من الحساب، والإضافات الأخرى كما هي. يظهر الجديد عند العميل بعد إعادة فتح Stremio.</p>
     <button class="acc big" id="updBtn" disabled>تحديث الإضافة لكل الحسابات</button>
     <div class="err" id="updMsg"></div>
     <div id="updJob"></div>
@@ -525,6 +531,7 @@ async function api(path, body){
 // النص الذي يُرسل للعميل مع حسابه الجاهز
 const accText = (email, pass) => `🎬 حسابك في Stremio — المحتوى جاهزٌ فيه:\nالإيميل: ${email}\nكلمة المرور: ${pass}\n\n`
   + `حمّل Stremio من stremio.com/downloads وسجّل الدخول بهما، تجد الأفلام والمسلسلات والقنوات في الرئيسية.\n\n`
+  + `• الأقسام بالعربية («أفلام» لا «Movies»): إعدادات Stremio ← اللغة (Interface language) ← العربية.\n`
   + `• الترجمة العربية تلقائيًا: إعدادات Stremio ← المشغّل ← لغة الترجمة ← العربية.\n`
   + `• الأسماء تحت الصور على تلفاز أندرويد: إعدادات Stremio ← فعّل «Show title under catalog items».`;
 const I = {
@@ -847,6 +854,7 @@ document.addEventListener("click", e => {
 // ---- Nuvio: حسابٌ بإيميلٍ محايد وكلمة مرورٍ عشوائية (لا بيانات Xtream عند العميل) وإضافتنا فيه، وربط التلفاز بالكود ----
 const nvText = (email, pass) => `🎬 حسابك في Nuvio — المحتوى جاهزٌ فيه:\nالإيميل: ${email}\nكلمة المرور: ${pass}\n\n`
   + `حمّل تطبيق Nuvio وسجّل الدخول بهما، تجد إضافة «سمارت سوق» بأفلامها ومسلسلاتها وقنواتها.\n\n`
+  + `• الأقسام بالعربية («أفلام» لا «Movies»): الإعدادات ← المظهر ← لغة التطبيق ← العربية.\n`
   + `• على التلفاز: سجّل الدخول في Nuvio على جوالك أولًا، ثم اختر في التلفاز الدخول برمز QR وامسحه بجوالك.`;
 function setPlat(p){
   PLAT = p === "nuvio" ? "nuvio" : "stremio";
@@ -920,7 +928,7 @@ function nvMenu(username){
   const a = nvOf(username); if (!a) return;
   const u = esc(a.username), off = a.status === "off";
   openSheet(a.username, a.email, [
-    sitem(`data-nlinkto="${u}"`, I.plus, "ربط خط آخر", "خطٌّ من بوابةٍ أخرى في الحساب نفسه — مكتبةٌ واحدة بمحتوى كل خطوطه"),
+    sitem(`data-nlinkto="${u}"`, I.plus, "ربط خط آخر", "خطٌّ من بوابةٍ أخرى في الحساب نفسه — لكل خطٍّ أقسامه («أفلام (فالكون)»)"),
     a.linked ? sitem(`data-nunlink="${u}"`, I.unlink, "فصل الخط", "يخرج محتواه من الحساب (ويبقى اليوزر في البوابة)", "danger") : "",
     off ? "" : sitem(`data-nre="${u}"`, I.sync, "تحديث الإضافة", "بأحدث نسخة، وواجهة جواله وتلفازه بأحدث التصنيفات وأعدادها"),
     sitem(`data-nrelink="${u}"`, I.link, "إعادة الربط", off ? "تُثبَّت الإضافة في حسابه من جديد برابطٍ جديد" : "رابطٌ جديد للإضافة ويتوقف القديم (إن نُسخ لحسابٍ آخر)"),
@@ -928,7 +936,7 @@ function nvMenu(username){
     sitem(`data-insp="${u}"`, I.find, "فحص عمل", "لماذا لم يظهر مسلسلٌ أو فيلم، أو لم يظهر مصدرٌ له من خطٍّ"),
   ]);
 }
-// «ربط خط آخر» في حساب Nuvio: مكتبةٌ واحدة بمحتوى كل خطوطه في إضافته نفسها (لا يُثبَّت شيءٌ جديد)
+// «ربط خط آخر» في حساب Nuvio: لكل خطٍّ أقسامه في إضافته نفسها (لا يُثبَّت شيءٌ جديد)
 function nvLink(username){
   const a = nvOf(username); if (!a) return;
   const main = a.linked ? a.main_user : a.username;
@@ -936,8 +944,8 @@ function nvLink(username){
   const free = D.gates.filter(g => !taken.has(g.id));
   LINK = {nuvio: true, username: main, from: a.username, email: a.email, gate: (free[0] || {}).id || "", mode: "find", hits: [], pkgs: [], taken};
   $("linkTtl").textContent = "ربط خطٍّ آخر بحساب Nuvio";
-  $("linkFor").innerHTML = `الحساب <b class="mono">${esc(a.email)}</b>: يدخل به العميل مرةً واحدة، ويجد في Nuvio محتوى كل خطوطه
-    مكتبةً واحدة في إضافة سمارت سوق (العمل مرةً واحدة بمصادره من كل البوابات، و«تلقائي» ينتقل للمصدر التالي إن تعطّل).`;
+  $("linkFor").innerHTML = `الحساب <b class="mono">${esc(a.email)}</b>: يدخل به العميل مرةً واحدة، ويجد في Nuvio لكل خطٍّ أقسامه وحده
+    («مسلسلات (سمارت)» · «أفلام (فالكون)» …) في إضافة سمارت سوق نفسها، بلا دمجٍ بين السيرفرات.`;
   showLinkBox();
 }
 async function nvDo(path, username, extra, btn, ok){
@@ -947,7 +955,7 @@ async function nvDo(path, username, extra, btn, ok){
   finally { btn.disabled = false; btn.innerHTML = label; }
 }
 
-// ---- «فحص عمل»: لماذا لم يظهر عملٌ أو مصدرٌ له — ما في قائمة كل خطٍّ في الحساب، وما في الإضافة (المكتبة الموحدة) ----
+// ---- «فحص عمل»: لماذا لم يظهر عملٌ — ما في قائمة كل خطٍّ في الحساب، وما في الإضافة (كل سيرفرٍ وحده) ----
 let INSP = null;
 function openInsp(username){
   INSP = {username, platform: PLAT};
@@ -971,7 +979,7 @@ function renderInsp(d){
           : l.items.length ? `<ul>${l.items.map(x => `<li>${srcText(x)}${x.cat ? " · " + esc(x.cat) : ""}</li>`).join("")}
               ${k.library ? `<li class="${inLib.has(l.hk) ? "ok" : "bad"}">${inLib.has(l.hk) ? "✓ مصدره في العمل بالإضافة" : "✗ ليس في العمل بالإضافة"}</li>` : ""}</ul>`
           : '<ul><li class="bad">لا شيء بهذا الاسم في قائمة هذا الخط — ليس في باقته، أو باسمٍ آخر فيها</li></ul>'}</div>`).join("")}
-      ${k.conflicts.length ? `<div class="iw"><ul><li class="warn">⚠ الاسم نفسه بمعرّفَي TMDB مختلفين في اللوحات (${k.conflicts.map(esc).join("، ")}) — فيبقيان عملين منفصلين</li></ul></div>` : ""}`;
+`;
   }).join("")}</div>`;
 }
 $("inspForm").onsubmit = async e => {
@@ -1156,8 +1164,7 @@ function openLink(username){
   LINK = {username, email: a.email, gate: (free[0] || {}).id || "", mode: "find", hits: [], pkgs: [], taken};
   $("linkTtl").textContent = "ربط خطٍّ آخر بالحساب";
   $("linkFor").innerHTML = `الحساب <b class="mono">${esc(a.email)}</b>: يدخل به العميل مرةً واحدة، ويجد في Stremio
-    محتوى كل خطوطه مكتبةً واحدة (العمل مرةً واحدة بمصادره من كل البوابات، و«تلقائي» ينتقل للمصدر التالي إن تعطّل)، وكل
-    خطوطه في صفّ «الحسابات» بكم باقي لكلٍّ.`;
+    لكل خطٍّ إضافته وأقسامه وحده («سمارت» · «فالكون»، بلا دمج)، وكل خطوطه في صفّ «الحسابات» بكم باقي لكلٍّ.`;
   showLinkBox();
 }
 // «حساب Stremio بإيميلٍ تختاره»: إيميلٌ وكلمة مرور يختارهما الموظف، وأول خطوطه يوزرٌ (موجود أو جديد) من أي بوابة
@@ -1453,34 +1460,48 @@ function renderCatCounts(){
   $("catOthers").textContent = p ? `في «${CAT.others}»: ${(p.counts.others || 0).toLocaleString("en")} من ${p.total.toLocaleString("en")}`
     : CAT.loading ? "جاري حساب الأعداد في الخلفية… (تظهر وحدها بعد قليل)"
     : "الأعداد تظهر بعد أول تحميلٍ لقوائم حسابٍ من حساباتك (افتح Stremio بأحدها).";
-  const loose = p ? p.loose : [], mine = CAT.cats.map((c, i) => [c, i]).filter(([c]) => c.kind === CAT_KIND && c.on !== false);
+  const loose = p ? p.loose : [], mine = CAT.cats.map((c, i) => [c, i]).filter(([c]) => c.kind === CAT_KIND && c.on !== false && !c.parent);
   $("catLoose").hidden = !loose.length;
   $("catLooseList").innerHTML = loose.map(([name, n]) => `<div class="hrow"><span>${esc(name)}</span><span class="count">${n}</span>
     <select class="t" data-loose="${esc(name)}"><option value="">أضف إلى…</option>${mine.map(([c, i]) => `<option value="${i}">${esc(c.name)}</option>`).join("")}</select></div>`).join("");
+}
+function catTree(){                              // كل فرعيٍّ بعد رئيسيّه (كما يحفظها الخادم)، وفرعيٌّ رئيسيّه غائب ← رئيسي
+  const mains = new Set(CAT.cats.filter(c => !c.parent).map(c => c.id));
+  CAT.cats.forEach(c => { if (c.parent && !mains.has(c.parent)) delete c.parent; });
+  CAT.cats = CAT.cats.filter(c => !c.parent).flatMap(m => [m, ...CAT.cats.filter(c => c.parent === m.id)]);
 }
 function renderCats(){
   $("catKinds").innerHTML = KINDS.map(([k, l]) => `<button type="button" role="tab" aria-selected="${k === CAT_KIND}" class="${k === CAT_KIND ? "on" : ""}" data-k="${k}">${l}</button>`).join("");
   $("catTtl").textContent = KINDS.find(k => k[0] === CAT_KIND)[1];
   const mine = CAT.cats.map((c, i) => [c, i]).filter(([c]) => c.kind === CAT_KIND);
-  $("catList").innerHTML = mine.length ? mine.map(([c, i], j) => `<div class="card cat${c.on === false ? " off" : ""}" data-i="${i}">
+  const tops = mine.filter(([c]) => !c.parent).map(([c]) => c), nameOf = id => (tops.find(m => m.id === id) || {}).name || "";
+  $("catList").innerHTML = mine.length ? mine.map(([c, i]) => {
+    const sib = mine.filter(([x]) => (x.parent || "") === (c.parent || "")), j = sib.findIndex(([x]) => x === c);
+    const kids = mine.filter(([x]) => x.parent === c.id).length;
+    return `<div class="card cat${c.on === false ? " off" : ""}${c.parent ? " sub" : ""}" data-i="${i}">
       <div class="crow">
-        <div class="ord"><button type="button" data-mv="-1" ${j === 0 ? "disabled" : ""} aria-label="أعلى">▲</button><button type="button" data-mv="1" ${j === mine.length - 1 ? "disabled" : ""} aria-label="أسفل">▼</button></div>
+        <div class="ord"><button type="button" data-mv="-1" ${j === 0 ? "disabled" : ""} aria-label="أعلى">▲</button><button type="button" data-mv="1" ${j === sib.length - 1 ? "disabled" : ""} aria-label="أسفل">▼</button></div>
         <input class="t" data-f="name" value="${esc(c.name)}" maxlength="40" aria-label="اسم التصنيف">
+        ${c.parent ? `<span class="lvl">فرعيٌّ من «${esc(nameOf(c.parent))}»</span>` : ""}
         <span class="count">—</span>
       </div>
       <div class="sw">
         <label class="chk"><input type="checkbox" data-f="home" ${c.home ? "checked" : ""}>صفٌّ في الرئيسية أيضًا</label>
         <label class="chk"><input type="checkbox" data-f="on" ${c.on !== false ? "checked" : ""}>ظاهر</label>
+        ${c.parent || CAT_KIND === "tv" ? "" : `<button type="button" class="ghost addsub" data-addsub="1">+ فرعي</button>`}
         <button type="button" class="exb" data-ex="1" aria-expanded="${CAT_OPEN.has(c.id)}">كلمات الربط (${catTerms(c)}) ${CAT_OPEN.has(c.id) ? "▴" : "▾"}</button>
       </div>
       <div class="ex" ${CAT_OPEN.has(c.id) ? "" : "hidden"}>
-        <label class="fld"><span>من أسماء أقسام اللوحات${CAT_KIND === "tv" ? " وأسماء القنوات" : ""} — وكلمةٌ بـ«-» قبلها تُخرج</span>
+        ${CAT_KIND === "tv" ? "" : `<label class="fld"><span>موضعه</span><select class="t" data-f="parent" ${kids ? "disabled title=\"له فرعيّات: يبقى رئيسيًّا\"" : ""}>
+          <option value="">تصنيفٌ رئيسي</option>${tops.filter(m => m.id !== c.id).map(m => `<option value="${esc(m.id)}" ${c.parent === m.id ? "selected" : ""}>فرعيٌّ تحت «${esc(m.name)}»</option>`).join("")}</select></label>`}
+        <label class="fld"><span>${c.parent ? `تصفية ما في «${esc(nameOf(c.parent))}» بأسماء أقسام اللوحات — وكلمةٌ بـ«-» تُخرج، وبـ«+» مطلوبة؛ فارغ: ${esc(nameOf(c.parent))} كله`
+          : `من أسماء أقسام اللوحات${CAT_KIND === "tv" ? " وأسماء القنوات" : ""} — وكلمةٌ بـ«-» قبلها تُخرج، وبـ«+» مطلوبة معها`}</span>
           <input class="t" data-f="keys" value="${esc(c.keys)}" placeholder="ترك، turk، tr، -مدبلج" spellcheck="false"></label>
         ${CAT_KIND !== "tv" ? `<label class="fld"><span>ومن تصنيف العمل نفسه (اختياري)</span><input class="t" data-f="genres" value="${esc(c.genres || "")}" placeholder="أكشن، رعب"></label>` : ""}
-        ${CAT_KIND !== "tv" ? `<label class="fld"><span>يُعرض الآن فقط: نزلت له حلقةٌ خلال آخر … يوم (أو قسمه في اللوحة «يعرض الآن») — فارغ: الكل</span>
+        ${CAT_KIND !== "tv" ? `<label class="fld"><span>يُعرض الآن فقط: نزلت له حلقةٌ خلال آخر … يوم، ومن قسم «يعرض الآن» في اللوحة إن وُجد (سمارت) — فارغ: الكل</span>
           <input class="t ltr" data-f="recent" value="${c.recent || ""}" inputmode="numeric" placeholder="مثلًا 10" maxlength="2"></label>` : ""}
-        <button type="button" class="del" data-del="1">حذف التصنيف</button>
-      </div></div>`).join("") : '<div class="empty">لا تصنيفات لهذا النوع — أضف واحدًا.</div>';
+        <button type="button" class="del" data-del="1">حذف التصنيف${kids ? ` وفرعيّاته (${kids})` : ""}</button>
+      </div></div>`; }).join("") : '<div class="empty">لا تصنيفات لهذا النوع — أضف واحدًا.</div>';
   renderCatCounts(); renderCatState();
 }
 function renderCatState(){
@@ -1512,6 +1533,10 @@ $("catKinds").onclick = e => { const b = e.target.closest("button[data-k]"); if 
 $("catList").addEventListener("input", e => {
   const f = e.target.dataset.f, card = e.target.closest(".cat"); if (!f || !card) return;
   const c = catOf(card.dataset.i);
+  if (f === "parent") {                           // موضعه: رئيسي أو فرعيٌّ تحت رئيسي (مكانه بعد إخوته)
+    if (e.target.value) c.parent = e.target.value; else delete c.parent;
+    catTree(); renderCats(); catChanged(true); return;
+  }
   c[f] = e.target.type === "checkbox" ? e.target.checked : f === "recent" ? (parseInt(latin(e.target.value), 10) || 0) : e.target.value;
   if (f === "on") card.classList.toggle("off", !c.on);
   if (f === "keys") card.querySelector("[data-ex]").textContent = `كلمات الربط (${catTerms(c)}) ▴`;
@@ -1521,18 +1546,31 @@ $("catList").addEventListener("input", e => {
 $("catList").addEventListener("click", e => {
   const card = e.target.closest(".cat"); if (!card) return;
   const i = +card.dataset.i, mv = e.target.closest("[data-mv]"), del = e.target.closest("[data-del]"), ex = e.target.closest("[data-ex]");
+  const add = e.target.closest("[data-addsub]");
+  if (add) {                                      // فرعيٌّ جديد تحت هذا الرئيسي
+    const m = catOf(i), names = new Set(CAT.cats.filter(c => c.parent === m.id).map(c => c.name));
+    let name = "فرعيٌّ جديد", n = 2; while (names.has(name)) name = `فرعيٌّ جديد ${n++}`;
+    const id = CAT_KIND[0] + "_n" + Date.now().toString(36);
+    CAT.cats.push({id, kind: CAT_KIND, name, keys: "", genres: "", home: false, on: true, parent: m.id}); CAT_OPEN.add(id);
+    catTree(); renderCats(); catChanged(true);
+    const inp = document.querySelector(`#catList .cat[data-i="${CAT.cats.findIndex(c => c.id === id)}"] input[data-f=name]`); if (inp) { inp.focus(); inp.select(); }
+    return;
+  }
   if (ex) {
     const id = catOf(i).id; CAT_OPEN.has(id) ? CAT_OPEN.delete(id) : CAT_OPEN.add(id);
     const open = CAT_OPEN.has(id); card.querySelector(".ex").hidden = !open;
     ex.setAttribute("aria-expanded", open); ex.textContent = `كلمات الربط (${catTerms(catOf(i))}) ${open ? "▴" : "▾"}`;
     if (open) card.querySelector("input[data-f=keys]").focus();
-  } else if (mv) {
-    const same = CAT.cats.map((c, k) => k).filter(k => CAT.cats[k].kind === CAT_KIND), pos = same.indexOf(i), j = same[pos + (+mv.dataset.mv)];
-    if (j == null) return;
-    [CAT.cats[i], CAT.cats[j]] = [CAT.cats[j], CAT.cats[i]]; renderCats(); catChanged(false);
+  } else if (mv) {                                 // بين إخوته (والرئيسي بفرعيّاته معه)
+    const c = catOf(i), sib = CAT.cats.filter(x => x.kind === CAT_KIND && (x.parent || "") === (c.parent || ""));
+    const other = sib[sib.indexOf(c) + (+mv.dataset.mv)];
+    if (!other) return;
+    const a = CAT.cats.indexOf(c), b = CAT.cats.indexOf(other);
+    [CAT.cats[a], CAT.cats[b]] = [CAT.cats[b], CAT.cats[a]]; catTree(); renderCats(); catChanged(false);
   } else if (del) {
-    if (!confirm(`حذف تصنيف «${catOf(i).name}»؟ ما فيه يذهب إلى تصنيفٍ آخر يطابقه أو «${CAT.others}».`)) return;
-    CAT.cats.splice(i, 1); renderCats(); catChanged(true);
+    const c = catOf(i), kids = CAT.cats.filter(x => x.parent === c.id);
+    if (!confirm(`حذف تصنيف «${c.name}»${kids.length ? ` وفرعيّاته (${kids.length})` : ""}؟ ما فيه يذهب إلى تصنيفٍ آخر يطابقه أو «${CAT.others}».`)) return;
+    CAT.cats = CAT.cats.filter(x => x !== c && x.parent !== c.id); renderCats(); catChanged(true);
   }
 });
 $("catAdd").onclick = () => {

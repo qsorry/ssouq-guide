@@ -3,7 +3,7 @@
 «TR | Turkish» في فالكون = «تركي»).
 
 كل تصنيفٍ نوعه (مسلسلات · أفلام · قنوات) واسمه وكلمات ربطه: قسم اللوحة الذي يحوي كلمةً منها يدخل فيه، والقناة باسمها
-أيضًا (كلمةٌ بـ«-» قبلها تُخرجه: «عرب، -مدبلج»)، وللأفلام والمسلسلات تصنيفات العمل نفسه أيضًا (‏genres: «أكشن» من حقل genre بلغتيه). وما لم يدخل
+أيضًا (كلمةٌ بـ«-» قبلها تُخرجه: «عرب، -مدبلج»، وبـ«+» مطلوبة معها: «ترك، +مدبلج»)، وللأفلام والمسلسلات تصنيفات العمل نفسه أيضًا (‏genres: «أكشن» من حقل genre بلغتيه). وما لم يدخل
 تصنيفًا في «أخرى». الرئيسية أقسامٌ ثلاثة (المسلسلات · الأفلام · القنوات)، وتصنيفات كل قسمٍ داخله: قائمة «تصنيف» في «اكتشف»
 بترتيبها هنا. ‏home (اختياري، مطفأٌ للكل افتراضًا — ‏LAYOUT): صفٌّ مستقلٌّ في الرئيسية أيضًا («رمضان - المسلسلات» في رمضان)؛ ‏on=False:
 مخفي.
@@ -28,37 +28,74 @@ KINDS = ("series", "movie", "tv")
 KIND_AR = {"series": "المسلسلات", "movie": "الأفلام", "tv": "القنوات"}
 OTHERS = "أخرى"                     # ما لم يدخل تصنيفًا (في «اكتشف» وحدها)
 OTHERS_ID = "others"
-MAX_PER_KIND = 30
+MAX_PER_KIND = 60
 NAME_MAX = 40
 KEYS_MAX = 600
 
 # 2: الرئيسية أقسامٌ لا صفوف تصنيفات — ما حُفظ قبلها تُطفأ صفوفه في الرئيسية مرةً
 # 3: «تركي يعرض الآن» — يُضاف أولَ تصنيفات المسلسلات لما حُفظ قبلها
-LAYOUT = 3
+# 4: تصنيفاتٌ رئيسيةٌ وفرعيةٌ تحتها (‏parent): «تركي» ← «يعرض الآن مترجم» · «يعرض الآن مدبلج» · «مترجم» · «مدبلج»؛ «أجنبي» ←
+#    «أكشن» · «رعب» … — ما لم يحرّره صاحب الحساب يصير كالافتراضي الجديد، والجديد يُضاف تحت رئيسيّه (وما حرّره يبقى كما هو)
+LAYOUT = 4
 RECENT_MAX = 60
-# ‏recent (أيام): ما يُعرض الآن فعلًا — العمل في التصنيف إن نزلت له حلقةٌ خلال آخر N يوم (آخر تعديلٍ في اللوحة)، أو كان قسمه في اللوحة
-# «يعرض الآن» (‏NOW_TERMS) — فيتحدّث وحده كلما أضافت اللوحات حلقات
+# ‏recent (أيام): ما يُعرض الآن فعلًا — نزلت له حلقةٌ خلال آخر N يوم (آخر تعديلٍ في اللوحة). وإن كان في لوحة الخط قسمٌ «يعرض الآن»
+# يطابق التصنيف («[TR] 2026 تركي مدبلج (يعرض الآن)» في سمارت) ← من تلك الأقسام وحدها (فيها ما توقّف من أشهر: يخرج). ولوحةٌ تُحدّث
+# وقت القسم كله معًا (كاسبر) وقتها لا يدلّ: قسمها «يعرض الآن» كما هو، وبلاه لا شيء منها
 NOW_TERMS = "يعرض الان, يعرض حاليا, يعرض حالياً, now showing, airing, ongoing"
-_C = lambda cid, kind, name, keys, home=False, genres="", recent=0: {"id": cid, "kind": kind, "name": name, "keys": keys,   # noqa: E731
-                                                                     "genres": genres, "home": home, "on": True,
-                                                                     **({"recent": recent} if recent else {})}
-NOW_ID = "s_tr_now"
+# التصنيف الفرعي (‏parent: معرّف رئيسيٍّ من نوعه): أعماله من أعمال رئيسيّه وحدها، وكلماته وتصنيفاته تصفّيها — فـ«مدبلج» تحت
+# «تركي» = التركي المدبلج، و«-مدبلج» وحدها = ما ليس مدبلجًا، وفرعيٌّ بلا كلماتٍ ولا تصنيفات = رئيسيّه كله
+_C = lambda cid, kind, name, keys, home=False, genres="", recent=0, parent="": {   # noqa: E731
+    "id": cid, "kind": kind, "name": name, "keys": keys, "genres": genres, "home": home, "on": True,
+    **({"recent": recent} if recent else {}), **({"parent": parent} if parent else {})}
+NOW_ID, DUB_NOW_ID = "s_tr_now", "s_trd_now"
 DEFAULTS = [
-    _C(NOW_ID, "series", "تركي يعرض الآن", "ترك, turk, turkish, tr", recent=10),
-    _C("s_ramadan", "series", "رمضان", "رمضان, ramadan"),
     _C("s_turkish", "series", "تركي", "ترك, turk, turkish, tr"),
+    _C(NOW_ID, "series", "يعرض الآن مترجم", "-مدبلج, -dubbed", recent=10, parent="s_turkish"),
+    _C(DUB_NOW_ID, "series", "يعرض الآن مدبلج", "مدبلج, dubbed", recent=10, parent="s_turkish"),
+    _C("s_tr_sub", "series", "مترجم", "-مدبلج, -dubbed", parent="s_turkish"),
+    _C("s_tr_dub", "series", "مدبلج", "مدبلج, dubbed", parent="s_turkish"),
     _C("s_arabic", "series", "عربي", "عرب, arab, مصر, خليج, سوري, شامي, لبنان, عراق, سعودي, كويت, gulf, egypt, khaliji, "
-                                     "-ترك, -هند, -كور, -مدبلج, -انمي"),
+                                     "اردن, jordan, syria, leban, iraq, مغرب, morocco, تونس, tunis, يمن, yemen, فلسطين, palestin, "
+                                     "رمضان, ramadan, -ترك, -هند, -كور, -مدبلج, -انمي"),
+    _C("s_ramadan", "series", "رمضان", "رمضان, ramadan", parent="s_arabic"),
+    _C("s_ar_egypt", "series", "مصري", "مصر, egypt", parent="s_arabic"),
+    _C("s_ar_gulf", "series", "خليجي", "خليج, gulf, khaliji, سعودي, saudi, كويت, kuwait, امارات, emirat, قطر, بحرين, عمان",
+       parent="s_arabic"),
+    _C("s_ar_sham", "series", "شامي", "سوري, شامي, لبنان, اردن, فلسطين, syria, leban, jordan, palestin", parent="s_arabic"),
     _C("s_foreign", "series", "أجنبي", "اجنب, english, foreign, netflix, hbo, apple, amazon, disney, en, us, uk, usa, -مدبلج"),
+    _C("s_fo_action", "series", "أكشن", "", genres="أكشن", parent="s_foreign"),
+    _C("s_fo_drama", "series", "دراما", "", genres="دراما", parent="s_foreign"),
+    _C("s_fo_comedy", "series", "كوميديا", "", genres="كوميديا", parent="s_foreign"),
+    _C("s_fo_crime", "series", "إثارة وجريمة", "", genres="إثارة, جريمة, غموض", parent="s_foreign"),
+    _C("s_fo_scifi", "series", "خيال علمي", "", genres="خيال علمي, فانتازيا", parent="s_foreign"),
     _C("s_asian", "series", "آسيوي", "كور, korea, kdrama, k drama, صين, china, chinese, يابان, japan, تايلند, thai, اسيو, asian"),
+    _C("s_as_korean", "series", "كوري", "كور, korea, kdrama, k drama", parent="s_asian"),
+    _C("s_as_chinese", "series", "صيني", "صين, china, chinese", parent="s_asian"),
+    _C("s_as_japanese", "series", "ياباني", "يابان, japan", parent="s_asian"),
     _C("s_anime", "series", "أنمي", "انمي, انيمي, anime", genres="أنمي"),
+    _C("s_an_sub", "series", "مترجم", "-مدبلج, -dubbed", parent="s_anime"),
+    _C("s_an_dub", "series", "مدبلج", "مدبلج, dubbed", parent="s_anime"),
     _C("s_kids", "series", "أطفال وكرتون", "اطفال, كرتون, kids, cartoon, children, رسوم متحركة, animation, spacetoon",
        genres="رسوم متحركة, أطفال"),
     _C("s_indian", "series", "هندي", "هند, india, hindi, bollywood"),
     _C("s_docs", "series", "وثائقي", "وثائق, documentar", genres="وثائقي"),
     _C("s_dubbed", "series", "مدبلج", "مدبلج, dubbed, dub"),
-    _C("m_arabic", "movie", "عربي", "عرب, arab, مصر, خليج, سعودي, egypt, gulf, -مدبلج, -هند, -ترك"),
+    _C("m_arabic", "movie", "عربي", "عرب, arab, مصر, خليج, سعودي, egypt, gulf, مسرح, masr7, -مدبلج, -هند, -ترك"),
+    _C("m_ar_new", "movie", "جديد", "2026, 2025, حديث, حديثه, new", parent="m_arabic"),
+    _C("m_ar_old", "movie", "زمان", "زمان, قديم, old, abyad, ابيض", parent="m_arabic"),
+    _C("m_ar_plays", "movie", "مسرحيات", "مسرح, masr7, show", parent="m_arabic"),
+    _C("m_ar_action", "movie", "أكشن", "", genres="أكشن", parent="m_arabic"),
+    _C("m_ar_comedy", "movie", "كوميديا", "", genres="كوميديا", parent="m_arabic"),
+    _C("m_ar_drama", "movie", "دراما", "", genres="دراما", parent="m_arabic"),
     _C("m_foreign", "movie", "أجنبي", "اجنب, english, foreign, hollywood, هوليود, netflix, نتفلكس, en, us, uk, usa, -هند, -مدبلج"),
+    _C("m_fo_action", "movie", "أكشن", "", genres="أكشن", parent="m_foreign"),
+    _C("m_fo_horror", "movie", "رعب", "", genres="رعب", parent="m_foreign"),
+    _C("m_fo_comedy", "movie", "كوميديا", "", genres="كوميديا", parent="m_foreign"),
+    _C("m_fo_thriller", "movie", "إثارة وجريمة", "", genres="إثارة, جريمة, غموض", parent="m_foreign"),
+    _C("m_fo_drama", "movie", "دراما", "", genres="دراما", parent="m_foreign"),
+    _C("m_fo_scifi", "movie", "خيال علمي", "", genres="خيال علمي, فانتازيا", parent="m_foreign"),
+    _C("m_fo_netflix", "movie", "نتفليكس", "netflix, نتفليكس, نتفلكس", parent="m_foreign"),
+    _C("m_fo_4k", "movie", "4K", "4k, uhd, 2160", parent="m_foreign"),
     _C("m_action", "movie", "أكشن", "اكشن, action", genres="أكشن"),
     _C("m_horror", "movie", "رعب", "رعب, horror", genres="رعب"),
     _C("m_comedy", "movie", "كوميديا", "كوميد, comedy", genres="كوميديا"),
@@ -84,6 +121,18 @@ DEFAULTS = [
     _C("t_foreign", "tv", "أجنبية", "english, uk, usa, us, en, foreign, اجنب"),
     _C("t_4k", "tv", "4K", "4k, uhd"),
 ]
+# الافتراضي قبل LAYOUT 4 (المعرّف ← الاسم والكلمات والتصنيفات): ما بقي في حسابٍ كما هو هنا لم يُحرَّر، فيصير كالافتراضي الجديد
+_V3 = {
+    NOW_ID: ("تركي يعرض الآن", "ترك, turk, turkish, tr", ""),
+    "s_ramadan": ("رمضان", "رمضان, ramadan", ""),
+    "s_arabic": ("عربي", "عرب, arab, مصر, خليج, سوري, شامي, لبنان, عراق, سعودي, كويت, gulf, egypt, khaliji, "
+                         "-ترك, -هند, -كور, -مدبلج, -انمي", ""),
+    "m_arabic": ("عربي", "عرب, arab, مصر, خليج, سعودي, egypt, gulf, -مدبلج, -هند, -ترك", ""),
+}
+_V3_IDS = {"s_ramadan", "s_turkish", "s_arabic", "s_foreign", "s_asian", "s_anime", "s_kids", "s_indian", "s_docs", "s_dubbed",
+           "m_arabic", "m_foreign", "m_action", "m_horror", "m_comedy", "m_kids", "m_indian", "m_thriller", "m_drama", "m_scifi",
+           "m_turkish", "m_asian", "m_anime", "m_docs", "m_4k", "t_sports", "t_news", "t_arabic", "t_movies", "t_kids", "t_docs",
+           "t_religious", "t_foreign", "t_4k"}         # وNOW_ID منذ LAYOUT 3
 
 _lock = threading.Lock()
 _cache = {}                          # المسار ← (وقت التعديل، المحتوى)
@@ -142,10 +191,48 @@ def get(data_dir, acct_id):
         for c in cats:
             if isinstance(c, dict):
                 c["home"] = False
-    if layout < 3 and not any(isinstance(c, dict) and c.get("id") == NOW_ID for c in cats):
-        at = next((i for i, c in enumerate(cats) if isinstance(c, dict) and c.get("kind") == "series"), len(cats))
-        cats.insert(at, copy.deepcopy(next(c for c in DEFAULTS if c["id"] == NOW_ID)))   # «تركي يعرض الآن» أولَ المسلسلات
+    if layout < 4:
+        cats = _to_tree(cats, layout)
     return cats
+
+
+def _to_tree(cats, layout):
+    """ما حُفظ قبل LAYOUT 4 (تصنيفاتٌ رئيسيةٌ وحدها) ← رئيسيةٌ وفرعيةٌ تحتها: ما بقي كالافتراضي القديم يصير كالجديد (باسمه
+    وكلماته ورئيسيّه)، والجديد يُضاف تحت رئيسيّه إن وُجد. ما حرّره صاحب الحساب أو حذفه يبقى كما فعل."""
+    new = {c["id"]: c for c in DEFAULTS}
+    old_ids = _V3_IDS | ({NOW_ID} if layout >= 3 else set())
+    ids = {c.get("id") for c in cats if isinstance(c, dict)}
+    out = []
+    for c in cats:
+        if not isinstance(c, dict):
+            continue
+        d = new.get(c.get("id"))
+        if d and (c.get("name"), c.get("keys"), c.get("genres") or "") == _V3.get(c["id"], (d["name"], d["keys"], d["genres"])) \
+                and (not d.get("parent") or d["parent"] in ids):
+            c = {**{k: v for k, v in c.items() if k != "parent"}, **{k: v for k, v in d.items() if k not in ("home", "on")}}
+        out.append(c)
+    have = {c.get("id") for c in out}
+    for d in DEFAULTS:                                   # الجديد منذ ما حُفظ: تحت رئيسيّه (وما لا رئيسيّ له في الحساب لا يُضاف)
+        if d["id"] in have or d["id"] in old_ids or (d.get("parent") and d["parent"] not in have):
+            continue
+        out.append(copy.deepcopy(d))
+        have.add(d["id"])
+    return ordered(out)
+
+
+def ordered(cats):
+    """كل فرعيٍّ بعد رئيسيّه (بترتيبه بين إخوته)، وفرعيٌّ رئيسيُّه غائب أو فرعيٌّ ← رئيسي."""
+    mains = {c.get("id") for c in cats if isinstance(c, dict) and not c.get("parent")}
+    kind_of = {c.get("id"): c.get("kind") for c in cats if isinstance(c, dict)}
+    for c in cats:
+        if isinstance(c, dict) and c.get("parent") and (c["parent"] not in mains or kind_of.get(c["parent"]) != c.get("kind")):
+            c.pop("parent", None)
+    out = []
+    for c in cats:
+        if isinstance(c, dict) and not c.get("parent"):
+            out.append(c)
+            out += [x for x in cats if isinstance(x, dict) and x.get("parent") == c.get("id")]
+    return out
 
 
 def edited(data_dir, acct_id):
@@ -178,11 +265,13 @@ def clean(cats):
         if not cid or cid in ids or cid == OTHERS_ID:
             cid = kind[0] + "_" + hashlib.sha1(f"{kind}\n{name}\n{len(out)}".encode()).hexdigest()[:8]
         ids.add(cid)
-        out.append({"id": cid, "kind": kind, "name": name, "keys": _clean_text(c.get("keys"), KEYS_MAX),
+        parent = re.sub(r"[^a-z0-9_]", "", str(c.get("parent") or "").lower())[:24]
+        out.append({"id": cid, "kind": kind, "name": name, "keys": _clean_text(c.get("keys"), KEYS_MAX), **({"parent": parent} if parent else {}),
                     "genres": _clean_text(c.get("genres"), KEYS_MAX) if kind != "tv" else "",
                     "home": bool(c.get("home")), "on": c.get("on", True) is not False,
                     **({"recent": min(RECENT_MAX, int(c["recent"]))} if str(c.get("recent") or "").isdigit() and int(c["recent"]) > 0 else {})})
-    names = [(c["kind"], norm(c["name"])) for c in out]
+    out = ordered(out)
+    names = [(c["kind"], c.get("parent") or "", norm(c["name"])) for c in out]
     dup = next((c["name"] for c, k in zip(out, names) if names.count(k) > 1), None)
     if dup:
         raise ValueError(f"اسمٌ مكرّر في النوع نفسه: «{dup}»")
@@ -207,15 +296,15 @@ def reset(data_dir, acct_id):
 
 # ---- المطابقة ----
 def _terms(keys):
-    """«عرب، arab، -مدبلج» ← ([مطابِقات]، [مستثنيات]) مطبَّعةً."""
-    inc, exc = [], []
+    """«عرب، arab، -مدبلج، +مسلسل» ← ([مطابِقات]، [مستثنيات]، [مطلوبات: واحدةٌ منها على الأقل]) مطبَّعةً."""
+    inc, exc, req = [], [], []
     for t in re.split(r"[,،\n|]", keys or ""):
         t = t.strip()
-        neg = t[:1] in "-!"
-        t = norm(t[1:] if neg else t)
+        box = exc if t[:1] in "-!" else req if t[:1] == "+" else inc
+        t = norm(t[1:] if box is not inc else t)
         if t:
-            (exc if neg else inc).append(t)
-    return inc, exc
+            box.append(t)
+    return inc, exc, req
 
 
 def _hit(term, name):
@@ -225,21 +314,38 @@ def _hit(term, name):
     return term in name
 
 
-def matcher(cat):
-    inc, exc = _terms(cat.get("keys"))
+def matcher(cat, loose=False):
+    """قسمٌ يطابق كلمات التصنيف؟ ‏loose (فرعي): بلا كلماتٍ تُدخل ← يكفي ألّا تُخرجه «-كلمة» وأن تكون فيه «+كلمة» — ولا شيء من ذلك ←
+    None (لا شرط على القسم)."""
+    inc, exc, req = _terms(cat.get("keys"))
+    if loose and not inc:
+        if not exc and not req:
+            return None
+        return lambda name: not any(_hit(t, name) for t in exc) and (not req or any(_hit(t, name) for t in req))
 
     def match(name):
-        return bool(inc) and any(_hit(t, name) for t in inc) and not any(_hit(t, name) for t in exc)
+        return (bool(inc) and any(_hit(t, name) for t in inc) and not any(_hit(t, name) for t in exc)
+                and (not req or any(_hit(t, name) for t in req)))
     return match
 
 
 def of_kind(cats, kind, home=None):
-    """تصنيفات نوعٍ الظاهرة بترتيبها (و‏home: صفوف الرئيسية وحدها)."""
-    return [c for c in cats if c.get("kind") == kind and c.get("on", True) and (home is None or bool(c.get("home")) == home)]
+    """تصنيفات نوعٍ الظاهرة بترتيبها، الرئيسية والفرعية (و‏home: صفوف الرئيسية وحدها). فرعيٌّ رئيسيّه مخفي ← مخفي."""
+    on = {c.get("id") for c in cats if c.get("kind") == kind and c.get("on", True) and not c.get("parent")}
+    return [c for c in cats if c.get("kind") == kind and c.get("on", True) and (not c.get("parent") or c["parent"] in on)
+            and (home is None or bool(c.get("home")) == home)]
+
+
+def mains(cats, kind):
+    return [c for c in of_kind(cats, kind) if not c.get("parent")]
+
+
+def subs_of(cats, cid):
+    return [c for c in cats if c.get("parent") == cid and c.get("on", True)]
 
 
 def sig(cats):
-    return tuple((c["id"], c.get("keys", ""), c.get("genres", ""), c.get("recent") or 0) for c in cats)
+    return tuple((c["id"], c.get("keys", ""), c.get("genres", ""), c.get("recent") or 0, c.get("parent") or "") for c in cats)
 
 
 def now_matcher():

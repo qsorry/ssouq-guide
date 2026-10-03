@@ -432,8 +432,9 @@ class Library:
         return [h[2] for h in hits]
 
 
-def build(kind, parts):
-    """‏parts: [(رقم الخط، بصمة سيرفره، اسمه، Lists أو None)] بترتيب الخطوط (صاحب الحساب أولًا) ← Library."""
+def build(kind, parts, merged=True):
+    """‏parts: [(رقم الخط، بصمة سيرفره، اسمه، Lists أو None)] بترتيب الخطوط (صاحب الحساب أولًا) ← Library. ‏merged=False: كل
+    عنصرٍ عملٌ وحده كما في لوحته (لا دمج نسخٍ ولا مواسم ولا قنواتٍ بجوداتها)."""
     entries = []
     for line, hk, label, L in parts:
         if L is None:
@@ -442,7 +443,9 @@ def build(kind, parts):
         for n, it in enumerate(L.items):
             cat = L.cat_of(it)
             entries.append(Src(line, hk, it, keys[n] if keys else None, cat, label))
-    if kind == "tv":
+    if not merged:
+        works = [_live_work([s]) if kind == "tv" else Work(kind, [s]) for s in entries]
+    elif kind == "tv":
         works, at = [], {}
         for s in entries:
             k = _live_key(s.item.name)

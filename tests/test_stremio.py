@@ -251,24 +251,30 @@ def against_mock():
               man["types"] == [S.ACCOUNTS, "series", "movie", "tv"] and man["idPrefixes"] == [pre]
               and man["resources"][0] == "catalog" and {r["name"] for r in man["resources"][1:]} == {"meta", "stream"}
               and all(r["types"] == man["types"] for r in man["resources"][1:]), str(man["types"]))
+        mains = [c for c in man["catalogs"] if c["id"] in S.CATALOG.values() or c["id"] == S.ACCOUNTS_ID]
         check("بترتيب تطبيقات IPTV: الحسابات ثم المسلسلات ثم الأفلام ثم البث",
-              [c["type"] for c in man["catalogs"]] == [S.ACCOUNTS, "series", "movie", "tv"], str([c["type"] for c in man["catalogs"]]))
-        cat = {c["type"]: c for c in man["catalogs"]}
+              [c["type"] for c in mains] == [S.ACCOUNTS, "series", "movie", "tv"] and man["catalogs"][0]["id"] == S.ACCOUNTS_ID,
+              str([c["type"] for c in man["catalogs"]]))
+        cat = {c["type"]: c for c in mains}
         check("«الحسابات» في الرئيسية بلا بحثٍ ولا صفحات (لا تختلط بنتائج البحث)", cat[S.ACCOUNTS]["extra"] == []
               and cat[S.ACCOUNTS]["name"] == S.BRAND and cat[S.ACCOUNTS]["id"] == S.ACCOUNTS_ID)
         check("وخطٌّ مرتبطٌ بحساب Stremio بلاها (صفّها عند صاحب الحساب، فلا يتكرّر)",
-              [c["type"] for c in S.manifest(cfg, "https://g", "سمارت", accounts=False)["catalogs"]] == ["series", "movie", "tv"]
+              [c["type"] for c in S.manifest(cfg, "https://g", "سمارت", accounts=False)["catalogs"] if c["id"] in S.CATALOG.values()]
+              == ["series", "movie", "tv"] and all(c["type"] != S.ACCOUNTS for c in S.manifest(cfg, "https://g", "سمارت", accounts=False)["catalogs"])
               and S.ACCOUNTS not in S.manifest(cfg, "https://g", "", accounts=False)["types"])
         opts = cat["movie"]["extra"][0]["options"]
         n_of = lambda o: int(re.search(r"\(([\d,]+)\)$", o).group(1).replace(",", ""))
-        check("أقسام الأفلام كلها تصنيفات", [S._COUNT.sub("", o) for o in opts] == list(mock_xtream.MOVIES), str(opts))
-        check("وبجانب كل قسمٍ عدد أفلامه (مجموعها = كل الأفلام بلا الكبار)",
-              all(re.search(r" \([\d,]+\)$", o) for o in opts) and sum(map(n_of, opts)) == n_vod, str(opts))
+        check("أقسام الأفلام في تصنيفات سمارت سوق الرئيسية («أفلام عربية» ← «عربي»، و«Netflix Movies» ← «أجنبي»)",
+              opts[:2] == ["عربي (14)", "أجنبي (18)"] and not any(S._COUNT.sub("", o) in mock_xtream.MOVIES for o in opts), str(opts))
+        check("وبجانب كل تصنيفٍ عدد أفلامه", all(re.search(r" \([\d,]+\)$", o) for o in opts) and n_of(opts[0]) + n_of(opts[1]) == n_vod, str(opts))
         sopts = cat["series"]["extra"][0]["options"]
-        check("أقسام المسلسلات تصنيفاتٌ كذلك بأعدادها", [S._COUNT.sub("", o) for o in sopts] == list(mock_xtream.SERIES)
-              and sum(map(n_of, sopts)) == len(series), str(sopts))
+        check("والمسلسلات كذلك بأعدادها", sopts == ["تركي (2)", "أجنبي (8)", "مدبلج (2)"], str(sopts))
+        fo = next(c for c in man["catalogs"] if c["id"] == S.MAIN_PREFIX + "m_foreign")
+        check("والرئيسي بفرعيّاته كتالوجٌ («أجنبي» ← «الكل» · «أكشن» …)، وما لا فرعيّ له في القائمة وحدها",
+              fo["extra"][0]["options"][:2] == ["الكل (18)", "أكشن (9)"] and fo["extra"][0]["isRequired"] is True
+              and not any(c["id"] == S.MAIN_PREFIX + "m_horror" for c in man["catalogs"]), json.dumps(fo, ensure_ascii=False)[:200])
         check("اسم السيرفر وعدد المحتوى في اسم كل كتالوج — بلا كلمة النوع (Stremio يُلحقه: «سمارت (10) - المسلسلات»)",
-              [c["name"] for c in man["catalogs"][1:]] == [f"سمارت ({len(series)})", f"سمارت ({n_vod})", f"سمارت ({n_live})"],
+              [c["name"] for c in mains[1:]] == [f"سمارت ({len(series)})", f"سمارت ({n_vod})", f"سمارت ({n_live})"],
               str([c["name"] for c in man["catalogs"]]))
         check("وفي وصف الإضافة بالترتيب نفسه", man["description"].startswith(f"{len(series)} مسلسل · {n_vod} فيلم · {n_live} قناة — ")
               and "IPTV" in man["description"], man["description"][:60])
@@ -305,11 +311,12 @@ def against_mock():
             cats_gone = (empty, "series") not in S._cats
         check("إعادة القراءة تنسى الفارغ وحده (وما حُمّل بمحتواه يبقى)", kept == ["movie"] and cats_gone, str(kept))
         topts = cat["tv"]["extra"][0].get("options") or []
-        check("وأقسام القنوات تصنيفاتٌ كذلك بأعدادها (بلا قسم الكبار)، والبحث والصفحات", [e["name"] for e in cat["tv"]["extra"]] == ["genre", "search", "skip"]
-              and [S._COUNT.sub("", o) for o in topts] == list(mock_xtream.CHANNELS) and sum(map(n_of, topts)) == n_live, str(topts))
-        check("لا تصنيفٌ مطلوب (الكتالوجات في الرئيسية) والبحث والصفحات مدعومة في المحتوى",
-              all(not e["isRequired"] for c in man["catalogs"] for e in c["extra"])
-              and all({"search", "skip"} <= set(c["extraSupported"]) for c in man["catalogs"][1:]))
+        check("وأقسام القنوات في اللوحة بأعدادها (بلا قسم الكبار) — الرياضة أولًا (بترتيب تصنيفات القنوات)، والبحث والصفحات",
+              [e["name"] for e in cat["tv"]["extra"]] == ["genre", "search", "skip"]
+              and topts == ["beIN SPORTS (6)", "SSC (3)", "MBC (6)"] and sum(map(n_of, topts)) == n_live, str(topts))
+        check("لا تصنيفٌ مطلوب في كتالوجات الرئيسية والبحث والصفحات مدعومة فيها (و«حسب السنة» والرئيسي بفرعيّه مطلوبان: في «اكتشف» وحدها)",
+              all(not e["isRequired"] for c in mains for e in c["extra"]) and all({"search", "skip"} <= set(c["extraSupported"]) for c in mains[1:])
+              and all(c["extra"][0]["isRequired"] for c in man["catalogs"] if c not in mains))
         check("زرّ الإعداد (Configure) ظاهرٌ في Stremio (يفتح موقع المتجر)", man["behaviorHints"]["configurable"] is True)
         uid = S.manifest(S.Cfg(cfg.host, "other", "x"), "https://g", "")["id"]
         check("معرّف الإضافة لكل اشتراك (اشتراكان في حسابٍ واحد لا يتصادمان)", uid != man["id"])
@@ -328,7 +335,7 @@ def against_mock():
         g = "مسلسلات تركية مدبلجة"
         gs, _ = walk(cfg, "series", genre=g)
         check("قسمٌ واحد", {m["name"] for m in gs} == {"المؤسس عثمان", "قيامة أرطغرل"}, str([m["name"] for m in gs]))
-        gc = next(o for o in sopts if o.startswith(g + " ("))
+        gc = g + " (2)"
         check("واسم القسم بعدده كما يرسله Stremio", walk(cfg, "series", genre=gc)[0] == gs, gc)
         check("قسمٌ لا يُعرف = لا شيء", walk(cfg, "movie", genre="nope")[0] == [])
         found = S.catalog(cfg, "series", "sq_series", {"search": "breaking"})["metas"]
@@ -360,8 +367,8 @@ def against_mock():
               and v[0]["overview"].startswith("What happens"), json.dumps(v[0], ensure_ascii=False))
         check("معرّف الحلقة يحمل امتدادها", v[0]["id"].startswith(pre + "e:") and v[0]["id"].endswith(":mp4"), v[0]["id"])
         lt = S.meta(cfg, "tv", allt[0]["id"])["meta"]
-        check("القناة: اسمها وصورتها مربّعة (بلا logo يحلّ محلّ الاسم في صفحتها)", lt["name"] == allt[0]["name"]
-              and lt["posterShape"] == "square" and lt["poster"].endswith(".png") and "logo" not in lt, json.dumps(lt, ensure_ascii=False))
+        check("القناة: اسمها وصورتها عريضة (بلا logo يحلّ محلّ الاسم في صفحتها)", lt["name"] == allt[0]["name"]
+              and lt["posterShape"] == "landscape" and lt["poster"].endswith(".png") and "logo" not in lt, json.dumps(lt, ensure_ascii=False))
         check("وقسمها وصفًا وتصنيفًا", lt["description"] == "beIN SPORTS" and lt["genres"] == ["beIN SPORTS"]
               and allt[0]["description"] == "beIN SPORTS", json.dumps(lt, ensure_ascii=False))
         check("معرّفٌ لسيرفرٍ آخر أو نوعٌ لا يطابق ← None",
@@ -570,16 +577,16 @@ def through_server():
         print("== ما يصل Stremio ==")
         c, h, b = http(base, f"/stremio/{tok}/manifest.json")
         man = json.loads(b)
-        mains = [c_ for c_ in man["catalogs"] if not c_["id"].startswith(S.CAT_PREFIX) and c_["id"] not in S.YEARS.values()]
+        mains = [c_ for c_ in man["catalogs"] if c_["id"] in S.CATALOG.values() or c_["id"] == S.ACCOUNTS_ID]
         check("الـmanifest (ورابطٌ بلا حساب Stremio: «الحسابات» فيه)", c == 200 and man["name"] == "سمارت سوق · سمارت"
               and [c_["type"] for c_ in mains] == [S.ACCOUNTS, "series", "movie", "tv"] and S.TILES not in man["types"], man.get("name"))
         rows = [(c_["type"], c_["name"]) for c_ in man["catalogs"] if c_["id"].startswith(S.CAT_PREFIX)]
-        order = [c_["type"] for c_ in man["catalogs"] if c_["id"] not in S.YEARS.values()]
+        order = [c_["type"] for c_ in mains]
         check("الرئيسية أقسام: «الحسابات» ثم المسلسلات ثم الأفلام ثم القنوات — والتصنيفات داخل أقسامها لا صفوفًا",
               rows == [] and order == [S.ACCOUNTS, "series", "movie", "tv"], json.dumps(rows, ensure_ascii=False))
         topts_u = next(e["options"] for c_ in mains if c_["id"] == "sq_live" for e in c_["extra"] if e["name"] == "genre")
-        check("وقائمة التصنيف في «اكتشف» تصنيفاتنا بأعدادها (لا أقسام كل لوحة؛ والقناة باسمها أيضًا: «MBC Drama» ← «أفلام ومسلسلات»)",
-              [S._COUNT.sub("", o) for o in topts_u] == ["رياضة", "عربية", "أفلام ومسلسلات"],
+        check("وقائمة تصنيف البث في «اكتشف» أقسام اللوحة («MBC» · «SSC») مرتّبةً بتصنيفات القنوات (الرياضة أولًا)",
+              [S._COUNT.sub("", o) for o in topts_u] == ["beIN SPORTS", "SSC", "MBC"],
               json.dumps(topts_u, ensure_ascii=False))
         c, _, b = http(base, f"/stremio/{tok}/catalog/series/{S.CAT_PREFIX}s_turkish.json")
         tr_names = {m["name"] for m in json.loads(b)["metas"]}

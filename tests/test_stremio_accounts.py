@@ -95,7 +95,7 @@ def against_mocks():
               str([a["manifest"]["name"] for a in col]))
         check("الإضافة برابطها على الموقع ووصفها كاملًا (الحسابات ثم المسلسلات ثم الأفلام ثم البث)",
               col[0]["transportUrl"].startswith("https://guide.ssouq.com/stremio/")
-              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX) and c["id"] not in S.YEARS.values()] == [S.ACCOUNTS, "series", "movie", "tv"]
+              and [c["type"] for c in col[0]["manifest"]["catalogs"] if c["id"] in S.CATALOG.values() or c["id"] == S.ACCOUNTS_ID] == [S.ACCOUNTS, "series", "movie", "tv"]
               and col[0]["flags"] == {"official": False, "protected": False})
         check("خرج من الجلسة بعد التثبيت", not api.sessions)
         raw = json.load(open(os.path.join(d, "stremio_accounts.json"), encoding="utf-8"))
@@ -345,7 +345,7 @@ def through_server():
 
         print("== يوزرٌ لم تُفعّله اللوحة بعد (ما حدث في مرح) ==")
         ours = lambda email: [a for a in api.collections.get(email, []) if a.get("manifest", {}).get("id", "").startswith("com.ssouq.")]
-        genre_opts = lambda m: [e.get("options") for c in m.get("catalogs", []) if c.get("id") not in S.YEARS.values()   # بلا «حسب السنة»
+        genre_opts = lambda m: [e.get("options") for c in m.get("catalogs", []) if c.get("id") in S.CATALOG.values()   # كتالوجات الأنواع
                                 for e in c.get("extra", []) if e.get("name") == "genre"]
         xt.users["late"], xt.pending["late"] = "lp", 2               # يُرفض مرتين ثم يُقبل
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "late", "password": "lp"})
@@ -412,50 +412,52 @@ def through_server():
         k1m = ours("u@tv.ssouq.com")[1]["manifest"]
         root_m = ours("u@tv.ssouq.com")[0]
         n_series = sum(len(v) for v in mock_xtream.SERIES.values())
-        check("إضافة الخط المرتبط بلا كتالوجات (محتواه في مكتبة صاحب الحساب الموحدة، فلا يتكرّر)، وبادئتها لها",
-              k1m["catalogs"] == [] and S.ACCOUNTS not in k1m["types"]
-              and set(k1m["idPrefixes"]).isdisjoint(root_m["manifest"]["idPrefixes"]), json.dumps(k1m["catalogs"]))
+        check("إضافة الخط المرتبط بكتالوجات خطّه وحده («كاسبر (10)»، لا دمج)، بلا «الحسابات»، وبادئتها لها",
+              [c["name"] for c in k1m["catalogs"] if c["id"] in S.CATALOG.values()][0] == f"كاسبر ({n_series})" and S.ACCOUNTS not in k1m["types"]
+              and set(k1m["idPrefixes"]).isdisjoint(root_m["manifest"]["idPrefixes"]), json.dumps([c["name"] for c in k1m["catalogs"]], ensure_ascii=False))
         check("والإضافتان تعملان", all(code_of(local(a["transportUrl"])) == 200 for a in ours("u@tv.ssouq.com")))
         k1_stream = next(r_ for r_ in k1m["resources"] if isinstance(r_, dict) and r_["name"] == "stream")
         k1_rec = next((x for x in A.all_records(d) if x.get("username") == "k1"), {})
-        check("وتعرض إضافة الخط مصادره في أعمال المكتبة (بادئاتنا كلها)، ونسختها محفوظةٌ مع الخط",
-              "sq" in k1_stream["idPrefixes"] and k1_rec.get("addon_v") == S.VERSION, json.dumps(k1_stream, ensure_ascii=False))
+        check("ومصادرها لمعرّفاتها وحدها (لا تُلحق مصادرها بأعمال سيرفرٍ آخر)، ونسختها محفوظةٌ مع الخط",
+              k1_stream["idPrefixes"] == k1m["idPrefixes"] and k1_rec.get("addon_v") == S.VERSION, json.dumps(k1_stream, ensure_ascii=False))
         get_json = lambda url: json.loads(urllib.request.urlopen(url, timeout=60).read())
         root_tu, k1_tu = (local(a["transportUrl"]) for a in ours("u@tv.ssouq.com"))
         mv0 = get_json(root_tu.replace("manifest.json", "catalog/movie/sq_movies.json"))["metas"][0]["id"]
+        mk1 = get_json(k1_tu.replace("manifest.json", "catalog/movie/sq_movies.json"))["metas"][0]["id"]
         st_root = [x["name"] for x in get_json(root_tu.replace("manifest.json", f"stream/movie/{quote(mv0, safe='')}.json"))["streams"]]
-        st_k1 = [x["name"] for x in get_json(k1_tu.replace("manifest.json", f"stream/movie/{quote(mv0, safe='')}.json"))["streams"]]
-        check("لكل بوابةٍ زرّها فوق قائمة التشغيل: صاحب الحساب «تلقائي» ومصادر خطّه، وإضافة كاسبر مصادر كاسبر في العمل نفسه",
-              st_root[:1] == ["سمارت سوق"] and "كاسبر" not in st_root and st_k1 and set(st_k1) == {"كاسبر"},
-              json.dumps([st_root, st_k1], ensure_ascii=False))
-        rcats = {c["type"]: c for c in root_m["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX) and c["id"] not in S.YEARS.values()}
+        st_k1 = [x["name"] for x in get_json(k1_tu.replace("manifest.json", f"stream/movie/{quote(mk1, safe='')}.json"))["streams"]]
+        st_cross = get_json(k1_tu.replace("manifest.json", f"stream/movie/{quote(mv0, safe='')}.json"))["streams"]
+        check("لكل سيرفرٍ أفلامه ومصادره: فيلم سمارت من سمارت، وفيلم كاسبر من كاسبر، ولا مصادر لسيرفرٍ في عمل غيره",
+              mv0 != mk1 and set(st_root) == {"سمارت"} and set(st_k1) == {"كاسبر"} and st_cross == [],
+              json.dumps([st_root, st_k1, st_cross], ensure_ascii=False))
+        rcats = {c["type"]: c for c in root_m["manifest"]["catalogs"] if c["id"] in S.CATALOG.values()}
         sopts = next((e["options"] for e in rcats["series"]["extra"] if e["name"] == "genre"), [])
-        check("وإضافة صاحب الحساب أُعيدت بالمكتبة الموحدة: «الحسابات» أولها، والصفوف باسم المتجر، و«مصدر: …» لكل خط",
-              root_m["manifest"]["catalogs"][0]["type"] == S.ACCOUNTS and rcats["series"]["name"] == f"سمارت سوق ({n_series})"
-              and sopts[-2:] == ["مصدر: سمارت", "مصدر: كاسبر"], json.dumps([c["name"] for c in root_m["manifest"]["catalogs"]], ensure_ascii=False) + str(sopts[-3:]))
+        check("وإضافة صاحب الحساب: «الحسابات» أولها، ثم كتالوجات سمارت وحده باسمه وعدده، وتصنيفاتها الرئيسية (لا «مصدر: …»)",
+              root_m["manifest"]["catalogs"][0]["type"] == S.ACCOUNTS and rcats["series"]["name"] == f"سمارت ({n_series})"
+              and sopts == ["تركي (2)", "أجنبي (8)", "مدبلج (2)"], json.dumps([c["name"] for c in root_m["manifest"]["catalogs"]], ensure_ascii=False) + str(sopts))
         cat_url = lambda a, kind, cid, extra="": local(a["transportUrl"]).replace("manifest.json", f"catalog/{kind}/{cid}{extra}.json")
         get = lambda u: json.loads(urllib.request.urlopen(u, timeout=30).read())
         ser = get(cat_url(root_m, "series", "sq_series"))["metas"]
-        check("مكتبةٌ واحدة: كل مسلسلٍ مرةً واحدة وإن كان في الخطّين، ومصادره في وصفه",
-              len(ser) == n_series and len({m["id"] for m in ser}) == len(ser)
-              and all(re.search(r"المصادر: سمارت( \(مدبلج\))? · كاسبر", m.get("description", "")) for m in ser)
-              and "المصادر: سمارت (مدبلج) · كاسبر (مدبلج)" in next(m["description"] for m in ser if m["name"] == "المؤسس عثمان"),
-              str(len(ser)) + " " + json.dumps([(m["name"], m.get("description", "")[-40:]) for m in ser], ensure_ascii=False)[:600])
+        check("مسلسلات سمارت وحده: كلٌّ مرةً واحدة بمعرّف سمارت، بلا «المصادر:» (لا دمج)",
+              len(ser) == n_series and len({m["id"] for m in ser}) == len(ser) and all(m["id"].startswith(root_m["manifest"]["idPrefixes"][0]) for m in ser)
+              and not any("المصادر:" in m.get("description", "") for m in ser), str(len(ser)))
         found = get(cat_url(root_m, "series", "sq_series", "/search=" + quote("breaking", safe="")))["metas"]
         check("والبحث في كل الحسابات معًا بلا تكرار", [m["name"] for m in found] == ["Breaking Bad"], str([m["name"] for m in found]))
-        check("وطلب كتالوجات إضافة الخط ← فارغة (صفوفها القديمة تختفي من Stremio)",
-              get(cat_url(ours("u@tv.ssouq.com")[1], "series", "sq_series"))["metas"] == [])
+        k1_ser = get(cat_url(ours("u@tv.ssouq.com")[1], "series", "sq_series"))["metas"]
+        check("وكتالوج إضافة الخط: مسلسلات كاسبر بمعرّفاته", len(k1_ser) == n_series and all(m["id"].startswith(k1m["idPrefixes"][0]) for m in k1_ser))
         gid = next(m["id"] for m in ser if m["name"] == "Game of Thrones")
         gm = get(local(root_m["transportUrl"]).replace("manifest.json", f"meta/series/{quote(gid, safe='')}.json"))["meta"]
         chips = [l["name"] for l in gm.get("links", []) if l["category"] == "المصادر"]
-        check("صفحة المسلسل: مصادره ببوابتها ومواسمها وحلقاتها، وحلقاته مرةً واحدة",
-              len(chips) == 2 and chips[0].startswith("سمارت · ") and "حلقات" in chips[0] and chips[1].startswith("كاسبر · ")
+        check("صفحة المسلسل: حلقاته من سمارت وحده (بلا «المصادر»)", chips == []
               and len(gm["videos"]) == len({(v["season"], v["episode"]) for v in gm["videos"]}) == 6, str(chips))
         ep = gm["videos"][0]["id"]
         sts = get(local(root_m["transportUrl"]).replace("manifest.json", f"stream/series/{quote(ep, safe='')}.json"))["streams"]
-        k1_sts = get(local(ours("u@tv.ssouq.com")[1]["transportUrl"]).replace("manifest.json", f"stream/series/{quote(ep, safe='')}.json"))["streams"]
-        check("الحلقة: «تلقائي» أولًا ثم مصدر صاحب الحساب، ومصدر كاسبر من إضافته (زرٌّ باسمها)", [x["name"] for x in sts] == ["سمارت سوق", "سمارت"]
-              and "/play/series/" in sts[0]["url"] and [x["name"] for x in k1_sts] == ["كاسبر"] and "/series/k1/kp/" in location(local(k1_sts[0]["url"]))
+        kid = next(m["id"] for m in k1_ser if m["name"] == "Game of Thrones")
+        k1_tu2 = local(ours("u@tv.ssouq.com")[1]["transportUrl"])
+        kep = get(k1_tu2.replace("manifest.json", f"meta/series/{quote(kid, safe='')}.json"))["meta"]["videos"][0]["id"]
+        k1_sts = get(k1_tu2.replace("manifest.json", f"stream/series/{quote(kep, safe='')}.json"))["streams"]
+        check("الحلقة: مصدر سمارت في إضافته، وحلقة كاسبر من إضافة كاسبر (زرٌّ باسمها)", [x["name"] for x in sts] == ["سمارت"]
+              and [x["name"] for x in k1_sts] == ["كاسبر"] and "/series/k1/kp/" in location(local(k1_sts[0]["url"]))
               and "/k1/kp/" not in json.dumps([sts, k1_sts]),
               json.dumps([[x["name"] for x in sts], [x["name"] for x in k1_sts]], ensure_ascii=False))
         c, r = post("/api/stremio/accounts?gate=g4", None)
@@ -487,7 +489,7 @@ def through_server():
         print("== «التصنيفات»: تصنيفات سمارت سوق لكل البوابات ==")
         c, r = post("/api/stremio/categories", None)
         check("الافتراضية، ومعاينتها على حسابٍ من الحسابات قوائمه في الذاكرة", c == 200 and not r.get("edited")
-              and [x["name"] for x in r.get("cats", [])][:3] == ["تركي يعرض الآن", "رمضان", "تركي"] and r.get("preview", {}).get("series", {}).get("total", 0) > 0
+              and [x["name"] for x in r.get("cats", [])][:4] == ["تركي", "يعرض الآن مترجم", "يعرض الآن مدبلج", "مترجم"] and r.get("preview", {}).get("series", {}).get("total", 0) > 0
               and r.get("sample"), json.dumps({k: r.get(k) for k in ("edited", "sample", "preview")}, ensure_ascii=False)[:300])
         mine = r["cats"] + [{"id": "s_pick", "kind": "series", "name": "مختارات", "keys": "أجنبية", "home": True}]
         c, r = post("/api/stremio/categories", {"cats": mine, "preview": True})
@@ -525,12 +527,13 @@ def through_server():
         check("وينتهي: كل الحسابات حُدّثت بلا تعثّر، وكل خطوطها", not j.get("running") and j.get("done") == j.get("total") == n_accts
               and j.get("changed") == n_accts and j.get("failed") == [] and j.get("lines", 0) > n_accts, json.dumps(j, ensure_ascii=False))
         root_m, k1m = ours("u@tv.ssouq.com")[0]["manifest"], ours("u@tv.ssouq.com")[1]["manifest"]
-        check("إضافة صاحب الحساب بأحدث نسخة: المكتبة الموحدة و«الحسابات»", root_m["version"] == S.VERSION
-              and root_m["catalogs"][0]["type"] == S.ACCOUNTS and next(c for c in root_m["catalogs"] if c["id"] == "sq_series")["name"].startswith("سمارت سوق ("),
+        check("إضافة صاحب الحساب بأحدث نسخة: «الحسابات» وكتالوجات سمارت", root_m["version"] == S.VERSION
+              and root_m["catalogs"][0]["type"] == S.ACCOUNTS and next(c for c in root_m["catalogs"] if c["id"] == "sq_series")["name"].startswith("سمارت ("),
               json.dumps([c["name"] for c in root_m["catalogs"]], ensure_ascii=False))
-        check("وإضافة الخط المرتبط بلا كتالوجات", k1m["version"] == S.VERSION and k1m["catalogs"] == [])
+        check("وإضافة الخط المرتبط بكتالوجات كاسبر", k1m["version"] == S.VERSION
+              and next(c for c in k1m["catalogs"] if c["id"] == "sq_series")["name"].startswith("كاسبر ("))
         check("وصفوف الرئيسية بتصنيفات العميل المحفوظة («مختارات - المسلسلات»)",
-              any(c_["id"] == f"{S.CAT_PREFIX}s_pick" and c_["name"] == "مختارات" for c_ in root_m["catalogs"]),
+              any(c_["id"] == f"{S.CAT_PREFIX}s_pick" and c_["name"].startswith("مختارات") for c_ in root_m["catalogs"]),
               json.dumps([c_["name"] for c_ in root_m["catalogs"]], ensure_ascii=False))
         c, r = post("/api/stremio/categories", {"reset": True})
         check("و«إعادة التصنيفات الافتراضية»", c == 200 and not r.get("edited") and not any(x["name"] == "مختارات" for x in r["cats"]))
