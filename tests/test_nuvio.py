@@ -353,7 +353,7 @@ def through_server():
         check("ويفتح أعمال تلك السنة", c == 200 and json.loads(txt).get("metas") and all(m.get("releaseInfo") == fy["title"] for m in json.loads(txt)["metas"]),
               txt[:120])
         check("وبعد أن بُنيت المكتبة: مجلدات التصنيفات التي فيها محتوى وحدها", ser2["folders"][0]["title"] == "الكل"
-              and {f["title"] for f in ser2["folders"][2:]} <= {"تركي يعرض الآن", "تركي", "أجنبي", "عربي", "رمضان", "آسيوي", "أنمي", "أطفال وكرتون", "هندي", "وثائقي", "مدبلج", "أخرى"}
+              and {f["title"] for f in ser2["folders"][2:]} <= {"تركي مترجم يعرض الآن", "تركي مدبلج يعرض الآن", "تركي", "أجنبي", "عربي", "رمضان", "آسيوي", "أنمي", "أطفال وكرتون", "هندي", "وثائقي", "مدبلج", "أخرى"}
               and len(ser2["folders"]) < len(cols[0]["folders"]), str([f["title"] for f in ser2["folders"]]))
         c, r = post("/api/nuvio/accounts?gate=g1", None)
         row = next((a for a in r.get("accounts", []) if a["username"] == XUSER), {})

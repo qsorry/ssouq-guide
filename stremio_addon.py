@@ -49,7 +49,7 @@ import stremio_posters as POSTERS
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.6.2"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.6.3"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -1759,10 +1759,19 @@ def _cat_index(lines, lib, kind):
     if hit and hit[1] is lib and now - hit[0] < CAT_TTL:
         return hit[2]
     match = [(c, CATS.matcher(c)) for c in mine]
+    mm = {c["id"]: m for c, m in match}
+    src_names = {}                                       # (القسم، مدبلج؟) ← اسمه للتصنيف: مرةً لكل قسم لا لكل مصدر
+
+    def sc(s):
+        k = (s.cat, "dubbed" in s.key.versions)
+        if k not in src_names:
+            src_names[k] = _src_cat(kind, s)
+        return src_names[k]
+    pairs = {id(w): [(s, sc(s)) for s in w.sources] for w in lib.works}   # المصدر وقسمه (و«مدبلج» من اسمه)
     by_name = {}
-    for w in lib.works:
-        for n in w.cats:
-            if n not in by_name:
+    for ps in pairs.values():
+        for _, n in ps:
+            if n and n not in by_name:
                 by_name[n] = {c["id"] for c, m in match if m(n)}
     gkeys = {c["id"]: LIB.genre_keys(c.get("genres")) for c in mine if kind in GENRE_TYPES and c.get("genres")}
     known = {}                                           # أفلامٌ عُرف تصنيفها من تفاصيلها
@@ -1778,21 +1787,30 @@ def _cat_index(lines, lib, kind):
     by = {c["id"]: [] for c in mine}
     by[CATS.OTHERS_ID] = []
     first = {}
-    cut = {c["id"]: now - int(c["recent"]) * 86400 for c in mine if c.get("recent")}   # «يعرض الآن»: حلقةٌ خلال آخر N يوم
+    cut = {c["id"]: now - int(c["recent"]) * 86400 for c in mine if c.get("recent")}   # «يعرض الآن»
     now_m = CATS.now_matcher() if cut else None
+    curated = {cid for cid in cut if any(mm[cid](n) and now_m(n) for n in by_name)}   # قسمٌ «يعرض الآن» في لوحةٍ من لوحات الحساب
+    bulk = {cid: _bulk_lines(pairs, mm[cid], cut[cid]) for cid in cut}
     for w in lib.latest:
-        got = set().union(*(by_name.get(n, ()) for n in w.cats)) if w.cats else set()
+        ps = pairs[id(w)]
+        got = set().union(*(by_name.get(n, ()) for _, n in ps if n))
         if kind == "tv":                                 # والقناة باسمها أيضًا («beIN SPORTS 1» ← «رياضة» أيًّا كان قسمها)
             n = LIB.norm(w.name)
             got |= {c["id"] for c, m in match if c["id"] not in got and m(n)}
         for cid, ks in gkeys.items():
             if cid not in got and (w.tags & ks or id(w) in known.get(cid, ())):
                 got.add(cid)
+        for cid in got & cut.keys():
+            m, since, blind = mm[cid], cut[cid], bulk[cid]  # ‏blind: خطوطٌ وقتها لا يدلّ (تُحدّث القسم كله معًا)
+            if cid in curated:                           # في قسم اللوحة «يعرض الآن» نفسه، ونزلت له حلقة (لا ما توقّف من أشهر وبقي فيه)
+                ok = any(n and m(n) and now_m(n) and (x.item.added >= since or x.hk in blind) for x, n in ps)
+            else:                                        # بلا قسم «يعرض الآن»: حلقةٌ خلال آخر N يوم في قسمٍ يطابقه، من لوحةٍ وقتها يدلّ
+                ok = any(n and m(n) and x.item.added >= since and x.hk not in blind for x, n in ps)
+            if not ok:
+                got.discard(cid)
         if not got:
             by[CATS.OTHERS_ID].append(w)
             continue
-        if cut and got & cut.keys() and not any(now_m(n) for n in w.cats):   # قسمه في اللوحة «يعرض الآن» يكفي
-            got = {cid for cid in got if cid not in cut or w.added >= cut[cid]}
         for c in mine:
             if c["id"] in got:
                 by[c["id"]].append(w)
@@ -1804,6 +1822,31 @@ def _cat_index(lines, lib, kind):
         while len(_cidx) > LIB_MAX * 3:
             _cidx.popitem(last=False)
     return idx
+
+
+_DUB = LIB.norm("مدبلج")
+BULK_MIN, BULK_SHARE = 20, 0.5       # لوحةٌ «حدّثت» أكثر من نصف قسمٍ (20 فأكثر) معًا: وقتها لا يدلّ على حلقةٍ جديدة
+
+
+def _src_cat(kind, s):
+    """قسم المصدر مطبَّعًا للتصنيف، و«مدبلج» بعده إن كان اسم العنصر مدبلجًا وقسمه لا يقول («يعرض الان تركي» في كاسبر يجمع
+    «طبيعة الحب مدبلج» و«الكرامة مترجم») — فـ«-مدبلج» و«+مدبلج» تفصلانهما."""
+    n = LIB.norm(s.cat) if s.cat else ""
+    if kind != "tv" and "dubbed" in s.key.versions and _DUB not in n and "dubbed" not in n:
+        n = f"{n} {_DUB}".strip()
+    return n
+
+
+def _bulk_lines(pairs, m, cut):
+    """خطوطٌ وقتُ تعديلها في هذا التصنيف لا يدلّ: أكثر من نصف ما يطابقه فيها «حُدّث» خلال المدة معًا (كاسبر يُحدّث القسم كله)."""
+    tot, new = {}, {}
+    for ps in pairs.values():
+        for x, n in ps:
+            if n and m(n):
+                tot[x.hk] = tot.get(x.hk, 0) + 1
+                if x.item.added >= cut:
+                    new[x.hk] = new.get(x.hk, 0) + 1
+    return {hk for hk, t in tot.items() if t >= BULK_MIN and new.get(hk, 0) > t * BULK_SHARE}
 
 
 _SCOPE = re.compile(r"\s*([^:：]{1,40}?)\s*[:：]\s*(.*)$")

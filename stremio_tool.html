@@ -1474,10 +1474,10 @@ function renderCats(){
         <button type="button" class="exb" data-ex="1" aria-expanded="${CAT_OPEN.has(c.id)}">كلمات الربط (${catTerms(c)}) ${CAT_OPEN.has(c.id) ? "▴" : "▾"}</button>
       </div>
       <div class="ex" ${CAT_OPEN.has(c.id) ? "" : "hidden"}>
-        <label class="fld"><span>من أسماء أقسام اللوحات${CAT_KIND === "tv" ? " وأسماء القنوات" : ""} — وكلمةٌ بـ«-» قبلها تُخرج</span>
+        <label class="fld"><span>من أسماء أقسام اللوحات${CAT_KIND === "tv" ? " وأسماء القنوات" : ""} — وكلمةٌ بـ«-» قبلها تُخرج، وبـ«+» مطلوبة معها</span>
           <input class="t" data-f="keys" value="${esc(c.keys)}" placeholder="ترك، turk، tr، -مدبلج" spellcheck="false"></label>
         ${CAT_KIND !== "tv" ? `<label class="fld"><span>ومن تصنيف العمل نفسه (اختياري)</span><input class="t" data-f="genres" value="${esc(c.genres || "")}" placeholder="أكشن، رعب"></label>` : ""}
-        ${CAT_KIND !== "tv" ? `<label class="fld"><span>يُعرض الآن فقط: نزلت له حلقةٌ خلال آخر … يوم (أو قسمه في اللوحة «يعرض الآن») — فارغ: الكل</span>
+        ${CAT_KIND !== "tv" ? `<label class="fld"><span>يُعرض الآن فقط: نزلت له حلقةٌ خلال آخر … يوم، ومن قسم «يعرض الآن» في اللوحة إن وُجد (سمارت) — فارغ: الكل</span>
           <input class="t ltr" data-f="recent" value="${c.recent || ""}" inputmode="numeric" placeholder="مثلًا 10" maxlength="2"></label>` : ""}
         <button type="button" class="del" data-del="1">حذف التصنيف</button>
       </div></div>`).join("") : '<div class="empty">لا تصنيفات لهذا النوع — أضف واحدًا.</div>';

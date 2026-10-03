@@ -3,7 +3,7 @@
 «TR | Turkish» في فالكون = «تركي»).
 
 كل تصنيفٍ نوعه (مسلسلات · أفلام · قنوات) واسمه وكلمات ربطه: قسم اللوحة الذي يحوي كلمةً منها يدخل فيه، والقناة باسمها
-أيضًا (كلمةٌ بـ«-» قبلها تُخرجه: «عرب، -مدبلج»)، وللأفلام والمسلسلات تصنيفات العمل نفسه أيضًا (‏genres: «أكشن» من حقل genre بلغتيه). وما لم يدخل
+أيضًا (كلمةٌ بـ«-» قبلها تُخرجه: «عرب، -مدبلج»، وبـ«+» مطلوبة معها: «ترك، +مدبلج»)، وللأفلام والمسلسلات تصنيفات العمل نفسه أيضًا (‏genres: «أكشن» من حقل genre بلغتيه). وما لم يدخل
 تصنيفًا في «أخرى». الرئيسية أقسامٌ ثلاثة (المسلسلات · الأفلام · القنوات)، وتصنيفات كل قسمٍ داخله: قائمة «تصنيف» في «اكتشف»
 بترتيبها هنا. ‏home (اختياري، مطفأٌ للكل افتراضًا — ‏LAYOUT): صفٌّ مستقلٌّ في الرئيسية أيضًا («رمضان - المسلسلات» في رمضان)؛ ‏on=False:
 مخفي.
@@ -34,17 +34,21 @@ KEYS_MAX = 600
 
 # 2: الرئيسية أقسامٌ لا صفوف تصنيفات — ما حُفظ قبلها تُطفأ صفوفه في الرئيسية مرةً
 # 3: «تركي يعرض الآن» — يُضاف أولَ تصنيفات المسلسلات لما حُفظ قبلها
-LAYOUT = 3
+# 4: ويُفصل المدبلج: «تركي مترجم يعرض الآن» و«تركي مدبلج يعرض الآن» (وما حرّره صاحب الحساب يبقى كما هو)
+LAYOUT = 4
 RECENT_MAX = 60
-# ‏recent (أيام): ما يُعرض الآن فعلًا — العمل في التصنيف إن نزلت له حلقةٌ خلال آخر N يوم (آخر تعديلٍ في اللوحة)، أو كان قسمه في اللوحة
-# «يعرض الآن» (‏NOW_TERMS) — فيتحدّث وحده كلما أضافت اللوحات حلقات
+# ‏recent (أيام): ما يُعرض الآن فعلًا — نزلت له حلقةٌ خلال آخر N يوم (آخر تعديلٍ في اللوحة). وإن كان في لوحةٍ من لوحات الحساب قسمٌ
+# «يعرض الآن» يطابق التصنيف («[TR] 2026 تركي مدبلج (يعرض الآن)» في سمارت) ← من تلك الأقسام وحدها (فيها ما توقّف من أشهر: يخرج).
+# ولوحةٌ تُحدّث وقت القسم كله معًا (كاسبر) وقتها لا يدلّ: قسمها «يعرض الآن» كما هو، وبلاه لا شيء منها
 NOW_TERMS = "يعرض الان, يعرض حاليا, يعرض حالياً, now showing, airing, ongoing"
 _C = lambda cid, kind, name, keys, home=False, genres="", recent=0: {"id": cid, "kind": kind, "name": name, "keys": keys,   # noqa: E731
                                                                      "genres": genres, "home": home, "on": True,
                                                                      **({"recent": recent} if recent else {})}
-NOW_ID = "s_tr_now"
+NOW_ID, DUB_NOW_ID = "s_tr_now", "s_trd_now"
+_OLD_NOW = ("تركي يعرض الآن", "ترك, turk, turkish, tr")      # قبل LAYOUT 4: المترجم والمدبلج معًا
 DEFAULTS = [
-    _C(NOW_ID, "series", "تركي يعرض الآن", "ترك, turk, turkish, tr", recent=10),
+    _C(NOW_ID, "series", "تركي مترجم يعرض الآن", "ترك, turk, turkish, tr, -مدبلج, -dubbed", recent=10),
+    _C(DUB_NOW_ID, "series", "تركي مدبلج يعرض الآن", "ترك, turk, turkish, tr, +مدبلج, +dubbed", recent=10),
     _C("s_ramadan", "series", "رمضان", "رمضان, ramadan"),
     _C("s_turkish", "series", "تركي", "ترك, turk, turkish, tr"),
     _C("s_arabic", "series", "عربي", "عرب, arab, مصر, خليج, سوري, شامي, لبنان, عراق, سعودي, كويت, gulf, egypt, khaliji, "
@@ -142,10 +146,26 @@ def get(data_dir, acct_id):
         for c in cats:
             if isinstance(c, dict):
                 c["home"] = False
-    if layout < 3 and not any(isinstance(c, dict) and c.get("id") == NOW_ID for c in cats):
-        at = next((i for i, c in enumerate(cats) if isinstance(c, dict) and c.get("kind") == "series"), len(cats))
-        cats.insert(at, copy.deepcopy(next(c for c in DEFAULTS if c["id"] == NOW_ID)))   # «تركي يعرض الآن» أولَ المسلسلات
+    if layout < 4:
+        _now_split(cats, layout)
     return cats
+
+
+def _now_split(cats, layout):
+    """«تركي يعرض الآن» أولَ المسلسلات (ما حُفظ قبل LAYOUT 3)، مترجمًا وبعده «تركي مدبلج يعرض الآن» (قبل 4). ما حرّره صاحب الحساب
+    (اسمه أو كلماته) يبقى كما هو، وما حذفه بعد 3 لا يعود."""
+    new = {c["id"]: c for c in DEFAULTS if c["id"] in (NOW_ID, DUB_NOW_ID)}
+    ids = lambda: [c.get("id") if isinstance(c, dict) else None for c in cats]
+    first_series = lambda: next((i for i, c in enumerate(cats) if isinstance(c, dict) and c.get("kind") == "series"), len(cats))
+    if NOW_ID in ids():
+        c = cats[ids().index(NOW_ID)]
+        if (c.get("name"), c.get("keys")) == _OLD_NOW:
+            c.update(name=new[NOW_ID]["name"], keys=new[NOW_ID]["keys"])
+    elif layout < 3:
+        cats.insert(first_series(), copy.deepcopy(new[NOW_ID]))
+    if DUB_NOW_ID not in ids():
+        at = ids().index(NOW_ID) + 1 if NOW_ID in ids() else first_series()
+        cats.insert(at, copy.deepcopy(new[DUB_NOW_ID]))
 
 
 def edited(data_dir, acct_id):
@@ -207,15 +227,15 @@ def reset(data_dir, acct_id):
 
 # ---- المطابقة ----
 def _terms(keys):
-    """«عرب، arab، -مدبلج» ← ([مطابِقات]، [مستثنيات]) مطبَّعةً."""
-    inc, exc = [], []
+    """«عرب، arab، -مدبلج، +مسلسل» ← ([مطابِقات]، [مستثنيات]، [مطلوبات: واحدةٌ منها على الأقل]) مطبَّعةً."""
+    inc, exc, req = [], [], []
     for t in re.split(r"[,،\n|]", keys or ""):
         t = t.strip()
-        neg = t[:1] in "-!"
-        t = norm(t[1:] if neg else t)
+        box = exc if t[:1] in "-!" else req if t[:1] == "+" else inc
+        t = norm(t[1:] if box is not inc else t)
         if t:
-            (exc if neg else inc).append(t)
-    return inc, exc
+            box.append(t)
+    return inc, exc, req
 
 
 def _hit(term, name):
@@ -226,10 +246,11 @@ def _hit(term, name):
 
 
 def matcher(cat):
-    inc, exc = _terms(cat.get("keys"))
+    inc, exc, req = _terms(cat.get("keys"))
 
     def match(name):
-        return bool(inc) and any(_hit(t, name) for t in inc) and not any(_hit(t, name) for t in exc)
+        return (bool(inc) and any(_hit(t, name) for t in inc) and not any(_hit(t, name) for t in exc)
+                and (not req or any(_hit(t, name) for t in req)))
     return match
 
 

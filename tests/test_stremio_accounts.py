@@ -487,7 +487,7 @@ def through_server():
         print("== «التصنيفات»: تصنيفات سمارت سوق لكل البوابات ==")
         c, r = post("/api/stremio/categories", None)
         check("الافتراضية، ومعاينتها على حسابٍ من الحسابات قوائمه في الذاكرة", c == 200 and not r.get("edited")
-              and [x["name"] for x in r.get("cats", [])][:3] == ["تركي يعرض الآن", "رمضان", "تركي"] and r.get("preview", {}).get("series", {}).get("total", 0) > 0
+              and [x["name"] for x in r.get("cats", [])][:4] == ["تركي مترجم يعرض الآن", "تركي مدبلج يعرض الآن", "رمضان", "تركي"] and r.get("preview", {}).get("series", {}).get("total", 0) > 0
               and r.get("sample"), json.dumps({k: r.get(k) for k in ("edited", "sample", "preview")}, ensure_ascii=False)[:300])
         mine = r["cats"] + [{"id": "s_pick", "kind": "series", "name": "مختارات", "keys": "أجنبية", "home": True}]
         c, r = post("/api/stremio/categories", {"cats": mine, "preview": True})

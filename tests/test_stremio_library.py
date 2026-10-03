@@ -657,9 +657,10 @@ def akhi_and_inspect():
     b.cat("series", 1, "Turkish - تركية مترجمة")
     b.cat("series", 2, "Turkish - تركية مدبلجة")
     # الأسماء كما في اللوحتين فعلًا (صفحة المحتوى، أكتوبر 2026)
-    a.series = [{"series_id": 1, "name": "أخي مترجم", "category_id": "1", "releaseDate": "2026-09-01", "last_modified": "20"},
-                {"series_id": 2, "name": "أخي", "category_id": "2", "releaseDate": "2026-09-01", "last_modified": "19"},
-                {"series_id": 3, "name": "آه يا أخي", "category_id": "1", "last_modified": "5"}]
+    t = int(time.time())                                  # «آه يا أخي» في «يعرض الآن» وآخر حلقاته قبل 6 أشهر (كما في سمارت فعلًا)
+    a.series = [{"series_id": 1, "name": "أخي مترجم", "category_id": "1", "releaseDate": "2026-09-01", "last_modified": str(t - 2 * 86400)},
+                {"series_id": 2, "name": "أخي", "category_id": "2", "releaseDate": "2026-09-01", "last_modified": str(t - 2 * 86400 - 1)},
+                {"series_id": 3, "name": "آه يا أخي", "category_id": "1", "last_modified": str(t - 180 * 86400)}]
     b.series = [{"series_id": 11, "name": "أخي (مترجم)", "category_id": "1", "releaseDate": "2026", "last_modified": "18"},
                 {"series_id": 12, "name": "أخي (مترجم) S01", "category_id": "1", "last_modified": "17"},
                 {"series_id": 13, "name": "أخي (مدبلج) S01", "category_id": "2", "last_modified": "16"},
@@ -701,15 +702,20 @@ def akhi_and_inspect():
               and sum(1 for x in ser["works"] if x["name"] == "اخي العزيز") == 2, json.dumps(ser["conflicts"], ensure_ascii=False))
         check("واسمٌ لا يوجد ← لا شيء", S.inspect_work(lines, "لا يوجد أبدًا")["kinds"] == [])
 
-        print("== «تركي يعرض الآن»: يتحدّث مع ما يُعرض فعلًا ==")
+        print("== «تركي يعرض الآن»: من أقسام «يعرض الآن» في اللوحة، والمترجم وحده والمدبلج وحده ==")
         by = S._cat_index(lines, S.library(lines, "series"), "series")["by"]
-        now_names = [w.name for w in by.get("s_tr_now", [])]
-        check("ما نزلت له حلقةٌ خلال 10 أيام، وما قسمه في اللوحة «(يعرض الآن)» (مرح) — الأحدث أولًا",
-              now_names[:1] == ["مسلسل تركي جديد"] and set(now_names) == {"مسلسل تركي جديد", "أخي", "آه يا أخي"}, str(now_names))
-        check("وما توقّف (آخر حلقةٍ قبل 40 يومًا) في «تركي» وحده", "مسلسل تركي قديم" not in now_names
-              and "مسلسل تركي قديم" in [w.name for w in by.get("s_turkish", [])])
-        check("وهو أول تصنيفات المسلسلات في «اكتشف»", next(e["options"] for c in S.manifest(ca, "https://g", "مرح", lines=lines)["catalogs"]
-              if c["id"] == "sq_series" for e in c["extra"] if e["name"] == "genre")[0].startswith("تركي يعرض الآن"))
+        sub_now, dub_now = [w.name for w in by.get("s_tr_now", [])], [w.name for w in by.get("s_trd_now", [])]
+        check("في مرح «[TR] 2026 تركي مترجم (يعرض الآن)» ← «تركي مترجم يعرض الآن» ما فيه ونزلت له حلقةٌ خلال 10 أيام",
+              sub_now == ["أخي"], str(sub_now))
+        check("وما بقي في قسم «يعرض الآن» وتوقّف من 6 أشهر («آه يا أخي») ليس فيه، ويبقى في «تركي»", "آه يا أخي" not in sub_now
+              and "آه يا أخي" in [w.name for w in by.get("s_turkish", [])])
+        check("و«[TR] 2026 تركي مدبلج (يعرض الآن)» ← «تركي مدبلج يعرض الآن» وحده", dub_now == ["أخي"], str(dub_now))
+        check("وقسم اللوحة يكفي: ما «حُدّث» أمس في قسمٍ عاديٍّ (فالكون) ليس فيهما، ويبقى في «تركي»",
+              "مسلسل تركي جديد" not in sub_now + dub_now and {"مسلسل تركي جديد", "مسلسل تركي قديم"} <= {w.name for w in by.get("s_turkish", [])})
+        opts = next(e["options"] for c in S.manifest(ca, "https://g", "مرح", lines=lines)["catalogs"]
+                    if c["id"] == "sq_series" for e in c["extra"] if e["name"] == "genre")
+        check("وهما أول تصنيفات المسلسلات في «اكتشف»", opts[0].startswith("تركي مترجم يعرض الآن") and opts[1].startswith("تركي مدبلج يعرض الآن"),
+              str(opts[:3]))
 
         print("== اختيار السنة: «حسب السنة» في «اكتشف»، والسنة تصنيفٌ في كتالوج النوع ==")
         man = S.manifest(ca, "https://g", "مرح", lines=lines)
@@ -729,15 +735,15 @@ def akhi_and_inspect():
         sr = lambda q, kind="series": [m["name"] for m in S.lib_catalog(lines, kind, CATALOG[kind], {"search": q}, pre)["metas"]]
         everywhere = sr("اخي")
         check("بلا تصنيف ← في الجميع (ومنها «اخي العزيز» عملين)", {"اخي العزيز", "اخي العزيز (مترجم)", "آه يا أخي"} <= set(everywhere), str(everywhere))
-        check("«تركي يعرض الآن: اخي» ← ما يُعرض الآن وحده (لا «اخي العزيز»)", sr("تركي يعرض الآن: اخي") == ["أخي", "آه يا أخي"],
-              str(sr("تركي يعرض الآن: اخي")))
-        check("والاسم بعدده («تركي يعرض الآن (3)») وبنقطتين عريضتين «：» وبلا مسافات", sr("تركي يعرض الآن (3)：اخي") == ["أخي", "آه يا أخي"]
-              and sr("تركي يعرض الآن:اخي") == ["أخي", "آه يا أخي"])
+        check("«تركي مترجم يعرض الآن: اخي» ← ما يُعرض الآن وحده (لا «اخي العزيز» ولا «آه يا أخي»)", sr("تركي مترجم يعرض الآن: اخي") == ["أخي"],
+              str(sr("تركي مترجم يعرض الآن: اخي")))
+        check("والاسم بعدده («… (2)») وبنقطتين عريضتين «：» وبلا مسافات", sr("تركي مترجم يعرض الآن (1)：اخي") == ["أخي"]
+              and sr("تركي مدبلج يعرض الآن:اخي") == ["أخي"])
         check("«2026: اخي» و«سنة 2026: اخي» ← أعمال تلك السنة", sr("2026: اخي") == ["أخي"] and sr("سنة 2026: اخي") == ["أخي"],
               str(sr("2026: اخي")))
         check("«فالكون: اخي» ← ما في ذلك المصدر وحده (لا «آه يا أخي» من مرح)", "آه يا أخي" not in sr("فالكون: اخي")
               and set(sr("فالكون: اخي")) == {"أخي", "اخي العزيز", "اخي العزيز (مترجم)"}, str(sr("فالكون: اخي")))
-        check("«تركي يعرض الآن:» وحده ← التصنيف كله", set(sr("تركي يعرض الآن:")) == {"مسلسل تركي جديد", "أخي", "آه يا أخي"})
+        check("«تركي مدبلج يعرض الآن:» وحده ← التصنيف كله", sr("تركي مدبلج يعرض الآن:") == ["أخي"])
         check("تصنيفٌ من نوعٍ آخر («رعب» للأفلام) ← لا شيء في المسلسلات، وسنةٌ في القنوات ← لا شيء",
               sr("رعب: اخي") == [] and sr("2026: اخي", "tv") == [])
         check("وما قبل النقطتين ليس تصنيفًا ولا سنةً ولا مصدرًا ← بحثٌ عاديٌّ بالنص كله («Mission: Impossible»)",
@@ -747,6 +753,49 @@ def akhi_and_inspect():
               S._takes_key(lambda c, k: 0) is True and S._takes_key(lambda c: 0) is False)
     finally:
         for srv in (sa, sb):
+            srv.shutdown()
+
+
+def now_showing():
+    print("== «يعرض الآن» في لوحاتٍ أخرى: قسمٌ يجمع المترجم والمدبلج (كاسبر)، ووقتٌ «يُحدَّث» للقسم كله، وبلا قسم «يعرض الآن» ==")
+    S.reset()
+    now = int(time.time())
+    c, f, k = MP.Panel("nc"), MP.Panel("nf", "fu", "fp"), MP.Panel("nk", "ku", "kp")
+    c.cat("series", 1, "يعرض الان تركي")                 # كاسبر: الأسماء كما في لوحته (أكتوبر 2026)
+    c.cat("series", 2, "TURKISH تركي |AR|")
+    c.series = [{"series_id": 1, "name": "طبيعة الحب مدبلج", "category_id": "1", "last_modified": str(now - 2 * 86400)},
+                {"series_id": 2, "name": "الكرامة مترجم", "category_id": "1", "last_modified": str(now - 2 * 86400)},
+                {"series_id": 3, "name": "الغرفة المجاورة", "category_id": "1", "last_modified": str(now - 2 * 86400)}] + \
+               [{"series_id": 10 + i, "name": f"مسلسل قديم {i}", "category_id": "2", "last_modified": str(now - 86400)} for i in range(25)]
+    f.cat("series", 1, "Turkish - تركية مترجمة")          # فالكون: بلا قسم «يعرض الآن»
+    f.cat("series", 2, "Turkish - تركية مدبلجة")
+    f.series = [{"series_id": 1, "name": "حلقة أمس", "category_id": "1", "last_modified": str(now - 86400)},
+                {"series_id": 2, "name": "توقّف من شهر", "category_id": "1", "last_modified": str(now - 40 * 86400)},
+                {"series_id": 3, "name": "طائر الرفراف", "category_id": "2", "last_modified": str(now - 86400)}] + \
+               [{"series_id": 10 + i, "name": f"قديم {i}", "category_id": "1", "last_modified": str(now - 200 * 86400)} for i in range(25)]
+    k.cat("series", 1, "TURKISH تركي")                    # لوحةٌ «حدّثت» القسم كله أمس، وبلا قسم «يعرض الآن»
+    k.series = [{"series_id": 1 + i, "name": f"عمل {i}", "category_id": "1", "last_modified": str(now - 86400)} for i in range(25)]
+    servers = [MP.serve(c, bind="127.0.0.3"), MP.serve(f, bind="127.0.0.4"), MP.serve(k, bind="127.0.0.5")]
+    cc, cf, ck = (S.Cfg(f"http://127.0.0.{3 + i}:{srv.server_address[1]}", u, p)
+                  for i, (srv, u, p) in enumerate(zip(servers, ("u", "fu", "ku"), ("p", "fp", "kp"))))
+    try:
+        for cfg in (cc, cf, ck):
+            S.warm(cfg)
+
+        def now_of(lines):
+            by = S._cat_index(lines, S.library(lines, "series"), "series")["by"]
+            return sorted(w.name for w in by.get("s_tr_now", [])), sorted(w.name for w in by.get("s_trd_now", []))
+        sub, dub = now_of([{"cfg": cc, "label": "كاسبر"}])
+        check("كاسبر «يعرض الان تركي» ← المترجم وما لم يُذكر في «تركي مترجم يعرض الآن»، و«… مدبلج» من اسمه في «تركي مدبلج يعرض الآن»",
+              sub == ["الغرفة المجاورة", "الكرامة"] and dub == ["طبيعة الحب"], str((sub, dub)))
+        check("وقسمه العادي «حُدّث» كله أمس ← ليس منه شيءٌ فيهما", not any(n.startswith("مسلسل قديم") for n in sub + dub))
+        sub, dub = now_of([{"cfg": cf, "label": "فالكون"}])
+        check("بلا قسم «يعرض الآن» (فالكون) ← ما نزلت له حلقةٌ خلال 10 أيام، والمترجم وحده والمدبلج وحده",
+              sub == ["حلقة أمس"] and dub == ["طائر الرفراف"], str((sub, dub)))
+        sub, dub = now_of([{"cfg": ck, "label": "ك"}])
+        check("ولوحةٌ «حدّثت» أكثر من نصف القسم معًا ← وقتها لا يدلّ: لا شيء (بدل الأعمال القديمة كلها)", sub == [] and dub == [], str(sub[:3]))
+    finally:
+        for srv in servers:
             srv.shutdown()
 
 
@@ -836,12 +885,30 @@ def categories():
         mine1[0]["home"] = True
         K.save(d, "9", mine1)
         check("وبعده «صفٌّ في الرئيسية أيضًا» يُحفظ لمن أراده", [c["home"] for c in K.get(d, "9")] == [True, False])
-        old = {"8": {"cats": [c for c in K.defaults() if c["id"] != K.NOW_ID][:3], "at": 1, "layout": 2}}
+        old = {"8": {"cats": [c for c in K.defaults() if c["id"] not in (K.NOW_ID, K.DUB_NOW_ID)][:3], "at": 1, "layout": 2}}
         with open(os.path.join(d, "stremio_categories.json"), "w", encoding="utf-8") as f:
             json.dump(old, f, ensure_ascii=False)
         got8 = K.get(d, "8")
-        check("وتصنيفاتٌ حُفظت قبل «تركي يعرض الآن» ← يُضاف أولَ مسلسلاتها (مرةً)", [c["id"] for c in got8][:2] == [K.NOW_ID, "s_ramadan"]
-              and got8[0].get("recent") == 10, str([c["id"] for c in got8]))
+        check("وتصنيفاتٌ حُفظت قبل «تركي يعرض الآن» ← يُضاف أولَ مسلسلاتها مترجمًا ثم مدبلجًا (مرةً)",
+              [c["id"] for c in got8][:3] == [K.NOW_ID, K.DUB_NOW_ID, "s_ramadan"] and got8[0].get("recent") == got8[1].get("recent") == 10
+              and [c["name"] for c in got8][:2] == ["تركي مترجم يعرض الآن", "تركي مدبلج يعرض الآن"], str([c["id"] for c in got8]))
+        mixed = {"id": K.NOW_ID, "kind": "series", "name": "تركي يعرض الآن", "keys": "ترك, turk, turkish, tr", "recent": 10, "home": False, "on": True}
+        rest = [c for c in K.defaults() if c["id"] not in (K.NOW_ID, K.DUB_NOW_ID)][:2]
+        with open(os.path.join(d, "stremio_categories.json"), "w", encoding="utf-8") as f:
+            json.dump({"7": {"cats": [mixed] + rest, "at": 1, "layout": 3},
+                       "6": {"cats": [dict(mixed, keys="ترك, يعرض")] + rest, "at": 1, "layout": 3},
+                       "5": {"cats": rest, "at": 1, "layout": 3}}, f, ensure_ascii=False)
+        g7, g6, g5 = K.get(d, "7"), K.get(d, "6"), K.get(d, "5")
+        check("و«تركي يعرض الآن» القديم (المترجم والمدبلج معًا) ← «تركي مترجم يعرض الآن» بـ«-مدبلج»، وبعده «تركي مدبلج يعرض الآن»",
+              [(c["id"], c["name"]) for c in g7][:2] == [(K.NOW_ID, "تركي مترجم يعرض الآن"), (K.DUB_NOW_ID, "تركي مدبلج يعرض الآن")]
+              and "-مدبلج" in g7[0]["keys"] and "+مدبلج" in g7[1]["keys"], str([(c["id"], c["name"], c["keys"]) for c in g7][:2]))
+        check("وما حرّره صاحب الحساب يبقى كما هو (والمدبلج بعده)، وما حذفه لا يعود (والمدبلج أولَ المسلسلات)",
+              g6[0]["keys"] == "ترك, يعرض" and g6[0]["name"] == "تركي يعرض الآن" and g6[1]["id"] == K.DUB_NOW_ID
+              and [c["id"] for c in g5] == [K.DUB_NOW_ID] + [c["id"] for c in rest], str([c["id"] for c in g5]))
+        m = K.matcher({"keys": "ترك, tr, +مدبلج, +dubbed, -كرتون"})
+        check("«+كلمة» مطلوبة مع غيرها: «ترك، +مدبلج» ← «تركي مدبلج» لا «تركي مترجم» ولا «مسلسلات مدبلجة» وحدها",
+              [m(K.norm(n)) for n in ("TURKEY - تركي مدبلج", "[TR] 2026 تركي مترجم (يعرض الآن)", "Dubbed Series - مسلسلات مدبلجه",
+                                      "TR Dubbed", "كرتون تركي مدبلج")] == [True, False, False, True, False])
         check("ومدته تُحرَّر (حتى 60 يومًا) وتُحفظ", K.clean([{"kind": "series", "name": "س", "keys": "x", "recent": "90"}])[0]["recent"] == 60
               and "recent" not in K.clean([{"kind": "series", "name": "س", "keys": "x", "recent": ""}])[0])
         check("وقائمة «اكتشف» بالتصنيف: كل ما في «تركي»", [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {"genre": "تركي"}, pre)["metas"]]
@@ -895,6 +962,7 @@ def main():
     movie_genres()
     disk_copy()
     akhi_and_inspect()
+    now_showing()
     categories()
     print("\n" + "-" * 40)
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
