@@ -150,6 +150,8 @@ a.acc{text-decoration:none;border-radius:10px}
 .tabs2{display:flex;gap:6px;margin:12px 0 8px}
 .tabs2 button{flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--line);background:var(--sf2);font-weight:700;font-size:.88rem;color:var(--mute)}
 .tabs2 button.on{border-color:var(--purple);color:var(--ink);background:color-mix(in srgb,var(--purple) 14%,var(--sf))}
+.plat{max-width:340px;margin:0 0 6px}
+.plat button small{display:block;font-weight:400;font-size:.7rem;color:var(--mute)}
 
 .bnav{position:fixed;inset-inline:0;bottom:0;z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
 .bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;color:var(--mute);font-size:.7rem;font-weight:500;border-radius:12px;text-decoration:none}
@@ -273,14 +275,20 @@ h1{font-size:1.3rem;margin:0 0 2px}
 <header class="top">
   <button class="icon-btn" id="themeBtn" title="الوضع الليلي/النهاري" aria-label="الوضع الليلي/النهاري"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
   <a class="icon-btn" id="lnkOut" title="تسجيل الخروج" aria-label="تسجيل الخروج"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg></a>
-  <a class="brand" id="lnkBrand"><span class="mark"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M10 9l4 2-4 2z"/><path d="M8 21h8"/></svg></span><span><b>سمارت سوق</b><small>Stremio</small></span></a>
+  <a class="brand" id="lnkBrand"><span class="mark"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M10 9l4 2-4 2z"/><path d="M8 21h8"/></svg></span><span><b>سمارت سوق</b><small>Stremio · Nuvio</small></span></a>
 </header>
 
 <main>
   <nav class="vtabs" aria-label="الصفحات"><a id="tabAcc">الحسابات</a><a id="tabCat">التصنيفات</a><a id="tabAdd">الإضافات واللوحات</a></nav>
   <div id="viewAccounts">
-  <h1>حسابات Stremio</h1>
-  <p class="sub">لكل بوابةٍ حساباتها. الإيميل يوزر البوابة على <b class="mono" id="dom">@tv.ssouq.com</b> وكلمة المرور باسورده.</p>
+  <div class="tabs2 plat" id="plat" role="tablist" aria-label="المنصّة">
+    <button type="button" role="tab" data-plat="stremio">Stremio<small>حساب Stremio بإضافتنا</small></button>
+    <button type="button" role="tab" data-plat="nuvio">Nuvio<small>حساب Nuvio بإضافتنا</small></button>
+  </div>
+  <h1 id="accTtl">حسابات Stremio</h1>
+  <p class="sub" id="subSt">لكل بوابةٍ حساباتها. الإيميل يوزر البوابة على <b class="mono" id="dom">@tv.ssouq.com</b> وكلمة المرور باسورده.</p>
+  <p class="sub" id="subNv" hidden>حساب Nuvio لكل يوزر: إيميلٌ محايد وكلمة مرورٍ عشوائية — <b>لا يوزر ولا باسورد Xtream عند العميل</b>،
+    وإضافة سمارت سوق مثبّتةٌ فيه. ابحث عن اليوزر ثم «إنشاء حساب Nuvio».</p>
 
   <div class="gates" id="gates" role="tablist" aria-label="البوابات"></div>
 
@@ -307,7 +315,7 @@ h1{font-size:1.3rem;margin:0 0 2px}
   </section>
 
   <section>
-    <h2>حسابات <span id="gName2">البوابة</span> <span class="count" id="nAcc">0</span><span class="grow"></span>
+    <h2><span id="accWord">حسابات</span> <span id="gName2">البوابة</span> <span class="count" id="nAcc">0</span><span class="grow"></span>
       <button class="ghost" id="expBtn" title="يقرأ تاريخ انتهاء كل يوزر من السيرفر">تحديث الانتهاء</button></h2>
     <div class="tools">
       <input class="t ltr" id="filter" placeholder="تصفية بيوزر أو إيميل" autocomplete="off">
@@ -459,6 +467,17 @@ h1{font-size:1.3rem;margin:0 0 2px}
   </div>
 </div>
 
+<div class="overlay" id="tvOverlay" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="tvTtl">
+    <h3 id="tvTtl">ربط تلفاز بكود</h3>
+    <p class="hint">في Nuvio على تلفاز العميل اختر الدخول بكود (QR)، واكتب هنا الكود الظاهر — فيدخل التلفاز بحسابه وإضافته جاهزة،
+      بلا كتابة إيميلٍ ولا كلمة مرور. <span id="tvWho" class="mono"></span></p>
+    <input class="t ltr mono" id="tvCode" placeholder="الكود" autocomplete="off" autocapitalize="characters" maxlength="32">
+    <div class="err" id="tvMsg"></div>
+    <div class="acts"><button class="btn" id="tvOk">ربط</button><button class="ghost" id="tvCancel">إلغاء</button></div>
+  </div>
+</div>
+
 <nav class="bnav">
   <a id="lnkHome"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>الإنشاء</a>
   <a id="lnkRenew"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>التجديد</a>
@@ -476,6 +495,9 @@ const norm = s => String(s == null ? "" : s).trim().toLowerCase().replace(/[٠-�
 const safeUrl = u => /^https?:\/\//i.test(String(u || ""));
 const GKEY = "xm_stremio_gate";
 let D = null, GATE = "", HITS = [], MAILCTX = null;
+const PKEY = "xm_stremio_plat";
+let PLAT = "stremio", NV = null;                 // المنصّة: Stremio أو Nuvio (مسارٌ مستقل بحساباته)
+try { if (localStorage.getItem(PKEY) === "nuvio") PLAT = "nuvio"; } catch {}
 
 for (const [id, p] of [["lnkHome", "/"], ["lnkBrand", "/"], ["lnkRenew", "/renew"], ["lnkOut", "/logout"]]) $(id).href = B + p;
 $("themeBtn").onclick = () => { const l = document.documentElement.getAttribute("data-theme") === "light";
@@ -509,7 +531,8 @@ const I = {
   more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
   unlink: '<svg viewBox="0 0 24 24"><path d="M9 15l6-6M7 12l-2 2a4 4 0 0 0 5.7 5.7l2-2M17 12l2-2a4 4 0 0 0-5.7-5.7l-2 2M3 3l18 18"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-  trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'};
+  trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
+  tv: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg>'};
 const gateName = () => ((D && D.gates.find(g => g.id === GATE)) || {}).name || "البوابة";
 
 // ---- البوابات والقائمة ----
@@ -525,11 +548,11 @@ async function load(gate){
   $("dom").textContent = "@" + (D.domain || "tv.ssouq.com");
   $("gates").innerHTML = gatesHtml();
   $("gName").textContent = $("gName2").textContent = $("gName0").textContent = gateName();
-  renderList();
+  if (PLAT === "nuvio") await loadNuvio(); else renderList();
 }
 function gatesHtml(){
   return D.gates.length ? D.gates.map(g => `<button class="gate${g.id === GATE ? " on" : ""}" role="tab" aria-selected="${g.id === GATE}"
-      data-gate="${esc(g.id)}">${esc(g.name || "بوابة")} <span class="count">${g.count}</span>${g.due ? `<span class="due" title="منتهية أو تنتهي خلال ٧ أيام">⚠ ${g.due}</span>` : ""}</button>`).join("")
+      data-gate="${esc(g.id)}">${esc(g.name || "بوابة")} <span class="count">${PLAT === "nuvio" ? ((NV && NV.counts[g.id]) || 0) : g.count}</span>${g.due && PLAT !== "nuvio" ? `<span class="due" title="منتهية أو تنتهي خلال ٧ أيام">⚠ ${g.due}</span>` : ""}</button>`).join("")
     : '<div class="empty">لا بوابات في حسابك بعد — أضفها من صفحة الإنشاء.</div>';
 }
 async function selectGate(gate){
@@ -579,6 +602,7 @@ $("expBtn").onclick = () => refreshExp(false);
 $("expChips").addEventListener("click", e => { const b = e.target.closest("[data-b]"); if (b) { EXPF = b.dataset.b; renderList(); } });
 
 function renderList(){
+  if (PLAT === "nuvio") return renderNuvio();
   const f = norm($("filter").value), by = $("sort").value, all = (D && D.accounts) || [];
   const counts = {all: all.length};
   all.forEach(a => { const k = bucket(a); counts[k] = (counts[k] || 0) + 1; });
@@ -755,6 +779,7 @@ $("findForm").addEventListener("submit", async e => {
   finally { b.disabled = false; }
 });
 function renderHits(){
+  if (PLAT === "nuvio") return renderNvHits();
   $("res").innerHTML = `<div class="cards">${HITS.map((x, i) => `<div class="card">
       <div class="row1">
         <div class="creds"><span>اليوزر <b class="mono">${esc(x.username)}</b></span><span>الباسورد <b class="mono">${esc(x.password)}</b></span>
@@ -790,6 +815,13 @@ document.addEventListener("click", e => {
   else if (b.dataset.xapply || b.dataset.xdrop || b.dataset.xdel) extAction(b);
   else if (b.dataset.copy) copy(b.dataset.copy, b.dataset.what);
   else if (b.dataset.make) makeAccount(+b.dataset.make, b);
+  else if (b.dataset.plat) setPlat(b.dataset.plat);
+  else if (b.dataset.nmake) nvMake(+b.dataset.nmake, b);
+  else if (b.dataset.nmore) nvMenu(b.dataset.nmore);
+  else if (b.dataset.ntv) openTv(b.dataset.ntv);
+  else if (b.dataset.nre) nvDo("/api/nuvio/reinstall", b.dataset.nre, {}, b, "حُدّثت الإضافة في حسابه — أعد فتح Nuvio");
+  else if (b.dataset.nrelink) nvDo("/api/nuvio/reinstall", b.dataset.nrelink, {relink: true}, b, "أُعيد الربط برابطٍ جديد، والقديم توقّف");
+  else if (b.dataset.noff) { if (confirm("إلغاء تفعيل إضافة سمارت سوق في حساب Nuvio هذا؟ تُزال من حسابه ويتوقف رابطها، ويبقى الحساب (و«إعادة الربط» تعيدها).")) nvDo("/api/nuvio/disable", b.dataset.noff, {}, b, "أُلغي التفعيل — أُزيلت الإضافة من حسابه"); }
   else if (b.dataset.retry) retryMade(+b.dataset.retry, b);
   else if (b.dataset.copyall) copy(allText(), "نُسخت الحسابات");
   else if (b.dataset.mail) openMail(b.dataset.mail);
@@ -803,6 +835,107 @@ document.addEventListener("click", e => {
   else if (b.dataset.lnk) linkHit(+b.dataset.lnk, b);
 });
 
+
+// ---- Nuvio: حسابٌ بإيميلٍ محايد وكلمة مرورٍ عشوائية (لا بيانات Xtream عند العميل) وإضافتنا فيه، وربط التلفاز بالكود ----
+const nvText = (email, pass) => `🎬 حسابك في Nuvio — المحتوى جاهزٌ فيه:\nالإيميل: ${email}\nكلمة المرور: ${pass}\n\n`
+  + `حمّل تطبيق Nuvio وسجّل الدخول بهما، تجد إضافة «سمارت سوق» بأفلامها ومسلسلاتها وقنواتها.\n\n`
+  + `• على التلفاز: إن اخترت الدخول بكود (QR) أرسل لنا الكود الظاهر، فنربط تلفازك بلا كتابة.`;
+function setPlat(p){
+  PLAT = p === "nuvio" ? "nuvio" : "stremio";
+  try { localStorage.setItem(PKEY, PLAT); } catch {}
+  const nv = PLAT === "nuvio";
+  document.querySelectorAll("#plat [data-plat]").forEach(b => { const on = b.dataset.plat === PLAT; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  $("accTtl").textContent = nv ? "حسابات Nuvio" : "حسابات Stremio";
+  $("accWord").textContent = nv ? "حسابات Nuvio في" : "حسابات";
+  $("subSt").hidden = nv; $("subNv").hidden = !nv;
+  $("mkSec").hidden = nv;                          // «إنشاء يوزر Stremio» لـ Stremio وحده؛ في Nuvio من البحث
+  $("expBtn").hidden = $("sort").hidden = $("expChips").hidden = nv;
+  if (HITS.length) renderHits();
+  if (!D) return;
+  if (nv) loadNuvio(); else { $("gates").innerHTML = gatesHtml(); renderList(); }
+}
+async function loadNuvio(){
+  try { NV = await api("/api/nuvio/accounts?gate=" + encodeURIComponent(GATE)); }
+  catch(e) { NV = {accounts: [], counts: {}}; $("list").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+  $("gates").innerHTML = gatesHtml();
+  if (HITS.length) renderHits();
+  renderNuvio();
+}
+const nvOf = username => ((NV && NV.accounts) || []).find(a => a.username === username);
+const ago = t => t ? new Date(t * 1000).toISOString().slice(0, 16).replace("T", " ") : "";
+function renderNuvio(){
+  const f = norm($("filter").value), all = (NV && NV.accounts) || [];
+  const rows = all.filter(a => !f || norm(a.username).includes(f) || norm(a.email).includes(f)).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  $("nAcc").textContent = all.length;
+  $("list").innerHTML = rows.length ? `<div class="cards">${rows.map(a => { const off = a.status === "off", u = esc(a.username); return `<div class="card acct">
+      <div class="ah"><b class="mono user">${u}</b><span class="pill ${off ? "bad" : "ok"}">${off ? "مُلغى التفعيل" : "مفعّل"}</span></div>
+      <dl class="kv"><div><dt>الإيميل</dt><dd class="mono">${esc(a.email)}</dd></div><div><dt>كلمة المرور</dt><dd class="mono">${esc(a.password)}</dd></div></dl>
+      <div class="tags">${off ? '<span class="tag bad">الإضافة أُزيلت من حسابه ورابطها متوقف</span>'
+          : `<span class="tag ok" title="${esc(ago(a.addon_at))}">الإضافة ${esc(a.addon_v || "")}</span>`}${a.addon_v && NV.version && a.addon_v !== NV.version && !off
+          ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ نسخةٌ أقدم</span>' : ""}${a.tvs
+          ? `<span class="tag new" title="آخر ربط ${esc(ago(a.tv_at))}">📺 ${a.tvs} تلفاز</span>` : ""}<span class="tag">أُنشئ ${esc(a.created)}</span></div>
+      <div class="abar">
+        ${off ? `<button class="acc" data-nrelink="${u}">${I.sync}إعادة الربط</button>`
+          : `<button class="acc" data-copy="${esc(nvText(a.email, a.password))}" data-what="نُسخ الحساب">${I.copy}نسخ الحساب</button>
+             <button class="ibtn" data-ntv="${u}" title="ربط تلفاز بكود" aria-label="ربط تلفاز بكود">${I.tv}</button>`}
+        <button class="ibtn" data-nmore="${u}" title="المزيد" aria-label="المزيد">${I.more}</button>
+      </div>
+    </div>`; }).join("")}</div>`
+    : `<div class="empty">${f ? "لا حساب يطابق التصفية." : "لا حسابات Nuvio في هذه البوابة بعد — ابحث عن يوزرٍ أعلاه ثم «إنشاء حساب Nuvio»."}</div>`;
+}
+function renderNvHits(){
+  $("res").innerHTML = `<div class="cards">${HITS.map((x, i) => { const n = nvOf(x.username), on = n && n.status !== "off"; return `<div class="card">
+      <div class="row1">
+        <div class="creds"><span>اليوزر <b class="mono">${esc(x.username)}</b></span>${on ? `<span>Nuvio <b class="mono">${esc(n.email)}</b></span>` : ""}</div>
+        <div class="acts">${on
+            ? `<button class="acc" data-copy="${esc(nvText(n.email, n.password))}" data-what="نُسخ الحساب">${I.copy}نسخ الحساب</button>
+               <button class="ghost st" data-ntv="${esc(x.username)}">${I.tv}ربط تلفاز</button>`
+            : `<button class="acc" data-nmake="${i}">${I.user}${n ? "إعادة تفعيل حساب Nuvio" : "إنشاء حساب Nuvio"}</button>`}</div>
+      </div>
+      <div class="meta">${x.package_type ? `<span>${esc(x.package_type)}</span>` : ""}${x.status ? `<span>${esc(x.status)}</span>` : ""}${x.exp ? `<span>ينتهي ${esc(x.exp)}</span>` : ""}</div>
+    </div>`; }).join("")}</div>`;
+}
+async function nvMake(i, btn){
+  const x = HITS[i]; if (!x) return;
+  btn.disabled = true; const label = btn.innerHTML; btn.textContent = "جاري الإنشاء…";
+  try {
+    const d = await api("/api/nuvio/account", {gate: GATE, username: x.username, password: x.password, line: x.line || ""});
+    await loadNuvio();
+    await copy(nvText(d.email, d.password), d.created ? "أُنشئ حساب Nuvio ونُسخ" : "الحساب جاهز — نُسخ");
+  } catch(e) { toast(e.message, true); btn.disabled = false; btn.innerHTML = label; }
+}
+function nvMenu(username){
+  const a = nvOf(username); if (!a) return;
+  const u = esc(a.username), off = a.status === "off";
+  openSheet(a.username, a.email, [
+    off ? "" : sitem(`data-nre="${u}"`, I.sync, "تحديث الإضافة", "تعود أول قائمة إضافاته بأحدث نسخة، وإضافاته الأخرى كما هي"),
+    off ? "" : sitem(`data-ntv="${u}"`, I.tv, "ربط تلفاز بكود", "الكود الظاهر في Nuvio على التلفاز"),
+    sitem(`data-nrelink="${u}"`, I.link, "إعادة الربط", off ? "تُثبَّت الإضافة في حسابه من جديد برابطٍ جديد" : "رابطٌ جديد للإضافة ويتوقف القديم (إن نُسخ لحسابٍ آخر)"),
+    off ? "" : sitem(`data-noff="${u}"`, I.unlink, "إلغاء التفعيل", "تُزال الإضافة من حسابه ويتوقف رابطها — والحساب يبقى", "danger"),
+  ]);
+}
+async function nvDo(path, username, extra, btn, ok){
+  const label = btn.innerHTML; btn.disabled = true; btn.textContent = "جاري…";
+  try { await api(path, {gate: GATE, username, ...extra}); await loadNuvio(); toast(ok); }
+  catch(e) { toast(e.message, true); }
+  finally { btn.disabled = false; btn.innerHTML = label; }
+}
+let TV_USER = "";
+function openTv(username){
+  TV_USER = username; $("tvWho").textContent = username; $("tvCode").value = ""; $("tvMsg").textContent = "";
+  $("tvOverlay").hidden = false; $("tvCode").focus();
+}
+function hideTv(){ $("tvOverlay").hidden = true; TV_USER = ""; }
+$("tvCancel").onclick = hideTv;
+$("tvOverlay").addEventListener("click", e => { if (e.target === $("tvOverlay")) hideTv(); });
+$("tvCode").addEventListener("keydown", e => { if (e.key === "Enter") $("tvOk").click(); else if (e.key === "Escape") hideTv(); });
+$("tvOk").onclick = async () => {
+  const code = $("tvCode").value.trim(); if (!code) { $("tvMsg").textContent = "اكتب الكود الظاهر في التلفاز"; return; }
+  const b = $("tvOk"); b.disabled = true; $("tvMsg").textContent = "";
+  try { await api("/api/nuvio/tv", {gate: GATE, username: TV_USER, code}); hideTv(); await loadNuvio(); toast("رُبط التلفاز — يدخل الآن بحسابه"); }
+  catch(e) { $("tvMsg").textContent = e.message; }
+  finally { b.disabled = false; }
+};
 
 // ---- «إضافات أخرى»: تُثبَّت مع كل حسابٍ جديد، وبزرٍّ في كل السابقة (عمليةٌ في الخلفية تُتابَع هنا) ----
 let EXT = {extras: [], job: null, accounts: 0}, EXT_POLL = 0;
@@ -1371,7 +1504,7 @@ $(TAB).classList.add("on"); $(TAB).setAttribute("aria-current", "page");
 $("viewAccounts").hidden = VIEW !== "accounts"; $("viewAddons").hidden = VIEW !== "addons"; $("viewCats").hidden = VIEW !== "cats";
 if (VIEW === "addons") { loadUpd(); loadExt(); loadPanels(); }
 else if (VIEW === "cats") loadCats();
-else { let start = ""; try { start = localStorage.getItem(GKEY) || ""; } catch {} selectGate(start); }
+else { let start = ""; try { start = localStorage.getItem(GKEY) || ""; } catch {} setPlat(PLAT); selectGate(start); }
 </script>
 </body>
 </html>
