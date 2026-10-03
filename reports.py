@@ -16,7 +16,7 @@
 وبلا اختيارٍ كلها): لا يرى إلا بلاغاتها ولا يصله إلا تنبيهها، وللسيرفر الواحد موظفٌ أو أكثر. والمدير يرى الكل ويحذف.
 
 وتنبيه واتساب بكل بلاغ (‏alert، في خيطٍ مستقل فلا ينتظره المشترك): من رقم المسابقة المربوط إلى كل موظفٍ
-له رقمٌ ولم يوقفه، وإلى رقم المدير إن حفظه — بالاسم والحلقة والمشكلة والسيرفر والقسم وصاحب البلاغ ورابط الصفحة.
+له رقمٌ ولم يوقفه، وإلى رقم المدير إن حفظه — بالاسم والحلقة والمشكلة والسيرفر والقسم، بلا رقم صاحبه ولا رابط.
 والبلاغ المكرّر يُنبَّه به ثانيةً بعد نصف ساعة (بعدد من بلّغ) لا مع كل تكرار، وحدٌّ بالساعة لكل التنبيهات يحمي
 الرقم من الحظر؛ وما لم يُرسل يبقى في الصفحة بسببه. والإرسال والمستلمون يضبطهما الخادم (‏sender · recipients).
 
@@ -71,7 +71,6 @@ _rate = {}                   # بصمة العنوان:الساعة ← العد
 # تنبيه واتساب — يضبطهما الخادم (xm_lines)، وبدونهما لا تنبيه:
 sender = None                # (الرقم، النص) ← {ok, error}: من رقم المسابقة
 recipients = None            # (البلاغ) ← [(الاسم، الرقم)] من يصله تنبيه سيرفره الآن
-page_url = ""                # رابط صفحة البلاغات في التنبيه
 ALERT_AGAIN = 30 * 60        # البلاغ المكرّر يُنبَّه به ثانيةً بعدها، لا مع كل تكرار
 ALERT_HOUR_MAX = int(os.environ.get("REPORT_ALERTS_PER_HOUR", "30") or 30)   # تنبيهاتٌ بالساعة، لكل المستلمين
 _alerts = {}                 # الساعة ← عدد البلاغات التي نُبّه بها
@@ -554,16 +553,12 @@ def alert_text_en(r, new):
         if r.get("kind") == "series":
             ep = (f" · S{r['season']}" if r.get("season") else "") + (f" · E{r['ep']}" if r.get("ep") else " · all episodes")
         lines = [head, "", f"🎬 {title}{ep}", f"📂 {KIND_EN.get(r.get('kind'), '')} · {w(r.get('group'))}"]
-    p = next((x for x in reversed(r.get("people") or []) if x.get("phone") or x.get("note")), None)
-    if p:
-        lines.append("📱 " + " — ".join(b for b in (f"+{p['phone']}" if p.get("phone") else "", w(p.get("note"))) if b))
-    if page_url:
-        lines += ["", f"Reports: {page_url}"]
     return "\n".join(lines)
 
 
 def alert_text(r, new, lang="ar"):
-    """نصّ التنبيه بخطّ واتساب العريض — وأول كل سطرٍ فيه اسمٌ علامة RLM فيبقى من اليمين وإن بدأ بإنجليزي."""
+    """نصّ التنبيه بخطّ واتساب العريض — وأول كل سطرٍ فيه اسمٌ علامة RLM فيبقى من اليمين وإن بدأ بإنجليزي.
+    بلا رقم صاحبه ولا ملاحظته ولا رابط الصفحة: كلها في صفحة البلاغات."""
     if lang == "en":
         return alert_text_en(r, new)
     w, rlm = content._wa, "\u200f"
@@ -581,11 +576,6 @@ def alert_text(r, new, lang="ar"):
         if r.get("kind") == "series":
             ep = (f" · الموسم {r['season']}" if r.get("season") else "") + (f" · الحلقة {r['ep']}" if r.get("ep") else " · كل الحلقات")
         lines = [head, "", f"{rlm}🎬 {title}{ep}", f"{rlm}📂 {KIND_ONE.get(r.get('kind'), '')} · {w(r.get('group'))}"]
-    p = next((x for x in reversed(r.get("people") or []) if x.get("phone") or x.get("note")), None)
-    if p:
-        lines.append(f"{rlm}📱 " + " — ".join(b for b in (f"+{p['phone']}" if p.get("phone") else "", w(p.get("note"))) if b))
-    if page_url:
-        lines += ["", f"البلاغات: {page_url}"]
     return "\n".join(lines)
 
 

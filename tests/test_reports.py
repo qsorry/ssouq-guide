@@ -314,10 +314,8 @@ def unit_more():
     only = R.listing(d, what="add")
     check("وتصفية طلبات الإضافة وحدها", [x["problem"] for x in only["items"]] == ["add", "add"] and only["counts"]["open"] == 2
           and R.listing(d, what="issue")["counts"]["open"] == 3 and all(x["problem"] != "add" for x in R.listing(d, what="issue")["items"]))
-    R.page_url = ""
     t = R.alert_text(R.get(d, req["id"]), True)
-    check("وتنبيه الطلب: النوع والسيرفر والاسم ومن طلبه", t.startswith("🙋 *طلب إضافة مسلسل في سمارت*")
-          and "\u200f🎬 Shōgun (2024)" in t and "📂" not in t and "+966500000001" in t, t)
+    check("وتنبيه الطلب: النوع والسيرفر والاسم، بلا رقم من طلبه", t == "🙋 *طلب إضافة مسلسل في سمارت*\n\n\u200f🎬 Shōgun (2024)", t)
     check("ومكرّره بعدده", R.alert_text(R.get(d, req["id"]), False).startswith("🔁 *طلب إضافة مسلسل في سمارت* — طلبه 2 مشتركين"))
     check("وتنبيه «الحلقة ليست هي»", R.alert_text(w, True).startswith("🔔 *بلاغ جديد في سمارت: الحلقة ليست هي*"))
 
@@ -360,20 +358,18 @@ def unit_notify_lang():
         # التنبيه بلغة كل موظف
         sent.clear()
         R.recipients = lambda rep: [("سارة", "966500000001"), ("John", "966500000002", "en"), ("Ali", "966500000003", "ar")]
-        R.page_url = "https://admin.ssouq.com/reports"
         R._alerts.clear()
         R.alert(d, R.get(d, r["id"]), True, now=900)
         by = {to: text for to, text in sent}
         check("التنبيه بلغة كل موظف (والعربية افتراضًا)", by["966500000001"].startswith("🔔 *بلاغ جديد في سمارت: لا يعمل*")
               and by["966500000003"] == by["966500000001"]
-              and by["966500000002"] == "🔔 *New report on Smart: Not working*\n\n🎬 Breaking Bad · S2 · E1\n📂 series · SERIES | Drama\n"
-                                        "📱 +966500000001\n\nReports: https://admin.ssouq.com/reports", by.get("966500000002"))   # آخر من بلّغ برقمه
+              and by["966500000002"] == "🔔 *New report on Smart: Not working*\n\n🎬 Breaking Bad · S2 · E1\n📂 series · SERIES | Drama",
+              by.get("966500000002"))
         q, _ = R.submit(d, {"s": "smart", "t": "movie", "n": "Oppenheimer", "problem": "add"}, now=950)
-        check("وطلب الإضافة بالإنجليزية", R.alert_text(q, True, "en") == "🙋 *Request to add a movie on Smart*\n\n🎬 Oppenheimer\n\n"
-              "Reports: https://admin.ssouq.com/reports" and R.problem_name("wrong", "movie", "en") == "Wrong movie")
+        check("وطلب الإضافة بالإنجليزية", R.alert_text(q, True, "en") == "🙋 *Request to add a movie on Smart*\n\n🎬 Oppenheimer"
+              and R.problem_name("wrong", "movie", "en") == "Wrong movie")
     finally:
         R.sender = R.recipients = None
-        R.page_url = ""
     check("ولغة المدير", R.save_lang(d, "en")["lang"] == "en" and R.settings(d)["lang"] == "en" and R.settings(d)["wa"] == "")
 
 
@@ -432,7 +428,6 @@ def unit_link():
     check("وسنةٌ أو لغةٌ غريبة تُترك", r2["year"] == 0 and r2["cl"] == "" and r2["link"] == "")
     check("ورابطٌ غريب يُرفض", "الرابط غير صحيح" in raises(R.submit, d, {"s": "smart", "t": "movie", "n": "Dune", "problem": "add",
                                                                         "link": "javascript:x"}))
-    R.page_url = ""
     t = R.alert_text(R.get(d, r["id"]), True)
     check("والتنبيه بلغته ورابطه", "\u200f🌐 إنجليزي" in t and "🔗 https://www.imdb.com/title/tt0903747/" in t, t)
     check("وبالإنجليزية", "🌐 English" in R.alert_text(R.get(d, r["id"]), True, "en"))
@@ -511,11 +506,10 @@ def unit_alert():
     drama = gid(d, "series", "SERIES | Drama")
     base = {"s": "smart", "t": "series", "g": drama, "n": "Breaking Bad", "season": 2, "ep": 1, "problem": "down"}
     r, new = R.submit(d, dict(base, phone="0551234567", note="شاشة *سوداء*"), now=1000)
-    R.page_url = "https://admin.ssouq.com/reports"
     txt = R.alert_text(r, True)
-    check("نصّ التنبيه: المشكلة والسيرفر، والاسم والحلقة، والقسم، وصاحبه (وعلامات واتساب في ملاحظته لا تنسّق)، والرابط", txt == (
-        "🔔 *بلاغ جديد في سمارت: لا يعمل*\n\n\u200f🎬 Breaking Bad · الموسم 2 · الحلقة 1\n\u200f📂 مسلسل · SERIES | Drama\n"
-        "\u200f📱 +966551234567 — شاشة ∗سوداء∗\n\nالبلاغات: https://admin.ssouq.com/reports"), txt)
+    check("نصّ التنبيه: المشكلة والسيرفر، والاسم والحلقة، والقسم — بلا رقم صاحبه ولا ملاحظته ولا رابط", txt == (
+        "🔔 *بلاغ جديد في سمارت: لا يعمل*\n\n\u200f🎬 Breaking Bad · الموسم 2 · الحلقة 1\n\u200f📂 مسلسل · SERIES | Drama"), txt)
+    check("وكل الحلقات", R.alert_text(dict(r, ep=None), True).endswith("· الموسم 2 · كل الحلقات\n\u200f📂 مسلسل · SERIES | Drama"))
     check("والمكرّر بعدده", R.alert_text(dict(r, count=3), False).startswith("🔁 *بلاغٌ متكرّر في سمارت: لا يعمل* (3 بلاغات)"))
     check("وبلا تنبيهٍ مضبوط: لا شيء", R.alert(d, r, True) is None)
     sent = []
@@ -534,8 +528,7 @@ def unit_alert():
         check("والمكرّر قبل نصف ساعة: لا تنبيه", not new2 and R.alert(d, r2, False, now=1100) is None and len(sent) == 2)
         r3, _ = R.submit(d, base, now=1000 + R.ALERT_AGAIN)
         res3 = R.alert(d, r3, False, now=1000 + R.ALERT_AGAIN)
-        check("وبعدها ينبّه ثانيةً بعدده وآخر من بلّغ برقمه", res3["sent"] == 2 and "(3 بلاغات)" in sent[-1][1]
-              and "+966500000009" in sent[-1][1])
+        check("وبعدها ينبّه ثانيةً بعدده", res3["sent"] == 2 and "(3 بلاغات)" in sent[-1][1] and "📱" not in sent[-1][1])
         R.recipients = lambda rep: [("سارة", "966500000001"), ("علي", "966599000000")]
         r4, _ = R.submit(d, dict(base, ep=2), now=5000)
         res4 = R.alert(d, r4, True, now=5000)
@@ -555,7 +548,6 @@ def unit_alert():
             R.ALERT_HOUR_MAX = old
     finally:
         R.sender = R.recipients = None
-        R.page_url = ""
     check("رقم المدير: فارغٌ افتراضًا", R.settings(d) == {"wa": "", "on": True, "lang": ""})
     check("ويُحفظ بصيغته الدولية", R.save_settings(d, "0551112222", False) == {"wa": "966551112222", "on": False, "lang": ""}
           and R.settings(d) == {"wa": "966551112222", "on": False, "lang": ""})
@@ -778,7 +770,7 @@ def live_alert():
         got = sent_after(n0, 2)
         check("كل بلاغٍ جديد يصل الموظف والمدير", code == 200 and sorted(x["to"] for x in got) == ["966500000001", "966551112222"]
               and all("Breaking Bad · الموسم 1 · الحلقة 3" in x["body"] and "يقطع" in x["body"]
-                      and "+966551234567 — يقطع كل دقيقة" in x["body"] and "البلاغات: https://admin.ssouq.com/reports" in x["body"]
+                      and "966551234567" not in x["body"] and "كل دقيقة" not in x["body"] and "https://" not in x["body"]
                       for x in got), got)
         item = next(x for x in jget(adm + "/api/reports", AUTH)[1]["items"] if x["ep"] == 3)
         check("وما جرى معه في الصفحة", item["wa"]["sent"] == 2 and item["wa"]["error"] == "", item.get("wa"))

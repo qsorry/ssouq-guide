@@ -3999,7 +3999,6 @@ def start_reports():
     """تنبيه واتساب بكل بلاغ: من رقم المسابقة، إلى الموظفين ورقم المدير."""
     reports.sender = reader_send
     reports.recipients = report_recipients
-    reports.page_url = reports_page_url()
 
 
 def content_page_url():
@@ -5968,7 +5967,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not wa:
                     return self._send(400, {"error": "احفظ رقمك أولًا"})
                 r = reader_send(wa, "✅ *تنبيه بلاغات المحتوى يعمل*\n\nستصلك هنا البلاغات عن فيديو لا يعمل أو يقطع، "
-                                    "بالاسم والحلقة والمشكلة ومن بلّغ.\n\nالبلاغات: " + reports_page_url())
+                                    "بالاسم والحلقة والمشكلة.\n\nالبلاغات: " + reports_page_url())
                 return self._send(200 if r.get("ok") else 502, {"ok": bool(r.get("ok")), "to": wa,
                                                                  "error": str(r.get("error") or "")})
             if path.startswith("/api/content/"):      # خارج القفل: رفع ملف M3U وقراءته يطولان
