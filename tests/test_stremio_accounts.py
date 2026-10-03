@@ -454,7 +454,8 @@ def through_server():
         sts = get(local(root_m["transportUrl"]).replace("manifest.json", f"stream/series/{quote(ep, safe='')}.json"))["streams"]
         k1_sts = get(local(ours("u@tv.ssouq.com")[1]["transportUrl"]).replace("manifest.json", f"stream/series/{quote(ep, safe='')}.json"))["streams"]
         check("الحلقة: «تلقائي» أولًا ثم مصدر صاحب الحساب، ومصدر كاسبر من إضافته (زرٌّ باسمها)", [x["name"] for x in sts] == ["سمارت سوق", "سمارت"]
-              and "/play/series/" in sts[0]["url"] and [x["name"] for x in k1_sts] == ["كاسبر"] and "/series/k1/kp/" in k1_sts[0]["url"],
+              and "/play/series/" in sts[0]["url"] and [x["name"] for x in k1_sts] == ["كاسبر"] and "/series/k1/kp/" in location(local(k1_sts[0]["url"]))
+              and "/k1/kp/" not in json.dumps([sts, k1_sts]),
               json.dumps([[x["name"] for x in sts], [x["name"] for x in k1_sts]], ensure_ascii=False))
         c, r = post("/api/stremio/accounts?gate=g4", None)
         k = next((a for a in r.get("accounts", []) if a["username"] == "k1"), {})
@@ -579,9 +580,10 @@ def through_server():
         tu = local(ours("u@tv.ssouq.com")[0]["transportUrl"])
 
         def stream_url():
+            """أول مصدرٍ لأول فيلم ← (معرّفه، رابط اللوحة الذي يحوّل إليه رابطه على خادمنا)."""
             meta_id = json.loads(urllib.request.urlopen(tu.replace("manifest.json", "catalog/movie/sq_movies.json"), timeout=30).read())["metas"][0]["id"]
             st = json.loads(urllib.request.urlopen(tu.replace("manifest.json", f"stream/movie/{meta_id}.json"), timeout=30).read())
-            return meta_id, st["streams"][0]["url"]
+            return meta_id, location(st["streams"][0]["url"])
         id0, url0 = stream_url()
         c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": "http://127.0.0.1:1"})
         check("هوستٌ جديد لا يقبل يوزرات الحسابات ← 400 ولا يُحفظ", c == 400 and "لم يقبل" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
@@ -735,6 +737,20 @@ def through_server():
     check("وبلا رابط تثبيتٍ عامّ (إضافته مقفلةٌ على حسابه)، ويوزرٌ بلا حساب برابطه", "stremio" not in rows[0]
           and rows[1].get("stremio", "").startswith("https://guide.ssouq.com/stremio/"))
     shutil.rmtree(d, ignore_errors=True)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def location(url):
+    """رابط مصدرٍ على خادمنا ← رابط اللوحة الذي يحوّل إليه (بلا اتّباعه)."""
+    try:
+        urllib.request.build_opener(_NoRedirect).open(url, timeout=30)
+    except urllib.error.HTTPError as e:
+        return e.headers.get("Location", "")
+    return ""
 
 
 def update_job_unit():

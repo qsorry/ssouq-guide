@@ -1120,12 +1120,16 @@ def _formats(cfg):
     return sorted(set(fm), key=["m3u8", "ts"].index) or ["m3u8", "ts"]
 
 
-def streams(cfg, kind, sid):
+def streams(cfg, kind, sid, play_url=None):
+    """مصادر معرّفٍ بصيغته القديمة — ‏play_url: رابطها على خادمنا (يحوّل إلى اللوحة) فلا يصل العميلَ يوزرُ Xtream ولا باسورده؛
+    وبلاه رابط اللوحة نفسه (للأدوات)."""
     p = _parse_id(cfg, sid)
     if not p:
         return None
     code, num, ext = p
     u, pw = quote(cfg.user, safe=""), quote(cfg.pw, safe="")
+    hk = line_hk(cfg)
+    via = lambda k, n, e, direct: f"{play_url}/{hk}.{k}{n}.{e}" if play_url else direct
     hints = {"notWebReady": True, "bingeGroup": "ssouq-" + prefix(cfg).rstrip(":")}
     if code == "m" and kind == "movie":
         # الامتداد: من القائمة في الذاكرة، ثم من تفاصيل الفيلم، ثم من القائمة بتحميلها — فامتدادٌ مخمَّن
@@ -1140,18 +1144,18 @@ def streams(cfg, kind, sid):
         if not ext:
             it = lists(cfg, "movie").by_id.get(num)
             ext = (it.ext if it else "") or "mp4"
-        return {"streams": [{"url": f"{cfg.host}/movie/{u}/{pw}/{num}.{ext}", "name": BRAND,
+        return {"streams": [{"url": via("m", num, ext, f"{cfg.host}/movie/{u}/{pw}/{num}.{ext}"), "name": BRAND,
                              "title": f"تشغيل · {ext.upper()}", "behaviorHints": hints}]}
     if code == "e" and kind == "series":
         ext = ext or "mp4"
-        return {"streams": [{"url": f"{cfg.host}/series/{u}/{pw}/{num}.{ext}", "name": BRAND,
+        return {"streams": [{"url": via("e", num, ext, f"{cfg.host}/series/{u}/{pw}/{num}.{ext}"), "name": BRAND,
                              "title": f"تشغيل · {ext.upper()}", "behaviorHints": hints}]}
     if code == "l" and kind == "tv":
         L = _cached_lists(cfg, "tv")
         it = L.by_id.get(num) if L else None
         ch = f"{it.name}\n" if it else ""              # اسم القناة فوق نوع البث في قائمة التشغيل
         label = {"m3u8": "بث مباشر · HLS", "ts": "بث مباشر · TS"}
-        return {"streams": [{"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "name": BRAND, "title": ch + label[f],
+        return {"streams": [{"url": via("l", num, f, f"{cfg.host}/live/{u}/{pw}/{num}.{f}"), "name": BRAND, "title": ch + label[f],
                              "behaviorHints": {"notWebReady": True}} for f in _formats(cfg)]}
     return None
 
@@ -1166,6 +1170,12 @@ SUBS_TIP = "للترجمة العربية تلقائيًا: إعدادات Strem
 # إعدادٌ في تطبيق Stremio على تلفاز أندرويد نفسه (من نسخته 1.9.0) — لا يُضبط من الإضافة ولا من الحساب
 TITLE_TIP = "لتظهر الأسماء تحت الصور على تلفاز أندرويد: إعدادات Stremio ← فعّل «Show title under catalog items» (مرةً على كل جهاز)"
 DAY = 86400
+
+
+def mask_user(user):
+    """يوزر Xtream لا يُعرض للعميل كاملًا («•••567»): يكفي ليعرف خطّه ويذكره للدعم."""
+    user = str(user or "")
+    return "•••" + (user[-3:] if len(user) > 4 else "")
 
 
 def line_id(pre, cfg):
@@ -1215,13 +1225,13 @@ def account_card(line, pre, base, now=None):
         maxc, act = _int(ui.get("max_connections"), 0), ui.get("active_cons")
         if maxc:
             facts.append(f"الاتصالات: {_int(act)} من {maxc}" if str(act or "").strip() != "" else f"الاتصالات المسموحة: {maxc}")
-    facts.append(f"اليوزر: {cfg.user}")
+    facts.append(f"اليوزر: {mask_user(cfg.user)}")
     counts = [f"{_fmt(len(L.items))} {_UNIT[k]}" for k in ORDER for L in [_cached_lists(cfg, k)] if L and L.items]
     if counts:
         facts.append("المحتوى: " + " · ".join(counts))
     facts += [SUBS_TIP, TITLE_TIP]
     lid = line_id(pre, cfg)
-    return _clean({"id": lid, "type": ACCOUNTS, "name": f"{line.get('label') or cfg.user} · {short}",
+    return _clean({"id": lid, "type": ACCOUNTS, "name": f"{line.get('label') or mask_user(cfg.user)} · {short}",
                    "poster": f"{base}{art}" if art.startswith("/") else f"{base}/static/icons/icon-512.png",
                    "posterShape": "square", "releaseInfo": f"حتى {date}" if date else None, "description": " · ".join(facts),
                    "behaviorHints": {"defaultVideoId": lid}})
@@ -1899,25 +1909,27 @@ def candidates(lines, kind, sid, pre):
         bits = [x for x in [qual[src] + (f" ({height}p)" if height else "")] + _versions_ar(src.key.versions) if x]
         warn = "⚠️ الاشتراك منتهٍ — " if rank == 2 else ""
         if kind == "movie":
-            out.append({"url": f"{cfg.host}/movie/{u}/{pw}/{num}.{ext}", "name": label, "rank": rank, "line": src.line,
+            out.append({"url": f"{cfg.host}/movie/{u}/{pw}/{num}.{ext}", "src": f"{src.hk}.m{num}.{ext}", "name": label, "rank": rank, "line": src.line,
                         "title": warn + f"{src.item.name}\n" + " · ".join(bits + [ext.upper()]), "binge": None})
         elif kind == "series":
-            out.append({"url": f"{cfg.host}/series/{u}/{pw}/{num}.{ext}", "name": label, "rank": rank, "line": src.line,
+            out.append({"url": f"{cfg.host}/series/{u}/{pw}/{num}.{ext}", "src": f"{src.hk}.e{num}.{ext}", "name": label, "rank": rank, "line": src.line,
                         "title": warn + f"{src.item.name}\n" + " · ".join(bits + [f"S{e.season:02d}E{e.episode:02d}", ext.upper()]),
                         "binge": f"ssouq-{src.hk}-{'-'.join(src.key.versions) or 'x'}"})
         else:
             for f in _formats(cfg):
-                out.append({"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "name": label, "rank": rank, "line": src.line,
+                out.append({"url": f"{cfg.host}/live/{u}/{pw}/{num}.{f}", "src": f"{src.hk}.l{num}.{f}", "name": label, "rank": rank, "line": src.line,
                             "title": warn + f"{src.item.name}\n" + " · ".join(bits + ["بث مباشر", {"m3u8": "HLS", "ts": "TS"}[f]]),
                             "binge": None})
     return out
 
 
-def _stream(c):
+def _stream(c, play_url):
+    """مصدرٌ في قائمة التشغيل — رابطه على خادمنا (‏/play/…/<المصدر>) يحوّل إلى اللوحة: لا يصل العميلَ في ردود الإضافة يوزرُ Xtream
+    ولا باسورده."""
     hints = {"notWebReady": True}
     if c["binge"]:
         hints["bingeGroup"] = c["binge"]
-    return {"url": c["url"], "name": c["name"], "title": c["title"], "behaviorHints": hints}
+    return {"url": f"{play_url}/{c['src']}", "name": c["name"], "title": c["title"], "behaviorHints": hints}
 
 
 def lib_streams(lines, kind, sid, pre, play_url):
@@ -1926,20 +1938,36 @@ def lib_streams(lines, kind, sid, pre, play_url):
     باسمه في أعلى قائمة Stremio («سمارت سوق · فالكون»)، فلكل بوابةٍ زرّها."""
     cands = candidates(lines, kind, sid, pre)
     if cands is None:
-        return streams(lines[0]["cfg"], kind, sid)
+        return streams(lines[0]["cfg"], kind, sid, play_url)
     out = []
     if len(cands) > 1:
         out.append({"url": play_url, "name": BRAND, "title": "⚡ تلقائي — المترجم بالعربية بأعلى جودة\nإن تعطّل مصدرٌ انتقل للتالي",
                     "behaviorHints": {"notWebReady": True, "bingeGroup": "ssouq-auto"}})
-    out += [_stream(c) for c in cands if not lines[c["line"]].get("own")]
+    out += [_stream(c, play_url) for c in cands if not lines[c["line"]].get("own")]
     return {"streams": out}
 
 
-def line_streams(group, me, kind, sid):
+def line_streams(group, me, kind, sid, play_url):
     """إضافة خطٍّ مرتبط: مصادره هو من عمل المكتبة الموحدة (‏group: خطوط الحساب، صاحبه أولًا · me: رقم الخط فيها) — Stremio
     يجمع المصادر في قائمة العمل بإضافاتها، فلكل بوابةٍ زرٌّ باسمها فوق القائمة، و«تلقائي» عند صاحب الحساب."""
     cands = candidates(group, kind, sid, prefix(group[0]["cfg"])) or []
-    return {"streams": [_stream(c) for c in cands if c["line"] == me]}
+    return {"streams": [_stream(c, play_url) for c in cands if c["line"] == me]}
+
+
+_SRC = re.compile(r"([0-9a-f]{6})\.([mel])(\d{1,12})\.([a-z0-9]{2,5})")
+_SRC_PATH = {"m": "movie", "e": "series", "l": "live"}
+
+
+def src_url(lines, src):
+    """مصدرٌ من قائمة التشغيل («‏<بصمة الخط>.m<رقم>.<امتداد>») ← رابطه في اللوحة، من خطوط هذا الحساب وحدها — أو None."""
+    m = _SRC.fullmatch(str(src or ""))
+    ln = next((ln for ln in lines or () if m and line_hk(ln["cfg"]) == m.group(1)), None)
+    if not ln:
+        return None
+    cfg, code, num, ext = ln["cfg"], m.group(2), m.group(3), m.group(4)
+    if code == "l" and ext not in ("m3u8", "ts"):
+        return None
+    return f"{cfg.host}/{_SRC_PATH[code]}/{quote(cfg.user, safe='')}/{quote(cfg.pw, safe='')}/{num}.{ext}"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -2152,7 +2180,8 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
     if allowed and not allowed(cfg, key):
         return _json(404, {"ok": False, "error": "أُوقف هذا الرابط — الإضافة مقفلةٌ على حسابها"})
     rest = parts[1:]
-    is_play = rest[0] == "play" and len(rest) == 3            # «تلقائي»: /play/<النوع>/<المعرّف> ← تحويلٌ إلى مصدرٍ يعمل
+    # «تلقائي»: /play/<النوع>/<المعرّف> ← تحويلٌ إلى مصدرٍ يعمل؛ ومصدرٌ بعينه: /play/<النوع>/<المعرّف>/<المصدر> ← تحويلٌ إليه
+    is_play = rest[0] == "play" and len(rest) in (3, 4)
     if not is_play:
         if not rest[-1].endswith(".json"):
             return _json(404, {"error": "not found"})
@@ -2210,7 +2239,12 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
                 return _json(200, res, TILES_AGE)
             return _json(404, {"metas": []} if rest[0] == "catalog" else {"meta": None} if rest[0] == "meta" else {"streams": []})
         if is_play:
-            url = play(lines, rest[1], rest[2], pre) if lines is not None else None
+            if len(rest) == 4:                           # مصدرٌ بعينه: من خطوط الحساب (وللخط المرتبط خطوط حسابه)
+                pool = lines if lines is not None else \
+                    (_lines_of(cfg0, cfg, label, group_for, ("group", cfg0), None) if group_for else None) or [{"cfg": cfg}]
+                url = src_url(pool, rest[3])
+            else:
+                url = play(lines, rest[1], rest[2], pre) if lines is not None else None
             if not url:
                 return _json(404, {"error": "not found"})
             return 302, b"", "text/plain; charset=utf-8", {**_CORS, **_PAGE_HDR, "Location": url, "Cache-Control": "no-store"}
@@ -2226,16 +2260,16 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
                 lib_meta(lines, rest[1], rest[2], man, pre, _poster_maker(data_dir, base))
             return _json(200, res, 3600) if res else _json(404, {"meta": None})
         if rest[0] == "stream" and len(rest) == 3:
+            play_url = f"{base}{PATH}/{parts[0]}/play/{quote(rest[1], safe='')}/{quote(rest[2], safe='')}"
             group = _lines_of(cfg0, cfg, label, group_for, ("group", cfg0), None) if lines is None and group_for else None
             me = next((i for i, ln in enumerate(group or ())
                        if host_key(ln["cfg"].origin or ln["cfg"].host) == host_key(cfg.origin or cfg.host) and ln["cfg"].user == cfg.user), None)
             if me is not None and rest[2].startswith(prefix(group[0]["cfg"])):
-                res = line_streams(group, me, rest[1], rest[2])     # مصادر الخط في عملٍ من المكتبة الموحدة
+                res = line_streams(group, me, rest[1], rest[2], play_url)     # مصادر الخط في عملٍ من المكتبة الموحدة
             elif lines is None:
-                res = streams(cfg, rest[1], rest[2]) if rest[2].startswith(pre) else {"streams": []}
+                res = streams(cfg, rest[1], rest[2], play_url) if rest[2].startswith(pre) else {"streams": []}
             else:
-                res = lib_streams(lines, rest[1], rest[2], pre,
-                                  f"{base}{PATH}/{parts[0]}/play/{quote(rest[1], safe='')}/{quote(rest[2], safe='')}")
+                res = lib_streams(lines, rest[1], rest[2], pre, play_url)
             return _json(200, res, 600) if res else _json(404, {"streams": []})
     except AuthError as e:
         return _json(403, {"error": str(e)})

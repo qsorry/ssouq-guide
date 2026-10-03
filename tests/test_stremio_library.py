@@ -52,6 +52,11 @@ def L(kind, rows, cats=(("1", "مسلسلات تركية"), ("2", "مسلسلا�
     return S.Lists(kind, [{"category_id": c, "category_name": n} for c, n in cats], raw)
 
 
+def panel(lines, url):
+    """رابط مصدرٍ في قائمة التشغيل (على خادمنا) ← رابطه في اللوحة كما يحوّل إليه /play."""
+    return S.src_url(lines, url.rsplit("/", 1)[1])
+
+
 def names(lib):
     return sorted(sorted(s.item.name for s in w.sources) for w in lib.works)
 
@@ -259,7 +264,8 @@ def through_addon():
         check("الحلقة في مصدرين: «تلقائي» أولًا ثم مصادرها وحدها", [x["name"] for x in sts] == ["سمارت سوق", "كاسبر", "فالكون"]
               and sts[0]["url"] == play_url, json.dumps([x["name"] for x in sts], ensure_ascii=False))
         check("وكل مصدرٍ باسمه الأصلي ونسخته ورقم الحلقة", sts[1]["title"].startswith("علي كارا (مترجم)\n") and "مترجم" in sts[1]["title"]
-              and "S01E04" in sts[1]["title"] and sts[1]["url"] == f"{h2}/series/cu/cp/11104.mkv", sts[1]["title"] + " " + sts[1]["url"])
+              and "S01E04" in sts[1]["title"] and panel(lines, sts[1]["url"]) == f"{h2}/series/cu/cp/11104.mkv"
+              and sts[1]["url"].startswith(play_url + "/") and "cu" not in sts[1]["url"].split("/play/")[1], sts[1]["title"] + " " + sts[1]["url"])
         e1 = S.lib_streams(lines, "series", f"{pre}we:{S.line_hk(c1)}.1:1:1", pre, "x")["streams"]
         check("الحلقة الأولى في الثلاثة: المترجمان أولًا ثم سمارت بجودة ملفّه (1080p من تفاصيله)",
               [x["name"] for x in e1] == ["سمارت سوق", "كاسبر", "فالكون", "سمارت"] and "FHD (1080p)" in e1[3]["title"],
@@ -267,13 +273,13 @@ def through_addon():
         e2 = f"{pre}we:{S.line_hk(c1)}.1:2:3"
         st2 = S.lib_streams(lines, "series", e2, pre, "x")["streams"]
         check("حلقة الموسم الثاني من مدخل فالكون وحده: بلا «تلقائي»", [x["name"] for x in st2] == ["فالكون"]
-              and st2[0]["url"] == f"{h3}/series/fu/fp/22103.mkv", json.dumps(st2, ensure_ascii=False)[:200])
+              and panel(lines, st2[0]["url"]) == f"{h3}/series/fu/fp/22103.mkv", json.dumps(st2, ensure_ascii=False)[:200])
         mv = S.lib_catalog(lines, "movie", "sq_movies", {}, pre)["metas"]
         check("الفيلم: عملٌ واحد من ثلاث بوابات", [x["name"] for x in mv] == ["Oppenheimer (2023)"])
         ms = S.lib_streams(lines, "movie", mv[0]["id"], pre, "auto")["streams"]
         check("ومصادره بالأفضل: الترجمة العربية (مترجم) ← الجودة الأعلى من الملف نفسه (4K) ← من الاسم (FHD)",
-              [x["name"] for x in ms] == ["سمارت سوق", "فالكون", "سمارت", "كاسبر"] and ms[1]["url"].endswith("/movie/fu/fp/301.mp4")
-              and ms[2]["url"].endswith("/movie/u/p/101.mkv") and "4K (2160p)" in ms[2]["title"] and "مترجم" in ms[1]["title"]
+              [x["name"] for x in ms] == ["سمارت سوق", "فالكون", "سمارت", "كاسبر"] and panel(lines, ms[1]["url"]).endswith("/movie/fu/fp/301.mp4")
+              and panel(lines, ms[2]["url"]).endswith("/movie/u/p/101.mkv") and "4K (2160p)" in ms[2]["title"] and "مترجم" in ms[1]["title"]
               and "FHD" in ms[3]["title"], json.dumps([(x["name"], x["title"]) for x in ms], ensure_ascii=False))
         lv = S.lib_catalog(lines, "tv", "sq_live", {}, pre)["metas"]
         ls = S.lib_streams(lines, "tv", lv[0]["id"], pre, "auto")["streams"]
@@ -365,17 +371,26 @@ def through_addon():
         code, body, _, _ = S.handle(d, f"/stremio/{tok2}/stream/movie/{mid_q}.json", "https://g", lines_for=lf2, group_for=gf)
         cp_st = json.loads(body)["streams"]
         check("وإضافة كاسبر: مصدر كاسبر وحده في العمل نفسه (زرّ «سمارت سوق · كاسبر»)", code == 200
-              and [x["name"] for x in cp_st] == ["كاسبر"] and cp_st[0]["url"] == f"{h2}/movie/cu/cp/201.mp4", body.decode()[:200])
+              and [x["name"] for x in cp_st] == ["كاسبر"] and panel(own, cp_st[0]["url"]) == f"{h2}/movie/cu/cp/201.mp4", body.decode()[:200])
         tok3 = S.make_token(d, h3, "fu", "fp")
         code, body, _, _ = S.handle(d, f"/stremio/{tok3}/stream/series/{quote(ep, safe='')}.json", "https://g", lines_for=lf2, group_for=gf)
         fc_st = json.loads(body)["streams"]
         check("وفالكون: حلقته من عمل المسلسل الموحد", code == 200 and [x["name"] for x in fc_st] == ["فالكون"]
-              and fc_st[0]["url"].startswith(f"{h3}/series/fu/fp/"), body.decode()[:200])
+              and panel(own, fc_st[0]["url"]).startswith(f"{h3}/series/fu/fp/"), body.decode()[:200])
         code, body, _, _ = S.handle(d, f"/stremio/{tok2}/stream/movie/sqffffff:m:1.json", "https://g", lines_for=lf2, group_for=gf)
         check("ومعرّفٌ من إضافةٍ أخرى ← لا مصادر", code == 200 and json.loads(body)["streams"] == [])
         code, body, _, _ = S.handle(d, f"/stremio/{tok2}/stream/movie/{quote(S.prefix(c2), safe='')}m:201.json", "https://g",
                                     lines_for=lf2, group_for=gf)
-        check("ومعرّفه القديم ببادئته يعمل كما كان", code == 200 and json.loads(body)["streams"][0]["url"] == f"{h2}/movie/cu/cp/201.mp4", body.decode()[:200])
+        check("ومعرّفه القديم ببادئته يعمل كما كان", code == 200 and panel(own, json.loads(body)["streams"][0]["url"]) == f"{h2}/movie/cu/cp/201.mp4", body.decode()[:200])
+        old_url = json.loads(body)["streams"][0]["url"]
+        code, _, _, hdr = S.handle(d, old_url[len("https://g"):], "https://g", lines_for=lf2, group_for=gf)
+        check("ورابط المصدر على خادمنا يحوّل (302) إلى اللوحة — وإضافة الخط المرتبط من خطوط حسابه", code == 302
+              and hdr["Location"] == f"{h2}/movie/cu/cp/201.mp4", str((code, hdr.get("Location"))))
+        all_json = json.dumps([root_st, cp_st, fc_st, json.loads(body)], ensure_ascii=False)
+        check("ولا يوزر Xtream ولا باسورد في أي ردٍّ للإضافة (قوائم التشغيل)", all(f"/{x}/" not in all_json for x in ("u/p", "cu/cp", "fu/fp")),
+              all_json[:200])
+        code, _, _, _ = S.handle(d, f"/stremio/{tok}/play/movie/x/ffffff.m1.mp4", "https://g", lines_for=lf2, group_for=gf)
+        check("ومصدرٌ من خطٍّ ليس في هذا الحساب ← 404 (لا يُصنع رابطٌ لسيرفرٍ آخر)", code == 404)
         S.forget_lines()
         code, body, _, _ = S.handle(d, f"/stremio/{tok}/stream/movie/{mid_q}.json", "https://g", lines_for=lf)
         check("وإضافة خطٍّ مرتبط لم تُحدَّث بعد (بلا own): مصادره عند صاحب الحساب كما كانت",
