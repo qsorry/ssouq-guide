@@ -402,6 +402,31 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await user.click('#sheet [data-xdel]');
     await user.waitForFunction(() => /لا إضافات بعد/.test(document.querySelector('#extList')?.textContent || ''), null, {timeout: 8000});
     check('«حذف من القائمة»', true);
+
+    console.log('== «الأجهزة»: نسخة كل خطٍّ وحدّه، والمهلة، والجلسات ==');
+    await user.click('#tabDev');
+    await user.waitForSelector('#viewDevices:not([hidden]) #dvAccList table', {timeout: 8000});
+    check('its own page (/stremio/devices), each line «عادية» by default, limit empty = from the panel',
+          new URL(user.url()).pathname === '/admin/stremio/devices' && (await user.getAttribute('#tabDev', 'aria-current')) === 'page'
+          && (await user.$$eval('#dvAccList select[data-f="variant"]', s => s.length > 0 && s.every(x => x.value === 'standard')))
+          && (await user.$eval('#dvAccList input[data-f="max"]', i => i.value === '' && /اللوحة/.test(i.placeholder))));
+    check('timeouts default to 3h VOD / 1h live', (await user.inputValue('#dvVod')) === '3' && (await user.inputValue('#dvLive')) === '1');
+    check('no sessions yet: a hint, not an empty table', /لا جلسات بعد/.test(await user.textContent('#dvSesList')));
+    await user.selectOption('#dvAccList tr:first-child select[data-f="variant"]', 'session');
+    await user.fill('#dvAccList tr:first-child input[data-f="max"]', '2');
+    await user.click('#dvAccList tr:first-child [data-save]');
+    await user.waitForFunction(() => /حُفظ الخط/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 8000});
+    const dv = await api(user, '/admin/api/stremio/sessions');
+    check('«حفظ» on a line: «session» with 2 devices (saved on the server)', dv.accounts[0].variant === 'session' && dv.accounts[0].max_devices === 2,
+          JSON.stringify(dv.accounts[0]));
+    await user.fill('#dvVod', '2'); await user.fill('#dvLive', '0.5');
+    await user.click('#dvSetSave');
+    await user.waitForFunction(() => /حُفظت المهلة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 8000});
+    const dv2 = await api(user, '/admin/api/stremio/sessions');
+    check('and the timeouts (hours on the page, seconds on the server)', dv2.settings.timeout_vod === 7200 && dv2.settings.timeout_live === 1800);
+    const bad = await api(user, '/admin/api/stremio/sessions', {action: 'account', key: 'evil.example|x', variant: 'session'});
+    check('a line that is not ours is refused', bad.ok === false && /ليس من خطوطك/.test(bad.error || ''), JSON.stringify(bad));
+    await shot(user, 'stremio-devices');
     check('no page errors', errs.length === 0, errs.join(' | '));
   } catch (e) { fail++; console.log('  FAIL  exception:', e.message); }
   finally {

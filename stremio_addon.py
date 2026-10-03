@@ -46,6 +46,7 @@ import crypto_store
 import stremio_categories as CATS
 import stremio_library as LIB
 import stremio_posters as POSTERS
+import stremio_sessions as SESS
 
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
@@ -2726,14 +2727,63 @@ def cached_manifest(key, build):
         return None
 
 
-def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines_for=None, group_for=None):
+# ---- نسخة «session»: فحص الجلسة قبل تحويل /play (‏stremio_sessions) — والتحويل 302 إلى اللوحة كما هو متى سُمح ----
+ALERT_PATH = "/static/stremio"           # فيديو التنبيه: احتياطٌ للعرض (Stremio لا يعطينا نافذة رسالة)، والقرار في ‏X-Ssouq-Session
+ALERT_FILE = {SESS.LIMIT_REASON: "alert-limit.mp4", SESS.REVOKED_REASON: "alert-revoked.mp4"}
+_CTYPE = {"movie": "movie", "series": "series", "tv": "live"}
+
+
+def session_account(cfg):
+    """مفتاح جلسات الخط: «هوست|يوزر» (هوسته الأصلي)."""
+    return SESS.account_key(host_key(cfg.origin or cfg.host), cfg.user)
+
+
+def _panel_max(cfg):
+    """‏max_connections من اللوحة إن عُرفت (من الذاكرة، بلا انتظار) — وإلا تُطلب في الخلفية للمرة القادمة."""
+    with _lock:
+        hit = _accounts.get(cfg)
+    if hit:
+        return _int(hit[1].get("max_connections"), 0) or None
+    _bg(account, cfg)
+    return None
+
+
+def play_gate(ln, kind, sid, client, dry=False):
+    """قرار التشغيل لخطّ: نسخة «standard» ← None (لا فحص، كما كانت)؛ و«session» ← قرار ‏stremio_sessions.check."""
+    acct = session_account(ln["cfg"])
+    if SESS.variant(acct) != "session":
+        return None
+    client = client or {}
+    return SESS.check(acct, client.get("ip", ""), client.get("ua", ""), sid, _CTYPE.get(kind, "movie"), _panel_max(ln["cfg"]), dry=dry)
+
+
+def session_alert(verdict, play_url):
+    """أول سطرٍ في قائمة التشغيل حين يُرفض هذا الجهاز: الرسالة واضحةً قبل الضغط (وضغطه ← فيديو التنبيه)."""
+    left = f"\nالأجهزة: {verdict.get('active_devices')} من {verdict.get('max_devices')}" if verdict.get("reason") == SESS.LIMIT_REASON else ""
+    return {"url": play_url, "name": "⚠️ " + BRAND, "title": (verdict.get("message") or SESS.MSG[SESS.LIMIT_REASON]) + left,
+            "behaviorHints": {"notWebReady": True, "bingeGroup": "ssouq-session"}}
+
+
+def _denied(base, verdict):
+    """رفض التشغيل: تحويلٌ إلى فيديو التنبيه (احتياطًا للعرض)، والحالة كاملةً في الترويسة ‏X-Ssouq-Session."""
+    body = {k: verdict.get(k) for k in ("allowed", "reason", "active_devices", "max_devices")}
+    if verdict.get("reason") == SESS.RATE_REASON:          # طلباتٌ كثيرة من شبكةٍ واحدة: رفضٌ مؤقت بلا فيديو
+        code, raw, ctype, hdr = _json(429, {**body, "message": verdict.get("message")})
+        return code, raw, ctype, {**hdr, "Retry-After": str(SESS.RATE_WINDOW), "X-Ssouq-Session": json.dumps(body, separators=(",", ":"))}
+    url = f"{base}{ALERT_PATH}/{ALERT_FILE.get(verdict.get('reason'), ALERT_FILE[SESS.LIMIT_REASON])}"
+    return 302, b"", "text/plain; charset=utf-8", {**_CORS, **_PAGE_HDR, "Location": url, "Cache-Control": "no-store",
+                                                   "X-Ssouq-Session": json.dumps(body, separators=(",", ":"))}
+
+
+def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines_for=None, group_for=None, client=None):
     """طلب GET تحت ‏/stremio ← (الرمز، الجسم، النوع، الترويسات)، أو None لمسارٍ ليس لها.
     ‏label_for(cfg) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
     ‏allowed(cfg، القفل) هل الرمز ساري — رمزٌ أُوقف (قفل حسابه تغيّر) يُردّ كرمزٍ غير صالح.
     ‏route(cfg) الاشتراك على هوسته الحالي (‏routed) إن غيّر السيرفر عنوانه، أو كما هو.
     ‏lines_for(cfg) خطوط حساب Stremio لهذه الإضافة (صاحب الحساب أولًا): «الحسابات» وكتالوجات خطّه (وإضافة Nuvio: كتالوجات كل
     خطوطها، كلٌّ وحده — ‏_books)؛ أو None لخطٍّ مرتبطٍ بحساب (كتالوجات خطّه وحده). بلاه: الخط وحده.
-    ‏group_for(cfg) لخطٍّ مرتبط: خطوط حسابه (صاحبه أولًا) — تصنيفات حسابه لكتالوجات خطّه، ومصادر التشغيل من خطوط الحساب وحدها."""
+    ‏group_for(cfg) لخطٍّ مرتبط: خطوط حسابه (صاحبه أولًا) — تصنيفات حسابه لكتالوجات خطّه، ومصادر التشغيل من خطوط الحساب وحدها.
+    ‏client: {"ip"، "ua"} للطالب — لفحص الجلسة قبل التشغيل في نسخة «session» (‏play_gate)."""
     if path != PATH and not path.startswith(PATH + "/"):
         return None
     parts = [unquote(p) for p in path[len(PATH):].split("/") if p != ""]
@@ -2748,6 +2798,7 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
         return _json(404, {"ok": False, "error": "رابطٌ غير صالح — اطلب رابطًا جديدًا"})
     genre_dir(data_dir)
     disk_dir(data_dir)
+    SESS.setup(data_dir)
     if allowed and not allowed(cfg, key):
         return _json(404, {"ok": False, "error": "أُوقف هذا الرابط — الإضافة مقفلةٌ على حسابها"})
     rest = parts[1:]
@@ -2823,11 +2874,17 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
         if is_play:
             if len(rest) == 4:                           # مصدرٌ بعينه: من خطوط الحساب وحدها
                 url = src_url(family, rest[3])
+                m = _SRC.fullmatch(str(rest[3]))
+                gate_ln = next((ln for ln in family if m and line_hk(ln["cfg"]) == m.group(1)), None)
             else:
                 r = _route(books, family, rest[2])
                 url = play(r[0], rest[1], r[2], r[1]) if r else None
+                gate_ln = r[0][0] if r else None
             if not url:
                 return _json(404, {"error": "not found"})
+            verdict = play_gate(gate_ln, rest[1], rest[2], client) if gate_ln else None   # «session»: الجلسة قبل التحويل
+            if verdict and not verdict["allowed"]:
+                return _denied(base, verdict)
             return 302, b"", "text/plain; charset=utf-8", {**_CORS, **_PAGE_HDR, "Location": url, "Cache-Control": "no-store"}
         if rest[0] == "catalog" and len(rest) in (3, 4):
             extra = parse_extra(path.rsplit("/", 1)[-1][:-5]) if len(rest) == 4 else {}
@@ -2844,6 +2901,11 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
             play_url = f"{base}{PATH}/{parts[0]}/play/{quote(rest[1], safe='')}/{quote(rest[2], safe='')}"
             r = _route(books, family, rest[2])
             res = lib_streams(r[0], rest[1], r[2], r[1], play_url) if r else {"streams": []}
+            verdict = play_gate(r[0][0], rest[1], r[2], client, dry=True) if r and res else None
+            if verdict is not None:                      # «session»: الحال الآن — والقائمة لا تُحفظ (تتغيّر بتغيّر الأجهزة)
+                if not verdict["allowed"]:
+                    res["streams"].insert(0, session_alert(verdict, play_url))
+                return _json(200, res)
             return _json(200, res, 600) if res else _json(404, {"streams": []})
     except AuthError as e:
         return _json(403, {"error": str(e)})

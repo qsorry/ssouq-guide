@@ -62,6 +62,7 @@ import stremio_addon
 import stremio_accounts
 import stremio_categories
 import stremio_extras
+import stremio_sessions
 import mail_inbox
 
 # كلمة مرور الدخول تُخزَّن مُجزّأة (hash) لا مشفَّرة، فلا تُسترجع أبدًا.
@@ -1228,6 +1229,82 @@ def stremio_token_ok(cfg, key):
     تتوقف)؛ وغير المقفل: رمزه العام كما كان. ورابط إضافته في Nuvio بقفله هو (يتوقف بإلغاء تفعيله أو إعادة ربطه)."""
     hk = stremio_addon.host_key(cfg.host)
     return key == stremio_accounts.addon_key(DATA_DIR, hk, cfg.user) or bool(key and key == nuvio_accounts.addon_key(DATA_DIR, hk, cfg.user))
+
+
+# ---------- الأجهزة المتزامنة (نسخة «session» من الإضافة — stremio_sessions، وdocs/stremio-addon.md القسم 22) ----------
+def stremio_session_lines(acct):
+    """خطوط العميل (Stremio وNuvio، والمرتبطة) ← {مفتاح الجلسات «هوست|يوزر»: {username, gate, platforms, token}}."""
+    out = {}
+
+    def add(r, plat):
+        if not r.get("host") or not r.get("username"):
+            return
+        k = stremio_sessions.account_key(r["host"], r["username"])
+        e = out.setdefault(k, {"username": r["username"], "gate": "", "platforms": [], "token": r.get("token") or ""})
+        g = find_gate(acct, r.get("gate")) if r.get("gate") else None
+        e["gate"] = e["gate"] or ((g or {}).get("name") or "")
+        e["token"] = e["token"] or r.get("token") or ""
+        if plat not in e["platforms"]:
+            e["platforms"].append(plat)
+    for r in stremio_accounts.owned_all(DATA_DIR, acct["id"]):
+        add(r, "Stremio")
+    for r in nuvio_accounts.owned(DATA_DIR, acct["id"]):
+        for x in nuvio_accounts.group(DATA_DIR, r.get("host", ""), r.get("username", "")) or [r]:
+            add({**x, "gate": x.get("gate") or r.get("gate")}, "Nuvio")
+    return out
+
+
+def stremio_sessions_data(acct):
+    """صفحة «الأجهزة»: المهلة، وخطوط العميل بنسختها وحدّها (وحدّ لوحتها إن عُرف)، وجلساتها."""
+    lines = stremio_session_lines(acct)
+    conf = stremio_sessions.accounts()
+    rows = []
+    for k, e in sorted(lines.items(), key=lambda kv: kv[1]["username"]):
+        a = conf.get(k) or {}
+        cfg = stremio_addon.read_token(DATA_DIR, e["token"]) if e["token"] else None
+        pm = None
+        if cfg:
+            with stremio_addon._lock:
+                hit = stremio_addon._accounts.get(cfg)
+            pm = stremio_addon._int(hit[1].get("max_connections"), 0) or None if hit else None
+        rows.append({"key": k, "username": e["username"], "gate": e["gate"], "platforms": e["platforms"],
+                     "variant": a.get("variant") if a.get("variant") in stremio_sessions.VARIANTS else "standard",
+                     "max_devices": a.get("max_devices"), "panel_max": pm or a.get("panel_max"), "version": a.get("version") or 1})
+    users = {k: e["username"] for k, e in lines.items()}
+    sess = [{**x, "username": users.get(x["account"], "")} for x in stremio_sessions.sessions(list(lines))]
+    return {"settings": stremio_sessions.settings(acct["id"]), "accounts": rows, "sessions": sess,
+            "variants": list(stremio_sessions.VARIANTS)}
+
+
+def stremio_sessions_post(acct, req):
+    """تعديلٌ من صفحة «الأجهزة» ← بياناتها. ‏ValueError برسالةٍ للعرض. لا يمسّ إلا خطوط هذا العميل وجلساتها."""
+    lines = stremio_session_lines(acct)
+    act = str(req.get("action") or "")
+    if act == "settings":
+        hrs = lambda v: None if v in (None, "") else round(float(v) * 3600)   # noqa: E731 — بالساعات من الصفحة
+        try:
+            stremio_sessions.set_settings(acct["id"], hrs(req.get("timeout_vod_h")), hrs(req.get("timeout_live_h")), req.get("default_max"))
+        except (TypeError, ValueError) as e:
+            raise ValueError(str(e) or "قيمةٌ غير صالحة")
+    elif act in ("account", "logout_all"):
+        k = str(req.get("key") or "")
+        if k not in lines:
+            raise ValueError("الخط ليس من خطوطك")
+        if act == "logout_all":
+            stremio_sessions.set_account(k, owner=acct["id"])
+            stremio_sessions.logout_all(k)
+        else:
+            mx = req.get("max_devices")
+            stremio_sessions.set_account(k, owner=acct["id"], variant=req.get("variant") or None,
+                                         max_devices=None if mx in (None, "") else mx)
+    elif act == "revoke":
+        sid = str(req.get("session_id") or "")
+        if stremio_sessions.session_account(sid) not in lines:
+            raise ValueError("الجلسة غير موجودة")
+        stremio_sessions.revoke(sid)
+    else:
+        raise ValueError("طلبٌ غير معروف")
+    return stremio_sessions_data(acct)
 
 
 # ---------- حسابات Nuvio (مسارٌ مستقل عن Stremio — nuvio_accounts، وdocs/nuvio.md) ----------
@@ -4611,7 +4688,7 @@ class Handler(BaseHTTPRequestHandler):
                                                 "error": "تعذّر قراءة الرصيد من اللوحة"})
                 return self._send(200, {"provider": gate.get("mode"), "credits": None,
                                         "unsupported": True})
-            if path in ("/stremio", "/stremio/addons", "/stremio/categories"):   # صفحة Stremio: الحسابات، والإضافات واللوحات، والتصنيفات
+            if path in ("/stremio", "/stremio/addons", "/stremio/categories", "/stremio/devices"):   # صفحة Stremio: الحسابات، والإضافات واللوحات، والتصنيفات، والأجهزة
                 if role != "account" or not stremio_on(acct):
                     return self._redirect(self._url())
                 return self._page("stremio_tool.html")
@@ -4659,6 +4736,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not stremio_on(acct):
                     return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
                 return self._send(200, stremio_categories_data(acct))
+            if path == "/api/stremio/sessions":   # «الأجهزة»: نسخة كل خطٍّ وحدّه، والمهلة، والجلسات النشطة
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
+                stremio_sessions.setup(DATA_DIR)
+                return self._send(200, stremio_sessions_data(acct))
             if path == "/api/stremio/update-all":   # «تحديث الإضافة لكل الحسابات»: حال آخر عملية وعدد الحسابات
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
@@ -5011,7 +5095,8 @@ class Handler(BaseHTTPRequestHandler):
     def _stremio_get(self, path):
         self._inject = False
         code, body, ctype, hdr = stremio_addon.handle(DATA_DIR, path, self._public_base(), stremio_cfg_label, stremio_token_ok,
-                                                      stremio_route, stremio_lines, stremio_group_of)
+                                                      stremio_route, stremio_lines, stremio_group_of,
+                                                      client={"ip": self._client_ip(), "ua": self.headers.get("User-Agent", "")})
         return self._send(code, raw=body, ctype=ctype, extra=hdr)
 
     def _stremio_link(self):
@@ -6082,6 +6167,19 @@ class Handler(BaseHTTPRequestHandler):
                 if cats is None:
                     stremio_addon.forget_lines()
                 return self._send(200, {"ok": True, "saved": not req.get("preview"), **stremio_categories_data(acct, cats)})
+            if path == "/api/stremio/sessions":   # خارج القفل: «الأجهزة» — نسخة خطٍّ وحدّه، أو إلغاء جلسة، أو الخروج من كل الأجهزة، أو المهلة
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"ok": False, "error": "Stremio غير مفعّل لهذا الحساب"})
+                req = self._body()
+                if not isinstance(req, dict):
+                    return self._send(400, {"ok": False, "error": "طلبٌ غير صالح"})
+                stremio_sessions.setup(DATA_DIR)
+                try:
+                    return self._send(200, {"ok": True, **stremio_sessions_post(acct, req)})
+                except ValueError as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
             if path == "/api/stremio/update-all":   # خارج القفل: «تحديث الإضافة لكل الحسابات» في الخلفية
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})

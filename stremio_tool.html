@@ -98,6 +98,18 @@ select.t{width:auto}
 .steps span{padding:3px 10px;border-radius:20px;border:1px solid var(--line);background:var(--sf2)}
 .cap-img{display:flex;gap:8px;align-items:center;margin:8px 0}
 .cap-img img{max-width:100%;border-radius:8px;background:#fff;min-height:44px}
+.dv-wrap{overflow-x:auto;margin-top:10px;border:1px solid var(--line);border-radius:12px}
+.dv{width:100%;border-collapse:collapse;font-size:.82rem;min-width:720px}
+.dv th,.dv td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:start;vertical-align:middle}
+.dv th{color:var(--mute);font-weight:600;background:var(--sf2);white-space:nowrap}
+.dv tr:last-child td{border-bottom:0}
+.dv .ltr{direction:ltr;unicode-bidi:isolate}
+.dv .ua{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr}
+.dv input.t{width:84px;padding:6px 8px}
+.st-active{color:var(--go);font-weight:700}.st-revoked{color:var(--err);font-weight:700}.st-expired,.st-logged_out{color:var(--mute)}
+.dvset{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.dvset label{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:var(--mute)}
+.dvset input.t{width:120px}
 .empty{color:var(--mute);text-align:center;padding:16px;font-size:.9rem;border:1.5px dashed var(--line);border-radius:14px;margin-top:12px}
 .err{color:var(--err);font-size:.86rem;margin-top:10px;overflow-wrap:anywhere}
 .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -288,7 +300,7 @@ h1{font-size:1.3rem;margin:0 0 2px}
 </header>
 
 <main>
-  <nav class="vtabs" aria-label="الصفحات"><a id="tabAcc">الحسابات</a><a id="tabCat">التصنيفات</a><a id="tabAdd">الإضافات واللوحات</a></nav>
+  <nav class="vtabs" aria-label="الصفحات"><a id="tabAcc">الحسابات</a><a id="tabCat">التصنيفات</a><a id="tabAdd">الإضافات واللوحات</a><a id="tabDev">الأجهزة</a></nav>
   <div id="viewAccounts">
   <div class="tabs2 plat" id="plat" role="tablist" aria-label="المنصّة">
     <button type="button" role="tab" data-plat="stremio">Stremio<small>حساب Stremio بإضافتنا</small></button>
@@ -405,6 +417,39 @@ h1{font-size:1.3rem;margin:0 0 2px}
       فورًا بلا إعادة تثبيت، ويُحفظ في البوابة لليوزرات الجديدة. يُجرَّب بيوزرٍ منها أولًا.</p>
     <div class="err" id="panelMsg"></div>
     <div id="panelList"><div class="empty">جاري التحميل…</div></div>
+  </section>
+  </div>
+  <div id="viewDevices" hidden>
+  <h1>الأجهزة المتزامنة</h1>
+  <p class="sub">نسختان من الإضافة نفسها: «عادية» كما هي، و«بالتحكم في الأجهزة» — يُفحص كل تشغيلٍ قبل تحويله إلى اللوحة (الفيديو لا يمرّ
+    بخادمنا)، فإن امتلأ حدّ الأجهزة لا يبدأ التشغيل على جهازٍ جديد ويظهر «الحساب مستخدم حاليًا على جهاز آخر». النسخة إعدادٌ للخط هنا:
+    الرابط نفسه والإضافة نفسها، فلا تُثبَّت نسختان، ولا حاجة لإعادة التثبيت عند التغيير.</p>
+  <section id="dvSetSec">
+    <h2>مهلة الجلسة</h2>
+    <p class="hint" style="margin:-6px 0 12px">الجهاز يبقى «نشطًا» حتى تمضي المهلة من آخر تشغيلٍ بدأه (لا يمكن معرفة إغلاقه للتطبيق في
+      Stremio وNuvio)، ثم يتحرّر مكانه.</p>
+    <div class="dvset">
+      <label>الأفلام والمسلسلات (ساعات)<input class="t" id="dvVod" type="number" min="0.1" step="0.5"></label>
+      <label>البث المباشر (ساعات)<input class="t" id="dvLive" type="number" min="0.1" step="0.5"></label>
+      <label>الحد حين لا تُعرف اللوحة<input class="t" id="dvDef" type="number" min="1" max="20" step="1"></label>
+      <button class="btn" id="dvSetSave">حفظ</button>
+    </div>
+    <div class="err" id="dvSetMsg"></div>
+  </section>
+  <section id="dvAccSec">
+    <h2>الخطوط <span class="count" id="nDvAcc">0</span></h2>
+    <p class="hint" style="margin:-6px 0 12px">الحد فارغًا = <b>اتصالات اللوحة</b> (‏max_connections) لكل خط. «خروج من كل الأجهزة» يُسقط كل
+      جلساته: أول تشغيلٍ بعده يبدأ جلسةً جديدة، والفيديو الجاري الآن لا يُقطع.</p>
+    <div class="err" id="dvAccMsg"></div>
+    <div id="dvAccList"><div class="empty">جاري التحميل…</div></div>
+  </section>
+  <section id="dvSesSec">
+    <h2>الجلسات <span class="count" id="nDvSes">0</span></h2>
+    <p class="hint" style="margin:-6px 0 12px">Stremio وNuvio لا يرسلان معرّف جهازٍ ثابتًا؛ «الجهاز» هنا بصمةٌ تقريبية من الشبكة (عنوان
+      الإنترنت): جهازان على شبكة البيت نفسها يُحسبان جهازًا واحدًا، وجهازٌ انتقل لشبكةٍ أخرى (من الواي فاي إلى بيانات الجوال) يُحسب جديدًا
+      — ألغِ جلسته القديمة إن امتلأ حدّه. «إلغاء» يمنع أي تشغيلٍ جديد من تلك الجلسة ولا يوقف ما يعمل الآن.</p>
+    <div class="err" id="dvSesMsg"></div>
+    <div id="dvSesList"><div class="empty">جاري التحميل…</div></div>
   </section>
   </div>
 </main>
@@ -1599,14 +1644,69 @@ $("catReset").onclick = async () => {
 };
 window.addEventListener("beforeunload", e => { if (CAT_DIRTY) { e.preventDefault(); e.returnValue = ""; } });
 
+// ---- «الأجهزة»: نسخة كل خطٍّ وحدّه، والمهلة، والجلسات (‏/api/stremio/sessions) ----
+let DV = null;
+const DV_ST = {active: "نشطة", expired: "انتهت", revoked: "ملغاة", logged_out: "خرجت (كل الأجهزة)"};
+const DV_CT = {movie: "فيلم", series: "حلقة", live: "بث"};
+const dvTime = t => t ? new Date(t * 1000).toLocaleString("ar", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "—";
+function renderDv(){
+  const st = DV.settings;
+  $("dvVod").value = +(st.timeout_vod / 3600).toFixed(2); $("dvLive").value = +(st.timeout_live / 3600).toFixed(2); $("dvDef").value = st.default_max;
+  $("nDvAcc").textContent = DV.accounts.length;
+  $("dvAccList").innerHTML = DV.accounts.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الخط</th><th>البوابة</th><th>التطبيق</th>
+      <th>النسخة</th><th>حدّ الأجهزة</th><th></th></tr></thead><tbody>${DV.accounts.map(a => `<tr data-k="${esc(a.key)}">
+      <td class="ltr">${esc(a.username)}</td><td>${esc(a.gate)}</td><td>${esc(a.platforms.join(" · "))}</td>
+      <td><select class="t" data-f="variant"><option value="standard"${a.variant === "standard" ? " selected" : ""}>عادية</option>
+        <option value="session"${a.variant === "session" ? " selected" : ""}>بالتحكم في الأجهزة</option></select></td>
+      <td><input class="t" data-f="max" type="number" min="1" max="20" value="${a.max_devices || ""}" placeholder="${a.panel_max ? "اللوحة: " + a.panel_max : "اللوحة"}"></td>
+      <td><button class="ghost" data-save>حفظ</button> <button class="ghost st" data-out>خروج من كل الأجهزة</button></td></tr>`).join("")}</tbody></table></div>`
+    : '<div class="empty">لا خطوط Stremio ولا Nuvio بعد.</div>';
+  const live = DV.sessions.filter(x => x.status === "active").length;
+  $("nDvSes").textContent = live;
+  $("dvSesList").innerHTML = DV.sessions.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الخط</th><th>الجلسة / الجهاز</th><th>IP</th>
+      <th>User-Agent</th><th>المحتوى</th><th>بدأت</th><th>آخر تشغيل</th><th>الحال</th><th></th></tr></thead><tbody>${DV.sessions.map(x => `<tr>
+      <td class="ltr">${esc(x.username || x.account)}</td><td class="ltr" title="${esc(x.session_id)}">${esc(x.session_id.slice(0, 8))} · ${esc(x.device)}</td>
+      <td class="ltr">${esc(x.ip)}</td><td><div class="ua" title="${esc(x.ua)}">${esc(x.ua)}</div></td>
+      <td>${esc(DV_CT[x.content_type] || "")} <span class="ltr">${esc(x.content_id)}</span></td><td>${dvTime(x.created_at)}</td><td>${dvTime(x.last_seen)}</td>
+      <td class="st-${esc(x.status)}">${esc(DV_ST[x.status] || x.status)}</td>
+      <td>${x.status === "active" ? `<button class="ghost st" data-rv="${esc(x.session_id)}">إلغاء</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    : '<div class="empty">لا جلسات بعد — تظهر هنا عند أول تشغيلٍ من خطٍّ بنسخة «بالتحكم في الأجهزة».</div>';
+}
+async function loadDv(){
+  try { DV = await api("/api/stremio/sessions"); renderDv(); }
+  catch(e) { $("dvAccList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+}
+async function dvPost(body, msgId, ok){
+  try { DV = await api("/api/stremio/sessions", body); renderDv(); if (ok) toast(ok); $(msgId).textContent = ""; }
+  catch(e) { $(msgId).textContent = e.message; }
+}
+$("dvSetSave").onclick = () => dvPost({action: "settings", timeout_vod_h: $("dvVod").value, timeout_live_h: $("dvLive").value,
+  default_max: $("dvDef").value}, "dvSetMsg", "حُفظت المهلة");
+$("dvAccList").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-k]"); if (!tr) return;
+  const k = tr.dataset.k;
+  if (e.target.closest("[data-save]")) dvPost({action: "account", key: k, variant: tr.querySelector('[data-f="variant"]').value,
+    max_devices: tr.querySelector('[data-f="max"]').value}, "dvAccMsg", "حُفظ الخط");
+  else if (e.target.closest("[data-out]") && confirm("خروج هذا الخط من كل الأجهزة؟\nتسقط كل جلساته، وأول تشغيلٍ بعده يبدأ جلسةً جديدة (ولا يُقطع ما يعمل الآن)."))
+    dvPost({action: "logout_all", key: k}, "dvAccMsg", "خرج من كل الأجهزة");
+});
+$("dvSesList").addEventListener("click", e => {
+  const b = e.target.closest("[data-rv]");
+  if (b && confirm("إلغاء هذه الجلسة؟\nلا يبدأ منها تشغيلٌ جديد (ويظهر «تم تسجيل الدخول من جهاز آخر»)، وما يعمل الآن لا يتوقف."))
+    dvPost({action: "revoke", session_id: b.dataset.rv}, "dvSesMsg", "أُلغيت الجلسة");
+});
+
 // ---- الصفحات: الحسابات (/stremio) والتصنيفات (/stremio/categories) والإضافات واللوحات (/stremio/addons) ----
-const VIEW = /\/stremio\/addons\/?$/.test(location.pathname) ? "addons" : /\/stremio\/categories\/?$/.test(location.pathname) ? "cats" : "accounts";
-$("tabAcc").href = B + "/stremio"; $("tabAdd").href = B + "/stremio/addons"; $("tabCat").href = B + "/stremio/categories";
+const VIEW = /\/stremio\/addons\/?$/.test(location.pathname) ? "addons" : /\/stremio\/categories\/?$/.test(location.pathname) ? "cats"
+  : /\/stremio\/devices\/?$/.test(location.pathname) ? "devices" : "accounts";
+$("tabAcc").href = B + "/stremio"; $("tabAdd").href = B + "/stremio/addons"; $("tabCat").href = B + "/stremio/categories"; $("tabDev").href = B + "/stremio/devices";
 $("catUpd").href = B + "/stremio/addons";
-const TAB = {addons: "tabAdd", cats: "tabCat", accounts: "tabAcc"}[VIEW];
+const TAB = {addons: "tabAdd", cats: "tabCat", accounts: "tabAcc", devices: "tabDev"}[VIEW];
 $(TAB).classList.add("on"); $(TAB).setAttribute("aria-current", "page");
 $("viewAccounts").hidden = VIEW !== "accounts"; $("viewAddons").hidden = VIEW !== "addons"; $("viewCats").hidden = VIEW !== "cats";
+$("viewDevices").hidden = VIEW !== "devices";
 if (VIEW === "addons") { loadUpd(); loadExt(); loadPanels(); }
+else if (VIEW === "devices") loadDv();
 else if (VIEW === "cats") loadCats();
 else { let start = ""; try { start = localStorage.getItem(GKEY) || ""; } catch {} setPlat(PLAT); selectGate(start); }
 </script>
