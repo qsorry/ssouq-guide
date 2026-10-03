@@ -415,6 +415,8 @@ def against_mock():
               all(x in c0["description"] for x in ("الحالة: نشط", "ينتهي 20", "الاتصالات المسموحة: 1", "اليوزر: u",
                                                     f"المحتوى: {len(series)} مسلسل · {n_vod} فيلم · {n_live} قناة"))
               and mock_xtream.PASS + " " not in c0["description"] and "كلمة" not in c0["description"], c0["description"])
+        check("وطريقة الترجمة العربية، وإظهار الأسماء تحت الصور على تلفاز أندرويد (إعدادٌ في التطبيق لا يُضبط من الإضافة)",
+              c0["description"].endswith(S.SUBS_TIP + " · " + S.TITLE_TIP) and "Show title under catalog items" in S.TITLE_TIP)
         check("معرّف الخط ببادئة الإضافة ومن سيرفره الأصلي", c0["id"].startswith(pre + "a:") and cards[1]["id"] == S.line_id(pre, other2)
               and S.line_id(pre, other2) == S.line_id(pre, S.Cfg("http://old.example", "u", "p")) != c0["id"])
         am = S.accounts_meta(lines, pre, "https://g", c0["id"])["meta"]

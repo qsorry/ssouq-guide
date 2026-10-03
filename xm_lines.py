@@ -938,13 +938,34 @@ def _ver(v):
         return ()
 
 
+_warming = set()                                # حساباتٌ تُبنى مكتباتها الآن في الخلفية (لمعاينة التصنيفات)
+
+
+def _warm_group(lines):
+    sig = tuple((stremio_addon.line_hk(ln["cfg"]), ln["cfg"].user) for ln in lines)
+    with _upd_lock:
+        if sig in _warming:
+            return
+        _warming.add(sig)
+
+    def run():
+        try:
+            stremio_addon.warm_library(lines)
+        except Exception:
+            pass
+        finally:
+            with _upd_lock:
+                _warming.discard(sig)
+    threading.Thread(target=run, daemon=True, name="stremio-cats-warm").start()
+
+
 def stremio_categories_data(acct, cats=None):
     """صفحة «التصنيفات»: تصنيفات سمارت سوق للعميل، ومعاينتها على حساب Stremio من حساباته قوائمُه في الذاكرة — كم في كل
     تصنيف، وكم في «أخرى»، وأقسام اللوحات التي لم تدخل تصنيفًا (لتُضاف كلماتها). ‏cats: معاينةٌ قبل الحفظ."""
     saved = stremio_categories.get(DATA_DIR, acct["id"])
     cats = saved if cats is None else cats
     out = {"cats": cats, "edited": stremio_categories.edited(DATA_DIR, acct["id"]), "kinds": stremio_categories.KIND_AR,
-           "others": stremio_categories.OTHERS, "preview": {}, "sample": ""}
+           "others": stremio_categories.OTHERS, "preview": {}, "sample": "", "loading": False}
     for r in stremio_accounts.owned_all(DATA_DIR, acct["id"]):
         cfg = stremio_addon.read_token(DATA_DIR, r["token"]) if r.get("token") and not r.get("linked_to") else None
         lines = stremio_lines(cfg) if cfg else None
@@ -953,11 +974,12 @@ def stremio_categories_data(acct, cats=None):
         lines = [{**lines[0], "cats": cats}] + lines[1:]
         out["sample"] = r.get("email") or r.get("username") or ""
         for kind in stremio_addon.TYPES:
-            if not all(stremio_addon.has_lists(ln["cfg"], kind) for ln in lines):
-                continue
-            try:
-                lib = stremio_addon.library(lines, kind)
-            except stremio_addon.XtreamError:
+            # مكتبةٌ في الذاكرة وحدها: الصفحة لا تنتظر بناءها (ثوانٍ ثقيلة) — تُبنى في الخلفية وتعيد الصفحة المعاينة بعد قليل
+            lib = stremio_addon.cached_library(lines, kind)
+            if lib is None:
+                if all(stremio_addon.has_lists(ln["cfg"], kind) for ln in lines):
+                    out["loading"] = True
+                    _warm_group(lines)
                 continue
             by = stremio_addon._cat_index(lines, lib, kind)["by"]
             loose = {}
@@ -1171,9 +1193,14 @@ def start_stremio_genres():
         time.sleep(300)                                 # بعد أول تحميلٍ مسبق للقوائم (والخادم مستقر)
         while True:
             n = 0
+            with _upd_lock:
+                busy = any(j.get("running") for j in _upd_jobs.values())
+            if busy:                                    # «تحديث الإضافة لكل الحسابات» يحمّل اللوحات: لا نزاحمه عليها
+                time.sleep(30)
+                continue
             try:
                 for cfg in stremio_warm_cfgs():
-                    n += stremio_addon.crawl_genres(cfg, DATA_DIR)
+                    n += stremio_addon.crawl_genres(cfg, DATA_DIR, stop=lambda: any(j.get("running") for j in _upd_jobs.values()))
             except Exception as e:                      # لا يُسقط شيئًا
                 print(f"تصنيفات أفلام Stremio: {e}", flush=True)
             time.sleep(5 if n else max(STREMIO_WARM_EVERY, 600))
@@ -1270,6 +1297,9 @@ def stremio_reinstall(acct, gate_id, username):
 # الموحدة وصفّ «الحسابات» والأعداد والأقسام و«مصدر: …». حساب Stremio يُدخل مرةً واحدة وتُحدَّث فيه إضافات خطوطه كلها
 # (صاحبه بمكتبته، والخط المرتبط بلا كتالوجات)، كلٌّ في مكانه من الحساب؛ والإضافات الأخرى كما هي (وما نقص منها يُثبَّت).
 STREMIO_UPDATE_WORKERS = 3                      # حساباتٌ معًا (لطفًا بـ Stremio)
+# مهلة تجهيز إضافة خطٍّ في التحديث (ثوانٍ): لوحةٌ بطيئة (قائمةٌ كاملة تتعثّر فتُحمَّل قسمًا قسمًا بمحاولات) لا توقف الحساب
+# دقائق — يُتخطّى خطّها ويُذكر في «ما تعذّر»، ويكمل تحميلها في الخلفية فتكون إعادة التحديث بعدها سريعة
+STREMIO_UPDATE_LINE_SECS = float(os.environ.get("STREMIO_UPDATE_LINE_SECS", "120"))
 _upd_jobs = {}                                  # حساب الأداة ← حال آخر عملية
 _upd_lock = threading.Lock()
 
@@ -1288,7 +1318,30 @@ def stremio_update_groups(acct_id):
 def stremio_update_job(acct_id):
     with _upd_lock:
         j = _upd_jobs.get(acct_id)
-        return {**j, "failed": list(j["failed"])} if j else None
+        if not j:
+            return None
+        now = int(time.time())
+        return {**j, "failed": list(j["failed"]), "now": now,
+                "active": [{"email": k, "text": v["text"], "secs": now - v["at"]} for k, v in j.get("active", {}).items()]}
+
+
+def _in_time(fn, secs):
+    """‏fn() في خيطٍ بمهلة ← قيمتها، أو TimeoutError (ويكمل الخيط عمله في الخلفية: يملأ الذاكرة لإعادة التحديث)."""
+    box = {}
+
+    def run():
+        try:
+            box["v"] = fn()
+        except BaseException as e:              # يُعاد رفعه في خيط الطلب
+            box["e"] = e
+    t = threading.Thread(target=run, daemon=True, name="stremio-update-line")
+    t.start()
+    t.join(secs)
+    if t.is_alive():
+        raise TimeoutError
+    if "e" in box:
+        raise box["e"]
+    return box["v"]
 
 
 def stremio_update_data(acct):
@@ -1304,36 +1357,52 @@ def stremio_update_all(acct):
         if (_upd_jobs.get(acct["id"]) or {}).get("running"):
             raise ValueError("تحديثٌ جارٍ — انتظر انتهاءه")
         j = _upd_jobs[acct["id"]] = {"total": len(groups), "done": 0, "changed": 0, "lines": 0, "failed": [], "running": True,
-                                     "started": int(time.time()), "finished": 0}
+                                     "started": int(time.time()), "finished": 0, "active": {}}
     extras = stremio_extras.descriptors(DATA_DIR, acct["id"])
 
-    def one(rs):
-        n, err = 0, None
-        try:
-            auth = stremio_accounts.login(rs[0]["email"], rs[0]["password"])
-            try:
-                for r in rs:
-                    cfg = stremio_addon.read_token(DATA_DIR, r["token"])
-                    gate = find_gate(acct, r.get("gate")) or {}
-                    descriptor, built = stremio_descriptor(r["token"], cfg.host if cfg else gate.get("host", ""), gate,
-                                                           patient=False)
-                    stremio_accounts.install(auth, descriptor(), first=not r.get("linked_to"), extras=extras)
-                    n += 1
-                    if built:
-                        stremio_accounts.note(DATA_DIR, r.get("host", ""), r.get("username", ""),
-                                              addon_full=built[-1], addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
-            finally:
-                stremio_accounts.logout(auth)
-        except stremio_accounts.StremioError as e:
-            err = str(e)
-        except Exception as e:                  # حسابٌ يتعثّر لا يوقف الباقي
-            err = f"تعذّر: {type(e).__name__}"
+    def doing(email, text):                     # ما يجري الآن في كل حساب (تعرضه الصفحة: أين وصل ومنذ متى)
         with _upd_lock:
+            j["active"][email] = {"text": text, "at": int(time.time())}
+
+    def one(rs):
+        email, n, errs, ready = rs[0]["email"], 0, [], []
+        # إضافات الخطوط تُجهَّز أولًا (منها تحميل محتوى لوحاتها)، كلٌّ بمهلة، ثم دخولٌ واحد إلى Stremio يثبّت ما تجهّز
+        for r in rs:
+            cfg = stremio_addon.read_token(DATA_DIR, r["token"])
+            gate = find_gate(acct, r.get("gate")) or {}
+            name = gate.get("name") or (stremio_cfg_label(cfg) if cfg else "") or r.get("username", "")
+            doing(email, f"يجهّز إضافة «{name}» (يحمّل محتوى لوحتها)")
+            descriptor, built = stremio_descriptor(r["token"], cfg.host if cfg else gate.get("host", ""), gate, patient=False)
+            try:
+                ready.append((r, _in_time(descriptor, STREMIO_UPDATE_LINE_SECS), built[-1] if built else None))
+            except TimeoutError:
+                errs.append(f"«{name}»: لوحتها بطيئة الآن — أعد التحديث بعد دقائق (يكمل تحميلها في الخلفية)")
+            except Exception as e:              # خطٌّ يتعثّر لا يوقف باقي خطوط الحساب
+                errs.append(f"«{name}»: تعذّر ({type(e).__name__})")
+        if ready:
+            doing(email, "يثبّت في Stremio")
+            try:
+                auth = stremio_accounts.login(email, rs[0]["password"])
+                try:
+                    for r, desc, full in ready:
+                        stremio_accounts.install(auth, desc, first=not r.get("linked_to"), extras=extras)
+                        n += 1
+                        if full is not None:
+                            stremio_accounts.note(DATA_DIR, r.get("host", ""), r.get("username", ""),
+                                                  addon_full=full, addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
+                finally:
+                    stremio_accounts.logout(auth)
+            except stremio_accounts.StremioError as e:
+                errs.append(str(e))
+            except Exception as e:              # حسابٌ يتعثّر لا يوقف الباقي
+                errs.append(f"تعذّر: {type(e).__name__}")
+        with _upd_lock:
+            j["active"].pop(email, None)
             j["done"] += 1
             j["lines"] += n
-            j["changed"] += 1 if n and not err else 0
-            if err:
-                j["failed"].append({"email": rs[0]["email"], "error": err})
+            j["changed"] += 1 if n and not errs else 0
+            if errs:
+                j["failed"].append({"email": email, "error": " · ".join(errs)})
 
     def run():
         try:

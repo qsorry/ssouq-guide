@@ -579,6 +579,20 @@ def categories():
     try:
         for c in (ca, cb):
             S.warm(c)
+        check("‏cached_library: لا تُبنى ولا تُحمَّل (للصفحات التي لا تنتظر)", S.cached_library(lines, "series") is None)
+        import threading
+        calls, real = [], S.LIB.build
+        S.LIB.build = lambda kind, parts: (calls.append(kind), time.sleep(0.3), real(kind, parts))[2]
+        try:
+            ts = [threading.Thread(target=S.library, args=(lines, "series")) for _ in range(4)]
+            for t in ts:
+                t.start()
+            for t in ts:
+                t.join()
+        finally:
+            S.LIB.build = real
+        check("أربعة طلباتٍ متزامنة للمكتبة نفسها ← تُبنى مرةً واحدة", calls == ["series"], str(calls))
+        check("وبعدها في الذاكرة", S.cached_library(lines, "series") is S.library(lines, "series"))
         row = lambda kind, cid, ln=lines: [m["name"] for m in S.lib_catalog(ln, kind, CATALOG[kind], {}, pre)["metas"]] if cid is None else \
             [m["name"] for m in S.lib_catalog(ln, kind, S.CAT_PREFIX + cid, {}, pre)["metas"]]
         check("«مسلسلات تركية» في سمارت و«TR | Turkish» في فالكون ← «تركي»، والعمل مرةً واحدة", row("series", "s_turkish") == ["علي كارا", "مسلسل مدبلج"],

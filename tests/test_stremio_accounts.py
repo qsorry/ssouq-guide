@@ -735,8 +735,73 @@ def through_server():
     shutil.rmtree(d, ignore_errors=True)
 
 
+def update_job_unit():
+    print("== «تحديث الإضافة لكل الحسابات»: مهلةٌ لكل خط، وما يجري الآن ==")
+    import xm_lines as X
+    check("‏_in_time: القيمة في المهلة", X._in_time(lambda: 7, 2) == 7)
+    try:
+        X._in_time(lambda: time.sleep(1.5), 0.2)
+        late = False
+    except TimeoutError:
+        late = True
+    check("وبعدها ← TimeoutError (والخيط يكمل في الخلفية)", late)
+    try:
+        X._in_time(lambda: 1 / 0, 2)
+        err = False
+    except ZeroDivisionError:
+        err = True
+    check("وخطؤها يصل كما هو", err)
+    d = tempfile.mkdtemp(prefix="stremio_upd_")
+    keep = {k: getattr(X, k) for k in ("DATA_DIR", "stremio_update_groups", "stremio_descriptor", "find_gate", "STREMIO_UPDATE_LINE_SECS")}
+    keep_a = {k: getattr(X.stremio_accounts, k) for k in ("login", "install", "logout", "note")}
+    installed = []
+    try:
+        X.DATA_DIR = d
+        X.STREMIO_UPDATE_LINE_SECS = 0.4
+        X.stremio_update_groups = lambda acct_id: {
+            "a@x": [{"email": "a@x", "password": "p", "token": "T1", "gate": "g1", "username": "u1", "host": "h"},
+                    {"email": "a@x", "password": "p", "token": "SLOW", "gate": "g2", "username": "u2", "host": "h", "linked_to": "k"}],
+            "b@x": [{"email": "b@x", "password": "p", "token": "T3", "gate": "g1", "username": "u3", "host": "h"}]}
+        X.find_gate = lambda acct, gid: {"id": gid, "name": {"g1": "سمارت", "g2": "كاسبر"}[gid], "host": "http://h"}
+
+        def desc(tok, host, gate=None, accounts=None, patient=True):
+            built = []
+
+            def make():
+                if tok == "SLOW":
+                    time.sleep(1.5)                       # لوحةٌ بطيئة
+                built.append(True)
+                return {"manifest": {"id": tok}}
+            return make, built
+        X.stremio_descriptor = desc
+        X.stremio_accounts.login = lambda email, pw: "auth"
+        X.stremio_accounts.install = lambda auth, desc, first=False, extras=(): installed.append(desc["manifest"]["id"])
+        X.stremio_accounts.logout = lambda auth: None
+        X.stremio_accounts.note = lambda *a, **k: True
+        X.stremio_update_all({"id": "acctT"})
+        seen = []
+        for _ in range(100):
+            j = X.stremio_update_job("acctT")
+            seen += [a["text"] for a in j.get("active", [])]
+            if not j["running"]:
+                break
+            time.sleep(0.05)
+        check("ما يجري الآن في كل حساب (تعرضه الصفحة)", any("«كاسبر»" in t for t in seen), str(seen[:3]))
+        check("خطٌّ لوحته بطيئة يُتخطّى بعد المهلة ويُذكر بسببه، وباقي الخطوط والحسابات تُثبَّت",
+              not j["running"] and j["done"] == 2 and j["lines"] == 2 and j["changed"] == 1 and sorted(installed) == ["T1", "T3"]
+              and len(j["failed"]) == 1 and j["failed"][0]["email"] == "a@x" and "«كاسبر»: لوحتها بطيئة" in j["failed"][0]["error"]
+              and j["active"] == [], json.dumps(j, ensure_ascii=False)[:300])
+    finally:
+        for k, v in keep.items():
+            setattr(X, k, v)
+        for k, v in keep_a.items():
+            setattr(X.stremio_accounts, k, v)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     unit()
+    update_job_unit()
     against_mocks()
     through_server()
     print("\n----------------------------------------")
