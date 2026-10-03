@@ -8,6 +8,12 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import stremio_sessions as SS  # noqa: E402
+import stremio_addon as S  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mock_xtream  # noqa: E402
+import threading  # noqa: E402
+from urllib.parse import quote  # noqa: E402
 
 passed = failed = 0
 
@@ -138,7 +144,70 @@ def core():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def through_play():
+    print("== /play: الفحص قبل التحويل، والتحويل 302 إلى اللوحة كما هو ==")
+    srv = mock_xtream.serve(0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    host = f"http://127.0.0.1:{srv.server_address[1]}"
+    d = tempfile.mkdtemp(prefix="sessions_play_")
+    S.reset()
+    SS.reset()
+    try:
+        tok = S.make_token(d, host, mock_xtream.USER, mock_xtream.PASS)
+        cfg = S.read_token(d, tok)
+        A_ = {"ip": "1.2.3.4", "ua": NUVIO_PHONE}
+        B_ = {"ip": "9.9.9.9", "ua": NUVIO_TV}
+
+        def get(path, client=None):
+            code, body, ctype, hdr = S.handle(d, f"/stremio/{tok}/{path}", "https://g", client=client)
+            try:
+                return code, json.loads(body), hdr
+            except ValueError:
+                return code, body, hdr
+        code, cat, _ = get("catalog/movie/sq_movies.json")
+        mids = [m["id"] for m in cat["metas"]][:2]
+        code, st, _ = get(f"stream/movie/{quote(mids[0], safe='')}.json")
+        play1 = st["streams"][-1]["url"].split(f"/stremio/{tok}/", 1)[1]
+        code, st2, _ = get(f"stream/movie/{quote(mids[1], safe='')}.json")
+        play2 = st2["streams"][-1]["url"].split(f"/stremio/{tok}/", 1)[1]
+        code, _, h0 = get(play1, A_)
+        panel_url = h0.get("Location", "")
+        check("«standard» (بلا ضبط): التحويل 302 إلى اللوحة كما كان، لأي جهاز", code == 302 and panel_url.startswith(host)
+              and get(play1, B_)[2].get("Location") == panel_url and "X-Ssouq-Session" not in h0, panel_url[:60])
+        check("وروابط قائمة التشغيل بصيغتها (‏/play/<النوع>/<المعرّف>/<المصدر>)", play1.startswith("play/movie/"))
+        acct = S.session_account(cfg)
+        SS.set_account(acct, owner="acct1", variant="session")
+        S.account(cfg)                                    # ‏max_connections من اللوحة في الذاكرة (1)
+        code, _, ha = get(play1, A_)
+        check("«session»: الجهاز A ← التحويل نفسه إلى اللوحة (لا وسيط)", code == 302 and ha.get("Location") == panel_url)
+        code, _, hb = get(play1, B_)
+        verdict = json.loads(hb.get("X-Ssouq-Session") or "{}")
+        check("والجهاز B ← رفضٌ بحالةٍ واضحة من اللوحة (‏max_connections = 1)", code == 302 and verdict ==
+              {"allowed": False, "reason": "CONCURRENT_DEVICE_LIMIT", "active_devices": 1, "max_devices": 1}, json.dumps(verdict))
+        check("وتحويله إلى فيديو التنبيه (احتياطًا للعرض)، لا إلى اللوحة", hb.get("Location") == "https://g/static/stremio/alert-limit.mp4"
+              and host not in hb.get("Location", "") and hb.get("Cache-Control") == "no-store")
+        code, _, ha2 = get(play2, A_)
+        check("والجهاز A بفيلمٍ آخر ← يُسمح (جلسته نفسها)", code == 302 and ha2.get("Location", "").startswith(host)
+              and len(SS.sessions([acct])) == 1 and SS.sessions([acct])[0]["content_id"] == mids[1])
+        SS.revoke(SS.sessions([acct])[0]["session_id"])
+        code, _, hr = get(play1, A_)
+        check("بعد إلغاء جلسة A ← لا /play جديد منه (فيديو «تم تسجيل الدخول من جهاز آخر»)",
+              hr.get("Location") == "https://g/static/stremio/alert-revoked.mp4"
+              and json.loads(hr["X-Ssouq-Session"])["reason"] == "SESSION_REVOKED")
+        check("والجهاز B الآن ← يُسمح", get(play1, B_)[2].get("Location") == panel_url)
+        SS.set_account(acct, variant="standard")
+        check("والعودة إلى «standard» ← كما كانت لكل جهاز", get(play1, A_)[2].get("Location") == panel_url)
+        code, man, _ = get("manifest.json")
+        check("ومعرّف الإضافة لم يتغيّر بالنسخة", man["id"] == S.manifest_id(cfg))
+    finally:
+        srv.shutdown()
+        S.reset()
+        SS.reset()
+        shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     core()
+    through_play()
     print(f"\nResult: \033[32m{passed} passed\033[0m, " + (f"\033[31m{failed} failed\033[0m" if failed else "0 failed"))
     sys.exit(1 if failed else 0)

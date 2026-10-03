@@ -5011,7 +5011,8 @@ class Handler(BaseHTTPRequestHandler):
     def _stremio_get(self, path):
         self._inject = False
         code, body, ctype, hdr = stremio_addon.handle(DATA_DIR, path, self._public_base(), stremio_cfg_label, stremio_token_ok,
-                                                      stremio_route, stremio_lines, stremio_group_of)
+                                                      stremio_route, stremio_lines, stremio_group_of,
+                                                      client={"ip": self._client_ip(), "ua": self.headers.get("User-Agent", "")})
         return self._send(code, raw=body, ctype=ctype, extra=hdr)
 
     def _stremio_link(self):
