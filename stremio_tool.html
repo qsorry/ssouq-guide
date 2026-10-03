@@ -151,6 +151,12 @@ a.acc{text-decoration:none;border-radius:10px}
 .tabs2 button{flex:1;padding:8px;border-radius:10px;border:1.5px solid var(--line);background:var(--sf2);font-weight:700;font-size:.88rem;color:var(--mute)}
 .tabs2 button.on{border-color:var(--purple);color:var(--ink);background:color-mix(in srgb,var(--purple) 14%,var(--sf))}
 .plat{max-width:340px;margin:0 0 6px}
+.insp h4{margin:14px 0 6px;font-size:.95rem}
+.insp .iw{border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin:6px 0;background:var(--sf2)}
+.insp .iw b{font-size:.92rem}
+.insp ul{margin:4px 0 0;padding-inline-start:18px;font-size:.82rem;color:var(--mute)}
+.insp li{margin:2px 0}
+.insp .ok{color:var(--go)}.insp .warn{color:var(--amber)}.insp .bad{color:var(--err)}
 .plat button small{display:block;font-weight:400;font-size:.7rem;color:var(--mute)}
 
 .bnav{position:fixed;inset-inline:0;bottom:0;z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
@@ -335,8 +341,9 @@ h1{font-size:1.3rem;margin:0 0 2px}
 
   <div id="viewCats" hidden>
   <h1>التصنيفات</h1>
-  <p class="sub">تصنيفات سمارت سوق واحدةٌ لكل البوابات: قسم كل لوحةٍ يدخل التصنيف الذي في اسمه كلمةٌ من كلماته («مسلسلات تركية» و«TR | Turkish» ← «تركي»).
-    «صفٌّ في الرئيسية» يظهر صفًّا مستقلًّا في رئيسية Stremio، والباقي في «اكتشف».</p>
+  <p class="sub">تصنيفات سمارت سوق واحدةٌ لكل البوابات: قسم كل لوحةٍ يدخل التصنيف الذي في اسمه كلمةٌ من كلماته («مسلسلات تركية» و«TR | Turkish» ← «تركي»).</p>
+  <p class="sub"><b>الرئيسية أقسام:</b> «الحسابات» ثم <b>المسلسلات</b> ثم <b>الأفلام</b> ثم <b>القنوات</b> (الأحدث أولًا). وتصنيفات كل قسمٍ داخله:
+    «اكتشف» ← القسم ← «تصنيف»، بالترتيب هنا. و«صفٌّ في الرئيسية أيضًا» اختياري لتصنيفٍ تريد إبرازه (رمضان في رمضان).</p>
   <div class="tabs2" id="catKinds" role="tablist" aria-label="النوع"></div>
   <section>
     <h2><span class="grow" id="catTtl">المسلسلات</span><small id="catSample"></small></h2>
@@ -443,6 +450,19 @@ h1{font-size:1.3rem;margin:0 0 2px}
   </div>
 </div>
 
+<div class="overlay" id="inspOverlay" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="inspTtl">
+    <h3 id="inspTtl">فحص عمل</h3>
+    <p class="hint" id="inspFor"></p>
+    <form class="row" id="inspForm">
+      <input class="t" id="inspQ" placeholder="اسم المسلسل أو الفيلم" autocomplete="off">
+      <button class="btn" id="inspBtn">فحص</button>
+    </form>
+    <div id="inspRes"></div>
+    <div class="acts"><button class="ghost" id="inspClose">إغلاق</button></div>
+  </div>
+</div>
+
 <div class="sheet" id="sheet" hidden>
   <div class="sbox" role="dialog" aria-modal="true" aria-labelledby="sheetTtl">
     <div class="grab"></div>
@@ -517,6 +537,7 @@ const I = {
   unlink: '<svg viewBox="0 0 24 24"><path d="M9 15l6-6M7 12l-2 2a4 4 0 0 0 5.7 5.7l2-2M17 12l2-2a4 4 0 0 0-5.7-5.7l-2 2M3 3l18 18"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>'};
+I.find = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
 const gateName = () => ((D && D.gates.find(g => g.id === GATE)) || {}).name || "البوابة";
 
 // ---- البوابات والقائمة ----
@@ -802,6 +823,7 @@ document.addEventListener("click", e => {
   else if (b.dataset.plat) setPlat(b.dataset.plat);
   else if (b.dataset.nmake) nvMake(+b.dataset.nmake, b);
   else if (b.dataset.nmore) nvMenu(b.dataset.nmore);
+  else if (b.dataset.insp) openInsp(b.dataset.insp);
   else if (b.dataset.nlinkto) nvLink(b.dataset.nlinkto);
   else if (b.dataset.nunlink) { if (confirm(`فصل الخط ${b.dataset.nunlink} عن حسابه في Nuvio؟ يخرج محتواه من الحساب (ويبقى اليوزر في البوابة).`)) nvDo("/api/nuvio/unlink", b.dataset.nunlink, {}, b, "فُصل الخط عن الحساب"); }
   else if (b.dataset.nre) nvDo("/api/nuvio/reinstall", b.dataset.nre, {}, b, "حُدّثت الإضافة في حسابه — أعد فتح Nuvio");
@@ -900,6 +922,7 @@ function nvMenu(username){
     off ? "" : sitem(`data-nre="${u}"`, I.sync, "تحديث الإضافة", "تعود أول قائمة إضافاته بأحدث نسخة، وإضافاته الأخرى كما هي"),
     sitem(`data-nrelink="${u}"`, I.link, "إعادة الربط", off ? "تُثبَّت الإضافة في حسابه من جديد برابطٍ جديد" : "رابطٌ جديد للإضافة ويتوقف القديم (إن نُسخ لحسابٍ آخر)"),
     off ? "" : sitem(`data-noff="${u}"`, I.unlink, "إلغاء التفعيل", "تُزال الإضافة من حسابه ويتوقف رابطها — والحساب يبقى", "danger"),
+    sitem(`data-insp="${u}"`, I.find, "فحص عمل", "لماذا لم يظهر مسلسلٌ أو فيلم، أو لم يظهر مصدرٌ له من خطٍّ"),
   ]);
 }
 // «ربط خط آخر» في حساب Nuvio: مكتبةٌ واحدة بمحتوى كل خطوطه في إضافته نفسها (لا يُثبَّت شيءٌ جديد)
@@ -920,6 +943,47 @@ async function nvDo(path, username, extra, btn, ok){
   catch(e) { toast(e.message, true); }
   finally { btn.disabled = false; btn.innerHTML = label; }
 }
+
+// ---- «فحص عمل»: لماذا لم يظهر عملٌ أو مصدرٌ له — ما في قائمة كل خطٍّ في الحساب، وما في الإضافة (المكتبة الموحدة) ----
+let INSP = null;
+function openInsp(username){
+  INSP = {username, platform: PLAT};
+  $("inspFor").textContent = `الحساب ${username}: اكتب اسم المسلسل أو الفيلم كما يكتبه العميل — يظهر ما في قائمة كل خطٍّ وما في الإضافة.`;
+  $("inspRes").innerHTML = ""; $("inspOverlay").hidden = false; $("inspQ").focus();
+}
+function hideInsp(){ $("inspOverlay").hidden = true; INSP = null; }
+const KIND_AR = {series: "المسلسلات", movie: "الأفلام"};
+const srcText = x => [x.name, x.year, x.season ? "موسم " + x.season : "", x.tmdb ? "TMDB " + x.tmdb : ""].filter(Boolean).map(esc).join(" · ");
+function renderInsp(d){
+  if (!d.kinds.length) { $("inspRes").innerHTML = `<div class="empty">لا شيء باسم «${esc(d.q)}» في أي خطٍّ من خطوط الحساب.</div>`; return; }
+  $("inspRes").innerHTML = `<div class="insp">${d.kinds.map(k => {
+    const inLib = new Set(k.works.flatMap(w => w.sources.map(s => s.hk)));
+    return `<h4>${KIND_AR[k.kind] || k.kind}</h4>
+      <div class="iw"><b>في الإضافة</b>${!k.library ? '<ul><li class="warn">⏳ المكتبة لم تُبنَ بعد — أعد الفحص بعد دقيقة</li></ul>'
+        : k.works.length ? k.works.map(w => `<ul><li><b>${esc(w.name)}${w.year ? " (" + esc(w.year) + ")" : ""}</b> — ${w.sources.length} مصدر</li>${w.sources.map(s =>
+            `<li>${esc(s.label || "خط")}: ${srcText(s)}</li>`).join("")}</ul>`).join("")
+        : '<ul><li class="bad">لا عمل بهذا الاسم في الإضافة</li></ul>'}</div>
+      ${k.lines.map(l => `<div class="iw"><b>قائمة ${esc(l.label || "الخط")}</b>${!l.loaded
+          ? '<ul><li class="warn">⏳ لم تُحمَّل بعد (بدأ تحميلها) — أعد الفحص بعد دقيقة</li></ul>'
+          : l.items.length ? `<ul>${l.items.map(x => `<li>${srcText(x)}${x.cat ? " · " + esc(x.cat) : ""}</li>`).join("")}
+              ${k.library ? `<li class="${inLib.has(l.hk) ? "ok" : "bad"}">${inLib.has(l.hk) ? "✓ مصدره في العمل بالإضافة" : "✗ ليس في العمل بالإضافة"}</li>` : ""}</ul>`
+          : '<ul><li class="bad">لا شيء بهذا الاسم في قائمة هذا الخط — ليس في باقته، أو باسمٍ آخر فيها</li></ul>'}</div>`).join("")}
+      ${k.conflicts.length ? `<div class="iw"><ul><li class="warn">⚠ الاسم نفسه بمعرّفَي TMDB مختلفين في اللوحات (${k.conflicts.map(esc).join("، ")}) — فيبقيان عملين منفصلين</li></ul></div>` : ""}`;
+  }).join("")}</div>`;
+}
+$("inspForm").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("inspQ").value.trim(); if (!q || !INSP) return;
+  const b = $("inspBtn"); b.disabled = true; $("inspRes").innerHTML = '<div class="empty">جاري الفحص…</div>';
+  try {
+    const d = await api(`/api/stremio/inspect?platform=${INSP.platform}&gate=${encodeURIComponent(GATE)}&username=${encodeURIComponent(INSP.username)}&q=${encodeURIComponent(q)}`);
+    renderInsp(d);
+  } catch(err) { $("inspRes").innerHTML = `<div class="err">${esc(err.message)}</div>`; }
+  finally { b.disabled = false; }
+};
+$("inspClose").onclick = hideInsp;
+$("inspOverlay").addEventListener("click", e => { if (e.target === $("inspOverlay")) hideInsp(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("inspOverlay").hidden) hideInsp(); });
 
 // ---- «إضافات أخرى»: تُثبَّت مع كل حسابٍ جديد، وبزرٍّ في كل السابقة (عمليةٌ في الخلفية تُتابَع هنا) ----
 let EXT = {extras: [], job: null, accounts: 0}, EXT_POLL = 0;
@@ -1257,6 +1321,7 @@ function openAcctMenu(username){
   const u = esc(a.username);
   openSheet(a.username, a.email, [
     sitem(`data-re="${u}"`, I.sync, "تحديث الإضافة", "بأحدث الأقسام والأعداد"),
+    sitem(`data-insp="${u}"`, I.find, "فحص عمل", "لماذا لم يظهر مسلسلٌ أو فيلم، أو لم يظهر مصدرٌ له من خطٍّ"),
     sitem(`data-lock="${u}"`, I.lock, "إيقاف الإضافة في الحسابات الأخرى", "إن نسخها أحدٌ إلى حسابه تتوقف عنده، وتبقى تعمل عند العميل"),
     sitem(`data-linkto="${u}"`, I.plus, "ربط خط آخر", "خطٌّ من بوابةٍ أخرى في الحساب نفسه"),
     a.link ? sitem(`data-copy="${esc(a.link)}" data-what="نُسخ الرابط"`, I.link, "نسخ رابط التثبيت", "") : "",
@@ -1378,7 +1443,7 @@ function renderCatCounts(){
   document.querySelectorAll("#catList .cat").forEach(el => {
     const c = catOf(el.dataset.i), n = catCount(c), b = el.querySelector(".count");
     b.textContent = n == null ? "—" : n.toLocaleString("en"); b.classList.toggle("home", !!c.home);
-    b.title = n == null ? "المعاينة بعد تحميل قوائم حسابٍ من حساباتك" : (c.home ? "صفٌّ في الرئيسية" : "في «اكتشف»");
+    b.title = n == null ? "المعاينة بعد تحميل قوائم حسابٍ من حساباتك" : (c.home ? "داخل قسمه، وصفٌّ في الرئيسية أيضًا" : "داخل قسمه («اكتشف» ← «تصنيف»)");
   });
   const p = CAT.preview[CAT_KIND];
   $("catSample").textContent = CAT.sample ? `معاينة: ${CAT.sample}` : "";
@@ -1401,7 +1466,7 @@ function renderCats(){
         <span class="count">—</span>
       </div>
       <div class="sw">
-        <label class="chk"><input type="checkbox" data-f="home" ${c.home ? "checked" : ""}>صفٌّ في الرئيسية</label>
+        <label class="chk"><input type="checkbox" data-f="home" ${c.home ? "checked" : ""}>صفٌّ في الرئيسية أيضًا</label>
         <label class="chk"><input type="checkbox" data-f="on" ${c.on !== false ? "checked" : ""}>ظاهر</label>
         <button type="button" class="exb" data-ex="1" aria-expanded="${CAT_OPEN.has(c.id)}">كلمات الربط (${catTerms(c)}) ${CAT_OPEN.has(c.id) ? "▴" : "▾"}</button>
       </div>
@@ -1469,7 +1534,7 @@ $("catAdd").onclick = () => {
   const names = new Set(CAT.cats.filter(c => c.kind === CAT_KIND).map(c => c.name));
   let name = "تصنيفٌ جديد", n = 2; while (names.has(name)) name = `تصنيفٌ جديد ${n++}`;
   const id = CAT_KIND[0] + "_n" + Date.now().toString(36);
-  CAT.cats.push({id, kind: CAT_KIND, name, keys: "", genres: "", home: true, on: true}); CAT_OPEN.add(id);
+  CAT.cats.push({id, kind: CAT_KIND, name, keys: "", genres: "", home: false, on: true}); CAT_OPEN.add(id);
   renderCats(); catChanged(false);
   const inp = document.querySelector("#catList .cat:last-child input[data-f=name]"); if (inp) { inp.focus(); inp.select(); }
 };

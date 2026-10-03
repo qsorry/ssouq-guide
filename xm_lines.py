@@ -1382,6 +1382,29 @@ def nuvio_disable(acct, gate_id, username):
     return nuvio_accounts.get(DATA_DIR, rec["host"], username)
 
 
+def stremio_inspect(acct, gate_id, username, q, platform="stremio"):
+    """«فحص عمل»: لماذا لم يظهر عملٌ (أو مصدرٌ له) في إضافة حسابٍ من حسابات هذا العميل — خطوط الحساب كله (لخطٍّ مرتبط: حساب
+    صاحبه) وما في قائمة كلٍّ منها والمكتبة الموحدة (‏stremio_addon.inspect_work). ‏ValueError لا حساب."""
+    if platform == "nuvio":
+        main = _nuvio_main(acct, gate_id, username)
+        cfg = stremio_addon.read_token(DATA_DIR, main.get("token")) if main.get("token") else None
+        lines = nuvio_lines(cfg) if cfg else None
+    else:
+        hit = stremio_accounts.owned(DATA_DIR, acct["id"], gate_id, username)
+        if not hit:
+            raise ValueError("لا حساب Stremio لهذا اليوزر")
+        grp = stremio_accounts.group(DATA_DIR, hit[0], username)
+        root = grp[0] if grp else hit[1]
+        cfg = stremio_addon.read_token(DATA_DIR, root.get("token")) if root.get("token") else None
+        lines = stremio_lines(cfg) if cfg else None
+    if not lines:
+        raise ValueError("بيانات خطوط هذا الحساب غير محفوظة")
+    res = stremio_addon.inspect_work(lines, q)
+    res["accounts"] = [{"label": ln.get("label") or "", "hk": stremio_addon.line_hk(ln["cfg"]),
+                        "user": stremio_addon.mask_user(ln["cfg"].user)} for ln in lines]
+    return res
+
+
 def nuvio_page_data(acct, gate_id):
     """حسابات Nuvio لبوابة: الإيميل وكلمة المرور (للنسخ للعميل) وحالها وإضافتها، وخطوط كل حساب (الخط المرتبط يظهر في
     بوابته ببيانات حسابه)."""
@@ -4427,6 +4450,20 @@ class Handler(BaseHTTPRequestHandler):
                 if not stremio_on(acct):
                     return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
                 return self._send(200, stremio_extras_data(acct))
+            if path == "/api/stremio/inspect":    # «فحص عمل»: لماذا لم يظهر عملٌ أو مصدرٌ له (Stremio وNuvio)
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                if not stremio_on(acct):
+                    return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
+                q = self._q("q").strip()[:80]
+                if not q:
+                    return self._send(400, {"ok": False, "error": "اكتب اسم العمل"})
+                try:
+                    res = stremio_inspect(acct, self._q("gate"), self._q("username").strip(), q,
+                                          "nuvio" if self._q("platform") == "nuvio" else "stremio")
+                except ValueError as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
+                return self._send(200, {"ok": True, **res})
             if path == "/api/nuvio/accounts":     # حسابات Nuvio لبوابة (إيميلٌ وكلمة مرور للعميل)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})

@@ -291,6 +291,21 @@ def through_server():
         check("معرّف الإضافة نفسه في Nuvio وفي رابط Stremio للخط", man2.get("id") and man2.get("id") == man.get("id"), f"{man.get('id')} {man2.get('id')}")
         check("ومعرّفات الأعمال نفسها (لا يتغيّر أي ID)", ids2 and ids2 == [m["id"] for m in metas])
 
+        print("== «فحص عمل» ==")
+        q = quote("game of thrones")
+        c, r = post(f"/api/stremio/inspect?platform=nuvio&gate=g1&username={XUSER}&q={q}", None)
+        ser = next((k for k in r.get("kinds", []) if k["kind"] == "series"), {})
+        ln0 = (ser.get("lines") or [{}])[0]
+        check("لحساب Nuvio: ما في قائمة خطّه والعمل في الإضافة", c == 200 and ln0.get("loaded") and ln0.get("items")
+              and ln0["items"][0]["name"] == "Game of Thrones" and ser.get("works") and ser["works"][0]["sources"],
+              json.dumps(r, ensure_ascii=False)[:240])
+        check("وبلا بيانات Xtream (اليوزر مخفي)", c == 200 and secret_free(json.dumps(r)) and r["accounts"][0]["user"].startswith("•••"))
+        c, r = post(f"/api/stremio/inspect?platform=stremio&gate=g1&username={XUSER}&q={q}", None)
+        check("ولـ Stremio: لا حساب Stremio لهذا اليوزر ← 400", c == 400, json.dumps(r, ensure_ascii=False))
+        post("/api/login", {"user": "other", "password": "pw654321"}, op2)
+        c, r = post(f"/api/stremio/inspect?platform=nuvio&gate=g1&username={XUSER}&q={q}", None, op2)
+        check("وحسابٌ آخر لا يفحص حسابات غيره", c == 400)
+
         print("== المرة الثانية والقائمة ==")
         c, r = post("/api/nuvio/account", {"gate": "g1", "username": XUSER, "password": XPASS})
         check("المرة الثانية: الحساب نفسه بلا إنشاء", c == 200 and r["created"] is False and r["email"] == email and r["password"] == pw

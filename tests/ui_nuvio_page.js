@@ -136,9 +136,25 @@ s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.users['user004'] = 'p
     console.log('== the ⋯ menu ==');
     await user.click('#list [data-nmore]');
     const items = await user.$$eval('#sheet .sitem', bs => bs.map(b => b.querySelector('span').firstChild.textContent.trim()));
-    check('«ربط خط آخر» · «تحديث الإضافة» · «إعادة الربط» · «إلغاء التفعيل» (no TV code: the customer scans the QR with his phone)',
-      items.join('|') === 'ربط خط آخر|تحديث الإضافة|إعادة الربط|إلغاء التفعيل', items.join('|'));
+    check('«ربط خط آخر» · «تحديث الإضافة» · «إعادة الربط» · «إلغاء التفعيل» · «فحص عمل» (no TV code: the customer scans the QR)',
+      items.join('|') === 'ربط خط آخر|تحديث الإضافة|إعادة الربط|إلغاء التفعيل|فحص عمل', items.join('|'));
     await shot(user, 'nuvio-menu');
+    await user.click('#sheet [data-insp]');
+    await user.waitForSelector('#inspOverlay:not([hidden])');
+    await user.fill('#inspQ', 'game of thrones');
+    let insp = '';
+    for (let i = 0; i < 20 && !/✓ مصدره في العمل بالإضافة/.test(insp); i++) {   // أول مرة: «لم تُحمَّل بعد» ويبدأ تحميلها
+      await user.click('#inspBtn');
+      await user.waitForFunction(() => /في الإضافة/.test(document.querySelector('#inspRes')?.textContent || ''), null, {timeout: 20000});
+      insp = (await user.textContent('#inspRes')).replace(/\s+/g, ' ');
+      if (i === 0) check('first time: «لم تُحمَّل بعد» (its loading starts)', /⏳/.test(insp), insp.slice(0, 120));
+      await sleep(700);
+    }
+    check('«فحص عمل»: the work in the add-on with its sources, and what each line list has', /Game of Thrones/.test(insp)
+      && /قائمة فالكون/.test(insp) && /✓ مصدره في العمل بالإضافة/.test(insp), insp.slice(0, 200));
+    await shot(user, 'nuvio-inspect');
+    await user.click('#inspClose');
+    await user.click('#list [data-nmore]');
     await user.click('#sheet [data-nre]');
     await user.waitForFunction(() => /حُدّثت الإضافة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 8000});
     check('«تحديث الإضافة»', true);

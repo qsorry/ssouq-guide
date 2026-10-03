@@ -48,7 +48,7 @@ import stremio_posters as POSTERS
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.5.1"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.6.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -1430,6 +1430,55 @@ def cached_library(lines, kind):
     with _lock:
         hit = _libs.get(gkey)
     return hit[1] if hit else None
+
+
+INSPECT_MAX = 12
+
+
+def inspect_work(lines, q):
+    """«فحص عمل» في الأداة: لماذا لم يظهر عملٌ (أو مصدرٌ له) — من الذاكرة وحدها، بلا انتظار سيرفر. لكل نوع (مسلسلات وأفلام):
+    ‏works: أعمال المكتبة الموحدة بهذا الاسم ومصادرها (الخط، الاسم كما في لوحته، السنة، الموسم، TMDB)؛ ‏lines: لكل خطٍّ ما في
+    قائمته بهذا الاسم (أو «لم تُحمَّل بعد» — ويبدأ تحميلها في الخلفية). ‏conflicts: الاسم نفسه بمعرّفَي TMDB مختلفين (فيبقيان
+    عملين)."""
+    words = LIB.norm(q).split()
+    out = {"q": str(q or ""), "kinds": []}
+    if not words:
+        return out
+    for kind in ("series", "movie"):
+        per, keys = [], {}
+        for ln in lines:
+            cfg = ln["cfg"]
+            L = _cached_lists(cfg, kind)
+            row = {"label": ln.get("label") or "", "hk": line_hk(cfg), "loaded": L is not None, "items": []}
+            if L is None:
+                try:
+                    _line_job(cfg, kind)                 # تبدأ في الخلفية: الفحص التالي يجدها
+                except Exception:
+                    pass
+            else:
+                for it in L.items:
+                    n = LIB.norm(it.name)
+                    if all(w in n for w in words):
+                        k = LIB.item_key(it, L.cat_of(it))
+                        row["items"].append({"name": it.name, "year": k.year or None, "season": k.season or None,
+                                             "tmdb": k.tmdb or None, "cat": L.cat_of(it), "key": k.nkey})
+                        if k.tmdb:
+                            keys.setdefault(k.nkey, set()).add(k.tmdb)
+                        if len(row["items"]) >= INSPECT_MAX:
+                            break
+            per.append(row)
+        lib = cached_library(lines, kind)
+        if lib is None and all(r["loaded"] for r in per):
+            _bg(warm_library, lines)                     # قوائمها جاهزة ولم تُبنَ مكتبتها بعد: تُبنى في الخلفية
+        works = []
+        for w in (lib.search(q)[:INSPECT_MAX] if lib else []):
+            works.append({"name": w.name, "year": w.year, "id": w.anchor.key.nkey,
+                          "sources": [{"label": src.label, "hk": src.hk, "name": src.item.name, "year": src.key.year or None,
+                                       "season": src.key.season or None, "tmdb": src.key.tmdb or None} for src in w.sources]})
+        if works or any(r["items"] or not r["loaded"] for r in per):
+            out["kinds"].append({"kind": kind, "library": lib is not None, "works": works, "lines": per,
+                                 "conflicts": sorted(k for k, ids in keys.items() if len(ids) > 1)})
+    return out
 
 
 def warm_library(lines):
