@@ -4,7 +4,9 @@
 
 كل تصنيفٍ نوعه (مسلسلات · أفلام · قنوات) واسمه وكلمات ربطه: قسم اللوحة الذي يحوي كلمةً منها يدخل فيه، والقناة باسمها
 أيضًا (كلمةٌ بـ«-» قبلها تُخرجه: «عرب، -مدبلج»)، وللأفلام والمسلسلات تصنيفات العمل نفسه أيضًا (‏genres: «أكشن» من حقل genre بلغتيه). وما لم يدخل
-تصنيفًا في «أخرى». ‏home: صفٌّ في رئيسية Stremio («تركي - المسلسلات»)، وإلا ففي قائمة «اكتشف» وحدها؛ ‏on=False: مخفي.
+تصنيفًا في «أخرى». الرئيسية أقسامٌ ثلاثة (المسلسلات · الأفلام · القنوات)، وتصنيفات كل قسمٍ داخله: قائمة «تصنيف» في «اكتشف»
+بترتيبها هنا. ‏home (اختياري، مطفأٌ للكل افتراضًا — ‏LAYOUT): صفٌّ مستقلٌّ في الرئيسية أيضًا («رمضان - المسلسلات» في رمضان)؛ ‏on=False:
+مخفي.
 
 يُحرَّر من صفحة «التصنيفات» في الأداة لكل حساب أداة (وبلا تحرير: الافتراضي هنا). تغيير الصفوف يصل حسابات Stremio بـ«تحديث
 الإضافة لكل الحسابات» (الـmanifest)، ومحتوى كل تصنيفٍ يُقرأ من الخادم فيتغيّر فورًا.
@@ -30,7 +32,8 @@ MAX_PER_KIND = 30
 NAME_MAX = 40
 KEYS_MAX = 600
 
-_C = lambda cid, kind, name, keys, home=True, genres="": {"id": cid, "kind": kind, "name": name, "keys": keys,
+LAYOUT = 2                           # 2: الرئيسية أقسامٌ لا صفوف تصنيفات — ما حُفظ قبلها تُطفأ صفوفه في الرئيسية مرةً
+_C = lambda cid, kind, name, keys, home=False, genres="": {"id": cid, "kind": kind, "name": name, "keys": keys,
                                                           "genres": genres, "home": home, "on": True}
 DEFAULTS = [
     _C("s_ramadan", "series", "رمضان", "رمضان, ramadan"),
@@ -42,9 +45,9 @@ DEFAULTS = [
     _C("s_anime", "series", "أنمي", "انمي, انيمي, anime", genres="أنمي"),
     _C("s_kids", "series", "أطفال وكرتون", "اطفال, كرتون, kids, cartoon, children, رسوم متحركة, animation, spacetoon",
        genres="رسوم متحركة, أطفال"),
-    _C("s_indian", "series", "هندي", "هند, india, hindi, bollywood", home=False),
-    _C("s_docs", "series", "وثائقي", "وثائق, documentar", home=False, genres="وثائقي"),
-    _C("s_dubbed", "series", "مدبلج", "مدبلج, dubbed, dub", home=False),
+    _C("s_indian", "series", "هندي", "هند, india, hindi, bollywood"),
+    _C("s_docs", "series", "وثائقي", "وثائق, documentar", genres="وثائقي"),
+    _C("s_dubbed", "series", "مدبلج", "مدبلج, dubbed, dub"),
     _C("m_arabic", "movie", "عربي", "عرب, arab, مصر, خليج, سعودي, egypt, gulf, -مدبلج, -هند, -ترك"),
     _C("m_foreign", "movie", "أجنبي", "اجنب, english, foreign, hollywood, هوليود, netflix, نتفلكس, en, us, uk, usa, -هند, -مدبلج"),
     _C("m_action", "movie", "أكشن", "اكشن, action", genres="أكشن"),
@@ -53,24 +56,24 @@ DEFAULTS = [
     _C("m_kids", "movie", "أطفال وكرتون", "اطفال, كرتون, kids, cartoon, animation, انيميشن, رسوم متحركة, disney, pixar",
        genres="رسوم متحركة"),
     _C("m_indian", "movie", "هندي", "هند, india, hindi, bollywood"),
-    _C("m_thriller", "movie", "إثارة وجريمة", "اثارة, thriller, جريمة, crime, غموض, mystery", home=False, genres="إثارة, جريمة, غموض"),
-    _C("m_drama", "movie", "دراما", "دراما, drama", home=False, genres="دراما"),
-    _C("m_scifi", "movie", "خيال علمي", "خيال علمي, sci fi, science fiction, فانتازيا, fantasy", home=False, genres="خيال علمي, فانتازيا"),
-    _C("m_turkish", "movie", "تركي", "ترك, turk, tr", home=False),
-    _C("m_asian", "movie", "آسيوي", "كور, korea, صين, china, يابان, japan, اسيو, asian, thai", home=False),
-    _C("m_anime", "movie", "أنمي", "انمي, anime", home=False, genres="أنمي"),
-    _C("m_docs", "movie", "وثائقي", "وثائق, documentar", home=False, genres="وثائقي"),
-    _C("m_4k", "movie", "4K", "4k, uhd, 2160", home=False),
+    _C("m_thriller", "movie", "إثارة وجريمة", "اثارة, thriller, جريمة, crime, غموض, mystery", genres="إثارة, جريمة, غموض"),
+    _C("m_drama", "movie", "دراما", "دراما, drama", genres="دراما"),
+    _C("m_scifi", "movie", "خيال علمي", "خيال علمي, sci fi, science fiction, فانتازيا, fantasy", genres="خيال علمي, فانتازيا"),
+    _C("m_turkish", "movie", "تركي", "ترك, turk, tr"),
+    _C("m_asian", "movie", "آسيوي", "كور, korea, صين, china, يابان, japan, اسيو, asian, thai"),
+    _C("m_anime", "movie", "أنمي", "انمي, anime", genres="أنمي"),
+    _C("m_docs", "movie", "وثائقي", "وثائق, documentar", genres="وثائقي"),
+    _C("m_4k", "movie", "4K", "4k, uhd, 2160"),
     _C("t_sports", "tv", "رياضة", "رياض, sport, bein, ssc, kass, الكاس, ad sport, nba, football, كرة, dazn, espn"),
     _C("t_news", "tv", "أخبار", "اخبار, news"),
     _C("t_arabic", "tv", "عربية", "عرب, arab, mbc, روتانا, rotana, مصر, سعودي, خليج, ksa, uae, امارات, قطر, كويت, عراق, سوري, لبنان, "
                                   "-رياض, -sport, -اخبار, -news, -اطفال, -kids"),
     _C("t_movies", "tv", "أفلام ومسلسلات", "افلام, مسلسلات, movies, cinema, سينما, drama, دراما, osn, box office"),
     _C("t_kids", "tv", "أطفال", "اطفال, kids, cartoon, كرتون, spacetoon, سبيستون, children"),
-    _C("t_docs", "tv", "وثائقي", "وثائق, documentar, nat geo, national geographic, discovery", home=False),
-    _C("t_religious", "tv", "دينية", "ديني, دين, قران, quran, islam, اسلام", home=False),
-    _C("t_foreign", "tv", "أجنبية", "english, uk, usa, us, en, foreign, اجنب", home=False),
-    _C("t_4k", "tv", "4K", "4k, uhd", home=False),
+    _C("t_docs", "tv", "وثائقي", "وثائق, documentar, nat geo, national geographic, discovery"),
+    _C("t_religious", "tv", "دينية", "ديني, دين, قران, quran, islam, اسلام"),
+    _C("t_foreign", "tv", "أجنبية", "english, uk, usa, us, en, foreign, اجنب"),
+    _C("t_4k", "tv", "4K", "4k, uhd"),
 ]
 
 _lock = threading.Lock()
@@ -122,7 +125,14 @@ def get(data_dir, acct_id):
         return defaults()
     rec = _load(data_dir).get(str(acct_id))
     cats = rec.get("cats") if isinstance(rec, dict) else None
-    return copy.deepcopy(cats) if isinstance(cats, list) else defaults()
+    if not isinstance(cats, list):
+        return defaults()
+    cats = copy.deepcopy(cats)
+    if (rec.get("layout") or 1) < LAYOUT:         # حُفظت والرئيسية صفوف تصنيفات: تصير أقسامًا (صفوفها مطفأة)
+        for c in cats:
+            if isinstance(c, dict):
+                c["home"] = False
+    return cats
 
 
 def edited(data_dir, acct_id):
@@ -168,7 +178,7 @@ def clean(cats):
 def save(data_dir, acct_id, cats):
     cats = clean(cats)
     d = dict(_load(data_dir))
-    d[str(acct_id)] = {**(d.get(str(acct_id)) or {}), "cats": cats, "at": int(time.time())}
+    d[str(acct_id)] = {**(d.get(str(acct_id)) or {}), "cats": cats, "at": int(time.time()), "layout": LAYOUT}
     _write(data_dir, d)
     return cats
 

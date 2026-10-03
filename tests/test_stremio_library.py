@@ -581,6 +581,62 @@ def movie_genres():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def akhi_and_inspect():
+    print("== «أخي» في مرح وفالكون، و«فحص عمل» (‏S.inspect_work) ==")
+    S.reset()
+    a, b = MP.Panel("ia"), MP.Panel("ib", "bu", "bp")
+    a.cat("series", 1, "[TR] 2026 تركي مترجم (يعرض الآن)")
+    a.cat("series", 2, "[TR] 2026 تركي مدبلج (يعرض الآن)")
+    b.cat("series", 1, "Turkish - تركية مترجمة")
+    b.cat("series", 2, "Turkish - تركية مدبلجة")
+    # الأسماء كما في اللوحتين فعلًا (صفحة المحتوى، أكتوبر 2026)
+    a.series = [{"series_id": 1, "name": "أخي مترجم", "category_id": "1", "releaseDate": "2026-09-01", "last_modified": "20"},
+                {"series_id": 2, "name": "أخي", "category_id": "2", "releaseDate": "2026-09-01", "last_modified": "19"},
+                {"series_id": 3, "name": "آه يا أخي", "category_id": "1", "last_modified": "5"}]
+    b.series = [{"series_id": 11, "name": "أخي (مترجم)", "category_id": "1", "releaseDate": "2026", "last_modified": "18"},
+                {"series_id": 12, "name": "أخي (مترجم) S01", "category_id": "1", "last_modified": "17"},
+                {"series_id": 13, "name": "أخي (مدبلج) S01", "category_id": "2", "last_modified": "16"},
+                {"series_id": 14, "name": "اخي العزيز", "category_id": "1", "last_modified": "4", "tmdb": "500"},
+                {"series_id": 15, "name": "اخي العزيز (مترجم)", "category_id": "1", "last_modified": "3", "tmdb": "600"}]
+    sa, sb = MP.serve(a), MP.serve(b, bind="127.0.0.2")
+    ca = S.Cfg(f"http://127.0.0.1:{sa.server_address[1]}", "u", "p")
+    cb = S.Cfg(f"http://127.0.0.2:{sb.server_address[1]}", "bu", "bp")
+    lines = [{"cfg": ca, "label": "مرح"}, {"cfg": cb, "label": "فالكون"}]
+    pre = S.prefix(ca)
+    try:
+        res = S.inspect_work(lines, "اخي")
+        ser = next((k for k in res["kinds"] if k["kind"] == "series"), {})
+        check("قبل التحميل: «لم تُحمَّل بعد» لكل خط (ويبدأ تحميلها في الخلفية)، ولا مكتبة", ser and ser["library"] is False
+              and [l["loaded"] for l in ser["lines"]] == [False, False], json.dumps(ser, ensure_ascii=False)[:200])
+        for c in (ca, cb):
+            S.warm(c)
+        S.warm_library(lines)
+        found = S.lib_catalog(lines, "series", "sq_series", {"search": "اخي"}, pre)["metas"]
+        akhi = next((m for m in found if m["name"] == "أخي"), {})
+        check("البحث بلا همزة («اخي») يجد «أخي» أولًا", found and found[0]["name"] == "أخي", str([m["name"] for m in found]))
+        check("و«أخي» عملٌ واحد بمصادره من مرح وفالكون (المترجم والمدبلج و«S01»)",
+              akhi.get("description", "").endswith("المصادر: مرح (مترجم، مدبلج) ×2 · فالكون (مترجم، مدبلج) ×3"),
+              akhi.get("description", "")[-90:])
+        res = S.inspect_work(lines, "اخي")
+        ser = next(k for k in res["kinds"] if k["kind"] == "series")
+        w = next((w for w in ser["works"] if w["name"] == "أخي"), {})
+        check("«فحص عمل»: العمل في الإضافة بمصادره من الخطين", ser["library"] and len(w.get("sources", [])) == 5
+              and {x["hk"] for x in w["sources"]} == {S.line_hk(ca), S.line_hk(cb)}, json.dumps(w, ensure_ascii=False)[:240])
+        mr = ser["lines"][0]
+        check("وما في قائمة كل خطٍّ بالاسم والسنة والقسم", mr["loaded"] and mr["label"] == "مرح"
+              and [(x["name"], x["year"], x["cat"]) for x in mr["items"]][:2] == [("أخي مترجم", 2026, "[TR] 2026 تركي مترجم (يعرض الآن)"),
+                                                                                 ("أخي", 2026, "[TR] 2026 تركي مدبلج (يعرض الآن)")],
+              json.dumps(mr["items"], ensure_ascii=False)[:200])
+        check("ومعرّفا TMDB مختلفان للاسم نفسه ← يُذكران (فيبقيان عملين)", ser["conflicts"] == ["اخي العزيز"]
+              and sum(1 for x in ser["works"] if x["name"] == "اخي العزيز") == 2, json.dumps(ser["conflicts"], ensure_ascii=False))
+        check("واسمٌ لا يوجد ← لا شيء", S.inspect_work(lines, "لا يوجد أبدًا")["kinds"] == [])
+        check("‏_takes_key يميّز lines_for(cfg، القفل) (لا يظلّله اسمٌ آخر — إضافة Nuvio بخطوطها)",
+              S._takes_key(lambda c, k: 0) is True and S._takes_key(lambda c: 0) is False)
+    finally:
+        for srv in (sa, sb):
+            srv.shutdown()
+
+
 def categories():
     print("== تصنيفات سمارت سوق: واحدةٌ لكل البوابات، صفوفٌ في الرئيسية، وتُحرَّر ==")
     import stremio_categories as K
@@ -643,11 +699,10 @@ def categories():
         check("وتصنيفٌ حُذف ← صفّه فارغ (يختفي من Stremio)", row("series", "nope") == [])
         man = S.manifest(ca, "https://g", "سمارت", lines=lines)
         rows = [(c["type"], c["name"]) for c in man["catalogs"] if c["id"].startswith(S.CAT_PREFIX)]
-        check("الـmanifest: صفوف الرئيسية ما فيه محتوى من تصنيفات «في الرئيسية» بترتيبها",
-              rows == [("series", "رمضان"), ("series", "تركي"), ("series", "عربي"), ("movie", "أكشن"), ("movie", "رعب"), ("tv", "رياضة"), ("tv", "عربية")],
-              json.dumps(rows, ensure_ascii=False))
+        check("الرئيسية أقسام: «الحسابات» ثم المسلسلات ثم الأفلام ثم القنوات — بلا صفوف تصنيفات (افتراضًا)",
+              rows == [] and [c["type"] for c in man["catalogs"]] == [S.ACCOUNTS, "series", "movie", "tv"], json.dumps(rows, ensure_ascii=False))
         sopts = next(e["options"] for c in man["catalogs"] if c["id"] == "sq_series" for e in c["extra"] if e["name"] == "genre")
-        check("وقائمة «اكتشف»: تصنيفاتنا بأعدادها (وما ليس في الرئيسية منها: «مدبلج»)، ثم «أخرى»، ثم «مصدر: …»",
+        check("وتصنيفات كل قسمٍ داخله («اكتشف» ← «تصنيف»): بأعدادها وترتيبها، ثم «أخرى»، ثم «مصدر: …»",
               sopts == ["رمضان (1)", "تركي (2)", "عربي (1)", "مدبلج (1)", "أخرى (1)", "مصدر: سمارت", "مصدر: فالكون"], json.dumps(sopts, ensure_ascii=False))
         mk = S._poster_maker(d, "https://g")
         lv = S.lib_catalog(lines, "tv", "sq_live", {}, pre, mk)["metas"]
@@ -657,7 +712,16 @@ def categories():
         print("== صفّ «التصنيفات» أُزيل (لم يعمل «عرض الكل» في التطبيقات) ==")
         check("لا صفّ «التصنيفات» في الـmanifest ولا نوعه", S.TILES not in man["types"] and all(c["id"] != S.TILES_ID for c in man["catalogs"])
               and man["types"][:2] == [S.ACCOUNTS, "series"], json.dumps(man["types"], ensure_ascii=False))
-        check("وصفوف التصنيفات نفسها باقية («تركي - المسلسلات»)", any(c["id"] == S.CAT_PREFIX + "s_turkish" for c in man["catalogs"]))
+        saved = {"9": {"cats": K.defaults()[:2], "at": 1}}
+        for c in saved["9"]["cats"]:
+            c["home"] = True                              # حُفظت والرئيسية صفوف تصنيفات (قبل ‏LAYOUT 2)
+        with open(os.path.join(d, "stremio_categories.json"), "w", encoding="utf-8") as f:
+            json.dump(saved, f, ensure_ascii=False)
+        check("تصنيفاتٌ حُفظت قبل الترتيب الجديد ← صفوفها في الرئيسية تُطفأ (تبقى داخل أقسامها)", not any(c["home"] for c in K.get(d, "9")))
+        mine1 = K.get(d, "9")
+        mine1[0]["home"] = True
+        K.save(d, "9", mine1)
+        check("وبعده «صفٌّ في الرئيسية أيضًا» يُحفظ لمن أراده", [c["home"] for c in K.get(d, "9")] == [True, False])
         check("وقائمة «اكتشف» بالتصنيف: كل ما في «تركي»", [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {"genre": "تركي"}, pre)["metas"]]
               == row("series", "s_turkish"))
         tok_c = S.make_token(d, ca.host, "u", "p")
@@ -707,6 +771,7 @@ def main():
     through_addon()
     slow_line()
     movie_genres()
+    akhi_and_inspect()
     categories()
     print("\n" + "-" * 40)
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))

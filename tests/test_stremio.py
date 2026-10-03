@@ -575,18 +575,15 @@ def through_server():
               and [c_["type"] for c_ in mains] == [S.ACCOUNTS, "series", "movie", "tv"] and S.TILES not in man["types"], man.get("name"))
         rows = [(c_["type"], c_["name"]) for c_ in man["catalogs"] if c_["id"].startswith(S.CAT_PREFIX)]
         order = [c_["type"] for c_ in man["catalogs"]]
-        check("تصنيفات سمارت سوق صفوفٌ في الرئيسية بعد كتالوج نوعها («تركي - المسلسلات»)، بلا بحثٍ ولا قائمة تصنيف",
-              {("series", "تركي"), ("series", "أجنبي"), ("movie", "عربي"), ("movie", "أجنبي"), ("tv", "رياضة"), ("tv", "عربية")} <= set(rows)
-              and order == sorted(order, key=[S.ACCOUNTS, "series", "movie", "tv"].index)
-              and all(c_["extraSupported"] == ["skip"] for c_ in man["catalogs"] if c_["id"].startswith(S.CAT_PREFIX)),
-              json.dumps(rows, ensure_ascii=False))
+        check("الرئيسية أقسام: «الحسابات» ثم المسلسلات ثم الأفلام ثم القنوات — والتصنيفات داخل أقسامها لا صفوفًا",
+              rows == [] and order == [S.ACCOUNTS, "series", "movie", "tv"], json.dumps(rows, ensure_ascii=False))
         topts_u = next(e["options"] for c_ in mains if c_["id"] == "sq_live" for e in c_["extra"] if e["name"] == "genre")
         check("وقائمة التصنيف في «اكتشف» تصنيفاتنا بأعدادها (لا أقسام كل لوحة؛ والقناة باسمها أيضًا: «MBC Drama» ← «أفلام ومسلسلات»)",
               [S._COUNT.sub("", o) for o in topts_u] == ["رياضة", "عربية", "أفلام ومسلسلات"],
               json.dumps(topts_u, ensure_ascii=False))
         c, _, b = http(base, f"/stremio/{tok}/catalog/series/{S.CAT_PREFIX}s_turkish.json")
         tr_names = {m["name"] for m in json.loads(b)["metas"]}
-        check("وصفّ «تركي» عبر المسار: ما في «مسلسلات تركية مدبلجة» كله", c == 200 and tr_names
+        check("وصفّ «تركي» عبر المسار (لمن جعله «صفًّا في الرئيسية أيضًا»): ما في «مسلسلات تركية مدبلجة» كله", c == 200 and tr_names
               and tr_names == {x[0] for x in mock_xtream.SERIES["مسلسلات تركية مدبلجة"]}, str(tr_names))
         c, _, b = http(base, f"/stremio/{tok}/catalog/tv/sq_live/genre={quote('رياضة (1)', safe='')}.json")
         sp = {m["name"] for m in json.loads(b)["metas"]}
