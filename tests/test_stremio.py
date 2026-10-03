@@ -570,11 +570,11 @@ def through_server():
         print("== ما يصل Stremio ==")
         c, h, b = http(base, f"/stremio/{tok}/manifest.json")
         man = json.loads(b)
-        mains = [c_ for c_ in man["catalogs"] if not c_["id"].startswith(S.CAT_PREFIX)]
+        mains = [c_ for c_ in man["catalogs"] if not c_["id"].startswith(S.CAT_PREFIX) and c_["id"] not in S.YEARS.values()]
         check("الـmanifest (ورابطٌ بلا حساب Stremio: «الحسابات» فيه)", c == 200 and man["name"] == "سمارت سوق · سمارت"
               and [c_["type"] for c_ in mains] == [S.ACCOUNTS, "series", "movie", "tv"] and S.TILES not in man["types"], man.get("name"))
         rows = [(c_["type"], c_["name"]) for c_ in man["catalogs"] if c_["id"].startswith(S.CAT_PREFIX)]
-        order = [c_["type"] for c_ in man["catalogs"]]
+        order = [c_["type"] for c_ in man["catalogs"] if c_["id"] not in S.YEARS.values()]
         check("الرئيسية أقسام: «الحسابات» ثم المسلسلات ثم الأفلام ثم القنوات — والتصنيفات داخل أقسامها لا صفوفًا",
               rows == [] and order == [S.ACCOUNTS, "series", "movie", "tv"], json.dumps(rows, ensure_ascii=False))
         topts_u = next(e["options"] for c_ in mains if c_["id"] == "sq_live" for e in c_["extra"] if e["name"] == "genre")

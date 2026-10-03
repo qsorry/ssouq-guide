@@ -343,7 +343,8 @@ h1{font-size:1.3rem;margin:0 0 2px}
   <h1>التصنيفات</h1>
   <p class="sub">تصنيفات سمارت سوق واحدةٌ لكل البوابات: قسم كل لوحةٍ يدخل التصنيف الذي في اسمه كلمةٌ من كلماته («مسلسلات تركية» و«TR | Turkish» ← «تركي»).</p>
   <p class="sub"><b>الرئيسية أقسام:</b> «الحسابات» ثم <b>المسلسلات</b> ثم <b>الأفلام</b> ثم <b>القنوات</b> (الأحدث أولًا). وتصنيفات كل قسمٍ داخله:
-    «اكتشف» ← القسم ← «تصنيف»، بالترتيب هنا. و«صفٌّ في الرئيسية أيضًا» اختياري لتصنيفٍ تريد إبرازه (رمضان في رمضان).</p>
+    «اكتشف» ← القسم ← «تصنيف»، بالترتيب هنا. و«صفٌّ في الرئيسية أيضًا» اختياري لتصنيفٍ تريد إبرازه (رمضان في رمضان).
+    <b>البحث في تصنيفٍ وحده:</b> يكتب العميل اسمه ثم نقطتين ثم ما يبحث عنه — «تركي: اخي» · «2026: اخي» (سنة) · «فالكون: اخي» (مصدر).</p>
   <div class="tabs2" id="catKinds" role="tablist" aria-label="النوع"></div>
   <section>
     <h2><span class="grow" id="catTtl">المسلسلات</span><small id="catSample"></small></h2>
@@ -1476,6 +1477,8 @@ function renderCats(){
         <label class="fld"><span>من أسماء أقسام اللوحات${CAT_KIND === "tv" ? " وأسماء القنوات" : ""} — وكلمةٌ بـ«-» قبلها تُخرج</span>
           <input class="t" data-f="keys" value="${esc(c.keys)}" placeholder="ترك، turk، tr، -مدبلج" spellcheck="false"></label>
         ${CAT_KIND !== "tv" ? `<label class="fld"><span>ومن تصنيف العمل نفسه (اختياري)</span><input class="t" data-f="genres" value="${esc(c.genres || "")}" placeholder="أكشن، رعب"></label>` : ""}
+        ${CAT_KIND !== "tv" ? `<label class="fld"><span>يُعرض الآن فقط: نزلت له حلقةٌ خلال آخر … يوم (أو قسمه في اللوحة «يعرض الآن») — فارغ: الكل</span>
+          <input class="t ltr" data-f="recent" value="${c.recent || ""}" inputmode="numeric" placeholder="مثلًا 10" maxlength="2"></label>` : ""}
         <button type="button" class="del" data-del="1">حذف التصنيف</button>
       </div></div>`).join("") : '<div class="empty">لا تصنيفات لهذا النوع — أضف واحدًا.</div>';
   renderCatCounts(); renderCatState();
@@ -1509,7 +1512,7 @@ $("catKinds").onclick = e => { const b = e.target.closest("button[data-k]"); if 
 $("catList").addEventListener("input", e => {
   const f = e.target.dataset.f, card = e.target.closest(".cat"); if (!f || !card) return;
   const c = catOf(card.dataset.i);
-  c[f] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+  c[f] = e.target.type === "checkbox" ? e.target.checked : f === "recent" ? (parseInt(latin(e.target.value), 10) || 0) : e.target.value;
   if (f === "on") card.classList.toggle("off", !c.on);
   if (f === "keys") card.querySelector("[data-ex]").textContent = `كلمات الربط (${catTerms(c)}) ▴`;
   if (f === "home") renderCatCounts();

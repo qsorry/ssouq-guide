@@ -49,7 +49,7 @@ import stremio_posters as POSTERS
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.6.1"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.6.2"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -70,6 +70,11 @@ _ACTION = {"movie": ("get_vod_categories", "get_vod_streams", "stream_id"),
            "series": ("get_series_categories", "get_series", "series_id"),
            "tv": ("get_live_categories", "get_live_streams", "stream_id")}
 CATALOG = {"movie": "sq_movies", "series": "sq_series", "tv": "sq_live"}
+# «حسب السنة» في «اكتشف»: كتالوجٌ للمسلسلات وآخر للأفلام قائمته السنوات بأعدادها (مطلوبةٌ فلا يظهر صفًّا في الرئيسية)؛ والسنة
+# تصنيفٌ في كتالوج النوع نفسه أيضًا («2026» — مجلد السنة في مجموعات Nuvio)
+YEARS = {"series": "sq_series_years", "movie": "sq_movies_years"}
+YEARS_NAME = "حسب السنة"
+_YEAR_PICK = re.compile(r"(?:سنة\s*)?((?:19|20)\d\d)")
 # ترتيب الكتالوجات كتطبيقات IPTV: «الحسابات» أولًا (إن كانت لهذه الإضافة) ثم المسلسلات ثم الأفلام ثم البث المباشر
 ORDER = ("series", "movie", "tv")
 # «الحسابات» نوعٌ خاصّ (Stremio يقبل أي نوع): يظهر باسمه في «اكتشف»، ولا يختلط بالمحتوى ولا يدخل البحث
@@ -970,6 +975,16 @@ def _lib_info(lines, kind):
     return lib.genres, len(lib.works), lib.labels
 
 
+def years_of(lib):
+    """سنوات أعمال المكتبة بأعدادها، الأحدث أولًا ← [(«2026»، العدد)] — من 1950 إلى السنة القادمة (لا سنواتٍ خاطئة)."""
+    top = datetime.date.today().year + 1
+    n = {}
+    for w in lib.latest:
+        if w.year and 1950 <= _int(w.year, 0) <= top:
+            n[w.year] = n.get(w.year, 0) + 1
+    return sorted(n.items(), key=lambda kv: kv[0], reverse=True)
+
+
 def manifest_id(cfg):
     """معرّف الإضافة للخط (ثابتٌ من هوسته الأصلي ويوزره) — به تعرف تطبيقات Nuvio كتالوجاتها في المجموعات وترتيب الرئيسية."""
     return "com.ssouq.xtream." + hashlib.sha256(f"{cfg.origin or cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
@@ -1030,6 +1045,15 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
         # الاسم بلا كلمة النوع: Stremio يُلحق النوع بلغة واجهته («سمارت (10,329) - المسلسلات» · «… - Series»)
         cats.append({"type": kind, "id": CATALOG[kind], "extra": extra, "extraSupported": [e["name"] for e in extra],
                      "name": (NUVIO_TITLES[kind] if nuvio else BRAND if multi else label or BRAND) + (f" ({_fmt(total)})" if total else "")})
+        if kind in YEARS and lines and catalogs:          # «حسب السنة» في «اكتشف» (لا صفًّا في الرئيسية: السنة مطلوبة)
+            try:
+                yrs = years_of(library(lines, kind, full=True))
+            except XtreamError:
+                yrs = []
+            if yrs:
+                cats.append({"type": kind, "id": YEARS[kind], "name": YEARS_NAME,
+                             "extra": [{"name": "genre", "options": [f"{y} ({_fmt(c)})" for y, c in yrs], "isRequired": True},
+                                       {"name": "skip", "isRequired": False}], "extraSupported": ["genre", "skip"]})
         # صفوف الرئيسية: تصنيفٌ لكلٍّ («تركي - المسلسلات»)، بلا بحث (فلا تتكرّر نتائجه) ولا قائمة تصنيف
         cats += [{"type": kind, "id": CAT_PREFIX + c["id"], "name": c["name"], "extra": [{"name": "skip", "isRequired": False}],
                   "extraSupported": ["skip"]} for c in rows]
@@ -1754,6 +1778,8 @@ def _cat_index(lines, lib, kind):
     by = {c["id"]: [] for c in mine}
     by[CATS.OTHERS_ID] = []
     first = {}
+    cut = {c["id"]: now - int(c["recent"]) * 86400 for c in mine if c.get("recent")}   # «يعرض الآن»: حلقةٌ خلال آخر N يوم
+    now_m = CATS.now_matcher() if cut else None
     for w in lib.latest:
         got = set().union(*(by_name.get(n, ()) for n in w.cats)) if w.cats else set()
         if kind == "tv":                                 # والقناة باسمها أيضًا («beIN SPORTS 1» ← «رياضة» أيًّا كان قسمها)
@@ -1765,6 +1791,8 @@ def _cat_index(lines, lib, kind):
         if not got:
             by[CATS.OTHERS_ID].append(w)
             continue
+        if cut and got & cut.keys() and not any(now_m(n) for n in w.cats):   # قسمه في اللوحة «يعرض الآن» يكفي
+            got = {cid for cid in got if cid not in cut or w.added >= cut[cid]}
         for c in mine:
             if c["id"] in got:
                 by[c["id"]].append(w)
@@ -1776,6 +1804,30 @@ def _cat_index(lines, lib, kind):
         while len(_cidx) > LIB_MAX * 3:
             _cidx.popitem(last=False)
     return idx
+
+
+_SCOPE = re.compile(r"\s*([^:：]{1,40}?)\s*[:：]\s*(.*)$")
+
+
+def _scoped_search(lines, lib, kind, q):
+    """البحث، وفي تصنيفٍ وحده إن بدأ باسمه ونقطتين: «تركي: اخي» · «2026: اخي» · «مرح: اخي» (مصدر). تصنيفٌ ليس في هذا النوع
+    (من نوعٍ آخر) ← لا شيء هنا؛ وما قبل النقطتين ليس تصنيفًا ولا سنةً ولا مصدرًا («Mission: Impossible») ← بحثٌ عاديٌّ بالنص كله."""
+    m = _SCOPE.match(str(q or ""))
+    if not m:
+        return lib.search(q)
+    scope, text = m.group(1).strip(), m.group(2).strip()
+    pool = _unified(lines, lib, kind, scope)
+    if pool is None and kind in YEARS and _YEAR_PICK.fullmatch(scope):
+        pool = [w for w in lib.latest if w.year == _YEAR_PICK.fullmatch(scope).group(1)]
+    if pool is None and LIB.norm(scope) in {LIB.norm(lb) for lb in lib.labels}:
+        pool = lib.from_source(next(lb for lb in lib.labels if LIB.norm(lb) == LIB.norm(scope)))
+    if pool is None:
+        names = {LIB.norm(c["name"]) for c in _ucats(lines)} | {LIB.norm(CATS.OTHERS)}
+        return [] if LIB.norm(scope) in names or _YEAR_PICK.fullmatch(scope) else lib.search(q)
+    if not text:
+        return list(pool)
+    inside = {id(w) for w in pool}
+    return [w for w in lib.search(text) if id(w) in inside]
 
 
 def _unified(lines, lib, kind, g):
@@ -1831,14 +1883,20 @@ def lib_catalog(lines, kind, cid, extra, pre, poster_url=None):
     """صفحةٌ من كتالوج المكتبة الموحدة: بحثٌ في كل الخطوط معًا (العمل مرةً واحدة)، أو قسم، أو «مصدر: …»، أو تصنيف عمل،
     أو الكل — 100 عملٍ من ‏skip."""
     row = cid[len(CAT_PREFIX):] if kind in CATALOG and cid.startswith(CAT_PREFIX) else None
-    if kind not in CATALOG or (cid != CATALOG[kind] and row is None):
+    by_year = kind in YEARS and cid == YEARS[kind]
+    if kind not in CATALOG or (cid != CATALOG[kind] and row is None and not by_year):
         return None
     lib = library(lines, kind)
     skip = max(0, _int(extra.get("skip"), 0))
     if row is not None:                                  # صفّ تصنيفٍ في الرئيسية (وتصنيفٌ حُذف ← فارغ)
         seq = _cat_index(lines, lib, kind)["by"].get(row) or []
     elif extra.get("search"):
-        seq = lib.search(extra["search"])
+        seq = _scoped_search(lines, lib, kind, extra["search"])
+    elif extra.get("genre") and kind in YEARS and _YEAR_PICK.fullmatch(_COUNT.sub("", " ".join(extra["genre"].split()))):
+        y = _YEAR_PICK.fullmatch(_COUNT.sub("", " ".join(extra["genre"].split()))).group(1)   # سنة («2026» · «2026 (312)»)
+        seq = [w for w in lib.latest if w.year == y]
+    elif by_year:                                        # «حسب السنة» بلا سنة: لا شيء (السنة مطلوبة)
+        seq = []
     elif extra.get("genre"):
         g = " ".join(extra["genre"].split())
         if g.startswith(SRC_TAG.strip()):

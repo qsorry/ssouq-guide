@@ -95,7 +95,7 @@ def against_mocks():
               str([a["manifest"]["name"] for a in col]))
         check("الإضافة برابطها على الموقع ووصفها كاملًا (الحسابات ثم المسلسلات ثم الأفلام ثم البث)",
               col[0]["transportUrl"].startswith("https://guide.ssouq.com/stremio/")
-              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX)] == [S.ACCOUNTS, "series", "movie", "tv"]
+              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX) and c["id"] not in S.YEARS.values()] == [S.ACCOUNTS, "series", "movie", "tv"]
               and col[0]["flags"] == {"official": False, "protected": False})
         check("خرج من الجلسة بعد التثبيت", not api.sessions)
         raw = json.load(open(os.path.join(d, "stremio_accounts.json"), encoding="utf-8"))
@@ -345,7 +345,8 @@ def through_server():
 
         print("== يوزرٌ لم تُفعّله اللوحة بعد (ما حدث في مرح) ==")
         ours = lambda email: [a for a in api.collections.get(email, []) if a.get("manifest", {}).get("id", "").startswith("com.ssouq.")]
-        genre_opts = lambda m: [e.get("options") for c in m.get("catalogs", []) for e in c.get("extra", []) if e.get("name") == "genre"]
+        genre_opts = lambda m: [e.get("options") for c in m.get("catalogs", []) if c.get("id") not in S.YEARS.values()   # بلا «حسب السنة»
+                                for e in c.get("extra", []) if e.get("name") == "genre"]
         xt.users["late"], xt.pending["late"] = "lp", 2               # يُرفض مرتين ثم يُقبل
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "late", "password": "lp"})
         m = (ours("late@tv.ssouq.com") or [{}])[0].get("manifest", {})
@@ -427,7 +428,7 @@ def through_server():
         check("لكل بوابةٍ زرّها فوق قائمة التشغيل: صاحب الحساب «تلقائي» ومصادر خطّه، وإضافة كاسبر مصادر كاسبر في العمل نفسه",
               st_root[:1] == ["سمارت سوق"] and "كاسبر" not in st_root and st_k1 and set(st_k1) == {"كاسبر"},
               json.dumps([st_root, st_k1], ensure_ascii=False))
-        rcats = {c["type"]: c for c in root_m["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX)}
+        rcats = {c["type"]: c for c in root_m["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX) and c["id"] not in S.YEARS.values()}
         sopts = next((e["options"] for e in rcats["series"]["extra"] if e["name"] == "genre"), [])
         check("وإضافة صاحب الحساب أُعيدت بالمكتبة الموحدة: «الحسابات» أولها، والصفوف باسم المتجر، و«مصدر: …» لكل خط",
               root_m["manifest"]["catalogs"][0]["type"] == S.ACCOUNTS and rcats["series"]["name"] == f"سمارت سوق ({n_series})"
@@ -486,7 +487,7 @@ def through_server():
         print("== «التصنيفات»: تصنيفات سمارت سوق لكل البوابات ==")
         c, r = post("/api/stremio/categories", None)
         check("الافتراضية، ومعاينتها على حسابٍ من الحسابات قوائمه في الذاكرة", c == 200 and not r.get("edited")
-              and [x["name"] for x in r.get("cats", [])][:2] == ["رمضان", "تركي"] and r.get("preview", {}).get("series", {}).get("total", 0) > 0
+              and [x["name"] for x in r.get("cats", [])][:3] == ["تركي يعرض الآن", "رمضان", "تركي"] and r.get("preview", {}).get("series", {}).get("total", 0) > 0
               and r.get("sample"), json.dumps({k: r.get(k) for k in ("edited", "sample", "preview")}, ensure_ascii=False)[:300])
         mine = r["cats"] + [{"id": "s_pick", "kind": "series", "name": "مختارات", "keys": "أجنبية", "home": True}]
         c, r = post("/api/stremio/categories", {"cats": mine, "preview": True})
