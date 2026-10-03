@@ -1,0 +1,21 @@
+# ما لا يدخل الصورة أصلاً (Dockerfile ينسخ ملفات الكود المسمّاة وstatic وextension وwhatsapp-reader فقط):
+# استثناؤه هنا يصغّر سياق البناء المُرسَل إلى Docker في كل نشر (‏.git وحده ~43 ميغابايت).
+.git
+.github
+.gitignore
+.dockerignore
+README.md
+docs
+blog
+tests
+tools
+whatsapp-baileys
+whatsapp-reader/node_modules
+whatsapp-reader/auth*
+renew_report.html
+data
+__pycache__
+**/__pycache__
+*.pyc
+lines.txt
+sm.xml
