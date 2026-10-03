@@ -786,8 +786,11 @@ def update_job_unit():
             "b@x": [{"email": "b@x", "password": "p", "token": "T3", "gate": "g1", "username": "u3", "host": "h"}]}
         X.find_gate = lambda acct, gid: {"id": gid, "name": {"g1": "سمارت", "g2": "كاسبر"}[gid], "host": "http://h"}
 
+        tries = []
+
         def desc(tok, host, gate=None, accounts=None, patient=True):
             built = []
+            tries.append(tok)
 
             def make():
                 if tok == "SLOW":
@@ -809,10 +812,32 @@ def update_job_unit():
                 break
             time.sleep(0.05)
         check("ما يجري الآن في كل حساب (تعرضه الصفحة)", any("«كاسبر»" in t for t in seen), str(seen[:3]))
-        check("خطٌّ لوحته بطيئة يُتخطّى بعد المهلة ويُذكر بسببه، وباقي الخطوط والحسابات تُثبَّت",
+        check("خطٌّ لوحته بطيئة: يُعاد حسابه في آخر التحديث، وما زال بطيئًا ← يُتخطّى ويُذكر بسببه، وباقي الخطوط والحسابات تُثبَّت",
               not j["running"] and j["done"] == 2 and j["lines"] == 2 and j["changed"] == 1 and sorted(installed) == ["T1", "T3"]
               and len(j["failed"]) == 1 and j["failed"][0]["email"] == "a@x" and "«كاسبر»: لوحتها بطيئة" in j["failed"][0]["error"]
-              and j["active"] == [], json.dumps(j, ensure_ascii=False)[:300])
+              and tries.count("SLOW") == 2 and j["active"] == [], json.dumps(j, ensure_ascii=False)[:300])
+        calls, installed[:] = {}, []
+
+        def desc2(tok, host, gate=None, accounts=None, patient=True):     # بطيئةٌ أول مرة (بعد النشر)، وجاهزةٌ في الإعادة
+            built = []
+
+            def make():
+                calls[tok] = calls.get(tok, 0) + 1
+                if tok == "SLOW" and calls[tok] == 1:
+                    time.sleep(1.5)
+                built.append(True)
+                return {"manifest": {"id": tok}}
+            return make, built
+        X.stremio_descriptor = desc2
+        X.stremio_update_all({"id": "acctT2"})
+        for _ in range(100):
+            j = X.stremio_update_job("acctT2")
+            if not j["running"]:
+                break
+            time.sleep(0.05)
+        check("ولوحةٌ بطيئة أول مرة (أول تحديثٍ بعد النشر) جاهزةٌ في آخره ← يُثبَّت حسابها كاملًا بلا «تعذّر»",
+              not j["running"] and j["done"] == 2 and j["failed"] == [] and j["changed"] == 2 and sorted(installed) == ["SLOW", "T1", "T3"],
+              json.dumps(j, ensure_ascii=False)[:300])
     finally:
         for k, v in keep.items():
             setattr(X, k, v)

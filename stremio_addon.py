@@ -600,6 +600,16 @@ def disk_save(key, cats, L):
         return False
 
 
+def disk_touch(key):
+    """نسخةٌ على القرص ما زالت كاللوحة: وقتها الآن (فلا تُحذف بعد أسبوعٍ وهي مستعملة)."""
+    path = _dpath(key)
+    try:
+        if path and os.path.exists(path):
+            os.utime(path)
+    except OSError:
+        pass
+
+
 def disk_load(key, kind):
     """نسخة القائمة على القرص ← (وقت حفظها، Lists)، أو None."""
     path = _dpath(key)
@@ -644,6 +654,12 @@ def lists(cfg, kind):
     def load():
         with _list_sem:
             L = Lists(kind, cats, _all_items(cfg, kind, cats))
+            with _lock:
+                hit = _lists.get(key)
+            old = hit[1] if hit else None
+            if old is not None and old.items == L.items and old._cat_name == L._cat_name:
+                _bg(disk_touch, key)     # لم يتغيّر شيءٌ في اللوحة: النسخة نفسها — فلا تُعاد بناء مكتباتها ولا يُكتب القرص
+                return old               # (بعد إعادة التشغيل: نسخة القرص تبقى، لا تُبنى مكتباتها مرتين)
             L.prepare()                  # فهرس البحث مع التحميل: أول بحثٍ لا يبنيه
         _bg(disk_save, key, cats, L)
         return L
@@ -1420,8 +1436,9 @@ def accounts_streams(lines, pre, sid):
 # بلا كتالوجات (محتواه في المكتبة)، ويبقى عندها ما في مكتبة Stremio ببادئتها.
 #   معرّف العمل: من مصدره المرساة — في خط صاحب الحساب بالصيغة القديمة نفسها («sqXXXX:s:123»، فلا تتغيّر المكتبة و«تابع
 #   المشاهدة»)، وفي غيره «sqXXXX:ws:<بصمة السيرفر>.<رقمه>»؛ وأي مصدرٍ في العمل يدلّ عليه. والحلقة «…:we:<بصمة>.<رقم>:<موسم>:<حلقة>».
-# مكتبات (باقات الخطوط × نوع) في الذاكرة — مكتبة حسابٍ بثلاث لوحاتٍ كبيرة ~200 ميجا للأنواع الثلاثة، فالحدّ بالذاكرة
-LIB_MAX = int(os.environ.get("STREMIO_LIBS", "12"))
+# مكتبات (خط × باقة × نوع) في الذاكرة. منذ 1.7.0 مكتبةٌ لكل سيرفرٍ وحده (لا موحدة للحساب)، فعددها نحو ثلاثة أضعاف وحجم
+# كلٍّ نحو ثلثها — بحدٍّ أصغر تُطرد وتُعاد بناءً بلا توقف (واحدةً في المرة) فتنتظر الطلبات حتى يتخلّى عنها Nuvio
+LIB_MAX = int(os.environ.get("STREMIO_LIBS", "36"))
 _build_sem = threading.Semaphore(1)  # مكتبةٌ تُبنى في المرة الواحدة: ذروة الذاكرة والمعالج محدودة، والطلبات الأخرى تُجاب أثناءه
 SRC_TAG = "مصدر: "                   # تصنيف «مصدر: كاسبر» ← كل ما في الخط
 PROBE_TIMEOUT = float(os.environ.get("STREMIO_PROBE_TIMEOUT", "4"))   # مهلة فحص المصدر قبل الانتقال للتالي (ثوانٍ)
