@@ -13,7 +13,13 @@ RUN (apk add --no-cache fribidi && pip install --no-cache-dir pillow) || \
 # 127.0.0.1 فيُربط رقم المسابقة برقمٍ ثم رمز QR بلا إعداد. غير حاسمة للبناء: لو فشل التثبيت يظل الموقع
 # يعمل وتقول صفحة المسابقة إن الخدمة غير مثبّتة. (git: مكتبة libsignal تُجلب من GitHub.)
 COPY whatsapp-reader/package.json whatsapp-reader/package-lock.json ./whatsapp-reader/
-RUN (apk add --no-cache nodejs npm git && cd whatsapp-reader && npm ci --omit=dev --no-audit --no-fund \
+# لا مفاتيح SSH داخل حاوية البناء: مكتبة libsignal مثبّتة في package-lock بعنوان git+ssh على GitHub،
+# فيُعاد توجيه git إلى https ويُمنع أي انتظارٍ لإدخالٍ يدوي، كي تمرّ الخطوة بسرعة بدل أن تعلّق حتى المهلة ثم تُتجاوَز.
+ENV GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=no" NPM_CONFIG_UPDATE_NOTIFIER=false
+RUN (apk add --no-cache nodejs npm git \
+     && git config --global --add url."https://github.com/".insteadOf "ssh://git@github.com/" \
+     && git config --global --add url."https://github.com/".insteadOf "git@github.com:" \
+     && cd whatsapp-reader && npm ci --omit=dev --no-audit --no-fund \
      && (npm cache clean --force; apk del npm git; true)) || \
     (rm -rf whatsapp-reader/node_modules; echo "WhatsApp reader deps skipped — contest WhatsApp linking unavailable")
 COPY whatsapp-reader/server.js ./whatsapp-reader/
