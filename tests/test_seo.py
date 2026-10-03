@@ -32,6 +32,7 @@ import threading  # noqa: E402
 
 import mock_tmdb  # noqa: E402
 import mock_xtream  # noqa: E402
+import analytics  # noqa: E402
 import content as C  # noqa: E402
 import seo_pages  # noqa: E402
 import seo_qa  # noqa: E402
@@ -1508,6 +1509,204 @@ def unit_enrich():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_release():
+    """النشر الإنتاجي (seo_release): المرحلة 4 ترفع noindex عن روابط اللقطة المعتمدة وحدها وتتراجع عند أي فشل؛ 5 الخريطة العامة؛ 6 IndexNow
+    (وهمي)؛ 7 فحصٌ بعد النشر يكشف التراجع؛ 8 دفعة توسيعٍ بإثراء TMDB (وهمي) ببواباتها وتراجعها؛ 9 دفعاتٌ متتابعة؛ والحزمة النهائية."""
+    print("== النشر الإنتاجي (المراحل 4–9) ==")
+    import seo_release
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    got = []
+
+    class IX(BaseHTTPRequestHandler):
+        code = 202
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)) or b"{}"))
+            got.append(body)
+            self.send_response(IX.code); self.send_header("Content-Length", "0"); self.end_headers()
+
+        def log_message(self, *a):
+            pass
+    ixs = ThreadingHTTPServer(("127.0.0.1", 0), IX)
+    analytics.INDEXNOW_URL = _serve(ixs) + "/indexnow"
+    tm = mock_tmdb.serve(0); tbase = _serve(tm); seo_sources.TMDB_API = tbase + "/3"
+    tm_down = mock_tmdb.serve(0, down=True); tdown = _serve(tm_down)
+    SNAP = "20261003T004434Z"
+    LONG_AR = "قصةٌ عربية طويلة بما يكفي لتستحق الفهرسة بسياسة الطبقة: " + "تدور الأحداث في أجواءٍ مشوّقة تجمع بين الدراما والتشويق. " * 3
+    LONG_EN = "An English overview long enough to be indexable under the layer policy: " + "the story unfolds with drama and suspense across its episodes. " * 2
+    d = tempfile.mkdtemp(prefix="seo_rel_")
+    try:
+        os.makedirs(os.path.join(d, "content"))
+        with open(os.path.join(d, "content", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "falcon", "name": "فالكون"}]}, f, ensure_ascii=False)
+        _write(d, "casper", _cat([{"n": "Wonder Woman", "y": 2017, "i": 10, "p": TMDB + "ww.jpg"}, {"n": "Dune", "y": 2021, "i": 11, "p": TMDB + "d.jpg"}, {"n": "Oppenheimer", "y": 2023, "i": 12}],
+                                 [{"n": "Breaking Bad", "y": 2008, "s": [[1, 7]], "i": 20, "p": TMDB + "bb.jpg"}, {"n": "Prison Break", "y": 2005, "s": [[1, 22]], "i": 21},
+                                  {"n": "Attack on Titan", "y": 2013, "s": [[1, 25]], "i": 22}, {"n": "Game of Thrones", "y": 2011, "s": [[1, 10]], "i": 23}]))
+        _write(d, "falcon", _cat([{"n": "Wonder Woman", "y": 2017, "i": 30, "p": TMDB + "ww.jpg"}], [{"n": "Breaking Bad", "y": 2008, "s": [[1, 7], [2, 13]], "i": 40, "p": TMDB + "bb.jpg"}]))
+        seo_build.build(d)
+        con = seo_db.connect(d)
+        q = lambda sql, *a: con.execute(sql, a).fetchall()   # noqa: E731
+        ids = {r["slug"]: r["id"] for r in q("SELECT id, slug FROM content WHERE merged_into IS NULL")}
+        check("7 كيانات حيّة", len(ids) == 7 and {"wonder-woman", "breaking-bad", "prison-break", "dune"} <= set(ids), str(sorted(ids)))
+        for slug, ar, en in (("breaking-bad", LONG_AR, LONG_EN), ("wonder-woman", LONG_AR, LONG_EN), ("prison-break", LONG_AR, "short")):   # مستحقّون: اثنان باللغتين وواحد عربي فقط
+            con.execute("UPDATE content SET match='tmdb', poster=COALESCE(NULLIF(poster,''), ?), overview_ar=?, overview_en=? WHERE slug=?", (TMDB + slug + ".jpg", ar, en, slug))
+        seo_db.set_setting(con, "preview", True); seo_sources.set_tmdb_key(con, d, "testkey"); con.commit()
+        st = seo_db.settings(con)
+        elig = seo_qa.sitemap_urls(con, st)
+        check("المستحقّ الآن: 5 مسارات لثلاثة كيانات (2 × لغتين + 1 عربي)", len(elig) == 5 and len({c for _, _, c in elig}) == 3, str(elig))
+        pg = seo_pages.handle(d, seo_pages._path(dict(q("SELECT * FROM content WHERE slug='breaking-bad'")[0]), "ar"), "ar")
+        check("قبل المرحلة 4: المستحقّ noindex وسمًا ورأسًا (كما كان)", pg[0] == 200 and pg[2].get("X-Robots-Tag") == "noindex" and b'content="noindex, follow"' in pg[1])
+        # لقطةٌ معتمدة: bundle.json بمعرّفها + sitemap-staging.xml من الفحص النهائي نفسه
+        bd = seo_sources.bundle_dir(d); os.makedirs(bd, exist_ok=True)
+        with open(os.path.join(bd, "bundle.json"), "w", encoding="utf-8") as f:
+            json.dump({"bundle_id": SNAP, **seo_sources.code_version()}, f)
+        sm0 = seo_qa.check_sitemap(d, con, st, os.path.join(bd, "sitemap-staging.xml"))
+        check("الخريطة التجريبية للقطة: 5 روابط ولا تُخدم بعد", sm0["urls"] == 5 and all(t["ok"] for t in sm0["tests"]) and seo_release.snapshot_urls(d) == {u for u, _, _ in elig}, str(sm0["tests"]))
+        con.close()
+        # ---- المرحلة 4 ----
+        r = seo_release.phase4(d, "20260101T000000Z", 5)
+        con = seo_db.connect(d)
+        check("لقطةٌ غير مطابقة: رفضٌ بلا كتابة (index_live موقوف، لا اعتماد)", r["ok"] is False and "snapshot mismatch" in r["reason"] and not seo_db.settings(con)["index_live"] and seo_db.state(con, "index_approved") is None, str(r)[:300])
+        con.close()
+        r = seo_release.phase4(d, SNAP, 4)
+        con = seo_db.connect(d)
+        check("عددٌ متوقَّع مخالف (4 ≠ 5): رفضٌ قبل أي كتابة", r["ok"] is False and "expected 4" in r["reason"] and not seo_db.settings(con)["index_live"], str(r)[:300])
+        con.execute("UPDATE content SET overview_en=? WHERE slug='prison-break'", (LONG_EN,)); con.commit(); con.close()   # انحراف السكّان: صار مستحقًّا بالإنجليزية أيضًا
+        r = seo_release.phase4(d, SNAP, 5)
+        con = seo_db.connect(d)
+        check("انحراف السكّان عن اللقطة (6 ≠ 5): رفضٌ بتفصيل الجديد، ولا كتابة", r["ok"] is False and "population drift" in r["reason"] and r["eligible_now"] == 6 and len(r["new_now"]) == 1 and not seo_db.settings(con)["index_live"], str(r)[:400])
+        con.execute("UPDATE content SET overview_en='short' WHERE slug='prison-break'"); con.commit(); con.close()
+        r = seo_release.phase4(d, SNAP, 5)
+        con = seo_db.connect(d)
+        st = seo_db.settings(con)
+        m = r.get("metrics") or {}
+        check("المرحلة 4 PASS: 5 مسارات index، لا غير متوقَّع، لا فشل HTTP/canonical/hreflang/لغة، لا تبديل slug/تحويل/كيان، وغير المعتمد noindex",
+              r["ok"] and r["status"] == "PASS" and m["expected_indexable"] == 5 and m["unexpected_indexable"] == 0 and m["http_failures"] == 0 and m["canonical_failures"] == 0
+              and m["hreflang_failures"] == 0 and m["language_failures"] == 0 and m["slug_changes"] == 0 and m["redirect_changes"] == 0 and m["entity_changes"] == 0
+              and m["non_approved_sample_still_noindex"] == m["non_approved_sample_pages"] == 8 and st["index_live"] and os.path.exists(r["file"]), str(m))
+        ap = seo_db.state(con, "index_approved")
+        check("قائمة الاعتماد: اللقطة والروابط الخمسة بمعرّف الكيان ولغته ورابطه وslug", ap["snapshot"] == SNAP and len(ap["routes"]) == 5 and all(set(x) >= {"id", "lang", "path", "slug", "type"} for x in ap["routes"]))
+        bb = dict(q("SELECT * FROM content WHERE slug='breaking-bad'")[0]); pbk = dict(q("SELECT * FROM content WHERE slug='prison-break'")[0]); dn = dict(q("SELECT * FROM content WHERE slug='dune'")[0])
+        p_ar = seo_pages.handle(d, seo_pages._path(bb, "ar"), "ar"); p_en = seo_pages.handle(d, seo_pages._path(bb, "en"), "en")
+        check("المعتمد باللغتين: 200، وسم index، بلا رأس noindex، وhreflang متبادلة (ar/en/x-default) في الصفحتين",
+              p_ar[0] == 200 and p_en[0] == 200 and "X-Robots-Tag" not in p_ar[2] and "X-Robots-Tag" not in p_en[2] and b'content="index, follow' in p_ar[1] and b'content="index, follow' in p_en[1]
+              and p_ar[1].count(b'rel="alternate" hreflang=') == 3 and p_en[1].count(b'rel="alternate" hreflang=') == 3 and b'hreflang="x-default"' in p_ar[1], str((p_ar[2], p_en[2])))
+        s_ar = seo_pages.handle(d, seo_pages._path(pbk, "ar"), "ar"); s_en = seo_pages.handle(d, seo_pages._path(pbk, "en"), "en")
+        check("المعتمد بالعربية وحدها: العربية index، الإنجليزية noindex، ولا وسم alternate في أيٍّ منهما (قاعدة اللغة الواحدة)",
+              "X-Robots-Tag" not in s_ar[2] and s_en[2].get("X-Robots-Tag") == "noindex" and b'rel="alternate"' not in s_ar[1] and b'rel="alternate"' not in s_en[1] and b'content="noindex, follow"' in s_en[1])
+        o_ar = seo_pages.handle(d, seo_pages._path(dn, "ar"), "ar")
+        check("غير المعتمد: noindex كما كان", o_ar[0] == 200 and o_ar[2].get("X-Robots-Tag") == "noindex")
+        con.execute("UPDATE content SET match='tmdb', overview_ar=?, overview_en=? WHERE slug='dune'", (LONG_AR, LONG_EN)); con.commit()   # صار مستحقًّا بعد الاعتماد: لا يُفهرس حتى يُعتمد
+        st = seo_db.settings(con)
+        o_ar = seo_pages.handle(d, seo_pages._path(dn, "ar"), "ar"); o_en = seo_pages.handle(d, seo_pages._path(dn, "en"), "en")
+        u = seo_release.unexpected_indexable(con, st, seo_pages.approved_routes(con))
+        check("مستحقٌّ غير معتمد (الفصل eligible ≠ indexable): noindex بلا alternate، وغير متوقَّع = 0، وخريطة الحيّ 5 لا 7",
+              o_ar[2].get("X-Robots-Tag") == "noindex" and o_en[2].get("X-Robots-Tag") == "noindex" and b'rel="alternate"' not in o_ar[1] and u["unexpected_indexable"] == 0 and u["eligible_routes"] == 7
+              and u["live_indexable_routes"] == 5 and len(seo_qa.sitemap_urls(con, st)) == 5, str(u))
+        qa = seo_qa.run(d, {"movie": 2, "series": 2, "turkish": 0, "anime": 0, "titles": []})
+        check("qa.json بعد المرحلة 4: اختبارات العيّنة والتغطية كلها ناجحة (noindex الموائم للحيّ، عضوية الخريطة، hreflang)", qa["tests"]["fail"] == 0 and qa["release"]["phases"]["4"]["status"] == "PASS"
+              and "no production indexing" not in qa["not_done_by_design"], str(qa["blockers"])[:400])
+        # ---- المرحلة 5 ----
+        check("قبل المرحلة 5 لا صفحة كيانٍ في الخريطة العامة", seo_release.sitemap_entries(d) == [])
+        r5 = seo_release.phase5(d)
+        con.close(); con = seo_db.connect(d); st = seo_db.settings(con)
+        m5 = r5.get("metrics") or {}
+        ent = seo_release.sitemap_entries(d)
+        check("المرحلة 5 PASS: 5 = 5، لا تكرار، لا تحويلات، لا noindex، لا غير 200، لا canonical مخالف — وفُعّلت وتُخدم 5",
+              r5["ok"] and m5["sitemap_expected"] == m5["sitemap_actual"] == 5 and m5["duplicates"] == m5["redirect_urls"] == m5["noindex_urls"] == m5["non200"] == m5["canonical_mismatch"] == 0
+              and st["sitemap_live"] and len(ent) == 5 and all(p.endswith("/") and "?" not in p for p, _, _ in ent), str(m5))
+        import guide_pages
+        xml = guide_pages.sitemap(C.sitemap(d) + ent).decode()
+        check("XML العامة تحمل الروابط الخمسة فقط من الكيانات (ولا رابط Dune المستحقّ غير المعتمد)", xml.count("/content/series/") + xml.count("/content/movies/") == 5 and "/content/movies/dune/" not in xml)
+        sm1 = seo_qa.check_sitemap(d, con, st)
+        check("فحص الخريطة في qa بعد التفعيل: served = approved (الاختبار تبدّل من not_served إلى matches_approved)", sm1["served"] and any(t["test"] == "sitemap_served_matches_approved" and t["ok"] for t in sm1["tests"]), str(sm1["tests"]))
+        # ---- المرحلة 6 ----
+        IX.code = 403
+        r6 = seo_release.phase6(d)
+        check("IndexNow مرفوض (403): المرحلة 6 FAIL وتُسجَّل submitted=5 accepted=0 failed=5", r6["ok"] is False and r6["submitted"] == 5 and r6["accepted"] == 0 and r6["failed"] == 5 and r6["code"] == 403, str(r6)[:300])
+        IX.code = 202; got.clear()
+        r6 = seo_release.phase6(d)
+        sent = got[-1] if got else {}
+        ap_urls = {seo_pages.SITE + x["path"] for x in seo_db.state(con, "index_approved")["routes"]}
+        check("المرحلة 6 PASS: أُرسلت الروابط الخمسة المعتمدة نفسها لا غير، بالمفتاح المخدوم، submitted=accepted=5 failed=0",
+              r6["ok"] and r6["submitted"] == r6["accepted"] == 5 and r6["failed"] == 0 and set(sent.get("urlList", [])) == ap_urls and sent.get("host") == seo_release.HOST
+              and analytics.indexnow_key_file(d, f"/{sent.get('key')}.txt") == sent.get("key") and "receipt" in r6["note"], str(r6)[:300])
+        # ---- المرحلة 7 ----
+        r7 = seo_release.phase7(d, SNAP)
+        m7 = r7.get("metrics") or {}
+        check("المرحلة 7 PASS: 5 مسارات بلا فشل، index=5، غير متوقَّع 0، عضوية الخريطة كاملة، التحويلات كما كانت، مطابقةٌ للقطة",
+              r7["ok"] and m7["routes"] == 5 and m7["indexable"] == 5 and m7["unexpected_indexable"] == 0 and m7["sitemap_missing"] == m7["sitemap_unexpected"] == 0 and m7["redirect_changes_since_phase4"] == 0
+              and m7["snapshot_compared"] and m7["snapshot_mismatch"] == 0 and r7["baseline"] is not None, str(m7))
+        con.close()
+        # تراجعٌ مصطنع على نسخةٍ من القاعدة: تبديل slug لكيانٍ معتمد ← المسار الجديد لا يُفهرس (لم يُعتمد)، والمرحلة 7 تكشفه وتوقف
+        d2 = tempfile.mkdtemp(prefix="seo_rel2_"); shutil.rmtree(d2); shutil.copytree(d, d2)
+        c2 = seo_db.connect(d2)
+        seo_db.change_slug(c2, ids["breaking-bad"], "breaking-bad-2008", reason="test regression"); c2.commit()
+        st2 = seo_db.settings(c2)
+        bb2 = dict(c2.execute("SELECT * FROM content WHERE id=?", (ids["breaking-bad"],)).fetchone())
+        n_ar = seo_pages.handle(d2, seo_pages._path(bb2, "ar"), "ar")
+        old_ar = seo_pages.handle(d2, "/content/series/breaking-bad/", "ar")
+        check("بعد تبديل slug معتمد: الرابط الجديد noindex (لم يُعتمد)، والقديم 301 مباشر، والخريطة تنزل إلى 3", n_ar[2].get("X-Robots-Tag") == "noindex" and old_ar[0] == 301 and len(seo_release.sitemap_entries(d2)) == 3, str((n_ar[2], old_ar)))
+        c2.close()
+        r7b = seo_release.phase7(d2, SNAP)
+        c2 = seo_db.connect(d2)
+        m7b = r7b.get("metrics") or {}
+        check("المرحلة 7 تكشف التراجع وتوقف: slug_changes 2، redirect_changes 1، index 3 لا 5، وrelease.blocked عند 7، ولا شيء كُتب غير التقرير",
+              r7b["ok"] is False and m7b["slug_changes"] == 2 and m7b["redirect_changes_since_phase4"] == 1 and m7b["indexable"] == 3 and (seo_db.state(c2, "release") or {}).get("blocked", {}).get("phase") == 7
+              and seo_db.settings(c2)["index_live"], str(m7b))
+        r8b = seo_release.phase8_batch(d2, 10)
+        check("دفعة توسيعٍ على إصدارٍ موقوف تُرفض", r8b["ok"] is False and ("blocked" in r8b["reason"] or "requires PASS" in r8b["reason"]), str(r8b)[:200])
+        c2.close(); shutil.rmtree(d2, ignore_errors=True)
+        # ---- المرحلة 8: دفعةٌ تفشل (TMDB معطّل) فتتراجع بلا أثر، ثم المرحلة 7 تُعيد الفتح، ثم دفعةٌ تنجح ----
+        con = seo_db.connect(d)
+        snap_before = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "api_cache")] + [json.dumps(seo_db.state(con, "index_approved"), sort_keys=True)]
+        con.close()
+        seo_sources.TMDB_API = tdown + "/3"
+        r8 = seo_release.phase8_batch(d, 10)
+        con = seo_db.connect(d)
+        snap_after = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "api_cache")] + [json.dumps(seo_db.state(con, "index_approved"), sort_keys=True)]
+        check("TMDB معطّل: الدفعة FAIL (failed>0) وتراجعٌ كامل (أعداد الجداول وقائمة الاعتماد كما كانت) والإصدار موقوف عند الدفعة 1",
+              r8["ok"] is False and r8["rolled_back"] and r8["tmdb"]["failed"] > 0 and snap_after == snap_before and (seo_db.state(con, "release") or {}).get("blocked", {}).get("batch") == 1, str(r8)[:300])
+        con.close()
+        seo_sources.TMDB_API = tbase + "/3"
+        r7c = seo_release.phase7(d, SNAP)
+        check("المرحلة 7 تُعاد وتنجح فيُرفع العائق (قرارٌ مثبتٌ بفحص لا بزرّ)", r7c["ok"] and not (seo_db.state(seo_db.connect(d), "release") or {}).get("blocked"))
+        got.clear()
+        r8 = seo_release.phase8_batch(d, 10)
+        con = seo_db.connect(d)
+        ap2 = seo_db.state(con, "index_approved")
+        m8 = r8.get("sitemap") or {}
+        check("الدفعة 2 PASS: 4 مرشّحين أُثروا من TMDB (وهمي)، لا تعارض ولا دمج غير مفسَّر ولا انقسام، تحويلات جديدة 0، ثم اعتماد المستحقّ الجديد",
+              r8["ok"] and r8["n"] == 4 and r8["tmdb"]["enriched"] >= 3 and r8["tmdb"]["failed"] == 0 and not r8["identity"]["conflicts"] and not r8["identity"]["unexplained_merges"]
+              and r8["reconciliation"]["split_delta"] == 0 and r8["reconciliation"]["new_redirects"] == 0 and r8["eligibility"]["newly_eligible_routes"] >= 6, str({k: r8[k] for k in ("tmdb", "identity", "reconciliation", "eligibility")})[:600])
+        new_n = r8["eligibility"]["newly_eligible_routes"]
+        check("checkpoint: قائمة الاعتماد 5 + الجديد (batch=2)، الخريطة = المعتمد، لا تكرار ولا تحويلات ولا غير متوقَّع، وIndexNow للجديد وحده",
+              len(ap2["routes"]) == 5 + new_n and all(x["batch"] == 2 for x in ap2["routes"][5:]) and m8["expected"] == m8["actual"] == 5 + new_n and m8["duplicates"] == m8["redirect_urls"] == m8["unexpected_indexable"] == 0
+              and r8["indexnow"]["submitted"] == r8["indexnow"]["accepted"] == new_n and got and len(got[-1]["urlList"]) == new_n and not (set(got[-1]["urlList"]) & ap_urls)
+              and len(seo_release.sitemap_entries(d)) == 5 + new_n, str((len(ap2["routes"]), m8, r8["indexnow"])))
+        dn2 = dict(con.execute("SELECT * FROM content WHERE slug='dune'").fetchone())
+        o_ar = seo_pages.handle(d, seo_pages._path(dn2, "ar"), "ar")
+        check("Dune بعد اعتماده في الدفعة: index بلا رأس noindex", o_ar[0] == 200 and "X-Robots-Tag" not in o_ar[2] and b'content="index, follow' in o_ar[1], str(o_ar[2]))
+        q7 = seo_release.phase7(d, SNAP)
+        check("المرحلة 7 بعد التوسيع: روابط اللقطة كلها ما زالت معتمدة (mismatch 0) وما بعدها معلومة (beyond_snapshot = الجديد) — PASS على 13 مسارًا بلا غير متوقَّع",
+              q7["ok"] and q7["metrics"]["snapshot_mismatch"] == 0 and q7["metrics"]["beyond_snapshot"] == new_n and q7["metrics"]["routes"] == 5 + new_n and q7["metrics"]["unexpected_indexable"] == 0, str(q7.get("metrics")))
+        con.close()
+        # ---- المرحلة 9: الاستمرار حتى نفاد المرشّحين ----
+        ex = seo_release.expand(d, 10, 3)
+        check("الاستمرار: دفعةٌ فارغة (لا مرشّح) تنهي الحلقة بلا فشل", ex["ok"] and ex["batches"][-1]["status"] == "EMPTY" and len(ex["batches"]) == 1, str(ex))
+        # ---- الحزمة النهائية ----
+        fb = seo_release.final_bundle(d)
+        txt = seo_release.final_text(fb)
+        check("الحزمة النهائية: الأقسام كلها، FINAL = BLOCKED ما دام عائقٌ (التغطية NOT PROVEN هنا) ولو كانت المراحل 4–7 والدفعات PASS، وتُكتب json/txt",
+              fb["ok"] and fb["final"] == "BLOCKED" and fb["phases"][4] == "PASS" and fb["phases"][5] == "PASS" and fb["phases"][6] == "PASS" and fb["indexability"]["indexable"] == 5 + new_n
+              and fb["indexnow"]["submitted"] == 5 + new_n and "FINAL STATUS" in txt and "PHASE STATUS" in txt and os.path.exists(fb["file"]) and os.path.exists(fb["file"].replace(".json", ".txt")), str(fb["blockers"]))
+        st_ = seo_release.status(d)
+        check("الحال للبطاقة: الأعلام والاعتماد والدفعات", st_["index_live"] and st_["sitemap_live"] and st_["approved_routes"] == 5 + new_n and len(st_["batches"]) == 3 and st_["approved_snapshot"] == SNAP, str({k: st_[k] for k in ("approved_routes", "approved_snapshot")}))
+    finally:
+        ixs.shutdown(); tm.shutdown(); tm_down.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     unit_match()
     unit_build()
@@ -1521,6 +1720,7 @@ def main():
     unit_full_scan()
     unit_migrate()
     unit_enrich()
+    unit_release()
     live()
     print("\nResult: %d passed, %d failed" % (_p, _f))
     sys.exit(1 if _f else 0)

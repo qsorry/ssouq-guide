@@ -254,8 +254,14 @@ def check_work(data_dir, con, item, st, srv_names):
         "SELECT DISTINCT o.content_id, c.slug FROM content_service s JOIN content_service o ON o.service_key=s.service_key AND o.kind=s.kind AND o.content_id!=s.content_id AND o.present=1 "
         "AND o.stream_id IS NOT NULL AND o.stream_id=s.stream_id JOIN content c ON c.id=o.content_id AND c.merged_into IS NULL WHERE s.content_id=? AND s.present=1", (row["id"],)).fetchall()
     tests.append(_t("no_service_duplicate_urls", not dup, {"other_live_entities_sharing_a_stream": [dict(r) for r in dup]}))
-    noindex = all('name="robots" content="noindex, follow"' in p["text"] and p["headers"].get("X-Robots-Tag") == "noindex" for p in pages.values())
-    tests.append(_t("noindex", noindex, {l: p["headers"].get("X-Robots-Tag") for l, p in pages.items()}))
+    # قبل المرحلة 4 كل صفحة noindex (وسمًا ورأسًا)؛ وبعدها الصفحة المعتمدة المستحقّة index بلا رأس noindex، وما عداها noindex كما كان
+    def _robots_ok(l, p):
+        want_index = bool(p.get("live")) and bool(p["index_ar"] if l == "ar" else p["index_en"])
+        if want_index:
+            return 'name="robots" content="index, follow' in p["text"] and "X-Robots-Tag" not in p["headers"]
+        return 'name="robots" content="noindex, follow"' in p["text"] and p["headers"].get("X-Robots-Tag") == "noindex"
+    noindex = all(_robots_ok(l, p) for l, p in pages.items())
+    tests.append(_t("noindex", noindex, {l: {"X-Robots-Tag": p["headers"].get("X-Robots-Tag"), "live_index": bool(p.get("live")) and bool(p["index_ar"] if l == "ar" else p["index_en"])} for l, p in pages.items()}))
     return {**item, "title": row["title"], "tmdb_id": row["tmdb_id"], "match": row["match"], "would_index": {"ar": pages["ar"]["index_ar"], "en": pages["en"]["index_en"]},
             "why": {"ar": pages["ar"]["why"][0], "en": pages["en"]["why"][1]}, "urls": {l: p["canonical"] for l, p in pages.items()}, "tests": tests}
 
@@ -440,11 +446,14 @@ def audit_redirect_targets(data_dir, con, limit=None):
 
 def sitemap_urls(con, st):
     """روابط الكيانات التي تستحق الفهرسة بسياسة ‏seo_settings (كما ستدخل خريطة المرحلة 3) ← [(loc, lang, id)]. الهبّات
-    وصفحات الأشخاص خارجها الآن (قرارها مع المرحلة 3)."""
+    وصفحات الأشخاص خارجها الآن (قرارها مع المرحلة 3). وبعد المرحلة 4 (index_live) هي ما يُخدم index فعلًا: المعتمد
+    المستحقّ وحده — فالمستحقّ غير المعتمد (توسيعٌ لم يُعتمد بعد) خارجها وصفحته noindex."""
     out = []
+    approved = seo_pages.approved_routes(con) if st.get("index_live") else None
     for r in con.execute("SELECT * FROM content WHERE merged_into IS NULL AND available=1 ORDER BY id"):
         for lang in ("ar", "en"):
-            if seo_pages.indexable(r, lang, st)[0]:
+            ok = seo_pages.live_index(r, lang, st, approved)[0] if approved is not None else seo_pages.indexable(r, lang, st)[0]
+            if ok:
                 out.append((SITE + seo_pages._path(r, lang), lang, r["id"]))
     return out
 
@@ -481,14 +490,21 @@ def check_sitemap(data_dir, con, st, out_path=None):
     if out_path:
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(xml)
-    return {"urls": len(urls), "by_lang": by_lang, "entities": len({cid for _, _, cid in urls}), "bytes": len(xml), "file": out_path, "served": False, "submitted": False,
+    live = bool(st.get("index_live") and st.get("sitemap_live"))
+    if live:                                          # المرحلة 5: الخريطة العامة تحمل المعتمد المستحقّ نفسه — لا أكثر ولا أقل
+        import seo_release
+        served = {SITE + p for p, _, _ in seo_release.sitemap_entries(data_dir)}
+        served_test = _t("sitemap_served_matches_approved", served == set(locs), {"served": len(served), "expected": len(locs), "missing": sorted(set(locs) - served)[:5], "extra": sorted(served - set(locs))[:5]})
+    else:
+        served_test = _t("sitemap_not_served", not leaked and "/content/movies/" not in public_xml and "/content/series/" not in public_xml,
+                         {"entity_urls_in_public_sitemap": len(leaked), "public_sitemap_ok": not str(public_xml).startswith("error"), "staging_file": out_path})
+    return {"urls": len(urls), "by_lang": by_lang, "entities": len({cid for _, _, cid in urls}), "bytes": len(xml), "file": out_path, "served": live, "submitted": False,
             "sample": locs[:10],
             "tests": [_t("sitemap_canonical_only", not non_canon, {"bad": non_canon[:5]}),
                       _t("sitemap_no_duplicate_urls", not dup_loc and not multi, {"dup": sorted(dup_loc)[:5], "entity_with_two_urls": len(multi)}),
                       _t("sitemap_no_faceted_or_query_urls", not faceted, {"bad": faceted[:5]}),
                       _t("sitemap_no_old_redirect_paths", not old, {"bad": old[:5]}),
-                      _t("sitemap_not_served", not leaked and "/content/movies/" not in public_xml and "/content/series/" not in public_xml,
-                         {"entity_urls_in_public_sitemap": len(leaked), "public_sitemap_ok": not str(public_xml).startswith("error"), "staging_file": out_path})]}
+                      served_test]}
 
 
 def indexnow_dry_run(data_dir, urls):
@@ -698,7 +714,9 @@ def run(data_dir, spec=None, probe=None, sitemap_out=None):
                              "sample_failures": sum(1 for w in works for t in w["tests"] if t["test"] == "hreflang_reciprocal" and not t["ok"]),
                              "rule": cov["rule"]},
                 "failed_works": work_fail, "works": works, "redirects": red, "sitemap": sm, "indexnow": ix, "queue": q, "casper": cs, "coverage": cov, "read_only": ro,
-                "not_done_by_design": ["no production indexing", "no sitemap deploy", "no IndexNow submission", "no mass enrichment", "no slug change", "no merge", "no source row deleted"]}
+                "release": seo_db.state(con, "release") or {"status": "not started", "note": "Phases 4–9 run from seo_release (owner action); nothing here writes"},
+                "not_done_by_design": [x for x in ("no production indexing" if not st.get("index_live") else "", "no sitemap deploy" if not st.get("sitemap_live") else "",
+                                                   "no IndexNow submission", "no mass enrichment", "no slug change", "no merge", "no source row deleted") if x]}
     finally:
         con.close()
 

@@ -1631,6 +1631,12 @@ HTML لا يُمسّ: ‏`alt` الصورة لقطةٌ من يومها):
   `seo-sample` · `seo-run` · `seo-settings` · `seo-audit`. والاختبارات بلوحة TMDB وهمية (‏`tests/mock_tmdb.py`) ولوحة Xtream بتفاصيلها:
   `python tests/test_seo.py`. والتقرير: [docs/phase2-report.md](docs/phase2-report.md).
 
+### المراحل 4–9 — النشر الإنتاجي (`seo_release.py`)
+- رفع noindex عن **المعتمد** وحده (قائمة اعتماد `build_state.index_approved` من روابط اللقطة + `index_live`)، ثم الخريطة العامة (`sitemap_live`)،
+  ثم IndexNow، ثم فحصٌ بعد النشر، ثم توسيعٌ بدفعاتٍ محدودة بإثراء TMDB وبوابات — كلٌّ خلف بوابة: فشلها = STOP وتراجع. من بطاقة
+  «النشر الإنتاجي» في `admin.ssouq.com/content` أو داخل الحاوية: `python seo_release.py go --snapshot=<اللقطة> --expected=<N> --http`
+  ثم `batch --n=100` / `expand` / `final`. التفصيل في [docs/phase2-report.md](docs/phase2-report.md) §21.
+
 
 ## بلاغات المحتوى: فيديو لا يعمل أو يقطع (`reports.py` · `report.html` · `reports_admin.html`)
 المشترك يبلّغ عن حلقةٍ أو فيلمٍ أو قناةٍ لا تعمل أو تقطع **باختيارها من ملف M3U نفسه** لا بكتابة اسمها، ويراه موظف الدعم

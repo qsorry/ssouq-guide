@@ -72,6 +72,41 @@ def indexable(row, lang, st):
     return True, "ok"
 
 
+# ================= الفهرسة الإنتاجية (المرحلة 4: seo_release) =================
+APPROVED_KEY = "index_approved"     # build_state: السكّان المعتمدون للفهرسة — {snapshot, at, routes: [{id, lang, path, slug, type, batch}]}
+
+
+def approved_routes(con):
+    """المسارات المعتمدة للفهرسة (قائمة اعتماد المالك، تُكتب بعد بوابة المرحلة 4 أو دفعة توسيعٍ ناجحة) ← {(id, lang): بند}.
+    فارغةٌ = لا شيء يُفهرس مهما كانت الأهلية."""
+    ap = seo_db.state(con, APPROVED_KEY) or {}
+    return {(int(r["id"]), r["lang"]): r for r in ap.get("routes") or [] if isinstance(r, dict)}
+
+
+def live_index(row, lang, st, approved):
+    """هل تُخدم صفحة العمل **index** فعلًا بهذه اللغة ← (نعم؟، السبب). الشرط الثلاثي، لا يُغني أحدها عن الآخر:
+    index_live مفعّل (المرحلة 4) · المسار معتمدٌ بمعرّف الكيان ولغته **وبالرابط نفسه الذي اعتُمد** (slug تبدّل = لا فهرسة حتى يُعاد الاعتماد)
+    · ومستحقٌّ بالسياسة الآن (indexable). فالأهلية وحدها لا تفهرس (الفصل: exists · enriched · live · eligible · indexable)."""
+    if not st.get("index_live"):
+        return False, "index_live off"
+    a = approved.get((row["id"], lang))
+    if not a:
+        return False, "not approved"
+    if a.get("path") != _path(row, lang) or a.get("slug") != row["slug"]:
+        return False, "slug changed since approval"
+    ok, why = indexable(row, lang, st)
+    return (True, "ok") if ok else (False, f"approved but not eligible now: {why}")
+
+
+def index_flags(con, row, st, approved=None):
+    """علما الصفحتين كما تُخدمان: قبل المرحلة 4 (index_live موقوف) هما الأهلية (المعاينة noindex، لكن hreflang كما سيكون)؛
+    وبعدها هما الفهرسة الفعلية (معتمدٌ ومستحقّ) ← (ar, en, live?)."""
+    if not st.get("index_live"):
+        return indexable(row, "ar", st)[0], indexable(row, "en", st)[0], False
+    approved = approved_routes(con) if approved is None else approved
+    return live_index(row, "ar", st, approved)[0], live_index(row, "en", st, approved)[0], True
+
+
 # ================= أدوات =================
 def _img(url, size, key=""):
     """صورة TMDB بمقاسها، وصورة لوحةٍ عبر خادمنا (‏content.img_src) بمفتاح سيرفرها — ولا رابط لوحةٍ مباشرًا."""
@@ -448,13 +483,14 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         lds.append({"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq]})
     trailer_html = (f'<section class="trailer"><h2>{_esc(tr("الإعلان", "Trailer"))}</h2><div class="yt"><iframe loading="lazy" src="https://www.youtube-nocookie.com/embed/{_esc(row["trailer_yt"])}" '
                     f'title="{_esc(tr(f"إعلان {title}", f"{title} trailer"))}" allowfullscreen></iframe></div></section>') if row["trailer_yt"] else ""
-    ok_ar, ok_en = indexable(row, "ar", st)[0], indexable(row, "en", st)[0]
+    ok_ar, ok_en, live = index_flags(con, row, st)     # قبل المرحلة 4: الأهلية؛ بعدها: المعتمد المستحقّ وحده (والباقي noindex بلا alternate)
     alts = [("ar", SITE + _path(row, "ar")), ("en", SITE + _path(row, "en")), ("x-default", SITE + _path(row, "ar"))] if ok_ar and ok_en else []
+    noindex = not (live and (ok_en if tr.en else ok_ar))
     body = (_header(tr, hubs[0]["key"] if hubs else "") + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, _path(row, "en" if not tr.en else "ar"))}</div>'
             + head + f'<div class="cols"><div class="main">{story}{seas}{ppl}{trailer_html}{pics}{faq_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr))
     return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_image=backdrop or poster, og_type="video.movie" if typ == "movie" else "video.tv_show",
-                                 noindex=True), "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en,
-                   "why": (indexable(row, "ar", st)[1], indexable(row, "en", st)[1]), "row": row}
+                                 noindex=noindex), "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en,
+                   "noindex": noindex, "live": live, "why": (indexable(row, "ar", st)[1], indexable(row, "en", st)[1]), "row": row}
 
 
 # ================= الشخص =================
@@ -738,7 +774,9 @@ def handle(data_dir, path, lang):
             return 404, b"", {}
         if res[0] == "redirect":
             return 301, b"", {"Location": res[1]}
-        return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
+        if res[1].get("noindex", True):
+            return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
+        return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}     # معتمدٌ مستحقّ (المرحلة 4): بلا رأس noindex، والوسم index في الصفحة
     finally:
         con.close()
 
