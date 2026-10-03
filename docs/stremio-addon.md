@@ -22,7 +22,7 @@
 | `stremio_categories.py` | **تصنيفات سمارت سوق** الافتراضية (`DEFAULTS`)، وحفظها لكل حساب أداة، والتحقق (`clean`)، والمطابقة بالكلمات (`matcher`)، وخيار صفّ «التصنيفات» (`index_on` / `set_index`) |
 | `stremio_posters.py` | رسم ملصقات القنوات وبطاقات التصنيفات: PNG بـ Pillow+raqm وخط IBM Plex Sans Arabic في `static/fonts/`، و SVG إن لم يتوفّر Pillow |
 | `stremio_accounts.py` | حسابات Stremio: التسجيل والدخول وتثبيت الوصف في `addonCollection` عبر `api.strem.io`، وسجلات الحسابات في `data/stremio_accounts.json` (كلمة المرور مشفّرة)، والربط بين الخطوط (`link` / `group` / `unlink`) |
-| `nuvio_accounts.py` | **حسابات Nuvio** على خادم Nuvio الرسمي `api.nuvio.tv` (Supabase): الاكتشاف (`config`)، والتسجيل والدخول، وقراءة إضافات الحساب ودفعها (`install` / `uninstall`)، والموافقة على كود التلفاز (`approve_tv`)، وسجلات الحسابات في `data/nuvio_accounts.json` (كلمة المرور مشفّرة). الحقائق التي بُني عليها في `docs/nuvio.md` |
+| `nuvio_accounts.py` | **حسابات Nuvio** على خادم Nuvio الرسمي `api.nuvio.tv` (Supabase): الاكتشاف (`config`)، والتسجيل والدخول، وقراءة إضافات الحساب ودفعها (`install` / `uninstall`)، وسجلات الحسابات في `data/nuvio_accounts.json` (كلمة المرور مشفّرة). الحقائق التي بُني عليها في `docs/nuvio.md` |
 | `stremio_extras.py` | «الإضافات الأخرى» (مثل AIOMetadata) تُثبَّت مع إضافتنا لكل حساب |
 | `mail_inbox.py` | مستقبِل SMTP لبريد `@tv.ssouq.com` (رسائل Stremio للحسابات) |
 | `xm_lines.py` | الخادم: يمرّر `/stremio*` إلى `stremio_addon.handle`، وكل `/api/stremio/*` للأداة، ويبني وصف الإضافة للتثبيت، ويشغّل «تحديث الإضافة لكل الحسابات»، والتحميل المسبق، وجمع تصنيفات الأفلام، وتحويل الهوستات |
@@ -228,21 +228,22 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 | `update-all` | تحديث الكل |
 
   والصفحة العامة: `POST /api/stremio/link` (من رسالة الاشتراك إلى رابط التثبيت).
-- **مسارات Nuvio** `/api/nuvio/*` (الصلاحية نفسها: `stremio_on`). الردّ: `{ok, created, email, password, status}`، ولا يوزر Xtream ولا باسورده:
+- **مسارات Nuvio** `/api/nuvio/*` (الصلاحية نفسها: `stremio_on`). الردّ: `{ok, created, email, password, status}`:
 
 | المسار | الوظيفة | الدالة |
 |---|---|---|
 | `GET accounts?gate=` | حسابات Nuvio للبوابة، و`counts` لكل بوابة | `nuvio_page_data` |
 | `POST account` `{gate, username, password, line}` | حساب ليوزر من البحث (أو المحفوظ، أو يعيد تفعيل المُلغى بالحساب نفسه) | `nuvio_account` |
-| `POST tv` `{gate, username, code}` | «ربط تلفاز»: يوافق على كود التلفاز بجلسة حسابه | `nuvio_tv` |
 | `POST reinstall` `{gate, username, relink?}` | «تحديث الإضافة»، و`relink` = «إعادة الربط» (قفل ورمز جديدان يُبطلان الرابط القديم) | `nuvio_reinstall` |
 | `POST disable` `{gate, username}` | «إلغاء التفعيل»: تُزال إضافتنا من حسابه، ويُغيَّر القفل فيتوقف رابطها | `nuvio_disable` |
 
-  - **الحساب**: إيميل محايد `ssq<10 hex من sha256(هوست|يوزر)>@tv.ssouq.com` (`email_for`)، وكلمة مرور عشوائية 12 حرفاً (`new_password`).
-  - **قبل أي حساب** يُتحقق أن اليوزر يعمل على سيرفره (`stremio_addon.account`)، ثم `signup` (ومسجَّل بكلمة مرورنا ← `login`).
+  - **الحساب** مثل Stremio: الإيميل `<يوزر>@tv.ssouq.com` (`email_for`، نفس تنظيف `stremio_accounts.email_for`)، وكلمة المرور
+    باسورد الاشتراك. Nuvio يرفض الأقل من 6 أحرف، فـ`passwords_for` يضيف «A» حتى تبلغها، و`register` يجرّبها بالترتيب.
+  - **قبل أي حساب** يُتحقق أن اليوزر يعمل على سيرفره (`stremio_addon.account`)، ثم `register` (ومسجَّل بكلمة مرورنا ← `login`).
+  - **التلفاز** من Nuvio نفسه: العميل يدخل على جواله ويمسح QR التلفاز. لا مسار لذلك في الأداة.
   - **الإضافة** رابط manifest برمز مختوم بقفلٍ لهذا الحساب (`make_token(..., key=)`). `sync_push_addons` تستبدل القائمة كلها،
     لذلك `install` يقرأ أولاً ويضع رابطنا أولاً ويُبقي إضافات العميل كما هي (`_nuvio_ours` يعرف نسخنا السابقة فلا تتكرّر).
-  - Nuvio لا يردّ ← `502` بـ«Nuvio: …»، ولا يُحفظ نصف حساب. كود تلفاز خاطئ ← `400`.
+  - Nuvio لا يردّ ← `502` بـ«Nuvio: …»، ولا يُحفظ نصف حساب.
 - **تحويل الهوست** في `data/stremio_routes.json` (لكل حساب أداة): `stremio_route(cfg)` ← الاشتراك على هوسته الجديد، والمعرّفات لا تتغيّر.
 - **بوابة الأرشيف** (`archive_only`): تمنع الإنشاء والرصيد فقط، ولا تمسّ Stremio.
 
@@ -250,8 +251,8 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 صفحة واحدة بثلاثة عروض تختارها حسب المسار: `/stremio` و`/stremio/categories` و`/stremio/addons`، مع `B = "/admin"` على الموقع العام. الاستدعاءات بـ `api(path, body)`.
 - **الحسابات**: مفتاح المنصّة **Stremio | Nuvio** أعلى الصفحة (محفوظ في `localStorage` باسم `xm_stremio_plat`).
   - Stremio: بطاقة لكل حساب (نسخ الحساب، البريد، ⋯).
-  - Nuvio: البحث يعطي «إنشاء حساب Nuvio»، وبطاقة لكل حساب: الحال (مفعّل / مُلغى)، والإيميل وكلمة المرور، ونسخة الإضافة، وعدد
-    التلفازات؛ وأزرار «نسخ الحساب» و«ربط تلفاز» (نافذة الكود)، و⋯: «تحديث الإضافة» · «إعادة الربط» · «إلغاء التفعيل».
+  - Nuvio: البحث يعطي «إنشاء حساب Nuvio»، وبطاقة لكل حساب: الحال (مفعّل / مُلغى)، والإيميل وكلمة المرور، ونسخة الإضافة؛
+    و«نسخ الحساب» (النص فيه خطوة QR للتلفاز)، و⋯: «تحديث الإضافة» · «إعادة الربط» · «إلغاء التفعيل».
     عدد كل بوابة في شريط البوابات لحسابات Nuvio. «إنشاء يوزر Stremio» وأدوات الانتهاء لـ Stremio وحده.
 - **التصنيفات**:
   - بطاقة مضغوطة لكل تصنيف: ▲▼، الاسم، العدد، «صفٌّ في الرئيسية»، «ظاهر»، وزر «كلمات الربط».
@@ -286,7 +287,7 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 ## 16) ملفات البيانات (`data/`)
 - `stremio_accounts.json`: الحسابات وخطوطها. فيها `token` و`addon_key` و`linked_to` و`addon_v` و`addon_full` و`exp` و`status`.
 - `nuvio_accounts.json`: حسابات Nuvio بمفتاح `«هوست|يوزر»`. فيها `email` و`password` (مشفّرة) و`user_id` و`token` و`addon_key`
-  و`acct` و`gate` و`status` (`active` / `off`) و`addon_at` و`addon_v` و`tv_at` و`tvs`.
+  و`acct` و`gate` و`status` (`active` / `off`) و`addon_at` و`addon_v` و`off_at`.
 - `stremio_routes.json`: تحويل الهوستات.
 - `stremio_categories.json`: التصنيفات لكل حساب أداة.
 - `stremio_extras.json`: الإضافات الأخرى.
@@ -300,8 +301,8 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 - `python3 tests/test_stremio_accounts.py`: الخادم كاملاً، ومعه Stremio وهمي (`mock_stremio_api`) وبريد. فيه اختبار مهلة الخط.
 - `python3 tests/test_nuvio.py`: مسار Nuvio كاملاً مقابل `tests/mock_nuvio.py` (واجهة api.nuvio.tv نفسها) و`mock_xtream`:
   `test_nuvio_registration` · `test_nuvio_auth` · `test_addon_install` · `test_addon_sync`، ثم عبر الخادم: الصلاحيات، و`test_credentials_not_returned_to_client`
-  و`test_m3u_secret_not_exposed` (الردّ ورابط الإضافة والـmanifest والكتالوج والمصادر)، و`test_existing_ids_unchanged` (معرّف الإضافة
-  ومعرّفات الأعمال نفسها في Nuvio وفي رابط Stremio)، والتلفاز، والتحديث، والإلغاء، وإعادة الربط، وتعطّل Nuvio.
+  و`test_m3u_secret_not_exposed` (رابط الإضافة والـmanifest والكتالوج والمصادر)، و`test_existing_ids_unchanged` (معرّف الإضافة
+  ومعرّفات الأعمال نفسها في Nuvio وفي رابط Stremio)، والباسورد القصير، والتحديث، والإلغاء، وإعادة الربط، وتعطّل Nuvio.
 - `NODE_PATH=/opt/node-tools/node_modules node tests/ui_nuvio_page.js`: مفتاح المنصّة وبطاقات Nuvio وأزرارها في Chromium.
 - `python3 tests/test_stremio_extras.py` · `tests/test_hosts.py` · `tests/test_dockerfile.py`
 - `NODE_PATH=/opt/node-tools/node_modules node tests/ui_stremio_page.js`: صفحة الأداة في Chromium. مع `SHOTS_DIR` يأخذ صوراً.
@@ -346,7 +347,7 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 5. **Nuvio** مساراً مستقلاً (القسم 13 و14، و`docs/nuvio.md`).
 
 **ما زال مفتوحاً:**
-- حسابات Stremio الجاهزة نفسها ما زالت: الإيميل = يوزر Xtream وكلمة المرور = باسورده (القسم 1). Nuvio لا يفعل ذلك.
+- حسابات Stremio وNuvio الجاهزة: الإيميل = يوزر Xtream وكلمة المرور = باسورده (قرار صاحب المتجر، للبساطة). ما يُخفى هو ما في الإضافة نفسها.
 - شروط `api.nuvio.tv` لإنشاء حسابات آلياً، وتجربة Nuvio الحقيقية على تلفاز (`docs/nuvio.md` القسم 6).
 - تجربة «عرض الكل» على تطبيق التلفاز.
 - عناوين بترجمات عربية مختلفة للعمل نفسه («احتمال حب» / «حب محتمل») لا تُدمج إلا بمعرّف TMDB أو بملصق TMDB نفسه.

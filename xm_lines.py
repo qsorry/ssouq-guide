@@ -1242,8 +1242,9 @@ def _nuvio_install(rec, tok):
 
 
 def nuvio_account(acct, gate, username, password, line=""):
-    """حساب Nuvio جاهز ليوزر بوابة: إيميلٌ محايد وكلمة مرورٍ عشوائية (لا بيانات Xtream عند العميل)، وإضافتنا مثبّتةٌ فيه
-    برابطٍ مقفلٍ عليه. ← (الحساب، أُنشئ الآن؟). ‏ValueError · NuvioError · XtreamError برسالةٍ للعرض."""
+    """حساب Nuvio جاهز ليوزر بوابة، كحساب Stremio الجاهز: الإيميل اليوزر على دومين المتجر وكلمة المرور باسورده (و«A» إن
+    رفضها Nuvio)، وإضافتنا مثبّتةٌ فيه برابطٍ مقفلٍ عليه. ← (الحساب، أُنشئ الآن؟). ‏ValueError · NuvioError · XtreamError
+    برسالةٍ للعرض."""
     host = _row_host(gate, {"line": line})
     hk = stremio_addon.host_key(host)
     if not hk or not username or not password:
@@ -1251,14 +1252,13 @@ def nuvio_account(acct, gate, username, password, line=""):
     old = nuvio_accounts.get(DATA_DIR, hk, username)
     if old and old.get("status") != "off":
         return old, False
+    email = old["email"] if old else nuvio_accounts.email_for(username)
     stremio_addon.account(stremio_addon.Cfg(host, username, password))   # اليوزر يعمل على سيرفره قبل أي حساب
-    email = old["email"] if old else nuvio_accounts.email_for(hk, username)
-    pw = old["password"] if old else nuvio_accounts.new_password()
-    sess = nuvio_accounts.signup(email, pw)
+    sess, pw = nuvio_accounts.register(email, old["password"] if old else password)
     key = secrets.token_urlsafe(9)
     tok = stremio_addon.make_token(DATA_DIR, host, username, password, key=key)
-    rec = nuvio_accounts.put(DATA_DIR, hk, username, email=email, password=pw, user_id=sess["user_id"], token=tok,
-                             addon_key=key, acct=acct.get("id"), gate=gate.get("id"), status="active")
+    nuvio_accounts.put(DATA_DIR, hk, username, email=email, password=pw, user_id=sess["user_id"], token=tok,
+                       addon_key=key, acct=acct.get("id"), gate=gate.get("id"), status="active")
     nuvio_accounts.install(sess, stremio_addon.links(STREMIO_PUBLIC or f"https://{SITE_HOST}", tok)["manifest"], NUVIO_NAME, _nuvio_ours)
     return nuvio_accounts.put(DATA_DIR, hk, username, addon_at=int(time.time()), addon_v=stremio_addon.VERSION), old is None
 
@@ -1268,15 +1268,6 @@ def _nuvio_owned(acct, gate_id, username):
     if not rec:
         raise ValueError("لا حساب Nuvio لهذا اليوزر")
     return rec
-
-
-def nuvio_tv(acct, gate_id, username, code):
-    """«ربط تلفاز»: الكود الظاهر في Nuvio على تلفاز العميل يوافَق عليه بحسابه ← يدخل التلفاز وإضافته جاهزة."""
-    rec = _nuvio_owned(acct, gate_id, username)
-    if rec.get("status") == "off":
-        raise ValueError("الحساب مُلغى تفعيله — «إعادة الربط» أولًا")
-    nuvio_accounts.approve_tv(nuvio_accounts.login(rec["email"], rec["password"]), code)
-    return nuvio_accounts.put(DATA_DIR, rec["host"], username, tv_at=int(time.time()), tvs=int(rec.get("tvs") or 0) + 1)
 
 
 def nuvio_reinstall(acct, gate_id, username, relink=False):
@@ -1306,7 +1297,7 @@ def nuvio_disable(acct, gate_id, username):
 
 
 def nuvio_page_data(acct, gate_id):
-    """حسابات Nuvio لبوابة: الإيميل وكلمة المرور (للنسخ للعميل) وحالها — بلا بيانات Xtream."""
+    """حسابات Nuvio لبوابة: الإيميل وكلمة المرور (للنسخ للعميل) وحالها وإضافتها."""
     rows, counts = [], {}
     for r in nuvio_accounts.owned(DATA_DIR, acct["id"]):
         counts[r.get("gate")] = counts.get(r.get("gate"), 0) + 1
@@ -1314,8 +1305,7 @@ def nuvio_page_data(acct, gate_id):
             continue
         rows.append({"gate": r.get("gate"), "username": r.get("username"), "email": r.get("email"), "password": r.get("password"),
                      "status": r.get("status") or "active", "created": r.get("created"), "ts": r.get("ts") or 0,
-                     "addon_at": r.get("addon_at") or 0, "addon_v": r.get("addon_v") or "", "tv_at": r.get("tv_at") or 0,
-                     "tvs": r.get("tvs") or 0})
+                     "addon_at": r.get("addon_at") or 0, "addon_v": r.get("addon_v") or ""})
     return {"accounts": rows, "counts": counts, "version": stremio_addon.VERSION}
 
 
@@ -4336,7 +4326,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not stremio_on(acct):
                     return self._send(403, {"error": "Stremio غير مفعّل لهذا الحساب"})
                 return self._send(200, stremio_extras_data(acct))
-            if path == "/api/nuvio/accounts":     # حسابات Nuvio لبوابة (إيميلٌ وكلمة مرور للعميل — بلا بيانات Xtream)
+            if path == "/api/nuvio/accounts":     # حسابات Nuvio لبوابة (إيميلٌ وكلمة مرور للعميل)
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
                 if not stremio_on(acct):
@@ -5912,7 +5902,7 @@ class Handler(BaseHTTPRequestHandler):
                 except xm_web.LoginFailed as e:
                     return self._send(200, {"ok": False, "login_error": str(e)})
                 return self._send(code, res)
-            if path in ("/api/nuvio/account", "/api/nuvio/tv", "/api/nuvio/reinstall", "/api/nuvio/disable"):   # خارج القفل: Nuvio
+            if path in ("/api/nuvio/account", "/api/nuvio/reinstall", "/api/nuvio/disable"):   # خارج القفل: Nuvio
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
                 if not stremio_on(acct):
@@ -5927,8 +5917,6 @@ class Handler(BaseHTTPRequestHandler):
                         if not gate:
                             return self._send(400, {"ok": False, "error": "اختر بوابة"})
                         rec, created = nuvio_account(acct, gate, user, str(req.get("password") or "").strip(), str(req.get("line") or ""))
-                    elif path == "/api/nuvio/tv":        # «ربط تلفاز» بالكود الظاهر فيه
-                        rec, created = nuvio_tv(acct, gid, user, req.get("code")), False
                     elif path == "/api/nuvio/reinstall":   # «تحديث الإضافة» · «إعادة الربط»
                         rec, created = nuvio_reinstall(acct, gid, user, bool(req.get("relink"))), False
                     else:                                # «إلغاء التفعيل»

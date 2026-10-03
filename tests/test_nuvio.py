@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-حسابات Nuvio الجاهزة (‏nuvio_accounts.py ومساراتها في xm_lines): إيميلٌ محايد وكلمة مرورٍ عشوائية (لا بيانات Xtream عند
-العميل)، وإضافتنا أول قائمة إضافاته وإضافاته الأخرى باقية، ودخول التلفاز بالكود، و«تحديث الإضافة» و«إلغاء التفعيل»
-و«إعادة الربط» — مقابل خادم Nuvio وهمي بواجهة api.nuvio.tv نفسها (‏tests/mock_nuvio.py) وسيرفر Xtream وهمي، بلا إنترنت.
+حسابات Nuvio الجاهزة (‏nuvio_accounts.py ومساراتها في xm_lines): كحساب Stremio الجاهز — الإيميل اليوزر @tv.ssouq.com
+وكلمة المرور باسورده (و«A» إن رفضها Nuvio) — وإضافتنا أول قائمة إضافاته وإضافاته الأخرى باقية، ورابطها وردودها بلا بيانات
+Xtream، و«تحديث الإضافة» و«إلغاء التفعيل» و«إعادة الربط» — مقابل خادم Nuvio وهمي بواجهة api.nuvio.tv نفسها (‏tests/mock_nuvio.py) وسيرفر Xtream وهمي، بلا إنترنت.
 
     python tests/test_nuvio.py
 """
@@ -31,7 +31,7 @@ import nuvio_accounts as N  # noqa: E402
 import stremio_addon as S  # noqa: E402
 
 PORT = int(os.environ.get("NUVIO_TEST_PORT", "9596"))
-XUSER, XPASS = "c0505xyz", "SecretPw9z"          # بيانات Xtream — لا تظهر لعميل Nuvio في أي شيء
+XUSER, XPASS = "c0505xyz", "SecretPw9z"          # بيانات Xtream — لا تظهر في رابط الإضافة ولا في ردودها
 _p = _f = 0
 
 
@@ -64,13 +64,12 @@ def secret_free(text):
 
 def unit():
     print("== الإيميل وكلمة المرور ==")
-    e = N.email_for("127.0.0.1", XUSER)
-    check("إيميلٌ محايد ثابت: لا يوزر Xtream فيه", e == N.email_for("127.0.0.1", XUSER) and e.endswith("@tv.ssouq.com")
-          and XUSER not in e and e.startswith("ssq"), e)
-    check("ولكل خطٍّ إيميله", e != N.email_for("127.0.0.1", "other") and e != N.email_for("10.0.0.1", XUSER))
-    pws = {N.new_password() for _ in range(20)}
-    check("كلمة مرورٍ عشوائية: 12 حرفًا وأرقام، ولا تتكرّر", len(pws) == 20 and all(len(p) == 12 and p.isalnum()
-          and any(c.isdigit() for c in p) and any(c.isalpha() for c in p) for p in pws))
+    check("الإيميل اليوزر @tv.ssouq.com كما في Stremio", N.email_for(XUSER) == "c0505xyz@tv.ssouq.com"
+          and N.email_for(" Ab C+1/ ") == "abc1@tv.ssouq.com")
+    check("يوزرٌ بلا حرفٍ صالح ← ValueError", raises(lambda: N.email_for("أحمد"), ValueError))
+    check("كلمة المرور الباسورد نفسه، ثم هو و«A»", N.passwords_for(XPASS) == [XPASS, XPASS + "A"])
+    check("وباسوردٌ أقصر من 6 أحرف (لا يقبله Nuvio): «A» حتى يبلغها", N.passwords_for("1234") == ["1234AA"]
+          and N.passwords_for("12345") == ["12345A"] and N.passwords_for("123456") == ["123456", "123456A"])
 
 
 def test_nuvio_auth(srv):
@@ -90,18 +89,27 @@ def test_nuvio_auth(srv):
 
 def test_nuvio_registration(srv):
     print("== test_nuvio_registration: إنشاء الحساب ==")
-    e = N.email_for("127.0.0.1", "reg1")
+    e = N.email_for("reg1")
     s = N.signup(e, "Pass1234ab")
     check("حسابٌ جديد ← جلسته مباشرةً (بلا تأكيد بريد)", s["access_token"] and s["user_id"] and e in srv.state.users)
     check("وفيه إضافات Nuvio الافتراضية", [a["name"] for a in N.pull_addons(s)] == ["Cinemeta", "OpenSubtitles v3"])
     s2 = N.signup(e, "Pass1234ab")
     check("مسجَّلٌ من قبل ← دخولٌ إليه لا خطأ", s2["user_id"] == s["user_id"] and len(srv.state.users) == 2)
     check("مسجَّلٌ بكلمة مرورٍ أخرى ← NuvioError", raises(lambda: N.signup(e, "Other999x"), N.NuvioError))
+    s3, pw = N.register(N.email_for("short"), "1234")
+    check("باسوردٌ قصير ← يُسجَّل به و«A»", pw == "1234AA" and srv.state.users["short@tv.ssouq.com"]["password"] == "1234AA" and s3["user_id"])
+    s4, pw = N.register(N.email_for("short"), "1234")
+    check("وإعادته تدخل الحساب نفسه", pw == "1234AA" and s4["user_id"] == s3["user_id"])
+    srv.state.users["taken@tv.ssouq.com"] = {"id": "u-taken", "password": "SomeoneElse1"}
+    check("إيميلٌ مسجّلٌ بكلمة مرورٍ أخرى ← رسالةٌ واضحة", "بكلمة مرورٍ أخرى" in str(raises(lambda: N.register("taken@tv.ssouq.com", "Mine12345"), N.NuvioError)))
+    srv.state.down = True
+    check("والخادم لا يردّ ← NuvioError (لا يُجرَّب غيرها)", raises(lambda: N.register(N.email_for("x9"), "Mine12345"), N.NuvioError))
+    srv.state.down = False
 
 
 def test_addon_install(srv):
     print("== test_addon_install: تثبيت إضافتنا ==")
-    s = N.signup(N.email_for("127.0.0.1", "inst"), "Pass1234ab")
+    s = N.signup(N.email_for("inst"), "Pass1234ab")
     ours = lambda u: u.startswith("https://guide.ssouq.com/stremio/")    # noqa: E731
     v1, v2 = "https://guide.ssouq.com/stremio/TOKEN1/manifest.json", "https://guide.ssouq.com/stremio/TOKEN2/manifest.json"
     items = N.install(s, v1, "سمارت سوق", ours)
@@ -119,7 +127,7 @@ def test_addon_install(srv):
 
 def test_addon_sync(srv):
     print("== test_addon_sync: المزامنة لا تمسّ إضافات العميل ==")
-    s = N.signup(N.email_for("127.0.0.1", "sync"), "Pass1234ab")
+    s = N.signup(N.email_for("sync"), "Pass1234ab")
     ours = lambda u: "/stremio/" in u    # noqa: E731
     mine = {"url": "https://torrentio.strem.fun/manifest.json", "name": "Torrentio", "enabled": False}
     N.push_addons(s, N.pull_addons(s) + [mine])
@@ -130,10 +138,6 @@ def test_addon_sync(srv):
     N.uninstall(s, ours)
     got = N.pull_addons(s)
     check("وإزالة إضافتنا تزيلها وحدها", [a["name"] for a in got] == ["Cinemeta", "OpenSubtitles v3", "Torrentio"], str([a["name"] for a in got]))
-    srv.state.tv["AB12CD"] = "pending"
-    check("دخول التلفاز بالكود (حروفٌ صغيرة ومسافات تُنظَّف)", N.approve_tv(s, " ab12 cd ") and srv.state.tv["AB12CD"] == s["user_id"])
-    check("كودٌ مستعمَل أو غير موجود ← ValueError للعرض", raises(lambda: N.approve_tv(s, "AB12CD"), ValueError)
-          and raises(lambda: N.approve_tv(s, "ZZZ999"), ValueError) and raises(lambda: N.approve_tv(s, " "), ValueError))
 
 
 def store_unit():
@@ -243,9 +247,8 @@ def through_server():
         check("يوزرٌ لا يعمل على سيرفره ← لا حساب Nuvio", c in (400, 502) and not nv.state.users, json.dumps(r, ensure_ascii=False)[:120])
         c, r = post("/api/nuvio/account", {"gate": "g1", "username": XUSER, "password": XPASS})
         email, pw = r.get("email", ""), r.get("password", "")
-        check("زرّ «حساب Nuvio» ← إيميلٌ محايد وكلمة مرورٍ عشوائية", c == 200 and r.get("ok") and r.get("created") is True
-              and email == N.email_for(S.host_key(xt_host), XUSER) and len(pw) == 12 and pw != XPASS, json.dumps(r, ensure_ascii=False))
-        check("test_credentials_not_returned_to_client: الردّ بلا يوزر Xtream ولا باسورده", secret_free(json.dumps(r)), json.dumps(r))
+        check("زرّ «حساب Nuvio» ← الإيميل اليوزر @tv.ssouq.com وكلمة المرور باسورده (كحساب Stremio)", c == 200 and r.get("ok")
+              and r.get("created") is True and email == "c0505xyz@tv.ssouq.com" and pw == XPASS, json.dumps(r, ensure_ascii=False))
         check("والحساب في Nuvio بهذه البيانات", nv.state.users.get(email, {}).get("password") == pw)
         lst = ours_in_nuvio(email)
         url1 = lst[0]["url"] if lst else ""
@@ -290,25 +293,22 @@ def through_server():
         check("قائمة حسابات Nuvio للبوابة: الإيميل وكلمة المرور والحال والإضافة", c == 200 and row.get("email") == email
               and row.get("password") == pw and row.get("status") == "active" and row.get("addon_v") == S.VERSION and row.get("addon_at"),
               json.dumps(r, ensure_ascii=False)[:200])
-        check("والقائمة بلا باسورد Xtream ولا رابط إضافة", XPASS not in json.dumps(r) and "/stremio/" not in json.dumps(r))
+        check("والقائمة بلا رابط إضافة", "/stremio/" not in json.dumps(r))
         raw = open(os.path.join(d, N.FILE), encoding="utf-8").read()
         check("كلمة مرور Nuvio محفوظةٌ مشفَّرة على القرص", pw not in raw and XPASS not in raw)
         post("/api/login", {"user": "other", "password": "pw654321"}, op2)
         c, r = post("/api/nuvio/accounts?gate=g1", None, op2)
         check("حسابٌ آخر لا يرى حسابات غيره", c == 200 and r["accounts"] == [])
-        codes = [post(p, {"gate": "g1", "username": XUSER}, op2)[0] for p in ("/api/nuvio/reinstall", "/api/nuvio/disable", "/api/nuvio/tv")]
-        check("ولا يحدّث إضافتها ولا يلغيها ولا يربط تلفازها", codes == [400, 400, 400], str(codes))
+        codes = [post(p, {"gate": "g1", "username": XUSER}, op2)[0] for p in ("/api/nuvio/reinstall", "/api/nuvio/disable")]
+        check("ولا يحدّث إضافتها ولا يلغيها", codes == [400, 400], str(codes))
         check("بوابةٌ ليست له ← 404", post("/api/nuvio/accounts?gate=nope", None)[0] == 404)
 
-        print("== ربط تلفاز بالكود ==")
-        nv.state.tv["TV7788"] = "pending"
-        c, r = post("/api/nuvio/tv", {"gate": "g1", "username": XUSER, "code": "tv77 88"})
-        check("الكود الظاهر في التلفاز يوافَق عليه بحساب العميل", c == 200 and r.get("ok") and nv.state.tv["TV7788"] == nv.state.users[email]["id"],
+        print("== باسوردٌ قصير ==")
+        xt.users["short1"] = "1234"
+        c, r = post("/api/nuvio/account", {"gate": "g1", "username": "short1", "password": "1234"})
+        check("باسوردٌ أقصر من 6 أحرف: كلمة المرور هو و«A» (كما يُبلَّغ العميل)", c == 200 and r.get("email") == "short1@tv.ssouq.com"
+              and r.get("password") == "1234AA" and nv.state.users.get("short1@tv.ssouq.com", {}).get("password") == "1234AA",
               json.dumps(r, ensure_ascii=False))
-        c, r = post("/api/nuvio/tv", {"gate": "g1", "username": XUSER, "code": "NOPE00"})
-        check("كودٌ غير صحيح ← 400 برسالةٍ واضحة", c == 400 and "الكود" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
-        c, r = post("/api/nuvio/accounts?gate=g1", None)
-        check("وعدد التلفازات المربوطة يظهر", r["accounts"][0]["tvs"] == 1 and r["accounts"][0]["tv_at"])
 
         print("== «تحديث الإضافة» ==")
         uid = nv.state.users[email]["id"]
@@ -327,11 +327,9 @@ def through_server():
               and sorted(a["name"] for a in lst) == ["Cinemeta", "OpenSubtitles v3", "Torrentio"], json.dumps(r, ensure_ascii=False))
         check("ورابطها القديم يتوقف (لو نُسخ)", addon(url1, "/manifest.json")[0] == 404)
         check("والحساب نفسه باقٍ في Nuvio", email in nv.state.users)
-        c, r = post("/api/nuvio/tv", {"gate": "g1", "username": XUSER, "code": "X1"})
-        check("ولا ربط تلفازٍ وهو مُلغى", c == 400 and "إعادة الربط" in r.get("error", ""))
         c, r = post("/api/nuvio/account", {"gate": "g1", "username": XUSER, "password": XPASS})
         check("«حساب Nuvio» مرةً أخرى يعيد تفعيله بالحساب نفسه (لا حساب جديد)", c == 200 and r["created"] is False and r["email"] == email and r["password"] == pw
-              and r["status"] == "active" and len(nv.state.users) == 1, json.dumps(r, ensure_ascii=False))
+              and r["status"] == "active" and len(nv.state.users) == 2, json.dumps(r, ensure_ascii=False))
         url2 = ours_in_nuvio(email)[0]["url"]
         check("برابطٍ جديد يعمل، والقديم يبقى متوقفًا", url2 != url1 and addon(url2, "/manifest.json")[0] == 200
               and addon(url1, "/manifest.json")[0] == 404)

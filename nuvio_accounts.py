@@ -1,31 +1,31 @@
 # -*- coding: utf-8 -*-
 """حسابات Nuvio الجاهزة — مسار تسجيلٍ مستقل عن Stremio، على خادم Nuvio الرسمي (‏api.nuvio.tv) وبواجهته التي تستعملها تطبيقاته
-نفسها (تحقّقنا منها في docs/nuvio.md): Supabase — ‏/auth/v1 للحساب، و‏/rest/v1/rpc للإضافات ودخول التلفاز.
+نفسها (تحقّقنا منها في docs/nuvio.md): Supabase — ‏/auth/v1 للحساب، و‏/rest/v1/rpc لإضافاته.
 
-  الحساب      إيميلٌ محايد من خطّه (‏ssq<بصمة>@tv.ssouq.com — لا يوزر Xtream فيه) وكلمة مرورٍ عشوائية تُحفظ مشفَّرة؛ التسجيل
-              مفتوحٌ بلا تأكيد بريد (‏mailer_autoconfirm).
+  الحساب      كحساب Stremio الجاهز: الإيميل يوزر البوابة على دومين المتجر (‏<يوزر>@tv.ssouq.com) وكلمة المرور باسورده —
+              وإن رفضها Nuvio (أقل من 6 أحرف) أُضيف إليها «A» حتى تُقبل؛ تُحفظ مشفَّرة، والتسجيل مفتوحٌ بلا تأكيد بريد
+              (‏mailer_autoconfirm).
   الإضافة     رابط manifest إضافتنا (رمزٌ مختوم، لا بيانات Xtream فيه) في قائمة إضافات الملف 1 — ‏sync_push_addons تستبدل القائمة
               كاملة، فتُقرأ أولًا وتبقى إضافات العميل الأخرى كما هي، وإضافتنا أولها.
-  التلفاز     ‏approve_tv_login_session: الكود الظاهر في تلفاز العميل يوافَق عليه من الأداة بجلسة حسابه — فيدخل التلفاز وإضافته
-              جاهزة بلا كتابة إيميلٍ ولا كلمة مرور.
+  التلفاز     من Nuvio نفسه: العميل يدخل حسابه على جواله ويمسح رمز QR الظاهر على التلفاز.
 
 الحفظ: ‏data/nuvio_accounts.json ‏{«هوست|يوزر»: {email, password (مشفَّرة), user_id, token, addon_key, acct, gate, status, …}}.
 """
 import datetime
-import hashlib
 import json
 import os
-import secrets
-import string
 import threading
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import crypto_store
+import stremio_accounts
 
 BACKEND = os.environ.get("NUVIO_BACKEND", "https://api.nuvio.tv").rstrip("/")
-DOMAIN = os.environ.get("NUVIO_EMAIL_DOMAIN") or os.environ.get("STREMIO_EMAIL_DOMAIN", "tv.ssouq.com")
+DOMAIN = (os.environ.get("NUVIO_EMAIL_DOMAIN") or stremio_accounts.DOMAIN).strip().lower().lstrip("@")
+SUFFIX = stremio_accounts.SUFFIX                 # «A» كما في Stremio
+MIN_PASS = 6                                     # أقل طولٍ يقبله خادم Nuvio (Supabase)
 TIMEOUT = 20
 FILE = "nuvio_accounts.json"
 CONFIG_TTL = 3600
@@ -128,31 +128,35 @@ def uninstall(sess, ours, profile=PROFILE):
     return push_addons(sess, [a for a in pull_addons(sess, profile) if not ours(a["url"])], profile)
 
 
-def approve_tv(sess, code):
-    """الكود الظاهر في تلفاز العميل ← يدخل التلفاز بهذا الحساب. ‏ValueError لكودٍ فارغ أو انتهى أو لم يوجد، و‏NuvioError
-    لخادمٍ لا يردّ."""
-    code = "".join(str(code or "").split()).upper()
-    if not code or len(code) > 32:
-        raise ValueError("اكتب الكود الظاهر في التلفاز")
-    d = _api("POST", "/rest/v1/rpc/approve_tv_login_session", {"p_code": code}, sess["access_token"])
-    row = (d[0] if isinstance(d, list) and d else d) or {}
-    if not isinstance(row, dict) or not row.get("success"):
-        raise ValueError("الكود غير صحيح أو انتهت مدته — اطلب من العميل كودًا جديدًا من التلفاز")
-    return True
-
-
 # ---- الحسابات المحفوظة ----
-def email_for(host_key, username):
-    """إيميلٌ محايدٌ ثابتٌ للخط — لا يوزر Xtream فيه."""
-    return f"ssq{hashlib.sha256(f'{host_key}|{username}'.encode()).hexdigest()[:10]}@{DOMAIN}"
+def email_for(username):
+    """يوزر البوابة ← إيميله، كحساب Stremio الجاهز. ‏ValueError ليوزرٍ بلا حرفٍ صالح."""
+    return stremio_accounts.email_for(username, DOMAIN)
 
 
-def new_password():
-    abc = string.ascii_letters + string.digits
-    while True:
-        pw = "".join(secrets.choice(abc) for _ in range(12))
-        if any(c.isdigit() for c in pw) and any(c.isalpha() for c in pw):
-            return pw
+def passwords_for(password):
+    """كلمات المرور التي تُجرَّب بالترتيب: الباسورد نفسه (إن بلغ الحدّ)، ثم هو و«A» حتى يبلغه."""
+    pw = str(password or "")
+    alt = pw + SUFFIX
+    while len(alt) < MIN_PASS:
+        alt += SUFFIX
+    return ([pw] if len(pw) >= MIN_PASS else []) + [alt]
+
+
+def register(email, password):
+    """حسابٌ بالباسورد (أو به و«A» إن رفضه Nuvio)، أو الدخول إليه إن سُجّل من قبل بإحداهما ← (الجلسة، كلمة المرور)."""
+    err = None
+    for pw in passwords_for(password):
+        try:
+            return signup(email, pw), pw
+        except NuvioError as e:
+            low = str(e).lower()
+            if "password" not in low and "invalid login" not in low:
+                raise                                   # الخادم لا يردّ، أو خطأٌ آخر
+            err = e
+    if "invalid login" in str(err).lower():
+        raise NuvioError("هذا الإيميل مسجّلٌ في Nuvio بكلمة مرورٍ أخرى")
+    raise err
 
 
 def _path(data_dir):

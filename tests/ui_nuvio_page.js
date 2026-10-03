@@ -1,7 +1,7 @@
 // Browser test: the Nuvio path on the Stremio page of the tool. The admin picks the platform (Stremio | Nuvio);
-// on Nuvio a search in the gate creates a ready Nuvio account (neutral email + random password, never the Xtream
-// username or password), the card shows its status, add-on and TVs, and «ربط تلفاز» / «تحديث الإضافة» /
-// «إلغاء التفعيل» / «إعادة الربط» work against a mock Nuvio backend (tests/mock_nuvio.py, api.nuvio.tv's API).
+// on Nuvio a search in the gate creates a ready Nuvio account the Stremio way (email = username@tv.ssouq.com,
+// password = the line's password), the card shows its status and add-on, and «تحديث الإضافة» / «إلغاء التفعيل» /
+// «إعادة الربط» work against a mock Nuvio backend (tests/mock_nuvio.py, api.nuvio.tv's API).
 const { chromium } = require('playwright-core');
 const { spawn, execSync } = require('child_process');
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -19,7 +19,6 @@ const api = (page, url, body) => page.evaluate(async ([u, b]) => (await fetch(u,
 const shot = async (p, n) => { if (SHOTS) await p.screenshot({path: path.join(SHOTS, n + '.png'), fullPage: true}); };
 const NV = `http://127.0.0.1:${NV_PORT}`;
 const nvState = () => JSON.parse(execSync(`curl -s ${NV}/_mock/state`).toString());
-const nvTv = code => execSync(`curl -s -X POST -H 'Content-Type: application/json' -d '{"code":"${code}"}' ${NV}/_mock/tv`);
 
 (async () => {
   const procs = [
@@ -58,8 +57,8 @@ s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.serve_forever()`], {s
       && await user.getAttribute('#plat [data-plat=stremio]', 'aria-selected') === 'true');
     await user.click('#plat [data-plat=nuvio]');
     await user.waitForFunction(() => /لا حسابات Nuvio/.test(document.querySelector('#list')?.textContent || ''), null, {timeout: 8000});
-    check('Nuvio: its title, its note (no Xtream credentials), no «إنشاء يوزر Stremio» and no expiry tools',
-      (await user.textContent('#accTtl')) === 'حسابات Nuvio' && /لا يوزر ولا باسورد Xtream/.test(await user.textContent('#subNv'))
+    check('Nuvio: its title, its note (the Stremio way), no «إنشاء يوزر Stremio» and no expiry tools',
+      (await user.textContent('#accTtl')) === 'حسابات Nuvio' && /كحساب Stremio/.test(await user.textContent('#subNv'))
       && !(await user.isVisible('#mkSec')) && !(await user.isVisible('#sort')) && !(await user.isVisible('#expBtn')));
     check('the gate chip counts Nuvio accounts', (await user.textContent('#gates .gate')).replace(/\s+/g, ' ').trim() === 'بوابة أ 0');
     await shot(user, 'nuvio-empty');
@@ -73,10 +72,10 @@ s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.serve_forever()`], {s
     await user.waitForSelector('#list .card.acct', {timeout: 20000});
     const clip = await user.evaluate(() => navigator.clipboard.readText());
     const st = nvState(), email = Object.keys(st.users)[0] || '';
-    check('a Nuvio account with a neutral email and a random password', /^ssq[0-9a-f]{10}@tv\.ssouq\.com$/.test(email)
-      && st.users[email] !== 'pass003' && st.users[email].length === 12, email);
-    check('the copied text has them, and no Xtream username or password', clip.includes(email) && clip.includes(st.users[email])
-      && !clip.includes('pass003') && !clip.includes('user003'), clip.slice(0, 80));
+    check('a Nuvio account the Stremio way: username@tv.ssouq.com and the line password', email === 'user003@tv.ssouq.com'
+      && st.users[email] === 'pass003', email);
+    check('the copied text has them, and how to sign in on the TV with the phone (QR)', clip.includes(email) && clip.includes('pass003')
+      && /QR/.test(clip) && /جوالك/.test(clip), clip.slice(0, 80));
     const adds = st.addons[email] || [];
     check('our add-on first in his Nuvio add-ons, Nuvio defaults kept', adds.length === 3 && adds[0].name === 'سمارت سوق'
       && /\/stremio\/[^/]+\/manifest\.json$/.test(adds[0].url) && !/user003|pass003/.test(adds[0].url), JSON.stringify(adds.map(a => a.name)));
@@ -87,24 +86,11 @@ s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.serve_forever()`], {s
     check('and the gate chip counts it', (await user.textContent('#gates .gate')).replace(/\s+/g, ' ').trim() === 'بوابة أ 1');
     await shot(user, 'nuvio-list');
 
-    console.log('== «ربط تلفاز» ==');
-    nvTv('QR5566');
-    await user.click('#list [data-ntv]');
-    await user.waitForSelector('#tvOverlay:not([hidden])');
-    await user.fill('#tvCode', 'nope00'); await user.click('#tvOk');
-    await user.waitForFunction(() => /الكود/.test(document.querySelector('#tvMsg')?.textContent || ''), null, {timeout: 8000});
-    check('a wrong code says so in the dialog', await user.isVisible('#tvOverlay'));
-    await shot(user, 'nuvio-tv');
-    await user.fill('#tvCode', 'qr55 66'); await user.click('#tvOk');
-    await user.waitForSelector('#tvOverlay', {state: 'hidden', timeout: 8000});
-    await user.waitForFunction(() => /📺 1 تلفاز/.test(document.querySelector('#list')?.textContent || ''), null, {timeout: 8000});
-    check('the code from the TV is approved with his account', nvState().tv.QR5566 && nvState().tv.QR5566 !== 'pending');
-
     console.log('== the ⋯ menu ==');
     await user.click('#list [data-nmore]');
     const items = await user.$$eval('#sheet .sitem', bs => bs.map(b => b.querySelector('span').firstChild.textContent.trim()));
-    check('«تحديث الإضافة» · «ربط تلفاز بكود» · «إعادة الربط» · «إلغاء التفعيل»',
-      items.join('|') === 'تحديث الإضافة|ربط تلفاز بكود|إعادة الربط|إلغاء التفعيل', items.join('|'));
+    check('«تحديث الإضافة» · «إعادة الربط» · «إلغاء التفعيل» (no TV code: the customer scans the QR with his phone)',
+      items.join('|') === 'تحديث الإضافة|إعادة الربط|إلغاء التفعيل', items.join('|'));
     await shot(user, 'nuvio-menu');
     await user.click('#sheet [data-nre]');
     await user.waitForFunction(() => /حُدّثت الإضافة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 8000});
@@ -120,7 +106,7 @@ s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.serve_forever()`], {s
     await user.click('#sheet [data-noff]');
     await user.waitForFunction(() => /مُلغى التفعيل/.test(document.querySelector('#list')?.textContent || ''), null, {timeout: 8000});
     check('«إلغاء التفعيل»: off, and our add-on removed from his Nuvio', !nvState().addons[email].some(a => a.name === 'سمارت سوق')
-      && await user.isVisible('#list [data-nrelink]') && (await user.$$('#list [data-ntv]')).length === 0);
+      && await user.isVisible('#list [data-nrelink]') && (await user.$$('#list [data-copy]')).length === 0);
     await shot(user, 'nuvio-off');
     await user.click('#list [data-nrelink]');
     await user.waitForFunction(() => /مفعّل/.test(document.querySelector('#list .pill')?.textContent || '')
