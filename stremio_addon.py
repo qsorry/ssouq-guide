@@ -48,7 +48,7 @@ import stremio_posters as POSTERS
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.5.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.5.1"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -80,12 +80,10 @@ ACCOUNTS_AGE = 300                   # عمر صفّ «الحسابات» عند
 GENRE_TYPES = ("movie", "series")
 POSTER_LABEL = "poster"              # وسم رمز ملصق القناة (‏/stremio/p/<رمز>.png)
 CAT_PREFIX = "sqc_"                  # كتالوج تصنيفٍ من تصنيفات سمارت سوق (صفٌّ في الرئيسية — stremio_categories)
-# صفّ «التصنيفات» في الرئيسية: بطاقةٌ لكل تصنيفٍ تفتح قائمته كاملة («عرض الكل» ← شبكة «اكتشف») — تطبيق التلفزيون بلا
-# «عرض الكل» لصفوف الرئيسية، و«اكتشف» بقوائمها متعبٌ بالريموت
+# صفّ «التصنيفات» (بطاقة لكل تصنيف ← «عرض الكل») أُزيل — لم يعمل «عرض الكل» في التطبيقات. ونسخٌ مثبّتةٌ قبل تحديثها ما زالت
+# تطلبه: يُردّ فارغًا فيختفي صفّه
 TILES = "التصنيفات"
 TILES_ID = "sq_cats"
-TILES_AGE = 900
-_KIND_ONE = {"series": "مسلسلات", "movie": "أفلام", "tv": "قنوات"}
 CAT_TTL = 120                        # أعمال كل تصنيفٍ تُحسب مرةً كل دقيقتين لكل مكتبة (تصنيفات الأفلام تزيد بالجمع)
 _UNIT = {"movie": "فيلم", "series": "مسلسل", "tv": "قناة"}
 _CODE = {"movie": "m", "series": "s", "tv": "l"}   # بادئة المعرّف بعد بادئة السيرفر؛ و‏e للحلقة
@@ -877,12 +875,9 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
                   "extraSupported": ["skip"]} for c in rows]
         if total:
             totals.append(f"{_fmt(total)} {_UNIT[kind]}")
-    tiles = bool(lines and catalogs and lines[0].get("cat_index", True) and _tiles(lines))
-    if tiles:                                            # بعد «الحسابات»: بطاقات التصنيفات
-        cats.insert(1 if accounts else 0, {"type": TILES, "id": TILES_ID, "name": BRAND, "extra": [], "extraSupported": []})
     errs = {info[k][2] for k in TYPES}
     state = "error" if "error" in errs else "pending" if "auth" in errs or not totals else "ok"
-    types = ([ACCOUNTS] if accounts else []) + ([TILES] if tiles else []) + list(ORDER)
+    types = ([ACCOUNTS] if accounts else []) + list(ORDER)
     res = {"types": types, "idPrefixes": [pre]}
     if not catalogs:
         about = "خطٌّ ضمن مكتبة حسابك الموحدة: محتواه مع باقي اشتراكاتك في صفوف «" + BRAND + "»، بلا تكرار."
@@ -1261,62 +1256,6 @@ def accounts_streams(lines, pre, sid):
     if not _line_of(lines, pre, sid):
         return None
     return {"streams": [{"name": BRAND, "title": "تجديد الاشتراك\nمن متجر سمارت سوق", "externalUrl": CONFIGURE_URL}]}
-
-
-def _tiles(lines):
-    """بطاقات صفّ «التصنيفات» ← [(النوع، التصنيف، العدد)]: كل تصنيفٍ ظاهرٍ فيه محتوى، بترتيب الأنواع ثم ترتيبها في الأداة."""
-    out = []
-    for kind in ORDER:
-        try:
-            by = _cat_index(lines, library(lines, kind), kind)["by"]
-        except XtreamError:
-            continue
-        out += [(kind, c, len(by[c["id"]])) for c in CATS.of_kind(_ucats(lines), kind) if by.get(c["id"])]
-    return out
-
-
-def _tile_link(man, kind, c):
-    """شبكة «اكتشف» للتصنيف كاملًا (كتالوج النوع مصفًّى باسمه — يعمل ولو لم يكن التصنيف صفًّا في الرئيسية)."""
-    return f"stremio:///discover/{quote(man, safe='')}/{kind}/{CATALOG[kind]}?genre={quote(c['name'], safe='')}"
-
-
-def _tile(pre, kind, c, n, poster_url):
-    tid = f"{pre}c:{kind}:{c['id']}"
-    return _clean({"id": tid, "type": TILES, "name": f"{c['name']} · {_KIND_ONE[kind]}",
-                   "poster": poster_url(c["name"], n, "", _KIND_ONE[kind]) if poster_url else None, "posterShape": "square",
-                   "releaseInfo": f"{_fmt(n)} {_UNIT[kind]}", "behaviorHints": {"defaultVideoId": tid}})
-
-
-def tiles_catalog(lines, pre, poster_url=None):
-    return {"metas": [_tile(pre, kind, c, n, poster_url) for kind, c, n in _tiles(lines)]}
-
-
-def _tile_of(lines, pre, sid):
-    return next(((kind, c, n) for kind, c, n in _tiles(lines) if sid == f"{pre}c:{kind}:{c['id']}"), None)
-
-
-def tiles_meta(lines, pre, sid, man, poster_url=None):
-    """صفحة البطاقة: عدد ما في التصنيف، و«عرض الكل» رابطٌ إلى شبكته في «اكتشف»."""
-    hit = _tile_of(lines, pre, sid)
-    if not hit:
-        return None
-    kind, c, n = hit
-    m = _tile(pre, kind, c, n, poster_url)
-    m["description"] = f"{_fmt(n)} {_UNIT[kind]} في «{c['name']}» — اضغط «عرض الكل» لقائمته كاملة."
-    if man:
-        m["links"] = [{"name": f"📂 عرض الكل ({_fmt(n)})", "category": "عرض الكل", "url": _tile_link(man, kind, c)}]
-    return {"meta": m}
-
-
-def tiles_streams(lines, pre, sid, man):
-    """«عرض الكل» في قائمة البطاقة (تُفتح مباشرةً من الرئيسية): رابط شبكة «اكتشف» — ولتطبيق التلفزيون رابطه (‏androidTvUrl)."""
-    hit = _tile_of(lines, pre, sid)
-    if not hit or not man:
-        return None
-    kind, c, n = hit
-    url = _tile_link(man, kind, c)
-    return {"streams": [{"name": BRAND, "title": f"📂 عرض كل «{c['name']}»\n{_fmt(n)} {_UNIT[kind]}", "externalUrl": url,
-                         "androidTvUrl": url}]}
 
 
 # ================= المكتبة الموحدة: خطوط الحساب كلها مكتبةً واحدة (stremio_library) =================
@@ -2232,21 +2171,10 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
             if res:
                 return _json(200, res, ACCOUNTS_AGE)
             return _json(404, {"metas": []} if rest[0] == "catalog" else {"meta": None} if rest[0] == "meta" else {"streams": []})
-        if til:                                          # «التصنيفات»: بطاقةٌ لكل تصنيف ← «عرض الكل»
-            man = links(base, parts[0])["manifest"]
-            if lines is None:
-                res = None
-            elif rest[0] == "catalog" and len(rest) == 3 and rest[2] == TILES_ID:
-                return _json(200, tiles_catalog(lines, pre, _poster_maker(data_dir, base)), TILES_AGE)
-            elif rest[0] == "meta" and len(rest) == 3:
-                res = tiles_meta(lines, pre, rest[2], man, _poster_maker(data_dir, base))
-            elif rest[0] == "stream" and len(rest) == 3:
-                res = tiles_streams(lines, pre, rest[2], man)
-            else:
-                res = None
-            if res:
-                return _json(200, res, TILES_AGE)
-            return _json(404, {"metas": []} if rest[0] == "catalog" else {"meta": None} if rest[0] == "meta" else {"streams": []})
+        if til:                                          # صفّ «التصنيفات» المُزال: نسخةٌ قديمة تطلبه ← فارغٌ فيختفي
+            if rest[0] == "catalog":
+                return _json(200, {"metas": []}, 3600)
+            return _json(404, {"meta": None} if rest[0] == "meta" else {"streams": []})
         if is_play:
             if len(rest) == 4:                           # مصدرٌ بعينه: من خطوط الحساب (وللخط المرتبط خطوط حسابه)
                 pool = lines if lines is not None else \

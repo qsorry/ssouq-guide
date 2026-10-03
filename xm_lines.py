@@ -930,7 +930,6 @@ def stremio_lines(cfg, key=None):
             out.append(ln)
     out = out or [stremio_line(cfg, rec)]
     out[0]["cats"] = stremio_categories.get(DATA_DIR, rec.get("acct"))   # تصنيفات سمارت سوق لحساب الأداة
-    out[0]["cat_index"] = stremio_categories.index_on(DATA_DIR, rec.get("acct"))   # وصفّ «التصنيفات» في الرئيسية
     return out
 
 
@@ -971,7 +970,6 @@ def stremio_categories_data(acct, cats=None):
     saved = stremio_categories.get(DATA_DIR, acct["id"])
     cats = saved if cats is None else cats
     out = {"cats": cats, "edited": stremio_categories.edited(DATA_DIR, acct["id"]), "kinds": stremio_categories.KIND_AR,
-           "index": stremio_categories.index_on(DATA_DIR, acct["id"]),
            "others": stremio_categories.OTHERS, "preview": {}, "sample": "", "loading": False}
     for r in stremio_accounts.owned_all(DATA_DIR, acct["id"]):
         cfg = stremio_addon.read_token(DATA_DIR, r["token"]) if r.get("token") and not r.get("linked_to") else None
@@ -1236,7 +1234,6 @@ def nuvio_lines(cfg):
     out = out or [stremio_line(cfg)]
     own = nuvio_accounts.owner(DATA_DIR, stremio_addon.host_key(cfg.host), cfg.user) or {}
     out[0]["cats"] = stremio_categories.get(DATA_DIR, own.get("acct"))
-    out[0]["cat_index"] = stremio_categories.index_on(DATA_DIR, own.get("acct"))
     return out
 
 
@@ -5862,8 +5859,6 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         if req.get("cats") is not None:
                             stremio_categories.save(DATA_DIR, acct["id"], req.get("cats"))
-                        if "index" in req:              # صفّ «التصنيفات» في الرئيسية
-                            stremio_categories.set_index(DATA_DIR, acct["id"], bool(req.get("index")))
                         cats = None
                 except ValueError as e:
                     return self._send(400, {"ok": False, "error": str(e)})
