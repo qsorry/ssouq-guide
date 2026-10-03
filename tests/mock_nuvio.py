@@ -5,10 +5,11 @@
   GET  /.well-known/nuvio                          ‏backend_url · publishable_key · capabilities
   POST /auth/v1/signup                             ‏{email, password} ← جلسة (التسجيل بلا تأكيد بريد)؛ مسجَّلٌ ← 422
   POST /auth/v1/token?grant_type=password          ← جلسة؛ كلمة مرورٍ خاطئة ← 400
-  POST /rest/v1/rpc/sync_pull_addons               ‏{p_profile_id} ← [{url, name, enabled, sort_order}]
+  GET  /rest/v1/addons?select=…&profile_id=eq.1&order=sort_order.asc   صفوف صاحب الجلسة وحده (‏RLS)؛ وبلا جلسة ← 401 ‏42501
   POST /rest/v1/rpc/sync_push_addons               ‏{p_addons, p_profile_id} — تستبدل القائمة
 
-كل طلبٍ بلا apikey ← 401، وطلبات rpc بلا Bearer جلسةٍ صالحة ← 401. حسابٌ جديد فيه Cinemeta وOpenSubtitles كما في Nuvio.
+كل طلبٍ بلا apikey ← 401، وطلبات rpc بلا Bearer جلسةٍ صالحة ← 401، ودالةٌ لا توجد (مثل ‏sync_pull_addons) ← 404 ‏PGRST202
+كما يردّ خادمهم. حسابٌ جديد فيه Cinemeta وOpenSubtitles كما في Nuvio.
 
     srv = serve(); state = srv.state   # users · tokens · addons
 
@@ -61,7 +62,25 @@ class Handler(BaseHTTPRequestHandler):
                 uid = {v["id"]: e for e, v in st.users.items()}
                 return self._send(200, {"users": {e: v["password"] for e, v in st.users.items()},
                                         "addons": {uid.get(k[0], k[0]): v for k, v in st.addons.items()}})
-        if urlsplit(self.path).path == "/.well-known/nuvio":
+        u = urlsplit(self.path)
+        if u.path == "/rest/v1/addons":
+            with st.lock:
+                st.calls.append("GET " + u.path)
+                if st.down:
+                    return self._send(503, {"message": "down"})
+                if self.headers.get("apikey") != KEY:
+                    return self._send(401, {"message": "No API key found in request"})
+                auth = self.headers.get("Authorization", "")
+                uid = st.tokens.get(auth[7:]) if auth.startswith("Bearer ") else None
+                if not uid:
+                    return self._send(401, {"code": "42501", "message": "permission denied for table addons"})
+                q = dict(x.split("=", 1) for x in (u.query or "").split("&") if "=" in x)
+                prof = int(q.get("profile_id", "eq.1")[3:])
+                if q.get("user_id") and q["user_id"][3:] != uid:
+                    return self._send(200, [])
+                rows = sorted(st.addons.get((uid, prof), []), key=lambda a: a.get("sort_order", 0))
+                return self._send(200, [dict(a) for a in rows])
+        if u.path == "/.well-known/nuvio":
             base = f"http://127.0.0.1:{self.server.server_address[1]}"
             return self._send(200, {"version": 1, "service": "nuvio", "self_hosted": True, "backend_url": base,
                                     "publishable_key": KEY, "capabilities": {"email_password_auth": True, "tv_login": True}})
@@ -98,14 +117,14 @@ class Handler(BaseHTTPRequestHandler):
             uid = st.tokens.get(auth[7:]) if auth.startswith("Bearer ") else None
             if u.path.startswith("/rest/v1/rpc/") and not uid:
                 return self._send(401, {"message": "JWT expired"})
-            if u.path == "/rest/v1/rpc/sync_pull_addons":
-                return self._send(200, list(st.addons.get((uid, int(body.get("p_profile_id") or 1)), [])))
             if u.path == "/rest/v1/rpc/sync_push_addons":
                 items = body.get("p_addons") or []
                 st.addons[(uid, int(body.get("p_profile_id") or 1))] = [
                     {"url": i["url"], "name": i.get("name"), "enabled": i.get("enabled", True), "sort_order": i.get("sort_order", 0)}
                     for i in items]
                 return self._send(200, None)
+        if u.path.startswith("/rest/v1/rpc/"):
+            return self._send(404, {"code": "PGRST202", "message": f"Could not find the function public.{u.path[13:]}({', '.join(body)}) in the schema cache"})
         return self._send(404, {"message": "not found"})
 
 

@@ -908,20 +908,16 @@ def stremio_line(cfg, rec=None):
     return {"cfg": stremio_route(cfg), "label": stremio_cfg_label(cfg), "art": art or ""}
 
 
-def stremio_lines(cfg):
+def stremio_lines(cfg, key=None):
     """خطوط «الحسابات» لإضافةٍ (برمزها قبل التحويل): صاحب حساب Stremio يعرضها كلها — هو ثم ما رُبط به بترتيب ربطه،
     كقائمة الحسابات في تطبيقات IPTV — والخط المرتبط ← None (صفّها عند صاحب حسابه، فلا يتكرّر)، ورابطٌ بلا حساب ← خطّه
-    وحده."""
+    وحده. وإضافة حساب Nuvio (قفل رمزها قفله) ← خطوط حساب Nuvio (‏nuvio_lines)، ولو كان للخط حساب Stremio أيضًا."""
     hk = stremio_addon.host_key(cfg.host)
+    if key and key == nuvio_accounts.addon_key(DATA_DIR, hk, cfg.user):
+        return nuvio_lines(cfg)
     rec = stremio_accounts.get(DATA_DIR, hk, cfg.user)
     if not rec:
-        own = nuvio_accounts.owner(DATA_DIR, hk, cfg.user)     # حساب Nuvio وحده: خطّه بتصنيفات حساب الأداة الذي أنشأه
-        if not own:
-            return [stremio_line(cfg)]
-        ln = stremio_line(cfg, own)
-        ln["cats"] = stremio_categories.get(DATA_DIR, own.get("acct"))
-        ln["cat_index"] = stremio_categories.index_on(DATA_DIR, own.get("acct"))
-        return [ln]
+        return [stremio_line(cfg)]
     if rec.get("linked_to"):
         return None
     out = []
@@ -1229,6 +1225,21 @@ def stremio_token_ok(cfg, key):
 NUVIO_NAME = "سمارت سوق"
 
 
+def nuvio_lines(cfg):
+    """خطوط حساب Nuvio لإضافته الواحدة: صاحبه ثم ما رُبط به بترتيب ربطه — مكتبةٌ موحدة بمصادر كل الخطوط (لا إضافة
+    لكل خط كما في Stremio)، وبتصنيفات حساب الأداة الذي أنشأه."""
+    out = []
+    for r in nuvio_accounts.group(DATA_DIR, stremio_addon.host_key(cfg.host), cfg.user):
+        c = stremio_addon.read_token(DATA_DIR, r["token"]) if r.get("token") else None
+        if c:
+            out.append(stremio_line(c, r))
+    out = out or [stremio_line(cfg)]
+    own = nuvio_accounts.owner(DATA_DIR, stremio_addon.host_key(cfg.host), cfg.user) or {}
+    out[0]["cats"] = stremio_categories.get(DATA_DIR, own.get("acct"))
+    out[0]["cat_index"] = stremio_categories.index_on(DATA_DIR, own.get("acct"))
+    return out
+
+
 def _nuvio_ours(url):
     """رابط إضافتنا في قائمة إضافات Nuvio (أي نسخةٍ سابقة منه) — يُستبدل ولا يتكرّر."""
     return "/stremio/" in url and url.endswith("/manifest.json") and any(
@@ -1243,26 +1254,86 @@ def _nuvio_install(rec, tok):
     return sess
 
 
-def nuvio_account(acct, gate, username, password, line=""):
+def nuvio_account(acct, gate, username, password, line="", email=None, nuvio_password=None):
     """حساب Nuvio جاهز ليوزر بوابة، كحساب Stremio الجاهز: الإيميل اليوزر على دومين المتجر وكلمة المرور باسورده (و«A» إن
-    رفضها Nuvio)، وإضافتنا مثبّتةٌ فيه برابطٍ مقفلٍ عليه. ← (الحساب، أُنشئ الآن؟). ‏ValueError · NuvioError · XtreamError
-    برسالةٍ للعرض."""
+    رفضها Nuvio) — أو إيميلٌ وكلمة مرور يختارهما الموظف (‏email · nuvio_password) — وإضافتنا مثبّتةٌ فيه برابطٍ مقفلٍ عليه.
+    ← (الحساب، أُنشئ الآن؟). ‏ValueError · NuvioError · XtreamError برسالةٍ للعرض."""
     host = _row_host(gate, {"line": line})
     hk = stremio_addon.host_key(host)
     if not hk or not username or not password:
         raise ValueError("اختر يوزرًا من البحث")
     old = nuvio_accounts.get(DATA_DIR, hk, username)
+    if old and old.get("linked_to"):
+        raise ValueError(f"اليوزر {username} مرتبطٌ بحساب Nuvio آخر — افصله من بطاقته أولًا")
+    if old and email:
+        raise ValueError(f"لليوزر {username} حساب Nuvio من قبل ({old.get('email')}) — اربط خطوطًا أخرى به من بطاقته")
     if old and old.get("status") != "off":
+        if not old.get("addon_at") and old.get("token"):     # حُفظ الحساب وتعثّر تثبيت إضافته: يُكمَل الآن
+            _nuvio_install(old, old["token"])
+            old = nuvio_accounts.put(DATA_DIR, hk, username, addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
         return old, False
-    email = old["email"] if old else nuvio_accounts.email_for(username)
+    email = old["email"] if old else (email or nuvio_accounts.email_for(username))
     stremio_addon.account(stremio_addon.Cfg(host, username, password))   # اليوزر يعمل على سيرفره قبل أي حساب
-    sess, pw = nuvio_accounts.register(email, old["password"] if old else password)
+    if old:
+        sess, pw = nuvio_accounts.register(email, old["password"])
+    else:
+        sess, pw = nuvio_accounts.register(email, nuvio_password or password, exact=bool(nuvio_password))
     key = secrets.token_urlsafe(9)
     tok = stremio_addon.make_token(DATA_DIR, host, username, password, key=key)
     nuvio_accounts.put(DATA_DIR, hk, username, email=email, password=pw, user_id=sess["user_id"], token=tok,
                        addon_key=key, acct=acct.get("id"), gate=gate.get("id"), status="active")
     nuvio_accounts.install(sess, stremio_addon.links(STREMIO_PUBLIC or f"https://{SITE_HOST}", tok)["manifest"], NUVIO_NAME, _nuvio_ours)
     return nuvio_accounts.put(DATA_DIR, hk, username, addon_at=int(time.time()), addon_v=stremio_addon.VERSION), old is None
+
+
+def nuvio_custom(acct, gate, email, password, line_username, line_password, line=""):
+    """«حساب Nuvio بإيميلٍ تختاره»: إيميلٌ وكلمة مرور يختارهما الموظف، أول خطوطه يوزرٌ موجود في بوابة (وتُربط به بعده
+    خطوط بواباتٍ أخرى بـ«ربط خط آخر»). ← الحساب. ‏ValueError · NuvioError · XtreamError برسالةٍ للعرض."""
+    full = nuvio_accounts.custom_email(email)
+    nuvio_accounts.custom_password(password)
+    if nuvio_accounts.email_taken(DATA_DIR, full):
+        raise ValueError(f"الإيميل {full} لحساب Nuvio آخر عندنا — اختر اسمًا آخر، أو اربط الخط بذلك الحساب")
+    rec, _ = nuvio_account(acct, gate, line_username, line_password, line, email=full, nuvio_password=password)
+    return rec
+
+
+def nuvio_link_line(acct, gate_id, username, line_gate, line_username, line_password, line=""):
+    """«ربط خط آخر»: خطٌّ من بوابةٍ أخرى في حساب Nuvio نفسه — إضافته الواحدة تعرض مكتبةً موحدة بمحتوى كل خطوطه، فلا
+    يُثبَّت شيءٌ جديد في Nuvio. ← (الخط، رُبط الآن؟). ‏ValueError · XtreamError برسالةٍ للعرض."""
+    main = _nuvio_main(acct, gate_id, username)              # من بطاقة أي خطٍّ في الحساب
+    if not line_gate:
+        raise ValueError("اختر بوابة الخط")
+    host = _row_host(line_gate, {"line": line})
+    hk = stremio_addon.host_key(host)
+    if not hk or not line_username or not line_password:
+        raise ValueError("اختر خطًّا من البحث")
+    root = nuvio_accounts.root_key(main)
+    old = nuvio_accounts.get(DATA_DIR, hk, line_username)
+    if old:
+        if old.get("linked_to") == root:
+            return old, False
+        if f"{hk}|{line_username}" == root:
+            raise ValueError("هذا الخط صاحب الحساب نفسه")
+        raise ValueError(f"لليوزر {line_username} حساب Nuvio من قبل" + (" (مرتبطٌ بحسابٍ آخر)" if old.get("linked_to") else f" ({old.get('email')})"))
+    grp = nuvio_accounts.group(DATA_DIR, main["host"], main["username"])
+    if len(grp) >= stremio_accounts.MAX_LINES:
+        raise ValueError(f"بلغ الحساب حدّه ({stremio_accounts.MAX_LINES} خطوط)")
+    stremio_addon.account(stremio_addon.Cfg(host, line_username, line_password))   # الخط يعمل على سيرفره
+    rec = nuvio_accounts.put(DATA_DIR, hk, line_username, linked_to=root, acct=acct.get("id"), gate=line_gate.get("id"),
+                             token=stremio_addon.make_token(DATA_DIR, host, line_username, line_password), status="linked")
+    stremio_addon.forget_lines()                 # المكتبة الموحدة بالخط الجديد من أول طلب
+    return rec, True
+
+
+def nuvio_unlink(acct, gate_id, username):
+    """«فصل الخط»: يخرج خطٌّ مرتبط من حساب Nuvio (ويبقى اليوزر في البوابة). ← الحساب الذي كان فيه."""
+    rec = _nuvio_owned(acct, gate_id, username)
+    if not rec.get("linked_to"):
+        raise ValueError("هذا صاحب الحساب — لا يُفصل (ألغِ تفعيله إن أردت)")
+    nuvio_accounts.remove(DATA_DIR, rec["host"], username)
+    stremio_addon.forget_lines()
+    host, _, user = rec["linked_to"].partition("|")
+    return nuvio_accounts.get(DATA_DIR, host, user) or {}
 
 
 def _nuvio_owned(acct, gate_id, username):
@@ -1272,9 +1343,23 @@ def _nuvio_owned(acct, gate_id, username):
     return rec
 
 
-def nuvio_reinstall(acct, gate_id, username, relink=False):
-    """«تحديث الإضافة» (رابطها نفسه أول القائمة)، و«إعادة الربط» (‏relink: رابطٌ جديد يُبطل القديم، ويعيد تفعيل ما أُلغي)."""
+def _nuvio_main(acct, gate_id, username):
+    """صاحب حساب Nuvio الذي فيه هذا الخط (هو نفسه، أو صاحب الحساب لخطٍّ مرتبط)."""
     rec = _nuvio_owned(acct, gate_id, username)
+    if not rec.get("linked_to"):
+        return rec
+    host, _, user = rec["linked_to"].partition("|")
+    main = nuvio_accounts.get(DATA_DIR, host, user)
+    if not main or main.get("acct") != acct["id"]:
+        raise ValueError("لا حساب Nuvio لهذا اليوزر")
+    return main
+
+
+def nuvio_reinstall(acct, gate_id, username, relink=False):
+    """«تحديث الإضافة» (رابطها نفسه أول القائمة)، و«إعادة الربط» (‏relink: رابطٌ جديد يُبطل القديم، ويعيد تفعيل ما أُلغي).
+    لخطٍّ مرتبط: لحساب صاحبه."""
+    rec = _nuvio_main(acct, gate_id, username)
+    username = rec["username"]
     tok, key = rec.get("token"), rec.get("addon_key")
     if relink or rec.get("status") == "off" or not tok:
         cfg = stremio_addon.read_token(DATA_DIR, tok) if tok else None
@@ -1289,8 +1374,10 @@ def nuvio_reinstall(acct, gate_id, username, relink=False):
 
 
 def nuvio_disable(acct, gate_id, username):
-    """«إلغاء التفعيل»: إضافتنا تُزال من حسابه في Nuvio ورابطها يتوقف (والحساب نفسه يبقى، و«إعادة الربط» تعيده)."""
-    rec = _nuvio_owned(acct, gate_id, username)
+    """«إلغاء التفعيل»: إضافتنا تُزال من حسابه في Nuvio ورابطها يتوقف (والحساب نفسه يبقى، و«إعادة الربط» تعيده).
+    لخطٍّ مرتبط: لحساب صاحبه."""
+    rec = _nuvio_main(acct, gate_id, username)
+    username = rec["username"]
     try:
         nuvio_accounts.uninstall(nuvio_accounts.login(rec["email"], rec["password"]), _nuvio_ours)
     finally:
@@ -1299,16 +1386,31 @@ def nuvio_disable(acct, gate_id, username):
 
 
 def nuvio_page_data(acct, gate_id):
-    """حسابات Nuvio لبوابة: الإيميل وكلمة المرور (للنسخ للعميل) وحالها وإضافتها."""
+    """حسابات Nuvio لبوابة: الإيميل وكلمة المرور (للنسخ للعميل) وحالها وإضافتها، وخطوط كل حساب (الخط المرتبط يظهر في
+    بوابته ببيانات حسابه)."""
+    recs = nuvio_accounts.owned(DATA_DIR, acct["id"])
+    names = {g["id"]: g.get("name", "") for g in acct.get("gates") or []}
+    key = lambda r: f"{r.get('host', '')}|{r.get('username', '')}"
+    mains = {key(r): r for r in recs if not r.get("linked_to")}
+    groups = {}                                  # صاحب الحساب ← خطوطه (هو أولًا ثم المرتبطة بترتيب ربطها)
+    for r in sorted(recs, key=lambda r: (bool(r.get("linked_to")), r.get("ts") or 0)):
+        groups.setdefault(nuvio_accounts.root_key(r), []).append(r)
     rows, counts = [], {}
-    for r in nuvio_accounts.owned(DATA_DIR, acct["id"]):
+    for r in recs:
+        m = mains.get(nuvio_accounts.root_key(r))
+        if not m:
+            continue
         counts[r.get("gate")] = counts.get(r.get("gate"), 0) + 1
         if gate_id and r.get("gate") != gate_id:
             continue
-        rows.append({"gate": r.get("gate"), "username": r.get("username"), "email": r.get("email"), "password": r.get("password"),
-                     "status": r.get("status") or "active", "created": r.get("created"), "ts": r.get("ts") or 0,
-                     "addon_at": r.get("addon_at") or 0, "addon_v": r.get("addon_v") or ""})
-    return {"accounts": rows, "counts": counts, "version": stremio_addon.VERSION}
+        grp = groups.get(nuvio_accounts.root_key(r), [])
+        lines = [{"gate": x.get("gate", ""), "gate_name": names.get(x.get("gate"), ""), "username": x.get("username", ""),
+                  "main": not x.get("linked_to"), "self": x is r} for x in grp] if len(grp) > 1 else []
+        rows.append({"gate": r.get("gate"), "username": r.get("username"), "email": m.get("email"), "password": m.get("password"),
+                     "status": m.get("status") or "active", "created": r.get("created"), "ts": r.get("ts") or 0,
+                     "addon_at": m.get("addon_at") or 0, "addon_v": m.get("addon_v") or "",
+                     "linked": bool(r.get("linked_to")), "main_user": m.get("username"), "lines": lines})
+    return {"accounts": rows, "counts": counts, "version": stremio_addon.VERSION, "domain": nuvio_accounts.DOMAIN}
 
 
 def stremio_account(acct, gate, username, password, line="", email=None, stremio_password=None):
@@ -5915,7 +6017,8 @@ class Handler(BaseHTTPRequestHandler):
                 except xm_web.LoginFailed as e:
                     return self._send(200, {"ok": False, "login_error": str(e)})
                 return self._send(code, res)
-            if path in ("/api/nuvio/account", "/api/nuvio/reinstall", "/api/nuvio/disable"):   # خارج القفل: Nuvio
+            if path in ("/api/nuvio/account", "/api/nuvio/custom", "/api/nuvio/link", "/api/nuvio/unlink",
+                        "/api/nuvio/reinstall", "/api/nuvio/disable"):   # خارج القفل: Nuvio
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
                 if not stremio_on(acct):
@@ -5930,6 +6033,21 @@ class Handler(BaseHTTPRequestHandler):
                         if not gate:
                             return self._send(400, {"ok": False, "error": "اختر بوابة"})
                         rec, created = nuvio_account(acct, gate, user, str(req.get("password") or "").strip(), str(req.get("line") or ""))
+                    elif path in ("/api/nuvio/custom", "/api/nuvio/link"):   # بإيميلٍ تختاره · «ربط خط آخر»: خطٌّ من بحث بوابته
+                        line_gate = find_gate(acct, req.get("line_gate"))
+                        lu, lp = str(req.get("line_username") or "").strip(), str(req.get("line_password") or "").strip()
+                        if not line_gate:
+                            return self._send(400, {"ok": False, "error": "اختر بوابة الخط"})
+                        if not lu or not lp:
+                            return self._send(400, {"ok": False, "error": "اختر خطًّا من البحث"})
+                        if path == "/api/nuvio/custom":
+                            rec, created = nuvio_custom(acct, line_gate, str(req.get("email") or ""), str(req.get("password") or ""),
+                                                        lu, lp, str(req.get("line") or "")), True
+                        else:
+                            line_rec, created = nuvio_link_line(acct, gid, user, line_gate, lu, lp, str(req.get("line") or ""))
+                            rec = _nuvio_main(acct, gid, user)
+                    elif path == "/api/nuvio/unlink":    # «فصل الخط»
+                        rec, created = nuvio_unlink(acct, gid, user), False
                     elif path == "/api/nuvio/reinstall":   # «تحديث الإضافة» · «إعادة الربط»
                         rec, created = nuvio_reinstall(acct, gid, user, bool(req.get("relink"))), False
                     else:                                # «إلغاء التفعيل»
@@ -5940,7 +6058,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(502, {"ok": False, "error": f"Nuvio: {e}"})
                 except stremio_addon.XtreamError as e:
                     return self._send(502, {"ok": False, "error": str(e)})
-                return self._send(200, {"ok": True, "created": created, "email": rec["email"], "password": rec["password"],
+                return self._send(200, {"ok": True, "created": created, "email": rec.get("email", ""), "password": rec.get("password", ""),
                                         "status": rec.get("status") or "active"})
             if path == "/api/stremio/account":    # خارج القفل: حساب Stremio جاهز ليوزر (ينتظر Stremio)
                 if role != "account":

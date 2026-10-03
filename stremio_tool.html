@@ -312,6 +312,7 @@ h1{font-size:1.3rem;margin:0 0 2px}
       <button class="btn" id="findBtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>بحث</button>
     </form>
     <div id="res"></div>
+    <button class="linkbtn" id="nvCustomBtn" hidden title="إيميلٌ وكلمة مرورٍ تختارهما، وتُربط به خطوطٌ من بواباتك">أو: حساب Nuvio بإيميلٍ تختاره</button>
   </section>
 
   <section>
@@ -427,7 +428,7 @@ h1{font-size:1.3rem;margin:0 0 2px}
       <label>كلمة المرور<input class="t ltr" id="cPass" placeholder="6 أحرف فأكثر" autocomplete="off" spellcheck="false"></label>
     </div>
     <div class="lgates" id="linkGates" role="radiogroup" aria-label="بوابة الخط"></div>
-    <div class="tabs2" role="tablist">
+    <div class="tabs2" role="tablist" id="linkModes">
       <button type="button" data-lm="find" class="on" role="tab">خطٌّ موجود</button>
       <button type="button" data-lm="new" role="tab">خطٌّ جديد</button>
     </div>
@@ -806,6 +807,8 @@ document.addEventListener("click", e => {
   else if (b.dataset.plat) setPlat(b.dataset.plat);
   else if (b.dataset.nmake) nvMake(+b.dataset.nmake, b);
   else if (b.dataset.nmore) nvMenu(b.dataset.nmore);
+  else if (b.dataset.nlinkto) nvLink(b.dataset.nlinkto);
+  else if (b.dataset.nunlink) { if (confirm(`فصل الخط ${b.dataset.nunlink} عن حسابه في Nuvio؟ يخرج محتواه من الحساب (ويبقى اليوزر في البوابة).`)) nvDo("/api/nuvio/unlink", b.dataset.nunlink, {}, b, "فُصل الخط عن الحساب"); }
   else if (b.dataset.nre) nvDo("/api/nuvio/reinstall", b.dataset.nre, {}, b, "حُدّثت الإضافة في حسابه — أعد فتح Nuvio");
   else if (b.dataset.nrelink) nvDo("/api/nuvio/reinstall", b.dataset.nrelink, {relink: true}, b, "أُعيد الربط برابطٍ جديد، والقديم توقّف");
   else if (b.dataset.noff) { if (confirm("إلغاء تفعيل إضافة سمارت سوق في حساب Nuvio هذا؟ تُزال من حسابه ويتوقف رابطها، ويبقى الحساب (و«إعادة الربط» تعيدها).")) nvDo("/api/nuvio/disable", b.dataset.noff, {}, b, "أُلغي التفعيل — أُزيلت الإضافة من حسابه"); }
@@ -837,6 +840,7 @@ function setPlat(p){
   $("subSt").hidden = nv; $("subNv").hidden = !nv;
   $("mkSec").hidden = nv;                          // «إنشاء يوزر Stremio» لـ Stremio وحده؛ في Nuvio من البحث
   $("expBtn").hidden = $("sort").hidden = $("expChips").hidden = nv;
+  $("nvCustomBtn").hidden = !nv;
   if (HITS.length) renderHits();
   if (!D) return;
   if (nv) loadNuvio(); else { $("gates").innerHTML = gatesHtml(); renderList(); }
@@ -858,8 +862,12 @@ function renderNuvio(){
       <div class="ah"><b class="mono user">${u}</b><span class="pill ${off ? "bad" : "ok"}">${off ? "مُلغى التفعيل" : "مفعّل"}</span></div>
       <dl class="kv"><div><dt>الإيميل</dt><dd class="mono">${esc(a.email)}</dd></div><div><dt>كلمة المرور</dt><dd class="mono">${esc(a.password)}</dd></div></dl>
       <div class="tags">${off ? '<span class="tag bad">الإضافة أُزيلت من حسابه ورابطها متوقف</span>'
+          : !a.addon_at ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ الإضافة لم تُثبَّت بعد — ⋯ ← «تحديث الإضافة»</span>'
           : `<span class="tag ok" title="${esc(ago(a.addon_at))}">الإضافة ${esc(a.addon_v || "")}</span>`}${a.addon_v && NV.version && a.addon_v !== NV.version && !off
-          ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ نسخةٌ أقدم</span>' : ""}<span class="tag">أُنشئ ${esc(a.created)}</span></div>
+          ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ نسخةٌ أقدم</span>' : ""}${a.linked
+          ? `<span class="tag new">مرتبطٌ بحساب ${esc(a.main_user)}</span>` : ""}<span class="tag">أُنشئ ${esc(a.created)}</span></div>
+      ${(a.lines || []).length ? `<div class="lines">${a.lines.map(l => `<button class="${l.self ? "me" : ""}"
+          data-goto="${esc(l.gate)}" data-gu="${esc(l.username)}" title="${l.main ? "صاحب الحساب" : "خطٌّ مرتبط"} — ${l.self ? "هذا الخط" : "انتقل إليه"}">${esc(l.gate_name || "بوابة")} · ${esc(l.username)}${l.main ? " ★" : ""}</button>`).join("")}</div>` : ""}
       <div class="abar">
         ${off ? `<button class="acc" data-nrelink="${u}">${I.sync}إعادة الربط</button>`
           : `<button class="acc" data-copy="${esc(nvText(a.email, a.password))}" data-what="نُسخ الحساب">${I.copy}نسخ الحساب</button>`}
@@ -892,10 +900,24 @@ function nvMenu(username){
   const a = nvOf(username); if (!a) return;
   const u = esc(a.username), off = a.status === "off";
   openSheet(a.username, a.email, [
+    sitem(`data-nlinkto="${u}"`, I.plus, "ربط خط آخر", "خطٌّ من بوابةٍ أخرى في الحساب نفسه — مكتبةٌ واحدة بمحتوى كل خطوطه"),
+    a.linked ? sitem(`data-nunlink="${u}"`, I.unlink, "فصل الخط", "يخرج محتواه من الحساب (ويبقى اليوزر في البوابة)", "danger") : "",
     off ? "" : sitem(`data-nre="${u}"`, I.sync, "تحديث الإضافة", "تعود أول قائمة إضافاته بأحدث نسخة، وإضافاته الأخرى كما هي"),
     sitem(`data-nrelink="${u}"`, I.link, "إعادة الربط", off ? "تُثبَّت الإضافة في حسابه من جديد برابطٍ جديد" : "رابطٌ جديد للإضافة ويتوقف القديم (إن نُسخ لحسابٍ آخر)"),
     off ? "" : sitem(`data-noff="${u}"`, I.unlink, "إلغاء التفعيل", "تُزال الإضافة من حسابه ويتوقف رابطها — والحساب يبقى", "danger"),
   ]);
+}
+// «ربط خط آخر» في حساب Nuvio: مكتبةٌ واحدة بمحتوى كل خطوطه في إضافته نفسها (لا يُثبَّت شيءٌ جديد)
+function nvLink(username){
+  const a = nvOf(username); if (!a) return;
+  const main = a.linked ? a.main_user : a.username;
+  const taken = new Set((a.lines || []).length ? a.lines.map(l => l.gate) : [GATE]);
+  const free = D.gates.filter(g => !taken.has(g.id));
+  LINK = {nuvio: true, username: main, from: a.username, email: a.email, gate: (free[0] || {}).id || "", mode: "find", hits: [], pkgs: [], taken};
+  $("linkTtl").textContent = "ربط خطٍّ آخر بحساب Nuvio";
+  $("linkFor").innerHTML = `الحساب <b class="mono">${esc(a.email)}</b>: يدخل به العميل مرةً واحدة، ويجد في Nuvio محتوى كل خطوطه
+    مكتبةً واحدة في إضافة سمارت سوق (العمل مرةً واحدة بمصادره من كل البوابات، و«تلقائي» ينتقل للمصدر التالي إن تعطّل).`;
+  showLinkBox();
 }
 async function nvDo(path, username, extra, btn, ok){
   const label = btn.innerHTML; btn.disabled = true; btn.textContent = "جاري…";
@@ -1078,15 +1100,18 @@ function openLink(username){
 }
 // «حساب Stremio بإيميلٍ تختاره»: إيميلٌ وكلمة مرور يختارهما الموظف، وأول خطوطه يوزرٌ (موجود أو جديد) من أي بوابة
 function openCustom(){
-  LINK = {custom: true, gate: GATE, mode: "find", hits: [], pkgs: [], taken: new Set()};
-  $("linkTtl").textContent = "حساب Stremio بإيميلٍ تختاره";
+  const nv = PLAT === "nuvio";
+  LINK = {custom: true, nuvio: nv, gate: GATE, mode: "find", hits: [], pkgs: [], taken: new Set()};
+  $("linkTtl").textContent = nv ? "حساب Nuvio بإيميلٍ تختاره" : "حساب Stremio بإيميلٍ تختاره";
   $("linkFor").innerHTML = "اختر الإيميل وكلمة المرور، ثم أول خطٍّ له من أي بوابة. وبعدها اربط به خطوط بواباتك الأخرى من بطاقته («ربط خط آخر»).";
-  $("cEmail").value = ""; $("cPass").value = ""; $("cDom").textContent = "@" + ((D && D.domain) || "tv.ssouq.com");
+  $("cEmail").value = ""; $("cPass").value = "";
+  $("cDom").textContent = "@" + ((nv ? NV && NV.domain : D && D.domain) || "tv.ssouq.com");
   showLinkBox();
   $("cEmail").focus();
 }
 function showLinkBox(){
   $("customFields").hidden = !LINK.custom;
+  $("linkModes").hidden = !!LINK.nuvio;              // Nuvio: خطٌّ موجود من البحث (إنشاء اليوزرات في Stremio وحده)
   $("linkMk").textContent = LINK.custom ? "إنشاء خطٍّ جديد وحسابه" : "إنشاء خطٍّ وربطه بالحساب";
   $("linkQ").value = ""; $("linkHits").innerHTML = ""; $("linkMsg").textContent = "";
   renderLinkGates(); setLinkMode("find");
@@ -1100,8 +1125,8 @@ function customCreds(){
   if (password.length < 6 || /\s/.test(password)) { $("linkMsg").textContent = "كلمة المرور: 6 أحرف فأكثر بلا مسافات."; $("cPass").focus(); return null; }
   return {email, password};
 }
-async function customDone(d, gate){
-  await copy(accText(d.email, d.password), `أُنشئ الحساب ${d.email} ونُسخ`);
+async function customDone(d, gate, nuvio){
+  await copy((nuvio ? nvText : accText)(d.email, d.password), `أُنشئ الحساب ${d.email} ونُسخ`);
   hideLink();
   if (gate && gate !== GATE) await selectGate(gate); else await load(GATE);
 }
@@ -1126,7 +1151,7 @@ $("linkFindForm").onsubmit = async e => {
     LINK.hits = (d.results || []).filter(x => x.username && x.password);
     $("linkHits").innerHTML = LINK.hits.length ? `<div class="cards">${LINK.hits.map((x, i) => `<div class="card"><div class="row1">
         <div class="creds"><span>اليوزر <b class="mono">${esc(x.username)}</b></span><span>الباسورد <b class="mono">${esc(x.password)}</b></span></div>
-        <div class="acts">${x.stremio_email ? `<span class="hint">له حساب Stremio: ${esc(x.stremio_email)}</span>`
+        <div class="acts">${x.stremio_email && !LINK.nuvio ? `<span class="hint">له حساب Stremio: ${esc(x.stremio_email)}</span>`
           : `<button class="acc" data-lnk="${i}">${I.link}${LINK.custom ? "إنشاء الحساب بهذا الخط" : "ربط بالحساب"}</button>`}</div></div></div>`).join("")}</div>`
       : `<div class="empty">${d.need_login ? "البوابة تحتاج كود تحقّق — افتحها من صفحة الإنشاء ثم ابحث هنا." : esc(d.login_error || "لا نتائج.")}</div>`;
   } catch(err) { $("linkHits").innerHTML = ""; $("linkMsg").textContent = err.message; }
@@ -1134,13 +1159,23 @@ $("linkFindForm").onsubmit = async e => {
 };
 async function linkHit(i, btn){
   const x = LINK && LINK.hits[i]; if (!x) return;
+  const line = {line_gate: LINK.gate, line_username: x.username, line_password: x.password, line: x.line || ""};
   if (LINK.custom) {
     const c = customCreds(); if (!c) return;
     btn.disabled = true; btn.textContent = "جاري الإنشاء…"; $("linkMsg").textContent = "";
     try {
-      const d = await api("/api/stremio/custom", {...c, line_gate: LINK.gate, line_username: x.username, line_password: x.password, line: x.line || ""});
-      await customDone(d, LINK.gate);
+      const d = await api(LINK.nuvio ? "/api/nuvio/custom" : "/api/stremio/custom", {...c, ...line});
+      await customDone(d, LINK.gate, LINK.nuvio);
     } catch(e) { $("linkMsg").textContent = e.message; btn.disabled = false; btn.innerHTML = I.link + "إنشاء الحساب بهذا الخط"; }
+    return;
+  }
+  if (LINK.nuvio) {
+    btn.disabled = true; btn.textContent = "جاري الربط…"; $("linkMsg").textContent = "";
+    try {
+      const d = await api("/api/nuvio/link", {gate: GATE, username: LINK.from, ...line});
+      toast(d.created ? `رُبط ${x.username} بالحساب — يجده العميل في Nuvio بعد إعادة فتحه` : "الخط مرتبطٌ بالحساب من قبل");
+      hideLink(); loadNuvio();
+    } catch(e) { $("linkMsg").textContent = e.message; btn.disabled = false; btn.innerHTML = I.link + "ربط بالحساب"; }
     return;
   }
   btn.disabled = true; btn.textContent = "جاري الربط…"; $("linkMsg").textContent = "";
@@ -1190,6 +1225,7 @@ async function linkCreate(){
   finally { b.disabled = false; b.textContent = LINK && LINK.custom ? "إنشاء خطٍّ جديد وحسابه" : "إنشاء خطٍّ وربطه بالحساب"; }
 }
 $("customBtn").onclick = openCustom;
+$("nvCustomBtn").onclick = openCustom;
 $("linkMk").onclick = linkCreate;
 $("linkClose").onclick = hideLink;
 $("linkOverlay").addEventListener("click", e => { if (e.target === $("linkOverlay")) hideLink(); });

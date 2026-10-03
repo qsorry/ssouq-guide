@@ -10,6 +10,7 @@ Xtream، و«تحديث الإضافة» و«إلغاء التفعيل» و«إ�
 import http.cookiejar
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -138,6 +139,10 @@ def test_addon_sync(srv):
     N.uninstall(s, ours)
     got = N.pull_addons(s)
     check("وإزالة إضافتنا تزيلها وحدها", [a["name"] for a in got] == ["Cinemeta", "OpenSubtitles v3", "Torrentio"], str([a["name"] for a in got]))
+    check("القراءة من جدول addons كتطبيقات Nuvio — لا دالة sync_pull_addons (لا توجد على خادمهم)",
+          "GET /rest/v1/addons" in srv.state.calls and "/rest/v1/rpc/sync_pull_addons" not in srv.state.calls)
+    check("ودالةٌ لا توجد ← NuvioError برسالة الخادم (PGRST202)", "Could not find the function" in str(raises(
+        lambda: N._api("POST", "/rest/v1/rpc/sync_pull_addons", {"p_profile_id": 1}, s["access_token"]), N.NuvioError)))
 
 
 def store_unit():
@@ -187,7 +192,9 @@ def through_server():
     with open(os.path.join(d, "accounts.json"), "w", encoding="utf-8") as f:
         json.dump({"admin": None, "accounts": [
             {"id": "a1", "name": "MR7", "user": "mr7", "password": "pw123456", "stremio": True,
-             "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]},
+             "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host},
+                       # سيرفرٌ آخر (localhost) — لربط خطٍّ من بوابةٍ أخرى بحساب Nuvio
+                       {"id": "g2", "name": "بوابة كاسبر", "mode": "web", "host": xt_host.replace("127.0.0.1", "localhost")}]},
             {"id": "a2", "name": "Other", "user": "other", "password": "pw654321", "stremio": True,
              "gates": [{"id": "g1", "name": "بوابة مرح", "mode": "web", "host": xt_host}]},
             {"id": "a3", "name": "بلا Stremio", "user": "nost", "password": "pw333333",
@@ -346,6 +353,58 @@ def through_server():
               and addon(url3, "/manifest.json")[0] == 404 and [a["url"] for a in ours_in_nuvio(email)].count(url4) == 1)
         check("والمعرّفات بعد إعادة الربط كما كانت", json.loads(addon(url4, "/manifest.json")[1]).get("id") == man.get("id"))
 
+        print("== «ربط خط آخر»: مكتبةٌ واحدة بخطوط بوابتين ==")
+        srcs = lambda url: {m.group(1) for m in (re.search(r"/play/[^/]+/[^/]+/([0-9a-f]{6})\.", x.get("url", "")) for x in   # noqa: E731
+                            json.loads(addon(url, f"/stream/movie/{quote(mid)}.json")[1]).get("streams", [])) if m}   # بصمة خطّ كل مصدر
+        check("قبل الربط: مصادر خطٍّ واحد", len(srcs(url4)) == 1, str(srcs(url4)))
+        c, r = post("/api/nuvio/link", {"gate": "g1", "username": XUSER, "line_gate": "g2", "line_username": "u", "line_password": "p"})
+        check("يُربط خطٌّ من بوابةٍ أخرى بالحساب نفسه", c == 200 and r.get("created") is True and r.get("email") == email, json.dumps(r, ensure_ascii=False))
+        check("ولا يُثبَّت شيءٌ جديد في Nuvio (الإضافة نفسها)", [a["url"] for a in ours_in_nuvio(email)].count(url4) == 1
+              and sum("/stremio/" in a["url"] for a in ours_in_nuvio(email)) == 1)
+        got = srcs(url4)
+        check("وإضافته تعرض العمل بمصادر الخطين", len(got) == 2, str(got))
+        check("ومعرّف الإضافة كما هو", json.loads(addon(url4, "/manifest.json")[1]).get("id") == man.get("id"))
+        c, r = post("/api/nuvio/accounts?gate=g2", None)
+        row = (r.get("accounts") or [{}])[0]
+        check("الخط المرتبط في بوابته ببيانات حسابه وخطّيه", row.get("username") == "u" and row.get("linked") is True and row.get("email") == email
+              and [(l["gate"], l["username"], l["main"]) for l in row.get("lines", [])] == [("g1", XUSER, True), ("g2", "u", False)],
+              json.dumps(row, ensure_ascii=False)[:240])
+        check("ويُعدّ في بوابته", r.get("counts", {}).get("g2") == 1)
+        c, r = post("/api/nuvio/link", {"gate": "g2", "username": "u", "line_gate": "g2", "line_username": "u", "line_password": "p"})
+        check("ربطه مرةً أخرى (من بطاقة أي خطٍّ في الحساب) ← مرتبطٌ من قبل", c == 200 and r.get("created") is False, json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/nuvio/link", {"gate": "g1", "username": XUSER, "line_gate": "g1", "line_username": XUSER, "line_password": XPASS})
+        check("صاحب الحساب لا يُربط بنفسه", c == 400, json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/nuvio/account", {"gate": "g2", "username": "u", "password": "p"})
+        check("ولا حساب Nuvio مستقل لخطٍّ مرتبط", c == 400 and "مرتبط" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/nuvio/reinstall", {"gate": "g2", "username": "u"})
+        check("«تحديث الإضافة» من بطاقة الخط المرتبط ← لحساب صاحبه", c == 200 and r.get("email") == email
+              and ours_in_nuvio(email)[0]["url"] == url4, json.dumps(r, ensure_ascii=False))
+        c, r = post("/api/nuvio/unlink", {"gate": "g1", "username": XUSER})
+        check("صاحب الحساب لا يُفصل", c == 400)
+        c, r = post("/api/nuvio/unlink", {"gate": "g2", "username": "u"})
+        check("«فصل الخط» يخرجه من الحساب", c == 200 and post("/api/nuvio/accounts?gate=g2", None)[1]["accounts"] == [] and len(srcs(url4)) == 1)
+
+        print("== «حساب Nuvio بإيميلٍ تختاره» ==")
+        xt.users["cust1"] = "pw1"
+        c, r = post("/api/nuvio/custom", {"email": "Ahmed.K", "password": "MyPass77", "line_gate": "g1", "line_username": "cust1", "line_password": "pw1"})
+        check("الإيميل وكلمة المرور كما اختارهما الموظف", c == 200 and r.get("email") == "ahmed.k@tv.ssouq.com" and r.get("password") == "MyPass77"
+              and nv.state.users.get("ahmed.k@tv.ssouq.com", {}).get("password") == "MyPass77", json.dumps(r, ensure_ascii=False))
+        check("وإضافتنا أول قائمة إضافاته", ours_in_nuvio("ahmed.k@tv.ssouq.com")[0]["name"] == "سمارت سوق")
+        c, r = post("/api/nuvio/accounts?gate=g1", None)
+        check("ويظهر في قائمة بوابته", "ahmed.k@tv.ssouq.com" in [a["email"] for a in r.get("accounts", [])])
+        xt.users["cust2"] = "pw2"
+        bad = [post("/api/nuvio/custom", {"email": e, "password": p, "line_gate": "g1", "line_username": u, "line_password": lp})
+               for e, p, u, lp in (("ahmed.k", "MyPass77", "cust2", "pw2"), ("x@gmail.com", "MyPass77", "cust2", "pw2"),
+                                   ("a", "MyPass77", "cust2", "pw2"), ("good.name", "123", "cust2", "pw2"),
+                                   ("other.name", "MyPass77", XUSER, XPASS))]
+        check("إيميلٌ لحسابٍ آخر عندنا، أو دومينٌ آخر، أو اسمٌ قصير، أو كلمة مرورٍ قصيرة، أو خطٌّ له حساب ← 400 برسالة",
+              [c for c, _ in bad] == [400] * 5 and "لحساب Nuvio آخر" in bad[0][1].get("error", "") and "حساب Nuvio من قبل" in bad[4][1].get("error", ""),
+              str([(c, r.get("error")) for c, r in bad]))
+        nv.state.users["taken2@tv.ssouq.com"] = {"id": "u-t2", "password": "Someone99"}
+        c, r = post("/api/nuvio/custom", {"email": "taken2", "password": "MyPass77", "line_gate": "g1", "line_username": "cust2", "line_password": "pw2"})
+        check("إيميلٌ مسجّلٌ في Nuvio بكلمة مرورٍ أخرى ← رسالةٌ واضحة ولا يُحفظ", c == 502 and "بكلمة مرورٍ أخرى" in r.get("error", "")
+              and not N.get(d, S.host_key(xt_host), "cust2"), json.dumps(r, ensure_ascii=False))
+
         print("== Nuvio لا يردّ ==")
         nv.state.down = True
         c, r = post("/api/nuvio/reinstall", {"gate": "g1", "username": XUSER})
@@ -353,6 +412,23 @@ def through_server():
         c, r = post("/api/nuvio/account", {"gate": "g1", "username": "u", "password": "p"})
         check("وحسابٌ جديد لا يُحفظ نصف حساب", c == 502 and not N.get(d, S.host_key(xt_host), "u"))
         nv.state.down = False
+        xt.users["half1"] = "pw7777"
+        real_push = mock_nuvio.Handler.do_POST
+        def push_fails(self):                                          # الحساب يُنشأ ثم يتعثّر تثبيت الإضافة
+            if self.path.startswith("/rest/v1/rpc/sync_push_addons"):
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                return self._send(500, {"message": "boom"})
+            return real_push(self)
+        mock_nuvio.Handler.do_POST = push_fails
+        c, r = post("/api/nuvio/account", {"gate": "g1", "username": "half1", "password": "pw7777"})
+        mock_nuvio.Handler.do_POST = real_push
+        c2, r2 = post("/api/nuvio/accounts?gate=g1", None)
+        half = next((a for a in r2.get("accounts", []) if a["username"] == "half1"), {})
+        check("تعثّر تثبيت الإضافة بعد إنشاء الحساب ← 502، والبطاقة تقول إن الإضافة لم تُثبَّت", c == 502 and half and not half.get("addon_at"),
+              json.dumps(half, ensure_ascii=False)[:160])
+        c, r = post("/api/nuvio/account", {"gate": "g1", "username": "half1", "password": "pw7777"})
+        check("و«إنشاء حساب Nuvio» مرةً أخرى يكمل التثبيت", c == 200 and ours_in_nuvio("half1@tv.ssouq.com")[0]["name"] == "سمارت سوق",
+              json.dumps(r, ensure_ascii=False))
         check("وإضافته العاملة لا تتأثر بتعطّل Nuvio", addon(url4, "/manifest.json")[0] == 200)
     finally:
         app.terminate()
