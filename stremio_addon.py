@@ -2767,6 +2767,9 @@ def session_alert(verdict, play_url):
 def _denied(base, verdict):
     """رفض التشغيل: تحويلٌ إلى فيديو التنبيه (احتياطًا للعرض)، والحالة كاملةً في الترويسة ‏X-Ssouq-Session."""
     body = {k: verdict.get(k) for k in ("allowed", "reason", "active_devices", "max_devices")}
+    if verdict.get("reason") == SESS.RATE_REASON:          # طلباتٌ كثيرة من شبكةٍ واحدة: رفضٌ مؤقت بلا فيديو
+        code, raw, ctype, hdr = _json(429, {**body, "message": verdict.get("message")})
+        return code, raw, ctype, {**hdr, "Retry-After": str(SESS.RATE_WINDOW), "X-Ssouq-Session": json.dumps(body, separators=(",", ":"))}
     url = f"{base}{ALERT_PATH}/{ALERT_FILE.get(verdict.get('reason'), ALERT_FILE[SESS.LIMIT_REASON])}"
     return 302, b"", "text/plain; charset=utf-8", {**_CORS, **_PAGE_HDR, "Location": url, "Cache-Control": "no-store",
                                                    "X-Ssouq-Session": json.dumps(body, separators=(",", ":"))}

@@ -203,8 +203,24 @@ def through_play():
               hr.get("Location") == "https://g/static/stremio/alert-revoked.mp4"
               and json.loads(hr["X-Ssouq-Session"])["reason"] == "SESSION_REVOKED")
         check("والجهاز B الآن ← يُسمح", get(play1, B_)[2].get("Location") == panel_url)
+        auto = f"play/movie/{quote(mids[0], safe='')}"
+        code, _, hauto = get(auto, B_)
+        check("و«تلقائي» (‏/play/<النوع>/<المعرّف>) يُفحص كذلك", code == 302 and hauto.get("Location", "").startswith(host))
+        code, _, hauto2 = get(auto, A_)
+        check("…فالجهاز A الآن مرفوض (B أخذ المكان بعد إلغاء A)", "alert-" in hauto2.get("Location", ""))
+        all_hdr = json.dumps([hb, hr, hauto2], ensure_ascii=False)
+        check("ولا يوزر ولا باسورد ولا معرّف جلسةٍ ولا IP في ردود الرفض", f"/{mock_xtream.USER}/{mock_xtream.PASS}/" not in all_hdr
+              and "session_id" not in all_hdr and "9.9.9.9" not in all_hdr and "1.2.3.4" not in all_hdr)
+        SS.logout_all(acct)
+        check("«خروج من كل الأجهزة» ← أول /play بعده يُسمح (جلسةٌ جديدة)", get(play1, A_)[2].get("Location") == panel_url)
+        C_ = {"ip": "77.77.77.77", "ua": NUVIO_PHONE}
+        codes = [get(play1, C_)[0] for _ in range(SS.RATE_MAX + 1)]
+        code, body, hrt = get(play1, C_)
+        check("حدّ الطلبات: أكثر من %d طلب /play في الدقيقة من شبكةٍ ← 429 مؤقت (لا جلسة)" % SS.RATE_MAX, code == 429
+              and hrt.get("Retry-After") == str(SS.RATE_WINDOW) and json.loads(hrt["X-Ssouq-Session"])["reason"] == "RATE_LIMITED", str(code))
         SS.set_account(acct, variant="standard")
-        check("والعودة إلى «standard» ← كما كانت لكل جهاز", get(play1, A_)[2].get("Location") == panel_url)
+        check("والعودة إلى «standard» ← كما كانت لكل جهاز (ولا حدّ طلبات)", get(play1, A_)[2].get("Location") == panel_url
+              and get(play1, C_)[0] == 302)
         code, sx, hx = get(f"stream/movie/{quote(mids[0], safe='')}.json", B_)
         check("و«standard»: قائمة التشغيل تُحفظ كما كانت (10 دقائق) بلا رسالة", "max-age=600" in hx.get("Cache-Control", "")
               and not sx["streams"][0]["name"].startswith("⚠️"))
@@ -212,6 +228,30 @@ def through_play():
         check("ومعرّف الإضافة لم يتغيّر بالنسخة", man["id"] == S.manifest_id(cfg))
     finally:
         srv.shutdown()
+        S.reset()
+        SS.reset()
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def panel_unknown():
+    print("== اللوحة لا تُعرف (لم تُسأل بعد أو تعذّرت) ==")
+    d = tempfile.mkdtemp(prefix="sessions_np_")
+    S.reset()
+    SS.reset()
+    try:
+        cfg = S.Cfg("http://127.0.0.1:9", "nobody", "x")       # لا خادم: لا تُعرف اتصالاته
+        SS.setup(d)
+        acct = S.session_account(cfg)
+        SS.set_account(acct, owner="o", variant="session")
+        ln = {"cfg": cfg, "label": "x"}
+        v1 = S.play_gate(ln, "movie", "m:1", {"ip": "1.1.1.1", "ua": "x"})
+        v2 = S.play_gate(ln, "movie", "m:1", {"ip": "2.2.2.2", "ua": "x"})
+        check("بلا حدٍّ معروف من اللوحة ولا مضبوط ← ‏default_max (لا ينهار، والجلسة الصالحة تستمر)", v1["allowed"] and not v2["allowed"]
+              and v2["max_devices"] == 1 and S.play_gate(ln, "movie", "m:2", {"ip": "1.1.1.1", "ua": "y"})["allowed"])
+        check("والبث بمهلة البث (‏tv ← live)", S.play_gate(ln, "tv", "l:1", {"ip": "1.1.1.1", "ua": "x"})["allowed"]
+              and SS.sessions([acct])[0]["content_type"] == "live")
+        check("والخط بلا ضبط ← لا فحص (‏None)", S.play_gate({"cfg": S.Cfg("http://127.0.0.1:9", "other", "x")}, "movie", "m:1", {}) is None)
+    finally:
         S.reset()
         SS.reset()
         shutil.rmtree(d, ignore_errors=True)
@@ -264,6 +304,7 @@ def admin():
 if __name__ == "__main__":
     core()
     through_play()
+    panel_unknown()
     admin()
     print(f"\nResult: \033[32m{passed} passed\033[0m, " + (f"\033[31m{failed} failed\033[0m" if failed else "0 failed"))
     sys.exit(1 if failed else 0)

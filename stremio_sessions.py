@@ -38,6 +38,8 @@ FILE = "stremio_sessions.json"
 VARIANTS = ("standard", "session")
 LIMIT_REASON = "CONCURRENT_DEVICE_LIMIT"
 REVOKED_REASON = "SESSION_REVOKED"
+RATE_REASON = "RATE_LIMITED"
+RATE_MAX, RATE_WINDOW = 90, 60          # طلبات /play من شبكةٍ واحدة في الدقيقة (نسخة «session») — أكثر ← رفضٌ مؤقت
 # ما يحدث عند امتلاء الحد: «deny» وحده الآن (الجهاز الجديد يُرفض، والقديم لا يُقطع). ‏«kick_oldest» مكانه هنا لاحقًا (يُلغي أقدم
 # جلسةٍ ويقبل الجديدة) — غير مفعّل: قيمةٌ غير معروفة تعمل كـ«deny».
 ON_LIMIT = ("deny",)
@@ -45,10 +47,12 @@ DEFAULTS = {"timeout_vod": 3 * 3600, "timeout_live": 3600, "default_max": 1}
 TIMEOUT_MIN, TIMEOUT_MAX = 60, 7 * 86400
 MAX_DEVICES_CAP = 20
 KEEP_SECS = 2 * 86400                   # ما انتهى من الجلسات يبقى للعرض يومين ثم يُحذف
-MSG = {LIMIT_REASON: "الحساب مستخدم حاليًا على جهاز آخر.", REVOKED_REASON: "تم تسجيل الدخول من جهاز آخر."}
+MSG = {LIMIT_REASON: "الحساب مستخدم حاليًا على جهاز آخر.", REVOKED_REASON: "تم تسجيل الدخول من جهاز آخر.",
+       RATE_REASON: "طلبات تشغيلٍ كثيرة — انتظر دقيقة ثم أعد المحاولة."}
 
 _lock = threading.RLock()
 _state = {"dir": None, "data": None}
+_hits = {}                              # شبكة ← [أوقات طلبات /play في النافذة] (في الذاكرة)
 
 
 def setup(data_dir):
@@ -62,6 +66,22 @@ def reset():
     """للاختبارات."""
     with _lock:
         _state["dir"], _state["data"] = None, None
+        _hits.clear()
+
+
+def _rate_ok(ip, now):
+    """حدٌّ لطلبات /play من شبكةٍ واحدة (‏RATE_MAX في ‏RATE_WINDOW ثانية) — و_lock مقفل."""
+    k = ip_net(ip)
+    q = [t for t in _hits.get(k, ()) if now - t < RATE_WINDOW]
+    if len(q) >= RATE_MAX:
+        _hits[k] = q
+        return False
+    q.append(now)
+    _hits[k] = q
+    if len(_hits) > 20000:
+        for kk in [kk for kk, v in _hits.items() if not v or now - v[-1] >= RATE_WINDOW]:
+            _hits.pop(kk, None)
+    return True
 
 
 def _path():
@@ -275,6 +295,8 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
         active = [(sid, s) for sid, s in mine if _status(s, a, st, now) == "active"]
         same = next(((sid, s) for sid, s in active if s.get("device_key") == dk), None)
         out = {"allowed": True, "reason": None, "active_devices": len(active), "max_devices": mx, "session_id": None, "message": ""}
+        if not dry and not _rate_ok(ip, now):
+            return {**out, "allowed": False, "reason": RATE_REASON, "message": MSG[RATE_REASON]}
         if same:
             sid, s = same
             if not dry:
@@ -283,7 +305,8 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
                 _save()
             out["session_id"] = sid
             return out
-        blocked = next((s for _, s in mine if s.get("device_key") == dk and s.get("revoked")
+        blocked = next((s for _, s in mine if s.get("device_key") == dk and s.get("revoked")    # (والخروج من كل الأجهزة يمحوه)
+                        and int(s.get("version") or 1) == int(a.get("version") or 1)
                         and now - float(s.get("revoked_at") or 0) <= _timeout(st, s.get("content_type"))), None)
         if blocked:
             return {**out, "allowed": False, "reason": REVOKED_REASON, "message": MSG[REVOKED_REASON]}
