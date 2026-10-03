@@ -854,10 +854,18 @@ function renderUpd(){
     ${fails ? `<details><summary>ما تعذّر</summary>${j.failed.map(f => `<div class="ltr">${esc(f.email)} — ${esc(f.error)}</div>`).join("")}</details>` : ""}</div>
     ${running ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ""}`;
 }
+let UPD_MISS = 0;                                 // متابعةٌ تعثّرت (الخادم مشغولٌ بتحميل اللوحات لحظة): تُعاد ولا تُعرض خطأً
 async function loadUpd(){
-  try { UPD = await api("/api/stremio/update-all"); renderUpd(); } catch(e) { $("updMsg").textContent = e.message; }
+  try {
+    const was = UPD.job && UPD.job.running;
+    UPD = await api("/api/stremio/update-all"); UPD_MISS = 0; $("updMsg").textContent = ""; renderUpd();
+    if (was && !UPD.job) $("updMsg").textContent = "أُعيد تشغيل الخادم أثناء التحديث فتوقف — اضغط الزر مرة أخرى.";
+  } catch(e) {
+    UPD_MISS++;
+    if (UPD_MISS >= 8) $("updMsg").textContent = "لا ردّ من الخادم منذ قليل — يكمل التحديث فيه إن كان يعمل؛ أعد فتح الصفحة بعد دقيقة.";
+  }
   clearTimeout(UPD_POLL);
-  if (UPD.job && UPD.job.running) UPD_POLL = setTimeout(loadUpd, 1500);   // تقدّم التحديث حتى ينتهي
+  if (UPD.job && UPD.job.running) UPD_POLL = setTimeout(loadUpd, UPD_MISS ? Math.min(15000, 1500 * 2 ** UPD_MISS) : 1500);   // تقدّم التحديث حتى ينتهي
 }
 $("updBtn").onclick = async () => {
   if (!confirm(`تحديث إضافتنا في كل حسابات Stremio (${UPD.accounts})؟\nتُثبَّت أحدث نسخةٍ منها في مكانها من كل حساب (والإضافات الأخرى كما هي)، ويظهر الجديد عند العميل بعد إعادة فتح Stremio.`)) return;

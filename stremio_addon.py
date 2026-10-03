@@ -479,6 +479,9 @@ def _bouquet(cats):
 
 
 PART_WORKERS = 4                     # طلبات الأقسام معًا حين تتعثّر القائمة كاملة
+# قوائم كاملةٌ تُحمَّل معًا في الخادم كله: قائمة لوحةٍ كبيرة (مرح: 21 ألف فيلم) عشرات الميجا وهي تُقرأ — فتحميلها كلها معًا (التشغيل
+# والتحديث لكل الحسابات وتصفّح العملاء) يستنزف الذاكرة ويوقف الخادم عن الرد لحظات؛ والباقي ينتظر دوره
+_list_sem = threading.Semaphore(max(1, int(os.environ.get("STREMIO_LIST_LOADS", "2"))))
 
 
 def _all_items(cfg, kind, cats):
@@ -538,8 +541,9 @@ def lists(cfg, kind):
     key = _lkey(cfg, kind, cats)
 
     def load():
-        L = Lists(kind, cats, _all_items(cfg, kind, cats))
-        L.prepare()                      # فهرس البحث مع التحميل: أول بحثٍ لا يبنيه
+        with _list_sem:
+            L = Lists(kind, cats, _all_items(cfg, kind, cats))
+            L.prepare()                  # فهرس البحث مع التحميل: أول بحثٍ لا يبنيه
         return L
     return _cached(_lists, key, TTL, load, LISTS_MAX, shared=True, short=lambda L: not L.items)
 
