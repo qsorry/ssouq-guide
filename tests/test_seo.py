@@ -1558,8 +1558,17 @@ def unit_release():
         check("قبل المرحلة 4: المستحقّ noindex وسمًا ورأسًا (كما كان)", pg[0] == 200 and pg[2].get("X-Robots-Tag") == "noindex" and b'content="noindex, follow"' in pg[1])
         # لقطةٌ معتمدة: bundle.json بمعرّفها + sitemap-staging.xml من الفحص النهائي نفسه
         bd = seo_sources.bundle_dir(d); os.makedirs(bd, exist_ok=True)
-        with open(os.path.join(bd, "bundle.json"), "w", encoding="utf-8") as f:
+        with open(os.path.join(bd, "bundle.json"), "w", encoding="utf-8") as f:   # بالبنية التي يكتبها seo_sources.bundle فعلًا: الختم داخل meta
+            json.dump({"meta": {**seo_sources.meta(d), "bundle_id": SNAP}, "files": {"qa.json": 1, "sitemap-staging.xml": 1}, "errors": []}, f)
+        bm = seo_release.bundle_meta(d)
+        check("bundle_meta يقرأ معرّف اللقطة وبصمتها من الختم المتداخل (meta) ويبقي meta والملفات كما هي — وNone بلا ملف",
+              bm["bundle_id"] == SNAP and bm["code_fingerprint"] == seo_sources.code_version()["code_fingerprint"] and bm["meta"]["bundle_id"] == SNAP
+              and bm["files"]["qa.json"] == 1 and seo_release.bundle_meta(os.path.join(d, "nowhere")) is None, str(bm)[:200])
+        with open(os.path.join(bd, "bundle.json"), "w", encoding="utf-8") as f:   # الشكل المسطّح يبقى مقبولًا
             json.dump({"bundle_id": SNAP, **seo_sources.code_version()}, f)
+        check("bundle_meta يقبل الشكل المسطّح أيضًا", seo_release.bundle_meta(d)["bundle_id"] == SNAP)
+        with open(os.path.join(bd, "bundle.json"), "w", encoding="utf-8") as f:   # وتبقى المرحلة 4 تُختبر على البنية الإنتاجية
+            json.dump({"meta": {**seo_sources.meta(d), "bundle_id": SNAP}, "files": {}, "errors": []}, f)
         sm0 = seo_qa.check_sitemap(d, con, st, os.path.join(bd, "sitemap-staging.xml"))
         check("الخريطة التجريبية للقطة: 5 روابط ولا تُخدم بعد", sm0["urls"] == 5 and all(t["ok"] for t in sm0["tests"]) and seo_release.snapshot_urls(d) == {u for u, _, _ in elig}, str(sm0["tests"]))
         con.close()
