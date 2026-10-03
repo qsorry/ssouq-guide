@@ -412,9 +412,10 @@ def against_mock():
         check("شعار السيرفر مربّعًا (وإلا شعار المتجر)", c0["poster"] == "https://g/static/img/brands/smart.webp" and c0["posterShape"] == "square"
               and cards[1]["poster"] == "https://g/static/icons/icon-512.png")
         check("التفاصيل: الحالة والانتهاء والاتصالات واليوزر والمحتوى — بلا كلمة المرور",
-              all(x in c0["description"] for x in ("الحالة: نشط", "ينتهي 20", "الاتصالات المسموحة: 1", "اليوزر: u",
+              all(x in c0["description"] for x in ("الحالة: نشط", "ينتهي 20", "الاتصالات المسموحة: 1", "اليوزر: •••",
                                                     f"المحتوى: {len(series)} مسلسل · {n_vod} فيلم · {n_live} قناة"))
               and mock_xtream.PASS + " " not in c0["description"] and "كلمة" not in c0["description"], c0["description"])
+        check("يوزر Xtream لا يظهر للعميل كاملًا («•••567»)", S.mask_user("0501234567") == "•••567" and S.mask_user("u") == "•••")
         check("وطريقة الترجمة العربية، وإظهار الأسماء تحت الصور على تلفاز أندرويد (إعدادٌ في التطبيق لا يُضبط من الإضافة)",
               c0["description"].endswith(S.SUBS_TIP + " · " + S.TITLE_TIP) and "Show title under catalog items" in S.TITLE_TIP)
         check("معرّف الخط ببادئة الإضافة ومن سيرفره الأصلي", c0["id"].startswith(pre + "a:") and cards[1]["id"] == S.line_id(pre, other2)
@@ -431,7 +432,7 @@ def against_mock():
             S._accounts[busy] = (time.time(), {"auth": 1, "status": "Active", "exp_date": None, "max_connections": "2", "active_cons": "1",
                                                "is_trial": "1"}, {})
         cb = S.account_card({"cfg": busy, "label": ""}, pre, "https://g")
-        check("بلا تاريخ انتهاء: «غير محدود»، وتجريبي، والاتصالات المستعملة", cb["name"] == "u · غير محدود"
+        check("بلا تاريخ انتهاء: «غير محدود»، وتجريبي، والاتصالات المستعملة (وبلا اسم سيرفر: اليوزر مخفيًّا)", cb["name"] == "••• · غير محدود"
               and "(تجريبي)" in cb["description"] and "الاتصالات: 1 من 2" in cb["description"] and "releaseInfo" not in cb, json.dumps(cb, ensure_ascii=False))
         with S._lock:
             S._accounts.pop(busy, None)
@@ -504,6 +505,20 @@ def http(base, path, obj=None, method=None, headers=None):
         return e.code, dict(e.headers), e.read()
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def http_noredirect(base, path):
+    """طلب GET بلا اتّباع التحويل ← (الرمز، الترويسات)."""
+    try:
+        x = urllib.request.build_opener(_NoRedirect).open(base + path, timeout=20)
+        return x.getcode(), dict(x.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers)
+
+
 def through_server():
     srv = mock_xtream.serve(0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -557,15 +572,15 @@ def through_server():
         man = json.loads(b)
         mains = [c_ for c_ in man["catalogs"] if not c_["id"].startswith(S.CAT_PREFIX)]
         check("الـmanifest (ورابطٌ بلا حساب Stremio: «الحسابات» فيه)", c == 200 and man["name"] == "سمارت سوق · سمارت"
-              and [c_["type"] for c_ in mains] == [S.ACCOUNTS, "series", "movie", "tv"], man.get("name"))
+              and [c_["type"] for c_ in mains] == [S.ACCOUNTS, S.TILES, "series", "movie", "tv"], man.get("name"))
         rows = [(c_["type"], c_["name"]) for c_ in man["catalogs"] if c_["id"].startswith(S.CAT_PREFIX)]
         order = [c_["type"] for c_ in man["catalogs"]]
         check("تصنيفات سمارت سوق صفوفٌ في الرئيسية بعد كتالوج نوعها («تركي - المسلسلات»)، بلا بحثٍ ولا قائمة تصنيف",
               {("series", "تركي"), ("series", "أجنبي"), ("movie", "عربي"), ("movie", "أجنبي"), ("tv", "رياضة"), ("tv", "عربية")} <= set(rows)
-              and order == sorted(order, key=[S.ACCOUNTS, "series", "movie", "tv"].index)
+              and order == sorted(order, key=[S.ACCOUNTS, S.TILES, "series", "movie", "tv"].index)
               and all(c_["extraSupported"] == ["skip"] for c_ in man["catalogs"] if c_["id"].startswith(S.CAT_PREFIX)),
               json.dumps(rows, ensure_ascii=False))
-        topts_u = next(e["options"] for e in mains[3]["extra"] if e["name"] == "genre")
+        topts_u = next(e["options"] for c_ in mains if c_["id"] == "sq_live" for e in c_["extra"] if e["name"] == "genre")
         check("وقائمة التصنيف في «اكتشف» تصنيفاتنا بأعدادها (لا أقسام كل لوحة؛ والقناة باسمها أيضًا: «MBC Drama» ← «أفلام ومسلسلات»)",
               [S._COUNT.sub("", o) for o in topts_u] == ["رياضة", "عربية", "أفلام ومسلسلات"],
               json.dumps(topts_u, ensure_ascii=False))
@@ -607,7 +622,11 @@ def through_server():
               for l in mj.get("links", []) if l["category"] == "Genres") and any(l["category"] == "Genres" for l in mj.get("links", [])))
         c, _, b = http(base, f"/stremio/{tok}/stream/movie/{mid}.json")
         url = json.loads(b)["streams"][0]["url"]
-        check("رابط التشغيل يعمل عند السيرفر", c == 200 and url.startswith(f"http://{mock}/movie/u/p/"), url)
+        check("رابط التشغيل على خادمنا بلا يوزر Xtream ولا باسورده", c == 200 and url.startswith(f"{base}/stremio/{tok}/play/movie/")
+              and "/u/p/" not in b.decode(), url)
+        c, h = http_noredirect(base, url[len(base):])
+        check("ويحوّل (302) إلى رابط السيرفر نفسه", c == 302 and h.get("Location", "").startswith(f"http://{mock}/movie/u/p/")
+              and h.get("Cache-Control") == "no-store", str((c, h.get("Location"))))
         c, _, b = http(base, f"/stremio/{tok}/catalog/series/sq_series/search=breaking.json")
         check("البحث عبر المسار", [m["name"] for m in json.loads(b)["metas"]] == ["Breaking Bad"])
         c, _, b = http(base, f"/stremio/{tok}/status.json")
