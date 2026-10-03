@@ -76,12 +76,19 @@ def _write(data_dir, name, obj):
 
 
 def bundle_meta(data_dir):
-    """bundle.json للقطة الحالية في مجلد المراجعة (معرّفها وبصمة كودها) أو None."""
+    """bundle.json للقطة الحالية في مجلد المراجعة (معرّفها وبصمة كودها) أو None.
+    يكتبه seo_sources.bundle كـ {"meta": الختم, "files": …, "errors": …} والختم (bundle_id · code_fingerprint · generated_at) داخل meta؛
+    فيُرفع الختم إلى المستوى الأعلى (مع إبقاء meta كما هي) حتى يقرأه القرّاء كلّهم — المرحلتان 4 و7 والحزمة النهائية وسطر الحالة في
+    اللوحة — بالمفتاح نفسه، وإلا قُرئ bundle_id على أنه None ورُفضت كل لقطةٍ مهما طابقت."""
     try:
         with open(os.path.join(seo_sources.bundle_dir(data_dir), "bundle.json"), encoding="utf-8") as f:
-            return json.load(f)
+            d = json.load(f)
     except (OSError, ValueError):
         return None
+    if not isinstance(d, dict):
+        return None
+    stamp = d.get("meta") if isinstance(d.get("meta"), dict) else {}
+    return {**stamp, **d}
 
 
 def snapshot_urls(data_dir):
