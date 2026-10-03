@@ -36,6 +36,7 @@ import threading
 import time
 from collections import OrderedDict, namedtuple
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import TimeoutError as FutureTimeout
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
@@ -913,7 +914,7 @@ def crawl_genres(cfg, data_dir=None, limit=GENRE_BATCH, rps=None, stop=None):
 def reset():
     """تفريغ الذاكرة (للاختبارات)."""
     with _lock:
-        for s in (_accounts, _cats, _lists, _list_keys, _info, _rate, _libs, _probes, _lines_cache, _genres, _line_jobs):
+        for s in (_accounts, _cats, _lists, _list_keys, _info, _rate, _libs, _probes, _lines_cache, _genres, _line_jobs, _mans):
             s.clear()
         _loading.clear()
         _gdir[0] = None
@@ -957,8 +958,8 @@ def _fmt(n):
     return f"{n:,}"
 
 
-def manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True, books=None, multi=None):
-    return build_manifest(cfg, base, label, accounts, lines, catalogs, books, multi)[0]
+def manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True, books=None, multi=None, quick=False):
+    return build_manifest(cfg, base, label, accounts, lines, catalogs, books, multi, quick)[0]
 
 
 def years_of(lib):
@@ -976,7 +977,7 @@ def manifest_id(cfg):
     return "com.ssouq.xtream." + hashlib.sha256(f"{cfg.origin or cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
 
 
-def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True, books=None, multi=None):
+def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True, books=None, multi=None, quick=False):
     """(وصف الإضافة، حاله) بترتيب تطبيقات IPTV: «الحسابات» (‏accounts: لصاحب الحساب أو رابطٍ وحده — والخط المرتبط بلاها، فلا
     يتكرّر صفّها) ثم المسلسلات ثم الأفلام ثم البث المباشر — **لكل سيرفرٍ أقسامه وحده** (‏books، انظر _books): لا دمج بين
     السيرفرات ولا بين نسخ العمل، كما في لوحته. لكل نوع:
@@ -986,7 +987,8 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
       · كتالوجٌ لكل تصنيفٍ رئيسيٍّ له فرعيٌّ فيه محتوى («تركي»): قائمة تصنيفه «الكل» ثم الفرعية («يعرض الآن مترجم» …) — المستوى
         الثاني في «اكتشف» ومجلدات Nuvio؛ مطلوبةٌ فلا تصير صفوفًا في الرئيسية.
     ‏multi: للحساب أكثر من سيرفر (يُذكر السيرفر في أسماء كتالوجات «اكتشف»). الحال: "ok" فيها محتوى · "pending" رُفض الاشتراك أو
-    جاء فارغًا (يوزرٌ لم يُفعَّل بعد: يُعاد بعد قليل) · "error" تعذّر نوعٌ من السيرفر نفسه."""
+    جاء فارغًا (يوزرٌ لم يُفعَّل بعد: يُعاد بعد قليل) · "error" تعذّر نوعٌ من السيرفر نفسه. ‏quick: بالمكتبات الجاهزة في الذاكرة
+    وحدها (لا ينتظر بناءً) — الكتالوجات بمعرّفاتها نفسها، وما لم تجهز مكتبته بلا قائمة تصنيفٍ هذه المرة."""
     pre = prefix(cfg)
     uid = manifest_id(cfg).rsplit(".", 1)[1]
     tag = f" · {label}" if label else ""
@@ -1005,7 +1007,7 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
         at = f" · {lab}" if multi else ""
         for kind in ORDER:
             try:
-                lib = library(lines1, kind, full=True)
+                lib = cached_library(lines1, kind) if quick else library(lines1, kind, full=True)
             except AuthError:
                 lib = None
                 states.add("auth")
@@ -2575,6 +2577,88 @@ def forget_lines():
         _lines_cache.clear()
 
 
+# الـmanifest محفوظٌ (في الذاكرة وعلى القرص): بناؤه ينتظر مكتبة كل سيرفرٍ لكل نوع (تسعٌ لحسابٍ بثلاثة سيرفرات، واحدةً في المرة)،
+# وبعد إعادة النشر يطول ذلك أكثر مما ينتظر Nuvio فلا يحمّل الإضافة («Addon not found» في مجلداتها). فآخر نسخةٍ تُرسَل فورًا
+# وتُجدَّد في الخلفية كل MANIFEST_TTL ثانية؛ وبلا نسخةٍ يُنتظر بناؤها MANIFEST_WAIT ثانية، ثم نسخةٌ سريعة بمعرّفات الكتالوجات نفسها.
+MANIFEST_TTL = int(os.environ.get("STREMIO_MANIFEST_TTL", "900"))
+MANIFEST_WAIT = float(os.environ.get("STREMIO_MANIFEST_WAIT", "12"))
+MANS_MAX = 300
+_mans = OrderedDict()        # المفتاح ← (وقته، الـmanifest)
+_man_jobs = {}               # المفتاح ← بناءٌ جارٍ (Future)
+
+
+def _mpath(key):
+    return os.path.join(_ddir[0], "manifests", hashlib.sha1(repr(key).encode()).hexdigest()[:24] + ".json") if _ddir[0] else None
+
+
+def _man_put(key, man, at=None):
+    with _lock:
+        _mans[key] = (at or time.time(), man)
+        _mans.move_to_end(key)
+        while len(_mans) > MANS_MAX:
+            _mans.popitem(last=False)
+
+
+def _man_save(key, man):
+    path = _mpath(key)
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(man, f, ensure_ascii=False, separators=(",", ":"))
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def _man_hit(key):
+    with _lock:
+        hit = _mans.get(key)
+    if hit:
+        return hit
+    path = _mpath(key)
+    try:
+        with open(path, encoding="utf-8") as f:
+            man = json.load(f)
+        at = os.path.getmtime(path)
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(man, dict) or man.get("version") != VERSION:
+        return None
+    _man_put(key, man, at)
+    return _mans.get(key)
+
+
+def cached_manifest(key, build):
+    """‏build() ← (الـmanifest، حاله). ← الـmanifest (آخر نسخةٍ فورًا، وقديمتها تُجدَّد في الخلفية)، أو None إن لم يجهز بعد
+    MANIFEST_WAIT ثانية (ويكمل بناؤه في الخلفية). لا تُحفظ إلا نسخةٌ حالها "ok" (لا يوزرٌ لم يُفعَّل ولا سيرفرٌ متعثّر)."""
+    hit = _man_hit(key)
+
+    def job():
+        try:
+            man, state = build()
+            if state == "ok":
+                _man_put(key, man)
+                _man_save(key, man)
+            return man
+        finally:
+            with _lock:
+                _man_jobs.pop(key, None)
+    with _lock:
+        fut = _man_jobs.get(key)
+        stale = not hit or time.time() - hit[0] >= MANIFEST_TTL
+        if stale and fut is None:
+            fut = _man_jobs[key] = _bg(job)
+    if hit:
+        return hit[1]
+    try:
+        return fut.result(timeout=MANIFEST_WAIT)
+    except FutureTimeout:
+        return None
+
+
 def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines_for=None, group_for=None):
     """طلب GET تحت ‏/stremio ← (الرمز، الجسم، النوع، الترويسات)، أو None لمسارٍ ليس لها.
     ‏label_for(cfg) اسم السيرفر كما في الدليل (سمارت · كاسبر · فالكون) للاسم في Stremio.
@@ -2641,7 +2725,14 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
     pre = prefix(cfg)
     try:
         if rest == ["manifest"]:
-            return _json(200, manifest(cfg, base, label, accounts=lines is not None, lines=lines, books=books, multi=multi), 3600)
+            acc_on = lines is not None
+            mkey = (VERSION, base, parts[0], label, acc_on, bool(lines and lines[0].get("nuvio")), multi,
+                    tuple((line_hk(ln["cfg"]), ln.get("label") or "", sfx) for ln, sfx in books),
+                    CATS.sig(books[0][0].get("cats") or []) if books else ())
+            man = cached_manifest(mkey, lambda: build_manifest(cfg, base, label, accounts=acc_on, lines=lines, books=books, multi=multi))
+            if man is None:                              # لم يجهز بعد: نسخةٌ سريعة (بمعرّفات الكتالوجات نفسها)، وتُطلب ثانيةً قريبًا
+                return _json(200, manifest(cfg, base, label, accounts=acc_on, lines=lines, books=books, multi=multi, quick=True), 60)
+            return _json(200, man, 3600)
         if rest == ["status"]:
             return _json(200, status(cfg, base, parts[0], label))
         if acc:                                          # «الحسابات»: حال خطوط الحساب، وتجديدها

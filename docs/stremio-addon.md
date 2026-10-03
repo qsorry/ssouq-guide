@@ -150,6 +150,11 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
      - كتالوجٌ لكل تصنيفٍ رئيسيٍّ له فرعيٌّ فيه محتوى: `sqm_<id>` باسم الرئيسي، قائمة تصنيفه **مطلوبة**: «الكل (N)» ثم الفرعية بأعدادها.
      - صفٌّ لتصنيفٍ جُعل «صفًّا في الرئيسية أيضًا» وفيه محتوى (اختياري): `sqc_<id>`، بلا بحث.
 - `idPrefixes`: بادئات خطوط الإضافة وحدها (والمورد `stream` كذلك: لا تُلحق إضافةٌ مصادرها بأعمال سيرفرٍ آخر).
+- **الـmanifest محفوظ** (`cached_manifest`، في الذاكرة و`stremio_lists/manifests/`): بناؤه ينتظر مكتبة كل خطٍّ لكل نوع (تسعٌ لحسابٍ
+  بثلاثة سيرفرات، واحدةً في المرة)، وبعد إعادة النشر يطول أكثر مما ينتظر Nuvio فلا يحمّل الإضافة («Addon not found» في مجلداتها).
+  فآخر نسخةٍ تُرسَل فوراً وتُجدَّد في الخلفية كل `STREMIO_MANIFEST_TTL` (900 ثانية). وبلا نسخةٍ يُنتظر البناء `STREMIO_MANIFEST_WAIT`
+  (12 ثانية)، ثم نسخةٌ سريعة (`quick=True`: المكتبات الجاهزة وحدها) **بمعرّفات الكتالوجات نفسها** و`max-age=60`. مفتاحها: الإصدار
+  والرابط والخطوط وتصنيفات الحساب (`CATS.sig`)، فربط خطٍّ أو تعديل التصنيفات يبني نسخةً جديدة. لا تُحفظ إلا نسخةٌ حالها `ok`.
 - Stremio **لا يحدّث الـmanifest المثبّت من تلقاء نفسه**. الوصول للعملاء يكون بزر «تحديث الإضافة لكل الحسابات»، بينما محتوى الكتالوجات والصفحات يُقرأ من الخادم فوراً.
 
 ## 8) الكتالوج والتفاصيل والتشغيل
@@ -323,6 +328,8 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 | `STREMIO_CACHE` | 18 | قوائم في الذاكرة |
 | `STREMIO_LIST_LOADS` | 2 | قوائم كاملة تُحمَّل معاً |
 | `STREMIO_LIBS` | 36 | مكتبات في الذاكرة |
+| `STREMIO_MANIFEST_TTL` | 900 | عمر الـmanifest المحفوظ قبل تجديده في الخلفية |
+| `STREMIO_MANIFEST_WAIT` | 12 | انتظار بنائه بلا نسخةٍ محفوظة قبل النسخة السريعة |
 | `STREMIO_LIB_WAIT` | 5 | انتظار خط بطيء في الكتالوج |
 | `STREMIO_WARM_EVERY` | 1200 | التحميل المسبق (0 = لا) |
 | `STREMIO_GENRE_RPS` | 2 | جمع تصنيفات الأفلام (0 = لا) |
@@ -343,7 +350,7 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 - `stremio_accounts.json`: الحسابات وخطوطها. فيها `token` و`addon_key` و`linked_to` و`addon_v` و`addon_full` و`exp` و`status`.
 - `nuvio_accounts.json`: حسابات Nuvio بمفتاح `«هوست|يوزر»`. فيها `email` و`password` (مشفّرة) و`user_id` و`token` و`addon_key`
   و`acct` و`gate` و`status` (`active` / `off`) و`addon_at` و`addon_v` و`off_at`. والخط المرتبط: `linked_to` (`«هوست|يوزر»` صاحب الحساب) و`token` لخطّه و`status="linked"`، بلا إيميل.
-- `stremio_lists/`: نسخة كل قائمة (`<sha1>.json.gz`) وتفاصيل ما فُتح (`info/`). تُعرض فور إعادة التشغيل وتُحدَّث في الخلفية (`disk_dir` · `disk_save` · `disk_load` · `_info_disk`). ما لم يُحدَّث 7 أيام يُحذف.
+- `stremio_lists/`: نسخة كل قائمة (`<sha1>.json.gz`) وتفاصيل ما فُتح (`info/`) وآخر manifest لكل رابط (`manifests/`). تُعرض فور إعادة التشغيل وتُحدَّث في الخلفية (`disk_dir` · `disk_save` · `disk_load` · `_info_disk`). ما لم يُحدَّث 7 أيام يُحذف.
 - `stremio_routes.json`: تحويل الهوستات.
 - `stremio_categories.json`: التصنيفات لكل حساب أداة.
 - `stremio_extras.json`: الإضافات الأخرى.
