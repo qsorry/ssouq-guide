@@ -291,6 +291,81 @@ def through_server():
         check("معرّف الإضافة نفسه في Nuvio وفي رابط Stremio للخط", man2.get("id") and man2.get("id") == man.get("id"), f"{man.get('id')} {man2.get('id')}")
         check("ومعرّفات الأعمال نفسها (لا يتغيّر أي ID)", ids2 and ids2 == [m["id"] for m in metas])
 
+        print("== واجهة الجوال والتلفاز: المجموعات وترتيب الرئيسية ==")
+        uid = nv.state.users[email]["id"]
+        aid = man.get("id")
+        cols = nv.state.collections.get((uid, 1)) or []
+        check("ثلاث مجموعاتٍ مثبّتة أعلى الرئيسية: المسلسلات · الأفلام · القنوات", [(c["id"], c["title"], c["pinToTop"]) for c in cols]
+              == [("ssouq_series", "المسلسلات", True), ("ssouq_movie", "الأفلام", True), ("ssouq_tv", "القنوات", True)],
+              json.dumps([c.get("title") for c in cols], ensure_ascii=False))
+        f0 = (cols[0]["folders"] or [{}])[0] if cols else {}
+        check("أول مجلدٍ «الكل»: كتالوج المسلسلات من إضافتنا (بمعرّفها)", f0.get("title") == "الكل"
+              and f0.get("sources") == [{"provider": "addon", "addonId": aid, "type": "series", "catalogId": "sq_series"}], json.dumps(f0, ensure_ascii=False)[:200])
+        tr = next((f for c in cols for f in c["folders"] if f["title"] == "تركي" and c["id"] == "ssouq_series"), {})
+        check("ومجلدٌ لكل تصنيف: الكتالوج نفسه بالتصنيف («تركي»)، وصورته مرسومةٌ على خادمنا", tr.get("sources", [{}])[0].get("genre") == "تركي"
+              and tr.get("coverImageUrl", "").startswith("https://") and "/stremio/p/" in tr.get("coverImageUrl", "") and tr.get("tileShape") == "square",
+              json.dumps(tr, ensure_ascii=False)[:200])
+        c, _ = addon(url1.replace("/manifest.json", "") + "/manifest.json", "")
+        cov = tr.get("coverImageUrl", "")
+        try:
+            cv = urllib.request.urlopen(site + urlsplit(cov).path, timeout=30)
+            cov_ok = cv.getcode() == 200 and cv.headers.get("Content-Type", "").startswith("image/")
+        except Exception:
+            cov_ok = False
+        check("والصورة تُخدَم (صورة)", cov_ok)
+        c, txt = addon(url1, "/catalog/series/sq_series/genre=" + quote("أجنبي", safe="") + ".json")
+        check("ومجلدٌ يفتح قائمته كاملة: الكتالوج بالتصنيف باسمه بلا عدد", c == 200 and json.loads(txt).get("metas"), f"{c} {txt[:80]}")
+        home = nv.state.home.get((uid, 1, "home_catalog_shared")) or {}
+        keys = [i["key"] for i in home.get("items", [])]
+        check("ترتيب الرئيسية (للجوال والتلفاز معًا): المجموعات ثم «أحدث المسلسلات» «أحدث الأفلام» «القنوات» ثم «حساباتي»",
+              keys[:7] == ["collection_ssouq_series", "collection_ssouq_movie", "collection_ssouq_tv", f"{aid}:series:sq_series",
+                           f"{aid}:movie:sq_movies", f"{aid}:tv:sq_live", f"{aid}:{S.ACCOUNTS}:{S.ACCOUNTS_ID}"]
+              and [i["custom_title"] for i in home["items"][3:7]] == ["أحدث المسلسلات", "أحدث الأفلام", "القنوات", "حساباتي"]
+              and [i["order"] for i in home["items"]] == list(range(len(home["items"]))), json.dumps(keys[:8], ensure_ascii=False))
+        check("بلا لاحقة النوع الإنجليزية (Series/Movies)، وصفوف Cinemeta مطفأة (لا تُشغَّل عناوينها)", home.get("show_catalog_type") is False
+              and all(i["enabled"] is False for i in home["items"] if i["key"].startswith("com.linvo.cinemeta:"))
+              and sum(1 for i in home["items"] if i["key"].startswith("com.linvo.cinemeta:")) == 6)
+        names = {x["type"]: x["name"] for x in man["catalogs"] if x["id"] in ("sq_series", "sq_movies", "sq_live", S.ACCOUNTS_ID)}
+        check("وأسماء كتالوجات إضافة Nuvio عربيةٌ لكل نوع («المسلسلات (N)» · «حساباتي»)، وإضافة Stremio كما كانت",
+              names.get("series", "").startswith("المسلسلات") and names.get("movie", "").startswith("الأفلام")
+              and names.get("tv", "").startswith("القنوات") and names.get(S.ACCOUNTS) == "حساباتي"
+              and all(not x["name"].startswith(("المسلسلات", "الأفلام", "القنوات")) for x in man2["catalogs"]), json.dumps(names, ensure_ascii=False))
+        # العميل أضاف مجموعته، وأعاد صفّ Cinemeta، ورتّب إضافته الأخرى — «تحديث الإضافة» لا يمسّها
+        nv.state.collections[(uid, 1)] = cols + [{"id": "mine1", "title": "مفضلتي", "folders": [{"id": "f", "title": "x", "sources": []}]}]
+        for i in home["items"]:
+            if i["key"] == "com.linvo.cinemeta:movie:top":
+                i["enabled"] = True
+        home["items"].append({"key": "org.other:movie:pop", "addon_id": "org.other", "type": "movie", "catalog_id": "pop", "order": 99,
+                              "enabled": True, "custom_title": "", "is_collection": False, "collection_id": ""})
+        c, r = post("/api/nuvio/reinstall", {"gate": "g1", "username": XUSER})
+        cols2 = nv.state.collections.get((uid, 1)) or []
+        home2 = nv.state.home.get((uid, 1, "home_catalog_shared")) or {}
+        by2 = {i["key"]: i for i in home2.get("items", [])}
+        check("«تحديث الإضافة» يجدّدها: مجموعاتنا أولًا، ومجموعة العميل باقية", [c_["id"] for c_ in cols2] == ["ssouq_series", "ssouq_movie", "ssouq_tv", "mine1"],
+              str([c_["id"] for c_ in cols2]))
+        check("وما أعاده العميل من Cinemeta يبقى كما اختار، وإضافته الأخرى بعد صفوفنا", by2.get("com.linvo.cinemeta:movie:top", {}).get("enabled") is True
+              and by2.get("org.other:movie:pop", {}).get("order", 0) > by2[f"{aid}:{S.ACCOUNTS}:{S.ACCOUNTS_ID}"]["order"])
+        ser2 = next(c_ for c_ in cols2 if c_["id"] == "ssouq_series")
+        check("وبعد أن بُنيت المكتبة: مجلدات التصنيفات التي فيها محتوى وحدها", ser2["folders"][0]["title"] == "الكل"
+              and {f["title"] for f in ser2["folders"][1:]} <= {"تركي", "أجنبي", "عربي", "رمضان", "آسيوي", "أنمي", "أطفال وكرتون", "هندي", "وثائقي", "مدبلج", "أخرى"}
+              and len(ser2["folders"]) < len(cols[0]["folders"]), str([f["title"] for f in ser2["folders"]]))
+        c, r = post("/api/nuvio/accounts?gate=g1", None)
+        row = next((a for a in r.get("accounts", []) if a["username"] == XUSER), {})
+        check("والبطاقة تقول إن الواجهة ضُبطت", row.get("home_at") and not row.get("home_err"))
+
+        print("== «تحديث الإضافة لكل الحسابات» يشمل Nuvio ==")
+        nv.state.collections[(uid, 1)] = []
+        c, r = post("/api/stremio/update-all", {})
+        for _ in range(100):
+            c2, r2 = post("/api/stremio/update-all", None)
+            if not (r2.get("job") or {}).get("running"):
+                break
+            time.sleep(0.2)
+        job = r2.get("job") or {}
+        check("يبدأ ويشمل حسابات Nuvio (الإضافة والواجهة)", c == 200 and job.get("total", 0) >= 1 and job.get("done") == job.get("total")
+              and [c_["id"] for c_ in nv.state.collections.get((uid, 1)) or []][:3] == ["ssouq_series", "ssouq_movie", "ssouq_tv"],
+              json.dumps(job, ensure_ascii=False)[:200])
+
         print("== «فحص عمل» ==")
         q = quote("game of thrones")
         c, r = post(f"/api/stremio/inspect?platform=nuvio&gate=g1&username={XUSER}&q={q}", None)

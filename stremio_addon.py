@@ -24,6 +24,7 @@
 بلا مكتبات خارجية. ‏handle() يردّ على المسارات، وxm_lines يمرّر الطلب إليه ويضيف قائمة الهوستات المسموحة.
 """
 import datetime
+import gzip
 import hashlib
 import http.client
 import inspect
@@ -48,7 +49,7 @@ import stremio_posters as POSTERS
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.6.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.6.1"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -91,7 +92,8 @@ _CODE = {"movie": "m", "series": "s", "tv": "l"}   # بادئة المعرّف �
 # ‏origin: هوست الرمز حين يُحوَّل الاشتراك إلى هوستٍ جديد (السيرفر نفسه غيّر عنوانه) — منه بادئة المعرّفات ومعرّف
 # الإضافة فتبقى المكتبة و«تابع المشاهدة»؛ والطلبات وروابط التشغيل إلى host.
 Cfg = namedtuple("Cfg", "host user pw origin", defaults=(None,))
-Item = namedtuple("Item", "id name poster cat added rating ext plot year genre tmdb imdb", defaults=(0, ""))
+Item = namedtuple("Item", "id name poster cat added rating ext plot year genre tmdb imdb bg", defaults=(0, "", ""))
+# ‏bg: صورة الخلفية العريضة من القائمة (‏backdrop_path) إن أعطتها اللوحة — للواجهة الكبيرة أعلى رئيسية Nuvio
 
 
 class XtreamError(Exception):
@@ -320,7 +322,7 @@ class Lists:
                 cat_name[cid] = name
         key = _ACTION[kind][2]
         items, seen = [], set()
-        for x in raw:
+        for x in raw if raw is not None else ():
             if not isinstance(x, dict):
                 continue
             iid, name, cat = _int(x.get(key), None), " ".join(str(x.get("name") or "").split()), str(x.get("category_id", ""))
@@ -332,12 +334,24 @@ class Lists:
                 items.append(Item(iid, name, str(x.get("cover") or ""), cat, _int(x.get("last_modified")),
                                   _rating(x.get("rating")), "", plot[:200] + ("…" if len(plot) > 200 else ""),
                                   _year(name, x.get("releaseDate") or x.get("release_date")), str(x.get("genre") or ""),
-                                  *_ids(x)))
+                                  *_ids(x), _first(x.get("backdrop_path"))[:300]))
             else:
                 items.append(Item(iid, name, str(x.get("stream_icon") or ""), cat, _int(x.get("added")),
                                   _rating(x.get("rating")) if kind == "movie" else None,
                                   _ext(x.get("container_extension")), "", _year(name) if kind == "movie" else None,
-                                  str(x.get("genre") or "") if kind == "movie" else "", *(_ids(x) if kind == "movie" else ())))
+                                  str(x.get("genre") or "") if kind == "movie" else "", *(_ids(x) if kind == "movie" else (0, "")),
+                                  _first(x.get("backdrop_path"))[:300] if kind == "movie" else ""))
+        self._setup(kind, cat_name, items)
+
+    @classmethod
+    def restore(cls, kind, cats, rows):
+        """قائمةٌ من نسختها على القرص (‏disk_save): الأقسام كما هي، والعناصر صفوفًا بترتيب حقول Item."""
+        L = cls(kind, cats, None)
+        n = len(Item._fields)
+        L._setup(kind, L._cat_name, [Item(*r) for r in rows if isinstance(r, list) and n - 1 <= len(r) <= n])
+        return L
+
+    def _setup(self, kind, cat_name, items):
         self.items = items                                   # ترتيب السيرفر (ترتيب تطبيقات IPTV)
         self.by_id = {it.id: it for it in items}
         by_genre = OrderedDict()
@@ -538,17 +552,92 @@ def _lkey(cfg, kind, cats=None):
         return key
 
 
+# نسخة القوائم على القرص: بعد إعادة تشغيل الخادم (النشر) تُعرض فورًا وتُحدَّث من السيرفر في الخلفية — كان أول طلبٍ ينتظر قائمة
+# مرح الكاملة دقائق. نسخةٌ لكل (سيرفر × باقة × نوع) بآخر ما وصل، مضغوطة؛ وما لم يُحدَّث أسبوعًا يُحذف.
+DISK_DAYS = 7
+_ddir = [None]
+
+
+def disk_dir(data_dir):
+    """مجلد نسخ القوائم (يُضبط مرةً من الخادم عند التشغيل)."""
+    if data_dir and not _ddir[0]:
+        _ddir[0] = os.path.join(data_dir, "stremio_lists")
+
+
+def _dpath(key):
+    return os.path.join(_ddir[0], hashlib.sha1(repr(key).encode()).hexdigest()[:20] + ".json.gz") if _ddir[0] else None
+
+
+def disk_save(key, cats, L):
+    """يحفظ نسخة قائمةٍ على القرص (في الخلفية — لا ينتظرها أحد). لا يحفظ قائمةً فارغة."""
+    path = _dpath(key)
+    if not path or not L.items:
+        return False
+    try:
+        os.makedirs(_ddir[0], exist_ok=True)
+        body = json.dumps({"v": 1, "key": list(key), "kind": L.kind, "at": int(time.time()), "cats": cats,
+                           "items": [list(it) for it in L.items]}, ensure_ascii=False, separators=(",", ":"))
+        tmp = path + ".tmp"
+        with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=5) as f:
+            f.write(body)
+        os.replace(tmp, path)
+        cut = time.time() - DISK_DAYS * 86400
+        for folder in (_ddir[0], os.path.join(_ddir[0], "info")):   # نسخٌ لم تُحدَّث أسبوعًا (باقةٌ لم تعد تُستعمل)
+            for name in os.listdir(folder) if os.path.isdir(folder) else ():
+                fp = os.path.join(folder, name)
+                if name.endswith(".json.gz") and os.path.getmtime(fp) < cut:
+                    os.remove(fp)
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def disk_load(key, kind):
+    """نسخة القائمة على القرص ← (وقت حفظها، Lists)، أو None."""
+    path = _dpath(key)
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            d = json.load(f)
+        if d.get("v") != 1 or d.get("kind") != kind or tuple(d.get("key") or ()) != tuple(key):
+            return None
+        L = Lists.restore(kind, d.get("cats") or [], d.get("items") or [])
+        L.prepare()
+        return (float(d.get("at") or 0), L) if L.items else None
+    except (OSError, ValueError, TypeError, EOFError):
+        return None
+
+
+def _from_disk(key, kind):
+    """قائمةٌ ليست في الذاكرة ولها نسخةٌ على القرص ← تُوضع في الذاكرة قديمةً (فتُعرض فورًا ويُحدَّثها _cached في الخلفية)."""
+    with _lock:
+        if key in _lists:
+            return
+    hit = disk_load(key, kind)
+    if not hit:
+        return
+    with _lock:
+        if key not in _lists:
+            _lists[key] = (min(hit[0], time.time() - TTL), hit[1])     # قديمةٌ دائمًا: التحديث يبدأ من أول طلب
+            _lists.move_to_end(key)
+            while len(_lists) > LISTS_MAX:
+                _lists.popitem(last=False)
+
+
 def lists(cfg, kind):
     """كل عناصر النوع (‏movie · series · tv). مشتركةٌ بين مشتركي الباقة نفسها على السيرفر نفسه (تحميلٌ واحد لهم كلهم
     لا لكل مشترك)، وقديمتها تُعرض فورًا وتُحدَّث في الخلفية — فالبحث والتصفّح لا ينتظران السيرفر إلا أول مرة. وأقسام
     المشترك نفسه تُقرأ له (منها باقته، وتتحقّق من اشتراكه)."""
     cats = categories(cfg, kind)
     key = _lkey(cfg, kind, cats)
+    _from_disk(key, kind)                # بعد إعادة التشغيل: آخر نسخةٍ على القرص فورًا
 
     def load():
         with _list_sem:
             L = Lists(kind, cats, _all_items(cfg, kind, cats))
             L.prepare()                  # فهرس البحث مع التحميل: أول بحثٍ لا يبنيه
+        _bg(disk_save, key, cats, L)
         return L
     return _cached(_lists, key, TTL, load, LISTS_MAX, shared=True, short=lambda L: not L.items)
 
@@ -599,13 +688,73 @@ def has_lists(cfg, kind):
 _info = OrderedDict()                # (الهوست، الإجراء، المعرّف) ← (الوقت، الرد)
 
 
+_info_busy = set()
+
+
+def _ipath(key):
+    return os.path.join(_ddir[0], "info", hashlib.sha1(repr(key).encode()).hexdigest()[:20] + ".json.gz") if _ddir[0] else None
+
+
+def _info_disk(key):
+    """تفاصيل عنصرٍ فُتح قبلُ من القرص ← (وقتها، الرد) أو None — «تابع المشاهدة» بعد إعادة التشغيل يجد اسمه وصورته فورًا."""
+    path = _ipath(key)
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            d = json.load(f)
+        return (float(d["at"]), d["d"]) if isinstance(d.get("d"), dict) and d.get("key") == list(key) else None
+    except (OSError, ValueError, TypeError, KeyError, EOFError):
+        return None
+
+
+def _info_save(key, d):
+    path = _ipath(key)
+    if not path:
+        return
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=5) as f:
+            json.dump({"key": list(key), "at": int(time.time()), "d": d}, f, ensure_ascii=False, separators=(",", ":"))
+        os.replace(tmp, path)
+    except (OSError, TypeError, ValueError):
+        pass
+
+
 def _details(cfg, action, field, iid):
-    """تفاصيل فيلمٍ أو مسلسل (تُحفظ ساعات) — وفشلها None لا خطأ: تبقى بيانات القائمة."""
+    """تفاصيل فيلمٍ أو مسلسل (تُحفظ ساعات، ونسختها على القرص) — وفشلها None لا خطأ: تبقى بيانات القائمة. وقديمتها
+    (من الذاكرة أو القرص) تُعرض فورًا وتُجدَّد في الخلفية."""
     key = (host_key(cfg.host), action, iid)      # تفاصيل العنصر واحدةٌ لكل مشتركي السيرفر
     with _lock:
         hit = _info.get(key)
-        if hit and time.time() - hit[0] < INFO_TTL:
-            return hit[1]
+    if not hit:
+        hit = _info_disk(key)
+        if hit:
+            with _lock:
+                _info[key] = hit
+                _info.move_to_end(key)
+    if hit and time.time() - hit[0] < INFO_TTL:
+        return hit[1]
+    if hit:                                      # قديمة: تُعرض الآن، وتُجدَّد في الخلفية مرةً واحدة
+        with _lock:
+            busy = key in _info_busy
+            _info_busy.add(key)
+        if not busy:
+            def refresh():
+                try:
+                    _fetch_details(cfg, action, field, iid, key, None)
+                except Exception:
+                    pass
+                finally:
+                    with _lock:
+                        _info_busy.discard(key)
+            _bg(refresh)
+        return hit[1]
+    return _fetch_details(cfg, action, field, iid, key, hit)
+
+
+def _fetch_details(cfg, action, field, iid, key, hit):
     try:
         d = _api(cfg, action, **{field: iid})
     except AuthError:
@@ -621,6 +770,7 @@ def _details(cfg, action, field, iid):
         _info.move_to_end(key)
         while len(_info) > INFO_MAX:
             _info.popitem(last=False)
+    _bg(_info_save, key, d)
     return d
 
 
@@ -743,6 +893,7 @@ def reset():
             s.clear()
         _loading.clear()
         _gdir[0] = None
+        _ddir[0] = None
 
 
 # ================= ما يراه Stremio =================
@@ -771,7 +922,7 @@ def _released(v):
 
 def _preview(pre, kind, it):
     return _clean({"id": f"{pre}{_CODE[kind]}:{it.id}", "type": kind, "name": it.name, "poster": it.poster,
-                   "posterShape": "square" if kind == "tv" else "poster", "releaseInfo": it.year,
+                   "background": it.bg or None, "posterShape": "square" if kind == "tv" else "poster", "releaseInfo": it.year,
                    "imdbRating": it.rating, "description": it.plot or None, "genres": LIB.genre_names(it.genre)})
 
 
@@ -819,6 +970,14 @@ def _lib_info(lines, kind):
     return lib.genres, len(lib.works), lib.labels
 
 
+def manifest_id(cfg):
+    """معرّف الإضافة للخط (ثابتٌ من هوسته الأصلي ويوزره) — به تعرف تطبيقات Nuvio كتالوجاتها في المجموعات وترتيب الرئيسية."""
+    return "com.ssouq.xtream." + hashlib.sha256(f"{cfg.origin or cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
+
+
+NUVIO_TITLES = {"series": "المسلسلات", "movie": "الأفلام", "tv": "القنوات"}   # أسماء كتالوجات إضافة Nuvio (عربيةٌ ومختلفة)
+
+
 def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True):
     """(وصف الإضافة، حاله) بترتيب تطبيقات IPTV: «الحسابات» (‏accounts: لصاحب حساب Stremio أو رابطٍ وحده — والخط
     المرتبط بلاها، فلا يتكرّر صفّها) ثم المسلسلات ثم الأفلام ثم البث المباشر، باسم السيرفر وعدد محتوى كلٍّ («سمارت
@@ -831,7 +990,7 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
     «مصدر: كاسبر» لكل خط. ‏catalogs=False: إضافة خطٍّ مرتبط — بلا كتالوجات (محتواه في مكتبة صاحب الحساب)، وتبقى تفاصيل
     ما في مكتبة Stremio ببادئتها وتشغيله، ومصادره في أعمال المكتبة الموحدة (زرٌّ باسمه فوق قائمة التشغيل)."""
     pre = prefix(cfg)
-    uid = hashlib.sha256(f"{cfg.origin or cfg.host}\n{cfg.user}".encode()).hexdigest()[:10]
+    uid = manifest_id(cfg).rsplit(".", 1)[1]
     tag = f" · {label}" if label else ""
 
     def one(kind):
@@ -842,7 +1001,8 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
             return [], None, "auth"
     with ThreadPoolExecutor(max_workers=len(TYPES)) as ex:
         info = dict(zip(TYPES, ex.map(one, TYPES)))
-    cats = [{"type": ACCOUNTS, "id": ACCOUNTS_ID, "name": BRAND, "extra": [], "extraSupported": []}] if accounts else []
+    nuvio = bool(lines and lines[0].get("nuvio"))         # إضافة حساب Nuvio: أسماء كتالوجاتها عربيةٌ لكل نوع
+    cats = [{"type": ACCOUNTS, "id": ACCOUNTS_ID, "name": "حساباتي" if nuvio else BRAND, "extra": [], "extraSupported": []}] if accounts else []
     totals = []
     multi = bool(lines and len(lines) > 1)
     for kind in ORDER:
@@ -869,7 +1029,7 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
             [{"name": "search", "isRequired": False}, {"name": "skip", "isRequired": False}]
         # الاسم بلا كلمة النوع: Stremio يُلحق النوع بلغة واجهته («سمارت (10,329) - المسلسلات» · «… - Series»)
         cats.append({"type": kind, "id": CATALOG[kind], "extra": extra, "extraSupported": [e["name"] for e in extra],
-                     "name": (BRAND if multi else label or BRAND) + (f" ({_fmt(total)})" if total else "")})
+                     "name": (NUVIO_TITLES[kind] if nuvio else BRAND if multi else label or BRAND) + (f" ({_fmt(total)})" if total else "")})
         # صفوف الرئيسية: تصنيفٌ لكلٍّ («تركي - المسلسلات»)، بلا بحث (فلا تتكرّر نتائجه) ولا قائمة تصنيف
         cats += [{"type": kind, "id": CAT_PREFIX + c["id"], "name": c["name"], "extra": [{"name": "skip", "isRequired": False}],
                   "extraSupported": ["skip"]} for c in rows]
@@ -1639,6 +1799,7 @@ def work_preview(pre, w, multi, poster=None):
         m["id"] = work_id(pre, w)
     else:
         m = _clean({"id": work_id(pre, w), "type": w.kind, "name": w.name, "poster": w.poster,
+                    "background": next((x.item.bg for x in w.sources if x.item.bg), None),
                     "posterShape": "square" if w.kind == "tv" else "poster", "releaseInfo": w.year,
                     "imdbRating": w.rating, "description": w.plot or None, "genres": _split(w.genre)})
     if multi and w.kind != "tv":
@@ -2174,6 +2335,7 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
     if not cfg:
         return _json(404, {"ok": False, "error": "رابطٌ غير صالح — اطلب رابطًا جديدًا"})
     genre_dir(data_dir)
+    disk_dir(data_dir)
     if allowed and not allowed(cfg, key):
         return _json(404, {"ok": False, "error": "أُوقف هذا الرابط — الإضافة مقفلةٌ على حسابها"})
     rest = parts[1:]

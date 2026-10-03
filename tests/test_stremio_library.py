@@ -581,6 +581,73 @@ def movie_genres():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def disk_copy():
+    print("== نسخة القوائم على القرص: بعد إعادة التشغيل تُعرض فورًا وتُحدَّث في الخلفية ==")
+    S.reset()
+    a = MP.Panel("dk")
+    a.cat("series", 1, "مسلسلات")
+    a.series = [{"series_id": i, "name": f"مسلسل {i}", "category_id": "1", "last_modified": str(i), "releaseDate": "2025",
+                 "tmdb": str(1000 + i) if i == 3 else ""} for i in range(1, 6)]
+    sa = MP.serve(a)
+    ca = S.Cfg(f"http://127.0.0.1:{sa.server_address[1]}", "u", "p")
+    d = tempfile.mkdtemp(prefix="stremio_disk_")
+    try:
+        S.disk_dir(d)
+        L1 = S.lists(ca, "series")
+        key = S._lkey(ca, "series")
+        for _ in range(50):
+            if S._dpath(key) and os.path.exists(S._dpath(key)):
+                break
+            time.sleep(0.05)
+        check("تُحفظ نسختها على القرص مضغوطةً (في الخلفية)", os.path.exists(S._dpath(key)) and S._dpath(key).endswith(".json.gz"))
+        S.reset()                                         # «إعادة تشغيل الخادم»: الذاكرة فارغة
+        S.disk_dir(d)
+        a.slow["get_series"] = 3                          # والسيرفر بطيءٌ في القائمة الكاملة (مرح بعد النشر)
+        t = time.time()
+        L2 = S.lists(ca, "series")
+        took = time.time() - t
+        check("بعدها: القائمة فورًا من القرص (لا تنتظر السيرفر البطيء)", took < 1.5 and [it.name for it in L2.items] == [it.name for it in L1.items],
+              f"{took:.2f}s")
+        check("بعناصرها كما هي (السنة ومعرّف TMDB والقسم)", L2.by_id[3].tmdb == 1003 and L2.by_id[3].year == L1.by_id[3].year
+              and L2.cat_of(L2.by_id[3]) == "مسلسلات")
+        a.series.append({"series_id": 9, "name": "مسلسل جديد", "category_id": "1", "last_modified": "99"})
+        for _ in range(100):
+            L3 = S._cached_lists(ca, "series")
+            if L3 is not L2 and any(it.id == 9 for it in L3.items):
+                break
+            time.sleep(0.1)
+        check("وتُحدَّث من السيرفر في الخلفية (الجديد يظهر بعد وصولها)", any(it.id == 9 for it in S._cached_lists(ca, "series").items))
+        check("ونسخةٌ تالفة لا تُسقط شيئًا (تُتجاهل)", (open(S._dpath(key), "wb").write(b"broken") and S.disk_load(key, "series")) is None)
+
+        print("== تفاصيل ما فُتح على القرص («تابع المشاهدة» بعد إعادة التشغيل) ==")
+        a.info[3] = {"info": {"name": "مسلسل 3", "cover": "https://image.tmdb.org/t/p/w500/c3.jpg"}, "episodes": {"1": []}}
+        d1 = S._details(ca, "get_series_info", "series_id", 3)
+        ik = (S.host_key(ca.host), "get_series_info", 3)
+        for _ in range(50):
+            if os.path.exists(S._ipath(ik)):
+                break
+            time.sleep(0.05)
+        check("تُحفظ تفاصيل المسلسل المفتوح على القرص", d1 and os.path.exists(S._ipath(ik)))
+        S.reset()
+        S.disk_dir(d)
+        a.down.add("get_series_info")                     # اللوحة لا تردّ على التفاصيل بعد إعادة التشغيل
+        d2 = S._details(ca, "get_series_info", "series_id", 3)
+        check("وبعد إعادة التشغيل تُقرأ من القرص (الاسم والصورة) ولو لم تردّ اللوحة", d2 == d1, json.dumps(d2, ensure_ascii=False)[:120])
+        a.down.discard("get_series_info")
+
+        print("== صورة الخلفية العريضة للواجهة الكبيرة (Nuvio) ==")
+        a.series[0]["backdrop_path"] = ["https://image.tmdb.org/t/p/w1280/bg1.jpg"]
+        S.drop_lists(ca, "series")
+        L4 = S.lists(ca, "series")
+        m4 = S._preview(S.prefix(ca), "series", L4.by_id[1])
+        check("من ‏backdrop_path في قائمة اللوحة إلى «background» في بطاقة العمل", m4.get("background") == "https://image.tmdb.org/t/p/w1280/bg1.jpg"
+              and "background" not in S._preview(S.prefix(ca), "series", L4.by_id[2]), json.dumps(m4, ensure_ascii=False)[:160])
+    finally:
+        sa.shutdown()
+        shutil.rmtree(d, ignore_errors=True)
+        S.reset()
+
+
 def akhi_and_inspect():
     print("== «أخي» في مرح وفالكون، و«فحص عمل» (‏S.inspect_work) ==")
     S.reset()
@@ -771,6 +838,7 @@ def main():
     through_addon()
     slow_line()
     movie_genres()
+    disk_copy()
     akhi_and_inspect()
     categories()
     print("\n" + "-" * 40)

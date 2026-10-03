@@ -114,7 +114,7 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 - `Library`: `works` · `latest` (الأحدث) · `find(hk, id)` · `in_category` · `from_source` · `tagged` · `search` (بالكلمات ثم الصوتي) · `number(w)` (رقم القناة).
 
 ## 7) الـmanifest (`build_manifest`)
-- `VERSION` (حالياً 1.6.0). **ارفعه مع أي تغيير في شكل الـmanifest.**
+- `VERSION` (حالياً 1.6.1). **ارفعه مع أي تغيير في شكل الـmanifest.**
 - **ترتيب الكتالوجات** (هو ترتيب الرئيسية):
   1. «الحسابات»: نوع `الحسابات`، كتالوج `sq_accounts`.
   2. لكل نوع بالترتيب `series` ثم `movie` ثم `tv`:
@@ -238,6 +238,11 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 | `POST link` `{gate, username, line_gate, line_username, line_password, line}` | «ربط خط آخر» بحساب Nuvio (من بطاقة أي خط فيه) | `nuvio_link_line` |
 | `POST unlink` `{gate, username}` | «فصل الخط» المرتبط | `nuvio_unlink` |
 
+  - **واجهة الجوال والتلفاز** (`nuvio_layout` · `nuvio_home` · `_nuvio_home_safe`): مجموعات «المسلسلات · الأفلام · القنوات» بمجلد لكل تصنيف،
+    وترتيب الرئيسية بأسماء عربية، عبر `nuvio_accounts.push_collections` و`push_home` (دوال مزامنة تطبيقاتهم). تفاصيلها في `docs/nuvio.md` القسم 9.
+  - «تحديث الإضافة لكل الحسابات» يشمل حسابات Nuvio المفعّلة (`nuvio_update_mains`): المكتبة بمهلة، ثم الإضافة والواجهة.
+  - إضافة Nuvio (`lines[0]["nuvio"]`): أسماء كتالوجاتها «المسلسلات (N)» · «الأفلام (N)» · «القنوات (N)» · «حساباتي» (`NUVIO_TITLES`).
+
   `reinstall` و`disable` من بطاقة خط مرتبط تعمل على حساب صاحبه (`_nuvio_main`).
 
   - **الحساب** مثل Stremio: الإيميل `<يوزر>@tv.ssouq.com` (`email_for`، نفس تنظيف `stremio_accounts.email_for`)، وكلمة المرور
@@ -291,6 +296,7 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 - `stremio_accounts.json`: الحسابات وخطوطها. فيها `token` و`addon_key` و`linked_to` و`addon_v` و`addon_full` و`exp` و`status`.
 - `nuvio_accounts.json`: حسابات Nuvio بمفتاح `«هوست|يوزر»`. فيها `email` و`password` (مشفّرة) و`user_id` و`token` و`addon_key`
   و`acct` و`gate` و`status` (`active` / `off`) و`addon_at` و`addon_v` و`off_at`. والخط المرتبط: `linked_to` (`«هوست|يوزر»` صاحب الحساب) و`token` لخطّه و`status="linked"`، بلا إيميل.
+- `stremio_lists/`: نسخة كل قائمة (`<sha1>.json.gz`) وتفاصيل ما فُتح (`info/`). تُعرض فور إعادة التشغيل وتُحدَّث في الخلفية (`disk_dir` · `disk_save` · `disk_load` · `_info_disk`). ما لم يُحدَّث 7 أيام يُحذف.
 - `stremio_routes.json`: تحويل الهوستات.
 - `stremio_categories.json`: التصنيفات لكل حساب أداة.
 - `stremio_extras.json`: الإضافات الأخرى.

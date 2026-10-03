@@ -134,6 +134,41 @@ def install(sess, manifest_url, name, ours, profile=PROFILE):
     return push_addons(sess, [{"url": manifest_url, "name": name, "enabled": True}] + keep, profile)
 
 
+# ---- واجهة الحساب: المجموعات (Collections) وترتيب الرئيسية — بدوال المزامنة التي تستعملها تطبيقات Nuvio نفسها (الجوال والتلفاز)
+HOME_PLATFORM = "home_catalog_shared"   # ترتيب الرئيسية مشتركٌ بين الجوال والتلفاز (‏HOME_CATALOG_SHARED_SYNC_PLATFORM في تطبيقيهما)
+
+
+def _row(d):
+    return (d[0] if isinstance(d, list) and d else d) if isinstance(d, (list, dict)) else {}
+
+
+def pull_collections(sess, profile=PROFILE):
+    """مجموعات الملف ← قائمتها (‏Collection في تطبيقاتهم: id · title · pinToTop · viewMode · folders[sources])."""
+    row = _row(_api("POST", "/rest/v1/rpc/sync_pull_collections", {"p_profile_id": profile}, sess["access_token"])) or {}
+    v = row.get("collections_json") if isinstance(row, dict) else None
+    return v if isinstance(v, list) else []
+
+
+def push_collections(sess, collections, profile=PROFILE):
+    """تستبدل مجموعات الملف كلها (فتُقرأ أولًا وتبقى مجموعات العميل)."""
+    _api("POST", "/rest/v1/rpc/sync_push_collections", {"p_profile_id": profile, "p_collections_json": collections},
+         sess["access_token"])
+
+
+def pull_home(sess, profile=PROFILE):
+    """ترتيب الرئيسية ← ‏{show_catalog_type, hide_unreleased_content, items: [{key, addon_id, type, catalog_id, order, enabled,
+    custom_title, is_collection, collection_id}]} (أو {})."""
+    row = _row(_api("POST", "/rest/v1/rpc/sync_pull_home_catalog_settings",
+                    {"p_profile_id": profile, "p_platform": HOME_PLATFORM}, sess["access_token"])) or {}
+    v = row.get("settings_json") if isinstance(row, dict) else None
+    return v if isinstance(v, dict) else {}
+
+
+def push_home(sess, settings, profile=PROFILE):
+    _api("POST", "/rest/v1/rpc/sync_push_home_catalog_settings",
+         {"p_profile_id": profile, "p_settings_json": settings, "p_platform": HOME_PLATFORM}, sess["access_token"])
+
+
 def uninstall(sess, ours, profile=PROFILE):
     return push_addons(sess, [a for a in pull_addons(sess, profile) if not ours(a["url"])], profile)
 
@@ -261,6 +296,13 @@ def group(data_dir, host_key, username):
         return []
     linked = sorted((r for r in d.values() if isinstance(r, dict) and r.get("linked_to") == root), key=lambda r: r.get("ts") or 0)
     return [{k: v for k, v in r.items() if k != "password"} for r in [main] + linked]
+
+
+def all_records(data_dir):
+    """كل حسابات Nuvio وخطوطها (بلا كلمات مرور) — للتحميل المسبق."""
+    with _lock:
+        d = _load(data_dir)
+    return [{k: v for k, v in r.items() if k != "password"} for r in d.values() if isinstance(r, dict)]
 
 
 def owned(data_dir, acct_id, gate_id=None):
