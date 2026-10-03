@@ -6,7 +6,8 @@
 أيضًا (كلمةٌ بـ«-» قبلها تُخرجه: «عرب، -مدبلج»)، وللأفلام والمسلسلات تصنيفات العمل نفسه أيضًا (‏genres: «أكشن» من حقل genre بلغتيه). وما لم يدخل
 تصنيفًا في «أخرى». ‏home: صفٌّ في رئيسية Stremio («تركي - المسلسلات»)، وإلا ففي قائمة «اكتشف» وحدها؛ ‏on=False: مخفي.
 
-يُحرَّر من صفحة «التصنيفات» في الأداة لكل حساب أداة (وبلا تحرير: الافتراضي هنا). تغيير الصفوف يصل حسابات Stremio بـ«تحديث
+وصفٌّ أول في الرئيسية «التصنيفات» (‏index): بطاقةٌ لكل تصنيفٍ فيه محتوى تفتح قائمته كاملة — على التلفزيون لا «عرض الكل»
+لصفوف الرئيسية. يُحرَّر من صفحة «التصنيفات» في الأداة لكل حساب أداة (وبلا تحرير: الافتراضي هنا). تغيير الصفوف يصل حسابات Stremio بـ«تحديث
 الإضافة لكل الحسابات» (الـmanifest)، ومحتوى كل تصنيفٍ يُقرأ من الخادم فيتغيّر فورًا.
 
 الحفظ: ‏data/stremio_categories.json ‏{حساب الأداة: {"cats": [...]، "at": وقت}}.
@@ -168,9 +169,21 @@ def clean(cats):
 def save(data_dir, acct_id, cats):
     cats = clean(cats)
     d = dict(_load(data_dir))
-    d[str(acct_id)] = {"cats": cats, "at": int(time.time())}
+    d[str(acct_id)] = {**(d.get(str(acct_id)) or {}), "cats": cats, "at": int(time.time())}
     _write(data_dir, d)
     return cats
+
+
+def index_on(data_dir, acct_id):
+    """صفّ «التصنيفات» في الرئيسية (بطاقةٌ لكل تصنيفٍ تفتح قائمته كاملة) — ظاهرٌ ما لم يُطفئه العميل."""
+    rec = _load(data_dir).get(str(acct_id)) if data_dir and acct_id else None
+    return not (isinstance(rec, dict) and rec.get("index") is False)
+
+
+def set_index(data_dir, acct_id, on):
+    d = dict(_load(data_dir))
+    d[str(acct_id)] = {**(d.get(str(acct_id)) or {}), "index": bool(on)}
+    _write(data_dir, d)
 
 
 def reset(data_dir, acct_id):

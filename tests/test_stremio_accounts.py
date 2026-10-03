@@ -95,7 +95,7 @@ def against_mocks():
               str([a["manifest"]["name"] for a in col]))
         check("الإضافة برابطها على الموقع ووصفها كاملًا (الحسابات ثم المسلسلات ثم الأفلام ثم البث)",
               col[0]["transportUrl"].startswith("https://guide.ssouq.com/stremio/")
-              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX)] == [S.ACCOUNTS, "series", "movie", "tv"]
+              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX) and c["type"] != S.TILES] == [S.ACCOUNTS, "series", "movie", "tv"]
               and col[0]["flags"] == {"official": False, "protected": False})
         check("خرج من الجلسة بعد التثبيت", not api.sessions)
         raw = json.load(open(os.path.join(d, "stremio_accounts.json"), encoding="utf-8"))
@@ -350,7 +350,8 @@ def through_server():
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "late", "password": "lp"})
         m = (ours("late@tv.ssouq.com") or [{}])[0].get("manifest", {})
         check("يُنتظر حتى يقبله السيرفر ثم تُثبَّت الإضافة بأقسامها وأعدادها", c == 200 and xt.pending["late"] == 0
-              and len(genre_opts(m)) == 3 and all(genre_opts(m)) and m["catalogs"][1]["name"].endswith(")"), json.dumps(m, ensure_ascii=False)[:200])
+              and len(genre_opts(m)) == 3 and all(genre_opts(m)) and next(c for c in m["catalogs"] if c["id"] == "sq_series")["name"].endswith(")"),
+              json.dumps(m, ensure_ascii=False)[:200])
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "nv", "password": "np"})   # يرفضه السيرفر طوال الانتظار
         m = (ours("nv@tv.ssouq.com") or [{}])[0].get("manifest", {})
         check("وما بقي مرفوضًا: الحساب يُنشأ والإضافة تُثبَّت بلا أقسام", c == 200 and r.get("email") == "nv@tv.ssouq.com" and not genre_opts(m))
@@ -523,7 +524,8 @@ def through_server():
               and j.get("changed") == n_accts and j.get("failed") == [] and j.get("lines", 0) > n_accts, json.dumps(j, ensure_ascii=False))
         root_m, k1m = ours("u@tv.ssouq.com")[0]["manifest"], ours("u@tv.ssouq.com")[1]["manifest"]
         check("إضافة صاحب الحساب بأحدث نسخة: المكتبة الموحدة و«الحسابات»", root_m["version"] == S.VERSION
-              and root_m["catalogs"][0]["type"] == S.ACCOUNTS and root_m["catalogs"][1]["name"].startswith("سمارت سوق ("), root_m["catalogs"][1]["name"])
+              and root_m["catalogs"][0]["type"] == S.ACCOUNTS and next(c for c in root_m["catalogs"] if c["id"] == "sq_series")["name"].startswith("سمارت سوق ("),
+              json.dumps([c["name"] for c in root_m["catalogs"]], ensure_ascii=False))
         check("وإضافة الخط المرتبط بلا كتالوجات", k1m["version"] == S.VERSION and k1m["catalogs"] == [])
         check("وصفوف الرئيسية بتصنيفات العميل المحفوظة («مختارات - المسلسلات»)",
               any(c_["id"] == f"{S.CAT_PREFIX}s_pick" and c_["name"] == "مختارات" for c_ in root_m["catalogs"]),

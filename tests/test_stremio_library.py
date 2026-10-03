@@ -605,7 +605,7 @@ def categories():
         calls, real = [], S.LIB.build
         S.LIB.build = lambda kind, parts: (calls.append(kind), time.sleep(0.3), real(kind, parts))[2]
         try:
-            ts = [threading.Thread(target=S.library, args=(lines, "series")) for _ in range(4)]
+            ts = [threading.Thread(target=S.library, args=(lines, "series", True)) for _ in range(4)]   # بقوائم خطوطها كلها
             for t in ts:
                 t.start()
             for t in ts:
@@ -638,6 +638,40 @@ def categories():
         lv = S.lib_catalog(lines, "tv", "sq_live", {}, pre, mk)["metas"]
         raw = S.crypto_store.open_token(lv[0]["poster"].rsplit("/", 1)[1][:-4], d, S.POSTER_LABEL)
         check("وملصق القناة بتصنيفها الموحد", raw.split("\n")[2] == "رياضة", repr(raw))
+
+        print("== صفّ «التصنيفات»: بطاقةٌ لكل تصنيف ← «عرض الكل» (التلفزيون بلا «عرض الكل» لصفوف الرئيسية) ==")
+        check("في الـmanifest بعد «الحسابات» مباشرةً، ونوعه في الأنواع", man["catalogs"][1] == {"type": S.TILES, "id": S.TILES_ID, "name": S.BRAND,
+              "extra": [], "extraSupported": []} and man["types"][:2] == [S.ACCOUNTS, S.TILES], json.dumps(man["catalogs"][:2], ensure_ascii=False))
+        tl = S.tiles_catalog(lines, pre, mk)["metas"]
+        check("بطاقةٌ لكل تصنيفٍ فيه محتوى بترتيب الأنواع («مدبلج» وإن لم يكن صفًّا)، وعدده، وتُفتح قائمتها مباشرة",
+              [t["name"] for t in tl] == ["رمضان · مسلسلات", "تركي · مسلسلات", "عربي · مسلسلات", "مدبلج · مسلسلات", "أكشن · أفلام", "رعب · أفلام",
+                                          "رياضة · قنوات", "عربية · قنوات"]
+              and tl[1]["releaseInfo"] == "2 مسلسل" and tl[1]["behaviorHints"]["defaultVideoId"] == tl[1]["id"]
+              and tl[1]["poster"].startswith("https://g/stremio/p/"), json.dumps([t["name"] for t in tl], ensure_ascii=False))
+        traw = S.crypto_store.open_token(tl[1]["poster"].rsplit("/", 1)[1][:-4], d, S.POSTER_LABEL)
+        check("وصورتها: اسم التصنيف وعدده ونوعه", traw == "2\n\nمسلسلات\nتركي", repr(traw))
+        man_url = "https://g/stremio/T/manifest.json"
+        tm = S.tiles_meta(lines, pre, tl[1]["id"], man_url)["meta"]
+        want = "stremio:///discover/" + quote(man_url, safe="") + "/series/sq_series?genre=" + quote("تركي", safe="")
+        check("صفحتها: «عرض الكل» رابطٌ إلى شبكة «اكتشف» للتصنيف كاملًا", tm["links"] == [{"name": "📂 عرض الكل (2)", "category": "عرض الكل",
+              "url": want}] and "اضغط «عرض الكل»" in tm["description"], json.dumps(tm.get("links"), ensure_ascii=False))
+        ts = S.tiles_streams(lines, pre, tl[1]["id"], man_url)["streams"]
+        check("وفي قائمتها (تُفتح من الرئيسية مباشرةً) زرّ «عرض الكل» بالرابط نفسه، ولتطبيق التلفزيون رابطه",
+              len(ts) == 1 and ts[0]["externalUrl"] == ts[0]["androidTvUrl"] == want and "عرض كل «تركي»" in ts[0]["title"])
+        check("والشبكة نفسها: كل ما في «تركي»", [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {"genre": "تركي"}, pre)["metas"]]
+              == row("series", "s_turkish"))
+        check("وبطاقةٌ لا تُعرف ← لا شيء", S.tiles_meta(lines, pre, f"{pre}c:series:nope", man_url) is None
+              and S.tiles_streams(lines, pre, "x", man_url) is None)
+        off = [{**lines[0], "cat_index": False}, lines[1]]
+        man_off = S.manifest(ca, "https://g", "سمارت", lines=off)
+        check("ويُطفأ من صفحة «التصنيفات» (‏cat_index)", S.TILES not in man_off["types"] and all(c["id"] != S.TILES_ID for c in man_off["catalogs"]))
+        tok_c = S.make_token(d, ca.host, "u", "p")
+        lf = lambda cfg: lines if S.host_key(cfg.host) == S.host_key(ca.host) else None
+        code, body, _, _ = S.handle(d, f"/stremio/{tok_c}/catalog/{quote(S.TILES, safe='')}/{S.TILES_ID}.json", "https://g", lines_for=lf)
+        check("عبر المسار (النوع العربي مرمَّزًا)", code == 200 and len(json.loads(body)["metas"]) == len(tl), str(code))
+        code, body, _, _ = S.handle(d, f"/stremio/{tok_c}/stream/{quote(S.TILES, safe='')}/{quote(tl[1]['id'], safe='')}.json", "https://g", lines_for=lf)
+        check("وزرّ «عرض الكل» عبر المسار برابط الإضافة المثبّتة", code == 200
+              and json.loads(body)["streams"][0]["externalUrl"].startswith("stremio:///discover/" + quote(f"https://g/stremio/{tok_c}/manifest.json", safe="")))
 
         print("== تحرير التصنيفات ==")
         mine = [{"id": "s_kurd", "kind": "series", "name": "كردي", "keys": "kurdish, كردي", "home": True},

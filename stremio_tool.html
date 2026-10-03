@@ -328,6 +328,11 @@ h1{font-size:1.3rem;margin:0 0 2px}
   <h1>التصنيفات</h1>
   <p class="sub">تصنيفات سمارت سوق واحدةٌ لكل البوابات: قسم كل لوحةٍ يدخل التصنيف الذي في اسمه كلمةٌ من كلماته («مسلسلات تركية» و«TR | Turkish» ← «تركي»).
     «صفٌّ في الرئيسية» يظهر صفًّا مستقلًّا في رئيسية Stremio، والباقي في «اكتشف».</p>
+  <section style="padding:12px 14px">
+    <label class="chk" style="font-weight:700"><input type="checkbox" id="catIndex" checked>صفّ «التصنيفات» في الرئيسية</label>
+    <p class="hint" style="margin:2px 0 0">بطاقةٌ لكل تصنيفٍ فيه محتوى، والضغط عليها ← «عرض الكل» يفتح قائمته كاملة في «اكتشف» — أسهل على
+      التلفزيون (لا «عرض الكل» فيه لصفوف الرئيسية).</p>
+  </section>
   <div class="tabs2" id="catKinds" role="tablist" aria-label="النوع"></div>
   <section>
     <h2><span class="grow" id="catTtl">المسلسلات</span><small id="catSample"></small></h2>
@@ -1278,6 +1283,7 @@ function renderCats(){
   renderCatCounts(); renderCatState();
 }
 function renderCatState(){
+  $("catIndex").checked = CAT.index !== false;
   $("catSave").disabled = !CAT_DIRTY;
   $("catState").textContent = CAT_DIRTY ? "تغييراتٌ لم تُحفظ" : (CAT.edited ? "تصنيفاتك محفوظة" : "التصنيفات الافتراضية");
 }
@@ -1343,9 +1349,10 @@ $("catLooseList").addEventListener("change", e => {
   c.keys = c.keys ? `${c.keys}، ${name}` : name; CAT_OPEN.add(c.id);
   renderCats(); catChanged(true); toast(`«${name}» ← ${c.name}`);
 });
+$("catIndex").onchange = () => { CAT.index = $("catIndex").checked; catChanged(false); };
 $("catSave").onclick = async () => {
   $("catSave").disabled = true; $("catMsg").textContent = "";
-  try { CAT = await api("/api/stremio/categories", {cats: CAT.cats}); CAT_DIRTY = false; renderCats(); $("catAfter").hidden = false; toast("حُفظت التصنيفات"); }
+  try { CAT = await api("/api/stremio/categories", {cats: CAT.cats, index: CAT.index !== false}); CAT_DIRTY = false; renderCats(); $("catAfter").hidden = false; toast("حُفظت التصنيفات"); }
   catch(e) { $("catMsg").textContent = e.message; $("catSave").disabled = false; }
 };
 $("catReset").onclick = async () => {
