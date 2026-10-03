@@ -281,7 +281,7 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await user.waitForSelector('#viewCats:not([hidden]) #catList .cat', {timeout: 8000});
     check('its own page (/stremio/categories), series first, defaults with their counts',
           new URL(user.url()).pathname === '/admin/stremio/categories' && (await user.getAttribute('#tabCat', 'aria-current')) === 'page'
-          && (await user.inputValue('#catList .cat:first-child input[data-f=name]')) === 'رمضان'
+          && (await user.inputValue('#catList .cat:first-child input[data-f=name]')) === 'تركي يعرض الآن'
           && (await user.textContent('#catState')).includes('الافتراضية'), await user.textContent('#catState'));
     // اليوزرات هنا يرفضها سيرفر Xtream الوهمي (فلا قوائم في الذاكرة): الأعداد «—» والصفحة تقول متى تظهر
     const counted = await user.$$eval('#catList .cat .count', cs => cs.filter(c => /\d/.test(c.textContent)).length);
@@ -302,6 +302,11 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('the type tabs: movies, whose keywords open with the work-genre field', (await user.textContent('#catTtl')) === 'الأفلام'
           && await user.isVisible('#catList .cat:first-child input[data-f=keys]') && await user.isVisible('#catList .cat:first-child input[data-f=genres]'));
     await user.click('#catKinds [data-k=series]');
+    await user.click('#catList .cat:first-child [data-ex]');
+    check('«تركي يعرض الآن» first: «يُعرض الآن فقط» = 10 days, editable in its foldout',
+          (await user.inputValue('#catList .cat:first-child input[data-f=recent]')) === '10'
+          && (await user.$$eval('#viewCats .sub', ps => ps.map(p => p.textContent).join(' '))).includes('تركي: اخي'));
+    await user.click('#catList .cat:first-child [data-ex]');
     await user.click('#catAdd');
     await user.fill('#catList .cat:last-child input[data-f=name]', 'مختارات');
     await user.fill('#catList .cat:last-child input[data-f=keys]', 'أجنبية');

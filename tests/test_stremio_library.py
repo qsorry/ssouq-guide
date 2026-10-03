@@ -232,7 +232,7 @@ def through_addon():
         check("والقسم بعدده من أي بوابة", [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {"genre": "مسلسلات مترجمة (1)"}, pre)["metas"]]
               == ["علي كارا"])
         man = S.manifest(c1, "https://g", "سمارت", lines=lines)
-        cat = {c["type"]: c for c in man["catalogs"] if not c["id"].startswith(S.CAT_PREFIX)}
+        cat = {c["type"]: c for c in man["catalogs"] if not c["id"].startswith(S.CAT_PREFIX) and c["id"] not in S.YEARS.values()}
         opts = next(e["options"] for e in cat["series"]["extra"] if e["name"] == "genre")
         check("الـmanifest: الصفوف باسم المتجر وعدد الأعمال الموحدة، و«مصدر: …» لكل بوابة",
               cat["series"]["name"] == "سمارت سوق (3)" and cat["movie"]["name"] == "سمارت سوق (1)" and cat["tv"]["name"] == "سمارت سوق (1)"
@@ -470,7 +470,7 @@ def slow_line():
         S.drop_lists(c2, "movie")
         S.lib_catalog(lines, "movie", "sq_movies", {}, pre)
         man = S.manifest(c1, "https://g", "سمارت", lines=lines)
-        cat = {c["type"]: c for c in man["catalogs"]}
+        cat = {c["type"]: c for c in man["catalogs"] if c["id"] not in S.YEARS.values()}
         check("والـmanifest (يُثبَّت مرة) ينتظر الخطوط كلها: أعداده و«مصدر: …» منها كلها",
               cat["movie"]["name"] == "سمارت سوق (2)" and "مصدر: كاسبر" in next(e["options"] for e in cat["movie"]["extra"] if e["name"] == "genre"),
               cat["movie"]["name"])
@@ -664,7 +664,10 @@ def akhi_and_inspect():
                 {"series_id": 12, "name": "أخي (مترجم) S01", "category_id": "1", "last_modified": "17"},
                 {"series_id": 13, "name": "أخي (مدبلج) S01", "category_id": "2", "last_modified": "16"},
                 {"series_id": 14, "name": "اخي العزيز", "category_id": "1", "last_modified": "4", "tmdb": "500"},
-                {"series_id": 15, "name": "اخي العزيز (مترجم)", "category_id": "1", "last_modified": "3", "tmdb": "600"}]
+                {"series_id": 15, "name": "اخي العزيز (مترجم)", "category_id": "1", "last_modified": "3", "tmdb": "600"},
+                # تركيٌّ نزلت حلقته أمس، وآخر آخرُ حلقاته قبل 40 يومًا (لا «يعرض الآن» في أقسام فالكون)
+                {"series_id": 16, "name": "مسلسل تركي جديد", "category_id": "1", "last_modified": str(int(time.time()) - 86400)},
+                {"series_id": 17, "name": "مسلسل تركي قديم", "category_id": "1", "last_modified": str(int(time.time()) - 40 * 86400)}]
     sa, sb = MP.serve(a), MP.serve(b, bind="127.0.0.2")
     ca = S.Cfg(f"http://127.0.0.1:{sa.server_address[1]}", "u", "p")
     cb = S.Cfg(f"http://127.0.0.2:{sb.server_address[1]}", "bu", "bp")
@@ -697,6 +700,49 @@ def akhi_and_inspect():
         check("ومعرّفا TMDB مختلفان للاسم نفسه ← يُذكران (فيبقيان عملين)", ser["conflicts"] == ["اخي العزيز"]
               and sum(1 for x in ser["works"] if x["name"] == "اخي العزيز") == 2, json.dumps(ser["conflicts"], ensure_ascii=False))
         check("واسمٌ لا يوجد ← لا شيء", S.inspect_work(lines, "لا يوجد أبدًا")["kinds"] == [])
+
+        print("== «تركي يعرض الآن»: يتحدّث مع ما يُعرض فعلًا ==")
+        by = S._cat_index(lines, S.library(lines, "series"), "series")["by"]
+        now_names = [w.name for w in by.get("s_tr_now", [])]
+        check("ما نزلت له حلقةٌ خلال 10 أيام، وما قسمه في اللوحة «(يعرض الآن)» (مرح) — الأحدث أولًا",
+              now_names[:1] == ["مسلسل تركي جديد"] and set(now_names) == {"مسلسل تركي جديد", "أخي", "آه يا أخي"}, str(now_names))
+        check("وما توقّف (آخر حلقةٍ قبل 40 يومًا) في «تركي» وحده", "مسلسل تركي قديم" not in now_names
+              and "مسلسل تركي قديم" in [w.name for w in by.get("s_turkish", [])])
+        check("وهو أول تصنيفات المسلسلات في «اكتشف»", next(e["options"] for c in S.manifest(ca, "https://g", "مرح", lines=lines)["catalogs"]
+              if c["id"] == "sq_series" for e in c["extra"] if e["name"] == "genre")[0].startswith("تركي يعرض الآن"))
+
+        print("== اختيار السنة: «حسب السنة» في «اكتشف»، والسنة تصنيفٌ في كتالوج النوع ==")
+        man = S.manifest(ca, "https://g", "مرح", lines=lines)
+        yc = next((c for c in man["catalogs"] if c["id"] == S.YEARS["series"]), {})
+        ex = (yc.get("extra") or [{}])[0]
+        check("كتالوج «حسب السنة» للمسلسلات: السنوات بأعدادها الأحدث أولًا، والسنة مطلوبة (فلا يظهر صفًّا في الرئيسية)",
+              yc.get("name") == S.YEARS_NAME and ex.get("isRequired") is True and ex.get("options", [None])[0] == "2026 (1)",
+              json.dumps(yc, ensure_ascii=False)[:200])
+        check("ولا «حسب السنة» للقنوات", all(not c["id"].endswith("_years") or c["type"] != "tv" for c in man["catalogs"]))
+        y26 = [m["name"] for m in S.lib_catalog(lines, "series", S.YEARS["series"], {"genre": "2026 (1)"}, pre)["metas"]]
+        check("اختيار 2026 ← أعمال 2026 وحدها", y26 == ["أخي"], str(y26))
+        check("والسنة تصنيفٌ في كتالوج المسلسلات نفسه («2026» — مجلد السنة في Nuvio)",
+              [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {"genre": "2026"}, pre)["metas"]] == ["أخي"])
+        check("و«حسب السنة» بلا سنة ← لا شيء", S.lib_catalog(lines, "series", S.YEARS["series"], {}, pre)["metas"] == [])
+
+        print("== البحث في تصنيفٍ وحده: «تركي: اخي» ==")
+        sr = lambda q, kind="series": [m["name"] for m in S.lib_catalog(lines, kind, CATALOG[kind], {"search": q}, pre)["metas"]]
+        everywhere = sr("اخي")
+        check("بلا تصنيف ← في الجميع (ومنها «اخي العزيز» عملين)", {"اخي العزيز", "اخي العزيز (مترجم)", "آه يا أخي"} <= set(everywhere), str(everywhere))
+        check("«تركي يعرض الآن: اخي» ← ما يُعرض الآن وحده (لا «اخي العزيز»)", sr("تركي يعرض الآن: اخي") == ["أخي", "آه يا أخي"],
+              str(sr("تركي يعرض الآن: اخي")))
+        check("والاسم بعدده («تركي يعرض الآن (3)») وبنقطتين عريضتين «：» وبلا مسافات", sr("تركي يعرض الآن (3)：اخي") == ["أخي", "آه يا أخي"]
+              and sr("تركي يعرض الآن:اخي") == ["أخي", "آه يا أخي"])
+        check("«2026: اخي» و«سنة 2026: اخي» ← أعمال تلك السنة", sr("2026: اخي") == ["أخي"] and sr("سنة 2026: اخي") == ["أخي"],
+              str(sr("2026: اخي")))
+        check("«فالكون: اخي» ← ما في ذلك المصدر وحده (لا «آه يا أخي» من مرح)", "آه يا أخي" not in sr("فالكون: اخي")
+              and set(sr("فالكون: اخي")) == {"أخي", "اخي العزيز", "اخي العزيز (مترجم)"}, str(sr("فالكون: اخي")))
+        check("«تركي يعرض الآن:» وحده ← التصنيف كله", set(sr("تركي يعرض الآن:")) == {"مسلسل تركي جديد", "أخي", "آه يا أخي"})
+        check("تصنيفٌ من نوعٍ آخر («رعب» للأفلام) ← لا شيء في المسلسلات، وسنةٌ في القنوات ← لا شيء",
+              sr("رعب: اخي") == [] and sr("2026: اخي", "tv") == [])
+        check("وما قبل النقطتين ليس تصنيفًا ولا سنةً ولا مصدرًا ← بحثٌ عاديٌّ بالنص كله («Mission: Impossible»)",
+              S._scoped_search(lines, S.library(lines, "series"), "series", "Mission: اخي")
+              == S.library(lines, "series").search("Mission: اخي"))
         check("‏_takes_key يميّز lines_for(cfg، القفل) (لا يظلّله اسمٌ آخر — إضافة Nuvio بخطوطها)",
               S._takes_key(lambda c, k: 0) is True and S._takes_key(lambda c: 0) is False)
     finally:
@@ -767,7 +813,8 @@ def categories():
         man = S.manifest(ca, "https://g", "سمارت", lines=lines)
         rows = [(c["type"], c["name"]) for c in man["catalogs"] if c["id"].startswith(S.CAT_PREFIX)]
         check("الرئيسية أقسام: «الحسابات» ثم المسلسلات ثم الأفلام ثم القنوات — بلا صفوف تصنيفات (افتراضًا)",
-              rows == [] and [c["type"] for c in man["catalogs"]] == [S.ACCOUNTS, "series", "movie", "tv"], json.dumps(rows, ensure_ascii=False))
+              rows == [] and [c["type"] for c in man["catalogs"] if c["id"] not in S.YEARS.values()] == [S.ACCOUNTS, "series", "movie", "tv"],
+              json.dumps(rows, ensure_ascii=False))
         sopts = next(e["options"] for c in man["catalogs"] if c["id"] == "sq_series" for e in c["extra"] if e["name"] == "genre")
         check("وتصنيفات كل قسمٍ داخله («اكتشف» ← «تصنيف»): بأعدادها وترتيبها، ثم «أخرى»، ثم «مصدر: …»",
               sopts == ["رمضان (1)", "تركي (2)", "عربي (1)", "مدبلج (1)", "أخرى (1)", "مصدر: سمارت", "مصدر: فالكون"], json.dumps(sopts, ensure_ascii=False))
@@ -789,6 +836,14 @@ def categories():
         mine1[0]["home"] = True
         K.save(d, "9", mine1)
         check("وبعده «صفٌّ في الرئيسية أيضًا» يُحفظ لمن أراده", [c["home"] for c in K.get(d, "9")] == [True, False])
+        old = {"8": {"cats": [c for c in K.defaults() if c["id"] != K.NOW_ID][:3], "at": 1, "layout": 2}}
+        with open(os.path.join(d, "stremio_categories.json"), "w", encoding="utf-8") as f:
+            json.dump(old, f, ensure_ascii=False)
+        got8 = K.get(d, "8")
+        check("وتصنيفاتٌ حُفظت قبل «تركي يعرض الآن» ← يُضاف أولَ مسلسلاتها (مرةً)", [c["id"] for c in got8][:2] == [K.NOW_ID, "s_ramadan"]
+              and got8[0].get("recent") == 10, str([c["id"] for c in got8]))
+        check("ومدته تُحرَّر (حتى 60 يومًا) وتُحفظ", K.clean([{"kind": "series", "name": "س", "keys": "x", "recent": "90"}])[0]["recent"] == 60
+              and "recent" not in K.clean([{"kind": "series", "name": "س", "keys": "x", "recent": ""}])[0])
         check("وقائمة «اكتشف» بالتصنيف: كل ما في «تركي»", [m["name"] for m in S.lib_catalog(lines, "series", "sq_series", {"genre": "تركي"}, pre)["metas"]]
               == row("series", "s_turkish"))
         tok_c = S.make_token(d, ca.host, "u", "p")

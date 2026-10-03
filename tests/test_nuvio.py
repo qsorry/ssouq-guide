@@ -346,8 +346,14 @@ def through_server():
         check("وما أعاده العميل من Cinemeta يبقى كما اختار، وإضافته الأخرى بعد صفوفنا", by2.get("com.linvo.cinemeta:movie:top", {}).get("enabled") is True
               and by2.get("org.other:movie:pop", {}).get("order", 0) > by2[f"{aid}:{S.ACCOUNTS}:{S.ACCOUNTS_ID}"]["order"])
         ser2 = next(c_ for c_ in cols2 if c_["id"] == "ssouq_series")
+        fy = ser2["folders"][1]
+        check("وثاني مجلدٍ أحدث سنة («2026»…): كتالوج المسلسلات بالسنة", fy["title"].isdigit() and len(fy["title"]) == 4
+              and fy["sources"][0]["genre"] == fy["title"] and fy["sources"][0]["catalogId"] == "sq_series", json.dumps(fy, ensure_ascii=False)[:160])
+        c, txt = addon(url1, "/catalog/series/sq_series/genre=" + quote(fy["title"], safe="") + ".json")
+        check("ويفتح أعمال تلك السنة", c == 200 and json.loads(txt).get("metas") and all(m.get("releaseInfo") == fy["title"] for m in json.loads(txt)["metas"]),
+              txt[:120])
         check("وبعد أن بُنيت المكتبة: مجلدات التصنيفات التي فيها محتوى وحدها", ser2["folders"][0]["title"] == "الكل"
-              and {f["title"] for f in ser2["folders"][1:]} <= {"تركي", "أجنبي", "عربي", "رمضان", "آسيوي", "أنمي", "أطفال وكرتون", "هندي", "وثائقي", "مدبلج", "أخرى"}
+              and {f["title"] for f in ser2["folders"][2:]} <= {"تركي يعرض الآن", "تركي", "أجنبي", "عربي", "رمضان", "آسيوي", "أنمي", "أطفال وكرتون", "هندي", "وثائقي", "مدبلج", "أخرى"}
               and len(ser2["folders"]) < len(cols[0]["folders"]), str([f["title"] for f in ser2["folders"]]))
         c, r = post("/api/nuvio/accounts?gate=g1", None)
         row = next((a for a in r.get("accounts", []) if a["username"] == XUSER), {})

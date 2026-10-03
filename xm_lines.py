@@ -1278,6 +1278,11 @@ def nuvio_layout(acct_id, lines):
             return {"id": f"{NUVIO_COLL}{kind}_{fid}", "title": title, "coverImageUrl": poster(title, n or 0, "", word),
                     "tileShape": "square", "hideTitle": False, "sources": [src]}
         folders = [folder("all", "الكل", len(lib.latest) if lib else 0)]
+        if kind in stremio_addon.YEARS:                 # وأحدث سنة («2026»): جديد السنة بضغطة — وكل السنوات في «اكتشف» ← «حسب السنة»
+            now_y = str(datetime.date.today().year)
+            yrs = [(y, n) for y, n in stremio_addon.years_of(lib) if y <= now_y] if lib else []
+            y, n = yrs[0] if yrs else (now_y, None)
+            folders.append(folder(f"y{y}", y, n, y))
         for c in stremio_categories.of_kind(cats, kind):
             n = len(by.get(c["id"]) or ()) if by is not None else None
             if by is None or n:

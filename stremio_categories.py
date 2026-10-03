@@ -32,10 +32,19 @@ MAX_PER_KIND = 30
 NAME_MAX = 40
 KEYS_MAX = 600
 
-LAYOUT = 2                           # 2: الرئيسية أقسامٌ لا صفوف تصنيفات — ما حُفظ قبلها تُطفأ صفوفه في الرئيسية مرةً
-_C = lambda cid, kind, name, keys, home=False, genres="": {"id": cid, "kind": kind, "name": name, "keys": keys,
-                                                          "genres": genres, "home": home, "on": True}
+# 2: الرئيسية أقسامٌ لا صفوف تصنيفات — ما حُفظ قبلها تُطفأ صفوفه في الرئيسية مرةً
+# 3: «تركي يعرض الآن» — يُضاف أولَ تصنيفات المسلسلات لما حُفظ قبلها
+LAYOUT = 3
+RECENT_MAX = 60
+# ‏recent (أيام): ما يُعرض الآن فعلًا — العمل في التصنيف إن نزلت له حلقةٌ خلال آخر N يوم (آخر تعديلٍ في اللوحة)، أو كان قسمه في اللوحة
+# «يعرض الآن» (‏NOW_TERMS) — فيتحدّث وحده كلما أضافت اللوحات حلقات
+NOW_TERMS = "يعرض الان, يعرض حاليا, يعرض حالياً, now showing, airing, ongoing"
+_C = lambda cid, kind, name, keys, home=False, genres="", recent=0: {"id": cid, "kind": kind, "name": name, "keys": keys,   # noqa: E731
+                                                                     "genres": genres, "home": home, "on": True,
+                                                                     **({"recent": recent} if recent else {})}
+NOW_ID = "s_tr_now"
 DEFAULTS = [
+    _C(NOW_ID, "series", "تركي يعرض الآن", "ترك, turk, turkish, tr", recent=10),
     _C("s_ramadan", "series", "رمضان", "رمضان, ramadan"),
     _C("s_turkish", "series", "تركي", "ترك, turk, turkish, tr"),
     _C("s_arabic", "series", "عربي", "عرب, arab, مصر, خليج, سوري, شامي, لبنان, عراق, سعودي, كويت, gulf, egypt, khaliji, "
@@ -128,10 +137,14 @@ def get(data_dir, acct_id):
     if not isinstance(cats, list):
         return defaults()
     cats = copy.deepcopy(cats)
-    if (rec.get("layout") or 1) < LAYOUT:         # حُفظت والرئيسية صفوف تصنيفات: تصير أقسامًا (صفوفها مطفأة)
+    layout = rec.get("layout") or 1
+    if layout < 2:                                # حُفظت والرئيسية صفوف تصنيفات: تصير أقسامًا (صفوفها مطفأة)
         for c in cats:
             if isinstance(c, dict):
                 c["home"] = False
+    if layout < 3 and not any(isinstance(c, dict) and c.get("id") == NOW_ID for c in cats):
+        at = next((i for i, c in enumerate(cats) if isinstance(c, dict) and c.get("kind") == "series"), len(cats))
+        cats.insert(at, copy.deepcopy(next(c for c in DEFAULTS if c["id"] == NOW_ID)))   # «تركي يعرض الآن» أولَ المسلسلات
     return cats
 
 
@@ -167,7 +180,8 @@ def clean(cats):
         ids.add(cid)
         out.append({"id": cid, "kind": kind, "name": name, "keys": _clean_text(c.get("keys"), KEYS_MAX),
                     "genres": _clean_text(c.get("genres"), KEYS_MAX) if kind != "tv" else "",
-                    "home": bool(c.get("home")), "on": c.get("on", True) is not False})
+                    "home": bool(c.get("home")), "on": c.get("on", True) is not False,
+                    **({"recent": min(RECENT_MAX, int(c["recent"]))} if str(c.get("recent") or "").isdigit() and int(c["recent"]) > 0 else {})})
     names = [(c["kind"], norm(c["name"])) for c in out]
     dup = next((c["name"] for c, k in zip(out, names) if names.count(k) > 1), None)
     if dup:
@@ -225,4 +239,9 @@ def of_kind(cats, kind, home=None):
 
 
 def sig(cats):
-    return tuple((c["id"], c.get("keys", ""), c.get("genres", "")) for c in cats)
+    return tuple((c["id"], c.get("keys", ""), c.get("genres", ""), c.get("recent") or 0) for c in cats)
+
+
+def now_matcher():
+    """قسم لوحةٍ «يعرض الآن» (يُبقي العمل في تصنيفٍ ‏recent ولو تأخّر تعديله في اللوحة)."""
+    return matcher({"keys": NOW_TERMS})
