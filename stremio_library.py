@@ -154,10 +154,31 @@ def _int(v):
         return 0
 
 
+# «مرعشلي نسخة شاهد» · «(نسخة نتفليكس)»: وصف نسخة المصدر في آخر الاسم — ليس من هوية العمل
+_EDITION = re.compile(r"(?i)(?<=\S)[\s\-–—|:(\[]+نسخ[ةه](?:\s+(?:شاهد|نتفليكس|نتفلكس|netflix|shahid|osn|مدبلج[ةه]|مترجم[ةه]|"
+                      r"كامل[ةه]|[اأ]صلي[ةه]|جديد[ةه]|معدل[ةه]|سينمائي[ةه]|السينما))?[)\]]*\s*$")
+SERIES_YEAR_GAP = 3                  # سنتا مسلسلٍ بالاسم نفسه بينهما ≤3: عملٌ واحد (لوحةٌ تكتب سنة أول موسم وأخرى سنة آخر موسم)
+
+
+def clean_title(raw):
+    """‏seo_match.clean_title حتى يستقرّ: «علي كارا مترجم 2025» · «الحفرة (مترجم) 2017» ← السنة تُفصل ثم تُحذف النسخة التي
+    كانت قبلها (مرةً واحدة كانت تبقى في المفتاح فلا يطابق «علي كارا»)؛ و«نسخة شاهد» في آخر الاسم تُحذف كذلك."""
+    ct = M.clean_title(raw, ST)
+    for _ in range(3):
+        base = _EDITION.sub("", ct["base"]).strip() or ct["base"]
+        nxt = M.clean_title(base, ST)
+        if norm(nxt["base"]) == norm(ct["base"]):
+            break
+        ct = {**nxt, "raw": ct["raw"], "year": ct["year"] or nxt["year"], "season": ct["season"] or nxt["season"],
+              "original": ct["original"] or nxt["original"],
+              "versions": list(dict.fromkeys(list(ct["versions"]) + list(nxt["versions"])))}
+    return ct
+
+
 def item_key(it, cat=""):
     """عنصر القائمة ← مفتاح مطابقته (الاسم الخام يبقى في العنصر نفسه)."""
     raw, season = season_of(it.name)
-    ct = M.clean_title(raw, ST)
+    ct = clean_title(raw)
     season = season or ct["season"]
     base = ct["base"] or it.name
     versions = list(ct["versions"])
@@ -184,11 +205,9 @@ class Work:
         self.sources = sorted(sources, key=lambda s: (s.line, -QUALITY_RANK.get(s.key.quality, 1), s.item.id))
         a = min(sources, key=lambda s: (s.line, s.item.id))       # المرساة: منها معرّف العمل (ثابتٌ ما بقي مصدرها)
         self.anchor = a
-        if len(sources) == 1:
-            self.name = a.item.name                                # مصدرٌ واحد: اسمه كما في السيرفر
-        elif kind == "tv":
-            self.name = C._dequal(a.item.name)                     # «beIN SPORTS 1 HD/FHD» ← «beIN SPORTS 1»
-        else:
+        if kind == "tv":                                           # «beIN SPORTS 1 HD/FHD» ← «beIN SPORTS 1»
+            self.name = a.item.name if len(sources) == 1 else C._dequal(a.item.name)
+        else:                                                      # بلا «مترجم» و«مدبلج» والجودة والموسم: النسخ داخل العمل
             self.name = a.key.base + (f" ({a.key.year})" if kind == "movie" and a.key.year and re.search(r"\(\d{4}\)", a.item.name) else "")
         first = lambda f: next((getattr(s.item, f) for s in [a] + self.sources if getattr(s.item, f)), None)
         tmdb_poster = next((s.item.poster for s in [a] + self.sources if s.key.pfile), None)
@@ -261,6 +280,14 @@ def _name_bucket(kind, idx, keys, uf):
         else:
             loose.append(i)
     groups = list(years.values())
+    if kind == "series" and len(groups) > 1:                     # سنواتٌ متقاربة لمسلسلٍ واحد ← مجموعةٌ واحدة
+        ys, clusters = sorted(years), []
+        for y in ys:
+            if clusters and y - clusters[-1][-1] <= SERIES_YEAR_GAP:
+                clusters[-1].append(y)
+            else:
+                clusters.append([y])
+        groups = [[i for y in c for i in years[y]] for c in clusters]
     if len(groups) <= 1:
         groups = [(groups[0] if groups else []) + loose]
     elif loose:
