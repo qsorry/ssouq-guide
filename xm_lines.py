@@ -1145,7 +1145,8 @@ def stremio_warm_cfgs():
     """اشتراكٌ لكل سيرفرٍ في حسابات Stremio (أحدث حسابٍ لم يرفضه السيرفر، على هوسته بعد التحويل) — تُحمَّل به
     قوائم باقته مسبقًا فيجدها البحث والتصفّح."""
     best = {}
-    for r in stremio_accounts.all_records(DATA_DIR):
+    nuvio = [r for r in nuvio_accounts.all_records(DATA_DIR) if r.get("status") != "off"]
+    for r in stremio_accounts.all_records(DATA_DIR) + nuvio:       # وحسابات Nuvio وخطوطها المرتبطة
         cfg = stremio_cfg(r.get("token")) if r.get("token") else None
         if not cfg:
             continue
@@ -1167,11 +1168,21 @@ def stremio_group_lines():
         if lines and sig not in seen:
             seen.add(sig)
             out.append(lines)
+    for r in nuvio_accounts.all_records(DATA_DIR):                # وحسابات Nuvio (صاحبها ثم خطوطه)
+        if r.get("linked_to") or not r.get("token") or r.get("status") == "off":
+            continue
+        cfg = stremio_addon.read_token(DATA_DIR, r["token"])
+        lines = nuvio_lines(cfg) if cfg else None
+        sig = tuple((stremio_addon.host_key(ln["cfg"].host), ln["cfg"].user) for ln in lines or [])
+        if lines and sig not in seen:
+            seen.add(sig)
+            out.append(lines)
     return out
 
 
 def start_stremio_warm():
     """قوائم سيرفرات الحسابات في الذاكرة من التشغيل وتُجدَّد كل حين (‏STREMIO_WARM_EVERY) — البحث فوريٌّ من أول طلب."""
+    stremio_addon.disk_dir(DATA_DIR)                     # نسخ القوائم على القرص: تُعرض فور إعادة التشغيل
     if STREMIO_WARM_EVERY <= 0:
         return
 
@@ -1233,8 +1244,87 @@ def nuvio_lines(cfg):
             out.append(stremio_line(c, r))
     out = out or [stremio_line(cfg)]
     own = nuvio_accounts.owner(DATA_DIR, stremio_addon.host_key(cfg.host), cfg.user) or {}
+    out[0]["nuvio"] = True                      # أسماء كتالوجاتها عربيةٌ لكل نوع (المسلسلات · الأفلام · القنوات)
     out[0]["cats"] = stremio_categories.get(DATA_DIR, own.get("acct"))
     return out
+
+
+# ---- واجهة Nuvio للعميل: تُضبط من الأداة بدوال مزامنة تطبيقاتهم (الجوال والتلفاز معًا) ----
+# ثلاث مجموعات مثبّتةٌ أعلى الرئيسية — المسلسلات · الأفلام · القنوات — في كلٍّ مجلدٌ لكل تصنيف (صورةٌ مرسومة باسمه وعدده) يفتح
+# قائمته كاملة؛ وتحتها «أحدث المسلسلات» و«أحدث الأفلام» و«القنوات» بأسماء عربية، و«حساباتي» آخرها. وما للعميل من مجموعاتٍ وترتيب
+# يبقى، وصفوف Cinemeta تُطفأ أول مرة (عناوينها لا تُشغَّل من إضافتنا).
+NUVIO_COLL = "ssouq_"
+NUVIO_SECTIONS = (("series", "sq_series", "مسلسلات"), ("movie", "sq_movies", "أفلام"), ("tv", "sq_live", "قنوات"))
+NUVIO_ROW_TITLES = {"series": "أحدث المسلسلات", "movie": "أحدث الأفلام", "tv": "القنوات"}
+NUVIO_HIDE = {"com.linvo.cinemeta": [(t, c) for c in ("top", "year", "imdbRating") for t in ("movie", "series")]}
+
+
+def nuvio_layout(acct_id, lines):
+    """(المجموعات، صفوف الرئيسية بترتيبها) لإضافة حساب Nuvio — تصنيفات حساب الأداة، وأعدادها من المكتبة إن كانت جاهزة
+    (وإلا كلها بلا أعداد)."""
+    cfg = lines[0]["cfg"]
+    mid = stremio_addon.manifest_id(cfg)
+    poster = stremio_addon._poster_maker(DATA_DIR, STREMIO_PUBLIC or f"https://{SITE_HOST}")
+    cats = stremio_categories.get(DATA_DIR, acct_id)
+    colls = []
+    for kind, cid, word in NUVIO_SECTIONS:
+        lib = stremio_addon.cached_library(lines, kind)
+        by = stremio_addon._cat_index(lines, lib, kind)["by"] if lib else None
+
+        def folder(fid, title, n, genre=None, kind=kind, cid=cid, word=word):
+            src = {"provider": "addon", "addonId": mid, "type": kind, "catalogId": cid}
+            if genre:
+                src["genre"] = genre
+            return {"id": f"{NUVIO_COLL}{kind}_{fid}", "title": title, "coverImageUrl": poster(title, n or 0, "", word),
+                    "tileShape": "square", "hideTitle": False, "sources": [src]}
+        folders = [folder("all", "الكل", len(lib.latest) if lib else 0)]
+        for c in stremio_categories.of_kind(cats, kind):
+            n = len(by.get(c["id"]) or ()) if by is not None else None
+            if by is None or n:
+                folders.append(folder(c["id"], c["name"], n, c["name"]))
+        if by and by.get(stremio_categories.OTHERS_ID):
+            folders.append(folder("others", stremio_categories.OTHERS, len(by[stremio_categories.OTHERS_ID]), stremio_categories.OTHERS))
+        colls.append({"id": f"{NUVIO_COLL}{kind}", "title": stremio_addon.NUVIO_TITLES[kind], "pinToTop": True,
+                      "viewMode": "TABBED_GRID", "showAllTab": False, "folders": folders})
+    item = lambda key, **kw: {"key": key, "addon_id": "", "type": "", "catalog_id": "", "enabled": True, "custom_title": "",   # noqa: E731
+                              "is_collection": False, "collection_id": "", **kw}
+    rows = [item(f"collection_{c['id']}", is_collection=True, collection_id=c["id"]) for c in colls]
+    rows += [item(f"{mid}:{kind}:{cid}", addon_id=mid, type=kind, catalog_id=cid, custom_title=NUVIO_ROW_TITLES[kind])
+             for kind, cid, _ in NUVIO_SECTIONS]
+    rows.append(item(f"{mid}:{stremio_addon.ACCOUNTS}:{stremio_addon.ACCOUNTS_ID}", addon_id=mid, type=stremio_addon.ACCOUNTS,
+                     catalog_id=stremio_addon.ACCOUNTS_ID, custom_title="حساباتي"))
+    return colls, rows
+
+
+def nuvio_home(rec, sess=None):
+    """يضبط واجهة Nuvio لحساب (المجموعات وترتيب الرئيسية) ويحفظ وقتها — ‏NuvioError إن تعثّر خادمهم."""
+    cfg = stremio_addon.read_token(DATA_DIR, rec.get("token")) if rec.get("token") else None
+    lines = nuvio_lines(cfg) if cfg else None
+    if not lines:
+        raise ValueError("بيانات خطوط هذا الحساب غير محفوظة")
+    colls, ours = nuvio_layout(rec.get("acct"), lines)
+    sess = sess or nuvio_accounts.login(rec["email"], rec["password"])
+    theirs = [c for c in nuvio_accounts.pull_collections(sess) if isinstance(c, dict) and not str(c.get("id", "")).startswith(NUVIO_COLL)]
+    nuvio_accounts.push_collections(sess, colls + theirs)
+    home = nuvio_accounts.pull_home(sess)
+    mine = lambda i: str(i.get("collection_id") or "").startswith(NUVIO_COLL) or str(i.get("key") or "").startswith("com.ssouq.xtream.")   # noqa: E731
+    keep = sorted((i for i in home.get("items") or [] if isinstance(i, dict) and not mine(i)), key=lambda i: i.get("order") or 0)
+    known = {i.get("key") for i in keep}
+    for aid, cats in NUVIO_HIDE.items():                 # صفوف Cinemeta: تُطفأ أول مرة، وما أعاده العميل يبقى كما اختار
+        keep += [{"key": f"{aid}:{t}:{c}", "addon_id": aid, "type": t, "catalog_id": c, "enabled": False, "custom_title": "",
+                  "is_collection": False, "collection_id": ""} for t, c in cats if f"{aid}:{t}:{c}" not in known]
+    items = [{**i, "order": n} for n, i in enumerate(ours + keep)]
+    nuvio_accounts.push_home(sess, {**home, "show_catalog_type": False,
+                                    "hide_unreleased_content": bool(home.get("hide_unreleased_content")), "items": items})
+    return nuvio_accounts.put(DATA_DIR, rec["host"], rec["username"], home_at=int(time.time()), home_err="")
+
+
+def _nuvio_home_safe(rec, sess=None):
+    """واجهة الحساب بلا أن يُسقط تعثّرها إنشاءه أو تحديث إضافته (يُحفظ السبب ويظهر في بطاقته)."""
+    try:
+        return nuvio_home(rec, sess)
+    except (nuvio_accounts.NuvioError, ValueError, stremio_addon.XtreamError) as e:
+        return nuvio_accounts.put(DATA_DIR, rec["host"], rec["username"], home_err=str(e)[:200])
 
 
 def _nuvio_ours(url):
@@ -1266,8 +1356,9 @@ def nuvio_account(acct, gate, username, password, line="", email=None, nuvio_pas
         raise ValueError(f"لليوزر {username} حساب Nuvio من قبل ({old.get('email')}) — اربط خطوطًا أخرى به من بطاقته")
     if old and old.get("status") != "off":
         if not old.get("addon_at") and old.get("token"):     # حُفظ الحساب وتعثّر تثبيت إضافته: يُكمَل الآن
-            _nuvio_install(old, old["token"])
+            sess = _nuvio_install(old, old["token"])
             old = nuvio_accounts.put(DATA_DIR, hk, username, addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
+            old = _nuvio_home_safe(old, sess)
         return old, False
     email = old["email"] if old else (email or nuvio_accounts.email_for(username))
     stremio_addon.account(stremio_addon.Cfg(host, username, password))   # اليوزر يعمل على سيرفره قبل أي حساب
@@ -1280,7 +1371,8 @@ def nuvio_account(acct, gate, username, password, line="", email=None, nuvio_pas
     nuvio_accounts.put(DATA_DIR, hk, username, email=email, password=pw, user_id=sess["user_id"], token=tok,
                        addon_key=key, acct=acct.get("id"), gate=gate.get("id"), status="active")
     nuvio_accounts.install(sess, stremio_addon.links(STREMIO_PUBLIC or f"https://{SITE_HOST}", tok)["manifest"], NUVIO_NAME, _nuvio_ours)
-    return nuvio_accounts.put(DATA_DIR, hk, username, addon_at=int(time.time()), addon_v=stremio_addon.VERSION), old is None
+    rec = nuvio_accounts.put(DATA_DIR, hk, username, addon_at=int(time.time()), addon_v=stremio_addon.VERSION)
+    return _nuvio_home_safe(rec, sess), old is None
 
 
 def nuvio_custom(acct, gate, email, password, line_username, line_password, line=""):
@@ -1319,6 +1411,7 @@ def nuvio_link_line(acct, gate_id, username, line_gate, line_username, line_pass
     rec = nuvio_accounts.put(DATA_DIR, hk, line_username, linked_to=root, acct=acct.get("id"), gate=line_gate.get("id"),
                              token=stremio_addon.make_token(DATA_DIR, host, line_username, line_password), status="linked")
     stremio_addon.forget_lines()                 # المكتبة الموحدة بالخط الجديد من أول طلب
+    _nuvio_home_safe(nuvio_accounts.get(DATA_DIR, main["host"], main["username"]) or main)   # ومجلدات تصنيفاته بأعداده الجديدة
     return rec, True
 
 
@@ -1330,7 +1423,8 @@ def nuvio_unlink(acct, gate_id, username):
     nuvio_accounts.remove(DATA_DIR, rec["host"], username)
     stremio_addon.forget_lines()
     host, _, user = rec["linked_to"].partition("|")
-    return nuvio_accounts.get(DATA_DIR, host, user) or {}
+    main = nuvio_accounts.get(DATA_DIR, host, user)
+    return _nuvio_home_safe(main) if main and main.get("status") != "off" else (main or {})
 
 
 def _nuvio_owned(acct, gate_id, username):
@@ -1366,8 +1460,9 @@ def nuvio_reinstall(acct, gate_id, username, relink=False):
         tok = stremio_addon.make_token(DATA_DIR, cfg.origin or cfg.host, cfg.user, cfg.pw, key=key)
         nuvio_accounts.put(DATA_DIR, rec["host"], username, token=tok, addon_key=key, status="active")
         rec = {**rec, "token": tok}
-    _nuvio_install(rec, tok)
-    return nuvio_accounts.put(DATA_DIR, rec["host"], username, addon_at=int(time.time()), addon_v=stremio_addon.VERSION, status="active")
+    sess = _nuvio_install(rec, tok)
+    rec = nuvio_accounts.put(DATA_DIR, rec["host"], username, addon_at=int(time.time()), addon_v=stremio_addon.VERSION, status="active")
+    return _nuvio_home_safe(rec, sess)                  # والواجهة بأحدث التصنيفات وأعدادها
 
 
 def nuvio_disable(acct, gate_id, username):
@@ -1429,6 +1524,7 @@ def nuvio_page_data(acct, gate_id):
         rows.append({"gate": r.get("gate"), "username": r.get("username"), "email": m.get("email"), "password": m.get("password"),
                      "status": m.get("status") or "active", "created": r.get("created"), "ts": r.get("ts") or 0,
                      "addon_at": m.get("addon_at") or 0, "addon_v": m.get("addon_v") or "",
+                     "home_at": m.get("home_at") or 0, "home_err": m.get("home_err") or "",
                      "linked": bool(r.get("linked_to")), "main_user": m.get("username"), "lines": lines})
     return {"accounts": rows, "counts": counts, "version": stremio_addon.VERSION, "domain": nuvio_accounts.DOMAIN}
 
@@ -1566,18 +1662,24 @@ def _in_time(fn, secs):
 
 
 def stremio_update_data(acct):
-    return {"job": stremio_update_job(acct["id"]), "accounts": len(stremio_update_groups(acct["id"]))}
+    return {"job": stremio_update_job(acct["id"]), "accounts": len(stremio_update_groups(acct["id"])) + len(nuvio_update_mains(acct["id"]))}
+
+
+def nuvio_update_mains(acct_id):
+    """حسابات Nuvio المفعّلة لحساب أداة (أصحابها، بلا الخطوط المرتبطة) — تُحدَّث إضافتها وواجهتها مع «تحديث الكل»."""
+    return [r for r in nuvio_accounts.owned(DATA_DIR, acct_id) if not r.get("linked_to") and r.get("status") != "off" and r.get("token")]
 
 
 def stremio_update_all(acct):
     """يبدأ «تحديث الإضافة لكل الحسابات» في الخلفية ← حاله. ‏ValueError: عمليةٌ جارية، أو لا حسابات."""
     groups = stremio_update_groups(acct["id"])
-    if not groups:
-        raise ValueError("لا حسابات Stremio بعد")
+    nuvios = nuvio_update_mains(acct["id"])
+    if not groups and not nuvios:
+        raise ValueError("لا حسابات Stremio ولا Nuvio بعد")
     with _upd_lock:
         if (_upd_jobs.get(acct["id"]) or {}).get("running"):
             raise ValueError("تحديثٌ جارٍ — انتظر انتهاءه")
-        j = _upd_jobs[acct["id"]] = {"total": len(groups), "done": 0, "changed": 0, "lines": 0, "failed": [], "running": True,
+        j = _upd_jobs[acct["id"]] = {"total": len(groups) + len(nuvios), "done": 0, "changed": 0, "lines": 0, "failed": [], "running": True,
                                      "started": int(time.time()), "finished": 0, "active": {}}
     extras = stremio_extras.descriptors(DATA_DIR, acct["id"])
 
@@ -1625,10 +1727,46 @@ def stremio_update_all(acct):
             if errs:
                 j["failed"].append({"email": email, "error": " · ".join(errs)})
 
+    def nuvio_one(rec):
+        """حساب Nuvio: مكتبة خطوطه أولًا (بمهلة — منها أعداد مجلدات التصنيفات)، ثم إضافته وواجهته."""
+        email, errs, n = rec.get("email", ""), [], 0
+        cfg = stremio_addon.read_token(DATA_DIR, rec["token"])
+        lines = nuvio_lines(cfg) if cfg else None
+        if lines:
+            doing(email, "يجهّز مكتبة Nuvio (يحمّل محتوى لوحاته)")
+            try:
+                _in_time(lambda: [stremio_addon.library(lines, k, full=True) for k in stremio_addon.ORDER], STREMIO_UPDATE_LINE_SECS)
+            except TimeoutError:
+                errs.append("لوحته بطيئة الآن — مجلدات التصنيفات بلا أعداد هذه المرة")
+            except Exception as e:
+                errs.append(f"المكتبة: تعذّر ({type(e).__name__})")
+            doing(email, "يثبّت في Nuvio ويضبط واجهته")
+            try:
+                sess = _nuvio_install(rec, rec["token"])
+                done = _nuvio_home_safe(nuvio_accounts.put(DATA_DIR, rec["host"], rec["username"], addon_at=int(time.time()),
+                                                           addon_v=stremio_addon.VERSION), sess)
+                n = 1
+                if done.get("home_err"):
+                    errs.append("الواجهة: " + done["home_err"])
+            except nuvio_accounts.NuvioError as e:
+                errs.append(f"Nuvio: {e}")
+            except Exception as e:
+                errs.append(f"تعذّر: {type(e).__name__}")
+        else:
+            errs.append("بيانات خطوطه غير محفوظة")
+        with _upd_lock:
+            j["active"].pop(email, None)
+            j["done"] += 1
+            j["lines"] += n
+            j["changed"] += 1 if n and not errs else 0
+            if errs:
+                j["failed"].append({"email": email, "error": " · ".join(errs)})
+
     def run():
         try:
             with ThreadPoolExecutor(max_workers=STREMIO_UPDATE_WORKERS) as ex:
                 list(ex.map(one, groups.values()))
+                list(ex.map(nuvio_one, nuvios))
         finally:
             stremio_addon.forget_lines()
             with _upd_lock:

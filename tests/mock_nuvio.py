@@ -7,6 +7,10 @@
   POST /auth/v1/token?grant_type=password          ← جلسة؛ كلمة مرورٍ خاطئة ← 400
   GET  /rest/v1/addons?select=…&profile_id=eq.1&order=sort_order.asc   صفوف صاحب الجلسة وحده (‏RLS)؛ وبلا جلسة ← 401 ‏42501
   POST /rest/v1/rpc/sync_push_addons               ‏{p_addons, p_profile_id} — تستبدل القائمة
+  POST /rest/v1/rpc/sync_pull_collections          ‏{p_profile_id} ← [{profile_id, collections_json, updated_at}] (أو [])
+  POST /rest/v1/rpc/sync_push_collections          ‏{p_profile_id, p_collections_json} — تستبدلها
+  POST /rest/v1/rpc/sync_pull_home_catalog_settings  ‏{p_profile_id, p_platform} ← [{settings_json, …}] (أو [])
+  POST /rest/v1/rpc/sync_push_home_catalog_settings  ‏{p_profile_id, p_settings_json, p_platform} — لكل منصّة
 
 كل طلبٍ بلا apikey ← 401، وطلبات rpc بلا Bearer جلسةٍ صالحة ← 401، ودالةٌ لا توجد (مثل ‏sync_pull_addons) ← 404 ‏PGRST202
 كما يردّ خادمهم. حسابٌ جديد فيه Cinemeta وOpenSubtitles كما في Nuvio.
@@ -32,6 +36,8 @@ class State:
         self.users = {}          # email ← {id, password}
         self.tokens = {}         # access_token ← user id
         self.addons = {}         # (user id, profile) ← [items]
+        self.collections = {}    # (user id, profile) ← collections_json
+        self.home = {}           # (user id, profile, platform) ← settings_json
         self.calls = []
         self.down = False
         self.lock = threading.Lock()
@@ -61,7 +67,9 @@ class Handler(BaseHTTPRequestHandler):
             with st.lock:
                 uid = {v["id"]: e for e, v in st.users.items()}
                 return self._send(200, {"users": {e: v["password"] for e, v in st.users.items()},
-                                        "addons": {uid.get(k[0], k[0]): v for k, v in st.addons.items()}})
+                                        "addons": {uid.get(k[0], k[0]): v for k, v in st.addons.items()},
+                                        "collections": {uid.get(k[0], k[0]): v for k, v in st.collections.items()},
+                                        "home": {uid.get(k[0], k[0]) + "|" + k[2]: v for k, v in st.home.items()}})
         u = urlsplit(self.path)
         if u.path == "/rest/v1/addons":
             with st.lock:
@@ -122,6 +130,19 @@ class Handler(BaseHTTPRequestHandler):
                 st.addons[(uid, int(body.get("p_profile_id") or 1))] = [
                     {"url": i["url"], "name": i.get("name"), "enabled": i.get("enabled", True), "sort_order": i.get("sort_order", 0)}
                     for i in items]
+                return self._send(200, None)
+            prof = int(body.get("p_profile_id") or 1)
+            if u.path == "/rest/v1/rpc/sync_pull_collections":
+                v = st.collections.get((uid, prof))
+                return self._send(200, [] if v is None else [{"profile_id": prof, "collections_json": v, "updated_at": "now"}])
+            if u.path == "/rest/v1/rpc/sync_push_collections":
+                st.collections[(uid, prof)] = body.get("p_collections_json") or []
+                return self._send(200, None)
+            if u.path == "/rest/v1/rpc/sync_pull_home_catalog_settings":
+                v = st.home.get((uid, prof, body.get("p_platform") or "tv"))
+                return self._send(200, [] if v is None else [{"profile_id": prof, "platform": body.get("p_platform") or "tv", "settings_json": v}])
+            if u.path == "/rest/v1/rpc/sync_push_home_catalog_settings":
+                st.home[(uid, prof, body.get("p_platform") or "tv")] = body.get("p_settings_json") or {}
                 return self._send(200, None)
         if u.path.startswith("/rest/v1/rpc/"):
             return self._send(404, {"code": "PGRST202", "message": f"Could not find the function public.{u.path[13:]}({', '.join(body)}) in the schema cache"})

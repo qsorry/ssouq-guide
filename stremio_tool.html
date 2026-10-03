@@ -881,7 +881,9 @@ function renderNuvio(){
       <div class="tags">${off ? '<span class="tag bad">الإضافة أُزيلت من حسابه ورابطها متوقف</span>'
           : !a.addon_at ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ الإضافة لم تُثبَّت بعد — ⋯ ← «تحديث الإضافة»</span>'
           : `<span class="tag ok" title="${esc(ago(a.addon_at))}">الإضافة ${esc(a.addon_v || "")}</span>`}${a.addon_v && NV.version && a.addon_v !== NV.version && !off
-          ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ نسخةٌ أقدم</span>' : ""}${a.linked
+          ? '<span class="tag warn" title="من ⋯ ← «تحديث الإضافة»">⚠ نسخةٌ أقدم</span>' : ""}${!off && a.home_err
+          ? `<span class="tag warn" title="${esc(a.home_err)} — من ⋯ ← «تحديث الإضافة»">⚠ واجهة الجوال لم تُضبط</span>`
+          : !off && a.home_at ? `<span class="tag ok" title="المجموعات وترتيب الرئيسية — ${esc(ago(a.home_at))}">الواجهة ✓</span>` : ""}${a.linked
           ? `<span class="tag new">مرتبطٌ بحساب ${esc(a.main_user)}</span>` : ""}<span class="tag">أُنشئ ${esc(a.created)}</span></div>
       ${(a.lines || []).length ? `<div class="lines">${a.lines.map(l => `<button class="${l.self ? "me" : ""}"
           data-goto="${esc(l.gate)}" data-gu="${esc(l.username)}" title="${l.main ? "صاحب الحساب" : "خطٌّ مرتبط"} — ${l.self ? "هذا الخط" : "انتقل إليه"}">${esc(l.gate_name || "بوابة")} · ${esc(l.username)}${l.main ? " ★" : ""}</button>`).join("")}</div>` : ""}
@@ -919,7 +921,7 @@ function nvMenu(username){
   openSheet(a.username, a.email, [
     sitem(`data-nlinkto="${u}"`, I.plus, "ربط خط آخر", "خطٌّ من بوابةٍ أخرى في الحساب نفسه — مكتبةٌ واحدة بمحتوى كل خطوطه"),
     a.linked ? sitem(`data-nunlink="${u}"`, I.unlink, "فصل الخط", "يخرج محتواه من الحساب (ويبقى اليوزر في البوابة)", "danger") : "",
-    off ? "" : sitem(`data-nre="${u}"`, I.sync, "تحديث الإضافة", "تعود أول قائمة إضافاته بأحدث نسخة، وإضافاته الأخرى كما هي"),
+    off ? "" : sitem(`data-nre="${u}"`, I.sync, "تحديث الإضافة", "بأحدث نسخة، وواجهة جواله وتلفازه بأحدث التصنيفات وأعدادها"),
     sitem(`data-nrelink="${u}"`, I.link, "إعادة الربط", off ? "تُثبَّت الإضافة في حسابه من جديد برابطٍ جديد" : "رابطٌ جديد للإضافة ويتوقف القديم (إن نُسخ لحسابٍ آخر)"),
     off ? "" : sitem(`data-noff="${u}"`, I.unlink, "إلغاء التفعيل", "تُزال الإضافة من حسابه ويتوقف رابطها — والحساب يبقى", "danger"),
     sitem(`data-insp="${u}"`, I.find, "فحص عمل", "لماذا لم يظهر مسلسلٌ أو فيلم، أو لم يظهر مصدرٌ له من خطٍّ"),
@@ -1028,7 +1030,7 @@ function renderUpd(){
   const j = UPD.job, running = !!(j && j.running), b = $("updBtn");
   b.disabled = running || !UPD.accounts;
   b.textContent = running ? "جاري التحديث…" : `تحديث الإضافة لكل الحسابات (${UPD.accounts})`;
-  if (!j) { $("updJob").innerHTML = UPD.accounts ? "" : '<div class="empty">لا حسابات Stremio بعد.</div>'; return; }
+  if (!j) { $("updJob").innerHTML = UPD.accounts ? "" : '<div class="empty">لا حسابات Stremio ولا Nuvio بعد.</div>'; return; }
   const fails = (j.failed || []).length, pct = j.total ? Math.round(100 * j.done / j.total) : 0;
   const ago = s => s < 60 ? `${s} ث` : `${Math.floor(s / 60)} د`;
   const act = running ? (j.active || []) : [];
