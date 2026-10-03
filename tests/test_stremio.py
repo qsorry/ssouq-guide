@@ -271,9 +271,14 @@ def against_mock():
         sopts = cat["series"]["extra"][0]["options"]
         check("والمسلسلات كذلك بأعدادها", sopts == ["تركي (2)", "أجنبي (8)", "مدبلج (2)"], str(sopts))
         fo = next(c for c in man["catalogs"] if c["id"] == S.MAIN_PREFIX + "m_foreign")
-        check("والرئيسي بفرعيّاته كتالوجٌ («أجنبي» ← «الكل» · «أكشن» …)، وما لا فرعيّ له في القائمة وحدها",
-              fo["extra"][0]["options"][:2] == ["الكل (18)", "أكشن (9)"] and fo["extra"][0]["isRequired"] is True
-              and not any(c["id"] == S.MAIN_PREFIX + "m_horror" for c in man["catalogs"]), json.dumps(fo, ensure_ascii=False)[:200])
+        fopts = fo["extra"][0]["options"]
+        check("والرئيسي كتالوجٌ تبويباته «الكل» ثم فرعيّاته ثم تصنيفات أعماله («مغامرة») ثم أحدث سنواته",
+              fopts[:2] == ["الكل (18)", "أكشن (9)"] and fo["extra"][0]["isRequired"] is True and "مغامرة (4)" in fopts
+              and fopts[-3:] == ["2025 (6)", "2024 (11)", "2023 (1)"], json.dumps(fopts, ensure_ascii=False))
+        check("ولا يتكرّر ما يغطّيه غيره: «إثارة» مع فرعيّ «إثارة وجريمة»، و«فانتازيا» مع «خيال علمي»",
+              not any(o.startswith(("إثارة (", "فانتازيا (")) for o in fopts), str(fopts))
+        hopts = next(c for c in man["catalogs"] if c["id"] == S.MAIN_PREFIX + "m_action")["extra"][0]["options"]
+        check("ولا تصنيف العمل نفسه («أكشن» في «أكشن»): سنواته وحدها", hopts == ["الكل (9)", "2025 (4)", "2024 (5)"], str(hopts))
         check("اسم السيرفر وعدد المحتوى في اسم كل كتالوج — بلا كلمة النوع (Stremio يُلحقه: «سمارت (10) - المسلسلات»)",
               [c["name"] for c in mains[1:]] == [f"سمارت ({len(series)})", f"سمارت ({n_vod})", f"سمارت ({n_live})"],
               str([c["name"] for c in man["catalogs"]]))
@@ -619,6 +624,10 @@ def through_server():
         c, _, b = http(base, f"/stremio/{tok}/catalog/movie/sq_movies.json")
         metas = json.loads(b)["metas"]
         check("كتالوج بلا إضافات", c == 200 and len(metas) == sum(1 for v in mock_xtream.build("x")[1].values() if v.get("is_adult") != "1"))
+        c, _, b = http(base, f"/stremio/{tok}/catalog/movie/{S.MAIN_PREFIX}m_foreign/genre={quote('مغامرة (4)', safe='')}.json")
+        adv = [m["name"] for m in json.loads(b)["metas"]]
+        check("وتبويب «مغامرة» في «أجنبي» ← أفلامه المغامرة وحدها", c == 200 and len(adv) == 4 and "Dune: Part Two (2024)" in adv
+              and "Moana 2 (2024)" in adv, str(adv))
         mid = metas[0]["id"]
         c, _, b = http(base, f"/stremio/{tok}/meta/movie/{quote(mid, safe='')}.json")
         mj = json.loads(b)["meta"]

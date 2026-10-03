@@ -659,12 +659,14 @@ def akhi_and_inspect():
         tk = next(c for c in man["catalogs"] if c["id"] == S.MAIN_PREFIX + "s_turkish")
         check("قائمة تصنيف المسلسلات: الرئيسية وحدها («تركي (3)»)، و«تركي» كتالوجٌ قائمة تصنيفه «الكل» ثم الفرعية",
               main_opts[0] == "تركي (3)" and tk["name"] == "تركي" and tk["extra"][0]["isRequired"] is True
-              and tk["extra"][0]["options"] == ["الكل (3)", "يعرض الآن مترجم (1)", "يعرض الآن مدبلج (1)", "مترجم (2)", "مدبلج (1)"],
+              and tk["extra"][0]["options"][:5] == ["الكل (3)", "يعرض الآن مترجم (1)", "يعرض الآن مدبلج (1)", "مترجم (2)", "مدبلج (1)"],
               json.dumps([main_opts, tk], ensure_ascii=False)[:400])
         sub = lambda g, b=0: [m["name"] for m in S.lib_catalog(books, "series", S.MAIN_PREFIX + "s_turkish" + books[b][1], {"genre": g})["metas"]]   # noqa: E731
         check("والفرعي يفتح أعماله: «مدبلج» ← المدبلج وحده، و«الكل» ← التركي كله", sub("مدبلج (1)") == ["أخي"]
               and set(sub("الكل")) == {"أخي مترجم", "أخي", "آه يا أخي"} and sub("مترجم") == ["أخي مترجم", "آه يا أخي"], str(sub("مترجم")))
         check("وفي فالكون: «مدبلج» من اسم قسمه («تركية مدبلجة»)", sub("مدبلج", 1) == ["أخي (مدبلج) S01"], str(sub("مدبلج", 1)))
+        check("وتبويب السنة في الرئيسي («2026») ← أعماله في تلك السنة وحدها", "2026 (2)" in tk["extra"][0]["options"]
+              and sub("2026 (2)") == ["أخي مترجم", "أخي"], str(sub("2026")))
 
         print("== اختيار السنة: «حسب السنة» في «اكتشف»، والسنة تصنيفٌ في كتالوج النوع ==")
         yc = next((c for c in man["catalogs"] if c["id"] == S.YEARS["series"]), {})

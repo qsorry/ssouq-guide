@@ -1307,8 +1307,8 @@ def nuvio_layout(acct_id, lines):
                     if by is not None and not n:
                         continue
                     main = stremio_addon.MAIN_PREFIX + c["id"] + sfx
-                    subs = [x for x in stremio_categories.subs_of(cats, c["id"]) if by is not None and by.get(x["id"])]
-                    tabs = [src(main, stremio_addon.ALL)] + [src(main, x["name"]) for x in subs] if subs else [src(cid, c["name"])]
+                    subs = stremio_addon.main_tabs([{**ln, "cats": cats}], lib, kind, c["id"], by) if by is not None else []
+                    tabs = [src(main, stremio_addon.ALL)] + [src(main, x) for x, _ in subs] if subs else [src(cid, c["name"])]
                     folders.append(folder(c["id"], c["name"], poster(c["name"], n or 0, "", word), tabs))
                 if by and by.get(stremio_categories.OTHERS_ID):
                     folders.append(folder("others", stremio_categories.OTHERS, poster(stremio_categories.OTHERS, len(by[stremio_categories.OTHERS_ID]),

@@ -50,7 +50,7 @@ import stremio_posters as POSTERS
 PATH = "/stremio"
 LABEL = "stremio"                    # وسم الرمز: رمزٌ صدر لغير الإضافة لا يُقبل فيها
 BRAND = "سمارت سوق"
-VERSION = "1.7.0"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
+VERSION = "1.7.1"                    # يرتفع مع كل تغييرٍ في الـmanifest فيحدّثه Stremio
 PAGE = 100                           # صفحة الكتالوج كما يعدّها Stremio — أقلّ منها = آخر القائمة
 TTL = int(os.environ.get("STREMIO_TTL", "1800"))          # عمر قوائم السيرفر في الذاكرة (ثوانٍ)
 RETRY = 60                           # فشل التحديث وفي الذاكرة نسخةٌ: تُعرض، ويُعاد بعد دقيقة
@@ -1041,8 +1041,7 @@ def build_manifest(cfg, base, label="", accounts=True, lines=None, catalogs=True
                                  "extra": [{"name": "genre", "options": [f"{y} ({_fmt(c)})" for y, c in yrs], "isRequired": True},
                                            {"name": "skip", "isRequired": False}], "extraSupported": ["genre", "skip"]})
             for c in tops:                               # التصنيف الرئيسي ← «الكل» وفرعيّاته (ما له فرعيٌّ فيه محتوى)
-                so = [f"{ALL} ({_fmt(len(by[c['id']]))})"] + [f"{x['name']} ({_fmt(len(by[x['id']]))})"
-                                                             for x in CATS.subs_of(mine, c["id"]) if by.get(x["id"])]
+                so = [f"{ALL} ({_fmt(len(by[c['id']]))})"] + [f"{n} ({_fmt(k)})" for n, k in main_tabs(lines1, lib, kind, c["id"], by)]
                 if len(so) < 2:
                     continue
                 cats.append({"type": kind, "id": MAIN_PREFIX + c["id"] + sfx, "name": c["name"] + at,
@@ -2019,6 +2018,76 @@ def _lib_tagged(lines, lib, kind, g):
     return sorted(seq + more, key=lambda w: -w.added) if more else seq
 
 
+# تبويباتٌ تلقائية في كل تصنيفٍ رئيسي بعد فرعيّاته: تصنيفات أعماله («رعب» · «مغامرات» …، الأكثر أولًا) ثم أحدث سنواته
+GENRE_TABS, GENRE_TAB_MIN, YEAR_TABS = 10, 3, 3
+_KNOWN_GENRES = {n for v in LIB._GENRE.values() for n in v}
+_tabs_memo = OrderedDict()
+
+
+def _wgenres(w, ids):
+    names = LIB.genre_names(w.genre) or (LIB.genre_names(ids.get(w.anchor.item.id, "")) if ids else [])
+    return [n for n in names if n in _KNOWN_GENRES]
+
+
+def main_tabs(lines, lib, kind, top, by=None):
+    """تصنيفٌ رئيسي ← تبويباته بعد «الكل»: [(الاسم، عدد أعماله)] — فرعيّاته التي فيها محتوى، ثم تصنيفات أعماله (ما لم يكن
+    فرعيًّا باسمه، وفيه GENRE_TAB_MIN عملًا على الأقل)، ثم أحدث YEAR_TABS سنواتٍ فيه (لا سنةً قادمة)."""
+    by = by if by is not None else _cat_index(lines, lib, kind)["by"]
+    seq = by.get(top) or []
+    mine = _ucats(lines)
+    subs = [(x["name"], len(by[x["id"]])) for x in CATS.subs_of(mine, top) if by.get(x["id"])]
+    if not seq or kind not in YEARS:
+        return subs
+    key = (id(lib), len(lib.works), kind, top, CATS.sig(mine))
+    with _lock:
+        hit = _tabs_memo.get(key)
+    if hit is None:
+        ids = None
+        if kind == "movie":
+            with _lock:
+                ids = _gstore(_ghk(lines[0]["cfg"]))["ids"]
+        gc, yc, now_y = {}, {}, str(datetime.date.today().year)
+        for w in seq:
+            for n in _wgenres(w, ids):
+                gc[n] = gc.get(n, 0) + 1
+            if w.year and "1950" <= w.year <= now_y:
+                yc[w.year] = yc.get(w.year, 0) + 1
+        hit = ([kv for kv in sorted(gc.items(), key=lambda kv: -kv[1]) if kv[1] >= GENRE_TAB_MIN],
+               sorted(yc.items(), reverse=True)[:YEAR_TABS])
+        with _lock:
+            _tabs_memo[key] = hit
+            while len(_tabs_memo) > LIB_MAX * 6:
+                _tabs_memo.popitem(last=False)
+    # لا يتكرّر ما يغطّيه غيره: فرعيٌّ باسمه أو بتصنيفاته («إثارة» مع «إثارة وجريمة»)، أو التصنيف نفسه («أكشن» في «أكشن»)، أو كل أعماله
+    me = next((c for c in mine if c["id"] == top), {})
+    taken = {LIB.norm(n) for n, _ in subs} | LIB.genre_keys(me.get("name")) | LIB.genre_keys(me.get("genres"))
+    for x in CATS.subs_of(mine, top):
+        taken |= LIB.genre_keys(x.get("name")) | LIB.genre_keys(x.get("genres"))
+    genres = [(n, c) for n, c in hit[0] if LIB.norm(n) not in taken and c < len(seq)][:GENRE_TABS]
+    return subs + genres + list(hit[1])
+
+
+def _main_pick(lines, lib, kind, top, gname, by):
+    """تبويبٌ في تصنيفٍ رئيسي ← أعماله: «الكل»، أو فرعيٌّ باسمه، أو تصنيف أعمال («رعب»)، أو سنة («2026»)."""
+    seq = by.get(top) or []
+    if not gname or LIB.norm(gname) == LIB.norm(ALL):
+        return seq
+    sub = next((c for c in CATS.subs_of(_ucats(lines), top) if LIB.norm(c["name"]) == LIB.norm(gname)), None)
+    if sub:
+        return by.get(sub["id"]) or []
+    if _YEAR_PICK.fullmatch(gname):
+        y = _YEAR_PICK.fullmatch(gname).group(1)
+        return [w for w in seq if w.year == y]
+    k = LIB.genre_keys(gname)
+    if not k:
+        return []
+    ids = None
+    if kind == "movie":
+        with _lock:
+            ids = _gstore(_ghk(lines[0]["cfg"]))["ids"]
+    return [w for w in seq if k & {LIB.norm(n) for n in _wgenres(w, ids)}]
+
+
 def lib_catalog(books, kind, cid, extra, poster_url=None):
     """صفحةٌ من كتالوج خطٍّ من خطوط الإضافة (‏books، ولاحقة الكتالوج تختار الخط): بحث، أو تصنيفٌ رئيسيٌّ بفرعيّه، أو سنة، أو
     «مصدر: …»، أو تصنيف عمل، أو الكل — 100 عنصرٍ من ‏skip. وللقنوات بلا تصنيف: بطاقةٌ لكل قسمٍ في اللوحة («MBC»)."""
@@ -2040,9 +2109,7 @@ def lib_catalog(books, kind, cid, extra, poster_url=None):
     if row is not None:                                  # صفّ تصنيفٍ في الرئيسية (وتصنيفٌ حُذف ← فارغ)
         seq = _cat_index(lines, lib, kind)["by"].get(row) or []
     elif top is not None:                                # تصنيفٌ رئيسي: «الكل» أو فرعيٌّ من فرعيّاته
-        by = _cat_index(lines, lib, kind)["by"]
-        sub = next((c for c in CATS.subs_of(_ucats(lines), top) if LIB.norm(c["name"]) == LIB.norm(gname)), None) if gname else None
-        seq = (by.get(sub["id"]) if sub else by.get(top) if not gname or LIB.norm(gname) == LIB.norm(ALL) else None) or []
+        seq = _main_pick(lines, lib, kind, top, gname, _cat_index(lines, lib, kind)["by"])
     elif extra.get("search"):
         seq = _scoped_search(lines, lib, kind, extra["search"])
     elif g and kind in YEARS and _YEAR_PICK.fullmatch(gname):   # سنة («2026» · «2026 (312)»)
