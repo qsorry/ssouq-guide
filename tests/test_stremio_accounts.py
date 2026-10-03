@@ -95,7 +95,7 @@ def against_mocks():
               str([a["manifest"]["name"] for a in col]))
         check("الإضافة برابطها على الموقع ووصفها كاملًا (الحسابات ثم المسلسلات ثم الأفلام ثم البث)",
               col[0]["transportUrl"].startswith("https://guide.ssouq.com/stremio/")
-              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX) and c["type"] != S.TILES] == [S.ACCOUNTS, "series", "movie", "tv"]
+              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX)] == [S.ACCOUNTS, "series", "movie", "tv"]
               and col[0]["flags"] == {"official": False, "protected": False})
         check("خرج من الجلسة بعد التثبيت", not api.sessions)
         raw = json.load(open(os.path.join(d, "stremio_accounts.json"), encoding="utf-8"))
