@@ -206,8 +206,53 @@ def through_play():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def admin():
+    print("== الأداة: لا يمسّ إلا خطوط العميل وجلساتها ==")
+    d = tempfile.mkdtemp(prefix="sessions_admin_")
+    os.environ["XM_DATA"] = d
+    import xm_lines as X
+    X.DATA_DIR = d
+    SS.reset()
+    SS.setup(d)
+    mine, other = SS.account_key("h.example", "me"), SS.account_key("h.example", "them")
+    X.stremio_session_lines = lambda acct: {mine: {"username": "me", "gate": "سمارت", "platforms": ["Nuvio"], "token": ""}}
+    acct = {"id": "acctA"}
+    try:
+        data = X.stremio_sessions_post(acct, {"action": "account", "key": mine, "variant": "session", "max_devices": ""})
+        check("خطّه ← «session» وحدّه من اللوحة (فارغ)", data["accounts"][0]["variant"] == "session" and data["accounts"][0]["max_devices"] is None
+              and SS.account(mine)["owner"] == "acctA")
+        theirs = SS.check(other, "1.1.1.1", NUVIO_PHONE, now=10)
+        try:
+            X.stremio_sessions_post(acct, {"action": "revoke", "session_id": SS.check(other, "1.1.1.1", NUVIO_PHONE)["session_id"] or "x"})
+            refused = False
+        except ValueError:
+            refused = True
+        check("وجلسة خطٍّ ليس له ← لا يلغيها", refused and theirs is not None)
+        try:
+            X.stremio_sessions_post(acct, {"action": "logout_all", "key": other})
+            refused = False
+        except ValueError:
+            refused = True
+        check("ولا «خروج من كل الأجهزة» لخطٍّ ليس له", refused and SS.account(other)["version"] == 1)
+        s1 = SS.check(mine, "2.2.2.2", NUVIO_PHONE, "m:1", "movie", panel_max=1)
+        data = X.stremio_sessions_post(acct, {"action": "revoke", "session_id": s1["session_id"]})
+        check("وإلغاء جلسةٍ من خطّه ← «ملغاة» في القائمة", [x["status"] for x in data["sessions"]] == ["revoked"] and data["sessions"][0]["username"] == "me")
+        data = X.stremio_sessions_post(acct, {"action": "settings", "timeout_vod_h": "2", "timeout_live_h": "0.5", "default_max": "2"})
+        check("والمهلة بالساعات من الصفحة", data["settings"] == {"timeout_vod": 7200, "timeout_live": 1800, "default_max": 2})
+        try:
+            X.stremio_sessions_post(acct, {"action": "settings", "timeout_vod_h": "abc"})
+            refused = False
+        except ValueError:
+            refused = True
+        check("وقيمةٌ لا تصلح ← رسالة", refused)
+    finally:
+        SS.reset()
+        shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     core()
     through_play()
+    admin()
     print(f"\nResult: \033[32m{passed} passed\033[0m, " + (f"\033[31m{failed} failed\033[0m" if failed else "0 failed"))
     sys.exit(1 if failed else 0)
