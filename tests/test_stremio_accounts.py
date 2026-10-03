@@ -95,7 +95,7 @@ def against_mocks():
               str([a["manifest"]["name"] for a in col]))
         check("الإضافة برابطها على الموقع ووصفها كاملًا (الحسابات ثم المسلسلات ثم الأفلام ثم البث)",
               col[0]["transportUrl"].startswith("https://guide.ssouq.com/stremio/")
-              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX)] == [S.ACCOUNTS, "series", "movie", "tv"]
+              and [c["type"] for c in col[0]["manifest"]["catalogs"] if not c["id"].startswith(S.CAT_PREFIX) and c["type"] != S.TILES] == [S.ACCOUNTS, "series", "movie", "tv"]
               and col[0]["flags"] == {"official": False, "protected": False})
         check("خرج من الجلسة بعد التثبيت", not api.sessions)
         raw = json.load(open(os.path.join(d, "stremio_accounts.json"), encoding="utf-8"))
@@ -350,7 +350,8 @@ def through_server():
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "late", "password": "lp"})
         m = (ours("late@tv.ssouq.com") or [{}])[0].get("manifest", {})
         check("يُنتظر حتى يقبله السيرفر ثم تُثبَّت الإضافة بأقسامها وأعدادها", c == 200 and xt.pending["late"] == 0
-              and len(genre_opts(m)) == 3 and all(genre_opts(m)) and m["catalogs"][1]["name"].endswith(")"), json.dumps(m, ensure_ascii=False)[:200])
+              and len(genre_opts(m)) == 3 and all(genre_opts(m)) and next(c for c in m["catalogs"] if c["id"] == "sq_series")["name"].endswith(")"),
+              json.dumps(m, ensure_ascii=False)[:200])
         c, r = post("/api/stremio/account", {"gate": "g1", "username": "nv", "password": "np"})   # يرفضه السيرفر طوال الانتظار
         m = (ours("nv@tv.ssouq.com") or [{}])[0].get("manifest", {})
         check("وما بقي مرفوضًا: الحساب يُنشأ والإضافة تُثبَّت بلا أقسام", c == 200 and r.get("email") == "nv@tv.ssouq.com" and not genre_opts(m))
@@ -453,7 +454,8 @@ def through_server():
         sts = get(local(root_m["transportUrl"]).replace("manifest.json", f"stream/series/{quote(ep, safe='')}.json"))["streams"]
         k1_sts = get(local(ours("u@tv.ssouq.com")[1]["transportUrl"]).replace("manifest.json", f"stream/series/{quote(ep, safe='')}.json"))["streams"]
         check("الحلقة: «تلقائي» أولًا ثم مصدر صاحب الحساب، ومصدر كاسبر من إضافته (زرٌّ باسمها)", [x["name"] for x in sts] == ["سمارت سوق", "سمارت"]
-              and "/play/series/" in sts[0]["url"] and [x["name"] for x in k1_sts] == ["كاسبر"] and "/series/k1/kp/" in k1_sts[0]["url"],
+              and "/play/series/" in sts[0]["url"] and [x["name"] for x in k1_sts] == ["كاسبر"] and "/series/k1/kp/" in location(local(k1_sts[0]["url"]))
+              and "/k1/kp/" not in json.dumps([sts, k1_sts]),
               json.dumps([[x["name"] for x in sts], [x["name"] for x in k1_sts]], ensure_ascii=False))
         c, r = post("/api/stremio/accounts?gate=g4", None)
         k = next((a for a in r.get("accounts", []) if a["username"] == "k1"), {})
@@ -523,7 +525,8 @@ def through_server():
               and j.get("changed") == n_accts and j.get("failed") == [] and j.get("lines", 0) > n_accts, json.dumps(j, ensure_ascii=False))
         root_m, k1m = ours("u@tv.ssouq.com")[0]["manifest"], ours("u@tv.ssouq.com")[1]["manifest"]
         check("إضافة صاحب الحساب بأحدث نسخة: المكتبة الموحدة و«الحسابات»", root_m["version"] == S.VERSION
-              and root_m["catalogs"][0]["type"] == S.ACCOUNTS and root_m["catalogs"][1]["name"].startswith("سمارت سوق ("), root_m["catalogs"][1]["name"])
+              and root_m["catalogs"][0]["type"] == S.ACCOUNTS and next(c for c in root_m["catalogs"] if c["id"] == "sq_series")["name"].startswith("سمارت سوق ("),
+              json.dumps([c["name"] for c in root_m["catalogs"]], ensure_ascii=False))
         check("وإضافة الخط المرتبط بلا كتالوجات", k1m["version"] == S.VERSION and k1m["catalogs"] == [])
         check("وصفوف الرئيسية بتصنيفات العميل المحفوظة («مختارات - المسلسلات»)",
               any(c_["id"] == f"{S.CAT_PREFIX}s_pick" and c_["name"] == "مختارات" for c_ in root_m["catalogs"]),
@@ -577,9 +580,10 @@ def through_server():
         tu = local(ours("u@tv.ssouq.com")[0]["transportUrl"])
 
         def stream_url():
+            """أول مصدرٍ لأول فيلم ← (معرّفه، رابط اللوحة الذي يحوّل إليه رابطه على خادمنا)."""
             meta_id = json.loads(urllib.request.urlopen(tu.replace("manifest.json", "catalog/movie/sq_movies.json"), timeout=30).read())["metas"][0]["id"]
             st = json.loads(urllib.request.urlopen(tu.replace("manifest.json", f"stream/movie/{meta_id}.json"), timeout=30).read())
-            return meta_id, st["streams"][0]["url"]
+            return meta_id, location(st["streams"][0]["url"])
         id0, url0 = stream_url()
         c, r = post("/api/stremio/host", {"from": "127.0.0.1", "to": "http://127.0.0.1:1"})
         check("هوستٌ جديد لا يقبل يوزرات الحسابات ← 400 ولا يُحفظ", c == 400 and "لم يقبل" in r.get("error", ""), json.dumps(r, ensure_ascii=False))
@@ -733,6 +737,20 @@ def through_server():
     check("وبلا رابط تثبيتٍ عامّ (إضافته مقفلةٌ على حسابه)، ويوزرٌ بلا حساب برابطه", "stremio" not in rows[0]
           and rows[1].get("stremio", "").startswith("https://guide.ssouq.com/stremio/"))
     shutil.rmtree(d, ignore_errors=True)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def location(url):
+    """رابط مصدرٍ على خادمنا ← رابط اللوحة الذي يحوّل إليه (بلا اتّباعه)."""
+    try:
+        urllib.request.build_opener(_NoRedirect).open(url, timeout=30)
+    except urllib.error.HTTPError as e:
+        return e.headers.get("Location", "")
+    return ""
 
 
 def update_job_unit():
