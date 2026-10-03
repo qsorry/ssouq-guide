@@ -281,7 +281,7 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     await user.waitForSelector('#viewCats:not([hidden]) #catList .cat', {timeout: 8000});
     check('its own page (/stremio/categories), series first, defaults with their counts',
           new URL(user.url()).pathname === '/admin/stremio/categories' && (await user.getAttribute('#tabCat', 'aria-current')) === 'page'
-          && (await user.inputValue('#catList .cat:first-child input[data-f=name]')) === 'تركي مترجم يعرض الآن'
+          && (await user.inputValue('#catList .cat:first-child input[data-f=name]')) === 'تركي'
           && (await user.textContent('#catState')).includes('الافتراضية'), await user.textContent('#catState'));
     // اليوزرات هنا يرفضها سيرفر Xtream الوهمي (فلا قوائم في الذاكرة): الأعداد «—» والصفحة تقول متى تظهر
     const counted = await user.$$eval('#catList .cat .count', cs => cs.filter(c => /\d/.test(c.textContent)).length);
@@ -302,11 +302,25 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
     check('the type tabs: movies, whose keywords open with the work-genre field', (await user.textContent('#catTtl')) === 'الأفلام'
           && await user.isVisible('#catList .cat:first-child input[data-f=keys]') && await user.isVisible('#catList .cat:first-child input[data-f=genres]'));
     await user.click('#catKinds [data-k=series]');
-    await user.click('#catList .cat:first-child [data-ex]');
-    check('«تركي يعرض الآن» first: «يُعرض الآن فقط» = 10 days, editable in its foldout',
-          (await user.inputValue('#catList .cat:first-child input[data-f=recent]')) === '10'
+    await user.click('#catList .cat:nth-child(2) [data-ex]');
+    check('main then sub: «تركي» then «يعرض الآن مترجم» indented under it, «يُعرض الآن فقط» = 10 days, its place «فرعيٌّ تحت «تركي»»',
+          (await user.getAttribute('#catList .cat:nth-child(2)', 'class')).includes('sub')
+          && (await user.textContent('#catList .cat:nth-child(2) .lvl')).includes('تركي')
+          && (await user.inputValue('#catList .cat:nth-child(2) input[data-f=name]')) === 'يعرض الآن مترجم'
+          && (await user.inputValue('#catList .cat:nth-child(2) input[data-f=recent]')) === '10'
+          && (await user.inputValue('#catList .cat:nth-child(2) select[data-f=parent]')) === 's_turkish'
           && (await user.$$eval('#viewCats .sub', ps => ps.map(p => p.textContent).join(' '))).includes('تركي: اخي'));
-    await user.click('#catList .cat:first-child [data-ex]');
+    await user.click('#catList .cat:nth-child(2) [data-ex]');
+    const nSub = await user.$$eval('#catList .cat.sub', xs => xs.length);
+    await user.click('#catList .cat:first-child [data-addsub]');
+    const after = await user.$$eval('#catList .cat', xs => xs.map(x => [x.querySelector('input[data-f=name]').value, x.classList.contains('sub')]));
+    check('«+ فرعي» on a main category adds a sub after its siblings (unsaved)', (await user.$$eval('#catList .cat.sub', xs => xs.length)) === nSub + 1
+          && after[5][0] === 'فرعيٌّ جديد' && after[5][1] === true && (await user.textContent('#catState')).includes('لم تُحفظ'), JSON.stringify(after.slice(0, 7)));
+    await user.selectOption('#catList .cat:nth-child(6) select[data-f=parent]', '');
+    check('and «موضعه» ← «تصنيفٌ رئيسي» makes it a main category', !(await user.getAttribute('#catList .cat:nth-child(6)', 'class')).includes('sub')
+          && (await user.inputValue('#catList .cat:nth-child(6) input[data-f=name]')) === 'فرعيٌّ جديد');
+    user.once('dialog', d => d.accept());
+    await user.click('#catList .cat:nth-child(6) [data-del]');
     await user.click('#catAdd');
     await user.fill('#catList .cat:last-child input[data-f=name]', 'مختارات');
     await user.fill('#catList .cat:last-child input[data-f=keys]', 'أجنبية');

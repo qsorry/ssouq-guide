@@ -974,9 +974,9 @@ def stremio_categories_data(acct, cats=None):
     for r in stremio_accounts.owned_all(DATA_DIR, acct["id"]):
         cfg = stremio_addon.read_token(DATA_DIR, r["token"]) if r.get("token") and not r.get("linked_to") else None
         lines = stremio_lines(cfg) if cfg else None
+        lines = [{**lines[0], "cats": cats}] if lines else None   # معاينةٌ على سيرفر صاحب الحساب (لكل سيرفرٍ أقسامه وحده)
         if not lines or not any(all(stremio_addon.has_lists(ln["cfg"], k) for ln in lines) for k in stremio_addon.TYPES):
             continue
-        lines = [{**lines[0], "cats": cats}] + lines[1:]
         out["sample"] = r.get("email") or r.get("username") or ""
         for kind in stremio_addon.TYPES:
             # مكتبةٌ في الذاكرة وحدها: الصفحة لا تنتظر بناءها (ثوانٍ ثقيلة) — تُبنى في الخلفية وتعيد الصفحة المعاينة بعد قليل
@@ -1235,8 +1235,8 @@ NUVIO_NAME = "سمارت سوق"
 
 
 def nuvio_lines(cfg):
-    """خطوط حساب Nuvio لإضافته الواحدة: صاحبه ثم ما رُبط به بترتيب ربطه — مكتبةٌ موحدة بمصادر كل الخطوط (لا إضافة
-    لكل خط كما في Stremio)، وبتصنيفات حساب الأداة الذي أنشأه."""
+    """خطوط حساب Nuvio لإضافته الواحدة: صاحبه ثم ما رُبط به بترتيب ربطه — لكلٍّ أقسامه وحده في الإضافة نفسها («أفلام (سمارت)» ·
+    «أفلام (فالكون)»، لا دمج)، وبتصنيفات حساب الأداة الذي أنشأه."""
     out = []
     for r in nuvio_accounts.group(DATA_DIR, stremio_addon.host_key(cfg.host), cfg.user):
         c = stremio_addon.read_token(DATA_DIR, r["token"]) if r.get("token") else None
@@ -1244,60 +1244,82 @@ def nuvio_lines(cfg):
             out.append(stremio_line(c, r))
     out = out or [stremio_line(cfg)]
     own = nuvio_accounts.owner(DATA_DIR, stremio_addon.host_key(cfg.host), cfg.user) or {}
-    out[0]["nuvio"] = True                      # أسماء كتالوجاتها عربيةٌ لكل نوع (المسلسلات · الأفلام · القنوات)
+    out[0]["nuvio"] = True                      # كتالوجاتها لكل سيرفر: «مسلسلات (سمارت)» · «أفلام (سمارت)» · «بث مباشر (سمارت)»
     out[0]["cats"] = stremio_categories.get(DATA_DIR, own.get("acct"))
     return out
 
 
 # ---- واجهة Nuvio للعميل: تُضبط من الأداة بدوال مزامنة تطبيقاتهم (الجوال والتلفاز معًا) ----
-# ثلاث مجموعات مثبّتةٌ أعلى الرئيسية — المسلسلات · الأفلام · القنوات — في كلٍّ مجلدٌ لكل تصنيف (صورةٌ مرسومة باسمه وعدده) يفتح
-# قائمته كاملة؛ وتحتها «أحدث المسلسلات» و«أحدث الأفلام» و«القنوات» بأسماء عربية، و«حساباتي» آخرها. وما للعميل من مجموعاتٍ وترتيب
-# يبقى، وصفوف Cinemeta تُطفأ أول مرة (عناوينها لا تُشغَّل من إضافتنا).
+# لكل سيرفرٍ أقسامه وحده (لا دمج): «مسلسلات (سمارت)» · «أفلام (سمارت)» · «بث مباشر (سمارت)» مجموعاتٌ مثبّتةٌ أعلى الرئيسية ثم سيرفرٌ
+# بعده. في المسلسلات والأفلام مجلد «الكل» ثم أحدث سنة ثم مجلدٌ لكل تصنيفٍ رئيسي (صورةٌ مرسومة باسمه وعدده) تبويباته «الكل»
+# وفرعيّاته؛ وفي البث المباشر بطاقةٌ عريضة لكل قسمٍ في اللوحة («MBC» · «MBC HD») بشعار شركته تفتح قنواته. وتحتها «أحدث
+# المسلسلات (سمارت)» … و«حساباتي» آخرها. وما للعميل من مجموعاتٍ وترتيب يبقى، وصفوف Cinemeta تُطفأ أول مرة.
 NUVIO_COLL = "ssouq_"
-NUVIO_SECTIONS = (("series", "sq_series", "مسلسلات"), ("movie", "sq_movies", "أفلام"), ("tv", "sq_live", "قنوات"))
-NUVIO_ROW_TITLES = {"series": "أحدث المسلسلات", "movie": "أحدث الأفلام", "tv": "القنوات"}
+NUVIO_WORD = {"series": "مسلسلات", "movie": "أفلام", "tv": "قنوات"}
+NUVIO_LATEST = {"series": "أحدث المسلسلات", "movie": "أحدث الأفلام"}
+NUVIO_GROUPS_MAX = 150
 NUVIO_HIDE = {"com.linvo.cinemeta": [(t, c) for c in ("top", "year", "imdbRating") for t in ("movie", "series")]}
+# مسافةٌ عريضة بعد كل عنوانٍ عربي: Nuvio يقيس العنوان أضيق قليلًا من رسمه فينزل آخر حرفٍ سطرًا («الك» ثم «ل»)؛ والمسافة في آخر
+# السطر لا تُرسم ولا تُلفّ، فيتّسع العنوان لحروفه
+NUVIO_TAIL = "\u2003"
+
+
+def _nt(title):
+    t = str(title or "")
+    return t if not t or t.endswith(NUVIO_TAIL) else t + NUVIO_TAIL
 
 
 def nuvio_layout(acct_id, lines):
-    """(المجموعات، صفوف الرئيسية بترتيبها) لإضافة حساب Nuvio — تصنيفات حساب الأداة، وأعدادها من المكتبة إن كانت جاهزة
-    (وإلا كلها بلا أعداد)."""
-    cfg = lines[0]["cfg"]
-    mid = stremio_addon.manifest_id(cfg)
+    """(المجموعات، صفوف الرئيسية بترتيبها) لإضافة حساب Nuvio (انظر أعلاه) — تصنيفات حساب الأداة، وأعدادها من مكتبة كل سيرفرٍ
+    إن كانت جاهزة (وإلا المجلدات كلها بلا أعداد، وللقنوات مجلدٌ واحد)."""
+    mid = stremio_addon.manifest_id(lines[0]["cfg"])
     poster = stremio_addon._poster_maker(DATA_DIR, STREMIO_PUBLIC or f"https://{SITE_HOST}")
     cats = stremio_categories.get(DATA_DIR, acct_id)
-    colls = []
-    for kind, cid, word in NUVIO_SECTIONS:
-        lib = stremio_addon.cached_library(lines, kind)
-        by = stremio_addon._cat_index(lines, lib, kind)["by"] if lib else None
-
-        def folder(fid, title, n, genre=None, kind=kind, cid=cid, word=word):
-            src = {"provider": "addon", "addonId": mid, "type": kind, "catalogId": cid}
-            if genre:
-                src["genre"] = genre
-            return {"id": f"{NUVIO_COLL}{kind}_{fid}", "title": title, "coverImageUrl": poster(title, n or 0, "", word),
-                    "tileShape": "square", "hideTitle": False, "sources": [src]}
-        folders = [folder("all", "الكل", len(lib.latest) if lib else 0)]
-        if kind in stremio_addon.YEARS:                 # وأحدث سنة («2026»): جديد السنة بضغطة — وكل السنوات في «اكتشف» ← «حسب السنة»
-            now_y = str(datetime.date.today().year)
-            yrs = [(y, n) for y, n in stremio_addon.years_of(lib) if y <= now_y] if lib else []
-            y, n = yrs[0] if yrs else (now_y, None)
-            folders.append(folder(f"y{y}", y, n, y))
-        for c in stremio_categories.of_kind(cats, kind):
-            n = len(by.get(c["id"]) or ()) if by is not None else None
-            if by is None or n:
-                folders.append(folder(c["id"], c["name"], n, c["name"]))
-        if by and by.get(stremio_categories.OTHERS_ID):
-            folders.append(folder("others", stremio_categories.OTHERS, len(by[stremio_categories.OTHERS_ID]), stremio_categories.OTHERS))
-        colls.append({"id": f"{NUVIO_COLL}{kind}", "title": stremio_addon.NUVIO_TITLES[kind], "pinToTop": True,
-                      "viewMode": "TABBED_GRID", "showAllTab": False, "folders": folders})
     item = lambda key, **kw: {"key": key, "addon_id": "", "type": "", "catalog_id": "", "enabled": True, "custom_title": "",   # noqa: E731
                               "is_collection": False, "collection_id": "", **kw}
-    rows = [item(f"collection_{c['id']}", is_collection=True, collection_id=c["id"]) for c in colls]
-    rows += [item(f"{mid}:{kind}:{cid}", addon_id=mid, type=kind, catalog_id=cid, custom_title=NUVIO_ROW_TITLES[kind])
-             for kind, cid, _ in NUVIO_SECTIONS]
+    colls, latest = [], []
+    for ln, sfx in stremio_addon._books([{**lines[0], "cats": cats}] + list(lines[1:])):
+        lab, one = ln.get("label") or NUVIO_NAME, [ln]
+        for kind in ("series", "movie", "tv"):
+            cid, base, word = stremio_addon.CATALOG[kind] + sfx, f"{NUVIO_COLL}{kind}{sfx}", NUVIO_WORD[kind]
+            lib = stremio_addon.cached_library(one, kind)
+
+            def src(catalog, genre=None, kind=kind):
+                return {"provider": "addon", "addonId": mid, "type": kind, "catalogId": catalog, **({"genre": genre} if genre else {})}
+
+            def folder(fid, title, cover, sources, shape="square", base=base):
+                return {"id": f"{base}_{fid}", "title": _nt(title), "coverImageUrl": cover, "tileShape": shape, "hideTitle": False,
+                        "sources": sources}
+            if kind == "tv":                             # بطاقةٌ بشعار كل قسمٍ في اللوحة، والقنوات داخلها
+                folders = [folder("g" + hashlib.sha1(g.encode("utf-8")).hexdigest()[:10], g, stremio_addon.group_poster(g, ws, poster),
+                                  [src(cid, g)], "landscape") for g, ws in (stremio_addon._groups(one, lib) if lib else [])[:NUVIO_GROUPS_MAX]]
+                folders = folders or [folder("all", "الكل", poster("الكل", 0, "", word, True), [src(cid)], "landscape")]
+            else:
+                by = stremio_addon._cat_index(one, lib, kind)["by"] if lib else None
+                folders = [folder("all", "الكل", poster("الكل", len(lib.latest) if lib else 0, "", word), [src(cid)])]
+                if kind in stremio_addon.YEARS:          # وأحدث سنة («2026»): جديد السنة بضغطة — وكل السنوات في «اكتشف» ← «حسب السنة»
+                    now_y = str(datetime.date.today().year)
+                    yrs = [(y, n) for y, n in stremio_addon.years_of(lib) if y <= now_y] if lib else []
+                    y, n = yrs[0] if yrs else (now_y, None)
+                    folders.append(folder(f"y{y}", y, poster(y, n or 0, "", word), [src(cid, y)]))
+                for c in stremio_categories.mains(cats, kind):   # التصنيف الرئيسي: تبويب «الكل» ثم فرعيّاته
+                    n = len(by.get(c["id"]) or ()) if by is not None else None
+                    if by is not None and not n:
+                        continue
+                    main = stremio_addon.MAIN_PREFIX + c["id"] + sfx
+                    subs = [x for x in stremio_categories.subs_of(cats, c["id"]) if by is not None and by.get(x["id"])]
+                    tabs = [src(main, stremio_addon.ALL)] + [src(main, x["name"]) for x in subs] if subs else [src(cid, c["name"])]
+                    folders.append(folder(c["id"], c["name"], poster(c["name"], n or 0, "", word), tabs))
+                if by and by.get(stremio_categories.OTHERS_ID):
+                    folders.append(folder("others", stremio_categories.OTHERS, poster(stremio_categories.OTHERS, len(by[stremio_categories.OTHERS_ID]),
+                                                                                      "", word), [src(cid, stremio_categories.OTHERS)]))
+                latest.append(item(f"{mid}:{kind}:{cid}", addon_id=mid, type=kind, catalog_id=cid,
+                                   custom_title=_nt(f"{NUVIO_LATEST[kind]} ({lab})")))
+            colls.append({"id": base, "title": _nt(f"{stremio_addon.SECTION_AR[kind]} ({lab})"), "pinToTop": True,
+                          "viewMode": "TABBED_GRID", "showAllTab": False, "folders": folders})
+    rows = [item(f"collection_{c['id']}", is_collection=True, collection_id=c["id"]) for c in colls] + latest
     rows.append(item(f"{mid}:{stremio_addon.ACCOUNTS}:{stremio_addon.ACCOUNTS_ID}", addon_id=mid, type=stremio_addon.ACCOUNTS,
-                     catalog_id=stremio_addon.ACCOUNTS_ID, custom_title="حساباتي"))
+                     catalog_id=stremio_addon.ACCOUNTS_ID, custom_title=_nt("حساباتي")))
     return colls, rows
 
 
@@ -1484,7 +1506,7 @@ def nuvio_disable(acct, gate_id, username):
 
 def stremio_inspect(acct, gate_id, username, q, platform="stremio"):
     """«فحص عمل»: لماذا لم يظهر عملٌ (أو مصدرٌ له) في إضافة حسابٍ من حسابات هذا العميل — خطوط الحساب كله (لخطٍّ مرتبط: حساب
-    صاحبه) وما في قائمة كلٍّ منها والمكتبة الموحدة (‏stremio_addon.inspect_work). ‏ValueError لا حساب."""
+    صاحبه) وما في قائمة كلٍّ منها وفي الإضافة لكل سيرفرٍ وحده (‏stremio_addon.inspect_work). ‏ValueError لا حساب."""
     if platform == "nuvio":
         main = _nuvio_main(acct, gate_id, username)
         cfg = stremio_addon.read_token(DATA_DIR, main.get("token")) if main.get("token") else None
@@ -1561,12 +1583,13 @@ def stremio_account(acct, gate, username, password, line="", email=None, stremio
 STREMIO_ACTIVATION_WAIT = tuple(float(x) for x in os.environ.get("STREMIO_ACTIVATION_WAIT", "2,3,4,6").split(",") if x.strip())
 
 
-def stremio_descriptor(tok, host, gate=None, accounts=None, patient=True):
+def stremio_descriptor(tok, host, gate=None, accounts=None, patient=True, cats=None):
     """(دالةٌ تبني وصف الإضافة للتثبيت، وقائمةٌ يُلحق بها «اكتملت؟» لكل ما بُني). يوزرٌ لم يُفعَّل بعد (يرفضه السيرفر
     أو تأتي قوائمه فارغة — كما حدث في مرح فثُبّتت إضافته بلا أقسام) يُنتظر له ويُعاد بناؤها؛ وسيرفرٌ لا يردّ أصلًا ←
-    تُثبَّت كما هي بلا انتظار (وتُعلَّم ليُحدَّث تثبيتها). صاحب الحساب (أو يوزرٌ وحده): المكتبة الموحدة لخطوطه و«الحسابات»؛
-    والخط المرتبط: بلا كتالوجات (محتواه في مكتبة صاحبه) — يُعرف من ‏stremio_lines، و«ربط خط آخر» يمرّر accounts=False
-    (حسابه لم يُحفظ بعد). ‏patient=False: بلا انتظار التفعيل (التحديث لكل الحسابات: يوزرٌ منتهٍ يُثبَّت كما هو فورًا)."""
+    تُثبَّت كما هي بلا انتظار (وتُعلَّم ليُحدَّث تثبيتها). لكل سيرفرٍ أقسامه وحده: صاحب الحساب (أو يوزرٌ وحده) كتالوجات خطّه
+    و«الحسابات»، والخط المرتبط كتالوجات خطّه بتصنيفات حسابه — يُعرف من ‏stremio_lines، و«ربط خط آخر» يمرّر accounts=False
+    وتصنيفات الحساب (‏cats: حسابه لم يُحفظ بعد). ‏patient=False: بلا انتظار التفعيل (التحديث لكل الحسابات: يوزرٌ منتهٍ يُثبَّت كما
+    هو فورًا)."""
     built = []
 
     def descriptor():
@@ -1575,6 +1598,13 @@ def stremio_descriptor(tok, host, gate=None, accounts=None, patient=True):
         cfg0 = stremio_addon.read_token(DATA_DIR, tok)
         lines = None if accounts is False else (stremio_lines(cfg0) if cfg0 else [{"cfg": cfg, "label": label}])
         acc = lines is not None
+        if lines:
+            books = stremio_addon._books(lines if lines[0].get("nuvio") else lines[:1])
+            multi = len({stremio_addon.line_hk(ln["cfg"]) for ln in lines}) > 1
+        else:                                    # الخط المرتبط: كتالوجات خطّه وحده بتصنيفات حسابه
+            group = stremio_group_of(cfg0) if cfg0 and cats is None else None
+            books = stremio_addon._books([{"cfg": cfg, "label": label, "cats": cats if cats is not None else (group[0].get("cats") if group else None)}])
+            multi = True
         man = state = None
         for wait in (0,) + (STREMIO_ACTIVATION_WAIT if patient else ()):
             if wait:
@@ -1586,11 +1616,11 @@ def stremio_descriptor(tok, host, gate=None, accounts=None, patient=True):
                 continue                         # لم يُفعَّل بعد: ننتظر ونعيد
             except stremio_addon.XtreamError:
                 break                            # السيرفر لا يردّ: لا فائدة من الانتظار
-            man, state = stremio_addon.build_manifest(cfg, base, label, acc, lines, acc)
+            man, state = stremio_addon.build_manifest(cfg, base, label, acc, lines, True, books, multi)
             if state != "pending":
                 break
         if man is None:
-            man, state = stremio_addon.build_manifest(cfg, base, label, acc, lines, acc)
+            man, state = stremio_addon.build_manifest(cfg, base, label, acc, lines, True, books, multi)
         built.append(state == "ok")
         return {"manifest": man, "transportUrl": stremio_addon.links(base, tok)["manifest"],
                 "flags": {"official": False, "protected": False}}
@@ -1733,14 +1763,14 @@ def stremio_update_all(acct):
                 j["failed"].append({"email": email, "error": " · ".join(errs)})
 
     def nuvio_one(rec):
-        """حساب Nuvio: مكتبة خطوطه أولًا (بمهلة — منها أعداد مجلدات التصنيفات)، ثم إضافته وواجهته."""
+        """حساب Nuvio: مكتبة كل خطٍّ من خطوطه أولًا (بمهلة — منها أعداد مجلدات التصنيفات وأقسام القنوات)، ثم إضافته وواجهته."""
         email, errs, n = rec.get("email", ""), [], 0
         cfg = stremio_addon.read_token(DATA_DIR, rec["token"])
         lines = nuvio_lines(cfg) if cfg else None
         if lines:
             doing(email, "يجهّز مكتبة Nuvio (يحمّل محتوى لوحاته)")
             try:
-                _in_time(lambda: [stremio_addon.library(lines, k, full=True) for k in stremio_addon.ORDER], STREMIO_UPDATE_LINE_SECS)
+                _in_time(lambda: [stremio_addon.library([ln], k, full=True) for ln in lines for k in stremio_addon.ORDER], STREMIO_UPDATE_LINE_SECS)
             except TimeoutError:
                 errs.append("لوحته بطيئة الآن — مجلدات التصنيفات بلا أعداد هذه المرة")
             except Exception as e:
@@ -1834,7 +1864,7 @@ def stremio_link_line(acct, gate_id, username, line_gate, line_username, line_pa
         raise ValueError("البوابة بلا هوست")
     key = secrets.token_urlsafe(9)
     tok = stremio_addon.make_token(DATA_DIR, host, line_username, line_password, key=key)
-    descriptor, built = stremio_descriptor(tok, host, line_gate, accounts=False)
+    descriptor, built = stremio_descriptor(tok, host, line_gate, accounts=False, cats=stremio_categories.get(DATA_DIR, acct["id"]))
     rec, linked = stremio_accounts.link(DATA_DIR, hit[0], username, hk, str(line_username), descriptor,
                                         owner={"acct": acct["id"], "gate": line_gate.get("id"), "token": tok,
                                                "addon_key": key, "locked_at": int(time.time())},
