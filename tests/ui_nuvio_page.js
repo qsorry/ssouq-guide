@@ -26,7 +26,7 @@ const nvState = () => JSON.parse(execSync(`curl -s ${NV}/_mock/state`).toString(
     spawn('python3', [path.join(ROOT,'tests/mock_nuvio.py'), String(NV_PORT)], {stdio:'ignore'}),
     // سيرفر Xtream وهمي يقبل user003 من بحث البوابة (فالحساب يُنشأ لخطٍّ يعمل)
     spawn('python3', ['-c', `import sys; sys.path.insert(0, ${JSON.stringify(path.join(ROOT, 'tests'))}); import mock_xtream as m
-s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.serve_forever()`], {stdio:'ignore'}),
+s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.users['user004'] = 'pass004'; s.serve_forever()`], {stdio:'ignore'}),
   ];
   const app = spawn('python3', [path.join(ROOT,'xm_lines.py'), 'web'], {stdio:'ignore', env:{...process.env, XM_DATA:dataDir,
     XM_BIND:'127.0.0.1', XM_PORT:String(APP_PORT), NUVIO_BACKEND: NV, STREMIO_API:'http://127.0.0.1:9/'}});
@@ -42,7 +42,9 @@ s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.serve_forever()`], {s
     await admin.goto(APP + '/admin/setup');
     await api(admin, '/admin/api/setup', {password:'admin123'});
     const r = await api(admin, '/admin/api/accounts', {name:'عميل', user:'multi', password:'pw_multi', stremio: true,
-      gates:[{name:'بوابة أ', mode:'falcon', api_url:`http://127.0.0.1:${F1_PORT}/api/v1`, api_key:'k1', host:`http://127.0.0.1:${XT_PORT}`}]});
+      gates:[{name:'بوابة أ', mode:'falcon', api_url:`http://127.0.0.1:${F1_PORT}/api/v1`, api_key:'k1', host:`http://127.0.0.1:${XT_PORT}`},
+             // سيرفرٌ آخر (localhost) — لربط خطٍّ من بوابةٍ أخرى بحساب Nuvio
+             {name:'بوابة ب', mode:'falcon', api_url:`http://127.0.0.1:${F1_PORT}/api/v1`, api_key:'k1', host:`http://localhost:${XT_PORT}`}]});
     check('client set up with Stremio/Nuvio on', (r.accounts || []).some(a => a.user === 'multi'));
 
     const user = await ctx.newPage();
@@ -86,11 +88,56 @@ s = m.serve(${XT_PORT}); s.users['user003'] = 'pass003'; s.serve_forever()`], {s
     check('and the gate chip counts it', (await user.textContent('#gates .gate')).replace(/\s+/g, ' ').trim() === 'بوابة أ 1');
     await shot(user, 'nuvio-list');
 
+    console.log('== «أو: حساب Nuvio بإيميلٍ تختاره» ==');
+    check('the button is under the search, on Nuvio only', await user.isVisible('#nvCustomBtn') && !(await user.isVisible('#customBtn')));
+    await user.click('#nvCustomBtn');
+    await user.waitForSelector('#linkOverlay:not([hidden])');
+    check('its dialog: email + password, an existing line from search (no «خطٌّ جديد»)', (await user.textContent('#linkTtl')) === 'حساب Nuvio بإيميلٍ تختاره'
+      && await user.isVisible('#cEmail') && !(await user.isVisible('#linkModes')) && (await user.textContent('#cDom')) === '@tv.ssouq.com');
+    await user.fill('#cEmail', 'sara.m'); await user.fill('#cPass', 'Sara1234');
+    await user.fill('#linkQ', 'user004'); await user.click('#linkFindBtn');
+    await user.waitForSelector('#linkHits [data-lnk]', {timeout: 8000});
+    await shot(user, 'nuvio-custom');
+    await user.click('#linkHits [data-lnk]');
+    await user.waitForSelector('#linkOverlay', {state: 'hidden', timeout: 20000});
+    const clip2 = await user.evaluate(() => navigator.clipboard.readText());
+    check('created with the chosen email and password, and copied (the Nuvio text)', nvState().users['sara.m@tv.ssouq.com'] === 'Sara1234'
+      && clip2.includes('sara.m@tv.ssouq.com') && clip2.includes('Sara1234') && /Nuvio/.test(clip2), clip2.slice(0, 60));
+    await user.waitForFunction(() => document.querySelectorAll('#list .card.acct').length === 2, null, {timeout: 8000});
+    check('and it is in the gate list', /sara\.m@tv\.ssouq\.com/.test(await user.textContent('#list')));
+
+    console.log('== «ربط خط آخر» ==');
+    const u3 = user.locator('#list .card.acct', {hasText: 'user003'});
+    await u3.locator('[data-nmore]').click();
+    await user.click('#sheet [data-nlinkto]');
+    await user.waitForSelector('#linkOverlay:not([hidden])');
+    check('the dialog: the other gate picked, its own gate taken', (await user.textContent('#linkTtl')) === 'ربط خطٍّ آخر بحساب Nuvio'
+      && /بوابة ب/.test(await user.textContent('#linkGates .on')) && await user.isDisabled('#linkGates button:not(.on)'));
+    await user.fill('#linkQ', 'user003'); await user.click('#linkFindBtn');
+    await user.waitForSelector('#linkHits [data-lnk]', {timeout: 8000});
+    await user.click('#linkHits [data-lnk]');
+    await user.waitForSelector('#linkOverlay', {state: 'hidden', timeout: 20000});
+    await user.waitForFunction(() => /بوابة ب · user003/.test(document.querySelector('#list')?.textContent || ''), null, {timeout: 8000});
+    check('the card shows both lines (★ the owner)', /بوابة أ · user003 ★/.test(await u3.textContent()) && /بوابة ب · user003/.test(await u3.textContent()));
+    await shot(user, 'nuvio-linked');
+    await u3.locator('.lines button:not(.me)').click();
+    await user.waitForFunction(() => /مرتبطٌ بحساب user003/.test(document.querySelector('#list')?.textContent || ''), null, {timeout: 8000});
+    check('the chip goes to the linked line in its gate, with the account details', (await user.textContent('#gates .gate.on')).includes('بوابة ب')
+      && /user003@tv\.ssouq\.com/.test(await user.textContent('#list')));
+    await user.click('#list [data-nmore]');
+    user.once('dialog', d => d.accept());
+    await user.click('#sheet [data-nunlink]');
+    await user.waitForFunction(() => !document.querySelector('#list .card.acct'), null, {timeout: 8000});
+    check('«فصل الخط» takes it out of the account', (await user.textContent('#gates .gate.on')).replace(/\s+/g, ' ').trim() === 'بوابة ب 0');
+    await user.click('#gates [data-gate]:first-child');
+    await user.fill('#filter', 'user003');             // بقية الفحوص على حساب user003 وحده
+    await user.waitForFunction(() => document.querySelectorAll('#list .card.acct').length === 1, null, {timeout: 8000});
+
     console.log('== the ⋯ menu ==');
     await user.click('#list [data-nmore]');
     const items = await user.$$eval('#sheet .sitem', bs => bs.map(b => b.querySelector('span').firstChild.textContent.trim()));
-    check('«تحديث الإضافة» · «إعادة الربط» · «إلغاء التفعيل» (no TV code: the customer scans the QR with his phone)',
-      items.join('|') === 'تحديث الإضافة|إعادة الربط|إلغاء التفعيل', items.join('|'));
+    check('«ربط خط آخر» · «تحديث الإضافة» · «إعادة الربط» · «إلغاء التفعيل» (no TV code: the customer scans the QR with his phone)',
+      items.join('|') === 'ربط خط آخر|تحديث الإضافة|إعادة الربط|إلغاء التفعيل', items.join('|'));
     await shot(user, 'nuvio-menu');
     await user.click('#sheet [data-nre]');
     await user.waitForFunction(() => /حُدّثت الإضافة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 8000});

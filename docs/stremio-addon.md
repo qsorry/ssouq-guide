@@ -197,7 +197,8 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
   - للخط المرتبط المحدَّث (`addon_v` ≥ 1.5.0) يضع `own=True`.
   - يضع `cats` و`cat_index`.
   - للخط المرتبط نفسه يرجع `None`.
-  - خطٌّ له حساب Nuvio وحده (بلا حساب Stremio): خطّه، ومعه تصنيفات حساب الأداة الذي أنشأه (`nuvio_accounts.owner`).
+  - إضافة حساب Nuvio (قفل رمزها = `nuvio_accounts.addon_key` للخط) ← `nuvio_lines(cfg)`: صاحب حساب Nuvio ثم خطوطه المرتبطة
+    (`nuvio_accounts.group`)، وتصنيفات حساب الأداة الذي أنشأه. `handle` يمرّر القفل لـ`lines_for(cfg, key)` إن قبل معاملين (`_takes_key`).
 - `stremio_token_ok(cfg, key)`: الرمز ساري إن طابق قفل حساب Stremio للخط، **أو** قفل حساب Nuvio له (`nuvio_accounts.addon_key`،
   و`None` لحساب أُلغي تفعيله). القفلان مستقلان: إعادة ربط Nuvio لا توقف Stremio، والعكس.
 - `stremio_group_of(cfg)`: خطوط حساب الخط المرتبط، ليعرض مصادره.
@@ -236,6 +237,11 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 | `POST account` `{gate, username, password, line}` | حساب ليوزر من البحث (أو المحفوظ، أو يعيد تفعيل المُلغى بالحساب نفسه) | `nuvio_account` |
 | `POST reinstall` `{gate, username, relink?}` | «تحديث الإضافة»، و`relink` = «إعادة الربط» (قفل ورمز جديدان يُبطلان الرابط القديم) | `nuvio_reinstall` |
 | `POST disable` `{gate, username}` | «إلغاء التفعيل»: تُزال إضافتنا من حسابه، ويُغيَّر القفل فيتوقف رابطها | `nuvio_disable` |
+| `POST custom` `{email, password, line_gate, line_username, line_password, line}` | «حساب Nuvio بإيميلٍ تختاره»، وأول خطوطه من البحث | `nuvio_custom` |
+| `POST link` `{gate, username, line_gate, line_username, line_password, line}` | «ربط خط آخر» بحساب Nuvio (من بطاقة أي خط فيه) | `nuvio_link_line` |
+| `POST unlink` `{gate, username}` | «فصل الخط» المرتبط | `nuvio_unlink` |
+
+  `reinstall` و`disable` من بطاقة خط مرتبط تعمل على حساب صاحبه (`_nuvio_main`).
 
   - **الحساب** مثل Stremio: الإيميل `<يوزر>@tv.ssouq.com` (`email_for`، نفس تنظيف `stremio_accounts.email_for`)، وكلمة المرور
     باسورد الاشتراك. Nuvio يرفض الأقل من 6 أحرف، فـ`passwords_for` يضيف «A» حتى تبلغها، و`register` يجرّبها بالترتيب.
@@ -287,7 +293,7 @@ handle(DATA_DIR, path, public_base, stremio_cfg_label, stremio_token_ok, stremio
 ## 16) ملفات البيانات (`data/`)
 - `stremio_accounts.json`: الحسابات وخطوطها. فيها `token` و`addon_key` و`linked_to` و`addon_v` و`addon_full` و`exp` و`status`.
 - `nuvio_accounts.json`: حسابات Nuvio بمفتاح `«هوست|يوزر»`. فيها `email` و`password` (مشفّرة) و`user_id` و`token` و`addon_key`
-  و`acct` و`gate` و`status` (`active` / `off`) و`addon_at` و`addon_v` و`off_at`.
+  و`acct` و`gate` و`status` (`active` / `off`) و`addon_at` و`addon_v` و`off_at`. والخط المرتبط: `linked_to` (`«هوست|يوزر»` صاحب الحساب) و`token` لخطّه و`status="linked"`، بلا إيميل.
 - `stremio_routes.json`: تحويل الهوستات.
 - `stremio_categories.json`: التصنيفات لكل حساب أداة.
 - `stremio_extras.json`: الإضافات الأخرى.

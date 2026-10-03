@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """حسابات Nuvio الجاهزة — مسار تسجيلٍ مستقل عن Stremio، على خادم Nuvio الرسمي (‏api.nuvio.tv) وبواجهته التي تستعملها تطبيقاته
-نفسها (تحقّقنا منها في docs/nuvio.md): Supabase — ‏/auth/v1 للحساب، و‏/rest/v1/rpc لإضافاته.
+نفسها (تحقّقنا منها في docs/nuvio.md وفي كود تطبيقاتهم): Supabase — ‏/auth/v1 للحساب، وجدول ‏/rest/v1/addons لقراءة
+إضافاته و‏rpc/sync_push_addons لكتابتها.
 
   الحساب      كحساب Stremio الجاهز: الإيميل يوزر البوابة على دومين المتجر (‏<يوزر>@tv.ssouq.com) وكلمة المرور باسورده —
               وإن رفضها Nuvio (أقل من 6 أحرف) أُضيف إليها «A» حتى تُقبل؛ تُحفظ مشفَّرة، والتسجيل مفتوحٌ بلا تأكيد بريد
@@ -8,6 +9,9 @@
   الإضافة     رابط manifest إضافتنا (رمزٌ مختوم، لا بيانات Xtream فيه) في قائمة إضافات الملف 1 — ‏sync_push_addons تستبدل القائمة
               كاملة، فتُقرأ أولًا وتبقى إضافات العميل الأخرى كما هي، وإضافتنا أولها.
   التلفاز     من Nuvio نفسه: العميل يدخل حسابه على جواله ويمسح رمز QR الظاهر على التلفاز.
+  بإيميلٍ تختاره  إيميلٌ وكلمة مرور يختارهما الموظف (‏custom_email · custom_password كما في Stremio).
+  الخطوط     خطوطٌ من بواباتٍ أخرى تُربط بالحساب (سجلّها ‏linked_to = «هوست|يوزر» صاحبه، ورمزٌ مختومٌ لخطّها): إضافته الواحدة
+              تعرض مكتبتها الموحدة — لا إضافة لكل خط، فـ Nuvio يقرأ الإضافة برابطها.
 
 الحفظ: ‏data/nuvio_accounts.json ‏{«هوست|يوزر»: {email, password (مشفَّرة), user_id, token, addon_key, acct, gate, status, …}}.
 """
@@ -17,6 +21,7 @@ import os
 import threading
 import time
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import crypto_store
@@ -107,7 +112,12 @@ def signup(email, password):
 
 
 def pull_addons(sess, profile=PROFILE):
-    d = _api("POST", "/rest/v1/rpc/sync_pull_addons", {"p_profile_id": profile}, sess["access_token"])
+    """إضافات ملف الحساب بترتيبها — من جدول ‏addons مباشرةً (‏RLS: صفوف صاحب الجلسة وحده)، كما تقرؤها تطبيقات Nuvio
+    نفسها؛ فلا دالة ‏sync_pull_addons على خادمهم (‏PGRST202)."""
+    q = f"select=url,name,enabled,sort_order&profile_id=eq.{int(profile)}&order=sort_order.asc"
+    if sess.get("user_id"):
+        q += f"&user_id=eq.{quote(str(sess['user_id']), safe='')}"
+    d = _api("GET", f"/rest/v1/addons?{q}", None, sess["access_token"])
     return [a for a in d or [] if isinstance(a, dict) and a.get("url")]
 
 
@@ -143,10 +153,21 @@ def passwords_for(password):
     return ([pw] if len(pw) >= MIN_PASS else []) + [alt]
 
 
-def register(email, password):
-    """حسابٌ بالباسورد (أو به و«A» إن رفضه Nuvio)، أو الدخول إليه إن سُجّل من قبل بإحداهما ← (الجلسة، كلمة المرور)."""
+def custom_email(name):
+    """إيميلٌ يختاره الموظف (اسمٌ، أو اسم@دومين بريدنا) ← كاملًا. ‏ValueError برسالةٍ للعرض."""
+    return stremio_accounts.custom_email(name, DOMAIN)
+
+
+def custom_password(password):
+    """كلمة مرورٍ يختارها الموظف كما هي (6–64 بلا مسافات). ‏ValueError برسالةٍ للعرض."""
+    return stremio_accounts.custom_password(password)
+
+
+def register(email, password, exact=False):
+    """حسابٌ بالباسورد (أو به و«A» إن رفضه Nuvio)، أو الدخول إليه إن سُجّل من قبل بإحداهما ← (الجلسة، كلمة المرور).
+    ‏exact: كلمة مرورٍ اختارها الموظف — هي وحدها."""
     err = None
-    for pw in passwords_for(password):
+    for pw in [str(password)] if exact else passwords_for(password):
         try:
             return signup(email, pw), pw
         except NuvioError as e:
@@ -205,6 +226,41 @@ def put(data_dir, host_key, username, **fields):
         rec.update(fields)
         _save(data_dir, d)
         return _plain(data_dir, dict(rec))
+
+
+def remove(data_dir, host_key, username):
+    """يحذف سجلّ خط (خطٌّ مرتبطٌ يُفصل)."""
+    with _lock:
+        d = _load(data_dir)
+        if d.pop(_key(host_key, username), None) is not None:
+            _save(data_dir, d)
+
+
+def email_taken(data_dir, email):
+    """هل لإيميلٍ حساب Nuvio عندنا؟"""
+    email = str(email or "").strip().lower()
+    with _lock:
+        return any(isinstance(r, dict) and str(r.get("email") or "").lower() == email for r in _load(data_dir).values())
+
+
+def root_key(rec):
+    """«هوست|يوزر» صاحب الحساب الذي فيه الخط (هو نفسه إن لم يكن مرتبطًا)."""
+    return rec.get("linked_to") or _key(rec.get("host", ""), rec.get("username", ""))
+
+
+def group(data_dir, host_key, username):
+    """خطوط حساب Nuvio: صاحبه أولًا ثم المرتبطة بترتيب ربطها (بلا كلمات مرور)، أو [] لا حساب."""
+    with _lock:
+        d = _load(data_dir)
+    rec = d.get(_key(host_key, username))
+    if not isinstance(rec, dict):
+        return []
+    root = root_key(rec)
+    main = d.get(root)
+    if not isinstance(main, dict):
+        return []
+    linked = sorted((r for r in d.values() if isinstance(r, dict) and r.get("linked_to") == root), key=lambda r: r.get("ts") or 0)
+    return [{k: v for k, v in r.items() if k != "password"} for r in [main] + linked]
 
 
 def owned(data_dir, acct_id, gate_id=None):

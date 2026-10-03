@@ -26,6 +26,7 @@
 import datetime
 import hashlib
 import http.client
+import inspect
 import itertools
 import json
 import os
@@ -2109,18 +2110,26 @@ LINES_TTL = 15                       # خطوط حسابٍ تُقرأ مرةً �
 _lines_cache = OrderedDict()
 
 
-def _lines_of(cfg0, cfg, label, lines_for, key=None, fallback=...):
+def _takes_key(fn):
+    """‏lines_for(cfg، القفل)؟ — دالةٌ تميّز إضافة حساب Nuvio من إضافة Stremio للخط نفسه بقفل رمزها."""
+    try:
+        return len(inspect.signature(fn).parameters) >= 2
+    except (TypeError, ValueError):
+        return False
+
+
+def _lines_of(cfg0, cfg, label, lines_for, key=None, fallback=..., lock=None):
     """خطوط الإضافة (انظر handle) — محفوظةٌ ثوانيَ."""
     if not lines_for:
         return [{"cfg": cfg, "label": label}]
-    key = key or cfg0
+    key = key or (cfg0, lock)
     now = time.time()
     with _lock:
         hit = _lines_cache.get(key)
     if hit and now - hit[0] < LINES_TTL:
         return hit[1]
     try:
-        val = lines_for(cfg0)
+        val = lines_for(cfg0, lock) if lock and _takes_key(lines_for) else lines_for(cfg0)
     except Exception:
         val = hit[1] if hit else [{"cfg": cfg, "label": label}] if fallback is ... else fallback
     with _lock:
@@ -2202,7 +2211,7 @@ def handle(data_dir, path, base, label_for=None, allowed=None, route=None, lines
         except Exception:
             pass
     # خطوط الحساب: صاحبه (أو رابطٌ وحده) ← مكتبةٌ موحدة و«الحسابات»؛ والخط المرتبط ← None (محتواه في مكتبة صاحبه)
-    lines = _lines_of(cfg0, cfg, label, lines_for) if need_lines else None
+    lines = _lines_of(cfg0, cfg, label, lines_for, lock=key) if need_lines else None
     pre = prefix(cfg)
     try:
         if rest == ["manifest"]:
