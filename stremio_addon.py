@@ -1245,7 +1245,9 @@ def accounts_streams(lines, pre, sid):
 # بلا كتالوجات (محتواه في المكتبة)، ويبقى عندها ما في مكتبة Stremio ببادئتها.
 #   معرّف العمل: من مصدره المرساة — في خط صاحب الحساب بالصيغة القديمة نفسها («sqXXXX:s:123»، فلا تتغيّر المكتبة و«تابع
 #   المشاهدة»)، وفي غيره «sqXXXX:ws:<بصمة السيرفر>.<رقمه>»؛ وأي مصدرٍ في العمل يدلّ عليه. والحلقة «…:we:<بصمة>.<رقم>:<موسم>:<حلقة>».
-LIB_MAX = 64                         # مكتبات (باقات الخطوط × نوع) في الذاكرة
+# مكتبات (باقات الخطوط × نوع) في الذاكرة — مكتبة حسابٍ بثلاث لوحاتٍ كبيرة ~200 ميجا للأنواع الثلاثة، فالحدّ بالذاكرة
+LIB_MAX = int(os.environ.get("STREMIO_LIBS", "12"))
+_build_sem = threading.Semaphore(1)  # مكتبةٌ تُبنى في المرة الواحدة: ذروة الذاكرة والمعالج محدودة، والطلبات الأخرى تُجاب أثناءه
 SRC_TAG = "مصدر: "                   # تصنيف «مصدر: كاسبر» ← كل ما في الخط
 PROBE_TIMEOUT = float(os.environ.get("STREMIO_PROBE_TIMEOUT", "4"))   # مهلة فحص المصدر قبل الانتقال للتالي (ثوانٍ)
 PROBE_TTL = 60                       # نتيجة فحص رابطٍ تُحفظ دقيقة
@@ -1256,6 +1258,7 @@ PROBE_MAX = 4                        # مصادر تُفحص للتشغيل ال
 LIB_WAIT = float(os.environ.get("STREMIO_LIB_WAIT", "5"))
 _libs = OrderedDict()                # (النوع، بصمة الخطوط) ← (نسخ القوائم، Library)
 _lib_busy = set()
+_lib_build = {}                      # المكتبة ← قفل بنائها الأول: طلباتٌ متزامنة (التحميل المسبق والتحديث والتصفّح) تبنيها مرةً واحدة
 _line_jobs = {}                      # (cfg، النوع) ← تحميل قائمة خطٍّ للمكتبة (جارٍ، أو فشلٌ يُذكر دقيقة)
 _probes = {}                         # الرابط ← (الوقت، يعمل؟)
 
@@ -1374,7 +1377,7 @@ def library(lines, kind, full=False):
         if not busy:
             def bg():
                 try:
-                    store(LIB.build(kind, parts))
+                    store(_build(kind, parts))
                 except Exception:
                     pass
                 finally:
@@ -1382,9 +1385,32 @@ def library(lines, kind, full=False):
                         _lib_busy.discard(gkey)
             threading.Thread(target=bg, daemon=True, name="stremio-library").start()
         return hit[1]
-    lib = LIB.build(kind, parts)
-    store(lib)
+    with _lock:
+        lk = _lib_build.setdefault(gkey, threading.Lock())
+    with lk:                                             # بناءٌ جارٍ للمكتبة نفسها: تُنتظر نتيجته ولا تُبنى ثانيةً
+        with _lock:
+            hit = _libs.get(gkey)
+        if hit and hit[0] == lsig:                       # بُنيت من القوائم نفسها أثناء الانتظار
+            return hit[1]
+        lib = _build(kind, parts)
+        store(lib)
     return lib
+
+
+def _build(kind, parts):
+    with _build_sem:
+        return LIB.build(kind, parts)
+
+
+def cached_library(lines, kind):
+    """مكتبة خطوط الحساب لنوعٍ إن كانت في الذاكرة — بلا تحميلٍ ولا بناء (لصفحاتٍ لا تنتظر: معاينة التصنيفات) — أو None."""
+    keys = [_lkey(ln["cfg"], kind) for ln in lines]
+    if not keys or not all(keys):
+        return None
+    gkey = (kind,) + tuple((line_hk(ln["cfg"]), ln.get("label") or "", k) for ln, k in zip(lines, keys))
+    with _lock:
+        hit = _libs.get(gkey)
+    return hit[1] if hit else None
 
 
 def warm_library(lines):

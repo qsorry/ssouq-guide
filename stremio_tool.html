@@ -844,8 +844,12 @@ function renderUpd(){
   b.textContent = running ? "جاري التحديث…" : `تحديث الإضافة لكل الحسابات (${UPD.accounts})`;
   if (!j) { $("updJob").innerHTML = UPD.accounts ? "" : '<div class="empty">لا حسابات Stremio بعد.</div>'; return; }
   const fails = (j.failed || []).length, pct = j.total ? Math.round(100 * j.done / j.total) : 0;
+  const ago = s => s < 60 ? `${s} ث` : `${Math.floor(s / 60)} د`;
+  const act = running ? (j.active || []) : [];
   $("updJob").innerHTML = `<div class="jobln">${running
-      ? `جاري التحديث: ${j.done} من ${j.total} حساب${fails ? ` · <span style="color:var(--err)">تعذّر ${fails}</span>` : ""}`
+      ? `جاري التحديث: ${j.done} من ${j.total} حساب · منذ ${ago((j.now || 0) - (j.started || 0))}${fails ? ` · <span style="color:var(--err)">تعذّر ${fails}</span>` : ""}
+         ${act.map(a => `<div class="hint" style="margin-top:4px"><span class="ltr">${esc(a.email)}</span> — ${esc(a.text)} · ${ago(a.secs)}</div>`).join("")}
+         <div class="hint" style="margin-top:4px">يكمل في الخلفية وإن أغلقت الصفحة. أول تحديثٍ بعد إعادة نشر الموقع أبطأ (يحمّل محتوى اللوحات من جديد).</div>`
       : `حُدّثت الإضافة في ${j.changed} من ${j.total} حساب (إضافاتها: ${j.lines})${fails ? ` · <span style="color:var(--err)">تعذّر ${fails}</span>` : " ✓"}`}
     ${fails ? `<details><summary>ما تعذّر</summary>${j.failed.map(f => `<div class="ltr">${esc(f.email)} — ${esc(f.error)}</div>`).join("")}</details>` : ""}</div>
     ${running ? `<div class="prog"><i style="width:${pct}%"></i></div>` : ""}`;
@@ -1235,6 +1239,7 @@ function renderCatCounts(){
   const p = CAT.preview[CAT_KIND];
   $("catSample").textContent = CAT.sample ? `معاينة: ${CAT.sample}` : "";
   $("catOthers").textContent = p ? `في «${CAT.others}»: ${(p.counts.others || 0).toLocaleString("en")} من ${p.total.toLocaleString("en")}`
+    : CAT.loading ? "جاري حساب الأعداد في الخلفية… (تظهر وحدها بعد قليل)"
     : "الأعداد تظهر بعد أول تحميلٍ لقوائم حسابٍ من حساباتك (افتح Stremio بأحدها).";
   const loose = p ? p.loose : [], mine = CAT.cats.map((c, i) => [c, i]).filter(([c]) => c.kind === CAT_KIND && c.on !== false);
   $("catLoose").hidden = !loose.length;
@@ -1277,11 +1282,16 @@ async function catPreview(){
   try {
     const d = await api("/api/stremio/categories", {cats: CAT.cats, preview: true});
     if (seq !== CAT_SEQ) return;
-    CAT.preview = d.preview; CAT.sample = d.sample; $("catMsg").textContent = ""; renderCatCounts();
+    CAT.preview = d.preview; CAT.sample = d.sample; CAT.loading = d.loading; $("catMsg").textContent = ""; renderCatCounts(); catWait();
   } catch(e) { if (seq === CAT_SEQ) $("catMsg").textContent = e.message; }
 }
+let CAT_WAIT = 0;
+function catWait(){                               // المكتبة تُبنى في الخلفية: المعاينة بعد ثوانٍ (حتى دقيقتين)
+  clearTimeout(CAT_WAIT);
+  if (CAT && CAT.loading && (catWait.n = (catWait.n || 0) + 1) <= 24) CAT_WAIT = setTimeout(catPreview, 5000);
+}
 async function loadCats(){
-  try { CAT = await api("/api/stremio/categories"); CAT_DIRTY = false; renderCats(); }
+  try { CAT = await api("/api/stremio/categories"); CAT_DIRTY = false; renderCats(); catWait(); }
   catch(e) { $("catList").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
 $("catKinds").onclick = e => { const b = e.target.closest("button[data-k]"); if (b && CAT) { CAT_KIND = b.dataset.k; renderCats(); } };
