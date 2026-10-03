@@ -304,6 +304,12 @@ def through_addon():
               and [m["id"] for m in fs["metas"]] == [f"{pre3}s:21", f"{pre3}s:22"], json.dumps(fs, ensure_ascii=False)[:200])
         code, st, _ = get(tok, f"stream/movie/{quote(pre3 + 'm:301', safe='')}.json", nlf)
         check("ومصادره من فالكون", code == 200 and panel(lines, st["streams"][0]["url"]) == f"{h3}/movie/fu/fp/301.mp4")
+        code, fm, _ = get(tok, f"meta/series/{quote(pre3 + 's:21', safe='')}.json", nlf)
+        vids = (fm.get("meta") or {}).get("videos") or [] if isinstance(fm, dict) else []
+        code2, fst, _ = get(tok, f"stream/series/{quote(vids[0]['id'], safe='')}.json", nlf) if vids else (0, {}, {})
+        check("وحلقة مسلسلٍ من فالكون: صفحته بحلقاته، ومصادر الحلقة من فالكون", code == 200 and code2 == 200 and vids
+              and fst.get("streams") and panel(lines, fst["streams"][0]["url"]).startswith(f"{h3}/series/fu/fp/"),
+              json.dumps([code, code2, vids[:1], fst], ensure_ascii=False)[:300])
         S.forget_lines()
 
         print("== البث المباشر: بطاقةٌ بشعار كل قسم، والقنوات داخلها (عريضة) ==")
@@ -351,6 +357,20 @@ def through_addon():
         code, now2, _ = get(tok2, "catalog/series/sq_series.json")
         check("الجديد يظهر، والمحذوف («مسلسل كاسبر وحده») يختفي", [m["name"] for m in now2["metas"]] == ["مسلسل جديد", "علي كارا (مترجم)"],
               str(now2))
+        lib_now, list_now = S.library(one, "series"), S.lists(c2, "series")
+        with S._lock:
+            k = S._list_keys[(c2, "series")]
+            t, val = S._lists[k]
+            S._lists[k] = (t - S.TTL - 1, val)            # انتهى عمرها ولم يتغيّر شيءٌ في اللوحة
+        S.lists(c2, "series")
+        for _ in range(100):
+            time.sleep(0.05)
+            with S._lock:
+                fresh = time.time() - S._lists[k][0] < S.TTL
+            if fresh:
+                break
+        check("وتحديثٌ لم يجد جديدًا في اللوحة: القائمة نفسها (لا تُعاد بناء المكتبة — بعد إعادة النشر لا تُبنى مرتين)",
+              fresh and S.lists(c2, "series") is list_now and S.library(one, "series") is lib_now)
     finally:
         for srv in (s1, s2, s3):
             srv.shutdown()

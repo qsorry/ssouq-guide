@@ -209,11 +209,12 @@ def against_mock():
         again = S.lists(other, "series")
         quick = time.time() - t0
         for _ in range(50):
-            if S._lists[key][1] is not Ls:
+            if time.time() - S._lists[key][0] < 5:
                 break
             time.sleep(0.05)
+        # اللوحة لم تتغيّر: التحديث يُجدِّد عمرها ويُبقي النسخة نفسها (فلا تُعاد بناء مكتباتها)
         check("قديمةٌ تُعرض فورًا وتُحدَّث في الخلفية (لا ينتظر البحث السيرفر)", again is Ls and quick < 0.5
-              and S._lists[key][1] is not Ls and time.time() - S._lists[key][0] < 5, f"{quick:.2f}s")
+              and S._lists[key][1] is Ls and time.time() - S._lists[key][0] < 5, f"{quick:.2f}s")
         info_hits = lambda: sum(1 for h in mock_xtream.Handler.hits if h.endswith("action=get_series_info"))
         sid = S.lists(cfg, "series").items[0].id
         S._details(cfg, "get_series_info", "series_id", sid)

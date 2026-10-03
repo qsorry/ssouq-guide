@@ -1722,8 +1722,10 @@ def stremio_update_all(acct):
         with _upd_lock:
             j["active"][email] = {"text": text, "at": int(time.time())}
 
-    def one(rs):
-        email, n, errs, ready = rs[0]["email"], 0, [], []
+    retry = []                                  # حساباتٌ لوحتها بطيئة: تُعاد في آخر التحديث (وقد اكتمل تحميلها في الخلفية)
+
+    def one(rs, last=False):
+        email, n, errs, ready, slow = rs[0]["email"], 0, [], [], False
         # إضافات الخطوط تُجهَّز أولًا (منها تحميل محتوى لوحاتها)، كلٌّ بمهلة، ثم دخولٌ واحد إلى Stremio يثبّت ما تجهّز
         for r in rs:
             cfg = stremio_addon.read_token(DATA_DIR, r["token"])
@@ -1734,9 +1736,14 @@ def stremio_update_all(acct):
             try:
                 ready.append((r, _in_time(descriptor, STREMIO_UPDATE_LINE_SECS), built[-1] if built else None))
             except TimeoutError:
+                slow = True
                 errs.append(f"«{name}»: لوحتها بطيئة الآن — أعد التحديث بعد دقائق (يكمل تحميلها في الخلفية)")
             except Exception as e:              # خطٌّ يتعثّر لا يوقف باقي خطوط الحساب
                 errs.append(f"«{name}»: تعذّر ({type(e).__name__})")
+        if slow and not last:                   # لا يُثبَّت نصفه: يُعاد كله في آخر التحديث
+            doing(email, "لوحته بطيئة الآن — يُعاد في آخر التحديث")
+            retry.append(rs)
+            return
         if ready:
             doing(email, "يثبّت في Stremio")
             try:
@@ -1802,6 +1809,7 @@ def stremio_update_all(acct):
             with ThreadPoolExecutor(max_workers=STREMIO_UPDATE_WORKERS) as ex:
                 list(ex.map(one, groups.values()))
                 list(ex.map(nuvio_one, nuvios))
+                list(ex.map(lambda rs: one(rs, last=True), list(retry)))   # المرة الثانية: قوائمها في الذاكرة الآن
         finally:
             stremio_addon.forget_lines()
             with _upd_lock:
