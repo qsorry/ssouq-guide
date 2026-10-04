@@ -945,7 +945,8 @@ def auto_probe():
         S.candidates = lambda lines, kind, sid, pre: [mk("abc123.m7.mkv", "M1"), mk("abc123.m8.mp4", "M2")]
         r = S.play([], "movie", "x", "p")
         check("ونسختان فعلًا ← تُفحصان (وكلتاهما معطّلة ← الأولى)", r == "M1" and calls == ["M1", "M2"], str(calls))
-        check("ومهلة الفحص قصيرة (2.5 ثانية)", S.PROBE_TIMEOUT <= 2.5)
+        check("ومهلة الفحص قصيرة (2.5 ثانية) ومصدران على الأكثر", S.PROBE_TIMEOUT <= 2.5 and S.PROBE_MAX <= 2)
+        check("والقوائم في الذاكرة لا أقل من المكتبات (قائمةٌ تُطرد تعيد بناء مكتبتها)", S.LISTS_MAX >= S.LIB_MAX)
     finally:
         S.candidates, S.probe = orig_c, orig_p
 
