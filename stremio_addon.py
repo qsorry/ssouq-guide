@@ -1443,7 +1443,7 @@ def accounts_streams(lines, pre, sid):
 LIB_MAX = int(os.environ.get("STREMIO_LIBS", "36"))
 _build_sem = threading.Semaphore(1)  # مكتبةٌ تُبنى في المرة الواحدة: ذروة الذاكرة والمعالج محدودة، والطلبات الأخرى تُجاب أثناءه
 SRC_TAG = "مصدر: "                   # تصنيف «مصدر: كاسبر» ← كل ما في الخط
-PROBE_TIMEOUT = float(os.environ.get("STREMIO_PROBE_TIMEOUT", "4"))   # مهلة فحص المصدر قبل الانتقال للتالي (ثوانٍ)
+PROBE_TIMEOUT = float(os.environ.get("STREMIO_PROBE_TIMEOUT", "2.5"))   # مهلة فحص المصدر قبل الانتقال للتالي (ثوانٍ)
 PROBE_TTL = 60                       # نتيجة فحص رابطٍ تُحفظ دقيقة
 PROBE_MAX = 4                        # مصادر تُفحص للتشغيل التلقائي على الأكثر
 # خطٌّ بطيءٌ لا يؤخّر المكتبة: سيرفرٌ يتعثّر في قائمته (كاسبر يردّ 503 لقائمة أفلامه فتُحمَّل قسمًا قسمًا) كان يُبقي صفّ
@@ -2449,6 +2449,10 @@ def play(lines, kind, sid, pre):
     if not cands:
         return None
     ok_first = [c for c in cands if c["rank"] < 2] or cands
+    # مصدرٌ واحد فعلًا (قناةٌ بصيغتيها، أو عملٌ بنسخةٍ واحدة) ← يُشغَّل مباشرةً بلا فحص: الفحص يفتح اتصالًا باللوحة قبل المشغّل
+    # (ويؤخّر «Starting stream»، وفي خطٍّ باتصالٍ واحد قد تحجز اللوحة المشغّل حتى تُسقط اتصال الفحص) ولا بديل ينتقل إليه أصلًا
+    if kind == "tv" or len({c["src"].rsplit(".", 1)[0] for c in ok_first}) == 1:
+        return ok_first[0]["url"]
     for c in ok_first[:PROBE_MAX]:
         if probe(c["url"]):
             return c["url"]
