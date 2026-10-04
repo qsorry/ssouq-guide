@@ -63,8 +63,13 @@ def core():
         s = {x["session_id"]: x for x in SS.sessions([A], now=1400)}
         check("وجلسة A باقيةٌ نشطة بآخر محتوى وآخر ظهور (لا تُقطع)", s[r1["session_id"]]["status"] == "active"
               and s[r1["session_id"]]["last_seen"] == 1300 and s[r1["session_id"]]["content_id"] == "s:1:1:2" and len(s) == 1)
-        check("‏dry: القرار بلا إنشاء جلسة", SS.check(A, "9.9.9.9", NUVIO_TV, dry=True, now=1400)["reason"] == "CONCURRENT_DEVICE_LIMIT"
-              and len(SS.sessions([A], now=1400)) == 1)
+        SS.check(A, "9.9.9.9", NUVIO_TV, "m:5", "movie", now=1410)
+        dn = SS.denied([A])
+        check("والرفض يُسجَّل للأداة: الشبكة المرفوضة والجلسة التي حجبته وشبكتها (وتكرارها خلال دقيقة سطرٌ واحد)",
+              len(dn) == 1 and dn[0]["ip"] == "9.9.9.9" and dn[0]["count"] == 2 and dn[0]["reason"] == "CONCURRENT_DEVICE_LIMIT"
+              and dn[0]["blocking"] == [{"session_id": r1["session_id"], "ip": "1.2.3.4", "last_seen": 1300}], json.dumps(dn, ensure_ascii=False))
+        check("‏dry: القرار بلا إنشاء جلسة (ولا تسجيل رفض)", SS.check(A, "9.9.9.9", NUVIO_TV, dry=True, now=1400)["reason"] == "CONCURRENT_DEVICE_LIMIT"
+              and len(SS.sessions([A], now=1400)) == 1 and SS.denied([A])[0]["count"] == 2)
 
         print("== المهلة (من الأداة) ==")
         check("الافتراضي: 3 ساعات للأفلام والمسلسلات وساعة للبث", SS.settings("acct1") == {"timeout_vod": 10800, "timeout_live": 3600, "default_max": 1})

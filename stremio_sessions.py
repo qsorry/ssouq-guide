@@ -309,8 +309,12 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
                         and int(s.get("version") or 1) == int(a.get("version") or 1)
                         and now - float(s.get("revoked_at") or 0) <= _timeout(st, s.get("content_type"))), None)
         if blocked:
+            if not dry:
+                _log_denied(d, acct, ip, ua, content_id, REVOKED_REASON, [], now)
             return {**out, "allowed": False, "reason": REVOKED_REASON, "message": MSG[REVOKED_REASON]}
         if len(active) >= mx:                            # ‏on_limit: «deny» وحده الآن (‏kick_oldest لاحقًا هنا)
+            if not dry:
+                _log_denied(d, acct, ip, ua, content_id, LIMIT_REASON, active, now)
             return {**out, "allowed": False, "reason": LIMIT_REASON, "message": MSG[LIMIT_REASON]}
         if dry:
             return out
@@ -321,6 +325,35 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
         _prune(d, now)
         _save()
         return {**out, "active_devices": len(active) + 1, "session_id": sid}
+
+
+DENIED_MAX = 300                        # آخر محاولات التشغيل المرفوضة (للأداة: من رُفض، ومن أي شبكة، وأي جلسةٍ حجبته)
+
+
+def _log_denied(d, acct, ip, ua, content_id, reason, active, now):
+    """يسجّل محاولةً مرفوضة (و_lock مقفل) — مع الجلسات التي حجبتها، فيُعرف السبب: جهازٌ آخر فعلًا، أم الجهاز نفسه من شبكةٍ أخرى."""
+    log = d.setdefault("denied", [])
+    if not isinstance(log, list):
+        log = d["denied"] = []
+    last = log[-1] if log else None
+    if last and last.get("account") == acct and last.get("ip") == str(ip or "")[:64] and now - float(last.get("at") or 0) < 60:
+        last["at"], last["count"] = now, int(last.get("count") or 1) + 1      # تكرار المحاولة نفسها خلال دقيقة: سطرٌ واحد
+    else:
+        log.append({"account": acct, "ip": str(ip or "")[:64], "ua": str(ua or "")[:200], "content_id": str(content_id)[:120],
+                    "reason": reason, "at": now, "count": 1,
+                    "blocking": [{"session_id": sid, "ip": x.get("ip", ""), "last_seen": int(x.get("last_seen") or 0)} for sid, x in active]})
+        del log[:-DENIED_MAX]
+    _save()
+
+
+def denied(accts=None):
+    """المحاولات المرفوضة (لاشتراكاتٍ أو كلها)، الأحدث أولًا."""
+    want = set(accts) if accts is not None else None
+    with _lock:
+        log = _data().get("denied") or []
+        out = [dict(x, blocking=[dict(b) for b in x.get("blocking") or []]) for x in log
+               if isinstance(x, dict) and (want is None or x.get("account") in want)]
+    return sorted(out, key=lambda x: -float(x.get("at") or 0))
 
 
 def revoke(session_id):

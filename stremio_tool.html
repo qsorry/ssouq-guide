@@ -443,6 +443,13 @@ h1{font-size:1.3rem;margin:0 0 2px}
     <div class="err" id="dvAccMsg"></div>
     <div id="dvAccList"><div class="empty">جاري التحميل…</div></div>
   </section>
+  <section id="dvDenSec">
+    <h2>محاولات مرفوضة <span class="count" id="nDvDen">0</span></h2>
+    <p class="hint" style="margin:-6px 0 12px">من رُفض تشغيله ولماذا، والجلسة التي حجبته وشبكتها. إن كانت <b>للعميل نفسه</b> (جوّاله انتقل من
+      الواي فاي إلى بيانات الجوال، أو تغيّر عنوانه) اضغط «السماح» فتُلغى الجلسة الحاجبة ويشغّل من جديد.</p>
+    <div class="err" id="dvDenMsg"></div>
+    <div id="dvDenList"></div>
+  </section>
   <section id="dvSesSec">
     <h2>الجلسات <span class="count" id="nDvSes">0</span></h2>
     <p class="hint" style="margin:-6px 0 12px">Stremio وNuvio لا يرسلان معرّف جهازٍ ثابتًا؛ «الجهاز» هنا بصمةٌ تقريبية من الشبكة (عنوان
@@ -1661,6 +1668,17 @@ function renderDv(){
       <td><input class="t" data-f="max" type="number" min="1" max="20" value="${a.max_devices || ""}" placeholder="${a.panel_max ? "اللوحة: " + a.panel_max : "اللوحة"}"></td>
       <td><button class="ghost" data-save>حفظ</button> <button class="ghost st" data-out>خروج من كل الأجهزة</button></td></tr>`).join("")}</tbody></table></div>`
     : '<div class="empty">لا خطوط Stremio ولا Nuvio بعد.</div>';
+  const den = DV.denied || [], RS = {CONCURRENT_DEVICE_LIMIT: "الحد ممتلئ", SESSION_REVOKED: "جلسةٌ ملغاة"};
+  $("nDvDen").textContent = den.length;
+  $("dvDenList").innerHTML = den.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الوقت</th><th>الخط</th><th>IP المرفوض</th>
+      <th>User-Agent</th><th>السبب</th><th>حجبته جلسة من</th><th></th></tr></thead><tbody>${den.map(x => `<tr>
+      <td>${dvTime(x.at)}${x.count > 1 ? ` <span class="hint" style="display:inline">×${x.count}</span>` : ""}</td>
+      <td class="ltr">${esc(x.username || x.account)}</td><td class="ltr">${esc(x.ip)}</td><td><div class="ua" title="${esc(x.ua)}">${esc(x.ua)}</div></td>
+      <td>${esc(RS[x.reason] || x.reason)}</td>
+      <td class="ltr">${(x.blocking || []).map(b => `${esc(b.ip)} <span class="hint" style="display:inline">(${dvTime(b.last_seen)})</span>`).join("<br>") || "—"}</td>
+      <td>${(x.blocking || []).some(b => DV.sessions.some(s => s.session_id === b.session_id && s.status === "active"))
+        ? `<button class="ghost st" data-allow="${esc((x.blocking || []).map(b => b.session_id).join(","))}">السماح</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    : '<div class="empty">لا محاولات مرفوضة.</div>';
   const live = DV.sessions.filter(x => x.status === "active").length;
   $("nDvSes").textContent = live;
   $("dvSesList").innerHTML = DV.sessions.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الخط</th><th>الجلسة / الجهاز</th><th>IP</th>
@@ -1689,6 +1707,13 @@ $("dvAccList").addEventListener("click", e => {
     max_devices: tr.querySelector('[data-f="max"]').value}, "dvAccMsg", "حُفظ الخط");
   else if (e.target.closest("[data-out]") && confirm("خروج هذا الخط من كل الأجهزة؟\nتسقط كل جلساته، وأول تشغيلٍ بعده يبدأ جلسةً جديدة (ولا يُقطع ما يعمل الآن)."))
     dvPost({action: "logout_all", key: k}, "dvAccMsg", "خرج من كل الأجهزة");
+});
+$("dvDenList").addEventListener("click", async e => {
+  const b = e.target.closest("[data-allow]");
+  if (!b || !confirm("السماح لهذا الجهاز؟\nتُلغى الجلسة الحاجبة (والجهاز الذي كانت له لا يبدأ منها تشغيلًا جديدًا)، فيشغّل العميل من جديد.")) return;
+  for (const sid of b.dataset.allow.split(",").filter(Boolean))
+    if (DV.sessions.some(s => s.session_id === sid && s.status === "active")) await dvPost({action: "revoke", session_id: sid}, "dvDenMsg");
+  toast("أُلغيت الجلسة الحاجبة — يشغّل العميل الآن");
 });
 $("dvSesList").addEventListener("click", e => {
   const b = e.target.closest("[data-rv]");

@@ -412,6 +412,7 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
           && (await user.$eval('#dvAccList input[data-f="max"]', i => i.value === '' && /اللوحة/.test(i.placeholder))));
     check('timeouts default to 3h VOD / 1h live', (await user.inputValue('#dvVod')) === '3' && (await user.inputValue('#dvLive')) === '1');
     check('no sessions yet: a hint, not an empty table', /لا جلسات بعد/.test(await user.textContent('#dvSesList')));
+    check('and no refused attempts yet', /لا محاولات مرفوضة/.test(await user.textContent('#dvDenList')) && (await user.textContent('#nDvDen')) === '0');
     await user.selectOption('#dvAccList tr:first-child select[data-f="variant"]', 'session');
     await user.fill('#dvAccList tr:first-child input[data-f="max"]', '2');
     await user.click('#dvAccList tr:first-child [data-save]');
