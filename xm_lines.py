@@ -1284,8 +1284,10 @@ def stremio_sessions_post(acct, req):
     if act == "settings":
         hrs = lambda v: None if v in (None, "") else round(float(v) * 3600)   # noqa: E731 — بالساعات من الصفحة
         try:
+            mins = req.get("grace_min")
             stremio_sessions.set_settings(acct["id"], hrs(req.get("timeout_vod_h")), hrs(req.get("timeout_live_h")), req.get("default_max"),
-                                          None if req.get("roaming") is None else bool(req.get("roaming")))
+                                          None if req.get("roaming") is None else bool(req.get("roaming")),
+                                          req.get("on_limit") or None, None if mins in (None, "") else round(float(mins) * 60))
         except (TypeError, ValueError) as e:
             raise ValueError(str(e) or "قيمةٌ غير صالحة")
     elif act in ("account", "logout_all"):

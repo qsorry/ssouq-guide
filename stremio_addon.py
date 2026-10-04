@@ -2729,7 +2729,7 @@ def cached_manifest(key, build):
 
 # ---- نسخة «session»: فحص الجلسة قبل تحويل /play (‏stremio_sessions) — والتحويل 302 إلى اللوحة كما هو متى سُمح ----
 ALERT_PATH = "/static/stremio"           # فيديو التنبيه: احتياطٌ للعرض (Stremio لا يعطينا نافذة رسالة)، والقرار في ‏X-Ssouq-Session
-ALERT_FILE = {SESS.LIMIT_REASON: "alert-limit.mp4", SESS.REVOKED_REASON: "alert-revoked.mp4"}
+ALERT_FILE = {SESS.LIMIT_REASON: "alert-limit.mp4", SESS.REVOKED_REASON: "alert-revoked.mp4", SESS.REPLACED_REASON: "alert-revoked.mp4"}
 _CTYPE = {"movie": "movie", "series": "series", "tv": "live"}
 
 
@@ -2754,7 +2754,19 @@ def play_gate(ln, kind, sid, client, dry=False):
     if SESS.variant(acct) != "session":
         return None
     client = client or {}
-    return SESS.check(acct, client.get("ip", ""), client.get("ua", ""), sid, _CTYPE.get(kind, "movie"), _panel_max(ln["cfg"]), dry=dry)
+    return SESS.check(acct, client.get("ip", ""), client.get("ua", ""), sid, _CTYPE.get(kind, "movie"), _panel_max(ln["cfg"]), dry=dry,
+                      live=lambda: _live_cons(ln["cfg"]))
+
+
+def _live_cons(cfg):
+    """البث الجاري الآن على اللوحة لهذا الاشتراك (‏active_cons من حالته، تُسأل الآن) — أو None (لا تذكره اللوحة أو تعذّرت).
+    يُسأل حين يمتلئ حدّ الأجهزة فقط: خرج صاحب الجلسة القديمة ← لا بثّ جارٍ ← يُقبل الجهاز الجديد فورًا لا بعد المهلة."""
+    try:
+        ui, _ = account(cfg, fresh=True)
+    except (AuthError, XtreamError):
+        return None
+    v = str(ui.get("active_cons", "")).strip()
+    return int(v) if v.isdigit() else None
 
 
 def session_alert(verdict, play_url):
