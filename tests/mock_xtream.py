@@ -197,7 +197,8 @@ class Handler(BaseHTTPRequestHandler):
             if not q.get("action"):                      # حالة الاشتراك كما تردّها اللوحات بلا إجراء
                 return self._send(200, json.dumps({
                     "user_info": {"username": USER, "password": PASS, "auth": 1, "status": "Active", "exp_date": str(NOW + 365 * DAY),
-                                  "is_trial": "0", "max_connections": "1", "allowed_output_formats": ["m3u8", "ts"]},
+                                  "is_trial": "0", "max_connections": "1", "allowed_output_formats": ["m3u8", "ts"],
+                                  **({"active_cons": str(self.server.active_cons)} if self.server.active_cons is not None else {})},
                     "server_info": {"url": "127.0.0.1", "port": str(self.server.server_address[1]), "server_protocol": "http"}}).encode(),
                     "application/json")
             if q.get("action") == "get_vod_info":        # تفاصيل فيلم (المرحلة 2): معرّف TMDB والممثلون والمخرج والبلد
@@ -234,6 +235,7 @@ def serve(port, api_down=False):
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     srv.api_down = api_down
     srv.users, srv.pending, srv.full_fails = {USER: PASS}, {}, set()
+    srv.active_cons = None                       # بثٌّ جارٍ الآن على اللوحة (‏active_cons) — None: لا تذكره
     return srv
 
 

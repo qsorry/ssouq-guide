@@ -22,6 +22,7 @@
     الشبكة الأخرى جهازٌ آخر حتى تنتهي جلسته القديمة أو يُلغيها الموظف.
   وكل جلسةٍ ‏session_id عشوائي (‏secrets) — هو ما يُعرض ويُلغى، لا البصمة.
 
+وحين يمتلئ الحد تُسأل اللوحة عن البث الجاري الآن (‏active_cons): أقل من الجلسات ← أقدمها خرج صاحبها فيُنهى ويُقبل الجديد فورًا.
 لا Heartbeat من المشغّل (غير ممكن في Stremio/Nuvio دون تمرير الفيديو): ‏last_seen يتجدّد مع كل طلب تشغيلٍ جديد، والجلسة تنتهي بعد
 ‏session_timeout من آخر طلب (افتراضًا 3 ساعات للأفلام والمسلسلات وساعة للبث — من الأداة). والإلغاء يمنع كل ‏/play جديد للجلسة
 الملغاة (ولا يُوقف ما يعمل الآن — غير ممكن بلا وسيط). و«الخروج من كل الأجهزة» يرفع ‏version الاشتراك فتسقط جلساته كلها.
@@ -259,6 +260,8 @@ def _status(s, a, st, now):
     """حال الجلسة الآن: active · expired · revoked · logged_out."""
     if s.get("revoked"):
         return "revoked"
+    if s.get("ended"):
+        return "ended"
     if int(s.get("version") or 1) != int(a.get("version") or 1):
         return "logged_out"
     if now - float(s.get("last_seen") or 0) > _timeout(st, s.get("content_type")):
@@ -290,7 +293,40 @@ def _uas(s, ua=None):
     return out
 
 
-def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry=False, now=None):
+def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry=False, now=None, live=None):
+    """انظر ‏_check. ‏live: دالةٌ ← عدد البث الجاري الآن على اللوحة (‏active_cons) أو None — تُسأل **حين يمتلئ الحد فقط** (خارج القفل):
+    جلساتٌ أكثر من البث الجاري ← أقدمها انتهى تشغيله فعلًا (خرج صاحبها) فتُنهى ويُقبل الجهاز الجديد فورًا، لا بعد المهلة."""
+    now = time.time() if now is None else now
+    r = _check(acct, ip, ua, content_id, content_type, panel_max, dry, now, final=not live or dry)
+    if r.get("reason") != LIMIT_REASON or not live or dry:
+        return r
+    try:
+        n = live()
+    except Exception:                                    # تعذّرت اللوحة: القرار كما هو (لا يُحرَّر شيءٌ بلا دليل)
+        n = None
+    if n is not None:
+        release_idle(acct, int(n), now)
+    return _check(acct, ip, ua, content_id, content_type, panel_max, dry, now, rate=False)
+
+
+def release_idle(acct, live_now, now=None):
+    """البث الجاري على اللوحة ‏live_now أقل من الجلسات النشطة ← أقدمها (آخر تشغيلٍ) انتهت فعلًا: «ended». ← كم أُنهي."""
+    now = time.time() if now is None else now
+    with _lock:
+        d = _data()
+        a = _acct(d, acct) or {"version": 1}
+        st = settings(a.get("owner"))
+        active = sorted(((sid, s) for sid, s in d["sessions"].items() if isinstance(s, dict) and s.get("account") == acct
+                         and _status(s, a, st, now) == "active"), key=lambda kv: float(kv[1].get("last_seen") or 0))
+        k = len(active) - max(0, live_now)
+        for _, s in active[:max(0, k)]:
+            s["ended"], s["ended_at"] = True, now
+        if k > 0:
+            _save()
+        return max(0, k)
+
+
+def _check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry=False, now=None, final=True, rate=True):
     """قرار التشغيل لطلب ‏/play من نسخة «session» ← {"allowed"، "reason"، "active_devices"، "max_devices"، "session_id"، "message"}.
     ‏dry: يحسب القرار بلا إنشاء جلسةٍ ولا تجديد (لقائمة التشغيل). الجهاز نفسه (بصمته) بجلسةٍ نشطة ← تتجدّد ‏last_seen ومحتواها
     ويُسمح؛ وجلسته ملغاة (ولم تنتهِ مهلتها من الإلغاء) ← ‏SESSION_REVOKED؛ وجهازٌ جديد ← جلسةٌ جديدة إن بقي مكانٌ في الحد، وإلا
@@ -309,7 +345,7 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
         active = [(sid, s) for sid, s in mine if _status(s, a, st, now) == "active"]
         same = next(((sid, s) for sid, s in active if s.get("device_key") == dk), None)
         out = {"allowed": True, "reason": None, "active_devices": len(active), "max_devices": mx, "session_id": None, "message": ""}
-        if not dry and not _rate_ok(ip, now):
+        if not dry and rate and not _rate_ok(ip, now):
             return {**out, "allowed": False, "reason": RATE_REASON, "message": MSG[RATE_REASON]}
         if same:
             sid, s = same
@@ -342,7 +378,7 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
                     return out
                 return out
         if len(active) >= mx:                            # ‏on_limit: «deny» وحده الآن (‏kick_oldest لاحقًا هنا)
-            if not dry:
+            if not dry and final:
                 _log_denied(d, acct, ip, ua, content_id, LIMIT_REASON, active, now)
             return {**out, "allowed": False, "reason": LIMIT_REASON, "message": MSG[LIMIT_REASON]}
         if dry:

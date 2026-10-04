@@ -106,7 +106,7 @@ select.t{width:auto}
 .dv .ltr{direction:ltr;unicode-bidi:isolate}
 .dv .ua{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr}
 .dv input.t{width:84px;padding:6px 8px}
-.st-active{color:var(--go);font-weight:700}.st-revoked{color:var(--err);font-weight:700}.st-expired,.st-logged_out{color:var(--mute)}
+.st-active{color:var(--go);font-weight:700}.st-revoked{color:var(--err);font-weight:700}.st-expired,.st-ended,.st-logged_out{color:var(--mute)}
 .dvset{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
 .dvset label{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:var(--mute)}
 .dvset input.t{width:120px}
@@ -1658,7 +1658,7 @@ window.addEventListener("beforeunload", e => { if (CAT_DIRTY) { e.preventDefault
 
 // ---- «الأجهزة»: نسخة كل خطٍّ وحدّه، والمهلة، والجلسات (‏/api/stremio/sessions) ----
 let DV = null;
-const DV_ST = {active: "نشطة", expired: "انتهت", revoked: "ملغاة", logged_out: "خرجت (كل الأجهزة)"};
+const DV_ST = {active: "نشطة", expired: "انتهت", ended: "انتهت (أغلق التشغيل)", revoked: "ملغاة", logged_out: "خرجت (كل الأجهزة)"};
 const DV_CT = {movie: "فيلم", series: "حلقة", live: "بث"};
 const dvTime = t => t ? new Date(t * 1000).toLocaleString("ar", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "—";
 function renderDv(){

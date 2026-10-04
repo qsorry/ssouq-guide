@@ -123,6 +123,27 @@ def core():
             bad = True
         check("حدٌّ 0 ← ValueError", bad)
 
+        print("== خرج من التطبيق وبعد دقائق جهازٌ آخر: البث الجاري على اللوحة يحسم ==")
+        E = SS.account_key("panel.example", "u5")
+        SS.set_account(E, owner="acct1", variant="session", max_devices=1)
+        e1 = SS.check(E, "1.1.1.1", NUVIO_PHONE, "m:1", "movie", now=100)
+        asked = []
+        busy = SS.check(E, "2.2.2.2", NUVIO_TV, "m:2", "movie", now=400, live=lambda: asked.append(1) or 1)
+        check("الجوال ما زال يشاهد (اللوحة: بثٌّ جارٍ 1) ← التلفاز يُرفض، والجوال لا يُمسّ", not busy["allowed"] and asked == [1]
+              and [x["status"] for x in SS.sessions([E], now=400)] == ["active"])
+        free = SS.check(E, "2.2.2.2", NUVIO_TV, "m:2", "movie", now=700, live=lambda: 0)
+        st5 = {x["session_id"]: x["status"] for x in SS.sessions([E], now=700)}
+        check("خرج من الجوال (اللوحة: لا بثّ جارٍ) ← التلفاز يُقبل فورًا (بعد 10 دقائق، لا بعد 3 ساعات)، وجلسة الجوال «ended»",
+              free["allowed"] and st5[e1["session_id"]] == "ended" and st5[free["session_id"]] == "active", json.dumps(st5))
+        n_den = len(SS.denied([E]))
+        down = SS.check(E, "3.3.3.3", "Stremio/4", "m:3", "movie", now=800, live=lambda: (_ for _ in ()).throw(OSError("down")))
+        check("واللوحة لا تردّ ← القرار كما هو (رفض)، وسطر رفضٍ واحد", not down["allowed"] and len(SS.denied([E])) == n_den + 1)
+        nolive = SS.check(E, "3.3.3.3", "Stremio/4", "m:3", "movie", now=900, live=lambda: None)
+        check("واللوحة لا تذكر البث الجاري ← رفضٌ كما كان", not nolive["allowed"])
+        asked2 = []
+        SS.check(E, "2.2.2.2", NUVIO_TV, "m:4", "movie", now=950, live=lambda: asked2.append(1) or 0)
+        check("واللوحة لا تُسأل إلا حين يمتلئ الحد (الجهاز نفسه لا يسألها)", asked2 == [])
+
         print("== الإلغاء، والخروج من كل الأجهزة ==")
         D = SS.account_key("panel.example", "u4")
         SS.set_account(D, owner="acct1", variant="session", max_devices=1)
@@ -226,6 +247,17 @@ def through_play():
               hr.get("Location") == "https://g/static/stremio/alert-revoked.mp4"
               and json.loads(hr["X-Ssouq-Session"])["reason"] == "SESSION_REVOKED")
         check("والجهاز B الآن ← يُسمح", get(play1, B_)[2].get("Location") == panel_url)
+        D_ = {"ip": "44.44.44.44", "ua": "Stremio/4 server"}   # جهازٌ ثالث بتطبيقٍ آخر
+        srv.active_cons = 1                               # الجهاز B يشاهد الآن (حسب اللوحة)
+        code, _, hx1 = get(play1, D_)
+        check("اللوحة: بثٌّ جارٍ ← جهازٌ آخر يُرفض (B يشاهد فعلًا)", "alert-limit" in hx1.get("Location", ""), hx1.get("Location", ""))
+        srv.active_cons = 0                               # B خرج من التطبيق
+        code, _, hx2 = get(play1, D_)
+        check("واللوحة: لا بثّ جارٍ (B خرج قبل دقائق) ← يُقبل فورًا والتحويل إلى اللوحة نفسه", hx2.get("Location") == panel_url)
+        srv.active_cons = None
+        code, _, hx3 = get(play1, B_)                     # B يعود: A أخذ المكان، واللوحة لا تذكر البث الجاري
+        check("واللوحة لا تذكر البث الجاري ← كما كان (رفضٌ حتى المهلة أو الإلغاء)", "alert-limit" in hx3.get("Location", ""))
+        SS.revoke(next(x["session_id"] for x in SS.sessions([acct]) if x["status"] == "active"))
         auto = f"play/movie/{quote(mids[0], safe='')}"
         code, _, hauto = get(auto, B_)
         check("و«تلقائي» (‏/play/<النوع>/<المعرّف>) يُفحص كذلك", code == 302 and hauto.get("Location", "").startswith(host))

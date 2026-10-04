@@ -2754,7 +2754,19 @@ def play_gate(ln, kind, sid, client, dry=False):
     if SESS.variant(acct) != "session":
         return None
     client = client or {}
-    return SESS.check(acct, client.get("ip", ""), client.get("ua", ""), sid, _CTYPE.get(kind, "movie"), _panel_max(ln["cfg"]), dry=dry)
+    return SESS.check(acct, client.get("ip", ""), client.get("ua", ""), sid, _CTYPE.get(kind, "movie"), _panel_max(ln["cfg"]), dry=dry,
+                      live=lambda: _live_cons(ln["cfg"]))
+
+
+def _live_cons(cfg):
+    """البث الجاري الآن على اللوحة لهذا الاشتراك (‏active_cons من حالته، تُسأل الآن) — أو None (لا تذكره اللوحة أو تعذّرت).
+    يُسأل حين يمتلئ حدّ الأجهزة فقط: خرج صاحب الجلسة القديمة ← لا بثّ جارٍ ← يُقبل الجهاز الجديد فورًا لا بعد المهلة."""
+    try:
+        ui, _ = account(cfg, fresh=True)
+    except (AuthError, XtreamError):
+        return None
+    v = str(ui.get("active_cons", "")).strip()
+    return int(v) if v.isdigit() else None
 
 
 def session_alert(verdict, play_url):
