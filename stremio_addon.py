@@ -2729,7 +2729,7 @@ def cached_manifest(key, build):
 
 # ---- نسخة «session»: فحص الجلسة قبل تحويل /play (‏stremio_sessions) — والتحويل 302 إلى اللوحة كما هو متى سُمح ----
 ALERT_PATH = "/static/stremio"           # فيديو التنبيه: احتياطٌ للعرض (Stremio لا يعطينا نافذة رسالة)، والقرار في ‏X-Ssouq-Session
-ALERT_FILE = {SESS.LIMIT_REASON: "alert-limit.mp4", SESS.REVOKED_REASON: "alert-revoked.mp4"}
+ALERT_FILE = {SESS.LIMIT_REASON: "alert-limit.mp4", SESS.REVOKED_REASON: "alert-revoked.mp4", SESS.REPLACED_REASON: "alert-revoked.mp4"}
 _CTYPE = {"movie": "movie", "series": "series", "tv": "live"}
 
 

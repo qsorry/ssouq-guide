@@ -51,6 +51,9 @@ def core():
         check("وبصمة اشتراكٍ آخر غيرها", SS.device_key(A, "1.2.3.4", NUVIO_PHONE) != SS.device_key("x|y", "1.2.3.4", NUVIO_PHONE))
 
         print("== الحد: Device A يُسمح، وDevice B يُرفض، وA لا يُقطع ==")
+        check("الافتراضي عند امتلاء الحد: الجهاز الأحدث يأخذ المكان، ومهلة الانتقال دقيقتان",
+              SS.settings("acct1")["on_limit"] == "takeover" and SS.settings("acct1")["grace"] == 120)
+        SS.set_settings("acct1", on_limit="deny")         # الاختبارات التالية بسياسة «رفض الجهاز الجديد» (و«takeover» في قسمه)
         SS.set_account(A, owner="acct1", variant="session", max_devices=1)
         r1 = SS.check(A, "1.2.3.4", NUVIO_PHONE, "s:1:1:1", "series", now=1000)
         check("الجهاز A ← سماح وجلسةٌ جديدة بمعرّفٍ عشوائي", r1["allowed"] and r1["reason"] is None and len(r1["session_id"]) >= 20
@@ -88,7 +91,8 @@ def core():
         SS.set_settings("acct1", roaming=True)
 
         print("== المهلة (من الأداة) ==")
-        check("الافتراضي: 3 ساعات للأفلام والمسلسلات وساعة للبث", SS.settings("acct1") == {"timeout_vod": 10800, "timeout_live": 3600, "default_max": 1, "roaming": True})
+        check("الافتراضي: 3 ساعات للأفلام والمسلسلات وساعة للبث", SS.settings("acct1") == {"timeout_vod": 10800, "timeout_live": 3600, "default_max": 1, "roaming": True,
+                                                                         "on_limit": "deny", "grace": 120})
         r3 = SS.check(A, "9.9.9.9", NUVIO_TV, "m:5", "movie", now=1460 + 10801)
         check("بعد 3 ساعاتٍ بلا تشغيل: جلسة A انتهت ← B يُسمح", r3["allowed"] and r3["active_devices"] == 1)
         st = {x["session_id"]: x["status"] for x in SS.sessions([A], now=1460 + 10801)}
@@ -143,6 +147,39 @@ def core():
         asked2 = []
         SS.check(E, "2.2.2.2", NUVIO_TV, "m:4", "movie", now=950, live=lambda: asked2.append(1) or 0)
         check("واللوحة لا تُسأل إلا حين يمتلئ الحد (الجهاز نفسه لا يسألها)", asked2 == [])
+
+        print("== «الجهاز الأحدث يأخذ المكان»: جهاز ٢ يشغّل فورًا، وجهاز ١ يُفصل بعد دقيقتين ==")
+        SS.set_settings("acct1", on_limit="takeover", timeout_live=3600)
+        T = SS.account_key("panel.example", "u6")
+        SS.set_account(T, owner="acct1", variant="session", max_devices=1)
+        t1 = SS.check(T, "1.1.1.1", NUVIO_PHONE, "l:1", "live", now=1000)
+        t2 = SS.check(T, "2.2.2.2", NUVIO_TV, "l:2", "live", now=1100)
+        stt = {x["session_id"]: x for x in SS.sessions([T], now=1100)}
+        check("جهاز ٢ ← يشغّل فورًا (لا رفض)، وجلسة جهاز ١ «تُفصل خلال دقيقتين»", t2["allowed"] and t2["replaced"] == 1
+              and stt[t1["session_id"]]["status"] == "replacing" and stt[t1["session_id"]]["kick_at"] == 1220
+              and stt[t2["session_id"]]["status"] == "active", json.dumps(t2))
+        g1 = SS.check(T, "1.1.1.1", NUVIO_PHONE, "l:3", "live", now=1200)
+        check("وجهاز ١ خلال الدقيقتين ← ما زال يشغّل (يغيّر القناة)", g1["allowed"] and g1["session_id"] == t1["session_id"])
+        k1 = SS.check(T, "1.1.1.1", NUVIO_PHONE, "l:4", "live", now=1230)
+        check("وبعد الدقيقتين ← جهاز ١ مفصول: «تم تسجيل الدخول من جهاز آخر.»", not k1["allowed"] and k1["reason"] == "SESSION_REPLACED"
+              and k1["message"] == "تم تسجيل الدخول من جهاز آخر.", json.dumps(k1, ensure_ascii=False))
+        check("وجهاز ٢ يكمل بلا مشاكل", SS.check(T, "2.2.2.2", NUVIO_TV, "l:5", "live", now=1240)["session_id"] == t2["session_id"])
+        back = SS.check(T, "1.1.1.1", NUVIO_PHONE, "l:6", "live", now=1300, live=lambda: 0)
+        check("وجهاز ١ يعود حين لا يشاهد أحد (اللوحة: لا بثّ جارٍ)", back["allowed"] and back["session_id"] != t1["session_id"])
+        busy = SS.check(T, "2.2.2.2", NUVIO_TV, "l:7", "live", now=1301)
+        check("…وهو الآن الأحدث: جهاز ٢ يأخذ المكان إن شغّل (الأحدث دائمًا)", busy["allowed"] and busy["replaced"] == 1)
+        SS.set_settings("acct1", grace=0)
+        t3 = SS.check(T, "3.3.3.3", "Stremio/4", "m:1", "movie", now=1400)
+        check("ومهلة الانتقال 0 ← الأقدم يُفصل فورًا", t3["allowed"]
+              and not SS.check(T, "2.2.2.2", NUVIO_TV, "l:8", "live", now=1400)["allowed"])
+        check("وقائمة التشغيل (dry) بلا سطر رفضٍ مع «takeover»", SS.check(T, "9.9.9.9", "Other/1", dry=True, now=1400)["allowed"])
+        try:
+            SS.set_settings("acct1", on_limit="kick")
+            bad = False
+        except ValueError:
+            bad = True
+        check("وسياسةٌ غير معروفة ← ValueError", bad)
+        SS.set_settings("acct1", on_limit="deny", grace=120)
 
         print("== الإلغاء، والخروج من كل الأجهزة ==")
         D = SS.account_key("panel.example", "u4")
@@ -219,6 +256,7 @@ def through_play():
         check("وروابط قائمة التشغيل بصيغتها (‏/play/<النوع>/<المعرّف>/<المصدر>)", play1.startswith("play/movie/"))
         acct = S.session_account(cfg)
         SS.set_account(acct, owner="acct1", variant="session")
+        SS.set_settings("acct1", on_limit="deny")
         S.account(cfg)                                    # ‏max_connections من اللوحة في الذاكرة (1)
         code, _, ha = get(play1, A_)
         check("«session»: الجهاز A ← التحويل نفسه إلى اللوحة (لا وسيط)", code == 302 and ha.get("Location") == panel_url)
@@ -298,6 +336,7 @@ def panel_unknown():
         SS.setup(d)
         acct = S.session_account(cfg)
         SS.set_account(acct, owner="o", variant="session")
+        SS.set_settings("o", on_limit="deny")
         ln = {"cfg": cfg, "label": "x"}
         v1 = S.play_gate(ln, "movie", "m:1", {"ip": "1.1.1.1", "ua": "x"})
         v2 = S.play_gate(ln, "movie", "m:1", {"ip": "2.2.2.2", "ua": "other app"})
@@ -344,7 +383,10 @@ def admin():
         data = X.stremio_sessions_post(acct, {"action": "revoke", "session_id": s1["session_id"]})
         check("وإلغاء جلسةٍ من خطّه ← «ملغاة» في القائمة", [x["status"] for x in data["sessions"]] == ["revoked"] and data["sessions"][0]["username"] == "me")
         data = X.stremio_sessions_post(acct, {"action": "settings", "timeout_vod_h": "2", "timeout_live_h": "0.5", "default_max": "2"})
-        check("والمهلة بالساعات من الصفحة", data["settings"] == {"timeout_vod": 7200, "timeout_live": 1800, "default_max": 2, "roaming": True})
+        check("والمهلة بالساعات من الصفحة", data["settings"] == {"timeout_vod": 7200, "timeout_live": 1800, "default_max": 2, "roaming": True,
+                                                         "on_limit": "takeover", "grace": 120})
+        data = X.stremio_sessions_post(acct, {"action": "settings", "on_limit": "deny", "grace_min": "5"})
+        check("وسياسة امتلاء الحد ومهلة فصل الأقدم (بالدقائق) من الأداة", data["settings"]["on_limit"] == "deny" and data["settings"]["grace"] == 300)
         data = X.stremio_sessions_post(acct, {"action": "settings", "roaming": False})
         check("و«انتقال الجهاز بين الشبكات» يُطفأ من الأداة (والمهلة كما هي)", data["settings"]["roaming"] is False
               and data["settings"]["timeout_vod"] == 7200)

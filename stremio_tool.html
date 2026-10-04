@@ -106,7 +106,7 @@ select.t{width:auto}
 .dv .ltr{direction:ltr;unicode-bidi:isolate}
 .dv .ua{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr}
 .dv input.t{width:84px;padding:6px 8px}
-.st-active{color:var(--go);font-weight:700}.st-revoked{color:var(--err);font-weight:700}.st-expired,.st-ended,.st-logged_out{color:var(--mute)}
+.st-active{color:var(--go);font-weight:700}.st-revoked{color:var(--err);font-weight:700}.st-expired,.st-ended,.st-logged_out,.st-replaced{color:var(--mute)}.st-replacing{color:var(--warn,#c98a00);font-weight:700}
 .dvset{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
 .dvset label{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:var(--mute)}
 .dvset input.t{width:120px}
@@ -432,10 +432,16 @@ h1{font-size:1.3rem;margin:0 0 2px}
       <label>الأفلام والمسلسلات (ساعات)<input class="t" id="dvVod" type="number" min="0.1" step="0.5"></label>
       <label>البث المباشر (ساعات)<input class="t" id="dvLive" type="number" min="0.1" step="0.5"></label>
       <label>الحد حين لا تُعرف اللوحة<input class="t" id="dvDef" type="number" min="1" max="20" step="1"></label>
+      <label>عند امتلاء الحد<select class="t" id="dvPolicy"><option value="takeover">الجهاز الأحدث يأخذ المكان</option>
+        <option value="deny">رفض الجهاز الجديد</option></select></label>
+      <label>فصل الجهاز الأقدم بعد (دقائق)<input class="t" id="dvGrace" type="number" min="0" max="60" step="1"></label>
       <label style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="dvRoam">
         انتقال الجهاز بين الشبكات</label>
       <button class="btn" id="dvSetSave">حفظ</button>
     </div>
+    <p class="hint">«الجهاز الأحدث يأخذ المكان» (الافتراضي): جهازٌ جديد يشغّل فورًا، والأقدم يكمل الدقائق المحددة ثم لا يبدأ منه تشغيلٌ
+      جديد («تم تسجيل الدخول من جهاز آخر») — ما يشاهده لحظتها لا نقطعه نحن (الفيديو لا يمرّ بخادمنا): ينقطع عند تغيير القناة أو الحلقة، أو
+      تقطعه اللوحة بحدّ اتصالاتها. ويعود الجهاز الأقدم متى لم يكن أحدٌ يشاهد. «رفض الجهاز الجديد»: الأقدم يكمل والجديد يُرفض.</p>
     <p class="hint">«انتقال الجهاز بين الشبكات» (مفعّل): الخط نفسه <b>بالتطبيق نفسه</b> من شبكةٍ أخرى (الواي فاي ← بيانات الجوال) يُعدّ
       الجهاز نفسه فتنتقل جلسته معه بلا رفض؛ وتطبيقٌ آخر (جوالٌ ثم تلفاز) جهازٌ آخر. حدّه: جوالان بالتطبيق نفسه على شبكتين يُعدّان جهازًا
       واحدًا (Stremio وNuvio لا يرسلان ما يميّزهما)، ويبقى حدّ اللوحة نفسها لعدد البث في الوقت نفسه.</p>
@@ -1658,12 +1664,14 @@ window.addEventListener("beforeunload", e => { if (CAT_DIRTY) { e.preventDefault
 
 // ---- «الأجهزة»: نسخة كل خطٍّ وحدّه، والمهلة، والجلسات (‏/api/stremio/sessions) ----
 let DV = null;
-const DV_ST = {active: "نشطة", expired: "انتهت", ended: "انتهت (أغلق التشغيل)", revoked: "ملغاة", logged_out: "خرجت (كل الأجهزة)"};
+const DV_ST = {active: "نشطة", expired: "انتهت", ended: "انتهت (أغلق التشغيل)", revoked: "ملغاة", logged_out: "خرجت (كل الأجهزة)",
+  replacing: "تُفصل قريبًا (جهازٌ أحدث)", replaced: "فُصلت (جهازٌ أحدث)"};
 const DV_CT = {movie: "فيلم", series: "حلقة", live: "بث"};
 const dvTime = t => t ? new Date(t * 1000).toLocaleString("ar", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "—";
 function renderDv(){
   const st = DV.settings;
   $("dvVod").value = +(st.timeout_vod / 3600).toFixed(2); $("dvLive").value = +(st.timeout_live / 3600).toFixed(2); $("dvDef").value = st.default_max; $("dvRoam").checked = st.roaming !== false;
+  $("dvPolicy").value = st.on_limit || "takeover"; $("dvGrace").value = Math.round((st.grace == null ? 120 : st.grace) / 60);
   $("nDvAcc").textContent = DV.accounts.length;
   $("dvAccList").innerHTML = DV.accounts.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الخط</th><th>البوابة</th><th>التطبيق</th>
       <th>النسخة</th><th>حدّ الأجهزة</th><th></th></tr></thead><tbody>${DV.accounts.map(a => `<tr data-k="${esc(a.key)}">
@@ -1673,7 +1681,7 @@ function renderDv(){
       <td><input class="t" data-f="max" type="number" min="1" max="20" value="${a.max_devices || ""}" placeholder="${a.panel_max ? "اللوحة: " + a.panel_max : "اللوحة"}"></td>
       <td><button class="ghost" data-save>حفظ</button> <button class="ghost st" data-out>خروج من كل الأجهزة</button></td></tr>`).join("")}</tbody></table></div>`
     : '<div class="empty">لا خطوط Stremio ولا Nuvio بعد.</div>';
-  const den = DV.denied || [], RS = {CONCURRENT_DEVICE_LIMIT: "الحد ممتلئ", SESSION_REVOKED: "جلسةٌ ملغاة"};
+  const den = DV.denied || [], RS = {CONCURRENT_DEVICE_LIMIT: "الحد ممتلئ", SESSION_REVOKED: "جلسةٌ ملغاة", SESSION_REPLACED: "أخذ مكانه جهازٌ أحدث"};
   $("nDvDen").textContent = den.length;
   $("dvDenList").innerHTML = den.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الوقت</th><th>الخط</th><th>IP المرفوض</th>
       <th>User-Agent</th><th>السبب</th><th>حجبته جلسة من</th><th></th></tr></thead><tbody>${den.map(x => `<tr>
@@ -1705,7 +1713,8 @@ async function dvPost(body, msgId, ok){
   catch(e) { $(msgId).textContent = e.message; }
 }
 $("dvSetSave").onclick = () => dvPost({action: "settings", timeout_vod_h: $("dvVod").value, timeout_live_h: $("dvLive").value,
-  default_max: $("dvDef").value, roaming: $("dvRoam").checked}, "dvSetMsg", "حُفظت الإعدادات");
+  default_max: $("dvDef").value, roaming: $("dvRoam").checked, on_limit: $("dvPolicy").value, grace_min: $("dvGrace").value},
+  "dvSetMsg", "حُفظت الإعدادات");
 $("dvAccList").addEventListener("click", e => {
   const tr = e.target.closest("tr[data-k]"); if (!tr) return;
   const k = tr.dataset.k;

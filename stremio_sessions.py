@@ -41,16 +41,20 @@ FILE = "stremio_sessions.json"
 VARIANTS = ("standard", "session")
 LIMIT_REASON = "CONCURRENT_DEVICE_LIMIT"
 REVOKED_REASON = "SESSION_REVOKED"
+REPLACED_REASON = "SESSION_REPLACED"      # جهازٌ أحدث أخذ مكانه (سياسة «takeover») ومضت مهلة الانتقال
 RATE_REASON = "RATE_LIMITED"
 RATE_MAX, RATE_WINDOW = 90, 60          # طلبات /play من شبكةٍ واحدة في الدقيقة (نسخة «session») — أكثر ← رفضٌ مؤقت
-# ما يحدث عند امتلاء الحد: «deny» وحده الآن (الجهاز الجديد يُرفض، والقديم لا يُقطع). ‏«kick_oldest» مكانه هنا لاحقًا (يُلغي أقدم
-# جلسةٍ ويقبل الجديدة) — غير مفعّل: قيمةٌ غير معروفة تعمل كـ«deny».
-ON_LIMIT = ("deny",)
+# ما يحدث عند امتلاء الحد (من الأداة): «takeover» (افتراضًا) الجهاز الأحدث يأخذ المكان فورًا، وأقدم جلسةٍ تبقى ‏grace ثانية (120)
+# ثم لا يبدأ منها تشغيلٌ جديد («تم تسجيل الدخول من جهاز آخر») — والبث الجاري فيها لا نقطعه (لا وسيط): ينقطع عند أول تشغيلٍ بعدها
+# (قناةٌ أو حلقةٌ أخرى) أو تقطعه اللوحة بحدّ اتصالاتها؛ و«deny» الجهاز الجديد يُرفض والقديم لا يُمسّ.
+ON_LIMIT = ("takeover", "deny")
+GRACE_DEFAULT, GRACE_MAX = 120, 3600
 DEFAULTS = {"timeout_vod": 3 * 3600, "timeout_live": 3600, "default_max": 1}
 TIMEOUT_MIN, TIMEOUT_MAX = 60, 7 * 86400
 MAX_DEVICES_CAP = 20
 KEEP_SECS = 2 * 86400                   # ما انتهى من الجلسات يبقى للعرض يومين ثم يُحذف
 MSG = {LIMIT_REASON: "الحساب مستخدم حاليًا على جهاز آخر.", REVOKED_REASON: "تم تسجيل الدخول من جهاز آخر.",
+       REPLACED_REASON: "تم تسجيل الدخول من جهاز آخر.",
        RATE_REASON: "طلبات تشغيلٍ كثيرة — انتظر دقيقة ثم أعد المحاولة."}
 
 _lock = threading.RLock()
@@ -193,13 +197,28 @@ def settings(owner=""):
         s = _data()["settings"].get(str(owner or "")) or {}
     out = {k: int(s.get(k) or v) for k, v in DEFAULTS.items()}
     out["roaming"] = bool(s.get("roaming", True))
+    out["on_limit"] = s.get("on_limit") if s.get("on_limit") in ON_LIMIT else ON_LIMIT[0]
+    g = s.get("grace")
+    out["grace"] = int(g) if isinstance(g, (int, float)) and 0 <= g <= GRACE_MAX else GRACE_DEFAULT
     return out
 
 
-def set_settings(owner, timeout_vod=None, timeout_live=None, default_max=None, roaming=None):
+def set_settings(owner, timeout_vod=None, timeout_live=None, default_max=None, roaming=None, on_limit=None, grace=None):
     """يضبط مهلتي الجلسة (ثوانٍ، من دقيقة إلى أسبوع) وحدّ «لا تُعرف اللوحة» و«انتقال الجهاز بين الشبكات» (‏roaming).
     ‏ValueError لقيمةٍ لا تصلح."""
     new = {} if roaming is None else {"roaming": bool(roaming)}
+    if on_limit is not None:
+        if on_limit not in ON_LIMIT:
+            raise ValueError("سياسةٌ غير معروفة")
+        new["on_limit"] = on_limit
+    if grace is not None:
+        try:
+            grace = int(grace)
+        except (TypeError, ValueError):
+            raise ValueError("قيمةٌ غير صالحة")
+        if not 0 <= grace <= GRACE_MAX:
+            raise ValueError("قيمةٌ خارج الحدود")
+        new["grace"] = grace
     for k, v, lo, hi in (("timeout_vod", timeout_vod, TIMEOUT_MIN, TIMEOUT_MAX), ("timeout_live", timeout_live, TIMEOUT_MIN, TIMEOUT_MAX),
                          ("default_max", default_max, 1, MAX_DEVICES_CAP)):
         if v is None:
@@ -266,6 +285,8 @@ def _status(s, a, st, now):
         return "logged_out"
     if now - float(s.get("last_seen") or 0) > _timeout(st, s.get("content_type")):
         return "expired"
+    if s.get("kick_at"):                                 # أخذ مكانها جهازٌ أحدث: «replacing» في مهلة الانتقال ثم «replaced»
+        return "replacing" if now < float(s["kick_at"]) else "replaced"
     return "active"
 
 
@@ -298,7 +319,7 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
     جلساتٌ أكثر من البث الجاري ← أقدمها انتهى تشغيله فعلًا (خرج صاحبها) فتُنهى ويُقبل الجهاز الجديد فورًا، لا بعد المهلة."""
     now = time.time() if now is None else now
     r = _check(acct, ip, ua, content_id, content_type, panel_max, dry, now, final=not live or dry)
-    if r.get("reason") != LIMIT_REASON or not live or dry:
+    if r.get("reason") not in (LIMIT_REASON, REPLACED_REASON) or not live or dry:
         return r
     try:
         n = live()
@@ -306,7 +327,17 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
         n = None
     if n is not None:
         release_idle(acct, int(n), now)
+        if int(n) == 0 and r.get("reason") == REPLACED_REASON:   # لا أحد يشاهد الآن: الجهاز الذي أُخذ مكانه يعود
+            _clear_replaced(acct, device_key(acct, ip, ua), now)
     return _check(acct, ip, ua, content_id, content_type, panel_max, dry, now, rate=False)
+
+
+def _clear_replaced(acct, dk, now):
+    with _lock:
+        for s in _data()["sessions"].values():
+            if isinstance(s, dict) and s.get("account") == acct and s.get("device_key") == dk and s.get("kick_at"):
+                s["ended"], s["ended_at"] = True, now
+        _save()
 
 
 def release_idle(acct, live_now, now=None):
@@ -342,8 +373,10 @@ def _check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dr
         st = settings(a.get("owner"))
         mx = _limit(a, panel_max, st)
         mine = [(sid, s) for sid, s in d["sessions"].items() if isinstance(s, dict) and s.get("account") == acct]
-        active = [(sid, s) for sid, s in mine if _status(s, a, st, now) == "active"]
-        same = next(((sid, s) for sid, s in active if s.get("device_key") == dk), None)
+        stat = {sid: _status(s, a, st, now) for sid, s in mine}
+        active = [(sid, s) for sid, s in mine if stat[sid] == "active"]
+        live_ok = [(sid, s) for sid, s in mine if stat[sid] in ("active", "replacing")]   # ومهلة الانتقال: ما زال يشغّل
+        same = next(((sid, s) for sid, s in live_ok if s.get("device_key") == dk), None)
         out = {"allowed": True, "reason": None, "active_devices": len(active), "max_devices": mx, "session_id": None, "message": ""}
         if not dry and rate and not _rate_ok(ip, now):
             return {**out, "allowed": False, "reason": RATE_REASON, "message": MSG[RATE_REASON]}
@@ -362,11 +395,16 @@ def _check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dr
             if not dry:
                 _log_denied(d, acct, ip, ua, content_id, REVOKED_REASON, [], now)
             return {**out, "allowed": False, "reason": REVOKED_REASON, "message": MSG[REVOKED_REASON]}
+        kicked = next((s for sid, s in mine if s.get("device_key") == dk and stat[sid] == "replaced"), None)
+        if kicked:                                       # أخذ مكانه جهازٌ أحدث ومضت مهلة الانتقال
+            if not dry and final:
+                _log_denied(d, acct, ip, ua, content_id, REPLACED_REASON, active, now)
+            return {**out, "allowed": False, "reason": REPLACED_REASON, "message": MSG[REPLACED_REASON]}
         # انتقال الجهاز بين الشبكات (‏roaming): الخط نفسه بالتطبيق نفسه (فئة User-Agent طالب التشغيل) من شبكةٍ أخرى ← الجهاز نفسه
         # انتقل (من الواي فاي إلى بيانات الجوال، أو تغيّر عنوانه) — جلسته تنتقل معه لا جهازٌ جديد. تطبيقٌ آخر (جوالٌ ثم تلفاز) جهازٌ آخر.
         if st.get("roaming"):
             uc = ua_class(ua)
-            moved = None if dry else next((x for x in sorted(active, key=lambda kv: -float(kv[1].get("last_seen") or 0))
+            moved = None if dry else next((x for x in sorted(live_ok, key=lambda kv: -float(kv[1].get("last_seen") or 0))
                                            if uc and uc in _uas(x[1])), None)
             if moved or (dry and active):                # ‏dry (قائمة التشغيل): طلبها من التطبيق لا المشغّل، فلا يُقارن وكيله — القرار عند التشغيل
                 if moved:
@@ -377,7 +415,15 @@ def _check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dr
                     out["session_id"] = sid
                     return out
                 return out
-        if len(active) >= mx:                            # ‏on_limit: «deny» وحده الآن (‏kick_oldest لاحقًا هنا)
+        victims = []
+        if len(active) >= mx and st["on_limit"] == "takeover":    # الجهاز الأحدث يأخذ المكان، وأقدم جلسةٍ تُفصل بعد ‏grace
+            if dry:
+                return out
+            victims = sorted(active, key=lambda kv: float(kv[1].get("last_seen") or 0))[:len(active) - mx + 1]
+            for _, v in victims:
+                v["kick_at"], v["replaced_at"] = now + st["grace"], now
+            active = [x for x in active if x not in victims]
+        if len(active) >= mx:                            # ‏on_limit «deny»: الجهاز الجديد يُرفض والقائم لا يُمسّ
             if not dry and final:
                 _log_denied(d, acct, ip, ua, content_id, LIMIT_REASON, active, now)
             return {**out, "allowed": False, "reason": LIMIT_REASON, "message": MSG[LIMIT_REASON]}
@@ -387,9 +433,11 @@ def _check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dr
         d["sessions"][sid] = {"account": acct, "device_key": dk, "ip": str(ip or "")[:64], "ua": str(ua or "")[:200], "uas": _uas({}, ua),
                               "content_id": str(content_id)[:120], "content_type": content_type, "created_at": now, "last_seen": now,
                               "version": int(a.get("version") or 1), "revoked": False}
+        for _, v in victims:
+            v["replaced_by"] = sid
         _prune(d, now)
         _save()
-        return {**out, "active_devices": len(active) + 1, "session_id": sid}
+        return {**out, "active_devices": len(active) + 1, "session_id": sid, "replaced": len(victims)}
 
 
 DENIED_MAX = 300                        # آخر محاولات التشغيل المرفوضة (للأداة: من رُفض، ومن أي شبكة، وأي جلسةٍ حجبته)
@@ -453,7 +501,7 @@ def sessions(accts=None, now=None):
             a = _acct(d, s.get("account")) or {"version": 1}
             st = settings(a.get("owner"))
             out.append({"session_id": sid, "account": s.get("account"), "device": str(s.get("device_key") or "")[:8],
-                        "ip": s.get("ip", ""), "ua": s.get("ua", ""), "prev_ip": s.get("prev_ip", ""), "content_id": s.get("content_id", ""),
+                        "ip": s.get("ip", ""), "ua": s.get("ua", ""), "prev_ip": s.get("prev_ip", ""), "kick_at": int(s.get("kick_at") or 0), "content_id": s.get("content_id", ""),
                         "content_type": s.get("content_type", ""), "created_at": int(s.get("created_at") or 0),
                         "last_seen": int(s.get("last_seen") or 0), "status": _status(s, a, st, now)})
     return sorted(out, key=lambda x: -x["last_seen"])
