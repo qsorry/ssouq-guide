@@ -1272,7 +1272,8 @@ def stremio_sessions_data(acct):
                      "max_devices": a.get("max_devices"), "panel_max": pm or a.get("panel_max"), "version": a.get("version") or 1})
     users = {k: e["username"] for k, e in lines.items()}
     sess = [{**x, "username": users.get(x["account"], "")} for x in stremio_sessions.sessions(list(lines))]
-    return {"settings": stremio_sessions.settings(acct["id"]), "accounts": rows, "sessions": sess,
+    den = [{**x, "username": users.get(x["account"], ""), "at": int(x.get("at") or 0)} for x in stremio_sessions.denied(list(lines))[:100]]
+    return {"settings": stremio_sessions.settings(acct["id"]), "accounts": rows, "sessions": sess, "denied": den,
             "variants": list(stremio_sessions.VARIANTS)}
 
 
@@ -1283,7 +1284,8 @@ def stremio_sessions_post(acct, req):
     if act == "settings":
         hrs = lambda v: None if v in (None, "") else round(float(v) * 3600)   # noqa: E731 — بالساعات من الصفحة
         try:
-            stremio_sessions.set_settings(acct["id"], hrs(req.get("timeout_vod_h")), hrs(req.get("timeout_live_h")), req.get("default_max"))
+            stremio_sessions.set_settings(acct["id"], hrs(req.get("timeout_vod_h")), hrs(req.get("timeout_live_h")), req.get("default_max"),
+                                          None if req.get("roaming") is None else bool(req.get("roaming")))
         except (TypeError, ValueError) as e:
             raise ValueError(str(e) or "قيمةٌ غير صالحة")
     elif act in ("account", "logout_all"):

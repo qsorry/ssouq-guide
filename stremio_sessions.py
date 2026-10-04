@@ -16,8 +16,10 @@
 داخلها) — وUser-Agent يُحفظ للعرض في الأداة فقط.
   · تغيُّر المحتوى (حلقةٌ أو قناةٌ أخرى) أو مكوّن التطبيق الذي يطلب لا يغيّر البصمة: الجهاز نفسه جلسته نفسها.
   · جهازان على الشبكة نفسها (البيت نفسه) ← بصمةٌ واحدة (يُحسبان جهازًا واحدًا).
-  · جهازٌ واحد ينتقل من شبكةٍ لأخرى (Wi-Fi ← بيانات الجوال) ← بصمةٌ جديدة؛ إن امتلأ الحد يُرفض حتى تنتهي جلسته القديمة
-    (‏session_timeout) أو يُلغيها الموظف من الأداة.
+  · جهازٌ واحد ينتقل من شبكةٍ لأخرى (Wi-Fi ← بيانات الجوال) ← بصمةٌ جديدة، لكن «انتقال الجهاز بين الشبكات» (‏roaming، مفعّلٌ
+    افتراضًا) يعدّه الجهاز نفسه إن شغّل **بالتطبيق نفسه** (فئة User-Agent طالب التشغيل من فئات جلسته ‏uas): جلسته تنتقل معه بلا رفض
+    (‏prev_ip للعرض). تطبيقٌ آخر (جوالٌ ثم تلفاز) جهازٌ آخر. حدّه: جوالان بالتطبيق نفسه على شبكتين يُعدّان جهازًا واحدًا. ومُطفأً:
+    الشبكة الأخرى جهازٌ آخر حتى تنتهي جلسته القديمة أو يُلغيها الموظف.
   وكل جلسةٍ ‏session_id عشوائي (‏secrets) — هو ما يُعرض ويُلغى، لا البصمة.
 
 لا Heartbeat من المشغّل (غير ممكن في Stremio/Nuvio دون تمرير الفيديو): ‏last_seen يتجدّد مع كل طلب تشغيلٍ جديد، والجلسة تنتهي بعد
@@ -188,12 +190,15 @@ def settings(owner=""):
     """مهلة الجلسة لحساب أداة (ثوانٍ): ‏timeout_vod (الأفلام والمسلسلات) · timeout_live · default_max (حدٌّ حين لا تُعرف اللوحة)."""
     with _lock:
         s = _data()["settings"].get(str(owner or "")) or {}
-    return {k: int(s.get(k) or v) for k, v in DEFAULTS.items()}
+    out = {k: int(s.get(k) or v) for k, v in DEFAULTS.items()}
+    out["roaming"] = bool(s.get("roaming", True))
+    return out
 
 
-def set_settings(owner, timeout_vod=None, timeout_live=None, default_max=None):
-    """يضبط مهلتي الجلسة (ثوانٍ، من دقيقة إلى أسبوع) وحدّ «لا تُعرف اللوحة». ‏ValueError لقيمةٍ لا تصلح."""
-    new = {}
+def set_settings(owner, timeout_vod=None, timeout_live=None, default_max=None, roaming=None):
+    """يضبط مهلتي الجلسة (ثوانٍ، من دقيقة إلى أسبوع) وحدّ «لا تُعرف اللوحة» و«انتقال الجهاز بين الشبكات» (‏roaming).
+    ‏ValueError لقيمةٍ لا تصلح."""
+    new = {} if roaming is None else {"roaming": bool(roaming)}
     for k, v, lo, hi in (("timeout_vod", timeout_vod, TIMEOUT_MIN, TIMEOUT_MAX), ("timeout_live", timeout_live, TIMEOUT_MIN, TIMEOUT_MAX),
                          ("default_max", default_max, 1, MAX_DEVICES_CAP)):
         if v is None:
@@ -276,6 +281,15 @@ def _limit(a, panel_max, st):
     return int(pm) if pm else st["default_max"]
 
 
+def _uas(s, ua=None):
+    """فئات التطبيق التي شغّلت من الجلسة (مكوّنات الجهاز الواحد تختلف وكلاؤها) — بها يُعرف الجهاز نفسه من شبكةٍ أخرى."""
+    out = [u for u in (s.get("uas") or ([ua_class(s.get("ua"))] if s.get("ua") else [])) if u]
+    u = ua_class(ua) if ua else ""
+    if u and u not in out:
+        out = (out + [u])[-6:]
+    return out
+
+
 def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry=False, now=None):
     """قرار التشغيل لطلب ‏/play من نسخة «session» ← {"allowed"، "reason"، "active_devices"، "max_devices"، "session_id"، "message"}.
     ‏dry: يحسب القرار بلا إنشاء جلسةٍ ولا تجديد (لقائمة التشغيل). الجهاز نفسه (بصمته) بجلسةٍ نشطة ← تتجدّد ‏last_seen ومحتواها
@@ -301,7 +315,7 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
             sid, s = same
             if not dry:
                 s.update(last_seen=now, content_id=str(content_id)[:120], content_type=content_type, ip=str(ip or "")[:64],
-                         ua=str(ua or "")[:200])
+                         ua=str(ua or "")[:200], uas=_uas(s, ua))
                 _save()
             out["session_id"] = sid
             return out
@@ -309,18 +323,66 @@ def check(acct, ip, ua, content_id="", content_type="movie", panel_max=None, dry
                         and int(s.get("version") or 1) == int(a.get("version") or 1)
                         and now - float(s.get("revoked_at") or 0) <= _timeout(st, s.get("content_type"))), None)
         if blocked:
+            if not dry:
+                _log_denied(d, acct, ip, ua, content_id, REVOKED_REASON, [], now)
             return {**out, "allowed": False, "reason": REVOKED_REASON, "message": MSG[REVOKED_REASON]}
+        # انتقال الجهاز بين الشبكات (‏roaming): الخط نفسه بالتطبيق نفسه (فئة User-Agent طالب التشغيل) من شبكةٍ أخرى ← الجهاز نفسه
+        # انتقل (من الواي فاي إلى بيانات الجوال، أو تغيّر عنوانه) — جلسته تنتقل معه لا جهازٌ جديد. تطبيقٌ آخر (جوالٌ ثم تلفاز) جهازٌ آخر.
+        if st.get("roaming"):
+            uc = ua_class(ua)
+            moved = None if dry else next((x for x in sorted(active, key=lambda kv: -float(kv[1].get("last_seen") or 0))
+                                           if uc and uc in _uas(x[1])), None)
+            if moved or (dry and active):                # ‏dry (قائمة التشغيل): طلبها من التطبيق لا المشغّل، فلا يُقارن وكيله — القرار عند التشغيل
+                if moved:
+                    sid, s = moved
+                    s.update(device_key=dk, prev_ip=s.get("ip", ""), moved_at=now, last_seen=now, content_id=str(content_id)[:120],
+                             content_type=content_type, ip=str(ip or "")[:64], ua=str(ua or "")[:200], uas=_uas(s, ua))
+                    _save()
+                    out["session_id"] = sid
+                    return out
+                return out
         if len(active) >= mx:                            # ‏on_limit: «deny» وحده الآن (‏kick_oldest لاحقًا هنا)
+            if not dry:
+                _log_denied(d, acct, ip, ua, content_id, LIMIT_REASON, active, now)
             return {**out, "allowed": False, "reason": LIMIT_REASON, "message": MSG[LIMIT_REASON]}
         if dry:
             return out
         sid = secrets.token_urlsafe(18)
-        d["sessions"][sid] = {"account": acct, "device_key": dk, "ip": str(ip or "")[:64], "ua": str(ua or "")[:200],
+        d["sessions"][sid] = {"account": acct, "device_key": dk, "ip": str(ip or "")[:64], "ua": str(ua or "")[:200], "uas": _uas({}, ua),
                               "content_id": str(content_id)[:120], "content_type": content_type, "created_at": now, "last_seen": now,
                               "version": int(a.get("version") or 1), "revoked": False}
         _prune(d, now)
         _save()
         return {**out, "active_devices": len(active) + 1, "session_id": sid}
+
+
+DENIED_MAX = 300                        # آخر محاولات التشغيل المرفوضة (للأداة: من رُفض، ومن أي شبكة، وأي جلسةٍ حجبته)
+
+
+def _log_denied(d, acct, ip, ua, content_id, reason, active, now):
+    """يسجّل محاولةً مرفوضة (و_lock مقفل) — مع الجلسات التي حجبتها، فيُعرف السبب: جهازٌ آخر فعلًا، أم الجهاز نفسه من شبكةٍ أخرى."""
+    log = d.setdefault("denied", [])
+    if not isinstance(log, list):
+        log = d["denied"] = []
+    last = log[-1] if log else None
+    if last and last.get("account") == acct and last.get("ip") == str(ip or "")[:64] and now - float(last.get("at") or 0) < 60:
+        last["at"], last["count"] = now, int(last.get("count") or 1) + 1      # تكرار المحاولة نفسها خلال دقيقة: سطرٌ واحد
+    else:
+        log.append({"account": acct, "ip": str(ip or "")[:64], "ua": str(ua or "")[:200], "content_id": str(content_id)[:120],
+                    "reason": reason, "at": now, "count": 1,
+                    "blocking": [{"session_id": sid, "ip": x.get("ip", ""), "last_seen": int(x.get("last_seen") or 0)} for sid, x in active]})
+        del log[:-DENIED_MAX]
+    _save()
+
+
+def denied(accts=None):
+    """المحاولات المرفوضة (لاشتراكاتٍ أو كلها)، الأحدث أولًا."""
+    want = set(accts) if accts is not None else None
+    with _lock:
+        log = _data().get("denied") or []
+        out = [dict(x, blocking=[dict(b) for b in x.get("blocking") or []]) for x in log
+               if isinstance(x, dict) and (want is None or x.get("account") in want)]
+    return sorted(out, key=lambda x: -float(x.get("at") or 0))
 
 
 def revoke(session_id):
@@ -355,7 +417,7 @@ def sessions(accts=None, now=None):
             a = _acct(d, s.get("account")) or {"version": 1}
             st = settings(a.get("owner"))
             out.append({"session_id": sid, "account": s.get("account"), "device": str(s.get("device_key") or "")[:8],
-                        "ip": s.get("ip", ""), "ua": s.get("ua", ""), "content_id": s.get("content_id", ""),
+                        "ip": s.get("ip", ""), "ua": s.get("ua", ""), "prev_ip": s.get("prev_ip", ""), "content_id": s.get("content_id", ""),
                         "content_type": s.get("content_type", ""), "created_at": int(s.get("created_at") or 0),
                         "last_seen": int(s.get("last_seen") or 0), "status": _status(s, a, st, now)})
     return sorted(out, key=lambda x: -x["last_seen"])

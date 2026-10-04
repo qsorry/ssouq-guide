@@ -410,8 +410,10 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
           new URL(user.url()).pathname === '/admin/stremio/devices' && (await user.getAttribute('#tabDev', 'aria-current')) === 'page'
           && (await user.$$eval('#dvAccList select[data-f="variant"]', s => s.length > 0 && s.every(x => x.value === 'standard')))
           && (await user.$eval('#dvAccList input[data-f="max"]', i => i.value === '' && /اللوحة/.test(i.placeholder))));
-    check('timeouts default to 3h VOD / 1h live', (await user.inputValue('#dvVod')) === '3' && (await user.inputValue('#dvLive')) === '1');
+    check('timeouts default to 3h VOD / 1h live, and moving between networks is on', (await user.inputValue('#dvVod')) === '3'
+          && (await user.inputValue('#dvLive')) === '1' && await user.isChecked('#dvRoam'));
     check('no sessions yet: a hint, not an empty table', /لا جلسات بعد/.test(await user.textContent('#dvSesList')));
+    check('and no refused attempts yet', /لا محاولات مرفوضة/.test(await user.textContent('#dvDenList')) && (await user.textContent('#nDvDen')) === '0');
     await user.selectOption('#dvAccList tr:first-child select[data-f="variant"]', 'session');
     await user.fill('#dvAccList tr:first-child input[data-f="max"]', '2');
     await user.click('#dvAccList tr:first-child [data-save]');
@@ -421,9 +423,10 @@ s = smtplib.SMTP('127.0.0.1', ${MAIL_PORT}); s.sendmail('no-reply@strem.io', ['$
           JSON.stringify(dv.accounts[0]));
     await user.fill('#dvVod', '2'); await user.fill('#dvLive', '0.5');
     await user.click('#dvSetSave');
-    await user.waitForFunction(() => /حُفظت المهلة/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 8000});
+    await user.waitForFunction(() => /حُفظت الإعدادات/.test(document.querySelector('#toast')?.textContent || ''), null, {timeout: 8000});
     const dv2 = await api(user, '/admin/api/stremio/sessions');
-    check('and the timeouts (hours on the page, seconds on the server)', dv2.settings.timeout_vod === 7200 && dv2.settings.timeout_live === 1800);
+    check('and the timeouts (hours on the page, seconds on the server)', dv2.settings.timeout_vod === 7200 && dv2.settings.timeout_live === 1800
+          && dv2.settings.roaming === true);
     const bad = await api(user, '/admin/api/stremio/sessions', {action: 'account', key: 'evil.example|x', variant: 'session'});
     check('a line that is not ours is refused', bad.ok === false && /ليس من خطوطك/.test(bad.error || ''), JSON.stringify(bad));
     await shot(user, 'stremio-devices');

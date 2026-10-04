@@ -432,8 +432,13 @@ h1{font-size:1.3rem;margin:0 0 2px}
       <label>الأفلام والمسلسلات (ساعات)<input class="t" id="dvVod" type="number" min="0.1" step="0.5"></label>
       <label>البث المباشر (ساعات)<input class="t" id="dvLive" type="number" min="0.1" step="0.5"></label>
       <label>الحد حين لا تُعرف اللوحة<input class="t" id="dvDef" type="number" min="1" max="20" step="1"></label>
+      <label style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="dvRoam">
+        انتقال الجهاز بين الشبكات</label>
       <button class="btn" id="dvSetSave">حفظ</button>
     </div>
+    <p class="hint">«انتقال الجهاز بين الشبكات» (مفعّل): الخط نفسه <b>بالتطبيق نفسه</b> من شبكةٍ أخرى (الواي فاي ← بيانات الجوال) يُعدّ
+      الجهاز نفسه فتنتقل جلسته معه بلا رفض؛ وتطبيقٌ آخر (جوالٌ ثم تلفاز) جهازٌ آخر. حدّه: جوالان بالتطبيق نفسه على شبكتين يُعدّان جهازًا
+      واحدًا (Stremio وNuvio لا يرسلان ما يميّزهما)، ويبقى حدّ اللوحة نفسها لعدد البث في الوقت نفسه.</p>
     <div class="err" id="dvSetMsg"></div>
   </section>
   <section id="dvAccSec">
@@ -442,6 +447,13 @@ h1{font-size:1.3rem;margin:0 0 2px}
       جلساته: أول تشغيلٍ بعده يبدأ جلسةً جديدة، والفيديو الجاري الآن لا يُقطع.</p>
     <div class="err" id="dvAccMsg"></div>
     <div id="dvAccList"><div class="empty">جاري التحميل…</div></div>
+  </section>
+  <section id="dvDenSec">
+    <h2>محاولات مرفوضة <span class="count" id="nDvDen">0</span></h2>
+    <p class="hint" style="margin:-6px 0 12px">من رُفض تشغيله ولماذا، والجلسة التي حجبته وشبكتها. إن كانت <b>للعميل نفسه</b> (جوّاله انتقل من
+      الواي فاي إلى بيانات الجوال، أو تغيّر عنوانه) اضغط «السماح» فتُلغى الجلسة الحاجبة ويشغّل من جديد.</p>
+    <div class="err" id="dvDenMsg"></div>
+    <div id="dvDenList"></div>
   </section>
   <section id="dvSesSec">
     <h2>الجلسات <span class="count" id="nDvSes">0</span></h2>
@@ -1651,7 +1663,7 @@ const DV_CT = {movie: "فيلم", series: "حلقة", live: "بث"};
 const dvTime = t => t ? new Date(t * 1000).toLocaleString("ar", {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"}) : "—";
 function renderDv(){
   const st = DV.settings;
-  $("dvVod").value = +(st.timeout_vod / 3600).toFixed(2); $("dvLive").value = +(st.timeout_live / 3600).toFixed(2); $("dvDef").value = st.default_max;
+  $("dvVod").value = +(st.timeout_vod / 3600).toFixed(2); $("dvLive").value = +(st.timeout_live / 3600).toFixed(2); $("dvDef").value = st.default_max; $("dvRoam").checked = st.roaming !== false;
   $("nDvAcc").textContent = DV.accounts.length;
   $("dvAccList").innerHTML = DV.accounts.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الخط</th><th>البوابة</th><th>التطبيق</th>
       <th>النسخة</th><th>حدّ الأجهزة</th><th></th></tr></thead><tbody>${DV.accounts.map(a => `<tr data-k="${esc(a.key)}">
@@ -1661,12 +1673,24 @@ function renderDv(){
       <td><input class="t" data-f="max" type="number" min="1" max="20" value="${a.max_devices || ""}" placeholder="${a.panel_max ? "اللوحة: " + a.panel_max : "اللوحة"}"></td>
       <td><button class="ghost" data-save>حفظ</button> <button class="ghost st" data-out>خروج من كل الأجهزة</button></td></tr>`).join("")}</tbody></table></div>`
     : '<div class="empty">لا خطوط Stremio ولا Nuvio بعد.</div>';
+  const den = DV.denied || [], RS = {CONCURRENT_DEVICE_LIMIT: "الحد ممتلئ", SESSION_REVOKED: "جلسةٌ ملغاة"};
+  $("nDvDen").textContent = den.length;
+  $("dvDenList").innerHTML = den.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الوقت</th><th>الخط</th><th>IP المرفوض</th>
+      <th>User-Agent</th><th>السبب</th><th>حجبته جلسة من</th><th></th></tr></thead><tbody>${den.map(x => `<tr>
+      <td>${dvTime(x.at)}${x.count > 1 ? ` <span class="hint" style="display:inline">×${x.count}</span>` : ""}</td>
+      <td class="ltr">${esc(x.username || x.account)}</td><td class="ltr">${esc(x.ip)}</td><td><div class="ua" title="${esc(x.ua)}">${esc(x.ua)}</div></td>
+      <td>${esc(RS[x.reason] || x.reason)}</td>
+      <td class="ltr">${(x.blocking || []).map(b => `${esc(b.ip)} <span class="hint" style="display:inline">(${dvTime(b.last_seen)})</span>`).join("<br>") || "—"}</td>
+      <td>${(x.blocking || []).some(b => DV.sessions.some(s => s.session_id === b.session_id && s.status === "active"))
+        ? `<button class="ghost st" data-allow="${esc((x.blocking || []).map(b => b.session_id).join(","))}">السماح</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
+    : '<div class="empty">لا محاولات مرفوضة.</div>';
   const live = DV.sessions.filter(x => x.status === "active").length;
   $("nDvSes").textContent = live;
   $("dvSesList").innerHTML = DV.sessions.length ? `<div class="dv-wrap"><table class="dv"><thead><tr><th>الخط</th><th>الجلسة / الجهاز</th><th>IP</th>
       <th>User-Agent</th><th>المحتوى</th><th>بدأت</th><th>آخر تشغيل</th><th>الحال</th><th></th></tr></thead><tbody>${DV.sessions.map(x => `<tr>
       <td class="ltr">${esc(x.username || x.account)}</td><td class="ltr" title="${esc(x.session_id)}">${esc(x.session_id.slice(0, 8))} · ${esc(x.device)}</td>
-      <td class="ltr">${esc(x.ip)}</td><td><div class="ua" title="${esc(x.ua)}">${esc(x.ua)}</div></td>
+      <td class="ltr">${esc(x.ip)}${x.prev_ip ? `<div class="hint" style="margin:2px 0 0">انتقل من ${esc(x.prev_ip)}</div>` : ""}</td>
+      <td><div class="ua" title="${esc(x.ua)}">${esc(x.ua)}</div></td>
       <td>${esc(DV_CT[x.content_type] || "")} <span class="ltr">${esc(x.content_id)}</span></td><td>${dvTime(x.created_at)}</td><td>${dvTime(x.last_seen)}</td>
       <td class="st-${esc(x.status)}">${esc(DV_ST[x.status] || x.status)}</td>
       <td>${x.status === "active" ? `<button class="ghost st" data-rv="${esc(x.session_id)}">إلغاء</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`
@@ -1681,7 +1705,7 @@ async function dvPost(body, msgId, ok){
   catch(e) { $(msgId).textContent = e.message; }
 }
 $("dvSetSave").onclick = () => dvPost({action: "settings", timeout_vod_h: $("dvVod").value, timeout_live_h: $("dvLive").value,
-  default_max: $("dvDef").value}, "dvSetMsg", "حُفظت المهلة");
+  default_max: $("dvDef").value, roaming: $("dvRoam").checked}, "dvSetMsg", "حُفظت الإعدادات");
 $("dvAccList").addEventListener("click", e => {
   const tr = e.target.closest("tr[data-k]"); if (!tr) return;
   const k = tr.dataset.k;
@@ -1689,6 +1713,13 @@ $("dvAccList").addEventListener("click", e => {
     max_devices: tr.querySelector('[data-f="max"]').value}, "dvAccMsg", "حُفظ الخط");
   else if (e.target.closest("[data-out]") && confirm("خروج هذا الخط من كل الأجهزة؟\nتسقط كل جلساته، وأول تشغيلٍ بعده يبدأ جلسةً جديدة (ولا يُقطع ما يعمل الآن)."))
     dvPost({action: "logout_all", key: k}, "dvAccMsg", "خرج من كل الأجهزة");
+});
+$("dvDenList").addEventListener("click", async e => {
+  const b = e.target.closest("[data-allow]");
+  if (!b || !confirm("السماح لهذا الجهاز؟\nتُلغى الجلسة الحاجبة (والجهاز الذي كانت له لا يبدأ منها تشغيلًا جديدًا)، فيشغّل العميل من جديد.")) return;
+  for (const sid of b.dataset.allow.split(",").filter(Boolean))
+    if (DV.sessions.some(s => s.session_id === sid && s.status === "active")) await dvPost({action: "revoke", session_id: sid}, "dvDenMsg");
+  toast("أُلغيت الجلسة الحاجبة — يشغّل العميل الآن");
 });
 $("dvSesList").addEventListener("click", e => {
   const b = e.target.closest("[data-rv]");

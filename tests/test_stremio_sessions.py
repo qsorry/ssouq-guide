@@ -63,14 +63,35 @@ def core():
         s = {x["session_id"]: x for x in SS.sessions([A], now=1400)}
         check("وجلسة A باقيةٌ نشطة بآخر محتوى وآخر ظهور (لا تُقطع)", s[r1["session_id"]]["status"] == "active"
               and s[r1["session_id"]]["last_seen"] == 1300 and s[r1["session_id"]]["content_id"] == "s:1:1:2" and len(s) == 1)
-        check("‏dry: القرار بلا إنشاء جلسة", SS.check(A, "9.9.9.9", NUVIO_TV, dry=True, now=1400)["reason"] == "CONCURRENT_DEVICE_LIMIT"
-              and len(SS.sessions([A], now=1400)) == 1)
+        SS.check(A, "9.9.9.9", NUVIO_TV, "m:5", "movie", now=1410)
+        dn = SS.denied([A])
+        check("والرفض يُسجَّل للأداة: الشبكة المرفوضة والجلسة التي حجبته وشبكتها (وتكرارها خلال دقيقة سطرٌ واحد)",
+              len(dn) == 1 and dn[0]["ip"] == "9.9.9.9" and dn[0]["count"] == 2 and dn[0]["reason"] == "CONCURRENT_DEVICE_LIMIT"
+              and dn[0]["blocking"] == [{"session_id": r1["session_id"], "ip": "1.2.3.4", "last_seen": 1300}], json.dumps(dn, ensure_ascii=False))
+        check("‏dry (قائمة التشغيل) مع «الانتقال بين الشبكات»: بلا جلسةٍ ولا رفض (طلبها من التطبيق لا المشغّل — القرار عند التشغيل)",
+              SS.check(A, "9.9.9.9", NUVIO_TV, dry=True, now=1400)["allowed"] and len(SS.sessions([A], now=1400)) == 1
+              and SS.denied([A])[0]["count"] == 2)
+
+        print("== الجهاز نفسه من شبكةٍ أخرى (Wi-Fi ← بيانات الجوال) ==")
+        mv = SS.check(A, "37.10.20.30", NUVIO_PHONE, "s:1:1:3", "series", now=1450)
+        sa = {x["session_id"]: x for x in SS.sessions([A], now=1450)}
+        check("التطبيق نفسه من شبكةٍ أخرى ← الجلسة نفسها تنتقل معه (لا رفض، ولا جهازٌ ثانٍ)", mv["allowed"] and mv["session_id"] == r1["session_id"]
+              and len(sa) == 1 and sa[r1["session_id"]]["ip"] == "37.10.20.30" and sa[r1["session_id"]]["prev_ip"] == "1.2.3.4", json.dumps(mv))
+        back = SS.check(A, "1.2.3.4", NUVIO_PHONE, "s:1:1:4", "series", now=1460)
+        check("والعودة للواي فاي ← الجلسة نفسها أيضًا", back["allowed"] and back["session_id"] == r1["session_id"])
+        tv = SS.check(A, "37.10.20.30", NUVIO_TV, "m:9", "movie", now=1470)
+        check("وتطبيقٌ آخر (تلفاز) والجوال يعمل ← جهازٌ ثانٍ: يُرفض بحدٍّ 1", not tv["allowed"] and tv["reason"] == "CONCURRENT_DEVICE_LIMIT")
+        SS.set_settings("acct1", roaming=False)
+        off = SS.check(A, "37.10.20.31", NUVIO_PHONE, "m:9", "movie", now=1480)
+        check("وإطفاء «الانتقال بين الشبكات» من الأداة ← الشبكة الأخرى جهازٌ آخر (يُرفض)", not off["allowed"]
+              and SS.check(A, "9.9.9.9", NUVIO_TV, dry=True, now=1480)["reason"] == "CONCURRENT_DEVICE_LIMIT")
+        SS.set_settings("acct1", roaming=True)
 
         print("== المهلة (من الأداة) ==")
-        check("الافتراضي: 3 ساعات للأفلام والمسلسلات وساعة للبث", SS.settings("acct1") == {"timeout_vod": 10800, "timeout_live": 3600, "default_max": 1})
-        r3 = SS.check(A, "9.9.9.9", NUVIO_TV, "m:5", "movie", now=1300 + 10801)
+        check("الافتراضي: 3 ساعات للأفلام والمسلسلات وساعة للبث", SS.settings("acct1") == {"timeout_vod": 10800, "timeout_live": 3600, "default_max": 1, "roaming": True})
+        r3 = SS.check(A, "9.9.9.9", NUVIO_TV, "m:5", "movie", now=1460 + 10801)
         check("بعد 3 ساعاتٍ بلا تشغيل: جلسة A انتهت ← B يُسمح", r3["allowed"] and r3["active_devices"] == 1)
-        st = {x["session_id"]: x["status"] for x in SS.sessions([A], now=1300 + 10801)}
+        st = {x["session_id"]: x["status"] for x in SS.sessions([A], now=1460 + 10801)}
         check("وA «expired» في القائمة", st[r1["session_id"]] == "expired" and st[r3["session_id"]] == "active")
         SS.set_settings("acct1", timeout_live=120)
         rl = SS.check(A, "9.9.9.9", NUVIO_TV, "l:7", "live", now=20000)
@@ -86,7 +107,7 @@ def core():
         print("== الحد من اللوحة، ومن الأداة ==")
         B = SS.account_key("panel.example", "u2")
         SS.set_account(B, owner="acct1", variant="session")          # بلا حدٍّ مضبوط: من اللوحة
-        ok2 = [SS.check(B, f"10.0.0.{i}", NUVIO_PHONE, panel_max=2, now=5000)["allowed"] for i in (1, 2, 3)]
+        ok2 = [SS.check(B, f"10.0.0.{i}", ua, panel_max=2, now=5000)["allowed"] for i, ua in ((1, NUVIO_PHONE), (2, NUVIO_TV), (3, "Stremio/4"))]
         check("بلا حدٍّ مضبوط: ‏max_connections من اللوحة (2) — لا 1 إجباري", ok2 == [True, True, False], str(ok2))
         check("ويُحفظ آخر ما عُرف منها (حين تتعذّر اللوحة)", SS.account(B)["panel_max"] == 2
               and SS.check(B, "10.0.0.9", NUVIO_PHONE, dry=True, now=5001)["max_devices"] == 2)
@@ -186,7 +207,9 @@ def through_play():
               {"allowed": False, "reason": "CONCURRENT_DEVICE_LIMIT", "active_devices": 1, "max_devices": 1}, json.dumps(verdict))
         check("وتحويله إلى فيديو التنبيه (احتياطًا للعرض)، لا إلى اللوحة", hb.get("Location") == "https://g/static/stremio/alert-limit.mp4"
               and host not in hb.get("Location", "") and hb.get("Cache-Control") == "no-store")
+        SS.set_settings("acct1", roaming=False)            # سطر الرسالة في القائمة (مع الانتقال بين الشبكات القرار عند التشغيل وحده)
         code, sl, hs = get(f"stream/movie/{quote(mids[0], safe='')}.json", B_)
+        SS.set_settings("acct1", roaming=True)
         check("وقائمة التشغيل للجهاز B: أول سطرٍ الرسالة بعدد الأجهزة، ولا تُحفظ", sl["streams"][0]["name"].startswith("⚠️")
               and sl["streams"][0]["title"].startswith("الحساب مستخدم حاليًا على جهاز آخر.") and "1 من 1" in sl["streams"][0]["title"]
               and hs.get("Cache-Control") == "no-store" and len(sl["streams"]) == len(st["streams"]) + 1, json.dumps(sl["streams"][0], ensure_ascii=False))
@@ -245,7 +268,7 @@ def panel_unknown():
         SS.set_account(acct, owner="o", variant="session")
         ln = {"cfg": cfg, "label": "x"}
         v1 = S.play_gate(ln, "movie", "m:1", {"ip": "1.1.1.1", "ua": "x"})
-        v2 = S.play_gate(ln, "movie", "m:1", {"ip": "2.2.2.2", "ua": "x"})
+        v2 = S.play_gate(ln, "movie", "m:1", {"ip": "2.2.2.2", "ua": "other app"})
         check("بلا حدٍّ معروف من اللوحة ولا مضبوط ← ‏default_max (لا ينهار، والجلسة الصالحة تستمر)", v1["allowed"] and not v2["allowed"]
               and v2["max_devices"] == 1 and S.play_gate(ln, "movie", "m:2", {"ip": "1.1.1.1", "ua": "y"})["allowed"])
         check("والبث بمهلة البث (‏tv ← live)", S.play_gate(ln, "tv", "l:1", {"ip": "1.1.1.1", "ua": "x"})["allowed"]
@@ -289,7 +312,10 @@ def admin():
         data = X.stremio_sessions_post(acct, {"action": "revoke", "session_id": s1["session_id"]})
         check("وإلغاء جلسةٍ من خطّه ← «ملغاة» في القائمة", [x["status"] for x in data["sessions"]] == ["revoked"] and data["sessions"][0]["username"] == "me")
         data = X.stremio_sessions_post(acct, {"action": "settings", "timeout_vod_h": "2", "timeout_live_h": "0.5", "default_max": "2"})
-        check("والمهلة بالساعات من الصفحة", data["settings"] == {"timeout_vod": 7200, "timeout_live": 1800, "default_max": 2})
+        check("والمهلة بالساعات من الصفحة", data["settings"] == {"timeout_vod": 7200, "timeout_live": 1800, "default_max": 2, "roaming": True})
+        data = X.stremio_sessions_post(acct, {"action": "settings", "roaming": False})
+        check("و«انتقال الجهاز بين الشبكات» يُطفأ من الأداة (والمهلة كما هي)", data["settings"]["roaming"] is False
+              and data["settings"]["timeout_vod"] == 7200)
         try:
             X.stremio_sessions_post(acct, {"action": "settings", "timeout_vod_h": "abc"})
             refused = False
