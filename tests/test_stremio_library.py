@@ -929,7 +929,30 @@ def categories():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def auto_probe():
+    """«تلقائي» يفحص المصادر فقط حين يوجد بديلٌ فعلًا: القناة (صيغتاها لبثٍّ واحد) والمصدر الواحد ← التحويل مباشرةً بلا فحص (الفحص
+    يفتح اتصالًا باللوحة قبل المشغّل ويؤخّر «Starting stream»)."""
+    print("== «تلقائي»: لا فحص بلا بديل ==")
+    calls = []
+    orig_c, orig_p = S.candidates, S.probe
+    S.probe = lambda url: calls.append(url) or False
+    try:
+        mk = lambda src, url, rank=0: {"src": src, "url": url, "rank": rank, "line": 0, "name": "x", "title": ""}   # noqa: E731
+        S.candidates = lambda lines, kind, sid, pre: [mk("abc123.l5.m3u8", "U1"), mk("abc123.l5.ts", "U2")]
+        check("القناة (صيغتاها) ← أولاها مباشرةً بلا فحص", S.play([], "tv", "x", "p") == "U1" and calls == [])
+        S.candidates = lambda lines, kind, sid, pre: [mk("abc123.m7.mkv", "M1")]
+        check("ومصدرٌ واحد ← مباشرةً بلا فحص", S.play([], "movie", "x", "p") == "M1" and calls == [])
+        S.candidates = lambda lines, kind, sid, pre: [mk("abc123.m7.mkv", "M1"), mk("abc123.m8.mp4", "M2")]
+        r = S.play([], "movie", "x", "p")
+        check("ونسختان فعلًا ← تُفحصان (وكلتاهما معطّلة ← الأولى)", r == "M1" and calls == ["M1", "M2"], str(calls))
+        check("ومهلة الفحص قصيرة (2.5 ثانية) ومصدران على الأكثر", S.PROBE_TIMEOUT <= 2.5 and S.PROBE_MAX <= 2)
+        check("والقوائم في الذاكرة لا أقل من المكتبات (قائمةٌ تُطرد تعيد بناء مكتبتها)", S.LISTS_MAX >= S.LIB_MAX)
+    finally:
+        S.candidates, S.probe = orig_c, orig_p
+
+
 def main():
+    auto_probe()
     matching()
     through_addon()
     slow_line()
