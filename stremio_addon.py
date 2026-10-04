@@ -1789,6 +1789,9 @@ def _group_of(lines, lib, pre, sid):
     return next(((g, ws) for g, ws in _groups(lines, lib) if group_id(pre, g) == sid), None)
 
 
+GROUP_VIDEOS_MAX = 400                 # قنوات القسم «حلقاتٍ» في صفحته (التنقّل بينها بزر «التالي» في Nuvio)
+
+
 def group_meta(lines, pre, sid, poster_url=None):
     """صفحة بطاقة القسم: قنواته (والضغط ← قائمة التشغيل بقنواته كلها، كلٌّ باسمه)."""
     lib = library(lines, "tv")
@@ -1797,8 +1800,12 @@ def group_meta(lines, pre, sid, poster_url=None):
         return None
     g, ws = hit
     m = group_preview(pre, g, ws, poster_url)
+    # قنواته «حلقاتٌ» مرقّمة (الموسم 1): Nuvio يعامل ‏tv كالمسلسل — يعرضها قائمةً، وزر «التالي» في مشغّله ينتقل للقناة التالية.
+    # وStremio يتجاهل الحلقات في البث المباشر (الضغط ← قائمة التشغيل بقنوات القسم، ‏defaultVideoId) فلا يتغيّر عنده شيء.
+    vids = [_clean({"id": work_id(pre, w), "title": w.anchor.item.name, "season": 1, "episode": i,
+                    "thumbnail": channel_poster(lib, w, poster_url)}) for i, w in enumerate(ws[:GROUP_VIDEOS_MAX], 1)]
     m.update({"description": f"{_ch_count(len(ws))}: " + " · ".join(w.anchor.item.name for w in ws[:60]),
-              "behaviorHints": {"defaultVideoId": sid}})
+              "behaviorHints": {"defaultVideoId": sid}, "videos": vids})
     return {"meta": m}
 
 
