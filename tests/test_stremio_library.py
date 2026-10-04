@@ -357,6 +357,15 @@ def through_addon():
               and tv["metas"][0]["poster"].startswith("https://g/stremio/p/"))
         code, gm, _ = get(tok, f"meta/tv/{quote(mbc['id'], safe='')}.json")
         check("وصفحة البطاقة: قنواتها", code == 200 and gm["meta"]["name"] == "MBC" and "MBC 1 · MBC 2" in gm["meta"]["description"])
+        vids = gm["meta"].get("videos") or []
+        check("وقنواته «حلقاتٌ» مرقّمة بترتيب اللوحة (زر «التالي» في Nuvio ← القناة التالية) بشعاراتها",
+              [(v["title"], v["season"], v["episode"]) for v in vids] == [("MBC 1", 1, 1), ("MBC 2", 1, 2)]
+              and vids[0]["thumbnail"] == "https://logo.example/mbc1.png" and gm["meta"]["behaviorHints"]["defaultVideoId"] == mbc["id"],
+              json.dumps(vids, ensure_ascii=False)[:300])
+        code, nx, _ = get(tok, f"stream/tv/{quote(vids[1]['id'], safe='')}.json")
+        check("والحلقة الثانية ← بثّ «MBC 2» وحده («تلقائي» أولًا ثم صيغه)", code == 200 and nx["streams"]
+              and all((panel(lines, x["url"]) or "").startswith(f"{h1}/live/u/p/512.") for x in nx["streams"][1:])
+              and nx["streams"][0]["url"].endswith(quote(vids[1]["id"], safe="")), json.dumps(nx, ensure_ascii=False)[:200])
         code, gs, _ = get(tok, f"stream/tv/{quote(mbc['id'], safe='')}.json")
         check("والضغط عليها ← قائمة التشغيل: قناةٌ لكل سطر", [x["title"].split("\n")[0] for x in gs["streams"]] == ["MBC 1", "MBC 2"]
               and panel(lines, gs["streams"][0]["url"]) == f"{h1}/live/u/p/511.m3u8", json.dumps(gs, ensure_ascii=False)[:200])
