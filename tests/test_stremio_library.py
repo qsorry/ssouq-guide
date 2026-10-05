@@ -368,7 +368,7 @@ def through_addon():
               and nx["streams"][0]["url"].endswith(quote(vids[1]["id"], safe="")), json.dumps(nx, ensure_ascii=False)[:200])
         code, gs, _ = get(tok, f"stream/tv/{quote(mbc['id'], safe='')}.json")
         check("والضغط عليها ← قائمة التشغيل: قناةٌ لكل سطر", [x["title"].split("\n")[0] for x in gs["streams"]] == ["MBC 1", "MBC 2"]
-              and panel(lines, gs["streams"][0]["url"]) == f"{h1}/live/u/p/511.m3u8", json.dumps(gs, ensure_ascii=False)[:200])
+              and panel(lines, gs["streams"][0]["url"]) == f"{h1}/live/u/p/511.ts", json.dumps(gs, ensure_ascii=False)[:200])
         code, ch, _ = get(tok, "catalog/tv/sq_live/genre=MBC%20(2).json")
         check("و«اكتشف» ← القسم ← قنواته عريضةً بشعاراتها (وبلا شعار ملصقٌ مرسوم عريض)",
               [(m["name"], m["posterShape"]) for m in ch["metas"]] == [("MBC 1", "landscape"), ("MBC 2", "landscape")]
