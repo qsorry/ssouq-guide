@@ -460,7 +460,7 @@ def against_mock():
         check("حلقات المسلسل مجموعةٌ واحدة (التشغيل التلقائي للتالية)", se[0]["behaviorHints"]["bingeGroup"] == st[0]["behaviorHints"]["bingeGroup"])
         sl = S.streams(cfg, "tv", allt[0]["id"])["streams"]
         lnum = allt[0]["id"].rsplit(":", 1)[1]
-        check("القناة: HLS ثم TS", [x["url"] for x in sl] == [f"{host}/live/u/p/{lnum}.m3u8", f"{host}/live/u/p/{lnum}.ts"], str(sl))
+        check("القناة: TS ثم HLS", [x["url"] for x in sl] == [f"{host}/live/u/p/{lnum}.ts", f"{host}/live/u/p/{lnum}.m3u8"], str(sl))
         check("واسم القناة في عنوان التشغيل (لا يُخلط بين القنوات)", all(x["title"].startswith(allt[0]["name"] + "\n") for x in sl),
               str([x["title"] for x in sl]))
         odd = S.read_token(d, S.make_token(d, host, "u/x", "p&y"))

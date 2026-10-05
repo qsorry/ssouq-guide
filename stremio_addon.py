@@ -14,7 +14,7 @@
                  «اكتشف» للثلاثة؛ والبحث بالاسم في الثلاثة (صفوفه بالترتيب نفسه). وملصق القناة مرسوم: اسمها ورقمها
                  وختم جودتها (‏stremio_posters).
   التفاصيل      الفيلم من get_vod_info، والمسلسل بمواسمه وحلقاته من get_series_info، والقناة من القائمة.
-  التشغيل       روابط السيرفر نفسه: ‏/movie/ · ‏/series/ · ‏/live/ (‏HLS ثم TS حسب ما يسمح به الاشتراك).
+  التشغيل       روابط السيرفر نفسه: ‏/movie/ · ‏/series/ · ‏/live/ (‏TS ثم HLS حسب ما يسمح به الاشتراك).
 
 الرابط: ‏/stremio/<رمز>/manifest.json — الرمز مختومٌ بمفتاح الخادم (‏crypto_store.seal_token): فيه الهوست واليوزر
 والباسورد مشفَّرةً، فلا تُقرأ من الرابط ولا يُصنع رابطٌ لسيرفرٍ آخر، والاشتراك نفسه يعطي الرمز نفسه دائمًا.
@@ -1278,7 +1278,9 @@ def meta(cfg, kind, sid, man=None):
 
 
 def _formats(cfg):
-    """صيغ البث المباشر المسموحة للاشتراك (‏allowed_output_formats) — ‏HLS أولًا."""
+    """صيغ البث المباشر المسموحة للاشتراك (‏allowed_output_formats) — ‏TS أولًا: تبدأ فورًا كما في تطبيقات IPTV، و‏HLS
+    (مقاطع 10 ثوانٍ) ينتظر المشغّل عدة مقاطع قبل البدء، وتبديل القناة فيه يُبقي الجلسة القديمة محجوزة في خطٍّ باتصالٍ واحد
+    فتُرفض الجديدة (فالكون). و«تلقائي» للقناة يأخذ أول صيغة."""
     try:
         ui, _ = account(cfg)
         fm = [str(f).lower() for f in (ui.get("allowed_output_formats") or []) if str(f).lower() in ("m3u8", "ts")]
@@ -1286,7 +1288,7 @@ def _formats(cfg):
         raise
     except XtreamError:
         fm = []
-    return sorted(set(fm), key=["m3u8", "ts"].index) or ["m3u8", "ts"]
+    return sorted(set(fm), key=["ts", "m3u8"].index) or ["ts", "m3u8"]
 
 
 def streams(cfg, kind, sid, play_url=None):
