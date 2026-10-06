@@ -188,6 +188,8 @@ def main():
         rs = d.get("results") or []
         check("search result shows the package type (3 Months -> '3 شهر')", len(rs) == 1 and rs[0].get("package_type") == "3 شهر"
               and rs[0].get("package_name") == "3 Months (13 credits)", json.dumps(rs, ensure_ascii=False)[:120])
+        check("search result carries 'expires in' text computed from exp", len(rs) == 1 and str(rs[0].get("exp_left", "")).startswith(("ينتهي", "منتهٍ")),
+              json.dumps(rs[:1], ensure_ascii=False)[:160])
 
         print("\n== 5. Self-service: person adds their own gate; data encrypted at rest ==")
         # log back in as admin (password set at setup) and create a LOGIN-ONLY person

@@ -142,6 +142,7 @@ input.t::placeholder{color:color-mix(in srgb,var(--mute) 70%,transparent)}
 .tbl tr:last-child td{border-bottom:0}
 .tbl .m{direction:ltr;text-align:left;font:600 .84rem "IBM Plex Mono",Consolas,monospace}
 .tbl .n{color:var(--mute);font-size:.78rem}
+.tbl .exp-left{color:var(--mute);font-size:.72rem;margin-top:2px;white-space:nowrap}
 .tbl .cb{width:34px;height:30px;border-radius:8px;border:1px solid var(--line);display:inline-grid;place-items:center;color:var(--mute)}
 .tbl .cb:hover{color:var(--go);border-color:var(--go)}
 .pill{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.74rem;border:1px solid var(--line);color:var(--mute);background:var(--sf)}
@@ -668,7 +669,7 @@ function missCard(q, all){
 const fileNote = `<div class="src-note">من الملف المحفوظ — فوريّ بلا انتظار اللوحة. لأحدث «حالة» وانتهاء، اسحب البوابة كاملةً.</div>`;
 const resTable = (rows, gid) => `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
   rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
-    return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
+    return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}${x.exp_left ? `<div class="exp-left">${esc(String(x.exp_left))}</div>` : ""}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
       <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(msgOf(x, gid))}">${copyIcon}</button></td></tr>`; }).join("") + `</tbody></table></div>`;
 
 // ---- نطاق البحث: كل بوابات العميل معًا (الافتراضي) أو المختارة وحدها — يُتذكّر لكل متصفح ----

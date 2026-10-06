@@ -3121,6 +3121,56 @@ def _parse_date(s):
     return None
 
 
+def _exp_date(exp):
+    """تاريخ الانتهاء من أي صيغةٍ تُرجعها اللوحات: نصّ تاريخ (بوقتٍ أو بدونه) أو طابع يونكس."""
+    v = str(exp or "").strip()
+    if not v:
+        return None
+    if v.isdigit() and len(v) >= 9:                   # طابع يونكس (xtream / falcon)
+        try:
+            return datetime.datetime.fromtimestamp(int(v)).date()
+        except (OverflowError, OSError, ValueError):
+            return None
+    return _parse_date(v[:10])
+
+
+def expires_in_ar(exp, today=None):
+    """«ينتهي بعد 5 شهور و 4 ايام» من تاريخ الانتهاء — أشهرٌ تقويمية ثم ما بقي أيامًا،
+    كما يُطمئن العميلَ مندوبُ الدعم. منتهٍ: «منتهٍ منذ N يوم»، واليوم: «ينتهي اليوم».
+    فارغ/غير مفهوم: نصٌّ فارغ، فلا يُعرض شيء."""
+    end = _exp_date(exp)
+    if not end:
+        return ""
+    today = today or datetime.date.today()
+    if end < today:
+        n = (today - end).days
+        return "منتهٍ منذ " + ("يوم" if n == 1 else "يومين" if n == 2 else "%d ايام" % n if n <= 10 else "%d يوم" % n)
+    if end == today:
+        return "ينتهي اليوم"
+    months = (end.year - today.year) * 12 + (end.month - today.month)
+    if end.day < today.day:
+        months -= 1
+    anchor = today
+    if months > 0:
+        y, m = divmod((today.month - 1) + months, 12)
+        y += today.year; m += 1
+        last = (datetime.date(y + (m == 12), (m % 12) + 1, 1) - datetime.timedelta(days=1)).day
+        anchor = datetime.date(y, m, min(today.day, last))
+    days = (end - anchor).days
+    def ar_m(n): return "شهر" if n == 1 else "شهرين" if n == 2 else "%d شهور" % n if n <= 10 else "%d شهر" % n
+    def ar_d(n): return "يوم" if n == 1 else "يومين" if n == 2 else "%d ايام" % n if n <= 10 else "%d يوم" % n
+    parts = ([ar_m(months)] if months else []) + ([ar_d(days)] if days else [])
+    return "ينتهي بعد " + " و ".join(parts)
+
+
+def annotate_exp_left(rows):
+    """يضيف لكل نتيجة بحثٍ exp_left («ينتهي بعد …») من حقل exp؛ يُترك فارغًا إن غاب."""
+    for r in rows or []:
+        if isinstance(r, dict):
+            r["exp_left"] = expires_in_ar(r.get("exp") or r.get("expires_at") or "")
+    return rows
+
+
 def _logged_package(gate, username):
     """اسم الباقة لليوزر كما سُجّل في lines.txt عند إنشائه من الأداة (أحدث سطر له)."""
     try:
@@ -3169,7 +3219,7 @@ def annotate_package_type(gate, rows, pkgs=None):
     return rows
 
 
-def search_gate(acct, gate, q):
+def _search_gate(acct, gate, q):
     """بحث بوابة واحدة بالـ username/password، ومعه روابط الاستبدال (قديم↔جديد) لهذا
     الرقم فيها — لتتبّع «استُبدل بـ / بديل عن». لا يرمي: ما يمنع البحث يُرجَع حالةً
     (need_login / login_error / error / unsupported) بجانب النتائج.
@@ -3204,6 +3254,13 @@ def search_gate(acct, gate, q):
         except Exception:
             return {"results": [], "links": links, "error": "تعذّر البحث في اللوحة"}
     return {"results": [], "links": links, "unsupported": True}
+
+
+def search_gate(acct, gate, q):
+    """بحث بوابةٍ واحدة (انظر _search_gate) مع «ينتهي بعد …» لكل نتيجة."""
+    out = _search_gate(acct, gate, q)
+    annotate_exp_left(out.get("results"))
+    return out
 
 
 def search_all_gates(acct, gates, q):
