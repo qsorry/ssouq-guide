@@ -45,13 +45,17 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
         ['webos', 'حمّل تطبيق Duplecast (دبل كاست)', 'Samsung Apps'], ['vidaa', 'حمّل تطبيق Duplecast من متجر VIDAA', 'VIDAA Store']]) {
       console.log(`== ${sub} · ${dev} ==`);
       await open(`#activate/${sub}/${dev}`);
-      const opt = await page.$eval('#view [data-variant="duplecast"]', b => ({ label: b.querySelector('b').textContent,
-        sub: b.querySelector('small').textContent, icon: b.querySelector('img').getAttribute('src') }));
-      check('the app choice offers Duplecast, with its price', opt.label === 'Duplecast' && opt.sub.includes('مجاني 15 يومًا ثم 3$ للسنة')
-        && opt.icon === '/static/img/apps/duplecast.webp', JSON.stringify(opt));
-      await page.click('[data-variant="duplecast"]');
+      if (dev === 'webos') {
+        const opt = await page.$eval('#view [data-variant="duplecast"]', b => ({ label: b.querySelector('b').textContent,
+          sub: b.querySelector('small').textContent, icon: b.querySelector('img').getAttribute('src') }));
+        check('the app choice offers Duplecast, with its price', opt.label === 'Duplecast' && opt.sub.includes('مجاني 15 يومًا ثم 3$ للسنة')
+          && opt.icon === '/static/img/apps/duplecast.webp', JSON.stringify(opt));
+        await page.click('[data-variant="duplecast"]');
+      }
       await page.waitForSelector('#view .card.step');
-      check('→ its install step', (await h2()) === first && new URL(page.url()).hash === `#activate/${sub}/${dev}/duplecast`);
+      // VIDAA بلا اختيار تطبيق: Duplecast وحده، فيُفتح على خطواته مباشرة
+      const hash = dev === 'webos' ? `#activate/${sub}/${dev}/duplecast` : `#activate/${sub}/${dev}`;
+      check('→ its install step', (await h2()) === first && new URL(page.url()).hash === hash);
       const t0 = await text();
       check('… from the TV\'s own store, with the price: 15 days free, then $3 a year, or a 16-riyal code',
         t0.includes(store) && t0.includes('15 يومًا') && t0.includes('3 دولارات للسنة') && t0.includes('16 ريال'));
@@ -96,8 +100,8 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check("Casper's old Samsung/LG Duplecast link opens that step", new URL(page.url()).hash === '#activate/casper/webos/duplecast/3'
       && (await h2()) === TITLES[1], await h2());
     await open('#activate/casper/webos');
-    check('… Casper on Samsung/LG offers 0Player, Duplecast and SS IPTV', (await h2()) === 'اختر التطبيق'
-      && (await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant))).join() === '0player,duplecast,ssiptv');
+    check('… Casper on Samsung/LG offers 0Player and Duplecast', (await h2()) === 'اختر التطبيق'
+      && (await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant))).join() === '0player,duplecast');
     await open('#activate/casper/webos/duplecast');
     check("… its Duplecast opens with the note on Casper's own Samsung/LG plans",
       (await h2()) === 'حمّل تطبيق Duplecast (دبل كاست)' && (await text()).includes('باقة كاسبر الخاصة بشاشات سامسونج و LG'));
@@ -106,10 +110,13 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
     check('… the same seven steps as Smart, activation last', casperTitles.join('|') === TITLES.join('|'), casperTitles.join(' | '));
     await open('#activate/casper/webos/duplecast/7');
     check('… whose activation step still sells the code', (await page.$$eval('#view a.btn.go', a => a.map(x => x.href))).some(h => h.startsWith(BUY)));
-    await open('#activate/casper/vidaa/duplecast/3');
-    check('… and Casper has Duplecast on VIDAA too', new URL(page.url()).hash === '#activate/casper/vidaa/duplecast/3'
+    await open('#activate/casper/vidaa/3');
+    check('… and Casper has Duplecast on VIDAA too', new URL(page.url()).hash === '#activate/casper/vidaa/3'
       && (await h2()) === TITLES[1], await h2());
-    await open('#activate/casper/vidaa/duplecast');
+    await open('#activate/casper/vidaa/duplecast/3');
+    check('… and the old VIDAA link with the app in it still opens that step', new URL(page.url()).hash === '#activate/casper/vidaa/3'
+      && (await h2()) === TITLES[1], await h2());
+    await open('#activate/casper/vidaa');
     check('… with its regular plan: no Samsung/LG plans note there', !(await text()).includes('باقة كاسبر الخاصة'));
 
     for (const p of ['/samsung-lg', '/vidaa']) {

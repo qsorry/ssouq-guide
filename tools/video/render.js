@@ -1,9 +1,9 @@
-// يصوّر صفحة فيديو من هذا المجلد (ssiptv.html أو 0player.html) إطارًا إطارًا (30 إطارًا في الثانية)
+// يصوّر صفحة فيديو من هذا المجلد (0player.html أو duplecast.html) إطارًا إطارًا (30 إطارًا في الثانية)
 // ويرمّزه H.264 عموديًّا 720×1280 — يعمل على الآيفون والأندرويد — ثم يلتقط الغلاف (poster).
 // الناتج في static/video/ باسمٍ تعرّفه الصفحة (VIDEO.out).
 //
 //     pip install imageio-ffmpeg        # ffmpeg فيه libx264 و libwebp (أو اضبط FFMPEG)
-//     node tools/video/render.js ssiptv
+//     node tools/video/render.js 0player
 //     node tools/video/render.js 0player code=75710072      # معاملات للصفحة (?code=…)
 //     node tools/video/render.js 0player stills 3 15.5 40   # لقطات ثابتة للمراجعة في مجلد مؤقت
 const { chromium } = require('playwright-core');
@@ -28,7 +28,7 @@ const run = (args, input) => new Promise((ok, no) => {
 (async () => {
   const [name, ...rest] = process.argv.slice(2);
   const page_ = path.join(HERE, (name || '') + '.html');
-  if (!name || !fs.existsSync(page_)) { console.error('usage: node tools/video/render.js <ssiptv|0player> [key=value…] [stills t…]'); process.exit(2); }
+  if (!name || !fs.existsSync(page_)) { console.error('usage: node tools/video/render.js <0player|duplecast|smarters> [key=value…] [stills t…]'); process.exit(2); }
   const si = rest.indexOf('stills');
   const params = new URLSearchParams(rest.slice(0, si < 0 ? rest.length : si).map(kv => kv.split('=')));
   const times = si < 0 ? null : rest.slice(si + 1);

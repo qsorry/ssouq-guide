@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>تفعيل اشتراك IPTV خطوة بخطوة | سمارت سوق</title>
-<meta name="description" content="دليل سمارت سوق: اختر اشتراك IPTV المناسب لك بأربع خطوات (المحتوى · الجهاز · النوع · الباقة)، أو فعّل اشتراكك الحالي على الآيفون والآيباد (VAR Player) وجوالات وشاشات الأندرويد (MR7 و IPTV Smarters Pro) وشاشات سامسونج و LG (0Player و SS IPTV) وشاشات هايسنس VIDAA (SS IPTV) وكمبيوتر ويندوز وماك.">
+<meta name="description" content="دليل سمارت سوق: اختر اشتراك IPTV المناسب لك بأربع خطوات (المحتوى · الجهاز · النوع · الباقة)، أو فعّل اشتراكك الحالي على الآيفون والآيباد (VAR Player) وجوالات وشاشات الأندرويد (MR7 و IPTV Smarters Pro) وشاشات سامسونج و LG (0Player و Duplecast) وشاشات هايسنس VIDAA (Duplecast) وكمبيوتر ويندوز وماك.">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
 <meta name="author" content="سمارت سوق">
 <link rel="canonical" href="https://guide.ssouq.com/">
@@ -459,8 +459,8 @@ footer a{color:var(--mute)}
         <li><a class="link" href="/iphone">آيفون / آيباد: تطبيق VAR Player</a></li>
         <li><a class="link" href="/android">جوال أندرويد: NEXT+ أو IPTV Smarters Pro</a></li>
         <li><a class="link" href="/android-tv">شاشة / بوكس أندرويد: MR7 TV أو IPTV Smarters Pro</a></li>
-        <li><a class="link" href="/samsung-lg">سامسونج و LG و WebOS: تطبيق 0Player أو Duplecast أو SS IPTV</a></li>
-        <li><a class="link" href="/vidaa">هايسنس و VIDAA OS: تطبيق SS IPTV أو Duplecast</a></li>
+        <li><a class="link" href="/samsung-lg">سامسونج و LG و WebOS: تطبيق 0Player أو Duplecast</a></li>
+        <li><a class="link" href="/vidaa">هايسنس و VIDAA OS: تطبيق Duplecast</a></li>
         <li><a class="link" href="/windows">كمبيوتر ويندوز: IPTV Smarters Pro أو IPTVnator</a></li>
         <li><a class="link" href="/mac">ماك: IPTV Smarters Pro</a></li>
       </ul>
@@ -640,103 +640,17 @@ const WEBOS_NOTE = '<div class="note">هذه الخطوات لشاشات سام�
 // ومثله VIDAA: نظام هايسنس، وفي شاشات علامات أخرى أيضًا
 const VIDAA_NOTE = '<div class="note">هذه الخطوات لشاشات هايسنس، ولكل شاشة تعمل بنظام <b dir="ltr">VIDAA</b> من أي علامة أخرى (مثل بعض شاشات توشيبا) — النظام نفسه والخطوات نفسها.</div>';
 
-/* ------------------------------------------------------------
-   SS IPTV — مشغّل مجاني يقرأ رابط M3U، والرابط يُبنى من الهوست واسم المستخدم
-   وكلمة المرور (أداة #m3u)، فيصلح للاشتراكات الثلاثة بلا رمز بوابة: خطواته واحدة
-   فيها، يعرّفها DEVICES ويرثها FALCON و CASPER كما هي.
-   الذي يختلف خطوة التحميل وحدها: LG من متجرها — في كتالوج LG للسعودية على
-   شاشات 2016–2024، وليس على موديلات 2025 (وفيها 0Player و Duplecast) —
-   وسامسونج ليس في متجرها فيعمل من فلاشة (شاشات 2015–2019 كما يذكر موقعه)،
-   و VIDAA من متجرها (المطوّر SS IPTV Team — ظاهر في متجر VIDAA للسعودية،
-   و 0Player ليس فيه).
-   الربط برمز من إعدادات التطبيق (صالح 24 ساعة) ثم إضافة الرابط في External
-   Playlists من ss-iptv.com/en/users/playlist. لقطات التلفاز من صفحة التطبيق في
-   متجر VIDAA (رفعها فريق SS IPTV)، ولقطات الجوال من محرّر القوائم في موقعه.
-   ------------------------------------------------------------ */
-const SS_IPTV_EDITOR = "https://ss-iptv.com/en/users/playlist";
-const SS_IPTV_OPT = { key: "ssiptv", label: "SS IPTV", sub: "مجاني برابط M3U · LG حتى 2024، سامسونج 2015–2019", icon: "ss-iptv" };
-const SS_IPTV_STEPS = [
-  { title: "جهّز رابط M3U لاشتراكك",
-    html: '<p>التطبيق لا يطلب اسم المستخدم وكلمة المرور، بل رابط <b dir="ltr">M3U</b> واحدًا يُبنى منهما ومن رابط الهوست. '
-      + 'ولّده بأداتنا المجانية — تُفتح في صفحة جديدة فيبقى هذا الشرح مفتوحًا:</p>'
-      + '<p><a class="btn go" href="/#m3u" target="_blank" rel="noopener">افتح أداة رابط M3U</a></p>'
-      + '<ol><li>اكتب رابط الهوست واسم المستخدم وكلمة المرور كما وصلتك، ثم اضغط <b>توليد الرابط</b>.</li>'
-      + '<li>اضغط <b>نسخ</b> واترك الصفحة مفتوحة، فستلصق الرابط بعد قليل في موقع <b dir="ltr">SS IPTV</b>.</li></ol>'
-      + HTTP_NOTE + CREDS },
-  { title: "اطلب رمز الربط من إعدادات التطبيق",
-    html: '<ol><li>افتح <b dir="ltr">SS IPTV</b> على الشاشة (أول مرة تظهر اتفاقية الاستخدام، فاختر <b dir="ltr">Agree</b>).</li>'
-      + '<li>بأسهم الريموت انتقل إلى أيقونة الترس ⚙ أعلى الشاشة الرئيسية — المحدَّدة في الصورة — واضغط <b dir="ltr">OK</b>.</li></ol>'
-      + '<img src="/static/img/ssiptv-tv-home.webp" alt="أيقونة الإعدادات (الترس) أعلى الشاشة الرئيسية في تطبيق SS IPTV" loading="lazy">'
-      + '<ol start="3"><li>في الإعدادات اختر <b dir="ltr">General</b>، ثم اضغط <b dir="ltr">Get code</b> في قسم <b dir="ltr">Connection Code</b>.</li>'
-      + '<li>يظهر رمز الربط مكان <b dir="ltr">XXXXXX</b> في الصورة. اتركه ظاهرًا على الشاشة، فستكتبه في الخطوة التالية.</li></ol>'
-      + '<img src="/static/img/ssiptv-tv-code.webp" alt="قسم General في إعدادات SS IPTV، وفيه Connection Code وزر Get code" loading="lazy">'
-      + '<div class="note">الرمز صالح 24 ساعة، أو حتى تطلب رمزًا غيره. إن انتهى فاضغط <b dir="ltr">Get code</b> من جديد.</div>' },
-  { title: "اربط الشاشة من موقع SS IPTV", img: "/static/img/ssiptv-web-code.webp",
-    html: '<p>من جوالك أو الكمبيوتر افتح صفحة قوائم التشغيل في موقع التطبيق الرسمي:</p>'
-      + '<p><a class="btn go" href="' + SS_IPTV_EDITOR + '" target="_blank" rel="noopener">افتح موقع SS IPTV</a></p>'
-      + '<p class="sub">العنوان: <span dir="ltr">ss-iptv.com/en/users/playlist</span></p>'
-      + '<ol><li>في خانة <b dir="ltr">Enter Connection Code</b> اكتب الرمز الظاهر على الشاشة.</li>'
-      + '<li>اضغط <b dir="ltr">ADD DEVICE</b> فتظهر رسالة <b dir="ltr">The device is connected successfully!</b></li></ol>'
-      + '<div class="note">ظهرت رسالة <b dir="ltr">Wrong code!</b>؟ الرمز فيه خطأ أو انتهت صلاحيته: اطلب رمزًا جديدًا من <b dir="ltr">Get code</b> واكتبه كما هو.</div>' },
-  { title: "أضف الرابط في External Playlists", img: "/static/img/ssiptv-web-tab.webp",
-    html: '<ol><li>في الصفحة نفسها اختر تبويب <b dir="ltr">External Playlists</b>، ثم اضغط <b dir="ltr">ADD ITEM</b>.</li>'
-      + '<li>تظهر نافذة <b dir="ltr">Edit Item</b>. عبّئ أول خانتين فقط:</li></ol>'
-      + '<div class="fields"><div class="f"><span dir="ltr">Displayed Name</span><code>أي اسم، مثلًا ssouq</code></div>'
-      + '<div class="f"><span dir="ltr">Source</span><code>رابط M3U الذي نسخته</code></div></div>'
-      + '<img src="/static/img/ssiptv-web-item.webp" alt="نافذة Edit Item: خانة Displayed Name وخانة Source، ثم زر OK" loading="lazy">'
-      + '<ol start="3"><li>اترك بقية الخانات كما هي، وانزل إلى أسفل النافذة واضغط <b dir="ltr">OK</b>.</li></ol>'
-      + '<div class="note">لا تستعمل تبويب <b dir="ltr">My Playlist</b> ولا رفع ملف: اشتراكك رابط، ومكانه <b dir="ltr">External Playlists</b>.</div>' },
-  { title: "اضغط SAVE لتصل القائمة إلى الشاشة", img: "/static/img/ssiptv-web-saved.webp",
-    html: '<p>تظهر قائمتك في الجدول باسمها، لكنها لا تصل إلى الشاشة قبل الحفظ: اضغط <b dir="ltr">SAVE</b> حتى تظهر رسالة '
-      + '<b dir="ltr">Playlist has been successfully saved!</b></p>'
-      + '<div class="note">لتعديل الرابط لاحقًا افتح الصفحة نفسها من المتصفح نفسه — فالشاشة تبقى مربوطة به — واضغط زر القلم بجانب القائمة، '
-      + 'ثم <b dir="ltr">OK</b> و <b dir="ltr">SAVE</b>.</div>' },
-  { title: "افتح قائمتك على الشاشة", img: "/static/img/ssiptv-tv-playlist.webp",
-    html: '<ol><li>ارجع إلى الشاشة الرئيسية في التطبيق واضغط أيقونة التحديث ↻ أعلاها، أو أغلق التطبيق وافتحه من جديد.</li>'
-      + '<li>يظهر مربع جديد بالاسم الذي كتبته، مثل مربعات <b dir="ltr">Family</b> و <b dir="ltr">Travel</b> في الصورة. افتحه فتظهر القنوات والأفلام والمسلسلات.</li></ol>'
-      + '<div class="note">أول تحميل قد يأخذ دقيقة أو أكثر لأن القائمة كبيرة، فانتظر حتى يكتمل.</div>'
-      + '<div class="note">ظهرت رسالة <b dir="ltr">Failed to load remote content</b>؟ الرابط لم يصل: تأكّد أنه يبدأ بـ <b dir="ltr">http</b> لا <b dir="ltr">https</b> '
-      + 'وأنه بلا مسافات، وصحّحه من زر القلم في الموقع ثم <b dir="ltr">SAVE</b>.</div>'
-      + '<div class="note">تتوقف الصورة بعد دقائق من التشغيل؟ عدّل الرابط من زر القلم: غيّر آخره من <code dir="ltr">output=ts</code> '
-      + 'إلى <code dir="ltr">output=m3u8</code>، ثم <b dir="ltr">OK</b> و <b dir="ltr">SAVE</b>.</div>' }
-];
-// فيديو الخطوات السبع بعناوين عربية وتكبير على كل زر — أول خطوة التحميل في المسارين.
-// عموديٌّ للجوال، ومصدره tools/video/ssiptv.html (يُعاد إنتاجه منه إن تغيّرت خطوة). و?v= يُرفع مع كل
-// إنتاج جديد: الملفات الثابتة تُخزَّن في المتصفح 30 يومًا، والغلاف يُجلب مع كل عرضٍ للخطوة.
-const SS_IPTV_VIDEO = '<div class="vid"><video src="/static/video/ssiptv-ar.mp4?v=3" poster="/static/video/ssiptv-ar.webp?v=3" '
-  + 'controls playsinline preload="none" width="720" height="1280"></video>'
-  + '<p class="sub">شاهد الخطوات كلها في دقيقة وربع، ثم اتبعها هنا خطوة خطوة.</p></div>';
 // فيديو خطوات 0Player — أول خطوة التحميل. اسمه يحمل رمز البوابة (…-92929480-…) فيتبدّل مع رمز فالكون وكاسبر
-// كصور الخانات، ومصدره tools/video/0player.html. و?v= يُرفع مع كل إنتاج جديد كفيديو SS IPTV.
+// كصور الخانات، ومصدره tools/video/0player.html. و?v= يُرفع مع كل إنتاج جديد:
+// الملفات الثابتة تُخزَّن في المتصفح 30 يومًا، والغلاف يُجلب مع كل عرضٍ للخطوة.
 const ZERO_VIDEO = '<div class="vid"><video src="/static/video/0player-92929480-ar.mp4?v=2" poster="/static/video/0player-92929480-ar.webp?v=2" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الطريقتين في دقيقة ونصف، ثم اتبع الخطوات هنا واحدة واحدة.</p></div>';
 // فيديو IPTV Smarters Pro على شاشة أندرويد (Downloader وموافقة الشاشة عليه ثم الدخول) — أول الخطوات، ومصدره
-// tools/video/smarters.html. و?v= يُرفع مع كل إنتاج جديد كفيديو SS IPTV.
+// tools/video/smarters.html. و?v= يُرفع مع كل إنتاج جديد.
 const SMARTERS_TV_VIDEO = '<div class="vid"><video src="/static/video/smarters-tv-ar.mp4?v=1" poster="/static/video/smarters-tv-ar.webp?v=1" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الخطوات كلها في أقل من دقيقتين، ثم اتبعها هنا واحدة واحدة.</p></div>';
-// خطوة التحميل: شاشات سامسونج و LG
-const SS_IPTV_GET_WEBOS = { title: "حمّل تطبيق SS IPTV",
-  html: SS_IPTV_VIDEO + APP("ss-iptv", "SS IPTV", "مجاني · من فريق SS IPTV")
-    + '<p><b>شاشات LG:</b> افتح متجر التطبيقات في الشاشة (<b dir="ltr">LG Content Store</b>، واسمه في الشاشات الأحدث <b dir="ltr">Apps</b>)، '
-    + 'وابحث عن <b dir="ltr">SS IPTV</b> — المطوّر <b dir="ltr">SS IPTV Team</b> — وحمّله. متوفر لشاشات LG من <b>2016 إلى 2024</b>.</p>'
-    + '<div class="note">شاشة LG موديل <b>2025</b>؟ التطبيق لا يظهر في متجرها: ارجع واختر 0Player أو Duplecast، فهما متوفران فيها.</div>'
-    + '<div class="note"><p><b>شاشات سامسونج:</b> التطبيق ليس في متجر سامسونج، ويعمل من فلاشة <b dir="ltr">USB</b> تبقى موصولة بالشاشة، '
-    + 'على شاشات <b>2015 إلى 2019</b>:</p>'
-    + '<ol><li>حمّل على الكمبيوتر <a class="link" href="https://ss-iptv.com/files/ssiptv_tizen_usb.zip" rel="noopener">ملف SS IPTV الرسمي لسامسونج (ZIP)</a>.</li>'
-    + '<li>فُكّ الضغط في أول الفلاشة لا داخل مجلد، فيظهر فيها مجلد <b dir="ltr">userwidget</b>.</li>'
-    + '<li>أدخل الفلاشة في الشاشة واتركها فيها، فيظهر التطبيق بين تطبيقاتك.</li></ol>'
-    + '<p>وشاشات سامسونج الأقدم (2012–2014) لها <a class="link" href="https://ss-iptv.com/files/ssiptv_orsay_usb.zip" rel="noopener">ملف آخر</a> '
-    + 'بالطريقة نفسها، ومجلده <b dir="ltr">ssiptv</b>. أما سامسونج 2020 وما بعدها فليست في قائمة موقعه الرسمي: ارجع واختر 0Player أو Duplecast، فهما في متجر الشاشة مباشرة.</p></div>'
-    + WEBOS_NOTE };
-// خطوة التحميل: شاشات VIDAA
-const SS_IPTV_GET_VIDAA = { title: "حمّل تطبيق SS IPTV من متجر VIDAA",
-  html: SS_IPTV_VIDEO + APP("ss-iptv", "SS IPTV", "من متجر VIDAA · مجاني")
-    + '<ol><li>اضغط زر <b dir="ltr">Home</b> في الريموت، وافتح متجر التطبيقات (‏<b dir="ltr">App Store</b> أو <b dir="ltr">VIDAA Store</b> حسب إصدار الشاشة).</li>'
-    + '<li>ابحث عن <b dir="ltr">SS IPTV</b> — المطوّر <b dir="ltr">SS IPTV Team</b> — وثبّته، ثم افتحه من تطبيقاتك.</li></ol>'
-    + VIDAA_NOTE };
-const SS_IPTV = get => [get, ...SS_IPTV_STEPS];
 
 /* ------------------------------------------------------------
    Duplecast (دبل كاست) — مشغّل في متاجر سامسونج و LG و VIDAA، يدخل ببيانات Xtream نفسها: الهوست والبورت
@@ -751,7 +665,7 @@ const SS_IPTV = get => [get, ...SS_IPTV_STEPS];
 // بعنوان STORE_UTM نفسه مكتوبًا هنا: هذه الكتلة يقرؤها sync_guide_data.js وحدها لصفحات الأجهزة الثابتة
 const DUPLECAST_BUY = "https://ssouq.com/تفعيل-duplecast-دبل-كاست-لمدة-سنة/p1575092005?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide";
 const DUPLECAST_OPT = { key: "duplecast", label: "Duplecast", sub: "من متجر الشاشة · مجاني 15 يومًا ثم 3$ للسنة", icon: "duplecast" };
-// فيديو الخطوات — أول خطوة التحميل في الجهازين، و?v= يُرفع مع كل إنتاج جديد كفيديو SS IPTV
+// فيديو الخطوات — أول خطوة التحميل في الجهازين، و?v= يُرفع مع كل إنتاج جديد
 const DUPLECAST_VIDEO = '<div class="vid"><video src="/static/video/duplecast-ar.mp4?v=2" poster="/static/video/duplecast-ar.webp?v=2" '
   + 'controls playsinline preload="none" width="720" height="1280"></video>'
   + '<p class="sub">شاهد الخطوات كلها والتفعيل في أقل من دقيقة ونصف، ثم اتبعها هنا خطوة خطوة.</p></div>';
@@ -877,12 +791,11 @@ const DEVICES = {
     },
     doneImgs: { mr7: "/static/img/tv-mr7-home.jpg" }
   },
-  webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "0Player أو Duplecast أو SS IPTV", choose: {
+  webos: { icon: "smart", name: "سامسونج و LG و WebOS", sub: "0Player أو Duplecast", choose: {
     title: "اختر التطبيق",
     options: [
       { key: "0player", label: "0Player", sub: "مجاني من متجر الشاشة: بالباركود من جوالك أو بالريموت", icon: "0player" },
-      DUPLECAST_OPT,
-      SS_IPTV_OPT
+      DUPLECAST_OPT
     ]},
     variants: {
       // التحميل، ثم «متابعة» في رسالة أول فتح، ثم PlayList، ثم Add Playlist وتبويب Portal Code — وعندها
@@ -933,22 +846,11 @@ const DEVICES = {
             + '<li>ومن الشاشة الرئيسية افتح <b dir="ltr">Live TV</b> للقنوات، أو <b dir="ltr">Movies</b> و <b dir="ltr">Series</b> للأفلام والمسلسلات.</li></ol>'
             + '<div class="note">لم تظهر القائمة أو القنوات؟ أغلق التطبيق وافتحه، وتأكّد من الكود <b dir="ltr">92929480</b> واسم المستخدم وكلمة المرور بلا مسافات.</div>' }
       ],
-      duplecast: DUPLECAST(DUPLECAST_GET_WEBOS),
-      ssiptv: SS_IPTV(SS_IPTV_GET_WEBOS)
+      duplecast: DUPLECAST(DUPLECAST_GET_WEBOS)
     }
   },
-  // هايسنس و VIDAA: لا 0Player في متجره، و SS IPTV و Duplecast فيه — والخطوات واحدة في الاشتراكات الثلاثة فتُورَث كما هي
-  vidaa: { icon: "vidaa", name: "هايسنس و VIDAA OS", sub: "SS IPTV المجاني أو Duplecast", choose: {
-    title: "اختر التطبيق",
-    options: [
-      Object.assign({}, SS_IPTV_OPT, { sub: "مجاني برابط M3U · من متجر VIDAA" }),
-      DUPLECAST_OPT
-    ]},
-    variants: {
-      ssiptv: SS_IPTV(SS_IPTV_GET_VIDAA),
-      duplecast: DUPLECAST(DUPLECAST_GET_VIDAA)
-    }
-  },
+  // هايسنس و VIDAA: لا 0Player في متجره، و Duplecast فيه — والخطوات واحدة في الاشتراكات الثلاثة فتُورَث كما هي
+  vidaa: { icon: "vidaa", name: "هايسنس و VIDAA OS", sub: "تطبيق Duplecast", steps: DUPLECAST(DUPLECAST_GET_VIDAA) },
   windows: { icon: "pc", name: "كمبيوتر ويندوز", sub: "IPTV Smarters Pro أو IPTVnator", choose: {
       title: "اختر البرنامج",
       options: [
@@ -1069,7 +971,7 @@ function promoBox(k){
    وفالكون يشترك معه في أكثر الخطوات ويختلف في أربعة مواضع فقط:
    الآيفون (تطبيق آخر)، والأندرويد (تطبيق فالكون بدل MR7/NEXT+)،
    وسامسونج و LG (رمز بوابة مختلف في 0Player). وكاسبر مثله: الآيفون والأندرويد ورمز
-   بوابته في 0Player (أسفل FALCON). وويندوز وماك والسيارة و VIDAA — ومعها Duplecast و SS IPTV
+   بوابته في 0Player (أسفل FALCON). وويندوز وماك والسيارة و VIDAA — ومعها Duplecast
    على سامسونج و LG — يرثها الاثنان كما هي: كلها تدخل بالهوست واسم المستخدم وكلمة المرور.
    ============================================================ */
 const SUBS = {
@@ -1094,7 +996,7 @@ const FALCON_LOGIN = { title: "سجّل الدخول ببيانات اشتراك
 // خطوات 0Player نفسها برمز بوابة آخر — تُشتقّ ولا تُنسخ. وما كُتب عليه الرمز من صور وفيديو اسمه يحمله
 // (…-0player-portal-<الرمز>.webp، 0player-<الرمز>-ar.mp4) فيتبدّل معه تلقائيًا إلى نسخة الاشتراك.
 const zeroPlayer = code => DEVICES.webos.variants["0player"].map(s => JSON.parse(JSON.stringify(s).split("92929480").join(code)));
-// شاشة سامسونج و LG لاشتراكٍ برمز بوابته: 0Player بالرمز، و Duplecast و SS IPTV كما هما (بلا رمز بوابة)
+// شاشة سامسونج و LG لاشتراكٍ برمز بوابته: 0Player بالرمز، و Duplecast كما هو (بلا رمز بوابة)
 const webosFor = code => Object.assign({}, DEVICES.webos, {
   variants: Object.assign({}, DEVICES.webos.variants, { "0player": zeroPlayer(code) })
 });
@@ -1155,7 +1057,7 @@ const FALCON = {
     },
   },
 
-  // نفس خطوات 0Player برمز بوابة فالكون، و SS IPTV و Duplecast كما هما
+  // نفس خطوات 0Player برمز بوابة فالكون، و Duplecast كما هو
   webos: webosFor("75710072")
 };
 
@@ -1170,9 +1072,9 @@ const FALCON = {
    خاص بلوحة سمارت).
    ولشاشات سامسونج و LG و WebOS باقات كاسبر خاصة بها في المتجر (‏CASPER_TV، 3 و6 أشهر وسنة) — الباقة
    العادية لا تعمل عليها كما تقول صفحاتها — وتعمل بتطبيقات فالكون نفسها: 0Player بخطوات سمارت ورمز بوابة
-   كاسبر 59820658 (zeroPlayer، وفيديوه وصوره بالرمز نفسه)، و Duplecast و SS IPTV بخطواتهما نفسها (ببيانات Xtream).
+   كاسبر 59820658 (zeroPlayer، وفيديوه وصوره بالرمز نفسه)، و Duplecast بخطواته نفسها (ببيانات Xtream).
    وأول خطوة في كلٍّ ملاحظةٌ تربط الباقات (CASPER_TV_NOTE).
-   و VIDAA يُورَث كما هو (SS IPTV و Duplecast) بالباقة العادية، وصفحتاها تقولان إن VIDAA يحتاج برنامجًا مدفوعًا.
+   و VIDAA يُورَث كما هو (Duplecast) بالباقة العادية، وصفحتاها تقولان إن VIDAA يحتاج برنامجًا مدفوعًا.
    ============================================================ */
 // دخول تطبيق CASPER VIP — واحد على الآيفون والجوال والشاشة
 const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",
@@ -1271,10 +1173,9 @@ const CASPER = {
   },
 
   // سامسونج و LG و WebOS: بباقة كاسبر الخاصة بها (CASPER_TV)، بتطبيقات فالكون نفسها — 0Player برمز بوابة كاسبر،
-  // و Duplecast و SS IPTV كما هما — وأول خطوة في كلٍّ ملاحظة الباقة. و VIDAA يُورَث كما هو.
+  // و Duplecast كما هو — وأول خطوة في كلٍّ ملاحظة الباقة. و VIDAA يُورَث كما هو.
   webos: Object.assign({}, DEVICES.webos, {
-    variants: { "0player": casperTV(zeroPlayer("59820658")), duplecast: casperTV(DUPLECAST(DUPLECAST_GET_WEBOS)),
-                ssiptv: casperTV(SS_IPTV(SS_IPTV_GET_WEBOS)) }
+    variants: { "0player": casperTV(zeroPlayer("59820658")), duplecast: casperTV(DUPLECAST(DUPLECAST_GET_WEBOS)) }
   })
 };
 
@@ -1449,7 +1350,7 @@ function renderBuyBrand(){
   }).join("");
   const tvNote = {
     webos: `<div class="note warn">شاشات سامسونج و LG تعمل بنظام webOS، ولها في المتجر باقات مخصّصة تشتغل على الشاشة مباشرة عبر 0Player بلا رسيفر — وهي باقات "سمارت".</div>`,
-    vidaa: `<div class="note warn">شاشات هايسنس تعمل بنظام VIDAA، وتناسبها باقات "سمارت" المخصّصة للشاشات الذكية — باقات سامسونج و LG نفسها — وتشتغل على الشاشة مباشرة عبر تطبيق SS IPTV المجاني أو Duplecast بلا رسيفر.</div>`
+    vidaa: `<div class="note warn">شاشات هايسنس تعمل بنظام VIDAA، وتناسبها باقات "سمارت" المخصّصة للشاشات الذكية — باقات سامسونج و LG نفسها — وتشتغل على الشاشة مباشرة عبر تطبيق Duplecast بلا رسيفر.</div>`
   }[state.bdev] || "";
   $("#view").innerHTML = `<div class="card">
     <h2>اختر النوع الأنسب لك</h2>
@@ -1472,7 +1373,7 @@ function renderBuyPlan(){
   const warn = (tv && state.brand === "falcon")
     ? `<div class="note warn">اخترت ${tv} مع فالكون، وفالكون يعمل بتطبيقه الخاص. تواصل مع الدعم قبل الشراء للتأكد من تثبيته على شاشتك، أو ارجع واختر "سمارت" الذي له باقات مخصّصة ${state.bdev === "webos" ? "لـ webOS" : "للشاشات الذكية"}.<br><a class="link" href="${WA_NUMBER + encodeURIComponent("مرحباً، قبل الشراء: أريد اشتراك فالكون على " + tv + "، هل يُثبَّت عليها؟")}" target="_blank" rel="noopener">اسأل الدعم على واتساب</a></div>`
     : (state.bdev === "vidaa" && state.brand === "smart")
-    ? `<div class="note">هذه باقات سمارت للشاشات الذكية: اسمها «لسامسونج و LG» وهي نفسها لشاشات VIDAA، وتعمل عليها بتطبيق SS IPTV أو Duplecast بدل 0Player.</div>` : "";
+    ? `<div class="note">هذه باقات سمارت للشاشات الذكية: اسمها «لسامسونج و LG» وهي نفسها لشاشات VIDAA، وتعمل عليها بتطبيق Duplecast بدل 0Player.</div>` : "";
   $("#view").innerHTML = `<div class="card">
     <h2>اختر الباقة المناسبة</h2>
     <p class="sub">بعد تحديد المحتوى والجهاز، اختر الباقة التي تناسب احتياجك من حيث المدة والسعر.</p>
@@ -1583,7 +1484,7 @@ function renderM3U(){
   setProg(null);
   $("#view").innerHTML = `<section class="card" id="m3u">
     <h2>هل تريد رابط M3U؟</h2>
-    <p class="sub">بعض المشغّلات (مثل SS IPTV و VLC و Kodi) تطلب رابط M3U بدل اسم المستخدم وكلمة المرور. أدخل بياناتك وسنولّد لك الرابط جاهزًا للنسخ. البيانات لا تُرسل لأي خادم، الرابط يُبنى داخل متصفحك فقط.</p>
+    <p class="sub">بعض المشغّلات (مثل VLC و Kodi) تطلب رابط M3U بدل اسم المستخدم وكلمة المرور. أدخل بياناتك وسنولّد لك الرابط جاهزًا للنسخ. البيانات لا تُرسل لأي خادم، الرابط يُبنى داخل متصفحك فقط.</p>
     <form id="m3u-form" autocomplete="off">
       <label class="lbl" for="m3u-host">رابط الهوست كما وصلك</label>
       <input class="t" id="m3u-host" dir="ltr" inputmode="url" placeholder="http://host.com:8080" required>
@@ -1667,6 +1568,7 @@ function applyHash(){
     if (D[state.dev].off) return;                  // لا خطوات فيه: روابط خطواته القديمة تفتح شاشته
     const v = D[state.dev].variants;
     if (v && seg[i] && v[seg[i]]) { state.variant = seg[i]; i++; }
+    else if (!v && seg[i] && isNaN(parseInt(seg[i], 10))) i++;   // تطبيقٌ في رابط قديم لجهازٍ صار بلا اختيار (vidaa/duplecast/3)
     if (v && !state.variant) return;               // رابط خطوةٍ من قبل أن يصير للجهاز اختيار تطبيق: يفتح الاختيار
     const n = parseInt(seg[i], 10);
     if (n > 1) state.i = n - 1;

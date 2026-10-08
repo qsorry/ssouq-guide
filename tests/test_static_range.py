@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 الملفات الثابتة بمقاطع (Range): سفاري الآيفون لا يشغّل فيديو MP4 إلا إن ردّ الخادم على
-«Range: bytes=0-1» بـ 206 ومقطعٍ صحيح، فيُفحص هنا على فيديو SS IPTV نفسه: النوع، والمقاطع
+«Range: bytes=0-1» بـ 206 ومقطعٍ صحيح، فيُفحص هنا على فيديو Duplecast نفسه: النوع، والمقاطع
 الثلاثة (بداية-نهاية، ومن موضعٍ إلى الآخر، وآخر N بايت)، والمقطع غير الصالح يُتجاهل،
 وما وراء الملف 416 — ولا يفتح شيءٌ منها بابًا خارج static.
 تشغيل:  python tests/test_static_range.py
@@ -12,7 +12,7 @@ import os, sys, time, shutil, tempfile, subprocess, urllib.request, urllib.error
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 PORT = 9852
 BASE = f"http://127.0.0.1:{PORT}"
-VIDEO = "/static/video/ssiptv-ar.mp4"
+VIDEO = "/static/video/duplecast-ar.mp4"
 _p = _f = 0
 
 
@@ -74,7 +74,7 @@ def main():
         check("مقاطع متعددة تُتجاهل: الملف كاملًا", c == 200 and b == raw)
 
         print("\nبقية الملفات الثابتة")
-        c, h, b = get("/static/video/ssiptv-ar.webp", "bytes=0-3")
+        c, h, b = get("/static/video/duplecast-ar.webp", "bytes=0-3")
         check("الغلاف webp بمقطع أيضًا", c == 206 and h.get("Content-Type") == "image/webp" and b == b"RIFF")
         c, h, b = get("/static/../xm_lines.py", "bytes=0-10")
         check("لا خروج من static ولو بمقطع", c == 404)

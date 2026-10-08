@@ -47,7 +47,7 @@ const CODE = { smart: '92929480', falcon: '75710072', casper: '59820658' };
       check('the app choice offers 0Player, free, by QR code or remote',
         (await page.textContent('#view [data-variant="0player"] small')) === 'مجاني من متجر الشاشة: بالباركود من جوالك أو بالريموت');
       const apps = await page.$$eval('#view [data-variant]', b => b.map(x => x.dataset.variant));
-      check('… beside Duplecast and SS IPTV', apps.join() === '0player,duplecast,ssiptv', apps.join());
+      check('… beside Duplecast', apps.join() === '0player,duplecast', apps.join());
       await click('[data-variant="0player"]');
       const broken = [];
 
@@ -132,8 +132,10 @@ const CODE = { smart: '92929480', falcon: '75710072', casper: '59820658' };
     await fresh('#activate/smart/webos/0player/6');
     await click('[data-back]');
     check('… and so does back from the app method', hash() === '#activate/smart/webos/0player/4');
+    await open('#activate/smart/webos/duplecast/3');
+    check('Duplecast keeps its plain numbering', (await sub()).includes('الخطوة 3 من 7'));
     await open('#activate/smart/webos/ssiptv/3');
-    check('SS IPTV keeps its plain numbering', (await sub()).includes('الخطوة 3 من 7'));
+    check('an old SS IPTV link opens the app choice', (await h2()) === 'اختر التطبيق');
 
     await page.goto(APP + '/samsung-lg');
     const html = await page.content();

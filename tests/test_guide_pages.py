@@ -94,21 +94,15 @@ def main():
     missing = sorted(p for p in srcs if not os.path.isfile(os.path.join(ROOT, p.lstrip("/"))))
     check(f"كل الصور ({len(srcs)}) موجودة", not missing, ", ".join(missing[:4]))
 
-    print("\nSS IPTV و VIDAA")
+    print("\nVIDAA وسامسونج و LG: بلا SS IPTV")
     v, w = data["vidaa"], data["webos"]
-    vs = v["variants"]["ssiptv"]
-    check("VIDAA: اختيار SS IPTV أو Duplecast", [o["key"] for o in v["choose"]["options"]] == ["ssiptv", "duplecast"])
-    check("VIDAA بخطوات SS IPTV السبع", len(vs) == 7 and vs[0]["title"] == "حمّل تطبيق SS IPTV من متجر VIDAA")
-    check("سامسونج و LG: اختيار 0Player أو Duplecast أو SS IPTV",
-          [o["key"] for o in w["choose"]["options"]] == ["0player", "duplecast", "ssiptv"])
-    # التحميل وحده يختلف بين الجهازين، وما بعده خطوات واحدة
-    check("خطوات SS IPTV بعد التحميل واحدة على الجهازين", w["variants"]["ssiptv"][1:] == vs[1:])
-    video = re.compile(r'^<div class="vid"><video src="/static/video/ssiptv-ar\.mp4\?v=(\d+)" poster="/static/video/ssiptv-ar\.webp\?v=\1"')
-    check("فيديو الخطوات أول خطوة التحميل في المسارين، بإصدارٍ واحد للفيديو وغلافه",
-          bool(video.match(vs[0]["html"])) and bool(video.match(w["variants"]["ssiptv"][0]["html"])))
+    check("VIDAA: خطوات Duplecast مباشرة بلا اختيار تطبيق", "choose" not in v and "variants" not in v and len(v["steps"]) == 7)
+    check("سامسونج و LG: اختيار 0Player أو Duplecast",
+          [o["key"] for o in w["choose"]["options"]] == ["0player", "duplecast"])
+    check("لا ذكر لـ SS IPTV في الدليل", "SS IPTV" not in json.dumps(data, ensure_ascii=False) and "ssiptv" not in json.dumps(data))
 
     print("\nDuplecast (دبل كاست)")
-    dw, dv = w["variants"]["duplecast"], v["variants"]["duplecast"]
+    dw, dv = w["variants"]["duplecast"], v["steps"]
     check("سبع خطوات على الجهازين، وما بعد التحميل واحد", len(dw) == 7 and len(dv) == 7 and dw[1:] == dv[1:])
     check("التحميل من متجر الشاشة: سامسونج و LG، و VIDAA",
           "Samsung Apps" in dw[0]["html"] and "LG Content Store" in dw[0]["html"] and "VIDAA Store" in dv[0]["html"])
@@ -141,13 +135,12 @@ def main():
     check("0Player مجاني: في بطاقة التطبيق وخيار التطبيق", "مجاني · من متجر الشاشة" in z[0]["html"]
           and next(o for o in w["choose"]["options"] if o["key"] == "0player")["sub"].startswith("مجاني "))
     h = G.render("/vidaa").decode("utf-8")
-    check("/vidaa تربط محرّر ss-iptv.com وأداة M3U",
-          'href="https://ss-iptv.com/en/users/playlist"' in h and 'href="/#m3u"' in h)
-    check("/vidaa للاشتراكات الثلاثة", "والاثنان لاشتراكات سمارت وفالكون وكاسبر." in h and "أما كاسبر فلا يعمل" not in h)
+    check("/vidaa بلا SS IPTV", "SS IPTV" not in h and "ss-iptv.com" not in h)
+    check("/vidaa للاشتراكات الثلاثة", "ويعمل لاشتراكات سمارت وفالكون وكاسبر." in h and "أما كاسبر فلا يعمل" not in h)
     h = G.render("/samsung-lg").decode("utf-8")
-    check("/samsung-lg فيها التطبيقات الثلاثة", "تطبيق 0Player" in h and "تطبيق Duplecast" in h and "تطبيق SS IPTV" in h)
+    check("/samsung-lg فيها التطبيقان بلا SS IPTV", "تطبيق 0Player" in h and "تطبيق Duplecast" in h and "SS IPTV" not in h)
     check("/samsung-lg تقول إن 0Player مجاني", "تطبيق 0Player المجاني من متجر الشاشة" in h)
-    check("/vidaa فيها التطبيقان", all(x in G.render("/vidaa").decode("utf-8") for x in ("تطبيق SS IPTV", "تطبيق Duplecast")))
+    check("/vidaa فيها Duplecast", "تطبيق Duplecast" in G.render("/vidaa").decode("utf-8"))
 
     print("\nشاشة أندرويد: Downloader وموافقة الشاشة عليه")
     t = data["tv"]["variants"]

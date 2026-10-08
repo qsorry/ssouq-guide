@@ -197,7 +197,7 @@
  "webos": {
   "icon": "smart",
   "name": "سامسونج و LG و WebOS",
-  "sub": "0Player أو Duplecast أو SS IPTV",
+  "sub": "0Player أو Duplecast",
   "choose": {
    "title": "اختر التطبيق",
    "options": [
@@ -212,12 +212,6 @@
      "label": "Duplecast",
      "sub": "من متجر الشاشة · مجاني 15 يومًا ثم 3$ للسنة",
      "icon": "duplecast"
-    },
-    {
-     "key": "ssiptv",
-     "label": "SS IPTV",
-     "sub": "مجاني برابط M3U · LG حتى 2024، سامسونج 2015–2019",
-     "icon": "ss-iptv"
     }
    ]
   },
@@ -315,136 +309,49 @@
      "img": "/static/img/webos-duplecast-price.webp",
      "html": "<p>التطبيق مجاني <b>15 يومًا</b> من أول تشغيل، ثم يطلب التفعيل ليستمر. وسعر التفعيل الرسمي <b>3 دولارات للسنة</b> لكل شاشة (و 7.5 دولار لثلاث سنوات)، كما في الصورة من موقعه. ولك طريقتان:</p><p><b>الأولى: من موقعه.</b> في صفحة جهازك اضغط <b dir=\"ltr\">Activate by Payment</b> وادفع 3 دولارات عبر <b dir=\"ltr\">PayPal</b>.</p><p><b>الثانية: بكود من متجرنا بـ 16 ريال.</b> تدفع بمدى أو Apple Pay، ويصلك كود تفعيل سنة فور الدفع في <b>المحتوى الرقمي</b> بطلبك:</p><p><a class=\"btn go\" href=\"https://ssouq.com/تفعيل-duplecast-دبل-كاست-لمدة-سنة/p1575092005?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide\" target=\"_blank\" rel=\"noopener\">اشترِ كود تفعيل Duplecast — 16 ريال</a></p><ol><li>في صفحة جهازك اضغط <b dir=\"ltr\">Activate by code</b>.</li></ol><img src=\"/static/img/webos-duplecast-codebtn.webp\" alt=\"زر Activate by code في صفحة الجهاز بموقع Duplecast\" loading=\"lazy\"><ol start=\"2\"><li>الصق الكود الذي وصلك في خانته، واضغط <b dir=\"ltr\">Activate</b>.</li></ol><img src=\"/static/img/webos-duplecast-code.webp\" alt=\"نافذة Activate by code: خانة كود التفعيل وزر Activate\" loading=\"lazy\"><ol start=\"3\"><li>تصير الحالة <b dir=\"ltr\">Status : active</b>، وتحتها تاريخ انتهاء التفعيل بعد سنة.</li></ol><img src=\"/static/img/webos-duplecast-active.webp\" alt=\"صفحة الجهاز بعد التفعيل: Status : active وتاريخ الانتهاء\" loading=\"lazy\"><div class=\"note\">الكود لشاشة واحدة: لكل شاشة رقم جهاز خاص بها وتفعيلٌ خاص. والتفعيل للتطبيق وحده، أما القنوات والأفلام فمن اشتراكك.</div>"
     }
-   ],
-   "ssiptv": [
-    {
-     "title": "حمّل تطبيق SS IPTV",
-     "html": "<div class=\"vid\"><video src=\"/static/video/ssiptv-ar.mp4?v=3\" poster=\"/static/video/ssiptv-ar.webp?v=3\" controls playsinline preload=\"none\" width=\"720\" height=\"1280\"></video><p class=\"sub\">شاهد الخطوات كلها في دقيقة وربع، ثم اتبعها هنا خطوة خطوة.</p></div><div class=\"appbox\"><img src=\"/static/img/apps/ss-iptv.webp\" alt=\"أيقونة SS IPTV\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">SS IPTV</b><small>مجاني · من فريق SS IPTV</small></span></div><p><b>شاشات LG:</b> افتح متجر التطبيقات في الشاشة (<b dir=\"ltr\">LG Content Store</b>، واسمه في الشاشات الأحدث <b dir=\"ltr\">Apps</b>)، وابحث عن <b dir=\"ltr\">SS IPTV</b> — المطوّر <b dir=\"ltr\">SS IPTV Team</b> — وحمّله. متوفر لشاشات LG من <b>2016 إلى 2024</b>.</p><div class=\"note\">شاشة LG موديل <b>2025</b>؟ التطبيق لا يظهر في متجرها: ارجع واختر 0Player أو Duplecast، فهما متوفران فيها.</div><div class=\"note\"><p><b>شاشات سامسونج:</b> التطبيق ليس في متجر سامسونج، ويعمل من فلاشة <b dir=\"ltr\">USB</b> تبقى موصولة بالشاشة، على شاشات <b>2015 إلى 2019</b>:</p><ol><li>حمّل على الكمبيوتر <a class=\"link\" href=\"https://ss-iptv.com/files/ssiptv_tizen_usb.zip\" rel=\"noopener\">ملف SS IPTV الرسمي لسامسونج (ZIP)</a>.</li><li>فُكّ الضغط في أول الفلاشة لا داخل مجلد، فيظهر فيها مجلد <b dir=\"ltr\">userwidget</b>.</li><li>أدخل الفلاشة في الشاشة واتركها فيها، فيظهر التطبيق بين تطبيقاتك.</li></ol><p>وشاشات سامسونج الأقدم (2012–2014) لها <a class=\"link\" href=\"https://ss-iptv.com/files/ssiptv_orsay_usb.zip\" rel=\"noopener\">ملف آخر</a> بالطريقة نفسها، ومجلده <b dir=\"ltr\">ssiptv</b>. أما سامسونج 2020 وما بعدها فليست في قائمة موقعه الرسمي: ارجع واختر 0Player أو Duplecast، فهما في متجر الشاشة مباشرة.</p></div><div class=\"note\">هذه الخطوات لشاشات سامسونج و LG، ولكل شاشة تعمل بنظام <b dir=\"ltr\">WebOS</b> من أي علامة أخرى — النظام نفسه والخطوات نفسها.</div>"
-    },
-    {
-     "title": "جهّز رابط M3U لاشتراكك",
-     "html": "<p>التطبيق لا يطلب اسم المستخدم وكلمة المرور، بل رابط <b dir=\"ltr\">M3U</b> واحدًا يُبنى منهما ومن رابط الهوست. ولّده بأداتنا المجانية — تُفتح في صفحة جديدة فيبقى هذا الشرح مفتوحًا:</p><p><a class=\"btn go\" href=\"/#m3u\" target=\"_blank\" rel=\"noopener\">افتح أداة رابط M3U</a></p><ol><li>اكتب رابط الهوست واسم المستخدم وكلمة المرور كما وصلتك، ثم اضغط <b>توليد الرابط</b>.</li><li>اضغط <b>نسخ</b> واترك الصفحة مفتوحة، فستلصق الرابط بعد قليل في موقع <b dir=\"ltr\">SS IPTV</b>.</li></ol><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
-    },
-    {
-     "title": "اطلب رمز الربط من إعدادات التطبيق",
-     "html": "<ol><li>افتح <b dir=\"ltr\">SS IPTV</b> على الشاشة (أول مرة تظهر اتفاقية الاستخدام، فاختر <b dir=\"ltr\">Agree</b>).</li><li>بأسهم الريموت انتقل إلى أيقونة الترس ⚙ أعلى الشاشة الرئيسية — المحدَّدة في الصورة — واضغط <b dir=\"ltr\">OK</b>.</li></ol><img src=\"/static/img/ssiptv-tv-home.webp\" alt=\"أيقونة الإعدادات (الترس) أعلى الشاشة الرئيسية في تطبيق SS IPTV\" loading=\"lazy\"><ol start=\"3\"><li>في الإعدادات اختر <b dir=\"ltr\">General</b>، ثم اضغط <b dir=\"ltr\">Get code</b> في قسم <b dir=\"ltr\">Connection Code</b>.</li><li>يظهر رمز الربط مكان <b dir=\"ltr\">XXXXXX</b> في الصورة. اتركه ظاهرًا على الشاشة، فستكتبه في الخطوة التالية.</li></ol><img src=\"/static/img/ssiptv-tv-code.webp\" alt=\"قسم General في إعدادات SS IPTV، وفيه Connection Code وزر Get code\" loading=\"lazy\"><div class=\"note\">الرمز صالح 24 ساعة، أو حتى تطلب رمزًا غيره. إن انتهى فاضغط <b dir=\"ltr\">Get code</b> من جديد.</div>"
-    },
-    {
-     "title": "اربط الشاشة من موقع SS IPTV",
-     "img": "/static/img/ssiptv-web-code.webp",
-     "html": "<p>من جوالك أو الكمبيوتر افتح صفحة قوائم التشغيل في موقع التطبيق الرسمي:</p><p><a class=\"btn go\" href=\"https://ss-iptv.com/en/users/playlist\" target=\"_blank\" rel=\"noopener\">افتح موقع SS IPTV</a></p><p class=\"sub\">العنوان: <span dir=\"ltr\">ss-iptv.com/en/users/playlist</span></p><ol><li>في خانة <b dir=\"ltr\">Enter Connection Code</b> اكتب الرمز الظاهر على الشاشة.</li><li>اضغط <b dir=\"ltr\">ADD DEVICE</b> فتظهر رسالة <b dir=\"ltr\">The device is connected successfully!</b></li></ol><div class=\"note\">ظهرت رسالة <b dir=\"ltr\">Wrong code!</b>؟ الرمز فيه خطأ أو انتهت صلاحيته: اطلب رمزًا جديدًا من <b dir=\"ltr\">Get code</b> واكتبه كما هو.</div>"
-    },
-    {
-     "title": "أضف الرابط في External Playlists",
-     "img": "/static/img/ssiptv-web-tab.webp",
-     "html": "<ol><li>في الصفحة نفسها اختر تبويب <b dir=\"ltr\">External Playlists</b>، ثم اضغط <b dir=\"ltr\">ADD ITEM</b>.</li><li>تظهر نافذة <b dir=\"ltr\">Edit Item</b>. عبّئ أول خانتين فقط:</li></ol><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">Displayed Name</span><code>أي اسم، مثلًا ssouq</code></div><div class=\"f\"><span dir=\"ltr\">Source</span><code>رابط M3U الذي نسخته</code></div></div><img src=\"/static/img/ssiptv-web-item.webp\" alt=\"نافذة Edit Item: خانة Displayed Name وخانة Source، ثم زر OK\" loading=\"lazy\"><ol start=\"3\"><li>اترك بقية الخانات كما هي، وانزل إلى أسفل النافذة واضغط <b dir=\"ltr\">OK</b>.</li></ol><div class=\"note\">لا تستعمل تبويب <b dir=\"ltr\">My Playlist</b> ولا رفع ملف: اشتراكك رابط، ومكانه <b dir=\"ltr\">External Playlists</b>.</div>"
-    },
-    {
-     "title": "اضغط SAVE لتصل القائمة إلى الشاشة",
-     "img": "/static/img/ssiptv-web-saved.webp",
-     "html": "<p>تظهر قائمتك في الجدول باسمها، لكنها لا تصل إلى الشاشة قبل الحفظ: اضغط <b dir=\"ltr\">SAVE</b> حتى تظهر رسالة <b dir=\"ltr\">Playlist has been successfully saved!</b></p><div class=\"note\">لتعديل الرابط لاحقًا افتح الصفحة نفسها من المتصفح نفسه — فالشاشة تبقى مربوطة به — واضغط زر القلم بجانب القائمة، ثم <b dir=\"ltr\">OK</b> و <b dir=\"ltr\">SAVE</b>.</div>"
-    },
-    {
-     "title": "افتح قائمتك على الشاشة",
-     "img": "/static/img/ssiptv-tv-playlist.webp",
-     "html": "<ol><li>ارجع إلى الشاشة الرئيسية في التطبيق واضغط أيقونة التحديث ↻ أعلاها، أو أغلق التطبيق وافتحه من جديد.</li><li>يظهر مربع جديد بالاسم الذي كتبته، مثل مربعات <b dir=\"ltr\">Family</b> و <b dir=\"ltr\">Travel</b> في الصورة. افتحه فتظهر القنوات والأفلام والمسلسلات.</li></ol><div class=\"note\">أول تحميل قد يأخذ دقيقة أو أكثر لأن القائمة كبيرة، فانتظر حتى يكتمل.</div><div class=\"note\">ظهرت رسالة <b dir=\"ltr\">Failed to load remote content</b>؟ الرابط لم يصل: تأكّد أنه يبدأ بـ <b dir=\"ltr\">http</b> لا <b dir=\"ltr\">https</b> وأنه بلا مسافات، وصحّحه من زر القلم في الموقع ثم <b dir=\"ltr\">SAVE</b>.</div><div class=\"note\">تتوقف الصورة بعد دقائق من التشغيل؟ عدّل الرابط من زر القلم: غيّر آخره من <code dir=\"ltr\">output=ts</code> إلى <code dir=\"ltr\">output=m3u8</code>، ثم <b dir=\"ltr\">OK</b> و <b dir=\"ltr\">SAVE</b>.</div>"
-    }
    ]
   }
  },
  "vidaa": {
   "icon": "vidaa",
   "name": "هايسنس و VIDAA OS",
-  "sub": "SS IPTV المجاني أو Duplecast",
-  "choose": {
-   "title": "اختر التطبيق",
-   "options": [
-    {
-     "key": "ssiptv",
-     "label": "SS IPTV",
-     "sub": "مجاني برابط M3U · من متجر VIDAA",
-     "icon": "ss-iptv"
-    },
-    {
-     "key": "duplecast",
-     "label": "Duplecast",
-     "sub": "من متجر الشاشة · مجاني 15 يومًا ثم 3$ للسنة",
-     "icon": "duplecast"
-    }
-   ]
-  },
-  "variants": {
-   "ssiptv": [
-    {
-     "title": "حمّل تطبيق SS IPTV من متجر VIDAA",
-     "html": "<div class=\"vid\"><video src=\"/static/video/ssiptv-ar.mp4?v=3\" poster=\"/static/video/ssiptv-ar.webp?v=3\" controls playsinline preload=\"none\" width=\"720\" height=\"1280\"></video><p class=\"sub\">شاهد الخطوات كلها في دقيقة وربع، ثم اتبعها هنا خطوة خطوة.</p></div><div class=\"appbox\"><img src=\"/static/img/apps/ss-iptv.webp\" alt=\"أيقونة SS IPTV\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">SS IPTV</b><small>من متجر VIDAA · مجاني</small></span></div><ol><li>اضغط زر <b dir=\"ltr\">Home</b> في الريموت، وافتح متجر التطبيقات (‏<b dir=\"ltr\">App Store</b> أو <b dir=\"ltr\">VIDAA Store</b> حسب إصدار الشاشة).</li><li>ابحث عن <b dir=\"ltr\">SS IPTV</b> — المطوّر <b dir=\"ltr\">SS IPTV Team</b> — وثبّته، ثم افتحه من تطبيقاتك.</li></ol><div class=\"note\">هذه الخطوات لشاشات هايسنس، ولكل شاشة تعمل بنظام <b dir=\"ltr\">VIDAA</b> من أي علامة أخرى (مثل بعض شاشات توشيبا) — النظام نفسه والخطوات نفسها.</div>"
-    },
-    {
-     "title": "جهّز رابط M3U لاشتراكك",
-     "html": "<p>التطبيق لا يطلب اسم المستخدم وكلمة المرور، بل رابط <b dir=\"ltr\">M3U</b> واحدًا يُبنى منهما ومن رابط الهوست. ولّده بأداتنا المجانية — تُفتح في صفحة جديدة فيبقى هذا الشرح مفتوحًا:</p><p><a class=\"btn go\" href=\"/#m3u\" target=\"_blank\" rel=\"noopener\">افتح أداة رابط M3U</a></p><ol><li>اكتب رابط الهوست واسم المستخدم وكلمة المرور كما وصلتك، ثم اضغط <b>توليد الرابط</b>.</li><li>اضغط <b>نسخ</b> واترك الصفحة مفتوحة، فستلصق الرابط بعد قليل في موقع <b dir=\"ltr\">SS IPTV</b>.</li></ol><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
-    },
-    {
-     "title": "اطلب رمز الربط من إعدادات التطبيق",
-     "html": "<ol><li>افتح <b dir=\"ltr\">SS IPTV</b> على الشاشة (أول مرة تظهر اتفاقية الاستخدام، فاختر <b dir=\"ltr\">Agree</b>).</li><li>بأسهم الريموت انتقل إلى أيقونة الترس ⚙ أعلى الشاشة الرئيسية — المحدَّدة في الصورة — واضغط <b dir=\"ltr\">OK</b>.</li></ol><img src=\"/static/img/ssiptv-tv-home.webp\" alt=\"أيقونة الإعدادات (الترس) أعلى الشاشة الرئيسية في تطبيق SS IPTV\" loading=\"lazy\"><ol start=\"3\"><li>في الإعدادات اختر <b dir=\"ltr\">General</b>، ثم اضغط <b dir=\"ltr\">Get code</b> في قسم <b dir=\"ltr\">Connection Code</b>.</li><li>يظهر رمز الربط مكان <b dir=\"ltr\">XXXXXX</b> في الصورة. اتركه ظاهرًا على الشاشة، فستكتبه في الخطوة التالية.</li></ol><img src=\"/static/img/ssiptv-tv-code.webp\" alt=\"قسم General في إعدادات SS IPTV، وفيه Connection Code وزر Get code\" loading=\"lazy\"><div class=\"note\">الرمز صالح 24 ساعة، أو حتى تطلب رمزًا غيره. إن انتهى فاضغط <b dir=\"ltr\">Get code</b> من جديد.</div>"
-    },
-    {
-     "title": "اربط الشاشة من موقع SS IPTV",
-     "img": "/static/img/ssiptv-web-code.webp",
-     "html": "<p>من جوالك أو الكمبيوتر افتح صفحة قوائم التشغيل في موقع التطبيق الرسمي:</p><p><a class=\"btn go\" href=\"https://ss-iptv.com/en/users/playlist\" target=\"_blank\" rel=\"noopener\">افتح موقع SS IPTV</a></p><p class=\"sub\">العنوان: <span dir=\"ltr\">ss-iptv.com/en/users/playlist</span></p><ol><li>في خانة <b dir=\"ltr\">Enter Connection Code</b> اكتب الرمز الظاهر على الشاشة.</li><li>اضغط <b dir=\"ltr\">ADD DEVICE</b> فتظهر رسالة <b dir=\"ltr\">The device is connected successfully!</b></li></ol><div class=\"note\">ظهرت رسالة <b dir=\"ltr\">Wrong code!</b>؟ الرمز فيه خطأ أو انتهت صلاحيته: اطلب رمزًا جديدًا من <b dir=\"ltr\">Get code</b> واكتبه كما هو.</div>"
-    },
-    {
-     "title": "أضف الرابط في External Playlists",
-     "img": "/static/img/ssiptv-web-tab.webp",
-     "html": "<ol><li>في الصفحة نفسها اختر تبويب <b dir=\"ltr\">External Playlists</b>، ثم اضغط <b dir=\"ltr\">ADD ITEM</b>.</li><li>تظهر نافذة <b dir=\"ltr\">Edit Item</b>. عبّئ أول خانتين فقط:</li></ol><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">Displayed Name</span><code>أي اسم، مثلًا ssouq</code></div><div class=\"f\"><span dir=\"ltr\">Source</span><code>رابط M3U الذي نسخته</code></div></div><img src=\"/static/img/ssiptv-web-item.webp\" alt=\"نافذة Edit Item: خانة Displayed Name وخانة Source، ثم زر OK\" loading=\"lazy\"><ol start=\"3\"><li>اترك بقية الخانات كما هي، وانزل إلى أسفل النافذة واضغط <b dir=\"ltr\">OK</b>.</li></ol><div class=\"note\">لا تستعمل تبويب <b dir=\"ltr\">My Playlist</b> ولا رفع ملف: اشتراكك رابط، ومكانه <b dir=\"ltr\">External Playlists</b>.</div>"
-    },
-    {
-     "title": "اضغط SAVE لتصل القائمة إلى الشاشة",
-     "img": "/static/img/ssiptv-web-saved.webp",
-     "html": "<p>تظهر قائمتك في الجدول باسمها، لكنها لا تصل إلى الشاشة قبل الحفظ: اضغط <b dir=\"ltr\">SAVE</b> حتى تظهر رسالة <b dir=\"ltr\">Playlist has been successfully saved!</b></p><div class=\"note\">لتعديل الرابط لاحقًا افتح الصفحة نفسها من المتصفح نفسه — فالشاشة تبقى مربوطة به — واضغط زر القلم بجانب القائمة، ثم <b dir=\"ltr\">OK</b> و <b dir=\"ltr\">SAVE</b>.</div>"
-    },
-    {
-     "title": "افتح قائمتك على الشاشة",
-     "img": "/static/img/ssiptv-tv-playlist.webp",
-     "html": "<ol><li>ارجع إلى الشاشة الرئيسية في التطبيق واضغط أيقونة التحديث ↻ أعلاها، أو أغلق التطبيق وافتحه من جديد.</li><li>يظهر مربع جديد بالاسم الذي كتبته، مثل مربعات <b dir=\"ltr\">Family</b> و <b dir=\"ltr\">Travel</b> في الصورة. افتحه فتظهر القنوات والأفلام والمسلسلات.</li></ol><div class=\"note\">أول تحميل قد يأخذ دقيقة أو أكثر لأن القائمة كبيرة، فانتظر حتى يكتمل.</div><div class=\"note\">ظهرت رسالة <b dir=\"ltr\">Failed to load remote content</b>؟ الرابط لم يصل: تأكّد أنه يبدأ بـ <b dir=\"ltr\">http</b> لا <b dir=\"ltr\">https</b> وأنه بلا مسافات، وصحّحه من زر القلم في الموقع ثم <b dir=\"ltr\">SAVE</b>.</div><div class=\"note\">تتوقف الصورة بعد دقائق من التشغيل؟ عدّل الرابط من زر القلم: غيّر آخره من <code dir=\"ltr\">output=ts</code> إلى <code dir=\"ltr\">output=m3u8</code>، ثم <b dir=\"ltr\">OK</b> و <b dir=\"ltr\">SAVE</b>.</div>"
-    }
-   ],
-   "duplecast": [
-    {
-     "title": "حمّل تطبيق Duplecast من متجر VIDAA",
-     "html": "<div class=\"vid\"><video src=\"/static/video/duplecast-ar.mp4?v=2\" poster=\"/static/video/duplecast-ar.webp?v=2\" controls playsinline preload=\"none\" width=\"720\" height=\"1280\"></video><p class=\"sub\">شاهد الخطوات كلها والتفعيل في أقل من دقيقة ونصف، ثم اتبعها هنا خطوة خطوة.</p></div><div class=\"appbox\"><img src=\"/static/img/apps/duplecast.webp\" alt=\"أيقونة Duplecast\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">Duplecast</b><small>من متجر VIDAA · مجاني 15 يومًا</small></span></div><ol><li>اضغط زر <b dir=\"ltr\">Home</b> في الريموت، وافتح متجر التطبيقات (‏<b dir=\"ltr\">App Store</b> أو <b dir=\"ltr\">VIDAA Store</b> حسب إصدار الشاشة).</li><li>ابحث عن <b dir=\"ltr\">Duplecast</b> — ويُنطق <b>دبل كاست</b> — وثبّته، ثم افتحه من تطبيقاتك.</li></ol><div class=\"note\"><b>السعر:</b> التطبيق مجاني <b>15 يومًا</b> من أول تشغيل، ثم تفعيله <b>3 دولارات للسنة</b> لكل شاشة من موقعه الرسمي. أو اشترِ <a class=\"link\" href=\"https://ssouq.com/تفعيل-duplecast-دبل-كاست-لمدة-سنة/p1575092005?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide\" target=\"_blank\" rel=\"noopener\">كود تفعيل سنة من متجرنا بـ 16 ريال</a> وادفع بمدى أو Apple Pay — الطريقتان في آخر خطوة.</div><div class=\"note\">هذه الخطوات لشاشات هايسنس، ولكل شاشة تعمل بنظام <b dir=\"ltr\">VIDAA</b> من أي علامة أخرى (مثل بعض شاشات توشيبا) — النظام نفسه والخطوات نفسها.</div>"
-    },
-    {
-     "title": "امسح الباركود على الشاشة بجوالك",
-     "img": "/static/img/webos-duplecast-start.webp",
-     "html": "<p>أول ما يُفتح التطبيق تظهر شاشة فيها <b>باركود</b> ورقم جهازك (<b dir=\"ltr\">MAC</b>).</p><ol><li>افتح كاميرا جوالك ووجّهها إلى الباركود، ثم اضغط الرابط الذي يظهر.</li><li>تُفتح صفحة جهازك في موقع <b dir=\"ltr\">duplecast.com</b> مباشرة، ورقم جهازك مكتوب فيها.</li></ol><div class=\"note\">لم يعمل الباركود؟ افتح <a class=\"link\" href=\"https://duplecast.com\" target=\"_blank\" rel=\"noopener\">duplecast.com</a> من الجوال أو الكمبيوتر، واضغط <b dir=\"ltr\">Manage Device</b> واكتب رقم الجهاز الظاهر على شاشتك.</div><div class=\"note\">امسح الباركود الظاهر على شاشتك أنت: فيه رقم جهازك. والباركود ورقم الجهاز في صور الدليل مثالان.</div>"
-    },
-    {
-     "title": "اضغط Add Playlist",
-     "img": "/static/img/webos-duplecast-manage.webp",
-     "html": "<p>في صفحة <b dir=\"ltr\">Manage Device</b> يظهر رقم جهازك وتحته <b dir=\"ltr\">Status : trial</b> — أي أنه في فترة التجربة المجانية. اضغط <b dir=\"ltr\">Add Playlist</b> في قسم <b dir=\"ltr\">Playlists</b>.</p>"
-    },
-    {
-     "title": "عبّئ بياناتك في تبويب Xtream Info",
-     "img": "/static/img/webos-duplecast-form.webp",
-     "html": "<p>اختر تبويب <b dir=\"ltr\">Xtream Info</b> ثم عبّئ الخانات:</p><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">Mac</span><code>يظهر وحده — لا تغيّره</code></div><div class=\"f\"><span dir=\"ltr\">Playlist name</span><code>أي اسم، مثلًا ssouq</code></div><div class=\"f\"><span dir=\"ltr\">Host</span><code>رابط الهوست بدون رقم البورت</code></div><div class=\"f\"><span dir=\"ltr\">Port</span><code>رقم البورت وحده</code></div><div class=\"f\"><span dir=\"ltr\">Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span dir=\"ltr\">Password</span><code>كلمة المرور</code></div><div class=\"f\"><span dir=\"ltr\">Protect this playlist</span><code>اتركه غير مفعّل</code></div></div><p>ثم اضغط <b dir=\"ltr\">Save</b>.</p><div class=\"note\">الهوست والبورت خانتان منفصلتان هنا، فلا تكتب الرقم مع الرابط: إن وصلك <code dir=\"ltr\">http://host.com:8080</code> فاكتب <code dir=\"ltr\">http://host.com</code> في <b dir=\"ltr\">Host</b> و <code dir=\"ltr\">8080</code> في <b dir=\"ltr\">Port</b>. ومن وصله رابط بلا رقم فبورته <code dir=\"ltr\">80</code>.</div><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
-    },
-    {
-     "title": "تأكّد أن القائمة حُفظت",
-     "img": "/static/img/webos-duplecast-saved.webp",
-     "html": "<p>تظهر قائمتك في جدول <b dir=\"ltr\">Playlists</b> باسمها، مع رسالة <b dir=\"ltr\">Playlist added successfully</b>. وإن أخطأت في شيء فاضغط <b dir=\"ltr\">Edit</b> بجانبها وصحّحه.</p>"
-    },
-    {
-     "title": "حدّث التطبيق على الشاشة وشاهد",
-     "img": "/static/img/webos-duplecast-home.webp",
-     "html": "<ol><li>ارجع إلى التطبيق على الشاشة واضغط زر التحديث (<b dir=\"ltr\">↻</b>)، أو أغلق التطبيق وافتحه من جديد.</li><li>انتظر حتى تُحمَّل قائمتك، ثم افتح <b dir=\"ltr\">LIVE TV</b> للقنوات، أو <b dir=\"ltr\">MOVIES</b> و <b dir=\"ltr\">SERIES</b> للأفلام والمسلسلات.</li></ol><div class=\"note\">لم تظهر القنوات؟ تأكّد أن الهوست يبدأ بـ <b dir=\"ltr\">http</b> وأن البورت في خانته لا مع الرابط، وصحّحهما من <b dir=\"ltr\">Edit</b> في الموقع ثم حدّث من جديد.</div>"
-    },
-    {
-     "title": "بعد 15 يومًا فعّل التطبيق: 3 دولارات للسنة",
-     "img": "/static/img/webos-duplecast-price.webp",
-     "html": "<p>التطبيق مجاني <b>15 يومًا</b> من أول تشغيل، ثم يطلب التفعيل ليستمر. وسعر التفعيل الرسمي <b>3 دولارات للسنة</b> لكل شاشة (و 7.5 دولار لثلاث سنوات)، كما في الصورة من موقعه. ولك طريقتان:</p><p><b>الأولى: من موقعه.</b> في صفحة جهازك اضغط <b dir=\"ltr\">Activate by Payment</b> وادفع 3 دولارات عبر <b dir=\"ltr\">PayPal</b>.</p><p><b>الثانية: بكود من متجرنا بـ 16 ريال.</b> تدفع بمدى أو Apple Pay، ويصلك كود تفعيل سنة فور الدفع في <b>المحتوى الرقمي</b> بطلبك:</p><p><a class=\"btn go\" href=\"https://ssouq.com/تفعيل-duplecast-دبل-كاست-لمدة-سنة/p1575092005?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide\" target=\"_blank\" rel=\"noopener\">اشترِ كود تفعيل Duplecast — 16 ريال</a></p><ol><li>في صفحة جهازك اضغط <b dir=\"ltr\">Activate by code</b>.</li></ol><img src=\"/static/img/webos-duplecast-codebtn.webp\" alt=\"زر Activate by code في صفحة الجهاز بموقع Duplecast\" loading=\"lazy\"><ol start=\"2\"><li>الصق الكود الذي وصلك في خانته، واضغط <b dir=\"ltr\">Activate</b>.</li></ol><img src=\"/static/img/webos-duplecast-code.webp\" alt=\"نافذة Activate by code: خانة كود التفعيل وزر Activate\" loading=\"lazy\"><ol start=\"3\"><li>تصير الحالة <b dir=\"ltr\">Status : active</b>، وتحتها تاريخ انتهاء التفعيل بعد سنة.</li></ol><img src=\"/static/img/webos-duplecast-active.webp\" alt=\"صفحة الجهاز بعد التفعيل: Status : active وتاريخ الانتهاء\" loading=\"lazy\"><div class=\"note\">الكود لشاشة واحدة: لكل شاشة رقم جهاز خاص بها وتفعيلٌ خاص. والتفعيل للتطبيق وحده، أما القنوات والأفلام فمن اشتراكك.</div>"
-    }
-   ]
-  }
+  "sub": "تطبيق Duplecast",
+  "steps": [
+   {
+    "title": "حمّل تطبيق Duplecast من متجر VIDAA",
+    "html": "<div class=\"vid\"><video src=\"/static/video/duplecast-ar.mp4?v=2\" poster=\"/static/video/duplecast-ar.webp?v=2\" controls playsinline preload=\"none\" width=\"720\" height=\"1280\"></video><p class=\"sub\">شاهد الخطوات كلها والتفعيل في أقل من دقيقة ونصف، ثم اتبعها هنا خطوة خطوة.</p></div><div class=\"appbox\"><img src=\"/static/img/apps/duplecast.webp\" alt=\"أيقونة Duplecast\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">Duplecast</b><small>من متجر VIDAA · مجاني 15 يومًا</small></span></div><ol><li>اضغط زر <b dir=\"ltr\">Home</b> في الريموت، وافتح متجر التطبيقات (‏<b dir=\"ltr\">App Store</b> أو <b dir=\"ltr\">VIDAA Store</b> حسب إصدار الشاشة).</li><li>ابحث عن <b dir=\"ltr\">Duplecast</b> — ويُنطق <b>دبل كاست</b> — وثبّته، ثم افتحه من تطبيقاتك.</li></ol><div class=\"note\"><b>السعر:</b> التطبيق مجاني <b>15 يومًا</b> من أول تشغيل، ثم تفعيله <b>3 دولارات للسنة</b> لكل شاشة من موقعه الرسمي. أو اشترِ <a class=\"link\" href=\"https://ssouq.com/تفعيل-duplecast-دبل-كاست-لمدة-سنة/p1575092005?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide\" target=\"_blank\" rel=\"noopener\">كود تفعيل سنة من متجرنا بـ 16 ريال</a> وادفع بمدى أو Apple Pay — الطريقتان في آخر خطوة.</div><div class=\"note\">هذه الخطوات لشاشات هايسنس، ولكل شاشة تعمل بنظام <b dir=\"ltr\">VIDAA</b> من أي علامة أخرى (مثل بعض شاشات توشيبا) — النظام نفسه والخطوات نفسها.</div>"
+   },
+   {
+    "title": "امسح الباركود على الشاشة بجوالك",
+    "img": "/static/img/webos-duplecast-start.webp",
+    "html": "<p>أول ما يُفتح التطبيق تظهر شاشة فيها <b>باركود</b> ورقم جهازك (<b dir=\"ltr\">MAC</b>).</p><ol><li>افتح كاميرا جوالك ووجّهها إلى الباركود، ثم اضغط الرابط الذي يظهر.</li><li>تُفتح صفحة جهازك في موقع <b dir=\"ltr\">duplecast.com</b> مباشرة، ورقم جهازك مكتوب فيها.</li></ol><div class=\"note\">لم يعمل الباركود؟ افتح <a class=\"link\" href=\"https://duplecast.com\" target=\"_blank\" rel=\"noopener\">duplecast.com</a> من الجوال أو الكمبيوتر، واضغط <b dir=\"ltr\">Manage Device</b> واكتب رقم الجهاز الظاهر على شاشتك.</div><div class=\"note\">امسح الباركود الظاهر على شاشتك أنت: فيه رقم جهازك. والباركود ورقم الجهاز في صور الدليل مثالان.</div>"
+   },
+   {
+    "title": "اضغط Add Playlist",
+    "img": "/static/img/webos-duplecast-manage.webp",
+    "html": "<p>في صفحة <b dir=\"ltr\">Manage Device</b> يظهر رقم جهازك وتحته <b dir=\"ltr\">Status : trial</b> — أي أنه في فترة التجربة المجانية. اضغط <b dir=\"ltr\">Add Playlist</b> في قسم <b dir=\"ltr\">Playlists</b>.</p>"
+   },
+   {
+    "title": "عبّئ بياناتك في تبويب Xtream Info",
+    "img": "/static/img/webos-duplecast-form.webp",
+    "html": "<p>اختر تبويب <b dir=\"ltr\">Xtream Info</b> ثم عبّئ الخانات:</p><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">Mac</span><code>يظهر وحده — لا تغيّره</code></div><div class=\"f\"><span dir=\"ltr\">Playlist name</span><code>أي اسم، مثلًا ssouq</code></div><div class=\"f\"><span dir=\"ltr\">Host</span><code>رابط الهوست بدون رقم البورت</code></div><div class=\"f\"><span dir=\"ltr\">Port</span><code>رقم البورت وحده</code></div><div class=\"f\"><span dir=\"ltr\">Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span dir=\"ltr\">Password</span><code>كلمة المرور</code></div><div class=\"f\"><span dir=\"ltr\">Protect this playlist</span><code>اتركه غير مفعّل</code></div></div><p>ثم اضغط <b dir=\"ltr\">Save</b>.</p><div class=\"note\">الهوست والبورت خانتان منفصلتان هنا، فلا تكتب الرقم مع الرابط: إن وصلك <code dir=\"ltr\">http://host.com:8080</code> فاكتب <code dir=\"ltr\">http://host.com</code> في <b dir=\"ltr\">Host</b> و <code dir=\"ltr\">8080</code> في <b dir=\"ltr\">Port</b>. ومن وصله رابط بلا رقم فبورته <code dir=\"ltr\">80</code>.</div><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+   },
+   {
+    "title": "تأكّد أن القائمة حُفظت",
+    "img": "/static/img/webos-duplecast-saved.webp",
+    "html": "<p>تظهر قائمتك في جدول <b dir=\"ltr\">Playlists</b> باسمها، مع رسالة <b dir=\"ltr\">Playlist added successfully</b>. وإن أخطأت في شيء فاضغط <b dir=\"ltr\">Edit</b> بجانبها وصحّحه.</p>"
+   },
+   {
+    "title": "حدّث التطبيق على الشاشة وشاهد",
+    "img": "/static/img/webos-duplecast-home.webp",
+    "html": "<ol><li>ارجع إلى التطبيق على الشاشة واضغط زر التحديث (<b dir=\"ltr\">↻</b>)، أو أغلق التطبيق وافتحه من جديد.</li><li>انتظر حتى تُحمَّل قائمتك، ثم افتح <b dir=\"ltr\">LIVE TV</b> للقنوات، أو <b dir=\"ltr\">MOVIES</b> و <b dir=\"ltr\">SERIES</b> للأفلام والمسلسلات.</li></ol><div class=\"note\">لم تظهر القنوات؟ تأكّد أن الهوست يبدأ بـ <b dir=\"ltr\">http</b> وأن البورت في خانته لا مع الرابط، وصحّحهما من <b dir=\"ltr\">Edit</b> في الموقع ثم حدّث من جديد.</div>"
+   },
+   {
+    "title": "بعد 15 يومًا فعّل التطبيق: 3 دولارات للسنة",
+    "img": "/static/img/webos-duplecast-price.webp",
+    "html": "<p>التطبيق مجاني <b>15 يومًا</b> من أول تشغيل، ثم يطلب التفعيل ليستمر. وسعر التفعيل الرسمي <b>3 دولارات للسنة</b> لكل شاشة (و 7.5 دولار لثلاث سنوات)، كما في الصورة من موقعه. ولك طريقتان:</p><p><b>الأولى: من موقعه.</b> في صفحة جهازك اضغط <b dir=\"ltr\">Activate by Payment</b> وادفع 3 دولارات عبر <b dir=\"ltr\">PayPal</b>.</p><p><b>الثانية: بكود من متجرنا بـ 16 ريال.</b> تدفع بمدى أو Apple Pay، ويصلك كود تفعيل سنة فور الدفع في <b>المحتوى الرقمي</b> بطلبك:</p><p><a class=\"btn go\" href=\"https://ssouq.com/تفعيل-duplecast-دبل-كاست-لمدة-سنة/p1575092005?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide\" target=\"_blank\" rel=\"noopener\">اشترِ كود تفعيل Duplecast — 16 ريال</a></p><ol><li>في صفحة جهازك اضغط <b dir=\"ltr\">Activate by code</b>.</li></ol><img src=\"/static/img/webos-duplecast-codebtn.webp\" alt=\"زر Activate by code في صفحة الجهاز بموقع Duplecast\" loading=\"lazy\"><ol start=\"2\"><li>الصق الكود الذي وصلك في خانته، واضغط <b dir=\"ltr\">Activate</b>.</li></ol><img src=\"/static/img/webos-duplecast-code.webp\" alt=\"نافذة Activate by code: خانة كود التفعيل وزر Activate\" loading=\"lazy\"><ol start=\"3\"><li>تصير الحالة <b dir=\"ltr\">Status : active</b>، وتحتها تاريخ انتهاء التفعيل بعد سنة.</li></ol><img src=\"/static/img/webos-duplecast-active.webp\" alt=\"صفحة الجهاز بعد التفعيل: Status : active وتاريخ الانتهاء\" loading=\"lazy\"><div class=\"note\">الكود لشاشة واحدة: لكل شاشة رقم جهاز خاص بها وتفعيلٌ خاص. والتفعيل للتطبيق وحده، أما القنوات والأفلام فمن اشتراكك.</div>"
+   }
+  ]
  },
  "windows": {
   "icon": "pc",
