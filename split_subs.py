@@ -429,10 +429,10 @@ def _sold_text(rec, exp):
     who = (" للعميل %s" % sl["customer"]) if sl.get("customer") else ""
     sess = (" · جلسة %s" % rec["batch"]) if rec.get("batch") else ""
     if rec.get("state") == SOLD_OUT:
-        return "🆕 بِيع المتبقي من الخط %s (%s)%s — ينتهي %s، ولا تغيير بعده.%s" % (
+        return "🆕 بِيع المتبقي من الخط %s (%s)%s — ينتهي %s، ولا تغيير بعده%s." % (
             rec["username"], rec["gate_name"], who, exp.isoformat(), sess)
     due = parse_dt(sl.get("due"))
-    return "🆕 بِيع جزء %s من الخط %s (%s)%s — يتغيّر اسم المستخدم %s، ثم «متبقي %s».%s" % (
+    return "🆕 بِيع جزء %s من الخط %s (%s)%s — يتغيّر اسم المستخدم %s، ثم «متبقي %s»%s." % (
         months_ar(sl.get("months")), rec["username"], rec["gate_name"], who, sl.get("due", ""),
         months_ar(months_left(exp, due.date())) if due else "", sess)
 
