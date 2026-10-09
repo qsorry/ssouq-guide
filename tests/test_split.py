@@ -73,6 +73,8 @@ class TestBatch(Base):
         bid = S.new_batch_id(T0)
         self.assertRegex(bid, r"^S\d{6}-\d{6}$")
         self.assertEqual(bid, "S" + T0.strftime("%y%m%d-%H%M%S"))
+        self.assertEqual(S.new_batch_id(T0), bid + "-2")          # الثانية نفسها: لاحقة تمييز
+        self.assertEqual(S.new_batch_id(T0), bid + "-3")
         r1, _ = self.reg("111122223333", batch=bid)
         r2, _ = self.reg("444455556666", batch=bid)
         r3, _ = self.reg("777788889999", months=3)           # بلا جلسة (خطٌّ قديم)

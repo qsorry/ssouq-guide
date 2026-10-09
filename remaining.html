@@ -98,6 +98,14 @@ h2 small{font-weight:400;font-size:.8rem;color:var(--mute)}
 .gp .chev{flex:none;color:var(--mute);transition:transform .2s}
 .gp[open] .chev{transform:rotate(180deg)}
 .gp>.cards{padding:0 8px 8px}
+.bg{margin:4px 0 6px;border:1px dashed var(--line);border-radius:12px;padding:2px 10px 6px}
+.bg>summary{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;cursor:pointer;list-style:none;padding:7px 0;font-size:.88rem}
+.bg>summary::-webkit-details-marker{display:none}
+.bg>summary .bt{font-weight:700;color:var(--ink)}
+.bg>summary .bt .mono{direction:ltr;unicode-bidi:isolate}
+.bg>summary small{color:var(--mute)}
+.bg>summary .gcp{margin-inline-start:auto}
+.bg>.cards{margin-top:4px}
 .gp .card{background:var(--sf)}
 .find{position:relative;margin:0 0 16px}
 .find svg{position:absolute;inset-inline-start:12px;top:50%;transform:translateY(-50%);color:var(--mute);pointer-events:none}
@@ -354,11 +362,37 @@ function group(key, title, n, sub, body, single, force){
     <div class="cards">${body}</div></details>`;
 }
 // سطور كل مجموعة (لزرّ «نسخ الكل» في عنوانها)، وأحدث الأجزاء الجارية إنشاءً (لزرّ «نسخ آخر N»)
-let GROUP_LINES = {}, LAST_LINES = [];
+let GROUP_LINES = {}, LAST_LINES = [], BATCH_LINES = {};
+// داخل كل مجموعة، الخطوط دفعاتٍ الأحدث أولًا: الجلسة بمعرّفها، وما سُجّل قبل المعرّفات يُجمع
+// بوقت إنشائه (خطوطٌ متتالية لا يفصل بينها أكثر من دقيقتين = دفعةٌ واحدة) — فـ«٦ أشهر تبع اليوم»
+// دفعةٌ بزرّ نسخٍ خاصٍّ بها، لا المجموعة كلها.
+const BATCH_GAP_MIN = 2;
+const tmin = s => { const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5]) / 60000 : 0; };
+const dayAr = d => { const t = (D.now || "").slice(0, 10); if (!d) return ""; if (d === t) return "اليوم";
+  const y = new Date(t + "T00:00:00Z"); y.setUTCDate(y.getUTCDate() - 1); return d === y.toISOString().slice(0, 10) ? "أمس" : d; };
+const whenAr = at => at ? `${dayAr(at.slice(0, 10))} ${at.slice(11, 16)}` : "بلا وقت";
+function batchesOf(g){
+  const byId = {}, loose = [], out = [];
+  g.forEach(x => x.batch ? (byId[x.batch] ||= []).push(x) : loose.push(x));
+  for (const [id, items] of Object.entries(byId))
+    out.push({id, items, at: items.map(x => x.created_at || "").filter(Boolean).sort()[0] || ""});
+  loose.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+  let cur = null;
+  loose.forEach(x => { const t = tmin(x.created_at);
+    if (!cur || !t || t - cur.t > BATCH_GAP_MIN){ cur = {id: "", items: [], at: x.created_at || "", t}; out.push(cur); }
+    cur.items.push(x); cur.t = t; });
+  return out.sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+}
+function batchBlocks(g, key, card){
+  const bs = batchesOf(g);
+  if (bs.length <= 1) return g.map(card).join("");                 // دفعةٌ واحدة: البطاقات كما هي
+  return bs.map((b, i) => { const k = key + "|" + i; BATCH_LINES[k] = b.items;
+    return `<details class="bg"${i === 0 || Q ? " open" : ""}><summary><span class="bt">${b.id ? `جلسة <span class="mono">${esc(b.id)}</span>` : "دفعة " + esc(whenAr(b.at))}</span><small>${b.items.length} ${UNIT(b.items.length)}${b.id ? " · " + esc(whenAr(b.at)) : ""}</small><button class="copy gcp" data-bcopy="${esc(k)}" title="نسخ سطور هذه الدفعة وحدها">${icon.copy}نسخ</button></summary><div class="cards">${b.items.map(card).join("")}</div></details>`; }).join("");
+}
 const byCreated = (a, b) => (b.created_at || "").localeCompare(a.created_at || "");
 function renderLists(){
   const L = D.lines.filter(x => inAcc(x) && (!Q || hit(x))), of = (...st) => L.filter(x => st.includes(x.state));
-  GROUP_LINES = {};
+  GROUP_LINES = {}; BATCH_LINES = {};
   // تحتاج تدخّلًا
   const attn = of("failed", "due");
   $("attn").hidden = !attn.length; $("attnN").textContent = attn.length;
@@ -372,7 +406,7 @@ function renderLists(){
     const g = vg[k].sort((a, b) => (a.available_since || "").localeCompare(b.available_since || ""));
     GROUP_LINES["v:" + k] = g;
     return group("v:" + k, `متبقي <span class="rm">${MONTHS(k)}</span>`, g.length, "الأقدم متاح منذ " + esc((g[0].available_since || "").slice(0, 10)),
-                 g.map(cardAvail).join(""), vk.length === 1, g.some(x => x.id === OPEN_SELL));
+                 batchBlocks(g, "v:" + k, cardAvail), vk.length === 1, g.some(x => x.id === OPEN_SELL));
   }).join("") : Q ? noHit : '<div class="empty">لا خطوط متاحة بعد — تظهر هنا حين ينتهي جزءٌ ويتغيّر اسمه.</div>';
   // الجارية: مجموعاتٌ بنوع الجزء وما يبقى بعده («جزء 3 أشهر · بعده متبقي 12 شهرًا — 10 يوزرات») — الأطول جزءًا أولًا، وداخلها الأقرب موعدًا أولًا
   const act = of("active").sort(byDue), ag = {};
@@ -386,7 +420,7 @@ function renderLists(){
     GROUP_LINES["a:" + k] = g;
     return group("a:" + k, `جزء ${MONTHS(m)} · بعده متبقي <span class="rm">${MONTHS(r)}</span>`, g.length,
                  `أقرب تغيير ${esc(((g[0].slice || {}).due || "").slice(0, 10))} · ${DAYS(g[0].due_in_days)}${soon ? ` · <b>${soon} خلال ٧ أيام</b>` : ""}`,
-                 g.map(cardActive).join(""), ak.length === 1);
+                 batchBlocks(g, "a:" + k, cardActive), ak.length === 1);
   }).join("") : Q ? noHit : '<div class="empty">لا أجزاء جارية — أنشئ من صفحة الإنشاء باقة ١٥ شهرًا واختر «١٢ شهرًا» أو «٦ أشهر» أو «٣» أو «شهر» أو «مدة أخرى».</div>';
   const done = of("sold_out", "ended");
   $("done").hidden = !done.length; $("doneN").textContent = done.length;
@@ -456,7 +490,7 @@ function cardActive(x){
   const s = x.slice || {}, due = s.due || "";
   return `<div class="card" data-line="${esc(x.id)}">
     <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="ghost" data-rot="${esc(x.id)}" title="ينتهي الجزء الآن وينقطع العميل">غيّر الآن</button></div></div>
-    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span>${sessOf(x)}${(s.n || 1) > 1 ? `<span>الجزء ${s.n}</span>` : ""}${who(x)}
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span>${sessOf(x)}${x.created_at ? `<span title="وقت التسجيل">أُنشئ ${esc(whenAr(x.created_at))}</span>` : ""}${(s.n || 1) > 1 ? `<span>الجزء ${s.n}</span>` : ""}${who(x)}
       <span class="${x.due_in_days <= 7 ? "em" : ""}" title="${esc(due)}">يتغيّر الاسم ${esc(x.due_in_days <= 1 ? due : due.slice(0, 10))} · ${DAYS(x.due_in_days)}</span></div>
     ${x.last_error ? `<div class="err">آخر محاولة: ${esc(x.last_error)}</div>` : ""}</div>`;
 }
@@ -600,6 +634,13 @@ document.addEventListener("click", async e => {
     copy(g.map(x => x.line).join("\n"), `نُسخت جلسة ${sc.dataset.scopy} (${g.length} ${UNIT(g.length)})`); return;
   }
   if (e.target.closest("#sessMore")){ SESS_ALL = !SESS_ALL; renderSess(); return; }
+  const bcp = e.target.closest("button[data-bcopy]");
+  if (bcp){                                                // نسخ دفعةٍ داخل المجموعة — لا يطويها
+    e.preventDefault();
+    const g = (BATCH_LINES[bcp.dataset.bcopy] || []).slice().sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+    if (!g.length) return toast("لا يوجد ما يُنسخ", true);
+    copy(g.map(x => x.line).join("\n"), `نُسخت الدفعة (${g.length} ${UNIT(g.length)})`); return;
+  }
   const gcp = e.target.closest("button[data-gcopy]");
   if (gcp){                                                // نسخ المجموعة من عنوانها — لا يطويها
     e.preventDefault();

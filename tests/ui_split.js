@@ -129,6 +129,28 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     check('session «نسخ» copies its lines', (await user.evaluate(() => navigator.clipboard.readText())) === made);
     await user.click('#sessList .srow [data-q]');
     check('pressing again clears the filter', (await user.inputValue('#q')) === '' && !(await user.$('#sessList .srow.on')));
+    // ---- دفعاتٌ داخل المجموعة: خطٌّ ثانٍ من «إضافة خطٍّ قائم» (جلسةٌ أخرى) يقسم مجموعة «جزء 6 أشهر» دفعتين ----
+    check('one batch → no batch blocks', !(await user.$('#activeList details.bg')));
+    const me = await api(user, '/admin/api/split/state');
+    const gid6 = me.accounts[0].gates[0].id;
+    const reg = await api(user, '/admin/api/split/register', {account_id: me.accounts[0].id, gate: gid6, months: 6, username: '555566667777', password: '123412341234'});
+    check('a second line registered manually (its own session)', reg.ok === true && reg.line.batch && reg.line.batch !== sid, reg.error || reg.line.batch);
+    await user.reload();
+    await user.waitForSelector('#activeList details.bg');
+    const bl = await user.$$eval('#activeList details.bg', ds => ds.map(d => ({open: d.open, t: d.querySelector('summary').textContent.replace(/\s+/g, ' ').trim()})));
+    check('group split into two batches, each named by its session, newest first open', bl.length === 2 && bl[0].open && bl.every(b => b.t.includes('جلسة S') && b.t.includes('1 يوزر')), JSON.stringify(bl));
+    await user.evaluate(() => navigator.clipboard.writeText(''));
+    const wasOpen2 = await user.$eval('#activeList details.gp', d => d.open);
+    await user.click(`#activeList details.bg:has([data-q="${sid}"]) > summary button[data-bcopy]`);
+    await sleep(150);
+    check('batch «نسخ» copies that batch only (the created line), fold unchanged',
+          (await user.evaluate(() => navigator.clipboard.readText())) === made && (await user.$eval('#activeList details.gp', d => d.open)) === wasOpen2);
+    check('card shows its creation time', (await user.textContent('#activeList')).includes('أُنشئ اليوم'));
+    await shot(user, 'split-remaining-batches');
+    const del = await api(user, '/admin/api/split/delete', {id: reg.line.id});
+    check('manual line removed again', del.ok === true, del.error || '');
+    await user.reload();
+    await user.waitForSelector('#activeList .card');
     await user.goto(APP + '/admin/remaining?s=' + sid);
     await user.waitForSelector('#sessList .srow.on');
     check('?s=<id> in the link (from the create message) opens the session', (await user.inputValue('#q')) === sid);
