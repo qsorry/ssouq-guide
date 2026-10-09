@@ -57,6 +57,15 @@ h2 small{font-weight:400;font-size:.8rem;color:var(--mute)}
 .accbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
 .chip{padding:6px 13px;border-radius:20px;border:1px solid var(--line);background:var(--sf2);font-size:.84rem;color:var(--mute)}
 .chip.on{border-color:var(--go);color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
+.chip.sm{padding:1px 8px;font-size:.76rem;cursor:pointer;font-family:inherit;line-height:1.5}
+.chip.sm .mono{direction:ltr;unicode-bidi:isolate}
+.sess{display:flex;flex-direction:column;gap:8px}
+.srow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--sf2);font-size:.86rem;color:var(--mute)}
+.srow.on{border-color:var(--go);background:color-mix(in srgb,var(--go) 8%,transparent)}
+.srow .sid{font-weight:700;color:var(--ink);direction:ltr;unicode-bidi:isolate}
+.srow b{color:var(--ink)}
+.srow .acts{margin-inline-start:auto;display:flex;gap:6px}
+.srow .acts .copy,.srow .acts .ghost{padding:5px 10px;font-size:.8rem}
 
 /* الإشعارات */
 .notes{display:flex;flex-direction:column;gap:6px}
@@ -180,7 +189,12 @@ details.old summary{cursor:pointer;color:var(--mute);font-size:.9rem}
 
   <div class="accbar" id="accBar" hidden></div>
   <div class="tiles" id="tiles"></div>
-  <div class="find" id="findBox" hidden><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input class="t" id="q" type="search" placeholder="ابحث باسم المستخدم أو كلمة المرور أو العميل" autocomplete="off" aria-label="بحث في الخطوط"></div>
+  <div class="find" id="findBox" hidden><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input class="t" id="q" type="search" placeholder="ابحث باسم المستخدم أو كلمة المرور أو العميل أو رقم الجلسة" autocomplete="off" aria-label="بحث في الخطوط"></div>
+
+  <section id="sess" hidden>
+    <h2>جلسات الإنشاء <span class="count" id="sessN">0</span><small>لكل دفعةٍ من صفحة الإنشاء (أو خطٍّ أُضيف) معرّفٌ بوقتها — يرافق خطوطها وإشعاراتها، فتعود إليها بالضغط عليه</small></h2>
+    <div class="sess" id="sessList"></div>
+  </section>
 
   <section id="notes">
     <h2><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>الإشعارات <span class="count" id="notesN">0</span><span class="grow"></span><button class="ghost" id="readAll">تعليم الكل كمقروء</button></h2>
@@ -253,7 +267,7 @@ const MODE = {web: "جلسة ويب", falcon: "فالكون", api: "Reseller API
 // نوع البيع المختار مسبقًا: ستة أشهر كما كان (default_slice) إن اتّسع لها الخط، وإلا أطولُ ما يتّسع —
 // فالـ١٢ شهرًا تُختار صراحةً ولا تُباع بالنقرة المعتادة.
 const pickSlice = list => list.includes(D.default_slice) ? D.default_slice : list[0];
-let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null, MAIL_RES = null, Q = "";
+let D = null, ACC = "", SHOW_OLD = false, OPEN_SELL = "", TEST_RES = null, MAIL_RES = null, Q = "", SESS_ALL = false;
 // «مدة أخرى»: عدد أشهرٍ يُكتب (١٠ مثلًا، وبالأرقام العربية أيضًا) ← عددٌ صحيح، وإلا NaN.
 const typedMonths = v => { const s = norm(v); return /^\d{1,3}$/.test(s) ? +s : NaN; };
 // ما اختير في بطاقة البيع المفتوحة ({v: الخيار، n: العدد المكتوب}) — يبقى إن أُعيد رسمها (إشعارٌ قُرئ،
@@ -296,6 +310,8 @@ async function load(){
     return;
   }
   if (ACC && !D.accounts.some(a => a.id === ACC)) ACC = "";
+  const sp = new URLSearchParams(location.search).get("s");
+  if (sp && !load.sessDone){ load.sessDone = true; $("q").value = sp; Q = norm(sp); }
   render();
 }
 const inAcc = x => !ACC || x.account_id === ACC;
@@ -320,11 +336,12 @@ function render(){
   $("findBox").hidden = !L.length;
   renderBell(D.unread);
   renderNotes(unread);
+  renderSess();
   renderLists();
   renderReg(); renderSettings();
 }
 
-const hit = x => [x.username, x.password, (x.slice || {}).customer, ...(x.history || []).flatMap(h => [h.username, h.customer])].some(v => norm(v).includes(Q));
+const hit = x => [x.username, x.password, x.batch, (x.slice || {}).customer, ...(x.history || []).flatMap(h => [h.username, h.customer])].some(v => norm(v).includes(Q));
 const byDue = (a, b) => ((a.slice || {}).due || "").localeCompare((b.slice || {}).due || "");
 const noHit = '<div class="empty">لا نتيجة هنا للبحث.</div>';
 // مجموعةٌ مطويّة: عددها بارزًا، ثم عنوانها وسطرٌ يلخّصها. تُفتح وحدها إن كانت الوحيدة، أو أثناء البحث، أو لبيعٍ مفتوحٍ فيها.
@@ -377,6 +394,23 @@ function renderLists(){
   if (Q && done.length) $("done").querySelector("details").open = true;
 }
 
+// جلسات الإنشاء: الأحدث أولًا، ثماني جلساتٍ ثم «عرض الكل». «عرض» يبحث برقم الجلسة فتُعرض
+// خطوطها وحدها (ويُضغط ثانيةً للإغلاق)، و«نسخ» ينسخ سطورها كلها بترتيب إنشائها.
+const SESS_STATES = {available: "متاحة", active: "جارية", failed: "تحتاج تدخّلًا", due: "حان التغيير", sold_out: "بِيع المتبقي", ended: "انتهت"};
+const sessOf = x => x.batch ? `<span><button class="chip sm" data-q="${esc(x.batch)}" title="عرض خطوط هذه الجلسة">جلسة <span class="mono">${esc(x.batch)}</span></button></span>` : "";
+function renderSess(){
+  const B = (D.batches || []).filter(inAcc);
+  $("sess").hidden = !B.length; $("sessN").textContent = B.length;
+  if (!B.length) return;
+  const list = SESS_ALL ? B : B.slice(0, 8);
+  $("sessList").innerHTML = list.map(b => {
+    const on = Q && Q === norm(b.id);
+    const st = Object.entries(b.states || {}).map(([k, v]) => `${SESS_STATES[k] || k} ${v}`).join(" · ");
+    return `<div class="srow${on ? " on" : ""}" data-sess="${esc(b.id)}"><span class="sid mono">${esc(b.id)}</span><span>${esc(b.at)}</span><b>${b.n} ${UNIT(b.n)}</b>
+      <span>${esc((b.gates || []).join("، "))}${acctName(b)}</span>${(b.months || []).length ? `<span>جزء ${b.months.map(MONTHS).join(" · ")}</span>` : ""}${st ? `<span>${esc(st)}</span>` : ""}${b.source === "manual" ? "<span>إضافة خطٍّ قائم</span>" : ""}
+      <span class="acts"><button class="ghost" data-q="${esc(b.id)}">${on ? "إغلاق" : "عرض"}</button><button class="copy" data-scopy="${esc(b.id)}" title="نسخ سطور الجلسة كلها (Host · User · Pass · Guide)">${icon.copy}نسخ</button></span></div>`;
+  }).join("") + (B.length > 8 ? `<button class="ghost" id="sessMore">${SESS_ALL ? "أقل" : "عرض الكل (" + B.length + ")"}</button>` : "");
+}
 function renderBell(n){ const d = $("bellN"); d.hidden = !n; d.textContent = n > 99 ? "99+" : String(n); }
 function renderNotes(unread){
   const N = D.notes.filter(inAcc);
@@ -385,7 +419,7 @@ function renderNotes(unread){
   // أحدث ثلاثة (وكل غير المقروء حتى ثمانية) — فلا تدفع الإشعاراتُ القوائمَ بعيدًا
   const k = Math.min(8, Math.max(3, unread)), list = SHOW_OLD ? N : N.slice(0, k);
   $("notesList").innerHTML = list.length ? list.map(n => `<button class="note${n.read ? "" : " unread"}" data-note="${esc(n.id)}">
-      <i class="ud"></i><span class="t">${esc(n.text)}<small>${esc(n.at)}${acctName(n)}</small></span></button>`).join("")
+      <i class="ud"></i><span class="t">${esc(n.text)}<small>${esc(n.at)}${acctName(n)}${n.batch ? ` · <span class="chip sm" data-q="${esc(n.batch)}" title="عرض خطوط هذه الجلسة">جلسة <span class="mono">${esc(n.batch)}</span></span>` : ""}</small></span></button>`).join("")
     : '<div class="empty">لا إشعارات بعد — تصلك هنا (وبالبريد إن ضُبط): قبل انتهاء الجزء بأيام، وحين يتغيّر اسم المستخدم، وإن تعذّر التغيير.</div>';
   $("notesMore").hidden = SHOW_OLD || N.length <= k;
 }
@@ -409,7 +443,7 @@ function cardAvail(x){
   const last = (x.history || []).slice(-1)[0];
   return `<div class="card" data-line="${esc(x.id)}">
     <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="btn" data-sell="${esc(x.id)}">${open ? "إغلاق" : "بيع"}</button>${last ? `<button class="ghost" data-undo="${esc(x.id)}" title="يعيد الاسم القديم ${esc(last.username)} على اللوحة ويعيد الجزء كما كان">↩️ تراجع</button>` : ""}</div></div>
-    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span class="ok">ينتهي الخط ${esc(x.expiry)}</span><span>متاح منذ ${esc((x.available_since || "").slice(0, 10))}</span>${last ? `<span>كان <b class="mono">${esc(last.username)}</b></span>` : ""}</div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span>${sessOf(x)}<span class="ok">ينتهي الخط ${esc(x.expiry)}</span><span>متاح منذ ${esc((x.available_since || "").slice(0, 10))}</span>${last ? `<span>كان <b class="mono">${esc(last.username)}</b></span>` : ""}</div>
     ${x.last_error ? `<div class="err">${esc(x.last_error)}</div>` : ""}
     ${open ? `<div class="sellbox"><div class="opts">${opts}</div>${nbox}
       <label class="f" for="cu_${esc(x.id)}">العميل (اختياري)</label><input class="t" id="cu_${esc(x.id)}" placeholder="اسم أو جوال أو رقم طلب">
@@ -422,7 +456,7 @@ function cardActive(x){
   const s = x.slice || {}, due = s.due || "";
   return `<div class="card" data-line="${esc(x.id)}">
     <div class="row1">${creds(x)}<div class="acts">${copyBtns(x)}<button class="ghost" data-rot="${esc(x.id)}" title="ينتهي الجزء الآن وينقطع العميل">غيّر الآن</button></div></div>
-    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span>${(s.n || 1) > 1 ? `<span>الجزء ${s.n}</span>` : ""}${who(x)}
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span>${sessOf(x)}${(s.n || 1) > 1 ? `<span>الجزء ${s.n}</span>` : ""}${who(x)}
       <span class="${x.due_in_days <= 7 ? "em" : ""}" title="${esc(due)}">يتغيّر الاسم ${esc(x.due_in_days <= 1 ? due : due.slice(0, 10))} · ${DAYS(x.due_in_days)}</span></div>
     ${x.last_error ? `<div class="err">آخر محاولة: ${esc(x.last_error)}</div>` : ""}</div>`;
 }
@@ -431,7 +465,7 @@ function cardAttn(x){
   const why = x.state === "due" ? "حان التغيير — التغيير التلقائي معطَّل أو الجزء انتهى قبل تسجيله." : (x.last_error || "تعذّر التغيير");
   return `<div class="card" data-line="${esc(x.id)}">
     <div class="row1">${creds(x)}<div class="acts"><button class="btn" data-rot="${esc(x.id)}">${x.state === "due" ? "غيّر الآن تلقائيًا" : "أعِد المحاولة"}</button></div></div>
-    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span>الجزء: ${MONTHS((x.slice || {}).months)}</span>${who(x)}<span class="em">موعده ${esc((x.slice || {}).due || "")}</span></div>
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span>${sessOf(x)}<span>الجزء: ${MONTHS((x.slice || {}).months)}</span>${who(x)}<span class="em">موعده ${esc((x.slice || {}).due || "")}</span></div>
     <div class="err">${esc(why)}</div>
     <div class="line-row"><input class="t ltr" id="nu_${esc(x.id)}" value="${esc(pend)}" placeholder="اسم المستخدم الجديد كما غيّرته في اللوحة" inputmode="numeric" autocomplete="off">
       ${pend ? `<button class="ghost" data-cp="${esc(pend)}" title="انسخه لتكتبه في اللوحة">${icon.copy}</button>` : ""}
@@ -440,7 +474,7 @@ function cardAttn(x){
 }
 function cardDone(x){
   return `<div class="card"><div class="row1">${creds(x)}<div class="acts">${x.state === "sold_out" ? copyBtns(x) : ""}<button class="ghost danger" data-del="${esc(x.id)}">حذف من المتابعة</button></div></div>
-    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span><span>${x.state === "sold_out" ? "بِيع المتبقي — ينتهي " + esc(x.expiry) : "انتهى " + esc(x.expiry)}</span>${who(x)}</div>${history(x)}</div>`;
+    <div class="meta"><span>${esc(x.gate_name)}${acctName(x)}</span>${sessOf(x)}<span>${x.state === "sold_out" ? "بِيع المتبقي — ينتهي " + esc(x.expiry) : "انتهى " + esc(x.expiry)}</span>${who(x)}</div>${history(x)}</div>`;
 }
 function history(x){
   const h = x.history || [];
@@ -551,6 +585,21 @@ const byId = id => D.lines.find(x => x.id === id);
 document.addEventListener("click", async e => {
   // فتح مجموعةٍ أو طيّها بيد المستخدم يُحفظ — النقر يسبق التبديل، فالحالة الجديدة عكس الحالية.
   const sm = e.target.closest("summary"), gp = sm && sm.parentElement;
+  const qb = e.target.closest("[data-q]");
+  if (qb){                                                 // جلسة: عرض خطوطها (بحثٌ برقمها)، أو إغلاقها
+    e.preventDefault();
+    const v = qb.dataset.q, same = Q === norm(v);
+    $("q").value = same ? "" : v; Q = same ? "" : norm(v); render();
+    if (!same) $("sess").scrollIntoView({behavior: "smooth", block: "start"});
+    return;
+  }
+  const sc = e.target.closest("button[data-scopy]");
+  if (sc){                                                 // نسخ سطور الجلسة كلها بترتيب إنشائها
+    const g = D.lines.filter(x => inAcc(x) && x.batch === sc.dataset.scopy).sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+    if (!g.length) return toast("لا يوجد ما يُنسخ", true);
+    copy(g.map(x => x.line).join("\n"), `نُسخت جلسة ${sc.dataset.scopy} (${g.length} ${UNIT(g.length)})`); return;
+  }
+  if (e.target.closest("#sessMore")){ SESS_ALL = !SESS_ALL; renderSess(); return; }
   const gcp = e.target.closest("button[data-gcopy]");
   if (gcp){                                                // نسخ المجموعة من عنوانها — لا يطويها
     e.preventDefault();

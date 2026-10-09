@@ -269,7 +269,8 @@ def _note(db, kind, rec, text, now, mail=True, read=False):
     n = {"id": secrets.token_hex(5), "at": fmt(now), "kind": kind,
          "line": (rec or {}).get("id", ""), "username": (rec or {}).get("username", ""),
          "gate": (rec or {}).get("gate_name", ""), "text": text, "read": bool(read),
-         "mail": "pending" if mail else "skip"}
+         "mail": "pending" if mail else "skip",
+         "batch": (rec or {}).get("batch", "")}     # جلسة الخط: تُعرض شارةً تفتح خطوطها
     db["notes"].insert(0, n)
     del db["notes"][MAX_NOTES:]
     return n
@@ -319,9 +320,40 @@ def find(db, gate_id, username):
                  and r.get("state") != ENDED), None)
 
 
+def new_batch_id(now=None):
+    """معرّف جلسة الإنشاء (دفعةٌ واحدة من صفحة الإنشاء، أو إضافة خطٍّ قائم): «S» ثم
+    سنة-شهر-يوم وساعة-دقيقة-ثانية — يُقرأ منه متى تمّت، ويُبحث به في صفحة «حسابات متبقية»
+    ويرافق إشعاراتها. الدفعة طلبٌ واحد يأخذ ثوانيَ، فلا تتزاحم جلستان في الثانية نفسها."""
+    now = now or now_dt()
+    return "S" + now.strftime("%y%m%d-%H%M%S")
+
+
+def batches(lines, now=None):
+    """الجلسات من الخطوط: لكل معرّفٍ وقتُها (أول إنشاء) وعدد خطوطها وبواباتها وأجزاؤها
+    وحالاتها — الأحدث أولًا. الخطوط القديمة بلا معرّف لا تُعدّ."""
+    out = {}
+    for r in lines:
+        b = str(r.get("batch") or "")
+        if not b:
+            continue
+        e = out.setdefault(b, {"id": b, "at": r.get("created_at", ""), "n": 0, "gates": [],
+                               "months": [], "states": {}, "source": r.get("source", "")})
+        e["n"] += 1
+        if r.get("created_at") and (not e["at"] or r["created_at"] < e["at"]):
+            e["at"] = r["created_at"]
+        if r.get("gate_name") and r["gate_name"] not in e["gates"]:
+            e["gates"].append(r["gate_name"])
+        m = (r.get("slice") or {}).get("months")
+        if m and m not in e["months"]:
+            e["months"].append(m)
+        st = r.get("state", "")
+        e["states"][st] = e["states"].get(st, 0) + 1
+    return sorted(out.values(), key=lambda e: e["at"], reverse=True)
+
+
 def register(data_dir, acct_id, gate, username, password, slice_months, *, package="",
              base_months=15, start=None, expiry=None, customer="", line_id="", host="",
-             source="create", now=None):
+             source="create", now=None, batch=""):
     """يسجّل خطًّا أمًّا وأول جزءٍ مبيعٍ منه. يرجّع (السجل، أهو جديد؟).
 
     الخط نفسه (البوابة واليوزر) لا يُسجَّل مرتين — تُعاد نسخته القائمة. وجزءٌ انتهى
@@ -361,6 +393,7 @@ def register(data_dir, acct_id, gate, username, password, slice_months, *, packa
             "slice": _slice(1, slice_months, start, due, customer, final),
             "history": [], "pending": None, "attempts": 0, "last_error": "",
             "last_try": "", "next_try": "", "delayed_noted": False, "source": source,
+            "batch": str(batch or ""),          # جلسة الإنشاء التي جاء منها (new_batch_id)
         }
         if not final and due <= now:            # جزءٌ انتهى قبل تسجيله: قرار المشغّل
             rec["state"] = DUE
@@ -394,13 +427,14 @@ def _sold_text(rec, exp):
     """سطر السجلّ حين يُباع جزء: ما بِيع، ومتى يتغيّر الاسم، وما يبقى بعده."""
     sl = rec.get("slice") or {}
     who = (" للعميل %s" % sl["customer"]) if sl.get("customer") else ""
+    sess = (" · جلسة %s" % rec["batch"]) if rec.get("batch") else ""
     if rec.get("state") == SOLD_OUT:
-        return "🆕 بِيع المتبقي من الخط %s (%s)%s — ينتهي %s، ولا تغيير بعده." % (
-            rec["username"], rec["gate_name"], who, exp.isoformat())
+        return "🆕 بِيع المتبقي من الخط %s (%s)%s — ينتهي %s، ولا تغيير بعده.%s" % (
+            rec["username"], rec["gate_name"], who, exp.isoformat(), sess)
     due = parse_dt(sl.get("due"))
-    return "🆕 بِيع جزء %s من الخط %s (%s)%s — يتغيّر اسم المستخدم %s، ثم «متبقي %s»." % (
+    return "🆕 بِيع جزء %s من الخط %s (%s)%s — يتغيّر اسم المستخدم %s، ثم «متبقي %s».%s" % (
         months_ar(sl.get("months")), rec["username"], rec["gate_name"], who, sl.get("due", ""),
-        months_ar(months_left(exp, due.date())) if due else "")
+        months_ar(months_left(exp, due.date())) if due else "", sess)
 
 
 def _get(db, rid):
@@ -969,7 +1003,7 @@ def view(data_dir, acct_id, now=None):
     now = now or now_dt()
     db = load(data_dir, acct_id)
     lines = [decorate(r, now) for r in db["lines"].values()]
-    return {"cfg": db["cfg"], "lines": lines, "notes": db["notes"][:100],
+    return {"cfg": db["cfg"], "lines": lines, "notes": db["notes"][:100], "batches": batches(lines),
             "unread": unread(db), "gates": db["gates"], "mail": db["mail"],
             "slices": list(SLICES), "default_slice": DEFAULT_SLICE, "max_slice": MAX_SLICE,
             "base_months": list(BASE_MONTHS)}

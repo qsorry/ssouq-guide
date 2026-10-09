@@ -93,6 +93,8 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
           && (await user.textContent('#msg')).trim() === ''
           && await user.$eval('#timing', e => getComputedStyle(e).color) !== await user.$eval('#msg', e => getComputedStyle(e).color));
     check('message links to «حسابات متبقية»', await user.$$eval('#splitMsg a', els => els.some(e => e.getAttribute('href').endsWith('/remaining'))));
+    const sid = ((await user.textContent('#splitBatch')) || '').trim();
+    check('message names the creation session (S + date-time)', /^S\d{6}-\d{6}$/.test(sid), sid);
     check('message warns the email is not set up (no SMTP here)', sm.includes('بريد التنبيه غير مضبوط'), sm);
     await user.click('#bellBtn');
     await user.waitForFunction(() => document.getElementById('notesItems').textContent.includes('بِيع'), null, {timeout: 5000}).catch(() => {});
@@ -112,6 +114,26 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     check('running slice listed', (await user.textContent('#activeList')).includes(u1), u1);
     check('shows what remains after it', (await user.textContent('#activeList')).includes('بعده متبقي 9 أشهر'));
     await shot(user, 'split-remaining-active');
+    // ---- جلسات الإنشاء: المعرّف على البطاقة وفي الإشعار وفي قسم الجلسات، «عرض» يرشّح و«نسخ» ينسخ ----
+    check('sessions section lists the creation session with its id and count', await user.isVisible('#sess')
+          && (await user.$eval('#sessList .srow .sid', e => e.textContent.trim())) === sid
+          && (await user.textContent('#sessList .srow b')).trim() === '1 يوزر', await user.textContent('#sessList'));
+    check('card carries the session chip', (await user.$eval('#activeList .card [data-q]', e => e.dataset.q)) === sid);
+    check('notification carries the session chip', (await user.$$eval('#notesList [data-q]', (els, id) => els.some(e => e.dataset.q === id), sid)));
+    await user.click('#sessList .srow [data-q]');
+    check('«عرض» filters by the session id (search box filled, row highlighted)', (await user.inputValue('#q')) === sid
+          && !!(await user.$('#sessList .srow.on')) && (await user.textContent('#activeList')).includes(u1));
+    await user.evaluate(() => navigator.clipboard.writeText(''));
+    await user.click('#sessList .srow [data-scopy]');
+    await sleep(150);
+    check('session «نسخ» copies its lines', (await user.evaluate(() => navigator.clipboard.readText())) === made);
+    await user.click('#sessList .srow [data-q]');
+    check('pressing again clears the filter', (await user.inputValue('#q')) === '' && !(await user.$('#sessList .srow.on')));
+    await user.goto(APP + '/admin/remaining?s=' + sid);
+    await user.waitForSelector('#sessList .srow.on');
+    check('?s=<id> in the link (from the create message) opens the session', (await user.inputValue('#q')) === sid);
+    await user.goto(APP + '/admin/remaining');
+    await user.waitForSelector('#activeList .card');
     // ---- نسخ دفعةً واحدة: «نسخ آخر N المنشأة» في رأس القسم، و«نسخ الكل» في عنوان كل مجموعة (لا يطويها) ----
     check('«نسخ آخر N» shown with 10 as the default', await user.isVisible('#copyLast') && (await user.inputValue('#lastN')) === '10');
     await user.evaluate(() => navigator.clipboard.writeText(''));

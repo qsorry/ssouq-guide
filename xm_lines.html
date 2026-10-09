@@ -1073,7 +1073,7 @@ function splitResult(sp, mail){
   const rows = [];
   if (ok.length) {
     const x = ok[0];
-    rows.push(`✓ ${ok.length === 1 ? "الجزء مسجَّل" : ok.length + " أجزاء مسجَّلة"}: يتغيّر اسم المستخدم تلقائيًا في ${esc(x.due)} ويصير «متبقي ${monthsAr(x.remaining_after)}» — تجده في ${a("/remaining", "حسابات متبقية")}.`);
+    rows.push(`✓ ${ok.length === 1 ? "الجزء مسجَّل" : ok.length + " أجزاء مسجَّلة"}: يتغيّر اسم المستخدم تلقائيًا في ${esc(x.due)} ويصير «متبقي ${monthsAr(x.remaining_after)}» — تجده في ${a("/remaining", "حسابات متبقية")}${x.batch ? ` تحت الجلسة ${a("/remaining?s=" + encodeURIComponent(x.batch), "<span class=\"mono\" id=\"splitBatch\">" + esc(x.batch) + "</span>")}` : ""}.`);
     rows.push(mail && mail.configured
       ? `✉ ${x.remind ? `يصلك تذكيرٌ بالبريد${mail.to ? " (" + esc(mail.to) + ")" : ""} في ${esc(x.remind)}، ثم ` : "يصلك "}بريدٌ وإشعارٌ في الجرس 🔔 حين يتغيّر الاسم.`
       : `⚠ بريد التنبيه غير مضبوط — التذكير يصل في الجرس 🔔 فقط. اضبطه من ${a("/renew", "صفحة التجديد")} (قسم «بريد التنبيه»).`);
