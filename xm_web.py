@@ -2138,19 +2138,42 @@ class CasperWebSession(PanelWebSession):
                 bucket += [v.strip() for v, _ in self._RE_OPT.findall(sm.group(1)) if v.strip()]
         return live, vod
 
+    RECENT_LINES = 50          # أحدث صفوف اللوحة المُعادة لبطاقة الحالة (صفحةٌ واحدة)
+
+    @staticmethod
+    def _ymd(s: str) -> str:
+        """تاريخٌ كما تكتبه اللوحة (YYYY-MM-DD أو DD-MM-YYYY أو DD/MM/YYYY …) → YYYY-MM-DD، أو ""."""
+        s = str(s or "")
+        m = re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", s)
+        if m:
+            return "%s-%02d-%02d" % (m.group(1), int(m.group(2)), int(m.group(3)))
+        m = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", s)
+        if m:
+            return "%s-%02d-%02d" % (m.group(3), int(m.group(2)), int(m.group(1)))
+        return ""
+
     def status(self) -> dict:
-        """رصيد الموزّع (Credit) وبعض الأرقام — لبطاقة صفحة الإنشاء."""
+        """رصيد الموزّع (Credit) وبعض الأرقام — لبطاقة صفحة الإنشاء.
+
+        ومعها **أحدث اليوزرات على اللوحة** (`recent_lines`: أول صفحةٍ بترتيب id تنازليًّا،
+        باليوزر وكلمة المرور كما يعرضهما جدول اللوحة) و**اشتراكات اليوم** منها (`today_lines`:
+        ما تاريخُ إنشائه اليوم بتوقيت الرياض). فدفعةٌ انقطع الاتصال في أثنائها لا تضيع:
+        اليوزرات التي أنشأتها اللوحة تظهر هنا عند العودة وتُنسخ دفعةً واحدة."""
         self.ensure_login()
         html = self._text(self._request(self._u("index.php/home/index")))
-        last, total = {}, None
+        last, total, rows, got = {}, None, [], False
         try:
-            page1 = self._text(self._request(self._u("index.php/users/index?page=1")))
+            page1 = self._text(self._request(self._u("index.php/users/index?order=id:desc&page=1")))
             rows = self._parse_users_page(page1)
+            got = True
             last = rows[0] if rows else {}
             pgs = [int(x) for x in self._RE_PAGES.findall(page1)]
             total = (max(pgs) * 50) if pgs else len(rows)   # تقديرٌ من الترقيم
         except Exception:
             pass
+        today = self._today()
+        recent = [dict(r) for r in rows[:self.RECENT_LINES]]
+        todays = [r for r in recent if self._ymd(r.get("created")) == today]
         return {
             "provider": "web",
             "credits": self._extract_credits(html),
@@ -2159,9 +2182,10 @@ class CasperWebSession(PanelWebSession):
             "total": total,
             "last_id": last.get("id"),
             "last_username": last.get("username"),
-            "created_today": None,
-            "today": "",
-            "today_lines": [],
+            "created_today": len(todays) if got else None,
+            "today": today if got else "",
+            "today_lines": todays,
+            "recent_lines": recent,
         }
 
     def _find_user(self, u):
