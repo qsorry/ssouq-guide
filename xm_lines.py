@@ -3540,21 +3540,24 @@ def split_register_created(acct, gate, pkg, slice_m, out, customer=""):
     أُنشئ خُصم وسُلِّم، فخطأ التسجيل يُعاد مع الخط ليُسجَّل من الصفحة."""
     months = split_base_months(pkg)
     days = split_subs.load(DATA_DIR, acct["id"])["cfg"].get("remind_days") or 0
+    now = split_subs.now_dt()
+    batch = split_subs.new_batch_id(now)          # جلسةٌ واحدة للدفعة كلها — تُعرف بها في «حسابات متبقية»
     res = []
     for r in out:
         host = (re.search(r"Host\s+(\S+)", r.get("line", "")) or [None, ""])[1] or gate.get("host", "")
         try:
-            now = split_subs.now_dt()
             reckoned = renew.add_months(now.date(), months)
             rec, _new = split_subs.register(
                 DATA_DIR, acct["id"], gate, r["username"], r["password"], slice_m,
                 package=pkg.get("name", ""), base_months=months, host=host,
                 expiry=split_subs.trust_expiry(r.get("exp"), reckoned),
-                line_id=r.get("line_id", ""), customer=customer, source="create", now=now)
+                line_id=r.get("line_id", ""), customer=customer, source="create", now=now,
+                batch=batch)
             v = split_subs.decorate(rec)
             due = split_subs.parse_dt(rec["slice"]["due"])
             res.append({"id": rec["id"], "username": rec["username"], "due": rec["slice"]["due"],
                         "months": slice_m, "remaining_after": v.get("remaining_after", 0),
+                        "batch": rec.get("batch", ""),
                         # موعد بريد التذكير (قبل التغيير بأيام الإعداد)، "" = بلا تذكير
                         "remind": (due - datetime.timedelta(days=days)).date().isoformat() if days and due else ""})
         except Exception as e:
@@ -6548,7 +6551,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _split_state(self, st, role, acct):
         now = split_subs.now_dt()
-        accounts, lines, notes, unread = [], [], [], 0
+        accounts, lines, notes, batches, unread = [], [], [], [], 0
         for a in self._split_scope(st, role, acct):
             v = split_subs.view(DATA_DIR, a["id"], now)
             gates = {str(g.get("id")): g for g in (a.get("gates") or [])}
@@ -6571,9 +6574,11 @@ class Handler(BaseHTTPRequestHandler):
                 rec["account_name"] = a.get("name", "")
                 lines.append(rec)
             notes += [{**n, "account_id": a["id"], "account_name": a.get("name", "")} for n in v["notes"]]
+            batches += [{**b, "account_id": a["id"], "account_name": a.get("name", "")} for b in v["batches"]]
             unread += v["unread"]
         notes.sort(key=lambda n: n.get("at", ""), reverse=True)
-        return {"role": role, "accounts": accounts, "lines": lines, "notes": notes[:150],
+        batches.sort(key=lambda b: b.get("at", ""), reverse=True)
+        return {"role": role, "accounts": accounts, "lines": lines, "notes": notes[:150], "batches": batches,
                 "unread": unread, "slices": list(split_subs.SLICES),
                 "default_slice": split_subs.DEFAULT_SLICE, "max_slice": split_subs.MAX_SLICE,
                 "base_months": list(split_subs.BASE_MONTHS), "now": split_subs.fmt(now)}
@@ -6766,7 +6771,8 @@ class Handler(BaseHTTPRequestHandler):
             rec, new = split_subs.register(
                 DATA_DIR, a["id"], gate, user, pw or found.get("password", ""), months,
                 base_months=split_subs.BASE_MONTHS[0], start=start, expiry=expiry,
-                customer=req.get("customer", ""), line_id=found.get("line_id", ""), source="manual")
+                customer=req.get("customer", ""), line_id=found.get("line_id", ""), source="manual",
+                batch=split_subs.new_batch_id(now))
         except ValueError as e:
             return self._send(400, {"error": str(e)})
         return self._send(200, {"ok": True, "created": new, "line": split_subs.decorate(rec)})

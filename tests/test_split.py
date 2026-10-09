@@ -67,6 +67,31 @@ class Base(unittest.TestCase):
         return S.load(self.d, "a1")["lines"][rid]
 
 
+class TestBatch(Base):
+    """جلسة الإنشاء: معرّفٌ بوقتها على كل خطٍّ من الدفعة، في إشعار بيعه، وفي ملخّص الجلسات."""
+    def test_id_and_summary(self):
+        bid = S.new_batch_id(T0)
+        self.assertRegex(bid, r"^S\d{6}-\d{6}$")
+        self.assertEqual(bid, "S" + T0.strftime("%y%m%d-%H%M%S"))
+        r1, _ = self.reg("111122223333", batch=bid)
+        r2, _ = self.reg("444455556666", batch=bid)
+        r3, _ = self.reg("777788889999", months=3)           # بلا جلسة (خطٌّ قديم)
+        self.assertEqual((r1["batch"], r2["batch"], r3["batch"]), (bid, bid, ""))
+        notes = S.load(self.d, "a1")["notes"]
+        n1 = next(n for n in notes if n["username"] == "111122223333")
+        self.assertIn("جلسة " + bid, n1["text"])
+        self.assertEqual(n1["batch"], bid)
+        n3 = next(n for n in notes if n["username"] == "777788889999")
+        self.assertNotIn("جلسة", n3["text"])
+        self.assertEqual(n3["batch"], "")
+        v = S.view(self.d, "a1", T0)
+        self.assertEqual(len(v["batches"]), 1)
+        b = v["batches"][0]
+        self.assertEqual((b["id"], b["n"], b["at"], b["months"], b["states"]),
+                         (bid, 2, S.fmt(T0), [6], {S.ACTIVE: 2}))
+        self.assertEqual(b["gates"], [GATE["name"]])
+
+
 class TestRegister(Base):
     def test_six_of_fifteen(self):
         rec, new = self.reg()
