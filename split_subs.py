@@ -325,7 +325,15 @@ def new_batch_id(now=None):
     سنة-شهر-يوم وساعة-دقيقة-ثانية — يُقرأ منه متى تمّت، ويُبحث به في صفحة «حسابات متبقية»
     ويرافق إشعاراتها. الدفعة طلبٌ واحد يأخذ ثوانيَ، فلا تتزاحم جلستان في الثانية نفسها."""
     now = now or now_dt()
-    return "S" + now.strftime("%y%m%d-%H%M%S")
+    base = "S" + now.strftime("%y%m%d-%H%M%S")
+    with _lock:                                   # جلستان في الثانية نفسها (اختبارٌ أو إضافتان متتاليتان): لاحقةٌ تميّزهما
+        last, n = _batch_last
+        n = n + 1 if last == base else 1
+        _batch_last[:] = [base, n]
+    return base if n == 1 else "%s-%d" % (base, n)
+
+
+_batch_last = ["", 0]
 
 
 def batches(lines, now=None):
