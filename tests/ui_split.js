@@ -112,6 +112,20 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({path: pat
     check('running slice listed', (await user.textContent('#activeList')).includes(u1), u1);
     check('shows what remains after it', (await user.textContent('#activeList')).includes('بعده متبقي 9 أشهر'));
     await shot(user, 'split-remaining-active');
+    // ---- نسخ دفعةً واحدة: «نسخ آخر N المنشأة» في رأس القسم، و«نسخ الكل» في عنوان كل مجموعة (لا يطويها) ----
+    check('«نسخ آخر N» shown with 10 as the default', await user.isVisible('#copyLast') && (await user.inputValue('#lastN')) === '10');
+    await user.evaluate(() => navigator.clipboard.writeText(''));
+    await user.click('#copyLast');
+    await sleep(150);
+    const lastClip = await user.evaluate(() => navigator.clipboard.readText());
+    check('copies the newest created line(s) as full lines', lastClip === made, lastClip);
+    const wasOpen = await user.$eval('#activeList details.gp', d => d.open);
+    await user.evaluate(() => navigator.clipboard.writeText(''));
+    await user.click('#activeList details.gp > summary button[data-gcopy]');
+    await sleep(150);
+    check('group «نسخ الكل» copies the group and leaves the fold as it was',
+          (await user.evaluate(() => navigator.clipboard.readText())) === made
+          && (await user.$eval('#activeList details.gp', d => d.open)) === wasOpen);
     await user.click(`#activeList [data-rot]`);                     // «غيّر الآن» (يقبل التأكيد)
     await user.waitForSelector('#availList .card', {timeout:15000});
     const avail = await user.textContent('#availList');

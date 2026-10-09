@@ -572,7 +572,7 @@ const STAT_KEY = () => "xm_status_" + account + "_" + curGate;
 const stat = (l, v, cls="") => `<div class="stat ${cls}"><small>${l}</small><b${cls.includes("mono")?' class="mono"':""}>${fmt(v)}</b></div>`;
 async function loadGateStatus(){
   const gate = gates.find(g => g.id === curGate) || {};
-  $("statusWarn").hidden = true; $("gateStatus").innerHTML = ""; $("todayBox").hidden = true; $("todayBox").innerHTML = "";
+  $("statusWarn").hidden = true; $("gateStatus").innerHTML = ""; $("todayBox").hidden = true; $("todayBox").innerHTML = ""; recentShown = RECENT_FIRST;
   if (gate.archive_only){ setBadge("أرشيف", ""); $("gateStatus").innerHTML = '<div class="stat empty">بوابة أرشيف — البحث من اليوزرات المحفوظة فقط (لا دخول للّوحة)</div>'; return; }
   if (gate.mode !== "falcon" && gate.mode !== "web"){ setBadge("بلا حالة", ""); $("gateStatus").innerHTML = '<div class="stat empty">حالة النقاط غير متاحة لهذه البوابة</div>'; return; }
   setBadge("جاري القراءة…", "");
@@ -606,19 +606,43 @@ async function loadGateStatus(){
   } catch(e){ setBadge("تعذّر", "err"); $("gateStatus").innerHTML = '<div class="stat empty">تعذّر قراءة الحالة</div>'; }
 }
 
-// اشتراكات اليوم من جدول اللوحة نفسه (ما أُنشئ من الأداة أو من اللوحة مباشرة)
+// اشتراكات اليوم من جدول اللوحة نفسه (ما أُنشئ من الأداة أو من اللوحة مباشرة)،
+// وتحتها — على لوحة كاسبر — «آخر اليوزرات على اللوحة» (أحدث صفوفها، الأحدث أولًا):
+// دفعةٌ انقطع الاتصال في أثنائها لا تضيع، فما أنشأته اللوحة يظهر هنا ويُنسخ دفعةً واحدة.
+const RECENT_FIRST = 10;                 // كم يوزرًا يُعرض من الأحدث قبل «عرض الكل»
+let recentShown = RECENT_FIRST;
+function linesTable(list, created){
+  return `<div class="tw"><table class="tbl"><thead><tr><th>#</th><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>${created ? "الإنشاء" : "الحالة"}</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>
+    ${list.map((x,i) => `<tr><td class="n">${i+1}</td><td class="m">${esc(x.username)}</td><td class="m">${esc(x.password)}</td><td title="${esc(x.package_name||"")}">${esc(x.package_type||"—")}</td><td${created ? ' class="n"' : ""}>${created ? esc(x.created || "—") : pill(x.status)}</td>
+      <td class="n hide-sm">${esc(x.exp || "—")}</td><td><button class="cb" title="نسخ السطر" data-line="${esc(lineOf(x))}">${copyIcon}</button></td></tr>`).join("")}
+    </tbody></table></div>`;
+}
 function renderToday(s){
   const list = Array.isArray(s.today_lines) ? s.today_lines : null;
-  if (!list) return;
-  const box = $("todayBox"); box.hidden = false;
-  if (!list.length){ box.innerHTML = `<div class="day"><h3>اشتراكات اليوم <span>(0)</span></h3><div class="empty">لم يُنشأ أي اشتراك اليوم${s.today ? " (" + esc(s.today) + ")" : ""}.</div></div>`; return; }
-  const n = s.created_today != null ? s.created_today : list.length;
-  box.innerHTML = `<div class="day"><h3>اشتراكات اليوم <span>(${n})${n > list.length ? " — يُعرض " + list.length : ""} <button class="copy" id="copyToday">نسخ الكل</button></span></h3>
-    <div class="tw"><table class="tbl"><thead><tr><th>#</th><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>
-    ${list.map((x,i) => `<tr><td class="n">${i+1}</td><td class="m">${esc(x.username)}</td><td class="m">${esc(x.password)}</td><td title="${esc(x.package_name||"")}">${esc(x.package_type||"—")}</td><td>${pill(x.status)}</td>
-      <td class="n hide-sm">${esc(x.exp || "—")}</td><td><button class="cb" title="نسخ السطر" data-line="${esc(lineOf(x))}">${copyIcon}</button></td></tr>`).join("")}
-    </tbody></table></div></div>`;
-  box.querySelector("#copyToday").onclick = () => copy(list.map(lineOf).join("\n"));
+  const recent = Array.isArray(s.recent_lines) ? s.recent_lines : [];
+  if (!list && !recent.length) return;
+  const box = $("todayBox"); box.hidden = false; box.innerHTML = "";
+  if (list){
+    const n = s.created_today != null ? s.created_today : list.length;
+    box.innerHTML = !list.length
+      ? `<div class="day"><h3>اشتراكات اليوم <span>(0)</span></h3><div class="empty">لم يُنشأ أي اشتراك اليوم${s.today ? " (" + esc(s.today) + ")" : ""}.</div></div>`
+      : `<div class="day"><h3>اشتراكات اليوم <span>(${n})${n > list.length ? " — يُعرض " + list.length : ""} <button class="copy" id="copyToday">نسخ الكل</button></span></h3>${linesTable(list, false)}</div>`;
+    const b = box.querySelector("#copyToday"); if (b) b.onclick = () => copy(list.map(lineOf).join("\n"));
+  }
+  if (recent.length) renderRecent(recent);
+}
+function renderRecent(recent){
+  const box = $("todayBox");
+  const old = box.querySelector("#recentBox"); if (old) old.remove();
+  const shown = recent.slice(0, Math.min(recentShown, recent.length));
+  const all = shown.length >= recent.length;
+  const div = document.createElement("div"); div.className = "day"; div.id = "recentBox";
+  div.innerHTML = `<h3>آخر اليوزرات على اللوحة <span>(${all ? recent.length : "يُعرض " + shown.length + " من " + recent.length}) <button class="copy" id="copyRecent">${all ? "نسخ الكل" : "نسخ آخر " + shown.length}</button>${all && recent.length > RECENT_FIRST ? ` <button class="copy" id="lessRecent">أقل</button>` : all ? "" : ` <button class="copy" id="moreRecent">عرض الكل (${recent.length})</button>`}</span></h3>
+    <div class="empty" style="padding:4px 0 8px">الأحدث أولًا كما في جدول اللوحة — انقطع الاتصال أثناء الإنشاء؟ ما أنشأته اللوحة يظهر هنا.</div>${linesTable(shown, true)}`;
+  box.appendChild(div);
+  div.querySelector("#copyRecent").onclick = () => copy(shown.map(lineOf).join("\n"));
+  const more = div.querySelector("#moreRecent"); if (more) more.onclick = () => { recentShown = recent.length; renderRecent(recent); };
+  const less = div.querySelector("#lessRecent"); if (less) less.onclick = () => { recentShown = RECENT_FIRST; renderRecent(recent); };
 }
 const gateOf = id => gates.find(g => g.id === (id || curGate)) || {};
 // رابط شرح البوابة كما يحسبه الخادم (gate_guide): رابطها الخاص، وإلا العام موجّهًا لصفحة اشتراكها.

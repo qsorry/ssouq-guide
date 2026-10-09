@@ -601,6 +601,36 @@ def main():
             check("timing: one verify request shared across the batch (confirm_ms small & equal)",
                   all((m.get("timing") or {}).get("confirm_ms") == tm0.get("confirm_ms") for m in many),
                   str([(m.get("timing") or {}).get("confirm_ms") for m in many]))
+
+            # == 8b. بطاقة الحالة تعيد أحدث يوزرات اللوحة (الأحدث أولًا، بكلمة المرور) ==
+            # دفعةٌ انقطع اتصال المتصفح في أثنائها: ما أنشأته اللوحة يُستعاد من هنا ويُنسخ دفعةً.
+            print("\n== 8b. Casper status: newest panel rows (recent_lines) + today's rows ==")
+            made = [r["username"], r2["username"]] + unames          # 7 أُنشئت في هذا الاختبار
+            st = cs.status()
+            rec = st.get("recent_lines") or []
+            check("recent_lines: newest first — the last created user is on top",
+                  bool(rec) and rec[0]["username"] == unames[-1], str([x["username"] for x in rec[:3]]))
+            check("recent_lines: every user created in this test is there, with its password",
+                  {x["username"]: x["password"] for x in rec}.items() >= {
+                      r["username"]: r["password"], r2["username"]: r2["password"],
+                      **{m["username"]: m["password"] for m in many}}.items(),
+                  str(len(rec)))
+            check("recent_lines: one panel page at most (RECENT_LINES), rows carry package/created/exp",
+                  len(rec) <= xm_web.CasperWebSession.RECENT_LINES
+                  and all(x.get("package") and x.get("created") and x.get("exp") for x in rec[:7]),
+                  str(rec[0])[:120] if rec else "empty")
+            check("today_lines: none of them was created 'today' (mock dates are fixed) → 0, with the date",
+                  st["today_lines"] == [] and st["created_today"] == 0 and bool(st["today"]), str(st["today"]))
+            cs._today = lambda: "2026-09-25"                        # يوم إنشاء اللوحة الوهمية للجدد
+            st2 = cs.status()
+            check("today_lines: rows whose panel 'created' date is today (7 created here), counted",
+                  st2["created_today"] == 7 and [x["username"] for x in st2["today_lines"]] == list(reversed(made)),
+                  "%s %s" % (st2["created_today"], [x["username"] for x in st2["today_lines"]][:8]))
+            check("_ymd accepts the panel's date spellings",
+                  xm_web.CasperWebSession._ymd("2026-09-25 22:54") == "2026-09-25"
+                  and xm_web.CasperWebSession._ymd("25-09-2026") == "2026-09-25"
+                  and xm_web.CasperWebSession._ymd("25/09/2026 10:00") == "2026-09-25"
+                  and xm_web.CasperWebSession._ymd("") == "")
         finally:
             cas_srv.shutdown()
             shutil.rmtree(data_dir7, ignore_errors=True)

@@ -4739,6 +4739,7 @@ class Handler(BaseHTTPRequestHandler):
                     try:
                         stt = web_session(gate).status()
                         annotate_package_type(gate, stt.get("today_lines") or [])
+                        annotate_package_type(gate, stt.get("recent_lines") or [])   # كاسبر: أحدث صفوف اللوحة
                         return self._send(200, stt)
                     except xm_web.CaptchaNeeded:
                         return self._send(200, {"provider": "web", "credits": None, "need_login": True})
