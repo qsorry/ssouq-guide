@@ -5322,8 +5322,21 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="salla-vs-panels.xlsx"'})
-            if path == "/api/renew/salla-codes":    # ملخّص أكواد سلة المتاحة (من الإضافة)
-                return self._send(200, panels.salla_codes_stats(panels.load_salla_codes(rws)))
+            if path == "/api/renew/salla-codes":    # ملخّص أكواد سلة المتاحة (من الإضافة)، وتفصيلها
+                data = panels.load_salla_codes(rws)
+                out = panels.salla_codes_stats(data)
+                if self._q("detail") == "1":
+                    out["rows"] = panels.salla_codes_rows(data)
+                return self._send(200, out)
+            if path == "/api/renew/salla-codes.xlsx":
+                rows = panels.salla_codes_rows(panels.load_salla_codes(rws))
+                headers = ["المنتج", "SKU", "الكود كما ورد", "الحالة", "اليوزر", "كلمة المرور", "الهوست", "مقروء؟"]
+                raw = xlsx_write.build_xlsx([("أكواد سلة المتاحة", headers,
+                                              [[r["product"], r["sku"], r["text"], r["status"], r["username"],
+                                                r["password"], r["host"], "نعم" if r["readable"] else "لا"] for r in rows])])
+                return self._send(200, raw=raw,
+                                  ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  extra={"Content-Disposition": 'attachment; filename="salla-available-codes.xlsx"'})
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
                 return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1"))
             if path == "/api/renew/unlisted.xlsx":
