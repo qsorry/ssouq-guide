@@ -5420,13 +5420,13 @@ class Handler(BaseHTTPRequestHandler):
             db["claims"][key] = rec
             renew.save_db(DATA_DIR, db)
             return self._send(200, {"ok": True, "claim": rec})
-        if path == "/api/renew/panel-test":       # أما زالت كوكيز اللوحة صالحة؟
-            sess = renew_panel_session(st)
+        if path == "/api/renew/panel-test":       # أما زالت كوكيز اللوحة صالحة؟ (كوكيز المساحة ثم الأدمن)
+            sess = renew_pull_session(st, rcfg)
             if not sess:
                 return self._send(200, {"ok": False, "error": "لم تُلصق كوكيز اللوحة"})
-            alive, why = sess.alive()
-            return self._send(200, {"ok": alive, "error": why,
-                                    "cookies": len(salla_web.cookie_names(sess.cookie))})
+            d = sess.diagnose()
+            return self._send(200, {"ok": d["ok"], "error": "" if d["ok"] else d["verdict"],
+                                    "detail": d, "cookies": len(salla_web.cookie_names(sess.cookie))})
         if path == "/api/renew/alert-test":       # اختبار بريد التنبيه
             ok, why = renew.alert_disconnect(DATA_DIR, {**renew.normalize_config(st.get("renew")),
                                                         "alert": {**renew.normalize_config(st.get("renew"))["alert"],

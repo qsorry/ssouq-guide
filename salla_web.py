@@ -125,9 +125,10 @@ class Session:
         except urllib.error.HTTPError as e:
             if e.code in (301, 302, 303, 307, 308):
                 return e.code, e.headers, b""
+            body = e.read() if e.fp else b""
             if e.code in (401, 403):
-                raise SessionExpired("الجلسة غير مقبولة (%d) — الصق الكوكيز من جديد" % e.code)
-            return e.code, e.headers, (e.read() if e.fp else b"")
+                raise denied_error(e.code, e.headers, body)
+            return e.code, e.headers, body
         except urllib.error.URLError as e:
             raise WebError("تعذّر الوصول للوحة سلة: %s" % (getattr(e, "reason", e)))
 
@@ -158,6 +159,32 @@ class Session:
         if "/auth" in text[:600] and "<form" in text[:3000] and "login" in text[:3000].lower():
             raise SessionExpired("أُعيد التحويل لصفحة الدخول — الصق كوكيز جديدة")
         return text
+
+    def diagnose(self):
+        """أوّل نداءٍ للوحة كما هو: الرمز، ومَن ردّ (Cloudflare؟)، وعنوان الصفحة —
+        ليُعرف من خادمٍ لا نراه أهي جلسةٌ منتهية أم حجبُ عنوان الخادم أم غير ذلك."""
+        out = {"ok": False, "code": 0, "server": "", "cf": "", "title": "", "verdict": ""}
+        try:
+            code, headers, body = self._get("/orders", accept="text/html")
+        except (SessionExpired, WebError) as e:
+            out["verdict"] = str(e)
+            return out
+        out["code"] = code
+        out["server"] = str(headers.get("Server", "") if headers else "")
+        out["cf"] = str(headers.get("cf-mitigated", "") if headers else "")
+        text = body.decode("utf-8", "replace") if body else ""
+        m = re.search(r"<title>(.*?)</title>", text, re.S | re.I)
+        out["title"] = _WS.sub(" ", m.group(1)).strip()[:80] if m else ""
+        loc = headers.get("Location", "") if headers else ""
+        if code in (301, 302, 303, 307, 308):
+            out["verdict"] = ("انتهت الجلسة — حُوّلنا لصفحة الدخول" if AUTH_REDIRECT.search(loc)
+                              else "تحويل إلى %s" % loc[:80])
+        elif code == 200:
+            out["ok"] = True
+            out["verdict"] = "الجلسة صالحة"
+        else:
+            out["verdict"] = "ردّت اللوحة %d" % code
+        return out
 
     # ----------------------------- الاستعمال -----------------------------
     def orders_page(self, page=1):
@@ -233,6 +260,24 @@ class Session:
                 self._list_path = tpl
                 return rows[:limit]
         return []
+
+
+_CF_CHALLENGE = re.compile(r"(?i)just a moment|cf-chl|challenge-platform|attention required|cloudflare")
+
+
+def denied_error(code, headers, body):
+    """‏401/403 ليس دائمًا جلسةً منتهية: Cloudflare يحجب عناوين الخوادم بتحدٍّ لا يجتازه
+    خادم. التمييز بترويساته وصفحته — فلا يُرسَل تنبيه «انتهت الجلسة» ولا تُطلب كوكيز
+    جديدة لن تنفع، بل يُقال الحقّ: عنوان الخادم محجوب."""
+    h = headers or {}
+    text = (body or b"")[:4000].decode("utf-8", "replace")
+    cf = (str(h.get("cf-mitigated", "")).lower() == "challenge"
+          or ("cloudflare" in str(h.get("Server", "")).lower() and _CF_CHALLENGE.search(text) is not None
+              and "salla" not in text[:2000].lower()))
+    if cf:
+        return WebError("Cloudflare يحجب عنوان الخادم (%d) — ليست الكوكيز: الوصول للوحة سلة "
+                        "من هذا الخادم ممنوع، فيُسحب من جهازٍ آخر أو بعنوان IP آخر" % code)
+    return SessionExpired("الجلسة غير مقبولة (%d) — الصق الكوكيز من جديد" % code)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
