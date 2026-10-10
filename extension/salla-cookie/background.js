@@ -122,13 +122,14 @@ function setLine(line, ok) {
   pullState.ok = ok;
 }
 
-async function runPull(settings, maxMonths) {
+async function runPull(settings, maxMonths, fresh) {
   if (pullState.running) return;
   pullState.running = true;
   pullState.cancel = false;
   try {
     setLine("بدء السحب…", null);
-    const st = await toolPost(settings, "/api/renew/panel-feed", { op: "start", max_months: maxMonths, apply: true, resume: true });
+    // إكمالٌ من حيث توقّف (الافتراضي): الخادم يعرف الطلبات المحفوظة فلا تُفتح، ويقف عند أوّل صفحة كلها محفوظة.
+    const st = await toolPost(settings, "/api/renew/panel-feed", { op: "start", max_months: maxMonths, apply: true, resume: true, fresh: !!fresh });
     // انقطع سحبٌ سابق (أُغلق المتصفّح)؟ الخادم يعيد الصفحة التالية وما جُمع، فيُستأنف لا يُعاد.
     let page = st.resume_page || 1, more = true, units = st.units || 0, found = st.found || 0, opened = st.done || 0, listed = st.total || 0;
     if (st.resume_page) setLine(`استئناف من صفحة ${page} (${units} يوزرًا محفوظة)`, null);
@@ -159,6 +160,7 @@ async function runPull(settings, maxMonths) {
       page += 1;
     }
     const fin = await toolPost(settings, "/api/renew/panel-feed", { op: "finish" });
+    if (!fin.units && !pullState.cancel) { setLine("لا طلبات جديدة منذ آخر سحب — المحفوظ كما هو ✓", true); return; }
     setLine(pullState.cancel
       ? `أُوقف. حُفظ ما سُحب: ${fin.units} يوزرًا (${fin.found} باعتماد)`
       : `اكتمل ✓ ${fin.units} يوزرًا، ${fin.found} باعتماد، ${fin.pages} صفحة. نزّل Excel من صفحة التجديد.`, true);
@@ -296,7 +298,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return;
       }
       if (msg.type === "pull") {
-        runPull(msg.settings, msg.maxMonths);   // يعمل في الخلفية؛ النافذة تسأل عن حاله
+        runPull(msg.settings, msg.maxMonths, msg.fresh);   // يعمل في الخلفية؛ النافذة تسأل عن حاله
         sendResponse({ ok: true });
         return;
       }

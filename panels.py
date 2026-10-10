@@ -154,6 +154,29 @@ def save_store_lines(data_dir, units):
     return len(lines)
 
 
+def known_orders(data_dir):
+    """أرقام الطلبات المحفوظة في خطوط المتجر — ليُكمل السحب من حيث توقّف."""
+    return {renew.norm_order(ln.get("order")) for ln in load_store_lines(data_dir).get("lines", [])
+            if ln.get("order")}
+
+
+def merge_store_lines(data_dir, units):
+    """الخطوط المحفوظة + وحداتٌ جديدة، بلا تكرار (الطلب واليوزر): الجديد يغلب القديم."""
+    old = load_store_lines(data_dir).get("lines", [])
+    out, idx = [], {}
+    for u in list(old) + list(units):
+        key = (renew.norm_order(u.get("order")), str(u.get("username") or "").lower())
+        if not key[1]:
+            out.append(u)
+            continue
+        if key in idx:
+            out[idx[key]] = u
+        else:
+            idx[key] = len(out)
+            out.append(u)
+    return out
+
+
 def load_store_lines(data_dir):
     try:
         with open(store_lines_path(data_dir), encoding="utf-8") as f:

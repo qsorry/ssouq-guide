@@ -611,6 +611,58 @@ def looks_like_orders(raw):
     return ORDER_COLS["order"] in line or "skus_json" in line
 
 
+# ---- ملف «الاشتراكات المسحوبة» من هذه الأداة (xlsx) → وحدات، ليُرفع بدل السحب من جديد ----
+STORE_LINES_COLS = {"order": "رقم الطلب", "date": "تاريخ الطلب", "status": "حالة الطلب",
+                    "customer": "اسم العميل", "phone": "رقم الجوال", "product": "اسم المنتج",
+                    "price": "سعر المنتج", "code": "الكود", "expiry": "تاريخ الانتهاء",
+                    "months": "المدة (أشهر)", "devices": "الأجهزة", "host": "الهوست",
+                    "username": "اليوزر", "password": "كلمة المرور", "admin_url": "رابط الطلب"}
+
+
+def is_store_lines_file(raw):
+    """أهو ملف الاشتراكات الذي تولّده الأداة (لا تصدير سلة)؟ بعنوانيه المميّزين."""
+    try:
+        rows = _rows(raw)
+    except Exception:
+        return False
+    if not rows:
+        return False
+    keys = {_norm_head(k) for k in rows[0].keys()}
+    return _norm_head("اليوزر") in keys and _norm_head("رقم الطلب") in keys and _norm_head("اسم المنتج") in keys
+
+
+def read_store_lines(raw):
+    """ملف الاشتراكات المسحوبة → وحدات بالشكل الذي يُنتجه السحب نفسه (صفٌّ = يوزر)."""
+    import salla_web
+    units = []
+    for row in _rows(raw):
+        g = lambda k: str(_pick(row, [STORE_LINES_COLS[k]]) or "").strip()
+        no = renew.norm_order(g("order"))
+        if not no:
+            continue
+        cred = parse_credentials(g("code")) if g("code") else {}
+        username = g("username") or cred.get("username", "")
+        if not username:
+            continue
+        date = renew.parse_date(g("date"))
+        months = int(re.sub(r"\D", "", g("months")) or 0)
+        pname = g("product")
+        admin_url = g("admin_url")
+        expiry = g("expiry")
+        if not expiry and date and months:
+            expiry = renew.add_months(date, months).isoformat()
+        units.append({"order": no, "sid": salla_web.admin_token(admin_url), "admin_url": admin_url,
+                      "phone": renew.norm_phone(g("phone")), "customer": g("customer"),
+                      "date": date.isoformat() if date else "", "product": pname, "sku": "",
+                      "price": g("price"), "status": g("status"),
+                      "falcon": bool(EXCLUDE.search(pname) or sku_is_falcon("")),
+                      "months": months, "devices": int(re.sub(r"\D", "", g("devices")) or 1),
+                      "inferred": False, "expiry": expiry,
+                      "host": g("host") or cred.get("host", ""), "username": username,
+                      "password": g("password") or cred.get("password", "")})
+    return units
+
+
 def ingest(files, keep_unconfirmed=False, include_falcon=False):
     """ملفات مرفوعة (طلبات ومنتجات مختلطة) → (وحدات، تقرير، منتجات، تحليل)."""
     orders_f = [(n, b) for n, b in files if looks_like_orders(b)]
@@ -730,8 +782,9 @@ class PanelFeed:
     البروتوكول: `list(page, html)` → معرّفات الطلبات التي تستحقّ الفتح (المؤكّدة)،
     ثم `orders({sid: html})` لكل دفعة، وتقول النتيجة إن بلغنا الأقدم من الحدّ."""
 
-    def __init__(self, max_months=15, keep_unconfirmed=False, include_falcon=True):
+    def __init__(self, max_months=15, keep_unconfirmed=False, include_falcon=True, known=None):
         self.cutoff = panel_cutoff(max_months)
+        self.known = set(known or ())             # طلباتٌ محفوظة من قبل: لا تُفتح، وصفحةٌ كلها معروفة تُنهي
         self.keep_unconfirmed, self.include_falcon = keep_unconfirmed, include_falcon
         self.units, self.seen, self.found = [], set(), 0
         self.listed = self.opened = self.pages = 0
@@ -745,6 +798,10 @@ class PanelFeed:
         rows, _next = salla_web.parse_orders_list(html)
         # رابط «التالي» يختفي بعد نحو ٦٨ صفحة والصفحات تستمرّ: النهاية صفحةٌ بلا طلبات جديدة.
         rows = [r for r in rows if r["sid"] not in self.rows and r["sid"] not in self.skipped_sids]
+        if self.known:
+            fresh = [r for r in rows if renew.norm_order(r.get("order")) not in self.known]
+            self.skipped["known"] = self.skipped.get("known", 0) + (len(rows) - len(fresh))
+            rows = fresh
         more = bool(rows)
         self.pages = max(self.pages, int(page or 0))
         self.listed += len(rows)
@@ -799,7 +856,7 @@ class PanelFeed:
 
 
 def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
-                    include_falcon=True, max_months=15, workers=4):
+                    include_falcon=True, max_months=15, workers=4, known=None):
     """يسحب طلبات المتجر من **لوحة سلة بجلسة المتصفّح** (لا توكن) → (وحدات، تقرير).
 
     القائمة لا تحمل المنتجات ولا التاريخ، فتُفتح صفحةُ كل طلب — وفيها كل شيء دفعةً:
@@ -852,6 +909,12 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                 if not rows:
                     break
                 seen_sids.update(r["sid"] for r in rows)
+                if known:                            # إكمالٌ من حيث توقّف: المعروف لا يُفتح،
+                    fresh_rows = [r for r in rows if renew.norm_order(r.get("order")) not in known]
+                    skipped["known"] = skipped.get("known", 0) + (len(rows) - len(fresh_rows))
+                    if not fresh_rows:               # وصفحةٌ كلها معروفة = بلغنا ما سُحب من قبل
+                        break
+                    rows = fresh_rows
                 listed += len(rows)
                 report()
                 todo = []
@@ -905,7 +968,7 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
 
 def pull_from_salla(token, progress=None, with_history=True, stop=None,
                     keep_unconfirmed=False, include_falcon=False, per_page=50,
-                    credentials_for=None, session=None, max_months=15):
+                    credentials_for=None, session=None, max_months=15, known=None):
     """يسحب طلبات المتجر كلها → (وحدات، تقرير).
 
     بتوكن الواجهة على مرحلتين: الطلبات أولًا (صفحةٌ لكل خمسين)، ثم — إن طُلب —
@@ -918,7 +981,7 @@ def pull_from_salla(token, progress=None, with_history=True, stop=None,
     if not token and session is not None:
         # سحب اللوحة للنقل: فالكون معه (يُعلَّم `falcon` في وحداته، ويُستثنى من التجديد عند الختام)
         return pull_from_panel(session, progress, stop, keep_unconfirmed, True,
-                               max_months=max_months)
+                               max_months=max_months, known=known)
 
     units, seen = [], set()
     skipped = {"unconfirmed": 0, "falcon": 0, "no_months": 0, "no_date": 0, "no_items": 0}
