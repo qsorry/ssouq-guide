@@ -2434,12 +2434,14 @@ def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_mo
 
 
 def _pull_finish(units, meta, ws, cfg, apply_index):
-    """ختام السحب أيًّا كان مصدره: التحليل، وخطوط المتجر للمقارنة، والفهرس إن طُلب."""
-    agg = renew_import.analyze(units, meta)
+    """ختام السحب أيًّا كان مصدره: التحليل، وخطوط المتجر للمقارنة، والفهرس إن طُلب.
+    فالكون في خطوط المتجر (للنقل والمقارنة) لا في التجديد: لوحته قائمة بذاتها."""
+    renewable = [u for u in units if not u.get("falcon")]
+    agg = renew_import.analyze(renewable, meta)
     renew.save_analysis(ws, agg)
     panels.save_store_lines(ws, units)
     if apply_index:
-        renew.save_index(ws, renew_import.build_index(units, meta))
+        renew.save_index(ws, renew_import.build_index(renewable, meta))
         _pull["applied"] = True
     _pull.update({"units": len(units), "found": meta.get("with_credentials", 0),
                   "phase": "done", "session_expired": meta.get("session_expired", False)})
