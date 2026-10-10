@@ -349,13 +349,15 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
         <span class="st"><b>أو اسحب من سلة مباشرة</b><small data-sum="pullMsg">بلا ملفات — وأكمل مما لا يُصدَّر</small></span></summary>
       <div class="din">
         <p class="hint">التصدير لا يُخرج <b>سجلّ الطلب</b>، وفيه يُكتب الاشتراك (<code>Host · Username · Password</code>).
-          السحب يأتي بالطلبات كلها ومعها سجلّها، فيُعرف يوزر العميل وباسورده ولا يُطلب منه كتابتهما.</p>
+          السحب يأتي بالطلبات كلها ومعها سجلّها، فيُعرف يوزر العميل وباسورده ولا يُطلب منه كتابتهما.
+          بلا رمز سلة يُسحب بكوكيز لوحة سلة: تُفتح صفحة كل طلب ويُقرأ الاشتراك من <b>الكود</b>، فإن خلا منه فمن <b>ملاحظات السجلّ</b> ثم ملاحظة العميل.</p>
         <label class="switch"><span>اقرأ سجلّ كل طلب<small>لاستخراج اليوزر والباسورد — يطول: نداءٌ لكل طلب</small></span><input type="checkbox" class="tog" id="pullHistory" checked></label>
         <label class="switch"><span>اعتماده فهرسًا تعمل عليه صفحة العميل</span><input type="checkbox" class="tog" id="pullApply" checked></label>
         <div class="acts"><button class="go" id="pull" type="button">ابدأ السحب</button>
           <button class="ghost hidden" id="pullStop" type="button">إيقاف</button></div>
         <p class="msg" id="pullMsg"></p>
         <div class="bar hidden" id="pullBar"><i id="pullFill"></i></div>
+        <div class="acts"><a class="ghost" id="dlLines" href="#"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تنزيل الاشتراكات المسحوبة Excel</a></div>
       </div>
     </details>
     <details class="blk fold" id="blkLines">
@@ -1375,6 +1377,7 @@ $('#renewalDays').onchange = () => { if (cmpAll.length) $('#doCompare').click();
 $('#dlCompare').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/compare.xlsx' + daysQ(); };
 $('#dlRenewal').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/renewal.xlsx' + daysQ(); };
 $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/users.xlsx'; };
+$('#dlLines').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/store-lines.xlsx'; };
 
 /* ============ الإقلاع ============ */
 (async () => {
@@ -1387,7 +1390,7 @@ $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/ren
   if (IS_ADMIN) { await loadQueue(); watchHarvest(); harvestPreview(); }
   const ps = await api('/api/renew/pull-status');
   if (ps && !ps.has_token)
-    note($('#pullMsg'), 'رمز سلة غير مضبوط — اضبطه في الإعداد ليعمل السحب المباشر.');
+    note($('#pullMsg'), 'لا رمز سلة ولا كوكيز لوحة سلة — اضبط أحدهما في الإعداد ليعمل السحب المباشر.');
   else if (ps && ps.running){ $('#pullBar').classList.remove('hidden');
     $('#pullStop').classList.remove('hidden'); watchPull(); }
 })();

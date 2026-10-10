@@ -2391,7 +2391,7 @@ def _poll_salla_orders(st, svc, per_page=25):
     return []
 
 
-def _pull_worker(token, with_history, apply_index, ws, cfg):
+def _pull_worker(token, with_history, apply_index, ws, cfg, session=None):
     def progress(d):
         _pull.update(d)
 
@@ -2399,10 +2399,13 @@ def _pull_worker(token, with_history, apply_index, ws, cfg):
         st = load_store()
         units, meta = renew_import.pull_from_salla(
             token, progress=progress, with_history=with_history,
-            stop=lambda: _pull["cancel"],
+            stop=lambda: _pull["cancel"], session=session,
             credentials_for=lambda sid, url: renew_credentials_for(st, sid, url))
         if not units:
-            _pull["error"] = "لم يرجع أي طلب صالح من سلة"
+            _pull["error"] = ("انتهت جلسة لوحة سلة — الصق كوكيز جديدة وأعِد السحب"
+                              if meta.get("session_expired") else "لم يرجع أي طلب صالح من سلة")
+            if meta.get("session_expired"):
+                renew.alert_session_expired(ws, cfg)
             return
         agg = renew_import.analyze(units, meta)
         renew.save_analysis(ws, agg)
@@ -2426,14 +2429,22 @@ def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True):
     if _pull["running"]:
         return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
     token = renew_salla_token(st, cfg)
-    if not token:
-        return {"ok": False, "error": "رمز سلة غير مضبوط — اضبطه في إعداد المساحة"}
+    session = None if token else renew_panel_session(st)   # بلا توكن: جلسة اللوحة
+    if not token and session is None:
+        return {"ok": False, "error": "لا رمز سلة ولا كوكيز لوحة سلة — اضبط أحدهما في إعداد المساحة"}
     _pull.update({"running": True, "owner": ws, "phase": "orders", "done": 0, "total": 0,
                   "units": 0, "found": 0, "error": "", "cancel": False,
-                  "applied": False, "session_expired": False})
-    threading.Thread(target=_pull_worker, args=(token, with_history, apply_index, ws, cfg),
+                  "applied": False, "session_expired": False,
+                  "source": "api" if token else "panel"})
+    threading.Thread(target=_pull_worker,
+                     args=(token, with_history, apply_index, ws, cfg, session),
                      daemon=True).start()
     return {"ok": True}
+
+
+def renew_pull_ready(st, cfg):
+    """أيمكن بدء السحب؟ بتوكن الواجهة أو بكوكيز لوحة سلة."""
+    return bool(renew_salla_token(st, cfg)) or bool(salla_service_cookie(st))
 
 
 
@@ -2698,6 +2709,19 @@ def _renewal_xlsx(ws, cfg, days=None):
              x["found_panel_name"] or x["panel_name"], x["panel_exp"],
              x["store_months"], x["product"]] for x in r["rows"]]
     return xlsx_write.build_xlsx([("للتجديد", headers, rows)])
+
+
+def _store_lines_xlsx(ws):
+    """الاشتراكات المسحوبة من سلة (الكود/الملاحظات) ملفَّ Excel قابلًا للنقل
+    والمقارنة: طلبٌ لكل صف مع يوزره وباسورده وهوسته ومدّته."""
+    d = panels.load_store_lines(ws)
+    headers = ["رقم الطلب", "التاريخ", "العميل", "الجوال", "المنتج", "المدة (أشهر)",
+               "الأجهزة", "الانتهاء", "الهوست", "اليوزر", "كلمة المرور", "رابط الطلب"]
+    rows = [[r.get("order", ""), r.get("date", ""), r.get("customer", ""), r.get("phone", ""),
+             r.get("product", ""), r.get("months", 0), r.get("devices", 1), r.get("expiry", ""),
+             r.get("host", ""), r.get("username", ""), r.get("password", ""),
+             r.get("admin_url", "")] for r in d.get("lines", [])]
+    return xlsx_write.build_xlsx([("اشتراكات سلة", headers, rows)])
 
 
 def _panel_users_xlsx(ws):
@@ -5069,6 +5093,13 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="salla-vs-panels.xlsx"'})
+            if path == "/api/renew/store-lines.xlsx":  # اشتراكات سلة المسحوبة Excel
+                return self._send(200, raw=_store_lines_xlsx(rws),
+                                  ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  extra={"Content-Disposition":
+                                         'attachment; filename="salla-subscriptions.xlsx"'})
+            if path == "/api/renew/store-lines":   # الاشتراكات المسحوبة JSON (للنقل)
+                return self._send(200, panels.load_store_lines(rws))
             if path == "/api/renew/users.xlsx":     # كل يوزرات اللوحات المسحوبة Excel
                 return self._send(200, raw=_panel_users_xlsx(rws),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -5088,7 +5119,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "saved": renew.harvest_stats(DATA_DIR)})
             if path == "/api/renew/pull-status":   # تقدّم السحب من سلة
                 return self._send(200, {**_own_job(_pull, rws),
-                                        "has_token": bool(renew_salla_token(st, rcfg))})
+                                        "has_token": renew_pull_ready(st, rcfg)})
             if path == "/api/renew/queue":        # الطلبات: المعلّق والمنجز
                 if role != "admin":
                     return self._send(403, {"error": "للمدير فقط"})
