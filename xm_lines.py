@@ -2784,13 +2784,15 @@ def _panels_worker(entries, ws):
                 _panels_job.update({"done": seen, "total": max(seen, (last or 1) * 50)})
 
             try:
-                rows = _all_web_lines(gate, prog)
+                rows = _all_gate_lines(gate, prog)      # ويب (مرح/كاسبر) أو فالكون (API)
                 n = panels.save_panel_lines(ws, panel_id, name, rows)
                 results.append({"panel": name, "count": n, "ok": True,
                                 "error": "" if n else "رجعت اللوحة صفر يوزر — تحقّق من نوع البوابة (casper/Xtream) وبياناتها"})
             except xm_web.CaptchaNeeded:
                 results.append({"panel": name, "ok": False,
                                 "error": "اللوحة تطلب كود تحقّق"})
+            except falcon_api.FalconError as e:
+                results.append({"panel": name, "ok": False, "error": "فالكون: " + str(e)[:180]})
             except Exception as e:
                 results.append({"panel": name, "ok": False, "error": str(e)[:200]})
             _panels_job["results"] = list(results)
@@ -2810,9 +2812,9 @@ def start_panels_pull(st, ws, cfg, accounts):
         gate = find_gate(acct, p.get("gate_id")) if acct else None
         if not gate:
             return {"ok": False, "error": "اللوحة «%s» بلا بوابة مضبوطة" % p["name"]}
-        if gate.get("mode") != "web":
+        if gate.get("mode") not in ("web", "falcon"):
             return {"ok": False,
-                    "error": "سحب اليوزرات متاح على بوابات جلسة الويب (اللوحة «%s»)" % p["name"]}
+                    "error": "سحب اليوزرات متاح على بوابات جلسة الويب وفالكون (اللوحة «%s»)" % p["name"]}
         entries.append((p["id"], p["name"], gate))
     if not entries:
         return {"ok": False, "error": "لا لوحات مضبوطة — أضف لوحةً وهوستاتها أولًا"}
@@ -5304,7 +5306,7 @@ class Handler(BaseHTTPRequestHandler):
                           "gate_id": g["id"], "gate": g.get("name", ""),
                           "mode": g.get("mode"), "flavor": g.get("web_flavor", "")}
                          for a in racs for g in (a.get("gates") or [])
-                         if g.get("mode") == "web"]
+                         if g.get("mode") in ("web", "falcon")]   # فالكون (API) تُسحب يوزراتها أيضًا
                 return self._send(200, {"panels": cfg["panels"], "gates": gates,
                                         "lines": panels.panel_lines_stats(rws),
                                         "store": {k: v for k, v in

@@ -1233,10 +1233,10 @@ let WEBGATES = [];   // بوابات الويب لهذه المساحة (من /a
 function webGateOptions(sel){
   const opts = WEBGATES.map(g => {
     const v = g.account_id + '|' + g.gate_id;
-    const lbl = (g.account ? g.account + ' · ' : '') + (g.gate || '');
+    const lbl = (g.account ? g.account + ' · ' : '') + (g.gate || '') + (g.mode === 'falcon' ? ' (فالكون API)' : '');
     return `<option value="${v}" ${sel === v ? 'selected' : ''}>${esc(lbl)}</option>`;
   }).join('');
-  return '<option value="">— اختر بوابة (ويب) —</option>' + opts;
+  return '<option value="">— اختر بوابة (ويب أو فالكون) —</option>' + opts;
 }
 
 function panelRow(p){
