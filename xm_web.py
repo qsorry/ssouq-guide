@@ -625,6 +625,23 @@ class PanelWebSession:
                 action.replace(self.base, "") or "/", ", ".join(sorted(fields)) or "—"))
         return True
 
+    def _reply_hint(self, cr) -> str:
+        """ردّ اللوحة على الإرسال مختصرًا (الرمز، نوعه، عنوان الصفحة أو أوّل نصّها) ثم
+        ردّ الجدول — للتشخيص من الرسالة نفسها. بلا أسرار: لا كوكيز ولا كلمات مرور."""
+        try:
+            text = self._text(cr)
+            title = re.search(r"<title>(.*?)</title>", text, re.I | re.S)
+            plain = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<(script|style)[^>]*>.*?</\1>|<[^>]+>", " ", text, flags=re.I | re.S))).strip()
+            head = (title.group(1).strip() if title else plain)[:120]
+            hint = " [ردّ الإرسال: %s %s · %s" % (cr.get("status"), (cr.get("ctype") or "")[:30], head or "فارغ")
+            if cr.get("location"):
+                hint += " ← " + str(cr["location"])[:80]
+            t = self._table_query("", 1, force=True)
+            hint += " · الجدول: %s صف، الكلي %s]" % (len(t.get("rows") or []), t.get("total"))
+            return hint
+        except Exception:
+            return ""
+
     @staticmethod
     def _add_error(text: str) -> str:
         """رسالة فشلٍ من ردّ الإنشاء (JSON أو تنبيه HTML). '' إن بدا ناجحًا/غامضًا.
@@ -1081,8 +1098,11 @@ class PanelWebSession:
                 # لوحةٌ يعمل بحثها وأثبتت أنها تجد يوزرنا، ومع ذلك لم يظهر اليوزر في الجدول
                 # ولا في أحدث الصفوف → الإنشاء فشل فعلًا (لم يُنشأ). نرفع الخطأ بدل تلفيق
                 # يوزرٍ وهمي لا وجود له على اللوحة (سبب مشكلة اليوزر «المفقود»).
+                # لا نقول «لم يظهر» وحدها: يُرفق ما ردّت به اللوحة على الإرسال (الرمز
+                # وأوّل نصّها) وما ردّ به الجدول — فيُعرف السبب من الرسالة لا بالتخمين.
                 raise RuntimeError("لم تُنشئ اللوحة اليوزر" + (": " + add_err if add_err
-                                   else " — لم يظهر في الجدول ولا في أحدث الصفوف بعد الإرسال."))
+                                   else " — لم يظهر في الجدول ولا في أحدث الصفوف بعد الإرسال.")
+                                   + self._reply_hint(cr))
             else:
                 # لوحةٌ لم تُثبت بعدُ أن بحثها يجد يوزرنا: لا نجزم بالفشل (قد يكون البحث مختلفًا).
                 misses = int(meta.get("confirm_misses") or 0) + 1

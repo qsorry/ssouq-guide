@@ -129,6 +129,13 @@ class Session:
                 with opener.open(req, timeout=TIMEOUT) as r:
                     return r.status, r.headers, r.read()
             except urllib.error.HTTPError as e:
+                # ‏429 (حدّ المعدّل) و5xx عابرة: تُمهَل اللوحة (Retry-After إن قالته) ويُعاد.
+                if e.code == 429 or e.code >= 500:
+                    last = e
+                    if attempt + 1 < RETRIES:
+                        time.sleep(_retry_after(e.headers, RETRY_WAIT * (2 ** attempt) * (3 if e.code == 429 else 1)))
+                        continue
+                    return e.code, e.headers, (e.read() if e.fp else b"")
                 return self._http_error(e)
             except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
                 last = e
@@ -275,6 +282,15 @@ class Session:
 
 
 _CF_CHALLENGE = re.compile(r"(?i)just a moment|cf-chl|challenge-platform|attention required|cloudflare")
+
+
+def _retry_after(headers, default):
+    """ثواني الانتظار من Retry-After إن أعطتها اللوحة (حتى دقيقة)، وإلا الافتراضي."""
+    try:
+        v = float(str((headers or {}).get("Retry-After", "")).strip() or 0)
+        return min(60.0, v) if v > 0 else default
+    except ValueError:
+        return default
 
 
 def denied_error(code, headers, body):
