@@ -230,7 +230,7 @@ def main():
     check("a live feed refuses a second start", X.panel_feed(st3, "ws", {}, {"op": "start"})["ok"] is False)
     orig_fin = X._pull_finish
     fin = {}
-    X._pull_finish = lambda units, meta, ws, cfg, apply: fin.update(n=len(units), src=meta["source"]) or X._pull.update(phase="done")
+    X._pull_finish = lambda units, meta, ws, cfg, apply, **k: fin.update(n=len(units), src=meta["source"]) or X._pull.update(phase="done")
     try:
         r = X.panel_feed(st3, "ws", {}, {"op": "finish"})
     finally:
@@ -246,7 +246,7 @@ def main():
     X._pull["heartbeat"] = time.time() - 999                       # انقطع
     r = X.panel_feed(st3, "ws", {}, {"op": "start", "max_months": 15, "resume": True})
     check("a stale extension pull resumes from the next page with its units", r["ok"] and r.get("resume_page") == 4 and r["units"] == 1, str(r))
-    X._pull_finish = lambda units, meta, ws, cfg, apply: fin.update(n=len(units)) or X._pull.update(phase="done")
+    X._pull_finish = lambda units, meta, ws, cfg, apply, **k: fin.update(n=len(units)) or X._pull.update(phase="done")
     try:
         r = X.panel_feed(st3, "ws", {}, {"op": "save"})
         check("save keeps the pull open after writing", r["ok"] and r["saved"] == 1 and X._pull["running"], str(r))
@@ -288,6 +288,44 @@ def main():
         X.renew_import.analyze, X.renew_import.build_index = orig_an, orig_ix
     check("finish: renewal analysis/index exclude falcon, store lines keep it",
           calls == {"analyze": 1, "index": 1} and X._pull["units"] == 2, str(calls))
+
+    # إكمالٌ من حيث توقّف: الطلبات المعروفة لا تُفتح، وصفحةٌ كلها معروفة تُنهي السحب
+    class K(FakeSess):
+        pages = {1: (LIST.split("<ul>")[0], False),
+                 2: (LIST.split("<ul>")[0].replace('"111"', '"555"').replace("293119145", "293100005"), False)}
+        orders = {"111": order_html([CODE]), "555": order_html([CODE], no="293100005"), "222": order_html([CODE])}
+        opened = []
+    ks = K()
+    uk, mk = renew_import.pull_from_salla("", session=ks, known={"293100005"})
+    check("known order is not opened; page 2 all-known stops the pull",
+          ks.opened == ["111"] and mk["skipped"]["known"] == 1 and [u["order"] for u in uk] == ["293119145"], str(ks.opened))
+    fj = renew_import.PanelFeed(known={"293119145", "293118217"})
+    r = fj.list(1, LIST.split("<ul>")[0])
+    check("feed: a page with only known orders ends the pull", r["sids"] == [] and r["more"] is False and fj.skipped["known"] == 2, str(r))
+    fj2 = renew_import.PanelFeed(known={"293119145"})
+    r2 = fj2.list(1, LIST.split("<ul>")[0])
+    check("feed: a page with an unknown (even unconfirmed) order keeps going", r2["more"] is True and r2["sids"] == [], str(r2))
+
+    # دمج الخطوط: الجديد يغلب القديم بلا تكرار، وأرقام الطلبات المعروفة تُقرأ من المحفوظ
+    import tempfile as _tf, panels as _pn
+    wsd = _tf.mkdtemp()
+    _pn.save_store_lines(wsd, [{"order": "1", "username": "111111111111", "months": 6, "password": "a"},
+                               {"order": "2", "username": "222222222222", "months": 6}])
+    merged = _pn.merge_store_lines(wsd, [{"order": "1", "username": "111111111111", "months": 12, "password": "b"},
+                                         {"order": "3", "username": "333333333333", "months": 6}])
+    check("merge: same order+user replaced, others kept", sorted((m["order"], m["months"]) for m in merged) == [("1", 12), ("2", 6), ("3", 6)], str(merged))
+    check("known_orders reads saved order numbers", _pn.known_orders(wsd) == {"1", "2"})
+
+    # ملف الاشتراكات الذي تولّده الأداة يُقرأ من جديد كوحدات (ذهابًا وإيابًا)
+    _pn.save_store_lines(wsd, [{"order": "293119145", "date": "2026-10-10", "customer": "اصيل", "phone": "966500933277",
+                                "product": "اشتراك كاسبر IPTV لمدة 6 أشهر", "months": 6, "devices": 1, "expiry": "2027-04-10",
+                                "host": "http://ssouqhost.vip:80", "username": "328137953493", "password": "4083691844",
+                                "admin_url": "https://s.salla.sa/orders/order/2098223628", "price": "20", "status": "طلبك مؤكد"}])
+    xl = X._store_lines_xlsx(wsd)
+    check("our xlsx is recognised as a store-lines file", renew_import.is_store_lines_file(xl) and not renew_import.is_store_lines_file(b"abc,def\n1,2"))
+    back = renew_import.read_store_lines(xl)
+    check("read_store_lines round-trips the unit", len(back) == 1 and back[0]["order"] == "293119145" and back[0]["username"] == "328137953493"
+          and back[0]["sid"] == "2098223628" and back[0]["months"] == 6 and back[0]["expiry"] == "2027-04-10" and back[0]["falcon"] is False, str(back)[:200])
 
     # الكمية ٢ بكودين → يوزر لكل نسخة
     d2 = salla_web.parse_order_page(order_html([CODE, CODE.replace("328137953493", "111222333444")], qty=2), "9")
