@@ -315,6 +315,15 @@ def main():
                                          {"order": "3", "username": "333333333333", "months": 6}])
     check("merge: same order+user replaced, others kept", sorted((m["order"], m["months"]) for m in merged) == [("1", 12), ("2", 6), ("3", 6)], str(merged))
     check("known_orders reads saved order numbers", _pn.known_orders(wsd) == {"1", "2"})
+    # الخطوط المحفوظة (بلا inferred) تدخل التحليل والفهرس بعد الدمج دون خطأ مفتاح
+    _pn.save_store_lines(wsd, [{"order": "7", "date": "2026-01-01", "phone": "966500000000", "username": "777777777777",
+                                "product": "اشتراك", "months": 6, "devices": 1, "expiry": "2026-07-01"}])
+    try:
+        m2 = _pn.merge_store_lines(wsd, [])
+        renew_import.analyze(m2, {}); renew_import.build_index(m2, {})
+        check("saved lines analyse/index after merge (no KeyError)", m2[0]["inferred"] is False)
+    except KeyError as e:
+        check("saved lines analyse/index after merge (no KeyError)", False, str(e))
 
     # ملف الاشتراكات الذي تولّده الأداة يُقرأ من جديد كوحدات (ذهابًا وإيابًا)
     _pn.save_store_lines(wsd, [{"order": "293119145", "date": "2026-10-10", "customer": "اصيل", "phone": "966500933277",
