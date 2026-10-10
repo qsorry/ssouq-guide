@@ -298,7 +298,12 @@ def main():
     time.sleep(0.2)
     check("stale pull is replaced by a new generation", r["ok"] and r["replaced_stale"] and X._pull["gen"] == 6, str(r))
     X._pull.update(running=True, heartbeat=time.time())
-    check("live pull is not replaced", X.start_renew_pull(st2, "ws", {})["ok"] is False)
+    r = X.start_renew_pull(st2, "ws", {})
+    check("live pull is not replaced, and the refusal carries details", r["ok"] is False and "آخر نشاط" in r["error"], str(r))
+    X._pull.update(source="extension", page=7, owner="admin-ws")
+    f = X.pull_status_for("other-ws")
+    check("another workspace sees the running pull as foreign with its progress", f["running"] and f["foreign"] and f["page"] == 7 and "cancel" not in f, str(f))
+    check("the owner sees the full status", "cancel" in X.pull_status_for("admin-ws"))
     X._pull["running"] = False
     try:
         r = X.start_renew_pull(st2, "ws", {})
