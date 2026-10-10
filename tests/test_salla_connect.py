@@ -168,6 +168,32 @@ def main():
     se = salla_web.denied_error(403, {"Server": "cloudflare"}, b'{"status":403,"success":false,"error":{"message":"salla unauthorized"}}')
     check("salla's own 403 → SessionExpired", isinstance(se, salla_web.SessionExpired))
 
+    # مهلةُ شبكةٍ عابرة تُعاد ثم تنجح؛ ودائمةٌ تصير WebError
+    import urllib.error, urllib.request
+    s4 = salla_web.Session("sess=1"); calls = {"n": 0}
+    class FakeResp:
+        status = 200; headers = {}
+        def read(self): return b"ok"
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    class FakeOpener:
+        def open(self, req, timeout=0):
+            calls["n"] += 1
+            if calls["n"] < 3: raise urllib.error.URLError("handshake timed out")
+            return FakeResp()
+    orig_build, orig_sleep = urllib.request.build_opener, salla_web.time.sleep
+    urllib.request.build_opener, salla_web.time.sleep = lambda *a: FakeOpener(), lambda s: None
+    try:
+        code, _, body = s4._get("/orders")
+        check("transient network error is retried", code == 200 and body == b"ok" and calls["n"] == 3, str(calls))
+        calls["n"] = -10
+        try:
+            s4._get("/orders"); check("persistent network error → WebError", False)
+        except salla_web.WebError as e:
+            check("persistent network error → WebError", "تعذّر" in str(e))
+    finally:
+        urllib.request.build_opener, salla_web.time.sleep = orig_build, orig_sleep
+
     s3 = salla_web.Session("sess=1")
     s3._get = lambda path, accept="application/json": (200, {"Server": "cloudflare"}, "<title>\n الطلبات | سلة </title>".encode())
     dg = s3.diagnose()
