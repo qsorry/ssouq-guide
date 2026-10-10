@@ -261,6 +261,18 @@ def test_unlisted():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_remaining_text():
+    print("== «ينتهي بعد سنة و٢ شهر و٢٥ يومًا» ==")
+    import datetime
+    t = datetime.date(2026, 10, 11)
+    check("1y 1m 24d", panels.remaining_text("2027-12-05", t) == "ينتهي بعد سنة وشهر و24 يومًا", panels.remaining_text("2027-12-05", t))
+    check("1y 2m 25d", panels.remaining_text("2028-01-05", t) == "ينتهي بعد سنة وشهران و25 يومًا", panels.remaining_text("2028-01-05", t))
+    check("exact months", panels.remaining_text("2027-04-11", t) == "ينتهي بعد 6 أشهر", panels.remaining_text("2027-04-11", t))
+    check("days only", panels.remaining_text("2026-10-16", t) == "ينتهي بعد 5 أيام", panels.remaining_text("2026-10-16", t))
+    check("past", panels.remaining_text("2026-09-01", t).startswith("انتهى منذ"), panels.remaining_text("2026-09-01", t))
+    check("unknown date", panels.remaining_text("", t) == "")
+
+
 def test_split_bulk():
     print("== تجزئة جماعية من سطور ملصوقة ==")
     import xm_lines as X
@@ -293,6 +305,7 @@ def main():
     test_renewal()
     test_xlsx()
     test_unlisted()
+    test_remaining_text()
     test_split_bulk()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, "

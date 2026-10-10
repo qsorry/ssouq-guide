@@ -1321,7 +1321,7 @@ function renderUnlisted(d){
   $('#unlFilters').innerHTML = chips.map(c => `<button class="fchip" type="button" data-k="${c.k}" aria-pressed="${unlFilter===c.k}">${esc(c.t)}<em>${AR(c.n)}</em></button>`).join('');
   $('#unlFilters').querySelectorAll('[data-k]').forEach(b => b.onclick = () => { unlFilter = b.dataset.k; renderUnlisted(d); });
   const rows = unlRows();
-  $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${r.months_left ? AR(r.months_left) + ' شهر' : (r.expired ? 'منتهٍ' : '—')}</td></tr>`).join('');
+  $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${esc(r.remaining) || (r.expired ? 'منتهٍ' : '—')}</td></tr>`).join('');
   $('#unlWrap').classList.toggle('hidden', !UNL.length);
   $('#unlCopy').classList.toggle('hidden', !rows.length);
   $('#dlUnlisted').classList.toggle('hidden', !UNL.length);
