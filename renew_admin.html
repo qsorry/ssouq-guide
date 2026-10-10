@@ -350,7 +350,8 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <div class="din">
         <p class="hint">التصدير لا يُخرج <b>سجلّ الطلب</b>، وفيه يُكتب الاشتراك (<code>Host · Username · Password</code>).
           السحب يأتي بالطلبات كلها ومعها سجلّها، فيُعرف يوزر العميل وباسورده ولا يُطلب منه كتابتهما.
-          بلا رمز سلة يُسحب بكوكيز لوحة سلة: تُفتح صفحة كل طلب ويُقرأ الاشتراك من <b>الكود</b>، فإن خلا منه فمن <b>ملاحظات السجلّ</b> ثم ملاحظة العميل.</p>
+          بلا رمز سلة يُسحب بكوكيز لوحة سلة: تُفتح صفحة كل طلب ويُقرأ الاشتراك من <b>الكود</b>، فإن خلا منه فمن <b>ملاحظات السجلّ</b> ثم ملاحظة العميل.
+          وإن حجب Cloudflare عنوان الخادم (يقوله «اختبار الجلسة»)، فاسحب <b>من جهازك</b>: زرّ «ابدأ السحب» في إضافة المتصفّح يقرأ الصفحات من متصفّحك ويرسلها هنا، والتقدّم يظهر أدناه.</p>
         <label class="switch"><span>اقرأ سجلّ كل طلب<small>لاستخراج اليوزر والباسورد — يطول: نداءٌ لكل طلب</small></span><input type="checkbox" class="tog" id="pullHistory" checked></label>
         <label class="switch"><span>اعتماده فهرسًا تعمل عليه صفحة العميل</span><input type="checkbox" class="tog" id="pullApply" checked></label>
         <label class="switch"><span>الطلبات الأحدث من (أشهر)<small>بالكوكيز: يتوقف عند الأقدم — ما قبل أطول باقة منتهٍ. ٠ = الكل</small></span><input type="number" min="0" max="120" value="15" id="pullMonths" style="width:5em"></label>
@@ -825,8 +826,8 @@ async function watchPull(once){
   const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
   $('#pullFill').style.width = pct + '%';
   const bits = [PHASE[d.phase] || d.phase];
-  if (d.running) bits.push(d.source === 'panel' ? 'بالكوكيز' : 'برمز سلة');
-  if (d.page && d.source === 'panel') bits.push(`صفحة ${AR(d.page)}`);
+  if (d.running) bits.push({panel: 'بالكوكيز', extension: 'من جهازك عبر الإضافة'}[d.source] || 'برمز سلة');
+  if (d.page && d.source !== 'api') bits.push(`صفحة ${AR(d.page)}`);
   if (d.total) bits.push(`${AR(d.done)} من ${AR(d.total)} (${pct}٪)`);
   if (d.running && d.heartbeat){
     const s = Math.round((d.now || Date.now() / 1000) - d.heartbeat);

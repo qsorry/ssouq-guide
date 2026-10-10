@@ -688,6 +688,110 @@ def is_subscription_item(it):
     return any(len(parse_credentials(c)) >= 2 for c in (it.get("codes") or []) if isinstance(c, str))
 
 
+def panel_order_units(order, keep_unconfirmed=False, include_falcon=False):
+    """طلبٌ من صفحة اللوحة (محلَّلًا) → (وحدات باعتمادها، عدد ما وُجد له اعتماد، سبب التخطّي).
+
+    تُحذف منه المنتجات التي لا علاقة لها بالاشتراكات، فإن خلا منها لا يُسجَّل شيء.
+    الاشتراك من الكود أوّلًا، فإن خلا منه فمن ملاحظات السجلّ ثم ملاحظة العميل."""
+    import salla_web
+    order["items"] = [it for it in order.get("items") or [] if is_subscription_item(it)]
+    if not order["items"]:
+        return [], 0, "not_subscription"
+    got, why = salla_order_units(order, keep_unconfirmed, include_falcon)
+    if not got:
+        return [], 0, why
+    found, fallback = 0, None                      # اعتماد الملاحظات، يُحسب مرةً للطلب
+    for u in got:
+        cred = parse_credentials(u.pop("code", ""))
+        if not cred:
+            if fallback is None:
+                fallback = next((c for c in map(parse_credentials,
+                                 salla_web.order_notes(order)) if c), {})
+            cred = fallback
+        if cred:
+            found += 1
+            u.update(cred)
+    return got, found, why
+
+
+def panel_cutoff(max_months):
+    """تاريخ الحدّ: ما قبله منتهٍ لا يُجدَّد. "" = بلا حدّ."""
+    import datetime
+    return (renew.add_months(datetime.date.today(), -int(max_months)).isoformat()
+            if max_months else "")
+
+
+class PanelFeed:
+    """سحبٌ تُغذّيه إضافة المتصفّح: Cloudflare يحجب عنوان الخادم عن لوحة سلة، أما
+    متصفّح المشغّل فمسموح. فالإضافة تقرأ صفحات اللوحة من جهازه وترسلها خامًا، والخادم
+    يحلّلها هنا بالمحلّلات نفسها — فلا يختلف الناتج عن السحب المباشر.
+
+    البروتوكول: `list(page, html)` → معرّفات الطلبات التي تستحقّ الفتح (المؤكّدة)،
+    ثم `orders({sid: html})` لكل دفعة، وتقول النتيجة إن بلغنا الأقدم من الحدّ."""
+
+    def __init__(self, max_months=15, keep_unconfirmed=False, include_falcon=False):
+        self.cutoff = panel_cutoff(max_months)
+        self.keep_unconfirmed, self.include_falcon = keep_unconfirmed, include_falcon
+        self.units, self.seen, self.found = [], set(), 0
+        self.listed = self.opened = self.pages = 0
+        self.skipped = {"unconfirmed": 0, "falcon": 0, "no_months": 0, "no_date": 0,
+                        "no_items": 0, "too_old": 0, "not_subscription": 0}
+        self.rows = {}                          # sid → صفّ القائمة (رقم الطلب للاحتياط)
+
+    def list(self, page, html):
+        import salla_web
+        rows, more = salla_web.parse_orders_list(html)
+        self.pages = max(self.pages, int(page or 0))
+        self.listed += len(rows)
+        todo = []
+        for r in rows:
+            if not self.keep_unconfirmed and r.get("status") and r["status"] not in CONFIRMED:
+                self.skipped["unconfirmed"] += 1
+                continue
+            self.rows[r["sid"]] = r
+            todo.append(r["sid"])
+        return {"sids": todo, "more": more, "rows": len(rows)}
+
+    def orders(self, pages):
+        """{sid: html} → {"too_old": هل كل الطلبات أقدم من الحدّ؟}"""
+        import salla_web
+        dates = []
+        for sid, html in (pages or {}).items():
+            self.opened += 1
+            order = salla_web.parse_order_page(html, sid) if html else None
+            if not order:
+                self.skipped["no_items"] += 1
+                continue
+            if not order.get("reference_id"):
+                order["reference_id"] = (self.rows.get(sid) or {}).get("order", "")
+            d = (order.get("date") or {}).get("date") or ""
+            if d:
+                dates.append(d)
+            if self.cutoff and d and d < self.cutoff:
+                self.skipped["too_old"] += 1
+                continue
+            got, found, why = panel_order_units(order, self.keep_unconfirmed, self.include_falcon)
+            if why:
+                self.skipped[why] = self.skipped.get(why, 0) + 1
+            if not got:
+                continue
+            self.seen.add(got[0]["order"])
+            self.found += found
+            self.units.extend(got)
+        return {"too_old": bool(self.cutoff and dates and max(dates) < self.cutoff)}
+
+    def progress(self):
+        return {"page": self.pages, "done": self.opened, "total": self.listed,
+                "units": len(self.units), "found": self.found, "orders_total": self.listed}
+
+    def meta(self):
+        return {"files_seen": 0, "files_kept": 0, "files_dup": 0, "dup_names": [],
+                "orders": len(self.seen), "orders_dup": 0, "dup_orders": [],
+                "skipped": self.skipped, "bad_files": [], "source": "extension",
+                "orders_total": self.listed, "with_credentials": self.found,
+                "session_expired": False, "pages": self.pages}
+
+
 def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                     include_falcon=False, max_months=15, workers=4):
     """يسحب طلبات المتجر من **لوحة سلة بجلسة المتصفّح** (لا توكن) → (وحدات، تقرير).
@@ -709,8 +813,7 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                                        "no_date": 0, "no_items": 0, "too_old": 0,
                                        "not_subscription": 0}
     found, expired, listed, opened = 0, False, 0, 0
-    cutoff = (renew.add_months(datetime.date.today(), -int(max_months)).isoformat()
-              if max_months else "")
+    cutoff = panel_cutoff(max_months)
     page, more = 1, True
 
     def report(extra=None):
@@ -754,12 +857,6 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                         continue
                     if not order.get("reference_id"):
                         order["reference_id"] = r.get("order", "")
-                    order["items"] = [it for it in order.get("items") or []
-                                      if is_subscription_item(it)]
-                    if not order["items"]:           # منتجاتٌ لا علاقة لها بالاشتراكات
-                        skipped["not_subscription"] += 1
-                        report()
-                        continue
                     d = (order.get("date") or {}).get("date") or ""
                     if d:
                         dates.append(d)
@@ -767,24 +864,14 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                         skipped["too_old"] += 1
                         report()
                         continue
-                    got, why = salla_order_units(order, keep_unconfirmed, include_falcon)
+                    got, n_found, why = panel_order_units(order, keep_unconfirmed, include_falcon)
                     if why:
                         skipped[why] = skipped.get(why, 0) + 1
                     if not got:
                         report()
                         continue
                     seen.add(got[0]["order"])
-                    fallback = None                # اعتماد الملاحظات، يُحسب مرةً للطلب
-                    for u in got:
-                        cred = parse_credentials(u.pop("code", ""))
-                        if not cred:               # لا في الكود؟ ففي السجلّ ثم ملاحظة العميل
-                            if fallback is None:
-                                fallback = next((c for c in map(parse_credentials,
-                                                 salla_web.order_notes(order)) if c), {})
-                            cred = fallback
-                        if cred:
-                            found += 1
-                            u.update(cred)
+                    found += n_found
                     units.extend(got)
                     report()
                 if stop and stop():

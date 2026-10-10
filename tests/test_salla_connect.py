@@ -175,6 +175,27 @@ def main():
     s3._get = lambda path, accept="application/json": (302, {"Location": "https://s.salla.sa/auth?x=1"}, b"")
     check("diagnose: auth redirect is expired session", not s3.diagnose()["ok"] and "انتهت" in s3.diagnose()["verdict"])
 
+    # السحب من جهاز المشغّل: الإضافة تُغذّي الخادم بصفحات اللوحة خامًا
+    st3 = {"renew": {}, "service": {}}
+    X._pull["running"] = False
+    r = X.panel_feed(st3, "ws", {}, {"op": "start", "max_months": 15})
+    check("feed start opens a job", r["ok"] and X._pull["running"] and X._pull["source"] == "extension", str(r))
+    r = X.panel_feed(st3, "ws", {}, {"op": "list", "page": 1, "html": LIST})
+    check("feed list returns confirmed sids only", r["ok"] and r["sids"] == ["111"] and r["more"] is True, str(r))
+    r = X.panel_feed(st3, "ws", {}, {"op": "orders", "orders": {"111": order_html([CODE])}})
+    check("feed orders parses units with credentials", r["ok"] and r["units"] == 1 and r["found"] == 1 and r["too_old"] is False, str(r))
+    check("feed progress mirrors into pull status", X._pull["units"] == 1 and X._pull["page"] == 1)
+    check("a live feed refuses a second start", X.panel_feed(st3, "ws", {}, {"op": "start"})["ok"] is False)
+    orig_fin = X._pull_finish
+    fin = {}
+    X._pull_finish = lambda units, meta, ws, cfg, apply: fin.update(n=len(units), src=meta["source"]) or X._pull.update(phase="done")
+    try:
+        r = X.panel_feed(st3, "ws", {}, {"op": "finish"})
+    finally:
+        X._pull_finish = orig_fin
+    check("feed finish finalizes like the direct pull", r["ok"] and fin == {"n": 1, "src": "extension"} and not X._pull["running"], str(r))
+    check("after finish the job is closed", X.panel_feed(st3, "ws", {}, {"op": "list", "page": 2, "html": ""})["ok"] is False)
+
     # الكمية ٢ بكودين → يوزر لكل نسخة
     d2 = salla_web.parse_order_page(order_html([CODE, CODE.replace("328137953493", "111222333444")], qty=2), "9")
     us, _ = renew_import.salla_order_units(d2)
