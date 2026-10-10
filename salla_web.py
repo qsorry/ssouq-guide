@@ -29,11 +29,13 @@ import datetime
 import html as _html_mod
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 TIMEOUT = 30
+RETRIES, RETRY_WAIT = 3, 2          # محاولاتُ النداء الواحد، وثواني التراجع الأولى
 BASE = "https://s.salla.sa"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
@@ -113,24 +115,34 @@ class Session:
 
     # ----------------------------- النقل -----------------------------
     def _get(self, path, accept="application/json"):
+        """نداءٌ واحد — ومهلةُ الشبكة أو انقطاعها العابر يُعاد ثلاثًا بتراجعٍ، فلا
+        يُسقط سحبُ آلاف الطلبات بمصافحة SSL واحدة انتهت مهلتها."""
         url = path if path.startswith("http") else self.base + path
         req = urllib.request.Request(url, headers={
             "Cookie": self.cookie, "User-Agent": UA, "Accept": accept,
             "X-Requested-With": "XMLHttpRequest", "Referer": self.base + "/orders",
         })
         opener = urllib.request.build_opener(_NoRedirect)
-        try:
-            with opener.open(req, timeout=TIMEOUT) as r:
-                return r.status, r.headers, r.read()
-        except urllib.error.HTTPError as e:
-            if e.code in (301, 302, 303, 307, 308):
-                return e.code, e.headers, b""
-            body = e.read() if e.fp else b""
-            if e.code in (401, 403):
-                raise denied_error(e.code, e.headers, body)
-            return e.code, e.headers, body
-        except urllib.error.URLError as e:
-            raise WebError("تعذّر الوصول للوحة سلة: %s" % (getattr(e, "reason", e)))
+        last = None
+        for attempt in range(RETRIES):
+            try:
+                with opener.open(req, timeout=TIMEOUT) as r:
+                    return r.status, r.headers, r.read()
+            except urllib.error.HTTPError as e:
+                return self._http_error(e)
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+                last = e
+                if attempt + 1 < RETRIES:
+                    time.sleep(RETRY_WAIT * (2 ** attempt))
+        raise WebError("تعذّر الوصول للوحة سلة: %s" % (getattr(last, "reason", last)))
+
+    def _http_error(self, e):
+        if e.code in (301, 302, 303, 307, 308):
+            return e.code, e.headers, b""
+        body = e.read() if e.fp else b""
+        if e.code in (401, 403):
+            raise denied_error(e.code, e.headers, body)
+        return e.code, e.headers, body
 
     def _json(self, path):
         code, headers, body = self._get(path)

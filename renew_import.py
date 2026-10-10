@@ -818,6 +818,7 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                                        "no_date": 0, "no_items": 0, "too_old": 0,
                                        "not_subscription": 0}
     found, expired, listed, opened = 0, False, 0, 0
+    failed = []                         # طلباتٌ لم تُفتح صفحتها (شبكة) — تُذكر في التقرير
     cutoff = panel_cutoff(max_months)
     page, more = 1, True
     seen_sids = set()                   # رابط «التالي» يختفي بعد نحو ٦٨ صفحة والصفحات تستمرّ:
@@ -836,6 +837,8 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
             return r, session.order_details(r["sid"])
         except salla_web.SessionExpired as e:
             return r, e
+        except salla_web.WebError:                  # طلبٌ واحد تعذّر بعد المحاولات: يُعدّ ولا يُسقط السحب
+            return r, None
 
     try:
         with ThreadPoolExecutor(max_workers=max(1, int(workers))) as pool:
@@ -862,6 +865,7 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                         raise order
                     if not order:
                         skipped["no_items"] += 1
+                        failed.append(r.get("order") or r["sid"])
                         report()
                         continue
                     if not order.get("reference_id"):
@@ -894,7 +898,7 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                    "orders": len(seen), "orders_dup": 0, "dup_orders": [],
                    "skipped": skipped, "bad_files": [], "source": "panel",
                    "orders_total": listed, "with_credentials": found,
-                   "session_expired": expired, "pages": page}
+                   "session_expired": expired, "pages": page, "failed": failed[:200]}
 
 
 def pull_from_salla(token, progress=None, with_history=True, stop=None,
