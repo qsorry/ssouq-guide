@@ -216,6 +216,64 @@ def test_xlsx():
             pass
 
 
+def test_unlisted():
+    print("== لم تُعرض للبيع: يوزرات اللوحة − المبيع في سلة − مخزون أكواد سلة ==")
+    d = tempfile.mkdtemp(prefix="unl_")
+    try:
+        today_d = renew._today()
+        today = today_d.isoformat()
+        far = renew.add_months(today_d, 10).isoformat()
+        panels.save_panel_lines(d, "pk", "كاسبر", [
+            {"username": "111111111111", "password": "1000000001", "package": "15 Months", "exp": far},     # مبيع في سلة
+            {"username": "222222222222", "password": "1000000002", "package": "15 Months", "exp": far},     # معروض في مخزون سلة
+            {"username": "333333333333", "password": "1000000003", "package": "15 Months", "exp": far},     # لم يُعرض ← المطلوب
+            {"username": "444444444444", "password": "1000000004", "package": "15 Months", "exp": "2020-01-01"},  # منتهٍ
+        ])
+        panels.save_store_lines(d, [{"order": "1", "date": today, "host": "kasper.tv", "username": "111111111111", "months": 15}])
+        st = panels.save_salla_codes(d, [{"id": "p1", "name": "اشتراك كاسبر 12 شهر", "type": "codes",
+                                          "codes": [{"code": "Host http://kasper.tv:80 | Username 222222222222 | Password 1000000002", "status": "available"},
+                                                    {"code": "****-masked", "status": "available"}]}], reset=True)
+        check("salla codes saved with parsed usernames and masked count", st["products"] == 1 and st["with_username"] == 1 and st["unparsed"] == 1, str(st))
+        cfg = {"panels": [{"id": "pk", "name": "كاسبر", "account_id": "a", "gate_id": "g", "hosts": ["kasper.tv"]}]}
+        res = panels.unlisted(cfg, d)
+        users = [r["username"] for r in res["rows"]]
+        check("only the never-listed, unexpired line is reported", users == ["333333333333"], str(users))
+        r = res["rows"][0]
+        check("row carries a ready-to-copy line with host/user/pass/exp",
+              r["line"] == "Host http://kasper.tv Username 333333333333 Password 1000000003 Exp " + far and r["months_left"] >= 9, r["line"])
+        pp = res["panels"]["pk"]
+        check("per-panel counts: sold/listed/unlisted/expired", (pp["sold"], pp["listed"], pp["unlisted"], pp["expired"]) == (1, 1, 1, 1), str(pp))
+        res2 = panels.unlisted(cfg, d, include_expired=True)
+        check("include_expired adds the expired line", sorted(r["username"] for r in res2["rows"]) == ["333333333333", "444444444444"])
+        # إضافة منتجٍ آخر دون reset تُبقي الأوّل
+        st2 = panels.save_salla_codes(d, [{"id": "p2", "name": "سمارت", "codes": ["Host http://m.ink Username 555555555555 Password 1000000005"]}])
+        check("append keeps earlier products", st2["products"] == 2 and st2["with_username"] == 2, str(st2))
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_split_bulk():
+    print("== تجزئة جماعية من سطور ملصوقة ==")
+    import xm_lines as X
+    import split_subs
+    d = tempfile.mkdtemp(prefix="blk_")
+    try:
+        a = {"id": "acc1", "name": "حساب"}
+        gate = {"id": "g1", "name": "مرح", "mode": "web", "host": "http://m.ink"}
+        exp = renew.add_months(renew._today(), 14).isoformat()
+        text = "Host http://m.ink Username 123456789012 Password 987654321 Exp %s\n\nلا شيء هنا\nUsername 222333444555 Password x" % exp
+        out = X.split_register_bulk(a, gate, 6, text, d)
+        check("two lines registered, one rejected", len(out["registered"]) == 2 and len(out["errors"]) == 1, str(out)[:200])
+        db = split_subs.load(d, "acc1")
+        rec = next(r for r in db["lines"].values() if r["username"] == "123456789012")
+        check("expiry from the line, slice of 6 months, base 15", rec["expiry"] == exp and rec["slice"]["months"] == 6 and rec["base_months"] == 15, str(rec["slice"]))
+        out2 = X.split_register_bulk(a, gate, 6, text, d)
+        check("re-posting the same lines reports them as existing", len(out2["existing"]) == 2 and not out2["registered"], str(out2)[:120])
+        check("a bad slice is refused", X.split_register_bulk(a, gate, 15, text, d)["ok"] is False)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     test_months()
     test_host()
@@ -225,6 +283,8 @@ def main():
     test_compare()
     test_renewal()
     test_xlsx()
+    test_unlisted()
+    test_split_bulk()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, "
           + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))

@@ -478,6 +478,36 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
         <p class="msg" id="panelsMsg"></p>
       </div>
     </details>
+    <details class="blk fold" id="blkUnlisted">
+      <summary><span class="bi c-amber"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg></span>
+        <span class="st"><b>اشتراكات لم تُعرض للبيع</b><small id="unlSum">يوزرات اللوحات التي لا هي مبيعة في سلة ولا في مخزون أكوادها</small></span></summary>
+      <div class="din">
+        <p class="hint">ثلاثة مصادر تُقارَن: <b>يوزرات اللوحات</b> (زر سحب اللوحات أعلاه)، و<b>المبيع في سلة</b> (السحب المباشر أو من جهازك)، و<b>مخزون أكواد سلة المتاحة</b> للمنتجات الرقمية — تسحبه الإضافة بزر «سحب الأكواد المتاحة». ما لم يُوجد في الاثنين الأخيرين هو ما أُنشئ ولم يُعرض للبيع.</p>
+        <p class="meta" id="codesSum">لم تُسحب أكواد سلة بعد.</p>
+        <div class="acts"><button class="go" id="doUnlisted" type="button">احسب غير المعروض</button>
+          <label class="switch" style="margin:0"><span>مع المنتهي</span><input type="checkbox" class="tog" id="unlExpired"></label></div>
+        <div class="strip" id="unlTiles"></div>
+        <div class="fchips" id="unlFilters"></div>
+        <div class="scroll hidden" id="unlWrap"><table class="rt">
+          <thead><tr><th><input type="checkbox" id="unlAll" checked></th><th>اللوحة</th><th>اليوزر</th><th>كلمة المرور</th><th>الباقة</th><th>الانتهاء</th><th>متبقٍ</th></tr></thead>
+          <tbody id="unlBody"></tbody></table></div>
+        <div class="acts"><button class="ghost hidden" id="unlCopy" type="button">نسخ المحدد (Host · Username · Password · Exp)</button>
+          <a class="ghost hidden" id="dlUnlisted" href="#">تنزيل Excel</a></div>
+        <p class="msg" id="unlMsg"></p>
+        <div id="splitBox" class="hidden">
+          <h4 style="margin:14px 0 6px">تجزئة بالكامل</h4>
+          <p class="hint">الصق السطور (أو اضغط «إلى مربع التجزئة») واختر الجزء المبيع: يُسجَّل كل خط أمًّا بباقة ١٥ شهرًا وجزؤه بالمدة المختارة في «حسابات متبقية»، فيتولّى النظام تغيير الاسم عند انتهاء الجزء وإبقاء المتبقي للبيع. لا يُلمس شيء على اللوحة الآن.</p>
+          <div class="acts"><button class="ghost" id="unlToSplit" type="button">إلى مربع التجزئة</button></div>
+          <textarea id="splitText" rows="6" class="ltr" placeholder="Host http://x:80 Username 1234 Password 5678 Exp 2027-01-05"></textarea>
+          <div class="form2">
+            <div><label for="splitGate">البوابة</label><select id="splitGate"></select></div>
+            <div><label for="splitMonths">الجزء المبيع (أشهر)</label><select id="splitMonths"><option value="12">12 شهرًا</option><option value="6" selected>6 أشهر</option><option value="3">3 أشهر</option><option value="1">شهر</option><option value="14">14 شهرًا</option><option value="10">10 أشهر</option><option value="9">9 أشهر</option></select></div>
+          </div>
+          <div class="acts"><button class="go" id="doSplit" type="button">جزّئ واحفظ</button></div>
+          <p class="msg" id="splitMsg"></p>
+        </div>
+      </div>
+    </details>
   </section>
 
   <!-- ===================== الطلبات (للمدير) ===================== -->
@@ -1248,6 +1278,71 @@ function renderPanelSaved(lines, store){
 
 $('#addPanel').onclick = () => $('#panelsBox').appendChild(panelRow());
 
+/* ============ لم تُعرض للبيع + التجزئة الجماعية ============ */
+let UNL = [], unlFilter = '';
+async function loadCodesSum(){
+  const d = await api('/api/renew/salla-codes');
+  if (d.error) return;
+  $('#codesSum').textContent = d.products
+    ? `أكواد سلة المتاحة (${d.built}): ${AR(d.products)} منتج رقمي · ${AR(d.codes)} كود، منها ${AR(d.with_username)} بيوزر مقروء${d.unparsed ? ` · ${AR(d.unparsed)} غير مقروء (مقنَّع؟)` : ''}`
+    : 'لم تُسحب أكواد سلة بعد — من الإضافة: «سحب الأكواد المتاحة».';
+}
+function unlRows(){ return UNL.filter(r => !unlFilter || r.panel_id === unlFilter); }
+function renderUnlisted(d){
+  UNL = d.rows || [];
+  const ps = d.panels || {};
+  $('#unlTiles').innerHTML = Object.values(ps).map(p =>
+    `<div class="stat"><b class="${p.unlisted ? 'c-warn' : ''}">${AR(p.unlisted)}</b><small>${esc(p.name)} — غير معروض<br>من ${AR(p.lines)} · مبيع ${AR(p.sold)} · معروض ${AR(p.listed)} · منتهٍ ${AR(p.expired)}</small></div>`).join('')
+    || '<div class="stat"><b>0</b><small>لا لوحات مسحوبة</small></div>';
+  const chips = [{k:'', t:'الكل', n: UNL.length}].concat(Object.entries(ps).map(([k,p]) => ({k, t:p.name, n:p.unlisted})));
+  $('#unlFilters').innerHTML = chips.map(c => `<button class="fchip" type="button" data-k="${c.k}" aria-pressed="${unlFilter===c.k}">${esc(c.t)}<em>${AR(c.n)}</em></button>`).join('');
+  $('#unlFilters').querySelectorAll('[data-k]').forEach(b => b.onclick = () => { unlFilter = b.dataset.k; renderUnlisted(d); });
+  const rows = unlRows();
+  $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${r.months_left ? AR(r.months_left) + ' شهر' : (r.expired ? 'منتهٍ' : '—')}</td></tr>`).join('');
+  $('#unlWrap').classList.toggle('hidden', !UNL.length);
+  $('#unlCopy').classList.toggle('hidden', !rows.length);
+  $('#dlUnlisted').classList.toggle('hidden', !UNL.length);
+  $('#splitBox').classList.toggle('hidden', !UNL.length);
+  note($('#unlMsg'), `${AR(UNL.length)} يوزرًا لم تُعرض للبيع · المبيع في سلة ${AR(d.store_sold)} · المعروض في مخزون سلة ${AR(d.salla_listed)}${d.codes_built ? '' : ' (لم تُسحب أكواد سلة: كل غير المبيع يُعدّ غير معروض)'}`, true);
+  $('#unlSum').textContent = `${AR(UNL.length)} غير معروض`;
+}
+function pickedLines(){
+  return [...document.querySelectorAll('.unlPick:checked')].map(c => UNL[Number(c.dataset.i)]).filter(Boolean).map(r => r.line);
+}
+$('#unlAll').onchange = e => document.querySelectorAll('.unlPick').forEach(c => c.checked = e.target.checked);
+$('#doUnlisted').onclick = async () => {
+  note($('#unlMsg'), 'جارٍ الحساب…', true);
+  const d = await api('/api/renew/unlisted' + ($('#unlExpired').checked ? '?expired=1' : ''));
+  if (d.error) return note($('#unlMsg'), d.error);
+  renderUnlisted(d);
+};
+$('#unlExpired').onchange = () => { if (UNL.length) $('#doUnlisted').click(); };
+$('#unlCopy').onclick = async () => {
+  const t = pickedLines().join('\n');
+  try { await navigator.clipboard.writeText(t); note($('#unlMsg'), `نُسخ ${AR(pickedLines().length)} سطرًا`, true); }
+  catch (e) { $('#splitText').value = t; note($('#unlMsg'), 'تعذّر النسخ — السطور في مربع التجزئة', false); }
+};
+$('#dlUnlisted').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/unlisted.xlsx'; };
+$('#unlToSplit').onclick = () => {
+  $('#splitText').value = pickedLines().join('\n');
+  // بوابة اللوحة المختارة بالمرشّح إن كانت مربوطة ببوابة
+  const p = (PANELS || []).find(x => x.id === unlFilter);
+  if (p && p.account_id && p.gate_id) $('#splitGate').value = p.account_id + '|' + p.gate_id;
+};
+function fillSplitGates(){ $('#splitGate').innerHTML = webGateOptions(''); }
+$('#doSplit').onclick = async () => {
+  const [account_id, gate] = ($('#splitGate').value || '|').split('|');
+  if (!gate) return note($('#splitMsg'), 'اختر البوابة');
+  const text = $('#splitText').value.trim();
+  if (!text) return note($('#splitMsg'), 'الصق السطور أولًا');
+  const btn = $('#doSplit'); btn.disabled = true; note($('#splitMsg'), 'جارٍ التسجيل…', true);
+  const d = await post('/api/split/register-bulk', {account_id, gate, months: $('#splitMonths').value, text});
+  btn.disabled = false;
+  if (d.error) return note($('#splitMsg'), d.error);
+  const errs = (d.errors || []).slice(0, 5).map(e => `${e.line}: ${e.error}`).join(' · ');
+  note($('#splitMsg'), `سُجِّل ${AR((d.registered||[]).length)} خطًّا بجزء ${$('#splitMonths').value} شهرًا · كان مسجَّلًا ${AR((d.existing||[]).length)} · تعذّر ${AR((d.errors||[]).length)}${errs ? ' — ' + errs : ''}. تابعها في «حسابات متبقية».`, !(d.errors||[]).length);
+};
+
 $('#savePanels').onclick = async () => {
   const panels = [...$('#panelsBox').querySelectorAll('.card')].map(d => {
     const [a, g] = (d.querySelector('.pGate').value || '|').split('|');
@@ -1399,6 +1494,7 @@ $('#dlLines').onclick = e => { e.preventDefault(); location.href = B + '/api/ren
   await loadCfg();                 // يضبط IS_ADMIN ويُخفي أجزاء المدير أولًا
   await loadGates();
   await loadPanels();
+  fillSplitGates(); loadCodesSum();
   const d = await api('/api/renew/analysis');
   if (d.analysis) render(d.analysis);
   watchLines();

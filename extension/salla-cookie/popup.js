@@ -112,6 +112,29 @@ $("pull").onclick = async () => {
 $("pullStop").onclick = async () => { await ask({ type: "pull-cancel" }); };
 watchPull();
 
+// ---- الأكواد المتاحة ----
+let codesTimer = null;
+async function watchCodes() {
+  const st = await ask({ type: "codes-status" });
+  if (st) {
+    const m = $("codesMsg");
+    m.textContent = st.line || "";
+    m.className = "msg" + (st.ok === true ? " ok" : st.ok === false ? " err" : "");
+    $("codes").disabled = !!st.running;
+  }
+  clearTimeout(codesTimer);
+  if (st && st.running) codesTimer = setTimeout(watchCodes, 1500);
+}
+$("codes").onclick = async () => {
+  const s = readSettings();
+  const bad = validSettings(s);
+  if (bad) { setMsg(bad, "err"); $("cfg").open = true; return; }
+  await chrome.storage.local.set({ [KEY]: s });
+  await ask({ type: "codes", settings: s });
+  watchCodes();
+};
+watchCodes();
+
 loadSettings().then((s) => {
   if (!s.base || !s.user || !s.pass) $("cfg").open = true;
 });
