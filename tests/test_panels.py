@@ -239,8 +239,12 @@ def test_unlisted():
         users = [r["username"] for r in res["rows"]]
         check("only the never-listed, unexpired line is reported", users == ["333333333333"], str(users))
         r = res["rows"][0]
+        check("row carries a Salla card line (User/Pass/Guide by panel name)",
+              r["card"] == "Host http://kasper.tv:80 User 333333333333 Pass 1000000003 Guide https://guide.ssouq.com/#activate/casper", r["card"])
+        h2, g2 = panels.panel_card({"name": "مرح", "hosts": ["mrha.ink"], "card_host": "http://mrha.ink:80", "guide_url": ""})
+        check("panel_card honours card_host and derives the guide from the name", (h2, g2) == ("http://mrha.ink:80", "https://guide.ssouq.com/#activate/smart"), str((h2, g2)))
         check("row carries a ready-to-copy line with host/user/pass/exp",
-              r["line"] == "Host http://kasper.tv Username 333333333333 Password 1000000003 Exp " + far and r["months_left"] >= 9, r["line"])
+              r["line"] == "Host http://kasper.tv:80 Username 333333333333 Password 1000000003 Exp " + far and r["months_left"] >= 9, r["line"])
         pp = res["panels"]["pk"]
         check("per-panel counts: sold/listed/unlisted/expired", (pp["sold"], pp["listed"], pp["unlisted"], pp["expired"]) == (1, 1, 1, 1), str(pp))
         # حفظٌ قديم غيّر معرّف اللوحة: تُربط بأحدث سحبٍ يحمل اسمها

@@ -110,7 +110,10 @@ def normalize_panels(panels):
         out.append({"id": pid, "name": name,
                     "account_id": str(p.get("account_id", "") or "").strip(),
                     "gate_id": str(p.get("gate_id", "") or "").strip(),
-                    "hosts": hosts})
+                    "hosts": hosts,
+                    # سطر الكود كما يُلصق في سلة: الهوست بصيغته المرسلة للعميل، ورابط الشرح
+                    "card_host": str(p.get("card_host", "") or "").strip(),
+                    "guide_url": str(p.get("guide_url", "") or "").strip()})
     return out
 
 
