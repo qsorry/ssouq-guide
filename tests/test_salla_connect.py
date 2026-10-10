@@ -222,6 +222,25 @@ def main():
     check("feed finish finalizes like the direct pull", r["ok"] and fin == {"n": 1, "src": "extension"} and not X._pull["running"], str(r))
     check("after finish the job is closed", X.panel_feed(st3, "ws", {}, {"op": "list", "page": 2, "html": ""})["ok"] is False)
 
+    # أُغلق المتصفّح في المنتصف: البدء ثانيةً يستأنف من الصفحة التالية بما جُمع
+    X._pull["running"] = False
+    X.panel_feed(st3, "ws", {}, {"op": "start", "max_months": 15})
+    X.panel_feed(st3, "ws", {}, {"op": "list", "page": 3, "html": LIST})
+    X.panel_feed(st3, "ws", {}, {"op": "orders", "orders": {"111": order_html([CODE])}})
+    X._pull["heartbeat"] = time.time() - 999                       # انقطع
+    r = X.panel_feed(st3, "ws", {}, {"op": "start", "max_months": 15, "resume": True})
+    check("a stale extension pull resumes from the next page with its units", r["ok"] and r.get("resume_page") == 4 and r["units"] == 1, str(r))
+    X._pull_finish = lambda units, meta, ws, cfg, apply: fin.update(n=len(units)) or X._pull.update(phase="done")
+    try:
+        r = X.panel_feed(st3, "ws", {}, {"op": "save"})
+        check("save keeps the pull open after writing", r["ok"] and r["saved"] == 1 and X._pull["running"], str(r))
+        X._pull["heartbeat"] = time.time() - 999
+        r = X.panel_feed(st3, "ws", {}, {"op": "start", "max_months": 3})
+        check("a fresh start with another cutoff saves the old units first", r["ok"] and not r.get("resume_page") and fin["n"] == 1, str(r))
+    finally:
+        X._pull_finish = orig_fin
+        X._pull["running"] = False
+
     # رابط «التالي» يختفي والصفحات تستمرّ: النهاية صفحةٌ بلا طلبات جديدة
     class EndlessSess(FakeSess):
         pages = {1: (LIST.split("<ul>")[0], False), 2: (LIST.split("<ul>")[0].replace('"111"', '"444"').replace("293119145", "293100004"), False),
@@ -266,7 +285,7 @@ def main():
     check("pull is ready with the workspace's own cookie", X.renew_pull_ready({"renew": {}, "service": {}}, {"panel_cookie": "s=1"}) is True)
     r = X.start_renew_pull({"renew": {}, "service": {}}, "ws", {"panel_cookie": "s=1"})
     check("start accepts the workspace cookie", r["ok"] is True, str(r))
-    X._pull["cancel"] = True; import time; time.sleep(0.3); X._pull["running"] = False
+    X._pull["cancel"] = True; time.sleep(0.3); X._pull["running"] = False
     r = X.start_renew_pull({"renew": {}, "service": {}}, "ws", {})
     check("start refuses with neither token nor cookie", r["ok"] is False and "كوكيز" in r["error"], str(r))
     orig_worker = X._pull_worker
@@ -283,7 +302,7 @@ def main():
     X._pull["running"] = False
     try:
         r = X.start_renew_pull(st2, "ws", {})
-        import time; time.sleep(0.2)
+        time.sleep(0.2)
         check("start uses the panel session when no token", r["ok"] and got["token"] == "" and isinstance(got["session"], salla_web.Session), str(got))
     finally:
         X._pull_worker = orig_worker

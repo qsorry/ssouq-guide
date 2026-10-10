@@ -114,8 +114,10 @@ async function runPull(settings, maxMonths) {
   pullState.cancel = false;
   try {
     setLine("بدء السحب…", null);
-    await toolPost(settings, "/api/renew/panel-feed", { op: "start", max_months: maxMonths, apply: true });
-    let page = 1, more = true, units = 0, found = 0, opened = 0, listed = 0;
+    const st = await toolPost(settings, "/api/renew/panel-feed", { op: "start", max_months: maxMonths, apply: true, resume: true });
+    // انقطع سحبٌ سابق (أُغلق المتصفّح)؟ الخادم يعيد الصفحة التالية وما جُمع، فيُستأنف لا يُعاد.
+    let page = st.resume_page || 1, more = true, units = st.units || 0, found = st.found || 0, opened = st.done || 0, listed = st.total || 0;
+    if (st.resume_page) setLine(`استئناف من صفحة ${page} (${units} يوزرًا محفوظة)`, null);
     while (more && !pullState.cancel) {
       const html = await sallaPage(`/orders?page=${page}&sort_by=created_at-desc`);
       const lst = await toolPost(settings, "/api/renew/panel-feed", { op: "list", page, html });
@@ -137,6 +139,8 @@ async function runPull(settings, maxMonths) {
         setLine(`صفحة ${page} · ${opened} من ${listed} طلبًا · ${units} يوزرًا (${found} باعتماد)`, null);
       }
       if (tooOld) break;               // صفحةٌ كلها أقدم من الحدّ: ما بعدها أقدم
+      // كل عشر صفحات يُحفظ ما جُمع على الخادم، فإن أُغلق المتصفّح لم يضع شيء.
+      if (page % 10 === 0) await toolPost(settings, "/api/renew/panel-feed", { op: "save" });
       page += 1;
     }
     const fin = await toolPost(settings, "/api/renew/panel-feed", { op: "finish" });
