@@ -378,7 +378,8 @@ def unlisted(config, data_dir, include_expired=False):
                 n_listed += 1
                 continue
             es = expiry_status(rec.get("exp"), today, 0)
-            expired = bool(es["expired"]) or rec.get("status") in ("expired", "disabled")
+            expired = (bool(es["expired"]) or str(rec.get("status") or "").lower() in ("expired", "disabled", "banned")
+                       or es["days_left"] == 0)        # ينتهي اليوم: لا يُباع
             if expired:
                 n_expired += 1
                 if not include_expired:

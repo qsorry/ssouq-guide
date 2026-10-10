@@ -493,7 +493,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <tbody id="codesBody"></tbody></table></div>
         <p class="msg" id="codesMsg"></p>
         <div class="acts"><button class="go" id="doUnlisted" type="button">احسب غير المعروض</button>
-          <label class="switch" style="margin:0"><span>مع المنتهي</span><input type="checkbox" class="tog" id="unlExpired"></label></div>
+          <label class="switch" style="margin:0"><span>إظهار المنتهي<small>مطفأ = المنتهي مخفيّ (الافتراضي)</small></span><input type="checkbox" class="tog" id="unlExpired"></label></div>
         <div class="strip" id="unlTiles"></div>
         <div class="fchips" id="unlFilters"></div>
         <div class="fchips" id="unlMonths"></div>
@@ -1331,7 +1331,7 @@ function renderUnlisted(d){
   $('#unlMonths').innerHTML = mchips.map(c => `<button class="fchip" type="button" data-m="${c.k}" aria-pressed="${unlMonths===c.k}">${c.t}<em>${AR(c.n)}</em></button>`).join('');
   $('#unlMonths').querySelectorAll('[data-m]').forEach(b => b.onclick = () => { unlMonths = b.dataset.m; renderUnlisted(d); });
   const rows = unlRows();
-  $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${esc(r.remaining) || (r.expired ? 'منتهٍ' : '—')}</td></tr>`).join('');
+  $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${r.expired ? '<span class="c-bad">' + (esc(r.remaining) || 'منتهٍ') + '</span>' : (esc(r.remaining) || '— بلا تاريخ انتهاء')}</td></tr>`).join('');
   $('#unlWrap').classList.toggle('hidden', !UNL.length);
   $('#unlCopy').classList.toggle('hidden', !rows.length);
   $('#dlUnlisted').classList.toggle('hidden', !UNL.length);
