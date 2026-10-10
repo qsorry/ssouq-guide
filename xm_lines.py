@@ -2394,7 +2394,7 @@ def _poll_salla_orders(st, svc, per_page=25):
 
 
 def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_months=15,
-                 gen=0):
+                 gen=0, fresh=False):
     """خيط السحب. `gen` رقم جيله: سحبٌ أُطلق بعده (لأنه عُدّ معلّقًا) يلغيه بصمت —
     فلا يكتب في الحالة ولا يمحو «جارٍ» عن خلفه."""
     mine = lambda: _pull.get("gen") == gen
@@ -2408,19 +2408,23 @@ def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_mo
     try:
         st = load_store()
         progress({"phase": "connect"})           # قبل أوّل نداء: ليُعرف أين يقف
+        known = set() if fresh else panels.known_orders(ws)
         units, meta = renew_import.pull_from_salla(
             token, progress=progress, with_history=with_history,
-            stop=stop, session=session, max_months=max_months,
+            stop=stop, session=session, max_months=max_months, known=known,
             credentials_for=lambda sid, url: renew_credentials_for(st, sid, url))
         if not mine():
             return
         if not units:
+            if known and not meta.get("session_expired") and meta.get("skipped", {}).get("known"):
+                _pull.update({"phase": "done", "units": 0, "found": 0, "nothing_new": True})
+                return                               # لا جديد منذ آخر سحب: المحفوظ كما هو
             _pull["error"] = ("انتهت جلسة لوحة سلة — الصق كوكيز جديدة وأعِد السحب"
                               if meta.get("session_expired") else "لم يرجع أي طلب صالح من سلة")
             if meta.get("session_expired"):
                 renew.alert_session_expired(ws, cfg)
             return
-        _pull_finish(units, meta, ws, cfg, apply_index)
+        _pull_finish(units, meta, ws, cfg, apply_index, merge=not fresh)
         if meta.get("session_expired"):
             # التحقّق الثنائي في سلة إلزاميّ، فلا تُجدَّد الجلسة إلا بيد المشغّل.
             renew.alert_session_expired(ws, cfg)
@@ -2433,9 +2437,12 @@ def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_mo
             _pull["at"] = renew.now_iso()
 
 
-def _pull_finish(units, meta, ws, cfg, apply_index):
+def _pull_finish(units, meta, ws, cfg, apply_index, merge=True):
     """ختام السحب أيًّا كان مصدره: التحليل، وخطوط المتجر للمقارنة، والفهرس إن طُلب.
-    فالكون في خطوط المتجر (للنقل والمقارنة) لا في التجديد: لوحته قائمة بذاتها."""
+    فالكون في خطوط المتجر (للنقل والمقارنة) لا في التجديد: لوحته قائمة بذاتها.
+    `merge`: الجديد يُضاف إلى المحفوظ (إكمالٌ لا بدءٌ من جديد)."""
+    if merge:
+        units = panels.merge_store_lines(ws, units)
     renewable = [u for u in units if not u.get("falcon")]
     agg = renew_import.analyze(renewable, meta)
     renew.save_analysis(ws, agg)
@@ -2470,13 +2477,16 @@ def panel_feed(st, ws, cfg, req):
                 return {"ok": True, "gen": _pull["gen"], "cutoff": old.cutoff,
                         "resume_page": old.pages + 1, **old.progress()}
             try:
-                _pull_finish(old.units, old.meta(), _feed["ws"], _feed["cfg"], _feed["apply"])
+                _pull_finish(old.units, old.meta(), _feed["ws"], _feed["cfg"], _feed["apply"],
+                             merge=_feed.get("merge", True))
             except Exception:
                 pass
         gen = int(_pull.get("gen") or 0) + 1
-        job = renew_import.PanelFeed(max_months=max(0, int(req.get("max_months", 15) or 0)))
+        fresh = bool(req.get("fresh"))
+        job = renew_import.PanelFeed(max_months=max(0, int(req.get("max_months", 15) or 0)),
+                                     known=None if fresh else panels.known_orders(ws))
         _feed.update({"job": job, "ws": ws, "gen": gen, "apply": bool(req.get("apply", True)),
-                      "cfg": cfg})
+                      "cfg": cfg, "merge": not fresh})
         _pull.update({"running": True, "owner": ws, "phase": "orders", "done": 0, "total": 0,
                       "units": 0, "found": 0, "error": "", "cancel": False, "page": 0,
                       "applied": False, "session_expired": False, "gen": gen,
@@ -2495,15 +2505,20 @@ def panel_feed(st, ws, cfg, req):
             out = job.orders(req.get("orders") or {})
         elif op == "save":                      # حفظ ما جُمع حتى الآن دون إغلاق السحب (كل بضع صفحات)
             if job.units:
-                _pull_finish(job.units, job.meta(), _feed["ws"], _feed["cfg"], _feed["apply"])
+                _pull_finish(job.units, job.meta(), _feed["ws"], _feed["cfg"], _feed["apply"],
+                             merge=_feed.get("merge", True))
                 _pull.update({"running": True, "phase": "orders"})
             out = {"saved": len(job.units)}
         elif op == "finish":
             units, meta = job.units, job.meta()
             if not units:
-                _pull["error"] = "لم يرجع أي طلب صالح من سلة"
+                if job.known and meta["skipped"].get("known"):
+                    _pull.update({"phase": "done", "units": 0, "found": 0, "nothing_new": True})
+                else:
+                    _pull["error"] = "لم يرجع أي طلب صالح من سلة"
             else:
-                _pull_finish(units, meta, _feed["ws"], _feed["cfg"], _feed["apply"])
+                _pull_finish(units, meta, _feed["ws"], _feed["cfg"], _feed["apply"],
+                             merge=_feed.get("merge", True))
             _pull["running"] = False
             _pull["at"] = renew.now_iso()
             _feed["job"] = None
@@ -2549,7 +2564,7 @@ def pull_is_stale():
     return bool(_pull["running"]) and (time.time() - float(_pull.get("heartbeat") or 0)) > PULL_STALE
 
 
-def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True, max_months=15):
+def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True, max_months=15, fresh=False):
     if _pull["running"] and not pull_is_stale():
         return {"ok": False, "error": pull_busy_error()}
     token = renew_salla_token(st, cfg)
@@ -2564,7 +2579,7 @@ def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True, max_month
                   "heartbeat": time.time(), "started": time.time(),
                   "source": "api" if token else "panel"})
     threading.Thread(target=_pull_worker,
-                     args=(token, with_history, apply_index, ws, cfg, session, max_months, gen),
+                     args=(token, with_history, apply_index, ws, cfg, session, max_months, gen, fresh),
                      daemon=True).start()
     return {"ok": True, "replaced_stale": replaced}
 
@@ -5450,7 +5465,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
-    def _renew_upload(self, st, ws):
+    def _renew_upload(self, st, ws, cfg=None):
         """يرفع المدير ملفات سلة (الطلبات والمنتجات معًا) فيُبنى الفهرس ويُعرض
         التحليل. الملفات لا تُحفظ على القرص — يُحفظ ما استُخلص منها فقط."""
         n = int(self.headers.get("Content-Length", 0) or 0)
@@ -5465,6 +5480,21 @@ class Handler(BaseHTTPRequestHandler):
         if not files:
             return self._send(400, {"error": "لم يصل أي ملف"})
         yes = lambda k: str(fields.get(k, "")).lower() in ("1", "true", "on", "yes")
+        ours = [(fn, raw) for fn, raw in files if renew_import.is_store_lines_file(raw)]
+        if ours:                               # ملف «الاشتراكات المسحوبة» من الأداة: يُدمج مع المحفوظ
+            units = []
+            for _fn, raw in ours:
+                units.extend(renew_import.read_store_lines(raw))
+            if not units:
+                return self._send(200, {"ok": False, "error": "لم يُقرأ أي اشتراك من الملف"})
+            before = len(panels.load_store_lines(ws).get("lines", []))
+            meta = {"source": "file", "with_credentials": sum(1 for u in units if u.get("username")),
+                    "orders": len({u["order"] for u in units}), "skipped": {}}
+            _pull_finish(units, meta, ws, cfg, yes("apply"), merge=True)
+            total = len(panels.load_store_lines(ws).get("lines", []))
+            return self._send(200, {"ok": True, "applied": yes("apply"), "merged": True,
+                                    "read": len(units), "before": before, "total": total,
+                                    "analysis": renew.load_analysis(ws), "index": renew.index_stats(ws)})
         try:
             units, meta, _prods, agg = renew_import.ingest(
                 files, keep_unconfirmed=yes("keep_unconfirmed"),
@@ -5506,7 +5536,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, start_renew_pull(
                 st, rws, rcfg, with_history=req.get("with_history", True),
                 apply_index=req.get("apply", True),
-                max_months=max(0, int(req.get("max_months", 15) or 0))))
+                max_months=max(0, int(req.get("max_months", 15) or 0)),
+                fresh=bool(req.get("fresh"))))
         if path == "/api/renew/lines-export":
             return self._send(200, start_lines_export(st, rws, rcfg, racs, req.get("side", "source")))
         if path == "/api/renew/lines-cancel":
@@ -6374,7 +6405,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._admin_post(path, st)
                 if path == "/api/renew/upload":
                     ws, own = renew_ws(role, acct)
-                    return self._renew_upload(st, ws)
+                    return self._renew_upload(st, ws, renew_cfg(st, own))
                 if path.startswith("/api/renew/"):
                     return self._renew_admin(path, st, role, acct)
                 if path.startswith("/api/service"):

@@ -106,7 +106,7 @@ $("pull").onclick = async () => {
   if (bad) { setMsg(bad, "err"); $("cfg").open = true; return; }
   await chrome.storage.local.set({ [KEY]: s });
   const months = Math.max(0, Number($("months").value) || 0);
-  await ask({ type: "pull", settings: s, maxMonths: months });
+  await ask({ type: "pull", settings: s, maxMonths: months, fresh: $("fresh").checked });
   watchPull();
 };
 $("pullStop").onclick = async () => { await ask({ type: "pull-cancel" }); };

@@ -340,6 +340,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
         <label class="switch"><span>تضمين الملغي وغير المدفوع<small>للفحص فقط</small></span><input type="checkbox" class="tog amber" id="keepUnconfirmed"></label>
       </div>
     </details>
+    <p class="hint">يُقبل هنا أيضًا ملف <b>«الاشتراكات المسحوبة»</b> الذي تولّده هذه الأداة: يُدمج مع المحفوظ بلا تكرار (الطلب واليوزر)، والسحب التالي يكمل من بعده.</p>
     <div class="acts"><button class="go" id="up" type="button" disabled>ارفع وحلّل</button></div>
     <p class="msg" id="upMsg"></p>
     <p class="meta" id="idxNote"></p>
@@ -354,6 +355,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           وإن حجب Cloudflare عنوان الخادم (يقوله «اختبار الجلسة»)، فاسحب <b>من جهازك</b>: زرّ «ابدأ السحب» في إضافة المتصفّح يقرأ الصفحات من متصفّحك ويرسلها هنا، والتقدّم يظهر أدناه.</p>
         <label class="switch"><span>اقرأ سجلّ كل طلب<small>لاستخراج اليوزر والباسورد — يطول: نداءٌ لكل طلب</small></span><input type="checkbox" class="tog" id="pullHistory" checked></label>
         <label class="switch"><span>اعتماده فهرسًا تعمل عليه صفحة العميل</span><input type="checkbox" class="tog" id="pullApply" checked></label>
+        <label class="switch"><span>إكمال من حيث توقّف<small>الطلبات المحفوظة لا تُفتح، ويقف عند أوّل صفحة كلها محفوظة. أطفئه ليسحب من الصفر</small></span><input type="checkbox" class="tog" id="pullResume" checked></label>
         <label class="switch"><span>الطلبات الأحدث من (أشهر)<small>بالكوكيز: يتوقف عند الأقدم — ما قبل أطول باقة منتهٍ. ٠ = الكل</small></span><input type="number" min="0" max="120" value="15" id="pullMonths" style="width:5em"></label>
         <div class="acts"><button class="go" id="pull" type="button">ابدأ السحب</button>
           <button class="ghost hidden" id="pullStop" type="button">إيقاف</button></div>
@@ -722,7 +724,8 @@ $('#up').onclick = async () => {
   } catch(e){ d = {error:'تعذّر الرفع: ' + e.message}; }
   btn.disabled = false; btn.textContent = 'ارفع وحلّل';
   if (!d.ok) return note($('#upMsg'), d.error || 'تعذّرت القراءة');
-  note($('#upMsg'), d.applied ? 'تمّت القراءة واعتُمد الفهرس ✓' : 'تمّت القراءة (بلا اعتماد) ✓', true);
+  if (d.merged) note($('#upMsg'), `أُدمج ملف الاشتراكات: قُرئ ${AR(d.read)} يوزرًا، المحفوظ ${AR(d.before)} → ${AR(d.total)}${d.applied ? ' — واعتُمد الفهرس ✓' : ' ✓'}. السحب التالي يكمل من بعد هذه الطلبات.`, true);
+  else note($('#upMsg'), d.applied ? 'تمّت القراءة واعتُمد الفهرس ✓' : 'تمّت القراءة (بلا اعتماد) ✓', true);
   showIndex(d.index);
   render(d.analysis);
 };
@@ -836,7 +839,7 @@ let pullTimer = null;
 $('#pull').onclick = async () => {
   const d = await post('/api/renew/pull', {
     with_history: $('#pullHistory').checked, apply: $('#pullApply').checked,
-    max_months: Number($('#pullMonths').value || 0)});
+    max_months: Number($('#pullMonths').value || 0), fresh: !$('#pullResume').checked});
   if (!d.ok) return note($('#pullMsg'), d.error || 'تعذّر بدء السحب');
   if (d.replaced_stale) note($('#pullMsg'), 'استُبدل السحب المعلّق بسحبٍ جديد.', true);
   $('#pullBar').classList.remove('hidden');
@@ -879,7 +882,9 @@ async function watchPull(once){
   } else if (!d.running){
     $('#pullStop').classList.add('hidden');
     clearTimeout(pullTimer);
-    if (!d.error && d.phase === 'done'){
+    if (!d.error && d.phase === 'done' && d.nothing_new){
+      note($('#pullMsg'), 'لا طلبات جديدة منذ آخر سحب — المحفوظ كما هو ✓', true);
+    } else if (!d.error && d.phase === 'done'){
       note($('#pullMsg'), `اكتمل السحب: ${AR(d.units)} يوزرًا، منها ${AR(d.found)} `
         + `باعتماد جاهز${d.applied ? ' — واعتُمد الفهرس ✓' : ''}`
         + (d.session_expired ? '\nانتهت جلسة لوحة سلة أثناء السحب — الصق كوكيز جديدة وأعِده.' : ''),
