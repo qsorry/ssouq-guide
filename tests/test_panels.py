@@ -243,6 +243,10 @@ def test_unlisted():
               r["line"] == "Host http://kasper.tv Username 333333333333 Password 1000000003 Exp " + far and r["months_left"] >= 9, r["line"])
         pp = res["panels"]["pk"]
         check("per-panel counts: sold/listed/unlisted/expired", (pp["sold"], pp["listed"], pp["unlisted"], pp["expired"]) == (1, 1, 1, 1), str(pp))
+        # حفظٌ قديم غيّر معرّف اللوحة: تُربط بأحدث سحبٍ يحمل اسمها
+        cfg_renamed = {"panels": [{**cfg["panels"][0], "id": "new-id"}]}
+        resr = panels.unlisted(cfg_renamed, d)
+        check("panel lines are found by name when the id changed", resr["panels"]["new-id"]["lines"] == 4 and [r["username"] for r in resr["rows"]] == ["333333333333"], str(resr["panels"]))
         cfg2 = {"panels": cfg["panels"] + [{"id": "pm", "name": "مرح", "account_id": "a", "gate_id": "g2", "hosts": ["m.ink"]}]}
         resm = panels.unlisted(cfg2, d)
         check("a panel without pulled lines is reported as not_pulled", resm["panels"]["pm"].get("not_pulled") is True and resm["panels"]["pm"]["lines"] == 0)

@@ -1250,6 +1250,7 @@ function panelRow(p){
   const gv = p.account_id ? p.account_id + '|' + p.gate_id : '';
   const div = document.createElement('div');
   div.className = 'card';
+  div.dataset.id = p.id || '';            // المعرّف يُعاد كما هو، فتبقى يوزرات اللوحة المسحوبة مربوطة بها
   div.innerHTML = `
     <label>اسم اللوحة</label>
     <div class="prow1"><input class="pName" dir="auto" value="${esc(p.name)}" placeholder="كاسبر / مرح / c4k" aria-label="اسم اللوحة">
@@ -1368,7 +1369,7 @@ $('#doSplit').onclick = async () => {
 $('#savePanels').onclick = async () => {
   const panels = [...$('#panelsBox').querySelectorAll('.card')].map(d => {
     const [a, g] = (d.querySelector('.pGate').value || '|').split('|');
-    return {name: d.querySelector('.pName').value.trim(),
+    return {id: d.dataset.id || '', name: d.querySelector('.pName').value.trim(),
             account_id: a || '', gate_id: g || '',
             hosts: d.querySelector('.pHosts').value.split('\n').map(s => s.trim()).filter(Boolean)};
   }).filter(p => p.name);

@@ -86,6 +86,16 @@ def panel_lines_path(data_dir):
     return os.path.join(data_dir, "renew_panel_lines.json")
 
 
+def panel_data_for(pl, panel):
+    """يوزرات لوحةٍ من المحفوظ: بمعرّفها، وإلا بأحدث سحبٍ يحمل اسمها (حفظٌ قديم للوحات
+    كان يولّد معرّفًا جديدًا كل مرة فتنفصل اللوحة عمّا سُحب لها)."""
+    d = pl.get(str(panel.get("id", "")))
+    if d:
+        return d
+    same = [x for x in pl.values() if x.get("name") == panel.get("name") and x.get("count")]
+    return max(same, key=lambda x: x.get("built", "")) if same else None
+
+
 def load_panel_lines(data_dir):
     try:
         with open(panel_lines_path(data_dir), encoding="utf-8") as f:
@@ -326,7 +336,7 @@ def unlisted(config, data_dir, include_expired=False):
     today = renew._today()
     rows, per_panel = [], {}
     for p in cfg["panels"]:
-        pdata = pl.get(p["id"])
+        pdata = panel_data_for(pl, p)
         if not pdata:                               # لوحةٌ لم تُسحب يوزراتها بعد: تُذكر لا تُخفى
             per_panel[p["id"]] = {"name": p["name"], "lines": 0, "sold": 0, "listed": 0,
                                   "unlisted": 0, "expired": 0, "not_pulled": True}
@@ -407,8 +417,9 @@ def compare(config, data_dir, days_override=None):
 
         # أين وُجد اليوزر فعلًا (على أي لوحة)؟
         found_pid, found_rec = "", None
-        if pid and pid in pl:
-            found_rec = pl[pid]["by_user"].get(u.lower())
+        own = panel_data_for(pl, panel) if panel else None
+        if own:
+            found_rec = own["by_user"].get(u.lower())
             if found_rec:
                 found_pid = pid
         if not found_rec:                       # ابحث في بقيّة اللوحات
