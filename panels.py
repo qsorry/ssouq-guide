@@ -350,6 +350,35 @@ def remaining_text(exp, today=None):
 
 
 
+GUIDE_BY_NAME = (("فالكون|falcon", "https://guide.ssouq.com/#activate/falcon"),
+                 ("كاسبر|casper", "https://guide.ssouq.com/#activate/casper"),
+                 ("مرح|سمارت|smart|marah", "https://guide.ssouq.com/#activate/smart"))
+
+
+def panel_card(panel):
+    """(هوست البطاقة، رابط الشرح) للوحة: ما ضُبط فيها، وإلا أوّل هوستاتها بمنفذ 80،
+    والشرح من اسمها (فالكون/كاسبر/مرح)."""
+    host = panel.get("card_host") or ""
+    if not host:
+        h = (panel.get("hosts") or [""])[0]
+        host = ("http://%s:80" % h) if h else ""
+    elif not host.startswith("http"):
+        host = "http://" + host
+    guide = panel.get("guide_url") or ""
+    if not guide:
+        for pat, url in GUIDE_BY_NAME:
+            if re.search(pat, panel.get("name", ""), re.I):
+                guide = url
+                break
+    return host, guide
+
+
+def salla_card_line(host, username, password, guide=""):
+    """سطر الكود بصيغة بطاقة سلة: «Host … User … Pass … Guide …» — يُلصق كما هو."""
+    line = "Host %s User %s Pass %s" % (host or "-", username, password)
+    return line + (" Guide " + guide if guide else "")
+
+
 def unlisted(config, data_dir, include_expired=False):
     """يوزرات اللوحات التي لا هي مبيعة في سلة (خطوط المتجر) ولا معروضة في مخزون
     أكوادها: أُنشئت ونُسيت. لكل لوحةٍ صفوفها، وفي كل صف السطر الجاهز للنسخ
@@ -367,8 +396,7 @@ def unlisted(config, data_dir, include_expired=False):
             per_panel[p["id"]] = {"name": p["name"], "lines": 0, "sold": 0, "listed": 0,
                                   "unlisted": 0, "expired": 0, "not_pulled": True}
             continue
-        host = (p.get("hosts") or [""])[0]
-        host = ("http://" + host) if host and not host.startswith("http") else host
+        host, guide = panel_card(p)
         n_sold = n_listed = n_unlisted = n_expired = 0
         for key, rec in pdata["by_user"].items():
             if key in sold:
@@ -391,11 +419,12 @@ def unlisted(config, data_dir, include_expired=False):
             line = "Host %s Username %s Password %s" % (host or "-", rec["username"], rec.get("password", ""))
             if rec.get("exp"):
                 line += " Exp " + rec["exp"]
+            card = salla_card_line(host, rec["username"], rec.get("password", ""), guide)
             rows.append({"panel_id": p["id"], "panel_name": p["name"], "username": rec["username"],
                          "password": rec.get("password", ""), "host": host, "package": rec.get("package", ""),
                          "months": rec.get("months", 0), "created": rec.get("created", ""),
                          "exp": rec.get("exp", ""), "days_left": es["days_left"], "months_left": months_left,
-                         "remaining": remaining_text(rec.get("exp"), today),
+                         "remaining": remaining_text(rec.get("exp"), today), "card": card,
                          "expired": expired, "status": rec.get("status", ""), "line": line})
         per_panel[p["id"]] = {"name": p["name"], "lines": pdata.get("count", 0), "sold": n_sold,
                               "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired,

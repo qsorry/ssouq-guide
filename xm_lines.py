@@ -2918,9 +2918,9 @@ def _store_lines_xlsx(ws):
 def _unlisted_xlsx(ws, cfg):
     d = panels.unlisted(cfg, ws, include_expired=False)
     headers = ["اللوحة", "اليوزر", "كلمة المرور", "الهوست", "الباقة", "المدة (أشهر)",
-               "الإنشاء", "الانتهاء", "المتبقي", "المتبقي (أشهر)", "السطر الجاهز"]
+               "الإنشاء", "الانتهاء", "المتبقي", "المتبقي (أشهر)", "سطر الكود لسلة", "سطر التجزئة"]
     rows = [[r["panel_name"], r["username"], r["password"], r["host"], r["package"], r["months"],
-             r["created"], r["exp"], r.get("remaining", ""), r["months_left"], r["line"]] for r in d["rows"]]
+             r["created"], r["exp"], r.get("remaining", ""), r["months_left"], r.get("card", ""), r["line"]] for r in d["rows"]]
     return xlsx_write.build_xlsx([("لم تُعرض للبيع", headers, rows)])
 
 

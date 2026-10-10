@@ -500,7 +500,8 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
         <div class="scroll hidden" id="unlWrap"><table class="rt">
           <thead><tr><th><input type="checkbox" id="unlAll" checked></th><th>اللوحة</th><th>اليوزر</th><th>كلمة المرور</th><th>الباقة</th><th>الانتهاء</th><th>متبقٍ</th></tr></thead>
           <tbody id="unlBody"></tbody></table></div>
-        <div class="acts"><button class="ghost hidden" id="unlCopy" type="button">نسخ المحدد (Host · Username · Password · Exp)</button>
+        <div class="acts"><button class="go hidden" id="unlCopyCard" type="button">نسخ سطر الكود لسلة (Host · User · Pass · Guide)</button>
+          <button class="ghost hidden" id="unlCopy" type="button">نسخ سطر التجزئة (مع Exp)</button>
           <a class="ghost hidden" id="dlUnlisted" href="#">تنزيل Excel</a></div>
         <p class="msg" id="unlMsg"></p>
         <div id="splitBox" class="hidden">
@@ -1259,7 +1260,11 @@ function panelRow(p){
     <label>بوابة السحب</label>
     <select class="pGate" aria-label="بوابة السحب">${webGateOptions(gv)}</select>
     <label>هوستات العملاء التابعة لها — هوستٌ في كل سطر يُطابَق به الطلب في سلة</label>
-    <textarea class="pHosts ltr" rows="2" aria-label="هوستات العملاء" placeholder="sub.kasper.tv&#10;kasper2.tv">${esc((p.hosts || []).join('\n'))}</textarea>`;
+    <textarea class="pHosts ltr" rows="2" aria-label="هوستات العملاء" placeholder="sub.kasper.tv&#10;kasper2.tv">${esc((p.hosts || []).join('\n'))}</textarea>
+    <div class="form2">
+      <div><label>الهوست في سطر الكود لسلة<small> — فارغ = أوّل الهوستات بمنفذ 80</small></label><input class="pCardHost ltr" value="${esc(p.card_host || '')}" placeholder="http://mrha.ink:80"></div>
+      <div><label>رابط الشرح في سطر الكود<small> — فارغ = حسب اسم اللوحة</small></label><input class="pGuide ltr" value="${esc(p.guide_url || '')}" placeholder="https://guide.ssouq.com/#activate/smart"></div>
+    </div>`;
   div.querySelector('.pDel').onclick = () => div.remove();
   return div;
 }
@@ -1334,14 +1339,19 @@ function renderUnlisted(d){
   $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${r.expired ? '<span class="c-bad">' + (esc(r.remaining) || 'منتهٍ') + '</span>' : (esc(r.remaining) || '— بلا تاريخ انتهاء')}</td></tr>`).join('');
   $('#unlWrap').classList.toggle('hidden', !UNL.length);
   $('#unlCopy').classList.toggle('hidden', !rows.length);
+  $('#unlCopyCard').classList.toggle('hidden', !rows.length);
   $('#dlUnlisted').classList.toggle('hidden', !UNL.length);
   $('#splitBox').classList.toggle('hidden', !UNL.length);
   note($('#unlMsg'), `${AR(UNL.length)} يوزرًا لم تُعرض للبيع · المبيع في سلة ${AR(d.store_sold)} · المعروض في مخزون سلة ${AR(d.salla_listed)}${d.codes_built ? '' : ' (لم تُسحب أكواد سلة: كل غير المبيع يُعدّ غير معروض)'}${notPulled.length ? ` · ⚠️ لوحات بلا يوزرات مسحوبة: ${notPulled.join('، ')}` : ''}`, !notPulled.length);
   $('#unlSum').textContent = `${AR(UNL.length)} غير معروض`;
 }
-function pickedLines(){
-  return [...document.querySelectorAll('.unlPick:checked')].map(c => UNL[Number(c.dataset.i)]).filter(Boolean).map(r => r.line);
-}
+function pickedRows(){ return [...document.querySelectorAll('.unlPick:checked')].map(c => UNL[Number(c.dataset.i)]).filter(Boolean); }
+function pickedLines(){ return pickedRows().map(r => r.line); }
+$('#unlCopyCard').onclick = async () => {
+  const t = pickedRows().map(r => r.card).join('\n');
+  try { await navigator.clipboard.writeText(t); note($('#unlMsg'), `نُسخ ${AR(pickedRows().length)} سطر كود لسلة`, true); }
+  catch (e) { $('#splitText').value = t; note($('#unlMsg'), 'تعذّر النسخ — السطور في مربع التجزئة', false); }
+};
 $('#unlAll').onchange = e => document.querySelectorAll('.unlPick').forEach(c => c.checked = e.target.checked);
 $('#doUnlisted').onclick = async () => {
   note($('#unlMsg'), 'جارٍ الحساب…', true);
@@ -1388,6 +1398,7 @@ $('#savePanels').onclick = async () => {
     const [a, g] = (d.querySelector('.pGate').value || '|').split('|');
     return {id: d.dataset.id || '', name: d.querySelector('.pName').value.trim(),
             account_id: a || '', gate_id: g || '',
+            card_host: d.querySelector('.pCardHost').value.trim(), guide_url: d.querySelector('.pGuide').value.trim(),
             hosts: d.querySelector('.pHosts').value.split('\n').map(s => s.trim()).filter(Boolean)};
   }).filter(p => p.name);
   const btn = $('#savePanels'); btn.disabled = true;
