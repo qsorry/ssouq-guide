@@ -637,8 +637,13 @@ class PanelWebSession:
             if cr.get("location"):
                 hint += " ← " + str(cr["location"])[:80]
             t = self._table_query("", 1, force=True)
-            hint += " · الجدول: %s صف، الكلي %s]" % (len(t.get("rows") or []), t.get("total"))
-            return hint
+            hint += " · الجدول: %s صف، الكلي %s" % (len(t.get("rows") or []), t.get("total"))
+            rawrow = getattr(self, "_last_unparsed", "")
+            if rawrow and not t.get("rows"):
+                plain = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", rawrow))).strip()
+                plain = re.sub(r"(?i)(pass\w*\s*:?\s*)\S+", r"\1***", plain)
+                hint += " · أوّل صفٍّ لم يُقرأ: " + plain[:200]
+            return hint + "]"
         except Exception:
             return ""
 
@@ -1056,6 +1061,7 @@ class PanelWebSession:
         # table_search.php موجود لكن بأعمدة وبحث آخرين) تُوقَف بعد ثلاث إخفاقات متتالية.
         meta = self._meta()
         found = {}
+        unverified_note = ""
         if weak:
             # اسمٌ (أو كلمة مرور) «ضعيف»: رفضٌ صريح قبل الإنشاء. نظرةٌ واحدة بلا انتظار
             # تكفي للتأكّد أنه لم يُنشأ — لا ~١٢ ثانية من محاولات التأكيد — ثم يُرفع
@@ -1094,7 +1100,7 @@ class PanelWebSession:
                     found = self._recent_line(username) or found
             if found and found.get("id"):
                 self._save_meta(table_search_ok=True, confirm_misses=0)
-            elif meta.get("table_search_ok"):
+            elif meta.get("table_search_ok") and not self._meta().get("rows_unparsed"):
                 # لوحةٌ يعمل بحثها وأثبتت أنها تجد يوزرنا، ومع ذلك لم يظهر اليوزر في الجدول
                 # ولا في أحدث الصفوف → الإنشاء فشل فعلًا (لم يُنشأ). نرفع الخطأ بدل تلفيق
                 # يوزرٍ وهمي لا وجود له على اللوحة (سبب مشكلة اليوزر «المفقود»).
@@ -1103,6 +1109,15 @@ class PanelWebSession:
                 raise RuntimeError("لم تُنشئ اللوحة اليوزر" + (": " + add_err if add_err
                                    else " — لم يظهر في الجدول ولا في أحدث الصفوف بعد الإرسال.")
                                    + self._reply_hint(cr))
+            elif self._meta().get("rows_unparsed"):
+                # الجدول يجيب بصفوفٍ لا نقرؤها (غيّرت اللوحة قالبها) فلا يُجزَم بالفشل:
+                # تحويلٌ إلى قائمة اليوزرات (./users) هو ردّ النجاح المعتاد. يُعاد اليوزر
+                # غير مؤكَّدٍ مع ملاحظة، لا خطأً يُخفي يوزرًا أُنشئ فعلًا.
+                loc = str(cr.get("location") or "")
+                if not (300 <= int(cr.get("status") or 0) < 400 and "user" in loc.lower()):
+                    raise RuntimeError("تعذّر التأكّد من إنشاء اليوزر — الجدول بشكلٍ لا يُقرأ"
+                                       + self._reply_hint(cr))
+                unverified_note = "أُرسل وقبلته اللوحة (تحويل إلى %s) لكن جدولها بشكلٍ جديد لا يُقرأ، فلم يُؤكَّد" % loc
             else:
                 # لوحةٌ لم تُثبت بعدُ أن بحثها يجد يوزرنا: لا نجزم بالفشل (قد يكون البحث مختلفًا).
                 misses = int(meta.get("confirm_misses") or 0) + 1
@@ -1119,6 +1134,7 @@ class PanelWebSession:
             "package_id": prep["package_id"], "line_id": found.get("id", ""),
             "exp": found.get("end", ""), "connections": found.get("conns", ""),
             "verified": bool(found.get("id")),
+            **({"note": unverified_note} if unverified_note else {}),
             "bouquets": "panel" if prep["panel_bouquets"] else prep["ids"],
             "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "timing": {**prep.get("timing", {}), "post_ms": int((t_post - t0) * 1000),
@@ -1669,7 +1685,7 @@ class PanelWebSession:
             if st < 500 and not (300 <= st < 400 or self._auth_wall(r)):
                 self._save_meta(no_table_search=True)
             return {"rows": [], "total": None, **({"raw": []} if raw else {})}
-        rows, raws = [], []
+        rows, raws, unparsed = [], [], 0
         for row in (j.get("data") or []):
             s = " ".join(str(c) for c in row) if isinstance(row, list) else str(row)
             parsed = self._parse_row(s)
@@ -1677,6 +1693,14 @@ class PanelWebSession:
                 rows.append(parsed)
                 if raw:
                     raws.append(s)
+            else:
+                unparsed += 1
+                if unparsed == 1:
+                    self._last_unparsed = s[:600]   # للتشخيص: أوّل صفٍّ لم يُفهم
+        if j.get("data") and not rows:
+            self._save_meta(rows_unparsed=True)    # الجدول يجيب لكن بشكلٍ لا نقرؤه
+        elif rows and self._meta().get("rows_unparsed"):
+            self._save_meta(rows_unparsed=False)
         total = j.get("recordsTotal")
         filtered = j.get("recordsFiltered")
         out = {"rows": rows, "total": _to_num(total) if total is not None else None,
@@ -1709,10 +1733,11 @@ class PanelWebSession:
     @staticmethod
     def _parse_row(s: str) -> dict:
         """صف جدول اللاينات (نص HTML مسطَّح) → {id, user, pass, end, conns, status}."""
-        um = re.search(r"User:\s*([^<\s]+)", s)
+        # «User: x» أو «Username: x»، والتسمية قد تُغلَّف بوسوم (<b>User</b>: x) أو تليها <br>
+        um = re.search(r"User(?:name)?\s*(?:</?\w+[^>]*>\s*)*:\s*(?:</?\w+[^>]*>\s*)*([^<\s]+)", s, re.I)
         if not um:
             return {}
-        pm = re.search(r"Pass:\s*([^<\s]+)", s)
+        pm = re.search(r"Pass(?:word)?\s*(?:</?\w+[^>]*>\s*)*:\s*(?:</?\w+[^>]*>\s*)*([^<\s]+)", s, re.I)
         rid = re.search(r'userid=\\?"?(\d+)', s) or re.search(r'data-row-id=\\?"?(\d+)', s)
         end = re.search(r"End:\s*([0-9][0-9\-\/.]+)", s)
         conns = re.search(r"\d+\s*/\s*(\d+)\s*</a>", s)

@@ -894,6 +894,38 @@ def main():
         except Exception:
             srv.kill()
 
+
+    # ---- قالب جدول جديد: «Username:» و«Password:» والتسميات داخل وسوم ----
+    PR = xm_web.PanelWebSession._parse_row
+    r1 = PR('<a href="?userid=55">edit</a> <b>Username</b>: 123456789012 <b>Password</b>: 987654321098 End: 2027-01-01')
+    check("parse_row reads Username:/Password: with tags around the label",
+          r1.get("id") == "55" and r1.get("user") == "123456789012" and r1.get("pass") == "987654321098", str(r1)[:120])
+    r2 = PR('<td>user: abc123 pass: xyz789</td>')
+    check("parse_row is case-insensitive", r2.get("user") == "abc123" and r2.get("pass") == "xyz789", str(r2)[:80])
+    check("parse_row still rejects a row without a user", PR("<td>nothing here</td>") == {})
+
+    # ---- الجدول يجيب بصفوفٍ لا تُقرأ: تحويلٌ إلى ./users = أُنشئ غير مؤكَّد، لا فشل ----
+    import tempfile as _tf
+    sess = xm_web.PanelWebSession({"panel_base": "http://127.0.0.1:1", "user": "u", "pass": "p"}, _tf.mkdtemp())
+    sess._save_meta(table_search_ok=True, rows_unparsed=True)
+    sess._request = lambda path, data=None, headers=None, method=None: {"status": 302, "body": b"", "final_url": path,
+                                                                          "ctype": "text/html; charset=UTF-8", "location": "./users"}
+    sess._search_line = lambda u, force=False: {}
+    sess._recent_line = lambda u, scan=80: {}
+    prep = {"body": {}, "action": "http://127.0.0.1:1/user_reseller.php", "referer": "x", "host": "http://h",
+            "package_id": "1", "ids": [], "panel_bouquets": True, "timing": {}}
+    res = sess._submit_add(prep, "123456789012", "987654321098")
+    check("unreadable table + redirect to users → returned unverified with a note",
+          res["username"] == "123456789012" and res["verified"] is False and "لا يُقرأ" in res.get("note", ""), str(res.get("note")))
+    sess._request = lambda path, data=None, headers=None, method=None: {"status": 200, "body": b"<html>ok</html>", "final_url": path,
+                                                                          "ctype": "text/html", "location": ""}
+    sess._table_query = lambda *a, **k: {"rows": [], "total": 706}
+    try:
+        sess._submit_add(prep, "123456789012", "987654321098")
+        check("unreadable table without the success redirect → error", False)
+    except RuntimeError as e:
+        check("unreadable table without the success redirect → error", "تعذّر التأكّد" in str(e), str(e)[:80])
+
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
     sys.exit(1 if _f else 0)
