@@ -466,7 +466,7 @@ def build_index(units, meta=None):
         if not cur or u["months"] > cur["months"]:
             orders[u["order"]] = {"phone": u["phone"], "date": u["date"],
                                   "months": u["months"], "devices": u["devices"],
-                                  **({"inferred": True} if u["inferred"] else {}),
+                                  **({"inferred": True} if u.get("inferred") else {}),
                                   **{k: u[k] for k in ("host", "username", "password",
                                                        "sid", "admin_url") if u.get(k)}}
     return {"orders": orders, "built": renew.now_iso(),
@@ -513,7 +513,7 @@ def analyze(units, meta=None, today=None):
 
     prods = {}
     for u in units:
-        k = (u["product"], u["months"], u["devices"], u["inferred"])
+        k = (u["product"], u["months"], u["devices"], bool(u.get("inferred")))
         prods[k] = prods.get(k, 0) + 1
 
     hosts = {}

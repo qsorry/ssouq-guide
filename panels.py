@@ -163,6 +163,11 @@ def known_orders(data_dir):
 def merge_store_lines(data_dir, units):
     """الخطوط المحفوظة + وحداتٌ جديدة، بلا تكرار (الطلب واليوزر): الجديد يغلب القديم."""
     old = load_store_lines(data_dir).get("lines", [])
+    # الخطوط المحفوظة أقلّ حقولًا من الوحدات الحيّة (لا inferred مثلًا)، والتحليل
+    # والفهرس يقرآنها بالمفتاح — فتُكمَّل بالافتراضيات قبل الدمج.
+    defaults = {"inferred": False, "months": 0, "devices": 1, "phone": "", "date": "",
+                "expiry": "", "product": "", "sku": "", "order": ""}
+    old = [{**defaults, **u} for u in old]
     out, idx = [], {}
     for u in list(old) + list(units):
         key = (renew.norm_order(u.get("order")), str(u.get("username") or "").lower())
