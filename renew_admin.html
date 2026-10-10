@@ -353,6 +353,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           بلا رمز سلة يُسحب بكوكيز لوحة سلة: تُفتح صفحة كل طلب ويُقرأ الاشتراك من <b>الكود</b>، فإن خلا منه فمن <b>ملاحظات السجلّ</b> ثم ملاحظة العميل.</p>
         <label class="switch"><span>اقرأ سجلّ كل طلب<small>لاستخراج اليوزر والباسورد — يطول: نداءٌ لكل طلب</small></span><input type="checkbox" class="tog" id="pullHistory" checked></label>
         <label class="switch"><span>اعتماده فهرسًا تعمل عليه صفحة العميل</span><input type="checkbox" class="tog" id="pullApply" checked></label>
+        <label class="switch"><span>الطلبات الأحدث من (أشهر)<small>بالكوكيز: يتوقف عند الأقدم — ما قبل أطول باقة منتهٍ. ٠ = الكل</small></span><input type="number" min="0" max="120" value="15" id="pullMonths" style="width:5em"></label>
         <div class="acts"><button class="go" id="pull" type="button">ابدأ السحب</button>
           <button class="ghost hidden" id="pullStop" type="button">إيقاف</button></div>
         <p class="msg" id="pullMsg"></p>
@@ -803,7 +804,8 @@ let pullTimer = null;
 
 $('#pull').onclick = async () => {
   const d = await post('/api/renew/pull', {
-    with_history: $('#pullHistory').checked, apply: $('#pullApply').checked});
+    with_history: $('#pullHistory').checked, apply: $('#pullApply').checked,
+    max_months: Number($('#pullMonths').value || 0)});
   if (!d.ok) return note($('#pullMsg'), d.error || 'تعذّر بدء السحب');
   $('#pullBar').classList.remove('hidden');
   $('#pullStop').classList.remove('hidden');
@@ -822,7 +824,12 @@ async function watchPull(once){
   const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
   $('#pullFill').style.width = pct + '%';
   const bits = [PHASE[d.phase] || d.phase];
+  if (d.page && d.source === 'panel') bits.push(`صفحة ${AR(d.page)}`);
   if (d.total) bits.push(`${AR(d.done)} من ${AR(d.total)} (${pct}٪)`);
+  if (d.running && d.heartbeat){
+    const s = Math.round(Date.now() / 1000 - d.heartbeat);
+    if (s > 20) bits.push(`آخر نشاط قبل ${AR(s)} ث`);
+  }
   if (d.units) bits.push(`${AR(d.units)} يوزرًا`);
   if (d.found) bits.push(`${AR(d.found)} باعتماد`);
   if (d.running || d.phase){

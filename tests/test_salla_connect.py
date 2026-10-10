@@ -163,7 +163,7 @@ def main():
     check("start refuses with neither token nor cookie", r["ok"] is False and "كوكيز" in r["error"], str(r))
     orig_worker = X._pull_worker
     got = {}
-    X._pull_worker = lambda token, wh, ap, ws, cfg, session=None: got.update(token=token, session=session) or X._pull.update(running=False)
+    X._pull_worker = lambda token, wh, ap, ws, cfg, session=None, *a, **k: got.update(token=token, session=session) or X._pull.update(running=False)
     try:
         r = X.start_renew_pull(st2, "ws", {})
         import time; time.sleep(0.2)

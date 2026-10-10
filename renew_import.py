@@ -23,6 +23,7 @@ import io
 import json
 import os
 import re
+import time
 
 import renew
 
@@ -677,75 +678,114 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
 
 
 def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
-                    include_falcon=False):
-    """يسحب طلبات المتجر كلها من **لوحة سلة بجلسة المتصفّح** (لا توكن) → (وحدات، تقرير).
+                    include_falcon=False, max_months=15, workers=4):
+    """يسحب طلبات المتجر من **لوحة سلة بجلسة المتصفّح** (لا توكن) → (وحدات، تقرير).
 
     القائمة لا تحمل المنتجات ولا التاريخ، فتُفتح صفحةُ كل طلب — وفيها كل شيء دفعةً:
     المنتجات وأكوادها، وسجلّ الطلب، وملاحظة العميل. الاشتراك يُلتقط من الكود
     أوّلًا، فإن خلا منه فمن ملاحظات السجلّ، فمن ملاحظة العميل.
 
-    الطلبات غير المؤكّدة تُعرف من القائمة فلا تُفتح صفحتها — توفيرًا للنداءات."""
+    صفحةُ الطلب نداءٌ ثقيل، والمتجر فيه عشرات الآلاف، فثلاثة قيود تجعل السحب
+    يُطاق: غير المؤكّد يُعرف من القائمة فلا تُفتح صفحته؛ وطلبات الصفحة تُفتح
+    بخيوطٍ متوازية؛ والقائمة مرتّبة بالأحدث فيتوقّف السحب عند أوّل صفحةٍ كل
+    طلباتها أقدم من `max_months` شهرًا (أطول باقة) — فما قبلها منتهٍ لا يُجدَّد.
+    التقدّم يُبلَّغ من أوّل صفحة قائمة، قبل فتح أي طلب."""
+    import datetime
     import salla_web
+    from concurrent.futures import ThreadPoolExecutor
 
     units, seen, skipped = [], set(), {"unconfirmed": 0, "falcon": 0, "no_months": 0,
-                                       "no_date": 0, "no_items": 0}
+                                       "no_date": 0, "no_items": 0, "too_old": 0}
     found, expired, listed, opened = 0, False, 0, 0
+    cutoff = (renew.add_months(datetime.date.today(), -int(max_months)).isoformat()
+              if max_months else "")
     page, more = 1, True
+
+    def report(extra=None):
+        if progress:
+            d = {"phase": "orders", "page": page, "done": opened, "total": listed,
+                 "units": len(units), "found": found, "orders_total": listed,
+                 "heartbeat": time.time()}
+            d.update(extra or {})
+            progress(d)
+
+    def fetch(r):
+        try:
+            return r, session.order_details(r["sid"])
+        except salla_web.SessionExpired as e:
+            return r, e
+
     try:
-        while more:
-            if stop and stop():
-                break
-            rows, more = session.orders_page(page)
-            if not rows:
-                break
-            listed += len(rows)
-            for r in rows:
+        with ThreadPoolExecutor(max_workers=max(1, int(workers))) as pool:
+            while more:
                 if stop and stop():
                     break
-                if not keep_unconfirmed and r.get("status") and r["status"] not in CONFIRMED:
-                    skipped["unconfirmed"] += 1
-                    continue
-                order = session.order_details(r["sid"])
-                opened += 1
-                if not order:
-                    skipped["no_items"] += 1
-                    continue
-                if not order.get("reference_id"):
-                    order["reference_id"] = r.get("order", "")
-                got, why = salla_order_units(order, keep_unconfirmed, include_falcon)
-                if why:
-                    skipped[why] = skipped.get(why, 0) + 1
-                if not got:
-                    continue
-                seen.add(got[0]["order"])
-                fallback = None                    # اعتماد الملاحظات، يُحسب مرةً للطلب
-                for u in got:
-                    cred = parse_credentials(u.pop("code", ""))
-                    if not cred:                   # لا في الكود؟ ففي السجلّ ثم ملاحظة العميل
-                        if fallback is None:
-                            fallback = next((c for c in map(parse_credentials,
-                                             salla_web.order_notes(order)) if c), {})
-                        cred = fallback
-                    if cred:
-                        found += 1
-                        u.update(cred)
-                units.extend(got)
-                if progress:
-                    progress({"phase": "orders", "done": opened, "total": listed,
-                              "units": len(units), "found": found, "orders_total": listed})
-            page += 1
+                rows, more = session.orders_page(page)
+                if not rows:
+                    break
+                listed += len(rows)
+                report()
+                todo = []
+                for r in rows:
+                    if not keep_unconfirmed and r.get("status") and r["status"] not in CONFIRMED:
+                        skipped["unconfirmed"] += 1
+                    else:
+                        todo.append(r)
+                dates = []
+                for r, order in pool.map(fetch, todo):
+                    opened += 1
+                    if isinstance(order, Exception):
+                        raise order
+                    if not order:
+                        skipped["no_items"] += 1
+                        report()
+                        continue
+                    if not order.get("reference_id"):
+                        order["reference_id"] = r.get("order", "")
+                    d = (order.get("date") or {}).get("date") or ""
+                    if d:
+                        dates.append(d)
+                    if cutoff and d and d < cutoff:
+                        skipped["too_old"] += 1
+                        report()
+                        continue
+                    got, why = salla_order_units(order, keep_unconfirmed, include_falcon)
+                    if why:
+                        skipped[why] = skipped.get(why, 0) + 1
+                    if not got:
+                        report()
+                        continue
+                    seen.add(got[0]["order"])
+                    fallback = None                # اعتماد الملاحظات، يُحسب مرةً للطلب
+                    for u in got:
+                        cred = parse_credentials(u.pop("code", ""))
+                        if not cred:               # لا في الكود؟ ففي السجلّ ثم ملاحظة العميل
+                            if fallback is None:
+                                fallback = next((c for c in map(parse_credentials,
+                                                 salla_web.order_notes(order)) if c), {})
+                            cred = fallback
+                        if cred:
+                            found += 1
+                            u.update(cred)
+                    units.extend(got)
+                    report()
+                if stop and stop():
+                    break
+                if cutoff and dates and max(dates) < cutoff:
+                    break                          # صفحةٌ كلها أقدم من الحدّ: ما بعدها أقدم
+                page += 1
     except salla_web.SessionExpired:
         expired = True
     return units, {"files_seen": 0, "files_kept": 0, "files_dup": 0, "dup_names": [],
                    "orders": len(seen), "orders_dup": 0, "dup_orders": [],
                    "skipped": skipped, "bad_files": [], "source": "panel",
                    "orders_total": listed, "with_credentials": found,
-                   "session_expired": expired}
+                   "session_expired": expired, "pages": page}
 
 
 def pull_from_salla(token, progress=None, with_history=True, stop=None,
                     keep_unconfirmed=False, include_falcon=False, per_page=50,
-                    credentials_for=None, session=None):
+                    credentials_for=None, session=None, max_months=15):
     """يسحب طلبات المتجر كلها → (وحدات، تقرير).
 
     بتوكن الواجهة على مرحلتين: الطلبات أولًا (صفحةٌ لكل خمسين)، ثم — إن طُلب —
@@ -756,7 +796,8 @@ def pull_from_salla(token, progress=None, with_history=True, stop=None,
     import salla_api
 
     if not token and session is not None:
-        return pull_from_panel(session, progress, stop, keep_unconfirmed, include_falcon)
+        return pull_from_panel(session, progress, stop, keep_unconfirmed, include_falcon,
+                               max_months=max_months)
 
     units, seen = [], set()
     skipped = {"unconfirmed": 0, "falcon": 0, "no_months": 0, "no_date": 0, "no_items": 0}
