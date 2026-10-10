@@ -35,6 +35,10 @@ EXCLUDE = re.compile(r"فالكون|falcon", re.I)
 # ليست اشتراكات تُجدَّد: تجربةُ يومٍ لا متبقّى لها، ولوحة الموزّعين ليست خطًّا.
 NOT_A_LINE = re.compile(r"تجريب|تجربة|trial|demo|لوحة تحكم|للموزعين|panel", re.I)
 
+# ما يُعدّ اشتراكًا في سحب اللوحة: المتجر باع غير الاشتراكات (أجهزة وغيرها)، وهذه
+# تُتجاوز ولا يُسجَّل منها شيء. المنتج اشتراكٌ باسمه، أو بكودٍ فيه يوزر وباسورد.
+SUBSCRIPTION = re.compile(r"اشتراك|iptv|smarters|xtream|كاسبر|casper|سمارت|smart", re.I)
+
 # منتجات قديمة لا تحمل مدة في اسمها. سعر الوحدة ٤٠ ر.س وهو سعر شريحة السنة
 # نفسها في بقية المنتجات، فتُقرأ سنةً — وتُعلَّم `inferred` ليبقى الاستنتاج ظاهرًا.
 INFERRED_MONTHS = {
@@ -677,6 +681,13 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
     return (out, "") if out else ([], "no_months")
 
 
+def is_subscription_item(it):
+    """أمنتجُ الطلب اشتراكٌ؟ باسمه، أو بكودٍ فيه يوزر وباسورد (اسمٌ غير معتاد)."""
+    if SUBSCRIPTION.search(str(it.get("name") or "")) and not NOT_A_LINE.search(str(it.get("name") or "")):
+        return True
+    return any(len(parse_credentials(c)) >= 2 for c in (it.get("codes") or []) if isinstance(c, str))
+
+
 def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                     include_falcon=False, max_months=15, workers=4):
     """يسحب طلبات المتجر من **لوحة سلة بجلسة المتصفّح** (لا توكن) → (وحدات، تقرير).
@@ -695,7 +706,8 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
     from concurrent.futures import ThreadPoolExecutor
 
     units, seen, skipped = [], set(), {"unconfirmed": 0, "falcon": 0, "no_months": 0,
-                                       "no_date": 0, "no_items": 0, "too_old": 0}
+                                       "no_date": 0, "no_items": 0, "too_old": 0,
+                                       "not_subscription": 0}
     found, expired, listed, opened = 0, False, 0, 0
     cutoff = (renew.add_months(datetime.date.today(), -int(max_months)).isoformat()
               if max_months else "")
@@ -742,6 +754,12 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
                         continue
                     if not order.get("reference_id"):
                         order["reference_id"] = r.get("order", "")
+                    order["items"] = [it for it in order.get("items") or []
+                                      if is_subscription_item(it)]
+                    if not order["items"]:           # منتجاتٌ لا علاقة لها بالاشتراكات
+                        skipped["not_subscription"] += 1
+                        report()
+                        continue
                     d = (order.get("date") or {}).get("date") or ""
                     if d:
                         dates.append(d)
