@@ -138,6 +138,7 @@ def save_store_lines(data_dir, units):
         rec = {"order": u.get("order", ""), "date": u.get("date", ""),
                "phone": u.get("phone", ""), "customer": u.get("customer", ""),
                "sid": u.get("sid", ""), "admin_url": u.get("admin_url", ""),
+               "price": u.get("price", ""), "status": u.get("status", ""),
                "host": u.get("host", ""), "username": u.get("username", ""),
                "password": u.get("password", ""), "months": u.get("months", 0),
                "devices": u.get("devices", 1), "expiry": u.get("expiry", ""),

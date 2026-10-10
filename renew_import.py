@@ -666,7 +666,8 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
                  "phone": phone,
                  "customer": str((order.get("customer") or {}).get("name") or "").strip(),
                  "date": date.isoformat(), "product": pname,
-                 "sku": str(it.get("sku") or ""),
+                 "sku": str(it.get("sku") or ""), "price": str(it.get("price") or ""),
+                 "status": status,
                  "months": mo, "devices": dev, "inferred": inferred,
                  "expiry": expiry.isoformat()}
             if k < len(codes):                     # كود كل نسخة (من صفحة اللوحة)

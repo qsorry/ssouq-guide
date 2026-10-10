@@ -2712,15 +2712,34 @@ def _renewal_xlsx(ws, cfg, days=None):
 
 
 def _store_lines_xlsx(ws):
-    """الاشتراكات المسحوبة من سلة (الكود/الملاحظات) ملفَّ Excel قابلًا للنقل
-    والمقارنة: طلبٌ لكل صف مع يوزره وباسورده وهوسته ومدّته."""
+    """الاشتراكات المسحوبة من سلة ملفَّ Excel يقبله «استيراد الطلبات» في متجر
+    ssouq-store كما هو: أعمدته بأسمائها هناك (رقم الطلب، اسم العميل، اسم المنتج،
+    الكود…)، صفٌّ لكل يوزر، فيُنشأ الطلب وعميله وتُسلَّم بياناته — والمكرَّر برقمه
+    يُتخطّى هناك. ومعها أعمدةٌ للمقارنة (المدة، الانتهاء، الهوست…)."""
     d = panels.load_store_lines(ws)
-    headers = ["رقم الطلب", "التاريخ", "العميل", "الجوال", "المنتج", "المدة (أشهر)",
-               "الأجهزة", "الانتهاء", "الهوست", "اليوزر", "كلمة المرور", "رابط الطلب"]
-    rows = [[r.get("order", ""), r.get("date", ""), r.get("customer", ""), r.get("phone", ""),
-             r.get("product", ""), r.get("months", 0), r.get("devices", 1), r.get("expiry", ""),
-             r.get("host", ""), r.get("username", ""), r.get("password", ""),
-             r.get("admin_url", "")] for r in d.get("lines", [])]
+    headers = ["رقم الطلب", "تاريخ الطلب", "حالة الطلب", "اسم العميل", "رقم الجوال",
+               "اسم المنتج", "الكمية", "سعر المنتج", "الكود", "تاريخ الانتهاء",
+               "المدة (أشهر)", "الأجهزة", "الهوست", "اليوزر", "كلمة المرور", "رابط الطلب",
+               "مكرر"]
+    # اليوزر الواحد في أكثر من طلب = اشتراكٌ بيع مرتين: يُعلَّم «مكرر» بأرقام الطلبات
+    # الأخرى ليُنشأ للعميل يوزر جديد.
+    orders_of = {}
+    for r in d.get("lines", []):
+        if r.get("username"):
+            orders_of.setdefault(r["username"], set()).add(str(r.get("order", "")))
+    rows = []
+    for r in d.get("lines", []):
+        others = sorted(orders_of.get(r.get("username") or "", set()) - {str(r.get("order", ""))})
+        code = " | ".join(x for x in (
+            ("Host " + r["host"]) if r.get("host") else "",
+            ("Username " + r["username"]) if r.get("username") else "",
+            ("Password " + r["password"]) if r.get("password") else "") if x)
+        rows.append([r.get("order", ""), r.get("date", ""), r.get("status", "") or "طلبك مؤكد",
+                     r.get("customer", ""), r.get("phone", ""), r.get("product", ""), 1,
+                     re.sub(r"[^\d.]", "", str(r.get("price", ""))), code, r.get("expiry", ""),
+                     r.get("months", 0), r.get("devices", 1), r.get("host", ""),
+                     r.get("username", ""), r.get("password", ""), r.get("admin_url", ""),
+                     ("مكرر مع " + "، ".join(others)) if others else ""])
     return xlsx_write.build_xlsx([("اشتراكات سلة", headers, rows)])
 
 
