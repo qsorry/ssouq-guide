@@ -176,6 +176,155 @@ def host_index(panels):
     return idx
 
 
+# ============================ أكواد سلة المتاحة ============================
+# الإضافة تقرأ من لوحة سلة (بجلسة المتصفّح) مخزون الأكواد غير المبيعة لكل منتجٍ
+# رقمي، فيُعرف أيُّ يوزرٍ على اللوحات معروضٌ للبيع الآن — لا مبيعًا ولا منسيًّا.
+
+def salla_codes_path(data_dir):
+    return os.path.join(data_dir, "renew_salla_codes.json")
+
+
+def _code_text(raw):
+    """عنصر كودٍ كما تعطيه واجهة سلة (نصٌّ أو قاموس) → نصّه. الحقول بلا ثبات في
+    الواجهة فتُجرَّب المعتادة، وإلا كل نصوص القاموس مجتمعة."""
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, dict):
+        for k in ("code", "value", "text", "name", "content", "card", "serial"):
+            v = raw.get(k)
+            if isinstance(v, str) and v.strip():
+                return v
+        return " ".join(str(v) for v in raw.values() if isinstance(v, (str, int)))
+    return str(raw or "")
+
+
+def _code_status(raw):
+    if not isinstance(raw, dict):
+        return ""
+    for k in ("status", "state", "is_sold", "sold", "used", "is_used"):
+        v = raw.get(k)
+        if v in (None, ""):
+            continue
+        if isinstance(v, bool):
+            return "sold" if v else "available"
+        return str(v).lower()
+    return ""
+
+
+def save_salla_codes(data_dir, products, reset=False):
+    """يحفظ (أو يضيف) منتجات سلة الرقمية بأكوادها كما أرسلتها الإضافة. كل كود
+    يُحلَّل إلى يوزر/باسورد/هوست ليُطابَق بيوزرات اللوحات. يرجّع ملخّصًا."""
+    import renew_import
+    data = {"built": renew.now_iso(), "products": []} if reset else load_salla_codes(data_dir)
+    have = {str(p.get("id")): i for i, p in enumerate(data["products"])}
+    for prod in (products or []):
+        pid = str(prod.get("id") or "")
+        codes, masked = [], 0
+        for raw in (prod.get("codes") or []):
+            text = _code_text(raw)
+            cred = renew_import.parse_credentials(text)
+            if not cred.get("username"):
+                masked += 1                    # مقنَّع (****) أو ليس اعتمادًا
+            codes.append({"text": text[:300], "status": _code_status(raw),
+                          "username": cred.get("username", ""),
+                          "password": cred.get("password", ""),
+                          "host": cred.get("host", "")})
+        rec = {"id": pid, "name": str(prod.get("name") or ""), "sku": str(prod.get("sku") or ""),
+               "type": str(prod.get("type") or ""), "total": int(prod.get("total") or len(codes)),
+               "codes": codes, "unparsed": masked, "at": renew.now_iso()}
+        if pid in have:
+            data["products"][have[pid]] = rec
+        else:
+            have[pid] = len(data["products"])
+            data["products"].append(rec)
+    data["built"] = renew.now_iso()
+    renew._write_json(salla_codes_path(data_dir), data)
+    return salla_codes_stats(data)
+
+
+def load_salla_codes(data_dir):
+    try:
+        with open(salla_codes_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and isinstance(d.get("products"), list) \
+            else {"built": "", "products": []}
+    except (OSError, ValueError):
+        return {"built": "", "products": []}
+
+
+def salla_codes_stats(data):
+    prods = data.get("products") or []
+    return {"built": data.get("built", ""), "products": len(prods),
+            "codes": sum(len(p.get("codes") or []) for p in prods),
+            "with_username": sum(1 for p in prods for c in p.get("codes") or [] if c.get("username")),
+            "unparsed": sum(int(p.get("unparsed") or 0) for p in prods),
+            "list": [{"id": p["id"], "name": p["name"], "codes": len(p.get("codes") or []),
+                      "unparsed": p.get("unparsed", 0)} for p in prods]}
+
+
+def salla_codes_by_user(data):
+    out = {}
+    for p in data.get("products") or []:
+        for c in p.get("codes") or []:
+            if c.get("username"):
+                out[c["username"].lower()] = {"product": p.get("name", ""), "product_id": p.get("id", ""),
+                                              "host": c.get("host", ""), "status": c.get("status", "")}
+    return out
+
+
+# ============================ لم تُعرض للبيع ============================
+
+def unlisted(config, data_dir, include_expired=False):
+    """يوزرات اللوحات التي لا هي مبيعة في سلة (خطوط المتجر) ولا معروضة في مخزون
+    أكوادها: أُنشئت ونُسيت. لكل لوحةٍ صفوفها، وفي كل صف السطر الجاهز للنسخ
+    (Host · Username · Password · Exp) ليُعرض من جديد أو يُجزَّأ."""
+    cfg = renew.normalize_config(config)
+    store = load_store_lines(data_dir)
+    sold = {str(ln.get("username") or "").strip().lower() for ln in store.get("lines", []) if ln.get("username")}
+    listed = salla_codes_by_user(load_salla_codes(data_dir))
+    pl = load_panel_lines(data_dir)["panels"]
+    today = renew._today()
+    rows, per_panel = [], {}
+    for p in cfg["panels"]:
+        pdata = pl.get(p["id"])
+        if not pdata:
+            continue
+        host = (p.get("hosts") or [""])[0]
+        host = ("http://" + host) if host and not host.startswith("http") else host
+        n_sold = n_listed = n_unlisted = n_expired = 0
+        for key, rec in pdata["by_user"].items():
+            if key in sold:
+                n_sold += 1
+                continue
+            if key in listed:
+                n_listed += 1
+                continue
+            es = expiry_status(rec.get("exp"), today, 0)
+            expired = bool(es["expired"]) or rec.get("status") in ("expired", "disabled")
+            if expired:
+                n_expired += 1
+                if not include_expired:
+                    continue
+            n_unlisted += 1
+            months_left = 0
+            if es["days_left"] is not None and es["days_left"] > 0:
+                months_left = max(0, int(round(es["days_left"] / 30.4)))
+            line = "Host %s Username %s Password %s" % (host or "-", rec["username"], rec.get("password", ""))
+            if rec.get("exp"):
+                line += " Exp " + rec["exp"]
+            rows.append({"panel_id": p["id"], "panel_name": p["name"], "username": rec["username"],
+                         "password": rec.get("password", ""), "host": host, "package": rec.get("package", ""),
+                         "months": rec.get("months", 0), "created": rec.get("created", ""),
+                         "exp": rec.get("exp", ""), "days_left": es["days_left"], "months_left": months_left,
+                         "expired": expired, "status": rec.get("status", ""), "line": line})
+        per_panel[p["id"]] = {"name": p["name"], "lines": pdata.get("count", 0), "sold": n_sold,
+                              "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired}
+    rows.sort(key=lambda r: (r["panel_name"], -(r["days_left"] or 0), r["username"]))
+    return {"rows": rows, "panels": per_panel, "built": renew.now_iso(),
+            "store_sold": len(sold), "salla_listed": len(listed),
+            "codes_built": load_salla_codes(data_dir).get("built", "")}
+
+
 # ============================ المقارنة ============================
 # الأصناف — كلٌّ صريحٌ ليُعرَض للمدير كما هو:
 OK = "ok"

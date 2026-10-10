@@ -2890,6 +2890,52 @@ def _store_lines_xlsx(ws):
     return xlsx_write.build_xlsx([("اشتراكات سلة", headers, rows)])
 
 
+def _unlisted_xlsx(ws, cfg):
+    d = panels.unlisted(cfg, ws, include_expired=False)
+    headers = ["اللوحة", "اليوزر", "كلمة المرور", "الهوست", "الباقة", "المدة (أشهر)",
+               "الإنشاء", "الانتهاء", "المتبقي (أشهر)", "السطر الجاهز"]
+    rows = [[r["panel_name"], r["username"], r["password"], r["host"], r["package"], r["months"],
+             r["created"], r["exp"], r["months_left"], r["line"]] for r in d["rows"]]
+    return xlsx_write.build_xlsx([("لم تُعرض للبيع", headers, rows)])
+
+
+_EXP_IN_LINE = re.compile(r"(?i)\bexp(?:iry|ires)?\s*[:=]?\s*(\d{4}-\d{2}-\d{2})")
+
+
+def split_register_bulk(a, gate, months, text, data_dir):
+    """تجزئة جماعية: كل سطرٍ فيه يوزر (Host … Username … Password … Exp …) يُسجَّل خطًّا
+    أمًّا بباقة ١٥ شهرًا وجزءٍ مبيعٍ بالمدة المختارة — بلا لمس اللوحة (كلمة المرور
+    والانتهاء من السطر نفسه). يرجّع ما سُجِّل وما كان مسجَّلًا وما تعذّر."""
+    months = split_subs.parse_months(months or 0)
+    if not split_subs.slice_ok(months):
+        return {"ok": False, "error": "اختر الجزء المبيع أو اكتب مدته بالأشهر (%s)" % split_subs.slice_range_text()}
+    now = split_subs.now_dt()
+    batch = split_subs.new_batch_id(now)
+    out = {"ok": True, "registered": [], "existing": [], "errors": []}
+    for raw in str(text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        cred = renew_import.parse_credentials(line)
+        if not cred.get("username"):
+            out["errors"].append({"line": line[:80], "error": "لا يوزر في السطر"})
+            continue
+        m = _EXP_IN_LINE.search(line)
+        expiry = split_subs.to_date(m.group(1)) if m else None
+        if expiry and not (now.date() < expiry <= renew.add_months(now.date(), 16)):
+            expiry = None
+        try:
+            rec, new = split_subs.register(
+                data_dir, a["id"], gate, cred["username"], cred.get("password", ""), months,
+                base_months=split_subs.BASE_MONTHS[0], start=now, expiry=expiry,
+                host=cred.get("host", ""), source="manual", batch=batch)
+            (out["registered"] if new else out["existing"]).append(
+                {"username": rec["username"], "due": rec["slice"]["due"], "expiry": rec["expiry"]})
+        except ValueError as e:
+            out["errors"].append({"line": cred["username"], "error": str(e)})
+    return out
+
+
 def _panel_users_xlsx(ws):
     data = panels.load_panel_lines(ws)["panels"]
     headers = ["اليوزر", "كلمة المرور", "الباقة", "المدة (أشهر)", "الإنشاء",
@@ -5259,6 +5305,15 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="salla-vs-panels.xlsx"'})
+            if path == "/api/renew/salla-codes":    # ملخّص أكواد سلة المتاحة (من الإضافة)
+                return self._send(200, panels.salla_codes_stats(panels.load_salla_codes(rws)))
+            if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
+                return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1"))
+            if path == "/api/renew/unlisted.xlsx":
+                return self._send(200, raw=_unlisted_xlsx(rws, rcfg),
+                                  ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  extra={"Content-Disposition":
+                                         'attachment; filename="unlisted-subscriptions.xlsx"'})
             if path == "/api/renew/store-lines.xlsx":  # اشتراكات سلة المسحوبة Excel
                 return self._send(200, raw=_store_lines_xlsx(rws),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -5440,6 +5495,11 @@ class Handler(BaseHTTPRequestHandler):
             owner["renew"] = renew.clean_config(req.get("renew") or {}, rcfg)
             save_store(st)
             return self._send(200, {"ok": True, "renew": renew.redact_config(owner["renew"])})
+        if path == "/api/renew/salla-codes":      # أكواد سلة المتاحة من الإضافة (دفعةً أو أكثر)
+            prods = req.get("products") or []
+            if not isinstance(prods, list):
+                return self._send(400, {"error": "products مطلوبة"})
+            return self._send(200, {"ok": True, **panels.save_salla_codes(rws, prods, reset=bool(req.get("reset")))})
         if path == "/api/renew/panel-feed":       # السحب من جهاز المشغّل عبر الإضافة
             return self._send(200, panel_feed(st, rws, rcfg, req))
         if path == "/api/renew/pull":             # سحب الطلبات من سلة مباشرة
@@ -6803,6 +6863,16 @@ class Handler(BaseHTTPRequestHandler):
             for a in scope:
                 split_subs.mark_read(DATA_DIR, a["id"], ids or None)
             return self._send(200, {"ok": True})
+        if path == "/api/split/register-bulk":    # تجزئة جماعية من سطور ملصوقة
+            want = str(req.get("account_id") or "")
+            a = next((x for x in scope if str(x["id"]) == want), None) if want else \
+                (scope[0] if len(scope) == 1 else None)
+            if not a:
+                return self._send(400, {"error": "اختر الحساب"})
+            gate = find_gate(a, req.get("gate"))
+            if not split_gate_ok(gate):
+                return self._send(400, {"error": "اختر بوابة مرح أو كاسبر أو فالكون"})
+            return self._send(200, split_register_bulk(a, gate, req.get("months"), req.get("text", ""), DATA_DIR))
         if path in ("/api/split/cfg", "/api/split/test-email", "/api/split/register", "/api/split/test-rename"):
             want = str(req.get("account_id") or "")
             a = next((x for x in scope if str(x["id"]) == want), None) if want else \

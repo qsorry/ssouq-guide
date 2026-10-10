@@ -169,6 +169,115 @@ async function runPull(settings, maxMonths) {
   }
 }
 
+// ---- أكواد سلة المتاحة (المنتجات الرقمية) ----
+// لوحة سلة الجديدة تنادي api.salla.dev برمزٍ محفوظ في localStorage الخاص بـ s.salla.sa
+// (لا في الكوكيز)، فلا يصل إليه الخادم. الإضافة تقرؤه من تبويب اللوحة (scripting)،
+// تجدّده إن انتهى، ثم تجلب المنتجات الرقمية وأكوادها وترسلها للأداة لتُحلَّل وتُحفظ.
+const API = "https://api.salla.dev/admin/v2";
+const codesState = { running: false, line: "", ok: null };
+
+async function sallaTab() {
+  const tabs = await chrome.tabs.query({ url: "https://s.salla.sa/*" });
+  if (tabs.length) return { tab: tabs[0], created: false };
+  const tab = await chrome.tabs.create({ url: "https://s.salla.sa/products", active: false });
+  await new Promise((res) => {
+    const done = (id, info) => { if (id === tab.id && info.status === "complete") { chrome.tabs.onUpdated.removeListener(done); res(); } };
+    chrome.tabs.onUpdated.addListener(done);
+    setTimeout(res, 15000);
+  });
+  return { tab, created: true };
+}
+
+async function readUserToken() {
+  const { tab, created } = await sallaTab();
+  try {
+    const [r] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => localStorage.getItem("user") });
+    const user = r && r.result ? JSON.parse(r.result) : null;
+    if (!user || !user.token) throw new Error("لا رمز جلسة في لوحة سلة — افتح s.salla.sa وسجّل دخولك");
+    if (user.expire_at && new Date() > new Date(user.expire_at) && user.refresh_token) {
+      const rr = await fetch(API + "/auth/refresh", { method: "POST", headers: { Authorization: "Bearer " + user.refresh_token } });
+      const j = await rr.json();
+      if (!j.data || !j.data.token) throw new Error("تعذّر تجديد رمز الجلسة — أعد فتح لوحة سلة");
+      return j.data.token;
+    }
+    return user.token;
+  } finally {
+    if (created) chrome.tabs.remove(tab.id).catch(() => {});
+  }
+}
+
+async function apiGet(token, path) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const r = await fetch(API + path, { headers: { Authorization: "Bearer " + token, Accept: "application/json" } });
+    if (r.ok) return await r.json();
+    if (r.status === 429 || r.status >= 500) { await sleep((r.status === 429 ? 5000 : 2000) * 2 ** attempt); continue; }
+    const t = await r.text();
+    throw new Error(`واجهة سلة ${r.status} على ${path}: ${t.slice(0, 120)}`);
+  }
+  throw new Error("واجهة سلة لا تستجيب على " + path);
+}
+
+// قائمة العناصر وعدد الصفحات من ردٍّ أيًّا كان شكله (data[] أو data.items[]، pagination…).
+function items(j) {
+  const d = j && j.data;
+  if (Array.isArray(d)) return d;
+  if (d && Array.isArray(d.items)) return d.items;
+  if (d && Array.isArray(d.data)) return d.data;
+  if (Array.isArray(j)) return j;
+  return [];
+}
+function lastPage(j) {
+  const p = (j && (j.pagination || (j.meta && j.meta.pagination) || j.meta)) || {};
+  return Number(p.totalPages || p.total_pages || p.last_page || p.pages || 0) || 0;
+}
+const isCodesProduct = (p) => {
+  const t = String((p && (p.type || p.product_type || (p.product && p.product.type))) || "").toLowerCase();
+  return t === "codes" || t === "digital" || t === "code";
+};
+
+async function runCodes(settings) {
+  if (codesState.running) return;
+  codesState.running = true;
+  const set = (line, ok) => { codesState.line = line; codesState.ok = ok; };
+  try {
+    set("قراءة رمز الجلسة…", null);
+    const token = await readUserToken();
+    set("جلب المنتجات…", null);
+    const digital = [];
+    for (let page = 1, last = 1; page <= last && page < 200; page++) {
+      const j = await apiGet(token, `/products?page=${page}&per_page=50`);
+      const list = items(j);
+      if (!list.length) break;
+      last = lastPage(j) || (list.length === 50 ? page + 1 : page);
+      for (const p of list) if (isCodesProduct(p)) digital.push({ id: p.id, name: p.name || "", sku: p.sku || "", type: p.type || p.product_type || "" });
+      set(`المنتجات: صفحة ${page} · ${digital.length} منتجًا رقميًا`, null);
+      await sleep(PULL_PAUSE_MS);
+    }
+    if (!digital.length) throw new Error("لم أجد منتجات رقمية (نوع codes) في المتجر");
+    let total = 0, reset = true, summary = null;
+    for (const [i, p] of digital.entries()) {
+      const codes = [];
+      for (let page = 1, last = 1; page <= last && page < 500; page++) {
+        const j = await apiGet(token, `/products/${p.id}/codes?page=${page}&per_page=100`);
+        const list = items(j);
+        if (!list.length) break;
+        codes.push(...list);
+        last = lastPage(j) || (list.length === 100 ? page + 1 : page);
+        await sleep(PULL_PAUSE_MS);
+      }
+      total += codes.length;
+      summary = await toolPost(settings, "/api/renew/salla-codes", { reset, products: [{ ...p, total: codes.length, codes }] });
+      reset = false;
+      set(`${i + 1} من ${digital.length} منتجًا · ${total} كودًا${summary && summary.unparsed ? ` · غير مقروء ${summary.unparsed}` : ""}`, null);
+    }
+    set(`اكتمل ✓ ${digital.length} منتجًا رقميًا، ${total} كودًا، منها ${summary ? summary.with_username : 0} بيوزر مقروء. احسب «غير المعروض» في صفحة التجديد.`, true);
+  } catch (e) {
+    set("توقّف: " + (e && e.message ? e.message : e), false);
+  } finally {
+    codesState.running = false;
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
@@ -189,6 +298,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (msg.type === "pull") {
         runPull(msg.settings, msg.maxMonths);   // يعمل في الخلفية؛ النافذة تسأل عن حاله
         sendResponse({ ok: true });
+        return;
+      }
+      if (msg.type === "codes") {
+        runCodes(msg.settings);
+        sendResponse({ ok: true });
+        return;
+      }
+      if (msg.type === "codes-status") {
+        sendResponse({ ok: true, ...codesState });
         return;
       }
       if (msg.type === "pull-status") {
