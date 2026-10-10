@@ -2775,7 +2775,7 @@ _panels_job = {"running": False, "phase": "", "panel": "", "done": 0, "total": 0
 def _panels_worker(entries, ws):
     results = []
     try:
-        for (panel_id, name, gate) in entries:
+        for (panel_id, name, gate, acct_id) in entries:
             if _panels_job["cancel"]:
                 break
             _panels_job.update({"phase": "pull", "panel": name, "done": 0, "total": 0})
@@ -2786,6 +2786,14 @@ def _panels_worker(entries, ws):
             try:
                 rows = _all_gate_lines(gate, prog)      # ويب (مرح/كاسبر) أو فالكون (API)
                 n = panels.save_panel_lines(ws, panel_id, name, rows)
+                # اللقطة نفسها تُكتب في ملف تصدير البوابة الذي تبحث فيه صفحة الإنشاء
+                # أولًا — فلا تُسأل اللوحة الحيّة عمّا سُحب هنا للتوّ.
+                if n and acct_id:
+                    try:
+                        users_export.replace_all(DATA_DIR, acct_id, gate.get("id"), gate.get("name"),
+                                                 rows, _export_host(gate))
+                    except Exception:
+                        pass
                 results.append({"panel": name, "count": n, "ok": True,
                                 "error": "" if n else "رجعت اللوحة صفر يوزر — تحقّق من نوع البوابة (casper/Xtream) وبياناتها"})
             except xm_web.CaptchaNeeded:
@@ -2815,7 +2823,7 @@ def start_panels_pull(st, ws, cfg, accounts):
         if gate.get("mode") not in ("web", "falcon"):
             return {"ok": False,
                     "error": "سحب اليوزرات متاح على بوابات جلسة الويب وفالكون (اللوحة «%s»)" % p["name"]}
-        entries.append((p["id"], p["name"], gate))
+        entries.append((p["id"], p["name"], gate, str(acct.get("id") or "")))
     if not entries:
         return {"ok": False, "error": "لا لوحات مضبوطة — أضف لوحةً وهوستاتها أولًا"}
     _panels_job.update({"running": True, "owner": ws, "phase": "start", "panel": "",
