@@ -2355,7 +2355,9 @@ def renew_packages(cfg, accounts):
 
 # ---- السحب المباشر من سلة (خلفيّ، لأنه يطول) ----
 _pull = {"running": False, "phase": "", "done": 0, "total": 0, "units": 0,
-         "found": 0, "error": "", "at": "", "cancel": False, "applied": False}
+         "found": 0, "error": "", "at": "", "cancel": False, "applied": False,
+         "gen": 0, "heartbeat": 0.0}
+PULL_STALE = 120          # ثوانٍ بلا نبض يُعدّ بعدها السحب معلّقًا ويجوز استبداله
 
 
 def renew_salla_token(st, cfg=None):
@@ -2391,16 +2393,27 @@ def _poll_salla_orders(st, svc, per_page=25):
     return []
 
 
-def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_months=15):
-    def progress(d):
-        _pull.update(d)
+def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_months=15,
+                 gen=0):
+    """خيط السحب. `gen` رقم جيله: سحبٌ أُطلق بعده (لأنه عُدّ معلّقًا) يلغيه بصمت —
+    فلا يكتب في الحالة ولا يمحو «جارٍ» عن خلفه."""
+    mine = lambda: _pull.get("gen") == gen
 
+    def progress(d):
+        if mine():
+            d.setdefault("heartbeat", time.time())
+            _pull.update(d)
+
+    stop = lambda: _pull["cancel"] or not mine()
     try:
         st = load_store()
+        progress({"phase": "connect"})           # قبل أوّل نداء: ليُعرف أين يقف
         units, meta = renew_import.pull_from_salla(
             token, progress=progress, with_history=with_history,
-            stop=lambda: _pull["cancel"], session=session, max_months=max_months,
+            stop=stop, session=session, max_months=max_months,
             credentials_for=lambda sid, url: renew_credentials_for(st, sid, url))
+        if not mine():
+            return
         if not units:
             _pull["error"] = ("انتهت جلسة لوحة سلة — الصق كوكيز جديدة وأعِد السحب"
                               if meta.get("session_expired") else "لم يرجع أي طلب صالح من سلة")
@@ -2419,27 +2432,37 @@ def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_mo
             # التحقّق الثنائي في سلة إلزاميّ، فلا تُجدَّد الجلسة إلا بيد المشغّل.
             renew.alert_session_expired(ws, cfg)
     except Exception as e:
-        _pull["error"] = str(e)[:300]
+        if mine():
+            _pull["error"] = ("%s: %s" % (type(e).__name__, e))[:300]
     finally:
-        _pull["running"] = False
-        _pull["at"] = renew.now_iso()
+        if mine():
+            _pull["running"] = False
+            _pull["at"] = renew.now_iso()
+
+
+def pull_is_stale():
+    """سحبٌ «جارٍ» بلا نبضٍ منذ PULL_STALE ثانية: خيطه علق أو مات مع عمليةٍ سابقة."""
+    return bool(_pull["running"]) and (time.time() - float(_pull.get("heartbeat") or 0)) > PULL_STALE
 
 
 def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True, max_months=15):
-    if _pull["running"]:
+    if _pull["running"] and not pull_is_stale():
         return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
     token = renew_salla_token(st, cfg)
     session = None if token else renew_pull_session(st, cfg)   # بلا توكن: جلسة اللوحة
     if not token and session is None:
         return {"ok": False, "error": "لا رمز سلة ولا كوكيز لوحة سلة — اضبط أحدهما في إعداد المساحة"}
+    replaced = bool(_pull["running"])                          # معلّقٌ يُستبدل
+    gen = int(_pull.get("gen") or 0) + 1
     _pull.update({"running": True, "owner": ws, "phase": "orders", "done": 0, "total": 0,
-                  "units": 0, "found": 0, "error": "", "cancel": False,
-                  "applied": False, "session_expired": False,
+                  "units": 0, "found": 0, "error": "", "cancel": False, "page": 0,
+                  "applied": False, "session_expired": False, "gen": gen,
+                  "heartbeat": time.time(), "started": time.time(),
                   "source": "api" if token else "panel"})
     threading.Thread(target=_pull_worker,
-                     args=(token, with_history, apply_index, ws, cfg, session, max_months),
+                     args=(token, with_history, apply_index, ws, cfg, session, max_months, gen),
                      daemon=True).start()
-    return {"ok": True}
+    return {"ok": True, "replaced_stale": replaced}
 
 
 def renew_pull_cookie(st, cfg=None):
@@ -5157,7 +5180,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {**_harvest,
                                         "saved": renew.harvest_stats(DATA_DIR)})
             if path == "/api/renew/pull-status":   # تقدّم السحب من سلة
-                return self._send(200, {**_own_job(_pull, rws),
+                return self._send(200, {**_own_job(_pull, rws), "stale": pull_is_stale(),
+                                        "now": time.time(),
                                         "has_token": renew_pull_ready(st, rcfg)})
             if path == "/api/renew/queue":        # الطلبات: المعلّق والمنجز
                 if role != "admin":
