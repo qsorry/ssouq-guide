@@ -1262,8 +1262,8 @@ function panelRow(p){
     <label>هوستات العملاء التابعة لها — هوستٌ في كل سطر يُطابَق به الطلب في سلة</label>
     <textarea class="pHosts ltr" rows="2" aria-label="هوستات العملاء" placeholder="sub.kasper.tv&#10;kasper2.tv">${esc((p.hosts || []).join('\n'))}</textarea>
     <div class="form2">
-      <div><label>الهوست في سطر الكود لسلة<small> — فارغ = أوّل الهوستات بمنفذ 80</small></label><input class="pCardHost ltr" value="${esc(p.card_host || '')}" placeholder="http://mrha.ink:80"></div>
-      <div><label>رابط الشرح في سطر الكود<small> — فارغ = حسب اسم اللوحة</small></label><input class="pGuide ltr" value="${esc(p.guide_url || '')}" placeholder="https://guide.ssouq.com/#activate/smart"></div>
+      <div><label>الهوست في سطر الكود لسلة<small> — فارغ = هوست بوابة السحب كما في إعدادها</small></label><input class="pCardHost ltr" value="${esc(p.card_host || '')}" placeholder="يُؤخذ من البوابة"></div>
+      <div><label>رابط الشرح في سطر الكود<small> — فارغ = رابط شرح البوابة/الحساب</small></label><input class="pGuide ltr" value="${esc(p.guide_url || '')}" placeholder="يُؤخذ من البوابة"></div>
     </div>`;
   div.querySelector('.pDel').onclick = () => div.remove();
   return div;

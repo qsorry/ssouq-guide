@@ -2915,8 +2915,14 @@ def _store_lines_xlsx(ws):
     return xlsx_write.build_xlsx([("اشتراكات سلة", headers, rows)])
 
 
-def _unlisted_xlsx(ws, cfg):
-    d = panels.unlisted(cfg, ws, include_expired=False)
+def card_gates(accounts):
+    """{(الحساب، البوابة): البوابة ورابط شرحها الفعلي} لسطر الكود في «غير المعروض»."""
+    return {(str(a.get("id")), str(g.get("id"))): with_guide(a, g)
+            for a in (accounts or []) for g in (a.get("gates") or [])}
+
+
+def _unlisted_xlsx(ws, cfg, accounts=None):
+    d = panels.unlisted(cfg, ws, include_expired=False, gates=card_gates(accounts))
     headers = ["اللوحة", "اليوزر", "كلمة المرور", "الهوست", "الباقة", "المدة (أشهر)",
                "الإنشاء", "الانتهاء", "المتبقي", "المتبقي (أشهر)", "سطر الكود لسلة", "سطر التجزئة"]
     rows = [[r["panel_name"], r["username"], r["password"], r["host"], r["package"], r["months"],
@@ -5346,9 +5352,10 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition": 'attachment; filename="salla-available-codes.xlsx"'})
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
-                return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1"))
+                return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1",
+                                                       gates=card_gates(racs)))
             if path == "/api/renew/unlisted.xlsx":
-                return self._send(200, raw=_unlisted_xlsx(rws, rcfg),
+                return self._send(200, raw=_unlisted_xlsx(rws, rcfg, racs),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition":
                                          'attachment; filename="unlisted-subscriptions.xlsx"'})

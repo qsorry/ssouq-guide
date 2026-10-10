@@ -355,16 +355,18 @@ GUIDE_BY_NAME = (("فالكون|falcon", "https://guide.ssouq.com/#activate/falc
                  ("مرح|سمارت|smart|marah", "https://guide.ssouq.com/#activate/smart"))
 
 
-def panel_card(panel):
-    """(هوست البطاقة، رابط الشرح) للوحة: ما ضُبط فيها، وإلا أوّل هوستاتها بمنفذ 80،
-    والشرح من اسمها (فالكون/كاسبر/مرح)."""
-    host = panel.get("card_host") or ""
+def panel_card(panel, gate=None):
+    """(هوست البطاقة، رابط الشرح) للوحة. المصدر الأوّل **بوابة السحب نفسها** كما ضُبطت في
+    admin.ssouq.com (هوست السطر ورابط شرحها الفعلي)، ثم ما كُتب في اللوحة، ثم أوّل
+    هوستاتها بمنفذ 80 والشرح من اسمها (فالكون/كاسبر/مرح)."""
+    gate = gate or {}
+    host = panel.get("card_host") or str(gate.get("host") or "").strip()
     if not host:
         h = (panel.get("hosts") or [""])[0]
         host = ("http://%s:80" % h) if h else ""
     elif not host.startswith("http"):
         host = "http://" + host
-    guide = panel.get("guide_url") or ""
+    guide = panel.get("guide_url") or str(gate.get("guide_url") or "").strip()
     if not guide:
         for pat, url in GUIDE_BY_NAME:
             if re.search(pat, panel.get("name", ""), re.I):
@@ -379,7 +381,8 @@ def salla_card_line(host, username, password, guide=""):
     return line + (" Guide " + guide if guide else "")
 
 
-def unlisted(config, data_dir, include_expired=False):
+def unlisted(config, data_dir, include_expired=False, gates=None):
+    """`gates`: {(account_id, gate_id): بوابةٌ بهوستها ورابط شرحها الفعلي} — لسطر الكود."""
     """يوزرات اللوحات التي لا هي مبيعة في سلة (خطوط المتجر) ولا معروضة في مخزون
     أكوادها: أُنشئت ونُسيت. لكل لوحةٍ صفوفها، وفي كل صف السطر الجاهز للنسخ
     (Host · Username · Password · Exp) ليُعرض من جديد أو يُجزَّأ."""
@@ -396,7 +399,7 @@ def unlisted(config, data_dir, include_expired=False):
             per_panel[p["id"]] = {"name": p["name"], "lines": 0, "sold": 0, "listed": 0,
                                   "unlisted": 0, "expired": 0, "not_pulled": True}
             continue
-        host, guide = panel_card(p)
+        host, guide = panel_card(p, (gates or {}).get((p.get("account_id", ""), p.get("gate_id", ""))))
         n_sold = n_listed = n_unlisted = n_expired = 0
         for key, rec in pdata["by_user"].items():
             if key in sold:

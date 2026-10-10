@@ -241,6 +241,8 @@ def test_unlisted():
         r = res["rows"][0]
         check("row carries a Salla card line (User/Pass/Guide by panel name)",
               r["card"] == "Host http://kasper.tv:80 User 333333333333 Pass 1000000003 Guide https://guide.ssouq.com/#activate/casper", r["card"])
+        hg, gg = panels.panel_card({"name": "x", "hosts": ["kasper.tv"]}, {"host": "http://ssouqhost.vip:80", "guide_url": "https://guide.ssouq.com/#activate/casper"})
+        check("panel_card takes host and guide from the pull gate first", (hg, gg) == ("http://ssouqhost.vip:80", "https://guide.ssouq.com/#activate/casper"), str((hg, gg)))
         h2, g2 = panels.panel_card({"name": "مرح", "hosts": ["mrha.ink"], "card_host": "http://mrha.ink:80", "guide_url": ""})
         check("panel_card honours card_host and derives the guide from the name", (h2, g2) == ("http://mrha.ink:80", "https://guide.ssouq.com/#activate/smart"), str((h2, g2)))
         check("row carries a ready-to-copy line with host/user/pass/exp",
