@@ -73,7 +73,8 @@ async function sendToTool({ base, user, pass, cookie, test }) {
 // Cloudflare يحجب عنوان خادم الأداة عن لوحة سلة، أما متصفّح المشغّل فمسموح.
 // فالإضافة تقرأ صفحات اللوحة من هنا (بجلسته) وترسلها خامًا إلى
 // /api/renew/panel-feed، والخادم يحلّلها بمحلّلاته نفسها.
-const PULL_WORKERS = 4;
+const PULL_WORKERS = 2;            // أكثر من هذا ولوحة سلة تردّ 429 (حدّ المعدّل)
+const PULL_PAUSE_MS = 400;         // مهلة بين الدفعات، لتبقى تحت الحدّ
 const pullState = { running: false, cancel: false, line: "", ok: null };
 
 async function toolPost(settings, path, body) {
@@ -92,15 +93,28 @@ async function toolPost(settings, path, body) {
   return d;
 }
 
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+// صفحة من لوحة سلة بجلسة المتصفّح. ‏429 (حدّ المعدّل) و5xx تُعاد بانتظارٍ متدرّج
+// (Retry-After إن قالته اللوحة)، حتى خمس مرات، قبل أن يُعدّ فشلًا.
 async function sallaPage(path) {
-  const r = await fetch(SALLA_URL.replace(/\/$/, "") + path, {
-    credentials: "include",
-    headers: { Accept: "text/html" },
-    redirect: "manual",
-  });
-  if (r.type === "opaqueredirect" || r.status === 0) throw new Error("حُوّلنا لصفحة الدخول — سجّل دخولك للوحة سلة أولًا");
-  if (!r.ok) throw new Error("ردّت لوحة سلة " + r.status);
-  return await r.text();
+  let last = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const r = await fetch(SALLA_URL.replace(/\/$/, "") + path, {
+      credentials: "include",
+      headers: { Accept: "text/html" },
+      redirect: "manual",
+    });
+    if (r.type === "opaqueredirect" || r.status === 0) throw new Error("حُوّلنا لصفحة الدخول — سجّل دخولك للوحة سلة أولًا");
+    if (r.ok) return await r.text();
+    last = "ردّت لوحة سلة " + r.status;
+    if (r.status !== 429 && r.status < 500) throw new Error(last);
+    const ra = Number(r.headers.get("Retry-After")) || 0;
+    const wait = ra > 0 ? Math.min(60, ra) * 1000 : (r.status === 429 ? 5000 : 2000) * 2 ** attempt;
+    setLine(`${last} — انتظار ${Math.round(wait / 1000)} ث ثم إعادة…`, null);
+    await sleep(wait);
+  }
+  throw new Error(last + " بعد خمس محاولات");
 }
 
 function setLine(line, ok) {
@@ -137,6 +151,7 @@ async function runPull(settings, maxMonths) {
         found = res.found || found;
         tooOld = tooOld || !!res.too_old;
         setLine(`صفحة ${page} · ${opened} من ${listed} طلبًا · ${units} يوزرًا (${found} باعتماد)`, null);
+        await sleep(PULL_PAUSE_MS);
       }
       if (tooOld) break;               // صفحةٌ كلها أقدم من الحدّ: ما بعدها أقدم
       // كل عشر صفحات يُحفظ ما جُمع على الخادم، فإن أُغلق المتصفّح لم يضع شيء.

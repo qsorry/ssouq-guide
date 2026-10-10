@@ -194,6 +194,22 @@ def main():
     finally:
         urllib.request.build_opener, salla_web.time.sleep = orig_build, orig_sleep
 
+    # ‏429 يُمهَل ويُعاد (Retry-After محترم، حتى دقيقة)
+    s5 = salla_web.Session("sess=1"); hits = {"n": 0}; waits = []
+    class RL:
+        def open(self, req, timeout=0):
+            hits["n"] += 1
+            if hits["n"] < 3:
+                raise urllib.error.HTTPError(req.full_url, 429, "Too Many", {"Retry-After": "7"}, None)
+            return FakeResp()
+    urllib.request.build_opener, salla_web.time.sleep = lambda *a: RL(), lambda sec: waits.append(sec)
+    try:
+        code, _, _ = s5._get("/orders")
+        check("429 is retried after Retry-After", code == 200 and hits["n"] == 3 and waits == [7.0, 7.0], str(waits))
+        check("retry_after caps at a minute", salla_web._retry_after({"Retry-After": "900"}, 2) == 60.0 and salla_web._retry_after({}, 2) == 2)
+    finally:
+        urllib.request.build_opener, salla_web.time.sleep = orig_build, orig_sleep
+
     s3 = salla_web.Session("sess=1")
     s3._get = lambda path, accept="application/json": (200, {"Server": "cloudflare"}, "<title>\n الطلبات | سلة </title>".encode())
     dg = s3.diagnose()
