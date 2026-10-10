@@ -2429,7 +2429,7 @@ def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True):
     if _pull["running"]:
         return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
     token = renew_salla_token(st, cfg)
-    session = None if token else renew_panel_session(st)   # بلا توكن: جلسة اللوحة
+    session = None if token else renew_pull_session(st, cfg)   # بلا توكن: جلسة اللوحة
     if not token and session is None:
         return {"ok": False, "error": "لا رمز سلة ولا كوكيز لوحة سلة — اضبط أحدهما في إعداد المساحة"}
     _pull.update({"running": True, "owner": ws, "phase": "orders", "done": 0, "total": 0,
@@ -2442,9 +2442,29 @@ def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True):
     return {"ok": True}
 
 
+def renew_pull_cookie(st, cfg=None):
+    """كوكيز لوحة سلة للسحب: كوكيز إعداد المساحة إن لُصقت فيه (لكل حساب كوكيزه)،
+    وإلا كوكيز الأدمن العامة — كالرمز سواءً بسواء."""
+    if cfg:
+        own = str(renew.normalize_config(cfg).get("panel_cookie") or "").strip()
+        if own:
+            return own
+    return salla_service_cookie(st)
+
+
+def renew_pull_session(st, cfg=None):
+    cookie = renew_pull_cookie(st, cfg)
+    if not cookie:
+        return None
+    try:
+        return salla_web.Session(cookie)
+    except salla_web.WebError:
+        return None
+
+
 def renew_pull_ready(st, cfg):
-    """أيمكن بدء السحب؟ بتوكن الواجهة أو بكوكيز لوحة سلة."""
-    return bool(renew_salla_token(st, cfg)) or bool(salla_service_cookie(st))
+    """أيمكن بدء السحب؟ بتوكن الواجهة أو بكوكيز لوحة سلة (المساحة أو الأدمن)."""
+    return bool(renew_salla_token(st, cfg)) or bool(renew_pull_cookie(st, cfg))
 
 
 
