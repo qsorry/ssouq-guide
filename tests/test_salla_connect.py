@@ -155,6 +155,10 @@ def main():
     st2 = {"renew": {"panel_cookie": "sess=1; k=v"}, "service": {}}
     check("pull is ready with a cookie only", X.renew_pull_ready(st2, {}) is True)
     check("pull is not ready with neither", X.renew_pull_ready({"renew": {}, "service": {}}, {}) is False)
+    check("pull is ready with the workspace's own cookie", X.renew_pull_ready({"renew": {}, "service": {}}, {"panel_cookie": "s=1"}) is True)
+    r = X.start_renew_pull({"renew": {}, "service": {}}, "ws", {"panel_cookie": "s=1"})
+    check("start accepts the workspace cookie", r["ok"] is True, str(r))
+    X._pull["cancel"] = True; import time; time.sleep(0.3); X._pull["running"] = False
     r = X.start_renew_pull({"renew": {}, "service": {}}, "ws", {})
     check("start refuses with neither token nor cookie", r["ok"] is False and "كوكيز" in r["error"], str(r))
     orig_worker = X._pull_worker
