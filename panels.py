@@ -324,6 +324,32 @@ def salla_codes_by_user(data):
 
 # ============================ لم تُعرض للبيع ============================
 
+def remaining_text(exp, today=None):
+    """«ينتهي بعد سنة و٢ شهر و٢٥ يومًا» بالتقويم من اليوم إلى تاريخ الانتهاء، أو
+    «انتهى منذ …» لما مضى، أو "" إن لم يُفهم التاريخ."""
+    end = renew.parse_date(exp)
+    if not end:
+        return ""
+    today = today or renew._today()
+    past = end < today
+    a, b = (end, today) if past else (today, end)
+    months = (b.year - a.year) * 12 + (b.month - a.month)
+    if renew.add_months(a, months) > b:
+        months -= 1
+    days = (b - renew.add_months(a, months)).days
+    y, m = divmod(months, 12)
+    parts = []
+    if y:
+        parts.append("سنة" if y == 1 else ("سنتان" if y == 2 else "%d سنوات" % y if y <= 10 else "%d سنة" % y))
+    if m:
+        parts.append("شهر" if m == 1 else ("شهران" if m == 2 else "%d أشهر" % m if m <= 10 else "%d شهرًا" % m))
+    if days or not parts:
+        parts.append("يوم" if days == 1 else ("يومان" if days == 2 else "%d أيام" % days if days <= 10 else "%d يومًا" % days))
+    text = " و".join(parts)
+    return ("انتهى منذ " + text) if past else ("ينتهي بعد " + text)
+
+
+
 def unlisted(config, data_dir, include_expired=False):
     """يوزرات اللوحات التي لا هي مبيعة في سلة (خطوط المتجر) ولا معروضة في مخزون
     أكوادها: أُنشئت ونُسيت. لكل لوحةٍ صفوفها، وفي كل صف السطر الجاهز للنسخ
@@ -368,6 +394,7 @@ def unlisted(config, data_dir, include_expired=False):
                          "password": rec.get("password", ""), "host": host, "package": rec.get("package", ""),
                          "months": rec.get("months", 0), "created": rec.get("created", ""),
                          "exp": rec.get("exp", ""), "days_left": es["days_left"], "months_left": months_left,
+                         "remaining": remaining_text(rec.get("exp"), today),
                          "expired": expired, "status": rec.get("status", ""), "line": line})
         per_panel[p["id"]] = {"name": p["name"], "lines": pdata.get("count", 0), "sold": n_sold,
                               "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired,
