@@ -2458,6 +2458,21 @@ def panel_feed(st, ws, cfg, req):
     if op == "start":
         if _pull["running"] and not pull_is_stale():
             return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
+        old = _feed.get("job")
+        # انقطع المتصفّح في منتصف سحبٍ سابق (أُغلق مثلًا)؟ يُستأنف من صفحته التالية بما
+        # جُمع، وإن طُلب البدء من جديد حُفظ ما جُمع أوّلًا فلا يضيع.
+        if old and old.units and _feed.get("ws") == ws and _pull.get("source") == "extension":
+            if req.get("resume", True) and old.cutoff == renew_import.panel_cutoff(
+                    max(0, int(req.get("max_months", 15) or 0))):
+                _pull.update({"running": True, "owner": ws, "error": "", "cancel": False,
+                              "heartbeat": time.time(), "phase": "orders"})
+                _feed["gen"] = _pull["gen"]
+                return {"ok": True, "gen": _pull["gen"], "cutoff": old.cutoff,
+                        "resume_page": old.pages + 1, **old.progress()}
+            try:
+                _pull_finish(old.units, old.meta(), _feed["ws"], _feed["cfg"], _feed["apply"])
+            except Exception:
+                pass
         gen = int(_pull.get("gen") or 0) + 1
         job = renew_import.PanelFeed(max_months=max(0, int(req.get("max_months", 15) or 0)))
         _feed.update({"job": job, "ws": ws, "gen": gen, "apply": bool(req.get("apply", True)),
@@ -2478,6 +2493,11 @@ def panel_feed(st, ws, cfg, req):
             out = job.list(int(req.get("page") or 1), str(req.get("html") or ""))
         elif op == "orders":
             out = job.orders(req.get("orders") or {})
+        elif op == "save":                      # حفظ ما جُمع حتى الآن دون إغلاق السحب (كل بضع صفحات)
+            if job.units:
+                _pull_finish(job.units, job.meta(), _feed["ws"], _feed["cfg"], _feed["apply"])
+                _pull.update({"running": True, "phase": "orders"})
+            out = {"saved": len(job.units)}
         elif op == "finish":
             units, meta = job.units, job.meta()
             if not units:
