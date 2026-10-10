@@ -134,12 +134,12 @@ def main():
                   "333": order_html(["بطاقة بلا اعتماد"], ["تم التنفيذ", "Username: 555666777 Password: 888999000 Host http://h2.vip"], no="293110000"),
                   "222": order_html([CODE])}
         opened = []
-        def orders_page(self, page): return salla_web.parse_orders_list(self.pages[page][0])
+        def orders_page(self, page): return salla_web.parse_orders_list(self.pages.get(page, ("", False))[0])
         def order_details(self, sid): self.opened.append(sid); return salla_web.parse_order_page(self.orders[sid], sid)
     fs = FakeSess()
     units, meta = renew_import.pull_from_salla("", session=fs)
-    check("panel pull walks all pages", meta["source"] == "panel" and meta["orders_total"] == 4, str(meta))
-    check("panel pull skips unconfirmed rows without opening them", "222" not in fs.opened and meta["skipped"]["unconfirmed"] == 2, str(fs.opened))
+    check("panel pull walks all pages (a sid seen twice counts once)", meta["source"] == "panel" and meta["orders_total"] == 3, str(meta))
+    check("panel pull skips unconfirmed rows without opening them", "222" not in fs.opened and meta["skipped"]["unconfirmed"] == 1, str(fs.opened))
     by = {u["order"]: u for u in units}
     check("unit from the code field", by.get("293119145", {}).get("username") == "328137953493"
           and by["293119145"]["months"] == 6 and by["293119145"]["phone"] == "966500933277", str(by.get("293119145")))
@@ -195,6 +195,20 @@ def main():
         X._pull_finish = orig_fin
     check("feed finish finalizes like the direct pull", r["ok"] and fin == {"n": 1, "src": "extension"} and not X._pull["running"], str(r))
     check("after finish the job is closed", X.panel_feed(st3, "ws", {}, {"op": "list", "page": 2, "html": ""})["ok"] is False)
+
+    # رابط «التالي» يختفي والصفحات تستمرّ: النهاية صفحةٌ بلا طلبات جديدة
+    class EndlessSess(FakeSess):
+        pages = {1: (LIST.split("<ul>")[0], False), 2: (LIST.split("<ul>")[0].replace('"111"', '"444"').replace("293119145", "293100004"), False),
+                 3: (LIST.split("<ul>")[0], False)}
+        orders = {"111": order_html([CODE]), "444": order_html([CODE], no="293100004"), "222": order_html([CODE])}
+        opened = []
+        def orders_page(self, page): return salla_web.parse_orders_list(self.pages[min(page, 3)][0])
+    us3, m3 = renew_import.pull_from_salla("", session=EndlessSess())
+    check("pull continues past a missing next link and stops at a page with no new orders",
+          m3["pages"] == 3 and sorted(u["order"] for u in us3) == ["293100004", "293119145"], str(m3))
+    fj = renew_import.PanelFeed()
+    a = fj.list(1, LIST.split("<ul>")[0]); b = fj.list(2, LIST.split("<ul>")[0])
+    check("feed list: a repeated page means the end", a["more"] is True and b["more"] is False and b["sids"] == [], str(b))
 
     # الكمية ٢ بكودين → يوزر لكل نسخة
     d2 = salla_web.parse_order_page(order_html([CODE, CODE.replace("328137953493", "111222333444")], qty=2), "9")
