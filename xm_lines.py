@@ -2391,7 +2391,7 @@ def _poll_salla_orders(st, svc, per_page=25):
     return []
 
 
-def _pull_worker(token, with_history, apply_index, ws, cfg, session=None):
+def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_months=15):
     def progress(d):
         _pull.update(d)
 
@@ -2399,7 +2399,7 @@ def _pull_worker(token, with_history, apply_index, ws, cfg, session=None):
         st = load_store()
         units, meta = renew_import.pull_from_salla(
             token, progress=progress, with_history=with_history,
-            stop=lambda: _pull["cancel"], session=session,
+            stop=lambda: _pull["cancel"], session=session, max_months=max_months,
             credentials_for=lambda sid, url: renew_credentials_for(st, sid, url))
         if not units:
             _pull["error"] = ("انتهت جلسة لوحة سلة — الصق كوكيز جديدة وأعِد السحب"
@@ -2425,7 +2425,7 @@ def _pull_worker(token, with_history, apply_index, ws, cfg, session=None):
         _pull["at"] = renew.now_iso()
 
 
-def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True):
+def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True, max_months=15):
     if _pull["running"]:
         return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
     token = renew_salla_token(st, cfg)
@@ -2437,7 +2437,7 @@ def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True):
                   "applied": False, "session_expired": False,
                   "source": "api" if token else "panel"})
     threading.Thread(target=_pull_worker,
-                     args=(token, with_history, apply_index, ws, cfg, session),
+                     args=(token, with_history, apply_index, ws, cfg, session, max_months),
                      daemon=True).start()
     return {"ok": True}
 
@@ -5316,7 +5316,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/renew/pull":             # سحب الطلبات من سلة مباشرة
             return self._send(200, start_renew_pull(
                 st, rws, rcfg, with_history=req.get("with_history", True),
-                apply_index=req.get("apply", True)))
+                apply_index=req.get("apply", True),
+                max_months=max(0, int(req.get("max_months", 15) or 0))))
         if path == "/api/renew/lines-export":
             return self._send(200, start_lines_export(st, rws, rcfg, racs, req.get("side", "source")))
         if path == "/api/renew/lines-cancel":
