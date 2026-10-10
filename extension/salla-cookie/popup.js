@@ -86,6 +86,32 @@ async function grabAndSend(test) {
 $("send").onclick = () => grabAndSend(false);
 $("test").onclick = () => grabAndSend(true);
 
+// ---- السحب من جهازي ----
+let pullTimer = null;
+function showPull(st) {
+  const m = $("pullMsg");
+  m.textContent = st.line || "";
+  m.className = "msg" + (st.ok === true ? " ok" : st.ok === false ? " err" : "");
+  $("pull").disabled = !!st.running;
+}
+async function watchPull() {
+  const st = await ask({ type: "pull-status" });
+  if (st) showPull(st);
+  clearTimeout(pullTimer);
+  if (st && st.running) pullTimer = setTimeout(watchPull, 1500);
+}
+$("pull").onclick = async () => {
+  const s = readSettings();
+  const bad = validSettings(s);
+  if (bad) { setMsg(bad, "err"); $("cfg").open = true; return; }
+  await chrome.storage.local.set({ [KEY]: s });
+  const months = Math.max(0, Number($("months").value) || 0);
+  await ask({ type: "pull", settings: s, maxMonths: months });
+  watchPull();
+};
+$("pullStop").onclick = async () => { await ask({ type: "pull-cancel" }); };
+watchPull();
+
 loadSettings().then((s) => {
   if (!s.base || !s.user || !s.pass) $("cfg").open = true;
 });

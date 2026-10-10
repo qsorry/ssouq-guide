@@ -2420,14 +2420,7 @@ def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_mo
             if meta.get("session_expired"):
                 renew.alert_session_expired(ws, cfg)
             return
-        agg = renew_import.analyze(units, meta)
-        renew.save_analysis(ws, agg)
-        panels.save_store_lines(ws, units)         # لتغذية مقارنة اللوحات
-        if apply_index:
-            renew.save_index(ws, renew_import.build_index(units, meta))
-            _pull["applied"] = True
-        _pull.update({"units": len(units), "found": meta.get("with_credentials", 0),
-                      "phase": "done", "session_expired": meta.get("session_expired", False)})
+        _pull_finish(units, meta, ws, cfg, apply_index)
         if meta.get("session_expired"):
             # التحقّق الثنائي في سلة إلزاميّ، فلا تُجدَّد الجلسة إلا بيد المشغّل.
             renew.alert_session_expired(ws, cfg)
@@ -2438,6 +2431,69 @@ def _pull_worker(token, with_history, apply_index, ws, cfg, session=None, max_mo
         if mine():
             _pull["running"] = False
             _pull["at"] = renew.now_iso()
+
+
+def _pull_finish(units, meta, ws, cfg, apply_index):
+    """ختام السحب أيًّا كان مصدره: التحليل، وخطوط المتجر للمقارنة، والفهرس إن طُلب."""
+    agg = renew_import.analyze(units, meta)
+    renew.save_analysis(ws, agg)
+    panels.save_store_lines(ws, units)
+    if apply_index:
+        renew.save_index(ws, renew_import.build_index(units, meta))
+        _pull["applied"] = True
+    _pull.update({"units": len(units), "found": meta.get("with_credentials", 0),
+                  "phase": "done", "session_expired": meta.get("session_expired", False)})
+
+
+# ---- السحب من جهاز المشغّل (إضافة المتصفّح تُغذّي الخادم بصفحات اللوحة) ----
+_feed = {"job": None, "ws": "", "gen": 0, "apply": True, "cfg": None}
+
+
+def panel_feed(st, ws, cfg, req):
+    """نقطة الإضافة: start → list → orders… → finish. الحالة تُعرض في `_pull` نفسه
+    فتراها صفحة التجديد كالسحب المباشر (المصدر «extension»)."""
+    op = str(req.get("op") or "")
+    if op == "start":
+        if _pull["running"] and not pull_is_stale():
+            return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
+        gen = int(_pull.get("gen") or 0) + 1
+        job = renew_import.PanelFeed(max_months=max(0, int(req.get("max_months", 15) or 0)))
+        _feed.update({"job": job, "ws": ws, "gen": gen, "apply": bool(req.get("apply", True)),
+                      "cfg": cfg})
+        _pull.update({"running": True, "owner": ws, "phase": "orders", "done": 0, "total": 0,
+                      "units": 0, "found": 0, "error": "", "cancel": False, "page": 0,
+                      "applied": False, "session_expired": False, "gen": gen,
+                      "heartbeat": time.time(), "started": time.time(), "source": "extension"})
+        return {"ok": True, "gen": gen, "cutoff": job.cutoff}
+    job = _feed.get("job")
+    if not job or _feed.get("gen") != _pull.get("gen") or not _pull["running"]:
+        return {"ok": False, "error": "لا سحبَ مفتوحًا — ابدأ من جديد", "restart": True}
+    if _pull["cancel"]:
+        _pull["running"] = False
+        return {"ok": False, "error": "أُوقف السحب من الصفحة", "cancelled": True}
+    try:
+        if op == "list":
+            out = job.list(int(req.get("page") or 1), str(req.get("html") or ""))
+        elif op == "orders":
+            out = job.orders(req.get("orders") or {})
+        elif op == "finish":
+            units, meta = job.units, job.meta()
+            if not units:
+                _pull["error"] = "لم يرجع أي طلب صالح من سلة"
+            else:
+                _pull_finish(units, meta, _feed["ws"], _feed["cfg"], _feed["apply"])
+            _pull["running"] = False
+            _pull["at"] = renew.now_iso()
+            _feed["job"] = None
+            return {"ok": True, "units": len(units), "found": meta["with_credentials"],
+                    "skipped": meta["skipped"], "pages": meta["pages"]}
+        else:
+            return {"ok": False, "error": "طلب غير معروف"}
+    except Exception as e:
+        _pull.update({"error": ("%s: %s" % (type(e).__name__, e))[:300], "running": False})
+        return {"ok": False, "error": _pull["error"]}
+    _pull.update({**job.progress(), "heartbeat": time.time()})
+    return {"ok": True, **out, **job.progress()}
 
 
 def pull_is_stale():
@@ -5337,6 +5393,8 @@ class Handler(BaseHTTPRequestHandler):
             owner["renew"] = renew.clean_config(req.get("renew") or {}, rcfg)
             save_store(st)
             return self._send(200, {"ok": True, "renew": renew.redact_config(owner["renew"])})
+        if path == "/api/renew/panel-feed":       # السحب من جهاز المشغّل عبر الإضافة
+            return self._send(200, panel_feed(st, rws, rcfg, req))
         if path == "/api/renew/pull":             # سحب الطلبات من سلة مباشرة
             return self._send(200, start_renew_pull(
                 st, rws, rcfg, with_history=req.get("with_history", True),
