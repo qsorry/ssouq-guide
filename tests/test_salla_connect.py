@@ -146,6 +146,19 @@ def main():
           by.get("293110000", {}).get("username") == "555666777" and by["293110000"].get("host") == "http://h2.vip", str(by.get("293110000")))
     check("with_credentials counts both", meta["with_credentials"] == 2 and "code" not in by["293119145"], str(meta["with_credentials"]))
 
+    # منتجات لا علاقة لها بالاشتراكات تُتجاوز ولا يُسجَّل منها شيء
+    check("is_subscription_item: by name", renew_import.is_subscription_item({"name": "اشتراك كاسبر IPTV لمدة 6 أشهر", "codes": []}))
+    check("is_subscription_item: by credentials code", renew_import.is_subscription_item({"name": "منتج", "codes": [CODE]}))
+    check("is_subscription_item: a device is not", not renew_import.is_subscription_item({"name": "رسيفر أندرويد 4K مع ضمان سنة", "codes": []}))
+    check("is_subscription_item: trial is not", not renew_import.is_subscription_item({"name": "اشتراك تجريبي يوم", "codes": []}))
+
+    class DevSess(FakeSess):
+        pages = {1: (LIST.split("<ul>")[0], False)}
+        orders = {"111": order_html([]).replace("اشتراك كاسبر IPTV لمدة 6 أشهر", "رسيفر أندرويد 4K مع ضمان سنة")}
+        opened = []
+    us2, m2 = renew_import.pull_from_salla("", session=DevSess())
+    check("panel pull records nothing for non-subscription orders", us2 == [] and m2["skipped"]["not_subscription"] == 1, str(m2["skipped"]))
+
     # الكمية ٢ بكودين → يوزر لكل نسخة
     d2 = salla_web.parse_order_page(order_html([CODE, CODE.replace("328137953493", "111222333444")], qty=2), "9")
     us, _ = renew_import.salla_order_units(d2)
