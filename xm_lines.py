@@ -2457,7 +2457,7 @@ def panel_feed(st, ws, cfg, req):
     op = str(req.get("op") or "")
     if op == "start":
         if _pull["running"] and not pull_is_stale():
-            return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
+            return {"ok": False, "error": pull_busy_error()}
         old = _feed.get("job")
         # انقطع المتصفّح في منتصف سحبٍ سابق (أُغلق مثلًا)؟ يُستأنف من صفحته التالية بما
         # جُمع، وإن طُلب البدء من جديد حُفظ ما جُمع أوّلًا فلا يضيع.
@@ -2518,6 +2518,32 @@ def panel_feed(st, ws, cfg, req):
     return {"ok": True, **out, **job.progress()}
 
 
+def pull_status_for(ws):
+    """حالة السحب لصفحة التجديد. سحبُ مساحةٍ أخرى (الإضافة تدخل بالأدمن والصفحة
+    بالحساب مثلًا) يُعرض تقدّمُه أيضًا معلَّمًا `foreign` — أرقامٌ لا أسرار — فلا تُرفض
+    الضغطة بـ«سحبٌ جارٍ» بينما الصفحة لا تُري شيئًا."""
+    if _pull.get("owner") == ws:
+        return {**_pull, "stale": pull_is_stale()}
+    if _pull["running"]:
+        return {k: _pull.get(k) for k in ("running", "phase", "page", "done", "total", "units",
+                                          "found", "source", "heartbeat", "started")} | {
+            "foreign": True, "stale": pull_is_stale()}
+    return {"running": False}
+
+
+def pull_busy_error():
+    """«سحبٌ جارٍ بالفعل» بتفاصيله: مصدره وصفحته وآخر نبضة — لا جملةً عارية."""
+    src = {"panel": "بالكوكيز", "extension": "من جهازك عبر الإضافة"}.get(_pull.get("source"), "برمز سلة")
+    ago = int(time.time() - float(_pull.get("heartbeat") or time.time()))
+    bits = ["سحبٌ جارٍ بالفعل (%s" % src]
+    if _pull.get("page"):
+        bits.append("صفحة %s" % _pull["page"])
+    if _pull.get("total"):
+        bits.append("%s من %s" % (_pull.get("done", 0), _pull["total"]))
+    bits.append("آخر نشاط قبل %d ث)" % ago)
+    return " · ".join(bits) + " — يُستبدل تلقائيًا إن مرّت دقيقتان بلا نشاط، أو أوقفه ثم ابدأ."
+
+
 def pull_is_stale():
     """سحبٌ «جارٍ» بلا نبضٍ منذ PULL_STALE ثانية: خيطه علق أو مات مع عمليةٍ سابقة."""
     return bool(_pull["running"]) and (time.time() - float(_pull.get("heartbeat") or 0)) > PULL_STALE
@@ -2525,7 +2551,7 @@ def pull_is_stale():
 
 def start_renew_pull(st, ws, cfg, with_history=True, apply_index=True, max_months=15):
     if _pull["running"] and not pull_is_stale():
-        return {"ok": False, "error": "سحبٌ جارٍ بالفعل"}
+        return {"ok": False, "error": pull_busy_error()}
     token = renew_salla_token(st, cfg)
     session = None if token else renew_pull_session(st, cfg)   # بلا توكن: جلسة اللوحة
     if not token and session is None:
@@ -5258,8 +5284,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {**_harvest,
                                         "saved": renew.harvest_stats(DATA_DIR)})
             if path == "/api/renew/pull-status":   # تقدّم السحب من سلة
-                return self._send(200, {**_own_job(_pull, rws), "stale": pull_is_stale(),
-                                        "now": time.time(),
+                return self._send(200, {**pull_status_for(rws), "now": time.time(),
                                         "has_token": renew_pull_ready(st, rcfg)})
             if path == "/api/renew/queue":        # الطلبات: المعلّق والمنجز
                 if role != "admin":

@@ -827,6 +827,7 @@ async function watchPull(once){
   $('#pullFill').style.width = pct + '%';
   const bits = [PHASE[d.phase] || d.phase];
   if (d.running) bits.push({panel: 'بالكوكيز', extension: 'من جهازك عبر الإضافة'}[d.source] || 'برمز سلة');
+  if (d.foreign) bits.push('(سحبُ مستخدمٍ آخر — الإضافة أو الأدمن)');
   if (d.page && d.source !== 'api') bits.push(`صفحة ${AR(d.page)}`);
   if (d.total) bits.push(`${AR(d.done)} من ${AR(d.total)} (${pct}٪)`);
   if (d.running && d.heartbeat){
