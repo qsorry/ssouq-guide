@@ -258,6 +258,8 @@ def test_unlisted():
         check("a panel without pulled lines is reported as not_pulled", resm["panels"]["pm"].get("not_pulled") is True and resm["panels"]["pm"]["lines"] == 0)
         rows_c = panels.salla_codes_rows(panels.load_salla_codes(d))
         check("codes rows list every code with readability", len(rows_c) == 2 and [r["readable"] for r in rows_c] == [True, False], str(rows_c)[:120])
+        ress = panels.unlisted(cfg, d, split={("a", "g"): {"333333333333"}})
+        check("a line registered for splitting leaves the unlisted list", ress["rows"] == [] and ress["panels"]["pk"]["split"] == 1, str(ress["panels"]["pk"]))
         res2 = panels.unlisted(cfg, d, include_expired=True)
         check("include_expired adds the expired line", sorted(r["username"] for r in res2["rows"]) == ["333333333333", "444444444444"])
         # إضافة منتجٍ آخر دون reset تُبقي الأوّل

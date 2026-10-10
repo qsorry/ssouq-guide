@@ -381,8 +381,10 @@ def salla_card_line(host, username, password, guide=""):
     return line + (" Guide " + guide if guide else "")
 
 
-def unlisted(config, data_dir, include_expired=False, gates=None):
-    """`gates`: {(account_id, gate_id): بوابةٌ بهوستها ورابط شرحها الفعلي} — لسطر الكود."""
+def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
+    """`gates`: {(account_id, gate_id): بوابةٌ بهوستها ورابط شرحها الفعلي} — لسطر الكود.
+    `split`: {(account_id, gate_id): {يوزرات مسجَّلة في «حسابات متبقية»}} — ما جُزِّئ
+    صار مبيعًا (أو في طريقه) فلا يُعرض ثانيةً."""
     """يوزرات اللوحات التي لا هي مبيعة في سلة (خطوط المتجر) ولا معروضة في مخزون
     أكوادها: أُنشئت ونُسيت. لكل لوحةٍ صفوفها، وفي كل صف السطر الجاهز للنسخ
     (Host · Username · Password · Exp) ليُعرض من جديد أو يُجزَّأ."""
@@ -400,10 +402,14 @@ def unlisted(config, data_dir, include_expired=False, gates=None):
                                   "unlisted": 0, "expired": 0, "not_pulled": True}
             continue
         host, guide = panel_card(p, (gates or {}).get((p.get("account_id", ""), p.get("gate_id", ""))))
-        n_sold = n_listed = n_unlisted = n_expired = 0
+        in_split = (split or {}).get((p.get("account_id", ""), p.get("gate_id", "")), set())
+        n_sold = n_listed = n_unlisted = n_expired = n_split = 0
         for key, rec in pdata["by_user"].items():
             if key in sold:
                 n_sold += 1
+                continue
+            if key in in_split:
+                n_split += 1
                 continue
             if key in listed:
                 n_listed += 1
@@ -431,7 +437,7 @@ def unlisted(config, data_dir, include_expired=False, gates=None):
                          "expired": expired, "status": rec.get("status", ""), "line": line})
         per_panel[p["id"]] = {"name": p["name"], "lines": pdata.get("count", 0), "sold": n_sold,
                               "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired,
-                              "built": pdata.get("built", "")}
+                              "split": n_split, "built": pdata.get("built", "")}
     rows.sort(key=lambda r: (r["panel_name"], -(r["days_left"] or 0), r["username"]))
     return {"rows": rows, "panels": per_panel, "built": renew.now_iso(),
             "store_sold": len(sold), "salla_listed": len(listed),

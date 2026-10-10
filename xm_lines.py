@@ -2921,8 +2921,22 @@ def card_gates(accounts):
             for a in (accounts or []) for g in (a.get("gates") or [])}
 
 
+def split_users(accounts):
+    """{(الحساب، البوابة): {يوزرات}} المسجَّلة في «حسابات متبقية» — بأي حالة غير المحذوف."""
+    out = {}
+    for a in (accounts or []):
+        try:
+            db = split_subs.load(DATA_DIR, a["id"])
+        except Exception:
+            continue
+        for rec in db.get("lines", {}).values():
+            out.setdefault((str(a["id"]), str(rec.get("gate_id", ""))), set()).add(
+                str(rec.get("username", "")).lower())
+    return out
+
+
 def _unlisted_xlsx(ws, cfg, accounts=None):
-    d = panels.unlisted(cfg, ws, include_expired=False, gates=card_gates(accounts))
+    d = panels.unlisted(cfg, ws, include_expired=False, gates=card_gates(accounts), split=split_users(accounts))
     headers = ["اللوحة", "اليوزر", "كلمة المرور", "الهوست", "الباقة", "المدة (أشهر)",
                "الإنشاء", "الانتهاء", "المتبقي", "المتبقي (أشهر)", "سطر الكود لسلة", "سطر التجزئة"]
     rows = [[r["panel_name"], r["username"], r["password"], r["host"], r["package"], r["months"],
@@ -5353,7 +5367,7 @@ class Handler(BaseHTTPRequestHandler):
                                   extra={"Content-Disposition": 'attachment; filename="salla-available-codes.xlsx"'})
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
                 return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1",
-                                                       gates=card_gates(racs)))
+                                                       gates=card_gates(racs), split=split_users(racs)))
             if path == "/api/renew/unlisted.xlsx":
                 return self._send(200, raw=_unlisted_xlsx(rws, rcfg, racs),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
