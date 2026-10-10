@@ -1132,9 +1132,11 @@ $('#save').onclick = async () => {
 $('#panelTest').onclick = async () => {
   note($('#panelMsg'), 'جارٍ الاختبار…', true);
   const d = await post('/api/renew/panel-test', {});
+  const x = d.detail || {};
+  const det = x.code ? ` [${x.code}${x.server ? ' · ' + x.server : ''}${x.cf ? ' · cf:' + x.cf : ''}${x.title ? ' · ' + x.title : ''}]` : '';
   note($('#panelMsg'), d.ok
-    ? `الجلسة صالحة ✓ (${AR(d.cookies)} كوكي)`
-    : ('الجلسة غير صالحة: ' + (d.error || '—')), !!d.ok);
+    ? `الجلسة صالحة ✓ (${AR(d.cookies)} كوكي)${det}`
+    : ('الجلسة غير صالحة: ' + (d.error || '—') + det), !!d.ok);
 };
 
 $('#testMail').onclick = async () => {

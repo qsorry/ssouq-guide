@@ -160,6 +160,21 @@ def main():
     us2, m2 = renew_import.pull_from_salla("", session=DevSess())
     check("panel pull records nothing for non-subscription orders", us2 == [] and m2["skipped"]["not_subscription"] == 1, str(m2["skipped"]))
 
+    # ‏403 من Cloudflare حجبٌ لعنوان الخادم لا جلسةٌ منتهية
+    cf = salla_web.denied_error(403, {"Server": "cloudflare", "cf-mitigated": "challenge"}, b"<title>Just a moment...</title>")
+    check("cf-mitigated challenge → WebError (not session)", isinstance(cf, salla_web.WebError) and "Cloudflare" in str(cf))
+    cf2 = salla_web.denied_error(403, {"Server": "cloudflare"}, b"<html><title>Attention Required! | Cloudflare</title>")
+    check("cloudflare block page → WebError", isinstance(cf2, salla_web.WebError))
+    se = salla_web.denied_error(403, {"Server": "cloudflare"}, b'{"status":403,"success":false,"error":{"message":"salla unauthorized"}}')
+    check("salla's own 403 → SessionExpired", isinstance(se, salla_web.SessionExpired))
+
+    s3 = salla_web.Session("sess=1")
+    s3._get = lambda path, accept="application/json": (200, {"Server": "cloudflare"}, "<title>\n الطلبات | سلة </title>".encode())
+    dg = s3.diagnose()
+    check("diagnose: 200 is ok with title", dg["ok"] and dg["code"] == 200 and dg["title"].startswith("الطلبات"), str(dg))
+    s3._get = lambda path, accept="application/json": (302, {"Location": "https://s.salla.sa/auth?x=1"}, b"")
+    check("diagnose: auth redirect is expired session", not s3.diagnose()["ok"] and "انتهت" in s3.diagnose()["verdict"])
+
     # الكمية ٢ بكودين → يوزر لكل نسخة
     d2 = salla_web.parse_order_page(order_html([CODE, CODE.replace("328137953493", "111222333444")], qty=2), "9")
     us, _ = renew_import.salla_order_units(d2)
