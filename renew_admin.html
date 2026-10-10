@@ -496,6 +496,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <label class="switch" style="margin:0"><span>مع المنتهي</span><input type="checkbox" class="tog" id="unlExpired"></label></div>
         <div class="strip" id="unlTiles"></div>
         <div class="fchips" id="unlFilters"></div>
+        <div class="fchips" id="unlMonths"></div>
         <div class="scroll hidden" id="unlWrap"><table class="rt">
           <thead><tr><th><input type="checkbox" id="unlAll" checked></th><th>اللوحة</th><th>اليوزر</th><th>كلمة المرور</th><th>الباقة</th><th>الانتهاء</th><th>متبقٍ</th></tr></thead>
           <tbody id="unlBody"></tbody></table></div>
@@ -1291,7 +1292,7 @@ function renderPanelSaved(lines, store){
 $('#addPanel').onclick = () => $('#panelsBox').appendChild(panelRow());
 
 /* ============ لم تُعرض للبيع + التجزئة الجماعية ============ */
-let UNL = [], unlFilter = '';
+let UNL = [], unlFilter = '', unlMonths = '';
 async function loadCodesSum(){
   const d = await api('/api/renew/salla-codes');
   if (d.error) return;
@@ -1308,7 +1309,9 @@ $('#codesShow').onclick = async () => {
   note($('#codesMsg'), rows.length ? `${AR(rows.length)} كودًا${rows.length > 500 ? ' — يُعرض ٥٠٠ والكل في Excel' : ''} · مقروء ${AR(rows.filter(r => r.readable).length)}` : 'لا أكواد مسحوبة — اسحبها من الإضافة أولًا.', !!rows.length);
 };
 $('#dlCodes').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/salla-codes.xlsx'; };
-function unlRows(){ return UNL.filter(r => !unlFilter || r.panel_id === unlFilter); }
+function unlRows(){
+  return UNL.filter(r => (!unlFilter || r.panel_id === unlFilter) && (unlMonths === '' || String(r.months_left) === unlMonths));
+}
 function renderUnlisted(d){
   UNL = d.rows || [];
   const ps = d.panels || {};
@@ -1320,6 +1323,13 @@ function renderUnlisted(d){
   const chips = [{k:'', t:'الكل', n: UNL.length}].concat(Object.entries(ps).map(([k,p]) => ({k, t:p.name, n:p.unlisted})));
   $('#unlFilters').innerHTML = chips.map(c => `<button class="fchip" type="button" data-k="${c.k}" aria-pressed="${unlFilter===c.k}">${esc(c.t)}<em>${AR(c.n)}</em></button>`).join('');
   $('#unlFilters').querySelectorAll('[data-k]').forEach(b => b.onclick = () => { unlFilter = b.dataset.k; renderUnlisted(d); });
+  // فرزٌ بالمتبقي (بالأشهر): كل مدةٍ شريحة، لتُجزَّأ كل مدة على حدة
+  const inPanel = UNL.filter(r => !unlFilter || r.panel_id === unlFilter);
+  const byM = {};
+  inPanel.forEach(r => { byM[r.months_left] = (byM[r.months_left] || 0) + 1; });
+  const mchips = [{k:'', t:'كل المدد', n: inPanel.length}].concat(Object.keys(byM).map(Number).sort((a,b) => b - a).map(m => ({k: String(m), t: m ? `متبقٍ ${AR(m)} شهر` : 'أقل من شهر', n: byM[m]})));
+  $('#unlMonths').innerHTML = mchips.map(c => `<button class="fchip" type="button" data-m="${c.k}" aria-pressed="${unlMonths===c.k}">${c.t}<em>${AR(c.n)}</em></button>`).join('');
+  $('#unlMonths').querySelectorAll('[data-m]').forEach(b => b.onclick = () => { unlMonths = b.dataset.m; renderUnlisted(d); });
   const rows = unlRows();
   $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${esc(r.remaining) || (r.expired ? 'منتهٍ' : '—')}</td></tr>`).join('');
   $('#unlWrap').classList.toggle('hidden', !UNL.length);
@@ -1337,6 +1347,7 @@ $('#doUnlisted').onclick = async () => {
   note($('#unlMsg'), 'جارٍ الحساب…', true);
   const d = await api('/api/renew/unlisted' + ($('#unlExpired').checked ? '?expired=1' : ''));
   if (d.error) return note($('#unlMsg'), d.error);
+  unlMonths = '';
   renderUnlisted(d);
 };
 $('#unlExpired').onchange = () => { if (UNL.length) $('#doUnlisted').click(); };
@@ -1348,6 +1359,12 @@ $('#unlCopy').onclick = async () => {
 $('#dlUnlisted').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/unlisted.xlsx'; };
 $('#unlToSplit').onclick = () => {
   $('#splitText').value = pickedLines().join('\n');
+  // شريحة مدةٍ محددة: الجزء المبيع يُضبط عليها ما دام ممكنًا (مثلًا متبقٍ ٥ أشهر ← جزء ٥)
+  if (unlMonths && Number(unlMonths) >= 1 && Number(unlMonths) <= 14) {
+    const sel = $('#splitMonths');
+    if (![...sel.options].some(o => o.value === unlMonths)) sel.add(new Option(`${AR(unlMonths)} شهر`, unlMonths));
+    sel.value = unlMonths;
+  }
   // بوابة اللوحة المختارة بالمرشّح إن كانت مربوطة ببوابة
   const p = (PANELS || []).find(x => x.id === unlFilter);
   if (p && p.account_id && p.gate_id) $('#splitGate').value = p.account_id + '|' + p.gate_id;
