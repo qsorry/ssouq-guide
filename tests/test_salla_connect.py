@@ -236,6 +236,24 @@ def main():
     a = fj.list(1, LIST.split("<ul>")[0]); b = fj.list(2, LIST.split("<ul>")[0])
     check("feed list: a repeated page means the end", a["more"] is True and b["more"] is False and b["sids"] == [], str(b))
 
+    # فالكون يُسحب من اللوحة معلَّمًا، ويُستثنى من التجديد عند الختام
+    fal = salla_web.parse_order_page(order_html(["Host http://falcon.tv:80 User 111222333 Pass 444555666"]).replace("اشتراك كاسبر IPTV لمدة 6 أشهر", "اشتراك فالكون IPTV لمدة 12 شهر"), "7")
+    fu, _, why = renew_import.panel_order_units(fal)
+    check("falcon order is pulled from the panel, flagged", len(fu) == 1 and fu[0]["falcon"] is True and not why, str(fu)[:120])
+    cu, _, _ = renew_import.panel_order_units(salla_web.parse_order_page(order_html([CODE]), "8"))
+    check("non-falcon unit is not flagged", cu and cu[0]["falcon"] is False)
+    import tempfile as _tf
+    calls = {}
+    orig_an, orig_ix = X.renew_import.analyze, X.renew_import.build_index
+    X.renew_import.analyze = lambda units, meta: calls.update(analyze=len(units)) or {"units": []}
+    X.renew_import.build_index = lambda units, meta: calls.update(index=len(units)) or {}
+    try:
+        X._pull_finish(fu + cu, {"with_credentials": 2, "source": "panel"}, _tf.mkdtemp(), {}, True)
+    finally:
+        X.renew_import.analyze, X.renew_import.build_index = orig_an, orig_ix
+    check("finish: renewal analysis/index exclude falcon, store lines keep it",
+          calls == {"analyze": 1, "index": 1} and X._pull["units"] == 2, str(calls))
+
     # الكمية ٢ بكودين → يوزر لكل نسخة
     d2 = salla_web.parse_order_page(order_html([CODE, CODE.replace("328137953493", "111222333444")], qty=2), "9")
     us, _ = renew_import.salla_order_units(d2)

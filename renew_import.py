@@ -667,6 +667,7 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
         codes = [c for c in (it.get("codes") or []) if isinstance(c, str)]
         for k in range(max(1, min(int(it.get("quantity") or 1), 20))):
             u = {"order": no, "sid": str(order.get("id") or ""),
+                 "falcon": bool(EXCLUDE.search(pname) or sku_is_falcon(it.get("sku"))),
                  "admin_url": str(((order.get("urls") or {}).get("admin")) or ""),
                  "phone": phone,
                  "customer": str((order.get("customer") or {}).get("name") or "").strip(),
@@ -688,7 +689,7 @@ def is_subscription_item(it):
     return any(len(parse_credentials(c)) >= 2 for c in (it.get("codes") or []) if isinstance(c, str))
 
 
-def panel_order_units(order, keep_unconfirmed=False, include_falcon=False):
+def panel_order_units(order, keep_unconfirmed=False, include_falcon=True):
     """طلبٌ من صفحة اللوحة (محلَّلًا) → (وحدات باعتمادها، عدد ما وُجد له اعتماد، سبب التخطّي).
 
     تُحذف منه المنتجات التي لا علاقة لها بالاشتراكات، فإن خلا منها لا يُسجَّل شيء.
@@ -729,7 +730,7 @@ class PanelFeed:
     البروتوكول: `list(page, html)` → معرّفات الطلبات التي تستحقّ الفتح (المؤكّدة)،
     ثم `orders({sid: html})` لكل دفعة، وتقول النتيجة إن بلغنا الأقدم من الحدّ."""
 
-    def __init__(self, max_months=15, keep_unconfirmed=False, include_falcon=False):
+    def __init__(self, max_months=15, keep_unconfirmed=False, include_falcon=True):
         self.cutoff = panel_cutoff(max_months)
         self.keep_unconfirmed, self.include_falcon = keep_unconfirmed, include_falcon
         self.units, self.seen, self.found = [], set(), 0
@@ -798,12 +799,13 @@ class PanelFeed:
 
 
 def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
-                    include_falcon=False, max_months=15, workers=4):
+                    include_falcon=True, max_months=15, workers=4):
     """يسحب طلبات المتجر من **لوحة سلة بجلسة المتصفّح** (لا توكن) → (وحدات، تقرير).
 
     القائمة لا تحمل المنتجات ولا التاريخ، فتُفتح صفحةُ كل طلب — وفيها كل شيء دفعةً:
     المنتجات وأكوادها، وسجلّ الطلب، وملاحظة العميل. الاشتراك يُلتقط من الكود
-    أوّلًا، فإن خلا منه فمن ملاحظات السجلّ، فمن ملاحظة العميل.
+    أوّلًا، فإن خلا منه فمن ملاحظات السجلّ، فمن ملاحظة العميل. وفالكون يُسحب
+    معه (للنقل إلى المتجر)، معلَّمًا `falcon` فيُستثنى من التجديد وحده.
 
     صفحةُ الطلب نداءٌ ثقيل، والمتجر فيه عشرات الآلاف، فثلاثة قيود تجعل السحب
     يُطاق: غير المؤكّد يُعرف من القائمة فلا تُفتح صفحته؛ وطلبات الصفحة تُفتح
@@ -914,7 +916,8 @@ def pull_from_salla(token, progress=None, with_history=True, stop=None,
     import salla_api
 
     if not token and session is not None:
-        return pull_from_panel(session, progress, stop, keep_unconfirmed, include_falcon,
+        # سحب اللوحة للنقل: فالكون معه (يُعلَّم `falcon` في وحداته، ويُستثنى من التجديد عند الختام)
+        return pull_from_panel(session, progress, stop, keep_unconfirmed, True,
                                max_months=max_months)
 
     units, seen = [], set()
