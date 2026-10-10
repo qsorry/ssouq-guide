@@ -737,16 +737,21 @@ class PanelFeed:
         self.skipped = {"unconfirmed": 0, "falcon": 0, "no_months": 0, "no_date": 0,
                         "no_items": 0, "too_old": 0, "not_subscription": 0}
         self.rows = {}                          # sid → صفّ القائمة (رقم الطلب للاحتياط)
+        self.skipped_sids = set()
 
     def list(self, page, html):
         import salla_web
-        rows, more = salla_web.parse_orders_list(html)
+        rows, _next = salla_web.parse_orders_list(html)
+        # رابط «التالي» يختفي بعد نحو ٦٨ صفحة والصفحات تستمرّ: النهاية صفحةٌ بلا طلبات جديدة.
+        rows = [r for r in rows if r["sid"] not in self.rows and r["sid"] not in self.skipped_sids]
+        more = bool(rows)
         self.pages = max(self.pages, int(page or 0))
         self.listed += len(rows)
         todo = []
         for r in rows:
             if not self.keep_unconfirmed and r.get("status") and r["status"] not in CONFIRMED:
                 self.skipped["unconfirmed"] += 1
+                self.skipped_sids.add(r["sid"])
                 continue
             self.rows[r["sid"]] = r
             todo.append(r["sid"])
@@ -815,6 +820,8 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
     found, expired, listed, opened = 0, False, 0, 0
     cutoff = panel_cutoff(max_months)
     page, more = 1, True
+    seen_sids = set()                   # رابط «التالي» يختفي بعد نحو ٦٨ صفحة والصفحات تستمرّ:
+                                        # فالنهاية الحقيقية صفحةٌ بلا طلبات جديدة
 
     def report(extra=None):
         if progress:
@@ -835,9 +842,11 @@ def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
             while more:
                 if stop and stop():
                     break
-                rows, more = session.orders_page(page)
+                rows, _next = session.orders_page(page)
+                rows = [r for r in rows if r["sid"] not in seen_sids]
                 if not rows:
                     break
+                seen_sids.update(r["sid"] for r in rows)
                 listed += len(rows)
                 report()
                 todo = []
