@@ -486,6 +486,12 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <div class="din">
         <p class="hint">ثلاثة مصادر تُقارَن: <b>يوزرات اللوحات</b> (زر سحب اللوحات أعلاه)، و<b>المبيع في سلة</b> (السحب المباشر أو من جهازك)، و<b>مخزون أكواد سلة المتاحة</b> للمنتجات الرقمية — تسحبه الإضافة بزر «سحب الأكواد المتاحة». ما لم يُوجد في الاثنين الأخيرين هو ما أُنشئ ولم يُعرض للبيع.</p>
         <p class="meta" id="codesSum">لم تُسحب أكواد سلة بعد.</p>
+        <div class="acts"><button class="ghost" id="codesShow" type="button">عرض الأكواد المتاحة</button>
+          <a class="ghost" id="dlCodes" href="#">تنزيل الأكواد Excel</a></div>
+        <div class="scroll hidden" id="codesWrap"><table class="rt">
+          <thead><tr><th>المنتج</th><th>الكود كما ورد</th><th>الحالة</th><th>اليوزر</th><th>الهوست</th></tr></thead>
+          <tbody id="codesBody"></tbody></table></div>
+        <p class="msg" id="codesMsg"></p>
         <div class="acts"><button class="go" id="doUnlisted" type="button">احسب غير المعروض</button>
           <label class="switch" style="margin:0"><span>مع المنتهي</span><input type="checkbox" class="tog" id="unlExpired"></label></div>
         <div class="strip" id="unlTiles"></div>
@@ -1292,13 +1298,24 @@ async function loadCodesSum(){
     ? `أكواد سلة المتاحة (${d.built}): ${AR(d.products)} منتج رقمي · ${AR(d.codes)} كود، منها ${AR(d.with_username)} بيوزر مقروء${d.unparsed ? ` · ${AR(d.unparsed)} غير مقروء (مقنَّع؟)` : ''}`
     : 'لم تُسحب أكواد سلة بعد — من الإضافة: «سحب الأكواد المتاحة».';
 }
+$('#codesShow').onclick = async () => {
+  const d = await api('/api/renew/salla-codes?detail=1');
+  if (d.error) return note($('#codesMsg'), d.error);
+  const rows = d.rows || [];
+  $('#codesBody').innerHTML = rows.slice(0, 500).map(r => `<tr><td>${esc(r.product)}</td><td class="ltr" style="max-width:360px;white-space:normal">${esc(r.text)}</td><td>${esc(r.status)}</td><td class="ltr">${esc(r.username) || '<span class="c-warn">غير مقروء</span>'}</td><td class="ltr">${esc(r.host)}</td></tr>`).join('');
+  $('#codesWrap').classList.toggle('hidden', !rows.length);
+  note($('#codesMsg'), rows.length ? `${AR(rows.length)} كودًا${rows.length > 500 ? ' — يُعرض ٥٠٠ والكل في Excel' : ''} · مقروء ${AR(rows.filter(r => r.readable).length)}` : 'لا أكواد مسحوبة — اسحبها من الإضافة أولًا.', !!rows.length);
+};
+$('#dlCodes').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/salla-codes.xlsx'; };
 function unlRows(){ return UNL.filter(r => !unlFilter || r.panel_id === unlFilter); }
 function renderUnlisted(d){
   UNL = d.rows || [];
   const ps = d.panels || {};
-  $('#unlTiles').innerHTML = Object.values(ps).map(p =>
-    `<div class="stat"><b class="${p.unlisted ? 'c-warn' : ''}">${AR(p.unlisted)}</b><small>${esc(p.name)} — غير معروض<br>من ${AR(p.lines)} · مبيع ${AR(p.sold)} · معروض ${AR(p.listed)} · منتهٍ ${AR(p.expired)}</small></div>`).join('')
-    || '<div class="stat"><b>0</b><small>لا لوحات مسحوبة</small></div>';
+  $('#unlTiles').innerHTML = Object.values(ps).map(p => p.not_pulled
+    ? `<div class="stat"><b class="c-bad">—</b><small>${esc(p.name)} — <b>لم تُسحب يوزراتها</b><br>اضغط «اسحب يوزرات اللوحات» أعلاه</small></div>`
+    : `<div class="stat"><b class="${p.unlisted ? 'c-warn' : ''}">${AR(p.unlisted)}</b><small>${esc(p.name)} — غير معروض<br>من ${AR(p.lines)} يوزرًا (${esc(p.built || '')}) · مبيع ${AR(p.sold)} · معروض ${AR(p.listed)} · منتهٍ ${AR(p.expired)}</small></div>`).join('')
+    || '<div class="stat"><b>0</b><small>لا لوحات مضبوطة</small></div>';
+  const notPulled = Object.values(ps).filter(p => p.not_pulled).map(p => p.name);
   const chips = [{k:'', t:'الكل', n: UNL.length}].concat(Object.entries(ps).map(([k,p]) => ({k, t:p.name, n:p.unlisted})));
   $('#unlFilters').innerHTML = chips.map(c => `<button class="fchip" type="button" data-k="${c.k}" aria-pressed="${unlFilter===c.k}">${esc(c.t)}<em>${AR(c.n)}</em></button>`).join('');
   $('#unlFilters').querySelectorAll('[data-k]').forEach(b => b.onclick = () => { unlFilter = b.dataset.k; renderUnlisted(d); });
@@ -1308,7 +1325,7 @@ function renderUnlisted(d){
   $('#unlCopy').classList.toggle('hidden', !rows.length);
   $('#dlUnlisted').classList.toggle('hidden', !UNL.length);
   $('#splitBox').classList.toggle('hidden', !UNL.length);
-  note($('#unlMsg'), `${AR(UNL.length)} يوزرًا لم تُعرض للبيع · المبيع في سلة ${AR(d.store_sold)} · المعروض في مخزون سلة ${AR(d.salla_listed)}${d.codes_built ? '' : ' (لم تُسحب أكواد سلة: كل غير المبيع يُعدّ غير معروض)'}`, true);
+  note($('#unlMsg'), `${AR(UNL.length)} يوزرًا لم تُعرض للبيع · المبيع في سلة ${AR(d.store_sold)} · المعروض في مخزون سلة ${AR(d.salla_listed)}${d.codes_built ? '' : ' (لم تُسحب أكواد سلة: كل غير المبيع يُعدّ غير معروض)'}${notPulled.length ? ` · ⚠️ لوحات بلا يوزرات مسحوبة: ${notPulled.join('، ')}` : ''}`, !notPulled.length);
   $('#unlSum').textContent = `${AR(UNL.length)} غير معروض`;
 }
 function pickedLines(){

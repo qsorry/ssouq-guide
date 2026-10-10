@@ -290,6 +290,18 @@ def salla_codes_stats(data):
                       "unparsed": p.get("unparsed", 0)} for p in prods]}
 
 
+def salla_codes_rows(data):
+    """صفوف الأكواد المتاحة للعرض والتصدير: المنتج ثم كل كود بما قُرئ منه."""
+    rows = []
+    for p in data.get("products") or []:
+        for c in p.get("codes") or []:
+            rows.append({"product_id": p.get("id", ""), "product": p.get("name", ""), "sku": p.get("sku", ""),
+                         "text": c.get("text", ""), "status": c.get("status", ""),
+                         "username": c.get("username", ""), "password": c.get("password", ""),
+                         "host": c.get("host", ""), "readable": bool(c.get("username"))})
+    return rows
+
+
 def salla_codes_by_user(data):
     out = {}
     for p in data.get("products") or []:
@@ -315,7 +327,9 @@ def unlisted(config, data_dir, include_expired=False):
     rows, per_panel = [], {}
     for p in cfg["panels"]:
         pdata = pl.get(p["id"])
-        if not pdata:
+        if not pdata:                               # لوحةٌ لم تُسحب يوزراتها بعد: تُذكر لا تُخفى
+            per_panel[p["id"]] = {"name": p["name"], "lines": 0, "sold": 0, "listed": 0,
+                                  "unlisted": 0, "expired": 0, "not_pulled": True}
             continue
         host = (p.get("hosts") or [""])[0]
         host = ("http://" + host) if host and not host.startswith("http") else host
@@ -346,7 +360,8 @@ def unlisted(config, data_dir, include_expired=False):
                          "exp": rec.get("exp", ""), "days_left": es["days_left"], "months_left": months_left,
                          "expired": expired, "status": rec.get("status", ""), "line": line})
         per_panel[p["id"]] = {"name": p["name"], "lines": pdata.get("count", 0), "sold": n_sold,
-                              "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired}
+                              "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired,
+                              "built": pdata.get("built", "")}
     rows.sort(key=lambda r: (r["panel_name"], -(r["days_left"] or 0), r["username"]))
     return {"rows": rows, "panels": per_panel, "built": renew.now_iso(),
             "store_sold": len(sold), "salla_listed": len(listed),
