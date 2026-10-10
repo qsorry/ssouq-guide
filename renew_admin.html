@@ -807,6 +807,7 @@ $('#pull').onclick = async () => {
     with_history: $('#pullHistory').checked, apply: $('#pullApply').checked,
     max_months: Number($('#pullMonths').value || 0)});
   if (!d.ok) return note($('#pullMsg'), d.error || 'تعذّر بدء السحب');
+  if (d.replaced_stale) note($('#pullMsg'), 'استُبدل السحب المعلّق بسحبٍ جديد.', true);
   $('#pullBar').classList.remove('hidden');
   $('#pullStop').classList.remove('hidden');
   watchPull();
@@ -816,7 +817,7 @@ $('#pullStop').onclick = async () => {
   note($('#pullMsg'), 'طُلب الإيقاف — ينتهي بعد الصفحة الجارية.', true);
 };
 
-const PHASE = {orders: 'قراءة الطلبات', history: 'قراءة سجلّات الطلبات', done: 'اكتمل'};
+const PHASE = {connect: 'الاتصال بسلة', orders: 'قراءة الطلبات', history: 'قراءة سجلّات الطلبات', done: 'اكتمل'};
 
 async function watchPull(once){
   const d = await api('/api/renew/pull-status');
@@ -824,11 +825,13 @@ async function watchPull(once){
   const pct = d.total ? Math.round(d.done / d.total * 100) : 0;
   $('#pullFill').style.width = pct + '%';
   const bits = [PHASE[d.phase] || d.phase];
+  if (d.running) bits.push(d.source === 'panel' ? 'بالكوكيز' : 'برمز سلة');
   if (d.page && d.source === 'panel') bits.push(`صفحة ${AR(d.page)}`);
   if (d.total) bits.push(`${AR(d.done)} من ${AR(d.total)} (${pct}٪)`);
   if (d.running && d.heartbeat){
-    const s = Math.round(Date.now() / 1000 - d.heartbeat);
+    const s = Math.round((d.now || Date.now() / 1000) - d.heartbeat);
     if (s > 20) bits.push(`آخر نشاط قبل ${AR(s)} ث`);
+    if (d.stale) bits.push('⚠️ معلّق — اضغط «ابدأ السحب» ليُستبدل');
   }
   if (d.units) bits.push(`${AR(d.units)} يوزرًا`);
   if (d.found) bits.push(`${AR(d.found)} باعتماد`);

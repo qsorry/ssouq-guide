@@ -5,6 +5,7 @@
 import os
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -177,6 +178,15 @@ def main():
     orig_worker = X._pull_worker
     got = {}
     X._pull_worker = lambda token, wh, ap, ws, cfg, session=None, *a, **k: got.update(token=token, session=session) or X._pull.update(running=False)
+    # سحبٌ معلّق (بلا نبض) يُستبدل بسحبٍ جديد؛ وجارٍ بنبضٍ حيّ يُرفض
+    X._pull.update(running=True, owner="ws", heartbeat=time.time() - 999, gen=5)
+    check("stale pull is detected", X.pull_is_stale())
+    r = X.start_renew_pull(st2, "ws", {})
+    time.sleep(0.2)
+    check("stale pull is replaced by a new generation", r["ok"] and r["replaced_stale"] and X._pull["gen"] == 6, str(r))
+    X._pull.update(running=True, heartbeat=time.time())
+    check("live pull is not replaced", X.start_renew_pull(st2, "ws", {})["ok"] is False)
+    X._pull["running"] = False
     try:
         r = X.start_renew_pull(st2, "ws", {})
         import time; time.sleep(0.2)
