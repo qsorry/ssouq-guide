@@ -25,6 +25,8 @@
 
 stdlib فقط. لا يُسجَّل سرّ.
 """
+import datetime
+import html as _html_mod
 import json
 import re
 import urllib.error
@@ -47,6 +49,16 @@ ORDER_PATHS = (
     "/api/v1/orders/{token}",
     "/api/orders/order/{token}",
 )
+
+
+# لوحة سلة القديمة (`legacy=1`) تُخرج الطلبات HTML — وهذا ما نقرؤه حين لا توكن:
+# قائمة الطلبات صفحةً صفحة، ثم صفحة كل طلب وفيها الكود والسجل وملاحظة العميل.
+LIST_PATH = "/orders?page={page}&sort_by=created_at-desc"
+ORDER_PAGE = "/orders/order/{sid}"
+
+_EN_MONTHS = {m: i for i, m in enumerate(
+    ("january", "february", "march", "april", "may", "june", "july", "august",
+     "september", "october", "november", "december"), 1)}
 
 
 class SessionExpired(RuntimeError):
@@ -134,7 +146,33 @@ class Session:
         except ValueError:
             return None
 
+    def _html(self, path):
+        """صفحة HTML من اللوحة، أو SessionExpired إن حُوّلنا للدخول."""
+        code, headers, body = self._get(path, accept="text/html")
+        loc = headers.get("Location", "") if headers else ""
+        if code in (301, 302, 303, 307, 308) and AUTH_REDIRECT.search(loc):
+            raise SessionExpired("انتهت الجلسة — الصق كوكيز جديدة من لوحة سلة")
+        if code != 200 or not body:
+            return ""
+        text = body.decode("utf-8", "replace")
+        if "/auth" in text[:600] and "<form" in text[:3000] and "login" in text[:3000].lower():
+            raise SessionExpired("أُعيد التحويل لصفحة الدخول — الصق كوكيز جديدة")
+        return text
+
     # ----------------------------- الاستعمال -----------------------------
+    def orders_page(self, page=1):
+        """صفحةٌ من قائمة الطلبات (HTML) → (صفوف، أهناك صفحةٌ تالية؟)."""
+        return parse_orders_list(self._html(LIST_PATH.format(page=int(page))))
+
+    def order_page(self, sid):
+        """صفحة الطلب كاملةً كما يراها المشغّل — بمعرّفه في الرابط."""
+        return self._html(ORDER_PAGE.format(sid=urllib.parse.quote(str(sid))))
+
+    def order_details(self, sid):
+        """الطلب محلَّلًا من صفحته بشكل طلب الواجهة (يفهمه renew_import)، أو None."""
+        page = self.order_page(sid)
+        return parse_order_page(page, sid) if page else None
+
     def alive(self):
         """أما زالت الجلسة مقبولة؟ يرجّع (نعم؟، السبب)."""
         try:
@@ -252,6 +290,143 @@ def _walk(obj, out, depth=0):
         for v in obj:
             _walk(v, out, depth + 1)
     return out
+
+# ============================ قراءة HTML اللوحة ============================
+_ROW = re.compile(r'<tr[^>]*class="[^"]*row_order[^"]*"(?P<attrs>[^>]*)>(?P<body>.*?)</tr>', re.S)
+_ATTR = re.compile(r'data-([\w-]+)="([^"]*)"')
+_NEXT = re.compile(r'class="[^"]*next-page-link[^"]*"')
+_TAG = re.compile(r"<[^>]+>")
+_WS = re.compile(r"\s+")
+
+
+def _text(frag):
+    return _WS.sub(" ", _html_mod.unescape(_TAG.sub(" ", str(frag or "")))).strip()
+
+
+def _between(html, start_pat, end_pat, flags=re.S):
+    m = re.search(start_pat + r"(.*?)" + end_pat, html, flags)
+    return m.group(1) if m else ""
+
+
+def parse_orders_list(page):
+    """صفحة قائمة الطلبات → ([{sid, order, customer, status, total, admin_url}], تالية؟).
+
+    `sid` معرّف الطلب في الرابط (ما تسمّيه الواجهة `urls.admin`)، و`order` رقمه
+    الظاهر للعميل (#293119145)."""
+    rows = []
+    for m in _ROW.finditer(page or ""):
+        attrs = dict(_ATTR.findall(m.group("attrs")))
+        sid = attrs.get("order_id") or attrs.get("row-order-id") or ""
+        if not sid:
+            continue
+        body = m.group("body")
+        no = _text(_between(body, r'class="order-number[^"]*"[^>]*>', r"</div>")).lstrip("#")
+        if not no:
+            prev = re.search(r'data-order-preview-id="(\d+)"', body)
+            no = prev.group(1) if prev else ""
+        rows.append({
+            "sid": sid, "order": no,
+            "customer": _WS.sub(" ", attrs.get("customer", "")).strip()
+            or _text(_between(body, r'class="order-customer-name"[^>]*>', r"</div>")),
+            "status": _text(_between(body, r'class="order-status"[^>]*>', r"</div>")).lstrip("● ").strip(),
+            "total": _text(_between(body, r'class="order-total[^"]*"[^>]*>', r"</td>")),
+            "admin_url": attrs.get("order-link") or (BASE + ORDER_PAGE.format(sid=sid)),
+        })
+    return rows, bool(_NEXT.search(page or ""))
+
+
+def _parse_panel_date(s):
+    """‏«Saturday 10 October 2026 | 08:20 PM» → «2026-10-10»، وإلا ""."""
+    m = re.search(r"(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", str(s or ""))
+    if m and m.group(2).lower() in _EN_MONTHS:
+        try:
+            return datetime.date(int(m.group(3)), _EN_MONTHS[m.group(2).lower()],
+                                 int(m.group(1))).isoformat()
+        except ValueError:
+            return ""
+    m = re.search(r"(\d{4}-\d{2}-\d{2})", str(s or ""))
+    return m.group(1) if m else ""
+
+
+def _initial_data(page):
+    m = re.search(r"var\s+initialData\s*=\s*(\{.*?\})\s*;", page or "", re.S)
+    if not m:
+        return {}
+    try:
+        return json.loads(m.group(1))
+    except ValueError:
+        return {}
+
+
+def parse_order_page(page, sid=""):
+    """صفحة الطلب → قاموس بشكل طلب الواجهة: id وreference_id وstatus وdate
+    وcustomer وitems (ولكل منتج `codes` بنصوص أكواده) — ومعه `notes` من سجلّ
+    الطلب و`customer_note`، فيُفتَّش عن الاشتراك في الكود ثم في الملاحظات."""
+    page = page or ""
+    data = _initial_data(page)
+    hist = [h for h in (data.get("statusHistories") or []) if isinstance(h, dict)]
+
+    no = _text(_between(page, r'class="rec-order-no"[^>]*>', r"(?:<div|</div>)"))
+    no = re.sub(r"\D", "", no)
+    status = _text(_between(page, r'id="order_status_btn"[^>]*>', r"</span>"))
+    date = _parse_panel_date(_text(_between(page, r'class="rec-order-date"[^>]*>', r"</div>")))
+    if not date:
+        times = [str((h.get("created_at") or {}).get("time") or "") for h in hist]
+        times = [t for t in times if re.fullmatch(r"\d{4}-\d{2}-\d{2}", t)]
+        date = min(times) if times else ""
+
+    name = _text(_between(page, r'<div data-card-customer-buyer.*?<a href="[^"]*/customers/[^"]*"[^>]*>', r"</a>"))
+    phone = ""
+    m = re.search(r'href="tel:([+\d]+)"', page)
+    if m:
+        phone = m.group(1)
+    else:
+        m = re.search(r'href="https://wa\.me/(\d+)"', page)
+        phone = m.group(1) if m else ""
+
+    items = []
+    products_tbl = _between(page, r"المنتجات\s*</h6>", r"</table>")
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", products_tbl, re.S):
+        if "media-heading" not in tr and "no-margin" not in tr:
+            continue
+        pid = re.search(r"/products/(\d+)", tr)
+        pname = _text(_between(tr, r'<h6 class="no-margin">', r"</h6>"))
+        if not pname:
+            continue
+        codes = [_text(c) for c in re.findall(
+            r"الكود\s*:?\s*</span>\s*<span[^>]*>(.*?)</span>", tr, re.S)]
+        qty = _text(_between(tr, r'data-title="الكمية"[^>]*>', r"</td>"))
+        qty = int(re.sub(r"\D", "", qty) or 1) if qty else 1
+        price = _text(_between(tr, r'data-title="السعر"[^>]*>', r"</td>"))
+        items.append({"product_id": pid.group(1) if pid else "", "name": pname, "sku": "",
+                      "quantity": qty, "price": price, "codes": codes})
+
+    notes = [str(h.get("note") or "") for h in hist if h.get("note")]
+    cnote = _text(_between(page, r"ملاحظة العميل\s*</h6>.*?<div class=\"panel-body\">", r"</div>"))
+    if "لا توجد ملاحظات" in cnote:
+        cnote = ""
+    sid = str(sid or data.get("order_id") or "")
+    return {"id": sid, "reference_id": no, "status": {"name": status},
+            "date": {"date": date}, "customer": {"name": name, "mobile": phone},
+            "items": items, "notes": notes, "customer_note": cnote,
+            "urls": {"admin": BASE + ORDER_PAGE.format(sid=sid)}}
+
+
+def order_notes(order):
+    """ملاحظات الطلب التي قد يُكتب فيها الاشتراك حين يخلو منه الكود: سجلّ الطلب
+    (ملاحظاته بترتيبها) ثم ملاحظة العميل."""
+    out = [n for n in (order.get("notes") or []) if n]
+    if order.get("customer_note"):
+        out.append(order["customer_note"])
+    return out
+
+
+def order_texts(order):
+    """نصوص الطلب كلها بترتيب البحث: الأكواد، ثم الملاحظات."""
+    out = []
+    for it in order.get("items") or []:
+        out.extend(c for c in (it.get("codes") or []) if c)
+    return out + order_notes(order)
 
 
 def admin_token(url):

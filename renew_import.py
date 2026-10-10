@@ -301,8 +301,11 @@ def read_products(files):
 _C_HOST = re.compile(
     r"(?i)\bhost(?:[\w-]*)\s*[:=]?\s*['\"]?"
     r"((?:https?://)?[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}(?::\d{1,5})?)")
-_C_USER = re.compile(r"(?i)\buser\s*-?\s*(?:name)?\s*[:=]\s*['\"]?([A-Za-z0-9._\-]{3,64})")
-_C_PASS = re.compile(r"(?i)\bpass\w*\s*[:=]\s*['\"]?([^\s|,;\"']{3,64})")
+# بنقطتين («User: x») أو بدونهما كما تكتبها بطاقة الكود («User 3281… Pass 4083…»)
+# — وبدونهما لا يُقبل إلا رمزٌ من ستة أحرف فأكثر فيه رقم، فلا تصير «passed the» باسوردًا.
+_BARE = r"\s['\"]?((?=[A-Za-z0-9._\-]*\d)[A-Za-z0-9._\-]{6,64})\b"
+_C_USER = re.compile(r"(?i)\buser\s*-?\s*(?:name)?\s*(?:[:=]\s*['\"]?([A-Za-z0-9._\-]{3,64})|" + _BARE + ")")
+_C_PASS = re.compile(r"(?i)\bpass\w*\s*(?:[:=]\s*['\"]?([^\s|,;\"']{3,64})|" + _BARE + ")")
 _EMAILY = re.compile(r"[A-Za-z0-9._%+-]@")
 
 
@@ -330,9 +333,9 @@ def parse_credentials(text):
     u = _C_USER.search(s)
     p = _C_PASS.search(s)
     if u:
-        out["username"] = u.group(1)
+        out["username"] = u.group(1) or u.group(2)
     if p:
-        out["password"] = p.group(1)
+        out["password"] = p.group(1) or p.group(2)
     for m in _C_HOST.finditer(s):
         host = m.group(1)
         if _EMAILY.search(s[max(0, m.start(1) - 1):m.start(1) + 1]):
@@ -656,26 +659,104 @@ def salla_order_units(order, keep_unconfirmed=False, include_falcon=False):
             continue
         dev = info["devices"] if info.get("devices", 1) > 1 else devices_of(pname)
         expiry = renew.add_months(date, mo)
-        for _ in range(max(1, min(int(it.get("quantity") or 1), 20))):
-            out.append({"order": no, "sid": str(order.get("id") or ""),
-                        "admin_url": str(((order.get("urls") or {}).get("admin")) or ""),
-                        "phone": phone,
-                        "date": date.isoformat(), "product": pname,
-                        "sku": str(it.get("sku") or ""),
-                        "months": mo, "devices": dev, "inferred": inferred,
-                        "expiry": expiry.isoformat()})
+        codes = [c for c in (it.get("codes") or []) if isinstance(c, str)]
+        for k in range(max(1, min(int(it.get("quantity") or 1), 20))):
+            u = {"order": no, "sid": str(order.get("id") or ""),
+                 "admin_url": str(((order.get("urls") or {}).get("admin")) or ""),
+                 "phone": phone,
+                 "customer": str((order.get("customer") or {}).get("name") or "").strip(),
+                 "date": date.isoformat(), "product": pname,
+                 "sku": str(it.get("sku") or ""), "price": str(it.get("price") or ""),
+                 "status": status,
+                 "months": mo, "devices": dev, "inferred": inferred,
+                 "expiry": expiry.isoformat()}
+            if k < len(codes):                     # كود كل نسخة (من صفحة اللوحة)
+                u["code"] = codes[k]
+            out.append(u)
     return (out, "") if out else ([], "no_months")
+
+
+def pull_from_panel(session, progress=None, stop=None, keep_unconfirmed=False,
+                    include_falcon=False):
+    """يسحب طلبات المتجر كلها من **لوحة سلة بجلسة المتصفّح** (لا توكن) → (وحدات، تقرير).
+
+    القائمة لا تحمل المنتجات ولا التاريخ، فتُفتح صفحةُ كل طلب — وفيها كل شيء دفعةً:
+    المنتجات وأكوادها، وسجلّ الطلب، وملاحظة العميل. الاشتراك يُلتقط من الكود
+    أوّلًا، فإن خلا منه فمن ملاحظات السجلّ، فمن ملاحظة العميل.
+
+    الطلبات غير المؤكّدة تُعرف من القائمة فلا تُفتح صفحتها — توفيرًا للنداءات."""
+    import salla_web
+
+    units, seen, skipped = [], set(), {"unconfirmed": 0, "falcon": 0, "no_months": 0,
+                                       "no_date": 0, "no_items": 0}
+    found, expired, listed, opened = 0, False, 0, 0
+    page, more = 1, True
+    try:
+        while more:
+            if stop and stop():
+                break
+            rows, more = session.orders_page(page)
+            if not rows:
+                break
+            listed += len(rows)
+            for r in rows:
+                if stop and stop():
+                    break
+                if not keep_unconfirmed and r.get("status") and r["status"] not in CONFIRMED:
+                    skipped["unconfirmed"] += 1
+                    continue
+                order = session.order_details(r["sid"])
+                opened += 1
+                if not order:
+                    skipped["no_items"] += 1
+                    continue
+                if not order.get("reference_id"):
+                    order["reference_id"] = r.get("order", "")
+                got, why = salla_order_units(order, keep_unconfirmed, include_falcon)
+                if why:
+                    skipped[why] = skipped.get(why, 0) + 1
+                if not got:
+                    continue
+                seen.add(got[0]["order"])
+                fallback = None                    # اعتماد الملاحظات، يُحسب مرةً للطلب
+                for u in got:
+                    cred = parse_credentials(u.pop("code", ""))
+                    if not cred:                   # لا في الكود؟ ففي السجلّ ثم ملاحظة العميل
+                        if fallback is None:
+                            fallback = next((c for c in map(parse_credentials,
+                                             salla_web.order_notes(order)) if c), {})
+                        cred = fallback
+                    if cred:
+                        found += 1
+                        u.update(cred)
+                units.extend(got)
+                if progress:
+                    progress({"phase": "orders", "done": opened, "total": listed,
+                              "units": len(units), "found": found, "orders_total": listed})
+            page += 1
+    except salla_web.SessionExpired:
+        expired = True
+    return units, {"files_seen": 0, "files_kept": 0, "files_dup": 0, "dup_names": [],
+                   "orders": len(seen), "orders_dup": 0, "dup_orders": [],
+                   "skipped": skipped, "bad_files": [], "source": "panel",
+                   "orders_total": listed, "with_credentials": found,
+                   "session_expired": expired}
 
 
 def pull_from_salla(token, progress=None, with_history=True, stop=None,
                     keep_unconfirmed=False, include_falcon=False, per_page=50,
-                    credentials_for=None):
+                    credentials_for=None, session=None):
     """يسحب طلبات المتجر كلها → (وحدات، تقرير).
 
-    على مرحلتين: الطلبات أولًا (صفحةٌ لكل خمسين)، ثم — إن طُلب — سجلُّ كل طلبٍ
-    أُبقي، لاستخراج ما كُتب فيه من يوزر وباسورد. المرحلة الثانية نداءٌ لكل طلب
-    فهي الأبطأ، ولذلك تُبلَّغ بالتقدّم وتقبل الإيقاف."""
+    بتوكن الواجهة على مرحلتين: الطلبات أولًا (صفحةٌ لكل خمسين)، ثم — إن طُلب —
+    سجلُّ كل طلبٍ أُبقي، لاستخراج ما كُتب فيه من يوزر وباسورد. المرحلة الثانية
+    نداءٌ لكل طلب فهي الأبطأ، ولذلك تُبلَّغ بالتقدّم وتقبل الإيقاف.
+
+    وبلا توكن — بجلسة لوحة سلة (`session`) — يُقرأ كل شيء من صفحات اللوحة."""
     import salla_api
+
+    if not token and session is not None:
+        return pull_from_panel(session, progress, stop, keep_unconfirmed, include_falcon)
 
     units, seen = [], set()
     skipped = {"unconfirmed": 0, "falcon": 0, "no_months": 0, "no_date": 0, "no_items": 0}
