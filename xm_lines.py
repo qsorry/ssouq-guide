@@ -2922,7 +2922,7 @@ def card_gates(accounts):
 
 
 def split_users(accounts):
-    """{(الحساب، البوابة): {يوزرات}} المسجَّلة في «حسابات متبقية» — بأي حالة غير المحذوف."""
+    """{(الحساب، البوابة): {يوزر: أشهر الجزء}} المسجَّلة في «حسابات متبقية» — بأي حالة غير المحذوف."""
     out = {}
     for a in (accounts or []):
         try:
@@ -2930,8 +2930,10 @@ def split_users(accounts):
         except Exception:
             continue
         for rec in db.get("lines", {}).values():
-            out.setdefault((str(a["id"]), str(rec.get("gate_id", ""))), set()).add(
-                str(rec.get("username", "")).lower())
+            m = (rec.get("slice") or {}).get("months") or 0
+            gk = out.setdefault((str(a["id"]), str(rec.get("gate_id", ""))), {})
+            u = str(rec.get("username", "")).lower()
+            gk[u] = max(int(gk.get(u, 0) or 0), int(m or 0))    # {يوزر: أشهر الجزء}
     return out
 
 

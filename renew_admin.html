@@ -1345,7 +1345,7 @@ function renderUnlisted(d){
   $('#unlMonths').innerHTML = mchips.map(c => `<button class="fchip" type="button" data-m="${c.k}" aria-pressed="${unlMonths===c.k}">${c.t}<em>${AR(c.n)}</em></button>`).join('');
   $('#unlMonths').querySelectorAll('[data-m]').forEach(b => b.onclick = () => { unlMonths = b.dataset.m; renderUnlisted(d); });
   const rows = unlRows();
-  $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${r.expired ? '<span class="c-bad">' + (esc(r.remaining) || 'منتهٍ') + '</span>' : (esc(r.remaining) || '— بلا تاريخ انتهاء')}</td><td>${r.split ? '<span class="chip">مجزَّأ</span>' : ''}</td></tr>`).join('');
+  $('#unlBody').innerHTML = rows.map((r, i) => `<tr><td><input type="checkbox" class="unlPick" data-i="${UNL.indexOf(r)}" checked></td><td>${esc(r.panel_name)}</td><td class="ltr">${esc(r.username)}</td><td class="ltr">${esc(r.password)}</td><td>${esc(r.package)}</td><td class="ltr">${esc(r.exp)}</td><td>${r.expired ? '<span class="c-bad">' + (esc(r.remaining) || 'منتهٍ') + '</span>' : (esc(r.remaining) || '— بلا تاريخ انتهاء')}</td><td>${r.split ? '<span class="chip">مجزَّأ' + (r.split_months ? ' ' + AR(r.split_months) + ' شهر' : '') + '</span>' : ''}</td></tr>`).join('');
   $('#unlWrap').classList.toggle('hidden', !UNL.length);
   $('#unlCopy').classList.toggle('hidden', !rows.length);
   $('#unlCopyCard').classList.toggle('hidden', !rows.length);
