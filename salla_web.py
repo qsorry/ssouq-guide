@@ -289,6 +289,151 @@ class Session:
         return []
 
 
+# ============================ شكاوى العملاء ============================
+# سجل «شكاوى العملاء» في لوحة سلة لا واجهة له في Admin API، فيُقرأ بالجلسة نفسها كالطلبات. مساره غير
+# موثّق فتُجرَّب مرشّحات (JSON أولًا ثم صفحة HTML) ويُحفظ أوّل ما ردّ شكاوى، فلا يُخمَّن ثانيةً.
+COMPLAINT_PATHS = (
+    "/api/complaints?per_page={n}&page={p}",
+    "/api/v1/complaints?per_page={n}&page={p}",
+    "/complaints?format=json&per_page={n}&page={p}",
+    "/customers/complaints?format=json&per_page={n}&page={p}",
+    "/orders/complaints?format=json&per_page={n}&page={p}",
+)
+COMPLAINT_HTML_PATHS = ("/complaints?page={p}", "/customers/complaints?page={p}", "/orders/complaints?page={p}")
+_C_ORDER_KEYS = ("order_reference", "order_reference_id", "reference_id", "order_number", "order_no", "order_id", "order")
+_C_STATUS_KEYS = ("status", "state", "complaint_status")
+
+
+def _looks_like_complaint(d):
+    if not isinstance(d, dict):
+        return False
+    keys = set(d.keys())
+    return bool(keys & {"id", "complaint_id", "number"}) and bool(keys & set(_C_STATUS_KEYS)) \
+        and bool(keys & (set(_C_ORDER_KEYS) | {"customer", "content", "description", "type", "subject"}))
+
+
+def _find_complaints(obj, depth=0):
+    if depth > 6 or obj is None:
+        return []
+    if isinstance(obj, list):
+        rows = [x for x in obj if _looks_like_complaint(x)]
+        if rows:
+            return rows
+        for x in obj:
+            r = _find_complaints(x, depth + 1)
+            if r:
+                return r
+        return []
+    if isinstance(obj, dict):
+        for k in ("data", "complaints", "items", "results", "list"):
+            if k in obj:
+                r = _find_complaints(obj[k], depth + 1)
+                if r:
+                    return r
+        for v in obj.values():
+            r = _find_complaints(v, depth + 1)
+            if r:
+                return r
+    return []
+
+
+def _c_text(v):
+    """قيمةٌ قد تكون نصًّا أو كائنًا (‏{name, slug} أو {reference_id}) → نصّها."""
+    if isinstance(v, dict):
+        for k in ("name", "label", "title", "reference_id", "id", "slug"):
+            if v.get(k) not in (None, ""):
+                return str(v[k])
+        return ""
+    return "" if v is None else str(v)
+
+
+def normalize_complaint(d):
+    """شكوى كما تعطيها اللوحة (بأي شكل) → {id, order, customer, status, type, text, date, url}."""
+    order = ""
+    for k in _C_ORDER_KEYS:
+        if d.get(k) not in (None, "", 0):
+            order = _c_text(d[k])
+            break
+    if not order and isinstance(d.get("order"), dict):
+        order = _c_text(d["order"].get("reference_id") or d["order"].get("id"))
+    cust = d.get("customer")
+    cust = ((cust.get("name") or (str(cust.get("first_name") or "") + " " + str(cust.get("last_name") or "")).strip())
+            if isinstance(cust, dict) else str(cust or d.get("customer_name") or ""))
+    status = next((_c_text(d[k]) for k in _C_STATUS_KEYS if d.get(k) not in (None, "")), "")
+    return {"id": _c_text(d.get("id") or d.get("complaint_id") or d.get("number")),
+            "order": re.sub(r"\D", "", str(order)), "customer": cust.strip(), "status": status.strip(),
+            "type": _c_text(d.get("type") or d.get("category") or d.get("subject")),
+            "text": str(d.get("content") or d.get("description") or d.get("message") or "")[:600],
+            "date": _c_text(d.get("created_at") or d.get("date") or d.get("updated_at")),
+            "phone": _c_text((d.get("customer") or {}).get("mobile") if isinstance(d.get("customer"), dict) else ""),
+            "url": _c_text(d.get("url") or (d.get("urls") or {}).get("admin") if isinstance(d.get("urls"), dict) else d.get("url"))}
+
+
+_C_TR = re.compile(r"<tr[^>]*>(?P<body>.*?)</tr>", re.S | re.I)
+_C_TD = re.compile(r"<t[dh][^>]*>(.*?)</t[dh]>", re.S | re.I)
+_C_HREF = re.compile(r'href="([^"]*complaint[^"]*)"', re.I)
+
+
+def parse_complaints_html(page):
+    """صفوف جدول سجل الشكاوى في HTML اللوحة: رقم الشكوى، والعميل، ورقم الطلب، والحالة — بالترتيب الذي
+    يعرضه السجل (رقم الشكوى · اسم العميل · رقم الطلب · الحالة)، وتُؤخذ الحالة من خليةٍ فيها «بانتظار» أو
+    «مغلقة» أو «قيد» أينما كانت. صفوفٌ بلا رقمين (شكوى وطلب) تُهمل."""
+    out = []
+    for m in _C_TR.finditer(page or ""):
+        cells = [_text(c) for c in _C_TD.findall(m.group("body"))]
+        if len(cells) < 3:
+            continue
+        nums = [re.sub(r"\D", "", c) for c in cells if re.fullmatch(r"\s*#?\d+\s*", c or "")]
+        status = next((c for c in cells if re.search(r"بانتظار|مغلق|قيد|تم الحل|محلول", c)), "")
+        if len(nums) < 2 or not status:
+            continue
+        name = next((c for c in cells if c and not re.fullmatch(r"#?\d+", c) and c != status
+                     and not re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}", c)), "")
+        href = _C_HREF.search(m.group("body"))
+        out.append({"id": nums[0], "order": nums[1], "customer": name, "status": status, "type": "", "text": "",
+                    "date": next((c for c in cells if re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}", c)), ""),
+                    "phone": "", "url": _html_mod.unescape(href.group(1)) if href else ""})
+    return out
+
+
+def _session_complaints(self, limit=50, pages=3):
+    """شكاوى العملاء من اللوحة بالجلسة (أحدثها أولًا كما يعطيها السجل): JSON بمرشّحاته، وإلا جدول HTML.
+    ويُحفظ أوّل مسارٍ نجح. ← قائمة normalize_complaint، و[] إن لم يُعرف مسار."""
+    rows = []
+    tpl = getattr(self, "_complaints_path", None)
+    cands = ([tpl] if tpl else []) + [p for p in COMPLAINT_PATHS if p != tpl]
+    for tpl in cands:
+        got = _find_complaints(self._json(tpl.format(n=int(limit), p=1)))
+        if got:
+            self._complaints_path = tpl
+            rows = [normalize_complaint(x) for x in got]
+            for pg in range(2, pages + 1):
+                if len(rows) >= limit:
+                    break
+                more = _find_complaints(self._json(tpl.format(n=int(limit), p=pg)))
+                if not more:
+                    break
+                rows += [normalize_complaint(x) for x in more]
+            return rows[:limit]
+    tpl = getattr(self, "_complaints_html", None)
+    for tpl in ([tpl] if tpl else []) + [p for p in COMPLAINT_HTML_PATHS if p != tpl]:
+        got = parse_complaints_html(self._html(tpl.format(p=1)))
+        if got:
+            self._complaints_html = tpl
+            for pg in range(2, pages + 1):
+                if len(got) >= limit:
+                    break
+                more = parse_complaints_html(self._html(tpl.format(p=pg)))
+                if not more or more[0]["id"] == got[0]["id"]:
+                    break
+                got += more
+            return got[:limit]
+    return []
+
+
+Session.complaints = _session_complaints
+
+
 _CF_CHALLENGE = re.compile(r"(?i)just a moment|cf-chl|challenge-platform|attention required|cloudflare")
 
 

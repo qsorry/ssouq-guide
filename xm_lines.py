@@ -3716,6 +3716,26 @@ def reply_link(st, rcfg, rws, racs, req):
     return 200, reply_lookup(st, rcfg, rws, racs, order)
 
 
+def complaints_open(st):
+    """شكاوى العملاء من لوحة سلة بجلسة المتصفّح (الكوكيز نفسها التي تُسحب بها الطلبات)، **ما ينتظر التاجر وحده**
+    («بانتظار الحل من التاجر» · «بانتظار رد التاجر»). ← {rows, total, error?}: error حين لا جلسة أو انتهت أو لم
+    يُعرف مسار السجل — فتبقى الصفحة صالحةً برقم الطلب يدويًا."""
+    sess = renew_panel_session(st)
+    if not sess:
+        return {"rows": [], "total": 0, "error": "no_session",
+                "hint": "لا جلسة لوحة سلة: اربطها من إضافة المتصفّح (أو الصق الكوكيز في الإعداد) ليُسحب سجل الشكاوى"}
+    try:
+        rows = sess.complaints()
+    except salla_web.SessionExpired as e:
+        return {"rows": [], "total": 0, "error": "session_expired", "hint": str(e)}
+    except Exception as e:
+        return {"rows": [], "total": 0, "error": "fetch", "hint": str(e)[:160]}
+    if not rows:
+        return {"rows": [], "total": 0, "error": "no_path",
+                "hint": "لم يُعثر على سجل الشكاوى في اللوحة بالمسارات المعروفة — اكتب رقم الطلب من الشكوى يدويًا"}
+    return {"rows": complaints.open_only(rows), "total": len(rows), "at": renew.now_iso()}
+
+
 def reply_send(st, rws, req):
     """يرسل ردّ الشكوى عبر الرقم المربوط (أو يسجّله مرسَلًا يدويًا من واتساب)، ويقيّده في سجل الرسائل
     بنوع «reply» ليُرى في «الرسائل». ← (رمز HTTP، جسم)."""
@@ -6243,6 +6263,8 @@ class Handler(BaseHTTPRequestHandler):
                         r["copy"] = comp_copy(racs, r)
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
+            if path == "/api/renew/complaints":     # مراجعة الشكاوى: سجل شكاوى سلة بالجلسة، ما ينتظر التاجر وحده
+                return self._send(200, complaints_open(st))
             if path == "/api/renew/reply":          # الردّ على شكوى: الطلب برقمه ← اشتراكه وبياناته ← نصّ الردّ جاهزًا
                 t0 = time.perf_counter()
                 d = reply_lookup(st, rcfg, rws, racs, self._q("q"))

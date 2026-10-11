@@ -685,6 +685,14 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
     <div class="shead"><span class="sic c-gold"><svg viewBox="0 0 24 24"><path d="M3 11.5a8.5 8.5 0 0 1 8.5-8.5h1A8.5 8.5 0 0 1 21 11.5c0 4.7-3.8 8.5-8.5 8.5H11l-5 3v-4.3A8.5 8.5 0 0 1 3 11.5z"/><path d="M9 11h6M9 8h6"/></svg></span>
       <h2>الردّ على الشكاوى<small>اكتب رقم طلب العميل فيُجهَّز ردٌّ ببيانات اشتراكه وشرحه والتطبيق المناسب لجهازه</small></h2></div>
 
+    <div class="blk" style="padding:12px;margin-bottom:12px" id="cqBox">
+      <b>مراجعة الشكاوى</b>
+      <p class="hint">سجل شكاوى العملاء من لوحة سلة (بالجلسة نفسها التي تُسحب بها الطلبات). تُعرض <b>بانتظار الحل من التاجر</b> و<b>بانتظار رد التاجر</b> فقط؛ اضغط «جهّز الردّ» على الشكوى فيُجهَّز ردّها برقم طلبها.</p>
+      <div class="acts"><button class="go" id="cqLoad" type="button">اسحب الشكاوى من سلة</button><span class="hint" id="cqSum"></span></div>
+      <p class="msg" id="cqMsg"></p>
+      <div class="scroll hidden" id="cqWrap"><table class="rt"><thead><tr><th>الشكوى</th><th>العميل</th><th>الطلب</th><th>الحالة</th><th></th></tr></thead><tbody id="cqBody"></tbody></table></div>
+    </div>
+
     <div class="blk sbox" id="rpBox" data-state="ready" style="padding:12px;margin-bottom:12px">
       <b>رقم الطلب</b>
       <form class="sq" id="rpForm" role="search" autocomplete="off">
@@ -2308,10 +2316,33 @@ $('#rpClear').onclick = () => { $('#rpQ').value = ''; $('#rpClear').classList.ad
 $('#rpCopy').onclick = async () => { const ok = await copyText($('#rpText').value); const b = $('#rpCopy');
   b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ الردّ', 1600); };
 $('#rpWa').onclick = () => { const d = RP.d || {}; $('#rpWa').href = 'https://wa.me/' + (d.wa || '') + '?text=' + encodeURIComponent($('#rpText').value);
-  post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: $('#rpText').value, mode: 'manual'}); };
+  // فُتح واتساب بالنص: يُعدّ مرسَلًا ويُسجَّل (يدوي) — فالصفحة تقول «تم الإرسال» كما بالرقم المربوط
+  post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: $('#rpText').value, mode: 'manual'})
+    .then(r => note($('#rpSent'), r.ok ? `تم الإرسال ✓ (واتساب يدوي${d.phone ? ' إلى ' + d.phone : ''}) — سُجّل في سجل الرسائل` : (r.error || 'تعذّر التسجيل'), !!r.ok));
+  cqMarkSent(d.order); };
 $('#rpSend').onclick = async () => { const d = RP.d || {}, b = $('#rpSend'); b.disabled = true; note($('#rpSent'), 'جارٍ الإرسال…', true);
   const r = await post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: $('#rpText').value});
-  b.disabled = false; note($('#rpSent'), r.ok ? `أُرسل الردّ إلى ${d.phone} ✓` : (r.error || 'تعذّر الإرسال'), !!r.ok); };
+  b.disabled = false; note($('#rpSent'), r.ok ? `تم الإرسال ✓ إلى ${d.phone}` : (r.error || 'تعذّر الإرسال'), !!r.ok); if (r.ok) cqMarkSent(d.order); };
+// ---- مراجعة الشكاوى: ما ينتظر التاجر وحده، ومنها إلى الردّ برقم الطلب ----
+let CQ = [];
+function cqMarkSent(order){ $('#cqBody').querySelectorAll(`tr[data-o="${order}"] .cqS`).forEach(e => { e.textContent = 'تم الإرسال ✓'; e.className = 'cqS ok'; }); }
+async function cqLoad(){
+  const b = $('#cqLoad'); if (b.disabled) return;
+  b.disabled = true; b.textContent = 'جارٍ السحب…'; note($('#cqMsg'), 'جارٍ قراءة سجل الشكاوى من لوحة سلة…', true);
+  const res = await getJSON('/api/renew/complaints'); b.disabled = false; b.textContent = 'اسحب الشكاوى من سلة';
+  if (!res.ok) return note($('#cqMsg'), res.error || FAIL_TEXT[res.kind] || FAIL_TEXT.server);
+  const d = res.data; CQ = d.rows || [];
+  if (d.error) { $('#cqWrap').classList.add('hidden'); $('#cqSum').textContent = ''; return note($('#cqMsg'), d.hint || 'تعذّر سحب الشكاوى'); }
+  note($('#cqMsg'), CQ.length ? '' : 'لا شكاوى تنتظر التاجر الآن ✓', true);
+  $('#cqSum').textContent = `${AR(CQ.length)} تنتظر التاجر من ${AR(d.total)} في السجل`;
+  $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}"><td class="ltr">${esc(r.id)}</td><td>${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
+    + `<td class="ltr">${esc(r.order) || '—'}</td><td><span class="pill warn">${esc(r.status)}</span><br><small class="cqS"></small></td>`
+    + `<td>${r.order ? `<button class="go cqGo" data-i="${i}" type="button">جهّز الردّ</button>` : '<small>بلا رقم طلب</small>'}${r.url ? ` <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">في سلة</a>` : ''}</td></tr>`).join('');
+  $('#cqWrap').classList.toggle('hidden', !CQ.length);
+  $('#cqBody').querySelectorAll('.cqGo').forEach(x => x.onclick = () => { const r = CQ[x.dataset.i]; $('#rpQ').value = r.order; $('#rpClear').classList.remove('hidden');
+    rpFind(r.order); $('#rpBox').scrollIntoView({block: 'start', behavior: 'smooth'}); });
+}
+$('#cqLoad').onclick = cqLoad;
 $('#rpLinkGo').onclick = async () => { const d = RP.d || {}, line = $('#rpLine').value.trim(), b = $('#rpLinkGo');
   if (!line) return rpState('found', 'الصق سطر اليوزر أولًا');
   b.disabled = true; const r = await post('/api/renew/reply-link', {order: d.order, line}); b.disabled = false;

@@ -60,6 +60,10 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     const log = await api(page, '/admin/api/renew/dup-log');
     const rows = log.log || [];
     check('manual send logged as reply', rows.some(r => r.kind === 'reply' && r.order === '138' && r.how === 'manual'), JSON.stringify(rows).slice(0, 200));
+    check('manual whatsapp shows «تم الإرسال» like the linked number', (await page.textContent('#rpSent')).includes('تم الإرسال ✓'), await page.textContent('#rpSent'));
+    // مراجعة الشكاوى بلا جلسة لوحة: تلميحٌ لا عطل
+    await page.click('#cqLoad'); await page.waitForFunction(() => !document.querySelector('#cqLoad').disabled);
+    check('complaints pull without a panel session explains itself', (await page.textContent('#cqMsg')).includes('لا جلسة لوحة سلة'), await page.textContent('#cqMsg'));
 
     // بلا يوزر: الطلب معروف من الفهرس ⇒ «أنشئ له» ولصق السطر يربطه ويجهّز الردّ
     await page.fill('#rpQ', '400'); await page.click('#rpFind');

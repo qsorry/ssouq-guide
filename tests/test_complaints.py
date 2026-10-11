@@ -195,9 +195,80 @@ def test_lookup():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_complaints_pull():
+    print("\n== مراجعة الشكاوى: سجل لوحة سلة بالجلسة، وما ينتظر التاجر وحده ==")
+    import salla_web
+    check("open statuses: the two merchant-waiting ones (and Salla's own wording)", complaints.is_open("بانتظار الحل من التاجر")
+          and complaints.is_open("بانتظار رد التاجر") and complaints.is_open(" بانتظار  استجابة التاجر ") and complaints.is_open("awaiting_merchant"))
+    check("not open: waiting for the customer, closed, at Salla", not complaints.is_open("بانتظار رد العميل") and not complaints.is_open("مغلقة")
+          and not complaints.is_open("قيد التحقق من سلة") and not complaints.is_open(""))
+    rows_json = {"data": [
+        {"id": 51, "status": {"name": "بانتظار رد التاجر"}, "order": {"reference_id": 138}, "customer": {"name": "ali", "mobile": "0500000001"}, "type": "الاشتراك لا يعمل", "content": "ما يشتغل"},
+        {"id": 52, "status": "بانتظار الحل من التاجر", "order_reference": "400", "customer_name": "محمد"},
+        {"id": 53, "status": "بانتظار رد العميل", "order_id": 999, "customer": {"first_name": "س", "last_name": "م"}},
+        {"id": 54, "status": "مغلقة", "reference_id": 5, "customer": "x"}]}
+    html = ("<table><tr><th>رقم الشكوى</th><th>العميل</th><th>الطلب</th><th>الحالة</th></tr>"
+            "<tr><td>#61</td><td>سارة</td><td>287314660</td><td>2026-10-01</td><td>بانتظار الحل من التاجر</td><td><a href=\"/complaints/61\">عرض</a></td></tr>"
+            "<tr><td>#62</td><td>خالد</td><td>111222333</td><td>2026-10-02</td><td>مغلقة</td></tr>"
+            "<tr><td colspan=3>لا شيء</td></tr></table>")
+    mode = {"json": True}
+    calls = []
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            calls.append(self.path)
+            if "sess=1" not in (self.headers.get("Cookie") or ""):
+                self.send_response(302); self.send_header("Location", "/auth?x"); self.send_header("Content-Length", "0"); self.end_headers(); return
+            u = urllib.parse.urlsplit(self.path)
+            page = urllib.parse.parse_qs(u.query).get("page", ["1"])[0]
+            if mode["json"] and u.path == "/api/v1/complaints":          # المسار الأول مفقود عمدًا: يُجرَّب الثاني ويُحفظ
+                return self._out(200, json.dumps(rows_json if page == "1" else {"data": []}, ensure_ascii=False).encode(), "application/json")
+            if not mode["json"] and u.path == "/complaints" and "format" not in u.query:
+                return self._out(200, (html if page == "1" else "<table></table>").encode(), "text/html")
+            self._out(404, b"", "text/html")
+
+        def _out(self, code, raw, ct):
+            self.send_response(code); self.send_header("Content-Type", ct + "; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = "http://127.0.0.1:%d" % srv.server_address[1]
+    keep = {k: getattr(X, k) for k in ("renew_panel_session",)}
+    try:
+        sess = salla_web.Session("sess=1", base=base)
+        rows = sess.complaints()
+        check("json: complaints found on the second candidate path and normalized", len(rows) == 4 and rows[0]["order"] == "138"
+              and rows[0]["customer"] == "ali" and rows[0]["status"] == "بانتظار رد التاجر" and rows[0]["type"] == "الاشتراك لا يعمل"
+              and rows[1]["order"] == "400" and rows[1]["customer"] == "محمد" and rows[2]["customer"] == "س م", str(rows)[:300])
+        n0 = len(calls); sess.complaints()
+        check("the path that worked is remembered (one list call + one empty page 2)", calls[n0] .startswith("/api/v1/complaints") and len(calls) - n0 == 2, str(calls[n0:]))
+        X.renew_panel_session = lambda st_: sess
+        d = X.complaints_open({"renew": {}})
+        check("complaints_open keeps only the merchant-waiting ones, with the total", [r["id"] for r in d["rows"]] == ["51", "52"] and d["total"] == 4, str(d)[:200])
+        mode["json"] = False
+        sess2 = salla_web.Session("sess=1", base=base)
+        rows = sess2.complaints()
+        check("html fallback: table rows parsed (id, customer, order, status, date, link)", len(rows) == 2 and rows[0] == {"id": "61", "order": "287314660",
+              "customer": "سارة", "status": "بانتظار الحل من التاجر", "type": "", "text": "", "date": "2026-10-01", "phone": "", "url": "/complaints/61"}, str(rows))
+        X.renew_panel_session = lambda st_: sess2
+        check("html: only the open one is shown", [r["id"] for r in X.complaints_open({})["rows"]] == ["61"])
+        X.renew_panel_session = lambda st_: None
+        check("no session: an error with a hint, not a crash", X.complaints_open({})["error"] == "no_session")
+        X.renew_panel_session = lambda st_: salla_web.Session("other=1", base=base)
+        check("expired session reported", X.complaints_open({})["error"] == "session_expired")
+    finally:
+        srv.shutdown()
+        for k, v in keep.items():
+            setattr(X, k, v)
+
+
 if __name__ == "__main__":
     test_sub_and_text()
     test_lookup()
+    test_complaints_pull()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
     sys.exit(1 if _f else 0)
