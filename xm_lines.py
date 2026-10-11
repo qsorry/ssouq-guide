@@ -2997,7 +2997,8 @@ def _dup_archived(accounts, cfg, acct, gate, row):
     """بوابات الأرشيف (بلا دخول للّوحة) المرشّحة لليوزر القديم — لعرض «اربط اللوحة» بدل الفشل الصامت."""
     return [{"account_id": a.get("id"), "gate_id": g.get("id"), "name": g.get("name") or g.get("host"),
              "host": g.get("host", ""), "panel_base": g.get("panel_base", ""), "panel_user": g.get("panel_user", ""),
-             "web": g.get("mode") == "web"}
+             "web": g.get("mode") == "web",
+             "has_creds": bool(g.get("panel_base") or g.get("host")) and bool(g.get("panel_user") and g.get("panel_pass"))}
             for a, g, same in _dup_candidates(accounts, cfg or {}, acct, gate, row) if g.get("archive_only")]
 
 

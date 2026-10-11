@@ -559,8 +559,8 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
     <p class="msg" id="dupMsg"></p>
     <div id="dupConn" class="blk hidden" style="padding:12px;margin-top:10px">
       <b id="dupConnT"></b>
-      <p class="hint">اليوزر القديم في بوابة «أرشيف فقط» لا تدخل اللوحة. اربطها هنا: تُلغى صفة الأرشيف وتُحفظ بيانات الدخول، ثم يُغيَّر اسم القديم. الكابتشا تكتبها أنت.</p>
-      <div class="acts"><input id="dcBase" placeholder="رابط اللوحة https://…" class="ltr"><input id="dcUser" placeholder="اسم دخول اللوحة" class="ltr"><input id="dcPass" type="password" placeholder="كلمة المرور" class="ltr"></div>
+      <p class="hint">اليوزر القديم في بوابة «أرشيف فقط» لا تدخل اللوحة. اربطها هنا: تُلغى صفة الأرشيف ويُغيَّر اسم القديم. الكابتشا تكتبها أنت.</p>
+      <div class="acts" id="dcFields"><input id="dcBase" placeholder="رابط اللوحة https://…" class="ltr"><input id="dcUser" placeholder="اسم دخول اللوحة" class="ltr"><input id="dcPass" type="password" placeholder="كلمة المرور" class="ltr"></div>
       <div id="dcCap" class="hidden acts"><img id="dcImg" alt="captcha" style="height:44px;border-radius:8px;background:#fff"><button class="ghost" id="dcReload" type="button">↻</button><input id="dcCode" placeholder="الكود" class="ltr" style="width:110px"><small id="dcErr" class="c-bad"></small></div>
       <div class="acts"><button class="go" id="dcGo" type="button">اربط وغيّر القديم</button><button class="ghost" id="dcCancel" type="button">إلغاء</button></div>
     </div>
@@ -1727,7 +1727,9 @@ function dupConnOpen(list, req){
   $('#dupConnT').textContent = 'ربط بوابة الأرشيف «' + (g.name || '') + '»';
   $('#dcBase').value = g.panel_base || ''; $('#dcBase').placeholder = 'رابط لوحة الدخول (ليس هوست البث) ' + (g.host || ''); $('#dcUser').value = g.panel_user || ''; $('#dcPass').value = '';
   $('#dcCap').classList.add('hidden'); $('#dcCode').value = '';
+  $('#dcFields').classList.toggle('hidden', !!g.has_creds);
   $('#dupConn').classList.remove('hidden'); $('#dupConn').scrollIntoView({block: 'nearest'});
+  if (g.has_creds) { $('#dupConnT').textContent += ' — بيانات الدخول محفوظة في النظام'; dcConnect(); }
 }
 async function dcImg(){
   const g = DUPCONN.g, im = $('#dcImg'), er = $('#dcErr');
@@ -1741,7 +1743,8 @@ async function dcImg(){
 }
 $('#dcReload').onclick = dcImg;
 $('#dcCancel').onclick = () => { DUPCONN = null; $('#dupConn').classList.add('hidden'); };
-$('#dcGo').onclick = async () => {
+$('#dcGo').onclick = () => dcConnect();
+async function dcConnect(){
   if (!DUPCONN) return; const g = DUPCONN.g; const b = $('#dcGo'); b.disabled = true;
   const d = await post('/api/renew/dup-connect', {account_id: g.account_id, gate_id: g.gate_id, panel_base: $('#dcBase').value,
     panel_user: $('#dcUser').value, panel_pass: $('#dcPass').value, captcha: $('#dcCode').value});
@@ -1753,7 +1756,7 @@ $('#dcGo').onclick = async () => {
   const r = await post('/api/renew/dup-rename', rq);
   note($('#dupMsg'), r.ok && r.old_missing ? 'اليوزر القديم غير موجود على اللوحة المربوطة' : r.ok ? `غُيّر ${r.renamed.from} إلى ${r.renamed.to} — الرسالة جاهزة في تبويب «الرسائل»` : (r.error || 'تعذّر التغيير'), !!r.ok);
   loadDup();
-};
+}
 let DUPWA = false, DUPCH = '', DUPNUM = '';
 function renderDupMsgs(msgs){
   $('#msgsEmpty').classList.toggle('hidden', !!msgs.length);
