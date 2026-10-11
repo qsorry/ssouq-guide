@@ -272,6 +272,8 @@ def test_unlisted():
         check("append keeps earlier products", st2["products"] == 2 and st2["with_username"] == 2, str(st2))
     finally:
         shutil.rmtree(d, ignore_errors=True)
+        ex = panels.expiry_status("Expired", renew._today(), 0)
+        check("expiry_status: «Expired» text counts as expired", ex["expired"] and ex["days_left"] == 0, ex)
         why = panels.explain_user(cfg_u if 'cfg_u' in dir() else {}, d, "nobody_here")
         check("explain_user: unknown user has a reason", bool(why["reason"]) and not why["panels"], why)
         st_html = panels.save_salla_codes(d, [{"id": "p3", "name": "كاسبر 30", "html":
