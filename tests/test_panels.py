@@ -643,7 +643,13 @@ def test_order_lost():
               and made.get("split") == 11, str(body)[:200])
         m = body["messages"][0]
         check("message for the buyer with the new line and the compensation", m["kind"] == "comp" and m["phone"] == "966500000001"
-              and "User 901 Pass 902" in m["text"] and "274576474" in m["text"] and "تعويض شهر" in m["text"] and "قناتنا" not in m["text"], m["text"])
+              and "User: 901\nPass: 902" in m["text"] and "Host: http://m.ink" in m["text"] and "📲 طريقة التثبيت والتفعيل" in m["text"]
+              and "274576474" in m["text"] and "تعويض شهر" in m["text"] and "قناتنا" not in m["text"], m["text"])
+        check("copy text is the full guide like the create-page search", body["copy"].startswith("📲 طريقة التثبيت والتفعيل")
+              and "User: 901" in body["copy"] and "Pass: 902" in body["copy"] and "سيرفر سمارت" in body["copy"], body["copy"])
+        old_row = {"account_id": "acc1", "gate_id": "g1", "done": {"new": "77", "msgs": [{"text": "x Host http://h:80 User 77 Pass 88 Guide y"}]}}
+        check("copy text for an older record is rebuilt from its message line", "Host: http://h:80" in X.comp_copy([acct], old_row)
+              and "Pass: 88" in X.comp_copy([acct], old_row))
         r = panels.lost(cfg, d)
         done = next(x for x in r["rows"] if x["username"] == "111")
         check("the row stays listed as done (not hidden as replaced)", done["done"]["new"] == "901" and r["done"] == 1)

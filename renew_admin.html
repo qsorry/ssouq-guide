@@ -301,6 +301,42 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 .ppv{display:flex;align-items:center;gap:10px;margin-top:12px}
 .ppv label{margin:0;flex:1;color:var(--ink);font-size:.88rem}
 .ppv input{width:92px;flex:none}
+
+/* ===== بطاقات البحث والمفقود ===== */
+.lcards>div{display:grid;gap:12px;margin-top:12px}
+.lc{border:1px solid var(--line);border-radius:18px;background:var(--sf);padding:14px 16px;display:grid;gap:12px;
+  box-shadow:0 1px 0 color-mix(in srgb,var(--ink) 4%,transparent);border-inline-start:4px solid var(--line)}
+.lc.st-found{border-inline-start-color:var(--go)}.lc.st-missing{border-inline-start-color:var(--err)}
+.lc.st-covered,.lc.st-replaced{border-inline-start-color:var(--mute)}.lc.st-not_pulled,.lc.st-host_unmapped{border-inline-start-color:var(--amber)}
+.lc-h{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.lc-o{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-width:0}
+.lc-o b{font-size:1.05rem;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.lc-o a{color:inherit;text-decoration:none}.lc-o a:hover b{text-decoration:underline}
+.lc-o small,.lc-why{color:var(--mute);font-size:.8rem}
+.lc-why{margin:-4px 0 0;line-height:1.6}
+.lc-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 16px}
+.lc-f{min-width:0}.lc-f.wide{grid-column:1/-1}
+.lc-f small{display:block;color:var(--mute);font-size:.72rem;margin-bottom:2px}
+.lc-f span{display:block;font-size:.9rem;line-height:1.5;overflow-wrap:anywhere}
+.lc-cred{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center;background:var(--sf2);border:1px solid var(--line);
+  border-radius:12px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86rem;direction:ltr;text-align:left}
+.lc-cred small{color:var(--mute);font-family:inherit;font-size:.74rem}
+.lc-cred span{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.lc-done{display:grid;gap:8px;border-radius:14px;padding:12px;border:1px solid color-mix(in srgb,var(--go) 40%,var(--line));
+  background:color-mix(in srgb,var(--go) 8%,var(--sf))}
+.lc-done b{color:var(--go)}
+.lc-done .lc-cred{background:var(--sf)}
+.lc-a{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.lc-a button,.lc-a a{flex:1 1 auto;min-width:120px;text-align:center}
+.lc-a .lc-m{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:.82rem;flex:0 0 auto}
+.lc-a .lc-m input{width:70px;text-align:center}
+.lc-x{appearance:auto;-webkit-appearance:auto;width:20px;height:20px;min-height:0;margin:0;padding:0;flex:none;accent-color:var(--go);cursor:pointer}
+#lsTiles{grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}
+#lsTiles .stat{border-inline-start:1px solid var(--line);margin-inline-start:-1px}
+.lc-chk{display:inline-flex;align-items:center;gap:6px;font-size:.84rem;color:var(--mute);cursor:pointer}
+.lc-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding:10px 12px;
+  border:1px dashed var(--line);border-radius:14px}
+@media (max-width:520px){.lc{padding:12px}.lc-g{grid-template-columns:1fr 1fr}.lc-a button,.lc-a a{min-width:0;flex:1 1 45%}}
 </style>
 </head>
 <body>
@@ -578,9 +614,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <div class="acts"><input id="loQ" class="ltr" placeholder="274576474" style="min-width:200px" inputmode="numeric">
         <button class="go" id="loFind" type="button">بحث</button></div>
       <p class="msg" id="loMsg"></p>
-      <div class="scroll hidden" id="loWrap"><table class="rt">
-        <thead><tr><th>الطلب</th><th>العميل</th><th>اليوزر</th><th>الحال</th><th>المتبقي</th><th></th></tr></thead>
-        <tbody id="loBody"></tbody></table></div>
+      <div class="lcards hidden" id="loWrap"><div id="loBody"></div></div>
       <div id="loLink" class="hidden" style="margin-top:10px">
         <b>ربط الطلب باليوزر</b>
         <p class="hint">اكتب يوزر العميل وكلمة مروره كما في رسالة اشتراكه — يُحفظ على الطلب فيُعرف به في المطابقة والرسائل والتجديد.</p>
@@ -598,14 +632,13 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <p class="hint">خطوط سلة الجارية التي لا يوجد يوزرها على أي لوحة مسحوبة ولم يُستبدل. يُنشأ لصاحبها خطٌّ من باقة <b>١٥ شهرًا</b> بجزءٍ = المتبقي + التعويض، والباقي يعود إلى «حسابات متبقية» للبيع، وتُجهَّز رسالة واتساب في «الرسائل». يخصم من رصيد اللوحة. يُبحث عن اليوزر في يوزرات اللوحات المسحوبة <b>وفي ملفات Excel البوابات المحفوظة في النظام</b>، ولوحةٌ بلا أيٍّ منهما لا يُحكم على خطوطها.</p>
       <div class="acts" style="align-items:center">
         <label>التعويض <input type="number" id="lsComp" min="0" max="14" value="1" style="width:60px"> شهر</label>
-        <label class="switch" style="margin:0"><span>مع المنتهية</span><input type="checkbox" id="lsExp"></label>
+        <label class="switch" style="margin:0"><span>مع المنتهية</span><input type="checkbox" class="tog" id="lsExp"></label>
         <button class="go" id="lsLoad" type="button">اعرض المفقود</button></div>
       <div class="strip" id="lsTiles"></div>
       <p class="msg" id="lsMsg"></p>
-      <div class="scroll hidden" id="lsWrap"><table class="rt">
-        <thead><tr><th><input type="checkbox" id="lsAll" title="تحديد الكل"></th><th>اليوزر</th><th>اللوحة</th><th>العميل</th><th>الطلب</th><th>المتبقي</th><th>أشهر الجديد</th><th></th></tr></thead>
-        <tbody id="lsBody"></tbody></table></div>
-      <div class="acts hidden" id="lsBulk"><button class="go" id="lsMake" type="button">أنشئ للمحدد</button></div>
+      <div class="lc-bar hidden" id="lsBulk"><label class="lc-chk"><input type="checkbox" class="lc-x" id="lsAll"> تحديد الكل</label>
+        <button class="go" id="lsMake" type="button">أنشئ للمحدد</button></div>
+      <div class="lcards hidden" id="lsWrap"><div id="lsBody"></div></div>
       <div id="lsSendBox" class="hidden" style="margin-top:12px">
         <b>إرسال رسائل التعويض</b>
         <p class="hint" id="lsSendSum"></p>
@@ -1988,25 +2021,62 @@ $('#msgsReload').onclick = () => { loadDup(); if ($('#blkDupLog').open) loadDupL
 $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
 
 /* ============ البحث برقم الطلب، والمفقود ============ */
-const LOST_STATE = {found: ['موجود', 'c-ok'], missing: ['مفقود — لا في لوحته ولا البديلة', 'c-bad'], replaced: ['مستبدل', ''],
-  covered: ['للطلب يوزرٌ آخر موجود — هذا قديم أو مكرّر في سجلّ الطلب', ''], host_unmapped: ['هوست غير مربوط بلوحة', 'c-warn'], not_pulled: ['لوحته لم تُسحب يوزراتها', 'c-warn'], no_user: ['بلا يوزر', 'c-warn']};
+const LOST_STATE = {found: ['موجود', 'ok'], missing: ['مفقود', 'bad'], replaced: ['مستبدل', ''], covered: ['يوزر زائد', ''],
+  host_unmapped: ['هوست غير مربوط', 'warn'], not_pulled: ['لوحته لم تُسحب', 'warn'], no_user: ['بلا يوزر', 'warn']};
+const LOST_WHY = {missing: 'لا يوجد في لوحته ولا في البديلة ولا في ملفات Excel البوابات.',
+  covered: 'للطلب يوزرٌ آخر موجود على اللوحة — الاشتراك قائم، وهذا قديمٌ أو مكرّر في سجلّ الطلب.',
+  replaced: 'استُبدل بيوزرٍ آخر من قبل.', not_pulled: 'لوحته لم تُسحب يوزراتها ولا ملف Excel لبوابتها — لا يُحكم عليه.',
+  host_unmapped: 'هوسته غير مربوط بأي لوحة في «اللوحات وهوستاتها».'};
 let LO = null;
-const lostState = r => { const s = LOST_STATE[r.state] || [r.state, ''];
-  return `<span class="${s[1]}">${s[0]}</span>` + (r.state === 'found' && r.found_panel ? `<br><small>على ${esc(r.found_panel)}</small>` : '')
-    + (r.linked ? '<br><small>رُبط يدويًا</small>' : '') + (r.done ? `<br><small class="c-ok">أُنشئ له ${esc(r.done.new)} ✓</small>` : ''); };
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
+  const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+  ta.remove(); return ok;
+}
+const lcField = (k, v, cls) => v ? `<div class="lc-f${cls ? ' ' + cls : ''}"><small>${k}</small><span>${v}</span></div>` : '';
+const lcCred = (h, u, p) => `<div class="lc-cred">${h ? `<small>Host</small><span>${esc(h)}</span>` : ''}<small>User</small><span>${esc(u) || '—'}</span>${p ? `<small>Pass</small><span>${esc(p)}</span>` : ''}</div>`;
+// بطاقةٌ لخطٍّ من المتجر: الطلب وحاله، والعميل، وبيانات الاشتراك، والتعويض المُنشأ ونسخ شرحه، والأفعال
+function lcard(r, i, kind){
+  const dn = r.done, st = dn ? ['عُوِّض ✓', 'ok'] : (LOST_STATE[r.state] || [r.state, '']);
+  const where = r.state === 'found' ? (r.found_panel || r.panel_name) : r.panel_name;
+  const head = `<header class="lc-h"><div class="lc-o">${kind === 'ls' && !dn && r.can_create ? `<input type="checkbox" class="lsC lc-x" data-i="${i}" aria-label="تحديد">` : ''}`
+    + `<small>طلب</small>${kind === 'ls' ? `<a href="#" class="lsO" data-o="${esc(r.order)}"><b class="ltr">${esc(r.order)}</b></a>` : `<b class="ltr">${esc(r.order)}</b>`}`
+    + `<small class="ltr">${esc(r.date)}</small></div><span class="pill ${st[1]}">${st[0]}</span></header>`;
+  const why = LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '';
+  const grid = `<div class="lc-g">${lcField('العميل', esc(r.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(r.phone) || '—'}</span>`)}`
+    + lcField('المتبقي', esc(r.remaining) || '—') + lcField(r.state === 'found' ? 'موجود على' : 'اللوحة', esc(where))
+    + lcField('المنتج', esc(r.product), 'wide') + (r.linked ? lcField('الربط', 'رُبط يدويًا') : '') + '</div>';
+  const done = dn ? `<div class="lc-done"><b>✓ أُنشئ له اشتراك جديد${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}</b>`
+    + lcCred(dn.host, dn.new, dn.password) + `<div class="lc-a">`
+    + (r.copy ? `<button class="go lcCopy" data-k="${kind}" data-i="${i}" type="button">نسخ الشرح</button>`
+      + (r.phone ? `<a class="ghost lcWa" data-k="${kind}" data-i="${i}" href="#" target="_blank" rel="noopener">واتساب</a>` : '') : '<small>لا بيانات لنسخ الشرح</small>')
+    + '</div></div>' : '';
+  let act = '';
+  if (!dn && r.state === 'missing' && (!r.expired || kind === 'ls')) act += kind === 'ls'
+    ? (r.can_create ? `<label class="lc-m">أشهر الجديد <input type="number" class="lsM" data-i="${i}" min="1" max="15" value="${r.new_months || 1}"></label>`
+        + `<button class="go lsMk" data-i="${i}" type="button">أنشئ اشتراكًا</button>` : '<small class="c-warn">اربط اللوحة ببوابة إنشاء لتُنشئ له</small>')
+    : `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>`;
+  if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}">${head}${why}${grid}${lcCred(r.host, r.username, r.password)}${done}`
+    + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
+}
+function lcBind(box, rows, kind){
+  box.querySelectorAll('.lcCopy').forEach(b => b.onclick = async () => {
+    const ok = await copyText(rows[b.dataset.i].copy); const t = b.textContent;
+    b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = t, 1600); });
+  box.querySelectorAll('.lcWa').forEach(a => { const r = rows[a.dataset.i];
+    a.href = 'https://wa.me/' + String(r.phone).replace(/\D/g, '').replace(/^0(?=5)/, '966') + '?text=' + encodeURIComponent(r.copy); });
+}
 async function loFind(q){
   q = (q != null ? q : $('#loQ').value).trim(); if (!q) return note($('#loMsg'), 'اكتب رقم الطلب');
   const d = await api('/api/renew/order?q=' + encodeURIComponent(q));
   if (d.error) return note($('#loMsg'), d.error);
   LO = d; const rows = d.rows || [], ix = d.index;
   $('#loWrap').classList.toggle('hidden', !rows.length);
-  $('#loBody').innerHTML = rows.map((r, i) => `<tr><td class="ltr">${esc(r.order)}<br><small>${esc(r.date)} · ${esc(r.product)}</small></td>`
-    + `<td>${esc(r.customer) || '—'}<br><small class="ltr">${esc(r.phone)}</small></td>`
-    + `<td class="ltr">${esc(r.username)}<br><small>${esc(r.password)} · ${esc(r.host)}</small></td>`
-    + `<td>${lostState(r)}</td><td>${esc(r.remaining) || '—'}</td>`
-    + `<td>${r.state === 'missing' && !r.done && !r.expired ? `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>` : ''}`
-    + ` <button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button></td></tr>`).join('');
-  let msg = rows.length ? `${AR(rows.length)} يوزرًا` + (rows.some(r => r.state === 'missing') ? ' — فيه مفقود' : rows.some(r => r.state === 'covered') ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر في سجلّ الطلب' : '') : '';
+  $('#loBody').innerHTML = rows.map((r, i) => lcard(r, i, 'lo')).join('');
+  lcBind($('#loBody'), rows, 'lo');
+  let msg = rows.length ? `${AR(rows.length)} يوزرًا` + (rows.some(r => r.state === 'missing' && !r.done) ? ' — فيه مفقود' : rows.some(r => r.done) ? ' — أُنشئ له اشتراكٌ جديد ✓' : rows.some(r => r.state === 'covered') ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر في سجلّ الطلب' : '') : '';
   if (!rows.length && ix) msg = `الطلب موجود في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
     + (d.salla && d.salla.username ? ` · وُجد في سجلّ الطلب في سلة: ${d.salla.username}` : '');
   if (!rows.length && !ix) msg = 'لا طلب ولا يوزر بهذا الرقم في الاشتراكات المسحوبة — اسحب طلبات سلة من «البيانات» ثم أعد البحث';
@@ -2019,11 +2089,11 @@ async function loFind(q){
   $('#lkOrder').dataset.o = orderNo;
   $('#lkRepW').classList.toggle('hidden', !one); $('#lkRep').checked = !!(one && one.state === 'missing');
   if (one) $('#lkRepT').textContent = `يحلّ محلّ اليوزر المسجَّل للطلب (${one.username})`;
-  $('#loBody').querySelectorAll('.loComp').forEach(b => b.onclick = () => makeComp(LO.rows[b.dataset.i], b, null, () => loFind(q)));
+  $('#loBody').querySelectorAll('.loComp').forEach(b => b.onclick = () => makeComp(LO.rows[b.dataset.i], b, null, () => loFind(q), false, $('#loMsg')));
   $('#loBody').querySelectorAll('.loRelink').forEach(b => b.onclick = () => { const r = LO.rows[b.dataset.i];
     $('#lkOrder').value = r.order; $('#lkUser').value = ''; $('#lkPass').value = r.password || ''; $('#lkHost').value = r.host || '';
     $('#lkRepW').classList.remove('hidden'); $('#lkRep').checked = true; $('#lkRepT').textContent = `يحلّ محلّ ${r.username}`; $('#lkRep').dataset.u = r.username;
-    $('#loLink').classList.remove('hidden'); $('#lkUser').focus(); });
+    $('#loLink').classList.remove('hidden'); $('#lkUser').focus(); $('#loLink').scrollIntoView({block: 'center', behavior: 'smooth'}); });
   $('#lkRep').dataset.u = one ? one.username : '';
 }
 $('#loFind').onclick = () => loFind();
@@ -2057,16 +2127,8 @@ function lsRender(d){
   const tile = (n, lbl, cls) => `<div class="stat"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></div>`;
   $('#lsTiles').innerHTML = tile(d.pending, 'يحتاج اشتراكًا', d.pending ? 'c-warn' : '') + tile(d.done, 'أُنشئ له') + tile(c.found || 0, 'موجود على لوحة')
     + (c.covered ? tile(c.covered, 'طلبه له يوزر موجود') : '') + tile(c.replaced || 0, 'مستبدل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
-  $('#lsBody').innerHTML = d.rows.map((r, i) => {
-    const act = r.done ? `<span class="c-ok">✓ ${esc(r.done.new)}</span>`
-      : r.can_create ? `<button class="go lsMk" data-i="${i}" type="button">أنشئ</button>` : '<small>اربط اللوحة ببوابة</small>';
-    const mon = r.done ? AR(r.done.months) : `<input type="number" class="lsM" data-i="${i}" min="1" max="15" value="${r.new_months || 1}" style="width:64px">`;
-    return `<tr><td>${r.done || !r.can_create ? '' : `<input type="checkbox" class="lsC" data-i="${i}">`}</td>`
-      + `<td class="ltr">${esc(r.username)}<br><small>${esc(r.host)}</small></td><td>${esc(r.panel_name) || '—'}</td>`
-      + `<td>${esc(r.customer) || '—'}<br><small class="ltr">${esc(r.phone)}</small></td>`
-      + `<td class="ltr"><a href="#" class="lsO" data-o="${esc(r.order)}">${esc(r.order)}</a><br><small>${esc(r.date)}</small></td>`
-      + `<td>${esc(r.remaining) || '—'}</td><td>${mon}</td><td>${act}</td></tr>`;
-  }).join('');
+  $('#lsBody').innerHTML = d.rows.map((r, i) => lcard(r, i, 'ls')).join('');
+  lcBind($('#lsBody'), d.rows, 'ls'); $('#lsAll').checked = false;
   $('#lsWrap').classList.toggle('hidden', !d.rows.length);
   $('#lsBulk').classList.toggle('hidden', !d.rows.some(r => !r.done && r.can_create));
   const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.total)} مفقود · ${AR(c.found || 0)} موجود · ${AR(c.covered || 0)} يوزرٌ زائد في طلبٍ له يوزر موجود · ${AR(c.replaced || 0)} مستبدل · ${AR(c.expired || 0)} منتهٍ`
@@ -2079,15 +2141,18 @@ function lsRender(d){
   $('#lsBody').querySelectorAll('.lsO').forEach(a => a.onclick = e => { e.preventDefault(); $('#loQ').value = a.dataset.o; loFind(a.dataset.o); window.scrollTo({top: 0}); });
   lsSendShow(); lsPoll();
 }
-async function makeComp(r, btn, inp, after, quiet){
+async function makeComp(r, btn, inp, after, quiet, msgEl){
+  msgEl = msgEl || $('#lsMsg');
   if (!r) return false;
   const months = Number(inp && inp.value) || r.new_months;
   if (!quiet && !confirm(`إنشاء اشتراك لـ ${r.customer || r.phone || r.username} (طلب ${r.order}) بمدة ${months} شهرًا من باقة ١٥ شهرًا بدل ${r.username}؟\nيخصم من رصيد اللوحة، والباقي يعود إلى «حسابات متبقية».`)) return false;
   const t0 = btn && btn.textContent; if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…'; }
   const d = await post('/api/renew/comp-create', {order: r.order, username: r.username, months, comp: $('#lsComp').value});
   if (btn) { btn.disabled = false; btn.textContent = t0; }
-  if (d.error || !d.ok) { note($('#lsMsg'), `${r.order}: ` + (d.error || 'فشل الإنشاء')); return false; }
-  note($('#lsMsg'), `أُنشئ ${d.username} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '') + ' · الرسالة جاهزة', !d.split_error);
+  if (d.error || !d.ok) { note(msgEl, `${r.order}: ` + (d.error || 'فشل الإنشاء')); return false; }
+  const copied = !quiet && d.copy ? await copyText(d.copy) : false;   // كبحث صفحة الإنشاء: الشرح كاملًا في الحافظة
+  note(msgEl, `أُنشئ ${d.username} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
+    + (copied ? ' · نُسخ الشرح كاملًا ✓' : ' · «نسخ الشرح» في بطاقته') + ' · رسالة واتساب جاهزة', !d.split_error);
   if (after) after(); else if (!quiet) lsLoad();
   return true;
 }
