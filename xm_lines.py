@@ -3483,6 +3483,40 @@ def export_users(accounts):
     return {"users": users, "gates": gates}
 
 
+def _renew_extra_sig(accounts):
+    """توقيع مصادر الفهرس خارج مجلد الإعداد: ملف Excel كل بوابة وروابط استبدالها (تاريخ التعديل والحجم)."""
+    out = []
+    for a in (accounts or []):
+        for g in (a.get("gates") or []):
+            try:
+                out.append(panels._file_sig(users_export.paths(DATA_DIR, a["id"], g["id"])[0]))
+                out.append(panels._file_sig(user_links.path(DATA_DIR, a["id"], g["id"])))
+            except Exception:
+                continue
+    return tuple(out)
+
+
+def renew_index(cfg, ws, accounts):
+    """فهرس البحث والمفقود الجاهز (panels.get_index): يُبنى عند تغيّر أي مصدر، ويُخدم من الذاكرة."""
+    return panels.get_index(cfg, ws, sources=lambda: (replaced_old_users(accounts), export_users(accounts)),
+                            extra_sig=_renew_extra_sig(accounts))
+
+
+def renew_index_warm(cfg, ws, accounts):
+    """يبني الفهرس في الخلفية إن تغيّرت مصادره ولم يكن يُبنى — فالبحث بعده من الذاكرة. ← حاله الآن."""
+    sig = _renew_extra_sig(accounts)
+    st_ = panels.index_ready(cfg, ws, sig)
+    if not st_["ready"] and not st_["building"]:
+        def run():
+            try:
+                renew_index(cfg, ws, accounts)
+            except Exception as e:
+                print("renew index:", e, file=sys.stderr)
+        threading.Thread(target=run, daemon=True, name="renew-index").start()
+        st_["building"] = True
+    return st_
+
+
 def replaced_old_users(accounts):
     """اليوزرات القديمة التي استُبدلت (user_links) في كل بوابات الحسابات — لا تُعدّ «مفقودة»."""
     out = set()
@@ -3498,13 +3532,47 @@ def replaced_old_users(accounts):
 COMP_MSG = ("السلام عليكم ورحمة الله *{name}* 👋\n\n"
             "*✅ اشتراككم جاهز من جديد*\n"
             "بعد مراجعة طلبكم رقم {order} أنشأنا لكم اشتراكًا جديدًا بالمدة المتبقية من اشتراككم{comp}.\n\n"
-            "*🔑 بيانات الاشتراك:*\n{line}\n\n"
+            "{line}\n\n"
             "*📲 قناتنا على واتساب* (تصلكم فيها التحديثات أولًا بأول):\n{channel}\n\n"
             "نعتذر عن الإزعاج، ونحن في خدمتكم دائمًا 🌹")
 
 
+_LINE_RE = re.compile(r"Host\s+(\S+)\s+User\s+(\S+)\s+Pass\s+(\S+)")
+
+
+def guide_copy_text(acct, gate, user, pw, host=""):
+    """نص الشرح الكامل كما ينسخه بحث صفحة الإنشاء: نصّ الحساب أو الافتراضي («📲 طريقة التثبيت والتفعيل»)
+    برابط شرح البوابة واسم اشتراكها وبيانات اليوزر."""
+    g = with_guide(acct, gate or {})
+    url = g.get("guide_url") or "https://%s/" % SITE_HOST
+    vals = {"host": host or (gate or {}).get("host", ""), "user": str(user or ""), "pass": str(pw or ""),
+            "guide": url, "server": guide_sub(gate or {}, url)}
+    text = (acct or {}).get("guide_text") or DEFAULT_GUIDE_TEXT
+    return re.sub(r"\{(host|user|pass|guide|server)\}", lambda m: vals[m.group(1)], text)
+
+
+def comp_copy(accounts, row):
+    """نص الشرح لتعويضٍ أُنشئ (للنسخ): من البيانات المحفوظة معه، وإلا من سطره في رسالته. "" إن لم يُعرف."""
+    rec = row["done"] = dict(row.get("done") or {})     # نسخة: السجل نفسه في الفهرس المشترك لا يُمسّ
+    user, pw, host = rec.get("new", ""), rec.get("password", ""), rec.get("host", "")
+    if not pw:
+        for m in rec.get("msgs") or []:
+            hit = _LINE_RE.search(m.get("text", "")) or re.search(
+                r"Host:\s*(\S+)\s+User:\s*(\S+)\s+Pass:\s*(\S+)", m.get("text", ""))
+            if hit:
+                host, user, pw = hit.group(1), hit.group(2), hit.group(3)
+                break
+    if not (user and pw):
+        return ""
+    rec["password"] = rec.get("password") or pw   # للبطاقة: بيانات الجديد كاملةً ولو كان سجلُّه قديمًا
+    rec["host"] = rec.get("host") or host
+    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row.get("account_id"))), None)
+    gate = find_gate(acct, row.get("gate_id")) if acct else None
+    return guide_copy_text(acct, gate or {"host": host}, user, pw, host)
+
+
 def comp_text(name, order, line, comp, channel=""):
-    """رسالة التعويض: فقرة القناة تسقط إن لم تُربط قناة."""
+    """رسالة التعويض: رأسٌ بالطلب والتعويض، ثم نص الشرح الكامل (line)، وفقرة القناة تسقط إن لم تُربط قناة."""
     c = "" if not comp else " مع تعويض شهر" if comp == 1 else " مع تعويض %s" % split_subs.months_ar(comp)
     t = COMP_MSG.format(name=name or "عميلنا العزيز", order=order, line=line, comp=c, channel=channel or "")
     return "\n\n".join(b for b in re.split(r"\n\s*\n", t) if channel or "قناتنا" not in b)
@@ -3516,8 +3584,7 @@ def comp_create(accounts, cfg, ws, req):
     order, user = str(req.get("order") or "").strip(), str(req.get("username") or "").strip().lower()
     comp = max(0, min(14, int(split_subs.parse_months(req.get("comp")) or 0))) if str(req.get("comp", "")).strip() \
         else panels.COMP_DEFAULT
-    data = panels.lost(cfg, ws, replaced=replaced_old_users(accounts), comp=comp, include_expired=True,
-                       export=export_users(accounts))
+    data = panels.lost(cfg, ws, comp=comp, include_expired=True, idx=renew_index(cfg, ws, accounts))
     row = next((r for r in data["rows"] if r["order"] == order and r["username"].lower() == user), None)
     if not row:
         return 404, {"error": "لا اشتراك مفقود بهذا الطلب واليوزر (قد يكون موجودًا على لوحة أو مستبدلًا)"}
@@ -3534,11 +3601,15 @@ def comp_create(accounts, cfg, ws, req):
     code, resp, r = _make_line(acct, gate, row, months, "تعويض الطلب %s" % row["order"])
     if code != 200:
         return code, resp
+    hit = _LINE_RE.search(r.get("line", ""))
+    host = hit.group(1) if hit else gate.get("host", "")
+    copy = guide_copy_text(acct, gate, r["username"], r["password"], host)
     msgs = [{"kind": "comp", "name": row["customer"], "phone": _wa_phone(row["phone"]),
-             "text": comp_text(row["customer"], row["order"], r.get("line", ""), comp, channel_link()), "sent": None}]
-    resp["messages"] = msgs
+             "text": comp_text(row["customer"], row["order"], copy, comp, channel_link()), "sent": None}]
+    resp["messages"], resp["copy"] = msgs, copy
     panels.mark_dupe_done(ws, row["order"], r["username"], resp["months"], row["customer"],
-                          extra={"msgs": msgs, "src": "lost", "old": row["username"], "comp": comp})
+                          extra={"msgs": msgs, "src": "lost", "old": row["username"], "comp": comp,
+                                 "password": r["password"], "host": host})
     return 200, resp
 
 
@@ -5991,8 +6062,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, panels.explain_user(rcfg, rws, self._q("user"),
                                                            gates=card_gates(racs), split=split_users(racs),
                                                            replaced=replacement_users(racs)))
+            if path == "/api/renew/index-status":   # حال فهرس البحث، ويبدأ بناءه في الخلفية إن تغيّرت مصادره
+                d = renew_index_warm(rcfg, rws, racs)
+                hit = panels._IDX.get(rws)
+                d["info"] = panels.index_info(hit[1]) if hit else None
+                return self._send(200, d)
             if path == "/api/renew/order":          # بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) وحاله على اللوحات
-                d = panels.order_search(rcfg, rws, self._q("q"), replaced=replaced_old_users(racs), export=export_users(racs))
+                t0 = time.perf_counter()
+                d = panels.order_search(rcfg, rws, self._q("q"), idx=renew_index(rcfg, rws, racs))
                 idx = d.get("index") or {}
                 if not d["rows"] and idx.get("sid") and not idx.get("username"):
                     try:                                # سجلّ الطلب في سلة: يوزره المكتوب ليُعبّأ به الربط
@@ -6003,20 +6080,25 @@ class Handler(BaseHTTPRequestHandler):
                         d["salla"] = None
                 for r in d["rows"]:
                     r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
+                    if r.get("done"):
+                        r["copy"] = comp_copy(racs, r)
+                d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/lost":           # المفقود: مباعٌ ولا يوزر له على أي لوحة ولم يُستبدل
                 comp = split_subs.parse_months(self._q("comp"))
-                d = panels.lost(rcfg, rws, replaced=replaced_old_users(racs), export=export_users(racs),
+                t0 = time.perf_counter()
+                d = panels.lost(rcfg, rws, idx=renew_index(rcfg, rws, racs),
                                 comp=panels.COMP_DEFAULT if comp is None else max(0, min(14, comp)),
                                 include_expired=self._q("expired") == "1")
                 for r in d["rows"]:
                     ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
                     r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
+                    if r.get("done"):
+                        r["copy"] = comp_copy(racs, r)
                 d["wa_linked"] = dup_wa_ready(st)
-                day = renew.now_iso()[:10]
-                d["sent_today"] = sum(1 for m in panels.load_dup_log(rws, 100000)
-                                      if m.get("how") != "manual" and m.get("ok") and str(m.get("at", ""))[:10] == day)
+                d["sent_today"] = panels.sent_today(rws, renew.now_iso()[:10])
                 d["daily_cap"] = HOST_DAILY_CAP
+                d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/host-job":       # حال إرسال رسالة الهوست الجاري/الأخير
                 return self._send(200, host_job_status(rws))
@@ -6334,10 +6416,12 @@ class Handler(BaseHTTPRequestHandler):
                                        req.get("host", ""), replace=req.get("replace", ""), base=base)
             except ValueError as e:
                 return self._send(400, {"error": str(e)})
-            d = panels.order_search(rcfg, rws, ln["order"], replaced=replaced_old_users(racs), export=export_users(racs))
+            d = panels.order_search(rcfg, rws, ln["order"], idx=renew_index(rcfg, rws, racs))
             row = next((r for r in d["rows"] if r["username"].lower() == ln["username"].lower()), None)
-            if row:
-                row["new_months"] = panels.comp_months(row["days_left"], panels.COMP_DEFAULT)
+            for r in d["rows"]:
+                r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
+                if r.get("done"):
+                    r["copy"] = comp_copy(racs, r)
             return self._send(200, {"ok": True, "row": row, **d})
         if path == "/api/renew/comp-create":      # اشتراكٌ بالمتبقي + تعويض لصاحب طلبٍ مفقود يوزرُه
             try:

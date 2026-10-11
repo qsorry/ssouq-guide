@@ -605,6 +605,25 @@ def log_dup_send(data_dir, msg, how, ok, error=""):
     return rec
 
 
+def sent_today(data_dir, day):
+    """كم رسالةً أُرسلت (بالرقم المربوط، ناجحةً) في يومٍ — بقراءة السجل سطرًا سطرًا وفحص التاريخ نصًّا قبل التحليل،
+    لا بتحميل السجل كله (قد يبلغ عشرات الميغابايت) مع كل طلب."""
+    n, mark = 0, '"at": "%s' % day
+    try:
+        with open(dup_log_path(data_dir), encoding="utf-8") as f:
+            for line in f:
+                if mark not in line:
+                    continue
+                try:
+                    m = json.loads(line)
+                except ValueError:
+                    continue
+                n += bool(m.get("ok") and m.get("how") != "manual")
+    except OSError:
+        pass
+    return n
+
+
 def load_dup_log(data_dir, limit=500):
     out = []
     try:
@@ -834,14 +853,15 @@ def comp_months(days_left, comp=COMP_DEFAULT):
 
 
 def _panel_users(pl, export=None):
-    """{يوزر بحروف صغيرة: اسم اللوحة} من يوزرات اللوحات المسحوبة، ثم من ملفات Excel البوابات المحفوظة في النظام
-    (`export["users"]`: {يوزر: اسم البوابة}) — فما عُرف في أيٍّ منهما ليس مفقودًا."""
+    """{يوزر بحروف صغيرة: (اسم مصدره، نوعه)} من يوزرات اللوحات المسحوبة («panel»)، ثم من ملفات Excel البوابات
+    المحفوظة في النظام («excel» — `export["users"]`: {يوزر: اسم البوابة}) — فما عُرف في أيٍّ منهما ليس مفقودًا."""
     out = {}
     for pid, pdata in pl.items():
+        name = pdata.get("name") or pid
         for u in (pdata.get("by_user") or {}):
-            out.setdefault(u, pdata.get("name") or pid)
+            out.setdefault(u, (name, "panel"))
     for u, name in ((export or {}).get("users") or {}).items():
-        out.setdefault(str(u).lower(), name)
+        out.setdefault(str(u).lower(), (name, "excel"))
     return out
 
 
@@ -851,36 +871,37 @@ def _covered_orders(lines, users):
             if str(ln.get("username") or "").strip().lower() in users and ln.get("order")}
 
 
-def _line_row(ln, cfg, pl, users, done, replaced, today, export=None, covered=()):
-    """صفّ خطٍّ من المتجر بحاله: أين وُجد، وأمفقودٌ هو، وكم بقي له."""
-    pmap = {p["id"]: p for p in cfg["panels"]}
-    hidx = host_index(cfg["panels"])
+def _line_row(ln, ctx):
+    """صفّ خطٍّ من المتجر بحاله: أين وُجد، وأمفقودٌ هو، وكم بقي له. `ctx` ما بُني مرةً للفهرس كله
+    (خريطة الهوستات واللوحات واليوزرات …) — لا يُعاد بناؤه لكل خط."""
     u = str(ln.get("username") or "").strip()
-    pid = hidx.get(renew.norm_host(ln.get("host")), "")
-    panel = pmap.get(pid) or {}
-    own = panel_data_for(pl, panel) if panel else None
-    found = users.get(u.lower(), "")
+    pid = ctx["hidx"].get(renew.norm_host(ln.get("host")), "")
+    panel = ctx["pmap"].get(pid) or {}
+    own = ctx["own"].get(pid) if panel else None
+    found = ctx["users"].get(u.lower())
     exp = line_expiry(ln)
-    rec = done.get(str(ln.get("order") or ""))
-    mine = rec if (rec or {}).get("src") == "lost" else None      # تعويضٌ أُنشئ من هذه الصفحة
+    today = ctx["today"]
     left = (exp - today).days if exp else None
     order = str(ln.get("order") or "")
+    rec = ctx["done"].get(order)
+    mine = rec if (rec or {}).get("src") == "lost" else None      # تعويضٌ أُنشئ من هذه الصفحة
+    no = renew.norm_order(order)
     if not u:
         state = "no_user"
     elif found:
         state = "found"
-    elif (u.lower() in replaced and not mine) or (done.get(order) and not mine):
+    elif (u.lower() in ctx["replaced"] and not mine) or (rec and not mine):
         state = "replaced"                       # استُبدل من غير هذه الصفحة (بديل المكرر أو البحث)
-    elif renew.norm_order(ln.get("order")) in covered and not mine:
+    elif no in ctx["covered"] and not mine:
         state = "covered"                        # للطلب يوزرٌ آخر موجود: الاشتراك قائم
     elif not panel:
         state = "host_unmapped"
     elif not ((own and own.get("count"))
-              or (str(panel.get("account_id", "")), str(panel.get("gate_id", ""))) in ((export or {}).get("gates") or ())):
+              or (str(panel.get("account_id", "")), str(panel.get("gate_id", ""))) in ctx["xgates"]):
         state = "not_pulled"                     # لوحته لم تُسحب: لا يُحكم بالفقد
     else:
         state = "missing"
-    return {"order": order, "date": str(ln.get("date") or ""), "customer": str(ln.get("customer") or ""),
+    return {"order": order, "order_norm": no, "date": str(ln.get("date") or ""), "customer": str(ln.get("customer") or ""),
             "phone": str(ln.get("phone") or ""), "product": str(ln.get("product") or ""),
             "username": u, "password": str(ln.get("password") or ""), "host": str(ln.get("host") or ""),
             "months": int(ln.get("months") or 0), "expiry": exp.isoformat() if exp else "",
@@ -888,29 +909,121 @@ def _line_row(ln, cfg, pl, users, done, replaced, today, export=None, covered=()
             "expired": left is not None and left <= 0, "suggest": suggest_slice(left),
             "panel_id": pid if panel else "", "panel_name": panel.get("name", ""),
             "account_id": panel.get("account_id", ""), "gate_id": panel.get("gate_id", ""),
-            "found_panel": found,
+            "found_panel": found[0] if found else "", "found_src": found[1] if found else "",
             "state": state, "linked": str(ln.get("linked") or ""), "done": mine}
 
 
-def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=False, today=None, export=None):
-    """المفقود: خطوط المتجر التي لا يوجد يوزرها على أي لوحةٍ مسحوبة ولم يُستبدل — جاريةً (والمنتهية اختيارًا).
-    `replaced` يوزراتٌ قديمة استُبدلت (user_links). صفٌّ لكل (طلب، يوزر)، وما أُنشئ له تعويضه يبقى ظاهرًا بسجلّه."""
+# ---- فهرس البحث: يُبنى مرةً عند تغيّر مصادره ويُخدم من الذاكرة ----
+# البحث والمفقود كانا يقرآن كل الملفات (خطوط سلة، يوزرات اللوحات، ملفات Excel البوابات، فهرس الطلبات) ويحسبان
+# حال كل خط مع كل طلب — والمفقود يبني خريطة الهوستات لكل خط (١٢ مليون norm_host لـ٤٠ ألف خط: ٢٠ ثانية).
+# فالفهرس يُبنى مرةً ويُحفظ في الذاكرة بتوقيع مصادره (تاريخ تعديل كل ملفٍ وحجمه، وإعداد اللوحات، واليوم)؛ أي
+# تغيّرٍ في مصدرٍ يغيّر التوقيع فيُعاد البناء عند أول طلب — فلا نتيجة من بياناتٍ قديمة. والقراءة بالقاموس.
+import threading as _threading
+_IDX = {}                    # data_dir → (التوقيع، الفهرس)
+_IDX_LOCK = _threading.Lock()
+_IDX_BUILDING = {}           # data_dir → وقت بدء بناءٍ جارٍ
+
+
+def _file_sig(path):
+    try:
+        st = os.stat(path)
+        return (path, st.st_mtime_ns, st.st_size)
+    except OSError:
+        return (path, 0, 0)
+
+
+def index_sig(config, data_dir, extra=()):
+    """توقيع مصادر الفهرس: ملفاتها (تاريخ التعديل والحجم)، وإعداد اللوحات، واليوم (المتبقي يتغيّر به)، و`extra`
+    (ملفات Excel البوابات وروابط الاستبدال — يحسبها المستدعي لأنها خارج مجلد الإعداد)."""
+    cfg = renew.normalize_config(config)
+    files = [store_lines_path(data_dir), panel_lines_path(data_dir), dupes_path(data_dir), renew.index_path(data_dir)]
+    return (tuple(_file_sig(f) for f in files), json.dumps(cfg["panels"], sort_keys=True, ensure_ascii=False),
+            renew._today().isoformat(), tuple(extra))
+
+
+def build_index(config, data_dir, replaced=None, export=None, today=None):
+    """يبني فهرس البحث: كل خطٍّ من سلة (فريدٌ بالطلب واليوزر) بحاله، ومفاتيح البحث (الطلب · اليوزر · كلمة المرور)."""
+    t0 = __import__("time").perf_counter()
     cfg = renew.normalize_config(config)
     pl = load_panel_lines(data_dir)["panels"]
+    store = load_store_lines(data_dir)
+    lines = store.get("lines", [])
     users = _panel_users(pl, export)
-    done = load_dupes_done(data_dir)
-    replaced = {str(u).lower() for u in (replaced or ())}
-    today = today or renew._today()
+    pmap = {p["id"]: p for p in cfg["panels"]}
+    ctx = {"pmap": pmap, "hidx": host_index(cfg["panels"]), "own": {pid: panel_data_for(pl, p) for pid, p in pmap.items()},
+           "users": users, "done": load_dupes_done(data_dir), "replaced": {str(u).lower() for u in (replaced or ())},
+           "covered": _covered_orders(lines, users), "today": today or renew._today(),
+           "xgates": set((export or {}).get("gates") or ())}
     rows, seen = [], set()
-    counts = {"checked": 0, "found": 0, "covered": 0, "replaced": 0, "host_unmapped": 0, "not_pulled": 0, "expired": 0}
-    lines = load_store_lines(data_dir).get("lines", [])
-    covered = _covered_orders(lines, users)
+    by_order, by_user, by_pass = {}, {}, {}
     for ln in lines:
-        r = _line_row(ln, cfg, pl, users, done, replaced, today, export, covered)
-        key = (renew.norm_order(r["order"]), r["username"].lower())
-        if not r["username"] or key in seen:
+        key = (renew.norm_order(ln.get("order")), str(ln.get("username") or "").strip().lower())
+        if not key[1] or key in seen:
             continue
         seen.add(key)
+        r = _line_row(ln, ctx)
+        i = len(rows)
+        rows.append(r)
+        if r["order_norm"]:
+            by_order.setdefault(r["order_norm"], []).append(i)
+        by_user.setdefault(key[1], []).append(i)
+        if len(r["password"]) >= 4:
+            by_pass.setdefault(r["password"], []).append(i)
+    counts = {"checked": len(rows)}
+    for r in rows:
+        counts[r["state"]] = counts.get(r["state"], 0) + 1
+    ix = renew.load_index(data_dir)
+    return {"rows": rows, "by_order": by_order, "by_user": by_user, "by_pass": by_pass, "counts": counts,
+            "orders_index": ix.get("orders", {}), "orders_index_built": ix.get("built", ""),
+            "store_built": store.get("built", ""), "no_username": store.get("no_username", 0),
+            "panels": {p.get("name") or pid: {"count": p.get("count", 0), "built": p.get("built", "")} for pid, p in pl.items()},
+            "excel_users": len((export or {}).get("users") or {}), "excel_gates": len(ctx["xgates"]),
+            "built": renew.now_iso(), "build_ms": int((__import__("time").perf_counter() - t0) * 1000)}
+
+
+def get_index(config, data_dir, sources=None, extra_sig=()):
+    """الفهرس الجاهز إن لم تتغيّر مصادره، وإلا يُبنى (مرةً واحدة ولو طلبه أكثر من مستخدمٍ معًا).
+    `sources()` ← (replaced، export): يُستدعى عند البناء وحده، فلا تُقرأ ملفات Excel مع كل بحث."""
+    sig = index_sig(config, data_dir, extra_sig)
+    hit = _IDX.get(data_dir)
+    if hit and hit[0] == sig:
+        return hit[1]
+    with _IDX_LOCK:
+        hit = _IDX.get(data_dir)
+        if hit and hit[0] == sig:              # بناه طلبٌ آخر بينما ننتظر
+            return hit[1]
+        _IDX_BUILDING[data_dir] = renew.now_iso()
+        try:
+            replaced, export = sources() if sources else (None, None)
+            idx = build_index(config, data_dir, replaced, export)
+            _IDX[data_dir] = (sig, idx)
+            return idx
+        finally:
+            _IDX_BUILDING.pop(data_dir, None)
+
+
+def index_ready(config, data_dir, extra_sig=()):
+    """أجاهزٌ الفهرس بمصادره الحالية؟ (بلا بناء) — ومتى بُني، وأيُبنى الآن."""
+    hit = _IDX.get(data_dir)
+    return {"ready": bool(hit and hit[0] == index_sig(config, data_dir, extra_sig)),
+            "built": hit[1]["built"] if hit else "", "building": data_dir in _IDX_BUILDING}
+
+
+def index_info(idx):
+    """ما يُعرض عن المزامنة: متى بُني الفهرس وكم أخذ، ومن كل مصدرٍ كم ومتى."""
+    return {"built": idx["built"], "build_ms": idx["build_ms"], "lines": idx["counts"].get("checked", 0),
+            "store_built": idx["store_built"], "no_username": idx["no_username"], "panels": idx["panels"],
+            "excel_users": idx["excel_users"], "excel_gates": idx["excel_gates"],
+            "orders_index": len(idx["orders_index"]), "orders_index_built": idx["orders_index_built"]}
+
+
+def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=False, today=None, export=None, idx=None):
+    """المفقود: خطوط المتجر التي لا يوجد يوزرها على أي لوحةٍ مسحوبة ولا في ملفات Excel ولم يُستبدل — جاريةً
+    (والمنتهية اختيارًا). صفٌّ لكل (طلب، يوزر)، وما أُنشئ له تعويضه يبقى ظاهرًا بسجلّه. `idx` فهرسٌ جاهز (get_index)."""
+    idx = idx or build_index(config, data_dir, replaced, export, today)
+    counts = {"checked": 0, "found": 0, "covered": 0, "replaced": 0, "host_unmapped": 0, "not_pulled": 0, "expired": 0}
+    rows = []
+    for r in idx["rows"]:
         counts["checked"] += 1
         if r["state"] != "missing":
             counts[r["state"]] = counts.get(r["state"], 0) + 1
@@ -919,43 +1032,49 @@ def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=Fal
             counts["expired"] += 1
             if not include_expired or r["days_left"] is None:
                 continue
-        r["new_months"] = comp_months(r["days_left"], comp)
-        rows.append(r)
+        rows.append(dict(r, new_months=comp_months(r["days_left"], comp)))
     rows.sort(key=lambda r: (bool(r["done"]), r["expired"], -(r["days_left"] or 0), r["order"]))
     return {"rows": rows, "total": len(rows), "comp": int(comp or 0), "base": BASE_MONTHS,
             "pending": sum(1 for r in rows if not r["done"] and not r["expired"]),
             "done": sum(1 for r in rows if r["done"]), "counts": counts,
-            "pulled": sum(1 for p in pl.values() if p.get("count")) + len((export or {}).get("gates") or ()),
-            "export_users": len((export or {}).get("users") or {}), "built": renew.now_iso()}
+            "pulled": sum(1 for p in idx["panels"].values() if p.get("count")) + idx["excel_gates"],
+            "export_users": idx["excel_users"], "index": index_info(idx), "built": idx["built"]}
 
 
-def order_search(config, data_dir, q, replaced=None, today=None, export=None):
-    """بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) في اشتراكات المتجر المسحوبة، ثم في فهرس الطلبات:
-    كل خطٍّ بحاله على اللوحات (موجود · مفقود · مستبدل …). ← {rows, index, order}."""
-    q = str(q or "").strip()
-    qo, ql = renew.norm_order(q), q.lower()
-    if not q:
-        return {"rows": [], "index": None, "order": ""}
-    cfg = renew.normalize_config(config)
-    pl = load_panel_lines(data_dir)["panels"]
-    users = _panel_users(pl, export)
-    done = load_dupes_done(data_dir)
-    replaced = {str(u).lower() for u in (replaced or ())}
-    today = today or renew._today()
-    rows = []
-    lines = load_store_lines(data_dir).get("lines", [])
-    covered = _covered_orders(lines, users)
-    for ln in lines:
-        if (qo and renew.norm_order(ln.get("order")) == qo) or str(ln.get("username") or "").strip().lower() == ql \
-                or (len(q) >= 4 and str(ln.get("password") or "").strip() == q):
-            rows.append(_line_row(ln, cfg, pl, users, done, replaced, today, export, covered))
+_AR_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
+def norm_query(q):
+    """نص البحث بصيغةٍ واحدة: أرقامٌ عربية أو فارسية ← إنجليزية، وبلا مسافاتٍ ولا شرطاتٍ ولا نقاطٍ ولا # —
+    ولا يُحذف صفرٌ ولا يُضاف رمز دولة: «٠٥٠ ١٢٣-٤» ← «0501234»."""
+    return re.sub(r"[\s\-_.#/‎‏]+", "", str(q or "").translate(_AR_DIGITS)).strip()
+
+
+def order_search(config, data_dir, q, replaced=None, today=None, export=None, idx=None):
+    """بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) في الفهرس: تطابقٌ تامٌّ بعد توحيد الصيغة، وكل نتيجةٍ مرةً واحدة
+    ولو طابقت بأكثر من مفتاح، ومعها ما طابقت به. ثم فهرس طلبات سلة لطلبٍ لا يوزر له. ← {rows, index, order}."""
+    raw = str(q or "").strip()
+    qn = norm_query(raw)
+    if not qn:
+        return {"rows": [], "index": None, "order": "", "q": ""}
+    idx = idx or build_index(config, data_dir, replaced, export, today)
+    qo, ql = renew.norm_order(qn) if qn.isdigit() else "", qn.lower()
+    hits, why = [], {}
+    for key, table, val in (("order", idx["by_order"], qo), ("username", idx["by_user"], ql),
+                            ("username", idx["by_user"], raw.lower()), ("password", idx["by_pass"], qn),
+                            ("password", idx["by_pass"], raw)):
+        for i in (table.get(val) or []) if val else []:
+            if i not in why:
+                hits.append(i)
+            why.setdefault(i, key)
+    rows = [dict(idx["rows"][i], match=why[i]) for i in hits]
     order = rows[0]["order"] if rows and all(r["order"] == rows[0]["order"] for r in rows) else (qo if not rows else "")
-    idx = renew.load_index(data_dir).get("orders", {}).get(qo) if qo else None
-    if idx:
-        exp = line_expiry(idx)
-        idx = {k: idx.get(k) for k in ("phone", "date", "months", "devices", "host", "username", "sid")
-               if idx.get(k) not in (None, "")} | {"expiry": exp.isoformat() if exp else ""}
-    return {"rows": rows, "index": idx, "order": order or (qo if idx else "")}
+    ix = idx["orders_index"].get(qo) if qo else None
+    if ix:
+        exp = line_expiry(ix)
+        ix = {k: ix.get(k) for k in ("phone", "date", "months", "devices", "host", "username", "sid")
+              if ix.get(k) not in (None, "")} | {"expiry": exp.isoformat() if exp else ""}
+    return {"rows": rows, "index": ix, "order": order or (qo if ix else ""), "q": qn}
 
 
 def link_order(data_dir, order, username, password="", host="", replace="", base=None):
