@@ -5365,6 +5365,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, raw=raw,
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   extra={"Content-Disposition": 'attachment; filename="salla-available-codes.xlsx"'})
+            if path == "/api/renew/listed":         # المعلَّم يدويًا «معروض في سلة»
+                return self._send(200, {"listed": panels.load_listed(rws)})
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
                 return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1",
                                                        gates=card_gates(racs), split=split_users(racs)))
@@ -5569,6 +5571,10 @@ class Handler(BaseHTTPRequestHandler):
             owner["renew"] = renew.clean_config(req.get("renew") or {}, rcfg)
             save_store(st)
             return self._send(200, {"ok": True, "renew": renew.redact_config(owner["renew"])})
+        if path == "/api/renew/listed":           # تعليم يوزرات «معروضة في سلة» يدويًا (أو إلغاؤه)
+            n = panels.mark_listed(rws, req.get("usernames") or [], remove=bool(req.get("remove")),
+                                   note=req.get("note", ""))
+            return self._send(200, {"ok": True, "total": n})
         if path == "/api/renew/salla-codes":      # أكواد سلة المتاحة من الإضافة (دفعةً أو أكثر)
             prods = req.get("products") or []
             if not isinstance(prods, list):
