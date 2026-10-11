@@ -14,7 +14,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 ولا وجود لها على الموقع العام: guide.ssouq.com/admin لا يفتح شيئًا (404).
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
-import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, time
+import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, time, random
 import io, zipfile
 from urllib.parse import quote, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
@@ -2962,11 +2962,26 @@ def _wa_phone(v):
     return salla_api.normalize_phone(v, "")
 
 
-HOST_MSG = ("السلام عليكم {name}\n"
-            "نحيطكم علمًا بأن هوست اشتراككم ({host}) يتغيّر.{new_host}\n"
-            "لتصلكم تفاصيل الهوست الجديد وكل ما يخص اشتراككم أولًا بأول، تابعوا قناتنا على واتساب:\n"
-            "{channel}\n"
-            "وللمساعدة نحن بخدمتكم.")
+HOST_MSG = ("السلام عليكم ورحمة الله *{name}* 👋\n\n"
+            "*📢 إشعار: تغيير الهوست*\n"
+            "هوست اشتراككم الحالي:\n{host}\n\n"
+            "*✅ الهوست الجديد:*\n{new_host}\n\n"
+            "*📖 شرح التفعيل:*\n{guide}\n\n"
+            "*📲 قناتنا على واتساب* (تصلكم فيها التحديثات أولًا بأول):\n{channel}\n\n"
+            "نحن في خدمتكم دائمًا 🌹")
+HOST_DAILY_CAP = 150        # سقف يومي مقترح لرسائل الهوست من رقمٍ واحد
+
+
+def host_guide(accounts, host):
+    """رابط الشرح المذكور في بوابة هذا الهوست (الخاص بها، وإلا رابط حسابها)، أو ""."""
+    nh = renew.norm_host(host)
+    for a in (accounts or []):
+        for g in a.get("gates", []):
+            if nh and renew.norm_host(g.get("host")) == nh:
+                u = gate_guide(g, a.get("guide_url", ""))
+                if u:
+                    return u
+    return ""
 
 
 def channel_link():
@@ -2986,7 +3001,7 @@ def line_sub(ln, panel_name=""):
     return next((k for k, words in _SUB_WORDS.items() if any(w in text for w in words)), "")
 
 
-def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True):
+def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True, after=""):
     """مشتركو هوستٍ معيّن من اشتراكات المتجر المسحوبة: عميلٌ لكل جوال (بيوزراته)، ومن لا جوال له يُعدّ ولا يُرسَل إليه."""
     nh = renew.norm_host(host)
     if not nh:
@@ -2998,6 +3013,9 @@ def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True):
     sent = {m["phone"] for m in panels.load_dup_log(ws, 100000)
             if m.get("kind") == "host" and m.get("ok") and m.get("order") == "host:" + nh}
     sent_n = 0
+    day = renew.now_iso()[:10]
+    sent_today = sum(1 for m in panels.load_dup_log(ws, 100000)
+                     if m.get("kind") == "host" and m.get("ok") and str(m.get("at", ""))[:10] == day)
     for ln in panels.load_store_lines(ws).get("lines", []):
         if renew.norm_host(ln.get("host")) != nh:
             continue
@@ -3025,11 +3043,171 @@ def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True):
         r["expired"] = r["expired"] and expired
     rec = sorted(by_phone.values(), key=lambda r: (r["name"] or "", r["phone"]))
     sent_n = sum(1 for r in rec if r["sent"])
+    after_found, after_skipped = None, 0
+    ap = _wa_phone(after)
+    if ap:                                      # ابدأ بعد هذا الرقم: يُحذف ما قبله وهو نفسه بترتيب القائمة
+        idx = next((i for i, r in enumerate(rec) if r["phone"] == ap), None)
+        after_found = idx is not None
+        if idx is not None:
+            after_skipped, rec = idx + 1, rec[idx + 1:]
     if skip_sent:
         rec = [r for r in rec if not r["sent"]]
     return {"host": host, "recipients": rec, "no_phone": no_phone, "expired_skipped": expired_n,
             "lines": lines_n, "channel": channel_link(), "template": HOST_MSG, "sent_before": sent_n,
+            "daily_cap": HOST_DAILY_CAP, "sent_today": sent_today, "after_found": after_found, "after_skipped": after_skipped,
             "subs": {k or "other": v for k, v in subs.items()}, "sub": sub}
+
+
+# ---- إرسال رسالة الهوست كمهمة خلفية على الخادم: تستمر لو أُغلقت الصفحة، وتُستأنف بعد إعادة التشغيل ----
+HOST_JOB_FILE = "renew_host_job.json"
+_hj_lock = threading.Lock()
+_hj_threads = {}
+
+
+def _hj_path(ws):
+    return os.path.join(ws, HOST_JOB_FILE)
+
+
+def host_job_load(ws):
+    try:
+        with open(_hj_path(ws), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _hj_update(ws, fn):
+    """يعدّل المهمة المحفوظة ذرّيًا (يقرؤها طازجةً فلا يُمحى إيقاف المدير) ويرجّعها."""
+    with _hj_lock:
+        job = host_job_load(ws)
+        if job is None:
+            return None
+        fn(job)
+        renew._write_json(_hj_path(ws), job)
+        return job
+
+
+def _hj_wait(job, n_done):
+    plan = job.get("plan") or {}
+    w = float(plan.get("gap", 8)) + random.random() * float(plan.get("jitter", 3))
+    if plan.get("pause") and n_done % max(1, int(plan.get("batch", 20))) == 0:
+        w += float(plan["pause"])
+    return w
+
+
+def _hj_run(ws):
+    try:
+        while True:
+            job = host_job_load(ws)
+            if not job or job.get("status") != "running" or job.get("idx", 0) >= len(job.get("queue", [])):
+                break
+            item = job["queue"][job["idx"]]
+            try:
+                r, how = dup_wa_send(load_store(), item["phone"], item["text"])
+                ok = bool(r.get("ok")) and not r.get("dry")
+                err = "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")
+            except Exception as e:
+                how, ok, err = "contest", False, str(e)[:160]
+            try:
+                panels.log_dup_send(ws, {"order": "host:" + job.get("host_norm", ""), "kind": "host",
+                                         "name": item.get("name", ""), "phone": item["phone"], "text": item["text"]},
+                                    how, ok, err)
+            except OSError:
+                pass
+
+            def upd(j):
+                j["idx"] = j.get("idx", 0) + 1
+                j["last_phone"] = item["phone"]
+                if ok:
+                    j["sent"] = j.get("sent", 0) + 1
+                    j.setdefault("ok", []).append(item["phone"])
+                else:
+                    j["failed"] = j.get("failed", 0) + 1
+                    j.setdefault("errors", {})[item["phone"]] = err
+                if j.get("failed", 0) >= 5 and j["failed"] > j.get("sent", 0) and j.get("status") == "running":
+                    j["status"] = "error"
+                    j["error"] = "توقّف الإرسال: فشلت عدة رسائل — راجع الرقم المربوط"
+                elif j["idx"] >= len(j["queue"]) and j.get("status") == "running":
+                    j["status"] = "done"
+                if j.get("status") == "running":
+                    j["next_at"] = time.time() + _hj_wait(j, j["idx"])
+            job = _hj_update(ws, upd)
+            while job and job.get("status") == "running" and time.time() < job.get("next_at", 0):
+                time.sleep(1)
+                job = host_job_load(ws)
+    finally:
+        with _hj_lock:
+            _hj_threads.pop(ws, None)
+        _hj_update(ws, lambda j: j.update(finished_at=time.time()) if j.get("status") != "running" else None)
+
+
+def _hj_spawn(ws):
+    with _hj_lock:
+        t = _hj_threads.get(ws)
+        if t and t.is_alive():
+            return
+        t = threading.Thread(target=_hj_run, args=(ws,), daemon=True, name="host-job")
+        _hj_threads[ws] = t
+    t.start()
+
+
+def host_job_start(ws, req):
+    old = host_job_load(ws)
+    if old and old.get("status") == "running":
+        return 409, {"error": "يوجد إرسال جارٍ — أوقفه أولًا"}
+    q = []
+    for it in (req.get("queue") or [])[:2000]:
+        ph, tx = _wa_phone((it or {}).get("phone")), str((it or {}).get("text") or "").strip()
+        if ph and tx:
+            q.append({"phone": ph, "name": str(it.get("name") or "")[:60], "text": tx[:1500]})
+    if not q:
+        return 400, {"error": "لا أحد للإرسال"}
+    pl = req.get("plan") or {}
+    plan = {"gap": max(3.0, float(pl.get("gap") or 8)), "jitter": min(30.0, max(0.0, float(pl.get("jitter") or 3))),
+            "pause": min(900.0, max(0.0, float(pl.get("pause") or 0))), "batch": max(5, int(pl.get("batch") or 20))}
+    job = {"id": secrets.token_hex(4), "host": str(req.get("host") or ""), "host_norm": renew.norm_host(req.get("host")),
+           "status": "running", "queue": q, "idx": 0, "sent": 0, "failed": 0, "ok": [], "errors": {}, "plan": plan,
+           "started_at": time.time(), "next_at": 0, "total": len(q), "test": bool(req.get("test"))}
+    renew._write_json(_hj_path(ws), job)
+    _hj_spawn(ws)
+    return 200, host_job_view(job)
+
+
+def host_job_stop(ws):
+    job = _hj_update(ws, lambda j: j.update(status="stopped") if j.get("status") == "running" else None)
+    return (200, host_job_view(job)) if job else (404, {"error": "لا مهمة"})
+
+
+def host_job_view(job):
+    """حال المهمة للصفحة بلا نصوص الطابور: التقدّم والمتبقي والمدة التقريبية."""
+    if not job:
+        return {"job": None}
+    left = max(0, job.get("total", 0) - job.get("idx", 0))
+    plan = job.get("plan") or {}
+    mean = float(plan.get("gap", 8)) + float(plan.get("jitter", 3)) / 2
+    eta = left * mean + (left // max(1, int(plan.get("batch", 20)))) * float(plan.get("pause", 0))
+    return {"job": {k: job.get(k) for k in ("id", "host", "host_norm", "status", "total", "idx", "sent", "failed", "ok",
+                                            "errors", "plan", "started_at", "next_at", "last_phone", "error",
+                                            "finished_at", "test")} | {"eta": int(eta), "now": time.time()}}
+
+
+def host_job_status(ws):
+    job = host_job_load(ws)
+    if job and job.get("status") == "running":
+        _hj_spawn(ws)                          # استئناف إن توقّفت الخيط (إعادة تشغيل الخادم)
+    return host_job_view(job)
+
+
+def host_job_resume_all():
+    roots = [DATA_DIR]
+    base = os.path.join(DATA_DIR, "renew_ws")
+    if os.path.isdir(base):
+        roots += [os.path.join(base, d) for d in os.listdir(base)]
+    for ws in roots:
+        j = host_job_load(ws)
+        if j and j.get("status") == "running":
+            _hj_spawn(ws)
 
 
 OLD_MISSING = "اليوزر القديم غير موجود على اللوحة"
@@ -5690,10 +5868,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, panels.explain_user(rcfg, rws, self._q("user"),
                                                            gates=card_gates(racs), split=split_users(racs),
                                                            replaced=replacement_users(racs)))
+            if path == "/api/renew/host-job":       # حال إرسال رسالة الهوست الجاري/الأخير
+                return self._send(200, host_job_status(rws))
             if path == "/api/renew/host-audience":  # مشتركو هوست لرسالة جماعية محدّدة
                 d = host_audience(rcfg, rws, self._q("host"), include_expired=self._q("expired") == "1",
-                                  sub=self._q("sub") or "", skip_sent=self._q("skip_sent") != "0")
+                                  sub=self._q("sub") or "", skip_sent=self._q("skip_sent") != "0",
+                                  after=self._q("after") or "")
                 d["wa_linked"] = dup_wa_ready(st)
+                d["guide"] = host_guide(racs, self._q("host"))
                 try:
                     rs = reader_status()
                     d["wa_channel"] = ("contest" if rs.get("status") == "connected" else "wa" if d["wa_linked"] else "")
@@ -5973,6 +6155,12 @@ class Handler(BaseHTTPRequestHandler):
                                           "error": "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")})
             panels.log_dup_send(rws, dict(msg, text=text), how, ok, "" if ok else m["sent"]["error"])
             return self._send(200 if ok else 502, {"ok": ok, "message": m, "error": "" if ok else m["sent"]["error"]})
+        if path == "/api/renew/host-job":         # يبدأ إرسال رسالة الهوست في الخلفية
+            code, body = host_job_start(rws, req)
+            return self._send(code, body)
+        if path == "/api/renew/host-job-stop":
+            code, body = host_job_stop(rws)
+            return self._send(code, body)
         if path == "/api/renew/host-send":        # رسالة واحدة من الجماعية: عبر الرقم المربوط أو تعليمٌ يدوي
             phone, text = _wa_phone(req.get("phone")), str(req.get("text") or "").strip()
             if not phone or not text:
@@ -7707,6 +7895,10 @@ def web():
     print(f"الصفحة تعمل: http://{BIND}:{PORT}   (Ctrl+C للإيقاف)", flush=True)
     start_analytics()
     start_poller()
+    try:
+        host_job_resume_all()
+    except Exception:
+        pass
     start_renew_worker()
     start_split_worker()
     start_contest_worker()

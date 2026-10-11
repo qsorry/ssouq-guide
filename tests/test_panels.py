@@ -472,6 +472,11 @@ def test_host_audience():
         rs = X.host_audience({}, d, "http://cdn65.mitatura.store")
         check("already-sent phones are skipped and counted", all(r["phone"] != "966500000001" for r in rs["recipients"]) and rs["sent_before"] == 1, str(rs["sent_before"]))
         check("skip_sent off keeps them flagged", any(r["sent"] for r in X.host_audience({}, d, "http://cdn65.mitatura.store", skip_sent=False)["recipients"]))
+        ra = X.host_audience({}, d, "http://cdn65.mitatura.store", include_expired=True, skip_sent=False)
+        first = ra["recipients"][0]["phone"]
+        rb = X.host_audience({}, d, "http://cdn65.mitatura.store", include_expired=True, skip_sent=False, after=first)
+        check("after phone skips it and everything before it", rb["after_found"] and rb["after_skipped"] == 1 and len(rb["recipients"]) == len(ra["recipients"]) - 1)
+        check("unknown after phone is reported", X.host_audience({}, d, "http://cdn65.mitatura.store", after="966500099999")["after_found"] is False)
         check("empty host is an error", "error" in X.host_audience({}, d, ""))
         check("default template has the placeholders", all(k in X.HOST_MSG for k in ("{name}", "{host}", "{channel}", "{new_host}")))
     finally:
@@ -479,7 +484,41 @@ def test_host_audience():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_host_job():
+    print("== مهمة إرسال الهوست الخلفية ==")
+    import time as _t
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="hj_")
+    keep = (X.load_store, X.dup_wa_send)
+    try:
+        sent = []
+        X.load_store = lambda: {"service": {}}
+        X.dup_wa_send = lambda st, ph, tx: (sent.append((ph, tx)) or {"ok": True}, "contest")
+        code, b = X.host_job_start(d, {"host": "http://h", "queue": [{"phone": "0500000001", "name": "a", "text": "x"},
+                                                                   {"phone": "0500000002", "name": "b", "text": "y"}],
+                                       "plan": {"gap": 1, "jitter": 0, "pause": 0, "batch": 20}})
+        check("job starts with a min gap of 3s", code == 200 and b["job"]["plan"]["gap"] == 3.0 and b["job"]["status"] == "running")
+        check("a second start while running is refused", X.host_job_start(d, {"queue": [{"phone": "0500000003", "text": "z"}]})[0] == 409)
+        v = {}
+        for _ in range(30):
+            _t.sleep(0.5)
+            v = X.host_job_status(d)["job"]
+            if v["status"] != "running":
+                break
+        check("job finishes after sending all, in order", v["status"] == "done" and v["sent"] == 2 and [p for p, _ in sent] == ["966500000001", "966500000002"], str(v))
+        check("each send is logged as a host message", len([m for m in panels.load_dup_log(d) if m["kind"] == "host" and m["ok"]]) == 2)
+        check("view hides the queue texts", "queue" not in v)
+        code, b = X.host_job_start(d, {"host": "http://h", "queue": [{"phone": "0500000009", "text": "q"}, {"phone": "0500000008", "text": "q"}]})
+        code2, st = X.host_job_stop(d)
+        check("stop marks the job stopped", st["job"]["status"] == "stopped")
+    finally:
+        X.load_store, X.dup_wa_send = keep
+        _t.sleep(1)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
+    test_host_job()
     test_host_audience()
     test_months()
     test_host()
