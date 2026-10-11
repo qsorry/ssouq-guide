@@ -420,7 +420,7 @@ def salla_card_line(host, username, password, guide=""):
     return line + (" Guide " + guide if guide else "")
 
 
-def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
+def unlisted(config, data_dir, include_expired=False, gates=None, split=None, replaced=None):
     """`gates`: {(account_id, gate_id): بوابةٌ بهوستها ورابط شرحها الفعلي} — لسطر الكود.
     `split`: {(account_id, gate_id): {يوزرات مسجَّلة في «حسابات متبقية»}} — ما جُزِّئ
     يبقى في القائمة بعلامة «مجزَّأ» (المشغّل ينسخه ويلصقه في سلة)، ويُعدّ فقط."""
@@ -442,11 +442,16 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
                                   "unlisted": 0, "expired": 0, "not_pulled": True}
             continue
         host, guide = panel_card(p, (gates or {}).get((p.get("account_id", ""), p.get("gate_id", ""))))
-        in_split = (split or {}).get((p.get("account_id", ""), p.get("gate_id", "")), {})
-        n_sold = n_listed = n_unlisted = n_expired = n_split = 0
+        gk = (p.get("account_id", ""), p.get("gate_id", ""))
+        in_split = (split or {}).get(gk, {})
+        in_replaced = (replaced or {}).get(gk, set())   # بدائل مسلَّمة لعملاء: ليست غير معروضة
+        n_sold = n_listed = n_unlisted = n_expired = n_split = n_replaced = 0
         for key, rec in pdata["by_user"].items():
             if key in sold:
                 n_sold += 1
+                continue
+            if key in in_replaced:
+                n_replaced += 1
                 continue
             is_split = key in in_split              # مجزَّأ في «حسابات متبقية»: يبقى معروضًا هنا
             if is_split:                           # ليُنسخ ويُلصق في سلة، مع علامته
@@ -479,7 +484,7 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
                          "split_months": int((in_split.get(key) if isinstance(in_split, dict) else 0) or 0)})
         per_panel[p["id"]] = {"name": p["name"], "lines": pdata.get("count", 0), "sold": n_sold,
                               "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired,
-                              "split": n_split, "built": pdata.get("built", "")}
+                              "split": n_split, "replaced": n_replaced, "built": pdata.get("built", "")}
     rows.sort(key=lambda r: (r["panel_name"], -(r["days_left"] or 0), r["username"]))
     return {"rows": rows, "panels": per_panel, "built": renew.now_iso(),
             "store_sold": len(sold), "salla_listed": len(listed), "manual_listed": len(manual),
@@ -487,12 +492,12 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
 
 
 
-def explain_user(config, data_dir, username, gates=None, split=None):
+def explain_user(config, data_dir, username, gates=None, split=None, replaced=None):
     """لماذا لا يظهر يوزرٌ في «غير المعروض»؟ يُفتَّش عنه في كل مصدرٍ ويُعاد كل ما
     وُجد: على أي لوحة، وفي أي طلبٍ بيع، وفي أي منتجٍ معروض، وهل جُزِّئ أو عُلِّم
     يدويًا أو انتهى. فيعرف المشغّل السبب بدل أن يخمّنه."""
     key = str(username or "").strip().lower()
-    out = {"username": key, "panels": [], "sold": [], "listed": [], "split": [], "manual": None,
+    out = {"username": key, "panels": [], "sold": [], "listed": [], "split": [], "replaced": [], "manual": None,
            "expired": False, "reason": ""}
     if not key:
         return out
@@ -522,12 +527,16 @@ def explain_user(config, data_dir, username, gates=None, split=None):
         gk = (p.get("account_id", ""), p.get("gate_id", ""))
         if key in (split or {}).get(gk, {}):
             out["split"].append(p["name"])
+        if key in (replaced or {}).get(gk, set()):
+            out["replaced"].append(p["name"])
         out["panels"].append({"panel": p["name"], "exp": rec.get("exp", ""), "status": rec.get("status", ""),
                               "days_left": es["days_left"], "expired": expired})
     if not out["panels"]:
         out["reason"] = "ليس في يوزرات أي لوحة مسحوبة (اسحب اللوحات أولًا)"
     elif out["sold"]:
         out["reason"] = "مبيع في سلة: طلب %s" % "، ".join(str(x["order"]) for x in out["sold"][:5])
+    elif out["replaced"]:
+        out["reason"] = "بديلٌ مسلَّم لعميل عن رقمٍ قديم (الحسابات البديلة) — %s" % "، ".join(out["replaced"])
     elif out["split"]:
         out["reason"] = "مجزَّأ: مسجَّل في «حسابات متبقية» (%s)" % "، ".join(out["split"])
     elif out["listed"]:

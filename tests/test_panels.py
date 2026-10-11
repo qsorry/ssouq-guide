@@ -263,6 +263,10 @@ def test_unlisted():
         check("a manually marked user counts as listed", n == 1 and resl["rows"] == [] and resl["panels"]["pk"]["listed"] == 2 and resl["manual_listed"] == 1, str(resl["panels"]["pk"]))
         panels.mark_listed(d, ["333333333333"], remove=True)
         check("unmarking brings it back", [r["username"] for r in panels.unlisted(cfg, d)["rows"]] == ["333333333333"])
+        resr = panels.unlisted(cfg, d, replaced={("a", "g"): {"333333333333"}})
+        check("a replacement delivered to a customer is not unlisted", resr["rows"] == [] and resr["panels"]["pk"]["replaced"] == 1, str(resr["panels"]["pk"]))
+        whyr = panels.explain_user(cfg, d, "333333333333", replaced={("a", "g"): {"333333333333"}})
+        check("explain_user: replacement reason", "بديل" in whyr["reason"], whyr["reason"])
         ress = panels.unlisted(cfg, d, split={("a", "g"): {"333333333333": 6}})
         check("a line registered for splitting stays listed, flagged", len(ress["rows"]) == 1 and ress["rows"][0]["split"] is True and ress["rows"][0]["split_months"] == 6
               and ress["panels"]["pk"]["split"] == 1, str(ress["panels"]["pk"]))
