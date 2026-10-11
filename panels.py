@@ -482,6 +482,60 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
             "codes_built": load_salla_codes(data_dir).get("built", "")}
 
 
+
+def explain_user(config, data_dir, username, gates=None, split=None):
+    """لماذا لا يظهر يوزرٌ في «غير المعروض»؟ يُفتَّش عنه في كل مصدرٍ ويُعاد كل ما
+    وُجد: على أي لوحة، وفي أي طلبٍ بيع، وفي أي منتجٍ معروض، وهل جُزِّئ أو عُلِّم
+    يدويًا أو انتهى. فيعرف المشغّل السبب بدل أن يخمّنه."""
+    key = str(username or "").strip().lower()
+    out = {"username": key, "panels": [], "sold": [], "listed": [], "split": [], "manual": None,
+           "expired": False, "reason": ""}
+    if not key:
+        return out
+    cfg = renew.normalize_config(config)
+    for ln in load_store_lines(data_dir).get("lines", []):
+        if str(ln.get("username") or "").strip().lower() == key:
+            out["sold"].append({"order": ln.get("order", ""), "product": ln.get("product", ""),
+                                "date": ln.get("date", ""), "customer": ln.get("customer", "")})
+    for p in load_salla_codes(data_dir).get("products") or []:
+        for c in p.get("codes") or []:
+            if str(c.get("username") or "").lower() == key:
+                out["listed"].append({"product": p.get("name", ""), "product_id": p.get("id", "")})
+    m = load_listed(data_dir).get(key)
+    if m:
+        out["manual"] = m
+    pl = load_panel_lines(data_dir)["panels"]
+    today = renew._today()
+    for p in cfg["panels"]:
+        pdata = panel_data_for(pl, p)
+        rec = (pdata or {}).get("by_user", {}).get(key)
+        if not rec:
+            continue
+        es = expiry_status(rec.get("exp"), today, 0)
+        expired = (bool(es["expired"]) or str(rec.get("status") or "").lower() in ("expired", "disabled", "banned")
+                   or es["days_left"] == 0)
+        out["expired"] = out["expired"] or expired
+        gk = (p.get("account_id", ""), p.get("gate_id", ""))
+        if key in (split or {}).get(gk, set()):
+            out["split"].append(p["name"])
+        out["panels"].append({"panel": p["name"], "exp": rec.get("exp", ""), "status": rec.get("status", ""),
+                              "days_left": es["days_left"], "expired": expired})
+    if not out["panels"]:
+        out["reason"] = "ليس في يوزرات أي لوحة مسحوبة (اسحب اللوحات أولًا)"
+    elif out["sold"]:
+        out["reason"] = "مبيع في سلة: طلب %s" % "، ".join(str(x["order"]) for x in out["sold"][:5])
+    elif out["split"]:
+        out["reason"] = "مجزَّأ: مسجَّل في «حسابات متبقية» (%s)" % "، ".join(out["split"])
+    elif out["listed"]:
+        out["reason"] = "معروض في مخزون أكواد سلة: %s" % "، ".join(x["product"] for x in out["listed"][:3])
+    elif out["manual"]:
+        out["reason"] = "معلَّم يدويًا «معروض في سلة» (%s)" % out["manual"].get("at", "")
+    elif out["expired"]:
+        out["reason"] = "منتهٍ (أو ينتهي اليوم) فيُخفى إلا مع «إظهار المنتهي»"
+    else:
+        out["reason"] = "غير معروض — يجب أن يظهر في القائمة؛ أعد الحساب"
+    return out
+
 # ============================ المقارنة ============================
 # الأصناف — كلٌّ صريحٌ ليُعرَض للمدير كما هو:
 OK = "ok"

@@ -505,6 +505,9 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <button class="ghost hidden" id="unlCopy" type="button">نسخ سطر التجزئة (مع Exp)</button>
           <a class="ghost hidden" id="dlUnlisted" href="#">تنزيل Excel</a></div>
         <p class="msg" id="unlMsg"></p>
+        <div class="acts" style="margin-top:8px"><input id="whyUser" class="ltr" placeholder="يوزر لا يظهر؟ اكتبه هنا" style="max-width:260px">
+          <button class="ghost" id="whyBtn" type="button">لماذا لا يظهر؟</button></div>
+        <p class="msg" id="whyMsg"></p>
         <details class="fold" style="margin-top:8px"><summary>المعلَّم يدويًا «معروض في سلة» <span id="markedCount"></span></summary>
           <p class="hint">يوزرات عرضتها في سلة بنفسك (إن وصل مخزون أكواد سلة مقنَّعًا فلم يُعرف منه). تبقى خارج «غير المعروض» حتى تُلغي تعليمها. لإلغاء التعليم: أبقِ في المربع السطور المراد إلغاؤها فقط ثم اضغط الزر.</p>
           <textarea id="markedList" rows="4" class="ltr"></textarea>
@@ -1352,6 +1355,16 @@ function renderUnlisted(d){
   note($('#unlMsg'), `${AR(UNL.length)} يوزرًا لم تُعرض للبيع · المبيع في سلة ${AR(d.store_sold)} · المعروض في مخزون سلة ${AR(d.salla_listed)} · المعلَّم يدويًا ${AR(d.manual_listed || 0)}${d.codes_built ? '' : ' (لم تُسحب أكواد سلة: كل غير المبيع يُعدّ غير معروض)'}${notPulled.length ? ` · ⚠️ لوحات بلا يوزرات مسحوبة: ${notPulled.join('، ')}` : ''}`, !notPulled.length);
   $('#unlSum').textContent = `${AR(UNL.length)} غير معروض`;
 }
+$('#whyBtn').onclick = async () => {
+  const u = $('#whyUser').value.trim();
+  if (!u) return;
+  const d = await api('/api/renew/unlisted-why?user=' + encodeURIComponent(u));
+  const parts = [d.reason];
+  if (d.panels && d.panels.length) parts.push('على اللوحة: ' + d.panels.map(p => `${p.panel} (ينتهي ${p.exp || '—'}${p.expired ? ' · منتهٍ' : ''})`).join('، '));
+  if (d.sold && d.sold.length) parts.push('الطلبات: ' + d.sold.map(x => `${x.order} ${x.product || ''} ${x.date || ''}`.trim()).join(' | '));
+  note($('#whyMsg'), parts.join(' — '), !!(d.panels && d.panels.length));
+};
+$('#whyUser').addEventListener('keydown', e => { if (e.key === 'Enter') $('#whyBtn').click(); });
 function pickedRows(){ return [...document.querySelectorAll('.unlPick:checked')].map(c => UNL[Number(c.dataset.i)]).filter(Boolean); }
 function pickedLines(){ return pickedRows().map(r => r.line); }
 $('#unlCopyCard').onclick = async () => {

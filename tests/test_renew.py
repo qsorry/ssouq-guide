@@ -374,6 +374,14 @@ class TestCredentials(unittest.TestCase):
     def test_bare_host_without_a_colon_needs_company(self):
         """«host http://x» بلا نقطتين يُقبل مع يوزر أو باسورد فقط — وإلا صار كل
         ذكرٍ لكلمة hosting هوستًا."""
+        # ملاحظة فالكون بالعربية (كما تحفظها سلة بـHTML)
+        got = renew_import.parse_credentials(
+            "📺 بيانات الاشتراك<br />———————————<br />🌐 الهوست: http://s.falconiptv.ink<br />"
+            "👤 اسم المستخدم: 123456789012<br />🔑 كلمة السر: 987654321098<br />📅 ينتهي في: 2028-07-25")
+        self.assertEqual(got, {"host": "http://s.falconiptv.ink", "username": "123456789012",
+                               "password": "987654321098"})
+        self.assertEqual(renew_import.parse_credentials("المستخدم: ab12cd كلمة المرور: x9y8z7 هوست: m.ink:80"),
+                         {"host": "http://m.ink:80", "username": "ab12cd", "password": "x9y8z7"})
         self.assertEqual(renew_import.parse_credentials("نحن أفضل hosting في السوق"), {})
         self.assertEqual(renew_import.parse_credentials("host example.com"), {})
         self.assertEqual(
