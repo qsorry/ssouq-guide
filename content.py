@@ -2012,6 +2012,8 @@ _MONTHS = ("يناير", "فبراير", "مارس", "أبريل", "مايو", "
 POST_LINES = {"movie": 8, "series": 5, "eps": 8}   # سطور كل قسمٍ لسيرفرٍ واحد، وتقلّ بعدد السيرفرات (ولا تنقص عن 3)
 POST_NAME = 60                # طول الاسم في السطر
 RLM = "‏"                # أول سطر العنصر: يبقى من اليمين وإن بدأ باسمٍ إنجليزي
+LRM = "‎"                # بعد الاسم الإنجليزي: قوسه وسنته معه، وما بعده من العربي لا يتقدّمه
+DOT = "▫️"                    # علامة العنصر في المنشور
 SEP = "━━━━━━━━━━━━"
 _WA_MARKS = str.maketrans({"*": "∗", "_": " ", "~": "-", "`": "'"})   # علامات تنسيق واتساب في الأسماء لا تنسّق شيئًا
 
@@ -2036,13 +2038,21 @@ def _wa(s):
 
 
 def _title(x, year=True):
+    """الاسم وسنته — والاسم اللاتيني يُختم بـ LRM فيبقى قوسه وسنته معه في سطرٍ من اليمين."""
     n = _wa(x.get("n"))
     n = n if len(n) <= POST_NAME else n[:POST_NAME - 1].rstrip() + "…"
-    return f"{n} ({x['y']})" if year and x.get("y") else n
+    n = f"{n} ({x['y']})" if year and x.get("y") else n
+    return n + LRM if re.search(r"[A-Za-z]", n) else n
 
 
 def _stars(x):
     return f" ⭐ {float(x['r']):.1f}" if x.get("r") else ""
+
+
+def _with(title, *info):
+    """«الاسم — تفاصيله» بفاصلٍ واضح، وRLM قبل التفاصيل العربية فلا تختلط بالاسم."""
+    info = " · ".join(p for p in info if p)
+    return f"{title} {RLM}— {info}" if info else title
 
 
 def _movie_line(x):
@@ -2050,35 +2060,34 @@ def _movie_line(x):
 
 
 def _series_line(x):
-    """«Shōgun (2024) · 10 حلقات ⭐ 8.7» — والمسلسل بأكثر من موسمٍ بعدد مواسمه."""
+    """«Shōgun (2024) — 10 حلقات ⭐ 8.7» — والمسلسل بأكثر من موسمٍ بعدد مواسمه."""
     seasons = [s for s in x["s"] if s]
     size = _count(len(seasons), N_SEASONS) if len(seasons) > 1 else _count(sum(x["s"].values()), N_EPISODES)
-    return f"{_title(x)} · {size}{_stars(x)}"
+    return _with(_title(x), size) + _stars(x)
 
 
 def _more_line(x):
-    """«The Boys · الموسم 4 · 3 حلقات» · «House of the Dragon · الموسم 2 (جديد) · 8 حلقات» — وما حدّثته اللوحة ولا يُعرف
-    كم جدّ فيه: موسمه الأخير وحلقاته «The Boys · الموسم 4 (8 حلقات)»."""
+    """«The Boys — الموسم 4 · 3 حلقات» · «House of the Dragon — الموسم 2 (جديد) · 8 حلقات» — وما حدّثته اللوحة ولا يُعرف
+    كم جدّ فيه: موسمه الأخير وحلقاته «The Boys — الموسم 4 (8 حلقات)»."""
     if not x["add"]:
         s, n = x.get("cur") or (0, 0)
-        return f"{_title(x, year=False)} · الموسم {s} ({_count(n, N_EPISODES)})" if s else \
-            f"{_title(x, year=False)} ({_count(n, N_EPISODES)})"
+        return _with(_title(x, year=False), f"الموسم {s} ({_count(n, N_EPISODES)})" if s else _count(n, N_EPISODES))
     ss = sorted(s for s in x["add"] if s)
     if len(ss) == 1:
         where = f"الموسم {ss[0]}" + (" (جديد)" if x["add"][ss[0]][2] else "")
     else:
         where = "المواسم " + "، ".join(map(str, ss[:-1])) + f" و{ss[-1]}" if ss else ""
     eps = _count(sum(a[0] for a in x["add"].values()), N_EPISODES)
-    return " · ".join(p for p in (_title(x, year=False), where, eps) if p)
+    return _with(_title(x, year=False), where, eps)
 
 
 def _lines(rows, limit, line, forms):
     """سطور القسم بأوّلها والباقي عدد — وواحدٌ زائد يُعرض بدل «ووحدٌ غيره»."""
     if len(rows) == limit + 1:
         limit += 1
-    out = [f"{RLM}• {line(x)}" for x in rows[:limit]]
+    out = [f"{RLM}{DOT} {line(x)}" for x in rows[:limit]]
     if len(rows) > limit:
-        out.append(f"{RLM}   …و{_count(len(rows) - limit, forms)} غيرها")
+        out.append(f"{RLM}➕ و{_count(len(rows) - limit, forms)} غيرها")
     return out
 
 
@@ -2118,16 +2127,18 @@ def channel_text(data_dir, keys, since, until, now=None):
     lim = {k: max(3, v * 2 // (len(parts) + 1)) for k, v in POST_LINES.items()}
     out = [f"🆕 *أضيف مؤخرًا{' في ' + _wa(parts[0][0]['name']) if single else ''}*", f"🗓️ {ar_date(now)}"]
     for s, movies, fresh, more, n in parts:
-        out += ["", f"✨ الجديد: {_counts(n)}"] if single else ["", SEP, f"📡 *{_wa(s['name'])}*", f"✨ {_counts(n)}"]
+        out += [f"✨ الجديد: {_counts(n)}", SEP] if single else ["", SEP, f"📡 *{_wa(s['name'])}*", f"✨ {_counts(n)}"]
         if movies:
-            out += ["", "🎬 *أفلام جديدة*"] + _lines(sorted(movies.values(), key=rank), lim["movie"], _movie_line, N_MOVIES)
+            out += ["", f"🎬 *أفلام جديدة* ({len(movies)})"] + _lines(sorted(movies.values(), key=rank), lim["movie"],
+                                                                      _movie_line, N_MOVIES)
         if fresh:
-            out += ["", "📺 *مسلسلات جديدة*"] + _lines(sorted(fresh.values(), key=rank), lim["series"], _series_line, N_SERIES)
+            out += ["", f"📺 *مسلسلات جديدة* ({len(fresh)})"] + _lines(sorted(fresh.values(), key=rank), lim["series"],
+                                                                         _series_line, N_SERIES)
         if more:
-            out += ["", "🎞️ *حلقات ومواسم جديدة*"] + _lines(sorted(more.values(), key=rank_more), lim["eps"],
-                                                             _more_line, N_SERIES)
+            out += ["", f"🎞️ *حلقات ومواسم جديدة* ({len(more)})"] + _lines(sorted(more.values(), key=rank_more), lim["eps"],
+                                                                            _more_line, N_SERIES)
         link = f"{guide_pages.SITE}{PATH}/{s['key']}?t=new&ref=wa"    # ref=wa: زيارات القناة باسمها في الإحصائيات
-        out += ["", "🔗 القائمة كاملة، وابحث باسم ما تريد:", link] if single else ["", f"🔗 القائمة كاملة: {link}"]
+        out += ["", SEP, "🔗 *القائمة كاملة، وابحث باسم ما تريد:*", link] if single else ["", f"🔗 القائمة كاملة: {link}"]
     return "\n".join(out), total
 
 

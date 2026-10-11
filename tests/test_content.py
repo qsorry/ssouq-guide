@@ -581,13 +581,13 @@ def unit_panel():
     yr = time.gmtime(T + C.RIYADH).tm_year
     C._write(C._cat_path(d, "falcon"), panel_cat(T, yr))
     C.set_hidden(d, "falcon", C._gid("movie", "Hidden"), True)
-    R = C.RLM
+    R, L, D = C.RLM, C.LRM, C.DOT
     text, n = C.channel_text(d, ["falcon"], T - 86400, T, now=T)
     check("بلا سجلٍّ بعد: ما أضافته اللوحة في اليوم، والمخفي لا يُعدّ", n == {"movie": 1, "series": 2, "eps": 0}
-          and "✨ الجديد: فيلم واحد · مسلسلان" in text and f"{R}• Fresh Movie ({yr}) ⭐ 7.5" in text
+          and "✨ الجديد: فيلم واحد · مسلسلان" in text and f"{R}{D} Fresh Movie ({yr}){L} ⭐ 7.5" in text
           and "Week Old" not in text and "Hidden" not in text and "No Date" not in text, text)
-    check("والمسلسل بموسمه الأخير وحلقاته (لا يُعرف كم جدّ فيه)", f"{R}• The Boys · الموسم 4 (5 حلقات)" in text
-          and f"{R}• قيامة أرطغرل (47 حلقة)" in text and "Old Show" not in text, text)
+    check("والمسلسل بموسمه الأخير وحلقاته (لا يُعرف كم جدّ فيه)", f"{R}{D} The Boys{L} {R}— الموسم 4 (5 حلقات)" in text
+          and f"{R}{D} قيامة أرطغرل {R}— 47 حلقة" in text and "Old Show" not in text, text)
     text, n = C.channel_text(d, ["falcon"], T - 7 * 86400, T, now=T)
     check("وفي أسبوع: ما أضيف فيه", n["movie"] == 2 and "Week Old (2024)" in text and "Month Old" not in text, n)
 
@@ -647,40 +647,42 @@ def unit_channel():
     C.set_hidden(d, "casper", "gh", True)
     text, n = C.channel_text(d, ["casper"], T - 3 * 86400, T, now=T)
     lines = text.split("\n")
-    check("العنوان باسم السيرفر وتاريخ اليوم بتوقيت السعودية", lines[:2] == ["🆕 *أضيف مؤخرًا في كاسبر*", "🗓️ " + C.ar_date(T)], lines[:2])
+    check("العنوان باسم السيرفر وتاريخ اليوم بتوقيت السعودية، ثم الأعداد وفاصل", lines[:2] == ["🆕 *أضيف مؤخرًا في كاسبر*", "🗓️ " + C.ar_date(T)]
+          and lines[3] == C.SEP, lines[:4])
     check("والأعداد: المخفي والقديم لا يُعدّان، والمسلسلات ما جدّ فيه شيء، وحلقات المسلسل الجديد منها",
           n == {"movie": 4, "series": 5, "eps": 77} and "✨ الجديد: 4 أفلام · 5 مسلسلات · 77 حلقة" in lines, (n, lines[3:5]))
-    R = C.RLM
+    R, L, D = C.RLM, C.LRM, C.DOT
     block = lambda title: lines[lines.index(title) + 1:lines.index("", lines.index(title))]  # noqa: E731
     check("الأفلام: الإصدارات الحديثة أولًا ثم الأعلى تقييمًا، وعلامات التنسيق في الاسم لا تنسّق",
-          block("🎬 *أفلام جديدة*") == [f"{R}• New Better ({yr - 1}) ⭐ 8.4", f"{R}• New Hit ({yr}) ⭐ 7.1",
-                                        f"{R}• Old Classic (1972) ⭐ 9.2", f"{R}• M∗A∗S∗H 2"], block("🎬 *أفلام جديدة*"))
+          block("🎬 *أفلام جديدة* (4)") == [f"{R}{D} New Better ({yr - 1}){L} ⭐ 8.4", f"{R}{D} New Hit ({yr}){L} ⭐ 7.1",
+                                            f"{R}{D} Old Classic (1972){L} ⭐ 9.2", f"{R}{D} M∗A∗S∗H 2{L}"], block("🎬 *أفلام جديدة* (4)"))
     check("المسلسلات الجديدة بمواسمها أو حلقاتها، وما جدّ بعدها من حلقاتٍ فيها",
-          block("📺 *مسلسلات جديدة*") == [f"{R}• The Office (2005) · 3 مواسم ⭐ 8.9", f"{R}• Shogun ({yr - 2}) · 12 حلقة ⭐ 8.7"],
-          block("📺 *مسلسلات جديدة*"))
+          block("📺 *مسلسلات جديدة* (2)") == [f"{R}{D} The Office (2005){L} {R}— 3 مواسم ⭐ 8.9",
+                                              f"{R}{D} Shogun ({yr - 2}){L} {R}— 12 حلقة ⭐ 8.7"],
+          block("📺 *مسلسلات جديدة* (2)"))
     check("والحلقات: الموسم الجديد أولًا، وحلقات كل سحبٍ مجموعة",
-          block("🎞️ *حلقات ومواسم جديدة*") == [f"{R}• House of the Dragon · الموسم 2 (جديد) · 8 حلقات",
-                                                f"{R}• The Boys · الموسم 4 · 4 حلقات", f"{R}• قيامة أرطغرل · حلقتان"],
-          block("🎞️ *حلقات ومواسم جديدة*"))
-    check("ورابط «أضيف مؤخرًا» في صفحة السيرفر آخرًا", lines[-2:] == ["🔗 القائمة كاملة، وابحث باسم ما تريد:",
-                                                                   "https://guide.ssouq.com/content/casper?t=new&ref=wa"], lines[-2:])
+          block("🎞️ *حلقات ومواسم جديدة* (3)") == [f"{R}{D} House of the Dragon{L} {R}— الموسم 2 (جديد) · 8 حلقات",
+                                                    f"{R}{D} The Boys{L} {R}— الموسم 4 · 4 حلقات", f"{R}{D} قيامة أرطغرل {R}— حلقتان"],
+          block("🎞️ *حلقات ومواسم جديدة* (3)"))
+    check("ورابط «أضيف مؤخرًا» في صفحة السيرفر آخرًا", lines[-3:] == [C.SEP, "🔗 *القائمة كاملة، وابحث باسم ما تريد:*",
+                                                                   "https://guide.ssouq.com/content/casper?t=new&ref=wa"], lines[-3:])
     check("وما قبل الفترة وبعدها لا يدخل", C.channel_text(d, ["casper"], T, T + 60)[0] == ""
           and "Too Old" not in text and "Hidden" not in text)
     check("والسيرفر غير المختار لا يدخل", C.channel_text(d, ["smart"], 0, T + 60)[0] == "")
 
     journal(d, "smart", [{"t": T - 60, "k": "movie", "h": f"x{i}", "n": f"Film {i:02d}", "y": 2020, "gs": ["g"]} for i in range(12)])
     t2, n2 = C.channel_text(d, ["smart"], T - 3600, T)
-    check("الحدّ: 8 أفلام والباقي عدد", t2.count(f"{R}• Film") == 8 and f"{R}   …و4 أفلام غيرها" in t2, t2)
+    check("الحدّ: 8 أفلام والباقي عدد", t2.count(f"{R}{D} Film") == 8 and f"{R}➕ و4 أفلام غيرها" in t2, t2)
     journal(d, "smart", [{"t": T - 60, "k": "movie", "h": f"x{i}", "n": f"Film {i:02d}", "y": 2020, "gs": ["g"]} for i in range(9)])
     t2, _ = C.channel_text(d, ["smart"], T - 3600, T)
-    check("وواحدٌ زائد يُعرض بدل «وواحدٌ غيره»", t2.count(f"{R}• Film") == 9 and "غيرها" not in t2)
+    check("وواحدٌ زائد يُعرض بدل «وواحدٌ غيره»", t2.count(f"{R}{D} Film") == 9 and "غيرها" not in t2)
     t3, n3 = C.channel_text(d, ["smart", "casper"], T - 3 * 86400, T, now=T)
     l3 = t3.split("\n")
     check("سيرفران: عنوانٌ عام، وقسمٌ لكلٍّ بترتيب الصفحة وأعداده ورابطه",
           l3[0] == "🆕 *أضيف مؤخرًا*" and l3.count(C.SEP) == 2 and l3.index("📡 *كاسبر*") < l3.index("📡 *سمارت*")
           and "✨ 9 أفلام" in l3 and "🔗 القائمة كاملة: https://guide.ssouq.com/content/smart?t=new&ref=wa" in l3
           and "🔗 القائمة كاملة: https://guide.ssouq.com/content/casper?t=new&ref=wa" in l3 and n3["movie"] == 13, t3[:300])
-    check("وسطور كل قسمٍ أقلّ", t3.count(f"{R}• Film") == 5 and "…و4 أفلام غيرها" in t3, t3.count(f"{R}• Film"))
+    check("وسطور كل قسمٍ أقلّ", t3.count(f"{R}{D} Film") == 5 and "و4 أفلام غيرها" in t3, t3.count(f"{R}{D} Film"))
 
     print("القناة: ربطها ومنشورها في ساعته")
     posts = []
@@ -2116,8 +2118,8 @@ def live_channel():
         code, d = jpost(adm + "/api/content/admin/channel-preview", {})
         text = d["preview"]["text"]
         check("المعاينة: المنشور كما سيُنشر", code == 200 and text.startswith("🆕 *أضيف مؤخرًا في كاسبر*")
-              and "Dune: Part Two (2024)" in text and "Shogun · حلقتان" in text
-              and "Breaking Bad · المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new&ref=wa")
+              and "Dune: Part Two (2024)" in text and "Shogun\u200e \u200f— حلقتان" in text
+              and "Breaking Bad\u200e \u200f— المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new&ref=wa")
               and len(rd("GET", "/_test/log")["sent"]) == 0, text)
         code, d = jpost(adm + "/api/content/admin/channel-preview", {"servers": ["smart"]})
         check("وبسيرفراتٍ لم تُحفظ", code == 200 and d["preview"]["text"] == "")

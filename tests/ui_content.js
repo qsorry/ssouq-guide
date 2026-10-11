@@ -464,7 +464,7 @@ function konList(more) {
     await ap.waitForSelector('#cBox:not([hidden])');
     const bub = await ap.$eval('#cText', e => ({html: e.innerHTML, text: e.textContent, href: (e.querySelector('a') || {}).href}));
     check('المعاينة فقاعة واتساب: العريض عريض، والرابط رابط', bub.html.includes('<b>أضيف مؤخرًا في كون</b>')
-          && bub.html.includes('<b>أفلام جديدة</b>') && bub.text.includes('Dune: Part Two (2024)') && bub.text.includes('Shogun · حلقة واحدة')
+          && bub.html.includes('<b>أفلام جديدة</b>') && bub.text.includes('Dune: Part Two (2024)') && bub.text.includes('Shogun\u200e \u200f— حلقة واحدة')
           && bub.href === 'https://guide.ssouq.com/content/kon?t=new&ref=wa', bub.text.slice(0, 160));
     check('وحجمها', (await ap.textContent('#cSize')).includes('فيلمان · مسلسلان · حلقتان'));
     check('بلا تمرير أفقي والمعاينة ظاهرة', await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth
@@ -484,8 +484,8 @@ function konList(more) {
     await ap.click('#cPrev');
     await ap.waitForFunction(() => document.querySelector('#cText').textContent.includes('فالكون'), null, {timeout: 15000});
     const bub2 = await ap.textContent('#cText');
-    check('و«أضيف مؤخرًا» في صفحة سيرفرٍ مُثرًى يدخل المعاينة من تاريخ إضافته في واجهته', bub2.includes('F1 The Movie (2025) ⭐ 7.8')
-          && bub2.includes('Stranger Things · الموسم 5 (9 حلقات)') && !bub2.includes('Oppenheimer')
+    check('و«أضيف مؤخرًا» في صفحة سيرفرٍ مُثرًى يدخل المعاينة من تاريخ إضافته في واجهته', bub2.includes('F1 The Movie (2025)\u200e ⭐ 7.8')
+          && bub2.includes('Stranger Things\u200e \u200f— الموسم 5 (9 حلقات)') && !bub2.includes('Oppenheimer')
           && (await ap.textContent('#cMsg')).includes('آخر 7 أيام'), bub2.slice(0, 240));
 
     check('بلا أخطاء سكربت', errors.length === 0, errors.join(' | '));
