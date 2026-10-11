@@ -553,6 +553,13 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <thead><tr><th>اليوزر</th><th>اللوحة</th><th>العميل (اللاحق)</th><th>الطلب</th><th>المتبقي</th><th>أشهر البديل</th><th></th></tr></thead>
       <tbody id="dupBody"></tbody></table></div>
     <p class="msg" id="dupMsg"></p>
+    <details class="blk fold" id="blkDupLog" style="margin-top:12px">
+      <summary><span class="bi c-slate"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        <span class="st"><b>سجل الرسائل المرسلة</b><small id="dupLogSum">كل محاولة إرسال: متى، لمن، من أي قناة، ونجحت أم لا</small></span></summary>
+      <div class="din"><div class="acts"><button class="ghost" id="dupLogLoad" type="button">حدّث السجل</button></div>
+        <div class="scroll"><table class="rt"><thead><tr><th>الوقت</th><th>المستلم</th><th>النوع</th><th>الطلب</th><th>القناة</th><th>الحالة</th><th>النص</th></tr></thead>
+          <tbody id="dupLogBody"></tbody></table></div></div>
+    </details>
     <div id="dupMsgs" class="hidden"><h4 style="margin:14px 0 6px">رسائل العملاء <small id="dupWaNote"></small></h4>
       <p class="hint">كل رسالة قابلة للتعديل قبل الإرسال: إما عبر الرقم المربوط، أو واتساب يدوي (يفتح المحادثة بالنص جاهزًا).</p>
       <div id="dupMsgList"></div></div>
@@ -1641,12 +1648,14 @@ async function loadDup(){
 }
 function renderDup(d){
   const all = $('#dupAll').checked;
-  const rows = DUP.filter(r => all || (!r.done && !r.expired));
+  const rows = DUP.filter(r => all || (!r.done && !r.expired) || (r.done && !r.done.renamed));
   $('#dupTiles').innerHTML = `<div class="stat"><b class="${d.pending ? 'c-warn' : ''}">${AR(d.pending)}</b><small>يحتاج بديلًا</small></div>`
     + `<div class="stat"><b>${AR(d.done)}</b><small>أُنشئ بديله</small></div><div class="stat"><b>${AR(d.expired)}</b><small>منتهٍ</small></div>`;
   $('#dupBody').innerHTML = rows.map(r => {
     const i = DUP.indexOf(r);
-    const act = r.done ? `<span class="c-ok">✓ ${esc(r.done.new)}</span>`
+    const rn = !r.done ? '' : r.done.renamed ? `<br><small class="c-ok">القديم ← ${esc(r.done.renamed.to)} ✓</small>`
+      : `<br><small class="c-bad">القديم لم يُغيَّر${r.done.rename_error ? ': ' + esc(r.done.rename_error) : ''}</small> <button class="ghost dupRn" data-i="${i}" type="button">غيّر القديم الآن</button>`;
+    const act = r.done ? `<span class="c-ok">✓ ${esc(r.done.new)}</span>${rn}`
       : r.expired ? '<span class="c-bad">منتهٍ</span>'
       : r.can_create ? `<button class="go dupMk" data-i="${i}" type="button">أنشئ بديلًا</button>`
       : '<small>اربط اللوحة ببوابة</small>';
@@ -1659,6 +1668,14 @@ function renderDup(d){
   $('#dupWrap').classList.toggle('hidden', !rows.length);
   note($('#dupMsg'), rows.length ? '' : (DUP.length ? 'لا شيء يحتاج بديلًا الآن.' : 'لا يوجد مبيع مكرّر في الاشتراكات المسحوبة.'), true);
   $('#dupBody').querySelectorAll('.dupMk').forEach(b => b.onclick = () => makeDup(Number(b.dataset.i), b));
+  $('#dupBody').querySelectorAll('.dupRn').forEach(b => b.onclick = async () => {
+    const r = DUP[Number(b.dataset.i)];
+    if (!confirm(`تغيير اسم ${r.username} على اللوحة وتجهيز رسالة لصاحبه الأول ${r.first_customer || r.first_phone || ''}؟`)) return;
+    b.disabled = true; b.textContent = 'جارٍ التغيير…';
+    const d = await post('/api/renew/dup-rename', {order: r.order, username: r.username});
+    note($('#dupMsg'), d.ok ? `غُيّر ${d.renamed.from} إلى ${d.renamed.to} — الرسالة جاهزة أدناه` : (d.error || 'تعذّر التغيير'), !!d.ok);
+    loadDup();
+  });
 }
 async function makeDup(i, btn){
   const r = DUP[i]; if (!r) return;
@@ -1681,7 +1698,7 @@ async function makeDup(i, btn){
 let DUPWA = false;
 function renderDupMsgs(msgs){
   $('#dupMsgs').classList.toggle('hidden', !msgs.length);
-  $('#dupWaNote').textContent = DUPWA ? '(الرقم المربوط جاهز)' : '(لا رقم مربوط: استعمل واتساب اليدوي)';
+  $('#dupWaNote').textContent = DUPWA ? '(رقم المسابقة/الخدمة جاهز)' : '(لا رقم مربوط: افتح المسابقة واربط الرقم، أو استعمل اليدوي)';
   $('#dupMsgList').innerHTML = msgs.map((m, k) => {
     const sent = m.sent && m.sent.ok ? `<span class="c-ok">✓ أُرسلت ${m.sent.how === 'manual' ? 'يدويًا' : 'عبر الرقم المربوط'}</span>`
       : (m.sent && m.sent.error ? `<span class="c-bad">${esc(m.sent.error)}</span>` : '');
@@ -1696,7 +1713,7 @@ function renderDupMsgs(msgs){
   document.querySelectorAll('.dupSend').forEach(b => b.onclick = async () => {
     const m = msgs[b.dataset.k]; b.disabled = true; b.textContent = 'جارٍ الإرسال…';
     const d = await post('/api/renew/dup-send', {order: m.order, idx: m.idx, text: txt(b.dataset.k), mode: 'wa'});
-    note($('#dupMsg'), d.ok ? 'أُرسلت ✓' : (d.error || 'تعذّر الإرسال'), !!d.ok); loadDup();
+    note($('#dupMsg'), d.ok ? 'أُرسلت ✓' : (d.error || 'تعذّر الإرسال'), !!d.ok); loadDup(); if ($('#blkDupLog').open) loadDupLog();
   });
   document.querySelectorAll('.dupMan').forEach(a => {
     const m = msgs[a.dataset.k];
@@ -1708,6 +1725,17 @@ function renderDupMsgs(msgs){
   });
   document.querySelectorAll('.dupCp').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(txt(b.dataset.k)); note($('#dupMsg'), 'نُسخ ✓', true); } catch(e){} });
 }
+async function loadDupLog(){
+  const d = await api('/api/renew/dup-log'); const L = d.log || [];
+  const how = {wa: 'الرقم المربوط', contest: 'رقم المسابقة', manual: 'يدوي'};
+  $('#dupLogSum').textContent = L.length ? `${AR(L.length)} محاولة — آخرها ${L[0].at}` : 'لا رسائل مرسلة بعد';
+  $('#dupLogBody').innerHTML = L.map(r => `<tr><td class="ltr">${esc(r.at)}</td><td>${esc(r.name) || '—'}<br><small class="ltr">${esc(r.phone)}</small></td>`
+    + `<td>${r.kind === 'old' ? 'القديم (اسم جديد)' : 'البديل'}</td><td class="ltr">${esc(r.order)}</td><td>${how[r.how] || esc(r.how)}</td>`
+    + `<td>${r.ok ? '<span class="c-ok">✓ أُرسلت</span>' : '<span class="c-bad">' + (esc(r.error) || 'فشل') + '</span>'}</td>`
+    + `<td><details><summary>عرض</summary><pre style="white-space:pre-wrap;margin:4px 0">${esc(r.text)}</pre></details></td></tr>`).join('');
+}
+$('#dupLogLoad').onclick = loadDupLog;
+$('#blkDupLog').addEventListener('toggle', e => { if (e.target.open) loadDupLog(); });
 $('#doDup').onclick = loadDup;
 $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
 

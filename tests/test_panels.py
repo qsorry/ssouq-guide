@@ -378,8 +378,32 @@ def test_dup_create():
               and "User 777888999000 Pass oldpw" in body["messages"][1]["text"], str(body["messages"]))
         check("done is recorded with the messages", panels.duplicates(cfg, d)["rows"][0]["done"]["msgs"][1]["kind"] == "old")
         check("messages listed for sending", len(panels.dupe_messages(d)) == 2)
+        # القناة: رقم المسابقة المتصل أولًا
+        sent = {}
+        keep_rs, keep_rsend = X.reader_status, X.reader_send
+        X.reader_status = lambda *a, **k: {"status": "connected"}
+        X.reader_send = lambda to, text: sent.setdefault("x", (to, text)) and {"ok": True}
+        r_, how_ = X.dup_wa_send({"service": {}}, "966500000002", "hi")
+        check("dup_wa_send prefers the connected contest number", how_ == "contest" and r_["ok"] and sent["x"] == ("966500000002", "hi") and X.dup_wa_ready({"service": {}}))
+        X.reader_status = lambda *a, **k: {"status": "disconnected"}
+        check("no channel when contest is down and service wa is off", not X.dup_wa_ready({"service": {"wa": {"type": "none"}}}))
+        X.reader_status, X.reader_send = keep_rs, keep_rsend
+        panels.log_dup_send(d, {"order": "2", "kind": "new", "name": "n", "phone": "9665", "text": "t"}, "contest", False, "boom")
+        panels.log_dup_send(d, {"order": "2", "kind": "new", "name": "n", "phone": "9665", "text": "t2"}, "contest", True)
+        lg = panels.load_dup_log(d)
+        check("send log is append-only, newest first, failures kept", len(lg) == 2 and lg[0]["ok"] and not lg[1]["ok"] and lg[1]["error"] == "boom", str(lg))
         code2, body2 = X.dup_create([acct], cfg, d, {"order": "2", "username": "999000111222"})
         check("a second create for the same order is refused", code2 == 400, str(body2))
+        check("old-owner message uses the security wording", "لوجود خطر على الحساب" in body["messages"][1]["text"])
+        # قديمٌ لم يُغيَّر (فشل) ثم يُعاد بالزر
+        panels.update_dupe(d, "2", {"renamed": None, "rename_error": "x"})
+        panels.load_dupes_done(d)["2"]["msgs"].pop()
+        calls.pop("rename", None)
+        code3, body3 = X.dup_rename([acct], cfg, d, {"order": "2", "username": "999000111222"})
+        check("dup_rename renames the old user and adds the message", code3 == 200 and calls.get("rename")
+              and body3["renamed"]["to"] == "777888999000", str(body3))
+        code4, _ = X.dup_rename([acct], cfg, d, {"order": "2", "username": "999000111222"})
+        check("dup_rename twice is refused", code4 == 400)
         panels.set_dupe_msg(d, "2", 0, sent={"ok": True, "how": "manual"})
         check("message can be marked sent", panels.dupe_messages(d)[0]["sent"] or panels.dupe_messages(d)[1]["sent"])
     finally:
