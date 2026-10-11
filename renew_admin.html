@@ -561,7 +561,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <b id="dupConnT"></b>
       <p class="hint">اليوزر القديم في بوابة «أرشيف فقط» لا تدخل اللوحة. اربطها هنا: تُلغى صفة الأرشيف وتُحفظ بيانات الدخول، ثم يُغيَّر اسم القديم. الكابتشا تكتبها أنت.</p>
       <div class="acts"><input id="dcBase" placeholder="رابط اللوحة https://…" class="ltr"><input id="dcUser" placeholder="اسم دخول اللوحة" class="ltr"><input id="dcPass" type="password" placeholder="كلمة المرور" class="ltr"></div>
-      <div id="dcCap" class="hidden acts"><img id="dcImg" alt="captcha" style="height:44px;border-radius:8px;background:#fff"><button class="ghost" id="dcReload" type="button">↻</button><input id="dcCode" placeholder="الكود" class="ltr" style="width:110px"></div>
+      <div id="dcCap" class="hidden acts"><img id="dcImg" alt="captcha" style="height:44px;border-radius:8px;background:#fff"><button class="ghost" id="dcReload" type="button">↻</button><input id="dcCode" placeholder="الكود" class="ltr" style="width:110px"><small id="dcErr" class="c-bad"></small></div>
       <div class="acts"><button class="go" id="dcGo" type="button">اربط وغيّر القديم</button><button class="ghost" id="dcCancel" type="button">إلغاء</button></div>
     </div>
   </section>
@@ -1725,11 +1725,20 @@ let DUPCONN = null;
 function dupConnOpen(list, req){
   const g = list[0]; DUPCONN = {g, req};
   $('#dupConnT').textContent = 'ربط بوابة الأرشيف «' + (g.name || '') + '»';
-  $('#dcBase').value = g.panel_base || g.host || ''; $('#dcUser').value = g.panel_user || ''; $('#dcPass').value = '';
+  $('#dcBase').value = g.panel_base || ''; $('#dcBase').placeholder = 'رابط لوحة الدخول (ليس هوست البث) ' + (g.host || ''); $('#dcUser').value = g.panel_user || ''; $('#dcPass').value = '';
   $('#dcCap').classList.add('hidden'); $('#dcCode').value = '';
   $('#dupConn').classList.remove('hidden'); $('#dupConn').scrollIntoView({block: 'nearest'});
 }
-const dcImg = () => { const g = DUPCONN.g; $('#dcImg').src = '/api/renew/dup-captcha?account=' + encodeURIComponent(g.account_id) + '&gate=' + encodeURIComponent(g.gate_id) + '&t=' + Date.now(); };
+async function dcImg(){
+  const g = DUPCONN.g, im = $('#dcImg'), er = $('#dcErr');
+  er.textContent = 'جارٍ تحميل الكود…'; im.removeAttribute('src');
+  try {
+    const r = await fetch('/api/renew/dup-captcha?account=' + encodeURIComponent(g.account_id) + '&gate=' + encodeURIComponent(g.gate_id) + '&t=' + Date.now(), {credentials: 'same-origin'});
+    if (r.ok && (r.headers.get('content-type') || '').startsWith('image/')) { im.src = URL.createObjectURL(await r.blob()); er.textContent = ''; return; }
+    let m = ''; try { m = (await r.json()).error || ''; } catch (e) {}
+    er.textContent = m || ('تعذّر تحميل الكود (HTTP ' + r.status + ')');
+  } catch (e) { er.textContent = 'تعذّر تحميل الكود'; }
+}
 $('#dcReload').onclick = dcImg;
 $('#dcCancel').onclick = () => { DUPCONN = null; $('#dupConn').classList.add('hidden'); };
 $('#dcGo').onclick = async () => {
