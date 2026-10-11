@@ -1402,6 +1402,21 @@ class PanelWebSession:
         except Exception:
             return ""
 
+    @staticmethod
+    def _bouquet_diag(page):
+        """لقطة قصيرة من صفحة التعديل لتشخيص شكل البوكيهات (بلا بيانات سرّية: مقاطع حول كلمة bouquet فقط)."""
+        snips = []
+        for m in re.finditer(r"bouquet", page, re.I):
+            a = max(0, m.start() - 50)
+            sn = re.sub(r"\s+", " ", page[a:m.end() + 90])
+            if sn not in snips and not re.search(r"(?i)pass", sn):
+                snips.append(sn)
+            if len(snips) >= 3:
+                break
+        sel = len(re.findall(r"<tr\b[^>]*\bselected\b", page, re.I))
+        return " [صفوف محدَّدة: %d، جداول: %d%s]" % (sel, len(re.findall(r"<table\b", page, re.I)),
+                                                      (" · " + " | ".join(snips)) if snips else "")
+
     def _fill_bouquets(self, picked, pairs, page, package_hint=""):
         """البوكيهات (القنوات): حقلٌ تملؤه واجهة اللوحة بالجافاسكربت عادةً. إن جاء فارغًا
         نملؤه بما للخط (الصفوف المحدَّدة في جدول بوكيهات الصفحة، وإلا بوكيهات باقته كما
@@ -1421,6 +1436,19 @@ class PanelWebSession:
                         td = re.search(r"<td\b[^>]*>\s*(\d+)\s*</td>", tr.group(2), re.I)
                         if td:
                             ids.append(int(td.group(1)))
+            if not ids:                    # صفوف محدَّدة في أي جدول بالصفحة، أو مصفوفة معرّفات في سكربتها
+                for tr in re.finditer(r"<tr\b([^>]*)>(.*?)</tr>", page, re.I | re.S):
+                    if re.search(r"\bselected\b", _attr(tr.group(1), "class") or "", re.I):
+                        td = re.search(r"<td\b[^>]*>\s*(\d+)\s*</td>", tr.group(2), re.I)
+                        if td:
+                            ids.append(int(td.group(1)))
+            if not ids:
+                for m in re.finditer(r"selected_?bouquets[\"'\]\s)(.:=,val]{0,40}?(\[[\d\s,\"']+\])",
+                                     page, re.I):
+                    got = [int(x) for x in re.findall(r"\d+", m.group(1))]
+                    if got:
+                        ids = got
+                        break
             if not ids:
                 pkg = next((v for k, v in serialize_form(fs) if re.search(r"package", k, re.I) and v), "") \
                     or self._package_id_by_name(package_hint)
@@ -1431,7 +1459,7 @@ class PanelWebSession:
                     or package_hint
                 raise EditUnsupported("تعذّر قراءة بوكيهات الخط من صفحة التعديل — غيّر اسم المستخدم "
                                       "يدويًا لئلا تُمسح قنواته (حقل: %s، باقة الخط: %s، %s)" % (
-                                          name, pkg_n or "غير معروفة", why or "بلا جدول بوكيهات مُحدَّد في الصفحة"))
+                                          name, pkg_n or "غير معروفة", why or "بلا جدول بوكيهات مُحدَّد في الصفحة") + self._bouquet_diag(page))
             f = next(x for x in fs if x["name"] == name)
             if f["kind"] == "input" and f["type"] not in ("checkbox", "radio"):
                 pairs = self._set_pair(pairs, name, json.dumps(ids))

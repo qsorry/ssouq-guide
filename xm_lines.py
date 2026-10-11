@@ -3023,9 +3023,17 @@ def _dup_rename_old(acct, gate, row, accounts=None, cfg=None):
         if not found:
             continue
         try:
+            pkg_hint = found.get("package", "")
+            if not pkg_hint:                    # عمود الباقة غائب في جدول اللوحة: من لقطة الأرشيف المحفوظة
+                try:
+                    hit = next((r for r in users_export.search(DATA_DIR, a["id"], g["id"], row["username"], 5)
+                                if r["username"] == row["username"] and r.get("package")), None)
+                    pkg_hint = (hit or {}).get("package", "")
+                except Exception:
+                    pass
             newname = rand_digits(gate_digits(g))
             split_change(g, {"username": row["username"], "line_id": found.get("line_id", ""),
-                              "package": found.get("package", "")},
+                              "package": pkg_hint},
                          {"username": newname})
             line = format_line(g, newname, found.get("password") or row["password"])
             try:
