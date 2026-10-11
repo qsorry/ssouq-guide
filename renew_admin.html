@@ -1989,7 +1989,7 @@ $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
 
 /* ============ البحث برقم الطلب، والمفقود ============ */
 const LOST_STATE = {found: ['موجود', 'c-ok'], missing: ['مفقود — لا في لوحته ولا البديلة', 'c-bad'], replaced: ['مستبدل', ''],
-  host_unmapped: ['هوست غير مربوط بلوحة', 'c-warn'], not_pulled: ['لوحته لم تُسحب يوزراتها', 'c-warn'], no_user: ['بلا يوزر', 'c-warn']};
+  covered: ['للطلب يوزرٌ آخر موجود — هذا قديم أو مكرّر في سجلّ الطلب', ''], host_unmapped: ['هوست غير مربوط بلوحة', 'c-warn'], not_pulled: ['لوحته لم تُسحب يوزراتها', 'c-warn'], no_user: ['بلا يوزر', 'c-warn']};
 let LO = null;
 const lostState = r => { const s = LOST_STATE[r.state] || [r.state, ''];
   return `<span class="${s[1]}">${s[0]}</span>` + (r.state === 'found' && r.found_panel ? `<br><small>على ${esc(r.found_panel)}</small>` : '')
@@ -2006,7 +2006,7 @@ async function loFind(q){
     + `<td>${lostState(r)}</td><td>${esc(r.remaining) || '—'}</td>`
     + `<td>${r.state === 'missing' && !r.done && !r.expired ? `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>` : ''}`
     + ` <button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button></td></tr>`).join('');
-  let msg = rows.length ? `${AR(rows.length)} اشتراكًا` + (rows.some(r => r.state === 'missing') ? ' — فيه مفقود' : '') : '';
+  let msg = rows.length ? `${AR(rows.length)} يوزرًا` + (rows.some(r => r.state === 'missing') ? ' — فيه مفقود' : rows.some(r => r.state === 'covered') ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر في سجلّ الطلب' : '') : '';
   if (!rows.length && ix) msg = `الطلب موجود في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
     + (d.salla && d.salla.username ? ` · وُجد في سجلّ الطلب في سلة: ${d.salla.username}` : '');
   if (!rows.length && !ix) msg = 'لا طلب ولا يوزر بهذا الرقم في الاشتراكات المسحوبة — اسحب طلبات سلة من «البيانات» ثم أعد البحث';
@@ -2056,7 +2056,7 @@ function lsRender(d){
   LS = d; const c = d.counts || {};
   const tile = (n, lbl, cls) => `<div class="stat"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></div>`;
   $('#lsTiles').innerHTML = tile(d.pending, 'يحتاج اشتراكًا', d.pending ? 'c-warn' : '') + tile(d.done, 'أُنشئ له') + tile(c.found || 0, 'موجود على لوحة')
-    + tile(c.replaced || 0, 'مستبدل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
+    + (c.covered ? tile(c.covered, 'طلبه له يوزر موجود') : '') + tile(c.replaced || 0, 'مستبدل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
   $('#lsBody').innerHTML = d.rows.map((r, i) => {
     const act = r.done ? `<span class="c-ok">✓ ${esc(r.done.new)}</span>`
       : r.can_create ? `<button class="go lsMk" data-i="${i}" type="button">أنشئ</button>` : '<small>اربط اللوحة ببوابة</small>';
@@ -2069,7 +2069,7 @@ function lsRender(d){
   }).join('');
   $('#lsWrap').classList.toggle('hidden', !d.rows.length);
   $('#lsBulk').classList.toggle('hidden', !d.rows.some(r => !r.done && r.can_create));
-  const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.total)} مفقود · ${AR(c.found || 0)} موجود · ${AR(c.replaced || 0)} مستبدل · ${AR(c.expired || 0)} منتهٍ`
+  const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.total)} مفقود · ${AR(c.found || 0)} موجود · ${AR(c.covered || 0)} يوزرٌ زائد في طلبٍ له يوزر موجود · ${AR(c.replaced || 0)} مستبدل · ${AR(c.expired || 0)} منتهٍ`
     + (c.not_pulled ? ` · ${AR(c.not_pulled)} لوحته لم تُسحب` : '') + (c.host_unmapped ? ` · ${AR(c.host_unmapped)} هوسته غير مربوط` : '')
     + (d.export_users ? ` · قُورن بملفات Excel البوابات (${AR(d.export_users)} يوزرًا)` : ' · لا ملفات Excel للبوابات بعد');
   note($('#lsMsg'), !c.checked ? 'لا اشتراكات سلة مسحوبة بعد — اسحب الطلبات من «البيانات» أولًا'
