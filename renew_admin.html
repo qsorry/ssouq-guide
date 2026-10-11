@@ -77,6 +77,10 @@ section{background:var(--sf);border:1px solid var(--line);border-radius:20px;pad
   background:var(--sf);color:var(--ink);font-size:.84rem;font-weight:500;white-space:nowrap;text-decoration:none}
 .jump a svg{color:var(--mute);width:17px;height:17px}
 .jump a:hover{border-color:var(--go)}
+.jump a[aria-selected="true"]{background:var(--go);border-color:var(--go);color:#fff}
+.jump a[aria-selected="true"] svg{color:#fff}
+.tab-off{display:none !important}
+.jump{position:sticky;top:0;z-index:5;background:var(--bg,inherit);padding-top:8px}
 
 /* رأس كل بطاقة: أيقونة، والعنوان وسطره، وزرٌّ أو شارةٌ في آخره */
 .shead{display:flex;align-items:center;gap:12px;margin:0 0 14px}
@@ -315,12 +319,13 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <div><b id="hDry">—</b><small>الوضع</small></div>
     </div>
   </section>
-  <nav class="jump" aria-label="أقسام الصفحة">
-    <a href="#secData"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>البيانات</a>
-    <a href="#secAn" id="jAn" class="hidden"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg>التحليل</a>
-    <a href="#secCmp"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>قائمة التجديد</a>
-    <a href="#secQ" class="admin-only"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></svg>الطلبات</a>
-    <a href="#secCfg"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>الإعداد</a>
+  <nav class="jump" aria-label="أقسام الصفحة" role="tablist">
+    <a href="#secData" data-tab="data" role="tab"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>البيانات</a>
+    <a href="#secCmp" data-tab="cmp" role="tab"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>قائمة التجديد</a>
+    <a href="#secSell" data-tab="sell" role="tab"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg>المعروض للبيع</a>
+    <a href="#secDup" data-tab="dup" role="tab"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>المكرر والبدائل</a>
+    <a href="#secQ" data-tab="q" class="admin-only" role="tab"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></svg>الطلبات</a>
+    <a href="#secCfg" data-tab="cfg" role="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>الإعداد</a>
   </nav>
 
   <!-- ===================== البيانات: الرفع، ثم بقية المصادر مطويّة ===================== -->
@@ -480,7 +485,13 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
         <p class="msg" id="panelsMsg"></p>
       </div>
     </details>
-    <details class="blk fold" id="blkUnlisted">
+  </section>
+
+  <!-- ===================== المعروض للبيع: ما أُنشئ على اللوحات ولم يُعرض ===================== -->
+  <section id="secSell">
+    <div class="shead"><span class="sic c-gold"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg></span>
+      <h2>المعروض للبيع<small>يوزرات اللوحات التي لم تُعرض في سلة: نسخها وتجزئتها</small></h2></div>
+    <details class="blk fold" id="blkUnlisted" open>
       <summary><span class="bi c-amber"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg></span>
         <span class="st"><b>اشتراكات لم تُعرض للبيع</b><small id="unlSum">يوزرات اللوحات التي لا هي مبيعة في سلة ولا في مخزون أكوادها</small></span></summary>
       <div class="din">
@@ -527,6 +538,23 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
         </div>
       </div>
     </details>
+  </section>
+
+  <!-- ===================== المبيع المكرر: يوزر بيع لأكثر من عميل ===================== -->
+  <section id="secDup">
+    <div class="shead"><span class="sic c-rose"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
+      <h2>المبيع المكرر<small>يوزرٌ بيع في أكثر من طلب — الأقدم يحتفظ به، واللاحق يُنشأ له يوزر جديد بما بقي من مدته</small></h2></div>
+    <p class="hint">يعتمد على الاشتراكات المسحوبة من سلة. نفس رقم الجوال = تجديدٌ لنفس العميل فلا يُعدّ مكرّرًا. زر «أنشئ بديلًا» يخصم من رصيد اللوحة، ويسجّل البديل جزءًا في «حسابات متبقية» ويربطه بالقديم.</p>
+    <div class="acts"><button class="go" id="doDup" type="button">افحص المبيع المكرر</button>
+      <label class="switch" style="margin:0"><span>إظهار المنجَز والمنتهي<small>مطفأ = ما يحتاج بديلًا فقط</small></span><input type="checkbox" class="tog" id="dupAll"></label></div>
+    <div class="strip" id="dupTiles"></div>
+    <div class="scroll hidden" id="dupWrap"><table class="rt">
+      <thead><tr><th>اليوزر</th><th>اللوحة</th><th>العميل (اللاحق)</th><th>الطلب</th><th>المتبقي</th><th>أشهر البديل</th><th></th></tr></thead>
+      <tbody id="dupBody"></tbody></table></div>
+    <p class="msg" id="dupMsg"></p>
+    <div id="dupLines" class="hidden"><h4 style="margin:14px 0 6px">البدائل المُنشأة الآن (انسخ وأرسل للعميل)</h4>
+      <textarea id="dupLinesText" rows="4" class="ltr" readonly></textarea>
+      <div class="acts"><button class="ghost" id="dupCopy" type="button">نسخ</button></div></div>
   </section>
 
   <!-- ===================== الطلبات (للمدير) ===================== -->
@@ -924,7 +952,6 @@ function render(a){
   if (!a) return;
   AN = a;
   $('#secAn').classList.remove('hidden');
-  $('#jAn').classList.remove('hidden');
   $('#anWhen').innerHTML = 'تاريخ الاستعلام <bdi dir="ltr">' + esc(a.today) + '</bdi>';
 
   $('#tiles').innerHTML = [
@@ -1586,9 +1613,75 @@ $('#dlRenewal').onclick = e => { e.preventDefault(); location.href = B + '/api/r
 $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/users.xlsx'; };
 $('#dlLines').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/store-lines.xlsx'; };
 
+/* ============ التبويبات: قسمٌ واحد في كل مرة، ويُحفظ آخر تبويب ============ */
+const TABS = {data:['secData','secAn'], cmp:['secCmp'], sell:['secSell'], dup:['secDup'], q:['secQ'], cfg:['secCfg']};
+function showTab(t){
+  if (!TABS[t]) t = 'data';
+  if (t === 'q' && !IS_ADMIN) t = 'data';
+  Object.keys(TABS).forEach(k => TABS[k].forEach(id => { const e = document.getElementById(id); if (e) e.classList.toggle('tab-off', k !== t); }));
+  document.querySelectorAll('.jump a[data-tab]').forEach(a => a.setAttribute('aria-selected', a.dataset.tab === t ? 'true' : 'false'));
+  try { localStorage.setItem('renew_tab', t); } catch(e){}
+  history.replaceState(null, '', '#' + TABS[t][0]);
+}
+document.querySelectorAll('.jump a[data-tab]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.tab); window.scrollTo({top:0}); });
+function initTab(){
+  const h = (location.hash || '').slice(1);
+  const byHash = Object.keys(TABS).find(k => TABS[k].includes(h));
+  let saved = ''; try { saved = localStorage.getItem('renew_tab') || ''; } catch(e){}
+  showTab(byHash || saved || 'data');
+}
+
+/* ============ المبيع المكرر ============ */
+let DUP = [];
+async function loadDup(){
+  const d = await api('/api/renew/duplicates');
+  if (d.error) return note($('#dupMsg'), d.error);
+  DUP = d.rows || []; renderDup(d);
+}
+function renderDup(d){
+  const all = $('#dupAll').checked;
+  const rows = DUP.filter(r => all || (!r.done && !r.expired));
+  $('#dupTiles').innerHTML = `<div class="stat"><b class="${d.pending ? 'c-warn' : ''}">${AR(d.pending)}</b><small>يحتاج بديلًا</small></div>`
+    + `<div class="stat"><b>${AR(d.done)}</b><small>أُنشئ بديله</small></div><div class="stat"><b>${AR(d.expired)}</b><small>منتهٍ</small></div>`;
+  $('#dupBody').innerHTML = rows.map(r => {
+    const i = DUP.indexOf(r);
+    const act = r.done ? `<span class="c-ok">✓ ${esc(r.done.new)}</span>`
+      : r.expired ? '<span class="c-bad">منتهٍ</span>'
+      : r.can_create ? `<button class="go dupMk" data-i="${i}" type="button">أنشئ بديلًا</button>`
+      : '<small>اربط اللوحة ببوابة</small>';
+    const mon = (r.done || r.expired) ? '' : `<input type="number" class="dupM" data-i="${i}" min="1" max="15" value="${r.suggest}" style="width:64px">`;
+    return `<tr><td class="ltr">${esc(r.username)}<br><small>${esc(r.host)}</small></td><td>${esc(r.panel_name) || '—'}</td>`
+      + `<td>${esc(r.customer)}<br><small class="ltr">${esc(r.phone)}</small></td>`
+      + `<td class="ltr">${esc(r.order)}<br><small>${esc(r.date)} · الأول: ${esc(r.first_order)}</small></td>`
+      + `<td>${esc(r.remaining) || '—'}</td><td>${mon}</td><td>${act}</td></tr>`;
+  }).join('');
+  $('#dupWrap').classList.toggle('hidden', !rows.length);
+  note($('#dupMsg'), rows.length ? '' : (DUP.length ? 'لا شيء يحتاج بديلًا الآن.' : 'لا يوجد مبيع مكرّر في الاشتراكات المسحوبة.'), true);
+  $('#dupBody').querySelectorAll('.dupMk').forEach(b => b.onclick = () => makeDup(Number(b.dataset.i), b));
+}
+async function makeDup(i, btn){
+  const r = DUP[i]; if (!r) return;
+  const inp = document.querySelector(`.dupM[data-i="${i}"]`);
+  const months = Number(inp && inp.value) || r.suggest;
+  if (!confirm(`إنشاء يوزر جديد لـ ${r.customer || r.phone} (طلب ${r.order}) بمدة ${months} شهرًا بدل ${r.username}؟ يخصم من رصيد اللوحة.`)) return;
+  btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…';
+  const d = await post('/api/renew/dup-create', {order: r.order, username: r.username, months});
+  btn.disabled = false; btn.textContent = 'أنشئ بديلًا';
+  if (d.error || !d.ok) return note($('#dupMsg'), d.error || 'فشل الإنشاء');
+  const box = $('#dupLinesText'); box.value = (box.value ? box.value + '\n' : '') + `${r.customer || r.phone} ${r.phone}\n${d.line}\n`;
+  $('#dupLines').classList.remove('hidden');
+  note($('#dupMsg'), `أُنشئ ${d.username} بدل ${d.replaces} (${AR(d.months)} شهرًا)${d.split_error ? ' — تعذّر تسجيله جزءًا: ' + d.split_error : ''}`, true);
+  loadDup();
+}
+$('#doDup').onclick = loadDup;
+$('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
+$('#dupCopy').onclick = async () => { try { await navigator.clipboard.writeText($('#dupLinesText').value); note($('#dupMsg'), 'نُسخ ✓', true); } catch(e){ $('#dupLinesText').select(); } };
+
 /* ============ الإقلاع ============ */
 (async () => {
+  initTab();                       // التبويب أولًا فلا يومض كل شيء
   await loadCfg();                 // يضبط IS_ADMIN ويُخفي أجزاء المدير أولًا
+  initTab();
   await loadGates();
   await loadPanels();
   fillSplitGates(); loadCodesSum();
