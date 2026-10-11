@@ -644,9 +644,10 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <button class="ghost" id="hsTest" type="button">تجربة على ٢</button>
         </div>
         <div class="acts hidden" id="hsManual" style="align-items:center">
-          <label>فاصل <input type="number" id="hsGap" min="3" value="8" style="width:60px"> ث</label>
-          <label>راحة <input type="number" id="hsPause" min="0" value="120" style="width:64px"> ث كل <input type="number" id="hsBatch" min="5" value="20" style="width:60px"> رسالة</label>
+          <label>فاصل <input type="number" id="hsGap" min="3" value="20" style="width:60px"> ث</label>
+          <label>راحة <input type="number" id="hsPause" min="0" value="300" style="width:64px"> ث كل <input type="number" id="hsBatch" min="5" value="10" style="width:60px"> رسالة</label>
         </div>
+        <p class="hint" style="color:#c0392b">⚠ الإرسال الجماعي من رقم واتساب عادي قد يقيّده واتساب (حدث ذلك لهذا الرقم). أرسل عددًا قليلًا يوميًا (٤٠ كحدّ أقصى) ولعملاء تراسلهم من قبل، ولا تتجاوز السقف. للأعداد الكبيرة استعمل واتساب Business API الرسمي أو منشور قناة واتساب.</p>
         <p class="hint" id="hsPlan"></p>
         <div id="hsProg" class="hidden" style="margin:8px 0"><div style="height:10px;border-radius:99px;background:var(--line);overflow:hidden"><div id="hsBar" style="height:100%;width:0;background:var(--go);transition:width .4s"></div></div>
           <p class="msg" id="hsStat" style="margin:6px 0 0"></p></div>
@@ -1883,8 +1884,8 @@ const hsText = r => {
 // ضبط الإرسال حسب العدد: كلما كثر العدد طال الفاصل والراحة، وسقفٌ يومي يمنع الحظر
 function hsPlan(n){
   const auto = $('#hsAuto').checked;
-  let gap = [7, 3], pause = 0, batch = 20, cap = HS.daily_cap || 150;
-  if (n > 100) { gap = [12, 5]; pause = 180; } else if (n > 20) { gap = [9, 4]; pause = 90; }
+  let gap = [20, 10], pause = 0, batch = 10, cap = HS.daily_cap || 40;
+  if (n > 100) { gap = [30, 20]; pause = 420; } else if (n > 20) { gap = [25, 15]; pause = 300; }
   if (!auto) { gap = [Math.max(3, Number($('#hsGap').value) || 8), 3]; pause = Math.max(0, Number($('#hsPause').value) || 0); batch = Math.max(5, Number($('#hsBatch').value) || 20); }
   const allow = auto ? Math.max(0, cap - (HS.sent_today || 0)) : n;
   const lim = Math.max(0, Number($('#hsLimit').value) || 0);
@@ -2108,8 +2109,8 @@ $('#lsMake').onclick = async () => {
 const lsPending = () => (LS ? LS.rows : []).filter(r => r.done).flatMap(r => (r.done.msgs || []).map((m, idx) => ({...m, order: r.order, idx})))
   .filter(m => m.kind === 'comp' && m.phone && !(m.sent && m.sent.ok));
 function lsPlan(n){
-  let gap = [7, 3], pause = 0; const batch = 20, cap = (LS && LS.daily_cap) || 150;
-  if (n > 100) { gap = [12, 5]; pause = 180; } else if (n > 20) { gap = [9, 4]; pause = 90; }
+  let gap = [20, 10], pause = 0; const batch = 10, cap = (LS && LS.daily_cap) || 40;
+  if (n > 100) { gap = [30, 20]; pause = 420; } else if (n > 20) { gap = [25, 15]; pause = 300; }
   const cnt = Math.min(n, Math.max(0, cap - ((LS && LS.sent_today) || 0)));
   return {gap, pause, batch, cnt, secs: Math.round(cnt * (gap[0] + gap[1] / 2) + Math.floor(Math.max(0, cnt - 1) / batch) * pause)};
 }
