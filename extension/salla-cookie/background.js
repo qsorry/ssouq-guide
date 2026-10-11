@@ -117,9 +117,15 @@ async function sallaPage(path) {
   throw new Error(last + " بعد خمس محاولات");
 }
 
+// الحالة تُحفظ في التخزين أيضًا: كروم يُطفئ خلفية الإضافة بعد ثوانٍ من الخمول فتضيع
+// الذاكرة، والنافذة تقرأ من التخزين عند فتحها لتعرف أين وصل السحب أو كيف انتهى.
+function persist(key, st) {
+  chrome.storage.local.set({ [key]: { ...st, at: Date.now() } }).catch(() => {});
+}
 function setLine(line, ok) {
   pullState.line = line;
   pullState.ok = ok;
+  persist("pull_state", pullState);
 }
 
 async function runPull(settings, maxMonths, fresh) {
@@ -168,6 +174,7 @@ async function runPull(settings, maxMonths, fresh) {
     setLine("توقّف: " + (e && e.message ? e.message : e), false);
   } finally {
     pullState.running = false;
+    persist("pull_state", pullState);
   }
 }
 
@@ -251,7 +258,7 @@ function legacyCodeCount(html) {
 async function runCodes(settings) {
   if (codesState.running) return;
   codesState.running = true;
-  const set = (line, ok) => { codesState.line = line; codesState.ok = ok; };
+  const set = (line, ok) => { codesState.line = line; codesState.ok = ok; persist("codes_state", codesState); };
   try {
     set("قراءة رمز الجلسة…", null);
     const token = await readUserToken();
@@ -303,6 +310,7 @@ async function runCodes(settings) {
     set("توقّف: " + (e && e.message ? e.message : e), false);
   } finally {
     codesState.running = false;
+    persist("codes_state", codesState);
   }
 }
 
@@ -333,12 +341,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: true });
         return;
       }
-      if (msg.type === "codes-status") {
-        sendResponse({ ok: true, ...codesState });
-        return;
-      }
-      if (msg.type === "pull-status") {
-        sendResponse({ ok: true, ...pullState });
+      if (msg.type === "codes-status" || msg.type === "pull-status") {
+        const key = msg.type === "codes-status" ? "codes_state" : "pull_state";
+        const mem = msg.type === "codes-status" ? codesState : pullState;
+        if (mem.line) { sendResponse({ ok: true, ...mem }); return; }
+        const saved = (await chrome.storage.local.get(key))[key];
+        if (!saved) { sendResponse({ ok: true, ...mem }); return; }
+        // الخلفية أُعيد تشغيلها: المحفوظ «جارٍ» لكن لا أحد يعمل الآن → انقطع.
+        if (saved.running) {
+          saved.running = false;
+          saved.ok = false;
+          saved.line = "انقطع السحب (أُغلق المتصفح أو أُطفئت الإضافة) عند: " + saved.line + " — اضغط السحب ليُستأنف من حيث توقف";
+        }
+        sendResponse({ ok: true, ...saved });
         return;
       }
       if (msg.type === "pull-cancel") {
