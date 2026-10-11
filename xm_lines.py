@@ -3024,7 +3024,8 @@ def _dup_rename_old(acct, gate, row, accounts=None, cfg=None):
             continue
         try:
             newname = rand_digits(gate_digits(g))
-            split_change(g, {"username": row["username"], "line_id": found.get("line_id", ""), "package": ""},
+            split_change(g, {"username": row["username"], "line_id": found.get("line_id", ""),
+                              "package": found.get("package", "")},
                          {"username": newname})
             line = format_line(g, newname, found.get("password") or row["password"])
             try:
@@ -4112,7 +4113,7 @@ def split_find_line(gate, username):
         rows = []
     r = next((x for x in rows if str(x.get("username", "")).strip() == username), None)
     return {"password": str(r.get("password") or ""), "exp": r.get("exp") or "",
-            "line_id": str(r.get("id") or "")} if r else {}
+            "line_id": str(r.get("id") or ""), "package": str(r.get("package") or "")} if r else {}
 
 
 def split_texts(acct, gate, rec):

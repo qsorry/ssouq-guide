@@ -1414,7 +1414,7 @@ class PanelWebSession:
             vals = [v for k, v in pairs if k == name and str(v).strip() not in ("", "[]", "null")]
             if vals:
                 continue
-            ids = []
+            ids, why = [], ""
             for tm in re.finditer(r"<table\b[^>]*bouquet[^>]*>(.*?)</table>", page, re.I | re.S):
                 for tr in re.finditer(r"<tr\b([^>]*)>(.*?)</tr>", tm.group(1), re.I | re.S):
                     if re.search(r"\bselected\b", _attr(tr.group(1), "class") or "", re.I):
@@ -1425,10 +1425,13 @@ class PanelWebSession:
                 pkg = next((v for k, v in serialize_form(fs) if re.search(r"package", k, re.I) and v), "") \
                     or self._package_id_by_name(package_hint)
                 if pkg:
-                    ids, _why = self._package_bouquets(pkg, page)
+                    ids, why = self._package_bouquets(pkg, page)
             if not ids:
+                pkg_n = next((v for k, v in serialize_form(fs) if re.search(r"package", k, re.I) and v), "") \
+                    or package_hint
                 raise EditUnsupported("تعذّر قراءة بوكيهات الخط من صفحة التعديل — غيّر اسم المستخدم "
-                                      "يدويًا لئلا تُمسح قنواته")
+                                      "يدويًا لئلا تُمسح قنواته (حقل: %s، باقة الخط: %s، %s)" % (
+                                          name, pkg_n or "غير معروفة", why or "بلا جدول بوكيهات مُحدَّد في الصفحة"))
             f = next(x for x in fs if x["name"] == name)
             if f["kind"] == "input" and f["type"] not in ("checkbox", "radio"):
                 pairs = self._set_pair(pairs, name, json.dumps(ids))
