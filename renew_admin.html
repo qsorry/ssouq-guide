@@ -592,7 +592,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <label>راحة <input type="number" id="hsPause" min="0" value="90" style="width:64px"> ث كل <input type="number" id="hsBatch" min="5" value="25" style="width:60px"> رسالة</label>
         </div>
         <p class="hint">لأكثر من ١٠٠ عميل: أبقِ الفاصل ٦ ثوانٍ فأكثر والراحة بين الدفعات، وأرسل على أيام (الذين أُرسل لهم يُتخطَّون تلقائيًا في المرة التالية) لتقليل خطر حظر الرقم.</p>
-        <div class="acts"><button class="go" id="hsSend" type="button">إرسال للجميع عبر الرقم المربوط</button><button class="ghost" id="hsStop" type="button" disabled>إيقاف</button></div>
+        <div class="acts"><button class="go" id="hsSend" type="button">إرسال عبر الرقم المربوط (حسب الحدّ أعلاه)</button><button class="ghost" id="hsStop" type="button" disabled>إيقاف</button></div>
         <div class="scroll"><table class="rt"><thead><tr><th>العميل</th><th>الجوال</th><th>اليوزرات</th><th>الحالة</th><th></th></tr></thead><tbody id="hsBody"></tbody></table></div>
       </div>
     </div>
@@ -1848,16 +1848,19 @@ async function hsLoad(){
 }
 $('#hsLoad').onclick = hsLoad;
 $('#hsSub').onchange = () => { if (HS) hsLoad(); };
-$('#hsTest').onclick = () => { $('#hsLimit').value = 2; $('#hsSend').click(); };
+let HSTEST = 0;
+$('#hsTest').onclick = () => { HSTEST = 2; $('#hsSend').click(); };
 $('#hsStop').onclick = () => { HSSTOP = true; };
 $('#hsSend').onclick = async () => {
   if (!HS || !HS.recipients.length) return;
-  const lim = Math.max(0, Number($('#hsLimit').value) || 0), gap = Math.max(3, Number($('#hsGap').value) || 6),
+  const lim = HSTEST || Math.max(0, Number($('#hsLimit').value) || 0), isTest = !!HSTEST; HSTEST = 0;
+  const gap = Math.max(3, Number($('#hsGap').value) || 6),
     pause = Math.max(0, Number($('#hsPause').value) || 0), batch = Math.max(5, Number($('#hsBatch').value) || 25);
   const todo = HS.recipients.map((r, i) => i).filter(i => !$('#hsS' + i).querySelector('.c-ok')).slice(0, lim || undefined);
   if (!todo.length) return note($('#msgsMsg'), 'لا أحد للإرسال');
   if (!$('#hsCh').value.trim() && $('#hsText').value.includes('{channel}') && !confirm('رابط القناة فارغ — تُرسل الرسائل بدونه؟')) return;
-  if (!confirm(`إرسال الرسالة إلى ${AR(todo.length)} عميلًا عبر الرقم المربوط؟` + (todo.length > 100 ? '\n\nالعدد كبير: سيتمّ على دفعات مع راحة بينها، أبقِ الصفحة مفتوحة.' : ''))) return;
+  const rest = HS.recipients.length - todo.length - HS.recipients.filter((r, i) => $('#hsS' + i).querySelector('.c-ok')).length;
+  if (!confirm(`${isTest ? 'تجربة: ' : ''}إرسال الرسالة إلى ${AR(todo.length)} عميلًا عبر الرقم المربوط؟` + (rest > 0 ? `\n\nيبقى ${AR(rest)} عميلًا لم يُرسل لهم بعد` + (isTest ? '' : ' (حدّ «أرسل لأول N» يقيّد هذه الدفعة)') : '') + (todo.length > 100 ? '\n\nالعدد كبير: سيتمّ على دفعات مع راحة بينها، أبقِ الصفحة مفتوحة.' : ''))) return;
   HSSTOP = false; $('#hsSend').disabled = true; $('#hsStop').disabled = false; let ok = 0, bad = 0, n = 0;
   for (const i of todo) {
     if (HSSTOP) break;
