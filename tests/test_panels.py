@@ -264,7 +264,8 @@ def test_unlisted():
         panels.mark_listed(d, ["333333333333"], remove=True)
         check("unmarking brings it back", [r["username"] for r in panels.unlisted(cfg, d)["rows"]] == ["333333333333"])
         ress = panels.unlisted(cfg, d, split={("a", "g"): {"333333333333"}})
-        check("a line registered for splitting leaves the unlisted list", ress["rows"] == [] and ress["panels"]["pk"]["split"] == 1, str(ress["panels"]["pk"]))
+        check("a line registered for splitting stays listed, flagged", len(ress["rows"]) == 1 and ress["rows"][0]["split"] is True
+              and ress["panels"]["pk"]["split"] == 1, str(ress["panels"]["pk"]))
         res2 = panels.unlisted(cfg, d, include_expired=True)
         check("include_expired adds the expired line", sorted(r["username"] for r in res2["rows"]) == ["333333333333", "444444444444"])
         # إضافة منتجٍ آخر دون reset تُبقي الأوّل

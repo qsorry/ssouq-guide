@@ -421,7 +421,7 @@ def salla_card_line(host, username, password, guide=""):
 def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
     """`gates`: {(account_id, gate_id): بوابةٌ بهوستها ورابط شرحها الفعلي} — لسطر الكود.
     `split`: {(account_id, gate_id): {يوزرات مسجَّلة في «حسابات متبقية»}} — ما جُزِّئ
-    صار مبيعًا (أو في طريقه) فلا يُعرض ثانيةً."""
+    يبقى في القائمة بعلامة «مجزَّأ» (المشغّل ينسخه ويلصقه في سلة)، ويُعدّ فقط."""
     """يوزرات اللوحات التي لا هي مبيعة في سلة (خطوط المتجر) ولا معروضة في مخزون
     أكوادها: أُنشئت ونُسيت. لكل لوحةٍ صفوفها، وفي كل صف السطر الجاهز للنسخ
     (Host · Username · Password · Exp) ليُعرض من جديد أو يُجزَّأ."""
@@ -446,9 +446,9 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
             if key in sold:
                 n_sold += 1
                 continue
-            if key in in_split:
+            is_split = key in in_split              # مجزَّأ في «حسابات متبقية»: يبقى معروضًا هنا
+            if is_split:                           # ليُنسخ ويُلصق في سلة، مع علامته
                 n_split += 1
-                continue
             if key in listed or key in manual:
                 n_listed += 1
                 continue
@@ -472,7 +472,8 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
                          "months": rec.get("months", 0), "created": rec.get("created", ""),
                          "exp": rec.get("exp", ""), "days_left": es["days_left"], "months_left": months_left,
                          "remaining": remaining_text(rec.get("exp"), today), "card": card,
-                         "expired": expired, "status": rec.get("status", ""), "line": line})
+                         "expired": expired, "status": rec.get("status", ""), "line": line,
+                         "split": is_split})
         per_panel[p["id"]] = {"name": p["name"], "lines": pdata.get("count", 0), "sold": n_sold,
                               "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired,
                               "split": n_split, "built": pdata.get("built", "")}
