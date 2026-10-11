@@ -517,6 +517,103 @@ def test_host_job():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_order_lost():
+    print("== البحث برقم الطلب، والربط، والمفقود وتعويضه ==")
+    import datetime
+    import time as _t
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="lost_")
+    keep = {k: getattr(X, k) for k in ("DATA_DIR", "find_gate", "with_guide", "get_packages", "create_lines",
+                                       "split_register_created", "channel_link", "load_store", "dup_wa_send")}
+    try:
+        today = renew._today()
+        st = today - datetime.timedelta(days=60)
+        def ln(order, user, phone="0500000001", name="ع", host="http://m.ink", months=12):
+            return {"order": order, "date": st.isoformat(), "phone": phone, "customer": name, "username": user,
+                    "password": "pw" + user, "host": host, "months": months, "expiry": renew.add_months(st, months).isoformat()}
+        panels.save_store_lines(d, [ln("274576474", "111"), ln("2", "222", "0500000002", "ب"), ln("3", "333"),
+                                    ln("4", "444", host="http://other.ink"), ln("5", "555", months=1)])
+        cfg = {"panels": [{"id": "pk", "name": "مرح", "hosts": ["http://m.ink"], "account_id": "acc1", "gate_id": "g1"}]}
+        # قبل سحب اللوحة: لا حكم بالفقد
+        r0 = panels.lost(cfg, d)
+        check("no panel pulled = nothing is called missing", r0["total"] == 0 and r0["counts"]["not_pulled"] >= 3, str(r0["counts"]))
+        panels.save_panel_lines(d, "pk", "مرح", [{"username": "333", "password": "x", "exp": "", "package": "15 Months"}])
+        panels.save_panel_lines(d, "alt", "البديلة", [{"username": "222", "password": "x", "exp": "", "package": "1 Year"}])
+        r = panels.lost(cfg, d, replaced={"111"})
+        users = [x["username"] for x in r["rows"]]
+        check("missing = not on its panel nor the alternative, not replaced, not expired, host mapped",
+              users == [] and r["counts"]["replaced"] == 1 and r["counts"]["found"] == 2 and r["counts"]["host_unmapped"] == 1
+              and r["counts"]["expired"] == 1, str((users, r["counts"])))
+        r = panels.lost(cfg, d, comp=1)
+        row = next(x for x in r["rows"] if x["username"] == "111")
+        check("missing row: remaining 10 months + 1 compensation = 11", row["suggest"] == 10 and row["new_months"] == 11 and r["base"] == 15, str(row))
+        check("compensation is capped at the 15-month package", panels.comp_months(500, 3) == 15 and panels.comp_months(0) == 0)
+        # البحث برقم الطلب
+        s = panels.order_search(cfg, d, "٢٧٤٥٧٦٤٧٤")
+        check("order search (arabic digits) finds the line and says it is missing",
+              len(s["rows"]) == 1 and s["rows"][0]["state"] == "missing" and s["order"] == "274576474", str(s)[:200])
+        check("search by username and by password", panels.order_search(cfg, d, "222")["rows"][0]["state"] == "found"
+              and panels.order_search(cfg, d, "pw333")["rows"][0]["username"] == "333")
+        # الربط: يوزرٌ صحيح للطلب يحلّ محلّ المسجَّل خطأً
+        cur = panels.link_order(d, "274576474", "333", "realpw", replace="111")
+        s = panels.order_search(cfg, d, "274576474")
+        check("link replaces the wrong user and the order is now found", [x["username"] for x in s["rows"]] == ["333"]
+              and s["rows"][0]["state"] == "found" and s["rows"][0]["linked"] and cur["password"] == "realpw"
+              and s["rows"][0]["phone"] == "0500000001", str(s["rows"]))
+        cur = panels.link_order(d, "274576474", "111", "pw111", replace="333")
+        try:
+            panels.link_order(d, "999", "x")
+            check("unknown order without index is refused", False)
+        except ValueError:
+            check("unknown order without index is refused", True)
+        cur = panels.link_order(d, "77", "888", "p", host="http://m.ink",
+                                base={"order": "77", "date": st.isoformat(), "months": 6, "phone": "0500000007"})
+        check("order only in the index is linked from it with its expiry", cur["expiry"] == renew.add_months(st, 6).isoformat()
+              and panels.order_search(cfg, d, "77")["rows"][0]["state"] == "missing")
+        # إنشاء التعويض
+        gate = {"id": "g1", "name": "مرح", "mode": "web", "host": "http://m.ink"}
+        acct = {"id": "acc1", "split": True, "gates": [gate]}
+        made = {}
+        X.DATA_DIR = d
+        X.find_gate = lambda a, gid: gate
+        X.with_guide = lambda a, g: g
+        X.get_packages = lambda g: [{"id": "p15", "name": "اشتراك 15 شهر"}]
+        X.create_lines = lambda g, pkg, n, *a, **k: ([{"line": "Host http://m.ink User 901 Pass 902", "username": "901", "password": "902"}], None)
+        X.split_register_created = lambda acct_, g, pkg, slice_m, out, customer="": made.setdefault("split", slice_m) and [{"username": "901"}]
+        X.channel_link = lambda: ""
+        code, body = X.comp_create([acct], cfg, d, {"order": "274576474", "username": "111", "comp": 1})
+        check("comp_create makes a split of remaining + 1 from the 15-month package", code == 200 and body["months"] == 11
+              and made.get("split") == 11, str(body)[:200])
+        m = body["messages"][0]
+        check("message for the buyer with the new line and the compensation", m["kind"] == "comp" and m["phone"] == "966500000001"
+              and "User 901 Pass 902" in m["text"] and "274576474" in m["text"] and "تعويض شهر" in m["text"] and "قناتنا" not in m["text"], m["text"])
+        r = panels.lost(cfg, d)
+        done = next(x for x in r["rows"] if x["username"] == "111")
+        check("the row stays listed as done (not hidden as replaced)", done["done"]["new"] == "901" and r["done"] == 1)
+        check("a second create is refused", X.comp_create([acct], cfg, d, {"order": "274576474", "username": "111"})[0] == 400)
+        check("a user that is on a panel is not compensated", X.comp_create([acct], cfg, d, {"order": "2", "username": "222"})[0] == 404)
+        check("comp message is listed in the messages tab", any(x["kind"] == "comp" for x in panels.dupe_messages(d)))
+        # الإرسال الخلفي بنظام رسالة الهوست، ويُعلَّم مرسَلًا في «الرسائل»
+        sent = []
+        X.load_store = lambda: {"service": {}}
+        X.dup_wa_send = lambda st_, ph, tx: (sent.append(ph) or {"ok": True}, "contest")
+        code, b = X.host_job_start(d, {"kind": "comp", "host": "رسائل التعويض", "plan": {"gap": 1, "jitter": 0},
+                                       "queue": [{"phone": m["phone"], "name": "ع", "text": m["text"], "order": "274576474", "idx": 0}]})
+        v = {}
+        for _ in range(20):
+            _t.sleep(0.5)
+            v = X.host_job_status(d)["job"]
+            if v["status"] != "running":
+                break
+        msg = next(x for x in panels.dupe_messages(d) if x["order"] == "274576474")
+        check("comp job sends, logs as comp and marks the message sent", v["status"] == "done" and v["kind"] == "comp" and sent == ["966500000001"]
+              and msg["sent"]["ok"] and any(x["kind"] == "comp" and x["order"] == "274576474" for x in panels.load_dup_log(d)), str(v))
+    finally:
+        for k, v_ in keep.items():
+            setattr(X, k, v_)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     test_host_job()
     test_host_audience()
@@ -532,6 +629,7 @@ def main():
     test_remaining_text()
     test_split_bulk()
     test_dup_create()
+    test_order_lost()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, "
           + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
