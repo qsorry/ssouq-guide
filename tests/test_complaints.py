@@ -236,7 +236,7 @@ def test_complaints_pull():
     srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = "http://127.0.0.1:%d" % srv.server_address[1]
-    keep = {k: getattr(X, k) for k in ("renew_panel_session",)}
+    keep = {k: getattr(X, k) for k in ("renew_pull_session",)}
     try:
         sess = salla_web.Session("sess=1", base=base)
         rows = sess.complaints()
@@ -245,7 +245,7 @@ def test_complaints_pull():
               and rows[1]["order"] == "400" and rows[1]["customer"] == "محمد" and rows[2]["customer"] == "س م", str(rows)[:300])
         n0 = len(calls); sess.complaints()
         check("the path that worked is remembered (one list call + one empty page 2)", calls[n0] .startswith("/api/v1/complaints") and len(calls) - n0 == 2, str(calls[n0:]))
-        X.renew_panel_session = lambda st_: sess
+        X.renew_pull_session = lambda st_, cfg=None: sess
         d = X.complaints_open({"renew": {}})
         check("complaints_open keeps only the merchant-waiting ones, with the total", [r["id"] for r in d["rows"]] == ["51", "52"] and d["total"] == 4, str(d)[:200])
         mode["json"] = False
@@ -253,11 +253,12 @@ def test_complaints_pull():
         rows = sess2.complaints()
         check("html fallback: table rows parsed (id, customer, order, status, date, link)", len(rows) == 2 and rows[0] == {"id": "61", "order": "287314660",
               "customer": "سارة", "status": "بانتظار الحل من التاجر", "type": "", "text": "", "date": "2026-10-01", "phone": "", "url": "/complaints/61"}, str(rows))
-        X.renew_panel_session = lambda st_: sess2
+        X.renew_pull_session = lambda st_, cfg=None: sess2
         check("html: only the open one is shown", [r["id"] for r in X.complaints_open({})["rows"]] == ["61"])
-        X.renew_panel_session = lambda st_: None
+        X.renew_pull_session = lambda st_, cfg=None: None
         check("no session: an error with a hint, not a crash", X.complaints_open({})["error"] == "no_session")
-        X.renew_panel_session = lambda st_: salla_web.Session("other=1", base=base)
+        check("token without cookies: the hint says why", "Admin API" in X.complaints_open({"service": {"salla_token": "t"}})["hint"])
+        X.renew_pull_session = lambda st_, cfg=None: salla_web.Session("other=1", base=base)
         check("expired session reported", X.complaints_open({})["error"] == "session_expired")
     finally:
         srv.shutdown()

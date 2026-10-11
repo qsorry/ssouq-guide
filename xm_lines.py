@@ -3716,14 +3716,17 @@ def reply_link(st, rcfg, rws, racs, req):
     return 200, reply_lookup(st, rcfg, rws, racs, order)
 
 
-def complaints_open(st):
-    """شكاوى العملاء من لوحة سلة بجلسة المتصفّح (الكوكيز نفسها التي تُسحب بها الطلبات)، **ما ينتظر التاجر وحده**
-    («بانتظار الحل من التاجر» · «بانتظار رد التاجر»). ← {rows, total, error?}: error حين لا جلسة أو انتهت أو لم
-    يُعرف مسار السجل — فتبقى الصفحة صالحةً برقم الطلب يدويًا."""
-    sess = renew_panel_session(st)
+def complaints_open(st, rcfg=None):
+    """شكاوى العملاء من لوحة سلة بجلسة المتصفّح — **الكوكيز نفسها التي تُسحب بها الطلبات** (‏`renew_pull_session`:
+    كوكيز المساحة إن لُصقت فيها، وإلا كوكيز الأدمن)، **ما ينتظر التاجر وحده** («بانتظار الحل من التاجر» · «بانتظار
+    رد التاجر»). ← {rows, total, error?}: error حين لا جلسة أو انتهت أو لم يُعرف مسار السجل — فتبقى الصفحة صالحةً
+    برقم الطلب يدويًا."""
+    sess = renew_pull_session(st, rcfg)
     if not sess:
+        why = ("الطلبات تُسحب برمز سلة (Admin API) ولا كوكيز للوحة، وسجل الشكاوى لا يُقرأ إلا بجلسة اللوحة: "
+               if renew_salla_token(st, rcfg) else "")
         return {"rows": [], "total": 0, "error": "no_session",
-                "hint": "لا جلسة لوحة سلة: اربطها من إضافة المتصفّح (أو الصق الكوكيز في الإعداد) ليُسحب سجل الشكاوى"}
+                "hint": why + "اربط جلسة لوحة سلة من إضافة المتصفّح (أو الصق الكوكيز في الإعداد) ليُسحب سجل الشكاوى"}
     try:
         rows = sess.complaints()
     except salla_web.SessionExpired as e:
@@ -6264,7 +6267,7 @@ class Handler(BaseHTTPRequestHandler):
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/complaints":     # مراجعة الشكاوى: سجل شكاوى سلة بالجلسة، ما ينتظر التاجر وحده
-                return self._send(200, complaints_open(st))
+                return self._send(200, complaints_open(st, rcfg))
             if path == "/api/renew/reply":          # الردّ على شكوى: الطلب برقمه ← اشتراكه وبياناته ← نصّ الردّ جاهزًا
                 t0 = time.perf_counter()
                 d = reply_lookup(st, rcfg, rws, racs, self._q("q"))
