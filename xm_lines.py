@@ -3109,10 +3109,15 @@ def _hj_run(ws):
                 err = "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")
             except Exception as e:
                 how, ok, err = "contest", False, str(e)[:160]
+            comp = job.get("kind") == "comp" and item.get("order")      # رسالة تعويض: تُعلَّم في «الرسائل» أيضًا
             try:
-                panels.log_dup_send(ws, {"order": "host:" + job.get("host_norm", ""), "kind": "host",
+                panels.log_dup_send(ws, {"order": item["order"] if comp else "host:" + job.get("host_norm", ""),
+                                         "kind": "comp" if comp else "host",
                                          "name": item.get("name", ""), "phone": item["phone"], "text": item["text"]},
                                     how, ok, err)
+                if comp:
+                    panels.set_dupe_msg(ws, item["order"], item.get("idx"), text=item["text"],
+                                        sent={"ok": ok, "how": how, "at": renew.now_iso(), "error": err})
             except OSError:
                 pass
 
@@ -3156,11 +3161,13 @@ def host_job_start(ws, req):
     old = host_job_load(ws)
     if old and old.get("status") == "running":
         return 409, {"error": "يوجد إرسال جارٍ — أوقفه أولًا"}
-    q = []
+    q, kind = [], "comp" if req.get("kind") == "comp" else "host"
     for it in (req.get("queue") or [])[:2000]:
         ph, tx = _wa_phone((it or {}).get("phone")), str((it or {}).get("text") or "").strip()
         if ph and tx:
             q.append({"phone": ph, "name": str(it.get("name") or "")[:60], "text": tx[:1500]})
+            if kind == "comp":
+                q[-1].update(order=str(it.get("order") or ""), idx=it.get("idx") if isinstance(it.get("idx"), int) else 0)
     if not q:
         return 400, {"error": "لا أحد للإرسال"}
     pl = req.get("plan") or {}
@@ -3168,7 +3175,7 @@ def host_job_start(ws, req):
             "pause": min(900.0, max(0.0, float(pl.get("pause") or 0))), "batch": max(5, int(pl.get("batch") or 20))}
     job = {"id": secrets.token_hex(4), "host": str(req.get("host") or ""), "host_norm": renew.norm_host(req.get("host")),
            "status": "running", "queue": q, "idx": 0, "sent": 0, "failed": 0, "ok": [], "errors": {}, "plan": plan,
-           "started_at": time.time(), "next_at": 0, "total": len(q), "test": bool(req.get("test"))}
+           "started_at": time.time(), "next_at": 0, "total": len(q), "test": bool(req.get("test")), "kind": kind}
     renew._write_json(_hj_path(ws), job)
     _hj_spawn(ws)
     return 200, host_job_view(job)
@@ -3189,7 +3196,7 @@ def host_job_view(job):
     eta = left * mean + (left // max(1, int(plan.get("batch", 20)))) * float(plan.get("pause", 0))
     return {"job": {k: job.get(k) for k in ("id", "host", "host_norm", "status", "total", "idx", "sent", "failed", "ok",
                                             "errors", "plan", "started_at", "next_at", "last_phone", "error",
-                                            "finished_at", "test")} | {"eta": int(eta), "now": time.time()}}
+                                            "finished_at", "test", "kind")} | {"eta": int(eta), "now": time.time()}}
 
 
 def host_job_status(ws):
@@ -3349,6 +3356,44 @@ def dup_wa_send(st, phone, text):
     return wa_send.send(st["service"].get("wa", {}), phone, text), "wa"
 
 
+def _make_line(acct, gate, row, months, tag):
+    """ينشئ خطًّا لصاحب طلبٍ بأشهرٍ من باقة ١٥ شهرًا: جزءٌ مبيعٌ يُسجَّل في «حسابات متبقية» (أو الباقة كاملةً إن
+    كانت ١٥)، ويُربط بيوزره القديم (بديل) ويُضاف لملف البوابة. ← (200، الرد، الخط) أو (رمز، خطأ، None)."""
+    months = split_subs.parse_months(months)
+    if not isinstance(months, int) or months < 1 or months > 15:
+        return 400, {"error": "المدة بالأشهر الكاملة من ١ إلى ١٥"}, None
+    pkg = next((p for p in get_packages(gate) if split_package_ok(p)), None)
+    if not pkg:
+        return 400, {"error": "لا باقة ١٥ شهرًا على هذه البوابة للتجزئة منها"}, None
+    slice_m = months if months < 15 else 0
+    if slice_m:
+        why = split_create_error(acct, gate, pkg, slice_m)
+        if why:
+            return 400, {"error": why}, None
+    out, err = create_lines(gate, pkg, 1)
+    if not out:
+        return 502, {"error": err or "تعذّر الإنشاء"}, None
+    r = out[0]
+    try:
+        users_export.merge(DATA_DIR, acct["id"], gate["id"], gate.get("name"), out, gate.get("host", ""))
+    except Exception:
+        pass
+    r["package"] = "%s · %s%s" % (pkg.get("name", ""), tag,
+                                  (" · جزء " + split_subs.months_ar(slice_m)) if slice_m else "")
+    resp = {"ok": True, "line": r.get("line", ""), "username": r["username"], "password": r["password"],
+            "months": months, "replaces": row["username"], "customer": row["customer"], "phone": row["phone"]}
+    try:
+        user_links.add(DATA_DIR, acct["id"], gate["id"], row["username"], r["username"], r["package"])
+    except Exception:
+        pass
+    if slice_m:
+        try:
+            resp["split"] = split_register_created(acct, gate, pkg, slice_m, out, customer=row["customer"])
+        except Exception as e:
+            resp["split_error"] = str(e)[:160]
+    return 200, resp, r
+
+
 def dup_create(accounts, cfg, ws, req):
     """ينشئ يوزرًا جديدًا لصاحب الطلب اللاحق في مبيعٍ مكرّر بما بقي من مدته: جزءٌ بالأشهر من
     باقة ١٥ شهرًا (أو الباقة كاملةً إن بقي ١٥)، ويربطه بالقديم (بديل) ويسجّله جزءًا ويعلّم الطلب
@@ -3367,38 +3412,9 @@ def dup_create(accounts, cfg, ws, req):
     if not gate:
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اضبط حساب وبوابة اللوحة في «اللوحات وهوستاتها»"}
     gate = with_guide(acct, gate)
-    months = split_subs.parse_months(req.get("months") or row["suggest"])
-    if not isinstance(months, int) or months < 1 or months > 15:
-        return 400, {"error": "المدة بالأشهر الكاملة من ١ إلى ١٥"}
-    pkg = next((p for p in get_packages(gate) if split_package_ok(p)), None)
-    if not pkg:
-        return 400, {"error": "لا باقة ١٥ شهرًا على هذه البوابة للتجزئة منها"}
-    slice_m = months if months < 15 else 0
-    if slice_m:
-        why = split_create_error(acct, gate, pkg, slice_m)
-        if why:
-            return 400, {"error": why}
-    out, err = create_lines(gate, pkg, 1)
-    if not out:
-        return 502, {"error": err or "تعذّر الإنشاء"}
-    r = out[0]
-    try:
-        users_export.merge(DATA_DIR, acct["id"], gate["id"], gate.get("name"), out, gate.get("host", ""))
-    except Exception:
-        pass
-    r["package"] = "%s · بديل المكرر %s%s" % (pkg.get("name", ""), row["order"],
-                                              (" · جزء " + split_subs.months_ar(slice_m)) if slice_m else "")
-    resp = {"ok": True, "line": r.get("line", ""), "username": r["username"], "password": r["password"],
-            "months": months, "replaces": row["username"], "customer": row["customer"], "phone": row["phone"]}
-    try:
-        user_links.add(DATA_DIR, acct["id"], gate["id"], row["username"], r["username"], r["package"])
-    except Exception:
-        pass
-    if slice_m:
-        try:
-            resp["split"] = split_register_created(acct, gate, pkg, slice_m, out, customer=row["customer"])
-        except Exception as e:
-            resp["split_error"] = str(e)[:160]
+    code, resp, r = _make_line(acct, gate, row, req.get("months") or row["suggest"], "بديل المكرر %s" % row["order"])
+    if code != 200:
+        return code, resp
     msgs = [{"kind": "new", "name": row["customer"], "phone": _wa_phone(row["phone"]),
              "text": DUP_MSG_NEW.format(name=row["customer"] or "", line=r.get("line", "")), "sent": None}]
     extra = {"msgs": msgs}
@@ -3415,7 +3431,65 @@ def dup_create(accounts, cfg, ws, req):
         else:                                  # فشل تغيير القديم لا يُلغي البديل المُنشأ
             resp["rename_error"] = extra["rename_error"] = err
     resp["messages"] = msgs
-    panels.mark_dupe_done(ws, row["order"], r["username"], months, row["customer"], extra=extra)
+    panels.mark_dupe_done(ws, row["order"], r["username"], resp["months"], row["customer"], extra=extra)
+    return 200, resp
+
+
+def replaced_old_users(accounts):
+    """اليوزرات القديمة التي استُبدلت (user_links) في كل بوابات الحسابات — لا تُعدّ «مفقودة»."""
+    out = set()
+    for a in (accounts or []):
+        for g in (a.get("gates") or []):
+            try:
+                out |= {str(r["old"]).lower() for r in user_links.load(user_links.path(DATA_DIR, a["id"], g["id"]))}
+            except Exception:
+                continue
+    return out
+
+
+COMP_MSG = ("السلام عليكم ورحمة الله *{name}* 👋\n\n"
+            "*✅ اشتراككم جاهز من جديد*\n"
+            "بعد مراجعة طلبكم رقم {order} أنشأنا لكم اشتراكًا جديدًا بالمدة المتبقية من اشتراككم{comp}.\n\n"
+            "*🔑 بيانات الاشتراك:*\n{line}\n\n"
+            "*📲 قناتنا على واتساب* (تصلكم فيها التحديثات أولًا بأول):\n{channel}\n\n"
+            "نعتذر عن الإزعاج، ونحن في خدمتكم دائمًا 🌹")
+
+
+def comp_text(name, order, line, comp, channel=""):
+    """رسالة التعويض: فقرة القناة تسقط إن لم تُربط قناة."""
+    c = "" if not comp else " مع تعويض شهر" if comp == 1 else " مع تعويض %s" % split_subs.months_ar(comp)
+    t = COMP_MSG.format(name=name or "عميلنا العزيز", order=order, line=line, comp=c, channel=channel or "")
+    return "\n\n".join(b for b in re.split(r"\n\s*\n", t) if channel or "قناتنا" not in b)
+
+
+def comp_create(accounts, cfg, ws, req):
+    """اشتراكٌ لصاحب طلبٍ مفقودٍ يوزرُه (لا على لوحته ولا البديلة): خطٌّ من باقة ١٥ شهرًا بجزءٍ = المتبقي +
+    التعويض (والباقي يُباع من «حسابات متبقية»)، ورسالة واتساب جاهزة في «الرسائل». ← (رمز HTTP، جسم)."""
+    order, user = str(req.get("order") or "").strip(), str(req.get("username") or "").strip().lower()
+    comp = max(0, min(14, int(split_subs.parse_months(req.get("comp")) or 0))) if str(req.get("comp", "")).strip() \
+        else panels.COMP_DEFAULT
+    data = panels.lost(cfg, ws, replaced=replaced_old_users(accounts), comp=comp, include_expired=True)
+    row = next((r for r in data["rows"] if r["order"] == order and r["username"].lower() == user), None)
+    if not row:
+        return 404, {"error": "لا اشتراك مفقود بهذا الطلب واليوزر (قد يكون موجودًا على لوحة أو مستبدلًا)"}
+    if row["done"]:
+        return 400, {"error": "أُنشئ له اشتراكٌ من قبل: %s" % row["done"].get("new", "")}
+    if row["expired"] and not req.get("force"):
+        return 400, {"error": "انتهت مدة هذا الطلب"}
+    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row["account_id"])), None)
+    gate = find_gate(acct, row["gate_id"]) if acct else None
+    if not gate:
+        return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اضبط حساب وبوابة اللوحة في «اللوحات وهوستاتها»"}
+    gate = with_guide(acct, gate)
+    months = req.get("months") or row["new_months"] or (comp if row["expired"] else 0)
+    code, resp, r = _make_line(acct, gate, row, months, "تعويض الطلب %s" % row["order"])
+    if code != 200:
+        return code, resp
+    msgs = [{"kind": "comp", "name": row["customer"], "phone": _wa_phone(row["phone"]),
+             "text": comp_text(row["customer"], row["order"], r.get("line", ""), comp, channel_link()), "sent": None}]
+    resp["messages"] = msgs
+    panels.mark_dupe_done(ws, row["order"], r["username"], resp["months"], row["customer"],
+                          extra={"msgs": msgs, "src": "lost", "old": row["username"], "comp": comp})
     return 200, resp
 
 
@@ -5868,6 +5942,33 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, panels.explain_user(rcfg, rws, self._q("user"),
                                                            gates=card_gates(racs), split=split_users(racs),
                                                            replaced=replacement_users(racs)))
+            if path == "/api/renew/order":          # بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) وحاله على اللوحات
+                d = panels.order_search(rcfg, rws, self._q("q"), replaced=replaced_old_users(racs))
+                idx = d.get("index") or {}
+                if not d["rows"] and idx.get("sid") and not idx.get("username"):
+                    try:                                # سجلّ الطلب في سلة: يوزره المكتوب ليُعبّأ به الربط
+                        got, src = renew_credentials_for(st, idx["sid"])
+                        d["salla"] = {k: got.get(k, "") for k in ("username", "password", "host")} if got else None
+                        d["salla_src"] = src
+                    except Exception:
+                        d["salla"] = None
+                for r in d["rows"]:
+                    r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
+                return self._send(200, d)
+            if path == "/api/renew/lost":           # المفقود: مباعٌ ولا يوزر له على أي لوحة ولم يُستبدل
+                comp = split_subs.parse_months(self._q("comp"))
+                d = panels.lost(rcfg, rws, replaced=replaced_old_users(racs),
+                                comp=panels.COMP_DEFAULT if comp is None else max(0, min(14, comp)),
+                                include_expired=self._q("expired") == "1")
+                for r in d["rows"]:
+                    ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
+                    r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
+                d["wa_linked"] = dup_wa_ready(st)
+                day = renew.now_iso()[:10]
+                d["sent_today"] = sum(1 for m in panels.load_dup_log(rws, 100000)
+                                      if m.get("how") != "manual" and m.get("ok") and str(m.get("at", ""))[:10] == day)
+                d["daily_cap"] = HOST_DAILY_CAP
+                return self._send(200, d)
             if path == "/api/renew/host-job":       # حال إرسال رسالة الهوست الجاري/الأخير
                 return self._send(200, host_job_status(rws))
             if path == "/api/renew/host-audience":  # مشتركو هوست لرسالة جماعية محدّدة
@@ -6175,6 +6276,30 @@ class Handler(BaseHTTPRequestHandler):
             err = "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")
             panels.log_dup_send(rws, msg, how, ok, err)
             return self._send(200 if ok else 502, {"ok": ok, "error": err, "how": how})
+        if path == "/api/renew/order-link":       # يربط طلبًا بيوزره (وكلمة مروره) في اشتراكات المتجر
+            base = renew.load_index(rws).get("orders", {}).get(renew.norm_order(req.get("order")))
+            if base:
+                base = dict(base, order=renew.norm_order(req.get("order")))
+            try:
+                ln = panels.link_order(rws, req.get("order"), req.get("username"), req.get("password", ""),
+                                       req.get("host", ""), replace=req.get("replace", ""), base=base)
+            except ValueError as e:
+                return self._send(400, {"error": str(e)})
+            d = panels.order_search(rcfg, rws, ln["order"], replaced=replaced_old_users(racs))
+            row = next((r for r in d["rows"] if r["username"].lower() == ln["username"].lower()), None)
+            if row:
+                row["new_months"] = panels.comp_months(row["days_left"], panels.COMP_DEFAULT)
+            return self._send(200, {"ok": True, "row": row, **d})
+        if path == "/api/renew/comp-create":      # اشتراكٌ بالمتبقي + تعويض لصاحب طلبٍ مفقود يوزرُه
+            try:
+                code, body = comp_create(racs, rcfg, rws, req)
+            except xm_web.CaptchaNeeded:
+                return self._send(200, {"need_captcha": True, "error": "اللوحة تطلب كابتشا: افتح صفحة الإنشاء ثم أعد المحاولة"})
+            except xm_web.LoginFailed as e:
+                return self._send(502, {"error": "فشل دخول اللوحة: %s" % str(e)[:120]})
+            except Exception as e:
+                return self._send(502, {"error": str(e)[:300]})
+            return self._send(code, body)
         if path == "/api/renew/dup-create":       # يوزر جديد لصاحب الطلب اللاحق في مبيعٍ مكرّر
             try:
                 code, body = dup_create(racs, rcfg, rws, req)

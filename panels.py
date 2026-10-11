@@ -805,3 +805,174 @@ def renewal_list(config, data_dir, days_override=None):
             "expired": res["summary"]["expired"],
             "expiring_soon": res["summary"]["expiring_soon"],
             "built": res["built"]}
+
+
+# ============================ البحث برقم الطلب، والمفقود ============================
+# مباعٌ في سلة ولا يوجد يوزره على أي لوحة (لا لوحته ولا البديلة) ولا استُبدل: العميل له
+# اشتراكٌ مدفوع وخطٌّ ضائع. يُنشأ له خطٌّ من باقة ١٥ شهرًا بجزءٍ = ما تبقّى + تعويض، والباقي
+# يعود إلى «حسابات متبقية» للبيع. ويُربط الطلب بيوزره يدويًا حين لم تحمله سلة أو حملت غيره.
+COMP_DEFAULT = 1            # أشهر التعويض افتراضًا
+BASE_MONTHS = 15            # الباقة التي يُجزَّأ منها الخط
+
+
+def line_expiry(ln):
+    """انتهاء خطٍّ من المتجر: المكتوب، وإلا تاريخ الشراء + المدة، وإلا None."""
+    exp = renew.parse_date(ln.get("expiry"))
+    if exp:
+        return exp
+    start = renew.parse_date(ln.get("date"))
+    m = int(ln.get("months") or 0)
+    return renew.add_months(start, m) if start and m else None
+
+
+def comp_months(days_left, comp=COMP_DEFAULT):
+    """أشهر الخط الجديد: المتبقي (أقرب شهر كامل) + التعويض، من شهرٍ إلى ١٥ (١٥ = الباقة كاملةً)."""
+    left = suggest_slice(days_left)
+    if not left:
+        return 0
+    return max(1, min(BASE_MONTHS, left + max(0, int(comp or 0))))
+
+
+def _panel_users(pl):
+    out = {}
+    for pid, pdata in pl.items():
+        for u in (pdata.get("by_user") or {}):
+            out.setdefault(u, pid)
+    return out
+
+
+def _line_row(ln, cfg, pl, users, done, replaced, today):
+    """صفّ خطٍّ من المتجر بحاله: أين وُجد، وأمفقودٌ هو، وكم بقي له."""
+    pmap = {p["id"]: p for p in cfg["panels"]}
+    hidx = host_index(cfg["panels"])
+    u = str(ln.get("username") or "").strip()
+    pid = hidx.get(renew.norm_host(ln.get("host")), "")
+    panel = pmap.get(pid) or {}
+    own = panel_data_for(pl, panel) if panel else None
+    found = users.get(u.lower(), "")
+    exp = line_expiry(ln)
+    left = (exp - today).days if exp else None
+    order = str(ln.get("order") or "")
+    if not u:
+        state = "no_user"
+    elif found:
+        state = "found"
+    elif u.lower() in replaced and not done.get(order):     # استُبدل من غير هذه الصفحة
+        state = "replaced"
+    elif not panel:
+        state = "host_unmapped"
+    elif not (own and own.get("count")):
+        state = "not_pulled"                     # لوحته لم تُسحب: لا يُحكم بالفقد
+    else:
+        state = "missing"
+    return {"order": order, "date": str(ln.get("date") or ""), "customer": str(ln.get("customer") or ""),
+            "phone": str(ln.get("phone") or ""), "product": str(ln.get("product") or ""),
+            "username": u, "password": str(ln.get("password") or ""), "host": str(ln.get("host") or ""),
+            "months": int(ln.get("months") or 0), "expiry": exp.isoformat() if exp else "",
+            "days_left": left, "remaining": remaining_text(exp.isoformat(), today) if exp else "",
+            "expired": left is not None and left <= 0, "suggest": suggest_slice(left),
+            "panel_id": pid if panel else "", "panel_name": panel.get("name", ""),
+            "account_id": panel.get("account_id", ""), "gate_id": panel.get("gate_id", ""),
+            "found_panel": (pl.get(found) or {}).get("name", "") if found else "",
+            "state": state, "linked": str(ln.get("linked") or ""), "done": done.get(order)}
+
+
+def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=False, today=None):
+    """المفقود: خطوط المتجر التي لا يوجد يوزرها على أي لوحةٍ مسحوبة ولم يُستبدل — جاريةً (والمنتهية اختيارًا).
+    `replaced` يوزراتٌ قديمة استُبدلت (user_links). صفٌّ لكل (طلب، يوزر)، وما أُنشئ له تعويضه يبقى ظاهرًا بسجلّه."""
+    cfg = renew.normalize_config(config)
+    pl = load_panel_lines(data_dir)["panels"]
+    users = _panel_users(pl)
+    done = load_dupes_done(data_dir)
+    replaced = {str(u).lower() for u in (replaced or ())}
+    today = today or renew._today()
+    rows, seen = [], set()
+    counts = {"found": 0, "replaced": 0, "host_unmapped": 0, "not_pulled": 0, "expired": 0}
+    for ln in load_store_lines(data_dir).get("lines", []):
+        r = _line_row(ln, cfg, pl, users, done, replaced, today)
+        key = (renew.norm_order(r["order"]), r["username"].lower())
+        if not r["username"] or key in seen:
+            continue
+        seen.add(key)
+        if r["state"] != "missing":
+            counts[r["state"]] = counts.get(r["state"], 0) + 1
+            continue
+        if r["expired"] or r["days_left"] is None:
+            counts["expired"] += 1
+            if not include_expired or r["days_left"] is None:
+                continue
+        r["new_months"] = comp_months(r["days_left"], comp)
+        rows.append(r)
+    rows.sort(key=lambda r: (bool(r["done"]), r["expired"], -(r["days_left"] or 0), r["order"]))
+    return {"rows": rows, "total": len(rows), "comp": int(comp or 0), "base": BASE_MONTHS,
+            "pending": sum(1 for r in rows if not r["done"] and not r["expired"]),
+            "done": sum(1 for r in rows if r["done"]), "counts": counts,
+            "pulled": sum(1 for p in pl.values() if p.get("count")), "built": renew.now_iso()}
+
+
+def order_search(config, data_dir, q, replaced=None, today=None):
+    """بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) في اشتراكات المتجر المسحوبة، ثم في فهرس الطلبات:
+    كل خطٍّ بحاله على اللوحات (موجود · مفقود · مستبدل …). ← {rows, index, order}."""
+    q = str(q or "").strip()
+    qo, ql = renew.norm_order(q), q.lower()
+    if not q:
+        return {"rows": [], "index": None, "order": ""}
+    cfg = renew.normalize_config(config)
+    pl = load_panel_lines(data_dir)["panels"]
+    users = _panel_users(pl)
+    done = load_dupes_done(data_dir)
+    replaced = {str(u).lower() for u in (replaced or ())}
+    today = today or renew._today()
+    rows = []
+    for ln in load_store_lines(data_dir).get("lines", []):
+        if (qo and renew.norm_order(ln.get("order")) == qo) or str(ln.get("username") or "").strip().lower() == ql \
+                or (len(q) >= 4 and str(ln.get("password") or "").strip() == q):
+            rows.append(_line_row(ln, cfg, pl, users, done, replaced, today))
+    order = rows[0]["order"] if rows and all(r["order"] == rows[0]["order"] for r in rows) else (qo if not rows else "")
+    idx = renew.load_index(data_dir).get("orders", {}).get(qo) if qo else None
+    if idx:
+        exp = line_expiry(idx)
+        idx = {k: idx.get(k) for k in ("phone", "date", "months", "devices", "host", "username", "sid")
+               if idx.get(k) not in (None, "")} | {"expiry": exp.isoformat() if exp else ""}
+    return {"rows": rows, "index": idx, "order": order or (qo if idx else "")}
+
+
+def link_order(data_dir, order, username, password="", host="", replace="", base=None):
+    """يربط طلبًا بيوزره في اشتراكات المتجر: يُضاف الخط (الطلب، اليوزر) أو تُحدَّث كلمة مروره وهوسته،
+    بمعلومات الطلب من خطٍّ له أو من `base` (فهرس الطلبات). و`replace` يوزرٌ مسجَّلٌ للطلب خطأً يُحذف خطّه.
+    ← الخط المحفوظ. ValueError برسالةٍ للعرض."""
+    order, username = renew.norm_order(order), str(username or "").strip()
+    if not order or not username:
+        raise ValueError("رقم الطلب واسم المستخدم مطلوبان")
+    if re.search(r"\s", username):
+        raise ValueError("اسم المستخدم بلا مسافات")
+    d = load_store_lines(data_dir)
+    lines = d.get("lines", [])
+    mine = [ln for ln in lines if renew.norm_order(ln.get("order")) == order]
+    src = (mine[0] if mine else None) or dict(base or {})
+    if not src:
+        raise ValueError("لا طلب بهذا الرقم في الاشتراكات المسحوبة — اسحب طلبات سلة أولًا")
+    rep = str(replace or "").strip().lower()
+    if rep and rep != username.lower():
+        lines = [ln for ln in lines if not (renew.norm_order(ln.get("order")) == order
+                                            and str(ln.get("username") or "").strip().lower() == rep)]
+    cur = next((ln for ln in lines if renew.norm_order(ln.get("order")) == order
+                and str(ln.get("username") or "").strip().lower() == username.lower()), None)
+    if cur is None:
+        cur = {k: src.get(k, "") for k in ("order", "date", "phone", "customer", "sid", "admin_url", "price",
+                                           "status", "host", "months", "devices", "expiry", "product", "sku")}
+        cur.update(order=str(src.get("order") or order), falcon=bool(src.get("falcon")),
+                   months=int(src.get("months") or 0), devices=int(src.get("devices") or 1))
+        if not cur.get("expiry"):
+            exp = line_expiry(src)
+            cur["expiry"] = exp.isoformat() if exp else ""
+        lines.append(cur)
+    cur["username"] = username
+    if password:
+        cur["password"] = str(password).strip()
+    if host:
+        cur["host"] = str(host).strip()
+    cur["linked"] = renew.now_iso()
+    d["lines"], d["count"] = lines, len(lines)
+    renew._write_json(store_lines_path(data_dir), d)
+    return cur
