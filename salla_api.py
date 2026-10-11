@@ -190,6 +190,19 @@ def orders_page(token: str, page: int = 1, per_page: int = 50) -> tuple:
                   "total": int(p.get("total") or len(rows))}
 
 
+def order_by_reference(token: str, ref) -> dict:
+    """طلبٌ برقمه الذي يراه العميل (reference_id) من واجهة الإدارة — خامًا كما في `orders_page`،
+    أو {} إن لم يوجد. للردّ على شكوى طلبٍ لم يُسحب بعد: نداءٌ واحد بدل سحب الطلبات كلها."""
+    ref = re.sub(r"\D", "", str(ref or ""))
+    if not ref:
+        return {}
+    d = _get("%s/admin/v2/orders?reference_id=%s" % (API, urllib.parse.quote(ref)), token)
+    for o in (d.get("data") or []):
+        if isinstance(o, dict) and re.sub(r"\D", "", str(o.get("reference_id") or "")) == ref:
+            return o
+    return {}
+
+
 def order_histories(token: str, order_id, page: int = 1) -> list:
     """سجل الطلب: التعليقات والأنشطة. بيانات الاشتراك تُكتب هنا تعليقًا
     (‏`Host: … Username: … Password: …`) ولا يُخرجها تصدير سلة — فهذا هو

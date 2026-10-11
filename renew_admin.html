@@ -347,7 +347,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
   border-radius:50%;background:var(--sf2);color:var(--mute);font-size:1.2rem;line-height:1;cursor:pointer}
 .sq .go{flex:none;min-width:96px}
 .sstat{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:.88rem;color:var(--mute);min-height:24px}
-.sstat #loMsg{flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.sstat #loMsg,.sstat #rpMsg{flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .lcards.stale{opacity:.45;pointer-events:none;transition:opacity .15s}
 .sstat .ghost{min-height:0;padding:4px 12px;font-size:.82rem}
 .sdot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--line)}
@@ -357,6 +357,8 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 [data-state="error"] .sdot{background:var(--err)}[data-state="error"] .sstat{color:var(--err)}
 @keyframes sdot{50%{opacity:.25;transform:scale(.7)}}
 @media (prefers-reduced-motion:reduce){[data-state="loading"] .sdot{animation:none}}
+.rp-pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75;font-size:.9rem;min-height:280px}
+.rp-note{border-radius:14px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--amber) 50%,var(--line));background:color-mix(in srgb,var(--amber) 8%,var(--sf));line-height:1.7;font-size:.9rem}
 .sync{margin:6px 0 0;font-size:.74rem;color:var(--mute);line-height:1.6;white-space:pre-line}
 .sync:empty{display:none}
 .lc-f span.clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -387,6 +389,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
     <a href="#secSell" data-tab="sell" role="tab"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg>المعروض للبيع</a>
     <a href="#secDup" data-tab="dup" role="tab"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>المكرر والبدائل</a>
     <a href="#secLost" data-tab="lost" role="tab"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>البحث والمفقود</a>
+    <a href="#secReply" data-tab="reply" role="tab"><svg viewBox="0 0 24 24"><path d="M3 11.5a8.5 8.5 0 0 1 8.5-8.5h1A8.5 8.5 0 0 1 21 11.5c0 4.7-3.8 8.5-8.5 8.5H11l-5 3v-4.3A8.5 8.5 0 0 1 3 11.5z"/><path d="M9 11h6M9 8h6"/></svg>الردّ على الشكاوى</a>
     <a href="#secMsgs" data-tab="msgs" role="tab"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>الرسائل<em id="msgsBadge" class="hidden"></em></a>
     <a href="#secQ" data-tab="q" class="admin-only" role="tab"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></svg>الطلبات</a>
     <a href="#secCfg" data-tab="cfg" role="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>الإعداد</a>
@@ -673,6 +676,42 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <button class="ghost" id="lsStop" type="button" disabled>إيقاف</button></div>
         <div id="lsProg" class="hidden" style="margin:8px 0"><div style="height:10px;border-radius:99px;background:var(--line);overflow:hidden"><div id="lsBar" style="height:100%;width:0;background:var(--go);transition:width .4s"></div></div>
           <p class="msg" id="lsStat" style="margin:6px 0 0"></p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== الردّ على الشكاوى: الطلب برقمه ← اشتراكه وبياناته ← ردٌّ جاهز ===================== -->
+  <section id="secReply">
+    <div class="shead"><span class="sic c-gold"><svg viewBox="0 0 24 24"><path d="M3 11.5a8.5 8.5 0 0 1 8.5-8.5h1A8.5 8.5 0 0 1 21 11.5c0 4.7-3.8 8.5-8.5 8.5H11l-5 3v-4.3A8.5 8.5 0 0 1 3 11.5z"/><path d="M9 11h6M9 8h6"/></svg></span>
+      <h2>الردّ على الشكاوى<small>اكتب رقم طلب العميل فيُجهَّز ردٌّ ببيانات اشتراكه وشرحه والتطبيق المناسب لجهازه</small></h2></div>
+
+    <div class="blk sbox" id="rpBox" data-state="ready" style="padding:12px;margin-bottom:12px">
+      <b>رقم الطلب</b>
+      <form class="sq" id="rpForm" role="search" autocomplete="off">
+        <div class="sq-in"><input id="rpQ" class="ltr" type="search" placeholder="رقم الطلب كما يرسله العميل" inputmode="numeric" enterkeyhint="search" aria-label="رقم الطلب">
+          <button class="sq-x hidden" id="rpClear" type="button" aria-label="مسح">×</button></div>
+        <button class="go" id="rpFind" type="submit">جهّز الردّ</button></form>
+      <div class="sstat" id="rpStat" role="status" aria-live="polite"><span class="sdot"></span><span id="rpMsg">اكتب رقم الطلب ثم «جهّز الردّ». يُبحث في اشتراكات سلة المسحوبة، ثم سجلّ الطلب في سلة، ثم الطلب نفسه من سلة إن لم يُسحب.</span>
+        <button class="ghost hidden" id="rpRetry" type="button">أعد المحاولة</button></div>
+      <div class="lcards hidden" id="rpWrap"><div id="rpBody"></div></div>
+
+      <div id="rpNoUser" class="hidden" style="margin-top:12px;display:grid;gap:10px">
+        <div class="rp-note" id="rpHint"></div>
+        <div class="acts"><a class="go" id="rpCreate" href="#" target="_blank" rel="noopener">افتح صفحة الإنشاء</a></div>
+        <b>الصق سطر اليوزر الذي أنشأته</b>
+        <p class="hint">كما نُسخ من صفحة الإنشاء (<span class="ltr">Host … User … Pass …</span>) — يُربط بالطلب، ويُجهَّز الردّ ببياناته.</p>
+        <textarea id="rpLine" class="ltr" rows="2" placeholder="Host http://… User … Pass …"></textarea>
+        <div class="acts"><button class="go" id="rpLinkGo" type="button">اربط وجهّز الردّ</button></div>
+      </div>
+
+      <div id="rpReply" class="hidden" style="margin-top:12px;display:grid;gap:10px">
+        <b>نصّ الردّ <small id="rpSub" class="pill"></small></b>
+        <p class="hint">عدّله إن شئت قبل الإرسال. الإرسال بالرقم المربوط يُسجَّل في «الرسائل» ← سجل الرسائل المرسلة.</p>
+        <textarea id="rpText" class="rp-pre" rows="18"></textarea>
+        <div class="acts"><button class="go" id="rpCopy" type="button">نسخ الردّ</button>
+          <a class="ghost" id="rpWa" href="#" target="_blank" rel="noopener">واتساب (يدوي)</a>
+          <button class="ghost" id="rpSend" type="button">إرسال عبر الرقم المربوط</button></div>
+        <p class="msg" id="rpSent"></p>
       </div>
     </div>
   </section>
@@ -1783,7 +1822,7 @@ $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/ren
 $('#dlLines').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/store-lines.xlsx'; };
 
 /* ============ التبويبات: قسمٌ واحد في كل مرة، ويُحفظ آخر تبويب ============ */
-const TABS = {data:['secData','secAn'], cmp:['secCmp'], sell:['secSell'], dup:['secDup'], lost:['secLost'], msgs:['secMsgs'], q:['secQ'], cfg:['secCfg']};
+const TABS = {data:['secData','secAn'], cmp:['secCmp'], sell:['secSell'], dup:['secDup'], lost:['secLost'], reply:['secReply'], msgs:['secMsgs'], q:['secQ'], cfg:['secCfg']};
 function showTab(t){
   if (!TABS[t]) t = 'data';
   if (t === 'msgs' && typeof loadDup === 'function') loadDup();
@@ -2201,6 +2240,83 @@ $('#lkGo').onclick = async () => {
   loRender(d, order);                                   // الردّ يحمل نتيجة البحث بعد الربط
   const r = d.row; if (r) loState('found', `رُبط الطلب ${order} باليوزر ${r.username} — ${(LOST_STATE[r.state] || [r.state])[0]}`);
 };
+
+/* ============ الردّ على الشكاوى ============ */
+// الحالات نفسها كالبحث: ready · loading · found (ready أو no_user) · empty (not_found) · error. وطلبٌ قديم يُهمل بعد أحدث.
+const RP = {seq: 0, ctl: null, q: '', d: null};
+const RP_SRC = {store: 'اشتراكات سلة المسحوبة', index: 'فهرس الطلبات', history: 'سجلّ الطلب في سلة', card: 'بطاقة الطلب في سلة', panel: 'لوحة سلة', salla: 'سلة'};
+function rpState(state, text, retry){
+  $('#rpBox').dataset.state = state;
+  const busy = state === 'loading', b = $('#rpFind');
+  b.disabled = busy; b.textContent = busy ? 'جارٍ التجهيز…' : 'جهّز الردّ'; b.setAttribute('aria-busy', busy ? 'true' : 'false');
+  $('#rpMsg').textContent = text || ''; $('#rpRetry').classList.toggle('hidden', !retry);
+  $('#rpWrap').classList.toggle('stale', busy);
+  if (state === 'error' || state === 'empty' || state === 'ready') { $('#rpWrap').classList.add('hidden'); $('#rpNoUser').classList.add('hidden'); $('#rpReply').classList.add('hidden'); }
+}
+async function rpFind(q){
+  q = (q != null ? q : $('#rpQ').value).trim();
+  if (!q) { rpState('ready', 'اكتب رقم الطلب ثم «جهّز الردّ».'); $('#rpQ').focus(); return; }
+  if (RP.ctl && RP.q === q) return;
+  if (RP.ctl) RP.ctl.abort();
+  const my = ++RP.seq, ctl = new AbortController(); RP.ctl = ctl; RP.q = q;
+  let timedOut = false; const tm = setTimeout(() => { timedOut = true; ctl.abort(); }, window.__searchMs || 45000);
+  rpState('loading', `جارٍ البحث عن الطلب «${q}» وتجهيز الردّ…`);
+  const res = await getJSON('/api/renew/reply?q=' + encodeURIComponent(q), ctl.signal);
+  clearTimeout(tm);
+  if (my !== RP.seq) return;
+  RP.ctl = null; RP.q = '';
+  if (!res.ok) {
+    if (res.kind === 'abort' && !timedOut) return rpState('ready', '');
+    return rpState('error', res.error || FAIL_TEXT[timedOut ? 'timeout' : res.kind] || FAIL_TEXT.server, true);
+  }
+  rpRender(res.data, q);
+}
+function rpRender(d, q){
+  RP.d = d; const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
+  if (d.state === 'not_found') return rpState('empty', `لا طلب برقم «${d.order || q}» في اشتراكات سلة ولا في سلة نفسها. تأكّد من الرقم (رقم الطلب لا رقم الفاتورة)، أو اسحب طلبات سلة من «البيانات».`, true);
+  const c0 = d.creds[0] || {};
+  const head = `<header class="lc-h"><div class="lc-o"><small>طلب</small><b class="ltr">${esc(d.order)}</b><small class="ltr">${esc(d.date || '')}</small></div>`
+    + `<span class="pill ${d.state === 'ready' ? 'ok' : 'warn'}">${d.state === 'ready' ? 'الردّ جاهز' : 'بلا يوزر: أنشئ له'}</span></header>`;
+  const grid = `<div class="lc-g">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}`
+    + lcField('الاشتراك', d.sub_name ? esc(d.sub_name) + (d.gate ? ` · ${esc(d.gate.name)}` : '') : '<span class="c-warn">غير معروف: يُرسل تنبيهٌ عامّ</span>')
+    + lcField('المدة', d.months ? AR(d.months) + ' شهرًا' + (d.qty > 1 ? ` × ${AR(d.qty)}` : '') : '') + lcField('المتبقي', esc(d.remaining))
+    + lcField('مصدر البيانات', RP_SRC[d.src] || '') + (d.product ? lcField('المنتج', `<span class="clip" title="${esc(d.product)}">${esc(d.product)}</span>`, 'wide') : '') + '</div>';
+  const creds = d.creds.map(c => lcCred(c.host, c.username, c.password)).join('');
+  $('#rpBody').innerHTML = `<article class="lc st-${d.state === 'ready' ? 'found' : 'not_pulled'}">${head}${grid}${creds}</article>`;
+  $('#rpWrap').classList.remove('hidden');
+  const no = d.state !== 'ready';
+  $('#rpNoUser').classList.toggle('hidden', !no); $('#rpReply').classList.toggle('hidden', no);
+  if (no) {
+    $('#rpHint').textContent = d.hint || 'لم يُعثر على يوزر لهذا الطلب: أنشئ له يوزرًا ثم الصق سطره.';
+    $('#rpCreate').href = B + '/'; $('#rpCreate').textContent = d.gate ? `افتح صفحة الإنشاء (${d.gate.name})` : 'افتح صفحة الإنشاء';
+    $('#rpLine').value = '';
+    rpState('found', `الطلب موجود (${esc(d.customer) || 'بلا اسم'}${d.sub_name ? ' · ' + d.sub_name : ''}) لكن بلا يوزر: أنشئ له يوزرًا ثم الصق سطره أدناه${ms}`);
+    return;
+  }
+  $('#rpText').value = d.text || ''; $('#rpSub').textContent = d.sub_name ? 'اشتراك ' + d.sub_name : 'اشتراك غير معروف';
+  $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
+  $('#rpSend').title = d.wa ? '' : 'لا رقم جوال لهذا العميل';
+  note($('#rpSent'), d.wa_linked ? '' : 'لا رقم واتساب مربوط الآن: انسخ الردّ أو أرسله من واتساب يدويًا.');
+  rpState('found', `الردّ جاهز لـ${esc(d.customer) || 'العميل'} · ${d.creds.length === 1 ? 'يوزر واحد' : AR(d.creds.length) + ' يوزرات'} من ${RP_SRC[d.src] || d.src}${d.sub_name ? ' · اشتراك ' + d.sub_name : ''}${ms}`);
+}
+$('#rpForm').addEventListener('submit', e => { e.preventDefault(); rpFind(); });
+$('#rpRetry').onclick = () => rpFind();
+$('#rpQ').addEventListener('input', () => $('#rpClear').classList.toggle('hidden', !$('#rpQ').value));
+$('#rpClear').onclick = () => { $('#rpQ').value = ''; $('#rpClear').classList.add('hidden');
+  if (RP.ctl) { RP.ctl.abort(); RP.ctl = null; RP.q = ''; RP.seq++; }
+  rpState('ready', 'اكتب رقم الطلب ثم «جهّز الردّ».'); $('#rpQ').focus(); };
+$('#rpCopy').onclick = async () => { const ok = await copyText($('#rpText').value); const b = $('#rpCopy');
+  b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ الردّ', 1600); };
+$('#rpWa').onclick = () => { const d = RP.d || {}; $('#rpWa').href = 'https://wa.me/' + (d.wa || '') + '?text=' + encodeURIComponent($('#rpText').value);
+  post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: $('#rpText').value, mode: 'manual'}); };
+$('#rpSend').onclick = async () => { const d = RP.d || {}, b = $('#rpSend'); b.disabled = true; note($('#rpSent'), 'جارٍ الإرسال…', true);
+  const r = await post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: $('#rpText').value});
+  b.disabled = false; note($('#rpSent'), r.ok ? `أُرسل الردّ إلى ${d.phone} ✓` : (r.error || 'تعذّر الإرسال'), !!r.ok); };
+$('#rpLinkGo').onclick = async () => { const d = RP.d || {}, line = $('#rpLine').value.trim(), b = $('#rpLinkGo');
+  if (!line) return rpState('found', 'الصق سطر اليوزر أولًا');
+  b.disabled = true; const r = await post('/api/renew/reply-link', {order: d.order, line}); b.disabled = false;
+  if (r.error) return rpState('found', r.error);
+  rpRender(r, d.order); };
 
 let LS = null, LSTEST = 0, LSPOLL = 0;
 async function lsLoad(){

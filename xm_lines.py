@@ -55,6 +55,7 @@ import users_export
 import user_links
 import salla_web
 import split_subs
+import complaints
 import analytics
 import google_api
 import nuvio_accounts
@@ -3578,6 +3579,164 @@ def comp_text(name, order, line, comp, channel=""):
     return "\n\n".join(b for b in re.split(r"\n\s*\n", t) if channel or "قناتنا" not in b)
 
 
+# ---- الردّ على الشكاوى: الطلب برقمه ← اشتراكه ← بياناته ← الردّ ----
+def reply_gate_for(accounts, sub, host=""):
+    """بوابة اشتراكٍ من بوابات الحسابات لنصّ الشرح: بهوست الاعتماد أولًا (هي بوابة العميل بعينها)، وإلا أول
+    بوابةٍ اشتراكُها `sub` في الدليل. ← (الحساب، البوابة) أو (None, None)."""
+    nh = renew.norm_host(host) if host else ""
+    by_sub = None
+    for a in (accounts or []):
+        for g in (a.get("gates") or []):
+            if nh and renew.norm_host(g.get("host")) == nh:
+                return a, g
+            if not by_sub and sub and guide_sub_key(g, gate_guide(g, a.get("guide_url", ""))) == sub:
+                by_sub = (a, g)
+    return by_sub or (None, None)
+
+
+def _reply_salla_order(st, rcfg, order):
+    """الطلب من سلة برقمه إن لم يكن مسحوبًا: معلوماته (العميل والجوال والمنتج ومدته) ومعرّفه الداخلي (sid)
+    لسجلّه. {} بلا رمز سلة أو إن لم يوجد. لا يرمي: الشكوى تُجاب بما وُجد."""
+    token = renew_salla_token(st, rcfg)
+    if not token or not order:
+        return {}
+    try:
+        raw = salla_api.order_by_reference(token, order)
+    except Exception:
+        return {}
+    if not raw:
+        return {}
+    units, _why = renew_import.salla_order_units(raw, keep_unconfirmed=True, include_falcon=True)
+    po = salla_api.parse_order({"data": raw})
+    u = units[0] if units else {}
+    item = (po.get("items") or [{}])[0]
+    return {"order": order, "sid": str(raw.get("id") or ""), "customer": u.get("customer") or po.get("customer_name", ""),
+            "phone": po.get("phone") or u.get("phone", ""), "date": u.get("date", ""), "months": int(u.get("months") or 0),
+            "devices": int(u.get("devices") or 1), "product": u.get("product") or item.get("name", ""),
+            "sku": u.get("sku") or item.get("sku", ""), "falcon": bool(u.get("falcon")), "status": po.get("status", ""),
+            "qty": max(1, len(units)), "admin_url": u.get("admin_url", ""), "salla": True}
+
+
+def reply_lookup(st, rcfg, rws, racs, q):
+    """الردّ على شكوى طلبٍ برقمه. ثلاثة مصادر بالترتيب، وكلٌّ أرخص مما بعده: اشتراكات سلة المسحوبة (يوزره
+    وباسورده معه)، ثم فهرس الطلبات وسجلّ الطلب في سلة (renew_credentials_for)، ثم الطلب نفسه من سلة إن لم
+    يُسحب. ← {state: ready | no_user | not_found, …}: ready والردّ جاهز؛ no_user الطلب معروف بلا يوزر فيُنشأ
+    له ويُلصق سطره؛ not_found لا طلب بهذا الرقم في أي مصدر."""
+    order = complaints.norm_order(q)
+    out = {"q": str(q or "").strip(), "order": order, "state": "not_found", "creds": [], "src": ""}
+    if not order:
+        return out
+    d = panels.order_search(rcfg, rws, order, idx=renew_index(rcfg, rws, racs))
+    rows = [r for r in d["rows"] if r.get("match") == "order"]
+    ix = d.get("index") or {}
+    info = {}
+    if rows:
+        r0 = rows[0]
+        info = {k: r0.get(k, "") for k in ("customer", "phone", "date", "months", "product", "host", "expiry", "remaining")}
+        info["qty"] = len(rows)
+        out["creds"] = [{"username": r["username"], "password": r.get("password", ""), "host": r.get("host", "")}
+                        for r in rows if r.get("username")]
+        out["src"] = "store"
+    elif ix:
+        info = {k: ix.get(k, "") for k in ("phone", "date", "months", "host", "expiry")}
+        if ix.get("username"):
+            out["creds"] = [{"username": ix["username"], "password": ix.get("password", ""), "host": ix.get("host", "")}]
+            out["src"] = "index"
+    if not out["creds"]:
+        sid = ix.get("sid") if ix else ""
+        if not info:
+            sal = _reply_salla_order(st, rcfg, order)
+            if sal:
+                info, sid = sal, sal.get("sid") or sid
+        if sid:
+            try:
+                got, why = renew_credentials_for(st, sid)
+            except Exception:
+                got, why = {}, ""
+            if got.get("username"):
+                out["creds"] = [{"username": got["username"], "password": got.get("password", ""), "host": got.get("host", "")}]
+                out["src"] = why or "salla"
+    if not info and not out["creds"]:
+        return out
+    out.update({k: info.get(k, "") for k in ("customer", "phone", "date", "months", "product", "sku", "expiry", "remaining", "qty", "sid")})
+    out["wa"] = _wa_phone(info.get("phone", ""))
+    c0 = out["creds"][0] if out["creds"] else {}
+    host = c0.get("host") or info.get("host", "")
+    acct, gate = reply_gate_for(racs, "", host) if host else (None, None)
+    gsub = guide_sub_key(gate, gate_guide(gate, (acct or {}).get("guide_url", ""))) if gate else ""
+    sub = complaints.sub_of(info.get("product", ""), info.get("sku", ""), host, bool(info.get("falcon")), gsub)
+    if not gate:
+        acct, gate = reply_gate_for(racs, sub, "")
+    out["sub"], out["sub_name"] = sub, complaints.SUB_NAMES.get(sub, "")
+    out["guide"] = (gate_guide(gate, (acct or {}).get("guide_url", "")) if gate else "") or complaints.guide_link(sub)
+    out["gate"] = {"account_id": str((acct or {}).get("id", "")), "gate_id": str((gate or {}).get("id", "")),
+                   "name": (gate or {}).get("name", ""), "host": (gate or {}).get("host", "")} if gate else None
+    out["gates"] = [{"account_id": str(a.get("id")), "gate_id": str(g.get("id")), "name": g.get("name", ""), "host": g.get("host", ""),
+                     "sub": guide_sub_key(g, gate_guide(g, a.get("guide_url", "")))}
+                    for a in (racs or []) for g in (a.get("gates") or []) if g.get("host")]
+    if out["creds"]:
+        g = dict(gate or {}, guide_url=out["guide"], host=(gate or {}).get("host") or host)
+        line = guide_copy_text(acct, g, c0["username"], c0.get("password", ""), host or g.get("host", ""))
+        out["text"] = complaints.reply_text(info.get("customer", ""), order, line, sub, out["creds"][1:])
+        out["state"] = "ready"
+    else:
+        out["state"] = "no_user"
+        out["text"] = ""
+        out["hint"] = ("لم يُعثر على يوزر لهذا الطلب في اشتراكات سلة ولا في سجلّ الطلب. أنشئ له يوزرًا"
+                       + (" على بوابة %s" % gate["name"] if gate and gate.get("name") else (" على بوابة " + out["sub_name"] if out["sub_name"] else ""))
+                       + " من صفحة الإنشاء، ثم الصق سطره هنا فيُربط بالطلب ويُجهَّز الردّ.")
+    return out
+
+
+def reply_link(st, rcfg, rws, racs, req):
+    """يوزرٌ أُنشئ لصاحب شكوى: من سطره الملصوق (Host … User … Pass …) أو حقوله، يُربط بالطلب في اشتراكات
+    سلة (من فهرس الطلبات أو من الطلب في سلة إن لم يُسحب) ثم يُعاد بحث الردّ وهو جاهز. ← (رمز HTTP، جسم)."""
+    order = complaints.norm_order(req.get("order"))
+    raw = str(req.get("line") or "")
+    cred = renew_import.parse_credentials(raw)
+    if not cred.get("username"):                      # سطر صفحة الإنشاء بلا نقطتين: Host … User … Pass …
+        hit = _LINE_RE.search(raw)
+        cred = {"host": hit.group(1), "username": hit.group(2), "password": hit.group(3)} if hit else {}
+    user = str(req.get("username") or cred.get("username") or "").strip()
+    pw = str(req.get("password") or cred.get("password") or "").strip()
+    host = str(req.get("host") or cred.get("host") or "").strip()
+    if not order or not user:
+        return 400, {"error": "رقم الطلب واليوزر مطلوبان: الصق سطر اليوزر كما نُسخ من صفحة الإنشاء"}
+    base = renew.load_index(rws).get("orders", {}).get(order)
+    base = dict(base, order=order) if base else None
+    if not base:
+        sal = _reply_salla_order(st, rcfg, order)
+        if sal and sal.get("date"):
+            base = {k: sal.get(k, "") for k in ("order", "date", "phone", "customer", "sid", "admin_url", "status",
+                                                 "product", "sku", "months", "devices")} | {"falcon": sal.get("falcon", False)}
+    try:
+        panels.link_order(rws, order, user, pw, host, base=base)
+    except ValueError as e:
+        return 400, {"error": str(e)}
+    return 200, reply_lookup(st, rcfg, rws, racs, order)
+
+
+def reply_send(st, rws, req):
+    """يرسل ردّ الشكوى عبر الرقم المربوط (أو يسجّله مرسَلًا يدويًا من واتساب)، ويقيّده في سجل الرسائل
+    بنوع «reply» ليُرى في «الرسائل». ← (رمز HTTP، جسم)."""
+    text = str(req.get("text") or "").strip()
+    phone = _wa_phone(req.get("phone"))
+    msg = {"order": complaints.norm_order(req.get("order")), "kind": "reply", "name": str(req.get("name") or "")[:60],
+           "phone": phone, "text": text}
+    if not text:
+        return 400, {"error": "نصّ الردّ فارغ"}
+    if req.get("mode") == "manual":
+        panels.log_dup_send(rws, msg, "manual", True)
+        return 200, {"ok": True, "how": "manual"}
+    if not phone:
+        return 400, {"error": "لا رقم جوال لهذا العميل: انسخ الردّ وأرسله يدويًا"}
+    r, how = dup_wa_send(st, phone, text)
+    ok = bool(r.get("ok")) and not r.get("dry")
+    err = "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")
+    panels.log_dup_send(rws, msg, how, ok, err)
+    return (200 if ok else 502), {"ok": ok, "how": how, "error": err}
+
+
 def comp_create(accounts, cfg, ws, req):
     """اشتراكٌ لصاحب طلبٍ مفقودٍ يوزرُه (لا على لوحته ولا البديلة): خطٌّ من باقة ١٥ شهرًا بجزءٍ = المتبقي +
     التعويض (والباقي يُباع من «حسابات متبقية»)، ورسالة واتساب جاهزة في «الرسائل». ← (رمز HTTP، جسم)."""
@@ -6084,6 +6243,12 @@ class Handler(BaseHTTPRequestHandler):
                         r["copy"] = comp_copy(racs, r)
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
+            if path == "/api/renew/reply":          # الردّ على شكوى: الطلب برقمه ← اشتراكه وبياناته ← نصّ الردّ جاهزًا
+                t0 = time.perf_counter()
+                d = reply_lookup(st, rcfg, rws, racs, self._q("q"))
+                d["wa_linked"] = dup_wa_ready(st)
+                d["ms"] = int((time.perf_counter() - t0) * 1000)
+                return self._send(200, d)
             if path == "/api/renew/lost":           # المفقود: مباعٌ ولا يوزر له على أي لوحة ولم يُستبدل
                 comp = split_subs.parse_months(self._q("comp"))
                 t0 = time.perf_counter()
@@ -6423,6 +6588,12 @@ class Handler(BaseHTTPRequestHandler):
                 if r.get("done"):
                     r["copy"] = comp_copy(racs, r)
             return self._send(200, {"ok": True, "row": row, **d})
+        if path == "/api/renew/reply-link":       # يوزرٌ أُنشئ لصاحب شكوى: يُربط بالطلب ويُعاد الردّ جاهزًا
+            code, body = reply_link(st, rcfg, rws, racs, req)
+            return self._send(code, body)
+        if path == "/api/renew/reply-send":       # يرسل ردّ الشكوى عبر الرقم المربوط أو يسجّله مرسَلًا يدويًا
+            code, body = reply_send(st, rws, req)
+            return self._send(code, body)
         if path == "/api/renew/comp-create":      # اشتراكٌ بالمتبقي + تعويض لصاحب طلبٍ مفقود يوزرُه
             try:
                 code, body = comp_create(racs, rcfg, rws, req)
