@@ -5536,6 +5536,12 @@ class Handler(BaseHTTPRequestHandler):
                 d = panels.duplicates(rcfg, rws)
                 d["messages"] = panels.dupe_messages(rws)
                 d["wa_linked"] = dup_wa_ready(st)
+                try:
+                    rs = reader_status()
+                    d["wa_channel"] = ("contest" if rs.get("status") == "connected" else "wa" if d["wa_linked"] else "")
+                    d["wa_number"] = rs.get("number") or "" if d["wa_channel"] == "contest" else ""
+                except Exception:
+                    d["wa_channel"], d["wa_number"] = "", ""
                 for r in d["rows"]:
                     ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
                     r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
