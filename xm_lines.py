@@ -2964,9 +2964,22 @@ def _wa_phone(v):
 
 HOST_MSG = ("السلام عليكم {name}\n"
             "نحيطكم علمًا بأن هوست اشتراككم ({host}) يتغيّر.{new_host}\n"
-            "لتصلكم تفاصيل الهوست الجديد وكل ما يخص اشتراككم أولًا بأول، تابعوا قناتنا على واتساب:\n"
-            "{channel}\n"
+            "📖 شرح التفعيل: {guide}\n"
+            "📢 قناتنا على واتساب (تصلكم فيها التحديثات أولًا بأول): {channel}\n"
             "وللمساعدة نحن بخدمتكم.")
+HOST_DAILY_CAP = 150        # سقف يومي مقترح لرسائل الهوست من رقمٍ واحد
+
+
+def host_guide(accounts, host):
+    """رابط الشرح المذكور في بوابة هذا الهوست (الخاص بها، وإلا رابط حسابها)، أو ""."""
+    nh = renew.norm_host(host)
+    for a in (accounts or []):
+        for g in a.get("gates", []):
+            if nh and renew.norm_host(g.get("host")) == nh:
+                u = gate_guide(g, a.get("guide_url", ""))
+                if u:
+                    return u
+    return ""
 
 
 def channel_link():
@@ -2998,6 +3011,9 @@ def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True):
     sent = {m["phone"] for m in panels.load_dup_log(ws, 100000)
             if m.get("kind") == "host" and m.get("ok") and m.get("order") == "host:" + nh}
     sent_n = 0
+    day = renew.now_iso()[:10]
+    sent_today = sum(1 for m in panels.load_dup_log(ws, 100000)
+                     if m.get("kind") == "host" and m.get("ok") and str(m.get("at", ""))[:10] == day)
     for ln in panels.load_store_lines(ws).get("lines", []):
         if renew.norm_host(ln.get("host")) != nh:
             continue
@@ -3029,6 +3045,7 @@ def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True):
         rec = [r for r in rec if not r["sent"]]
     return {"host": host, "recipients": rec, "no_phone": no_phone, "expired_skipped": expired_n,
             "lines": lines_n, "channel": channel_link(), "template": HOST_MSG, "sent_before": sent_n,
+            "daily_cap": HOST_DAILY_CAP, "sent_today": sent_today,
             "subs": {k or "other": v for k, v in subs.items()}, "sub": sub}
 
 
@@ -5694,6 +5711,7 @@ class Handler(BaseHTTPRequestHandler):
                 d = host_audience(rcfg, rws, self._q("host"), include_expired=self._q("expired") == "1",
                                   sub=self._q("sub") or "", skip_sent=self._q("skip_sent") != "0")
                 d["wa_linked"] = dup_wa_ready(st)
+                d["guide"] = host_guide(racs, self._q("host"))
                 try:
                     rs = reader_status()
                     d["wa_channel"] = ("contest" if rs.get("status") == "connected" else "wa" if d["wa_linked"] else "")
