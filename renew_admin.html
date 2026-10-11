@@ -1331,7 +1331,7 @@ function renderUnlisted(d){
   const ps = d.panels || {};
   $('#unlTiles').innerHTML = Object.values(ps).map(p => p.not_pulled
     ? `<div class="stat"><b class="c-bad">—</b><small>${esc(p.name)} — <b>لم تُسحب يوزراتها</b><br>اضغط «اسحب يوزرات اللوحات» أعلاه</small></div>`
-    : `<div class="stat"><b class="${p.unlisted ? 'c-warn' : ''}">${AR(p.unlisted)}</b><small>${esc(p.name)} — غير معروض<br>من ${AR(p.lines)} يوزرًا (${esc(p.built || '')}) · مبيع ${AR(p.sold)} · معروض ${AR(p.listed)} · مجزَّأ ${AR(p.split || 0)} · منتهٍ ${AR(p.expired)}</small></div>`).join('')
+    : `<div class="stat"><b class="${p.unlisted ? 'c-warn' : ''}">${AR(p.unlisted)}</b><small>${esc(p.name)} — غير معروض<br>من ${AR(p.lines)} يوزرًا (${esc(p.built || '')}) · مبيع ${AR(p.sold)} · معروض ${AR(p.listed)} · مجزَّأ ${AR(p.split || 0)} · بديل ${AR(p.replaced || 0)} · منتهٍ ${AR(p.expired)}</small></div>`).join('')
     || '<div class="stat"><b>0</b><small>لا لوحات مضبوطة</small></div>';
   const notPulled = Object.values(ps).filter(p => p.not_pulled).map(p => p.name);
   const chips = [{k:'', t:'الكل', n: UNL.length}].concat(Object.entries(ps).map(([k,p]) => ({k, t:p.name, n:p.unlisted})));
@@ -1361,6 +1361,7 @@ $('#whyBtn').onclick = async () => {
   const d = await api('/api/renew/unlisted-why?user=' + encodeURIComponent(u));
   const parts = [d.reason];
   if (d.panels && d.panels.length) parts.push('على اللوحة: ' + d.panels.map(p => `${p.panel} (ينتهي ${p.exp || '—'}${p.expired ? ' · منتهٍ' : ''})`).join('، '));
+  if (d.replaced && d.replaced.length) parts.push('بديل على: ' + d.replaced.join('، '));
   if (d.sold && d.sold.length) parts.push('الطلبات: ' + d.sold.map(x => `${x.order} ${x.product || ''} ${x.date || ''}`.trim()).join(' | '));
   note($('#whyMsg'), parts.join(' — '), !!(d.panels && d.panels.length));
 };

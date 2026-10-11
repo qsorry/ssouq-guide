@@ -2937,8 +2937,24 @@ def split_users(accounts):
     return out
 
 
+def replacement_users(accounts):
+    """{(الحساب، البوابة): {يوزرات}} أُنشئت بديلًا عن رقمٍ قديم لعميل (user_links):
+    مسلَّمة للعميل فليست «غير معروضة» وإن لم تظهر في طلبٍ ولا مخزون."""
+    out = {}
+    for a in (accounts or []):
+        for g in (a.get("gates") or []):
+            try:
+                recs = user_links.load(user_links.path(DATA_DIR, a["id"], g["id"]))
+            except Exception:
+                continue
+            if recs:
+                out[(str(a["id"]), str(g["id"]))] = {str(r["new"]).lower() for r in recs}
+    return out
+
+
 def _unlisted_xlsx(ws, cfg, accounts=None):
-    d = panels.unlisted(cfg, ws, include_expired=False, gates=card_gates(accounts), split=split_users(accounts))
+    d = panels.unlisted(cfg, ws, include_expired=False, gates=card_gates(accounts), split=split_users(accounts),
+                        replaced=replacement_users(accounts))
     headers = ["اللوحة", "اليوزر", "كلمة المرور", "الهوست", "الباقة", "المدة (أشهر)",
                "الإنشاء", "الانتهاء", "المتبقي", "المتبقي (أشهر)", "سطر الكود لسلة", "سطر التجزئة"]
     rows = [[r["panel_name"], r["username"], r["password"], r["host"], r["package"], r["months"],
@@ -5371,10 +5387,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"listed": panels.load_listed(rws)})
             if path == "/api/renew/unlisted-why":   # لماذا لا يظهر يوزرٌ في «غير المعروض»؟
                 return self._send(200, panels.explain_user(rcfg, rws, self._q("user"),
-                                                           gates=card_gates(racs), split=split_users(racs)))
+                                                           gates=card_gates(racs), split=split_users(racs),
+                                                           replaced=replacement_users(racs)))
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
                 return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1",
-                                                       gates=card_gates(racs), split=split_users(racs)))
+                                                       gates=card_gates(racs), split=split_users(racs),
+                                                       replaced=replacement_users(racs)))
             if path == "/api/renew/unlisted.xlsx":
                 return self._send(200, raw=_unlisted_xlsx(rws, rcfg, racs),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
