@@ -2962,12 +2962,15 @@ def _wa_phone(v):
     return salla_api.normalize_phone(v, "")
 
 
+OLD_MISSING = "اليوزر القديم غير موجود على اللوحة"
+
+
 def _dup_rename_old(acct, gate, row):
     """يغيّر اسم اليوزر القديم على لوحته (كلمة مروره ومدته كما هما). يرجّع (معلومات، "") أو (None، سبب)."""
     try:
         found = split_find_line(gate, row["username"])
         if not found:
-            return None, "اليوزر القديم غير موجود على اللوحة"
+            return None, OLD_MISSING
         newname = rand_digits(gate_digits(gate))
         split_change(gate, {"username": row["username"], "line_id": found.get("line_id", ""), "package": ""},
                      {"username": newname})
@@ -3001,6 +3004,9 @@ def dup_rename(accounts, cfg, ws, req):
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء"}
     gate = with_guide(acct, gate)
     info, err = _dup_rename_old(acct, gate, row)
+    if not info and err == OLD_MISSING:
+        panels.update_dupe(ws, order, {"old_missing": True, "rename_error": ""})
+        return 200, {"ok": True, "old_missing": True}
     if not info:
         panels.update_dupe(ws, order, {"rename_error": err})
         return 502, {"error": err}
@@ -3086,6 +3092,8 @@ def dup_create(accounts, cfg, ws, req):
         if info:
             resp["renamed"] = extra["renamed"] = info
             msgs.append(_dup_old_msg(row, info))
+        elif err == OLD_MISSING:               # محذوف من اللوحة: لا شيء يُغيَّر ولا رسالة للأول
+            resp["old_missing"] = extra["old_missing"] = True
         else:                                  # فشل تغيير القديم لا يُلغي البديل المُنشأ
             resp["rename_error"] = extra["rename_error"] = err
     resp["messages"] = msgs
