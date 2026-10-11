@@ -442,7 +442,7 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
                                   "unlisted": 0, "expired": 0, "not_pulled": True}
             continue
         host, guide = panel_card(p, (gates or {}).get((p.get("account_id", ""), p.get("gate_id", ""))))
-        in_split = (split or {}).get((p.get("account_id", ""), p.get("gate_id", "")), set())
+        in_split = (split or {}).get((p.get("account_id", ""), p.get("gate_id", "")), {})
         n_sold = n_listed = n_unlisted = n_expired = n_split = 0
         for key, rec in pdata["by_user"].items():
             if key in sold:
@@ -475,7 +475,8 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
                          "exp": rec.get("exp", ""), "days_left": es["days_left"], "months_left": months_left,
                          "remaining": remaining_text(rec.get("exp"), today), "card": card,
                          "expired": expired, "status": rec.get("status", ""), "line": line,
-                         "split": is_split})
+                         "split": is_split,
+                         "split_months": int((in_split.get(key) if isinstance(in_split, dict) else 0) or 0)})
         per_panel[p["id"]] = {"name": p["name"], "lines": pdata.get("count", 0), "sold": n_sold,
                               "listed": n_listed, "unlisted": n_unlisted, "expired": n_expired,
                               "split": n_split, "built": pdata.get("built", "")}
@@ -519,7 +520,7 @@ def explain_user(config, data_dir, username, gates=None, split=None):
                    or es["days_left"] == 0)
         out["expired"] = out["expired"] or expired
         gk = (p.get("account_id", ""), p.get("gate_id", ""))
-        if key in (split or {}).get(gk, set()):
+        if key in (split or {}).get(gk, {}):
             out["split"].append(p["name"])
         out["panels"].append({"panel": p["name"], "exp": rec.get("exp", ""), "status": rec.get("status", ""),
                               "days_left": es["days_left"], "expired": expired})
