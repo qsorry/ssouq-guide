@@ -387,6 +387,10 @@ def test_dup_create():
         check("dup_wa_send prefers the connected contest number", how_ == "contest" and r_["ok"] and sent["x"] == ("966500000002", "hi") and X.dup_wa_ready({"service": {}}))
         X.reader_status = lambda *a, **k: {"status": "disconnected"}
         check("no channel when contest is down and service wa is off", not X.dup_wa_ready({"service": {"wa": {"type": "none"}}}))
+        X.reader_status = lambda fresh=False: {"configured": True, "status": "disconnected"}
+        r2, how2 = X.dup_wa_send({"service": {"wa": {"type": "http", "url": "https://bad.cert/send"}}}, "966500000002", "hi")
+        check("a configured but disconnected contest number does not fall back to the service channel",
+              how2 == "contest" and not r2["ok"] and X.CONTEST_DOWN in r2["error"], str(r2))
         X.reader_status, X.reader_send = keep_rs, keep_rsend
         panels.log_dup_send(d, {"order": "2", "kind": "new", "name": "n", "phone": "9665", "text": "t"}, "contest", False, "boom")
         panels.log_dup_send(d, {"order": "2", "kind": "new", "name": "n", "phone": "9665", "text": "t2"}, "contest", True)

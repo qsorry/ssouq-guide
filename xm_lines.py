@@ -3121,7 +3121,21 @@ def _hj_run(ws):
             except OSError:
                 pass
 
+            down = (not ok) and how == "contest" and str(err).startswith(CONTEST_DOWN)
+
             def upd(j):
+                if down:                         # رقم المسابقة منقطع: لا نحرق الأرقام — ننتظر دقيقة ونعيد الرقم نفسه
+                    j["waits"] = j.get("waits", 0) + 1
+                    j["error"] = err
+                    if j["waits"] >= 15 and j.get("status") == "running":
+                        j["status"] = "error"
+                        j["error"] = "توقّف الإرسال بعد انتظار ١٥ دقيقة: " + err
+                    elif j.get("status") == "running":
+                        j["next_at"] = time.time() + 60
+                    return
+                j["waits"] = 0
+                if j.get("error") and j.get("status") == "running":
+                    j["error"] = None
                 j["idx"] = j.get("idx", 0) + 1
                 j["last_phone"] = item["phone"]
                 if ok:
@@ -3349,11 +3363,22 @@ def dup_wa_ready(st):
     return str(((st.get("service") or {}).get("wa") or {}).get("type") or "none").lower() not in ("none", "", "dry")
 
 
+CONTEST_DOWN = "رقم المسابقة غير متصل"
+
+
 def dup_wa_send(st, phone, text):
-    """يرسل من رقم المسابقة المربوط (نفسه) إن كان متصلًا، وإلا عبر قناة خدمة سلة. يرجّع (نتيجة، قناة)."""
+    """يرسل من رقم المسابقة المربوط (نفسه) إن كان متصلًا. وإن كانت جلسته مضبوطة لكنها غير متصلة الآن لا نلجأ
+    لقناة خدمة سلة (قد تكون بشهادة خاطئة فيُضلّل خطؤها): نرجّع «رقم المسابقة غير متصل» ليُعاد لاحقًا.
+    قناة الخدمة للحالة التي لا جلسة مسابقة فيها أصلًا. يرجّع (نتيجة، قناة)."""
     try:
-        if reader_status().get("status") == "connected":
+        rs = reader_status()
+        if rs.get("status") != "connected" and rs.get("configured"):
+            rs = reader_status(fresh=True)          # قد يكون التخزين المؤقت قديمًا: تحقّق طازج قبل الجزم
+        if rs.get("status") == "connected":
             return reader_send(phone, text), "contest"
+        if rs.get("configured"):
+            return {"ok": False, "error": "%s (الحالة: %s) — أعد ربطه من صفحة المسابقة"
+                    % (CONTEST_DOWN, rs.get("status") or rs.get("error") or "؟")}, "contest"
     except Exception as e:
         return {"ok": False, "error": str(e)[:160]}, "contest"
     return wa_send.send(st["service"].get("wa", {}), phone, text), "wa"
