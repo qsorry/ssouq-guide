@@ -3438,6 +3438,26 @@ def dup_create(accounts, cfg, ws, req):
     return 200, resp
 
 
+def export_users(accounts):
+    """ملفات Excel البوابات المحفوظة في النظام (users_export) ← {"users": {يوزر: اسم البوابة}، "gates": {(حساب، بوابة)}}:
+    يوزرٌ فيها موجودٌ على لوحته وإن لم تُسحب اللوحة في صفحة التجديد، وبوابةٌ لها ملفٌّ تُعدّ مسحوبة."""
+    users, gates = {}, set()
+    for a in (accounts or []):
+        for g in (a.get("gates") or []):
+            try:
+                rows = users_export.load(users_export.paths(DATA_DIR, a["id"], g["id"])[0])
+            except Exception:
+                continue
+            if not rows:
+                continue
+            gates.add((str(a["id"]), str(g["id"])))
+            for r in rows:
+                u = str(r.get("username") or "").strip().lower()
+                if u:
+                    users.setdefault(u, g.get("name") or "ملف البوابة")
+    return {"users": users, "gates": gates}
+
+
 def replaced_old_users(accounts):
     """اليوزرات القديمة التي استُبدلت (user_links) في كل بوابات الحسابات — لا تُعدّ «مفقودة»."""
     out = set()
@@ -3471,7 +3491,8 @@ def comp_create(accounts, cfg, ws, req):
     order, user = str(req.get("order") or "").strip(), str(req.get("username") or "").strip().lower()
     comp = max(0, min(14, int(split_subs.parse_months(req.get("comp")) or 0))) if str(req.get("comp", "")).strip() \
         else panels.COMP_DEFAULT
-    data = panels.lost(cfg, ws, replaced=replaced_old_users(accounts), comp=comp, include_expired=True)
+    data = panels.lost(cfg, ws, replaced=replaced_old_users(accounts), comp=comp, include_expired=True,
+                       export=export_users(accounts))
     row = next((r for r in data["rows"] if r["order"] == order and r["username"].lower() == user), None)
     if not row:
         return 404, {"error": "لا اشتراك مفقود بهذا الطلب واليوزر (قد يكون موجودًا على لوحة أو مستبدلًا)"}
@@ -5946,7 +5967,7 @@ class Handler(BaseHTTPRequestHandler):
                                                            gates=card_gates(racs), split=split_users(racs),
                                                            replaced=replacement_users(racs)))
             if path == "/api/renew/order":          # بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) وحاله على اللوحات
-                d = panels.order_search(rcfg, rws, self._q("q"), replaced=replaced_old_users(racs))
+                d = panels.order_search(rcfg, rws, self._q("q"), replaced=replaced_old_users(racs), export=export_users(racs))
                 idx = d.get("index") or {}
                 if not d["rows"] and idx.get("sid") and not idx.get("username"):
                     try:                                # سجلّ الطلب في سلة: يوزره المكتوب ليُعبّأ به الربط
@@ -5960,7 +5981,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, d)
             if path == "/api/renew/lost":           # المفقود: مباعٌ ولا يوزر له على أي لوحة ولم يُستبدل
                 comp = split_subs.parse_months(self._q("comp"))
-                d = panels.lost(rcfg, rws, replaced=replaced_old_users(racs),
+                d = panels.lost(rcfg, rws, replaced=replaced_old_users(racs), export=export_users(racs),
                                 comp=panels.COMP_DEFAULT if comp is None else max(0, min(14, comp)),
                                 include_expired=self._q("expired") == "1")
                 for r in d["rows"]:
@@ -6288,7 +6309,7 @@ class Handler(BaseHTTPRequestHandler):
                                        req.get("host", ""), replace=req.get("replace", ""), base=base)
             except ValueError as e:
                 return self._send(400, {"error": str(e)})
-            d = panels.order_search(rcfg, rws, ln["order"], replaced=replaced_old_users(racs))
+            d = panels.order_search(rcfg, rws, ln["order"], replaced=replaced_old_users(racs), export=export_users(racs))
             row = next((r for r in d["rows"] if r["username"].lower() == ln["username"].lower()), None)
             if row:
                 row["new_months"] = panels.comp_months(row["days_left"], panels.COMP_DEFAULT)

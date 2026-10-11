@@ -833,15 +833,19 @@ def comp_months(days_left, comp=COMP_DEFAULT):
     return max(1, min(BASE_MONTHS, left + max(0, int(comp or 0))))
 
 
-def _panel_users(pl):
+def _panel_users(pl, export=None):
+    """{يوزر بحروف صغيرة: اسم اللوحة} من يوزرات اللوحات المسحوبة، ثم من ملفات Excel البوابات المحفوظة في النظام
+    (`export["users"]`: {يوزر: اسم البوابة}) — فما عُرف في أيٍّ منهما ليس مفقودًا."""
     out = {}
     for pid, pdata in pl.items():
         for u in (pdata.get("by_user") or {}):
-            out.setdefault(u, pid)
+            out.setdefault(u, pdata.get("name") or pid)
+    for u, name in ((export or {}).get("users") or {}).items():
+        out.setdefault(str(u).lower(), name)
     return out
 
 
-def _line_row(ln, cfg, pl, users, done, replaced, today):
+def _line_row(ln, cfg, pl, users, done, replaced, today, export=None):
     """صفّ خطٍّ من المتجر بحاله: أين وُجد، وأمفقودٌ هو، وكم بقي له."""
     pmap = {p["id"]: p for p in cfg["panels"]}
     hidx = host_index(cfg["panels"])
@@ -851,17 +855,20 @@ def _line_row(ln, cfg, pl, users, done, replaced, today):
     own = panel_data_for(pl, panel) if panel else None
     found = users.get(u.lower(), "")
     exp = line_expiry(ln)
+    rec = done.get(str(ln.get("order") or ""))
+    mine = rec if (rec or {}).get("src") == "lost" else None      # تعويضٌ أُنشئ من هذه الصفحة
     left = (exp - today).days if exp else None
     order = str(ln.get("order") or "")
     if not u:
         state = "no_user"
     elif found:
         state = "found"
-    elif u.lower() in replaced and not done.get(order):     # استُبدل من غير هذه الصفحة
-        state = "replaced"
+    elif (u.lower() in replaced and not mine) or (done.get(order) and not mine):
+        state = "replaced"                       # استُبدل من غير هذه الصفحة (بديل المكرر أو البحث)
     elif not panel:
         state = "host_unmapped"
-    elif not (own and own.get("count")):
+    elif not ((own and own.get("count"))
+              or (str(panel.get("account_id", "")), str(panel.get("gate_id", ""))) in ((export or {}).get("gates") or ())):
         state = "not_pulled"                     # لوحته لم تُسحب: لا يُحكم بالفقد
     else:
         state = "missing"
@@ -873,23 +880,23 @@ def _line_row(ln, cfg, pl, users, done, replaced, today):
             "expired": left is not None and left <= 0, "suggest": suggest_slice(left),
             "panel_id": pid if panel else "", "panel_name": panel.get("name", ""),
             "account_id": panel.get("account_id", ""), "gate_id": panel.get("gate_id", ""),
-            "found_panel": (pl.get(found) or {}).get("name", "") if found else "",
-            "state": state, "linked": str(ln.get("linked") or ""), "done": done.get(order)}
+            "found_panel": found,
+            "state": state, "linked": str(ln.get("linked") or ""), "done": mine}
 
 
-def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=False, today=None):
+def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=False, today=None, export=None):
     """المفقود: خطوط المتجر التي لا يوجد يوزرها على أي لوحةٍ مسحوبة ولم يُستبدل — جاريةً (والمنتهية اختيارًا).
     `replaced` يوزراتٌ قديمة استُبدلت (user_links). صفٌّ لكل (طلب، يوزر)، وما أُنشئ له تعويضه يبقى ظاهرًا بسجلّه."""
     cfg = renew.normalize_config(config)
     pl = load_panel_lines(data_dir)["panels"]
-    users = _panel_users(pl)
+    users = _panel_users(pl, export)
     done = load_dupes_done(data_dir)
     replaced = {str(u).lower() for u in (replaced or ())}
     today = today or renew._today()
     rows, seen = [], set()
     counts = {"found": 0, "replaced": 0, "host_unmapped": 0, "not_pulled": 0, "expired": 0}
     for ln in load_store_lines(data_dir).get("lines", []):
-        r = _line_row(ln, cfg, pl, users, done, replaced, today)
+        r = _line_row(ln, cfg, pl, users, done, replaced, today, export)
         key = (renew.norm_order(r["order"]), r["username"].lower())
         if not r["username"] or key in seen:
             continue
@@ -907,10 +914,11 @@ def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=Fal
     return {"rows": rows, "total": len(rows), "comp": int(comp or 0), "base": BASE_MONTHS,
             "pending": sum(1 for r in rows if not r["done"] and not r["expired"]),
             "done": sum(1 for r in rows if r["done"]), "counts": counts,
-            "pulled": sum(1 for p in pl.values() if p.get("count")), "built": renew.now_iso()}
+            "pulled": sum(1 for p in pl.values() if p.get("count")) + len((export or {}).get("gates") or ()),
+            "export_users": len((export or {}).get("users") or {}), "built": renew.now_iso()}
 
 
-def order_search(config, data_dir, q, replaced=None, today=None):
+def order_search(config, data_dir, q, replaced=None, today=None, export=None):
     """بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) في اشتراكات المتجر المسحوبة، ثم في فهرس الطلبات:
     كل خطٍّ بحاله على اللوحات (موجود · مفقود · مستبدل …). ← {rows, index, order}."""
     q = str(q or "").strip()
@@ -919,7 +927,7 @@ def order_search(config, data_dir, q, replaced=None, today=None):
         return {"rows": [], "index": None, "order": ""}
     cfg = renew.normalize_config(config)
     pl = load_panel_lines(data_dir)["panels"]
-    users = _panel_users(pl)
+    users = _panel_users(pl, export)
     done = load_dupes_done(data_dir)
     replaced = {str(u).lower() for u in (replaced or ())}
     today = today or renew._today()
@@ -927,7 +935,7 @@ def order_search(config, data_dir, q, replaced=None, today=None):
     for ln in load_store_lines(data_dir).get("lines", []):
         if (qo and renew.norm_order(ln.get("order")) == qo) or str(ln.get("username") or "").strip().lower() == ql \
                 or (len(q) >= 4 and str(ln.get("password") or "").strip() == q):
-            rows.append(_line_row(ln, cfg, pl, users, done, replaced, today))
+            rows.append(_line_row(ln, cfg, pl, users, done, replaced, today, export))
     order = rows[0]["order"] if rows and all(r["order"] == rows[0]["order"] for r in rows) else (qo if not rows else "")
     idx = renew.load_index(data_dir).get("orders", {}).get(qo) if qo else None
     if idx:
