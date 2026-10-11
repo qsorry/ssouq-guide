@@ -178,6 +178,78 @@ async function runPull(settings, maxMonths, fresh) {
   }
 }
 
+// ---- سجل شكاوى العملاء من جهاز المشغّل ----
+// سلة لا تفتح سجل الشكاوى في Admin API، ولوحتها محجوبة عن الخادم بـ Cloudflare — فتُقرأ صفحاته من هنا
+// (بجلسة المتصفّح) وتُرسَل خامًا إلى /api/renew/complaints-feed، والخادم يحلّلها (JSON أو جدول HTML) ويحفظها.
+// مساره غير موثّق فتُجرَّب مرشّحات: نُقط JSON في اللوحة، ثم api.salla.dev برمز الجلسة، ثم صفحة HTML.
+const COMPLAINT_JSON = [
+  "/api/complaints?per_page=50&page={p}", "/api/v1/complaints?per_page=50&page={p}",
+  "/complaints?format=json&per_page=50&page={p}", "/customers/complaints?format=json&per_page=50&page={p}",
+  "/orders/complaints?format=json&per_page=50&page={p}",
+];
+const COMPLAINT_API = ["/complaints?per_page=50&page={p}", "/customers/complaints?per_page=50&page={p}", "/orders/complaints?per_page=50&page={p}"];
+const COMPLAINT_HTML = ["/complaints?page={p}", "/customers/complaints?page={p}", "/orders/complaints?page={p}"];
+const cqState = { running: false, line: "", ok: null };
+
+async function sallaJson(path) {
+  const r = await fetch(SALLA_URL.replace(/\/$/, "") + path, {
+    credentials: "include", redirect: "manual",
+    headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+  });
+  if (r.type === "opaqueredirect" || r.status === 0) throw new Error("حُوّلنا لصفحة الدخول — سجّل دخولك للوحة سلة أولًا");
+  if (!r.ok) return "";
+  const t = await r.text();
+  return t.trim().startsWith("{") || t.trim().startsWith("[") ? t : "";
+}
+
+async function runComplaints(settings) {
+  if (cqState.running) return;
+  cqState.running = true;
+  const set = (line, ok) => { cqState.line = line; cqState.ok = ok; persist("cq_state", cqState); };
+  try {
+    set("بدء سحب الشكاوى…", null);
+    await toolPost(settings, "/api/renew/complaints-feed", { op: "start" });
+    // المصادر بالترتيب: (كيف تُقرأ الصفحة، المسارات). أوّل مصدرٍ يعطي صفوفًا يُتابَع صفحاته حتى تفرغ.
+    let token = "";
+    const sources = [
+      ["json", (p) => sallaJson(p), COMPLAINT_JSON],
+      ["api", async (p) => { if (!token) token = await readUserToken(); try { return JSON.stringify(await apiGet(token, p)); } catch (e) { return ""; } }, COMPLAINT_API],
+      ["html", (p) => sallaPage(p), COMPLAINT_HTML],
+    ];
+    let total = 0, where = "";
+    outer: for (const [kind, read, paths] of sources) {
+      for (const tpl of paths) {
+        let body = "";
+        try { body = await read(tpl.replace("{p}", "1")); } catch (e) { if (/الدخول/.test(String(e && e.message))) throw e; body = ""; }
+        if (!body) continue;
+        const r = await toolPost(settings, "/api/renew/complaints-feed", { op: "page", path: tpl, body });
+        if (!r.found) continue;
+        where = kind + " " + tpl; total = r.total;
+        set(`وُجد سجل الشكاوى (${kind}) · ${total} شكوى…`, null);
+        for (let page = 2; page <= 20; page++) {
+          await sleep(PULL_PAUSE_MS);
+          let more = "";
+          try { more = await read(tpl.replace("{p}", String(page))); } catch (e) { more = ""; }
+          if (!more) break;
+          const rr = await toolPost(settings, "/api/renew/complaints-feed", { op: "page", path: tpl, body: more });
+          if (!rr.found || !rr.new) break;
+          total = rr.total;
+          set(`صفحة ${page} · ${total} شكوى…`, null);
+        }
+        break outer;
+      }
+    }
+    const fin = await toolPost(settings, "/api/renew/complaints-feed", { op: "finish", force: true });
+    if (!total) { set("لم أجد سجل الشكاوى بالمسارات المعروفة. افتح صفحة الشكاوى في لوحة سلة وأرسل رابطها كما يظهر في المتصفّح ليُضاف مسارًا.", false); return; }
+    set(`اكتمل ✓ ${fin.total} شكوى، منها ${fin.open} تنتظر التاجر. افتح «الردّ على الشكاوى» في صفحة التجديد.`, true);
+  } catch (e) {
+    set("توقّف: " + (e && e.message ? e.message : e), false);
+  } finally {
+    cqState.running = false;
+    persist("cq_state", cqState);
+  }
+}
+
 // ---- أكواد سلة المتاحة (المنتجات الرقمية) ----
 // لوحة سلة الجديدة تنادي api.salla.dev برمزٍ محفوظ في localStorage الخاص بـ s.salla.sa
 // (لا في الكوكيز)، فلا يصل إليه الخادم. الإضافة تقرؤه من تبويب اللوحة (scripting)،
@@ -341,9 +413,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ ok: true });
         return;
       }
-      if (msg.type === "codes-status" || msg.type === "pull-status") {
-        const key = msg.type === "codes-status" ? "codes_state" : "pull_state";
-        const mem = msg.type === "codes-status" ? codesState : pullState;
+      if (msg.type === "complaints") {
+        runComplaints(msg.settings);
+        sendResponse({ ok: true });
+        return;
+      }
+      if (msg.type === "codes-status" || msg.type === "pull-status" || msg.type === "complaints-status") {
+        const key = msg.type === "codes-status" ? "codes_state" : msg.type === "complaints-status" ? "cq_state" : "pull_state";
+        const mem = msg.type === "codes-status" ? codesState : msg.type === "complaints-status" ? cqState : pullState;
         if (mem.line) { sendResponse({ ok: true, ...mem }); return; }
         const saved = (await chrome.storage.local.get(key))[key];
         if (!saved) { sendResponse({ ok: true, ...mem }); return; }

@@ -3716,27 +3716,83 @@ def reply_link(st, rcfg, rws, racs, req):
     return 200, reply_lookup(st, rcfg, rws, racs, order)
 
 
-def complaints_open(st, rcfg=None):
-    """شكاوى العملاء من لوحة سلة بجلسة المتصفّح — **الكوكيز نفسها التي تُسحب بها الطلبات** (‏`renew_pull_session`:
-    كوكيز المساحة إن لُصقت فيها، وإلا كوكيز الأدمن)، **ما ينتظر التاجر وحده** («بانتظار الحل من التاجر» · «بانتظار
-    رد التاجر»). ← {rows, total, error?}: error حين لا جلسة أو انتهت أو لم يُعرف مسار السجل — فتبقى الصفحة صالحةً
-    برقم الطلب يدويًا."""
+_cq_feed = {}        # مساحة → ما جمعته الإضافة من سجل الشكاوى في الجولة الجارية
+
+
+def complaints_path(ws):
+    return os.path.join(ws, "renew_complaints.json")
+
+
+def complaints_feed(ws, req):
+    """سحب سجل الشكاوى من جهاز المشغّل عبر الإضافة — كالطلبات سواءً بسواء، لأن Cloudflare يحجب الخادم عن
+    اللوحة: `page` صفحةٌ خامًا (JSON أو HTML) تُحلَّل بمحلّلات salla_web وتُجمع، و`finish` يحفظها على القرص
+    (`renew_complaints.json`) فتقرأها «مراجعة الشكاوى» بلا لوحة. ← {ok, found, total}."""
+    op = str(req.get("op") or "page")
+    cur = _cq_feed.setdefault(ws, {"rows": [], "seen": set(), "path": ""})
+    if op == "start" or req.get("reset"):
+        cur.update(rows=[], seen=set(), path="")
+        if op == "start":
+            return {"ok": True, "total": 0}
+    if op == "page":
+        body = str(req.get("body") or req.get("html") or "")
+        rows = []
+        try:
+            rows = [salla_web.normalize_complaint(x) for x in salla_web._find_complaints(json.loads(body))]
+        except ValueError:
+            rows = salla_web.parse_complaints_html(body)
+        new = 0
+        for r in rows:
+            key = r.get("id") or (r.get("order"), r.get("customer"), r.get("status"))
+            if key in cur["seen"]:
+                continue
+            cur["seen"].add(key)
+            cur["rows"].append(r)
+            new += 1
+        if rows and not cur["path"]:
+            cur["path"] = str(req.get("path") or "")
+        return {"ok": True, "found": len(rows), "new": new, "total": len(cur["rows"])}
+    if op == "finish":
+        rows = cur["rows"]
+        if rows or req.get("force"):
+            renew._write_json(complaints_path(ws), {"rows": rows, "at": renew.now_iso(), "path": cur["path"]})
+        _cq_feed.pop(ws, None)
+        return {"ok": True, "total": len(rows), "open": len(complaints.open_only(rows)), "saved": bool(rows or req.get("force"))}
+    return {"ok": False, "error": "op غير معروف"}
+
+
+def _complaints_stored(ws):
+    try:
+        with open(complaints_path(ws), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and isinstance(d.get("rows"), list) else None
+    except (OSError, ValueError):
+        return None
+
+
+def complaints_open(st, rcfg=None, ws=None):
+    """شكاوى العملاء **التي تنتظر التاجر وحدها** («بانتظار الحل من التاجر» · «بانتظار رد التاجر»). المصدر
+    الأول **ما سحبته الإضافة من جهاز المشغّل** (‏`complaints_feed`، لأن Cloudflare يحجب الخادم عن اللوحة)، وإلا
+    جلسة اللوحة من الخادم (‏`renew_pull_session`، الكوكيز نفسها التي تُسحب بها الطلبات) حيث لا يُحجب. ← {rows,
+    total, at, source} أو {error, hint} فتبقى الصفحة صالحةً برقم الطلب يدويًا."""
+    stored = _complaints_stored(ws) if ws else None
+    if stored:
+        return {"rows": complaints.open_only(stored["rows"]), "total": len(stored["rows"]), "at": stored.get("at", ""),
+                "source": "extension"}
+    via_ext = "أو اسحبها من جهازك: إضافة المتصفّح ← «سحب الشكاوى من جهازي» (كالطلبات، لأن Cloudflare يحجب الخادم عن اللوحة)"
     sess = renew_pull_session(st, rcfg)
     if not sess:
-        why = ("الطلبات تُسحب برمز سلة (Admin API) ولا كوكيز للوحة، وسجل الشكاوى لا يُقرأ إلا بجلسة اللوحة: "
-               if renew_salla_token(st, rcfg) else "")
         return {"rows": [], "total": 0, "error": "no_session",
-                "hint": why + "اربط جلسة لوحة سلة من إضافة المتصفّح (أو الصق الكوكيز في الإعداد) ليُسحب سجل الشكاوى"}
+                "hint": "لا شكاوى مسحوبة بعد. " + via_ext + "، أو اربط جلسة اللوحة إن كان الخادم غير محجوب"}
     try:
         rows = sess.complaints()
     except salla_web.SessionExpired as e:
-        return {"rows": [], "total": 0, "error": "session_expired", "hint": str(e)}
+        return {"rows": [], "total": 0, "error": "session_expired", "hint": str(e) + " — " + via_ext}
     except Exception as e:
-        return {"rows": [], "total": 0, "error": "fetch", "hint": str(e)[:160]}
+        return {"rows": [], "total": 0, "error": "fetch", "hint": str(e)[:160] + " — " + via_ext}
     if not rows:
         return {"rows": [], "total": 0, "error": "no_path",
-                "hint": "لم يُعثر على سجل الشكاوى في اللوحة بالمسارات المعروفة — اكتب رقم الطلب من الشكوى يدويًا"}
-    return {"rows": complaints.open_only(rows), "total": len(rows), "at": renew.now_iso()}
+                "hint": "لم يُعثر على سجل الشكاوى في اللوحة من الخادم — " + via_ext}
+    return {"rows": complaints.open_only(rows), "total": len(rows), "at": renew.now_iso(), "source": "session"}
 
 
 def reply_send(st, rws, req):
@@ -6267,7 +6323,7 @@ class Handler(BaseHTTPRequestHandler):
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/complaints":     # مراجعة الشكاوى: سجل شكاوى سلة بالجلسة، ما ينتظر التاجر وحده
-                return self._send(200, complaints_open(st, rcfg))
+                return self._send(200, complaints_open(st, rcfg, rws))
             if path == "/api/renew/reply":          # الردّ على شكوى: الطلب برقمه ← اشتراكه وبياناته ← نصّ الردّ جاهزًا
                 t0 = time.perf_counter()
                 d = reply_lookup(st, rcfg, rws, racs, self._q("q"))
@@ -6650,6 +6706,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True, **panels.save_salla_codes(rws, prods, reset=bool(req.get("reset")))})
         if path == "/api/renew/panel-feed":       # السحب من جهاز المشغّل عبر الإضافة
             return self._send(200, panel_feed(st, rws, rcfg, req))
+        if path == "/api/renew/complaints-feed":  # سجل الشكاوى من جهاز المشغّل عبر الإضافة (صفحاتٌ خامًا ثم حفظ)
+            return self._send(200, complaints_feed(rws, req))
         if path == "/api/renew/pull":             # سحب الطلبات من سلة مباشرة
             return self._send(200, start_renew_pull(
                 st, rws, rcfg, with_history=req.get("with_history", True),

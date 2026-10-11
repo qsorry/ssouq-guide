@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "جلسة سلة → أداة ssouq",
-  "description": "التقاط كوكيز لوحة سلة (s.salla.sa) وإرسالها إلى أداة التجديد، وسحب الطلبات من جهازك حين يحجب Cloudflare الخادم.",
-  "version": "1.6.1",
+  "description": "التقاط كوكيز لوحة سلة (s.salla.sa) وإرسالها إلى أداة التجديد، وسحب الطلبات وسجل الشكاوى من جهازك حين يحجب Cloudflare الخادم.",
+  "version": "1.7.0",
   "action": {
     "default_title": "التقاط جلسة سلة",
     "default_popup": "popup.html",

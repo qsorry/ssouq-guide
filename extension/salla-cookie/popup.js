@@ -135,6 +135,29 @@ $("codes").onclick = async () => {
 };
 watchCodes();
 
+// ---- الشكاوى ----
+let cqTimer = null;
+async function watchCq() {
+  const st = await ask({ type: "complaints-status" });
+  if (st) {
+    const m = $("cqMsg");
+    m.textContent = st.line || "";
+    m.className = "msg" + (st.ok === true ? " ok" : st.ok === false ? " err" : "");
+    $("cq").disabled = !!st.running;
+  }
+  clearTimeout(cqTimer);
+  if (st && st.running) cqTimer = setTimeout(watchCq, 1500);
+}
+$("cq").onclick = async () => {
+  const s = readSettings();
+  const bad = validSettings(s);
+  if (bad) { setMsg(bad, "err"); $("cfg").open = true; return; }
+  await chrome.storage.local.set({ [KEY]: s });
+  await ask({ type: "complaints", settings: s });
+  watchCq();
+};
+watchCq();
+
 loadSettings().then((s) => {
   if (!s.base || !s.user || !s.pass) $("cfg").open = true;
 });

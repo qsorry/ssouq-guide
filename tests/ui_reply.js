@@ -63,7 +63,7 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     check('manual whatsapp shows «تم الإرسال» like the linked number', (await page.textContent('#rpSent')).includes('تم الإرسال ✓'), await page.textContent('#rpSent'));
     // مراجعة الشكاوى بلا جلسة لوحة: تلميحٌ لا عطل
     await page.click('#cqLoad'); await page.waitForFunction(() => !document.querySelector('#cqLoad').disabled);
-    check('complaints pull without a panel session explains itself', (await page.textContent('#cqMsg')).includes('لا جلسة لوحة سلة'), await page.textContent('#cqMsg'));
+    check('complaints pull without a panel session explains itself', (await page.textContent('#cqMsg')).includes('سحب الشكاوى من جهازي'), await page.textContent('#cqMsg'));
 
     // بلا يوزر: الطلب معروف من الفهرس ⇒ «أنشئ له» ولصق السطر يربطه ويجهّز الردّ
     await page.fill('#rpQ', '400'); await page.click('#rpFind');
