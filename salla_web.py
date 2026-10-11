@@ -57,6 +57,8 @@ ORDER_PATHS = (
 # قائمة الطلبات صفحةً صفحة، ثم صفحة كل طلب وفيها الكود والسجل وملاحظة العميل.
 LIST_PATH = "/orders?page={page}&sort_by=created_at-desc"
 ORDER_PAGE = "/orders/order/{sid}"
+# نافذة «بيانات المنتج» في اللوحة القديمة (تبويب الأكواد المتاحة) — HTML فيه textarea لكل كود.
+PRODUCT_CODES_PATH = "/products/{pid}/details?product_type=codes"
 
 _EN_MONTHS = {m: i for i, m in enumerate(
     ("january", "february", "march", "april", "may", "june", "july", "august",
@@ -219,6 +221,12 @@ class Session:
         page = self.order_page(sid)
         return parse_order_page(page, sid) if page else None
 
+    def product_codes(self, product_id):
+        """أكواد منتجٍ رقمي المتاحة من اللوحة القديمة (غير مقنَّعة). الواجهة الجديدة
+        (api.salla.dev …/codes) تُعيدها XXXX، أما نافذة «الأكواد المتاحة» في اللوحة
+        القديمة فتُحمَّل من مسار details بالجلسة وفيها النصّ كاملًا."""
+        return parse_product_codes(self._html(PRODUCT_CODES_PATH.format(pid=urllib.parse.quote(str(product_id)))))
+
     def alive(self):
         """أما زالت الجلسة مقبولة؟ يرجّع (نعم؟، السبب)."""
         try:
@@ -379,6 +387,24 @@ def _text(frag):
 def _between(html, start_pat, end_pat, flags=re.S):
     m = re.search(start_pat + r"(.*?)" + end_pat, html, flags)
     return m.group(1) if m else ""
+
+
+_CODE_AREA = re.compile(r'<textarea\b([^>]*)>(.*?)</textarea>', re.S | re.I)
+
+
+def parse_product_codes(page):
+    """نصوص الأكواد المتاحة من نافذة المنتج في اللوحة القديمة: كل كود في
+    <textarea name="code_content[]"> داخل #codes_list. القالب المخفي (clone_code)
+    فارغ فيُستبعد، وكذلك مربّع الإضافة الجماعية (لا اسم code_content له)."""
+    html = str(page or "")
+    out = []
+    for attrs, body in _CODE_AREA.findall(html):
+        if "code_content" not in attrs:
+            continue
+        text = _html_mod.unescape(body).strip()
+        if text:
+            out.append(text)
+    return out
 
 
 def parse_orders_list(page):

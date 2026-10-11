@@ -272,6 +272,13 @@ def test_unlisted():
         check("append keeps earlier products", st2["products"] == 2 and st2["with_username"] == 2, str(st2))
     finally:
         shutil.rmtree(d, ignore_errors=True)
+        st_html = panels.save_salla_codes(d, [{"id": "p3", "name": "كاسبر 30", "html":
+            '<div id="codes_list"><textarea name="code_content[]">Host http://mrha.ink:80 User 808808243040 Pass 370378628604 Guide g</textarea>'
+            '<textarea name="code_content[]">Host http://mrha.ink:80 User 568483197191 Pass 375343915287</textarea></div>'
+            '<div class="clone_code hidden"><textarea name="code_content[]"></textarea></div>'}])
+        p3 = [p for p in panels.load_salla_codes(d)["products"] if p["id"] == "p3"][0]
+        check("salla_codes: html من اللوحة القديمة يُحلَّل", len(p3["codes"]) == 2 and p3["source"] == "legacy"
+              and p3["codes"][0]["username"] == "808808243040" and p3["unparsed"] == 0, p3)
 
 
 def test_remaining_text():

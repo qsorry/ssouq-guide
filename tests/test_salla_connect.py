@@ -34,7 +34,42 @@ ORDER = {"id": 123, "reference_id": 456, "status": "بانتظار الدفع",
          "items": [{"product_id": 99, "name": "اشتراك", "quantity": 1}]}
 
 
+PRODUCT_CODES_HTML = """
+<form id="codesform">
+ <textarea id="bulk" placeholder="أدخل الأكواد"></textarea>
+ <div id="codes_list">
+  <div class="option-section" id="code_section_0">
+   <textarea class="form-control code_content" id="code_content_1" name="code_content[]"
+      placeholder="تفاصيل الكود">Host http://mrha.ink:80 User 808808243040 Pass 370378628604 Guide https://guide.ssouq.com/#activate/smart</textarea>
+  </div>
+  <div class="option-section" id="code_section_1">
+   <textarea class="code_content" name="code_content[]">Host http://mrha.ink:80 User 568483197191 Pass 375343915287 &amp; Guide x</textarea>
+  </div>
+ </div>
+</form>
+<div class="option-section clone_code hidden">
+ <textarea class="resize-none form-control code_content" id="code_content_" name="code_content[]"></textarea>
+</div>
+"""
+
+
+def check_product_codes():
+    """نافذة «الأكواد المتاحة» في اللوحة القديمة: كل textarea باسم code_content[]
+    غير فارغة كودٌ، والقالب المخفي ومربّع الإضافة الجماعية يُستبعدان، والكيانات تُفكّ."""
+    codes = salla_web.parse_product_codes(PRODUCT_CODES_HTML)
+    check("product_codes: two codes", len(codes) == 2)
+    check("product_codes: first intact",
+          codes and codes[0].startswith("Host http://mrha.ink:80 User 808808243040 Pass 370378628604"))
+    check("product_codes: entities unescaped", len(codes) == 2 and "& Guide" in codes[1] and "&amp;" not in codes[1])
+    check("product_codes: empty page", salla_web.parse_product_codes("") == [])
+    check("product_codes: path", salla_web.PRODUCT_CODES_PATH.format(pid=5) == "/products/5/details?product_type=codes")
+    s = salla_web.Session("sess=1")
+    s._html = lambda path: PRODUCT_CODES_HTML if path == "/products/77/details?product_type=codes" else ""
+    check("Session.product_codes uses details path", len(s.product_codes(77)) == 2)
+
+
 def main():
+    check_product_codes()
     # استخراج قائمة الطلبات من أشكال ردّ مختلفة
     check("_find_orders: under data[]", salla_web._find_orders({"data": [ORDER]}) == [ORDER])
     check("_find_orders: under nested orders[]",

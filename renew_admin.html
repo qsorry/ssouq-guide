@@ -484,7 +484,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <summary><span class="bi c-amber"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg></span>
         <span class="st"><b>اشتراكات لم تُعرض للبيع</b><small id="unlSum">يوزرات اللوحات التي لا هي مبيعة في سلة ولا في مخزون أكوادها</small></span></summary>
       <div class="din">
-        <p class="hint">ثلاثة مصادر تُقارَن: <b>يوزرات اللوحات</b> (زر سحب اللوحات أعلاه)، و<b>المبيع في سلة</b> (السحب المباشر أو من جهازك)، و<b>مخزون أكواد سلة المتاحة</b> للمنتجات الرقمية — تسحبه الإضافة بزر «سحب الأكواد المتاحة». ما لم يُوجد في الاثنين الأخيرين هو ما أُنشئ ولم يُعرض للبيع.</p>
+        <p class="hint">ثلاثة مصادر تُقارَن: <b>يوزرات اللوحات</b> (زر سحب اللوحات أعلاه)، و<b>المبيع في سلة</b> (السحب المباشر أو من جهازك)، و<b>مخزون أكواد سلة المتاحة</b> للمنتجات الرقمية — تسحبه الإضافة (إصدار 1.6+) بزر «سحب الأكواد المتاحة» من اللوحة القديمة حيث الأكواد كاملة، لا من الواجهة الجديدة التي تُعيدها مقنَّعة. ما لم يُوجد في الاثنين الأخيرين هو ما أُنشئ ولم يُعرض للبيع.</p>
         <p class="meta" id="codesSum">لم تُسحب أكواد سلة بعد.</p>
         <div class="acts"><button class="ghost" id="codesShow" type="button">عرض الأكواد المتاحة</button>
           <a class="ghost" id="dlCodes" href="#">تنزيل الأكواد Excel</a></div>
@@ -506,7 +506,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <a class="ghost hidden" id="dlUnlisted" href="#">تنزيل Excel</a></div>
         <p class="msg" id="unlMsg"></p>
         <details class="fold" style="margin-top:8px"><summary>المعلَّم يدويًا «معروض في سلة» <span id="markedCount"></span></summary>
-          <p class="hint">يوزرات عرضتها في سلة بنفسك (مخزون أكواد سلة يصل مقنَّعًا فلا تُعرف منه). تبقى خارج «غير المعروض» حتى تُلغي تعليمها. لإلغاء التعليم: أبقِ في المربع السطور المراد إلغاؤها فقط ثم اضغط الزر.</p>
+          <p class="hint">يوزرات عرضتها في سلة بنفسك (إن وصل مخزون أكواد سلة مقنَّعًا فلم يُعرف منه). تبقى خارج «غير المعروض» حتى تُلغي تعليمها. لإلغاء التعليم: أبقِ في المربع السطور المراد إلغاؤها فقط ثم اضغط الزر.</p>
           <textarea id="markedList" rows="4" class="ltr"></textarea>
           <div class="acts"><button class="ghost" id="unmarkBtn" type="button">إلغاء تعليم ما في المربع</button></div>
         </details>
