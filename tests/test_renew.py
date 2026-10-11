@@ -374,6 +374,11 @@ class TestCredentials(unittest.TestCase):
     def test_bare_host_without_a_colon_needs_company(self):
         """«host http://x» بلا نقطتين يُقبل مع يوزر أو باسورد فقط — وإلا صار كل
         ذكرٍ لكلمة hosting هوستًا."""
+        # أسماء فالكون القديمة: المدة بالكلمات، والاسم بلا «اشتراك»
+        self.assertEqual(renew_import.months_of("FALCON TV PRO | فالكون IPTV ثلاثة أشهر"), (3, False))
+        self.assertEqual(renew_import.months_of("FALCON TV PRO | فالكون IPTV ستة اشهر"), (6, False))
+        self.assertEqual(renew_import.months_of("فالكون خمسة عشر شهر"), (15, False))
+        self.assertTrue(renew_import.is_subscription_item({"name": "FALCON TV PRO | فالكون 15 شهر | جهازين"}))
         # ملاحظة فالكون بالعربية (كما تحفظها سلة بـHTML)
         got = renew_import.parse_credentials(
             "📺 بيانات الاشتراك<br />———————————<br />🌐 الهوست: http://s.falconiptv.ink<br />"

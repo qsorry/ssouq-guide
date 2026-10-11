@@ -37,7 +37,7 @@ NOT_A_LINE = re.compile(r"تجريب|تجربة|trial|demo|لوحة تحكم|ل�
 
 # ما يُعدّ اشتراكًا في سحب اللوحة: المتجر باع غير الاشتراكات (أجهزة وغيرها)، وهذه
 # تُتجاوز ولا يُسجَّل منها شيء. المنتج اشتراكٌ باسمه، أو بكودٍ فيه يوزر وباسورد.
-SUBSCRIPTION = re.compile(r"اشتراك|iptv|smarters|xtream|كاسبر|casper|سمارت|smart", re.I)
+SUBSCRIPTION = re.compile(r"اشتراك|iptv|smarters|xtream|كاسبر|casper|سمارت|smart|فالكون|falcon", re.I)
 
 # منتجات قديمة لا تحمل مدة في اسمها. سعر الوحدة ٤٠ ر.س وهو سعر شريحة السنة
 # نفسها في بقية المنتجات، فتُقرأ سنةً — وتُعلَّم `inferred` ليبقى الاستنتاج ظاهرًا.
@@ -249,6 +249,10 @@ def sku_is_falcon(sku):
     return (sku_info(sku).get("provider") or "") in FALCON_PREFIX
 
 
+_WORD_MONTHS = {"ثلاث[ةه]": 3, "ست[ةه]": 6, "تسع[ةه]": 9, "اثن[يى] عشر|اثنا عشر|إثن[يى] عشر": 12,
+                "خمس[ةه] عشر": 15, "أربع[ةه]": 4, "اربع[ةه]": 4, "خمس[ةه]": 5}
+
+
 def months_of(name):
     """مدة الباقة من اسم المنتج. يرجّع (أشهر، أمُستنتَج؟)."""
     s = str(name or "").translate(renew._AR_DIGITS)
@@ -256,6 +260,12 @@ def months_of(name):
         return INFERRED_MONTHS[s.strip().lower()], True
     if re.search(r"سنتين", s):
         return 24, False
+    # المدة بالكلمات: «ثلاثة أشهر»، «ستة اشهر»، «شهرين»
+    for word, n in _WORD_MONTHS.items():
+        if re.search(word + r"\s*(?:شهر|اشهر|أشهر|شهور)", s):
+            return n, False
+    if re.search(r"شهرين", s):
+        return 2, False
     m = re.search(r"(\d{1,2})\s*(?:شهر|شهرا|شهراً|اشهر|أشهر|شهور|month)", s)
     if m:
         return int(m.group(1)), False
