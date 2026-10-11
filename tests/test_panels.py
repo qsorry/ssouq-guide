@@ -404,6 +404,26 @@ def test_dup_create():
               and body3["renamed"]["to"] == "777888999000", str(body3))
         code4, _ = X.dup_rename([acct], cfg, d, {"order": "2", "username": "999000111222"})
         check("dup_rename twice is refused", code4 == 400)
+        # القديم في لوحة أرشيف بنفس الهوست (بوابة أخرى): يُبحث فيها ويُغيَّر هناك
+        g2 = {"id": "g2", "name": "مرح أرشيف", "mode": "web", "host": "http://m.ink"}
+        acct2 = {"id": "acc2", "gates": [g2]}
+        X.split_find_line = lambda g, u: ({"password": "oldpw", "line_id": "9"} if g["id"] == "g2" else {})
+        calls2 = []
+        X.split_change = lambda g, rec, pend: calls2.append((g["id"], rec["username"]))
+        info, err = X._dup_rename_old(acct, gate, {"username": "999000111222", "password": "x", "host": "http://m.ink"}, [acct, acct2], cfg)
+        check("old user found on the archive panel sharing the host", info and info["panel"] == "مرح أرشيف" and calls2 == [("g2", "999000111222")], str((info, err, calls2)))
+        X.split_find_line = lambda g, u: {}
+        info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, acct2], cfg)
+        check("missing everywhere = old_missing", info is None and err == X.OLD_MISSING)
+        g3 = {"id": "g3", "name": "أرشيف آخر", "mode": "web", "host": "http://old.ink"}
+        X.split_find_line = lambda g, u: ({"password": "pw", "line_id": "4"} if g["id"] == "g3" else {})
+        calls2.clear()
+        info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, acct2, {"id": "acc3", "gates": [g3]}], cfg)
+        check("falls back to gates on other hosts", info and info["panel"] == "أرشيف آخر" and calls2 == [("g3", "u")], str((info, err)))
+        def boom(g, u): raise RuntimeError("login failed")
+        X.split_find_line = boom
+        info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, acct2], cfg)
+        check("connection errors are reported, not called missing", info is None and "login failed" in err and err != X.OLD_MISSING, err)
         panels.set_dupe_msg(d, "2", 0, sent={"ok": True, "how": "manual"})
         check("message can be marked sent", panels.dupe_messages(d)[0]["sent"] or panels.dupe_messages(d)[1]["sent"])
     finally:

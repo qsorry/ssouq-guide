@@ -2965,23 +2965,64 @@ def _wa_phone(v):
 OLD_MISSING = "اليوزر القديم غير موجود على اللوحة"
 
 
-def _dup_rename_old(acct, gate, row):
-    """يغيّر اسم اليوزر القديم على لوحته (كلمة مروره ومدته كما هما). يرجّع (معلومات، "") أو (None، سبب)."""
-    try:
-        found = split_find_line(gate, row["username"])
-        if not found:
-            return None, OLD_MISSING
-        newname = rand_digits(gate_digits(gate))
-        split_change(gate, {"username": row["username"], "line_id": found.get("line_id", ""), "package": ""},
-                     {"username": newname})
-        line = format_line(gate, newname, found.get("password") or row["password"])
+def _dup_candidates(accounts, cfg, acct, gate, row):
+    """بوابات يُبحث فيها عن اليوزر القديم: بوابة لوحة الصف أولًا، ثم كل بوابة (ويب/فالكون) تشاركها الهوست
+    — كلوحة مرح الأرشيف التي قد تُعرَّف بنفس هوست اللوحة الحيّة فيكسبه آخرها في الفهرس."""
+    out, seen = [], set()
+
+    def add(a, g, same=True):
+        if not a or not g or g.get("mode") not in SPLIT_MODES:
+            return
+        k = (str(a.get("id")), str(g.get("id")))
+        if k not in seen:
+            seen.add(k)
+            out.append((a, with_guide(a, g), same))
+    add(acct, gate)
+    nh = renew.norm_host(row.get("host"))
+    ids = set()
+    for p in (renew.normalize_config(cfg).get("panels") or []):
+        if nh and nh in {renew.norm_host(h) for h in (p.get("hosts") or [])}:
+            ids.add((str(p.get("account_id")), str(p.get("gate_id"))))
+    for a in (accounts or []):
+        for g in a.get("gates", []):
+            if (str(a.get("id")), str(g.get("id"))) in ids or (nh and renew.norm_host(g.get("host")) == nh):
+                add(a, g)
+    for a in (accounts or []):                  # ثم بقية البوابات (أرشيف بهوستٍ مختلف)
+        for g in a.get("gates", []):
+            add(a, g, same=False)
+    return out
+
+
+def _dup_rename_old(acct, gate, row, accounts=None, cfg=None):
+    """يغيّر اسم اليوزر القديم على لوحته (كلمة مروره ومدته كما هما). يرجّع (معلومات، "") أو (None، سبب).
+    يبحث في كل لوحات هوست الصف (حيّة وأرشيف) ويغيّره حيث وُجد."""
+    tried, errs = [], []
+    for a, g, same in _dup_candidates(accounts, cfg or {}, acct, gate, row):
+        label = g.get("name") or g.get("host") or str(g.get("id"))
         try:
-            user_links.add(DATA_DIR, acct["id"], gate["id"], row["username"], newname, "تغيير اسم (مكرر)")
-        except Exception:
-            pass
-        return {"from": row["username"], "to": newname, "line": line}, ""
-    except Exception as e:
-        return None, str(e)[:200]
+            found = split_find_line(g, row["username"])
+        except Exception as e:
+            if same:
+                errs.append("%s: %s" % (label, str(e)[:120]))
+            continue
+        tried.append(label)
+        if not found:
+            continue
+        try:
+            newname = rand_digits(gate_digits(g))
+            split_change(g, {"username": row["username"], "line_id": found.get("line_id", ""), "package": ""},
+                         {"username": newname})
+            line = format_line(g, newname, found.get("password") or row["password"])
+            try:
+                user_links.add(DATA_DIR, a["id"], g["id"], row["username"], newname, "تغيير اسم (مكرر)")
+            except Exception:
+                pass
+            return {"from": row["username"], "to": newname, "line": line, "panel": label}, ""
+        except Exception as e:
+            return None, str(e)[:200]
+    if errs:                                    # تعذّر الاتصال ببعض اللوحات: لا نجزم بأنه محذوف
+        return None, "تعذّر البحث في: " + " | ".join(errs)
+    return None, OLD_MISSING
 
 
 def _dup_old_msg(row, info):
@@ -3003,7 +3044,7 @@ def dup_rename(accounts, cfg, ws, req):
     if not gate:
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء"}
     gate = with_guide(acct, gate)
-    info, err = _dup_rename_old(acct, gate, row)
+    info, err = _dup_rename_old(acct, gate, row, accounts, cfg)
     if not info and err == OLD_MISSING:
         panels.update_dupe(ws, order, {"old_missing": True, "rename_error": ""})
         return 200, {"ok": True, "old_missing": True}
@@ -3088,7 +3129,7 @@ def dup_create(accounts, cfg, ws, req):
              "text": DUP_MSG_NEW.format(name=row["customer"] or "", line=r.get("line", "")), "sent": None}]
     extra = {"msgs": msgs}
     if req.get("rename_old"):                  # القديم: يتغيّر اسمه ويُرسل لصاحبه الأول (كلمة مروره ومدته كما هما)
-        info, err = _dup_rename_old(acct, gate, row)
+        info, err = _dup_rename_old(acct, gate, row, accounts, cfg)
         if info:
             resp["renamed"] = extra["renamed"] = info
             msgs.append(_dup_old_msg(row, info))
