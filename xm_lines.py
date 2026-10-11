@@ -2962,6 +2962,55 @@ def _wa_phone(v):
     return salla_api.normalize_phone(v, "")
 
 
+HOST_MSG = ("السلام عليكم {name}\n"
+            "نحيطكم علمًا بأن هوست اشتراككم ({host}) يتغيّر.{new_host}\n"
+            "لتصلكم تفاصيل الهوست الجديد وكل ما يخص اشتراككم أولًا بأول، تابعوا قناتنا على واتساب:\n"
+            "{channel}\n"
+            "وللمساعدة نحن بخدمتكم.")
+
+
+def channel_link():
+    """رابط قناة واتساب المربوطة في صفحة المحتوى، أو ""."""
+    try:
+        inv = content.channel(DATA_DIR).get("invite") or ""
+    except Exception:
+        inv = ""
+    return ("https://whatsapp.com/channel/" + inv) if inv and not inv.startswith("http") else inv
+
+
+def host_audience(cfg, ws, host, include_expired=False):
+    """مشتركو هوستٍ معيّن من اشتراكات المتجر المسحوبة: عميلٌ لكل جوال (بيوزراته)، ومن لا جوال له يُعدّ ولا يُرسَل إليه."""
+    nh = renew.norm_host(host)
+    if not nh:
+        return {"error": "اكتب الهوست"}
+    today = renew._today()
+    by_phone, no_phone, expired_n, lines_n = {}, [], 0, 0
+    for ln in panels.load_store_lines(ws).get("lines", []):
+        if renew.norm_host(ln.get("host")) != nh:
+            continue
+        lines_n += 1
+        exp = renew.parse_date(ln.get("expiry"))
+        expired = bool(exp and exp < today)
+        if expired and not include_expired:
+            expired_n += 1
+            continue
+        phone = _wa_phone(ln.get("phone"))
+        if not phone:
+            no_phone.append({"username": ln.get("username", ""), "customer": ln.get("customer", ""),
+                             "order": ln.get("order", "")})
+            continue
+        r = by_phone.setdefault(phone, {"phone": phone, "name": ln.get("customer", ""), "usernames": [],
+                                        "expiry": "", "expired": expired})
+        r["usernames"].append(ln.get("username", ""))
+        e = str(ln.get("expiry") or "")
+        if e > r["expiry"]:
+            r["expiry"] = e
+        r["expired"] = r["expired"] and expired
+    rec = sorted(by_phone.values(), key=lambda r: (r["name"] or "", r["phone"]))
+    return {"host": host, "recipients": rec, "no_phone": no_phone, "expired_skipped": expired_n,
+            "lines": lines_n, "channel": channel_link(), "template": HOST_MSG}
+
+
 OLD_MISSING = "اليوزر القديم غير موجود على اللوحة"
 
 
@@ -5620,6 +5669,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, panels.explain_user(rcfg, rws, self._q("user"),
                                                            gates=card_gates(racs), split=split_users(racs),
                                                            replaced=replacement_users(racs)))
+            if path == "/api/renew/host-audience":  # مشتركو هوست لرسالة جماعية محدّدة
+                d = host_audience(rcfg, rws, self._q("host"), include_expired=self._q("expired") == "1")
+                d["wa_linked"] = dup_wa_ready(st)
+                try:
+                    rs = reader_status()
+                    d["wa_channel"] = ("contest" if rs.get("status") == "connected" else "wa" if d["wa_linked"] else "")
+                    d["wa_number"] = (rs.get("number") or "") if d["wa_channel"] == "contest" else ""
+                except Exception:
+                    d["wa_channel"], d["wa_number"] = "", ""
+                return self._send(400 if d.get("error") else 200, d)
             if path == "/api/renew/dup-log":        # سجل رسائل البدائل المرسلة
                 return self._send(200, {"log": panels.load_dup_log(rws)})
             if path == "/api/renew/duplicates":     # يوزرات بيعت في أكثر من طلب
@@ -5892,6 +5951,20 @@ class Handler(BaseHTTPRequestHandler):
                                           "error": "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")})
             panels.log_dup_send(rws, dict(msg, text=text), how, ok, "" if ok else m["sent"]["error"])
             return self._send(200 if ok else 502, {"ok": ok, "message": m, "error": "" if ok else m["sent"]["error"]})
+        if path == "/api/renew/host-send":        # رسالة واحدة من الجماعية: عبر الرقم المربوط أو تعليمٌ يدوي
+            phone, text = _wa_phone(req.get("phone")), str(req.get("text") or "").strip()
+            if not phone or not text:
+                return self._send(400, {"error": "الجوال والنص مطلوبان"})
+            msg = {"order": "host:" + renew.norm_host(req.get("host")), "kind": "host",
+                   "name": str(req.get("name") or ""), "phone": phone, "text": text}
+            if req.get("mode") == "manual":
+                panels.log_dup_send(rws, msg, "manual", True)
+                return self._send(200, {"ok": True})
+            r, how = dup_wa_send(st, phone, text)
+            ok = bool(r.get("ok")) and not r.get("dry")
+            err = "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")
+            panels.log_dup_send(rws, msg, how, ok, err)
+            return self._send(200 if ok else 502, {"ok": ok, "error": err, "how": how})
         if path == "/api/renew/dup-create":       # يوزر جديد لصاحب الطلب اللاحق في مبيعٍ مكرّر
             try:
                 code, body = dup_create(racs, rcfg, rws, req)

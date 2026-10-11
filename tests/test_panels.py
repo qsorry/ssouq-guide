@@ -439,7 +439,36 @@ def test_dup_create():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_host_audience():
+    print("== رسالة لمشتركي هوست ==")
+    import datetime
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="hs_")
+    keep = X.DATA_DIR
+    try:
+        today = renew._today()
+        fut = (today + datetime.timedelta(days=30)).isoformat()
+        past = (today - datetime.timedelta(days=30)).isoformat()
+        def ln(u, phone, host, exp, name="ع"):
+            return {"order": u, "username": u, "password": "p", "host": host, "phone": phone, "customer": name, "expiry": exp, "date": past}
+        panels.save_store_lines(d, [ln("u1", "0500000001", "http://cdn65.mitatura.store", fut), ln("u2", "966500000001", "http://cdn65.mitatura.store/", fut),
+                                    ln("u3", "", "http://cdn65.mitatura.store", fut), ln("u4", "0500000002", "http://cdn65.mitatura.store", past),
+                                    ln("u5", "0500000003", "http://other.host", fut)])
+        X.DATA_DIR = d
+        r = X.host_audience({}, d, "http://cdn65.mitatura.store")
+        check("one recipient per phone, expired and no-phone excluded", len(r["recipients"]) == 1 and r["recipients"][0]["usernames"] == ["u1", "u2"]
+              and len(r["no_phone"]) == 1 and r["expired_skipped"] == 1 and r["lines"] == 4, str(r))
+        r2 = X.host_audience({}, d, "cdn65.mitatura.store", include_expired=True)
+        check("host matches without scheme and expired can be included", len(r2["recipients"]) == 2)
+        check("empty host is an error", "error" in X.host_audience({}, d, ""))
+        check("default template has the placeholders", all(k in X.HOST_MSG for k in ("{name}", "{host}", "{channel}", "{new_host}")))
+    finally:
+        X.DATA_DIR = keep
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
+    test_host_audience()
     test_months()
     test_host()
     test_normalize_panels()

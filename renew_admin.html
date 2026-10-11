@@ -573,6 +573,20 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
     <div class="acts"><button class="ghost" id="msgsReload" type="button">حدّث</button></div>
     <p class="msg" id="msgsMsg"></p>
     <p class="empty hidden" id="msgsEmpty">لا رسائل بعد: تُجهَّز تلقائيًا عند إنشاء بديل من تبويب «المكرر والبدائل».</p>
+    <div class="blk" style="padding:12px;margin-bottom:12px" id="hostBox">
+      <b>رسالة لمشتركي هوست محدّد</b>
+      <p class="hint">اكتب الهوست (مثل <span class="ltr">http://cdn65.mitatura.store</span>) فتُرسل رسالتك لكل عملاء اشتراكات هذا الهوست مرة واحدة لكل جوال.</p>
+      <div class="acts"><input id="hsHost" class="ltr" placeholder="http://cdn65.mitatura.store" style="min-width:240px">
+        <label class="switch" style="margin:0"><span>مع المنتهية</span><input type="checkbox" id="hsExp"></label>
+        <button class="go" id="hsLoad" type="button">اعرض المشتركين</button></div>
+      <div id="hsPanel" class="hidden">
+        <div class="acts"><input id="hsCh" class="ltr" placeholder="رابط قناة واتساب" style="min-width:240px"><input id="hsNew" class="ltr" placeholder="الهوست الجديد (اختياري)" style="min-width:200px"></div>
+        <textarea id="hsText" rows="7" style="margin-top:6px"></textarea>
+        <p class="hint" id="hsSum"></p>
+        <div class="acts"><button class="go" id="hsSend" type="button">إرسال للجميع عبر الرقم المربوط</button><button class="ghost" id="hsStop" type="button" disabled>إيقاف</button></div>
+        <div class="scroll"><table class="rt"><thead><tr><th>العميل</th><th>الجوال</th><th>اليوزرات</th><th>الحالة</th><th></th></tr></thead><tbody id="hsBody"></tbody></table></div>
+      </div>
+    </div>
     <details class="blk fold" id="blkDupLog" style="margin-top:12px">
       <summary><span class="bi c-slate"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
         <span class="st"><b>سجل الرسائل المرسلة</b><small id="dupLogSum">كل محاولة إرسال: متى، لمن، من أي قناة، ونجحت أم لا</small></span></summary>
@@ -1790,12 +1804,60 @@ function renderDupMsgs(msgs){
   });
   document.querySelectorAll('.dupCp').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(txt(b.dataset.k)); note($('#msgsMsg'), 'نُسخ ✓', true); } catch(e){} });
 }
+let HS = null, HSSTOP = false;
+const hsText = r => {
+  const nw = $('#hsNew').value.trim();
+  return $('#hsText').value.replaceAll('{name}', (r && r.name) || 'عميلنا العزيز').replaceAll('{host}', HS.host)
+    .replaceAll('{channel}', $('#hsCh').value.trim() || '').replaceAll('{new_host}', nw ? '\nالهوست الجديد: ' + nw : '');
+};
+async function hsLoad(){
+  const h = $('#hsHost').value.trim(); if (!h) return note($('#msgsMsg'), 'اكتب الهوست');
+  const d = await api('/api/renew/host-audience?host=' + encodeURIComponent(h) + '&expired=' + ($('#hsExp').checked ? 1 : 0));
+  if (d.error) return note($('#msgsMsg'), d.error);
+  HS = d; $('#hsPanel').classList.remove('hidden');
+  if (!$('#hsText').value) $('#hsText').value = d.template;
+  if (!$('#hsCh').value) $('#hsCh').value = d.channel || '';
+  $('#hsSum').textContent = `${AR(d.recipients.length)} عميلًا بجوال (${AR(d.lines)} اشتراكًا في الهوست)` + (d.no_phone.length ? ` · ${AR(d.no_phone.length)} بلا جوال` : '')
+    + (d.expired_skipped ? ` · ${AR(d.expired_skipped)} منتهيًا مستثنى` : '') + (d.wa_channel ? '' : ' · لا رقم مربوط: استعمل «واتساب يدوي»')
+    + (d.wa_channel === 'contest' ? ` · الإرسال من رقم المسابقة ${d.wa_number || ''}` : d.wa_channel === 'wa' ? ' · الإرسال عبر قناة خدمة سلة' : '');
+  $('#hsSend').disabled = !d.wa_channel || !d.recipients.length;
+  $('#hsBody').innerHTML = d.recipients.map((r, i) => `<tr><td>${esc(r.name) || '—'}</td><td class="ltr">${esc(r.phone)}</td>`
+    + `<td class="ltr">${esc(r.usernames.join(' · '))}</td><td id="hsS${i}"></td>`
+    + `<td><a class="ghost hsMan" data-i="${i}" target="_blank" rel="noopener" href="#">واتساب يدوي</a></td></tr>`).join('');
+  document.querySelectorAll('.hsMan').forEach(a => a.onclick = async () => {
+    const r = HS.recipients[a.dataset.i]; const t = hsText(r);
+    a.href = 'https://wa.me/' + r.phone + '?text=' + encodeURIComponent(t);
+    if (confirm('هل أرسلتَ الرسالة من واتساب؟ (تُسجَّل في السجل)')) setTimeout(async () => {
+      await post('/api/renew/host-send', {host: HS.host, phone: r.phone, name: r.name, text: t, mode: 'manual'});
+      $('#hsS' + a.dataset.i).innerHTML = '<span class="c-ok">✓ يدويًا</span>';
+    }, 400);
+  });
+}
+$('#hsLoad').onclick = hsLoad;
+$('#hsStop').onclick = () => { HSSTOP = true; };
+$('#hsSend').onclick = async () => {
+  if (!HS || !HS.recipients.length) return;
+  if (!$('#hsCh').value.trim() && $('#hsText').value.includes('{channel}') && !confirm('رابط القناة فارغ — تُرسل الرسائل بدونه؟')) return;
+  if (!confirm(`إرسال الرسالة إلى ${AR(HS.recipients.length)} عميلًا عبر الرقم المربوط؟`)) return;
+  HSSTOP = false; $('#hsSend').disabled = true; $('#hsStop').disabled = false; let ok = 0, bad = 0;
+  for (let i = 0; i < HS.recipients.length && !HSSTOP; i++) {
+    const r = HS.recipients[i], c = $('#hsS' + i);
+    if (c.querySelector('.c-ok')) continue;
+    c.textContent = 'جارٍ…';
+    const d = await post('/api/renew/host-send', {host: HS.host, phone: r.phone, name: r.name, text: hsText(r), mode: 'wa'});
+    if (d.ok) { ok++; c.innerHTML = '<span class="c-ok">✓ أُرسلت</span>'; } else { bad++; c.innerHTML = '<span class="c-bad">' + esc(d.error || 'فشل') + '</span>'; }
+    await new Promise(res => setTimeout(res, 2500 + Math.random() * 2000));
+  }
+  $('#hsSend').disabled = false; $('#hsStop').disabled = true;
+  note($('#msgsMsg'), `أُرسلت ${AR(ok)} · فشلت ${AR(bad)}${HSSTOP ? ' · أُوقف الإرسال' : ''}`, !bad);
+  if ($('#blkDupLog').open) loadDupLog();
+};
 async function loadDupLog(){
   const d = await api('/api/renew/dup-log'); const L = d.log || [];
   const how = {wa: 'الرقم المربوط', contest: 'رقم المسابقة', manual: 'يدوي'};
   $('#dupLogSum').textContent = L.length ? `${AR(L.length)} محاولة — آخرها ${L[0].at}` : 'لا رسائل مرسلة بعد';
   $('#dupLogBody').innerHTML = L.map(r => `<tr><td class="ltr">${esc(r.at)}</td><td>${esc(r.name) || '—'}<br><small class="ltr">${esc(r.phone)}</small></td>`
-    + `<td>${r.kind === 'old' ? 'القديم (اسم جديد)' : 'البديل'}</td><td class="ltr">${esc(r.order)}</td><td>${how[r.how] || esc(r.how)}</td>`
+    + `<td>${r.kind === 'old' ? 'القديم (اسم جديد)' : r.kind === 'host' ? 'رسالة هوست' : 'البديل'}</td><td class="ltr">${esc(r.order)}</td><td>${how[r.how] || esc(r.how)}</td>`
     + `<td>${r.ok ? '<span class="c-ok">✓ أُرسلت</span>' : '<span class="c-bad">' + (esc(r.error) || 'فشل') + '</span>'}</td>`
     + `<td><details><summary>عرض</summary><pre style="white-space:pre-wrap;margin:4px 0">${esc(r.text)}</pre></details></td></tr>`).join('');
 }
