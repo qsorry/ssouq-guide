@@ -242,6 +242,7 @@ details.adult h4{font-size:.8rem;font-weight:500;color:var(--mute);margin:10px 0
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .wa{--wa-bg:#efeae2;--wa-bub:#ffffff;--wa-ink:#111b21;--wa-link:#027eb5}}
 :root[data-theme="light"] .wa{--wa-bg:#efeae2;--wa-bub:#ffffff;--wa-ink:#111b21;--wa-link:#027eb5}
 .wa .bubble{max-width:470px;background:var(--wa-bub);color:var(--wa-ink);border-radius:4px 14px 14px 14px;padding:10px 12px 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:14.5px/1.55 system-ui,"Segoe UI",Tahoma,sans-serif;box-shadow:0 1px .5px rgba(0,0,0,.13)}
+.wa .bubbles{display:grid;gap:10px}
 .wa .bubble a{color:var(--wa-link);text-decoration:underline}
 .wa small{display:block;color:var(--mute);font-size:.76rem;margin-top:8px}
 .status{margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--sf2);border:1px solid var(--line)}
@@ -371,7 +372,7 @@ details.card>.din{padding:0 16px 16px}
       <button class="ghost" type="button" id="cMe" title="أرسل المعاينة إلى واتسابي">المعاينة إلى واتسابي</button>
       <button class="ghost" type="button" id="cPost">انشر الآن</button></div>
     <div class="msg" id="cMsg"></div>
-    <div class="wa" id="cBox" hidden><div class="bubble" id="cText" dir="rtl"></div><small id="cSize"></small></div>
+    <div class="wa" id="cBox" hidden><div class="bubbles" id="cText" dir="rtl"></div><small id="cSize"></small></div>
     <ul class="facts status" id="cLast"></ul>
   </section>
 
@@ -852,10 +853,10 @@ async function preview(me) {
     note = "لا جديد منذ آخر منشور — هذه معاينةٌ بما جدّ في آخر 7 أيام.";
   }
   if (d.error) return cNote(d.error, "err");
-  const t = d.preview.text;
+  const t = d.preview.text, ps = d.preview.posts || [];      // رسالةٌ منفصلةٌ لكل سيرفر
   $("cBox").hidden = !t;
-  $("cText").innerHTML = t ? waHTML(t) : "";
-  $("cSize").textContent = t ? `${tally(d.preview.n)} · ${num(t.length)} حرفًا` : "";
+  $("cText").innerHTML = ps.map(p => `<div class="bubble">${waHTML(p.text)}</div>`).join("");
+  $("cSize").textContent = t ? `${tally(d.preview.n)}` + (ps.length > 1 ? ` · ${num(ps.length)} رسائل، رسالةٌ لكل سيرفر` : ` · ${num(t.length)} حرفًا`) : "";
   if (!t) note = "لا جديد في آخر 7 أيام: ما أضيف يُعرف بتاريخ إضافته من واجهة السيرفر، أو بمقارنة كل سحبٍ بما قبله.";
   const m = d.me;
   if (m) note = (note ? note + "\n" : "") + (m.ok ? `أُرسلت المعاينة إلى واتسابك ✓ ${m.to}` : "لم تُرسل إلى واتسابك — " + (m.error || ""));
@@ -878,7 +879,7 @@ $("chan").addEventListener("click", async e => {
       const d = await api("/api/content/admin/channel-post", {}).catch(() => ({error: "تعذّر الاتصال"}));
       if (d.servers) { DATA = d; render(); }
       if (d.error) return cNote(d.error, "err");
-      cNote(`نُشر في القناة ✓ ${tally(d.post.n || {})}`, "ok");
+      cNote(`نُشر في القناة ✓ ${tally(d.post.n || {})}` + (d.post.sent > 1 ? ` · ${num(d.post.sent)} رسائل` : ""), "ok");
     }
   } finally { if (b.isConnected) b.disabled = false; }
 });

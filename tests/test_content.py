@@ -733,6 +733,36 @@ def unit_channel():
               and C.channel_preview(d)["text"] == "")
         check("وحال القناة لصفحة المدير", C.admin_state(d)["channel"]["jid"] == "120363000000000001@newsletter"
               and "since" in C.admin_state(d)["channel"])
+        print("سيرفران: رسالةٌ منفصلةٌ لكلٍّ، وفشل أحدهما يُعاد وحده")
+        C.CHANNEL_GAP = 0
+        time.sleep(0.01)
+        t4 = time.time()
+        journal(d, "smart", [{"t": t4, "k": "movie", "h": "sm1", "n": "Smart Film", "y": 2020, "gs": ["g"]}])
+        journal(d, "casper", [{"t": t4, "k": "movie", "h": "cs1", "n": "Casper Film", "y": 2021, "gs": ["g1"]}])
+        C.save_channel(d, servers=["smart", "casper"])
+        pv = C.channel_preview(d)
+        check("المعاينة: رسالتان بترتيب الصفحة", [p["key"] for p in pv["posts"]] == ["casper", "smart"]
+              and pv["posts"][0]["text"].startswith("🆕 *أضيف مؤخرًا في كاسبر*")
+              and pv["posts"][1]["text"].startswith("🆕 *أضيف مؤخرًا في سمارت*") and pv["n"]["movie"] == 2, pv["posts"])
+        n0 = len(posts)
+        C.channel_sender = lambda j, t: sender(j, t) if "كاسبر" in t else {"ok": False, "error": "انقطع"}
+        res = C.channel_run(d, manual=True)
+        c = C.channel(d)
+        check("فشل سمارت: كاسبر نُشر وحده، والخطأ يذكر سمارت", res["ok"] is False and res["sent"] == 1
+              and len(posts) == n0 + 1 and "Casper Film" in posts[-1][1] and "Smart Film" not in posts[-1][1]
+              and "سمارت: انقطع" in res["error"] and c["sinces"].get("casper", 0) >= t4 and "smart" not in c["sinces"], res)
+        C.channel_sender = sender
+        res = C.channel_run(d, manual=True)
+        check("ثم يُعاد سمارت وحده", res["ok"] and res["sent"] == 1 and len(posts) == n0 + 2
+              and posts[-1][1].startswith("🆕 *أضيف مؤخرًا في سمارت*") and C.channel(d)["sinces"] == {}, res)
+        time.sleep(0.01)
+        t5 = time.time()
+        journal(d, "smart", [{"t": t5, "k": "movie", "h": "sm2", "n": "Smart Two", "y": 2020, "gs": ["g"]}])
+        journal(d, "casper", [{"t": t5, "k": "movie", "h": "cs2", "n": "Casper Two", "y": 2021, "gs": ["g1"]}])
+        res = C.channel_run(d, manual=True)
+        check("وكلاهما ناجحًا: رسالتان منفصلتان", res["ok"] and res["sent"] == 2 and len(posts) == n0 + 4
+              and "Casper Two" in posts[-2][1] and "Smart Two" not in posts[-2][1] and "Smart Two" in posts[-1][1], res)
+        C.save_channel(d, servers=["casper"])
         C.channel_sender = lambda j, t: 1 / 0
         C.save_channel(d, since=0)
         res = C.channel_run(d, manual=True)

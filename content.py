@@ -2138,6 +2138,7 @@ CHANNEL_WINDOW = 3 * 86400    # ولا يعود أبعد من ثلاثة أيا�
 CHANNEL_FIRST = 86400         # وأول منشورٍ بعد ربط القناة بما جدّ في اليوم الذي قبله
 _JID = re.compile(r"\d{5,30}@newsletter")
 _INVITE = re.compile(r"(?:https?://)?(?:www\.)?whatsapp\.com/channel/([A-Za-z0-9]{10,40})", re.I)
+CHANNEL_GAP = 4               # ثوانٍ بين رسائل السيرفرات في المنشور الواحد (رسالةٌ لكل سيرفر)
 channel_sender = None         # (معرّف القناة، النص) ← {ok, error} — يضبطه الخادم: من رقم المسابقة المربوط
 _posting = threading.Lock()   # منشورٌ واحد في وقته: المجدول و«انشر الآن» لا يلتقيان
 
@@ -2160,8 +2161,9 @@ def channel_ref(v):
 
 
 def channel(data_dir):
-    """قناة واتساب كما حُفظت ← {on, jid, name, invite, role, subs, servers, hour, since, day, last, posted}: day يوم
-    آخر منشورٍ مجدول (أُرسل أو لم يجدّ فيه شيء)، وsince ما بعده جديدٌ لم يُنشر، وlast آخر محاولة وposted آخر ما نُشر."""
+    """قناة واتساب كما حُفظت ← {on, jid, name, invite, role, subs, servers, hour, since, sinces, day, last, posted}: day يوم
+    آخر منشورٍ مجدول (أُرسل أو لم يجدّ فيه شيء)، وsince ما بعده جديدٌ لم يُنشر، وsinces ما بعده لسيرفرٍ نُشر وحده (ومنشورٌ
+    فشل في غيره)، وlast آخر محاولة وposted آخر ما نُشر."""
     c = (_read(os.path.join(_dir(data_dir), SETTINGS)) or {}).get("channel")
     c = c if isinstance(c, dict) else {}
     jid, hour = str(c.get("jid") or ""), c.get("hour")
@@ -2170,6 +2172,8 @@ def channel(data_dir):
             "servers": [k for k in c.get("servers") or [] if isinstance(k, str) and key_ok(k) == k][:MAX_SERVERS],
             "hour": hour if type(hour) is int and 0 <= hour <= 23 else CHANNEL_HOUR,
             "since": _float(c.get("since")), "day": str(c.get("day") or "")[:10],
+            "sinces": {k: _float(v) for k, v in (c.get("sinces") or {}).items() if isinstance(k, str)}
+            if isinstance(c.get("sinces"), dict) else {},
             "last": c.get("last") if isinstance(c.get("last"), dict) else None,
             "posted": c.get("posted") if isinstance(c.get("posted"), dict) else None}
 
@@ -2188,27 +2192,51 @@ def save_channel(data_dir, **kw):
 
 def link_channel(data_dir, jid, name="", invite="", role="", subs=0):
     """يحفظ القناة التي عرفها رقم المسابقة. وقناةٌ غير المحفوظة تبدأ من جديد: أول منشورٍ بما جدّ في اليوم الذي قبله."""
-    extra = {} if jid == channel(data_dir)["jid"] else {"since": time.time() - CHANNEL_FIRST, "day": "", "last": None,
-                                                         "posted": None}
+    extra = {} if jid == channel(data_dir)["jid"] else {"since": time.time() - CHANNEL_FIRST, "sinces": {}, "day": "",
+                                                         "last": None, "posted": None}
     return save_channel(data_dir, jid=jid, name=str(name or "")[:100], invite=str(invite or "")[:60],
                         role=str(role or "")[:20], subs=int(_float(subs)), **extra)
 
 
+def _since(c, key, until):
+    """ما بعده جديدٌ لم يُنشر من السيرفر: منذ آخر منشورٍ له (وأبعده CHANNEL_WINDOW)."""
+    return max(c["since"], c["sinces"].get(key, 0), until - CHANNEL_WINDOW)
+
+
+def _channel_posts(data_dir, c, keys, until, days=0, now=None):
+    """رسائل المنشور، رسالةٌ لكل سيرفرٍ جدّ فيه شيء بترتيب الصفحة ← [{key, name, text, n}]."""
+    out = []
+    for s in servers(data_dir):
+        if s["key"] not in keys:
+            continue
+        since = until - min(int(days), NEWS_KEEP // 86400) * 86400 if days else _since(c, s["key"], until)
+        text, n = channel_text(data_dir, [s["key"]], since, until, now)
+        if text:
+            out.append({"key": s["key"], "name": s["name"], "text": text, "n": n})
+    return out
+
+
+def _sum(posts):
+    return {k: sum(p["n"][k] for p in posts) for k in ("movie", "series", "eps")}
+
+
 def channel_preview(data_dir, keys=None, days=0, now=None):
-    """المنشور كما سيُنشر الآن ← {text, n, since, until}: ما جدّ منذ آخر منشور (وأبعده CHANNEL_WINDOW)، أو ما جدّ
-    في آخر `days` يومًا للمعاينة. وkeys سيرفراتٌ غير المحفوظة (ما اختاره المدير ولم يحفظه بعد)."""
+    """المنشور كما سيُنشر الآن ← {text, posts, n, since, until}: رسالةٌ لكل سيرفر (‏posts) بما جدّ فيه منذ آخر منشور
+    (وأبعده CHANNEL_WINDOW)، أو ما جدّ في آخر `days` يومًا للمعاينة؛ وtext الرسائل متتابعة. وkeys سيرفراتٌ غير
+    المحفوظة (ما اختاره المدير ولم يحفظه بعد)."""
     c = channel(data_dir)
     keys = [k for k in keys if isinstance(k, str)] if isinstance(keys, list) else c["servers"]
     with _news_lock:
         until = time.time()
-        since = until - min(int(days), NEWS_KEEP // 86400) * 86400 if days else max(c["since"], until - CHANNEL_WINDOW)
-        text, n = channel_text(data_dir, keys, since, until, now)
-    return {"text": text, "n": n, "since": since, "until": until}
+        posts = _channel_posts(data_dir, c, keys, until, days, now)
+    since = until - min(int(days), NEWS_KEEP // 86400) * 86400 if days else max(c["since"], until - CHANNEL_WINDOW)
+    return {"text": "\n\n".join(p["text"] for p in posts), "posts": posts, "n": _sum(posts), "since": since, "until": until}
 
 
 def channel_run(data_dir, manual=False, now=None):
-    """ينشر في القناة ما جدّ منذ آخر منشور ← {ok, empty?, error?, n?}. ويوم المجدول يُعلَّم (أُرسل أو لم يجدّ شيء)
-    فلا يُعاد، وفشله يُعاد بعد CHANNEL_RETRY؛ و«انشر الآن» (‏manual) لا يمسّ اليوم، وبلا جديدٍ لا يُحفظ."""
+    """ينشر في القناة ما جدّ منذ آخر منشور، رسالةً منفصلةً لكل سيرفر ← {ok, empty?, error?, n?, sent?, parts?}. ويوم
+    المجدول يُعلَّم (أُرسل كله أو لم يجدّ شيء) فلا يُعاد، وفشل سيرفرٍ يُعاد هو وحده بعد CHANNEL_RETRY (وما نُشر من غيره
+    لا يُعاد)؛ و«انشر الآن» (‏manual) لا يمسّ اليوم، وبلا جديدٍ لا يُحفظ."""
     if not _posting.acquire(blocking=False):
         return {"ok": False, "error": "يُنشر الآن في القناة"}
     try:
@@ -2220,22 +2248,41 @@ def channel_run(data_dir, manual=False, now=None):
             return {"ok": False, "error": "اختر السيرفرات في المنشور واحفظ"}
         with _news_lock:                     # لحظة القطع داخل القفل: ما سُجّل بعدها للمنشور التالي
             until = time.time()
-            text, n = channel_text(data_dir, c["servers"], max(c["since"], until - CHANNEL_WINDOW), until, now)
-        if not text:
+            posts = _channel_posts(data_dir, c, c["servers"], until, now=now)
+        if not posts:
             if manual:
                 return {"ok": False, "empty": True, "error": "لا جديد منذ آخر منشور"}
             save_channel(data_dir, day=_day(now), last={"at": now, "ok": True, "empty": True})
             return {"ok": True, "empty": True}
-        try:
-            res = channel_sender(c["jid"], text) if channel_sender else {"error": "النشر غير مضبوط على هذا الخادم"}
-        except Exception as e:  # noqa: BLE001 — الفشل يُحفظ سببه ويُعاد
-            res = {"error": str(e)[:200]}
-        ok = bool(isinstance(res, dict) and res.get("ok"))
-        last = {"at": now, "ok": ok, "n": n, "manual": manual,
-                "error": "" if ok else str((res if isinstance(res, dict) else {}).get("error") or "تعذّر النشر")[:200]}
+        parts, done = [], []
+        for i, p in enumerate(posts):
+            if i and CHANNEL_GAP:
+                time.sleep(CHANNEL_GAP)
+            try:
+                res = channel_sender(c["jid"], p["text"]) if channel_sender else {"error": "النشر غير مضبوط على هذا الخادم"}
+            except Exception as e:  # noqa: BLE001 — الفشل يُحفظ سببه ويُعاد
+                res = {"error": str(e)[:200]}
+            ok = bool(isinstance(res, dict) and res.get("ok"))
+            parts.append({"key": p["key"], "name": p["name"], "ok": ok, "n": p["n"],
+                          "error": "" if ok else str((res if isinstance(res, dict) else {}).get("error") or "تعذّر النشر")[:200]})
+            if ok:
+                done.append(p)
+        bad = [x for x in parts if not x["ok"]]
+        ok = not bad
+        err = ""
+        if bad:
+            err = "؛ ".join(f"{x['name']}: {x['error']}" for x in bad) if len(posts) > 1 else bad[0]["error"]
+            if done:
+                err = f"نُشر {len(done)} من {len(posts)} — لم يُنشر {err}"
+        last = {"at": now, "ok": ok, "n": _sum(done) if done else _sum(posts), "manual": manual, "sent": len(done),
+                "parts": parts, "error": err[:400]}
         upd = {"last": last}
-        if ok:
-            upd.update(since=until, posted=last, **({} if manual else {"day": _day(now)}))
+        if ok:                                # كله نُشر: ما بعد القطع جديدٌ للسيرفرات كلها
+            upd.update(since=until, sinces={}, posted=last, **({} if manual else {"day": _day(now)}))
+        elif done:                            # بعضه: ما نُشر (وما لم يجدّ فيه شيء) لا يُعاد، والفاشل وحده يُعاد
+            failed = {x["key"] for x in bad}
+            upd.update(sinces=dict(c["sinces"], **{k: until for k in c["servers"] if k not in failed}),
+                       posted=dict(last, n=_sum(done)))
         save_channel(data_dir, **upd)
         return dict(last)
     finally:
@@ -2264,10 +2311,10 @@ def channel_state(data_dir, wait=True):
     pending, wanting = {"movie": 0, "series": 0, "eps": 0}, False
     for s in servers(data_dir) if c["jid"] else ():
         if s["key"] in c["servers"]:
-            got = _pending(data_dir, s["key"], since, until, set(s["hidden"]), wait)
+            got = _pending(data_dir, s["key"], _since(c, s["key"], until), until, set(s["hidden"]), wait)
             if got is None:
                 wanting = True
                 continue
             n = _tally(*got)
             pending = {k: pending[k] + n[k] for k in pending}
-    return dict({k: v for k, v in c.items() if k != "since"}, pending=None if wanting else pending, since=since)
+    return dict({k: v for k, v in c.items() if k not in ("since", "sinces")}, pending=None if wanting else pending, since=since)

@@ -6418,9 +6418,16 @@ class Handler(BaseHTTPRequestHandler):
                         out["me"] = {"ok": False, "error": "لا رقم واتساب لك — احفظه في «تنبيه محتوى الكبار» أسفل الصفحة"}
                     elif not pv["text"]:
                         out["me"] = {"ok": False, "to": wa, "error": "لا جديد في المعاينة يُرسل"}
-                    else:
-                        r = reader_send(wa, pv["text"])
-                        out["me"] = {"ok": True, "to": wa} if r.get("ok") else {"ok": False, "to": wa, "error": _reader_error(r)[:200]}
+                    else:                       # كما في القناة: رسالةٌ لكل سيرفر
+                        for i, post in enumerate(pv["posts"]):
+                            if i:
+                                time.sleep(1)
+                            r = reader_send(wa, post["text"])
+                            if not r.get("ok"):
+                                out["me"] = {"ok": False, "to": wa, "error": _reader_error(r)[:200]}
+                                break
+                        else:
+                            out["me"] = {"ok": True, "to": wa}
                 return self._send(200, out)
             elif path == "/api/content/admin/channel-post":  # «انشر الآن»: ما جدّ منذ آخر منشور، في القناة
                 res = content.channel_run(DATA_DIR, manual=True)
