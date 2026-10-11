@@ -677,6 +677,74 @@ def test_order_lost():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_search_index():
+    print("== فهرس البحث: التوحيد، والإبطال بتغيّر المصادر، والبناء مرةً واحدة، والمصادر التالفة ==")
+    import datetime
+    import threading
+    import time as _t
+    d = tempfile.mkdtemp(prefix="sidx_")
+    try:
+        today = renew._today()
+        st = today - datetime.timedelta(days=30)
+        def ln(order, user, pw="pw"):
+            return {"order": order, "date": st.isoformat(), "phone": "0500000001", "customer": "ع", "username": user,
+                    "password": pw, "host": "http://m.ink", "months": 12, "expiry": renew.add_months(st, 12).isoformat()}
+        panels.save_store_lines(d, [ln("287314660", "363816609180", "868742085294"), ln("287314660", "691869829206"),
+                                    ln("1", "0012345", "0055555")])
+        cfg = {"panels": [{"id": "pk", "name": "مرح", "hosts": ["http://m.ink"], "account_id": "a", "gate_id": "g"}]}
+        panels.save_panel_lines(d, "pk", "مرح", [{"username": "363816609180"}])
+        check("query normalization: arabic digits, spaces, dashes; leading zeros kept",
+              panels.norm_query(" ٢٨٧ ٣١٤-٦٦٠ ") == "287314660" and panels.norm_query("00-123") == "00123"
+              and panels.norm_query("۲۸۷") == "287")
+        idx = panels.build_index(cfg, d)
+        for q in ("287314660", "٢٨٧٣١٤٦٦٠", "287 314 660", "287-314-660"):
+            r = panels.order_search(cfg, d, q, idx=idx)
+            check("search %r finds both users of the order" % q, len(r["rows"]) == 2 and r["order"] == "287314660"
+                  and {x["state"] for x in r["rows"]} == {"found", "covered"}, str([x["state"] for x in r["rows"]]))
+        r = panels.order_search(cfg, d, "0012345", idx=idx)
+        check("username with leading zeros matched exactly", len(r["rows"]) == 1 and r["rows"][0]["match"] == "username")
+        check("no partial match on a prefix", panels.order_search(cfg, d, "12345", idx=idx)["rows"] == [])
+        r = panels.order_search(cfg, d, "868742085294", idx=idx)
+        check("search by password", len(r["rows"]) == 1 and r["rows"][0]["match"] == "password")
+        check("found source is the pulled panel", panels.order_search(cfg, d, "363816609180", idx=idx)["rows"][0]["found_src"] == "panel")
+        ix2 = panels.build_index(cfg, d, export={"users": {"691869829206": "بوابة"}, "gates": set()})
+        hit = panels.order_search(cfg, d, "691869829206", idx=ix2)["rows"][0]
+        check("found in a gate Excel only is reported as excel", hit["state"] == "found" and hit["found_src"] == "excel"
+              and hit["found_panel"] == "بوابة")
+        # الذاكرة: نفس الفهرس ما لم يتغيّر مصدر، وبناءٌ واحد ولو طلبه كثيرون معًا
+        builds = []
+        src = lambda: (builds.append(1) or (set(), {"users": {}, "gates": set()}))
+        panels._IDX.pop(d, None)
+        out = []
+        th = [threading.Thread(target=lambda: out.append(panels.get_index(cfg, d, src))) for _ in range(8)]
+        [x.start() for x in th]; [x.join() for x in th]
+        check("8 concurrent requests build the index once", len(builds) == 1 and all(o is out[0] for o in out), str(len(builds)))
+        check("cached until a source changes", panels.get_index(cfg, d, src) is out[0] and len(builds) == 1)
+        _t.sleep(0.01)
+        panels.link_order(d, "1", "777888", "p")
+        i2 = panels.get_index(cfg, d, src)
+        check("a write to the store lines invalidates the index", i2 is not out[0] and len(builds) == 2
+              and panels.order_search(cfg, d, "777888", idx=i2)["rows"][0]["order"] == "1")
+        i3 = panels.get_index(cfg, d, src, extra_sig=(("x.jsonl", 1, 1),))
+        check("an Excel file change (extra signature) invalidates it too", i3 is not i2 and len(builds) == 3)
+        check("index_ready reflects the current sources", panels.index_ready(cfg, d, (("x.jsonl", 1, 1),))["ready"]
+              and not panels.index_ready(cfg, d)["ready"])
+        # المصادر التالفة لا تُسقط البحث
+        with open(panels.store_lines_path(d), "w") as f:
+            f.write("{not json")
+        r = panels.order_search(cfg, d, "287314660", idx=panels.build_index(cfg, d))
+        check("a corrupt store file gives no rows, not a crash", r["rows"] == [])
+        # عدّ المرسَل اليوم بلا تحميل السجل كله
+        day = renew.now_iso()[:10]
+        for ok, how in ((True, "contest"), (False, "contest"), (True, "manual"), (True, "wa")):
+            panels.log_dup_send(d, {"order": "o", "kind": "comp", "phone": "1", "text": "t"}, how, ok)
+        check("sent_today counts only today's successful linked-number sends", panels.sent_today(d, day) == 2
+              and panels.sent_today(d, "2000-01-01") == 0)
+    finally:
+        panels._IDX.pop(d, None)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     test_host_job()
     test_host_audience()
@@ -693,6 +761,7 @@ def main():
     test_split_bulk()
     test_dup_create()
     test_order_lost()
+    test_search_index()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, "
           + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))

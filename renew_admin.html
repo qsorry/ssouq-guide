@@ -337,6 +337,29 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 .lc-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding:10px 12px;
   border:1px dashed var(--line);border-radius:14px}
 @media (max-width:520px){.lc{padding:12px}.lc-g{grid-template-columns:1fr 1fr}.lc-a button,.lc-a a{min-width:0;flex:1 1 45%}}
+
+/* ===== صندوق البحث وحالاته ===== */
+.sq{display:flex;gap:8px;margin-top:10px;align-items:stretch}
+.sq-in{position:relative;flex:1;min-width:0}
+.sq-in input{width:100%;font-size:1.05rem;padding-inline-end:44px;-webkit-appearance:none;appearance:none}
+.sq-in input::-webkit-search-cancel-button{display:none}
+.sq-x{position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;min-height:0;padding:0;border:0;
+  border-radius:50%;background:var(--sf2);color:var(--mute);font-size:1.2rem;line-height:1;cursor:pointer}
+.sq .go{flex:none;min-width:96px}
+.sstat{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:.88rem;color:var(--mute);min-height:24px}
+.sstat #loMsg{flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.lcards.stale{opacity:.45;pointer-events:none;transition:opacity .15s}
+.sstat .ghost{min-height:0;padding:4px 12px;font-size:.82rem}
+.sdot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--line)}
+[data-state="loading"] .sdot{background:var(--go);animation:sdot 1s ease-in-out infinite}
+[data-state="found"] .sdot{background:var(--go)}[data-state="found"] .sstat{color:var(--ink)}
+[data-state="empty"] .sdot{background:var(--amber)}[data-state="empty"] .sstat{color:var(--amber)}
+[data-state="error"] .sdot{background:var(--err)}[data-state="error"] .sstat{color:var(--err)}
+@keyframes sdot{50%{opacity:.25;transform:scale(.7)}}
+@media (prefers-reduced-motion:reduce){[data-state="loading"] .sdot{animation:none}}
+.sync{margin:6px 0 0;font-size:.74rem;color:var(--mute);line-height:1.6;white-space:pre-line}
+.sync:empty{display:none}
+.lc-f span.clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -608,12 +631,15 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
     <div class="shead"><span class="sic c-teal"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></span>
       <h2>البحث والمفقود<small>ابحث برقم الطلب واربطه بيوزره، وأنشئ لمن ضاع خطّه اشتراكًا بالمتبقي مع تعويض</small></h2></div>
 
-    <div class="blk" style="padding:12px;margin-bottom:12px">
+    <div class="blk sbox" id="loBox" data-state="ready" style="padding:12px;margin-bottom:12px">
       <b>بحث برقم الطلب</b>
-      <p class="hint">اكتب رقم الطلب (أو اليوزر أو كلمة المرور) — يُبحث في اشتراكات سلة المسحوبة ويُعرض حال كل يوزر على اللوحات: موجود · مفقود (لا في لوحته ولا البديلة) · مستبدل.</p>
-      <div class="acts"><input id="loQ" class="ltr" placeholder="274576474" style="min-width:200px" inputmode="numeric">
-        <button class="go" id="loFind" type="button">بحث</button></div>
-      <p class="msg" id="loMsg"></p>
+      <form class="sq" id="loForm" role="search" autocomplete="off">
+        <div class="sq-in"><input id="loQ" class="ltr" type="search" placeholder="رقم الطلب أو اليوزر أو كلمة المرور" inputmode="numeric" enterkeyhint="search" aria-label="رقم الطلب">
+          <button class="sq-x hidden" id="loClear" type="button" aria-label="مسح">×</button></div>
+        <button class="go" id="loFind" type="submit">بحث</button></form>
+      <div class="sstat" id="loStat" role="status" aria-live="polite"><span class="sdot"></span><span id="loMsg">اكتب رقم الطلب ثم «بحث».</span>
+        <button class="ghost hidden" id="loRetry" type="button">أعد المحاولة</button></div>
+      <p class="sync" id="loSync"></p>
       <div class="lcards hidden" id="loWrap"><div id="loBody"></div></div>
       <div id="loLink" class="hidden" style="margin-top:10px">
         <b>ربط الطلب باليوزر</b>
@@ -629,7 +655,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 
     <div class="blk" style="padding:12px">
       <b>المفقود — اشتراكٌ مدفوع بلا يوزر</b>
-      <p class="hint">خطوط سلة الجارية التي لا يوجد يوزرها على أي لوحة مسحوبة ولم يُستبدل. يُنشأ لصاحبها خطٌّ من باقة <b>١٥ شهرًا</b> بجزءٍ = المتبقي + التعويض، والباقي يعود إلى «حسابات متبقية» للبيع، وتُجهَّز رسالة واتساب في «الرسائل». يخصم من رصيد اللوحة. يُبحث عن اليوزر في يوزرات اللوحات المسحوبة <b>وفي ملفات Excel البوابات المحفوظة في النظام</b>، ولوحةٌ بلا أيٍّ منهما لا يُحكم على خطوطها.</p>
+      <p class="hint">اشتراكات سلة الجارية التي لا يوجد يوزرها في اللوحات المسحوبة ولا في ملفات Excel البوابات ولم يُستبدل. يُنشأ لصاحبها جزءٌ من باقة <b>١٥ شهرًا</b> = المتبقي + التعويض (يخصم من الرصيد)، والباقي يُباع من «حسابات متبقية».</p>
       <div class="acts" style="align-items:center">
         <label>التعويض <input type="number" id="lsComp" min="0" max="14" value="1" style="width:60px"> شهر</label>
         <label class="switch" style="margin:0"><span>مع المنتهية</span><input type="checkbox" class="tog" id="lsExp"></label>
@@ -1760,7 +1786,7 @@ const TABS = {data:['secData','secAn'], cmp:['secCmp'], sell:['secSell'], dup:['
 function showTab(t){
   if (!TABS[t]) t = 'data';
   if (t === 'msgs' && typeof loadDup === 'function') loadDup();
-  if (t === 'lost' && typeof lsLoad === 'function' && !LS) lsLoad();
+  if (t === 'lost' && typeof idxStatus === 'function') idxStatus();   // حال الفهرس فقط (يُحدَّث في الخلفية) — لا فحص تلقائي
   if (t === 'q' && !IS_ADMIN) t = 'data';
   Object.keys(TABS).forEach(k => TABS[k].forEach(id => { const e = document.getElementById(id); if (e) e.classList.toggle('tab-off', k !== t); }));
   document.querySelectorAll('.jump a[data-tab]').forEach(a => a.setAttribute('aria-selected', a.dataset.tab === t ? 'true' : 'false'));
@@ -2039,14 +2065,14 @@ const lcCred = (h, u, p) => `<div class="lc-cred">${h ? `<small>Host</small><spa
 // بطاقةٌ لخطٍّ من المتجر: الطلب وحاله، والعميل، وبيانات الاشتراك، والتعويض المُنشأ ونسخ شرحه، والأفعال
 function lcard(r, i, kind){
   const dn = r.done, st = dn ? ['عُوِّض ✓', 'ok'] : (LOST_STATE[r.state] || [r.state, '']);
-  const where = r.state === 'found' ? (r.found_panel || r.panel_name) : r.panel_name;
+  const where = r.state === 'found' ? (r.found_panel || r.panel_name) + (r.found_src === 'excel' ? ' · ملف Excel' : r.found_src === 'panel' ? ' · لوحة مسحوبة' : '') : r.panel_name;
   const head = `<header class="lc-h"><div class="lc-o">${kind === 'ls' && !dn && r.can_create ? `<input type="checkbox" class="lsC lc-x" data-i="${i}" aria-label="تحديد">` : ''}`
     + `<small>طلب</small>${kind === 'ls' ? `<a href="#" class="lsO" data-o="${esc(r.order)}"><b class="ltr">${esc(r.order)}</b></a>` : `<b class="ltr">${esc(r.order)}</b>`}`
     + `<small class="ltr">${esc(r.date)}</small></div><span class="pill ${st[1]}">${st[0]}</span></header>`;
   const why = LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '';
   const grid = `<div class="lc-g">${lcField('العميل', esc(r.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(r.phone) || '—'}</span>`)}`
     + lcField('المتبقي', esc(r.remaining) || '—') + lcField(r.state === 'found' ? 'موجود على' : 'اللوحة', esc(where))
-    + lcField('المنتج', esc(r.product), 'wide') + (r.linked ? lcField('الربط', 'رُبط يدويًا') : '') + '</div>';
+    + (r.product ? lcField('المنتج', `<span class="clip" title="${esc(r.product)}">${esc(r.product)}</span>`, 'wide') : '') + (r.linked ? lcField('الربط', 'رُبط يدويًا') : '') + '</div>';
   const done = dn ? `<div class="lc-done"><b>✓ أُنشئ له اشتراك جديد${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}</b>`
     + lcCred(dn.host, dn.new, dn.password) + `<div class="lc-a">`
     + (r.copy ? `<button class="go lcCopy" data-k="${kind}" data-i="${i}" type="button">نسخ الشرح</button>`
@@ -2068,58 +2094,124 @@ function lcBind(box, rows, kind){
   box.querySelectorAll('.lcWa').forEach(a => { const r = rows[a.dataset.i];
     a.href = 'https://wa.me/' + String(r.phone).replace(/\D/g, '').replace(/^0(?=5)/, '966') + '?text=' + encodeURIComponent(r.copy); });
 }
+// ---- البحث: حالاتٌ صريحة تطابق الطلب الفعلي ----
+// ready جاهز · loading جارٍ (من لحظة إرسال الطلب إلى ردّه) · found وُجد · empty لا نتيجة · error خطأ يُعاد.
+// لكل طلبٍ رقم تسلسل: ردٌّ وصل بعد بحثٍ أحدث يُهمل، فلا تظهر نتيجة طلبٍ قديم للبحث الأخير. والبحث نفسه وهو جارٍ
+// لا يُرسَل ثانيةً، وبحثٌ مختلف يُلغي السابق (AbortController)، ومهلة ٣٠ ثانية تُنهي أي انتظار.
+const SRCH = {seq: 0, ctl: null, q: ''};
+function loState(state, text, retry, keep){
+  $('#loBox').dataset.state = state;
+  const busy = state === 'loading', b = $('#loFind');
+  b.disabled = busy; b.textContent = busy ? 'جارٍ البحث…' : 'بحث'; b.setAttribute('aria-busy', busy ? 'true' : 'false');
+  $('#loMsg').textContent = text || '';
+  $('#loRetry').classList.toggle('hidden', !retry);
+  // نتائج البحث السابق: باهتةٌ أثناء الطلب، وتُخفى إن فشل الجديد أو لم يجد — فلا تُقرأ نتيجةً له
+  $('#loWrap').classList.toggle('stale', busy);
+  if (!keep && (state === 'error' || state === 'empty' || state === 'ready')) { $('#loWrap').classList.add('hidden'); $('#loLink').classList.add('hidden'); }
+}
+// fetch بنتيجةٍ موحّدة: {ok, data} أو {ok:false, kind, error} — والخطأ التقني لا يصل المستخدم بنصّه
+async function getJSON(path, signal){
+  let r;
+  try { r = await fetch(B + path, {signal, credentials: 'same-origin'}); }
+  catch (e) { return {ok: false, kind: e.name === 'AbortError' ? 'abort' : 'net'}; }
+  let d = null; try { d = await r.json(); } catch (e) {}
+  if (r.status === 401 || r.status === 403) return {ok: false, kind: 'auth', error: 'انتهت الجلسة — سجّل الدخول من جديد'};
+  if (!r.ok || !d) { console.warn('renew', path, r.status, d && d.error); return {ok: false, kind: 'server', error: r.status < 500 && d && d.error ? d.error : ''}; }
+  return {ok: true, data: d};
+}
+const FAIL_TEXT = {net: 'تعذّر الاتصال بالخادم — تحقّق من الشبكة ثم أعد المحاولة', timeout: 'استغرق البحث أطول من المعتاد — أعد المحاولة',
+  server: 'تعذّر البحث بسبب خطأ في الخادم — أعد المحاولة'};
 async function loFind(q){
-  q = (q != null ? q : $('#loQ').value).trim(); if (!q) return note($('#loMsg'), 'اكتب رقم الطلب');
-  const d = await api('/api/renew/order?q=' + encodeURIComponent(q));
-  if (d.error) return note($('#loMsg'), d.error);
+  q = (q != null ? q : $('#loQ').value).trim();
+  if (!q) { loState('ready', 'اكتب رقم الطلب ثم «بحث».'); $('#loQ').focus(); return; }
+  if (SRCH.ctl && SRCH.q === q) return;                 // البحث نفسه جارٍ: لا طلب مكرّر
+  if (SRCH.ctl) SRCH.ctl.abort();                       // بحثٌ مختلف: يُلغى السابق
+  const my = ++SRCH.seq, ctl = new AbortController(); SRCH.ctl = ctl; SRCH.q = q;
+  let timedOut = false; const tm = setTimeout(() => { timedOut = true; ctl.abort(); }, window.__searchMs || 30000);   // __searchMs للاختبار
+  loState('loading', `جارٍ البحث عن «${q}»…`);
+  const res = await getJSON('/api/renew/order?q=' + encodeURIComponent(q), ctl.signal);
+  clearTimeout(tm);
+  if (my !== SRCH.seq) return;                          // ردٌّ قديم: بحثٌ أحدث بدأ بعده
+  SRCH.ctl = null; SRCH.q = '';
+  if (!res.ok) {
+    if (res.kind === 'abort' && !timedOut) return loState('ready', '');
+    return loState('error', res.error || FAIL_TEXT[timedOut ? 'timeout' : res.kind] || FAIL_TEXT.server, true);
+  }
+  loRender(res.data, q);
+}
+function loRender(d, q){
   LO = d; const rows = d.rows || [], ix = d.index;
   $('#loWrap').classList.toggle('hidden', !rows.length);
   $('#loBody').innerHTML = rows.map((r, i) => lcard(r, i, 'lo')).join('');
   lcBind($('#loBody'), rows, 'lo');
-  let msg = rows.length ? `${AR(rows.length)} يوزرًا` + (rows.some(r => r.state === 'missing' && !r.done) ? ' — فيه مفقود' : rows.some(r => r.done) ? ' — أُنشئ له اشتراكٌ جديد ✓' : rows.some(r => r.state === 'covered') ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر في سجلّ الطلب' : '') : '';
-  if (!rows.length && ix) msg = `الطلب موجود في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
-    + (d.salla && d.salla.username ? ` · وُجد في سجلّ الطلب في سلة: ${d.salla.username}` : '');
-  if (!rows.length && !ix) msg = 'لا طلب ولا يوزر بهذا الرقم في الاشتراكات المسحوبة — اسحب طلبات سلة من «البيانات» ثم أعد البحث';
-  note($('#loMsg'), msg, rows.length || ix);
-  const orderNo = d.order || (/^\d+$/.test(q) ? q : '');
+  const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
+  if (rows.length) {
+    const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered');
+    loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : '')
+      + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + ms);
+  } else if (ix) {
+    loState('found', `الطلب في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
+      + (d.salla && d.salla.username ? ` · في سجلّ الطلب في سلة: ${d.salla.username}` : '') + ms);
+  } else {
+    loState('empty', `لم يُعثر على «${d.q || q}» في اشتراكات سلة المسحوبة. تأكّد من الرقم، أو اسحب طلبات سلة من «البيانات» ثم أعد البحث.`, true);
+  }
+  const orderNo = d.order || (/^\d+$/.test(d.q || '') ? d.q : '');
   $('#loLink').classList.toggle('hidden', !orderNo);
-  $('#lkOrder').value = orderNo;
   const s = d.salla || {}, one = rows.length === 1 ? rows[0] : null;
-  if (!$('#lkUser').value || $('#lkOrder').dataset.o !== orderNo) { $('#lkUser').value = s.username || ''; $('#lkPass').value = s.password || ''; $('#lkHost').value = s.host || (one ? one.host : '') || (ix && ix.host) || ''; }
-  $('#lkOrder').dataset.o = orderNo;
+  if ($('#lkOrder').dataset.o !== orderNo) { $('#lkUser').value = s.username || ''; $('#lkPass').value = s.password || ''; $('#lkHost').value = s.host || (one ? one.host : '') || (ix && ix.host) || ''; }
+  $('#lkOrder').value = orderNo; $('#lkOrder').dataset.o = orderNo;
   $('#lkRepW').classList.toggle('hidden', !one); $('#lkRep').checked = !!(one && one.state === 'missing');
   if (one) $('#lkRepT').textContent = `يحلّ محلّ اليوزر المسجَّل للطلب (${one.username})`;
-  $('#loBody').querySelectorAll('.loComp').forEach(b => b.onclick = () => makeComp(LO.rows[b.dataset.i], b, null, () => loFind(q), false, $('#loMsg')));
+  $('#lkRep').dataset.u = one ? one.username : '';
+  $('#loBody').querySelectorAll('.loComp').forEach(b => b.onclick = () => makeComp(LO.rows[b.dataset.i], b, null, () => loFind(q), false, 'lo'));
   $('#loBody').querySelectorAll('.loRelink').forEach(b => b.onclick = () => { const r = LO.rows[b.dataset.i];
     $('#lkOrder').value = r.order; $('#lkUser').value = ''; $('#lkPass').value = r.password || ''; $('#lkHost').value = r.host || '';
     $('#lkRepW').classList.remove('hidden'); $('#lkRep').checked = true; $('#lkRepT').textContent = `يحلّ محلّ ${r.username}`; $('#lkRep').dataset.u = r.username;
     $('#loLink').classList.remove('hidden'); $('#lkUser').focus(); $('#loLink').scrollIntoView({block: 'center', behavior: 'smooth'}); });
-  $('#lkRep').dataset.u = one ? one.username : '';
 }
-$('#loFind').onclick = () => loFind();
-$('#loQ').addEventListener('keydown', e => { if (e.key === 'Enter') loFind(); });
+$('#loForm').addEventListener('submit', e => { e.preventDefault(); loFind(); });
+$('#loRetry').onclick = () => loFind();
+$('#loQ').addEventListener('input', () => $('#loClear').classList.toggle('hidden', !$('#loQ').value));
+$('#loClear').onclick = () => { $('#loQ').value = ''; $('#loClear').classList.add('hidden');
+  if (SRCH.ctl) { SRCH.ctl.abort(); SRCH.ctl = null; SRCH.q = ''; SRCH.seq++; }
+  $('#loWrap').classList.add('hidden'); $('#loLink').classList.add('hidden'); loState('ready', 'اكتب رقم الطلب ثم «بحث».'); $('#loQ').focus(); };
+
+// ---- حال فهرس البحث: يُبنى في الخلفية عند تغيّر البيانات، ويُعرض متى بُني ومن أيّ مصدر ----
+let IDXPOLL = 0;
+async function idxStatus(){
+  clearTimeout(IDXPOLL);
+  const res = await getJSON('/api/renew/index-status'); if (!res.ok) return;
+  const d = res.data, i = d.info;
+  const t = i ? `آخر مزامنة للفهرس: ${i.built}` + (i.store_built ? ` · طلبات سلة سُحبت ${i.store_built}` : '')
+      + `\nيُبحث في ${AR(i.lines)} اشتراكًا من سلة، و${AR(Object.keys(i.panels || {}).length)} لوحة مسحوبة`
+      + (i.excel_gates ? `، وملفات Excel لـ${AR(i.excel_gates)} بوابة (${AR(i.excel_users)} يوزرًا)` : '، ولا ملفات Excel للبوابات بعد') : '';
+  $('#loSync').textContent = (d.building ? '⟳ جارٍ تحديث الفهرس بالبيانات الجديدة… ' : '') + t;
+  if (d.building) IDXPOLL = setTimeout(idxStatus, 2500);
+}
 $('#lkGo').onclick = async () => {
   const order = $('#lkOrder').value.trim(), username = $('#lkUser').value.trim();
-  if (!order || !username) return note($('#loMsg'), 'رقم الطلب واسم المستخدم مطلوبان');
+  if (!order || !username) return loState('error', 'رقم الطلب واسم المستخدم مطلوبان', false, true);
   const b = $('#lkGo'); b.disabled = true;
   const d = await post('/api/renew/order-link', {order, username, password: $('#lkPass').value.trim(), host: $('#lkHost').value.trim(),
     replace: $('#lkRep').checked ? ($('#lkRep').dataset.u || '') : ''});
   b.disabled = false;
-  if (d.error) return note($('#loMsg'), d.error);
-  $('#loQ').value = order; await loFind(order);
-  const r = d.row; note($('#loMsg'), r ? `رُبط الطلب ${order} باليوزر ${r.username} — ${(LOST_STATE[r.state] || [r.state])[0]}` : 'رُبط ✓', true);
+  if (d.error) return loState('error', d.error, false, true);
+  $('#loQ').value = order; $('#loClear').classList.remove('hidden');
+  loRender(d, order);                                   // الردّ يحمل نتيجة البحث بعد الربط
+  const r = d.row; if (r) loState('found', `رُبط الطلب ${order} باليوزر ${r.username} — ${(LOST_STATE[r.state] || [r.state])[0]}`);
 };
 
 let LS = null, LSTEST = 0, LSPOLL = 0;
 async function lsLoad(){
   // حالٌ ظاهرة دائمًا: جارٍ الفحص، ثم النتيجة أو سبب الفشل (انقطاعٌ أو مهلة) — فلا تبقى الصفحة صامتة
-  const b = $('#lsLoad'), ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 120000);
+  const b = $('#lsLoad'); if (b.disabled) return;          // فحصٌ جارٍ: لا طلب مكرّر
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 60000);
   b.disabled = true; b.textContent = 'جارٍ الفحص…'; note($('#lsMsg'), 'جارٍ فحص اشتراكات سلة مقابل اللوحات وملفات Excel…', true);
-  let d;
-  try { d = await api('/api/renew/lost?comp=' + encodeURIComponent($('#lsComp').value) + '&expired=' + ($('#lsExp').checked ? 1 : 0), {signal: ctl.signal}); }
-  catch (e) { d = {error: e.name === 'AbortError' ? 'انتهت مهلة الفحص (دقيقتان) — أعد المحاولة' : 'تعذّر الاتصال بالخادم: ' + (e.message || e)}; }
-  finally { clearTimeout(tm); b.disabled = false; b.textContent = 'اعرض المفقود'; }
-  if (!d || d.error || !Array.isArray(d.rows)) return note($('#lsMsg'), (d && d.error) || 'ردٌّ غير متوقّع من الخادم');
+  const res = await getJSON('/api/renew/lost?comp=' + encodeURIComponent($('#lsComp').value) + '&expired=' + ($('#lsExp').checked ? 1 : 0), ctl.signal);
+  clearTimeout(tm); b.disabled = false; b.textContent = 'اعرض المفقود';
+  const d = res.ok ? res.data : null;
+  if (!d || !Array.isArray(d.rows)) return note($('#lsMsg'), (res.error || (res.kind === 'abort' ? 'انتهت مهلة الفحص — أعد المحاولة'
+    : res.kind === 'net' ? FAIL_TEXT.net : 'تعذّر الفحص بسبب خطأ في الخادم — أعد المحاولة')));
   try { lsRender(d); } catch (e) { note($('#lsMsg'), 'خطأ في عرض النتيجة: ' + (e.message || e)); }
 }
 function lsRender(d){
@@ -2141,19 +2233,20 @@ function lsRender(d){
   $('#lsBody').querySelectorAll('.lsO').forEach(a => a.onclick = e => { e.preventDefault(); $('#loQ').value = a.dataset.o; loFind(a.dataset.o); window.scrollTo({top: 0}); });
   lsSendShow(); lsPoll();
 }
-async function makeComp(r, btn, inp, after, quiet, msgEl){
-  msgEl = msgEl || $('#lsMsg');
+async function makeComp(r, btn, inp, after, quiet, where){
+  const say = (t, ok) => where === 'lo' ? loState(ok ? 'found' : 'error', t, false, true) : note($('#lsMsg'), t, ok);
   if (!r) return false;
   const months = Number(inp && inp.value) || r.new_months;
   if (!quiet && !confirm(`إنشاء اشتراك لـ ${r.customer || r.phone || r.username} (طلب ${r.order}) بمدة ${months} شهرًا من باقة ١٥ شهرًا بدل ${r.username}؟\nيخصم من رصيد اللوحة، والباقي يعود إلى «حسابات متبقية».`)) return false;
   const t0 = btn && btn.textContent; if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…'; }
   const d = await post('/api/renew/comp-create', {order: r.order, username: r.username, months, comp: $('#lsComp').value});
   if (btn) { btn.disabled = false; btn.textContent = t0; }
-  if (d.error || !d.ok) { note(msgEl, `${r.order}: ` + (d.error || 'فشل الإنشاء')); return false; }
+  if (d.error || !d.ok) { say(`${r.order}: ` + (d.error || 'فشل الإنشاء')); return false; }
   const copied = !quiet && d.copy ? await copyText(d.copy) : false;   // كبحث صفحة الإنشاء: الشرح كاملًا في الحافظة
-  note(msgEl, `أُنشئ ${d.username} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
-    + (copied ? ' · نُسخ الشرح كاملًا ✓' : ' · «نسخ الشرح» في بطاقته') + ' · رسالة واتساب جاهزة', !d.split_error);
-  if (after) after(); else if (!quiet) lsLoad();
+  const msg = `أُنشئ ${d.username} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
+    + (copied ? ' · نُسخ الشرح كاملًا ✓' : ' · «نسخ الشرح» في بطاقته') + ' · رسالة واتساب جاهزة';
+  if (after) await after(); else if (!quiet) await lsLoad();   // البطاقة بحالها الجديد، ثم رسالة الإنشاء فوقها
+  say(msg, !d.split_error);
   return true;
 }
 $('#lsLoad').onclick = lsLoad;
