@@ -80,6 +80,8 @@ section{background:var(--sf);border:1px solid var(--line);border-radius:20px;pad
 .jump a[aria-selected="true"]{background:var(--go);border-color:var(--go);color:#fff}
 .jump a[aria-selected="true"] svg{color:#fff}
 .tab-off{display:none !important}
+.jump a em{font-style:normal;background:var(--go);color:#fff;border-radius:999px;min-width:18px;padding:0 6px;font-size:12px;line-height:18px;text-align:center}
+.jump a[aria-selected="true"] em{background:#fff;color:var(--go)}
 .jump{position:sticky;top:0;z-index:5;background:var(--bg,inherit);padding-top:8px}
 
 /* رأس كل بطاقة: أيقونة، والعنوان وسطره، وزرٌّ أو شارةٌ في آخره */
@@ -324,6 +326,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
     <a href="#secCmp" data-tab="cmp" role="tab"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>قائمة التجديد</a>
     <a href="#secSell" data-tab="sell" role="tab"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg>المعروض للبيع</a>
     <a href="#secDup" data-tab="dup" role="tab"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>المكرر والبدائل</a>
+    <a href="#secMsgs" data-tab="msgs" role="tab"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>الرسائل<em id="msgsBadge" class="hidden"></em></a>
     <a href="#secQ" data-tab="q" class="admin-only" role="tab"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></svg>الطلبات</a>
     <a href="#secCfg" data-tab="cfg" role="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>الإعداد</a>
   </nav>
@@ -553,6 +556,15 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <thead><tr><th>اليوزر</th><th>اللوحة</th><th>العميل (اللاحق)</th><th>الطلب</th><th>المتبقي</th><th>أشهر البديل</th><th></th></tr></thead>
       <tbody id="dupBody"></tbody></table></div>
     <p class="msg" id="dupMsg"></p>
+  </section>
+
+  <!-- ===================== الرسائل: رسائل بدائل المكرر وسجل إرسالها ===================== -->
+  <section id="secMsgs">
+    <div class="shead"><span class="sic c-blue"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+      <h2>الرسائل<small>رسائل عملاء البدائل: عدّلها وأرسلها، وسجل ما أُرسل</small></h2></div>
+    <div class="acts"><button class="ghost" id="msgsReload" type="button">حدّث</button></div>
+    <p class="msg" id="msgsMsg"></p>
+    <p class="empty hidden" id="msgsEmpty">لا رسائل بعد: تُجهَّز تلقائيًا عند إنشاء بديل من تبويب «المكرر والبدائل».</p>
     <details class="blk fold" id="blkDupLog" style="margin-top:12px">
       <summary><span class="bi c-slate"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
         <span class="st"><b>سجل الرسائل المرسلة</b><small id="dupLogSum">كل محاولة إرسال: متى، لمن، من أي قناة، ونجحت أم لا</small></span></summary>
@@ -560,7 +572,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
         <div class="scroll"><table class="rt"><thead><tr><th>الوقت</th><th>المستلم</th><th>النوع</th><th>الطلب</th><th>القناة</th><th>الحالة</th><th>النص</th></tr></thead>
           <tbody id="dupLogBody"></tbody></table></div></div>
     </details>
-    <div id="dupMsgs" class="hidden"><h4 style="margin:14px 0 6px">رسائل العملاء <small id="dupWaNote"></small></h4>
+    <div id="dupMsgs"><h4 style="margin:14px 0 6px">رسائل العملاء <small id="dupWaNote"></small></h4>
       <p class="hint">كل رسالة قابلة للتعديل قبل الإرسال: إما عبر الرقم المربوط، أو واتساب يدوي (يفتح المحادثة بالنص جاهزًا).</p>
       <div id="dupMsgList"></div></div>
   </section>
@@ -1622,9 +1634,10 @@ $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/ren
 $('#dlLines').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/store-lines.xlsx'; };
 
 /* ============ التبويبات: قسمٌ واحد في كل مرة، ويُحفظ آخر تبويب ============ */
-const TABS = {data:['secData','secAn'], cmp:['secCmp'], sell:['secSell'], dup:['secDup'], q:['secQ'], cfg:['secCfg']};
+const TABS = {data:['secData','secAn'], cmp:['secCmp'], sell:['secSell'], dup:['secDup'], msgs:['secMsgs'], q:['secQ'], cfg:['secCfg']};
 function showTab(t){
   if (!TABS[t]) t = 'data';
+  if (t === 'msgs' && typeof loadDup === 'function') loadDup();
   if (t === 'q' && !IS_ADMIN) t = 'data';
   Object.keys(TABS).forEach(k => TABS[k].forEach(id => { const e = document.getElementById(id); if (e) e.classList.toggle('tab-off', k !== t); }));
   document.querySelectorAll('.jump a[data-tab]').forEach(a => a.setAttribute('aria-selected', a.dataset.tab === t ? 'true' : 'false'));
@@ -1692,12 +1705,14 @@ async function makeDup(i, btn){
   if (d.renamed) t += ` · غُيّر اسم القديم إلى ${d.renamed.to}`;
   if (d.rename_error) t += ` · تعذّر تغيير القديم: ${d.rename_error}`;
   if (d.split_error) t += ` · تعذّر تسجيله جزءًا: ${d.split_error}`;
-  note($('#dupMsg'), t, !d.rename_error);
+  note($('#dupMsg'), t + ' · رسائل العملاء جاهزة في تبويب «الرسائل»', !d.rename_error);
   loadDup();
 }
 let DUPWA = false;
 function renderDupMsgs(msgs){
-  $('#dupMsgs').classList.toggle('hidden', !msgs.length);
+  $('#msgsEmpty').classList.toggle('hidden', !!msgs.length);
+  const pend = msgs.filter(m => !(m.sent && m.sent.ok)).length;
+  const bd = $('#msgsBadge'); bd.textContent = AR(pend); bd.classList.toggle('hidden', !pend);
   $('#dupWaNote').textContent = DUPWA ? '(رقم المسابقة/الخدمة جاهز)' : '(لا رقم مربوط: افتح المسابقة واربط الرقم، أو استعمل اليدوي)';
   $('#dupMsgList').innerHTML = msgs.map((m, k) => {
     const sent = m.sent && m.sent.ok ? `<span class="c-ok">✓ أُرسلت ${m.sent.how === 'manual' ? 'يدويًا' : 'عبر الرقم المربوط'}</span>`
@@ -1713,17 +1728,17 @@ function renderDupMsgs(msgs){
   document.querySelectorAll('.dupSend').forEach(b => b.onclick = async () => {
     const m = msgs[b.dataset.k]; b.disabled = true; b.textContent = 'جارٍ الإرسال…';
     const d = await post('/api/renew/dup-send', {order: m.order, idx: m.idx, text: txt(b.dataset.k), mode: 'wa'});
-    note($('#dupMsg'), d.ok ? 'أُرسلت ✓' : (d.error || 'تعذّر الإرسال'), !!d.ok); loadDup(); if ($('#blkDupLog').open) loadDupLog();
+    note($('#msgsMsg'), d.ok ? 'أُرسلت ✓' : (d.error || 'تعذّر الإرسال'), !!d.ok); loadDup(); if ($('#blkDupLog').open) loadDupLog();
   });
   document.querySelectorAll('.dupMan').forEach(a => {
     const m = msgs[a.dataset.k];
     a.onclick = async e => {
-      if (!m.phone) { e.preventDefault(); return note($('#dupMsg'), 'لا رقم جوال لهذا العميل — انسخ الرسالة'); }
+      if (!m.phone) { e.preventDefault(); return note($('#msgsMsg'), 'لا رقم جوال لهذا العميل — انسخ الرسالة'); }
       a.href = 'https://wa.me/' + m.phone + '?text=' + encodeURIComponent(txt(a.dataset.k));
       if (confirm('هل أرسلتَ الرسالة من واتساب؟ (تُعلَّم مرسَلة)')) setTimeout(async () => { await post('/api/renew/dup-send', {order: m.order, idx: m.idx, text: txt(a.dataset.k), mode: 'manual'}); loadDup(); }, 300);
     };
   });
-  document.querySelectorAll('.dupCp').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(txt(b.dataset.k)); note($('#dupMsg'), 'نُسخ ✓', true); } catch(e){} });
+  document.querySelectorAll('.dupCp').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(txt(b.dataset.k)); note($('#msgsMsg'), 'نُسخ ✓', true); } catch(e){} });
 }
 async function loadDupLog(){
   const d = await api('/api/renew/dup-log'); const L = d.log || [];
@@ -1737,6 +1752,7 @@ async function loadDupLog(){
 $('#dupLogLoad').onclick = loadDupLog;
 $('#blkDupLog').addEventListener('toggle', e => { if (e.target.open) loadDupLog(); });
 $('#doDup').onclick = loadDup;
+$('#msgsReload').onclick = () => { loadDup(); if ($('#blkDupLog').open) loadDupLog(); };
 $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
 
 /* ============ الإقلاع ============ */
@@ -1746,7 +1762,7 @@ $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
   initTab();
   await loadGates();
   await loadPanels();
-  fillSplitGates(); loadCodesSum();
+  fillSplitGates(); loadCodesSum(); loadDup();
   const d = await api('/api/renew/analysis');
   if (d.analysis) render(d.analysis);
   watchLines();
