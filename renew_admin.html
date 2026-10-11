@@ -577,12 +577,21 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <b>رسالة لمشتركي هوست محدّد</b>
       <p class="hint">اكتب الهوست (مثل <span class="ltr">http://cdn65.mitatura.store</span>) فتُرسل رسالتك لكل عملاء اشتراكات هذا الهوست مرة واحدة لكل جوال.</p>
       <div class="acts"><input id="hsHost" class="ltr" placeholder="http://cdn65.mitatura.store" style="min-width:240px">
+        <select id="hsSub" title="نوع الاشتراك"><option value="">كل الأنواع</option></select>
         <label class="switch" style="margin:0"><span>مع المنتهية</span><input type="checkbox" id="hsExp"></label>
+        <label class="switch" style="margin:0"><span>تخطَّ من أُرسل له سابقًا</span><input type="checkbox" id="hsSkip" checked></label>
         <button class="go" id="hsLoad" type="button">اعرض المشتركين</button></div>
       <div id="hsPanel" class="hidden">
         <div class="acts"><input id="hsCh" class="ltr" placeholder="رابط قناة واتساب" style="min-width:240px"><input id="hsNew" class="ltr" placeholder="الهوست الجديد (اختياري)" style="min-width:200px"></div>
         <textarea id="hsText" rows="7" style="margin-top:6px"></textarea>
         <p class="hint" id="hsSum"></p>
+        <div class="acts" style="align-items:center">
+          <label>أرسل لأول <input type="number" id="hsLimit" min="0" value="0" style="width:72px"> عميل (٠ = الكل)</label>
+          <button class="ghost" id="hsTest" type="button">تجربة على ٢</button>
+          <label>فاصل <input type="number" id="hsGap" min="3" value="6" style="width:60px"> ث</label>
+          <label>راحة <input type="number" id="hsPause" min="0" value="90" style="width:64px"> ث كل <input type="number" id="hsBatch" min="5" value="25" style="width:60px"> رسالة</label>
+        </div>
+        <p class="hint">لأكثر من ١٠٠ عميل: أبقِ الفاصل ٦ ثوانٍ فأكثر والراحة بين الدفعات، وأرسل على أيام (الذين أُرسل لهم يُتخطَّون تلقائيًا في المرة التالية) لتقليل خطر حظر الرقم.</p>
         <div class="acts"><button class="go" id="hsSend" type="button">إرسال للجميع عبر الرقم المربوط</button><button class="ghost" id="hsStop" type="button" disabled>إيقاف</button></div>
         <div class="scroll"><table class="rt"><thead><tr><th>العميل</th><th>الجوال</th><th>اليوزرات</th><th>الحالة</th><th></th></tr></thead><tbody id="hsBody"></tbody></table></div>
       </div>
@@ -1812,13 +1821,17 @@ const hsText = r => {
 };
 async function hsLoad(){
   const h = $('#hsHost').value.trim(); if (!h) return note($('#msgsMsg'), 'اكتب الهوست');
-  const d = await api('/api/renew/host-audience?host=' + encodeURIComponent(h) + '&expired=' + ($('#hsExp').checked ? 1 : 0));
+  const d = await api('/api/renew/host-audience?host=' + encodeURIComponent(h) + '&expired=' + ($('#hsExp').checked ? 1 : 0)
+    + '&sub=' + encodeURIComponent($('#hsSub').value) + '&skip_sent=' + ($('#hsSkip').checked ? 1 : 0));
   if (d.error) return note($('#msgsMsg'), d.error);
-  HS = d; $('#hsPanel').classList.remove('hidden');
+  HS = d;
+  const names = {smart: 'سمارت (مرح)', falcon: 'فالكون', casper: 'كاسبر', other: 'غير محدد'}, cur = $('#hsSub').value;
+  $('#hsSub').innerHTML = '<option value="">كل الأنواع</option>' + Object.entries(d.subs).filter(([k]) => k !== 'other').map(([k, n]) => `<option value="${k}">${names[k] || k} (${AR(n)})</option>`).join('');
+  $('#hsSub').value = cur; $('#hsPanel').classList.remove('hidden');
   if (!$('#hsText').value) $('#hsText').value = d.template;
   if (!$('#hsCh').value) $('#hsCh').value = d.channel || '';
   $('#hsSum').textContent = `${AR(d.recipients.length)} عميلًا بجوال (${AR(d.lines)} اشتراكًا في الهوست)` + (d.no_phone.length ? ` · ${AR(d.no_phone.length)} بلا جوال` : '')
-    + (d.expired_skipped ? ` · ${AR(d.expired_skipped)} منتهيًا مستثنى` : '') + (d.wa_channel ? '' : ' · لا رقم مربوط: استعمل «واتساب يدوي»')
+    + (d.sent_before ? ` · ${AR(d.sent_before)} أُرسل لهم سابقًا${$('#hsSkip').checked ? ' (مُتخطَّون)' : ''}` : '') + (d.expired_skipped ? ` · ${AR(d.expired_skipped)} منتهيًا مستثنى` : '') + (d.wa_channel ? '' : ' · لا رقم مربوط: استعمل «واتساب يدوي»')
     + (d.wa_channel === 'contest' ? ` · الإرسال من رقم المسابقة ${d.wa_number || ''}` : d.wa_channel === 'wa' ? ' · الإرسال عبر قناة خدمة سلة' : '');
   $('#hsSend').disabled = !d.wa_channel || !d.recipients.length;
   $('#hsBody').innerHTML = d.recipients.map((r, i) => `<tr><td>${esc(r.name) || '—'}</td><td class="ltr">${esc(r.phone)}</td>`
@@ -1834,22 +1847,33 @@ async function hsLoad(){
   });
 }
 $('#hsLoad').onclick = hsLoad;
+$('#hsSub').onchange = () => { if (HS) hsLoad(); };
+$('#hsTest').onclick = () => { $('#hsLimit').value = 2; $('#hsSend').click(); };
 $('#hsStop').onclick = () => { HSSTOP = true; };
 $('#hsSend').onclick = async () => {
   if (!HS || !HS.recipients.length) return;
+  const lim = Math.max(0, Number($('#hsLimit').value) || 0), gap = Math.max(3, Number($('#hsGap').value) || 6),
+    pause = Math.max(0, Number($('#hsPause').value) || 0), batch = Math.max(5, Number($('#hsBatch').value) || 25);
+  const todo = HS.recipients.map((r, i) => i).filter(i => !$('#hsS' + i).querySelector('.c-ok')).slice(0, lim || undefined);
+  if (!todo.length) return note($('#msgsMsg'), 'لا أحد للإرسال');
   if (!$('#hsCh').value.trim() && $('#hsText').value.includes('{channel}') && !confirm('رابط القناة فارغ — تُرسل الرسائل بدونه؟')) return;
-  if (!confirm(`إرسال الرسالة إلى ${AR(HS.recipients.length)} عميلًا عبر الرقم المربوط؟`)) return;
-  HSSTOP = false; $('#hsSend').disabled = true; $('#hsStop').disabled = false; let ok = 0, bad = 0;
-  for (let i = 0; i < HS.recipients.length && !HSSTOP; i++) {
+  if (!confirm(`إرسال الرسالة إلى ${AR(todo.length)} عميلًا عبر الرقم المربوط؟` + (todo.length > 100 ? '\n\nالعدد كبير: سيتمّ على دفعات مع راحة بينها، أبقِ الصفحة مفتوحة.' : ''))) return;
+  HSSTOP = false; $('#hsSend').disabled = true; $('#hsStop').disabled = false; let ok = 0, bad = 0, n = 0;
+  for (const i of todo) {
+    if (HSSTOP) break;
     const r = HS.recipients[i], c = $('#hsS' + i);
-    if (c.querySelector('.c-ok')) continue;
     c.textContent = 'جارٍ…';
     const d = await post('/api/renew/host-send', {host: HS.host, phone: r.phone, name: r.name, text: hsText(r), mode: 'wa'});
     if (d.ok) { ok++; c.innerHTML = '<span class="c-ok">✓ أُرسلت</span>'; } else { bad++; c.innerHTML = '<span class="c-bad">' + esc(d.error || 'فشل') + '</span>'; }
-    await new Promise(res => setTimeout(res, 2500 + Math.random() * 2000));
+    n++;
+    if (bad >= 5 && bad > ok) { note($('#msgsMsg'), 'توقّف الإرسال: فشلت عدة رسائل متتالية — راجع الرقم المربوط', false); HSSTOP = true; break; }
+    if (n < todo.length && !HSSTOP) {
+      const wait = (n % batch === 0 ? pause : 0) + gap + Math.random() * 2;
+      for (let t = Math.round(wait); t > 0 && !HSSTOP; t--) { note($('#msgsMsg'), `أُرسلت ${AR(ok)} من ${AR(todo.length)} — التالية بعد ${AR(t)} ث` + (n % batch === 0 ? ' (راحة الدفعة)' : ''), true); await new Promise(res => setTimeout(res, 1000)); }
+    }
   }
   $('#hsSend').disabled = false; $('#hsStop').disabled = true;
-  note($('#msgsMsg'), `أُرسلت ${AR(ok)} · فشلت ${AR(bad)}${HSSTOP ? ' · أُوقف الإرسال' : ''}`, !bad);
+  note($('#msgsMsg'), `أُرسلت ${AR(ok)} · فشلت ${AR(bad)}${HSSTOP ? ' · توقّف الإرسال' : ''}`, !bad);
   if ($('#blkDupLog').open) loadDupLog();
 };
 async function loadDupLog(){
