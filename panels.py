@@ -549,6 +549,91 @@ def explain_user(config, data_dir, username, gates=None, split=None, replaced=No
         out["reason"] = "غير معروض — يجب أن يظهر في القائمة؛ أعد الحساب"
     return out
 
+
+# ============================ المبيع المكرر ============================
+# يوزرٌ واحدٌ بيع في أكثر من طلبٍ لعملاء مختلفين: الأول يحتفظ به، وكل طلبٍ لاحق يحتاج
+# يوزرًا جديدًا بما بقي من مدته (تاريخ الطلب + مدة الباقة − اليوم). نفس الجوال = تجديدٌ
+# لنفس العميل لا بيعٌ مكرر. ما أُنشئ له بديلٌ يُحفظ هنا فلا يُعرض ثانيةً.
+
+def dupes_path(data_dir):
+    return os.path.join(data_dir, "renew_dupes_done.json")
+
+
+def load_dupes_done(data_dir):
+    try:
+        with open(dupes_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def mark_dupe_done(data_dir, order, new_user, months, customer=""):
+    d = load_dupes_done(data_dir)
+    d[str(order)] = {"new": str(new_user), "months": int(months or 0), "customer": str(customer or "")[:60],
+                     "at": renew.now_iso()}
+    renew._write_json(dupes_path(data_dir), d)
+    return d
+
+
+def suggest_slice(days_left):
+    """أشهر الجزء المقترحة لما تبقّى: أقرب شهر كامل، من شهرٍ إلى ١٥ (١٥ = الباقة كاملة)."""
+    if days_left is None or days_left <= 0:
+        return 0
+    return max(1, min(15, int(round(days_left / 30.4))))
+
+
+def duplicates(config, data_dir, today=None):
+    """الطلبات التي بيع يوزرها قبلها لعميلٍ آخر. صفٌّ لكل طلبٍ لاحق، الأقدم دومًا يحتفظ باليوزر."""
+    cfg = renew.normalize_config(config)
+    hidx = host_index(cfg["panels"])
+    pmap = {p["id"]: p for p in cfg["panels"]}
+    today = today or renew._today()
+    done = load_dupes_done(data_dir)
+    groups = {}
+    for ln in load_store_lines(data_dir).get("lines", []):
+        u = str(ln.get("username") or "").strip()
+        if not u:
+            continue
+        nh = renew.norm_host(ln.get("host"))
+        groups.setdefault((hidx.get(nh) or nh, u.lower()), []).append(ln)
+    rows = []
+    for (pid, _u), lns in groups.items():
+        by_order = {}
+        for ln in lns:
+            by_order.setdefault(str(ln.get("order") or ""), ln)
+        if len(by_order) < 2:
+            continue
+        ordered = sorted(by_order.values(), key=lambda r: (str(r.get("date") or ""), str(r.get("order") or "")))
+        first = ordered[0]
+        panel = pmap.get(pid) or {}
+        for ln in ordered[1:]:
+            if ln.get("phone") and ln.get("phone") == first.get("phone"):
+                continue                                  # نفس العميل يجدّد: ليس بيعًا مكرّرًا
+            start = renew.parse_date(ln.get("date"))
+            exp = renew.parse_date(ln.get("expiry")) or (
+                renew.add_months(start, int(ln.get("months") or 0)) if start and ln.get("months") else None)
+            left = (exp - today).days if exp else None
+            rec = done.get(str(ln.get("order") or ""))
+            rows.append({
+                "username": str(ln.get("username") or ""), "password": str(ln.get("password") or ""),
+                "host": str(ln.get("host") or ""), "panel_id": pid if pid in pmap else "",
+                "panel_name": panel.get("name", ""), "account_id": panel.get("account_id", ""),
+                "gate_id": panel.get("gate_id", ""), "order": str(ln.get("order") or ""),
+                "date": str(ln.get("date") or ""), "customer": str(ln.get("customer") or ""),
+                "phone": str(ln.get("phone") or ""), "product": str(ln.get("product") or ""),
+                "months": int(ln.get("months") or 0), "expiry": exp.isoformat() if exp else "",
+                "days_left": left, "remaining": remaining_text(exp.isoformat(), today) if exp else "",
+                "expired": left is not None and left <= 0, "suggest": suggest_slice(left),
+                "first_order": str(first.get("order") or ""), "first_date": str(first.get("date") or ""),
+                "first_customer": str(first.get("customer") or ""), "done": rec})
+    rows.sort(key=lambda r: (bool(r["done"]), r["expired"], -(r["days_left"] or 0), r["order"]))
+    return {"rows": rows, "total": len(rows),
+            "pending": sum(1 for r in rows if not r["done"] and not r["expired"]),
+            "done": sum(1 for r in rows if r["done"]),
+            "expired": sum(1 for r in rows if r["expired"] and not r["done"]),
+            "built": renew.now_iso()}
+
 # ============================ المقارنة ============================
 # الأصناف — كلٌّ صريحٌ ليُعرَض للمدير كما هو:
 OK = "ok"

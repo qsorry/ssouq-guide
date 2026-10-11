@@ -2952,6 +2952,60 @@ def replacement_users(accounts):
     return out
 
 
+def dup_create(accounts, cfg, ws, req):
+    """ينشئ يوزرًا جديدًا لصاحب الطلب اللاحق في مبيعٍ مكرّر بما بقي من مدته: جزءٌ بالأشهر من
+    باقة ١٥ شهرًا (أو الباقة كاملةً إن بقي ١٥)، ويربطه بالقديم (بديل) ويسجّله جزءًا ويعلّم الطلب
+    منجَزًا. يرجّع (رمز HTTP، جسم)."""
+    order, user = str(req.get("order") or "").strip(), str(req.get("username") or "").strip().lower()
+    row = next((r for r in panels.duplicates(cfg, ws)["rows"]
+                if r["order"] == order and r["username"].lower() == user), None)
+    if not row:
+        return 404, {"error": "لا مبيع مكرّر بهذا الطلب واليوزر"}
+    if row["done"]:
+        return 400, {"error": "أُنشئ له بديلٌ من قبل: %s" % row["done"].get("new", "")}
+    if row["expired"]:
+        return 400, {"error": "انتهت مدة هذا الطلب فلا يحتاج يوزرًا"}
+    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row["account_id"])), None)
+    gate = find_gate(acct, row["gate_id"]) if acct else None
+    if not gate:
+        return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اضبط حساب وبوابة اللوحة في «اللوحات وهوستاتها»"}
+    gate = with_guide(acct, gate)
+    months = split_subs.parse_months(req.get("months") or row["suggest"])
+    if not isinstance(months, int) or months < 1 or months > 15:
+        return 400, {"error": "المدة بالأشهر الكاملة من ١ إلى ١٥"}
+    pkg = next((p for p in get_packages(gate) if split_package_ok(p)), None)
+    if not pkg:
+        return 400, {"error": "لا باقة ١٥ شهرًا على هذه البوابة للتجزئة منها"}
+    slice_m = months if months < 15 else 0
+    if slice_m:
+        why = split_create_error(acct, gate, pkg, slice_m)
+        if why:
+            return 400, {"error": why}
+    out, err = create_lines(gate, pkg, 1)
+    if not out:
+        return 502, {"error": err or "تعذّر الإنشاء"}
+    r = out[0]
+    try:
+        users_export.merge(DATA_DIR, acct["id"], gate["id"], gate.get("name"), out, gate.get("host", ""))
+    except Exception:
+        pass
+    r["package"] = "%s · بديل المكرر %s%s" % (pkg.get("name", ""), row["order"],
+                                              (" · جزء " + split_subs.months_ar(slice_m)) if slice_m else "")
+    resp = {"ok": True, "line": r.get("line", ""), "username": r["username"], "password": r["password"],
+            "months": months, "replaces": row["username"], "customer": row["customer"], "phone": row["phone"]}
+    try:
+        user_links.add(DATA_DIR, acct["id"], gate["id"], row["username"], r["username"], r["package"])
+    except Exception:
+        pass
+    if slice_m:
+        try:
+            resp["split"] = split_register_created(acct, gate, pkg, slice_m, out, customer=row["customer"])
+        except Exception as e:
+            resp["split_error"] = str(e)[:160]
+    panels.mark_dupe_done(ws, row["order"], r["username"], months, row["customer"])
+    return 200, resp
+
+
 def _unlisted_xlsx(ws, cfg, accounts=None):
     d = panels.unlisted(cfg, ws, include_expired=False, gates=card_gates(accounts), split=split_users(accounts),
                         replaced=replacement_users(accounts))
@@ -5389,6 +5443,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, panels.explain_user(rcfg, rws, self._q("user"),
                                                            gates=card_gates(racs), split=split_users(racs),
                                                            replaced=replacement_users(racs)))
+            if path == "/api/renew/duplicates":     # يوزرات بيعت في أكثر من طلب
+                d = panels.duplicates(rcfg, rws)
+                for r in d["rows"]:
+                    ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
+                    r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
+                return self._send(200, d)
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
                 return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1",
                                                        gates=card_gates(racs), split=split_users(racs),
@@ -5594,6 +5654,16 @@ class Handler(BaseHTTPRequestHandler):
             owner["renew"] = renew.clean_config(req.get("renew") or {}, rcfg)
             save_store(st)
             return self._send(200, {"ok": True, "renew": renew.redact_config(owner["renew"])})
+        if path == "/api/renew/dup-create":       # يوزر جديد لصاحب الطلب اللاحق في مبيعٍ مكرّر
+            try:
+                code, body = dup_create(racs, rcfg, rws, req)
+            except xm_web.CaptchaNeeded:
+                return self._send(200, {"need_captcha": True, "error": "اللوحة تطلب كابتشا: أنشئه من صفحة الحساب ثم أعد المحاولة"})
+            except xm_web.LoginFailed as e:
+                return self._send(502, {"error": "فشل دخول اللوحة: %s" % str(e)[:120]})
+            except Exception as e:
+                return self._send(502, {"error": str(e)[:300]})
+            return self._send(code, body)
         if path == "/api/renew/listed":           # تعليم يوزرات «معروضة في سلة» يدويًا (أو إلغاؤه)
             n = panels.mark_listed(rws, req.get("usernames") or [], remove=bool(req.get("remove")),
                                    note=req.get("note", ""))

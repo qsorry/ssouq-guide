@@ -5,6 +5,7 @@
 
 تشغيل:  python tests/test_panels.py
 """
+import datetime
 import os
 import sys
 import zipfile
@@ -263,6 +264,23 @@ def test_unlisted():
         check("a manually marked user counts as listed", n == 1 and resl["rows"] == [] and resl["panels"]["pk"]["listed"] == 2 and resl["manual_listed"] == 1, str(resl["panels"]["pk"]))
         panels.mark_listed(d, ["333333333333"], remove=True)
         check("unmarking brings it back", [r["username"] for r in panels.unlisted(cfg, d)["rows"]] == ["333333333333"])
+        # مبيع مكرر: الأقدم يحتفظ باليوزر، واللاحق (جوال مختلف) صفٌّ بمتبقّيه، ونفس الجوال تجديد
+        dd = tempfile.mkdtemp()
+        today = renew._today()
+        def _ln(order, days_ago, phone, months=12):
+            st = today - datetime.timedelta(days=days_ago)
+            return {"order": order, "date": st.isoformat(), "phone": phone, "customer": "c" + phone,
+                    "username": "999000111222", "password": "pw", "host": "http://m.ink", "months": months,
+                    "expiry": renew.add_months(st, months).isoformat()}
+        panels.save_store_lines(dd, [_ln("1", 40, "111"), _ln("2", 10, "222"), _ln("3", 5, "111")])
+        dupr = panels.duplicates({"panels": [{"id": "pk", "name": "P", "hosts": ["http://m.ink"], "account_id": "a", "gate_id": "g"}]}, dd)
+        check("duplicates: later order of another customer is a row, same phone is not",
+              dupr["total"] == 1 and dupr["rows"][0]["order"] == "2" and dupr["rows"][0]["first_order"] == "1"
+              and dupr["rows"][0]["account_id"] == "a" and dupr["rows"][0]["suggest"] in (11, 12), str(dupr["rows"]))
+        panels.mark_dupe_done(dd, "2", "new1", 11)
+        check("duplicates: done order is flagged", panels.duplicates({"panels": []}, dd)["rows"][0]["done"]["new"] == "new1")
+        check("suggest_slice rounds and clamps", panels.suggest_slice(353) == 12 and panels.suggest_slice(5) == 1
+              and panels.suggest_slice(900) == 15 and panels.suggest_slice(0) == 0 and panels.suggest_slice(None) == 0)
         resr = panels.unlisted(cfg, d, replaced={("a", "g"): {"333333333333"}})
         check("a replacement delivered to a customer is not unlisted", resr["rows"] == [] and resr["panels"]["pk"]["replaced"] == 1, str(resr["panels"]["pk"]))
         whyr = panels.explain_user(cfg, d, "333333333333", replaced={("a", "g"): {"333333333333"}})
