@@ -97,6 +97,7 @@ SEARCH_KINDS = ("series", "movie")   # البحث باسم المسلسل أو �
                                      # حلقات مسلسلٍ باسمه («SOLO باب الحارة»، «… S01») فتبدو حلقاتٍ في النتائج
 QUERY_MAX = 60
 ADULT_LIST = 200             # ما يُحفظ للمدير من أقسام الكبار ومن الأسماء المحذوفة (والباقي عددٌ)
+ALLOW_MAX = 500              # ما يُسمح بعرضه مما أسقطه مرشّح الكبار، لكل سيرفر
 ADULT_MARKS = 5000           # بصمات ما أُسقط، لمعرفة الجديد منه في كل سحب
 ALERT_LINES = 15             # سطور التنبيه لكلٍّ منهما، والقائمة كاملة في صفحة المدير
 UA = "VLC/3.0.20 LibVLC/3.0.20"   # لوحات Xtream تقبل المشغّلات وقد تردّ غيرها
@@ -293,7 +294,8 @@ class Parser:
     """يأخذ سطور الملف واحدًا واحدًا (‏line) ويُخرج الفهرس (‏result). والعنصر:
     فيلم {n الاسم، y السنة، p الصورة، i رقمه}، وقناة {n، p، i}، ومسلسل {n، y، p، i أكبر رقم حلقة، s المواسم}."""
 
-    def __init__(self):
+    def __init__(self, allow=None):
+        self.allow = allow or {"t": set(), "g": set()}   # ما سمح المدير بعرضه وإن بدا للكبار: أسماءٌ وأقسام (‏_norm)
         self.pending = None
         self.extgrp = ""
         self.groups = {k: {} for k in KINDS}
@@ -301,7 +303,7 @@ class Parser:
         self.skipped = {"adult": 0, "sep": 0, "bad": 0}
         self.xt = None                       # (القاعدة، المستخدم، الكلمة) لواجهة Xtream — لا تُحفظ
         self.adult_groups = {}               # قسم الكبار ← عدد ما فيه (حُذف كله)
-        self.adult_titles = {}               # بصمة الاسم ← [الاسم، قسمه، عدده]: حُذف باسمه من قسمٍ عادي
+        self.adult_titles = {}               # بصمة الاسم ← [الاسم، قسمه، عدده]: حُذف باسمه من قسمٍ عادي (والمسلسل باسمه مرة)
 
     def line(self, s):
         s = s.strip()
@@ -326,19 +328,21 @@ class Parser:
         if not name:
             self.skipped["bad"] += 1
             return
-        if _ADULT_GROUP.search(group):
+        if _ADULT_GROUP.search(group) and _norm(group) not in self.allow["g"]:
             self.skipped["adult"] += 1
             if group in self.adult_groups or len(self.adult_groups) < ADULT_MARKS:
                 self.adult_groups[group] = self.adult_groups.get(group, 0) + 1
             return
         if _ADULT_TITLE.search(name):
-            self.skipped["adult"] += 1
-            k = _norm(name)
-            if k in self.adult_titles:
-                self.adult_titles[k][2] += 1
-            elif len(self.adult_titles) < ADULT_MARKS:
-                self.adult_titles[k] = [name, group, 1]
-            return
+            base = adult_base(name)
+            k = _norm(base)
+            if k not in self.allow["t"]:
+                self.skipped["adult"] += 1
+                if k in self.adult_titles:
+                    self.adult_titles[k][2] += 1
+                elif len(self.adult_titles) < ADULT_MARKS:
+                    self.adult_titles[k] = [base, group, 1]
+                return
         if _is_sep(name):
             self.skipped["sep"] += 1
             return
@@ -474,8 +478,14 @@ def iter_lines(read, progress=None, limit=MAX_BYTES, chunk=1 << 20):
     yield from buf.replace("\r", "\n").split("\n")
 
 
-def _run(read, progress=None):
-    p = Parser()
+def adult_base(name):
+    """ما يُعرض ويُسمح به من اسمٍ أُسقط للكبار: المسلسل باسمه بلا موسمٍ ولا حلقة (فيُسمح به كله مرة)، والفيلم باسمه."""
+    ep = _episode(name)
+    return (_clean(_tidy(ep[0])) or name) if ep and ep[3] else name
+
+
+def _run(read, progress=None, allow=None):
+    p = Parser(allow)
     for i, line in enumerate(iter_lines(read, progress)):
         if i == 0:
             line = line.lstrip("\ufeff")
@@ -617,6 +627,8 @@ def _load(data_dir):
                     "buy": str(x.get("buy") or "").strip()[:500],
                     "url": x.get("url") if isinstance(x.get("url"), str) else "",
                     "hidden": [h for h in (x.get("hidden") or []) if isinstance(h, str)][:5000],
+                    "allow": [[a[0], str(a[1])[:200]] for a in (x.get("allow") or [])
+                              if isinstance(a, list) and len(a) == 2 and a[0] in ("t", "g")][:ALLOW_MAX],
                     "try_at": _float(x.get("try_at")), "error": str(x.get("error") or "")[:300]})
     return out
 
@@ -719,7 +731,8 @@ def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
     try:
         state = _busy.get(key) or {}
         state["stage"] = "read"
-        p = _run(read, progress=lambda n: state.__setitem__("bytes", n))
+        allow = allow_sets(_server(data_dir, key))
+        p = _run(read, progress=lambda n: state.__setitem__("bytes", n), allow=allow)
         cat, found = p.result(), p.xt
         if not cat["entries"]:
             raise ValueError("لا عناصر في الملف (‏#EXTINF) — تأكّد أنه قائمة M3U نفسها لا صفحة خطأ")
@@ -727,7 +740,7 @@ def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
         if api:
             state["stage"] = "meta"
             try:
-                cat["api"] = {"ok": True, **enrich(cat, api, flagged)}
+                cat["api"] = {"ok": True, **enrich(cat, api, flagged, allow)}
             except Exception as e:  # noqa: BLE001 — الصفحة بما في الملف، والسبب للمدير
                 cat["api"] = {"ok": False, "error": _fetch_error(e)}
         now = time.time()
@@ -891,6 +904,35 @@ def set_url(data_dir, key, url):
     if _update(data_dir, key, url=crypto_store.encrypt(url, data_dir) if url else "", error="", try_at=0.0) is None:
         raise ValueError("سيرفر غير معروف")
     return bool(url)
+
+
+def allow_sets(srv):
+    """ما سمح المدير بعرضه من سيرفر ← {t: أسماء، g: أقسام} بـ ‏_norm، للقراءة."""
+    out = {"t": set(), "g": set()}
+    for kind, name in (srv or {}).get("allow") or ():
+        out[kind].add(_norm(name))
+    return out
+
+
+def set_allow(data_dir, key, kind, name, on):
+    """يسمح بعرض اسمٍ (مسلسلٌ كله أو فيلم: ‏t) أو قسمٍ (‏g) أسقطه مرشّح الكبار، أو يلغي السماح — ويظهر من السحب التالي.
+    ← هل للسيرفر رابطٌ يُسحب منه الآن."""
+    name = " ".join(str(name or "").split())[:200]
+    if kind not in ("t", "g") or not name:
+        raise ValueError("اختر ما تسمح بعرضه")
+    with _lock:
+        rows = _load(data_dir)
+        r = next((x for x in rows if x["key"] == key), None)
+        if not r:
+            raise ValueError("سيرفر غير معروف")
+        a = [x for x in r["allow"] if not (x[0] == kind and _norm(x[1]) == _norm(name))]
+        if on:
+            if len(a) >= ALLOW_MAX:
+                raise ValueError("بلغت حدّ ما يُسمح به لهذا السيرفر")
+            a.append([kind, name])
+        r["allow"] = a
+        _save(data_dir, rows)
+        return bool(r["url"])
 
 
 def set_hidden(data_dir, key, gid, hidden):
@@ -1611,11 +1653,12 @@ def _optional(xt, action, each):
         return False
 
 
-def enrich(cat, xt, flagged=None):
+def enrich(cat, xt, flagged=None, allow=None):
     """يُثري الفهرس من واجهة Xtream: تقييم الفيلم والمسلسل وتاريخ إضافته، وتصنيفه وقصته، وخلفية المسلسل —
     ويُسقط ما تعلّمه الواجهة للكبار (واسمه وقسمه في ‏flagged للمدير وحده، مرةً لكل فيلم). وملفٌّ بلا أقسام
     (‏type=m3u: كل شيءٍ في «بلا قسم») يُقسَّم بأقسام الواجهة وبترتيبها، وشعار القناة منها إن لم يكن في الملف.
     ← {movies، series، grouped} عدد ما أُثري وما قُسِّم. والفشل استثناء، والفهرس كما هو قبله."""
+    allow = allow or {"t": set(), "g": set()}
     movies, series, lives = {}, {}, {}
     for g in cat.get("movie") or []:
         for it in g["items"]:
@@ -1637,7 +1680,8 @@ def enrich(cat, xt, flagged=None):
                 sid = _int(o.get("stream_id"))
                 if sid not in movies:
                     continue
-                if str(o.get("is_adult") or "0").strip().lower() not in ("0", "", "false"):
+                if str(o.get("is_adult") or "0").strip().lower() not in ("0", "", "false") and \
+                        not any(_norm(_shown(it)) in allow["t"] for it in movies[sid]):
                     adult.add(sid)
                     continue
                 found[sid] = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("added")), "g": _genres(o.get("genre")),
@@ -1707,17 +1751,22 @@ def enrich(cat, xt, flagged=None):
                 for x in g["items"]:
                     if x.get("i") in adult and x["i"] not in told:
                         told.add(x["i"])
-                        flagged.append([f"{x['n']} ({x['y']})" if x.get("y") else x["n"], g["name"]])
+                        flagged.append([_shown(x), g["name"]])
             g["items"] = [x for x in g["items"] if x.get("i") not in adult]
         cat["movie"] = [g for g in cat.get("movie") or [] if g["items"]]
         cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(adult)
-    grouped = sum(_regroup(cat, kind, names.get(kind) or {}, cids, flagged) for kind in want)
+    grouped = sum(_regroup(cat, kind, names.get(kind) or {}, cids, flagged, allow) for kind in want)
     if grouped:
         done["grouped"] = grouped
     return done
 
 
-def _regroup(cat, kind, names, cids, flagged):
+def _shown(x):
+    """اسم الفيلم كما يُعرض فيما أُسقط للكبار «Name (2020)» — وبه يُسمح بعرضه."""
+    return f"{x['n']} ({x['y']})" if x.get("y") else x["n"]
+
+
+def _regroup(cat, kind, names, cids, flagged, allow=None):
     """ما في «بلا قسم» إلى قسمه في الواجهة (‏names: رقم القسم ← اسمه، بترتيب الواجهة) — وقسمٌ للكبار يُسقط ما فيه
     (وفي ‏flagged للمدير). وما لم يُعرف قسمه يبقى في «بلا قسم» آخرها. ← عدد ما نُقل."""
     groups = cat.get(kind) or []
@@ -1735,10 +1784,10 @@ def _regroup(cat, kind, names, cids, flagged):
         its = by.get(name)
         if not its:
             continue
-        if _ADULT_GROUP.search(name):
+        if _ADULT_GROUP.search(name) and _norm(name) not in (allow or {}).get("g", ()):
             cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(its)
             if flagged is not None:
-                flagged.extend([f"{x['n']} ({x['y']})" if x.get("y") else x["n"], name] for x in its)
+                flagged.extend([_shown(x), name] for x in its)
             continue
         if name in named:
             named[name]["items"].extend(its)
@@ -1801,7 +1850,7 @@ def admin_state(data_dir):
             "has": bool(m.get("has")), "at": m.get("at", 0), "source": cat.get("source", ""), "label": cat.get("label", ""),
             "counts": m.get("counts"), "entries": cat.get("entries", 0), "n": cat.get("n", {}),
             "skipped": cat.get("skipped", {}), "api": cat.get("api"), "old": bool(cat.get("old")), "loading": not fresh,
-            "adult": _adult_view(data_dir, s["key"]),
+            "adult": _adult_view(data_dir, s["key"]), "allow": s["allow"],
             "news": (_read_ro(_news_path(data_dir, s["key"])) or {}).get("last"),
             "url": mask_url(url) if url else "", "try_at": s["try_at"],
             "error": s["error"], "busy": dict(_busy[s["key"]]) if s["key"] in _busy else None,

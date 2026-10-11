@@ -118,6 +118,17 @@ function konList(more) {
     check('إخفاء قسم: القائمة تبقى مفتوحة وهو معلَّم', await ap.$eval('[data-k="smart"] details.groups', d => d.open)
           && await ap.$eval('[data-k="smart"] .grow.off', r => r.textContent.includes('Netflix') && !r.querySelector('input').checked));
     check('وما أُسقط يبقى مفتوحًا بعد إعادة الرسم', await ap.$eval('[data-k="smart"] details.adult', d => d.open));
+    // «اعرض القسم»: ليس للكبار — يُسمح به ويظهر في «مسموحٌ بعرضه» (والملف المرفوع: من رفعه التالي)، و«ألغِ» يعيده
+    ap.once('dialog', dg => dg.accept());
+    const alReq = ap.waitForResponse(r => r.url().includes('/api/content/admin/allow'));
+    await ap.click('[data-k="smart"] details.adult button[data-allow="g"]');
+    await alReq;
+    await ap.waitForFunction(() => document.querySelector('[data-k="smart"] details.adult').textContent.includes('مسموحٌ بعرضه'));
+    check('«اعرض القسم» يُسمح به، ومعه «ألغِ» وأنه من الرفع التالي', (await ap.textContent('[data-k="smart"]')).includes('ارفع الملف من جديد ليظهر')
+          && await ap.$$eval('[data-k="smart"] details.adult button[data-on="0"]', b => b.length === 1));
+    await ap.click('[data-k="smart"] details.adult button[data-on="0"]');
+    await ap.waitForFunction(() => !document.querySelector('[data-k="smart"] details.adult').textContent.includes('مسموحٌ بعرضه'));
+    check('و«ألغِ» يلغيه', true);
     // محتوى قرأته النسخة الأولى (قبل الصور والتقييمات): المدير يُطلب منه إعادة رفع الملف
     fs.writeFileSync(path.join(DATA, 'content', 'kon.json'), JSON.stringify({entries: 1, n: {series: 0, movie: 1, live: 0},
       skipped: {}, series: [], live: [], movie: [{id: 'm0', name: 'M', items: ['Old Film (2019)']}], at: Date.now() / 1000}));

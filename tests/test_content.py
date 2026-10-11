@@ -461,6 +461,37 @@ def unit_adult():
         check("والتنبيه بأوّلها وعدد الباقي", body.count("• XXX | Studio") == C.ALERT_LINES
               and body.count("• Brazzers Night") == C.ALERT_LINES and "• و240 غيرها في صفحة المحتوى" in body, body[-200:])
 
+        print("«اعرضه»: ما ليس للكبار وأسقطه اسمه — المسلسل كله أو القسم")
+        club = ("#EXTM3U\n" + "".join(entry(f"The Playboy Club S01 E0{i}", "SERIES | Drama", "series", 600 + i) for i in range(1, 4))
+                + entry("Sex Education S01 E01", "Sex Education", "series", 610)
+                + entry("Sex Education S01 E02", "Sex Education", "series", 611)
+                + entry("Hot Stuff", "XXX | Adults", n=612) + entry("Normal News", "News", n=613))
+        seed(d, "casper", club)
+        a = C._adult_view(d, "casper")
+        check("المسلسل يُذكر مرةً باسمه وعدد حلقاته، لا حلقةً حلقة", a["titles"] == [["The Playboy Club", "SERIES | Drama", 3]]
+              and ["Sex Education", 2] in a["groups"] and a["count"] == 6, a)
+        check("والسماح لسيرفرٍ بلا رابط: لا سحب الآن", C.set_allow(d, "casper", "t", "The Playboy Club", True) is False
+              and C.set_allow(d, "casper", "g", " Sex  Education ", True) is False
+              and C._server(d, "casper")["allow"] == [["t", "The Playboy Club"], ["g", "Sex Education"]])
+        seed(d, "casper", club)
+        a = C._adult_view(d, "casper")
+        ser = {it["n"]: it for g in C._read(C._cat_path(d, "casper"))["series"] for it in g["items"]}
+        check("ومن الإدخال التالي يُعرض المسلسل بكل حلقاته والقسم كله، والباقي يُسقط كما هو",
+              ser.get("The Playboy Club", {}).get("s") == [[1, 3]] and ser.get("Sex Education", {}).get("s") == [[1, 2]]
+              and a["count"] == 1 and a["groups"] == [["XXX | Adults", 1]] and not a["titles"], (ser.keys(), a))
+        check("وفي حال المدير", next(x for x in C.admin_state(d)["servers"] if x["key"] == "casper")["allow"]
+              == [["t", "The Playboy Club"], ["g", "Sex Education"]])
+        C.set_allow(d, "casper", "t", "the playboy club", False)
+        seed(d, "casper", club)
+        check("وإلغاؤه يُسقطه من جديد", C._adult_view(d, "casper")["titles"] == [["The Playboy Club", "SERIES | Drama", 3]]
+              and C._server(d, "casper")["allow"] == [["g", "Sex Education"]])
+        for bad in (("x", "A"), ("t", "  ")):
+            try:
+                C.set_allow(d, "casper", bad[0], bad[1], True)
+                check(f"ويُرفض {bad}", False)
+            except ValueError:
+                check(f"ويُرفض {bad}", True)
+
         print("من يصله التنبيه")
         check("لم يُحفظ بعد", C.alert_to(d) is None)
         C.save_alert_to(d, "me@example.com", "966500000000")
@@ -1573,6 +1604,11 @@ def unit_enrich():
         text = mock_xtream.build(base)[0]
         res = C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
         check("والملف المرفوع يُثرى من روابطه", res["api"] == {"ok": True, "movies": 32, "series": 10}, res["api"])
+        C.set_allow(d, "casper", "t", "Hidden Adult Film", True)
+        C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
+        a = C._adult_view(d, "casper")
+        check("وما علّمته اللوحة للكبار يُعرض بالسماح به", not a["panel"] and a["count"] == 2
+              and "Hidden Adult Film" in json.dumps(C._read(C._cat_path(d, "casper"))), a)
         C.set_url(d, "kon", "")
         res = C.ingest(d, "kon", reader(text.replace("/u/p/", "/u/old/").encode()), "file", "kon.m3u")
         check("واشتراكٌ في الملف لا تقبله الواجهة: السبب للمدير", res["api"]["ok"] is False

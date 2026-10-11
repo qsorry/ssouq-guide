@@ -6384,6 +6384,12 @@ class Handler(BaseHTTPRequestHandler):
                 content.start_refresh(DATA_DIR, key)
             elif path == "/api/content/admin/hide":         # إخفاء قسمٍ من الصفحة العامة أو إظهاره
                 content.set_hidden(DATA_DIR, key, body.get("g"), bool(body.get("hidden")))
+            elif path == "/api/content/admin/allow":        # عرض ما أسقطه مرشّح الكبار خطأً (مسلسلٌ كله أو قسم)، أو إلغاؤه
+                if content.set_allow(DATA_DIR, key, body.get("kind"), body.get("name"), bool(body.get("on", True))):
+                    try:
+                        content.start_refresh(DATA_DIR, key)   # يظهر الآن بسحبٍ جديد
+                    except content.Busy:
+                        pass                                    # سحبٌ جارٍ: يأخذ به التالي
             elif path == "/api/content/admin/server":       # إضافة سيرفر أو تعديل اسمه ورابط شرائه
                 content.save_server(DATA_DIR, body)
             elif path == "/api/content/admin/move":         # ترتيب السيرفرات في الصفحة
