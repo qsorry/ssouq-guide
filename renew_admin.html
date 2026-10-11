@@ -2042,8 +2042,17 @@ $('#lkGo').onclick = async () => {
 
 let LS = null, LSTEST = 0, LSPOLL = 0;
 async function lsLoad(){
-  const d = await api('/api/renew/lost?comp=' + encodeURIComponent($('#lsComp').value) + '&expired=' + ($('#lsExp').checked ? 1 : 0));
-  if (d.error) return note($('#lsMsg'), d.error);
+  // حالٌ ظاهرة دائمًا: جارٍ الفحص، ثم النتيجة أو سبب الفشل (انقطاعٌ أو مهلة) — فلا تبقى الصفحة صامتة
+  const b = $('#lsLoad'), ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 120000);
+  b.disabled = true; b.textContent = 'جارٍ الفحص…'; note($('#lsMsg'), 'جارٍ فحص اشتراكات سلة مقابل اللوحات وملفات Excel…', true);
+  let d;
+  try { d = await api('/api/renew/lost?comp=' + encodeURIComponent($('#lsComp').value) + '&expired=' + ($('#lsExp').checked ? 1 : 0), {signal: ctl.signal}); }
+  catch (e) { d = {error: e.name === 'AbortError' ? 'انتهت مهلة الفحص (دقيقتان) — أعد المحاولة' : 'تعذّر الاتصال بالخادم: ' + (e.message || e)}; }
+  finally { clearTimeout(tm); b.disabled = false; b.textContent = 'اعرض المفقود'; }
+  if (!d || d.error || !Array.isArray(d.rows)) return note($('#lsMsg'), (d && d.error) || 'ردٌّ غير متوقّع من الخادم');
+  try { lsRender(d); } catch (e) { note($('#lsMsg'), 'خطأ في عرض النتيجة: ' + (e.message || e)); }
+}
+function lsRender(d){
   LS = d; const c = d.counts || {};
   const tile = (n, lbl, cls) => `<div class="stat"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></div>`;
   $('#lsTiles').innerHTML = tile(d.pending, 'يحتاج اشتراكًا', d.pending ? 'c-warn' : '') + tile(d.done, 'أُنشئ له') + tile(c.found || 0, 'موجود على لوحة')
@@ -2060,7 +2069,12 @@ async function lsLoad(){
   }).join('');
   $('#lsWrap').classList.toggle('hidden', !d.rows.length);
   $('#lsBulk').classList.toggle('hidden', !d.rows.some(r => !r.done && r.can_create));
-  note($('#lsMsg'), d.rows.length ? `باقة ${AR(d.base)} شهرًا · الجديد = المتبقي + ${AR(d.comp)} شهر تعويض` + (d.export_users ? ` · قُورن أيضًا بملفات Excel البوابات (${AR(d.export_users)} يوزرًا)` : ' · لا ملفات Excel للبوابات بعد: صدّرها من صفحة الإنشاء ليُقارن بها') : (d.pulled ? 'لا اشتراك مفقود ✓' : 'لم تُسحب يوزرات أي لوحة بعد — اسحبها من «البيانات» أولًا'), true);
+  const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.total)} مفقود · ${AR(c.found || 0)} موجود · ${AR(c.replaced || 0)} مستبدل · ${AR(c.expired || 0)} منتهٍ`
+    + (c.not_pulled ? ` · ${AR(c.not_pulled)} لوحته لم تُسحب` : '') + (c.host_unmapped ? ` · ${AR(c.host_unmapped)} هوسته غير مربوط` : '')
+    + (d.export_users ? ` · قُورن بملفات Excel البوابات (${AR(d.export_users)} يوزرًا)` : ' · لا ملفات Excel للبوابات بعد');
+  note($('#lsMsg'), !c.checked ? 'لا اشتراكات سلة مسحوبة بعد — اسحب الطلبات من «البيانات» أولًا'
+    : !d.pulled ? 'لم تُسحب يوزرات أي لوحة ولا ملف Excel لبوابة — اسحبها أولًا. ' + sum
+    : (d.rows.length ? `باقة ${AR(d.base)} شهرًا · الجديد = المتبقي + ${AR(d.comp)} شهر تعويض\n` : 'لا اشتراك مفقود ✓\n') + sum, true);
   $('#lsBody').querySelectorAll('.lsMk').forEach(b => b.onclick = () => makeComp(LS.rows[b.dataset.i], b, document.querySelector(`.lsM[data-i="${b.dataset.i}"]`)));
   $('#lsBody').querySelectorAll('.lsO').forEach(a => a.onclick = e => { e.preventDefault(); $('#loQ').value = a.dataset.o; loFind(a.dataset.o); window.scrollTo({top: 0}); });
   lsSendShow(); lsPoll();

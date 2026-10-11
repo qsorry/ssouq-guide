@@ -894,13 +894,14 @@ def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=Fal
     replaced = {str(u).lower() for u in (replaced or ())}
     today = today or renew._today()
     rows, seen = [], set()
-    counts = {"found": 0, "replaced": 0, "host_unmapped": 0, "not_pulled": 0, "expired": 0}
+    counts = {"checked": 0, "found": 0, "replaced": 0, "host_unmapped": 0, "not_pulled": 0, "expired": 0}
     for ln in load_store_lines(data_dir).get("lines", []):
         r = _line_row(ln, cfg, pl, users, done, replaced, today, export)
         key = (renew.norm_order(r["order"]), r["username"].lower())
         if not r["username"] or key in seen:
             continue
         seen.add(key)
+        counts["checked"] += 1
         if r["state"] != "missing":
             counts[r["state"]] = counts.get(r["state"], 0) + 1
             continue

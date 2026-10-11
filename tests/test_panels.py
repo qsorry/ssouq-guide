@@ -562,6 +562,7 @@ def test_order_lost():
         # قبل سحب اللوحة: لا حكم بالفقد
         r0 = panels.lost(cfg, d)
         check("no panel pulled = nothing is called missing", r0["total"] == 0 and r0["counts"]["not_pulled"] >= 3, str(r0["counts"]))
+        check("every unique store line is counted as checked", r0["counts"]["checked"] == 5, str(r0["counts"]))
         panels.save_panel_lines(d, "pk", "مرح", [{"username": "333", "password": "x", "exp": "", "package": "15 Months"}])
         panels.save_panel_lines(d, "alt", "البديلة", [{"username": "222", "password": "x", "exp": "", "package": "1 Year"}])
         r = panels.lost(cfg, d, replaced={"111"})
