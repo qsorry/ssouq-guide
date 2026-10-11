@@ -511,6 +511,27 @@ def test_host_job():
         code, b = X.host_job_start(d, {"host": "http://h", "queue": [{"phone": "0500000009", "text": "q"}, {"phone": "0500000008", "text": "q"}]})
         code2, st = X.host_job_stop(d)
         check("stop marks the job stopped", st["job"]["status"] == "stopped")
+        # فشلٌ متقطّع (أرقام ليست على واتساب) لا يوقف المهمة؛ ست متتالية توقفها
+        X.dup_wa_send = lambda st, ph, tx: ({"ok": int(ph[-1]) % 2 == 1, "error": "ليس على واتساب"}, "contest")
+        keep_w, X._hj_wait = X._hj_wait, (lambda j, n: 0)
+        try:
+            X.host_job_start(d, {"host": "h", "queue": [{"phone": "9665000000%02d" % i, "text": "t"} for i in range(1, 9)]})
+            for _ in range(40):
+                _t.sleep(0.2)
+                v = X.host_job_status(d)["job"]
+                if v["status"] != "running":
+                    break
+            check("alternating failures do not stop the job", v["status"] == "done" and v["sent"] == 4 and v["failed"] == 4, str(v["status"]))
+            X.dup_wa_send = lambda st, ph, tx: ({"ok": False, "error": "مقطوع"}, "contest")
+            X.host_job_start(d, {"host": "h", "queue": [{"phone": "9665000001%02d" % i, "text": "t"} for i in range(1, 12)]})
+            for _ in range(40):
+                _t.sleep(0.2)
+                v = X.host_job_status(d)["job"]
+                if v["status"] != "running":
+                    break
+            check("six consecutive failures stop it with the last error", v["status"] == "error" and v["failed"] == 6 and "مقطوع" in v["error"], str(v["status"]))
+        finally:
+            X._hj_wait = keep_w
     finally:
         X.load_store, X.dup_wa_send = keep
         _t.sleep(1)

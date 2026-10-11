@@ -3126,13 +3126,15 @@ def _hj_run(ws):
                 j["last_phone"] = item["phone"]
                 if ok:
                     j["sent"] = j.get("sent", 0) + 1
+                    j["streak"] = 0
                     j.setdefault("ok", []).append(item["phone"])
                 else:
                     j["failed"] = j.get("failed", 0) + 1
+                    j["streak"] = j.get("streak", 0) + 1
                     j.setdefault("errors", {})[item["phone"]] = err
-                if j.get("failed", 0) >= 5 and j["failed"] > j.get("sent", 0) and j.get("status") == "running":
+                if j.get("streak", 0) >= 6 and j.get("status") == "running":   # ست متتالية: الرقم المربوط نفسه مقطوع غالبًا
                     j["status"] = "error"
-                    j["error"] = "توقّف الإرسال: فشلت عدة رسائل — راجع الرقم المربوط"
+                    j["error"] = "توقّف الإرسال: فشلت ٦ رسائل متتالية — آخر خطأ: %s" % err
                 elif j["idx"] >= len(j["queue"]) and j.get("status") == "running":
                     j["status"] = "done"
                 if j.get("status") == "running":
@@ -3176,7 +3178,8 @@ def host_job_start(ws, req):
     job = {"id": secrets.token_hex(4), "host": str(req.get("host") or ""), "host_norm": renew.norm_host(req.get("host")),
            "status": "running", "queue": q, "idx": 0, "sent": 0, "failed": 0, "ok": [], "errors": {}, "plan": plan,
            "started_at": time.time(), "next_at": 0, "total": len(q), "test": bool(req.get("test")), "kind": kind}
-    renew._write_json(_hj_path(ws), job)
+    with _hj_lock:
+        renew._write_json(_hj_path(ws), job)
     _hj_spawn(ws)
     return 200, host_job_view(job)
 
