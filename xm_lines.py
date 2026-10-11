@@ -2993,11 +2993,24 @@ def _dup_candidates(accounts, cfg, acct, gate, row):
     return out
 
 
+def _dup_archived(accounts, cfg, acct, gate, row):
+    """بوابات الأرشيف (بلا دخول للّوحة) المرشّحة لليوزر القديم — لعرض «اربط اللوحة» بدل الفشل الصامت."""
+    return [{"account_id": a.get("id"), "gate_id": g.get("id"), "name": g.get("name") or g.get("host"),
+             "host": g.get("host", ""), "panel_base": g.get("panel_base", ""), "panel_user": g.get("panel_user", ""),
+             "web": g.get("mode") == "web"}
+            for a, g, same in _dup_candidates(accounts, cfg or {}, acct, gate, row) if g.get("archive_only")]
+
+
+ARCHIVE_ERR = "اليوزر القديم في بوابة أرشيف (لا دخول للّوحة): اربط اللوحة ثم أعد المحاولة"
+
+
 def _dup_rename_old(acct, gate, row, accounts=None, cfg=None):
     """يغيّر اسم اليوزر القديم على لوحته (كلمة مروره ومدته كما هما). يرجّع (معلومات، "") أو (None، سبب).
     يبحث في كل لوحات هوست الصف (حيّة وأرشيف) ويغيّره حيث وُجد."""
     tried, errs = [], []
     for a, g, same in _dup_candidates(accounts, cfg or {}, acct, gate, row):
+        if g.get("archive_only"):               # أرشيف: لا دخول للّوحة — يُعرض ربطها بدل البحث
+            continue
         label = g.get("name") or g.get("host") or str(g.get("id"))
         try:
             found = split_find_line(g, row["username"])
@@ -3045,6 +3058,9 @@ def dup_rename(accounts, cfg, ws, req):
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء"}
     gate = with_guide(acct, gate)
     info, err = _dup_rename_old(acct, gate, row, accounts, cfg)
+    if not info and err == OLD_MISSING and _dup_archived(accounts, cfg, acct, gate, row):
+        panels.update_dupe(ws, order, {"rename_error": ARCHIVE_ERR})
+        return 409, {"error": ARCHIVE_ERR, "need_connect": _dup_archived(accounts, cfg, acct, gate, row)}
     if not info and err == OLD_MISSING:
         panels.update_dupe(ws, order, {"old_missing": True, "rename_error": ""})
         return 200, {"ok": True, "old_missing": True}
@@ -3133,6 +3149,9 @@ def dup_create(accounts, cfg, ws, req):
         if info:
             resp["renamed"] = extra["renamed"] = info
             msgs.append(_dup_old_msg(row, info))
+        elif err == OLD_MISSING and _dup_archived(accounts, cfg, acct, gate, row):
+            resp["rename_error"] = extra["rename_error"] = ARCHIVE_ERR
+            resp["need_connect"] = _dup_archived(accounts, cfg, acct, gate, row)
         elif err == OLD_MISSING:               # محذوف من اللوحة: لا شيء يُغيَّر ولا رسالة للأول
             resp["old_missing"] = extra["old_missing"] = True
         else:                                  # فشل تغيير القديم لا يُلغي البديل المُنشأ
@@ -5396,6 +5415,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"need_login": True})
                 except Exception as e:
                     return self._send(200, {"error": str(e)[:200]})
+            if path == "/api/renew/dup-captcha":  # كابتشا بوابة مرتبطة من صفحة التجديد
+                a_ = next((a for a in racs if str(a.get("id")) == str(self._q("account"))), None)
+                g_ = find_gate(a_, self._q("gate")) if a_ else None
+                if not g_ or g_.get("mode") != "web" or g_.get("archive_only"):
+                    return self._send(403, {"error": "غير متاح"})
+                s_ = web_session(g_)
+                s_.begin()
+                ct_, img_ = s_.fetch_captcha()
+                return self._send(200, raw=img_, ctype=ct_ or "image/jpeg")
             if path == "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate or gate.get("mode") != "web":
@@ -5800,6 +5828,30 @@ class Handler(BaseHTTPRequestHandler):
             owner["renew"] = renew.clean_config(req.get("renew") or {}, rcfg)
             save_store(st)
             return self._send(200, {"ok": True, "renew": renew.redact_config(owner["renew"])})
+        if path == "/api/renew/dup-connect":      # يربط بوابة أرشيف باللوحة (يُلغي «أرشيف فقط») ويجرّب الدخول
+            a_ = next((a for a in racs if str(a.get("id")) == str(req.get("account_id"))), None)
+            g_ = find_gate(a_, req.get("gate_id")) if a_ else None
+            if not g_ or g_.get("mode") != "web":
+                return self._send(400, {"error": "البوابة غير موجودة أو ليست بوابة ويب"})
+            for k in ("panel_base", "panel_user", "panel_pass"):
+                v = str(req.get(k) or "").strip() if k != "panel_pass" else str(req.get(k) or "")
+                if v:
+                    g_[k] = v.rstrip("/") if k == "panel_base" else v
+            g_["archive_only"] = False
+            if not str(g_.get("panel_base", "")).startswith(("http://", "https://")) or not g_.get("panel_user") or not g_.get("panel_pass"):
+                return self._send(400, {"error": "رابط اللوحة واسم الدخول وكلمة المرور مطلوبة"})
+            save_store(st)
+            code_ = str(req.get("captcha") or "").strip()
+            try:
+                web_session(g_).login(captcha=code_ or None)
+                return self._send(200, {"ok": True})
+            except xm_web.CaptchaNeeded:
+                return self._send(200, {"ok": False, "need_captcha": True,
+                                        "error": "الكود غير صحيح" if code_ else ""})
+            except xm_web.LoginFailed as e:
+                return self._send(200, {"ok": False, "error": str(e)[:200]})
+            except Exception as e:
+                return self._send(502, {"error": str(e)[:300]})
         if path == "/api/renew/dup-rename":       # يغيّر اسم القديم لطلبٍ أُنشئ بديله ولم يُغيَّر قديمه
             try:
                 code, body = dup_rename(racs, rcfg, rws, req)

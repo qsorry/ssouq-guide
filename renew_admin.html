@@ -557,6 +557,13 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <thead><tr><th>اليوزر</th><th>اللوحة</th><th>العميل (اللاحق)</th><th>الطلب</th><th>المتبقي</th><th>أشهر البديل</th><th></th></tr></thead>
       <tbody id="dupBody"></tbody></table></div>
     <p class="msg" id="dupMsg"></p>
+    <div id="dupConn" class="blk hidden" style="padding:12px;margin-top:10px">
+      <b id="dupConnT"></b>
+      <p class="hint">اليوزر القديم في بوابة «أرشيف فقط» لا تدخل اللوحة. اربطها هنا: تُلغى صفة الأرشيف وتُحفظ بيانات الدخول، ثم يُغيَّر اسم القديم. الكابتشا تكتبها أنت.</p>
+      <div class="acts"><input id="dcBase" placeholder="رابط اللوحة https://…" class="ltr"><input id="dcUser" placeholder="اسم دخول اللوحة" class="ltr"><input id="dcPass" type="password" placeholder="كلمة المرور" class="ltr"></div>
+      <div id="dcCap" class="hidden acts"><img id="dcImg" alt="captcha" style="height:44px;border-radius:8px;background:#fff"><button class="ghost" id="dcReload" type="button">↻</button><input id="dcCode" placeholder="الكود" class="ltr" style="width:110px"></div>
+      <div class="acts"><button class="go" id="dcGo" type="button">اربط وغيّر القديم</button><button class="ghost" id="dcCancel" type="button">إلغاء</button></div>
+    </div>
   </section>
 
   <!-- ===================== الرسائل: رسائل بدائل المكرر وسجل إرسالها ===================== -->
@@ -1689,6 +1696,7 @@ function renderDup(d){
     if (!confirm(`تغيير اسم ${r.username} على اللوحة وتجهيز رسالة لصاحبه الأول ${r.first_customer || r.first_phone || ''}؟`)) return;
     b.disabled = true; b.textContent = 'جارٍ التغيير…';
     const d = await post('/api/renew/dup-rename', {order: r.order, username: r.username});
+    if (d.need_connect) { note($('#dupMsg'), d.error); dupConnOpen(d.need_connect, {order: r.order, username: r.username}); return loadDup(); }
     note($('#dupMsg'), d.ok && d.old_missing ? 'اليوزر القديم محذوف من اللوحة — لا حاجة لتغييره' : d.ok ? `غُيّر ${d.renamed.from} إلى ${d.renamed.to} — الرسالة جاهزة أدناه` : (d.error || 'تعذّر التغيير'), !!d.ok);
     loadDup();
   });
@@ -1709,9 +1717,34 @@ async function makeDup(i, btn){
   if (d.old_missing) t += ' · القديم محذوف من اللوحة فلا تغيير ولا رسالة للأول';
   if (d.rename_error) t += ` · تعذّر تغيير القديم: ${d.rename_error}`;
   if (d.split_error) t += ` · تعذّر تسجيله جزءًا: ${d.split_error}`;
+  if (d.need_connect) { dupConnOpen(d.need_connect, {order: r.order, username: r.username}); t += ' · القديم في بوابة أرشيف: اربط اللوحة بالنموذج أدناه'; }
   note($('#dupMsg'), t + ' · رسائل العملاء جاهزة في تبويب «الرسائل»', !d.rename_error);
   loadDup();
 }
+let DUPCONN = null;
+function dupConnOpen(list, req){
+  const g = list[0]; DUPCONN = {g, req};
+  $('#dupConnT').textContent = 'ربط بوابة الأرشيف «' + (g.name || '') + '»';
+  $('#dcBase').value = g.panel_base || g.host || ''; $('#dcUser').value = g.panel_user || ''; $('#dcPass').value = '';
+  $('#dcCap').classList.add('hidden'); $('#dcCode').value = '';
+  $('#dupConn').classList.remove('hidden'); $('#dupConn').scrollIntoView({block: 'nearest'});
+}
+const dcImg = () => { const g = DUPCONN.g; $('#dcImg').src = '/api/renew/dup-captcha?account=' + encodeURIComponent(g.account_id) + '&gate=' + encodeURIComponent(g.gate_id) + '&t=' + Date.now(); };
+$('#dcReload').onclick = dcImg;
+$('#dcCancel').onclick = () => { DUPCONN = null; $('#dupConn').classList.add('hidden'); };
+$('#dcGo').onclick = async () => {
+  if (!DUPCONN) return; const g = DUPCONN.g; const b = $('#dcGo'); b.disabled = true;
+  const d = await post('/api/renew/dup-connect', {account_id: g.account_id, gate_id: g.gate_id, panel_base: $('#dcBase').value,
+    panel_user: $('#dcUser').value, panel_pass: $('#dcPass').value, captcha: $('#dcCode').value});
+  b.disabled = false;
+  if (d.need_captcha) { $('#dcCap').classList.remove('hidden'); $('#dcCode').value = ''; dcImg(); return note($('#dupMsg'), d.error || 'اكتب كود التحقّق ثم اضغط مرة أخرى'); }
+  if (!d.ok) return note($('#dupMsg'), d.error || 'فشل الدخول إلى اللوحة');
+  const rq = DUPCONN.req; DUPCONN = null; $('#dupConn').classList.add('hidden');
+  note($('#dupMsg'), 'رُبطت اللوحة ✓ — جارٍ تغيير القديم…', true);
+  const r = await post('/api/renew/dup-rename', rq);
+  note($('#dupMsg'), r.ok && r.old_missing ? 'اليوزر القديم غير موجود على اللوحة المربوطة' : r.ok ? `غُيّر ${r.renamed.from} إلى ${r.renamed.to} — الرسالة جاهزة في تبويب «الرسائل»` : (r.error || 'تعذّر التغيير'), !!r.ok);
+  loadDup();
+};
 let DUPWA = false, DUPCH = '', DUPNUM = '';
 function renderDupMsgs(msgs){
   $('#msgsEmpty').classList.toggle('hidden', !!msgs.length);

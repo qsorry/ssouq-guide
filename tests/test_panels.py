@@ -420,6 +420,13 @@ def test_dup_create():
         calls2.clear()
         info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, acct2, {"id": "acc3", "gates": [g3]}], cfg)
         check("falls back to gates on other hosts", info and info["panel"] == "أرشيف آخر" and calls2 == [("g3", "u")], str((info, err)))
+        ga = {"id": "ga", "name": "مرح أرشيف", "mode": "web", "host": "http://m.ink", "archive_only": True}
+        X.split_find_line = lambda g, u: {}
+        arch = X._dup_archived([acct, {"id": "acc4", "gates": [ga]}], cfg, acct, gate, {"host": "http://m.ink"})
+        check("archive-only gates are listed for connecting, not searched", len(arch) == 1 and arch[0]["gate_id"] == "ga" and arch[0]["web"])
+        X.split_find_line = lambda g, u: (_ for _ in ()).throw(AssertionError("archive searched")) if g["id"] == "ga" else {}
+        info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, {"id": "acc4", "gates": [ga]}], cfg)
+        check("archive gate is skipped in the search", info is None and err == X.OLD_MISSING)
         def boom(g, u): raise RuntimeError("login failed")
         X.split_find_line = boom
         info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, acct2], cfg)
