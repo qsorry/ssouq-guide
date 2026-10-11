@@ -460,6 +460,18 @@ def test_host_audience():
               and len(r["no_phone"]) == 1 and r["expired_skipped"] == 1 and r["lines"] == 4, str(r))
         r2 = X.host_audience({}, d, "cdn65.mitatura.store", include_expired=True)
         check("host matches without scheme and expired can be included", len(r2["recipients"]) == 2)
+        # نوع الاشتراك + المرسَل سابقًا
+        lines = panels.load_store_lines(d)["lines"]
+        lines[0]["falcon"] = True
+        lines[3]["product"] = "اشتراك سمارت"
+        lines[3]["expiry"] = fut
+        panels.save_store_lines(d, lines)
+        rf = X.host_audience({}, d, "http://cdn65.mitatura.store", sub="falcon")
+        check("sub filter keeps only falcon lines", rf["lines"] == 1 and rf["recipients"][0]["usernames"] == ["u1"] and rf["subs"].get("falcon") == 1 and rf["subs"].get("smart") == 1, str(rf["subs"]))
+        panels.log_dup_send(d, {"order": "host:cdn65.mitatura.store", "kind": "host", "name": "ع", "phone": "966500000001", "text": "t"}, "contest", True)
+        rs = X.host_audience({}, d, "http://cdn65.mitatura.store")
+        check("already-sent phones are skipped and counted", all(r["phone"] != "966500000001" for r in rs["recipients"]) and rs["sent_before"] == 1, str(rs["sent_before"]))
+        check("skip_sent off keeps them flagged", any(r["sent"] for r in X.host_audience({}, d, "http://cdn65.mitatura.store", skip_sent=False)["recipients"]))
         check("empty host is an error", "error" in X.host_audience({}, d, ""))
         check("default template has the placeholders", all(k in X.HOST_MSG for k in ("{name}", "{host}", "{channel}", "{new_host}")))
     finally:

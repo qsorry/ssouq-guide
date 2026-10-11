@@ -2978,15 +2978,32 @@ def channel_link():
     return ("https://whatsapp.com/channel/" + inv) if inv and not inv.startswith("http") else inv
 
 
-def host_audience(cfg, ws, host, include_expired=False):
+def line_sub(ln, panel_name=""):
+    """نوع اشتراك صفّ من المتجر: smart · falcon · casper أو "" — من علامة فالكون ثم اسم المنتج واللوحة."""
+    if ln.get("falcon"):
+        return "falcon"
+    text = ("%s %s" % (ln.get("product", ""), panel_name)).lower()
+    return next((k for k, words in _SUB_WORDS.items() if any(w in text for w in words)), "")
+
+
+def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True):
     """مشتركو هوستٍ معيّن من اشتراكات المتجر المسحوبة: عميلٌ لكل جوال (بيوزراته)، ومن لا جوال له يُعدّ ولا يُرسَل إليه."""
     nh = renew.norm_host(host)
     if not nh:
         return {"error": "اكتب الهوست"}
     today = renew._today()
-    by_phone, no_phone, expired_n, lines_n = {}, [], 0, 0
+    by_phone, no_phone, expired_n, lines_n, subs = {}, [], 0, 0, {}
+    pnames = {p.get("id"): p.get("name", "") for p in (renew.normalize_config(cfg or {}).get("panels") or [])}
+    pidx = panels.host_index(renew.normalize_config(cfg or {}).get("panels") or [])
+    sent = {m["phone"] for m in panels.load_dup_log(ws, 100000)
+            if m.get("kind") == "host" and m.get("ok") and m.get("order") == "host:" + nh}
+    sent_n = 0
     for ln in panels.load_store_lines(ws).get("lines", []):
         if renew.norm_host(ln.get("host")) != nh:
+            continue
+        k = line_sub(ln, pnames.get(pidx.get(nh), ""))
+        subs[k] = subs.get(k, 0) + 1
+        if sub and k != sub:
             continue
         lines_n += 1
         exp = renew.parse_date(ln.get("expiry"))
@@ -3000,15 +3017,19 @@ def host_audience(cfg, ws, host, include_expired=False):
                              "order": ln.get("order", "")})
             continue
         r = by_phone.setdefault(phone, {"phone": phone, "name": ln.get("customer", ""), "usernames": [],
-                                        "expiry": "", "expired": expired})
+                                        "expiry": "", "expired": expired, "sent": phone in sent})
         r["usernames"].append(ln.get("username", ""))
         e = str(ln.get("expiry") or "")
         if e > r["expiry"]:
             r["expiry"] = e
         r["expired"] = r["expired"] and expired
     rec = sorted(by_phone.values(), key=lambda r: (r["name"] or "", r["phone"]))
+    sent_n = sum(1 for r in rec if r["sent"])
+    if skip_sent:
+        rec = [r for r in rec if not r["sent"]]
     return {"host": host, "recipients": rec, "no_phone": no_phone, "expired_skipped": expired_n,
-            "lines": lines_n, "channel": channel_link(), "template": HOST_MSG}
+            "lines": lines_n, "channel": channel_link(), "template": HOST_MSG, "sent_before": sent_n,
+            "subs": {k or "other": v for k, v in subs.items()}, "sub": sub}
 
 
 OLD_MISSING = "اليوزر القديم غير موجود على اللوحة"
@@ -5670,7 +5691,8 @@ class Handler(BaseHTTPRequestHandler):
                                                            gates=card_gates(racs), split=split_users(racs),
                                                            replaced=replacement_users(racs)))
             if path == "/api/renew/host-audience":  # مشتركو هوست لرسالة جماعية محدّدة
-                d = host_audience(rcfg, rws, self._q("host"), include_expired=self._q("expired") == "1")
+                d = host_audience(rcfg, rws, self._q("host"), include_expired=self._q("expired") == "1",
+                                  sub=self._q("sub") or "", skip_sent=self._q("skip_sent") != "0")
                 d["wa_linked"] = dup_wa_ready(st)
                 try:
                     rs = reader_status()
