@@ -5420,9 +5420,12 @@ class Handler(BaseHTTPRequestHandler):
                 g_ = find_gate(a_, self._q("gate")) if a_ else None
                 if not g_ or g_.get("mode") != "web" or g_.get("archive_only"):
                     return self._send(403, {"error": "غير متاح"})
-                s_ = web_session(g_)
-                s_.begin()
-                ct_, img_ = s_.fetch_captcha()
+                try:
+                    s_ = web_session(g_)
+                    s_.begin()
+                    ct_, img_ = s_.fetch_captcha()
+                except Exception as e:
+                    return self._send(502, {"error": str(e)[:300]})
                 return self._send(200, raw=img_, ctype=ct_ or "image/jpeg")
             if path == "/api/web/captcha":        # صورة كود التحقّق (وضع الويب)
                 gate = find_gate(acct, self._q("gate")) if acct else None

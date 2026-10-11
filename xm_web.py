@@ -455,13 +455,15 @@ class PanelWebSession:
         known = self._meta().get("login_path")
         for path in ((known,) if known else ()) + self.LOGIN_CANDIDATES:
             r = self._request(path)
+            hop = ""
             if 300 <= r.get("status", 0) < 400 and r.get("location"):
                 loc = r["location"]
-                if "login" in loc.lower() or path == "/":
+                hop = "→" + str(loc)[:80]
+                if "login" in loc.lower() or path == "/" or loc.lower().startswith("http"):
                     path = loc
                     r = self._request(loc)
             html = self._text(r)
-            tried.append("%s→%s" % (path, r.get("status")))
+            tried.append("%s→%s%s" % (path, r.get("status"), hop))
             if r.get("status", 0) < 400 and ('name="captcha"' in html.lower() or 'name="password"' in html.lower()):
                 self._save_meta(login_path=path)
                 return html
@@ -614,6 +616,8 @@ class PanelWebSession:
         if still_login:
             alert = self._extract_alert(body)
             kind = self._classify_login_error(alert)
+            if kind == "credentials" and not alert and (form.get("captcha_field") or 'name="captcha"' in body.lower()):
+                kind = "captcha"      # ردّ بلا رسالة وفي الصفحة كابتشا: الأرجح كودٌ خاطئ لا كلمة مرور
             if kind == "captcha":
                 _, img = self.fetch_captcha()
                 raise CaptchaNeeded("image/jpeg", img, "captcha")
