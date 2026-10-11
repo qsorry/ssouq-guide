@@ -257,7 +257,28 @@ def test_complaints_pull():
         check("html: only the open one is shown", [r["id"] for r in X.complaints_open({})["rows"]] == ["61"])
         X.renew_pull_session = lambda st_, cfg=None: None
         check("no session: an error with a hint, not a crash", X.complaints_open({})["error"] == "no_session")
-        check("token without cookies: the hint says why", "Admin API" in X.complaints_open({"service": {"salla_token": "t"}})["hint"])
+        # السحب من جهاز المشغّل عبر الإضافة: صفحات خام (JSON ثم HTML) تُجمع بلا تكرار وتُحفظ، وتُقدَّم على اللوحة
+        ws = tempfile.mkdtemp(prefix="cqfeed_")
+        try:
+            check("no stored file and no session: hint points at the extension", "سحب الشكاوى من جهازي" in X.complaints_open({}, None, ws)["hint"])
+            X.complaints_feed(ws, {"op": "start"})
+            r1 = X.complaints_feed(ws, {"op": "page", "path": "/api/complaints", "body": json.dumps(rows_json, ensure_ascii=False)})
+            r2 = X.complaints_feed(ws, {"op": "page", "path": "/api/complaints", "body": json.dumps(rows_json, ensure_ascii=False)})
+            r3 = X.complaints_feed(ws, {"op": "page", "path": "/complaints", "body": html})
+            check("feed: json page parsed, a repeated page adds nothing, html page adds its rows", r1["found"] == 4 and r1["new"] == 4
+                  and r2["new"] == 0 and r3["found"] == 2 and r3["total"] == 6, str((r1, r2, r3)))
+            check("feed: a page with nothing says found 0", X.complaints_feed(ws, {"op": "page", "body": "<html>nope</html>"})["found"] == 0)
+            fin = X.complaints_feed(ws, {"op": "finish"})
+            d = X.complaints_open({}, None, ws)
+            check("finish saves; open reads the stored rows first (merchant-waiting only) with time and source", fin["saved"] and fin["open"] == 3
+                  and [r["id"] for r in d["rows"]] == ["51", "52", "61"] and d["total"] == 6 and d["source"] == "extension" and d["at"], str(d)[:200])
+            X.renew_pull_session = lambda st_, cfg=None: sess
+            check("stored rows win over the server session", X.complaints_open({}, None, ws)["source"] == "extension")
+            X.complaints_feed(ws, {"op": "start"})
+            check("finish with nothing found does not overwrite the stored file", not X.complaints_feed(ws, {"op": "finish"})["saved"]
+                  and X.complaints_open({}, None, ws)["total"] == 6)
+        finally:
+            shutil.rmtree(ws, ignore_errors=True)
         X.renew_pull_session = lambda st_, cfg=None: salla_web.Session("other=1", base=base)
         check("expired session reported", X.complaints_open({})["error"] == "session_expired")
     finally:
