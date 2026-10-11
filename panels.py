@@ -258,7 +258,11 @@ def save_salla_codes(data_dir, products, reset=False):
     for prod in (products or []):
         pid = str(prod.get("id") or "")
         codes, masked = [], 0
-        for raw in (prod.get("codes") or []):
+        raw_codes = prod.get("codes") or []
+        if prod.get("html"):                   # نافذة اللوحة القديمة كما هي — نحلّلها هنا
+            import salla_web
+            raw_codes = salla_web.parse_product_codes(prod.get("html")) or raw_codes
+        for raw in raw_codes:
             text = _code_text(raw)
             cred = renew_import.parse_credentials(text)
             if not cred.get("username"):
@@ -269,6 +273,7 @@ def save_salla_codes(data_dir, products, reset=False):
                           "host": cred.get("host", "")})
         rec = {"id": pid, "name": str(prod.get("name") or ""), "sku": str(prod.get("sku") or ""),
                "type": str(prod.get("type") or ""), "total": int(prod.get("total") or len(codes)),
+               "source": "legacy" if prod.get("html") else str(prod.get("source") or "api"),
                "codes": codes, "unparsed": masked, "at": renew.now_iso()}
         if pid in have:
             data["products"][have[pid]] = rec

@@ -237,6 +237,17 @@ const isCodesProduct = (p) => {
   return t === "codes" || t === "digital" || t === "code";
 };
 
+// عدد الأكواد في نافذة اللوحة القديمة (textarea باسم code_content[] غير فارغة؛ القالب المخفي فارغ).
+function legacyCodeCount(html) {
+  let n = 0;
+  const re = /<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi;
+  let m;
+  while ((m = re.exec(html || "")) !== null) {
+    if (/code_content/.test(m[1]) && m[2].trim()) n++;
+  }
+  return n;
+}
+
 async function runCodes(settings) {
   if (codesState.running) return;
   codesState.running = true;
@@ -258,21 +269,36 @@ async function runCodes(settings) {
     if (!digital.length) throw new Error("لم أجد منتجات رقمية (نوع codes) في المتجر");
     let total = 0, reset = true, summary = null;
     for (const [i, p] of digital.entries()) {
-      const codes = [];
-      for (let page = 1, last = 1; page <= last && page < 500; page++) {
-        const j = await apiGet(token, `/products/${p.id}/codes?page=${page}&per_page=100`);
-        const list = items(j);
-        if (!list.length) break;
-        codes.push(...list);
-        last = lastPage(j) || (list.length === 100 ? page + 1 : page);
-        await sleep(PULL_PAUSE_MS);
+      // الأكواد من اللوحة القديمة: نافذة «بيانات المنتج ← الأكواد المتاحة» تُحمَّل من
+      // /products/{id}/details وفيها الأكواد كاملةً. الواجهة الجديدة تُعيدها مقنَّعة (XXXX)
+      // فلا تُستعمل إلا احتياطًا إن لم تُعطِ الصفحة القديمة شيئًا.
+      let html = "", codes = [];
+      try {
+        html = await sallaPage(`/products/${p.id}/details?product_type=codes`);
+      } catch (e) {
+        html = "";
       }
-      total += codes.length;
-      summary = await toolPost(settings, "/api/renew/salla-codes", { reset, products: [{ ...p, total: codes.length, codes }] });
+      const n = legacyCodeCount(html);
+      if (!n) {
+        html = "";
+        for (let page = 1, last = 1; page <= last && page < 500; page++) {
+          const j = await apiGet(token, `/products/${p.id}/codes?page=${page}&per_page=100`);
+          const list = items(j);
+          if (!list.length) break;
+          codes.push(...list);
+          last = lastPage(j) || (list.length === 100 ? page + 1 : page);
+          await sleep(PULL_PAUSE_MS);
+        }
+      }
+      const count = n || codes.length;
+      total += count;
+      await sleep(PULL_PAUSE_MS);
+      summary = await toolPost(settings, "/api/renew/salla-codes",
+        { reset, products: [{ ...p, total: count, codes, html, source: n ? "legacy" : "api" }] });
       reset = false;
       set(`${i + 1} من ${digital.length} منتجًا · ${total} كودًا${summary && summary.unparsed ? ` · غير مقروء ${summary.unparsed}` : ""}`, null);
     }
-    set(`اكتمل ✓ ${digital.length} منتجًا رقميًا، ${total} كودًا، منها ${summary ? summary.with_username : 0} بيوزر مقروء. احسب «غير المعروض» في صفحة التجديد.`, true);
+    set(`اكتمل ✓ ${digital.length} منتجًا رقميًا، ${total} كودًا من اللوحة القديمة، منها ${summary ? summary.with_username : 0} بيوزر مقروء. احسب «غير المعروض» في صفحة التجديد.`, true);
   } catch (e) {
     set("توقّف: " + (e && e.message ? e.message : e), false);
   } finally {
