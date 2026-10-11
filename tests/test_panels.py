@@ -272,6 +272,8 @@ def test_unlisted():
         check("append keeps earlier products", st2["products"] == 2 and st2["with_username"] == 2, str(st2))
     finally:
         shutil.rmtree(d, ignore_errors=True)
+        why = panels.explain_user(cfg_u if 'cfg_u' in dir() else {}, d, "nobody_here")
+        check("explain_user: unknown user has a reason", bool(why["reason"]) and not why["panels"], why)
         st_html = panels.save_salla_codes(d, [{"id": "p3", "name": "كاسبر 30", "html":
             '<div id="codes_list"><textarea name="code_content[]">Host http://mrha.ink:80 User 808808243040 Pass 370378628604 Guide g</textarea>'
             '<textarea name="code_content[]">Host http://mrha.ink:80 User 568483197191 Pass 375343915287</textarea></div>'

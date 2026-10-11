@@ -5367,6 +5367,9 @@ class Handler(BaseHTTPRequestHandler):
                                   extra={"Content-Disposition": 'attachment; filename="salla-available-codes.xlsx"'})
             if path == "/api/renew/listed":         # المعلَّم يدويًا «معروض في سلة»
                 return self._send(200, {"listed": panels.load_listed(rws)})
+            if path == "/api/renew/unlisted-why":   # لماذا لا يظهر يوزرٌ في «غير المعروض»؟
+                return self._send(200, panels.explain_user(rcfg, rws, self._q("user"),
+                                                           gates=card_gates(racs), split=split_users(racs)))
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
                 return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1",
                                                        gates=card_gates(racs), split=split_users(racs)))

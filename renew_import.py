@@ -311,6 +311,10 @@ _C_HOST = re.compile(
 _BARE = r"\s['\"]?((?=[A-Za-z0-9._\-]*\d)[A-Za-z0-9._\-]{6,64})\b"
 _C_USER = re.compile(r"(?i)\buser\s*-?\s*(?:name)?\s*(?:[:=]\s*['\"]?([A-Za-z0-9._\-]{3,64})|" + _BARE + ")")
 _C_PASS = re.compile(r"(?i)\bpass\w*\s*(?:[:=]\s*['\"]?([^\s|,;\"']{3,64})|" + _BARE + ")")
+# ملاحظات فالكون (وغيرها) تُكتب بالعربية: «🌐 الهوست: … 👤 اسم المستخدم: … 🔑 كلمة السر: …».
+_AR_USER = re.compile(r"(?:اسم\s*المستخدم|المستخدم|اليوزر|يوزر)\s*[:=]\s*['\"]?([A-Za-z0-9._\-]{3,64})")
+_AR_PASS = re.compile(r"(?:كلمة\s*(?:السر|المرور)|الباسورد|باسورد|الرقم\s*السري)\s*[:=]\s*['\"]?([^\s|,;\"']{3,64})")
+_AR_HOST = re.compile(r"(?i)(?:الهوست|هوست|السيرفر|الرابط)\s*[:=]\s*['\"]?((?:https?://)?[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}(?::\d{1,5})?)")
 _EMAILY = re.compile(r"[A-Za-z0-9._%+-]@")
 
 
@@ -339,8 +343,17 @@ def parse_credentials(text):
     p = _C_PASS.search(s)
     if u:
         out["username"] = u.group(1) or u.group(2)
+    elif _AR_USER.search(s):
+        out["username"] = _AR_USER.search(s).group(1)
     if p:
         out["password"] = p.group(1) or p.group(2)
+    elif _AR_PASS.search(s):
+        out["password"] = _AR_PASS.search(s).group(1)
+    ah = _AR_HOST.search(s)
+    if ah and out:
+        host = ah.group(1)
+        out["host"] = host if host.startswith(("http://", "https://")) else "http://" + host
+        return out
     for m in _C_HOST.finditer(s):
         host = m.group(1)
         if _EMAILY.search(s[max(0, m.start(1) - 1):m.start(1) + 1]):
