@@ -222,7 +222,15 @@ def norm_host(h):
 
 
 def parse_date(s):
-    s = str(s or "").strip()[:10]
+    raw = str(s or "").strip()
+    # طابع يونكس (لوحة فالكون تُعيد expires_at رقمًا بالثواني، وبعضها بالملّي ثانية)
+    if re.fullmatch(r"\d{10}(?:\d{3})?", raw):
+        n = int(raw[:10])
+        try:
+            return datetime.datetime.fromtimestamp(n, datetime.timezone.utc).date()
+        except (OverflowError, OSError, ValueError):
+            return None
+    s = raw[:10]
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"):
         try:
             return datetime.datetime.strptime(s, fmt).date()

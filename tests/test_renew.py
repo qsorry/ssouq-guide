@@ -374,6 +374,9 @@ class TestCredentials(unittest.TestCase):
     def test_bare_host_without_a_colon_needs_company(self):
         """«host http://x» بلا نقطتين يُقبل مع يوزر أو باسورد فقط — وإلا صار كل
         ذكرٍ لكلمة hosting هوستًا."""
+        # طابع يونكس كما تُعيده فالكون
+        self.assertEqual(str(renew.parse_date(1830000000)), "2027-12-28")
+        self.assertEqual(str(renew.parse_date("1830000000000")), "2027-12-28")
         # أسماء فالكون القديمة: المدة بالكلمات، والاسم بلا «اشتراك»
         self.assertEqual(renew_import.months_of("FALCON TV PRO | فالكون IPTV ثلاثة أشهر"), (3, False))
         self.assertEqual(renew_import.months_of("FALCON TV PRO | فالكون IPTV ستة اشهر"), (6, False))
