@@ -1663,13 +1663,13 @@ async function loadDup(){
 function renderDup(d){
   const all = $('#dupAll').checked;
   const rows = DUP.filter(r => DUPF === 'pending' ? (!r.done && !r.expired) : DUPF === 'done' ? !!r.done : DUPF === 'expired' ? (!r.done && r.expired)
-    : (all || (!r.done && !r.expired) || (r.done && !r.done.renamed)));
+    : (all || (!r.done && !r.expired) || (r.done && !r.done.renamed && !r.done.old_missing)));
   const tile = (k, n, lbl, cls) => `<button type="button" class="stat dupTile${DUPF === k ? ' on' : ''}" data-f="${k}" style="cursor:pointer;font:inherit"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></button>`;
   $('#dupTiles').innerHTML = tile('pending', d.pending, 'يحتاج بديلًا', d.pending ? 'c-warn' : '') + tile('done', d.done, 'أُنشئ بديله') + tile('expired', d.expired, 'منتهٍ');
   $('#dupTiles').querySelectorAll('.dupTile').forEach(b => b.onclick = () => { DUPF = DUPF === b.dataset.f ? '' : b.dataset.f; renderDup(d); });
   $('#dupBody').innerHTML = rows.map(r => {
     const i = DUP.indexOf(r);
-    const rn = !r.done ? '' : r.done.renamed ? `<br><small class="c-ok">القديم ← ${esc(r.done.renamed.to)} ✓</small>`
+    const rn = !r.done ? '' : r.done.old_missing ? '<br><small>القديم محذوف من اللوحة — لا شيء يُغيَّر</small>' : r.done.renamed ? `<br><small class="c-ok">القديم ← ${esc(r.done.renamed.to)} ✓</small>`
       : `<br><small class="c-bad">القديم لم يُغيَّر${r.done.rename_error ? ': ' + esc(r.done.rename_error) : ''}</small> <button class="ghost dupRn" data-i="${i}" type="button">غيّر القديم الآن</button>`;
     const act = r.done ? `<span class="c-ok">✓ ${esc(r.done.new)}</span>${rn}`
       : r.expired ? '<span class="c-bad">منتهٍ</span>'
@@ -1689,7 +1689,7 @@ function renderDup(d){
     if (!confirm(`تغيير اسم ${r.username} على اللوحة وتجهيز رسالة لصاحبه الأول ${r.first_customer || r.first_phone || ''}؟`)) return;
     b.disabled = true; b.textContent = 'جارٍ التغيير…';
     const d = await post('/api/renew/dup-rename', {order: r.order, username: r.username});
-    note($('#dupMsg'), d.ok ? `غُيّر ${d.renamed.from} إلى ${d.renamed.to} — الرسالة جاهزة أدناه` : (d.error || 'تعذّر التغيير'), !!d.ok);
+    note($('#dupMsg'), d.ok && d.old_missing ? 'اليوزر القديم محذوف من اللوحة — لا حاجة لتغييره' : d.ok ? `غُيّر ${d.renamed.from} إلى ${d.renamed.to} — الرسالة جاهزة أدناه` : (d.error || 'تعذّر التغيير'), !!d.ok);
     loadDup();
   });
 }
@@ -1706,6 +1706,7 @@ async function makeDup(i, btn){
   if (d.error || !d.ok) return note($('#dupMsg'), d.error || 'فشل الإنشاء');
   let t = `أُنشئ ${d.username} بدل ${d.replaces} (${AR(d.months)} شهرًا)`;
   if (d.renamed) t += ` · غُيّر اسم القديم إلى ${d.renamed.to}`;
+  if (d.old_missing) t += ' · القديم محذوف من اللوحة فلا تغيير ولا رسالة للأول';
   if (d.rename_error) t += ` · تعذّر تغيير القديم: ${d.rename_error}`;
   if (d.split_error) t += ` · تعذّر تسجيله جزءًا: ${d.split_error}`;
   note($('#dupMsg'), t + ' · رسائل العملاء جاهزة في تبويب «الرسائل»', !d.rename_error);
