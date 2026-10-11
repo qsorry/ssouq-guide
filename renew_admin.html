@@ -80,6 +80,7 @@ section{background:var(--sf);border:1px solid var(--line);border-radius:20px;pad
 .jump a[aria-selected="true"]{background:var(--go);border-color:var(--go);color:#fff}
 .jump a[aria-selected="true"] svg{color:#fff}
 .tab-off{display:none !important}
+.dupTile.on{outline:2px solid var(--go)}
 .jump a em{font-style:normal;background:var(--go);color:#fff;border-radius:999px;min-width:18px;padding:0 6px;font-size:12px;line-height:18px;text-align:center}
 .jump a[aria-selected="true"] em{background:#fff;color:var(--go)}
 .jump{position:sticky;top:0;z-index:5;background:var(--bg,inherit);padding-top:8px}
@@ -1653,17 +1654,19 @@ function initTab(){
 }
 
 /* ============ المبيع المكرر ============ */
-let DUP = [];
+let DUP = [], DUPF = '';
 async function loadDup(){
   const d = await api('/api/renew/duplicates');
   if (d.error) return note($('#dupMsg'), d.error);
-  DUP = d.rows || []; DUPWA = !!d.wa_linked; renderDup(d); renderDupMsgs(d.messages || []);
+  DUP = d.rows || []; DUPWA = !!d.wa_linked; DUPCH = d.wa_channel || ''; DUPNUM = d.wa_number || ''; renderDup(d); renderDupMsgs(d.messages || []);
 }
 function renderDup(d){
   const all = $('#dupAll').checked;
-  const rows = DUP.filter(r => all || (!r.done && !r.expired) || (r.done && !r.done.renamed));
-  $('#dupTiles').innerHTML = `<div class="stat"><b class="${d.pending ? 'c-warn' : ''}">${AR(d.pending)}</b><small>يحتاج بديلًا</small></div>`
-    + `<div class="stat"><b>${AR(d.done)}</b><small>أُنشئ بديله</small></div><div class="stat"><b>${AR(d.expired)}</b><small>منتهٍ</small></div>`;
+  const rows = DUP.filter(r => DUPF === 'pending' ? (!r.done && !r.expired) : DUPF === 'done' ? !!r.done : DUPF === 'expired' ? (!r.done && r.expired)
+    : (all || (!r.done && !r.expired) || (r.done && !r.done.renamed)));
+  const tile = (k, n, lbl, cls) => `<button type="button" class="stat dupTile${DUPF === k ? ' on' : ''}" data-f="${k}" style="cursor:pointer;font:inherit"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></button>`;
+  $('#dupTiles').innerHTML = tile('pending', d.pending, 'يحتاج بديلًا', d.pending ? 'c-warn' : '') + tile('done', d.done, 'أُنشئ بديله') + tile('expired', d.expired, 'منتهٍ');
+  $('#dupTiles').querySelectorAll('.dupTile').forEach(b => b.onclick = () => { DUPF = DUPF === b.dataset.f ? '' : b.dataset.f; renderDup(d); });
   $('#dupBody').innerHTML = rows.map(r => {
     const i = DUP.indexOf(r);
     const rn = !r.done ? '' : r.done.renamed ? `<br><small class="c-ok">القديم ← ${esc(r.done.renamed.to)} ✓</small>`
@@ -1708,12 +1711,13 @@ async function makeDup(i, btn){
   note($('#dupMsg'), t + ' · رسائل العملاء جاهزة في تبويب «الرسائل»', !d.rename_error);
   loadDup();
 }
-let DUPWA = false;
+let DUPWA = false, DUPCH = '', DUPNUM = '';
 function renderDupMsgs(msgs){
   $('#msgsEmpty').classList.toggle('hidden', !!msgs.length);
   const pend = msgs.filter(m => !(m.sent && m.sent.ok)).length;
   const bd = $('#msgsBadge'); bd.textContent = AR(pend); bd.classList.toggle('hidden', !pend);
-  $('#dupWaNote').textContent = DUPWA ? '(رقم المسابقة/الخدمة جاهز)' : '(لا رقم مربوط: افتح المسابقة واربط الرقم، أو استعمل اليدوي)';
+  const ch = {contest: 'الإرسال من رقم المسابقة المربوط' + (DUPNUM ? ' (' + DUPNUM + ')' : ''), wa: 'الإرسال عبر قناة واتساب خدمة سلة'};
+  $('#dupWaNote').textContent = DUPCH ? '(' + ch[DUPCH] + ')' : '(لا رقم مربوط: افتح المسابقة واربط الرقم، أو استعمل اليدوي)';
   $('#dupMsgList').innerHTML = msgs.map((m, k) => {
     const sent = m.sent && m.sent.ok ? `<span class="c-ok">✓ أُرسلت ${m.sent.how === 'manual' ? 'يدويًا' : 'عبر الرقم المربوط'}</span>`
       : (m.sent && m.sent.error ? `<span class="c-bad">${esc(m.sent.error)}</span>` : '');
