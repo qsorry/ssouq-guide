@@ -118,6 +118,17 @@ function konList(more) {
     check('إخفاء قسم: القائمة تبقى مفتوحة وهو معلَّم', await ap.$eval('[data-k="smart"] details.groups', d => d.open)
           && await ap.$eval('[data-k="smart"] .grow.off', r => r.textContent.includes('Netflix') && !r.querySelector('input').checked));
     check('وما أُسقط يبقى مفتوحًا بعد إعادة الرسم', await ap.$eval('[data-k="smart"] details.adult', d => d.open));
+    // «اعرض القسم»: ليس للكبار — يُسمح به ويظهر في «مسموحٌ بعرضه» (والملف المرفوع: من رفعه التالي)، و«ألغِ» يعيده
+    ap.once('dialog', dg => dg.accept());
+    const alReq = ap.waitForResponse(r => r.url().includes('/api/content/admin/allow'));
+    await ap.click('[data-k="smart"] details.adult button[data-allow="g"]');
+    await alReq;
+    await ap.waitForFunction(() => document.querySelector('[data-k="smart"] details.adult').textContent.includes('مسموحٌ بعرضه'));
+    check('«اعرض القسم» يُسمح به، ومعه «ألغِ» وأنه من الرفع التالي', (await ap.textContent('[data-k="smart"]')).includes('ارفع الملف من جديد ليظهر')
+          && await ap.$$eval('[data-k="smart"] details.adult button[data-on="0"]', b => b.length === 1));
+    await ap.click('[data-k="smart"] details.adult button[data-on="0"]');
+    await ap.waitForFunction(() => !document.querySelector('[data-k="smart"] details.adult').textContent.includes('مسموحٌ بعرضه'));
+    check('و«ألغِ» يلغيه', true);
     // محتوى قرأته النسخة الأولى (قبل الصور والتقييمات): المدير يُطلب منه إعادة رفع الملف
     fs.writeFileSync(path.join(DATA, 'content', 'kon.json'), JSON.stringify({entries: 1, n: {series: 0, movie: 1, live: 0},
       skipped: {}, series: [], live: [], movie: [{id: 'm0', name: 'M', items: ['Old Film (2019)']}], at: Date.now() / 1000}));
@@ -464,7 +475,7 @@ function konList(more) {
     await ap.waitForSelector('#cBox:not([hidden])');
     const bub = await ap.$eval('#cText', e => ({html: e.innerHTML, text: e.textContent, href: (e.querySelector('a') || {}).href}));
     check('المعاينة فقاعة واتساب: العريض عريض، والرابط رابط', bub.html.includes('<b>أضيف مؤخرًا في كون</b>')
-          && bub.html.includes('<b>أفلام جديدة</b>') && bub.text.includes('Dune: Part Two (2024)') && bub.text.includes('Shogun · حلقة واحدة')
+          && bub.html.includes('<b>أفلام جديدة</b>') && bub.text.includes('Dune: Part Two (2024)') && bub.text.includes('Shogun\u200e \u200f— حلقة واحدة')
           && bub.href === 'https://guide.ssouq.com/content/kon?t=new&ref=wa', bub.text.slice(0, 160));
     check('وحجمها', (await ap.textContent('#cSize')).includes('فيلمان · مسلسلان · حلقتان'));
     check('بلا تمرير أفقي والمعاينة ظاهرة', await ap.evaluate(() => document.documentElement.scrollWidth <= innerWidth
@@ -484,8 +495,8 @@ function konList(more) {
     await ap.click('#cPrev');
     await ap.waitForFunction(() => document.querySelector('#cText').textContent.includes('فالكون'), null, {timeout: 15000});
     const bub2 = await ap.textContent('#cText');
-    check('و«أضيف مؤخرًا» في صفحة سيرفرٍ مُثرًى يدخل المعاينة من تاريخ إضافته في واجهته', bub2.includes('F1 The Movie (2025) ⭐ 7.8')
-          && bub2.includes('Stranger Things · الموسم 5 (9 حلقات)') && !bub2.includes('Oppenheimer')
+    check('و«أضيف مؤخرًا» في صفحة سيرفرٍ مُثرًى يدخل المعاينة من تاريخ إضافته في واجهته', bub2.includes('F1 The Movie (2025)\u200e ⭐ 7.8')
+          && bub2.includes('Stranger Things\u200e \u200f— الموسم 5 (9 حلقات)') && !bub2.includes('Oppenheimer')
           && (await ap.textContent('#cMsg')).includes('آخر 7 أيام'), bub2.slice(0, 240));
 
     check('بلا أخطاء سكربت', errors.length === 0, errors.join(' | '));

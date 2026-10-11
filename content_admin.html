@@ -230,6 +230,8 @@ details.adult h4{font-size:.8rem;font-weight:500;color:var(--mute);margin:10px 0
 .alist li:last-child{border-bottom:0}
 .alist span{flex:1;min-width:0;overflow-wrap:anywhere}
 .alist small{color:var(--mute);max-width:48%;text-align:end;overflow-wrap:anywhere}
+.alist button{flex:none;min-height:32px;padding:0 10px;border:1px solid var(--line);border-radius:9px;font-size:.78rem;color:var(--go);background:var(--sf)}
+.alist button:disabled{opacity:.5}
 #eList,#eBundleFiles{margin-top:10px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--sf2)}
 
 /* ===== قناة واتساب: السيرفرات في المنشور، والمعاينة فقاعةٌ كما تظهر في واتساب ===== */
@@ -242,6 +244,7 @@ details.adult h4{font-size:.8rem;font-weight:500;color:var(--mute);margin:10px 0
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .wa{--wa-bg:#efeae2;--wa-bub:#ffffff;--wa-ink:#111b21;--wa-link:#027eb5}}
 :root[data-theme="light"] .wa{--wa-bg:#efeae2;--wa-bub:#ffffff;--wa-ink:#111b21;--wa-link:#027eb5}
 .wa .bubble{max-width:470px;background:var(--wa-bub);color:var(--wa-ink);border-radius:4px 14px 14px 14px;padding:10px 12px 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:14.5px/1.55 system-ui,"Segoe UI",Tahoma,sans-serif;box-shadow:0 1px .5px rgba(0,0,0,.13)}
+.wa .bubbles{display:grid;gap:10px}
 .wa .bubble a{color:var(--wa-link);text-decoration:underline}
 .wa small{display:block;color:var(--mute);font-size:.76rem;margin-top:8px}
 .status{margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--sf2);border:1px solid var(--line)}
@@ -371,7 +374,7 @@ details.card>.din{padding:0 16px 16px}
       <button class="ghost" type="button" id="cMe" title="أرسل المعاينة إلى واتسابي">المعاينة إلى واتسابي</button>
       <button class="ghost" type="button" id="cPost">انشر الآن</button></div>
     <div class="msg" id="cMsg"></div>
-    <div class="wa" id="cBox" hidden><div class="bubble" id="cText" dir="rtl"></div><small id="cSize"></small></div>
+    <div class="wa" id="cBox" hidden><div class="bubbles" id="cText" dir="rtl"></div><small id="cSize"></small></div>
     <ul class="facts status" id="cLast"></ul>
   </section>
 
@@ -656,19 +659,27 @@ function sentHTML(r) {
 }
 
 // ما أُسقط للكبار (لا يُنشر): أقسامٌ حُذفت كلها بعددها، وأسماءٌ من أقسامٍ عادية قد يكون بينها فيلمٌ عادي، وآخر تنبيه
+// و«اعرضه»: ما ليس للكبار وأسقطه الاسم (المسلسل كله باسمه، أو القسم كله) يُعرض من السحب التالي، ويُلغى من «مسموحٌ بعرضه»
 function adultHTML(s) {
-  const n = (s.skipped || {}).adult, a = s.adult;
-  if (!n) return "";
+  const n = (s.skipped || {}).adult, a = s.adult, ok = s.allow || [];
+  const allowed = ok.length ? `<h4>مسموحٌ بعرضه (لا يُسقطه مرشّح الكبار)</h4><ul class="alist">${ok.map(([k, name]) =>
+    `<li><span>${esc(name)}</span><small>${k === "g" ? "قسمٌ كله" : "بكل حلقاته"}</small>`
+    + `<button type="button" data-allow="${k}" data-name="${esc(name)}" data-on="0">ألغِ</button></li>`).join("")}</ul>` : "";
+  if (!n) return allowed ? `<details class="adult fold"${UI[s.key].adult ? " open" : ""}><summary>ما سمحتَ بعرضه (${num(ok.length)})</summary><div class="din">${allowed}</div></details>` : "";
   if (!a) return `<div class="meta">لم تُحفظ أسماء ما أُسقط من هذا الملف — ${s.url ? "اضغط «اسحب الآن» لتراها" : "ارفع الملف من جديد لتراها"}، ويصلك تنبيهٌ بها.</div>`;
-  const li = (name, small) => `<li><span>${esc(name)}</span><small>${small}</small></li>`;
-  const g = (a.groups || []).map(([name, c]) => li(name, count(c, N.item))).join("");
-  const t = (a.titles || []).map(([name, grp, c]) => li(name, `في «${esc(grp)}»${c > 1 ? ` (${count(c, N.item)})` : ""}`)).join("");
-  const p = (a.panel || []).map(([name, grp]) => li(name, `في «${esc(grp)}»`)).join("");
+  const btn = (k, name, label) => `<button type="button" data-allow="${k}" data-name="${esc(name)}" data-on="1">${label}</button>`;
+  const li = (name, small, b) => `<li><span>${esc(name)}</span><small>${small}</small>${b || ""}</li>`;
+  const g = (a.groups || []).map(([name, c]) => li(name, count(c, N.item), btn("g", name, "اعرض القسم"))).join("");
+  const t = (a.titles || []).map(([name, grp, c]) => li(name, `في «${esc(grp)}»${c > 1 ? ` (${count(c, N.item)})` : ""}`,
+    btn("t", name, c > 1 ? "اعرضه كاملًا" : "اعرضه"))).join("");
+  const p = (a.panel || []).map(([name, grp]) => li(name, `في «${esc(grp)}»`, btn("t", name, "اعرضه"))).join("");
   return `<details class="adult fold"${UI[s.key].adult ? " open" : ""}><summary>ما أُسقط للكبار (${count(a.count, N.item)}) — لا يُنشر</summary><div class="din">
+    <p class="hint" style="margin:0">ليس للكبار؟ «اعرضه» يُظهره كاملًا (المسلسل بكل حلقاته) ${s.url ? "بسحبٍ يبدأ الآن" : "من الرفع التالي للملف"}.</p>
     ${g ? `<h4>أقسامٌ حُذفت كلها</h4><ul class="alist">${g}</ul>` : ""}
-    ${t ? `<h4>أسماءٌ حُذفت من أقسامٍ عادية — قد يكون بينها فيلمٌ عادي</h4><ul class="alist">${t}</ul>` : ""}
+    ${t ? `<h4>أسماءٌ حُذفت من أقسامٍ عادية — قد يكون بينها مسلسلٌ أو فيلمٌ عادي</h4><ul class="alist">${t}</ul>` : ""}
     ${p ? `<h4>أفلامٌ علّمتها لوحة السيرفر للكبار</h4><ul class="alist">${p}</ul>` : ""}
     ${a.more ? `<p class="hint">و${count(a.more, N.item)} غيرها</p>` : ""}
+    ${allowed}
     ${a.alert ? `<p class="hint">آخر تنبيه ${esc(when(a.alert.at))}: ${sentHTML(a.alert)}</p>` : ""}</div></details>`;
 }
 
@@ -852,10 +863,10 @@ async function preview(me) {
     note = "لا جديد منذ آخر منشور — هذه معاينةٌ بما جدّ في آخر 7 أيام.";
   }
   if (d.error) return cNote(d.error, "err");
-  const t = d.preview.text;
+  const t = d.preview.text, ps = d.preview.posts || [];      // رسالةٌ منفصلةٌ لكل سيرفر
   $("cBox").hidden = !t;
-  $("cText").innerHTML = t ? waHTML(t) : "";
-  $("cSize").textContent = t ? `${tally(d.preview.n)} · ${num(t.length)} حرفًا` : "";
+  $("cText").innerHTML = ps.map(p => `<div class="bubble">${waHTML(p.text)}</div>`).join("");
+  $("cSize").textContent = t ? `${tally(d.preview.n)}` + (ps.length > 1 ? ` · ${num(ps.length)} رسائل، رسالةٌ لكل سيرفر` : ` · ${num(t.length)} حرفًا`) : "";
   if (!t) note = "لا جديد في آخر 7 أيام: ما أضيف يُعرف بتاريخ إضافته من واجهة السيرفر، أو بمقارنة كل سحبٍ بما قبله.";
   const m = d.me;
   if (m) note = (note ? note + "\n" : "") + (m.ok ? `أُرسلت المعاينة إلى واتسابك ✓ ${m.to}` : "لم تُرسل إلى واتسابك — " + (m.error || ""));
@@ -878,7 +889,7 @@ $("chan").addEventListener("click", async e => {
       const d = await api("/api/content/admin/channel-post", {}).catch(() => ({error: "تعذّر الاتصال"}));
       if (d.servers) { DATA = d; render(); }
       if (d.error) return cNote(d.error, "err");
-      cNote(`نُشر في القناة ✓ ${tally(d.post.n || {})}`, "ok");
+      cNote(`نُشر في القناة ✓ ${tally(d.post.n || {})}` + (d.post.sent > 1 ? ` · ${num(d.post.sent)} رسائل` : ""), "ok");
     }
   } finally { if (b.isConnected) b.disabled = false; }
 });
@@ -1346,6 +1357,19 @@ async function upload(key, sec) {
 }
 
 $("list").addEventListener("click", async e => {
+  const al = e.target.closest("button[data-allow]");
+  if (al) {         // «اعرضه» / «ألغِ» فيما أُسقط للكبار
+    const key = al.closest("[data-k]").dataset.k, on = al.dataset.on === "1", name = al.dataset.name;
+    if (on && !confirm(`«${name}» ليس للكبار؟ يُعرض في صفحة المحتوى ${al.dataset.allow === "g" ? "قسمًا كاملًا" : "بكل حلقاته"}.`)) return;
+    al.disabled = true;
+    const d = await api("/api/content/admin/allow", {s: key, kind: al.dataset.allow, name, on}).catch(() => ({error: "تعذّر الحفظ"}));
+    if (d.error) { al.disabled = false; return say(key, d.error, "err"); }
+    DATA = d; delete SIG[key]; render();
+    const srv = (DATA.servers || []).find(x => x.key === key) || {};
+    say(key, on ? (srv.url ? `سُمح بعرض «${name}» — يُسحب الملف الآن ليظهر` : `سُمح بعرض «${name}» — ارفع الملف من جديد ليظهر`)
+      : `أُلغي السماح بـ«${name}» — يُسقط من السحب التالي`, "ok");
+    return;
+  }
   const b = e.target.closest("[data-act],[data-gk]"); if (!b) return;
   const sec = b.closest("[data-k]"), key = sec.dataset.k, ui = UI[key];
   const menu = b.closest("details.more");

@@ -97,6 +97,7 @@ SEARCH_KINDS = ("series", "movie")   # البحث باسم المسلسل أو �
                                      # حلقات مسلسلٍ باسمه («SOLO باب الحارة»، «… S01») فتبدو حلقاتٍ في النتائج
 QUERY_MAX = 60
 ADULT_LIST = 200             # ما يُحفظ للمدير من أقسام الكبار ومن الأسماء المحذوفة (والباقي عددٌ)
+ALLOW_MAX = 500              # ما يُسمح بعرضه مما أسقطه مرشّح الكبار، لكل سيرفر
 ADULT_MARKS = 5000           # بصمات ما أُسقط، لمعرفة الجديد منه في كل سحب
 ALERT_LINES = 15             # سطور التنبيه لكلٍّ منهما، والقائمة كاملة في صفحة المدير
 UA = "VLC/3.0.20 LibVLC/3.0.20"   # لوحات Xtream تقبل المشغّلات وقد تردّ غيرها
@@ -293,7 +294,8 @@ class Parser:
     """يأخذ سطور الملف واحدًا واحدًا (‏line) ويُخرج الفهرس (‏result). والعنصر:
     فيلم {n الاسم، y السنة، p الصورة، i رقمه}، وقناة {n، p، i}، ومسلسل {n، y، p، i أكبر رقم حلقة، s المواسم}."""
 
-    def __init__(self):
+    def __init__(self, allow=None):
+        self.allow = allow or {"t": set(), "g": set()}   # ما سمح المدير بعرضه وإن بدا للكبار: أسماءٌ وأقسام (‏_norm)
         self.pending = None
         self.extgrp = ""
         self.groups = {k: {} for k in KINDS}
@@ -301,7 +303,7 @@ class Parser:
         self.skipped = {"adult": 0, "sep": 0, "bad": 0}
         self.xt = None                       # (القاعدة، المستخدم، الكلمة) لواجهة Xtream — لا تُحفظ
         self.adult_groups = {}               # قسم الكبار ← عدد ما فيه (حُذف كله)
-        self.adult_titles = {}               # بصمة الاسم ← [الاسم، قسمه، عدده]: حُذف باسمه من قسمٍ عادي
+        self.adult_titles = {}               # بصمة الاسم ← [الاسم، قسمه، عدده]: حُذف باسمه من قسمٍ عادي (والمسلسل باسمه مرة)
 
     def line(self, s):
         s = s.strip()
@@ -326,19 +328,21 @@ class Parser:
         if not name:
             self.skipped["bad"] += 1
             return
-        if _ADULT_GROUP.search(group):
+        if _ADULT_GROUP.search(group) and _norm(group) not in self.allow["g"]:
             self.skipped["adult"] += 1
             if group in self.adult_groups or len(self.adult_groups) < ADULT_MARKS:
                 self.adult_groups[group] = self.adult_groups.get(group, 0) + 1
             return
         if _ADULT_TITLE.search(name):
-            self.skipped["adult"] += 1
-            k = _norm(name)
-            if k in self.adult_titles:
-                self.adult_titles[k][2] += 1
-            elif len(self.adult_titles) < ADULT_MARKS:
-                self.adult_titles[k] = [name, group, 1]
-            return
+            base = adult_base(name)
+            k = _norm(base)
+            if k not in self.allow["t"]:
+                self.skipped["adult"] += 1
+                if k in self.adult_titles:
+                    self.adult_titles[k][2] += 1
+                elif len(self.adult_titles) < ADULT_MARKS:
+                    self.adult_titles[k] = [base, group, 1]
+                return
         if _is_sep(name):
             self.skipped["sep"] += 1
             return
@@ -474,8 +478,14 @@ def iter_lines(read, progress=None, limit=MAX_BYTES, chunk=1 << 20):
     yield from buf.replace("\r", "\n").split("\n")
 
 
-def _run(read, progress=None):
-    p = Parser()
+def adult_base(name):
+    """ما يُعرض ويُسمح به من اسمٍ أُسقط للكبار: المسلسل باسمه بلا موسمٍ ولا حلقة (فيُسمح به كله مرة)، والفيلم باسمه."""
+    ep = _episode(name)
+    return (_clean(_tidy(ep[0])) or name) if ep and ep[3] else name
+
+
+def _run(read, progress=None, allow=None):
+    p = Parser(allow)
     for i, line in enumerate(iter_lines(read, progress)):
         if i == 0:
             line = line.lstrip("\ufeff")
@@ -617,6 +627,8 @@ def _load(data_dir):
                     "buy": str(x.get("buy") or "").strip()[:500],
                     "url": x.get("url") if isinstance(x.get("url"), str) else "",
                     "hidden": [h for h in (x.get("hidden") or []) if isinstance(h, str)][:5000],
+                    "allow": [[a[0], str(a[1])[:200]] for a in (x.get("allow") or [])
+                              if isinstance(a, list) and len(a) == 2 and a[0] in ("t", "g")][:ALLOW_MAX],
                     "try_at": _float(x.get("try_at")), "error": str(x.get("error") or "")[:300]})
     return out
 
@@ -719,7 +731,8 @@ def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
     try:
         state = _busy.get(key) or {}
         state["stage"] = "read"
-        p = _run(read, progress=lambda n: state.__setitem__("bytes", n))
+        allow = allow_sets(_server(data_dir, key))
+        p = _run(read, progress=lambda n: state.__setitem__("bytes", n), allow=allow)
         cat, found = p.result(), p.xt
         if not cat["entries"]:
             raise ValueError("لا عناصر في الملف (‏#EXTINF) — تأكّد أنه قائمة M3U نفسها لا صفحة خطأ")
@@ -727,7 +740,7 @@ def ingest(data_dir, key, read, source, label="", claimed=False, xt=None):
         if api:
             state["stage"] = "meta"
             try:
-                cat["api"] = {"ok": True, **enrich(cat, api, flagged)}
+                cat["api"] = {"ok": True, **enrich(cat, api, flagged, allow)}
             except Exception as e:  # noqa: BLE001 — الصفحة بما في الملف، والسبب للمدير
                 cat["api"] = {"ok": False, "error": _fetch_error(e)}
         now = time.time()
@@ -891,6 +904,35 @@ def set_url(data_dir, key, url):
     if _update(data_dir, key, url=crypto_store.encrypt(url, data_dir) if url else "", error="", try_at=0.0) is None:
         raise ValueError("سيرفر غير معروف")
     return bool(url)
+
+
+def allow_sets(srv):
+    """ما سمح المدير بعرضه من سيرفر ← {t: أسماء، g: أقسام} بـ ‏_norm، للقراءة."""
+    out = {"t": set(), "g": set()}
+    for kind, name in (srv or {}).get("allow") or ():
+        out[kind].add(_norm(name))
+    return out
+
+
+def set_allow(data_dir, key, kind, name, on):
+    """يسمح بعرض اسمٍ (مسلسلٌ كله أو فيلم: ‏t) أو قسمٍ (‏g) أسقطه مرشّح الكبار، أو يلغي السماح — ويظهر من السحب التالي.
+    ← هل للسيرفر رابطٌ يُسحب منه الآن."""
+    name = " ".join(str(name or "").split())[:200]
+    if kind not in ("t", "g") or not name:
+        raise ValueError("اختر ما تسمح بعرضه")
+    with _lock:
+        rows = _load(data_dir)
+        r = next((x for x in rows if x["key"] == key), None)
+        if not r:
+            raise ValueError("سيرفر غير معروف")
+        a = [x for x in r["allow"] if not (x[0] == kind and _norm(x[1]) == _norm(name))]
+        if on:
+            if len(a) >= ALLOW_MAX:
+                raise ValueError("بلغت حدّ ما يُسمح به لهذا السيرفر")
+            a.append([kind, name])
+        r["allow"] = a
+        _save(data_dir, rows)
+        return bool(r["url"])
 
 
 def set_hidden(data_dir, key, gid, hidden):
@@ -1611,11 +1653,12 @@ def _optional(xt, action, each):
         return False
 
 
-def enrich(cat, xt, flagged=None):
+def enrich(cat, xt, flagged=None, allow=None):
     """يُثري الفهرس من واجهة Xtream: تقييم الفيلم والمسلسل وتاريخ إضافته، وتصنيفه وقصته، وخلفية المسلسل —
     ويُسقط ما تعلّمه الواجهة للكبار (واسمه وقسمه في ‏flagged للمدير وحده، مرةً لكل فيلم). وملفٌّ بلا أقسام
     (‏type=m3u: كل شيءٍ في «بلا قسم») يُقسَّم بأقسام الواجهة وبترتيبها، وشعار القناة منها إن لم يكن في الملف.
     ← {movies، series، grouped} عدد ما أُثري وما قُسِّم. والفشل استثناء، والفهرس كما هو قبله."""
+    allow = allow or {"t": set(), "g": set()}
     movies, series, lives = {}, {}, {}
     for g in cat.get("movie") or []:
         for it in g["items"]:
@@ -1637,7 +1680,8 @@ def enrich(cat, xt, flagged=None):
                 sid = _int(o.get("stream_id"))
                 if sid not in movies:
                     continue
-                if str(o.get("is_adult") or "0").strip().lower() not in ("0", "", "false"):
+                if str(o.get("is_adult") or "0").strip().lower() not in ("0", "", "false") and \
+                        not any(_norm(_shown(it)) in allow["t"] for it in movies[sid]):
                     adult.add(sid)
                     continue
                 found[sid] = _slim({"r": _rating(o.get("rating")), "a": _int(o.get("added")), "g": _genres(o.get("genre")),
@@ -1707,17 +1751,22 @@ def enrich(cat, xt, flagged=None):
                 for x in g["items"]:
                     if x.get("i") in adult and x["i"] not in told:
                         told.add(x["i"])
-                        flagged.append([f"{x['n']} ({x['y']})" if x.get("y") else x["n"], g["name"]])
+                        flagged.append([_shown(x), g["name"]])
             g["items"] = [x for x in g["items"] if x.get("i") not in adult]
         cat["movie"] = [g for g in cat.get("movie") or [] if g["items"]]
         cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(adult)
-    grouped = sum(_regroup(cat, kind, names.get(kind) or {}, cids, flagged) for kind in want)
+    grouped = sum(_regroup(cat, kind, names.get(kind) or {}, cids, flagged, allow) for kind in want)
     if grouped:
         done["grouped"] = grouped
     return done
 
 
-def _regroup(cat, kind, names, cids, flagged):
+def _shown(x):
+    """اسم الفيلم كما يُعرض فيما أُسقط للكبار «Name (2020)» — وبه يُسمح بعرضه."""
+    return f"{x['n']} ({x['y']})" if x.get("y") else x["n"]
+
+
+def _regroup(cat, kind, names, cids, flagged, allow=None):
     """ما في «بلا قسم» إلى قسمه في الواجهة (‏names: رقم القسم ← اسمه، بترتيب الواجهة) — وقسمٌ للكبار يُسقط ما فيه
     (وفي ‏flagged للمدير). وما لم يُعرف قسمه يبقى في «بلا قسم» آخرها. ← عدد ما نُقل."""
     groups = cat.get(kind) or []
@@ -1735,10 +1784,10 @@ def _regroup(cat, kind, names, cids, flagged):
         its = by.get(name)
         if not its:
             continue
-        if _ADULT_GROUP.search(name):
+        if _ADULT_GROUP.search(name) and _norm(name) not in (allow or {}).get("g", ()):
             cat["skipped"]["adult"] = cat["skipped"].get("adult", 0) + len(its)
             if flagged is not None:
-                flagged.extend([f"{x['n']} ({x['y']})" if x.get("y") else x["n"], name] for x in its)
+                flagged.extend([_shown(x), name] for x in its)
             continue
         if name in named:
             named[name]["items"].extend(its)
@@ -1801,7 +1850,7 @@ def admin_state(data_dir):
             "has": bool(m.get("has")), "at": m.get("at", 0), "source": cat.get("source", ""), "label": cat.get("label", ""),
             "counts": m.get("counts"), "entries": cat.get("entries", 0), "n": cat.get("n", {}),
             "skipped": cat.get("skipped", {}), "api": cat.get("api"), "old": bool(cat.get("old")), "loading": not fresh,
-            "adult": _adult_view(data_dir, s["key"]),
+            "adult": _adult_view(data_dir, s["key"]), "allow": s["allow"],
             "news": (_read_ro(_news_path(data_dir, s["key"])) or {}).get("last"),
             "url": mask_url(url) if url else "", "try_at": s["try_at"],
             "error": s["error"], "busy": dict(_busy[s["key"]]) if s["key"] in _busy else None,
@@ -2012,6 +2061,8 @@ _MONTHS = ("يناير", "فبراير", "مارس", "أبريل", "مايو", "
 POST_LINES = {"movie": 8, "series": 5, "eps": 8}   # سطور كل قسمٍ لسيرفرٍ واحد، وتقلّ بعدد السيرفرات (ولا تنقص عن 3)
 POST_NAME = 60                # طول الاسم في السطر
 RLM = "‏"                # أول سطر العنصر: يبقى من اليمين وإن بدأ باسمٍ إنجليزي
+LRM = "‎"                # بعد الاسم الإنجليزي: قوسه وسنته معه، وما بعده من العربي لا يتقدّمه
+DOT = "▫️"                    # علامة العنصر في المنشور
 SEP = "━━━━━━━━━━━━"
 _WA_MARKS = str.maketrans({"*": "∗", "_": " ", "~": "-", "`": "'"})   # علامات تنسيق واتساب في الأسماء لا تنسّق شيئًا
 
@@ -2036,13 +2087,21 @@ def _wa(s):
 
 
 def _title(x, year=True):
+    """الاسم وسنته — والاسم اللاتيني يُختم بـ LRM فيبقى قوسه وسنته معه في سطرٍ من اليمين."""
     n = _wa(x.get("n"))
     n = n if len(n) <= POST_NAME else n[:POST_NAME - 1].rstrip() + "…"
-    return f"{n} ({x['y']})" if year and x.get("y") else n
+    n = f"{n} ({x['y']})" if year and x.get("y") else n
+    return n + LRM if re.search(r"[A-Za-z]", n) else n
 
 
 def _stars(x):
     return f" ⭐ {float(x['r']):.1f}" if x.get("r") else ""
+
+
+def _with(title, *info):
+    """«الاسم — تفاصيله» بفاصلٍ واضح، وRLM قبل التفاصيل العربية فلا تختلط بالاسم."""
+    info = " · ".join(p for p in info if p)
+    return f"{title} {RLM}— {info}" if info else title
 
 
 def _movie_line(x):
@@ -2050,35 +2109,34 @@ def _movie_line(x):
 
 
 def _series_line(x):
-    """«Shōgun (2024) · 10 حلقات ⭐ 8.7» — والمسلسل بأكثر من موسمٍ بعدد مواسمه."""
+    """«Shōgun (2024) — 10 حلقات ⭐ 8.7» — والمسلسل بأكثر من موسمٍ بعدد مواسمه."""
     seasons = [s for s in x["s"] if s]
     size = _count(len(seasons), N_SEASONS) if len(seasons) > 1 else _count(sum(x["s"].values()), N_EPISODES)
-    return f"{_title(x)} · {size}{_stars(x)}"
+    return _with(_title(x), size) + _stars(x)
 
 
 def _more_line(x):
-    """«The Boys · الموسم 4 · 3 حلقات» · «House of the Dragon · الموسم 2 (جديد) · 8 حلقات» — وما حدّثته اللوحة ولا يُعرف
-    كم جدّ فيه: موسمه الأخير وحلقاته «The Boys · الموسم 4 (8 حلقات)»."""
+    """«The Boys — الموسم 4 · 3 حلقات» · «House of the Dragon — الموسم 2 (جديد) · 8 حلقات» — وما حدّثته اللوحة ولا يُعرف
+    كم جدّ فيه: موسمه الأخير وحلقاته «The Boys — الموسم 4 (8 حلقات)»."""
     if not x["add"]:
         s, n = x.get("cur") or (0, 0)
-        return f"{_title(x, year=False)} · الموسم {s} ({_count(n, N_EPISODES)})" if s else \
-            f"{_title(x, year=False)} ({_count(n, N_EPISODES)})"
+        return _with(_title(x, year=False), f"الموسم {s} ({_count(n, N_EPISODES)})" if s else _count(n, N_EPISODES))
     ss = sorted(s for s in x["add"] if s)
     if len(ss) == 1:
         where = f"الموسم {ss[0]}" + (" (جديد)" if x["add"][ss[0]][2] else "")
     else:
         where = "المواسم " + "، ".join(map(str, ss[:-1])) + f" و{ss[-1]}" if ss else ""
     eps = _count(sum(a[0] for a in x["add"].values()), N_EPISODES)
-    return " · ".join(p for p in (_title(x, year=False), where, eps) if p)
+    return _with(_title(x, year=False), where, eps)
 
 
 def _lines(rows, limit, line, forms):
     """سطور القسم بأوّلها والباقي عدد — وواحدٌ زائد يُعرض بدل «ووحدٌ غيره»."""
     if len(rows) == limit + 1:
         limit += 1
-    out = [f"{RLM}• {line(x)}" for x in rows[:limit]]
+    out = [f"{RLM}{DOT} {line(x)}" for x in rows[:limit]]
     if len(rows) > limit:
-        out.append(f"{RLM}   …و{_count(len(rows) - limit, forms)} غيرها")
+        out.append(f"{RLM}➕ و{_count(len(rows) - limit, forms)} غيرها")
     return out
 
 
@@ -2118,16 +2176,18 @@ def channel_text(data_dir, keys, since, until, now=None):
     lim = {k: max(3, v * 2 // (len(parts) + 1)) for k, v in POST_LINES.items()}
     out = [f"🆕 *أضيف مؤخرًا{' في ' + _wa(parts[0][0]['name']) if single else ''}*", f"🗓️ {ar_date(now)}"]
     for s, movies, fresh, more, n in parts:
-        out += ["", f"✨ الجديد: {_counts(n)}"] if single else ["", SEP, f"📡 *{_wa(s['name'])}*", f"✨ {_counts(n)}"]
+        out += [f"✨ الجديد: {_counts(n)}", SEP] if single else ["", SEP, f"📡 *{_wa(s['name'])}*", f"✨ {_counts(n)}"]
         if movies:
-            out += ["", "🎬 *أفلام جديدة*"] + _lines(sorted(movies.values(), key=rank), lim["movie"], _movie_line, N_MOVIES)
+            out += ["", f"🎬 *أفلام جديدة* ({len(movies)})"] + _lines(sorted(movies.values(), key=rank), lim["movie"],
+                                                                      _movie_line, N_MOVIES)
         if fresh:
-            out += ["", "📺 *مسلسلات جديدة*"] + _lines(sorted(fresh.values(), key=rank), lim["series"], _series_line, N_SERIES)
+            out += ["", f"📺 *مسلسلات جديدة* ({len(fresh)})"] + _lines(sorted(fresh.values(), key=rank), lim["series"],
+                                                                         _series_line, N_SERIES)
         if more:
-            out += ["", "🎞️ *حلقات ومواسم جديدة*"] + _lines(sorted(more.values(), key=rank_more), lim["eps"],
-                                                             _more_line, N_SERIES)
+            out += ["", f"🎞️ *حلقات ومواسم جديدة* ({len(more)})"] + _lines(sorted(more.values(), key=rank_more), lim["eps"],
+                                                                            _more_line, N_SERIES)
         link = f"{guide_pages.SITE}{PATH}/{s['key']}?t=new&ref=wa"    # ref=wa: زيارات القناة باسمها في الإحصائيات
-        out += ["", "🔗 القائمة كاملة، وابحث باسم ما تريد:", link] if single else ["", f"🔗 القائمة كاملة: {link}"]
+        out += ["", SEP, "🔗 *القائمة كاملة، وابحث باسم ما تريد:*", link] if single else ["", f"🔗 القائمة كاملة: {link}"]
     return "\n".join(out), total
 
 
@@ -2138,6 +2198,7 @@ CHANNEL_WINDOW = 3 * 86400    # ولا يعود أبعد من ثلاثة أيا�
 CHANNEL_FIRST = 86400         # وأول منشورٍ بعد ربط القناة بما جدّ في اليوم الذي قبله
 _JID = re.compile(r"\d{5,30}@newsletter")
 _INVITE = re.compile(r"(?:https?://)?(?:www\.)?whatsapp\.com/channel/([A-Za-z0-9]{10,40})", re.I)
+CHANNEL_GAP = 4               # ثوانٍ بين رسائل السيرفرات في المنشور الواحد (رسالةٌ لكل سيرفر)
 channel_sender = None         # (معرّف القناة، النص) ← {ok, error} — يضبطه الخادم: من رقم المسابقة المربوط
 _posting = threading.Lock()   # منشورٌ واحد في وقته: المجدول و«انشر الآن» لا يلتقيان
 
@@ -2160,8 +2221,9 @@ def channel_ref(v):
 
 
 def channel(data_dir):
-    """قناة واتساب كما حُفظت ← {on, jid, name, invite, role, subs, servers, hour, since, day, last, posted}: day يوم
-    آخر منشورٍ مجدول (أُرسل أو لم يجدّ فيه شيء)، وsince ما بعده جديدٌ لم يُنشر، وlast آخر محاولة وposted آخر ما نُشر."""
+    """قناة واتساب كما حُفظت ← {on, jid, name, invite, role, subs, servers, hour, since, sinces, day, last, posted}: day يوم
+    آخر منشورٍ مجدول (أُرسل أو لم يجدّ فيه شيء)، وsince ما بعده جديدٌ لم يُنشر، وsinces ما بعده لسيرفرٍ نُشر وحده (ومنشورٌ
+    فشل في غيره)، وlast آخر محاولة وposted آخر ما نُشر."""
     c = (_read(os.path.join(_dir(data_dir), SETTINGS)) or {}).get("channel")
     c = c if isinstance(c, dict) else {}
     jid, hour = str(c.get("jid") or ""), c.get("hour")
@@ -2170,6 +2232,8 @@ def channel(data_dir):
             "servers": [k for k in c.get("servers") or [] if isinstance(k, str) and key_ok(k) == k][:MAX_SERVERS],
             "hour": hour if type(hour) is int and 0 <= hour <= 23 else CHANNEL_HOUR,
             "since": _float(c.get("since")), "day": str(c.get("day") or "")[:10],
+            "sinces": {k: _float(v) for k, v in (c.get("sinces") or {}).items() if isinstance(k, str)}
+            if isinstance(c.get("sinces"), dict) else {},
             "last": c.get("last") if isinstance(c.get("last"), dict) else None,
             "posted": c.get("posted") if isinstance(c.get("posted"), dict) else None}
 
@@ -2188,27 +2252,51 @@ def save_channel(data_dir, **kw):
 
 def link_channel(data_dir, jid, name="", invite="", role="", subs=0):
     """يحفظ القناة التي عرفها رقم المسابقة. وقناةٌ غير المحفوظة تبدأ من جديد: أول منشورٍ بما جدّ في اليوم الذي قبله."""
-    extra = {} if jid == channel(data_dir)["jid"] else {"since": time.time() - CHANNEL_FIRST, "day": "", "last": None,
-                                                         "posted": None}
+    extra = {} if jid == channel(data_dir)["jid"] else {"since": time.time() - CHANNEL_FIRST, "sinces": {}, "day": "",
+                                                         "last": None, "posted": None}
     return save_channel(data_dir, jid=jid, name=str(name or "")[:100], invite=str(invite or "")[:60],
                         role=str(role or "")[:20], subs=int(_float(subs)), **extra)
 
 
+def _since(c, key, until):
+    """ما بعده جديدٌ لم يُنشر من السيرفر: منذ آخر منشورٍ له (وأبعده CHANNEL_WINDOW)."""
+    return max(c["since"], c["sinces"].get(key, 0), until - CHANNEL_WINDOW)
+
+
+def _channel_posts(data_dir, c, keys, until, days=0, now=None):
+    """رسائل المنشور، رسالةٌ لكل سيرفرٍ جدّ فيه شيء بترتيب الصفحة ← [{key, name, text, n}]."""
+    out = []
+    for s in servers(data_dir):
+        if s["key"] not in keys:
+            continue
+        since = until - min(int(days), NEWS_KEEP // 86400) * 86400 if days else _since(c, s["key"], until)
+        text, n = channel_text(data_dir, [s["key"]], since, until, now)
+        if text:
+            out.append({"key": s["key"], "name": s["name"], "text": text, "n": n})
+    return out
+
+
+def _sum(posts):
+    return {k: sum(p["n"][k] for p in posts) for k in ("movie", "series", "eps")}
+
+
 def channel_preview(data_dir, keys=None, days=0, now=None):
-    """المنشور كما سيُنشر الآن ← {text, n, since, until}: ما جدّ منذ آخر منشور (وأبعده CHANNEL_WINDOW)، أو ما جدّ
-    في آخر `days` يومًا للمعاينة. وkeys سيرفراتٌ غير المحفوظة (ما اختاره المدير ولم يحفظه بعد)."""
+    """المنشور كما سيُنشر الآن ← {text, posts, n, since, until}: رسالةٌ لكل سيرفر (‏posts) بما جدّ فيه منذ آخر منشور
+    (وأبعده CHANNEL_WINDOW)، أو ما جدّ في آخر `days` يومًا للمعاينة؛ وtext الرسائل متتابعة. وkeys سيرفراتٌ غير
+    المحفوظة (ما اختاره المدير ولم يحفظه بعد)."""
     c = channel(data_dir)
     keys = [k for k in keys if isinstance(k, str)] if isinstance(keys, list) else c["servers"]
     with _news_lock:
         until = time.time()
-        since = until - min(int(days), NEWS_KEEP // 86400) * 86400 if days else max(c["since"], until - CHANNEL_WINDOW)
-        text, n = channel_text(data_dir, keys, since, until, now)
-    return {"text": text, "n": n, "since": since, "until": until}
+        posts = _channel_posts(data_dir, c, keys, until, days, now)
+    since = until - min(int(days), NEWS_KEEP // 86400) * 86400 if days else max(c["since"], until - CHANNEL_WINDOW)
+    return {"text": "\n\n".join(p["text"] for p in posts), "posts": posts, "n": _sum(posts), "since": since, "until": until}
 
 
 def channel_run(data_dir, manual=False, now=None):
-    """ينشر في القناة ما جدّ منذ آخر منشور ← {ok, empty?, error?, n?}. ويوم المجدول يُعلَّم (أُرسل أو لم يجدّ شيء)
-    فلا يُعاد، وفشله يُعاد بعد CHANNEL_RETRY؛ و«انشر الآن» (‏manual) لا يمسّ اليوم، وبلا جديدٍ لا يُحفظ."""
+    """ينشر في القناة ما جدّ منذ آخر منشور، رسالةً منفصلةً لكل سيرفر ← {ok, empty?, error?, n?, sent?, parts?}. ويوم
+    المجدول يُعلَّم (أُرسل كله أو لم يجدّ شيء) فلا يُعاد، وفشل سيرفرٍ يُعاد هو وحده بعد CHANNEL_RETRY (وما نُشر من غيره
+    لا يُعاد)؛ و«انشر الآن» (‏manual) لا يمسّ اليوم، وبلا جديدٍ لا يُحفظ."""
     if not _posting.acquire(blocking=False):
         return {"ok": False, "error": "يُنشر الآن في القناة"}
     try:
@@ -2220,22 +2308,41 @@ def channel_run(data_dir, manual=False, now=None):
             return {"ok": False, "error": "اختر السيرفرات في المنشور واحفظ"}
         with _news_lock:                     # لحظة القطع داخل القفل: ما سُجّل بعدها للمنشور التالي
             until = time.time()
-            text, n = channel_text(data_dir, c["servers"], max(c["since"], until - CHANNEL_WINDOW), until, now)
-        if not text:
+            posts = _channel_posts(data_dir, c, c["servers"], until, now=now)
+        if not posts:
             if manual:
                 return {"ok": False, "empty": True, "error": "لا جديد منذ آخر منشور"}
             save_channel(data_dir, day=_day(now), last={"at": now, "ok": True, "empty": True})
             return {"ok": True, "empty": True}
-        try:
-            res = channel_sender(c["jid"], text) if channel_sender else {"error": "النشر غير مضبوط على هذا الخادم"}
-        except Exception as e:  # noqa: BLE001 — الفشل يُحفظ سببه ويُعاد
-            res = {"error": str(e)[:200]}
-        ok = bool(isinstance(res, dict) and res.get("ok"))
-        last = {"at": now, "ok": ok, "n": n, "manual": manual,
-                "error": "" if ok else str((res if isinstance(res, dict) else {}).get("error") or "تعذّر النشر")[:200]}
+        parts, done = [], []
+        for i, p in enumerate(posts):
+            if i and CHANNEL_GAP:
+                time.sleep(CHANNEL_GAP)
+            try:
+                res = channel_sender(c["jid"], p["text"]) if channel_sender else {"error": "النشر غير مضبوط على هذا الخادم"}
+            except Exception as e:  # noqa: BLE001 — الفشل يُحفظ سببه ويُعاد
+                res = {"error": str(e)[:200]}
+            ok = bool(isinstance(res, dict) and res.get("ok"))
+            parts.append({"key": p["key"], "name": p["name"], "ok": ok, "n": p["n"],
+                          "error": "" if ok else str((res if isinstance(res, dict) else {}).get("error") or "تعذّر النشر")[:200]})
+            if ok:
+                done.append(p)
+        bad = [x for x in parts if not x["ok"]]
+        ok = not bad
+        err = ""
+        if bad:
+            err = "؛ ".join(f"{x['name']}: {x['error']}" for x in bad) if len(posts) > 1 else bad[0]["error"]
+            if done:
+                err = f"نُشر {len(done)} من {len(posts)} — لم يُنشر {err}"
+        last = {"at": now, "ok": ok, "n": _sum(done) if done else _sum(posts), "manual": manual, "sent": len(done),
+                "parts": parts, "error": err[:400]}
         upd = {"last": last}
-        if ok:
-            upd.update(since=until, posted=last, **({} if manual else {"day": _day(now)}))
+        if ok:                                # كله نُشر: ما بعد القطع جديدٌ للسيرفرات كلها
+            upd.update(since=until, sinces={}, posted=last, **({} if manual else {"day": _day(now)}))
+        elif done:                            # بعضه: ما نُشر (وما لم يجدّ فيه شيء) لا يُعاد، والفاشل وحده يُعاد
+            failed = {x["key"] for x in bad}
+            upd.update(sinces=dict(c["sinces"], **{k: until for k in c["servers"] if k not in failed}),
+                       posted=dict(last, n=_sum(done)))
         save_channel(data_dir, **upd)
         return dict(last)
     finally:
@@ -2264,10 +2371,10 @@ def channel_state(data_dir, wait=True):
     pending, wanting = {"movie": 0, "series": 0, "eps": 0}, False
     for s in servers(data_dir) if c["jid"] else ():
         if s["key"] in c["servers"]:
-            got = _pending(data_dir, s["key"], since, until, set(s["hidden"]), wait)
+            got = _pending(data_dir, s["key"], _since(c, s["key"], until), until, set(s["hidden"]), wait)
             if got is None:
                 wanting = True
                 continue
             n = _tally(*got)
             pending = {k: pending[k] + n[k] for k in pending}
-    return dict({k: v for k, v in c.items() if k != "since"}, pending=None if wanting else pending, since=since)
+    return dict({k: v for k, v in c.items() if k not in ("since", "sinces")}, pending=None if wanting else pending, since=since)

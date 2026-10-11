@@ -461,6 +461,37 @@ def unit_adult():
         check("والتنبيه بأوّلها وعدد الباقي", body.count("• XXX | Studio") == C.ALERT_LINES
               and body.count("• Brazzers Night") == C.ALERT_LINES and "• و240 غيرها في صفحة المحتوى" in body, body[-200:])
 
+        print("«اعرضه»: ما ليس للكبار وأسقطه اسمه — المسلسل كله أو القسم")
+        club = ("#EXTM3U\n" + "".join(entry(f"The Playboy Club S01 E0{i}", "SERIES | Drama", "series", 600 + i) for i in range(1, 4))
+                + entry("Sex Education S01 E01", "Sex Education", "series", 610)
+                + entry("Sex Education S01 E02", "Sex Education", "series", 611)
+                + entry("Hot Stuff", "XXX | Adults", n=612) + entry("Normal News", "News", n=613))
+        seed(d, "casper", club)
+        a = C._adult_view(d, "casper")
+        check("المسلسل يُذكر مرةً باسمه وعدد حلقاته، لا حلقةً حلقة", a["titles"] == [["The Playboy Club", "SERIES | Drama", 3]]
+              and ["Sex Education", 2] in a["groups"] and a["count"] == 6, a)
+        check("والسماح لسيرفرٍ بلا رابط: لا سحب الآن", C.set_allow(d, "casper", "t", "The Playboy Club", True) is False
+              and C.set_allow(d, "casper", "g", " Sex  Education ", True) is False
+              and C._server(d, "casper")["allow"] == [["t", "The Playboy Club"], ["g", "Sex Education"]])
+        seed(d, "casper", club)
+        a = C._adult_view(d, "casper")
+        ser = {it["n"]: it for g in C._read(C._cat_path(d, "casper"))["series"] for it in g["items"]}
+        check("ومن الإدخال التالي يُعرض المسلسل بكل حلقاته والقسم كله، والباقي يُسقط كما هو",
+              ser.get("The Playboy Club", {}).get("s") == [[1, 3]] and ser.get("Sex Education", {}).get("s") == [[1, 2]]
+              and a["count"] == 1 and a["groups"] == [["XXX | Adults", 1]] and not a["titles"], (ser.keys(), a))
+        check("وفي حال المدير", next(x for x in C.admin_state(d)["servers"] if x["key"] == "casper")["allow"]
+              == [["t", "The Playboy Club"], ["g", "Sex Education"]])
+        C.set_allow(d, "casper", "t", "the playboy club", False)
+        seed(d, "casper", club)
+        check("وإلغاؤه يُسقطه من جديد", C._adult_view(d, "casper")["titles"] == [["The Playboy Club", "SERIES | Drama", 3]]
+              and C._server(d, "casper")["allow"] == [["g", "Sex Education"]])
+        for bad in (("x", "A"), ("t", "  ")):
+            try:
+                C.set_allow(d, "casper", bad[0], bad[1], True)
+                check(f"ويُرفض {bad}", False)
+            except ValueError:
+                check(f"ويُرفض {bad}", True)
+
         print("من يصله التنبيه")
         check("لم يُحفظ بعد", C.alert_to(d) is None)
         C.save_alert_to(d, "me@example.com", "966500000000")
@@ -581,13 +612,13 @@ def unit_panel():
     yr = time.gmtime(T + C.RIYADH).tm_year
     C._write(C._cat_path(d, "falcon"), panel_cat(T, yr))
     C.set_hidden(d, "falcon", C._gid("movie", "Hidden"), True)
-    R = C.RLM
+    R, L, D = C.RLM, C.LRM, C.DOT
     text, n = C.channel_text(d, ["falcon"], T - 86400, T, now=T)
     check("بلا سجلٍّ بعد: ما أضافته اللوحة في اليوم، والمخفي لا يُعدّ", n == {"movie": 1, "series": 2, "eps": 0}
-          and "✨ الجديد: فيلم واحد · مسلسلان" in text and f"{R}• Fresh Movie ({yr}) ⭐ 7.5" in text
+          and "✨ الجديد: فيلم واحد · مسلسلان" in text and f"{R}{D} Fresh Movie ({yr}){L} ⭐ 7.5" in text
           and "Week Old" not in text and "Hidden" not in text and "No Date" not in text, text)
-    check("والمسلسل بموسمه الأخير وحلقاته (لا يُعرف كم جدّ فيه)", f"{R}• The Boys · الموسم 4 (5 حلقات)" in text
-          and f"{R}• قيامة أرطغرل (47 حلقة)" in text and "Old Show" not in text, text)
+    check("والمسلسل بموسمه الأخير وحلقاته (لا يُعرف كم جدّ فيه)", f"{R}{D} The Boys{L} {R}— الموسم 4 (5 حلقات)" in text
+          and f"{R}{D} قيامة أرطغرل {R}— 47 حلقة" in text and "Old Show" not in text, text)
     text, n = C.channel_text(d, ["falcon"], T - 7 * 86400, T, now=T)
     check("وفي أسبوع: ما أضيف فيه", n["movie"] == 2 and "Week Old (2024)" in text and "Month Old" not in text, n)
 
@@ -647,40 +678,42 @@ def unit_channel():
     C.set_hidden(d, "casper", "gh", True)
     text, n = C.channel_text(d, ["casper"], T - 3 * 86400, T, now=T)
     lines = text.split("\n")
-    check("العنوان باسم السيرفر وتاريخ اليوم بتوقيت السعودية", lines[:2] == ["🆕 *أضيف مؤخرًا في كاسبر*", "🗓️ " + C.ar_date(T)], lines[:2])
+    check("العنوان باسم السيرفر وتاريخ اليوم بتوقيت السعودية، ثم الأعداد وفاصل", lines[:2] == ["🆕 *أضيف مؤخرًا في كاسبر*", "🗓️ " + C.ar_date(T)]
+          and lines[3] == C.SEP, lines[:4])
     check("والأعداد: المخفي والقديم لا يُعدّان، والمسلسلات ما جدّ فيه شيء، وحلقات المسلسل الجديد منها",
           n == {"movie": 4, "series": 5, "eps": 77} and "✨ الجديد: 4 أفلام · 5 مسلسلات · 77 حلقة" in lines, (n, lines[3:5]))
-    R = C.RLM
+    R, L, D = C.RLM, C.LRM, C.DOT
     block = lambda title: lines[lines.index(title) + 1:lines.index("", lines.index(title))]  # noqa: E731
     check("الأفلام: الإصدارات الحديثة أولًا ثم الأعلى تقييمًا، وعلامات التنسيق في الاسم لا تنسّق",
-          block("🎬 *أفلام جديدة*") == [f"{R}• New Better ({yr - 1}) ⭐ 8.4", f"{R}• New Hit ({yr}) ⭐ 7.1",
-                                        f"{R}• Old Classic (1972) ⭐ 9.2", f"{R}• M∗A∗S∗H 2"], block("🎬 *أفلام جديدة*"))
+          block("🎬 *أفلام جديدة* (4)") == [f"{R}{D} New Better ({yr - 1}){L} ⭐ 8.4", f"{R}{D} New Hit ({yr}){L} ⭐ 7.1",
+                                            f"{R}{D} Old Classic (1972){L} ⭐ 9.2", f"{R}{D} M∗A∗S∗H 2{L}"], block("🎬 *أفلام جديدة* (4)"))
     check("المسلسلات الجديدة بمواسمها أو حلقاتها، وما جدّ بعدها من حلقاتٍ فيها",
-          block("📺 *مسلسلات جديدة*") == [f"{R}• The Office (2005) · 3 مواسم ⭐ 8.9", f"{R}• Shogun ({yr - 2}) · 12 حلقة ⭐ 8.7"],
-          block("📺 *مسلسلات جديدة*"))
+          block("📺 *مسلسلات جديدة* (2)") == [f"{R}{D} The Office (2005){L} {R}— 3 مواسم ⭐ 8.9",
+                                              f"{R}{D} Shogun ({yr - 2}){L} {R}— 12 حلقة ⭐ 8.7"],
+          block("📺 *مسلسلات جديدة* (2)"))
     check("والحلقات: الموسم الجديد أولًا، وحلقات كل سحبٍ مجموعة",
-          block("🎞️ *حلقات ومواسم جديدة*") == [f"{R}• House of the Dragon · الموسم 2 (جديد) · 8 حلقات",
-                                                f"{R}• The Boys · الموسم 4 · 4 حلقات", f"{R}• قيامة أرطغرل · حلقتان"],
-          block("🎞️ *حلقات ومواسم جديدة*"))
-    check("ورابط «أضيف مؤخرًا» في صفحة السيرفر آخرًا", lines[-2:] == ["🔗 القائمة كاملة، وابحث باسم ما تريد:",
-                                                                   "https://guide.ssouq.com/content/casper?t=new&ref=wa"], lines[-2:])
+          block("🎞️ *حلقات ومواسم جديدة* (3)") == [f"{R}{D} House of the Dragon{L} {R}— الموسم 2 (جديد) · 8 حلقات",
+                                                    f"{R}{D} The Boys{L} {R}— الموسم 4 · 4 حلقات", f"{R}{D} قيامة أرطغرل {R}— حلقتان"],
+          block("🎞️ *حلقات ومواسم جديدة* (3)"))
+    check("ورابط «أضيف مؤخرًا» في صفحة السيرفر آخرًا", lines[-3:] == [C.SEP, "🔗 *القائمة كاملة، وابحث باسم ما تريد:*",
+                                                                   "https://guide.ssouq.com/content/casper?t=new&ref=wa"], lines[-3:])
     check("وما قبل الفترة وبعدها لا يدخل", C.channel_text(d, ["casper"], T, T + 60)[0] == ""
           and "Too Old" not in text and "Hidden" not in text)
     check("والسيرفر غير المختار لا يدخل", C.channel_text(d, ["smart"], 0, T + 60)[0] == "")
 
     journal(d, "smart", [{"t": T - 60, "k": "movie", "h": f"x{i}", "n": f"Film {i:02d}", "y": 2020, "gs": ["g"]} for i in range(12)])
     t2, n2 = C.channel_text(d, ["smart"], T - 3600, T)
-    check("الحدّ: 8 أفلام والباقي عدد", t2.count(f"{R}• Film") == 8 and f"{R}   …و4 أفلام غيرها" in t2, t2)
+    check("الحدّ: 8 أفلام والباقي عدد", t2.count(f"{R}{D} Film") == 8 and f"{R}➕ و4 أفلام غيرها" in t2, t2)
     journal(d, "smart", [{"t": T - 60, "k": "movie", "h": f"x{i}", "n": f"Film {i:02d}", "y": 2020, "gs": ["g"]} for i in range(9)])
     t2, _ = C.channel_text(d, ["smart"], T - 3600, T)
-    check("وواحدٌ زائد يُعرض بدل «وواحدٌ غيره»", t2.count(f"{R}• Film") == 9 and "غيرها" not in t2)
+    check("وواحدٌ زائد يُعرض بدل «وواحدٌ غيره»", t2.count(f"{R}{D} Film") == 9 and "غيرها" not in t2)
     t3, n3 = C.channel_text(d, ["smart", "casper"], T - 3 * 86400, T, now=T)
     l3 = t3.split("\n")
     check("سيرفران: عنوانٌ عام، وقسمٌ لكلٍّ بترتيب الصفحة وأعداده ورابطه",
           l3[0] == "🆕 *أضيف مؤخرًا*" and l3.count(C.SEP) == 2 and l3.index("📡 *كاسبر*") < l3.index("📡 *سمارت*")
           and "✨ 9 أفلام" in l3 and "🔗 القائمة كاملة: https://guide.ssouq.com/content/smart?t=new&ref=wa" in l3
           and "🔗 القائمة كاملة: https://guide.ssouq.com/content/casper?t=new&ref=wa" in l3 and n3["movie"] == 13, t3[:300])
-    check("وسطور كل قسمٍ أقلّ", t3.count(f"{R}• Film") == 5 and "…و4 أفلام غيرها" in t3, t3.count(f"{R}• Film"))
+    check("وسطور كل قسمٍ أقلّ", t3.count(f"{R}{D} Film") == 5 and "و4 أفلام غيرها" in t3, t3.count(f"{R}{D} Film"))
 
     print("القناة: ربطها ومنشورها في ساعته")
     posts = []
@@ -733,6 +766,36 @@ def unit_channel():
               and C.channel_preview(d)["text"] == "")
         check("وحال القناة لصفحة المدير", C.admin_state(d)["channel"]["jid"] == "120363000000000001@newsletter"
               and "since" in C.admin_state(d)["channel"])
+        print("سيرفران: رسالةٌ منفصلةٌ لكلٍّ، وفشل أحدهما يُعاد وحده")
+        C.CHANNEL_GAP = 0
+        time.sleep(0.01)
+        t4 = time.time()
+        journal(d, "smart", [{"t": t4, "k": "movie", "h": "sm1", "n": "Smart Film", "y": 2020, "gs": ["g"]}])
+        journal(d, "casper", [{"t": t4, "k": "movie", "h": "cs1", "n": "Casper Film", "y": 2021, "gs": ["g1"]}])
+        C.save_channel(d, servers=["smart", "casper"])
+        pv = C.channel_preview(d)
+        check("المعاينة: رسالتان بترتيب الصفحة", [p["key"] for p in pv["posts"]] == ["casper", "smart"]
+              and pv["posts"][0]["text"].startswith("🆕 *أضيف مؤخرًا في كاسبر*")
+              and pv["posts"][1]["text"].startswith("🆕 *أضيف مؤخرًا في سمارت*") and pv["n"]["movie"] == 2, pv["posts"])
+        n0 = len(posts)
+        C.channel_sender = lambda j, t: sender(j, t) if "كاسبر" in t else {"ok": False, "error": "انقطع"}
+        res = C.channel_run(d, manual=True)
+        c = C.channel(d)
+        check("فشل سمارت: كاسبر نُشر وحده، والخطأ يذكر سمارت", res["ok"] is False and res["sent"] == 1
+              and len(posts) == n0 + 1 and "Casper Film" in posts[-1][1] and "Smart Film" not in posts[-1][1]
+              and "سمارت: انقطع" in res["error"] and c["sinces"].get("casper", 0) >= t4 and "smart" not in c["sinces"], res)
+        C.channel_sender = sender
+        res = C.channel_run(d, manual=True)
+        check("ثم يُعاد سمارت وحده", res["ok"] and res["sent"] == 1 and len(posts) == n0 + 2
+              and posts[-1][1].startswith("🆕 *أضيف مؤخرًا في سمارت*") and C.channel(d)["sinces"] == {}, res)
+        time.sleep(0.01)
+        t5 = time.time()
+        journal(d, "smart", [{"t": t5, "k": "movie", "h": "sm2", "n": "Smart Two", "y": 2020, "gs": ["g"]}])
+        journal(d, "casper", [{"t": t5, "k": "movie", "h": "cs2", "n": "Casper Two", "y": 2021, "gs": ["g1"]}])
+        res = C.channel_run(d, manual=True)
+        check("وكلاهما ناجحًا: رسالتان منفصلتان", res["ok"] and res["sent"] == 2 and len(posts) == n0 + 4
+              and "Casper Two" in posts[-2][1] and "Smart Two" not in posts[-2][1] and "Smart Two" in posts[-1][1], res)
+        C.save_channel(d, servers=["casper"])
         C.channel_sender = lambda j, t: 1 / 0
         C.save_channel(d, since=0)
         res = C.channel_run(d, manual=True)
@@ -1541,6 +1604,11 @@ def unit_enrich():
         text = mock_xtream.build(base)[0]
         res = C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
         check("والملف المرفوع يُثرى من روابطه", res["api"] == {"ok": True, "movies": 32, "series": 10}, res["api"])
+        C.set_allow(d, "casper", "t", "Hidden Adult Film", True)
+        C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
+        a = C._adult_view(d, "casper")
+        check("وما علّمته اللوحة للكبار يُعرض بالسماح به", not a["panel"] and a["count"] == 2
+              and "Hidden Adult Film" in json.dumps(C._read(C._cat_path(d, "casper"))), a)
         C.set_url(d, "kon", "")
         res = C.ingest(d, "kon", reader(text.replace("/u/p/", "/u/old/").encode()), "file", "kon.m3u")
         check("واشتراكٌ في الملف لا تقبله الواجهة: السبب للمدير", res["api"]["ok"] is False
@@ -2086,8 +2154,8 @@ def live_channel():
         code, d = jpost(adm + "/api/content/admin/channel-preview", {})
         text = d["preview"]["text"]
         check("المعاينة: المنشور كما سيُنشر", code == 200 and text.startswith("🆕 *أضيف مؤخرًا في كاسبر*")
-              and "Dune: Part Two (2024)" in text and "Shogun · حلقتان" in text
-              and "Breaking Bad · المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new&ref=wa")
+              and "Dune: Part Two (2024)" in text and "Shogun\u200e \u200f— حلقتان" in text
+              and "Breaking Bad\u200e \u200f— المواسم 1 و2 · حلقتان" in text and text.endswith("https://guide.ssouq.com/content/casper?t=new&ref=wa")
               and len(rd("GET", "/_test/log")["sent"]) == 0, text)
         code, d = jpost(adm + "/api/content/admin/channel-preview", {"servers": ["smart"]})
         check("وبسيرفراتٍ لم تُحفظ", code == 200 and d["preview"]["text"] == "")
