@@ -568,12 +568,35 @@ def load_dupes_done(data_dir):
         return {}
 
 
-def mark_dupe_done(data_dir, order, new_user, months, customer=""):
+def mark_dupe_done(data_dir, order, new_user, months, customer="", extra=None):
     d = load_dupes_done(data_dir)
-    d[str(order)] = {"new": str(new_user), "months": int(months or 0), "customer": str(customer or "")[:60],
-                     "at": renew.now_iso()}
+    rec = {"new": str(new_user), "months": int(months or 0), "customer": str(customer or "")[:60],
+           "at": renew.now_iso()}
+    rec.update(extra or {})                       # msgs (رسائل واتساب)، renamed (تغيير القديم)
+    d[str(order)] = rec
     renew._write_json(dupes_path(data_dir), d)
     return d
+
+
+def set_dupe_msg(data_dir, order, idx, **fields):
+    """يحدّث رسالةً من رسائل بديل مكرر (نصها، أو أنها أُرسلت وكيف). يرجّع الرسالة أو None."""
+    d = load_dupes_done(data_dir)
+    msgs = (d.get(str(order)) or {}).get("msgs") or []
+    if not (isinstance(idx, int) and 0 <= idx < len(msgs)):
+        return None
+    msgs[idx].update(fields)
+    renew._write_json(dupes_path(data_dir), d)
+    return msgs[idx]
+
+
+def dupe_messages(data_dir):
+    """كل رسائل البدائل المُنشأة (الأحدث أولًا) — لتُرسل أو يُعاد إرسالها."""
+    out = []
+    for order, rec in load_dupes_done(data_dir).items():
+        for i, m in enumerate(rec.get("msgs") or []):
+            out.append(dict(m, order=order, idx=i, at=rec.get("at", "")))
+    out.sort(key=lambda m: m["at"], reverse=True)
+    return out
 
 
 def suggest_slice(days_left):
@@ -626,7 +649,8 @@ def duplicates(config, data_dir, today=None):
                 "days_left": left, "remaining": remaining_text(exp.isoformat(), today) if exp else "",
                 "expired": left is not None and left <= 0, "suggest": suggest_slice(left),
                 "first_order": str(first.get("order") or ""), "first_date": str(first.get("date") or ""),
-                "first_customer": str(first.get("customer") or ""), "done": rec})
+                "first_customer": str(first.get("customer") or ""),
+                "first_phone": str(first.get("phone") or ""), "done": rec})
     rows.sort(key=lambda r: (bool(r["done"]), r["expired"], -(r["days_left"] or 0), r["order"]))
     return {"rows": rows, "total": len(rows),
             "pending": sum(1 for r in rows if not r["done"] and not r["expired"]),

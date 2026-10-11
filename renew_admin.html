@@ -545,6 +545,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
     <div class="shead"><span class="sic c-rose"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>
       <h2>المبيع المكرر<small>يوزرٌ بيع في أكثر من طلب — الأقدم يحتفظ به، واللاحق يُنشأ له يوزر جديد بما بقي من مدته</small></h2></div>
     <p class="hint">يعتمد على الاشتراكات المسحوبة من سلة. نفس رقم الجوال = تجديدٌ لنفس العميل فلا يُعدّ مكرّرًا. زر «أنشئ بديلًا» يخصم من رصيد اللوحة، ويسجّل البديل جزءًا في «حسابات متبقية» ويربطه بالقديم.</p>
+    <div class="acts"><label class="switch" style="margin:0"><span>غيّر اسم اليوزر القديم وأرسله لصاحبه الأول<small>كلمة مروره ومدته كما هما؛ ينقطع بذلك نسخة العميل اللاحق القديمة</small></span><input type="checkbox" class="tog" id="dupRename" checked></label></div>
     <div class="acts"><button class="go" id="doDup" type="button">افحص المبيع المكرر</button>
       <label class="switch" style="margin:0"><span>إظهار المنجَز والمنتهي<small>مطفأ = ما يحتاج بديلًا فقط</small></span><input type="checkbox" class="tog" id="dupAll"></label></div>
     <div class="strip" id="dupTiles"></div>
@@ -552,9 +553,9 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <thead><tr><th>اليوزر</th><th>اللوحة</th><th>العميل (اللاحق)</th><th>الطلب</th><th>المتبقي</th><th>أشهر البديل</th><th></th></tr></thead>
       <tbody id="dupBody"></tbody></table></div>
     <p class="msg" id="dupMsg"></p>
-    <div id="dupLines" class="hidden"><h4 style="margin:14px 0 6px">البدائل المُنشأة الآن (انسخ وأرسل للعميل)</h4>
-      <textarea id="dupLinesText" rows="4" class="ltr" readonly></textarea>
-      <div class="acts"><button class="ghost" id="dupCopy" type="button">نسخ</button></div></div>
+    <div id="dupMsgs" class="hidden"><h4 style="margin:14px 0 6px">رسائل العملاء <small id="dupWaNote"></small></h4>
+      <p class="hint">كل رسالة قابلة للتعديل قبل الإرسال: إما عبر الرقم المربوط، أو واتساب يدوي (يفتح المحادثة بالنص جاهزًا).</p>
+      <div id="dupMsgList"></div></div>
   </section>
 
   <!-- ===================== الطلبات (للمدير) ===================== -->
@@ -1636,7 +1637,7 @@ let DUP = [];
 async function loadDup(){
   const d = await api('/api/renew/duplicates');
   if (d.error) return note($('#dupMsg'), d.error);
-  DUP = d.rows || []; renderDup(d);
+  DUP = d.rows || []; DUPWA = !!d.wa_linked; renderDup(d); renderDupMsgs(d.messages || []);
 }
 function renderDup(d){
   const all = $('#dupAll').checked;
@@ -1663,19 +1664,52 @@ async function makeDup(i, btn){
   const r = DUP[i]; if (!r) return;
   const inp = document.querySelector(`.dupM[data-i="${i}"]`);
   const months = Number(inp && inp.value) || r.suggest;
-  if (!confirm(`إنشاء يوزر جديد لـ ${r.customer || r.phone} (طلب ${r.order}) بمدة ${months} شهرًا بدل ${r.username}؟ يخصم من رصيد اللوحة.`)) return;
+  const ren = $('#dupRename').checked;
+  if (!confirm(`إنشاء يوزر جديد لـ ${r.customer || r.phone} (طلب ${r.order}) بمدة ${months} شهرًا بدل ${r.username}؟ يخصم من رصيد اللوحة.`
+      + (ren ? `\n\nثم يُغيَّر اسم ${r.username} ويُجهَّز لصاحبه الأول ${r.first_customer || r.first_phone || ''}.` : ''))) return;
   btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…';
-  const d = await post('/api/renew/dup-create', {order: r.order, username: r.username, months});
+  const d = await post('/api/renew/dup-create', {order: r.order, username: r.username, months, rename_old: ren});
   btn.disabled = false; btn.textContent = 'أنشئ بديلًا';
   if (d.error || !d.ok) return note($('#dupMsg'), d.error || 'فشل الإنشاء');
-  const box = $('#dupLinesText'); box.value = (box.value ? box.value + '\n' : '') + `${r.customer || r.phone} ${r.phone}\n${d.line}\n`;
-  $('#dupLines').classList.remove('hidden');
-  note($('#dupMsg'), `أُنشئ ${d.username} بدل ${d.replaces} (${AR(d.months)} شهرًا)${d.split_error ? ' — تعذّر تسجيله جزءًا: ' + d.split_error : ''}`, true);
+  let t = `أُنشئ ${d.username} بدل ${d.replaces} (${AR(d.months)} شهرًا)`;
+  if (d.renamed) t += ` · غُيّر اسم القديم إلى ${d.renamed.to}`;
+  if (d.rename_error) t += ` · تعذّر تغيير القديم: ${d.rename_error}`;
+  if (d.split_error) t += ` · تعذّر تسجيله جزءًا: ${d.split_error}`;
+  note($('#dupMsg'), t, !d.rename_error);
   loadDup();
+}
+let DUPWA = false;
+function renderDupMsgs(msgs){
+  $('#dupMsgs').classList.toggle('hidden', !msgs.length);
+  $('#dupWaNote').textContent = DUPWA ? '(الرقم المربوط جاهز)' : '(لا رقم مربوط: استعمل واتساب اليدوي)';
+  $('#dupMsgList').innerHTML = msgs.map((m, k) => {
+    const sent = m.sent && m.sent.ok ? `<span class="c-ok">✓ أُرسلت ${m.sent.how === 'manual' ? 'يدويًا' : 'عبر الرقم المربوط'}</span>`
+      : (m.sent && m.sent.error ? `<span class="c-bad">${esc(m.sent.error)}</span>` : '');
+    const kind = m.kind === 'old' ? 'القديم (بعد تغيير الاسم) → صاحبه الأول' : 'البديل → صاحب الطلب اللاحق';
+    return `<div class="blk" style="padding:10px;margin-bottom:8px"><b>${esc(m.name) || '—'}</b> <small class="ltr">${esc(m.phone) || 'بلا رقم'}</small> · <small>${kind} · طلب ${esc(m.order)}</small>`
+      + `<textarea class="dupT" data-k="${k}" rows="4" style="margin-top:6px">${esc(m.text)}</textarea>`
+      + `<div class="acts"><button class="go dupSend" data-k="${k}" type="button" ${DUPWA && m.phone ? '' : 'disabled'}>إرسال عبر الرقم المربوط</button>`
+      + `<a class="ghost dupMan" data-k="${k}" target="_blank" rel="noopener" href="#">واتساب يدوي</a>`
+      + `<button class="ghost dupCp" data-k="${k}" type="button">نسخ</button> ${sent}</div></div>`;
+  }).join('');
+  const txt = k => document.querySelector(`.dupT[data-k="${k}"]`).value;
+  document.querySelectorAll('.dupSend').forEach(b => b.onclick = async () => {
+    const m = msgs[b.dataset.k]; b.disabled = true; b.textContent = 'جارٍ الإرسال…';
+    const d = await post('/api/renew/dup-send', {order: m.order, idx: m.idx, text: txt(b.dataset.k), mode: 'wa'});
+    note($('#dupMsg'), d.ok ? 'أُرسلت ✓' : (d.error || 'تعذّر الإرسال'), !!d.ok); loadDup();
+  });
+  document.querySelectorAll('.dupMan').forEach(a => {
+    const m = msgs[a.dataset.k];
+    a.onclick = async e => {
+      if (!m.phone) { e.preventDefault(); return note($('#dupMsg'), 'لا رقم جوال لهذا العميل — انسخ الرسالة'); }
+      a.href = 'https://wa.me/' + m.phone + '?text=' + encodeURIComponent(txt(a.dataset.k));
+      if (confirm('هل أرسلتَ الرسالة من واتساب؟ (تُعلَّم مرسَلة)')) setTimeout(async () => { await post('/api/renew/dup-send', {order: m.order, idx: m.idx, text: txt(a.dataset.k), mode: 'manual'}); loadDup(); }, 300);
+    };
+  });
+  document.querySelectorAll('.dupCp').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(txt(b.dataset.k)); note($('#dupMsg'), 'نُسخ ✓', true); } catch(e){} });
 }
 $('#doDup').onclick = loadDup;
 $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
-$('#dupCopy').onclick = async () => { try { await navigator.clipboard.writeText($('#dupLinesText').value); note($('#dupMsg'), 'نُسخ ✓', true); } catch(e){ $('#dupLinesText').select(); } };
 
 /* ============ الإقلاع ============ */
 (async () => {
