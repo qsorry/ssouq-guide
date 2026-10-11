@@ -3769,6 +3769,23 @@ def _complaints_stored(ws):
         return None
 
 
+def _complaints_resolve(st, rcfg, rows):
+    """شكوى جاءت بمعرّف الطلب الداخلي بلا رقمه: يُسأل رقمه (reference_id) برمز سلة مرةً ويُحفظ في الصفّ.
+    ← أتغيّر شيء؟ (ليُكتب الملف)."""
+    token = renew_salla_token(st, rcfg)
+    changed = False
+    for r in rows:
+        if r.get("order") or not r.get("order_sid") or not token or r.get("sid_failed"):
+            continue
+        ref = salla_api.order_reference(token, r["order_sid"])
+        if ref:
+            r["order"] = ref
+        else:
+            r["sid_failed"] = True
+        changed = True
+    return changed
+
+
 def complaints_open(st, rcfg=None, ws=None):
     """شكاوى العملاء **التي تنتظر التاجر وحدها** («بانتظار الحل من التاجر» · «بانتظار رد التاجر»). المصدر
     الأول **ما سحبته الإضافة من جهاز المشغّل** (‏`complaints_feed`، لأن Cloudflare يحجب الخادم عن اللوحة)، وإلا
@@ -3776,6 +3793,8 @@ def complaints_open(st, rcfg=None, ws=None):
     total, at, source} أو {error, hint} فتبقى الصفحة صالحةً برقم الطلب يدويًا."""
     stored = _complaints_stored(ws) if ws else None
     if stored:
+        if _complaints_resolve(st, rcfg, stored["rows"]):
+            renew._write_json(complaints_path(ws), stored)
         return {"rows": complaints.open_only(stored["rows"]), "total": len(stored["rows"]), "at": stored.get("at", ""),
                 "source": "extension"}
     via_ext = "أو اسحبها من جهازك: إضافة المتصفّح ← «سحب الشكاوى من جهازي» (كالطلبات، لأن Cloudflare يحجب الخادم عن اللوحة)"

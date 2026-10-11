@@ -338,35 +338,56 @@ def _find_complaints(obj, depth=0):
 
 
 def _c_text(v):
-    """قيمةٌ قد تكون نصًّا أو كائنًا (‏{name, slug} أو {reference_id}) → نصّها."""
+    """قيمةٌ قد تكون نصًّا أو كائنًا (‏{name, slug} أو {reference_id} أو {date}) → نصّها."""
     if isinstance(v, dict):
-        for k in ("name", "label", "title", "reference_id", "id", "slug"):
+        for k in ("name", "label", "title", "date", "reference_id", "number", "id", "slug"):
             if v.get(k) not in (None, ""):
                 return str(v[k])
         return ""
     return "" if v is None else str(v)
 
 
+# مفاتيح حالة الشكوى في اللوحة (slug) → ما تعرضه بالعربية، للعرض حين لا يأتي الاسم.
+STATUS_NAMES = {"pending_merchant": "بانتظار رد التاجر", "awaiting_merchant": "بانتظار رد التاجر",
+                "pending_customer": "بانتظار رد العميل", "awaiting_customer": "بانتظار رد العميل",
+                "under_review": "قيد التحقق من سلة", "pending_salla": "قيد التحقق من سلة",
+                "resolved": "تم الحل", "closed": "مغلقة"}
+
+
 def normalize_complaint(d):
-    """شكوى كما تعطيها اللوحة (بأي شكل) → {id, order, customer, status, type, text, date, url}."""
-    order = ""
-    for k in _C_ORDER_KEYS:
-        if d.get(k) not in (None, "", 0):
-            order = _c_text(d[k])
-            break
-    if not order and isinstance(d.get("order"), dict):
-        order = _c_text(d["order"].get("reference_id") or d["order"].get("id"))
+    """شكوى كما تعطيها اللوحة (بأي شكل) → {id, order, order_sid, customer, status, type, text, date, phone, url}.
+
+    **رقم الطلب الذي يراه العميل هو `reference_id` الطلب**، لا معرّفه الداخلي (`order_id` / `order.id`): الأول
+    يُكتب في `order`، والثاني في `order_sid` ليُحوَّل إلى رقمه بالواجهة إن لم يأتِ الرقم. ورقم الشكوى الظاهر
+    (`number` / `reference_id` الشكوى نفسها) يُفضَّل على معرّفها الداخلي `id`."""
+    ref, sid = "", ""
+    o = d.get("order")
+    if isinstance(o, dict):
+        ref = _c_text(o.get("reference_id") or o.get("reference") or o.get("number") or "")
+        sid = _c_text(o.get("id") or "")
+    elif o not in (None, "", 0, {}):
+        ref = _c_text(o)
+    for k in ("order_reference", "order_reference_id", "order_number", "order_no", "order_ref"):
+        if not ref and d.get(k) not in (None, "", 0):
+            ref = _c_text(d[k])
+    if not sid and d.get("order_id") not in (None, "", 0):
+        sid = _c_text(d["order_id"])
+    ref, sid = re.sub(r"\D", "", ref), re.sub(r"\D", "", sid)
     cust = d.get("customer")
     cust = ((cust.get("name") or (str(cust.get("first_name") or "") + " " + str(cust.get("last_name") or "")).strip())
             if isinstance(cust, dict) else str(cust or d.get("customer_name") or ""))
-    status = next((_c_text(d[k]) for k in _C_STATUS_KEYS if d.get(k) not in (None, "")), "")
-    return {"id": _c_text(d.get("id") or d.get("complaint_id") or d.get("number")),
-            "order": re.sub(r"\D", "", str(order)), "customer": cust.strip(), "status": status.strip(),
-            "type": _c_text(d.get("type") or d.get("category") or d.get("subject")),
-            "text": str(d.get("content") or d.get("description") or d.get("message") or "")[:600],
+    st = next((d[k] for k in _C_STATUS_KEYS if d.get(k) not in (None, "")), "")
+    status = _c_text(st).strip()
+    slug = (st.get("slug") if isinstance(st, dict) else status) or ""
+    status = STATUS_NAMES.get(str(slug).strip().lower(), status) if not re.search(r"[\u0600-\u06FF]", status) else status
+    num = next((_c_text(d[k]) for k in ("number", "complaint_number", "reference_id", "reference", "complaint_id", "id")
+                if d.get(k) not in (None, "")), "")
+    return {"id": num, "order": ref, "order_sid": sid if sid != ref else "", "customer": cust.strip(), "status": status,
+            "type": _c_text(d.get("type") or d.get("category") or d.get("subject") or d.get("reason")),
+            "text": str(d.get("content") or d.get("description") or d.get("message") or d.get("comment") or "")[:600],
             "date": _c_text(d.get("created_at") or d.get("date") or d.get("updated_at")),
             "phone": _c_text((d.get("customer") or {}).get("mobile") if isinstance(d.get("customer"), dict) else ""),
-            "url": _c_text(d.get("url") or (d.get("urls") or {}).get("admin") if isinstance(d.get("urls"), dict) else d.get("url"))}
+            "url": _c_text(d.get("url") or ((d.get("urls") or {}).get("admin") if isinstance(d.get("urls"), dict) else ""))}
 
 
 _C_TR = re.compile(r"<tr[^>]*>(?P<body>.*?)</tr>", re.S | re.I)
@@ -390,7 +411,7 @@ def parse_complaints_html(page):
         name = next((c for c in cells if c and not re.fullmatch(r"#?\d+", c) and c != status
                      and not re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}", c)), "")
         href = _C_HREF.search(m.group("body"))
-        out.append({"id": nums[0], "order": nums[1], "customer": name, "status": status, "type": "", "text": "",
+        out.append({"id": nums[0], "order": nums[1], "order_sid": "", "customer": name, "status": status, "type": "", "text": "",
                     "date": next((c for c in cells if re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}", c)), ""),
                     "phone": "", "url": _html_mod.unescape(href.group(1)) if href else ""})
     return out

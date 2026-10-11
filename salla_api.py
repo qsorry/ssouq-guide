@@ -203,6 +203,19 @@ def order_by_reference(token: str, ref) -> dict:
     return {}
 
 
+def order_reference(token: str, order_id) -> str:
+    """رقم الطلب الذي يراه العميل (reference_id) من معرّفه الداخلي — أو "" إن لم يوجد."""
+    oid = re.sub(r"\D", "", str(order_id or ""))
+    if not oid:
+        return ""
+    try:
+        d = _get("%s/admin/v2/orders/%s" % (API, oid), token)
+    except SallaError:
+        return ""
+    o = d.get("data") if isinstance(d.get("data"), dict) else d
+    return re.sub(r"\D", "", str((o or {}).get("reference_id") or ""))
+
+
 def order_histories(token: str, order_id, page: int = 1) -> list:
     """سجل الطلب: التعليقات والأنشطة. بيانات الاشتراك تُكتب هنا تعليقًا
     (‏`Host: … Username: … Password: …`) ولا يُخرجها تصدير سلة — فهذا هو
