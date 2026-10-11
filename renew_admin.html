@@ -580,6 +580,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
         <select id="hsSub" title="نوع الاشتراك"><option value="">كل الأنواع</option></select>
         <label class="switch" style="margin:0"><span>مع المنتهية</span><input type="checkbox" id="hsExp"></label>
         <label class="switch" style="margin:0"><span>تخطَّ من أُرسل له سابقًا</span><input type="checkbox" id="hsSkip" checked></label>
+        <input id="hsAfter" class="ltr" placeholder="ابدأ بعد الرقم (اختياري) 9665…" style="min-width:200px">
         <button class="go" id="hsLoad" type="button">اعرض المشتركين</button></div>
       <div id="hsPanel" class="hidden">
         <div class="acts"><input id="hsGuide" class="ltr" placeholder="رابط الشرح (من بوابة الهوست)" style="min-width:240px"><input id="hsCh" class="ltr" placeholder="رابط قناة واتساب" style="min-width:240px"><input id="hsNew" class="ltr" placeholder="الهوست الجديد (اختياري)" style="min-width:200px"></div>
@@ -1849,7 +1850,7 @@ function hsShowPlan(){
 async function hsLoad(){
   const h = $('#hsHost').value.trim(); if (!h) return note($('#msgsMsg'), 'اكتب الهوست');
   const d = await api('/api/renew/host-audience?host=' + encodeURIComponent(h) + '&expired=' + ($('#hsExp').checked ? 1 : 0)
-    + '&sub=' + encodeURIComponent($('#hsSub').value) + '&skip_sent=' + ($('#hsSkip').checked ? 1 : 0));
+    + '&sub=' + encodeURIComponent($('#hsSub').value) + '&skip_sent=' + ($('#hsSkip').checked ? 1 : 0) + '&after=' + encodeURIComponent($('#hsAfter').value.trim()));
   if (d.error) return note($('#msgsMsg'), d.error);
   HS = d;
   const names = {smart: 'سمارت (مرح)', falcon: 'فالكون', casper: 'كاسبر', other: 'غير محدد'}, cur = $('#hsSub').value;
@@ -1859,7 +1860,7 @@ async function hsLoad(){
   if (!$('#hsCh').value) $('#hsCh').value = d.channel || '';
   if (!$('#hsGuide').value) $('#hsGuide').value = d.guide || '';
   $('#hsSum').textContent = `${AR(d.recipients.length)} عميلًا بجوال (${AR(d.lines)} اشتراكًا في الهوست)` + (d.no_phone.length ? ` · ${AR(d.no_phone.length)} بلا جوال` : '')
-    + (d.sent_before ? ` · ${AR(d.sent_before)} أُرسل لهم سابقًا${$('#hsSkip').checked ? ' (مُتخطَّون)' : ''}` : '') + (d.expired_skipped ? ` · ${AR(d.expired_skipped)} منتهيًا مستثنى` : '') + (d.wa_channel ? '' : ' · لا رقم مربوط: استعمل «واتساب يدوي»')
+    + (d.after_found === false ? ' · ⚠ الرقم المحدد للبدء غير موجود في هذه القائمة' : d.after_skipped ? ` · بدء بعد الرقم المحدد (تُخطّي ${AR(d.after_skipped)})` : '') + (d.sent_before ? ` · ${AR(d.sent_before)} أُرسل لهم سابقًا${$('#hsSkip').checked ? ' (مُتخطَّون)' : ''}` : '') + (d.expired_skipped ? ` · ${AR(d.expired_skipped)} منتهيًا مستثنى` : '') + (d.wa_channel ? '' : ' · لا رقم مربوط: استعمل «واتساب يدوي»')
     + (d.wa_channel === 'contest' ? ` · الإرسال من رقم المسابقة ${d.wa_number || ''}` : d.wa_channel === 'wa' ? ' · الإرسال عبر قناة خدمة سلة' : '');
   $('#hsSend').disabled = !d.wa_channel || !d.recipients.length;
   $('#hsBody').innerHTML = d.recipients.map((r, i) => `<tr><td>${esc(r.name) || '—'}</td><td class="ltr">${esc(r.phone)}</td>`
@@ -1874,7 +1875,7 @@ async function hsLoad(){
     }, 400);
   });
 }
-const HSKEYS = ['hsHost', 'hsText', 'hsGuide', 'hsCh', 'hsNew', 'hsLimit'];
+const HSKEYS = ['hsHost', 'hsText', 'hsGuide', 'hsCh', 'hsNew', 'hsLimit', 'hsAfter'];
 try { const sv = JSON.parse(localStorage.getItem('hsForm2') || '{}'); HSKEYS.forEach(k => { if (sv[k] != null) $('#' + k).value = sv[k]; }); } catch (e) {}
 HSKEYS.forEach(k => $('#' + k).addEventListener('input', () => { try { localStorage.setItem('hsForm2', JSON.stringify(Object.fromEntries(HSKEYS.map(x => [x, $('#' + x).value])))); } catch (e) {} }));
 (async () => { const d = await api('/api/renew/host-job'); if (d && d.job) { if (!$('#hsHost').value) $('#hsHost').value = d.job.host; await hsLoad().catch(() => {}); hsShowPlan(); hsPoll(); } })();

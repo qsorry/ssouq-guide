@@ -3001,7 +3001,7 @@ def line_sub(ln, panel_name=""):
     return next((k for k, words in _SUB_WORDS.items() if any(w in text for w in words)), "")
 
 
-def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True):
+def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True, after=""):
     """مشتركو هوستٍ معيّن من اشتراكات المتجر المسحوبة: عميلٌ لكل جوال (بيوزراته)، ومن لا جوال له يُعدّ ولا يُرسَل إليه."""
     nh = renew.norm_host(host)
     if not nh:
@@ -3043,11 +3043,18 @@ def host_audience(cfg, ws, host, include_expired=False, sub="", skip_sent=True):
         r["expired"] = r["expired"] and expired
     rec = sorted(by_phone.values(), key=lambda r: (r["name"] or "", r["phone"]))
     sent_n = sum(1 for r in rec if r["sent"])
+    after_found, after_skipped = None, 0
+    ap = _wa_phone(after)
+    if ap:                                      # ابدأ بعد هذا الرقم: يُحذف ما قبله وهو نفسه بترتيب القائمة
+        idx = next((i for i, r in enumerate(rec) if r["phone"] == ap), None)
+        after_found = idx is not None
+        if idx is not None:
+            after_skipped, rec = idx + 1, rec[idx + 1:]
     if skip_sent:
         rec = [r for r in rec if not r["sent"]]
     return {"host": host, "recipients": rec, "no_phone": no_phone, "expired_skipped": expired_n,
             "lines": lines_n, "channel": channel_link(), "template": HOST_MSG, "sent_before": sent_n,
-            "daily_cap": HOST_DAILY_CAP, "sent_today": sent_today,
+            "daily_cap": HOST_DAILY_CAP, "sent_today": sent_today, "after_found": after_found, "after_skipped": after_skipped,
             "subs": {k or "other": v for k, v in subs.items()}, "sub": sub}
 
 
@@ -5865,7 +5872,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, host_job_status(rws))
             if path == "/api/renew/host-audience":  # مشتركو هوست لرسالة جماعية محدّدة
                 d = host_audience(rcfg, rws, self._q("host"), include_expired=self._q("expired") == "1",
-                                  sub=self._q("sub") or "", skip_sent=self._q("skip_sent") != "0")
+                                  sub=self._q("sub") or "", skip_sent=self._q("skip_sent") != "0",
+                                  after=self._q("after") or "")
                 d["wa_linked"] = dup_wa_ready(st)
                 d["guide"] = host_guide(racs, self._q("host"))
                 try:
