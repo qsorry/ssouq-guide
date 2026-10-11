@@ -569,6 +569,21 @@ def test_order_lost():
         row = next(x for x in r["rows"] if x["username"] == "111")
         check("missing row: remaining 10 months + 1 compensation = 11", row["suggest"] == 10 and row["new_months"] == 11 and r["base"] == 15, str(row))
         check("compensation is capped at the 15-month package", panels.comp_months(500, 3) == 15 and panels.comp_months(0) == 0)
+        # ملف Excel البوابة المحفوظ في النظام: يوزرٌ فيه موجود، وبوابته تُعدّ مسحوبة
+        ex = {"users": {"111": "بوابة مرح"}, "gates": {("acc1", "g1")}}
+        re_ = panels.lost(cfg, d, export=ex)
+        check("a user in the gate's saved Excel is found, not missing", all(x["username"] != "111" for x in re_["rows"])
+              and panels.order_search(cfg, d, "274576474", export=ex)["rows"][0]["found_panel"] == "بوابة مرح", str(re_["counts"]))
+        d2 = tempfile.mkdtemp(prefix="lost2_")
+        try:
+            panels.save_store_lines(d2, [ln("9", "909")])
+            check("panel not pulled but its gate has an Excel = judged",
+                  panels.lost(cfg, d2)["total"] == 0 and panels.lost(cfg, d2, export={"users": {}, "gates": {("acc1", "g1")}})["total"] == 1)
+            panels.mark_dupe_done(d2, "9", "x1", 6, extra={"msgs": []})
+            r2 = panels.lost(cfg, d2, export={"users": {}, "gates": {("acc1", "g1")}})
+            check("a duplicate replacement is counted replaced, not as created here", r2["total"] == 0 and r2["counts"]["replaced"] == 1, str(r2["counts"]))
+        finally:
+            shutil.rmtree(d2, ignore_errors=True)
         # البحث برقم الطلب
         s = panels.order_search(cfg, d, "٢٧٤٥٧٦٤٧٤")
         check("order search (arabic digits) finds the line and says it is missing",
@@ -602,6 +617,11 @@ def test_order_lost():
         X.create_lines = lambda g, pkg, n, *a, **k: ([{"line": "Host http://m.ink User 901 Pass 902", "username": "901", "password": "902"}], None)
         X.split_register_created = lambda acct_, g, pkg, slice_m, out, customer="": made.setdefault("split", slice_m) and [{"username": "901"}]
         X.channel_link = lambda: ""
+        import users_export
+        users_export.replace_all(d, "acc1", "g1", "مرح", [{"username": "ABC123", "password": "p"}])
+        ex = X.export_users([acct, {"id": "acc9", "gates": [{"id": "gx", "name": "فارغة"}]}])
+        check("export_users reads the gates' saved Excel snapshots", ex["users"] == {"abc123": "مرح"} and ex["gates"] == {("acc1", "g1")}, str(ex))
+        users_export.replace_all(d, "acc1", "g1", "مرح", [{"username": "zz0", "password": "p"}])
         code, body = X.comp_create([acct], cfg, d, {"order": "274576474", "username": "111", "comp": 1})
         check("comp_create makes a split of remaining + 1 from the 15-month package", code == 200 and body["months"] == 11
               and made.get("split") == 11, str(body)[:200])

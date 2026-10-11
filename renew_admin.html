@@ -595,7 +595,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 
     <div class="blk" style="padding:12px">
       <b>المفقود — اشتراكٌ مدفوع بلا يوزر</b>
-      <p class="hint">خطوط سلة الجارية التي لا يوجد يوزرها على أي لوحة مسحوبة ولم يُستبدل. يُنشأ لصاحبها خطٌّ من باقة <b>١٥ شهرًا</b> بجزءٍ = المتبقي + التعويض، والباقي يعود إلى «حسابات متبقية» للبيع، وتُجهَّز رسالة واتساب في «الرسائل». يخصم من رصيد اللوحة. لوحةٌ لم تُسحب يوزراتها لا يُحكم على خطوطها.</p>
+      <p class="hint">خطوط سلة الجارية التي لا يوجد يوزرها على أي لوحة مسحوبة ولم يُستبدل. يُنشأ لصاحبها خطٌّ من باقة <b>١٥ شهرًا</b> بجزءٍ = المتبقي + التعويض، والباقي يعود إلى «حسابات متبقية» للبيع، وتُجهَّز رسالة واتساب في «الرسائل». يخصم من رصيد اللوحة. يُبحث عن اليوزر في يوزرات اللوحات المسحوبة <b>وفي ملفات Excel البوابات المحفوظة في النظام</b>، ولوحةٌ بلا أيٍّ منهما لا يُحكم على خطوطها.</p>
       <div class="acts" style="align-items:center">
         <label>التعويض <input type="number" id="lsComp" min="0" max="14" value="1" style="width:60px"> شهر</label>
         <label class="switch" style="margin:0"><span>مع المنتهية</span><input type="checkbox" id="lsExp"></label>
@@ -2060,7 +2060,7 @@ async function lsLoad(){
   }).join('');
   $('#lsWrap').classList.toggle('hidden', !d.rows.length);
   $('#lsBulk').classList.toggle('hidden', !d.rows.some(r => !r.done && r.can_create));
-  note($('#lsMsg'), d.rows.length ? `باقة ${AR(d.base)} شهرًا · الجديد = المتبقي + ${AR(d.comp)} شهر تعويض` : (d.pulled ? 'لا اشتراك مفقود ✓' : 'لم تُسحب يوزرات أي لوحة بعد — اسحبها من «البيانات» أولًا'), true);
+  note($('#lsMsg'), d.rows.length ? `باقة ${AR(d.base)} شهرًا · الجديد = المتبقي + ${AR(d.comp)} شهر تعويض` + (d.export_users ? ` · قُورن أيضًا بملفات Excel البوابات (${AR(d.export_users)} يوزرًا)` : ' · لا ملفات Excel للبوابات بعد: صدّرها من صفحة الإنشاء ليُقارن بها') : (d.pulled ? 'لا اشتراك مفقود ✓' : 'لم تُسحب يوزرات أي لوحة بعد — اسحبها من «البيانات» أولًا'), true);
   $('#lsBody').querySelectorAll('.lsMk').forEach(b => b.onclick = () => makeComp(LS.rows[b.dataset.i], b, document.querySelector(`.lsM[data-i="${b.dataset.i}"]`)));
   $('#lsBody').querySelectorAll('.lsO').forEach(a => a.onclick = e => { e.preventDefault(); $('#loQ').value = a.dataset.o; loFind(a.dataset.o); window.scrollTo({top: 0}); });
   lsSendShow(); lsPoll();
