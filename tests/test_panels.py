@@ -479,7 +479,41 @@ def test_host_audience():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_host_job():
+    print("== مهمة إرسال الهوست الخلفية ==")
+    import time as _t
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="hj_")
+    keep = (X.load_store, X.dup_wa_send)
+    try:
+        sent = []
+        X.load_store = lambda: {"service": {}}
+        X.dup_wa_send = lambda st, ph, tx: (sent.append((ph, tx)) or {"ok": True}, "contest")
+        code, b = X.host_job_start(d, {"host": "http://h", "queue": [{"phone": "0500000001", "name": "a", "text": "x"},
+                                                                   {"phone": "0500000002", "name": "b", "text": "y"}],
+                                       "plan": {"gap": 1, "jitter": 0, "pause": 0, "batch": 20}})
+        check("job starts with a min gap of 3s", code == 200 and b["job"]["plan"]["gap"] == 3.0 and b["job"]["status"] == "running")
+        check("a second start while running is refused", X.host_job_start(d, {"queue": [{"phone": "0500000003", "text": "z"}]})[0] == 409)
+        v = {}
+        for _ in range(30):
+            _t.sleep(0.5)
+            v = X.host_job_status(d)["job"]
+            if v["status"] != "running":
+                break
+        check("job finishes after sending all, in order", v["status"] == "done" and v["sent"] == 2 and [p for p, _ in sent] == ["966500000001", "966500000002"], str(v))
+        check("each send is logged as a host message", len([m for m in panels.load_dup_log(d) if m["kind"] == "host" and m["ok"]]) == 2)
+        check("view hides the queue texts", "queue" not in v)
+        code, b = X.host_job_start(d, {"host": "http://h", "queue": [{"phone": "0500000009", "text": "q"}] * 1})
+        code2, st = X.host_job_stop(d)
+        check("stop marks the job stopped", st["job"]["status"] == "stopped")
+    finally:
+        X.load_store, X.dup_wa_send = keep
+        _t.sleep(1)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
+    test_host_job()
     test_host_audience()
     test_months()
     test_host()
