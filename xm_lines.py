@@ -2952,6 +2952,16 @@ def replacement_users(accounts):
     return out
 
 
+DUP_MSG_NEW = ("السلام عليكم {name}\nاشتراكك الجديد جاهز ✅ (بديلٌ عن الحساب السابق، بمدة اشتراكك المتبقية نفسها)\n"
+               "{line}\nنعتذر عن الإزعاج.")
+DUP_MSG_OLD = ("السلام عليكم {name}\nتم تحديث اسم المستخدم لاشتراكك، يرجى استخدام البيانات التالية "
+               "(كلمة المرور ومدة الاشتراك كما هما) ✅\n{line}")
+
+
+def _wa_phone(v):
+    return salla_api.normalize_phone(v, "")
+
+
 def dup_create(accounts, cfg, ws, req):
     """ينشئ يوزرًا جديدًا لصاحب الطلب اللاحق في مبيعٍ مكرّر بما بقي من مدته: جزءٌ بالأشهر من
     باقة ١٥ شهرًا (أو الباقة كاملةً إن بقي ١٥)، ويربطه بالقديم (بديل) ويسجّله جزءًا ويعلّم الطلب
@@ -3002,7 +3012,30 @@ def dup_create(accounts, cfg, ws, req):
             resp["split"] = split_register_created(acct, gate, pkg, slice_m, out, customer=row["customer"])
         except Exception as e:
             resp["split_error"] = str(e)[:160]
-    panels.mark_dupe_done(ws, row["order"], r["username"], months, row["customer"])
+    msgs = [{"kind": "new", "name": row["customer"], "phone": _wa_phone(row["phone"]),
+             "text": DUP_MSG_NEW.format(name=row["customer"] or "", line=r.get("line", "")), "sent": None}]
+    extra = {"msgs": msgs}
+    if req.get("rename_old"):                  # القديم: يتغيّر اسمه ويُرسل لصاحبه الأول (كلمة مروره ومدته كما هما)
+        try:
+            found = split_find_line(gate, row["username"])
+            if not found:
+                raise RuntimeError("اليوزر القديم غير موجود على اللوحة")
+            newname = rand_digits(gate_digits(gate))
+            split_change(gate, {"username": row["username"], "line_id": found.get("line_id", ""), "package": ""},
+                         {"username": newname})
+            old_line = format_line(gate, newname, found.get("password") or row["password"])
+            resp["renamed"] = {"from": row["username"], "to": newname, "line": old_line}
+            extra["renamed"] = resp["renamed"]
+            msgs.append({"kind": "old", "name": row["first_customer"], "phone": _wa_phone(row["first_phone"]),
+                         "text": DUP_MSG_OLD.format(name=row["first_customer"] or "", line=old_line), "sent": None})
+            try:
+                user_links.add(DATA_DIR, acct["id"], gate["id"], row["username"], newname, "تغيير اسم (مكرر)")
+            except Exception:
+                pass
+        except Exception as e:                 # فشل تغيير القديم لا يُلغي البديل المُنشأ
+            resp["rename_error"] = str(e)[:200]
+    resp["messages"] = msgs
+    panels.mark_dupe_done(ws, row["order"], r["username"], months, row["customer"], extra=extra)
     return 200, resp
 
 
@@ -5445,6 +5478,8 @@ class Handler(BaseHTTPRequestHandler):
                                                            replaced=replacement_users(racs)))
             if path == "/api/renew/duplicates":     # يوزرات بيعت في أكثر من طلب
                 d = panels.duplicates(rcfg, rws)
+                d["messages"] = panels.dupe_messages(rws)
+                d["wa_linked"] = str((st["service"].get("wa") or {}).get("type") or "none").lower() not in ("none", "", "dry")
                 for r in d["rows"]:
                     ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
                     r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
@@ -5654,6 +5689,23 @@ class Handler(BaseHTTPRequestHandler):
             owner["renew"] = renew.clean_config(req.get("renew") or {}, rcfg)
             save_store(st)
             return self._send(200, {"ok": True, "renew": renew.redact_config(owner["renew"])})
+        if path == "/api/renew/dup-send":         # يرسل رسالة بديلٍ عبر الرقم المربوط، أو يعلّمها مرسَلةً يدويًا
+            order, idx = str(req.get("order") or ""), req.get("idx")
+            msg = next((m for m in panels.dupe_messages(rws) if m["order"] == order and m["idx"] == idx), None)
+            if not msg:
+                return self._send(404, {"error": "لا رسالة بهذا الرقم"})
+            text = str(req.get("text") or msg["text"])
+            if req.get("mode") == "manual":     # فُتح واتساب يدويًا وأُرسلت من هناك
+                m = panels.set_dupe_msg(rws, order, idx, text=text, sent={"ok": True, "how": "manual", "at": renew.now_iso()})
+                return self._send(200, {"ok": True, "message": m})
+            if not msg.get("phone"):
+                return self._send(400, {"error": "لا رقم جوال لهذا العميل — أرسلها يدويًا"})
+            r = wa_send.send(st["service"].get("wa", {}), msg["phone"], text)
+            ok = bool(r.get("ok")) and not r.get("dry")
+            m = panels.set_dupe_msg(rws, order, idx, text=text,
+                                    sent={"ok": ok, "how": "wa", "at": renew.now_iso(),
+                                          "error": "" if ok else (r.get("error") or "الرقم المربوط غير مضبوط (وضع تجريبي)")})
+            return self._send(200 if ok else 502, {"ok": ok, "message": m, "error": "" if ok else m["sent"]["error"]})
         if path == "/api/renew/dup-create":       # يوزر جديد لصاحب الطلب اللاحق في مبيعٍ مكرّر
             try:
                 code, body = dup_create(racs, rcfg, rws, req)

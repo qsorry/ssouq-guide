@@ -342,6 +342,52 @@ def test_split_bulk():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_dup_create():
+    print("== مبيع مكرر: بديل للاحق + تغيير القديم + رسائل ==")
+    import datetime
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="dup_")
+    keep = {k: getattr(X, k) for k in ("DATA_DIR", "find_gate", "with_guide", "get_packages", "create_lines",
+                                       "split_find_line", "split_change", "split_register_created", "rand_digits")}
+    try:
+        today = renew._today()
+        def ln(order, days_ago, phone, name):
+            st = today - datetime.timedelta(days=days_ago)
+            return {"order": order, "date": st.isoformat(), "phone": phone, "customer": name, "username": "999000111222",
+                    "password": "oldpw", "host": "http://m.ink", "months": 12, "expiry": renew.add_months(st, 12).isoformat()}
+        panels.save_store_lines(d, [ln("1", 40, "966500000001", "الأول"), ln("2", 10, "0500000002", "الثاني")])
+        cfg = {"panels": [{"id": "pk", "name": "P", "hosts": ["http://m.ink"], "account_id": "acc1", "gate_id": "g1"}]}
+        gate = {"id": "g1", "name": "مرح", "mode": "web", "host": "http://m.ink"}
+        acct = {"id": "acc1", "split": True, "gates": [gate]}
+        calls = {}
+        X.DATA_DIR = d
+        X.find_gate = lambda a, gid: gate
+        X.with_guide = lambda a, g: g
+        X.get_packages = lambda g: [{"id": "p15", "name": "اشتراك 15 شهر"}]
+        X.create_lines = lambda g, pkg, n, *a, **k: ([{"line": "Host http://m.ink User 555 Pass 666", "username": "555", "password": "666"}], None)
+        X.split_find_line = lambda g, u: {"password": "oldpw", "line_id": "7"}
+        X.split_change = lambda g, rec, pend: calls.setdefault("rename", (rec["username"], pend["username"]))
+        X.split_register_created = lambda *a, **k: [{"username": "555"}]
+        X.rand_digits = lambda n=12: "777888999000"
+        code, body = X.dup_create([acct], cfg, d, {"order": "2", "username": "999000111222", "months": 11, "rename_old": True})
+        check("dup_create ok with a renamed old user", code == 200 and body["ok"] and body["renamed"]["to"] == "777888999000", str(body)[:200])
+        check("old user renamed on the panel", calls.get("rename") == ("999000111222", "777888999000"), str(calls))
+        kinds = [m["kind"] for m in body["messages"]]
+        check("two messages: new to the later buyer, old to the first buyer", kinds == ["new", "old"]
+              and body["messages"][0]["phone"] == "966500000002" and body["messages"][1]["phone"] == "966500000001"
+              and "User 777888999000 Pass oldpw" in body["messages"][1]["text"], str(body["messages"]))
+        check("done is recorded with the messages", panels.duplicates(cfg, d)["rows"][0]["done"]["msgs"][1]["kind"] == "old")
+        check("messages listed for sending", len(panels.dupe_messages(d)) == 2)
+        code2, body2 = X.dup_create([acct], cfg, d, {"order": "2", "username": "999000111222"})
+        check("a second create for the same order is refused", code2 == 400, str(body2))
+        panels.set_dupe_msg(d, "2", 0, sent={"ok": True, "how": "manual"})
+        check("message can be marked sent", panels.dupe_messages(d)[0]["sent"] or panels.dupe_messages(d)[1]["sent"])
+    finally:
+        for k, v in keep.items():
+            setattr(X, k, v)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     test_months()
     test_host()
@@ -354,6 +400,7 @@ def main():
     test_unlisted()
     test_remaining_text()
     test_split_bulk()
+    test_dup_create()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, "
           + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
