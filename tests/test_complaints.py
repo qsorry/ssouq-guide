@@ -203,7 +203,7 @@ def test_complaints_pull():
     check("not open: waiting for the customer, closed, at Salla", not complaints.is_open("بانتظار رد العميل") and not complaints.is_open("مغلقة")
           and not complaints.is_open("قيد التحقق من سلة") and not complaints.is_open(""))
     rows_json = {"data": [
-        {"id": 51, "status": {"name": "بانتظار رد التاجر"}, "order": {"reference_id": 138}, "customer": {"name": "ali", "mobile": "0500000001"}, "type": "الاشتراك لا يعمل", "content": "ما يشتغل"},
+        {"id": 51, "status": {"name": "بانتظار رد التاجر"}, "order": {"id": 999951, "reference_id": 138}, "customer": {"name": "ali", "mobile": "0500000001"}, "type": "الاشتراك لا يعمل", "content": "ما يشتغل"},
         {"id": 52, "status": "بانتظار الحل من التاجر", "order_reference": "400", "customer_name": "محمد"},
         {"id": 53, "status": "بانتظار رد العميل", "order_id": 999, "customer": {"first_name": "س", "last_name": "م"}},
         {"id": 54, "status": "مغلقة", "reference_id": 5, "customer": "x"}]}
@@ -240,6 +240,14 @@ def test_complaints_pull():
     try:
         sess = salla_web.Session("sess=1", base=base)
         rows = sess.complaints()
+        # شكوى كما جاءت فعلًا من اللوحة: معرّفٌ داخلي للشكوى والطلب، ورقمها الظاهر في number، والحالة slug
+        real = salla_web.normalize_complaint({"id": 2078174950, "number": 1455683, "status": "pending_merchant", "order_id": 393200149,
+                                              "customer": {"name": "Dr.EMAD FAWZI"}, "created_at": {"date": "2026-10-12 00:33:57"}})
+        check("real row: visible complaint number, order kept as internal sid (not shown as the order), arabic status, date",
+              real["id"] == "1455683" and real["order"] == "" and real["order_sid"] == "393200149"
+              and real["status"] == "بانتظار رد التاجر" and real["date"] == "2026-10-12 00:33:57", str(real))
+        check("order object: reference wins, internal id kept aside", salla_web.normalize_complaint(rows_json["data"][0])["order"] == "138"
+              and salla_web.normalize_complaint(rows_json["data"][0])["order_sid"] == "999951")
         check("json: complaints found on the second candidate path and normalized", len(rows) == 4 and rows[0]["order"] == "138"
               and rows[0]["customer"] == "ali" and rows[0]["status"] == "بانتظار رد التاجر" and rows[0]["type"] == "الاشتراك لا يعمل"
               and rows[1]["order"] == "400" and rows[1]["customer"] == "محمد" and rows[2]["customer"] == "س م", str(rows)[:300])
@@ -251,7 +259,7 @@ def test_complaints_pull():
         mode["json"] = False
         sess2 = salla_web.Session("sess=1", base=base)
         rows = sess2.complaints()
-        check("html fallback: table rows parsed (id, customer, order, status, date, link)", len(rows) == 2 and rows[0] == {"id": "61", "order": "287314660",
+        check("html fallback: table rows parsed (id, customer, order, status, date, link)", len(rows) == 2 and rows[0] == {"id": "61", "order": "287314660", "order_sid": "",
               "customer": "سارة", "status": "بانتظار الحل من التاجر", "type": "", "text": "", "date": "2026-10-01", "phone": "", "url": "/complaints/61"}, str(rows))
         X.renew_pull_session = lambda st_, cfg=None: sess2
         check("html: only the open one is shown", [r["id"] for r in X.complaints_open({})["rows"]] == ["61"])
@@ -274,9 +282,27 @@ def test_complaints_pull():
                   and [r["id"] for r in d["rows"]] == ["51", "52", "61"] and d["total"] == 6 and d["source"] == "extension" and d["at"], str(d)[:200])
             X.renew_pull_session = lambda st_, cfg=None: sess
             check("stored rows win over the server session", X.complaints_open({}, None, ws)["source"] == "extension")
+            # معرّفٌ داخلي بلا رقم: يُحوَّل برمز سلة إلى رقم الطلب الذي يراه العميل، ويُحفظ
+            import salla_api as SA
+            keep_ref = SA.order_reference
+            asked = []
+            SA.order_reference = lambda tok, oid: (asked.append(oid) or ("290538418" if oid == "393200149" else ""))
+            try:
+                X.complaints_feed(ws, {"op": "start"})
+                X.complaints_feed(ws, {"op": "page", "body": json.dumps({"data": [{"id": 2078174950, "number": 1455683, "status": "pending_merchant",
+                                                                                   "order_id": 393200149, "customer": {"name": "Dr.EMAD FAWZI"}}]})})
+                X.complaints_feed(ws, {"op": "finish"})
+                d = X.complaints_open({"service": {"salla_token": "tok"}}, None, ws)
+                check("internal order id resolved to the customer-visible order number via the token", d["rows"][0]["order"] == "290538418"
+                      and d["rows"][0]["id"] == "1455683" and asked == ["393200149"], str(d["rows"]))
+                X.complaints_open({"service": {"salla_token": "tok"}}, None, ws)
+                check("resolution is saved: not asked again", asked == ["393200149"])
+            finally:
+                SA.order_reference = keep_ref
             X.complaints_feed(ws, {"op": "start"})
+            before = X.complaints_open({}, None, ws)["total"]
             check("finish with nothing found does not overwrite the stored file", not X.complaints_feed(ws, {"op": "finish"})["saved"]
-                  and X.complaints_open({}, None, ws)["total"] == 6)
+                  and X.complaints_open({}, None, ws)["total"] == before)
         finally:
             shutil.rmtree(ws, ignore_errors=True)
         X.renew_pull_session = lambda st_, cfg=None: salla_web.Session("other=1", base=base)
