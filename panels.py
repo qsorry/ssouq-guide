@@ -17,6 +17,7 @@ xm_web/renew_import — بل يخزّن ما جُمع ويقارنه، فيبق�
 """
 
 import json
+import re
 import os
 import re
 
@@ -74,8 +75,9 @@ def expiry_status(exp, today, renewal_days):
 
     القريب: انتهاؤه بين اليوم و`renewal_days` يومًا — وقتُ رسالة التجديد."""
     d = renew.parse_date(exp)
-    if not d:
-        return {"exp_date": "", "days_left": None, "expired": False, "expiring_soon": False}
+    if not d:                                       # لوحة فالكون تكتب «Expired» مكان التاريخ
+        gone = bool(re.search(r"(?i)expire|منته", str(exp or "")))
+        return {"exp_date": "", "days_left": 0 if gone else None, "expired": gone, "expiring_soon": False}
     left = (d - today).days
     return {"exp_date": d.isoformat(), "days_left": left,
             "expired": left < 0, "expiring_soon": 0 <= left <= renewal_days}
@@ -366,7 +368,7 @@ def remaining_text(exp, today=None):
     «انتهى منذ …» لما مضى، أو "" إن لم يُفهم التاريخ."""
     end = renew.parse_date(exp)
     if not end:
-        return ""
+        return "منتهٍ" if re.search(r"(?i)expire|منته", str(exp or "")) else ""
     today = today or renew._today()
     past = end < today
     a, b = (end, today) if past else (today, end)
