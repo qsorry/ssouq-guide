@@ -578,6 +578,47 @@ def mark_dupe_done(data_dir, order, new_user, months, customer="", extra=None):
     return d
 
 
+def update_dupe(data_dir, order, fields, add_msg=None):
+    """يحدّث سجل طلبٍ منجَز (حقول جديدة، ورسالة تُضاف). يرجّع السجل أو None."""
+    d = load_dupes_done(data_dir)
+    rec = d.get(str(order))
+    if not rec:
+        return None
+    rec.update(fields or {})
+    if add_msg:
+        rec.setdefault("msgs", []).append(add_msg)
+    renew._write_json(dupes_path(data_dir), d)
+    return rec
+
+
+def dup_log_path(data_dir):
+    return os.path.join(data_dir, "renew_dup_log.jsonl")
+
+
+def log_dup_send(data_dir, msg, how, ok, error=""):
+    """سجلٌّ يُضاف إليه ولا يُمحى: كل محاولة إرسال لرسالة بديل (نجحت أو فشلت) بنصّها كما أُرسلت."""
+    rec = {"at": renew.now_iso(), "order": msg.get("order", ""), "kind": msg.get("kind", ""),
+           "name": msg.get("name", ""), "phone": msg.get("phone", ""), "how": how, "ok": bool(ok),
+           "error": str(error or "")[:200], "text": str(msg.get("text", ""))[:1500]}
+    with open(dup_log_path(data_dir), "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return rec
+
+
+def load_dup_log(data_dir, limit=500):
+    out = []
+    try:
+        with open(dup_log_path(data_dir), encoding="utf-8") as f:
+            for line in f:
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    continue
+    except OSError:
+        pass
+    return out[::-1][:limit]
+
+
 def set_dupe_msg(data_dir, order, idx, **fields):
     """يحدّث رسالةً من رسائل بديل مكرر (نصها، أو أنها أُرسلت وكيف). يرجّع الرسالة أو None."""
     d = load_dupes_done(data_dir)
