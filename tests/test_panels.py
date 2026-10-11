@@ -562,6 +562,7 @@ def test_order_lost():
         # قبل سحب اللوحة: لا حكم بالفقد
         r0 = panels.lost(cfg, d)
         check("no panel pulled = nothing is called missing", r0["total"] == 0 and r0["counts"]["not_pulled"] >= 3, str(r0["counts"]))
+        check("every unique store line is counted as checked", r0["counts"]["checked"] == 5, str(r0["counts"]))
         panels.save_panel_lines(d, "pk", "مرح", [{"username": "333", "password": "x", "exp": "", "package": "15 Months"}])
         panels.save_panel_lines(d, "alt", "البديلة", [{"username": "222", "password": "x", "exp": "", "package": "1 Year"}])
         r = panels.lost(cfg, d, replaced={"111"})
@@ -573,6 +574,17 @@ def test_order_lost():
         row = next(x for x in r["rows"] if x["username"] == "111")
         check("missing row: remaining 10 months + 1 compensation = 11", row["suggest"] == 10 and row["new_months"] == 11 and r["base"] == 15, str(row))
         check("compensation is capped at the 15-month package", panels.comp_months(500, 3) == 15 and panels.comp_months(0) == 0)
+        # طلبٌ بيوزرين: أحدهما موجود ⇒ الآخر «زائد» لا مفقود
+        d3 = tempfile.mkdtemp(prefix="lost3_")
+        try:
+            panels.save_store_lines(d3, [ln("287314660", "333"), ln("287314660", "691869829206")])
+            panels.save_panel_lines(d3, "pk", "مرح", [{"username": "333"}])
+            r3 = panels.lost(cfg, d3)
+            s3 = panels.order_search(cfg, d3, "691869829206")
+            check("a second user in an order that has a found user is covered, not missing",
+                  r3["total"] == 0 and r3["counts"]["covered"] == 1 and s3["rows"][0]["state"] == "covered", str(r3["counts"]))
+        finally:
+            shutil.rmtree(d3, ignore_errors=True)
         # ملف Excel البوابة المحفوظ في النظام: يوزرٌ فيه موجود، وبوابته تُعدّ مسحوبة
         ex = {"users": {"111": "بوابة مرح"}, "gates": {("acc1", "g1")}}
         re_ = panels.lost(cfg, d, export=ex)

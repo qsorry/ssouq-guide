@@ -845,7 +845,13 @@ def _panel_users(pl, export=None):
     return out
 
 
-def _line_row(ln, cfg, pl, users, done, replaced, today, export=None):
+def _covered_orders(lines, users):
+    """طلباتٌ وُجد أحد يوزراتها على لوحة: اشتراكها قائم، فيوزرٌ آخر فيها (قديمٌ أو مكرّرٌ في سجلّه) ليس مفقودًا."""
+    return {renew.norm_order(ln.get("order")) for ln in lines
+            if str(ln.get("username") or "").strip().lower() in users and ln.get("order")}
+
+
+def _line_row(ln, cfg, pl, users, done, replaced, today, export=None, covered=()):
     """صفّ خطٍّ من المتجر بحاله: أين وُجد، وأمفقودٌ هو، وكم بقي له."""
     pmap = {p["id"]: p for p in cfg["panels"]}
     hidx = host_index(cfg["panels"])
@@ -865,6 +871,8 @@ def _line_row(ln, cfg, pl, users, done, replaced, today, export=None):
         state = "found"
     elif (u.lower() in replaced and not mine) or (done.get(order) and not mine):
         state = "replaced"                       # استُبدل من غير هذه الصفحة (بديل المكرر أو البحث)
+    elif renew.norm_order(ln.get("order")) in covered and not mine:
+        state = "covered"                        # للطلب يوزرٌ آخر موجود: الاشتراك قائم
     elif not panel:
         state = "host_unmapped"
     elif not ((own and own.get("count"))
@@ -894,13 +902,16 @@ def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=Fal
     replaced = {str(u).lower() for u in (replaced or ())}
     today = today or renew._today()
     rows, seen = [], set()
-    counts = {"found": 0, "replaced": 0, "host_unmapped": 0, "not_pulled": 0, "expired": 0}
-    for ln in load_store_lines(data_dir).get("lines", []):
-        r = _line_row(ln, cfg, pl, users, done, replaced, today, export)
+    counts = {"checked": 0, "found": 0, "covered": 0, "replaced": 0, "host_unmapped": 0, "not_pulled": 0, "expired": 0}
+    lines = load_store_lines(data_dir).get("lines", [])
+    covered = _covered_orders(lines, users)
+    for ln in lines:
+        r = _line_row(ln, cfg, pl, users, done, replaced, today, export, covered)
         key = (renew.norm_order(r["order"]), r["username"].lower())
         if not r["username"] or key in seen:
             continue
         seen.add(key)
+        counts["checked"] += 1
         if r["state"] != "missing":
             counts[r["state"]] = counts.get(r["state"], 0) + 1
             continue
@@ -932,10 +943,12 @@ def order_search(config, data_dir, q, replaced=None, today=None, export=None):
     replaced = {str(u).lower() for u in (replaced or ())}
     today = today or renew._today()
     rows = []
-    for ln in load_store_lines(data_dir).get("lines", []):
+    lines = load_store_lines(data_dir).get("lines", [])
+    covered = _covered_orders(lines, users)
+    for ln in lines:
         if (qo and renew.norm_order(ln.get("order")) == qo) or str(ln.get("username") or "").strip().lower() == ql \
                 or (len(q) >= 4 and str(ln.get("password") or "").strip() == q):
-            rows.append(_line_row(ln, cfg, pl, users, done, replaced, today, export))
+            rows.append(_line_row(ln, cfg, pl, users, done, replaced, today, export, covered))
     order = rows[0]["order"] if rows and all(r["order"] == rows[0]["order"] for r in rows) else (qo if not rows else "")
     idx = renew.load_index(data_dir).get("orders", {}).get(qo) if qo else None
     if idx:
