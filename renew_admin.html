@@ -501,9 +501,15 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <thead><tr><th><input type="checkbox" id="unlAll" checked></th><th>اللوحة</th><th>اليوزر</th><th>كلمة المرور</th><th>الباقة</th><th>الانتهاء</th><th>متبقٍ</th></tr></thead>
           <tbody id="unlBody"></tbody></table></div>
         <div class="acts"><button class="go hidden" id="unlCopyCard" type="button">نسخ سطر الكود لسلة (Host · User · Pass · Guide)</button>
+          <button class="ghost hidden" id="unlMark" type="button">علّم المحدد «معروض في سلة»</button>
           <button class="ghost hidden" id="unlCopy" type="button">نسخ سطر التجزئة (مع Exp)</button>
           <a class="ghost hidden" id="dlUnlisted" href="#">تنزيل Excel</a></div>
         <p class="msg" id="unlMsg"></p>
+        <details class="fold" style="margin-top:8px"><summary>المعلَّم يدويًا «معروض في سلة» <span id="markedCount"></span></summary>
+          <p class="hint">يوزرات عرضتها في سلة بنفسك (مخزون أكواد سلة يصل مقنَّعًا فلا تُعرف منه). تبقى خارج «غير المعروض» حتى تُلغي تعليمها. لإلغاء التعليم: أبقِ في المربع السطور المراد إلغاؤها فقط ثم اضغط الزر.</p>
+          <textarea id="markedList" rows="4" class="ltr"></textarea>
+          <div class="acts"><button class="ghost" id="unmarkBtn" type="button">إلغاء تعليم ما في المربع</button></div>
+        </details>
         <div id="splitBox" class="hidden">
           <h4 style="margin:14px 0 6px">تجزئة بالكامل</h4>
           <p class="hint">الصق السطور (أو اضغط «إلى مربع التجزئة») واختر الجزء المبيع: يُسجَّل كل خط أمًّا بباقة ١٥ شهرًا وجزؤه بالمدة المختارة في «حسابات متبقية»، فيتولّى النظام تغيير الاسم عند انتهاء الجزء وإبقاء المتبقي للبيع. لا يُلمس شيء على اللوحة الآن.</p>
@@ -1340,9 +1346,10 @@ function renderUnlisted(d){
   $('#unlWrap').classList.toggle('hidden', !UNL.length);
   $('#unlCopy').classList.toggle('hidden', !rows.length);
   $('#unlCopyCard').classList.toggle('hidden', !rows.length);
+  $('#unlMark').classList.toggle('hidden', !rows.length);
   $('#dlUnlisted').classList.toggle('hidden', !UNL.length);
   $('#splitBox').classList.toggle('hidden', !UNL.length);
-  note($('#unlMsg'), `${AR(UNL.length)} يوزرًا لم تُعرض للبيع · المبيع في سلة ${AR(d.store_sold)} · المعروض في مخزون سلة ${AR(d.salla_listed)}${d.codes_built ? '' : ' (لم تُسحب أكواد سلة: كل غير المبيع يُعدّ غير معروض)'}${notPulled.length ? ` · ⚠️ لوحات بلا يوزرات مسحوبة: ${notPulled.join('، ')}` : ''}`, !notPulled.length);
+  note($('#unlMsg'), `${AR(UNL.length)} يوزرًا لم تُعرض للبيع · المبيع في سلة ${AR(d.store_sold)} · المعروض في مخزون سلة ${AR(d.salla_listed)} · المعلَّم يدويًا ${AR(d.manual_listed || 0)}${d.codes_built ? '' : ' (لم تُسحب أكواد سلة: كل غير المبيع يُعدّ غير معروض)'}${notPulled.length ? ` · ⚠️ لوحات بلا يوزرات مسحوبة: ${notPulled.join('، ')}` : ''}`, !notPulled.length);
   $('#unlSum').textContent = `${AR(UNL.length)} غير معروض`;
 }
 function pickedRows(){ return [...document.querySelectorAll('.unlPick:checked')].map(c => UNL[Number(c.dataset.i)]).filter(Boolean); }
@@ -1367,6 +1374,30 @@ $('#unlCopy').onclick = async () => {
   catch (e) { $('#splitText').value = t; note($('#unlMsg'), 'تعذّر النسخ — السطور في مربع التجزئة', false); }
 };
 $('#dlUnlisted').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/unlisted.xlsx'; };
+async function loadMarked(){
+  const d = await api('/api/renew/listed');
+  const m = d.listed || {};
+  const keys = Object.keys(m);
+  $('#markedCount').textContent = keys.length ? `(${AR(keys.length)})` : '';
+  $('#markedList').value = keys.map(k => `${k}  — ${m[k].at || ''}${m[k].note ? ' · ' + m[k].note : ''}`).join('\n');
+}
+$('#unlMark').onclick = async () => {
+  const us = pickedRows().map(r => r.username);
+  if (!us.length) return note($('#unlMsg'), 'حدد صفوفًا أولًا');
+  const d = await post('/api/renew/listed', {usernames: us, note: 'عُرض في سلة'});
+  if (d.error) return note($('#unlMsg'), d.error);
+  note($('#unlMsg'), `عُلِّم ${AR(us.length)} يوزرًا «معروض في سلة» — المعلَّم الكلي ${AR(d.total)}`, true);
+  loadMarked(); $('#doUnlisted').click();
+};
+$('#unmarkBtn').onclick = async () => {
+  const us = $('#markedList').value.split('\n').map(l => (l.trim().match(/^[A-Za-z0-9._-]{3,}/) || [''])[0]).filter(Boolean);
+  if (!us.length) return;
+  const d = await post('/api/renew/listed', {usernames: us, remove: true});
+  if (d.error) return note($('#unlMsg'), d.error);
+  note($('#unlMsg'), `أُلغي تعليم ${AR(us.length)} — المعلَّم الكلي ${AR(d.total)}`, true);
+  loadMarked(); if (UNL.length) $('#doUnlisted').click();
+};
+loadMarked();
 $('#unlToSplit').onclick = () => {
   $('#splitText').value = pickedLines().join('\n');
   // شريحة مدةٍ محددة: الجزء المبيع يُضبط عليها ما دام ممكنًا (مثلًا متبقٍ ٥ أشهر ← جزء ٥)

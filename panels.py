@@ -322,6 +322,38 @@ def salla_codes_by_user(data):
     return out
 
 
+# ============================ المعلَّم يدويًا «معروض في سلة» ============================
+# مخزون أكواد سلة قد يصل مقنَّعًا فلا يُعرف منه اليوزر؛ فيُعلّم المشغّل ما عرضه بنفسه
+# (بعد نسخ سطر الكود ولصقه في سلة) ويبقى خارج «غير المعروض» حتى يُلغي تعليمه.
+
+def listed_path(data_dir):
+    return os.path.join(data_dir, "renew_listed.json")
+
+
+def load_listed(data_dir):
+    try:
+        with open(listed_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def mark_listed(data_dir, usernames, remove=False, note=""):
+    """يعلّم يوزرات (أو يلغي تعليمها) كمعروضة في سلة يدويًا. يرجّع العدد الكلي المعلَّم."""
+    d = load_listed(data_dir)
+    for u in usernames or []:
+        k = str(u or "").strip().lower()
+        if not k:
+            continue
+        if remove:
+            d.pop(k, None)
+        else:
+            d[k] = {"at": renew.now_iso(), "note": str(note or "")[:120]}
+    renew._write_json(listed_path(data_dir), d)
+    return len(d)
+
+
 # ============================ لم تُعرض للبيع ============================
 
 def remaining_text(exp, today=None):
@@ -392,6 +424,7 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
     store = load_store_lines(data_dir)
     sold = {str(ln.get("username") or "").strip().lower() for ln in store.get("lines", []) if ln.get("username")}
     listed = salla_codes_by_user(load_salla_codes(data_dir))
+    manual = load_listed(data_dir)                  # ما علّمه المشغّل بنفسه «معروض في سلة»
     pl = load_panel_lines(data_dir)["panels"]
     today = renew._today()
     rows, per_panel = [], {}
@@ -411,7 +444,7 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
             if key in in_split:
                 n_split += 1
                 continue
-            if key in listed:
+            if key in listed or key in manual:
                 n_listed += 1
                 continue
             es = expiry_status(rec.get("exp"), today, 0)
@@ -440,7 +473,7 @@ def unlisted(config, data_dir, include_expired=False, gates=None, split=None):
                               "split": n_split, "built": pdata.get("built", "")}
     rows.sort(key=lambda r: (r["panel_name"], -(r["days_left"] or 0), r["username"]))
     return {"rows": rows, "panels": per_panel, "built": renew.now_iso(),
-            "store_sold": len(sold), "salla_listed": len(listed),
+            "store_sold": len(sold), "salla_listed": len(listed), "manual_listed": len(manual),
             "codes_built": load_salla_codes(data_dir).get("built", "")}
 
 
