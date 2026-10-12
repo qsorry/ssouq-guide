@@ -60,6 +60,9 @@ def test_sub_and_text():
           and "صورة الشاشة" in t)
     check("a second user of a 2-copy order is appended", "اليوزر 2:*\nUser: 999\nPass: 888" in t)
     check("the order of blocks: head, guide, apps, foot", t.index("📲") < t.index("📱") < t.index("⚠️ *انتبه") < t.index("❓"))
+    tx = complaints.reply_text("a", "7", "x", "casper", fixed=True)
+    check("fixed head: handled + try again, no same-data note unless asked", tx.startswith("السلام عليكم ورحمة الله *a* 👋") and "شكواكم على الطلب رقم *7*" in tx
+          and "تمت معالجة الأمر" in tx and "ببياناتكم نفسها" not in tx and "ببياناتكم نفسها" in complaints.reply_text("a", "7", "x", "casper", fixed=True, same=True))
     tf = complaints.reply_text("", "5", "x", "falcon")
     check("falcon table and default name", "عميلنا العزيز" in tf and "تطبيق فالكون" in tf and "0Player برمز 75710072" in tf and "CASPER" not in tf)
     tu = complaints.reply_text("a", "5", "x", "")
@@ -362,6 +365,8 @@ def test_create_and_marks():
         X.split_register_created = lambda acct_, g, pkg, slice_m, out, customer="": made.setdefault("split", slice_m) and [{"username": "901"}]
         X.channel_link = lambda: ""
         code, b = X.reply_create(st, cfg, d, [acct], {"order": "138"})
+        check("new credentials (not same): handled-head without the same-data note", b["fixed"] and not b["same_creds"]
+              and "تمت معالجة الأمر" in b["text"] and "ببياناتكم نفسها" not in b["text"])
         check("created: a 10-month slice, linked to the order replacing the lost user, reply ready with the new line",
               code == 200 and b["created"]["username"] == "901" and b["created"]["months"] == 10 and made.get("split") == 10
               and b["state"] == "ready" and b["creds"][0]["username"] == "901" and "User: 901\nPass: 902" in b["text"]
@@ -447,6 +452,9 @@ def test_same_creds_on_casper():
               code == 200 and b["created"]["same_creds"] and b["created"]["username"] == "333444555666" and b["created"]["password"] == "777888999000"
               and made and made["package"] == "15 Months" and b["created"]["months"] == 10 and b["created"]["split"], str(b.get("created")))
         check("reply text carries the same credentials", "User: 333444555666\nPass: 777888999000" in b["text"])
+        check("after re-creation the reply says it was handled, try again, with the same data", b["fixed"] and b["same_creds"]
+              and "تمت معالجة الأمر" in b["text"] and "جرّبوا مرة أخرى" in b["text"] and "ببياناتكم نفسها" in b["text"]
+              and "هذه بيانات اشتراككم وطريقة تشغيله" not in b["text"] and b["text"].index("تمت معالجة") < b["text"].index("📲"), b["text"][:220])
         s2 = panels.order_search(cfg, d, "500")
         check("order still linked to the same username and marked done", [x["username"] for x in s2["rows"]] == ["333444555666"]
               and panels.load_dupes_done(d)["500"]["new"] == "333444555666")
