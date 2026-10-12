@@ -243,7 +243,12 @@ def test_complaints_pull():
         # شكوى كما جاءت فعلًا من اللوحة: معرّفٌ داخلي للشكوى والطلب، ورقمها الظاهر في number، والحالة slug
         real = salla_web.normalize_complaint({"id": 2078174950, "number": 1455683, "status": "pending_merchant", "order_id": 393200149,
                                               "customer": {"name": "Dr.EMAD FAWZI"}, "created_at": {"date": "2026-10-12 00:33:57"}})
-        check("real row: link to the complaint in the panel from its internal id", real["url"] == "https://s.salla.sa/complaints/2078174950" and real["cid"] == "2078174950")
+        check("real row: no link is invented from the internal id (the panel has no such page)", real["url"] == "" and real["cid"] == "2078174950")
+        check("link: a full complaint.salla.sa url anywhere in the row wins (tracking params dropped)",
+              salla_web.complaint_url({"id": 1, "meta": {"share": "https://complaint.salla.sa/253686551/lpw7v7p4?_gl=1*abc"}}) == "https://complaint.salla.sa/253686551/lpw7v7p4")
+        check("link: built from store id + short token", salla_web.complaint_url({"id": 1, "store_id": 253686551, "hash": "lpw7v7p4"}) == "https://complaint.salla.sa/253686551/lpw7v7p4"
+              and salla_web.complaint_url({"id": 1, "store": {"id": "253686551"}, "slug": "lpw7v7p4"}).endswith("/253686551/lpw7v7p4"))
+        check("link: numeric or missing token gives no url", salla_web.complaint_url({"id": 1, "store_id": 5, "code": "12345"}) == "" and salla_web.complaint_url({"id": 1}) == "")
         check("real row: visible complaint number, order kept as internal sid (not shown as the order), arabic status, date",
               real["id"] == "1455683" and real["order"] == "" and real["order_sid"] == "393200149"
               and real["status"] == "بانتظار رد التاجر" and real["date"] == "2026-10-12 00:33:57", str(real))
