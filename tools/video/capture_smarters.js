@@ -45,8 +45,8 @@ const SM_RES = {
   'sm_cross.png': 'res/Dku.png'          // drawable/white_cross
 };
 // أكواد Downloader في الدليل، والتطبيقات التي تُثبَّت بها (أسماؤها في tv_smarters.html)
-const CODES = ['8744201', '5574841', '1683248', '3638997'];
-const APPS = ['smarters', 'mr7', 'falcon', 'casper'];
+const CODES = ['8744201', '5574841', '1683248', '3638997', '4162893'];
+const APPS = ['smarters', 'mr7', 'falcon', 'casper', 'ghost'];
 // زر # في رأس Downloader (dl_home و dl_numpad)، و OK في dl_welcome — بكسل اللقطات الرسمية
 const FIXED = { dl_home: { hash: [1642, 4, 112, 112] }, dl_welcome: { ok: [512, 784, 896, 76], dialog: [464, 180, 991, 719] } };
 
