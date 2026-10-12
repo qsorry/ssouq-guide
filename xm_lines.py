@@ -3785,14 +3785,24 @@ def reply_lookup(st, rcfg, rws, racs, q):
                      "comp": panels.COMP_DEFAULT, "suggest": panels.comp_months(left, panels.COMP_DEFAULT) if left is not None else 0,
                      "days_left": left, "old": c0.get("username", "")}
     if out["creds"]:
-        g = dict(gate or {}, guide_url=out["guide"], host=(gate or {}).get("host") or host)
+        # الهوست الذي أُرسل للعميل (من طلبه) ≠ هوست بوابته الآن → البيانات بالجديد، وتنبيهٌ صريح بالتغيير في الردّ
+        cur_host = str((gate or {}).get("host") or "").strip()
+        sent_host = str(host or "").strip()
+        host_change = None
+        if cur_host and sent_host and renew.norm_host(cur_host) != renew.norm_host(sent_host):
+            host_change = (sent_host, cur_host)
+            host = cur_host
+            out["creds"] = [dict(c, host=cur_host) for c in out["creds"]]
+        out["host_change"] = {"old": host_change[0], "new": host_change[1]} if host_change else None
+        g = dict(gate or {}, guide_url=out["guide"], host=cur_host or host)
         line = guide_copy_text(acct, g, c0["username"], c0.get("password", ""), host or g.get("host", ""))
         # أُنشئ له من جديد بعد فقد اشتراكه (من هنا أو من «المفقود»): الردّ «تمت معالجة الأمر، جرّب مرة أخرى»
         done_rec = panels.load_dupes_done(rws).get(order) if (panel or {}).get("done") else None
         fixed = bool(done_rec) or bool(out.get("replacement"))
         same = bool(done_rec and str(done_rec.get("old") or "").lower() == str(done_rec.get("new") or "").lower())
         out["fixed"], out["same_creds"] = fixed, same
-        out["text"] = complaints.reply_text(info.get("customer", ""), order, line, sub, out["creds"][1:], fixed=fixed, same=same)
+        out["text"] = complaints.reply_text(info.get("customer", ""), order, line, sub, out["creds"][1:], fixed=fixed, same=same,
+                                            host_change=host_change, channel=channel_link())
         out["state"] = "ready"
     else:
         out["state"] = "no_user"
