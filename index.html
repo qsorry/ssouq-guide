@@ -1077,12 +1077,12 @@ const FALCON = {
    و VIDAA يُورَث كما هو (Duplecast) بالباقة العادية، وصفحتاها تقولان إن VIDAA يحتاج برنامجًا مدفوعًا.
    ============================================================ */
 // دخول تطبيق CASPER VIP — واحد على الآيفون والجوال والشاشة
-const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",
-  html: '<p>افتح تطبيق <b dir="ltr">CASPER VIP</b> وعبّئ خانات الدخول ببيانات اشتراكك:</p>'
-    + '<div class="fields"><div class="f"><span>Username</span><code>اسم المستخدم</code></div>'
-    + '<div class="f"><span>Password</span><code>كلمة المرور</code></div></div>'
-    + '<p>ثم اضغط زر الدخول.</p>'
-    + '<div class="note">إن طلب التطبيق رابط الهوست فهو يصلك مع بيانات اشتراكك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
+const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك", img: "/static/img/casper-vip-login.webp",
+  html: '<p>افتح تطبيق <b dir="ltr">CASPER VIP</b> فتظهر شاشة <b>تسجيل الدخول</b>. اختر تبويب <b>اسم المستخدم وكلمة المرور</b> وعبّئ الخانتين ببيانات اشتراكك:</p>'
+    + '<div class="fields"><div class="f"><span>اسم المستخدم</span><code>اسم المستخدم</code></div>'
+    + '<div class="f"><span>كلمة المرور</span><code>كلمة المرور</code></div></div>'
+    + '<p>ثم اضغط <b>دخول</b>.</p>'
+    + '<div class="note">لا يحتاج التطبيق رابطًا ولا هوست: اسم المستخدم وكلمة المرور فقط.</div>' + CREDS };
 
 // دخول تطبيق Ghost Casper VIP — واحد على الجوال والشاشة، ببيانات اشتراك كاسبر نفسها
 const GHOST_CASPER_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك",

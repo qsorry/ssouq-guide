@@ -166,7 +166,7 @@ def main():
           all(os.path.isfile(os.path.join(ROOT, "static/img", f)) for f in (
               "tv-dl-code-1683248.webp", "tv-dl-code-5149800.webp", "tv-dl-install-falcon.webp", "tv-dl-done-falcon.webp",
               "tv-dl-install-casper.webp", "tv-dl-done-casper.webp", "tv-dl-devmode.webp",
-              "tv-dl-code-4162893.webp", "tv-dl-install-ghost.webp", "tv-dl-done-ghost.webp", "apps/ghost-casper-vip.webp")))
+              "casper-vip-login.webp", "tv-dl-code-4162893.webp", "tv-dl-install-ghost.webp", "tv-dl-done-ghost.webp", "apps/ghost-casper-vip.webp")))
     h = G.render("/android-tv").decode("utf-8")
     check("/android-tv فيها الموافقة والفيديو", "الخطوة 4 — ظهرت رسالة الأمان؟ اضغط «الإعدادات»" in h
           and "/static/video/smarters-tv-ar.mp4" in h and "مرة واحدة فقط" in h)
