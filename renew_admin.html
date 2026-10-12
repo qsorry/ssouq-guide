@@ -358,6 +358,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 @keyframes sdot{50%{opacity:.25;transform:scale(.7)}}
 @media (prefers-reduced-motion:reduce){[data-state="loading"] .sdot{animation:none}}
 .rp-pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75;font-size:.9rem;min-height:280px}
+.cq-r td{background:var(--sf2)}
 .rp-note{border-radius:14px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--amber) 50%,var(--line));background:color-mix(in srgb,var(--amber) 8%,var(--sf));line-height:1.7;font-size:.9rem}
 .sync{margin:6px 0 0;font-size:.74rem;color:var(--mute);line-height:1.6;white-space:pre-line}
 .sync:empty{display:none}
@@ -687,7 +688,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 
     <div class="blk" style="padding:12px;margin-bottom:12px" id="cqBox">
       <b>مراجعة الشكاوى</b>
-      <p class="hint">سجل شكاوى العملاء من لوحة سلة (بالجلسة نفسها التي تُسحب بها الطلبات). تُعرض <b>بانتظار الحل من التاجر</b> و<b>بانتظار رد التاجر</b> فقط؛ اضغط «جهّز الردّ» على الشكوى فيُجهَّز ردّها برقم طلبها.</p>
+      <p class="hint">سجل شكاوى العملاء من لوحة سلة (بالجلسة نفسها التي تُسحب بها الطلبات). تُعرض <b>بانتظار الحل من التاجر</b> و<b>بانتظار رد التاجر</b> فقط؛ اضغط «جهّز الردّ» على الشكوى فيُفتح ردّها تحتها مباشرةً (نسخ · واتساب · إرسال)، ورقم الشكوى رابطٌ يفتحها في لوحة سلة.</p>
       <div class="acts"><button class="go" id="cqLoad" type="button">اسحب الشكاوى من سلة</button><span class="hint" id="cqSum"></span></div>
       <p class="msg" id="cqMsg"></p>
       <div class="scroll hidden" id="cqWrap"><table class="rt"><thead><tr><th>الشكوى</th><th>العميل</th><th>الطلب</th><th>الحالة</th><th></th></tr></thead><tbody id="cqBody"></tbody></table></div>
@@ -2337,12 +2338,47 @@ async function cqLoad(){
   if (d.error) { $('#cqWrap').classList.add('hidden'); $('#cqSum').textContent = ''; return note($('#cqMsg'), d.hint || 'تعذّر سحب الشكاوى'); }
   note($('#cqMsg'), d.unresolved ? `${AR(d.unresolved)} شكوى بلا رقم طلب: حدّث الإضافة (1.7.1) واضغط «سحب الشكاوى» فيها من جديد، فهي تحوّل أرقام الطلبات من متصفّحك` : (CQ.length ? '' : 'لا شكاوى تنتظر التاجر الآن ✓'), !d.unresolved);
   $('#cqSum').textContent = `${AR(CQ.length)} تنتظر التاجر من ${AR(d.total)} في السجل`;
-  $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}"><td class="ltr">${esc(r.id)}</td><td>${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
+  $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}" data-i="${i}"><td class="ltr">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="افتح الشكوى في لوحة سلة">${esc(r.id)} ↗</a>` : esc(r.id)}</td><td>${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
     + `<td class="ltr">${esc(r.order) || '—'}</td><td><span class="pill warn">${esc(r.status)}</span><br><small class="cqS"></small></td>`
-    + `<td>${r.order ? `<button class="go cqGo" data-i="${i}" type="button">جهّز الردّ</button>` : '<small>بلا رقم طلب</small>'}${r.url ? ` <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">في سلة</a>` : ''}</td></tr>`).join('');
+    + `<td>${r.order ? `<button class="go cqGo" data-i="${i}" type="button">جهّز الردّ</button>` : '<small>بلا رقم طلب</small>'}${r.url ? ` <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">في سلة ↗</a>` : ''}</td></tr>`).join('');
   $('#cqWrap').classList.toggle('hidden', !CQ.length);
-  $('#cqBody').querySelectorAll('.cqGo').forEach(x => x.onclick = () => { const r = CQ[x.dataset.i]; $('#rpQ').value = r.order; $('#rpClear').classList.remove('hidden');
-    rpFind(r.order); $('#rpBox').scrollIntoView({block: 'start', behavior: 'smooth'}); });
+  $('#cqBody').querySelectorAll('.cqGo').forEach(x => x.onclick = () => cqReply(CQ[x.dataset.i], x));
+}
+// الردّ من صفّ الشكوى نفسه: صفٌّ يُفتح تحته بالبطاقة ونصّ الردّ وأزراره — بلا انتقال إلى صندوق البحث
+async function cqReply(r, btn){
+  const tr = btn.closest('tr'), i = tr.dataset.i;
+  let panel = tr.nextElementSibling && tr.nextElementSibling.classList.contains('cq-r') ? tr.nextElementSibling : null;
+  if (panel) { panel.remove(); btn.textContent = 'جهّز الردّ'; return; }     // ضغطة ثانية تطوي
+  btn.disabled = true; btn.textContent = 'جارٍ…';
+  const res = await getJSON('/api/renew/reply?q=' + encodeURIComponent(r.order));
+  btn.disabled = false; btn.textContent = 'أغلق';
+  panel = document.createElement('tr'); panel.className = 'cq-r'; panel.dataset.o = r.order;
+  const td = document.createElement('td'); td.colSpan = 5; panel.appendChild(td); tr.after(panel);
+  if (!res.ok) { td.innerHTML = `<p class="msg err">${esc(res.error || FAIL_TEXT[res.kind] || FAIL_TEXT.server)}</p>`; return; }
+  const d = res.data;
+  if (d.state !== 'ready') {
+    td.innerHTML = `<div class="rp-note">${d.state === 'not_found' ? `لا طلب برقم ${esc(r.order)} في اشتراكات سلة ولا في سلة نفسها.` : esc(d.hint || 'لم يُعثر على يوزر لهذا الطلب.')}
+      <div class="acts" style="margin-top:8px"><button class="ghost cqToBox" type="button">افتحه في صندوق الردّ (لإنشاء يوزر ولصق سطره)</button></div></div>`;
+    td.querySelector('.cqToBox').onclick = () => { $('#rpQ').value = r.order; $('#rpClear').classList.remove('hidden'); rpFind(r.order); $('#rpBox').scrollIntoView({block: 'start', behavior: 'smooth'}); };
+    return;
+  }
+  const c0 = d.creds[0] || {};
+  td.innerHTML = `<div class="lc-g" style="margin-bottom:8px">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}${lcField('الاشتراك', esc(d.sub_name) || 'غير معروف')}${lcField('المصدر', RP_SRC[d.src] || '')}</div>`
+    + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
+    + `<textarea class="rp-pre cqT" rows="14" style="margin-top:8px">${esc(d.text)}</textarea>
+      <div class="acts"><button class="go cqCopy" type="button">نسخ الردّ</button>
+        ${d.wa ? `<a class="ghost cqWa" href="#" target="_blank" rel="noopener">واتساب (يدوي)</a><button class="ghost cqSend" type="button">إرسال عبر الرقم المربوط</button>` : '<small>لا رقم جوال: انسخ الردّ</small>'}</div>
+      <p class="msg" data-sent></p>`;
+  const ta = td.querySelector('.cqT'), sent = td.querySelector('[data-sent]');
+  td.querySelector('.cqCopy').onclick = async () => { const ok = await copyText(ta.value), b = td.querySelector('.cqCopy'); b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ الردّ', 1600); };
+  const wa = td.querySelector('.cqWa');
+  if (wa) wa.onclick = () => { wa.href = 'https://wa.me/' + d.wa + '?text=' + encodeURIComponent(ta.value);
+    post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: ta.value, mode: 'manual'})
+      .then(x => note(sent, x.ok ? `تم الإرسال ✓ (واتساب يدوي إلى ${d.phone}) — سُجّل في سجل الرسائل` : (x.error || 'تعذّر التسجيل'), !!x.ok)); cqMarkSent(d.order); };
+  const sb = td.querySelector('.cqSend');
+  if (sb) sb.onclick = async () => { sb.disabled = true; note(sent, 'جارٍ الإرسال…', true);
+    const x = await post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: ta.value});
+    sb.disabled = false; note(sent, x.ok ? `تم الإرسال ✓ إلى ${d.phone}` : (x.error || 'تعذّر الإرسال'), !!x.ok); if (x.ok) cqMarkSent(d.order); };
 }
 $('#cqLoad').onclick = cqLoad;
 $('#rpLinkGo').onclick = async () => { const d = RP.d || {}, line = $('#rpLine').value.trim(), b = $('#rpLinkGo');
