@@ -12,7 +12,7 @@ function setMsg(text, kind) {
 async function loadSettings() {
   const d = await chrome.storage.local.get(KEY);
   const s = d[KEY] || {};
-  $("base").value = s.base || "";
+  $("base").value = s.base || "https://admin.ssouq.com";
   $("user").value = s.user || "admin";
   $("pass").value = s.pass || "";
   return s;
@@ -39,13 +39,14 @@ $("save").onclick = async () => {
   const s = readSettings();
   const bad = validSettings(s);
   if (bad) { setMsg(bad, "err"); $("cfg").open = true; return; }
-  // نطلب صلاحية الوصول لعنوان الأداة (host permission) كي يعمل الإرسال.
+  // تُحفظ **قبل** طلب الصلاحية: نافذة الإذن تُغلق النافذة المنبثقة، فلو حُفظت بعدها ضاع ما كُتب وأُعيدت كتابته.
+  await chrome.storage.local.set({ [KEY]: s });
+  // صلاحية الوصول لعنوان الأداة (host permission) — تُطلب مرةً واحدة، وإن كانت ممنوحة لا يُسأل.
   const g = await ask({ type: "grant", base: s.base });
   if (!g || !g.ok) {
-    setMsg("لم تُمنح صلاحية الوصول لعنوان الأداة" + (g && g.error ? " — " + g.error : ""), "err");
+    setMsg("حُفظت الإعدادات، لكن لم تُمنح صلاحية الوصول لعنوان الأداة" + (g && g.error ? " — " + g.error : "") + ". اضغط «حفظ» ثانيةً واسمح.", "err");
     return;
   }
-  await chrome.storage.local.set({ [KEY]: s });
   setMsg("حُفظت الإعدادات ✓", "ok");
 };
 

@@ -63,6 +63,7 @@ def main():
         man = json.load(f)
     ver, name = str(man.get("version", "")), str(man.get("name", ""))
     check("extension name carries its version (changes with every release)", name.endswith(" v" + ver) and bool(ver), name)
+    check("extension has a fixed key (stable id keeps the operator's settings across versions)", len(str(man.get("key", ""))) > 200)
     try:
         base = subprocess.run(["git", "-C", ROOT, "merge-base", "HEAD", "origin/main"], capture_output=True, text=True, timeout=10).stdout.strip()
         changed = subprocess.run(["git", "-C", ROOT, "diff", "--name-only", base, "--", "extension/salla-cookie"],
