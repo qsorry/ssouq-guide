@@ -3783,7 +3783,7 @@ def reply_lookup(st, rcfg, rws, racs, q):
     except Exception:
         dr = None
     if dr:
-        out["dup"] = {"first_order": dr["first_order"], "first_date": dr["first_date"], "first_customer": dr["first_customer"],
+        out["dup"] = {"first_order": dr["first_order"], "first_date": dr["first_date"], "first_customer": dr["first_customer"], "first_phone": dr["first_phone"],
                       "done": bool(dr["done"]), "done_new": (dr["done"] or {}).get("new", ""), "expired": dr["expired"],
                       "suggest": dr["suggest"], "days_left": dr["days_left"], "username": dr["username"]}
         if dr["done"] and not out.get("replacement"):
@@ -3965,14 +3965,32 @@ def reply_create(st, rcfg, rws, racs, req):
         panels.link_order(rws, order, r["username"], r["password"], host, replace=old_user, base=base)
     except ValueError as e:
         resp["link_error"] = str(e)
-    panels.mark_dupe_done(rws, order, r["username"], resp["months"], d.get("customer", ""),
-                          extra={"msgs": [], "src": "dup" if dup else "lost", "old": old_user, "comp": comp, "password": r["password"],
-                                 "host": host, "via": "reply"})
+    extra = {"msgs": [], "src": "dup" if dup else "lost", "old": old_user, "comp": comp, "password": r["password"], "host": host, "via": "reply"}
+    old_msg = None
+    if dup and req.get("rename_old", True) and old_user:
+        # المكرر: اليوزر المشترك يتغيّر اسمه (كلمة مروره ومدته كما هما) ويُبلَّغ **العميل الأول** أن يوزره تغيّر، فلا يبقى بيد الثاني
+        drow = {"username": old_user, "password": old_pw, "first_customer": dup.get("first_customer", ""), "first_phone": dup.get("first_phone", "")}
+        try:
+            info, err = _dup_rename_old(acct, gate, drow, racs, rcfg)
+        except Exception as e:
+            info, err = None, str(e)[:160]
+        if info:
+            extra["renamed"] = info
+            old_msg = _dup_old_msg(drow, info)
+            extra["msgs"] = [old_msg]
+            resp["renamed"] = info
+        else:
+            resp["rename_error"] = extra["rename_error"] = (ARCHIVE_ERR if err == OLD_MISSING and _dup_archived(racs, rcfg, acct, gate, drow)
+                                                            else (err or "تعذّر تغيير اسم اليوزر القديم"))
+    panels.mark_dupe_done(rws, order, r["username"], resp["months"], d.get("customer", ""), extra=extra)
     out = reply_lookup(st, rcfg, rws, racs, order)
+    if old_msg:                                       # رسالة العميل الأول: تُعرض وتُرسل من صفحة الشكوى (dup-send بالفهرس 0) أو من «المكرر»
+        out["old_msg"] = dict(old_msg, idx=0, order=order, wa=old_msg.get("phone", ""), renamed=resp["renamed"])
     out["created"] = {"username": r["username"], "password": r["password"], "host": host, "months": resp["months"],
                       "split": bool(resp.get("split")), "split_error": resp.get("split_error", ""), "old": old_user,
                       "link_error": resp.get("link_error", ""), "same_creds": bool(resp.get("same_creds")),
-                      "rename_error": resp.get("rename_error", ""), "password_changed": resp.get("password_changed", "")}
+                      "rename_error": resp.get("rename_error", ""), "password_changed": resp.get("password_changed", ""),
+                      "renamed": resp.get("renamed")}
     return 200, out
 
 
