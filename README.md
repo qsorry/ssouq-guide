@@ -44,6 +44,14 @@
 
 يعمل عبر Coolify من الـ Dockerfile بدون أي إعداد إضافي.
 
+### الشروحات على نطاق المتجر (`XM_STORE_URL`)
+الدليل نُقل إلى المتجر (ssouq.com/guide …). بضبط `XM_STORE_URL=https://ssouq.com` في Coolify تتحوّل صفحات
+الشروحات هنا بـ 301 إلى مقابلها هناك (`guide_pages.store_redirect`): `/` ← `/guide` (وما بعد # يحمله المتصفح
+فتفتحه صفحة المتجر)، صفحات الأجهزة ← `/guide/<الجهاز>`، `/compare` ← `/choose`، و`/content` و`/report` و`/watch`
+و`/standings` بالمسار نفسه. تبقى هنا: مسابقة التوقّعات والبطولات، `/renew`، Stremio، الواجهات `/api/…` (يقرأ منها
+المتجر)، الصور، والخرائط. **لا تضبطه قبل أن يصير ssouq.com هو المتجر الجديد** (وإلا ذهب الزائر إلى صفحة غير موجودة).
+`python tests/test_store_redirect.py` يتحقّق.
+
 ## admin.ssouq.com — الأداة
 أداة إنشاء يوزرات M3U Lines (Xtream-Masters) متعددة الحسابات، محمية بتسجيل دخول.
 **كانت على `guide.ssouq.com/admin` فصار لها نطاقها**، ولم يبقَ لها على الموقع
