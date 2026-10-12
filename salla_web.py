@@ -354,6 +354,36 @@ STATUS_NAMES = {"pending_merchant": "بانتظار رد التاجر", "awaitin
                 "resolved": "تم الحل", "closed": "مغلقة"}
 
 
+# صفحة الشكوى التي يفتحها التاجر ليست في اللوحة بل في نظام الشكاوى: complaint.salla.sa/<معرّف المتجر>/<رمزٌ قصير>
+# — والرمز لا يُشتقّ من رقم الشكوى، فيُؤخذ من الصفّ: رابطٌ كامل فيه، وإلا رمزٌ ومعرّف متجرٍ من مفاتيحه.
+COMPLAINT_SITE = "https://complaint.salla.sa"
+_C_LINK = re.compile(r"https?://complaint\.salla\.sa/[^\s\"'<>]+")
+_C_TOKEN_KEYS = ("hash", "token", "slug", "short_id", "short_code", "uuid", "key", "code", "ref", "hashid")
+_C_STORE_KEYS = ("store_id", "merchant_id", "shop_id")
+
+
+def complaint_url(d):
+    """رابط فتح الشكوى من صفّها كما تعطيه اللوحة، أو "" إن لم يُعرف (فلا رابط خاطئ)."""
+    found = []
+    _walk(d, found)
+    for t in found:
+        m = _C_LINK.search(t)
+        if m:
+            return m.group(0).split("?", 1)[0]
+    for k in ("url", "link", "href", "complaint_url", "public_url"):
+        v = d.get(k)
+        if isinstance(v, str) and v.startswith("http"):
+            return v.split("?", 1)[0]
+    store = next((_c_text(d[k]) for k in _C_STORE_KEYS if d.get(k)), "")
+    if not store and isinstance(d.get("store"), dict):
+        store = _c_text(d["store"].get("id") or "")
+    tok = next((str(d[k]) for k in _C_TOKEN_KEYS if isinstance(d.get(k), str) and re.fullmatch(r"[A-Za-z0-9_-]{5,24}", d[k])
+                and not d[k].isdigit()), "")
+    if store and tok:
+        return "%s/%s/%s" % (COMPLAINT_SITE, re.sub(r"\D", "", store), tok)
+    return ""
+
+
 def normalize_complaint(d):
     """شكوى كما تعطيها اللوحة (بأي شكل) → {id, order, order_sid, customer, status, type, text, date, phone, url}.
 
@@ -383,15 +413,11 @@ def normalize_complaint(d):
     num = next((_c_text(d[k]) for k in ("number", "complaint_number", "reference_id", "reference", "complaint_id", "id")
                 if d.get(k) not in (None, "")), "")
     cid = _c_text(d.get("id") or "")
-    url = _c_text(d.get("url") or ((d.get("urls") or {}).get("admin") if isinstance(d.get("urls"), dict) else ""))
-    if not url and cid:                                   # رابط الشكوى في اللوحة (مسارها المعتاد) ليُفتح مباشرة
-        url = BASE + "/complaints/" + cid
-    return {"id": num, "cid": cid, "order": ref, "order_sid": sid if sid != ref else "", "customer": cust.strip(), "status": status,
+    return {"id": num, "cid": cid, "url": complaint_url(d), "order": ref, "order_sid": sid if sid != ref else "", "customer": cust.strip(), "status": status,
             "type": _c_text(d.get("type") or d.get("category") or d.get("subject") or d.get("reason")),
             "text": str(d.get("content") or d.get("description") or d.get("message") or d.get("comment") or "")[:600],
             "date": _c_text(d.get("created_at") or d.get("date") or d.get("updated_at")),
-            "phone": _c_text((d.get("customer") or {}).get("mobile") if isinstance(d.get("customer"), dict) else ""),
-            "url": url}
+            "phone": _c_text((d.get("customer") or {}).get("mobile") if isinstance(d.get("customer"), dict) else "")}
 
 
 _C_TR = re.compile(r"<tr[^>]*>(?P<body>.*?)</tr>", re.S | re.I)
@@ -417,7 +443,7 @@ def parse_complaints_html(page):
         href = _C_HREF.search(m.group("body"))
         out.append({"id": nums[0], "order": nums[1], "order_sid": "", "customer": name, "status": status, "type": "", "text": "",
                     "date": next((c for c in cells if re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}", c)), ""),
-                    "phone": "", "url": (_html_mod.unescape(href.group(1)) if href else BASE + "/complaints/" + nums[0])})
+                    "phone": "", "url": (_html_mod.unescape(href.group(1)) if href else "")})
     return out
 
 
