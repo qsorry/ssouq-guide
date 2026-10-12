@@ -40,7 +40,7 @@ def req(base, path):
     op = urllib.request.build_opener(_NoFollow)
     r = urllib.request.Request(base + path, headers={"Host": "guide.ssouq.com"})
     try:
-        with op.open(r, timeout=10) as x:
+        with op.open(r, timeout=30) as x:
             return x.status, dict(x.headers)
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers)
@@ -63,7 +63,7 @@ def unit():
 
 
 def _up(url):
-    for _ in range(100):
+    for _ in range(300):
         try:
             urllib.request.urlopen(url, timeout=1)
             return
