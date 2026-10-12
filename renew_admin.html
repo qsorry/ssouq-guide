@@ -2234,6 +2234,9 @@ function lcard(r, i, kind){
     + (r.copy ? `<button class="go lcCopy" data-k="${kind}" data-i="${i}" type="button">نسخ الشرح</button>`
       + (r.phone ? `<a class="ghost lcWa" data-k="${kind}" data-i="${i}" href="#" target="_blank" rel="noopener">واتساب</a>` : '') : '<small>لا بيانات لنسخ الشرح</small>')
     + '</div></div>' : '';
+  // نسخ الشرح لبيانات الاشتراك الحالية (كبحث صفحة الإنشاء): يوزرٌ بكلمة مروره، والتعويض المُنشأ له نسخه في بطاقته
+  const cur = !dn && r.copy_line ? `<div class="lc-a"><button class="go lcCopy" data-f="copy_line" data-i="${i}" type="button">نسخ الشرح</button>`
+    + (r.phone ? `<a class="ghost lcWa" data-f="copy_line" data-i="${i}" href="#" target="_blank" rel="noopener">واتساب</a>` : '') + '</div>' : '';
   let act = '';
   if (!dn && r.state === 'missing' && (!r.expired || kind === 'ls')) act += kind === 'ls'
     ? (!pickFits($('#lsGate').value, r.sub) ? `<small class="c-warn">بوابة الإنشاء المختارة ليست ${SUB_AR[r.sub] || 'من نوع هذا الطلب'} — لا خلط بين البوابات</small>`
@@ -2242,16 +2245,16 @@ function lcard(r, i, kind){
     : `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>`;
   if (!dn && r.state === 'missing' && r.username && (!r.expired || kind === 'ls')) act += `<label class="lc-chk"><input type="checkbox" class="lc-x lcSame" checked> بنفس اليوزر والباسورد</label>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
-  return `<article class="lc st-${dn ? 'found' : esc(r.state)}">${head}${why}${grid}${lcCred(r.host, r.username, r.password)}${done}`
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}">${head}${why}${grid}${lcCred(r.host, r.username, r.password)}${cur}${done}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
 function lcBind(box, rows, kind){
   box.querySelectorAll('.lcCq').forEach(a => a.onclick = e => { e.preventDefault(); showTab('reply'); $('#rpQ').value = a.dataset.o; $('#rpClear').classList.remove('hidden'); rpFind(a.dataset.o); window.scrollTo({top: 0}); });
   box.querySelectorAll('.lcCopy').forEach(b => b.onclick = async () => {
-    const ok = await copyText(rows[b.dataset.i].copy); const t = b.textContent;
+    const ok = await copyText(rows[b.dataset.i][b.dataset.f || 'copy']); const t = b.textContent;
     b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = t, 1600); });
   box.querySelectorAll('.lcWa').forEach(a => { const r = rows[a.dataset.i];
-    a.href = 'https://wa.me/' + String(r.phone).replace(/\D/g, '').replace(/^0(?=5)/, '966') + '?text=' + encodeURIComponent(r.copy); });
+    a.href = 'https://wa.me/' + String(r.phone).replace(/\D/g, '').replace(/^0(?=5)/, '966') + '?text=' + encodeURIComponent(r[a.dataset.f || 'copy']); });
 }
 // ---- البحث: حالاتٌ صريحة تطابق الطلب الفعلي ----
 // ready جاهز · loading جارٍ (من لحظة إرسال الطلب إلى ردّه) · found وُجد · empty لا نتيجة · error خطأ يُعاد.
