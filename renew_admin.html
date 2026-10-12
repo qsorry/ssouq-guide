@@ -264,6 +264,14 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
   .rt td.u{text-align:right}
   .rt tr.none{display:block;text-align:center}
   .rt tfoot tr{background:color-mix(in srgb,var(--go) 8%,var(--sf2));border-color:color-mix(in srgb,var(--go) 35%,var(--line))}
+  /* الشكاوى على الجوال: خلية الأفعال على عرض البطاقة كله والأزرار أفقية (لا حروفٌ متعامدة)، وصفّ الردّ المفتوح كتلةٌ كاملة */
+  #cqBody td:nth-child(4){grid-column:1/-1}
+  #cqBody td:last-child{grid-column:1/-1}
+  #cqBody td:last-child .acts{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 0}
+  #cqBody td:last-child .acts>*{flex:1 1 45%;min-width:0;white-space:nowrap;padding:9px 8px;font-size:.84rem}
+  #cqBody tr.cq-r{display:block;padding:12px}
+  #cqBody tr.cq-r td{display:block}
+  #cqBody .lc-f .pill{white-space:normal;line-height:1.4}
   /* المقارنة: الحال والأيام، ثم اليوزر، ثم الجوال والطلب واللوحة، ثم المدتان والانتهاء */
   .cmp tr{grid-template-areas:"k k d" "u u u" "ph o pn" "sm pm ex"}
   .cmp .k{grid-area:k}.cmp .d{grid-area:d;justify-self:end}.cmp .u{grid-area:u;font-weight:700;font-size:.92rem}
@@ -2408,8 +2416,8 @@ async function cqLoad(){
   if (d.error) { $('#cqWrap').classList.add('hidden'); $('#cqSum').textContent = ''; return note($('#cqMsg'), d.hint || 'تعذّر سحب الشكاوى'); }
   note($('#cqMsg'), d.unresolved ? `${AR(d.unresolved)} شكوى بلا رقم طلب: حدّث الإضافة (1.7.1) واضغط «سحب الشكاوى» فيها من جديد، فهي تحوّل أرقام الطلبات من متصفّحك` : (CQ.length ? '' : 'لا شكاوى تنتظر التاجر الآن ✓'), !d.unresolved);
   $('#cqSum').textContent = `${AR(CQ.length)} تنتظر التاجر من ${AR(d.total)} في السجل`;
-  $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}" data-i="${i}" class="${r.replied_at ? 'cq-done' : ''}"><td class="ltr">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="افتح الشكوى في لوحة سلة">${esc(r.id)} ↗</a>` : esc(r.id)}</td><td>${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
-    + `<td class="ltr">${esc(r.order) || '—'}</td><td><span class="pill warn">${esc(r.status)}</span><br><small class="cqS ${r.replied_at ? 'ok' : ''}">${r.replied_at ? 'تم الردّ ✓ ' + esc(r.replied_at) : ''}</small></td>`
+  $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}" data-i="${i}" class="${r.replied_at ? 'cq-done' : ''}"><td class="ltr" data-l="الشكوى">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="افتح الشكوى في لوحة سلة">${esc(r.id)} ↗</a>` : esc(r.id)}</td><td data-l="العميل">${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
+    + `<td class="ltr" data-l="الطلب">${esc(r.order) || '—'}</td><td data-l="الحالة"><span class="pill warn">${esc(r.status)}</span><br><small class="cqS ${r.replied_at ? 'ok' : ''}">${r.replied_at ? 'تم الردّ ✓ ' + esc(r.replied_at) : ''}</small></td>`
     + `<td><div class="acts" style="margin:0">${r.order ? `<button class="go cqGo" data-i="${i}" type="button">جهّز الردّ</button>` : '<small>بلا رقم طلب</small>'}`
     + `<button class="${r.replied_at ? 'ghost' : 'go'} cqDone" data-i="${i}" type="button" title="${r.replied_at ? 'إلغاء العلامة' : 'علّمها مردودًا عليها'}">${r.replied_at ? 'إلغاء «تم الردّ»' : 'تم الردّ ✓'}</button>`
     + `${r.url ? ` <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">في سلة ↗</a>` : ''}</div></td></tr>`).join('');
