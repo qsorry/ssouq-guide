@@ -1871,9 +1871,14 @@ function initTab(){
 /* ============ اختيار البوابة: للإنشاء، ولتغيير القديم حين تتعذّر بوابته ============ */
 let CGATES = [];
 const GKEY = g => g.account_id + '|' + g.gate_id;
-function gateOpts(first){
-  return `<option value="">${first}</option>` + CGATES.map(g => `<option value="${esc(GKEY(g))}">${esc(g.name)}${CGATES.some(x => x !== g && x.name === g.name) && g.account ? ' · ' + esc(g.account) : ''}</option>`).join('');
+// لا خلط بين البوابات: كل اشتراكٍ نوعه (سمارت · كاسبر · فالكون)، وقائمة الصفّ لا تعرض إلا بوابات نوعه
+function gateOpts(first, sub){
+  return `<option value="">${first}</option>` + CGATES.filter(g => !sub || !g.sub || g.sub === sub).map(g => `<option value="${esc(GKEY(g))}">${esc(g.name)}`
+    + (g.sub_name ? ' — ' + esc(g.sub_name) : '') + `${CGATES.some(x => x !== g && x.name === g.name) && g.account ? ' · ' + esc(g.account) : ''}</option>`).join('');
 }
+const SUB_AR = {smart: 'سمارت', casper: 'كاسبر', falcon: 'فالكون'};
+// بوابة الإنشاء المختارة تصلح لهذا الصفّ؟ (تلقائي = بوابة لوحته، أو بوابةٌ من نوعه)
+const pickFits = (v, sub) => { const g = CGATES.find(x => GKEY(x) === v); return !g || !sub || !g.sub || g.sub === sub; };
 function fillGates(list){
   if (!Array.isArray(list)) return;
   CGATES = list;
@@ -1904,10 +1909,11 @@ function renderDup(d){
     const i = DUP.indexOf(r);
     const rn = !r.done ? '' : r.done.old_missing ? '<br><small>القديم محذوف من اللوحة — لا شيء يُغيَّر</small>' : r.done.renamed ? `<br><small class="c-ok">القديم ← ${esc(r.done.renamed.to)} ✓</small>`
       : `<br><small class="c-bad">القديم لم يُغيَّر${r.done.rename_error ? ': ' + esc(r.done.rename_error) : ''}</small>`
-        + `<div class="rnpick"><select class="dupRnG" data-i="${i}" aria-label="بوابة التغيير">${gateOpts('كل البوابات (تلقائي)')}</select>`
+        + `<div class="rnpick"><select class="dupRnG" data-i="${i}" aria-label="بوابة التغيير">${gateOpts('كل بوابات ' + (SUB_AR[r.sub] || 'نوعه') + ' (تلقائي)', r.sub)}</select>`
         + `<button class="ghost dupRn" data-i="${i}" type="button">غيّر القديم الآن</button></div>`;
     const act = r.done ? `<span class="c-ok">✓ ${esc(r.done.new)}</span>${rn}`
       : r.expired ? '<span class="c-bad">منتهٍ</span>'
+      : !pickFits($('#dupGate').value, r.sub) ? `<small class="c-warn">بوابة الإنشاء المختارة ليست ${SUB_AR[r.sub] || 'من نوع هذا الطلب'} — لا خلط بين البوابات</small>`
       : r.can_create || $('#dupGate').value ? `<button class="go dupMk" data-i="${i}" type="button">أنشئ بديلًا</button>`
       : '<small>اختر «بوابة الإنشاء» أعلاه أو اربط اللوحة ببوابة</small>';
     const mon = (r.done || r.expired) ? '' : `<input type="number" class="dupM" data-i="${i}" min="1" max="15" value="${r.suggest}" style="width:64px">`;
@@ -2156,7 +2162,7 @@ const lcCred = (h, u, p) => `<div class="lc-cred">${h ? `<small>Host</small><spa
 function lcard(r, i, kind){
   const dn = r.done, st = dn ? ['عُوِّض ✓', 'ok'] : (LOST_STATE[r.state] || [r.state, '']);
   const where = r.state === 'found' ? (r.found_panel || r.panel_name) + (r.found_src === 'excel' ? ' · ملف Excel' : r.found_src === 'panel' ? ' · لوحة مسحوبة' : '') : r.panel_name;
-  const head = `<header class="lc-h"><div class="lc-o">${kind === 'ls' && !dn && r.can_create ? `<input type="checkbox" class="lsC lc-x" data-i="${i}" aria-label="تحديد">` : ''}`
+  const head = `<header class="lc-h"><div class="lc-o">${kind === 'ls' && !dn && r.state === 'missing' && (r.can_create || $('#lsGate').value) && pickFits($('#lsGate').value, r.sub) ? `<input type="checkbox" class="lsC lc-x" data-i="${i}" aria-label="تحديد">` : ''}`
     + `<small>طلب</small>${kind === 'ls' ? `<a href="#" class="lsO" data-o="${esc(r.order)}"><b class="ltr">${esc(r.order)}</b></a>` : `<b class="ltr">${esc(r.order)}</b>`}`
     + `<small class="ltr">${esc(r.date)}</small></div><span class="pill ${st[1]}">${st[0]}</span></header>`;
   const why = LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '';
@@ -2170,7 +2176,8 @@ function lcard(r, i, kind){
     + '</div></div>' : '';
   let act = '';
   if (!dn && r.state === 'missing' && (!r.expired || kind === 'ls')) act += kind === 'ls'
-    ? (r.can_create || $('#lsGate').value ? `<label class="lc-m">أشهر الجديد <input type="number" class="lsM" data-i="${i}" min="1" max="15" value="${r.new_months || 1}"></label>`
+    ? (!pickFits($('#lsGate').value, r.sub) ? `<small class="c-warn">بوابة الإنشاء المختارة ليست ${SUB_AR[r.sub] || 'من نوع هذا الطلب'} — لا خلط بين البوابات</small>`
+      : r.can_create || $('#lsGate').value ? `<label class="lc-m">أشهر الجديد <input type="number" class="lsM" data-i="${i}" min="1" max="15" value="${r.new_months || 1}"></label>`
         + `<button class="go lsMk" data-i="${i}" type="button">أنشئ اشتراكًا</button>` : '<small class="c-warn">اختر «بوابة الإنشاء» أعلاه، أو اربط اللوحة ببوابة</small>')
     : `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
@@ -2496,7 +2503,7 @@ function lsRender(d){
   $('#lsBody').innerHTML = d.rows.map((r, i) => lcard(r, i, 'ls')).join('');
   lcBind($('#lsBody'), d.rows, 'ls'); $('#lsAll').checked = false;
   $('#lsWrap').classList.toggle('hidden', !d.rows.length);
-  $('#lsBulk').classList.toggle('hidden', !d.rows.some(r => !r.done && r.can_create));
+  $('#lsBulk').classList.toggle('hidden', !d.rows.some(r => !r.done && (r.can_create || $('#lsGate').value) && pickFits($('#lsGate').value, r.sub)));
   const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.total)} مفقود · ${AR(c.found || 0)} موجود · ${AR(c.covered || 0)} يوزرٌ زائد في طلبٍ له يوزر موجود · ${AR(c.replaced || 0)} مستبدل · ${AR(c.expired || 0)} منتهٍ`
     + (c.not_pulled ? ` · ${AR(c.not_pulled)} لوحته لم تُسحب` : '') + (c.host_unmapped ? ` · ${AR(c.host_unmapped)} هوسته غير مربوط` : '')
     + (d.export_users ? ` · قُورن بملفات Excel البوابات (${AR(d.export_users)} يوزرًا)` : ' · لا ملفات Excel للبوابات بعد');

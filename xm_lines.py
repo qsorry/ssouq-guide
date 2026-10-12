@@ -3249,13 +3249,24 @@ def host_job_resume_all():
 OLD_MISSING = "اليوزر القديم غير موجود على اللوحة"
 
 
+def gate_sub(acct, gate):
+    """نوع اشتراك البوابة: smart (مرح) · casper · falcon — أو "" إن لم يُعرف. لا يُخلط بين نوعين: يوزر سمارت
+    لا يُبحث عنه ولا يُغيَّر ولا يُنشأ بديله في بوابة كاسبر أو فالكون، وإن تشابهت الأرقام."""
+    return guide_sub_key(with_guide(acct, gate or {})) if gate else ""
+
+
 def _dup_candidates(accounts, cfg, acct, gate, row):
     """بوابات يُبحث فيها عن اليوزر القديم: بوابة لوحة الصف أولًا، ثم كل بوابة (ويب/فالكون) تشاركها الهوست
-    — كلوحة مرح الأرشيف التي قد تُعرَّف بنفس هوست اللوحة الحيّة فيكسبه آخرها في الفهرس."""
+    — كلوحة مرح الأرشيف التي قد تُعرَّف بنفس هوست اللوحة الحيّة فيكسبه آخرها في الفهرس. وكلها **من نوع اشتراك
+    بوابة الصف نفسه** (مرح مع مرح): بوابةٌ بهوستٍ آخر لا تُقبل إلا بنوعٍ معروفٍ مطابق."""
     out, seen = [], set()
+    sub = gate_sub(acct, gate) or line_sub(row)
 
     def add(a, g, same=True):
         if not a or not g or g.get("mode") not in SPLIT_MODES:
+            return
+        gs = gate_sub(a, g)
+        if sub and gs != sub and not (same and not gs):
             return
         k = (str(a.get("id")), str(g.get("id")))
         if k not in seen:
@@ -3341,21 +3352,31 @@ def _dup_rename_old(acct, gate, row, accounts=None, cfg=None, only=None):
 
 
 def create_gates(accounts):
-    """بوابات تصلح للإنشاء والتغيير (مرح وكاسبر وفالكون، غير الأرشيف) — لقوائم الاختيار في الصفحة."""
+    """بوابات تصلح للإنشاء والتغيير (مرح وكاسبر وفالكون، غير الأرشيف) بنوع اشتراك كلٍّ — لقوائم الاختيار في الصفحة،
+    وكل صفٍّ لا يُعرض له إلا بوابات نوعه."""
     return [{"account_id": a.get("id"), "gate_id": g.get("id"), "name": g.get("name") or g.get("host"),
-             "account": a.get("name", ""), "host": g.get("host", ""), "mode": g.get("mode")}
+             "account": a.get("name", ""), "host": g.get("host", ""), "mode": g.get("mode"),
+             "sub": gate_sub(a, g), "sub_name": GUIDE_SUBS.get(gate_sub(a, g), "")}
             for a in (accounts or []) for g in (a.get("gates") or [])
             if g.get("mode") in SPLIT_MODES and not g.get("archive_only")]
 
 
-def _picked_gate(accounts, req):
-    """(الحساب، البوابة) التي اختارها المشغّل للإنشاء (create_account_id/create_gate_id)، أو None، أو "bad"."""
+def _picked_gate(accounts, req, sub=""):
+    """(الحساب، البوابة) التي اختارها المشغّل للإنشاء (create_account_id/create_gate_id)، أو None، أو "bad" (غير صالحة)،
+    أو "mismatch" (من نوع اشتراكٍ غير نوع الطلب `sub` — لا يُنشأ اشتراك سمارت على كاسبر)."""
     gid = str(req.get("create_gate_id") or "").strip()
     if not gid:
         return None
     a = next((x for x in (accounts or []) if str(x.get("id")) == str(req.get("create_account_id"))), None)
     g = find_gate(a, gid) if a else None
-    return (a, g) if g and g.get("mode") in SPLIT_MODES and not g.get("archive_only") else "bad"
+    if not (g and g.get("mode") in SPLIT_MODES and not g.get("archive_only")):
+        return "bad"
+    gs = gate_sub(a, g)
+    return "mismatch" if sub and gs and gs != sub else (a, g)
+
+
+PICK_ERR = {"bad": "بوابة الإنشاء المختارة غير صالحة",
+            "mismatch": "بوابة الإنشاء المختارة من نوع اشتراكٍ آخر — لا يُخلط بين البوابات: اختر بوابةً من نوع هذا الطلب"}
 
 
 def _dup_old_msg(row, info):
@@ -3378,6 +3399,13 @@ def dup_rename(accounts, cfg, ws, req):
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء"}
     gate = with_guide(acct, gate)
     only = (req.get("account_id"), req.get("gate_id")) if req.get("gate_id") else None
+    if only:                                   # بوابة التغيير المختارة: من نوع الطلب وحده
+        oa = next((x for x in (accounts or []) if str(x.get("id")) == str(only[0])), None)
+        og = find_gate(oa, only[1]) if oa else None
+        want, got = gate_sub(acct, gate) or line_sub(row), gate_sub(oa, og)
+        if og and want and got and want != got:
+            return 400, {"error": "البوابة المختارة من نوع اشتراكٍ آخر (%s) — اختر بوابة %s"
+                                  % (GUIDE_SUBS.get(got, got), GUIDE_SUBS.get(want, want))}
     info, err = _dup_rename_old(acct, gate, row, accounts, cfg, only=only)
     if not info and err == OLD_MISSING and _dup_archived(accounts, cfg, acct, gate, row):
         panels.update_dupe(ws, order, {"rename_error": ARCHIVE_ERR})
@@ -3476,9 +3504,9 @@ def dup_create(accounts, cfg, ws, req):
         return 400, {"error": "انتهت مدة هذا الطلب فلا يحتاج يوزرًا"}
     acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row["account_id"])), None)
     gate = find_gate(acct, row["gate_id"]) if acct else None
-    pick = _picked_gate(accounts, req)          # بوابة إنشاءٍ يختارها المشغّل (مرح الأخرى مثلًا)
-    if pick == "bad":
-        return 400, {"error": "بوابة الإنشاء المختارة غير صالحة"}
+    pick = _picked_gate(accounts, req, gate_sub(acct, gate) or line_sub(row))   # بوابةٌ يختارها المشغّل — من نوع الطلب
+    if isinstance(pick, str):
+        return 400, {"error": PICK_ERR[pick]}
     if pick:
         acct, gate = pick
     if not gate:
@@ -4034,9 +4062,9 @@ def comp_create(accounts, cfg, ws, req):
         return 400, {"error": "انتهت مدة هذا الطلب"}
     acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row["account_id"])), None)
     gate = find_gate(acct, row["gate_id"]) if acct else None
-    pick = _picked_gate(accounts, req)
-    if pick == "bad":
-        return 400, {"error": "بوابة الإنشاء المختارة غير صالحة"}
+    pick = _picked_gate(accounts, req, gate_sub(acct, gate) or line_sub(row))   # بوابةٌ يختارها المشغّل — من نوع الطلب
+    if isinstance(pick, str):
+        return 400, {"error": PICK_ERR[pick]}
     if pick:
         acct, gate = pick
     if not gate:
@@ -6552,6 +6580,7 @@ class Handler(BaseHTTPRequestHandler):
                 for r in d["rows"]:
                     ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
                     r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
+                    r["sub"] = gate_sub(ac, find_gate(ac, r["gate_id"]) if ac else None) or line_sub(r, r.get("panel_name", ""))
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
                 d["wa_linked"] = dup_wa_ready(st)
@@ -6590,6 +6619,7 @@ class Handler(BaseHTTPRequestHandler):
                 for r in d["rows"]:
                     ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
                     r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
+                    r["sub"] = gate_sub(ac, find_gate(ac, r["gate_id"]) if ac else None) or line_sub(r, r.get("panel_name", ""))
                 d["gates"] = create_gates(racs)
                 return self._send(200, d)
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
