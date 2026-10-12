@@ -462,7 +462,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: false, error: "عنوان الأداة غير صالح" });
           return;
         }
-        const granted = await chrome.permissions.request({ origins: [pat] });
+        // ممنوحة من قبل؟ لا نافذة إذن (هي تُغلق النافذة المنبثقة)؛ وإلا تُطلب مرةً واحدة وتبقى مع المعرّف الثابت.
+        const has = await chrome.permissions.contains({ origins: [pat] }).catch(() => false);
+        const granted = has || (await chrome.permissions.request({ origins: [pat] }));
         sendResponse({ ok: granted });
         return;
       }
