@@ -2553,6 +2553,7 @@ async function cqReply(r, btn){
     + lcField('المتبقي', esc(d.remaining) || (cr.left_months ? AR(cr.left_months) + ' شهرًا' : '—')) + lcField('تاريخ الشكوى', `<span class="ltr">${esc(r.date) || '—'}</span>`)
     + lcField('المصدر', RP_SRC[d.src] || '') + '</div>'
     + (d.skipped && d.skipped.length ? `<p class="hint">أُسقط من الردّ يوزرٌ غير موجود على اللوحات: ${d.skipped.map(esc).join('، ')}</p>` : '')
+    + (d.host_change ? `<p class="rp-note">📢 الهوست تغيّر عمّا أُرسل للعميل: <span class="ltr">${esc(d.host_change.old)}</span> ← <span class="ltr">${esc(d.host_change.new)}</span> — الردّ يحمل الجديد مع تنبيه التحديث.</p>` : '')
     + (cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done ? `<div class="mk"><button class="go cqMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button>
         <p class="sug">المقترح: المتبقي <b>${AR(cr.left_months || 0)}</b> + تعويض <b>${AR(cr.comp || 0)}</b> = <b>${AR(sug)} شهرًا</b></p>
         <label class="lc-m">أشهر الجديد <span class="step"><button type="button" class="stDn" aria-label="أقل">−</button><input type="number" class="cqMakeM" min="1" max="15" value="${sug}"><button type="button" class="stUp" aria-label="أكثر">+</button></span></label>

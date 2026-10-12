@@ -83,6 +83,14 @@ WARN = ("⚠️ *انتبه:* توجد تطبيقات كثيرة تحمل اسم
 
 EXTRA_USER = "📌 *اليوزر {n}:*\nUser: {user}\nPass: {pass}"
 
+# الهوست الذي أُرسل للعميل في طلبه تغيّر منذئذٍ (بوابته على هوستٍ آخر الآن): يُقال له صراحةً قبل البيانات
+HOST_CHANGED = ("📢 *تنبيه: تم تحديث الهوست*\n"
+                "الهوست القديم الذي وصلكم مع الطلب ({old}) لم يعد يُستعمل، يرجى استخدام الهوست الجديد:\n{new}\n"
+                "(البيانات أدناه محدَّثة به)")
+
+# قناة واتساب: تصل فيها التحديثات (تغيير الهوست وغيره) أولًا بأول
+CHANNEL = "📲 *لا تنسَ متابعة قناتنا على واتساب*، تصلك فيها التحديثات أولًا بأول:\n{link}"
+
 FOOT = "❓ إن تعذّرت عليك خطوة، أرسل لنا *نوع جهازك* و*صورة الشاشة* ونساعدك فورًا 🌹"
 
 # حالات الشكوى التي تنتظر التاجر وحدها تُعرض في «مراجعة الشكاوى» — «بانتظار الحل من التاجر» و«بانتظار رد التاجر»
@@ -160,18 +168,24 @@ def apps_block(sub):
     return APPS_HEAD_GENERIC + "\n\n" + WARN
 
 
-def reply_text(name, order, line, sub="", extra=(), fixed=False, same=False):
+def reply_text(name, order, line, sub="", extra=(), fixed=False, same=False, host_change=None, channel=""):
     """الردّ كاملًا: الرأس، ثم نصّ الشرح (line: «📲 طريقة التثبيت والتفعيل» ببيانات اليوزر الأول)، ثم
     اليوزرات الزائدة لطلبٍ بأكثر من نسخة، ثم جدول تطبيقات اشتراكه وتحذيره، ثم طلب المساعدة.
     fixed: اشتراكه كان مفقودًا وأُنشئ له من جديد — الرأس «تمت معالجة الأمر، جرّب مرة أخرى» (same: بالبيانات نفسها)."""
     nm = str(name or "").strip() or "عميلنا العزيز"
     no = norm_order(order) or str(order or "")
     head = REPLY_HEAD_FIXED.format(name=nm, order=no, same=SAME_NOTE if same else "") if fixed else REPLY_HEAD.format(name=nm, order=no)
-    parts = [head, str(line or "").strip()]
+    parts = [head]
+    if host_change and host_change[0] and host_change[1]:
+        parts.append(HOST_CHANGED.format(old=host_change[0], new=host_change[1]))
+    parts.append(str(line or "").strip())
     for i, c in enumerate(extra or (), start=2):
         if c.get("username"):
             parts.append(EXTRA_USER.format(n=i, user=c.get("username", ""), **{"pass": c.get("password", "")}))
-    parts += [apps_block(sub), FOOT]
+    parts.append(apps_block(sub))
+    if channel:
+        parts.append(CHANNEL.format(link=channel))
+    parts.append(FOOT)
     return "\n\n".join(p for p in parts if p)
 
 

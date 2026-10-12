@@ -63,6 +63,10 @@ def test_sub_and_text():
     tx = complaints.reply_text("a", "7", "x", "casper", fixed=True)
     check("fixed head: handled + try again, no same-data note unless asked", tx.startswith("السلام عليكم ورحمة الله *a* 👋") and "شكواكم على الطلب رقم *7*" in tx
           and "تمت معالجة الأمر" in tx and "ببياناتكم نفسها" not in tx and "ببياناتكم نفسها" in complaints.reply_text("a", "7", "x", "casper", fixed=True, same=True))
+    th = complaints.reply_text("a", "7", "LINE", "casper", host_change=("http://old.vip:80", "http://new.vip:80"), channel="https://whatsapp.com/channel/abc")
+    check("host change notice before the credentials, and the channel line before the foot", "تم تحديث الهوست" in th and "http://old.vip:80" in th
+          and th.index("تم تحديث الهوست") < th.index("LINE") and "قناتنا على واتساب" in th and "channel/abc" in th and th.index("channel/abc") < th.index("❓"), th)
+    check("no host change / no channel → neither block", "تم تحديث الهوست" not in complaints.reply_text("a", "7", "x") and "قناتنا" not in complaints.reply_text("a", "7", "x"))
     tf = complaints.reply_text("", "5", "x", "falcon")
     check("falcon table and default name", "عميلنا العزيز" in tf and "تطبيق فالكون" in tf and "0Player برمز 75710072" in tf and "CASPER" not in tf)
     tu = complaints.reply_text("a", "5", "x", "")
@@ -151,6 +155,31 @@ def test_lookup():
         check("pulled order: ready from the store lines, both users, casper by gate host", r["state"] == "ready" and r["src"] == "store"
               and [c["username"] for c in r["creds"]] == ["333426852552", "111"] and r["sub"] == "casper"
               and r["gate"]["gate_id"] == "g1" and r["wa"] == "966500000001" and r["qty"] == 2, str(r)[:300])
+        # الهوست الذي أُرسل للعميل غير هوست بوابته الآن: البيانات بالجديد وتنبيهٌ بالتحديث، والقناة إن رُبطت
+        keep_ch = X.channel_link
+        X.channel_link = lambda: "https://whatsapp.com/channel/XYZ"
+        try:
+            lines = panels.load_store_lines(d)["lines"]
+            for ln in lines:
+                if ln["order"] == "138":
+                    ln["host"] = "http://old-host.vip:80"
+            panels.save_store_lines(d, lines)
+            cfgh = {"panels": [{"id": "pk", "name": "كاسبر", "hosts": ["http://old-host.vip:80", "http://ssouqhost.vip:80"], "account_id": "acc1", "gate_id": "g1"}]}
+            panels.save_panel_lines(d, "pk", "كاسبر", [{"username": "333426852552"}, {"username": "111"}])
+            rh = X.reply_lookup(st, cfgh, d, [acct], "138")
+            check("sent host differs from the gate's current host → creds carry the new host, notice + channel in the reply",
+                  rh["host_change"] == {"old": "http://old-host.vip:80", "new": "http://ssouqhost.vip:80"} and rh["creds"][0]["host"] == "http://ssouqhost.vip:80"
+                  and "Host: http://ssouqhost.vip:80" in rh["text"] and "تم تحديث الهوست" in rh["text"] and "old-host.vip" in rh["text"]
+                  and "channel/XYZ" in rh["text"], str(rh.get("host_change")) + rh["text"][:300])
+            for ln in lines:
+                if ln["order"] == "138":
+                    ln["host"] = "http://ssouqhost.vip:80"
+            panels.save_store_lines(d, lines)
+            rh = X.reply_lookup(st, cfgh, d, [acct], "138")
+            check("same host → no notice", rh["host_change"] is None and "تم تحديث الهوست" not in rh["text"] and "channel/XYZ" in rh["text"])
+        finally:
+            X.channel_link = keep_ch
+        r = X.reply_lookup(st, cfgp, d, [acct], "138")
         check("text carries the gate guide link and both users", "#activate/casper" in r["text"]
               and "User: 333426852552\nPass: 4784316512" in r["text"] and "اليوزر 2:*\nUser: 111\nPass: 222" in r["text"], r["text"])
         panels.save_panel_lines(d, "pk", "كاسبر", [{"username": "111"}])
