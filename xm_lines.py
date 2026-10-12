@@ -3651,6 +3651,17 @@ def comp_copy(accounts, row):
     return guide_copy_text(acct, gate or {"host": host}, user, pw, host)
 
 
+def line_copy(accounts, row):
+    """نص الشرح لبيانات الاشتراك الحالية في البطاقة (اليوزر وكلمة مروره وهوسته) برابط شرح بوابة لوحته،
+    كنسخ بحث صفحة الإنشاء. "" إن نقصت كلمة المرور أو اليوزر."""
+    user, pw, host = row.get("username", ""), row.get("password", ""), row.get("host", "")
+    if not (user and pw):
+        return ""
+    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row.get("account_id"))), None)
+    gate = find_gate(acct, row.get("gate_id")) if acct else None
+    return guide_copy_text(acct, gate or {"host": host}, user, pw, host)
+
+
 def comp_text(name, order, line, comp, channel=""):
     """رسالة التعويض: رأسٌ بالطلب والتعويض، ثم نص الشرح الكامل (line)، وفقرة القناة تسقط إن لم تُربط قناة."""
     c = "" if not comp else " مع تعويض شهر" if comp == 1 else " مع تعويض %s" % split_subs.months_ar(comp)
@@ -6820,6 +6831,7 @@ class Handler(BaseHTTPRequestHandler):
                     r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
+                    r["copy_line"] = line_copy(racs, r)
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/complaints":     # مراجعة الشكاوى: سجل شكاوى سلة بالجلسة، ما ينتظر التاجر وحده
@@ -6844,6 +6856,7 @@ class Handler(BaseHTTPRequestHandler):
                     r["sub"] = gate_sub(ac, find_gate(ac, r["gate_id"]) if ac else None) or line_sub(r, r.get("panel_name", ""))
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
+                    r["copy_line"] = line_copy(racs, r)
                 d["rows"].sort(key=lambda r: not (r.get("complaint") and not r["complaint"]["replied"]))   # ما عليه شكوى أولًا
                 d["with_complaint"] = sum(1 for r in d["rows"] if r.get("complaint") and not r["complaint"]["replied"])
                 d["wa_linked"] = dup_wa_ready(st)
@@ -7189,6 +7202,7 @@ class Handler(BaseHTTPRequestHandler):
                 r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
                 if r.get("done"):
                     r["copy"] = comp_copy(racs, r)
+                r["copy_line"] = line_copy(racs, r)
             return self._send(200, {"ok": True, "row": row, **d})
         if path == "/api/renew/reply-link":       # يوزرٌ أُنشئ لصاحب شكوى: يُربط بالطلب ويُعاد الردّ جاهزًا
             code, body = reply_link(st, rcfg, rws, racs, req)
