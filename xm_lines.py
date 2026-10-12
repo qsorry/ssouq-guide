@@ -3719,8 +3719,12 @@ def reply_lookup(st, rcfg, rws, racs, q):
         panel = {"state": best.get("state", ""), "panel_name": best.get("panel_name", ""), "found_panel": best.get("found_panel", ""),
                  "found_src": best.get("found_src", ""), "account_id": str(best.get("account_id") or ""), "gate_id": str(best.get("gate_id") or ""),
                  "days_left": best.get("days_left"), "done": bool(best.get("done")), "expired": bool(best.get("expired"))}
-        out["creds"] = [{"username": r["username"], "password": r.get("password", ""), "host": r.get("host", "")}
-                        for r in rows if r.get("username")]
+        # يوزرات الطلب: الموجود على اللوحات أولًا؛ ويوزرٌ **غير موجود** على أي لوحة لا يُرسل للعميل (قديمٌ أو مكرّر
+        # في سجلّ الطلب) إلا أن يكون الوحيد — فلا يُقال له «اليوزر الثاني» وهو لا يعمل
+        found_rows = [r for r in rows if r.get("username") and r.get("state") == "found"]
+        pool = found_rows or [r for r in rows if r.get("username")][:1]
+        out["creds"] = [{"username": r["username"], "password": r.get("password", ""), "host": r.get("host", "")} for r in pool]
+        out["skipped"] = [r["username"] for r in rows if r.get("username") and r not in pool]
         out["src"] = "store"
     elif ix:
         info = {k: ix.get(k, "") for k in ("phone", "date", "months", "host", "expiry")}
