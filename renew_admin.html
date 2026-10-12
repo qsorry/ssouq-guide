@@ -707,6 +707,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <p class="hint">سجل شكاوى العملاء من لوحة سلة (بالجلسة نفسها التي تُسحب بها الطلبات). تُعرض <b>بانتظار الحل من التاجر</b> و<b>بانتظار رد التاجر</b> فقط؛ اضغط «جهّز الردّ» على الشكوى فيُفتح ردّها تحتها مباشرةً (نسخ · واتساب · إرسال)، ورقم الشكوى رابطٌ يفتحها في لوحة سلة.</p>
       <div class="acts"><button class="go" id="cqLoad" type="button">اسحب الشكاوى من سلة</button><span class="hint" id="cqSum"></span></div>
       <p class="msg" id="cqMsg"></p>
+      <div class="fchips" id="cqChips" style="margin-top:8px"></div>
       <div class="scroll hidden" id="cqWrap"><table class="rt"><thead><tr><th>الشكوى</th><th>العميل</th><th>الطلب</th><th>الحالة</th><th></th></tr></thead><tbody id="cqBody"></tbody></table></div>
     </div>
 
@@ -2173,7 +2174,8 @@ function lcard(r, i, kind){
   const head = `<header class="lc-h"><div class="lc-o">${kind === 'ls' && !dn && r.state === 'missing' && (r.can_create || $('#lsGate').value) && pickFits($('#lsGate').value, r.sub) ? `<input type="checkbox" class="lsC lc-x" data-i="${i}" aria-label="تحديد">` : ''}`
     + `<small>طلب</small>${kind === 'ls' ? `<a href="#" class="lsO" data-o="${esc(r.order)}"><b class="ltr">${esc(r.order)}</b></a>` : `<b class="ltr">${esc(r.order)}</b>`}`
     + `<small class="ltr">${esc(r.date)}</small></div><span class="pill ${st[1]}">${st[0]}</span></header>`;
-  const why = LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '';
+  const cqp = r.complaint && !r.complaint.replied ? `<p class="lc-why" style="color:var(--err)"><b>⚠ عليه شكوى #${esc(r.complaint.id)}</b> (${esc(r.complaint.status)})${r.complaint.url ? ` · <a href="${esc(r.complaint.url)}" target="_blank" rel="noopener">افتحها</a>` : ''} · <a href="#secReply" class="lcCq" data-o="${esc(r.order)}">جهّز الردّ</a></p>` : '';
+  const why = (LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '') + cqp;
   const grid = `<div class="lc-g">${lcField('العميل', esc(r.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(r.phone) || '—'}</span>`)}`
     + lcField('المتبقي', esc(r.remaining) || '—') + lcField(r.state === 'found' ? 'موجود على' : 'اللوحة', esc(where))
     + (r.product ? lcField('المنتج', `<span class="clip" title="${esc(r.product)}">${esc(r.product)}</span>`, 'wide') : '') + (r.linked ? lcField('الربط', 'رُبط يدويًا') : '') + '</div>';
@@ -2193,6 +2195,7 @@ function lcard(r, i, kind){
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
 function lcBind(box, rows, kind){
+  box.querySelectorAll('.lcCq').forEach(a => a.onclick = e => { e.preventDefault(); showTab('reply'); $('#rpQ').value = a.dataset.o; $('#rpClear').classList.remove('hidden'); rpFind(a.dataset.o); window.scrollTo({top: 0}); });
   box.querySelectorAll('.lcCopy').forEach(b => b.onclick = async () => {
     const ok = await copyText(rows[b.dataset.i].copy); const t = b.textContent;
     b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = t, 1600); });
@@ -2402,7 +2405,8 @@ $('#rpSend').onclick = async () => { const d = RP.d || {}, b = $('#rpSend'); b.d
   const r = await post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: $('#rpText').value});
   b.disabled = false; note($('#rpSent'), r.ok ? `تم الإرسال ✓ إلى ${d.phone}` : (r.error || 'تعذّر الإرسال'), !!r.ok); if (r.ok) cqMarkSent(d.order); };
 // ---- مراجعة الشكاوى: ما ينتظر التاجر وحده، ومنها إلى الردّ برقم الطلب ----
-let CQ = [];
+let CQ = [], CQ_ALL = [], CQ_FILTER = 'all';
+const CQ_LOST = {missing: 'مفقود من اللوحة', no_user: 'بلا يوزر'};
 function cqMarkSent(order){ $('#cqBody').querySelectorAll(`tr[data-o="${order}"]:not(.cq-r)`).forEach(tr => { tr.classList.add('cq-done');
   const e = tr.querySelector('.cqS'); if (e) { e.textContent = 'تم الردّ ✓ (أُرسل الآن)'; e.className = 'cqS ok'; }
   const b = tr.querySelector('.cqDone'); if (b) { b.textContent = 'إلغاء «تم الردّ»'; b.className = 'ghost cqDone'; }
@@ -2412,12 +2416,22 @@ async function cqLoad(){
   b.disabled = true; b.textContent = 'جارٍ السحب…'; note($('#cqMsg'), 'جارٍ قراءة سجل الشكاوى من لوحة سلة…', true);
   const res = await getJSON('/api/renew/complaints'); b.disabled = false; b.textContent = 'اسحب الشكاوى من سلة';
   if (!res.ok) return note($('#cqMsg'), res.error || FAIL_TEXT[res.kind] || FAIL_TEXT.server);
-  const d = res.data; CQ = d.rows || [];
-  if (d.error) { $('#cqWrap').classList.add('hidden'); $('#cqSum').textContent = ''; return note($('#cqMsg'), d.hint || 'تعذّر سحب الشكاوى'); }
-  note($('#cqMsg'), d.unresolved ? `${AR(d.unresolved)} شكوى بلا رقم طلب: حدّث الإضافة (1.7.1) واضغط «سحب الشكاوى» فيها من جديد، فهي تحوّل أرقام الطلبات من متصفّحك` : (CQ.length ? '' : 'لا شكاوى تنتظر التاجر الآن ✓'), !d.unresolved);
-  $('#cqSum').textContent = `${AR(CQ.length)} تنتظر التاجر من ${AR(d.total)} في السجل`;
+  const d = res.data; CQ_ALL = d.rows || [];
+  if (d.error) { $('#cqWrap').classList.add('hidden'); $('#cqSum').textContent = ''; $('#cqChips').innerHTML = ''; return note($('#cqMsg'), d.hint || 'تعذّر سحب الشكاوى'); }
+  // تبويبان: «مفقودٌ وعليه شكوى» (يوزره لا على اللوحة — يُعالج أولًا) · الكل
+  const lostN = d.lost || 0, chip = (k, t, cls) => `<button type="button" class="fchip ${cls || ''}" data-f="${k}" aria-pressed="${CQ_FILTER === k}">${t}</button>`;
+  $('#cqChips').innerHTML = chip('lost', `⚠ مفقودٌ وعليه شكوى (${AR(lostN)})`, lostN ? 'c-bad' : '') + chip('all', `كل ما ينتظر التاجر (${AR(CQ_ALL.length)})`);
+  $('#cqChips').querySelectorAll('.fchip').forEach(c => c.onclick = () => { CQ_FILTER = c.dataset.f; cqRender(d); });
+  cqRender(d);
+}
+function cqRender(d){
+  CQ = CQ_FILTER === 'lost' ? CQ_ALL.filter(r => CQ_LOST[r.panel_state] && !r.replied_at) : CQ_ALL;
+  $('#cqChips').querySelectorAll('.fchip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.f === CQ_FILTER)));
+  note($('#cqMsg'), d.unresolved ? `${AR(d.unresolved)} شكوى بلا رقم طلب: حدّث الإضافة واضغط «سحب الشكاوى» فيها من جديد، فهي تحوّل أرقام الطلبات من متصفّحك`
+    : (CQ.length ? '' : CQ_FILTER === 'lost' ? 'لا شكوى على طلبٍ مفقود ✓' : 'لا شكاوى تنتظر التاجر الآن ✓'), !d.unresolved);
+  $('#cqSum').textContent = `${AR(CQ_ALL.length)} تنتظر التاجر من ${AR(d.total)} في السجل`;
   $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}" data-i="${i}" class="${r.replied_at ? 'cq-done' : ''}"><td class="ltr" data-l="الشكوى">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="افتح الشكوى في لوحة سلة">${esc(r.id)} ↗</a>` : esc(r.id)}</td><td data-l="العميل">${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
-    + `<td class="ltr" data-l="الطلب">${esc(r.order) || '—'}</td><td data-l="الحالة"><span class="pill warn">${esc(r.status)}</span><br><small class="cqS ${r.replied_at ? 'ok' : ''}">${r.replied_at ? 'تم الردّ ✓ ' + esc(r.replied_at) : ''}</small></td>`
+    + `<td class="ltr" data-l="الطلب">${esc(r.order) || '—'}${CQ_LOST[r.panel_state] ? `<br><span class="pill bad">⚠ ${CQ_LOST[r.panel_state]}</span>` : r.panel_state === 'found' ? '<br><small class="c-ok">على اللوحة ✓</small>' : ''}</td><td data-l="الحالة"><span class="pill warn">${esc(r.status)}</span><br><small class="cqS ${r.replied_at ? 'ok' : ''}">${r.replied_at ? 'تم الردّ ✓ ' + esc(r.replied_at) : ''}</small></td>`
     + `<td><div class="acts" style="margin:0">${r.order ? `<button class="go cqGo" data-i="${i}" type="button">جهّز الردّ</button>` : '<small>بلا رقم طلب</small>'}`
     + `<button class="${r.replied_at ? 'ghost' : 'go'} cqDone" data-i="${i}" type="button" title="${r.replied_at ? 'إلغاء العلامة' : 'علّمها مردودًا عليها'}">${r.replied_at ? 'إلغاء «تم الردّ»' : 'تم الردّ ✓'}</button>`
     + `${r.url ? ` <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">في سلة ↗</a>` : ''}</div></td></tr>`).join('');
@@ -2506,7 +2520,7 @@ async function lsLoad(){
 function lsRender(d){
   fillGates(d.gates); LS = d; const c = d.counts || {};
   const tile = (n, lbl, cls) => `<div class="stat"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></div>`;
-  $('#lsTiles').innerHTML = tile(d.pending, 'يحتاج اشتراكًا', d.pending ? 'c-warn' : '') + tile(d.done, 'أُنشئ له') + tile(c.found || 0, 'موجود على لوحة')
+  $('#lsTiles').innerHTML = (d.with_complaint ? tile(d.with_complaint, 'عليه شكوى', 'c-bad') : '') + tile(d.pending, 'يحتاج اشتراكًا', d.pending ? 'c-warn' : '') + tile(d.done, 'أُنشئ له') + tile(c.found || 0, 'موجود على لوحة')
     + (c.covered ? tile(c.covered, 'طلبه له يوزر موجود') : '') + tile(c.replaced || 0, 'مستبدل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
   $('#lsBody').innerHTML = d.rows.map((r, i) => lcard(r, i, 'ls')).join('');
   lcBind($('#lsBody'), d.rows, 'ls'); $('#lsAll').checked = false;

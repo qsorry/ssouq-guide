@@ -393,6 +393,18 @@ def test_create_and_marks():
         check("re-pull: status updated (10 now waits the customer, dropped), marks kept (20 replied), new one loaded (30)",
               [r["id"] for r in o["rows"]] == ["30", "20"] and o["rows"][1].get("replied_at") and not o["rows"][0].get("replied_at"), str(o["rows"]))
         check("unmark", X.complaints_mark(d, {"id": "20", "replied": False})["marked"] == 1 and X.complaints_open({}, None, d)["replied"] == 0)
+        # الربط مع المفقود: الشكوى تحمل حال يوزر طلبها على اللوحة، و«مفقودٌ وعليه شكوى» أولًا؛ وطلب المفقود يحمل شكواه
+        o = X.complaints_open(st, cfg, d, racs=[acct])
+        by = {r["id"]: r for r in o["rows"]}
+        check("complaints carry the panel state of their order (200 found on the panel; 5 not pulled → unknown)",
+              by["20"]["panel_state"] == "found" and by["30"]["panel_state"] == "unknown", str({k: v["panel_state"] for k, v in by.items()}))
+        panels.save_store_lines(d, panels.load_store_lines(d)["lines"] + [
+            {"order": "5", "date": st_, "phone": "0500000005", "customer": "جديد", "username": "777", "password": "x", "host": "http://ssouqhost.vip:80",
+             "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=60), 12).isoformat(), "product": "اشتراك كاسبر"}])
+        o = X.complaints_open(st, cfg, d, racs=[acct])
+        check("a complaint on a lost order is flagged and sorted first", o["rows"][0]["id"] == "30" and o["rows"][0]["panel_state"] == "missing" and o["lost"] == 1, str([(r["id"], r["panel_state"]) for r in o["rows"]]))
+        cq = X.complaints_for_orders(d)
+        check("lost tab: the order→open complaint map", cq["5"]["id"] == "30" and cq["5"]["replied"] is False and "200" in cq)
     finally:
         for k, v in keep.items():
             setattr(X, k, v)
