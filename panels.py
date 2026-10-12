@@ -884,7 +884,7 @@ def _line_row(ln, ctx):
     left = (exp - today).days if exp else None
     order = str(ln.get("order") or "")
     rec = ctx["done"].get(order)
-    mine = rec if (rec or {}).get("src") == "lost" else None      # تعويضٌ أُنشئ من هذه الصفحة
+    mine = rec if (rec or {}).get("src") in ("lost", "dup") else None   # تعويضٌ أُنشئ من هذه الصفحة أو بديل مكررٍ من الشكاوى
     no = renew.norm_order(order)
     if not u:
         state = "no_user"

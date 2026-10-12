@@ -3765,7 +3765,7 @@ def reply_lookup(st, rcfg, rws, racs, q):
                     for a in (racs or []) for g in (a.get("gates") or []) if g.get("host")]
     out["panel"] = panel or {"state": "unknown"}
     # أله بديلٌ أُنشئ من قبل (في صفحة الإنشاء أو المفقود أو هنا)؟ يُعرض ويُستعمل في الردّ ولا يُنشأ له ثانيةً
-    rep = reply_replacement(racs, rws, c0.get("username", "")) if c0.get("username") else None
+    rep = reply_replacement(racs, rws, c0.get("username", ""), c0.get("password", "")) if c0.get("username") else None
     if rep and rep["username"].lower() != c0.get("username", "").lower():
         out["replacement"] = rep
         if not rep.get("password"):
@@ -3775,6 +3775,21 @@ def reply_lookup(st, rcfg, rws, racs, q):
             c0 = {"username": rep["username"], "password": rep["password"], "host": host}
             out["creds"] = [c0] + [c for c in out["creds"] if c.get("username", "").lower() != rep["username"].lower()][:0]
             out["src"] = "replacement"
+    # حسابٌ مكرر؟ (يوزره بيع قبله لعميلٍ آخر — صاحب الطلب الأقدم يحتفظ به): يُنشأ لصاحب الشكوى يوزرٌ جديد ويُرسل له،
+    # وإن أُنشئ له من قبل (سجلّ الإنجاز/user_links) ظهر بديله ولم يُنشأ ثانيةً
+    out["dup"] = None
+    try:
+        dr = next((r for r in panels.duplicates(rcfg, rws)["rows"] if r["order"] == order), None)
+    except Exception:
+        dr = None
+    if dr:
+        out["dup"] = {"first_order": dr["first_order"], "first_date": dr["first_date"], "first_customer": dr["first_customer"],
+                      "done": bool(dr["done"]), "done_new": (dr["done"] or {}).get("new", ""), "expired": dr["expired"],
+                      "suggest": dr["suggest"], "days_left": dr["days_left"], "username": dr["username"]}
+        if dr["done"] and not out.get("replacement"):
+            out["replacement"] = {"username": dr["done"].get("new", ""), "password": dr["done"].get("password", ""), "kind": "new",
+                                  "gate_name": dr.get("panel_name", ""), "host": dr["done"].get("host") or dr.get("host", ""),
+                                  "at": dr["done"].get("at", ""), "months": dr["done"].get("months"), "order": order}
     # بوابة الإنشاء إن احتاج يوزرًا: بوابة لوحته إن رُبطت بحساب، وإلا بوابة اشتراكه؛ وأشهر الجديد = المتبقي (أقرب شهر)
     ca, cg = _reply_create_gate(racs, panel, acct, gate)
     exp = renew.parse_date(info.get("expiry")) if info.get("expiry") else None
@@ -3785,7 +3800,8 @@ def reply_lookup(st, rcfg, rws, racs, q):
     out["create"] = {"can": bool(cg), "gate_name": (cg or {}).get("name", ""), "account_id": str((ca or {}).get("id", "")),
                      "gate_id": str((cg or {}).get("id", "")), "months": left_m, "left_months": left_m,
                      "comp": panels.COMP_DEFAULT, "suggest": panels.comp_months(left, panels.COMP_DEFAULT) if left is not None else 0,
-                     "days_left": left, "old": c0.get("username", "")}
+                     "days_left": left, "old": c0.get("username", ""),
+                     "why": "dup" if (dr and not dr["done"] and not out.get("replacement")) else ""}
     if out["creds"]:
         # الهوست الذي أُرسل للعميل (من طلبه) ≠ هوست بوابته الآن → البيانات بالجديد، وتنبيهٌ صريح بالتغيير في الردّ
         cur_host = str((gate or {}).get("host") or "").strip()
@@ -3816,7 +3832,7 @@ def reply_lookup(st, rcfg, rws, racs, q):
     return out
 
 
-def reply_replacement(accounts, ws, username):
+def reply_replacement(accounts, ws, username, old_password=""):
     """أله **بديلٌ** أُنشئ من قبل؟ (user_links: القديم → الجديد، من بديل البحث في صفحة الإنشاء أو تعويض المفقود أو
     هنا) — فلا يُنشأ له مرتين. ← {"username", "password", "gate_name", "account_id", "gate_id", "at"} أو None.
     كلمة مرور البديل من يوزرات اللوحة المسحوبة إن وُجدت، وإلا فارغة."""
@@ -3849,7 +3865,11 @@ def reply_replacement(accounts, ws, username):
                     done = {}
                 if not pw and done.get("password"):
                     pw = str(done["password"])
-                return {"username": new, "password": pw, "gate_name": g.get("name", ""), "account_id": str(a.get("id")),
+                # «تغيير اسم (مكرر)»: نحن غيّرنا يوزره (أول مشترٍ في مبيعٍ مكرر) وكلمة مروره كما هي
+                renamed = "تغيير اسم" in str(hit.get("package", ""))
+                if not pw and renamed and old_password:
+                    pw = str(old_password)
+                return {"username": new, "password": pw, "kind": "renamed" if renamed else "new", "gate_name": g.get("name", ""), "account_id": str(a.get("id")),
                         "gate_id": str(g.get("id")), "host": done.get("host") or g.get("host", ""), "at": hit.get("at", "") or done.get("at", ""),
                         "package": hit.get("package", ""), "months": done.get("months"), "order": done.get("order", ""),
                         "same_creds": bool(done.get("old")) and str(done.get("old", "")).lower() == new.lower()}
@@ -3897,10 +3917,14 @@ def reply_create(st, rcfg, rws, racs, req):
     if d["state"] == "not_found":
         return 404, {"error": "لا طلب بهذا الرقم في اشتراكات سلة ولا في سلة"}
     pst = (d.get("panel") or {}).get("state", "unknown")
+    dup = d.get("dup") if (d.get("create") or {}).get("why") == "dup" else None
+    if dup:
+        pst = "dup"                                   # يوزره موجود لكنه لعميلٍ أقدم: يُنشأ له جديد
+    if (d.get("panel") or {}).get("done"):
+        rec = panels.load_dupes_done(rws).get(order) or {}
+        return 400, {"error": "أُنشئ له اشتراكٌ من قبل: %s%s" % (rec.get("new") or (d.get("creds") or [{}])[0].get("username", ""), (" (" + rec["at"][:16] + ")") if rec.get("at") else "")}
     if pst == "found" and not req.get("force"):
         return 400, {"error": "اشتراكه موجود على اللوحة (%s) — لا حاجة لإنشاء يوزر" % ((d["panel"].get("found_panel") or d["panel"].get("panel_name") or ""))}
-    if (d.get("panel") or {}).get("done"):
-        return 400, {"error": "أُنشئ له اشتراكٌ من قبل"}
     if d.get("replacement"):
         rep = d["replacement"]
         return 400, {"error": "له بديلٌ أُنشئ من قبل: %s على %s%s — لا يُنشأ له مرتين؛ الردّ أعلاه ببيانات البديل"
@@ -3920,12 +3944,14 @@ def reply_create(st, rcfg, rws, racs, req):
     old_user = cr.get("old", "")
     old_pw = (d.get("creds") or [{}])[0].get("password", "") if old_user else ""
     # فحصٌ مباشر على اللوحة قبل الخصم: اليوزر القديم موجودٌ فعلًا؟ (الفهرس قد يكون قديمًا) — فلا إنشاء مرتين
-    live = reply_live_exists(gate, old_user) if old_user and not req.get("force") else None
+    live = reply_live_exists(gate, old_user) if old_user and not req.get("force") and not dup else None
     if live:
         return 400, {"error": "اليوزر %s موجودٌ على اللوحة الآن (فحصٌ مباشر) — اسحب يوزرات اللوحة ليتحدّث الفهرس، ولا حاجة للإنشاء" % old_user}
     row = {"username": old_user, "password": old_pw, "customer": d.get("customer", ""), "phone": d.get("phone", ""), "order": order}
     same = bool(req.get("same_creds")) and bool(old_user)
-    code, resp, r = _make_line(acct, gate, row, months, "شكوى الطلب %s" % order, same_creds=same)
+    if dup and same:
+        return 400, {"error": "حسابه مكرر (اليوزر %s لصاحب الطلب الأقدم %s): لا يُنشأ بنفس اليوزر — ألغِ «بنفس اليوزر»" % (old_user, dup["first_order"])}
+    code, resp, r = _make_line(acct, gate, row, months, ("بديل المكرر %s" if dup else "شكوى الطلب %s") % order, same_creds=same)
     if code != 200:
         return code, resp
     hit = _LINE_RE.search(r.get("line", ""))
@@ -3940,8 +3966,8 @@ def reply_create(st, rcfg, rws, racs, req):
     except ValueError as e:
         resp["link_error"] = str(e)
     panels.mark_dupe_done(rws, order, r["username"], resp["months"], d.get("customer", ""),
-                          extra={"msgs": [], "src": "lost", "old": old_user, "comp": comp, "password": r["password"], "host": host,
-                                 "via": "reply"})
+                          extra={"msgs": [], "src": "dup" if dup else "lost", "old": old_user, "comp": comp, "password": r["password"],
+                                 "host": host, "via": "reply"})
     out = reply_lookup(st, rcfg, rws, racs, order)
     out["created"] = {"username": r["username"], "password": r["password"], "host": host, "months": resp["months"],
                       "split": bool(resp.get("split")), "split_error": resp.get("split_error", ""), "old": old_user,

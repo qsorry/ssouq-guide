@@ -545,6 +545,34 @@ def test_same_creds_on_casper():
         code, b = X.reply_create(st, cfg, d, [acct], {"order": "700", "same_creds": True})
         check("live check on the panel finds the user and refuses a second creation", code == 400 and "فحصٌ مباشر" in b["error"], str(b))
         check("live helper: existing yes, unknown no", X.reply_live_exists(gate, "212084058604") is True and X.reply_live_exists(gate, "000000000001") is False)
+        # (ج) حسابٌ مكرر: يوزر صاحب الشكوى بيع قبله لعميلٍ آخر (وهو موجودٌ على اللوحة) → يُنشأ له جديد ويُرسل
+        panels.save_panel_lines(d, "pc", "كاسبر", [{"username": "555666777888", "password": "pd", "exp": "", "package": "12 Months"}])
+        panels.save_store_lines(d, panels.load_store_lines(d)["lines"] + [
+            {"order": "800", "date": (today - datetime.timedelta(days=200)).isoformat(), "phone": "0500000008", "customer": "الأول", "username": "555666777888", "password": "pd", "host": "http://ssouqhost.vip",
+             "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=200), 12).isoformat(), "product": "اشتراك كاسبر"},
+            {"order": "801", "date": st_, "phone": "0500000081", "customer": "الثاني", "username": "555666777888", "password": "pd", "host": "http://ssouqhost.vip",
+             "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=60), 12).isoformat(), "product": "اشتراك كاسبر"}])
+        look = X.reply_lookup(st, cfg, d, [acct], "801")
+        check("duplicate sale detected on the complainant: first order named, create allowed though the user exists",
+              look["panel"]["state"] == "found" and look["dup"] and look["dup"]["first_order"] == "800" and look["dup"]["first_customer"] == "الأول"
+              and look["create"]["can"] and look["create"]["why"] == "dup" and not look["dup"]["done"], str(look.get("dup")))
+        look0 = X.reply_lookup(st, cfg, d, [acct], "800")
+        check("the first buyer is not a duplicate", not look0["dup"] and look0["create"]["why"] == "")
+        code, b = X.reply_create(st, cfg, d, [acct], {"order": "801", "same_creds": True})
+        check("same credentials refused for a duplicate (the username belongs to the first buyer)", code == 400 and "مكرر" in b["error"], str(b))
+        code, b = X.reply_create(st, cfg, d, [acct], {"order": "801", "months": 8})
+        check("a new user is created for the duplicate, linked to the order, and the reply carries it as handled", code == 200
+              and b["created"]["username"] != "555666777888" and b["creds"][0]["username"] == b["created"]["username"] and b["fixed"]
+              and "User: " + b["created"]["username"] in b["text"] and b["panel"]["done"] and not b["dup"], str(b.get("error") or b.get("created")))
+        check("the first buyer keeps the username (no longer a duplicate)", not X.reply_lookup(st, cfg, d, [acct], "800")["dup"])
+        code, b2 = X.reply_create(st, cfg, d, [acct], {"order": "801", "months": 8})
+        check("not created twice for the duplicate", code == 400 and "من قبل" in b2["error"], str(b2))
+        # (د) غيّرنا يوزر صاحب الشكوى (تغيير اسم المكرر للمشتري الأول): يظهر الجديد بكلمة مروره القديمة
+        UL.add(d, "accC", "gc", "555666777888", "444333222111", "تغيير اسم (مكرر)")
+        look0 = X.reply_lookup(st, cfg, d, [acct], "800")
+        check("renamed username surfaces with the old password and the reply uses it",
+              look0["replacement"]["username"] == "444333222111" and look0["replacement"]["kind"] == "renamed" and look0["replacement"]["password"] == "pd"
+              and look0["creds"][0]["username"] == "444333222111" and look0["fixed"] and "User: 444333222111" in look0["text"], str(look0.get("replacement")))
     finally:
         srv.shutdown()
         for k, v in keep.items():
