@@ -5649,6 +5649,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
         for k, v in extra.items():
             self.send_header(k, v)
+        for k, v in self._ext_cors().items():          # إضافة المتصفّح تنادي /api/renew من أصلها chrome-extension://
+            if k not in extra:
+                self.send_header(k, v)
         self.end_headers()
         if not getattr(self, "_head_only", False):
             self.wfile.write(body)
@@ -6555,9 +6558,22 @@ class Handler(BaseHTTPRequestHandler):
         code, res = stremio_addon.link(DATA_DIR, self._public_base(), req, stremio_allowed)
         return self._send(code, res)
 
-    def do_OPTIONS(self):
-        # Stremio Web يسأل الإضافة من نطاقٍ آخر: الإذن (CORS) لمساراتها وحدها
+    def _ext_cors(self):
+        """ترويسات CORS لإضافة المتصفّح وحدها: أصلٌ chrome-extension:// (أو moz-extension://) على مسارات /api/renew/.
+        الإضافة تملك صلاحية الأصل عادةً فلا تحتاجها، لكن حين لا تُمنح الصلاحية (أُغلقت نافذة الإذن) يمنع المتصفّح
+        النداء بلا هذه الترويسات — والمصادقة Basic في كل نداءٍ على حالها، فلا يفتح هذا شيئًا لمن لا يملكها."""
+        origin = str(self.headers.get("Origin") or "")
         path = self.path.split("?", 1)[0]
+        if not origin.startswith(("chrome-extension://", "moz-extension://")) or "/api/renew/" not in path:
+            return {}
+        return {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Headers": "Authorization, Content-Type",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Max-Age": "86400", "Vary": "Origin"}
+
+    def do_OPTIONS(self):
+        path = self.path.split("?", 1)[0]
+        if self._ext_cors():                      # تمهيد (preflight) نداء الإضافة
+            return self._send(204, raw=b"", ctype="text/plain")
+        # Stremio Web يسأل الإضافة من نطاقٍ آخر: الإذن (CORS) لمساراتها وحدها
         if path.startswith(stremio_addon.PATH + "/"):
             return self._send(204, raw=b"", ctype="text/plain",
                               extra={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*",

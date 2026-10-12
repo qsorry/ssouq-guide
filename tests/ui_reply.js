@@ -112,6 +112,15 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     // المسح
     await page.click('#rpClear');
     check('clear resets to ready and hides the result', await st() === 'ready' && await page.isHidden('#rpReply') && (await page.inputValue('#rpQ')) === '');
+    // الإضافة بلا صلاحية الأصل: التمهيد (OPTIONS) والنداء نفسه يحملان ترويسات CORS لأصل chrome-extension:// على /api/renew/ وحدها
+    const pre = execSync(`curl -s -i -X OPTIONS -H "Origin: chrome-extension://abc" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,content-type" ${APP}/admin/api/renew/panel-cookie`).toString();
+    check('extension preflight answered with CORS headers', /HTTP\/1\.[01] 204/.test(pre) && /Access-Control-Allow-Origin: chrome-extension:\/\/abc/i.test(pre) && /Allow-Headers: Authorization, Content-Type/i.test(pre), pre.split('\n').slice(0, 8).join(' | '));
+    const real = execSync(`curl -s -i -H "Origin: chrome-extension://abc" ${APP}/admin/api/renew/extension-version`).toString();
+    check('the actual call carries the CORS origin too (401 without auth, header still there)', /Access-Control-Allow-Origin: chrome-extension:\/\/abc/i.test(real), real.split('\n').slice(0, 6).join(' | '));
+    const other = execSync(`curl -s -i -H "Origin: https://evil.example" ${APP}/admin/api/renew/extension-version`).toString();
+    check('a web origin gets no CORS header', !/Access-Control-Allow-Origin/i.test(other));
+    const nonrenew = execSync(`curl -s -i -X OPTIONS -H "Origin: chrome-extension://abc" ${APP}/admin/api/accounts`).toString();
+    check('paths outside /api/renew/ are not opened', /HTTP\/1\.[01] 404/.test(nonrenew) && !/Access-Control-Allow-Origin/i.test(nonrenew));
     check('no page errors', errs.length === 0, errs.join(' | '));
   } finally {
     await browser.close(); app.kill(); fs.rmSync(dataDir, {recursive: true, force: true});
