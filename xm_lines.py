@@ -3728,16 +3728,20 @@ def complaints_feed(ws, req):
     اللوحة: `page` صفحةٌ خامًا (JSON أو HTML) تُحلَّل بمحلّلات salla_web وتُجمع، و`finish` يحفظها على القرص
     (`renew_complaints.json`) فتقرأها «مراجعة الشكاوى» بلا لوحة. ← {ok, found, total}."""
     op = str(req.get("op") or "page")
-    cur = _cq_feed.setdefault(ws, {"rows": [], "seen": set(), "path": ""})
+    cur = _cq_feed.setdefault(ws, {"rows": [], "seen": set(), "path": "", "sample": None})
     if op == "start" or req.get("reset"):
-        cur.update(rows=[], seen=set(), path="")
+        cur.update(rows=[], seen=set(), path="", sample=None)
         if op == "start":
             return {"ok": True, "total": 0}
     if op == "page":
         body = str(req.get("body") or req.get("html") or "")
         rows = []
         try:
-            rows = [salla_web.normalize_complaint(x) for x in salla_web._find_complaints(json.loads(body))]
+            raw = salla_web._find_complaints(json.loads(body))
+            rows = [salla_web.normalize_complaint(x) for x in raw]
+            if raw and cur["sample"] is None:              # صفٌّ خام للتشخيص: شكل اللوحة غير موثّق
+                txt = json.dumps(raw[0], ensure_ascii=False)
+                cur["sample"] = raw[0] if len(txt) <= 4000 else {"_truncated": txt[:4000]}
         except ValueError:
             rows = salla_web.parse_complaints_html(body)
         new = 0
@@ -3754,9 +3758,23 @@ def complaints_feed(ws, req):
     if op == "finish":
         rows = cur["rows"]
         if rows or req.get("force"):
-            renew._write_json(complaints_path(ws), {"rows": rows, "at": renew.now_iso(), "path": cur["path"]})
+            renew._write_json(complaints_path(ws), {"rows": rows, "at": renew.now_iso(), "path": cur["path"], "sample": cur["sample"]})
         _cq_feed.pop(ws, None)
-        return {"ok": True, "total": len(rows), "open": len(complaints.open_only(rows)), "saved": bool(rows or req.get("force"))}
+        # ما جاء بمعرّف طلبٍ داخلي بلا رقمه: تحوّله الإضافة برمز جلستها (api.salla.dev) ثم تعيده بـ resolve
+        unresolved = sorted({r["order_sid"] for r in rows if r.get("order_sid") and not r.get("order")})
+        return {"ok": True, "total": len(rows), "open": len(complaints.open_only(rows)), "saved": bool(rows or req.get("force")),
+                "unresolved": unresolved}
+    if op == "resolve":                                 # {sid: رقم الطلب} من الإضافة → يُكتب في الصفوف المحفوظة
+        stored = _complaints_stored(ws) or {"rows": [], "at": renew.now_iso()}
+        amap = {re.sub(r"\D", "", str(k)): re.sub(r"\D", "", str(v)) for k, v in (req.get("map") or {}).items() if v}
+        n = 0
+        for r in stored["rows"]:
+            if not r.get("order") and r.get("order_sid") in amap:
+                r["order"] = amap[r["order_sid"]]
+                n += 1
+        if n:
+            renew._write_json(complaints_path(ws), stored)
+        return {"ok": True, "resolved": n, "left": sum(1 for r in stored["rows"] if r.get("order_sid") and not r.get("order"))}
     return {"ok": False, "error": "op غير معروف"}
 
 
@@ -3786,7 +3804,7 @@ def _complaints_resolve(st, rcfg, rows):
     return changed
 
 
-def complaints_open(st, rcfg=None, ws=None):
+def complaints_open(st, rcfg=None, ws=None, raw=False):
     """شكاوى العملاء **التي تنتظر التاجر وحدها** («بانتظار الحل من التاجر» · «بانتظار رد التاجر»). المصدر
     الأول **ما سحبته الإضافة من جهاز المشغّل** (‏`complaints_feed`، لأن Cloudflare يحجب الخادم عن اللوحة)، وإلا
     جلسة اللوحة من الخادم (‏`renew_pull_session`، الكوكيز نفسها التي تُسحب بها الطلبات) حيث لا يُحجب. ← {rows,
@@ -3795,8 +3813,11 @@ def complaints_open(st, rcfg=None, ws=None):
     if stored:
         if _complaints_resolve(st, rcfg, stored["rows"]):
             renew._write_json(complaints_path(ws), stored)
-        return {"rows": complaints.open_only(stored["rows"]), "total": len(stored["rows"]), "at": stored.get("at", ""),
-                "source": "extension"}
+        out = {"rows": complaints.open_only(stored["rows"]), "total": len(stored["rows"]), "at": stored.get("at", ""),
+               "source": "extension", "unresolved": sum(1 for r in stored["rows"] if r.get("order_sid") and not r.get("order"))}
+        if raw:                                          # تشخيص: شكل الصفّ كما تعطيه اللوحة (مفاتيحه وقيمه)
+            out["sample"], out["path"] = stored.get("sample"), stored.get("path", "")
+        return out
     via_ext = "أو اسحبها من جهازك: إضافة المتصفّح ← «سحب الشكاوى من جهازي» (كالطلبات، لأن Cloudflare يحجب الخادم عن اللوحة)"
     sess = renew_pull_session(st, rcfg)
     if not sess:
@@ -6342,7 +6363,7 @@ class Handler(BaseHTTPRequestHandler):
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/complaints":     # مراجعة الشكاوى: سجل شكاوى سلة بالجلسة، ما ينتظر التاجر وحده
-                return self._send(200, complaints_open(st, rcfg, rws))
+                return self._send(200, complaints_open(st, rcfg, rws, raw=self._q("raw") == "1"))
             if path == "/api/renew/reply":          # الردّ على شكوى: الطلب برقمه ← اشتراكه وبياناته ← نصّ الردّ جاهزًا
                 t0 = time.perf_counter()
                 d = reply_lookup(st, rcfg, rws, racs, self._q("q"))

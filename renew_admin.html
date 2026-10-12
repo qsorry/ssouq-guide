@@ -2333,7 +2333,7 @@ async function cqLoad(){
   if (!res.ok) return note($('#cqMsg'), res.error || FAIL_TEXT[res.kind] || FAIL_TEXT.server);
   const d = res.data; CQ = d.rows || [];
   if (d.error) { $('#cqWrap').classList.add('hidden'); $('#cqSum').textContent = ''; return note($('#cqMsg'), d.hint || 'تعذّر سحب الشكاوى'); }
-  note($('#cqMsg'), CQ.length ? '' : 'لا شكاوى تنتظر التاجر الآن ✓', true);
+  note($('#cqMsg'), d.unresolved ? `${AR(d.unresolved)} شكوى بلا رقم طلب: حدّث الإضافة (1.7.1) واضغط «سحب الشكاوى» فيها من جديد، فهي تحوّل أرقام الطلبات من متصفّحك` : (CQ.length ? '' : 'لا شكاوى تنتظر التاجر الآن ✓'), !d.unresolved);
   $('#cqSum').textContent = `${AR(CQ.length)} تنتظر التاجر من ${AR(d.total)} في السجل`;
   $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}"><td class="ltr">${esc(r.id)}</td><td>${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
     + `<td class="ltr">${esc(r.order) || '—'}</td><td><span class="pill warn">${esc(r.status)}</span><br><small class="cqS"></small></td>`

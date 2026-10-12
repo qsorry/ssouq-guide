@@ -297,6 +297,16 @@ def test_complaints_pull():
                       and d["rows"][0]["id"] == "1455683" and asked == ["393200149"], str(d["rows"]))
                 X.complaints_open({"service": {"salla_token": "tok"}}, None, ws)
                 check("resolution is saved: not asked again", asked == ["393200149"])
+                # بلا رمز سلة: finish يعيد المعرّفات غير المحوَّلة، والإضافة تعيدها بـ resolve فتُكتب
+                X.complaints_feed(ws, {"op": "start"})
+                X.complaints_feed(ws, {"op": "page", "body": json.dumps({"data": [{"id": 1, "number": 7, "status": "pending_merchant", "order_id": 555,
+                                                                                   "customer": "x"}]})})
+                fin = X.complaints_feed(ws, {"op": "finish"})
+                check("finish lists unresolved internal order ids and keeps a raw sample", fin["unresolved"] == ["555"]
+                      and X.complaints_open({}, None, ws, raw=True)["sample"]["number"] == 7 and X.complaints_open({}, None, ws)["unresolved"] == 1)
+                rr = X.complaints_feed(ws, {"op": "resolve", "map": {"555": "290000001", "9": ""}})
+                check("resolve writes the numbers from the extension", rr["resolved"] == 1 and rr["left"] == 0
+                      and X.complaints_open({}, None, ws)["rows"][0]["order"] == "290000001")
             finally:
                 SA.order_reference = keep_ref
             X.complaints_feed(ws, {"op": "start"})
