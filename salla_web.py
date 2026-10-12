@@ -382,12 +382,16 @@ def normalize_complaint(d):
     status = STATUS_NAMES.get(str(slug).strip().lower(), status) if not re.search(r"[\u0600-\u06FF]", status) else status
     num = next((_c_text(d[k]) for k in ("number", "complaint_number", "reference_id", "reference", "complaint_id", "id")
                 if d.get(k) not in (None, "")), "")
-    return {"id": num, "order": ref, "order_sid": sid if sid != ref else "", "customer": cust.strip(), "status": status,
+    cid = _c_text(d.get("id") or "")
+    url = _c_text(d.get("url") or ((d.get("urls") or {}).get("admin") if isinstance(d.get("urls"), dict) else ""))
+    if not url and cid:                                   # رابط الشكوى في اللوحة (مسارها المعتاد) ليُفتح مباشرة
+        url = BASE + "/complaints/" + cid
+    return {"id": num, "cid": cid, "order": ref, "order_sid": sid if sid != ref else "", "customer": cust.strip(), "status": status,
             "type": _c_text(d.get("type") or d.get("category") or d.get("subject") or d.get("reason")),
             "text": str(d.get("content") or d.get("description") or d.get("message") or d.get("comment") or "")[:600],
             "date": _c_text(d.get("created_at") or d.get("date") or d.get("updated_at")),
             "phone": _c_text((d.get("customer") or {}).get("mobile") if isinstance(d.get("customer"), dict) else ""),
-            "url": _c_text(d.get("url") or ((d.get("urls") or {}).get("admin") if isinstance(d.get("urls"), dict) else ""))}
+            "url": url}
 
 
 _C_TR = re.compile(r"<tr[^>]*>(?P<body>.*?)</tr>", re.S | re.I)
@@ -413,7 +417,7 @@ def parse_complaints_html(page):
         href = _C_HREF.search(m.group("body"))
         out.append({"id": nums[0], "order": nums[1], "order_sid": "", "customer": name, "status": status, "type": "", "text": "",
                     "date": next((c for c in cells if re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}", c)), ""),
-                    "phone": "", "url": _html_mod.unescape(href.group(1)) if href else ""})
+                    "phone": "", "url": (_html_mod.unescape(href.group(1)) if href else BASE + "/complaints/" + nums[0])})
     return out
 
 

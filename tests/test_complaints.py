@@ -243,6 +243,7 @@ def test_complaints_pull():
         # شكوى كما جاءت فعلًا من اللوحة: معرّفٌ داخلي للشكوى والطلب، ورقمها الظاهر في number، والحالة slug
         real = salla_web.normalize_complaint({"id": 2078174950, "number": 1455683, "status": "pending_merchant", "order_id": 393200149,
                                               "customer": {"name": "Dr.EMAD FAWZI"}, "created_at": {"date": "2026-10-12 00:33:57"}})
+        check("real row: link to the complaint in the panel from its internal id", real["url"] == "https://s.salla.sa/complaints/2078174950" and real["cid"] == "2078174950")
         check("real row: visible complaint number, order kept as internal sid (not shown as the order), arabic status, date",
               real["id"] == "1455683" and real["order"] == "" and real["order_sid"] == "393200149"
               and real["status"] == "بانتظار رد التاجر" and real["date"] == "2026-10-12 00:33:57", str(real))
@@ -259,7 +260,7 @@ def test_complaints_pull():
         mode["json"] = False
         sess2 = salla_web.Session("sess=1", base=base)
         rows = sess2.complaints()
-        check("html fallback: table rows parsed (id, customer, order, status, date, link)", len(rows) == 2 and rows[0] == {"id": "61", "order": "287314660", "order_sid": "",
+        check("html fallback: table rows parsed (id, customer, order, status, date, link)", len(rows) == 2 and {k: v for k, v in rows[0].items()} == {"id": "61", "order": "287314660", "order_sid": "",
               "customer": "سارة", "status": "بانتظار الحل من التاجر", "type": "", "text": "", "date": "2026-10-01", "phone": "", "url": "/complaints/61"}, str(rows))
         X.renew_pull_session = lambda st_, cfg=None: sess2
         check("html: only the open one is shown", [r["id"] for r in X.complaints_open({})["rows"]] == ["61"])

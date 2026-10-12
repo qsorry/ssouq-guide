@@ -65,6 +65,25 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     await page.click('#cqLoad'); await page.waitForFunction(() => !document.querySelector('#cqLoad').disabled);
     check('complaints pull without a panel session explains itself', (await page.textContent('#cqMsg')).includes('سحب الشكاوى من جهازي'), await page.textContent('#cqMsg'));
 
+    // الردّ من صفّ الشكوى نفسه: شكاوى محفوظة (كما تحفظها الإضافة) ← «جهّز الردّ» يفتح الردّ تحت الصفّ، ورقم الشكوى رابط
+    fs.writeFileSync(path.join(dataDir, 'renew_complaints.json'), JSON.stringify({at: '2026-10-12 01:00', rows: [
+      {id: '1455683', cid: '2078174950', order: '138', order_sid: '', customer: 'ali', status: 'بانتظار رد التاجر', type: 'المنتج لا يعمل', text: '', date: '', phone: '', url: 'https://s.salla.sa/complaints/2078174950'},
+      {id: '2', cid: '2', order: '999000', order_sid: '', customer: 'x', status: 'بانتظار الحل من التاجر', type: '', text: '', date: '', phone: '', url: ''},
+      {id: '3', cid: '3', order: '5', order_sid: '', customer: 'y', status: 'مغلقة', type: '', text: '', date: '', phone: '', url: ''}]}));
+    await page.click('#cqLoad'); await page.waitForFunction(() => !document.querySelector('#cqLoad').disabled);
+    check('complaints list shows only the merchant-waiting ones', (await page.$$('#cqBody tr')).length === 2 && (await page.textContent('#cqSum')).includes('٢'));
+    check('complaint number links to the panel', (await page.getAttribute('#cqBody tr:first-child td:first-child a', 'href')) === 'https://s.salla.sa/complaints/2078174950');
+    await page.click('#cqBody .cqGo'); await page.waitForSelector('#cqBody tr.cq-r .cqT');
+    const inl = await page.inputValue('#cqBody tr.cq-r .cqT');
+    check('inline reply under the complaint row with the credentials', inl.includes('طلبكم رقم *138*') && inl.includes('User: 333426852552') && await page.isVisible('#cqBody .cqCopy'));
+    check('the search box was not touched (still the earlier query)', (await page.inputValue('#rpQ')) === '١٣٨');
+    await page.evaluate(() => { document.querySelector('#cqBody .cqWa').addEventListener('click', e => e.preventDefault()); });
+    await page.click('#cqBody .cqWa'); await page.waitForFunction(() => ((document.querySelector('#cqBody [data-sent]') || {}).textContent || '').includes('تم الإرسال'));
+    check('manual whatsapp from the row says sent and marks the row', (await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم الإرسال'));
+    await page.click('#cqBody tr:nth-child(3) .cqGo'); await page.waitForSelector('#cqBody tr[data-o="999000"].cq-r .rp-note');
+    check('unknown order from the row: note with a jump to the box', (await page.textContent('#cqBody tr[data-o="999000"].cq-r')).includes('لا طلب برقم'));
+    fs.unlinkSync(path.join(dataDir, 'renew_complaints.json'));
+
     // بلا يوزر: الطلب معروف من الفهرس ⇒ «أنشئ له» ولصق السطر يربطه ويجهّز الردّ
     await page.fill('#rpQ', '400'); await page.click('#rpFind');
     await page.waitForFunction(() => document.querySelector('#rpBox').dataset.state !== 'loading');
