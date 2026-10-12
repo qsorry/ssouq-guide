@@ -86,7 +86,7 @@ async function waitUp(url) { for (let i=0;i<80;i++){ try{ execSync(`curl -s -o /
     await page.goto(APP + '/admin/accounts#settings');
     check('#settings in the address opens its tab', await page.$eval('.view[data-view="settings"]', v => v.classList.contains('on')));
     check('the bottom bar links the contest page', (await page.getAttribute('.bnav #navContest', 'href')) === '/admin/contest'
-      && (await page.$$('.bnav > *')).length === 5);
+      && (await page.getAttribute('.bnav #navRenew', 'href')) === '/admin/renew' && (await page.$$('.bnav > *')).length === 6);
     await page.setViewportSize({width: 390, height: 844});
     await page.evaluate(() => nav('home'));
     check('dashboard fits a phone (no horizontal scroll)', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
