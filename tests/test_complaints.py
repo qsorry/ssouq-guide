@@ -411,11 +411,58 @@ def test_create_and_marks():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_same_creds_on_casper():
+    print("\n== بنفس اليوزر والباسورد على كاسبر (لوحة وهمية): إنشاءٌ ثم تغيير الاسم إلى القديم ==")
+    import mock_casper
+    d = tempfile.mkdtemp(prefix="same_")
+    keep = {k: getattr(X, k) for k in ("DATA_DIR", "channel_link", "renew_pull_session")}
+    srv, base, _ = mock_casper.start(user_count=5)
+    try:
+        X.DATA_DIR = d
+        X.channel_link = lambda: ""
+        gate = {"id": "gc", "name": "بوابة كاسبر", "host": "http://ssouqhost.vip", "mode": "web", "web_flavor": "casper",
+                "panel_base": base + "/login.php", "panel_user": "demo", "panel_pass": "secret"}
+        # 1) الإنشاء المباشر بيوزرٍ مطلوب على باقة التجربة (1 Day): اللوحة تعطي يوزرها ثم يُعاد تسميته
+        r = X.create_line(gate, {"id": "727", "name": "1 Day"}, "212084058604", "204777188844")
+        on_panel = next((u for u in mock_casper._Handler.users if u["username"] == "212084058604"), None)
+        check("trial line created with the customer's own username and password", r["username"] == "212084058604"
+              and r["password"] == "204777188844" and on_panel and on_panel["password"] == "204777188844" and not r.get("rename_error"), str(r)[:200])
+        check("the panel-generated name is gone (renamed, not duplicated)", sum(1 for u in mock_casper._Handler.users if u["password"] == "204777188844") == 1)
+        # 2) طلبٌ مفقود وعليه شكوى → reply_create بـ same_creds: خطٌّ بالمتبقي من باقة ١٥ بنفس بياناته، مربوطٌ بطلبه
+        import datetime
+        today = renew._today()
+        st_ = (today - datetime.timedelta(days=60)).isoformat()
+        acct = {"id": "accC", "split": True, "gates": [gate]}
+        cfg = {"panels": [{"id": "pc", "name": "كاسبر", "hosts": ["http://ssouqhost.vip"], "account_id": "accC", "gate_id": "gc"}]}
+        st = {"service": {}, "renew": cfg, "accounts": [acct]}
+        panels.save_store_lines(d, [{"order": "500", "date": st_, "phone": "0500000005", "customer": "عميل", "username": "333444555666",
+                                    "password": "777888999000", "host": "http://ssouqhost.vip", "months": 12,
+                                    "expiry": renew.add_months(today - datetime.timedelta(days=60), 12).isoformat(), "product": "اشتراك كاسبر"}])
+        panels.save_panel_lines(d, "pc", "كاسبر", [{"username": "other", "password": "x", "exp": "", "package": "15 Months"}])
+        look = X.reply_lookup(st, cfg, d, [acct], "500")
+        check("lost on the panel, create offered with the old username", look["panel"]["state"] == "missing" and look["create"]["old"] == "333444555666")
+        code, b = X.reply_create(st, cfg, d, [acct], {"order": "500", "same_creds": True})
+        made = next((u for u in mock_casper._Handler.users if u["username"] == "333444555666"), None)
+        check("reply_create with same_creds: new line on the panel under the old username/password, 15-month package, 10-month slice",
+              code == 200 and b["created"]["same_creds"] and b["created"]["username"] == "333444555666" and b["created"]["password"] == "777888999000"
+              and made and made["package"] == "15 Months" and b["created"]["months"] == 10 and b["created"]["split"], str(b.get("created")))
+        check("reply text carries the same credentials", "User: 333444555666\nPass: 777888999000" in b["text"])
+        s2 = panels.order_search(cfg, d, "500")
+        check("order still linked to the same username and marked done", [x["username"] for x in s2["rows"]] == ["333444555666"]
+              and panels.load_dupes_done(d)["500"]["new"] == "333444555666")
+    finally:
+        srv.shutdown()
+        for k, v in keep.items():
+            setattr(X, k, v)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_sub_and_text()
     test_lookup()
     test_complaints_pull()
     test_create_and_marks()
+    test_same_creds_on_casper()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
     sys.exit(1 if _f else 0)

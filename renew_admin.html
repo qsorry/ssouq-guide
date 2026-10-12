@@ -727,6 +727,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
           <button class="go" id="rpMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button>
           <label class="lc-m">أشهر الجديد <input type="number" id="rpMakeM" min="1" max="15" style="width:64px"></label>
           <label class="lc-m">تعويض <input type="number" id="rpMakeC" min="0" max="14" value="0" style="width:56px"></label>
+          <label class="lc-chk hidden" id="rpMakeSameW"><input type="checkbox" class="lc-x" id="rpMakeSame" checked> بنفس اليوزر والباسورد القديمين</label>
           <small class="hint" id="rpMakeHint"></small></div>
         <p class="msg" id="rpMakeMsg"></p>
         <div class="acts"><a class="ghost" id="rpCreate" href="#" target="_blank" rel="noopener">أو افتح صفحة الإنشاء يدويًا</a></div>
@@ -2190,6 +2191,7 @@ function lcard(r, i, kind){
       : r.can_create || $('#lsGate').value ? `<label class="lc-m">أشهر الجديد <input type="number" class="lsM" data-i="${i}" min="1" max="15" value="${r.new_months || 1}"></label>`
         + `<button class="go lsMk" data-i="${i}" type="button">أنشئ اشتراكًا</button>` : '<small class="c-warn">اختر «بوابة الإنشاء» أعلاه، أو اربط اللوحة ببوابة</small>')
     : `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>`;
+  if (!dn && r.state === 'missing' && r.username && (!r.expired || kind === 'ls')) act += `<label class="lc-chk"><input type="checkbox" class="lc-x lcSame" checked> بنفس اليوزر والباسورد</label>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
   return `<article class="lc st-${dn ? 'found' : esc(r.state)}">${head}${why}${grid}${lcCred(r.host, r.username, r.password)}${done}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
@@ -2355,7 +2357,7 @@ function rpRender(d, q){
   const no = d.state !== 'ready';
   $('#rpNoUser').classList.toggle('hidden', !no); $('#rpReply').classList.toggle('hidden', no);
   const cr = d.create || {}; $('#rpMakeM').value = cr.months || ''; $('#rpMakeHint').textContent = cr.can ? `على ${cr.gate_name} · من باقة ١٥ شهرًا، والباقي يُباع من «حسابات متبقية»` : 'لا بوابة إنشاء لاشتراكه (اربط لوحته بحساب وبوابة)';
-  $('#rpMake').disabled = !cr.can; note($('#rpMakeMsg'), '');
+  $('#rpMake').disabled = !cr.can; note($('#rpMakeMsg'), ''); $('#rpMakeSameW').classList.toggle('hidden', !cr.old);
   if (no) {
     $('#rpHint').textContent = d.hint || 'لم يُعثر على يوزر لهذا الطلب: أنشئ له يوزرًا ثم الصق سطره.';
     $('#rpCreate').href = B + '/'; $('#rpCreate').textContent = d.gate ? `افتح صفحة الإنشاء (${d.gate.name})` : 'افتح صفحة الإنشاء';
@@ -2367,7 +2369,7 @@ function rpRender(d, q){
   const ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown;
   $('#rpPanel').textContent = ps[0] + ((d.panel || {}).found_panel ? ' · ' + d.panel.found_panel : ''); $('#rpPanel').className = 'pill ' + ps[1];
   $('#rpMake2').classList.toggle('hidden', !(cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done)); note($('#rpMakeMsg2'), '');
-  if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}`, true);
+  if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}`, !d.created.rename_error);
   $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
   $('#rpSend').title = d.wa ? '' : 'لا رقم جوال لهذا العميل';
   note($('#rpSent'), d.wa_linked ? '' : 'لا رقم واتساب مربوط الآن: انسخ الردّ أو أرسله من واتساب يدويًا.');
@@ -2378,12 +2380,13 @@ const PANEL_STATE = {found: ['موجود على اللوحة ✓', 'ok'], missin
 // الإنشاء لصاحب الشكوى: خطٌّ بالمتبقي (تجزئة من باقة ١٥) يُربط بطلبه ويعود الردّ ببياناته
 async function rpMake(btn, msgEl){
   const d = RP.d || {}; if (!d.order) return;
-  const months = Number($('#rpMakeM').value) || 0, comp = Number($('#rpMakeC').value) || 0;
-  if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا${comp ? ' + تعويض ' + comp : ''} على ${(d.create || {}).gate_name}؟ يخصم من الرصيد.`)) return;
+  const months = Number($('#rpMakeM').value) || 0, comp = Number($('#rpMakeC').value) || 0, cr = d.create || {};
+  const sameTxt = cr.old && $('#rpMakeSame').checked ? ` بنفس اليوزر ${cr.old} وباسورده` : '';
+  if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا${comp ? ' + تعويض ' + comp : ''}${sameTxt} على ${cr.gate_name}؟ يخصم من الرصيد.`)) return;
   btn.disabled = true; note(msgEl, 'جارٍ الإنشاء على اللوحة…', true);
-  const r = await post('/api/renew/reply-create', {order: d.order, months, comp});
+  const r = await post('/api/renew/reply-create', {order: d.order, months, comp, same_creds: !!(cr.old && $('#rpMakeSame').checked)});
   btn.disabled = false;
-  if (r.error) return note(msgEl, r.error + (r.need_captcha ? '' : ''));
+  if (r.error) return note(msgEl, r.error);
   rpRender(r, d.order);
 }
 $('#rpMake').onclick = () => rpMake($('#rpMake'), $('#rpMakeMsg'));
@@ -2472,7 +2475,7 @@ async function cqReply(r, btn){
   }
   const c0 = d.creds[0] || {}, ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown, cr = d.create || {};
   td.innerHTML = `<div class="lc-g" style="margin-bottom:8px">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}${lcField('الاشتراك', esc(d.sub_name) || 'غير معروف')}${lcField('على اللوحة', `<span class="pill ${ps[1]}">${ps[0]}${(d.panel || {}).found_panel ? ' · ' + esc(d.panel.found_panel) : ''}</span>`)}${lcField('المصدر', RP_SRC[d.src] || '')}</div>`
-    + (cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done ? `<div class="acts" style="align-items:center;margin-bottom:8px"><button class="ghost cqMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button><label class="lc-m">أشهر <input type="number" class="cqMakeM" min="1" max="15" value="${cr.months || ''}" style="width:60px"></label><small class="hint">على ${esc(cr.gate_name)}</small></div><p class="msg cqMakeMsg"></p>` : '')
+    + (cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done ? `<div class="acts" style="align-items:center;margin-bottom:8px"><button class="ghost cqMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button><label class="lc-m">أشهر <input type="number" class="cqMakeM" min="1" max="15" value="${cr.months || ''}" style="width:60px"></label>${cr.old ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeSame" checked> بنفس اليوزر والباسورد (${esc(cr.old)})</label>` : ''}<small class="hint">على ${esc(cr.gate_name)}</small></div><p class="msg cqMakeMsg"></p>` : '')
     + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓</p>` : '')
     + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
     + `<textarea class="rp-pre cqT" rows="14" style="margin-top:8px">${esc(d.text)}</textarea>
@@ -2484,7 +2487,7 @@ async function cqReply(r, btn){
   if (mk) mk.onclick = async () => { const months = Number(td.querySelector('.cqMakeM').value) || 0, mm = td.querySelector('.cqMakeMsg');
     if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا على ${cr.gate_name}؟ يخصم من الرصيد.`)) return;
     mk.disabled = true; note(mm, 'جارٍ الإنشاء على اللوحة…', true);
-    const x = await post('/api/renew/reply-create', {order: d.order, months});
+    const same = td.querySelector('.cqMakeSame'); const x = await post('/api/renew/reply-create', {order: d.order, months, same_creds: !!(same && same.checked)});
     if (x.error) { mk.disabled = false; return note(mm, x.error); }
     panel.remove(); btn.textContent = 'جهّز الردّ'; cqReply(r, btn); };
   td.querySelector('.cqCopy').onclick = async () => { const ok = await copyText(ta.value), b = td.querySelector('.cqCopy'); b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ الردّ', 1600); };
@@ -2543,12 +2546,13 @@ async function makeComp(r, btn, inp, after, quiet, where){
   if (!quiet && !confirm(`إنشاء اشتراك لـ ${r.customer || r.phone || r.username} (طلب ${r.order}) بمدة ${months} شهرًا من باقة ١٥ شهرًا بدل ${r.username}؟\nيخصم من رصيد اللوحة، والباقي يعود إلى «حسابات متبقية».`)) return false;
   const t0 = btn && btn.textContent; if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…'; }
   const gp = gatePick($('#lsGate').value);
+  const sameEl = btn && btn.closest('.lc') ? btn.closest('.lc').querySelector('.lcSame') : null;
   const d = await post('/api/renew/comp-create', {order: r.order, username: r.username, months, comp: $('#lsComp').value,
-    create_account_id: gp.account_id, create_gate_id: gp.gate_id});
+    create_account_id: gp.account_id, create_gate_id: gp.gate_id, same_creds: !!(sameEl ? sameEl.checked : true)});
   if (btn) { btn.disabled = false; btn.textContent = t0; }
   if (d.error || !d.ok) { say(`${r.order}: ` + (d.error || 'فشل الإنشاء')); return false; }
   const copied = !quiet && d.copy ? await copyText(d.copy) : false;   // كبحث صفحة الإنشاء: الشرح كاملًا في الحافظة
-  const msg = `أُنشئ ${d.username} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
+  const msg = `أُنشئ ${d.username}${d.same_creds ? ' بنفس بياناته القديمة ✓' : ''} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.rename_error ? ` · ${d.rename_error}` : '') + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
     + (copied ? ' · نُسخ الشرح كاملًا ✓' : ' · «نسخ الشرح» في بطاقته') + ' · رسالة واتساب جاهزة';
   if (after) await after(); else if (!quiet) await lsLoad();   // البطاقة بحالها الجديد، ثم رسالة الإنشاء فوقها
   say(msg, !d.split_error);
