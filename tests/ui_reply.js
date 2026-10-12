@@ -79,16 +79,18 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     await page.click('#cqChips .fchip[data-f="all"]'); await sleep(200);
     check('back to all', (await page.$$('#cqBody tr')).length === 2);
     check('complaint number links to the panel', (await page.getAttribute('#cqBody tr:first-child td:first-child a', 'href')) === 'https://s.salla.sa/complaints/2078174950');
-    await page.click('#cqBody .cqGo'); await page.waitForSelector('#cqBody tr.cq-r .cqT');
-    const inl = await page.inputValue('#cqBody tr.cq-r .cqT');
-    check('inline reply under the complaint row with the credentials', inl.includes('طلبكم رقم *138*') && inl.includes('User: 333426852552') && await page.isVisible('#cqBody .cqCopy'));
+    await page.click('#cqBody .cqGo'); await page.waitForSelector('#cqSheetBody .cqT');
+    const inl = await page.inputValue('#cqSheetBody .cqT');
+    check('reply opens in a sheet with the credentials and a sticky action bar', inl.includes('طلبكم رقم *138*') && inl.includes('User: 333426852552') && await page.isVisible('#cqSheetFoot .cqCopy') && await page.isVisible('#cqSalla'));
     check('the search box was not touched (still the earlier query)', (await page.inputValue('#rpQ')) === '١٣٨');
-    await page.evaluate(() => { document.querySelector('#cqBody .cqWa').addEventListener('click', e => e.preventDefault()); });
-    await page.click('#cqBody .cqWa'); await page.waitForFunction(() => ((document.querySelector('#cqBody [data-sent]') || {}).textContent || '').includes('تم الإرسال'));
+    await page.evaluate(() => { document.querySelector('#cqSheetFoot .cqWa').addEventListener('click', e => e.preventDefault()); });
+    await page.click('#cqSheetFoot .cqWa'); await page.waitForFunction(() => ((document.querySelector('#cqSheetFoot [data-sent]') || {}).textContent || '').includes('تم الإرسال'));
     check('manual whatsapp from the row says sent and marks the row', (await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم الردّ'));
-    await page.click('#cqBody tr:nth-child(3) .cqGo'); await page.waitForSelector('#cqBody tr[data-o="999000"].cq-r .rp-note');
-    check('unknown order from the row: note with a jump to the box', (await page.textContent('#cqBody tr[data-o="999000"].cq-r')).includes('لا طلب برقم'));
-    check('panel state shown in the inline card', /لم يُتحقّق|غير مربوط بلوحة|مفقود من اللوحة/.test(await page.textContent('#cqBody tr[data-o="138"].cq-r')));
+    check('panel state shown in the sheet', /لم يُتحقّق|غير مربوط بلوحة|مفقود من اللوحة/.test(await page.textContent('#cqSheetBody')));
+    await page.click('#cqClose'); check('close hides the sheet', await page.isHidden('#cqModal'));
+    await page.click('#cqBody tr[data-o="999000"] .cqGo'); await page.waitForSelector('#cqSheetBody .rp-note');
+    check('unknown order: note in the sheet with a jump to the box', (await page.textContent('#cqSheetBody')).includes('لا طلب برقم') && await page.isVisible('#cqSheetFoot .cqToBox'));
+    await page.keyboard.press('Escape'); check('escape closes', await page.isHidden('#cqModal'));
     // «تم الردّ»: الصفّ عُلّم بالإرسال اليدوي، ويُلغى ويُعاد بالزرّ، ويبقى بعد إعادة التحميل
     await page.waitForSelector('#cqBody tr[data-o="138"].cq-done');
     check('manual send marked the complaint as replied (dimmed, with time)', (await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم الردّ ✓'));
