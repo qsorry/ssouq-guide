@@ -399,6 +399,10 @@ body.modal-open{overflow:hidden}
 .mk .lc-chk{font-size:.84rem;line-height:1.4;align-items:flex-start}
 .mk .lc-chk .lc-x{margin-top:2px}
 .mk .hint{margin:0}
+.step{display:inline-flex;align-items:center;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:var(--sf2)}
+.step button{width:44px;min-height:40px;padding:0;border:0;border-radius:0;background:transparent;font-size:1.3rem;line-height:1;color:var(--ink)}
+.step input{width:56px;min-height:40px;border:0;border-radius:0;text-align:center;background:transparent;padding:0}
+.mk .sug{font-size:.84rem;color:var(--mute)}.mk .sug b{color:var(--ink)}
 @media (min-width:640px){.mk{grid-template-columns:auto auto 1fr;align-items:center}.mk>button{width:auto}.mk .hint{grid-column:1/-1}.mk .msg{grid-column:1/-1}}
 .cq-done td{opacity:.55}.cq-done td .acts{opacity:1}
 .rp-note{border-radius:14px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--amber) 50%,var(--line));background:color-mix(in srgb,var(--amber) 8%,var(--sf));line-height:1.7;font-size:.9rem}
@@ -753,7 +757,8 @@ body.modal-open{overflow:hidden}
         <div class="rp-note" id="rpHint"></div>
         <div class="mk" id="rpMakeBox">
           <button class="go" id="rpMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button>
-          <label class="lc-m">أشهر الجديد <input type="number" id="rpMakeM" min="1" max="15"></label>
+          <p class="sug" id="rpMakeSug"></p>
+          <label class="lc-m">أشهر الجديد <span class="step"><button type="button" class="stDn">−</button><input type="number" id="rpMakeM" min="1" max="15"><button type="button" class="stUp">+</button></span></label>
           <label class="lc-m">تعويض <input type="number" id="rpMakeC" min="0" max="14" value="0"></label>
           <label class="lc-chk hidden" id="rpMakeSameW"><input type="checkbox" class="lc-x" id="rpMakeSame" checked> بنفس اليوزر والباسورد القديمين</label>
           <small class="hint" id="rpMakeHint"></small></div>
@@ -2398,7 +2403,8 @@ function rpRender(d, q){
   $('#rpWrap').classList.remove('hidden');
   const no = d.state !== 'ready';
   $('#rpNoUser').classList.toggle('hidden', !no); $('#rpReply').classList.toggle('hidden', no);
-  const cr = d.create || {}; $('#rpMakeM').value = cr.months || ''; $('#rpMakeHint').textContent = cr.can ? `على ${cr.gate_name} · من باقة ١٥ شهرًا، والباقي يُباع من «حسابات متبقية»` : 'لا بوابة إنشاء لاشتراكه (اربط لوحته بحساب وبوابة)';
+  const cr = d.create || {}; $('#rpMakeM').value = cr.suggest || cr.months || ''; $('#rpMakeC').value = cr.comp || 0;
+  $('#rpMakeSug').innerHTML = `المقترح: المتبقي <b>${AR(cr.left_months || 0)}</b> + تعويض <b>${AR(cr.comp || 0)}</b> = <b>${AR(cr.suggest || cr.months || 0)} شهرًا</b>`; $('#rpMakeHint').textContent = cr.can ? `على ${cr.gate_name} · من باقة ١٥ شهرًا، والباقي يُباع من «حسابات متبقية»` : 'لا بوابة إنشاء لاشتراكه (اربط لوحته بحساب وبوابة)';
   $('#rpMake').disabled = !cr.can; note($('#rpMakeMsg'), ''); $('#rpMakeSameW').classList.toggle('hidden', !cr.old);
   if (no) {
     $('#rpHint').textContent = d.hint || 'لم يُعثر على يوزر لهذا الطلب: أنشئ له يوزرًا ثم الصق سطره.';
@@ -2427,12 +2433,13 @@ async function rpMake(btn, msgEl){
   const sameTxt = cr.old && $('#rpMakeSame').checked ? ` بنفس اليوزر ${cr.old} وباسورده` : '';
   if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا${comp ? ' + تعويض ' + comp : ''}${sameTxt} على ${cr.gate_name}؟ يخصم من الرصيد.`)) return;
   btn.disabled = true; note(msgEl, 'جارٍ الإنشاء على اللوحة…', true);
-  const r = await post('/api/renew/reply-create', {order: d.order, months, comp, same_creds: !!(cr.old && $('#rpMakeSame').checked)});
+  const r = await post('/api/renew/reply-create', {order: d.order, months, comp: 0, same_creds: !!(cr.old && $('#rpMakeSame').checked)});
   btn.disabled = false;
   if (r.error) return note(msgEl, r.error);
   rpRender(r, d.order);
 }
 $('#rpMake').onclick = () => rpMake($('#rpMake'), $('#rpMakeMsg'));
+stepBind($('#rpMakeBox'));
 $('#rpMake2').onclick = () => rpMake($('#rpMake2'), $('#rpMakeMsg2'));
 $('#rpForm').addEventListener('submit', e => { e.preventDefault(); rpFind(); });
 $('#rpRetry').onclick = () => rpFind();
@@ -2490,6 +2497,12 @@ function cqRender(d){
     cqLoad(); });
 }
 // الردّ من صفّ الشكوى نفسه: صفٌّ يُفتح تحته بالبطاقة ونصّ الردّ وأزراره — بلا انتقال إلى صندوق البحث
+// زرّا − و+ حول خانة الأشهر (١ إلى ١٥)
+function stepBind(root){
+  root.querySelectorAll('.step').forEach(st => { const inp = st.querySelector('input');
+    const nudge = n => { inp.value = Math.max(Number(inp.min) || 1, Math.min(Number(inp.max) || 15, (Number(inp.value) || 0) + n)); inp.dispatchEvent(new Event('change')); };
+    st.querySelector('.stDn').onclick = () => nudge(-1); st.querySelector('.stUp').onclick = () => nudge(1); });
+}
 function cqOpen(r){
   const m = $('#cqModal'); m.classList.remove('hidden'); document.body.classList.add('modal-open');
   $('#cqSub').textContent = `شكوى ${r.id || ''} · ${r.customer || ''} · طلب ${r.order}`;
@@ -2517,7 +2530,8 @@ async function cqReply(r, btn){
   if (d.state !== 'ready') {
     const cr0 = d.create || {};
     body.innerHTML = `<div class="rp-note">${d.state === 'not_found' ? `لا طلب برقم ${esc(r.order)} في اشتراكات سلة ولا في سلة نفسها.` : esc(d.hint || 'لم يُعثر على يوزر لهذا الطلب.')}</div>
-      ${d.state !== 'not_found' && cr0.can ? `<div class="mk"><button class="go cqMake0" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button><label class="lc-m">أشهر الجديد <input type="number" class="cqMakeM0" min="1" max="15" value="${cr0.months || ''}"></label><small class="hint">على ${esc(cr0.gate_name)}</small><p class="msg cqMakeMsg0"></p></div>` : '<p class="msg cqMakeMsg0"></p>'}`;
+      ${d.state !== 'not_found' && cr0.can ? `<div class="mk"><button class="go cqMake0" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button><p class="sug">المقترح: المتبقي <b>${AR(cr0.left_months || 0)}</b> + تعويض <b>${AR(cr0.comp || 0)}</b> = <b>${AR(cr0.suggest || cr0.months || 1)} شهرًا</b></p><label class="lc-m">أشهر الجديد <span class="step"><button type="button" class="stDn">−</button><input type="number" class="cqMakeM0" min="1" max="15" value="${cr0.suggest || cr0.months || ''}"><button type="button" class="stUp">+</button></span></label><small class="hint">على ${esc(cr0.gate_name)}</small><p class="msg cqMakeMsg0"></p></div>` : '<p class="msg cqMakeMsg0"></p>'}`;
+    stepBind(body);
     foot.innerHTML = `<p class="msg" data-sent></p><div class="acts"><button class="ghost cqToBox" type="button">افتحه في صندوق الردّ (للصق سطر يوزر)</button>${markBtn}</div>`;
     foot.querySelector('.cqToBox').onclick = () => { cqCloseSheet(); $('#rpQ').value = r.order; $('#rpClear').classList.remove('hidden'); rpFind(r.order); $('#rpBox').scrollIntoView({block: 'start', behavior: 'smooth'}); };
     bindMark();
@@ -2531,8 +2545,17 @@ async function cqReply(r, btn){
     return;
   }
   const ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown, cr = d.create || {};
-  body.innerHTML = `<div class="lc-g">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}${lcField('الاشتراك', esc(d.sub_name) || 'غير معروف')}${lcField('على اللوحة', d.replacement ? `<span class="pill ok">له بديلٌ أُنشئ سابقًا: ${esc(d.replacement.username)}</span>` : `<span class="pill ${ps[1]}">${ps[0]}${(d.panel || {}).found_panel ? ' · ' + esc(d.panel.found_panel) : ''}</span>`)}${lcField('المصدر', RP_SRC[d.src] || '')}</div>`
-    + (cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done ? `<div class="mk"><button class="go cqMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button><label class="lc-m">أشهر الجديد <input type="number" class="cqMakeM" min="1" max="15" value="${cr.months || ''}"></label>${cr.old ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeSame" checked> بنفس اليوزر والباسورد القديمين (${esc(cr.old)})</label>` : ''}<small class="hint">على ${esc(cr.gate_name)} · من باقة ١٥ شهرًا والباقي يُباع من «حسابات متبقية»</small><p class="msg cqMakeMsg"></p></div>` : '')
+  const sug = cr.suggest || cr.months || 1;
+  body.innerHTML = `<div class="lc-g">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}`
+    + lcField('الاشتراك', esc(d.sub_name) || 'غير معروف') + lcField('على اللوحة', d.replacement ? `<span class="pill ok">له بديلٌ أُنشئ سابقًا: ${esc(d.replacement.username)}</span>` : `<span class="pill ${ps[1]}">${ps[0]}${(d.panel || {}).found_panel ? ' · ' + esc(d.panel.found_panel) : ''}</span>`)
+    + (d.product ? lcField('الباقة المشتراة', `<span class="clip" title="${esc(d.product)}">${esc(d.product)}</span>`, 'wide') : '')
+    + lcField('تاريخ الشراء', `<span class="ltr">${esc(d.date) || '—'}</span>`) + lcField('المدة', d.months ? AR(d.months) + ' شهرًا' + (d.qty > 1 ? ` × ${AR(d.qty)}` : '') : '—')
+    + lcField('المتبقي', esc(d.remaining) || (cr.left_months ? AR(cr.left_months) + ' شهرًا' : '—')) + lcField('تاريخ الشكوى', `<span class="ltr">${esc(r.date) || '—'}</span>`)
+    + lcField('المصدر', RP_SRC[d.src] || '') + '</div>'
+    + (cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done ? `<div class="mk"><button class="go cqMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button>
+        <p class="sug">المقترح: المتبقي <b>${AR(cr.left_months || 0)}</b> + تعويض <b>${AR(cr.comp || 0)}</b> = <b>${AR(sug)} شهرًا</b></p>
+        <label class="lc-m">أشهر الجديد <span class="step"><button type="button" class="stDn" aria-label="أقل">−</button><input type="number" class="cqMakeM" min="1" max="15" value="${sug}"><button type="button" class="stUp" aria-label="أكثر">+</button></span></label>
+        ${cr.old ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeSame" checked> بنفس اليوزر والباسورد القديمين (${esc(cr.old)})</label>` : ''}<small class="hint">على ${esc(cr.gate_name)} · من باقة ١٥ شهرًا والباقي يُباع من «حسابات متبقية»</small><p class="msg cqMakeMsg"></p></div>` : '')
     + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓${d.created.rename_error ? ' — ' + esc(d.created.rename_error) : ''}${d.created.password_changed ? ' — ⚠ ' + esc(d.created.password_changed) : ''}</p>` : '')
     + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
     + `<textarea class="rp-pre cqT" rows="14">${esc(d.text)}</textarea>`;
@@ -2544,6 +2567,7 @@ async function cqReply(r, btn){
       ${markBtn}</div>`;
   bindMark();
   const ta = body.querySelector('.cqT'), sent = foot.querySelector('[data-sent]');
+  stepBind(body);
   const mk = body.querySelector('.cqMake');
   if (mk) mk.onclick = async () => { const months = Number(body.querySelector('.cqMakeM').value) || 0, mm = body.querySelector('.cqMakeMsg');
     const same = body.querySelector('.cqMakeSame');

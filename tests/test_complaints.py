@@ -358,6 +358,7 @@ def test_create_and_marks():
         r = X.reply_lookup(st, cfg, d, [acct], "138")
         check("user not on the panel: missing, create gate = the panel's gate, months = remaining (10)",
               r["panel"]["state"] == "missing" and r["create"]["can"] and r["create"]["gate_id"] == "g1" and r["create"]["months"] == 10
+              and r["create"]["left_months"] == 10 and r["create"]["comp"] == panels.COMP_DEFAULT and r["create"]["suggest"] == 10 + panels.COMP_DEFAULT
               and r["create"]["old"] == "111", str(r["create"]))
         made = {}
         X.get_packages = lambda g: [{"id": "p15", "name": "اشتراك 15 شهر"}]
