@@ -67,6 +67,11 @@ DEVICE_PAGES = {"iphone": "/iphone", "android": "/android", "android_tv": "/andr
 
 REPLY_HEAD = ("السلام عليكم ورحمة الله *{name}* 👋\n\n"
               "بخصوص طلبكم رقم *{order}*: هذه بيانات اشتراككم وطريقة تشغيله خطوة بخطوة 👇")
+# لمن كان اشتراكه مفقودًا وأُنشئ له من جديد: الردّ يقول إن الأمر عولج ويطلب التجربة مرة أخرى بالبيانات التالية
+REPLY_HEAD_FIXED = ("السلام عليكم ورحمة الله *{name}* 👋\n\n"
+                    "بخصوص شكواكم على الطلب رقم *{order}*: ✅ *تمت معالجة الأمر وإعادة تفعيل اشتراككم*.\n"
+                    "جرّبوا مرة أخرى الآن{same}، وهذه التفاصيل كاملة 👇")
+SAME_NOTE = " ببياناتكم نفسها (اليوزر وكلمة المرور كما هما)"
 
 APPS_HEAD = "📱 *التطبيق المناسب لجهازك (اشتراك {server})*\n" \
             "الاشتراك ليس لتطبيق IPTV Smarters Pro وحده؛ لكل جهاز تطبيقٌ موصى به:"
@@ -155,11 +160,14 @@ def apps_block(sub):
     return APPS_HEAD_GENERIC + "\n\n" + WARN
 
 
-def reply_text(name, order, line, sub="", extra=()):
+def reply_text(name, order, line, sub="", extra=(), fixed=False, same=False):
     """الردّ كاملًا: الرأس، ثم نصّ الشرح (line: «📲 طريقة التثبيت والتفعيل» ببيانات اليوزر الأول)، ثم
-    اليوزرات الزائدة لطلبٍ بأكثر من نسخة، ثم جدول تطبيقات اشتراكه وتحذيره، ثم طلب المساعدة."""
-    parts = [REPLY_HEAD.format(name=(str(name or "").strip() or "عميلنا العزيز"), order=norm_order(order) or str(order or "")),
-             str(line or "").strip()]
+    اليوزرات الزائدة لطلبٍ بأكثر من نسخة، ثم جدول تطبيقات اشتراكه وتحذيره، ثم طلب المساعدة.
+    fixed: اشتراكه كان مفقودًا وأُنشئ له من جديد — الرأس «تمت معالجة الأمر، جرّب مرة أخرى» (same: بالبيانات نفسها)."""
+    nm = str(name or "").strip() or "عميلنا العزيز"
+    no = norm_order(order) or str(order or "")
+    head = REPLY_HEAD_FIXED.format(name=nm, order=no, same=SAME_NOTE if same else "") if fixed else REPLY_HEAD.format(name=nm, order=no)
+    parts = [head, str(line or "").strip()]
     for i, c in enumerate(extra or (), start=2):
         if c.get("username"):
             parts.append(EXTRA_USER.format(n=i, user=c.get("username", ""), **{"pass": c.get("password", "")}))
