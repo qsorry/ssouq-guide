@@ -3289,12 +3289,15 @@ def _dup_archived(accounts, cfg, acct, gate, row):
 ARCHIVE_ERR = "اليوزر القديم في بوابة أرشيف (لا دخول للّوحة): اربط اللوحة ثم أعد المحاولة"
 
 
-def _dup_rename_old(acct, gate, row, accounts=None, cfg=None):
+def _dup_rename_old(acct, gate, row, accounts=None, cfg=None, only=None):
     """يغيّر اسم اليوزر القديم على لوحته (كلمة مروره ومدته كما هما). يرجّع (معلومات، "") أو (None، سبب).
-    يبحث في كل لوحات هوست الصف (حيّة وأرشيف) ويغيّره حيث وُجد."""
-    tried, errs = [], []
+    يبحث في كل لوحات هوست الصف (حيّة وأرشيف) ويغيّره حيث وُجد — وإن تعذّر التغيير في بوابةٍ (صفحة تعديلٍ لا تُقرأ
+    بوكيهاتها مثلًا) جرّب البوابة التالية التي تراه (مرح الأخرى). `only` (حساب، بوابة) يقصره على بوابةٍ يختارها المشغّل."""
+    tried, errs, fails = [], [], []
     for a, g, same in _dup_candidates(accounts, cfg or {}, acct, gate, row):
         if g.get("archive_only"):               # أرشيف: لا دخول للّوحة — يُعرض ربطها بدل البحث
+            continue
+        if only and (str(a.get("id")), str(g.get("id"))) != (str(only[0]), str(only[1])):
             continue
         label = g.get("name") or g.get("host") or str(g.get("id"))
         try:
@@ -3325,11 +3328,34 @@ def _dup_rename_old(acct, gate, row, accounts=None, cfg=None):
             except Exception:
                 pass
             return {"from": row["username"], "to": newname, "line": line, "panel": label}, ""
-        except Exception as e:
-            return None, str(e)[:200]
+        except Exception as e:                  # تعذّر هنا: تُجرَّب البوابة التالية التي تراه
+            fails.append("%s: %s" % (label, str(e)[:200]))
+            continue
+    if fails:
+        return None, " | ".join(fails)
+    if only and not tried:
+        return None, "البوابة المختارة غير متاحة (غير موجودة أو أرشيف بلا دخول)"
     if errs:                                    # تعذّر الاتصال ببعض اللوحات: لا نجزم بأنه محذوف
         return None, "تعذّر البحث في: " + " | ".join(errs)
     return None, OLD_MISSING
+
+
+def create_gates(accounts):
+    """بوابات تصلح للإنشاء والتغيير (مرح وكاسبر وفالكون، غير الأرشيف) — لقوائم الاختيار في الصفحة."""
+    return [{"account_id": a.get("id"), "gate_id": g.get("id"), "name": g.get("name") or g.get("host"),
+             "account": a.get("name", ""), "host": g.get("host", ""), "mode": g.get("mode")}
+            for a in (accounts or []) for g in (a.get("gates") or [])
+            if g.get("mode") in SPLIT_MODES and not g.get("archive_only")]
+
+
+def _picked_gate(accounts, req):
+    """(الحساب، البوابة) التي اختارها المشغّل للإنشاء (create_account_id/create_gate_id)، أو None، أو "bad"."""
+    gid = str(req.get("create_gate_id") or "").strip()
+    if not gid:
+        return None
+    a = next((x for x in (accounts or []) if str(x.get("id")) == str(req.get("create_account_id"))), None)
+    g = find_gate(a, gid) if a else None
+    return (a, g) if g and g.get("mode") in SPLIT_MODES and not g.get("archive_only") else "bad"
 
 
 def _dup_old_msg(row, info):
@@ -3351,7 +3377,8 @@ def dup_rename(accounts, cfg, ws, req):
     if not gate:
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء"}
     gate = with_guide(acct, gate)
-    info, err = _dup_rename_old(acct, gate, row, accounts, cfg)
+    only = (req.get("account_id"), req.get("gate_id")) if req.get("gate_id") else None
+    info, err = _dup_rename_old(acct, gate, row, accounts, cfg, only=only)
     if not info and err == OLD_MISSING and _dup_archived(accounts, cfg, acct, gate, row):
         panels.update_dupe(ws, order, {"rename_error": ARCHIVE_ERR})
         return 409, {"error": ARCHIVE_ERR, "need_connect": _dup_archived(accounts, cfg, acct, gate, row)}
@@ -3449,8 +3476,13 @@ def dup_create(accounts, cfg, ws, req):
         return 400, {"error": "انتهت مدة هذا الطلب فلا يحتاج يوزرًا"}
     acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row["account_id"])), None)
     gate = find_gate(acct, row["gate_id"]) if acct else None
+    pick = _picked_gate(accounts, req)          # بوابة إنشاءٍ يختارها المشغّل (مرح الأخرى مثلًا)
+    if pick == "bad":
+        return 400, {"error": "بوابة الإنشاء المختارة غير صالحة"}
+    if pick:
+        acct, gate = pick
     if not gate:
-        return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اضبط حساب وبوابة اللوحة في «اللوحات وهوستاتها»"}
+        return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اختر بوابة الإنشاء، أو اضبطها في «اللوحات وهوستاتها»"}
     gate = with_guide(acct, gate)
     code, resp, r = _make_line(acct, gate, row, req.get("months") or row["suggest"], "بديل المكرر %s" % row["order"])
     if code != 200:
@@ -4002,8 +4034,13 @@ def comp_create(accounts, cfg, ws, req):
         return 400, {"error": "انتهت مدة هذا الطلب"}
     acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row["account_id"])), None)
     gate = find_gate(acct, row["gate_id"]) if acct else None
+    pick = _picked_gate(accounts, req)
+    if pick == "bad":
+        return 400, {"error": "بوابة الإنشاء المختارة غير صالحة"}
+    if pick:
+        acct, gate = pick
     if not gate:
-        return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اضبط حساب وبوابة اللوحة في «اللوحات وهوستاتها»"}
+        return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اختر بوابة الإنشاء، أو اضبطها في «اللوحات وهوستاتها»"}
     gate = with_guide(acct, gate)
     months = req.get("months") or row["new_months"] or (comp if row["expired"] else 0)
     code, resp, r = _make_line(acct, gate, row, months, "تعويض الطلب %s" % row["order"])
@@ -6518,6 +6555,7 @@ class Handler(BaseHTTPRequestHandler):
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
                 d["wa_linked"] = dup_wa_ready(st)
+                d["gates"] = create_gates(racs)
                 d["sent_today"] = panels.sent_today(rws, renew.now_iso()[:10])
                 d["daily_cap"] = HOST_DAILY_CAP
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
@@ -6552,6 +6590,7 @@ class Handler(BaseHTTPRequestHandler):
                 for r in d["rows"]:
                     ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
                     r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
+                d["gates"] = create_gates(racs)
                 return self._send(200, d)
             if path == "/api/renew/unlisted":       # يوزرات اللوحات التي لم تُعرض للبيع
                 return self._send(200, panels.unlisted(rcfg, rws, include_expired=self._q("expired") == "1",
