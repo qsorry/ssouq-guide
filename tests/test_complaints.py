@@ -521,6 +521,19 @@ def test_same_creds_on_casper():
         check("a prior replacement is found: reply uses its credentials, create disabled, handled-head",
               look["replacement"]["username"] == "999888777666" and look["creds"][0] == {"username": "999888777666", "password": "p9", "host": "http://ssouqhost.vip"}
               and look["src"] == "replacement" and not look["create"]["can"] and look["fixed"] and "User: 999888777666" in look["text"], str(look.get("replacement")))
+        # (أ٢) باسورد البديل غير مسحوب من اللوحة: يُؤخذ من سجلّ الإنجاز مع أشهره وتاريخه؛ وإن غاب هناك أيضًا نُبِّه المشغّل
+        panels.save_store_lines(d, panels.load_store_lines(d)["lines"] + [
+            {"order": "650", "date": st_, "phone": "0500000065", "customer": "ص", "username": "111222333555", "password": "p1", "host": "http://ssouqhost.vip",
+             "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=60), 12).isoformat(), "product": "اشتراك كاسبر"}])
+        UL.add(d, "accC", "gc", "111222333555", "999888777555", "اشتراك 15 شهر · بديل")
+        look = X.reply_lookup(st, cfg, d, [acct], "650")
+        check("replacement without a known password: warning, old creds kept in the reply",
+              look["replacement"]["username"] == "999888777555" and look["replacement"].get("warn") and look["creds"][0]["username"] == "111222333555", str(look.get("replacement")))
+        panels.mark_dupe_done(d, "650", "999888777555", 9, "ص", extra={"old": "111222333555", "password": "p55", "host": "http://ssouqhost.vip", "src": "lost"})
+        look = X.reply_lookup(st, cfg, d, [acct], "650")
+        check("replacement password and months come from the done-record when the panel is not pulled",
+              look["replacement"]["password"] == "p55" and look["replacement"]["months"] == 9 and not look["replacement"].get("warn")
+              and look["creds"][0]["username"] == "999888777555" and "Pass: p55" in look["text"], str(look.get("replacement")))
         code, b = X.reply_create(st, cfg, d, [acct], {"order": "600", "same_creds": True})
         check("creating for someone who already has a replacement is refused", code == 400 and "بديلٌ أُنشئ من قبل" in b["error"] and "999888777666" in b["error"], str(b))
         # (ب) الفهرس قديم لكن اليوزر موجودٌ على اللوحة فعلًا → فحصٌ مباشر يرفض
