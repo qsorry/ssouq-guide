@@ -88,10 +88,11 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     check('manual whatsapp from the row says sent and marks the row', (await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم الردّ'));
     check('panel state shown in the sheet', /لم يُتحقّق|غير مربوط بلوحة|مفقود من اللوحة/.test(await page.textContent('#cqSheetBody')));
     // «نسخ الردّ وفتح الشكوى في سلة»: ينسخ ويفتح رابط الشكوى ويُعلَّم مردودًا عليها (كيف: salla)
-    await page.evaluate(() => { window.__opened = []; window.open = (u) => { const w = {set location(v) { window.__opened.push(String(v)); }}; window.__opened.push(String(u)); return w; }; });
+    // زر حقيقي <a target=_blank> لا window.open (Edge أندرويد كان يترك about:blank)
+    const sgHref = await page.getAttribute('#cqSheetFoot .cqSallaGo', 'href'), sgTarget = await page.getAttribute('#cqSheetFoot .cqSallaGo', 'target');
+    await page.evaluate(() => { document.querySelector('#cqSheetFoot .cqSallaGo').addEventListener('click', e => e.preventDefault()); });
     await page.click('#cqSheetFoot .cqSallaGo'); await sleep(500);
-    const opened = await page.evaluate(() => window.__opened);
-    check('copy+open: the complaint url opened and the status says pasted-in-salla', opened.includes('https://complaint.salla.sa/2078174950') && (await page.textContent('#cqSheetFoot [data-sent]')).includes('فُتحت الشكوى في سلة'), JSON.stringify(opened));
+    check('copy+open: a real link to the complaint (new tab) and the status says pasted-in-salla', sgHref === 'https://complaint.salla.sa/2078174950' && sgTarget === '_blank' && (await page.textContent('#cqSheetFoot [data-sent]')).includes('فُتحت الشكوى في سلة'), sgHref);
     const log2 = (await api(page, '/admin/api/renew/dup-log')).log || [];
     check('logged as sent via salla', log2.some(x => x.kind === 'reply' && x.how === 'salla' && x.order === '138'));
     check('header has a prominent salla link', (await page.getAttribute('#cqSalla', 'href')) === 'https://complaint.salla.sa/2078174950');

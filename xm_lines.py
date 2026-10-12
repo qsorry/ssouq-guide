@@ -3768,6 +3768,8 @@ def reply_lookup(st, rcfg, rws, racs, q):
     rep = reply_replacement(racs, rws, c0.get("username", "")) if c0.get("username") else None
     if rep and rep["username"].lower() != c0.get("username", "").lower():
         out["replacement"] = rep
+        if not rep.get("password"):
+            rep["warn"] = "باسورد البديل غير معروف (اسحب يوزرات لوحة %s) — الردّ أدناه بيوزره القديم" % (rep.get("gate_name") or "البديل")
         if rep.get("password"):
             host = rep.get("host") or host
             c0 = {"username": rep["username"], "password": rep["password"], "host": host}
@@ -3830,7 +3832,7 @@ def reply_replacement(accounts, ws, username):
             hit = next((r for r in reversed(recs) if str(r.get("old", "")).lower() == u and r.get("new")), None)
             if hit:
                 new = str(hit["new"])
-                pw = ""
+                pw, done = "", {}
                 try:
                     for pd in panels.load_panel_lines(ws)["panels"].values():
                         rec = (pd.get("by_user") or {}).get(new.lower()) or (pd.get("by_user") or {}).get(new)
@@ -3839,8 +3841,18 @@ def reply_replacement(accounts, ws, username):
                             break
                 except Exception:
                     pw = ""
+                # سجلّ الإنجاز (المفقود/الشكاوى) يحفظ باسورد البديل وأشهره وقت إنشائه — يُغني عن سحب اللوحة
+                try:
+                    done = next((dict(r, order=o) for o, r in panels.load_dupes_done(ws).items()
+                                 if str(r.get("new", "")).lower() == new.lower()), {})
+                except Exception:
+                    done = {}
+                if not pw and done.get("password"):
+                    pw = str(done["password"])
                 return {"username": new, "password": pw, "gate_name": g.get("name", ""), "account_id": str(a.get("id")),
-                        "gate_id": str(g.get("id")), "host": g.get("host", ""), "at": hit.get("at", ""), "package": hit.get("package", "")}
+                        "gate_id": str(g.get("id")), "host": done.get("host") or g.get("host", ""), "at": hit.get("at", "") or done.get("at", ""),
+                        "package": hit.get("package", ""), "months": done.get("months"), "order": done.get("order", ""),
+                        "same_creds": bool(done.get("old")) and str(done.get("old", "")).lower() == new.lower()}
     return None
 
 

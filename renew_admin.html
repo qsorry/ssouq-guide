@@ -774,6 +774,7 @@ body.modal-open{overflow:hidden}
         <div class="acts" style="align-items:center"><b>نصّ الردّ</b> <small id="rpSub" class="pill"></small> <small id="rpPanel" class="pill"></small>
           <button class="ghost hidden" id="rpMake2" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button></div>
         <p class="msg" id="rpMakeMsg2"></p>
+        <p class="msg ok hidden" id="rpRep"></p>
         <p class="hint">عدّله إن شئت قبل الإرسال. الإرسال بالرقم المربوط يُسجَّل في «الرسائل» ← سجل الرسائل المرسلة.</p>
         <textarea id="rpText" class="rp-pre" rows="18"></textarea>
         <div class="acts"><button class="go" id="rpCopy" type="button">نسخ الردّ</button>
@@ -2361,6 +2362,11 @@ $('#lkGo').onclick = async () => {
 /* ============ الردّ على الشكاوى ============ */
 // الحالات نفسها كالبحث: ready · loading · found (ready أو no_user) · empty (not_found) · error. وطلبٌ قديم يُهمل بعد أحدث.
 const RP = {seq: 0, ctl: null, q: '', d: null};
+// معلومات البديل الذي أُنشئ سابقًا (user_links + سجلّ الإنجاز): يوزره وباسورده وبوابته وتاريخه — فيُرسل للعميل لا القديم
+const rpRepInfo = r => `<span class="ltr"><b>${esc(r.username)}</b>${r.password ? ' / ' + esc(r.password) : ''}</span>`
+  + (r.host ? ` · <span class="ltr">${esc(r.host)}</span>` : '') + (r.gate_name ? ' · ' + esc(r.gate_name) : '')
+  + (r.months ? ' · ' + AR(r.months) + ' شهرًا' : '') + (r.at ? ' · ' + esc(r.at) : '') + (r.same_creds ? ' · بنفس بياناته القديمة' : '')
+  + (r.warn ? `<br><span class="pill warn">⚠ ${esc(r.warn)}</span>` : '');
 const RP_SRC = {replacement: 'بديلٌ أُنشئ سابقًا (user_links)', store: 'اشتراكات سلة المسحوبة', index: 'فهرس الطلبات', history: 'سجلّ الطلب في سلة', card: 'بطاقة الطلب في سلة', panel: 'لوحة سلة', salla: 'سلة'};
 function rpState(state, text, retry){
   $('#rpBox').dataset.state = state;
@@ -2417,6 +2423,7 @@ function rpRender(d, q){
   const ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown;
   $('#rpPanel').textContent = d.replacement ? `له بديلٌ أُنشئ سابقًا: ${d.replacement.username}${d.replacement.at ? ' · ' + d.replacement.at : ''}` : ps[0] + ((d.panel || {}).found_panel ? ' · ' + d.panel.found_panel : '');
   $('#rpPanel').className = 'pill ' + (d.replacement ? 'ok' : ps[1]);
+  const rpRep = $('#rpRep'); if (rpRep) { rpRep.innerHTML = d.replacement ? rpRepInfo(d.replacement) : ''; rpRep.classList.toggle('hidden', !d.replacement); }
   $('#rpMake2').classList.toggle('hidden', !(cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done)); note($('#rpMakeMsg2'), '');
   if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}${d.created.password_changed ? ' — ⚠ ' + d.created.password_changed : ''}`, !d.created.rename_error && !d.created.password_changed);
   $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
@@ -2547,7 +2554,8 @@ async function cqReply(r, btn){
   const ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown, cr = d.create || {};
   const sug = cr.suggest || cr.months || 1;
   body.innerHTML = `<div class="lc-g">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}`
-    + lcField('الاشتراك', esc(d.sub_name) || 'غير معروف') + lcField('على اللوحة', d.replacement ? `<span class="pill ok">له بديلٌ أُنشئ سابقًا: ${esc(d.replacement.username)}</span>` : `<span class="pill ${ps[1]}">${ps[0]}${(d.panel || {}).found_panel ? ' · ' + esc(d.panel.found_panel) : ''}</span>`)
+    + lcField('الاشتراك', esc(d.sub_name) || 'غير معروف') + lcField('على اللوحة', d.replacement ? `<span class="pill ok">له بديلٌ أُنشئ سابقًا</span>` : `<span class="pill ${ps[1]}">${ps[0]}${(d.panel || {}).found_panel ? ' · ' + esc(d.panel.found_panel) : ''}</span>`)
+    + (d.replacement ? lcField('البديل', rpRepInfo(d.replacement), 'wide') : '')
     + (d.product ? lcField('الباقة المشتراة', `<span class="clip" title="${esc(d.product)}">${esc(d.product)}</span>`, 'wide') : '')
     + lcField('تاريخ الشراء', `<span class="ltr">${esc(d.date) || '—'}</span>`) + lcField('المدة', d.months ? AR(d.months) + ' شهرًا' + (d.qty > 1 ? ` × ${AR(d.qty)}` : '') : '—')
     + lcField('المتبقي', esc(d.remaining) || (cr.left_months ? AR(cr.left_months) + ' شهرًا' : '—')) + lcField('تاريخ الشكوى', `<span class="ltr">${esc(r.date) || '—'}</span>`)
@@ -2564,7 +2572,7 @@ async function cqReply(r, btn){
     + `<textarea class="rp-pre cqT" rows="14">${esc(d.text)}</textarea>`;
   // الفعل الأول: نسخ الردّ وفتح الشكوى في سلة — فالردّ يُلصق هناك؛ ويُعدّ مرسَلًا (يدوي عبر سلة) ويُعلَّم «تم الردّ»
   foot.innerHTML = `<p class="msg" data-sent>${d.wa ? '' : 'لا رقم جوال لهذا العميل: انسخ الردّ'}</p><div class="acts">
-      <button class="go wide cqSallaGo" type="button" ${r.url ? '' : 'disabled title="لا رابط للشكوى في السجل"'}>📋 نسخ الردّ وفتح الشكوى في سلة ↗</button>
+      ${r.url ? `<a class="go wide cqSallaGo" href="${esc(r.url)}" target="_blank" rel="noopener">📋 نسخ الردّ وفتح الشكوى في سلة ↗</a>` : '<button class="go wide cqSallaGo" type="button" disabled title="لا رابط للشكوى في السجل">📋 نسخ الردّ وفتح الشكوى في سلة ↗</button>'}
       <button class="ghost cqCopy" type="button">نسخ فقط</button>
       ${d.wa ? `<a class="ghost cqWa" href="#" target="_blank" rel="noopener">واتساب (يدوي)</a><button class="ghost cqSend" type="button">إرسال عبر الرقم المربوط</button>` : ''}
       ${markBtn}</div>`;
@@ -2581,10 +2589,10 @@ async function cqReply(r, btn){
     cqReply(r, btn); };
   foot.querySelector('.cqCopy').onclick = async () => { const ok = await copyText(ta.value), b = foot.querySelector('.cqCopy'); b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ فقط', 1600); };
   const sg = foot.querySelector('.cqSallaGo');
-  if (sg) sg.onclick = async () => {
-    const win = window.open('', '_blank');                       // تُفتح قبل الانتظار كي لا يحجبها المتصفّح
-    const ok = await copyText(ta.value);
-    if (win) win.location = r.url; else window.open(r.url, '_blank');
+  if (sg && r.url) sg.onclick = async () => {
+    // رابط حقيقي يفتحه المتصفّح بنفسه (Edge على أندرويد كان يترك about:blank مع window.open)، والنسخ يبدأ في نفس النقرة دون انتظار
+    const copying = copyText(ta.value);
+    const ok = await copying;
     note(sent, ok ? 'نُسخ الردّ ✓ وفُتحت الشكوى في سلة: الصقه في خانة الردّ هناك' : 'تعذّر النسخ تلقائيًا: انسخ النصّ يدويًا، وفُتحت الشكوى في سلة', ok);
     post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: ta.value, mode: 'manual', how: 'salla'});
     cqMarkSent(d.order); r.replied_at = r.replied_at || 'الآن';
