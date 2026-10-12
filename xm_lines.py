@@ -6648,6 +6648,25 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="text/html; charset=utf-8",
                                   extra={"Content-Disposition":
                                          'attachment; filename="renew-analysis.html"'})
+            if path == "/api/renew/userscript-install":   # صفحة تثبيت السكربت: زرٌّ للرابط، ونسخه للتثبيت من Utilities إن لم يُعرض التثبيت
+                host = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or ADMIN_HOST).split(",")[0].strip()
+                url = "https://%s%s/api/renew/ssouq-salla.user.js" % (host, self.P)
+                ver = extension_version()["version"]
+                page = ("<!doctype html><html lang=ar dir=rtl><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+                        "<title>تثبيت سكربت سمارت سوق</title><style>body{font:16px/1.7 Tahoma,sans-serif;margin:0;padding:20px;background:#eef2f8;color:#12213a}"
+                        ".c{max-width:560px;margin:0 auto;background:#fff;border-radius:18px;padding:18px;box-shadow:0 10px 30px rgba(20,40,80,.12)}"
+                        "a.b{display:block;text-align:center;background:#0f9c6e;color:#fff;text-decoration:none;font-weight:700;padding:14px;border-radius:14px;margin:12px 0}"
+                        "code{display:block;direction:ltr;text-align:left;background:#f3f6fb;border:1px solid #d6dfeb;border-radius:12px;padding:10px;word-break:break-all;font-size:14px}"
+                        "button{font:inherit;background:#2563eb;color:#fff;border:0;border-radius:12px;padding:12px;width:100%%;font-weight:700}ol{padding-inline-start:20px}small{color:#5f7290}</style>"
+                        "<div class=c><h2>سكربت Tampermonkey للجوال <small>v%s</small></h2>"
+                        "<p>يحتاج تثبيت <b>Tampermonkey</b> من قائمة إضافات Edge أولًا.</p>"
+                        "<a class=b href='%s'>تثبيت السكربت</a>"
+                        "<p>إن فُتح الرابط نصًّا ولم تظهر صفحة التثبيت:</p>"
+                        "<ol><li>انسخ الرابط: <code id=u>%s</code><button onclick=\"navigator.clipboard.writeText(document.getElementById('u').textContent).then(()=>this.textContent='نُسخ ✓')\">نسخ الرابط</button></li>"
+                        "<li>افتح أيقونة Tampermonkey ← <b>Dashboard</b> ← تبويب <b>Utilities</b>.</li>"
+                        "<li>في <b>Install from URL</b> الصق الرابط واضغط <b>Install</b>.</li></ol>"
+                        "<p><small>بعد التثبيت افتح s.salla.sa وسيظهر زرّ «🛍 سمارت سوق» أسفل الصفحة.</small></p></div>") % (ver, url, url)
+                return self._send(200, raw=page.encode("utf-8"), ctype="text/html; charset=utf-8", extra={"Cache-Control": "no-store"})
             if path in ("/api/renew/userscript", "/api/renew/ssouq-salla.user.js"):   # سكربت Tampermonkey للجوال (Edge)
                 # Tampermonkey لا يعرض التثبيت إلا لعنوانٍ ينتهي بـ.user.js — فالرابط الرسمي هو الثاني، والأول للتوافق
                 try:
