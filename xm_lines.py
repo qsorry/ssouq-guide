@@ -6631,6 +6631,16 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="text/html; charset=utf-8",
                                   extra={"Content-Disposition":
                                          'attachment; filename="renew-analysis.html"'})
+            if path == "/api/renew/userscript":     # سكربت Tampermonkey للجوال (Edge): زرّ «سحب الشكاوى» على لوحة سلة نفسها
+                try:
+                    with open(os.path.join(EXTENSION_DIR, "userscript.js"), encoding="utf-8") as f:
+                        js = f.read()
+                except OSError:
+                    return self._send(404, {"error": "السكربت غير متوفّر"})
+                host = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or ADMIN_HOST).split(",")[0].strip()
+                js = js.replace("__TOOL_HOST__", host).replace("__TOOL_PATH__", self.P).replace("__VERSION__", extension_version()["version"] or "1.0")
+                return self._send(200, raw=js.encode("utf-8"), ctype="text/javascript; charset=utf-8",
+                                  extra={"Content-Disposition": 'inline; filename="ssouq-salla.user.js"', "Cache-Control": "no-store"})
             if path == "/api/renew/extension.zip":  # إضافة المتصفّح جاهزة للتحميل
                 data = build_extension_zip()
                 if not data:

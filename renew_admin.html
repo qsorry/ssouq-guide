@@ -914,6 +914,8 @@ body.modal-open{overflow:hidden}
             </ol>
             <div class="acts"><a class="ghost" id="dlExt" href="#" role="button"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تحميل الإضافة (ZIP) <span id="dlExtV"></span></a></div>
               <p class="hint" id="dlExtHint">كل تعديلٍ على الإضافة يرفع رقم إصدارها ويغيّر اسمها، فقارن الرقم هنا بما في chrome://extensions.</p>
+              <div class="acts"><a class="ghost" id="dlUserscript" href="#" role="button" target="_blank" rel="noopener">سكربت Tampermonkey للجوال (Edge)</a></div>
+              <p class="hint">على الجوال لا تُثبَّت الإضافة في Edge، لكن Tampermonkey متاحٌ فيه: ثبّته من قائمة إضافات Edge، ثم افتح هذا الرابط فيُعرض عليك تثبيت السكربت. بعدها يظهر على لوحة سلة (s.salla.sa) زرّ «سحب الشكاوى → سمارت سوق».</p>
           </div>
         </details>
         <details class="inner fold">
@@ -1310,6 +1312,7 @@ document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
   pts = {...PRESETS[b.dataset.preset]}; cost(); });
 $('#dl').onclick = () => location.href = B + '/api/renew/report';
 $('#dlExt').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/extension.zip'; };
+$('#dlUserscript').href = B + '/api/renew/userscript';
 getJSON('/api/renew/extension-version').then(r => { if (r.ok && r.data.version) $('#dlExtV').textContent = 'v' + r.data.version; });
 
 /* ============ ٣· الإعداد ============ */
