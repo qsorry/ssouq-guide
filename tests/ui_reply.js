@@ -148,7 +148,9 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     const us = await page.evaluate(async () => { const r = await fetch('/admin/api/renew/ssouq-salla.user.js'); return {ct: r.headers.get('content-type') || '', t: await r.text()}; });
     check('tampermonkey userscript served (logged in) with the tool host/path and version filled in', /javascript/.test(us.ct) && us.t.includes('==UserScript==')
       && us.t.includes(`const TOOL = "https://127.0.0.1:${PORT}" + "/admin"`) && us.t.includes(`@connect      127.0.0.1:${PORT}`) && !us.t.includes('__VERSION__') && !us.t.includes('__TOOL_HOST__'), us.ct + ' ' + us.t.slice(0, 80));
-    check('download link ends with .user.js so Tampermonkey offers the install', (await page.getAttribute('#dlUserscript', 'href')) === '/admin/api/renew/ssouq-salla.user.js');
+    check('download link opens the install page', (await page.getAttribute('#dlUserscript', 'href')) === '/admin/api/renew/userscript-install');
+    const ip = await page.evaluate(async () => (await fetch('/admin/api/renew/userscript-install')).text());
+    check('install page links the .user.js url and explains Install from URL', ip.includes(`https://127.0.0.1:${PORT}/admin/api/renew/ssouq-salla.user.js`) && ip.includes('Install from URL'));
     check('no page errors', errs.length === 0, errs.join(' | '));
   } finally {
     await browser.close(); app.kill(); fs.rmSync(dataDir, {recursive: true, force: true});

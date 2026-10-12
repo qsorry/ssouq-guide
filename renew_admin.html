@@ -1317,7 +1317,7 @@ document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
   pts = {...PRESETS[b.dataset.preset]}; cost(); });
 $('#dl').onclick = () => location.href = B + '/api/renew/report';
 $('#dlExt').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/extension.zip'; };
-$('#dlUserscript').href = B + '/api/renew/ssouq-salla.user.js';
+$('#dlUserscript').href = B + '/api/renew/userscript-install';
 getJSON('/api/renew/extension-version').then(r => { if (r.ok && r.data.version) $('#dlExtV').textContent = 'v' + r.data.version; });
 
 /* ============ ٣· الإعداد ============ */
