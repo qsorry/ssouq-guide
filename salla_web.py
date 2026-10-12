@@ -507,8 +507,9 @@ def denied_error(code, headers, body):
           or ("cloudflare" in str(h.get("Server", "")).lower() and _CF_CHALLENGE.search(text) is not None
               and "salla" not in text[:2000].lower()))
     if cf:
-        return WebError("Cloudflare يحجب عنوان الخادم (%d) — ليست الكوكيز: الوصول للوحة سلة "
-                        "من هذا الخادم ممنوع، فيُسحب من جهازٍ آخر أو بعنوان IP آخر" % code)
+        return WebError("Cloudflare يحجب عنوان الخادم (%d) — ليست الكوكيز: الوصول للوحة سلة من هذا الخادم ممنوع. "
+                        "اسحب من جهازك: إضافة المتصفّح على الكمبيوتر، أو سكربت Tampermonkey على الجوال "
+                        "(زرّا «سحب الطلبات» و«سحب الشكاوى» على لوحة سلة)" % code)
     return SessionExpired("الجلسة غير مقبولة (%d) — الصق الكوكيز من جديد" % code)
 
 
