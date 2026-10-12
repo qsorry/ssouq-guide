@@ -190,6 +190,17 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 EXTENSION_DIR = os.path.join(BASE_DIR, "extension", "salla-cookie")
 
 
+def extension_version():
+    """إصدار الإضافة واسمها من manifest.json — يُعرضان في صفحة التجديد واسم ملف ZIP، فيعرف المشغّل
+    أي نسخةٍ عنده وأيّها ينزّل. ← {version, name}."""
+    try:
+        with open(os.path.join(EXTENSION_DIR, "manifest.json"), encoding="utf-8") as f:
+            m = json.load(f)
+        return {"version": str(m.get("version") or ""), "name": str(m.get("name") or "")}
+    except (OSError, ValueError):
+        return {"version": "", "name": ""}
+
+
 def build_extension_zip():
     """إضافة المتصفّح مضغوطةً في الذاكرة من مصدرها — فلا يُحفظ ملفٌّ ثنائيّ في
     المستودع يتقادم عن الكود. الملفات في **جذر** الحزمة (‏`manifest.json` أولها)
@@ -6281,10 +6292,13 @@ class Handler(BaseHTTPRequestHandler):
                 data = build_extension_zip()
                 if not data:
                     return self._send(404, {"error": "ملف الإضافة غير متوفّر"})
+                ver = extension_version()["version"]
                 return self._send(200, raw=data, ctype="application/zip",
                                   extra={"Content-Disposition":
-                                         'attachment; filename="salla-cookie-extension.zip"',
+                                         'attachment; filename="salla-cookie-extension-%s.zip"' % (ver or "latest"),
                                          "Cache-Control": "no-store"})
+            if path == "/api/renew/extension-version":  # إصدار الإضافة الحالي واسمها (لزرّ التحميل)
+                return self._send(200, extension_version())
             if path == "/api/renew/packages":     # باقات مرح بنقاطها (للربط والتكلفة)
                 try:
                     pkgs, cost = renew_packages(rcfg, racs)

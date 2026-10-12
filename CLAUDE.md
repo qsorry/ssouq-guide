@@ -1,0 +1,7 @@
+# قواعد المستودع
+
+- **إضافة المتصفّح (`extension/salla-cookie`)**: أي تعديل على ملفاتها يرفع `version` ويغيّر `name` في
+  `manifest.json` (الاسم يحمل الإصدار: `… v1.7.2`)، ويُذكر رقم الإصدار الجديد صراحةً في الردّ على المشغّل.
+  `python tests/test_dockerfile.py` يتحقّق.
+- **ملف Python جديد يستورده الخادم** يُضاف إلى سطر `COPY` في `Dockerfile`، وإلا سقطت الحاوية عند النشر.
+  `python tests/test_dockerfile.py` يتحقّق — شغّله قبل كل دمج.

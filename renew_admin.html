@@ -846,7 +846,8 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
               <li><b>تحميل غير مضغوط</b> ← اختر <b>المجلّد الذي يحوي <code>manifest.json</code></b> (لا ملفّ الـZIP نفسه، ولا مجلّدًا فوقه).</li>
               <li>افتح الإضافة ← اضبط عنوان الأداة واسم الدخول وكلمة المرور ← احفظ.</li>
             </ol>
-            <div class="acts"><a class="ghost" id="dlExt" href="#" role="button"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تحميل الإضافة (ZIP)</a></div>
+            <div class="acts"><a class="ghost" id="dlExt" href="#" role="button"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تحميل الإضافة (ZIP) <span id="dlExtV"></span></a></div>
+              <p class="hint" id="dlExtHint">كل تعديلٍ على الإضافة يرفع رقم إصدارها ويغيّر اسمها، فقارن الرقم هنا بما في chrome://extensions.</p>
           </div>
         </details>
         <details class="inner fold">
@@ -1243,6 +1244,7 @@ document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
   pts = {...PRESETS[b.dataset.preset]}; cost(); });
 $('#dl').onclick = () => location.href = B + '/api/renew/report';
 $('#dlExt').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/extension.zip'; };
+getJSON('/api/renew/extension-version').then(r => { if (r.ok && r.data.version) $('#dlExtV').textContent = 'v' + r.data.version; });
 
 /* ============ ٣· الإعداد ============ */
 let GATES = [], TIERS = [1,3,6,12,15,30], CFG = null;
