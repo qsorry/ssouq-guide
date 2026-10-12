@@ -164,7 +164,7 @@ def main():
     # فالكون وكاسبر خارج guide-data.json (سمارت وحده)، فصورهما هنا
     check("صور كود فالكون وكاسبر ونوافذ تثبيتهما على القرص",
           all(os.path.isfile(os.path.join(ROOT, "static/img", f)) for f in (
-              "tv-dl-code-1683248.webp", "tv-dl-code-3638997.webp", "tv-dl-install-falcon.webp", "tv-dl-done-falcon.webp",
+              "tv-dl-code-1683248.webp", "tv-dl-code-5149800.webp", "tv-dl-install-falcon.webp", "tv-dl-done-falcon.webp",
               "tv-dl-install-casper.webp", "tv-dl-done-casper.webp", "tv-dl-devmode.webp",
               "tv-dl-code-4162893.webp", "tv-dl-install-ghost.webp", "tv-dl-done-ghost.webp", "apps/ghost-casper-vip.webp")))
     h = G.render("/android-tv").decode("utf-8")

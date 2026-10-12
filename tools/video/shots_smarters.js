@@ -7,7 +7,7 @@
 //     node tools/video/shots_smarters.js
 const { renderShots } = require('./shots_lib');
 
-const CODES = ['8744201', '5574841', '1683248', '3638997', '4162893'];
+const CODES = ['8744201', '5574841', '1683248', '5149800', '4162893'];
 const APPS = ['smarters', 'mr7', 'falcon', 'casper', 'ghost'];
 // مواضع الأزرار (بكسل الصورة) — كما يطبعها capture_smarters.js، ومثلها في B بصفحة smarters.html
 const DL = { hash: [1642, 4, 112, 112], ok: [512, 784, 896, 76], title: [1090, 132, 718, 241], install: [1616, 736, 197, 88],

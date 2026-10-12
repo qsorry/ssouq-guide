@@ -82,7 +82,7 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
 
     console.log('== the same Downloader approval for MR7, Falcon, CASPER VIP and Ghost Casper VIP ==');
     for (const [sub_, v, code, key, name, last] of [['smart', 'mr7', '5574841', 'mr7', 'MR7 TV', 'سجّل الدخول'],
-        ['falcon', 'falconapp', '1683248', 'falcon', 'FALCON IPTV PRO', null], ['casper', 'caspervip', '3638997', 'casper', 'Casper VIP', null],
+        ['falcon', 'falconapp', '1683248', 'falcon', 'FALCON IPTV PRO', null], ['casper', 'caspervip', '5149800', 'casper', 'Casper VIP', null],
         ['casper', 'ghostcasper', '4162893', 'ghost', 'Ghost Casper VIP', null]]) {
       await open(`#activate/${sub_}/tv/${v}/3`);
       check(`${sub_}/${v}: step 3 is its own code, 3 of 7`, (await h2()) === `اضغط # واكتب الكود ${code}` && (await sub()).includes('الخطوة 3 من 7')
