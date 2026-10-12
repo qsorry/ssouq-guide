@@ -442,3 +442,38 @@ def sitemap(extra=()):
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
             'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n'
             + "\n".join(rows) + "\n</urlset>\n").encode("utf-8")
+
+
+# ----- الشروحات على نطاق المتجر -----
+# الدليل كله نُقل إلى المتجر (ssouq.com/guide …). حين يُضبط `XM_STORE_URL` (عنوان المتجر،
+# مثل https://ssouq.com) تتحوّل صفحات الشروحات هنا إليه بـ 301، ويبقى على هذا النطاق
+# ما ليس له مقابل هناك: مسابقة التوقّعات والبطولات، التجديد، إضافة Stremio، الواجهات
+# (/api/…) التي يقرأ منها المتجر، الصور (/static و/content/…/img)، والخرائط.
+# فارغًا (الافتراضي) لا يتغيّر شيء — يُضبط بعد أن يصير ssouq.com هو المتجر الجديد.
+STORE_URL = os.environ.get("XM_STORE_URL", "").strip().rstrip("/")
+_ONE_SEGMENT = re.compile(r"^/(?:en/)?content(?:/[A-Za-z0-9_-]+)?$|^/watch(?:/[A-Za-z0-9_-]+)?$|^/standings(?:/[A-Za-z0-9_-]+)?$")
+
+
+def store_path(path):
+    """مسار صفحة الشروحات في المتجر، أو None إن بقيت هنا.
+    الجزء بعد # (‏#activate/smart/webos) لا يصل الخادم؛ المتصفح يحمله مع التحويل وصفحة /guide في المتجر تفتحه."""
+    p = path.rstrip("/") or "/"
+    if p in ("/", "/index.html"):
+        return "/guide"
+    if p == "/compare":
+        return "/choose"
+    if p in PAGES:                                  # صفحات الأجهزة: /samsung-lg ← /guide/samsung-lg
+        return "/guide" + p
+    if p == "/report":
+        return "/report"
+    if _ONE_SEGMENT.match(p):                       # المحتوى والمشاهدة والترتيب: بالمسار نفسه
+        return p
+    return None
+
+
+def store_redirect(path, qs=""):
+    """العنوان الكامل في المتجر لهذا الطلب، أو None (لا متجر مضبوط، أو الصفحة تبقى هنا)."""
+    if not STORE_URL:
+        return None
+    to = store_path(path)
+    return STORE_URL + to + qs if to else None

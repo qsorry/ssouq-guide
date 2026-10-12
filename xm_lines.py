@@ -6220,6 +6220,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redirect((path[len(ADMIN_PATH):] or "/") + qs, 301)  # العنوان القديم
             return self._tool_get(path)
         # ----- الجزء العام -----
+        to = guide_pages.store_redirect(path, qs)   # الشروحات على نطاق المتجر حين يُضبط XM_STORE_URL
+        if to:
+            return self._redirect(to, 301)
         if path == stremio_addon.PATH or path.startswith(stremio_addon.PATH + "/"):
             return self._stremio_get(path)      # إضافة Stremio: بلا عدّاد ولا زواحف (في الرابط رمز الاشتراك)
         if not path.startswith(("/static/", "/api/", ADMIN_PATH + "/")) and "/img/" not in path:
