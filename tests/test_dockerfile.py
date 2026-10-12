@@ -55,6 +55,25 @@ def main():
     check("the contest WhatsApp service ships (installed, non-fatal)",
           "COPY whatsapp-reader/server.js ./whatsapp-reader/" in docker and "npm ci --omit=dev" in docker
           and "whatsapp-reader/package-lock.json" in docker and "contest WhatsApp linking unavailable" in docker)
+    # الإضافة: كل تعديلٍ يرفع رقم الإصدار ويغيّر الاسم (الاسم يحمل الإصدار فيتغيّر معه)، وملفاتها لا تتغيّر
+    # دون رفع الإصدار — يُقارن بآخر إصدارٍ على الفرع الرئيسي إن كان git متاحًا.
+    import json, subprocess
+    ext = os.path.join(ROOT, "extension", "salla-cookie")
+    with open(os.path.join(ext, "manifest.json"), encoding="utf-8") as f:
+        man = json.load(f)
+    ver, name = str(man.get("version", "")), str(man.get("name", ""))
+    check("extension name carries its version (changes with every release)", name.endswith(" v" + ver) and bool(ver), name)
+    try:
+        base = subprocess.run(["git", "-C", ROOT, "merge-base", "HEAD", "origin/main"], capture_output=True, text=True, timeout=10).stdout.strip()
+        changed = subprocess.run(["git", "-C", ROOT, "diff", "--name-only", base, "--", "extension/salla-cookie"],
+                                 capture_output=True, text=True, timeout=10).stdout.split() if base else []
+        old_man = subprocess.run(["git", "-C", ROOT, "show", "%s:extension/salla-cookie/manifest.json" % base],
+                                 capture_output=True, text=True, timeout=10).stdout if base else ""
+        old_ver = json.loads(old_man).get("version", "") if old_man.strip() else ""
+        if changed and old_ver:
+            check("extension changed since main → version bumped", old_ver != ver, "%s → %s" % (old_ver, ver))
+    except Exception:
+        pass
     print("\nResult: %d passed, %d failed" % (_p, _f))
     sys.exit(1 if _f else 0)
 
