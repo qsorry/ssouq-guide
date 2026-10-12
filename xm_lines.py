@@ -3988,7 +3988,42 @@ def _complaints_resolve(st, rcfg, rows):
     return changed
 
 
-def complaints_open(st, rcfg=None, ws=None, raw=False):
+LOST_STATES = ("missing", "no_user")        # يوزر الطلب لا على لوحته ولا البديلة، أو طلبٌ بلا يوزر أصلًا
+
+
+def complaints_panel_states(rows, rcfg, ws, racs):
+    """حال يوزر كل شكوى على اللوحات من فهرس البحث (بلا نداء خارجي): found · missing · not_pulled · host_unmapped ·
+    covered · replaced · no_user (طلبٌ في الفهرس بلا يوزر) · unknown (طلبٌ غير مسحوب). ويُكتب في الصفّ `panel_state`."""
+    try:
+        idx = renew_index(rcfg, ws, racs)
+    except Exception:
+        return
+    for r in rows:
+        o = renew.norm_order(r.get("order")) if r.get("order") else ""
+        if not o:
+            r["panel_state"] = "unknown"
+            continue
+        hits = [idx["rows"][i] for i in idx["by_order"].get(o, [])]
+        if hits:
+            r["panel_state"] = "found" if any(h["state"] == "found" for h in hits) else hits[0]["state"]
+            r["panel_done"] = any(h.get("done") for h in hits)
+        else:
+            ix = idx["orders_index"].get(o)
+            r["panel_state"] = ("no_user" if ix and not ix.get("username") else "unknown") if ix is not None else "unknown"
+
+
+def complaints_for_orders(ws):
+    """{رقم الطلب: الشكوى المفتوحة (تنتظر التاجر)} من المحفوظ — لتُعلَّم بها طلبات «المفقود»."""
+    stored = _complaints_stored(ws) or {}
+    out = {}
+    for r in complaints.open_only(stored.get("rows") or []):
+        o = renew.norm_order(r.get("order")) if r.get("order") else ""
+        if o and o not in out:
+            out[o] = {"id": r.get("id", ""), "status": r.get("status", ""), "url": r.get("url", ""), "replied": bool(r.get("replied_at"))}
+    return out
+
+
+def complaints_open(st, rcfg=None, ws=None, raw=False, racs=None):
     """شكاوى العملاء **التي تنتظر التاجر وحدها** («بانتظار الحل من التاجر» · «بانتظار رد التاجر»). المصدر
     الأول **ما سحبته الإضافة من جهاز المشغّل** (‏`complaints_feed`، لأن Cloudflare يحجب الخادم عن اللوحة)، وإلا
     جلسة اللوحة من الخادم (‏`renew_pull_session`، الكوكيز نفسها التي تُسحب بها الطلبات) حيث لا يُحجب. ← {rows,
@@ -3998,9 +4033,13 @@ def complaints_open(st, rcfg=None, ws=None, raw=False):
         if _complaints_resolve(st, rcfg, stored["rows"]):
             renew._write_json(complaints_path(ws), stored)
         rows = complaints.open_only(stored["rows"])
-        rows.sort(key=lambda r: bool(r.get("replied_at")))          # ما لم يُردّ عليه أولًا
+        if racs is not None:
+            complaints_panel_states(rows, rcfg, ws, racs)
+        # «مفقودٌ وعليه شكوى» أولًا (يُعالج أسرع)، ثم بقية ما لم يُردّ عليه، ثم المردود عليه
+        rows.sort(key=lambda r: (bool(r.get("replied_at")), r.get("panel_state") not in LOST_STATES))
         out = {"rows": rows, "total": len(stored["rows"]), "at": stored.get("at", ""), "source": "extension",
                "replied": sum(1 for r in rows if r.get("replied_at")),
+               "lost": sum(1 for r in rows if r.get("panel_state") in LOST_STATES and not r.get("replied_at")),
                "unresolved": sum(1 for r in stored["rows"] if r.get("order_sid") and not r.get("order"))}
         if raw:                                          # تشخيص: شكل الصفّ كما تعطيه اللوحة (مفاتيحه وقيمه)
             out["sample"], out["path"] = stored.get("sample"), stored.get("path", "")
@@ -6564,7 +6603,7 @@ class Handler(BaseHTTPRequestHandler):
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/complaints":     # مراجعة الشكاوى: سجل شكاوى سلة بالجلسة، ما ينتظر التاجر وحده
-                return self._send(200, complaints_open(st, rcfg, rws, raw=self._q("raw") == "1"))
+                return self._send(200, complaints_open(st, rcfg, rws, raw=self._q("raw") == "1", racs=racs))
             if path == "/api/renew/reply":          # الردّ على شكوى: الطلب برقمه ← اشتراكه وبياناته ← نصّ الردّ جاهزًا
                 t0 = time.perf_counter()
                 d = reply_lookup(st, rcfg, rws, racs, self._q("q"))
@@ -6577,12 +6616,16 @@ class Handler(BaseHTTPRequestHandler):
                 d = panels.lost(rcfg, rws, idx=renew_index(rcfg, rws, racs),
                                 comp=panels.COMP_DEFAULT if comp is None else max(0, min(14, comp)),
                                 include_expired=self._q("expired") == "1")
+                cq = complaints_for_orders(rws)           # طلبٌ مفقود وعليه شكوى: يُعلَّم ليُعالج أولًا
                 for r in d["rows"]:
+                    r["complaint"] = cq.get(renew.norm_order(r.get("order")))
                     ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
                     r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
                     r["sub"] = gate_sub(ac, find_gate(ac, r["gate_id"]) if ac else None) or line_sub(r, r.get("panel_name", ""))
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
+                d["rows"].sort(key=lambda r: not (r.get("complaint") and not r["complaint"]["replied"]))   # ما عليه شكوى أولًا
+                d["with_complaint"] = sum(1 for r in d["rows"] if r.get("complaint") and not r["complaint"]["replied"])
                 d["wa_linked"] = dup_wa_ready(st)
                 d["gates"] = create_gates(racs)
                 d["sent_today"] = panels.sent_today(rws, renew.now_iso()[:10])

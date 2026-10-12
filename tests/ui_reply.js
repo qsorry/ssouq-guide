@@ -72,6 +72,12 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
       {id: '3', cid: '3', order: '5', order_sid: '', customer: 'y', status: 'مغلقة', type: '', text: '', date: '', phone: '', url: ''}]}));
     await page.click('#cqLoad'); await page.waitForFunction(() => !document.querySelector('#cqLoad').disabled);
     check('complaints list shows only the merchant-waiting ones', (await page.$$('#cqBody tr')).length === 2 && (await page.textContent('#cqSum')).includes('٢'));
+    // تبويب «مفقودٌ وعليه شكوى»: الطلب 138 يوزره لا على لوحة (هوست غير مربوط لا يُعدّ مفقودًا)، والطلب 999000 بلا سجل → لا شيء مفقود هنا
+    check('filter chips: lost-with-complaint and all', (await page.$$('#cqChips .fchip')).length === 2 && (await page.textContent('#cqChips')).includes('مفقودٌ وعليه شكوى'));
+    await page.click('#cqChips .fchip[data-f="lost"]'); await sleep(200);
+    check('lost filter: empty here with a clear note', (await page.$$('#cqBody tr')).length === 0 && (await page.textContent('#cqMsg')).includes('لا شكوى على طلبٍ مفقود'));
+    await page.click('#cqChips .fchip[data-f="all"]'); await sleep(200);
+    check('back to all', (await page.$$('#cqBody tr')).length === 2);
     check('complaint number links to the panel', (await page.getAttribute('#cqBody tr:first-child td:first-child a', 'href')) === 'https://s.salla.sa/complaints/2078174950');
     await page.click('#cqBody .cqGo'); await page.waitForSelector('#cqBody tr.cq-r .cqT');
     const inl = await page.inputValue('#cqBody tr.cq-r .cqT');
