@@ -142,11 +142,26 @@ def test_lookup():
             {"order": "200", "date": "2026-09-01", "phone": "0500000002", "customer": "سارة", "username": "", "password": "",
              "host": "http://m.ink", "months": 12, "expiry": "2027-09-01", "product": "اشتراك IPTV لمدة سنة"}])
         r = X.reply_lookup(st, cfg, d, [acct], "١٣٨")
+        check("pulled order, no panel pulled: first user only is sent (the other is not known to work)", [c["username"] for c in r["creds"]] == ["333426852552"]
+              and r["skipped"] == ["111"], str(r["creds"]))
+        # لوحةٌ مسحوبة فيها اليوزران: كلاهما يُرسل؛ وإن وُجد الثاني وحده أُرسل هو وحده
+        cfgp = {"panels": [{"id": "pk", "name": "كاسبر", "hosts": ["http://ssouqhost.vip:80"], "account_id": "acc1", "gate_id": "g1"}]}
+        panels.save_panel_lines(d, "pk", "كاسبر", [{"username": "333426852552"}, {"username": "111"}])
+        r = X.reply_lookup(st, cfgp, d, [acct], "138")
         check("pulled order: ready from the store lines, both users, casper by gate host", r["state"] == "ready" and r["src"] == "store"
               and [c["username"] for c in r["creds"]] == ["333426852552", "111"] and r["sub"] == "casper"
               and r["gate"]["gate_id"] == "g1" and r["wa"] == "966500000001" and r["qty"] == 2, str(r)[:300])
         check("text carries the gate guide link and both users", "#activate/casper" in r["text"]
               and "User: 333426852552\nPass: 4784316512" in r["text"] and "اليوزر 2:*\nUser: 111\nPass: 222" in r["text"], r["text"])
+        panels.save_panel_lines(d, "pk", "كاسبر", [{"username": "111"}])
+        r = X.reply_lookup(st, cfgp, d, [acct], "138")
+        check("only the second user exists on the panel → it is the one sent, the missing first is skipped",
+              [c["username"] for c in r["creds"]] == ["111"] and r["skipped"] == ["333426852552"] and "اليوزر 2" not in r["text"], str(r["creds"]))
+        import os as _os
+        try:
+            _os.remove(panels.panel_lines_path(d))
+        except OSError:
+            pass
         check("no Salla call for a pulled order", not sal.calls, str(sal.calls))
         # 2) طلبٌ في الفهرس بلا يوزر، وسجلّه في سلة يحمل البيانات
         renew._write_json(renew.index_path(d), {"orders": {"300": {"phone": "0500000003", "date": "2026-09-05", "months": 12, "sid": "9300"}}})
