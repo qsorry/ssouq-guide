@@ -359,6 +359,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 @media (prefers-reduced-motion:reduce){[data-state="loading"] .sdot{animation:none}}
 .rp-pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75;font-size:.9rem;min-height:280px}
 .cq-r td{background:var(--sf2)}
+.cq-done td{opacity:.55}.cq-done td .acts{opacity:1}
 .rp-note{border-radius:14px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--amber) 50%,var(--line));background:color-mix(in srgb,var(--amber) 8%,var(--sf));line-height:1.7;font-size:.9rem}
 .sync{margin:6px 0 0;font-size:.74rem;color:var(--mute);line-height:1.6;white-space:pre-line}
 .sync:empty{display:none}
@@ -706,7 +707,13 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 
       <div id="rpNoUser" class="hidden" style="margin-top:12px;display:grid;gap:10px">
         <div class="rp-note" id="rpHint"></div>
-        <div class="acts"><a class="go" id="rpCreate" href="#" target="_blank" rel="noopener">افتح صفحة الإنشاء</a></div>
+        <div class="acts" id="rpMakeBox" style="align-items:center">
+          <button class="go" id="rpMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button>
+          <label class="lc-m">أشهر الجديد <input type="number" id="rpMakeM" min="1" max="15" style="width:64px"></label>
+          <label class="lc-m">تعويض <input type="number" id="rpMakeC" min="0" max="14" value="0" style="width:56px"></label>
+          <small class="hint" id="rpMakeHint"></small></div>
+        <p class="msg" id="rpMakeMsg"></p>
+        <div class="acts"><a class="ghost" id="rpCreate" href="#" target="_blank" rel="noopener">أو افتح صفحة الإنشاء يدويًا</a></div>
         <b>الصق سطر اليوزر الذي أنشأته</b>
         <p class="hint">كما نُسخ من صفحة الإنشاء (<span class="ltr">Host … User … Pass …</span>) — يُربط بالطلب، ويُجهَّز الردّ ببياناته.</p>
         <textarea id="rpLine" class="ltr" rows="2" placeholder="Host http://… User … Pass …"></textarea>
@@ -714,7 +721,9 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       </div>
 
       <div id="rpReply" class="hidden" style="margin-top:12px;display:grid;gap:10px">
-        <b>نصّ الردّ <small id="rpSub" class="pill"></small></b>
+        <div class="acts" style="align-items:center"><b>نصّ الردّ</b> <small id="rpSub" class="pill"></small> <small id="rpPanel" class="pill"></small>
+          <button class="ghost hidden" id="rpMake2" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button></div>
+        <p class="msg" id="rpMakeMsg2"></p>
         <p class="hint">عدّله إن شئت قبل الإرسال. الإرسال بالرقم المربوط يُسجَّل في «الرسائل» ← سجل الرسائل المرسلة.</p>
         <textarea id="rpText" class="rp-pre" rows="18"></textarea>
         <div class="acts"><button class="go" id="rpCopy" type="button">نسخ الردّ</button>
@@ -2297,6 +2306,8 @@ function rpRender(d, q){
   $('#rpWrap').classList.remove('hidden');
   const no = d.state !== 'ready';
   $('#rpNoUser').classList.toggle('hidden', !no); $('#rpReply').classList.toggle('hidden', no);
+  const cr = d.create || {}; $('#rpMakeM').value = cr.months || ''; $('#rpMakeHint').textContent = cr.can ? `على ${cr.gate_name} · من باقة ١٥ شهرًا، والباقي يُباع من «حسابات متبقية»` : 'لا بوابة إنشاء لاشتراكه (اربط لوحته بحساب وبوابة)';
+  $('#rpMake').disabled = !cr.can; note($('#rpMakeMsg'), '');
   if (no) {
     $('#rpHint').textContent = d.hint || 'لم يُعثر على يوزر لهذا الطلب: أنشئ له يوزرًا ثم الصق سطره.';
     $('#rpCreate').href = B + '/'; $('#rpCreate').textContent = d.gate ? `افتح صفحة الإنشاء (${d.gate.name})` : 'افتح صفحة الإنشاء';
@@ -2305,11 +2316,30 @@ function rpRender(d, q){
     return;
   }
   $('#rpText').value = d.text || ''; $('#rpSub').textContent = d.sub_name ? 'اشتراك ' + d.sub_name : 'اشتراك غير معروف';
+  const ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown;
+  $('#rpPanel').textContent = ps[0] + ((d.panel || {}).found_panel ? ' · ' + d.panel.found_panel : ''); $('#rpPanel').className = 'pill ' + ps[1];
+  $('#rpMake2').classList.toggle('hidden', !(cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done)); note($('#rpMakeMsg2'), '');
+  if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}`, true);
   $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
   $('#rpSend').title = d.wa ? '' : 'لا رقم جوال لهذا العميل';
   note($('#rpSent'), d.wa_linked ? '' : 'لا رقم واتساب مربوط الآن: انسخ الردّ أو أرسله من واتساب يدويًا.');
   rpState('found', `الردّ جاهز لـ${esc(d.customer) || 'العميل'} · ${d.creds.length === 1 ? 'يوزر واحد' : AR(d.creds.length) + ' يوزرات'} من ${RP_SRC[d.src] || d.src}${d.sub_name ? ' · اشتراك ' + d.sub_name : ''}${ms}`);
 }
+const PANEL_STATE = {found: ['موجود على اللوحة ✓', 'ok'], missing: ['مفقود من اللوحة', 'bad'], not_pulled: ['اللوحة لم تُسحب: لم يُتحقّق', 'warn'],
+  host_unmapped: ['هوسته غير مربوط بلوحة', 'warn'], covered: ['يوزرٌ آخر للطلب موجود', ''], replaced: ['مستبدل', ''], no_user: ['بلا يوزر', 'warn'], unknown: ['لم يُتحقّق من اللوحة', 'warn']};
+// الإنشاء لصاحب الشكوى: خطٌّ بالمتبقي (تجزئة من باقة ١٥) يُربط بطلبه ويعود الردّ ببياناته
+async function rpMake(btn, msgEl){
+  const d = RP.d || {}; if (!d.order) return;
+  const months = Number($('#rpMakeM').value) || 0, comp = Number($('#rpMakeC').value) || 0;
+  if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا${comp ? ' + تعويض ' + comp : ''} على ${(d.create || {}).gate_name}؟ يخصم من الرصيد.`)) return;
+  btn.disabled = true; note(msgEl, 'جارٍ الإنشاء على اللوحة…', true);
+  const r = await post('/api/renew/reply-create', {order: d.order, months, comp});
+  btn.disabled = false;
+  if (r.error) return note(msgEl, r.error + (r.need_captcha ? '' : ''));
+  rpRender(r, d.order);
+}
+$('#rpMake').onclick = () => rpMake($('#rpMake'), $('#rpMakeMsg'));
+$('#rpMake2').onclick = () => rpMake($('#rpMake2'), $('#rpMakeMsg2'));
 $('#rpForm').addEventListener('submit', e => { e.preventDefault(); rpFind(); });
 $('#rpRetry').onclick = () => rpFind();
 $('#rpQ').addEventListener('input', () => $('#rpClear').classList.toggle('hidden', !$('#rpQ').value));
@@ -2328,7 +2358,10 @@ $('#rpSend').onclick = async () => { const d = RP.d || {}, b = $('#rpSend'); b.d
   b.disabled = false; note($('#rpSent'), r.ok ? `تم الإرسال ✓ إلى ${d.phone}` : (r.error || 'تعذّر الإرسال'), !!r.ok); if (r.ok) cqMarkSent(d.order); };
 // ---- مراجعة الشكاوى: ما ينتظر التاجر وحده، ومنها إلى الردّ برقم الطلب ----
 let CQ = [];
-function cqMarkSent(order){ $('#cqBody').querySelectorAll(`tr[data-o="${order}"] .cqS`).forEach(e => { e.textContent = 'تم الإرسال ✓'; e.className = 'cqS ok'; }); }
+function cqMarkSent(order){ $('#cqBody').querySelectorAll(`tr[data-o="${order}"]:not(.cq-r)`).forEach(tr => { tr.classList.add('cq-done');
+  const e = tr.querySelector('.cqS'); if (e) { e.textContent = 'تم الردّ ✓ (أُرسل الآن)'; e.className = 'cqS ok'; }
+  const b = tr.querySelector('.cqDone'); if (b) { b.textContent = 'إلغاء «تم الردّ»'; b.className = 'ghost cqDone'; }
+  const i = tr.dataset.i; if (CQ[i]) CQ[i].replied_at = CQ[i].replied_at || 'الآن'; }); }
 async function cqLoad(){
   const b = $('#cqLoad'); if (b.disabled) return;
   b.disabled = true; b.textContent = 'جارٍ السحب…'; note($('#cqMsg'), 'جارٍ قراءة سجل الشكاوى من لوحة سلة…', true);
@@ -2338,11 +2371,18 @@ async function cqLoad(){
   if (d.error) { $('#cqWrap').classList.add('hidden'); $('#cqSum').textContent = ''; return note($('#cqMsg'), d.hint || 'تعذّر سحب الشكاوى'); }
   note($('#cqMsg'), d.unresolved ? `${AR(d.unresolved)} شكوى بلا رقم طلب: حدّث الإضافة (1.7.1) واضغط «سحب الشكاوى» فيها من جديد، فهي تحوّل أرقام الطلبات من متصفّحك` : (CQ.length ? '' : 'لا شكاوى تنتظر التاجر الآن ✓'), !d.unresolved);
   $('#cqSum').textContent = `${AR(CQ.length)} تنتظر التاجر من ${AR(d.total)} في السجل`;
-  $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}" data-i="${i}"><td class="ltr">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="افتح الشكوى في لوحة سلة">${esc(r.id)} ↗</a>` : esc(r.id)}</td><td>${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
-    + `<td class="ltr">${esc(r.order) || '—'}</td><td><span class="pill warn">${esc(r.status)}</span><br><small class="cqS"></small></td>`
-    + `<td>${r.order ? `<button class="go cqGo" data-i="${i}" type="button">جهّز الردّ</button>` : '<small>بلا رقم طلب</small>'}${r.url ? ` <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">في سلة ↗</a>` : ''}</td></tr>`).join('');
+  $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}" data-i="${i}" class="${r.replied_at ? 'cq-done' : ''}"><td class="ltr">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="افتح الشكوى في لوحة سلة">${esc(r.id)} ↗</a>` : esc(r.id)}</td><td>${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
+    + `<td class="ltr">${esc(r.order) || '—'}</td><td><span class="pill warn">${esc(r.status)}</span><br><small class="cqS ${r.replied_at ? 'ok' : ''}">${r.replied_at ? 'تم الردّ ✓ ' + esc(r.replied_at) : ''}</small></td>`
+    + `<td><div class="acts" style="margin:0">${r.order ? `<button class="go cqGo" data-i="${i}" type="button">جهّز الردّ</button>` : '<small>بلا رقم طلب</small>'}`
+    + `<button class="${r.replied_at ? 'ghost' : 'go'} cqDone" data-i="${i}" type="button" title="${r.replied_at ? 'إلغاء العلامة' : 'علّمها مردودًا عليها'}">${r.replied_at ? 'إلغاء «تم الردّ»' : 'تم الردّ ✓'}</button>`
+    + `${r.url ? ` <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">في سلة ↗</a>` : ''}</div></td></tr>`).join('');
   $('#cqWrap').classList.toggle('hidden', !CQ.length);
+  $('#cqSum').textContent += d.replied ? ` · رُدّ على ${AR(d.replied)}` : '';
   $('#cqBody').querySelectorAll('.cqGo').forEach(x => x.onclick = () => cqReply(CQ[x.dataset.i], x));
+  $('#cqBody').querySelectorAll('.cqDone').forEach(x => x.onclick = async () => { const r = CQ[x.dataset.i]; x.disabled = true;
+    const res = await post('/api/renew/complaints-mark', {id: r.id, replied: !r.replied_at}); x.disabled = false;
+    if (res.error) return note($('#cqMsg'), res.error);
+    cqLoad(); });
 }
 // الردّ من صفّ الشكوى نفسه: صفٌّ يُفتح تحته بالبطاقة ونصّ الردّ وأزراره — بلا انتقال إلى صندوق البحث
 async function cqReply(r, btn){
@@ -2357,19 +2397,37 @@ async function cqReply(r, btn){
   if (!res.ok) { td.innerHTML = `<p class="msg err">${esc(res.error || FAIL_TEXT[res.kind] || FAIL_TEXT.server)}</p>`; return; }
   const d = res.data;
   if (d.state !== 'ready') {
+    const cr0 = d.create || {};
     td.innerHTML = `<div class="rp-note">${d.state === 'not_found' ? `لا طلب برقم ${esc(r.order)} في اشتراكات سلة ولا في سلة نفسها.` : esc(d.hint || 'لم يُعثر على يوزر لهذا الطلب.')}
-      <div class="acts" style="margin-top:8px"><button class="ghost cqToBox" type="button">افتحه في صندوق الردّ (لإنشاء يوزر ولصق سطره)</button></div></div>`;
+      <div class="acts" style="margin-top:8px;align-items:center">${d.state !== 'not_found' && cr0.can ? `<button class="go cqMake0" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button><label class="lc-m">أشهر <input type="number" class="cqMakeM0" min="1" max="15" value="${cr0.months || ''}" style="width:60px"></label><small class="hint">على ${esc(cr0.gate_name)}</small>` : ''}
+      <button class="ghost cqToBox" type="button">افتحه في صندوق الردّ (للصق سطر يوزر)</button></div><p class="msg cqMakeMsg0"></p></div>`;
     td.querySelector('.cqToBox').onclick = () => { $('#rpQ').value = r.order; $('#rpClear').classList.remove('hidden'); rpFind(r.order); $('#rpBox').scrollIntoView({block: 'start', behavior: 'smooth'}); };
+    const mk0 = td.querySelector('.cqMake0');
+    if (mk0) mk0.onclick = async () => { const months = Number(td.querySelector('.cqMakeM0').value) || 0, mm = td.querySelector('.cqMakeMsg0');
+      if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا على ${cr0.gate_name}؟ يخصم من الرصيد.`)) return;
+      mk0.disabled = true; note(mm, 'جارٍ الإنشاء على اللوحة…', true);
+      const x = await post('/api/renew/reply-create', {order: d.order, months});
+      if (x.error) { mk0.disabled = false; return note(mm, x.error); }
+      panel.remove(); btn.textContent = 'جهّز الردّ'; cqReply(r, btn); };
     return;
   }
-  const c0 = d.creds[0] || {};
-  td.innerHTML = `<div class="lc-g" style="margin-bottom:8px">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}${lcField('الاشتراك', esc(d.sub_name) || 'غير معروف')}${lcField('المصدر', RP_SRC[d.src] || '')}</div>`
+  const c0 = d.creds[0] || {}, ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown, cr = d.create || {};
+  td.innerHTML = `<div class="lc-g" style="margin-bottom:8px">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}${lcField('الاشتراك', esc(d.sub_name) || 'غير معروف')}${lcField('على اللوحة', `<span class="pill ${ps[1]}">${ps[0]}${(d.panel || {}).found_panel ? ' · ' + esc(d.panel.found_panel) : ''}</span>`)}${lcField('المصدر', RP_SRC[d.src] || '')}</div>`
+    + (cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done ? `<div class="acts" style="align-items:center;margin-bottom:8px"><button class="ghost cqMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button><label class="lc-m">أشهر <input type="number" class="cqMakeM" min="1" max="15" value="${cr.months || ''}" style="width:60px"></label><small class="hint">على ${esc(cr.gate_name)}</small></div><p class="msg cqMakeMsg"></p>` : '')
+    + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓</p>` : '')
     + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
     + `<textarea class="rp-pre cqT" rows="14" style="margin-top:8px">${esc(d.text)}</textarea>
       <div class="acts"><button class="go cqCopy" type="button">نسخ الردّ</button>
         ${d.wa ? `<a class="ghost cqWa" href="#" target="_blank" rel="noopener">واتساب (يدوي)</a><button class="ghost cqSend" type="button">إرسال عبر الرقم المربوط</button>` : '<small>لا رقم جوال: انسخ الردّ</small>'}</div>
       <p class="msg" data-sent></p>`;
   const ta = td.querySelector('.cqT'), sent = td.querySelector('[data-sent]');
+  const mk = td.querySelector('.cqMake');
+  if (mk) mk.onclick = async () => { const months = Number(td.querySelector('.cqMakeM').value) || 0, mm = td.querySelector('.cqMakeMsg');
+    if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا على ${cr.gate_name}؟ يخصم من الرصيد.`)) return;
+    mk.disabled = true; note(mm, 'جارٍ الإنشاء على اللوحة…', true);
+    const x = await post('/api/renew/reply-create', {order: d.order, months});
+    if (x.error) { mk.disabled = false; return note(mm, x.error); }
+    panel.remove(); btn.textContent = 'جهّز الردّ'; cqReply(r, btn); };
   td.querySelector('.cqCopy').onclick = async () => { const ok = await copyText(ta.value), b = td.querySelector('.cqCopy'); b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ الردّ', 1600); };
   const wa = td.querySelector('.cqWa');
   if (wa) wa.onclick = () => { wa.href = 'https://wa.me/' + d.wa + '?text=' + encodeURIComponent(ta.value);

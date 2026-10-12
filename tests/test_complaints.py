@@ -329,10 +329,81 @@ def test_complaints_pull():
             setattr(X, k, v)
 
 
+def test_create_and_marks():
+    print("\n== الشكوى بلا يوزر على اللوحة: إنشاءٌ وتجزئة وربط، و«تم الردّ» يبقى عبر السحب ==")
+    import datetime
+    d = tempfile.mkdtemp(prefix="rcreate_")
+    keep = {k: getattr(X, k) for k in ("DATA_DIR", "get_packages", "create_lines", "split_register_created", "channel_link",
+                                       "renew_pull_session")}
+    try:
+        X.DATA_DIR = d
+        today = renew._today()
+        st_ = (today - datetime.timedelta(days=60)).isoformat()
+        gate = {"id": "g1", "name": "بوابة كاسبر", "host": "http://ssouqhost.vip:80", "mode": "web", "web_flavor": "casper"}
+        acct = {"id": "acc1", "split": True, "gates": [gate]}
+        cfg = {"panels": [{"id": "pk", "name": "كاسبر", "hosts": ["http://ssouqhost.vip:80"], "account_id": "acc1", "gate_id": "g1"}]}
+        st = {"service": {}, "renew": cfg, "accounts": [acct]}
+        panels.save_store_lines(d, [
+            {"order": "138", "date": st_, "phone": "0500000001", "customer": "ali", "username": "111", "password": "222",
+             "host": "http://ssouqhost.vip:80", "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=60), 12).isoformat(), "product": "اشتراك كاسبر"},
+            {"order": "200", "date": st_, "phone": "0500000002", "customer": "سارة", "username": "333", "password": "444",
+             "host": "http://ssouqhost.vip:80", "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=60), 12).isoformat(), "product": "اشتراك كاسبر"}])
+        panels.save_panel_lines(d, "pk", "كاسبر", [{"username": "333", "password": "444", "exp": "", "package": "15 Months"}])
+        r = X.reply_lookup(st, cfg, d, [acct], "200")
+        check("user on the panel: state found, no create offered as needed", r["panel"]["state"] == "found" and r["create"]["can"])
+        check("creating for a found user is refused", X.reply_create(st, cfg, d, [acct], {"order": "200"})[0] == 400)
+        r = X.reply_lookup(st, cfg, d, [acct], "138")
+        check("user not on the panel: missing, create gate = the panel's gate, months = remaining (10)",
+              r["panel"]["state"] == "missing" and r["create"]["can"] and r["create"]["gate_id"] == "g1" and r["create"]["months"] == 10
+              and r["create"]["old"] == "111", str(r["create"]))
+        made = {}
+        X.get_packages = lambda g: [{"id": "p15", "name": "اشتراك 15 شهر"}]
+        X.create_lines = lambda g, pkg, n, *a, **k: ([{"line": "Host http://ssouqhost.vip:80 User 901 Pass 902", "username": "901", "password": "902"}], None)
+        X.split_register_created = lambda acct_, g, pkg, slice_m, out, customer="": made.setdefault("split", slice_m) and [{"username": "901"}]
+        X.channel_link = lambda: ""
+        code, b = X.reply_create(st, cfg, d, [acct], {"order": "138"})
+        check("created: a 10-month slice, linked to the order replacing the lost user, reply ready with the new line",
+              code == 200 and b["created"]["username"] == "901" and b["created"]["months"] == 10 and made.get("split") == 10
+              and b["state"] == "ready" and b["creds"][0]["username"] == "901" and "User: 901\nPass: 902" in b["text"]
+              and b["created"]["old"] == "111", str(b.get("created")) + str(b.get("creds")))
+        s2 = panels.order_search(cfg, d, "138")
+        check("store line now carries the new user and the order is marked done", [x["username"] for x in s2["rows"]] == ["901"]
+              and panels.load_dupes_done(d)["138"]["new"] == "901")
+        check("a second create is refused (already done)", X.reply_create(st, cfg, d, [acct], {"order": "138"})[0] == 400)
+        check("unknown order", X.reply_create(st, cfg, d, [acct], {"order": "77"})[0] == 404)
+        # «تم الردّ»: يُكتب على المحفوظ، ويُعلَّم بالإرسال برقم الطلب، ويبقى عبر السحب التالي الذي يحدّث الحالة ويحمل الجديد
+        X.renew_pull_session = lambda st_, cfg=None: None
+        X.complaints_feed(d, {"op": "start"})
+        X.complaints_feed(d, {"op": "page", "body": json.dumps({"data": [
+            {"id": 1, "number": 10, "status": "pending_merchant", "order": {"reference_id": 138}, "customer": "ali"},
+            {"id": 2, "number": 20, "status": "pending_merchant", "order": {"reference_id": 200}, "customer": "سارة"}]})})
+        X.complaints_feed(d, {"op": "finish"})
+        check("mark by id", X.complaints_mark(d, {"id": "10"})["marked"] == 1 and X.complaints_open({}, None, d)["replied"] == 1)
+        o = X.complaints_open({}, None, d)
+        check("unreplied first", [r["id"] for r in o["rows"]] == ["20", "10"] and o["rows"][1]["replied_by"] == "manual")
+        X.reply_send(st, d, {"order": "200", "phone": "", "text": "x", "mode": "manual"})
+        check("sending the reply marks the order's complaint", X.complaints_open({}, None, d)["replied"] == 2)
+        X.complaints_feed(d, {"op": "start"})
+        X.complaints_feed(d, {"op": "page", "body": json.dumps({"data": [
+            {"id": 1, "number": 10, "status": "pending_customer", "order": {"reference_id": 138}, "customer": "ali"},
+            {"id": 2, "number": 20, "status": "pending_merchant", "order": {"reference_id": 200}, "customer": "سارة"},
+            {"id": 3, "number": 30, "status": "pending_merchant", "order": {"reference_id": 5}, "customer": "جديد"}]})})
+        X.complaints_feed(d, {"op": "finish"})
+        o = X.complaints_open({}, None, d)
+        check("re-pull: status updated (10 now waits the customer, dropped), marks kept (20 replied), new one loaded (30)",
+              [r["id"] for r in o["rows"]] == ["30", "20"] and o["rows"][1].get("replied_at") and not o["rows"][0].get("replied_at"), str(o["rows"]))
+        check("unmark", X.complaints_mark(d, {"id": "20", "replied": False})["marked"] == 1 and X.complaints_open({}, None, d)["replied"] == 0)
+    finally:
+        for k, v in keep.items():
+            setattr(X, k, v)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_sub_and_text()
     test_lookup()
     test_complaints_pull()
+    test_create_and_marks()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, " + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
     sys.exit(1 if _f else 0)
