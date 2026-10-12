@@ -241,7 +241,25 @@ async function runComplaints(settings) {
     }
     const fin = await toolPost(settings, "/api/renew/complaints-feed", { op: "finish", force: true });
     if (!total) { set("لم أجد سجل الشكاوى بالمسارات المعروفة. افتح صفحة الشكاوى في لوحة سلة وأرسل رابطها كما يظهر في المتصفّح ليُضاف مسارًا.", false); return; }
-    set(`اكتمل ✓ ${fin.total} شكوى، منها ${fin.open} تنتظر التاجر. افتح «الردّ على الشكاوى» في صفحة التجديد.`, true);
+    // السجل يعطي معرّف الطلب الداخلي لا رقمه الذي يراه العميل: يُحوَّل هنا برمز الجلسة (api.salla.dev) لأن الخادم محجوب
+    const sids = fin.unresolved || [];
+    let resolved = 0, left = sids.length;
+    if (sids.length) {
+      if (!token) token = await readUserToken();
+      const map = {};
+      for (const [i, sid] of sids.entries()) {
+        try {
+          const j = await apiGet(token, `/orders/${sid}`);
+          const ref = j && j.data && (j.data.reference_id || j.data.reference);
+          if (ref) map[sid] = String(ref);
+        } catch (e) { /* طلبٌ لا يُقرأ: يبقى بلا رقم */ }
+        set(`تحويل أرقام الطلبات… ${i + 1} من ${sids.length}`, null);
+        await sleep(250);
+      }
+      const rr = await toolPost(settings, "/api/renew/complaints-feed", { op: "resolve", map });
+      resolved = rr.resolved || 0; left = rr.left || 0;
+    }
+    set(`اكتمل ✓ ${fin.total} شكوى، منها ${fin.open} تنتظر التاجر${sids.length ? ` · أرقام الطلبات: حُوّل ${resolved}${left ? `، بقي ${left} بلا رقم` : ""}` : ""}. افتح «الردّ على الشكاوى» في صفحة التجديد.`, true);
   } catch (e) {
     set("توقّف: " + (e && e.message ? e.message : e), false);
   } finally {
