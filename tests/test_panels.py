@@ -655,6 +655,11 @@ def test_order_lost():
         old_row = {"account_id": "acc1", "gate_id": "g1", "done": {"new": "77", "msgs": [{"text": "x Host http://h:80 User 77 Pass 88 Guide y"}]}}
         check("copy text for an older record is rebuilt from its message line", "Host: http://h:80" in X.comp_copy([acct], old_row)
               and "Pass: 88" in X.comp_copy([acct], old_row))
+        cur_row = {"account_id": "acc1", "gate_id": "g1", "username": "422", "password": "389", "host": "http://cdn65.x"}
+        cl = X.line_copy([acct], cur_row)
+        check("current subscription has the full guide to copy", cl.startswith("📲 طريقة التثبيت والتفعيل")
+              and "Host: http://cdn65.x" in cl and "User: 422" in cl and "Pass: 389" in cl, cl)
+        check("no copy text without a password", X.line_copy([acct], dict(cur_row, password="")) == "")
         r = panels.lost(cfg, d)
         done = next(x for x in r["rows"] if x["username"] == "111")
         check("the row stays listed as done (not hidden as replaced)", done["done"]["new"] == "901" and r["done"] == 1)
