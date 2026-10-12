@@ -333,6 +333,11 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 .lc-x{appearance:auto;-webkit-appearance:auto;width:20px;height:20px;min-height:0;margin:0;padding:0;flex:none;accent-color:var(--go);cursor:pointer}
 #lsTiles{grid-template-columns:repeat(auto-fit,minmax(96px,1fr))}
 #lsTiles .stat{border-inline-start:1px solid var(--line);margin-inline-start:-1px}
+.rnpick{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.rnpick select{flex:1 1 150px;min-width:0}.rnpick button{flex:1 1 130px}
+@media (max-width:760px){#dupBody td:last-child{grid-column:1/-1}}
+.gpick{display:inline-flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:.86rem;color:var(--mute);max-width:100%;min-width:0}
+.gpick select{flex:1 1 180px;min-width:0;max-width:100%}
 .lc-chk{display:inline-flex;align-items:center;gap:6px;font-size:.84rem;color:var(--mute);cursor:pointer}
 .lc-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding:10px 12px;
   border:1px dashed var(--line);border-radius:14px}
@@ -615,6 +620,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <h2>المبيع المكرر<small>يوزرٌ بيع في أكثر من طلب — الأقدم يحتفظ به، واللاحق يُنشأ له يوزر جديد بما بقي من مدته</small></h2></div>
     <p class="hint">يعتمد على الاشتراكات المسحوبة من سلة. نفس رقم الجوال = تجديدٌ لنفس العميل فلا يُعدّ مكرّرًا. زر «أنشئ بديلًا» يخصم من رصيد اللوحة، ويسجّل البديل جزءًا في «حسابات متبقية» ويربطه بالقديم.</p>
     <div class="acts"><label class="switch" style="margin:0"><span>غيّر اسم اليوزر القديم وأرسله لصاحبه الأول<small>كلمة مروره ومدته كما هما؛ ينقطع بذلك نسخة العميل اللاحق القديمة</small></span><input type="checkbox" class="tog" id="dupRename" checked></label></div>
+    <div class="acts"><label class="gpick">بوابة الإنشاء <select id="dupGate"><option value="">تلقائي — بوابة لوحة الطلب</option></select></label></div>
     <div class="acts"><button class="go" id="doDup" type="button">افحص المبيع المكرر</button>
       <label class="switch" style="margin:0"><span>إظهار المنجَز والمنتهي<small>مطفأ = ما يحتاج بديلًا فقط</small></span><input type="checkbox" class="tog" id="dupAll"></label></div>
     <div class="strip" id="dupTiles"></div>
@@ -663,6 +669,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
       <p class="hint">اشتراكات سلة الجارية التي لا يوجد يوزرها في اللوحات المسحوبة ولا في ملفات Excel البوابات ولم يُستبدل. يُنشأ لصاحبها جزءٌ من باقة <b>١٥ شهرًا</b> = المتبقي + التعويض (يخصم من الرصيد)، والباقي يُباع من «حسابات متبقية».</p>
       <div class="acts" style="align-items:center">
         <label>التعويض <input type="number" id="lsComp" min="0" max="14" value="1" style="width:60px"> شهر</label>
+        <label class="gpick">بوابة الإنشاء <select id="lsGate"><option value="">تلقائي — بوابة لوحة الطلب</option></select></label>
         <label class="switch" style="margin:0"><span>مع المنتهية</span><input type="checkbox" class="tog" id="lsExp"></label>
         <button class="go" id="lsLoad" type="button">اعرض المفقود</button></div>
       <div class="strip" id="lsTiles"></div>
@@ -1861,12 +1868,30 @@ function initTab(){
   showTab(byHash || saved || 'data');
 }
 
+/* ============ اختيار البوابة: للإنشاء، ولتغيير القديم حين تتعذّر بوابته ============ */
+let CGATES = [];
+const GKEY = g => g.account_id + '|' + g.gate_id;
+function gateOpts(first){
+  return `<option value="">${first}</option>` + CGATES.map(g => `<option value="${esc(GKEY(g))}">${esc(g.name)}${CGATES.some(x => x !== g && x.name === g.name) && g.account ? ' · ' + esc(g.account) : ''}</option>`).join('');
+}
+function fillGates(list){
+  if (!Array.isArray(list)) return;
+  CGATES = list;
+  ['#dupGate', '#lsGate'].forEach(id => { const el = $(id); if (!el) return;
+    let v = el.value; if (!v) try { v = localStorage.getItem('renew_' + id.slice(1)) || ''; } catch (e) {}
+    el.innerHTML = gateOpts('تلقائي — بوابة لوحة الطلب'); el.value = CGATES.some(g => GKEY(g) === v) ? v : ''; });
+}
+const gatePick = v => { const g = CGATES.find(x => GKEY(x) === v); return g ? {account_id: g.account_id, gate_id: g.gate_id, name: g.name} : {}; };
+['#dupGate', '#lsGate'].forEach(id => $(id).addEventListener('change', () => {
+  try { localStorage.setItem('renew_' + id.slice(1), $(id).value); } catch (e) {}
+  if (id === '#dupGate' && DUP.length) loadDup(); if (id === '#lsGate' && LS) lsRender(LS); }));
+
 /* ============ المبيع المكرر ============ */
 let DUP = [], DUPF = '';
 async function loadDup(){
   const d = await api('/api/renew/duplicates');
   if (d.error) return note($('#dupMsg'), d.error);
-  DUP = d.rows || []; DUPWA = !!d.wa_linked; DUPCH = d.wa_channel || ''; DUPNUM = d.wa_number || ''; renderDup(d); renderDupMsgs(d.messages || []);
+  fillGates(d.gates); DUP = d.rows || []; DUPWA = !!d.wa_linked; DUPCH = d.wa_channel || ''; DUPNUM = d.wa_number || ''; renderDup(d); renderDupMsgs(d.messages || []);
 }
 function renderDup(d){
   const all = $('#dupAll').checked;
@@ -1878,11 +1903,13 @@ function renderDup(d){
   $('#dupBody').innerHTML = rows.map(r => {
     const i = DUP.indexOf(r);
     const rn = !r.done ? '' : r.done.old_missing ? '<br><small>القديم محذوف من اللوحة — لا شيء يُغيَّر</small>' : r.done.renamed ? `<br><small class="c-ok">القديم ← ${esc(r.done.renamed.to)} ✓</small>`
-      : `<br><small class="c-bad">القديم لم يُغيَّر${r.done.rename_error ? ': ' + esc(r.done.rename_error) : ''}</small> <button class="ghost dupRn" data-i="${i}" type="button">غيّر القديم الآن</button>`;
+      : `<br><small class="c-bad">القديم لم يُغيَّر${r.done.rename_error ? ': ' + esc(r.done.rename_error) : ''}</small>`
+        + `<div class="rnpick"><select class="dupRnG" data-i="${i}" aria-label="بوابة التغيير">${gateOpts('كل البوابات (تلقائي)')}</select>`
+        + `<button class="ghost dupRn" data-i="${i}" type="button">غيّر القديم الآن</button></div>`;
     const act = r.done ? `<span class="c-ok">✓ ${esc(r.done.new)}</span>${rn}`
       : r.expired ? '<span class="c-bad">منتهٍ</span>'
-      : r.can_create ? `<button class="go dupMk" data-i="${i}" type="button">أنشئ بديلًا</button>`
-      : '<small>اربط اللوحة ببوابة</small>';
+      : r.can_create || $('#dupGate').value ? `<button class="go dupMk" data-i="${i}" type="button">أنشئ بديلًا</button>`
+      : '<small>اختر «بوابة الإنشاء» أعلاه أو اربط اللوحة ببوابة</small>';
     const mon = (r.done || r.expired) ? '' : `<input type="number" class="dupM" data-i="${i}" min="1" max="15" value="${r.suggest}" style="width:64px">`;
     return `<tr><td class="ltr">${esc(r.username)}<br><small>${esc(r.host)}</small></td><td>${esc(r.panel_name) || '—'}</td>`
       + `<td>${esc(r.customer)}<br><small class="ltr">${esc(r.phone)}</small></td>`
@@ -1894,9 +1921,10 @@ function renderDup(d){
   $('#dupBody').querySelectorAll('.dupMk').forEach(b => b.onclick = () => makeDup(Number(b.dataset.i), b));
   $('#dupBody').querySelectorAll('.dupRn').forEach(b => b.onclick = async () => {
     const r = DUP[Number(b.dataset.i)];
-    if (!confirm(`تغيير اسم ${r.username} على اللوحة وتجهيز رسالة لصاحبه الأول ${r.first_customer || r.first_phone || ''}؟`)) return;
+    const gs = document.querySelector(`.dupRnG[data-i="${b.dataset.i}"]`), gp = gatePick(gs && gs.value);
+    if (!confirm(`تغيير اسم ${r.username} على اللوحة${gp.name ? ' عبر «' + gp.name + '»' : ''} وتجهيز رسالة لصاحبه الأول ${r.first_customer || r.first_phone || ''}؟`)) return;
     b.disabled = true; b.textContent = 'جارٍ التغيير…';
-    const d = await post('/api/renew/dup-rename', {order: r.order, username: r.username});
+    const d = await post('/api/renew/dup-rename', {order: r.order, username: r.username, account_id: gp.account_id, gate_id: gp.gate_id});
     if (d.need_connect) { note($('#dupMsg'), d.error); dupConnOpen(d.need_connect, {order: r.order, username: r.username}); return loadDup(); }
     note($('#dupMsg'), d.ok && d.old_missing ? 'اليوزر القديم محذوف من اللوحة — لا حاجة لتغييره' : d.ok ? `غُيّر ${d.renamed.from} إلى ${d.renamed.to} — الرسالة جاهزة أدناه` : (d.error || 'تعذّر التغيير'), !!d.ok);
     loadDup();
@@ -1907,10 +1935,12 @@ async function makeDup(i, btn){
   const inp = document.querySelector(`.dupM[data-i="${i}"]`);
   const months = Number(inp && inp.value) || r.suggest;
   const ren = $('#dupRename').checked;
-  if (!confirm(`إنشاء يوزر جديد لـ ${r.customer || r.phone} (طلب ${r.order}) بمدة ${months} شهرًا بدل ${r.username}؟ يخصم من رصيد اللوحة.`
+  if (!confirm(`إنشاء يوزر جديد لـ ${r.customer || r.phone} (طلب ${r.order}) بمدة ${months} شهرًا بدل ${r.username}${gatePick($('#dupGate').value).name ? ' على «' + gatePick($('#dupGate').value).name + '»' : ''}؟ يخصم من رصيد اللوحة.`
       + (ren ? `\n\nثم يُغيَّر اسم ${r.username} ويُجهَّز لصاحبه الأول ${r.first_customer || r.first_phone || ''}.` : ''))) return;
   btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…';
-  const d = await post('/api/renew/dup-create', {order: r.order, username: r.username, months, rename_old: ren});
+  const gp = gatePick($('#dupGate').value);
+  const d = await post('/api/renew/dup-create', {order: r.order, username: r.username, months, rename_old: ren,
+    create_account_id: gp.account_id, create_gate_id: gp.gate_id});
   btn.disabled = false; btn.textContent = 'أنشئ بديلًا';
   if (d.error || !d.ok) return note($('#dupMsg'), d.error || 'فشل الإنشاء');
   let t = `أُنشئ ${d.username} بدل ${d.replaces} (${AR(d.months)} شهرًا)`;
@@ -2140,8 +2170,8 @@ function lcard(r, i, kind){
     + '</div></div>' : '';
   let act = '';
   if (!dn && r.state === 'missing' && (!r.expired || kind === 'ls')) act += kind === 'ls'
-    ? (r.can_create ? `<label class="lc-m">أشهر الجديد <input type="number" class="lsM" data-i="${i}" min="1" max="15" value="${r.new_months || 1}"></label>`
-        + `<button class="go lsMk" data-i="${i}" type="button">أنشئ اشتراكًا</button>` : '<small class="c-warn">اربط اللوحة ببوابة إنشاء لتُنشئ له</small>')
+    ? (r.can_create || $('#lsGate').value ? `<label class="lc-m">أشهر الجديد <input type="number" class="lsM" data-i="${i}" min="1" max="15" value="${r.new_months || 1}"></label>`
+        + `<button class="go lsMk" data-i="${i}" type="button">أنشئ اشتراكًا</button>` : '<small class="c-warn">اختر «بوابة الإنشاء» أعلاه، أو اربط اللوحة ببوابة</small>')
     : `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
   return `<article class="lc st-${dn ? 'found' : esc(r.state)}">${head}${why}${grid}${lcCred(r.host, r.username, r.password)}${done}`
@@ -2459,7 +2489,7 @@ async function lsLoad(){
   try { lsRender(d); } catch (e) { note($('#lsMsg'), 'خطأ في عرض النتيجة: ' + (e.message || e)); }
 }
 function lsRender(d){
-  LS = d; const c = d.counts || {};
+  fillGates(d.gates); LS = d; const c = d.counts || {};
   const tile = (n, lbl, cls) => `<div class="stat"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></div>`;
   $('#lsTiles').innerHTML = tile(d.pending, 'يحتاج اشتراكًا', d.pending ? 'c-warn' : '') + tile(d.done, 'أُنشئ له') + tile(c.found || 0, 'موجود على لوحة')
     + (c.covered ? tile(c.covered, 'طلبه له يوزر موجود') : '') + tile(c.replaced || 0, 'مستبدل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
@@ -2483,7 +2513,9 @@ async function makeComp(r, btn, inp, after, quiet, where){
   const months = Number(inp && inp.value) || r.new_months;
   if (!quiet && !confirm(`إنشاء اشتراك لـ ${r.customer || r.phone || r.username} (طلب ${r.order}) بمدة ${months} شهرًا من باقة ١٥ شهرًا بدل ${r.username}؟\nيخصم من رصيد اللوحة، والباقي يعود إلى «حسابات متبقية».`)) return false;
   const t0 = btn && btn.textContent; if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…'; }
-  const d = await post('/api/renew/comp-create', {order: r.order, username: r.username, months, comp: $('#lsComp').value});
+  const gp = gatePick($('#lsGate').value);
+  const d = await post('/api/renew/comp-create', {order: r.order, username: r.username, months, comp: $('#lsComp').value,
+    create_account_id: gp.account_id, create_gate_id: gp.gate_id});
   if (btn) { btn.disabled = false; btn.textContent = t0; }
   if (d.error || !d.ok) { say(`${r.order}: ` + (d.error || 'فشل الإنشاء')); return false; }
   const copied = !quiet && d.copy ? await copyText(d.copy) : false;   // كبحث صفحة الإنشاء: الشرح كاملًا في الحافظة

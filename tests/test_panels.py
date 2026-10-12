@@ -745,6 +745,66 @@ def test_search_index():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_dup_gate_fallback():
+    print("== تغيير القديم: إن تعذّرت بوابةٌ فالتالية (مرح الأخرى)، أو بوابةٌ يختارها المشغّل؛ وبوابة إنشاءٍ مختارة ==")
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="dupfb_")
+    keep = {k: getattr(X, k) for k in ("DATA_DIR", "split_find_line", "split_change", "rand_digits", "get_packages",
+                                       "create_lines", "split_register_created")}
+    try:
+        X.DATA_DIR = d
+        cfg = {"panels": [{"id": "pk", "name": "P", "hosts": ["http://m.ink"], "account_id": "acc1", "gate_id": "g1"}]}
+        g1 = {"id": "g1", "name": "مرح ١", "mode": "web", "host": "http://m.ink"}
+        g2 = {"id": "g2", "name": "مرح ٢", "mode": "web", "host": "http://m.ink"}
+        a1, a2 = {"id": "acc1", "split": True, "gates": [g1]}, {"id": "acc2", "split": True, "gates": [g2]}
+        row = {"username": "999", "password": "pw", "host": "http://m.ink"}
+        X.rand_digits = lambda n=12: "111222333444"
+        X.split_find_line = lambda g, u: {"password": "pw", "line_id": "7"}
+        calls = []
+        def change(g, rec, pend):
+            calls.append(g["id"])
+            if g["id"] == "g1":
+                raise RuntimeError("تعذّر قراءة بوكيهات الخط من صفحة التعديل")
+        X.split_change = change
+        info, err = X._dup_rename_old(a1, g1, row, [a1, a2], cfg)
+        check("bouquets unreadable on the first Marah gate → renamed on the other one",
+              info and info["panel"] == "مرح ٢" and calls == ["g1", "g2"], str((info, err, calls)))
+        X.split_change = lambda g, rec, pend: (_ for _ in ()).throw(RuntimeError("bouquets %s" % g["id"]))
+        info, err = X._dup_rename_old(a1, g1, row, [a1, a2], cfg)
+        check("both fail → one error naming each gate", info is None and "مرح ١" in err and "مرح ٢" in err, err)
+        calls.clear()
+        X.split_change = lambda g, rec, pend: calls.append(g["id"])
+        info, err = X._dup_rename_old(a1, g1, row, [a1, a2], cfg, only=("acc2", "g2"))
+        check("a gate picked by the operator is the only one used", info and calls == ["g2"], str(calls))
+        info, err = X._dup_rename_old(a1, g1, row, [a1, a2], cfg, only=("acc9", "gx"))
+        check("an unknown picked gate is reported, not called missing", info is None and "المختارة" in err, err)
+        # بوابة الإنشاء المختارة
+        check("picked creation gate resolves", X._picked_gate([a1, a2], {"create_account_id": "acc2", "create_gate_id": "g2"}) == (a2, g2))
+        check("no pick = None, a bad pick = bad", X._picked_gate([a1], {}) is None
+              and X._picked_gate([a1], {"create_account_id": "acc1", "create_gate_id": "nope"}) == "bad")
+        check("create_gates lists web/falcon gates, not archive ones",
+              [g["gate_id"] for g in X.create_gates([a1, a2, {"id": "a3", "gates": [{"id": "ga", "mode": "web", "archive_only": True}]}])] == ["g1", "g2"])
+        today = renew._today()
+        st = today - datetime.timedelta(days=10)
+        panels.save_store_lines(d, [{"order": "1", "date": (st - datetime.timedelta(days=30)).isoformat(), "phone": "0500000001", "customer": "أ",
+                                     "username": "999", "password": "pw", "host": "http://m.ink", "months": 12},
+                                    {"order": "2", "date": st.isoformat(), "phone": "0500000002", "customer": "ب",
+                                     "username": "999", "password": "pw", "host": "http://m.ink", "months": 12}])
+        used = []
+        X.get_packages = lambda g: [{"id": "p15", "name": "اشتراك 15 شهر"}]
+        X.create_lines = lambda g, pkg, n, *a, **k: (used.append(g["id"]) or [{"line": "Host http://m.ink User 5 Pass 6", "username": "5", "password": "6"}], None)
+        X.split_register_created = lambda *a, **k: []
+        code, body = X.dup_create([a1, a2], cfg, d, {"order": "2", "username": "999", "months": 6,
+                                                      "create_account_id": "acc2", "create_gate_id": "g2"})
+        check("dup_create creates on the picked gate", code == 200 and used == ["g2"], str((code, body)))
+        code, body = X.dup_create([a1, a2], cfg, d, {"order": "2", "username": "999", "create_account_id": "acc1", "create_gate_id": "zz"})
+        check("a bad picked creation gate is refused before any creation", code in (400,) and used == ["g2"], str(body))
+    finally:
+        for k, v in keep.items():
+            setattr(X, k, v)
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     test_host_job()
     test_host_audience()
@@ -762,6 +822,7 @@ def main():
     test_dup_create()
     test_order_lost()
     test_search_index()
+    test_dup_gate_fallback()
     print("\n----------------------------------------")
     print(f"Result: \033[32m{_p} passed\033[0m, "
           + (f"\033[31m{_f} failed\033[0m" if _f else "0 failed"))
