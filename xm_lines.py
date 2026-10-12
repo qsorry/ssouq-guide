@@ -3775,8 +3775,10 @@ def reply_lookup(st, rcfg, rws, racs, q):
     left = (exp - renew._today()).days if exp else (panel or {}).get("days_left")
     if out.get("replacement"):
         cg = None                                     # له بديل: لا إنشاء ثانٍ
+    left_m = panels.suggest_slice(left) if left is not None else 0
     out["create"] = {"can": bool(cg), "gate_name": (cg or {}).get("name", ""), "account_id": str((ca or {}).get("id", "")),
-                     "gate_id": str((cg or {}).get("id", "")), "months": panels.suggest_slice(left) if left is not None else 0,
+                     "gate_id": str((cg or {}).get("id", "")), "months": left_m, "left_months": left_m,
+                     "comp": panels.COMP_DEFAULT, "suggest": panels.comp_months(left, panels.COMP_DEFAULT) if left is not None else 0,
                      "days_left": left, "old": c0.get("username", "")}
     if out["creds"]:
         g = dict(gate or {}, guide_url=out["guide"], host=(gate or {}).get("host") or host)
