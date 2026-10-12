@@ -3758,10 +3758,21 @@ def reply_lookup(st, rcfg, rws, racs, q):
                      "sub": guide_sub_key(g, gate_guide(g, a.get("guide_url", "")))}
                     for a in (racs or []) for g in (a.get("gates") or []) if g.get("host")]
     out["panel"] = panel or {"state": "unknown"}
+    # أله بديلٌ أُنشئ من قبل (في صفحة الإنشاء أو المفقود أو هنا)؟ يُعرض ويُستعمل في الردّ ولا يُنشأ له ثانيةً
+    rep = reply_replacement(racs, rws, c0.get("username", "")) if c0.get("username") else None
+    if rep and rep["username"].lower() != c0.get("username", "").lower():
+        out["replacement"] = rep
+        if rep.get("password"):
+            host = rep.get("host") or host
+            c0 = {"username": rep["username"], "password": rep["password"], "host": host}
+            out["creds"] = [c0] + [c for c in out["creds"] if c.get("username", "").lower() != rep["username"].lower()][:0]
+            out["src"] = "replacement"
     # بوابة الإنشاء إن احتاج يوزرًا: بوابة لوحته إن رُبطت بحساب، وإلا بوابة اشتراكه؛ وأشهر الجديد = المتبقي (أقرب شهر)
     ca, cg = _reply_create_gate(racs, panel, acct, gate)
     exp = renew.parse_date(info.get("expiry")) if info.get("expiry") else None
     left = (exp - renew._today()).days if exp else (panel or {}).get("days_left")
+    if out.get("replacement"):
+        cg = None                                     # له بديل: لا إنشاء ثانٍ
     out["create"] = {"can": bool(cg), "gate_name": (cg or {}).get("name", ""), "account_id": str((ca or {}).get("id", "")),
                      "gate_id": str((cg or {}).get("id", "")), "months": panels.suggest_slice(left) if left is not None else 0,
                      "days_left": left, "old": c0.get("username", "")}
@@ -3770,7 +3781,7 @@ def reply_lookup(st, rcfg, rws, racs, q):
         line = guide_copy_text(acct, g, c0["username"], c0.get("password", ""), host or g.get("host", ""))
         # أُنشئ له من جديد بعد فقد اشتراكه (من هنا أو من «المفقود»): الردّ «تمت معالجة الأمر، جرّب مرة أخرى»
         done_rec = panels.load_dupes_done(rws).get(order) if (panel or {}).get("done") else None
-        fixed = bool(done_rec)
+        fixed = bool(done_rec) or bool(out.get("replacement"))
         same = bool(done_rec and str(done_rec.get("old") or "").lower() == str(done_rec.get("new") or "").lower())
         out["fixed"], out["same_creds"] = fixed, same
         out["text"] = complaints.reply_text(info.get("customer", ""), order, line, sub, out["creds"][1:], fixed=fixed, same=same)
@@ -3782,6 +3793,51 @@ def reply_lookup(st, rcfg, rws, racs, q):
                        + (" على بوابة %s" % gate["name"] if gate and gate.get("name") else (" على بوابة " + out["sub_name"] if out["sub_name"] else ""))
                        + " من صفحة الإنشاء، ثم الصق سطره هنا فيُربط بالطلب ويُجهَّز الردّ.")
     return out
+
+
+def reply_replacement(accounts, ws, username):
+    """أله **بديلٌ** أُنشئ من قبل؟ (user_links: القديم → الجديد، من بديل البحث في صفحة الإنشاء أو تعويض المفقود أو
+    هنا) — فلا يُنشأ له مرتين. ← {"username", "password", "gate_name", "account_id", "gate_id", "at"} أو None.
+    كلمة مرور البديل من يوزرات اللوحة المسحوبة إن وُجدت، وإلا فارغة."""
+    u = str(username or "").strip().lower()
+    if not u:
+        return None
+    for a in (accounts or []):
+        for g in (a.get("gates") or []):
+            try:
+                recs = user_links.load(user_links.path(DATA_DIR, a["id"], g["id"]))
+            except Exception:
+                continue
+            hit = next((r for r in reversed(recs) if str(r.get("old", "")).lower() == u and r.get("new")), None)
+            if hit:
+                new = str(hit["new"])
+                pw = ""
+                try:
+                    for pd in panels.load_panel_lines(ws)["panels"].values():
+                        rec = (pd.get("by_user") or {}).get(new.lower()) or (pd.get("by_user") or {}).get(new)
+                        if rec and rec.get("password"):
+                            pw = str(rec["password"])
+                            break
+                except Exception:
+                    pw = ""
+                return {"username": new, "password": pw, "gate_name": g.get("name", ""), "account_id": str(a.get("id")),
+                        "gate_id": str(g.get("id")), "host": g.get("host", ""), "at": hit.get("at", ""), "package": hit.get("package", "")}
+    return None
+
+
+def reply_live_exists(gate, username):
+    """فحصٌ مباشر على اللوحة (طلبٌ واحد) قبل الإنشاء: أاليوزر موجودٌ الآن؟ None إن لم تُتح اللوحة للفحص."""
+    u = str(username or "").strip()
+    if not u or gate.get("mode") != "web":
+        return None
+    try:
+        sess = web_session(gate)
+        if hasattr(sess, "_find_user"):
+            sess.ensure_login()
+            return bool(sess._find_user(u))
+    except Exception:
+        return None
+    return None
 
 
 def _reply_create_gate(accounts, panel, acct, gate):
@@ -3814,6 +3870,12 @@ def reply_create(st, rcfg, rws, racs, req):
         return 400, {"error": "اشتراكه موجود على اللوحة (%s) — لا حاجة لإنشاء يوزر" % ((d["panel"].get("found_panel") or d["panel"].get("panel_name") or ""))}
     if (d.get("panel") or {}).get("done"):
         return 400, {"error": "أُنشئ له اشتراكٌ من قبل"}
+    if d.get("replacement"):
+        rep = d["replacement"]
+        return 400, {"error": "له بديلٌ أُنشئ من قبل: %s على %s%s — لا يُنشأ له مرتين؛ الردّ أعلاه ببيانات البديل"
+                     % (rep["username"], rep.get("gate_name", ""), (" (" + rep["at"] + ")") if rep.get("at") else "")}
+    if pst in ("covered", "replaced"):
+        return 400, {"error": "للطلب يوزرٌ آخر موجود أو مستبدل — راجعه في «البحث والمفقود» قبل الإنشاء"}
     cr = d.get("create") or {}
     acct = next((a for a in (racs or []) if str(a.get("id")) == cr.get("account_id")), None)
     gate = find_gate(acct, cr.get("gate_id")) if acct else None
@@ -3826,6 +3888,10 @@ def reply_create(st, rcfg, rws, racs, req):
         return 400, {"error": "لا تُعرف مدته المتبقية (لا تاريخ شراء ولا مدة): اكتب أشهر الجديد"}
     old_user = cr.get("old", "")
     old_pw = (d.get("creds") or [{}])[0].get("password", "") if old_user else ""
+    # فحصٌ مباشر على اللوحة قبل الخصم: اليوزر القديم موجودٌ فعلًا؟ (الفهرس قد يكون قديمًا) — فلا إنشاء مرتين
+    live = reply_live_exists(gate, old_user) if old_user and not req.get("force") else None
+    if live:
+        return 400, {"error": "اليوزر %s موجودٌ على اللوحة الآن (فحصٌ مباشر) — اسحب يوزرات اللوحة ليتحدّث الفهرس، ولا حاجة للإنشاء" % old_user}
     row = {"username": old_user, "password": old_pw, "customer": d.get("customer", ""), "phone": d.get("phone", ""), "order": order}
     same = bool(req.get("same_creds")) and bool(old_user)
     code, resp, r = _make_line(acct, gate, row, months, "شكوى الطلب %s" % order, same_creds=same)
@@ -4123,6 +4189,12 @@ def comp_create(accounts, cfg, ws, req):
     if not gate:
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اختر بوابة الإنشاء، أو اضبطها في «اللوحات وهوستاتها»"}
     gate = with_guide(acct, gate)
+    # لا إنشاء مرتين: بديلٌ سابق في user_links، أو اليوزر موجودٌ على اللوحة الآن (فحصٌ مباشر؛ الفهرس قد يكون قديمًا)
+    rep = reply_replacement(accounts, ws, row["username"])
+    if rep and not req.get("force"):
+        return 400, {"error": "له بديلٌ أُنشئ من قبل: %s على %s — لا يُنشأ له مرتين" % (rep["username"], rep.get("gate_name", ""))}
+    if not req.get("force") and reply_live_exists(gate, row["username"]):
+        return 400, {"error": "اليوزر %s موجودٌ على اللوحة الآن (فحصٌ مباشر) — اسحب يوزرات اللوحة ليتحدّث الفهرس" % row["username"]}
     months = req.get("months") or row["new_months"] or (comp if row["expired"] else 0)
     code, resp, r = _make_line(acct, gate, row, months, "تعويض الطلب %s" % row["order"], same_creds=bool(req.get("same_creds")))
     if code != 200:

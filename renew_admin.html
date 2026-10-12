@@ -2323,7 +2323,7 @@ $('#lkGo').onclick = async () => {
 /* ============ الردّ على الشكاوى ============ */
 // الحالات نفسها كالبحث: ready · loading · found (ready أو no_user) · empty (not_found) · error. وطلبٌ قديم يُهمل بعد أحدث.
 const RP = {seq: 0, ctl: null, q: '', d: null};
-const RP_SRC = {store: 'اشتراكات سلة المسحوبة', index: 'فهرس الطلبات', history: 'سجلّ الطلب في سلة', card: 'بطاقة الطلب في سلة', panel: 'لوحة سلة', salla: 'سلة'};
+const RP_SRC = {replacement: 'بديلٌ أُنشئ سابقًا (user_links)', store: 'اشتراكات سلة المسحوبة', index: 'فهرس الطلبات', history: 'سجلّ الطلب في سلة', card: 'بطاقة الطلب في سلة', panel: 'لوحة سلة', salla: 'سلة'};
 function rpState(state, text, retry){
   $('#rpBox').dataset.state = state;
   const busy = state === 'loading', b = $('#rpFind');
@@ -2376,7 +2376,8 @@ function rpRender(d, q){
   }
   $('#rpText').value = d.text || ''; $('#rpSub').textContent = d.sub_name ? 'اشتراك ' + d.sub_name : 'اشتراك غير معروف';
   const ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown;
-  $('#rpPanel').textContent = ps[0] + ((d.panel || {}).found_panel ? ' · ' + d.panel.found_panel : ''); $('#rpPanel').className = 'pill ' + ps[1];
+  $('#rpPanel').textContent = d.replacement ? `له بديلٌ أُنشئ سابقًا: ${d.replacement.username}${d.replacement.at ? ' · ' + d.replacement.at : ''}` : ps[0] + ((d.panel || {}).found_panel ? ' · ' + d.panel.found_panel : '');
+  $('#rpPanel').className = 'pill ' + (d.replacement ? 'ok' : ps[1]);
   $('#rpMake2').classList.toggle('hidden', !(cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done)); note($('#rpMakeMsg2'), '');
   if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}`, !d.created.rename_error);
   $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
@@ -2483,7 +2484,7 @@ async function cqReply(r, btn){
     return;
   }
   const c0 = d.creds[0] || {}, ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown, cr = d.create || {};
-  td.innerHTML = `<div class="lc-g" style="margin-bottom:8px">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}${lcField('الاشتراك', esc(d.sub_name) || 'غير معروف')}${lcField('على اللوحة', `<span class="pill ${ps[1]}">${ps[0]}${(d.panel || {}).found_panel ? ' · ' + esc(d.panel.found_panel) : ''}</span>`)}${lcField('المصدر', RP_SRC[d.src] || '')}</div>`
+  td.innerHTML = `<div class="lc-g" style="margin-bottom:8px">${lcField('العميل', esc(d.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(d.phone) || '—'}</span>`)}${lcField('الاشتراك', esc(d.sub_name) || 'غير معروف')}${lcField('على اللوحة', d.replacement ? `<span class="pill ok">له بديلٌ أُنشئ سابقًا: ${esc(d.replacement.username)}</span>` : `<span class="pill ${ps[1]}">${ps[0]}${(d.panel || {}).found_panel ? ' · ' + esc(d.panel.found_panel) : ''}</span>`)}${lcField('المصدر', RP_SRC[d.src] || '')}</div>`
     + (cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done ? `<div class="mk"><button class="go cqMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button><label class="lc-m">أشهر الجديد <input type="number" class="cqMakeM" min="1" max="15" value="${cr.months || ''}"></label>${cr.old ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeSame" checked> بنفس اليوزر والباسورد القديمين (${esc(cr.old)})</label>` : ''}<small class="hint">على ${esc(cr.gate_name)} · من باقة ١٥ شهرًا والباقي يُباع من «حسابات متبقية»</small><p class="msg cqMakeMsg"></p></div>` : '')
     + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓</p>` : '')
     + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
