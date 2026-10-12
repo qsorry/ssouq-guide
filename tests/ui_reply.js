@@ -79,9 +79,17 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     check('the search box was not touched (still the earlier query)', (await page.inputValue('#rpQ')) === '١٣٨');
     await page.evaluate(() => { document.querySelector('#cqBody .cqWa').addEventListener('click', e => e.preventDefault()); });
     await page.click('#cqBody .cqWa'); await page.waitForFunction(() => ((document.querySelector('#cqBody [data-sent]') || {}).textContent || '').includes('تم الإرسال'));
-    check('manual whatsapp from the row says sent and marks the row', (await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم الإرسال'));
+    check('manual whatsapp from the row says sent and marks the row', (await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم الردّ'));
     await page.click('#cqBody tr:nth-child(3) .cqGo'); await page.waitForSelector('#cqBody tr[data-o="999000"].cq-r .rp-note');
     check('unknown order from the row: note with a jump to the box', (await page.textContent('#cqBody tr[data-o="999000"].cq-r')).includes('لا طلب برقم'));
+    check('panel state shown in the inline card', /لم يُتحقّق|غير مربوط بلوحة|مفقود من اللوحة/.test(await page.textContent('#cqBody tr[data-o="138"].cq-r')));
+    // «تم الردّ»: الصفّ عُلّم بالإرسال اليدوي، ويُلغى ويُعاد بالزرّ، ويبقى بعد إعادة التحميل
+    await page.waitForSelector('#cqBody tr[data-o="138"].cq-done');
+    check('manual send marked the complaint as replied (dimmed, with time)', (await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم الردّ ✓'));
+    await page.click('#cqBody tr[data-o="138"] .cqDone'); await page.waitForFunction(() => !document.querySelector('#cqBody tr[data-o="138"].cq-done'));
+    check('unmark via the button', !(await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم'));
+    await page.click('#cqBody tr[data-o="138"] .cqDone'); await page.waitForSelector('#cqBody tr[data-o="138"].cq-done');
+    check('mark via the button, replied rows sort last', (await page.$$eval('#cqBody tr[data-o]', t => t.filter(x => !x.classList.contains('cq-r')).map(x => x.dataset.o))).join() === '999000,138');
     fs.unlinkSync(path.join(dataDir, 'renew_complaints.json'));
 
     // بلا يوزر: الطلب معروف من الفهرس ⇒ «أنشئ له» ولصق السطر يربطه ويجهّز الردّ

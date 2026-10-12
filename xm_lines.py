@@ -3641,10 +3641,16 @@ def reply_lookup(st, rcfg, rws, racs, q):
     rows = [r for r in d["rows"] if r.get("match") == "order"]
     ix = d.get("index") or {}
     info = {}
+    panel = None
     if rows:
         r0 = rows[0]
         info = {k: r0.get(k, "") for k in ("customer", "phone", "date", "months", "product", "host", "expiry", "remaining")}
         info["qty"] = len(rows)
+        # حال يوزره على اللوحات (من فهرس البحث): موجود · مفقود · لوحته لم تُسحب · هوست غير مربوط · مستبدل · زائد
+        best = next((r for r in rows if r.get("state") == "found"), rows[0])
+        panel = {"state": best.get("state", ""), "panel_name": best.get("panel_name", ""), "found_panel": best.get("found_panel", ""),
+                 "found_src": best.get("found_src", ""), "account_id": str(best.get("account_id") or ""), "gate_id": str(best.get("gate_id") or ""),
+                 "days_left": best.get("days_left"), "done": bool(best.get("done")), "expired": bool(best.get("expired"))}
         out["creds"] = [{"username": r["username"], "password": r.get("password", ""), "host": r.get("host", "")}
                         for r in rows if r.get("username")]
         out["src"] = "store"
@@ -3685,6 +3691,14 @@ def reply_lookup(st, rcfg, rws, racs, q):
     out["gates"] = [{"account_id": str(a.get("id")), "gate_id": str(g.get("id")), "name": g.get("name", ""), "host": g.get("host", ""),
                      "sub": guide_sub_key(g, gate_guide(g, a.get("guide_url", "")))}
                     for a in (racs or []) for g in (a.get("gates") or []) if g.get("host")]
+    out["panel"] = panel or {"state": "unknown"}
+    # بوابة الإنشاء إن احتاج يوزرًا: بوابة لوحته إن رُبطت بحساب، وإلا بوابة اشتراكه؛ وأشهر الجديد = المتبقي (أقرب شهر)
+    ca, cg = _reply_create_gate(racs, panel, acct, gate)
+    exp = renew.parse_date(info.get("expiry")) if info.get("expiry") else None
+    left = (exp - renew._today()).days if exp else (panel or {}).get("days_left")
+    out["create"] = {"can": bool(cg), "gate_name": (cg or {}).get("name", ""), "account_id": str((ca or {}).get("id", "")),
+                     "gate_id": str((cg or {}).get("id", "")), "months": panels.suggest_slice(left) if left is not None else 0,
+                     "days_left": left, "old": c0.get("username", "")}
     if out["creds"]:
         g = dict(gate or {}, guide_url=out["guide"], host=(gate or {}).get("host") or host)
         line = guide_copy_text(acct, g, c0["username"], c0.get("password", ""), host or g.get("host", ""))
@@ -3697,6 +3711,72 @@ def reply_lookup(st, rcfg, rws, racs, q):
                        + (" على بوابة %s" % gate["name"] if gate and gate.get("name") else (" على بوابة " + out["sub_name"] if out["sub_name"] else ""))
                        + " من صفحة الإنشاء، ثم الصق سطره هنا فيُربط بالطلب ويُجهَّز الردّ.")
     return out
+
+
+def _reply_create_gate(accounts, panel, acct, gate):
+    """بوابة الإنشاء لصاحب شكوى بلا يوزرٍ على اللوحة: بوابة لوحته (إن رُبطت اللوحة بحساب وبوابة في «اللوحات
+    وهوستاتها»)، وإلا بوابة اشتراكه التي اختارها الردّ — بشرط أن تكون بوابةَ إنشاءٍ لحسابٍ من الحسابات (لا فالكون)."""
+    cands = []
+    if panel and panel.get("account_id") and panel.get("gate_id"):
+        a = next((x for x in (accounts or []) if str(x.get("id")) == panel["account_id"]), None)
+        g = find_gate(a, panel["gate_id"]) if a else None
+        if g:
+            cands.append((a, g))
+    if acct and gate and gate.get("id"):
+        cands.append((acct, gate))
+    for a, g in cands:
+        if g.get("mode") != "falcon" and not g.get("archive_only"):
+            return a, g
+    return None, None
+
+
+def reply_create(st, rcfg, rws, racs, req):
+    """شكوى عميلٍ لا يوزر له على اللوحة: يُنشأ له خطٌّ من باقة ١٥ شهرًا بجزءٍ = المتبقي من اشتراكه (+ تعويضٌ اختياري)
+    — جزءًا في «حسابات متبقية» (‏`_make_line`، كتعويض المفقود) — ويُربط بطلبه في اشتراكات سلة بدل يوزره المفقود،
+    ويُعلَّم الطلب منجَزًا، ويعود الردّ جاهزًا ببياناته. يُرفض إن كان يوزره **موجودًا** على اللوحة. ← (رمز HTTP، جسم)."""
+    order = complaints.norm_order(req.get("order"))
+    d = reply_lookup(st, rcfg, rws, racs, order)
+    if d["state"] == "not_found":
+        return 404, {"error": "لا طلب بهذا الرقم في اشتراكات سلة ولا في سلة"}
+    pst = (d.get("panel") or {}).get("state", "unknown")
+    if pst == "found" and not req.get("force"):
+        return 400, {"error": "اشتراكه موجود على اللوحة (%s) — لا حاجة لإنشاء يوزر" % ((d["panel"].get("found_panel") or d["panel"].get("panel_name") or ""))}
+    if (d.get("panel") or {}).get("done"):
+        return 400, {"error": "أُنشئ له اشتراكٌ من قبل"}
+    cr = d.get("create") or {}
+    acct = next((a for a in (racs or []) if str(a.get("id")) == cr.get("account_id")), None)
+    gate = find_gate(acct, cr.get("gate_id")) if acct else None
+    if not gate:
+        return 400, {"error": "لا بوابة إنشاءٍ لاشتراكه: اربط لوحته بحساب وبوابة في «اللوحات وهوستاتها»، أو اكتب رابط شرح البوابة (#activate/…)"}
+    gate = with_guide(acct, gate)
+    comp = max(0, min(14, int(split_subs.parse_months(req.get("comp")) or 0)))
+    months = int(split_subs.parse_months(req.get("months")) or 0) or panels.comp_months(cr.get("days_left"), comp)
+    if not months:
+        return 400, {"error": "لا تُعرف مدته المتبقية (لا تاريخ شراء ولا مدة): اكتب أشهر الجديد"}
+    old_user = cr.get("old", "")
+    row = {"username": old_user, "customer": d.get("customer", ""), "phone": d.get("phone", ""), "order": order}
+    code, resp, r = _make_line(acct, gate, row, months, "شكوى الطلب %s" % order)
+    if code != 200:
+        return code, resp
+    hit = _LINE_RE.search(r.get("line", ""))
+    host = hit.group(1) if hit else gate.get("host", "")
+    base = renew.load_index(rws).get("orders", {}).get(order)
+    base = dict(base, order=order) if base else None
+    if not base:
+        base = {"order": order, "date": d.get("date", ""), "phone": d.get("phone", ""), "customer": d.get("customer", ""),
+                "sid": d.get("sid", ""), "product": d.get("product", ""), "sku": d.get("sku", ""), "months": int(d.get("months") or 0)}
+    try:
+        panels.link_order(rws, order, r["username"], r["password"], host, replace=old_user, base=base)
+    except ValueError as e:
+        resp["link_error"] = str(e)
+    panels.mark_dupe_done(rws, order, r["username"], resp["months"], d.get("customer", ""),
+                          extra={"msgs": [], "src": "lost", "old": old_user, "comp": comp, "password": r["password"], "host": host,
+                                 "via": "reply"})
+    out = reply_lookup(st, rcfg, rws, racs, order)
+    out["created"] = {"username": r["username"], "password": r["password"], "host": host, "months": resp["months"],
+                      "split": bool(resp.get("split")), "split_error": resp.get("split_error", ""), "old": old_user,
+                      "link_error": resp.get("link_error", "")}
+    return 200, out
 
 
 def reply_link(st, rcfg, rws, racs, req):
@@ -3769,6 +3849,17 @@ def complaints_feed(ws, req):
     if op == "finish":
         rows = cur["rows"]
         if rows or req.get("force"):
+            # سحبٌ جديد يحدّث الحالة ويحمل الجديد، ولا يُسقط ما سُجّل على المحفوظ: «تم الردّ» ورقم الطلب المحوَّل
+            prev = {r.get("id"): r for r in ((_complaints_stored(ws) or {}).get("rows") or []) if r.get("id")}
+            for r in rows:
+                old = prev.get(r.get("id"))
+                if not old:
+                    continue
+                for k in ("replied_at", "replied_by"):
+                    if old.get(k) and not r.get(k):
+                        r[k] = old[k]
+                if not r.get("order") and old.get("order"):
+                    r["order"] = old["order"]
             renew._write_json(complaints_path(ws), {"rows": rows, "at": renew.now_iso(), "path": cur["path"], "sample": cur["sample"]})
         _cq_feed.pop(ws, None)
         # ما جاء بمعرّف طلبٍ داخلي بلا رقمه: تحوّله الإضافة برمز جلستها (api.salla.dev) ثم تعيده بـ resolve
@@ -3787,6 +3878,28 @@ def complaints_feed(ws, req):
             renew._write_json(complaints_path(ws), stored)
         return {"ok": True, "resolved": n, "left": sum(1 for r in stored["rows"] if r.get("order_sid") and not r.get("order"))}
     return {"ok": False, "error": "op غير معروف"}
+
+
+def complaints_mark(ws, req):
+    """«تم الردّ» على شكوى (أو إلغاؤه): يُكتب في الصفّ المحفوظ (replied_at) ويبقى عبر السحب التالي. وبرقم الطلب تُعلَّم كل
+    شكاوى ذلك الطلب — لأن الردّ يُرسل برقم الطلب. ← {ok, marked}."""
+    stored = _complaints_stored(ws)
+    if not stored:
+        return {"ok": False, "error": "لا شكاوى محفوظة"}
+    cid, order = str(req.get("id") or ""), complaints.norm_order(req.get("order"))
+    on = req.get("replied", True)
+    n = 0
+    for r in stored["rows"]:
+        if (cid and str(r.get("id")) == cid) or (order and not cid and r.get("order") == order):
+            if on:
+                r["replied_at"], r["replied_by"] = renew.now_iso(), str(req.get("how") or "manual")
+            else:
+                r.pop("replied_at", None)
+                r.pop("replied_by", None)
+            n += 1
+    if n:
+        renew._write_json(complaints_path(ws), stored)
+    return {"ok": True, "marked": n}
 
 
 def _complaints_stored(ws):
@@ -3824,8 +3937,11 @@ def complaints_open(st, rcfg=None, ws=None, raw=False):
     if stored:
         if _complaints_resolve(st, rcfg, stored["rows"]):
             renew._write_json(complaints_path(ws), stored)
-        out = {"rows": complaints.open_only(stored["rows"]), "total": len(stored["rows"]), "at": stored.get("at", ""),
-               "source": "extension", "unresolved": sum(1 for r in stored["rows"] if r.get("order_sid") and not r.get("order"))}
+        rows = complaints.open_only(stored["rows"])
+        rows.sort(key=lambda r: bool(r.get("replied_at")))          # ما لم يُردّ عليه أولًا
+        out = {"rows": rows, "total": len(stored["rows"]), "at": stored.get("at", ""), "source": "extension",
+               "replied": sum(1 for r in rows if r.get("replied_at")),
+               "unresolved": sum(1 for r in stored["rows"] if r.get("order_sid") and not r.get("order"))}
         if raw:                                          # تشخيص: شكل الصفّ كما تعطيه اللوحة (مفاتيحه وقيمه)
             out["sample"], out["path"] = stored.get("sample"), stored.get("path", "")
         return out
@@ -3857,6 +3973,7 @@ def reply_send(st, rws, req):
         return 400, {"error": "نصّ الردّ فارغ"}
     if req.get("mode") == "manual":
         panels.log_dup_send(rws, msg, "manual", True)
+        complaints_mark(rws, {"order": msg["order"], "how": "manual"})
         return 200, {"ok": True, "how": "manual"}
     if not phone:
         return 400, {"error": "لا رقم جوال لهذا العميل: انسخ الردّ وأرسله يدويًا"}
@@ -3864,6 +3981,8 @@ def reply_send(st, rws, req):
     ok = bool(r.get("ok")) and not r.get("dry")
     err = "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")
     panels.log_dup_send(rws, msg, how, ok, err)
+    if ok:
+        complaints_mark(rws, {"order": msg["order"], "how": how})
     return (200 if ok else 502), {"ok": ok, "how": how, "error": err}
 
 
@@ -6741,6 +6860,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True, "row": row, **d})
         if path == "/api/renew/reply-link":       # يوزرٌ أُنشئ لصاحب شكوى: يُربط بالطلب ويُعاد الردّ جاهزًا
             code, body = reply_link(st, rcfg, rws, racs, req)
+            return self._send(code, body)
+        if path == "/api/renew/complaints-mark":  # «تم الردّ» على شكوى (يبقى عبر السحب التالي)
+            return self._send(200, complaints_mark(rws, req))
+        if path == "/api/renew/reply-create":     # شكوى بلا يوزر على اللوحة: يُنشأ له خطٌّ بالمتبقي (تجزئة) ويُربط بطلبه ويعود الردّ
+            try:
+                code, body = reply_create(st, rcfg, rws, racs, req)
+            except xm_web.CaptchaNeeded:
+                return self._send(200, {"need_captcha": True, "error": "اللوحة تطلب كابتشا: افتح صفحة الإنشاء ثم أعد المحاولة"})
+            except xm_web.LoginFailed as e:
+                return self._send(502, {"error": "فشل دخول اللوحة: %s" % str(e)[:120]})
+            except Exception as e:
+                return self._send(502, {"error": str(e)[:300]})
             return self._send(code, body)
         if path == "/api/renew/reply-send":       # يرسل ردّ الشكوى عبر الرقم المربوط أو يسجّله مرسَلًا يدويًا
             code, body = reply_send(st, rws, req)
