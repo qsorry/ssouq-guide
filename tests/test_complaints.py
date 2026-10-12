@@ -547,6 +547,7 @@ def test_same_creds_on_casper():
         check("live helper: existing yes, unknown no", X.reply_live_exists(gate, "212084058604") is True and X.reply_live_exists(gate, "000000000001") is False)
         # (ج) حسابٌ مكرر: يوزر صاحب الشكوى بيع قبله لعميلٍ آخر (وهو موجودٌ على اللوحة) → يُنشأ له جديد ويُرسل
         panels.save_panel_lines(d, "pc", "كاسبر", [{"username": "555666777888", "password": "pd", "exp": "", "package": "12 Months"}])
+        X.create_line(gate, {"id": "727", "name": "1 Day"}, "555666777888", "pd")   # اليوزر المشترك موجودٌ على اللوحة الحيّة فعلًا
         panels.save_store_lines(d, panels.load_store_lines(d)["lines"] + [
             {"order": "800", "date": (today - datetime.timedelta(days=200)).isoformat(), "phone": "0500000008", "customer": "الأول", "username": "555666777888", "password": "pd", "host": "http://ssouqhost.vip",
              "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=200), 12).isoformat(), "product": "اشتراك كاسبر"},
@@ -561,6 +562,11 @@ def test_same_creds_on_casper():
         code, b = X.reply_create(st, cfg, d, [acct], {"order": "801", "same_creds": True})
         check("same credentials refused for a duplicate (the username belongs to the first buyer)", code == 400 and "مكرر" in b["error"], str(b))
         code, b = X.reply_create(st, cfg, d, [acct], {"order": "801", "months": 8})
+        om = b.get("old_msg") or {}
+        check("duplicate: the shared username is renamed and a message for the first customer says it changed", code == 200
+              and b["created"]["renamed"] and b["created"]["renamed"]["from"] == "555666777888" and om.get("name") == "الأول"
+              and om.get("phone") and "تم تغيير المعلومات" in om.get("text", "") and b["created"]["renamed"]["to"] in om["text"]
+              and om.get("idx") == 0 and panels.dupe_messages(d)[0]["order"] == "801", str(b.get("error") or om))
         check("a new user is created for the duplicate, linked to the order, and the reply carries it as handled", code == 200
               and b["created"]["username"] != "555666777888" and b["creds"][0]["username"] == b["created"]["username"] and b["fixed"]
               and "User: " + b["created"]["username"] in b["text"] and b["panel"]["done"] and not b["dup"], str(b.get("error") or b.get("created")))
@@ -568,11 +574,11 @@ def test_same_creds_on_casper():
         code, b2 = X.reply_create(st, cfg, d, [acct], {"order": "801", "months": 8})
         check("not created twice for the duplicate", code == 400 and "من قبل" in b2["error"], str(b2))
         # (د) غيّرنا يوزر صاحب الشكوى (تغيير اسم المكرر للمشتري الأول): يظهر الجديد بكلمة مروره القديمة
-        UL.add(d, "accC", "gc", "555666777888", "444333222111", "تغيير اسم (مكرر)")
+        newn = b["created"]["renamed"]["to"]
         look0 = X.reply_lookup(st, cfg, d, [acct], "800")
-        check("renamed username surfaces with the old password and the reply uses it",
-              look0["replacement"]["username"] == "444333222111" and look0["replacement"]["kind"] == "renamed" and look0["replacement"]["password"] == "pd"
-              and look0["creds"][0]["username"] == "444333222111" and look0["fixed"] and "User: 444333222111" in look0["text"], str(look0.get("replacement")))
+        check("renamed username surfaces for the first buyer with the old password and the reply uses it",
+              look0["replacement"]["username"] == newn and look0["replacement"]["kind"] == "renamed" and look0["replacement"]["password"] == "pd"
+              and look0["creds"][0]["username"] == newn and look0["fixed"] and "User: " + newn in look0["text"], str(look0.get("replacement")))
     finally:
         srv.shutdown()
         for k, v in keep.items():

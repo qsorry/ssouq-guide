@@ -761,6 +761,7 @@ body.modal-open{overflow:hidden}
           <label class="lc-m">أشهر الجديد <span class="step"><button type="button" class="stDn">−</button><input type="number" id="rpMakeM" min="1" max="15"><button type="button" class="stUp">+</button></span></label>
           <label class="lc-m">تعويض <input type="number" id="rpMakeC" min="0" max="14" value="0"></label>
           <label class="lc-chk hidden" id="rpMakeSameW"><input type="checkbox" class="lc-x" id="rpMakeSame" checked> بنفس اليوزر والباسورد القديمين</label>
+          <label class="lc-chk hidden" id="rpMakeRenW"><input type="checkbox" class="lc-x" id="rpMakeRen" checked> غيّر يوزر القديم وجهّز رسالة للعميل الأول أن يوزره تغيّر</label>
           <small class="hint" id="rpMakeHint"></small></div>
         <p class="msg" id="rpMakeMsg"></p>
         <div class="acts"><a class="ghost" id="rpCreate" href="#" target="_blank" rel="noopener">أو افتح صفحة الإنشاء يدويًا</a></div>
@@ -2363,6 +2364,16 @@ $('#lkGo').onclick = async () => {
 // الحالات نفسها كالبحث: ready · loading · found (ready أو no_user) · empty (not_found) · error. وطلبٌ قديم يُهمل بعد أحدث.
 const RP = {seq: 0, ctl: null, q: '', d: null};
 // معلومات البديل الذي أُنشئ سابقًا (user_links + سجلّ الإنجاز): يوزره وباسورده وبوابته وتاريخه — فيُرسل للعميل لا القديم
+// المكرر: رسالة العميل الأول (يوزره تغيّر) — نسخ، واتساب يدوي، إرسال عبر الرقم المربوط (dup-send)
+const rpOldMsgHtml = m => m ? `<div class="mk rpOld"><b>رسالة للعميل الأول ${esc(m.name) || ''}</b> <small class="hint">غُيّر يوزره ${esc(m.renamed.from)} → <span class="ltr">${esc(m.renamed.to)}</span> (كلمة مروره ومدته كما هما)${m.wa ? ' · <span class="ltr">' + esc(m.wa) + '</span>' : ' · لا رقم جوال: انسخها'}</small>
+  <textarea class="rp-pre rpOldT" rows="6">${esc(m.text)}</textarea><div class="acts"><button class="ghost rpOldCopy" type="button">نسخ</button>${m.wa ? `<a class="ghost rpOldWa" href="#" target="_blank" rel="noopener">واتساب (يدوي)</a><button class="go rpOldSend" type="button">إرسال عبر الرقم المربوط</button>` : ''}</div><p class="msg rpOldMsg"></p></div>` : '';
+function rpOldBind(root, m){ const box = root.querySelector('.rpOld'); if (!box || !m) return;
+  const ta = box.querySelector('.rpOldT'), msg = box.querySelector('.rpOldMsg');
+  box.querySelector('.rpOldCopy').onclick = async () => { const ok = await copyText(ta.value), b = box.querySelector('.rpOldCopy'); b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ', 1600); };
+  const wa = box.querySelector('.rpOldWa'); if (wa) wa.onclick = () => { wa.href = 'https://wa.me/' + m.wa + '?text=' + encodeURIComponent(ta.value);
+    post('/api/renew/dup-send', {order: m.order, idx: m.idx, text: ta.value, mode: 'manual'}).then(x => note(msg, x.ok ? `تم الإرسال ✓ (واتساب يدوي إلى ${m.wa})` : (x.error || 'تعذّر التسجيل'), !!x.ok)); };
+  const sb = box.querySelector('.rpOldSend'); if (sb) sb.onclick = async () => { sb.disabled = true; note(msg, 'جارٍ الإرسال…', true);
+    const x = await post('/api/renew/dup-send', {order: m.order, idx: m.idx, text: ta.value}); sb.disabled = false; note(msg, x.ok ? `تم الإرسال ✓ إلى ${m.wa}` : (x.error || 'تعذّر الإرسال'), !!x.ok); }; }
 const rpDupInfo = d => d.dup ? `<span class="pill warn">⚠ حساب مكرر: يوزره ${esc(d.dup.username)} بيع قبله للطلب ${esc(d.dup.first_order)}${d.dup.first_customer ? ' (' + esc(d.dup.first_customer) + ')' : ''}${d.dup.first_date ? ' · ' + esc(d.dup.first_date) : ''}${d.dup.done ? ' · أُنشئ له بديلٌ من قبل ✓' : (d.dup.expired ? ' · انتهت مدته' : ' · أنشئ له يوزرًا جديدًا وأرسله')}</span>` : '';
 const rpRepInfo = r => (r.kind === 'renamed' ? 'غيّرنا يوزره (مكرر) إلى: ' : '') + `<span class="ltr"><b>${esc(r.username)}</b>${r.password ? ' / ' + esc(r.password) : ''}</span>`
   + (r.host ? ` · <span class="ltr">${esc(r.host)}</span>` : '') + (r.gate_name ? ' · ' + esc(r.gate_name) : '')
@@ -2412,7 +2423,7 @@ function rpRender(d, q){
   $('#rpNoUser').classList.toggle('hidden', !no); $('#rpReply').classList.toggle('hidden', no);
   const cr = d.create || {}; $('#rpMakeM').value = cr.suggest || cr.months || ''; $('#rpMakeC').value = cr.comp || 0;
   $('#rpMakeSug').innerHTML = `المقترح: المتبقي <b>${AR(cr.left_months || 0)}</b> + تعويض <b>${AR(cr.comp || 0)}</b> = <b>${AR(cr.suggest || cr.months || 0)} شهرًا</b>`; $('#rpMakeHint').textContent = cr.can ? `على ${cr.gate_name} · من باقة ١٥ شهرًا، والباقي يُباع من «حسابات متبقية»` : 'لا بوابة إنشاء لاشتراكه (اربط لوحته بحساب وبوابة)';
-  $('#rpMake').disabled = !cr.can; note($('#rpMakeMsg'), ''); $('#rpMakeSameW').classList.toggle('hidden', !cr.old || cr.why === 'dup'); if (cr.why === 'dup') $('#rpMakeSame').checked = false;
+  $('#rpMake').disabled = !cr.can; note($('#rpMakeMsg'), ''); $('#rpMakeSameW').classList.toggle('hidden', !cr.old || cr.why === 'dup'); if (cr.why === 'dup') $('#rpMakeSame').checked = false; $('#rpMakeRenW').classList.toggle('hidden', cr.why !== 'dup');
   if (no) {
     $('#rpHint').textContent = d.hint || 'لم يُعثر على يوزر لهذا الطلب: أنشئ له يوزرًا ثم الصق سطره.';
     $('#rpCreate').href = B + '/'; $('#rpCreate').textContent = d.gate ? `افتح صفحة الإنشاء (${d.gate.name})` : 'افتح صفحة الإنشاء';
@@ -2424,7 +2435,8 @@ function rpRender(d, q){
   const ps = PANEL_STATE[(d.panel || {}).state] || PANEL_STATE.unknown;
   $('#rpPanel').textContent = d.replacement ? `له بديلٌ أُنشئ سابقًا: ${d.replacement.username}${d.replacement.at ? ' · ' + d.replacement.at : ''}` : ps[0] + ((d.panel || {}).found_panel ? ' · ' + d.panel.found_panel : '');
   $('#rpPanel').className = 'pill ' + (d.replacement ? 'ok' : ps[1]);
-  const rpRep = $('#rpRep'); if (rpRep) { rpRep.innerHTML = (d.replacement ? rpRepInfo(d.replacement) : '') + (d.dup ? (d.replacement ? '<br>' : '') + rpDupInfo(d) : ''); rpRep.classList.toggle('hidden', !d.replacement && !d.dup); }
+  const rpRep = $('#rpRep'); if (rpRep) { rpRep.innerHTML = (d.replacement ? rpRepInfo(d.replacement) : '') + (d.dup ? (d.replacement ? '<br>' : '') + rpDupInfo(d) : '')
+    + (d.created && d.created.rename_error ? `<br><span class="pill err">لم يتغيّر اسم اليوزر القديم: ${esc(d.created.rename_error)}</span>` : '') + rpOldMsgHtml(d.old_msg); rpRep.classList.toggle('hidden', !d.replacement && !d.dup && !d.old_msg); rpOldBind(rpRep, d.old_msg); }
   $('#rpMake2').classList.toggle('hidden', !(cr.can && ((d.panel || {}).state !== 'found' || cr.why === 'dup') && !(d.panel || {}).done)); note($('#rpMakeMsg2'), '');
   if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}${d.created.password_changed ? ' — ⚠ ' + d.created.password_changed : ''}`, !d.created.rename_error && !d.created.password_changed);
   $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
@@ -2441,7 +2453,7 @@ async function rpMake(btn, msgEl){
   const sameTxt = cr.old && $('#rpMakeSame').checked ? ` بنفس اليوزر ${cr.old} وباسورده` : '';
   if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا${comp ? ' + تعويض ' + comp : ''}${sameTxt} على ${cr.gate_name}؟ يخصم من الرصيد.`)) return;
   btn.disabled = true; note(msgEl, 'جارٍ الإنشاء على اللوحة…', true);
-  const r = await post('/api/renew/reply-create', {order: d.order, months, comp: 0, same_creds: !!(cr.old && $('#rpMakeSame').checked)});
+  const r = await post('/api/renew/reply-create', {order: d.order, months, comp: 0, same_creds: !!(cr.old && $('#rpMakeSame').checked), rename_old: cr.why !== 'dup' || $('#rpMakeRen').checked});
   btn.disabled = false;
   if (r.error) return note(msgEl, r.error);
   rpRender(r, d.order);
@@ -2523,7 +2535,7 @@ $('#cqModal').addEventListener('click', e => { if (e.target === $('#cqModal')) c
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#cqModal').classList.contains('hidden')) cqCloseSheet(); });
 // الردّ على الشكوى في نافذةٍ منبثقة: الرأس (الشكوى والعميل والطلب ورابطها في سلة) · الجسم (البطاقة والإنشاء والبيانات ونصّ الردّ) ·
 // شريط أفعالٍ ثابتٌ أسفل (نسخ · واتساب · إرسال · تم الردّ). الصفّ في الجدول يبقى سطرًا واحدًا.
-async function cqReply(r, btn){
+async function cqReply(r, btn, oldMsg){
   cqOpen(r);
   const body = $('#cqSheetBody'), foot = $('#cqSheetFoot');
   const res = await getJSON('/api/renew/reply?q=' + encodeURIComponent(r.order));
@@ -2567,10 +2579,13 @@ async function cqReply(r, btn){
     + (cr.can && ((d.panel || {}).state !== 'found' || cr.why === 'dup') && !(d.panel || {}).done ? `<div class="mk"><button class="go cqMake" type="button">${cr.why === 'dup' ? 'حسابه مكرر: أنشئ له يوزرًا جديدًا وأرسله' : 'أنشئ له يوزرًا واربطه (تجزئة)'}</button>
         <p class="sug">المقترح: المتبقي <b>${AR(cr.left_months || 0)}</b> + تعويض <b>${AR(cr.comp || 0)}</b> = <b>${AR(sug)} شهرًا</b></p>
         <label class="lc-m">أشهر الجديد <span class="step"><button type="button" class="stDn" aria-label="أقل">−</button><input type="number" class="cqMakeM" min="1" max="15" value="${sug}"><button type="button" class="stUp" aria-label="أكثر">+</button></span></label>
-        ${cr.old && cr.why !== 'dup' ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeSame" checked> بنفس اليوزر والباسورد القديمين (${esc(cr.old)})</label>` : ''}<small class="hint">على ${esc(cr.gate_name)} · من باقة ١٥ شهرًا والباقي يُباع من «حسابات متبقية»</small><p class="msg cqMakeMsg"></p></div>` : '')
+        ${cr.old && cr.why !== 'dup' ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeSame" checked> بنفس اليوزر والباسورد القديمين (${esc(cr.old)})</label>` : ''}${cr.why === 'dup' ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeRen" checked> غيّر يوزر القديم (${esc(cr.old)}) وجهّز رسالة للعميل الأول أن يوزره تغيّر</label>` : ''}<small class="hint">على ${esc(cr.gate_name)} · من باقة ١٥ شهرًا والباقي يُباع من «حسابات متبقية»</small><p class="msg cqMakeMsg"></p></div>` : '')
     + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓${d.created.rename_error ? ' — ' + esc(d.created.rename_error) : ''}${d.created.password_changed ? ' — ⚠ ' + esc(d.created.password_changed) : ''}</p>` : '')
     + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
+    + (d.created && d.created.rename_error ? `<p class="msg err">لم يتغيّر اسم اليوزر القديم: ${esc(d.created.rename_error)}</p>` : '')
+    + rpOldMsgHtml(oldMsg)
     + `<textarea class="rp-pre cqT" rows="14">${esc(d.text)}</textarea>`;
+  rpOldBind(body, oldMsg);
   // الفعل الأول: نسخ الردّ وفتح الشكوى في سلة — فالردّ يُلصق هناك؛ ويُعدّ مرسَلًا (يدوي عبر سلة) ويُعلَّم «تم الردّ»
   foot.innerHTML = `<p class="msg" data-sent>${d.wa ? '' : 'لا رقم جوال لهذا العميل: انسخ الردّ'}</p><div class="acts">
       ${r.url ? `<a class="go wide cqSallaGo" href="${esc(r.url)}" target="_blank" rel="noopener">📋 نسخ الردّ وفتح الشكوى في سلة ↗</a>` : '<button class="go wide cqSallaGo" type="button" disabled title="لا رابط للشكوى في السجل">📋 نسخ الردّ وفتح الشكوى في سلة ↗</button>'}
@@ -2585,9 +2600,10 @@ async function cqReply(r, btn){
     const same = body.querySelector('.cqMakeSame');
     if (!confirm(`إنشاء يوزر جديد لـ${d.customer || 'العميل'} (طلب ${d.order}) بـ${months || '?'} شهرًا${same && same.checked ? ' بنفس اليوزر ' + cr.old + ' وباسورده' : ''} على ${cr.gate_name}؟ يخصم من الرصيد.`)) return;
     mk.disabled = true; note(mm, 'جارٍ الإنشاء على اللوحة…', true);
-    const x = await post('/api/renew/reply-create', {order: d.order, months, same_creds: !!(same && same.checked)});
+    const ren = body.querySelector('.cqMakeRen');
+    const x = await post('/api/renew/reply-create', {order: d.order, months, same_creds: !!(same && same.checked), rename_old: !ren || ren.checked});
     if (x.error) { mk.disabled = false; return note(mm, x.error); }
-    cqReply(r, btn); };
+    cqReply(r, btn, x.old_msg); };
   foot.querySelector('.cqCopy').onclick = async () => { const ok = await copyText(ta.value), b = foot.querySelector('.cqCopy'); b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ فقط', 1600); };
   const sg = foot.querySelector('.cqSallaGo');
   if (sg && r.url) sg.onclick = async () => {
