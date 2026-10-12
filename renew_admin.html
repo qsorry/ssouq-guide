@@ -2421,7 +2421,7 @@ function rpRender(d, q){
   if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}${d.created.password_changed ? ' — ⚠ ' + d.created.password_changed : ''}`, !d.created.rename_error && !d.created.password_changed);
   $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
   $('#rpSend').title = d.wa ? '' : 'لا رقم جوال لهذا العميل';
-  note($('#rpSent'), d.wa_linked ? '' : 'لا رقم واتساب مربوط الآن: انسخ الردّ أو أرسله من واتساب يدويًا.');
+  note($('#rpSent'), (d.wa_linked ? '' : 'لا رقم واتساب مربوط الآن: انسخ الردّ أو أرسله من واتساب يدويًا. ') + (d.channel === '' ? 'ولا قناة واتساب مربوطة فسطر القناة غائب (اربطها من صفحة المحتوى).' : ''));
   rpState('found', `الردّ جاهز لـ${esc(d.customer) || 'العميل'} · ${d.creds.length === 1 ? 'يوزر واحد' : AR(d.creds.length) + ' يوزرات'} من ${RP_SRC[d.src] || d.src}${d.sub_name ? ' · اشتراك ' + d.sub_name : ''}${ms}`);
 }
 const PANEL_STATE = {found: ['موجود على اللوحة ✓', 'ok'], missing: ['مفقود من اللوحة', 'bad'], not_pulled: ['اللوحة لم تُسحب: لم يُتحقّق', 'warn'],
@@ -2553,6 +2553,7 @@ async function cqReply(r, btn){
     + lcField('المتبقي', esc(d.remaining) || (cr.left_months ? AR(cr.left_months) + ' شهرًا' : '—')) + lcField('تاريخ الشكوى', `<span class="ltr">${esc(r.date) || '—'}</span>`)
     + lcField('المصدر', RP_SRC[d.src] || '') + '</div>'
     + (d.skipped && d.skipped.length ? `<p class="hint">أُسقط من الردّ يوزرٌ غير موجود على اللوحات: ${d.skipped.map(esc).join('، ')}</p>` : '')
+    + (d.channel === '' ? `<p class="rp-note">⚠ لا قناة واتساب مربوطة، فسطر «تابع قناتنا» غائبٌ من الردّ. اربطها من <a href="${B}/content" target="_blank">صفحة المحتوى ← قناة واتساب</a>.</p>` : '')
     + (d.host_change ? `<p class="rp-note">📢 الهوست تغيّر عمّا أُرسل للعميل: <span class="ltr">${esc(d.host_change.old)}</span> ← <span class="ltr">${esc(d.host_change.new)}</span> — الردّ يحمل الجديد مع تنبيه التحديث.</p>` : '')
     + (cr.can && (d.panel || {}).state !== 'found' && !(d.panel || {}).done ? `<div class="mk"><button class="go cqMake" type="button">أنشئ له يوزرًا واربطه (تجزئة)</button>
         <p class="sug">المقترح: المتبقي <b>${AR(cr.left_months || 0)}</b> + تعويض <b>${AR(cr.comp || 0)}</b> = <b>${AR(sug)} شهرًا</b></p>

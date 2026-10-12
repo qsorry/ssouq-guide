@@ -3801,8 +3801,9 @@ def reply_lookup(st, rcfg, rws, racs, q):
         fixed = bool(done_rec) or bool(out.get("replacement"))
         same = bool(done_rec and str(done_rec.get("old") or "").lower() == str(done_rec.get("new") or "").lower())
         out["fixed"], out["same_creds"] = fixed, same
+        out["channel"] = channel_link()                 # رابط القناة في كل ردّ — "" إن لم تُربط قناة (يُنبَّه المشغّل)
         out["text"] = complaints.reply_text(info.get("customer", ""), order, line, sub, out["creds"][1:], fixed=fixed, same=same,
-                                            host_change=host_change, channel=channel_link())
+                                            host_change=host_change, channel=out["channel"])
         out["state"] = "ready"
     else:
         out["state"] = "no_user"
