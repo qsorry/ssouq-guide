@@ -3483,6 +3483,8 @@ def _make_line(acct, gate, row, months, tag, same_creds=False):
             "same_creds": bool(want_u and r["username"] == want_u and (not want_p or r["password"] == want_p))}
     if r.get("rename_error"):
         resp["rename_error"] = r["rename_error"]
+    if r.get("password_changed"):
+        resp["password_changed"] = r["password_changed"]
     try:
         user_links.add(DATA_DIR, acct["id"], gate["id"], row["username"], r["username"], r["package"])
     except Exception:
@@ -3915,7 +3917,7 @@ def reply_create(st, rcfg, rws, racs, req):
     out["created"] = {"username": r["username"], "password": r["password"], "host": host, "months": resp["months"],
                       "split": bool(resp.get("split")), "split_error": resp.get("split_error", ""), "old": old_user,
                       "link_error": resp.get("link_error", ""), "same_creds": bool(resp.get("same_creds")),
-                      "rename_error": resp.get("rename_error", "")}
+                      "rename_error": resp.get("rename_error", ""), "password_changed": resp.get("password_changed", "")}
     return 200, out
 
 
@@ -4928,7 +4930,17 @@ def create_line(gate, pkg, username=None, password=None):
         raise RuntimeError("الباقة «%s» (إنشاء + تمديد) متاحة على جلسة الويب فقط" % pkg["name"])
     if gate.get("mode") == "web":                      # الإنشاء عبر نموذج اللوحة
         sess = web_session(gate)
-        r = sess.create_line(pkg["id"], username, password, gate.get("host"), regen=regen)
+        password_changed = ""
+        try:
+            r = sess.create_line(pkg["id"], username, password, gate.get("host"), regen=regen)
+        except xm_web.LoginFailed as e:
+            # كلمة مرورٍ طُلبت بعينها (بيانات العميل القديمة) ورفضتها اللوحة أو لم تؤكّد بها (مثلًا: كلمة مرور مستعملة
+            # لدى مستخدمٍ آخر أو منتهٍ لا يظهر في القائمة): تُعاد المحاولة مرةً بكلمةٍ عشوائية، ويبقى الاسم القديم بالتسمية،
+            # ويُقال للمشغّل أن كلمة المرور تغيّرت. وإلا يُرفع الخطأ كما هو.
+            if getattr(e, "code", "") != "create_failed" or "password" in regen:
+                raise
+            password_changed = str(e)[:200]
+            r = sess.create_line(pkg["id"], username, None, gate.get("host"), regen=regen + ("password",))
         rename_error = ""
         # كاسبر لا يقبل يوزرًا مخترَعًا في نموذج الإضافة (يأتي مولَّدًا من اللوحة)، لكنه يقبل **تغيير الاسم** بعدها
         # (edit_line الذي يغيّر به التجزيء الاسم). فيوزرٌ طُلب بعينه (بديلٌ بنفس بيانات العميل) يُنشأ ثم يُعاد تسميته،
@@ -4949,6 +4961,8 @@ def create_line(gate, pkg, username=None, password=None):
                "timing": r.get("timing"), "weak_retries": r.get("weak_retries", 0)}
         if rename_error:
             out["rename_error"] = rename_error
+        if password_changed:
+            out["password_changed"] = "لم تقبل اللوحة كلمة المرور القديمة (%s) فأُنشئ بكلمة مرورٍ جديدة" % password_changed
         return out
     if gate.get("mode") == "falcon":                   # الإنشاء عبر لوحة فالكون
         r = falcon_api.create_line(gate["api_url"], gate["api_key"], pkg["id"],

@@ -433,6 +433,13 @@ def test_same_creds_on_casper():
         check("trial line created with the customer's own username and password", r["username"] == "212084058604"
               and r["password"] == "204777188844" and on_panel and on_panel["password"] == "204777188844" and not r.get("rename_error"), str(r)[:200])
         check("the panel-generated name is gone (renamed, not duplicated)", sum(1 for u in mock_casper._Handler.users if u["password"] == "204777188844") == 1)
+        # اللوحة ترفض كلمة مرورٍ مستعملة: يُعاد بكلمةٍ عشوائية، ويبقى الاسم القديم بالتسمية، ويُقال السبب
+        mock_casper._Handler.unique_pw = True
+        r2 = X.create_line(gate, {"id": "727", "name": "1 Day"}, "101010101010", "204777188844")
+        check("password refused by the panel → created with a new password, old username kept, reason reported",
+              r2["username"] == "101010101010" and r2["password"] != "204777188844" and r2["password"].isdigit()
+              and "Password already exists" in r2.get("password_changed", ""), str(r2)[:220])
+        mock_casper._Handler.unique_pw = False
         # 2) طلبٌ مفقود وعليه شكوى → reply_create بـ same_creds: خطٌّ بالمتبقي من باقة ١٥ بنفس بياناته، مربوطٌ بطلبه
         import datetime
         today = renew._today()

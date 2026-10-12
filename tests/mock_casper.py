@@ -282,6 +282,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             pw = (fields.get("password") or [None])[0]
             if not user:
                 return self._html(400, "no username")
+            if getattr(self, "unique_pw", False) and pw and any(x["password"] == pw for x in self.users):
+                return self._html(200, "<html><body><div class='alert bg-danger'>Password already exists</div></body></html>")
             if pw is None or pw == "":
                 with self._lock:
                     self._gen[0] += 1
@@ -301,7 +303,7 @@ def start(user_count=120, host="127.0.0.1", port=0):
     """يشغّل لوحة كاسبر وهمية ويعيد (server, base_url, thread)."""
     _Handler.users = _make_users(user_count)
     _Handler.creds, _Handler.block, _Handler.drop_logins, _Handler.logins = None, 0, 0, []
-    _Handler.no_form, _Handler.cf_page = False, False
+    _Handler.no_form, _Handler.cf_page, _Handler.unique_pw = False, False, False
     srv = http.server.ThreadingHTTPServer((host, port), _Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
