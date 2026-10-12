@@ -784,7 +784,7 @@ body.modal-open{overflow:hidden}
     <div class="sheet">
       <header class="shtop"><button class="xbtn" id="cqClose" type="button" aria-label="إغلاق">×</button>
         <h2 id="cqTitle">الردّ على الشكوى<small id="cqSub"></small></h2>
-        <a class="ghost salla hidden" id="cqSalla" href="#" target="_blank" rel="noopener">في سلة ↗</a></header>
+        <a class="go salla hidden" id="cqSalla" href="#" target="_blank" rel="noopener">الشكوى في سلة ↗</a></header>
       <div class="sbody" id="cqSheetBody"></div>
       <footer class="sfoot" id="cqSheetFoot"></footer>
     </div>
@@ -2533,8 +2533,10 @@ async function cqReply(r, btn){
     + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓${d.created.rename_error ? ' — ' + esc(d.created.rename_error) : ''}</p>` : '')
     + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
     + `<textarea class="rp-pre cqT" rows="14">${esc(d.text)}</textarea>`;
+  // الفعل الأول: نسخ الردّ وفتح الشكوى في سلة — فالردّ يُلصق هناك؛ ويُعدّ مرسَلًا (يدوي عبر سلة) ويُعلَّم «تم الردّ»
   foot.innerHTML = `<p class="msg" data-sent>${d.wa ? '' : 'لا رقم جوال لهذا العميل: انسخ الردّ'}</p><div class="acts">
-      <button class="go cqCopy" type="button">نسخ الردّ</button>
+      <button class="go wide cqSallaGo" type="button" ${r.url ? '' : 'disabled title="لا رابط للشكوى في السجل"'}>📋 نسخ الردّ وفتح الشكوى في سلة ↗</button>
+      <button class="ghost cqCopy" type="button">نسخ فقط</button>
       ${d.wa ? `<a class="ghost cqWa" href="#" target="_blank" rel="noopener">واتساب (يدوي)</a><button class="ghost cqSend" type="button">إرسال عبر الرقم المربوط</button>` : ''}
       ${markBtn}</div>`;
   bindMark();
@@ -2547,7 +2549,16 @@ async function cqReply(r, btn){
     const x = await post('/api/renew/reply-create', {order: d.order, months, same_creds: !!(same && same.checked)});
     if (x.error) { mk.disabled = false; return note(mm, x.error); }
     cqReply(r, btn); };
-  foot.querySelector('.cqCopy').onclick = async () => { const ok = await copyText(ta.value), b = foot.querySelector('.cqCopy'); b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ الردّ', 1600); };
+  foot.querySelector('.cqCopy').onclick = async () => { const ok = await copyText(ta.value), b = foot.querySelector('.cqCopy'); b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = 'نسخ فقط', 1600); };
+  const sg = foot.querySelector('.cqSallaGo');
+  if (sg) sg.onclick = async () => {
+    const win = window.open('', '_blank');                       // تُفتح قبل الانتظار كي لا يحجبها المتصفّح
+    const ok = await copyText(ta.value);
+    if (win) win.location = r.url; else window.open(r.url, '_blank');
+    note(sent, ok ? 'نُسخ الردّ ✓ وفُتحت الشكوى في سلة: الصقه في خانة الردّ هناك' : 'تعذّر النسخ تلقائيًا: انسخ النصّ يدويًا، وفُتحت الشكوى في سلة', ok);
+    post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: ta.value, mode: 'manual', how: 'salla'});
+    cqMarkSent(d.order); r.replied_at = r.replied_at || 'الآن';
+    const b = foot.querySelector('.cqDoneS'); if (b) { b.textContent = 'إلغاء «تم الردّ»'; b.className = 'ghost cqDoneS'; } };
   const wa = foot.querySelector('.cqWa');
   if (wa) wa.onclick = () => { wa.href = 'https://wa.me/' + d.wa + '?text=' + encodeURIComponent(ta.value);
     post('/api/renew/reply-send', {order: d.order, phone: d.phone, name: d.customer, text: ta.value, mode: 'manual'})
