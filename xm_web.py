@@ -2334,9 +2334,11 @@ class CasperWebSession(PanelWebSession):
                        "liveBq[]": live, "vodBq[]": vod, "password": p})
         fields.setdefault("reseller_notes", "")
         t_send = time.time()
-        self._request(action, data=fields,
-                      headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
-        return {"username": u, "password": p,
+        resp = self._request(action, data=fields,
+                             headers={"Referer": self._abs(self._u("index.php/users/Form?t=add"))})
+        # ردّ doAdd لا يميّز النجاح، لكن إن حمل تنبيهًا (Username/Password exists …) فهو سبب الرفض ويُقال
+        alert = self._login_alert(self._text(resp)) if isinstance(resp, dict) else ""
+        return {"username": u, "password": p, "alert": alert,
                 "page_ms": page_ms, "post_ms": int((time.time() - t_send) * 1000)}
 
     def _recent_index(self, need: int) -> dict:
@@ -2393,6 +2395,7 @@ class CasperWebSession(PanelWebSession):
                     "confirm_ms": int((time.time() - t_conf) * 1000)})
         raise LoginFailed(
             "create_failed",
+            ("رفضت اللوحة الإنشاء: %s" % sub["alert"]) if sub.get("alert") else
             "لم تُؤكِّد اللوحة إنشاء اليوزر بعد الإرسال — انتظر قليلًا ثم أعد المحاولة.")
 
     def create_many(self, package_id, pairs, host=None, progress=None) -> list:
