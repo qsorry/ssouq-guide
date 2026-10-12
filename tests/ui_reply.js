@@ -145,9 +145,10 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     check('a web origin gets no CORS header', !/Access-Control-Allow-Origin/i.test(other));
     const nonrenew = execSync(`curl -s -i -X OPTIONS -H "Origin: chrome-extension://abc" ${APP}/admin/api/accounts`).toString();
     check('paths outside /api/renew/ are not opened', /HTTP\/1\.[01] 404/.test(nonrenew) && !/Access-Control-Allow-Origin/i.test(nonrenew));
-    const us = await page.evaluate(async () => { const r = await fetch('/admin/api/renew/userscript'); return {ct: r.headers.get('content-type') || '', t: await r.text()}; });
+    const us = await page.evaluate(async () => { const r = await fetch('/admin/api/renew/ssouq-salla.user.js'); return {ct: r.headers.get('content-type') || '', t: await r.text()}; });
     check('tampermonkey userscript served (logged in) with the tool host/path and version filled in', /javascript/.test(us.ct) && us.t.includes('==UserScript==')
       && us.t.includes(`const TOOL = "https://127.0.0.1:${PORT}" + "/admin"`) && us.t.includes(`@connect      127.0.0.1:${PORT}`) && !us.t.includes('__VERSION__') && !us.t.includes('__TOOL_HOST__'), us.ct + ' ' + us.t.slice(0, 80));
+    check('download link ends with .user.js so Tampermonkey offers the install', (await page.getAttribute('#dlUserscript', 'href')) === '/admin/api/renew/ssouq-salla.user.js');
     check('no page errors', errs.length === 0, errs.join(' | '));
   } finally {
     await browser.close(); app.kill(); fs.rmSync(dataDir, {recursive: true, force: true});
