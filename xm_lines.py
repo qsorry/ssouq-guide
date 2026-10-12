@@ -6631,7 +6631,8 @@ class Handler(BaseHTTPRequestHandler):
                                   ctype="text/html; charset=utf-8",
                                   extra={"Content-Disposition":
                                          'attachment; filename="renew-analysis.html"'})
-            if path == "/api/renew/userscript":     # سكربت Tampermonkey للجوال (Edge): زرّ «سحب الشكاوى» على لوحة سلة نفسها
+            if path in ("/api/renew/userscript", "/api/renew/ssouq-salla.user.js"):   # سكربت Tampermonkey للجوال (Edge)
+                # Tampermonkey لا يعرض التثبيت إلا لعنوانٍ ينتهي بـ.user.js — فالرابط الرسمي هو الثاني، والأول للتوافق
                 try:
                     with open(os.path.join(EXTENSION_DIR, "userscript.js"), encoding="utf-8") as f:
                         js = f.read()

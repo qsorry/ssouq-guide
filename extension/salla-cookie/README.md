@@ -66,7 +66,7 @@ Cloudflare يحجب عنوان خادم الأداة عن `s.salla.sa` (403 بت
 ## للجوال: سكربت Tampermonkey بدل الإضافة (1.7.4)
 
 Edge على أندرويد لا يثبّت إضافةً من ملف (لا وضع مطوّر، وعلم `Android Extension` زال من Canary)، لكن **Tampermonkey**
-في قائمة إضافاته. فالأداة تقدّم `GET /api/renew/userscript` (‏`userscript.js` هنا، تُعبَّأ فيه `TOOL` و`VERSION`): سكربتٌ
+في قائمة إضافاته. فالأداة تقدّم `GET /api/renew/ssouq-salla.user.js` (ينتهي بـ`.user.js` فيعرض Tampermonkey التثبيت) (‏`userscript.js` هنا، تُعبَّأ فيه `TOOL` و`VERSION`): سكربتٌ
 يعمل داخل `s.salla.sa` نفسها فجلسة اللوحة جلسةُ الصفحة، يضيف زرّ **«📥 سحب الشكاوى → سمارت سوق»**، ويقرأ السجل
 بالمرشّحات نفسها (JSON · api.salla.dev برمز الجلسة من localStorage · HTML) ويرسل صفحاته إلى `/api/renew/complaints-feed`
 بـ`GM_xmlhttpRequest` (يتجاوز CORS) بمصادقة Basic (تُطلب مرةً وتُحفظ بـ`GM_setValue`)، ثم يحوّل معرّفات الطلبات. التثبيت: Edge
