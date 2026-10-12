@@ -742,10 +742,12 @@ const DEVICES = {
       html: '<p>في خانة <b dir="ltr">Server Code</b> اكتب هذا الرمز ثم اضغط <b dir="ltr">Go</b>:</p>'
         + COPY("55555", "رمز الخادم") },
     { title: "أدخل بيانات اشتراكك", img: "/static/img/ios-var-adduser.webp",
-      html: '<p>تظهر شاشة <b dir="ltr">Add User</b> بثلاث خانات، عبّئها كما وصلتك ثم اضغط <b dir="ltr">Go</b>:</p>'
-        + '<div class="fields"><div class="f"><span dir="ltr">http://url:port</span><code>رابط الهوست كما وصلك</code></div>'
+      html: '<p>تظهر شاشة <b dir="ltr">Add User</b> بثلاث خانات. الخانة الأولى (المكتوب فيها <span dir="ltr">http://url:port</span>) '
+        + '<b>ليست رابطًا ولا تحتاج الهوست</b>: اكتب فيها أي شيء، اسمك أو حرفًا واحدًا. ثم اسم المستخدم وكلمة المرور كما وصلاك، واضغط <b dir="ltr">Go</b>:</p>'
+        + '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>أي اسم أو حرف (ليس رابطًا)</code></div>'
         + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
-        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>' + HTTP_NOTE + CREDS }
+        + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
+        + '<div class="note">الرمز <b dir="ltr">55555</b> الذي كتبته في الخطوة السابقة هو الذي يربط التطبيق بالخادم، فلا تلصق في الخانة الأولى أي رابط هوست.</div>' + CREDS }
   ]},
   android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
