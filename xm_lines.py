@@ -3451,7 +3451,7 @@ def dup_wa_send(st, phone, text):
     return wa_send.send(st["service"].get("wa", {}), phone, text), "wa"
 
 
-def _make_line(acct, gate, row, months, tag):
+def _make_line(acct, gate, row, months, tag, same_creds=False):
     """ينشئ خطًّا لصاحب طلبٍ بأشهرٍ من باقة ١٥ شهرًا: جزءٌ مبيعٌ يُسجَّل في «حسابات متبقية» (أو الباقة كاملةً إن
     كانت ١٥)، ويُربط بيوزره القديم (بديل) ويُضاف لملف البوابة. ← (200، الرد، الخط) أو (رمز، خطأ، None)."""
     months = split_subs.parse_months(months)
@@ -3465,7 +3465,10 @@ def _make_line(acct, gate, row, months, tag):
         why = split_create_error(acct, gate, pkg, slice_m)
         if why:
             return 400, {"error": why}, None
-    out, err = create_lines(gate, pkg, 1)
+    # same_creds: الخط الجديد **بيوزر العميل وكلمة مروره القديمين** (اللذين في رسالته)، فلا يغيّر شيئًا في تطبيقه
+    want_u = str(row.get("username") or "").strip() if same_creds else ""
+    want_p = str(row.get("password") or "").strip() if same_creds else ""
+    out, err = create_lines(gate, pkg, 1, want_u or None, want_p or None)
     if not out:
         return 502, {"error": err or "تعذّر الإنشاء"}, None
     r = out[0]
@@ -3476,7 +3479,10 @@ def _make_line(acct, gate, row, months, tag):
     r["package"] = "%s · %s%s" % (pkg.get("name", ""), tag,
                                   (" · جزء " + split_subs.months_ar(slice_m)) if slice_m else "")
     resp = {"ok": True, "line": r.get("line", ""), "username": r["username"], "password": r["password"],
-            "months": months, "replaces": row["username"], "customer": row["customer"], "phone": row["phone"]}
+            "months": months, "replaces": row["username"], "customer": row["customer"], "phone": row["phone"],
+            "same_creds": bool(want_u and r["username"] == want_u and (not want_p or r["password"] == want_p))}
+    if r.get("rename_error"):
+        resp["rename_error"] = r["rename_error"]
     try:
         user_links.add(DATA_DIR, acct["id"], gate["id"], row["username"], r["username"], r["package"])
     except Exception:
@@ -3814,8 +3820,10 @@ def reply_create(st, rcfg, rws, racs, req):
     if not months:
         return 400, {"error": "لا تُعرف مدته المتبقية (لا تاريخ شراء ولا مدة): اكتب أشهر الجديد"}
     old_user = cr.get("old", "")
-    row = {"username": old_user, "customer": d.get("customer", ""), "phone": d.get("phone", ""), "order": order}
-    code, resp, r = _make_line(acct, gate, row, months, "شكوى الطلب %s" % order)
+    old_pw = (d.get("creds") or [{}])[0].get("password", "") if old_user else ""
+    row = {"username": old_user, "password": old_pw, "customer": d.get("customer", ""), "phone": d.get("phone", ""), "order": order}
+    same = bool(req.get("same_creds")) and bool(old_user)
+    code, resp, r = _make_line(acct, gate, row, months, "شكوى الطلب %s" % order, same_creds=same)
     if code != 200:
         return code, resp
     hit = _LINE_RE.search(r.get("line", ""))
@@ -3835,7 +3843,8 @@ def reply_create(st, rcfg, rws, racs, req):
     out = reply_lookup(st, rcfg, rws, racs, order)
     out["created"] = {"username": r["username"], "password": r["password"], "host": host, "months": resp["months"],
                       "split": bool(resp.get("split")), "split_error": resp.get("split_error", ""), "old": old_user,
-                      "link_error": resp.get("link_error", "")}
+                      "link_error": resp.get("link_error", ""), "same_creds": bool(resp.get("same_creds")),
+                      "rename_error": resp.get("rename_error", "")}
     return 200, out
 
 
@@ -4110,7 +4119,7 @@ def comp_create(accounts, cfg, ws, req):
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اختر بوابة الإنشاء، أو اضبطها في «اللوحات وهوستاتها»"}
     gate = with_guide(acct, gate)
     months = req.get("months") or row["new_months"] or (comp if row["expired"] else 0)
-    code, resp, r = _make_line(acct, gate, row, months, "تعويض الطلب %s" % row["order"])
+    code, resp, r = _make_line(acct, gate, row, months, "تعويض الطلب %s" % row["order"], same_creds=bool(req.get("same_creds")))
     if code != 200:
         return code, resp
     hit = _LINE_RE.search(r.get("line", ""))
@@ -4840,13 +4849,29 @@ def create_line(gate, pkg, username=None, password=None):
     if vb:
         raise RuntimeError("الباقة «%s» (إنشاء + تمديد) متاحة على جلسة الويب فقط" % pkg["name"])
     if gate.get("mode") == "web":                      # الإنشاء عبر نموذج اللوحة
-        r = web_session(gate).create_line(pkg["id"], username, password, gate.get("host"), regen=regen)
+        sess = web_session(gate)
+        r = sess.create_line(pkg["id"], username, password, gate.get("host"), regen=regen)
+        rename_error = ""
+        # كاسبر لا يقبل يوزرًا مخترَعًا في نموذج الإضافة (يأتي مولَّدًا من اللوحة)، لكنه يقبل **تغيير الاسم** بعدها
+        # (edit_line الذي يغيّر به التجزيء الاسم). فيوزرٌ طُلب بعينه (بديلٌ بنفس بيانات العميل) يُنشأ ثم يُعاد تسميته،
+        # وكلمة المرور رقميةٌ أرسلناها نحن فهي كما طُلبت. وإن تعذّرت التسمية بقي الخط باسم اللوحة ويُقال السبب.
+        if "username" not in regen and r.get("username") and r["username"] != username:
+            try:
+                e = sess.edit_line(r["username"], username, line_id=str(r.get("id") or ""), package=pkg.get("name", ""))
+                r["username"] = username
+                if e.get("exp"):
+                    r["exp"] = e["exp"]
+            except Exception as ex:
+                rename_error = "أُنشئ باسم اللوحة %s ولم يُغيَّر إلى %s: %s" % (r["username"], username, str(ex)[:160])
         line = format_line(gate, r["username"], r["password"])
         _log_txt(gate, line, pkg["name"])
-        return {"line": line, "username": r["username"], "password": r["password"],
-                "package": pkg["name"], "exp": r.get("exp", ""),
-                "verified": r.get("verified", True), "time": r["time"],
-                "timing": r.get("timing"), "weak_retries": r.get("weak_retries", 0)}
+        out = {"line": line, "username": r["username"], "password": r["password"],
+               "package": pkg["name"], "exp": r.get("exp", ""),
+               "verified": r.get("verified", True), "time": r["time"],
+               "timing": r.get("timing"), "weak_retries": r.get("weak_retries", 0)}
+        if rename_error:
+            out["rename_error"] = rename_error
+        return out
     if gate.get("mode") == "falcon":                   # الإنشاء عبر لوحة فالكون
         r = falcon_api.create_line(gate["api_url"], gate["api_key"], pkg["id"],
                                    username, password, pkg.get("max_connections"))
