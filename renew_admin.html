@@ -732,8 +732,8 @@ body.modal-open{overflow:hidden}
 
     <div class="blk" style="padding:12px;margin-bottom:12px" id="cqBox">
       <b>مراجعة الشكاوى</b>
-      <p class="hint">سجل شكاوى العملاء من لوحة سلة (بالجلسة نفسها التي تُسحب بها الطلبات). تُعرض <b>بانتظار الحل من التاجر</b> و<b>بانتظار رد التاجر</b> فقط؛ اضغط «جهّز الردّ» على الشكوى فيُفتح ردّها تحتها مباشرةً (نسخ · واتساب · إرسال)، ورقم الشكوى رابطٌ يفتحها في لوحة سلة.</p>
-      <div class="acts"><button class="go" id="cqLoad" type="button">اسحب الشكاوى من سلة</button><span class="hint" id="cqSum"></span></div>
+      <p class="hint"><b>السحب نفسه يتم من إضافة المتصفّح على جهازك</b> (زرّ «سحب الشكاوى» فيها، كالطلبات: Cloudflare يحجب الخادم عن لوحة سلة)، وهذا الزرّ يعرض ما حُفظ من آخر سحب. تُعرض <b>بانتظار الحل من التاجر</b> و<b>بانتظار رد التاجر</b> فقط؛ اضغط «جهّز الردّ» على الشكوى فيُفتح ردّها تحتها مباشرةً (نسخ · واتساب · إرسال)، ورقم الشكوى رابطٌ يفتحها في لوحة سلة.</p>
+      <div class="acts"><button class="go" id="cqLoad" type="button">اعرض الشكاوى المسحوبة</button><span class="hint" id="cqSum"></span></div>
       <p class="msg" id="cqMsg"></p>
       <div class="fchips" id="cqChips" style="margin-top:8px"></div>
       <div class="scroll hidden" id="cqWrap"><table class="rt"><thead><tr><th>الشكوى</th><th>العميل</th><th>الطلب</th><th>الحالة</th><th></th></tr></thead><tbody id="cqBody"></tbody></table></div>
@@ -2456,8 +2456,8 @@ function cqMarkSent(order){ $('#cqBody').querySelectorAll(`tr[data-o="${order}"]
   const i = tr.dataset.i; if (CQ[i]) CQ[i].replied_at = CQ[i].replied_at || 'الآن'; }); }
 async function cqLoad(){
   const b = $('#cqLoad'); if (b.disabled) return;
-  b.disabled = true; b.textContent = 'جارٍ السحب…'; note($('#cqMsg'), 'جارٍ قراءة سجل الشكاوى من لوحة سلة…', true);
-  const res = await getJSON('/api/renew/complaints'); b.disabled = false; b.textContent = 'اسحب الشكاوى من سلة';
+  b.disabled = true; b.textContent = 'جارٍ التحميل…'; note($('#cqMsg'), 'جارٍ تحميل الشكاوى المحفوظة من آخر سحبٍ بالإضافة…', true);
+  const res = await getJSON('/api/renew/complaints'); b.disabled = false; b.textContent = 'اعرض الشكاوى المسحوبة';
   if (!res.ok) return note($('#cqMsg'), res.error || FAIL_TEXT[res.kind] || FAIL_TEXT.server);
   const d = res.data; CQ_ALL = d.rows || [];
   if (d.error) { $('#cqWrap').classList.add('hidden'); $('#cqSum').textContent = ''; $('#cqChips').innerHTML = ''; return note($('#cqMsg'), d.hint || 'تعذّر سحب الشكاوى'); }
@@ -2472,7 +2472,7 @@ function cqRender(d){
   $('#cqChips').querySelectorAll('.fchip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.f === CQ_FILTER)));
   note($('#cqMsg'), d.unresolved ? `${AR(d.unresolved)} شكوى بلا رقم طلب: حدّث الإضافة واضغط «سحب الشكاوى» فيها من جديد، فهي تحوّل أرقام الطلبات من متصفّحك`
     : (CQ.length ? '' : CQ_FILTER === 'lost' ? 'لا شكوى على طلبٍ مفقود ✓' : 'لا شكاوى تنتظر التاجر الآن ✓'), !d.unresolved);
-  $('#cqSum').textContent = `${AR(CQ_ALL.length)} تنتظر التاجر من ${AR(d.total)} في السجل`;
+  $('#cqSum').textContent = `${AR(CQ_ALL.length)} تنتظر التاجر من ${AR(d.total)} في السجل` + (d.at ? ` · آخر سحب: ${d.at}` : '') + (d.source === 'extension' ? ' (من الإضافة)' : d.source === 'session' ? ' (من الخادم)' : '');
   $('#cqBody').innerHTML = CQ.map((r, i) => `<tr data-o="${esc(r.order)}" data-i="${i}" class="${r.replied_at ? 'cq-done' : ''}"><td class="ltr" data-l="الشكوى">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="افتح الشكوى في لوحة سلة">${esc(r.id)} ↗</a>` : esc(r.id)}</td><td data-l="العميل">${esc(r.customer) || '—'}${r.type ? `<br><small>${esc(r.type)}</small>` : ''}${r.text ? `<br><small class="clip" title="${esc(r.text)}">${esc(r.text).slice(0, 80)}</small>` : ''}</td>`
     + `<td class="ltr" data-l="الطلب">${esc(r.order) || '—'}${CQ_LOST[r.panel_state] ? `<br><span class="pill bad">⚠ ${CQ_LOST[r.panel_state]}</span>` : r.panel_state === 'found' ? '<br><small class="c-ok">على اللوحة ✓</small>' : ''}</td><td data-l="الحالة"><span class="pill warn">${esc(r.status)}</span><br><small class="cqS ${r.replied_at ? 'ok' : ''}">${r.replied_at ? 'تم الردّ ✓ ' + esc(r.replied_at) : ''}</small></td>`
     + `<td><div class="acts" style="margin:0">${r.order ? `<button class="go cqGo" data-i="${i}" type="button">الردّ</button>` : '<small>بلا رقم طلب</small>'}`
