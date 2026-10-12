@@ -458,6 +458,28 @@ def test_same_creds_on_casper():
         s2 = panels.order_search(cfg, d, "500")
         check("order still linked to the same username and marked done", [x["username"] for x in s2["rows"]] == ["333444555666"]
               and panels.load_dupes_done(d)["500"]["new"] == "333444555666")
+        # لا إنشاء مرتين: (أ) له بديلٌ في user_links → يُعرض بديله ويُرفض الإنشاء
+        panels.save_store_lines(d, panels.load_store_lines(d)["lines"] + [
+            {"order": "600", "date": st_, "phone": "0500000006", "customer": "س", "username": "111222333444", "password": "p1", "host": "http://ssouqhost.vip",
+             "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=60), 12).isoformat(), "product": "اشتراك كاسبر"}])
+        import user_links as UL
+        UL.add(d, "accC", "gc", "111222333444", "999888777666", "اشتراك 15 شهر · بديل")
+        panels.save_panel_lines(d, "pc", "كاسبر", [{"username": "999888777666", "password": "p9", "exp": "", "package": "15 Months"}])
+        look = X.reply_lookup(st, cfg, d, [acct], "600")
+        check("a prior replacement is found: reply uses its credentials, create disabled, handled-head",
+              look["replacement"]["username"] == "999888777666" and look["creds"][0] == {"username": "999888777666", "password": "p9", "host": "http://ssouqhost.vip"}
+              and look["src"] == "replacement" and not look["create"]["can"] and look["fixed"] and "User: 999888777666" in look["text"], str(look.get("replacement")))
+        code, b = X.reply_create(st, cfg, d, [acct], {"order": "600", "same_creds": True})
+        check("creating for someone who already has a replacement is refused", code == 400 and "بديلٌ أُنشئ من قبل" in b["error"] and "999888777666" in b["error"], str(b))
+        # (ب) الفهرس قديم لكن اليوزر موجودٌ على اللوحة فعلًا → فحصٌ مباشر يرفض
+        panels.save_store_lines(d, panels.load_store_lines(d)["lines"] + [
+            {"order": "700", "date": st_, "phone": "0500000007", "customer": "ع", "username": "212084058604", "password": "204777188844", "host": "http://ssouqhost.vip",
+             "months": 12, "expiry": renew.add_months(today - datetime.timedelta(days=60), 12).isoformat(), "product": "اشتراك كاسبر"}])
+        look = X.reply_lookup(st, cfg, d, [acct], "700")
+        check("index says missing (panel snapshot is stale)", look["panel"]["state"] == "missing")
+        code, b = X.reply_create(st, cfg, d, [acct], {"order": "700", "same_creds": True})
+        check("live check on the panel finds the user and refuses a second creation", code == 400 and "فحصٌ مباشر" in b["error"], str(b))
+        check("live helper: existing yes, unknown no", X.reply_live_exists(gate, "212084058604") is True and X.reply_live_exists(gate, "000000000001") is False)
     finally:
         srv.shutdown()
         for k, v in keep.items():
