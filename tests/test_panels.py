@@ -419,11 +419,16 @@ def test_dup_create():
         X.split_find_line = lambda g, u: {}
         info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, acct2], cfg)
         check("missing everywhere = old_missing", info is None and err == X.OLD_MISSING)
-        g3 = {"id": "g3", "name": "أرشيف آخر", "mode": "web", "host": "http://old.ink"}
+        g3 = {"id": "g3", "name": "مرح أرشيف آخر", "mode": "web", "host": "http://old.ink"}
         X.split_find_line = lambda g, u: ({"password": "pw", "line_id": "4"} if g["id"] == "g3" else {})
         calls2.clear()
         info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, acct2, {"id": "acc3", "gates": [g3]}], cfg)
-        check("falls back to gates on other hosts", info and info["panel"] == "أرشيف آخر" and calls2 == [("g3", "u")], str((info, err)))
+        check("falls back to gates of the same type on other hosts", info and info["panel"] == "مرح أرشيف آخر" and calls2 == [("g3", "u")], str((info, err)))
+        g4 = {"id": "g4", "name": "أرشيف مجهول", "mode": "web", "host": "http://old2.ink"}
+        X.split_find_line = lambda g, u: ({"password": "pw", "line_id": "4"} if g["id"] == "g4" else {})
+        calls2.clear()
+        info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, {"id": "acc4", "gates": [g4]}], cfg)
+        check("a gate of unknown type on another host is not touched", info is None and calls2 == [], str((info, calls2)))
         ga = {"id": "ga", "name": "مرح أرشيف", "mode": "web", "host": "http://m.ink", "archive_only": True}
         X.split_find_line = lambda g, u: {}
         arch = X._dup_archived([acct, {"id": "acc4", "gates": [ga]}], cfg, acct, gate, {"host": "http://m.ink"})
@@ -778,6 +783,25 @@ def test_dup_gate_fallback():
         check("a gate picked by the operator is the only one used", info and calls == ["g2"], str(calls))
         info, err = X._dup_rename_old(a1, g1, row, [a1, a2], cfg, only=("acc9", "gx"))
         check("an unknown picked gate is reported, not called missing", info is None and "المختارة" in err, err)
+        # لا خلط بين البوابات: كاسبر بنفس الهوست لا يُبحث فيها عن يوزر سمارت ولا يُغيَّر فيها
+        gc = {"id": "gc", "name": "بوابة كاسبر", "mode": "web", "web_flavor": "casper", "host": "http://m.ink"}
+        gf = {"id": "gf", "name": "بوابة فالكون", "mode": "falcon", "host": "http://m.ink"}
+        ac_ = {"id": "accC", "split": True, "gates": [gc, gf]}
+        check("gate types: Marah = smart, Casper, Falcon", X.gate_sub(a1, g1) == "smart" and X.gate_sub(ac_, gc) == "casper"
+              and X.gate_sub(ac_, gf) == "falcon")
+        cand = [g["id"] for _, g, _ in X._dup_candidates([a1, a2, ac_], cfg, a1, g1, row)]
+        check("candidates for a Smart user are Smart gates only, even on the same host", cand == ["g1", "g2"], str(cand))
+        seen_ = []
+        X.split_find_line = lambda g, u: seen_.append(g["id"]) or {"password": "pw", "line_id": "7"}
+        X.split_change = lambda g, rec, pend: (_ for _ in ()).throw(RuntimeError("x"))
+        X._dup_rename_old(a1, g1, row, [a1, a2, ac_], cfg)
+        check("the fallback never reaches Casper or Falcon", seen_ == ["g1", "g2"], str(seen_))
+        check("a picked gate of another type is refused for creation",
+              X._picked_gate([a1, ac_], {"create_account_id": "accC", "create_gate_id": "gc"}, "smart") == "mismatch"
+              and X._picked_gate([a1, a2], {"create_account_id": "acc2", "create_gate_id": "g2"}, "smart") == (a2, g2))
+        check("create_gates carries each gate's type", {g["gate_id"]: g["sub"] for g in X.create_gates([a1, ac_])}
+              == {"g1": "smart", "gc": "casper", "gf": "falcon"})
+        X.split_find_line = lambda g, u: {"password": "pw", "line_id": "7"}
         # بوابة الإنشاء المختارة
         check("picked creation gate resolves", X._picked_gate([a1, a2], {"create_account_id": "acc2", "create_gate_id": "g2"}) == (a2, g2))
         check("no pick = None, a bad pick = bad", X._picked_gate([a1], {}) is None
@@ -794,6 +818,10 @@ def test_dup_gate_fallback():
         X.get_packages = lambda g: [{"id": "p15", "name": "اشتراك 15 شهر"}]
         X.create_lines = lambda g, pkg, n, *a, **k: (used.append(g["id"]) or [{"line": "Host http://m.ink User 5 Pass 6", "username": "5", "password": "6"}], None)
         X.split_register_created = lambda *a, **k: []
+        code, body = X.dup_create([a1, a2, ac_], cfg, d, {"order": "2", "username": "999", "months": 6,
+                                                           "create_account_id": "accC", "create_gate_id": "gc"})
+        check("dup_create refuses a Casper gate for a Smart order, before creating", code == 400 and used == []
+              and "نوع" in body["error"], str(body))
         code, body = X.dup_create([a1, a2], cfg, d, {"order": "2", "username": "999", "months": 6,
                                                       "create_account_id": "acc2", "create_gate_id": "g2"})
         check("dup_create creates on the picked gate", code == 200 and used == ["g2"], str((code, body)))
