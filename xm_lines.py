@@ -4151,9 +4151,10 @@ def reply_send(st, rws, req):
     if not text:
         return 400, {"error": "نصّ الردّ فارغ"}
     if req.get("mode") == "manual":
-        panels.log_dup_send(rws, msg, "manual", True)
-        complaints_mark(rws, {"order": msg["order"], "how": "manual"})
-        return 200, {"ok": True, "how": "manual"}
+        how = "salla" if str(req.get("how") or "") == "salla" else "manual"   # نُسخ وأُلصق في شكوى سلة، أو واتساب يدوي
+        panels.log_dup_send(rws, msg, how, True)
+        complaints_mark(rws, {"order": msg["order"], "how": how})
+        return 200, {"ok": True, "how": how}
     if not phone:
         return 400, {"error": "لا رقم جوال لهذا العميل: انسخ الردّ وأرسله يدويًا"}
     r, how = dup_wa_send(st, phone, text)

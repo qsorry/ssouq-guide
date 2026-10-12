@@ -67,7 +67,7 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
 
     // الردّ من صفّ الشكوى نفسه: شكاوى محفوظة (كما تحفظها الإضافة) ← «جهّز الردّ» يفتح الردّ تحت الصفّ، ورقم الشكوى رابط
     fs.writeFileSync(path.join(dataDir, 'renew_complaints.json'), JSON.stringify({at: '2026-10-12 01:00', rows: [
-      {id: '1455683', cid: '2078174950', order: '138', order_sid: '', customer: 'ali', status: 'بانتظار رد التاجر', type: 'المنتج لا يعمل', text: '', date: '', phone: '', url: 'https://s.salla.sa/complaints/2078174950'},
+      {id: '1455683', cid: '2078174950', order: '138', order_sid: '', customer: 'ali', status: 'بانتظار رد التاجر', type: 'المنتج لا يعمل', text: '', date: '', phone: '', url: 'https://complaint.salla.sa/2078174950'},
       {id: '2', cid: '2', order: '999000', order_sid: '', customer: 'x', status: 'بانتظار الحل من التاجر', type: '', text: '', date: '', phone: '', url: ''},
       {id: '3', cid: '3', order: '5', order_sid: '', customer: 'y', status: 'مغلقة', type: '', text: '', date: '', phone: '', url: ''}]}));
     await page.click('#cqLoad'); await page.waitForFunction(() => !document.querySelector('#cqLoad').disabled);
@@ -78,7 +78,7 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     check('lost filter: empty here with a clear note', (await page.$$('#cqBody tr')).length === 0 && (await page.textContent('#cqMsg')).includes('لا شكوى على طلبٍ مفقود'));
     await page.click('#cqChips .fchip[data-f="all"]'); await sleep(200);
     check('back to all', (await page.$$('#cqBody tr')).length === 2);
-    check('complaint number links to the panel', (await page.getAttribute('#cqBody tr:first-child td:first-child a', 'href')) === 'https://s.salla.sa/complaints/2078174950');
+    check('complaint number links to the panel', (await page.getAttribute('#cqBody tr:first-child td:first-child a', 'href')) === 'https://complaint.salla.sa/2078174950');
     await page.click('#cqBody .cqGo'); await page.waitForSelector('#cqSheetBody .cqT');
     const inl = await page.inputValue('#cqSheetBody .cqT');
     check('reply opens in a sheet with the credentials and a sticky action bar', inl.includes('طلبكم رقم *138*') && inl.includes('User: 333426852552') && await page.isVisible('#cqSheetFoot .cqCopy') && await page.isVisible('#cqSalla'));
@@ -87,6 +87,14 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     await page.click('#cqSheetFoot .cqWa'); await page.waitForFunction(() => ((document.querySelector('#cqSheetFoot [data-sent]') || {}).textContent || '').includes('تم الإرسال'));
     check('manual whatsapp from the row says sent and marks the row', (await page.textContent('#cqBody tr[data-o="138"] .cqS')).includes('تم الردّ'));
     check('panel state shown in the sheet', /لم يُتحقّق|غير مربوط بلوحة|مفقود من اللوحة/.test(await page.textContent('#cqSheetBody')));
+    // «نسخ الردّ وفتح الشكوى في سلة»: ينسخ ويفتح رابط الشكوى ويُعلَّم مردودًا عليها (كيف: salla)
+    await page.evaluate(() => { window.__opened = []; window.open = (u) => { const w = {set location(v) { window.__opened.push(String(v)); }}; window.__opened.push(String(u)); return w; }; });
+    await page.click('#cqSheetFoot .cqSallaGo'); await sleep(500);
+    const opened = await page.evaluate(() => window.__opened);
+    check('copy+open: the complaint url opened and the status says pasted-in-salla', opened.includes('https://complaint.salla.sa/2078174950') && (await page.textContent('#cqSheetFoot [data-sent]')).includes('فُتحت الشكوى في سلة'), JSON.stringify(opened));
+    const log2 = (await api(page, '/admin/api/renew/dup-log')).log || [];
+    check('logged as sent via salla', log2.some(x => x.kind === 'reply' && x.how === 'salla' && x.order === '138'));
+    check('header has a prominent salla link', (await page.getAttribute('#cqSalla', 'href')) === 'https://complaint.salla.sa/2078174950');
     await page.click('#cqClose'); check('close hides the sheet', await page.isHidden('#cqModal'));
     await page.click('#cqBody tr[data-o="999000"] .cqGo'); await page.waitForSelector('#cqSheetBody .rp-note');
     check('unknown order: note in the sheet with a jump to the box', (await page.textContent('#cqSheetBody')).includes('لا طلب برقم') && await page.isVisible('#cqSheetFoot .cqToBox'));
