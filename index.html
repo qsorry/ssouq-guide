@@ -980,7 +980,7 @@ const SUBS = {
   falcon: { name: "فالكون", full: "FALCON TV PRO", art: "/static/img/brands/falcon.webp",
             sub: "تطبيق فالكون أو Smarters Pro" },
   casper: { name: "كاسبر", full: "CASPER FLIX", art: "/static/img/brands/casper.webp",
-            sub: "CASPER VIP أو AroPlayer أو Smarters Pro" }
+            sub: "Ghost Casper VIP أو CASPER VIP أو AroPlayer أو Smarters Pro" }
 };
 const legacySub = k => k === "marah" ? "smart" : k;      // "مرح" كان اسم سمارت، فروابطه القديمة تبقى عاملة
 
@@ -1067,7 +1067,7 @@ const FALCON = {
    كاسبر يرث من سمارت كل ما يدخل بالهوست واسم المستخدم وكلمة المرور
    (ويندوز وماك كما هما)، ويختلف في موضعين:
    الآيفون (تطبيق CASPER VIP من App Store، أو AroPlayer بدل VAR Player)، والأندرويد جوالًا وشاشةً
-   (‏تطبيق CASPER VIP بكود Downloader ‏3638997، أو IPTV Smarters Pro —
+   (‏تطبيق CASPER VIP بكود Downloader ‏5149800، أو IPTV Smarters Pro —
    بلا تطبيق مرح/MR7 فهو تطبيق سمارت، وبلا NEXT+ لأنه يدخل برمز خادم
    خاص بلوحة سمارت).
    ولشاشات سامسونج و LG و WebOS باقات كاسبر خاصة بها في المتجر (‏CASPER_TV، 3 و6 أشهر وسنة) — الباقة
@@ -1083,6 +1083,14 @@ const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتر
     + '<div class="f"><span>Password</span><code>كلمة المرور</code></div></div>'
     + '<p>ثم اضغط زر الدخول.</p>'
     + '<div class="note">إن طلب التطبيق رابط الهوست فهو يصلك مع بيانات اشتراكك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
+
+// دخول تطبيق Ghost Casper VIP — واحد على الجوال والشاشة، ببيانات اشتراك كاسبر نفسها
+const GHOST_CASPER_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك", img: "/static/img/ghost-casper-vip-login.webp",
+  html: '<p>افتح تطبيق <b dir="ltr">Ghost Casper VIP</b> فتظهر شاشة <b>تسجيل الدخول</b>. اختر تبويب <b>اسم المستخدم وكلمة المرور</b> وعبّئ الخانتين ببيانات اشتراكك:</p>'
+    + '<div class="fields"><div class="f"><span>اسم المستخدم</span><code>اسم المستخدم</code></div>'
+    + '<div class="f"><span>كلمة المرور</span><code>كلمة المرور</code></div></div>'
+    + '<p>ثم اضغط <b>دخول</b>.</p>'
+    + '<div class="note">لا يحتاج التطبيق رابطًا ولا هوست: اسم المستخدم وكلمة المرور فقط.</div>' + CREDS };
 
 // باقات كاسبر لشاشات سامسونج و LG (webOS) في المتجر، وروابطها أول خطوات كل تطبيقٍ لكاسبر على هذه الشاشات
 const CASPER_TV = [
@@ -1135,38 +1143,55 @@ const CASPER = {
   // تطبيق الاشتراك الخاص CASPER VIP أولًا، ويبقى Smarters Pro بديلًا لأنه يدخل
   // بالهوست واسم المستخدم وكلمة المرور، بلا رمز خاص بمزوّد. وبلا تطبيق مرح (MR7):
   // تطبيق سمارت وحدها.
-  android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق CASPER VIP أو IPTV Smarters Pro", choose: {
+  // CASPER VIP مخفي من الخيارات على الأندرويد (جوالًا وشاشةً) بطلب المشغّل: خطواته باقية في variants.hidden_caspervip
+  // (لا يصل إليها رابط قديم فيفتح اختيار التطبيق) ويعود بتسميتها caspervip وإضافة سطر خياره إلى options.
+  android: { icon: "phone", name: "جوال أندرويد", sub: "تطبيق Ghost Casper VIP أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "caspervip", label: "CASPER VIP", sub: "تطبيق الاشتراك الخاص، تحميل مباشر", icon: "casper-vip" },
+      { key: "ghostcasper", label: "Ghost Casper VIP", sub: "تطبيق كاسبر الإضافي، تحميل مباشر", icon: "ghost-casper-vip" },
       { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK", icon: "smarters-pro" }
     ]},
     variants: {
-      caspervip: [
+      hidden_caspervip: [
         { title: "حمّل تطبيق CASPER VIP",
           html: APP("casper-vip", "CASPER VIP", "تحميل مباشر · تطبيق الاشتراك")
             + '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p>'
-            + '<p><a class="btn go" href="https://aftv.news/3638997" target="_blank" rel="noopener">تحميل تطبيق CASPER VIP</a></p>'
+            + '<p><a class="btn go" href="https://aftv.news/5149800" target="_blank" rel="noopener">تحميل تطبيق CASPER VIP</a></p>'
             + '<p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
         CASPER_VIP_LOGIN
+      ],
+      ghostcasper: [
+        { title: "حمّل تطبيق Ghost Casper VIP",
+          html: APP("ghost-casper-vip", "Ghost Casper VIP", "تحميل مباشر · تطبيق كاسبر")
+            + '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p>'
+            + '<p><a class="btn go" href="https://aftv.news/4162893" target="_blank" rel="noopener">تحميل تطبيق Ghost Casper VIP</a></p>'
+            + '<p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
+        GHOST_CASPER_LOGIN
       ],
       smarters: DEVICES.android.variants.smarters
     }
   },
 
-  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق CASPER VIP أو IPTV Smarters Pro", choose: {
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق Ghost Casper VIP أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "caspervip", label: "CASPER VIP", sub: "تطبيق الاشتراك الخاص، عبر Downloader", icon: "casper-vip" },
+      { key: "ghostcasper", label: "Ghost Casper VIP", sub: "تطبيق كاسبر الإضافي، عبر Downloader", icon: "ghost-casper-vip" },
       { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro" }
     ]},
     variants: {
-      caspervip: [
+      hidden_caspervip: [
         DL_PLAY(""), DL_OPEN,
-        DL_CODE("3638997", APP("casper-vip", "CASPER VIP", "بالكود في Downloader · تطبيق الاشتراك"), 9,
-          '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/3638997" target="_blank" rel="noopener">aftv.news/3638997</a>.</p>'),
+        DL_CODE("5149800", APP("casper-vip", "CASPER VIP", "بالكود في Downloader · تطبيق الاشتراك"), 9,
+          '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/5149800" target="_blank" rel="noopener">aftv.news/5149800</a>.</p>'),
         DL_BLOCKED, DL_ALLOW, DL_INSTALL("casper", "Casper VIP"),
         CASPER_VIP_LOGIN
+      ],
+      ghostcasper: [
+        DL_PLAY(""), DL_OPEN,
+        DL_CODE("4162893", APP("ghost-casper-vip", "Ghost Casper VIP", "بالكود في Downloader · تطبيق كاسبر"), 0,
+          '<p class="sub">وعلى الجوال أو المتصفح يفتح الكود نفسه من الرابط <a class="link" href="https://aftv.news/4162893" target="_blank" rel="noopener">aftv.news/4162893</a>.</p>'),
+        DL_BLOCKED, DL_ALLOW, DL_INSTALL("ghost", "Ghost Casper VIP"),
+        GHOST_CASPER_LOGIN
       ],
       smarters: DEVICES.tv.variants.smarters
     }

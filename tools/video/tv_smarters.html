@@ -251,7 +251,8 @@ const APPS = {
   smarters: { name: "IPTV Smarters Pro", icon: "assets/sm_icon.png" },
   mr7:      { name: "MR7 TV",            icon: "../../static/img/apps/mr7.webp" },
   falcon:   { name: "FALCON IPTV PRO",   icon: "../../static/img/apps/falcon-app.webp" },
-  casper:   { name: "Casper VIP",        icon: "../../static/img/apps/casper-vip.webp" }
+  casper:   { name: "Casper VIP",        icon: "../../static/img/apps/casper-vip.webp" },
+  ghost:    { name: "Ghost Casper VIP",  icon: "../../static/img/apps/ghost-casper-vip.webp" }
 };
 const app = APPS[q.get("app") || "smarters"];
 document.querySelectorAll(".appName").forEach(e => e.textContent = app.name);
