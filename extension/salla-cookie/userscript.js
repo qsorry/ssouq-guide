@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         سمارت سوق ← سحب الشكاوى من لوحة سلة
+// @name         سمارت سوق ← سحب الطلبات والشكاوى من لوحة سلة
 // @namespace    https://__TOOL_HOST__/
 // @version      __VERSION__
-// @description  زرٌّ على لوحة سلة يسحب سجل شكاوى العملاء ويرسله إلى أداة التجديد (للجوال: Tampermonkey في Edge، حيث لا تُثبَّت الإضافة)
+// @description  زرّان على لوحة سلة: سحب الطلبات، وسحب سجل الشكاوى — إلى أداة التجديد (للجوال: Tampermonkey في Edge، حيث لا تُثبَّت الإضافة)
 // @match        https://s.salla.sa/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
@@ -33,12 +33,16 @@
   // ---- الواجهة: زرٌّ عائم وسطرُ حالة ----
   const box = document.createElement("div");
   box.style.cssText = "position:fixed;inset-inline-start:12px;bottom:12px;z-index:2147483647;font:14px/1.5 Tahoma,sans-serif;direction:rtl;display:grid;gap:6px;max-width:min(92vw,360px)";
+  const BTN = "border:0;border-radius:14px;padding:12px 16px;background:#0f9c6e;color:#fff;font:inherit;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer";
   const btn = document.createElement("button");
   btn.textContent = "📥 سحب الشكاوى → سمارت سوق";
-  btn.style.cssText = "border:0;border-radius:14px;padding:12px 16px;background:#0f9c6e;color:#fff;font:inherit;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer";
+  btn.style.cssText = BTN;
+  const btnO = document.createElement("button");
+  btnO.textContent = "📦 سحب الطلبات → سمارت سوق";
+  btnO.style.cssText = BTN + ";background:#2563eb";
   const line = document.createElement("div");
   line.style.cssText = "display:none;background:#12213a;color:#fff;border-radius:12px;padding:8px 12px;font-size:13px;white-space:pre-wrap";
-  box.append(btn, line);
+  box.append(btnO, btn, line);
   document.documentElement.appendChild(box);
   const set = (t, ok) => { line.style.display = t ? "block" : "none"; line.textContent = t || ""; line.style.background = ok === true ? "#0b7f5a" : ok === false ? "#c2412d" : "#12213a"; };
 
@@ -146,4 +150,48 @@
     }
   }
   btn.onclick = run;
+
+  // ---- سحب الطلبات: كحلقة الإضافة سواءً بسواء (/api/renew/panel-feed) — قائمة الطلبات صفحةً صفحة ثم صفحة كل طلب ----
+  let runningO = false, cancelO = false;
+  async function runOrders() {
+    if (runningO) { cancelO = true; btnO.textContent = "⏳ جارٍ الإيقاف…"; return; }
+    const s = login(); if (!s) return;
+    const months = Math.max(0, Number(prompt("الطلبات الأحدث من (أشهر) — ٠ = الكل:", String(GM_getValue("ssouq_months", 15))) || 0));
+    GM_setValue("ssouq_months", months);
+    runningO = true; cancelO = false; btn.disabled = true; btnO.textContent = "⏹ إيقاف سحب الطلبات";
+    try {
+      set("بدء سحب الطلبات…");
+      const st = await toolPost(s, "/api/renew/panel-feed", { op: "start", max_months: months, apply: true, resume: true, fresh: false });
+      let page = st.resume_page || 1, more = true, units = st.units || 0, found = st.found || 0, opened = st.done || 0, listed = st.total || 0;
+      if (st.resume_page) set(`استئناف من صفحة ${page} (${units} يوزرًا محفوظة)`);
+      while (more && !cancelO) {
+        const html = await sallaHtml(`/orders?page=${page}&sort_by=created_at-desc`);
+        if (!html) throw new Error("لم تُقرأ صفحة الطلبات — سجّل دخولك للوحة سلة");
+        const lst = await toolPost(s, "/api/renew/panel-feed", { op: "list", page, html });
+        more = !!lst.more; listed += lst.rows || 0;
+        const sids = lst.sids || [];
+        let tooOld = false;
+        for (let i = 0; i < sids.length && !cancelO; i += 2) {
+          const batch = sids.slice(i, i + 2);
+          const pages = await Promise.all(batch.map((sid) => sallaHtml(`/orders/order/${sid}`)));
+          const orders = {}; batch.forEach((sid, k) => { orders[sid] = pages[k]; });
+          const res = await toolPost(s, "/api/renew/panel-feed", { op: "orders", orders });
+          opened = res.done || opened + batch.length; units = res.units || units; found = res.found || found; tooOld = tooOld || !!res.too_old;
+          set(`صفحة ${page} · ${opened} من ${listed} طلبًا · ${units} يوزرًا (${found} باعتماد)`);
+          await sleep(400);
+        }
+        if (tooOld) break;
+        if (page % 10 === 0) await toolPost(s, "/api/renew/panel-feed", { op: "save" });
+        page += 1;
+      }
+      const fin = await toolPost(s, "/api/renew/panel-feed", { op: "finish" });
+      if (!fin.units && !cancelO) { set("لا طلبات جديدة منذ آخر سحب — المحفوظ كما هو ✓", true); return; }
+      set(cancelO ? `أُوقف. حُفظ ما سُحب: ${fin.units} يوزرًا (${fin.found} باعتماد)` : `اكتمل ✓ ${fin.units} يوزرًا، ${fin.found} باعتماد، ${fin.pages} صفحة. افتح صفحة التجديد في الأداة.`, true);
+    } catch (e) {
+      set("توقّف: " + (e && e.message ? e.message : e), false);
+    } finally {
+      runningO = false; cancelO = false; btn.disabled = false; btnO.textContent = "📦 سحب الطلبات → سمارت سوق";
+    }
+  }
+  btnO.onclick = runOrders;
 })();

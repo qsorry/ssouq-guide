@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "جلسة سلة → أداة ssouq v1.7.5",
+  "name": "جلسة سلة → أداة ssouq v1.7.6",
   "description": "التقاط كوكيز لوحة سلة (s.salla.sa) وإرسالها إلى أداة التجديد، وسحب الطلبات وسجل الشكاوى من جهازك حين يحجب Cloudflare الخادم.",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqAC3lqcgFRlUvODONRyqMfjDCdunWcVUdwGsqDFWeLXVcRz0JH9oXPi2AjkBXsQ2uL9Qvbm9nJv3udfACYzIn9duMI+/PObi0gBHZC8aRSbDe/f4khgf1iA8i2suT8BxStwYbTQHectbZkyTR2+4OUAo1e/RJZyafutD8N7n5gOqwP9D0e7x/Nq5b4QkRYiWoR/Aije7v2BeXyadHhrYsCyNqlZN9uyA0s6JQc73rq8j9QAmpflGNaU6o0xX7HTy9kuHak8XoBhKvs9dNglZH5dAE3lpAuUZjJwOIJuddxXLOBD24g8Tb5SAKgM03pQipozQwwtq2hzbXR0Bjkar6QIDAQAB",
   "action": {
     "default_title": "التقاط جلسة سلة",
