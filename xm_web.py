@@ -2534,7 +2534,23 @@ class CasperWebSession(PanelWebSession):
             return True
         return bool(row.get("connections", "").startswith("/"))
 
-    def _enable_urls(self, raw, line_id):
+    @staticmethod
+    def _enable_in_scripts(page, lid):
+        """قائمة الخيارات عادةً JavaScript: نلتقط من الصفحة كلَّ نصٍّ مقتبسٍ يشبه مسارَ enable (لا disable)،
+        ونُلحق المعرّف إن انتهى بـ / أو = أو حمل {id}/%s/:id."""
+        out = []
+        for m in re.finditer(r"""["']([^"'\s<>]*enable[^"'\s<>]*)["']""", page or "", re.I):
+            u = _html.unescape(m.group(1)).replace("\\/", "/")
+            if re.search(r"disable|enabled|^enable$", u, re.I) or not re.search(r"[/?=.]", u):
+                continue
+            u = re.sub(r"\{id\}|%s|:id|\{\{id\}\}", lid, u)
+            if u.endswith(("/", "=")):
+                u += lid
+            if u not in out:
+                out.append(u)
+        return out
+
+    def _enable_urls(self, raw, line_id, page=""):
         """روابط «Enable» في خيارات الصفّ (لا Disable)، ثم المسارات المعتادة."""
         lid, out = str(line_id), []
         for m in self._RE_LINK_ATTR.finditer(raw or ""):
@@ -2545,6 +2561,9 @@ class CasperWebSession(PanelWebSession):
                 if re.search(r"enable", u, re.I) and not re.search(r"disable", u, re.I) \
                         and re.search(r"(?<!\d)%s(?!\d)" % re.escape(lid), u) and u not in out:
                     out.append(u)
+        for u in self._enable_in_scripts(page, lid):
+            if u not in out:
+                out.append(u)
         for tpl in ("index.php/users/enable/{id}", "index.php/users/enable?id={id}",
                     "index.php/users/doEnable/{id}", "index.php/users/doEnable?id={id}"):
             out.append(tpl.replace("{id}", lid))
@@ -2560,7 +2579,9 @@ class CasperWebSession(PanelWebSession):
         if not self._row_disabled(row, raw):
             return {"was_disabled": False, "enabled": True}
         lid = row.get("id") or str(line_id or "")
-        for url in self._enable_urls(raw, lid):
+        page = self._text(self._request(self._u("index.php/users/index?username=" + urllib.parse.quote(username))))
+        tried = []
+        for url in self._enable_urls(raw, lid, page):
             if re.match(r"^https?://", url) or url.startswith("/"):
                 full = url
             elif url.startswith("index.php"):
@@ -2568,6 +2589,7 @@ class CasperWebSession(PanelWebSession):
             else:
                 full = urllib.parse.urljoin(self._abs(self._u("index.php/users/index")), url)
             r = self._request(full, headers={"X-Requested-With": "XMLHttpRequest"})
+            tried.append("%s→%s" % (url[:60], r.get("status")))
             if r.get("status", 0) >= 400:
                 continue
             for attempt in range(4):
@@ -2576,7 +2598,9 @@ class CasperWebSession(PanelWebSession):
                 now, nraw = self._user_row(username)
                 if now and not self._row_disabled(now, nraw):
                     return {"was_disabled": True, "enabled": True}
-        raise RuntimeError("اليوزر %s معطَّل ولم يُفعَّل تلقائيًّا — اختر Enable من خياراته في اللوحة" % username)
+        opts = re.sub(r"\s+", " ", (re.findall(r"<td[^>]*>(.*?)</td>", raw or "", re.S | re.I) or [""])[-1])[:240]
+        raise RuntimeError("اليوزر %s معطَّل ولم يُفعَّل تلقائيًّا — اختر Enable من خياراته في اللوحة (جرّبت: %s | خيارات الصف: %s)"
+                           % (username, "، ".join(tried[:6]), opts))
 
     def edit_line(self, username: str, new_username: str, line_id: str = "", package: str = "") -> dict:
         """يغيّر اسم يوزرٍ على كاسبر وكلمةُ مروره كما هي، ثم يتحقّق من القائمة (انظر الأب)."""

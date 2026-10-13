@@ -3493,6 +3493,8 @@ def _make_line(acct, gate, row, months, tag, same_creds=False):
             "same_creds": bool(want_u and r["username"] == want_u and (not want_p or r["password"] == want_p))}
     if r.get("rename_error"):
         resp["rename_error"] = r["rename_error"]
+    if r.get("enable_error"):
+        resp["enable_error"] = r["enable_error"]
     if r.get("password_changed"):
         resp["password_changed"] = r["password_changed"]
     try:
@@ -4018,7 +4020,7 @@ def reply_create(st, rcfg, rws, racs, req):
                       "split": bool(resp.get("split")), "split_error": resp.get("split_error", ""), "old": old_user,
                       "link_error": resp.get("link_error", ""), "same_creds": bool(resp.get("same_creds")),
                       "rename_error": resp.get("rename_error", ""), "password_changed": resp.get("password_changed", ""),
-                      "renamed": resp.get("renamed")}
+                      "enable_error": resp.get("enable_error", ""), "renamed": resp.get("renamed")}
     return 200, out
 
 
@@ -5181,7 +5183,7 @@ def create_line(gate, pkg, username=None, password=None):
             try:
                 sess.ensure_enabled(r["username"], line_id=str(r.get("id") or ""))
             except Exception as ex:
-                enable_error = "أُنشئ اليوزر ولم يُفعَّل تلقائيًّا: %s" % str(ex)[:160]
+                enable_error = "أُنشئ اليوزر ولم يُفعَّل تلقائيًّا: %s" % str(ex)[:600]
         line = format_line(gate, r["username"], r["password"])
         _log_txt(gate, line, pkg["name"])
         out = {"line": line, "username": r["username"], "password": r["password"],
