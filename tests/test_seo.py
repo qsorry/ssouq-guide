@@ -1864,8 +1864,30 @@ def unit_release():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_site_setting():
+    """العنوان العام قابلٌ للتبديل (XM_SITE_URL): الافتراضي كما هو، وبدومين + مجلد تتبدّل canonical والخريطة وrobots وIndexNow (مضيفٌ وحده)."""
+    print("== عنوان الموقع القابل للتبديل ==")
+    code = ("import guide_pages, seo_pages, seo_release, re, json; "
+            "x = guide_pages.sitemap([('/content/x/', 'weekly', '0.5')]).decode(); "
+            "print(json.dumps({'site': guide_pages.SITE, 'netloc': guide_pages.SITE_NETLOC, 'host': seo_release.HOST, 'seo': seo_pages.SITE, "
+            "'locs': re.findall(r'<loc>(.*?)</loc>', x)}))")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def run(env):
+        e = {k: v for k, v in os.environ.items() if k != "XM_SITE_URL"}
+        e.update(env)
+        out = subprocess.run([sys.executable, "-c", code], cwd=root, env=e, capture_output=True, text=True, timeout=60)
+        return json.loads(out.stdout.strip().splitlines()[-1]) if out.returncode == 0 else {"error": out.stderr[-300:]}
+    a = run({})
+    check("الافتراضي: guide.ssouq.com (لا تغيير ما لم يُضبط XM_SITE_URL)", a.get("site") == "https://guide.ssouq.com" and a.get("host") == "guide.ssouq.com" and a.get("netloc") == "guide.ssouq.com", str(a))
+    b = run({"XM_SITE_URL": "https://ssouq.com/guide/"})
+    check("دومين + مجلد: SITE بلا شرطة أخيرة، والمضيف وحده لـ IndexNow، وروابط الخريطة بالعنوان الجديد", b.get("site") == "https://ssouq.com/guide" and b.get("host") == "ssouq.com"
+          and b.get("seo") == "https://ssouq.com/guide" and any(u.startswith("https://ssouq.com/guide/content/x") for u in b.get("locs", [])) and not any("guide.ssouq.com" in u for u in b.get("locs", [])), str(b)[:300])
+
+
 def main():
     unit_match()
+    unit_site_setting()
     unit_build()
     unit_ten()
     unit_production_cases()

@@ -40,7 +40,7 @@ import seo_qa
 import seo_sources
 
 SITE = seo_pages.SITE
-HOST = SITE.split("//", 1)[1]
+HOST = seo_pages.guide_pages.SITE_NETLOC            # المضيف وحده: IndexNow يطلب host بلا مجلد، والمفتاح يُخدم على جذر المضيف
 STATE_KEY = "release"                       # build_state: حال المراحل {snapshot, phases: {"4": …}, batches: […], updated_at}
 APPROVED_KEY = seo_pages.APPROVED_KEY
 LOC_RX = re.compile(r"<loc>(.*?)</loc>")

@@ -237,7 +237,7 @@ def _header(tr, hub=""):
              (HUB_NAMES["anime"][tr.en], _hub_path("anime", "", tr.code))]
     nav = "".join(f'<a href="{_esc(u)}"{" aria-current=page" if hub and u == _hub_path(hub, "", tr.code) else ""}>{_esc(n)}</a>' for n, u in links)
     return (f'<header class="top"><div class="wrap"><a class="brand" href="{home}"><b>{_esc(tr("سمارت سوق", "Smart Souq"))}</b>'
-            f'<small>guide.ssouq.com</small></a><nav class="nav">{nav}</nav></div></header>')
+            f'<small>{_esc(guide_pages.SITE_NETLOC)}</small></a><nav class="nav">{nav}</nav></div></header>')
 
 
 def _switch(tr, other_path):
