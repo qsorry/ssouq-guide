@@ -429,6 +429,83 @@ def render_hub(cups=(), now=None):
     return (200 if newest else 503), body, (tournament.LIVE_TTL if live else 300)
 
 
+# ---------- ودجت رئيسية متجر سلة ----------
+# الدوريات الخمسة بترتيب أولويتها في الرئيسية. ما لا مباريات له في الفترة الحالية لا يظهر (فدوري أبطال
+# أوروبا يظهر «عند وجود مباريات»، وكل دوري يغيب في فترات التوقف الدولي) — فالرئيسية تعرض المتاح فقط.
+WIDGET_LEAGUES = ("premier-league", "saudi-pro-league", "champions-league", "afc-champions-league", "la-liga")
+WIDGET_AHEAD = 10 * 24 * 3600     # «الفترة الحالية»: ما بعد اليوم يُعرض إن كان خلال عشرة أيام
+WIDGET_FOCUS = 2                  # الأولان (الإنجليزي وروشن، الأكثر متابعةً عند السعوديين) يأخذان مساحةً أكبر
+WIDGET_ROWS_FOCUS = 8             # أكثر مباريات الدوري المُركَّز عليه
+WIDGET_ROWS_OTHER = 3             # وغيره
+
+
+def render_widget(theme="", now=None):
+    """ودجت رئيسية متجر سلة (‏/watch/widget داخل iframe في قسم «محتوى HTML»): الدوريات الخمسة
+    (‏WIDGET_LEAGUES) بالترتيب، لكلٍّ مباريات اليوم الجارية أو التي لم تبدأ (لا المنتهية) — وإلا أقرب مباريات خلال WIDGET_AHEAD — بقناتها
+    الناقلة. دوريٌ بلا مباريات في الفترة لا يظهر. والتحديث الحيّ والوضع والشفافية كودجت البطولتين
+    (‏tournament.WIDGET_JS وWIDGET_CSS). ← (رمز، بايتات، مدة الكاش): 503 إن تعذّر كل شيء."""
+    now = time.time() if now is None else now
+    got = dict(zip(WIDGET_LEAGUES, _all([lambda s=s: _get(s, ()) for s in WIDGET_LEAGUES])))
+    blocks, all_ms, live = [], [], False
+    for i, k in enumerate(WIDGET_LEAGUES):
+        data = got[k][0]
+        if not data:
+            continue
+        ms = data["matches"]
+        all_ms += ms
+        todays, later, _ = split(ms, now)
+        later = [m for m in later if m["ts"] < now + WIDGET_AHEAD and m["status"] not in OFF]
+        todays = [m for m in todays if m["status"] not in OFF and m["state"] != "post"]   # المتاح فقط: لا منتهية
+        cap = WIDGET_ROWS_FOCUS if i < WIDGET_FOCUS else WIDGET_ROWS_OTHER
+        rows, note = (todays[:cap], "") if todays else (later[:cap], "المباريات القادمة")
+        if not rows:
+            continue
+        live = live or any(m["state"] == "in" for m in rows)
+        badge = COMPS[k]["badge"]
+        blocks.append(f'<div class="wcup"><h2><span>{_esc(league.LEAGUES[k]["name"])}'
+                      + (f' <small class="n">· {note}</small>' if note else "")
+                      + f'</span><a href="{PATH}/{k}" target="_blank" rel="noopener">كل المواعيد ←</a></h2>'
+                      + _days(rows, lambda m: _row(m, badge)) + "</div>")
+    if blocks:
+        body = f'<div class="{"wcols" if len(blocks) > 1 else "wone"}">{"".join(blocks)}</div>'
+    elif all_ms:
+        body = '<p class="sub">لا مباريات في الدوريات خلال الأيام القادمة (توقّفٌ للمنتخبات غالبًا).</p>'
+    else:
+        body = '<p class="sub">تعذّر تحميل المباريات الآن، ونعيد المحاولة تلقائيًا.</p>'
+    names = " · ".join(league.LEAGUES[k]["tab"] for k in WIDGET_LEAGUES)
+    doc = f"""<!doctype html>
+<html lang="ar" dir="rtl"{f' data-theme="{theme}"' if theme in ("light", "dark") else ""}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مباريات الدوريات — {_esc(names)} | سمارت سوق</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="{guide_pages.SITE}{PATH}">
+<link rel="preconnect" href="{league.LOGO_HOST}">
+<style>{guide_pages._style()}
+{tournament.CSS}
+{tournament.WIDGET_CSS}
+{tournament.HUB_CSS}
+.wcup h2 .n{{font-weight:600;color:var(--mute);font-size:.78rem}}
+.wcols .wcup,.wone .wcup{{min-width:0}}</style>
+</head>
+<body>
+<main>
+<section class="card wcard"{tournament._live_attrs(all_ms)}>
+<a class="whead" href="{PATH}" target="_blank" rel="noopener" style="text-decoration:none">{tournament.BALL}<span><b>مباريات الدوريات</b>
+<small>{_esc(tournament._day_label(tournament._day(now)))} · بتوقيت السعودية</small></span></a>
+{body}
+<p class="lsrc">يُحدَّث تلقائيًا · المصدر {tournament._source(all_ms)}</p>
+</section>
+</main>
+<script>
+{tournament.WIDGET_JS}
+</script>
+</body>
+</html>"""
+    return (200 if all_ms else 503), doc.encode("utf-8"), (tournament.LIVE_TTL if live else 300)
+
+
 CSS = """
 .faq h3{margin:16px 0 6px;font-size:1rem}
 .faq p{margin:0}

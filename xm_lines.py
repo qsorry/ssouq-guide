@@ -6422,6 +6422,11 @@ class Handler(BaseHTTPRequestHandler):
                                   else {"Retry-After": str(league.RETRY)})
         if path == watch.PATH + "/":
             return self._redirect(watch.PATH, 301)
+        if path == watch.PATH + "/widget":      # ودجت رئيسية متجر سلة (iframe): مباريات الدوريات الخمسة المتاحة
+            code, body, age = watch.render_widget(self._q("theme"))
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"} if code == 200
+                              else {"Retry-After": str(league.RETRY)})
         if path == watch.PATH or path.startswith(watch.PATH + "/"):   # المشاهدة: المدخل وصفحة لكل دوري وبطولة
             page = (watch.render_hub(CUPS) if path == watch.PATH
                     else watch.render(path[len(watch.PATH) + 1:], CUPS))

@@ -102,6 +102,20 @@ def unit():
     check("حرف الجرّ على الاسم", [W._li(n) for n in ("دوري روشن", "الدوري الإنجليزي", "كأس الخليج")]
           == ["لدوري روشن", "للدوري الإنجليزي", "لكأس الخليج"])
 
+    print("\nودجت الرئيسية")
+    reset(fake_espn, cups)
+    code, raw, _ = W.render_widget()
+    page = raw.decode()
+    heads = re.findall(r"<h2><span>(.*?)(?: <small|</span>)", page)
+    order = [L.LEAGUES[k]["name"] for k in W.WIDGET_LEAGUES]
+    check("200 ودوريات الأولوية بترتيبها (ما له مباريات فقط)",
+          code == 200 and heads == [n for n in order if n in heads] and heads[:2] == order[:2], heads)
+    check("لا دوري خارج الخمسة", not any(L.LEAGUES[k]["name"] in page for k in ("serie-a", "bundesliga", "ligue-1")))
+    check("noindex ولا وسم canonical لصفحة غيره", 'name="robots" content="noindex"' in page)
+    check("الوضع المفروض", 'data-theme="dark"' in W.render_widget("dark")[1].decode())
+    reset(down, cups)
+    check("تعذّر ESPN = 503", W.render_widget()[0] == 503)
+
     print("\nالأشهر والمباريات")
     ts = lambda y, mo, d: datetime.datetime(y, mo, d, 12, tzinfo=L.RIYADH).timestamp()  # noqa: E731
     check("الماضي والحالي والقادم", W.months(ts(2026, 9, 28)) == ["202608", "202609", "202610"])
