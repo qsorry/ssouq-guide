@@ -546,8 +546,14 @@ def render_match(k, tail, now=None):
 # أوروبا يظهر «عند وجود مباريات»، وكل دوري يغيب في فترات التوقف الدولي) — فالرئيسية تعرض المتاح فقط.
 WIDGET_LEAGUES = ("premier-league", "saudi-pro-league", "champions-league", "afc-champions-league", "la-liga")
 WIDGET_AHEAD = 10 * 24 * 3600     # «الفترة الحالية»: ما بعد اليوم يُعرض إن كان خلال عشرة أيام
+# «المهمة فقط»: مباراةٌ فيها نادٍ من أندية الدوري الكبرى بمعرّفه عند ESPN (ومثل ذلك لأبطال آسيا: الأندية السعودية)
+_SAUDI = {"929", "817", "2276", "8346"}                                  # الهلال النصر الاتحاد الأهلي
+_EURO = {"86", "83", "1068", "382", "359", "364", "360", "363", "367", "361", "132", "160", "110", "103", "111",
+         "124", "114"}                                                   # الكبار في إنجلترا وإسبانيا وأوروبا
+WIDGET_BIG = {"premier-league": _EURO, "saudi-pro-league": _SAUDI, "champions-league": _EURO,
+              "afc-champions-league": _SAUDI | {"22022"}, "la-liga": _EURO}
 WIDGET_FOCUS = 2                  # الأولان (الإنجليزي وروشن، الأكثر متابعةً عند السعوديين) يأخذان مساحةً أكبر
-WIDGET_ROWS_FOCUS = 8             # أكثر مباريات الدوري المُركَّز عليه
+WIDGET_ROWS_FOCUS = 4             # أكثر مباريات الدوري المُركَّز عليه
 WIDGET_ROWS_OTHER = 3             # وغيره
 
 
@@ -566,8 +572,11 @@ def render_widget(theme="", now=None):
         ms = data["matches"]
         all_ms += ms
         todays, later, _ = split(ms, now)
-        later = [m for m in later if m["ts"] < now + WIDGET_AHEAD and m["status"] not in OFF]
-        todays = [m for m in todays if m["status"] not in OFF and m["state"] != "post"]   # المتاح فقط: لا منتهية
+        big = WIDGET_BIG[k]
+        important = lambda m: m["home"]["id"] in big or m["away"]["id"] in big          # noqa: E731
+        later = [m for m in later if m["ts"] < now + WIDGET_AHEAD and m["status"] not in OFF and important(m)]
+        todays = [m for m in todays if m["status"] not in OFF and m["state"] != "post"
+                  and important(m)]                                       # المتاح والمهم فقط: لا منتهية
         cap = WIDGET_ROWS_FOCUS if i < WIDGET_FOCUS else WIDGET_ROWS_OTHER
         rows, note = (todays[:cap], "") if todays else (later[:cap], "المباريات القادمة")
         if not rows:
