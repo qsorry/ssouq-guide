@@ -40,7 +40,7 @@ bdi{unicode-bidi:isolate}
 .bell{position:relative}
 .bell .dot{position:absolute;top:-6px;inset-inline-end:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--err);color:#fff;font-size:.7rem;font-weight:700;display:grid;place-items:center;border:2px solid var(--sf)}
 /* الشريط السفلي: العنصر الحاليّ بخلفيةٍ ونقطة */
-.bnav{position:fixed;inset-inline:8px;bottom:8px;z-index:40;display:flex;gap:2px;padding:6px;border:1px solid var(--line);border-radius:20px;
+.bnav{position:fixed;inset-inline:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;gap:2px;padding:6px;border:1px solid var(--line);border-radius:20px;
   background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);margin-bottom:env(safe-area-inset-bottom)}
 .bnav>*{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 10px;color:var(--mute);
   font-size:.74rem;font-weight:600;border-radius:12px;text-decoration:none;white-space:nowrap}

@@ -161,7 +161,7 @@ details.old summary{cursor:pointer;color:var(--mute);font-size:.9rem}
 .chk input{width:18px;height:18px;accent-color:var(--go)}
 
 /* شريط التنقّل السفلي (كصفحة التجديد) */
-.bnav{position:fixed;inset-inline:0;bottom:0;z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+.bnav{position:fixed;inset-inline:0;bottom:0;padding-bottom:env(safe-area-inset-bottom,0px);z-index:40;display:flex;gap:2px;background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
 .bnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;color:var(--mute);font-size:.7rem;font-weight:500;border-radius:12px;text-decoration:none}
 .bnav a svg{width:22px;height:22px}
 .bnav a.on{color:var(--go);background:color-mix(in srgb,var(--go) 12%,transparent)}
