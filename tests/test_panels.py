@@ -585,8 +585,8 @@ def test_order_lost():
         panels.save_panel_lines(d, "alt", "البديلة", [{"username": "222", "password": "x", "exp": "", "package": "1 Year"}])
         r = panels.lost(cfg, d, replaced={"111"})
         users = [x["username"] for x in r["rows"]]
-        check("missing = not on its panel nor the alternative, not replaced, not expired, host mapped",
-              users == [] and r["counts"]["replaced"] == 1 and r["counts"]["found"] == 2 and r["counts"]["host_unmapped"] == 1
+        check("missing = not on its panel nor the alternative, not expired, host mapped; a replaced line stays listed, flagged, not pending",
+              users == ["111"] and r["rows"][0]["state"] == "replaced" and r["pending"] == 0 and r["counts"]["replaced"] == 1 and r["counts"]["found"] == 2 and r["counts"]["host_unmapped"] == 1
               and r["counts"]["expired"] == 1, str((users, r["counts"])))
         r = panels.lost(cfg, d, comp=1)
         row = next(x for x in r["rows"] if x["username"] == "111")
@@ -615,7 +615,7 @@ def test_order_lost():
                   panels.lost(cfg, d2)["total"] == 0 and panels.lost(cfg, d2, export={"users": {}, "gates": {("acc1", "g1")}})["total"] == 1)
             panels.mark_dupe_done(d2, "9", "x1", 6, extra={"msgs": []})
             r2 = panels.lost(cfg, d2, export={"users": {}, "gates": {("acc1", "g1")}})
-            check("a duplicate replacement is counted replaced, not as created here", r2["total"] == 0 and r2["counts"]["replaced"] == 1, str(r2["counts"]))
+            check("a duplicate replacement is counted replaced (listed, flagged), not as created here", r2["pending"] == 0 and r2["done"] == 0 and r2["counts"]["replaced"] == 1 and r2["rows"][0]["state"] == "replaced", str(r2["counts"]))
         finally:
             shutil.rmtree(d2, ignore_errors=True)
         # البحث برقم الطلب

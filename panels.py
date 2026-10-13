@@ -1097,17 +1097,19 @@ def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=Fal
     rows = []
     for r in idx["rows"]:
         counts["checked"] += 1
-        if r["state"] != "missing":
+        if r["state"] not in ("missing", "replaced"):
             counts[r["state"]] = counts.get(r["state"], 0) + 1
             continue
+        if r["state"] == "replaced":             # عُيّن له بديل: يبقى ظاهرًا في المفقود بعلامته (لا يختفي)
+            counts["replaced"] += 1
         if r["expired"] or r["days_left"] is None:
             counts["expired"] += 1
             if not include_expired or r["days_left"] is None:
                 continue
         rows.append(dict(r, new_months=comp_months(r["days_left"], comp)))
-    rows.sort(key=lambda r: (bool(r["done"]), r["expired"], -(r["days_left"] or 0), r["order"]))
+    rows.sort(key=lambda r: (bool(r["done"]), r["state"] == "replaced", r["expired"], -(r["days_left"] or 0), r["order"]))
     return {"rows": rows, "total": len(rows), "comp": int(comp or 0), "base": BASE_MONTHS,
-            "pending": sum(1 for r in rows if not r["done"] and not r["expired"]),
+            "pending": sum(1 for r in rows if not r["done"] and not r["expired"] and r["state"] == "missing"),
             "done": sum(1 for r in rows if r["done"]), "counts": counts,
             "pulled": sum(1 for p in idx["panels"].values() if p.get("count")) + idx["excel_gates"],
             "export_users": idx["excel_users"], "index": index_info(idx), "built": idx["built"]}

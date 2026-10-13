@@ -2301,7 +2301,7 @@ $('#msgsReload').onclick = () => { loadDup(); if ($('#blkDupLog').open) loadDupL
 $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
 
 /* ============ البحث برقم الطلب، والمفقود ============ */
-const LOST_STATE = {found: ['موجود', 'ok'], missing: ['مفقود', 'bad'], replaced: ['مستبدل', ''], covered: ['يوزر زائد', ''],
+const LOST_STATE = {found: ['موجود', 'ok'], missing: ['مفقود', 'bad'], replaced: ['له بديل ✓', 'ok'], covered: ['يوزر زائد', ''],
   host_unmapped: ['هوست غير مربوط', 'warn'], not_pulled: ['لوحته لم تُسحب', 'warn'], no_user: ['بلا يوزر', 'warn']};
 const LOST_WHY = {missing: 'لا يوجد في لوحته ولا في البديلة ولا في ملفات Excel البوابات.',
   covered: 'للطلب يوزرٌ آخر موجود على اللوحة — الاشتراك قائم، وهذا قديمٌ أو مكرّر في سجلّ الطلب.',
@@ -2761,12 +2761,12 @@ function lsRender(d){
   fillGates(d.gates); LS = d; const c = d.counts || {};
   const tile = (n, lbl, cls) => `<div class="stat"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></div>`;
   $('#lsTiles').innerHTML = (d.with_complaint ? tile(d.with_complaint, 'عليه شكوى', 'c-bad') : '') + tile(d.pending, 'يحتاج اشتراكًا', d.pending ? 'c-warn' : '') + tile(d.done, 'أُنشئ له') + tile(c.found || 0, 'موجود على لوحة')
-    + (c.covered ? tile(c.covered, 'طلبه له يوزر موجود') : '') + tile(c.replaced || 0, 'مستبدل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
+    + (c.covered ? tile(c.covered, 'طلبه له يوزر موجود') : '') + tile(c.replaced || 0, 'له بديل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
   $('#lsBody').innerHTML = d.rows.map((r, i) => lcard(r, i, 'ls')).join('');
   lcBind($('#lsBody'), d.rows, 'ls'); $('#lsAll').checked = false;
   $('#lsWrap').classList.toggle('hidden', !d.rows.length);
   $('#lsBulk').classList.toggle('hidden', !d.rows.some(r => !r.done && (r.can_create || $('#lsGate').value) && pickFits($('#lsGate').value, r.sub)));
-  const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.total)} مفقود · ${AR(c.found || 0)} موجود · ${AR(c.covered || 0)} يوزرٌ زائد في طلبٍ له يوزر موجود · ${AR(c.replaced || 0)} مستبدل · ${AR(c.expired || 0)} منتهٍ`
+  const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.pending)} مفقود · ${AR(c.replaced || 0)} له بديل · ${AR(c.found || 0)} موجود · ${AR(c.covered || 0)} يوزرٌ زائد في طلبٍ له يوزر موجود · ${AR(c.expired || 0)} منتهٍ`
     + (c.not_pulled ? ` · ${AR(c.not_pulled)} لوحته لم تُسحب` : '') + (c.host_unmapped ? ` · ${AR(c.host_unmapped)} هوسته غير مربوط` : '')
     + (d.export_users ? ` · قُورن بملفات Excel البوابات (${AR(d.export_users)} يوزرًا)` : ' · لا ملفات Excel للبوابات بعد');
   note($('#lsMsg'), !c.checked ? 'لا اشتراكات سلة مسحوبة بعد — اسحب الطلبات من «البيانات» أولًا'
