@@ -1774,7 +1774,11 @@ def unit_release():
               and len(seo_release.sitemap_entries(d3)) == 5)
         check("IndexNow للجديد: أُرسل بقدر الاعتماد (مرةً واحدة بعد النجاح)", len(got) > got_before and len(got[-1]["urlList"]) == x1["indexnow"]["new"] > 0)
         n_before = len(got)
+        seo_release._progress[os.path.abspath(d3)] = {"action": "extras", "at": int(time.time()), "stage": "starting"}
         x2 = seo_release.extras(d3, None)
+        pg3 = seo_release._progress.get(os.path.abspath(d3)) or {}
+        check("عدّاد التقدّم الحيّ للمعالج: done/total يُحدَّثان أثناء المرحلة (يُقرآن من status().progress)", pg3.get("total", 0) > 0 and 0 <= pg3.get("done", -1) <= pg3["total"] and bool(pg3.get("stage")), str(pg3))
+        seo_release._progress.pop(os.path.abspath(d3), None)
         check("إعادة التشغيل بلا جديد: PASS ولا إرسال مكرّر", x2["ok"] and x2["indexnow"]["new"] == 0 and len(got) == n_before, str(x2.get("indexnow")))
         x3 = seo_release.extras(d3, 9999)
         c3.close(); c3 = seo_db.connect(d3)

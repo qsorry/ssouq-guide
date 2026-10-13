@@ -48,6 +48,15 @@ _threads, _progress = {}, {}
 
 
 # ================= أدوات =================
+def _tick(data_dir, stage, done=None, total=None):
+    """يحدّث عدّاد التقدّم الحيّ الذي يقرؤه المعالج في الإدارة (‏done/total والمرحلة) — لا أثر له خارج `start` (سطر الأوامر)."""
+    p = _progress.get(os.path.abspath(data_dir))
+    if p is not None:
+        p["stage"] = stage
+        if total is not None:
+            p["done"], p["total"] = done, total
+
+
 def _now(now):
     return int(now or time.time())
 
@@ -173,7 +182,9 @@ def gate_routes(data_dir, con, st, approved, expect_index=True, ids=None):
         if ids is not None and cid not in ids:
             continue
         by_id.setdefault(cid, {})[lang] = a
-    for cid, langs in sorted(by_id.items()):
+    for ci_, (cid, langs) in enumerate(sorted(by_id.items())):
+        if ci_ % 10 == 0:
+            _tick(data_dir, "فحص الصفحات كما تُخدم", ci_, len(by_id))
         r = _row(con, cid)
         if not r or r["merged_into"] is not None or not r["available"]:
             m["entity_changes"] += len(langs); m["routes"] += len(langs); fails.append({"id": cid, "problem": "entity missing/merged/unavailable"}); continue
@@ -606,7 +617,9 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
             red_before = {r["path"]: r["target"] for r in con.execute("SELECT path, target FROM redirect")}
             # 1 — إثراء TMDB (معاملةٌ واحدة، بلا commit حتى تمرّ بوابات الهوية والتسوية)
             en = {"attempted": 0, "enriched": 0, "miss": 0, "failed": 0, "merged": [], "seasons": 0, "errors": []}
-            for r in cands:
+            for ri_, r in enumerate(cands):
+                if ri_ % 5 == 0:
+                    _tick(data_dir, "إثراء الدفعة من TMDB", ri_, len(cands))
                 en["attempted"] += 1
                 try:
                     state, msg = seo_sources._one(con, data_dir, r["id"], "tmdb", st, now)
@@ -786,7 +799,7 @@ def start(data_dir, action, **kw):
     _progress[k] = {"action": action, "at": int(time.time()), "stage": "starting"}
 
     def prog(x):
-        _progress[k] = {**_progress[k], "stage": str(x)}
+        _progress[k] = {**{a: b for a, b in _progress[k].items() if a not in ("done", "total")}, "stage": str(x)}
 
     def run_():
         try:
@@ -805,10 +818,10 @@ def start(data_dir, action, **kw):
                 res = final_bundle(data_dir)
             else:
                 res = {"ok": False, "error": f"unknown action {action}"}
-            _progress[k] = {**_progress[k], "stage": "done", "ok": bool(res.get("ok")), "result": {kk: v for kk, v in res.items() if kk in ("ok", "phase", "status", "reason", "stopped_at", "steps", "batches", "file")}}
+            _progress[k] = {**{a: b for a, b in _progress[k].items() if a not in ("done", "total")}, "stage": "done", "ok": bool(res.get("ok")), "result": {kk: v for kk, v in res.items() if kk in ("ok", "phase", "status", "reason", "stopped_at", "steps", "batches", "file")}}
         except Exception as e:  # noqa: BLE001
             import traceback
-            _progress[k] = {**_progress[k], "stage": "error", "ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}", "traceback": traceback.format_exc()[-1500:]}
+            _progress[k] = {**{a: b for a, b in _progress[k].items() if a not in ("done", "total")}, "stage": "error", "ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}", "traceback": traceback.format_exc()[-1500:]}
     t = _threads[k] = threading.Thread(target=run_, daemon=True)
     t.start()
     return True
@@ -893,7 +906,9 @@ def extras_gate(data_dir, con, st, routes, candidates_ineligible=()):
     m = {"routes": len(routes), "http_failures": 0, "robots_failures": 0, "canonical_failures": 0, "language_failures": 0, "hreflang_failures": 0,
          "redirect_urls": 0, "query_urls": 0, "duplicate_canonical": 0, "not_noindex": 0, "checked_not_approved": 0}
     fails, seen = [], {}
-    for x in routes:
+    for xi_, x in enumerate(routes):
+        if xi_ % 25 == 0:
+            _tick(data_dir, "فحص الصفحات المعتمدة كما تُخدم", xi_, len(routes))
         path, lang = x["path"], x["lang"]
         full = seo_db.lang_prefix(lang) + path
         bad = []
@@ -982,7 +997,10 @@ def extras(data_dir, expected=None, now=None, submit=None):
                 return _xfail(rel, why, con=con, now=now, data_dir=data_dir)
             prev_state, prev_live = seo_db.state(con, seo_pages.EXTRA_KEY), bool(st.get("index_extra_live"))
             routes, ineligible, kinds, not_rendered = [], [], {}, 0
-            for path, kind, parent, langs in extras_candidates(con, st):
+            cands_ = extras_candidates(con, st)
+            for ci_, (path, kind, parent, langs) in enumerate(cands_):
+                if ci_ % 25 == 0:
+                    _tick(data_dir, "تقييم أهلية الصفحات المرشّحة", ci_, len(cands_))
                 info = seo_pages.handle(data_dir, path, "ar", _info=True)      # الرسم يحكم الأهلية (index_ar / index_en)
                 if not isinstance(info, dict):
                     not_rendered += 1
