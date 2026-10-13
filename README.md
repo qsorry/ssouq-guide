@@ -956,7 +956,7 @@ LG، و`vod: true` للباقة الترفيهية التي تُعرض لمن ا
 |---|---|---|---|
 | آيفون / آيباد | VAR Player | **Smarters Player Lite** | **CASPER VIP** · AroPlayer |
 | جوال أندرويد | NEXT+ (أو MR7) · IPTV Smarters Pro | **تطبيق فالكون** · IPTV Smarters Pro | **CASPER VIP** · IPTV Smarters Pro |
-| شاشة / بوكس أندرويد | MR7 TV · IPTV Smarters Pro | **تطبيق فالكون** · IPTV Smarters Pro | **CASPER VIP** · IPTV Smarters Pro |
+| شاشة / بوكس أندرويد TCL Sony شاومي mi | MR7 TV · IPTV Smarters Pro | **تطبيق فالكون** · IPTV Smarters Pro | **CASPER VIP** · IPTV Smarters Pro |
 | سامسونج و LG و WebOS | 0Player برمز `92929480` · **Duplecast** | 0Player برمز **`75710072`** · Duplecast | بباقته لسامسونج و LG: 0Player برمز **`59820658`** · Duplecast |
 | هايسنس و VIDAA OS | **Duplecast** | نفسه — يُورَث بلا تكرار | نفسه — يُورَث بلا تكرار |
 | ويندوز · ماك | IPTV Smarters Pro | نفسه — يُورَث بلا تكرار | نفسه — يُورَث بلا تكرار |
