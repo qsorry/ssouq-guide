@@ -2530,7 +2530,8 @@ class CasperWebSession(PanelWebSession):
     @staticmethod
     def _row_disabled(row, raw):
         """اليوزر معطَّل؟ في جدول كاسبر يحلّ زرُّ الطاقة الأحمر محلَّ عدّاد الاتصالات (0/1)."""
-        if re.search(r"fa-power-off|power-off", raw or "", re.I) and not re.match(r"^\d+\s*/", row.get("connections", "")):
+        if re.search(r'title=["\']Disabled!?["\']|sus=off|fa-power-off|power-off', raw or "", re.I) \
+                and not re.match(r"^\d+\s*/", row.get("connections", "")):
             return True
         return bool(row.get("connections", "").startswith("/"))
 
@@ -2559,7 +2560,7 @@ class CasperWebSession(PanelWebSession):
                 u = _html.unescape(u or "").strip().replace("\\/", "/")
                 q = re.search(r"""['"]([^'"]*enable[^'"]*)['"]""", u, re.I)
                 u = q.group(1) if q and "(" in u else u
-                if re.search(r"enable", u, re.I) and not re.search(r"disable", u, re.I) \
+                if (re.search(r"enable", u, re.I) and not re.search(r"disable", u, re.I) or re.search(r"sus=off", u, re.I)) \
                         and re.search(r"(?<!\d)%s(?!\d)" % re.escape(lid), u) and u not in out:
                     out.append(u)
         for u in self._enable_in_scripts(page, lid):
