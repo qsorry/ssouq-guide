@@ -560,6 +560,31 @@ details.card>.din{padding:0 16px 16px}
         <pre class="mono dump" id="eOut2" hidden></pre>
       </div>
     </details>
+
+    <details class="blk fold" id="blkCtl">
+      <summary><span><b>تحكّم بكيان</b><small>العنوان والوصف والمقدمة والفهرسة، الرابط، ربط TMDB، الدمج</small></span></summary>
+      <div class="din">
+        <p class="sub">ابحث عن عملٍ باسمه أو رابطه أو معرّفه، ثم عدّل ما يخصّه. ما تكتبه هنا يغلب المولَّد والمستورد، وكل تغيير رابطٍ يسجّل 301 من القديم، والكيان المجمّد لا يُمسّ.</p>
+        <div class="acts"><input id="cQ" type="search" placeholder="اسم العمل أو slug أو المعرّف"><button class="ghost" type="button" id="cFind">بحث</button></div>
+        <ul class="alist" id="cList"></ul>
+        <div id="cEdit" hidden>
+          <p class="meta" id="cInfo"></p>
+          <label for="cLang">اللغة</label><select id="cLang"><option value="ar">العربية</option><option value="en">English</option></select>
+          <label for="cTitle">عنوان الصفحة (≤120)</label><input id="cTitle" type="text" maxlength="120">
+          <label for="cDesc">الوصف (≤160)</label><input id="cDesc" type="text" maxlength="160">
+          <label for="cIntro">مقدمة تظهر أعلى الصفحة</label><textarea id="cIntro" rows="3"></textarea>
+          <label for="cIdx">الفهرسة</label><select id="cIdx"><option value="">حسب السياسة</option><option value="0">أخرِج هذه اللغة من الفهرسة</option></select>
+          <div class="acts"><button class="go" type="button" id="cSave">حفظ التجاوز</button></div>
+          <label for="cSlug">الرابط (slug لاتيني)</label><input id="cSlug" type="text" dir="ltr">
+          <div class="acts"><button class="ghost" type="button" id="cSlugGo">غيّر الرابط (301)</button></div>
+          <label for="cTmdb">معرّف TMDB</label><input id="cTmdb" type="text" inputmode="numeric" dir="ltr">
+          <div class="acts"><button class="ghost" type="button" id="cTmdbGo">اربط بـ TMDB</button></div>
+          <label for="cMerge">ادمج هذا الكيان في (معرّف الكيان الباقي)</label><input id="cMerge" type="text" inputmode="numeric" dir="ltr">
+          <div class="acts"><button class="ghost" type="button" id="cMergeGo">ادمج</button></div>
+        </div>
+        <div class="msg" id="cMsg"></div>
+      </div>
+    </details>
   </section>
 </main>
 <nav class="bnav">
@@ -1279,6 +1304,35 @@ $("eAudit").onclick = async () => {
   const p = $("eOut2"); p.hidden = false;
   p.textContent = (a.results || []).filter(r => r.errors.length || !r.would_index).map(r => `${r.lang} ${r.path}: ${r.errors.join(", ") || "ok"}; index=${r.would_index} (${r.why})`).join("\n") || "كل الصفحات سليمة";
 };
+
+let cur = null;
+const ctl = async (body) => api("/api/content/admin/seo-entity", body).catch(() => ({error: "تعذّر الاتصال"}));
+const cShow = (e) => {
+  cur = e; $("cEdit").hidden = false;
+  $("cInfo").textContent = `#${e.id} · ${e.type} · ${e.title} · TMDB ${e.tmdb_id || "—"}${e.frozen ? " · مجمّد" : ""}`;
+  $("cSlug").value = e.slug; $("cTmdb").value = e.tmdb_id || "";
+  const o = (e.override || {})[$("cLang").value] || {};
+  $("cTitle").value = o.seo_title || ""; $("cDesc").value = o.meta_desc || ""; $("cIntro").value = o.intro || "";
+  $("cIdx").value = o.index_flag === 0 ? "0" : "";
+};
+$("cFind").onclick = async () => {
+  const d = await ctl({action: "search", q: $("cQ").value});
+  $("cList").innerHTML = d.error ? `<li>${esc(d.error)}</li>` : (d.results || []).map(r =>
+    `<li><span><b>${esc(r.title)}</b> <small>#${r.id} · ${esc(r.type)}${r.year ? " · " + r.year : ""} · ${esc(r.slug)}${r.merged_into ? " · مدمج" : ""}</small></span><button class="ghost" type="button" data-id="${r.id}">اختر</button></li>`).join("") || "<li>لا نتائج</li>";
+};
+$("cList").onclick = async (ev) => {
+  const b = ev.target.closest("button[data-id]"); if (!b) return;
+  const d = await ctl({action: "get", id: +b.dataset.id}); d.entity ? cShow(d.entity) : ($("cMsg").textContent = d.error);
+};
+$("cLang").onchange = () => cur && cShow(cur);
+const cDo = async (body, ok) => {
+  const d = await ctl({id: cur && cur.id, ...body});
+  $("cMsg").textContent = d.error || ok; if (d.entity) cShow(d.entity);
+};
+$("cSave").onclick = () => cDo({action: "override", lang: $("cLang").value, fields: {seo_title: $("cTitle").value, meta_desc: $("cDesc").value, intro: $("cIntro").value, index_flag: $("cIdx").value}}, "حُفظ التجاوز");
+$("cSlugGo").onclick = () => cDo({action: "slug", slug: $("cSlug").value}, "تغيّر الرابط وسُجّل 301 من القديم");
+$("cTmdbGo").onclick = () => cDo({action: "tmdb", tmdb_id: $("cTmdb").value}, "رُبط معرّف TMDB");
+$("cMergeGo").onclick = () => confirm("الدمج لا يُحذف فيه شيء لكن رابط هذا الكيان يتحوّل 301 إلى الباقي. متابعة؟") && cDo({action: "merge", loser: cur.id, winner: +$("cMerge").value}, "تم الدمج");
 $("eReview").onclick = async () => {
   const d = await api("/api/content/seo/review?limit=200").catch(() => ({error: "تعذّر الاتصال"}));
   const ul = $("eList"); ul.hidden = false;

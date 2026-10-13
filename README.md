@@ -1780,6 +1780,18 @@ HTML لا يُمسّ: ‏`alt` الصورة لقطةٌ من يومها):
   `seo-sample` · `seo-run` · `seo-settings` · `seo-audit`. والاختبارات بلوحة TMDB وهمية (‏`tests/mock_tmdb.py`) ولوحة Xtream بتفاصيلها:
   `python tests/test_seo.py`. والتقرير: [docs/phase2-report.md](docs/phase2-report.md).
 
+### المراحل 5–8 — لوحة التحكم والقوائم والمواسم والحلقات والهب (`seo_admin.py` · `seo_pages.py`)
+- **المرحلة 5 — لوحة التحكم** (‏`seo_admin`، بطاقة «تحكّم بكيان» في `admin.ssouq.com/content`، ‏`POST /api/content/admin/seo-entity {action}`): بحثٌ بالاسم/slug/المعرّف؛
+  **تجاوز** لكل لغة (عنوان ≤120 · وصف ≤160 · مقدمة أعلى الصفحة · علم فهرسة `0` يُخرج اللغة من الفهرسة ويُسقط hreflang) في `seo_override` وتقرؤه صفحة العمل؛
+  حقول يدوية (مصدرها `manual` فلا يكتب فوقها البناء ولا TMDB)؛ تغيير الرابط بـ 301 من القديم؛ ربطٌ يدوي بمعرّف TMDB (فريد لكل كيان)؛ دمج كيانين. كلها تحترم `identity_freeze`، ولا حذف.
+- **المرحلة 6 — القوائم**: `/content/genres/<slug>/` · `/content/countries/<slug>/` · `/content/languages/<slug>/` · `/content/year/<yyyy>/` · `/content/latest/[movies|series/]` (+`page/<n>/`، وبـ `/en`):
+  بُعدٌ واحد فقط (لا تركيبات فلاتر)، عضوية TMDB/يدوية، عتبة الفهرسة `list_min_items` وحدّ `list_max_pages`، canonical ذاتي وrel prev/next وItemList؛ `countries/turkey` يبقى 301 إلى الهب.
+- **المرحلة 7 — المواسم والحلقات**: `/content/series/<slug>/season-<n>/` (وفهرستها مشروطة بملخص الموسم باللغة وعناوين كل حلقاته) و`…/episode-<e>/`
+  **لا تُخدم إلا بشروط `episode_page`** (عنوان + ملخص ≥ 80 + تاريخ عرض) وإلا 404؛ TVSeason/TVEpisode، وصفحة المسلسل تربط إلى الموسم حين يستحق.
+- **المرحلة 8 — هب `/content/`**: `render_content_hub` (أحدث الأفلام والمسلسلات · التركي والأنمي · النوع والدولة واللغة والسنة · السيرفرات). **معطّل افتراضًا** (`content_hub=false`):
+  يبقى `/content` → 302 لأول سيرفر كما كان، ويُفعَّل بالإعداد مع المعاينة؛ ويُفهرس فقط مع `index_live`.
+- كلها **noindex في المعاينة** ولا تدخل الخريطة ولا قائمة الاعتماد؛ توسيع الاعتماد لها (قوائم/مواسم/هب) قرارٌ منفصل للمالك عبر `seo_release`.
+
 ### المراحل 4–9 — النشر الإنتاجي (`seo_release.py`)
 - رفع noindex عن **المعتمد** وحده (قائمة اعتماد `build_state.index_approved` من روابط اللقطة + `index_live`)، ثم الخريطة العامة (`sitemap_live`)،
   ثم IndexNow، ثم فحصٌ بعد النشر، ثم توسيعٌ بدفعاتٍ محدودة بإثراء TMDB وبوابات — كلٌّ خلف بوابة: فشلها = STOP وتراجع. من بطاقة

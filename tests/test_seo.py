@@ -1379,6 +1379,83 @@ def unit_enrich():
         check("هب الأنمي بالإنجليزية يضم One Piece وAttack on Titan وفيلم الأنمي", "/en/content/series/one-piece/" in an and "/en/content/series/attack-on-titan/" in an and "/en/content/movies/one-piece-film-red/" in an)
         check("page/1 يحوّل، وصفحةٌ خارج الحدّ 404، وقسمٌ فارغ 404", seo_pages.handle(d, "/content/anime/page/1/", "ar")[0] == 301
               and seo_pages.handle(d, "/content/anime/page/99/", "ar")[0] == 404 and seo_pages.handle(d, "/content/anime/genres/nope/", "ar")[0] == 404)
+        # المرحلة 6: قوائم النوع والدولة واللغة والسنة والأحدث (بُعدٌ واحد، معاينة noindex)
+        gslug = q("SELECT t.slug FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id WHERE t.kind='genre' AND ct.source IN ('tmdb','manual') LIMIT 1")
+        if gslug:
+            gc, gb, gh = seo_pages.handle(d, f"/content/genres/{gslug[0][0]}/", "ar")
+            gh_ = gb.decode()
+            check("قائمة النوع: 200 وnoindex وcanonical ذاتي وH1 واحد وItemList وBreadcrumbList",
+                  gc == 200 and gh["X-Robots-Tag"] == "noindex" and f'rel="canonical" href="https://guide.ssouq.com/content/genres/{gslug[0][0]}/"' in gh_
+                  and gh_.count("<h1") == 1 and '"ItemList"' in gh_ and '"BreadcrumbList"' in gh_)
+            check("قائمة نوعٍ بالإنجليزية بـ /en، وغير الموجود 404، وبلا شرطةٍ أخيرة 301",
+                  seo_pages.handle(d, f"/en/content/genres/{gslug[0][0]}/", "en")[0] == 200 and seo_pages.handle(d, "/content/genres/nope/", "ar")[0] == 404
+                  and seo_pages.handle(d, f"/content/genres/{gslug[0][0]}", "ar")[0] == 301)
+        lc = seo_pages.handle(d, "/content/latest/", "ar")
+        check("‏/content/latest/ و/movies/ و/series/ تعمل، وبلا شرطة 301، وسنة خارج النطاق 404، وpage/1 يحوّل",
+              lc[0] == 200 and seo_pages.handle(d, "/content/latest/movies/", "ar")[0] == 200 and seo_pages.handle(d, "/content/latest/series/", "ar")[0] == 200
+              and seo_pages.handle(d, "/content/latest", "ar")[0] == 301 and seo_pages.handle(d, "/content/year/1500/", "ar")[0] == 404
+              and seo_pages.handle(d, "/content/latest/page/1/", "ar")[0] == 301)
+        yr = q("SELECT year FROM content WHERE merged_into IS NULL AND available=1 AND year IS NOT NULL LIMIT 1")
+        if yr:
+            check("قائمة السنة تعمل وتحوي أعمال تلك السنة وحدها", seo_pages.handle(d, f"/content/year/{yr[0][0]}/", "ar")[0] == 200)
+        check("اسم سيرفرٍ يبدأ بـ latest لا تلتقطه الطبقة", seo_pages.handle(d, "/content/latestserver", "ar") is None)
+        # المرحلة 7: المواسم والحلقات (الحلقة بشروط episode_page وإلا 404)
+        sn = q("SELECT c.slug, s.number FROM season s JOIN content c ON c.id=s.content_id WHERE c.type='series' AND s.number>0 AND c.merged_into IS NULL ORDER BY c.id LIMIT 1")
+        if sn:
+            sc = seo_pages.handle(d, f"/content/series/{sn[0][0]}/season-{sn[0][1]}/", "ar")
+            sh = sc[1].decode()
+            check("صفحة الموسم: 200 وnoindex وcanonical ذاتي وH1 واحد وTVSeason وفتات الخبز",
+                  sc[0] == 200 and sc[2]["X-Robots-Tag"] == "noindex" and f'href="https://guide.ssouq.com/content/series/{sn[0][0]}/season-{sn[0][1]}/"' in sh
+                  and sh.count("<h1") == 1 and '"TVSeason"' in sh and '"BreadcrumbList"' in sh)
+            check("موسمٌ غير موجود 404، وحلقةٌ غير موجودة 404، وبلا شرطة 301",
+                  seo_pages.handle(d, f"/content/series/{sn[0][0]}/season-99/", "ar")[0] == 404
+                  and seo_pages.handle(d, f"/content/series/{sn[0][0]}/season-{sn[0][1]}/episode-9999/", "ar")[0] == 404
+                  and seo_pages.handle(d, f"/content/series/{sn[0][0]}/season-{sn[0][1]}", "ar")[0] == 301)
+        # حلقةٌ تستوفي الشروط تُخدم، ونقص الملخص يسقطها
+        con.execute("INSERT OR REPLACE INTO episode(content_id, season, number, title_en, title_ar, overview_en, overview_ar, air_date, source, updated_at) "
+                    "SELECT content_id, number, 77, 'Pilot X', 'التجريبية', ?, ?, '2020-01-01', 'tmdb', 0 FROM season WHERE content_id=(SELECT id FROM content WHERE type='series' AND merged_into IS NULL ORDER BY id LIMIT 1) AND number>0 LIMIT 1",
+                    ("A long enough episode summary " * 4, "ملخص حلقةٍ طويل بما يكفي " * 6))
+        con.commit()
+        er = q("SELECT c.slug, e.season FROM episode e JOIN content c ON c.id=e.content_id WHERE e.number=77")
+        if er:
+            ep_url = f"/content/series/{er[0][0]}/season-{er[0][1]}/episode-77/"
+            ec = seo_pages.handle(d, ep_url, "ar")
+            check("حلقةٌ بعنوان وملخص ≥ 80 وتاريخ: 200 وTVEpisode وnoindex", ec[0] == 200 and '"TVEpisode"' in ec[1].decode() and ec[2]["X-Robots-Tag"] == "noindex")
+            con.execute("UPDATE episode SET overview_ar='قصير', overview_en='short' WHERE number=77 AND content_id=(SELECT id FROM content WHERE slug=?)", (er[0][0],)); con.commit()
+            check("وبملخصٍ قصير تسقط الصفحة: 404 (لا صفحة حلقة بلا بيانات كافية)", seo_pages.handle(d, ep_url, "ar")[0] == 404)
+        # المرحلة 8: هب /content/ معطّلٌ افتراضًا (يبقى 302 في xm_lines)، ويعمل بإعداد content_hub
+        check("هب /content/ معطّل افتراضًا: None فيبقى سلوكه القديم", seo_pages.handle(d, "/content/", "ar") is None)
+        seo_db.set_setting(con, "content_hub", True); con.commit()
+        hc = seo_pages.handle(d, "/content/", "ar")
+        hh = hc[1].decode() if hc else ""
+        check("وبتفعيله: 200 وnoindex قبل index_live، H1 واحد، روابط الهبّات والأحدث، وCollectionPage",
+              bool(hc) and hc[0] == 200 and hc[2].get("X-Robots-Tag") == "noindex" and hh.count("<h1") == 1 and "/content/turkish/" in hh
+              and "/content/latest/series/" in hh and '"CollectionPage"' in hh, str(hc[:1]) if hc else "None")
+        seo_db.set_setting(con, "content_hub", False); con.commit()
+        # المرحلة 5: لوحة التحكم — تجاوز العنوان والوصف والفهرسة، وتحترم التجميد
+        import seo_admin
+        pbid = q("SELECT id FROM content WHERE slug='prison-break'")[0][0]
+        seo_admin.set_override(d, pbid, "ar", {"seo_title": "عنوان مخصص PB", "meta_desc": "وصف مخصص", "intro": "مقدمة المدير"})
+        pbh = seo_pages.handle(d, "/content/series/prison-break/", "ar")[1].decode()
+        check("تجاوز المدير يظهر: العنوان والوصف والمقدمة", "<title>عنوان مخصص PB</title>" in pbh and 'content="وصف مخصص"' in pbh and "مقدمة المدير" in pbh)
+        seo_admin.set_override(d, pbid, "en", {"index_flag": 0})
+        pbe = seo_pages.handle(d, "/en/content/series/prison-break/", "en")[1].decode()
+        check("index_flag=0 يُخرج اللغة من الفهرسة ويُسقط وسوم alternate", 'rel="alternate"' not in pbe and "noindex" in pbe)
+        seo_admin.set_override(d, pbid, "en", {"index_flag": ""})
+        seo_admin.set_override(d, pbid, "ar", {"seo_title": "", "meta_desc": "", "intro": ""})
+        check("مسح التجاوز يعيد المولَّد", "عنوان مخصص PB" not in seo_pages.handle(d, "/content/series/prison-break/", "ar")[1].decode())
+        seo_admin.set_slug(d, pbid, "prison-break-series")
+        check("تغيير الرابط يدويًّا: القديم 301 إلى الجديد والجديد 200", seo_pages.handle(d, "/content/series/prison-break/", "ar")[0] == 301
+              and seo_pages.handle(d, "/content/series/prison-break-series/", "ar")[0] == 200)
+        seo_admin.set_slug(d, pbid, "prison-break")
+        seo_db.set_setting(con, "identity_freeze", [pbid]); con.commit()
+        try:
+            seo_admin.set_override(d, pbid, "ar", {"seo_title": "x"}); frozen_ok = False
+        except ValueError:
+            frozen_ok = True
+        seo_db.set_setting(con, "identity_freeze", []); con.commit()
+        check("الكيان المجمّد لا يقبل تجاوزًا ولا تغييرًا", frozen_ok)
+        check("بحث اللوحة يجد الكيان باسمه وslug", any(r["id"] == pbid for r in seo_admin.search(d, "prison")))
         pp = seo_pages.handle(d, "/content/people/actors/wentworth-miller/", "ar")[1].decode()
         check("صفحة الممثل: أعماله بروابطها وPerson schema", '"@type": "Person"' in pp and "/content/series/prison-break/" in pp)
         # قرارات ما بعد المرحلة 2: تركيا → الهب، لغاتٌ فعّالة، الإثراء التلقائي موقوف، العيّنة الحقيقية، البحث اقتراحًا لا كتابة
