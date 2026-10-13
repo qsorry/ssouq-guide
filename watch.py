@@ -20,6 +20,7 @@
 import concurrent.futures
 import datetime
 import json
+import re
 import time
 
 import guide_pages
@@ -94,9 +95,11 @@ def fixtures(events):
         kind = st.get("type") or {}
         group = (c.get("group") or {}).get("name") or ""
         venue = c.get("venue") or {}
+        h, a = tournament._side(sides.get("home", comp[0])), tournament._side(sides.get("away", comp[1]))
         out.append({
-            "id": eid, "ts": tournament._ts(e["date"]), "time_ok": c.get("timeValid") is not False,
-            "home": tournament._side(sides.get("home", comp[0])), "away": tournament._side(sides.get("away", comp[1])),
+            "id": eid, "slug": "-".join(x for x in (eid, tournament._slug(h["en"], a["en"])) if x),
+            "ts": tournament._ts(e["date"]), "time_ok": c.get("timeValid") is not False,
+            "home": h, "away": a,
             "state": kind.get("state") or "pre", "status": kind.get("name") or "",
             "clock": str(st.get("displayClock") or ""),
             "stage": league._group(group, 0)[1] if group else STAGES.get((e.get("season") or {}).get("slug") or "", ""),
@@ -181,14 +184,22 @@ def _li(name):
     return "لل" + name[2:] if name.startswith("ال") else "ل" + name
 
 
-def _row(m, badge=""):
-    """صف مباراةٍ من دوري: بلا رابط (لا صفحات لمباريات الدوريات)، والناقل تحت ما لم ينتهِ."""
+def match_url(k, m):
+    return f"{PATH}/{k}/{m['slug']}"
+
+
+def _row(m, badge="", k=None, new_tab=False):
+    """صف مباراةٍ من دوري: رابطٌ إلى صفحتها إن عُرف الدوري `k`، والناقل تحت ما لم ينتهِ."""
     mid, note, cls = tournament._status(m)
     stage = f'<small class="stage">{_esc(m["stage"])}</small>' if m["stage"] else ""
     tv = (f'<small class="tv">{tournament.TV_ICON}<span dir="auto">{_esc(badge)}</span></small>'
           if badge and m["state"] != "post" and m["status"] not in OFF else "")
-    return (f'<li><div class="match{cls}">{tournament._team(m["home"])}<span class="mid">{mid}{note}{stage}{tv}</span>'
-            f'{tournament._team(m["away"], True)}</div></li>')
+    inner = (f'{tournament._team(m["home"])}<span class="mid">{mid}{note}{stage}{tv}</span>'
+             f'{tournament._team(m["away"], True)}')
+    if not k:
+        return f'<li><div class="match{cls}">{inner}</div></li>'
+    target = ' target="_blank" rel="noopener"' if new_tab else ""
+    return f'<li><a class="match{cls}" href="{match_url(k, m)}"{target}>{inner}</a></li>'
 
 
 def _days(ms, row, newest_first=False):
@@ -206,7 +217,7 @@ def _painter(slug, cups, ms):
         pz = t._contests(ms)
         return lambda xs, newest=False: t._by_day(xs, newest_first=newest, pz=pz)
     badge = COMPS[slug]["badge"]
-    return lambda xs, newest=False: _days(xs, lambda m: _row(m, badge), newest)
+    return lambda xs, newest=False: _days(xs, lambda m: _row(m, badge, slug), newest)
 
 
 def _when(m):
@@ -303,6 +314,8 @@ def _updated(at):
 def render(slug, cups=(), now=None):
     """صفحة مشاهدة مسابقة ← (رمز HTTP، بايتات، مدة الكاش)، أو None لمسابقة لا صفحة لها.
     تعذّر المباريات = 503 بالصفحة نفسها (القنوات والأجهزة والأسئلة باقية)، فلا تُفهرس بلا مواعيد."""
+    if "/" in slug:
+        return render_match(*slug.split("/", 1), now=now)
     if slug not in available(cups):
         return None
     c, cup, now = COMPS[slug], _cup(cups, slug), time.time() if now is None else now
@@ -429,6 +442,105 @@ def render_hub(cups=(), now=None):
     return (200 if newest else 503), body, (tournament.LIVE_TTL if live else 300)
 
 
+# ---------- صفحة المباراة ----------
+_summaries = {}                                      # (الدوري، المعرّف) ← كاش ملخّص المباراة (مباريات الخلاصة وحدها)
+
+
+def _summary_of(k, m):
+    f = _summaries.get((k, m["id"]))
+    if f is None:
+        code = league.LEAGUES[k]["code"]
+        f = _summaries[(k, m["id"])] = league.Feed(
+            lambda: tournament.summary(league.get_json(f"/site/v2/sports/soccer/{code}/summary?event={m['id']}")),
+            lambda d: tournament.LIVE_TTL if d["state"] == "in" else tournament.DONE_TTL if d["state"] == "post"
+            else league.TTL)
+    return f.get()[0]
+
+
+def sitemap():
+    """صفحات مباريات الدوريات لخريطة الموقع (من كاش الدوريات؛ ما تعذّر جلبه يُترك)."""
+    out = []
+    for k in league.LEAGUES:
+        data = _feeds[k].get()[0]
+        out += [(match_url(k, m), "daily", "0.5") for m in (data or {}).get("matches", [])]
+    return out
+
+
+def render_match(k, tail, now=None):
+    """صفحة مباراةٍ من دوري (‏/watch/<الدوري>/<المعرّف-الفريقان>) ← (رمز، بايتات، مدة الكاش)، أو
+    ("redirect", الرابط) لرابطٍ غير رابطها، أو None لدوريٍّ غير معروف أو مباراةٍ ليست في كاشه."""
+    mt = re.fullmatch(r"(\d+)(?:-[a-z0-9-]*)?", tail or "")
+    if k not in league.LEAGUES or not mt:
+        return None
+    now = time.time() if now is None else now
+    data = _get(k, ())[0]
+    m = next((x for x in (data or {}).get("matches", []) if x["id"] == mt.group(1)), None)
+    if m is None:
+        return None
+    if tail != m["slug"]:
+        return "redirect", match_url(k, m)
+    s = _summary_of(k, m) or {"goals": [], "stats": {}, "venue": "", "city": "", "attendance": None}
+    c, h, a = COMPS[k], m["home"], m["away"]
+    name = league.LEAGUES[k]["name"]
+    page_url = guide_pages.SITE + match_url(k, m)
+    when = _when(m)
+    h1 = f"مباراة {h['name']} و{a['name']}"
+    title = f"{h['name']} و{a['name']} في {name}: موعد المباراة والقناة الناقلة والنتيجة | سمارت سوق"
+    place = ", ".join(x for x in (s["venue"] or m["venue"], s["city"] or m["city"]) if x)
+    mid, note, cls = tournament._status(m)
+    off = m["status"] in OFF
+    tv = "" if m["state"] == "post" or off else (
+        f'<p class="when tvline">{tournament.TV_ICON}القناة الناقلة: <b dir="auto">{_esc(c["badge"])}</b></p>')
+    hero = (f'<section class="card mhero" aria-label="{_esc(h1)}"><span class="stage">{_esc(name)}'
+            + (f' · {_esc(m["stage"])}' if m["stage"] else "") + '</span>'
+            f'<div class="match{cls}">{tournament._team(h)}<span class="mid">{mid}{note}</span>'
+            f'{tournament._team(a, True)}</div><p class="when">{_esc(when)}</p>{tv}'
+            + (f'<p class="when">الملعب: <span dir="auto">{_esc(place)}</span></p>' if place else "") + "</section>")
+    parts = [hero]
+    goals = tournament._goals_html(m, s)
+    if goals:
+        parts.append(f'<section class="card"><h2>الأهداف</h2>{goals}</section>')
+    parts.append(tournament._ad("cup-ad-inline", f"watch-{k}-match"))
+    stats = tournament._stats_html(m, s)
+    if stats:
+        parts.append(f'<section class="card"><h2>إحصاءات المباراة</h2>{stats}</section>')
+    ans = (f"تُقام مباراة {h['name']} و{a['name']} في {name}: {when}." if m["state"] == "pre" and not off
+           else f"أُقيمت مباراة {h['name']} و{a['name']} في {name}: {when}." if m["state"] == "post"
+           else f"مباراة {h['name']} و{a['name']} في {name} {'مؤجلة' if m['status'] == 'STATUS_POSTPONED' else 'ملغاة'}."
+           if off else f"مباراة {h['name']} و{a['name']} في {name} جارية الآن.")
+    qa = [(f"متى مباراة {h['name']} و{a['name']}؟", ans),
+          (f"ما القناة الناقلة لمباراة {h['name']} و{a['name']}؟", c["tv"])]
+    parts.append('<section class="card faq"><h2>تفاصيل المباراة</h2>'
+                 + "".join(f"<h3>{_esc(q)}</h3><p>{_esc(r)}</p>" for q, r in qa) + "</section>")
+    todays = [x for x in (data or {}).get("matches", []) if x is not m
+              and tournament._day(x["ts"]) == tournament._day(m["ts"])]
+    if todays:
+        parts.append(f'<section class="card"><h2>مباريات {_esc(name)} في اليوم نفسه</h2>'
+                     + _days(todays, lambda x: _row(x, c["badge"], k)) + "</section>")
+    parts.append(f'<p class="lsrc"><a class="link" href="{PATH}/{k}">مشاهدة {_esc(name)}: كل المواعيد والقنوات ←</a> · '
+                 f'<a class="link" href="{league.PATH}{k}">جدول الترتيب ←</a></p>')
+    event = {"@context": "https://schema.org", "@type": "SportsEvent", "name": f"{h['name']} × {a['name']}",
+             "sport": "Soccer", "startDate": datetime.datetime.fromtimestamp(m["ts"], RIYADH).isoformat(),
+             "eventStatus": "https://schema.org/" + ("EventPostponed" if m["status"] == "STATUS_POSTPONED"
+                                                    else "EventCancelled" if m["status"] == "STATUS_CANCELED"
+                                                    else "EventScheduled"),
+             "homeTeam": {"@type": "SportsTeam", "name": h["name"]},
+             "awayTeam": {"@type": "SportsTeam", "name": a["name"]},
+             "superEvent": {"@type": "SportsEvent", "name": name}, "url": page_url}
+    if place:
+        event["location"] = {"@type": "Place", "name": s["venue"] or m["venue"] or place, "address": place}
+    ld = [_crumbs(("مشاهدة المباريات", PATH), (f"مشاهدة {name}", f"{PATH}/{k}"), (h1, match_url(k, m))), event,
+          {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+              {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": r}} for q, r in qa]}]
+    live = m["state"] == "in"
+    desc = (f"مباراة {h['name']} و{a['name']} في {name}: {when}. القناة الناقلة {c['badge']}"
+            + (f"، والنتيجة {h['score']}-{a['score']}" if m["state"] != "pre" else "") + ".")
+    crumb = (f'<a class="link" href="{PATH}">مشاهدة المباريات</a> ← <a class="link" href="{PATH}/{k}">{_esc(name)}</a>'
+             f' ← {_esc(h1)}')
+    body = _doc(title, desc, page_url, ld, crumb, f"<h1>{_esc(h1)}</h1>", "".join(parts), live, f"watch-{k}-match")
+    return 200, body, (tournament.LIVE_TTL if live else 300)
+
+
 # ---------- ودجت رئيسية متجر سلة ----------
 # الدوريات الخمسة بترتيب أولويتها في الرئيسية. ما لا مباريات له في الفترة الحالية لا يظهر (فدوري أبطال
 # أوروبا يظهر «عند وجود مباريات»، وكل دوري يغيب في فترات التوقف الدولي) — فالرئيسية تعرض المتاح فقط.
@@ -465,7 +577,7 @@ def render_widget(theme="", now=None):
         blocks.append(f'<div class="wcup"><h2><span>{_esc(league.LEAGUES[k]["name"])}'
                       + (f' <small class="n">· {note}</small>' if note else "")
                       + f'</span><a href="{PATH}/{k}" target="_blank" rel="noopener">كل المواعيد ←</a></h2>'
-                      + _days(rows, lambda m: _row(m, badge)) + "</div>")
+                      + _days(rows, lambda m: _row(m, badge, k, True)) + "</div>")
     if blocks:
         body = f'<div class="{"wcols" if len(blocks) > 1 else "wone"}">{"".join(blocks)}</div>'
     elif all_ms:
