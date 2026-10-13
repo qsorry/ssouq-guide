@@ -559,6 +559,19 @@ body.modal-open{overflow:hidden}
   </section>
 
   <!-- ===================== قائمة التجديد: مقارنة سلة باللوحات ===================== -->
+  <!-- ===================== المتابعة: قائمة عملٍ واحدة بمرشّحات — صفٌّ لكل طلبٍ يحتاج عملًا ===================== -->
+  <section id="secWork">
+    <div class="shead"><span class="sic c-teal"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg></span>
+      <h2>ما يحتاج عملًا<small>الأهمّ أولًا: ما عليه شكوى، ثم المفقود، ثم المكرر، ثم فرق المدة، ثم من ينتهي قريبًا. اضغط الطلب تفتح بطاقة العميل.</small></h2>
+      <button class="ghost" id="wkLoad" type="button">تحديث</button></div>
+    <div class="fchips" id="wkChips"></div>
+    <p class="msg" id="wkMsg"></p>
+    <p class="empty" id="wkEmpty">اضغط «تحديث» لجمع ما يحتاج عملًا من كل المصادر.</p>
+    <div class="scroll hidden" id="wkWrap"><table class="rt"><thead><tr><th>الطلب</th><th>العميل</th><th>الحال</th><th>اللوحة</th><th>المتبقي</th><th></th></tr></thead><tbody id="wkBody"></tbody></table></div>
+    <p class="hint" id="wkMore" style="margin-top:8px"></p>
+  </section>
+
+  <!-- ===================== قائمة التجديد ===================== -->
   <section id="secCmp">
     <div class="shead"><span class="sic c-rose"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg></span>
       <h2>قارِن سلة باللوحات<small>يوزرٌ مباعٌ في سلة — أموجودٌ على لوحته؟ وبالمدة نفسها؟</small></h2></div>
@@ -1909,18 +1922,54 @@ $('#dlRenewal').onclick = e => { e.preventDefault(); location.href = B + '/api/r
 $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/users.xlsx'; };
 $('#dlLines').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/store-lines.xlsx'; };
 
+
+/* ============ المتابعة: قائمة عملٍ واحدة بمرشّحات ============ */
+const WK = {rows: null, f: ''};
+const WK_FLAG = {complaint: ['شكوى', 'bad'], lost: ['مفقود', 'bad'], dup: ['مكرر', 'bad'], mismatch: ['فرق المدة', 'warn'], renew: ['ينتهي قريبًا', 'warn'], claim: ['طلب تجديد', '']};
+const WK_LIMIT = 200;
+async function wkLoad(){
+  const b = $('#wkLoad'); b.disabled = true; b.textContent = 'جارٍ الجمع…';
+  const d = await api('/api/renew/work');
+  b.disabled = false; b.textContent = 'تحديث';
+  if (d.error) return note($('#wkMsg'), d.error);
+  WK.rows = d.rows || []; WK.counts = d.counts || {}; wkRender();
+  const bd = $('#msgsBadge'); bd.textContent = AR(d.total || 0); bd.classList.toggle('hidden', !d.total);   // العدّاد على شاشة المتابعة
+}
+function wkRender(){
+  const rows = WK.rows || [], c = WK.counts || {};
+  const chips = [{k: '', t: 'الكل', n: rows.length}].concat(Object.keys(WK_FLAG).map(k => ({k, t: WK_FLAG[k][0], n: c[k] || 0})).filter(x => x.n || x.k === WK.f));
+  $('#wkChips').innerHTML = chips.map(x => `<button class="fchip" type="button" data-k="${x.k}" aria-pressed="${x.k === WK.f}">${x.t}<em>${AR(x.n)}</em></button>`).join('');
+  $('#wkChips').querySelectorAll('.fchip').forEach(x => x.onclick = () => { WK.f = x.dataset.k; wkRender(); });
+  const list = rows.filter(r => !WK.f || r.flags.includes(WK.f));
+  $('#wkEmpty').textContent = rows.length ? 'لا شيء في هذا المرشّح ✓' : 'لا شيء يحتاج عملًا الآن ✓';
+  $('#wkEmpty').classList.toggle('hidden', !!list.length); $('#wkWrap').classList.toggle('hidden', !list.length);
+  const det = r => [r.flags.includes('dup') && r.detail.first_order ? `الأقدم <span class="ltr">${esc(r.detail.first_order)}</span>` : '',
+    r.flags.includes('mismatch') ? `سلة ${AR(r.detail.store_months)} · اللوحة ${AR(r.detail.panel_months)}` : '',
+    r.flags.includes('complaint') && r.detail.complaint ? `#${esc(r.detail.complaint.id)}` : ''].filter(Boolean).join(' · ');
+  $('#wkBody').innerHTML = list.slice(0, WK_LIMIT).map(r => `<tr><td data-l="الطلب"><a href="#secLost" class="wkO ltr" data-o="${esc(r.order)}"><b>${esc(r.order)}</b></a></td>`
+    + `<td data-l="العميل">${esc(r.customer) || '—'}${r.phone ? `<br><small class="ltr">${esc(r.phone)}</small>` : ''}</td>`
+    + `<td data-l="الحال">${r.flags.map(f => `<span class="pill ${WK_FLAG[f][1]}">${WK_FLAG[f][0]}</span>`).join(' ')}${det(r) ? `<br><small>${det(r)}</small>` : ''}</td>`
+    + `<td data-l="اللوحة">${esc(r.panel) || '—'}</td><td data-l="المتبقي">${esc(r.remaining) || (r.days_left != null ? AR(r.days_left) + ' يومًا' : '—')}</td>`
+    + `<td><div class="acts" style="margin:0">${r.flags.includes('complaint') ? `<button class="go wkCq" data-o="${esc(r.order)}" type="button">جهّز الردّ</button>` : `<button class="ghost wkO" data-o="${esc(r.order)}" type="button">افتح</button>`}</div></td></tr>`).join('');
+  $('#wkMore').textContent = list.length > WK_LIMIT ? `تُعرض ${AR(WK_LIMIT)} من ${AR(list.length)} — ضيّق المرشّح` : '';
+  $('#wkBody').querySelectorAll('.wkO').forEach(a => a.onclick = e => { e.preventDefault(); showTab('lost'); $('#loQ').value = a.dataset.o; $('#loClear').classList.remove('hidden'); loFind(a.dataset.o); window.scrollTo({top: 0}); });
+  $('#wkBody').querySelectorAll('.wkCq').forEach(a => a.onclick = () => { showTab('reply'); $('#rpQ').value = a.dataset.o; $('#rpClear').classList.remove('hidden'); rpFind(a.dataset.o); });
+}
+$('#wkLoad').onclick = wkLoad;
+
 /* ============ التبويبات: قسمٌ واحد في كل مرة، ويُحفظ آخر تبويب ============ */
 // الشاشات الثلاث والإعداد: كل شاشةٍ أقسامها (الأقسام نفسها بمعرّفاتها القديمة) — والأسماء القديمة (data · cmp · lost …)
 // تبقى مقبولةً في showTab وتُحوَّل إلى شاشتها، فلا ينكسر رابطٌ ولا سكربت.
-const TABS = {client:['secLost','secReply'], queue:['secCmp','secDup','secSell','secMsgs','secQ'], sources:['secData','secAn'], cfg:['secCfg']};
+const TABS = {client:['secLost','secReply'], queue:['secWork','secCmp','secDup','secSell','secMsgs','secQ'], sources:['secData','secAn'], cfg:['secCfg']};
 const TAB_ALIAS = {data:'sources', cmp:'queue', sell:'queue', dup:'queue', lost:'client', reply:'client', msgs:'queue', q:'queue'};
-const SUB_NAMES = {secLost:'البحث والمفقود', secReply:'الردّ على الشكاوى', secCmp:'قائمة التجديد', secDup:'المكرر والبدائل', secSell:'المعروض للبيع', secMsgs:'الرسائل', secQ:'الطلبات', secData:'البيانات', secAn:'التحليل'};
+const SUB_NAMES = {secWork:'ما يحتاج عملًا', secLost:'البحث والمفقود', secReply:'الردّ على الشكاوى', secCmp:'قائمة التجديد', secDup:'المكرر والبدائل', secSell:'المعروض للبيع', secMsgs:'الرسائل', secQ:'الطلبات', secData:'البيانات', secAn:'التحليل'};
 const OLD_FOCUS = {data:'secData', cmp:'secCmp', sell:'secSell', dup:'secDup', lost:'secLost', reply:'secReply', msgs:'secMsgs', q:'secQ'};
 function showTab(t, focus){
   focus = focus || OLD_FOCUS[t] || '';          // اسمٌ قديم: تُفتح شاشته ويُقفز إلى قسمه
   t = TAB_ALIAS[t] || t;
   if (!TABS[t]) t = 'client';
   if (t === 'queue' && typeof loadDup === 'function') loadDup();
+  if (t === 'queue' && typeof wkLoad === 'function' && !WK.rows) wkLoad();   // القائمة الواحدة تُجمع عند فتح الشاشة أول مرة
   if (t === 'client' && typeof idxStatus === 'function') idxStatus();   // حال الفهرس فقط (يُحدَّث في الخلفية) — لا فحص تلقائي
   Object.keys(TABS).forEach(k => TABS[k].forEach(id => { const e = document.getElementById(id); if (e) e.classList.toggle('tab-off', k !== t); }));
   document.querySelectorAll('.jump a[data-tab]').forEach(a => a.setAttribute('aria-selected', a.dataset.tab === t ? 'true' : 'false'));
@@ -2070,7 +2119,7 @@ let DUPWA = false, DUPCH = '', DUPNUM = '';
 function renderDupMsgs(msgs){
   $('#msgsEmpty').classList.toggle('hidden', !!msgs.length);
   const pend = msgs.filter(m => !(m.sent && m.sent.ok)).length;
-  const bd = $('#msgsBadge'); bd.textContent = AR(pend); bd.classList.toggle('hidden', !pend);
+  if (!WK.rows) { const bd = $('#msgsBadge'); bd.textContent = AR(pend); bd.classList.toggle('hidden', !pend); }   // قبل جمع قائمة المتابعة: عدّاد الرسائل المعلّقة
   const ch = {contest: 'الإرسال من رقم المسابقة المربوط' + (DUPNUM ? ' (' + DUPNUM + ')' : ''), wa: 'الإرسال عبر قناة واتساب خدمة سلة'};
   $('#dupWaNote').textContent = DUPCH ? '(' + ch[DUPCH] + ')' : '(لا رقم مربوط: افتح المسابقة واربط الرقم، أو استعمل اليدوي)';
   $('#dupMsgList').innerHTML = msgs.map((m, k) => {

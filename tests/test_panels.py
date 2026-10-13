@@ -739,6 +739,49 @@ def test_search_replaced_dup():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_work_queue():
+    print("== قائمة المتابعة الواحدة: صفٌّ لكل طلب بعلاماته من كل المصادر، والأهمّ أولًا ==")
+    import datetime
+    import json
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="work_")
+    keep = X.DATA_DIR
+    try:
+        X.DATA_DIR = d
+        today = renew._today()
+        st = today - datetime.timedelta(days=60)
+        def ln(order, user, phone="0500000001", name="ع", months=12, date=st):
+            return {"order": order, "date": date.isoformat(), "phone": phone, "customer": name, "username": user,
+                    "password": "pw" + user, "host": "http://m.ink", "months": months, "expiry": renew.add_months(st, months).isoformat()}
+        cfg = {"panels": [{"id": "pm", "name": "مرح", "hosts": ["http://m.ink"], "account_id": "accM", "gate_id": "gm"}], "renewal_days": 45}
+        panels.save_store_lines(d, [ln("10", "111", name="مفقود"), ln("20", "222", "0500000002", "الأول"),
+                                    ln("21", "222", "0500000003", "الثاني", date=st + datetime.timedelta(days=3)),
+                                    ln("30", "333", "0500000004", "فرق"), ln("40", "444", "0500000005", "قريب"), ln("50", "555", "0500000006", "سليم")])
+        soon = (today + datetime.timedelta(days=10)).isoformat()
+        far = (today + datetime.timedelta(days=300)).isoformat()
+        panels.save_panel_lines(d, "pm", "مرح", [{"username": "222", "password": "x", "exp": far, "package": "12 Months", "months": 12},
+                                                 {"username": "333", "password": "x", "exp": far, "package": "6 Months", "months": 6},
+                                                 {"username": "444", "password": "x", "exp": soon, "package": "12 Months", "months": 12},
+                                                 {"username": "555", "password": "x", "exp": far, "package": "12 Months", "months": 12}])
+        with open(X.complaints_path(d), "w", encoding="utf-8") as f:
+            json.dump({"rows": [{"id": "558", "status": "بانتظار رد التاجر", "order": "40", "customer": "قريب", "url": ""},
+                                {"id": "559", "status": "تم الحل", "order": "50", "customer": "سليم", "url": ""}]}, f, ensure_ascii=False)
+        w = X.work_queue(cfg, d, [])
+        by = {r["order"]: r for r in w["rows"]}
+        check("one row per order needing work; the OK line is absent", sorted(by) == ["10", "21", "30", "40"], str(sorted(by)))
+        check("lost / duplicate (later order only) / duration mismatch / expiring soon each flagged",
+              by["10"]["flags"] == ["lost"] and by["21"]["flags"] == ["dup"] and by["21"]["detail"]["first_order"] == "20"
+              and by["30"]["flags"] == ["mismatch"] and by["30"]["detail"]["panel_months"] == 6 and "renew" in by["40"]["flags"], str({k: v["flags"] for k, v in by.items()}))
+        check("an open complaint on an order is its first flag; a solved one is not",
+              by["40"]["flags"][0] == "complaint" and by["40"]["detail"]["complaint"]["id"] == "558" and "complaint" not in by.get("50", {"flags": []})["flags"])
+        check("complaint first, then lost, dup, mismatch", [r["order"] for r in w["rows"]] == ["40", "10", "21", "30"], str([r["order"] for r in w["rows"]]))
+        check("customer and panel carried from the line (compare rows too); counts per flag", by["10"]["customer"] == "مفقود" and by["40"]["panel"] == "مرح" and by["30"]["customer"] == "فرق"
+              and w["counts"]["complaint"] == 1 and w["counts"]["lost"] == 1 and w["counts"]["dup"] == 1 and w["total"] == 4, str(w["counts"]))
+    finally:
+        X.DATA_DIR = keep
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_search_index():
     print("== فهرس البحث: التوحيد، والإبطال بتغيّر المصادر، والبناء مرةً واحدة، والمصادر التالفة ==")
     import datetime
@@ -907,6 +950,7 @@ def main():
     test_dup_create()
     test_order_lost()
     test_search_replaced_dup()
+    test_work_queue()
     test_search_index()
     test_dup_gate_fallback()
     print("\n----------------------------------------")

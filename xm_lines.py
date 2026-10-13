@@ -4180,6 +4180,97 @@ def complaints_panel_states(rows, rcfg, ws, racs):
             r["panel_state"] = ("no_user" if ix and not ix.get("username") else "unknown") if ix is not None else "unknown"
 
 
+WORK_ORDER = {"complaint": 0, "lost": 1, "dup": 2, "mismatch": 3, "renew": 4, "claim": 5}
+
+
+def work_queue(rcfg, rws, racs, idx=None, days=None, is_admin=False):
+    """قائمة المتابعة الواحدة: صفٌّ لكل طلبٍ يحتاج عملًا، بعلاماته (شكوى · مفقود · مكرر · فرق المدة · ينتهي قريبًا ·
+    طلب تجديد)، مجموعةً من مصادرها الحالية (الفهرس، المقارنة، الشكاوى المحفوظة، طلبات صفحة التجديد) — لا تغيّر فيها.
+    الأهمّ أولًا: ما عليه شكوى، ثم المفقود، ثم المكرر، ثم فرق المدة، ثم من ينتهي قريبًا (الأعجل أولًا).
+    ← {rows, counts, total, built}."""
+    idx = idx or renew_index(rcfg, rws, racs)
+    rows = {}
+
+    def row(order, **kw):
+        o = renew.norm_order(order) or str(order or "")
+        r = rows.get(o)
+        if not r:
+            r = rows[o] = {"order": str(order or ""), "customer": "", "phone": "", "panel": "", "username": "",
+                           "days_left": None, "remaining": "", "flags": [], "detail": {}}
+        for k, v in kw.items():
+            if k == "flag":
+                if v not in r["flags"]:
+                    r["flags"].append(v)
+            elif k == "detail":
+                r["detail"].update(v)
+            elif v not in (None, "") and not r.get(k):
+                r[k] = v
+        return r
+
+    cq = complaints_for_orders(rws)
+    for o, c in cq.items():
+        if not c.get("replied"):
+            row(o, flag="complaint", detail={"complaint": c})
+    try:
+        stored = _complaints_stored(rws) or {}
+        for c in complaints.open_only(stored.get("rows") or []):
+            o = renew.norm_order(c.get("order")) if c.get("order") else ""
+            if o in rows and not c.get("replied_at"):
+                row(o, customer=c.get("customer", ""))
+    except Exception:
+        pass
+    for r in idx["rows"]:
+        base = {"customer": r["customer"], "phone": r["phone"], "panel": r["panel_name"], "username": r["username"],
+                "days_left": r["days_left"], "remaining": r["remaining"]}
+        if r["state"] == "missing" and not r["done"] and not r["expired"]:
+            row(r["order"], flag="lost", **base)
+        d = r.get("dup")
+        if d and not d["mine_first"] and not r["done"] and not r["expired"]:
+            row(r["order"], flag="dup", detail={"first_order": d["first_order"]}, **base)
+        if r["order_norm"] in rows:                       # طلبٌ عليه شكوى: بياناته من خطّه
+            row(r["order"], **base)
+    try:
+        cmp_ = panels.compare(rcfg, rws, days)
+    except Exception:
+        cmp_ = {"rows": [], "renewal_days": 0}
+    for r in cmp_["rows"]:
+        if not r.get("order"):
+            continue
+        base = {"phone": r.get("phone", ""), "panel": r.get("found_panel_name") or r.get("panel_name", ""), "username": r.get("username", ""),
+                "days_left": r.get("days_left"), "remaining": remaining_text_safe(r.get("panel_exp"))}
+        if r.get("kind") == panels.DURATION_MISMATCH:
+            row(r["order"], flag="mismatch", detail={"store_months": r.get("store_months"), "panel_months": r.get("panel_months")}, **base)
+        if r.get("days_left") is not None and (r.get("expired") or r.get("expiring_soon")):
+            row(r["order"], flag="renew", detail={"expired": bool(r.get("expired"))}, **base)
+    for o, r in rows.items():                          # صفٌّ من المقارنة بلا عميل: اسمه وجواله من خطّه في الفهرس
+        if not r["customer"]:
+            for i in idx["by_order"].get(o) or []:
+                ln = idx["rows"][i]
+                row(o, customer=ln["customer"], phone=ln["phone"], panel=ln["panel_name"])
+    if is_admin:
+        try:
+            db = renew.load_db(DATA_DIR)
+            for c in db.get("claims", {}).values():
+                if c.get("state") in ("queued", "stuck") and c.get("order"):
+                    row(c["order"], flag="claim", customer=c.get("name", ""), phone=c.get("phone", ""), detail={"claim": c.get("state")})
+        except Exception:
+            pass
+    out = list(rows.values())
+    for r in out:
+        r["flags"].sort(key=lambda f: WORK_ORDER.get(f, 9))
+        r["kind"] = r["flags"][0] if r["flags"] else ""
+    out.sort(key=lambda r: (WORK_ORDER.get(r["kind"], 9), r["days_left"] if r["days_left"] is not None else 10 ** 6, r["order"]))
+    counts = {k: sum(1 for r in out if k in r["flags"]) for k in WORK_ORDER}
+    return {"rows": out, "counts": counts, "total": len(out), "renewal_days": cmp_.get("renewal_days", 0), "built": renew.now_iso()}
+
+
+def remaining_text_safe(exp):
+    try:
+        return panels.remaining_text(str(exp or ""), renew._today()) if exp else ""
+    except Exception:
+        return ""
+
+
 def complaints_for_orders(ws):
     """{رقم الطلب: الشكوى المفتوحة (تنتظر التاجر)} من المحفوظ — لتُعلَّم بها طلبات «المفقود»."""
     stored = _complaints_stored(ws) or {}
@@ -6852,6 +6943,11 @@ class Handler(BaseHTTPRequestHandler):
                 t0 = time.perf_counter()
                 d = reply_lookup(st, rcfg, rws, racs, self._q("q"))
                 d["wa_linked"] = dup_wa_ready(st)
+                d["ms"] = int((time.perf_counter() - t0) * 1000)
+                return self._send(200, d)
+            if path == "/api/renew/work":           # قائمة المتابعة الواحدة: كل طلبٍ يحتاج عملًا بعلاماته
+                t0 = time.perf_counter()
+                d = work_queue(rcfg, rws, racs, idx=renew_index(rcfg, rws, racs), days=_days_arg(self._q("days")), is_admin=(role == "admin"))
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/lost":           # المفقود: مباعٌ ولا يوزر له على أي لوحة ولم يُستبدل
