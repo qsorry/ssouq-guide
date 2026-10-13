@@ -625,6 +625,18 @@ def test_order_lost():
               len(s["rows"]) == 1 and s["rows"][0]["state"] == "missing" and s["order"] == "274576474", str(s)[:200])
         check("search by username and by password", panels.order_search(cfg, d, "222")["rows"][0]["state"] == "found"
               and panels.order_search(cfg, d, "pw333")["rows"][0]["username"] == "333")
+        # البحث بالجوال بأي صيغة
+        d4 = tempfile.mkdtemp(prefix="phone_")
+        try:
+            panels.save_store_lines(d4, [{"order": "500100200", "date": "2026-09-01", "phone": "966558401163", "username": "u55",
+                                          "customer": "c", "months": 12, "host": "kasper.tv"}])
+            for q in ("+966 55 840 1163", "55 840 1163", "0558401163", "00966558401163", "٠٥٥٨٤٠١١٦٣"):
+                r = panels.order_search(cfg, d4, q)
+                check("search by phone (%s)" % q, len(r["rows"]) == 1 and r["rows"][0]["match"] == "phone"
+                      and r["order"] == "500100200", str(r)[:160])
+            check("phone search: other number finds nothing", not panels.order_search(cfg, d4, "0558401164")["rows"])
+        finally:
+            shutil.rmtree(d4, ignore_errors=True)
         # الربط: يوزرٌ صحيح للطلب يحلّ محلّ المسجَّل خطأً
         cur = panels.link_order(d, "274576474", "333", "realpw", replace="111")
         s = panels.order_search(cfg, d, "274576474")

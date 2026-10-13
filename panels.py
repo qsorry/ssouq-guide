@@ -1152,6 +1152,23 @@ def norm_query(q):
     return re.sub(r"[\s\-_.#/‎‏]+", "", str(q or "").translate(_AR_DIGITS)).strip()
 
 
+def phone_key(q):
+    """الجوال السعودي بصيغته المحلية (9 أرقام تبدأ بـ5) إن كان النص جوالًا بأي صيغة:
+    «+966 55 840 1163» و«55 840 1163» و«0558401163» و«00966558401163» ← «558401163». وإلا ''."""
+    d = re.sub(r"\D", "", str(q or "").translate(_AR_DIGITS))
+    if d.startswith("00"):
+        d = d[2:]
+    if d.startswith("966") and len(d) == 12:
+        d = d[3:]
+    elif d.startswith("0") and len(d) == 10:
+        d = d[1:]
+    return d if len(d) == 9 and d.startswith("5") else ""
+
+
+def _phone_of(v):
+    return phone_key(v)
+
+
 def order_search(config, data_dir, q, replaced=None, today=None, export=None, idx=None):
     """بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) في الفهرس: تطابقٌ تامٌّ بعد توحيد الصيغة، وكل نتيجةٍ مرةً واحدة
     ولو طابقت بأكثر من مفتاح، ومعها ما طابقت به. ثم فهرس طلبات سلة لطلبٍ لا يوزر له. ← {rows, index, order}."""
@@ -1169,9 +1186,19 @@ def order_search(config, data_dir, q, replaced=None, today=None, export=None, id
             if i not in why:
                 hits.append(i)
             why.setdefault(i, key)
+    pk = "" if hits else phone_key(raw)
+    if pk:                                      # لا طلب ولا يوزر بهذا النص: يُبحث به جوالًا بأي صيغة (الأحدث أولًا)
+        hits = sorted((i for i, r in enumerate(idx["rows"]) if _phone_of(r.get("phone")) == pk),
+                      key=lambda i: str(idx["rows"][i].get("date") or ""), reverse=True)
+        why = dict.fromkeys(hits, "phone")
     rows = [dict(idx["rows"][i], match=why[i]) for i in hits]
     order = rows[0]["order"] if rows and all(r["order"] == rows[0]["order"] for r in rows) else (qo if not rows else "")
     ix = idx["orders_index"].get(qo) if qo else None
+    if pk and not rows:                         # طلبات بهذا الجوال في فهرس سلة بلا يوزر محفوظ: الأحدث
+        found = sorted(((no, o) for no, o in idx["orders_index"].items() if _phone_of(o.get("phone")) == pk),
+                       key=lambda t: str(t[1].get("date") or ""), reverse=True)
+        if found:
+            qo, ix = found[0][0], found[0][1]
     if ix:
         exp = line_expiry(ix)
         ix = {k: ix.get(k) for k in ("phone", "date", "months", "devices", "host", "username", "sid")

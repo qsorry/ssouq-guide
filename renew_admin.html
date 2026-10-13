@@ -698,9 +698,9 @@ body.modal-open{overflow:hidden}
       <h2>البحث والمفقود<small>ابحث برقم الطلب واربطه بيوزره، وأنشئ لمن ضاع خطّه اشتراكًا بالمتبقي مع تعويض</small></h2></div>
 
     <div class="blk sbox" id="loBox" data-state="ready" style="padding:12px;margin-bottom:12px">
-      <b>بحث برقم الطلب</b>
+      <b>بحث برقم الطلب أو الجوال</b>
       <form class="sq" id="loForm" role="search" autocomplete="off">
-        <div class="sq-in"><input id="loQ" class="ltr" type="search" placeholder="رقم الطلب أو اليوزر أو كلمة المرور" inputmode="numeric" enterkeyhint="search" aria-label="رقم الطلب">
+        <div class="sq-in"><input id="loQ" class="ltr" type="search" placeholder="رقم الطلب أو الجوال أو اليوزر أو كلمة المرور" inputmode="numeric" enterkeyhint="search" aria-label="رقم الطلب">
           <button class="sq-x hidden" id="loClear" type="button" aria-label="مسح">×</button></div>
         <button class="go" id="loFind" type="submit">بحث</button></form>
       <div class="sstat" id="loStat" role="status" aria-live="polite"><span class="sdot"></span><span id="loMsg">اكتب رقم الطلب ثم «بحث».</span>
@@ -2418,7 +2418,7 @@ function loRender(d, q){
   const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
   if (rows.length) {
     const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered'), dup = rows.some(r => r.dup);
-    loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : '')
+    loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : rows[0].match === 'phone' ? ' بالجوال' : '')
       + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + (dup ? ' — ⚠ حساب مكرر' : '') + ms);
   } else if (ix) {
     loState('found', `الطلب في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
