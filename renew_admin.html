@@ -2552,7 +2552,7 @@ function rpRender(d, q){
   const rpRep = $('#rpRep'); if (rpRep) { rpRep.innerHTML = (d.replacement ? rpRepInfo(d.replacement) : '') + (d.dup ? (d.replacement ? '<br>' : '') + rpDupInfo(d) : '')
     + (d.created && d.created.rename_error ? `<br><span class="pill err">لم يتغيّر اسم اليوزر القديم: ${esc(d.created.rename_error)}</span>` : '') + rpOldMsgHtml(d.old_msg); rpRep.classList.toggle('hidden', !d.replacement && !d.dup && !d.old_msg); rpOldBind(rpRep, d.old_msg); }
   $('#rpMake2').classList.toggle('hidden', !(cr.can && ((d.panel || {}).state !== 'found' || cr.why === 'dup') && !(d.panel || {}).done)); note($('#rpMakeMsg2'), '');
-  if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}${d.created.password_changed ? ' — ⚠ ' + d.created.password_changed : ''}`, !d.created.rename_error && !d.created.password_changed);
+  if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}${d.created.enable_error ? ' — ⚠ ' + d.created.enable_error : ''}${d.created.password_changed ? ' — ⚠ ' + d.created.password_changed : ''}`, !d.created.rename_error && !d.created.enable_error && !d.created.password_changed);
   $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
   $('#rpSend').title = d.wa ? '' : 'لا رقم جوال لهذا العميل';
   note($('#rpSent'), (d.wa_linked ? '' : 'لا رقم واتساب مربوط الآن: انسخ الردّ أو أرسله من واتساب يدويًا. ') + (d.channel === '' ? 'ولا قناة واتساب مربوطة فسطر القناة غائب (اربطها من صفحة المحتوى).' : ''));
@@ -2694,7 +2694,7 @@ async function cqReply(r, btn, oldMsg){
         <p class="sug">المقترح: المتبقي <b>${AR(cr.left_months || 0)}</b> + تعويض <b>${AR(cr.comp || 0)}</b> = <b>${AR(sug)} شهرًا</b></p>
         <label class="lc-m">أشهر الجديد <span class="step"><button type="button" class="stDn" aria-label="أقل">−</button><input type="number" class="cqMakeM" min="1" max="15" value="${sug}"><button type="button" class="stUp" aria-label="أكثر">+</button></span></label>
         ${cr.old && cr.why !== 'dup' ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeSame" checked> بنفس اليوزر والباسورد القديمين (${esc(cr.old)})</label>` : ''}${cr.why === 'dup' ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeRen" checked> غيّر يوزر القديم (${esc(cr.old)}) وجهّز رسالة للعميل الأول أن يوزره تغيّر</label>` : ''}<small class="hint">على ${esc(cr.gate_name)} · من باقة ١٥ شهرًا والباقي يُباع من «حسابات متبقية»</small><p class="msg cqMakeMsg"></p></div>` : '')
-    + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓${d.created.rename_error ? ' — ' + esc(d.created.rename_error) : ''}${d.created.password_changed ? ' — ⚠ ' + esc(d.created.password_changed) : ''}</p>` : '')
+    + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓${d.created.rename_error ? ' — ' + esc(d.created.rename_error) : ''}${d.created.enable_error ? ' — ⚠ ' + esc(d.created.enable_error) : ''}${d.created.password_changed ? ' — ⚠ ' + esc(d.created.password_changed) : ''}</p>` : '')
     + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
     + (d.created && d.created.rename_error ? `<p class="msg err">لم يتغيّر اسم اليوزر القديم: ${esc(d.created.rename_error)}</p>` : '')
     + rpOldMsgHtml(oldMsg)
@@ -2789,7 +2789,7 @@ async function makeComp(r, btn, inp, after, quiet, where){
   if (btn) { btn.disabled = false; btn.textContent = t0; }
   if (d.error || !d.ok) { say(`${r.order}: ` + (d.error || 'فشل الإنشاء')); return false; }
   const copied = !quiet && d.copy ? await copyText(d.copy) : false;   // كبحث صفحة الإنشاء: الشرح كاملًا في الحافظة
-  const msg = `أُنشئ ${d.username}${d.same_creds ? ' بنفس بياناته القديمة ✓' : ''} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.rename_error ? ` · ${d.rename_error}` : '') + (d.password_changed ? ` · ⚠ ${d.password_changed}` : '') + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
+  const msg = `أُنشئ ${d.username}${d.same_creds ? ' بنفس بياناته القديمة ✓' : ''} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.rename_error ? ` · ${d.rename_error}` : '') + (d.enable_error ? ` · ⚠ ${d.enable_error}` : '') + (d.password_changed ? ` · ⚠ ${d.password_changed}` : '') + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
     + (copied ? ' · نُسخ الشرح كاملًا ✓' : ' · «نسخ الشرح» في بطاقته') + ' · رسالة واتساب جاهزة';
   if (after) await after(); else if (!quiet) await lsLoad();   // البطاقة بحالها الجديد، ثم رسالة الإنشاء فوقها
   say(msg, !d.split_error);
