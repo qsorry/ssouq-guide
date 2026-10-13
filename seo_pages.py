@@ -297,6 +297,12 @@ def _tname(t, tr):
     return (t["name_en"] if tr.en else t["name_ar"]) or t["name_en"] or t["name_ar"] or t["key"]
 
 
+def _override(con, entity, entity_id, lang):
+    """تجاوز المدير (المرحلة 5: seo_override) للغةٍ بعينها ← dict أو {} — العنوان والوصف والمقدمة وعلم الفهرسة."""
+    r = con.execute("SELECT * FROM seo_override WHERE entity=? AND entity_id=? AND lang=?", (entity, entity_id, lang)).fetchone()
+    return dict(r) if r else {}
+
+
 def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     _services.data_dir = data_dir
     row = con.execute("SELECT * FROM content WHERE type=? AND slug=?", (typ, slug)).fetchone()
@@ -403,7 +409,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     if seasons:
         items = []
         for s in seasons:
-            eps = con.execute("SELECT number, title_en, title_ar, air_date, runtime FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 100", (row["id"], s["number"])).fetchall()
+            eps = con.execute("SELECT * FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 100", (row["id"], s["number"])).fetchall()
             name = s["name"] if tr.en and s["name"] else (tr("الحلقات الخاصة", "Specials") if s["number"] == 0 else tr(f"الموسم {s['number']}", f"Season {s['number']}"))
             ep_html = ""
             if eps:
@@ -415,7 +421,11 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
             s_label = tr.count(s["episodes_official"], "episodes") if s["episodes_official"] else (tr.count(s["episode_count"], "episodes") + tr(" في القوائم", " as listed"))
             if s["number"] == 0:
                 name = tr("حلقات خاصة", "Specials")
-            items.append(f'<details{" open" if s is seasons[0] else ""}><summary><b>{_esc(name)}</b> <small>{_esc(s_label)}</small></summary>'
+            if s["number"] > 0 and (season_ok(s, eps, tr.code, st)[0] or any(episode_ok(e, tr.code, st) for e in eps)):
+                name_html = f'<a href="{_esc(_season_path(row, s["number"], tr.code))}">{_esc(name)}</a>'
+            else:
+                name_html = _esc(name)
+            items.append(f'<details{" open" if s is seasons[0] else ""}><summary><b>{name_html}</b> <small>{_esc(s_label)}</small></summary>'
                          + (f'<p>{_esc(s["overview_en"] if tr.en else s["overview_ar"] or "")}</p>' if (s["overview_en"] if tr.en else s["overview_ar"]) else "") + ep_html + "</details>")
         seas = f'<section id="seasons"><h2>{_esc(tr(f"مواسم وحلقات مسلسل {title}", f"{title} seasons & episodes"))}</h2>{"".join(items)}</section>'
     # الصور
@@ -483,11 +493,25 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         lds.append({"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq]})
     trailer_html = (f'<section class="trailer"><h2>{_esc(tr("الإعلان", "Trailer"))}</h2><div class="yt"><iframe loading="lazy" src="https://www.youtube-nocookie.com/embed/{_esc(row["trailer_yt"])}" '
                     f'title="{_esc(tr(f"إعلان {title}", f"{title} trailer"))}" allowfullscreen></iframe></div></section>') if row["trailer_yt"] else ""
+    ov_ar, ov_en = _override(con, "content", row["id"], "ar"), _override(con, "content", row["id"], "en")
+    ovr = ov_en if tr.en else ov_ar
+    if ovr.get("seo_title"):
+        page_title = ovr["seo_title"]
+    if ovr.get("meta_desc"):
+        desc = ovr["meta_desc"][:160]
+    if ovr.get("intro"):
+        body_intro = f'<p class="intro" dir="auto">{_esc(ovr["intro"])}</p>'
+    else:
+        body_intro = ""
     ok_ar, ok_en, live = index_flags(con, row, st)     # قبل المرحلة 4: الأهلية؛ بعدها: المعتمد المستحقّ وحده (والباقي noindex بلا alternate)
+    if ov_ar.get("index_flag") == 0:
+        ok_ar = False                                  # المدير أخرج هذه اللغة من الفهرسة: noindex ولا alternate
+    if ov_en.get("index_flag") == 0:
+        ok_en = False
     alts = [("ar", SITE + _path(row, "ar")), ("en", SITE + _path(row, "en")), ("x-default", SITE + _path(row, "ar"))] if ok_ar and ok_en else []
     noindex = not (live and (ok_en if tr.en else ok_ar))
     body = (_header(tr, hubs[0]["key"] if hubs else "") + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, _path(row, "en" if not tr.en else "ar"))}</div>'
-            + head + f'<div class="cols"><div class="main">{story}{seas}{ppl}{trailer_html}{pics}{faq_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr))
+            + body_intro + head + f'<div class="cols"><div class="main">{story}{seas}{ppl}{trailer_html}{pics}{faq_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr))
     return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_image=backdrop or poster, og_type="video.movie" if typ == "movie" else "video.tv_show",
                                  noindex=noindex), "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en,
                    "noindex": noindex, "live": live, "why": (indexable(row, "ar", st)[1], indexable(row, "en", st)[1]), "row": row}
@@ -730,22 +754,256 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
                     "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok, "why": ("ok" if ok else f"items < {min_items}",) * 2, "total": total}
 
 
+
+
+# ================= المواسم والحلقات (المرحلة 7) =================
+def season_ok(season, eps, lang, st):
+    """صفحة الموسم: ملخصٌ باللغة + حلقاتٌ بعناوين (سياسة §6) ← (نعم؟، السبب)."""
+    ov = (season["overview_en"] if lang == "en" else season["overview_ar"]) or ""
+    if len(ov) < int(st.get("index_min_overview", 120)):
+        return False, f"season overview_{lang} < {st.get('index_min_overview', 120)}"
+    if not eps or not all((e["title_en"] if lang == "en" else (e["title_ar"] or e["title_en"])) for e in eps):
+        return False, "episodes without titles"
+    return True, "ok"
+
+
+def episode_ok(ep, lang, st):
+    """صفحة الحلقة: لا صفحة إلا بشروط ‏episode_page في الإعدادات (عنوان · ملخص ≥ الحدّ · تاريخ عرض) ← نعم؟"""
+    pol = st.get("episode_page") or {}
+    title = (ep["title_en"] if lang == "en" else (ep["title_ar"] or ep["title_en"])) or ""
+    ov = (ep["overview_en"] if lang == "en" else ep["overview_ar"]) or ""
+    if pol.get("title", True) and not title:
+        return False
+    if len(ov) < int(pol.get("overview_min", 80)):
+        return False
+    if pol.get("air_date", True) and not ep["air_date"]:
+        return False
+    return True
+
+
+def _season_path(row, n, lang="ar", ep=None):
+    return seo_db.lang_prefix(lang) + f"/content/series/{row['slug']}/season-{n}/" + (f"episode-{ep}/" if ep else "")
+
+
+def render_season(con, data_dir, slug, n, ep_no, tr, st):
+    """‏/content/series/<slug>/season-<n>/ و…/episode-<e>/ — 404 حين لا تتوفر شروط الصفحة (الحلقة خصوصًا)."""
+    _services.data_dir = data_dir
+    row = con.execute("SELECT * FROM content WHERE type='series' AND slug=? AND merged_into IS NULL AND available=1", (slug,)).fetchone()
+    if not row or n < 1:
+        return None
+    season = con.execute("SELECT * FROM season WHERE content_id=? AND number=?", (row["id"], n)).fetchone()
+    if not season:
+        return None
+    eps = con.execute("SELECT * FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 300", (row["id"], n)).fetchall()
+    title = _title(row, tr)
+    s_name = tr(f"الموسم {n}", f"Season {n}")
+    series_path = _path(row, tr.code)
+    if ep_no:
+        ep = next((e for e in eps if e["number"] == ep_no), None)
+        if not ep or not episode_ok(ep, tr.code, st):
+            return None
+        et = (ep["title_en"] if tr.en else ep["title_ar"] or ep["title_en"])
+        ov = (ep["overview_en"] if tr.en else ep["overview_ar"]) or ""
+        h1 = tr(f"{title} — {s_name} الحلقة {ep_no}: {et}", f"{title} — {s_name} Episode {ep_no}: {et}")
+        desc = ov[:160]
+        me = lambda lang: _season_path(row, n, lang, ep_no)   # noqa: E731
+        crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (title, series_path),
+                  (s_name, _season_path(row, n, tr.code)), (tr(f"الحلقة {ep_no}", f"Episode {ep_no}"), "")]
+        prev_n = next((e["number"] for e in reversed(eps) if e["number"] < ep_no and episode_ok(e, tr.code, st)), None)
+        next_n = next((e["number"] for e in eps if e["number"] > ep_no and episode_ok(e, tr.code, st)), None)
+        still = _img(ep["still"], "w780") if ep["still"] else ""
+        crumb_html, crumb_ld = _crumbs(crumbs)
+        body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, me("en" if not tr.en else "ar"))}</div><h1>{_esc(h1)}</h1>'
+                + (f'<img src="{_esc(still)}" alt="{_esc(tr(f"لقطة من الحلقة {ep_no} من {title}", f"Still from {title} episode {ep_no}"))}" width="780" height="439">' if still else "")
+                + f'<p dir="auto">{_esc(ov)}</p><p><small>{_esc(ep["air_date"])}' + (f' · {ep["runtime"]} {_esc(tr("دقيقة", "min"))}' if ep["runtime"] else "") + "</small></p>"
+                + '<p class="more">' + (f'<a href="{_esc(_season_path(row, n, tr.code, prev_n))}" rel="prev">{_esc(tr("الحلقة السابقة", "Previous episode"))}</a> ' if prev_n else "")
+                + (f'<a href="{_esc(_season_path(row, n, tr.code, next_n))}" rel="next">{_esc(tr("الحلقة التالية", "Next episode"))}</a> ' if next_n else "")
+                + f'<a href="{_esc(_season_path(row, n, tr.code))}">{_esc(s_name)}</a> · <a href="{_esc(series_path)}">{_esc(title)}</a></p></main>' + _footer(tr))
+        ld = {"@context": "https://schema.org", "@type": "TVEpisode", "name": et, "episodeNumber": ep_no, "description": ov, "datePublished": ep["air_date"],
+              "partOfSeason": {"@type": "TVSeason", "seasonNumber": n}, "partOfSeries": {"@type": "TVSeries", "name": title, "url": SITE + series_path}}
+        ok_ar, ok_en = episode_ok(ep, "ar", st), episode_ok(ep, "en", st)
+        lds, page_title = [crumb_ld, ld], f"{h1} | " + tr("سمارت سوق", "Smart Souq")
+    else:
+        ok_ar, ok_en = season_ok(season, eps, "ar", st)[0], season_ok(season, eps, "en", st)[0]
+        h1 = tr(f"{title} — {s_name}", f"{title} — {s_name}")
+        sov = (season["overview_en"] if tr.en else season["overview_ar"]) or ""
+        desc = (sov or tr(f"حلقات {s_name} من {title}", f"Episodes of {title} {s_name}"))[:160]
+        me = lambda lang: _season_path(row, n, lang)   # noqa: E731
+        crumb_html, crumb_ld = _crumbs([(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (title, series_path), (s_name, "")])
+        lis = []
+        for e in eps:
+            et = (e["title_en"] if tr.en else e["title_ar"] or e["title_en"]) or ""
+            label = f'<span>{e["number"]}</span> {_esc(et)}' + (f' <small>{_esc(e["air_date"])}</small>' if e["air_date"] else "")
+            lis.append(f'<li><a href="{_esc(_season_path(row, n, tr.code, e["number"]))}">{label}</a></li>' if episode_ok(e, tr.code, st) else f"<li>{label}</li>")
+        body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, me("en" if not tr.en else "ar"))}</div><h1>{_esc(h1)}</h1>'
+                + (f'<p dir="auto">{_esc(sov)}</p>' if sov else "") + (f'<ol class=eps>{"".join(lis)}</ol>' if lis else "")
+                + f'<p class="more"><a href="{_esc(series_path)}">{_esc(title)}</a></p></main>' + _footer(tr))
+        ld = {"@context": "https://schema.org", "@type": "TVSeason", "name": h1, "seasonNumber": n, "numberOfEpisodes": len(eps),
+              "partOfSeries": {"@type": "TVSeries", "name": title, "url": SITE + series_path}}
+        lds, page_title = [crumb_ld, ld], f"{h1} | " + tr("المواسم والحلقات", "Seasons & Episodes") + " | " + tr("سمارت سوق", "Smart Souq")
+    canonical = SITE + me(tr.code)
+    alts = [("ar", SITE + me("ar")), ("en", SITE + me("en")), ("x-default", SITE + me("ar"))] if ok_ar and ok_en else []
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_type="video.episode" if ep_no else "video.tv_show", noindex=True),
+                    "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en}
+
+
+# ================= قوائم التصنيف العامة (المرحلة 6): النوع · الدولة · اللغة · السنة · الأحدث =================
+TAX_KINDS = {"genres": "genre", "countries": "country", "languages": "language"}
+TAX_TITLES = {"genres": ("النوع", "Genre"), "countries": ("الدولة", "Country"), "languages": ("اللغة", "Language")}
+LATEST_SECTIONS = {"": ("الأحدث", "Latest"), "movies": ("أحدث الأفلام", "Latest movies"), "series": ("أحدث المسلسلات", "Latest series")}
+
+
+def _tax_where(kind, key, section=""):
+    """شرط القائمة العامة (بُعدٌ واحد، لا تركيبات فلاتر) ← (JOIN/WHERE، args)."""
+    sql = "FROM content c WHERE c.merged_into IS NULL AND c.available=1"
+    args = []
+    if kind in TAX_KINDS.values():
+        sql += (" AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id "
+                "WHERE t.kind=? AND t.slug=? AND ct.source IN ('tmdb','manual'))")
+        args += [kind, key]
+    elif kind == "year":
+        sql += " AND c.year=?"
+        args.append(int(key))
+    if section == "movies":
+        sql += " AND c.type='movie'"
+    elif section == "series":
+        sql += " AND c.type='series'"
+    return sql, args
+
+
+def render_taxonomy(con, data_dir, facet, slug, section, page, tr, st):
+    """‏/content/<genres|countries|languages>/<slug>/ · /content/year/<yyyy>/ · /content/latest/[movies|series/] — [page/<n>/]
+    بُعدٌ واحد فقط؛ الفهرسة بعدد العناصر (list_min_items) وحدّ الصفحات (list_max_pages) من الإعدادات."""
+    _services.data_dir = data_dir
+    size, max_pages, min_items = int(st.get("page_size", 60)), int(st.get("list_max_pages", 50)), int(st.get("list_min_items", 12))
+    if page < 1 or page > max_pages:
+        return None
+    if facet in TAX_KINDS:
+        kind = TAX_KINDS[facet]
+        t = con.execute("SELECT * FROM taxonomy WHERE kind=? AND slug=?", (kind, slug)).fetchone()
+        if not t:
+            return None
+        name, base = _tname(t, tr), f"/content/{facet}/{slug}/"
+        h1 = {"genres": tr(f"أعمال {name}", f"{name} series & movies"),
+              "countries": tr(f"أعمال {name}", f"Series & movies from {name}"),
+              "languages": tr(f"أعمال بلغة {name}", f"{name}-language series & movies")}[facet]
+    elif facet == "year":
+        kind, name, base = "year", str(slug), f"/content/year/{slug}/"
+        if not str(slug).isdigit() or not 1900 <= int(slug) <= 2100:
+            return None
+        h1 = tr(f"مسلسلات وأفلام {slug}", f"Series & movies of {slug}")
+    else:   # latest
+        kind, name, base = "latest", "", "/content/latest/" + (f"{section}/" if section else "")
+        h1 = LATEST_SECTIONS[section][tr.en]
+    where, args = _tax_where(kind, slug if kind != "latest" else "", section if facet in ("latest",) else "")
+    total = con.execute(f"SELECT COUNT(*) {where}", args).fetchone()[0]
+    if not total:
+        return None
+    pages = min(max_pages, max(1, -(-total // size)))
+    if page > pages:
+        return None
+    rows = con.execute(f"SELECT c.* {where} ORDER BY COALESCE(c.last_seen, c.first_seen, 0) DESC, c.id DESC LIMIT ? OFFSET ?",
+                       (*args, size, (page - 1) * size)).fetchall()
+    me = lambda lang, pg=1: seo_db.lang_prefix(lang) + base + (f"page/{pg}/" if pg > 1 else "")   # noqa: E731
+    page_title = h1 + (tr(f" — صفحة {page}", f" — page {page}") if page > 1 else "") + " | " + tr("سمارت سوق", "Smart Souq")
+    desc = tr(f"{h1}: {total:,} عملًا متوفرًا في اشتراكات سمارت سوق، بقصة كل عمل وأبطاله ومواسمه.",
+              f"{h1}: {total:,} titles available on Smart Souq subscriptions, with story, cast and seasons.")[:160]
+    crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path)]
+    if facet in TAX_KINDS:
+        crumbs.append((TAX_TITLES[facet][tr.en], ""))
+    crumbs.append((h1, me(tr.code) if page > 1 else ""))
+    if page > 1:
+        crumbs.append((tr(f"صفحة {page}", f"Page {page}"), ""))
+    crumb_html, crumb_ld = _crumbs(crumbs)
+    head_links, nav = _page_links(lambda lang, pg: me(lang, pg), tr, page, pages)
+    body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, me("en" if not tr.en else "ar", page))}</div>'
+            f'<h1>{_esc(h1)}</h1><p class="intro" dir="auto">{_esc(desc)}</p>{_grid(rows, tr)}{nav}</main>' + _footer(tr))
+    canonical = SITE + me(tr.code, page)
+    ok = total >= min_items
+    alts = [("ar", SITE + me("ar", page)), ("en", SITE + me("en", page)), ("x-default", SITE + me("ar", page))] if ok else []
+    ld = {"@context": "https://schema.org", "@type": "CollectionPage", "name": h1, "url": canonical, "description": desc,
+          "mainEntity": {"@type": "ItemList", "numberOfItems": total, "itemListElement": [
+              {"@type": "ListItem", "position": (page - 1) * size + i + 1, "url": SITE + _path(r, tr.code), "name": _title(r, tr)}
+              for i, r in enumerate(rows)]}}
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], noindex=True, extra_head=head_links),
+                    "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok,
+                    "why": ("ok" if ok else f"items < {min_items}",) * 2, "total": total}
+
+
+
+# ================= هب المحتوى /content/ (المرحلة 8) =================
+def render_content_hub(con, data_dir, tr, st):
+    """‏/content/ هبًّا حقيقيًّا (أحدث المحتوى · الهبّات · التصنيفات · السنوات · السيرفرات) بدل التحويل 302 — يعمل فقط حين
+    يُفعَّل ‏content_hub في الإعدادات؛ وما دام معطّلًا يبقى سلوكه القديم (302 لأول سيرفر) كما هو."""
+    _services.data_dir = data_dir
+    min_items = int(st.get("list_min_items", 12))
+    h1 = tr("المسلسلات والأفلام في اشتراكات سمارت سوق", "Series & Movies on Smart Souq subscriptions")
+    desc = tr("دليل المسلسلات والأفلام المتوفرة في اشتراكات سمارت سوق: أحدث الأعمال، التركي والأنمي، حسب النوع والدولة والسنة، وأين يتوفر كل عمل.",
+              "Guide to the series and movies available on Smart Souq subscriptions: latest titles, Turkish and anime, by genre, country and year, and where each one is available.")[:160]
+    body = _header(tr)
+    crumb_html, crumb_ld = _crumbs([(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), "")])
+    body += f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, seo_db.lang_prefix("en" if not tr.en else "ar") + "/content/")}</div><h1>{_esc(h1)}</h1><p class="intro" dir="auto">{_esc(desc)}</p>'
+    for typ, sec, head in (("movie", "movies", tr("أحدث الأفلام", "Latest movies")), ("series", "series", tr("أحدث المسلسلات", "Latest series"))):
+        rows = con.execute("SELECT * FROM content WHERE type=? AND merged_into IS NULL AND available=1 ORDER BY COALESCE(last_seen, first_seen, 0) DESC, id DESC LIMIT 12", (typ,)).fetchall()
+        if rows:
+            body += (f'<section><h2><a href="{_esc(seo_db.lang_prefix(tr.code) + "/content/latest/" + sec + "/")}">{_esc(head)}</a></h2>{_grid(rows, tr)}</section>')
+    body += (f'<section><h2>{_esc(tr("أقسام مختارة", "Featured"))}</h2><p class="chips">'
+             + "".join(f'<a class="chip" href="{_esc(_hub_path(h, "", tr.code))}">{_esc(HUB_NAMES[h][tr.en])}</a>' for h in HUBS) + "</p></section>")
+    for kind, facet, head, limit in (("genre", "genres", tr("حسب النوع", "By genre"), 24), ("country", "countries", tr("حسب الدولة", "By country"), 24),
+                                     ("language", "languages", tr("حسب اللغة", "By language"), 16)):
+        ts = con.execute("SELECT t.*, COUNT(*) n FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id JOIN content c ON c.id=ct.content_id "
+                         "WHERE t.kind=? AND ct.source IN ('tmdb','manual') AND c.merged_into IS NULL AND c.available=1 GROUP BY t.id HAVING n>=? ORDER BY n DESC LIMIT ?",
+                         (kind, min_items, limit)).fetchall()
+        if kind == "country":
+            ts = [t for t in ts if t["slug"] != "tr"]          # التركي هبٌّ مستقل (لا صفحتان تتنافسان)
+        if ts:
+            body += (f'<section><h2>{_esc(head)}</h2><p class="chips">' + "".join(
+                f'<a class="chip" href="{_esc(seo_db.lang_prefix(tr.code) + f"/content/{facet}/{t["slug"]}/")}">{_esc(_tname(t, tr))} <small>{t["n"]:,}</small></a>' for t in ts) + "</p></section>")
+    ys = con.execute("SELECT year, COUNT(*) n FROM content WHERE merged_into IS NULL AND available=1 AND year IS NOT NULL GROUP BY year HAVING n>=? ORDER BY year DESC LIMIT 25", (min_items,)).fetchall()
+    if ys:
+        body += (f'<section><h2>{_esc(tr("حسب السنة", "By year"))}</h2><p class="chips">' + "".join(
+            f'<a class="chip" href="{_esc(seo_db.lang_prefix(tr.code) + "/content/year/%d/" % y["year"])}">{y["year"]} <small>{y["n"]:,}</small></a>' for y in ys) + "</p></section>")
+    srv = [s_ for s_ in C.servers(data_dir)]
+    if srv:   # صفحات السيرفرات القائمة تبقى كما هي، ويربط إليها الهب
+        body += (f'<section><h2>{_esc(tr("السيرفرات", "Servers"))}</h2><p class="chips">' + "".join(
+            f'<a class="chip" href="{_esc(tr.path + "/" + s_["key"])}">{_esc(tr.name(s_))}</a>' for s_ in srv) + "</p></section>")
+    body += "</main>" + _footer(tr)
+    me = lambda lang: seo_db.lang_prefix(lang) + "/content/"   # noqa: E731
+    canonical = SITE + me(tr.code)
+    alts = [("ar", SITE + me("ar")), ("en", SITE + me("en")), ("x-default", SITE + me("ar"))]
+    live = bool(st.get("index_live") and st.get("content_hub"))
+    ld = {"@context": "https://schema.org", "@type": "CollectionPage", "name": h1, "url": canonical, "description": desc}
+    return "page", {"html": _doc(tr, h1 + " | " + tr("سمارت سوق", "Smart Souq"), desc, canonical, alts, body, [crumb_ld, ld], noindex=not live),
+                    "noindex": not live, "title": h1, "desc": desc, "canonical": canonical, "alts": alts}
+
+
 # ================= التوجيه =================
 _RX = re.compile(r"^/content/(?:(movies|series)/([a-z0-9-]+)/|people/(actors|directors|writers)/([a-z0-9-]+)/(?:page/(\d+)/)?|companies/([a-z0-9-]+)/(?:page/(\d+)/)?|"
                  r"(turkish|anime)/(?:(series|movies|ongoing|completed)/)?(?:(genres|year)/([a-z0-9-]+)/)?(?:page/(\d+)/)?)$")
+
+
+_RX_SEASON = re.compile(r"^/content/series/([a-z0-9-]+)/season-(\d{1,3})/(?:episode-(\d{1,4})/)?$")
+_RX_TAX = re.compile(r"^/content/(?:(genres|countries|languages)/([a-z0-9-]+)/|year/(\d{4})/|latest/(?:(movies|series)/)?)(?:page/(\d+)/)?$")
 
 
 def handle(data_dir, path, lang):
     """← (code, body, headers) أو None إن لم يكن من مسارات الطبقة. وبلا ‏preview: 404 لكل مساراتها (لا شيء عامٌّ بعد)."""
     pre = seo_db.lang_prefix(lang)
     ar_path = path[len(pre):] if pre else path
-    if not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/companies/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
+    hub_root = ar_path in ("/content", "/content/")
+    if not hub_root and ar_path != "/content/latest" and not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/companies/", "/content/genres/", "/content/countries/", "/content/languages/", "/content/year/", "/content/latest/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
         return None
     con = seo_db.connect(data_dir, create=False)
     if con is None:
         return 404, b"", {}
     try:
         st = seo_db.settings(con)
+        if hub_root:     # الهب: معطّلٌ ← None فيبقى 302 القديم في xm_lines كما كان
+            if not (st.get("content_hub") and st.get("preview")) or lang not in (st.get("languages") or ["ar", "en"]):
+                return None
+            res = render_content_hub(con, data_dir, P.lang_of(lang), st)
+            hdr = {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"} if res[1]["noindex"] else {"Cache-Control": "public, max-age=600"}
+            return 200, res[1]["html"], hdr
         if not st.get("preview") or lang not in (st.get("languages") or ["ar", "en"]):
             return 404, b"", {}
         if ar_path.rstrip("/") == "/content/countries/turkey":   # صفحة الدولة لا تنافس الهب: 301 إليه (قرار المالك)
@@ -755,10 +1013,26 @@ def handle(data_dir, path, lang):
         r = con.execute("SELECT target FROM redirect WHERE path=?", (ar_path,)).fetchone()
         if r:
             return 301, b"", {"Location": pre + r["target"]}
+        tr = P.lang_of(lang)
+        ms = _RX_SEASON.match(ar_path)
+        if ms:
+            res = render_season(con, data_dir, ms.group(1), int(ms.group(2)), int(ms.group(3)) if ms.group(3) else 0, tr, st)
+            if not res:
+                return 404, b"", {}
+            return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
+        mt = _RX_TAX.match(ar_path)
+        if mt:
+            facet_g, slug_g, year_g, sect_g, page_g = mt.groups()
+            if page_g == "1":
+                return 301, b"", {"Location": path.replace("page/1/", "")}
+            facet = facet_g or ("year" if year_g else "latest")
+            res = render_taxonomy(con, data_dir, facet, slug_g or year_g or "", sect_g or "", int(page_g or 1), tr, st)
+            if not res:
+                return 404, b"", {}
+            return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
         m = _RX.match(ar_path)
         if not m:
             return 404, b"", {}
-        tr = P.lang_of(lang)
         typ, slug, role_path, pslug, ppage, cslug, cpage, hub, section, subk, subv, page = m.groups()
         if (ppage or cpage or page) == "1":
             return 301, b"", {"Location": path.replace("page/1/", "")}

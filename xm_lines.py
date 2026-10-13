@@ -42,6 +42,7 @@ import seo_sources
 import seo_search
 import seo_db
 import seo_pages
+import seo_admin
 import xm_web
 import falcon_api
 import crypto_store
@@ -7927,6 +7928,28 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_sources.bundle_state(DATA_DIR)})
             elif path == "/api/content/admin/seo-sample":    # عيّنة 30 عملًا حقيقيًّا: تُثرى الآن (وحدها) وتقريرها الكامل — قبل الإثراء الجماعي
                 return self._send(200, {"ok": True, "sample": seo_sources.sample(DATA_DIR, body.get("spec") if isinstance(body.get("spec"), dict) else None)})
+            elif path == "/api/content/admin/seo-entity":    # لوحة التحكم (المرحلة 5): بحث · تجاوز · حقول يدوية · رابط · ربط TMDB · دمج
+                act = str(body.get("action") or "")
+                try:
+                    if act == "search":
+                        return self._send(200, {"ok": True, "results": seo_admin.search(DATA_DIR, body.get("q"))})
+                    if act == "get":
+                        return self._send(200, {"ok": True, "entity": seo_admin.get(DATA_DIR, body.get("id"))})
+                    if act == "override":
+                        seo_admin.set_override(DATA_DIR, body.get("id"), str(body.get("lang") or ""), body.get("fields") or {})
+                    elif act == "fields":
+                        seo_admin.set_fields(DATA_DIR, body.get("id"), body.get("fields") or {})
+                    elif act == "slug":
+                        seo_admin.set_slug(DATA_DIR, body.get("id"), body.get("slug"))
+                    elif act == "tmdb":
+                        seo_admin.link_tmdb(DATA_DIR, body.get("id"), body.get("tmdb_id"))
+                    elif act == "merge":
+                        seo_admin.merge(DATA_DIR, body.get("loser"), body.get("winner"))
+                    else:
+                        return self._send(400, {"ok": False, "error": "إجراء غير معروف"})
+                except (ValueError, TypeError) as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
+                return self._send(200, {"ok": True, "entity": seo_admin.get(DATA_DIR, body.get("id") or body.get("winner"))})
             elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
                 return self._send(200, {"ok": True, "audit": seo_pages.audit(DATA_DIR, int(body.get("n") or 30))})
             elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)
