@@ -402,6 +402,12 @@ def test_dup_create():
         check("new-owner message is WhatsApp formatted: bold heading, reason, each credential on its own line",
               "*اشتراكك الجديد جاهز ✅*" in body["messages"][0]["text"] and "سبب التغيير" in body["messages"][0]["text"] and "\nHost http://m.ink\nUser 555\nPass 666" in body["messages"][0]["text"], body["messages"][0]["text"])
         check("wa_line keeps the guide and leaves unknown text as is", X.wa_line("Host h User u Pass p Guide g") == "Host h\nUser u\nPass p\nGuide g" and X.wa_line("abc") == "abc")
+        legacy = "السلام عليكم Am\nاشتراكك الجديد جاهز ✅ (بديلٌ عن الحساب السابق، بمدة اشتراكك المتبقية نفسها)\nHost http://mrha.ink:80 User 947348927667 Pass 647126010257 Guide https://g/#activate/smart\nنعتذر عن الإزعاج."
+        up = panels.modernize_msg({"kind": "new", "text": legacy, "sent": None})["text"]
+        check("a legacy one-line message that was not sent is upgraded to the WhatsApp format",
+              "*اشتراكك الجديد جاهز ✅*" in up and "\nUser 947348927667\nPass 647126010257\nGuide https://g/#activate/smart" in up and "سبب التغيير" in up, up)
+        check("a legacy message already sent is left as it was", panels.modernize_msg({"kind": "new", "text": legacy, "sent": {"ok": True}})["text"] == legacy)
+        check("a customised text is not touched", panels.modernize_msg({"kind": "new", "text": legacy + " تعديل", "sent": None})["text"] == legacy + " تعديل")
         check("messages carry the old-user state for the messages tab", panels.dupe_messages(d)[0]["old"] == "999000111222" and panels.dupe_messages(d)[0]["src"] == "dup" and all(m["renamed"] for m in panels.dupe_messages(d)), str(panels.dupe_messages(d)[0]))
         # قديمٌ لم يُغيَّر (فشل) ثم يُعاد بالزر
         panels.update_dupe(d, "2", {"renamed": None, "rename_error": "x"})

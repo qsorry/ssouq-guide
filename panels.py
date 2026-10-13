@@ -17,7 +17,6 @@ xm_web/renew_import — بل يخزّن ما جُمع ويقارنه، فيبق�
 """
 
 import json
-import re
 import os
 import re
 
@@ -649,6 +648,47 @@ def set_dupe_msg(data_dir, order, idx, **fields):
     return msgs[idx]
 
 
+# ---- رسائل المكرر بصيغة واتساب ----
+# رسائل المكرر بصيغة واتساب: *عريض* للعناوين، وكل بندٍ من السطر (Host/User/Pass/Guide) في سطرٍ وحده ليُنسخ بضغطة،
+# وسبب التغيير مذكورٌ صراحةً. السطر يبقى بصيغة «Host .. User .. Pass ..» (بلا نقطتين) ليقرأه _LINE_RE كما هو.
+DUP_MSG_NEW = ("السلام عليكم {name} 👋\n\n*اشتراكك الجديد جاهز ✅*\n(بديل عن الحساب السابق، وبنفس مدة الاشتراك المتبقية)\n\n"
+               "*📌 بيانات الاشتراك:*\n{line}\n\n"
+               "*⚠️ سبب التغيير:*\nلاحظنا استخدام الاشتراك السابق من قِبل شخص آخر، فتم استبداله حفاظًا على أمان حسابك وجودة الخدمة.\n\n"
+               "*🔒 نصيحة:* لا تشارك بيانات الاشتراك مع أي شخص.\n\nنعتذر عن الإزعاج، وشكرًا لتفهّمك 🙏")
+DUP_MSG_OLD = ("السلام عليكم {name} 👋\n\n*تم تحديث بيانات اشتراكك 🔄*\n\n"
+               "*⚠️ سبب التغيير:*\nلاحظنا استخدام اشتراكك من قِبل شخص آخر، فغيّرنا اسم المستخدم حفاظًا على أمان حسابك "
+               "(كلمة المرور ومدة الاشتراك كما هما).\n\n*📌 بياناتك الجديدة:*\n{line}\n\n"
+               "*🔒 نصيحة:* لا تشارك بيانات الاشتراك مع أي شخص.\n\nنعتذر عن الإزعاج، وشكرًا لتفهّمك 🙏")
+
+
+def wa_line(line):
+    """سطر الاشتراك لرسائل واتساب: كل بندٍ (Host/User/Pass/Guide) في سطرٍ وحده — وما لم يُفهم يبقى كما هو."""
+    m = re.match(r"\s*Host\s+(\S+)\s+User\s+(\S+)\s+Pass\s+(\S+)(?:\s+Guide\s+(\S+))?\s*$", str(line or ""))
+    if not m:
+        return str(line or "")
+    out = "Host %s\nUser %s\nPass %s" % m.group(1, 2, 3)
+    return out + ("\nGuide " + m.group(4) if m.group(4) else "")
+
+
+# صيغ الرسائل القديمة (سطرٌ واحد): ما حُفظ منها ولم يُرسل يُرقّى للصيغة الجديدة عند العرض، فلا يبقى بالنص القديم
+_LEGACY_NEW = re.compile(r"\Aالسلام عليكم ([^\n]*)\nاشتراكك الجديد جاهز ✅ \(بديلٌ عن الحساب السابق[^\n]*\)\n(Host [^\n]*)\nنعتذر عن الإزعاج\.\s*\Z")
+_LEGACY_OLD = re.compile(r"\Aالسلام عليكم ([^\n]*)\nلوجود خطر على الحساب[^\n]*\nبيانات اشتراكك الجديدة[^\n]*:\n(Host [^\n]*)\s*\Z")
+
+
+def modernize_msg(m):
+    """رسالة مكرر محفوظة بالصيغة القديمة ولم تُرسل ← نسخة بالصيغة الجديدة (وإلا كما هي)."""
+    if (m.get("sent") or {}).get("ok"):
+        return m
+    t = str(m.get("text") or "")
+    hit = _LEGACY_NEW.match(t)
+    if hit:
+        return dict(m, text=DUP_MSG_NEW.format(name=hit.group(1), line=wa_line(hit.group(2))))
+    hit = _LEGACY_OLD.match(t)
+    if hit:
+        return dict(m, text=DUP_MSG_OLD.format(name=hit.group(1), line=wa_line(hit.group(2))))
+    return m
+
+
 def dupe_messages(data_dir):
     """كل رسائل البدائل المُنشأة (الأحدث أولًا) — لتُرسل أو يُعاد إرسالها."""
     out = []
@@ -657,7 +697,7 @@ def dupe_messages(data_dir):
         state = {"src": rec.get("src", "dup"), "old": rec.get("old", ""), "renamed": rec.get("renamed"),
                  "rename_error": rec.get("rename_error", ""), "old_missing": bool(rec.get("old_missing"))}
         for i, m in enumerate(rec.get("msgs") or []):
-            out.append(dict(m, order=order, idx=i, at=rec.get("at", ""), **state))
+            out.append(dict(modernize_msg(m), order=order, idx=i, at=rec.get("at", ""), **state))
     out.sort(key=lambda m: m["at"], reverse=True)
     return out
 
