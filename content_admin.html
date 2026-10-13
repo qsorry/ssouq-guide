@@ -1299,12 +1299,12 @@ function renderRelease(d) {
 // ===== معالج النشر الإنتاجي (wizard): خطوةً خطوة، بعدّاد خطواتٍ وزمنٍ وتقدّمٍ حيّ =====
 const WZ = [
   {k: "snap", t: "اللقطة", h: "اللقطة المعتمدة", d: "اللقطة هي قائمة الروابط التي ستُرفع عنها noindex. تُقرأ تلقائيًا من «ملفات المراجعة»؛ تأكّد أنها اللقطة التي راجعتها. إن لم تظهر فأنتج ملفات المراجعة أولًا."},
-  {k: "p4", ph: "4", action: "phase4", t: "المرحلة 4", h: "رفع noindex", d: "تعتمد روابط اللقطة وحدها وترفع noindex عنها، ثم تفحص كل مسارٍ كما يُخدم. أي فشلٍ = تراجعٌ كامل."},
-  {k: "p5", ph: "5", action: "phase5", t: "المرحلة 5", h: "الخريطة العامة", d: "تُدخل المعتمد في sitemap.xml العامة بعد التحقق من العدد والتكرار والتحويلات."},
-  {k: "p6", ph: "6", action: "phase6", t: "المرحلة 6", h: "IndexNow", d: "ترسل الروابط المعتمدة إلى IndexNow. القبول استلامٌ لا فهرسة."},
-  {k: "p7", ph: "7", action: "phase7", t: "المرحلة 7", h: "فحصٌ بعد النشر", d: "تقارن المعتمد باللقطة: HTTP وcanonical وhreflang والخريطة والتحويلات. فشلها يوقف التوسيع."},
-  {k: "p10", ph: "10", action: "extras", t: "المرحلة 10", h: "القوائم والمواسم والهبّات", d: "تعتمد القوائم وصفحات المواسم والحلقات وهبّي التركي والأنمي (وهب /content/ إن فُعّل) بعد فحصها كما تُخدم. تتراجع كاملةً عند أي فشل."},
-  {k: "p8", action: "batch", t: "التوسيع", h: "دفعة توسيع (8/9)", d: "تثري دفعةً من الكيانات من TMDB وتفحصها ثم تعتمدها وترسلها إلى IndexNow. كرّرها دفعةً بعد دفعة؛ وبعد كل توسيعٍ أعد المرحلة 10 لتشمل الجديد."},
+  {k: "p4", ph: "4", action: "phase4", t: "رفع noindex", h: "المرحلة 4 — رفع noindex", d: "تعتمد روابط اللقطة وحدها وترفع noindex عنها، ثم تفحص كل مسارٍ كما يُخدم. أي فشلٍ = تراجعٌ كامل."},
+  {k: "p5", ph: "5", action: "phase5", t: "الخريطة", h: "المرحلة 5 — الخريطة العامة", d: "تُدخل المعتمد في sitemap.xml العامة بعد التحقق من العدد والتكرار والتحويلات."},
+  {k: "p6", ph: "6", action: "phase6", t: "IndexNow", h: "المرحلة 6 — IndexNow", d: "ترسل الروابط المعتمدة إلى IndexNow. القبول استلامٌ لا فهرسة."},
+  {k: "p7", ph: "7", action: "phase7", t: "الفحص", h: "المرحلة 7 — فحصٌ بعد النشر", d: "تقارن المعتمد باللقطة: HTTP وcanonical وhreflang والخريطة والتحويلات. فشلها يوقف التوسيع."},
+  {k: "p10", ph: "10", action: "extras", t: "القوائم والمواسم", h: "المرحلة 10 — القوائم والمواسم والهبّات", d: "تعتمد القوائم وصفحات المواسم والحلقات وهبّي التركي والأنمي (وهب /content/ إن فُعّل) بعد فحصها كما تُخدم. تتراجع كاملةً عند أي فشل."},
+  {k: "p8", action: "batch", t: "التوسيع", h: "المرحلتان 8 و9 — دفعات التوسيع", d: "تثري دفعةً من الكيانات من TMDB وتفحصها ثم تعتمدها وترسلها إلى IndexNow. كرّرها دفعةً بعد دفعة؛ وبعد كل توسيعٍ أعد المرحلة 10 لتشمل الجديد."},
   {k: "fin", action: "final", t: "الختام", h: "الحزمة النهائية", d: "تُنتج تقرير الحالة النهائي (release-final) للمراجعة."},
 ];
 let wzI = null, wzData = null, wzTimer = 0;
@@ -1335,8 +1335,8 @@ function renderWizard(d) {
   $("wzBar").style.width = Math.round(done / total * 100) + "%";
   $("wzSteps").innerHTML = WZ.map((x, i) => {
     const cls = st[x.k] === "done" ? "done" : st[x.k] === "fail" ? "fail" : wzLocked(d, st, i) ? "lock" : "";
-    const ic = st[x.k] === "done" ? "✔" : st[x.k] === "fail" ? "✖" : String(i + 1);
-    return `<li><button type="button" class="${cls}" data-i="${i}"${i === wzI ? ' aria-current="step"' : ""}><b>${ic}</b>${esc(x.t)}</button></li>`;
+    const mark = st[x.k] === "done" ? " ✔" : st[x.k] === "fail" ? " ✖" : "";
+    return `<li><button type="button" class="${cls}" data-i="${i}"${i === wzI ? ' aria-current="step"' : ""}><b>${i + 1}${mark}</b>${esc(x.t)}</button></li>`;
   }).join("");
   const lock = wzLocked(d, st, wzI), running = !!d.running;
   const rec = cur.ph ? ph[cur.ph] : null;
@@ -1349,7 +1349,7 @@ function renderWizard(d) {
   if (cur.k === "p7") body += `<label class="switch"><span>فحص HTTP حقيقي على الموقع<small>يطلب كل رابطٍ معتمد من guide.ssouq.com</small></span><input type="checkbox" class="tog" id="wzHttp"${$("rHttp").checked ? " checked" : ""}></label>`;
   if (cur.k === "p8") body += `<div class="fld"><input id="wzN" class="ltr" type="number" min="1" max="1000" value="${$("rN").value || 100}" aria-label="حجم الدفعة" style="width:120px"><span class="meta">دفعاتٌ منفّذة: ${(d.batches || []).length}${r.blocked ? " · ⛔ موقوف: أعد المرحلة 7 أولًا" : ""}</span></div>`;
   if (running) {
-    const el = p.at ? Math.floor(Date.now() / 1000) - p.at : 0, cnt = p.total ? `${num(p.done || 0)} / ${num(p.total)}` : "";
+    const el = p.at ? Math.floor(Date.now() / 1000) - p.at : 0, cnt = p.total ? `<bdi dir="ltr">${num(p.done || 0)} / ${num(p.total)}</bdi>` : "";
     body += `<div class="wz-live"><div class="t" id="wzT" data-at="${p.at || 0}">${wzFmt(el)}</div><div class="n">${esc(p.action || "")} · ${esc(p.stage || "يعمل")}${cnt ? " · " + cnt : ""}</div>` +
             (p.total ? `<div class="bar"><i style="width:${Math.min(100, Math.round((p.done || 0) / p.total * 100))}%"></i></div>` : "") + "</div>";
   } else if (rec && rec.status) {
