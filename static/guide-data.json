@@ -21,8 +21,8 @@
    },
    {
     "title": "أدخل بيانات اشتراكك",
-    "img": "/static/img/ios-var-adduser.webp",
-    "html": "<p>تظهر شاشة <b dir=\"ltr\">Add User</b> بثلاث خانات، عبّئها كما وصلتك ثم اضغط <b dir=\"ltr\">Go</b>:</p><div class=\"fields\"><div class=\"f\"><span dir=\"ltr\">http://url:port</span><code>رابط الهوست كما وصلك</code></div><div class=\"f\"><span dir=\"ltr\">Username</span><code>اسم المستخدم</code></div><div class=\"f\"><span dir=\"ltr\">Password</span><code>كلمة المرور</code></div></div><div class=\"note http\"><b>تنبيه مهم: رابط الهوست يبدأ بـ http وليس https</b><div class=\"hv\"><code dir=\"ltr\" class=\"ok\">http://</code><b>✅ صحيح</b></div><div class=\"hv\"><code dir=\"ltr\" class=\"bad\">https://</code><b>❌ خطأ — لا يعمل</b></div><p>عند النسخ واللصق يضيف الجهاز أحيانًا حرف <b dir=\"ltr\">s</b> من نفسه فيصير الرابط <b dir=\"ltr\">https</b> ولا يعمل الاشتراك. بعد اللصق انظر إلى أول الرابط: إن وجدت <b dir=\"ltr\">https</b> فاحذف حرف <b dir=\"ltr\">s</b> ليصبح <b dir=\"ltr\">http</b>.</p></div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+    "img": "/static/img/ios-var-adduser-any.webp",
+    "html": "<p>تظهر شاشة <b dir=\"ltr\">Add User</b> بثلاث خانات، عبّئها بالترتيب ثم اضغط <b dir=\"ltr\">Go</b>:</p><div class=\"fields\"><div class=\"f\"><span>الخانة الأولى</span><code>اكتب الرقم <b dir=\"ltr\">1</b> فقط</code></div><div class=\"f\"><span>الخانة الثانية <i dir=\"ltr\">Username</i></span><code>اسم المستخدم كما وصلك</code></div><div class=\"f\"><span>الخانة الثالثة <i dir=\"ltr\">Password</i></span><code>كلمة المرور كما وصلتك</code></div></div><div class=\"note\">لا حاجة لرابط الهوست هنا: الخادم تحدّد برمز <b dir=\"ltr\">55555</b> في الخطوة السابقة، فاكتب <b dir=\"ltr\">1</b> في الخانة الأولى، ولا تكتب فيها <span dir=\"ltr\">http://url:port</span> فهو مجرد نص توضيحي داخل الخانة، ولا تتركها فارغة.</div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
    }
   ]
  },
@@ -89,13 +89,15 @@
      "key": "mr7",
      "label": "MR7 TV",
      "sub": "تطبيقنا الخاص، تسجيل دخول مباشر",
-     "icon": "mr7"
+     "icon": "mr7",
+     "code": "5574841"
     },
     {
      "key": "smarters",
      "label": "IPTV Smarters Pro",
      "sub": "برنامج إضافي عبر Downloader",
-     "icon": "smarters-pro"
+     "icon": "smarters-pro",
+     "code": "8744201"
     }
    ]
   },
