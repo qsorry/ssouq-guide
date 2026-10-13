@@ -139,7 +139,7 @@ for _cup in CUPS:
 def sitemap_extra():
     """صفحات الوحدات في خريطة الموقع ← [(المسار، changefreq، priority)] — بعد الرئيسية وصفحات الأجهزة. وصفحات الكيانات
     المعتمدة المستحقّة (seo_release، المرحلة 5) — فارغةٌ ما لم يُفعَّل sitemap_live بعد بوابتها."""
-    return (league.SITEMAP + watch.SITEMAP + [(predict_page.PATH, "daily", "0.7")]
+    return (league.SITEMAP + watch.SITEMAP + watch.sitemap() + [(predict_page.PATH, "daily", "0.7")]
             + [u for t in CUPS for u in t.sitemap()] + content.sitemap(DATA_DIR) + seo_release.sitemap_entries(DATA_DIR))
 
 
@@ -6422,9 +6422,16 @@ class Handler(BaseHTTPRequestHandler):
                                   else {"Retry-After": str(league.RETRY)})
         if path == watch.PATH + "/":
             return self._redirect(watch.PATH, 301)
+        if path == watch.PATH + "/widget":      # ودجت رئيسية متجر سلة (iframe): مباريات الدوريات الخمسة المتاحة
+            code, body, age = watch.render_widget(self._q("theme"))
+            return self._send(code, raw=body, ctype="text/html; charset=utf-8",
+                              extra={"Cache-Control": f"public, max-age={age}"} if code == 200
+                              else {"Retry-After": str(league.RETRY)})
         if path == watch.PATH or path.startswith(watch.PATH + "/"):   # المشاهدة: المدخل وصفحة لكل دوري وبطولة
             page = (watch.render_hub(CUPS) if path == watch.PATH
                     else watch.render(path[len(watch.PATH) + 1:], CUPS))
+            if page and page[0] == "redirect":
+                return self._redirect(page[1], 301)
             if page:
                 code, body, age = page
                 return self._send(code, raw=body, ctype="text/html; charset=utf-8",

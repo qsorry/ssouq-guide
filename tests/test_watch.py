@@ -102,6 +102,37 @@ def unit():
     check("حرف الجرّ على الاسم", [W._li(n) for n in ("دوري روشن", "الدوري الإنجليزي", "كأس الخليج")]
           == ["لدوري روشن", "للدوري الإنجليزي", "لكأس الخليج"])
 
+    print("\nصفحة المباراة")
+    reset(fake_espn, cups)
+    ms = W._get("saudi-pro-league", ())[0]["matches"]
+    m0 = ms[0]
+    check("لكل مباراة slug برقمها", all(re.fullmatch(r"\d+-[a-z0-9-]+", m["slug"]) for m in ms), m0["slug"])
+    r = W.render("saudi-pro-league/" + m0["slug"], cups)
+    pg = r[1].decode() if r and r[0] == 200 else ""
+    check("الصفحة 200 بعنوانها وcanonical", r and r[0] == 200 and m0["home"]["name"] in pg
+          and f'rel="canonical" href="{guide_pages.SITE}/watch/saudi-pro-league/{m0["slug"]}"' in pg)
+    check("SportsEvent وBreadcrumbList وFAQPage", {x["@type"] for x in ld(pg)} == {"BreadcrumbList", "SportsEvent", "FAQPage"})
+    check("تُفهرس (index) وتربط الدوري والترتيب", 'content="index, follow' in pg and 'href="/watch/saudi-pro-league"' in pg
+          and 'href="/standings/saudi-pro-league"' in pg)
+    check("رابط غير رابطها يحوّل", W.render("saudi-pro-league/" + m0["id"], cups) == ("redirect", W.match_url("saudi-pro-league", m0)))
+    check("مباراة مجهولة ودوري مجهول = None", W.render("saudi-pro-league/999999", cups) is None
+          and W.render("nope/1-x", cups) is None and W.render("nations-league/1-x", cups) is None)
+    check("المباريات في خريطة الموقع", all(u.startswith("/watch/") for u, _, _ in W.sitemap()) and len(W.sitemap()) >= len(ms))
+
+    print("\nودجت الرئيسية")
+    reset(fake_espn, cups)
+    code, raw, _ = W.render_widget()
+    page = raw.decode()
+    heads = re.findall(r"<h2><span>(.*?)(?: <small|</span>)", page)
+    order = [L.LEAGUES[k]["name"] for k in W.WIDGET_LEAGUES]
+    check("200 ودوريات الأولوية بترتيبها (ما له مباريات فقط)",
+          code == 200 and heads == [n for n in order if n in heads] and heads[:2] == order[:2], heads)
+    check("لا دوري خارج الخمسة", not any(L.LEAGUES[k]["name"] in page for k in ("serie-a", "bundesliga", "ligue-1")))
+    check("noindex ولا وسم canonical لصفحة غيره", 'name="robots" content="noindex"' in page)
+    check("الوضع المفروض", 'data-theme="dark"' in W.render_widget("dark")[1].decode())
+    reset(down, cups)
+    check("تعذّر ESPN = 503", W.render_widget()[0] == 503)
+
     print("\nالأشهر والمباريات")
     ts = lambda y, mo, d: datetime.datetime(y, mo, d, 12, tzinfo=L.RIYADH).timestamp()  # noqa: E731
     check("الماضي والحالي والقادم", W.months(ts(2026, 9, 28)) == ["202608", "202609", "202610"])
@@ -156,7 +187,7 @@ def unit():
     check("لا ناقل تحت المؤجلة ولا تحت النتائج", "مؤجلة" in up and 'class="tv"' not in res)
     check("يُعلن لاحقًا لساعةٍ لم تُعتمد", "يُعلن لاحقًا" in up)
     check("النتائج الأحدث أولًا", 0 < res.index("الخلود") < res.index("الاتحاد"))   # قبل يومين، ثم قبل ثلاثة
-    check("صفوف الدوري بلا روابط (لا صفحات لمبارياته)", '<a class="match' not in page and '<div class="match' in page)
+    check("صفوف الدوري روابط إلى صفحات مبارياتها", re.search(r'<a class="match[^"]*" href="/watch/saudi-pro-league/\d+-', page) is not None)
     st = section(page, "standings")
     check("الترتيب ستة صفوف ورابط الجدول الكامل", st.count("<tr") == 7 and 'href="/standings/saudi-pro-league"' in st)
     tabs = re.search(r'<nav class="ltabs" aria-label="المسابقات">(.*?)</nav>', page).group(1)
