@@ -181,7 +181,7 @@ def bump_stat(key):
 # (‏404 كأن المسار لم يوجد) — لا تحويل ولا صفحة دخول، فلا أثر للوحة على الموقع العام.
 # `XM_ADMIN_HOST` فارغًا = لا نطاق للأداة، فتبقى تحت /admin كما كانت — وهو ما
 # يحدث محليًا وفي الاختبارات أصلاً لأن الطلب يصل بـ Host = 127.0.0.1 لا بالنطاق.
-SITE_HOST  = os.environ.get("XM_SITE_HOST", "guide.ssouq.com").strip().lower()
+SITE_HOST  = (os.environ.get("XM_SITE_HOST") or guide_pages.SITE_NETLOC).strip().lower()   # مضيف الموقع العام (يُشتقّ من XM_SITE_URL ما لم يُحدَّد)
 ADMIN_HOST = os.environ.get("XM_ADMIN_HOST", "admin.ssouq.com").strip().lower()
 ADMIN_PATH = "/admin"                                 # مسار الأداة حين لا نطاق لها
 # صفحات الأداة بمسارها الداخلي (تحت /admin على الموقع العام، ومن الجذر على نطاقها)
@@ -6387,8 +6387,8 @@ class Handler(BaseHTTPRequestHandler):
             # موجود إعلانٌ عنه.
             block = "" if self.off_site else f"Disallow: {ADMIN_PATH}\n"
             return self._send(200, raw=f"User-agent: *\n{block}Allow: /\n\n"
-                              f"Sitemap: https://guide.ssouq.com/sitemap.xml\n"
-                              f"Sitemap: https://guide.ssouq.com/store-sitemap.xml\n".encode(),
+                              f"Sitemap: {guide_pages.SITE}/sitemap.xml\n"
+                              f"Sitemap: {guide_pages.SITE}/store-sitemap.xml\n".encode(),
                               ctype="text/plain; charset=utf-8")
         if path == "/store-sitemap.xml":        # خريطة منتجات المتجر (إرسال متقاطع)
             return self._send(200, raw=store_sitemap.sitemap(),

@@ -14,7 +14,10 @@ import os
 import re
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SITE = "https://guide.ssouq.com"
+# عنوان الموقع العام الذي تُبنى عليه كل canonical وhreflang والخريطة وIndexNow: يُضبط بـ XM_SITE_URL عند الانتقال (دومين، أو دومين + مجلد
+# مثل https://ssouq.com/guide) — بلا شرطةٍ أخيرة. الافتراضي هو الحالي فلا يتغيّر شيء ما لم يُضبط. التفصيل في docs/site-migration.md.
+SITE = (os.environ.get("XM_SITE_URL") or "https://guide.ssouq.com").strip().rstrip("/")
+SITE_NETLOC = SITE.split("//", 1)[-1].split("/", 1)[0]       # المضيف وحده (بلا مجلد): لـ IndexNow والعرض
 STORE = "https://ssouq.com"
 UTM = "?utm_source=guide.ssouq.com&utm_medium=referral&utm_campaign=guide"
 
