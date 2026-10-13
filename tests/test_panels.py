@@ -375,7 +375,7 @@ def test_dup_create():
         kinds = [m["kind"] for m in body["messages"]]
         check("two messages: new to the later buyer, old to the first buyer", kinds == ["new", "old"]
               and body["messages"][0]["phone"] == "966500000002" and body["messages"][1]["phone"] == "966500000001"
-              and "User 777888999000 Pass oldpw" in body["messages"][1]["text"], str(body["messages"]))
+              and "User 777888999000\nPass oldpw" in body["messages"][1]["text"], str(body["messages"]))
         check("done is recorded with the messages", panels.duplicates(cfg, d)["rows"][0]["done"]["msgs"][1]["kind"] == "old")
         check("messages listed for sending", len(panels.dupe_messages(d)) == 2)
         # القناة: رقم المسابقة المتصل أولًا
@@ -398,7 +398,11 @@ def test_dup_create():
         check("send log is append-only, newest first, failures kept", len(lg) == 2 and lg[0]["ok"] and not lg[1]["ok"] and lg[1]["error"] == "boom", str(lg))
         code2, body2 = X.dup_create([acct], cfg, d, {"order": "2", "username": "999000111222"})
         check("a second create for the same order is refused", code2 == 400, str(body2))
-        check("old-owner message uses the security wording", "لوجود خطر على الحساب" in body["messages"][1]["text"])
+        check("old-owner message states the reason (someone else used it) and keeps password/duration", "شخص آخر" in body["messages"][1]["text"] and "كلمة المرور ومدة الاشتراك كما هما" in body["messages"][1]["text"])
+        check("new-owner message is WhatsApp formatted: bold heading, reason, each credential on its own line",
+              "*اشتراكك الجديد جاهز ✅*" in body["messages"][0]["text"] and "سبب التغيير" in body["messages"][0]["text"] and "\nHost http://m.ink\nUser 555\nPass 666" in body["messages"][0]["text"], body["messages"][0]["text"])
+        check("wa_line keeps the guide and leaves unknown text as is", X.wa_line("Host h User u Pass p Guide g") == "Host h\nUser u\nPass p\nGuide g" and X.wa_line("abc") == "abc")
+        check("messages carry the old-user state for the messages tab", panels.dupe_messages(d)[0]["old"] == "999000111222" and panels.dupe_messages(d)[0]["src"] == "dup" and all(m["renamed"] for m in panels.dupe_messages(d)), str(panels.dupe_messages(d)[0]))
         # قديمٌ لم يُغيَّر (فشل) ثم يُعاد بالزر
         panels.update_dupe(d, "2", {"renamed": None, "rename_error": "x"})
         panels.load_dupes_done(d)["2"]["msgs"].pop()

@@ -653,8 +653,11 @@ def dupe_messages(data_dir):
     """كل رسائل البدائل المُنشأة (الأحدث أولًا) — لتُرسل أو يُعاد إرسالها."""
     out = []
     for order, rec in load_dupes_done(data_dir).items():
+        # حال اليوزر القديم مع كل رسالة (ليظهر في تبويب الرسائل أغُيّر أم لا، وزرّ تغييره إن لم يُغيَّر)
+        state = {"src": rec.get("src", "dup"), "old": rec.get("old", ""), "renamed": rec.get("renamed"),
+                 "rename_error": rec.get("rename_error", ""), "old_missing": bool(rec.get("old_missing"))}
         for i, m in enumerate(rec.get("msgs") or []):
-            out.append(dict(m, order=order, idx=i, at=rec.get("at", "")))
+            out.append(dict(m, order=order, idx=i, at=rec.get("at", ""), **state))
     out.sort(key=lambda m: m["at"], reverse=True)
     return out
 
