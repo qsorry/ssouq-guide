@@ -575,7 +575,7 @@ try{sessionStorage.setItem("ssouqMore:"+d.id,d.open?"1":"0")}catch(x){}h()}},tru
 
 def render_widget(theme="", now=None):
     """ودجت رئيسية متجر سلة (‏/watch/widget داخل iframe في قسم «محتوى HTML»): الدوريات الخمسة
-    (‏WIDGET_LEAGUES) بالترتيب، لكلٍّ مباريات اليوم الجارية أو التي لم تبدأ (لا المنتهية) — وإلا أقرب مباريات خلال WIDGET_AHEAD — بقناتها
+    (‏WIDGET_LEAGUES) — ما فيه مباريات اليوم أولًا (والجارية قبله) ثم القادمة، وبينها ترتيب الأولوية — لكلٍّ مباريات اليوم الجارية أو التي لم تبدأ (لا المنتهية) — وإلا أقرب مباريات خلال WIDGET_AHEAD — بقناتها
     الناقلة. دوريٌ بلا مباريات في الفترة لا يظهر. والتحديث الحيّ والوضع والشفافية كودجت البطولتين
     (‏tournament.WIDGET_JS وWIDGET_CSS). ← (رمز، بايتات، مدة الكاش): 503 إن تعذّر كل شيء."""
     now = time.time() if now is None else now
@@ -603,10 +603,12 @@ def render_widget(theme="", now=None):
         paint = lambda xs: _days(xs, lambda m: _row(m, badge, k, True))          # noqa: E731
         more = (f'<details class="wmore" id="more-{k}"><summary>مباريات أخرى <span class="n">({len(rows) - 1})</span>'
                 f'{tournament.CHEVRON}</summary>{paint(rows[1:])}</details>' if len(rows) > 1 else "")
-        blocks.append(f'<div class="wcup"><h2><span>{_esc(league.LEAGUES[k]["name"])}'
+        rank = (0 if rows[0]["state"] == "in" else 1 if todays else 2, i)          # الجارية، ثم اليوم، ثم القادمة؛ وبينها الأولوية
+        blocks.append((rank, f'<div class="wcup"><h2><span>{_esc(league.LEAGUES[k]["name"])}'
                       + (f' <small class="n">· {note}</small>' if note else "")
                       + f'</span><a href="{PATH}/{k}" target="_blank" rel="noopener">كل المواعيد ←</a></h2>'
-                      + paint(rows[:1]) + more + "</div>")
+                      + paint(rows[:1]) + more + "</div>"))
+    blocks = [h for _, h in sorted(blocks, key=lambda b: b[0])]
     if blocks:
         body = f'<div class="{"wcols" if len(blocks) > 1 else "wone"}">{"".join(blocks)}</div>'
     elif all_ms:
