@@ -7034,6 +7034,15 @@ class Handler(BaseHTTPRequestHandler):
                         except Exception:
                             r["replacement"] = None
                     r["copy_line"] = line_copy(racs, r)
+                    if r.get("state") in ("replaced", "covered"):   # يُنسخ شرح البديل لا المفقود
+                        rp = r.get("replacement") or {}
+                        if rp.get("username") and rp.get("password"):
+                            r["copy_line"] = line_copy(racs, dict(r, username=rp["username"], password=rp["password"],
+                                                                  host=rp.get("host") or r.get("host", ""),
+                                                                  account_id=rp.get("account_id") or r.get("account_id"),
+                                                                  gate_id=rp.get("gate_id") or r.get("gate_id")))
+                        else:
+                            r["copy_line"] = ""
                 d["rows"].sort(key=lambda r: not (r.get("complaint") and not r["complaint"]["replied"]))   # ما عليه شكوى أولًا
                 d["with_complaint"] = sum(1 for r in d["rows"] if r.get("complaint") and not r["complaint"]["replied"])
                 d["wa_linked"] = dup_wa_ready(st)

@@ -919,6 +919,24 @@ def _covered_orders(lines, users):
     return out
 
 
+def _phone_successors(lines, users):
+    """{جوال موحَّد: [(رقم الطلب، تاريخه، اليوزر)]}: خطوطٌ رُبطت بطلبها (linked: من صفحة الإنشاء أو الشكاوى) ويوزرها
+    موجود على لوحة — بديلٌ محتمل لخطٍّ مفقود لعميلٍ بالجوال نفسه في طلبٍ بأرقامٍ أخرى."""
+    out = {}
+    for ln in lines:
+        u = str(ln.get("username") or "").strip()
+        ph = renew.norm_phone(ln.get("phone"))
+        if ph and ln.get("linked") and u.lower() in users and ln.get("order"):
+            out.setdefault(ph, []).append((renew.norm_order(ln.get("order")), str(ln.get("date") or ""), u))
+    return out
+
+
+def _successor(ln, no, ctx):
+    ph = renew.norm_phone(ln.get("phone"))
+    d0 = str(ln.get("date") or "")
+    return next(((o, d, u) for o, d, u in ctx["succ"].get(ph, []) if ph and o != no and d >= d0), None)
+
+
 def _line_row(ln, ctx):
     """صفّ خطٍّ من المتجر بحاله: أين وُجد، وأمفقودٌ هو، وكم بقي له. `ctx` ما بُني مرةً للفهرس كله
     (خريطة الهوستات واللوحات واليوزرات …) — لا يُعاد بناؤه لكل خط."""
@@ -940,6 +958,8 @@ def _line_row(ln, ctx):
         state = "found"
     elif (u.lower() in ctx["replaced"] and not mine) or (rec and not mine):
         state = "replaced"                       # استُبدل من غير هذه الصفحة (بديل المكرر أو البحث)
+    elif not mine and _successor(ln, no, ctx):
+        state = "replaced"                       # للعميل (الجوال نفسه) طلبٌ أحدث بيوزرٍ أُنشئ من صفحة الإنشاء وهو موجود
     elif no in ctx["covered"] and not mine:
         state = "covered"                        # للطلب يوزرٌ آخر موجود: الاشتراك قائم
     elif not panel:
@@ -965,7 +985,9 @@ def _line_row(ln, ctx):
             "done_panel_id": dpid if dpanel else "", "done_panel": dpanel.get("name", ""),
             "done_account_id": dpanel.get("account_id", ""), "done_gate_id": dpanel.get("gate_id", ""),
             "state": state, "linked": str(ln.get("linked") or ""), "done": mine,
-            "covered_by": ctx["covered"].get(no, "") if state == "covered" else ""}
+            "covered_by": ctx["covered"].get(no, "") if state == "covered" else "",
+            "replaced_by": (lambda x: {"order": x[0], "username": x[2]} if x else None)(
+                _successor(ln, no, ctx) if state == "replaced" and not mine and u.lower() not in ctx["replaced"] else None)}
 
 
 def _mark_dups(rows, hidx):
@@ -1028,7 +1050,7 @@ def build_index(config, data_dir, replaced=None, export=None, today=None):
     pmap = {p["id"]: p for p in cfg["panels"]}
     ctx = {"pmap": pmap, "hidx": host_index(cfg["panels"]), "own": {pid: panel_data_for(pl, p) for pid, p in pmap.items()},
            "users": users, "done": load_dupes_done(data_dir), "replaced": {str(u).lower() for u in (replaced or ())},
-           "covered": _covered_orders(lines, users), "today": today or renew._today(),
+           "covered": _covered_orders(lines, users), "succ": _phone_successors(lines, users), "today": today or renew._today(),
            "xgates": set((export or {}).get("gates") or ())}
     rows, seen = [], set()
     by_order, by_user, by_pass = {}, {}, {}

@@ -2552,7 +2552,8 @@ class CasperWebSession(PanelWebSession):
 
     def _enable_urls(self, raw, line_id, page=""):
         """روابط «Enable» في خيارات الصفّ (لا Disable)، ثم المسارات المعتادة."""
-        lid, out = str(line_id), []
+        lid = str(line_id)
+        out = ["index.php/users/Suspend?uid=%s&NH=1&sus=off" % lid]   # رابط Enable الفعلي في لوحة كاسبر (sus=on يوقف)
         for m in self._RE_LINK_ATTR.finditer(raw or ""):
             for u in (m.group(1), m.group(2)):
                 u = _html.unescape(u or "").strip().replace("\\/", "/")

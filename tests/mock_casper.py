@@ -109,7 +109,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                            u["created"], u["exp"],
                            ("<span class='btn btn-danger'><i class='fa fa-power-off'></i></span>/1" if u.get("disabled") else u["conns"]),
                            u["id"],
-                           (" <a href='/iptv/index.php/users/enable/%s'>Enable</a>" % u["id"]) if u.get("disabled") else ""))
+                           (" <a href='#' onclick='suspendUser(%s)'>Enable</a>" % u["id"]) if u.get("disabled") else ""))
         pag = "".join(
             "<li><a href='/iptv/index.php/users/index?&amp;page=%d'>%d</a></li>" % (p, p)
             for p in range(1, last + 1))
@@ -213,6 +213,14 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             return
         if "index.php/home/index" in p:
             return self._html(200, "<html><body>Dashboard OK Credit : 6303</body></html>")
+        if "index.php/users/Suspend" in p:
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(p).query)
+            uid = (q.get("uid") or [""])[0]
+            with self._lock:
+                for x in self.users:
+                    if x["id"] == uid:
+                        x["disabled"] = (q.get("sus") or [""])[0] == "on"
+            return self._html(200, "<html><body>OK</body></html>")
         if "index.php/users/enable/" in p:
             uid = p.split("index.php/users/enable/")[1].split("?")[0]
             with self._lock:
