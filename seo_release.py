@@ -784,7 +784,8 @@ def status(data_dir):
                 "batches": [{kk: v for kk, v in b.items() if kk in ("batch", "status", "n", "reason", "at", "approved_routes_total", "indexnow", "eligibility")} for b in rel.get("batches") or []],
                 "index_live": bool(st.get("index_live")), "sitemap_live": bool(st.get("sitemap_live")), "preview": bool(st.get("preview")),
                 "index_extra_live": bool(st.get("index_extra_live")), "extras_approved_routes": len((seo_db.state(con, seo_pages.EXTRA_KEY) or {}).get("routes") or []),
-                "approved_routes": len(approved), "approved_entities": len({c for c, _ in approved}), "approved_snapshot": (seo_db.state(con, APPROVED_KEY) or {}).get("snapshot"),
+                "approved_routes": len(approved), "approved_entities": len({c for c, _ in approved}),
+                "live_entities": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=1").fetchone()[0], "approved_snapshot": (seo_db.state(con, APPROVED_KEY) or {}).get("snapshot"),
                 "bundle": bundle_meta(data_dir), "snapshot_routes": len(snapshot_urls(data_dir) or []), **seo_sources.code_version()}
     finally:
         con.close()
