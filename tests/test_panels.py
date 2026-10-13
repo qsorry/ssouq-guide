@@ -687,6 +687,58 @@ def test_order_lost():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_search_replaced_dup():
+    print("== البحث: البديل على لوحةٍ أخرى (كاسبر ← مرح)، والحساب المكرر في نتيجة البحث ==")
+    import datetime
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="srd_")
+    try:
+        today = renew._today()
+        st = today - datetime.timedelta(days=60)
+        def ln(order, user, phone="0500000001", name="ع", host="http://c.ink", date=st):
+            return {"order": order, "date": date.isoformat(), "phone": phone, "customer": name, "username": user,
+                    "password": "pw" + user, "host": host, "months": 12, "expiry": renew.add_months(st, 12).isoformat()}
+        cfg = {"panels": [{"id": "pc", "name": "كاسبر", "hosts": ["http://c.ink"], "account_id": "accC", "gate_id": "gc"},
+                          {"id": "pm", "name": "مرح", "hosts": ["http://m.ink"], "account_id": "accM", "gate_id": "gm"}]}
+        panels.save_store_lines(d, [ln("277425027", "111"), ln("2", "222", "0500000002", "ب"),
+                                    ln("3", "222", "0500000003", "ج", date=st + datetime.timedelta(days=5)),
+                                    ln("4", "222", "0500000002", "ب", date=st + datetime.timedelta(days=9)),
+                                    ln("5", "555", host="http://m.ink")])
+        panels.save_panel_lines(d, "pc", "كاسبر", [{"username": "222", "password": "pw222", "exp": "", "package": "12 Months"}])
+        panels.save_panel_lines(d, "pm", "مرح", [{"username": "555", "password": "pw555", "exp": "", "package": "12 Months"}])
+        # (أ) تعويضٌ أُنشئ للطلب على مرح وطلبه مربوطٌ بكاسبر: البطاقة تعرف لوحة البديل وبوابته
+        panels.mark_dupe_done(d, "277425027", "999", 10, "ع", extra={"src": "lost", "old": "111", "password": "p9", "host": "http://m.ink:80"})
+        r = panels.order_search(cfg, d, "277425027")["rows"][0]
+        check("replacement created on another panel: order panel stays, done_panel names the new one with its gate",
+              r["panel_name"] == "كاسبر" and r["done_panel"] == "مرح" and r["done_panel_id"] == "pm"
+              and r["done_account_id"] == "accM" and r["done_gate_id"] == "gm" and r["done"]["new"] == "999", str({k: r[k] for k in ("panel_name", "done_panel", "done_gate_id")}))
+        accs = [{"id": "accC", "gates": [{"id": "gc", "host": "http://c.ink", "guide_url": "https://x/#c"}]},
+                {"id": "accM", "gates": [{"id": "gm", "host": "http://m.ink", "guide_url": "https://x/#m"}]}]
+        keep = X.with_guide
+        X.with_guide = lambda a, g: dict(g or {})
+        try:
+            txt = X.comp_copy(accs, dict(r))
+            check("copy text of the replacement uses the new panel's gate guide, not the old panel's", "https://x/#m" in txt and "#c" not in txt, txt[:120])
+        finally:
+            X.with_guide = keep
+        check("a replacement on the order's own panel reports no other panel",
+              panels.order_search(cfg, d, "5")["rows"][0]["done_panel"] == "" )
+        # (ب) الحساب المكرر: اليوزر 222 بيع في 2 و3 و4 — 4 بنفس جوال 2 (تجديد) فليس مكرّرًا معه، و3 لعميلٍ آخر
+        rows = {x["order"]: x for x in panels.build_index(cfg, d)["rows"]}
+        check("the first sale is flagged duplicate with the later order of another customer only",
+              rows["2"]["dup"] and rows["2"]["dup"]["mine_first"] and [o["order"] for o in rows["2"]["dup"]["others"]] == ["3"], str(rows["2"]["dup"]))
+        check("the later sale knows the first order and is not the first",
+              rows["3"]["dup"] and not rows["3"]["dup"]["mine_first"] and rows["3"]["dup"]["first_order"] == "2"
+              and sorted(o["order"] for o in rows["3"]["dup"]["others"]) == ["2", "4"], str(rows["3"]["dup"]))
+        check("same phone = renewal: order 4 is a duplicate only against order 3", [o["order"] for o in rows["4"]["dup"]["others"]] == ["3"])
+        check("a user sold once is not flagged; counts carry the duplicates",
+              rows["277425027"]["dup"] is None and rows["5"]["dup"] is None and panels.build_index(cfg, d)["counts"]["dup"] == 3)
+        s = panels.order_search(cfg, d, "3")
+        check("order search carries the duplicate flag", s["rows"][0]["dup"]["first_order"] == "2")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_search_index():
     print("== فهرس البحث: التوحيد، والإبطال بتغيّر المصادر، والبناء مرةً واحدة، والمصادر التالفة ==")
     import datetime
@@ -854,6 +906,7 @@ def main():
     test_split_bulk()
     test_dup_create()
     test_order_lost()
+    test_search_replaced_dup()
     test_search_index()
     test_dup_gate_fallback()
     print("\n----------------------------------------")

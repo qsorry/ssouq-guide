@@ -127,8 +127,11 @@ const GUIDE_F = GUIDE + '#activate/falcon';      // البوابات فالكو�
     check('searching the old number again: its link under gate ب', lg.length === 1 && lg[0][0].startsWith('بوابة ب') && lg[0][1], JSON.stringify(lg));
 
     // ---- رابط الشرح العام يُحفظ من الصفحة: يُوجَّه لصفحة اشتراك كل بوابة، بلا إعادة تحميل ----
+    await user.click('#menuBtn'); await sleep(300);                 // رابط الشرح في درج القائمة (إعداد) لا في عمودٍ جانبي
+    check('guide link lives in the drawer', await user.isVisible('#myGuide'));
     await user.fill('#myGuide', 'https://guide.ssouq.com/?ref=x');
     await Promise.all([user.waitForResponse(r => r.url().includes('/api/me')), user.click('#saveGuide')]);
+    await user.click('#scrim'); await sleep(300);
     await search(user, 'onlyonb');
     const cp2 = await user.$eval('#searchRes button.cb', b => b.dataset.copy);
     check('a new general link is used at once, aimed at the gate\'s subscription page',

@@ -3646,8 +3646,10 @@ def comp_copy(accounts, row):
         return ""
     rec["password"] = rec.get("password") or pw   # للبطاقة: بيانات الجديد كاملةً ولو كان سجلُّه قديمًا
     rec["host"] = rec.get("host") or host
-    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row.get("account_id"))), None)
-    gate = find_gate(acct, row.get("gate_id")) if acct else None
+    # بوابة البديل نفسه (قد يكون على لوحةٍ غير لوحة الطلب: من كاسبر إلى مرح)، وإلا بوابة لوحة الطلب
+    acct_id, gate_id = (row.get("done_account_id"), row.get("done_gate_id")) if row.get("done_panel_id") else (row.get("account_id"), row.get("gate_id"))
+    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(acct_id)), None)
+    gate = find_gate(acct, gate_id) if acct else None
     return guide_copy_text(acct, gate or {"host": host}, user, pw, host)
 
 
@@ -6834,6 +6836,13 @@ class Handler(BaseHTTPRequestHandler):
                     r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
+                    elif r.get("state") == "replaced":        # استُبدل من صفحة الإنشاء أو المكرر: البديل وعلى أي بوابة
+                        rec = panels.load_dupes_done(rws).get(r["order"]) or {}
+                        r["replacement"] = reply_replacement(racs, rws, r["username"]) or (rec.get("new") and {
+                            "username": rec["new"], "password": rec.get("password", ""), "months": rec.get("months"),
+                            "gate_name": next((p.get("name", "") for p in rcfg.get("panels", [])
+                                               if renew.norm_host(rec.get("host")) in {renew.norm_host(h) for h in (p.get("hosts") or [])}), ""),
+                            "at": str(rec.get("at", ""))[:16]}) or None
                     r["copy_line"] = line_copy(racs, r)
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)

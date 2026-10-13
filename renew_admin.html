@@ -40,7 +40,7 @@ button:disabled{opacity:.55;cursor:progress}
 .icon-btn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink);flex:none;cursor:pointer;text-decoration:none}
 .icon-btn:hover{border-color:var(--go)}
 .icon-btn.out:hover{border-color:var(--err);color:var(--err)}
-.bnav{position:fixed;inset-inline:8px;bottom:8px;z-index:40;display:flex;gap:2px;padding:6px;border:1px solid var(--line);border-radius:20px;
+.bnav{position:fixed;inset-inline:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;gap:2px;padding:6px;border:1px solid var(--line);border-radius:20px;
   background:color-mix(in srgb,var(--sf) 94%,transparent);backdrop-filter:blur(10px);margin-bottom:env(safe-area-inset-bottom)}
 .bnav a{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 10px;color:var(--mute);
   font-size:.74rem;font-weight:600;border-radius:12px;text-decoration:none}
@@ -84,6 +84,9 @@ section{background:var(--sf);border:1px solid var(--line);border-radius:20px;pad
 .jump a em{font-style:normal;background:var(--go);color:#fff;border-radius:999px;min-width:18px;padding:0 6px;font-size:12px;line-height:18px;text-align:center}
 .jump a[aria-selected="true"] em{background:#fff;color:var(--go)}
 .jump{position:sticky;top:0;z-index:5;background:var(--bg,inherit);padding-top:8px}
+.jump a.gear{margin-inline-start:auto;padding:0 11px}.jump a.gear svg{width:19px;height:19px}
+.sub{display:flex;gap:6px;flex-wrap:wrap;margin:-6px 0 12px}.sub:empty{display:none}
+.sub a{font-size:.8rem;color:var(--mute);text-decoration:none;padding:4px 10px;border-radius:999px;border:1px solid var(--line)}.sub a:hover{color:var(--ink);border-color:var(--go)}
 
 /* رأس كل بطاقة: أيقونة، والعنوان وسطره، وزرٌّ أو شارةٌ في آخره */
 .shead{display:flex;align-items:center;gap:12px;margin:0 0 14px}
@@ -322,6 +325,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 .lc-o a{color:inherit;text-decoration:none}.lc-o a:hover b{text-decoration:underline}
 .lc-o small,.lc-why{color:var(--mute);font-size:.8rem}
 .lc-why{margin:-4px 0 0;line-height:1.6}
+.lc-dup{color:var(--err)}.lc-dup a{color:inherit;text-decoration:underline}
 .lc-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 16px}
 .lc-f{min-width:0}.lc-f.wide{grid-column:1/-1}
 .lc-f small{display:block;color:var(--mute);font-size:.72rem;margin-bottom:2px}
@@ -423,24 +427,22 @@ body.modal-open{overflow:hidden}
   <section class="hero">
     <div class="hrow"><h1>التجديد والمقارنة</h1>
       <span class="admin-only"><a class="pub" href="/renew" id="lnkPub" target="_blank" rel="noopener">صفحة العميل <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a></span></div>
-    <p>ارفع ملفات سلة أو اسحبها، قارِن يوزراتك باللوحات، وجهّز قائمة التجديد.</p>
+    <p>ابدأ من العميل (طلب · يوزر · كلمة مرور)، وتابع ما يحتاج عملًا، وحدّث المصادر.</p>
     <div class="hstrip">
       <div><b id="hIdx">—</b><small>طلبات الفهرس</small></div>
       <div><b id="hOn">—</b><small>صفحة التجديد</small></div>
       <div><b id="hDry">—</b><small>الوضع</small></div>
     </div>
   </section>
+  <!-- ثلاث شاشات وأيقونة إعداد: كل شاشة تجمع أقسامًا كانت تبويباتٍ مستقلة (الأقسام نفسها بمعرّفاتها لم تتغيّر) -->
   <nav class="jump" aria-label="أقسام الصفحة" role="tablist">
-    <a href="#secData" data-tab="data" role="tab"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>البيانات</a>
-    <a href="#secCmp" data-tab="cmp" role="tab"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 12a9 9 0 0 1-15 6.7L3 16M21 3v5h-5M3 21v-5h5"/></svg>قائمة التجديد</a>
-    <a href="#secSell" data-tab="sell" role="tab"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg>المعروض للبيع</a>
-    <a href="#secDup" data-tab="dup" role="tab"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>المكرر والبدائل</a>
-    <a href="#secLost" data-tab="lost" role="tab"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>البحث والمفقود</a>
-    <a href="#secReply" data-tab="reply" role="tab"><svg viewBox="0 0 24 24"><path d="M3 11.5a8.5 8.5 0 0 1 8.5-8.5h1A8.5 8.5 0 0 1 21 11.5c0 4.7-3.8 8.5-8.5 8.5H11l-5 3v-4.3A8.5 8.5 0 0 1 3 11.5z"/><path d="M9 11h6M9 8h6"/></svg>الردّ على الشكاوى</a>
-    <a href="#secMsgs" data-tab="msgs" role="tab"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>الرسائل<em id="msgsBadge" class="hidden"></em></a>
-    <a href="#secQ" data-tab="q" class="admin-only" role="tab"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></svg>الطلبات</a>
-    <a href="#secCfg" data-tab="cfg" role="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>الإعداد</a>
+    <a href="#secLost" data-tab="client" role="tab"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>العميل</a>
+    <a href="#secCmp" data-tab="queue" role="tab"><svg viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h12"/></svg>المتابعة<em id="msgsBadge" class="hidden"></em></a>
+    <a href="#secData" data-tab="sources" role="tab"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>المصادر</a>
+    <a href="#secCfg" data-tab="cfg" role="tab" class="gear" title="الإعداد" aria-label="الإعداد"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></a>
   </nav>
+  <!-- داخل الشاشة: أقسامها في صفٍّ ثانٍ يقفز إليها (كل الأقسام ظاهرة مرتّبةً، والصفّ للوصول السريع) -->
+  <nav class="sub" id="subNav" aria-label="أقسام الشاشة"></nav>
 
   <!-- ===================== البيانات: الرفع، ثم بقية المصادر مطويّة ===================== -->
   <section id="secData">
@@ -1908,23 +1910,34 @@ $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/ren
 $('#dlLines').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/store-lines.xlsx'; };
 
 /* ============ التبويبات: قسمٌ واحد في كل مرة، ويُحفظ آخر تبويب ============ */
-const TABS = {data:['secData','secAn'], cmp:['secCmp'], sell:['secSell'], dup:['secDup'], lost:['secLost'], reply:['secReply'], msgs:['secMsgs'], q:['secQ'], cfg:['secCfg']};
-function showTab(t){
-  if (!TABS[t]) t = 'data';
-  if (t === 'msgs' && typeof loadDup === 'function') loadDup();
-  if (t === 'lost' && typeof idxStatus === 'function') idxStatus();   // حال الفهرس فقط (يُحدَّث في الخلفية) — لا فحص تلقائي
-  if (t === 'q' && !IS_ADMIN) t = 'data';
+// الشاشات الثلاث والإعداد: كل شاشةٍ أقسامها (الأقسام نفسها بمعرّفاتها القديمة) — والأسماء القديمة (data · cmp · lost …)
+// تبقى مقبولةً في showTab وتُحوَّل إلى شاشتها، فلا ينكسر رابطٌ ولا سكربت.
+const TABS = {client:['secLost','secReply'], queue:['secCmp','secDup','secSell','secMsgs','secQ'], sources:['secData','secAn'], cfg:['secCfg']};
+const TAB_ALIAS = {data:'sources', cmp:'queue', sell:'queue', dup:'queue', lost:'client', reply:'client', msgs:'queue', q:'queue'};
+const SUB_NAMES = {secLost:'البحث والمفقود', secReply:'الردّ على الشكاوى', secCmp:'قائمة التجديد', secDup:'المكرر والبدائل', secSell:'المعروض للبيع', secMsgs:'الرسائل', secQ:'الطلبات', secData:'البيانات', secAn:'التحليل'};
+const OLD_FOCUS = {data:'secData', cmp:'secCmp', sell:'secSell', dup:'secDup', lost:'secLost', reply:'secReply', msgs:'secMsgs', q:'secQ'};
+function showTab(t, focus){
+  focus = focus || OLD_FOCUS[t] || '';          // اسمٌ قديم: تُفتح شاشته ويُقفز إلى قسمه
+  t = TAB_ALIAS[t] || t;
+  if (!TABS[t]) t = 'client';
+  if (t === 'queue' && typeof loadDup === 'function') loadDup();
+  if (t === 'client' && typeof idxStatus === 'function') idxStatus();   // حال الفهرس فقط (يُحدَّث في الخلفية) — لا فحص تلقائي
   Object.keys(TABS).forEach(k => TABS[k].forEach(id => { const e = document.getElementById(id); if (e) e.classList.toggle('tab-off', k !== t); }));
   document.querySelectorAll('.jump a[data-tab]').forEach(a => a.setAttribute('aria-selected', a.dataset.tab === t ? 'true' : 'false'));
+  // الصفّ الثاني: أقسام الشاشة (قسمٌ واحد = لا صفّ)
+  const subs = TABS[t].filter(id => SUB_NAMES[id] && document.getElementById(id) && !(id === 'secQ' && !IS_ADMIN) && !(id === 'secAn' && document.getElementById(id).classList.contains('hidden')));
+  $('#subNav').innerHTML = subs.length > 1 ? subs.map(id => `<a href="#${id}">${SUB_NAMES[id]}</a>`).join('') : '';
+  $('#subNav').querySelectorAll('a').forEach(a => a.onclick = e => { e.preventDefault(); const el = document.getElementById(a.getAttribute('href').slice(1)); if (el) el.scrollIntoView({block: 'start', behavior: 'smooth'}); history.replaceState(null, '', a.getAttribute('href')); });
   try { localStorage.setItem('renew_tab', t); } catch(e){}
-  history.replaceState(null, '', '#' + TABS[t][0]);
+  history.replaceState(null, '', '#' + (focus && TABS[t].includes(focus) ? focus : TABS[t][0]));
+  if (focus && focus !== TABS[t][0]) { const el = document.getElementById(focus); if (el) setTimeout(() => el.scrollIntoView({block: 'start'}), 0); }
 }
 document.querySelectorAll('.jump a[data-tab]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.tab); window.scrollTo({top:0}); });
 function initTab(){
   const h = (location.hash || '').slice(1);
   const byHash = Object.keys(TABS).find(k => TABS[k].includes(h));
   let saved = ''; try { saved = localStorage.getItem('renew_tab') || ''; } catch(e){}
-  showTab(byHash || saved || 'data');
+  showTab(byHash || saved || 'client', byHash ? h : '');
 }
 
 /* ============ اختيار البوابة: للإنشاء، ولتغيير القديم حين تتعذّر بوابته ============ */
@@ -2225,11 +2238,19 @@ function lcard(r, i, kind){
     + `<small>طلب</small>${kind === 'ls' ? `<a href="#" class="lsO" data-o="${esc(r.order)}"><b class="ltr">${esc(r.order)}</b></a>` : `<b class="ltr">${esc(r.order)}</b>`}`
     + `<small class="ltr">${esc(r.date)}</small></div><span class="pill ${st[1]}">${st[0]}</span></header>`;
   const cqp = r.complaint && !r.complaint.replied ? `<p class="lc-why" style="color:var(--err)"><b>⚠ عليه شكوى #${esc(r.complaint.id)}</b> (${esc(r.complaint.status)})${r.complaint.url ? ` · <a href="${esc(r.complaint.url)}" target="_blank" rel="noopener">افتحها</a>` : ''} · <a href="#secReply" class="lcCq" data-o="${esc(r.order)}">جهّز الردّ</a></p>` : '';
-  const why = (LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '') + cqp;
+  // مستبدل: البديل ولوحته (من روابط الاستبدال أو سجلّ الإنجاز) بدل «استُبدل من قبل» المبهمة
+  const rp = r.replacement;
+  const whyRep = r.state === 'replaced' && rp ? `<p class="lc-why">استُبدل بـ <b class="ltr">${esc(rp.username)}</b>${rp.gate_name ? ` على <b>${esc(rp.gate_name)}</b>` : ''}${rp.months ? ` · ${AR(rp.months)} شهرًا` : ''}${rp.at ? ` · <span class="ltr">${esc(rp.at)}</span>` : ''}</p>` : '';
+  // حساب مكرر: اليوزر نفسه بيع في طلبٍ آخر لعميلٍ مختلف — يُعرض مع كل نتيجة بحث
+  const dupP = r.dup ? `<p class="lc-why lc-dup"><b>⚠ حساب مكرر</b> — اليوزر نفسه بيع ${r.dup.mine_first ? 'بعده' : 'قبله'} في `
+    + r.dup.others.map(o => `<a href="#" class="lcJump" data-o="${esc(o.order)}">الطلب <span class="ltr">${esc(o.order)}</span></a> (${esc(o.customer) || '—'} · <span class="ltr">${esc(o.date)}</span>${o.done ? ' · أُنشئ له بديل ✓' : o.expired ? ' · منتهٍ' : ''})`).join('، ')
+    + (r.dup.mine_first ? ' — هذا الطلب الأقدم ويحتفظ باليوزر.' : ' — الأقدم يحتفظ باليوزر، وهذا يحتاج بديلًا من «المكرر والبدائل».') + '</p>' : '';
+  const why = (whyRep || (LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '')) + dupP + cqp;
   const grid = `<div class="lc-g">${lcField('العميل', esc(r.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(r.phone) || '—'}</span>`)}`
     + lcField('المتبقي', esc(r.remaining) || '—') + lcField(r.state === 'found' ? 'موجود على' : 'اللوحة', esc(where))
+    + (dn && r.done_panel && r.done_panel !== r.panel_name ? lcField('البديل على', `<b>${esc(r.done_panel)}</b>`) : '')
     + (r.product ? lcField('المنتج', `<span class="clip" title="${esc(r.product)}">${esc(r.product)}</span>`, 'wide') : '') + (r.linked ? lcField('الربط', 'رُبط يدويًا') : '') + '</div>';
-  const done = dn ? `<div class="lc-done"><b>✓ أُنشئ له اشتراك جديد${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}</b>`
+  const done = dn ? `<div class="lc-done"><b>✓ أُنشئ له اشتراك جديد${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}${r.done_panel ? ' · على ' + esc(r.done_panel) : ''}</b>`
     + lcCred(dn.host, dn.new, dn.password) + `<div class="lc-a">`
     + (r.copy ? `<button class="go lcCopy" data-k="${kind}" data-i="${i}" type="button">نسخ الشرح</button>`
       + (r.phone ? `<a class="ghost lcWa" data-k="${kind}" data-i="${i}" href="#" target="_blank" rel="noopener">واتساب</a>` : '') : '<small>لا بيانات لنسخ الشرح</small>')
@@ -2245,10 +2266,12 @@ function lcard(r, i, kind){
     : `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>`;
   if (!dn && r.state === 'missing' && r.username && (!r.expired || kind === 'ls')) act += `<label class="lc-chk"><input type="checkbox" class="lc-x lcSame" checked> بنفس اليوزر والباسورد</label>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
-  return `<article class="lc st-${dn ? 'found' : esc(r.state)}">${head}${why}${grid}${lcCred(r.host, r.username, r.password)}${cur}${done}`
+  const pills = (r.dup && !dn ? `<span class="pill bad">مكرر</span>` : '') + `<span class="pill ${st[1]}">${st[0]}</span>`;
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${lcCred(r.host, r.username, r.password)}${cur}${done}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
 function lcBind(box, rows, kind){
+  box.querySelectorAll('.lcJump').forEach(a => a.onclick = e => { e.preventDefault(); showTab('lost'); $('#loQ').value = a.dataset.o; $('#loClear').classList.remove('hidden'); loFind(a.dataset.o); window.scrollTo({top: 0}); });
   box.querySelectorAll('.lcCq').forEach(a => a.onclick = e => { e.preventDefault(); showTab('reply'); $('#rpQ').value = a.dataset.o; $('#rpClear').classList.remove('hidden'); rpFind(a.dataset.o); window.scrollTo({top: 0}); });
   box.querySelectorAll('.lcCopy').forEach(b => b.onclick = async () => {
     const ok = await copyText(rows[b.dataset.i][b.dataset.f || 'copy']); const t = b.textContent;
@@ -2308,9 +2331,9 @@ function loRender(d, q){
   lcBind($('#loBody'), rows, 'lo');
   const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
   if (rows.length) {
-    const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered');
+    const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered'), dup = rows.some(r => r.dup);
     loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : '')
-      + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + ms);
+      + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + (dup ? ' — ⚠ حساب مكرر' : '') + ms);
   } else if (ix) {
     loState('found', `الطلب في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
       + (d.salla && d.salla.username ? ` · في سجلّ الطلب في سلة: ${d.salla.username}` : '') + ms);
@@ -2319,6 +2342,8 @@ function loRender(d, q){
   }
   const orderNo = d.order || (/^\d+$/.test(d.q || '') ? d.q : '');
   $('#loLink').classList.toggle('hidden', !orderNo);
+  // بحثٌ واحد في شاشة «العميل»: الطلب نفسه يُجهَّز ردّه في قسم الشكاوى تحت النتيجة (بلا بحثٍ ثانٍ من المشغّل)
+  if (orderNo && rows.length && typeof rpFind === 'function' && $('#rpQ').value !== orderNo) { $('#rpQ').value = orderNo; $('#rpClear').classList.remove('hidden'); rpFind(orderNo); }
   const s = d.salla || {}, one = rows.length === 1 ? rows[0] : null;
   if ($('#lkOrder').dataset.o !== orderNo) { $('#lkUser').value = s.username || ''; $('#lkPass').value = s.password || ''; $('#lkHost').value = s.host || (one ? one.host : '') || (ix && ix.host) || ''; }
   $('#lkOrder').value = orderNo; $('#lkOrder').dataset.o = orderNo;
