@@ -2298,7 +2298,13 @@ class CasperWebSession(PanelWebSession):
             if not nm:
                 continue
             typ = (re.search(r'type=[\'"]([^\'"]+)', tag) or [None, "text"])[1].lower()
-            if typ in ("submit", "button", "image", "reset", "file", "checkbox", "radio"):
+            if typ in ("submit", "button", "image", "reset", "file"):
+                continue
+            if typ in ("checkbox", "radio"):
+                # كالمتصفح: المحدَّد افتراضيًّا يُرسَل (ومنه خانة «مفعّل») — إسقاطها يُنشئ اليوزر معطَّلًا
+                if _flag(tag, "checked") and not _flag(tag, "disabled"):
+                    vl = re.search(r'value=[\'"]([^\'"]*)', tag)
+                    fields[nm.group(1)] = _html.unescape(vl.group(1)) if vl else "on"
                 continue
             # الحقول المعطَّلة (disabled) لا يرسلها المتصفح — ومنها حقلُ كلمة المرور
             # (قيمته «Auto Generated»): بتركه تولّد اللوحة كلمةَ مرورٍ عشوائيةً حقيقية.
@@ -2518,6 +2524,59 @@ class CasperWebSession(PanelWebSession):
             tried.append("%s → لا نموذج لهذا اليوزر" % url.replace(self.base, ""))
         raise EditUnsupported("لم أجد صفحة تعديل اليوزر في لوحة كاسبر — غيّر اسم المستخدم من اللوحة يدويًا"
                               " (جرّبت: %s)" % "، ".join(tried[:5]))
+
+    _RE_LINK_ATTR = re.compile(r"""(?:href|data-href|data-url|data-remote|onclick)\s*=\s*(?:"([^"]*)"|'([^']*)')""", re.I)
+
+    @staticmethod
+    def _row_disabled(row, raw):
+        """اليوزر معطَّل؟ في جدول كاسبر يحلّ زرُّ الطاقة الأحمر محلَّ عدّاد الاتصالات (0/1)."""
+        if re.search(r"fa-power-off|power-off", raw or "", re.I) and not re.match(r"^\d+\s*/", row.get("connections", "")):
+            return True
+        return bool(row.get("connections", "").startswith("/"))
+
+    def _enable_urls(self, raw, line_id):
+        """روابط «Enable» في خيارات الصفّ (لا Disable)، ثم المسارات المعتادة."""
+        lid, out = str(line_id), []
+        for m in self._RE_LINK_ATTR.finditer(raw or ""):
+            for u in (m.group(1), m.group(2)):
+                u = _html.unescape(u or "").strip().replace("\\/", "/")
+                q = re.search(r"""['"]([^'"]*enable[^'"]*)['"]""", u, re.I)
+                u = q.group(1) if q and "(" in u else u
+                if re.search(r"enable", u, re.I) and not re.search(r"disable", u, re.I) \
+                        and re.search(r"(?<!\d)%s(?!\d)" % re.escape(lid), u) and u not in out:
+                    out.append(u)
+        for tpl in ("index.php/users/enable/{id}", "index.php/users/enable?id={id}",
+                    "index.php/users/doEnable/{id}", "index.php/users/doEnable?id={id}"):
+            out.append(tpl.replace("{id}", lid))
+        return out
+
+    def ensure_enabled(self, username: str, line_id: str = "") -> dict:
+        """يفعّل اليوزر إن وجده معطَّلًا (خيار Enable في اللوحة) ويتحقّق. يُرجِع
+        {"was_disabled": bool, "enabled": bool}؛ وإن تعذّر التفعيل يرفع RuntimeError."""
+        self.ensure_login()
+        row, raw = self._user_row(username)
+        if not row:
+            return {"was_disabled": False, "enabled": False}
+        if not self._row_disabled(row, raw):
+            return {"was_disabled": False, "enabled": True}
+        lid = row.get("id") or str(line_id or "")
+        for url in self._enable_urls(raw, lid):
+            if re.match(r"^https?://", url) or url.startswith("/"):
+                full = url
+            elif url.startswith("index.php"):
+                full = self._u(url)
+            else:
+                full = urllib.parse.urljoin(self._abs(self._u("index.php/users/index")), url)
+            r = self._request(full, headers={"X-Requested-With": "XMLHttpRequest"})
+            if r.get("status", 0) >= 400:
+                continue
+            for attempt in range(4):
+                if attempt:
+                    time.sleep(1)
+                now, nraw = self._user_row(username)
+                if now and not self._row_disabled(now, nraw):
+                    return {"was_disabled": True, "enabled": True}
+        raise RuntimeError("اليوزر %s معطَّل ولم يُفعَّل تلقائيًّا — اختر Enable من خياراته في اللوحة" % username)
 
     def edit_line(self, username: str, new_username: str, line_id: str = "", package: str = "") -> dict:
         """يغيّر اسم يوزرٍ على كاسبر وكلمةُ مروره كما هي، ثم يتحقّق من القائمة (انظر الأب)."""

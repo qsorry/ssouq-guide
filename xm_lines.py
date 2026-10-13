@@ -5175,6 +5175,13 @@ def create_line(gate, pkg, username=None, password=None):
                     r["exp"] = e["exp"]
             except Exception as ex:
                 rename_error = "أُنشئ باسم اللوحة %s ولم يُغيَّر إلى %s: %s" % (r["username"], username, str(ex)[:160])
+        # كاسبر قد يُنشئ اليوزر (أو يُعطّله تعديلُ الاسم) معطَّلًا: نختار Enable له كما يفعل المشغّل يدويًّا
+        enable_error = ""
+        if hasattr(sess, "ensure_enabled"):
+            try:
+                sess.ensure_enabled(r["username"], line_id=str(r.get("id") or ""))
+            except Exception as ex:
+                enable_error = "أُنشئ اليوزر ولم يُفعَّل تلقائيًّا: %s" % str(ex)[:160]
         line = format_line(gate, r["username"], r["password"])
         _log_txt(gate, line, pkg["name"])
         out = {"line": line, "username": r["username"], "password": r["password"],
@@ -5183,6 +5190,8 @@ def create_line(gate, pkg, username=None, password=None):
                "timing": r.get("timing"), "weak_retries": r.get("weak_retries", 0)}
         if rename_error:
             out["rename_error"] = rename_error
+        if enable_error:
+            out["enable_error"] = enable_error
         if password_changed:
             out["password_changed"] = "لم تقبل اللوحة كلمة المرور القديمة (%s) فأُنشئ بكلمة مرورٍ جديدة" % password_changed
         return out
