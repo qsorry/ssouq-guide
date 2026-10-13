@@ -909,9 +909,14 @@ def _panel_users(pl, export=None):
 
 
 def _covered_orders(lines, users):
-    """طلباتٌ وُجد أحد يوزراتها على لوحة: اشتراكها قائم، فيوزرٌ آخر فيها (قديمٌ أو مكرّرٌ في سجلّه) ليس مفقودًا."""
-    return {renew.norm_order(ln.get("order")) for ln in lines
-            if str(ln.get("username") or "").strip().lower() in users and ln.get("order")}
+    """طلباتٌ وُجد أحد يوزراتها على لوحة: اشتراكها قائم، فيوزرٌ آخر فيها (قديمٌ أو مكرّرٌ في سجلّه) ليس مفقودًا.
+    ← {رقم الطلب: اليوزر الموجود} (التسمية بحروفه الأصلية، لعرضه بديلًا للمفقود)."""
+    out = {}
+    for ln in lines:
+        u = str(ln.get("username") or "").strip()
+        if ln.get("order") and u.lower() in users:
+            out.setdefault(renew.norm_order(ln.get("order")), u)
+    return out
 
 
 def _line_row(ln, ctx):
@@ -959,7 +964,8 @@ def _line_row(ln, ctx):
             "found_panel": found[0] if found else "", "found_src": found[1] if found else "",
             "done_panel_id": dpid if dpanel else "", "done_panel": dpanel.get("name", ""),
             "done_account_id": dpanel.get("account_id", ""), "done_gate_id": dpanel.get("gate_id", ""),
-            "state": state, "linked": str(ln.get("linked") or ""), "done": mine}
+            "state": state, "linked": str(ln.get("linked") or ""), "done": mine,
+            "covered_by": ctx["covered"].get(no, "") if state == "covered" else ""}
 
 
 def _mark_dups(rows, hidx):
@@ -1097,17 +1103,17 @@ def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=Fal
     rows = []
     for r in idx["rows"]:
         counts["checked"] += 1
-        if r["state"] not in ("missing", "replaced"):
+        if r["state"] not in ("missing", "replaced", "covered"):
             counts[r["state"]] = counts.get(r["state"], 0) + 1
             continue
-        if r["state"] == "replaced":             # عُيّن له بديل: يبقى ظاهرًا في المفقود بعلامته (لا يختفي)
-            counts["replaced"] += 1
+        if r["state"] in ("replaced", "covered"):  # عُيّن له بديل (رابط استبدال أو يوزرٌ آخر للطلب على اللوحة): يبقى ظاهرًا بعلامته
+            counts[r["state"]] += 1
         if r["expired"] or r["days_left"] is None:
             counts["expired"] += 1
             if not include_expired or r["days_left"] is None:
                 continue
         rows.append(dict(r, new_months=comp_months(r["days_left"], comp)))
-    rows.sort(key=lambda r: (bool(r["done"]), r["state"] == "replaced", r["expired"], -(r["days_left"] or 0), r["order"]))
+    rows.sort(key=lambda r: (bool(r["done"]), r["state"] != "missing", r["expired"], -(r["days_left"] or 0), r["order"]))
     return {"rows": rows, "total": len(rows), "comp": int(comp or 0), "base": BASE_MONTHS,
             "pending": sum(1 for r in rows if not r["done"] and not r["expired"] and r["state"] == "missing"),
             "done": sum(1 for r in rows if r["done"]), "counts": counts,

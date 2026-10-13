@@ -7027,7 +7027,7 @@ class Handler(BaseHTTPRequestHandler):
                     r["sub"] = gate_sub(ac, find_gate(ac, r["gate_id"]) if ac else None) or line_sub(r, r.get("panel_name", ""))
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
-                    if r.get("state") == "replaced":          # له بديلٌ معيَّن: يُعرض باسمه ولوحته
+                    if r.get("state") in ("replaced", "covered"):          # له بديلٌ معيَّن: يُعرض باسمه ولوحته
                         try:
                             r["replacement"] = reply_replacement(racs, rws, r["username"])
                         except Exception:
