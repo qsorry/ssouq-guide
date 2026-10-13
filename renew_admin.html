@@ -322,6 +322,7 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 .lc-o a{color:inherit;text-decoration:none}.lc-o a:hover b{text-decoration:underline}
 .lc-o small,.lc-why{color:var(--mute);font-size:.8rem}
 .lc-why{margin:-4px 0 0;line-height:1.6}
+.lc-dup{color:var(--err)}.lc-dup a{color:inherit;text-decoration:underline}
 .lc-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 16px}
 .lc-f{min-width:0}.lc-f.wide{grid-column:1/-1}
 .lc-f small{display:block;color:var(--mute);font-size:.72rem;margin-bottom:2px}
@@ -2225,11 +2226,19 @@ function lcard(r, i, kind){
     + `<small>طلب</small>${kind === 'ls' ? `<a href="#" class="lsO" data-o="${esc(r.order)}"><b class="ltr">${esc(r.order)}</b></a>` : `<b class="ltr">${esc(r.order)}</b>`}`
     + `<small class="ltr">${esc(r.date)}</small></div><span class="pill ${st[1]}">${st[0]}</span></header>`;
   const cqp = r.complaint && !r.complaint.replied ? `<p class="lc-why" style="color:var(--err)"><b>⚠ عليه شكوى #${esc(r.complaint.id)}</b> (${esc(r.complaint.status)})${r.complaint.url ? ` · <a href="${esc(r.complaint.url)}" target="_blank" rel="noopener">افتحها</a>` : ''} · <a href="#secReply" class="lcCq" data-o="${esc(r.order)}">جهّز الردّ</a></p>` : '';
-  const why = (LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '') + cqp;
+  // مستبدل: البديل ولوحته (من روابط الاستبدال أو سجلّ الإنجاز) بدل «استُبدل من قبل» المبهمة
+  const rp = r.replacement;
+  const whyRep = r.state === 'replaced' && rp ? `<p class="lc-why">استُبدل بـ <b class="ltr">${esc(rp.username)}</b>${rp.gate_name ? ` على <b>${esc(rp.gate_name)}</b>` : ''}${rp.months ? ` · ${AR(rp.months)} شهرًا` : ''}${rp.at ? ` · <span class="ltr">${esc(rp.at)}</span>` : ''}</p>` : '';
+  // حساب مكرر: اليوزر نفسه بيع في طلبٍ آخر لعميلٍ مختلف — يُعرض مع كل نتيجة بحث
+  const dupP = r.dup ? `<p class="lc-why lc-dup"><b>⚠ حساب مكرر</b> — اليوزر نفسه بيع ${r.dup.mine_first ? 'بعده' : 'قبله'} في `
+    + r.dup.others.map(o => `<a href="#" class="lcJump" data-o="${esc(o.order)}">الطلب <span class="ltr">${esc(o.order)}</span></a> (${esc(o.customer) || '—'} · <span class="ltr">${esc(o.date)}</span>${o.done ? ' · أُنشئ له بديل ✓' : o.expired ? ' · منتهٍ' : ''})`).join('، ')
+    + (r.dup.mine_first ? ' — هذا الطلب الأقدم ويحتفظ باليوزر.' : ' — الأقدم يحتفظ باليوزر، وهذا يحتاج بديلًا من «المكرر والبدائل».') + '</p>' : '';
+  const why = (whyRep || (LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '')) + dupP + cqp;
   const grid = `<div class="lc-g">${lcField('العميل', esc(r.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(r.phone) || '—'}</span>`)}`
     + lcField('المتبقي', esc(r.remaining) || '—') + lcField(r.state === 'found' ? 'موجود على' : 'اللوحة', esc(where))
+    + (dn && r.done_panel && r.done_panel !== r.panel_name ? lcField('البديل على', `<b>${esc(r.done_panel)}</b>`) : '')
     + (r.product ? lcField('المنتج', `<span class="clip" title="${esc(r.product)}">${esc(r.product)}</span>`, 'wide') : '') + (r.linked ? lcField('الربط', 'رُبط يدويًا') : '') + '</div>';
-  const done = dn ? `<div class="lc-done"><b>✓ أُنشئ له اشتراك جديد${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}</b>`
+  const done = dn ? `<div class="lc-done"><b>✓ أُنشئ له اشتراك جديد${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}${r.done_panel ? ' · على ' + esc(r.done_panel) : ''}</b>`
     + lcCred(dn.host, dn.new, dn.password) + `<div class="lc-a">`
     + (r.copy ? `<button class="go lcCopy" data-k="${kind}" data-i="${i}" type="button">نسخ الشرح</button>`
       + (r.phone ? `<a class="ghost lcWa" data-k="${kind}" data-i="${i}" href="#" target="_blank" rel="noopener">واتساب</a>` : '') : '<small>لا بيانات لنسخ الشرح</small>')
@@ -2245,10 +2254,12 @@ function lcard(r, i, kind){
     : `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>`;
   if (!dn && r.state === 'missing' && r.username && (!r.expired || kind === 'ls')) act += `<label class="lc-chk"><input type="checkbox" class="lc-x lcSame" checked> بنفس اليوزر والباسورد</label>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
-  return `<article class="lc st-${dn ? 'found' : esc(r.state)}">${head}${why}${grid}${lcCred(r.host, r.username, r.password)}${cur}${done}`
+  const pills = (r.dup && !dn ? `<span class="pill bad">مكرر</span>` : '') + `<span class="pill ${st[1]}">${st[0]}</span>`;
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${lcCred(r.host, r.username, r.password)}${cur}${done}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
 function lcBind(box, rows, kind){
+  box.querySelectorAll('.lcJump').forEach(a => a.onclick = e => { e.preventDefault(); showTab('lost'); $('#loQ').value = a.dataset.o; $('#loClear').classList.remove('hidden'); loFind(a.dataset.o); window.scrollTo({top: 0}); });
   box.querySelectorAll('.lcCq').forEach(a => a.onclick = e => { e.preventDefault(); showTab('reply'); $('#rpQ').value = a.dataset.o; $('#rpClear').classList.remove('hidden'); rpFind(a.dataset.o); window.scrollTo({top: 0}); });
   box.querySelectorAll('.lcCopy').forEach(b => b.onclick = async () => {
     const ok = await copyText(rows[b.dataset.i][b.dataset.f || 'copy']); const t = b.textContent;
@@ -2308,9 +2319,9 @@ function loRender(d, q){
   lcBind($('#loBody'), rows, 'lo');
   const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
   if (rows.length) {
-    const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered');
+    const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered'), dup = rows.some(r => r.dup);
     loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : '')
-      + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + ms);
+      + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + (dup ? ' — ⚠ حساب مكرر' : '') + ms);
   } else if (ix) {
     loState('found', `الطلب في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
       + (d.salla && d.salla.username ? ` · في سجلّ الطلب في سلة: ${d.salla.username}` : '') + ms);

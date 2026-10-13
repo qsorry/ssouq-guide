@@ -901,6 +901,10 @@ def _line_row(ln, ctx):
         state = "not_pulled"                     # لوحته لم تُسحب: لا يُحكم بالفقد
     else:
         state = "missing"
+    # البديل الذي أُنشئ له قد يكون على لوحةٍ غير لوحة الطلب (استُبدل من كاسبر إلى مرح مثلًا): لوحته من هوست
+    # سجلّ الإنجاز، فتُعرض في البطاقة ويُنسخ شرحه ببوابتها لا ببوابة اللوحة القديمة.
+    dpid = ctx["hidx"].get(renew.norm_host((mine or {}).get("host")), "") if mine else ""
+    dpanel = ctx["pmap"].get(dpid) or {}
     return {"order": order, "order_norm": no, "date": str(ln.get("date") or ""), "customer": str(ln.get("customer") or ""),
             "phone": str(ln.get("phone") or ""), "product": str(ln.get("product") or ""),
             "username": u, "password": str(ln.get("password") or ""), "host": str(ln.get("host") or ""),
@@ -910,7 +914,30 @@ def _line_row(ln, ctx):
             "panel_id": pid if panel else "", "panel_name": panel.get("name", ""),
             "account_id": panel.get("account_id", ""), "gate_id": panel.get("gate_id", ""),
             "found_panel": found[0] if found else "", "found_src": found[1] if found else "",
+            "done_panel_id": dpid if dpanel else "", "done_panel": dpanel.get("name", ""),
+            "done_account_id": dpanel.get("account_id", ""), "done_gate_id": dpanel.get("gate_id", ""),
             "state": state, "linked": str(ln.get("linked") or ""), "done": mine}
+
+
+def _mark_dups(rows, hidx):
+    """يعلّم الحساب المكرر: اليوزر نفسه (على اللوحة نفسها) بيع في أكثر من طلبٍ لعملاء مختلفين — نفس الجوال تجديدٌ
+    لا تكرار. يُكتب في كل صفٍّ `dup`: {first_order, mine_first, others: [الطلبات الأخرى]} أو None."""
+    groups = {}
+    for i, r in enumerate(rows):
+        key = (r["panel_id"] or hidx.get(renew.norm_host(r["host"])) or renew.norm_host(r["host"]), r["username"].lower())
+        groups.setdefault(key, []).append(i)
+    for idxs in groups.values():
+        if len({rows[i]["order_norm"] for i in idxs}) < 2:
+            continue
+        ordered = sorted(idxs, key=lambda i: (rows[i]["date"], rows[i]["order"]))
+        first = rows[ordered[0]]
+        for i in ordered:
+            me = rows[i]
+            others = [rows[j] for j in ordered if rows[j]["order_norm"] != me["order_norm"]
+                      and not (me["phone"] and rows[j]["phone"] == me["phone"])]
+            me["dup"] = {"first_order": first["order"], "mine_first": me["order_norm"] == first["order_norm"],
+                         "others": [{"order": o["order"], "date": o["date"], "customer": o["customer"], "phone": o["phone"],
+                                     "done": bool(o["done"]), "expired": o["expired"]} for o in others]} if others else None
 
 
 # ---- فهرس البحث: يُبنى مرةً عند تغيّر مصادره ويُخدم من الذاكرة ----
@@ -962,6 +989,7 @@ def build_index(config, data_dir, replaced=None, export=None, today=None):
             continue
         seen.add(key)
         r = _line_row(ln, ctx)
+        r["dup"] = None
         i = len(rows)
         rows.append(r)
         if r["order_norm"]:
@@ -969,7 +997,8 @@ def build_index(config, data_dir, replaced=None, export=None, today=None):
         by_user.setdefault(key[1], []).append(i)
         if len(r["password"]) >= 4:
             by_pass.setdefault(r["password"], []).append(i)
-    counts = {"checked": len(rows)}
+    _mark_dups(rows, ctx["hidx"])
+    counts = {"checked": len(rows), "dup": sum(1 for r in rows if r["dup"])}
     for r in rows:
         counts[r["state"]] = counts.get(r["state"], 0) + 1
     ix = renew.load_index(data_dir)
