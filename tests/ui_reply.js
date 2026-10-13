@@ -38,7 +38,7 @@ fs.writeFileSync(path.join(dataDir, 'renew_index.json'), JSON.stringify({orders:
     await page.goto(APP + '/admin/renew#secReply'); await page.waitForSelector('#rpQ'); await sleep(400);
     const st = () => page.getAttribute('#rpBox', 'data-state'), msg = () => page.textContent('#rpMsg');
     check('the tab opens from its hash and is ready', await page.isVisible('#secReply') && await st() === 'ready' && (await msg()).includes('اكتب'));
-    check('nav has the new tab', (await page.textContent('.jump a[data-tab="reply"]')).includes('الردّ على الشكاوى'));
+    check('nav has the client screen and its reply section', (await page.textContent('.jump a[data-tab="client"]')).includes('العميل') && (await page.textContent('#subNav')).includes('الردّ على الشكاوى'));
 
     // الردّ جاهز لطلبٍ مسحوب بيوزره
     await page.fill('#rpQ', '١٣٨'); await page.click('#rpFind');

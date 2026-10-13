@@ -63,7 +63,7 @@ fs.writeFileSync(path.join(dataDir, 'renew_store_lines.json'), JSON.stringify({l
     check('loading state while the request is in flight', await st() === 'loading' && (await page.textContent('#loFind')).includes('جارٍ'));
     await shot(page, 'search-loading');
     await page.waitForFunction(() => document.querySelector('#loBox').dataset.state !== 'loading');
-    check('repeated clicks send one request', reqs.filter(u => u.includes('q=111222333')).length === 1, String(reqs.length));
+    check('repeated clicks send one request', reqs.filter(u => u.includes('/api/renew/order?q=111222333')).length === 1, String(reqs.length));
     check('and the result shows', await st() === 'found' && (await page.textContent('#loBody')).includes('555000111'));
     await page.unroute('**/api/renew/order?q=111222333*');
 
