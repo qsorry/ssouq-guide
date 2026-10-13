@@ -555,12 +555,20 @@ def _reviews(con, items, reviews, now):
 
 
 # ================= الدورة وصفحة المدير =================
+def _err(e):
+    """نصّ الخطأ مع موضعه (الملف:السطر) — ليُعرف مصدره من بطاقة الإدارة دون سجلّات الخادم."""
+    import traceback
+    fr = traceback.extract_tb(e.__traceback__)
+    where = f" @ {os.path.basename(fr[-1].filename)}:{fr[-1].lineno} in {fr[-1].name}" if fr else ""
+    return (f"{type(e).__name__}: {e}{where}")[:300]
+
+
 def tick(data_dir):
     """في دورة المحتوى بعد السحب: يبني إن تغيّر فهرسٌ. لا يرفع شيئًا."""
     try:
         return build(data_dir)
     except Exception as e:  # noqa: BLE001 — الدورة لا تتوقّف
-        _last[os.path.abspath(data_dir)] = {"ok": False, "at": int(time.time()), "error": str(e)[:300]}
+        _last[os.path.abspath(data_dir)] = {"ok": False, "at": int(time.time()), "error": _err(e)}
         return None
 
 
@@ -575,7 +583,7 @@ def start_build(data_dir, force=True):
         try:
             build(data_dir, force=force)
         except Exception as e:  # noqa: BLE001
-            _last[k] = {"ok": False, "at": int(time.time()), "error": str(e)[:300]}
+            _last[k] = {"ok": False, "at": int(time.time()), "error": _err(e)}
 
     t = _running[k] = threading.Thread(target=run, daemon=True)
     t.start()
