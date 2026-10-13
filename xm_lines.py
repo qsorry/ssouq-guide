@@ -4183,6 +4183,36 @@ def complaints_panel_states(rows, rcfg, ws, racs):
 WORK_ORDER = {"complaint": 0, "lost": 1, "dup": 2, "mismatch": 3, "renew": 4, "claim": 5}
 
 
+def users_status(rcfg, rws, racs, users, idx=None):
+    """حال يوزراتٍ أنشأها المشغّل: «sold» بيع في طلبٍ من سلة (رقمه وعميله)، أو «replacement» أُنشئ بديلًا عن
+    يوزرٍ قديم (سجلّ الإنجاز برقم طلبه، أو روابط الاستبدال)، وإلا «unsold». ← {يوزر: {state, order, customer}}."""
+    users = [str(u or "").strip() for u in (users or []) if str(u or "").strip()][:500]
+    if not users:
+        return {}
+    idx = idx or renew_index(rcfg, rws, racs)
+    done_by_new = {}
+    for order, rec in panels.load_dupes_done(rws).items():
+        if rec.get("new"):
+            done_by_new.setdefault(str(rec["new"]).lower(), (order, rec.get("customer", "")))
+    rep = set()
+    for us in replacement_users(racs).values():
+        rep |= us
+    out = {}
+    for u in users:
+        k = u.lower()
+        hit = idx["by_user"].get(k)
+        if hit:
+            r = idx["rows"][hit[0]]
+            out[u] = {"state": "sold", "order": r["order"], "customer": r["customer"]}
+        elif k in done_by_new:
+            out[u] = {"state": "replacement", "order": done_by_new[k][0], "customer": done_by_new[k][1]}
+        elif k in rep:
+            out[u] = {"state": "replacement", "order": "", "customer": ""}
+        else:
+            out[u] = {"state": "unsold", "order": "", "customer": ""}
+    return out
+
+
 def work_queue(rcfg, rws, racs, idx=None, days=None, is_admin=False):
     """قائمة المتابعة الواحدة: صفٌّ لكل طلبٍ يحتاج عملًا، بعلاماته (شكوى · مفقود · مكرر · فرق المدة · ينتهي قريبًا ·
     طلب تجديد)، مجموعةً من مصادرها الحالية (الفهرس، المقارنة، الشكاوى المحفوظة، طلبات صفحة التجديد) — لا تغيّر فيها.
@@ -7295,6 +7325,8 @@ class Handler(BaseHTTPRequestHandler):
             err = "" if ok else (r.get("error") or "لا رقم واتساب مربوط (وضع تجريبي)")
             panels.log_dup_send(rws, msg, how, ok, err)
             return self._send(200 if ok else 502, {"ok": ok, "error": err, "how": how})
+        if path == "/api/renew/users-status":     # حال يوزرات منشأة: بيع (في أي طلب) · بديل · لم يُبع
+            return self._send(200, {"status": users_status(rcfg, rws, racs, req.get("users") or [], idx=renew_index(rcfg, rws, racs))})
         if path == "/api/renew/order-link":       # يربط طلبًا بيوزره (وكلمة مروره) في اشتراكات المتجر
             base = renew.load_index(rws).get("orders", {}).get(renew.norm_order(req.get("order")))
             if base:

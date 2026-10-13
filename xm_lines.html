@@ -104,6 +104,7 @@ main{min-width:0}
 
 /* ---------- إنشاء ---------- */
 .create-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+.pill.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}.pill.mut{color:var(--mute)}
 .stepn{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:8px;background:var(--ink);color:var(--bg);font-size:.78rem;font-weight:700;margin-inline-end:6px;vertical-align:middle}
 #searchBox{margin:0 0 12px;padding:12px;border:1px dashed var(--line);border-radius:14px}
 #xlsxPanel summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px}#xlsxPanel summary::-webkit-details-marker{display:none}#xlsxPanel summary .xp-head{margin:0;flex:1}
@@ -211,6 +212,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 /* ---------- الجوال ---------- */
 @media (max-width:900px){
   .shell{grid-template-columns:1fr;padding:12px;gap:12px}
+  #create{position:sticky;bottom:calc(86px + env(safe-area-inset-bottom,0px));z-index:20}   /* زرّ الإنشاء يبقى في متناول الإبهام فوق الشريط السفلي */
   .nav,.me .acct{display:none}
   .menu{display:grid}
   .top{padding:0 12px;gap:8px}
@@ -1223,11 +1225,29 @@ function renderHistory(){
     <details class="day" data-fold="${esc("d|" + pkg + "|" + day)}"${isOpen("d|" + pkg + "|" + day, di === 0)}><summary><span class="fh">${chev}<b>${day}</b></span><span class="fm">(${items.length}) <button class="copy" data-day="${day}" data-pkg="${esc(pkg)}">نسخ اليوم</button></span></summary>
     <div class="tw"><table class="tbl"><thead><tr><th>#</th><th>اسم المستخدم</th><th>كلمة المرور</th><th>الحالة</th><th class="hide-sm">الوقت</th><th></th></tr></thead><tbody>
     ${items.map((x,i) => `<tr><td class="n">${i+1}</td><td class="m">${esc(partOf(x,"username",/User\s+(\S+)/))}</td><td class="m">${esc(partOf(x,"password",/Pass\s+(\S+)/))}</td>
-      <td>${x.verified === false ? '<span class="pill">غير مؤكد</span>' : '<span class="pill ok">نشط</span>'}</td>
+      <td class="ust" data-u="${esc(partOf(x,"username",/User\s+(\S+)/))}">${x.verified === false ? '<span class="pill">غير مؤكد</span>' : '<span class="pill ok">نشط</span>'}</td>
       <td class="n hide-sm">${new Date(x.time).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</td>
       <td><button class="cb" title="نسخ السطر" data-line="${esc(x.line)}">${copyIcon}</button></td></tr>`).join("")}
     </tbody></table></div></details>`).join("")}</details>`;
   }).join("");
+  fillUserStatus();
+}
+// حال كل يوزرٍ منشأ من الخادم: بيع (في أي طلب ولمن) · بديل · لم يُبع — بعد العرض، ولا يعطّله تعذّر الاتصال
+const UST = {complaint: '', cache: {}};
+async function fillUserStatus(){
+  const cells = [...document.querySelectorAll("#hist td.ust[data-u]")].filter(c => c.dataset.u);
+  const need = [...new Set(cells.map(c => c.dataset.u).filter(u => !(u in UST.cache)))].slice(0, 500);
+  if (need.length) {
+    try {
+      const r = await fetch(B + "/api/renew/users-status", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({users: need})});
+      const d = r.ok ? await r.json() : {};
+      Object.assign(UST.cache, d.status || {});
+    } catch (e) { return; }
+  }
+  cells.forEach(c => { const st = UST.cache[c.dataset.u]; if (!st || c.querySelector(".ust-p")) return;
+    const t = st.state === "sold" ? `بيع · طلب <span dir="ltr">${esc(st.order)}</span>${st.customer ? " · " + esc(st.customer) : ""}`
+      : st.state === "replacement" ? `بديل${st.order ? ` · طلب <span dir="ltr">${esc(st.order)}</span>` : ""}` : "لم يُبع بعد";
+    c.insertAdjacentHTML("beforeend", ` <span class="pill ust-p ${st.state === "sold" ? "ok" : st.state === "replacement" ? "warn" : "mut"}">${t}</span>`); });
 }
 
 $("hist").addEventListener("click", e => {

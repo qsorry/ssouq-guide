@@ -782,6 +782,28 @@ def test_work_queue():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_users_status():
+    print("== حال اليوزرات المنشأة: بيع · بديل · لم يُبع ==")
+    import datetime
+    import xm_lines as X
+    d = tempfile.mkdtemp(prefix="ust_")
+    keep = X.DATA_DIR
+    try:
+        X.DATA_DIR = d
+        st = renew._today() - datetime.timedelta(days=10)
+        panels.save_store_lines(d, [{"order": "900", "date": st.isoformat(), "phone": "0500000009", "customer": "سعد", "username": "SOLD1",
+                                     "password": "p", "host": "http://m.ink", "months": 12, "expiry": renew.add_months(st, 12).isoformat()}])
+        cfg = {"panels": [{"id": "pm", "name": "مرح", "hosts": ["http://m.ink"], "account_id": "a", "gate_id": "g"}]}
+        panels.mark_dupe_done(d, "901", "REP1", 9, "نورة", extra={"src": "lost", "old": "OLD1", "host": "http://m.ink"})
+        r = X.users_status(cfg, d, [], ["sold1", "REP1", "NEW1", ""])
+        check("sold user: its order and customer (case-insensitive)", r["sold1"] == {"state": "sold", "order": "900", "customer": "سعد"}, str(r))
+        check("replacement from the done-record carries its order", r["REP1"] == {"state": "replacement", "order": "901", "customer": "نورة"}, str(r))
+        check("unknown user is unsold; empty names skipped", r["NEW1"]["state"] == "unsold" and "" not in r)
+    finally:
+        X.DATA_DIR = keep
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_search_index():
     print("== فهرس البحث: التوحيد، والإبطال بتغيّر المصادر، والبناء مرةً واحدة، والمصادر التالفة ==")
     import datetime
@@ -951,6 +973,7 @@ def main():
     test_order_lost()
     test_search_replaced_dup()
     test_work_queue()
+    test_users_status()
     test_search_index()
     test_dup_gate_fallback()
     print("\n----------------------------------------")
