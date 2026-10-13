@@ -565,7 +565,7 @@ def test_same_creds_on_casper():
         om = b.get("old_msg") or {}
         check("duplicate: the shared username is renamed and a message for the first customer says it changed", code == 200
               and b["created"]["renamed"] and b["created"]["renamed"]["from"] == "555666777888" and om.get("name") == "الأول"
-              and om.get("phone") and "تم تغيير المعلومات" in om.get("text", "") and b["created"]["renamed"]["to"] in om["text"]
+              and om.get("phone") and "شخص آخر" in om.get("text", "") and b["created"]["renamed"]["to"] in om["text"]
               and om.get("idx") == 0 and panels.dupe_messages(d)[0]["order"] == "801", str(b.get("error") or om))
         check("a new user is created for the duplicate, linked to the order, and the reply carries it as handled", code == 200
               and b["created"]["username"] != "555666777888" and b["creds"][0]["username"] == b["created"]["username"] and b["fixed"]

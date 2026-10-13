@@ -2122,15 +2122,40 @@ function renderDupMsgs(msgs){
   if (!WK.rows) { const bd = $('#msgsBadge'); bd.textContent = AR(pend); bd.classList.toggle('hidden', !pend); }   // قبل جمع قائمة المتابعة: عدّاد الرسائل المعلّقة
   const ch = {contest: 'الإرسال من رقم المسابقة المربوط' + (DUPNUM ? ' (' + DUPNUM + ')' : ''), wa: 'الإرسال عبر قناة واتساب خدمة سلة'};
   $('#dupWaNote').textContent = DUPCH ? '(' + ch[DUPCH] + ')' : '(لا رقم مربوط: افتح المسابقة واربط الرقم، أو استعمل اليدوي)';
-  $('#dupMsgList').innerHTML = msgs.map((m, k) => {
+  // بطاقة واحدة لكل طلب، بخطواتٍ مرقّمة في مكانٍ واحد (لا تنقّل بين الصفحات): ١ رسالة البديل لصاحب الشكوى،
+  // ٢ حال يوزر العميل الأول (غُيّر ✓ / لم يُغيَّر + زرّ تغييره هنا) ورسالته — فيُرى ما تمّ وما بقي في نظرةٍ واحدة.
+  const msgBox = (m, k) => {
     const sent = m.sent && m.sent.ok ? `<span class="c-ok">✓ أُرسلت ${m.sent.how === 'manual' ? 'يدويًا' : 'عبر الرقم المربوط'}</span>`
-      : (m.sent && m.sent.error ? `<span class="c-bad">${esc(m.sent.error)}</span>` : '');
-    const kind = m.kind === 'old' ? 'القديم (بعد تغيير الاسم) → صاحبه الأول' : m.kind === 'comp' ? 'تعويض المفقود → صاحب الطلب' : 'البديل → صاحب الطلب اللاحق';
-    return `<div class="blk" style="padding:10px;margin-bottom:8px"><b>${esc(m.name) || '—'}</b> <small class="ltr">${esc(m.phone) || 'بلا رقم'}</small> · <small>${kind} · طلب ${esc(m.order)}</small>`
-      + `<textarea class="dupT" data-k="${k}" rows="4" style="margin-top:6px">${esc(m.text)}</textarea>`
+      : (m.sent && m.sent.error ? `<span class="c-bad">${esc(m.sent.error)}</span>` : '<span class="c-warn">لم تُرسل بعد</span>');
+    return `<div><b>${esc(m.name) || '—'}</b> <small class="ltr">${esc(m.phone) || 'بلا رقم'}</small> · ${sent}</div>`
+      + `<textarea class="dupT" data-k="${k}" rows="5" style="margin-top:6px">${esc(m.text)}</textarea>`
       + `<div class="acts"><button class="go dupSend" data-k="${k}" type="button" ${DUPWA && m.phone ? '' : 'disabled'}>إرسال عبر الرقم المربوط</button>`
       + `<a class="ghost dupMan" data-k="${k}" target="_blank" rel="noopener" href="#">واتساب يدوي</a>`
-      + `<button class="ghost dupCp" data-k="${k}" type="button">نسخ</button> ${sent}</div></div>`;
+      + `<button class="ghost dupCp" data-k="${k}" type="button">نسخ</button></div>`;
+  };
+  const groups = [];                                   // بترتيب الرسائل (الأحدث أولًا)، مجموعةً بالطلب
+  msgs.forEach((m, k) => { let g = groups.find(x => x.order === m.order); if (!g) groups.push(g = {order: m.order, items: []}); g.items.push([m, k]); });
+  $('#dupMsgList').innerHTML = groups.map(g => {
+    const first = g.items[0][0], drow = DUP.find(r => r.order === g.order) || {};
+    const old = first.old || drow.username || '', sub = drow.sub || '';
+    const isDup = first.src === 'dup' && first.kind !== 'comp';
+    const newM = g.items.find(([m]) => m.kind === 'new'), oldM = g.items.find(([m]) => m.kind === 'old'), compM = g.items.find(([m]) => m.kind === 'comp');
+    const done = g.items.every(([m]) => m.sent && m.sent.ok) && (!isDup || first.renamed || first.old_missing);
+    let h = `<div class="blk" style="padding:10px;margin-bottom:10px"><div><b>طلب ${esc(g.order)}</b> ${done ? '<span class="c-ok">✓ اكتملت</span>' : '<span class="c-warn">بقي شيء</span>'}`
+      + (isDup ? ` · <small>مكرر: اليوزر <span class="ltr">${esc(old)}</span>${drow.first_order ? ' للطلب الأقدم ' + esc(drow.first_order) : ''}</small>` : '') + `</div>`;
+    if (compM) h += `<div style="margin-top:8px"><small class="hint">تعويض المفقود → صاحب الطلب</small>${msgBox(compM[0], compM[1])}</div>`;
+    if (newM) h += `<div style="margin-top:8px"><small class="hint">① رسالة البديل → صاحب الطلب اللاحق</small>${msgBox(newM[0], newM[1])}</div>`;
+    if (isDup && old) {
+      const k = (newM || g.items[0])[1];
+      const st = first.renamed ? `<small class="c-ok">غُيّر يوزر العميل الأول ${esc(first.renamed.from)} ← <span class="ltr">${esc(first.renamed.to)}</span> ✓ (كلمة مروره ومدته كما هما)</small>`
+        : first.old_missing ? '<small>اليوزر القديم محذوف من اللوحة — لا شيء يُغيَّر ولا رسالة له</small>'
+        : `<div class="rnpick"><small class="c-bad">يوزر العميل الأول ${esc(old)} لم يُغيَّر بعد${first.rename_error ? ': ' + esc(first.rename_error) : ''} — ما زال بيد الشخص الآخر</small> `
+          + `<select class="msgRnG" data-k="${k}" data-old="${esc(old)}" data-order="${esc(g.order)}" aria-label="بوابة التغيير">${gateOpts('كل بوابات ' + (SUB_AR[sub] || 'نوعه') + ' (تلقائي)', sub)}</select>`
+          + `<button class="ghost msgRn" data-k="${k}" type="button">غيّر القديم الآن</button></div>`;
+      h += `<div style="margin-top:8px"><small class="hint">② يوزر العميل الأول${drow.first_customer ? ' (' + esc(drow.first_customer) + ')' : ''}</small><div>${st}</div>`
+        + (oldM ? `<small class="hint">رسالته ببياناته الجديدة</small>${msgBox(oldM[0], oldM[1])}` : '') + `</div>`;
+    } else if (oldM) h += `<div style="margin-top:8px"><small class="hint">② القديم (بعد تغيير الاسم) → صاحبه الأول</small>${msgBox(oldM[0], oldM[1])}</div>`;
+    return h + '</div>';
   }).join('');
   const txt = k => document.querySelector(`.dupT[data-k="${k}"]`).value;
   document.querySelectorAll('.dupSend').forEach(b => b.onclick = async () => {
@@ -2147,6 +2172,16 @@ function renderDupMsgs(msgs){
     };
   });
   document.querySelectorAll('.dupCp').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(txt(b.dataset.k)); note($('#msgsMsg'), 'نُسخ ✓', true); } catch(e){} });
+  document.querySelectorAll('.msgRn').forEach(b => b.onclick = async () => {
+    const gs = document.querySelector(`.msgRnG[data-k="${b.dataset.k}"]`), gp = gatePick(gs && gs.value);
+    const m = {order: gs.dataset.order, old: gs.dataset.old};
+    if (!confirm(`تغيير اسم ${m.old} على اللوحة${gp.name ? ' عبر «' + gp.name + '»' : ''} وتجهيز رسالة لصاحبه الأول؟`)) return;
+    b.disabled = true; b.textContent = 'جارٍ التغيير…';
+    const d = await post('/api/renew/dup-rename', {order: m.order, username: m.old, account_id: gp.account_id, gate_id: gp.gate_id});
+    if (d.need_connect) { note($('#msgsMsg'), d.error); dupConnOpen(d.need_connect, {order: m.order, username: m.old}); return loadDup(); }
+    note($('#msgsMsg'), d.ok && d.old_missing ? 'اليوزر القديم محذوف من اللوحة — لا حاجة لتغييره' : d.ok ? `غُيّر ${d.renamed.from} إلى ${d.renamed.to} — رسالة العميل الأول جاهزة أدناه` : (d.error || 'تعذّر التغيير'), !!d.ok);
+    loadDup();
+  });
 }
 let HS = null, HSSTOP = false;
 const hsText = r => {

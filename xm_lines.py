@@ -2964,10 +2964,25 @@ def replacement_users(accounts):
     return out
 
 
-DUP_MSG_NEW = ("السلام عليكم {name}\nاشتراكك الجديد جاهز ✅ (بديلٌ عن الحساب السابق، بمدة اشتراكك المتبقية نفسها)\n"
-               "{line}\nنعتذر عن الإزعاج.")
-DUP_MSG_OLD = ("السلام عليكم {name}\nلوجود خطر على الحساب تم تغيير المعلومات، ونأمل منكم المحافظة على السرية.\n"
-               "بيانات اشتراكك الجديدة (كلمة المرور ومدة الاشتراك كما هما):\n{line}")
+# رسائل المكرر بصيغة واتساب: *عريض* للعناوين، وكل بندٍ من السطر (Host/User/Pass/Guide) في سطرٍ وحده ليُنسخ بضغطة،
+# وسبب التغيير مذكورٌ صراحةً. السطر يبقى بصيغة «Host .. User .. Pass ..» (بلا نقطتين) ليقرأه _LINE_RE كما هو.
+DUP_MSG_NEW = ("السلام عليكم {name} 👋\n\n*اشتراكك الجديد جاهز ✅*\n(بديل عن الحساب السابق، وبنفس مدة الاشتراك المتبقية)\n\n"
+               "*📌 بيانات الاشتراك:*\n{line}\n\n"
+               "*⚠️ سبب التغيير:*\nلاحظنا استخدام الاشتراك السابق من قِبل شخص آخر، فتم استبداله حفاظًا على أمان حسابك وجودة الخدمة.\n\n"
+               "*🔒 نصيحة:* لا تشارك بيانات الاشتراك مع أي شخص.\n\nنعتذر عن الإزعاج، وشكرًا لتفهّمك 🙏")
+DUP_MSG_OLD = ("السلام عليكم {name} 👋\n\n*تم تحديث بيانات اشتراكك 🔄*\n\n"
+               "*⚠️ سبب التغيير:*\nلاحظنا استخدام اشتراكك من قِبل شخص آخر، فغيّرنا اسم المستخدم حفاظًا على أمان حسابك "
+               "(كلمة المرور ومدة الاشتراك كما هما).\n\n*📌 بياناتك الجديدة:*\n{line}\n\n"
+               "*🔒 نصيحة:* لا تشارك بيانات الاشتراك مع أي شخص.\n\nنعتذر عن الإزعاج، وشكرًا لتفهّمك 🙏")
+
+
+def wa_line(line):
+    """سطر الاشتراك لرسائل واتساب: كل بندٍ (Host/User/Pass/Guide) في سطرٍ وحده — وما لم يُفهم يبقى كما هو."""
+    m = re.match(r"\s*Host\s+(\S+)\s+User\s+(\S+)\s+Pass\s+(\S+)(?:\s+Guide\s+(\S+))?\s*$", str(line or ""))
+    if not m:
+        return str(line or "")
+    out = "Host %s\nUser %s\nPass %s" % m.group(1, 2, 3)
+    return out + ("\nGuide " + m.group(4) if m.group(4) else "")
 
 
 def _wa_phone(v):
@@ -3381,7 +3396,7 @@ PICK_ERR = {"bad": "بوابة الإنشاء المختارة غير صالحة
 
 def _dup_old_msg(row, info):
     return {"kind": "old", "name": row["first_customer"], "phone": _wa_phone(row["first_phone"]),
-            "text": DUP_MSG_OLD.format(name=row["first_customer"] or "", line=info["line"]), "sent": None}
+            "text": DUP_MSG_OLD.format(name=row["first_customer"] or "", line=wa_line(info["line"])), "sent": None}
 
 
 def dup_rename(accounts, cfg, ws, req):
@@ -3524,8 +3539,8 @@ def dup_create(accounts, cfg, ws, req):
     if code != 200:
         return code, resp
     msgs = [{"kind": "new", "name": row["customer"], "phone": _wa_phone(row["phone"]),
-             "text": DUP_MSG_NEW.format(name=row["customer"] or "", line=r.get("line", "")), "sent": None}]
-    extra = {"msgs": msgs}
+             "text": DUP_MSG_NEW.format(name=row["customer"] or "", line=wa_line(r.get("line", ""))), "sent": None}]
+    extra = {"msgs": msgs, "src": "dup", "old": row["username"]}
     if req.get("rename_old"):                  # القديم: يتغيّر اسمه ويُرسل لصاحبه الأول (كلمة مروره ومدته كما هما)
         info, err = _dup_rename_old(acct, gate, row, accounts, cfg)
         if info:
