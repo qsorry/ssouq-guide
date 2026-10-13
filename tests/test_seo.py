@@ -1724,6 +1724,69 @@ def unit_release():
               r7["ok"] and m7["routes"] == 5 and m7["indexable"] == 5 and m7["unexpected_indexable"] == 0 and m7["sitemap_missing"] == m7["sitemap_unexpected"] == 0 and m7["redirect_changes_since_phase4"] == 0
               and m7["snapshot_compared"] and m7["snapshot_mismatch"] == 0 and r7["baseline"] is not None, str(m7))
         con.close()
+        # ---- المرحلة 10: اعتماد القوائم والمواسم والحلقات والهبّات (على نسخةٍ، فلا تتأثر بقية الاختبار) ----
+        d3 = tempfile.mkdtemp(prefix="seo_rel3_"); shutil.rmtree(d3); shutil.copytree(d, d3)
+        c3 = seo_db.connect(d3)
+        seo_db.set_setting(c3, "list_min_items", 1)
+        now3 = int(time.time())
+        for slug, ov_ar, ov_en in (("breaking-bad", LONG_AR, LONG_EN), ("prison-break", LONG_AR, "short")):
+            cid3 = c3.execute("SELECT id FROM content WHERE slug=?", (slug,)).fetchone()[0]
+            c3.execute("INSERT OR REPLACE INTO season(content_id, number, name, overview_ar, overview_en, episode_count, updated_at) VALUES (?,?,?,?,?,?,?)", (cid3, 1, "S1", ov_ar, ov_en, 2, now3))
+            for n in (1, 2):
+                c3.execute("INSERT OR REPLACE INTO episode(content_id, season, number, title_ar, title_en, overview_ar, overview_en, air_date, source, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                           (cid3, 1, n, f"حلقة {n}", f"Episode {n}", LONG_AR[:120], LONG_EN[:120], "2020-01-0%d" % n, "tmdb", now3))
+        gt = seo_db.taxonomy_id(c3, "genre", "Drama", "drama", "دراما", "Drama", now3)
+        for slug in ("breaking-bad", "wonder-woman", "prison-break"):
+            seo_db.set_membership(c3, c3.execute("SELECT id FROM content WHERE slug=?", (slug,)).fetchone()[0], gt, "tmdb", 1, now3)
+        c3.commit()
+        bs_url = "/content/series/breaking-bad/season-1/"
+        pre_ = seo_pages.handle(d3, bs_url, "ar")
+        check("قبل المرحلة 10: صفحة الموسم والقائمة noindex (لم تُعتمد)", pre_[0] == 200 and pre_[2].get("X-Robots-Tag") == "noindex" and seo_pages.handle(d3, "/content/genres/drama/", "ar")[2].get("X-Robots-Tag") == "noindex")
+        check("وقبلها لا شيء منها في الخريطة العامة", seo_release.extras_paths(c3, seo_db.settings(c3)) == [] and len(seo_release.public_sitemap_entries(d3)) == 5)
+        IX.code = 403
+        x0 = seo_release.extras(d3, None)
+        c3.close(); c3 = seo_db.connect(d3)
+        ap_x = (seo_db.state(c3, seo_pages.EXTRA_KEY) or {}).get("routes") or []
+        check("IndexNow مرفوض: المرحلة 10 FAIL لكن الاعتماد يبقى (يُعاد الإرسال وحده)، وبوابة الصفحات نظيفة",
+              x0["ok"] is False and "IndexNow" in x0["reason"] and x0["metrics"]["failures_total"] == 0 and len(ap_x) == x0["precheck"]["approved_routes"] > 0, str(x0)[:400])
+        IX.code = 202
+        got_before = len(got)
+        x1 = seo_release.extras(d3, None)
+        c3.close(); c3 = seo_db.connect(d3); st3 = seo_db.settings(c3)
+        mx = x1.get("metrics") or {}
+        kinds = x1["precheck"]["kinds"] if x1.get("precheck") else {}
+        check("المرحلة 10 PASS: كلها تُخدم index بلا فشل HTTP/canonical/lang/hreflang، لا تسرّب ولا تحويلات ولا استعلامات، والخريطة تطابقها",
+              x1["ok"] and mx["failures_total"] == 0 and mx["not_noindex"] == 0 and mx["public_sitemap_mismatch"] == 0 and st3["index_extra_live"] and kinds.get("season", 0) >= 3 and kinds.get("episode", 0) >= 4
+              and kinds.get("list", 0) >= 2, str(x1)[:500])
+        sa, se = seo_pages.handle(d3, bs_url, "ar"), seo_pages.handle(d3, "/en" + bs_url, "en")
+        check("موسم Breaking Bad باللغتين: index وhreflang متبادلة", "X-Robots-Tag" not in sa[2] and "X-Robots-Tag" not in se[2] and sa[1].count(b'rel="alternate" hreflang=') == 3 and se[1].count(b'rel="alternate" hreflang=') == 3)
+        pa, pe = seo_pages.handle(d3, "/content/series/prison-break/season-1/", "ar"), seo_pages.handle(d3, "/en/content/series/prison-break/season-1/", "en")
+        check("موسم Prison Break (ملخص إنجليزي قصير): العربية index والإنجليزية noindex، بلا alternate في أيٍّ منهما",
+              "X-Robots-Tag" not in pa[2] and pe[2].get("X-Robots-Tag") == "noindex" and b'rel="alternate"' not in pa[1] and b'rel="alternate"' not in pe[1])
+        ea = seo_pages.handle(d3, bs_url + "episode-1/", "ar")
+        check("الحلقة المستوفية للشروط index، وتحمل TVEpisode", ea[0] == 200 and "X-Robots-Tag" not in ea[2] and b'"TVEpisode"' in ea[1])
+        ga = seo_pages.handle(d3, "/content/genres/drama/", "ar")
+        check("قائمة النوع index باللغتين (hreflang ثلاثة)", ga[0] == 200 and "X-Robots-Tag" not in ga[2] and ga[1].count(b'rel="alternate" hreflang=') == 3)
+        dn_s = seo_pages.handle(d3, "/content/series/dune/season-1/", "ar")
+        check("موسم مسلسلٍ غير معتمد (لا موسم له أصلًا) 404 — ولا فهرسة بلا مسلسلٍ معتمد", dn_s[0] == 404)
+        smx = guide_pages.sitemap(C.sitemap(d3) + seo_release.public_sitemap_entries(d3)).decode()
+        check("الخريطة العامة تحمل الموسم والقائمة والحلقة، والكيانات الخمسة كما هي", "/content/series/breaking-bad/season-1/" in smx and "/content/genres/drama/" in smx and "episode-1/" in smx
+              and len(seo_release.sitemap_entries(d3)) == 5)
+        check("IndexNow للجديد: أُرسل بقدر الاعتماد (مرةً واحدة بعد النجاح)", len(got) > got_before and len(got[-1]["urlList"]) == x1["indexnow"]["new"] > 0)
+        n_before = len(got)
+        x2 = seo_release.extras(d3, None)
+        check("إعادة التشغيل بلا جديد: PASS ولا إرسال مكرّر", x2["ok"] and x2["indexnow"]["new"] == 0 and len(got) == n_before, str(x2.get("indexnow")))
+        x3 = seo_release.extras(d3, 9999)
+        c3.close(); c3 = seo_db.connect(d3)
+        check("عددٌ متوقَّع مخالف: رفضٌ بلا كتابة، والاعتماد السابق كما هو", x3["ok"] is False and "expected 9999" in x3["reason"] and seo_db.settings(c3)["index_extra_live"]
+              and len((seo_db.state(c3, seo_pages.EXTRA_KEY) or {}).get("routes") or []) == x1["precheck"]["approved_routes"])
+        hb0 = seo_pages.handle(d3, "/content/", "ar")
+        seo_db.set_setting(c3, "content_hub", True)
+        x4 = seo_release.extras(d3, None)
+        hb = seo_pages.handle(d3, "/content/", "ar")
+        check("هب /content/ معطّلًا يبقى سلوكه القديم (None)، وبتفعيله ثم الاعتماد يُخدم index بـ hreflang", hb0 is None and x4["ok"] and x4["precheck"]["kinds"].get("hub_root") == 2
+              and hb[0] == 200 and "X-Robots-Tag" not in hb[2] and hb[1].count(b'rel="alternate" hreflang=') == 3, str(x4)[:300])
+        c3.close(); shutil.rmtree(d3, ignore_errors=True)
         # تراجعٌ مصطنع على نسخةٍ من القاعدة: تبديل slug لكيانٍ معتمد ← المسار الجديد لا يُفهرس (لم يُعتمد)، والمرحلة 7 تكشفه وتوقف
         d2 = tempfile.mkdtemp(prefix="seo_rel2_"); shutil.rmtree(d2); shutil.copytree(d, d2)
         c2 = seo_db.connect(d2)

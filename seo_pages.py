@@ -107,6 +107,39 @@ def index_flags(con, row, st, approved=None):
     return live_index(row, "ar", st, approved)[0], live_index(row, "en", st, approved)[0], True
 
 
+# ================= اعتماد الصفحات غير الكيانية (القوائم · المواسم والحلقات · الهبّات · هب المحتوى) =================
+EXTRA_KEY = "index_approved_extra"     # build_state: {at, routes: [{path (عربي بلا بادئة), lang, kind, parent}]} — يكتبه seo_release.extras
+_extra_cache = {}
+
+
+def extra_approved(con):
+    """مسارات الصفحات غير الكيانية المعتمدة للفهرسة ← {(المسار العربي، اللغة)} (مخزَّنةٌ بوقت تحديث الحالة فلا يُحلَّل JSON كل طلب)."""
+    r = con.execute("SELECT updated_at FROM build_state WHERE key=?", (EXTRA_KEY,)).fetchone()
+    if not r:
+        return set()
+    k = (con.execute("PRAGMA database_list").fetchone()[2], r["updated_at"])
+    hit = _extra_cache.get(k)
+    if hit is None:
+        stt = seo_db.state(con, EXTRA_KEY) or {}
+        hit = {(x["path"], x["lang"]) for x in stt.get("routes") or [] if isinstance(x, dict)}
+        _extra_cache.clear()
+        _extra_cache[k] = hit
+    return hit
+
+
+def extra_flags(con, st, key, ok_ar, ok_en, parent_id=None):
+    """علما صفحتَي غير-الكيان كما تُخدمان ← (ar, en, live?): قبل `index_extra_live` هما الأهلية (معاينة noindex، hreflang كما سيكون)؛ وبعده
+    الفهرسة الفعلية: معتمدةٌ بمسارها ولغتها **ومستحقّةٌ الآن** — وللموسم والحلقة يُشترط أيضًا أن يكون مسلسلها معتمدًا بتلك اللغة."""
+    if not (st.get("index_live") and st.get("index_extra_live")):
+        return bool(ok_ar), bool(ok_en), False
+    ap = extra_approved(con)
+    ent = approved_routes(con) if parent_id else None
+
+    def one(lang, ok):
+        return bool(ok) and (key, lang) in ap and (not parent_id or (parent_id, lang) in ent)
+    return one("ar", ok_ar), one("en", ok_en), True
+
+
 # ================= أدوات =================
 def _img(url, size, key=""):
     """صورة TMDB بمقاسها، وصورة لوحةٍ عبر خادمنا (‏content.img_src) بمفتاح سيرفرها — ولا رابط لوحةٍ مباشرًا."""
@@ -744,13 +777,15 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
     body += "</main>" + _footer(tr)
     canonical = SITE + me(tr.code, page)
     ok = total >= min_items
-    alts = [("ar", SITE + me("ar", page)), ("en", SITE + me("en", page)), ("x-default", SITE + me("ar", page))] if ok else []
+    ia, ie, live = extra_flags(con, st, me("ar", page), ok, ok)
+    alts = [("ar", SITE + me("ar", page)), ("en", SITE + me("en", page)), ("x-default", SITE + me("ar", page))] if ia and ie else []
+    noindex = not (live and (ie if tr.en else ia))
     ld = {"@context": "https://schema.org", "@type": "CollectionPage", "name": h1, "url": canonical, "description": desc}
     if rows or not listing:
         lst = rows if listing else _hub_rows(con, hub, "", None, None, 1, 12)[1]
         ld["mainEntity"] = {"@type": "ItemList", "numberOfItems": total, "itemListElement": [
             {"@type": "ListItem", "position": i + 1, "url": SITE + _path(r, tr.code), "name": _title(r, tr)} for i, r in enumerate(lst)]}
-    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], noindex=True), "title": page_title, "desc": desc,
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], noindex=noindex), "noindex": noindex, "title": page_title, "desc": desc,
                     "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok, "why": ("ok" if ok else f"items < {min_items}",) * 2, "total": total}
 
 
@@ -842,9 +877,11 @@ def render_season(con, data_dir, slug, n, ep_no, tr, st):
               "partOfSeries": {"@type": "TVSeries", "name": title, "url": SITE + series_path}}
         lds, page_title = [crumb_ld, ld], f"{h1} | " + tr("المواسم والحلقات", "Seasons & Episodes") + " | " + tr("سمارت سوق", "Smart Souq")
     canonical = SITE + me(tr.code)
-    alts = [("ar", SITE + me("ar")), ("en", SITE + me("en")), ("x-default", SITE + me("ar"))] if ok_ar and ok_en else []
-    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_type="video.episode" if ep_no else "video.tv_show", noindex=True),
-                    "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en}
+    ia, ie, live = extra_flags(con, st, me("ar"), ok_ar, ok_en, parent_id=row["id"])
+    alts = [("ar", SITE + me("ar")), ("en", SITE + me("en")), ("x-default", SITE + me("ar"))] if ia and ie else []
+    noindex = not (live and (ie if tr.en else ia))
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_type="video.episode" if ep_no else "video.tv_show", noindex=noindex),
+                    "noindex": noindex, "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en}
 
 
 # ================= قوائم التصنيف العامة (المرحلة 6): النوع · الدولة · اللغة · السنة · الأحدث =================
@@ -920,13 +957,15 @@ def render_taxonomy(con, data_dir, facet, slug, section, page, tr, st):
             f'<h1>{_esc(h1)}</h1><p class="intro" dir="auto">{_esc(desc)}</p>{_grid(rows, tr)}{nav}</main>' + _footer(tr))
     canonical = SITE + me(tr.code, page)
     ok = total >= min_items
-    alts = [("ar", SITE + me("ar", page)), ("en", SITE + me("en", page)), ("x-default", SITE + me("ar", page))] if ok else []
+    ia, ie, live = extra_flags(con, st, me("ar", page), ok, ok)
+    alts = [("ar", SITE + me("ar", page)), ("en", SITE + me("en", page)), ("x-default", SITE + me("ar", page))] if ia and ie else []
+    noindex = not (live and (ie if tr.en else ia))
     ld = {"@context": "https://schema.org", "@type": "CollectionPage", "name": h1, "url": canonical, "description": desc,
           "mainEntity": {"@type": "ItemList", "numberOfItems": total, "itemListElement": [
               {"@type": "ListItem", "position": (page - 1) * size + i + 1, "url": SITE + _path(r, tr.code), "name": _title(r, tr)}
               for i, r in enumerate(rows)]}}
-    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], noindex=True, extra_head=head_links),
-                    "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok,
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], noindex=noindex, extra_head=head_links),
+                    "noindex": noindex, "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok,
                     "why": ("ok" if ok else f"items < {min_items}",) * 2, "total": total}
 
 
@@ -970,11 +1009,12 @@ def render_content_hub(con, data_dir, tr, st):
     body += "</main>" + _footer(tr)
     me = lambda lang: seo_db.lang_prefix(lang) + "/content/"   # noqa: E731
     canonical = SITE + me(tr.code)
-    alts = [("ar", SITE + me("ar")), ("en", SITE + me("en")), ("x-default", SITE + me("ar"))]
-    live = bool(st.get("index_live") and st.get("content_hub"))
+    ia, ie, live = extra_flags(con, st, "/content/", True, True)
+    alts = [("ar", SITE + me("ar")), ("en", SITE + me("en")), ("x-default", SITE + me("ar"))] if ia and ie else []
+    noindex = not (live and (ie if tr.en else ia))
     ld = {"@context": "https://schema.org", "@type": "CollectionPage", "name": h1, "url": canonical, "description": desc}
-    return "page", {"html": _doc(tr, h1 + " | " + tr("سمارت سوق", "Smart Souq"), desc, canonical, alts, body, [crumb_ld, ld], noindex=not live),
-                    "noindex": not live, "title": h1, "desc": desc, "canonical": canonical, "alts": alts}
+    return "page", {"html": _doc(tr, h1 + " | " + tr("سمارت سوق", "Smart Souq"), desc, canonical, alts, body, [crumb_ld, ld], noindex=noindex),
+                    "noindex": noindex, "title": h1, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": True, "index_en": True}
 
 
 # ================= التوجيه =================
@@ -986,8 +1026,16 @@ _RX_SEASON = re.compile(r"^/content/series/([a-z0-9-]+)/season-(\d{1,3})/(?:epis
 _RX_TAX = re.compile(r"^/content/(?:(genres|countries|languages)/([a-z0-9-]+)/|year/(\d{4})/|latest/(?:(movies|series)/)?)(?:page/(\d+)/)?$")
 
 
-def handle(data_dir, path, lang):
-    """← (code, body, headers) أو None إن لم يكن من مسارات الطبقة. وبلا ‏preview: 404 لكل مساراتها (لا شيء عامٌّ بعد)."""
+def _served(res):
+    """رأس الردّ لصفحةٍ مرسومة: noindex (وسمًا ورأسًا) أو معتمدٌ مستحقّ بلا رأس noindex."""
+    if res[1].get("noindex", True):
+        return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
+    return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}
+
+
+def handle(data_dir, path, lang, _info=False):
+    """← (code, body, headers) أو None إن لم يكن من مسارات الطبقة. وبلا ‏preview: 404 لكل مساراتها (لا شيء عامٌّ بعد).
+    ‏_info=True (لفحوص seo_release): يعيد قاموس الصفحة المرسومة (الأهلية index_ar/index_en…) بدل الردّ، أو None إن لم تُرسم."""
     pre = seo_db.lang_prefix(lang)
     ar_path = path[len(pre):] if pre else path
     hub_root = ar_path in ("/content", "/content/")
@@ -1002,8 +1050,7 @@ def handle(data_dir, path, lang):
             if not (st.get("content_hub") and st.get("preview")) or lang not in (st.get("languages") or ["ar", "en"]):
                 return None
             res = render_content_hub(con, data_dir, P.lang_of(lang), st)
-            hdr = {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"} if res[1]["noindex"] else {"Cache-Control": "public, max-age=600"}
-            return 200, res[1]["html"], hdr
+            return res[1] if _info else _served(res)
         if not st.get("preview") or lang not in (st.get("languages") or ["ar", "en"]):
             return 404, b"", {}
         if ar_path.rstrip("/") == "/content/countries/turkey":   # صفحة الدولة لا تنافس الهب: 301 إليه (قرار المالك)
@@ -1019,7 +1066,7 @@ def handle(data_dir, path, lang):
             res = render_season(con, data_dir, ms.group(1), int(ms.group(2)), int(ms.group(3)) if ms.group(3) else 0, tr, st)
             if not res:
                 return 404, b"", {}
-            return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
+            return res[1] if _info else _served(res)
         mt = _RX_TAX.match(ar_path)
         if mt:
             facet_g, slug_g, year_g, sect_g, page_g = mt.groups()
@@ -1029,7 +1076,7 @@ def handle(data_dir, path, lang):
             res = render_taxonomy(con, data_dir, facet, slug_g or year_g or "", sect_g or "", int(page_g or 1), tr, st)
             if not res:
                 return 404, b"", {}
-            return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
+            return res[1] if _info else _served(res)
         m = _RX.match(ar_path)
         if not m:
             return 404, b"", {}
@@ -1047,7 +1094,9 @@ def handle(data_dir, path, lang):
         if not res:
             return 404, b"", {}
         if res[0] == "redirect":
-            return 301, b"", {"Location": res[1]}
+            return None if _info else (301, b"", {"Location": res[1]})
+        if _info:
+            return res[1]
         if res[1].get("noindex", True):
             return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
         return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}     # معتمدٌ مستحقّ (المرحلة 4): بلا رأس noindex، والوسم index في الصفحة

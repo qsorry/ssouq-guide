@@ -141,7 +141,7 @@ def sitemap_extra():
     """صفحات الوحدات في خريطة الموقع ← [(المسار، changefreq، priority)] — بعد الرئيسية وصفحات الأجهزة. وصفحات الكيانات
     المعتمدة المستحقّة (seo_release، المرحلة 5) — فارغةٌ ما لم يُفعَّل sitemap_live بعد بوابتها."""
     return (league.SITEMAP + watch.SITEMAP + watch.sitemap() + [(predict_page.PATH, "daily", "0.7")]
-            + [u for t in CUPS for u in t.sitemap()] + content.sitemap(DATA_DIR) + seo_release.sitemap_entries(DATA_DIR))
+            + [u for t in CUPS for u in t.sitemap()] + content.sitemap(DATA_DIR) + seo_release.public_sitemap_entries(DATA_DIR))
 
 
 def site_pages():
@@ -7916,7 +7916,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_scan.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-release":   # النشر الإنتاجي: go (4←5←6←7) · phase4…phase7 · batch · expand · final — في الخلفية، بوابةٌ فاشلة = STOP
                 act = str(body.get("action") or "")
-                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "batch", "expand", "final"):
+                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "extras", "batch", "expand", "final"):
                     return self._send(400, {"error": "action غير معروف"})
                 if act in ("go", "phase4") and not re.fullmatch(r"\d{8}T\d{6}Z", str(body.get("snapshot") or "")):
                     return self._send(400, {"error": "معرّف اللقطة (نقطة الاستئناف) مطلوب: مثل 20261003T004434Z"})
