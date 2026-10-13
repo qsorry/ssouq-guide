@@ -3244,6 +3244,14 @@ def host_job_resume_all():
 
 
 OLD_MISSING = "اليوزر القديم غير موجود على اللوحة"
+NO_GATE_SEARCHED = "لم تُفحص أي لوحة: لا بوابة (ويب/فالكون) مربوطة بهوست الطلب ومن نوعه — اختر بوابة التغيير أو اربط اللوحة ببوابة في «اللوحات وهوستاتها»"
+LAST_SEARCHED = {}      # يوزر ← اللوحات التي فُحصت فلم تجده (لذكرها في الرسالة فيُتحقّق منها)
+
+
+def missing_note(username):
+    """«غير موجود على اللوحة (فُحصت: مرح · كاسبر)» — ما فُحص فعلًا، فيعرف المشغّل أين يتحقّق."""
+    t = LAST_SEARCHED.get(str(username or ""), [])
+    return OLD_MISSING + (" (فُحصت: " + " · ".join(t) + ")" if t else "")
 
 
 def gate_sub(acct, gate):
@@ -3345,6 +3353,9 @@ def _dup_rename_old(acct, gate, row, accounts=None, cfg=None, only=None):
         return None, "البوابة المختارة غير متاحة (غير موجودة أو أرشيف بلا دخول)"
     if errs:                                    # تعذّر الاتصال ببعض اللوحات: لا نجزم بأنه محذوف
         return None, "تعذّر البحث في: " + " | ".join(errs)
+    if not tried:                               # لم تُفحص لوحةٌ أصلًا (لا بوابة لهوست الطلب): لا يُقال «محذوف»
+        return None, NO_GATE_SEARCHED
+    LAST_SEARCHED[str(row.get("username") or "")] = tried
     return None, OLD_MISSING
 
 
@@ -3408,8 +3419,10 @@ def dup_rename(accounts, cfg, ws, req):
         panels.update_dupe(ws, order, {"rename_error": ARCHIVE_ERR})
         return 409, {"error": ARCHIVE_ERR, "need_connect": _dup_archived(accounts, cfg, acct, gate, row)}
     if not info and err == OLD_MISSING:
-        panels.update_dupe(ws, order, {"old_missing": True, "rename_error": ""})
-        return 200, {"ok": True, "old_missing": True}
+        panels.update_dupe(ws, order, {"old_missing": True, "rename_error": "", "searched": LAST_SEARCHED.get(row["username"], []),
+                                       "first_order": row.get("first_order", ""), "first_customer": row.get("first_customer", "")})
+        return 200, {"ok": True, "old_missing": True, "searched": LAST_SEARCHED.get(row["username"], []),
+                     "first_order": row.get("first_order", ""), "first_customer": row.get("first_customer", "")}
     if not info:
         panels.update_dupe(ws, order, {"rename_error": err})
         return 502, {"error": err}
@@ -3531,8 +3544,11 @@ def dup_create(accounts, cfg, ws, req):
         elif err == OLD_MISSING and _dup_archived(accounts, cfg, acct, gate, row):
             resp["rename_error"] = extra["rename_error"] = ARCHIVE_ERR
             resp["need_connect"] = _dup_archived(accounts, cfg, acct, gate, row)
-        elif err == OLD_MISSING:               # محذوف من اللوحة: لا شيء يُغيَّر ولا رسالة للأول
+        elif err == OLD_MISSING:               # محذوف من اللوحة: لا شيء يُغيَّر ولا رسالة للأول — ويُذكر طلب الأول وما فُحص
             resp["old_missing"] = extra["old_missing"] = True
+            resp["searched"] = extra["searched"] = LAST_SEARCHED.get(row["username"], [])
+            resp["first_order"] = extra["first_order"] = row.get("first_order", "")
+            resp["first_customer"] = extra["first_customer"] = row.get("first_customer", "")
         else:                                  # فشل تغيير القديم لا يُلغي البديل المُنشأ
             resp["rename_error"] = extra["rename_error"] = err
     resp["messages"] = msgs
@@ -3990,8 +4006,10 @@ def reply_create(st, rcfg, rws, racs, req):
             extra["msgs"] = [old_msg]
             resp["renamed"] = info
         else:
+            first = " — طلب العميل الأول %s%s" % (dup.get("first_order", ""), (" (" + dup["first_customer"] + ")") if dup.get("first_customer") else "")
             resp["rename_error"] = extra["rename_error"] = (ARCHIVE_ERR if err == OLD_MISSING and _dup_archived(racs, rcfg, acct, gate, drow)
-                                                            else (err or "تعذّر تغيير اسم اليوزر القديم"))
+                                                            else (missing_note(old_user) + first) if err == OLD_MISSING
+                                                            else (err or "تعويض: تعذّر تغيير اسم اليوزر القديم"))
     panels.mark_dupe_done(rws, order, r["username"], resp["months"], d.get("customer", ""), extra=extra)
     out = reply_lookup(st, rcfg, rws, racs, order)
     if old_msg:                                       # رسالة العميل الأول: تُعرض وتُرسل من صفحة الشكوى (dup-send بالفهرس 0) أو من «المكرر»

@@ -429,6 +429,9 @@ def test_dup_create():
         X.split_find_line = lambda g, u: {}
         info, err = X._dup_rename_old(acct, gate, {"username": "u", "password": "x", "host": "http://m.ink"}, [acct, acct2], cfg)
         check("missing everywhere = old_missing", info is None and err == X.OLD_MISSING)
+        check("the panels actually searched are remembered for the note", "مرح" in X.missing_note("u") and "فُحصت" in X.missing_note("u"), X.missing_note("u"))
+        info, err = X._dup_rename_old({"id": "accX", "gates": []}, None, {"username": "u", "password": "x", "host": "http://nowhere.ink"}, [{"id": "accX", "gates": []}], cfg)
+        check("no gate to search = not called deleted, a distinct error", info is None and err == X.NO_GATE_SEARCHED and err != X.OLD_MISSING, err)
         g3 = {"id": "g3", "name": "مرح أرشيف آخر", "mode": "web", "host": "http://old.ink"}
         X.split_find_line = lambda g, u: ({"password": "pw", "line_id": "4"} if g["id"] == "g3" else {})
         calls2.clear()
