@@ -1786,6 +1786,10 @@ def unit_release():
         hb = seo_pages.handle(d3, "/content/", "ar")
         check("هب /content/ معطّلًا يبقى سلوكه القديم (None)، وبتفعيله ثم الاعتماد يُخدم index بـ hreflang", hb0 is None and x4["ok"] and x4["precheck"]["kinds"].get("hub_root") == 2
               and hb[0] == 200 and "X-Robots-Tag" not in hb[2] and hb[1].count(b'rel="alternate" hreflang=') == 3, str(x4)[:300])
+        # تدقيق التحويلات: صفّا ar وen لتبديل رابطٍ واحد يُحلّان كلاهما إلى الكيان (الهدف /en/… ليس فشل حلّ) — كان يعدّ كل صفوف /en فشلًا ويُسقط دفعة الإنتاج
+        seo_db.change_slug(c3, c3.execute("SELECT id FROM content WHERE slug='wonder-woman'").fetchone()[0], "wonder-woman-2017", reason="audit test"); c3.commit()
+        ra_ = seo_release.redirect_audit(c3)
+        check("تدقيق التحويلات: صفوف ar وen كلها تُحلّ (resolve_failures = 0، بلا سلاسل ولا حلقات)", ra_["total"] >= 2 and ra_["resolve_failures"] == 0 and ra_["chains"] == 0 and ra_["loops"] == 0, str(ra_))
         c3.close(); shutil.rmtree(d3, ignore_errors=True)
         # تراجعٌ مصطنع على نسخةٍ من القاعدة: تبديل slug لكيانٍ معتمد ← المسار الجديد لا يُفهرس (لم يُعتمد)، والمرحلة 7 تكشفه وتوقف
         d2 = tempfile.mkdtemp(prefix="seo_rel2_"); shutil.rmtree(d2); shutil.copytree(d, d2)
