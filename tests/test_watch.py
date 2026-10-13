@@ -127,6 +127,8 @@ def unit():
     order = [L.LEAGUES[k]["name"] for k in W.WIDGET_LEAGUES]
     check("200 ودوريات الأولوية بترتيبها (ما له مباريات فقط)",
           code == 200 and heads == [n for n in order if n in heads] and heads[:2] == order[:2], heads)
+    check("مباراةٌ ظاهرة لكل دوري والباقي خلف «مباريات أخرى»",
+          all(blk.split("<details")[0].count("<li>") == 1 for blk in page.split('<div class="wcup">')[1:]))
     check("لا دوري خارج الخمسة", not any(L.LEAGUES[k]["name"] in page for k in ("serie-a", "bundesliga", "ligue-1")))
     check("noindex ولا وسم canonical لصفحة غيره", 'name="robots" content="noindex"' in page)
     check("الوضع المفروض", 'data-theme="dark"' in W.render_widget("dark")[1].decode())

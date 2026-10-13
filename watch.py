@@ -553,8 +553,24 @@ _EURO = {"86", "83", "1068", "382", "359", "364", "360", "363", "367", "361", "1
 WIDGET_BIG = {"premier-league": _EURO, "saudi-pro-league": _SAUDI, "champions-league": _EURO,
               "afc-champions-league": _SAUDI | {"22022"}, "la-liga": _EURO}
 WIDGET_FOCUS = 2                  # الأولان (الإنجليزي وروشن، الأكثر متابعةً عند السعوديين) يأخذان مساحةً أكبر
-WIDGET_ROWS_FOCUS = 4             # أكثر مباريات الدوري المُركَّز عليه
-WIDGET_ROWS_OTHER = 3             # وغيره
+WIDGET_ROWS_FOCUS = 6             # أكثر مباريات الدوري المُركَّز عليه (أهمّها ظاهرة والباقي خلف «مباريات أخرى»)
+WIDGET_ROWS_OTHER = 4             # وغيره
+
+# كـ tournament.WIDGET_JS لكن بأزرارٍ متعددة (‏details.wmore لكل دوري) تبقى مفتوحةً بعد تبديل المحتوى حيًّا.
+WIDGET_JS = tournament.WIDGET_JS
+_a = WIDGET_JS.index("function more(")
+_b = WIDGET_JS.index("if(!window.fetch")
+WIDGET_JS = (WIDGET_JS[:_a]
+             + """function ds(){return card.querySelectorAll("details.wmore[id]")}
+function opened(){var o={};ds().forEach(function(d){if(d.open)o[d.id]=1});return o}
+function restore(o){ds().forEach(function(d){var v=o?o[d.id]:0;
+if(!o)try{v=sessionStorage.getItem("ssouqMore:"+d.id)==="1"}catch(e){}if(v)d.open=true})}
+restore();
+document.addEventListener("toggle",function(e){var d=e.target;if(d.classList&&d.classList.contains("wmore")){
+try{sessionStorage.setItem("ssouqMore:"+d.id,d.open?"1":"0")}catch(x){}h()}},true);
+"""
+             + WIDGET_JS[_b:]).replace('var old={},d=document.getElementById("more");', "var old={},o=opened();"
+                                       ).replace("more(d?d.open:null)", "restore(o)")
 
 
 def render_widget(theme="", now=None):
@@ -582,11 +598,15 @@ def render_widget(theme="", now=None):
         if not rows:
             continue
         live = live or any(m["state"] == "in" for m in rows)
+        rows.sort(key=lambda m: (m["state"] != "in", m["ts"], m["id"]))          # الجارية أولًا ثم الأقرب موعدًا
         badge = COMPS[k]["badge"]
+        paint = lambda xs: _days(xs, lambda m: _row(m, badge, k, True))          # noqa: E731
+        more = (f'<details class="wmore" id="more-{k}"><summary>مباريات أخرى <span class="n">({len(rows) - 1})</span>'
+                f'{tournament.CHEVRON}</summary>{paint(rows[1:])}</details>' if len(rows) > 1 else "")
         blocks.append(f'<div class="wcup"><h2><span>{_esc(league.LEAGUES[k]["name"])}'
                       + (f' <small class="n">· {note}</small>' if note else "")
                       + f'</span><a href="{PATH}/{k}" target="_blank" rel="noopener">كل المواعيد ←</a></h2>'
-                      + _days(rows, lambda m: _row(m, badge, k, True)) + "</div>")
+                      + paint(rows[:1]) + more + "</div>")
     if blocks:
         body = f'<div class="{"wcols" if len(blocks) > 1 else "wone"}">{"".join(blocks)}</div>'
     elif all_ms:
@@ -620,7 +640,7 @@ def render_widget(theme="", now=None):
 </section>
 </main>
 <script>
-{tournament.WIDGET_JS}
+{WIDGET_JS}
 </script>
 </body>
 </html>"""
