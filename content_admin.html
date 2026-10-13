@@ -519,7 +519,7 @@ details.card>.din{padding:0 16px 16px}
       </div>
     </details>
     <details class="blk fold" id="blkRelease">
-      <summary><span><b>النشر الإنتاجي</b><small class="lbl-en">Phases 4–9: noindex removal · sitemap · IndexNow · post-production QA · expansion</small></span></summary>
+      <summary><span><b>النشر الإنتاجي</b><small class="lbl-en">Phases 4–10: noindex removal · sitemap · IndexNow · post-production QA · expansion · lists/seasons/hubs</small></span></summary>
       <div class="din">
         <p class="sub">كل مرحلةٍ خلف بوابة: فشلها = STOP وتراجع. المرحلة 4 تعتمد روابط <b>اللقطة</b> (sitemap-staging.xml المكتوبة مع bundle.json بمعرّفها) وحدها بعد التأكد أنها
           المستحقّة الآن تمامًا، ثم ترفع noindex عنها فقط؛ 5 تُدخلها الخريطة العامة؛ 6 ترسلها إلى IndexNow (القبول استلامٌ لا فهرسة)؛ 7 فحصٌ بعد النشر يوقف عند أي تراجع؛
@@ -530,6 +530,8 @@ details.card>.din{padding:0 16px 16px}
         <div class="acts"><button class="go" type="button" id="rGo">نفّذ 4 ← 5 ← 6 ← 7</button>
           <button class="ghost" type="button" id="rP4">المرحلة 4</button><button class="ghost" type="button" id="rP5">المرحلة 5</button>
           <button class="ghost" type="button" id="rP6">المرحلة 6</button><button class="ghost" type="button" id="rP7">المرحلة 7</button></div>
+        <div class="acts"><button class="go" type="button" id="rP10">المرحلة 10: اعتماد القوائم والمواسم والحلقات والهبّات</button></div>
+        <p class="meta">المرحلة 10 تُشغَّل بعد نجاح 4 و5 و7، ولا تستعمل «المسارات المتوقَّعة» أعلاه؛ تعدّ المرشّحة وتحكم الرسم أهليتها، وتتراجع كاملةً عند أي فشل.</p>
         <div class="acts"><input id="rN" class="ltr" type="number" min="1" max="1000" value="100" style="width:90px" aria-label="حجم الدفعة">
           <button class="ghost" type="button" id="rBatch">دفعة توسيعٍ واحدة (المرحلة 8)</button>
           <input id="rMax" class="ltr" type="number" min="1" placeholder="أقصى دفعات" style="width:110px">
@@ -1253,7 +1255,7 @@ function renderRelease(d) {
   const r = d.release || {}, ph = r.phases || {}, p = d.progress || {};
   const st = n => (ph[n] || {}).status || "—";
   const flags = `${d.preview ? "المعاينة مفعّلة" : "المعاينة موقوفة"} · index_live ${d.index_live ? "✔" : "✘"} · sitemap_live ${d.sitemap_live ? "✔" : "✘"} · المعتمد ${num(d.approved_routes)} مسارًا لـ${num(d.approved_entities)} كيانًا${d.approved_snapshot ? ` (لقطة ${d.approved_snapshot})` : ""}`;
-  const phases = `4: ${st(4)} · 5: ${st(5)} · 6: ${st(6)} · 7: ${st(7)} · دفعات: ${(d.batches || []).length}${(d.batches || []).length ? ` (آخرها ${d.batches[d.batches.length - 1].status})` : ""}`;
+  const phases = `4: ${st(4)} · 5: ${st(5)} · 6: ${st(6)} · 7: ${st(7)} · 10: ${st(10)}${d.index_extra_live ? ` (يُخدم ${num(d.extras_approved_routes)} مسارًا)` : ""} · دفعات: ${(d.batches || []).length}${(d.batches || []).length ? ` (آخرها ${d.batches[d.batches.length - 1].status})` : ""}`;
   const blk = r.blocked ? ` · ⛔ موقوف: المرحلة ${r.blocked.phase}${r.blocked.batch ? ` دفعة ${r.blocked.batch}` : ""} — ${r.blocked.reason}` : "";
   const run = d.running ? ` · يعمل الآن: ${p.action || ""} ${p.stage || ""}` : p.stage === "error" ? ` · خطأ: ${p.error}` : p.stage === "done" ? ` · انتهى ${p.action}: ${p.ok ? "ناجح" : "فشل/توقّف"}` : "";
   $("rState").textContent = `${flags}\n${phases}${blk}${run} · اللقطة في مجلد المراجعة: ${(d.bundle || {}).bundle_id || "—"} (${num(d.snapshot_routes)} رابطًا) · الكود ${d.code_fingerprint || ""}`;
@@ -1265,15 +1267,16 @@ async function release(action, extra) {
   const snap = $("rSnap").value.trim(), exp = $("rExpected").value.trim();
   if ((action === "go" || action === "phase4") && !/^\d{8}T\d{6}Z$/.test(snap)) { alert("أدخل معرّف اللقطة (نقطة الاستئناف) مثل 20261003T004434Z"); return; }
   const label = {go: "تنفيذ المراحل 4 ← 5 ← 6 ← 7 (رفع noindex ونشر الخريطة وIndexNow)", phase4: "المرحلة 4: رفع noindex عن روابط اللقطة", phase5: "المرحلة 5: الخريطة العامة", phase6: "المرحلة 6: IndexNow",
-                 phase7: "المرحلة 7: فحصٌ بعد النشر", batch: "دفعة توسيعٍ واحدة", expand: "دفعاتٌ متتابعة", final: "الحزمة النهائية"}[action];
+                 phase7: "المرحلة 7: فحصٌ بعد النشر", extras: "المرحلة 10: رفع noindex عن القوائم والمواسم والحلقات والهبّات المعتمدة ونشرها في الخريطة وIndexNow", batch: "دفعة توسيعٍ واحدة", expand: "دفعاتٌ متتابعة", final: "الحزمة النهائية"}[action];
   if (action !== "final" && action !== "phase7" && !confirm(`${label}؟ (إنتاجٌ فعلي؛ أي بوابةٍ تفشل = STOP)`)) return;
-  const d = await api("/api/content/admin/seo-release", {action, snapshot: snap || undefined, expected: exp ? Number(exp) : undefined, http: $("rHttp").checked, ...(extra || {})}).catch(() => ({error: "تعذّر الاتصال"}));
+  const d = await api("/api/content/admin/seo-release", {action, snapshot: snap || undefined, expected: exp && action !== "extras" ? Number(exp) : undefined, http: $("rHttp").checked, ...(extra || {})}).catch(() => ({error: "تعذّر الاتصال"}));
   if (d.error) { $("rState").textContent = d.error; return; }
   if (!d.started) $("rState").textContent = "عمليةٌ جارية أصلًا — انتظر انتهاءها";
   renderRelease(d); $("blkRelease").open = true;
 }
 $("rGo").onclick = () => release("go");
 $("rP4").onclick = () => release("phase4"); $("rP5").onclick = () => release("phase5"); $("rP6").onclick = () => release("phase6"); $("rP7").onclick = () => release("phase7");
+$("rP10").onclick = () => release("extras");
 $("rBatch").onclick = () => release("batch", {n: Number($("rN").value) || 100});
 $("rExpand").onclick = () => release("expand", {n: Number($("rN").value) || 100, max: $("rMax").value ? Number($("rMax").value) : undefined});
 $("rFinal").onclick = () => release("final");
