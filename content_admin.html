@@ -45,6 +45,7 @@ button:disabled{opacity:.5;cursor:default}
 .wz-res{margin:10px 0;padding:10px 12px;border-radius:12px;font-size:.86rem;overflow-wrap:anywhere}
 .wz-res.ok{background:color-mix(in srgb,var(--go) 14%,transparent);border:1px solid var(--go)}
 .wz-res.bad{background:color-mix(in srgb,var(--err) 14%,transparent);border:1px solid var(--err)}
+.wz-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}.wz-fields label{display:block;margin-bottom:4px}
 .wz-nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.wz-nav button{flex:1 1 40%}
 @media (min-width:640px){.wz-steps{grid-template-columns:repeat(8,1fr)}}
 
@@ -1354,8 +1355,8 @@ function renderWizard(d) {
   if (cur.k === "p8") {
     const n = Number($("rN").value) || 100, live = d.live_entities || 0, ap = d.approved_entities || 0, rem = Math.max(0, live - ap);
     body += `<div class="wz-res ok">المعتمد <b>${num(ap)}</b> من <b>${num(live)}</b> كيانًا · المتبقي <b>${num(rem)}</b> (≈ ${num(Math.ceil(rem / n))} دفعة بحجم ${num(n)})</div>` +
-      `<div class="fld"><label class="meta" for="wzN">حجم الدفعة</label><input id="wzN" class="ltr" type="number" min="1" max="1000" value="${n}" style="width:110px">` +
-      `<label class="meta" for="wzMax">أقصى عدد دفعات متتابعة</label><input id="wzMax" class="ltr" type="number" min="1" max="100" value="${$("rMax").value || 5}" style="width:110px"></div>` +
+      `<div class="wz-fields"><div><label class="meta" for="wzN">حجم الدفعة</label><input id="wzN" class="ltr" type="number" inputmode="numeric" min="1" max="1000" value="${n}"></div>` +
+      `<div><label class="meta" for="wzMax">أقصى عدد دفعات متتابعة</label><input id="wzMax" class="ltr" type="number" inputmode="numeric" min="1" max="100" value="${$("rMax").value || 5}"></div></div>` +
       `<p class="meta">دفعاتٌ منفّذة: ${(d.batches || []).length}${r.blocked ? " · ⛔ موقوف: أعد المرحلة 7 أولًا" : ""}. «استمر» تنفّذ دفعةً بعد دفعة وتتوقف عند أول فشل.</p>`;
   }
   if (running) {
