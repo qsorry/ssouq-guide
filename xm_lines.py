@@ -7027,6 +7027,11 @@ class Handler(BaseHTTPRequestHandler):
                     r["sub"] = gate_sub(ac, find_gate(ac, r["gate_id"]) if ac else None) or line_sub(r, r.get("panel_name", ""))
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
+                    if r.get("state") == "replaced":          # له بديلٌ معيَّن: يُعرض باسمه ولوحته
+                        try:
+                            r["replacement"] = reply_replacement(racs, rws, r["username"])
+                        except Exception:
+                            r["replacement"] = None
                     r["copy_line"] = line_copy(racs, r)
                 d["rows"].sort(key=lambda r: not (r.get("complaint") and not r["complaint"]["replied"]))   # ما عليه شكوى أولًا
                 d["with_complaint"] = sum(1 for r in d["rows"] if r.get("complaint") and not r["complaint"]["replied"])
