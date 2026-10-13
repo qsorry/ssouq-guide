@@ -599,8 +599,9 @@ def test_order_lost():
             panels.save_panel_lines(d3, "pk", "مرح", [{"username": "333"}])
             r3 = panels.lost(cfg, d3)
             s3 = panels.order_search(cfg, d3, "691869829206")
-            check("a second user in an order that has a found user is covered, not missing",
-                  r3["total"] == 0 and r3["counts"]["covered"] == 1 and s3["rows"][0]["state"] == "covered", str(r3["counts"]))
+            check("a second user in an order that has a found user is covered (listed with its found user), not missing",
+                  r3["pending"] == 0 and r3["counts"]["covered"] == 1 and r3["rows"][0]["state"] == "covered"
+                  and r3["rows"][0]["covered_by"] == "333" and s3["rows"][0]["state"] == "covered", str(r3["counts"]))
         finally:
             shutil.rmtree(d3, ignore_errors=True)
         # ملف Excel البوابة المحفوظ في النظام: يوزرٌ فيه موجود، وبوابته تُعدّ مسحوبة
