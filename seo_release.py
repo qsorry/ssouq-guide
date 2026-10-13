@@ -133,7 +133,7 @@ def redirect_audit(con):
             seen.add(cur); cur = rows[cur]
         if cur in seen:
             loops.append(p)
-        m = re.fullmatch(r"/content/(movies|series)/([^/]+)/", t)
+        m = re.fullmatch(r"(?:/[a-z]{2})?/content/(movies|series)/([^/]+)/", t)     # الهدف بأي بادئة لغة (/en/…) كالعربي: الصفّان ar وen يُحلّان إلى الكيان نفسه
         if not m:
             resolve.append(p); continue
         e = con.execute("SELECT merged_into FROM content WHERE type=? AND slug=?", ("movie" if m.group(1) == "movies" else "series", m.group(2))).fetchone()
