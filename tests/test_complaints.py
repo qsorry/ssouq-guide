@@ -478,6 +478,12 @@ def test_same_creds_on_casper():
         check("trial line created with the customer's own username and password", r["username"] == "212084058604"
               and r["password"] == "204777188844" and on_panel and on_panel["password"] == "204777188844" and not r.get("rename_error"), str(r)[:200])
         check("the panel-generated name is gone (renamed, not duplicated)", sum(1 for u in mock_casper._Handler.users if u["password"] == "204777188844") == 1)
+        check("created line is enabled on the panel (Enable)", on_panel and not on_panel.get("disabled"))
+        # مفعّلٌ صريحًا: يوزرٌ معطَّل على اللوحة يُفعَّل بخيار Enable
+        mock_casper._Handler.users[0]["disabled"] = True
+        info = X.web_session(gate).ensure_enabled(mock_casper._Handler.users[0]["username"])
+        check("ensure_enabled flips a disabled line via Enable", info == {"was_disabled": True, "enabled": True}
+              and not mock_casper._Handler.users[0].get("disabled"), str(info))
         # اللوحة ترفض كلمة مرورٍ مستعملة: يُعاد بكلمةٍ عشوائية، ويبقى الاسم القديم بالتسمية، ويُقال السبب
         mock_casper._Handler.unique_pw = True
         r2 = X.create_line(gate, {"id": "727", "name": "1 Day"}, "101010101010", "204777188844")
