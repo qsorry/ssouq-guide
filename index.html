@@ -168,6 +168,7 @@ a.entry{text-decoration:none}
   text-align:right;cursor:pointer;overflow:hidden;box-shadow:var(--shadow)}
 .brandcard.falcon{background:linear-gradient(210deg,#123A5E 0%,#0A1E33 55%,#3A1020 100%)}
 .brandcard.smart{background:linear-gradient(210deg,#1E7FC4 0%,#0F4E80 55%,#06263F 100%)}
+.brandcard.casper{background:linear-gradient(210deg,#2A5BD7 0%,#14307F 55%,#070F2E 100%)}
 .brandcard{transition:transform .15s ease}
 .brandcard:hover,.brandcard:focus-visible{transform:translateY(-2px)}
 .brandcard.badged{padding-top:46px}
@@ -737,6 +738,9 @@ const DUPLECAST_STEPS = [
 ];
 const DUPLECAST = get => [get, ...DUPLECAST_STEPS];
 
+// دخول NEXT+ (اشتراك مرح/سمارت): واحد على الجوال وعلى شاشة أندرويد
+const NEXT_LOGIN = { title: "أدخل بياناتك في NEXT+", img: "/static/img/android-next-login.webp",
+          html: '<p>افتح التطبيق فتظهر شاشة <b dir="ltr">ADD PLAYLIST</b> بأربع خانات، مرقّمة في الصورة. اضغط كل خانة واكتب فيها بالترتيب:</p><div class="fields"><div class="f"><span>1 · <bdi>Playlist Name</bdi></span><code>اسمك (أي اسم)</code></div><div class="f"><span>2 · <bdi>Username</bdi></span><code>اسم المستخدم الخاص باشتراكك</code></div><div class="f"><span>3 · <bdi>Password</bdi></span><code>كلمة السر الخاصة باشتراكك</code></div><div class="f"><span>4 · <bdi>Server</bdi></span><code>55555</code></div></div><p>ثم اضغط زر <b dir="ltr">START</b> الأخضر أسفل الشاشة، فيحمّل التطبيق القنوات والأفلام والمسلسلات أول مرة، فانتظر حتى يكتمل.</p><div class="note">الخانة الرابعة <b dir="ltr">Server</b> لا تحتاج رابط هوست: اكتب فيها الرمز <b dir="ltr">55555</b> فقط كما هو.</div>' + CREDS };
 const DEVICES = {
   ios: { icon: "apple", name: "آيفون / آيباد", sub: "تطبيق VAR Player", steps: [
     { title: "حمّل تطبيق VAR Player", img: "/static/img/ios-var-appstore.jpg",
@@ -754,18 +758,24 @@ const DEVICES = {
         + '<div class="f"><span>الخانة الثالثة <i dir="ltr">Password</i></span><code>كلمة المرور كما وصلتك</code></div></div>'
         + '<div class="note">لا يوجد رابط هنا ولا تكتب أي رابط: الخادم تحدّد برمز <b dir="ltr">55555</b> في الخطوة السابقة، فاكتب <b dir="ltr">1</b> في الخانة الأولى، ولا تكتب فيها <span dir="ltr">http://url:port</span> فهو مجرد نص توضيحي داخل الخانة، ولا تتركها فارغة.</div>' + CREDS }
   ]},
-  android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو IPTV Smarters Pro", choose: {
+  android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو MR7 أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
       { key: "next", label: "NEXT+", sub: "الأسهل، من Google Play", icon: "next-plus" },
+      { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تحميل مباشر", icon: "mr7" },
       { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK", icon: "smarters-pro" }
     ]},
     variants: {
       next: [
         { title: "حمّل تطبيق NEXT+", img: "/static/img/android-next-play.webp",
-          html: APP("next-plus", "NEXT+", "من Google Play · مجاني") + '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><div class="alt"><h3>بديل: تطبيقنا الخاص MR7</h3>' + APP("mr7", "MR7 TV", "تحميل مباشر · تطبيقنا الخاص") + '<p>تحميل مباشر من الرابط: <a class="link" href="http://aftv.news/5574841" target="_blank" rel="noopener">aftv.news/5574841</a></p></div>' },
-        { title: "أدخل بياناتك في التطبيق", img: "/static/img/android-mr7-home.webp",
-          html: '<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class="f"><span>الخانة الرابعة</span><code>55555</code></div></div><p class="sub">في تطبيق MR7: اسم المستخدم في الخانة الأولى، كلمة السر في الثانية، واترك Activation code فارغًا ثم اضغط Login.</p>' + CREDS }
+          html: APP("next-plus", "NEXT+", "من Google Play · مجاني") + '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><p class="sub">تفضّل تطبيقنا الخاص؟ اختر <b dir="ltr">MR7 TV</b> من شاشة اختيار التطبيق.</p>' },
+        NEXT_LOGIN
+      ],
+      mr7: [
+        { title: "حمّل تطبيق MR7 TV",
+          html: APP("mr7", "MR7 TV", "تحميل مباشر · تطبيقنا الخاص") + '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class="btn go" href="http://aftv.news/5574841" target="_blank" rel="noopener">تحميل تطبيق MR7 TV</a></p><p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
+        { title: "سجّل الدخول", img: "/static/img/tv-mr7-login.jpg",
+          html: '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثانية</span><code>كلمة السر</code></div><div class="f"><span>Activation code</span><code>اتركه فارغًا</code></div></div><p>ثم اضغط <b dir="ltr">Login</b>.</p>' + CREDS }
       ],
       smarters: [
         { title: "حمّل IPTV Smarters Pro",
@@ -778,10 +788,16 @@ const DEVICES = {
   tv: { icon: "tv", name: "شاشة / بوكس أندرويد TCL Sony شاومي mi", sub: "MR7 TV أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
+      { key: "next", label: "NEXT+", sub: "الأسهل، من Google Play على الشاشة", icon: "next-plus" },
       { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تسجيل دخول مباشر", icon: "mr7", code: "5574841" },
       { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro", code: "8744201" }
     ]},
     variants: {
+      next: [
+        { title: "حمّل تطبيق NEXT+ من Google Play",
+          html: APP("next-plus", "NEXT+", "من Google Play · مجاني") + '<ol><li>افتح متجر <b dir="ltr">Google Play</b> في الشاشة وابحث عن <b dir="ltr">NEXT+</b>.</li><li>اضغط <b>تثبيت</b> ثم <b>فتح</b>.</li></ol><div class="note">لم يظهر <b dir="ltr">NEXT+</b> في متجر شاشتك؟ فبعض الشاشات والبوكسات لا تعرضه: ارجع واختر <b dir="ltr">MR7 TV</b> أو <b dir="ltr">IPTV Smarters Pro</b> فكلاهما يُثبَّت بـ Downloader.</div>' },
+        NEXT_LOGIN
+      ],
       // التثبيت بـ Downloader (DL_*) واحدٌ للتطبيقين، والكود والتطبيق وحدهما يختلفان
       mr7: [
         DL_PLAY(""), DL_OPEN, DL_CODE("5574841", APP("mr7", "MR7 TV", "بالكود في Downloader · تطبيقنا الخاص")),
@@ -951,7 +967,10 @@ const BRAND_COPY = {
     chips: [["ball", "بث مباشر"], ["film", "أفلام ومسلسلات"], ["refresh", "تحديث يومي"]] },
   smart: { badge: "ممتاز للمسلسلات والأفلام", art: "/static/img/brands/smart.webp",
     text: "ممتاز للأفلام والمسلسلات مع تحديث يومي، ومناسب أيضًا للبث المباشر.",
-    chips: [["film", "أفلام ومسلسلات"], ["ball", "بث مباشر"], ["refresh", "تحديث يومي"]] }
+    chips: [["film", "أفلام ومسلسلات"], ["ball", "بث مباشر"], ["refresh", "تحديث يومي"]] },
+  casper: { badge: "الأوفر للأفلام والمسلسلات", art: "/static/img/brands/casper.webp",
+    text: "مكتبة واسعة من الأفلام والمسلسلات بسعر اقتصادي، ولها باقات خاصة لشاشات سامسونج و LG.",
+    chips: [["film", "أفلام ومسلسلات"], ["refresh", "تحديث يومي"]] }
 };
 const PROG_BUY = ["المحتوى", "الجهاز", "النوع", "الباقة"];
 const PROG_ACT = ["الاشتراك", "جهازك", "التطبيق", "جاهز"];
@@ -1371,20 +1390,20 @@ function renderBuyDevice(){
 function renderBuyBrand(){
   setProg(PROG_BUY, 2);
   const best = recommended(state.taste, state.bdev);
-  const order = best === "smart" ? ["smart", "falcon"] : ["falcon", "smart"];
+  const order = [best, ...["falcon", "smart", "casper"].filter(k => k !== best)];
   const cards = order.map(k => {
     const b = CATALOG[k], c = BRAND_COPY[k];
     return `<button class="brandcard ${k}${k === best ? " badged" : ""}" type="button" data-brand="${k}">
       ${k === best ? `<span class="pick-badge">${c.badge}</span>` : ""}
       <span class="head"><img src="${c.art}" alt="" width="68" height="68" loading="lazy">
         <span class="who"><b>${b.name}</b><span class="full">${b.full}</span>
-          <span class="rate">${stars(b.stars)} <em>تقييم سمارت سوق ${b.stars} من 5</em></span></span></span>
+          ${b.stars ? `<span class="rate">${stars(b.stars)} <em>تقييم سمارت سوق ${b.stars} من 5</em></span>` : ""}</span></span>
       <p>${c.text}</p>
       <span class="chips">${c.chips.map(([i, t]) => `<span>${ICONS[i]}${t}</span>`).join("")}</span>
     </button>`;
   }).join("");
   const tvNote = {
-    webos: `<div class="note warn">شاشات سامسونج و LG تعمل بنظام webOS، ولها في المتجر باقات مخصّصة تشتغل على الشاشة مباشرة عبر 0Player بلا رسيفر — وهي باقات "سمارت".</div>`,
+    webos: `<div class="note warn">شاشات سامسونج و LG تعمل بنظام webOS، ولها في المتجر باقات مخصّصة تشتغل على الشاشة مباشرة عبر 0Player بلا رسيفر — وهي باقات "سمارت" (ولكاسبر باقات مخصّصة مثلها).</div>`,
     vidaa: `<div class="note warn">شاشات هايسنس تعمل بنظام VIDAA، وتناسبها باقات "سمارت" المخصّصة للشاشات الذكية — باقات سامسونج و LG نفسها — وتشتغل على الشاشة مباشرة عبر تطبيق Duplecast بلا رسيفر.</div>`
   }[state.bdev] || "";
   $("#view").innerHTML = `<div class="card">
