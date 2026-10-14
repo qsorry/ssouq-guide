@@ -81,6 +81,17 @@ fs.writeFileSync(path.join(dataDir, 'renew_store_lines.json'), JSON.stringify({l
     await page.click('#wzEnd'); await sleep(600);
     check('after closing the chain shows the replacement and the renamed first account', /newuser1/.test(await page.textContent('#loBody')) && /old_x/.test(await page.textContent('#loBody')));
     check('a skipped (unsent) message keeps the duplicate pending, listing only that step', /المتبقي من المعالجة: إرسال ما عُدّل/.test(await page.textContent('#loBody')));
+    // صفحة «المكرر والبدائل»: «أنشئ بديلًا» يفتح المعالج نفسه (بلا confirm منفصل) ويمرّر بوابة الإنشاء المختارة
+    S.done = null; S.msgs = []; S.posts = []; S.failRename = false;
+    await page.route('**/api/renew/duplicates', rt => rt.fulfill({json: {rows: [{order: '200', username: '363816609180', host: 'http://m.ink', panel_name: 'مرح', customer: 'الثاني', phone: '0500000002',
+      date: d0, remaining: '10 أشهر', suggest: 10, first_order: '100', first_customer: 'الأول', first_phone: '0500000001', done: null, expired: false, can_create: true, sub: ''}],
+      pending: 1, done: 0, expired: 0, gates: [], messages: [], wa_linked: true}}));
+    await page.evaluate(() => loadDup()); await page.waitForSelector('#dupBody .dupMk', {state: 'attached'});
+    await page.evaluate(() => document.querySelector('#dupBody .dupMk').click());
+    await page.waitForSelector('#wzModal:not(.hidden) #wzGo');
+    check('the duplicates page opens the same wizard on step 1', (await page.textContent('.wzst li.cur')).includes('إنشاء'));
+    await page.click('#wzGo'); await page.waitForFunction(() => /إرسال للبديل/.test(document.querySelector('.wzst li.cur')?.textContent || ''));
+    check('create + rename ran from the duplicates page', S.posts[0][0] === 'create' && S.posts[1][0] === 'rename', JSON.stringify(S.posts.map(x => x[0])));
     check('no page errors', errs.length === 0, errs.join(' | '));
   } finally { await browser.close(); app.kill(); fs.rmSync(dataDir, {recursive: true, force: true}); }
   console.log(`\nResult: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
