@@ -158,6 +158,37 @@ def _title(row, tr):
     return row["title"] if ar else (row["title_ar"] or row["title"])
 
 
+def _cut(s, n):
+    """قصّ عند حدّ الكلمة بلا تجاوز n حرفًا."""
+    if len(s) <= n:
+        return s
+    return s[:n].rsplit(" ", 1)[0].rstrip(" ،,:-|")
+
+
+def _seo_title(title, kind_ar, typ, tr):
+    """≤60 حرفًا: الكلمة المفتاحية (الاسم) + طُعم. يُقصّ الاسم الطويل لا الطُّعم."""
+    if tr.en:
+        hook = "Guide: Plot, Cast, Seasons & Where to Watch" if typ == "series" else "Plot, Cast & Where to Watch"
+        sep = " " if typ == "series" else ": "
+        names = (title, _cut(title, 60 - len(sep) - len(hook)))
+    else:
+        hook = "القصة، الحلقات، وأين تشاهد" if typ == "series" else "القصة، الممثلون، وأين تشاهد"
+        names = (f"{kind_ar} {title}", _cut(f"{kind_ar} {title}", 60 - 2 - len(hook)))
+        sep = ": "
+    for n in names:
+        t = f"{n}{sep}{hook}"
+        if len(t) <= 60:
+            return t
+    return _cut(names[-1], 60)
+
+
+def _seo_desc(desc, tr):
+    """≤155 حرفًا بدعوةٍ إلى الفعل حين يتّسع المكان."""
+    cta = tr(" اكتشف التفاصيل الآن!", " Explore the full guide now!")
+    d = desc.rstrip(" ،,.") + "."
+    return d + cta if len(d + cta) <= 155 else _cut(d, 154).rstrip(" ،,.") + "."
+
+
 def _overview(row, tr):
     return (row["overview_en"] or "") if tr.en else (row["overview_ar"] or row["overview"] or "")
 
@@ -275,7 +306,7 @@ def _services(con, cid, tr):
         price = f'{P._money(plans[0]["price"]):g} {tr("ر.س", "SAR")}' if plans and P._money(plans[0]["price"]) else ""
         out.append(f'<li>{P._logo(srv["key"], name, "logo")}<span><b>{_esc(name)}</b>{f"<small>{_esc(vers)}</small>" if vers else ""}</span>'
                    f'<a class="btn" href="{_esc(P._utm(url, "content-entity"))}" rel="nofollow">{_esc(tr("اشترك", "Subscribe"))}{f" · {price}" if price else ""}</a></li>')
-    html = (f'<section class="avail" id="available"><h2>{_esc(tr("متوفر عبر", "Available on"))}</h2><ul class="srv">{"".join(out)}</ul>'
+    html = (f'<section class="avail" id="available"><h2>{_esc(tr("أين يمكنك المشاهدة؟", "Streaming Platforms & Availability"))}</h2><ul class="srv">{"".join(out)}</ul>'
             f'<p class="cta">{_esc(tr("اشترك الآن للوصول إلى آلاف الأفلام والمسلسلات.", "Subscribe now for thousands of movies and series."))}</p></section>')
     return html, names
 
@@ -414,7 +445,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     bits = [tr("قصة " + kind_ar, "Story"), tr("الممثلون", "Cast")] + ([tr("المواسم والحلقات", "Seasons & Episodes")] if typ == "series" else [])
     if director:
         bits.append(tr("المخرج", "Director"))
-    page_title = f"{title}" + (f" ({row['year']})" if row["year"] and tr.en else "") + " | " + tr("، ".join(bits), ", ".join(bits))
+    page_title = _seo_title(title, kind_ar, typ, tr)
     desc_bits = []
     if row["year"]:
         desc_bits.append(tr(f"إنتاج {row['year']}", f"{row['year']}"))
@@ -428,7 +459,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         desc_bits.append(tr("بطولة ", "Starring ") + tr("، ", ", ").join(_pname(p, tr) for p in cast[:3]))
     desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") \
         + (tr(f". متوفر عبر {tr.join(srv_names)}.", f". Available on {tr.join(srv_names)}.") if srv_names else ".")
-    desc = desc[:170].rstrip(" ،,.") + "."
+    desc = _seo_desc(desc, tr)
     # الفتات
     crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (tr("المسلسلات" if typ == "series" else "الأفلام", "Series" if typ == "series" else "Movies"), tr.path)]
     if hubs:
@@ -460,13 +491,13 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
             + (f'<p class="orig" dir="auto">{_esc(row["original_title"])}</p>' if row["original_title"] and row["original_title"] != title else "")
             + f'<p class="chips">{chips}</p><dl class="facts">{facts_html}</dl></div></div></section>')
     # القصة
-    story = (f'<section class="story"><h2>{_esc(tr(f"قصة {kind_ar} {title}", f"Story of {title}"))}</h2><p dir="auto">{_esc(ov)}</p></section>' if ov else "")
+    story = (f'<section class="story"><h2>{_esc(tr(f"قصة {kind_ar}", "Plot Overview"))}</h2><p dir="auto">{_esc(ov)}</p></section>' if ov else "")
     # المخرج والممثلون
     ppl = ""
     if director:
         ppl += f'<section><h2>{_esc(ROLE_NAMES[director["role"]][tr.en])}</h2><div class="people">{_person_chip(director, tr, title)}</div></section>'
     if cast:
-        ppl += f'<section><h2>{_esc(tr(f"أبطال {kind_ar} {title}", f"Cast of {title}"))}</h2><div class="people">{"".join(_person_chip(p, tr, title) for p in cast[:12])}</div></section>'
+        ppl += f'<section><h2>{_esc(tr("طاقم العمل والشخصيات", "Cast & Key Characters"))}</h2><div class="people">{"".join(_person_chip(p, tr, title) for p in cast[:12])}</div></section>'
     writers = [p for r in ("creator", "writer", "screenwriter") for p in people.get(r) or [] if not (director and p["id"] == director["id"])]
     if writers:
         ppl += f'<section><h2>{_esc(tr("الكتّاب", "Writers"))}</h2><div class="people">{"".join(_person_chip(p, tr, title) for p in writers[:8])}</div></section>'
@@ -497,7 +528,13 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
                 name_html = _esc(name)
             items.append(f'<details{" open" if s is seasons[0] else ""}><summary><b>{name_html}</b> <small>{_esc(s_label)}</small></summary>'
                          + (f'<p>{_esc(s["overview_en"] if tr.en else s["overview_ar"] or "")}</p>' if (s["overview_en"] if tr.en else s["overview_ar"]) else "") + ep_html + "</details>")
-        seas = f'<section id="seasons"><h2>{_esc(tr(f"مواسم وحلقات مسلسل {title}", f"{title} seasons & episodes"))}</h2>{"".join(items)}</section>'
+        seas = f'<section id="seasons"><h2>{_esc(tr("دليل المواسم والحلقات", "Season & Episode Breakdown"))}</h2>{"".join(items)}</section>'
+    # التقييم: القيمة والعدد من TMDB كما هما، بلا آراء نقّاد مختلَقة
+    rate_html = ""
+    if row["rating"]:
+        votes = f' — {row["votes"]:,} {tr("تقييم", "votes")}' if row["votes"] else ""
+        rate_html = (f'<section class="rating" id="rating"><h2>{_esc(tr("تقييم وآراء النقاد", "Critical Reception & Ratings"))}</h2>'
+                     f'<p>{_esc(tr(f"تقييم {kind_ar} {title} لدى المشاهدين {row['rating']:g} من 10", f"{title} is rated {row['rating']:g} out of 10 by viewers"))}{_esc(votes)}.</p></section>')
     # الصور
     pics = ""
     if poster or backdrop:
@@ -523,10 +560,10 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         faq.append((tr(f"ما سنة إنتاج {title}؟", f"When was {title} released?"), str(row["year"]) + "."))
     if srv_names:
         faq.append((tr(f"أين أشاهد {title}؟", f"Where can I watch {title}?"), tr(f"متوفر عبر اشتراكات {tr.join(srv_names)} من سمارت سوق.", f"Available on Smart Souq's {tr.join(srv_names)} subscriptions.")))
-    faq_html = (f'<section class="faq"><h2>{_esc(tr("الأسئلة الشائعة", "FAQ"))}</h2>' + "".join(f"<details><summary>{_esc(q)}</summary><p>{_esc(a)}</p></details>" for q, a in faq) + "</section>") if len(faq) >= 2 else ""
+    faq_html = (f'<section class="faq" id="faq"><h2>{_esc(tr("أسئلة شائعة", "Frequently Asked Questions (FAQ)"))}</h2>' + "".join(f"<details><summary>{_esc(q)}</summary><p>{_esc(a)}</p></details>" for q, a in faq) + "</section>") if len(faq) >= 2 else ""
     # JSON-LD
     canonical = SITE + _path(row, tr.code)
-    ld = {"@context": "https://schema.org", "@type": "Movie" if typ == "movie" else "TVSeries", "name": title, "url": canonical}
+    ld = {"@context": "https://schema.org", "@type": "Movie" if typ == "movie" else "TVSeries", "name": title, "url": canonical, "inLanguage": tr.code}
     if row["original_title"]:
         ld["alternateName"] = row["original_title"]
     if poster:
@@ -560,7 +597,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         ld["trailer"] = {k: v for k, v in ld["trailer"].items() if v}
     lds = [crumb_ld, ld]
     if faq_html:
-        lds.append({"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq]})
+        lds.append({"@context": "https://schema.org", "@type": "FAQPage", "inLanguage": tr.code, "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq]})
     trailer_html = (f'<section class="trailer"><h2>{_esc(tr("الإعلان", "Trailer"))}</h2><div class="yt"><iframe loading="lazy" src="https://www.youtube-nocookie.com/embed/{_esc(row["trailer_yt"])}" '
                     f'title="{_esc(tr(f"إعلان {title}", f"{title} trailer"))}" allowfullscreen></iframe></div></section>') if row["trailer_yt"] else ""
     ov_ar, ov_en = _override(con, "content", row["id"], "ar"), _override(con, "content", row["id"], "en")
@@ -582,7 +619,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     alts = [("ar", SITE + _path(row, "ar")), ("en", SITE + _path(row, "en")), ("x-default", SITE + _path(row, "ar"))] if ok_ar and ok_en else []
     noindex = not (live and (ok_en if tr.en else ok_ar))
     body = (_header(tr, hubs[0]["key"] if hubs else "") + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, _path(row, "en" if not tr.en else "ar"))}</div>'
-            + body_intro + head + like_bar + f'<div class="cols"><div class="main">{story}{seas}{ppl}{trailer_html}{pics}{faq_html}{foryou_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr) + like_js)
+            + body_intro + head + like_bar + f'<div class="cols"><div class="main">{story}{ppl}{seas}{rate_html}{trailer_html}{pics}{faq_html}{foryou_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr) + like_js)
     return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_image=backdrop or poster, og_type="video.movie" if typ == "movie" else "video.tv_show",
                                  noindex=noindex), "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en,
                    "noindex": noindex, "live": live, "why": (indexable(row, "ar", st)[1], indexable(row, "en", st)[1]), "row": row}
