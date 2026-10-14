@@ -23,6 +23,7 @@ import content as C
 import content_page as P
 import guide_pages
 import seo_db
+import seo_reco
 import tournament
 
 SITE = guide_pages.SITE
@@ -336,6 +337,42 @@ def _override(con, entity, entity_id, lang):
     return dict(r) if r else {}
 
 
+def _like_widget(con, row, tr):
+    """زرّ «أعجبني» + قسم «مقترحات لك» (يُملأ بسكربتٍ صغير من سلوك الزائر المحفوظ في جهازه) + السكربت ← (شريط الإعجاب، قسم المقترحات، السكربت)."""
+    n = seo_reco.like_count(con, row["id"])
+    bar = (f'<div class="like-bar"><button type="button" class="like-btn" id="likeBtn" aria-pressed="false"><span class="heart" aria-hidden="true">♡</span> '
+           f'<span class="lbl">{_esc(tr("أعجبني", "Like"))}</span> <b id="likeN">{n if n else ""}</b></button></div>')
+    fy = (f'<section id="foryou" class="foryou" hidden><h2>{_esc(tr("مقترحات لك", "Picked for you"))}</h2><p class="meta" id="fyWhy"></p>'
+          f'<div class="grid" id="fyGrid"></div><p class="meta">{_esc(tr("تُحفظ تفضيلاتك في جهازك فقط، ولا نخزّن شيئًا عنك.", "Your preferences stay on your device only; we store nothing about you."))}</p></section>')
+    labels = {"like": tr("أعجبني", "Like"), "liked": tr("أعجبك", "Liked")}
+    js = ("(function(){var slug=%s,lang=%s,L=%s;"
+          "function rd(k){try{var v=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}"
+          "function wr(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}"
+          "var likes=rd('ssq_likes'),seen=rd('ssq_seen');"
+          "seen=[slug].concat(seen.filter(function(x){return x!==slug})).slice(0,80);wr('ssq_seen',seen);"
+          "var btn=document.getElementById('likeBtn'),nEl=document.getElementById('likeN'),box=document.getElementById('foryou');"
+          "if(!btn||!box)return;"
+          "function paint(){var on=likes.indexOf(slug)>-1;btn.setAttribute('aria-pressed',on?'true':'false');btn.classList.toggle('on',on);"
+          "btn.querySelector('.heart').textContent=on?'\u2665':'\u2661';btn.querySelector('.lbl').textContent=on?L.liked:L.like}"
+          "function card(it){var a=document.createElement('a');a.className='card';a.href=it.path;var p=document.createElement('span');p.className='pos';"
+          "if(it.poster){var im=document.createElement('img');im.src=it.poster;im.alt=it.title;im.width=342;im.height=513;im.loading='lazy';p.appendChild(im)}"
+          "if(it.rating){var rb=document.createElement('i');rb.className='rt-badge';rb.textContent='\\u2605 '+(Math.round(it.rating*10)/10);p.appendChild(rb)}"
+          "var b=document.createElement('b');b.dir='auto';b.textContent=it.title;a.appendChild(p);a.appendChild(b);"
+          "var t=[it.year||'',it.rating?(Math.round(it.rating*10)/10)+' \u2605':''].filter(Boolean).join(' \u00b7 ');"
+          "if(t){var s=document.createElement('small');s.textContent=t;a.appendChild(s)}return a}"
+          "function render(d){var g=document.getElementById('fyGrid');if(!d||!d.items||!d.items.length||d.cold){box.hidden=true;return}"
+          "g.textContent='';d.items.forEach(function(it){g.appendChild(card(it))});"
+          "var w=d.items.filter(function(i){return i.why})[0];document.getElementById('fyWhy').textContent=w?w.why:'';box.hidden=false}"
+          "function reco(){if(!likes.length&&seen.length<2){box.hidden=true;return}"
+          "fetch('/api/content/recommend?lang='+lang+'&likes='+encodeURIComponent(likes.slice(0,30).join(','))+'&seen='+encodeURIComponent(seen.slice(0,60).join(','))+'&interests='+encodeURIComponent(rd('ssq_interests').join(','))+'&types='+encodeURIComponent(rd('ssq_types').join(',')))"
+          ".then(function(r){return r.json()}).then(render).catch(function(){})}"
+          "btn.onclick=function(){var on=likes.indexOf(slug)<0;likes=likes.filter(function(x){return x!==slug});if(on)likes.unshift(slug);likes=likes.slice(0,40);wr('ssq_likes',likes);paint();"
+          "fetch('/api/content/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,on:on})})"
+          ".then(function(r){return r.json()}).then(function(d){if(d&&typeof d.count==='number')nEl.textContent=d.count>0?d.count:''}).catch(function(){});reco()};"
+          "paint();reco()})();") % (json.dumps(row["slug"]), json.dumps(tr.code), json.dumps(labels, ensure_ascii=False))
+    return bar, fy, f"<script>{js}</script>"
+
+
 def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     _services.data_dir = data_dir
     row = con.execute("SELECT * FROM content WHERE type=? AND slug=?", (typ, slug)).fetchone()
@@ -536,6 +573,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         body_intro = f'<p class="intro" dir="auto">{_esc(ovr["intro"])}</p>'
     else:
         body_intro = ""
+    like_bar, foryou_html, like_js = _like_widget(con, row, tr)
     ok_ar, ok_en, live = index_flags(con, row, st)     # قبل المرحلة 4: الأهلية؛ بعدها: المعتمد المستحقّ وحده (والباقي noindex بلا alternate)
     if ov_ar.get("index_flag") == 0:
         ok_ar = False                                  # المدير أخرج هذه اللغة من الفهرسة: noindex ولا alternate
@@ -544,7 +582,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     alts = [("ar", SITE + _path(row, "ar")), ("en", SITE + _path(row, "en")), ("x-default", SITE + _path(row, "ar"))] if ok_ar and ok_en else []
     noindex = not (live and (ok_en if tr.en else ok_ar))
     body = (_header(tr, hubs[0]["key"] if hubs else "") + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, _path(row, "en" if not tr.en else "ar"))}</div>'
-            + body_intro + head + f'<div class="cols"><div class="main">{story}{seas}{ppl}{trailer_html}{pics}{faq_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr))
+            + body_intro + head + like_bar + f'<div class="cols"><div class="main">{story}{seas}{ppl}{trailer_html}{pics}{faq_html}{foryou_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr) + like_js)
     return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_image=backdrop or poster, og_type="video.movie" if typ == "movie" else "video.tv_show",
                                  noindex=noindex), "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en,
                    "noindex": noindex, "live": live, "why": (indexable(row, "ar", st)[1], indexable(row, "en", st)[1]), "row": row}
@@ -789,6 +827,68 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
                     "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok, "why": ("ok" if ok else f"items < {min_items}",) * 2, "total": total}
 
 
+
+
+
+def render_tour(con, data_dir, tr, st):
+    """‏/content/for-you/ — «محتار ايش تشاهد؟»: جولة بثلاث خطوات (الاهتمامات ← ما شاهده وأعجبه ببحثٍ ذكي يقبل الأخطاء ← مقترحات بتقييمها وسببها).
+    صفحةٌ أداة: noindex ولا تدخل الخريطة؛ والحالة في جهاز الزائر فقط."""
+    chips = seo_reco.interests(data_dir, tr.code)
+    L = {"liked": tr("أعجبني", "Like"), "seen": tr("شاهدته", "Watched"), "none": tr("لا اقتراحات مناسبة بعد — أضِف أعمالًا شاهدتها أو أعجبتك.", "No fitting picks yet — add titles you watched or liked."),
+         "pick": tr("الأشهر في اهتماماتك — حدّد ما شاهدته", "Popular in your interests — mark what you watched"), "noresult": tr("لا نتائج", "No results"),
+         "searching": tr("يبحث…", "Searching…")}
+    cfg = json.dumps({"lang": tr.code, "chips": chips, "L": L}, ensure_ascii=False).replace("</", "<\\/")
+    title = tr("محتار ايش تشاهد؟", "Not sure what to watch?")
+    body = (_header(tr) + f'<main class="wrap tour"><h1>{_esc(title)}</h1><p class="lead">{_esc(tr("جولة سريعة: اختر اهتماماتك وما شاهدته، ونقترح عليك ما يناسبك.", "A quick tour: pick your interests and what you watched, and we will suggest what fits."))}</p>'
+            f'<ol class="tsteps" id="tDots"><li class="on">1 · {_esc(tr("اهتماماتك", "Interests"))}</li><li>2 · {_esc(tr("ما شاهدته", "What you watched"))}</li><li>3 · {_esc(tr("مقترحاتك", "Your picks"))}</li></ol>'
+            f'<section id="s1"><h2>{_esc(tr("ماذا تحب أن تشاهد؟", "What do you like?"))}</h2><div class="tchips" id="tTypes"></div><div class="tchips" id="tChips"></div>'
+            f'<div class="tbtns"><button type="button" class="tbtn go" id="to2">{_esc(tr("التالي", "Next"))}</button></div></section>'
+            f'<section id="s2" hidden><h2>{_esc(tr("أعمالٌ شاهدتها أو أعجبتك", "Titles you watched or liked"))}</h2>'
+            f'<input class="tsearch" id="tQ" type="search" autocomplete="off" placeholder="{_esc(tr("ابحث باسم مسلسل أو فيلم (يقبل الأخطاء الإملائية)", "Search a series or movie (typos are fine)"))}">'
+            f'<p class="tmsg" id="tMsg"></p><div class="grid" id="tRes"></div><h3 id="tQuickH"></h3><div class="grid" id="tQuick"></div>'
+            f'<div class="tbtns"><button type="button" class="tbtn" id="to1">{_esc(tr("السابق", "Back"))}</button><button type="button" class="tbtn go" id="to3">{_esc(tr("أظهر المقترحات", "Show my picks"))}</button></div></section>'
+            f'<section id="s3" hidden><h2>{_esc(tr("قد يعجبك", "You may like"))}</h2><p class="tmsg" id="tWhy"></p><div class="grid" id="tOut"></div>'
+            f'<div class="tbtns"><button type="button" class="tbtn" id="to2b">{_esc(tr("عدّل اختياراتي", "Edit my picks"))}</button><button type="button" class="tbtn" id="tReset">{_esc(tr("ابدأ من جديد", "Start over"))}</button></div></section>'
+            f'<p class="meta">{_esc(tr("تُحفظ اختياراتك في جهازك فقط، ولا نخزّن شيئًا عنك.", "Your choices stay on your device only; we store nothing about you."))}</p></main>' + _footer(tr))
+    js = r"""(function(){var CFG=__CFG__,L=CFG.L,$=function(i){return document.getElementById(i)};
+function rd(k,d){try{var v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}}
+function wr(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+var st={interests:rd('ssq_interests',[]),types:rd('ssq_types',[]),likes:rd('ssq_likes',[]),seen:rd('ssq_seen',[])};
+function save(){wr('ssq_interests',st.interests);wr('ssq_types',st.types);wr('ssq_likes',st.likes);wr('ssq_seen',st.seen)}
+function has(a,x){return a.indexOf(x)>-1}function flip(a,x){var i=a.indexOf(x);if(i>-1)a.splice(i,1);else a.unshift(x)}
+function step(n){['s1','s2','s3'].forEach(function(id,i){$(id).hidden=(i+1!==n)});Array.prototype.forEach.call($('tDots').children,function(li,i){li.className=(i+1===n)?'on':''});window.scrollTo(0,0)}
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function rate(it){return it.rating?(Math.round(it.rating*10)/10):0}
+function card(it,pick){var a=el(pick?'div':'a','card'+(pick?' pick':''));if(!pick)a.href=it.path;var p=el('span','pos');
+ if(it.poster){var im=el('img');im.src=it.poster;im.alt=it.title;im.width=342;im.height=513;im.loading='lazy';p.appendChild(im)}
+ if(rate(it)){p.appendChild(el('i','rt-badge','\u2605 '+rate(it)))}
+ a.appendChild(p);var t=el('b',null,it.title);t.dir='auto';a.appendChild(t);
+ var sm=[it.year||'',rate(it)?'\u2605 '+rate(it):''].filter(Boolean).join(' \u00b7 ');if(sm)a.appendChild(el('small',null,sm));
+ if(!pick&&it.why){var w=el('small',null,it.why);w.style.display='block';a.appendChild(w)}
+ if(pick){var k=el('div','pk'),lk=el('button','lk'+(has(st.likes,it.slug)?' on':''),'\ud83d\udc4d '+L.liked),sn=el('button','sn'+(has(st.seen,it.slug)?' on':''),'\u2713 '+L.seen);lk.type=sn.type='button';
+  lk.onclick=function(){if(has(st.likes,it.slug)){flip(st.likes,it.slug)}else{st.likes.unshift(it.slug);if(!has(st.seen,it.slug))st.seen.unshift(it.slug)}save();lk.className='lk'+(has(st.likes,it.slug)?' on':'');sn.className='sn'+(has(st.seen,it.slug)?' on':'')};
+  sn.onclick=function(){if(has(st.seen,it.slug)){flip(st.seen,it.slug);var i=st.likes.indexOf(it.slug);if(i>-1)st.likes.splice(i,1)}else{st.seen.unshift(it.slug)}save();sn.className='sn'+(has(st.seen,it.slug)?' on':'');lk.className='lk'+(has(st.likes,it.slug)?' on':'')};
+  k.appendChild(lk);k.appendChild(sn);a.appendChild(k)}return a}
+function fill(box,items,pick){box.textContent='';items.forEach(function(it){box.appendChild(card(it,pick))})}
+function q(extra){return '/api/content/recommend?lang='+CFG.lang+'&interests='+encodeURIComponent(st.interests.join(','))+'&types='+encodeURIComponent(st.types.join(','))+extra}
+// الخطوة 1
+var TY=[['movie',CFG.lang==='en'?'Movies':'\u0623\u0641\u0644\u0627\u0645'],['series',CFG.lang==='en'?'Series':'\u0645\u0633\u0644\u0633\u0644\u0627\u062a']];
+TY.forEach(function(t){var b=el('button','tchip'+(has(st.types,t[0])?' on':''),t[1]);b.type='button';b.onclick=function(){flip(st.types,t[0]);save();b.className='tchip'+(has(st.types,t[0])?' on':'')};$('tTypes').appendChild(b)});
+CFG.chips.forEach(function(c){var b=el('button','tchip'+(has(st.interests,c.id)?' on':''),c.name);b.type='button';b.onclick=function(){flip(st.interests,c.id);save();b.className='tchip'+(has(st.interests,c.id)?' on':'')};$('tChips').appendChild(b)});
+// الخطوة 2: بحثٌ ذكي + اقتراحات سريعة
+var tm=0;$('tQ').oninput=function(){clearTimeout(tm);var v=this.value.trim();if(v.length<2){$('tRes').textContent='';$('tMsg').textContent='';return}
+ $('tMsg').textContent=L.searching;tm=setTimeout(function(){fetch('/api/content/find?lang='+CFG.lang+'&q='+encodeURIComponent(v)).then(function(r){return r.json()}).then(function(d){
+  $('tMsg').textContent=(d.items&&d.items.length)?'':L.noresult;fill($('tRes'),d.items||[],true)}).catch(function(){$('tMsg').textContent=''})},250)};
+function quick(){$('tQuickH').textContent=L.pick;fetch(q('&n=12&likes=&seen=')).then(function(r){return r.json()}).then(function(d){fill($('tQuick'),d.items||[],true)}).catch(function(){})}
+function results(){$('tWhy').textContent='';$('tOut').textContent='';fetch(q('&n=18&likes='+encodeURIComponent(st.likes.slice(0,30).join(','))+'&seen='+encodeURIComponent(st.seen.slice(0,60).join(',')))).then(function(r){return r.json()}).then(function(d){
+ if(!d.items||!d.items.length||d.cold&&!st.interests.length&&!st.likes.length){$('tWhy').textContent=L.none;return}fill($('tOut'),d.items,false);var w=d.items.filter(function(i){return i.why})[0];$('tWhy').textContent=w?w.why:''}).catch(function(){})}
+$('to2').onclick=function(){step(2);quick()};$('to1').onclick=function(){step(1)};$('to3').onclick=function(){step(3);results()};$('to2b').onclick=function(){step(2);quick()};
+$('tReset').onclick=function(){st={interests:[],types:[],likes:[],seen:[]};save();location.reload()};
+})();""".replace("__CFG__", cfg)
+    body += f"<script>{js}</script>"
+    canonical = SITE + seo_db.lang_prefix(tr.code) + "/content/for-you/"
+    return "page", {"html": _doc(tr, title + " | " + tr("سمارت سوق", "Smart Souq"), tr("جولة سريعة لاقتراح مسلسلات وأفلام تناسبك.", "A quick tour to suggest series and movies that fit you."), canonical, [], body, [], noindex=True),
+                    "noindex": True, "title": title, "index_ar": False, "index_en": False}
 
 
 # ================= المواسم والحلقات (المرحلة 7) =================
@@ -1039,7 +1139,7 @@ def handle(data_dir, path, lang, _info=False):
     pre = seo_db.lang_prefix(lang)
     ar_path = path[len(pre):] if pre else path
     hub_root = ar_path in ("/content", "/content/")
-    if not hub_root and ar_path != "/content/latest" and not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/companies/", "/content/genres/", "/content/countries/", "/content/languages/", "/content/year/", "/content/latest/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
+    if not hub_root and ar_path != "/content/latest" and not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/companies/", "/content/genres/", "/content/countries/", "/content/languages/", "/content/year/", "/content/latest/", "/content/for-you/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
         return None
     con = seo_db.connect(data_dir, create=False)
     if con is None:
@@ -1061,6 +1161,9 @@ def handle(data_dir, path, lang, _info=False):
         if r:
             return 301, b"", {"Location": pre + r["target"]}
         tr = P.lang_of(lang)
+        if ar_path == "/content/for-you/":
+            res = render_tour(con, data_dir, tr, st)
+            return res[1]["html"] if _info else (200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"})
         ms = _RX_SEASON.match(ar_path)
         if ms:
             res = render_season(con, data_dir, ms.group(1), int(ms.group(2)), int(ms.group(3)) if ms.group(3) else 0, tr, st)
@@ -1210,6 +1313,19 @@ a{color:inherit;text-decoration:none}img{display:block;max-width:100%;height:aut
 details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:8px 0}summary{cursor:pointer;font-weight:600}summary small{color:var(--mute);font-weight:400}
 .eps{padding-inline-start:0;list-style:none;margin:8px 0 0}.eps li{padding:5px 0;border-top:1px solid var(--line);font-size:.9rem}.eps li span{display:inline-block;min-width:28px;color:var(--mute)}
 .pics-row img{border-radius:12px}.yt{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000}.yt iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.card .pos{position:relative}.rt-badge{position:absolute;inset-block-start:6px;inset-inline-start:6px;background:rgba(6,11,23,.82);color:var(--gold);border-radius:999px;padding:2px 8px;font:700 .74rem/1.5 inherit;font-style:normal}
+.tour h1{margin:8px 0}.tour .lead{color:var(--mute);margin:0 0 14px}.tsteps{display:flex;gap:8px;margin:10px 0 18px;padding:0;list-style:none;flex-wrap:wrap}
+.tsteps li{padding:5px 12px;border:1px solid var(--line);border-radius:999px;color:var(--mute);font-size:.85rem}.tsteps li.on{border-color:var(--acc);color:var(--ink);font-weight:700}
+.tchips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 14px}.tchip{padding:9px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.tchip.on{border-color:var(--acc);background:rgba(47,140,255,.18);font-weight:700}.tbtns{display:flex;gap:10px;margin:16px 0;flex-wrap:wrap}
+.tbtn{padding:11px 20px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}.tbtn.go{background:var(--acc);border-color:var(--acc);color:#fff}
+.tsearch{width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;margin:6px 0 12px}
+.card.pick .pk{display:flex;gap:6px;margin-top:6px}.card.pick .pk button{flex:1;padding:6px 4px;border-radius:9px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:.78rem;cursor:pointer}
+.card.pick .pk button.on{border-color:#ff5d7a;color:#ff5d7a;font-weight:700}.card.pick .pk button.sn.on{border-color:var(--acc);color:var(--acc)}
+.tour .meta,.tmsg{color:var(--mute);font-size:.88rem}
+.like-bar{margin:12px 0 0}.like-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+.like-btn .heart{font-size:1.15rem;line-height:1}.like-btn b{font-weight:700;color:var(--mute);min-width:1ch}.like-btn.on{border-color:#ff5d7a;color:#ff5d7a}.like-btn.on b{color:#ff5d7a}
+.foryou[hidden]{display:none}.foryou .meta{color:var(--mute);font-size:.85rem;margin:4px 0 10px}
 .avail{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;position:sticky;top:12px}.avail h2{margin:0 0 10px;font-size:1.1rem}
 .srv{list-style:none;padding:0;margin:0}.srv li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.srv li:first-child{border-top:0}.srv li span{flex:1}
 .srv small{display:block;color:var(--mute);font-size:.8rem}.logo{width:34px;height:34px;border-radius:10px;object-fit:cover}.btn{background:var(--acc);color:#fff;border-radius:10px;padding:7px 12px;font-weight:700;font-size:.86rem;white-space:nowrap}

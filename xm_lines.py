@@ -43,6 +43,7 @@ import seo_search
 import seo_db
 import seo_pages
 import seo_admin
+import seo_reco
 import xm_web
 import falcon_api
 import crypto_store
@@ -6482,6 +6483,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/content":              # الرئيسية ومسار الشراء: السيرفرات التي لها محتوى وأعدادها
             b = content.brief(DATA_DIR)           # والفارغ لا يُحفظ في المتصفح: يظهر الرابط فور أول ملف
             return self._send(200, b, extra={"Cache-Control": "public, max-age=300" if b["servers"] else "no-store"})
+        if path == "/api/content/recommend":    # «مقترحات لك»: من ما أعجب الزائر وشاهده (slugs من جهازه) — لا يُخزَّن شيءٌ عنه
+            res = seo_reco.api(DATA_DIR, {"likes": self._q("likes"), "seen": self._q("seen"), "interests": self._q("interests"), "types": self._q("types"),
+                                          "n": max(1, min(30, int(self._q("n") or 12))) if str(self._q("n") or "").isdigit() else 12}, "en" if self._q("lang") == "en" else "ar")
+            return self._send(200, res, extra={"Cache-Control": "no-store"})
+        if path == "/api/content/find":         # بحثٌ ذكي بالاسم يقبل الأخطاء (لجولة «محتار ايش تشاهد؟»)
+            return self._send(200, seo_reco.find(DATA_DIR, self._q("q"), "en" if self._q("lang") == "en" else "ar"), extra={"Cache-Control": "public, max-age=300"})
         if path == "/api/content/search":       # البحث بالاسم مع الكتابة (و‏lang=en للصفحة الإنجليزية)
             res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"), self._q("lang"))
             if res is None:
@@ -8144,6 +8151,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"ok": False, "error": "not found"})
         return self._send(200, res, extra={"Cache-Control": "public, max-age=300"})
 
+    def _like_post(self):
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if not 0 <= n <= 512:
+            return self._send(413, {"ok": False})
+        try:
+            req = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            return self._send(400, {"ok": False})
+        if not isinstance(req, dict) or not seo_reco.rate_ok(self._client_ip()):
+            return self._send(429, {"ok": False})
+        c = seo_reco.like(DATA_DIR, str(req.get("slug") or ""), bool(req.get("on")))
+        if c is None:
+            return self._send(404, {"ok": False})
+        return self._send(200, {"ok": True, "count": c})
+
     def _report_post(self):
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)
@@ -8314,6 +8339,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._salla_webhook()
             if path in ("/api/renew/lookup", "/api/renew/claim"):
                 return self._renew_public(path)
+            if path == "/api/content/like":         # «أعجبني»: عدّادٌ مجهول لكل عمل، بحدٍّ بالساعة لكل عنوان
+                return self._like_post()
             if path == "/api/report":               # بلاغ المشترك (عام، بحدٍّ بالساعة)
                 return self._report_post()
             if path == "/api/stremio/link":         # إضافة Stremio: رسالة الاشتراك ← رابط التثبيت
