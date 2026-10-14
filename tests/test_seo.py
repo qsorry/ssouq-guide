@@ -1918,6 +1918,14 @@ def unit_release():
         con = seo_db.connect(d)
         snap_before = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "api_cache")] + [json.dumps(seo_db.state(con, "index_approved"), sort_keys=True)]
         con.close()
+        # قفل كتابةٍ من اتصالٍ آخر: الدفعة تُؤجَّل (BUSY) ولا تفشل ولا يُوقَف بها الإصدار ولا تُحفظ دفعةٌ فاشلة
+        lk = seo_db.connect(d); lk.execute("BEGIN IMMEDIATE")
+        seo_release.BUSY_WAIT_MS = 200
+        rb = seo_release.phase8_batch(d, 10)
+        lk.rollback(); lk.close(); seo_release.BUSY_WAIT_MS = 120000
+        cb = seo_db.connect(d); relb = seo_db.state(cb, "release") or {}; cb.close()
+        check("قاعدةٌ مقفلة بكاتبٍ آخر: الدفعة BUSY (لا FAIL)، بلا عائقٍ ولا سجلّ دفعة فاشلة",
+              rb.get("status") == "BUSY" and rb["ok"] is False and not relb.get("blocked") and not [b for b in relb.get("batches") or [] if b.get("status") == "FAIL"], str(rb)[:200])
         seo_sources.TMDB_API = tdown + "/3"
         r8 = seo_release.phase8_batch(d, 10)
         con = seo_db.connect(d)
