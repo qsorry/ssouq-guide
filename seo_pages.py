@@ -1133,15 +1133,16 @@ def _served(res):
     return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}
 
 
-def handle(data_dir, path, lang, _info=False):
+def handle(data_dir, path, lang, _info=False, _con=None):
     """← (code, body, headers) أو None إن لم يكن من مسارات الطبقة. وبلا ‏preview: 404 لكل مساراتها (لا شيء عامٌّ بعد).
-    ‏_info=True (لفحوص seo_release): يعيد قاموس الصفحة المرسومة (الأهلية index_ar/index_en…) بدل الردّ، أو None إن لم تُرسم."""
+    ‏_info=True (لفحوص seo_release): يعيد قاموس الصفحة المرسومة (الأهلية index_ar/index_en…) بدل الردّ، أو None إن لم تُرسم.
+    ‏_con: اتصالٌ قائم يُستعمل بدل فتح اتصالٍ جديد (فحص دفعة التوسيع داخل معاملةٍ غير مثبّتة يجب أن يرى الصفحات كما ستكون) — ولا يُغلق."""
     pre = seo_db.lang_prefix(lang)
     ar_path = path[len(pre):] if pre else path
     hub_root = ar_path in ("/content", "/content/")
     if not hub_root and ar_path != "/content/latest" and not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/companies/", "/content/genres/", "/content/countries/", "/content/languages/", "/content/year/", "/content/latest/", "/content/for-you/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
         return None
-    con = seo_db.connect(data_dir, create=False)
+    con = _con or seo_db.connect(data_dir, create=False)
     if con is None:
         return 404, b"", {}
     try:
@@ -1204,7 +1205,8 @@ def handle(data_dir, path, lang, _info=False):
             return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
         return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}     # معتمدٌ مستحقّ (المرحلة 4): بلا رأس noindex، والوسم index في الصفحة
     finally:
-        con.close()
+        if _con is None:
+            con.close()
 
 
 # ================= فحص العيّنة =================

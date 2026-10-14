@@ -1813,6 +1813,14 @@ def unit_release():
         seo_release.job_stop(d3)
         check("job_stop: توقف فوري وبسبب الإيقاف، ولا تستأنف", seo_release.job_get(d3)["active"] is False and seo_release.job_watchdog_tick(d3) is None)
         check("status() يكشف المهمة للبطاقة", "expand_job" in seo_release.status(d3))
+        # فحص الصفحة داخل معاملةٍ غير مثبّتة (كدفعة التوسيع): رابطٌ جديد لم يُثبَّت بعد يجب أن يُرسم 200 لا 404 (كان يفتح الاتصال الثاني فلا يراه)
+        bb3 = c3.execute("SELECT id FROM content WHERE slug='breaking-bad'").fetchone()[0]
+        seo_db.change_slug(c3, bb3, "breaking-bad-uncommitted", "manual", "txn visibility test")           # بلا commit
+        row_ = c3.execute("SELECT * FROM content WHERE id=?", (bb3,)).fetchone()
+        pg_txn = seo_qa._page(d3, c3, row_, "ar", seo_db.settings(c3))
+        c3.rollback()
+        pg_old = seo_pages.handle(d3, "/content/series/breaking-bad-uncommitted/", "ar")
+        check("بوابة الدفعة ترى الرابط الجديد غير المثبّت (200) — وبعد التراجع يزول (404): لا يتسرّب شيء", pg_txn and pg_txn["code"] == 200 and pg_old[0] == 404, str((pg_txn or {}).get("code")) + " " + str(pg_old[0]))
         # تدقيق التحويلات: صفّا ar وen لتبديل رابطٍ واحد يُحلّان كلاهما إلى الكيان (الهدف /en/… ليس فشل حلّ) — كان يعدّ كل صفوف /en فشلًا ويُسقط دفعة الإنتاج
         seo_db.change_slug(c3, c3.execute("SELECT id FROM content WHERE slug='wonder-woman'").fetchone()[0], "wonder-woman-2017", reason="audit test"); c3.commit()
         ra_ = seo_release.redirect_audit(c3)

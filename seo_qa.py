@@ -71,7 +71,7 @@ def _page(data_dir, con, row, lang, st):
     res = seo_pages.render_entity(con, data_dir, row["type"], row["slug"], tr, st)
     if not res or res[0] != "page":
         return None
-    code, body, hdr = seo_pages.handle(data_dir, seo_pages._path(row, lang), lang)
+    code, body, hdr = seo_pages.handle(data_dir, seo_pages._path(row, lang), lang, _con=con)    # بالاتصال نفسه: فحصٌ داخل معاملةٍ غير مثبّتة (دفعة التوسيع) يرى رابط الكيان الجديد
     return {**res[1], "text": res[1]["html"].decode("utf-8"), "code": code, "headers": hdr, "served": body}
 
 
