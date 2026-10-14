@@ -755,6 +755,107 @@ def expand(data_dir, n=100, max_batches=None, now=None, submit=None, progress=No
     return {"batches": out, "ok": all(b["ok"] for b in out), "stopped_at": next((b for b in out if not b["ok"]), None)}
 
 
+# ================= مهمة التوسيع المستمرة (تكمل بنفسها بعد إعادة النشر) =================
+JOB_KEY = "expand_job"      # build_state: {active, n, remaining, done, auto_resume, started_at, updated_at, last, stopped}
+JOB_WATCHDOG_EVERY = 60
+
+
+def job_get(data_dir):
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return {}
+    try:
+        return seo_db.state(con, JOB_KEY) or {}
+    finally:
+        con.close()
+
+
+def _job_save(data_dir, job):
+    con = seo_db.connect(data_dir)
+    try:
+        job["updated_at"] = int(time.time())
+        with con:
+            seo_db.set_state(con, JOB_KEY, job)
+    finally:
+        con.close()
+    return job
+
+
+def job_start(data_dir, n=100, max_batches=5, auto_resume=True):
+    """يُنشئ مهمة توسيعٍ محفوظة في القاعدة: n كيانًا للدفعة، وعدد دفعاتٍ أقصى، وإن كان `auto_resume` فالحارس يستأنفها وحده بعد أي إعادة تشغيل (نشرٌ أو سقوط)."""
+    now = int(time.time())
+    return _job_save(data_dir, {"active": True, "n": max(1, min(1000, int(n or 100))), "remaining": max(1, min(500, int(max_batches or 5))), "done": 0,
+                                "auto_resume": bool(auto_resume), "started_at": now, "last": None, "stopped": None})
+
+
+def job_stop(data_dir, reason="stopped by admin"):
+    job = job_get(data_dir)
+    if job.get("active"):
+        job.update({"active": False, "stopped": reason})
+        _job_save(data_dir, job)
+    return job
+
+
+def run_job(data_dir, now=None, submit=None, progress=None):
+    """ينفّذ دفعات المهمة المحفوظة واحدةً بعد أخرى، ويُحدّث الحالة بعد كل دفعة (فتبقى بعد إعادة التشغيل). يتوقف عند أول فشل أو نفاد المرشّحين أو
+    انتهاء العدد أو أمر الإيقاف (يُقرأ قبل كل دفعة)."""
+    out = []
+    while True:
+        job = job_get(data_dir)
+        if not job.get("active"):
+            break
+        if int(job.get("remaining") or 0) <= 0:
+            job.update({"active": False, "stopped": "completed"})
+            _job_save(data_dir, job)
+            break
+        if progress:
+            progress(int(job.get("done") or 0) + 1)
+        r = phase8_batch(data_dir, int(job.get("n") or 100), now=now, submit=submit)
+        rec = {k: r.get(k) for k in ("ok", "batch", "status", "reason", "n", "approved_routes_total")}
+        out.append(rec)
+        job = job_get(data_dir)
+        if not job.get("active"):          # أُوقفت أثناء الدفعة
+            break
+        job["last"] = {**rec, "at": int(time.time())}
+        if not r.get("ok"):
+            job.update({"active": False, "stopped": f"batch failed: {r.get('reason') or r.get('status')}"})
+        elif r.get("status") == "EMPTY":
+            job.update({"active": False, "stopped": "no candidates left"})
+        else:
+            job["done"] = int(job.get("done") or 0) + 1
+            job["remaining"] = int(job.get("remaining") or 0) - 1
+        _job_save(data_dir, job)
+    return {"ok": all(b["ok"] for b in out), "batches": out, "job": job_get(data_dir)}
+
+
+def job_watchdog_tick(data_dir):
+    """مهمةٌ نشطةٌ بلا خيطٍ حيّ (أُعيد تشغيل الخادم): تُستأنف وحدها إن كان `auto_resume`، وإلا تُوقف بسبب الانقطاع."""
+    job = job_get(data_dir)
+    if not job.get("active"):
+        return None
+    k = os.path.abspath(data_dir)
+    t = _threads.get(k)
+    if t and t.is_alive():
+        return None
+    if not job.get("auto_resume"):
+        job_stop(data_dir, "interrupted (server restarted; auto-resume off)")
+        return "stopped"
+    return "resumed" if start(data_dir, "expand_job") else None
+
+
+def start_job_watchdog(data_dir):
+    """خيط الحارس من إقلاع الخادم: يستأنف مهمة التوسيع بعد إعادة النشر دون تدخّل."""
+    def loop():
+        time.sleep(20)
+        while True:
+            try:
+                job_watchdog_tick(data_dir)
+            except Exception:  # noqa: BLE001 — الحارس لا يسقط
+                pass
+            time.sleep(JOB_WATCHDOG_EVERY)
+    threading.Thread(target=loop, daemon=True, name="seo-expand-watchdog").start()
+
+
 # ================= التتابع 4 ← 5 ← 6 ← 7 =================
 def go(data_dir, snapshot, expected_routes=None, http=False, now=None, submit=None, progress=None):
     """Phase 4 ← Gate ← Phase 5 ← Gate ← Phase 6 ← Gate ← Phase 7. فشل بوابةٍ = STOP (لا يُتجاوز)."""
@@ -783,7 +884,7 @@ def status(data_dir):
         return {"running": bool(_threads.get(k) and _threads[k].is_alive()), "progress": _progress.get(k), "release": {kk: v for kk, v in rel.items() if kk != "batches"},
                 "batches": [{kk: v for kk, v in b.items() if kk in ("batch", "status", "n", "reason", "at", "approved_routes_total", "indexnow", "eligibility")} for b in rel.get("batches") or []],
                 "index_live": bool(st.get("index_live")), "sitemap_live": bool(st.get("sitemap_live")), "preview": bool(st.get("preview")),
-                "index_extra_live": bool(st.get("index_extra_live")), "extras_approved_routes": len((seo_db.state(con, seo_pages.EXTRA_KEY) or {}).get("routes") or []),
+                "expand_job": seo_db.state(con, JOB_KEY) or None, "index_extra_live": bool(st.get("index_extra_live")), "extras_approved_routes": len((seo_db.state(con, seo_pages.EXTRA_KEY) or {}).get("routes") or []),
                 "approved_routes": len(approved), "approved_entities": len({c for c, _ in approved}),
                 "live_entities": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=1").fetchone()[0], "approved_snapshot": (seo_db.state(con, APPROVED_KEY) or {}).get("snapshot"),
                 "bundle": bundle_meta(data_dir), "snapshot_routes": len(snapshot_urls(data_dir) or []), **seo_sources.code_version()}
@@ -813,6 +914,8 @@ def start(data_dir, action, **kw):
                 res = phase8_batch(data_dir, int(kw.get("n") or 100))
             elif action == "expand":
                 res = expand(data_dir, int(kw.get("n") or 100), kw.get("max"), progress=lambda i: prog(f"batch {i}"))
+            elif action == "expand_job":
+                res = run_job(data_dir, progress=lambda i: prog(f"batch {i}"))
             elif action == "extras":
                 res = extras(data_dir, kw.get("expected"))
             elif action == "final":

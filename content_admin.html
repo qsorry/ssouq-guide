@@ -1298,7 +1298,7 @@ function renderRelease(d) {
   const run = d.running ? ` · يعمل الآن: ${p.action || ""} ${p.stage || ""}` : p.stage === "error" ? ` · خطأ: ${p.error}` : p.stage === "done" ? ` · انتهى ${p.action}: ${p.ok ? "ناجح" : "فشل/توقّف"}` : "";
   $("rState").textContent = `${flags}\n${phases}${blk}${run} · اللقطة في مجلد المراجعة: ${(d.bundle || {}).bundle_id || "—"} (${num(d.snapshot_routes)} رابطًا) · الكود ${d.code_fingerprint || ""}`;
   if (p.result) { const o = $("rOut"); o.hidden = false; o.textContent = JSON.stringify(p.result, null, 1); }
-  clearTimeout(rPoll); if (d.running) rPoll = setTimeout(loadRelease, 3000); else if (p.stage === "done" || p.stage === "error") loadBundle();
+  clearTimeout(rPoll); if (d.running || (d.expand_job && d.expand_job.active)) rPoll = setTimeout(loadRelease, d.running ? 3000 : 6000); else if (p.stage === "done" || p.stage === "error") loadBundle();
 }
 
 // ===== معالج النشر الإنتاجي (wizard): خطوةً خطوة، بعدّاد خطواتٍ وزمنٍ وتقدّمٍ حيّ =====
@@ -1357,7 +1357,13 @@ function renderWizard(d) {
     body += `<div class="wz-res ok">المعتمد <b>${num(ap)}</b> من <b>${num(live)}</b> كيانًا · المتبقي <b>${num(rem)}</b> (≈ ${num(Math.ceil(rem / n))} دفعة بحجم ${num(n)})</div>` +
       `<div class="wz-fields"><div><label class="meta" for="wzN">حجم الدفعة</label><input id="wzN" class="ltr" type="number" inputmode="numeric" min="1" max="1000" value="${n}"></div>` +
       `<div><label class="meta" for="wzMax">أقصى عدد دفعات متتابعة</label><input id="wzMax" class="ltr" type="number" inputmode="numeric" min="1" max="100" value="${$("rMax").value || 5}"></div></div>` +
+      `<label class="switch"><span>يكمل بنفسه بعد إعادة النشر<small>يستأنف الحارس المهمة تلقائيًا إن أُعيد تشغيل الخادم (نشرٌ أو سقوط)</small></span><input type="checkbox" class="tog" id="wzAuto"${wzAutoOn ? " checked" : ""}></label>` +
       `<p class="meta">دفعاتٌ منفّذة: ${(d.batches || []).length}${r.blocked ? " · ⛔ موقوف: أعد المرحلة 7 أولًا" : ""}. «استمر» تنفّذ دفعةً بعد دفعة وتتوقف عند أول فشل.</p>`;
+    const jb = d.expand_job;
+    if (jb && (jb.active || jb.stopped)) {
+      body += `<div class="wz-res ${jb.active ? "ok" : jb.stopped === "completed" ? "ok" : "bad"}"><b>مهمة التوسيع:</b> ${jb.active ? "نشطة" : "متوقفة"} · نُفّذ ${num(jb.done || 0)} · متبقي ${num(jb.remaining || 0)} دفعة بحجم ${num(jb.n || 0)}`
+            + (jb.active ? (jb.auto_resume ? " · تكمل بعد إعادة النشر" : " · لا تكمل بعد إعادة النشر") : jb.stopped ? ` · السبب: ${esc(jb.stopped)}` : "") + "</div>";
+    }
   }
   if (running) {
     const el = p.at ? Math.floor(Date.now() / 1000) - p.at : 0, cnt = p.total ? `<bdi dir="ltr">${num(p.done || 0)} / ${num(p.total)}</bdi>` : "";
@@ -1376,12 +1382,13 @@ function renderWizard(d) {
     `<div class="wz-nav"><button type="button" class="ghost" id="wzPrev"${wzI === 0 ? " disabled" : ""}>السابق</button>` +
     (cur.action ? `<button type="button" class="go" id="wzRun"${canRun ? "" : " disabled"}>${running ? "يعمل…" : st[cur.k] === "done" && cur.k !== "p8" ? "أعد الخطوة" : cur.k === "p8" ? "نفّذ دفعة واحدة" : "نفّذ الخطوة"}</button>` : "") +
     (cur.k === "p8" ? `<button type="button" class="go" id="wzExpand"${canRun ? "" : " disabled"}>استمر دفعةً بعد دفعة</button>` : "") +
+    (cur.k === "p8" && d.expand_job && d.expand_job.active ? `<button type="button" class="ghost" id="wzStop">أوقف المتابعة</button>` : "") +
     `<button type="button" class="ghost" id="wzNext"${wzI === WZ.length - 1 ? " disabled" : ""}>التالي</button></div>`;
   $("wzPanel").innerHTML = body;
   clearInterval(wzTimer);
   if (running) wzTimer = setInterval(() => { const t = $("wzT"); if (t) t.textContent = wzFmt(Math.floor(Date.now() / 1000) - Number(t.dataset.at || 0)); }, 1000);
 }
-let wzAuto = null;
+let wzAuto = null, wzAutoOn = true;
 $("wzSteps").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) { wzI = Number(b.dataset.i); wzAuto = -1; if (wzData) renderWizard(wzData); } };
 $("wzPanel").onclick = e => {
   const id = e.target.id; if (!wzData) return;
@@ -1390,8 +1397,10 @@ $("wzPanel").onclick = e => {
   else if (id === "wzExpand") {
     if ($("wzN")) $("rN").value = $("wzN").value;
     if ($("wzMax")) $("rMax").value = $("wzMax").value;
-    release("expand", {n: Number($("rN").value) || 100, max: Number($("rMax").value) || 5});
+    wzAutoOn = $("wzAuto") ? $("wzAuto").checked : true;
+    release("expand_start", {n: Number($("rN").value) || 100, max: Number($("rMax").value) || 5, auto: wzAutoOn});
   }
+  else if (id === "wzStop") release("expand_stop");
   else if (id === "wzRun") {
     const cur = WZ[wzI], bn = wzData.bundle || {};
     if (cur.action === "phase4") { $("rSnap").value = bn.bundle_id || ""; $("rExpected").value = wzData.snapshot_routes || ""; }
@@ -1399,14 +1408,14 @@ $("wzPanel").onclick = e => {
     release(cur.action, cur.action === "batch" ? {n: Number($("rN").value) || 100} : undefined);
   }
 };
-$("wzPanel").onchange = e => { if (e.target.id === "wzHttp") $("rHttp").checked = e.target.checked; };
+$("wzPanel").onchange = e => { if (e.target.id === "wzHttp") $("rHttp").checked = e.target.checked; if (e.target.id === "wzAuto") wzAutoOn = e.target.checked; };
 async function loadRelease() { try { renderRelease(await api("/api/content/seo/release")); } catch (e) {} }
 async function release(action, extra) {
   const snap = $("rSnap").value.trim(), exp = $("rExpected").value.trim();
   if ((action === "go" || action === "phase4") && !/^\d{8}T\d{6}Z$/.test(snap)) { alert("أدخل معرّف اللقطة (نقطة الاستئناف) مثل 20261003T004434Z"); return; }
   const label = {go: "تنفيذ المراحل 4 ← 5 ← 6 ← 7 (رفع noindex ونشر الخريطة وIndexNow)", phase4: "المرحلة 4: رفع noindex عن روابط اللقطة", phase5: "المرحلة 5: الخريطة العامة", phase6: "المرحلة 6: IndexNow",
-                 phase7: "المرحلة 7: فحصٌ بعد النشر", extras: "المرحلة 10: رفع noindex عن القوائم والمواسم والحلقات والهبّات المعتمدة ونشرها في الخريطة وIndexNow", batch: "دفعة توسيعٍ واحدة", expand: "دفعاتٌ متتابعة", final: "الحزمة النهائية"}[action];
-  if (action !== "final" && action !== "phase7" && !confirm(`${label}؟ (إنتاجٌ فعلي؛ أي بوابةٍ تفشل = STOP)`)) return;
+                 phase7: "المرحلة 7: فحصٌ بعد النشر", extras: "المرحلة 10: رفع noindex عن القوائم والمواسم والحلقات والهبّات المعتمدة ونشرها في الخريطة وIndexNow", batch: "دفعة توسيعٍ واحدة", expand: "دفعاتٌ متتابعة", expand_start: "مهمة توسيعٍ متتابعة (تكمل بنفسها بعد إعادة النشر إن فعّلت الخيار)", expand_stop: "إيقاف مهمة التوسيع", final: "الحزمة النهائية"}[action];
+  if (action !== "final" && action !== "phase7" && action !== "expand_stop" && !confirm(`${label}؟ (إنتاجٌ فعلي؛ أي بوابةٍ تفشل = STOP)`)) return;
   const d = await api("/api/content/admin/seo-release", {action, snapshot: snap || undefined, expected: exp && action !== "extras" ? Number(exp) : undefined, http: $("rHttp").checked, ...(extra || {})}).catch(() => ({error: "تعذّر الاتصال"}));
   if (d.error) { $("rState").textContent = d.error; return; }
   if (!d.started) $("rState").textContent = "عمليةٌ جارية أصلًا — انتظر انتهاءها";
