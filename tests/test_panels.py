@@ -285,7 +285,16 @@ def test_unlisted():
               sr["dup"] and [t["order"] for t in todo] == ["2"] and todo[0]["first_order"] == "1" and todo[0]["can_create"] is False, str(todo))
         panels.mark_dupe_done(dd, "2", "new1", 11)
         check("duplicates: done order is flagged", panels.duplicates({"panels": []}, dd)["rows"][0]["done"]["new"] == "new1")
-        check("search: once handled it is no longer pending", _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, []) == [])
+        t2 = _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [])
+        check("search: created but old not renamed is still pending (rename step left)", [t["need"] for t in t2] == [["rename"]] and t2[0]["done"]["new"] == "new1", str(t2))
+        msgs = [{"kind": "new", "name": "c222", "phone": "966500000222", "text": "x", "sent": {"ok": True}},
+                {"kind": "old", "name": "c111", "phone": "966500000111", "text": "y", "sent": None}]
+        panels.update_dupe(dd, "2", {"renamed": {"from": "a", "to": "b", "line": "l"}, "msgs": msgs})
+        t3 = _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [], dd)
+        check("search: renamed but the old owner's message unsent → only send_old left", [t["need"] for t in t3] == [["send_old"]] and t3[0]["msgs"][1]["idx"] == 1, str(t3))
+        msgs[1]["sent"] = {"ok": True}
+        panels.update_dupe(dd, "2", {"msgs": msgs})
+        check("search: fully handled is no longer pending", _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [], dd) == [])
         check("suggest_slice rounds and clamps", panels.suggest_slice(353) == 12 and panels.suggest_slice(5) == 1
               and panels.suggest_slice(900) == 15 and panels.suggest_slice(0) == 0 and panels.suggest_slice(None) == 0)
         resr = panels.unlisted(cfg, d, replaced={("a", "g"): {"333333333333"}})
