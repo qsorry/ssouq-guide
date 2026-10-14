@@ -735,6 +735,16 @@ def api_entity(data_dir, key, kind, name, year, lang="ar"):
                         "WHERE s.service_key=? AND s.kind=? AND s.local_key=? AND s.present=1 LIMIT 1", (key, kind, C._ikey(kind, {"n": str(name)[:200], "y": yr or None}))).fetchone()
         if r and r["merged_into"] is not None:
             r = con.execute("SELECT id, type, slug, merged_into FROM content WHERE id=?", (r["merged_into"],)).fetchone()
+        if not r:                    # اسمٌ لا يطابق مفتاح القائمة حرفيًّا (علاماتٌ أو تكرارٌ مرقَّم): البحث الذكي بالاسم، لأعمالٍ من النوع نفسه وبتطابقٍ تامّ فقط
+            import seo_reco
+            res = seo_reco._index(con, data_dir).search(str(name)[:80], max_suggest=1, min_conf=0.9)
+            for cid in res["exact"]:
+                c = con.execute("SELECT id, type, slug, merged_into FROM content WHERE id=? AND available=1", (cid,)).fetchone()
+                while c and c["merged_into"] is not None:
+                    c = con.execute("SELECT id, type, slug, merged_into FROM content WHERE id=?", (c["merged_into"],)).fetchone()
+                if c and c["type"] == kind:
+                    r = c
+                    break
         if not r or r["merged_into"] is not None:
             return None
         return {"ok": True, "path": seo_pages._path(r, "en" if lang == "en" else "ar")}
@@ -1022,6 +1032,7 @@ button{font:inherit;color:inherit}
 a.stat{color:inherit;text-decoration:none;transition:border-color .15s,transform .15s}a.stat:hover{border-color:var(--line2);transform:translateY(-2px)}
 a.stat[aria-current]{background:linear-gradient(135deg,var(--acc),var(--acc2));border-color:transparent;box-shadow:0 10px 26px -14px var(--acc)}a.stat[aria-current] .i,a.stat[aria-current] small{color:inherit}
 .btn[hidden]{display:none}.sheet .txt .btn{margin-inline-end:8px;margin-top:8px}.btn.full{background:linear-gradient(135deg,var(--acc),var(--acc2))}
+.btn.full[aria-disabled=true]{opacity:.55;pointer-events:none}.fullrow{margin:12px 0 4px}.fullrow[hidden]{display:none}
 .stat .i{width:34px;height:34px;color:var(--acc)}
 .stat b{display:block;font-size:1.55rem;line-height:1.2;font-variant-numeric:tabular-nums}
 .stat small{color:var(--mute)}
@@ -1273,6 +1284,16 @@ JS = """
     var l = w.filter(function(x){ return !/^\\p{N}+$/u.test(x); });
     return (l.length ? l : w).slice(0, 2).map(function(x){ return x[0]; }).join("").toUpperCase() || "•";
   };
+  var EP = {};          // مسار صفحة العمل الكاملة لكل عنصر (يُجلب مسبقًا حين يقترب الزائر من بطاقته فتفتح النافذة وزرّها جاهز)
+  function lookup(d){
+    if (!d || !d.n || d.k === "live") return Promise.resolve("");
+    var key = d.k + "|" + d.n + "|" + (d.y || "");
+    if (!EP[key]) EP[key] = fetch("/api/content/entity?s=" + encodeURIComponent(K) + "&k=" + encodeURIComponent(d.k) + "&n=" + encodeURIComponent(d.n) + "&y=" + encodeURIComponent(d.y || "") + (EN ? "&lang=en" : ""))
+      .then(function(r){ return r.json(); }).then(function(j){ return (j && j.path) || ""; }).catch(function(){ delete EP[key]; return ""; });
+    return EP[key];
+  }
+  function warm(e){ var el = e.target.closest && e.target.closest("[data-d]"); if (el) { try { lookup(JSON.parse(el.getAttribute("data-d"))); } catch (err) {} } }
+  onDoc("mouseover", warm); onDoc("touchstart", warm, {passive: true});
   function open(d, from){
     var facts = [d.y, (d.g || []).join(" • ")].filter(Boolean).join(" · ");
     $(".sheet", modal).innerHTML = '<button class="x" type="button" aria-label="' + T.close + '">✕</button><div class="cover"></div>'
@@ -1280,19 +1301,21 @@ JS = """
       + (d.p ? '<img src="' + esc(d.p) + '" alt="">' : '') + '</div><div class="txt">'
       + '<span class="kick">' + esc(T.kind[d.k] || "") + (d.c ? ' · ' + esc(d.c) : '') + '</span>'
       + '<h2 id="cx-title" dir="auto">' + esc(d.n) + '</h2>' + (facts ? '<p class="facts">' + esc(facts) + '</p>' : '')
+      + (d.k === "live" ? "" : '<p class="fullrow"><a class="btn full" id="cx-full" href="#" aria-disabled="true">' + T.full + ' ' + (RTL ? "←" : "→") + '</a></p>')
       + (d.r ? '<p class="rt">★ ' + esc(d.r) + '</p>' : '')
       + (d.ss ? '<p class="facts">' + esc(d.ss) + '</p>' : '')
       + (d.sc ? '<div class="seasons">' + d.sc.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '')
       + (d.a ? '<p class="empty">' + (d.k === "series" ? T.upd : T.add) + esc(d.a) + '</p>' : '')
       + (d.d ? '<p class="plot">' + esc(d.d) + '</p>' : '')
-      + (d.k === "live" ? "" : '<a class="btn full" id="cx-full" href="#" hidden>' + T.full + ' ' + (RTL ? "←" : "→") + '</a>')
       + '<a class="btn" href="' + esc(CTA) + '" target="_blank" rel="noopener">' + T.sub + esc(NAME) + '</a></div></div>';
-    var ef = $("#cx-full", modal);        // صفحة العمل الكاملة (إن وُجدت): الرابط حقيقي فيلتقطه التنقّل السلس
-    if (ef && d.n) {
-      fetch("/api/content/entity?s=" + encodeURIComponent(K) + "&k=" + encodeURIComponent(d.k) + "&n=" + encodeURIComponent(d.n) + "&y=" + encodeURIComponent(d.y || "") + (EN ? "&lang=en" : ""))
-        .then(function(r){ return r.json(); })
-        .then(function(j){ if (j && j.path && !modal.hidden) { ef.href = j.path; ef.hidden = false; } })
-        .catch(function(){});
+    var ef = $("#cx-full", modal);        // صفحة العمل الكاملة (إن وُجدت): الرابط حقيقي فيلتقطه التنقّل السلس؛ يظهر معطّلًا فورًا ويفعَّل حين يُعرف مسارها، ويختفي إن لم تكن له صفحة
+    if (ef) {
+      ef.addEventListener("click", function(e){ if (ef.getAttribute("aria-disabled") === "true") e.preventDefault(); });
+      lookup(d).then(function(path){
+        if (modal.hidden || !ef.isConnected) return;
+        if (path) { ef.href = path; ef.removeAttribute("aria-disabled"); }
+        else ef.parentNode.hidden = true;
+      });
     }
     if (d.b || d.p) $(".cover", modal).style.backgroundImage = "url(" + JSON.stringify(d.b || d.p) + ")";
     modal.hidden = false; document.body.style.overflow = "hidden"; last = from;
