@@ -334,6 +334,9 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
   border-radius:12px;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86rem;direction:ltr;text-align:left}
 .lc-cred small{color:var(--mute);font-family:inherit;font-size:.74rem}
 .lc-cred span{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.lc-edit{display:grid;gap:8px;padding:12px;border:1px dashed var(--line);border-radius:12px;background:var(--sf2)}
+.lc-edit label{display:grid;gap:3px;font-size:.78rem;color:var(--mute)}
+.lc-edit input{width:100%}
 .lc-done{display:grid;gap:8px;border-radius:14px;padding:12px;border:1px solid color-mix(in srgb,var(--go) 40%,var(--line));
   background:color-mix(in srgb,var(--go) 8%,var(--sf))}
 .lc-done b{color:var(--go)}
@@ -2304,7 +2307,14 @@ async function copyText(t){
   ta.remove(); return ok;
 }
 const lcField = (k, v, cls) => v ? `<div class="lc-f${cls ? ' ' + cls : ''}"><small>${k}</small><span>${v}</span></div>` : '';
-const lcCred = (h, u, p) => `<div class="lc-cred">${h ? `<small>Host</small><span>${esc(h)}</span>` : ''}<small>User</small><span>${esc(u) || '—'}</span>${p ? `<small>Pass</small><span>${esc(p)}</span>` : ''}</div>`;
+const lcCred = (h, u, p, z) => `<div class="lc-cred">${h ? `<small>Host</small><span>${esc(h)}</span>` : ''}<small>User</small><span>${esc(u) || '—'}</span>${p ? `<small>Pass</small><span>${esc(p)}</span>` : ''}${z ? `<small>0Player</small><span>${esc(z)}</span>` : ''}</div>`;
+// تعديل بيانات الاشتراك من البطاقة: الهوست واليوزر وكلمة المرور تُحفظ على الطلب (order-link) ويحلّ اليوزر الجديد محلّ القديم
+const lcEditForm = (r, i) => `<div class="lc-edit hidden"><b>تعديل بيانات الاشتراك</b>`
+  + `<label>Host<input class="ltr leH" value="${esc(r.host)}" placeholder="http://…" autocomplete="off"></label>`
+  + `<label>User<input class="ltr leU" value="${esc(r.username)}" autocomplete="off"></label>`
+  + `<label>Pass<input class="ltr leP" value="${esc(r.password)}" placeholder="اتركها فارغة إن لم تتغيّر" autocomplete="off"></label>`
+  + `<div class="acts"><button class="go loEditSave" data-i="${i}" type="button">احفظ البيانات الجديدة</button><button class="ghost loEditCancel" type="button">إلغاء</button></div>`
+  + `<p class="msg loEditMsg"></p></div>`;
 // بطاقةٌ لخطٍّ من المتجر: الطلب وحاله، والعميل، وبيانات الاشتراك، والتعويض المُنشأ ونسخ شرحه، والأفعال
 function lcard(r, i, kind){
   const dn = r.done, st = dn ? ['عُوِّض ✓', 'ok'] : (LOST_STATE[r.state] || [r.state, '']);
@@ -2364,10 +2374,11 @@ function lcard(r, i, kind){
         + `<button class="go lsMk" data-i="${i}" type="button">أنشئ اشتراكًا</button>` : '<small class="c-warn">اختر «بوابة الإنشاء» أعلاه، أو اربط اللوحة ببوابة</small>')
     : `<button class="go loComp" data-i="${i}" type="button">أنشئ اشتراكًا (${AR(r.new_months)} شهرًا)</button>`;
   if (!dn && r.state === 'missing' && r.username && (!r.expired || kind === 'ls')) act += `<label class="lc-chk"><input type="checkbox" class="lc-x lcSame" checked> بنفس اليوزر والباسورد</label>`;
+  if (kind === 'lo' && r.username) act += `<button class="ghost loEdit" data-i="${i}" type="button">عدّل بيانات الاشتراك</button>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
   const pills = (r.dup && !dn ? `<span class="pill bad">مكرر</span>` : '') + `<span class="pill ${st[1]}">${st[0]}</span>`;
-  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password) : lcCred(r.host, r.username, r.password)}${cur}${done}`
-    + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password, r.zero_code) : lcCred(r.host, r.username, r.password, r.zero_code)}${cur}${done}`
+    + (act ? `<div class="lc-a">${act}</div>` : '') + (kind === 'lo' && r.username ? lcEditForm(r, i) : '') + '</article>';
 }
 // ---- معالج المكرر: إنشاء البديل ← تغيير القديم ← إرسال للبديل ← إرسال ما عُدّل لصاحبه الأول ----
 const WZ = {item: null, wa: false, sk: {}, busy: false, err: '', ok: '', draft: null, opts: {}, conn: null, ocr: null};
@@ -2533,6 +2544,21 @@ function lcBind(box, rows, kind){
   box.querySelectorAll('.lcCopy').forEach(b => b.onclick = async () => {
     const ok = await copyText(rows[b.dataset.i][b.dataset.f || 'copy']); const t = b.textContent;
     b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = t, 1600); });
+  box.querySelectorAll('.loEdit').forEach(b => b.onclick = () => { const f = b.closest('article').querySelector('.lc-edit');
+    f.classList.toggle('hidden'); if (!f.classList.contains('hidden')) f.querySelector('.leU').focus(); });
+  box.querySelectorAll('.loEditCancel').forEach(b => b.onclick = () => b.closest('.lc-edit').classList.add('hidden'));
+  box.querySelectorAll('.loEditSave').forEach(b => b.onclick = async () => {
+    const r = rows[b.dataset.i], f = b.closest('.lc-edit'), msg = f.querySelector('.loEditMsg'), user = f.querySelector('.leU').value.trim();
+    if (!user) return note(msg, 'اسم المستخدم مطلوب', false);
+    b.disabled = true; note(msg, 'جارٍ الحفظ…', true);
+    const d = await post('/api/renew/order-link', {order: r.order, username: user, password: f.querySelector('.leP').value.trim(),
+      host: f.querySelector('.leH').value.trim(), replace: r.username});
+    b.disabled = false;
+    if (d.error) return note(msg, d.error, false);
+    $('#loQ').value = r.order; $('#loClear').classList.remove('hidden');
+    loRender(d, r.order);                                   // البطاقات تُعاد بالبيانات المحفوظة
+    loState('found', `حُفظت بيانات الطلب ${r.order} الجديدة — اليوزر ${user}`);
+  });
   box.querySelectorAll('.lcWa').forEach(a => { const r = rows[a.dataset.i];
     a.href = 'https://wa.me/' + String(r.phone).replace(/\D/g, '').replace(/^0(?=5)/, '966') + '?text=' + encodeURIComponent(r[a.dataset.f || 'copy']); });
 }

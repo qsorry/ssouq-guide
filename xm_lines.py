@@ -3691,6 +3691,18 @@ def line_copy(accounts, row):
     return guide_copy_text(acct, gate or {"host": host}, user, pw, host)
 
 
+# رمز بوابة 0Player لكل اشتراك (الخانة Code في تطبيق 0Player بشاشات سامسونج و LG) — كما في الدليل وجدول الشكاوى
+ZERO_CODES = {"smart": "92929480", "falcon": "75710072", "casper": "59820658"}
+
+
+def zero_code(accounts, row):
+    """رمز 0Player لاشتراك صفٍّ من البطاقة (من بوابته أو من منتجه/لوحته)، و"" إن لم يُعرف نوعه."""
+    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row.get("account_id"))), None)
+    gate = find_gate(acct, row.get("gate_id")) if acct else None
+    sub = gate_sub(acct, gate) or line_sub(row, row.get("panel_name", ""))
+    return ZERO_CODES.get(sub, "")
+
+
 def comp_text(name, order, line, comp, channel=""):
     """رسالة التعويض: رأسٌ بالطلب والتعويض، ثم نص الشرح الكامل (line)، وفقرة القناة تسقط إن لم تُربط قناة."""
     c = "" if not comp else " مع تعويض شهر" if comp == 1 else " مع تعويض %s" % split_subs.months_ar(comp)
@@ -7149,6 +7161,7 @@ class Handler(BaseHTTPRequestHandler):
                                                if renew.norm_host(rec.get("host")) in {renew.norm_host(h) for h in (p.get("hosts") or [])}), ""),
                             "at": str(rec.get("at", ""))[:16]}) or None
                     r["copy_line"] = line_copy(racs, r)
+                    r["zero_code"] = zero_code(racs, r)
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/complaints":     # مراجعة الشكاوى: سجل شكاوى سلة بالجلسة، ما ينتظر التاجر وحده
@@ -7193,6 +7206,7 @@ class Handler(BaseHTTPRequestHandler):
                                                                   gate_id=rp.get("gate_id") or r.get("gate_id")))
                         else:
                             r["copy_line"] = ""
+                    r["zero_code"] = zero_code(racs, r)
                 d["rows"].sort(key=lambda r: not (r.get("complaint") and not r["complaint"]["replied"]))   # ما عليه شكوى أولًا
                 d["with_complaint"] = sum(1 for r in d["rows"] if r.get("complaint") and not r["complaint"]["replied"])
                 d["wa_linked"] = dup_wa_ready(st)
@@ -7541,6 +7555,7 @@ class Handler(BaseHTTPRequestHandler):
                 if r.get("done"):
                     r["copy"] = comp_copy(racs, r)
                 r["copy_line"] = line_copy(racs, r)
+                r["zero_code"] = zero_code(racs, r)
             return self._send(200, {"ok": True, "row": row, **d})
         if path == "/api/renew/reply-link":       # يوزرٌ أُنشئ لصاحب شكوى: يُربط بالطلب ويُعاد الردّ جاهزًا
             code, body = reply_link(st, rcfg, rws, racs, req)
