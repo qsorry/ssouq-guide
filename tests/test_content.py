@@ -1071,11 +1071,11 @@ def unit_render():
           and "اشترك في سمارت</a>" in ad and "9 مسلسلات بمواسمها" in ad, ad[:300])
     check("وخصم سمارت كود الخصم لأول طلب (promo في CATALOG): نسبته على كل باقة وما يُدفع به، والكود في النص، ولا شطب",
           ad.count('<span class="off">-30%</span>') == 3 and "<s>" not in ad
-          and '<em>76 ر.س</em><span class="aft">53.20 ر.س بكود NEW30</span>' in ad
-          and '<em>140 ر.س</em><span class="aft">98 ر.س بكود NEW30</span>' in ad
+          and '<em>92 ر.س</em><span class="aft">64.40 ر.س بكود NEW30</span>' in ad
+          and '<em>168 ر.س</em><span class="aft">117.60 ر.س بكود NEW30</span>' in ad
           and '<p class="adcode">لأول طلب: اكتب الكود <code>NEW30</code> في «عندك كوبون خصم؟» بصفحة الدفع</p>' in ad, ad)
-    check("والجانب كذلك: ما يُدفع بالكود تحت سعر كل باقة", '<em>76 ر.س<i class="aft">53.20 ر.س بكود NEW30</i></em>' in html
-          and '<em>140 ر.س<i class="aft">98 ر.س بكود NEW30</i></em>' in html)
+    check("والجانب كذلك: ما يُدفع بالكود تحت سعر كل باقة", '<em>92 ر.س<i class="aft">64.40 ر.س بكود NEW30</i></em>' in html
+          and '<em>168 ر.س<i class="aft">117.60 ر.س بكود NEW30</i></em>' in html)
     code, html2 = page(d, "smart", t="series")
     check("وفي صفحة النوع في أعلاها كذلك", html2.count('<aside class="ad"') == 1
           and html2.index('<aside class="ad"') < html2.index('<div class="stats">'))
@@ -1307,7 +1307,7 @@ def unit_render_en():
           and '>Subscribe<span class="wide"> to Smart</span></a>' in ad and ">Help me choose</a>" in ad
           and "<b>Smart · Entertainment year</b><small>Movies &amp; series</small>" in ad
           and "<b>Smart · Full year</b><small>Best seller</small>" in ad and "<b>Smart · 30 months</b><small>Best value</small>" in ad
-          and '<em>76 SAR</em><span class="aft">53.20 SAR with code NEW30</span>' in ad
+          and '<em>92 SAR</em><span class="aft">64.40 SAR with code NEW30</span>' in ad
           and "<p class=\"adcode\">First order: enter code <code>NEW30</code> in the coupon field at checkout</p>" in ad
           and ad.count("utm_campaign=content-ad") == 4, ad[:400])
     check("والجانب: باقاته بحملة الصفحة، و«Subscribe to Smart»", "<h2>Subscribe to Smart</h2>" in html
