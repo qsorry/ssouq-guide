@@ -1417,6 +1417,19 @@ class PanelWebSession:
         return " [صفوف محدَّدة: %d، جداول: %d%s]" % (sel, len(re.findall(r"<table\b", page, re.I)),
                                                       (" · " + " | ".join(snips)) if snips else "")
 
+    @staticmethod
+    def _edit_script_bouquets(page):
+        """بوكيهات الخط الحالية في صفحة تعديلٍ تكون فيها الباقة فارغة (= بلا تغيير): اللوحة لا تملأ `selected_bouquets`
+        ولا تعرض جدولًا، بل تكتب في السكربت لكل بوكيهٍ للخط
+            $("#listbox-in").append($('<option>', { value: 1, text: '…', … }));
+        بمعرّفٍ حرفي (لا `rData.bouquets[i].id`: تلك لفرع الباقة المختارة). تُرجَع بترتيبها بلا تكرار."""
+        out = []
+        for m in re.finditer(r"""#listbox-in["']\s*\)\s*\.append\(\s*\$\(\s*['"]<option>['"]\s*,\s*\{\s*value\s*:\s*(\d+)""", page):
+            i = int(m.group(1))
+            if i not in out:
+                out.append(i)
+        return out
+
     def _fill_bouquets(self, picked, pairs, page, package_hint=""):
         """البوكيهات (القنوات): حقلٌ تملؤه واجهة اللوحة بالجافاسكربت عادةً. إن جاء فارغًا
         نملؤه بما للخط (الصفوف المحدَّدة في جدول بوكيهات الصفحة، وإلا بوكيهات باقته كما
@@ -1449,6 +1462,8 @@ class PanelWebSession:
                     if got:
                         ids = got
                         break
+            if not ids:                    # وضع التعديل: بوكيهات الخط تُكتب في سكربت الصفحة عناصرَ حرفية لقائمة «الخط»
+                ids = self._edit_script_bouquets(page)
             if not ids:
                 pkg = next((v for k, v in serialize_form(fs) if re.search(r"package", k, re.I) and v), "") \
                     or self._package_id_by_name(package_hint)
