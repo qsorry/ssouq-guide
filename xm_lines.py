@@ -3442,6 +3442,73 @@ def dup_rename(accounts, cfg, ws, req):
     return 200, {"ok": True, "renamed": info}
 
 
+def line_edit(accounts, cfg, ws, req):
+    """تعديل بيانات اشتراك (يوزر وكلمة مرور) **على لوحته نفسها** (مرح وكاسبر وفالكون) كما يُغيَّر اسم القديم في المكرر،
+    ثم يُحفظ في النظام (order-link): فلا يختلف النظام عن اللوحة. `panel: false` يحفظ في النظام وحده (غُيّر على اللوحة يدويًا).
+    ← (رمز HTTP، جسم): ok · panel_changed · panel · (need_captcha/connectables عند تعذّر الدخول)."""
+    order, old = renew.norm_order(req.get("order")), str(req.get("username") or "").strip()
+    new_user, new_pw = str(req.get("new_username") or old).strip(), str(req.get("password") or "").strip()
+    host = str(req.get("host") or "").strip()
+    pold = str(req.get("panel_username") or "").strip() or old        # اسمه الآن على اللوحة إن اختلف عمّا في النظام
+    if not order or not old or not new_user:
+        return 400, {"error": "رقم الطلب واليوزر مطلوبان"}
+    if re.search(r"\s", new_user):
+        return 400, {"error": "اسم المستخدم بلا مسافات"}
+    out = {"panel_changed": False, "panel": ""}
+    if req.get("panel", True) and (new_user != pold or new_pw):
+        d = panels.order_search(cfg, ws, order, idx=renew_index(cfg, ws, accounts))
+        row = next((r for r in d["rows"] if str(r.get("username", "")).strip().lower() == old.lower()), None)
+        if not row:
+            return 404, {"error": "لا خط بهذا الطلب واليوزر في اشتراكات المتجر"}
+        acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row.get("account_id"))), None)
+        gate = find_gate(acct, row.get("gate_id")) if acct else None
+        if gate:
+            gate = with_guide(acct, gate)
+        only = (req.get("account_id"), req.get("gate_id")) if req.get("gate_id") else None
+        tried, errs = [], []
+        try:
+            for a, g, same in _dup_candidates(accounts, cfg or {}, acct, gate, row):
+                if g.get("archive_only") or (only and (str(a.get("id")), str(g.get("id"))) != (str(only[0]), str(only[1]))):
+                    continue
+                label = g.get("name") or g.get("host") or str(g.get("id"))
+                try:
+                    found = split_find_line(g, pold)
+                except xm_web.CaptchaNeeded:
+                    raise
+                except Exception as e:
+                    errs.append("%s: %s" % (label, str(e)[:120]))
+                    continue
+                tried.append(label)
+                if not found:
+                    continue
+                try:
+                    split_change(g, {"username": pold, "line_id": found.get("line_id", ""), "package": found.get("package", "")},
+                                 {"username": new_user, "new_password": new_pw})
+                except (split_subs.Unsupported, split_subs.Transient) as e:
+                    return 502, {"error": "%s: %s" % (label, e), "connectables": _dup_archived(accounts, cfg, acct, gate, row, live=True)}
+                except Exception as e:                       # بعد الإرسال: قد يكون حُفظ — راجع اللوحة
+                    return 502, {"error": "%s: %s" % (label, str(e)[:200])}
+                try:
+                    user_links.add(DATA_DIR, a["id"], g["id"], pold, new_user, "تعديل بيانات") if new_user != pold else None
+                except Exception:
+                    pass
+                out.update(panel_changed=True, panel=label, host=g.get("host", ""))
+                break
+        except xm_web.CaptchaNeeded:
+            return 200, {"need_captcha": True, "error": "اللوحة تطلب كود التحقّق — ادخلها من صفحة الإنشاء ثم أعد المحاولة، أو احفظ في النظام فقط",
+                         "connectables": _dup_archived(accounts, cfg, acct, gate, row, live=True)}
+        if not out["panel_changed"]:
+            why = (" — " + " | ".join(errs)) if errs else (" (لم تُفحص لوحة)" if not tried else "")
+            return 404, {"error": "اليوزر %s غير موجود على لوحته%s. إن كان اسمه على اللوحة غير ذلك فاكتبه في «اسمه الآن على اللوحة»، وإن غيّرته يدويًا فاحفظ في النظام فقط." % (pold, why)}
+        host = host or out.get("host", "")
+    try:
+        ln = panels.link_order(ws, order, new_user, new_pw, host, replace=old,
+                               base=renew.load_index(ws).get("orders", {}).get(order))
+    except ValueError as e:
+        return 400, dict(out, error=str(e))
+    return 200, dict(out, ok=True, line=ln)
+
+
 def dup_wa_ready(st):
     """أثمّة قناةٍ لإرسال رسائل المكرر؟ رقم المسابقة المربوط، وإلا قناة خدمة سلة."""
     try:
@@ -5540,10 +5607,12 @@ def split_change(gate, rec, pend):
     try:
         if mode == "web":
             return web_session(gate).edit_line(rec["username"], pend["username"],
-                                               line_id=rec.get("line_id", ""), package=rec.get("package", ""))
+                                               line_id=rec.get("line_id", ""), package=rec.get("package", ""),
+                                               new_password=pend.get("new_password", ""))
         if mode == "falcon":
             return falcon_api.rename_line(gate["api_url"], gate["api_key"], rec["username"],
-                                          pend["username"], line_id=rec.get("line_id", ""))
+                                          pend["username"], line_id=rec.get("line_id", ""),
+                                          new_password=pend.get("new_password", ""))
         raise split_subs.Unsupported("بوابات Reseller API خارج هذا النظام — غيّر اسم المستخدم من اللوحة ثم أكّد")
     except xm_web.CaptchaNeeded:
         raise split_subs.Transient("اللوحة تطلب كود تحقّق — افتح صفحة الإنشاء وادخل بوابة «%s» ليُكمَل التغيير" % name)
@@ -7572,6 +7641,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200 if ok else 502, {"ok": ok, "error": err, "how": how})
         if path == "/api/renew/users-status":     # حال يوزرات منشأة: بيع (في أي طلب) · بديل · لم يُبع
             return self._send(200, {"status": users_status(rcfg, rws, racs, req.get("users") or [], idx=renew_index(rcfg, rws, racs))})
+        if path == "/api/renew/line-edit":        # يعدّل يوزر وباسورد اشتراكٍ على لوحته (مرح/كاسبر/فالكون) ثم في النظام
+            try:
+                code, body = line_edit(racs, rcfg, rws, req)
+            except Exception as e:
+                return self._send(502, {"error": str(e)[:300]})
+            if body.get("ok"):
+                d = panels.order_search(rcfg, rws, renew.norm_order(req.get("order")), idx=renew_index(rcfg, rws, racs))
+                for r in d["rows"]:
+                    r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
+                    upgrade_missing(racs, rws, r)
+                    r["copy_line"] = line_copy(racs, r)
+                    r["zero_code"] = zero_code(racs, r)
+                body = dict(body, **d)
+            return self._send(code, body)
         if path == "/api/renew/order-link":       # يربط طلبًا بيوزره (وكلمة مروره) في اشتراكات المتجر
             base = renew.load_index(rws).get("orders", {}).get(renew.norm_order(req.get("order")))
             if base:

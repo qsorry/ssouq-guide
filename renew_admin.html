@@ -2314,6 +2314,8 @@ const lcEditForm = (r, i) => `<div class="lc-edit hidden"><b>تعديل بيان
   + `<label>Host<input class="ltr leH" value="${esc(r.host)}" placeholder="http://…" autocomplete="off"></label>`
   + `<label>User<input class="ltr leU" value="${esc(r.username)}" autocomplete="off"></label>`
   + `<label>Pass<input class="ltr leP" value="${esc(r.password)}" placeholder="اتركها فارغة إن لم تتغيّر" autocomplete="off"></label>`
+  + `<label>اسمه الآن على اللوحة (اتركه فارغًا إن كان كما في النظام)<input class="ltr leO" placeholder="${esc(r.username)}" autocomplete="off"></label>`
+  + `<label class="lc-chk"><input type="checkbox" class="lc-x lePanel" checked> غيّر اليوزر وكلمة المرور على اللوحة (مرح · كاسبر · فالكون) أيضًا — أزل العلامة إن غيّرتهما يدويًا هناك</label>`
   + `<div class="acts"><button class="go loEditSave" data-i="${i}" type="button">احفظ البيانات الجديدة</button><button class="ghost loEditCancel" type="button">إلغاء</button></div>`
   + `<p class="msg loEditMsg"></p></div>`;
 // بطاقةٌ لخطٍّ من المتجر: الطلب وحاله، والعميل، وبيانات الاشتراك، والتعويض المُنشأ ونسخ شرحه، والأفعال
@@ -2563,13 +2565,14 @@ function lcBind(box, rows, kind){
     const r = rows[b.dataset.i], f = b.closest('.lc-edit'), msg = f.querySelector('.loEditMsg'), user = f.querySelector('.leU').value.trim();
     if (!user) return note(msg, 'اسم المستخدم مطلوب', false);
     b.disabled = true; note(msg, 'جارٍ الحفظ…', true);
-    const d = await post('/api/renew/order-link', {order: r.order, username: user, password: f.querySelector('.leP').value.trim(),
-      host: f.querySelector('.leH').value.trim(), replace: r.username});
+    const onPanel = f.querySelector('.lePanel').checked, host = f.querySelector('.leH').value.trim(), pw = f.querySelector('.leP').value.trim();
+    const d = await post('/api/renew/line-edit', {order: r.order, username: r.username, new_username: user, password: pw, host, panel: onPanel,
+      panel_username: f.querySelector('.leO').value.trim()});
     b.disabled = false;
-    if (d.error) return note(msg, d.error, false);
+    if (d.error || d.need_captcha) return note(msg, d.error || 'تعذّر التعديل على اللوحة', false);
     $('#loQ').value = r.order; $('#loClear').classList.remove('hidden');
     loRender(d, r.order);                                   // البطاقات تُعاد بالبيانات المحفوظة
-    loState('found', `حُفظت بيانات الطلب ${r.order} الجديدة — اليوزر ${user}`);
+    loState('found', `حُفظت بيانات الطلب ${r.order} الجديدة — اليوزر ${user}` + (d.panel_changed ? ` · وغُيّرت على لوحة ${d.panel} ✓` : ' · في النظام فقط'));
   });
   box.querySelectorAll('.lcWa').forEach(a => { const r = rows[a.dataset.i];
     a.href = 'https://wa.me/' + String(r.phone).replace(/\D/g, '').replace(/^0(?=5)/, '966') + '?text=' + encodeURIComponent(r[a.dataset.f || 'copy']); });
