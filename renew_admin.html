@@ -2062,39 +2062,13 @@ function renderDup(d){
   }).join('');
   $('#dupWrap').classList.toggle('hidden', !rows.length);
   note($('#dupMsg'), rows.length ? '' : (DUP.length ? 'لا شيء يحتاج بديلًا الآن.' : 'لا يوجد مبيع مكرّر في الاشتراكات المسحوبة.'), true);
-  $('#dupBody').querySelectorAll('.dupMk').forEach(b => b.onclick = () => makeDup(Number(b.dataset.i), b));
-  $('#dupBody').querySelectorAll('.dupRn').forEach(b => b.onclick = async () => {
-    const r = DUP[Number(b.dataset.i)];
-    const gs = document.querySelector(`.dupRnG[data-i="${b.dataset.i}"]`), gp = gatePick(gs && gs.value);
-    if (!confirm(`تغيير اسم ${r.username} على اللوحة${gp.name ? ' عبر «' + gp.name + '»' : ''} وتجهيز رسالة لصاحبه الأول ${r.first_customer || r.first_phone || ''}؟`)) return;
-    b.disabled = true; b.textContent = 'جارٍ التغيير…';
-    const d = await post('/api/renew/dup-rename', {order: r.order, username: r.username, account_id: gp.account_id, gate_id: gp.gate_id});
-    if (d.need_connect) { note($('#dupMsg'), d.error); dupConnOpen(d.need_connect, {order: r.order, username: r.username}); return loadDup(); }
-    note($('#dupMsg'), d.ok && d.old_missing ? `اليوزر القديم غير موجود على اللوحة${d.searched && d.searched.length ? ' (فُحصت: ' + d.searched.join(' · ') + ')' : ''} — طلب الأول ${d.first_order || ''}${d.first_customer ? ' (' + d.first_customer + ')' : ''}` : d.ok ? `غُيّر ${d.renamed.from} إلى ${d.renamed.to} — الرسالة جاهزة أدناه` : (d.error || 'تعذّر التغيير'), !!d.ok);
-    loadDup();
+  const wzItem = r => ({order: r.order, username: r.username, customer: r.customer, phone: r.phone, date: r.date, remaining: r.remaining, suggest: r.suggest,
+    first_order: r.first_order, first_customer: r.first_customer, first_phone: r.first_phone, done: null, msgs: [], need: []});
+  $('#dupBody').querySelectorAll('.dupMk').forEach(b => b.onclick = () => wzOpen(wzItem(DUP[Number(b.dataset.i)]), {from: 'dup', create: gatePick($('#dupGate').value)}));
+  $('#dupBody').querySelectorAll('.dupRn').forEach(b => b.onclick = () => {
+    const gs = document.querySelector(`.dupRnG[data-i="${b.dataset.i}"]`);
+    wzOpen(wzItem(DUP[Number(b.dataset.i)]), {from: 'dup', rename: gatePick(gs && gs.value)});
   });
-}
-async function makeDup(i, btn){
-  const r = DUP[i]; if (!r) return;
-  const inp = document.querySelector(`.dupM[data-i="${i}"]`);
-  const months = Number(inp && inp.value) || r.suggest;
-  const ren = $('#dupRename').checked;
-  if (!confirm(`إنشاء يوزر جديد لـ ${r.customer || r.phone} (طلب ${r.order}) بمدة ${months} شهرًا بدل ${r.username}${gatePick($('#dupGate').value).name ? ' على «' + gatePick($('#dupGate').value).name + '»' : ''}؟ يخصم من رصيد اللوحة.`
-      + (ren ? `\n\nثم يُغيَّر اسم ${r.username} ويُجهَّز لصاحبه الأول ${r.first_customer || r.first_phone || ''}.` : ''))) return;
-  btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…';
-  const gp = gatePick($('#dupGate').value);
-  const d = await post('/api/renew/dup-create', {order: r.order, username: r.username, months, rename_old: ren,
-    create_account_id: gp.account_id, create_gate_id: gp.gate_id});
-  btn.disabled = false; btn.textContent = 'أنشئ بديلًا';
-  if (d.error || !d.ok) return note($('#dupMsg'), d.error || 'فشل الإنشاء');
-  let t = `أُنشئ ${d.username} بدل ${d.replaces} (${AR(d.months)} شهرًا)`;
-  if (d.renamed) t += ` · غُيّر اسم القديم إلى ${d.renamed.to}`;
-  if (d.old_missing) t += ` · القديم ${r.username} غير موجود على اللوحة${d.searched && d.searched.length ? ' (فُحصت: ' + d.searched.join(' · ') + ')' : ''} فلا تغيير ولا رسالة للأول — طلب الأول ${r.first_order}${r.first_customer ? ' (' + r.first_customer + ')' : ''}`;
-  if (d.rename_error) t += ` · تعذّر تغيير القديم: ${d.rename_error}`;
-  if (d.split_error) t += ` · تعذّر تسجيله جزءًا: ${d.split_error}`;
-  if (d.need_connect) { dupConnOpen(d.need_connect, {order: r.order, username: r.username}); t += ' · القديم في بوابة أرشيف: اربط اللوحة بالنموذج أدناه'; }
-  note($('#dupMsg'), t + ' · رسائل العملاء جاهزة في تبويب «الرسائل»', !d.rename_error);
-  loadDup();
 }
 let DUPCONN = null;
 function dupConnOpen(list, req){
@@ -2396,7 +2370,7 @@ function lcard(r, i, kind){
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
 // ---- معالج المكرر: إنشاء البديل ← تغيير القديم ← إرسال للبديل ← إرسال ما عُدّل لصاحبه الأول ----
-const WZ = {item: null, wa: false, sk: {}, busy: false, err: '', ok: '', draft: null};
+const WZ = {item: null, wa: false, sk: {}, busy: false, err: '', ok: '', draft: null, opts: {}};
 const WZ_STEPS = [['create', 'إنشاء البديل'], ['rename', 'تغيير القديم'], ['send_new', 'إرسال للبديل'], ['send_old', 'إرسال ما عُدّل']];
 const wzMsg = (it, kind) => (it.msgs || []).find(m => m.kind === kind);
 const wzSent = m => !!(m && m.sent && m.sent.ok);
@@ -2419,21 +2393,22 @@ async function wzRefresh(){
   const it = WZ.item, d = await api('/api/renew/dup-state?order=' + encodeURIComponent(it.order) + '&username=' + encodeURIComponent(it.username));
   if (d && d.item) { WZ.item = d.item; WZ.wa = !!d.wa_linked; }
 }
-async function wzOpen(item){
-  Object.assign(WZ, {item, sk: {}, busy: false, err: '', ok: '', draft: null});
+async function wzOpen(item, opts){
+  Object.assign(WZ, {item, sk: {}, busy: false, err: '', ok: '', draft: null, opts: opts || {}});
   $('#wzModal').classList.remove('hidden'); document.body.classList.add('modal-open');
   $('#wzBody').innerHTML = '<p class="msg">جارٍ التحميل…</p>'; $('#wzFoot').innerHTML = '';
   await wzRefresh(); wzRender();
 }
 async function wzRename(it){
-  const d = await post('/api/renew/dup-rename', {order: it.order, username: it.username});
+  const g = WZ.opts.rename || {}, d = await post('/api/renew/dup-rename', {order: it.order, username: it.username, account_id: g.account_id, gate_id: g.gate_id});
   if (d.need_connect) WZ.err = d.error + ' — اربط بوابة الأرشيف من «المكرر والبدائل» ثم أكمل من هنا.';
   else if (d.error || !d.ok) WZ.err = (WZ.ok ? WZ.ok + ' · لكن ' : '') + 'تعذّر تغيير الأول: ' + (d.error || '');
   else WZ.ok = (WZ.ok ? WZ.ok + ' · ' : '') + (d.old_missing ? 'اليوزر القديم غير موجود على اللوحة — لا تغيير' : `غُيّر الأول ${d.renamed.from} إلى ${d.renamed.to}`);
 }
 function wzClose(){
   $('#wzModal').classList.add('hidden'); document.body.classList.remove('modal-open');
-  const q = $('#loQ').value; if (q) loFind(q);                  // تحديث نتيجة البحث بحال المعالجة
+  if (WZ.opts.from === 'dup') loadDup();                        // قائمة «المكرر والبدائل» تتحدّث بحال المعالجة
+  else { const q = $('#loQ').value; if (q) loFind(q); }         // وكذلك نتيجة البحث
 }
 $('#wzClose').onclick = wzClose;
 async function wzRun(label, fn){
@@ -2479,7 +2454,8 @@ function wzRender(busyLabel){
   if (cur === 'create') q('wzGo').onclick = () => {
     const months = Number(q('wzM').value) || it.suggest || 1;
     if (!confirm(`إنشاء يوزر جديد لـ ${it.customer || it.phone} بمدة ${months} شهرًا بدل ${it.username}؟ يخصم من رصيد اللوحة.`)) return;
-    wzRun('create', async () => { const d = await post('/api/renew/dup-create', {order: it.order, username: it.username, months, rename_old: false});
+    wzRun('create', async () => { const c = WZ.opts.create || {}, d = await post('/api/renew/dup-create', {order: it.order, username: it.username, months, rename_old: false,
+        create_account_id: c.account_id, create_gate_id: c.gate_id});
       if (d.error || !d.ok) { WZ.err = d.error || 'فشل الإنشاء'; return; }
       WZ.ok = `أُنشئ ${d.username} (${AR(d.months)} شهرًا)`;
       await wzRename(it); });                              // الأول يجب أن يتغيّر فورًا، وإلا بقيت النسختان تعملان معًا
