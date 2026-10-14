@@ -298,6 +298,23 @@ def test_unlisted():
         finally:
             _xl._dup_rename_old = _orig
             panels.update_dupe(dd, "2", {"rename_error": ""})
+        # النبض: يمدّ جلسةً محفوظة ولا يدخل أبدًا؛ بلا كوكيز لا شيء؛ أرشيف/بلا بيانات يُتجاوز
+        class _FS:
+            def __init__(s, ok, jar): s.ok, s.jar_path = ok, jar
+            def _reload_cookies(s): pass
+            def is_authenticated(s): return s.ok
+            def login(s, *a, **k): raise AssertionError("keepalive must never log in")
+        _jar = os.path.join(dd, "j.cookies"); open(_jar, "w").close()
+        _gs = lambda i, **k: dict({"id": i, "mode": "web", "panel_base": "http://p", "panel_user": "u", "panel_pass": "p"}, **k)
+        _st = {"accounts": [{"id": "a", "gates": [_gs("live"), _gs("dead"), _gs("arch", archive_only=True), _gs("nojar"), {"id": "nocreds", "mode": "web"}]}]}
+        _ws0 = _xl.web_session
+        try:
+            _xl.web_session = lambda g: _FS(g["id"] == "live", _jar if g["id"] in ("live", "dead") else _jar + ".none")
+            _xl.GATE_SESSIONS.clear(); _xl.renew_keepalive_once(_st)
+            check("keepalive: live session pinged ok, dead one recorded, archive/no-jar/no-creds skipped, never logs in",
+                  _xl.GATE_SESSIONS[("a", "live")]["ok"] is True and _xl.GATE_SESSIONS[("a", "dead")]["ok"] is False and len(_xl.GATE_SESSIONS) == 2, str(_xl.GATE_SESSIONS))
+        finally:
+            _xl.web_session = _ws0
         check("duplicates: done order is flagged", panels.duplicates({"panels": []}, dd)["rows"][0]["done"]["new"] == "new1")
         t2 = _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [])
         check("search: created but old not renamed is still pending (rename step left)", [t["need"] for t in t2] == [["rename"]] and t2[0]["done"]["new"] == "new1", str(t2))

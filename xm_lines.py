@@ -4826,8 +4826,43 @@ def _renew_loop():
             time.sleep(300)
 
 
+KEEPALIVE_SECS = 8 * 60
+GATE_SESSIONS = {}      # (حساب، بوابة) ← {"ok": الجلسة حيّة، "at": آخر فحص} — للعرض والتشخيص
+
+
+def renew_keepalive_once(st=None):
+    """نبضٌ على جلسات بوابات الويب المحفوظة (كما يفعل تبويبٌ مفتوح): طلبٌ واحد بكوكيزها يمدّ عمرها،
+    فلا ينقطع الدخول فيُطلب كود التحقّق. **لا يحاول الدخول أبدًا** (لا OCR ولا كابتشا ولا كلمات مرور):
+    الجلسة الميتة تُسجَّل فقط، ويُعاد دخولها عند أول استعمالٍ فعلي كالمعتاد."""
+    st = st or load_store()
+    for a in (st.get("accounts") or []):
+        for g in (a.get("gates") or []):
+            if g.get("mode") != "web" or g.get("archive_only") or not (g.get("panel_base") and g.get("panel_user") and g.get("panel_pass")):
+                continue
+            key = (str(a.get("id")), str(g.get("id")))
+            try:
+                sess = web_session(g)
+                if not os.path.exists(sess.jar_path):           # لم يدخل قطّ: لا شيء يُمدَّد
+                    continue
+                sess._reload_cookies()
+                GATE_SESSIONS[key] = {"ok": bool(sess.is_authenticated()), "at": renew.now_iso()}
+            except Exception as e:
+                GATE_SESSIONS[key] = {"ok": False, "at": renew.now_iso(), "error": str(e)[:120]}
+
+
+def _keepalive_loop():
+    time.sleep(60)
+    while True:
+        try:
+            renew_keepalive_once()
+        except Exception:
+            pass
+        time.sleep(KEEPALIVE_SECS)
+
+
 def start_renew_worker():
     threading.Thread(target=_renew_loop, daemon=True).start()
+    threading.Thread(target=_keepalive_loop, daemon=True).start()
 
 
 
@@ -7054,7 +7089,8 @@ class Handler(BaseHTTPRequestHandler):
                             if r["order"] == order and r["username"].lower() == user), None)
                 if not row:
                     return self._send(404, {"error": "لا مبيع مكرّر بهذا الطلب واليوزر"})
-                return self._send(200, {"item": renew_dup_item(row, racs, panels.dupe_messages(rws)), "wa_linked": dup_wa_ready(st)})
+                return self._send(200, {"item": renew_dup_item(row, racs, panels.dupe_messages(rws)), "wa_linked": dup_wa_ready(st),
+                                        "ocr": xm_web.ocr_available()})
             if path == "/api/renew/order":          # بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) وحاله على اللوحات
                 t0 = time.perf_counter()
                 d = panels.order_search(rcfg, rws, self._q("q"), idx=renew_index(rcfg, rws, racs))
