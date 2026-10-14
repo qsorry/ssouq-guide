@@ -168,6 +168,7 @@ a.entry{text-decoration:none}
   text-align:right;cursor:pointer;overflow:hidden;box-shadow:var(--shadow)}
 .brandcard.falcon{background:linear-gradient(210deg,#123A5E 0%,#0A1E33 55%,#3A1020 100%)}
 .brandcard.smart{background:linear-gradient(210deg,#1E7FC4 0%,#0F4E80 55%,#06263F 100%)}
+.brandcard.casper{background:linear-gradient(210deg,#2A5BD7 0%,#14307F 55%,#070F2E 100%)}
 .brandcard{transition:transform .15s ease}
 .brandcard:hover,.brandcard:focus-visible{transform:translateY(-2px)}
 .brandcard.badged{padding-top:46px}
@@ -951,7 +952,10 @@ const BRAND_COPY = {
     chips: [["ball", "بث مباشر"], ["film", "أفلام ومسلسلات"], ["refresh", "تحديث يومي"]] },
   smart: { badge: "ممتاز للمسلسلات والأفلام", art: "/static/img/brands/smart.webp",
     text: "ممتاز للأفلام والمسلسلات مع تحديث يومي، ومناسب أيضًا للبث المباشر.",
-    chips: [["film", "أفلام ومسلسلات"], ["ball", "بث مباشر"], ["refresh", "تحديث يومي"]] }
+    chips: [["film", "أفلام ومسلسلات"], ["ball", "بث مباشر"], ["refresh", "تحديث يومي"]] },
+  casper: { badge: "الأوفر للأفلام والمسلسلات", art: "/static/img/brands/casper.webp",
+    text: "مكتبة واسعة من الأفلام والمسلسلات بسعر اقتصادي، ولها باقات خاصة لشاشات سامسونج و LG.",
+    chips: [["film", "أفلام ومسلسلات"], ["refresh", "تحديث يومي"]] }
 };
 const PROG_BUY = ["المحتوى", "الجهاز", "النوع", "الباقة"];
 const PROG_ACT = ["الاشتراك", "جهازك", "التطبيق", "جاهز"];
@@ -1371,20 +1375,20 @@ function renderBuyDevice(){
 function renderBuyBrand(){
   setProg(PROG_BUY, 2);
   const best = recommended(state.taste, state.bdev);
-  const order = best === "smart" ? ["smart", "falcon"] : ["falcon", "smart"];
+  const order = [best, ...["falcon", "smart", "casper"].filter(k => k !== best)];
   const cards = order.map(k => {
     const b = CATALOG[k], c = BRAND_COPY[k];
     return `<button class="brandcard ${k}${k === best ? " badged" : ""}" type="button" data-brand="${k}">
       ${k === best ? `<span class="pick-badge">${c.badge}</span>` : ""}
       <span class="head"><img src="${c.art}" alt="" width="68" height="68" loading="lazy">
         <span class="who"><b>${b.name}</b><span class="full">${b.full}</span>
-          <span class="rate">${stars(b.stars)} <em>تقييم سمارت سوق ${b.stars} من 5</em></span></span></span>
+          ${b.stars ? `<span class="rate">${stars(b.stars)} <em>تقييم سمارت سوق ${b.stars} من 5</em></span>` : ""}</span></span>
       <p>${c.text}</p>
       <span class="chips">${c.chips.map(([i, t]) => `<span>${ICONS[i]}${t}</span>`).join("")}</span>
     </button>`;
   }).join("");
   const tvNote = {
-    webos: `<div class="note warn">شاشات سامسونج و LG تعمل بنظام webOS، ولها في المتجر باقات مخصّصة تشتغل على الشاشة مباشرة عبر 0Player بلا رسيفر — وهي باقات "سمارت".</div>`,
+    webos: `<div class="note warn">شاشات سامسونج و LG تعمل بنظام webOS، ولها في المتجر باقات مخصّصة تشتغل على الشاشة مباشرة عبر 0Player بلا رسيفر — وهي باقات "سمارت" (ولكاسبر باقات مخصّصة مثلها).</div>`,
     vidaa: `<div class="note warn">شاشات هايسنس تعمل بنظام VIDAA، وتناسبها باقات "سمارت" المخصّصة للشاشات الذكية — باقات سامسونج و LG نفسها — وتشتغل على الشاشة مباشرة عبر تطبيق Duplecast بلا رسيفر.</div>`
   }[state.bdev] || "";
   $("#view").innerHTML = `<div class="card">
