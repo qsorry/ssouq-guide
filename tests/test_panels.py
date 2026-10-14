@@ -283,7 +283,21 @@ def test_unlisted():
         todo = _xl.renew_dup_todo(dupr["rows"], sr, [])
         check("search: a duplicate not yet handled is listed for processing (from the first order too)",
               sr["dup"] and [t["order"] for t in todo] == ["2"] and todo[0]["first_order"] == "1" and todo[0]["can_create"] is False, str(todo))
+        # تغيير القديم: اللوحة تطلب كابتشا ← يُعرض الدخول (بوابات الويب الحيّة) بدل الفشل؛ وفشلٌ آخر يحمل بوابات الدخول
         panels.mark_dupe_done(dd, "2", "new1", 11)
+        _acc = [{"id": "a", "gates": [{"id": "g", "mode": "web", "host": "http://m.ink", "name": "مرح", "panel_base": "http://p", "panel_user": "u", "panel_pass": "p"}]}]
+        _orig = _xl._dup_rename_old
+        try:
+            def _cap(*a, **k): raise _xl.xm_web.CaptchaNeeded("image/png", b"x")
+            _xl._dup_rename_old = _cap
+            c1, b1 = _xl.dup_rename(_acc, dcfg, dd, {"order": "2", "username": "999000111222"})
+            check("dup_rename: captcha → need_captcha with the gates to log into", c1 == 200 and b1.get("need_captcha") and b1["need_connect"][0]["gate_id"] == "g" and b1["need_connect"][0]["has_creds"], str((c1, b1)))
+            _xl._dup_rename_old = lambda *a, **k: (None, "مرح: تعذّر الدخول")
+            c2, b2 = _xl.dup_rename(_acc, dcfg, dd, {"order": "2", "username": "999000111222"})
+            check("dup_rename: a login failure carries the gates to retry from", c2 == 502 and b2["connectables"] and b2["error"] == "مرح: تعذّر الدخول", str((c2, b2)))
+        finally:
+            _xl._dup_rename_old = _orig
+            panels.update_dupe(dd, "2", {"rename_error": ""})
         check("duplicates: done order is flagged", panels.duplicates({"panels": []}, dd)["rows"][0]["done"]["new"] == "new1")
         t2 = _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [])
         check("search: created but old not renamed is still pending (rename step left)", [t["need"] for t in t2] == [["rename"]] and t2[0]["done"]["new"] == "new1", str(t2))

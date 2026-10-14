@@ -2370,7 +2370,7 @@ function lcard(r, i, kind){
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
 // ---- معالج المكرر: إنشاء البديل ← تغيير القديم ← إرسال للبديل ← إرسال ما عُدّل لصاحبه الأول ----
-const WZ = {item: null, wa: false, sk: {}, busy: false, err: '', ok: '', draft: null, opts: {}};
+const WZ = {item: null, wa: false, sk: {}, busy: false, err: '', ok: '', draft: null, opts: {}, conn: null};
 const WZ_STEPS = [['create', 'إنشاء البديل'], ['rename', 'تغيير القديم'], ['send_new', 'إرسال للبديل'], ['send_old', 'إرسال ما عُدّل']];
 const wzMsg = (it, kind) => (it.msgs || []).find(m => m.kind === kind);
 const wzSent = m => !!(m && m.sent && m.sent.ok);
@@ -2394,16 +2394,44 @@ async function wzRefresh(){
   if (d && d.item) { WZ.item = d.item; WZ.wa = !!d.wa_linked; }
 }
 async function wzOpen(item, opts){
-  Object.assign(WZ, {item, sk: {}, busy: false, err: '', ok: '', draft: null, opts: opts || {}});
+  Object.assign(WZ, {item, sk: {}, busy: false, err: '', ok: '', draft: null, opts: opts || {}, conn: null});
   $('#wzModal').classList.remove('hidden'); document.body.classList.add('modal-open');
   $('#wzBody').innerHTML = '<p class="msg">جارٍ التحميل…</p>'; $('#wzFoot').innerHTML = '';
   await wzRefresh(); wzRender();
 }
 async function wzRename(it){
   const g = WZ.opts.rename || {}, d = await post('/api/renew/dup-rename', {order: it.order, username: it.username, account_id: g.account_id, gate_id: g.gate_id});
-  if (d.need_connect) WZ.err = d.error + ' — اربط بوابة الأرشيف من «المكرر والبدائل» ثم أكمل من هنا.';
-  else if (d.error || !d.ok) WZ.err = (WZ.ok ? WZ.ok + ' · لكن ' : '') + 'تعذّر تغيير الأول: ' + (d.error || '');
-  else WZ.ok = (WZ.ok ? WZ.ok + ' · ' : '') + (d.old_missing ? 'اليوزر القديم غير موجود على اللوحة — لا تغيير' : `غُيّر الأول ${d.renamed.from} إلى ${d.renamed.to}`);
+  const list = d.need_connect || d.connectables || [];
+  if (d.need_connect || d.need_captcha) {                       // بوابة أرشيف أو لوحةٌ تطلب كودًا: الدخول من هنا
+    WZ.err = d.error || ''; WZ.conn = list.length ? {list, g: list[0], cap: !!d.need_captcha, auto: !!d.need_captcha || list[0].has_creds} : null;
+    if (!WZ.conn) WZ.err += ' — لا بوابة ويب مربوطة لليوزر القديم: غيّر اسمه يدويًا من اللوحة.';
+  } else if (d.error || !d.ok) {
+    WZ.err = (WZ.ok ? WZ.ok + ' · لكن ' : '') + 'تعذّر تغيير الأول: ' + (d.error || '');
+    if (list.length) WZ.conn = {list, g: list[0], cap: false, auto: false, err: ''};     // خيار الدخول للّوحة وإعادة المحاولة
+  } else {
+    WZ.conn = null;
+    WZ.ok = (WZ.ok ? WZ.ok + ' · ' : '') + (d.old_missing ? 'اليوزر القديم غير موجود على اللوحة — لا تغيير' : `غُيّر الأول ${d.renamed.from} إلى ${d.renamed.to}`);
+  }
+}
+async function wzCapImg(){
+  const g = WZ.conn.g, im = document.getElementById('wzCnImg'), er = document.getElementById('wzCnErr');
+  if (!im) return; er.textContent = 'جارٍ تحميل الكود…'; im.removeAttribute('src');
+  try {
+    const r = await fetch('/api/renew/dup-captcha?account=' + encodeURIComponent(g.account_id) + '&gate=' + encodeURIComponent(g.gate_id) + '&t=' + Date.now(), {credentials: 'same-origin'});
+    if (r.ok && (r.headers.get('content-type') || '').startsWith('image/')) { im.src = URL.createObjectURL(await r.blob()); er.textContent = ''; return; }
+    let m = ''; try { m = (await r.json()).error || ''; } catch (e) {}
+    er.textContent = m || ('تعذّر تحميل الكود (HTTP ' + r.status + ')');
+  } catch (e) { er.textContent = 'تعذّر تحميل الكود'; }
+}
+/** دخول اللوحة (يُلغي «أرشيف فقط» لهذه البوابة) ثم، متى نجح، يُكمل تغيير الأول تلقائيًا. */
+async function wzConnect(f){                                      // f: ما كُتب في الحقول قبل إعادة الرسم
+  const c = WZ.conn, g = c.g;
+  const d = await post('/api/renew/dup-connect', {account_id: g.account_id, gate_id: g.gate_id, panel_base: f.base != null ? f.base : g.panel_base,
+    panel_user: f.user != null ? f.user : g.panel_user, panel_pass: f.pass || '', captcha: f.code || ''});
+  if (d.need_captcha) { c.cap = true; c.err = d.error || 'اكتب كود التحقّق ثم اضغط «ادخل»'; return 'captcha'; }
+  if (!d.ok) { c.err = d.error || 'فشل الدخول إلى اللوحة'; c.auto = false; return 'fail'; }
+  WZ.conn = null; WZ.ok = 'رُبطت اللوحة ✓'; WZ.err = '';
+  await wzRename(WZ.item); return 'ok';
 }
 function wzClose(){
   $('#wzModal').classList.add('hidden'); document.body.classList.remove('modal-open');
@@ -2427,6 +2455,16 @@ function wzRender(busyLabel){
     body = `<h3>١. إنشاء اليوزر البديل</h3><p>ينشئ يوزرًا جديدًا لـ <b>${esc(it.customer || it.phone)}</b> (طلب ${esc(it.order)}) بدل <b class="ltr">${esc(it.username)}</b>، على لوحة الطلب، ويخصم من رصيدها.</p>`
       + `<label class="lc-m">عدد الأشهر <input type="number" id="wzM" min="1" max="15" value="${it.suggest || 1}"></label><p>المتبقي له: ${esc(it.remaining) || '—'}</p>`;
     foot = btn('go wide', 'wzGo', busyLabel ? 'جارٍ الإنشاء…' : 'أنشئ البديل');
+  } else if (cur === 'rename' && WZ.conn) {
+    const c = WZ.conn, g = c.g;
+    body = `<h3>٢. الدخول إلى اللوحة (لتغيير الأول)</h3><p>${g.archive ? 'البوابة مُعرَّفة «أرشيف» — الدخول يفعّلها لهذه العملية.' : 'تعذّر الدخول الآلي إلى اللوحة.'} ادخل ثم يُكمل تغيير <b class="ltr">${esc(it.username)}</b> تلقائيًا.</p>`
+      + (c.list.length > 1 ? `<label class="lc-m">البوابة <select id="wzCnSel">${c.list.map((x, k) => `<option value="${k}"${x === g ? ' selected' : ''}>${esc(x.name)}${x.archive ? ' (أرشيف)' : ''}</option>`).join('')}</select></label>` : `<p><b>${esc(g.name)}</b></p>`)
+      + `<input id="wzCnB" class="ltr" placeholder="رابط لوحة الدخول" value="${esc(g.panel_base)}"><input id="wzCnU" class="ltr" placeholder="اسم الدخول" value="${esc(g.panel_user)}">`
+      + `<input id="wzCnP" class="ltr" type="password" placeholder="${g.has_creds ? 'كلمة المرور محفوظة (اتركها فارغة)' : 'كلمة المرور'}" autocomplete="off">`
+      + (c.cap ? `<div class="acts"><img id="wzCnImg" alt="كود التحقّق" style="height:48px;background:#fff;border-radius:8px"><button class="ghost" id="wzCnReload" type="button">كود آخر</button></div>`
+        + `<input id="wzCnC" class="ltr" inputmode="numeric" autocomplete="off" placeholder="اكتب الكود الظاهر (٣ أرقام)"><p class="msg err" id="wzCnErr" style="margin:0"></p>` : '');
+    foot = (c.err ? `<p class="msg err">${esc(c.err)}</p>` : '') + '<div class="acts">' + btn('go', 'wzCnGo', busyLabel ? 'جارٍ الدخول…' : 'ادخل وأكمل التغيير')
+      + btn('ghost', 'wzCnCancel', 'إلغاء') + '</div>';
   } else if (cur === 'rename') {
     body = `<h3>٢. تغيير اسم اليوزر الأول (إلزامي)</h3><p>يُغيَّر اسم <b class="ltr">${esc(it.username)}</b> على اللوحة (كلمة مروره ومدته كما هما) ويبقى لصاحبه الأول: <b>${esc(it.first_customer || it.first_phone || '—')}</b> (طلب ${esc(it.first_order)}).</p>`
       + (it.done && it.done.rename_error ? `<p class="msg err">${esc(it.done.rename_error)}</p>` : '');
@@ -2448,6 +2486,17 @@ function wzRender(busyLabel){
   $('#wzBody').innerHTML = `<ol class="wzst">${stp}</ol><div class="wzb">${body}</div>`;
   $('#wzFoot').innerHTML = msg + foot;
   const q = id => document.getElementById(id);
+  if (cur === 'rename' && WZ.conn) {
+    if (q('wzCnSel')) q('wzCnSel').onchange = () => { WZ.conn.g = WZ.conn.list[Number(q('wzCnSel').value)]; WZ.conn.cap = false; WZ.conn.err = ''; wzRender(); };
+    if (q('wzCnReload')) q('wzCnReload').onclick = wzCapImg;
+    if (q('wzCnCancel')) q('wzCnCancel').onclick = () => { WZ.conn = null; wzRender(); };
+    const go = () => { const v = id => q(id) ? q(id).value : null, f = {base: v('wzCnB'), user: v('wzCnU'), pass: v('wzCnP'), code: v('wzCnC')};
+      wzRun('conn', async () => { await wzConnect(f); }); };
+    q('wzCnGo').onclick = go;
+    if (q('wzCnImg') && !q('wzCnImg').getAttribute('src') && !WZ.busy) wzCapImg();      // لا يُجلب كودٌ جديد أثناء الدخول فيُبطل المكتوب
+    if (WZ.conn.auto && !WZ.busy) { WZ.conn.auto = false; go(); }             // بياناتها محفوظة: دخولٌ آلي أولًا، ثم الكود إن طُلب
+    return;
+  }
   if (q('wzEnd')) q('wzEnd').onclick = wzClose;
   if (q('wzSkip')) q('wzSkip').onclick = () => { WZ.sk[cur] = true; WZ.draft = null; WZ.err = WZ.ok = ''; wzRender(); };
   if (!q('wzGo') && !q('wzEnd')) return;
