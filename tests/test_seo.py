@@ -1887,6 +1887,116 @@ def unit_release():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_reco():
+    """«أعجبني» وتوصيات «قد تعجبك»: ملفّ الزائر من أعماله، وصلةٌ صارمة (لا مسلسلات أو أفلام بلا علاقة)، والاهتمامات الصريحة، ونوع العمل، وبحثٌ يقبل الأخطاء."""
+    print("== أعجبني والتوصيات ==")
+    import seo_reco
+    import seo_search
+    d = tempfile.mkdtemp(prefix="seo_reco_")
+    try:
+        con = seo_db.connect(d)
+        now = int(time.time())
+        tax = {k: seo_db.taxonomy_id(con, kind, k, k, k, k, now) for kind, k in (("genre", "drama"), ("genre", "romance"), ("genre", "crime"), ("genre", "action"), ("genre", "horror"),
+                                                                                 ("genre", "comedy"), ("hub", "turkish"), ("hub", "anime"))}
+
+        def add(slug, typ, tags, rating=8.0, year=2020, title=None):
+            cur = con.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)",
+                              (typ, slug, title or slug, title or slug, title or slug, year, rating, "https://image.tmdb.org/t/p/w342/" + slug + ".jpg", "tmdb", now, now))
+            for t in tags:
+                seo_db.set_membership(con, cur.lastrowid, tax[t], "tmdb", 1, now)
+            return cur.lastrowid
+        base = ["turkish", "drama", "romance", "crime"]
+        add("tr-a", "series", base)
+        add("tr-b", "series", base, 8.5)
+        add("tr-c", "series", ["turkish", "drama", "romance"], 7.5)
+        add("tr-low", "series", base, 3.0)                          # تقييمه ضعيف جدًّا: لا يُقترح
+        add("us-drama", "series", ["drama"])                        # يشارك سمةً واحدة فقط (دراما): ليس ذا صلة بمن يحب التركي الرومانسي
+        add("us-action", "movie", ["action"])
+        add("scary", "movie", ["horror"])
+        add("anime-a", "series", ["anime", "action"])
+        add("tr-film", "movie", ["turkish", "drama", "romance"], 8.2)
+        pb = add("prison-break", "series", ["drama", "crime", "action"], 8.3, 2005, "Prison Break")
+        con.execute("INSERT INTO content_alias(content_id, alias, alias_norm, lang, source, at, kind, phonetic) VALUES (?,?,?,?,?,?,?,?)",
+                    (pb, "Prison Break", seo_search.norm("Prison Break"), None, "m3u", now, "title", seo_search.phonetic("Prison Break")))
+        con.commit(); con.close()
+        r = seo_reco.recommend(d, "tr-a", "tr-a")
+        got = [i["slug"] for i in r["items"]]
+        check("من أعجبه مسلسلٌ تركي رومانسي: يُقترح التركي الرومانسي وحده (tr-b · tr-c · tr-film)", {"tr-b", "tr-c", "tr-film"} <= set(got) and not {"scary", "us-action", "anime-a", "us-drama"} & set(got), str(got))
+        check("ولا يُقترح ما أعجبه أصلًا ولا ضعيف التقييم (< 5)", "tr-a" not in got and "tr-low" not in got, str(got))
+        check("الأعلى تقييمًا بين المتساوين أولًا، وكل اقتراحٍ يحمل تقييمه وسببه «لأنك أعجبت بـ …»",
+              all(i["rating"] for i in r["items"]) and all(i["why"] and i["why"]["slug"] == "tr-a" and i["why"]["liked"] for i in r["items"]), str(r["items"][:2]))
+        r2 = seo_reco.recommend(d, "", "tr-a")
+        check("المشاهدة وحدها (بلا إعجاب) تُنتج اقتراحًا أيضًا بوزنٍ أقل", bool(r2["items"]) and r2["items"][0]["why"]["liked"] is False)
+        r3 = seo_reco.recommend(d, "", "", interests=str(tax["action"]))
+        got3 = [i["slug"] for i in r3["items"]]
+        check("اهتمامٌ صريح فقط (أكشن): أعمال الأكشن وحدها، لا دراما تركية ولا رعب", {"us-action", "anime-a"} <= set(got3) and not {"tr-a", "tr-b", "scary"} & set(got3), str(got3))
+        r4 = seo_reco.recommend(d, "", "", interests=str(tax["turkish"]), types="movie")
+        check("الاهتمام + النوع (تركي · أفلام): الفيلم التركي وحده", [i["slug"] for i in r4["items"]] == ["tr-film"], str([i["slug"] for i in r4["items"]]))
+        r5 = seo_reco.recommend(d, "", "")
+        check("بلا سلوك ولا اهتمام: الأشهر (cold) بلا فشل", r5["cold"] is True and len(r5["items"]) > 0)
+        api = seo_reco.api(d, {"likes": "tr-a", "seen": "tr-a", "interests": "", "types": ""}, "ar")
+        check("ردّ الواجهة: مسارات بالعربية، التقييم، السبب بالاسم، والصورة", api["items"] and api["items"][0]["path"].startswith("/content/") and api["items"][0]["rating"] and api["items"][0]["why"].startswith("لأنك أعجبت بـ"), str(api["items"][:1]))
+        apie = seo_reco.api(d, {"likes": "tr-a", "seen": "tr-a"}, "en")
+        check("وبالإنجليزية: /en والسبب بالإنجليزية", apie["items"][0]["path"].startswith("/en/content/") and apie["items"][0]["why"].startswith("Because you liked"))
+        check("slugs غير صالحة أو حقنٌ تُهمَل بلا خطأ", seo_reco.slugs("a, ../x, 'or 1=1, b-2, A", 10) == ["a", "b-2"] and seo_reco.recommend(d, "'; drop table content;--", "")["items"] is not None)
+        # البحث الذكي: أخطاء إملائية وكتابة بحرفٍ آخر
+        found = {q: [i["slug"] for i in seo_reco.find(d, q, "ar")["items"]] for q in ("prison break", "person break", "Prison Brek", "بريزن بريك")}
+        check("بحثٌ يقبل الأخطاء: «prison break» · «person break» · «Prison Brek» · «بريزن بريك» كلها تجد Prison Break", all("prison-break" in v for v in found.values()), str(found))
+        f1 = seo_reco.find(d, "prison break", "ar")["items"][0]
+        check("نتيجة البحث بملصقها وسنتها وتقييمها ومسارها", f1["rating"] == 8.3 and f1["year"] == 2005 and f1["path"] == "/content/series/prison-break/" and f1["poster"])
+        check("بحثٌ قصير جدًّا أو فارغ: لا نتائج ولا خطأ", seo_reco.find(d, "a")["items"] == [] and seo_reco.find(d, "")["items"] == [])
+        # الإعجابات: عدّاد مجهول لا ينزل تحت الصفر
+        c1 = seo_reco.like(d, "prison-break", True); c2 = seo_reco.like(d, "prison-break", True); c3 = seo_reco.like(d, "prison-break", False)
+        z1 = seo_reco.like(d, "tr-b", False)
+        check("الإعجاب يزيد وينقص، ولا ينزل تحت الصفر، وعملٌ مجهول = None", (c1, c2, c3, z1) == (1, 2, 1, 0) and seo_reco.like(d, "nope", True) is None and seo_reco.like(d, "../x", True) is None)
+        ok_ = [seo_reco.rate_ok("1.2.3.4", 3) for _ in range(5)]
+        check("حدّ الطلبات بالساعة لكل عنوان", ok_ == [True, True, True, False, False])
+        # الجولة والاهتمامات
+        chips = seo_reco.interests(d, "ar")
+        # بحثٌ بكتابةٍ مختلفة: «ون بيس» ← One Piece ويُعرف أين يتوفر (في سمارت وفالكون لا كاسبر)
+        import content_page
+        c = seo_db.connect(d)
+        op = c.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES ('series','one-piece','One Piece','ون بيس','One Piece',1999,8.7,'p','tmdb',1,?,?)", (now, now)).lastrowid
+        for srv_, nm in (("smart", "One Piece 1999"), ("falcon", "One Piece")):
+            c.execute("INSERT INTO content_service(content_id, service_key, kind, local_key, name, present, first_seen, seen_at) VALUES (?,?,?,?,?,1,?,?)", (op, srv_, "series", "op|1999", nm, now, now))
+        c.execute("INSERT INTO content_alias(content_id, alias, alias_norm, lang, source, at, kind, phonetic) VALUES (?,?,?,?,?,?,?,?)",
+                  (op, "One Piece", seo_search.norm("One Piece"), None, "m3u", now, "title", seo_search.phonetic("One Piece")))
+        c.commit(); c.close()
+        seo_reco._idx.update({"idx": None})
+        eh = content_page.entity_hint(d, "ون بيس")
+        check("«ون بيس» تُعرف كـ One Piece وتُعرف سيرفراتها: سمارت وفالكون فقط (لا كاسبر)", eh and eh["title"] == "One Piece" and set(eh["servers"]) == {"smart", "falcon"} and eh["servers"]["smart"] == ["One Piece 1999"], str(eh))
+        d4 = tempfile.mkdtemp(prefix="seo_reco4_")
+        try:
+            os.makedirs(os.path.join(d4, "content"))
+            with open(os.path.join(d4, "content", "settings.json"), "w", encoding="utf-8") as f:
+                json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "smart", "name": "سمارت"}, {"key": "falcon", "name": "فالكون"}]}, f, ensure_ascii=False)
+            _write(d4, "casper", _cat([{"n": "Wonder Woman", "y": 2017, "i": 1}], [{"n": "بيت أبونا", "y": 2024, "s": [[1, 10]], "i": 2}]))
+            _write(d4, "smart", _cat([], [{"n": "One Piece", "y": 1999, "s": [[1, 50]], "i": 3}]))
+            _write(d4, "falcon", _cat([], [{"n": "One Piece", "y": 1999, "s": [[1, 50]], "i": 4}]))
+            seo_build.build(d4)
+            seo_reco._idx.update({"idx": None, "key": None})
+            hc = content_page.api_search(d4, "casper", "ون بيس")["html"]
+            hs = content_page.api_search(d4, "smart", "ون بيس")["html"]
+            check("كاسبر لا يملك «ون بيس»: «غير متوفر في كاسبر» + أنه متوفر في سمارت وفالكون بروابطهما، ولا «أقرب اسمٍ» بلا صلة (بيت أبونا)",
+                  "غير متوفر في كاسبر" in hc and "سمارت (1)" in hc and "فالكون (1)" in hc and "?q=One%20Piece" in hc and "بيت أبونا" not in hc and "أقرب اسم" not in hc, re.sub(r"<[^>]+>", " ", hc)[:300])
+            check("وفي سمارت (له) يجد One Piece بنتائجه ويذكر وجوده في فالكون", "One Piece" in hs and "فالكون (1)" in hs and "غير متوفر" not in hs, re.sub(r"<[^>]+>", " ", hs)[:300])
+        finally:
+            shutil.rmtree(d4, ignore_errors=True)
+        check("اقتراحٌ بعيد أو اسمٌ مجهول: لا يُعتمد (لا نتائج بلا صلة)", content_page.entity_hint(d, "كلمة لا علاقة لها") is None and content_page.entity_hint(d, "zzqx") is None)
+        check("اهتمامات الجولة: أبرز التصنيفات والهبّات (التركي/الأنمي) — تُعرض إن بلغت 12 عملًا", isinstance(chips, list))
+        c = seo_db.connect(d); seo_db.set_setting(c, "preview", True); c.commit(); c.close()
+        tp = seo_pages.handle(d, "/content/for-you/", "ar")
+        te = seo_pages.handle(d, "/en/content/for-you/", "en")
+        check("صفحة الجولة «محتار ايش تشاهد؟»: 200 وnoindex، بالعربية والإنجليزية، بثلاث خطوات وبحثٍ وقسم المقترحات",
+              tp[0] == 200 and tp[2].get("X-Robots-Tag") == "noindex" and "محتار ايش تشاهد؟" in tp[1].decode() and 'id="tQ"' in tp[1].decode() and 'id="tOut"' in tp[1].decode()
+              and te[0] == 200 and "Not sure what to watch?" in te[1].decode() and 'lang="en"' in te[1].decode())
+        import analytics
+        check("زرّ «محتار ايش تشاهد؟» العائم يُحقن في كل صفحةٍ عامة (analytics.inject) وسكربته موجود", b'/static/foryou.js' in analytics.inject(b"<html><head></head><body></body></html>", d)
+              and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "foryou.js")))
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_site_setting():
     """العنوان العام قابلٌ للتبديل (XM_SITE_URL): الافتراضي كما هو، وبدومين + مجلد تتبدّل canonical والخريطة وrobots وIndexNow (مضيفٌ وحده)."""
     print("== عنوان الموقع القابل للتبديل ==")
@@ -1911,6 +2021,7 @@ def unit_site_setting():
 def main():
     unit_match()
     unit_site_setting()
+    unit_reco()
     unit_build()
     unit_ten()
     unit_production_cases()

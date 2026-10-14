@@ -584,6 +584,38 @@ def _pager(base, page, pages, tr=AR, **kw):
             f'<span>{tr(f"صفحة {page} من {pages}", f"Page {page} of {pages}")}</span>{nxt}</nav>')
 
 
+def entity_hint(data_dir, q):
+    """البحث بكتابةٍ غير التي في قوائم السيرفر («ون بيس» ← One Piece): طبقة الكيانات تعرف العمل بأسمائه وصوته وأين يتوفر ← {title، servers: {سيرفر: [اسمه فيه]}}
+    أو None إن لم تُعرف (أو لم تكن الطبقة مبنيّة). الاقتراح البعيد (ثقةٌ تحت 0.75) لا يُعتمد: لا نتائج بلا صلة."""
+    try:
+        import seo_db
+        import seo_reco
+    except Exception:  # noqa: BLE001
+        return None
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return None
+    try:
+        res = seo_reco._index(con, data_dir).search(q, max_suggest=3, min_conf=0.75)
+        cids = list(res["exact"]) + [c for c, *_ in res.get("also", [])] + [x[0] for x in res["suggest"] if x[2] >= 0.75]
+        for cid in cids[:4]:
+            row = con.execute("SELECT id, title, title_ar, title_en, merged_into FROM content WHERE id=?", (cid,)).fetchone()
+            while row and row["merged_into"]:
+                row = con.execute("SELECT id, title, title_ar, title_en, merged_into FROM content WHERE id=?", (row["merged_into"],)).fetchone()
+            if not row:
+                continue
+            servers = {}
+            for r in con.execute("SELECT service_key, name FROM content_service WHERE content_id=? AND present=1 ORDER BY service_key, local_key", (row["id"],)):
+                servers.setdefault(r["service_key"], [])
+                if r["name"] not in servers[r["service_key"]]:
+                    servers[r["service_key"]].append(r["name"])
+            if servers:
+                return {"title": row["title_en"] or row["title"], "title_ar": row["title_ar"] or row["title"], "servers": servers}
+        return None
+    finally:
+        con.close()
+
+
 def results_html(data_dir, key, srv, v, q, tr=AR):
     """نتائج البحث بالاسم ملصقاتٍ: لكل نوعٍ أوّل C.SEARCH_MAX بقسمها، ثم أين يوجد الاسم في السيرفرات الأخرى —
     فمن لم يجد مسلسله هنا يعرف أيّ اشتراكٍ فيه."""
@@ -591,7 +623,14 @@ def results_html(data_dir, key, srv, v, q, tr=AR):
     if not C._words(q):
         return ""
     hits, total = C._search(key, v, q)
-    fixed = C.suggest(key, v, q) if not total else ""        # «ياب الحارة» ← «باب الحارة»
+    ent = entity_hint(data_dir, q) if not total else None   # «ون بيس»: العمل معروف بالكيان وإن كُتب اسمه في القوائم بغير هذه الكتابة
+    if ent and key in ent["servers"]:                       # موجودٌ في هذا السيرفر باسمٍ آخر: تُعرض نتائج اسمه فيه
+        for nm in ent["servers"][key]:
+            h2, t2 = C._search(key, v, nm)
+            if t2:
+                hits, total, q = h2, t2, nm
+                break
+    fixed = C.suggest(key, v, q) if not total and not ent else ""   # «ياب الحارة» ← «باب الحارة» (ولا «أقرب اسمٍ» بلا صلة لعملٍ عُرف مكانه)
     shown = q
     if fixed:
         hits, total = C._search(key, v, fixed)
@@ -628,6 +667,21 @@ def results_html(data_dir, key, srv, v, q, tr=AR):
     other = (f'<p class="other">{tr("ويوجد أيضًا في", "Also on") if total else tr("لكنه موجود في", "But it’s on")}: '
              f'{" · ".join(elsewhere)}</p>' if elsewhere else "")
     name = _esc(tr.name(srv))
+    if not total and ent:                                   # عملٌ معروف ليس في هذا السيرفر: أين يتوفر
+        links = []
+        for s in C.servers(data_dir):
+            if s["key"] == key or s["key"] not in ent["servers"]:
+                continue
+            ov = C._view(data_dir, s["key"])[1]
+            if not C._has(ov):
+                continue
+            nm = ent["servers"][s["key"]][0]
+            n = C._search(s["key"], ov, nm)[1]
+            links.append(f'<a href="{tr.path}/{s["key"]}?q={quote(nm)}">{_logo(s["key"], tr.name(s), "lg sm")}{_esc(tr.name(s))}{f" ({n:,})" if n else ""}</a>')
+        if links:
+            title = ent["title"] if tr.en else ent["title_ar"]
+            return (f'<section class="results"><div class="rh"><h2>{tr("غير متوفر في ", "Not available in ")}{name}</h2></div>'
+                    f'<p class="other"><b dir="auto">{_esc(title)}</b> — {tr("لكنه متوفر في", "but it is available on")}: {" · ".join(links)}</p></section>')
     if not total:
         live = (tr(" — والقنوات في ", " — channels are in ") + f'<a class="link" href="{tr.path}/{key}?t=live">'
                 + tr("تبويبها", "their own tab") + "</a>" if v["kinds"]["live"] else "")

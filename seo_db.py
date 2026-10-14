@@ -20,7 +20,7 @@ import time
 
 DIR = "content"
 FILE = "seo.sqlite"
-VERSION = 6                    # PRAGMA user_version — يرتفع مع كل ترحيل
+VERSION = 7                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
 SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
 MANUAL = "manual"
@@ -295,6 +295,10 @@ CREATE TABLE IF NOT EXISTS seo_override (
   seo_title TEXT, meta_desc TEXT, slug TEXT, overview TEXT, intro TEXT, faq_json TEXT,
   index_flag INTEGER, canonical TEXT, updated_at INTEGER NOT NULL,
   PRIMARY KEY (entity, entity_id, lang)
+);
+
+CREATE TABLE IF NOT EXISTS content_like (          -- عدّاد «أعجبني» مجهول لكل عمل (لا حسابات ولا هوية: يُحفظ ما أعجب الزائر في جهازه وحده)
+  content_id INTEGER PRIMARY KEY REFERENCES content(id), likes INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS redirect (
