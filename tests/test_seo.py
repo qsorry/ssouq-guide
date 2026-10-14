@@ -1649,6 +1649,7 @@ def unit_release():
         sm0 = seo_qa.check_sitemap(d, con, st, os.path.join(bd, "sitemap-staging.xml"))
         check("الخريطة التجريبية للقطة: 5 روابط ولا تُخدم بعد", sm0["urls"] == 5 and all(t["ok"] for t in sm0["tests"]) and seo_release.snapshot_urls(d) == {u for u, _, _ in elig}, str(sm0["tests"]))
         con.close()
+        dpipe = tempfile.mkdtemp(prefix="seo_pipe_"); shutil.rmtree(dpipe); shutil.copytree(d, dpipe)      # نسخةٌ قبل أي مرحلة: لاختبار الزرّ الواحد
         # ---- المرحلة 4 ----
         r = seo_release.phase4(d, "20260101T000000Z", 5)
         con = seo_db.connect(d)
@@ -1813,6 +1814,74 @@ def unit_release():
         seo_release.job_stop(d3)
         check("job_stop: توقف فوري وبسبب الإيقاف، ولا تستأنف", seo_release.job_get(d3)["active"] is False and seo_release.job_watchdog_tick(d3) is None)
         check("status() يكشف المهمة للبطاقة", "expand_job" in seo_release.status(d3))
+        # الطيار الآلي: يكرّر حتى النفاد ثم يفحص (المرحلة 7) ويعتمد القوائم (المرحلة 10) آليًا، ولا يتوقف بعدد الدفعات
+        jp = seo_release.job_start(d3, 2, 1, True, autopilot=True, every=1)
+        res_p = seo_release.run_job(d3)
+        jpf = seo_release.job_get(d3)
+        rel3 = seo_db.state(seo_db.connect(d3), "release") or {}
+        check("طيارٌ آلي: يتجاوز «أقصى الدفعات» ويكمل حتى النفاد، وفي آخره فحصٌ واعتمادُ قوائم (دورة ≥ 1)، وبلا فشل",
+              jp["autopilot"] and jpf["active"] is False and jpf["stopped"] == "no candidates left" and jpf["cycles"] >= 1 and (rel3.get("phases", {}).get("7") or {}).get("status") == "PASS"
+              and (rel3.get("phases", {}).get("10") or {}).get("status") == "PASS", str(jpf)[:400])
+        # فشل المرحلة 7 في الطيار الآلي يوقفه بسببه
+        c_ = seo_db.connect(d3)
+        ap_first = sorted(seo_pages.approved_routes(c_).values(), key=lambda a: a["path"])[0]["path"]
+        c_.execute("INSERT OR REPLACE INTO redirect(path, target, code, reason, created_at) VALUES (?,?,301,'autopilot fail test',?)", (ap_first, "/content/movies/dune/", int(time.time()))); c_.commit(); c_.close()
+        seo_release.job_start(d3, 2, 1, True, autopilot=True, every=1)
+        seo_release.run_job(d3)
+        jpf2 = seo_release.job_get(d3)
+        check("طيارٌ آلي: فشلُ فحصٍ بعد النشر يوقفه بسببه (autopilot: phase7 failed) ولا يعتمد شيئًا", jpf2["active"] is False and "phase7 failed" in (jpf2["stopped"] or ""), str(jpf2.get("stopped")))
+        c_ = seo_db.connect(d3); c_.execute("DELETE FROM redirect WHERE path=?", (ap_first,)); c_.commit(); c_.close()
+        # ما جُرّب ولم يُعتمد لا يُعاد فورًا (وإلا دارت الدفعات على الأشهر نفسه)؛ والجديد مرشّحٌ دائمًا؛ ونشرٌ آلي للجديد بالحارس
+        seo_release.phase7(d3, SNAP)                                                  # يرفع عائق الاختبار السابق
+        c_ = seo_db.connect(d3); st_ = seo_db.settings(c_); nowx = int(time.time())
+        newc = c_.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES ('movie','brand-new-x','Brand New X','Brand New X','Brand New X',2026,7.0,'p','local',1,?,?)", (nowx, nowx)).lastrowid
+        c_.commit()
+        ap_ = seo_pages.approved_routes(c_)
+        check("كيانٌ جديد مرشّح", newc in [r["id"] for r in seo_release.candidates(c_, st_, ap_, 50)])
+        seo_release._seen_mark(c_, [newc], st_, nowx - 3 * 86400)                                 # جُرّب قبل 3 أيام
+        check("ما جُرّب حديثًا (ضمن مهلة الإعادة 14 يومًا) لا يُعاد مرشّحًا", newc not in [r["id"] for r in seo_release.candidates(c_, st_, ap_, 50)] and seo_release.candidates_count(c_, st_, ap_) >= 0)
+        seo_db.set_setting(c_, "expand_retry_days", 1)
+        check("وبعد انتهاء مهلة الإعادة (expand_retry_days=1 < 3 أيام) يعود", newc in [r["id"] for r in seo_release.candidates(c_, seo_db.settings(c_), ap_, 50)])
+        seo_db.set_setting(c_, "expand_retry_days", 14)
+        with c_:
+            c_.execute("DELETE FROM build_state WHERE key=?", (seo_release.SEEN_KEY,))
+        seo_db.set_setting(c_, "auto_publish", True); c_.commit(); c_.close()
+        import calendar
+        mails = []
+        seo_release.set_notifier(lambda subj, body: (mails.append((subj, body)), {"ok": True})[1])
+        ksa = lambda day, hh, mm=0: calendar.timegm((2026, 10, day, hh, mm, 0)) - 3 * 3600          # لحظةٌ بتوقيت السعودية
+        seo_release._threads.pop(k3, None)
+        check("قبل الواحدة صباحًا بتوقيت السعودية لا يبدأ شيئًا", seo_release._auto_publish_tick(d3, now=ksa(20, 0, 30)) is None and not mails)
+        ap1 = seo_release._auto_publish_tick(d3, now=ksa(20, 2))
+        th_ = seo_release._threads.get(k3)
+        if th_:
+            th_.join(240)
+        jauto = seo_release.job_get(d3)
+        c_ = seo_db.connect(d3)
+        check("النشر الآلي اليومي: بعد الواحدة صباحًا (السعودية) وكيانٌ جديد ← مهمةٌ آلية تنتهي وجُرّب الجديد", ap1 == "auto_started" and jauto["active"] is False and jauto["autopilot"] and jauto["notify"] and jauto["trigger"] == "scheduled"
+              and str(newc) in (seo_db.state(c_, seo_release.SEEN_KEY) or {}), f"{ap1} {jauto}"[:300])
+        check("وأُرسل بريدٌ بنتيجتها: «✔ SEO — اكتمل النشر الآلي» بالمعتمد قبل/بعد والدفعات (أو ✖ بسببه)", len(mails) == 1 and mails[0][0].startswith(("✔ SEO — اكتمل", "✖ SEO — توقّف")) and "المعتمد (كيانات)" in mails[0][1] and "الدفعات المنفّذة" in mails[0][1], str(mails)[:400])
+        check("ولا يتكرّر في اليوم نفسه (مرةً واحدة يوميًا)", seo_release._auto_publish_tick(d3, now=ksa(20, 5)) is None)
+        c_.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES ('movie','brand-new-z','Brand New Z','Brand New Z','Brand New Z',2026,7.0,'p','local',1,?,?)", (nowx, nowx)); c_.commit()
+        seo_release._threads.pop(k3, None)
+        ap2 = seo_release._auto_publish_tick(d3, now=ksa(21, 1, 5))
+        th_ = seo_release._threads.get(k3)
+        if th_:
+            th_.join(240)
+        check("وفي اليوم التالي: يعمل ثانيةً (كيانٌ جديد) ويرسل بريدًا ثانيًا", ap2 == "auto_started" and len(mails) == 2, f"{ap2} {len(mails)}")
+        seo_release._threads.pop(k3, None)
+        check("يومٌ بلا جديد: لا يبدأ ولا بريد فارغ، ويُسجَّل اليوم مُنجَزًا", seo_release._auto_publish_tick(d3, now=ksa(22, 3)) is None and len(mails) == 2
+              and (seo_db.state(c_, "auto_publish_state") or {}).get("day") == "2026-10-22" and (seo_db.state(c_, "auto_publish_state") or {}).get("ran") is False)
+        mails.clear()
+        seo_release.notify_job(d3, {"notify": True, "stopped": "autopilot: phase7 failed — approved paths redirected", "approved_before": {"entities": 1, "routes": 2, "extras": 3}, "done": 2, "cycles": 1, "trigger": "scheduled"})
+        check("فشل: بريدٌ «✖ SEO — توقّف النشر الآلي» بالسبب", len(mails) == 1 and mails[0][0].startswith("✖ SEO — توقّف") and "السبب" in mails[0][1] and "phase7 failed" in mails[0][1], str(mails)[:300])
+        mails.clear()
+        seo_release.notify_job(d3, {"notify": False, "stopped": "completed", "approved_before": {}})
+        check("بلا notify لا بريد", not mails)
+        seo_release.set_notifier(None)
+        seo_db.set_setting(c_, "auto_publish", False); c_.commit()
+        c_.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES ('movie','brand-new-y','Brand New Y','Brand New Y','Brand New Y',2026,7.0,'p','local',1,?,?)", (nowx, nowx)); c_.commit(); c_.close()
+        check("وموقوفًا (auto_publish=false) لا يبدأ شيئًا", seo_release._auto_publish_tick(d3, now=ksa(25, 2)) is None)
         # فحص الصفحة داخل معاملةٍ غير مثبّتة (كدفعة التوسيع): رابطٌ جديد لم يُثبَّت بعد يجب أن يُرسم 200 لا 404 (كان يفتح الاتصال الثاني فلا يراه)
         bb3 = c3.execute("SELECT id FROM content WHERE slug='breaking-bad'").fetchone()[0]
         seo_db.change_slug(c3, bb3, "breaking-bad-uncommitted", "manual", "txn visibility test")           # بلا commit
@@ -1910,6 +1979,28 @@ def unit_release():
               and fb["indexnow"]["submitted"] == 5 + new_n and "FINAL STATUS" in txt and "PHASE STATUS" in txt and os.path.exists(fb["file"]) and os.path.exists(fb["file"].replace(".json", ".txt")), str(fb["blockers"]))
         st_ = seo_release.status(d)
         check("الحال للبطاقة: الأعلام والاعتماد والدفعات", st_["index_live"] and st_["sitemap_live"] and st_["approved_routes"] == 5 + new_n and len(st_["batches"]) == 3 and st_["approved_snapshot"] == SNAP, str({k: st_[k] for k in ("approved_routes", "approved_snapshot")}))
+        # الزرّ الواحد: الإطلاق (4←5←6←7) ثم التوسيع الآلي والفحص والقوائم حتى النفاد ثم الحزمة النهائية — على نسخةٍ بلا أي مرحلة سابقة
+        jpipe = seo_release.job_start(dpipe, 2, 500, True, True, 1, True)
+        rp = seo_release.run_job(dpipe)
+        jp2 = seo_release.job_get(dpipe)
+        cpipe = seo_db.connect(dpipe)
+        relp = seo_db.state(cpipe, "release") or {}
+        phs = {n: (relp.get("phases", {}).get(n) or {}).get("status") for n in ("4", "5", "6", "7", "10")}
+        check("الزرّ الواحد: الإطلاق 4·5·6·7 كلها PASS وتوسّع حتى النفاد (والمرحلة 10 لا تُفشله حين لا قوائم مؤهلة بعد) وانتهى بالحزمة النهائية وبلا عائق",
+              jpipe["pipeline"] and jp2["active"] is False and (jp2["stopped"] or "").startswith("completed") and all(phs[n] == "PASS" for n in ("4", "5", "6", "7")) and jp2["launched"] and jp2["done"] >= 1 and jp2["cycles"] >= 1
+              and jp2["final_file"] and os.path.exists(jp2["final_file"]) and relp.get("blocked") is None, f"{jp2} {phs}"[:500])
+        seo_db.set_setting(cpipe, "index_live", False); cpipe.commit(); cpipe.close()
+        shutil.rmtree(dpipe, ignore_errors=True)
+        # بلا لقطة: يتوقف بسببٍ واضح ولا يكتب شيئًا
+        dnone = tempfile.mkdtemp(prefix="seo_pipe2_")
+        try:
+            os.makedirs(os.path.join(dnone, "content")); seo_db.connect(dnone).close()
+            seo_release.job_start(dnone, 2, 5, True, True, 1, True)
+            seo_release.run_job(dnone)
+            jn = seo_release.job_get(dnone)
+            check("الزرّ الواحد بلا لقطة: توقّف بسببٍ واضح (pipeline: لا لقطة) ويُعرض في failure", jn["active"] is False and "لا لقطة" in (jn["stopped"] or ""), str(jn)[:300])
+        finally:
+            shutil.rmtree(dnone, ignore_errors=True)
     finally:
         ixs.shutdown(); tm.shutdown(); tm_down.shutdown()
         shutil.rmtree(d, ignore_errors=True)
