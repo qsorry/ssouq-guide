@@ -1496,7 +1496,7 @@ function renderOne(d) {
   if (active || d.running) {
     const upd = () => { $("oneT").textContent = wzFmt(Math.floor(Date.now() / 1000) - (p.at || (jb && jb.started_at) || Math.floor(Date.now() / 1000))); };
     upd(); oneTimer = setInterval(upd, 1000);
-    $("oneN").textContent = `${p.stage || "يعمل…"}${p.total ? " · " + num(p.done || 0) + " / " + num(p.total) : ""}`;
+    $("oneN").textContent = `${p.stage || "يعمل…"}${p.total ? " · \u2066" + num(p.done || 0) + " / " + num(p.total) + "\u2069" : ""}`;     // LRI…PDI: العدّاد «منجَز / الكل» يُقرأ من اليسار فلا ينقلب في سطرٍ عربي
     $("oneBar").style.width = p.total ? Math.min(100, Math.round((p.done || 0) / p.total * 100)) + "%" : "0";
   }
   $("oneAuto").checked = !!d.auto_publish;

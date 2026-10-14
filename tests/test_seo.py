@@ -2155,6 +2155,8 @@ def unit_cards_softnav():
               "modal-full-page-btn" in content_page.JS and "modal-tag-badge" in content_page.JS and "floating-choice-btn" in fy and "fyEnsure" in fy
               and tour.count("filter-section-title") == 4 and "tchip filter-chip" in tour and "fyEnsure" in open(os.path.join(root, "static", "softnav.js"), encoding="utf-8").read())
         check("ux.css يُحقن في كل صفحةٍ عامة بإصدار", b'/static/ux.css?v=' in analytics.inject(b"<html><head></head><body></body></html>", d))
+        adm = open(os.path.join(root, "content_admin.html"), encoding="utf-8").read()
+        check("عدّاد الزرّ الواحد «منجَز / الكل» معزولٌ LTR (LRI…PDI) فلا ينقلب «2,063 / 1,030» في سطرٍ عربي", '\\u2066" + num(p.done || 0) + " / " + num(p.total) + "\\u2069' in adm)
         inj = analytics.inject(b"<html><head></head><body></body></html>", d)
         check("يُحقن سكربت التنقّل السلس بإصدار، وملفّه موجود", b"/static/softnav.js?v=" in inj and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "softnav.js")))
         con.close()
