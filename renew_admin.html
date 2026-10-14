@@ -2370,7 +2370,7 @@ function lcard(r, i, kind){
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
 // ---- معالج المكرر: إنشاء البديل ← تغيير القديم ← إرسال للبديل ← إرسال ما عُدّل لصاحبه الأول ----
-const WZ = {item: null, wa: false, sk: {}, busy: false, err: '', ok: '', draft: null, opts: {}, conn: null};
+const WZ = {item: null, wa: false, sk: {}, busy: false, err: '', ok: '', draft: null, opts: {}, conn: null, ocr: null};
 const WZ_STEPS = [['create', 'إنشاء البديل'], ['rename', 'تغيير القديم'], ['send_new', 'إرسال للبديل'], ['send_old', 'إرسال ما عُدّل']];
 const wzMsg = (it, kind) => (it.msgs || []).find(m => m.kind === kind);
 const wzSent = m => !!(m && m.sent && m.sent.ok);
@@ -2391,7 +2391,7 @@ function wzCur(){
 }
 async function wzRefresh(){
   const it = WZ.item, d = await api('/api/renew/dup-state?order=' + encodeURIComponent(it.order) + '&username=' + encodeURIComponent(it.username));
-  if (d && d.item) { WZ.item = d.item; WZ.wa = !!d.wa_linked; }
+  if (d && d.item) { WZ.item = d.item; WZ.wa = !!d.wa_linked; WZ.ocr = !!d.ocr; }
 }
 async function wzOpen(item, opts){
   Object.assign(WZ, {item, sk: {}, busy: false, err: '', ok: '', draft: null, opts: opts || {}, conn: null});
@@ -2461,6 +2461,7 @@ function wzRender(busyLabel){
       + (c.list.length > 1 ? `<label class="lc-m">البوابة <select id="wzCnSel">${c.list.map((x, k) => `<option value="${k}"${x === g ? ' selected' : ''}>${esc(x.name)}${x.archive ? ' (أرشيف)' : ''}</option>`).join('')}</select></label>` : `<p><b>${esc(g.name)}</b></p>`)
       + `<input id="wzCnB" class="ltr" placeholder="رابط لوحة الدخول" value="${esc(g.panel_base)}"><input id="wzCnU" class="ltr" placeholder="اسم الدخول" value="${esc(g.panel_user)}">`
       + `<input id="wzCnP" class="ltr" type="password" placeholder="${g.has_creds ? 'كلمة المرور محفوظة (اتركها فارغة)' : 'كلمة المرور'}" autocomplete="off">`
+      + (WZ.ocr === false ? '<p class="c-warn">القراءة الآلية للكود غير مثبّتة على الخادم — يُكتب الكود يدويًا (انظر README: tesseract).</p>' : '')
       + (c.cap ? `<div class="acts"><img id="wzCnImg" alt="كود التحقّق" style="height:48px;background:#fff;border-radius:8px"><button class="ghost" id="wzCnReload" type="button">كود آخر</button></div>`
         + `<input id="wzCnC" class="ltr" inputmode="numeric" autocomplete="off" placeholder="اكتب الكود الظاهر (٣ أرقام)"><p class="msg err" id="wzCnErr" style="margin:0"></p>` : '');
     foot = (c.err ? `<p class="msg err">${esc(c.err)}</p>` : '') + '<div class="acts">' + btn('go', 'wzCnGo', busyLabel ? 'جارٍ الدخول…' : 'ادخل وأكمل التغيير')
