@@ -613,6 +613,96 @@ def report(data_dir, days=30, now=None):
     }
 
 
+# ================= زوّار صفحات المحتوى (/content و/en/content) =================
+CONTENT_RX = re.compile(r"^/(en/)?content(?:/(.*))?$")
+CONTENT_EVENTS = ("search", "like", "fy_click", "tour_step", "tour_age", "tour_pick", "tour_result", "reco_click", "guide_report")
+_SECTIONS = (("series", "مسلسلات"), ("movies", "أفلام"), ("people", "ممثلون ومخرجون"), ("companies", "شركات إنتاج"), ("genres", "تصنيفات"), ("countries", "دول"),
+             ("latest", "الأحدث"), ("year", "سنوات"), ("for-you", "محتار ايش تشاهد"), ("hub", "رئيسية المحتوى"), ("turkish", "هب التركي"), ("anime", "هب الأنمي"))
+
+
+def content_section(path):
+    """مسارٌ نظيف ← (القسم، اللغة، slug العمل أو ""): قسم صفحة المحتوى كما في خانات التقرير."""
+    m = CONTENT_RX.match(path or "")
+    if not m:
+        return None
+    rest = (m.group(2) or "").strip("/")
+    lang = "en" if m.group(1) else "ar"
+    if not rest:
+        return "hub", lang, ""
+    first = rest.split("/")[0]
+    if first in ("series", "movies"):
+        parts = rest.split("/")
+        return first, lang, parts[1] if len(parts) > 1 else ""
+    if first in ("people", "companies", "genres", "countries", "latest", "year", "for-you", "turkish", "anime", "arabic", "korean", "indian", "chinese"):
+        return first, lang, ""
+    return "server", lang, ""                      # /content/<مفتاح سيرفر>: صفحة الدليل بقوائم السيرفر
+
+
+def _content_slice(days_map):
+    """أيامٌ ← أعداد صفحات المحتوى وحدها: المشاهدات والأقسام واللغتان والصفحات (بمدة قراءتها ودخولها من الخارج) والأحداث."""
+    out = {"views": 0, "lang": {"ar": 0, "en": 0}, "sections": {}, "pages": {}, "pdur": {}, "land": {}, "ev": {}, "evl": {}, "daily": [], "all_pv": 0}
+    for day, a in days_map.items():
+        a = a or {}
+        v = 0
+        out["all_pv"] += int(a.get("pv") or 0)
+        for p, n in (a.get("pages") or {}).items():
+            c = content_section(p)
+            if not c:
+                continue
+            n = int(n or 0)
+            v += n
+            out["lang"][c[1]] += n
+            out["sections"][c[0]] = out["sections"].get(c[0], 0) + n
+            out["pages"][p] = out["pages"].get(p, 0) + n
+        for p, n in (a.get("land") or {}).items():
+            if content_section(p):
+                out["land"][p] = out["land"].get(p, 0) + int(n or 0)
+        for p, (sec, cnt) in (a.get("pdur") or {}).items():
+            if content_section(p):
+                d = out["pdur"].setdefault(p, [0, 0])
+                d[0] += int(sec or 0)
+                d[1] += int(cnt or 0)
+        for name in CONTENT_EVENTS:
+            n = int((a.get("ev") or {}).get(name, 0) or 0)
+            if n:
+                out["ev"][name] = out["ev"].get(name, 0) + n
+                lab = out["evl"].setdefault(name, {})
+                for k, c in ((a.get("evl") or {}).get(name) or {}).items():
+                    lab[k] = lab.get(k, 0) + int(c or 0)
+        out["views"] += v
+        out["daily"].append({"d": day, "views": v})
+    return out
+
+
+def content_report(data_dir, days=30, now=None):
+    """تحليل زوّار موقع المحتوى (آخر `days` يومًا ومقارنةً بما قبلها): المشاهدات حسب القسم واللغة، أكثر الصفحات (بمدة القراءة ومن دخلها من الخارج)، حلقة «محتار ايش تشاهد»،
+    الإعجابات والبلاغات والبحث. أعدادٌ من عدّاد الموقع نفسه (بلا هوية ولا كوكيز)؛ وأسماء الأعمال تُحلّ لاحقًا من القاعدة (slug ← عنوان)."""
+    now = time.time() if now is None else now
+    days = max(1, min(int(days or 30), 400))
+    with _lock:
+        _ensure(data_dir, now)
+        today = _S["day"]
+        snap = json.loads(json.dumps(_S["agg"]))
+    base = datetime.date.fromisoformat(today)
+    rng = [(base - datetime.timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    prev = [(base - datetime.timedelta(days=days + i)).isoformat() for i in range(days - 1, -1, -1)]
+    cur = _content_slice({d: (snap if d == today else _past(data_dir, d)) for d in rng})
+    old = _content_slice({d: _past(data_dir, d) for d in prev})
+    pages = []
+    for p, n in sorted(cur["pages"].items(), key=lambda x: (-x[1], x[0]))[:60]:
+        sec, lang, slug = content_section(p)
+        pages.append({"path": p, "views": n, "avg": _avg(cur["pdur"].get(p)), "entries": cur["land"].get(p, 0), "section": sec, "lang": lang, "slug": slug})
+    ev = {name: {"count": c, "top": _top(cur["evl"].get(name, {}), 15)} for name, c in cur["ev"].items()}
+    steps = {k: v for k, v in dict(cur["evl"].get("tour_step", {})).items() if k in ("1", "2", "3")}
+    return {"ok": True, "days": days, "from": rng[0], "to": rng[-1],
+            "totals": {"views": cur["views"], "prev": old["views"], "share": round(cur["views"] / cur["all_pv"], 4) if cur["all_pv"] else 0,
+                       "entries": sum(cur["land"].values()), "ar": cur["lang"]["ar"], "en": cur["lang"]["en"]},
+            "sections": [{"key": k, "name": dict(_SECTIONS).get(k, "صفحات السيرفرات" if k == "server" else k), "views": n} for k, n in sorted(cur["sections"].items(), key=lambda x: -x[1])],
+            "pages": pages, "daily": cur["daily"], "events": ev,
+            "tour": {"started": steps.get("1", 0), "interests": steps.get("2", 0), "results": steps.get("3", 0), "shown": ev.get("tour_result", {}).get("count", 0),
+                     "clicked": ev.get("reco_click", {}).get("count", 0), "fab": ev.get("fy_click", {}).get("count", 0)}}
+
+
 def summary(data_dir, now=None):
     """رئيسية لوحة الإدارة: زوّار اليوم ومشاهداته، ومن في الموقع الآن."""
     now = time.time() if now is None else now

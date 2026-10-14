@@ -6928,6 +6928,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": True, **seo_scan.state(DATA_DIR)})
                 if path == "/api/content/seo/bundle":     # ملفات المراجعة: حال إنتاجها وما كُتب منها
                     return self._send(200, {"ok": True, **seo_sources.bundle_state(DATA_DIR)})
+                if path == "/api/content/seo/visitors":   # زوّار موقع المحتوى: الأقسام واللغات وأكثر الأعمال وحلقة «محتار ايش تشاهد» والإعجاب والبلاغ
+                    return self._send(200, seo_admin.label_visitors(DATA_DIR, analytics.content_report(DATA_DIR, self._days(30))))
+                if path == "/api/content/seo/visibility":  # عدّاد الصفحات: المعتمد للفهرسة، وما في الخريطة وIndexNow، وعيّنة فهرسة قوقل
+                    return self._send(200, {"ok": True, **seo_release.visibility(DATA_DIR)})
                 if path == "/api/content/seo/release":    # النشر الإنتاجي (المراحل 4–9): حال المراحل والدفعات والأعلام (قراءة)
                     return self._send(200, {"ok": True, **seo_release.status(DATA_DIR)})
                 if path.startswith("/api/content/seo/bundle/"):   # تنزيل ملفٍ منها (للمدير)
@@ -8131,6 +8135,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, seo_guide.admin(DATA_DIR, body))
                 except (ValueError, TypeError) as e:
                     return self._send(400, {"ok": False, "error": str(e)})
+            elif path == "/api/content/admin/seo-visibility":  # عيّنة فحص فهرسة قوقل للصفحات المعتمدة (في الخلفية؛ حصة URL Inspection يومية)
+                ok, why = seo_release.gsc_sample_start(DATA_DIR, body.get("n") or 40)
+                return self._send(200 if ok else 400, {"ok": ok, "error": why} if not ok else {"ok": True, **seo_release.visibility(DATA_DIR)})
             elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
                 return self._send(200, {"ok": True, "audit": seo_pages.audit(DATA_DIR, int(body.get("n") or 30))})
             elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)

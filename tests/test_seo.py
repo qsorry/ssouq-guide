@@ -2074,6 +2074,20 @@ def unit_cards_softnav():
         check("عملٌ بلا كيانٍ أو قناةٌ أو مفتاحٌ غير صالح ← None", content_page.api_entity(d, "smart", "series", "Nope", 2005, "ar") is None and content_page.api_entity(d, "smart", "live", "Prison Break", 0, "ar") is None
               and content_page.api_entity(d, "../x", "series", "Prison Break", 0, "ar") is None)
         check("نافذة التفاصيل في صفحة السيرفر فيها زرّ «عرض الصفحة كاملة» والتنقّل السلس يلتقطه", 'id="cx-full"' in content_page.JS and "/api/content/entity" in content_page.JS)
+        import seo_admin
+        import seo_release
+        check("فئات فهرسة قوقل: Submitted and indexed ← indexed، Crawled/Discovered - currently not indexed، URL is unknown to Google",
+              seo_release.gsc_bucket("Submitted and indexed", "PASS") == "indexed" and seo_release.gsc_bucket("Indexed, not submitted in sitemap", "PASS") == "indexed"
+              and seo_release.gsc_bucket("Crawled - currently not indexed", "NEUTRAL") == "crawled" and seo_release.gsc_bucket("Discovered - currently not indexed", "NEUTRAL") == "discovered"
+              and seo_release.gsc_bucket("URL is unknown to Google", "NEUTRAL") == "unknown" and seo_release.gsc_bucket("Blocked by robots.txt", "FAIL") == "other")
+        vis = seo_release.visibility(d)
+        check("عدّاد الصفحات: أعداد المعتمد والخريطة وIndexNow، وقوقل غير مربوط", {"entities", "entity_routes", "extra_routes", "sitemap_urls", "indexnow", "gsc"} <= set(vis) and vis["gsc"]["connected"] is False
+              and vis["indexnow"] == {"submitted": 0, "accepted": 0}, str(vis))
+        ok_, why_ = seo_release.gsc_sample_start(d, 40)
+        check("فحص العيّنة بلا ربط Search Console ← لا يبدأ بسببٍ واضح", ok_ is False and "Search Console" in why_)
+        rep_ = {"pages": [{"slug": "prison-break-x", "path": "/content/series/prison-break-x"}], "events": {"like": {"count": 1, "top": [["prison-break-x", 1]]}}}
+        seo_admin.label_visitors(d, rep_)
+        check("تقرير الزوّار: عناوين الأعمال تُحلّ من القاعدة (صفحاتٌ وأحداث)", rep_["pages"][0]["title"] == "prison-break-x" and rep_["events"]["like"]["top"][0][2] == "prison-break-x")
         inj = analytics.inject(b"<html><head></head><body></body></html>", d)
         check("يُحقن سكربت التنقّل السلس بإصدار، وملفّه موجود", b"/static/softnav.js?v=" in inj and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "softnav.js")))
         con.close()

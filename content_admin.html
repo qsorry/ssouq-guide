@@ -567,6 +567,29 @@ details.card>.din{padding:0 16px 16px}
         <div class="msg" id="cMsg"></div>
       </div>
     </details>
+    <details class="blk fold" id="blkVis">
+      <summary><span><b>عدّاد الصفحات</b><small>المعتمد للفهرسة، وما في الخريطة وIndexNow، وما فُهرس عند قوقل (عيّنة)</small></span></summary>
+      <div class="din">
+        <div class="stats tiles" id="vTiles"></div>
+        <p class="sub">«معتمد» إذنٌ منّا لمحركات البحث (index + الخريطة)؛ الفهرسة الفعلية عند قوقل أبطأ وتحكمها هي. الأرقام أدناه من فحص عيّنةٍ عشوائية من الصفحات المعتمدة عبر Search Console (URL Inspection)، وهي تقدير لا إحصاء.</p>
+        <div class="acts"><button class="go" type="button" id="vSample">افحص عيّنة من قوقل (40 صفحة)</button><button class="ghost" type="button" id="vRefresh">حدّث الأرقام</button></div>
+        <div id="vGsc"></div>
+        <div class="msg" id="vMsg"></div>
+      </div>
+    </details>
+    <details class="blk fold" id="blkVisitors">
+      <summary><span><b>زوّار المحتوى</b><small>مشاهدات الأقسام واللغات وأكثر الأعمال، وحلقة «محتار ايش تشاهد»، والإعجاب والبحث</small></span></summary>
+      <div class="din">
+        <div class="acts"><select id="wDays"><option value="7">آخر 7 أيام</option><option value="30" selected>آخر 30 يومًا</option><option value="90">آخر 90 يومًا</option></select></div>
+        <div class="stats tiles" id="wTiles"></div>
+        <h4>حسب القسم</h4><div id="wSec"></div>
+        <h4>أكثر الصفحات</h4><ul class="alist" id="wPages"></ul>
+        <h4>حلقة «محتار ايش تشاهد»</h4><div class="stats tiles" id="wTour"></div>
+        <h4>ما يفعله الزوّار</h4><div id="wEvents"></div>
+        <p class="sub">الأعداد من عدّاد الموقع نفسه بلا هوية ولا كوكيز. «دخل من الخارج» = أول صفحةٍ في زيارةٍ جاءت من بحثٍ أو رابطٍ أو مشاركة. أحداث «محتار ايش تشاهد» والإعجاب والبلاغ تبدأ بالتجميع بعد هذا التحديث.</p>
+        <div class="msg" id="wMsg"></div>
+      </div>
+    </details>
     <details class="blk fold" id="blkGuide">
       <summary><span><b>دليل الأهل</b><small>شدّة الفئات ومشاهد لا تناسب الصغار بأوقاتها، وبلاغات الزوار</small></span></summary>
       <div class="din">
@@ -1578,6 +1601,61 @@ $("cSlugGo").onclick = () => cDo({action: "slug", slug: $("cSlug").value}, "تغ
 $("cTmdbGo").onclick = () => cDo({action: "tmdb", tmdb_id: $("cTmdb").value}, "رُبط معرّف TMDB");
 $("cMergeGo").onclick = () => confirm("الدمج لا يُحذف فيه شيء لكن رابط هذا الكيان يتحوّل 301 إلى الباقي. متابعة؟") && cDo({action: "merge", loser: cur.id, winner: +$("cMerge").value}, "تم الدمج");
 
+
+// ===== عدّاد الصفحات =====
+const GB = {indexed: "مفهرس", crawled: "زُحف ولم يُفهرس", discovered: "اكتُشف ولم يُزحف", unknown: "لا يعرفه قوقل بعد", other: "غير ذلك"};
+let vPoll = 0;
+const vTile = (n, l) => `<div class="stat"><b>${num(n)}</b><small>${esc(l)}</small></div>`;
+async function loadVis() {
+  const d = await api("/api/content/seo/visibility").catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { $("vMsg").textContent = d.error; return; }
+  $("vTiles").innerHTML = vTile(d.entities, "كيانًا معتمدًا") + vTile(d.entity_routes, "صفحة كيانات (عربي + إنجليزي)") + vTile(d.extra_routes, "قوائم ومواسم معتمدة")
+    + vTile(d.sitemap_urls, "رابطًا في الخريطة") + vTile(d.indexnow.accepted, "قبلها IndexNow") + vTile(d.indexnow.submitted, "أُرسلت إلى IndexNow");
+  const g = d.gsc || {}, sm = g.sample;
+  let h = "";
+  if (!g.connected) h = `<p class="sub">Search Console غير مربوط: اربطه من <a href="/stats">صفحة الإحصائيات</a> (حساب الخدمة والموقع) ليعمل فحص العيّنة.</p>`;
+  else if (!sm) h = `<p class="sub">لم تُفحص عيّنة بعد.</p>`;
+  else {
+    const c = sm.counts || {}, done = sm.done || 0, idx = c.indexed || 0;
+    const pct = done ? Math.round(idx / done * 100) : 0;
+    h = `<p><b>${num(idx)}</b> من <b>${num(done)}</b> صفحةً فُحصت مفهرسةٌ عند قوقل ≈ <b>${pct}%</b>` + (sm.sitemap_total ? ` ← تقديرًا ${num(Math.round(sm.sitemap_total * idx / Math.max(1, done)))} من ${num(sm.sitemap_total)} صفحةً (هامش خطأ كبير مع عيّنةٍ صغيرة)` : "") + `.</p>`
+      + `<ul class="alist">` + Object.keys(GB).filter(k => c[k]).map(k => `<li><span>${esc(GB[k])}</span><b>${num(c[k])}</b></li>`).join("") + `</ul>`
+      + ((sm.samples || []).filter(x => x.bucket !== "indexed").slice(0, 6).map(x => `<p class="meta"><a href="${esc(x.path)}" target="_blank" rel="noopener">${esc(x.path)}</a> — ${esc(x.state || "")}</p>`).join(""))
+      + (sm.error ? `<p class="meta" style="color:var(--bad)">${esc(sm.error)}</p>` : "")
+      + `<p class="meta">${sm.at ? "آخر فحص: " + new Date(sm.at * 1000).toLocaleString("ar") : ""}</p>`;
+    if (g.running) h = `<p>يفحص الآن… ${num(done)} / ${num(sm.total)}</p>` + h;
+  }
+  $("vGsc").innerHTML = h;
+  $("vSample").disabled = !!g.running || !g.connected;
+  clearTimeout(vPoll);
+  if (g.running) vPoll = setTimeout(loadVis, 3000);
+}
+$("blkVis").addEventListener("toggle", e => { if (e.target.open) loadVis(); });
+$("vRefresh").onclick = loadVis;
+$("vSample").onclick = async () => {
+  $("vMsg").textContent = "";
+  const d = await api("/api/content/admin/seo-visibility", {n: 40}).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { $("vMsg").textContent = d.error; return; }
+  loadVis();
+};
+// ===== زوّار المحتوى =====
+async function loadVisitors() {
+  const d = await api("/api/content/seo/visitors?days=" + $("wDays").value).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { $("wMsg").textContent = d.error; return; }
+  const t = d.totals, delta = t.prev ? Math.round((t.views - t.prev) / t.prev * 100) : null;
+  $("wTiles").innerHTML = vTile(t.views, "مشاهدة صفحة محتوى" + (delta == null ? "" : " (" + (delta >= 0 ? "+" : "") + delta + "% عن المدة قبلها)")) + vTile(Math.round(t.share * 100), "% من كل مشاهدات الموقع")
+    + vTile(t.entries, "دخلوا من الخارج (بحث/رابط/مشاركة)") + vTile(t.ar, "مشاهدات عربية") + vTile(t.en, "مشاهدات إنجليزية");
+  const mx = Math.max(1, ...d.sections.map(x => x.views));
+  $("wSec").innerHTML = d.sections.map(x => `<div style="display:flex;gap:8px;align-items:center;margin:4px 0"><span style="min-width:9em">${esc(x.name)}</span><span style="flex:1;background:var(--line);border-radius:99px;height:8px"><i style="display:block;height:8px;border-radius:99px;background:var(--acc);width:${Math.max(2, x.views / mx * 100)}%"></i></span><b>${num(x.views)}</b></div>`).join("") || "<p class='sub'>لا مشاهدات بعد.</p>";
+  $("wPages").innerHTML = d.pages.slice(0, 25).map(p => `<li><span><a href="${esc(p.path)}" target="_blank" rel="noopener"><b>${esc(p.title || p.path)}</b></a> <small>${esc(p.section)} · ${p.lang === "en" ? "EN" : "عربي"} · قراءة ${p.avg || 0}ث · دخول من الخارج ${num(p.entries)}</small></span><b>${num(p.views)}</b></li>`).join("") || "<li>لا بيانات</li>";
+  const tr = d.tour;
+  $("wTour").innerHTML = vTile(tr.fab, "ضغطوا الزرّ العائم") + vTile(tr.started, "بدؤوا الجولة") + vTile(tr.results, "وصلوا إلى المقترحات") + vTile(tr.shown, "عُرضت لهم مقترحات") + vTile(tr.clicked, "فتحوا عملًا مقترحًا");
+  const ev = d.events, lst = (name, title, withName) => ev[name] ? `<h5>${esc(title)} (${num(ev[name].count)})</h5><ul class="alist">` + ev[name].top.slice(0, 8).map(r => `<li><span>${esc(withName && r[2] ? r[2] : r[0])}</span><b>${num(r[1])}</b></li>`).join("") + "</ul>" : "";
+  $("wEvents").innerHTML = lst("search", "ما بحثوا عنه") + lst("like", "الأكثر إعجابًا", true) + lst("reco_click", "الأكثر فتحًا من المقترحات", true) + lst("tour_age", "اختيارات العمر في الجولة") + lst("guide_report", "بلاغات دليل الأهل", true) || "<p class='sub'>لا أحداث بعد.</p>";
+  $("wMsg").textContent = "";
+}
+$("blkVisitors").addEventListener("toggle", e => { if (e.target.open) loadVisitors(); });
+$("wDays").onchange = loadVisitors;
 // ===== دليل الأهل =====
 const GCATS = [["violence", "عنف ودم"], ["sex", "مشاهد جنسية وعري"], ["profanity", "ألفاظ نابية"], ["drugs", "كحول ومخدرات"], ["frightening", "مشاهد مخيفة"]];
 const GSEV = ["لا يوجد", "خفيف", "متوسط", "شديد"];

@@ -351,6 +351,18 @@ def sitemaps(tok, site):
     return out
 
 
+INSPECT_API = "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect"
+
+
+def inspect_url(tok, site, url):
+    """حال فهرسة رابطٍ عند جوجل (URL Inspection): ‏verdict (PASS/NEUTRAL/FAIL) وcoverageState نصًّا («Submitted and indexed» · «Crawled - currently not indexed» …)
+    وآخر زحف. حصتها 2000 رابطًا يوميًا للخاصية — فتُستعمل عيّنةً لا فحصًا شاملًا."""
+    r = _call(INSPECT_API, {"inspectionUrl": url, "siteUrl": site, "languageCode": "en-US"}, tok, timeout=40)
+    x = (r.get("inspectionResult") or {}).get("indexStatusResult") or {}
+    return {"verdict": x.get("verdict", ""), "state": x.get("coverageState", ""), "crawled": x.get("lastCrawlTime", ""), "robots": x.get("robotsTxtState", ""),
+            "indexing": x.get("indexingState", "")}
+
+
 def submit_sitemap(tok, site, url):
     _call(_site_url(site) + "/sitemaps/" + quote(url, safe=""), token=tok, method="PUT")
 
