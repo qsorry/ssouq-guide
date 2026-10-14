@@ -1937,11 +1937,51 @@ def unit_release():
         cb = seo_db.connect(d); relb = seo_db.state(cb, "release") or {}; cb.close()
         check("قاعدةٌ مقفلة بكاتبٍ آخر: الدفعة BUSY (لا FAIL)، بلا عائقٍ ولا سجلّ دفعة فاشلة",
               rb.get("status") == "BUSY" and rb["ok"] is False and not relb.get("blocked") and not [b for b in relb.get("batches") or [] if b.get("status") == "FAIL"], str(rb)[:200])
+        # انقطاع TMDB كله (503): عابرٌ لا عيبٌ في المحتوى ← الدفعة BUSY، تراجعٌ كامل، بلا عائقٍ ولا سجلّ دفعةٍ فاشلة
         seo_sources.TMDB_API = tdown + "/3"
-        r8 = seo_release.phase8_batch(d, 10)
+        seo_release.TMDB_RETRY_PAUSE = 0
+        r8t = seo_release.phase8_batch(d, 10)
+        con = seo_db.connect(d)
+        snap_t = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "api_cache")] + [json.dumps(seo_db.state(con, "index_approved"), sort_keys=True)]
+        relt = seo_db.state(con, "release") or {}
+        con.close()
+        check("TMDB معطّل (503 عابر): الدفعة BUSY لا FAIL، وتراجعٌ كامل، وبلا عائقٍ ولا دفعةٍ فاشلة مسجَّلة (تُعاد لاحقًا)",
+              r8t["ok"] is False and r8t["status"] == "BUSY" and "TMDB" in r8t["reason"] and snap_t == snap_before and not relt.get("blocked") and not [b for b in relt.get("batches") or [] if b.get("status") == "FAIL"], str(r8t)[:300])
+        # إعادة المحاولة بالدفعة: فشلان عابران ثم نجاح ← يُحتسب نجاحًا؛ وفشلٌ دائم ← يُرفع؛ و Skip يمرّ
+        calls = {"n": 0}
+        orig_one = seo_sources._one
+
+        def flaky(con_, dd, cid, src, st_, now_):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise ConnectionError("Remote end closed connection without response")
+            return "done", "ok"
+        seo_sources._one = flaky
+        try:
+            res_ok = seo_release._tmdb_one(None, d, 1, {}, 0)
+            calls["n"] = -10
+            try:
+                seo_release._tmdb_one(None, d, 1, {}, 0)
+                raised = False
+            except ConnectionError:
+                raised = True
+        finally:
+            seo_sources._one = orig_one
+        check("انقطاعٌ عابر في كيانٍ واحد: يُعاد حتى 3 مرات (نجح في الثالثة)، وإن دام يُرفع", res_ok == ("done", "ok") and raised is True)
+        # عيبٌ حقيقي (ليس شبكة): الدفعة FAIL وتراجعٌ كامل والإصدار موقوف عند الدفعة 1
+        seo_sources.TMDB_API = tbase + "/3"
+        orig_t1 = seo_release._tmdb_one
+
+        def boom(*a_, **k_):
+            raise ValueError("boom")
+        seo_release._tmdb_one = boom
+        try:
+            r8 = seo_release.phase8_batch(d, 10)
+        finally:
+            seo_release._tmdb_one = orig_t1
         con = seo_db.connect(d)
         snap_after = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "api_cache")] + [json.dumps(seo_db.state(con, "index_approved"), sort_keys=True)]
-        check("TMDB معطّل: الدفعة FAIL (failed>0) وتراجعٌ كامل (أعداد الجداول وقائمة الاعتماد كما كانت) والإصدار موقوف عند الدفعة 1",
+        check("فشلٌ غير عابر (ValueError): الدفعة FAIL (failed>0) وتراجعٌ كامل (أعداد الجداول وقائمة الاعتماد كما كانت) والإصدار موقوف عند الدفعة 1",
               r8["ok"] is False and r8["rolled_back"] and r8["tmdb"]["failed"] > 0 and snap_after == snap_before and (seo_db.state(con, "release") or {}).get("blocked", {}).get("batch") == 1, str(r8)[:300])
         con.close()
         seo_sources.TMDB_API = tbase + "/3"
