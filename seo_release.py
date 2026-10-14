@@ -587,11 +587,43 @@ def phase7(data_dir, snapshot=None, http=False, now=None):
 
 
 # ================= المرحلة 8 — التوسيع بدفعات =================
+SEEN_KEY = "expand_seen"        # build_state: {معرّف الكيان: وقت آخر تجربةٍ له في دفعة} — ما جُرّب ولم يُعتمد لا يُعاد فورًا (وإلا دارت الدفعات على الأشهر نفسه)
+
+
+def _seen_active(con, st, now=None):
+    """معرّفات ما جُرّب حديثًا (ضمن expand_retry_days) — وتُقلَّم القديمة."""
+    now = int(now or time.time())
+    keep = now - int(st.get("expand_retry_days", 14)) * 86400
+    return {int(k) for k, v in (seo_db.state(con, SEEN_KEY) or {}).items() if int(v or 0) >= keep}
+
+
+def _seen_mark(con, ids, st, now=None):
+    now = int(now or time.time())
+    keep = now - int(st.get("expand_retry_days", 14)) * 86400 * 2
+    cur = {k: v for k, v in (seo_db.state(con, SEEN_KEY) or {}).items() if int(v or 0) >= keep}
+    for i in ids:
+        cur[str(i)] = now
+    with con:
+        seo_db.set_state(con, SEEN_KEY, cur)
+
+
+def _candidate_clause(con, st, approved):
+    """شرط المرشّحين: حيٌّ متاح، غير معتمد، غير مجمّد، وغير مجرَّبٍ حديثًا (جدولٌ مؤقت: بلا حدّ متغيّرات SQLite)."""
+    skip = {cid for cid, _ in approved} | seo_sources.frozen_ids(st) | _seen_active(con, st)
+    con.execute("CREATE TEMP TABLE IF NOT EXISTS _skip(id INTEGER PRIMARY KEY)")
+    con.execute("DELETE FROM _skip")
+    con.executemany("INSERT OR IGNORE INTO _skip(id) VALUES (?)", [(i,) for i in skip])
+    return "merged_into IS NULL AND available=1 AND id NOT IN (SELECT id FROM _skip)"
+
+
 def candidates(con, st, approved, n):
-    """الدفعة التالية: كيانات حيّة متاحة غير معتمدة وغير مجمّدة، الأشهر أولًا ثم بالمعرّف (حتمي)."""
-    ids = sorted({cid for cid, _ in approved} | seo_sources.frozen_ids(st))
-    sql = f"SELECT * FROM content WHERE merged_into IS NULL AND available=1 AND id NOT IN ({','.join('?' * len(ids)) or 'NULL'}) ORDER BY COALESCE(popularity,0) DESC, id LIMIT ?"
-    return [r for r in con.execute(sql, (*ids, int(n)))]
+    """الدفعة التالية: كيانات حيّة متاحة غير معتمدة وغير مجمّدة **وغير مجرَّبة حديثًا**، الأشهر أولًا ثم بالمعرّف (حتمي) — فتتقدّم الدفعات على الجديد بدل أن تعيد ما لا يستحق."""
+    where = _candidate_clause(con, st, approved)
+    return [r for r in con.execute(f"SELECT * FROM content WHERE {where} ORDER BY COALESCE(popularity,0) DESC, id LIMIT ?", (int(n),))]
+
+
+def candidates_count(con, st, approved):
+    return con.execute(f"SELECT COUNT(*) FROM content WHERE {_candidate_clause(con, st, approved)}").fetchone()[0]
 
 
 def phase8_batch(data_dir, n=100, now=None, submit=None):
@@ -699,6 +731,7 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
                 rec["rolled_back"] = True
                 return _batch_fail(rel, k, "batch gate failed (identity/reconciliation/redirect/canonical/hreflang) — rolled back, nothing approved", rec, con=con, now=now, data_dir=data_dir)
             con.commit()                                                     # الإثراء اجتاز بواباته
+            _seen_mark(con, cand_ids, st, now)                               # جُرّبت: لا تُعاد قبل expand_retry_days (المعتمد منها يخرج بالاعتماد)
             # checkpoint — اعتماد المستحقّ الجديد ثم بوابة الخريطة (7/8) عليه؛ فشلها = تراجعٌ عن الاعتماد وحده
             ap = seo_db.state(con, APPROVED_KEY) or {"routes": []}
             prev = json.loads(json.dumps(ap))
@@ -790,11 +823,14 @@ def _job_save(data_dir, job):
     return job
 
 
-def job_start(data_dir, n=100, max_batches=5, auto_resume=True):
+def job_start(data_dir, n=100, max_batches=5, auto_resume=True, autopilot=False, every=5, pipeline=False, notify=False, trigger="manual"):
     """يُنشئ مهمة توسيعٍ محفوظة في القاعدة: n كيانًا للدفعة، وعدد دفعاتٍ أقصى، وإن كان `auto_resume` فالحارس يستأنفها وحده بعد أي إعادة تشغيل (نشرٌ أو سقوط)."""
     now = int(time.time())
     return _job_save(data_dir, {"active": True, "n": max(1, min(1000, int(n or 100))), "remaining": max(1, min(500, int(max_batches or 5))), "done": 0,
-                                "auto_resume": bool(auto_resume), "started_at": now, "last": None, "stopped": None})
+                                "auto_resume": bool(auto_resume), "started_at": now, "last": None, "stopped": None,
+                                "autopilot": bool(autopilot or pipeline), "every": max(1, min(50, int(every or 5))), "cycles": 0, "cycle_log": [],
+                                "pipeline": bool(pipeline), "launched": False, "final_file": None, "notify": bool(notify), "trigger": trigger,
+                                "approved_before": _approved_counts(data_dir)})
 
 
 def job_stop(data_dir, reason="stopped by admin"):
@@ -809,11 +845,25 @@ def run_job(data_dir, now=None, submit=None, progress=None):
     """ينفّذ دفعات المهمة المحفوظة واحدةً بعد أخرى، ويُحدّث الحالة بعد كل دفعة (فتبقى بعد إعادة التشغيل). يتوقف عند أول فشل أو نفاد المرشّحين أو
     انتهاء العدد أو أمر الإيقاف (يُقرأ قبل كل دفعة)."""
     out = []
+    job = job_get(data_dir)
+    if job.get("active") and job.get("pipeline") and not job.get("launched"):
+        ok_, why_ = _pipeline_launch(data_dir, progress)
+        job = job_get(data_dir)
+        if not ok_:
+            job.update({"active": False, "stopped": f"pipeline: {why_}"})
+            _job_save(data_dir, job)
+            return {"ok": False, "batches": [], "job": job}
+        job["launched"] = True
+        _job_save(data_dir, job)
     while True:
         job = job_get(data_dir)
         if not job.get("active"):
             break
-        if int(job.get("remaining") or 0) <= 0:
+        if job.get("autopilot") and int(job.get("done") or 0) >= 2000:          # سقفٌ أمان
+            job.update({"active": False, "stopped": "safety cap: 2000 batches"})
+            _job_save(data_dir, job)
+            break
+        if not job.get("autopilot") and int(job.get("remaining") or 0) <= 0:
             job.update({"active": False, "stopped": "completed"})
             _job_save(data_dir, job)
             break
@@ -830,18 +880,77 @@ def run_job(data_dir, now=None, submit=None, progress=None):
             job.update({"active": False, "stopped": f"batch failed: {r.get('reason') or r.get('status')}"})
         elif r.get("status") == "EMPTY":
             job.update({"active": False, "stopped": "no candidates left"})
+            if job.get("autopilot"):                      # ختامٌ آلي: فحصٌ ثم اعتماد القوائم والمواسم لما اعتُمد أخيرًا
+                ok_, why_ = _autopilot_cycle(data_dir, job, progress)
+                if not ok_:
+                    job.update({"stopped": f"autopilot: {why_}"})
+                elif job.get("pipeline"):                   # الختام: الحزمة النهائية للمراجعة
+                    try:
+                        fb = final_bundle(data_dir)
+                        job.update({"final_file": fb.get("file"), "stopped": "completed: no candidates left"})
+                    except Exception as ex:  # noqa: BLE001
+                        job.update({"stopped": f"completed: no candidates left (final bundle failed: {type(ex).__name__})"})
         else:
             job["done"] = int(job.get("done") or 0) + 1
             job["remaining"] = int(job.get("remaining") or 0) - 1
+            if job.get("autopilot") and job["done"] % int(job.get("every") or 5) == 0:
+                _job_save(data_dir, job)
+                ok_, why_ = _autopilot_cycle(data_dir, job, progress)
+                if not ok_:
+                    job.update({"active": False, "stopped": f"autopilot: {why_}"})
         _job_save(data_dir, job)
     return {"ok": all(b["ok"] for b in out), "batches": out, "job": job_get(data_dir)}
+
+
+def _pipeline_launch(data_dir, progress=None):
+    """الإطلاق الأول بزرٍّ واحد: المراحل 4 ← 5 ← 6 ← 7 على اللقطة الموجودة في مجلد المراجعة، كلٌّ منها **إن لم تكن PASS** (يُستأنف بعد انقطاع) — والمرحلة 7 دائمًا
+    (تُرفع بها وسوم الإيقاف). أي فشلٍ = توقّف بسببه ← (نجح؟، السبب)."""
+    meta = bundle_meta(data_dir)
+    snap = (meta or {}).get("bundle_id")
+    urls = snapshot_urls(data_dir)
+    if not snap or urls is None:
+        return False, "لا لقطة في مجلد المراجعة — أنتج «ملفات المراجعة» أولًا"
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return False, "no database"
+    try:
+        ph = _state(con)["phases"]
+    finally:
+        con.close()
+    steps = ((4, lambda: phase4(data_dir, snap, len(urls))), (5, lambda: phase5(data_dir)), (6, lambda: phase6(data_dir)), (7, lambda: phase7(data_dir, snap)))
+    for n, fn in steps:
+        if n < 7 and (ph.get(str(n)) or {}).get("status") == "PASS":
+            continue
+        if progress:
+            progress(f"الإطلاق: المرحلة {n}")
+        r = fn()
+        if not r.get("ok"):
+            return False, f"phase{n} failed — {str(r.get('reason') or r.get('error') or '')[:150]}"
+    return True, ""
+
+
+def _autopilot_cycle(data_dir, job, progress=None):
+    """دورة الطيار الآلي: المرحلة 7 (فحصٌ بعد النشر) ← المرحلة 10 (القوائم والمواسم والهبّات لما اعتُمد حتى الآن). أي فشلٍ = توقّف بسببه ← (نجح؟، السبب)."""
+    if progress:
+        progress("autopilot: فحص بعد النشر")
+    r7 = phase7(data_dir, None)
+    if not r7.get("ok"):
+        return False, f"phase7 failed — {str(r7.get('reason') or '')[:150]}"
+    if progress:
+        progress("autopilot: اعتماد القوائم والمواسم")
+    r10 = extras(data_dir, None)
+    if not r10.get("ok"):
+        return False, f"phase10 failed — {str(r10.get('reason') or '')[:150]}"
+    job["cycles"] = int(job.get("cycles") or 0) + 1
+    job["cycle_log"] = (job.get("cycle_log") or [])[-9:] + [{"at": int(time.time()), "done": job.get("done"), "routes": (r10.get("precheck") or {}).get("approved_routes")}]
+    return True, ""
 
 
 def job_watchdog_tick(data_dir):
     """مهمةٌ نشطةٌ بلا خيطٍ حيّ (أُعيد تشغيل الخادم): تُستأنف وحدها إن كان `auto_resume`، وإلا تُوقف بسبب الانقطاع."""
     job = job_get(data_dir)
     if not job.get("active"):
-        return None
+        return _auto_publish_tick(data_dir)
     k = os.path.abspath(data_dir)
     t = _threads.get(k)
     if t and t.is_alive():
@@ -850,6 +959,102 @@ def job_watchdog_tick(data_dir):
         job_stop(data_dir, "interrupted (server restarted; auto-resume off)")
         return "stopped"
     return "resumed" if start(data_dir, "expand_job") else None
+
+
+KSA = 3 * 3600                    # توقيت السعودية UTC+3 (بلا توقيت صيفي)
+NOTIFY = {"fn": None}             # دالة إرسال بريد التنبيه (تضبطها xm_lines): fn(subject, body) ← {ok، error}
+
+
+def set_notifier(fn):
+    NOTIFY["fn"] = fn
+
+
+def _approved_counts(data_dir):
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return {"entities": 0, "routes": 0, "extras": 0}
+    try:
+        ap = seo_pages.approved_routes(con)
+        return {"entities": len({c for c, _ in ap}), "routes": len(ap), "extras": len((seo_db.state(con, seo_pages.EXTRA_KEY) or {}).get("routes") or [])}
+    finally:
+        con.close()
+
+
+def notify_job(data_dir, job, res=None, error=None):
+    """بريدٌ بنتيجة مهمة النشر الآلي (اكتملت أو توقّفت بفشل) إن طُلب (`notify`): ما اعتُمد قبل/بعد، الدفعات، وسبب التوقّف مع اسم تقريره. لا يُسقط شيئًا إن تعذّر البريد."""
+    fn = NOTIFY["fn"]
+    if not fn or not job or not job.get("notify"):
+        return None
+    try:
+        stopped = str(job.get("stopped") or "")
+        failed = bool(error) or not stopped.startswith(("completed", "no candidates", "safety cap")) and stopped not in ("stopped by admin",)
+        before, after = job.get("approved_before") or {}, _approved_counts(data_dir)
+        con = seo_db.connect(data_dir, create=False)
+        try:
+            fail = _failure(_state(con), job) if con is not None and failed else None
+        finally:
+            if con is not None:
+                con.close()
+        when = time.strftime("%Y-%m-%d %H:%M", time.gmtime(time.time() + KSA))
+        d_ent = after["entities"] - int(before.get("entities") or 0)
+        if failed:
+            subject = f"✖ SEO — توقّف النشر الآلي{(' عند ' + fail['where']) if fail and fail.get('where') else ''}"
+        else:
+            subject = f"✔ SEO — اكتمل النشر الآلي: +{d_ent} كيانًا"
+        lines = [f"الوقت (السعودية): {when}", f"التشغيل: {'مجدول يوميًا' if job.get('trigger') == 'scheduled' else 'يدوي (الزرّ الواحد)'}",
+                 f"الدفعات المنفّذة: {job.get('done', 0)} · دورات الفحص والاعتماد: {job.get('cycles', 0)}",
+                 f"المعتمد (كيانات): {before.get('entities', 0)} ← {after['entities']} ({d_ent:+d})",
+                 f"مسارات الكيانات: {before.get('routes', 0)} ← {after['routes']} · قوائم ومواسم: {before.get('extras', 0)} ← {after['extras']}"]
+        if failed:
+            lines += ["", f"السبب: {(fail or {}).get('reason') or stopped or error}"]
+            if fail and fail.get("file"):
+                lines.append(f"التقرير: {fail['file']} (admin ← المحتوى ← ملفات المراجعة)")
+        else:
+            lines += ["", f"النتيجة: {stopped or 'اكتمل'}"]
+        return fn(subject, "\n".join(lines))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _ksa_day_hour(now):
+    t = time.gmtime(int(now) + KSA)
+    return time.strftime("%Y-%m-%d", t), t.tm_hour
+
+
+AUTO_PUBLISH_EVERY = 1800        # (قديم) لم يعد يُستعمل: التشغيل يوميًا في الساعة المضبوطة
+
+
+def _auto_publish_tick(data_dir, now=None):
+    """نشرٌ آلي للمحتوى الجديد: إن فُعِّل `auto_publish` ولا مهمةٌ ولا عمليةٌ جارية وظهر مرشّحٌ جديد (كيانٌ لم يُجرَّب) ← تبدأ مهمة توسيعٍ آلية (دفعات ← فحص ← قوائم) حتى النفاد.
+    بفاصلٍ لا يقلّ عن نصف ساعة، وتفشل بسببها ولا تتكرّر في حلقةٍ ضيقة."""
+    now = int(now or time.time())
+    k = os.path.abspath(data_dir)
+    t = _threads.get(k)
+    if t and t.is_alive():
+        return None
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return None
+    try:
+        st = seo_db.settings(con)
+        if not st.get("auto_publish") or not st.get("index_live"):
+            return None
+        today, hour = _ksa_day_hour(now)
+        if hour < int(st.get("auto_publish_hour", 1)) or (seo_db.state(con, "auto_publish_state") or {}).get("day") == today:
+            return None                                              # مرةً في اليوم، من الساعة المضبوطة (الواحدة صباحًا بتوقيت السعودية)
+        rel = _state(con)
+        if rel.get("blocked") or any((rel["phases"].get(str(n)) or {}).get("status") != "PASS" for n in (4, 5, 6, 7)):
+            return None
+        approved = seo_pages.approved_routes(con)
+        has_new = bool(candidates(con, st, approved, 1))
+        with con:
+            seo_db.set_state(con, "auto_publish_state", {"day": today, "at": now, "ran": has_new})    # يومٌ مُنجَز ولو لم يكن جديد (بلا بريدٍ يوميٍّ فارغ)
+        if not has_new:
+            return None
+    finally:
+        con.close()
+    job_start(data_dir, 300, 500, True, autopilot=True, every=5, notify=True, trigger="scheduled")
+    return "auto_started" if start(data_dir, "expand_job") else None
 
 
 def start_job_watchdog(data_dir):
@@ -881,6 +1086,23 @@ def go(data_dir, snapshot, expected_routes=None, http=False, now=None, submit=No
 
 
 # ================= الحال والخيط الخلفي =================
+def _failure(rel, job):
+    """سبب توقّف الزرّ الواحد (إن توقّف بفشل) ← {stopped، where، reason، file، at}: آخر مرحلةٍ أو دفعةٍ فشلت وسببها واسم تقريرها — ليُفحص ما حدث."""
+    stopped = (job or {}).get("stopped") or ""
+    if not job or job.get("active") or not stopped.startswith(("pipeline:", "autopilot:", "batch failed")):
+        return None
+    cand = []
+    for n, p in (rel.get("phases") or {}).items():
+        if p.get("status") == "FAIL":
+            cand.append((p.get("at") or 0, f"المرحلة {n}", p, f"release-phase{n}.json"))
+    for b in rel.get("batches") or []:
+        if b.get("status") == "FAIL":
+            cand.append((b.get("at") or 0, f"دفعة التوسيع {b.get('batch')}", b, f"release-batch-{b.get('batch')}.json"))
+    latest = max(cand, key=lambda t: t[0]) if cand else None
+    return {"stopped": stopped, "where": latest[1] if latest else None, "reason": (latest[2].get("reason") if latest else None) or stopped,
+            "file": latest[3] if latest else None, "at": (latest[2].get("at") if latest else None) or job.get("updated_at")}
+
+
 def status(data_dir):
     con = seo_db.connect(data_dir, create=False)
     k = os.path.abspath(data_dir)
@@ -893,7 +1115,8 @@ def status(data_dir):
         return {"running": bool(_threads.get(k) and _threads[k].is_alive()), "progress": _progress.get(k), "release": {kk: v for kk, v in rel.items() if kk != "batches"},
                 "batches": [{kk: v for kk, v in b.items() if kk in ("batch", "status", "n", "reason", "at", "approved_routes_total", "indexnow", "eligibility")} for b in rel.get("batches") or []],
                 "index_live": bool(st.get("index_live")), "sitemap_live": bool(st.get("sitemap_live")), "preview": bool(st.get("preview")),
-                "expand_job": seo_db.state(con, JOB_KEY) or None, "index_extra_live": bool(st.get("index_extra_live")), "extras_approved_routes": len((seo_db.state(con, seo_pages.EXTRA_KEY) or {}).get("routes") or []),
+                "expand_candidates": candidates_count(con, st, approved), "auto_publish": bool(st.get("auto_publish")), "auto_publish_hour": int(st.get("auto_publish_hour", 1)), "auto_publish_state": seo_db.state(con, "auto_publish_state"), "notify_ready": bool(NOTIFY["fn"]), "expand_job": seo_db.state(con, JOB_KEY) or None, "failure": _failure(rel, seo_db.state(con, JOB_KEY) or {}),
+                "live_entities_note": None, "index_extra_live": bool(st.get("index_extra_live")), "extras_approved_routes": len((seo_db.state(con, seo_pages.EXTRA_KEY) or {}).get("routes") or []),
                 "approved_routes": len(approved), "approved_entities": len({c for c, _ in approved}),
                 "live_entities": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=1").fetchone()[0], "approved_snapshot": (seo_db.state(con, APPROVED_KEY) or {}).get("snapshot"),
                 "bundle": bundle_meta(data_dir), "snapshot_routes": len(snapshot_urls(data_dir) or []), **seo_sources.code_version()}
@@ -925,6 +1148,7 @@ def start(data_dir, action, **kw):
                 res = expand(data_dir, int(kw.get("n") or 100), kw.get("max"), progress=lambda i: prog(f"batch {i}"))
             elif action == "expand_job":
                 res = run_job(data_dir, progress=lambda i: prog(f"batch {i}"))
+                notify_job(data_dir, res.get("job") or job_get(data_dir), res)
             elif action == "extras":
                 res = extras(data_dir, kw.get("expected"))
             elif action == "final":
@@ -934,6 +1158,12 @@ def start(data_dir, action, **kw):
             _progress[k] = {**{a: b for a, b in _progress[k].items() if a not in ("done", "total")}, "stage": "done", "ok": bool(res.get("ok")), "result": {kk: v for kk, v in res.items() if kk in ("ok", "phase", "status", "reason", "stopped_at", "steps", "batches", "file")}}
         except Exception as e:  # noqa: BLE001
             import traceback
+            if action == "expand_job":
+                jb_ = job_get(data_dir)
+                if jb_.get("active"):
+                    jb_.update({"active": False, "stopped": f"error: {type(e).__name__}: {str(e)[:150]}"})
+                    _job_save(data_dir, jb_)
+                notify_job(data_dir, jb_, None, error=f"{type(e).__name__}: {str(e)[:200]}")
             _progress[k] = {**{a: b for a, b in _progress[k].items() if a not in ("done", "total")}, "stage": "error", "ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}", "traceback": traceback.format_exc()[-1500:]}
     t = _threads[k] = threading.Thread(target=run_, daemon=True)
     t.start()
@@ -1127,8 +1357,8 @@ def extras(data_dir, expected=None, now=None, submit=None):
             pre = {"candidates": len(routes) + len(ineligible), "approved_routes": len(routes), "kinds": kinds, "not_rendered": not_rendered}
             if expected is not None and len(routes) != int(expected):
                 return _xfail(rel, f"extras carry {len(routes)} routes, expected {expected}", {"precheck": pre}, con=con, now=now, data_dir=data_dir)
-            if not routes:
-                return _xfail(rel, "no eligible extra pages", {"precheck": pre}, con=con, now=now, data_dir=data_dir)
+            if not routes:      # لا قوائم/مواسم/حلقات مؤهلة بعد: ليس فشلًا (لا شيء يُعتمد) — فلا يُسجَّل ولا يوقف الطيار الآلي
+                return {"ok": True, "phase": 10, "skipped": True, "reason": "no eligible extra pages", "precheck": pre}
 
             def restore():
                 with con:
