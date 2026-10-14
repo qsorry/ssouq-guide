@@ -116,6 +116,9 @@ def _crypt_store(st, fn):
 
 # ================= الإعدادات =================
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+BOOT_ID = secrets.token_hex(4)        # يتغيّر مع كل تشغيلٍ للعملية (نشرٌ أو إعادة تشغيل): لوحة الإدارة تنبّه «تم النشر» حين يتبدّل
+BOOT_AT = int(time.time())
+
 DATA_DIR  = os.environ.get("XM_DATA", os.path.join(BASE_DIR, "data"))
 ACC_FILE  = os.path.join(DATA_DIR, "accounts.json")
 TXT_FILE  = os.path.join(DATA_DIR, "lines.txt")
@@ -6928,6 +6931,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": True, **seo_scan.state(DATA_DIR)})
                 if path == "/api/content/seo/bundle":     # ملفات المراجعة: حال إنتاجها وما كُتب منها
                     return self._send(200, {"ok": True, **seo_sources.bundle_state(DATA_DIR)})
+                if path == "/api/content/seo/version":    # معرّف تشغيل الخادم: يتغيّر مع كل نشر/إعادة تشغيل (تنبيه «تم النشر» في الإدارة)
+                    return self._send(200, {"ok": True, "boot": BOOT_ID, "since": BOOT_AT}, extra={"Cache-Control": "no-store"})
                 if path == "/api/content/seo/visitors":   # زوّار موقع المحتوى: الأقسام واللغات وأكثر الأعمال وحلقة «محتار ايش تشاهد» والإعجاب والبلاغ
                     return self._send(200, seo_admin.label_visitors(DATA_DIR, analytics.content_report(DATA_DIR, self._days(30))))
                 if path == "/api/content/seo/visibility":  # عدّاد الصفحات: المعتمد للفهرسة، وما في الخريطة وIndexNow، وعيّنة فهرسة قوقل
