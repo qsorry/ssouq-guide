@@ -292,6 +292,11 @@ def test_unlisted():
         panels.update_dupe(dd, "2", {"renamed": {"from": "a", "to": "b", "line": "l"}, "msgs": msgs})
         t3 = _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [], dd)
         check("search: renamed but the old owner's message unsent → only send_old left", [t["need"] for t in t3] == [["send_old"]] and t3[0]["msgs"][1]["idx"] == 1, str(t3))
+        ch = _xl.renew_dup_chain(panels.duplicates(dcfg, dd)["rows"], sr, panels.dupe_messages(dd))
+        check("dup chain: first keeps the user, later shows replacement, rename and message states",
+              [c["role"] for c in ch] == ["first", "later"] and ch[0]["order"] == "1" and ch[1]["replacement"] == "new1" and ch[1]["renamed"] == "b"
+              and ch[1]["msg_new"] == "sent" and ch[1]["msg_old"] == "unsent", str(ch))
+        check("dup chain: a non-duplicate user has no chain", _xl.renew_dup_chain([], sr) == [])
         msgs[1]["sent"] = {"ok": True}
         panels.update_dupe(dd, "2", {"msgs": msgs})
         check("search: fully handled is no longer pending", _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [], dd) == [])

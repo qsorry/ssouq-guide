@@ -4770,6 +4770,27 @@ def renew_dup_item(d, accounts, msgs=()):
         "msgs": [{k: m.get(k) for k in ("idx", "kind", "name", "phone", "text", "sent")} for m in ms]}
 
 
+def renew_dup_chain(dups, row, msgs=()):
+    """من لديه هذا اليوزر ومآل كلٍّ منهم: الأول (يحتفظ به) ثم كل لاحقٍ بحال بديله وتغيير القديم ورسائله —
+    ليُقرأ المكرر وما تمّ فيه من نتيجة البحث وحدها. [] إن لم يكن مكررًا."""
+    user, pid = str(row.get("username") or "").lower(), row.get("panel_id") or ""
+    later = [d for d in dups if d["username"].lower() == user and (d["panel_id"] or "") == pid]
+    if not later:
+        return []
+    sent = lambda ms, kind: next(((m.get("sent") or {}).get("ok") and "sent" or ("unsent" if m.get("sent") is None else "failed")
+                                  for m in ms if m.get("kind") == kind), "")
+    f = later[0]
+    chain = [{"role": "first", "order": f["first_order"], "date": f["first_date"], "customer": f["first_customer"],
+              "phone": f["first_phone"]}]
+    for d in sorted(later, key=lambda d: (d["date"], d["order"])):
+        rec, ms = d["done"] or {}, [m for m in msgs if m["order"] == d["order"]]
+        chain.append({"role": "later", "order": d["order"], "date": d["date"], "customer": d["customer"], "phone": d["phone"],
+                      "expired": d["expired"], "replacement": rec.get("new", ""), "months": rec.get("months"),
+                      "renamed": (rec.get("renamed") or {}).get("to", ""), "old_missing": bool(rec.get("old_missing")),
+                      "rename_error": rec.get("rename_error", ""), "msg_new": sent(ms, "new"), "msg_old": sent(ms, "old")})
+    return chain
+
+
 def renew_dup_todo(dups, row, accounts, ws=None):
     """المكررات على يوزر هذا الصف التي لم تتمّ معالجتها (لا بديل، أو بديلٌ بقي له تغيير القديم أو إرسالٌ)."""
     user, pid = str(row.get("username") or "").lower(), row.get("panel_id") or ""
@@ -7040,10 +7061,12 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         d["salla"] = None
                 dups = panels.duplicates(rcfg, rws)["rows"] if any(r.get("dup") for r in d["rows"]) else []
+                dmsgs = panels.dupe_messages(rws) if dups else []
                 for r in d["rows"]:
                     r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
                     if r.get("dup"):                     # مكررٌ لم يُعالج: كل طلبٍ لاحق على اليوزر نفسه بلا بديل وغير منتهٍ
                         r["dup_todo"] = renew_dup_todo(dups, r, racs, rws)
+                        r["dup_chain"] = renew_dup_chain(dups, r, dmsgs)
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
                     elif r.get("state") == "replaced":        # استُبدل من صفحة الإنشاء أو المكرر: البديل وعلى أي بوابة
