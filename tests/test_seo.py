@@ -1364,11 +1364,11 @@ def unit_enrich():
         check("صفحة المسلسل (معاينة): 200 وnoindex وسمًا ورأسًا، canonical ذاتي، H1 واحد", code == 200 and hdr["X-Robots-Tag"] == "noindex"
               and 'name="robots" content="noindex, follow"' in html and 'rel="canonical" href="https://guide.ssouq.com/content/series/prison-break/"' in html and html.count("<h1") == 1)
         check("فيها: قصة H2، الأبطال بروابطهم، المواسم والحلقات، متوفر عبر كاسبر، الأسئلة الشائعة، TVSeries + BreadcrumbList + FAQPage",
-              "<h2>قصة مسلسل" in html and "/content/people/actors/wentworth-miller/" in html and 'id="seasons"' in html and "متوفر عبر" in html
+              "<h2>قصة مسلسل</h2>" in html and "<h2>طاقم العمل والشخصيات</h2>" in html and "<h2>أسئلة شائعة</h2>" in html and "/content/people/actors/wentworth-miller/" in html and 'id="seasons"' in html and "<h2>أين يمكنك المشاهدة؟</h2>" in html and '"inLanguage": "ar"' in html
               and '"@type": "TVSeries"' in html and '"BreadcrumbList"' in html and '"FAQPage"' in html and 'utm_campaign=content-entity' in html)
         check("hreflang للغتين فقط إن استحقّت كلتاهما الفهرسة (Prison Break نعم)", 'hreflang="en" href="https://guide.ssouq.com/en/content/series/prison-break/"' in html)
         en = seo_pages.handle(d, "/en/content/series/prison-break/", "en")[1].decode()
-        check("النسخة الإنجليزية: lang=en، العنوان الإنجليزي، Story of", 'lang="en" dir="ltr"' in en and "<h1" in en and "Story of Prison Break" in en)
+        check("النسخة الإنجليزية: lang=en، العنوان الإنجليزي، Story of", 'lang="en" dir="ltr"' in en and "<h1" in en and "<h2>Plot Overview</h2>" in en and "Streaming Platforms &amp; Availability" in en and len(re.search(r"<title>(.*?)</title>", en).group(1)) <= 60)
         check("بلا شرطة أخيرة: 301 إليها", seo_pages.handle(d, "/content/series/prison-break", "ar")[:1] == (301,))
         check("الرابط القديم المنقحر لـ Kuruluş Osman يحوّل 301 إلى الإنجليزي", seo_pages.handle(d, "/content/series/kurulus-osman/", "ar")[0] == 301)
         check("كيانٌ مدمج يحوّل إلى الباقي", seo_pages.handle(d, "/content/series/" + q("SELECT slug FROM content WHERE merged_into IS NOT NULL LIMIT 1")[0][0] + "/", "ar")[0] == 301)
