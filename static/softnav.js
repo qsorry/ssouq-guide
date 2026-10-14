@@ -102,6 +102,8 @@
     var doc = new DOMParser().parseFromString(res.html, "text/html");
     if (!doc.body || !doc.head) return false;
     var finalUrl = res.url || url;
+    var hash = new URL(url, L.href).hash;                 // fetch يُسقط المرساة من العنوان النهائي: تُعاد (رابط «المواسم» من نافذة التفاصيل)
+    if (hash && finalUrl.indexOf("#") < 0) finalUrl += hash;
     var prev = L.href;
     try { if (w.sqNav) w.sqNav.before(); } catch (e) {}
     var go = function () {
