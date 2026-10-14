@@ -296,6 +296,11 @@ a.entry{text-decoration:none}
 .pick button:hover{border-color:var(--brand)}
 .pick button svg{width:40px;height:40px;flex:0 0 auto;stroke:var(--brand-text);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .pick.fork{margin:6px 0 4px}
+.pick button.paused{cursor:not-allowed;opacity:.62}
+.pick button.paused:hover{border-color:var(--line)}
+.pick button.paused img{filter:grayscale(.7)}
+.pick .stop{display:inline-block;background:var(--gold);color:var(--gold-ink);font-size:.66rem;font-weight:700;border-radius:999px;padding:2px 9px;margin-inline-start:7px;vertical-align:2px}
+.pick .dlcode bdi{font-weight:700;color:var(--ink);letter-spacing:.04em}
 
 /* ---------- أداة M3U ---------- */
 .lbl{display:block;font-size:.85rem;color:var(--mute);margin:10px 0 4px}
@@ -773,8 +778,8 @@ const DEVICES = {
   tv: { icon: "tv", name: "شاشة / بوكس أندرويد TCL Sony شاومي mi", sub: "MR7 TV أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تسجيل دخول مباشر", icon: "mr7" },
-      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro" }
+      { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تسجيل دخول مباشر", icon: "mr7", code: "5574841" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro", code: "8744201" }
     ]},
     variants: {
       // التثبيت بـ Downloader (DL_*) واحدٌ للتطبيقين، والكود والتطبيق وحدهما يختلفان
@@ -1047,8 +1052,8 @@ const FALCON = {
   tv: { icon: "tv", name: "شاشة / بوكس أندرويد TCL Sony شاومي mi", sub: "تطبيق فالكون أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، عبر Downloader", icon: "falcon-app" },
-      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro" }
+      { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، عبر Downloader", icon: "falcon-app", code: "1683248" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro", code: "8744201" }
     ]},
     variants: {
       falconapp: [
@@ -1154,7 +1159,7 @@ const CASPER = {
     title: "اختر التطبيق",
     options: [
       { key: "ghostcasper", label: "Ghost Casper VIP", sub: "تطبيق كاسبر الإضافي، تحميل مباشر", icon: "ghost-casper-vip" },
-      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK", icon: "smarters-pro" }
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK", icon: "smarters-pro", paused: true }
     ]},
     variants: {
       hidden_caspervip: [
@@ -1180,8 +1185,8 @@ const CASPER = {
   tv: { icon: "tv", name: "شاشة / بوكس أندرويد TCL Sony شاومي mi", sub: "تطبيق Ghost Casper VIP أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
-      { key: "ghostcasper", label: "Ghost Casper VIP", sub: "تطبيق كاسبر الإضافي، عبر Downloader", icon: "ghost-casper-vip" },
-      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro" }
+      { key: "ghostcasper", label: "Ghost Casper VIP", sub: "تطبيق كاسبر الإضافي، عبر Downloader", icon: "ghost-casper-vip", code: "4162893" },
+      { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي عبر Downloader", icon: "smarters-pro", code: "8744201", paused: true }
     ]},
     variants: {
       hidden_caspervip: [
@@ -1482,9 +1487,12 @@ function renderOff(){
 }
 function renderChoose(){
   const d = devs()[state.dev]; setProg(PROG_ACT, 2);
-  $("#view").innerHTML = `<div class="card"><h2>${d.choose.title}</h2><div class="pick">${d.choose.options.map(o => `<button type="button" data-variant="${o.key}">`
+  $("#view").innerHTML = `<div class="card"><h2>${d.choose.title}</h2><div class="pick">${d.choose.options.map(o => `<button type="button" ${o.paused ? 'class="paused" disabled aria-disabled="true"' : `data-variant="${o.key}"`}>`
       + (o.icon ? `<img src="/static/img/apps/${o.icon}.webp" alt="" width="46" height="46" loading="lazy">` : "")
-      + `<span class="who"><b>${o.label}</b><small>${o.sub}</small></span></button>`).join("")}</div>
+      + `<span class="who"><b>${o.label}${o.paused ? '<span class="stop">متوقف مؤقتًا</span>' : ""}</b><small>${o.sub}</small>`
+      + (o.paused ? "<small>لا يعمل حاليًا على أندرويد، اختر التطبيق الآخر.</small>"
+        : o.code ? `<small class="dlcode">كود التحميل في Downloader: <bdi dir="ltr">${o.code}</bdi></small>` : "")
+      + `</span></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
 /* خطواتٌ تتفرّع: خطوةٌ فيها fork تعرض طرقها أزرارًا بدل «التالي» (data-goto إلى أول خطوات الطريقة)،

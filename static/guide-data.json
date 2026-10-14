@@ -89,13 +89,15 @@
      "key": "mr7",
      "label": "MR7 TV",
      "sub": "تطبيقنا الخاص، تسجيل دخول مباشر",
-     "icon": "mr7"
+     "icon": "mr7",
+     "code": "5574841"
     },
     {
      "key": "smarters",
      "label": "IPTV Smarters Pro",
      "sub": "برنامج إضافي عبر Downloader",
-     "icon": "smarters-pro"
+     "icon": "smarters-pro",
+     "code": "8744201"
     }
    ]
   },
