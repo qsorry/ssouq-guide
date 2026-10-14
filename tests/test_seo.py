@@ -2073,6 +2073,18 @@ def unit_cards_softnav():
         check("نافذة التفاصيل ← مسار صفحة العمل بلغتها (/content/series/… و/en/…)", r_ar == {"ok": True, "path": "/content/series/prison-break-x/"} and r_en["path"] == "/en/content/series/prison-break-x/", str((r_ar, r_en)))
         check("عملٌ بلا كيانٍ أو قناةٌ أو مفتاحٌ غير صالح ← None", content_page.api_entity(d, "smart", "series", "Nope", 2005, "ar") is None and content_page.api_entity(d, "smart", "live", "Prison Break", 0, "ar") is None
               and content_page.api_entity(d, "../x", "series", "Prison Break", 0, "ar") is None)
+        import seo_search
+        dn = add("dark-knight-x", "https://image.tmdb.org/t/p/w600/dk.jpg")
+        con.execute("INSERT INTO content_service(content_id, service_key, kind, local_key, name, present, first_seen, seen_at) VALUES (?,?,?,?,?,1,?,?)", (dn, "smart", "series", "zzz-other-key", "The Dark Knight", now, now))
+        con.execute("INSERT INTO content_alias(content_id, alias, alias_norm, lang, source, at, kind, phonetic) VALUES (?,?,?,?,?,?,?,?)",
+                    (dn, "The Dark Knight", seo_search.norm("The Dark Knight"), None, "m3u", now, "title", seo_search.phonetic("The Dark Knight")))
+        con.commit()
+        seo_reco_idx = __import__("seo_reco")
+        seo_reco_idx._idx["idx"] = None                                                    # الفهرس مخزَّنٌ دقائق: يُعاد بناؤه للحالة الجديدة
+        fb = content_page.api_entity(d, "smart", "series", "The Dark Knight", 2008, "ar")
+        check("اسمٌ لا يطابق مفتاح القائمة: البحث الذكي بالاسم يجد الصفحة (تطابقٌ تامٌّ ونوعٌ واحد فقط)", fb == {"ok": True, "path": "/content/series/dark-knight-x/"}, str(fb))
+        check("والنوع المخالف لا يُعاد (فيلمٌ باسم مسلسل)", content_page.api_entity(d, "smart", "movie", "The Dark Knight", 2008, "ar") is None)
+        check("زرّ «عرض الصفحة كاملة» أعلى النافذة (بعد العنوان) معطَّلٌ حتى يُعرف مساره، ويُجلب مسبقًا عند اقتراب الزائر من البطاقة", 'class="fullrow"' in content_page.JS and "aria-disabled" in content_page.JS and "function warm(e)" in content_page.JS)
         check("نافذة التفاصيل في صفحة السيرفر فيها زرّ «عرض الصفحة كاملة» والتنقّل السلس يلتقطه", 'id="cx-full"' in content_page.JS and "/api/content/entity" in content_page.JS)
         import seo_admin
         import seo_release
