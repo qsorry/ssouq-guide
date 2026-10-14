@@ -956,7 +956,7 @@ LG، و`vod: true` للباقة الترفيهية التي تُعرض لمن ا
 |---|---|---|---|
 | آيفون / آيباد | VAR Player | **Smarters Player Lite** | **CASPER VIP** · AroPlayer |
 | جوال أندرويد | NEXT+ (أو MR7) · IPTV Smarters Pro | **تطبيق فالكون** · IPTV Smarters Pro | **CASPER VIP** · IPTV Smarters Pro |
-| شاشة / بوكس أندرويد | MR7 TV · IPTV Smarters Pro | **تطبيق فالكون** · IPTV Smarters Pro | **CASPER VIP** · IPTV Smarters Pro |
+| شاشة / بوكس أندرويد TCL Sony شاومي mi | MR7 TV · IPTV Smarters Pro | **تطبيق فالكون** · IPTV Smarters Pro | **CASPER VIP** · IPTV Smarters Pro |
 | سامسونج و LG و WebOS | 0Player برمز `92929480` · **Duplecast** | 0Player برمز **`75710072`** · Duplecast | بباقته لسامسونج و LG: 0Player برمز **`59820658`** · Duplecast |
 | هايسنس و VIDAA OS | **Duplecast** | نفسه — يُورَث بلا تكرار | نفسه — يُورَث بلا تكرار |
 | ويندوز · ماك | IPTV Smarters Pro | نفسه — يُورَث بلا تكرار | نفسه — يُورَث بلا تكرار |
@@ -1779,6 +1779,32 @@ HTML لا يُمسّ: ‏`alt` الصورة لقطةٌ من يومها):
 - المسارات (للمدير): `GET /api/content/seo/enrich` · `GET /api/content/seo/search?q=` · `POST /api/content/admin/seo-key` · `seo-probe` ·
   `seo-sample` · `seo-run` · `seo-settings` · `seo-audit`. والاختبارات بلوحة TMDB وهمية (‏`tests/mock_tmdb.py`) ولوحة Xtream بتفاصيلها:
   `python tests/test_seo.py`. والتقرير: [docs/phase2-report.md](docs/phase2-report.md).
+
+### المراحل 5–8 — لوحة التحكم والقوائم والمواسم والحلقات والهب (`seo_admin.py` · `seo_pages.py`)
+- **المرحلة 5 — لوحة التحكم** (‏`seo_admin`، بطاقة «تحكّم بكيان» في `admin.ssouq.com/content`، ‏`POST /api/content/admin/seo-entity {action}`): بحثٌ بالاسم/slug/المعرّف؛
+  **تجاوز** لكل لغة (عنوان ≤120 · وصف ≤160 · مقدمة أعلى الصفحة · علم فهرسة `0` يُخرج اللغة من الفهرسة ويُسقط hreflang) في `seo_override` وتقرؤه صفحة العمل؛
+  حقول يدوية (مصدرها `manual` فلا يكتب فوقها البناء ولا TMDB)؛ تغيير الرابط بـ 301 من القديم؛ ربطٌ يدوي بمعرّف TMDB (فريد لكل كيان)؛ دمج كيانين. كلها تحترم `identity_freeze`، ولا حذف.
+- **المرحلة 6 — القوائم**: `/content/genres/<slug>/` · `/content/countries/<slug>/` · `/content/languages/<slug>/` · `/content/year/<yyyy>/` · `/content/latest/[movies|series/]` (+`page/<n>/`، وبـ `/en`):
+  بُعدٌ واحد فقط (لا تركيبات فلاتر)، عضوية TMDB/يدوية، عتبة الفهرسة `list_min_items` وحدّ `list_max_pages`، canonical ذاتي وrel prev/next وItemList؛ `countries/turkey` يبقى 301 إلى الهب.
+- **المرحلة 7 — المواسم والحلقات**: `/content/series/<slug>/season-<n>/` (وفهرستها مشروطة بملخص الموسم باللغة وعناوين كل حلقاته) و`…/episode-<e>/`
+  **لا تُخدم إلا بشروط `episode_page`** (عنوان + ملخص ≥ 80 + تاريخ عرض) وإلا 404؛ TVSeason/TVEpisode، وصفحة المسلسل تربط إلى الموسم حين يستحق.
+- **المرحلة 8 — هب `/content/`**: `render_content_hub` (أحدث الأفلام والمسلسلات · التركي والأنمي · النوع والدولة واللغة والسنة · السيرفرات). **معطّل افتراضًا** (`content_hub=false`):
+  يبقى `/content` → 302 لأول سيرفر كما كان، ويُفعَّل بالإعداد مع المعاينة؛ ويُفهرس فقط مع `index_live`.
+- كلها **noindex في المعاينة** ولا تدخل الخريطة ولا قائمة الاعتماد؛ توسيع الاعتماد لها (قوائم/مواسم/هب) قرارٌ منفصل للمالك عبر `seo_release`.
+
+### عنوان الموقع العام قابلٌ للتبديل (`XM_SITE_URL`)
+كل canonical وhreflang والخريطة وسطرا `Sitemap:` في robots ومضيف IndexNow تُبنى على `guide_pages.SITE`، يُقرأ من المتغيّر `XM_SITE_URL`
+(الافتراضي `https://guide.ssouq.com`؛ بلا شرطة أخيرة)، و`XM_SITE_HOST` اختياري للمضيف الذي يصل به الطلب. الانتقال إلى نطاقٍ آخر أو مجلد، وما لا
+يتبدّل وحده (الروابط الداخلية الجذرية تحت مجلد، مفتاح IndexNow على الجذر)، وخطوات Google (ولماذا لا تنفع أداة Change of Address
+للنطاق الفرعي ← مجلد): [docs/site-migration.md](docs/site-migration.md).
+
+### المرحلة 10 — اعتماد القوائم والمواسم والحلقات والهبّات (`seo_release.extras`)
+- بعد نجاح المراحل 4 و5 و7: `python seo_release.py extras [--expected=N]` (أو إجراء `extras` في `POST /api/content/admin/seo-release`). يُعدِّد المرشّحين من القاعدة
+  (قوائم النوع/الدولة/اللغة/السنة/الأحدث بصفحاتها، وهبّا التركي والأنمي بأقسامهما، ومواسم وحلقات **المسلسلات المعتمدة** فقط، وهب `/content/` إن فُعّل `content_hub`)،
+  ويحكم الرسم أهلية كل لغة (`index_ar`/`index_en`)، ثم يكتب `build_state.index_approved_extra` ويفعّل `index_extra_live`.
+- **البوابة بعد الكتابة، على ما يُخدم فعلًا**: 200 · وسم index بلا رأس noindex · canonical ذاتي · `<html lang>` · hreflang متبادلة حين تُعتمد اللغتان وإلا بلا وسوم · لا استعلام ولا تحويل ولا canonical مكرّر ·
+  وغير المعتمد المرشَّح يبقى noindex · وعضوية الخريطة العامة. أي فشل = **تراجعٌ كامل** (الاعتماد والإعداد كما كانا). ثم IndexNow للجديد وحده (فشله يُبقي الاعتماد ويُعاد بإعادة التشغيل).
+- الموسم/الحلقة لا يُفهرسان إلا ومسلسلهما معتمدٌ بتلك اللغة؛ وصفحةٌ تتغيّر أهليتها بعد الاعتماد تعود noindex وحدها. الخريطة العامة تضيفها عبر `seo_release.public_sitemap_entries`.
 
 ### المراحل 4–9 — النشر الإنتاجي (`seo_release.py`)
 - رفع noindex عن **المعتمد** وحده (قائمة اعتماد `build_state.index_approved` من روابط اللقطة + `index_live`)، ثم الخريطة العامة (`sitemap_live`)،

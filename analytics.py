@@ -834,7 +834,7 @@ def inject(body, data_dir):
     i = body.find(b"</head>")
     if i < 0:
         return body
-    return body[:i] + head(data_dir) + body[i:]
+    return body[:i] + head(data_dir) + b'<script src="/static/foryou.js" defer></script>' + body[i:]
 
 
 # ================= IndexNow: إرسال الصفحات إلى Bing وYandex وغيرهما =================

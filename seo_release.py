@@ -18,6 +18,7 @@
     python seo_release.py phase4|phase5|phase6|phase7 --snapshot=…                 # مرحلةٌ بعينها
     python seo_release.py batch [--n=100]                                           # دفعة توسيعٍ واحدة (المرحلة 8)
     python seo_release.py expand [--n=100] [--max=10]                               # دفعاتٌ متتابعة (المرحلة 9)
+    python seo_release.py extras [--expected=N]                                     # المرحلة 10: اعتماد القوائم والمواسم والحلقات والهبّات (بعد 4 و5 و7)
     python seo_release.py final                                                     # الحزمة النهائية للمراجعة (release-final.json/.txt)
     python seo_release.py status
 """
@@ -39,7 +40,7 @@ import seo_qa
 import seo_sources
 
 SITE = seo_pages.SITE
-HOST = SITE.split("//", 1)[1]
+HOST = seo_pages.guide_pages.SITE_NETLOC            # المضيف وحده: IndexNow يطلب host بلا مجلد، والمفتاح يُخدم على جذر المضيف
 STATE_KEY = "release"                       # build_state: حال المراحل {snapshot, phases: {"4": …}, batches: […], updated_at}
 APPROVED_KEY = seo_pages.APPROVED_KEY
 LOC_RX = re.compile(r"<loc>(.*?)</loc>")
@@ -47,6 +48,15 @@ _threads, _progress = {}, {}
 
 
 # ================= أدوات =================
+def _tick(data_dir, stage, done=None, total=None):
+    """يحدّث عدّاد التقدّم الحيّ الذي يقرؤه المعالج في الإدارة (‏done/total والمرحلة) — لا أثر له خارج `start` (سطر الأوامر)."""
+    p = _progress.get(os.path.abspath(data_dir))
+    if p is not None:
+        p["stage"] = stage
+        if total is not None:
+            p["done"], p["total"] = done, total
+
+
 def _now(now):
     return int(now or time.time())
 
@@ -132,7 +142,7 @@ def redirect_audit(con):
             seen.add(cur); cur = rows[cur]
         if cur in seen:
             loops.append(p)
-        m = re.fullmatch(r"/content/(movies|series)/([^/]+)/", t)
+        m = re.fullmatch(r"(?:/[a-z]{2})?/content/(movies|series)/([^/]+)/", t)     # الهدف بأي بادئة لغة (/en/…) كالعربي: الصفّان ar وen يُحلّان إلى الكيان نفسه
         if not m:
             resolve.append(p); continue
         e = con.execute("SELECT merged_into FROM content WHERE type=? AND slug=?", ("movie" if m.group(1) == "movies" else "series", m.group(2))).fetchone()
@@ -172,7 +182,9 @@ def gate_routes(data_dir, con, st, approved, expect_index=True, ids=None):
         if ids is not None and cid not in ids:
             continue
         by_id.setdefault(cid, {})[lang] = a
-    for cid, langs in sorted(by_id.items()):
+    for ci_, (cid, langs) in enumerate(sorted(by_id.items())):
+        if ci_ % 10 == 0:
+            _tick(data_dir, "فحص الصفحات كما تُخدم", ci_, len(by_id))
         r = _row(con, cid)
         if not r or r["merged_into"] is not None or not r["available"]:
             m["entity_changes"] += len(langs); m["routes"] += len(langs); fails.append({"id": cid, "problem": "entity missing/merged/unavailable"}); continue
@@ -605,7 +617,9 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
             red_before = {r["path"]: r["target"] for r in con.execute("SELECT path, target FROM redirect")}
             # 1 — إثراء TMDB (معاملةٌ واحدة، بلا commit حتى تمرّ بوابات الهوية والتسوية)
             en = {"attempted": 0, "enriched": 0, "miss": 0, "failed": 0, "merged": [], "seasons": 0, "errors": []}
-            for r in cands:
+            for ri_, r in enumerate(cands):
+                if ri_ % 5 == 0:
+                    _tick(data_dir, "إثراء الدفعة من TMDB", ri_, len(cands))
                 en["attempted"] += 1
                 try:
                     state, msg = seo_sources._one(con, data_dir, r["id"], "tmdb", st, now)
@@ -741,6 +755,107 @@ def expand(data_dir, n=100, max_batches=None, now=None, submit=None, progress=No
     return {"batches": out, "ok": all(b["ok"] for b in out), "stopped_at": next((b for b in out if not b["ok"]), None)}
 
 
+# ================= مهمة التوسيع المستمرة (تكمل بنفسها بعد إعادة النشر) =================
+JOB_KEY = "expand_job"      # build_state: {active, n, remaining, done, auto_resume, started_at, updated_at, last, stopped}
+JOB_WATCHDOG_EVERY = 60
+
+
+def job_get(data_dir):
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return {}
+    try:
+        return seo_db.state(con, JOB_KEY) or {}
+    finally:
+        con.close()
+
+
+def _job_save(data_dir, job):
+    con = seo_db.connect(data_dir)
+    try:
+        job["updated_at"] = int(time.time())
+        with con:
+            seo_db.set_state(con, JOB_KEY, job)
+    finally:
+        con.close()
+    return job
+
+
+def job_start(data_dir, n=100, max_batches=5, auto_resume=True):
+    """يُنشئ مهمة توسيعٍ محفوظة في القاعدة: n كيانًا للدفعة، وعدد دفعاتٍ أقصى، وإن كان `auto_resume` فالحارس يستأنفها وحده بعد أي إعادة تشغيل (نشرٌ أو سقوط)."""
+    now = int(time.time())
+    return _job_save(data_dir, {"active": True, "n": max(1, min(1000, int(n or 100))), "remaining": max(1, min(500, int(max_batches or 5))), "done": 0,
+                                "auto_resume": bool(auto_resume), "started_at": now, "last": None, "stopped": None})
+
+
+def job_stop(data_dir, reason="stopped by admin"):
+    job = job_get(data_dir)
+    if job.get("active"):
+        job.update({"active": False, "stopped": reason})
+        _job_save(data_dir, job)
+    return job
+
+
+def run_job(data_dir, now=None, submit=None, progress=None):
+    """ينفّذ دفعات المهمة المحفوظة واحدةً بعد أخرى، ويُحدّث الحالة بعد كل دفعة (فتبقى بعد إعادة التشغيل). يتوقف عند أول فشل أو نفاد المرشّحين أو
+    انتهاء العدد أو أمر الإيقاف (يُقرأ قبل كل دفعة)."""
+    out = []
+    while True:
+        job = job_get(data_dir)
+        if not job.get("active"):
+            break
+        if int(job.get("remaining") or 0) <= 0:
+            job.update({"active": False, "stopped": "completed"})
+            _job_save(data_dir, job)
+            break
+        if progress:
+            progress(int(job.get("done") or 0) + 1)
+        r = phase8_batch(data_dir, int(job.get("n") or 100), now=now, submit=submit)
+        rec = {k: r.get(k) for k in ("ok", "batch", "status", "reason", "n", "approved_routes_total")}
+        out.append(rec)
+        job = job_get(data_dir)
+        if not job.get("active"):          # أُوقفت أثناء الدفعة
+            break
+        job["last"] = {**rec, "at": int(time.time())}
+        if not r.get("ok"):
+            job.update({"active": False, "stopped": f"batch failed: {r.get('reason') or r.get('status')}"})
+        elif r.get("status") == "EMPTY":
+            job.update({"active": False, "stopped": "no candidates left"})
+        else:
+            job["done"] = int(job.get("done") or 0) + 1
+            job["remaining"] = int(job.get("remaining") or 0) - 1
+        _job_save(data_dir, job)
+    return {"ok": all(b["ok"] for b in out), "batches": out, "job": job_get(data_dir)}
+
+
+def job_watchdog_tick(data_dir):
+    """مهمةٌ نشطةٌ بلا خيطٍ حيّ (أُعيد تشغيل الخادم): تُستأنف وحدها إن كان `auto_resume`، وإلا تُوقف بسبب الانقطاع."""
+    job = job_get(data_dir)
+    if not job.get("active"):
+        return None
+    k = os.path.abspath(data_dir)
+    t = _threads.get(k)
+    if t and t.is_alive():
+        return None
+    if not job.get("auto_resume"):
+        job_stop(data_dir, "interrupted (server restarted; auto-resume off)")
+        return "stopped"
+    return "resumed" if start(data_dir, "expand_job") else None
+
+
+def start_job_watchdog(data_dir):
+    """خيط الحارس من إقلاع الخادم: يستأنف مهمة التوسيع بعد إعادة النشر دون تدخّل."""
+    def loop():
+        time.sleep(20)
+        while True:
+            try:
+                job_watchdog_tick(data_dir)
+            except Exception:  # noqa: BLE001 — الحارس لا يسقط
+                pass
+            time.sleep(JOB_WATCHDOG_EVERY)
+    threading.Thread(target=loop, daemon=True, name="seo-expand-watchdog").start()
+
+
 # ================= التتابع 4 ← 5 ← 6 ← 7 =================
 def go(data_dir, snapshot, expected_routes=None, http=False, now=None, submit=None, progress=None):
     """Phase 4 ← Gate ← Phase 5 ← Gate ← Phase 6 ← Gate ← Phase 7. فشل بوابةٍ = STOP (لا يُتجاوز)."""
@@ -769,7 +884,9 @@ def status(data_dir):
         return {"running": bool(_threads.get(k) and _threads[k].is_alive()), "progress": _progress.get(k), "release": {kk: v for kk, v in rel.items() if kk != "batches"},
                 "batches": [{kk: v for kk, v in b.items() if kk in ("batch", "status", "n", "reason", "at", "approved_routes_total", "indexnow", "eligibility")} for b in rel.get("batches") or []],
                 "index_live": bool(st.get("index_live")), "sitemap_live": bool(st.get("sitemap_live")), "preview": bool(st.get("preview")),
-                "approved_routes": len(approved), "approved_entities": len({c for c, _ in approved}), "approved_snapshot": (seo_db.state(con, APPROVED_KEY) or {}).get("snapshot"),
+                "expand_job": seo_db.state(con, JOB_KEY) or None, "index_extra_live": bool(st.get("index_extra_live")), "extras_approved_routes": len((seo_db.state(con, seo_pages.EXTRA_KEY) or {}).get("routes") or []),
+                "approved_routes": len(approved), "approved_entities": len({c for c, _ in approved}),
+                "live_entities": con.execute("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=1").fetchone()[0], "approved_snapshot": (seo_db.state(con, APPROVED_KEY) or {}).get("snapshot"),
                 "bundle": bundle_meta(data_dir), "snapshot_routes": len(snapshot_urls(data_dir) or []), **seo_sources.code_version()}
     finally:
         con.close()
@@ -784,7 +901,7 @@ def start(data_dir, action, **kw):
     _progress[k] = {"action": action, "at": int(time.time()), "stage": "starting"}
 
     def prog(x):
-        _progress[k] = {**_progress[k], "stage": str(x)}
+        _progress[k] = {**{a: b for a, b in _progress[k].items() if a not in ("done", "total")}, "stage": str(x)}
 
     def run_():
         try:
@@ -797,17 +914,263 @@ def start(data_dir, action, **kw):
                 res = phase8_batch(data_dir, int(kw.get("n") or 100))
             elif action == "expand":
                 res = expand(data_dir, int(kw.get("n") or 100), kw.get("max"), progress=lambda i: prog(f"batch {i}"))
+            elif action == "expand_job":
+                res = run_job(data_dir, progress=lambda i: prog(f"batch {i}"))
+            elif action == "extras":
+                res = extras(data_dir, kw.get("expected"))
             elif action == "final":
                 res = final_bundle(data_dir)
             else:
                 res = {"ok": False, "error": f"unknown action {action}"}
-            _progress[k] = {**_progress[k], "stage": "done", "ok": bool(res.get("ok")), "result": {kk: v for kk, v in res.items() if kk in ("ok", "phase", "status", "reason", "stopped_at", "steps", "batches", "file")}}
+            _progress[k] = {**{a: b for a, b in _progress[k].items() if a not in ("done", "total")}, "stage": "done", "ok": bool(res.get("ok")), "result": {kk: v for kk, v in res.items() if kk in ("ok", "phase", "status", "reason", "stopped_at", "steps", "batches", "file")}}
         except Exception as e:  # noqa: BLE001
             import traceback
-            _progress[k] = {**_progress[k], "stage": "error", "ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}", "traceback": traceback.format_exc()[-1500:]}
+            _progress[k] = {**{a: b for a, b in _progress[k].items() if a not in ("done", "total")}, "stage": "error", "ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}", "traceback": traceback.format_exc()[-1500:]}
     t = _threads[k] = threading.Thread(target=run_, daemon=True)
     t.start()
     return True
+
+
+# ================= المرحلة 10 — اعتماد القوائم والمواسم والحلقات والهبّات =================
+EXTRA_STATE = "release_extras"     # build_state: آخر تشغيل {at, routes, kinds, submitted: [مسارات أُرسلت إلى IndexNow]}
+
+
+def extras_candidates(con, st):
+    """مرشّحو الاعتماد من غير الكيانات ← [(المسار العربي، النوع، معرّف المسلسل الأب أو None، اللغات المسموحة أو None)].
+    تُعدَّد من القاعدة (لا زحف) بالعتبات نفسها التي يرسم بها seo_pages؛ والرسم وحده يحكم الأهلية بعد ذلك (index_ar/index_en)."""
+    size, max_pages, min_items = int(st.get("page_size", 60)), int(st.get("list_max_pages", 50)), int(st.get("list_min_items", 12))
+    out = []
+
+    def paged(base, total, kind, first=True):
+        pages = min(max_pages, max(1, -(-total // size)))
+        for pg in range(1 if first else 2, pages + 1):
+            out.append((base + (f"page/{pg}/" if pg > 1 else ""), kind, None, None))
+
+    for facet, kind in seo_pages.TAX_KINDS.items():
+        for r in con.execute("SELECT t.slug, COUNT(DISTINCT c.id) n FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id JOIN content c ON c.id=ct.content_id "
+                             "WHERE t.kind=? AND ct.source IN ('tmdb','manual') AND c.merged_into IS NULL AND c.available=1 GROUP BY t.id HAVING n>=? ORDER BY t.slug", (kind, min_items)):
+            if kind == "country" and r["slug"] == "tr":
+                continue                        # التركي هبٌّ مستقل (لا صفحتان تتنافسان)
+            paged(f"/content/{facet}/{r['slug']}/", r["n"], "list")
+    for r in con.execute("SELECT year, COUNT(*) n FROM content WHERE merged_into IS NULL AND available=1 AND year BETWEEN 1900 AND 2100 GROUP BY year HAVING n>=? ORDER BY year", (min_items,)):
+        paged(f"/content/year/{r['year']}/", r["n"], "list")
+    for sec in ("", "movies", "series"):
+        where, wargs = seo_pages._tax_where("latest", "", sec)
+        n = con.execute(f"SELECT COUNT(*) {where}", wargs).fetchone()[0]
+        paged("/content/latest/" + (f"{sec}/" if sec else ""), n, "list")
+    for hub in seo_pages.HUBS:
+        base = f"/content/{hub}/"
+        out.append((base, "hub", None, None))
+        total_all = seo_pages._hub_rows(con, hub, "", None, None, 1, 1)[0]
+        paged(base, total_all, "hub", first=False)
+        for sec in seo_pages.HUB_SECTIONS:
+            n = seo_pages._hub_rows(con, hub, sec, None, None, 1, 1)[0]
+            if n:
+                paged(f"{base}{sec}/", n, "hub")
+        for sec in ("",) + seo_pages.HUB_SECTIONS:
+            sql, args = seo_pages._hub_query(con, hub, sec)
+            for g in con.execute("SELECT t.slug FROM taxonomy t WHERE t.kind='genre'"):
+                n = seo_pages._hub_rows(con, hub, sec, g["slug"], None, 1, 1)[0]
+                if n >= min_items:
+                    paged(f"{base}{sec + '/' if sec else ''}genres/{g['slug']}/", n, "hub")
+            for y in con.execute(f"SELECT c.year, COUNT(*) n FROM ({sql}) c WHERE c.year IS NOT NULL GROUP BY c.year HAVING n>=?", (*args, min_items)):
+                paged(f"{base}{sec + '/' if sec else ''}year/{y['year']}/", y["n"], "hub")
+    if st.get("content_hub"):
+        out.append(("/content/", "hub_root", None, None))
+    # المواسم والحلقات: لمسلسلات معتمدة فقط، وباللغات المعتمدة لها، وبالشروط نفسها (season_ok / episode_ok)
+    approved = seo_pages.approved_routes(con)
+    langs_of = {}
+    for (cid, lang) in approved:
+        langs_of.setdefault(cid, set()).add(lang)
+    for cid, langs in sorted(langs_of.items()):
+        r = _row(con, cid)
+        if not r or r["type"] != "series" or r["merged_into"] is not None or not r["available"]:
+            continue
+        for s_ in con.execute("SELECT * FROM season WHERE content_id=? AND number>0 ORDER BY number", (cid,)):
+            eps = con.execute("SELECT * FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 300", (cid, s_["number"])).fetchall()
+            ls = {l for l in langs if seo_pages.season_ok(s_, eps, l, st)[0]}
+            if ls:
+                out.append((f"/content/series/{r['slug']}/season-{s_['number']}/", "season", cid, ls))
+            for e in eps:
+                le = {l for l in langs if seo_pages.episode_ok(e, l, st)}
+                if le:
+                    out.append((f"/content/series/{r['slug']}/season-{s_['number']}/episode-{e['number']}/", "episode", cid, le))
+    return out
+
+
+def _extra_expected_tags(path, both):
+    return {"ar": SITE + path, "en": SITE + seo_db.EN + path, "x-default": SITE + path} if both else {}
+
+
+def extras_gate(data_dir, con, st, routes, candidates_ineligible=()):
+    """بوابة الصفحات غير الكيانية كما تُخدم فعلًا ← (مقاييس، فشل): 200 · وسم index بلا رأس noindex · canonical ذاتي · lang · hreflang
+    (متبادلةٌ حين تُعتمد اللغتان، وإلا بلا وسوم) · لا استعلام · لا تحويل · لا canonical مكرّر · وغير المعتمد المرشَّح noindex."""
+    redirects = {r["path"] for r in con.execute("SELECT path FROM redirect")}
+    have = {(x["path"], x["lang"]) for x in routes}
+    m = {"routes": len(routes), "http_failures": 0, "robots_failures": 0, "canonical_failures": 0, "language_failures": 0, "hreflang_failures": 0,
+         "redirect_urls": 0, "query_urls": 0, "duplicate_canonical": 0, "not_noindex": 0, "checked_not_approved": 0}
+    fails, seen = [], {}
+    for xi_, x in enumerate(routes):
+        if xi_ % 25 == 0:
+            _tick(data_dir, "فحص الصفحات المعتمدة كما تُخدم", xi_, len(routes))
+        path, lang = x["path"], x["lang"]
+        full = seo_db.lang_prefix(lang) + path
+        bad = []
+        if "?" in full or "#" in full:
+            m["query_urls"] += 1; bad.append("query")
+        if path in redirects:
+            m["redirect_urls"] += 1; bad.append("redirect path")
+        res = seo_pages.handle(data_dir, full, lang)
+        if not res or res[0] != 200:
+            m["http_failures"] += 1; fails.append({"path": full, "problems": bad + [f"http={res[0] if res else None}"]}); continue
+        text = res[1].decode("utf-8", "replace")
+        if "X-Robots-Tag" in res[2] or 'name="robots" content="index, follow' not in text:
+            m["robots_failures"] += 1; bad.append("not index")
+        can = re.search(r'<link rel="canonical" href="([^"]+)"', text)
+        if not can or can.group(1) != SITE + full:
+            m["canonical_failures"] += 1; bad.append(f"canonical {can.group(1) if can else None}")
+        else:
+            if can.group(1) in seen:
+                m["duplicate_canonical"] += 1; bad.append("duplicate canonical")
+            seen[can.group(1)] = 1
+        if f'<html lang="{lang}"' not in text:
+            m["language_failures"] += 1; bad.append("html lang")
+        tags = dict(seo_qa.ALT_RX.findall(text))
+        if tags != _extra_expected_tags(path, (path, "ar") in have and (path, "en") in have):
+            m["hreflang_failures"] += 1; bad.append(f"hreflang {tags}")
+        if bad:
+            fails.append({"path": full, "problems": bad})
+    for path, lang in list(candidates_ineligible)[:300]:      # مرشّحٌ غير مستحقّ بتلك اللغة يبقى noindex (لا يتسرّب)
+        res = seo_pages.handle(data_dir, seo_db.lang_prefix(lang) + path, lang)
+        m["checked_not_approved"] += 1
+        if res and res[0] == 200 and "X-Robots-Tag" not in res[2]:
+            m["not_noindex"] += 1; fails.append({"path": seo_db.lang_prefix(lang) + path, "problems": ["not approved but served index"]})
+    m["failures_total"] = len(fails)
+    return m, fails[:50]
+
+
+def extras_paths(con, st):
+    """مسارات الخريطة للصفحات غير الكيانية: المعتمد المستحقّ (يُخدم index فعلًا) ← [(مسار بالبادئة، النوع)] — فارغٌ قبل index_extra_live."""
+    if not (st.get("index_live") and st.get("index_extra_live")):
+        return []
+    stt = seo_db.state(con, seo_pages.EXTRA_KEY) or {}
+    redirects = {r["path"] for r in con.execute("SELECT path FROM redirect")}
+    return [(seo_db.lang_prefix(x["lang"]) + x["path"], x.get("kind", "")) for x in stt.get("routes") or [] if x["path"] not in redirects]
+
+
+def public_sitemap_entries(data_dir):
+    """كل ما تضيفه طبقة الكيانات إلى /sitemap.xml: صفحات الكيانات (المرحلة 5) + القوائم والمواسم والحلقات والهبّات المعتمدة (المرحلة 10)."""
+    ents = sitemap_entries(data_dir)
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return ents
+    try:
+        st = seo_db.settings(con)
+        if not st.get("sitemap_live"):
+            return ents
+        return ents + [(p, "daily" if "/latest/" in p or k == "hub_root" else "weekly", "0.5") for p, k in extras_paths(con, st)]
+    finally:
+        con.close()
+
+
+def _xfail(rel, reason, extra=None, con=None, now=None, data_dir=None):
+    rec = {"status": "FAIL", "at": now, "reason": reason, **(extra or {})}
+    rel["phases"]["10"] = rec                      # لا يُرفع به عائق الدفعات: فشل هذه المرحلة يتراجع عن نفسه فقط
+    if con is not None:
+        _save_state(con, rel, now)
+    if data_dir:
+        rec["file"] = _write(data_dir, "release-phase10.json", {"phase": 10, **rec, "code": seo_sources.code_version()})
+    return {"ok": False, "phase": 10, **rec}
+
+
+def extras(data_dir, expected=None, now=None, submit=None):
+    """اعتماد القوائم والمواسم والحلقات والهبّات (وهب /content/ إن فُعّل): تُعدَّد المرشّحة، ويحكم الرسم أهلية كل لغة، ثم تُكتب قائمة الاعتماد
+    (`index_approved_extra`) ويُفعَّل `index_extra_live` ويُفحص الناتج كما يُخدم (بوابة extras_gate) وعضوية الخريطة العامة، ثم IndexNow للجديد وحده.
+    أي فشل = تراجعٌ كامل (الاعتماد والإعداد كما كانا) ولا شيء يُرسل. يشترط نجاح المراحل 4 و5 و7 (الكيانات حيّة وخريطتها مفعّلة)."""
+    now = _now(now)
+    submit = submit or analytics.submit
+    with seo_db.lock(data_dir):
+        con = seo_db.connect(data_dir, create=False)
+        if con is None:
+            return {"ok": False, "phase": 10, "error": "no database"}
+        try:
+            st = seo_db.settings(con)
+            rel = _state(con)
+            why = _requires(rel, st, 4, 5, 7) or ("" if st.get("sitemap_live") else "sitemap_live is off") or ("" if st.get("preview") else "preview is off")
+            if why:
+                return _xfail(rel, why, con=con, now=now, data_dir=data_dir)
+            prev_state, prev_live = seo_db.state(con, seo_pages.EXTRA_KEY), bool(st.get("index_extra_live"))
+            routes, ineligible, kinds, not_rendered = [], [], {}, 0
+            cands_ = extras_candidates(con, st)
+            for ci_, (path, kind, parent, langs) in enumerate(cands_):
+                if ci_ % 25 == 0:
+                    _tick(data_dir, "تقييم أهلية الصفحات المرشّحة", ci_, len(cands_))
+                info = seo_pages.handle(data_dir, path, "ar", _info=True)      # الرسم يحكم الأهلية (index_ar / index_en)
+                if not isinstance(info, dict):
+                    not_rendered += 1
+                    continue
+                for lang in ("ar", "en"):
+                    if info.get("index_" + lang) and (langs is None or lang in langs):
+                        routes.append({"path": path, "lang": lang, "kind": kind, "parent": parent})
+                        kinds[kind] = kinds.get(kind, 0) + 1
+                    else:
+                        ineligible.append((path, lang))
+            pre = {"candidates": len(routes) + len(ineligible), "approved_routes": len(routes), "kinds": kinds, "not_rendered": not_rendered}
+            if expected is not None and len(routes) != int(expected):
+                return _xfail(rel, f"extras carry {len(routes)} routes, expected {expected}", {"precheck": pre}, con=con, now=now, data_dir=data_dir)
+            if not routes:
+                return _xfail(rel, "no eligible extra pages", {"precheck": pre}, con=con, now=now, data_dir=data_dir)
+
+            def restore():
+                with con:
+                    if prev_state is None:
+                        con.execute("DELETE FROM build_state WHERE key=?", (seo_pages.EXTRA_KEY,))
+                    else:
+                        seo_db.set_state(con, seo_pages.EXTRA_KEY, prev_state)
+                seo_db.set_setting(con, "index_extra_live", prev_live)
+                seo_pages._extra_cache.clear()
+
+            with con:
+                seo_db.set_state(con, seo_pages.EXTRA_KEY, {"at": now, "routes": routes})
+            seo_db.set_setting(con, "index_extra_live", True)
+            seo_pages._extra_cache.clear()
+            st2 = seo_db.settings(con)
+            m, fails = extras_gate(data_dir, con, st2, routes, ineligible)
+            served = extras_paths(con, st2)
+            entries = public_sitemap_entries(data_dir)
+            xml = guide_pages.sitemap(C.sitemap(data_dir) + list(entries)).decode("utf-8", "replace")
+            public = set(LOC_RX.findall(xml))
+            want = {SITE + p for p, _ in served}
+            m.update({"served_entries": len(served), "public_sitemap_mismatch": len(want - public), "duplicates": len(served) - len(want)})
+            ok = (m["failures_total"] == 0 and len(served) == len(routes) and m["public_sitemap_mismatch"] == 0 and m["duplicates"] == 0)
+            rec = {"precheck": pre, "metrics": m, "failures": fails, "sample": [SITE + p for p, _ in served[:10]],
+                   "tests": [_t("phase10_served_as_index", m["http_failures"] == 0 and m["robots_failures"] == 0 and m["canonical_failures"] == 0 and m["language_failures"] == 0, m),
+                             _t("phase10_hreflang", m["hreflang_failures"] == 0, m),
+                             _t("phase10_no_leak", m["not_noindex"] == 0 and m["redirect_urls"] == 0 and m["query_urls"] == 0 and m["duplicate_canonical"] == 0, m),
+                             _t("phase10_sitemap", len(served) == len(routes) and m["public_sitemap_mismatch"] == 0 and m["duplicates"] == 0, m)]}
+            if not ok:
+                restore()
+                return _xfail(rel, "extras gate failed — rolled back, nothing approved", rec, con=con, now=now, data_dir=data_dir)
+            done = set((seo_db.state(con, EXTRA_STATE) or {}).get("submitted") or [])
+            fresh = [SITE + p for p, _ in served if SITE + p not in done]
+            sent, accepted = 0, True
+            for i in range(0, len(fresh), 10000):
+                res = submit(data_dir, HOST, fresh[i:i + 10000], kind="extras")
+                sent += res.get("n", 0)
+                if not res.get("ok"):
+                    accepted = False; rec["indexnow_error"] = f"{res.get('code')} {res.get('msg')}"
+                    break
+            rec["indexnow"] = {"new": len(fresh), "submitted": sent, "accepted": accepted,
+                               "note": "IndexNow acceptance (200/202) is a receipt; it does not mean the search engine indexed the pages"}
+            if not accepted:      # الاعتماد صحيح والصفحات تُخدم؛ الإرسال وحده يُعاد (لا يُسجَّل المُرسَل فيُعاد كله)
+                rec["tests"].append(_t("phase10_indexnow", False, rec["indexnow"]))
+                return _xfail(rel, "IndexNow not accepted — approval kept, resend by running extras again", rec, con=con, now=now, data_dir=data_dir)
+            with con:
+                seo_db.set_state(con, EXTRA_STATE, {"at": now, "routes": len(routes), "kinds": kinds, "submitted": sorted(done | set(fresh))})
+            rec["tests"].append(_t("phase10_indexnow", True, rec["indexnow"]))
+            return _pass(rel, 10, rec, con, now, data_dir)
+        finally:
+            con.close()
 
 
 # ================= الحزمة النهائية =================
@@ -936,6 +1299,8 @@ def main(argv):
         res = phase8_batch(data_dir, int(opt.get("n") or 100))
     elif cmd == "expand":
         res = expand(data_dir, int(opt.get("n") or 100), int(opt["max"]) if opt.get("max") else None)
+    elif cmd == "extras":
+        res = extras(data_dir, exp)
     elif cmd == "final":
         res = final_bundle(data_dir)
         print(final_text(res) if res.get("ok") else res)

@@ -745,13 +745,14 @@ const DEVICES = {
       html: '<p>افتح التطبيق فيظهر خياران. اختر المحدَّد في الصورة: <b dir="ltr">Code</b> — ولا تختر <b dir="ltr">List</b>.</p>' },
     { title: "اكتب رمز الخادم", img: "/static/img/ios-var-server.webp",
       html: '<p>في خانة <b dir="ltr">Server Code</b> اكتب هذا الرمز ثم اضغط <b dir="ltr">Go</b>:</p>'
-        + COPY("55555", "رمز الخادم") },
+        + COPY("55555", "رمز الخادم")
+        + '<div class="note">هذا التطبيق لا يطلب رابط الهوست: الرمز يحلّ محلّه.</div>' },
     { title: "أدخل بيانات اشتراكك", img: "/static/img/ios-var-adduser-any.webp",
       html: '<p>تظهر شاشة <b dir="ltr">Add User</b> بثلاث خانات، عبّئها بالترتيب ثم اضغط <b dir="ltr">Go</b>:</p>'
         + '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>اكتب الرقم <b dir="ltr">1</b> فقط</code></div>'
         + '<div class="f"><span>الخانة الثانية <i dir="ltr">Username</i></span><code>اسم المستخدم كما وصلك</code></div>'
         + '<div class="f"><span>الخانة الثالثة <i dir="ltr">Password</i></span><code>كلمة المرور كما وصلتك</code></div></div>'
-        + '<div class="note">لا حاجة لرابط الهوست هنا: الخادم تحدّد برمز <b dir="ltr">55555</b> في الخطوة السابقة، فاكتب <b dir="ltr">1</b> في الخانة الأولى، ولا تكتب فيها <span dir="ltr">http://url:port</span> فهو مجرد نص توضيحي داخل الخانة، ولا تتركها فارغة.</div>' + CREDS }
+        + '<div class="note">لا يوجد رابط هنا ولا تكتب أي رابط: الخادم تحدّد برمز <b dir="ltr">55555</b> في الخطوة السابقة، فاكتب <b dir="ltr">1</b> في الخانة الأولى، ولا تكتب فيها <span dir="ltr">http://url:port</span> فهو مجرد نص توضيحي داخل الخانة، ولا تتركها فارغة.</div>' + CREDS }
   ]},
   android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
@@ -774,7 +775,7 @@ const DEVICES = {
       ]
     }
   },
-  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "MR7 TV أو IPTV Smarters Pro", choose: {
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد TCL Sony شاومي mi", sub: "MR7 TV أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
       { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تسجيل دخول مباشر", icon: "mr7", code: "5574841" },
@@ -820,6 +821,7 @@ const DEVICES = {
         { title: "اضغط Add Playlist واختر Portal Code", img: "/static/img/webos-0player-lists.webp",
           html: '<p>تُفتح شاشة قوائمك <b dir="ltr">Choose Your Playlist</b>. اضغط <b dir="ltr">Add Playlist</b> فتظهر شاشة <b dir="ltr">Add a new playlist</b>، واختر فيها تبويب <b dir="ltr">Portal Code</b> في الأعلى.</p>'
             + '<img src="/static/img/webos-0player-dialog.webp" alt="شاشة Add a new playlist: تبويب Portal Code وخانات البيانات، وعلى يمينها باركود للجوال" loading="lazy">'
+            + '<div class="note"><b>لا يوجد هنا رابط ولا هوست ولا بورت:</b> هذا التطبيق لا يطلب منك كتابة أي رابط. بدل الرابط تكتب <b>الكود</b> فقط في خانة <b dir="ltr">Code</b>، مع اسم المستخدم وكلمة المرور.</div>'
             + '<p><b>ومن هنا تضيف بيانات اشتراكك بطريقة من اثنتين، اختر واحدة:</b></p>',
           fork: [
             { to: 4, icon: "phone", label: "بالباركود من جوالك", sub: "الأسهل: تكتب البيانات في الجوال بدل الريموت" },
@@ -836,6 +838,7 @@ const DEVICES = {
             + '<ol start="4"><li>اكتب الحروف الظاهرة في الصورة في خانة <b dir="ltr">Captcha</b>، ثم اضغط <b dir="ltr">ADD PLAYLIST</b>.</li>'
             + '<li>تظهر <b dir="ltr">Playlist Added!</b> فقد أُضيفت قائمتك. ارجع إلى الشاشة وأكمل الخطوة التالية.</li></ol>'
             + '<img src="/static/img/webos-0player-web-done.webp" alt="رسالة Playlist Added! في موقع 0player.com" loading="lazy">'
+            + '<div class="note">لا تبحث عن خانة رابط: ليس في الصفحة خانة للرابط، والكود <b dir="ltr">92929480</b> يقوم مقامه.</div>'
             + '<div class="note">امسح الباركود الظاهر على شاشتك أنت: فيه رقم جهازك. والباركود في صور الدليل مثالٌ لا يُمسح.</div>' + CREDS },
         { title: "الطريقة الثانية: من التطبيق نفسه", num: 5, next: 6, prev: 3, img: "/static/img/webos-0player-portal-92929480.webp",
           html: '<p>في شاشة <b dir="ltr">Add a new playlist</b> على تبويب <b dir="ltr">Portal Code</b> اختر كل خانة بالريموت واكتب فيها:</p>'
@@ -844,7 +847,8 @@ const DEVICES = {
             + '<div class="f"><span dir="ltr">Code</span><code dir="ltr">92929480</code></div>'
             + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
             + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div></div>'
-            + '<p>ثم اضغط <b dir="ltr">SAVE</b>.</p>' + CREDS },
+            + '<p>ثم اضغط <b dir="ltr">SAVE</b>.</p>'
+            + '<div class="note">لا تبحث عن خانة رابط: لا يوجد في هذه الشاشة رابط ولا هوست، والكود <b dir="ltr">92929480</b> يقوم مقامه.</div>' + CREDS },
         { title: "اختر قائمتك وشاهد", num: 6, prev: 3, img: "/static/img/webos-0player-reload.webp",
           html: '<p>ارجع إلى شاشة قوائمك <b dir="ltr">Choose Your Playlist</b>:</p>'
             + '<ol><li>إن أضفت القائمة بالباركود فاضغط <b dir="ltr">Reload</b> — وبالعربي <b>إعادة التحميل</b> — حتى تظهر.</li>'
@@ -1045,7 +1049,7 @@ const FALCON = {
     }
   },
 
-  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق فالكون أو IPTV Smarters Pro", choose: {
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد TCL Sony شاومي mi", sub: "تطبيق فالكون أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
       { key: "falconapp", label: "تطبيق فالكون", sub: "تطبيق الاشتراك الخاص، عبر Downloader", icon: "falcon-app", code: "1683248" },
@@ -1088,7 +1092,7 @@ const CASPER_VIP_LOGIN = { title: "سجّل الدخول ببيانات اشتر
     + '<div class="fields"><div class="f"><span>Username</span><code>اسم المستخدم</code></div>'
     + '<div class="f"><span>Password</span><code>كلمة المرور</code></div></div>'
     + '<p>ثم اضغط زر الدخول.</p>'
-    + '<div class="note">إن طلب التطبيق رابط الهوست فهو يصلك مع بيانات اشتراكك، انسخه كما وصلك بدون مسافات.</div>' + HTTP_NOTE + CREDS };
+    + '<div class="note">لا يحتاج التطبيق رابطًا ولا هوست: اسم المستخدم وكلمة المرور فقط.</div>' + CREDS };
 
 // دخول تطبيق Ghost Casper VIP — واحد على الجوال والشاشة، ببيانات اشتراك كاسبر نفسها
 const GHOST_CASPER_LOGIN = { title: "سجّل الدخول ببيانات اشتراكك", img: "/static/img/ghost-casper-vip-login.webp",
@@ -1178,7 +1182,7 @@ const CASPER = {
     }
   },
 
-  tv: { icon: "tv", name: "شاشة / بوكس أندرويد", sub: "تطبيق Ghost Casper VIP أو IPTV Smarters Pro", choose: {
+  tv: { icon: "tv", name: "شاشة / بوكس أندرويد TCL Sony شاومي mi", sub: "تطبيق Ghost Casper VIP أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
       { key: "ghostcasper", label: "Ghost Casper VIP", sub: "تطبيق كاسبر الإضافي، عبر Downloader", icon: "ghost-casper-vip", code: "4162893" },

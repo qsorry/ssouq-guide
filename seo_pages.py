@@ -23,6 +23,7 @@ import content as C
 import content_page as P
 import guide_pages
 import seo_db
+import seo_reco
 import tournament
 
 SITE = guide_pages.SITE
@@ -105,6 +106,39 @@ def index_flags(con, row, st, approved=None):
         return indexable(row, "ar", st)[0], indexable(row, "en", st)[0], False
     approved = approved_routes(con) if approved is None else approved
     return live_index(row, "ar", st, approved)[0], live_index(row, "en", st, approved)[0], True
+
+
+# ================= اعتماد الصفحات غير الكيانية (القوائم · المواسم والحلقات · الهبّات · هب المحتوى) =================
+EXTRA_KEY = "index_approved_extra"     # build_state: {at, routes: [{path (عربي بلا بادئة), lang, kind, parent}]} — يكتبه seo_release.extras
+_extra_cache = {}
+
+
+def extra_approved(con):
+    """مسارات الصفحات غير الكيانية المعتمدة للفهرسة ← {(المسار العربي، اللغة)} (مخزَّنةٌ بوقت تحديث الحالة فلا يُحلَّل JSON كل طلب)."""
+    r = con.execute("SELECT updated_at FROM build_state WHERE key=?", (EXTRA_KEY,)).fetchone()
+    if not r:
+        return set()
+    k = (con.execute("PRAGMA database_list").fetchone()[2], r["updated_at"])
+    hit = _extra_cache.get(k)
+    if hit is None:
+        stt = seo_db.state(con, EXTRA_KEY) or {}
+        hit = {(x["path"], x["lang"]) for x in stt.get("routes") or [] if isinstance(x, dict)}
+        _extra_cache.clear()
+        _extra_cache[k] = hit
+    return hit
+
+
+def extra_flags(con, st, key, ok_ar, ok_en, parent_id=None):
+    """علما صفحتَي غير-الكيان كما تُخدمان ← (ar, en, live?): قبل `index_extra_live` هما الأهلية (معاينة noindex، hreflang كما سيكون)؛ وبعده
+    الفهرسة الفعلية: معتمدةٌ بمسارها ولغتها **ومستحقّةٌ الآن** — وللموسم والحلقة يُشترط أيضًا أن يكون مسلسلها معتمدًا بتلك اللغة."""
+    if not (st.get("index_live") and st.get("index_extra_live")):
+        return bool(ok_ar), bool(ok_en), False
+    ap = extra_approved(con)
+    ent = approved_routes(con) if parent_id else None
+
+    def one(lang, ok):
+        return bool(ok) and (key, lang) in ap and (not parent_id or (parent_id, lang) in ent)
+    return one("ar", ok_ar), one("en", ok_en), True
 
 
 # ================= أدوات =================
@@ -204,7 +238,7 @@ def _header(tr, hub=""):
              (HUB_NAMES["anime"][tr.en], _hub_path("anime", "", tr.code))]
     nav = "".join(f'<a href="{_esc(u)}"{" aria-current=page" if hub and u == _hub_path(hub, "", tr.code) else ""}>{_esc(n)}</a>' for n, u in links)
     return (f'<header class="top"><div class="wrap"><a class="brand" href="{home}"><b>{_esc(tr("سمارت سوق", "Smart Souq"))}</b>'
-            f'<small>guide.ssouq.com</small></a><nav class="nav">{nav}</nav></div></header>')
+            f'<small>{_esc(guide_pages.SITE_NETLOC)}</small></a><nav class="nav">{nav}</nav></div></header>')
 
 
 def _switch(tr, other_path):
@@ -295,6 +329,48 @@ def _tax(con, cid):
 
 def _tname(t, tr):
     return (t["name_en"] if tr.en else t["name_ar"]) or t["name_en"] or t["name_ar"] or t["key"]
+
+
+def _override(con, entity, entity_id, lang):
+    """تجاوز المدير (المرحلة 5: seo_override) للغةٍ بعينها ← dict أو {} — العنوان والوصف والمقدمة وعلم الفهرسة."""
+    r = con.execute("SELECT * FROM seo_override WHERE entity=? AND entity_id=? AND lang=?", (entity, entity_id, lang)).fetchone()
+    return dict(r) if r else {}
+
+
+def _like_widget(con, row, tr):
+    """زرّ «أعجبني» + قسم «مقترحات لك» (يُملأ بسكربتٍ صغير من سلوك الزائر المحفوظ في جهازه) + السكربت ← (شريط الإعجاب، قسم المقترحات، السكربت)."""
+    n = seo_reco.like_count(con, row["id"])
+    bar = (f'<div class="like-bar"><button type="button" class="like-btn" id="likeBtn" aria-pressed="false"><span class="heart" aria-hidden="true">♡</span> '
+           f'<span class="lbl">{_esc(tr("أعجبني", "Like"))}</span> <b id="likeN">{n if n else ""}</b></button></div>')
+    fy = (f'<section id="foryou" class="foryou" hidden><h2>{_esc(tr("مقترحات لك", "Picked for you"))}</h2><p class="meta" id="fyWhy"></p>'
+          f'<div class="grid" id="fyGrid"></div><p class="meta">{_esc(tr("تُحفظ تفضيلاتك في جهازك فقط، ولا نخزّن شيئًا عنك.", "Your preferences stay on your device only; we store nothing about you."))}</p></section>')
+    labels = {"like": tr("أعجبني", "Like"), "liked": tr("أعجبك", "Liked")}
+    js = ("(function(){var slug=%s,lang=%s,L=%s;"
+          "function rd(k){try{var v=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}"
+          "function wr(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}"
+          "var likes=rd('ssq_likes'),seen=rd('ssq_seen');"
+          "seen=[slug].concat(seen.filter(function(x){return x!==slug})).slice(0,80);wr('ssq_seen',seen);"
+          "var btn=document.getElementById('likeBtn'),nEl=document.getElementById('likeN'),box=document.getElementById('foryou');"
+          "if(!btn||!box)return;"
+          "function paint(){var on=likes.indexOf(slug)>-1;btn.setAttribute('aria-pressed',on?'true':'false');btn.classList.toggle('on',on);"
+          "btn.querySelector('.heart').textContent=on?'\u2665':'\u2661';btn.querySelector('.lbl').textContent=on?L.liked:L.like}"
+          "function card(it){var a=document.createElement('a');a.className='card';a.href=it.path;var p=document.createElement('span');p.className='pos';"
+          "if(it.poster){var im=document.createElement('img');im.src=it.poster;im.alt=it.title;im.width=342;im.height=513;im.loading='lazy';p.appendChild(im)}"
+          "if(it.rating){var rb=document.createElement('i');rb.className='rt-badge';rb.textContent='\\u2605 '+(Math.round(it.rating*10)/10);p.appendChild(rb)}"
+          "var b=document.createElement('b');b.dir='auto';b.textContent=it.title;a.appendChild(p);a.appendChild(b);"
+          "var t=[it.year||'',it.rating?(Math.round(it.rating*10)/10)+' \u2605':''].filter(Boolean).join(' \u00b7 ');"
+          "if(t){var s=document.createElement('small');s.textContent=t;a.appendChild(s)}return a}"
+          "function render(d){var g=document.getElementById('fyGrid');if(!d||!d.items||!d.items.length||d.cold){box.hidden=true;return}"
+          "g.textContent='';d.items.forEach(function(it){g.appendChild(card(it))});"
+          "var w=d.items.filter(function(i){return i.why})[0];document.getElementById('fyWhy').textContent=w?w.why:'';box.hidden=false}"
+          "function reco(){if(!likes.length&&seen.length<2){box.hidden=true;return}"
+          "fetch('/api/content/recommend?lang='+lang+'&likes='+encodeURIComponent(likes.slice(0,30).join(','))+'&seen='+encodeURIComponent(seen.slice(0,60).join(','))+'&interests='+encodeURIComponent(rd('ssq_interests').join(','))+'&types='+encodeURIComponent(rd('ssq_types').join(',')))"
+          ".then(function(r){return r.json()}).then(render).catch(function(){})}"
+          "btn.onclick=function(){var on=likes.indexOf(slug)<0;likes=likes.filter(function(x){return x!==slug});if(on)likes.unshift(slug);likes=likes.slice(0,40);wr('ssq_likes',likes);paint();"
+          "fetch('/api/content/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,on:on})})"
+          ".then(function(r){return r.json()}).then(function(d){if(d&&typeof d.count==='number')nEl.textContent=d.count>0?d.count:''}).catch(function(){});reco()};"
+          "paint();reco()})();") % (json.dumps(row["slug"]), json.dumps(tr.code), json.dumps(labels, ensure_ascii=False))
+    return bar, fy, f"<script>{js}</script>"
 
 
 def render_entity(con, data_dir, typ, slug, tr, st, query=None):
@@ -403,7 +479,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     if seasons:
         items = []
         for s in seasons:
-            eps = con.execute("SELECT number, title_en, title_ar, air_date, runtime FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 100", (row["id"], s["number"])).fetchall()
+            eps = con.execute("SELECT * FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 100", (row["id"], s["number"])).fetchall()
             name = s["name"] if tr.en and s["name"] else (tr("الحلقات الخاصة", "Specials") if s["number"] == 0 else tr(f"الموسم {s['number']}", f"Season {s['number']}"))
             ep_html = ""
             if eps:
@@ -415,7 +491,11 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
             s_label = tr.count(s["episodes_official"], "episodes") if s["episodes_official"] else (tr.count(s["episode_count"], "episodes") + tr(" في القوائم", " as listed"))
             if s["number"] == 0:
                 name = tr("حلقات خاصة", "Specials")
-            items.append(f'<details{" open" if s is seasons[0] else ""}><summary><b>{_esc(name)}</b> <small>{_esc(s_label)}</small></summary>'
+            if s["number"] > 0 and (season_ok(s, eps, tr.code, st)[0] or any(episode_ok(e, tr.code, st) for e in eps)):
+                name_html = f'<a href="{_esc(_season_path(row, s["number"], tr.code))}">{_esc(name)}</a>'
+            else:
+                name_html = _esc(name)
+            items.append(f'<details{" open" if s is seasons[0] else ""}><summary><b>{name_html}</b> <small>{_esc(s_label)}</small></summary>'
                          + (f'<p>{_esc(s["overview_en"] if tr.en else s["overview_ar"] or "")}</p>' if (s["overview_en"] if tr.en else s["overview_ar"]) else "") + ep_html + "</details>")
         seas = f'<section id="seasons"><h2>{_esc(tr(f"مواسم وحلقات مسلسل {title}", f"{title} seasons & episodes"))}</h2>{"".join(items)}</section>'
     # الصور
@@ -483,11 +563,26 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         lds.append({"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq]})
     trailer_html = (f'<section class="trailer"><h2>{_esc(tr("الإعلان", "Trailer"))}</h2><div class="yt"><iframe loading="lazy" src="https://www.youtube-nocookie.com/embed/{_esc(row["trailer_yt"])}" '
                     f'title="{_esc(tr(f"إعلان {title}", f"{title} trailer"))}" allowfullscreen></iframe></div></section>') if row["trailer_yt"] else ""
+    ov_ar, ov_en = _override(con, "content", row["id"], "ar"), _override(con, "content", row["id"], "en")
+    ovr = ov_en if tr.en else ov_ar
+    if ovr.get("seo_title"):
+        page_title = ovr["seo_title"]
+    if ovr.get("meta_desc"):
+        desc = ovr["meta_desc"][:160]
+    if ovr.get("intro"):
+        body_intro = f'<p class="intro" dir="auto">{_esc(ovr["intro"])}</p>'
+    else:
+        body_intro = ""
+    like_bar, foryou_html, like_js = _like_widget(con, row, tr)
     ok_ar, ok_en, live = index_flags(con, row, st)     # قبل المرحلة 4: الأهلية؛ بعدها: المعتمد المستحقّ وحده (والباقي noindex بلا alternate)
+    if ov_ar.get("index_flag") == 0:
+        ok_ar = False                                  # المدير أخرج هذه اللغة من الفهرسة: noindex ولا alternate
+    if ov_en.get("index_flag") == 0:
+        ok_en = False
     alts = [("ar", SITE + _path(row, "ar")), ("en", SITE + _path(row, "en")), ("x-default", SITE + _path(row, "ar"))] if ok_ar and ok_en else []
     noindex = not (live and (ok_en if tr.en else ok_ar))
     body = (_header(tr, hubs[0]["key"] if hubs else "") + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, _path(row, "en" if not tr.en else "ar"))}</div>'
-            + head + f'<div class="cols"><div class="main">{story}{seas}{ppl}{trailer_html}{pics}{faq_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr))
+            + body_intro + head + like_bar + f'<div class="cols"><div class="main">{story}{seas}{ppl}{trailer_html}{pics}{faq_html}{foryou_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr) + like_js)
     return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_image=backdrop or poster, og_type="video.movie" if typ == "movie" else "video.tv_show",
                                  noindex=noindex), "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en,
                    "noindex": noindex, "live": live, "why": (indexable(row, "ar", st)[1], indexable(row, "en", st)[1]), "row": row}
@@ -720,14 +815,306 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
     body += "</main>" + _footer(tr)
     canonical = SITE + me(tr.code, page)
     ok = total >= min_items
-    alts = [("ar", SITE + me("ar", page)), ("en", SITE + me("en", page)), ("x-default", SITE + me("ar", page))] if ok else []
+    ia, ie, live = extra_flags(con, st, me("ar", page), ok, ok)
+    alts = [("ar", SITE + me("ar", page)), ("en", SITE + me("en", page)), ("x-default", SITE + me("ar", page))] if ia and ie else []
+    noindex = not (live and (ie if tr.en else ia))
     ld = {"@context": "https://schema.org", "@type": "CollectionPage", "name": h1, "url": canonical, "description": desc}
     if rows or not listing:
         lst = rows if listing else _hub_rows(con, hub, "", None, None, 1, 12)[1]
         ld["mainEntity"] = {"@type": "ItemList", "numberOfItems": total, "itemListElement": [
             {"@type": "ListItem", "position": i + 1, "url": SITE + _path(r, tr.code), "name": _title(r, tr)} for i, r in enumerate(lst)]}
-    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], noindex=True), "title": page_title, "desc": desc,
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], noindex=noindex), "noindex": noindex, "title": page_title, "desc": desc,
                     "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok, "why": ("ok" if ok else f"items < {min_items}",) * 2, "total": total}
+
+
+
+
+
+def render_tour(con, data_dir, tr, st):
+    """‏/content/for-you/ — «محتار ايش تشاهد؟»: جولة بثلاث خطوات (الاهتمامات ← ما شاهده وأعجبه ببحثٍ ذكي يقبل الأخطاء ← مقترحات بتقييمها وسببها).
+    صفحةٌ أداة: noindex ولا تدخل الخريطة؛ والحالة في جهاز الزائر فقط."""
+    chips = seo_reco.interests(data_dir, tr.code)
+    L = {"liked": tr("أعجبني", "Like"), "seen": tr("شاهدته", "Watched"), "none": tr("لا اقتراحات مناسبة بعد — أضِف أعمالًا شاهدتها أو أعجبتك.", "No fitting picks yet — add titles you watched or liked."),
+         "pick": tr("الأشهر في اهتماماتك — حدّد ما شاهدته", "Popular in your interests — mark what you watched"), "noresult": tr("لا نتائج", "No results"),
+         "searching": tr("يبحث…", "Searching…")}
+    cfg = json.dumps({"lang": tr.code, "chips": chips, "L": L}, ensure_ascii=False).replace("</", "<\\/")
+    title = tr("محتار ايش تشاهد؟", "Not sure what to watch?")
+    body = (_header(tr) + f'<main class="wrap tour"><h1>{_esc(title)}</h1><p class="lead">{_esc(tr("جولة سريعة: اختر اهتماماتك وما شاهدته، ونقترح عليك ما يناسبك.", "A quick tour: pick your interests and what you watched, and we will suggest what fits."))}</p>'
+            f'<ol class="tsteps" id="tDots"><li class="on">1 · {_esc(tr("اهتماماتك", "Interests"))}</li><li>2 · {_esc(tr("ما شاهدته", "What you watched"))}</li><li>3 · {_esc(tr("مقترحاتك", "Your picks"))}</li></ol>'
+            f'<section id="s1"><h2>{_esc(tr("ماذا تحب أن تشاهد؟", "What do you like?"))}</h2><div class="tchips" id="tTypes"></div><div class="tchips" id="tChips"></div>'
+            f'<div class="tbtns"><button type="button" class="tbtn go" id="to2">{_esc(tr("التالي", "Next"))}</button></div></section>'
+            f'<section id="s2" hidden><h2>{_esc(tr("أعمالٌ شاهدتها أو أعجبتك", "Titles you watched or liked"))}</h2>'
+            f'<input class="tsearch" id="tQ" type="search" autocomplete="off" placeholder="{_esc(tr("ابحث باسم مسلسل أو فيلم (يقبل الأخطاء الإملائية)", "Search a series or movie (typos are fine)"))}">'
+            f'<p class="tmsg" id="tMsg"></p><div class="grid" id="tRes"></div><h3 id="tQuickH"></h3><div class="grid" id="tQuick"></div>'
+            f'<div class="tbtns"><button type="button" class="tbtn" id="to1">{_esc(tr("السابق", "Back"))}</button><button type="button" class="tbtn go" id="to3">{_esc(tr("أظهر المقترحات", "Show my picks"))}</button></div></section>'
+            f'<section id="s3" hidden><h2>{_esc(tr("قد يعجبك", "You may like"))}</h2><p class="tmsg" id="tWhy"></p><div class="grid" id="tOut"></div>'
+            f'<div class="tbtns"><button type="button" class="tbtn" id="to2b">{_esc(tr("عدّل اختياراتي", "Edit my picks"))}</button><button type="button" class="tbtn" id="tReset">{_esc(tr("ابدأ من جديد", "Start over"))}</button></div></section>'
+            f'<p class="meta">{_esc(tr("تُحفظ اختياراتك في جهازك فقط، ولا نخزّن شيئًا عنك.", "Your choices stay on your device only; we store nothing about you."))}</p></main>' + _footer(tr))
+    js = r"""(function(){var CFG=__CFG__,L=CFG.L,$=function(i){return document.getElementById(i)};
+function rd(k,d){try{var v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}}
+function wr(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+var st={interests:rd('ssq_interests',[]),types:rd('ssq_types',[]),likes:rd('ssq_likes',[]),seen:rd('ssq_seen',[])};
+function save(){wr('ssq_interests',st.interests);wr('ssq_types',st.types);wr('ssq_likes',st.likes);wr('ssq_seen',st.seen)}
+function has(a,x){return a.indexOf(x)>-1}function flip(a,x){var i=a.indexOf(x);if(i>-1)a.splice(i,1);else a.unshift(x)}
+function step(n){['s1','s2','s3'].forEach(function(id,i){$(id).hidden=(i+1!==n)});Array.prototype.forEach.call($('tDots').children,function(li,i){li.className=(i+1===n)?'on':''});window.scrollTo(0,0)}
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function rate(it){return it.rating?(Math.round(it.rating*10)/10):0}
+function card(it,pick){var a=el(pick?'div':'a','card'+(pick?' pick':''));if(!pick)a.href=it.path;var p=el('span','pos');
+ if(it.poster){var im=el('img');im.src=it.poster;im.alt=it.title;im.width=342;im.height=513;im.loading='lazy';p.appendChild(im)}
+ if(rate(it)){p.appendChild(el('i','rt-badge','\u2605 '+rate(it)))}
+ a.appendChild(p);var t=el('b',null,it.title);t.dir='auto';a.appendChild(t);
+ var sm=[it.year||'',rate(it)?'\u2605 '+rate(it):''].filter(Boolean).join(' \u00b7 ');if(sm)a.appendChild(el('small',null,sm));
+ if(!pick&&it.why){var w=el('small',null,it.why);w.style.display='block';a.appendChild(w)}
+ if(pick){var k=el('div','pk'),lk=el('button','lk'+(has(st.likes,it.slug)?' on':''),'\ud83d\udc4d '+L.liked),sn=el('button','sn'+(has(st.seen,it.slug)?' on':''),'\u2713 '+L.seen);lk.type=sn.type='button';
+  lk.onclick=function(){if(has(st.likes,it.slug)){flip(st.likes,it.slug)}else{st.likes.unshift(it.slug);if(!has(st.seen,it.slug))st.seen.unshift(it.slug)}save();lk.className='lk'+(has(st.likes,it.slug)?' on':'');sn.className='sn'+(has(st.seen,it.slug)?' on':'')};
+  sn.onclick=function(){if(has(st.seen,it.slug)){flip(st.seen,it.slug);var i=st.likes.indexOf(it.slug);if(i>-1)st.likes.splice(i,1)}else{st.seen.unshift(it.slug)}save();sn.className='sn'+(has(st.seen,it.slug)?' on':'');lk.className='lk'+(has(st.likes,it.slug)?' on':'')};
+  k.appendChild(lk);k.appendChild(sn);a.appendChild(k)}return a}
+function fill(box,items,pick){box.textContent='';items.forEach(function(it){box.appendChild(card(it,pick))})}
+function q(extra){return '/api/content/recommend?lang='+CFG.lang+'&interests='+encodeURIComponent(st.interests.join(','))+'&types='+encodeURIComponent(st.types.join(','))+extra}
+// الخطوة 1
+var TY=[['movie',CFG.lang==='en'?'Movies':'\u0623\u0641\u0644\u0627\u0645'],['series',CFG.lang==='en'?'Series':'\u0645\u0633\u0644\u0633\u0644\u0627\u062a']];
+TY.forEach(function(t){var b=el('button','tchip'+(has(st.types,t[0])?' on':''),t[1]);b.type='button';b.onclick=function(){flip(st.types,t[0]);save();b.className='tchip'+(has(st.types,t[0])?' on':'')};$('tTypes').appendChild(b)});
+CFG.chips.forEach(function(c){var b=el('button','tchip'+(has(st.interests,c.id)?' on':''),c.name);b.type='button';b.onclick=function(){flip(st.interests,c.id);save();b.className='tchip'+(has(st.interests,c.id)?' on':'')};$('tChips').appendChild(b)});
+// الخطوة 2: بحثٌ ذكي + اقتراحات سريعة
+var tm=0;$('tQ').oninput=function(){clearTimeout(tm);var v=this.value.trim();if(v.length<2){$('tRes').textContent='';$('tMsg').textContent='';return}
+ $('tMsg').textContent=L.searching;tm=setTimeout(function(){fetch('/api/content/find?lang='+CFG.lang+'&q='+encodeURIComponent(v)).then(function(r){return r.json()}).then(function(d){
+  $('tMsg').textContent=(d.items&&d.items.length)?'':L.noresult;fill($('tRes'),d.items||[],true)}).catch(function(){$('tMsg').textContent=''})},250)};
+function quick(){$('tQuickH').textContent=L.pick;fetch(q('&n=12&likes=&seen=')).then(function(r){return r.json()}).then(function(d){fill($('tQuick'),d.items||[],true)}).catch(function(){})}
+function results(){$('tWhy').textContent='';$('tOut').textContent='';fetch(q('&n=18&likes='+encodeURIComponent(st.likes.slice(0,30).join(','))+'&seen='+encodeURIComponent(st.seen.slice(0,60).join(',')))).then(function(r){return r.json()}).then(function(d){
+ if(!d.items||!d.items.length||d.cold&&!st.interests.length&&!st.likes.length){$('tWhy').textContent=L.none;return}fill($('tOut'),d.items,false);var w=d.items.filter(function(i){return i.why})[0];$('tWhy').textContent=w?w.why:''}).catch(function(){})}
+$('to2').onclick=function(){step(2);quick()};$('to1').onclick=function(){step(1)};$('to3').onclick=function(){step(3);results()};$('to2b').onclick=function(){step(2);quick()};
+$('tReset').onclick=function(){st={interests:[],types:[],likes:[],seen:[]};save();location.reload()};
+})();""".replace("__CFG__", cfg)
+    body += f"<script>{js}</script>"
+    canonical = SITE + seo_db.lang_prefix(tr.code) + "/content/for-you/"
+    return "page", {"html": _doc(tr, title + " | " + tr("سمارت سوق", "Smart Souq"), tr("جولة سريعة لاقتراح مسلسلات وأفلام تناسبك.", "A quick tour to suggest series and movies that fit you."), canonical, [], body, [], noindex=True),
+                    "noindex": True, "title": title, "index_ar": False, "index_en": False}
+
+
+# ================= المواسم والحلقات (المرحلة 7) =================
+def season_ok(season, eps, lang, st):
+    """صفحة الموسم: ملخصٌ باللغة + حلقاتٌ بعناوين (سياسة §6) ← (نعم؟، السبب)."""
+    ov = (season["overview_en"] if lang == "en" else season["overview_ar"]) or ""
+    if len(ov) < int(st.get("index_min_overview", 120)):
+        return False, f"season overview_{lang} < {st.get('index_min_overview', 120)}"
+    if not eps or not all((e["title_en"] if lang == "en" else (e["title_ar"] or e["title_en"])) for e in eps):
+        return False, "episodes without titles"
+    return True, "ok"
+
+
+def episode_ok(ep, lang, st):
+    """صفحة الحلقة: لا صفحة إلا بشروط ‏episode_page في الإعدادات (عنوان · ملخص ≥ الحدّ · تاريخ عرض) ← نعم؟"""
+    pol = st.get("episode_page") or {}
+    title = (ep["title_en"] if lang == "en" else (ep["title_ar"] or ep["title_en"])) or ""
+    ov = (ep["overview_en"] if lang == "en" else ep["overview_ar"]) or ""
+    if pol.get("title", True) and not title:
+        return False
+    if len(ov) < int(pol.get("overview_min", 80)):
+        return False
+    if pol.get("air_date", True) and not ep["air_date"]:
+        return False
+    return True
+
+
+def _season_path(row, n, lang="ar", ep=None):
+    return seo_db.lang_prefix(lang) + f"/content/series/{row['slug']}/season-{n}/" + (f"episode-{ep}/" if ep else "")
+
+
+def render_season(con, data_dir, slug, n, ep_no, tr, st):
+    """‏/content/series/<slug>/season-<n>/ و…/episode-<e>/ — 404 حين لا تتوفر شروط الصفحة (الحلقة خصوصًا)."""
+    _services.data_dir = data_dir
+    row = con.execute("SELECT * FROM content WHERE type='series' AND slug=? AND merged_into IS NULL AND available=1", (slug,)).fetchone()
+    if not row or n < 1:
+        return None
+    season = con.execute("SELECT * FROM season WHERE content_id=? AND number=?", (row["id"], n)).fetchone()
+    if not season:
+        return None
+    eps = con.execute("SELECT * FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 300", (row["id"], n)).fetchall()
+    title = _title(row, tr)
+    s_name = tr(f"الموسم {n}", f"Season {n}")
+    series_path = _path(row, tr.code)
+    if ep_no:
+        ep = next((e for e in eps if e["number"] == ep_no), None)
+        if not ep or not episode_ok(ep, tr.code, st):
+            return None
+        et = (ep["title_en"] if tr.en else ep["title_ar"] or ep["title_en"])
+        ov = (ep["overview_en"] if tr.en else ep["overview_ar"]) or ""
+        h1 = tr(f"{title} — {s_name} الحلقة {ep_no}: {et}", f"{title} — {s_name} Episode {ep_no}: {et}")
+        desc = ov[:160]
+        me = lambda lang: _season_path(row, n, lang, ep_no)   # noqa: E731
+        crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (title, series_path),
+                  (s_name, _season_path(row, n, tr.code)), (tr(f"الحلقة {ep_no}", f"Episode {ep_no}"), "")]
+        prev_n = next((e["number"] for e in reversed(eps) if e["number"] < ep_no and episode_ok(e, tr.code, st)), None)
+        next_n = next((e["number"] for e in eps if e["number"] > ep_no and episode_ok(e, tr.code, st)), None)
+        still = _img(ep["still"], "w780") if ep["still"] else ""
+        crumb_html, crumb_ld = _crumbs(crumbs)
+        body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, me("en" if not tr.en else "ar"))}</div><h1>{_esc(h1)}</h1>'
+                + (f'<img src="{_esc(still)}" alt="{_esc(tr(f"لقطة من الحلقة {ep_no} من {title}", f"Still from {title} episode {ep_no}"))}" width="780" height="439">' if still else "")
+                + f'<p dir="auto">{_esc(ov)}</p><p><small>{_esc(ep["air_date"])}' + (f' · {ep["runtime"]} {_esc(tr("دقيقة", "min"))}' if ep["runtime"] else "") + "</small></p>"
+                + '<p class="more">' + (f'<a href="{_esc(_season_path(row, n, tr.code, prev_n))}" rel="prev">{_esc(tr("الحلقة السابقة", "Previous episode"))}</a> ' if prev_n else "")
+                + (f'<a href="{_esc(_season_path(row, n, tr.code, next_n))}" rel="next">{_esc(tr("الحلقة التالية", "Next episode"))}</a> ' if next_n else "")
+                + f'<a href="{_esc(_season_path(row, n, tr.code))}">{_esc(s_name)}</a> · <a href="{_esc(series_path)}">{_esc(title)}</a></p></main>' + _footer(tr))
+        ld = {"@context": "https://schema.org", "@type": "TVEpisode", "name": et, "episodeNumber": ep_no, "description": ov, "datePublished": ep["air_date"],
+              "partOfSeason": {"@type": "TVSeason", "seasonNumber": n}, "partOfSeries": {"@type": "TVSeries", "name": title, "url": SITE + series_path}}
+        ok_ar, ok_en = episode_ok(ep, "ar", st), episode_ok(ep, "en", st)
+        lds, page_title = [crumb_ld, ld], f"{h1} | " + tr("سمارت سوق", "Smart Souq")
+    else:
+        ok_ar, ok_en = season_ok(season, eps, "ar", st)[0], season_ok(season, eps, "en", st)[0]
+        h1 = tr(f"{title} — {s_name}", f"{title} — {s_name}")
+        sov = (season["overview_en"] if tr.en else season["overview_ar"]) or ""
+        desc = (sov or tr(f"حلقات {s_name} من {title}", f"Episodes of {title} {s_name}"))[:160]
+        me = lambda lang: _season_path(row, n, lang)   # noqa: E731
+        crumb_html, crumb_ld = _crumbs([(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (title, series_path), (s_name, "")])
+        lis = []
+        for e in eps:
+            et = (e["title_en"] if tr.en else e["title_ar"] or e["title_en"]) or ""
+            label = f'<span>{e["number"]}</span> {_esc(et)}' + (f' <small>{_esc(e["air_date"])}</small>' if e["air_date"] else "")
+            lis.append(f'<li><a href="{_esc(_season_path(row, n, tr.code, e["number"]))}">{label}</a></li>' if episode_ok(e, tr.code, st) else f"<li>{label}</li>")
+        body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, me("en" if not tr.en else "ar"))}</div><h1>{_esc(h1)}</h1>'
+                + (f'<p dir="auto">{_esc(sov)}</p>' if sov else "") + (f'<ol class=eps>{"".join(lis)}</ol>' if lis else "")
+                + f'<p class="more"><a href="{_esc(series_path)}">{_esc(title)}</a></p></main>' + _footer(tr))
+        ld = {"@context": "https://schema.org", "@type": "TVSeason", "name": h1, "seasonNumber": n, "numberOfEpisodes": len(eps),
+              "partOfSeries": {"@type": "TVSeries", "name": title, "url": SITE + series_path}}
+        lds, page_title = [crumb_ld, ld], f"{h1} | " + tr("المواسم والحلقات", "Seasons & Episodes") + " | " + tr("سمارت سوق", "Smart Souq")
+    canonical = SITE + me(tr.code)
+    ia, ie, live = extra_flags(con, st, me("ar"), ok_ar, ok_en, parent_id=row["id"])
+    alts = [("ar", SITE + me("ar")), ("en", SITE + me("en")), ("x-default", SITE + me("ar"))] if ia and ie else []
+    noindex = not (live and (ie if tr.en else ia))
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_type="video.episode" if ep_no else "video.tv_show", noindex=noindex),
+                    "noindex": noindex, "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en}
+
+
+# ================= قوائم التصنيف العامة (المرحلة 6): النوع · الدولة · اللغة · السنة · الأحدث =================
+TAX_KINDS = {"genres": "genre", "countries": "country", "languages": "language"}
+TAX_TITLES = {"genres": ("النوع", "Genre"), "countries": ("الدولة", "Country"), "languages": ("اللغة", "Language")}
+LATEST_SECTIONS = {"": ("الأحدث", "Latest"), "movies": ("أحدث الأفلام", "Latest movies"), "series": ("أحدث المسلسلات", "Latest series")}
+
+
+def _tax_where(kind, key, section=""):
+    """شرط القائمة العامة (بُعدٌ واحد، لا تركيبات فلاتر) ← (JOIN/WHERE، args)."""
+    sql = "FROM content c WHERE c.merged_into IS NULL AND c.available=1"
+    args = []
+    if kind in TAX_KINDS.values():
+        sql += (" AND c.id IN (SELECT ct.content_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id "
+                "WHERE t.kind=? AND t.slug=? AND ct.source IN ('tmdb','manual'))")
+        args += [kind, key]
+    elif kind == "year":
+        sql += " AND c.year=?"
+        args.append(int(key))
+    if section == "movies":
+        sql += " AND c.type='movie'"
+    elif section == "series":
+        sql += " AND c.type='series'"
+    return sql, args
+
+
+def render_taxonomy(con, data_dir, facet, slug, section, page, tr, st):
+    """‏/content/<genres|countries|languages>/<slug>/ · /content/year/<yyyy>/ · /content/latest/[movies|series/] — [page/<n>/]
+    بُعدٌ واحد فقط؛ الفهرسة بعدد العناصر (list_min_items) وحدّ الصفحات (list_max_pages) من الإعدادات."""
+    _services.data_dir = data_dir
+    size, max_pages, min_items = int(st.get("page_size", 60)), int(st.get("list_max_pages", 50)), int(st.get("list_min_items", 12))
+    if page < 1 or page > max_pages:
+        return None
+    if facet in TAX_KINDS:
+        kind = TAX_KINDS[facet]
+        t = con.execute("SELECT * FROM taxonomy WHERE kind=? AND slug=?", (kind, slug)).fetchone()
+        if not t:
+            return None
+        name, base = _tname(t, tr), f"/content/{facet}/{slug}/"
+        h1 = {"genres": tr(f"أعمال {name}", f"{name} series & movies"),
+              "countries": tr(f"أعمال {name}", f"Series & movies from {name}"),
+              "languages": tr(f"أعمال بلغة {name}", f"{name}-language series & movies")}[facet]
+    elif facet == "year":
+        kind, name, base = "year", str(slug), f"/content/year/{slug}/"
+        if not str(slug).isdigit() or not 1900 <= int(slug) <= 2100:
+            return None
+        h1 = tr(f"مسلسلات وأفلام {slug}", f"Series & movies of {slug}")
+    else:   # latest
+        kind, name, base = "latest", "", "/content/latest/" + (f"{section}/" if section else "")
+        h1 = LATEST_SECTIONS[section][tr.en]
+    where, args = _tax_where(kind, slug if kind != "latest" else "", section if facet in ("latest",) else "")
+    total = con.execute(f"SELECT COUNT(*) {where}", args).fetchone()[0]
+    if not total:
+        return None
+    pages = min(max_pages, max(1, -(-total // size)))
+    if page > pages:
+        return None
+    rows = con.execute(f"SELECT c.* {where} ORDER BY COALESCE(c.last_seen, c.first_seen, 0) DESC, c.id DESC LIMIT ? OFFSET ?",
+                       (*args, size, (page - 1) * size)).fetchall()
+    me = lambda lang, pg=1: seo_db.lang_prefix(lang) + base + (f"page/{pg}/" if pg > 1 else "")   # noqa: E731
+    page_title = h1 + (tr(f" — صفحة {page}", f" — page {page}") if page > 1 else "") + " | " + tr("سمارت سوق", "Smart Souq")
+    desc = tr(f"{h1}: {total:,} عملًا متوفرًا في اشتراكات سمارت سوق، بقصة كل عمل وأبطاله ومواسمه.",
+              f"{h1}: {total:,} titles available on Smart Souq subscriptions, with story, cast and seasons.")[:160]
+    crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path)]
+    if facet in TAX_KINDS:
+        crumbs.append((TAX_TITLES[facet][tr.en], ""))
+    crumbs.append((h1, me(tr.code) if page > 1 else ""))
+    if page > 1:
+        crumbs.append((tr(f"صفحة {page}", f"Page {page}"), ""))
+    crumb_html, crumb_ld = _crumbs(crumbs)
+    head_links, nav = _page_links(lambda lang, pg: me(lang, pg), tr, page, pages)
+    body = (_header(tr) + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, me("en" if not tr.en else "ar", page))}</div>'
+            f'<h1>{_esc(h1)}</h1><p class="intro" dir="auto">{_esc(desc)}</p>{_grid(rows, tr)}{nav}</main>' + _footer(tr))
+    canonical = SITE + me(tr.code, page)
+    ok = total >= min_items
+    ia, ie, live = extra_flags(con, st, me("ar", page), ok, ok)
+    alts = [("ar", SITE + me("ar", page)), ("en", SITE + me("en", page)), ("x-default", SITE + me("ar", page))] if ia and ie else []
+    noindex = not (live and (ie if tr.en else ia))
+    ld = {"@context": "https://schema.org", "@type": "CollectionPage", "name": h1, "url": canonical, "description": desc,
+          "mainEntity": {"@type": "ItemList", "numberOfItems": total, "itemListElement": [
+              {"@type": "ListItem", "position": (page - 1) * size + i + 1, "url": SITE + _path(r, tr.code), "name": _title(r, tr)}
+              for i, r in enumerate(rows)]}}
+    return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, [crumb_ld, ld], noindex=noindex, extra_head=head_links),
+                    "noindex": noindex, "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok, "index_en": ok,
+                    "why": ("ok" if ok else f"items < {min_items}",) * 2, "total": total}
+
+
+
+# ================= هب المحتوى /content/ (المرحلة 8) =================
+def render_content_hub(con, data_dir, tr, st):
+    """‏/content/ هبًّا حقيقيًّا (أحدث المحتوى · الهبّات · التصنيفات · السنوات · السيرفرات) بدل التحويل 302 — يعمل فقط حين
+    يُفعَّل ‏content_hub في الإعدادات؛ وما دام معطّلًا يبقى سلوكه القديم (302 لأول سيرفر) كما هو."""
+    _services.data_dir = data_dir
+    min_items = int(st.get("list_min_items", 12))
+    h1 = tr("المسلسلات والأفلام في اشتراكات سمارت سوق", "Series & Movies on Smart Souq subscriptions")
+    desc = tr("دليل المسلسلات والأفلام المتوفرة في اشتراكات سمارت سوق: أحدث الأعمال، التركي والأنمي، حسب النوع والدولة والسنة، وأين يتوفر كل عمل.",
+              "Guide to the series and movies available on Smart Souq subscriptions: latest titles, Turkish and anime, by genre, country and year, and where each one is available.")[:160]
+    body = _header(tr)
+    crumb_html, crumb_ld = _crumbs([(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), "")])
+    body += f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, seo_db.lang_prefix("en" if not tr.en else "ar") + "/content/")}</div><h1>{_esc(h1)}</h1><p class="intro" dir="auto">{_esc(desc)}</p>'
+    for typ, sec, head in (("movie", "movies", tr("أحدث الأفلام", "Latest movies")), ("series", "series", tr("أحدث المسلسلات", "Latest series"))):
+        rows = con.execute("SELECT * FROM content WHERE type=? AND merged_into IS NULL AND available=1 ORDER BY COALESCE(last_seen, first_seen, 0) DESC, id DESC LIMIT 12", (typ,)).fetchall()
+        if rows:
+            body += (f'<section><h2><a href="{_esc(seo_db.lang_prefix(tr.code) + "/content/latest/" + sec + "/")}">{_esc(head)}</a></h2>{_grid(rows, tr)}</section>')
+    body += (f'<section><h2>{_esc(tr("أقسام مختارة", "Featured"))}</h2><p class="chips">'
+             + "".join(f'<a class="chip" href="{_esc(_hub_path(h, "", tr.code))}">{_esc(HUB_NAMES[h][tr.en])}</a>' for h in HUBS) + "</p></section>")
+    for kind, facet, head, limit in (("genre", "genres", tr("حسب النوع", "By genre"), 24), ("country", "countries", tr("حسب الدولة", "By country"), 24),
+                                     ("language", "languages", tr("حسب اللغة", "By language"), 16)):
+        ts = con.execute("SELECT t.*, COUNT(*) n FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id JOIN content c ON c.id=ct.content_id "
+                         "WHERE t.kind=? AND ct.source IN ('tmdb','manual') AND c.merged_into IS NULL AND c.available=1 GROUP BY t.id HAVING n>=? ORDER BY n DESC LIMIT ?",
+                         (kind, min_items, limit)).fetchall()
+        if kind == "country":
+            ts = [t for t in ts if t["slug"] != "tr"]          # التركي هبٌّ مستقل (لا صفحتان تتنافسان)
+        if ts:
+            body += (f'<section><h2>{_esc(head)}</h2><p class="chips">' + "".join(
+                f'<a class="chip" href="{_esc(seo_db.lang_prefix(tr.code) + f"/content/{facet}/{t["slug"]}/")}">{_esc(_tname(t, tr))} <small>{t["n"]:,}</small></a>' for t in ts) + "</p></section>")
+    ys = con.execute("SELECT year, COUNT(*) n FROM content WHERE merged_into IS NULL AND available=1 AND year IS NOT NULL GROUP BY year HAVING n>=? ORDER BY year DESC LIMIT 25", (min_items,)).fetchall()
+    if ys:
+        body += (f'<section><h2>{_esc(tr("حسب السنة", "By year"))}</h2><p class="chips">' + "".join(
+            f'<a class="chip" href="{_esc(seo_db.lang_prefix(tr.code) + "/content/year/%d/" % y["year"])}">{y["year"]} <small>{y["n"]:,}</small></a>' for y in ys) + "</p></section>")
+    srv = [s_ for s_ in C.servers(data_dir)]
+    if srv:   # صفحات السيرفرات القائمة تبقى كما هي، ويربط إليها الهب
+        body += (f'<section><h2>{_esc(tr("السيرفرات", "Servers"))}</h2><p class="chips">' + "".join(
+            f'<a class="chip" href="{_esc(tr.path + "/" + s_["key"])}">{_esc(tr.name(s_))}</a>' for s_ in srv) + "</p></section>")
+    body += "</main>" + _footer(tr)
+    me = lambda lang: seo_db.lang_prefix(lang) + "/content/"   # noqa: E731
+    canonical = SITE + me(tr.code)
+    ia, ie, live = extra_flags(con, st, "/content/", True, True)
+    alts = [("ar", SITE + me("ar")), ("en", SITE + me("en")), ("x-default", SITE + me("ar"))] if ia and ie else []
+    noindex = not (live and (ie if tr.en else ia))
+    ld = {"@context": "https://schema.org", "@type": "CollectionPage", "name": h1, "url": canonical, "description": desc}
+    return "page", {"html": _doc(tr, h1 + " | " + tr("سمارت سوق", "Smart Souq"), desc, canonical, alts, body, [crumb_ld, ld], noindex=noindex),
+                    "noindex": noindex, "title": h1, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": True, "index_en": True}
 
 
 # ================= التوجيه =================
@@ -735,17 +1122,36 @@ _RX = re.compile(r"^/content/(?:(movies|series)/([a-z0-9-]+)/|people/(actors|dir
                  r"(turkish|anime)/(?:(series|movies|ongoing|completed)/)?(?:(genres|year)/([a-z0-9-]+)/)?(?:page/(\d+)/)?)$")
 
 
-def handle(data_dir, path, lang):
-    """← (code, body, headers) أو None إن لم يكن من مسارات الطبقة. وبلا ‏preview: 404 لكل مساراتها (لا شيء عامٌّ بعد)."""
+_RX_SEASON = re.compile(r"^/content/series/([a-z0-9-]+)/season-(\d{1,3})/(?:episode-(\d{1,4})/)?$")
+_RX_TAX = re.compile(r"^/content/(?:(genres|countries|languages)/([a-z0-9-]+)/|year/(\d{4})/|latest/(?:(movies|series)/)?)(?:page/(\d+)/)?$")
+
+
+def _served(res):
+    """رأس الردّ لصفحةٍ مرسومة: noindex (وسمًا ورأسًا) أو معتمدٌ مستحقّ بلا رأس noindex."""
+    if res[1].get("noindex", True):
+        return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
+    return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}
+
+
+def handle(data_dir, path, lang, _info=False, _con=None):
+    """← (code, body, headers) أو None إن لم يكن من مسارات الطبقة. وبلا ‏preview: 404 لكل مساراتها (لا شيء عامٌّ بعد).
+    ‏_info=True (لفحوص seo_release): يعيد قاموس الصفحة المرسومة (الأهلية index_ar/index_en…) بدل الردّ، أو None إن لم تُرسم.
+    ‏_con: اتصالٌ قائم يُستعمل بدل فتح اتصالٍ جديد (فحص دفعة التوسيع داخل معاملةٍ غير مثبّتة يجب أن يرى الصفحات كما ستكون) — ولا يُغلق."""
     pre = seo_db.lang_prefix(lang)
     ar_path = path[len(pre):] if pre else path
-    if not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/companies/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
+    hub_root = ar_path in ("/content", "/content/")
+    if not hub_root and ar_path != "/content/latest" and not ar_path.startswith(("/content/movies/", "/content/series/", "/content/people/", "/content/companies/", "/content/genres/", "/content/countries/", "/content/languages/", "/content/year/", "/content/latest/", "/content/for-you/", "/content/turkish", "/content/anime", "/content/countries/turkey")):
         return None
-    con = seo_db.connect(data_dir, create=False)
+    con = _con or seo_db.connect(data_dir, create=False)
     if con is None:
         return 404, b"", {}
     try:
         st = seo_db.settings(con)
+        if hub_root:     # الهب: معطّلٌ ← None فيبقى 302 القديم في xm_lines كما كان
+            if not (st.get("content_hub") and st.get("preview")) or lang not in (st.get("languages") or ["ar", "en"]):
+                return None
+            res = render_content_hub(con, data_dir, P.lang_of(lang), st)
+            return res[1] if _info else _served(res)
         if not st.get("preview") or lang not in (st.get("languages") or ["ar", "en"]):
             return 404, b"", {}
         if ar_path.rstrip("/") == "/content/countries/turkey":   # صفحة الدولة لا تنافس الهب: 301 إليه (قرار المالك)
@@ -755,10 +1161,29 @@ def handle(data_dir, path, lang):
         r = con.execute("SELECT target FROM redirect WHERE path=?", (ar_path,)).fetchone()
         if r:
             return 301, b"", {"Location": pre + r["target"]}
+        tr = P.lang_of(lang)
+        if ar_path == "/content/for-you/":
+            res = render_tour(con, data_dir, tr, st)
+            return res[1]["html"] if _info else (200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"})
+        ms = _RX_SEASON.match(ar_path)
+        if ms:
+            res = render_season(con, data_dir, ms.group(1), int(ms.group(2)), int(ms.group(3)) if ms.group(3) else 0, tr, st)
+            if not res:
+                return 404, b"", {}
+            return res[1] if _info else _served(res)
+        mt = _RX_TAX.match(ar_path)
+        if mt:
+            facet_g, slug_g, year_g, sect_g, page_g = mt.groups()
+            if page_g == "1":
+                return 301, b"", {"Location": path.replace("page/1/", "")}
+            facet = facet_g or ("year" if year_g else "latest")
+            res = render_taxonomy(con, data_dir, facet, slug_g or year_g or "", sect_g or "", int(page_g or 1), tr, st)
+            if not res:
+                return 404, b"", {}
+            return res[1] if _info else _served(res)
         m = _RX.match(ar_path)
         if not m:
             return 404, b"", {}
-        tr = P.lang_of(lang)
         typ, slug, role_path, pslug, ppage, cslug, cpage, hub, section, subk, subv, page = m.groups()
         if (ppage or cpage or page) == "1":
             return 301, b"", {"Location": path.replace("page/1/", "")}
@@ -773,12 +1198,15 @@ def handle(data_dir, path, lang):
         if not res:
             return 404, b"", {}
         if res[0] == "redirect":
-            return 301, b"", {"Location": res[1]}
+            return None if _info else (301, b"", {"Location": res[1]})
+        if _info:
+            return res[1]
         if res[1].get("noindex", True):
             return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
         return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}     # معتمدٌ مستحقّ (المرحلة 4): بلا رأس noindex، والوسم index في الصفحة
     finally:
-        con.close()
+        if _con is None:
+            con.close()
 
 
 # ================= فحص العيّنة =================
@@ -887,13 +1315,26 @@ a{color:inherit;text-decoration:none}img{display:block;max-width:100%;height:aut
 details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:8px 0}summary{cursor:pointer;font-weight:600}summary small{color:var(--mute);font-weight:400}
 .eps{padding-inline-start:0;list-style:none;margin:8px 0 0}.eps li{padding:5px 0;border-top:1px solid var(--line);font-size:.9rem}.eps li span{display:inline-block;min-width:28px;color:var(--mute)}
 .pics-row img{border-radius:12px}.yt{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000}.yt iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.card .pos{position:relative}.rt-badge{position:absolute;inset-block-start:6px;inset-inline-start:6px;background:rgba(6,11,23,.82);color:var(--gold);border-radius:999px;padding:2px 8px;font:700 .74rem/1.5 inherit;font-style:normal}
+.tour h1{margin:8px 0}.tour .lead{color:var(--mute);margin:0 0 14px}.tsteps{display:flex;gap:8px;margin:10px 0 18px;padding:0;list-style:none;flex-wrap:wrap}
+.tsteps li{padding:5px 12px;border:1px solid var(--line);border-radius:999px;color:var(--mute);font-size:.85rem}.tsteps li.on{border-color:var(--acc);color:var(--ink);font-weight:700}
+.tchips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 14px}.tchip{padding:9px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.tchip.on{border-color:var(--acc);background:rgba(47,140,255,.18);font-weight:700}.tbtns{display:flex;gap:10px;margin:16px 0;flex-wrap:wrap}
+.tbtn{padding:11px 20px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}.tbtn.go{background:var(--acc);border-color:var(--acc);color:#fff}
+.tsearch{width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;margin:6px 0 12px}
+.card.pick .pk{display:flex;gap:6px;margin-top:6px}.card.pick .pk button{flex:1;padding:6px 4px;border-radius:9px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:.78rem;cursor:pointer}
+.card.pick .pk button.on{border-color:#ff5d7a;color:#ff5d7a;font-weight:700}.card.pick .pk button.sn.on{border-color:var(--acc);color:var(--acc)}
+.tour .meta,.tmsg{color:var(--mute);font-size:.88rem}
+.like-bar{margin:12px 0 0}.like-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+.like-btn .heart{font-size:1.15rem;line-height:1}.like-btn b{font-weight:700;color:var(--mute);min-width:1ch}.like-btn.on{border-color:#ff5d7a;color:#ff5d7a}.like-btn.on b{color:#ff5d7a}
+.foryou[hidden]{display:none}.foryou .meta{color:var(--mute);font-size:.85rem;margin:4px 0 10px}
 .avail{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;position:sticky;top:12px}.avail h2{margin:0 0 10px;font-size:1.1rem}
 .srv{list-style:none;padding:0;margin:0}.srv li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.srv li:first-child{border-top:0}.srv li span{flex:1}
 .srv small{display:block;color:var(--mute);font-size:.8rem}.logo{width:34px;height:34px;border-radius:10px;object-fit:cover}.btn{background:var(--acc);color:#fff;border-radius:10px;padding:7px 12px;font-weight:700;font-size:.86rem;white-space:nowrap}
 .cta{color:var(--mute);font-size:.86rem;margin:10px 0 0}.intro{font-size:1.05rem;color:#dbe4ff;max-width:900px}.more{text-align:end}.more a{color:var(--acc)}
 .pager{display:flex;justify-content:center;gap:16px;align-items:center;margin:24px 0}.pager a{border:1px solid var(--line);border-radius:10px;padding:8px 14px}
 .foot{border-top:1px solid var(--line);margin-top:40px;padding:18px 0;color:var(--mute);font-size:.86rem}.foot a{color:var(--acc)}
-@media(max-width:800px){.hd{grid-template-columns:1fr}.hd .pos img,.hd .pos .ph{width:160px}.cols{grid-template-columns:1fr}.avail{position:static}}
+@media(max-width:800px){.hd{grid-template-columns:1fr}.hd .pos img,.hd .pos .ph{width:160px}.cols{grid-template-columns:1fr}.cols>aside{order:-1}.avail{position:static;border-color:var(--acc);box-shadow:0 8px 24px -16px rgba(47,140,255,.6)}}
 """
 
 

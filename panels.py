@@ -909,9 +909,32 @@ def _panel_users(pl, export=None):
 
 
 def _covered_orders(lines, users):
-    """طلباتٌ وُجد أحد يوزراتها على لوحة: اشتراكها قائم، فيوزرٌ آخر فيها (قديمٌ أو مكرّرٌ في سجلّه) ليس مفقودًا."""
-    return {renew.norm_order(ln.get("order")) for ln in lines
-            if str(ln.get("username") or "").strip().lower() in users and ln.get("order")}
+    """طلباتٌ وُجد أحد يوزراتها على لوحة: اشتراكها قائم، فيوزرٌ آخر فيها (قديمٌ أو مكرّرٌ في سجلّه) ليس مفقودًا.
+    ← {رقم الطلب: اليوزر الموجود} (التسمية بحروفه الأصلية، لعرضه بديلًا للمفقود)."""
+    out = {}
+    for ln in lines:
+        u = str(ln.get("username") or "").strip()
+        if ln.get("order") and u.lower() in users:
+            out.setdefault(renew.norm_order(ln.get("order")), u)
+    return out
+
+
+def _phone_successors(lines, users):
+    """{جوال موحَّد: [(رقم الطلب، تاريخه، اليوزر)]}: خطوطٌ رُبطت بطلبها (linked: من صفحة الإنشاء أو الشكاوى) ويوزرها
+    موجود على لوحة — بديلٌ محتمل لخطٍّ مفقود لعميلٍ بالجوال نفسه في طلبٍ بأرقامٍ أخرى."""
+    out = {}
+    for ln in lines:
+        u = str(ln.get("username") or "").strip()
+        ph = renew.norm_phone(ln.get("phone"))
+        if ph and ln.get("linked") and u.lower() in users and ln.get("order"):
+            out.setdefault(ph, []).append((renew.norm_order(ln.get("order")), str(ln.get("date") or ""), u))
+    return out
+
+
+def _successor(ln, no, ctx):
+    ph = renew.norm_phone(ln.get("phone"))
+    d0 = str(ln.get("date") or "")
+    return next(((o, d, u) for o, d, u in ctx["succ"].get(ph, []) if ph and o != no and d >= d0), None)
 
 
 def _line_row(ln, ctx):
@@ -935,6 +958,8 @@ def _line_row(ln, ctx):
         state = "found"
     elif (u.lower() in ctx["replaced"] and not mine) or (rec and not mine):
         state = "replaced"                       # استُبدل من غير هذه الصفحة (بديل المكرر أو البحث)
+    elif not mine and _successor(ln, no, ctx):
+        state = "replaced"                       # للعميل (الجوال نفسه) طلبٌ أحدث بيوزرٍ أُنشئ من صفحة الإنشاء وهو موجود
     elif no in ctx["covered"] and not mine:
         state = "covered"                        # للطلب يوزرٌ آخر موجود: الاشتراك قائم
     elif not panel:
@@ -959,7 +984,10 @@ def _line_row(ln, ctx):
             "found_panel": found[0] if found else "", "found_src": found[1] if found else "",
             "done_panel_id": dpid if dpanel else "", "done_panel": dpanel.get("name", ""),
             "done_account_id": dpanel.get("account_id", ""), "done_gate_id": dpanel.get("gate_id", ""),
-            "state": state, "linked": str(ln.get("linked") or ""), "done": mine}
+            "state": state, "linked": str(ln.get("linked") or ""), "done": mine,
+            "covered_by": ctx["covered"].get(no, "") if state == "covered" else "",
+            "replaced_by": (lambda x: {"order": x[0], "username": x[2]} if x else None)(
+                _successor(ln, no, ctx) if state == "replaced" and not mine and u.lower() not in ctx["replaced"] else None)}
 
 
 def _mark_dups(rows, hidx):
@@ -1022,7 +1050,7 @@ def build_index(config, data_dir, replaced=None, export=None, today=None):
     pmap = {p["id"]: p for p in cfg["panels"]}
     ctx = {"pmap": pmap, "hidx": host_index(cfg["panels"]), "own": {pid: panel_data_for(pl, p) for pid, p in pmap.items()},
            "users": users, "done": load_dupes_done(data_dir), "replaced": {str(u).lower() for u in (replaced or ())},
-           "covered": _covered_orders(lines, users), "today": today or renew._today(),
+           "covered": _covered_orders(lines, users), "succ": _phone_successors(lines, users), "today": today or renew._today(),
            "xgates": set((export or {}).get("gates") or ())}
     rows, seen = [], set()
     by_order, by_user, by_pass = {}, {}, {}
@@ -1097,17 +1125,19 @@ def lost(config, data_dir, replaced=None, comp=COMP_DEFAULT, include_expired=Fal
     rows = []
     for r in idx["rows"]:
         counts["checked"] += 1
-        if r["state"] != "missing":
+        if r["state"] not in ("missing", "replaced", "covered"):
             counts[r["state"]] = counts.get(r["state"], 0) + 1
             continue
+        if r["state"] in ("replaced", "covered"):  # عُيّن له بديل (رابط استبدال أو يوزرٌ آخر للطلب على اللوحة): يبقى ظاهرًا بعلامته
+            counts[r["state"]] += 1
         if r["expired"] or r["days_left"] is None:
             counts["expired"] += 1
             if not include_expired or r["days_left"] is None:
                 continue
         rows.append(dict(r, new_months=comp_months(r["days_left"], comp)))
-    rows.sort(key=lambda r: (bool(r["done"]), r["expired"], -(r["days_left"] or 0), r["order"]))
+    rows.sort(key=lambda r: (bool(r["done"]), r["state"] != "missing", r["expired"], -(r["days_left"] or 0), r["order"]))
     return {"rows": rows, "total": len(rows), "comp": int(comp or 0), "base": BASE_MONTHS,
-            "pending": sum(1 for r in rows if not r["done"] and not r["expired"]),
+            "pending": sum(1 for r in rows if not r["done"] and not r["expired"] and r["state"] == "missing"),
             "done": sum(1 for r in rows if r["done"]), "counts": counts,
             "pulled": sum(1 for p in idx["panels"].values() if p.get("count")) + idx["excel_gates"],
             "export_users": idx["excel_users"], "index": index_info(idx), "built": idx["built"]}
@@ -1120,6 +1150,23 @@ def norm_query(q):
     """نص البحث بصيغةٍ واحدة: أرقامٌ عربية أو فارسية ← إنجليزية، وبلا مسافاتٍ ولا شرطاتٍ ولا نقاطٍ ولا # —
     ولا يُحذف صفرٌ ولا يُضاف رمز دولة: «٠٥٠ ١٢٣-٤» ← «0501234»."""
     return re.sub(r"[\s\-_.#/‎‏]+", "", str(q or "").translate(_AR_DIGITS)).strip()
+
+
+def phone_key(q):
+    """الجوال السعودي بصيغته المحلية (9 أرقام تبدأ بـ5) إن كان النص جوالًا بأي صيغة:
+    «+966 55 840 1163» و«55 840 1163» و«0558401163» و«00966558401163» ← «558401163». وإلا ''."""
+    d = re.sub(r"\D", "", str(q or "").translate(_AR_DIGITS))
+    if d.startswith("00"):
+        d = d[2:]
+    if d.startswith("966") and len(d) == 12:
+        d = d[3:]
+    elif d.startswith("0") and len(d) == 10:
+        d = d[1:]
+    return d if len(d) == 9 and d.startswith("5") else ""
+
+
+def _phone_of(v):
+    return phone_key(v)
 
 
 def order_search(config, data_dir, q, replaced=None, today=None, export=None, idx=None):
@@ -1139,9 +1186,19 @@ def order_search(config, data_dir, q, replaced=None, today=None, export=None, id
             if i not in why:
                 hits.append(i)
             why.setdefault(i, key)
+    pk = "" if hits else phone_key(raw)
+    if pk:                                      # لا طلب ولا يوزر بهذا النص: يُبحث به جوالًا بأي صيغة (الأحدث أولًا)
+        hits = sorted((i for i, r in enumerate(idx["rows"]) if _phone_of(r.get("phone")) == pk),
+                      key=lambda i: str(idx["rows"][i].get("date") or ""), reverse=True)
+        why = dict.fromkeys(hits, "phone")
     rows = [dict(idx["rows"][i], match=why[i]) for i in hits]
     order = rows[0]["order"] if rows and all(r["order"] == rows[0]["order"] for r in rows) else (qo if not rows else "")
     ix = idx["orders_index"].get(qo) if qo else None
+    if pk and not rows:                         # طلبات بهذا الجوال في فهرس سلة بلا يوزر محفوظ: الأحدث
+        found = sorted(((no, o) for no, o in idx["orders_index"].items() if _phone_of(o.get("phone")) == pk),
+                       key=lambda t: str(t[1].get("date") or ""), reverse=True)
+        if found:
+            qo, ix = found[0][0], found[0][1]
     if ix:
         exp = line_expiry(ix)
         ix = {k: ix.get(k) for k in ("phone", "date", "months", "devices", "host", "username", "sid")

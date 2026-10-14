@@ -103,10 +103,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "<td></td>"                         # 10 notes
                 "<td>%s</td>"                       # 11 max conn
                 "<td></td>"                         # 12
-                "<td><a href='/iptv/index.php/users/Form?t=edit&amp;id=%s'>Edit</a> <a>opts</a></td>"  # 13 options
+                "<td><a href='/iptv/index.php/users/Form?t=edit&amp;id=%s'>Edit</a> <a>opts</a>%s</td>"  # 13 options
                 "</tr>" % (u["id"], "online" if u.get("online") else "offline",
                            u["username"], u["password"], u["package"],
-                           u["created"], u["exp"], u["conns"], u["id"]))
+                           u["created"], u["exp"],
+                           ("<span class='btn btn-danger'><i class='fa fa-power-off'></i></span>/1" if u.get("disabled") else u["conns"]),
+                           u["id"],
+                           (" <a href='#' onclick='suspendUser(%s)'>Enable</a>" % u["id"]) if u.get("disabled") else ""))
         pag = "".join(
             "<li><a href='/iptv/index.php/users/index?&amp;page=%d'>%d</a></li>" % (p, p)
             for p in range(1, last + 1))
@@ -131,6 +134,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "<input type=\"text\" name=\"username\" value=\"%s\" class=\"form-control\">"
                 "<input type=\"text\" name=\"password\" disabled='' value=\"Auto Generated\" "
                 "placeholder=\"Leave empty for random password\">"
+                "<input type=\"checkbox\" name=\"enabled\" value=\"1\" checked>"
                 "<input type=\"hidden\" name=\"app_name\" value=\"users\">"
                 "<input type=\"hidden\" name=\"t\" value=\"add\">"
                 "<input type=\"hidden\" name=\"userid\" value=\"0\">"
@@ -209,6 +213,21 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             return
         if "index.php/home/index" in p:
             return self._html(200, "<html><body>Dashboard OK Credit : 6303</body></html>")
+        if "index.php/users/Suspend" in p:
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(p).query)
+            uid = (q.get("uid") or [""])[0]
+            with self._lock:
+                for x in self.users:
+                    if x["id"] == uid:
+                        x["disabled"] = (q.get("sus") or [""])[0] == "on"
+            return self._html(200, "<html><body>OK</body></html>")
+        if "index.php/users/enable/" in p:
+            uid = p.split("index.php/users/enable/")[1].split("?")[0]
+            with self._lock:
+                for x in self.users:
+                    if x["id"] == uid:
+                        x["disabled"] = False
+            return self._html(200, "<html><body>OK</body></html>")
         if "index.php/users/Form" in p and "t=add" in p:
             return self._html(200, self._add_form_html())
         if "index.php/users/Form" in p and "t=edit" in p:
@@ -294,7 +313,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                     "id": str(1000000 + self._gen[0]),
                     "username": user, "password": pw,
                     "package": names.get(pkg, "15 Months"),
-                    "created": "2026-09-25", "exp": "2027-12-25 22:54", "conns": "0/1"})
+                    "created": "2026-09-25", "exp": "2027-12-25 22:54", "conns": "0/1",
+                    "disabled": not (fields.get("enabled") or [""])[0]})   # بلا خانة «مفعّل» = معطَّل كاللوحة
             return self._html(200, "<html><body>OK</body></html>")
         self._html(400, "bad")
 

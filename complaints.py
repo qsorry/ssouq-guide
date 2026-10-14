@@ -20,9 +20,10 @@
 
 stdlib فقط. لا يعرف شيئًا عن سلة ولا عن اللوحات: يأخذ ما وُجد ويصوغ النصّ.
 """
+import os
 import re
 
-SITE = "https://guide.ssouq.com"
+SITE = (os.environ.get("XM_SITE_URL") or "https://guide.ssouq.com").strip().rstrip("/")
 
 # أسماء الاشتراكات كما يراها العميل في الدليل (SUBS في index.html).
 SUB_NAMES = {"smart": "سمارت", "falcon": "فالكون", "casper": "كاسبر"}

@@ -698,9 +698,9 @@ body.modal-open{overflow:hidden}
       <h2>البحث والمفقود<small>ابحث برقم الطلب واربطه بيوزره، وأنشئ لمن ضاع خطّه اشتراكًا بالمتبقي مع تعويض</small></h2></div>
 
     <div class="blk sbox" id="loBox" data-state="ready" style="padding:12px;margin-bottom:12px">
-      <b>بحث برقم الطلب</b>
+      <b>بحث برقم الطلب أو الجوال</b>
       <form class="sq" id="loForm" role="search" autocomplete="off">
-        <div class="sq-in"><input id="loQ" class="ltr" type="search" placeholder="رقم الطلب أو اليوزر أو كلمة المرور" inputmode="numeric" enterkeyhint="search" aria-label="رقم الطلب">
+        <div class="sq-in"><input id="loQ" class="ltr" type="search" placeholder="رقم الطلب أو الجوال أو اليوزر أو كلمة المرور" inputmode="numeric" enterkeyhint="search" aria-label="رقم الطلب">
           <button class="sq-x hidden" id="loClear" type="button" aria-label="مسح">×</button></div>
         <button class="go" id="loFind" type="submit">بحث</button></form>
       <div class="sstat" id="loStat" role="status" aria-live="polite"><span class="sdot"></span><span id="loMsg">اكتب رقم الطلب ثم «بحث».</span>
@@ -2301,7 +2301,7 @@ $('#msgsReload').onclick = () => { loadDup(); if ($('#blkDupLog').open) loadDupL
 $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
 
 /* ============ البحث برقم الطلب، والمفقود ============ */
-const LOST_STATE = {found: ['موجود', 'ok'], missing: ['مفقود', 'bad'], replaced: ['مستبدل', ''], covered: ['يوزر زائد', ''],
+const LOST_STATE = {found: ['موجود', 'ok'], missing: ['مفقود', 'bad'], replaced: ['له بديل ✓', 'ok'], covered: ['له بديل ✓', 'ok'],
   host_unmapped: ['هوست غير مربوط', 'warn'], not_pulled: ['لوحته لم تُسحب', 'warn'], no_user: ['بلا يوزر', 'warn']};
 const LOST_WHY = {missing: 'لا يوجد في لوحته ولا في البديلة ولا في ملفات Excel البوابات.',
   covered: 'للطلب يوزرٌ آخر موجود على اللوحة — الاشتراك قائم، وهذا قديمٌ أو مكرّر في سجلّ الطلب.',
@@ -2326,7 +2326,7 @@ function lcard(r, i, kind){
   const cqp = r.complaint && !r.complaint.replied ? `<p class="lc-why" style="color:var(--err)"><b>⚠ عليه شكوى #${esc(r.complaint.id)}</b> (${esc(r.complaint.status)})${r.complaint.url ? ` · <a href="${esc(r.complaint.url)}" target="_blank" rel="noopener">افتحها</a>` : ''} · <a href="#secReply" class="lcCq" data-o="${esc(r.order)}">جهّز الردّ</a></p>` : '';
   // مستبدل: البديل ولوحته (من روابط الاستبدال أو سجلّ الإنجاز) بدل «استُبدل من قبل» المبهمة
   const rp = r.replacement;
-  const whyRep = r.state === 'replaced' && rp ? `<p class="lc-why">استُبدل بـ <b class="ltr">${esc(rp.username)}</b>${rp.gate_name ? ` على <b>${esc(rp.gate_name)}</b>` : ''}${rp.months ? ` · ${AR(rp.months)} شهرًا` : ''}${rp.at ? ` · <span class="ltr">${esc(rp.at)}</span>` : ''}</p>` : '';
+  const whyRep = r.state === 'replaced' && !rp && r.replaced_by ? `<p class="lc-why">له بديل بطلبٍ آخر <b class="ltr">${esc(r.replaced_by.order)}</b> · اليوزر <b class="ltr">${esc(r.replaced_by.username)}</b></p>` : r.state === 'covered' && r.covered_by ? `<p class="lc-why">بديله الموجود على اللوحة: <b class="ltr">${esc(r.covered_by)}</b></p>` : r.state === 'replaced' && rp ? `<p class="lc-why">استُبدل بـ <b class="ltr">${esc(rp.username)}</b>${rp.gate_name ? ` على <b>${esc(rp.gate_name)}</b>` : ''}${rp.months ? ` · ${AR(rp.months)} شهرًا` : ''}${rp.at ? ` · <span class="ltr">${esc(rp.at)}</span>` : ''}</p>` : '';
   // حساب مكرر: اليوزر نفسه بيع في طلبٍ آخر لعميلٍ مختلف — يُعرض مع كل نتيجة بحث
   const dupP = r.dup ? `<p class="lc-why lc-dup"><b>⚠ حساب مكرر</b> — اليوزر نفسه بيع ${r.dup.mine_first ? 'بعده' : 'قبله'} في `
     + r.dup.others.map(o => `<a href="#" class="lcJump" data-o="${esc(o.order)}">الطلب <span class="ltr">${esc(o.order)}</span></a> (${esc(o.customer) || '—'} · <span class="ltr">${esc(o.date)}</span>${o.done ? ' · أُنشئ له بديل ✓' : o.expired ? ' · منتهٍ' : ''})`).join('، ')
@@ -2353,7 +2353,7 @@ function lcard(r, i, kind){
   if (!dn && r.state === 'missing' && r.username && (!r.expired || kind === 'ls')) act += `<label class="lc-chk"><input type="checkbox" class="lc-x lcSame" checked> بنفس اليوزر والباسورد</label>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
   const pills = (r.dup && !dn ? `<span class="pill bad">مكرر</span>` : '') + `<span class="pill ${st[1]}">${st[0]}</span>`;
-  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${lcCred(r.host, r.username, r.password)}${cur}${done}`
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password) : lcCred(r.host, r.username, r.password)}${cur}${done}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
 function lcBind(box, rows, kind){
@@ -2418,7 +2418,7 @@ function loRender(d, q){
   const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
   if (rows.length) {
     const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered'), dup = rows.some(r => r.dup);
-    loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : '')
+    loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : rows[0].match === 'phone' ? ' بالجوال' : '')
       + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + (dup ? ' — ⚠ حساب مكرر' : '') + ms);
   } else if (ix) {
     loState('found', `الطلب في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
@@ -2552,7 +2552,7 @@ function rpRender(d, q){
   const rpRep = $('#rpRep'); if (rpRep) { rpRep.innerHTML = (d.replacement ? rpRepInfo(d.replacement) : '') + (d.dup ? (d.replacement ? '<br>' : '') + rpDupInfo(d) : '')
     + (d.created && d.created.rename_error ? `<br><span class="pill err">لم يتغيّر اسم اليوزر القديم: ${esc(d.created.rename_error)}</span>` : '') + rpOldMsgHtml(d.old_msg); rpRep.classList.toggle('hidden', !d.replacement && !d.dup && !d.old_msg); rpOldBind(rpRep, d.old_msg); }
   $('#rpMake2').classList.toggle('hidden', !(cr.can && ((d.panel || {}).state !== 'found' || cr.why === 'dup') && !(d.panel || {}).done)); note($('#rpMakeMsg2'), '');
-  if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}${d.created.password_changed ? ' — ⚠ ' + d.created.password_changed : ''}`, !d.created.rename_error && !d.created.password_changed);
+  if (d.created) note($('#rpMakeMsg2'), `أُنشئ له ${d.created.username}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا${d.created.split ? '، جزءٌ مسجَّل في «حسابات متبقية»' : ''}) ورُبط بالطلب ✓${d.created.split_error ? ' — تنبيه: ' + d.created.split_error : ''}${d.created.rename_error ? ' — ' + d.created.rename_error : ''}${d.created.enable_error ? ' — ⚠ ' + d.created.enable_error : ''}${d.created.password_changed ? ' — ⚠ ' + d.created.password_changed : ''}`, !d.created.rename_error && !d.created.enable_error && !d.created.password_changed);
   $('#rpWa').classList.toggle('hidden', !d.wa); $('#rpSend').disabled = !d.wa;
   $('#rpSend').title = d.wa ? '' : 'لا رقم جوال لهذا العميل';
   note($('#rpSent'), (d.wa_linked ? '' : 'لا رقم واتساب مربوط الآن: انسخ الردّ أو أرسله من واتساب يدويًا. ') + (d.channel === '' ? 'ولا قناة واتساب مربوطة فسطر القناة غائب (اربطها من صفحة المحتوى).' : ''));
@@ -2694,7 +2694,7 @@ async function cqReply(r, btn, oldMsg){
         <p class="sug">المقترح: المتبقي <b>${AR(cr.left_months || 0)}</b> + تعويض <b>${AR(cr.comp || 0)}</b> = <b>${AR(sug)} شهرًا</b></p>
         <label class="lc-m">أشهر الجديد <span class="step"><button type="button" class="stDn" aria-label="أقل">−</button><input type="number" class="cqMakeM" min="1" max="15" value="${sug}"><button type="button" class="stUp" aria-label="أكثر">+</button></span></label>
         ${cr.old && cr.why !== 'dup' ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeSame" checked> بنفس اليوزر والباسورد القديمين (${esc(cr.old)})</label>` : ''}${cr.why === 'dup' ? `<label class="lc-chk"><input type="checkbox" class="lc-x cqMakeRen" checked> غيّر يوزر القديم (${esc(cr.old)}) وجهّز رسالة للعميل الأول أن يوزره تغيّر</label>` : ''}<small class="hint">على ${esc(cr.gate_name)} · من باقة ١٥ شهرًا والباقي يُباع من «حسابات متبقية»</small><p class="msg cqMakeMsg"></p></div>` : '')
-    + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓${d.created.rename_error ? ' — ' + esc(d.created.rename_error) : ''}${d.created.password_changed ? ' — ⚠ ' + esc(d.created.password_changed) : ''}</p>` : '')
+    + (d.created ? `<p class="msg ok">أُنشئ له ${esc(d.created.username)}${d.created.same_creds ? ' (بنفس بياناته القديمة ✓)' : ''} (${AR(d.created.months)} شهرًا) ورُبط بالطلب ✓${d.created.rename_error ? ' — ' + esc(d.created.rename_error) : ''}${d.created.enable_error ? ' — ⚠ ' + esc(d.created.enable_error) : ''}${d.created.password_changed ? ' — ⚠ ' + esc(d.created.password_changed) : ''}</p>` : '')
     + d.creds.map(c => lcCred(c.host, c.username, c.password)).join('')
     + (d.created && d.created.rename_error ? `<p class="msg err">لم يتغيّر اسم اليوزر القديم: ${esc(d.created.rename_error)}</p>` : '')
     + rpOldMsgHtml(oldMsg)
@@ -2761,12 +2761,12 @@ function lsRender(d){
   fillGates(d.gates); LS = d; const c = d.counts || {};
   const tile = (n, lbl, cls) => `<div class="stat"><b class="${cls || ''}">${AR(n)}</b><small>${lbl}</small></div>`;
   $('#lsTiles').innerHTML = (d.with_complaint ? tile(d.with_complaint, 'عليه شكوى', 'c-bad') : '') + tile(d.pending, 'يحتاج اشتراكًا', d.pending ? 'c-warn' : '') + tile(d.done, 'أُنشئ له') + tile(c.found || 0, 'موجود على لوحة')
-    + (c.covered ? tile(c.covered, 'طلبه له يوزر موجود') : '') + tile(c.replaced || 0, 'مستبدل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
+    + tile((c.replaced || 0) + (c.covered || 0), 'له بديل') + (c.not_pulled ? tile(c.not_pulled, 'لوحته لم تُسحب', 'c-warn') : '') + (c.host_unmapped ? tile(c.host_unmapped, 'هوست غير مربوط') : '');
   $('#lsBody').innerHTML = d.rows.map((r, i) => lcard(r, i, 'ls')).join('');
   lcBind($('#lsBody'), d.rows, 'ls'); $('#lsAll').checked = false;
   $('#lsWrap').classList.toggle('hidden', !d.rows.length);
   $('#lsBulk').classList.toggle('hidden', !d.rows.some(r => !r.done && (r.can_create || $('#lsGate').value) && pickFits($('#lsGate').value, r.sub)));
-  const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.total)} مفقود · ${AR(c.found || 0)} موجود · ${AR(c.covered || 0)} يوزرٌ زائد في طلبٍ له يوزر موجود · ${AR(c.replaced || 0)} مستبدل · ${AR(c.expired || 0)} منتهٍ`
+  const sum = `فُحص ${AR(c.checked || 0)} اشتراكًا من سلة: ${AR(d.pending)} مفقود · ${AR((c.replaced || 0) + (c.covered || 0))} له بديل · ${AR(c.found || 0)} موجود · ${AR(c.expired || 0)} منتهٍ`
     + (c.not_pulled ? ` · ${AR(c.not_pulled)} لوحته لم تُسحب` : '') + (c.host_unmapped ? ` · ${AR(c.host_unmapped)} هوسته غير مربوط` : '')
     + (d.export_users ? ` · قُورن بملفات Excel البوابات (${AR(d.export_users)} يوزرًا)` : ' · لا ملفات Excel للبوابات بعد');
   note($('#lsMsg'), !c.checked ? 'لا اشتراكات سلة مسحوبة بعد — اسحب الطلبات من «البيانات» أولًا'
@@ -2789,7 +2789,7 @@ async function makeComp(r, btn, inp, after, quiet, where){
   if (btn) { btn.disabled = false; btn.textContent = t0; }
   if (d.error || !d.ok) { say(`${r.order}: ` + (d.error || 'فشل الإنشاء')); return false; }
   const copied = !quiet && d.copy ? await copyText(d.copy) : false;   // كبحث صفحة الإنشاء: الشرح كاملًا في الحافظة
-  const msg = `أُنشئ ${d.username}${d.same_creds ? ' بنفس بياناته القديمة ✓' : ''} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.rename_error ? ` · ${d.rename_error}` : '') + (d.password_changed ? ` · ⚠ ${d.password_changed}` : '') + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
+  const msg = `أُنشئ ${d.username}${d.same_creds ? ' بنفس بياناته القديمة ✓' : ''} لطلب ${r.order} (${AR(d.months)} شهرًا)` + (d.rename_error ? ` · ${d.rename_error}` : '') + (d.enable_error ? ` · ⚠ ${d.enable_error}` : '') + (d.password_changed ? ` · ⚠ ${d.password_changed}` : '') + (d.split_error ? ` · تعذّر تسجيله جزءًا: ${d.split_error}` : '')
     + (copied ? ' · نُسخ الشرح كاملًا ✓' : ' · «نسخ الشرح» في بطاقته') + ' · رسالة واتساب جاهزة';
   if (after) await after(); else if (!quiet) await lsLoad();   // البطاقة بحالها الجديد، ثم رسالة الإنشاء فوقها
   say(msg, !d.split_error);

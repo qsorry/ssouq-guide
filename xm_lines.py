@@ -42,6 +42,8 @@ import seo_sources
 import seo_search
 import seo_db
 import seo_pages
+import seo_admin
+import seo_reco
 import xm_web
 import falcon_api
 import crypto_store
@@ -140,7 +142,7 @@ def sitemap_extra():
     """صفحات الوحدات في خريطة الموقع ← [(المسار، changefreq، priority)] — بعد الرئيسية وصفحات الأجهزة. وصفحات الكيانات
     المعتمدة المستحقّة (seo_release، المرحلة 5) — فارغةٌ ما لم يُفعَّل sitemap_live بعد بوابتها."""
     return (league.SITEMAP + watch.SITEMAP + watch.sitemap() + [(predict_page.PATH, "daily", "0.7")]
-            + [u for t in CUPS for u in t.sitemap()] + content.sitemap(DATA_DIR) + seo_release.sitemap_entries(DATA_DIR))
+            + [u for t in CUPS for u in t.sitemap()] + content.sitemap(DATA_DIR) + seo_release.public_sitemap_entries(DATA_DIR))
 
 
 def site_pages():
@@ -180,7 +182,7 @@ def bump_stat(key):
 # (‏404 كأن المسار لم يوجد) — لا تحويل ولا صفحة دخول، فلا أثر للوحة على الموقع العام.
 # `XM_ADMIN_HOST` فارغًا = لا نطاق للأداة، فتبقى تحت /admin كما كانت — وهو ما
 # يحدث محليًا وفي الاختبارات أصلاً لأن الطلب يصل بـ Host = 127.0.0.1 لا بالنطاق.
-SITE_HOST  = os.environ.get("XM_SITE_HOST", "guide.ssouq.com").strip().lower()
+SITE_HOST  = (os.environ.get("XM_SITE_HOST") or guide_pages.SITE_NETLOC).strip().lower()   # مضيف الموقع العام (يُشتقّ من XM_SITE_URL ما لم يُحدَّد)
 ADMIN_HOST = os.environ.get("XM_ADMIN_HOST", "admin.ssouq.com").strip().lower()
 ADMIN_PATH = "/admin"                                 # مسار الأداة حين لا نطاق لها
 # صفحات الأداة بمسارها الداخلي (تحت /admin على الموقع العام، ومن الجذر على نطاقها)
@@ -3493,6 +3495,8 @@ def _make_line(acct, gate, row, months, tag, same_creds=False):
             "same_creds": bool(want_u and r["username"] == want_u and (not want_p or r["password"] == want_p))}
     if r.get("rename_error"):
         resp["rename_error"] = r["rename_error"]
+    if r.get("enable_error"):
+        resp["enable_error"] = r["enable_error"]
     if r.get("password_changed"):
         resp["password_changed"] = r["password_changed"]
     try:
@@ -4018,7 +4022,7 @@ def reply_create(st, rcfg, rws, racs, req):
                       "split": bool(resp.get("split")), "split_error": resp.get("split_error", ""), "old": old_user,
                       "link_error": resp.get("link_error", ""), "same_creds": bool(resp.get("same_creds")),
                       "rename_error": resp.get("rename_error", ""), "password_changed": resp.get("password_changed", ""),
-                      "renamed": resp.get("renamed")}
+                      "enable_error": resp.get("enable_error", ""), "renamed": resp.get("renamed")}
     return 200, out
 
 
@@ -5175,6 +5179,13 @@ def create_line(gate, pkg, username=None, password=None):
                     r["exp"] = e["exp"]
             except Exception as ex:
                 rename_error = "أُنشئ باسم اللوحة %s ولم يُغيَّر إلى %s: %s" % (r["username"], username, str(ex)[:160])
+        # كاسبر قد يُنشئ اليوزر (أو يُعطّله تعديلُ الاسم) معطَّلًا: نختار Enable له كما يفعل المشغّل يدويًّا
+        enable_error = ""
+        if hasattr(sess, "ensure_enabled"):
+            try:
+                sess.ensure_enabled(r["username"], line_id=str(r.get("id") or ""))
+            except Exception as ex:
+                enable_error = "أُنشئ اليوزر ولم يُفعَّل تلقائيًّا: %s" % str(ex)[:600]
         line = format_line(gate, r["username"], r["password"])
         _log_txt(gate, line, pkg["name"])
         out = {"line": line, "username": r["username"], "password": r["password"],
@@ -5183,6 +5194,8 @@ def create_line(gate, pkg, username=None, password=None):
                "timing": r.get("timing"), "weak_retries": r.get("weak_retries", 0)}
         if rename_error:
             out["rename_error"] = rename_error
+        if enable_error:
+            out["enable_error"] = enable_error
         if password_changed:
             out["password_changed"] = "لم تقبل اللوحة كلمة المرور القديمة (%s) فأُنشئ بكلمة مرورٍ جديدة" % password_changed
         return out
@@ -6375,8 +6388,8 @@ class Handler(BaseHTTPRequestHandler):
             # موجود إعلانٌ عنه.
             block = "" if self.off_site else f"Disallow: {ADMIN_PATH}\n"
             return self._send(200, raw=f"User-agent: *\n{block}Allow: /\n\n"
-                              f"Sitemap: https://guide.ssouq.com/sitemap.xml\n"
-                              f"Sitemap: https://guide.ssouq.com/store-sitemap.xml\n".encode(),
+                              f"Sitemap: {guide_pages.SITE}/sitemap.xml\n"
+                              f"Sitemap: {guide_pages.SITE}/store-sitemap.xml\n".encode(),
                               ctype="text/plain; charset=utf-8")
         if path == "/store-sitemap.xml":        # خريطة منتجات المتجر (إرسال متقاطع)
             return self._send(200, raw=store_sitemap.sitemap(),
@@ -6470,6 +6483,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/content":              # الرئيسية ومسار الشراء: السيرفرات التي لها محتوى وأعدادها
             b = content.brief(DATA_DIR)           # والفارغ لا يُحفظ في المتصفح: يظهر الرابط فور أول ملف
             return self._send(200, b, extra={"Cache-Control": "public, max-age=300" if b["servers"] else "no-store"})
+        if path == "/api/content/recommend":    # «مقترحات لك»: من ما أعجب الزائر وشاهده (slugs من جهازه) — لا يُخزَّن شيءٌ عنه
+            res = seo_reco.api(DATA_DIR, {"likes": self._q("likes"), "seen": self._q("seen"), "interests": self._q("interests"), "types": self._q("types"),
+                                          "n": max(1, min(30, int(self._q("n") or 12))) if str(self._q("n") or "").isdigit() else 12}, "en" if self._q("lang") == "en" else "ar")
+            return self._send(200, res, extra={"Cache-Control": "no-store"})
+        if path == "/api/content/find":         # بحثٌ ذكي بالاسم يقبل الأخطاء (لجولة «محتار ايش تشاهد؟»)
+            return self._send(200, seo_reco.find(DATA_DIR, self._q("q"), "en" if self._q("lang") == "en" else "ar"), extra={"Cache-Control": "public, max-age=300"})
         if path == "/api/content/search":       # البحث بالاسم مع الكتابة (و‏lang=en للصفحة الإنجليزية)
             res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"), self._q("lang"))
             if res is None:
@@ -7016,7 +7035,21 @@ class Handler(BaseHTTPRequestHandler):
                     r["sub"] = gate_sub(ac, find_gate(ac, r["gate_id"]) if ac else None) or line_sub(r, r.get("panel_name", ""))
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
+                    if r.get("state") in ("replaced", "covered"):          # له بديلٌ معيَّن: يُعرض باسمه ولوحته
+                        try:
+                            r["replacement"] = reply_replacement(racs, rws, r["username"])
+                        except Exception:
+                            r["replacement"] = None
                     r["copy_line"] = line_copy(racs, r)
+                    if r.get("state") in ("replaced", "covered"):   # يُنسخ شرح البديل لا المفقود
+                        rp = r.get("replacement") or {}
+                        if rp.get("username") and rp.get("password"):
+                            r["copy_line"] = line_copy(racs, dict(r, username=rp["username"], password=rp["password"],
+                                                                  host=rp.get("host") or r.get("host", ""),
+                                                                  account_id=rp.get("account_id") or r.get("account_id"),
+                                                                  gate_id=rp.get("gate_id") or r.get("gate_id")))
+                        else:
+                            r["copy_line"] = ""
                 d["rows"].sort(key=lambda r: not (r.get("complaint") and not r["complaint"]["replied"]))   # ما عليه شكوى أولًا
                 d["with_complaint"] = sum(1 for r in d["rows"] if r.get("complaint") and not r["complaint"]["replied"])
                 d["wa_linked"] = dup_wa_ready(st)
@@ -7899,10 +7932,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_scan.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-release":   # النشر الإنتاجي: go (4←5←6←7) · phase4…phase7 · batch · expand · final — في الخلفية، بوابةٌ فاشلة = STOP
                 act = str(body.get("action") or "")
-                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "batch", "expand", "final"):
+                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "extras", "batch", "expand", "expand_start", "expand_stop", "final"):
                     return self._send(400, {"error": "action غير معروف"})
                 if act in ("go", "phase4") and not re.fullmatch(r"\d{8}T\d{6}Z", str(body.get("snapshot") or "")):
                     return self._send(400, {"error": "معرّف اللقطة (نقطة الاستئناف) مطلوب: مثل 20261003T004434Z"})
+                if act == "expand_stop":                   # إيقاف مهمة التوسيع: فوري (تتوقف قبل الدفعة التالية)
+                    seo_release.job_stop(DATA_DIR)
+                    return self._send(200, {"ok": True, "started": False, **seo_release.status(DATA_DIR)})
+                if act == "expand_start":                  # مهمةٌ محفوظة تكمل بنفسها بعد إعادة النشر إن طُلب
+                    seo_release.job_start(DATA_DIR, int(body.get("n") or 100), int(body.get("max") or 5), bool(body.get("auto", True)))
+                    act = "expand_job"
                 started = seo_release.start(DATA_DIR, act, snapshot=body.get("snapshot"), expected=int(body["expected"]) if body.get("expected") else None,
                                             http=bool(body.get("http")), n=int(body.get("n") or 100), max=int(body["max"]) if body.get("max") else None)
                 return self._send(200, {"ok": True, "started": started, **seo_release.status(DATA_DIR)})
@@ -7911,6 +7950,28 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_sources.bundle_state(DATA_DIR)})
             elif path == "/api/content/admin/seo-sample":    # عيّنة 30 عملًا حقيقيًّا: تُثرى الآن (وحدها) وتقريرها الكامل — قبل الإثراء الجماعي
                 return self._send(200, {"ok": True, "sample": seo_sources.sample(DATA_DIR, body.get("spec") if isinstance(body.get("spec"), dict) else None)})
+            elif path == "/api/content/admin/seo-entity":    # لوحة التحكم (المرحلة 5): بحث · تجاوز · حقول يدوية · رابط · ربط TMDB · دمج
+                act = str(body.get("action") or "")
+                try:
+                    if act == "search":
+                        return self._send(200, {"ok": True, "results": seo_admin.search(DATA_DIR, body.get("q"))})
+                    if act == "get":
+                        return self._send(200, {"ok": True, "entity": seo_admin.get(DATA_DIR, body.get("id"))})
+                    if act == "override":
+                        seo_admin.set_override(DATA_DIR, body.get("id"), str(body.get("lang") or ""), body.get("fields") or {})
+                    elif act == "fields":
+                        seo_admin.set_fields(DATA_DIR, body.get("id"), body.get("fields") or {})
+                    elif act == "slug":
+                        seo_admin.set_slug(DATA_DIR, body.get("id"), body.get("slug"))
+                    elif act == "tmdb":
+                        seo_admin.link_tmdb(DATA_DIR, body.get("id"), body.get("tmdb_id"))
+                    elif act == "merge":
+                        seo_admin.merge(DATA_DIR, body.get("loser"), body.get("winner"))
+                    else:
+                        return self._send(400, {"ok": False, "error": "إجراء غير معروف"})
+                except (ValueError, TypeError) as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
+                return self._send(200, {"ok": True, "entity": seo_admin.get(DATA_DIR, body.get("id") or body.get("winner"))})
             elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
                 return self._send(200, {"ok": True, "audit": seo_pages.audit(DATA_DIR, int(body.get("n") or 30))})
             elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)
@@ -8090,6 +8151,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"ok": False, "error": "not found"})
         return self._send(200, res, extra={"Cache-Control": "public, max-age=300"})
 
+    def _like_post(self):
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if not 0 <= n <= 512:
+            return self._send(413, {"ok": False})
+        try:
+            req = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            return self._send(400, {"ok": False})
+        if not isinstance(req, dict) or not seo_reco.rate_ok(self._client_ip()):
+            return self._send(429, {"ok": False})
+        c = seo_reco.like(DATA_DIR, str(req.get("slug") or ""), bool(req.get("on")))
+        if c is None:
+            return self._send(404, {"ok": False})
+        return self._send(200, {"ok": True, "count": c})
+
     def _report_post(self):
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)
@@ -8260,6 +8339,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._salla_webhook()
             if path in ("/api/renew/lookup", "/api/renew/claim"):
                 return self._renew_public(path)
+            if path == "/api/content/like":         # «أعجبني»: عدّادٌ مجهول لكل عمل، بحدٍّ بالساعة لكل عنوان
+                return self._like_post()
             if path == "/api/report":               # بلاغ المشترك (عام، بحدٍّ بالساعة)
                 return self._report_post()
             if path == "/api/stremio/link":         # إضافة Stremio: رسالة الاشتراك ← رابط التثبيت
@@ -9129,6 +9210,7 @@ def web():
     start_mail()
     start_stremio_warm()
     start_stremio_genres()
+    seo_release.start_job_watchdog(DATA_DIR)    # مهمة التوسيع تكمل بنفسها بعد إعادة النشر
     seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 

@@ -20,7 +20,7 @@ import time
 
 DIR = "content"
 FILE = "seo.sqlite"
-VERSION = 6                    # PRAGMA user_version — يرتفع مع كل ترحيل
+VERSION = 7                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
 SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
 MANUAL = "manual"
@@ -86,6 +86,8 @@ DEFAULTS = {
     "sitemap_live": False,                            # المرحلة 5: المعتمد المستحقّ يدخل /sitemap.xml العامة (بعد بوابة المرحلة 5 وحدها)
     "identity_freeze": [],                            # معرّفات كياناتٍ مجمّدة أثناء مراجعة المالك: لا انقسام ولا دمج ولا تبديل رابط ولا تحويل ولا كتابة TMDB
     "scan_quiet_hours": {"start": 0, "end": 12, "utc_offset": 3},   # فحص السكّان كاملًا يعمل في وقت الهدوء فقط: من 12 صباحًا إلى 12 ظهرًا بتوقيت السعودية (UTC+3)
+    "index_extra_live": False,                        # المرحلة 10: القوائم والمواسم والحلقات والهبّات **المعتمدة** (build_state.index_approved_extra) تُخدم index
+    "content_hub": False,                             # المرحلة 8: ‏/content/ هبًّا حقيقيًّا (مع preview) بدل 302 لأول سيرفر؛ معطّلٌ ما لم يقرّر المالك
     "enrich_auto": False,                             # الإثراء الجماعي الليلي لا يبدأ قبل اعتماد العيّنة الحقيقية
     "languages": ["ar", "en"],                        # اللغات الفعّالة (الصفحات والإثراء)؛ تُضاف tr · es · fr … بلا ترحيل
 }
@@ -293,6 +295,10 @@ CREATE TABLE IF NOT EXISTS seo_override (
   seo_title TEXT, meta_desc TEXT, slug TEXT, overview TEXT, intro TEXT, faq_json TEXT,
   index_flag INTEGER, canonical TEXT, updated_at INTEGER NOT NULL,
   PRIMARY KEY (entity, entity_id, lang)
+);
+
+CREATE TABLE IF NOT EXISTS content_like (          -- عدّاد «أعجبني» مجهول لكل عمل (لا حسابات ولا هوية: يُحفظ ما أعجب الزائر في جهازه وحده)
+  content_id INTEGER PRIMARY KEY REFERENCES content(id), likes INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS redirect (

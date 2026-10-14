@@ -1379,6 +1379,83 @@ def unit_enrich():
         check("هب الأنمي بالإنجليزية يضم One Piece وAttack on Titan وفيلم الأنمي", "/en/content/series/one-piece/" in an and "/en/content/series/attack-on-titan/" in an and "/en/content/movies/one-piece-film-red/" in an)
         check("page/1 يحوّل، وصفحةٌ خارج الحدّ 404، وقسمٌ فارغ 404", seo_pages.handle(d, "/content/anime/page/1/", "ar")[0] == 301
               and seo_pages.handle(d, "/content/anime/page/99/", "ar")[0] == 404 and seo_pages.handle(d, "/content/anime/genres/nope/", "ar")[0] == 404)
+        # المرحلة 6: قوائم النوع والدولة واللغة والسنة والأحدث (بُعدٌ واحد، معاينة noindex)
+        gslug = q("SELECT t.slug FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id WHERE t.kind='genre' AND ct.source IN ('tmdb','manual') LIMIT 1")
+        if gslug:
+            gc, gb, gh = seo_pages.handle(d, f"/content/genres/{gslug[0][0]}/", "ar")
+            gh_ = gb.decode()
+            check("قائمة النوع: 200 وnoindex وcanonical ذاتي وH1 واحد وItemList وBreadcrumbList",
+                  gc == 200 and gh["X-Robots-Tag"] == "noindex" and f'rel="canonical" href="https://guide.ssouq.com/content/genres/{gslug[0][0]}/"' in gh_
+                  and gh_.count("<h1") == 1 and '"ItemList"' in gh_ and '"BreadcrumbList"' in gh_)
+            check("قائمة نوعٍ بالإنجليزية بـ /en، وغير الموجود 404، وبلا شرطةٍ أخيرة 301",
+                  seo_pages.handle(d, f"/en/content/genres/{gslug[0][0]}/", "en")[0] == 200 and seo_pages.handle(d, "/content/genres/nope/", "ar")[0] == 404
+                  and seo_pages.handle(d, f"/content/genres/{gslug[0][0]}", "ar")[0] == 301)
+        lc = seo_pages.handle(d, "/content/latest/", "ar")
+        check("‏/content/latest/ و/movies/ و/series/ تعمل، وبلا شرطة 301، وسنة خارج النطاق 404، وpage/1 يحوّل",
+              lc[0] == 200 and seo_pages.handle(d, "/content/latest/movies/", "ar")[0] == 200 and seo_pages.handle(d, "/content/latest/series/", "ar")[0] == 200
+              and seo_pages.handle(d, "/content/latest", "ar")[0] == 301 and seo_pages.handle(d, "/content/year/1500/", "ar")[0] == 404
+              and seo_pages.handle(d, "/content/latest/page/1/", "ar")[0] == 301)
+        yr = q("SELECT year FROM content WHERE merged_into IS NULL AND available=1 AND year IS NOT NULL LIMIT 1")
+        if yr:
+            check("قائمة السنة تعمل وتحوي أعمال تلك السنة وحدها", seo_pages.handle(d, f"/content/year/{yr[0][0]}/", "ar")[0] == 200)
+        check("اسم سيرفرٍ يبدأ بـ latest لا تلتقطه الطبقة", seo_pages.handle(d, "/content/latestserver", "ar") is None)
+        # المرحلة 7: المواسم والحلقات (الحلقة بشروط episode_page وإلا 404)
+        sn = q("SELECT c.slug, s.number FROM season s JOIN content c ON c.id=s.content_id WHERE c.type='series' AND s.number>0 AND c.merged_into IS NULL ORDER BY c.id LIMIT 1")
+        if sn:
+            sc = seo_pages.handle(d, f"/content/series/{sn[0][0]}/season-{sn[0][1]}/", "ar")
+            sh = sc[1].decode()
+            check("صفحة الموسم: 200 وnoindex وcanonical ذاتي وH1 واحد وTVSeason وفتات الخبز",
+                  sc[0] == 200 and sc[2]["X-Robots-Tag"] == "noindex" and f'href="https://guide.ssouq.com/content/series/{sn[0][0]}/season-{sn[0][1]}/"' in sh
+                  and sh.count("<h1") == 1 and '"TVSeason"' in sh and '"BreadcrumbList"' in sh)
+            check("موسمٌ غير موجود 404، وحلقةٌ غير موجودة 404، وبلا شرطة 301",
+                  seo_pages.handle(d, f"/content/series/{sn[0][0]}/season-99/", "ar")[0] == 404
+                  and seo_pages.handle(d, f"/content/series/{sn[0][0]}/season-{sn[0][1]}/episode-9999/", "ar")[0] == 404
+                  and seo_pages.handle(d, f"/content/series/{sn[0][0]}/season-{sn[0][1]}", "ar")[0] == 301)
+        # حلقةٌ تستوفي الشروط تُخدم، ونقص الملخص يسقطها
+        con.execute("INSERT OR REPLACE INTO episode(content_id, season, number, title_en, title_ar, overview_en, overview_ar, air_date, source, updated_at) "
+                    "SELECT content_id, number, 77, 'Pilot X', 'التجريبية', ?, ?, '2020-01-01', 'tmdb', 0 FROM season WHERE content_id=(SELECT id FROM content WHERE type='series' AND merged_into IS NULL ORDER BY id LIMIT 1) AND number>0 LIMIT 1",
+                    ("A long enough episode summary " * 4, "ملخص حلقةٍ طويل بما يكفي " * 6))
+        con.commit()
+        er = q("SELECT c.slug, e.season FROM episode e JOIN content c ON c.id=e.content_id WHERE e.number=77")
+        if er:
+            ep_url = f"/content/series/{er[0][0]}/season-{er[0][1]}/episode-77/"
+            ec = seo_pages.handle(d, ep_url, "ar")
+            check("حلقةٌ بعنوان وملخص ≥ 80 وتاريخ: 200 وTVEpisode وnoindex", ec[0] == 200 and '"TVEpisode"' in ec[1].decode() and ec[2]["X-Robots-Tag"] == "noindex")
+            con.execute("UPDATE episode SET overview_ar='قصير', overview_en='short' WHERE number=77 AND content_id=(SELECT id FROM content WHERE slug=?)", (er[0][0],)); con.commit()
+            check("وبملخصٍ قصير تسقط الصفحة: 404 (لا صفحة حلقة بلا بيانات كافية)", seo_pages.handle(d, ep_url, "ar")[0] == 404)
+        # المرحلة 8: هب /content/ معطّلٌ افتراضًا (يبقى 302 في xm_lines)، ويعمل بإعداد content_hub
+        check("هب /content/ معطّل افتراضًا: None فيبقى سلوكه القديم", seo_pages.handle(d, "/content/", "ar") is None)
+        seo_db.set_setting(con, "content_hub", True); con.commit()
+        hc = seo_pages.handle(d, "/content/", "ar")
+        hh = hc[1].decode() if hc else ""
+        check("وبتفعيله: 200 وnoindex قبل index_live، H1 واحد، روابط الهبّات والأحدث، وCollectionPage",
+              bool(hc) and hc[0] == 200 and hc[2].get("X-Robots-Tag") == "noindex" and hh.count("<h1") == 1 and "/content/turkish/" in hh
+              and "/content/latest/series/" in hh and '"CollectionPage"' in hh, str(hc[:1]) if hc else "None")
+        seo_db.set_setting(con, "content_hub", False); con.commit()
+        # المرحلة 5: لوحة التحكم — تجاوز العنوان والوصف والفهرسة، وتحترم التجميد
+        import seo_admin
+        pbid = q("SELECT id FROM content WHERE slug='prison-break'")[0][0]
+        seo_admin.set_override(d, pbid, "ar", {"seo_title": "عنوان مخصص PB", "meta_desc": "وصف مخصص", "intro": "مقدمة المدير"})
+        pbh = seo_pages.handle(d, "/content/series/prison-break/", "ar")[1].decode()
+        check("تجاوز المدير يظهر: العنوان والوصف والمقدمة", "<title>عنوان مخصص PB</title>" in pbh and 'content="وصف مخصص"' in pbh and "مقدمة المدير" in pbh)
+        seo_admin.set_override(d, pbid, "en", {"index_flag": 0})
+        pbe = seo_pages.handle(d, "/en/content/series/prison-break/", "en")[1].decode()
+        check("index_flag=0 يُخرج اللغة من الفهرسة ويُسقط وسوم alternate", 'rel="alternate"' not in pbe and "noindex" in pbe)
+        seo_admin.set_override(d, pbid, "en", {"index_flag": ""})
+        seo_admin.set_override(d, pbid, "ar", {"seo_title": "", "meta_desc": "", "intro": ""})
+        check("مسح التجاوز يعيد المولَّد", "عنوان مخصص PB" not in seo_pages.handle(d, "/content/series/prison-break/", "ar")[1].decode())
+        seo_admin.set_slug(d, pbid, "prison-break-series")
+        check("تغيير الرابط يدويًّا: القديم 301 إلى الجديد والجديد 200", seo_pages.handle(d, "/content/series/prison-break/", "ar")[0] == 301
+              and seo_pages.handle(d, "/content/series/prison-break-series/", "ar")[0] == 200)
+        seo_admin.set_slug(d, pbid, "prison-break")
+        seo_db.set_setting(con, "identity_freeze", [pbid]); con.commit()
+        try:
+            seo_admin.set_override(d, pbid, "ar", {"seo_title": "x"}); frozen_ok = False
+        except ValueError:
+            frozen_ok = True
+        seo_db.set_setting(con, "identity_freeze", []); con.commit()
+        check("الكيان المجمّد لا يقبل تجاوزًا ولا تغييرًا", frozen_ok)
+        check("بحث اللوحة يجد الكيان باسمه وslug", any(r["id"] == pbid for r in seo_admin.search(d, "prison")))
         pp = seo_pages.handle(d, "/content/people/actors/wentworth-miller/", "ar")[1].decode()
         check("صفحة الممثل: أعماله بروابطها وPerson schema", '"@type": "Person"' in pp and "/content/series/prison-break/" in pp)
         # قرارات ما بعد المرحلة 2: تركيا → الهب، لغاتٌ فعّالة، الإثراء التلقائي موقوف، العيّنة الحقيقية، البحث اقتراحًا لا كتابة
@@ -1647,6 +1724,108 @@ def unit_release():
               r7["ok"] and m7["routes"] == 5 and m7["indexable"] == 5 and m7["unexpected_indexable"] == 0 and m7["sitemap_missing"] == m7["sitemap_unexpected"] == 0 and m7["redirect_changes_since_phase4"] == 0
               and m7["snapshot_compared"] and m7["snapshot_mismatch"] == 0 and r7["baseline"] is not None, str(m7))
         con.close()
+        # ---- المرحلة 10: اعتماد القوائم والمواسم والحلقات والهبّات (على نسخةٍ، فلا تتأثر بقية الاختبار) ----
+        d3 = tempfile.mkdtemp(prefix="seo_rel3_"); shutil.rmtree(d3); shutil.copytree(d, d3)
+        c3 = seo_db.connect(d3)
+        seo_db.set_setting(c3, "list_min_items", 1)
+        now3 = int(time.time())
+        for slug, ov_ar, ov_en in (("breaking-bad", LONG_AR, LONG_EN), ("prison-break", LONG_AR, "short")):
+            cid3 = c3.execute("SELECT id FROM content WHERE slug=?", (slug,)).fetchone()[0]
+            c3.execute("INSERT OR REPLACE INTO season(content_id, number, name, overview_ar, overview_en, episode_count, updated_at) VALUES (?,?,?,?,?,?,?)", (cid3, 1, "S1", ov_ar, ov_en, 2, now3))
+            for n in (1, 2):
+                c3.execute("INSERT OR REPLACE INTO episode(content_id, season, number, title_ar, title_en, overview_ar, overview_en, air_date, source, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                           (cid3, 1, n, f"حلقة {n}", f"Episode {n}", LONG_AR[:120], LONG_EN[:120], "2020-01-0%d" % n, "tmdb", now3))
+        gt = seo_db.taxonomy_id(c3, "genre", "Drama", "drama", "دراما", "Drama", now3)
+        for slug in ("breaking-bad", "wonder-woman", "prison-break"):
+            seo_db.set_membership(c3, c3.execute("SELECT id FROM content WHERE slug=?", (slug,)).fetchone()[0], gt, "tmdb", 1, now3)
+        c3.commit()
+        bs_url = "/content/series/breaking-bad/season-1/"
+        pre_ = seo_pages.handle(d3, bs_url, "ar")
+        check("قبل المرحلة 10: صفحة الموسم والقائمة noindex (لم تُعتمد)", pre_[0] == 200 and pre_[2].get("X-Robots-Tag") == "noindex" and seo_pages.handle(d3, "/content/genres/drama/", "ar")[2].get("X-Robots-Tag") == "noindex")
+        check("وقبلها لا شيء منها في الخريطة العامة", seo_release.extras_paths(c3, seo_db.settings(c3)) == [] and len(seo_release.public_sitemap_entries(d3)) == 5)
+        IX.code = 403
+        x0 = seo_release.extras(d3, None)
+        c3.close(); c3 = seo_db.connect(d3)
+        ap_x = (seo_db.state(c3, seo_pages.EXTRA_KEY) or {}).get("routes") or []
+        check("IndexNow مرفوض: المرحلة 10 FAIL لكن الاعتماد يبقى (يُعاد الإرسال وحده)، وبوابة الصفحات نظيفة",
+              x0["ok"] is False and "IndexNow" in x0["reason"] and x0["metrics"]["failures_total"] == 0 and len(ap_x) == x0["precheck"]["approved_routes"] > 0, str(x0)[:400])
+        IX.code = 202
+        got_before = len(got)
+        x1 = seo_release.extras(d3, None)
+        c3.close(); c3 = seo_db.connect(d3); st3 = seo_db.settings(c3)
+        mx = x1.get("metrics") or {}
+        kinds = x1["precheck"]["kinds"] if x1.get("precheck") else {}
+        check("المرحلة 10 PASS: كلها تُخدم index بلا فشل HTTP/canonical/lang/hreflang، لا تسرّب ولا تحويلات ولا استعلامات، والخريطة تطابقها",
+              x1["ok"] and mx["failures_total"] == 0 and mx["not_noindex"] == 0 and mx["public_sitemap_mismatch"] == 0 and st3["index_extra_live"] and kinds.get("season", 0) >= 3 and kinds.get("episode", 0) >= 4
+              and kinds.get("list", 0) >= 2, str(x1)[:500])
+        sa, se = seo_pages.handle(d3, bs_url, "ar"), seo_pages.handle(d3, "/en" + bs_url, "en")
+        check("موسم Breaking Bad باللغتين: index وhreflang متبادلة", "X-Robots-Tag" not in sa[2] and "X-Robots-Tag" not in se[2] and sa[1].count(b'rel="alternate" hreflang=') == 3 and se[1].count(b'rel="alternate" hreflang=') == 3)
+        pa, pe = seo_pages.handle(d3, "/content/series/prison-break/season-1/", "ar"), seo_pages.handle(d3, "/en/content/series/prison-break/season-1/", "en")
+        check("موسم Prison Break (ملخص إنجليزي قصير): العربية index والإنجليزية noindex، بلا alternate في أيٍّ منهما",
+              "X-Robots-Tag" not in pa[2] and pe[2].get("X-Robots-Tag") == "noindex" and b'rel="alternate"' not in pa[1] and b'rel="alternate"' not in pe[1])
+        ea = seo_pages.handle(d3, bs_url + "episode-1/", "ar")
+        check("الحلقة المستوفية للشروط index، وتحمل TVEpisode", ea[0] == 200 and "X-Robots-Tag" not in ea[2] and b'"TVEpisode"' in ea[1])
+        ga = seo_pages.handle(d3, "/content/genres/drama/", "ar")
+        check("قائمة النوع index باللغتين (hreflang ثلاثة)", ga[0] == 200 and "X-Robots-Tag" not in ga[2] and ga[1].count(b'rel="alternate" hreflang=') == 3)
+        dn_s = seo_pages.handle(d3, "/content/series/dune/season-1/", "ar")
+        check("موسم مسلسلٍ غير معتمد (لا موسم له أصلًا) 404 — ولا فهرسة بلا مسلسلٍ معتمد", dn_s[0] == 404)
+        smx = guide_pages.sitemap(C.sitemap(d3) + seo_release.public_sitemap_entries(d3)).decode()
+        check("الخريطة العامة تحمل الموسم والقائمة والحلقة، والكيانات الخمسة كما هي", "/content/series/breaking-bad/season-1/" in smx and "/content/genres/drama/" in smx and "episode-1/" in smx
+              and len(seo_release.sitemap_entries(d3)) == 5)
+        check("IndexNow للجديد: أُرسل بقدر الاعتماد (مرةً واحدة بعد النجاح)", len(got) > got_before and len(got[-1]["urlList"]) == x1["indexnow"]["new"] > 0)
+        n_before = len(got)
+        seo_release._progress[os.path.abspath(d3)] = {"action": "extras", "at": int(time.time()), "stage": "starting"}
+        x2 = seo_release.extras(d3, None)
+        pg3 = seo_release._progress.get(os.path.abspath(d3)) or {}
+        check("عدّاد التقدّم الحيّ للمعالج: done/total يُحدَّثان أثناء المرحلة (يُقرآن من status().progress)", pg3.get("total", 0) > 0 and 0 <= pg3.get("done", -1) <= pg3["total"] and bool(pg3.get("stage")), str(pg3))
+        seo_release._progress.pop(os.path.abspath(d3), None)
+        check("إعادة التشغيل بلا جديد: PASS ولا إرسال مكرّر", x2["ok"] and x2["indexnow"]["new"] == 0 and len(got) == n_before, str(x2.get("indexnow")))
+        x3 = seo_release.extras(d3, 9999)
+        c3.close(); c3 = seo_db.connect(d3)
+        check("عددٌ متوقَّع مخالف: رفضٌ بلا كتابة، والاعتماد السابق كما هو", x3["ok"] is False and "expected 9999" in x3["reason"] and seo_db.settings(c3)["index_extra_live"]
+              and len((seo_db.state(c3, seo_pages.EXTRA_KEY) or {}).get("routes") or []) == x1["precheck"]["approved_routes"])
+        hb0 = seo_pages.handle(d3, "/content/", "ar")
+        seo_db.set_setting(c3, "content_hub", True)
+        x4 = seo_release.extras(d3, None)
+        hb = seo_pages.handle(d3, "/content/", "ar")
+        check("هب /content/ معطّلًا يبقى سلوكه القديم (None)، وبتفعيله ثم الاعتماد يُخدم index بـ hreflang", hb0 is None and x4["ok"] and x4["precheck"]["kinds"].get("hub_root") == 2
+              and hb[0] == 200 and "X-Robots-Tag" not in hb[2] and hb[1].count(b'rel="alternate" hreflang=') == 3, str(x4)[:300])
+        # مهمة التوسيع المستمرة: محفوظة في القاعدة، وتكمل بنفسها بعد إعادة التشغيل (الحارس)، وتتوقف عند النفاد أو العدد أو الأمر
+        k3 = os.path.abspath(d3)
+        j0 = seo_release.job_start(d3, 2, 3, True)
+        check("job_start: مهمةٌ نشطة محفوظة (حجم 2، 3 دفعات، تكمل بعد إعادة النشر)", j0["active"] and j0["n"] == 2 and j0["remaining"] == 3 and j0["auto_resume"] and seo_release.job_get(d3)["active"])
+        jr = seo_release.run_job(d3)
+        jf = seo_release.job_get(d3)
+        check("run_job: تنفّذ دفعاتٍ ثم تتوقف بالنفاد أو بالعدد، والحال محفوظة (done ≥ 1، لا تبقى نشطة)",
+              jr["ok"] and jf["done"] >= 1 and jf["active"] is False and jf["stopped"] in ("completed", "no candidates left") and jf["last"] is not None, str(jf)[:300])
+        seo_release.job_start(d3, 2, 3, True)
+        seo_release._threads.pop(k3, None)                        # كأن الخادم أُعيد تشغيله: لا خيط حيّ والمهمة ما زالت نشطة
+        wd = seo_release.job_watchdog_tick(d3)
+        t3 = seo_release._threads.get(k3)
+        if t3:
+            t3.join(180)
+        check("الحارس: مهمةٌ نشطةٌ بلا خيط ← تُستأنف وحدها وتُكمل (resumed ثم لا تبقى نشطة)", wd == "resumed" and seo_release.job_get(d3)["active"] is False, f"{wd} {seo_release.job_get(d3)}"[:300])
+        seo_release.job_start(d3, 2, 3, False)
+        seo_release._threads.pop(k3, None)
+        wd2 = seo_release.job_watchdog_tick(d3)
+        check("بلا auto_resume: تُوقف بسبب الانقطاع ولا تُستأنف", wd2 == "stopped" and "interrupted" in (seo_release.job_get(d3).get("stopped") or ""), str(seo_release.job_get(d3)))
+        seo_release.job_start(d3, 2, 3, True)
+        seo_release.job_stop(d3)
+        check("job_stop: توقف فوري وبسبب الإيقاف، ولا تستأنف", seo_release.job_get(d3)["active"] is False and seo_release.job_watchdog_tick(d3) is None)
+        check("status() يكشف المهمة للبطاقة", "expand_job" in seo_release.status(d3))
+        # فحص الصفحة داخل معاملةٍ غير مثبّتة (كدفعة التوسيع): رابطٌ جديد لم يُثبَّت بعد يجب أن يُرسم 200 لا 404 (كان يفتح الاتصال الثاني فلا يراه)
+        bb3 = c3.execute("SELECT id FROM content WHERE slug='breaking-bad'").fetchone()[0]
+        seo_db.change_slug(c3, bb3, "breaking-bad-uncommitted", "manual", "txn visibility test")           # بلا commit
+        row_ = c3.execute("SELECT * FROM content WHERE id=?", (bb3,)).fetchone()
+        pg_txn = seo_qa._page(d3, c3, row_, "ar", seo_db.settings(c3))
+        c3.rollback()
+        pg_old = seo_pages.handle(d3, "/content/series/breaking-bad-uncommitted/", "ar")
+        check("بوابة الدفعة ترى الرابط الجديد غير المثبّت (200) — وبعد التراجع يزول (404): لا يتسرّب شيء", pg_txn and pg_txn["code"] == 200 and pg_old[0] == 404, str((pg_txn or {}).get("code")) + " " + str(pg_old[0]))
+        # تدقيق التحويلات: صفّا ar وen لتبديل رابطٍ واحد يُحلّان كلاهما إلى الكيان (الهدف /en/… ليس فشل حلّ) — كان يعدّ كل صفوف /en فشلًا ويُسقط دفعة الإنتاج
+        seo_db.change_slug(c3, c3.execute("SELECT id FROM content WHERE slug='wonder-woman'").fetchone()[0], "wonder-woman-2017", reason="audit test"); c3.commit()
+        ra_ = seo_release.redirect_audit(c3)
+        check("تدقيق التحويلات: صفوف ar وen كلها تُحلّ (resolve_failures = 0، بلا سلاسل ولا حلقات)", ra_["total"] >= 2 and ra_["resolve_failures"] == 0 and ra_["chains"] == 0 and ra_["loops"] == 0, str(ra_))
+        c3.close(); shutil.rmtree(d3, ignore_errors=True)
         # تراجعٌ مصطنع على نسخةٍ من القاعدة: تبديل slug لكيانٍ معتمد ← المسار الجديد لا يُفهرس (لم يُعتمد)، والمرحلة 7 تكشفه وتوقف
         d2 = tempfile.mkdtemp(prefix="seo_rel2_"); shutil.rmtree(d2); shutil.copytree(d, d2)
         c2 = seo_db.connect(d2)
@@ -1716,8 +1895,141 @@ def unit_release():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_reco():
+    """«أعجبني» وتوصيات «قد تعجبك»: ملفّ الزائر من أعماله، وصلةٌ صارمة (لا مسلسلات أو أفلام بلا علاقة)، والاهتمامات الصريحة، ونوع العمل، وبحثٌ يقبل الأخطاء."""
+    print("== أعجبني والتوصيات ==")
+    import seo_reco
+    import seo_search
+    d = tempfile.mkdtemp(prefix="seo_reco_")
+    try:
+        con = seo_db.connect(d)
+        now = int(time.time())
+        tax = {k: seo_db.taxonomy_id(con, kind, k, k, k, k, now) for kind, k in (("genre", "drama"), ("genre", "romance"), ("genre", "crime"), ("genre", "action"), ("genre", "horror"),
+                                                                                 ("genre", "comedy"), ("hub", "turkish"), ("hub", "anime"))}
+
+        def add(slug, typ, tags, rating=8.0, year=2020, title=None):
+            cur = con.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)",
+                              (typ, slug, title or slug, title or slug, title or slug, year, rating, "https://image.tmdb.org/t/p/w342/" + slug + ".jpg", "tmdb", now, now))
+            for t in tags:
+                seo_db.set_membership(con, cur.lastrowid, tax[t], "tmdb", 1, now)
+            return cur.lastrowid
+        base = ["turkish", "drama", "romance", "crime"]
+        add("tr-a", "series", base)
+        add("tr-b", "series", base, 8.5)
+        add("tr-c", "series", ["turkish", "drama", "romance"], 7.5)
+        add("tr-low", "series", base, 3.0)                          # تقييمه ضعيف جدًّا: لا يُقترح
+        add("us-drama", "series", ["drama"])                        # يشارك سمةً واحدة فقط (دراما): ليس ذا صلة بمن يحب التركي الرومانسي
+        add("us-action", "movie", ["action"])
+        add("scary", "movie", ["horror"])
+        add("anime-a", "series", ["anime", "action"])
+        add("tr-film", "movie", ["turkish", "drama", "romance"], 8.2)
+        pb = add("prison-break", "series", ["drama", "crime", "action"], 8.3, 2005, "Prison Break")
+        con.execute("INSERT INTO content_alias(content_id, alias, alias_norm, lang, source, at, kind, phonetic) VALUES (?,?,?,?,?,?,?,?)",
+                    (pb, "Prison Break", seo_search.norm("Prison Break"), None, "m3u", now, "title", seo_search.phonetic("Prison Break")))
+        con.commit(); con.close()
+        r = seo_reco.recommend(d, "tr-a", "tr-a")
+        got = [i["slug"] for i in r["items"]]
+        check("من أعجبه مسلسلٌ تركي رومانسي: يُقترح التركي الرومانسي وحده (tr-b · tr-c · tr-film)", {"tr-b", "tr-c", "tr-film"} <= set(got) and not {"scary", "us-action", "anime-a", "us-drama"} & set(got), str(got))
+        check("ولا يُقترح ما أعجبه أصلًا ولا ضعيف التقييم (< 5)", "tr-a" not in got and "tr-low" not in got, str(got))
+        check("الأعلى تقييمًا بين المتساوين أولًا، وكل اقتراحٍ يحمل تقييمه وسببه «لأنك أعجبت بـ …»",
+              all(i["rating"] for i in r["items"]) and all(i["why"] and i["why"]["slug"] == "tr-a" and i["why"]["liked"] for i in r["items"]), str(r["items"][:2]))
+        r2 = seo_reco.recommend(d, "", "tr-a")
+        check("المشاهدة وحدها (بلا إعجاب) تُنتج اقتراحًا أيضًا بوزنٍ أقل", bool(r2["items"]) and r2["items"][0]["why"]["liked"] is False)
+        r3 = seo_reco.recommend(d, "", "", interests=str(tax["action"]))
+        got3 = [i["slug"] for i in r3["items"]]
+        check("اهتمامٌ صريح فقط (أكشن): أعمال الأكشن وحدها، لا دراما تركية ولا رعب", {"us-action", "anime-a"} <= set(got3) and not {"tr-a", "tr-b", "scary"} & set(got3), str(got3))
+        r4 = seo_reco.recommend(d, "", "", interests=str(tax["turkish"]), types="movie")
+        check("الاهتمام + النوع (تركي · أفلام): الفيلم التركي وحده", [i["slug"] for i in r4["items"]] == ["tr-film"], str([i["slug"] for i in r4["items"]]))
+        r5 = seo_reco.recommend(d, "", "")
+        check("بلا سلوك ولا اهتمام: الأشهر (cold) بلا فشل", r5["cold"] is True and len(r5["items"]) > 0)
+        api = seo_reco.api(d, {"likes": "tr-a", "seen": "tr-a", "interests": "", "types": ""}, "ar")
+        check("ردّ الواجهة: مسارات بالعربية، التقييم، السبب بالاسم، والصورة", api["items"] and api["items"][0]["path"].startswith("/content/") and api["items"][0]["rating"] and api["items"][0]["why"].startswith("لأنك أعجبت بـ"), str(api["items"][:1]))
+        apie = seo_reco.api(d, {"likes": "tr-a", "seen": "tr-a"}, "en")
+        check("وبالإنجليزية: /en والسبب بالإنجليزية", apie["items"][0]["path"].startswith("/en/content/") and apie["items"][0]["why"].startswith("Because you liked"))
+        check("slugs غير صالحة أو حقنٌ تُهمَل بلا خطأ", seo_reco.slugs("a, ../x, 'or 1=1, b-2, A", 10) == ["a", "b-2"] and seo_reco.recommend(d, "'; drop table content;--", "")["items"] is not None)
+        # البحث الذكي: أخطاء إملائية وكتابة بحرفٍ آخر
+        found = {q: [i["slug"] for i in seo_reco.find(d, q, "ar")["items"]] for q in ("prison break", "person break", "Prison Brek", "بريزن بريك")}
+        check("بحثٌ يقبل الأخطاء: «prison break» · «person break» · «Prison Brek» · «بريزن بريك» كلها تجد Prison Break", all("prison-break" in v for v in found.values()), str(found))
+        f1 = seo_reco.find(d, "prison break", "ar")["items"][0]
+        check("نتيجة البحث بملصقها وسنتها وتقييمها ومسارها", f1["rating"] == 8.3 and f1["year"] == 2005 and f1["path"] == "/content/series/prison-break/" and f1["poster"])
+        check("بحثٌ قصير جدًّا أو فارغ: لا نتائج ولا خطأ", seo_reco.find(d, "a")["items"] == [] and seo_reco.find(d, "")["items"] == [])
+        # الإعجابات: عدّاد مجهول لا ينزل تحت الصفر
+        c1 = seo_reco.like(d, "prison-break", True); c2 = seo_reco.like(d, "prison-break", True); c3 = seo_reco.like(d, "prison-break", False)
+        z1 = seo_reco.like(d, "tr-b", False)
+        check("الإعجاب يزيد وينقص، ولا ينزل تحت الصفر، وعملٌ مجهول = None", (c1, c2, c3, z1) == (1, 2, 1, 0) and seo_reco.like(d, "nope", True) is None and seo_reco.like(d, "../x", True) is None)
+        ok_ = [seo_reco.rate_ok("1.2.3.4", 3) for _ in range(5)]
+        check("حدّ الطلبات بالساعة لكل عنوان", ok_ == [True, True, True, False, False])
+        # الجولة والاهتمامات
+        chips = seo_reco.interests(d, "ar")
+        # بحثٌ بكتابةٍ مختلفة: «ون بيس» ← One Piece ويُعرف أين يتوفر (في سمارت وفالكون لا كاسبر)
+        import content_page
+        c = seo_db.connect(d)
+        op = c.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES ('series','one-piece','One Piece','ون بيس','One Piece',1999,8.7,'p','tmdb',1,?,?)", (now, now)).lastrowid
+        for srv_, nm in (("smart", "One Piece 1999"), ("falcon", "One Piece")):
+            c.execute("INSERT INTO content_service(content_id, service_key, kind, local_key, name, present, first_seen, seen_at) VALUES (?,?,?,?,?,1,?,?)", (op, srv_, "series", "op|1999", nm, now, now))
+        c.execute("INSERT INTO content_alias(content_id, alias, alias_norm, lang, source, at, kind, phonetic) VALUES (?,?,?,?,?,?,?,?)",
+                  (op, "One Piece", seo_search.norm("One Piece"), None, "m3u", now, "title", seo_search.phonetic("One Piece")))
+        c.commit(); c.close()
+        seo_reco._idx.update({"idx": None})
+        eh = content_page.entity_hint(d, "ون بيس")
+        check("«ون بيس» تُعرف كـ One Piece وتُعرف سيرفراتها: سمارت وفالكون فقط (لا كاسبر)", eh and eh["title"] == "One Piece" and set(eh["servers"]) == {"smart", "falcon"} and eh["servers"]["smart"] == ["One Piece 1999"], str(eh))
+        d4 = tempfile.mkdtemp(prefix="seo_reco4_")
+        try:
+            os.makedirs(os.path.join(d4, "content"))
+            with open(os.path.join(d4, "content", "settings.json"), "w", encoding="utf-8") as f:
+                json.dump({"servers": [{"key": "casper", "name": "كاسبر"}, {"key": "smart", "name": "سمارت"}, {"key": "falcon", "name": "فالكون"}]}, f, ensure_ascii=False)
+            _write(d4, "casper", _cat([{"n": "Wonder Woman", "y": 2017, "i": 1}], [{"n": "بيت أبونا", "y": 2024, "s": [[1, 10]], "i": 2}]))
+            _write(d4, "smart", _cat([], [{"n": "One Piece", "y": 1999, "s": [[1, 50]], "i": 3}]))
+            _write(d4, "falcon", _cat([], [{"n": "One Piece", "y": 1999, "s": [[1, 50]], "i": 4}]))
+            seo_build.build(d4)
+            seo_reco._idx.update({"idx": None, "key": None})
+            hc = content_page.api_search(d4, "casper", "ون بيس")["html"]
+            hs = content_page.api_search(d4, "smart", "ون بيس")["html"]
+            check("كاسبر لا يملك «ون بيس»: «غير متوفر في كاسبر» + أنه متوفر في سمارت وفالكون بروابطهما، ولا «أقرب اسمٍ» بلا صلة (بيت أبونا)",
+                  "غير متوفر في كاسبر" in hc and "سمارت (1)" in hc and "فالكون (1)" in hc and "?q=One%20Piece" in hc and "بيت أبونا" not in hc and "أقرب اسم" not in hc, re.sub(r"<[^>]+>", " ", hc)[:300])
+            check("وفي سمارت (له) يجد One Piece بنتائجه ويذكر وجوده في فالكون", "One Piece" in hs and "فالكون (1)" in hs and "غير متوفر" not in hs, re.sub(r"<[^>]+>", " ", hs)[:300])
+        finally:
+            shutil.rmtree(d4, ignore_errors=True)
+        check("اقتراحٌ بعيد أو اسمٌ مجهول: لا يُعتمد (لا نتائج بلا صلة)", content_page.entity_hint(d, "كلمة لا علاقة لها") is None and content_page.entity_hint(d, "zzqx") is None)
+        check("اهتمامات الجولة: أبرز التصنيفات والهبّات (التركي/الأنمي) — تُعرض إن بلغت 12 عملًا", isinstance(chips, list))
+        c = seo_db.connect(d); seo_db.set_setting(c, "preview", True); c.commit(); c.close()
+        tp = seo_pages.handle(d, "/content/for-you/", "ar")
+        te = seo_pages.handle(d, "/en/content/for-you/", "en")
+        check("صفحة الجولة «محتار ايش تشاهد؟»: 200 وnoindex، بالعربية والإنجليزية، بثلاث خطوات وبحثٍ وقسم المقترحات",
+              tp[0] == 200 and tp[2].get("X-Robots-Tag") == "noindex" and "محتار ايش تشاهد؟" in tp[1].decode() and 'id="tQ"' in tp[1].decode() and 'id="tOut"' in tp[1].decode()
+              and te[0] == 200 and "Not sure what to watch?" in te[1].decode() and 'lang="en"' in te[1].decode())
+        import analytics
+        check("زرّ «محتار ايش تشاهد؟» العائم يُحقن في كل صفحةٍ عامة (analytics.inject) وسكربته موجود", b'/static/foryou.js' in analytics.inject(b"<html><head></head><body></body></html>", d)
+              and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "foryou.js")))
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_site_setting():
+    """العنوان العام قابلٌ للتبديل (XM_SITE_URL): الافتراضي كما هو، وبدومين + مجلد تتبدّل canonical والخريطة وrobots وIndexNow (مضيفٌ وحده)."""
+    print("== عنوان الموقع القابل للتبديل ==")
+    code = ("import guide_pages, seo_pages, seo_release, re, json; "
+            "x = guide_pages.sitemap([('/content/x/', 'weekly', '0.5')]).decode(); "
+            "print(json.dumps({'site': guide_pages.SITE, 'netloc': guide_pages.SITE_NETLOC, 'host': seo_release.HOST, 'seo': seo_pages.SITE, "
+            "'locs': re.findall(r'<loc>(.*?)</loc>', x)}))")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def run(env):
+        e = {k: v for k, v in os.environ.items() if k != "XM_SITE_URL"}
+        e.update(env)
+        out = subprocess.run([sys.executable, "-c", code], cwd=root, env=e, capture_output=True, text=True, timeout=60)
+        return json.loads(out.stdout.strip().splitlines()[-1]) if out.returncode == 0 else {"error": out.stderr[-300:]}
+    a = run({})
+    check("الافتراضي: guide.ssouq.com (لا تغيير ما لم يُضبط XM_SITE_URL)", a.get("site") == "https://guide.ssouq.com" and a.get("host") == "guide.ssouq.com" and a.get("netloc") == "guide.ssouq.com", str(a))
+    b = run({"XM_SITE_URL": "https://ssouq.com/guide/"})
+    check("دومين + مجلد: SITE بلا شرطة أخيرة، والمضيف وحده لـ IndexNow، وروابط الخريطة بالعنوان الجديد", b.get("site") == "https://ssouq.com/guide" and b.get("host") == "ssouq.com"
+          and b.get("seo") == "https://ssouq.com/guide" and any(u.startswith("https://ssouq.com/guide/content/x") for u in b.get("locs", [])) and not any("guide.ssouq.com" in u for u in b.get("locs", [])), str(b)[:300])
+
+
 def main():
     unit_match()
+    unit_site_setting()
+    unit_reco()
     unit_build()
     unit_ten()
     unit_production_cases()
