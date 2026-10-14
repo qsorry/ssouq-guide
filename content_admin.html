@@ -255,6 +255,9 @@ details.adult h4{font-size:.8rem;font-weight:500;color:var(--mute);margin:10px 0
 .alist{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto}
 .alist li{display:flex;gap:10px;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line);font-size:.86rem}
 .alist li:last-child{border-bottom:0}
+.depb{position:fixed;inset-inline:12px;top:calc(env(safe-area-inset-top,0px) + 84px);z-index:90;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 14px;border-radius:14px;font-weight:600;line-height:1.6;
+  background:var(--sf);color:var(--ink);border:1.5px solid var(--blue);box-shadow:var(--shadow)}
+.depb[hidden]{display:none}.depb.wait{border-color:var(--amber)}.depb.ok{border-color:var(--go)}.depb .depa{display:flex;gap:8px}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0}.grid2 label{display:block;font-size:.82rem}.grid2 input,.grid2 select{width:100%}
 .alist span{flex:1;min-width:0;overflow-wrap:anywhere}
 .alist small{color:var(--mute);max-width:48%;text-align:end;overflow-wrap:anywhere}
@@ -701,6 +704,8 @@ details.card>.din{padding:0 16px 16px}
   <a data-tab="salla"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg>ربط سلة</a>
   <a data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>الإعدادات</a>
 </nav>
+<div class="depb" id="depBanner" role="status" aria-live="assertive" hidden><span id="depTxt"></span>
+  <span class="depa"><button type="button" class="ghost" id="depGo">اذهب إلى الزرّ</button><button type="button" class="ghost" id="depX">حسنًا</button></span></div>
 <script>
 // الأداة على نطاقها (admin.ssouq.com) من الجذر، وتحت /admin على الموقع العام
 const B = location.pathname.startsWith("/admin") ? "/admin" : "";
@@ -1602,6 +1607,27 @@ $("cTmdbGo").onclick = () => cDo({action: "tmdb", tmdb_id: $("cTmdb").value}, "�
 $("cMergeGo").onclick = () => confirm("الدمج لا يُحذف فيه شيء لكن رابط هذا الكيان يتحوّل 301 إلى الباقي. متابعة؟") && cDo({action: "merge", loser: cur.id, winner: +$("cMerge").value}, "تم الدمج");
 
 
+
+// ===== تنبيه «تم النشر» (معرّف تشغيل الخادم يتبدّل مع كل نشر) =====
+const dep = {boot: "", down: 0};
+try { dep.seen = localStorage.getItem("ssq_adm_boot") || ""; } catch (e) { dep.seen = ""; }
+const hhmm = ts => new Date(ts * 1000).toLocaleTimeString("ar", {hour: "2-digit", minute: "2-digit"});
+function depShow(kind, text) { const b = $("depBanner"); b.className = "depb " + kind; $("depTxt").textContent = text; b.hidden = false; $("depGo").hidden = kind !== "ok"; }
+function depSave(v) { try { localStorage.setItem("ssq_adm_boot", v); } catch (e) {} }
+async function depCheck() {
+  if (document.hidden) return;
+  let d;
+  try { d = await (await fetch(B + "/api/content/seo/version", {cache: "no-store"})).json(); if (!d || !d.boot) throw new Error("no"); }
+  catch (e) { if (dep.boot && ++dep.down >= 1) depShow("wait", "⏳ يجري النشر: الخادم يعيد التشغيل الآن… انتظر دقيقة ثم يظهر لك تنبيه «تم النشر»."); return; }
+  if (d.login) return;
+  const prev = dep.boot || dep.seen;
+  if (prev && d.boot !== prev) depShow("ok", `✔ تم النشر: الخادم يعمل بالنسخة الجديدة منذ ${hhmm(d.since)}. المهمة الجارية تُستأنف وحدها خلال دقيقة، أو اضغط «▶ ابدأ كل شيء تلقائيًا».`);
+  else if (dep.down && !$("depBanner").hidden && $("depBanner").classList.contains("wait")) $("depBanner").hidden = true;
+  dep.boot = d.boot; dep.down = 0; depSave(d.boot);
+}
+$("depX").onclick = () => { $("depBanner").hidden = true; };
+$("depGo").onclick = () => { $("depBanner").hidden = true; const o = $("oneBox"); if (o) o.scrollIntoView({behavior: "smooth", block: "center"}); };
+depCheck(); setInterval(depCheck, 10000);
 // ===== عدّاد الصفحات =====
 const GB = {indexed: "مفهرس", crawled: "زُحف ولم يُفهرس", discovered: "اكتُشف ولم يُزحف", unknown: "لا يعرفه قوقل بعد", other: "غير ذلك"};
 let vPoll = 0;

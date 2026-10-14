@@ -645,6 +645,17 @@ def _tmdb_one(con, data_dir, cid, st, now):
             time.sleep(TMDB_RETRY_PAUSE * (2 ** i))
 
 
+def approved_redirect_changes(con, approved_ids, red_before, red_after):
+    """كم تحويلًا **مصدره مسارُ عملٍ معتمد** تغيّر هدفه (أو زال) في الدفعة؟ — وهذا وحده عيب: المعتمد المفهرَس لا يبدأ بالتحويل ولا يتغيّر هدفه.
+    أمّا تحويلات غير المعتمد التي أُعيد توجيهها إلى فائزٍ حين يُدمج مرشّحٌ فيه (مسار الخاسر وأسماؤه القديمة) فهي تقصيرٌ سليم للسلاسل، لا تُحسب."""
+    paths = set()
+    for i in approved_ids:
+        r = _row(con, i)
+        if r:
+            paths.update(seo_db.paths(r["type"], r["slug"]))
+    return sum(1 for p, t in red_before.items() if p in paths and red_after.get(p) != t)
+
+
 BUSY_WAIT_MS = 120000        # أطول انتظارٍ لقفل الكتابة قبل أن تُؤجَّل الدفعة (الإثراء كلّه معاملةٌ واحدة تحتاج القفل من أولها)
 BUSY_RETRIES = 10            # مرات إعادة الدفعة المؤجَّلة في المهمة (بفاصل BUSY_PAUSE ثانية) قبل أن تتوقف
 BUSY_PAUSE = 60
@@ -756,7 +767,8 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
                      "new_redirects": len(new_red), "new_redirects_direct": sum(1 for t in new_red.values() if t not in red_after), "redirect_chains": ra["chains"], "redirect_loops": ra["loops"],
                      "approved_slug_changes": sum(1 for i in approved_ids if before["slugs"].get(str(i)) != after["slugs"].get(str(i))),
                      "approved_merged": sum(1 for i in approved_ids if (_row(con, i) or {"merged_into": 1})["merged_into"] is not None),
-                     "approved_redirect_targets_changed": sum(1 for p, t in red_before.items() if red_after.get(p) != t)}
+                     "approved_redirect_targets_changed": approved_redirect_changes(con, approved_ids, red_before, red_after),
+                     "redirects_retargeted_other": sum(1 for p, t in red_before.items() if red_after.get(p) != t)}      # معلومة: تحويلاتٌ لغير المعتمد أُعيد توجيهها (دمج مرشّحٍ في فائز) — لا تُفشل البوابة
             # 4/5/6 — canonical · hreflang · الأهلية على المرشّحين الأحياء (غير معتمدين بعد: noindex بلا alternate)
             live_c = [cid for cid in cand_ids if (_row(con, cid) or {"merged_into": 1})["merged_into"] is None]
             tmp = {(cid, l): {"id": cid, "lang": l, "path": seo_pages._path(_row(con, cid), l), "slug": _row(con, cid)["slug"]} for cid in live_c for l in ("ar", "en")}

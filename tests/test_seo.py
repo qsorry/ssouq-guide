@@ -2156,6 +2156,9 @@ def unit_cards_softnav():
               and tour.count("filter-section-title") == 4 and "tchip filter-chip" in tour and "fyEnsure" in open(os.path.join(root, "static", "softnav.js"), encoding="utf-8").read())
         check("ux.css يُحقن في كل صفحةٍ عامة بإصدار", b'/static/ux.css?v=' in analytics.inject(b"<html><head></head><body></body></html>", d))
         adm = open(os.path.join(root, "content_admin.html"), encoding="utf-8").read()
+        xm = open(os.path.join(root, "xm_lines.py"), encoding="utf-8").read()
+        check("تنبيه «تم النشر»: اللوحة تستطلع /api/content/seo/version (معرّف تشغيل الخادم) وتُظهر «يجري النشر» ثم «تم النشر»، والخادم يعيد معرّفًا يتبدّل مع كل تشغيل",
+              'id="depBanner"' in adm and "/api/content/seo/version" in adm and "تم النشر" in adm and "يجري النشر" in adm and "BOOT_ID = secrets.token_hex" in xm and '"boot": BOOT_ID' in xm)
         check("عدّاد الزرّ الواحد «منجَز / الكل» معزولٌ LTR (LRI…PDI) فلا ينقلب «2,063 / 1,030» في سطرٍ عربي", '\\u2066" + num(p.done || 0) + " / " + num(p.total) + "\\u2069' in adm)
         inj = analytics.inject(b"<html><head></head><body></body></html>", d)
         check("يُحقن سكربت التنقّل السلس بإصدار، وملفّه موجود", b"/static/softnav.js?v=" in inj and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "softnav.js")))
@@ -2224,6 +2227,32 @@ def unit_airing():
         check("تجديد الجاري: الجاري وحده (3 جاري + قيد الإنتاج) يُعاد، لا المنتهي ولا الموقوف، وما حُدِّث للتوّ (airing-now) يُترك", n == 3 and queued == {rows["airing-quiet"]["id"], rows["between-seasons"]["id"], rows["future-show"]["id"]}, str((n, queued)))
         check("وكاش TMDB للجاري يُمسح (وإلا بقي ردّه 30 يومًا) ولا يُمسح لغيره", not con.execute("SELECT 1 FROM api_cache WHERE key LIKE ?", (f"tmdb:/tv/{rows['airing-quiet']['tmdb_id']}?%",)).fetchone()
               and con.execute("SELECT 1 FROM api_cache WHERE key LIKE ?", (f"tmdb:/tv/{rows['done-show']['tmdb_id']}?%",)).fetchone())
+        con.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_redirect_gate():
+    """بوابة الدفعة: تغيّر هدف تحويلٍ **مصدره مسارٌ معتمد** عيب؛ وإعادة توجيه تحويلات غير المعتمد إلى فائزٍ دُمج فيه مرشّح (تقصير السلاسل) لا تُفشل الدفعة (الدفعة 24 سقطت بها)."""
+    print("== بوابة التحويلات ==")
+    import seo_release
+    d = tempfile.mkdtemp(prefix="seo_rg_")
+    try:
+        con = seo_db.connect(d)
+        now = int(time.time())
+
+        def add(slug):
+            return con.execute("INSERT INTO content(type, slug, title, year, match, available, created_at, updated_at) VALUES ('series',?,?,2020,'tmdb',1,?,?)", (slug, slug, now, now)).lastrowid
+        a_id, w_id = add("approved-a"), add("winner-w")                       # معتمدان
+        pa, pw = seo_db.paths("series", "approved-a"), seo_db.paths("series", "winner-w")
+        loser_old = ["/content/series/loser-l/", "/en/content/series/loser-l/", "/content/series/loser-alias/"]
+        before = {loser_old[0]: loser_old[0] + "x", loser_old[1]: loser_old[1] + "x", loser_old[2]: "/content/series/loser-l/", "/content/series/other/": "/content/series/target/"}
+        after = {**before, loser_old[0]: pw[0], loser_old[1]: pw[1], loser_old[2]: pw[0]}                  # دمج المرشّح الخاسر في الفائز المعتمد: ثلاثة تحويلاتٍ أُعيد توجيهها
+        check("إعادة توجيه تحويلات الخاسر (غير المعتمد) إلى الفائز المعتمد لا تُحسب تغيّرًا في المعتمد", seo_release.approved_redirect_changes(con, {a_id, w_id}, before, after) == 0)
+        before2 = {**before, pa[0]: "/content/series/somewhere/"}                                        # تحويلٌ مصدره مسارٌ معتمد
+        check("تغيّر هدف تحويلٍ مصدره مسارٌ معتمد يُحسب (وزواله كذلك)",
+              seo_release.approved_redirect_changes(con, {a_id, w_id}, before2, {**after, pa[0]: "/content/series/else/"}) == 1
+              and seo_release.approved_redirect_changes(con, {a_id, w_id}, before2, {k: v for k, v in after.items() if k != pa[0]}) == 1)
         con.close()
     finally:
         shutil.rmtree(d, ignore_errors=True)
@@ -2514,6 +2543,7 @@ def main():
     unit_site_setting()
     unit_reco()
     unit_airing()
+    unit_redirect_gate()
     unit_guide()
     unit_cards_softnav()
     unit_build()
