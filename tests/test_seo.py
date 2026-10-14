@@ -109,6 +109,15 @@ def unit_match():
     a, b, c = it("series", "Y", "casper", plot=p1), it("series", "Y", "falcon", 2009), it("series", "Y", "smart", 2009, plot=p1)
     clusters, reviews = M.cluster([a, b, c], ST)
     check("يلتقيان عبر ثالث: عنقودٌ واحد بلا مراجعة", len(clusters) == 1 and not reviews)
+    # tmdb_id معروف لعنصرين باسمين مختلفين: مفتاحه ثلاثي (نوع، "tmdb"، معرّف) ولا يسقط التجميع بـ «too many values to unpack»
+    d1, d2 = it("series", "Dark", "casper"), it("series", "دارك", "falcon")
+    d1["tmdb_id"] = d2["tmdb_id"] = 70523
+    try:
+        clusters, reviews = M.cluster([d1, d2], ST)
+        ok_t = True
+    except ValueError as ex:
+        ok_t, clusters = False, str(ex)
+    check("التجميع بمفتاح tmdb_id (ثلاثي) لا يسقط", ok_t, str(clusters))
 
 
 def _cat(movies, series, live=(), series2=()):

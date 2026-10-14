@@ -321,9 +321,10 @@ def cluster(items, st):
         if it.get("tmdb_id"):                 # وtmdb_id حين يُعرف (بعد تحقّق ‏verify_tmdb)
             posters.setdefault((it["type"], "tmdb", it["tmdb_id"]), []).append(i)
     pairs_why = []
-    for (typ, nm), idx in list(buckets.items()) + [(k, v) for k, v in posters.items() if len(v) > 1]:
+    for key_, idx in list(buckets.items()) + [(k, v) for k, v in posters.items() if len(v) > 1]:
         if len(idx) < 2:
             continue
+        typ, nm = key_[0], ":".join(str(x) for x in key_[1:])     # مفتاح الملصق ثنائي (نوع، ملف) ومفتاح tmdb ثلاثي (نوع، "tmdb"، معرّف)
         for x in range(len(idx)):
             for y in range(x + 1, len(idx)):
                 i, j = idx[x], idx[y]
