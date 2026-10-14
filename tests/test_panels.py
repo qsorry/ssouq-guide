@@ -736,7 +736,10 @@ def test_order_lost():
         cur_row = {"account_id": "acc1", "gate_id": "g1", "username": "422", "password": "389", "host": "http://cdn65.x"}
         cl = X.line_copy([acct], cur_row)
         check("current subscription has the full guide to copy", cl.startswith("📲 طريقة التثبيت والتفعيل")
-              and "Host: http://cdn65.x" in cl and "User: 422" in cl and "Pass: 389" in cl, cl)
+              and "Host: http://m.ink" in cl and "http://cdn65.x" not in cl and "User: 422" in cl and "Pass: 389" in cl, cl)
+        check("a stale host is copied (and offered) as the gate's current host", X.current_host([acct], cur_row) == "http://m.ink"
+              and X.current_host([acct], dict(cur_row, host="http://m.ink:80")) == ""
+              and "Host: http://m.ink" in X.line_copy([acct], dict(cur_row, host="http://m.ink")))
         check("no copy text without a password", X.line_copy([acct], dict(cur_row, password="")) == "")
         r = panels.lost(cfg, d)
         done = next(x for x in r["rows"] if x["username"] == "111")
