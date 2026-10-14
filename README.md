@@ -1798,6 +1798,8 @@ HTML لا يُمسّ: ‏`alt` الصورة لقطةٌ من يومها):
 يتبدّل وحده (الروابط الداخلية الجذرية تحت مجلد، مفتاح IndexNow على الجذر)، وخطوات Google (ولماذا لا تنفع أداة Change of Address
 للنطاق الفرعي ← مجلد): [docs/site-migration.md](docs/site-migration.md).
 
+اتجاه المشروع (المتجر والمحتوى والحسابات و«محتار ايش تشاهد» وقرار المجلد): [docs/product-direction.md](docs/product-direction.md).
+
 ### المرحلة 10 — اعتماد القوائم والمواسم والحلقات والهبّات (`seo_release.extras`)
 - بعد نجاح المراحل 4 و5 و7: `python seo_release.py extras [--expected=N]` (أو إجراء `extras` في `POST /api/content/admin/seo-release`). يُعدِّد المرشّحين من القاعدة
   (قوائم النوع/الدولة/اللغة/السنة/الأحدث بصفحاتها، وهبّا التركي والأنمي بأقسامهما، ومواسم وحلقات **المسلسلات المعتمدة** فقط، وهب `/content/` إن فُعّل `content_hub`)،
