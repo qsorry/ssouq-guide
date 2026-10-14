@@ -26,6 +26,7 @@ import json
 import os
 import re
 import http.client
+import random
 import sqlite3
 import threading
 import time
@@ -519,7 +520,28 @@ def http_probe(urls, timeout=20):
     return {**m, "examples": bad[:20]}
 
 
-def phase7(data_dir, snapshot=None, http=False, now=None):
+PHASE7_FULL_KEY = "phase7_full"        # build_state: {at: آخر فحصٍ كاملٍ ناجح، count: كم مسارًا من قائمة الاعتماد (بترتيبها) تحقّق منها الفحص الأخير}
+PHASE7_MIN_SAMPLE = 100
+
+
+def _phase7_scope(con, st, approved, quick, now):
+    """أي المسارات المعتمدة تُرسَم وتُفحص كما تُخدم؟ ← (المجموعة، الوضع، عدد الجديد، عدد العيّنة).
+    الفحص الكامل (الافتراضي) يرسم كل المعتمد — وتكلفته تكبر مع الاعتماد (نحو ثانيتين للمسار). والسريع (الطيار الآلي وزرّ «ابدأ كل شيء») يفحص **ما اعتُمد بعد
+    آخر فحصٍ ناجح** + عيّنةً عشوائية (`phase7_sample_pct` بحدٍّ أدنى) من القديم، ويعود كاملًا إن مرّ `phase7_full_every_days` (يومٌ افتراضًا) أو لم يُجرَ كاملٌ قط.
+    بقية فحوص المرحلة (الخريطة والتحويلات والسلاسل والفهرسة غير المتوقَّعة) كاملةٌ دائمًا: لا ترسم صفحات."""
+    keys = list(approved)
+    meta = seo_db.state(con, PHASE7_FULL_KEY) or {}
+    days = max(0.0, float(st.get("phase7_full_every_days", 1)))
+    if not (quick and meta.get("at") and now - int(meta["at"]) < days * 86400 and 0 < int(meta.get("count") or 0) <= len(keys)):
+        return approved, "full", len(keys), 0
+    done = int(meta["count"])
+    new, older = keys[done:], keys[:done]
+    k = min(len(older), max(PHASE7_MIN_SAMPLE, int(len(older) * max(0, int(st.get("phase7_sample_pct", 10))) / 100)))
+    sample = random.sample(older, k) if k else []
+    return {key: approved[key] for key in new + sample}, "quick", len(new), len(sample)
+
+
+def phase7(data_dir, snapshot=None, http=False, now=None, quick=False):
     now = _now(now)
     with seo_db.lock(data_dir):
         con = seo_db.connect(data_dir, create=False)
@@ -536,7 +558,8 @@ def phase7(data_dir, snapshot=None, http=False, now=None):
             ids = {cid for cid, _ in approved}
             snap = snapshot_urls(data_dir) if (bundle_meta(data_dir) or {}).get("bundle_id") == snapshot else None
             approved_urls = {SITE + a["path"] for a in approved.values()}
-            g, fails = gate_routes(data_dir, con, st, approved)
+            scope, mode, n_new, n_sample = _phase7_scope(con, st, approved, quick, now)
+            g, fails = gate_routes(data_dir, con, st, scope)
             u = unexpected_indexable(con, st, approved)
             p4 = rel["phases"].get("4") or {}
             base = ((p4.get("invariants") or {}).get("before")) or {}
@@ -560,16 +583,16 @@ def phase7(data_dir, snapshot=None, http=False, now=None):
                  "redirect_chains": ra["chains"], "redirect_loops": ra["loops"], "slug_changes": g["slug_changes"], "entity_changes": g["entity_changes"],
                  "snapshot_compared": snap is not None, "snapshot_mismatch": len(snap - approved_urls) if snap is not None else None,   # روابط اللقطة التي خرجت من الاعتماد = تراجع
                  "beyond_snapshot": len(approved_urls - snap) if snap is not None else None,                                            # ما اعتُمد بعدها بدفعات التوسيع (معلومة لا فشل)
-                 "approved_routes": len(approved), "approved_entities": len(ids)}
+                 "approved_routes": len(approved), "approved_entities": len(ids), "mode": mode, "checked_routes": len(scope), "checked_new": n_new, "checked_sample": n_sample}
             ok = (m["http_failures"] == 0 and m["canonical_failures"] == 0 and m["hreflang_failures"] == 0 and m["language_failures"] == 0 and m["robots_failures"] == 0
-                  and m["indexable"] == len(approved) and m["unexpected_indexable"] == 0 and m["sitemap_missing"] == 0 and m["sitemap_unexpected"] == 0 and m["sitemap_public_mismatch"] == 0
+                  and m["indexable"] == len(scope) and m["unexpected_indexable"] == 0 and m["sitemap_missing"] == 0 and m["sitemap_unexpected"] == 0 and m["sitemap_public_mismatch"] == 0
                   and m["redirect_changes_since_phase4"] == 0 and m["redirect_chains"] == 0 and m["redirect_loops"] == 0 and m["slug_changes"] == 0 and m["entity_changes"] == 0
                   and m["redirect_target_failures"] == 0 and m["redirect_resolve_failures"] == 0
                   and (m["snapshot_mismatch"] in (0, None)))
             rec = {"snapshot": snapshot, "metrics": m, "failures": fails, "population_check": u, "redirect_audit": ra, "invariants_now": {k: v for k, v in inv.items() if k != "slugs"},
                    "baseline": None, "http": None,
                    "tests": [_t("phase7_routes_http_canonical_hreflang_language", m["http_failures"] == 0 and m["canonical_failures"] == 0 and m["hreflang_failures"] == 0 and m["language_failures"] == 0, m),
-                             _t("phase7_indexability", m["indexable"] == len(approved) and m["robots_failures"] == 0 and m["unexpected_indexable"] == 0, m),
+                             _t("phase7_indexability", m["indexable"] == len(scope) and m["robots_failures"] == 0 and m["unexpected_indexable"] == 0, m),
                              _t("phase7_sitemap_membership", m["sitemap_missing"] == 0 and m["sitemap_unexpected"] == 0 and m["sitemap_public_mismatch"] == 0, m),
                              _t("phase7_redirects_slugs_entities", m["redirect_changes_since_phase4"] == 0 and m["redirect_chains"] == 0 and m["redirect_loops"] == 0 and m["slug_changes"] == 0 and m["entity_changes"] == 0, m),
                              _t("phase7_snapshot_population", m["snapshot_mismatch"] in (0, None), {"compared": snap is not None, "missing_from_approval": m["snapshot_mismatch"], "beyond_snapshot": m["beyond_snapshot"]})]}
@@ -583,7 +606,11 @@ def phase7(data_dir, snapshot=None, http=False, now=None):
                 ok = ok and rec["http"]["ok"]
             if not ok:
                 return _fail(rel, 7, "post-production QA found a regression — STOP (nothing changed by this phase)", rec, con=con, now=now, data_dir=data_dir)
-            return _pass(rel, 7, rec, con, now, data_dir)
+            res = _pass(rel, 7, rec, con, now, data_dir)
+            full_at = now if mode == "full" else int((seo_db.state(con, PHASE7_FULL_KEY) or {}).get("at") or now)
+            with con:
+                seo_db.set_state(con, PHASE7_FULL_KEY, {"at": full_at, "count": len(approved)})      # ما اعتُمد حتى الآن تحقّق منه فحصٌ ناجح
+            return res
         finally:
             con.close()
 
@@ -988,7 +1015,7 @@ def _pipeline_launch(data_dir, progress=None):
         ph = _state(con)["phases"]
     finally:
         con.close()
-    steps = ((4, lambda: phase4(data_dir, snap, len(urls))), (5, lambda: phase5(data_dir)), (6, lambda: phase6(data_dir)), (7, lambda: phase7(data_dir, snap)))
+    steps = ((4, lambda: phase4(data_dir, snap, len(urls))), (5, lambda: phase5(data_dir)), (6, lambda: phase6(data_dir)), (7, lambda: phase7(data_dir, snap, quick=True)))
     for n, fn in steps:
         if n < 7 and (ph.get(str(n)) or {}).get("status") == "PASS":
             continue
@@ -1004,7 +1031,7 @@ def _autopilot_cycle(data_dir, job, progress=None):
     """دورة الطيار الآلي: المرحلة 7 (فحصٌ بعد النشر) ← المرحلة 10 (القوائم والمواسم والهبّات لما اعتُمد حتى الآن). أي فشلٍ = توقّف بسببه ← (نجح؟، السبب)."""
     if progress:
         progress("autopilot: فحص بعد النشر")
-    r7 = phase7(data_dir, None)
+    r7 = phase7(data_dir, None, quick=True)
     if not r7.get("ok"):
         return False, f"phase7 failed — {str(r7.get('reason') or '')[:150]}"
     if progress:
