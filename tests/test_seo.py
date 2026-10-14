@@ -1790,6 +1790,29 @@ def unit_release():
         hb = seo_pages.handle(d3, "/content/", "ar")
         check("هب /content/ معطّلًا يبقى سلوكه القديم (None)، وبتفعيله ثم الاعتماد يُخدم index بـ hreflang", hb0 is None and x4["ok"] and x4["precheck"]["kinds"].get("hub_root") == 2
               and hb[0] == 200 and "X-Robots-Tag" not in hb[2] and hb[1].count(b'rel="alternate" hreflang=') == 3, str(x4)[:300])
+        # مهمة التوسيع المستمرة: محفوظة في القاعدة، وتكمل بنفسها بعد إعادة التشغيل (الحارس)، وتتوقف عند النفاد أو العدد أو الأمر
+        k3 = os.path.abspath(d3)
+        j0 = seo_release.job_start(d3, 2, 3, True)
+        check("job_start: مهمةٌ نشطة محفوظة (حجم 2، 3 دفعات، تكمل بعد إعادة النشر)", j0["active"] and j0["n"] == 2 and j0["remaining"] == 3 and j0["auto_resume"] and seo_release.job_get(d3)["active"])
+        jr = seo_release.run_job(d3)
+        jf = seo_release.job_get(d3)
+        check("run_job: تنفّذ دفعاتٍ ثم تتوقف بالنفاد أو بالعدد، والحال محفوظة (done ≥ 1، لا تبقى نشطة)",
+              jr["ok"] and jf["done"] >= 1 and jf["active"] is False and jf["stopped"] in ("completed", "no candidates left") and jf["last"] is not None, str(jf)[:300])
+        seo_release.job_start(d3, 2, 3, True)
+        seo_release._threads.pop(k3, None)                        # كأن الخادم أُعيد تشغيله: لا خيط حيّ والمهمة ما زالت نشطة
+        wd = seo_release.job_watchdog_tick(d3)
+        t3 = seo_release._threads.get(k3)
+        if t3:
+            t3.join(180)
+        check("الحارس: مهمةٌ نشطةٌ بلا خيط ← تُستأنف وحدها وتُكمل (resumed ثم لا تبقى نشطة)", wd == "resumed" and seo_release.job_get(d3)["active"] is False, f"{wd} {seo_release.job_get(d3)}"[:300])
+        seo_release.job_start(d3, 2, 3, False)
+        seo_release._threads.pop(k3, None)
+        wd2 = seo_release.job_watchdog_tick(d3)
+        check("بلا auto_resume: تُوقف بسبب الانقطاع ولا تُستأنف", wd2 == "stopped" and "interrupted" in (seo_release.job_get(d3).get("stopped") or ""), str(seo_release.job_get(d3)))
+        seo_release.job_start(d3, 2, 3, True)
+        seo_release.job_stop(d3)
+        check("job_stop: توقف فوري وبسبب الإيقاف، ولا تستأنف", seo_release.job_get(d3)["active"] is False and seo_release.job_watchdog_tick(d3) is None)
+        check("status() يكشف المهمة للبطاقة", "expand_job" in seo_release.status(d3))
         # تدقيق التحويلات: صفّا ar وen لتبديل رابطٍ واحد يُحلّان كلاهما إلى الكيان (الهدف /en/… ليس فشل حلّ) — كان يعدّ كل صفوف /en فشلًا ويُسقط دفعة الإنتاج
         seo_db.change_slug(c3, c3.execute("SELECT id FROM content WHERE slug='wonder-woman'").fetchone()[0], "wonder-woman-2017", reason="audit test"); c3.commit()
         ra_ = seo_release.redirect_audit(c3)

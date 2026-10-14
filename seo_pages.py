@@ -1216,7 +1216,7 @@ details{background:var(--card);border:1px solid var(--line);border-radius:12px;p
 .cta{color:var(--mute);font-size:.86rem;margin:10px 0 0}.intro{font-size:1.05rem;color:#dbe4ff;max-width:900px}.more{text-align:end}.more a{color:var(--acc)}
 .pager{display:flex;justify-content:center;gap:16px;align-items:center;margin:24px 0}.pager a{border:1px solid var(--line);border-radius:10px;padding:8px 14px}
 .foot{border-top:1px solid var(--line);margin-top:40px;padding:18px 0;color:var(--mute);font-size:.86rem}.foot a{color:var(--acc)}
-@media(max-width:800px){.hd{grid-template-columns:1fr}.hd .pos img,.hd .pos .ph{width:160px}.cols{grid-template-columns:1fr}.avail{position:static}}
+@media(max-width:800px){.hd{grid-template-columns:1fr}.hd .pos img,.hd .pos .ph{width:160px}.cols{grid-template-columns:1fr}.cols>aside{order:-1}.avail{position:static;border-color:var(--acc);box-shadow:0 8px 24px -16px rgba(47,140,255,.6)}}
 """
 
 

@@ -7925,10 +7925,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_scan.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-release":   # النشر الإنتاجي: go (4←5←6←7) · phase4…phase7 · batch · expand · final — في الخلفية، بوابةٌ فاشلة = STOP
                 act = str(body.get("action") or "")
-                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "extras", "batch", "expand", "final"):
+                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "extras", "batch", "expand", "expand_start", "expand_stop", "final"):
                     return self._send(400, {"error": "action غير معروف"})
                 if act in ("go", "phase4") and not re.fullmatch(r"\d{8}T\d{6}Z", str(body.get("snapshot") or "")):
                     return self._send(400, {"error": "معرّف اللقطة (نقطة الاستئناف) مطلوب: مثل 20261003T004434Z"})
+                if act == "expand_stop":                   # إيقاف مهمة التوسيع: فوري (تتوقف قبل الدفعة التالية)
+                    seo_release.job_stop(DATA_DIR)
+                    return self._send(200, {"ok": True, "started": False, **seo_release.status(DATA_DIR)})
+                if act == "expand_start":                  # مهمةٌ محفوظة تكمل بنفسها بعد إعادة النشر إن طُلب
+                    seo_release.job_start(DATA_DIR, int(body.get("n") or 100), int(body.get("max") or 5), bool(body.get("auto", True)))
+                    act = "expand_job"
                 started = seo_release.start(DATA_DIR, act, snapshot=body.get("snapshot"), expected=int(body["expected"]) if body.get("expected") else None,
                                             http=bool(body.get("http")), n=int(body.get("n") or 100), max=int(body["max"]) if body.get("max") else None)
                 return self._send(200, {"ok": True, "started": started, **seo_release.status(DATA_DIR)})
@@ -9177,6 +9183,7 @@ def web():
     start_mail()
     start_stremio_warm()
     start_stremio_genres()
+    seo_release.start_job_watchdog(DATA_DIR)    # مهمة التوسيع تكمل بنفسها بعد إعادة النشر
     seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
