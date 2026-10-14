@@ -46,6 +46,8 @@ button:disabled{opacity:.5;cursor:default}
 .wz-res.ok{background:color-mix(in srgb,var(--go) 14%,transparent);border:1px solid var(--go)}
 .wz-res.bad{background:color-mix(in srgb,var(--err) 14%,transparent);border:1px solid var(--err)}
 .wz-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}.wz-fields label{display:block;margin-bottom:4px}
+.one{border:1px solid var(--go);border-radius:16px;background:var(--sf2);padding:14px;margin:0 0 14px}.one-go{width:100%;padding:16px;font-size:1.1rem}.one .ghost{margin-top:8px}
+.wz-steps .grp{grid-column:1/-1;margin:6px 0 0;font-size:.78rem;font-weight:700;color:var(--mute)}
 .wz-nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.wz-nav button{flex:1 1 40%}
 @media (min-width:640px){.wz-steps{grid-template-columns:repeat(8,1fr)}}
 
@@ -500,12 +502,24 @@ details.card>.din{padding:0 16px 16px}
     <details class="blk fold" id="blkRelease" open>
       <summary><span><b>النشر الإنتاجي</b><small>معالج خطوةً بخطوة: رفع noindex، الخريطة، IndexNow، التوسيع</small></span></summary>
       <div class="din">
+        <div class="one" id="oneBox" aria-live="polite">
+          <button class="go one-go" type="button" id="oneGo">▶ ابدأ كل شيء تلقائيًا</button>
+          <button class="ghost" type="button" id="oneStop" hidden>⏹ أوقف</button>
+          <label class="switch"><span>نشرٌ آلي للمحتوى الجديد<small>كل يوم في الواحدة صباحًا بتوقيت السعودية: ما أُضيف من أعمالٍ جديدة يُثرى ويُعتمد ويدخل القوائم تلقائيًا، ويتوقف عند أول فشل. يصلك بريدٌ بالنتيجة (اكتملت أو فشلت). يتفعّل مع زرّ «ابدأ كل شيء».</small></span><input type="checkbox" class="tog" id="oneAuto"></label>
+          <p class="meta" id="oneSched"></p><div class="acts"><button class="ghost" type="button" id="oneMail">✉ أرسل بريدًا تجريبيًا</button></div><div class="msg" id="oneMailMsg"></div>
+          <p class="meta" id="oneHint">يُجري الإطلاق الأول (رفع noindex ← الخريطة ← IndexNow ← الفحص) ثم يكرّر التوسيع والفحص واعتماد القوائم والمواسم حتى لا يبقى مرشّح، ويتوقف عند أول فشل بسببه. يكمل وحده بعد إعادة النشر.</p>
+          <div class="wz-live" id="oneLive" hidden><div class="t" id="oneT"></div><div class="n" id="oneN"></div><div class="bar"><i id="oneBar" style="width:0"></i></div></div>
+          <p class="meta" id="oneState"></p>
+          <div class="wz-res bad" id="oneFail" hidden><b id="oneFailT"></b><div id="oneFailR"></div><div class="acts"><button class="ghost" type="button" id="oneCopy">نسخ التفاصيل</button></div></div>
+        </div>
+        <details class="blk fold" id="wzDet"><summary><span><b>خطوةً بخطوة</b><small>للتحكم اليدوي في كل مرحلة (متقدّم)</small></span></summary><div class="din">
         <div class="wz" id="wz" aria-live="polite">
           <div class="wz-head"><span class="wz-count" id="wzCount"></span><span class="meta" id="wzSum"></span></div>
           <div class="bar" aria-hidden="true"><i id="wzBar"></i></div>
           <ol class="wz-steps" id="wzSteps"></ol>
           <div class="wz-panel" id="wzPanel"></div>
         </div>
+        </div></details>
         <details class="blk fold" id="rAdv"><summary><span><b>أدوات متقدّمة</b><small>كل الأزرار والخانات القديمة (لقطةٌ يدوية، دفعاتٌ متتابعة، الحزمة النهائية)</small></span></summary><div class="din">
         <p class="sub">كل مرحلةٍ خلف بوابة: فشلها = STOP وتراجع. المرحلة 4 تعتمد روابط <b>اللقطة</b> (sitemap-staging.xml المكتوبة مع bundle.json بمعرّفها) وحدها بعد التأكد أنها
           المستحقّة الآن تمامًا، ثم ترفع noindex عنها فقط؛ 5 تُدخلها الخريطة العامة؛ 6 ترسلها إلى IndexNow (القبول استلامٌ لا فهرسة)؛ 7 فحصٌ بعد النشر يوقف عند أي تراجع؛
@@ -1290,6 +1304,7 @@ $("eBundle").onclick = async () => {
 let rPoll = 0;
 function renderRelease(d) {
   renderWizard(d);
+  renderOne(d);
   const r = d.release || {}, ph = r.phases || {}, p = d.progress || {};
   const st = n => (ph[n] || {}).status || "—";
   const flags = `${d.preview ? "المعاينة مفعّلة" : "المعاينة موقوفة"} · index_live ${d.index_live ? "✔" : "✘"} · sitemap_live ${d.sitemap_live ? "✔" : "✘"} · المعتمد ${num(d.approved_routes)} مسارًا لـ${num(d.approved_entities)} كيانًا${d.approved_snapshot ? ` (لقطة ${d.approved_snapshot})` : ""}`;
@@ -1303,14 +1318,14 @@ function renderRelease(d) {
 
 // ===== معالج النشر الإنتاجي (wizard): خطوةً خطوة، بعدّاد خطواتٍ وزمنٍ وتقدّمٍ حيّ =====
 const WZ = [
-  {k: "snap", t: "اللقطة", h: "اللقطة المعتمدة", d: "اللقطة هي قائمة الروابط التي ستُرفع عنها noindex. تُقرأ تلقائيًا من «ملفات المراجعة»؛ تأكّد أنها اللقطة التي راجعتها. إن لم تظهر فأنتج ملفات المراجعة أولًا."},
+  {g: "أولًا: الإطلاق الأول", k: "snap", t: "اللقطة", h: "اللقطة المعتمدة", d: "اللقطة هي قائمة الروابط التي ستُرفع عنها noindex. تُقرأ تلقائيًا من «ملفات المراجعة»؛ تأكّد أنها اللقطة التي راجعتها. إن لم تظهر فأنتج ملفات المراجعة أولًا."},
   {k: "p4", ph: "4", action: "phase4", t: "رفع noindex", h: "المرحلة 4 — رفع noindex", d: "تعتمد روابط اللقطة وحدها وترفع noindex عنها، ثم تفحص كل مسارٍ كما يُخدم. أي فشلٍ = تراجعٌ كامل."},
   {k: "p5", ph: "5", action: "phase5", t: "الخريطة", h: "المرحلة 5 — الخريطة العامة", d: "تُدخل المعتمد في sitemap.xml العامة بعد التحقق من العدد والتكرار والتحويلات."},
   {k: "p6", ph: "6", action: "phase6", t: "IndexNow", h: "المرحلة 6 — IndexNow", d: "ترسل الروابط المعتمدة إلى IndexNow. القبول استلامٌ لا فهرسة."},
   {k: "p7", ph: "7", action: "phase7", t: "الفحص", h: "المرحلة 7 — فحصٌ بعد النشر", d: "تقارن المعتمد باللقطة: HTTP وcanonical وhreflang والخريطة والتحويلات. فشلها يوقف التوسيع."},
-  {k: "p10", ph: "10", action: "extras", t: "القوائم والمواسم", h: "المرحلة 10 — القوائم والمواسم والهبّات", d: "تعتمد القوائم وصفحات المواسم والحلقات وهبّي التركي والأنمي (وهب /content/ إن فُعّل) بعد فحصها كما تُخدم. تتراجع كاملةً عند أي فشل."},
-  {k: "p8", action: "batch", t: "التوسيع", h: "المرحلتان 8 و9 — دفعات التوسيع", d: "تثري دفعةً من الكيانات من TMDB وتفحصها ثم تعتمدها وترسلها إلى IndexNow. كرّرها دفعةً بعد دفعة؛ وبعد كل توسيعٍ أعد المرحلة 10 لتشمل الجديد."},
-  {k: "fin", action: "final", t: "الختام", h: "الحزمة النهائية", d: "تُنتج تقرير الحالة النهائي (release-final) للمراجعة."},
+  {g: "ثانيًا: التوسيع والقوائم", k: "p8", action: "batch", t: "التوسيع", h: "المرحلتان 8 و9 — دفعات التوسيع", d: "تثري دفعةً من الكيانات من TMDB وتفحصها ثم تعتمدها وترسلها إلى IndexNow. كرّرها دفعةً بعد دفعة، أو فعّل «الطيار الآلي» فيكرّر الدفعات ويُجري الفحص (المرحلة 7) والقوائم (المرحلة 10) وحده حتى النفاد."},
+  {k: "p10", ph: "10", action: "extras", t: "القوائم والمواسم", h: "المرحلة 10 — القوائم والمواسم والهبّات", d: "اعتماد ما أضافه التوسيع من قوائم ومواسم وحلقات (يُجريه الطيار الآلي وحده). تعتمد القوائم وصفحات المواسم والحلقات وهبّي التركي والأنمي (وهب /content/ إن فُعّل) بعد فحصها كما تُخدم. تتراجع كاملةً عند أي فشل."},
+  {g: "ثالثًا: الختام", k: "fin", action: "final", t: "الختام", h: "الحزمة النهائية", d: "تُنتج تقرير الحالة النهائي (release-final) للمراجعة."},
 ];
 let wzI = null, wzData = null, wzTimer = 0;
 const wzFmt = sec => { sec = Math.max(0, Math.floor(sec)); return String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0"); };
@@ -1332,16 +1347,19 @@ function wzLocked(d, st, i) {      // لا تُشغَّل خطوةٌ قبل نج
 function renderWizard(d) {
   wzData = d; const st = wzStatus(d), r = d.release || {}, ph = r.phases || {}, p = d.progress || {};
   const done = WZ.filter(x => x.k !== "fin" && st[x.k] === "done").length, total = WZ.length - 1;
-  if (wzI === null || (wzI < WZ.length && st[WZ[wzI].k] === "done" && wzI === wzAuto)) { const nx = WZ.findIndex(x => x.k !== "fin" && x.k !== "p8" && st[x.k] !== "done"); wzI = wzAuto = nx < 0 ? WZ.findIndex(x => x.k === "p8") : nx; }   // التوسيع متكرّر: لا يُقفز عنه بعد نجاح دفعة
+  const nxAll = WZ.findIndex(x => x.k !== "fin" && st[x.k] !== "done"), p8i = WZ.findIndex(x => x.k === "p8");
+  if (wzI === null) wzI = wzAuto = nxAll < 0 ? p8i : nxAll;
+  else if (wzI === wzAuto && st[WZ[wzI].k] === "done" && WZ[wzI].k !== "p8") wzI = wzAuto = nxAll < 0 ? p8i : nxAll;      // التوسيع متكرّر: لا يُقفز عنه بعد نجاح دفعة
   if (wzI < 0 || wzI >= WZ.length) wzI = WZ.length - 1;
   const cur = WZ[wzI];
   $("wzCount").innerHTML = `الخطوة ${wzI + 1} من ${WZ.length}<small>منجز ${done} من ${total}</small>`;
   $("wzSum").textContent = `المعتمد ${num(d.approved_routes)} مسارًا${d.index_extra_live ? " + " + num(d.extras_approved_routes) + " (قوائم ومواسم)" : ""}`;
   $("wzBar").style.width = Math.round(done / total * 100) + "%";
   $("wzSteps").innerHTML = WZ.map((x, i) => {
+    const gh = x.g ? `<li class="grp">${esc(x.g)}</li>` : "";
     const cls = st[x.k] === "done" ? "done" : st[x.k] === "fail" ? "fail" : wzLocked(d, st, i) ? "lock" : "";
     const mark = st[x.k] === "done" ? " ✔" : st[x.k] === "fail" ? " ✖" : "";
-    return `<li><button type="button" class="${cls}" data-i="${i}"${i === wzI ? ' aria-current="step"' : ""}><b>${i + 1}${mark}</b>${esc(x.t)}</button></li>`;
+    return gh + `<li><button type="button" class="${cls}" data-i="${i}"${i === wzI ? ' aria-current="step"' : ""}><b>${i + 1}${mark}</b>${esc(x.t)}</button></li>`;
   }).join("");
   const lock = wzLocked(d, st, wzI), running = !!d.running;
   const rec = cur.ph ? ph[cur.ph] : null;
@@ -1353,15 +1371,17 @@ function renderWizard(d) {
   }
   if (cur.k === "p7") body += `<label class="switch"><span>فحص HTTP حقيقي على الموقع<small>يطلب كل رابطٍ معتمد من guide.ssouq.com</small></span><input type="checkbox" class="tog" id="wzHttp"${$("rHttp").checked ? " checked" : ""}></label>`;
   if (cur.k === "p8") {
-    const n = Number($("rN").value) || 100, live = d.live_entities || 0, ap = d.approved_entities || 0, rem = Math.max(0, live - ap);
-    body += `<div class="wz-res ok">المعتمد <b>${num(ap)}</b> من <b>${num(live)}</b> كيانًا · المتبقي <b>${num(rem)}</b> (≈ ${num(Math.ceil(rem / n))} دفعة بحجم ${num(n)})</div>` +
+    const n = Number($("rN").value) || 100, live = d.live_entities || 0, ap = d.approved_entities || 0, rem = d.expand_candidates != null ? d.expand_candidates : Math.max(0, live - ap);
+    body += `<div class="wz-res ok">المعتمد <b>${num(ap)}</b> من <b>${num(live)}</b> كيانًا · بقي للمعالجة <b>${num(rem)}</b> (≈ ${num(Math.ceil(rem / n))} دفعة بحجم ${num(n)})</div>` +
       `<div class="wz-fields"><div><label class="meta" for="wzN">حجم الدفعة</label><input id="wzN" class="ltr" type="number" inputmode="numeric" min="1" max="1000" value="${n}"></div>` +
       `<div><label class="meta" for="wzMax">أقصى عدد دفعات متتابعة</label><input id="wzMax" class="ltr" type="number" inputmode="numeric" min="1" max="100" value="${$("rMax").value || 5}"></div></div>` +
       `<label class="switch"><span>يكمل بنفسه بعد إعادة النشر<small>يستأنف الحارس المهمة تلقائيًا إن أُعيد تشغيل الخادم (نشرٌ أو سقوط)</small></span><input type="checkbox" class="tog" id="wzAuto"${wzAutoOn ? " checked" : ""}></label>` +
+      `<label class="switch"><span>طيارٌ آلي كامل<small>يكرّر الدفعات بلا حدّ، وكل 5 دفعاتٍ يفحص (المرحلة 7) ويعتمد القوائم والمواسم (المرحلة 10)، ويكمل حتى لا يبقى مرشّحٌ أو يظهر أول فشل. يتجاهل «أقصى الدفعات».</small></span><input type="checkbox" class="tog" id="wzPilot"${wzPilotOn ? " checked" : ""}></label>` +
       `<p class="meta">دفعاتٌ منفّذة: ${(d.batches || []).length}${r.blocked ? " · ⛔ موقوف: أعد المرحلة 7 أولًا" : ""}. «استمر» تنفّذ دفعةً بعد دفعة وتتوقف عند أول فشل.</p>`;
     const jb = d.expand_job;
     if (jb && (jb.active || jb.stopped)) {
       body += `<div class="wz-res ${jb.active ? "ok" : jb.stopped === "completed" ? "ok" : "bad"}"><b>مهمة التوسيع:</b> ${jb.active ? "نشطة" : "متوقفة"} · نُفّذ ${num(jb.done || 0)} · متبقي ${num(jb.remaining || 0)} دفعة بحجم ${num(jb.n || 0)}`
+            + (jb.autopilot ? ` · ⚙ طيارٌ آلي (دورات فحص/اعتماد: ${num(jb.cycles || 0)})` : "")
             + (jb.active ? (jb.auto_resume ? " · تكمل بعد إعادة النشر" : " · لا تكمل بعد إعادة النشر") : jb.stopped ? ` · السبب: ${esc(jb.stopped)}` : "") + "</div>";
     }
   }
@@ -1388,7 +1408,7 @@ function renderWizard(d) {
   clearInterval(wzTimer);
   if (running) wzTimer = setInterval(() => { const t = $("wzT"); if (t) t.textContent = wzFmt(Math.floor(Date.now() / 1000) - Number(t.dataset.at || 0)); }, 1000);
 }
-let wzAuto = null, wzAutoOn = true;
+let wzAuto = null, wzAutoOn = true, wzPilotOn = false;
 $("wzSteps").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) { wzI = Number(b.dataset.i); wzAuto = -1; if (wzData) renderWizard(wzData); } };
 $("wzPanel").onclick = e => {
   const id = e.target.id; if (!wzData) return;
@@ -1398,7 +1418,8 @@ $("wzPanel").onclick = e => {
     if ($("wzN")) $("rN").value = $("wzN").value;
     if ($("wzMax")) $("rMax").value = $("wzMax").value;
     wzAutoOn = $("wzAuto") ? $("wzAuto").checked : true;
-    release("expand_start", {n: Number($("rN").value) || 100, max: Number($("rMax").value) || 5, auto: wzAutoOn});
+    wzPilotOn = $("wzPilot") ? $("wzPilot").checked : false;
+    release("expand_start", {n: Number($("rN").value) || 100, max: Number($("rMax").value) || 5, auto: wzAutoOn || wzPilotOn, autopilot: wzPilotOn});
   }
   else if (id === "wzStop") release("expand_stop");
   else if (id === "wzRun") {
@@ -1408,7 +1429,49 @@ $("wzPanel").onclick = e => {
     release(cur.action, cur.action === "batch" ? {n: Number($("rN").value) || 100} : undefined);
   }
 };
-$("wzPanel").onchange = e => { if (e.target.id === "wzHttp") $("rHttp").checked = e.target.checked; if (e.target.id === "wzAuto") wzAutoOn = e.target.checked; };
+$("wzPanel").onchange = e => { if (e.target.id === "wzHttp") $("rHttp").checked = e.target.checked; if (e.target.id === "wzAuto") wzAutoOn = e.target.checked; if (e.target.id === "wzPilot") wzPilotOn = e.target.checked; };
+
+// ===== زرٌّ واحد: الإطلاق + التوسيع الآلي + الفحص والقوائم حتى النفاد (مهمةٌ محفوظة تكمل بعد إعادة النشر) =====
+let oneTimer = 0;
+function renderOne(d) {
+  const jb = d.expand_job, active = !!(jb && jb.active), p = d.progress || {}, f = d.failure;
+  $("oneGo").disabled = active || !!d.running; $("oneGo").textContent = active ? "⏳ يعمل تلقائيًا…" : jb && jb.pipeline && jb.stopped && String(jb.stopped).startsWith("completed") ? "✔ اكتمل — ابدأ من جديد" : "▶ ابدأ كل شيء تلقائيًا";
+  $("oneStop").hidden = !active;
+  $("oneLive").hidden = !(active || d.running);
+  clearInterval(oneTimer);
+  if (active || d.running) {
+    const upd = () => { $("oneT").textContent = wzFmt(Math.floor(Date.now() / 1000) - (p.at || (jb && jb.started_at) || Math.floor(Date.now() / 1000))); };
+    upd(); oneTimer = setInterval(upd, 1000);
+    $("oneN").textContent = `${p.stage || "يعمل…"}${p.total ? " · " + num(p.done || 0) + " / " + num(p.total) : ""}`;
+    $("oneBar").style.width = p.total ? Math.min(100, Math.round((p.done || 0) / p.total * 100)) + "%" : "0";
+  }
+  $("oneAuto").checked = !!d.auto_publish;
+  const as_ = d.auto_publish_state || {};
+  $("oneSched").textContent = d.auto_publish ? `الفحص اليومي: ${String(d.auto_publish_hour || 1).padStart(2, "0")}:00 بتوقيت السعودية${as_.day ? " · آخر تشغيل: " + as_.day + (as_.ran === false ? " (لا جديد)" : "") : ""}` : "الفحص اليومي موقوف";
+  const ap = d.approved_entities || 0, live = d.live_entities || 0;
+  $("oneState").textContent = jb && jb.pipeline
+    ? `${active ? "نشطة" : "متوقفة"} · دفعات منفّذة ${num(jb.done || 0)} · دورات فحص/اعتماد ${num(jb.cycles || 0)} · المعتمد ${num(ap)} من ${num(live)} كيانًا · بقي للمعالجة ${num(d.expand_candidates || 0)} · ${num(d.approved_routes || 0)} مسارًا + ${num(d.extras_approved_routes || 0)} قوائم ومواسم${!active && jb.stopped ? " · " + jb.stopped : ""}`
+    : `المعتمد ${num(ap)} من ${num(live)} كيانًا`;
+  $("oneFail").hidden = !f;
+  if (f) {
+    $("oneFailT").textContent = `✖ توقّف عند ${f.where || "خطوةٍ"}`;
+    $("oneFailR").innerHTML = `<div dir="auto">${esc(f.reason || f.stopped)}</div>` + (f.file ? `<div class="meta">التقرير: <span class="mono">${esc(f.file)}</span> (ملفات المراجعة ← أدوات التطوير)</div>` : "");
+    window.__oneDiag = {failure: f, job: jb, release: {blocked: (d.release || {}).blocked, phases: Object.fromEntries(Object.entries((d.release || {}).phases || {}).map(([k, v]) => [k, {status: v.status, reason: v.reason}]))}, batches: (d.batches || []).slice(-3), approved: {entities: ap, routes: d.approved_routes, extras: d.extras_approved_routes}, code: d.code_fingerprint};
+  }
+}
+$("oneGo").onclick = async () => {
+  if (!confirm("بدء الإطلاق والتوسيع الآلي الكامل (إنتاجٌ فعلي)؟ يرفع noindex عن المعتمد ويرسل إلى IndexNow ويكرّر التوسيع حتى النفاد، ويتوقف عند أول فشل.")) return;
+  const d = await api("/api/content/admin/seo-release", {action: "pipeline_start", n: 300, every: 5}).catch(() => ({error: "تعذّر الاتصال"}));
+  if (d.error) { alert(d.error); return; }
+  renderRelease(d);
+};
+$("oneAuto").onchange = async () => { const d = await api("/api/content/admin/seo-release", {action: "auto_publish", on: $("oneAuto").checked}).catch(() => ({})); if (d.ok) renderRelease(d); };
+$("oneMail").onclick = async () => { $("oneMailMsg").textContent = "يُرسل…"; const d = await api("/api/content/admin/seo-release", {action: "notify_test"}).catch(e => ({error: e.message})); $("oneMailMsg").textContent = d.ok ? "✔ أُرسل إلى " + d.to : "✖ " + (d.error || "تعذّر الإرسال"); };
+$("oneStop").onclick = async () => { const d = await api("/api/content/admin/seo-release", {action: "expand_stop"}).catch(() => ({})); if (d.ok) renderRelease(d); };
+$("oneCopy").onclick = async () => {
+  const txt = JSON.stringify(window.__oneDiag || {}, null, 2);
+  try { await navigator.clipboard.writeText(txt); $("oneCopy").textContent = "✔ نُسخت"; } catch (e) { const t = document.createElement("textarea"); t.value = txt; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); $("oneCopy").textContent = "✔ نُسخت"; } catch (e2) { prompt("انسخ التفاصيل:", txt); } t.remove(); }
+};
 async function loadRelease() { try { renderRelease(await api("/api/content/seo/release")); } catch (e) {} }
 async function release(action, extra) {
   const snap = $("rSnap").value.trim(), exp = $("rExpected").value.trim();

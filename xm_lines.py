@@ -6116,6 +6116,22 @@ def content_send(subject, body):
     return out
 
 
+def seo_notify_mail(subject, body):
+    """بريد نتيجة النشر الآلي للمدير (البريد فقط، من خادم «بريد التنبيه») ← {ok، to، error}."""
+    st = load_store()
+    mail, _wa, _saved = content_alert_to(st)
+    alert = st["renew"]["alert"]
+    if not mail:
+        return {"ok": False, "error": "لا بريد للتنبيه — اضبطه في صفحة المحتوى أو «بريد التنبيه»"}
+    if not alert.get("host"):
+        return {"ok": False, "to": mail, "error": "خادم البريد غير مضبوط — اضبط «بريد التنبيه» في صفحة التجديد"}
+    try:
+        renew._smtp_send(dict(alert, to=mail), subject, body + "\n\nصفحة المحتوى: " + content_page_url())
+        return {"ok": True, "to": mail}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "to": mail, "error": (split_subs.mail_hint(e) or str(e))[:300]}
+
+
 def _reader_error(r):
     """سبب فشل إرسالٍ من رقم المسابقة بالعربية: وإن كانت الخدمة نفسها لا تُجيب فسببها لا خطأ الشبكة."""
     err = str(r.get("error") or "تعذّر الإرسال")
@@ -8003,15 +8019,35 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "started": started, **seo_scan.state(DATA_DIR)})
             elif path == "/api/content/admin/seo-release":   # النشر الإنتاجي: go (4←5←6←7) · phase4…phase7 · batch · expand · final — في الخلفية، بوابةٌ فاشلة = STOP
                 act = str(body.get("action") or "")
-                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "extras", "batch", "expand", "expand_start", "expand_stop", "final"):
+                if act not in ("go", "phase4", "phase5", "phase6", "phase7", "extras", "batch", "expand", "expand_start", "expand_stop", "pipeline_start", "auto_publish", "notify_test", "final"):
                     return self._send(400, {"error": "action غير معروف"})
                 if act in ("go", "phase4") and not re.fullmatch(r"\d{8}T\d{6}Z", str(body.get("snapshot") or "")):
                     return self._send(400, {"error": "معرّف اللقطة (نقطة الاستئناف) مطلوب: مثل 20261003T004434Z"})
                 if act == "expand_stop":                   # إيقاف مهمة التوسيع: فوري (تتوقف قبل الدفعة التالية)
                     seo_release.job_stop(DATA_DIR)
                     return self._send(200, {"ok": True, "started": False, **seo_release.status(DATA_DIR)})
+                if act == "notify_test":                   # بريدٌ تجريبي: للتحقق من أن نتيجة النشر الآلي ستصل
+                    r_ = seo_notify_mail("✔ SEO — بريدٌ تجريبي", "هذا اختبار: ستصلك نتيجة النشر الآلي اليومي (الواحدة صباحًا بتوقيت السعودية) على هذا البريد، اكتملت أو فشلت.")
+                    return self._send(200 if r_.get("ok") else 400, {"ok": bool(r_.get("ok")), "to": r_.get("to"), "error": r_.get("error")})
+                if act == "auto_publish":                  # نشرٌ آلي لما يُضاف من محتوى: يُفعَّل/يُوقف
+                    con_ = seo_db.connect(DATA_DIR)
+                    try:
+                        seo_db.set_setting(con_, "auto_publish", bool(body.get("on")))
+                    finally:
+                        con_.close()
+                    return self._send(200, {"ok": True, "started": False, **seo_release.status(DATA_DIR)})
+                if act == "pipeline_start":                # زرٌّ واحد: الإطلاق (4←7) ثم التوسيع الآلي والقوائم والفحص حتى النفاد ثم الحزمة النهائية
+                    if not (seo_release.bundle_meta(DATA_DIR) or {}).get("bundle_id") or seo_release.snapshot_urls(DATA_DIR) is None:
+                        return self._send(400, {"ok": False, "error": "لا لقطة في مجلد المراجعة — أنتج «ملفات المراجعة» أولًا"})
+                    con_ = seo_db.connect(DATA_DIR)
+                    try:
+                        seo_db.set_setting(con_, "auto_publish", True)         # وبعد الاكتمال يستمر النشر الآلي لكل ما يُضاف لاحقًا
+                    finally:
+                        con_.close()
+                    seo_release.job_start(DATA_DIR, int(body.get("n") or 300), 500, True, True, int(body.get("every") or 5), True, notify=True, trigger="manual")
+                    act = "expand_job"
                 if act == "expand_start":                  # مهمةٌ محفوظة تكمل بنفسها بعد إعادة النشر إن طُلب
-                    seo_release.job_start(DATA_DIR, int(body.get("n") or 100), int(body.get("max") or 5), bool(body.get("auto", True)))
+                    seo_release.job_start(DATA_DIR, int(body.get("n") or 100), int(body.get("max") or 5), bool(body.get("auto", True)), bool(body.get("autopilot")), int(body.get("every") or 5))
                     act = "expand_job"
                 started = seo_release.start(DATA_DIR, act, snapshot=body.get("snapshot"), expected=int(body["expected"]) if body.get("expected") else None,
                                             http=bool(body.get("http")), n=int(body.get("n") or 100), max=int(body["max"]) if body.get("max") else None)
@@ -9281,6 +9317,7 @@ def web():
     start_mail()
     start_stremio_warm()
     start_stremio_genres()
+    seo_release.set_notifier(seo_notify_mail)   # نتيجة النشر الآلي بالبريد (اكتمل/فشل)
     seo_release.start_job_watchdog(DATA_DIR)    # مهمة التوسيع تكمل بنفسها بعد إعادة النشر
     seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
