@@ -291,23 +291,26 @@ def _exact(base, key, username):
     return None
 
 
-def rename_line(base, key, username, new_username, line_id=""):
+def rename_line(base, key, username, new_username, line_id="", new_password=""):
     """يغيّر اسم خطٍّ على فالكون وكلمةُ مروره كما هي: PATCH /lines/<id> بالاسم وحده،
     ثم يتحقّق من /lines أن الاسم الجديد ظاهرٌ بكلمة المرور نفسها والانتهاء نفسه.
     FalconUnsupported = لا مسار تعديل (لم يتغيّر شيء)؛ FalconError بعد الإرسال = راجع."""
     username, new_username = str(username or "").strip(), str(new_username or "").strip()
-    if not username or not new_username or username == new_username:
+    new_password = str(new_password or "").strip()
+    if not username or not new_username or (username == new_username and not new_password):
         raise ValueError("اسمٌ جديد مختلف مطلوب")
-    done = _exact(base, key, new_username)
+    done = _exact(base, key, new_username) if username != new_username else None
     if done:                                     # أُخذ في محاولةٍ سابقة ضاع ردّها
-        return {"already": True, "verified": True, "line_id": done.get("id", ""),
-                "exp": done.get("expires_at", ""), "password": done.get("password", "")}
+        if not new_password or str(done.get("password", "")) == new_password:
+            return {"already": True, "verified": True, "line_id": done.get("id", ""),
+                    "exp": done.get("expires_at", ""), "password": done.get("password", "")}
+        username = new_username
     cur = _exact(base, key, username)
     if not cur:
         raise FalconUnsupported("الخط %s غير موجود على فالكون — لا يُعدَّل ما لا يُرى" % username)
     lid = cur.get("id") or line_id
     code, d = _call(base, key, "/lines/%s" % urllib.parse.quote(str(lid)), method="PATCH",
-                    body={"username": new_username})
+                    body=dict({"username": new_username}, **({"password": new_password} if new_password else {})))
     if code in (404, 405, 501) or (code >= 400 and not isinstance(d, dict)):
         raise FalconUnsupported("واجهة فالكون لا تتيح تعديل اسم الخط (PATCH /lines ← %s) — "
                                 "غيّره من اللوحة يدويًا" % code)
@@ -322,8 +325,10 @@ def rename_line(base, key, username, new_username, line_id=""):
             break
     if not after:
         raise FalconError("قبلت فالكون التعديل لكن الاسم الجديد لم يظهر — راجع اللوحة")
-    if cur.get("password") and after.get("password") and str(after["password"]) != str(cur["password"]):
-        raise FalconError("تغيّر الاسم لكن كلمة المرور تغيّرت أيضًا (%s) — راجع اللوحة" % after["password"])
+    want_pw = new_password or cur.get("password")
+    if want_pw and after.get("password") and str(after["password"]) != str(want_pw):
+        raise FalconError("تغيّر الاسم لكن كلمة المرور %s (%s) — راجع اللوحة"
+                          % ("لم تُحفظ كما كُتبت" if new_password else "تغيّرت أيضًا", after["password"]))
     if cur.get("expires_at") and after.get("expires_at") and after["expires_at"] != cur["expires_at"]:
         raise FalconError("تغيّر الاسم لكن تغيّر تاريخ الانتهاء أيضًا — راجع اللوحة")
     return {"verified": True, "line_id": after.get("id") or lid, "exp": after.get("expires_at", ""),

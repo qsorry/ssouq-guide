@@ -1375,10 +1375,15 @@ class PanelWebSession:
             out.append((name, value))
         return out
 
-    def _keep_password(self, picked, pairs, current_password):
+    def _keep_password(self, picked, pairs, current_password, new_password=""):
         """كلمة المرور تبقى كما هي. حقلٌ فارغ قد يعني عند اللوحة «ولّد كلمة جديدة»،
-        وحقلٌ مقنَّع (****) يُحفظ نجومًا — فيُملآن بالحالية؛ وقيمةٌ أخرى تُوقف."""
+        وحقلٌ مقنَّع (****) يُحفظ نجومًا — فيُملآن بالحالية؛ وقيمةٌ أخرى تُوقف.
+        و`new_password`: تعديلٌ مقصود لكلمة المرور (تعديل بيانات الاشتراك) — تُكتب في حقلها."""
         pf = picked["pass"]
+        if new_password and new_password != current_password:
+            if pf.get("disabled") or pf.get("readonly"):
+                raise EditUnsupported("اللوحة لا تسمح للموزّع بتغيير كلمة المرور — غيّرها من اللوحة يدويًا")
+            return self._set_pair(pairs, pf["name"], new_password)
         if pf.get("disabled"):
             return pairs                        # لا يُرسَل أصلًا: تبقى المحفوظة
         val = (pf.get("value") or "").strip()
@@ -1483,7 +1488,7 @@ class PanelWebSession:
         return pairs
 
     def _submit_edit(self, picked, url, page, new_username, current_password, blank_package=True,
-                     package_hint=""):
+                     package_hint="", new_password=""):
         """يرسل نموذج التعديل باسمٍ جديد وحده (نقطة اللاعودة)، ويرجّع نصّ الردّ.
         كل ما قبل الإرسال يرفع EditUnsupported إن لم يصلح — فلا يتغيّر شيء."""
         uf = picked["user"]
@@ -1492,7 +1497,7 @@ class PanelWebSession:
         fs = picked["form"]["fields"]
         pairs = serialize_form(fs)
         pairs = self._set_pair(pairs, uf["name"], new_username)
-        pairs = self._keep_password(picked, pairs, current_password)
+        pairs = self._keep_password(picked, pairs, current_password, new_password)
         pairs = self._fill_bouquets(picked, pairs, page, package_hint)
         if blank_package:
             # في نموذج التعديل خيارٌ فارغ للباقة = «بلا تغيير»؛ أيُّ باقةٍ تُرسَل قد تُفهم
@@ -1509,20 +1514,23 @@ class PanelWebSession:
         r = self._request(action, data=pairs, headers={"X-Requested-With": "XMLHttpRequest", "Referer": page_abs})
         return self._text(r)
 
-    def edit_line(self, username: str, new_username: str, line_id: str = "", package: str = "") -> dict:
+    def edit_line(self, username: str, new_username: str, line_id: str = "", package: str = "", new_password: str = "") -> dict:
         """يغيّر اسم يوزرٍ قائم على اللوحة وكلمةُ مروره كما هي، ثم يتحقّق من الجدول:
         الاسم الجديد ظاهر، بكلمة المرور نفسها، وتاريخ الانتهاء نفسه.
         يرجّع {verified, line_id, exp, password, already?}. EditUnsupported = لم يُرسَل
         شيء؛ RuntimeError بعد الإرسال = راجع اللوحة (قد يكون حُفظ)."""
         username, new_username = str(username or "").strip(), str(new_username or "").strip()
-        if not username or not new_username or new_username == username:
+        new_password = str(new_password or "").strip()
+        if not username or not new_username or (new_username == username and not new_password):
             raise ValueError("اسمٌ جديد مختلف مطلوب")
         self.ensure_login()
-        # ١) أُخذ في محاولةٍ سابقة ضاع ردّها؟ — نجاحٌ بلا إرسالٍ ثانٍ
-        done = self._search_line(new_username, force=True)
+        # ١) أُخذ في محاولةٍ سابقة ضاع ردّها؟ — نجاحٌ بلا إرسالٍ ثانٍ (وبكلمة المرور المطلوبة إن طُلبت)
+        done = self._search_line(new_username, force=True) if new_username != username else {}
         if done.get("user") == new_username:
-            return {"already": True, "verified": True, "line_id": done.get("id", ""),
-                    "exp": done.get("end", ""), "password": done.get("pass", "")}
+            if not new_password or done.get("pass", "") == new_password:
+                return {"already": True, "verified": True, "line_id": done.get("id", ""),
+                        "exp": done.get("end", ""), "password": done.get("pass", "")}
+            username = new_username             # الاسم الجديد مأخوذٌ بكلمةٍ أخرى: تُعدَّل كلمته وحدها
         # ٢) الخط كما هو الآن (ومعه روابط صفّه)
         t = self._table_query(username, 10, force=True, raw=True)
         before, raw = {}, ""
@@ -1536,7 +1544,7 @@ class PanelWebSession:
         picked, url, page = self._edit_form(lid, username, _row_links(raw, lid))
         # ٣) الإرسال
         reply = self._submit_edit(picked, url, page, new_username, before.get("pass", ""),
-                                  package_hint=package or before.get("package", ""))
+                                  package_hint=package or before.get("package", ""), new_password=new_password)
         # ٤) التحقّق من الجدول نفسه
         after = {}
         for i in range(6):
@@ -1544,7 +1552,7 @@ class PanelWebSession:
                 after = self._search_line(new_username, force=True)
             except Exception:
                 after = {}
-            if after.get("user") == new_username:
+            if after.get("user") == new_username and (not new_password or after.get("pass") == new_password):
                 break
             if i < 5:
                 time.sleep(1.2)
@@ -1552,8 +1560,10 @@ class PanelWebSession:
             why = self._add_error(reply)
             raise RuntimeError("أُرسل التعديل لكن الاسم الجديد لم يظهر في جدول اللوحة%s — راجع اللوحة"
                                % ((": " + why) if why else ""))
-        if before.get("pass") and after.get("pass") and after["pass"] != before["pass"]:
-            raise RuntimeError("تغيّر الاسم لكن كلمة المرور تغيّرت أيضًا (%s) — راجع اللوحة" % after["pass"])
+        want_pw = new_password or before.get("pass")
+        if want_pw and after.get("pass") and after["pass"] != want_pw:
+            raise RuntimeError("تغيّر الاسم لكن كلمة المرور %s (%s) — راجع اللوحة"
+                               % ("لم تُحفظ كما كُتبت" if new_password else "تغيّرت أيضًا", after["pass"]))
         if before.get("end") and after.get("end") and after["end"] != before["end"]:
             raise RuntimeError("تغيّر الاسم لكن تغيّر تاريخ الانتهاء أيضًا (%s ← %s) — راجع اللوحة"
                                % (before["end"], after["end"]))
@@ -2619,16 +2629,19 @@ class CasperWebSession(PanelWebSession):
         raise RuntimeError("اليوزر %s معطَّل ولم يُفعَّل تلقائيًّا — اختر Enable من خياراته في اللوحة (جرّبت: %s | خيارات الصف: %s)"
                            % (username, "، ".join(tried[:6]), opts))
 
-    def edit_line(self, username: str, new_username: str, line_id: str = "", package: str = "") -> dict:
+    def edit_line(self, username: str, new_username: str, line_id: str = "", package: str = "", new_password: str = "") -> dict:
         """يغيّر اسم يوزرٍ على كاسبر وكلمةُ مروره كما هي، ثم يتحقّق من القائمة (انظر الأب)."""
         username, new_username = str(username or "").strip(), str(new_username or "").strip()
-        if not username or not new_username or new_username == username:
+        new_password = str(new_password or "").strip()
+        if not username or not new_username or (new_username == username and not new_password):
             raise ValueError("اسمٌ جديد مختلف مطلوب")
         self.ensure_login()
-        done = self._find_user(new_username)
+        done = self._find_user(new_username) if new_username != username else None
         if done:                                # أُخذ في محاولةٍ سابقة ضاع ردّها
-            return {"already": True, "verified": True, "line_id": done.get("id", ""),
-                    "exp": done.get("exp", ""), "password": done.get("password", "")}
+            if not new_password or done.get("password", "") == new_password:
+                return {"already": True, "verified": True, "line_id": done.get("id", ""),
+                        "exp": done.get("exp", ""), "password": done.get("password", "")}
+            username = new_username
         before, raw = self._user_row(username)
         lid = (before or {}).get("id") or str(line_id or "")
         if not before or not lid:
@@ -2640,7 +2653,7 @@ class CasperWebSession(PanelWebSession):
         fs = picked["form"]["fields"]
         pairs = serialize_form(fs)
         pairs = self._set_pair(pairs, uf["name"], new_username)
-        pairs = self._keep_password(picked, pairs, before.get("password", ""))
+        pairs = self._keep_password(picked, pairs, before.get("password", ""), new_password)
         bq = [f["name"] for f in fs if f["name"] in ("liveBq[]", "vodBq[]") and not f.get("disabled")]
         if bq and not any(k in bq and v for k, v in pairs):
             pkg = next((v for k, v in pairs if k == "package" and v), "") \
@@ -2662,12 +2675,14 @@ class CasperWebSession(PanelWebSession):
             if attempt:
                 time.sleep(min(attempt, 2))
             after = self._find_user(new_username)
-            if after:
+            if after and (not new_password or after.get("password") == new_password):
                 break
         if not after:
             raise RuntimeError("أُرسل التعديل لكن الاسم الجديد لم يظهر في لوحة كاسبر — راجع اللوحة")
-        if before.get("password") and after.get("password") and after["password"] != before["password"]:
-            raise RuntimeError("تغيّر الاسم لكن كلمة المرور تغيّرت أيضًا (%s) — راجع اللوحة" % after["password"])
+        want_pw = new_password or before.get("password")
+        if want_pw and after.get("password") and after["password"] != want_pw:
+            raise RuntimeError("تغيّر الاسم لكن كلمة المرور %s (%s) — راجع اللوحة"
+                               % ("لم تُحفظ كما كُتبت" if new_password else "تغيّرت أيضًا", after["password"]))
         if before.get("exp") and after.get("exp") and after["exp"][:10] != before["exp"][:10]:
             raise RuntimeError("تغيّر الاسم لكن تغيّر تاريخ الانتهاء أيضًا (%s ← %s) — راجع اللوحة"
                                % (before["exp"][:10], after["exp"][:10]))

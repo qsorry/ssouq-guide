@@ -128,6 +128,27 @@ def main():
     finally:
         proc.kill()
 
+    print("\n== مرح: تعديل اليوزر وكلمة المرور معًا، وكلمة المرور وحدها ==")
+    base = "http://127.0.0.1:9486"
+    proc = start([os.path.join(HERE, "mock_panel.py"), "9486", "demo", "secret"], base + "/token.php")
+    try:
+        s = xtream_session(base)
+        s.create_line("15", "111122223333", "999988887777")
+        o = s.edit_line("111122223333", "555566667777", new_password="444455556666")
+        ln = state(base)["lines"][0]
+        check("user and password changed on the panel", o.get("verified") and ln["username"] == "555566667777" and ln["password"] == "444455556666", str(ln))
+        o = s.edit_line("555566667777", "555566667777", new_password="777788889999")
+        ln = state(base)["lines"][0]
+        check("password alone (same username)", o.get("verified") and ln["username"] == "555566667777" and ln["password"] == "777788889999", str(ln))
+        try:
+            s.edit_line("555566667777", "555566667777")
+            err = None
+        except ValueError as e:
+            err = e
+        check("nothing to change is refused", err is not None)
+    finally:
+        proc.kill()
+
     print("\n== كاسبر ==")
     srv, cbase, _t = mock_casper.start(4)
     try:
@@ -140,7 +161,10 @@ def main():
         check("password kept (not left empty → not regenerated)", cu["password"] == u0["password"])
         check("bouquets kept", cu.get("bq") == {"live": ["1", "2"], "vod": ["10"]}, str(cu.get("bq")))
         check("expiry kept", cu["exp"] == u0["exp"])
-        fields = mock_casper._Handler.edits[-1][1]
+        o2 = cs.edit_line("7777777777", "7777777777", new_password="1357924680")
+        cu = next(u for u in mock_casper._Handler.users if u["id"] == u0["id"])
+        check("casper: password changed alone", o2.get("verified") and cu["password"] == "1357924680" and cu["username"] == "7777777777", str(cu))
+        fields = mock_casper._Handler.edits[-2][1]
         check("sent with usernameold = the old name", fields.get("usernameold") == [u0["username"]])
     finally:
         srv.shutdown()

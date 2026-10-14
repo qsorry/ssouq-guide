@@ -21,6 +21,7 @@
 
 stdlib فقط. لا يُسجَّل سرّ ولا يُرسَل في بريد.
 """
+import functools
 import datetime
 import hashlib
 import json
@@ -210,9 +211,14 @@ def norm_order(o):
 
 
 def norm_host(h):
+    return _norm_host(str(h or ""))
+
+
+@functools.lru_cache(maxsize=8192)
+def _norm_host(h):
     """هوست بصيغة واحدة للمطابقة: بلا بروتوكول ولا مسار ولا منفذ ولا www،
     وبأحرف صغيرة. «https://Sub.Kasper.tv:8080/xx» و«sub.kasper.tv» يتساويان."""
-    s = str(h or "").strip().lower()
+    s = h.strip().lower()
     s = re.sub(r"^[a-z][a-z0-9+.\-]*://", "", s)   # يقتطع البروتوكول
     s = s.split("/")[0].split("?")[0].split("#")[0]  # المضيف وحده
     s = re.sub(r":\d+$", "", s)                    # يقتطع المنفذ
@@ -223,6 +229,8 @@ def norm_host(h):
 
 def parse_date(s):
     raw = str(s or "").strip()
+    if not raw:
+        return None
     # طابع يونكس (لوحة فالكون تُعيد expires_at رقمًا بالثواني، وبعضها بالملّي ثانية)
     if re.fullmatch(r"\d{10}(?:\d{3})?", raw):
         n = int(raw[:10])
@@ -231,6 +239,11 @@ def parse_date(s):
         except (OverflowError, OSError, ValueError):
             return None
     s = raw[:10]
+    if len(s) == 10 and s[4] == "-" and s[7] == "-" and s[:4].isdigit() and s[5:7].isdigit() and s[8:].isdigit():
+        try:                                       # الصيغة الشائعة بلا strptime (البطيء: ٤٠ ألف خط في فهرس البحث)
+            return datetime.date(int(s[:4]), int(s[5:7]), int(s[8:]))
+        except ValueError:
+            return None
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"):
         try:
             return datetime.datetime.strptime(s, fmt).date()

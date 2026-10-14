@@ -741,6 +741,20 @@ def test_order_lost():
               and X.current_host([acct], dict(cur_row, host="http://m.ink:80")) == ""
               and "Host: http://m.ink" in X.line_copy([acct], dict(cur_row, host="http://m.ink")))
         check("no copy text without a password", X.line_copy([acct], dict(cur_row, password="")) == "")
+        # تعديل بيانات اشتراك: يُغيَّر على لوحته (مرح/كاسبر) ثم في النظام
+        _calls = []
+        X.split_find_line = lambda g, u: {"line_id": "9", "password": "p", "package": "15"} if u == "888" else {}
+        X.split_change = lambda g, rec, pend: _calls.append((rec["username"], dict(pend))) or {"verified": True}
+        code, body = X.line_edit([acct], cfg, d, {"order": "77", "username": "888", "new_username": "8889", "password": "newpw"})
+        ln = next((x for x in panels.load_store_lines(d)["lines"] if x.get("order") == "77" and x.get("username") == "8889"), {})
+        check("line_edit changes the panel line then saves it in the system",
+              code == 200 and body.get("panel_changed") and _calls == [("888", {"username": "8889", "new_password": "newpw"})]
+              and ln.get("password") == "newpw" and not any(x.get("username") == "888" and x.get("order") == "77" for x in panels.load_store_lines(d)["lines"]),
+              str((code, body, _calls)))
+        code, body = X.line_edit([acct], cfg, d, {"order": "77", "username": "8889", "new_username": "8889", "password": "", "host": "http://new.ink"})
+        check("host-only edit never touches the panel", code == 200 and not body["panel_changed"] and len(_calls) == 1, str(body))
+        code, body = X.line_edit([acct], cfg, d, {"order": "77", "username": "8889", "new_username": "x1", "panel": False})
+        check("panel:false saves in the system only", code == 200 and len(_calls) == 1, str(body))
         r = panels.lost(cfg, d)
         done = next(x for x in r["rows"] if x["username"] == "111")
         check("the row stays listed as done (not hidden as replaced)", done["done"]["new"] == "901" and r["done"] == 1)
