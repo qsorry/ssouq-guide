@@ -540,13 +540,21 @@ def phase7(data_dir, snapshot=None, http=False, now=None):
             base = ((p4.get("invariants") or {}).get("before")) or {}
             inv = invariants(con, ids)
             ra = redirect_audit(con)
+            # التحويلات: ما يهمّ المعتمد ألّا يُحوَّل أي مسارٍ منه (صفحةٌ تُخدم 301 بدل 200) وألّا تنشأ سلاسل/حلقات/أهدافٌ مكسورة. أما **عدد/بصمة جدول التحويلات كله** فيتغيّر
+            # مشروعًا بدفعات التوسيع الناجحة (دمجٌ مفسَّر بمعرّف TMDB واحد، وكل دفعةٍ بوابتها: تحويلاتٌ مباشرة) — فلا يُشترط ثباته بعد أول دفعة، ويبقى شرطًا قبلها.
+            approved_paths = {a["path"] for a in approved.values()}
+            approved_redirected = sum(1 for r in con.execute("SELECT path FROM redirect") if r["path"] in approved_paths)
+            passed_batches = [b for b in rel.get("batches") or [] if b.get("status") == "PASS"]
+            strict_changed = bool(base) and (base.get("redirects_hash") != inv["redirects_hash"] or base.get("redirects") != inv["redirects"])
             paths = _live_paths(con, st, approved)
             public, _ = _public_entity_locs(data_dir, [(p, "weekly", "0.7") for p, _, _ in paths])
             smap = {SITE + p for p, _, _ in paths}
             m = {"routes": g["routes"], "http_failures": g["http_failures"], "canonical_failures": g["canonical_failures"], "hreflang_failures": g["hreflang_failures"],
                  "language_failures": g["language_failures"], "indexable": g["indexable_ok"], "robots_failures": g["robots_failures"], "unexpected_indexable": u["unexpected_indexable"],
                  "sitemap_members": len(smap), "sitemap_missing": len(approved_urls - smap), "sitemap_unexpected": len(public - approved_urls), "sitemap_public_mismatch": len(public ^ smap),
-                 "redirect_changes_since_phase4": int(bool(base) and (base.get("redirects_hash") != inv["redirects_hash"] or base.get("redirects") != inv["redirects"])),
+                 "redirect_changes_since_phase4": int(approved_redirected > 0 or (strict_changed and not passed_batches)),
+                 "approved_paths_redirected": approved_redirected, "redirects_total_delta": inv["redirects"] - int(base.get("redirects") or 0) if base else None,
+                 "passed_batches": len(passed_batches), "redirect_target_failures": ra["canonical_target_failures"], "redirect_resolve_failures": ra["resolve_failures"],
                  "redirect_chains": ra["chains"], "redirect_loops": ra["loops"], "slug_changes": g["slug_changes"], "entity_changes": g["entity_changes"],
                  "snapshot_compared": snap is not None, "snapshot_mismatch": len(snap - approved_urls) if snap is not None else None,   # روابط اللقطة التي خرجت من الاعتماد = تراجع
                  "beyond_snapshot": len(approved_urls - snap) if snap is not None else None,                                            # ما اعتُمد بعدها بدفعات التوسيع (معلومة لا فشل)
@@ -554,6 +562,7 @@ def phase7(data_dir, snapshot=None, http=False, now=None):
             ok = (m["http_failures"] == 0 and m["canonical_failures"] == 0 and m["hreflang_failures"] == 0 and m["language_failures"] == 0 and m["robots_failures"] == 0
                   and m["indexable"] == len(approved) and m["unexpected_indexable"] == 0 and m["sitemap_missing"] == 0 and m["sitemap_unexpected"] == 0 and m["sitemap_public_mismatch"] == 0
                   and m["redirect_changes_since_phase4"] == 0 and m["redirect_chains"] == 0 and m["redirect_loops"] == 0 and m["slug_changes"] == 0 and m["entity_changes"] == 0
+                  and m["redirect_target_failures"] == 0 and m["redirect_resolve_failures"] == 0
                   and (m["snapshot_mismatch"] in (0, None)))
             rec = {"snapshot": snapshot, "metrics": m, "failures": fails, "population_check": u, "redirect_audit": ra, "invariants_now": {k: v for k, v in inv.items() if k != "slugs"},
                    "baseline": None, "http": None,

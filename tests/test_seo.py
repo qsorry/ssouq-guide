@@ -1878,6 +1878,26 @@ def unit_release():
         q7 = seo_release.phase7(d, SNAP)
         check("المرحلة 7 بعد التوسيع: روابط اللقطة كلها ما زالت معتمدة (mismatch 0) وما بعدها معلومة (beyond_snapshot = الجديد) — PASS على 13 مسارًا بلا غير متوقَّع",
               q7["ok"] and q7["metrics"]["snapshot_mismatch"] == 0 and q7["metrics"]["beyond_snapshot"] == new_n and q7["metrics"]["routes"] == 5 + new_n and q7["metrics"]["unexpected_indexable"] == 0, str(q7.get("metrics")))
+        # التحويلات بعد التوسيع: تحويلٌ مشروع لكيانٍ غير معتمد (كدمجٍ في دفعة) لا يُسقط المرحلة 7؛ وتحويلُ مسارٍ معتمد يُسقطها
+        ap_ids_ = {cid for cid, _ in seo_pages.approved_routes(con)}
+        other = con.execute(f"SELECT slug, type FROM content WHERE merged_into IS NULL AND available=1 AND id NOT IN ({','.join('?' * len(ap_ids_))}) LIMIT 1", sorted(ap_ids_)).fetchone() if ap_ids_ else None
+        tgt_slug = other["slug"] if other else "dune"
+        tgt_dir = "movies" if (other and other["type"] == "movie") or not other else "series"
+        for pre_ in ("", "/en"):
+            con.execute("INSERT OR REPLACE INTO redirect(path, target, code, reason, created_at) VALUES (?,?,301,'test merge',?)", (f"{pre_}/content/{tgt_dir}/zz-old-merged/", f"{pre_}/content/{tgt_dir}/{tgt_slug}/", int(time.time())))
+        con.commit()
+        q7b = seo_release.phase7(d, SNAP)
+        check("بعد التوسيع: تحويلاتٌ جديدة مشروعة لكيانٍ غير معتمد لا تُسقط المرحلة 7 (الجدول كله يتغيّر مشروعًا بالدفعات)", q7b["ok"] and q7b["metrics"]["redirects_total_delta"] != 0 and q7b["metrics"]["approved_paths_redirected"] == 0 and q7b["metrics"]["passed_batches"] >= 1, str(q7b.get("metrics"))[:300])
+        ap_path = seo_pages.approved_routes(con)
+        first_ap = sorted(ap_path.values(), key=lambda a: a["path"])[0]["path"]
+        con.execute("INSERT OR REPLACE INTO redirect(path, target, code, reason, created_at) VALUES (?,?,301,'test approved path',?)", (first_ap, f"/content/{tgt_dir}/{tgt_slug}/", int(time.time())))
+        con.commit()
+        q7c = seo_release.phase7(d, SNAP)
+        con.execute("DELETE FROM redirect WHERE path=?", (first_ap,)); con.commit()
+        check("وتحويلُ مسارٍ معتمد (صفحةٌ تُخدم 301) يُسقطها ويُسمّى: approved_paths_redirected ≥ 1", q7c["ok"] is False and q7c["metrics"]["approved_paths_redirected"] >= 1 and q7c["metrics"]["redirect_changes_since_phase4"] == 1, str(q7c.get("metrics"))[:300])
+        con.execute("DELETE FROM redirect WHERE path LIKE '%/zz-old-merged/'"); con.commit()
+        q7d = seo_release.phase7(d, SNAP)
+        check("وبعد إزالتهما تعود المرحلة 7 PASS ويُرفع العائق", q7d["ok"] and (seo_db.state(con, "release") or {}).get("blocked") is None, str(q7d.get("metrics"))[:200])
         con.close()
         # ---- المرحلة 9: الاستمرار حتى نفاد المرشّحين ----
         ex = seo_release.expand(d, 10, 3)
