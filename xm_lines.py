@@ -3295,13 +3295,15 @@ def _dup_candidates(accounts, cfg, acct, gate, row):
     return out
 
 
-def _dup_archived(accounts, cfg, acct, gate, row):
-    """بوابات الأرشيف (بلا دخول للّوحة) المرشّحة لليوزر القديم — لعرض «اربط اللوحة» بدل الفشل الصامت."""
+def _dup_archived(accounts, cfg, acct, gate, row, live=False):
+    """بوابات الأرشيف (بلا دخول للّوحة) المرشّحة لليوزر القديم — لعرض «اربط اللوحة» بدل الفشل الصامت.
+    `live=True`: وبوابات الويب الحيّة أيضًا، لعرض الدخول وكتابة كود التحقّق متى تعذّر الدخول (كابتشا أو فشل)."""
     return [{"account_id": a.get("id"), "gate_id": g.get("id"), "name": g.get("name") or g.get("host"),
              "host": g.get("host", ""), "panel_base": g.get("panel_base", ""), "panel_user": g.get("panel_user", ""),
-             "web": g.get("mode") == "web",
+             "web": g.get("mode") == "web", "archive": bool(g.get("archive_only")),
              "has_creds": bool(g.get("panel_base") or g.get("host")) and bool(g.get("panel_user") and g.get("panel_pass"))}
-            for a, g, same in _dup_candidates(accounts, cfg or {}, acct, gate, row) if g.get("archive_only")]
+            for a, g, same in _dup_candidates(accounts, cfg or {}, acct, gate, row)
+            if g.get("archive_only") or (live and g.get("mode") == "web")]
 
 
 ARCHIVE_ERR = "اليوزر القديم في بوابة أرشيف (لا دخول للّوحة): اربط اللوحة ثم أعد المحاولة"
@@ -3416,7 +3418,11 @@ def dup_rename(accounts, cfg, ws, req):
         if og and want and got and want != got:
             return 400, {"error": "البوابة المختارة من نوع اشتراكٍ آخر (%s) — اختر بوابة %s"
                                   % (GUIDE_SUBS.get(got, got), GUIDE_SUBS.get(want, want))}
-    info, err = _dup_rename_old(acct, gate, row, accounts, cfg, only=only)
+    try:
+        info, err = _dup_rename_old(acct, gate, row, accounts, cfg, only=only)
+    except xm_web.CaptchaNeeded:               # اللوحة تطلب كودًا: يُعرض الدخول وكتابته بدل الفشل
+        return 200, {"need_captcha": True, "error": "اللوحة تطلب كود التحقّق — اكتبه للدخول ثم يُكمل التغيير",
+                     "need_connect": _dup_archived(accounts, cfg, acct, gate, row, live=True)}
     if not info and err == OLD_MISSING and _dup_archived(accounts, cfg, acct, gate, row):
         panels.update_dupe(ws, order, {"rename_error": ARCHIVE_ERR})
         return 409, {"error": ARCHIVE_ERR, "need_connect": _dup_archived(accounts, cfg, acct, gate, row)}
@@ -3427,7 +3433,7 @@ def dup_rename(accounts, cfg, ws, req):
                      "first_order": row.get("first_order", ""), "first_customer": row.get("first_customer", "")}
     if not info:
         panels.update_dupe(ws, order, {"rename_error": err})
-        return 502, {"error": err}
+        return 502, {"error": err, "connectables": _dup_archived(accounts, cfg, acct, gate, row, live=True)}
     panels.update_dupe(ws, order, {"renamed": info, "rename_error": ""}, add_msg=_dup_old_msg(row, info))
     return 200, {"ok": True, "renamed": info}
 

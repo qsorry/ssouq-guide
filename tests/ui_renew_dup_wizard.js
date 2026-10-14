@@ -48,7 +48,8 @@ fs.writeFileSync(path.join(dataDir, 'renew_store_lines.json'), JSON.stringify({l
       S.msgs = [{kind: 'new', name: 'الثاني', phone: '966500000002', text: 'بيانات البديل', sent: null}];
       await rt.fulfill({json: {ok: true, username: 'newuser1', months: 10, replaces: '363816609180'}}); });
     await page.route('**/api/renew/dup-rename', async rt => { S.posts.push(['rename', rt.request().postDataJSON()]);
-      if (S.failRename) { S.failRename = false; return rt.fulfill({status: 409, json: {error: 'اللوحة لم ترد', need_connect: [{}]}}); }
+      if (S.capRename) { S.capRename = false; return rt.fulfill({json: {need_captcha: true, error: 'اللوحة تطلب كود التحقّق', need_connect: [{account_id: 'a', gate_id: 'g', name: 'مرح الأرشيف', archive: true, has_creds: true, panel_base: 'http://p', panel_user: 'u'}]}}); }
+      if (S.failRename) { S.failRename = false; return rt.fulfill({status: 502, json: {error: 'تعذّر قراءة بوكيهات الخط من صفحة التعديل — غيّر اسم المستخدم يدويًا'}}); }
       S.done.renamed = {from: '363816609180', to: 'old_x', line: 'l'}; S.msgs.push({kind: 'old', name: 'الأول', phone: '966500000001', text: 'ما عُدّل', sent: null});
       await rt.fulfill({json: {ok: true, renamed: S.done.renamed}}); });
     await page.route('**/api/renew/dup-send', async rt => { const b = rt.request().postDataJSON(); S.posts.push(['send', b]);
@@ -92,6 +93,18 @@ fs.writeFileSync(path.join(dataDir, 'renew_store_lines.json'), JSON.stringify({l
     check('the duplicates page opens the same wizard on step 1', (await page.textContent('.wzst li.cur')).includes('إنشاء'));
     await page.click('#wzGo'); await page.waitForFunction(() => /إرسال للبديل/.test(document.querySelector('.wzst li.cur')?.textContent || ''));
     check('create + rename ran from the duplicates page', S.posts[0][0] === 'create' && S.posts[1][0] === 'rename', JSON.stringify(S.posts.map(x => x[0])));
+    // اللوحة (أرشيف) تطلب كودًا: يظهر الدخول فيدخل آليًا ثم يطلب الكود، وبعد كتابته يُكمل تغيير الأول تلقائيًا
+    S.done = null; S.msgs = []; S.posts = []; S.capRename = true; S.connects = [];
+    await page.route('**/api/renew/dup-captcha*', rt => rt.fulfill({contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')}));
+    await page.route('**/api/renew/dup-connect', async rt => { const b = rt.request().postDataJSON(); S.connects.push(b);
+      await rt.fulfill({json: b.captcha === '123' ? {ok: true} : {ok: false, need_captcha: true, error: b.captcha ? 'الكود غير صحيح' : ''}}); });
+    await page.evaluate(() => document.querySelector('#dupBody .dupMk').click());
+    await page.waitForSelector('#wzGo'); await page.click('#wzGo');
+    await page.waitForSelector('#wzCnC');
+    check('archive gate asks for a code: auto login first (saved creds), then shows the code box', S.connects.length === 1 && S.connects[0].captcha === '' && S.connects[0].gate_id === 'g' && await page.isVisible('#wzCnImg'), JSON.stringify(S.connects));
+    await page.fill('#wzCnC', '123'); await page.click('#wzCnGo');
+    await page.waitForFunction(() => /إرسال للبديل/.test(document.querySelector('.wzst li.cur')?.textContent || ''));
+    check('the typed code is sent and the rename is retried automatically', S.connects[1].captcha === '123' && S.posts.filter(x => x[0] === 'rename').length === 2 && S.done.renamed, JSON.stringify(S.connects));
     check('no page errors', errs.length === 0, errs.join(' | '));
   } finally { await browser.close(); app.kill(); fs.rmSync(dataDir, {recursive: true, force: true}); }
   console.log(`\nResult: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
