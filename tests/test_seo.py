@@ -1987,6 +1987,19 @@ def unit_release():
         seo_sources.TMDB_API = tbase + "/3"
         r7c = seo_release.phase7(d, SNAP)
         check("المرحلة 7 تُعاد وتنجح فيُرفع العائق (قرارٌ مثبتٌ بفحص لا بزرّ)", r7c["ok"] and not (seo_db.state(seo_db.connect(d), "release") or {}).get("blocked"))
+        # المرحلة 7 السريعة: بعد فحصٍ كاملٍ ناجح (5 مسارات) تفحص عيّنةً من القديم وحدها (0 جديد)، والكامل يبقى كاملًا
+        full_meta = seo_db.state(seo_db.connect(d), "phase7_full") or {}
+        seo_release.PHASE7_MIN_SAMPLE = 2
+        rq0 = seo_release.phase7(d, SNAP, quick=True)
+        check("المرحلة 7 بعد فحصٍ كامل (5 مسارات): السريع يفحص عيّنةً 2 فقط (لا جديد) وينجح، والبقية كاملة (الخريطة والتحويلات)",
+              full_meta.get("count") == 5 and rq0["ok"] and rq0["metrics"]["mode"] == "quick" and rq0["metrics"]["checked_routes"] == 2 and rq0["metrics"]["checked_new"] == 0
+              and rq0["metrics"]["checked_sample"] == 2 and rq0["metrics"]["approved_routes"] == 5 and rq0["metrics"]["sitemap_members"] == 5, str(rq0.get("metrics"))[:300])
+        rf = seo_release.phase7(d, SNAP)
+        check("الفحص الافتراضي كاملٌ دائمًا (5 من 5)", rf["ok"] and rf["metrics"]["mode"] == "full" and rf["metrics"]["checked_routes"] == 5)
+        cq = seo_db.connect(d); seo_db.set_setting(cq, "phase7_full_every_days", 0); cq.commit(); cq.close()
+        rq1 = seo_release.phase7(d, SNAP, quick=True)
+        cq = seo_db.connect(d); seo_db.set_setting(cq, "phase7_full_every_days", 1); cq.commit(); cq.close()
+        check("مضى زمن الفحص الكامل الدوري (days=0): الطلب السريع يعود كاملًا", rq1["ok"] and rq1["metrics"]["mode"] == "full" and rq1["metrics"]["checked_routes"] == 5)
         got.clear()
         r8 = seo_release.phase8_batch(d, 10)
         con = seo_db.connect(d)
@@ -2003,6 +2016,11 @@ def unit_release():
         dn2 = dict(con.execute("SELECT * FROM content WHERE slug='dune'").fetchone())
         o_ar = seo_pages.handle(d, seo_pages._path(dn2, "ar"), "ar")
         check("Dune بعد اعتماده في الدفعة: index بلا رأس noindex", o_ar[0] == 200 and "X-Robots-Tag" not in o_ar[2] and b'content="index, follow' in o_ar[1], str(o_ar[2]))
+        rq2 = seo_release.phase7(d, SNAP, quick=True)
+        check("بعد دفعةٍ ناجحة: السريع يفحص الجديد كله (ما اعتُمد منذ آخر فحصٍ ناجح) + عيّنة من القديم",
+              rq2["ok"] and rq2["metrics"]["mode"] == "quick" and rq2["metrics"]["checked_new"] == new_n and rq2["metrics"]["checked_sample"] == 2 and rq2["metrics"]["checked_routes"] == new_n + 2
+              and rq2["metrics"]["approved_routes"] == 5 + new_n, str(rq2.get("metrics"))[:300])
+        seo_release.PHASE7_MIN_SAMPLE = 100
         q7 = seo_release.phase7(d, SNAP)
         check("المرحلة 7 بعد التوسيع: روابط اللقطة كلها ما زالت معتمدة (mismatch 0) وما بعدها معلومة (beyond_snapshot = الجديد) — PASS على 13 مسارًا بلا غير متوقَّع",
               q7["ok"] and q7["metrics"]["snapshot_mismatch"] == 0 and q7["metrics"]["beyond_snapshot"] == new_n and q7["metrics"]["routes"] == 5 + new_n and q7["metrics"]["unexpected_indexable"] == 0, str(q7.get("metrics")))
