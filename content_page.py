@@ -344,18 +344,29 @@ def _hero(key, v, tr=AR):
             f'<div class="hlist">{"".join(side[:4])}</div></div>')
 
 
-def _stats(c, tr=AR):
+def _stats(c, tr=AR, base=None, t=None):
+    """خانات الأعداد. الأفلام والمسلسلات والقنوات روابطٌ إلى أنواعها (وهي التبويبات نفسها، فلا صفٌّ ثانٍ يكرّر أعدادها)؛ والمواسم والحلقات أعدادٌ فقط."""
     tiles = [("movie", c["movie"], "movie"), ("series", c["series"], "series"), ("live", c["live"], "live"),
              ("episodes", c["episodes"], "episodes"), ("seasons", c["seasons"], "seasons")]
-    return '<div class="stats">' + "".join(
-        f'<div class="stat">{_i(icon)}<span><b>{n:,}</b><small>{tr.unit(n, what)}</small></span></div>'
-        for icon, n, what in tiles if n) + "</div>"
+    out = []
+    for icon, n, what in tiles:
+        if not n:
+            continue
+        inner = f'{_i(icon)}<span><b>{n:,}</b><small>{tr.unit(n, what)}</small></span>'
+        if base is not None and icon in C.KINDS:
+            out.append(f'<a class="stat" href="{_link(base, t=icon)}"{" aria-current=page" if icon == t else ""}>{inner}</a>')
+        else:
+            out.append(f'<div class="stat">{inner}</div>')
+    return '<div class="stats">' + "".join(out) + "</div>"
 
 
 def _kinds(base, v, t, tr=AR):
-    tabs = [(k, tr.tab(k), v["counts"][k]) for k in C.KINDS if v["kinds"][k]]
+    """«أضيف مؤخرًا» وحدها: تبويبات الأنواع صارت خانات الأعداد نفسها (_stats) بلا تكرار."""
+    tabs = []
     if any(v["recent"][k] for k in C.KINDS):
         tabs.append(("new", tr("أضيف مؤخرًا", "New"), 0))
+    if not tabs:
+        return ""
     return f'<nav class="kinds" aria-label="{tr("نوع المحتوى", "Content type")}">' + "".join(
         f'<a href="{_link(base, t=k)}"{" aria-current=page" if k == t else ""}>{_i(k)}{label}'
         + (f' <small>{n:,}</small>' if n else "") + "</a>" for k, label, n in tabs) + "</nav>"
@@ -707,6 +718,30 @@ def api_search(data_dir, key, q, lang="ar"):
     return {"ok": True, "html": results_html(data_dir, key, srv, v, q, lang_of(lang))}
 
 
+def api_entity(data_dir, key, kind, name, year, lang="ar"):
+    """عملٌ من قائمة سيرفر ← مسار صفحته الكاملة (طبقة الكيانات)، أو None إن لم تكن له صفحةٌ تُخدم (لا معاينة، أو لم يُطابَق بعد). يُطلب حين تُفتح نافذة التفاصيل."""
+    import seo_db
+    import seo_pages
+    if kind not in ("movie", "series") or not C.key_ok(key) or not str(name or "").strip():
+        return None
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return None
+    try:
+        if not seo_db.settings(con).get("preview"):
+            return None
+        yr = _int(year, 0, 3000)
+        r = con.execute("SELECT c.id, c.type, c.slug, c.merged_into FROM content_service s JOIN content c ON c.id=s.content_id "
+                        "WHERE s.service_key=? AND s.kind=? AND s.local_key=? AND s.present=1 LIMIT 1", (key, kind, C._ikey(kind, {"n": str(name)[:200], "y": yr or None}))).fetchone()
+        if r and r["merged_into"] is not None:
+            r = con.execute("SELECT id, type, slug, merged_into FROM content WHERE id=?", (r["merged_into"],)).fetchone()
+        if not r or r["merged_into"] is not None:
+            return None
+        return {"ok": True, "path": seo_pages._path(r, "en" if lang == "en" else "ar")}
+    finally:
+        con.close()
+
+
 # ================= الصفحة =================
 def _int(v, lo=0, hi=10 ** 6):
     try:
@@ -749,7 +784,7 @@ def render(data_dir, key, query, lang="ar"):
     if kind and gid and gi is None:
         code = 404
     if t == "" and not gid:
-        head = _hero(key, v, tr) + _stats(c, tr) + _kinds(base, v, t, tr)
+        head = _hero(key, v, tr) + _stats(c, tr, base, t) + _kinds(base, v, t, tr)
         for k in ("movie", "series", "live"):
             if v["recent"][k]:
                 label = {"movie": tr("أفلام أضيفت مؤخرًا", "Recently added movies"),
@@ -764,7 +799,7 @@ def render(data_dir, key, query, lang="ar"):
                                  _link(base, t=k, g=g["id"]), tr("عرض الكل", "View all") + f' ({len(g["items"]):,})', tr))
         side += [_recent_list(key, v, ("movie", "series"), tr), cta]
     elif t == "new":
-        head = _stats(c, tr) + _kinds(base, v, t, tr)
+        head = _stats(c, tr, base, t) + _kinds(base, v, t, tr)
         main.append(f'<div class="gh"><h1>{_i("new")} {tr("أضيف مؤخرًا في ", "Recently added to ")}{_esc(name)}</h1>'
                     '<span class="sub">' + tr("الأحدث أولًا، بترتيب إضافتها إلى السيرفر",
                                               "Newest first, in the order they were added to the server") + '</span></div>')
@@ -776,7 +811,7 @@ def render(data_dir, key, query, lang="ar"):
                             f'{_cards(key, v, k, v["recent"][k][:NEW_MAX[k]], when=True, tr=tr)}</div></section>')
         side += [cta]
     elif kind and get("all"):
-        head = _stats(c, tr) + _kinds(base, v, t, tr)
+        head = _stats(c, tr, base, t) + _kinds(base, v, t, tr)
         chips = "".join(_chip(key, base, v, kind, n, g, tr) for n, g in enumerate(v["kinds"][kind]))
         main.append(f'<div class="gh"><h1>{tr("أقسام " + tr.tab(kind), tr.one(kind) + " categories")}</h1>'
                     f'<span class="sub">{tr.count(len(v["kinds"][kind]), "groups")}</span>'
@@ -806,7 +841,7 @@ def render(data_dir, key, query, lang="ar"):
     else:                                   # صفحة النوع: الأقسام صورًا ثم صفٌّ لكل قسم
         kind = kind or kinds[0]
         t = kind
-        head = _stats(c, tr) + _kinds(base, v, t, tr)
+        head = _stats(c, tr, base, t) + _kinds(base, v, t, tr)
         miss = ('<p class="empty">' + tr("هذا القسم لم يعد موجودًا، واختر من الأقسام الحالية.",
                                          "This category no longer exists — choose one of the current categories.")
                 + "</p>" if code == 404 else "")
@@ -984,6 +1019,9 @@ button{font:inherit;color:inherit}
 .stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:16px}
 .stat{display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:16px;border:1px solid var(--line);
   background:linear-gradient(160deg,var(--card2),var(--card))}
+a.stat{color:inherit;text-decoration:none;transition:border-color .15s,transform .15s}a.stat:hover{border-color:var(--line2);transform:translateY(-2px)}
+a.stat[aria-current]{background:linear-gradient(135deg,var(--acc),var(--acc2));border-color:transparent;box-shadow:0 10px 26px -14px var(--acc)}a.stat[aria-current] .i,a.stat[aria-current] small{color:inherit}
+.btn[hidden]{display:none}.sheet .txt .btn{margin-inline-end:8px;margin-top:8px}.btn.full{background:linear-gradient(135deg,var(--acc),var(--acc2))}
 .stat .i{width:34px;height:34px;color:var(--acc)}
 .stat b{display:block;font-size:1.55rem;line-height:1.2;font-variant-numeric:tabular-nums}
 .stat small{color:var(--mute)}
@@ -1169,15 +1207,18 @@ JS = """
   // الإنجليزية على /en/content: نصوص النافذة، والصفحة من اليسار فالتالي إلى اليمين
   var EN = document.documentElement.lang === "en", RTL = document.documentElement.dir !== "ltr";
   var T = EN ? {kind: {movie: "Movie", series: "Series", live: "Channel"}, close: "Close", upd: "Updated ", add: "Added ",
-                sub: "Subscribe to "}
+                sub: "Subscribe to ", full: "View full page"}
              : {kind: {movie: "فيلم", series: "مسلسل", live: "قناة"}, close: "إغلاق", upd: "حُدّث ", add: "أضيف ",
-                sub: "اشترك في "};
+                sub: "اشترك في ", full: "عرض الصفحة كاملة"};
+  // تنقّلٌ بلا إعادة تحميل (static/softnav.js): ما رُبط على المستند أو بمؤقّتٍ يُسجَّل هنا ليُزال قبل تبديل الصفحة فلا يتكرّر
+  var CL = window.__snClean = window.__snClean || [];
+  function onDoc(type, fn, cap){ document.addEventListener(type, fn, cap); CL.push(function(){ document.removeEventListener(type, fn, cap); }); }
   function $(s, r){ return (r || document).querySelector(s); }
   function $$(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
     return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
   // صورةٌ تعذّرت: يبقى تحتها الحرفان الأولان
-  document.addEventListener("error", function(e){
+  onDoc("error", function(e){
     var t = e.target; if (t && t.tagName === "IMG" && t.closest(".pos,.chip,.slide")) t.remove();
   }, true);
   // وما تعذّر قبل أن يصل السكربت (ردٌّ سريع بـ 404)
@@ -1216,9 +1257,10 @@ JS = """
       if (Math.abs(dx) > 40) { hero.dataset.swiped = "1"; show(cur + ((dx > 0) === RTL ? 1 : -1)); play(); }
     }, {passive: true});
     play();
+    CL.push(function(){ clearInterval(timer); });
   }
   // أسهم الصفوف
-  document.addEventListener("click", function(e){
+  onDoc("click", function(e){
     var a = e.target.closest(".arrow"); if (!a) return;
     var box = $(".cards", a.closest(".row")); if (!box) return;
     box.scrollBy({left: box.clientWidth * .85 * (a.classList.contains("next") ? -1 : 1) * (RTL ? 1 : -1), behavior: "smooth"});
@@ -1243,19 +1285,27 @@ JS = """
       + (d.sc ? '<div class="seasons">' + d.sc.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '')
       + (d.a ? '<p class="empty">' + (d.k === "series" ? T.upd : T.add) + esc(d.a) + '</p>' : '')
       + (d.d ? '<p class="plot">' + esc(d.d) + '</p>' : '')
+      + (d.k === "live" ? "" : '<a class="btn full" id="cx-full" href="#" hidden>' + T.full + ' ' + (RTL ? "←" : "→") + '</a>')
       + '<a class="btn" href="' + esc(CTA) + '" target="_blank" rel="noopener">' + T.sub + esc(NAME) + '</a></div></div>';
+    var ef = $("#cx-full", modal);        // صفحة العمل الكاملة (إن وُجدت): الرابط حقيقي فيلتقطه التنقّل السلس
+    if (ef && d.n) {
+      fetch("/api/content/entity?s=" + encodeURIComponent(K) + "&k=" + encodeURIComponent(d.k) + "&n=" + encodeURIComponent(d.n) + "&y=" + encodeURIComponent(d.y || "") + (EN ? "&lang=en" : ""))
+        .then(function(r){ return r.json(); })
+        .then(function(j){ if (j && j.path && !modal.hidden) { ef.href = j.path; ef.hidden = false; } })
+        .catch(function(){});
+    }
     if (d.b || d.p) $(".cover", modal).style.backgroundImage = "url(" + JSON.stringify(d.b || d.p) + ")";
     modal.hidden = false; document.body.style.overflow = "hidden"; last = from;
     $(".x", modal).focus();
   }
   function close(){ modal.hidden = true; document.body.style.overflow = ""; if (last && last.focus) last.focus(); }
   function pick(el){ try { open(JSON.parse(el.getAttribute("data-d")), el); } catch (err) {} }
-  document.addEventListener("click", function(e){
+  onDoc("click", function(e){
     if (!modal.hidden || e.target.closest("a,.arrow,.harrow,.dots,.hlist")) return;
     var el = e.target.closest("[data-d]");
     if (el) { if (hero && hero.dataset.swiped) { delete hero.dataset.swiped; return; } pick(el); }
   });
-  document.addEventListener("keydown", function(e){
+  onDoc("keydown", function(e){
     if (e.key === "Escape" && !modal.hidden) return close();
     if (e.key === "Enter" && e.target.matches && e.target.matches("[data-d]")) pick(e.target);
   });
@@ -1284,6 +1334,7 @@ JS = """
     };
     inp.addEventListener("input", function(){ clearTimeout(timer2); timer2 = setTimeout(run, 250); clearTimeout(sqt); sqt = setTimeout(sqrun, 1500); });
     f.addEventListener("submit", function(e){ e.preventDefault(); clearTimeout(timer2); lastq = null; run(); });
+    CL.push(function(){ clearTimeout(timer2); clearTimeout(sqt); });
   }
 })();
 """

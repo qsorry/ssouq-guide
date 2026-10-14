@@ -16,6 +16,7 @@
 
 تشغيل:  python tests/test_analytics.py
 """
+import re
 import datetime
 import json
 import os
@@ -261,7 +262,7 @@ def unit_tags():
         check("ولا يُحمَّل شيءٌ منها لمن استثنى زياراته (?sq=off)", h.count("if(!window.sqOff)") == 6)
         body = b"<!doctype html><html><head><title>x</title></head><body><p>a</p></body></html>"
         out = A.inject(body, d)
-        check("الحقن قبل أول </head>، والصفحة كما هي", out.index(b"sq.js") < out.index(b"</head>") and out.replace(A.head(d), b"") == body)
+        check("الحقن قبل أول </head>، والصفحة كما هي", out.index(b"sq.js") < out.index(b"</head>") and re.sub(rb'<script src="/static/(foryou|softnav)\.js\?v=[0-9a-f]+" defer></script>', b"", out.replace(A.head(d), b"")) == body)
         check("وصفحةٌ بلا </head> لا تُمسّ", A.inject(b"<p>x</p>", d) == b"<p>x</p>")
         try:
             A.save_tags(d, {"ga": "UA-12345-1", "meta": ""})

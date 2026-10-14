@@ -2025,6 +2025,127 @@ def unit_release():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_cards_softnav():
+    """بطاقات القوائم تُظهر ملصق اللوحة (لا الحروف) بمفتاح سيرفره، وخانات الأعداد روابط بلا صفٍّ مكرِّر، وسكربت التنقّل بلا إعادة تحميل يُحقن."""
+    print("== بطاقات القوائم والتنقّل السلس ==")
+    import analytics
+    import content_page
+    d = tempfile.mkdtemp(prefix="seo_cards_")
+    try:
+        con = seo_db.connect(d)
+        now = int(time.time())
+
+        def add(slug, poster):
+            return con.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES ('series',?,?,?,?,2020,7.0,?,'tmdb',1,?,?)",
+                               (slug, slug, slug, slug, poster, now, now)).lastrowid
+        srv = add("srv-poster", "http://img.example.com/posters/a.jpg")        # ملصقٌ من اللوحة لا TMDB: لا يُجلب إلا بمفتاح سيرفره
+        tm = add("tmdb-poster", "https://image.tmdb.org/t/p/w600/abc.jpg")
+        nop = add("no-poster", None)
+        con.execute("INSERT INTO content_service(content_id, service_key, kind, local_key, name, present, first_seen, seen_at) VALUES (?,?,?,?,?,1,?,?)", (srv, "falcon", "series", "k1", "srv", now, now))
+        con.commit()
+        rows = con.execute("SELECT * FROM content WHERE id IN (?,?,?) ORDER BY id", (srv, tm, nop)).fetchall()
+        seo_pages._tl.con = con
+        try:
+            html = "".join(seo_pages._card(r, type("T", (), {"__call__": lambda self, a, e: a, "en": False, "code": "ar", "dir": "rtl"})()) for r in rows)
+        finally:
+            seo_pages._tl.con = None
+        check("بطاقة ملصق اللوحة تحمل صورةً بمفتاح سيرفرها (/content/falcon/img/…) لا الحروف", "/falcon/img/" in html and html.count("<img") == 2 and html.count('class="ph"') == 1, html[:400])
+        check("ملصق TMDB صورةٌ مباشرة، وبلا ملصقٍ تبقى الحروف", "image.tmdb.org/t/p/w342/abc.jpg" in html)
+        import seo_reco
+        res = seo_reco.api(d, {}, "ar")
+        pics = {i["slug"]: i["poster"] for i in res["items"]}
+        check("واجهة التوصية والبحث: ملصق اللوحة بمفتاح سيرفره (كان فارغًا فتظهر الحروف)", "/falcon/img/" in pics.get("srv-poster", ""), str(pics))
+        c = {"movie": 20532, "series": 9997, "live": 8882, "episodes": 319695, "seasons": 14751}
+        st = content_page._stats(c, content_page.AR, "/content/smart", "movie")
+        check("خانات الأعداد: الأفلام والمسلسلات والقنوات روابط (والحالي aria-current)، والحلقات والمواسم أعدادٌ فقط",
+              st.count('<a class="stat"') == 3 and 'aria-current=page' in st and st.count('<div class="stat">') == 2, st[:300])
+        kinds = content_page._kinds("/content/smart", {"counts": {"movie": 5, "series": 5, "live": 5}, "kinds": {"movie": [1], "series": [1], "live": [1]}, "recent": {"movie": [1], "series": [], "live": []}}, "movie", content_page.AR)
+        check("صفّ التبويبات لا يكرّر الأنواع: «أضيف مؤخرًا» وحدها", kinds.count("<a ") == 1 and "أضيف مؤخرًا" in kinds and "الأفلام" not in kinds, kinds)
+        import content as Cc
+        pb = add("prison-break-x", "https://image.tmdb.org/t/p/w600/pb.jpg")
+        lk = Cc._ikey("series", {"n": "Prison Break", "y": 2005})
+        con.execute("INSERT INTO content_service(content_id, service_key, kind, local_key, name, present, first_seen, seen_at) VALUES (?,?,?,?,?,1,?,?)", (pb, "smart", "series", lk, "Prison Break", now, now))
+        con.commit()
+        check("«عرض الصفحة كاملة»: بلا معاينة لا مسار (لا صفحة تُخدم)", content_page.api_entity(d, "smart", "series", "Prison Break", 2005, "ar") is None)
+        seo_db.set_setting(con, "preview", True); con.commit()
+        r_ar = content_page.api_entity(d, "smart", "series", "Prison Break", 2005, "ar")
+        r_en = content_page.api_entity(d, "smart", "series", "Prison Break", 2005, "en")
+        check("نافذة التفاصيل ← مسار صفحة العمل بلغتها (/content/series/… و/en/…)", r_ar == {"ok": True, "path": "/content/series/prison-break-x/"} and r_en["path"] == "/en/content/series/prison-break-x/", str((r_ar, r_en)))
+        check("عملٌ بلا كيانٍ أو قناةٌ أو مفتاحٌ غير صالح ← None", content_page.api_entity(d, "smart", "series", "Nope", 2005, "ar") is None and content_page.api_entity(d, "smart", "live", "Prison Break", 0, "ar") is None
+              and content_page.api_entity(d, "../x", "series", "Prison Break", 0, "ar") is None)
+        check("نافذة التفاصيل في صفحة السيرفر فيها زرّ «عرض الصفحة كاملة» والتنقّل السلس يلتقطه", 'id="cx-full"' in content_page.JS and "/api/content/entity" in content_page.JS)
+        inj = analytics.inject(b"<html><head></head><body></body></html>", d)
+        check("يُحقن سكربت التنقّل السلس بإصدار، وملفّه موجود", b"/static/softnav.js?v=" in inj and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "softnav.js")))
+        con.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def unit_airing():
+    """مسلسلٌ ما زال يُعرض: «ما زال يُعرض» والحلقة القادمة وآخر ما عُرض وتاريخ التحديث، ومنتهٍ/موقوفٌ/قيد الإنتاج، وسؤال «هل سيكون له جزء؟»، وتجديد طابور الجاري."""
+    print("== حال العرض ==")
+    import datetime
+    d = tempfile.mkdtemp(prefix="seo_air_")
+    try:
+        con = seo_db.connect(d)
+        now = int(time.time())
+        today = datetime.date.today()
+        iso = lambda n: (today + datetime.timedelta(days=n)).isoformat()      # noqa: E731
+
+        def add(slug, status, **kw):
+            cols = {"type": "series", "slug": slug, "title": slug, "title_ar": slug, "title_en": slug, "year": 2026, "rating": 5.5, "poster": "https://image.tmdb.org/t/p/w600/x.jpg",
+                    "match": "tmdb", "available": 1, "created_at": now, "updated_at": now, "status": status, "tmdb_id": 1000 + len(slug), "overview_ar": "ق" * 150, "overview_en": "e" * 150, **kw}
+            con.execute(f"INSERT INTO content({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", list(cols.values()))
+            cid = con.execute("SELECT id FROM content WHERE slug=?", (slug,)).fetchone()[0]
+            con.execute("INSERT INTO season(content_id, number, episode_count, episodes_official, updated_at) VALUES (?,1,15,15,?)", (cid, now))
+            return cid
+        a1 = add("airing-now", "Returning Series", next_air_date=iso(4), next_air_season=1, next_air_episode=16, last_ep_season=1, last_ep_number=15, last_ep_date=iso(-3),
+                 episodes_official=15, seasons_official=1, tmdb_refreshed_at=now)
+        add("airing-quiet", "Returning Series", last_ep_season=1, last_ep_number=15, last_ep_date=iso(-20), episodes_official=15, seasons_official=1)
+        add("between-seasons", "Returning Series", last_ep_date=iso(-400), episodes_official=15, seasons_official=1)
+        add("done-show", "Ended", last_air_date="2019-05-01", episodes_official=15, seasons_official=1)
+        add("axed-show", "Canceled", last_air_date="2019-05-01", episodes_official=15, seasons_official=1)
+        add("future-show", "In Production", next_air_date=iso(40), next_air_season=1, next_air_episode=1, episodes_official=8, seasons_official=1)
+        seo_db.set_setting(con, "preview", True)
+        con.commit()
+        tr = seo_pages.P.lang_of("ar")
+        te = seo_pages.P.lang_of("en")
+        rows = {r["slug"]: r for r in con.execute("SELECT * FROM content")}
+        seasons = lambda cid: con.execute("SELECT * FROM season WHERE content_id=? ORDER BY number", (cid,)).fetchall()   # noqa: E731
+        inf = {k: seo_pages.airing_info(r, seasons(r["id"]), 1, "موسم واحد و15 حلقة", tr) for k, r in rows.items()}
+        check("يُعرض الآن مع حلقةٍ قادمة: «ما زال يُعرض الآن» + الحلقة 16 + آخر حلقة 15 + تاريخ التحديث", inf["airing-now"]["live"] and "ما زال يُعرض الآن" in inf["airing-now"]["head"]
+              and "الموسم 1 الحلقة 16" in inf["airing-now"]["detail"] and "الحلقة 15" in inf["airing-now"]["detail"] and "آخر تحديث" in inf["airing-now"]["note"], str(inf["airing-now"]))
+        check("عرضٌ قريب بلا قادمة: «ما زال يُعرض» ولم يُعلن موعد القادمة", inf["airing-quiet"]["live"] and "لم يُعلن موعد الحلقة القادمة" in inf["airing-quiet"]["detail"])
+        check("مستمرٌّ بين المواسم (آخر عرض قديم): لا يدّعي أنه يُعرض الآن", "بين المواسم" in inf["between-seasons"]["head"] and "ما زال يُعرض" not in inf["between-seasons"]["head"])
+        check("منتهٍ: «انتهى» وبلا موسمٍ جديد بحسب TMDB؛ موقوف: «أُوقف»؛ قيد الإنتاج: live", not inf["done-show"]["live"] and "انتهى" in inf["done-show"]["head"] and "أُوقف" in inf["axed-show"]["head"] and not inf["axed-show"]["live"]
+              and inf["future-show"]["live"] and "قيد الإنتاج" in inf["future-show"]["head"])
+        ie = seo_pages.airing_info(rows["airing-now"], seasons(rows["airing-now"]["id"]), 1, "1 season and 15 episodes", te)
+        check("بالإنجليزية: Still airing now وNext episode", "Still airing" in ie["head"] and "Next episode" in ie["detail"] and "season 1, episode 16" in ie["detail"], str(ie))
+        check("فيلمٌ أو حالةٌ فارغة ← None", seo_pages.airing_info({**dict(rows["done-show"]), "status": ""}, [], 1, "", tr) is None and seo_pages.airing_info({**dict(rows["done-show"]), "type": "movie"}, [], 1, "", tr) is None)
+        code, body, _ = seo_pages.handle(d, "/content/series/airing-now/", "ar")
+        html = body.decode()
+        check("صفحة المسلسل الجاري: لافتة حال العرض + الحالة «ما زال يُعرض» في الحقائق + «حتى الآن» في السؤال + سؤال «هل ما زال يُعرض؟ وهل سيكون له جزء»",
+              code == 200 and 'id="airing"' in html and "ما زال يُعرض الآن" in html and "<dd>ما زال يُعرض</dd>" in html and "حتى الآن، والمسلسل ما زال يُعرض" in html
+              and "هل ما زال airing-now يُعرض؟ وهل سيكون له جزء ثانٍ؟" in html, html[html.find('id="airing"') - 40: html.find('id="airing"') + 300] if 'id="airing"' in html else html[:200])
+        code2, body2, _ = seo_pages.handle(d, "/content/series/done-show/", "ar")
+        h2 = body2.decode()
+        check("المنتهي: لا endDate ما زال… بل endDate في البيانات المنظمة، ولا «حتى الآن»", '"endDate": "2019-05-01"' in h2 and "حتى الآن، والمسلسل ما زال يُعرض" not in h2 and "انتهى عرض المسلسل" in h2)
+        check("الجاري: لا endDate", '"endDate"' not in html)
+        # تجديد الطابور: الجاري وحده يُعاد، وكاش TMDB له يُمسح
+        con.execute("INSERT INTO api_cache(key, body, status, at) VALUES (?,?,?,?)", (f"tmdb:/tv/{rows['airing-quiet']['tmdb_id']}?language=en-US", "{}", 200, now))
+        con.execute("INSERT INTO api_cache(key, body, status, at) VALUES (?,?,?,?)", (f"tmdb:/tv/{rows['done-show']['tmdb_id']}?language=en-US", "{}", 200, now))
+        con.commit()
+        import seo_sources
+        n = seo_sources.refresh_airing(con, seo_db.settings(con), now)
+        queued = {r[0] for r in con.execute("SELECT content_id FROM enrich_queue WHERE state='pending'")}
+        check("تجديد الجاري: الجاري وحده (3 جاري + قيد الإنتاج) يُعاد، لا المنتهي ولا الموقوف، وما حُدِّث للتوّ (airing-now) يُترك", n == 3 and queued == {rows["airing-quiet"]["id"], rows["between-seasons"]["id"], rows["future-show"]["id"]}, str((n, queued)))
+        check("وكاش TMDB للجاري يُمسح (وإلا بقي ردّه 30 يومًا) ولا يُمسح لغيره", not con.execute("SELECT 1 FROM api_cache WHERE key LIKE ?", (f"tmdb:/tv/{rows['airing-quiet']['tmdb_id']}?%",)).fetchone()
+              and con.execute("SELECT 1 FROM api_cache WHERE key LIKE ?", (f"tmdb:/tv/{rows['done-show']['tmdb_id']}?%",)).fetchone())
+        con.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_guide():
     """«دليل الأهل»: اشتقاق العمر، المشاهد بأوقاتها لا تظهر قبل الاعتماد، «لا يوجد دليل» لا «آمن»، البلاغ العام بحدوده، فلتر العمر في التوصية، والدمج ينقل الدليل."""
     print("== دليل الأهل ==")
@@ -2309,7 +2430,9 @@ def main():
     unit_match()
     unit_site_setting()
     unit_reco()
+    unit_airing()
     unit_guide()
+    unit_cards_softnav()
     unit_build()
     unit_ten()
     unit_production_cases()

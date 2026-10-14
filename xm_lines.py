@@ -6607,6 +6607,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, res, extra={"Cache-Control": "no-store"})
         if path == "/api/content/find":         # بحثٌ ذكي بالاسم يقبل الأخطاء (لجولة «محتار ايش تشاهد؟»)
             return self._send(200, seo_reco.find(DATA_DIR, self._q("q"), "en" if self._q("lang") == "en" else "ar"), extra={"Cache-Control": "public, max-age=300"})
+        if path == "/api/content/entity":       # صفحة العمل الكاملة لعنصرٍ من قائمة سيرفر (زرّ «عرض الصفحة كاملة» في نافذة التفاصيل)
+            res = content_page.api_entity(DATA_DIR, content.key_ok(self._q("s")), self._q("k"), self._q("n"), self._q("y"), "en" if self._q("lang") == "en" else "ar")
+            return self._send(200, res or {"ok": False}, extra={"Cache-Control": "public, max-age=300"})
         if path == "/api/content/search":       # البحث بالاسم مع الكتابة (و‏lang=en للصفحة الإنجليزية)
             res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"), self._q("lang"))
             if res is None:

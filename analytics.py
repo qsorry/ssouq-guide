@@ -754,6 +754,17 @@ def _script_version():
 _VER = _script_version()
 
 
+def _static_ver(name):
+    try:
+        with open(os.path.join(BASE_DIR, "static", name), "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()[:10]
+    except OSError:
+        return "0"
+
+
+_FY_VER, _SOFT_VER = _static_ver("foryou.js"), _static_ver("softnav.js")
+
+
 def head(data_dir):
     """ما يُحقن قبل `</head>` في كل صفحة عامة: وسما التحقّق، وسكربت العدّاد، ثم ما رُبط من أدوات.
     وكلها تُحترم «استثناء زياراتي» (‏?sq=off يحفظ sq_off في المتصفح): لا تُحمَّل الأدوات ولا يُرسل شيء."""
@@ -834,7 +845,7 @@ def inject(body, data_dir):
     i = body.find(b"</head>")
     if i < 0:
         return body
-    return body[:i] + head(data_dir) + b'<script src="/static/foryou.js" defer></script>' + body[i:]
+    return (body[:i] + head(data_dir) + f'<script src="/static/foryou.js?v={_FY_VER}" defer></script><script src="/static/softnav.js?v={_SOFT_VER}" defer></script>'.encode() + body[i:])
 
 
 # ================= IndexNow: إرسال الصفحات إلى Bing وYandex وغيرهما =================
