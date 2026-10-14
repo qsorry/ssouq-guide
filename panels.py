@@ -1081,13 +1081,23 @@ def build_index(config, data_dir, replaced=None, export=None, today=None):
             "built": renew.now_iso(), "build_ms": int((__import__("time").perf_counter() - t0) * 1000)}
 
 
-def get_index(config, data_dir, sources=None, extra_sig=()):
+def get_index(config, data_dir, sources=None, extra_sig=(), stale_ok=False):
     """الفهرس الجاهز إن لم تتغيّر مصادره، وإلا يُبنى (مرةً واحدة ولو طلبه أكثر من مستخدمٍ معًا).
-    `sources()` ← (replaced، export): يُستدعى عند البناء وحده، فلا تُقرأ ملفات Excel مع كل بحث."""
+    `sources()` ← (replaced، export): يُستدعى عند البناء وحده، فلا تُقرأ ملفات Excel مع كل بحث.
+    `stale_ok`: إن وُجد فهرسٌ سابق (تغيّر مصدره فقط) يُعاد فورًا ويُبنى الجديد في الخلفية — فالبحث لا ينتظر البناء."""
     sig = index_sig(config, data_dir, extra_sig)
     hit = _IDX.get(data_dir)
     if hit and hit[0] == sig:
         return hit[1]
+    if stale_ok and hit:
+        if data_dir not in _IDX_BUILDING:
+            def run():
+                try:
+                    get_index(config, data_dir, sources, extra_sig)
+                except Exception as e:
+                    print("index rebuild:", e, file=__import__("sys").stderr)
+            _threading.Thread(target=run, daemon=True, name="renew-index-bg").start()
+        return dict(hit[1], stale=True)
     with _IDX_LOCK:
         hit = _IDX.get(data_dir)
         if hit and hit[0] == sig:              # بناه طلبٌ آخر بينما ننتظر

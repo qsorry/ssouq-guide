@@ -2601,6 +2601,7 @@ async function getJSON(path, signal){
 const FAIL_TEXT = {net: 'تعذّر الاتصال بالخادم — تحقّق من الشبكة ثم أعد المحاولة', timeout: 'استغرق البحث أطول من المعتاد — أعد المحاولة',
   server: 'تعذّر البحث بسبب خطأ في الخادم — أعد المحاولة'};
 async function loFind(q){
+  const fast = q == null;                               // بحث الصندوق: فوري من الفهرس السابق؛ وإعادة التحميل بعد فعلٍ تطلب الطازج
   q = (q != null ? q : $('#loQ').value).trim();
   if (!q) { loState('ready', 'اكتب رقم الطلب ثم «بحث».'); $('#loQ').focus(); return; }
   if (SRCH.ctl && SRCH.q === q) return;                 // البحث نفسه جارٍ: لا طلب مكرّر
@@ -2608,7 +2609,7 @@ async function loFind(q){
   const my = ++SRCH.seq, ctl = new AbortController(); SRCH.ctl = ctl; SRCH.q = q;
   let timedOut = false; const tm = setTimeout(() => { timedOut = true; ctl.abort(); }, window.__searchMs || 30000);   // __searchMs للاختبار
   loState('loading', `جارٍ البحث عن «${q}»…`);
-  const res = await getJSON('/api/renew/order?q=' + encodeURIComponent(q), ctl.signal);
+  const res = await getJSON('/api/renew/order?q=' + encodeURIComponent(q) + (fast ? '&fast=1' : ''), ctl.signal);
   clearTimeout(tm);
   if (my !== SRCH.seq) return;                          // ردٌّ قديم: بحثٌ أحدث بدأ بعده
   SRCH.ctl = null; SRCH.q = '';

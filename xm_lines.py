@@ -3603,10 +3603,10 @@ def _renew_extra_sig(accounts):
     return tuple(out)
 
 
-def renew_index(cfg, ws, accounts):
+def renew_index(cfg, ws, accounts, stale_ok=False):
     """فهرس البحث والمفقود الجاهز (panels.get_index): يُبنى عند تغيّر أي مصدر، ويُخدم من الذاكرة."""
     return panels.get_index(cfg, ws, sources=lambda: (replaced_old_users(accounts), export_users(accounts)),
-                            extra_sig=_renew_extra_sig(accounts))
+                            extra_sig=_renew_extra_sig(accounts), stale_ok=stale_ok)
 
 
 def renew_index_warm(cfg, ws, accounts):
@@ -7162,7 +7162,8 @@ class Handler(BaseHTTPRequestHandler):
                                         "ocr": xm_web.ocr_available()})
             if path == "/api/renew/order":          # بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) وحاله على اللوحات
                 t0 = time.perf_counter()
-                d = panels.order_search(rcfg, rws, self._q("q"), idx=renew_index(rcfg, rws, racs))
+                # بحث الصندوق (fast=1): يُجاب فورًا من الفهرس السابق ويُحدَّث في الخلفية؛ وما بعد الأفعال يطلب الطازج
+                d = panels.order_search(rcfg, rws, self._q("q"), idx=renew_index(rcfg, rws, racs, stale_ok=self._q("fast") == "1"))
                 idx = d.get("index") or {}
                 if not d["rows"] and idx.get("sid") and not idx.get("username"):
                     try:                                # سجلّ الطلب في سلة: يوزره المكتوب ليُعبّأ به الربط
