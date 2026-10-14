@@ -277,8 +277,15 @@ def test_unlisted():
         check("duplicates: later order of another customer is a row, same phone is not",
               dupr["total"] == 1 and dupr["rows"][0]["order"] == "2" and dupr["rows"][0]["first_order"] == "1"
               and dupr["rows"][0]["account_id"] == "a" and dupr["rows"][0]["suggest"] in (11, 12), str(dupr["rows"]))
+        import xm_lines as _xl
+        dcfg = {"panels": [{"id": "pk", "name": "P", "hosts": ["http://m.ink"], "account_id": "a", "gate_id": "g"}]}
+        sr = panels.order_search(dcfg, dd, "1")["rows"][0]
+        todo = _xl.renew_dup_todo(dupr["rows"], sr, [])
+        check("search: a duplicate not yet handled is listed for processing (from the first order too)",
+              sr["dup"] and [t["order"] for t in todo] == ["2"] and todo[0]["first_order"] == "1" and todo[0]["can_create"] is False, str(todo))
         panels.mark_dupe_done(dd, "2", "new1", 11)
         check("duplicates: done order is flagged", panels.duplicates({"panels": []}, dd)["rows"][0]["done"]["new"] == "new1")
+        check("search: once handled it is no longer pending", _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, []) == [])
         check("suggest_slice rounds and clamps", panels.suggest_slice(353) == 12 and panels.suggest_slice(5) == 1
               and panels.suggest_slice(900) == 15 and panels.suggest_slice(0) == 0 and panels.suggest_slice(None) == 0)
         resr = panels.unlisted(cfg, d, replaced={("a", "g"): {"333333333333"}})

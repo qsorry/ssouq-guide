@@ -4741,6 +4741,20 @@ def renew_lookup(st, order_no="", phone="", username="", password=""):
     return out
 
 
+def renew_dup_todo(dups, row, accounts):
+    """الطلبات المكررة على يوزر هذا الصف التي لم يُنشأ لها بديل ولم تنتهِ — ما يُعالَج من نتيجة البحث."""
+    user, pid = str(row.get("username") or "").lower(), row.get("panel_id") or ""
+    out = []
+    for d in dups:
+        if d["done"] or d["expired"] or d["username"].lower() != user or (d["panel_id"] or "") != pid:
+            continue
+        ac = next((a for a in (accounts or []) if str(a.get("id")) == str(d["account_id"])), None)
+        out.append({k: d[k] for k in ("order", "username", "customer", "phone", "date", "remaining", "suggest",
+                                      "first_order", "first_customer", "first_phone")}
+                   | {"can_create": bool(ac and find_gate(ac, d["gate_id"]))})
+    return out
+
+
 def renew_run_queue(st=None):
     st = st or load_store()
     return renew.run_queue(DATA_DIR, st, st.get("renew"), renew_prov())
@@ -6994,8 +7008,11 @@ class Handler(BaseHTTPRequestHandler):
                         d["salla_src"] = src
                     except Exception:
                         d["salla"] = None
+                dups = panels.duplicates(rcfg, rws)["rows"] if any(r.get("dup") for r in d["rows"]) else []
                 for r in d["rows"]:
                     r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
+                    if r.get("dup"):                     # مكررٌ لم يُعالج: كل طلبٍ لاحق على اليوزر نفسه بلا بديل وغير منتهٍ
+                        r["dup_todo"] = renew_dup_todo(dups, r, racs)
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
                     elif r.get("state") == "replaced":        # استُبدل من صفحة الإنشاء أو المكرر: البديل وعلى أي بوابة
