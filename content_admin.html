@@ -255,6 +255,7 @@ details.adult h4{font-size:.8rem;font-weight:500;color:var(--mute);margin:10px 0
 .alist{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto}
 .alist li{display:flex;gap:10px;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line);font-size:.86rem}
 .alist li:last-child{border-bottom:0}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0}.grid2 label{display:block;font-size:.82rem}.grid2 input,.grid2 select{width:100%}
 .alist span{flex:1;min-width:0;overflow-wrap:anywhere}
 .alist small{color:var(--mute);max-width:48%;text-align:end;overflow-wrap:anywhere}
 .alist button{flex:none;min-height:32px;padding:0 10px;border:1px solid var(--line);border-radius:9px;font-size:.78rem;color:var(--go);background:var(--sf)}
@@ -564,6 +565,36 @@ details.card>.din{padding:0 16px 16px}
           <div class="acts"><button class="ghost" type="button" id="cMergeGo">ادمج</button></div>
         </div>
         <div class="msg" id="cMsg"></div>
+      </div>
+    </details>
+    <details class="blk fold" id="blkGuide">
+      <summary><span><b>دليل الأهل</b><small>شدّة الفئات ومشاهد لا تناسب الصغار بأوقاتها، وبلاغات الزوار</small></span></summary>
+      <div class="din">
+        <p class="sub">المشهد بوقته لا يظهر للزوار إلا بعد اعتمادك. الخلاصة العمرية تُشتقّ من أعلى شدّة (للجنس سقفٌ أعلى) ولك أن تفرض عمرًا يدويًا. عملٌ بلا بيانات يظهر «لا يوجد دليل بعد» لا «آمن».</p>
+        <div class="acts"><button class="ghost" type="button" id="gPend">بلاغات الزوار المعلّقة</button></div>
+        <ul class="alist" id="gPendList" hidden></ul>
+        <div class="acts"><input id="gQ" type="search" placeholder="اسم العمل أو slug أو المعرّف"><button class="ghost" type="button" id="gFind">بحث</button></div>
+        <ul class="alist" id="gList"></ul>
+        <div id="gEdit" hidden>
+          <p class="meta" id="gInfo"></p>
+          <div class="grid2" id="gSev"></div>
+          <label for="gAge">العمر (يدوي؛ فارغ = يُشتقّ)</label><select id="gAge"><option value="">يُشتقّ من الشدّة</option><option value="6">6+ للأطفال</option><option value="10">10+ عائلي</option><option value="13">13+ بإشراف عائلي</option><option value="16">16+ للكبار فقط</option><option value="18">18+ للبالغين فقط</option></select>
+          <label for="gSumAr">خلاصة عربية (بلا حرق للأحداث)</label><textarea id="gSumAr" rows="2" maxlength="1200"></textarea>
+          <label for="gSumEn">English summary</label><textarea id="gSumEn" rows="2" maxlength="1200" dir="ltr"></textarea>
+          <label for="gSrc">المصدر</label><select id="gSrc"><option value="manual">الفريق</option><option value="imdb">IMDb</option><option value="import">مستورد</option></select>
+          <label><input type="checkbox" id="gRev"> راجعه الفريق</label>
+          <div class="acts"><button class="go" type="button" id="gSave">حفظ الدليل</button></div>
+          <h4>المشاهد</h4>
+          <ul class="alist" id="gScenes"></ul>
+          <div class="grid2">
+            <input id="gsSeason" inputmode="numeric" placeholder="الموسم"><input id="gsEp" inputmode="numeric" placeholder="الحلقة">
+            <input id="gsStart" dir="ltr" placeholder="من 12:34"><input id="gsEnd" dir="ltr" placeholder="إلى 12:50">
+            <select id="gsCat"></select><select id="gsSev"><option value="1">خفيف</option><option value="2" selected>متوسط</option><option value="3">شديد</option></select>
+            <input id="gsVer" placeholder="النسخة (مدبلج/مترجم/كامل)"><input id="gsNoteAr" placeholder="وصف عربي مختصر"><input id="gsNoteEn" dir="ltr" placeholder="English note">
+          </div>
+          <div class="acts"><button class="ghost" type="button" id="gsAdd">أضف مشهدًا (يُعتمد فورًا)</button></div>
+        </div>
+        <div class="msg" id="gMsg"></div>
       </div>
     </details>
     <details class="blk fold" id="blkEnrich">
@@ -1546,6 +1577,60 @@ $("cSave").onclick = () => cDo({action: "override", lang: $("cLang").value, fiel
 $("cSlugGo").onclick = () => cDo({action: "slug", slug: $("cSlug").value}, "تغيّر الرابط وسُجّل 301 من القديم");
 $("cTmdbGo").onclick = () => cDo({action: "tmdb", tmdb_id: $("cTmdb").value}, "رُبط معرّف TMDB");
 $("cMergeGo").onclick = () => confirm("الدمج لا يُحذف فيه شيء لكن رابط هذا الكيان يتحوّل 301 إلى الباقي. متابعة؟") && cDo({action: "merge", loser: cur.id, winner: +$("cMerge").value}, "تم الدمج");
+
+// ===== دليل الأهل =====
+const GCATS = [["violence", "عنف ودم"], ["sex", "مشاهد جنسية وعري"], ["profanity", "ألفاظ نابية"], ["drugs", "كحول ومخدرات"], ["frightening", "مشاهد مخيفة"]];
+const GSEV = ["لا يوجد", "خفيف", "متوسط", "شديد"];
+const gcall = (b) => api("/api/content/admin/seo-guide", b).catch(() => ({error: "تعذّر الاتصال"}));
+const gt = (s) => s == null ? "" : (s >= 3600 ? Math.floor(s / 3600) + ":" : "") + String(Math.floor(s % 3600 / 60)).padStart(s >= 3600 ? 2 : 1, "0") + ":" + String(s % 60).padStart(2, "0");
+let gCur = null;
+$("gSev").innerHTML = GCATS.map(([k, n]) => `<label>${esc(n)}<select data-g="${k}"><option value="">غير مُقيَّم</option>${GSEV.map((x, i) => `<option value="${i}">${x}</option>`).join("")}</select></label>`).join("");
+$("gsCat").innerHTML = GCATS.map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join("");
+const gScene = (sc, pend) => `<li><span><b>${esc((GCATS.find(c => c[0] === sc.category) || [0, sc.category])[1])} · ${GSEV[sc.severity]}</b> <small>${sc.season ? "م" + sc.season + " " : ""}${sc.episode ? "ح" + sc.episode + " " : ""}${sc.start_s != null ? gt(sc.start_s) + "–" + gt(sc.end_s) : "بلا وقت"}${sc.version ? " · " + esc(sc.version) : ""} · ${esc(sc.status)}${sc.source === "report" ? " · بلاغ" : ""}</small><br>${esc(sc.note_ar || "")}${pend ? ` <small>(${esc(sc.title)} · ${esc(sc.slug)})</small>` : ""}</span>` +
+  `${sc.status !== "approved" ? `<button class="ghost" type="button" data-gs="${sc.id}" data-st="approved">اعتمد</button>` : ""}${sc.status !== "rejected" ? `<button class="ghost" type="button" data-gs="${sc.id}" data-st="rejected">ارفض</button>` : ""}<button class="ghost" type="button" data-gs="${sc.id}" data-st="delete">احذف</button></li>`;
+const gShow = (d) => {
+  gCur = d.entity; $("gEdit").hidden = false;
+  $("gInfo").textContent = `#${d.entity.id} · ${d.entity.type} · ${d.entity.title}${d.entity.year ? " (" + d.entity.year + ")" : ""}`;
+  const g = d.guide || {sev: {}};
+  document.querySelectorAll("#gSev select").forEach(x => x.value = g.sev && g.sev[x.dataset.g] != null ? g.sev[x.dataset.g] : "");
+  $("gAge").value = g.age_manual ? g.age : ""; $("gSumAr").value = g.summary_ar || ""; $("gSumEn").value = g.summary_en || "";
+  $("gSrc").value = g.source || "manual"; $("gRev").checked = !!g.reviewed;
+  $("gScenes").innerHTML = (d.scenes || []).map(x => gScene(x, false)).join("") || "<li>لا مشاهد</li>";
+};
+$("gFind").onclick = async () => {
+  const d = await ctl({action: "search", q: $("gQ").value});
+  $("gList").innerHTML = d.error ? `<li>${esc(d.error)}</li>` : (d.results || []).map(r => `<li><span><b>${esc(r.title)}</b> <small>#${r.id} · ${esc(r.type)}${r.year ? " · " + r.year : ""}</small></span><button class="ghost" type="button" data-id="${r.id}">اختر</button></li>`).join("");
+};
+$("gList").onclick = async (ev) => {
+  const b = ev.target.closest("button[data-id]"); if (!b) return;
+  const d = await gcall({action: "get", id: +b.dataset.id}); d.entity ? gShow(d) : ($("gMsg").textContent = d.error);
+};
+const gDo = async (body, ok) => {
+  const d = await gcall(body); $("gMsg").textContent = d.error || ok;
+  if (!d.error && d.entity) gShow(d);
+  return d;
+};
+$("gSave").onclick = () => {
+  const f = {age: $("gAge").value, summary_ar: $("gSumAr").value, summary_en: $("gSumEn").value, source: $("gSrc").value, reviewed: $("gRev").checked};
+  document.querySelectorAll("#gSev select").forEach(x => f[x.dataset.g] = x.value);
+  gDo({action: "set", id: gCur.id, fields: f}, "حُفظ الدليل");
+};
+$("gsAdd").onclick = () => gDo({action: "scene_add", id: gCur.id, scene: {season: $("gsSeason").value, episode: $("gsEp").value, start: $("gsStart").value, end: $("gsEnd").value,
+  category: $("gsCat").value, severity: $("gsSev").value, version: $("gsVer").value, note_ar: $("gsNoteAr").value, note_en: $("gsNoteEn").value}}, "أُضيف المشهد");
+const gAct = async (ev) => {
+  const b = ev.target.closest("button[data-gs]"); if (!b) return;
+  const st = b.dataset.st, id = +b.dataset.gs;
+  if (st === "delete" && !confirm("حذف المشهد نهائيًا؟")) return;
+  const d = await gcall(st === "delete" ? {action: "scene_delete", scene_id: id} : {action: "scene_status", scene_id: id, status: st});
+  $("gMsg").textContent = d.error || "تمّ";
+  if (!d.error && d.entity) gShow(d);
+  if (!$("gPendList").hidden) $("gPend").onclick();
+};
+$("gScenes").onclick = gAct; $("gPendList").onclick = gAct;
+$("gPend").onclick = async () => {
+  const d = await gcall({action: "pending"}); const ul = $("gPendList"); ul.hidden = false;
+  ul.innerHTML = d.error ? `<li>${esc(d.error)}</li>` : (d.pending || []).map(x => gScene(x, true)).join("") || "<li>لا بلاغات معلّقة</li>";
+};
 $("eReview").onclick = async () => {
   const d = await api("/api/content/seo/review?limit=200").catch(() => ({error: "تعذّر الاتصال"}));
   const ul = $("eList"); ul.hidden = false;
