@@ -3630,7 +3630,7 @@ def replaced_old_users(accounts):
     for a in (accounts or []):
         for g in (a.get("gates") or []):
             try:
-                out |= {str(r["old"]).lower() for r in user_links.load(user_links.path(DATA_DIR, a["id"], g["id"]))}
+                out |= {str(r["old"]).strip().lower() for r in user_links.load(user_links.path(DATA_DIR, a["id"], g["id"]))}
             except Exception:
                 continue
     return out
@@ -3686,6 +3686,7 @@ def line_copy(accounts, row):
     user, pw, host = row.get("username", ""), row.get("password", ""), row.get("host", "")
     if not (user and pw):
         return ""
+    host = current_host(accounts, row, fallback=False) or host          # الهوست القديم يُنسخ بجديد بوابته
     acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row.get("account_id"))), None)
     gate = find_gate(acct, row.get("gate_id")) if acct else None
     return guide_copy_text(acct, gate or {"host": host}, user, pw, host)
@@ -3697,10 +3698,36 @@ ZERO_CODES = {"smart": "92929480", "falcon": "75710072", "casper": "59820658"}
 
 def zero_code(accounts, row):
     """رمز 0Player لاشتراك صفٍّ من البطاقة (من بوابته أو من منتجه/لوحته)، و"" إن لم يُعرف نوعه."""
-    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row.get("account_id"))), None)
-    gate = find_gate(acct, row.get("gate_id")) if acct else None
+    own = bool(row.get("done_panel_id"))               # البديل على لوحةٍ أخرى: رمز نوعها هي
+    aid, gid = (row.get("done_account_id"), row.get("done_gate_id")) if own else (row.get("account_id"), row.get("gate_id"))
+    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(aid)), None)
+    gate = find_gate(acct, gid) if acct else None
     sub = gate_sub(acct, gate) or line_sub(row, row.get("panel_name", ""))
     return ZERO_CODES.get(sub, "")
+
+
+def current_host(accounts, row, fallback=True):
+    """هوست اشتراك الصفّ **الحالي** (هوست بوابته) إن اختلف عن هوست الصفّ المحفوظ (قديمٌ غُيّر)، وإلا "".
+    بلا بوابةٍ مربوطة بلوحة الصفّ يُؤخذ من أول بوابةٍ بنوع اشتراكه (`fallback`)."""
+    acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row.get("account_id"))), None)
+    gate = find_gate(acct, row.get("gate_id")) if acct else None
+    if not gate and fallback:
+        sub = line_sub(row, row.get("panel_name", ""))
+        gate = reply_gate_for(accounts, sub)[1] if sub else None
+    h = str((gate or {}).get("host") or "").strip()
+    return h if h and renew.norm_host(h) != renew.norm_host(row.get("host")) else ""
+
+
+def upgrade_missing(accounts, ws, row):
+    """صفٌّ «مفقود» له بديلٌ مسجَّل (user_links) ولم يدخل الفهرس بعد: يُعرض بديله بدل «مفقود»."""
+    if row.get("state") != "missing" or row.get("done"):
+        return
+    try:
+        rp = reply_replacement(accounts, ws, row.get("username"))
+    except Exception:
+        rp = None
+    if rp:
+        row["state"], row["replacement"] = "replaced", rp
 
 
 def comp_text(name, order, line, comp, channel=""):
@@ -3897,7 +3924,7 @@ def reply_replacement(accounts, ws, username, old_password=""):
                 recs = user_links.load(user_links.path(DATA_DIR, a["id"], g["id"]))
             except Exception:
                 continue
-            hit = next((r for r in reversed(recs) if str(r.get("old", "")).lower() == u and r.get("new")), None)
+            hit = next((r for r in reversed(recs) if str(r.get("old", "")).strip().lower() == u and r.get("new")), None)
             if hit:
                 new = str(hit["new"])
                 pw, done = "", {}
@@ -7148,6 +7175,7 @@ class Handler(BaseHTTPRequestHandler):
                 dmsgs = panels.dupe_messages(rws) if dups else []
                 for r in d["rows"]:
                     r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
+                    upgrade_missing(racs, rws, r)
                     if r.get("dup"):                     # مكررٌ لم يُعالج: كل طلبٍ لاحق على اليوزر نفسه بلا بديل وغير منتهٍ
                         r["dup_todo"] = renew_dup_todo(dups, r, racs, rws)
                         r["dup_chain"] = renew_dup_chain(dups, r, dmsgs)
@@ -7162,6 +7190,7 @@ class Handler(BaseHTTPRequestHandler):
                             "at": str(rec.get("at", ""))[:16]}) or None
                     r["copy_line"] = line_copy(racs, r)
                     r["zero_code"] = zero_code(racs, r)
+                    r["new_host"] = current_host(racs, r) if r.get("state") not in ("replaced", "covered") and not r.get("done") else ""
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
                 return self._send(200, d)
             if path == "/api/renew/complaints":     # مراجعة الشكاوى: سجل شكاوى سلة بالجلسة، ما ينتظر التاجر وحده
@@ -7185,6 +7214,7 @@ class Handler(BaseHTTPRequestHandler):
                                 include_expired=self._q("expired") == "1")
                 cq = complaints_for_orders(rws)           # طلبٌ مفقود وعليه شكوى: يُعلَّم ليُعالج أولًا
                 for r in d["rows"]:
+                    upgrade_missing(racs, rws, r)
                     r["complaint"] = cq.get(renew.norm_order(r.get("order")))
                     ac = next((a for a in racs if str(a.get("id")) == str(r["account_id"])), None)
                     r["can_create"] = bool(ac and find_gate(ac, r["gate_id"]))
@@ -7207,6 +7237,8 @@ class Handler(BaseHTTPRequestHandler):
                         else:
                             r["copy_line"] = ""
                     r["zero_code"] = zero_code(racs, r)
+                    r["new_host"] = current_host(racs, r) if r.get("state") not in ("replaced", "covered") and not r.get("done") else ""
+                d["pending"] = sum(1 for r in d["rows"] if not r["done"] and not r["expired"] and r["state"] == "missing")
                 d["rows"].sort(key=lambda r: not (r.get("complaint") and not r["complaint"]["replied"]))   # ما عليه شكوى أولًا
                 d["with_complaint"] = sum(1 for r in d["rows"] if r.get("complaint") and not r["complaint"]["replied"])
                 d["wa_linked"] = dup_wa_ready(st)
@@ -7554,8 +7586,10 @@ class Handler(BaseHTTPRequestHandler):
                 r["new_months"] = panels.comp_months(r["days_left"], panels.COMP_DEFAULT)
                 if r.get("done"):
                     r["copy"] = comp_copy(racs, r)
+                upgrade_missing(racs, rws, r)
                 r["copy_line"] = line_copy(racs, r)
                 r["zero_code"] = zero_code(racs, r)
+                r["new_host"] = current_host(racs, r) if r.get("state") not in ("replaced", "covered") and not r.get("done") else ""
             return self._send(200, {"ok": True, "row": row, **d})
         if path == "/api/renew/reply-link":       # يوزرٌ أُنشئ لصاحب شكوى: يُربط بالطلب ويُعاد الردّ جاهزًا
             code, body = reply_link(st, rcfg, rws, racs, req)

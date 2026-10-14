@@ -2360,7 +2360,7 @@ function lcard(r, i, kind){
     + (dn && r.done_panel && r.done_panel !== r.panel_name ? lcField('البديل على', `<b>${esc(r.done_panel)}</b>`) : '')
     + (r.product ? lcField('المنتج', `<span class="clip" title="${esc(r.product)}">${esc(r.product)}</span>`, 'wide') : '') + (r.linked ? lcField('الربط', 'رُبط يدويًا') : '') + '</div>';
   const done = dn ? `<div class="lc-done"><b>✓ أُنشئ له اشتراك جديد${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}${r.done_panel ? ' · على ' + esc(r.done_panel) : ''}</b>`
-    + lcCred(dn.host, dn.new, dn.password) + `<div class="lc-a">`
+    + lcCred(dn.host, dn.new, dn.password, r.zero_code) + `<div class="lc-a">`
     + (r.copy ? `<button class="go lcCopy" data-k="${kind}" data-i="${i}" type="button">نسخ الشرح</button>`
       + (r.phone ? `<a class="ghost lcWa" data-k="${kind}" data-i="${i}" href="#" target="_blank" rel="noopener">واتساب</a>` : '') : '<small>لا بيانات لنسخ الشرح</small>')
     + '</div></div>' : '';
@@ -2376,8 +2376,11 @@ function lcard(r, i, kind){
   if (!dn && r.state === 'missing' && r.username && (!r.expired || kind === 'ls')) act += `<label class="lc-chk"><input type="checkbox" class="lc-x lcSame" checked> بنفس اليوزر والباسورد</label>`;
   if (kind === 'lo' && r.username) act += `<button class="ghost loEdit" data-i="${i}" type="button">عدّل بيانات الاشتراك</button>`;
   if (kind === 'lo') act += `<button class="ghost loRelink" data-i="${i}" type="button">اربط بيوزر آخر</button>`;
+  // هوست الاشتراك قديم: بوابته غيّرت هوستها — الجديد يظهر، وزرّ يحفظه على الطلب (البحث)
+  const nh = r.new_host ? `<div class="lc-a"><small class="c-warn">⚠ الهوست قديم — الجديد لهذا الاشتراك: <b class="ltr">${esc(r.new_host)}</b></small>`
+    + (kind === 'lo' && r.username ? `<button class="go loHost" data-i="${i}" type="button">حدّث الهوست</button>` : '') + '</div>' : '';
   const pills = (r.dup && !dn ? `<span class="pill bad">مكرر</span>` : '') + `<span class="pill ${st[1]}">${st[0]}</span>`;
-  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password, r.zero_code) : lcCred(r.host, r.username, r.password, r.zero_code)}${cur}${done}`
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password, r.zero_code) : lcCred(r.host, r.username, r.password, r.zero_code)}${nh}${cur}${done}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + (kind === 'lo' && r.username ? lcEditForm(r, i) : '') + '</article>';
 }
 // ---- معالج المكرر: إنشاء البديل ← تغيير القديم ← إرسال للبديل ← إرسال ما عُدّل لصاحبه الأول ----
@@ -2445,11 +2448,13 @@ async function wzConnect(f){                                      // f: ما ك�
   await wzRename(WZ.item); return 'ok';
 }
 function wzClose(){
+  if (WZ.queue && WZ.queue.length) { const nx = WZ.queue.shift(); wzOpen(nx, {from: 'lo'}); return; }   // التالي في «عالج الكل»
+  WZ.total = 0;
   $('#wzModal').classList.add('hidden'); document.body.classList.remove('modal-open');
   if (WZ.opts.from === 'dup') loadDup();                        // قائمة «المكرر والبدائل» تتحدّث بحال المعالجة
   else { const q = $('#loQ').value; if (q) loFind(q); }         // وكذلك نتيجة البحث
 }
-$('#wzClose').onclick = wzClose;
+$('#wzClose').onclick = () => { WZ.queue = []; wzClose(); };   // × يوقف «عالج الكل» كله
 async function wzRun(label, fn){
   if (WZ.busy) return; WZ.busy = true; WZ.err = WZ.ok = ''; wzRender(label);
   try { await fn(); } catch (e) { WZ.err = 'تعذّر الاتصال بالخادم — أعد المحاولة'; }
@@ -2457,7 +2462,7 @@ async function wzRun(label, fn){
 }
 function wzRender(busyLabel){
   const it = WZ.item, cur = wzCur();
-  $('#wzSub').textContent = `طلب ${it.order} · ${it.customer || it.phone || ''}`;
+  $('#wzSub').textContent = `طلب ${it.order} · ${it.customer || it.phone || ''}` + (WZ.total > 1 ? ` · ${AR(WZ.total - (WZ.queue || []).length)} من ${AR(WZ.total)}` : '');
   const stp = WZ_STEPS.map(([k, n], x) => `<li class="${WZ.sk[k] ? 'sk' : wzDone(k) ? 'ok' : k === cur ? 'cur' : ''}">${AR(x + 1)}. ${n}${wzDone(k) ? ' ✓' : ''}</li>`).join('');
   let body = '', foot = '';
   const msg = (WZ.err ? `<p class="msg err">${esc(WZ.err)}</p>` : '') + (WZ.ok ? `<p class="msg ok">${esc(WZ.ok)}</p>` : '');
@@ -2546,6 +2551,12 @@ function lcBind(box, rows, kind){
     b.textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; setTimeout(() => b.textContent = t, 1600); });
   box.querySelectorAll('.loEdit').forEach(b => b.onclick = () => { const f = b.closest('article').querySelector('.lc-edit');
     f.classList.toggle('hidden'); if (!f.classList.contains('hidden')) f.querySelector('.leU').focus(); });
+  box.querySelectorAll('.loHost').forEach(b => b.onclick = async () => {
+    const r = rows[b.dataset.i]; b.disabled = true; b.textContent = 'جارٍ التحديث…';
+    const d = await post('/api/renew/order-link', {order: r.order, username: r.username, password: r.password || '', host: r.new_host, replace: r.username});
+    if (d.error) { b.disabled = false; b.textContent = 'حدّث الهوست'; return loState('error', d.error, false, true); }
+    $('#loQ').value = r.order; loRender(d, r.order); loState('found', `حُدّث هوست الطلب ${r.order} إلى ${r.new_host}`);
+  });
   box.querySelectorAll('.loEditCancel').forEach(b => b.onclick = () => b.closest('.lc-edit').classList.add('hidden'));
   box.querySelectorAll('.loEditSave').forEach(b => b.onclick = async () => {
     const r = rows[b.dataset.i], f = b.closest('.lc-edit'), msg = f.querySelector('.loEditMsg'), user = f.querySelector('.leU').value.trim();
@@ -2607,10 +2618,28 @@ async function loFind(q){
   }
   loRender(res.data, q);
 }
+// كل ما يحتاج عملًا في نتيجة البحث: مفقودٌ بلا بديل (إنشاء اشتراكه)، ومكررٌ لم يُعالج (معالجه خطواتٍ) — «عالج الكل» يمرّ عليها بالترتيب
+function loTasks(rows){
+  const t = [];
+  rows.forEach(r => { if (r.dup_todo && r.dup_todo.length) r.dup_todo.forEach(item => (item.can_create || item.done) && t.push({item}));
+    else if (!r.done && r.state === 'missing' && !r.expired && r.can_create !== false && r.account_id) t.push({r}); });
+  return t;
+}
+async function loFixAll(todo, q){
+  const comps = todo.filter(t => t.r), wz = todo.filter(t => t.item).map(t => t.item);
+  if (!confirm(`معالجة ${AR(todo.length)} عمل لهذا البحث؟\n${comps.length ? `• إنشاء ${AR(comps.length)} اشتراكٍ للمفقود (يخصم من الرصيد)\n` : ''}${wz.length ? `• ${AR(wz.length)} مكرر بمعالجٍ خطوةً خطوة` : ''}`)) return;
+  const b = $('#loAll'); if (b) b.disabled = true;
+  for (const t of comps) if (!(await makeComp(t.r, null, null, null, true, 'lo'))) { if (b) b.disabled = false; return loFind(q); }
+  if (wz.length) { WZ.total = wz.length; WZ.queue = wz.slice(1); return wzOpen(wz[0], {from: 'lo'}); }
+  loFind(q);
+}
 function loRender(d, q){
   LO = d; const rows = d.rows || [], ix = d.index;
   $('#loWrap').classList.toggle('hidden', !rows.length);
-  $('#loBody').innerHTML = rows.map((r, i) => lcard(r, i, 'lo')).join('');
+  const todo = loTasks(rows);
+  $('#loBody').innerHTML = (todo.length > 1 ? `<div class="lc-a"><button class="go" id="loAll" type="button">عالج الكل (${AR(todo.length)} عمل: ${AR(todo.filter(t => t.r).length)} مفقود · ${AR(todo.filter(t => t.item).length)} مكرر)</button></div>` : '')
+    + rows.map((r, i) => lcard(r, i, 'lo')).join('');
+  const all = $('#loAll'); if (all) all.onclick = () => loFixAll(todo, q);
   lcBind($('#loBody'), rows, 'lo');
   const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
   if (rows.length) {
