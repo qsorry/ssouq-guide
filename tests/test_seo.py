@@ -1937,11 +1937,51 @@ def unit_release():
         cb = seo_db.connect(d); relb = seo_db.state(cb, "release") or {}; cb.close()
         check("قاعدةٌ مقفلة بكاتبٍ آخر: الدفعة BUSY (لا FAIL)، بلا عائقٍ ولا سجلّ دفعة فاشلة",
               rb.get("status") == "BUSY" and rb["ok"] is False and not relb.get("blocked") and not [b for b in relb.get("batches") or [] if b.get("status") == "FAIL"], str(rb)[:200])
+        # انقطاع TMDB كله (503): عابرٌ لا عيبٌ في المحتوى ← الدفعة BUSY، تراجعٌ كامل، بلا عائقٍ ولا سجلّ دفعةٍ فاشلة
         seo_sources.TMDB_API = tdown + "/3"
-        r8 = seo_release.phase8_batch(d, 10)
+        seo_release.TMDB_RETRY_PAUSE = 0
+        r8t = seo_release.phase8_batch(d, 10)
+        con = seo_db.connect(d)
+        snap_t = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "api_cache")] + [json.dumps(seo_db.state(con, "index_approved"), sort_keys=True)]
+        relt = seo_db.state(con, "release") or {}
+        con.close()
+        check("TMDB معطّل (503 عابر): الدفعة BUSY لا FAIL، وتراجعٌ كامل، وبلا عائقٍ ولا دفعةٍ فاشلة مسجَّلة (تُعاد لاحقًا)",
+              r8t["ok"] is False and r8t["status"] == "BUSY" and "TMDB" in r8t["reason"] and snap_t == snap_before and not relt.get("blocked") and not [b for b in relt.get("batches") or [] if b.get("status") == "FAIL"], str(r8t)[:300])
+        # إعادة المحاولة بالدفعة: فشلان عابران ثم نجاح ← يُحتسب نجاحًا؛ وفشلٌ دائم ← يُرفع؛ و Skip يمرّ
+        calls = {"n": 0}
+        orig_one = seo_sources._one
+
+        def flaky(con_, dd, cid, src, st_, now_):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise ConnectionError("Remote end closed connection without response")
+            return "done", "ok"
+        seo_sources._one = flaky
+        try:
+            res_ok = seo_release._tmdb_one(None, d, 1, {}, 0)
+            calls["n"] = -10
+            try:
+                seo_release._tmdb_one(None, d, 1, {}, 0)
+                raised = False
+            except ConnectionError:
+                raised = True
+        finally:
+            seo_sources._one = orig_one
+        check("انقطاعٌ عابر في كيانٍ واحد: يُعاد حتى 3 مرات (نجح في الثالثة)، وإن دام يُرفع", res_ok == ("done", "ok") and raised is True)
+        # عيبٌ حقيقي (ليس شبكة): الدفعة FAIL وتراجعٌ كامل والإصدار موقوف عند الدفعة 1
+        seo_sources.TMDB_API = tbase + "/3"
+        orig_t1 = seo_release._tmdb_one
+
+        def boom(*a_, **k_):
+            raise ValueError("boom")
+        seo_release._tmdb_one = boom
+        try:
+            r8 = seo_release.phase8_batch(d, 10)
+        finally:
+            seo_release._tmdb_one = orig_t1
         con = seo_db.connect(d)
         snap_after = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "api_cache")] + [json.dumps(seo_db.state(con, "index_approved"), sort_keys=True)]
-        check("TMDB معطّل: الدفعة FAIL (failed>0) وتراجعٌ كامل (أعداد الجداول وقائمة الاعتماد كما كانت) والإصدار موقوف عند الدفعة 1",
+        check("فشلٌ غير عابر (ValueError): الدفعة FAIL (failed>0) وتراجعٌ كامل (أعداد الجداول وقائمة الاعتماد كما كانت) والإصدار موقوف عند الدفعة 1",
               r8["ok"] is False and r8["rolled_back"] and r8["tmdb"]["failed"] > 0 and snap_after == snap_before and (seo_db.state(con, "release") or {}).get("blocked", {}).get("batch") == 1, str(r8)[:300])
         con.close()
         seo_sources.TMDB_API = tbase + "/3"
@@ -2085,7 +2125,7 @@ def unit_cards_softnav():
         check("اسمٌ لا يطابق مفتاح القائمة: البحث الذكي بالاسم يجد الصفحة (تطابقٌ تامٌّ ونوعٌ واحد فقط)", fb == {"ok": True, "path": "/content/series/dark-knight-x/"}, str(fb))
         check("والنوع المخالف لا يُعاد (فيلمٌ باسم مسلسل)", content_page.api_entity(d, "smart", "movie", "The Dark Knight", 2008, "ar") is None)
         check("«عرض التفاصيل الكاملة» رابطٌ خفيف في رأس النافذة (لا زرّ ممتلئ) معطَّلٌ حتى يُعرف مساره، ويُجلب مسبقًا عند اقتراب الزائر من البطاقة، ورقاقات المواسم تصير روابط إلى #seasons",
-              'class="fulllink"' in content_page.JS and "aria-disabled" in content_page.JS and "function warm(e)" in content_page.JS and '"#seasons"' in content_page.JS and 'class="fullrow"' not in content_page.JS)
+              'class="fulllink modal-full-page-btn"' in content_page.JS and "aria-disabled" in content_page.JS and "function warm(e)" in content_page.JS and '"#seasons"' in content_page.JS and 'class="fullrow"' not in content_page.JS)
         check("بطاقة النافذة: رأسٌ بملصقٍ وعنوان، وجسمٌ بالمواسم والقصة، وتذييلٌ لاصقٌ بزرّ الاشتراك (cta)، وزجاج blur(12px) وحوافّ 16px",
               'class="mhead"' in content_page.JS and 'class="mbody"' in content_page.JS and 'class="mfoot"' in content_page.JS and 'class="btn cta"' in content_page.JS and ".btn.cta" in content_page.CSS and "backdrop-filter:blur(12px)" in content_page.CSS
               and "border-radius:16px" in content_page.CSS and "position:sticky;bottom:0" in content_page.CSS)
@@ -2104,6 +2144,17 @@ def unit_cards_softnav():
         rep_ = {"pages": [{"slug": "prison-break-x", "path": "/content/series/prison-break-x"}], "events": {"like": {"count": 1, "top": [["prison-break-x", 1]]}}}
         seo_admin.label_visitors(d, rep_)
         check("تقرير الزوّار: عناوين الأعمال تُحلّ من القاعدة (صفحاتٌ وأحداث)", rep_["pages"][0]["title"] == "prison-break-x" and rep_["events"]["like"]["top"][0][2] == "prison-break-x")
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ux = open(os.path.join(root, "static", "ux.css"), encoding="utf-8").read()
+        fy = open(os.path.join(root, "static", "foryou.js"), encoding="utf-8").read()
+        seo_db.set_setting(con, "preview", True); con.commit()
+        tour = seo_pages.handle(d, "/content/for-you/", "ar")[1].decode()
+        check("ux.css: فئات الزرّ والشارة والزرّ العائم والشرائح المحدَّدة (.active/.on) وعناوين الأقسام معرَّفة",
+              all(k in ux for k in (".modal-full-page-btn", ".modal-tag-badge", ".floating-choice-btn", ".filter-chip.active", ".filter-chip.on", ".filter-section-title", ".floating-choice-btn[hidden]")))
+        check("الفئات مربوطة بعناصرها: النافذة (رابط الصفحة الكاملة والشارة)، الزرّ العائم #fyFab، وشرائح الجولة وعناوينها",
+              "modal-full-page-btn" in content_page.JS and "modal-tag-badge" in content_page.JS and "floating-choice-btn" in fy and "fyEnsure" in fy
+              and tour.count("filter-section-title") == 4 and "tchip filter-chip" in tour and "fyEnsure" in open(os.path.join(root, "static", "softnav.js"), encoding="utf-8").read())
+        check("ux.css يُحقن في كل صفحةٍ عامة بإصدار", b'/static/ux.css?v=' in analytics.inject(b"<html><head></head><body></body></html>", d))
         inj = analytics.inject(b"<html><head></head><body></body></html>", d)
         check("يُحقن سكربت التنقّل السلس بإصدار، وملفّه موجود", b"/static/softnav.js?v=" in inj and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "softnav.js")))
         con.close()

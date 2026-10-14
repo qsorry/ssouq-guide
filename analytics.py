@@ -852,7 +852,7 @@ def _static_ver(name):
         return "0"
 
 
-_FY_VER, _SOFT_VER = _static_ver("foryou.js"), _static_ver("softnav.js")
+_FY_VER, _SOFT_VER, _UX_VER = _static_ver("foryou.js"), _static_ver("softnav.js"), _static_ver("ux.css")
 
 
 def head(data_dir):
@@ -935,7 +935,7 @@ def inject(body, data_dir):
     i = body.find(b"</head>")
     if i < 0:
         return body
-    return (body[:i] + head(data_dir) + f'<script src="/static/foryou.js?v={_FY_VER}" defer></script><script src="/static/softnav.js?v={_SOFT_VER}" defer></script>'.encode() + body[i:])
+    return (body[:i] + head(data_dir) + f'<link rel="stylesheet" href="/static/ux.css?v={_UX_VER}"><script src="/static/foryou.js?v={_FY_VER}" defer></script><script src="/static/softnav.js?v={_SOFT_VER}" defer></script>'.encode() + body[i:])
 
 
 # ================= IndexNow: إرسال الصفحات إلى Bing وYandex وغيرهما =================

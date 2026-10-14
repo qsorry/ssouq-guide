@@ -25,6 +25,7 @@
 import json
 import os
 import re
+import http.client
 import sqlite3
 import threading
 import time
@@ -627,6 +628,23 @@ def candidates_count(con, st, approved):
     return con.execute(f"SELECT COUNT(*) FROM content WHERE {_candidate_clause(con, st, approved)}").fetchone()[0]
 
 
+TRANSIENT_ERRORS = (ConnectionError, TimeoutError, OSError, http.client.HTTPException)   # انقطاعٌ في الشبكة/ردٌّ مبتور من TMDB: ليس عيبًا في المحتوى
+TMDB_RETRIES, TMDB_RETRY_PAUSE = 3, 1.0
+
+
+def _tmdb_one(con, data_dir, cid, st, now):
+    """إثراء كيانٍ من TMDB، وينتظر ويعيد عند الانقطاع العابر (3 محاولات: 1ث ثم 2ث) قبل أن يُحسب فشلًا."""
+    for i in range(TMDB_RETRIES):
+        try:
+            return seo_sources._one(con, data_dir, cid, "tmdb", st, now)
+        except seo_sources.Skip:
+            raise
+        except TRANSIENT_ERRORS:
+            if i == TMDB_RETRIES - 1:
+                raise
+            time.sleep(TMDB_RETRY_PAUSE * (2 ** i))
+
+
 BUSY_WAIT_MS = 120000        # أطول انتظارٍ لقفل الكتابة قبل أن تُؤجَّل الدفعة (الإثراء كلّه معاملةٌ واحدة تحتاج القفل من أولها)
 BUSY_RETRIES = 10            # مرات إعادة الدفعة المؤجَّلة في المهمة (بفاصل BUSY_PAUSE ثانية) قبل أن تتوقف
 BUSY_PAUSE = 60
@@ -679,13 +697,14 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
             before = invariants(con, approved_ids | set(cand_ids))
             red_before = {r["path"]: r["target"] for r in con.execute("SELECT path, target FROM redirect")}
             # 1 — إثراء TMDB (معاملةٌ واحدة، بلا commit حتى تمرّ بوابات الهوية والتسوية)
-            en = {"attempted": 0, "enriched": 0, "miss": 0, "failed": 0, "merged": [], "seasons": 0, "errors": []}
+            en = {"attempted": 0, "enriched": 0, "miss": 0, "failed": 0, "failed_transient": 0, "merged": [], "seasons": 0, "errors": []}
+            failed_ids = set()
             for ri_, r in enumerate(cands):
                 if ri_ % 5 == 0:
                     _tick(data_dir, "إثراء الدفعة من TMDB", ri_, len(cands))
                 en["attempted"] += 1
                 try:
-                    state, msg = seo_sources._one(con, data_dir, r["id"], "tmdb", st, now)
+                    state, msg = _tmdb_one(con, data_dir, r["id"], st, now)
                     if state == "done" and msg.startswith("merged into"):
                         en["merged"].append({"loser": r["id"], "msg": msg})
                     elif state == "done":
@@ -702,7 +721,14 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
                 except seo_sources.Skip as ex:
                     en["miss"] += 1; en["errors"].append({"id": r["id"], "skip": str(ex)[:120]})
                 except Exception as ex:  # noqa: BLE001
-                    en["failed"] += 1; en["errors"].append({"id": r["id"], "error": f"{type(ex).__name__}: {str(ex)[:120]}"})
+                    tr_ = isinstance(ex, TRANSIENT_ERRORS)
+                    en["failed"] += 1; en["failed_transient"] += int(tr_); failed_ids.add(r["id"])
+                    en["errors"].append({"id": r["id"], "error": f"{type(ex).__name__}: {str(ex)[:120]}", "transient": tr_})
+            hard_failed = en["failed"] - en["failed_transient"]
+            tol = max(3, len(cands) // 50)                       # انقطاعاتٌ عابرة قليلة (≤ 2% أو 3) لا تُسقط دفعةً من 300 كيان: يُستثنى كيانها فقط ويُعاد لاحقًا
+            if hard_failed == 0 and en["failed_transient"] > tol:     # الشبكة/TMDB غير مستقرّين: لا عيب في المحتوى ولا يُحظر الإصدار — تُعاد الدفعة نفسها لاحقًا
+                con.rollback()
+                return {"ok": False, "phase": 8, "status": "BUSY", "batch": k, "reason": f"TMDB/network unstable: {en['failed_transient']} transient failures in {len(cands)} — will retry"}
             # 2 — الهوية: كل مرشّحٍ إمّا حيٌّ بمعرّفه، أو مدمجٌ دمجًا مفسَّرًا (نفس tmdb مُتحقَّق، تحويلٌ مباشر إلى كيانٍ حيّ)؛ ولا كيانان حيّان بمعرّف TMDB واحد
             ident = {"conflicts": [], "unexplained_merges": [], "explained_merges": [], "tmdb_mismatch": []}
             red_after = {r["path"]: r["target"] for r in con.execute("SELECT path, target FROM redirect")}
@@ -735,7 +761,7 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
             live_c = [cid for cid in cand_ids if (_row(con, cid) or {"merged_into": 1})["merged_into"] is None]
             tmp = {(cid, l): {"id": cid, "lang": l, "path": seo_pages._path(_row(con, cid), l), "slug": _row(con, cid)["slug"]} for cid in live_c for l in ("ar", "en")}
             g0, f0 = gate_routes(data_dir, con, st, tmp, expect_index=False)
-            newly = [(cid, l) for cid in live_c for l in ("ar", "en") if seo_pages.indexable(_row(con, cid), l, st)[0]]
+            newly = [(cid, l) for cid in live_c if cid not in failed_ids for l in ("ar", "en") if seo_pages.indexable(_row(con, cid), l, st)[0]]
             elig = {"candidates_live": len(live_c), "newly_eligible_routes": len(newly), "newly_eligible_entities": len({c for c, _ in newly}),
                     "by_reason": {}}
             for cid in live_c:
@@ -745,7 +771,7 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
             gate_ok = (not ident["conflicts"] and not ident["unexplained_merges"] and not ident["tmdb_mismatch"] and recon["split_delta"] == 0 and recon["approved_slug_changes"] == 0
                        and recon["approved_merged"] == 0 and recon["approved_redirect_targets_changed"] == 0 and recon["new_redirects"] == recon["new_redirects_direct"]
                        and ra["chains"] == 0 and ra["loops"] == 0 and ra["resolve_failures"] == 0 and g0["http_failures"] == 0 and g0["canonical_failures"] == 0 and g0["hreflang_failures"] == 0
-                       and g0["language_failures"] == 0 and g0["robots_failures"] == 0 and en["failed"] == 0)
+                       and g0["language_failures"] == 0 and g0["robots_failures"] == 0 and hard_failed == 0)
             rec = {"batch": k, "n": len(cands), "candidate_ids": cand_ids[:200], "tmdb": {kk: v for kk, v in en.items() if kk != "merged"}, "merges": en["merged"], "identity": ident, "reconciliation": recon,
                    "redirect_audit": ra, "canonical_hreflang_gate": g0, "gate_failures": f0, "eligibility": elig}
             if not gate_ok:
@@ -753,7 +779,7 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
                 rec["rolled_back"] = True
                 return _batch_fail(rel, k, "batch gate failed (identity/reconciliation/redirect/canonical/hreflang) — rolled back, nothing approved", rec, con=con, now=now, data_dir=data_dir)
             con.commit()                                                     # الإثراء اجتاز بواباته
-            _seen_mark(con, cand_ids, st, now)                               # جُرّبت: لا تُعاد قبل expand_retry_days (المعتمد منها يخرج بالاعتماد)
+            _seen_mark(con, [c for c in cand_ids if c not in failed_ids], st, now)                               # جُرّبت: لا تُعاد قبل expand_retry_days (المعتمد منها يخرج بالاعتماد)
             # checkpoint — اعتماد المستحقّ الجديد ثم بوابة الخريطة (7/8) عليه؛ فشلها = تراجعٌ عن الاعتماد وحده
             ap = seo_db.state(con, APPROVED_KEY) or {"routes": []}
             prev = json.loads(json.dumps(ap))

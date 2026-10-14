@@ -123,7 +123,8 @@
       while (d.body.firstChild) d.body.removeChild(d.body.firstChild);
       var nodes = doc.body.childNodes;
       for (i = 0; i < nodes.length; i++) d.body.appendChild(d.importNode(nodes[i], true));
-      if (keep) { d.body.appendChild(keep); keep.hidden = /\/content\/for-you\//.test(L.pathname); }
+      if (keep) d.body.appendChild(keep);
+      try { if (w.fyEnsure) w.fyEnsure(); } catch (e) {}          // الزرّ العائم: يُنشأ/يُخفى/تُحدَّث لغته بحسب الصفحة الجديدة
       runScripts(d.body);
       var h = L.hash && d.getElementById(decodeURIComponent(L.hash.slice(1)));
       if (h) h.scrollIntoView(); else w.scrollTo(0, push ? 0 : (y || 0));

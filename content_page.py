@@ -1190,12 +1190,11 @@ a.stat[aria-current]{background:linear-gradient(135deg,var(--acc),var(--acc2));b
 .sheet .mhead{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:center;padding-inline:16px;margin-top:-56px;position:relative}
 .sheet .mhead>.pos{width:96px;box-shadow:0 14px 30px -14px #000;border-radius:12px}
 .sheet .info{min-width:0;display:grid;gap:4px;justify-items:start;padding-top:22px}
-.sheet .kick{display:block;width:fit-content;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.68rem;padding:1px 9px;color:#cfe3ff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:999px;font-weight:600;line-height:1.6}
+.sheet .kick{display:block;width:fit-content;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;line-height:1.6}      /* لونه وحشوته من static/ux.css (.modal-tag-badge) */
 .sheet h2{margin:0;font-size:1.4rem;font-weight:700;line-height:1.25;text-wrap:balance}
 .sheet .meta{margin:0;color:#94A3B8;font-size:.9rem;line-height:1.5}.sheet .meta.sub{font-size:.82rem;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
 .sheet .meta .rt{margin:0;font-size:.82rem}
-.sheet .fulllink{display:inline-flex;align-items:center;gap:6px;margin-top:2px;padding:2px 0;color:#9cc8ff;font-size:.88rem;font-weight:600;border-bottom:1px dashed rgba(156,200,255,.4);transition:color .15s,border-color .15s}
-.sheet .fulllink:hover{color:#fff;border-bottom-color:#fff}.sheet .fulllink[aria-disabled=true]{opacity:.5;pointer-events:none}
+.sheet .fulllink{margin-top:4px}.sheet .fulllink[aria-disabled=true]{opacity:.5;pointer-events:none}      /* مظهره من static/ux.css (.modal-full-page-btn) */
 .sheet .x{position:absolute;top:10px;inset-inline-end:10px;z-index:2;width:34px;height:34px;border-radius:50%;
   border:1px solid rgba(255,255,255,.2);background:rgba(6,11,23,.55);color:#fff;cursor:pointer;display:grid;place-items:center}
 .sheet .mbody{padding:12px 16px 4px;display:grid;gap:10px}
@@ -1310,11 +1309,11 @@ JS = """
     $(".sheet", modal).innerHTML = '<button class="x" type="button" aria-label="' + T.close + '">✕</button><div class="cover"></div>'
       + '<div class="mhead"><div class="pos" style="--h:' + hue(d.n || "") + '"><span class="ph">' + esc(ini(d.n || "")) + '</span>'
       + (d.p ? '<img src="' + esc(d.p) + '" alt="">' : '') + '</div><div class="info">'
-      + '<span class="kick">' + esc(T.kind[d.k] || "") + (d.c ? ' · ' + esc(d.c) : '') + '</span>'
+      + '<span class="kick modal-tag-badge">' + esc(T.kind[d.k] || "") + (d.c ? ' · ' + esc(d.c) : '') + '</span>'
       + '<h2 id="cx-title" dir="auto">' + esc(d.n) + '</h2>'
       + (meta ? '<p class="meta">' + esc(meta) + '</p>' : '')
       + (facts || d.r ? '<p class="meta sub">' + (d.r ? '<b class="rt">★ ' + esc(d.r) + '</b>' : '') + (facts ? esc(facts) : '') + '</p>' : '')
-      + (d.k === "live" ? "" : '<a class="fulllink" id="cx-full" href="#" aria-disabled="true">' + T.full + ' <span aria-hidden="true">' + (RTL ? "←" : "→") + '</span></a>')
+      + (d.k === "live" ? "" : '<a class="fulllink modal-full-page-btn" id="cx-full" href="#" aria-disabled="true">' + T.full + ' <span aria-hidden="true">' + (RTL ? "←" : "→") + '</span></a>')
       + '</div></div>'
       + '<div class="mbody">'
       + (d.sc ? '<div class="seasons" id="cx-seasons">' + d.sc.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '')
@@ -1336,9 +1335,10 @@ JS = """
     }
     if (d.b || d.p) $(".cover", modal).style.backgroundImage = "url(" + JSON.stringify(d.b || d.p) + ")";
     modal.hidden = false; document.body.style.overflow = "hidden"; last = from;
+    var fab = document.getElementById("fyFab"); if (fab) fab.hidden = true;            // الزرّ العائم لا يغطّي زرّ الاشتراك في النافذة
     $(".x", modal).focus();
   }
-  function close(){ modal.hidden = true; document.body.style.overflow = ""; if (last && last.focus) last.focus(); }
+  function close(){ modal.hidden = true; document.body.style.overflow = ""; if (window.fyEnsure) window.fyEnsure(); if (last && last.focus) last.focus(); }
   function pick(el){ try { open(JSON.parse(el.getAttribute("data-d")), el); } catch (err) {} }
   onDoc("click", function(e){
     if (!modal.hidden || e.target.closest("a,.arrow,.harrow,.dots,.hlist")) return;
