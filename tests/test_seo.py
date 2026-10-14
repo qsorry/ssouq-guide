@@ -1947,6 +1947,33 @@ def unit_reco():
         apie = seo_reco.api(d, {"likes": "tr-a", "seen": "tr-a"}, "en")
         check("وبالإنجليزية: /en والسبب بالإنجليزية", apie["items"][0]["path"].startswith("/en/content/") and apie["items"][0]["why"].startswith("Because you liked"))
         check("slugs غير صالحة أو حقنٌ تُهمَل بلا خطأ", seo_reco.slugs("a, ../x, 'or 1=1, b-2, A", 10) == ["a", "b-2"] and seo_reco.recommend(d, "'; drop table content;--", "")["items"] is not None)
+        # أصل العمل (تركي/أمريكي…): قرائن الأقسام (hint) تغطّي الأعمال غير المُثراة، والأصل المختار شرط
+        c = seo_db.connect(d)
+        hubtr = tax["turkish"]
+        us_t = seo_db.taxonomy_id(c, "country", "US", "us", "الولايات المتحدة", "United States", now)
+        ids_h = []
+        for i_ in range(13):                                      # 13 مسلسلًا تركيًا بقرينة القسم فقط (لم يُثروا بعد)
+            cid_ = c.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES ('series',?,?,?,?,?,?,?,'local',1,?,?)",
+                             (f"hint-tr-{i_}", f"hint-tr-{i_}", f"hint-tr-{i_}", f"hint-tr-{i_}", 2015 + i_ % 5, 7.0 + (i_ % 3) * 0.3, "https://image.tmdb.org/t/p/w342/h.jpg", now, now)).lastrowid
+            seo_db.set_membership(c, cid_, hubtr, "hint", 0.3, now)
+            ids_h.append(cid_)
+        for i_ in range(13):                                      # و13 أمريكيًا بقرينة القسم
+            cid_ = c.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES ('series',?,?,?,?,?,?,?,'local',1,?,?)",
+                             (f"hint-us-{i_}", f"hint-us-{i_}", f"hint-us-{i_}", f"hint-us-{i_}", 2012 + i_ % 5, 7.5, "https://image.tmdb.org/t/p/w342/u.jpg", now, now)).lastrowid
+            seo_db.set_membership(c, cid_, us_t, "hint", 0.3, now)
+        c.commit(); c.close()
+        chips = seo_reco.interests(d, "ar")
+        names = {x["name"]: x for x in chips}
+        check("اهتمامات الجولة: «تركي» (من قرائن الأقسام) و«أمريكي» في مجموعة الأصل بصيغة النسب، والتصنيفات منفصلة", "تركي" in names and names["تركي"]["group"] == "origin" and "أمريكي" in names
+              and names["أمريكي"]["group"] == "origin" and all(x["group"] == "genre" for x in chips if x["name"] in ("أنمي",)), str([(x["name"], x["group"]) for x in chips]))
+        check("التركي أولًا في الأصل", chips[0]["name"] == "تركي", str([x["name"] for x in chips][:4]))
+        rt = seo_reco.recommend(d, "", "", interests=str(hubtr))
+        got_t = [i["slug"] for i in rt["items"]]
+        check("اهتمام «تركي» وحده (قرائن فقط): كل ما يُعرض تركي — لا أمريكي ولا غيره", len(got_t) >= 8 and all(x.startswith(("hint-tr-", "tr-")) for x in got_t), str(got_t))
+        ru = seo_reco.recommend(d, "", "", interests=str(us_t))
+        check("واهتمام «أمريكي»: الأمريكي وحده", ru["items"] and all(i["slug"].startswith("hint-us-") for i in ru["items"]), str([i["slug"] for i in ru["items"]]))
+        rl = seo_reco.recommend(d, "hint-tr-0", "hint-tr-0")
+        check("من أعجبه مسلسلٌ تركي بلا إثراء (قرينة القسم فقط): تُقترح مسلسلاتٌ تركية مشابهة", len(rl["items"]) >= 5 and all(i["slug"].startswith(("hint-tr-", "tr-")) for i in rl["items"]), str([i["slug"] for i in rl["items"]]))
         # البحث الذكي: أخطاء إملائية وكتابة بحرفٍ آخر
         found = {q: [i["slug"] for i in seo_reco.find(d, q, "ar")["items"]] for q in ("prison break", "person break", "Prison Brek", "بريزن بريك")}
         check("بحثٌ يقبل الأخطاء: «prison break» · «person break» · «Prison Brek» · «بريزن بريك» كلها تجد Prison Break", all("prison-break" in v for v in found.values()), str(found))

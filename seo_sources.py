@@ -1462,8 +1462,19 @@ def summary(con):
 
 
 # ================= ختم الملفات وتنقيتها =================
+_cv = {"at": 0, "val": None}
+
+
 def code_version():
-    """نسخة الكود: commit من git إن وُجد، وبصمة ملفات الطبقة دائمًا (داخل الحاوية لا git)."""
+    """نسخة الكود: commit من git إن وُجد، وبصمة ملفات الطبقة دائمًا (داخل الحاوية لا git). مخزَّنة دقيقةً: تُقرأ في كل فتحٍ للإدارة والكود لا يتغيّر بين نشرين."""
+    if _cv["val"] and time.time() - _cv["at"] < 60:
+        return dict(_cv["val"])
+    val = _code_version()
+    _cv.update({"at": time.time(), "val": val})
+    return dict(val)
+
+
+def _code_version():
     import hashlib
     import subprocess
     here = os.path.dirname(os.path.abspath(__file__))
