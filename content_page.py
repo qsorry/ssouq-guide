@@ -1031,8 +1031,7 @@ button{font:inherit;color:inherit}
   background:linear-gradient(160deg,var(--card2),var(--card))}
 a.stat{color:inherit;text-decoration:none;transition:border-color .15s,transform .15s}a.stat:hover{border-color:var(--line2);transform:translateY(-2px)}
 a.stat[aria-current]{background:linear-gradient(135deg,var(--acc),var(--acc2));border-color:transparent;box-shadow:0 10px 26px -14px var(--acc)}a.stat[aria-current] .i,a.stat[aria-current] small{color:inherit}
-.btn[hidden]{display:none}.sheet .txt .btn{margin-inline-end:8px;margin-top:8px}.btn.full{background:linear-gradient(135deg,var(--acc),var(--acc2))}
-.btn.full[aria-disabled=true]{opacity:.55;pointer-events:none}.fullrow{margin:12px 0 4px}.fullrow[hidden]{display:none}
+.btn[hidden]{display:none}
 .stat .i{width:34px;height:34px;color:var(--acc)}
 .stat b{display:block;font-size:1.55rem;line-height:1.2;font-variant-numeric:tabular-nums}
 .stat small{color:var(--mute)}
@@ -1182,23 +1181,34 @@ a.stat[aria-current]{background:linear-gradient(135deg,var(--acc),var(--acc2));b
 .missing{max-width:620px;margin:40px auto}
 .missing ul{line-height:2}
 /* النافذة */
-.modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(2,6,14,.74);backdrop-filter:blur(6px)}
-.sheet{position:relative;width:min(760px,100%);max-height:92vh;overflow:auto;border-radius:22px;border:1px solid var(--line2);
-  background:var(--bg2);box-shadow:0 30px 80px -20px rgba(0,0,0,.9)}
-.sheet .cover{height:170px;background:linear-gradient(135deg,#132b5a,#0a1223) center/cover;position:relative}
-.sheet .cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,var(--bg2),rgba(10,18,35,.25))}
-.sheet .body{display:grid;grid-template-columns:170px minmax(0,1fr);gap:20px;padding:0 22px 22px;margin-top:-86px;position:relative}
-.sheet .body>.pos{box-shadow:0 20px 40px -16px #000}
-.sheet .txt{padding-top:96px;min-width:0}
-.sheet h2{margin:10px 0 4px;font-size:1.45rem;line-height:1.25}
-.sheet .x{position:absolute;top:12px;inset-inline-end:12px;z-index:2;width:38px;height:38px;border-radius:50%;
-  border:1px solid rgba(255,255,255,.2);background:rgba(6,11,23,.6);color:#fff;cursor:pointer;display:grid;place-items:center}
-.sheet .plot{-webkit-line-clamp:unset;display:block}
-.seasons{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.seasons span{background:var(--card2);border:1px solid var(--line2);border-radius:999px;padding:4px 12px;font-size:.8rem}
-.sheet .btn{margin-top:18px}
-@media (max-width:560px){.sheet .body{grid-template-columns:104px minmax(0,1fr);gap:14px;padding:0 16px 18px;margin-top:-56px}
-  .sheet .txt{padding-top:62px}.sheet h2{font-size:1.15rem}.sheet .cover{height:120px}}
+.modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(2,6,14,.66);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+/* بطاقة العمل: زجاجٌ معتم بحوافّ 16px؛ رأسٌ (ملصق + عنوان) فمحتوى يمرَّر فتذييلٌ لاصق بزرّ الاشتراك */
+.sheet{position:relative;width:min(640px,100%);max-height:92vh;overflow:auto;overscroll-behavior:contain;border-radius:16px;border:1px solid rgba(255,255,255,.12);
+  background:rgba(12,20,38,.86);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 30px 80px -20px rgba(0,0,0,.9)}
+.sheet .cover{height:96px;background:linear-gradient(135deg,#132b5a,#0a1223) center/cover;position:relative}
+.sheet .cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(12,20,38,.96),rgba(12,20,38,.35))}
+.sheet .mhead{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:center;padding-inline:16px;margin-top:-56px;position:relative}
+.sheet .mhead>.pos{width:96px;box-shadow:0 14px 30px -14px #000;border-radius:12px}
+.sheet .info{min-width:0;display:grid;gap:4px;justify-items:start;padding-top:22px}
+.sheet .kick{display:block;width:fit-content;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.68rem;padding:1px 9px;color:#cfe3ff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:999px;font-weight:600;line-height:1.6}
+.sheet h2{margin:0;font-size:1.4rem;font-weight:700;line-height:1.25;text-wrap:balance}
+.sheet .meta{margin:0;color:#94A3B8;font-size:.9rem;line-height:1.5}.sheet .meta.sub{font-size:.82rem;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.sheet .meta .rt{margin:0;font-size:.82rem}
+.sheet .fulllink{display:inline-flex;align-items:center;gap:6px;margin-top:2px;padding:2px 0;color:#9cc8ff;font-size:.88rem;font-weight:600;border-bottom:1px dashed rgba(156,200,255,.4);transition:color .15s,border-color .15s}
+.sheet .fulllink:hover{color:#fff;border-bottom-color:#fff}.sheet .fulllink[aria-disabled=true]{opacity:.5;pointer-events:none}
+.sheet .x{position:absolute;top:10px;inset-inline-end:10px;z-index:2;width:34px;height:34px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.2);background:rgba(6,11,23,.55);color:#fff;cursor:pointer;display:grid;place-items:center}
+.sheet .mbody{padding:12px 16px 4px;display:grid;gap:10px}
+.sheet .plot{-webkit-line-clamp:unset;display:block;margin:0;font-size:.9rem;line-height:1.75}
+.sheet .empty{margin:0;font-size:.8rem}
+.seasons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.seasons span,.seasons a.ss{display:block;padding:6px 10px;font-size:.78rem;line-height:1.5;color:#dbe6fb;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:10px;
+  transition:background .15s,border-color .15s,transform .1s}
+.seasons span:hover,.seasons a.ss:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2)}
+.seasons a.ss:active,.seasons span:active{transform:scale(.98);background:rgba(47,140,255,.2);border-color:var(--acc)}
+.sheet .mfoot{position:sticky;bottom:0;margin-top:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(0deg,rgba(12,20,38,.97) 55%,rgba(12,20,38,0));-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.sheet .btn.cta{width:100%;margin:0;padding:13px 18px;border-radius:14px;background:linear-gradient(135deg,#3b94ff,#8b7cf6);box-shadow:0 10px 30px -10px rgba(79,140,255,.85),inset 0 1px 0 rgba(255,255,255,.25)}
+@media (min-width:561px){.sheet .mhead{grid-template-columns:132px minmax(0,1fr);gap:16px;margin-top:-72px}.sheet .mhead>.pos{width:132px}.sheet .cover{height:120px}.seasons{grid-template-columns:repeat(3,minmax(0,1fr))}}
 footer.foot{margin:40px 0 0;padding:22px 0 30px;border-top:1px solid var(--line);color:var(--mute);font-size:.85rem}
 footer.foot p{margin:4px 0}
 footer.foot a{color:var(--acc)}
@@ -1296,25 +1306,32 @@ JS = """
   onDoc("mouseover", warm); onDoc("touchstart", warm, {passive: true});
   function open(d, from){
     var facts = [d.y, (d.g || []).join(" • ")].filter(Boolean).join(" · ");
+    var meta = d.ss || "";            // «5 مواسم · 88 حلقة»: أول سطرٍ ثانوي تحت العنوان
     $(".sheet", modal).innerHTML = '<button class="x" type="button" aria-label="' + T.close + '">✕</button><div class="cover"></div>'
-      + '<div class="body"><div class="pos" style="--h:' + hue(d.n || "") + '"><span class="ph">' + esc(ini(d.n || "")) + '</span>'
-      + (d.p ? '<img src="' + esc(d.p) + '" alt="">' : '') + '</div><div class="txt">'
+      + '<div class="mhead"><div class="pos" style="--h:' + hue(d.n || "") + '"><span class="ph">' + esc(ini(d.n || "")) + '</span>'
+      + (d.p ? '<img src="' + esc(d.p) + '" alt="">' : '') + '</div><div class="info">'
       + '<span class="kick">' + esc(T.kind[d.k] || "") + (d.c ? ' · ' + esc(d.c) : '') + '</span>'
-      + '<h2 id="cx-title" dir="auto">' + esc(d.n) + '</h2>' + (facts ? '<p class="facts">' + esc(facts) + '</p>' : '')
-      + (d.k === "live" ? "" : '<p class="fullrow"><a class="btn full" id="cx-full" href="#" aria-disabled="true">' + T.full + ' ' + (RTL ? "←" : "→") + '</a></p>')
-      + (d.r ? '<p class="rt">★ ' + esc(d.r) + '</p>' : '')
-      + (d.ss ? '<p class="facts">' + esc(d.ss) + '</p>' : '')
-      + (d.sc ? '<div class="seasons">' + d.sc.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '')
+      + '<h2 id="cx-title" dir="auto">' + esc(d.n) + '</h2>'
+      + (meta ? '<p class="meta">' + esc(meta) + '</p>' : '')
+      + (facts || d.r ? '<p class="meta sub">' + (d.r ? '<b class="rt">★ ' + esc(d.r) + '</b>' : '') + (facts ? esc(facts) : '') + '</p>' : '')
+      + (d.k === "live" ? "" : '<a class="fulllink" id="cx-full" href="#" aria-disabled="true">' + T.full + ' <span aria-hidden="true">' + (RTL ? "←" : "→") + '</span></a>')
+      + '</div></div>'
+      + '<div class="mbody">'
+      + (d.sc ? '<div class="seasons" id="cx-seasons">' + d.sc.map(function(t){ return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' : '')
       + (d.a ? '<p class="empty">' + (d.k === "series" ? T.upd : T.add) + esc(d.a) + '</p>' : '')
       + (d.d ? '<p class="plot">' + esc(d.d) + '</p>' : '')
-      + '<a class="btn" href="' + esc(CTA) + '" target="_blank" rel="noopener">' + T.sub + esc(NAME) + '</a></div></div>';
-    var ef = $("#cx-full", modal);        // صفحة العمل الكاملة (إن وُجدت): الرابط حقيقي فيلتقطه التنقّل السلس؛ يظهر معطّلًا فورًا ويفعَّل حين يُعرف مسارها، ويختفي إن لم تكن له صفحة
+      + '</div><div class="mfoot"><a class="btn cta" href="' + esc(CTA) + '" target="_blank" rel="noopener">' + T.sub + esc(NAME) + '</a></div>';
+    var ef = $("#cx-full", modal);        // صفحة العمل الكاملة (إن وُجدت): رابطٌ حقيقي يلتقطه التنقّل السلس؛ يظهر معطّلًا فورًا ويُفعَّل حين يُعرف مساره، ويختفي إن لم تكن له صفحة
     if (ef) {
       ef.addEventListener("click", function(e){ if (ef.getAttribute("aria-disabled") === "true") e.preventDefault(); });
       lookup(d).then(function(path){
         if (modal.hidden || !ef.isConnected) return;
-        if (path) { ef.href = path; ef.removeAttribute("aria-disabled"); }
-        else ef.parentNode.hidden = true;
+        if (path) {
+          ef.href = path; ef.removeAttribute("aria-disabled");
+          $$("#cx-seasons span", modal).forEach(function(sp){        // ورقاقة الموسم تفتح قسم المواسم في الصفحة الكاملة
+            var a = document.createElement("a"); a.className = "ss"; a.href = path + "#seasons"; a.textContent = sp.textContent; sp.parentNode.replaceChild(a, sp);
+          });
+        } else ef.style.display = "none";
       });
     }
     if (d.b || d.p) $(".cover", modal).style.backgroundImage = "url(" + JSON.stringify(d.b || d.p) + ")";
