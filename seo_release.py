@@ -25,6 +25,7 @@
 import json
 import os
 import re
+import sqlite3
 import threading
 import time
 import urllib.error
@@ -626,6 +627,25 @@ def candidates_count(con, st, approved):
     return con.execute(f"SELECT COUNT(*) FROM content WHERE {_candidate_clause(con, st, approved)}").fetchone()[0]
 
 
+BUSY_WAIT_MS = 120000        # أطول انتظارٍ لقفل الكتابة قبل أن تُؤجَّل الدفعة (الإثراء كلّه معاملةٌ واحدة تحتاج القفل من أولها)
+BUSY_RETRIES = 10            # مرات إعادة الدفعة المؤجَّلة في المهمة (بفاصل BUSY_PAUSE ثانية) قبل أن تتوقف
+BUSY_PAUSE = 60
+
+
+def _write_lock(con):
+    """يحجز قفل الكتابة من بداية الدفعة. ‏False إن بقي مشغولًا بعد BUSY_WAIT_MS (بدل أن تفشل كل عمليات الإثراء بـ «database is locked»)."""
+    if con.in_transaction:
+        con.commit()
+    con.execute(f"PRAGMA busy_timeout={int(BUSY_WAIT_MS)}")
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        con.execute("PRAGMA busy_timeout=30000")
+
+
 def phase8_batch(data_dir, n=100, now=None, submit=None):
     """دفعة توسيعٍ واحدة بثماني خطواتٍ ثم checkpoint. إثراء الدفعة كلّه في معاملةٍ واحدة: فشلُ أي بوابة قبل الاعتماد = rollback (لا أثر إلا التقرير)."""
     now = _now(now)
@@ -654,6 +674,8 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
                 rel.setdefault("batches", []).append(rec); _save_state(con, rel, now)
                 return {"ok": True, "phase": 8, **rec}
             cand_ids = [r["id"] for r in cands]
+            if not _write_lock(con):        # عملية أخرى تكتب في القاعدة (بناءٌ/إثراءٌ آخر): ليس فشلَ دفعة ولا يوقف الإصدار — تُعاد لاحقًا
+                return {"ok": False, "phase": 8, "status": "BUSY", "batch": k, "reason": "database busy: another process holds the write lock — will retry"}
             before = invariants(con, approved_ids | set(cand_ids))
             red_before = {r["path"]: r["target"] for r in con.execute("SELECT path, target FROM redirect")}
             # 1 — إثراء TMDB (معاملةٌ واحدة، بلا commit حتى تمرّ بوابات الهوية والتسوية)
@@ -845,6 +867,7 @@ def run_job(data_dir, now=None, submit=None, progress=None):
     """ينفّذ دفعات المهمة المحفوظة واحدةً بعد أخرى، ويُحدّث الحالة بعد كل دفعة (فتبقى بعد إعادة التشغيل). يتوقف عند أول فشل أو نفاد المرشّحين أو
     انتهاء العدد أو أمر الإيقاف (يُقرأ قبل كل دفعة)."""
     out = []
+    busy = 0
     job = job_get(data_dir)
     if job.get("active") and job.get("pipeline") and not job.get("launched"):
         ok_, why_ = _pipeline_launch(data_dir, progress)
@@ -870,6 +893,16 @@ def run_job(data_dir, now=None, submit=None, progress=None):
         if progress:
             progress(int(job.get("done") or 0) + 1)
         r = phase8_batch(data_dir, int(job.get("n") or 100), now=now, submit=submit)
+        if r.get("status") == "BUSY":                 # القاعدة مشغولة بكاتبٍ آخر: انتظر وأعد الدفعة نفسها بلا فشلٍ ولا عدّ
+            busy += 1
+            if busy <= BUSY_RETRIES:
+                job = job_get(data_dir)
+                job["busy_retries"] = busy
+                _job_save(data_dir, job)
+                time.sleep(BUSY_PAUSE)
+                continue
+        else:
+            busy = 0
         rec = {k: r.get(k) for k in ("ok", "batch", "status", "reason", "n", "approved_routes_total")}
         out.append(rec)
         job = job_get(data_dir)
