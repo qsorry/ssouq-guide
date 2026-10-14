@@ -1030,8 +1030,8 @@ def unit_render():
           and '<form class="search" role="search" action="/content/smart" method="get">' in html)
     check("خانات الأعداد", all(f"<b>{n}</b><small>{w}</small>" in html for n, w in
                                (("4", "أفلام"), ("9", "مسلسلات"), ("5", "قنوات"), ("13", "حلقة"), ("11", "موسمًا"))))
-    check("تبويبات الأنواع بأعدادها", "المسلسلات <small>9</small></a>" in html and "الأفلام <small>4</small></a>" in html
-          and "القنوات <small>5</small></a>" in html)
+    check("خانات الأعداد روابط إلى أنواعها (هي التبويبات) بلا صفٍّ مكرِّر", html.count('<a class="stat"') == 3 and "t=series" in html and "t=movie" in html and "t=live" in html
+          and "المسلسلات <small>9</small></a>" not in html)
     first = re.search(r'class="slide on".*?<h2 dir="auto">(.*?)</h2>', html, re.S)
     check("الواجهة: أحدث ما له صورة، ثلاثة أفلام ومسلسلان", html.count('<article class="slide') == 5
           and html.count('class="slide on"') == 1 and first and first.group(1) == "Horror Night"
@@ -1288,8 +1288,7 @@ def unit_render_en():
           and '<a class="lang" href="/content/smart" hreflang="ar" lang="ar">' in html and "العربية</a>" in html)
     check("خانات الأعداد", all(f"<b>{n}</b><small>{w}</small>" in html for n, w in
                                (("4", "movies"), ("9", "series"), ("5", "channels"), ("13", "episodes"), ("11", "seasons"))))
-    check("تبويبات الأنواع بأعدادها", "Series <small>9</small></a>" in html and "Movies <small>4</small></a>" in html
-          and "Channels <small>5</small></a>" in html)
+    check("خانات الأعداد روابط إلى أنواعها (هي التبويبات) بلا صفٍّ مكرِّر", html.count('<a class="stat"') == 3 and "t=series" in html and "Series <small>9</small></a>" not in html)
     check("الصفوف كما بالعربية وعناوينها بالإنجليزية", titles(section(html, "Recently added movies"))
           == ["Horror Night", "الفيل الأزرق ج2", "Love, Death &amp; Robots: The Movie", "The Batman"]
           and "Breaking Bad" in titles(section(html, "New series and new episodes"))

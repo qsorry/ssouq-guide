@@ -16,6 +16,7 @@
 
 تشغيل:  python tests/test_analytics.py
 """
+import re
 import datetime
 import json
 import os
@@ -226,6 +227,38 @@ GA_SNIP = """<!-- Google tag (gtag.js) -->
 gtag('config', 'G-AB12CD34EF');</script>"""
 
 
+def unit_content_report():
+    print("زوّار المحتوى: الأقسام واللغات وأكثر الصفحات والأحداث")
+    d = tempfile.mkdtemp(prefix="an_content_")
+    try:
+        t0 = time.time()
+        h = lambda ua=IPH: H(ua)      # noqa: E731
+        A.hit(d, pv("/content/series/prison-break", "https://www.google.com/"), h(), "1.1.1.1", OWN, now=t0)
+        A.hit(d, end(40, 1, "/content/series/prison-break"), h(), "1.1.1.1", OWN, now=t0 + 5)
+        A.hit(d, pv("/content/series/prison-break", "https://guide.ssouq.com/content"), h(WIN), "2.2.2.2", OWN, now=t0 + 6)
+        A.hit(d, pv("/en/content/movies/dune", "https://www.google.com/"), h(WIN), "3.3.3.3", OWN, now=t0 + 7)
+        A.hit(d, pv("/content/for-you", ""), h(AND), "4.4.4.4", OWN, now=t0 + 8)
+        A.hit(d, pv("/iphone", ""), h(AND), "5.5.5.5", OWN, now=t0 + 9)               # خارج المحتوى: لا يُحسب هنا
+        for n, l in (("tour_step", "1"), ("tour_step", "2"), ("tour_step", "3"), ("tour_result", "12"), ("reco_click", "prison-break"), ("like", "prison-break"), ("fy_click", "/content/x"),
+                     ("search", "prison"), ("search", "prison"), ("store_click", "p1")):
+            A.hit(d, ev(n, l, "/content/for-you"), h(AND), "4.4.4.4", OWN, now=t0 + 10)
+        r = A.content_report(d, 7, now=t0 + 20)
+        sec = {x["key"]: x["views"] for x in r["sections"]}
+        check("مشاهدات المحتوى 4 (الأقسام: مسلسلات 2 · أفلام 1 · محتار ايش تشاهد 1)، و/iphone خارجها", r["totals"]["views"] == 4 and sec == {"series": 2, "movies": 1, "for-you": 1}, str(r["sections"]))
+        check("اللغتان: عربي 3 وإنجليزي 1 (/en)", r["totals"]["ar"] == 3 and r["totals"]["en"] == 1)
+        top = {p["path"]: p for p in r["pages"]}
+        pb = top["/content/series/prison-break"]
+        check("أكثر الصفحات: prison-break مرتين، slug مستخرج، مدة قراءة 40ث، ودخل من الخارج مرةً (جوجل) لا من داخل الموقع", pb["views"] == 2 and pb["slug"] == "prison-break" and pb["avg"] == 40 and pb["entries"] == 1, str(pb))
+        check("حصة المحتوى من كل مشاهدات الموقع = 4/5", abs(r["totals"]["share"] - 0.8) < 0.001, str(r["totals"]))
+        check("حلقة «محتار ايش تشاهد»: بدأ 1 · مقترحات 1 · فتح مقترحًا 1 · الزرّ العائم 1", r["tour"] == {"started": 1, "interests": 1, "results": 1, "shown": 1, "clicked": 1, "fab": 1}, str(r["tour"]))
+        check("أحداث المحتوى وحدها (store_click خارجها)، وأعلى بحث «prison» مرتين", "store_click" not in r["events"] and r["events"]["search"]["top"][0] == ["prison", 2] and r["events"]["like"]["top"][0] == ["prison-break", 1])
+        check("اليومي: مشاهدات اليوم 4", r["daily"][-1]["views"] == 4 and len(r["daily"]) == 7)
+        check("أقسام المسار: الدليل والأفلام والتصنيف والغريب", A.content_section("/content/smart") == ("server", "ar", "") and A.content_section("/en/content/movies/x") == ("movies", "en", "x")
+              and A.content_section("/content") == ("hub", "ar", "") and A.content_section("/iphone") is None and A.content_section("/contentx") is None)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_tags():
     print("الربط: المعرّفات ووسوم التحقّق في رأس كل صفحة")
     d = tempfile.mkdtemp(prefix="an_")
@@ -261,7 +294,7 @@ def unit_tags():
         check("ولا يُحمَّل شيءٌ منها لمن استثنى زياراته (?sq=off)", h.count("if(!window.sqOff)") == 6)
         body = b"<!doctype html><html><head><title>x</title></head><body><p>a</p></body></html>"
         out = A.inject(body, d)
-        check("الحقن قبل أول </head>، والصفحة كما هي", out.index(b"sq.js") < out.index(b"</head>") and out.replace(A.head(d), b"") == body)
+        check("الحقن قبل أول </head>، والصفحة كما هي", out.index(b"sq.js") < out.index(b"</head>") and re.sub(rb'<script src="/static/(foryou|softnav)\.js\?v=[0-9a-f]+" defer></script>', b"", out.replace(A.head(d), b"")) == body)
         check("وصفحةٌ بلا </head> لا تُمسّ", A.inject(b"<p>x</p>", d) == b"<p>x</p>")
         try:
             A.save_tags(d, {"ga": "UA-12345-1", "meta": ""})
@@ -579,6 +612,7 @@ def live(pem, pub):
 def main():
     unit_classify()
     unit_hits()
+    unit_content_report()
     unit_tags()
     pem, pub = M.make_key(1024, seed=7)
     srv, base = start_mock(pub)

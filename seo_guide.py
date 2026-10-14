@@ -353,7 +353,7 @@ def section(con, cid, slug, typ, tr):
         '<script>(function(){var f=document.getElementById("gForm");if(!f)return;f.addEventListener("submit",function(ev){ev.preventDefault();var m=f.querySelector(".g-msg"),b={slug:f.dataset.slug};'
         'Array.prototype.forEach.call(f.elements,function(x){if(x.name)b[x.name]=x.value});'
         'fetch("/api/content/guide-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json()}).then(function(d){'
-        f'm.textContent=d.ok?{_js(tr("شكرًا، سيُراجَع بلاغك قبل النشر.", "Thanks — your report will be reviewed before publishing."))}:(d.error||{_js(tr("تعذّر الإرسال", "Could not send"))});if(d.ok)f.reset()'
+        f'm.textContent=d.ok?{_js(tr("شكرًا، سيُراجَع بلاغك قبل النشر.", "Thanks — your report will be reviewed before publishing."))}:(d.error||{_js(tr("تعذّر الإرسال", "Could not send"))});if(d.ok){{f.reset();if(window.sq)sq("guide_report",b.slug)}}'
         f'}}).catch(function(){{m.textContent={_js(tr("تعذّر الإرسال", "Could not send"))}}})}})}})()</script></section>')
     return "".join(out), rating
 

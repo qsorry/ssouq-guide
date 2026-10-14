@@ -22,6 +22,37 @@ def _entity(con, cid):
     return r
 
 
+def titles(data_dir, slugs):
+    """slugs ← {slug: العنوان العربي (أو الاسم)} لما وُجد في القاعدة (لتسمية الأعمال في تقرير الزوّار)."""
+    slugs = sorted({x for x in slugs if x})[:400]
+    con = seo_db.connect(data_dir, create=False)
+    if con is None or not slugs:
+        return {}
+    try:
+        out = {}
+        for i in range(0, len(slugs), 200):
+            part = slugs[i:i + 200]
+            for r in con.execute(f"SELECT slug, COALESCE(title_ar, title) t, type FROM content WHERE slug IN ({','.join('?' * len(part))})", part):
+                out[r["slug"]] = r["t"]
+        return out
+    finally:
+        con.close()
+
+
+def label_visitors(data_dir, rep):
+    """يضيف عناوين الأعمال إلى تقرير ‏analytics.content_report: صفحاتٌ (title) وتسميات الأحداث (like · reco_click · guide_report ← عنوان)."""
+    want = {p["slug"] for p in rep.get("pages", []) if p.get("slug")}
+    for name in ("like", "reco_click", "guide_report"):
+        want |= {k for k, _ in (rep.get("events", {}).get(name) or {}).get("top", [])}
+    names = titles(data_dir, want)
+    for p in rep.get("pages", []):
+        p["title"] = names.get(p.get("slug"), "")
+    for name in ("like", "reco_click", "guide_report"):
+        for row in (rep.get("events", {}).get(name) or {}).get("top", []):
+            row.append(names.get(row[0], ""))
+    return rep
+
+
 def search(data_dir, q, limit=20):
     """بحثٌ عن كيان باسمه أو slug أو معرّفه."""
     con = seo_db.connect(data_dir, create=False)

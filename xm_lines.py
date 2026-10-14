@@ -6607,6 +6607,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, res, extra={"Cache-Control": "no-store"})
         if path == "/api/content/find":         # بحثٌ ذكي بالاسم يقبل الأخطاء (لجولة «محتار ايش تشاهد؟»)
             return self._send(200, seo_reco.find(DATA_DIR, self._q("q"), "en" if self._q("lang") == "en" else "ar"), extra={"Cache-Control": "public, max-age=300"})
+        if path == "/api/content/entity":       # صفحة العمل الكاملة لعنصرٍ من قائمة سيرفر (زرّ «عرض الصفحة كاملة» في نافذة التفاصيل)
+            res = content_page.api_entity(DATA_DIR, content.key_ok(self._q("s")), self._q("k"), self._q("n"), self._q("y"), "en" if self._q("lang") == "en" else "ar")
+            return self._send(200, res or {"ok": False}, extra={"Cache-Control": "public, max-age=300"})
         if path == "/api/content/search":       # البحث بالاسم مع الكتابة (و‏lang=en للصفحة الإنجليزية)
             res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"), self._q("lang"))
             if res is None:
@@ -6925,6 +6928,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": True, **seo_scan.state(DATA_DIR)})
                 if path == "/api/content/seo/bundle":     # ملفات المراجعة: حال إنتاجها وما كُتب منها
                     return self._send(200, {"ok": True, **seo_sources.bundle_state(DATA_DIR)})
+                if path == "/api/content/seo/visitors":   # زوّار موقع المحتوى: الأقسام واللغات وأكثر الأعمال وحلقة «محتار ايش تشاهد» والإعجاب والبلاغ
+                    return self._send(200, seo_admin.label_visitors(DATA_DIR, analytics.content_report(DATA_DIR, self._days(30))))
+                if path == "/api/content/seo/visibility":  # عدّاد الصفحات: المعتمد للفهرسة، وما في الخريطة وIndexNow، وعيّنة فهرسة قوقل
+                    return self._send(200, {"ok": True, **seo_release.visibility(DATA_DIR)})
                 if path == "/api/content/seo/release":    # النشر الإنتاجي (المراحل 4–9): حال المراحل والدفعات والأعلام (قراءة)
                     return self._send(200, {"ok": True, **seo_release.status(DATA_DIR)})
                 if path.startswith("/api/content/seo/bundle/"):   # تنزيل ملفٍ منها (للمدير)
@@ -8128,6 +8135,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, seo_guide.admin(DATA_DIR, body))
                 except (ValueError, TypeError) as e:
                     return self._send(400, {"ok": False, "error": str(e)})
+            elif path == "/api/content/admin/seo-visibility":  # عيّنة فحص فهرسة قوقل للصفحات المعتمدة (في الخلفية؛ حصة URL Inspection يومية)
+                ok, why = seo_release.gsc_sample_start(DATA_DIR, body.get("n") or 40)
+                return self._send(200 if ok else 400, {"ok": ok, "error": why} if not ok else {"ok": True, **seo_release.visibility(DATA_DIR)})
             elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
                 return self._send(200, {"ok": True, "audit": seo_pages.audit(DATA_DIR, int(body.get("n") or 30))})
             elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)

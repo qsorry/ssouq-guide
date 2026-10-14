@@ -284,7 +284,14 @@ def api(data_dir, params, lang="ar"):
     finally:
         con.close()
     items = []
-    ages = {}
+    ages, skeys = {}, {}
+    con3 = seo_db.connect(data_dir, create=False)
+    try:
+        for it in res["items"]:                              # ملصق اللوحة لا يُجلب إلا بمفتاح سيرفره (وإلا ظهرت الحروف بدل الصورة)
+            if it.get("poster") and "image.tmdb.org" not in it["poster"]:
+                skeys[it["id"]] = seo_pages.skey_of(con3, it["id"])
+    finally:
+        con3.close()
     if age and res["items"]:
         con2 = seo_db.connect(data_dir, create=False)
         try:
@@ -295,7 +302,7 @@ def api(data_dir, params, lang="ar"):
         w = it.get("why")
         items.append({"slug": it["slug"], "path": pre + f"/content/{'movies' if it['type'] == 'movie' else 'series'}/{it['slug']}/",
                       "title": it["title_en"] if en else it["title_ar"], "year": it["year"], "rating": it["rating"],
-                      "poster": seo_pages._img(it["poster"], "w342", ""),
+                      "poster": seo_pages._img(it["poster"], "w342", skeys.get(it["id"], "")),
                       "guide": (f"{ages[it['id']]}+ · " + seo_guide.AGE_NAMES[ages[it["id"]]][1 if en else 0]) if ages.get(it["id"]) else "",
                       "why": ((("لأنك أعجبت بـ " if w["liked"] else "لأنك شاهدت ") if not en else ("Because you liked " if w["liked"] else "Because you viewed ")) + names.get(w["slug"], w["slug"])) if w else ""})
     return {"ok": True, "cold": res["cold"], "items": items, "profile": res.get("profile", {})}
@@ -338,7 +345,7 @@ def find(data_dir, q, lang="ar", n=8):
                 continue
             out.append({"slug": r["slug"], "path": pre + f"/content/{'movies' if r['type'] == 'movie' else 'series'}/{r['slug']}/",
                         "title": (r["title_en"] or r["title"]) if en else (r["title_ar"] or r["title"]), "year": r["year"], "rating": r["rating"],
-                        "poster": seo_pages._img(r["poster"], "w342", ""), "type": r["type"]})
+                        "poster": seo_pages._img(r["poster"], "w342", seo_pages.skey_of(con, cid) if r["poster"] and "image.tmdb.org" not in r["poster"] else ""), "type": r["type"]})
             if len(out) >= n:
                 break
         return {"ok": True, "items": out, "exact": bool(res["exact"])}

@@ -44,8 +44,8 @@
   }
 
   // ----- المشاهدة: حين تظهر الصفحة للزائر (Chrome يحمّل بعض الصفحات مسبقًا قبل أن تُفتح) -----
-  function pageview() {
-    send({t: "pv", r: d.referrer || "", q: L.search || "", tz: tz(), tp: n.maxTouchPoints || 0});
+  function pageview(ref) {
+    send({t: "pv", r: ref == null ? (d.referrer || "") : ref, q: L.search || "", tz: tz(), tp: n.maxTouchPoints || 0});
   }
   if (d.prerendering) d.addEventListener("prerenderingchange", pageview, {once: true});
   else pageview();
@@ -64,6 +64,16 @@
     else if (!shown) shown = +new Date();
   });
   w.addEventListener("pagehide", flush);
+
+  // ----- تنقّلٌ بلا إعادة تحميل (static/softnav.js): قبل التبديل تُرسَل مدة قراءة الصفحة الراحلة، وبعده مشاهدةٌ للجديدة بمُحيلٍ داخلي -----
+  w.sqNav = {
+    before: function () { flush(); },
+    after: function (prev) {
+      first = 1; acc = 0; shown = d.visibilityState === "visible" ? +new Date() : 0;
+      pageview(prev || "");
+      try { if (typeof w.gtag === "function" && !off) w.gtag("event", "page_view", {page_location: L.href, page_title: d.title}); } catch (e) {}
+    }
+  };
 
   // ----- النقرات: تُلتقط من المستند كله، فلا تحتاج الصفحات سطرًا لكل رابط -----
   function closestLink(el) {

@@ -10,6 +10,7 @@
     a.id = "fyFab"; a.href = (en ? "/en" : "") + "/content/for-you/";
     a.textContent = en ? "Not sure what to watch?" : "محتار ايش تشاهد؟";
     a.setAttribute("style", "position:fixed;inset-block-end:16px;inset-inline-start:16px;z-index:60;padding:11px 18px;border-radius:999px;background:linear-gradient(135deg,#2f8cff,#8b7cf6);color:#fff;font:700 .92rem/1.2 system-ui,Tahoma,sans-serif;text-decoration:none;box-shadow:0 10px 28px -10px rgba(47,140,255,.8)");
+    a.addEventListener("click", function () { if (window.sq) window.sq("fy_click", p.slice(0, 60)); });
     document.body.appendChild(a);
   }
   if (document.body) add(); else document.addEventListener("DOMContentLoaded", add);

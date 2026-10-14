@@ -484,6 +484,11 @@ def apply_tmdb(con, data_dir, cid, d, st, now=None):
     }
     # ‏title (اسم القوائم الذي يعرفه الجمهور: «طبيعة الحب») لا يُمسّ؛ TMDB يعطي title_ar/title_en جانبه
     seo_db.apply_fields(con, "content", cid, fields, "tmdb", now=now)
+    if typ == "series":     # العرض الجاري: الحلقة القادمة وآخر حلقة عُرضت — تُكتب مباشرةً لأنها **تُمحى** حين لا قادمة (apply_fields لا يمحو بفراغ)
+        nx, lx = d.get("next_episode_to_air") or {}, d.get("last_episode_to_air") or {}
+        con.execute("UPDATE content SET next_air_date=?, next_air_season=?, next_air_episode=?, last_ep_season=?, last_ep_number=?, last_ep_date=?, in_production=?, tmdb_refreshed_at=? WHERE id=?",
+                    (nx.get("air_date") or None, nx.get("season_number"), nx.get("episode_number"), lx.get("season_number"), lx.get("episode_number"), lx.get("air_date") or None,
+                     1 if d.get("in_production") else 0, now, cid))
     for lang_, tt, ov in (("en", title_en, d.get("overview")), ("ar", title_ar, tr_ar.get("overview"))):
         seo_db.set_text(con, "content", cid, lang_, "title", tt, "tmdb", now)          # نصوص اللغات (content_text) — العربية والإنجليزية الآن
         seo_db.set_text(con, "content", cid, lang_, "overview", ov, "tmdb", now)
@@ -1066,6 +1071,26 @@ def _step(con, data_dir, r, st, backoff, res, now, failures=None):
     return False
 
 
+AIRING = ("Returning Series", "In Production", "Planned", "Pilot")
+
+
+def refresh_airing(con, st, now=None, limit=4000):
+    """مسلسلات «ما زال يُعرض» (حلقاتها تنزل أسبوعيًا): تُعاد إلى طابور الإثراء كل `airing_refresh_days` فيُجدَّد عدد حلقاتها وحلقتها القادمة وحالتها، ويُمسح كاش TMDB
+    لها (وإلا بقي ردّه 30 يومًا). ما انتهى أو أُلغي لا يُجدَّد. ← عدد ما أُعيد."""
+    now = int(now or time.time())
+    days = max(1, int(st.get("airing_refresh_days", 2)))
+    q = ",".join("?" * len(AIRING))
+    rows = con.execute(f"SELECT id, tmdb_id FROM content WHERE type='series' AND tmdb_id IS NOT NULL AND merged_into IS NULL AND available=1 AND status IN ({q}) "
+                       "AND (tmdb_refreshed_at IS NULL OR tmdb_refreshed_at < ?) ORDER BY COALESCE(tmdb_refreshed_at,0) LIMIT ?", (*AIRING, now - days * 86400, int(limit))).fetchall()
+    with con:
+        for r in rows:
+            con.execute("DELETE FROM api_cache WHERE key LIKE ? OR key LIKE ?", (f"tmdb:/tv/{r['tmdb_id']}?%", f"tmdb:/tv/{r['tmdb_id']}/season/%"))
+            con.executemany("INSERT INTO enrich_queue(content_id, source, state, priority, next_at, updated_at) VALUES (?,?,'pending',3,0,?) "
+                            "ON CONFLICT(content_id, source) DO UPDATE SET state='pending', next_at=0, attempts=0, updated_at=excluded.updated_at",
+                            [(r["id"], "tmdb", now), (r["id"], "tmdb_seasons", now)])
+    return len(rows)
+
+
 def tick(data_dir):
     """في دورة المحتوى كل عشر دقائق: دفعةٌ إن كانت النافذة مفتوحة **والإثراء التلقائي مفعّلًا** (بعد اعتماد العيّنة) — ولا يرفع شيئًا."""
     try:
@@ -1073,7 +1098,15 @@ def tick(data_dir):
         if con is None:
             return None
         try:
-            auto = bool(seo_db.settings(con).get("enrich_auto"))
+            st = seo_db.settings(con)
+            auto = bool(st.get("enrich_auto"))
+            if auto:                     # مرةً كل ساعة على الأكثر: إعادة طابور المسلسلات الجارية (يعالجها run داخل النافذة الليلية)
+                now = int(time.time())
+                last = (seo_db.state(con, "airing_refresh") or {}).get("at", 0)
+                if now - last >= 3600:
+                    n = refresh_airing(con, st, now)
+                    with con:
+                        seo_db.set_state(con, "airing_refresh", {"at": now, "queued": n})
         finally:
             con.close()
         if not auto:

@@ -13,10 +13,12 @@ canonical ذاتي، hreflang للغتين حين تُفهرس كلتاهما، 
 
     python seo_pages.py audit --n=30      # فحص عيّنة: status · canonical · hreflang · title · description · H1 · breadcrumb · schema · links · duplicates
 """
+import datetime
 import json
 import os
 import re
 import sys
+import threading
 import time
 
 import content as C
@@ -217,10 +219,100 @@ def _company_path(slug, lang="ar", page=1):
     return seo_db.lang_prefix(lang) + f"/content/companies/{slug}/" + (f"page/{page}/" if page > 1 else "")
 
 
+_MONTHS_AR = ("يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر")
+_MONTHS_EN = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+
+
+def _fdate(iso, tr):
+    """‏2026-10-21 ← «21 أكتوبر 2026» / «October 21, 2026» (وما لا يُحلَّل يُعاد كما هو)."""
+    try:
+        y, m, d = (int(x) for x in str(iso)[:10].split("-"))
+        return f"{_MONTHS_EN[m - 1]} {d}, {y}" if tr.en else f"{d} {_MONTHS_AR[m - 1]} {y}"
+    except (ValueError, IndexError):
+        return str(iso or "")
+
+
+def airing_info(row, seasons, n_seasons, n_eps_txt, tr, today=None):
+    """حال عرض مسلسلٍ كما في TMDB ← None (لا حال معروف أو فيلم) أو {live, status, head, detail, faq_a}.
+    ‏live: ما زال يُعرض أو موسمٌ قادم (فأعداده «حتى الآن»). لا يُدّعى ما لا تدعمه البيانات (الحلقة القادمة والتواريخ من TMDB وقت آخر تجديد)."""
+    st = (row["status"] or "")
+    if row["type"] != "series" or not st:
+        return None
+    today = today or datetime.date.today().isoformat()
+    nxt, nxt_s, nxt_e = row["next_air_date"], row["next_air_season"], row["next_air_episode"]
+    last, last_s, last_n = row["last_ep_date"] or row["last_air_date"], row["last_ep_season"], row["last_ep_number"]
+    fut = next((x for x in seasons if x["number"] > 0 and x["air_date"] and x["air_date"] > today), None)
+
+    def ep(season, number):
+        if season and number:
+            return tr(f"الموسم {season} الحلقة {number}", f"season {season}, episode {number}")
+        return tr(f"الحلقة {number}", f"episode {number}") if number else ""
+    last_txt = ""
+    if last and last_n:
+        last_txt = tr(f"آخر حلقة عُرضت: {ep(last_s, last_n)} ({_fdate(last, tr)}).", f"Latest aired: {ep(last_s, last_n)} ({_fdate(last, tr)}).")
+    elif last:
+        last_txt = tr(f"آخر عرض: {_fdate(last, tr)}.", f"Last aired: {_fdate(last, tr)}.")
+    live, short, head, detail = False, "", "", ""
+    recent = False
+    try:
+        recent = bool(last) and (datetime.date.fromisoformat(today) - datetime.date.fromisoformat(str(last)[:10])).days <= 100
+    except ValueError:
+        pass
+    if st == "Canceled":
+        short, head = tr("أُوقف", "Cancelled"), tr("أُوقف المسلسل", "This series was cancelled")
+        detail = tr(f"أُوقف بعد {tr.count(n_seasons, 'seasons')}، ولا مواسم جديدة بحسب TMDB.", f"It ended after {tr.count(n_seasons, 'seasons')}; no new seasons according to TMDB.") if n_seasons else tr("لا مواسم جديدة بحسب TMDB.", "No new seasons according to TMDB.")
+    elif st == "Ended":
+        short, head = tr("منتهٍ", "Ended"), tr("انتهى عرض المسلسل", "This series has ended")
+        detail = tr(f"اكتمل بعد {n_eps_txt}، ولم يُعلن عن موسمٍ جديد بحسب TMDB.", f"It finished after {n_eps_txt}; no new season announced according to TMDB.") if n_eps_txt else tr("لم يُعلن عن موسمٍ جديد بحسب TMDB.", "No new season announced according to TMDB.")
+    elif st in ("In Production", "Planned", "Pilot"):
+        live, short, head = True, tr("قيد الإنتاج", "In production"), tr("قيد الإنتاج", "In production")
+        detail = tr(f"القادمة: {ep(nxt_s, nxt_e)} — {_fdate(nxt, tr)}." if nxt else "لم يبدأ عرضه بعد أو لم يُحدَّد موعد حلقته القادمة.",
+                    f"Next: {ep(nxt_s, nxt_e)} — {_fdate(nxt, tr)}." if nxt else "It has not started airing or no next date is set.")
+    elif st == "Returning Series":
+        live = True
+        if nxt and nxt >= today:
+            short, head = tr("ما زال يُعرض", "Still airing"), tr("ما زال يُعرض الآن", "Still airing now")
+            detail = tr(f"الحلقة القادمة: {ep(nxt_s, nxt_e)} — {_fdate(nxt, tr)}. {last_txt}", f"Next episode: {ep(nxt_s, nxt_e)} — {_fdate(nxt, tr)}. {last_txt}").strip()
+        elif recent:
+            short, head = tr("ما زال يُعرض", "Still airing"), tr("ما زال يُعرض", "Still airing")
+            detail = tr(f"{last_txt} لم يُعلن موعد الحلقة القادمة بعد.", f"{last_txt} The next episode date has not been announced yet.").strip()
+        elif fut:
+            short, head = tr("موسم قادم", "New season coming"), tr("موسمٌ جديد قادم", "A new season is coming")
+            detail = tr(f"الموسم {fut['number']} يبدأ {_fdate(fut['air_date'], tr)}. {last_txt}", f"Season {fut['number']} starts {_fdate(fut['air_date'], tr)}. {last_txt}").strip()
+        else:
+            short, head = tr("مستمر", "Ongoing"), tr("مسلسلٌ مستمر (بين المواسم)", "Ongoing (between seasons)")
+            detail = tr(f"{last_txt} لم يُعلن عن حلقةٍ أو موسمٍ قادم بعد.", f"{last_txt} No upcoming episode or season has been announced yet.").strip()
+    else:
+        return None
+    upd = row["tmdb_refreshed_at"]
+    note = tr(f"بحسب TMDB، آخر تحديثٍ للبيانات {_fdate(datetime.date.fromtimestamp(upd).isoformat(), tr)}.", f"According to TMDB; data last refreshed {_fdate(datetime.date.fromtimestamp(upd).isoformat(), tr)}.") if upd else tr("بحسب TMDB.", "According to TMDB.")
+    return {"live": live, "short": short, "head": head, "detail": detail, "note": note, "faq_a": f"{head}. {detail} {note}".replace("  ", " ").strip()}
+
+
+_tl = threading.local()          # اتصال الطلب الجاري: البطاقات تجد منه سيرفر صورة العمل بلا تغيير كل استعلام قوائم
+
+
+def skey_of(con, cid):
+    """مفتاح السيرفر الذي يخدم صورة عملٍ (ملصق اللوحة لا يُجلب إلا بمفتاح سيرفره) ← "" إن لم يكن."""
+    r = con.execute("SELECT service_key FROM content_service WHERE content_id=? AND present=1 ORDER BY seen_at DESC LIMIT 1", (int(cid),)).fetchone()
+    return r[0] if r else ""
+
+
+def _card_skey(row):
+    keys = row.keys()
+    if "skey" in keys:
+        return row["skey"]
+    url = row["poster"] if "poster" in keys else None
+    con = getattr(_tl, "con", None)
+    if not url or "image.tmdb.org" in url or con is None or "id" not in keys:      # ملصق TMDB لا يحتاج مفتاحًا
+        return ""
+    return skey_of(con, row["id"])
+
+
 def _card(row, tr, lazy=True):
     t = _title(row, tr)
     sub = " · ".join(x for x in (str(row["year"] or ""), f"{row['rating']:g} ★" if row["rating"] else "") if x)
-    img = _img(row["poster"], "w342", row["skey"] if "skey" in row.keys() else "")
+    img = _img(row["poster"], "w342", _card_skey(row))
     alt = _esc(tr(f"ملصق {'مسلسل' if row['type'] == 'series' else 'فيلم'} {t}", f"{t} poster"))
     pic = (f'<img src="{_esc(img)}" alt="{alt}" width="342" height="513"{" loading=lazy decoding=async" if lazy else ""}>'
            if img else f'<span class="ph" aria-hidden="true">{_esc(P._initials(t))}</span>')
@@ -391,14 +483,14 @@ def _like_widget(con, row, tr):
           "if(it.rating){var rb=document.createElement('i');rb.className='rt-badge';rb.textContent='\\u2605 '+(Math.round(it.rating*10)/10);p.appendChild(rb)}"
           "var b=document.createElement('b');b.dir='auto';b.textContent=it.title;a.appendChild(p);a.appendChild(b);"
           "var t=[it.year||'',it.rating?(Math.round(it.rating*10)/10)+' \u2605':''].filter(Boolean).join(' \u00b7 ');"
-          "if(t){var s=document.createElement('small');s.textContent=t;a.appendChild(s)}return a}"
+          "if(t){var s=document.createElement('small');s.textContent=t;a.appendChild(s)}a.addEventListener('click',function(){if(window.sq)sq('reco_click',it.path.replace(/^\\/en/,'').split('/')[3]||'')});return a}"
           "function render(d){var g=document.getElementById('fyGrid');if(!d||!d.items||!d.items.length||d.cold){box.hidden=true;return}"
           "g.textContent='';d.items.forEach(function(it){g.appendChild(card(it))});"
           "var w=d.items.filter(function(i){return i.why})[0];document.getElementById('fyWhy').textContent=w?w.why:'';box.hidden=false}"
           "function reco(){if(!likes.length&&seen.length<2){box.hidden=true;return}"
           "fetch('/api/content/recommend?lang='+lang+'&likes='+encodeURIComponent(likes.slice(0,30).join(','))+'&seen='+encodeURIComponent(seen.slice(0,60).join(','))+'&interests='+encodeURIComponent(rd('ssq_interests').join(','))+'&types='+encodeURIComponent(rd('ssq_types').join(',')))"
           ".then(function(r){return r.json()}).then(render).catch(function(){})}"
-          "btn.onclick=function(){var on=likes.indexOf(slug)<0;likes=likes.filter(function(x){return x!==slug});if(on)likes.unshift(slug);likes=likes.slice(0,40);wr('ssq_likes',likes);paint();"
+          "btn.onclick=function(){var on=likes.indexOf(slug)<0;likes=likes.filter(function(x){return x!==slug});if(on)likes.unshift(slug);likes=likes.slice(0,40);wr('ssq_likes',likes);paint();if(on&&window.sq)sq('like',slug);"
           "fetch('/api/content/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,on:on})})"
           ".then(function(r){return r.json()}).then(function(d){if(d&&typeof d.count==='number')nEl.textContent=d.count>0?d.count:''}).catch(function(){});reco()};"
           "paint();reco()})();") % (json.dumps(row["slug"]), json.dumps(tr.code), json.dumps(labels, ensure_ascii=False))
@@ -442,6 +534,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     director = (people.get("director") or people.get("creator") or [None])[0]
     cast = people.get("actor") or people.get("voice") or []
     avail_html, srv_names = _services(con, row["id"], tr)
+    airing = airing_info(row, seasons, n_seasons, (f"{tr.count(n_seasons, 'seasons')} {tr('و', 'and ')}{eps_label(n_eps)}" if seasons and n_eps else ""), tr)
     # العنوان والوصف
     bits = [tr("قصة " + kind_ar, "Story"), tr("الممثلون", "Cast")] + ([tr("المواسم والحلقات", "Seasons & Episodes")] if typ == "series" else [])
     if director:
@@ -455,7 +548,9 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     if genres:
         desc_bits.append(tr("، ", ", ").join(_tname(g, tr) for g in genres[:3]))
     if typ == "series" and seasons:
-        desc_bits.append(tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}", f"{tr.count(n_seasons, 'seasons')}, {eps_label(n_eps)}"))
+        desc_bits.append(tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}", f"{tr.count(n_seasons, 'seasons')}, {eps_label(n_eps)}") + (tr(" حتى الآن", " so far") if airing and airing["live"] else ""))
+    if airing and airing["live"]:
+        desc_bits.append(airing["short"])
     if cast:
         desc_bits.append(tr("بطولة ", "Starring ") + tr("، ", ", ").join(_pname(p, tr) for p in cast[:3]))
     desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") \
@@ -476,7 +571,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
              (tr("التصنيف", "Genre"), tr("، ", ", ").join(f'<a href="{_esc(_hub_path(hubs[0]["key"], "genres/" + g["slug"], tr.code) if hubs else tr.path)}">{_esc(_tname(g, tr))}</a>' for g in genres)),
              (tr("المدة", "Runtime"), tr(f"{row['runtime']} دقيقة", f"{row['runtime']} min") if row["runtime"] else ""),
              (tr("التقييم", "Rating"), f"{row['rating']:g}/10" if row["rating"] else ""),
-             (tr("الحالة", "Status"), tr("مستمر", "Ongoing") if row["status"] in ("Returning Series", "In Production") else tr("منتهٍ", "Ended") if row["status"] in ("Ended", "Canceled") else "") if typ == "series" else ("", ""),
+             (tr("الحالة", "Status"), airing["short"] if airing else "") if typ == "series" else ("", ""),
              (tr("المواسم", "Seasons"), str(n_seasons) if seasons else ""), (tr("الحلقات", "Episodes"), (str(n_eps) if n_official else eps_label(n_eps)) if n_eps else ""),
              (tr("الحلقات الخاصة", "Specials"), str(n_specials) if n_specials else ""),
              (ROLE_NAMES[director["role"]][tr.en] if director else "", f'<a href="{_esc(_person_path(director["role"], director["slug"], tr.code))}">{_esc(_pname(director, tr))}</a>' if director else "")]
@@ -493,6 +588,8 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
             + f'<p class="chips">{chips}</p><dl class="facts">{facts_html}</dl></div></div></section>')
     # القصة
     story = (f'<section class="story"><h2>{_esc(tr(f"قصة {kind_ar}", "Plot Overview"))}</h2><p dir="auto">{_esc(ov)}</p></section>' if ov else "")
+    air_html = (f'<aside class="airing{" live" if airing["live"] else ""}" id="airing" aria-label="{_esc(tr("حال العرض", "Airing status"))}"><b>{_esc(airing["head"])}</b>'
+                f'<span>{_esc(airing["detail"])}</span><small>{_esc(airing["note"])}</small></aside>') if airing else ""
     # دليل الأهل: بعد القصة؛ بلا بياناتٍ يُكتب «لا يوجد دليل بعد» لا «آمن»
     guide_html, guide_rating = seo_guide.section(con, row["id"], slug, typ, tr)
     # المخرج والممثلون
@@ -553,8 +650,12 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     if ov:
         faq.append((tr(f"ما قصة {kind_ar} {title}؟", f"What is {title} about?"), ov[:300]))
     if seasons:
+        so_far = airing and airing["live"]
         faq.append((tr(f"كم عدد مواسم وحلقات {title}؟", f"How many seasons and episodes does {title} have?"),
-                    tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}.", f"{tr.count(n_seasons, 'seasons')} and {eps_label(n_eps)}.")))
+                    tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}" + (" حتى الآن، والمسلسل ما زال يُعرض وتُضاف حلقاته تباعًا." if so_far else "."),
+                       f"{tr.count(n_seasons, 'seasons')} and {eps_label(n_eps)}" + (" so far; the series is still airing and episodes are being added." if so_far else "."))))
+    if airing:
+        faq.append((tr(f"هل ما زال {title} يُعرض؟ وهل سيكون له جزء ثانٍ؟", f"Is {title} still airing, and will there be another season?"), airing["faq_a"]))
     if cast:
         faq.append((tr(f"من أبطال {title}؟", f"Who stars in {title}?"), tr("، ", ", ").join(_pname(p, tr) for p in cast[:6]) + "."))
     if director:
@@ -592,6 +693,8 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         ld["numberOfEpisodes"] = n_official
     if guide_rating:
         ld["contentRating"] = guide_rating
+    if typ == "series" and row["status"] in ("Ended", "Canceled") and row["last_air_date"]:
+        ld["endDate"] = row["last_air_date"]                 # المنتهي وحده: لا endDate لما ما زال يُعرض
     if countries:
         ld["countryOfOrigin"] = [{"@type": "Country", "name": _tname(c, tr)} for c in countries]
     if row["runtime"] and typ == "movie":
@@ -624,7 +727,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     alts = [("ar", SITE + _path(row, "ar")), ("en", SITE + _path(row, "en")), ("x-default", SITE + _path(row, "ar"))] if ok_ar and ok_en else []
     noindex = not (live and (ok_en if tr.en else ok_ar))
     body = (_header(tr, hubs[0]["key"] if hubs else "") + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, _path(row, "en" if not tr.en else "ar"))}</div>'
-            + body_intro + head + like_bar + f'<div class="cols"><div class="main">{story}{guide_html}{ppl}{seas}{rate_html}{trailer_html}{pics}{faq_html}{foryou_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr) + like_js)
+            + body_intro + head + air_html + like_bar + f'<div class="cols"><div class="main">{story}{guide_html}{ppl}{seas}{rate_html}{trailer_html}{pics}{faq_html}{foryou_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr) + like_js)
     return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_image=backdrop or poster, og_type="video.movie" if typ == "movie" else "video.tv_show",
                                  noindex=noindex), "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en,
                    "noindex": noindex, "live": live, "why": (indexable(row, "ar", st)[1], indexable(row, "en", st)[1]), "row": row}
@@ -903,7 +1006,7 @@ function wr(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 var st={interests:rd('ssq_interests',[]),types:rd('ssq_types',[]),likes:rd('ssq_likes',[]),seen:rd('ssq_seen',[]),age:rd('ssq_age',0)};
 function save(){wr('ssq_interests',st.interests);wr('ssq_types',st.types);wr('ssq_likes',st.likes);wr('ssq_seen',st.seen);wr('ssq_age',st.age)}
 function has(a,x){return a.indexOf(x)>-1}function flip(a,x){var i=a.indexOf(x);if(i>-1)a.splice(i,1);else a.unshift(x)}
-function step(n){['s1','s2','s3'].forEach(function(id,i){$(id).hidden=(i+1!==n)});Array.prototype.forEach.call($('tDots').children,function(li,i){li.className=(i+1===n)?'on':''});window.scrollTo(0,0)}
+function step(n){if(window.sq)sq('tour_step',String(n));['s1','s2','s3'].forEach(function(id,i){$(id).hidden=(i+1!==n)});Array.prototype.forEach.call($('tDots').children,function(li,i){li.className=(i+1===n)?'on':''});window.scrollTo(0,0)}
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
 function rate(it){return it.rating?(Math.round(it.rating*10)/10):0}
 function card(it,pick){var a=el(pick?'div':'a','card'+(pick?' pick':''));if(!pick)a.href=it.path;var p=el('span','pos');
@@ -912,10 +1015,11 @@ function card(it,pick){var a=el(pick?'div':'a','card'+(pick?' pick':''));if(!pic
  a.appendChild(p);var t=el('b',null,it.title);t.dir='auto';a.appendChild(t);
  var sm=[it.year||'',rate(it)?'\u2605 '+rate(it):''].filter(Boolean).join(' \u00b7 ');if(sm)a.appendChild(el('small',null,sm));
  if(!pick&&it.why){var w=el('small',null,it.why);w.style.display='block';a.appendChild(w)}
+ if(!pick)a.addEventListener('click',function(){if(window.sq)sq('reco_click',it.slug)});
  if(!pick&&it.guide){var g=el('small',null,'\ud83d\udc6a '+it.guide);g.style.display='block';a.appendChild(g)}
  if(pick){var k=el('div','pk'),lk=el('button','lk'+(has(st.likes,it.slug)?' on':''),'\ud83d\udc4d '+L.liked),sn=el('button','sn'+(has(st.seen,it.slug)?' on':''),'\u2713 '+L.seen);lk.type=sn.type='button';
-  lk.onclick=function(){if(has(st.likes,it.slug)){flip(st.likes,it.slug)}else{st.likes.unshift(it.slug);if(!has(st.seen,it.slug))st.seen.unshift(it.slug)}save();lk.className='lk'+(has(st.likes,it.slug)?' on':'');sn.className='sn'+(has(st.seen,it.slug)?' on':'')};
-  sn.onclick=function(){if(has(st.seen,it.slug)){flip(st.seen,it.slug);var i=st.likes.indexOf(it.slug);if(i>-1)st.likes.splice(i,1)}else{st.seen.unshift(it.slug)}save();sn.className='sn'+(has(st.seen,it.slug)?' on':'');lk.className='lk'+(has(st.likes,it.slug)?' on':'')};
+  lk.onclick=function(){if(has(st.likes,it.slug)){flip(st.likes,it.slug)}else{if(window.sq)sq('tour_pick','like');st.likes.unshift(it.slug);if(!has(st.seen,it.slug))st.seen.unshift(it.slug)}save();lk.className='lk'+(has(st.likes,it.slug)?' on':'');sn.className='sn'+(has(st.seen,it.slug)?' on':'')};
+  sn.onclick=function(){if(has(st.seen,it.slug)){flip(st.seen,it.slug);var i=st.likes.indexOf(it.slug);if(i>-1)st.likes.splice(i,1)}else{if(window.sq)sq('tour_pick','seen');st.seen.unshift(it.slug)}save();sn.className='sn'+(has(st.seen,it.slug)?' on':'');lk.className='lk'+(has(st.likes,it.slug)?' on':'')};
   k.appendChild(lk);k.appendChild(sn);a.appendChild(k)}return a}
 function fill(box,items,pick){box.textContent='';items.forEach(function(it){box.appendChild(card(it,pick))})}
 function q(extra){return '/api/content/recommend?lang='+CFG.lang+'&interests='+encodeURIComponent(st.interests.join(','))+'&types='+encodeURIComponent(st.types.join(','))+(st.age?'&age='+st.age:'')+extra}
@@ -923,7 +1027,7 @@ function q(extra){return '/api/content/recommend?lang='+CFG.lang+'&interests='+e
 var TY=[['movie',CFG.lang==='en'?'Movies':'\u0623\u0641\u0644\u0627\u0645'],['series',CFG.lang==='en'?'Series':'\u0645\u0633\u0644\u0633\u0644\u0627\u062a']];
 TY.forEach(function(t){var b=el('button','tchip'+(has(st.types,t[0])?' on':''),t[1]);b.type='button';b.onclick=function(){flip(st.types,t[0]);save();b.className='tchip'+(has(st.types,t[0])?' on':'')};$('tTypes').appendChild(b)});
 function ageNote(){$('tAgeNote').textContent=st.age?L.agenote:''}
-CFG.ages.forEach(function(a){var b=el('button','tchip'+(st.age===a.v?' on':''),a.n);b.type='button';b.onclick=function(){st.age=a.v;save();Array.prototype.forEach.call($('tAges').children,function(x,i){x.className='tchip'+(CFG.ages[i].v===st.age?' on':'')});ageNote()};$('tAges').appendChild(b)});ageNote();
+CFG.ages.forEach(function(a){var b=el('button','tchip'+(st.age===a.v?' on':''),a.n);b.type='button';b.onclick=function(){st.age=a.v;if(window.sq)sq('tour_age',String(a.v));save();Array.prototype.forEach.call($('tAges').children,function(x,i){x.className='tchip'+(CFG.ages[i].v===st.age?' on':'')});ageNote()};$('tAges').appendChild(b)});ageNote();
 CFG.chips.forEach(function(c){var b=el('button','tchip'+(has(st.interests,c.id)?' on':''),c.name);b.type='button';b.onclick=function(){flip(st.interests,c.id);save();b.className='tchip'+(has(st.interests,c.id)?' on':'')};$(c.group==='origin'?'tOrigins':'tChips').appendChild(b)});
 // الخطوة 2: بحثٌ ذكي + اقتراحات سريعة
 var tm=0;$('tQ').oninput=function(){clearTimeout(tm);var v=this.value.trim();if(v.length<2){$('tRes').textContent='';$('tMsg').textContent='';return}
@@ -931,7 +1035,7 @@ var tm=0;$('tQ').oninput=function(){clearTimeout(tm);var v=this.value.trim();if(
   $('tMsg').textContent=(d.items&&d.items.length)?'':L.noresult;fill($('tRes'),d.items||[],true)}).catch(function(){$('tMsg').textContent=''})},250)};
 function quick(){$('tQuickH').textContent=L.pick;fetch(q('&n=12&likes=&seen=')).then(function(r){return r.json()}).then(function(d){fill($('tQuick'),d.items||[],true)}).catch(function(){})}
 function results(){$('tWhy').textContent='';$('tOut').textContent='';fetch(q('&n=18&likes='+encodeURIComponent(st.likes.slice(0,30).join(','))+'&seen='+encodeURIComponent(st.seen.slice(0,60).join(',')))).then(function(r){return r.json()}).then(function(d){
- if(!d.items||!d.items.length||d.cold&&!st.interests.length&&!st.likes.length){$('tWhy').textContent=L.none;return}fill($('tOut'),d.items,false);var w=d.items.filter(function(i){return i.why})[0];$('tWhy').textContent=w?w.why:''}).catch(function(){})}
+ if(!d.items||!d.items.length||d.cold&&!st.interests.length&&!st.likes.length){$('tWhy').textContent=L.none;return}fill($('tOut'),d.items,false);if(window.sq)sq('tour_result',String(d.items.length));var w=d.items.filter(function(i){return i.why})[0];$('tWhy').textContent=w?w.why:''}).catch(function(){})}
 $('to2').onclick=function(){step(2);quick()};$('tSkip').onclick=function(){step(3);results()};$('to1').onclick=function(){step(1)};$('to3').onclick=function(){step(3);results()};$('to2b').onclick=function(){step(2);quick()};
 $('tReset').onclick=function(){st={interests:[],types:[],likes:[],seen:[],age:0};save();location.reload()};
 })();""".replace("__CFG__", cfg)
@@ -1196,6 +1300,7 @@ def handle(data_dir, path, lang, _info=False, _con=None):
     if con is None:
         return 404, b"", {}
     try:
+        _tl.con = con
         st = seo_db.settings(con)
         if hub_root:     # الهب: معطّلٌ ← None فيبقى 302 القديم في xm_lines كما كان
             if not (st.get("content_hub") and st.get("preview")) or lang not in (st.get("languages") or ["ar", "en"]):
@@ -1255,6 +1360,7 @@ def handle(data_dir, path, lang, _info=False, _con=None):
             return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
         return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}     # معتمدٌ مستحقّ (المرحلة 4): بلا رأس noindex، والوسم index في الصفحة
     finally:
+        _tl.con = None
         if _con is None:
             con.close()
 
@@ -1381,6 +1487,8 @@ details{background:var(--card);border:1px solid var(--line);border-radius:12px;p
 .avail{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;position:sticky;top:12px}.avail h2{margin:0 0 10px;font-size:1.1rem}
 .srv{list-style:none;padding:0;margin:0}.srv li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.srv li:first-child{border-top:0}.srv li span{flex:1}
 .srv small{display:block;color:var(--mute);font-size:.8rem}.logo{width:34px;height:34px;border-radius:10px;object-fit:cover}.btn{background:var(--acc);color:#fff;border-radius:10px;padding:7px 12px;font-weight:700;font-size:.86rem;white-space:nowrap}
+.airing{display:grid;gap:3px;background:var(--card);border:1px solid var(--line);border-inline-start:4px solid var(--mute);border-radius:12px;padding:11px 14px;margin:14px 0}.airing.live{border-inline-start-color:#22c58b}
+.airing b{font-size:1.02rem}.airing small{color:var(--mute)}
 .guide{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:18px 0}.guide h2{margin:0 0 8px}.guide h3{margin:14px 0 4px;font-size:1rem}
 .g-sum{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px}.g-age{background:var(--acc);color:#fff;border-radius:10px;padding:3px 10px}.g-sum small,.g-none{color:var(--mute)}
 .g-cats{list-style:none;padding:0;margin:0}.g-cats li{display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}.g-cats li:first-child{border-top:0}.g-cats li span:first-child{flex:1}

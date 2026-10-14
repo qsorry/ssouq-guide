@@ -20,7 +20,7 @@ import time
 
 DIR = "content"
 FILE = "seo.sqlite"
-VERSION = 8                    # PRAGMA user_version — يرتفع مع كل ترحيل
+VERSION = 9                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
 SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
 MANUAL = "manual"
@@ -88,7 +88,8 @@ DEFAULTS = {
     "scan_quiet_hours": {"start": 0, "end": 12, "utc_offset": 3},   # فحص السكّان كاملًا يعمل في وقت الهدوء فقط: من 12 صباحًا إلى 12 ظهرًا بتوقيت السعودية (UTC+3)
     "auto_publish_hour": 1,                           # ساعة التشغيل اليومي للنشر الآلي (بتوقيت السعودية UTC+3): الواحدة صباحًا
     "auto_publish": False,                            # نشرٌ آلي للمحتوى الجديد: الحارس يشغّل التوسيع (إثراء ← اعتماد ← قوائم) كلما ظهر عملٌ جديد بلا تدخّل
-    "expand_retry_days": 14,                          # كيانٌ جُرّب في دفعة ولم يُعتمد (غير مستحقّ) لا يُعاد قبل هذه الأيام
+    "expand_retry_days": 14,
+    "airing_refresh_days": 2,      # مسلسلات «ما زال يُعرض»: تُجدَّد بيانات TMDB (الحلقات والقادمة) كل كم يوم، داخل نافذة الإثراء الليلية,                          # كيانٌ جُرّب في دفعة ولم يُعتمد (غير مستحقّ) لا يُعاد قبل هذه الأيام
     "index_extra_live": False,                        # المرحلة 10: القوائم والمواسم والحلقات والهبّات **المعتمدة** (build_state.index_approved_extra) تُخدم index
     "content_hub": False,                             # المرحلة 8: ‏/content/ هبًّا حقيقيًّا (مع preview) بدل 302 لأول سيرفر؛ معطّلٌ ما لم يقرّر المالك
     "enrich_auto": False,                             # الإثراء الجماعي الليلي لا يبدأ قبل اعتماد العيّنة الحقيقية
@@ -144,6 +145,8 @@ CREATE TABLE IF NOT EXISTS content (
   anime_family INTEGER,                 -- NULL: لم يُحسم · 0: رسومٌ ليست أنمي (إسباني/أمريكي…) · 1: أنمي (بنوعه في anime_kind)
   episodes_official INTEGER, seasons_official INTEGER,   -- عدد الحلقات والمواسم الرسمي (TMDB) — لا يُخلط بالمدرج في القوائم
   original_language TEXT, origin_country_json TEXT, tmdb_type TEXT, popularity REAL, last_air_date TEXT,
+  next_air_date TEXT, next_air_season INTEGER, next_air_episode INTEGER,          -- الحلقة القادمة (TMDB) — تُمحى حين لا قادمة (مسلسلٌ يعرض الآن)
+  last_ep_season INTEGER, last_ep_number INTEGER, last_ep_date TEXT, in_production INTEGER, tmdb_refreshed_at INTEGER,
   match TEXT NOT NULL DEFAULT 'local' CHECK (match IN ('local','xtream','tmdb','manual')),
   confidence INTEGER NOT NULL DEFAULT 0,
   available INTEGER NOT NULL DEFAULT 1,  -- 0: غاب من كل السيرفرات (لا يُحذف)
@@ -354,6 +357,8 @@ _V2_COLS = {"content": ["format TEXT NOT NULL DEFAULT ''", "anime_kind TEXT", "o
 
 
 _V5_COLS = {"episode": ["source TEXT"]}
+_V9_COLS = {"content": ["next_air_date TEXT", "next_air_season INTEGER", "next_air_episode INTEGER", "last_ep_season INTEGER", "last_ep_number INTEGER",
+                        "last_ep_date TEXT", "in_production INTEGER", "tmdb_refreshed_at INTEGER"]}
 _V6_COLS = {"person": ["name_norm TEXT"]}
 _V4_COLS = {"content": ["is_animation INTEGER NOT NULL DEFAULT 0", "anime_family INTEGER", "episodes_official INTEGER", "seasons_official INTEGER"],
             "content_service": ["stream_ids_json TEXT"], "season": ["episodes_official INTEGER"]}
@@ -373,7 +378,7 @@ def migrate(con):
     with con:
         # الأعمدة الجديدة على الجداول القائمة **قبل** نصّ المخطط: فيه فهارس على أعمدةٍ جديدة (person.name_norm) تفشل على قاعدةٍ قديمة
         if v:                                  # قاعدةٌ قائمة: أعمدةٌ تُضاف بلا إعادة بناء (الجداول الناقصة ينشئها المخطط بعدها)
-            for ver, cols_by_table in ((2, _V2_COLS), (4, _V4_COLS), (5, _V5_COLS), (6, _V6_COLS)):
+            for ver, cols_by_table in ((2, _V2_COLS), (4, _V4_COLS), (5, _V5_COLS), (6, _V6_COLS), (9, _V9_COLS)):
                 if v < ver:
                     for t, cols in cols_by_table.items():
                         if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)).fetchone():

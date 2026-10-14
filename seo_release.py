@@ -1330,6 +1330,116 @@ def extras_paths(con, st):
     return [(seo_db.lang_prefix(x["lang"]) + x["path"], x.get("kind", "")) for x in stt.get("routes") or [] if x["path"] not in redirects]
 
 
+# ================= عدّاد الصفحات: ما اعتُمد، وما في الخريطة، وما فُهرس فعلًا عند قوقل (عيّنة) =================
+GSC_STATE = "gsc_sample"
+_gsc_threads = {}
+
+
+def gsc_bucket(state, verdict=""):
+    """نصّ coverageState عند جوجل ← فئة: indexed · crawled (زُحف ولم يُفهرس) · discovered (اكتُشف ولم يُزحَف) · unknown (لا يعرفه) · other."""
+    low = (state or "").lower()
+    if "not indexed" in low and "crawled" in low:
+        return "crawled"
+    if "not indexed" in low and "discovered" in low:
+        return "discovered"
+    if "unknown to google" in low:
+        return "unknown"
+    if "indexed" in low and "not" not in low or verdict == "PASS":
+        return "indexed"
+    return "other"
+
+
+def visibility(data_dir):
+    """← أعداد صفحات المحتوى بمراحلها: معتمدة للفهرسة (كيانات ومساراتها ثم القوائم والمواسم) ← في الخريطة ← أُرسلت إلى IndexNow ← (عيّنة) مفهرسةٌ عند قوقل."""
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return {"error": "no database"}
+    try:
+        st = seo_db.settings(con)
+        approved = seo_pages.approved_routes(con)
+        rel = _state(con)
+        ix = {"submitted": 0, "accepted": 0}
+        for b in rel.get("batches") or []:
+            n = b.get("indexnow") or {}
+            ix["submitted"] += int(n.get("submitted") or 0)
+            ix["accepted"] += int(n.get("accepted") or 0)
+        for k in ("6", "10"):
+            n = (rel.get("phases", {}).get(k) or {}).get("indexnow") or {}
+            ix["submitted"] += int(n.get("submitted") or 0)
+            ix["accepted"] += int(n.get("accepted") or 0)
+        extras = len(seo_pages.extra_approved(con))
+        sample = seo_db.state(con, GSC_STATE) or None
+        k = os.path.abspath(data_dir)
+        creds = analytics.google_creds(data_dir)
+        out = {"entities": len({c for c, _ in approved}), "entity_routes": len(approved), "extra_routes": extras, "index_live": bool(st.get("index_live")),
+               "sitemap_live": bool(st.get("sitemap_live")), "indexnow": ix,
+               "gsc": {"connected": bool(creds and creds.get("site")), "site": (creds or {}).get("site", ""), "sample": sample,
+                       "running": bool(_gsc_threads.get(k) and _gsc_threads[k].is_alive())}}
+    finally:
+        con.close()
+    out["sitemap_urls"] = len(public_sitemap_entries(data_dir))
+    return out
+
+
+def gsc_sample_start(data_dir, n=40):
+    """يفحص عيّنةً عشوائية (حتى 100) من الصفحات المعتمدة عند جوجل في الخلفية ← هل بدأ؟ (لا يبدأ إن كان يعمل، أو الربط ناقص)."""
+    import random
+    import google_api
+    k = os.path.abspath(data_dir)
+    t = _gsc_threads.get(k)
+    if t and t.is_alive():
+        return False, "يعمل الآن"
+    creds = analytics.google_creds(data_dir)
+    if not creds or not creds.get("site"):
+        return False, "اربط Search Console أولًا (صفحة الإحصائيات ← ربط جوجل)"
+    paths = [p for p, *_ in public_sitemap_entries(data_dir)]
+    if not paths:
+        return False, "لا صفحات معتمدة في الخريطة بعد"
+    n = max(5, min(100, int(n or 40)))
+    pick = random.sample(paths, min(n, len(paths)))
+    site_url = guide_pages.SITE
+
+    def save(state):
+        c = seo_db.connect(data_dir, create=False)
+        try:
+            with c:
+                seo_db.set_state(c, GSC_STATE, state)
+        finally:
+            c.close()
+
+    def work():
+        state = {"running": True, "started": int(time.time()), "total": len(pick), "done": 0, "counts": {}, "samples": [], "error": None, "site": creds["site"], "sitemap_total": len(paths)}
+        save(state)
+        try:
+            tok = google_api.token(creds["sa"])
+            for p in pick:
+                try:
+                    r = google_api.inspect_url(tok, creds["site"], site_url + p)
+                except google_api.GoogleError as e:
+                    state["error"] = f"{e.msg} {e.hint}".strip()[:300]
+                    if e.code in (401, 403, 429):
+                        break
+                    state["done"] += 1
+                    continue
+                b = gsc_bucket(r["state"], r["verdict"])
+                state["counts"][b] = state["counts"].get(b, 0) + 1
+                if len(state["samples"]) < 12:
+                    state["samples"].append({"path": p, "state": r["state"], "bucket": b})
+                state["done"] += 1
+                if state["done"] % 5 == 0:
+                    save(state)
+                time.sleep(0.4)
+        except Exception as e:  # noqa: BLE001
+            state["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+        state["running"] = False
+        state["at"] = int(time.time())
+        save(state)
+
+    th = _gsc_threads[k] = threading.Thread(target=work, daemon=True)
+    th.start()
+    return True, ""
+
+
 def public_sitemap_entries(data_dir):
     """كل ما تضيفه طبقة الكيانات إلى /sitemap.xml: صفحات الكيانات (المرحلة 5) + القوائم والمواسم والحلقات والهبّات المعتمدة (المرحلة 10)."""
     ents = sitemap_entries(data_dir)
