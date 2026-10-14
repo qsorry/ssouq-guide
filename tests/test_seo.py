@@ -2087,7 +2087,7 @@ def unit_cards_softnav():
         check("«عرض التفاصيل الكاملة» رابطٌ خفيف في رأس النافذة (لا زرّ ممتلئ) معطَّلٌ حتى يُعرف مساره، ويُجلب مسبقًا عند اقتراب الزائر من البطاقة، ورقاقات المواسم تصير روابط إلى #seasons",
               'class="fulllink"' in content_page.JS and "aria-disabled" in content_page.JS and "function warm(e)" in content_page.JS and '"#seasons"' in content_page.JS and 'class="fullrow"' not in content_page.JS)
         check("بطاقة النافذة: رأسٌ بملصقٍ وعنوان، وجسمٌ بالمواسم والقصة، وتذييلٌ لاصقٌ بزرّ الاشتراك (cta)، وزجاج blur(12px) وحوافّ 16px",
-              'class="mhead"' in content_page.JS and 'class="mbody"' in content_page.JS and 'class="mfoot"' in content_page.JS and "btn cta" in content_page.CSS and "backdrop-filter:blur(12px)" in content_page.CSS
+              'class="mhead"' in content_page.JS and 'class="mbody"' in content_page.JS and 'class="mfoot"' in content_page.JS and 'class="btn cta"' in content_page.JS and ".btn.cta" in content_page.CSS and "backdrop-filter:blur(12px)" in content_page.CSS
               and "border-radius:16px" in content_page.CSS and "position:sticky;bottom:0" in content_page.CSS)
         check("نافذة التفاصيل في صفحة السيرفر فيها زرّ «عرض الصفحة كاملة» والتنقّل السلس يلتقطه", 'id="cx-full"' in content_page.JS and "/api/content/entity" in content_page.JS)
         import seo_admin
