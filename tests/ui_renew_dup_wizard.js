@@ -33,19 +33,22 @@ fs.writeFileSync(path.join(dataDir, 'renew_store_lines.json'), JSON.stringify({l
     await page.goto(APP + '/admin/setup'); await api(page, '/admin/api/setup', {password: 'admin123'});
     await api(page, '/admin/api/renew/config', {renew: {panels: [{name: 'مرح', hosts: ['http://m.ink'], account_id: '', gate_id: ''}]}});
     // خلفيةٌ وهمية للمعالجة: حالٌ يتقدّم مع كل خطوة
-    const S = {done: null, msgs: [], posts: []};
+    const S = {done: null, msgs: [], posts: [], failRename: true};
     const item = () => ({order: '200', username: '363816609180', customer: 'الثاني', phone: '0500000002', date: d0, remaining: '10 أشهر', suggest: 10,
       first_order: '100', first_customer: 'الأول', first_phone: '0500000001', can_create: true,
       need: !S.done ? ['create'] : [...(!S.done.renamed ? ['rename'] : []), ...S.msgs.filter(m => !(m.sent && m.sent.ok)).map(m => m.kind === 'new' ? 'send_new' : 'send_old')],
       done: S.done, msgs: S.msgs.map((m, idx) => ({idx, ...m}))});
     await page.route('**/api/renew/order?q=*', async rt => { const r = await rt.fetch(); const j = await r.json();
-      (j.rows || []).forEach(x => { x.dup_todo = item().need.length ? [item()] : []; }); await rt.fulfill({response: r, json: j}); });
+      (j.rows || []).forEach(x => { x.dup_todo = item().need.length ? [item()] : []; x.dup_chain = [
+        {role: 'first', order: '100', date: d1, customer: 'الأول', phone: '0500000001'},
+        {role: 'later', order: '200', date: d0, customer: 'الثاني', phone: '0500000002', replacement: S.done ? S.done.new : '', months: 10, renamed: S.done && S.done.renamed ? S.done.renamed.to : '', old_missing: false, rename_error: '', msg_new: S.msgs[0] ? (S.msgs[0].sent ? 'sent' : 'unsent') : '', msg_old: ''}]; }); await rt.fulfill({response: r, json: j}); });
     await page.route('**/api/renew/dup-state*', rt => rt.fulfill({json: {item: item(), wa_linked: true}}));
     await page.route('**/api/renew/dup-create', async rt => { S.posts.push(['create', rt.request().postDataJSON()]);
       S.done = {new: 'newuser1', months: 10, renamed: null, old_missing: false, rename_error: ''};
       S.msgs = [{kind: 'new', name: 'الثاني', phone: '966500000002', text: 'بيانات البديل', sent: null}];
       await rt.fulfill({json: {ok: true, username: 'newuser1', months: 10, replaces: '363816609180'}}); });
     await page.route('**/api/renew/dup-rename', async rt => { S.posts.push(['rename', rt.request().postDataJSON()]);
+      if (S.failRename) { S.failRename = false; return rt.fulfill({status: 409, json: {error: 'اللوحة لم ترد', need_connect: [{}]}}); }
       S.done.renamed = {from: '363816609180', to: 'old_x', line: 'l'}; S.msgs.push({kind: 'old', name: 'الأول', phone: '966500000001', text: 'ما عُدّل', sent: null});
       await rt.fulfill({json: {ok: true, renamed: S.done.renamed}}); });
     await page.route('**/api/renew/dup-send', async rt => { const b = rt.request().postDataJSON(); S.posts.push(['send', b]);
@@ -56,23 +59,27 @@ fs.writeFileSync(path.join(dataDir, 'renew_store_lines.json'), JSON.stringify({l
     await page.fill('#loQ', '200'); await page.click('#loFind');
     await page.waitForSelector('#loBody .lcDupWz');
     check('unprocessed duplicate shows the warning and the wizard button', (await page.textContent('#loBody')).includes('ولم تتم معالجته') && await page.isVisible('.lcDupWz'));
-    await page.click('.lcDupWz'); await page.waitForSelector('#wzModal:not(.hidden) #wzGo');
+    const bt = await page.textContent('#loBody');
+    check('the chain names both owners and says the first account was not changed yet', bt.includes('مَن لديه هذا المكرر') && bt.includes('الأول') && bt.includes('الثاني') && bt.includes('لا شيء بعد'));
+    await page.evaluate(() => document.querySelector('.dch').scrollIntoView()); await shot(page, 'chain'); await page.click('.lcDupWz'); await page.waitForSelector('#wzModal:not(.hidden) #wzGo');
     const cur = () => page.textContent('.wzst li.cur');
     check('wizard opens on step 1 (create)', (await cur()).includes('إنشاء'), await cur());
     await page.fill('#wzM', '10'); await page.click('#wzGo');
-    await page.waitForFunction(() => /تغيير القديم/.test(document.querySelector('.wzst li.cur')?.textContent || ''));
-    check('create posts without renaming the old one', S.posts[0][0] === 'create' && S.posts[0][1].rename_old === false && S.posts[0][1].months === 10, JSON.stringify(S.posts[0]));
+    await page.waitForSelector('#wzLater');
+    check('create posts without renaming, then renames the first at once', S.posts[0][0] === 'create' && S.posts[0][1].rename_old === false && S.posts[0][1].months === 10 && S.posts[1][0] === 'rename', JSON.stringify(S.posts.slice(0, 2)));
+    check('rename failed: the step is mandatory (no skip), says so, and shows the missing link in the chain', !(await page.$('#wzSkip')) && (await page.textContent('#wzFoot')).includes('حلقة مفقودة') && /تعذّر|اربط/.test(await page.textContent('#wzFoot')));
     await page.click('#wzGo');
     await page.waitForFunction(() => /إرسال للبديل/.test(document.querySelector('.wzst li.cur')?.textContent || ''));
     check('step 3 shows the replacement message', (await page.inputValue('#wzT')) === 'بيانات البديل');
     await page.fill('#wzT', 'بيانات البديل معدّلة'); await page.click('#wzGo');
     await page.waitForFunction(() => /إرسال ما عُدّل/.test(document.querySelector('.wzst li.cur')?.textContent || ''));
-    check('send uses the edited text on message 0 via wa', S.posts[2][0] === 'send' && S.posts[2][1].idx === 0 && S.posts[2][1].text === 'بيانات البديل معدّلة' && S.posts[2][1].mode === 'wa', JSON.stringify(S.posts[2]));
+    check('send uses the edited text on message 0 via wa', S.posts[3][0] === 'send' && S.posts[3][1].idx === 0 && S.posts[3][1].text === 'بيانات البديل معدّلة' && S.posts[3][1].mode === 'wa', JSON.stringify(S.posts[3]));
     check('step 4 shows the old owner message', (await page.inputValue('#wzT')) === 'ما عُدّل');
     await page.click('#wzSkip');
     check('skipping the last step finishes the wizard', (await page.textContent('#wzBody')).includes('اكتملت المعالجة'));
     await shot(page, 'wizard-done');
     await page.click('#wzEnd'); await sleep(600);
+    check('after closing the chain shows the replacement and the renamed first account', /newuser1/.test(await page.textContent('#loBody')) && /old_x/.test(await page.textContent('#loBody')));
     check('a skipped (unsent) message keeps the duplicate pending, listing only that step', /المتبقي من المعالجة: إرسال ما عُدّل/.test(await page.textContent('#loBody')));
     check('no page errors', errs.length === 0, errs.join(' | '));
   } finally { await browser.close(); app.kill(); fs.rmSync(dataDir, {recursive: true, force: true}); }
