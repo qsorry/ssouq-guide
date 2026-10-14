@@ -967,6 +967,8 @@ def _line_row(ln, ctx):
     elif not ((own and own.get("count"))
               or (str(panel.get("account_id", "")), str(panel.get("gate_id", ""))) in ctx["xgates"]):
         state = "not_pulled"                     # لوحته لم تُسحب: لا يُحكم بالفقد
+    elif str(ln.get("linked") or "") > str((own or {}).get("built") or ""):
+        state = "linked_new"                     # رُبط/عُدّل يدويًا بعد آخر سحبٍ للوحته: لا يُحكم بفقده قبل سحبها
     else:
         state = "missing"
     # البديل الذي أُنشئ له قد يكون على لوحةٍ غير لوحة الطلب (استُبدل من كاسبر إلى مرح مثلًا): لوحته من هوست

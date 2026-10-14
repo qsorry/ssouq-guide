@@ -2294,10 +2294,11 @@ $('#dupAll').onchange = () => { if (DUP.length) loadDup(); };
 
 /* ============ البحث برقم الطلب، والمفقود ============ */
 const LOST_STATE = {found: ['موجود', 'ok'], missing: ['مفقود', 'bad'], replaced: ['له بديل ✓', 'ok'], covered: ['له بديل ✓', 'ok'],
-  host_unmapped: ['هوست غير مربوط', 'warn'], not_pulled: ['لوحته لم تُسحب', 'warn'], no_user: ['بلا يوزر', 'warn']};
+  host_unmapped: ['هوست غير مربوط', 'warn'], linked_new: ['عُدّل — اسحب اللوحة', 'warn'], not_pulled: ['لوحته لم تُسحب', 'warn'], no_user: ['بلا يوزر', 'warn']};
 const LOST_WHY = {missing: 'لا يوجد في لوحته ولا في البديلة ولا في ملفات Excel البوابات.',
   covered: 'للطلب يوزرٌ آخر موجود على اللوحة — الاشتراك قائم، وهذا قديمٌ أو مكرّر في سجلّ الطلب.',
   replaced: 'استُبدل بيوزرٍ آخر من قبل.', not_pulled: 'لوحته لم تُسحب يوزراتها ولا ملف Excel لبوابتها — لا يُحكم عليه.',
+  linked_new: 'عُدّلت بياناته يدويًا بعد آخر سحبٍ للوحته — اسحب يوزرات اللوحة للتحقق من وجوده.',
   host_unmapped: 'هوسته غير مربوط بأي لوحة في «اللوحات وهوستاتها».'};
 let LO = null;
 async function copyText(t){
