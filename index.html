@@ -755,18 +755,25 @@ const DEVICES = {
         + '<div class="f"><span>الخانة الثالثة <i dir="ltr">Password</i></span><code>كلمة المرور كما وصلتك</code></div></div>'
         + '<div class="note">لا يوجد رابط هنا ولا تكتب أي رابط: الخادم تحدّد برمز <b dir="ltr">55555</b> في الخطوة السابقة، فاكتب <b dir="ltr">1</b> في الخانة الأولى، ولا تكتب فيها <span dir="ltr">http://url:port</span> فهو مجرد نص توضيحي داخل الخانة، ولا تتركها فارغة.</div>' + CREDS }
   ]},
-  android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو IPTV Smarters Pro", choose: {
+  android: { icon: "phone", name: "جوال أندرويد", sub: "NEXT+ أو MR7 أو IPTV Smarters Pro", choose: {
     title: "اختر التطبيق",
     options: [
       { key: "next", label: "NEXT+", sub: "الأسهل، من Google Play", icon: "next-plus" },
+      { key: "mr7", label: "MR7 TV", sub: "تطبيقنا الخاص، تحميل مباشر", icon: "mr7" },
       { key: "smarters", label: "IPTV Smarters Pro", sub: "برنامج إضافي، تحميل مباشر APK", icon: "smarters-pro" }
     ]},
     variants: {
       next: [
         { title: "حمّل تطبيق NEXT+", img: "/static/img/android-next-play.webp",
-          html: APP("next-plus", "NEXT+", "من Google Play · مجاني") + '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><div class="alt"><h3>بديل: تطبيقنا الخاص MR7</h3>' + APP("mr7", "MR7 TV", "تحميل مباشر · تطبيقنا الخاص") + '<p>تحميل مباشر من الرابط: <a class="link" href="http://aftv.news/5574841" target="_blank" rel="noopener">aftv.news/5574841</a></p></div>' },
-        { title: "أدخل بياناتك في التطبيق", img: "/static/img/android-mr7-home.webp",
-          html: '<p>افتح التطبيق. ستظهر لك 4 خانات، عبّئها بالترتيب:</p><div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسمك (أي اسم)</code></div><div class="f"><span>الخانة الثانية</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثالثة</span><code>كلمة السر</code></div><div class="f"><span>الخانة الرابعة</span><code>55555</code></div></div><p class="sub">في تطبيق MR7: اسم المستخدم في الخانة الأولى، كلمة السر في الثانية، واترك Activation code فارغًا ثم اضغط Login.</p>' + CREDS }
+          html: APP("next-plus", "NEXT+", "من Google Play · مجاني") + '<p>افتح Google Play وحمّل تطبيق <b dir="ltr">NEXT+</b>، أو اضغط الرابط مباشرة:</p><p><a class="link" href="https://play.google.com/store/apps/details?id=com.code.next" target="_blank" rel="noopener">play.google.com · NEXT+</a></p><p class="sub">تفضّل تطبيقنا الخاص؟ اختر <b dir="ltr">MR7 TV</b> من شاشة اختيار التطبيق.</p>' },
+        { title: "أدخل بياناتك في NEXT+", img: "/static/img/android-next-login.webp",
+          html: '<p>افتح التطبيق فتظهر شاشة <b dir="ltr">ADD PLAYLIST</b> بأربع خانات، مرقّمة في الصورة. اضغط كل خانة واكتب فيها بالترتيب:</p><div class="fields"><div class="f"><span>1 · <bdi>Playlist Name</bdi></span><code>اسمك (أي اسم)</code></div><div class="f"><span>2 · <bdi>Username</bdi></span><code>اسم المستخدم الخاص باشتراكك</code></div><div class="f"><span>3 · <bdi>Password</bdi></span><code>كلمة السر الخاصة باشتراكك</code></div><div class="f"><span>4 · <bdi>Server</bdi></span><code>55555</code></div></div><p>ثم اضغط زر <b dir="ltr">START</b> الأخضر أسفل الشاشة، فيحمّل التطبيق القنوات والأفلام والمسلسلات أول مرة، فانتظر حتى يكتمل.</p><div class="note">الخانة الرابعة <b dir="ltr">Server</b> لا تحتاج رابط هوست: اكتب فيها الرمز <b dir="ltr">55555</b> فقط كما هو.</div>' + CREDS }
+      ],
+      mr7: [
+        { title: "حمّل تطبيق MR7 TV",
+          html: APP("mr7", "MR7 TV", "تحميل مباشر · تطبيقنا الخاص") + '<p>حمّل ملف التطبيق مباشرة على الجوال ثم افتحه للتثبيت:</p><p><a class="btn go" href="http://aftv.news/5574841" target="_blank" rel="noopener">تحميل تطبيق MR7 TV</a></p><p class="sub">إذا ظهرت رسالة "غير مسموح بتثبيت تطبيقات غير معروفة" اضغط الإعدادات وفعّل السماح للمتصفح، ثم أعد فتح الملف.</p>' },
+        { title: "سجّل الدخول", img: "/static/img/tv-mr7-login.jpg",
+          html: '<div class="fields"><div class="f"><span>الخانة الأولى</span><code>اسم المستخدم</code></div><div class="f"><span>الخانة الثانية</span><code>كلمة السر</code></div><div class="f"><span>Activation code</span><code>اتركه فارغًا</code></div></div><p>ثم اضغط <b dir="ltr">Login</b>.</p>' + CREDS }
       ],
       smarters: [
         { title: "حمّل IPTV Smarters Pro",
