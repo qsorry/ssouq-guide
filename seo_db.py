@@ -20,7 +20,7 @@ import time
 
 DIR = "content"
 FILE = "seo.sqlite"
-VERSION = 7                    # PRAGMA user_version — يرتفع مع كل ترحيل
+VERSION = 8                    # PRAGMA user_version — يرتفع مع كل ترحيل
 
 SOURCES = ("m3u", "xtream", "tmdb", "manual", "derived")   # ‏m3u = ما في فهرس السيرفر الحالي (Existing)
 MANUAL = "manual"
@@ -304,6 +304,25 @@ CREATE TABLE IF NOT EXISTS content_like (          -- عدّاد «أعجبني�
   content_id INTEGER PRIMARY KEY REFERENCES content(id), likes INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
 );
 
+-- «دليل الأهل» (seo_guide.py): صفٌّ لكل عمل بشدّة الفئات (0 لا شيء · 3 شديد · NULL غير مُقيَّم) ومشاهدُ بأوقاتها لا تظهر إلا بعد المراجعة
+CREATE TABLE IF NOT EXISTS content_guide (
+  content_id INTEGER PRIMARY KEY REFERENCES content(id),
+  violence INTEGER, sex INTEGER, profanity INTEGER, drugs INTEGER, frightening INTEGER,
+  age INTEGER, summary_ar TEXT, summary_en TEXT,
+  source TEXT NOT NULL DEFAULT 'manual', reviewed INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS content_scene_flag (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  content_id INTEGER NOT NULL REFERENCES content(id),
+  season INTEGER, episode INTEGER, start_s INTEGER, end_s INTEGER,
+  category TEXT NOT NULL, severity INTEGER NOT NULL, note_ar TEXT, note_en TEXT, version TEXT,
+  source TEXT NOT NULL DEFAULT 'manual', status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS scene_flag_content ON content_scene_flag(content_id, status);
+CREATE INDEX IF NOT EXISTS scene_flag_status ON content_scene_flag(status, created_at);
+
 CREATE TABLE IF NOT EXISTS redirect (
   path TEXT PRIMARY KEY, target TEXT NOT NULL, code INTEGER NOT NULL DEFAULT 301,
   reason TEXT, created_at INTEGER NOT NULL
@@ -556,6 +575,10 @@ def merge_content(con, loser, winner, reason="", now=None):
         rest = cols.split(", ", 1)[1]
         con.execute(f"INSERT OR IGNORE INTO {table}({cols}) SELECT ?, {rest} FROM {table} WHERE content_id=?", (winner, loser))
         con.execute(f"DELETE FROM {table} WHERE content_id=?", (loser,))
+    con.execute("UPDATE content_scene_flag SET content_id=? WHERE content_id=?", (winner, loser))          # دليل الأهل ينتقل مع العمل
+    con.execute("INSERT OR IGNORE INTO content_guide SELECT ?, violence, sex, profanity, drugs, frightening, age, summary_ar, summary_en, source, reviewed, updated_at "
+                "FROM content_guide WHERE content_id=?", (winner, loser))
+    con.execute("DELETE FROM content_guide WHERE content_id=?", (loser,))
     con.execute("DELETE FROM external_id WHERE entity='content' AND entity_id=? AND (verified=0 OR source IN "
                 "(SELECT source FROM external_id WHERE entity='content' AND entity_id=?))", (loser, winner))
     con.execute("UPDATE external_id SET entity_id=? WHERE entity='content' AND entity_id=?", (winner, loser))

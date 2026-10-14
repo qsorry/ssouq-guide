@@ -1381,6 +1381,8 @@ def unit_enrich():
         check("بلا شرطة أخيرة: 301 إليها", seo_pages.handle(d, "/content/series/prison-break", "ar")[:1] == (301,))
         check("الرابط القديم المنقحر لـ Kuruluş Osman يحوّل 301 إلى الإنجليزي", seo_pages.handle(d, "/content/series/kurulus-osman/", "ar")[0] == 301)
         check("كيانٌ مدمج يحوّل إلى الباقي", seo_pages.handle(d, "/content/series/" + q("SELECT slug FROM content WHERE merged_into IS NOT NULL LIMIT 1")[0][0] + "/", "ar")[0] == 301)
+        check("صفحة العمل فيها «دليل الأهل» (بلا بياناتٍ: لا يوجد دليل بعد) ونموذج الإبلاغ", 'id="parents-guide"' in html and "لا يوجد دليل لهذا العمل بعد" in html and 'id="gForm"' in html
+              and "Parents guide" in en and html.count('id="parents-guide"') == 1)
         hub = seo_pages.handle(d, "/content/turkish/", "ar")[1].decode()
         check("هب التركي: مقدمة، أقسام، CollectionPage + ItemList يشير إلى روابط الأعمال لا نسخها", "<h1>المسلسلات والأفلام التركية</h1>" in hub
               and '"CollectionPage"' in hub and '"ItemList"' in hub and "/content/series/kurulus-osman-2019/" in hub and 'class="intro"' in hub)
@@ -2023,6 +2025,128 @@ def unit_release():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def unit_guide():
+    """«دليل الأهل»: اشتقاق العمر، المشاهد بأوقاتها لا تظهر قبل الاعتماد، «لا يوجد دليل» لا «آمن»، البلاغ العام بحدوده، فلتر العمر في التوصية، والدمج ينقل الدليل."""
+    print("== دليل الأهل ==")
+    import seo_guide
+    import seo_reco
+    d = tempfile.mkdtemp(prefix="seo_guide_")
+    try:
+        con = seo_db.connect(d)
+        now = int(time.time())
+
+        def add(slug, typ="series", title=None):
+            return con.execute("INSERT INTO content(type, slug, title, title_ar, title_en, year, rating, poster, match, available, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)",
+                               (typ, slug, title or slug, title or slug, title or slug, 2020, 8.0, "https://image.tmdb.org/t/p/w342/" + slug + ".jpg", "tmdb", now, now)).lastrowid
+        kid, teen, adult, none_, unr = add("kids-show"), add("teen-show"), add("adult-show"), add("no-guide"), add("unrated-only", "movie")
+        tr_ar = type("T", (), {"__call__": lambda self, a, e: a, "en": False, "code": "ar"})()
+        tr_en = type("T", (), {"__call__": lambda self, a, e: e, "en": True, "code": "en"})()
+        check("اشتقاق العمر: بلا فئات ← None، كلها 0 ← 6، خفيف ← 10، متوسط ← 13، شديد ← 16، جنسٌ متوسط ← 16، جنسٌ شديد ← 18",
+              seo_guide.derive_age({}) == (None, False) and seo_guide.derive_age({c: 0 for c in seo_guide.CATS})[0] == 6
+              and seo_guide.derive_age({"violence": 1})[0] == 10 and seo_guide.derive_age({"violence": 2})[0] == 13 and seo_guide.derive_age({"drugs": 3})[0] == 16
+              and seo_guide.derive_age({"sex": 2})[0] == 16 and seo_guide.derive_age({"sex": 3})[0] == 18 and seo_guide.derive_age({"violence": 1})[1] is True)
+        check("الوقت: 754 ← 12:34 و3723 ← 1:02:03، والتحليل يقبل mm:ss وh:mm:ss وأرقامًا ويرفض الخطأ",
+              seo_guide.fmt_time(754) == "12:34" and seo_guide.fmt_time(3723) == "1:02:03" and seo_guide.parse_time("12:34") == 754 and seo_guide.parse_time("1:02:03") == 3723
+              and seo_guide.parse_time("") is None and seo_guide.parse_time("754") == 754)
+        bad = 0
+        for v in ("12:99", "abc", "-5", "12:3:4:5"):
+            try:
+                seo_guide.parse_time(v)
+            except ValueError:
+                bad += 1
+        check("أوقاتٌ غير صالحة تُرفض", bad == 4)
+        with con:
+            seo_guide.set_guide(con, kid, {"violence": 0, "sex": 0, "profanity": 0, "drugs": 0, "frightening": 1, "source": "imdb", "reviewed": False, "summary_ar": "ملخص"})
+            seo_guide.set_guide(con, teen, {"violence": 2, "sex": 1, "profanity": 1, "drugs": 0, "frightening": 1, "source": "manual", "reviewed": True})
+            seo_guide.set_guide(con, adult, {"violence": 3, "sex": 3, "profanity": 3, "drugs": 2, "frightening": 2, "source": "imdb"})
+            seo_guide.set_guide(con, unr, {"summary_ar": "لا شدّة بعد"})
+        g = seo_guide.guide_row(con, kid)
+        check("دليل الأطفال: عمر 10 (فئةٌ خفيفة) من IMDb لم يُراجَع", g["age"] == 10 and g["source"] == "imdb" and not g["reviewed"])
+        html_, rating = seo_guide.section(con, kid, "kids-show", "series", tr_ar)
+        check("قسم الصفحة: 10+ وسمة «لم يُراجَع بعد» ودرجات الشدّة وcontentRating", rating == "10+" and "لم يُراجَع بعد" in html_ and "●○○○" in html_ and 'id="parents-guide"' in html_)
+        h0, r0 = seo_guide.section(con, none_, "no-guide", "series", tr_ar)
+        check("عملٌ بلا دليل: «لا يوجد دليل» ولا ادّعاء أمان ولا contentRating", r0 is None and "لا يوجد دليل" in h0 and "آمن" not in h0.replace("لا يعني", "") and "g-age" not in h0)
+        h1, r1 = seo_guide.section(con, unr, "unrated-only", "movie", tr_ar)
+        check("ملخصٌ بلا فئات ولا عمر: يُعامَل كبلا دليل (لا عمر)", r1 is None and "g-age" not in h1)
+        sid = seo_guide.add_scene(con, teen, {"season": 1, "episode": 2, "start": "12:34", "end": "12:50", "category": "violence", "severity": 3, "note_ar": "مشهد قتال", "version": "مدبلج"}, "manual", "approved")
+        seo_guide.add_scene(con, teen, {"category": "sex", "severity": 2, "start": "5:00", "end": "5:30", "note_ar": "مشهدٌ معلّق"}, "report", "pending")
+        con.commit()
+        ht, _ = seo_guide.section(con, teen, "teen-show", "series", tr_ar)
+        check("المعتمد وحده يظهر بوقته (12:34 – 12:50 والحلقة 2 والنسخة)، والمعلّق لا يظهر", "12:34 – 12:50" in ht and "الحلقة 2" in ht and "مدبلج" in ht and "مشهدٌ معلّق" not in ht and "5:00" not in ht)
+        he, _ = seo_guide.section(con, teen, "teen-show", "series", tr_en)
+        check("النسخة الإنجليزية: Parents guide وScenes to skip وReviewed by our team", "Parents guide" in he and "Scenes to skip" in he and "Reviewed by our team" in he)
+        seo_guide.add_scene(con, kid, {"category": "drugs", "severity": 1, "note_ar": "<script>x</script>"}, "manual", "approved")
+        check("نصٌّ يحمل HTML يُهرَّب في القسم", "&lt;script&gt;x&lt;/script&gt;" in seo_guide.section(con, kid, "kids-show", "series", tr_ar)[0] and "<script>x" not in seo_guide.section(con, kid, "kids-show", "series", tr_ar)[0])
+        for bad_in in ({"category": "x", "severity": 2}, {"category": "sex", "severity": 9}, {"category": "sex", "severity": 2, "start": "1:00"}, {"category": "sex", "severity": 2, "start": "2:00", "end": "1:00"}):
+            try:
+                seo_guide.add_scene(con, kid, bad_in)
+                bad = False
+            except (ValueError, TypeError):
+                bad = True
+            check(f"مشهدٌ غير صالح يُرفض {bad_in}", bad)
+        # فلتر العمر
+        ids = [kid, teen, adult, none_, unr]
+        check("فلتر 10: الأطفال وحدهم؛ بلا غير المُصنَّف", seo_guide.allowed(con, ids, 10) == {kid})
+        check("فلتر 16: الأطفال والمراهقين لا الكبار ولا غير المُصنَّف", seo_guide.allowed(con, ids, 16) == {kid, teen})
+        check("فلتر 13 مع غير المُصنَّف: يدخل ما لا دليل له (بطلبٍ صريح)", seo_guide.allowed(con, ids, 13, unrated=True) == {kid, teen, none_, unr})
+        check("بلا عمر: لا فلترة", seo_guide.allowed(con, ids, 0) == set(ids))
+        con.commit()
+        r = seo_reco.recommend(d, "", "", age=10)
+        check("التوصية البدائية بعمر 10: ما دليله ≤10 فقط، ولا غير المُصنَّف", {i["slug"] for i in r["items"]} == {"kids-show"}, str([i["slug"] for i in r["items"]]))
+        ra = seo_reco.api(d, {"age": "13"}, "ar")
+        check("واجهة التوصية بعمر 13: kids-show وteen-show مع شارة العمر", {i["slug"] for i in ra["items"]} == {"kids-show", "teen-show"} and all(i["guide"] for i in ra["items"]), str(ra["items"]))
+        rn = seo_reco.api(d, {}, "ar")
+        check("بلا age: كل الأعمال (لا فلترة)", len(rn["items"]) == 5)
+        check("عمرٌ غير مسموح يُهمَل", len(seo_reco.api(d, {"age": "7"}, "ar")["items"]) == 5)
+        # البلاغ العام
+        con.close()
+        check("بلاغ زائر صالح ← ok ويدخل pending", seo_guide.report(d, "kids-show", {"category": "violence", "severity": 2, "start": "3:00", "end": "3:20", "note_ar": "لقطة"}) == "ok")
+        check("بلاغ عن عملٍ غير موجود ← not_found وslug غير صالح ← not_found", seo_guide.report(d, "nope", {"category": "sex"}) == "not_found" and seo_guide.report(d, "../x", {}) == "not_found")
+        check("بلاغ بفئةٍ غير صالحة ← invalid", seo_guide.report(d, "kids-show", {"category": "zzz"}).startswith("invalid"))
+        c2 = seo_db.connect(d)
+        pend = seo_guide.pending(c2)
+        check("الطابور: بلاغ المشهد المعلّق مع بلاغ الزائر (2) ولا شيء منهما ظاهر", len(pend) == 2 and "لقطة" not in seo_guide.section(c2, kid, "kids-show", "series", tr_ar)[0])
+        # سقف المعلّقات لكل عمل
+        for _ in range(seo_guide.MAX_PENDING_PER_TITLE):
+            seo_guide.report(d, "adult-show", {"category": "sex", "severity": 1})
+        check("سقف المعلّق لكل عمل ← full", seo_guide.report(d, "adult-show", {"category": "sex", "severity": 1}) == "full")
+        seo_guide._rate.clear()
+        ok_n = sum(seo_guide.rate_ok("1.2.3.4") for _ in range(10))
+        check("حدّ البلاغات بالساعة للعنوان الواحد", ok_n == seo_guide.REPORT_PER_HOUR)
+        # الإدارة: اعتماد/رفض/تعديل/حذف
+        pid = pend[0]["id"]
+        r1_ = seo_guide.admin(d, {"action": "scene_status", "scene_id": pid, "status": "approved"})
+        c4 = seo_db.connect(d)
+        check("اعتماد بلاغٍ ← يظهر في صفحة العمل بوقته", r1_["ok"] and "5:00 – 5:30" in seo_guide.section(c4, teen, "teen-show", "series", tr_ar)[0])
+        c4.close()
+        seo_guide.admin(d, {"action": "scene_status", "scene_id": pend[1]["id"], "status": "rejected"})
+        check("رفض بلاغٍ ← لا يظهر ويخرج من الطابور", all(x["id"] != pend[1]["id"] for x in seo_guide.admin(d, {"action": "pending"})["pending"]))
+        for badact in ({"action": "zz"}, {"action": "scene_status", "scene_id": 99999, "status": "approved"}, {"action": "scene_status", "scene_id": pid, "status": "bogus"}, {"action": "set", "id": 99999, "fields": {}}):
+            try:
+                seo_guide.admin(d, badact)
+                bad = False
+            except (ValueError, TypeError):
+                bad = True
+            check(f"إجراء إدارةٍ غير صالح يُرفض {badact.get('action')}", bad)
+        # الاستيراد لا يكتب فوق ما راجعه الفريق
+        c3 = seo_db.connect(d)
+        with c3:
+            done, skipped = seo_guide.import_rows(c3, [{"slug": "no-guide", "violence": 1, "sex": 0, "profanity": 1, "drugs": 0, "frightening": 0, "source": "imdb"},
+                                                       {"slug": "teen-show", "violence": 0}, {"slug": "nope"}, "x"])
+        gt_ = seo_guide.guide_row(c3, teen)
+        check("الاستيراد: غير المُراجَع يُستورد، والمُراجَع (teen) لا يُمسّ، وغير الموجود يُتخطّى", done == 1 and skipped == 3 and gt_["sev"]["violence"] == 2 and seo_guide.guide_row(c3, none_)["age"] == 10)
+        # الدمج ينقل الدليل والمشاهد
+        con = c3
+        w, l = add("merge-win"), add("merge-lose")
+        seo_guide.set_guide(c3, l, {"violence": 1}); seo_guide.add_scene(c3, l, {"category": "violence", "severity": 1, "start": "1:00", "end": "1:10"}, "manual", "approved")
+        seo_db.merge_content(c3, l, w, "test")
+        c3.commit()
+        check("الدمج: دليل الخاسر ومشاهده ينتقلان إلى الفائز", seo_guide.guide_row(c3, w)["sev"]["violence"] == 1 and len(seo_guide.scenes(c3, w)) == 1 and not c3.execute("SELECT 1 FROM content_guide WHERE content_id=?", (l,)).fetchone())
+        c3.close()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def unit_reco():
     """«أعجبني» وتوصيات «قد تعجبك»: ملفّ الزائر من أعماله، وصلةٌ صارمة (لا مسلسلات أو أفلام بلا علاقة)، والاهتمامات الصريحة، ونوع العمل، وبحثٌ يقبل الأخطاء."""
     print("== أعجبني والتوصيات ==")
@@ -2185,6 +2309,7 @@ def main():
     unit_match()
     unit_site_setting()
     unit_reco()
+    unit_guide()
     unit_build()
     unit_ten()
     unit_production_cases()

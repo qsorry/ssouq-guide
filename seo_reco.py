@@ -12,6 +12,7 @@ import threading
 import time
 
 import seo_db
+import seo_guide
 
 W_LIKE, W_SEEN, DECAY = 3.0, 1.0, 0.97
 W_HINT = 0.7                          # قرينة القسم (مثلًا «مسلسلات تركية»): تغطّي كل الأعمال حتى قبل إثراء TMDB، لكنها أضعف من التأكيد
@@ -129,8 +130,9 @@ def _idf(con, feats, total):
     return out
 
 
-def recommend(data_dir, likes, seen, n=DEFAULT_N, interests=(), types=()):
-    """← {profile: {...}, items: [{slug, type, title_ar, title_en, year, poster, rating, score, why: {slug, liked}}], cold: bool}."""
+def recommend(data_dir, likes, seen, n=DEFAULT_N, interests=(), types=(), age=0, unrated=False):
+    """age ∈ (6,10,13,16,18): مشاهدٌ بهذا العمر — لا يُرشَّح ما دليله أعلى منه، ولا غير المُصنَّف إلا إن طُلب (unrated).
+    ← {profile: {...}, items: [{slug, type, title_ar, title_en, year, poster, rating, score, why: {slug, liked}}], cold: bool}."""
     con = seo_db.connect(data_dir, create=False)
     if con is None:
         return {"items": [], "cold": True}
@@ -167,7 +169,10 @@ def recommend(data_dir, likes, seen, n=DEFAULT_N, interests=(), types=()):
             prof[("t", tid)] = prof.get(("t", tid), 0.0) + W_INTEREST
         if not prof:                                         # لا سلوك بعد: الأشهر من المطابَق
             cold = con.execute("SELECT c.id, c.slug, c.type, c.title, c.title_ar, c.title_en, c.year, c.poster, c.rating FROM content c WHERE c.merged_into IS NULL AND c.available=1 AND c.poster IS NOT NULL "
-                               f"AND c.match IN ('tmdb','manual'){tfilter} ORDER BY COALESCE(c.popularity,0) DESC, c.id LIMIT ?", (*types, n + len(exclude))).fetchall()
+                               f"AND c.match IN ('tmdb','manual'){tfilter} ORDER BY COALESCE(c.popularity,0) DESC, c.id LIMIT ?", (*types, (n + len(exclude)) * (12 if age else 1))).fetchall()
+            if age:
+                okc = seo_guide.allowed(con, [r["id"] for r in cold], int(age), unrated)
+                cold = [r for r in cold if r["id"] in okc]
             return {"cold": True, "profile": {}, "items": [_item(r, 0.0, None) for r in cold if r["id"] not in exclude][:n]}
         top = sorted(prof, key=lambda k: -prof[k])[:TOP_FEATURES]
         idf = _idf(con, top, total)
@@ -207,6 +212,9 @@ def recommend(data_dir, likes, seen, n=DEFAULT_N, interests=(), types=()):
         # اختيار الأصل (تركي/أمريكي/…) شرطٌ: لا يُعرض عملٌ من غير أصله؛ وبلا أصلٍ يُشترط تصنيفٌ مما اختاره
         gate = hit_origin if origin_ids else hit_other if other_ids else None
         cand = {c: v for c, v in cand.items() if v[1] >= need and (gate is None or c in gate)}
+        if age and cand:
+            okc = seo_guide.allowed(con, list(cand), int(age), unrated)
+            cand = {c: v for c, v in cand.items() if c in okc}
         if not cand:
             return {"cold": False, "profile": {"likes": len(likes), "seen": len(seen)}, "items": []}
         peak = max(v[0] for v in cand.values())
@@ -252,14 +260,17 @@ def _why(con, cid, item_feats, weights, likes):
 
 
 def _item(r, score, why):
-    return {"slug": r["slug"], "type": r["type"], "title_ar": r["title_ar"] or r["title"], "title_en": r["title_en"] or r["title"], "year": r["year"],
+    return {"id": r["id"], "slug": r["slug"], "type": r["type"], "title_ar": r["title_ar"] or r["title"], "title_en": r["title_en"] or r["title"], "year": r["year"],
             "poster": r["poster"], "rating": r["rating"], "score": round(score, 3), "why": why}
 
 
 def api(data_dir, params, lang="ar"):
     """ردّ ‏/api/content/recommend ← قاموس JSON جاهز للصفحة: مساراتٌ بلغة الصفحة، وصورٌ مصغّرة، وسبب كل اقتراح بالاسم."""
     import seo_pages
-    res = recommend(data_dir, params.get("likes") or "", params.get("seen") or "", int(params.get("n") or DEFAULT_N), params.get("interests") or "", params.get("types") or "")
+    age = int(params.get("age") or 0)
+    age = age if age in seo_guide.AGES else 0
+    res = recommend(data_dir, params.get("likes") or "", params.get("seen") or "", int(params.get("n") or DEFAULT_N), params.get("interests") or "", params.get("types") or "",
+                    age=age, unrated=bool(params.get("unrated")))
     en = lang == "en"
     pre = seo_db.lang_prefix("en" if en else "ar")
     names = {}
@@ -273,11 +284,19 @@ def api(data_dir, params, lang="ar"):
     finally:
         con.close()
     items = []
+    ages = {}
+    if age and res["items"]:
+        con2 = seo_db.connect(data_dir, create=False)
+        try:
+            ages = seo_guide.ages_of(con2, [it["id"] for it in res["items"]])
+        finally:
+            con2.close()
     for it in res["items"]:
         w = it.get("why")
         items.append({"slug": it["slug"], "path": pre + f"/content/{'movies' if it['type'] == 'movie' else 'series'}/{it['slug']}/",
                       "title": it["title_en"] if en else it["title_ar"], "year": it["year"], "rating": it["rating"],
                       "poster": seo_pages._img(it["poster"], "w342", ""),
+                      "guide": (f"{ages[it['id']]}+ · " + seo_guide.AGE_NAMES[ages[it["id"]]][1 if en else 0]) if ages.get(it["id"]) else "",
                       "why": ((("لأنك أعجبت بـ " if w["liked"] else "لأنك شاهدت ") if not en else ("Because you liked " if w["liked"] else "Because you viewed ")) + names.get(w["slug"], w["slug"])) if w else ""})
     return {"ok": True, "cold": res["cold"], "items": items, "profile": res.get("profile", {})}
 

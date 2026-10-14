@@ -43,6 +43,7 @@ import seo_search
 import seo_db
 import seo_pages
 import seo_admin
+import seo_guide
 import seo_reco
 import xm_web
 import falcon_api
@@ -6601,6 +6602,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, b, extra={"Cache-Control": "public, max-age=300" if b["servers"] else "no-store"})
         if path == "/api/content/recommend":    # «مقترحات لك»: من ما أعجب الزائر وشاهده (slugs من جهازه) — لا يُخزَّن شيءٌ عنه
             res = seo_reco.api(DATA_DIR, {"likes": self._q("likes"), "seen": self._q("seen"), "interests": self._q("interests"), "types": self._q("types"),
+                                          "age": self._q("age"), "unrated": self._q("unrated") == "1",
                                           "n": max(1, min(30, int(self._q("n") or 12))) if str(self._q("n") or "").isdigit() else 12}, "en" if self._q("lang") == "en" else "ar")
             return self._send(200, res, extra={"Cache-Control": "no-store"})
         if path == "/api/content/find":         # بحثٌ ذكي بالاسم يقبل الأخطاء (لجولة «محتار ايش تشاهد؟»)
@@ -8121,6 +8123,11 @@ class Handler(BaseHTTPRequestHandler):
                 except (ValueError, TypeError) as e:
                     return self._send(400, {"ok": False, "error": str(e)})
                 return self._send(200, {"ok": True, "entity": seo_admin.get(DATA_DIR, body.get("id") or body.get("winner"))})
+            elif path == "/api/content/admin/seo-guide":     # دليل الأهل: دليل العمل · مشاهده · بلاغات الزوار · اعتماد/رفض · استيراد
+                try:
+                    return self._send(200, seo_guide.admin(DATA_DIR, body))
+                except (ValueError, TypeError) as e:
+                    return self._send(400, {"ok": False, "error": str(e)})
             elif path == "/api/content/admin/seo-audit":     # فحص عيّنة صفحات المعاينة (status · canonical · hreflang · schema · روابط…)
                 return self._send(200, {"ok": True, "audit": seo_pages.audit(DATA_DIR, int(body.get("n") or 30))})
             elif path == "/api/content/admin/seo-settings":  # إعدادات الطبقة (عتبات، نافذة، شروط الفهرسة…)
@@ -8318,6 +8325,30 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"ok": False})
         return self._send(200, {"ok": True, "count": c})
 
+    def _guide_report_post(self):
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if not 0 <= n <= 2048:
+            return self._send(413, {"ok": False})
+        try:
+            req = json.loads(self.rfile.read(n) or b"{}")
+        except ValueError:
+            return self._send(400, {"ok": False})
+        if not isinstance(req, dict):
+            return self._send(400, {"ok": False})
+        if not seo_guide.rate_ok(self._client_ip()):
+            return self._send(429, {"ok": False, "error": "كثرة بلاغات — حاول لاحقًا"})
+        res = seo_guide.report(DATA_DIR, str(req.get("slug") or ""), req)
+        if res == "ok":
+            return self._send(200, {"ok": True})
+        if res == "not_found":
+            return self._send(404, {"ok": False, "error": "العمل غير موجود"})
+        if res == "full":
+            return self._send(429, {"ok": False, "error": "تعذّر الاستلام الآن"})
+        return self._send(400, {"ok": False, "error": res.split(":", 1)[-1]})
+
     def _report_post(self):
         try:
             n = int(self.headers.get("Content-Length", 0) or 0)
@@ -8490,6 +8521,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._renew_public(path)
             if path == "/api/content/like":         # «أعجبني»: عدّادٌ مجهول لكل عمل، بحدٍّ بالساعة لكل عنوان
                 return self._like_post()
+            if path == "/api/content/guide-report":  # بلاغ زائرٍ عن مشهدٍ في «دليل الأهل» (pending حتى يراجعه المدير)
+                return self._guide_report_post()
             if path == "/api/report":               # بلاغ المشترك (عام، بحدٍّ بالساعة)
                 return self._report_post()
             if path == "/api/stremio/link":         # إضافة Stremio: رسالة الاشتراك ← رابط التثبيت

@@ -23,6 +23,7 @@ import content as C
 import content_page as P
 import guide_pages
 import seo_db
+import seo_guide
 import seo_reco
 import tournament
 
@@ -492,6 +493,8 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
             + f'<p class="chips">{chips}</p><dl class="facts">{facts_html}</dl></div></div></section>')
     # القصة
     story = (f'<section class="story"><h2>{_esc(tr(f"قصة {kind_ar}", "Plot Overview"))}</h2><p dir="auto">{_esc(ov)}</p></section>' if ov else "")
+    # دليل الأهل: بعد القصة؛ بلا بياناتٍ يُكتب «لا يوجد دليل بعد» لا «آمن»
+    guide_html, guide_rating = seo_guide.section(con, row["id"], slug, typ, tr)
     # المخرج والممثلون
     ppl = ""
     if director:
@@ -587,6 +590,8 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     if typ == "series" and n_official:            # في البيانات المهيكلة الرسمي وحده؛ المدرج لا يُقدَّم عددًا رسميًّا
         ld["numberOfSeasons"] = n_seasons
         ld["numberOfEpisodes"] = n_official
+    if guide_rating:
+        ld["contentRating"] = guide_rating
     if countries:
         ld["countryOfOrigin"] = [{"@type": "Country", "name": _tname(c, tr)} for c in countries]
     if row["runtime"] and typ == "movie":
@@ -619,7 +624,7 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
     alts = [("ar", SITE + _path(row, "ar")), ("en", SITE + _path(row, "en")), ("x-default", SITE + _path(row, "ar"))] if ok_ar and ok_en else []
     noindex = not (live and (ok_en if tr.en else ok_ar))
     body = (_header(tr, hubs[0]["key"] if hubs else "") + f'<main class="wrap">{crumb_html}<div class="tools">{_switch(tr, _path(row, "en" if not tr.en else "ar"))}</div>'
-            + body_intro + head + like_bar + f'<div class="cols"><div class="main">{story}{ppl}{seas}{rate_html}{trailer_html}{pics}{faq_html}{foryou_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr) + like_js)
+            + body_intro + head + like_bar + f'<div class="cols"><div class="main">{story}{guide_html}{ppl}{seas}{rate_html}{trailer_html}{pics}{faq_html}{foryou_html}{sim_html}</div><aside>{avail_html}</aside></div></main>' + _footer(tr) + like_js)
     return "page", {"html": _doc(tr, page_title, desc, canonical, alts, body, lds, og_image=backdrop or poster, og_type="video.movie" if typ == "movie" else "video.tv_show",
                                  noindex=noindex), "title": page_title, "desc": desc, "canonical": canonical, "alts": alts, "index_ar": ok_ar, "index_en": ok_en,
                    "noindex": noindex, "live": live, "why": (indexable(row, "ar", st)[1], indexable(row, "en", st)[1]), "row": row}
@@ -874,14 +879,17 @@ def render_tour(con, data_dir, tr, st):
     L = {"liked": tr("أعجبني", "Like"), "seen": tr("شاهدته", "Watched"), "none": tr("لا اقتراحات مناسبة بعد — أضِف أعمالًا شاهدتها أو أعجبتك.", "No fitting picks yet — add titles you watched or liked."),
          "pick": tr("الأشهر في اهتماماتك — حدّد ما شاهدته", "Popular in your interests — mark what you watched"), "noresult": tr("لا نتائج", "No results"),
          "searching": tr("يبحث…", "Searching…")}
-    cfg = json.dumps({"lang": tr.code, "chips": chips, "L": L}, ensure_ascii=False).replace("</", "<\\/")
+    ages = [{"v": 0, "n": tr("بلا قيد", "Any")}] + [{"v": a, "n": f"{a}+ · " + tr(*seo_guide.AGE_NAMES[a])} for a in (6, 10, 13, 16)]
+    L["agenote"] = tr("يُعرض ما له «دليل أهل» فقط؛ وما لم يُصنَّف بعد مُستبعد.", "Only titles with a parents guide are shown; unrated titles are excluded.")
+    cfg = json.dumps({"lang": tr.code, "chips": chips, "L": L, "ages": ages}, ensure_ascii=False).replace("</", "<\\/")
     title = tr("محتار ايش تشاهد؟", "Not sure what to watch?")
     body = (_header(tr) + f'<main class="wrap tour"><h1>{_esc(title)}</h1><p class="lead">{_esc(tr("جولة سريعة: اختر اهتماماتك وما شاهدته، ونقترح عليك ما يناسبك.", "A quick tour: pick your interests and what you watched, and we will suggest what fits."))}</p>'
             f'<ol class="tsteps" id="tDots"><li class="on">1 · {_esc(tr("اهتماماتك", "Interests"))}</li><li>2 · {_esc(tr("ما شاهدته", "What you watched"))}</li><li>3 · {_esc(tr("مقترحاتك", "Your picks"))}</li></ol>'
             f'<section id="s1"><div class="tbtns top"><button type="button" class="tbtn go" id="to2">{_esc(tr("التالي", "Next"))} ←</button><button type="button" class="tbtn" id="tSkip">{_esc(tr("تخطَّ وأرني الأشهر", "Skip — show popular"))}</button></div>'
             f'<h2>{_esc(tr("ماذا تحب أن تشاهد؟", "What do you like?"))}</h2><h3>{_esc(tr("النوع", "Kind"))}</h3><div class="tchips" id="tTypes"></div>'
             f'<h3>{_esc(tr("الأصل (اختر ما يعجبك)", "Origin (pick what you like)"))}</h3><div class="tchips" id="tOrigins"></div>'
-            f'<h3>{_esc(tr("التصنيف", "Genre"))}</h3><div class="tchips" id="tChips"></div></section>'
+            f'<h3>{_esc(tr("التصنيف", "Genre"))}</h3><div class="tchips" id="tChips"></div>'
+            f'<h3>{_esc(tr("عمر المشاهد (للعائلة)", "Viewer age (family)"))}</h3><div class="tchips" id="tAges"></div><p class="tmsg" id="tAgeNote"></p></section>'
             f'<section id="s2" hidden><div class="tbtns top"><button type="button" class="tbtn" id="to1">→ {_esc(tr("السابق", "Back"))}</button><button type="button" class="tbtn go" id="to3">{_esc(tr("أظهر المقترحات", "Show my picks"))} ←</button></div>'
             f'<h2>{_esc(tr("أعمالٌ شاهدتها أو أعجبتك", "Titles you watched or liked"))}</h2>'
             f'<input class="tsearch" id="tQ" type="search" autocomplete="off" placeholder="{_esc(tr("ابحث باسم مسلسل أو فيلم (يقبل الأخطاء الإملائية)", "Search a series or movie (typos are fine)"))}">'
@@ -892,8 +900,8 @@ def render_tour(con, data_dir, tr, st):
     js = r"""(function(){var CFG=__CFG__,L=CFG.L,$=function(i){return document.getElementById(i)};
 function rd(k,d){try{var v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}}
 function wr(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-var st={interests:rd('ssq_interests',[]),types:rd('ssq_types',[]),likes:rd('ssq_likes',[]),seen:rd('ssq_seen',[])};
-function save(){wr('ssq_interests',st.interests);wr('ssq_types',st.types);wr('ssq_likes',st.likes);wr('ssq_seen',st.seen)}
+var st={interests:rd('ssq_interests',[]),types:rd('ssq_types',[]),likes:rd('ssq_likes',[]),seen:rd('ssq_seen',[]),age:rd('ssq_age',0)};
+function save(){wr('ssq_interests',st.interests);wr('ssq_types',st.types);wr('ssq_likes',st.likes);wr('ssq_seen',st.seen);wr('ssq_age',st.age)}
 function has(a,x){return a.indexOf(x)>-1}function flip(a,x){var i=a.indexOf(x);if(i>-1)a.splice(i,1);else a.unshift(x)}
 function step(n){['s1','s2','s3'].forEach(function(id,i){$(id).hidden=(i+1!==n)});Array.prototype.forEach.call($('tDots').children,function(li,i){li.className=(i+1===n)?'on':''});window.scrollTo(0,0)}
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
@@ -904,15 +912,18 @@ function card(it,pick){var a=el(pick?'div':'a','card'+(pick?' pick':''));if(!pic
  a.appendChild(p);var t=el('b',null,it.title);t.dir='auto';a.appendChild(t);
  var sm=[it.year||'',rate(it)?'\u2605 '+rate(it):''].filter(Boolean).join(' \u00b7 ');if(sm)a.appendChild(el('small',null,sm));
  if(!pick&&it.why){var w=el('small',null,it.why);w.style.display='block';a.appendChild(w)}
+ if(!pick&&it.guide){var g=el('small',null,'\ud83d\udc6a '+it.guide);g.style.display='block';a.appendChild(g)}
  if(pick){var k=el('div','pk'),lk=el('button','lk'+(has(st.likes,it.slug)?' on':''),'\ud83d\udc4d '+L.liked),sn=el('button','sn'+(has(st.seen,it.slug)?' on':''),'\u2713 '+L.seen);lk.type=sn.type='button';
   lk.onclick=function(){if(has(st.likes,it.slug)){flip(st.likes,it.slug)}else{st.likes.unshift(it.slug);if(!has(st.seen,it.slug))st.seen.unshift(it.slug)}save();lk.className='lk'+(has(st.likes,it.slug)?' on':'');sn.className='sn'+(has(st.seen,it.slug)?' on':'')};
   sn.onclick=function(){if(has(st.seen,it.slug)){flip(st.seen,it.slug);var i=st.likes.indexOf(it.slug);if(i>-1)st.likes.splice(i,1)}else{st.seen.unshift(it.slug)}save();sn.className='sn'+(has(st.seen,it.slug)?' on':'');lk.className='lk'+(has(st.likes,it.slug)?' on':'')};
   k.appendChild(lk);k.appendChild(sn);a.appendChild(k)}return a}
 function fill(box,items,pick){box.textContent='';items.forEach(function(it){box.appendChild(card(it,pick))})}
-function q(extra){return '/api/content/recommend?lang='+CFG.lang+'&interests='+encodeURIComponent(st.interests.join(','))+'&types='+encodeURIComponent(st.types.join(','))+extra}
+function q(extra){return '/api/content/recommend?lang='+CFG.lang+'&interests='+encodeURIComponent(st.interests.join(','))+'&types='+encodeURIComponent(st.types.join(','))+(st.age?'&age='+st.age:'')+extra}
 // الخطوة 1
 var TY=[['movie',CFG.lang==='en'?'Movies':'\u0623\u0641\u0644\u0627\u0645'],['series',CFG.lang==='en'?'Series':'\u0645\u0633\u0644\u0633\u0644\u0627\u062a']];
 TY.forEach(function(t){var b=el('button','tchip'+(has(st.types,t[0])?' on':''),t[1]);b.type='button';b.onclick=function(){flip(st.types,t[0]);save();b.className='tchip'+(has(st.types,t[0])?' on':'')};$('tTypes').appendChild(b)});
+function ageNote(){$('tAgeNote').textContent=st.age?L.agenote:''}
+CFG.ages.forEach(function(a){var b=el('button','tchip'+(st.age===a.v?' on':''),a.n);b.type='button';b.onclick=function(){st.age=a.v;save();Array.prototype.forEach.call($('tAges').children,function(x,i){x.className='tchip'+(CFG.ages[i].v===st.age?' on':'')});ageNote()};$('tAges').appendChild(b)});ageNote();
 CFG.chips.forEach(function(c){var b=el('button','tchip'+(has(st.interests,c.id)?' on':''),c.name);b.type='button';b.onclick=function(){flip(st.interests,c.id);save();b.className='tchip'+(has(st.interests,c.id)?' on':'')};$(c.group==='origin'?'tOrigins':'tChips').appendChild(b)});
 // الخطوة 2: بحثٌ ذكي + اقتراحات سريعة
 var tm=0;$('tQ').oninput=function(){clearTimeout(tm);var v=this.value.trim();if(v.length<2){$('tRes').textContent='';$('tMsg').textContent='';return}
@@ -922,7 +933,7 @@ function quick(){$('tQuickH').textContent=L.pick;fetch(q('&n=12&likes=&seen=')).
 function results(){$('tWhy').textContent='';$('tOut').textContent='';fetch(q('&n=18&likes='+encodeURIComponent(st.likes.slice(0,30).join(','))+'&seen='+encodeURIComponent(st.seen.slice(0,60).join(',')))).then(function(r){return r.json()}).then(function(d){
  if(!d.items||!d.items.length||d.cold&&!st.interests.length&&!st.likes.length){$('tWhy').textContent=L.none;return}fill($('tOut'),d.items,false);var w=d.items.filter(function(i){return i.why})[0];$('tWhy').textContent=w?w.why:''}).catch(function(){})}
 $('to2').onclick=function(){step(2);quick()};$('tSkip').onclick=function(){step(3);results()};$('to1').onclick=function(){step(1)};$('to3').onclick=function(){step(3);results()};$('to2b').onclick=function(){step(2);quick()};
-$('tReset').onclick=function(){st={interests:[],types:[],likes:[],seen:[]};save();location.reload()};
+$('tReset').onclick=function(){st={interests:[],types:[],likes:[],seen:[],age:0};save();location.reload()};
 })();""".replace("__CFG__", cfg)
     body += f"<script>{js}</script>"
     canonical = SITE + seo_db.lang_prefix(tr.code) + "/content/for-you/"
@@ -1370,6 +1381,13 @@ details{background:var(--card);border:1px solid var(--line);border-radius:12px;p
 .avail{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;position:sticky;top:12px}.avail h2{margin:0 0 10px;font-size:1.1rem}
 .srv{list-style:none;padding:0;margin:0}.srv li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}.srv li:first-child{border-top:0}.srv li span{flex:1}
 .srv small{display:block;color:var(--mute);font-size:.8rem}.logo{width:34px;height:34px;border-radius:10px;object-fit:cover}.btn{background:var(--acc);color:#fff;border-radius:10px;padding:7px 12px;font-weight:700;font-size:.86rem;white-space:nowrap}
+.guide{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin:18px 0}.guide h2{margin:0 0 8px}.guide h3{margin:14px 0 4px;font-size:1rem}
+.g-sum{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px}.g-age{background:var(--acc);color:#fff;border-radius:10px;padding:3px 10px}.g-sum small,.g-none{color:var(--mute)}
+.g-cats{list-style:none;padding:0;margin:0}.g-cats li{display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}.g-cats li:first-child{border-top:0}.g-cats li span:first-child{flex:1}
+.g-cats .dots{letter-spacing:2px;color:var(--gold);direction:ltr}.g-cats em{min-width:5.5em;font-style:normal;color:var(--mute);text-align:end}.g-text{margin:10px 0 0}
+.g-scenes{padding-inline-start:18px;margin:6px 0}.g-scenes li{margin:6px 0}.g-scenes time{background:rgba(255,255,255,.08);border-radius:6px;padding:1px 6px}.g-scenes i{color:var(--gold);font-style:normal}.g-scenes small{color:var(--mute)}
+.g-report{margin-top:12px}.g-report summary{cursor:pointer;color:var(--acc)}.g-report form{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.g-report input,.g-report select,.g-report textarea{background:var(--bg);color:inherit;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit}
+.g-report textarea{flex:1 1 100%}.g-report button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:7px 14px;font:inherit}.g-msg{color:var(--mute);align-self:center}
 .cta{color:var(--mute);font-size:.86rem;margin:10px 0 0}.intro{font-size:1.05rem;color:#dbe4ff;max-width:900px}.more{text-align:end}.more a{color:var(--acc)}
 .pager{display:flex;justify-content:center;gap:16px;align-items:center;margin:24px 0}.pager a{border:1px solid var(--line);border-radius:10px;padding:8px 14px}
 .foot{border-top:1px solid var(--line);margin-top:40px;padding:18px 0;color:var(--mute);font-size:.86rem}.foot a{color:var(--acc)}
