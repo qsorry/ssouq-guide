@@ -103,6 +103,12 @@
    "title": "اختر التطبيق",
    "options": [
     {
+     "key": "next",
+     "label": "NEXT+",
+     "sub": "الأسهل، من Google Play على الشاشة",
+     "icon": "next-plus"
+    },
+    {
      "key": "mr7",
      "label": "MR7 TV",
      "sub": "تطبيقنا الخاص، تسجيل دخول مباشر",
@@ -119,6 +125,17 @@
    ]
   },
   "variants": {
+   "next": [
+    {
+     "title": "حمّل تطبيق NEXT+ من Google Play",
+     "html": "<div class=\"appbox\"><img src=\"/static/img/apps/next-plus.webp\" alt=\"أيقونة NEXT+\" width=\"54\" height=\"54\" loading=\"lazy\"><span><b dir=\"ltr\">NEXT+</b><small>من Google Play · مجاني</small></span></div><ol><li>افتح متجر <b dir=\"ltr\">Google Play</b> في الشاشة وابحث عن <b dir=\"ltr\">NEXT+</b>.</li><li>اضغط <b>تثبيت</b> ثم <b>فتح</b>.</li></ol><div class=\"note\">لم يظهر <b dir=\"ltr\">NEXT+</b> في متجر شاشتك؟ فبعض الشاشات والبوكسات لا تعرضه: ارجع واختر <b dir=\"ltr\">MR7 TV</b> أو <b dir=\"ltr\">IPTV Smarters Pro</b> فكلاهما يُثبَّت بـ Downloader.</div>"
+    },
+    {
+     "title": "أدخل بياناتك في NEXT+",
+     "img": "/static/img/android-next-login.webp",
+     "html": "<p>افتح التطبيق فتظهر شاشة <b dir=\"ltr\">ADD PLAYLIST</b> بأربع خانات، مرقّمة في الصورة. اضغط كل خانة واكتب فيها بالترتيب:</p><div class=\"fields\"><div class=\"f\"><span>1 · <bdi>Playlist Name</bdi></span><code>اسمك (أي اسم)</code></div><div class=\"f\"><span>2 · <bdi>Username</bdi></span><code>اسم المستخدم الخاص باشتراكك</code></div><div class=\"f\"><span>3 · <bdi>Password</bdi></span><code>كلمة السر الخاصة باشتراكك</code></div><div class=\"f\"><span>4 · <bdi>Server</bdi></span><code>55555</code></div></div><p>ثم اضغط زر <b dir=\"ltr\">START</b> الأخضر أسفل الشاشة، فيحمّل التطبيق القنوات والأفلام والمسلسلات أول مرة، فانتظر حتى يكتمل.</p><div class=\"note\">الخانة الرابعة <b dir=\"ltr\">Server</b> لا تحتاج رابط هوست: اكتب فيها الرمز <b dir=\"ltr\">55555</b> فقط كما هو.</div><div class=\"note\"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في <a class=\"link\" href=\"https://ssouq.com/account/orders\" target=\"_blank\" rel=\"noopener\">صفحة طلباتك</a> بالمتجر — افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p><img src=\"/static/img/order-digital.webp\" alt=\"زر المحتوى الرقمي داخل صفحة الطلب\" loading=\"lazy\"></div>"
+    }
+   ],
    "mr7": [
     {
      "title": "حمّل تطبيق Downloader من Google Play",
