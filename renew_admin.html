@@ -338,6 +338,9 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
   background:color-mix(in srgb,var(--go) 8%,var(--sf))}
 .lc-done b{color:var(--go)}
 .lc-done .lc-cred{background:var(--sf)}
+.wzst{display:flex;gap:6px;margin:0;padding:0;list-style:none}.wzst li{flex:1;min-width:0;text-align:center;font-size:.72rem;color:var(--mute);border-top:3px solid var(--line);padding-top:5px}
+.wzst li.ok{color:var(--go);border-color:var(--go)}.wzst li.cur{color:var(--tx);font-weight:700;border-color:var(--warn,#e9a23b)}.wzst li.sk{text-decoration:line-through}
+.wzb h3{margin:0 0 4px;font-size:1rem}.wzb p{margin:4px 0;color:var(--mute);font-size:.86rem}.wzb textarea{min-height:200px}
 .lc-todo{display:grid;gap:8px;margin:6px 0}.lc-todo .lc-a{border:1px solid var(--err);border-radius:10px;padding:8px}
 .lc-a{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .lc-a button,.lc-a a{flex:1 1 auto;min-width:120px;text-align:center}
@@ -803,6 +806,14 @@ body.modal-open{overflow:hidden}
   </section>
 
   <!-- نافذة الردّ على شكوى (تُملأ من cqReply) -->
+  <div class="modal hidden" id="wzModal" role="dialog" aria-modal="true" aria-labelledby="wzTitle">
+    <div class="sheet">
+      <header class="shtop"><button class="xbtn" id="wzClose" type="button" aria-label="إغلاق">×</button>
+        <h2 id="wzTitle">معالجة المكرر<small id="wzSub"></small></h2></header>
+      <div class="sbody" id="wzBody"></div>
+      <footer class="sfoot" id="wzFoot"></footer>
+    </div>
+  </div>
   <div class="modal hidden" id="cqModal" role="dialog" aria-modal="true" aria-labelledby="cqTitle">
     <div class="sheet">
       <header class="shtop"><button class="xbtn" id="cqClose" type="button" aria-label="إغلاق">×</button>
@@ -2333,10 +2344,10 @@ function lcard(r, i, kind){
     + r.dup.others.map(o => `<a href="#" class="lcJump" data-o="${esc(o.order)}">الطلب <span class="ltr">${esc(o.order)}</span></a> (${esc(o.customer) || '—'} · <span class="ltr">${esc(o.date)}</span>${o.done ? ' · أُنشئ له بديل ✓' : o.expired ? ' · منتهٍ' : ''})`).join('، ')
     + (r.dup.mine_first ? ' — هذا الطلب الأقدم ويحتفظ باليوزر.' : ' — الأقدم يحتفظ باليوزر، وهذا يحتاج بديلًا من «المكرر والبدائل».') + '</p>' : '';
   // مكررٌ لم يُعالج: كل طلبٍ لاحق على اليوزر نفسه بلا بديل — وخيار المعالجة (يوزر جديد بالمتبقي، وتغيير اسم القديم لصاحبه الأول)
-  const todo = r.dup_todo && r.dup_todo.length ? `<div class="lc-todo"><p class="lc-why lc-dup"><b>⚠ مكرر ولم يُعالج</b> — ${r.dup_todo.length === 1 ? 'طلبٌ واحد يحتاج' : AR(r.dup_todo.length) + ' طلبات تحتاج'} يوزرًا بديلًا:</p>`
-    + r.dup_todo.map((t, k) => `<div class="lc-a"><span>طلب <b class="ltr">${esc(t.order)}</b> · ${esc(t.customer) || '—'} · <span class="ltr">${esc(t.phone) || '—'}</span> · المتبقي ${esc(t.remaining) || '—'}</span>`
-      + (t.can_create ? `<label class="lc-m">أشهر <input type="number" class="dupToM" min="1" max="15" value="${t.suggest || 1}" data-k="${k}"></label>`
-        + `<button class="go lcDupMk" data-i="${i}" data-k="${k}" type="button">عالج: أنشئ بديلًا</button>`
+  const WZN = {create: 'إنشاء بديل', rename: 'تغيير القديم', send_new: 'إرسال للبديل', send_old: 'إرسال ما عُدّل'};
+  const todo = r.dup_todo && r.dup_todo.length ? `<div class="lc-todo"><p class="lc-why lc-dup"><b>⚠ مكرر ولم تتم معالجته</b> — ${r.dup_todo.length === 1 ? 'طلبٌ واحد' : AR(r.dup_todo.length) + ' طلبات'}:</p>`
+    + r.dup_todo.map((t, k) => `<div class="lc-a"><span>طلب <b class="ltr">${esc(t.order)}</b> · ${esc(t.customer) || '—'} · <span class="ltr">${esc(t.phone) || '—'}</span> · المتبقي ${esc(t.remaining) || '—'}<br><small>المتبقي من المعالجة: ${t.need.map(n => WZN[n]).join(' ← ')}</small></span>`
+      + (t.can_create || t.done ? `<button class="go lcDupWz" data-i="${i}" data-k="${k}" type="button">${t.done ? 'أكمل المعالجة' : 'عالج الآن'}</button>`
         : '<small class="c-warn">اللوحة غير مربوطة ببوابة إنشاء — عالجه من «المكرر والبدائل»</small>') + '</div>').join('')
     + '</div>' : '';
   const why = todo + (whyRep || (LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '')) + dupP + cqp;
@@ -2364,19 +2375,109 @@ function lcard(r, i, kind){
   return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password) : lcCred(r.host, r.username, r.password)}${cur}${done}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + '</article>';
 }
+// ---- معالج المكرر: إنشاء البديل ← تغيير القديم ← إرسال للبديل ← إرسال ما عُدّل لصاحبه الأول ----
+const WZ = {item: null, wa: false, sk: {}, busy: false, err: '', ok: '', draft: null};
+const WZ_STEPS = [['create', 'إنشاء البديل'], ['rename', 'تغيير القديم'], ['send_new', 'إرسال للبديل'], ['send_old', 'إرسال ما عُدّل']];
+const wzMsg = (it, kind) => (it.msgs || []).find(m => m.kind === kind);
+const wzSent = m => !!(m && m.sent && m.sent.ok);
+function wzDone(k){
+  const it = WZ.item, dn = it.done;
+  if (k === 'create') return !!dn;
+  if (k === 'rename') return !!dn && !!(dn.renamed || dn.old_missing);
+  if (k === 'send_new') return wzSent(wzMsg(it, 'new'));
+  return wzSent(wzMsg(it, 'old')) || (!!dn && dn.old_missing);
+}
+function wzCur(){
+  for (const [k] of WZ_STEPS) {
+    if (wzDone(k) || WZ.sk[k]) continue;
+    if (k === 'send_old' && !wzMsg(WZ.item, 'old') && WZ.sk.rename) continue;     // القديم لم يُغيَّر: لا ما يُرسل
+    return k;
+  }
+  return '';
+}
+async function wzRefresh(){
+  const it = WZ.item, d = await api('/api/renew/dup-state?order=' + encodeURIComponent(it.order) + '&username=' + encodeURIComponent(it.username));
+  if (d && d.item) { WZ.item = d.item; WZ.wa = !!d.wa_linked; }
+}
+async function wzOpen(item){
+  Object.assign(WZ, {item, sk: {}, busy: false, err: '', ok: '', draft: null});
+  $('#wzModal').classList.remove('hidden'); document.body.classList.add('modal-open');
+  $('#wzBody').innerHTML = '<p class="msg">جارٍ التحميل…</p>'; $('#wzFoot').innerHTML = '';
+  await wzRefresh(); wzRender();
+}
+function wzClose(){
+  $('#wzModal').classList.add('hidden'); document.body.classList.remove('modal-open');
+  const q = $('#loQ').value; if (q) loFind(q);                  // تحديث نتيجة البحث بحال المعالجة
+}
+$('#wzClose').onclick = wzClose;
+async function wzRun(label, fn){
+  if (WZ.busy) return; WZ.busy = true; WZ.err = WZ.ok = ''; wzRender(label);
+  try { await fn(); } catch (e) { WZ.err = 'تعذّر الاتصال بالخادم — أعد المحاولة'; }
+  WZ.busy = false; await wzRefresh(); wzRender();
+}
+function wzRender(busyLabel){
+  const it = WZ.item, cur = wzCur();
+  $('#wzSub').textContent = `طلب ${it.order} · ${it.customer || it.phone || ''}`;
+  const stp = WZ_STEPS.map(([k, n], x) => `<li class="${WZ.sk[k] ? 'sk' : wzDone(k) ? 'ok' : k === cur ? 'cur' : ''}">${AR(x + 1)}. ${n}${wzDone(k) ? ' ✓' : ''}</li>`).join('');
+  let body = '', foot = '';
+  const msg = (WZ.err ? `<p class="msg err">${esc(WZ.err)}</p>` : '') + (WZ.ok ? `<p class="msg ok">${esc(WZ.ok)}</p>` : '');
+  const btn = (cls, id, text, dis) => `<button class="${cls}" id="${id}" type="button"${dis || WZ.busy ? ' disabled' : ''}>${text}</button>`;
+  if (cur === 'create') {
+    body = `<h3>١. إنشاء اليوزر البديل</h3><p>ينشئ يوزرًا جديدًا لـ <b>${esc(it.customer || it.phone)}</b> (طلب ${esc(it.order)}) بدل <b class="ltr">${esc(it.username)}</b>، على لوحة الطلب، ويخصم من رصيدها.</p>`
+      + `<label class="lc-m">عدد الأشهر <input type="number" id="wzM" min="1" max="15" value="${it.suggest || 1}"></label><p>المتبقي له: ${esc(it.remaining) || '—'}</p>`;
+    foot = btn('go wide', 'wzGo', busyLabel ? 'جارٍ الإنشاء…' : 'أنشئ البديل');
+  } else if (cur === 'rename') {
+    body = `<h3>٢. تغيير اسم اليوزر القديم</h3><p>يُغيَّر اسم <b class="ltr">${esc(it.username)}</b> على اللوحة (كلمة مروره ومدته كما هما) ويبقى لصاحبه الأول: <b>${esc(it.first_customer || it.first_phone || '—')}</b> (طلب ${esc(it.first_order)}).</p>`
+      + (it.done && it.done.rename_error ? `<p class="msg err">${esc(it.done.rename_error)}</p>` : '');
+    foot = btn('go', 'wzGo', busyLabel ? 'جارٍ التغيير…' : 'غيّر اسم القديم') + btn('ghost', 'wzSkip', 'تخطَّ');
+  } else if (cur === 'send_new' || cur === 'send_old') {
+    const m = wzMsg(it, cur === 'send_new' ? 'new' : 'old'), who = cur === 'send_new' ? 'صاحب البديل' : 'صاحب اليوزر الأول';
+    body = `<h3>${cur === 'send_new' ? '٣. إرسال بيانات البديل' : '٤. إرسال ما عُدّل'}</h3><p>إلى ${who}: <b>${esc(m.name || '—')}</b> · <span class="ltr">${esc(m.phone) || 'لا رقم جوال'}</span>${m.sent && m.sent.error ? ` · <span class="c-warn">فشل الإرسال السابق: ${esc(m.sent.error)}</span>` : ''}</p>`
+      + `<textarea id="wzT" rows="9">${esc(WZ.draft != null ? WZ.draft : m.text)}</textarea>`
+      + (WZ.wa ? '' : '<p class="c-warn">لا رقم واتساب مربوط للإرسال الآلي — استعمل «واتساب يدوي» أو انسخ الرسالة.</p>');
+    foot = '<div class="acts">' + btn('go', 'wzGo', busyLabel ? 'جارٍ الإرسال…' : 'إرسال عبر واتساب', !WZ.wa || !m.phone)
+      + `<a class="ghost" id="wzMan" target="_blank" rel="noopener" href="#">واتساب يدوي</a>` + btn('ghost', 'wzCp', 'نسخ') + btn('ghost', 'wzSkip', 'تخطَّ') + '</div>';
+  } else {
+    const dn = it.done || {};
+    body = `<h3>✓ اكتملت المعالجة</h3><p>البديل: <b class="ltr">${esc(dn.new || '—')}</b>${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}</p>`
+      + (dn.renamed ? `<p>غُيّر اسم القديم إلى <b class="ltr">${esc(dn.renamed.to)}</b></p>` : dn.old_missing ? '<p>اليوزر القديم غير موجود على اللوحة — لا تغيير.</p>' : '<p>لم يُغيَّر اسم القديم (تخطّيته).</p>');
+    foot = btn('go wide', 'wzEnd', 'إغلاق');
+  }
+  $('#wzBody').innerHTML = `<ol class="wzst">${stp}</ol><div class="wzb">${body}</div>`;
+  $('#wzFoot').innerHTML = msg + foot;
+  const q = id => document.getElementById(id);
+  if (q('wzEnd')) q('wzEnd').onclick = wzClose;
+  if (q('wzSkip')) q('wzSkip').onclick = () => { WZ.sk[cur] = true; WZ.draft = null; WZ.err = WZ.ok = ''; wzRender(); };
+  if (!q('wzGo') && !q('wzEnd')) return;
+  if (cur === 'create') q('wzGo').onclick = () => {
+    const months = Number(q('wzM').value) || it.suggest || 1;
+    if (!confirm(`إنشاء يوزر جديد لـ ${it.customer || it.phone} بمدة ${months} شهرًا بدل ${it.username}؟ يخصم من رصيد اللوحة.`)) return;
+    wzRun('create', async () => { const d = await post('/api/renew/dup-create', {order: it.order, username: it.username, months, rename_old: false});
+      if (d.error || !d.ok) WZ.err = d.error || 'فشل الإنشاء'; else WZ.ok = `أُنشئ ${d.username} (${AR(d.months)} شهرًا)`; });
+  };
+  else if (cur === 'rename') q('wzGo').onclick = () => wzRun('rename', async () => {
+    const d = await post('/api/renew/dup-rename', {order: it.order, username: it.username});
+    if (d.need_connect) WZ.err = d.error + ' — اربط بوابة الأرشيف من «المكرر والبدائل» ثم أكمل، أو تخطَّ هذه الخطوة.';
+    else if (d.error || !d.ok) WZ.err = d.error || 'تعذّر التغيير';
+    else WZ.ok = d.old_missing ? 'اليوزر القديم غير موجود على اللوحة — لا تغيير' : `غُيّر ${d.renamed.from} إلى ${d.renamed.to}`; });
+  else if (cur === 'send_new' || cur === 'send_old') {
+    const m = wzMsg(it, cur === 'send_new' ? 'new' : 'old');
+    q('wzGo').onclick = () => { const txt = q('wzT').value; WZ.draft = txt;      // النص المعدَّل يبقى عند إعادة الرسم وإن فشل الإرسال
+      wzRun('send', async () => { const d = await post('/api/renew/dup-send', {order: it.order, idx: m.idx, text: txt, mode: 'wa'});
+        if (d.error || !d.ok) WZ.err = d.error || 'فشل الإرسال'; else { WZ.ok = 'أُرسلت ✓'; WZ.draft = null; } }); };
+    q('wzCp').onclick = async () => { const ok = await copyText(q('wzT').value); q('wzCp').textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; };
+    q('wzT').oninput = () => { WZ.draft = q('wzT').value; };
+    q('wzMan').onclick = e => {
+      if (!m.phone) { e.preventDefault(); WZ.err = 'لا رقم جوال لهذا العميل — انسخ الرسالة'; return wzRender(); }
+      q('wzMan').href = 'https://wa.me/' + String(m.phone).replace(/\D/g, '') + '?text=' + encodeURIComponent(q('wzT').value);
+      const txt = q('wzT').value;
+      setTimeout(() => { if (confirm('هل أرسلتَ الرسالة من واتساب؟ (تُعلَّم مرسَلة)')) wzRun('send', async () => { await post('/api/renew/dup-send', {order: it.order, idx: m.idx, text: txt, mode: 'manual'}); WZ.ok = 'عُلّمت مرسَلة ✓'; }); }, 400);
+    };
+  }
+}
 function lcBind(box, rows, kind){
   box.querySelectorAll('.lcJump').forEach(a => a.onclick = e => { e.preventDefault(); showTab('lost'); $('#loQ').value = a.dataset.o; $('#loClear').classList.remove('hidden'); loFind(a.dataset.o); window.scrollTo({top: 0}); });
-  box.querySelectorAll('.lcDupMk').forEach(b => b.onclick = async () => {
-    const r = rows[b.dataset.i], t = r.dup_todo[b.dataset.k], inp = b.parentNode.querySelector('.dupToM'), months = Number(inp && inp.value) || t.suggest || 1;
-    if (!confirm(`إنشاء يوزر جديد لـ ${t.customer || t.phone} (طلب ${t.order}) بمدة ${months} شهرًا بدل ${t.username}؟ يخصم من رصيد اللوحة.\n\nثم يُغيَّر اسم ${t.username} ويُجهَّز لصاحبه الأول ${t.first_customer || t.first_phone || ''}.`)) return;
-    b.disabled = true; b.textContent = 'جارٍ الإنشاء…';
-    const d = await post('/api/renew/dup-create', {order: t.order, username: t.username, months, rename_old: true});
-    b.disabled = false; b.textContent = 'عالج: أنشئ بديلًا';
-    if (d.error || !d.ok) return loState('error', d.error || 'فشل الإنشاء', false, true);
-    await loFind($('#loQ').value || t.order);
-    $('#loMsg').textContent = `✓ أُنشئ ${d.username} بدل ${d.replaces} (${AR(d.months)} شهرًا)` + (d.renamed ? ` · غُيّر اسم القديم إلى ${d.renamed.to}` : '')
-      + (d.old_missing ? ' · القديم غير موجود على اللوحة' : '') + (d.rename_error || d.need_connect ? ' · أكمل تغيير القديم من «المكرر والبدائل»' : '') + ' · رسائل العملاء جاهزة في تبويب «الرسائل»';
-  });
+  box.querySelectorAll('.lcDupWz').forEach(b => b.onclick = () => wzOpen(rows[b.dataset.i].dup_todo[b.dataset.k]));
   box.querySelectorAll('.lcCq').forEach(a => a.onclick = e => { e.preventDefault(); showTab('reply'); $('#rpQ').value = a.dataset.o; $('#rpClear').classList.remove('hidden'); rpFind(a.dataset.o); window.scrollTo({top: 0}); });
   box.querySelectorAll('.lcCopy').forEach(b => b.onclick = async () => {
     const ok = await copyText(rows[b.dataset.i][b.dataset.f || 'copy']); const t = b.textContent;
@@ -2438,7 +2539,7 @@ function loRender(d, q){
   if (rows.length) {
     const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered'), dup = rows.some(r => r.dup);
     loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : rows[0].match === 'phone' ? ' بالجوال' : '')
-      + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + (rows.some(r => r.dup_todo && r.dup_todo.length) ? ' — ⚠ مكرر ولم يُعالج' : dup ? ' — حساب مكرر (عُولج)' : '') + ms);
+      + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + (rows.some(r => r.dup_todo && r.dup_todo.length) ? ' — ⚠ مكرر ولم تتم معالجته' : dup ? ' — حساب مكرر (عُولج)' : '') + ms);
   } else if (ix) {
     loState('found', `الطلب في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
       + (d.salla && d.salla.username ? ` · في سجلّ الطلب في سلة: ${d.salla.username}` : '') + ms);
