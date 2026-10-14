@@ -2085,7 +2085,7 @@ def unit_cards_softnav():
         check("اسمٌ لا يطابق مفتاح القائمة: البحث الذكي بالاسم يجد الصفحة (تطابقٌ تامٌّ ونوعٌ واحد فقط)", fb == {"ok": True, "path": "/content/series/dark-knight-x/"}, str(fb))
         check("والنوع المخالف لا يُعاد (فيلمٌ باسم مسلسل)", content_page.api_entity(d, "smart", "movie", "The Dark Knight", 2008, "ar") is None)
         check("«عرض التفاصيل الكاملة» رابطٌ خفيف في رأس النافذة (لا زرّ ممتلئ) معطَّلٌ حتى يُعرف مساره، ويُجلب مسبقًا عند اقتراب الزائر من البطاقة، ورقاقات المواسم تصير روابط إلى #seasons",
-              'class="fulllink"' in content_page.JS and "aria-disabled" in content_page.JS and "function warm(e)" in content_page.JS and '"#seasons"' in content_page.JS and 'class="fullrow"' not in content_page.JS)
+              'class="fulllink modal-full-page-btn"' in content_page.JS and "aria-disabled" in content_page.JS and "function warm(e)" in content_page.JS and '"#seasons"' in content_page.JS and 'class="fullrow"' not in content_page.JS)
         check("بطاقة النافذة: رأسٌ بملصقٍ وعنوان، وجسمٌ بالمواسم والقصة، وتذييلٌ لاصقٌ بزرّ الاشتراك (cta)، وزجاج blur(12px) وحوافّ 16px",
               'class="mhead"' in content_page.JS and 'class="mbody"' in content_page.JS and 'class="mfoot"' in content_page.JS and 'class="btn cta"' in content_page.JS and ".btn.cta" in content_page.CSS and "backdrop-filter:blur(12px)" in content_page.CSS
               and "border-radius:16px" in content_page.CSS and "position:sticky;bottom:0" in content_page.CSS)
@@ -2104,6 +2104,17 @@ def unit_cards_softnav():
         rep_ = {"pages": [{"slug": "prison-break-x", "path": "/content/series/prison-break-x"}], "events": {"like": {"count": 1, "top": [["prison-break-x", 1]]}}}
         seo_admin.label_visitors(d, rep_)
         check("تقرير الزوّار: عناوين الأعمال تُحلّ من القاعدة (صفحاتٌ وأحداث)", rep_["pages"][0]["title"] == "prison-break-x" and rep_["events"]["like"]["top"][0][2] == "prison-break-x")
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ux = open(os.path.join(root, "static", "ux.css"), encoding="utf-8").read()
+        fy = open(os.path.join(root, "static", "foryou.js"), encoding="utf-8").read()
+        seo_db.set_setting(con, "preview", True); con.commit()
+        tour = seo_pages.handle(d, "/content/for-you/", "ar")[1].decode()
+        check("ux.css: فئات الزرّ والشارة والزرّ العائم والشرائح المحدَّدة (.active/.on) وعناوين الأقسام معرَّفة",
+              all(k in ux for k in (".modal-full-page-btn", ".modal-tag-badge", ".floating-choice-btn", ".filter-chip.active", ".filter-chip.on", ".filter-section-title", ".floating-choice-btn[hidden]")))
+        check("الفئات مربوطة بعناصرها: النافذة (رابط الصفحة الكاملة والشارة)، الزرّ العائم #fyFab، وشرائح الجولة وعناوينها",
+              "modal-full-page-btn" in content_page.JS and "modal-tag-badge" in content_page.JS and "floating-choice-btn" in fy and "fyEnsure" in fy
+              and tour.count("filter-section-title") == 4 and "tchip filter-chip" in tour and "fyEnsure" in open(os.path.join(root, "static", "softnav.js"), encoding="utf-8").read())
+        check("ux.css يُحقن في كل صفحةٍ عامة بإصدار", b'/static/ux.css?v=' in analytics.inject(b"<html><head></head><body></body></html>", d))
         inj = analytics.inject(b"<html><head></head><body></body></html>", d)
         check("يُحقن سكربت التنقّل السلس بإصدار، وملفّه موجود", b"/static/softnav.js?v=" in inj and os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "softnav.js")))
         con.close()

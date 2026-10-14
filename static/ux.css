@@ -1,0 +1,118 @@
+/* ux.css — تحسينات واجهةٍ مشتركة لكل الصفحات العامة (يُحقن من analytics.inject قبل </head>).
+   الفئات ← عناصر الموقع:
+     .modal-full-page-btn  ← رابط «عرض الصفحة كاملة» في نافذة تفاصيل العمل (#cx-full) — content_page.py
+     .modal-tag-badge      ← شارة النوع أعلى النافذة (.kick داخل .sheet) — content_page.py
+     .floating-choice-btn  ← الزرّ العائم «محتار ايش تشاهد؟» (#fyFab) — static/foryou.js
+     .filter-chip          ← شرائح الاختيار في جولة «ماذا تحب أن تشاهد؟» (.tchip: النوع · الأصل · التصنيف · عمر المشاهد) — seo_pages.render_tour
+     .filter-chip.active/.on/[data-selected=true] ← المحدَّدة (الجولة تضع .on)
+     .filter-section-title ← عناوين أقسام الجولة (h3) — seo_pages.render_tour */
+
+/* ==========================================================
+   1. تحسين زر "عرض الصفحة كاملة" داخل نافذة تفاصيل المسلسل
+   ========================================================== */
+.modal-full-page-btn {
+    background: transparent !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    color: #E2E8F0 !important;
+    padding: 8px 16px !important;
+    border-radius: 10px !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    transition: all 0.2s ease !important;
+    box-shadow: none !important;
+}
+
+.modal-full-page-btn:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    color: #FFFFFF !important;
+}
+
+/* تنسيق شارة التاغ العلوية في نافذة المسلسل */
+.modal-tag-badge {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #94A3B8 !important;
+    padding: 4px 12px !important;
+    border-radius: 20px !important;
+    font-size: 0.75rem !important;
+    border: none !important;
+}
+
+
+/* ==========================================================
+   2. تحسين الزر العائم "محتار ايش تشاهد؟" (المنع من تغطية البوسترات)
+   ========================================================== */
+.floating-choice-btn {
+    position: fixed !important;
+    bottom: 24px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    z-index: 9999 !important;
+    background: rgba(99, 102, 241, 0.85) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    color: #ffffff !important;
+    padding: 10px 24px !important;
+    border-radius: 50px !important;
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    white-space: nowrap !important;
+    transition: transform 0.2s ease, background 0.2s ease !important;
+}
+
+.floating-choice-btn:hover {
+    background: rgba(99, 102, 241, 0.95) !important;
+    transform: translateX(-50%) scale(1.02) !important;
+}
+
+/* إضافات ضرورية للربط (ليست في الكود الأصلي): تحترم hidden (نافذة التفاصيل مفتوحة، أو صفحة الجولة)، وفراغٌ أسفل الصفحة فلا يغطّي الزرّ آخر المحتوى */
+.floating-choice-btn[hidden] { display: none !important; }
+html.has-fab body::after { content: ""; display: block; height: 84px; }
+
+
+/* ==========================================================
+   3. تحسين صفحة التصفية ووسوم الاختيار ("ماذا تحب أن تشاهد؟")
+   ========================================================== */
+/* الوسم غير المحدد (Inactive Chip) */
+.filter-chip {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: #94A3B8 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 8px 18px !important;
+    border-radius: 9999px !important;
+    font-size: 0.9rem !important;
+    transition: all 0.2s ease !important;
+}
+
+.filter-chip:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #E2E8F0 !important;
+}
+
+/* الوسم المحدد (Active/Selected Chip): .on هي الفئة التي تضعها جولة الاختيار فعلًا */
+.filter-chip.active,
+.filter-chip.on,
+.filter-chip[data-selected="true"] {
+    background: #2563EB !important;
+    color: #FFFFFF !important;
+    border-color: #3B82F6 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4) !important;
+}
+
+/* عناوين الأقسام داخل صفحة التصفية */
+.filter-section-title {
+    font-size: 1.1rem !important;
+    color: #E2E8F0 !important;
+    font-weight: 600 !important;
+    margin-bottom: 12px !important;
+    margin-top: 18px !important;
+}

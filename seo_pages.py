@@ -989,10 +989,10 @@ def render_tour(con, data_dir, tr, st):
     body = (_header(tr) + f'<main class="wrap tour"><h1>{_esc(title)}</h1><p class="lead">{_esc(tr("جولة سريعة: اختر اهتماماتك وما شاهدته، ونقترح عليك ما يناسبك.", "A quick tour: pick your interests and what you watched, and we will suggest what fits."))}</p>'
             f'<ol class="tsteps" id="tDots"><li class="on">1 · {_esc(tr("اهتماماتك", "Interests"))}</li><li>2 · {_esc(tr("ما شاهدته", "What you watched"))}</li><li>3 · {_esc(tr("مقترحاتك", "Your picks"))}</li></ol>'
             f'<section id="s1"><div class="tbtns top"><button type="button" class="tbtn go" id="to2">{_esc(tr("التالي", "Next"))} ←</button><button type="button" class="tbtn" id="tSkip">{_esc(tr("تخطَّ وأرني الأشهر", "Skip — show popular"))}</button></div>'
-            f'<h2>{_esc(tr("ماذا تحب أن تشاهد؟", "What do you like?"))}</h2><h3>{_esc(tr("النوع", "Kind"))}</h3><div class="tchips" id="tTypes"></div>'
-            f'<h3>{_esc(tr("الأصل (اختر ما يعجبك)", "Origin (pick what you like)"))}</h3><div class="tchips" id="tOrigins"></div>'
-            f'<h3>{_esc(tr("التصنيف", "Genre"))}</h3><div class="tchips" id="tChips"></div>'
-            f'<h3>{_esc(tr("عمر المشاهد (للعائلة)", "Viewer age (family)"))}</h3><div class="tchips" id="tAges"></div><p class="tmsg" id="tAgeNote"></p></section>'
+            f'<h2>{_esc(tr("ماذا تحب أن تشاهد؟", "What do you like?"))}</h2><h3 class="filter-section-title">{_esc(tr("النوع", "Kind"))}</h3><div class="tchips" id="tTypes"></div>'
+            f'<h3 class="filter-section-title">{_esc(tr("الأصل (اختر ما يعجبك)", "Origin (pick what you like)"))}</h3><div class="tchips" id="tOrigins"></div>'
+            f'<h3 class="filter-section-title">{_esc(tr("التصنيف", "Genre"))}</h3><div class="tchips" id="tChips"></div>'
+            f'<h3 class="filter-section-title">{_esc(tr("عمر المشاهد (للعائلة)", "Viewer age (family)"))}</h3><div class="tchips" id="tAges"></div><p class="tmsg" id="tAgeNote"></p></section>'
             f'<section id="s2" hidden><div class="tbtns top"><button type="button" class="tbtn" id="to1">→ {_esc(tr("السابق", "Back"))}</button><button type="button" class="tbtn go" id="to3">{_esc(tr("أظهر المقترحات", "Show my picks"))} ←</button></div>'
             f'<h2>{_esc(tr("أعمالٌ شاهدتها أو أعجبتك", "Titles you watched or liked"))}</h2>'
             f'<input class="tsearch" id="tQ" type="search" autocomplete="off" placeholder="{_esc(tr("ابحث باسم مسلسل أو فيلم (يقبل الأخطاء الإملائية)", "Search a series or movie (typos are fine)"))}">'
@@ -1025,10 +1025,10 @@ function fill(box,items,pick){box.textContent='';items.forEach(function(it){box.
 function q(extra){return '/api/content/recommend?lang='+CFG.lang+'&interests='+encodeURIComponent(st.interests.join(','))+'&types='+encodeURIComponent(st.types.join(','))+(st.age?'&age='+st.age:'')+extra}
 // الخطوة 1
 var TY=[['movie',CFG.lang==='en'?'Movies':'\u0623\u0641\u0644\u0627\u0645'],['series',CFG.lang==='en'?'Series':'\u0645\u0633\u0644\u0633\u0644\u0627\u062a']];
-TY.forEach(function(t){var b=el('button','tchip'+(has(st.types,t[0])?' on':''),t[1]);b.type='button';b.onclick=function(){flip(st.types,t[0]);save();b.className='tchip'+(has(st.types,t[0])?' on':'')};$('tTypes').appendChild(b)});
+TY.forEach(function(t){var b=el('button','tchip filter-chip'+(has(st.types,t[0])?' on':''),t[1]);b.type='button';b.onclick=function(){flip(st.types,t[0]);save();b.className='tchip filter-chip'+(has(st.types,t[0])?' on':'')};$('tTypes').appendChild(b)});
 function ageNote(){$('tAgeNote').textContent=st.age?L.agenote:''}
-CFG.ages.forEach(function(a){var b=el('button','tchip'+(st.age===a.v?' on':''),a.n);b.type='button';b.onclick=function(){st.age=a.v;if(window.sq)sq('tour_age',String(a.v));save();Array.prototype.forEach.call($('tAges').children,function(x,i){x.className='tchip'+(CFG.ages[i].v===st.age?' on':'')});ageNote()};$('tAges').appendChild(b)});ageNote();
-CFG.chips.forEach(function(c){var b=el('button','tchip'+(has(st.interests,c.id)?' on':''),c.name);b.type='button';b.onclick=function(){flip(st.interests,c.id);save();b.className='tchip'+(has(st.interests,c.id)?' on':'')};$(c.group==='origin'?'tOrigins':'tChips').appendChild(b)});
+CFG.ages.forEach(function(a){var b=el('button','tchip filter-chip'+(st.age===a.v?' on':''),a.n);b.type='button';b.onclick=function(){st.age=a.v;if(window.sq)sq('tour_age',String(a.v));save();Array.prototype.forEach.call($('tAges').children,function(x,i){x.className='tchip filter-chip'+(CFG.ages[i].v===st.age?' on':'')});ageNote()};$('tAges').appendChild(b)});ageNote();
+CFG.chips.forEach(function(c){var b=el('button','tchip filter-chip'+(has(st.interests,c.id)?' on':''),c.name);b.type='button';b.onclick=function(){flip(st.interests,c.id);save();b.className='tchip filter-chip'+(has(st.interests,c.id)?' on':'')};$(c.group==='origin'?'tOrigins':'tChips').appendChild(b)});
 // الخطوة 2: بحثٌ ذكي + اقتراحات سريعة
 var tm=0;$('tQ').oninput=function(){clearTimeout(tm);var v=this.value.trim();if(v.length<2){$('tRes').textContent='';$('tMsg').textContent='';return}
  $('tMsg').textContent=L.searching;tm=setTimeout(function(){fetch('/api/content/find?lang='+CFG.lang+'&q='+encodeURIComponent(v)).then(function(r){return r.json()}).then(function(d){

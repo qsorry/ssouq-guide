@@ -1,17 +1,22 @@
-/* زرّ «محتار ايش تشاهد؟» العائم على صفحات الموقع العامة → جولة الاقتراح (/content/for-you/). لا يظهر في الإطارات ولا في صفحة الجولة نفسها. */
+/* زرّ «محتار ايش تشاهد؟» العائم على صفحات الموقع العامة → جولة الاقتراح (/content/for-you/). لا يظهر في الإطارات ولا في صفحة الجولة نفسها ولا في الإدارة.
+   أنماطه في static/ux.css (‏.floating-choice-btn). يُستدعى ‏fyEnsure من التنقّل السلس (softnav.js) بعد كل تبديلٍ فيُنشأ الزرّ أو يُخفى أو تُحدَّث لغته. */
 (function () {
   try { if (window.top !== window) return; } catch (e) { return; }
-  var p = location.pathname;
-  if (/\/content\/for-you\//.test(p) || /^\/(admin|api|static)\b/.test(p)) return;
-  var en = (document.documentElement.lang || "ar") === "en";
-  function add() {
-    if (document.getElementById("fyFab")) return;
-    var a = document.createElement("a");
-    a.id = "fyFab"; a.href = (en ? "/en" : "") + "/content/for-you/";
+  function off(p) { return /\/content\/for-you\//.test(p) || /^\/(admin|api|static)\b/.test(p); }
+  function ensure() {
+    var p = location.pathname, hide = off(p), en = (document.documentElement.lang || "ar") === "en", a = document.getElementById("fyFab");
+    document.documentElement.classList.toggle("has-fab", !hide);       // فراغٌ أسفل الصفحة فلا يغطّي الزرّ آخر المحتوى
+    if (!a) {
+      if (hide || !document.body) return;
+      a = document.createElement("a");
+      a.id = "fyFab"; a.className = "floating-choice-btn";
+      a.addEventListener("click", function () { if (window.sq) window.sq("fy_click", location.pathname.slice(0, 60)); });
+      document.body.appendChild(a);
+    }
+    a.hidden = hide;
+    a.href = (en ? "/en" : "") + "/content/for-you/";
     a.textContent = en ? "Not sure what to watch?" : "محتار ايش تشاهد؟";
-    a.setAttribute("style", "position:fixed;inset-block-end:16px;inset-inline-start:16px;z-index:60;padding:11px 18px;border-radius:999px;background:linear-gradient(135deg,#2f8cff,#8b7cf6);color:#fff;font:700 .92rem/1.2 system-ui,Tahoma,sans-serif;text-decoration:none;box-shadow:0 10px 28px -10px rgba(47,140,255,.8)");
-    a.addEventListener("click", function () { if (window.sq) window.sq("fy_click", p.slice(0, 60)); });
-    document.body.appendChild(a);
   }
-  if (document.body) add(); else document.addEventListener("DOMContentLoaded", add);
+  window.fyEnsure = ensure;
+  if (document.body) ensure(); else document.addEventListener("DOMContentLoaded", ensure);
 })();
