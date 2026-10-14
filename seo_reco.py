@@ -14,6 +14,8 @@ import time
 import seo_db
 
 W_LIKE, W_SEEN, DECAY = 3.0, 1.0, 0.97
+W_HINT = 0.7                          # قرينة القسم (مثلًا «مسلسلات تركية»): تغطّي كل الأعمال حتى قبل إثراء TMDB، لكنها أضعف من التأكيد
+SRC = "('tmdb','manual','hint')"
 MAX_LIKES, MAX_SEEN, TOP_FEATURES, DEFAULT_N = 40, 80, 14, 12
 W_INTEREST, MIN_REL = 2.5, 0.30      # وزن الاهتمام الصريح (جولة المشاهدة) · وأدنى نسبةٍ من أعلى اقتراحٍ تُعدّ ذات صلة
 SLUG_RX = re.compile(r"^[a-z0-9][a-z0-9-]{0,100}$")
@@ -50,6 +52,16 @@ def slugs(raw, cap):
         if len(out) >= cap:
             break
     return out
+
+
+def _split_interests(con, interests):
+    """اهتمامات الجولة ← (أصول: بلدٌ/لغةٌ/هب تركي، وغيرها: تصنيفٌ/أنمي) — لاشتراط الأصل المختار."""
+    if not interests:
+        return set(), set()
+    origin, other = set(), set()
+    for r in con.execute(f"SELECT id, kind, key FROM taxonomy WHERE id IN ({','.join('?' * len(interests))})", interests):
+        (origin if r["kind"] in ("country", "language") or (r["kind"] == "hub" and r["key"] != "anime") else other).add(r["id"])
+    return origin, other
 
 
 def ids(raw, cap):
@@ -98,9 +110,9 @@ def like(data_dir, slug, on):
 def _features(con, cid):
     """سمات عملٍ ← {سمة: وزن}: ‏('t', taxonomy_id) · ('p', person_id) · ('k', النوع) · ('y', العقد)."""
     f = {}
-    for r in con.execute(f"SELECT ct.taxonomy_id FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source IN ('tmdb','manual') "
+    for r in con.execute(f"SELECT ct.taxonomy_id, ct.source FROM content_taxonomy ct JOIN taxonomy t ON t.id=ct.taxonomy_id WHERE ct.content_id=? AND ct.source IN {SRC} "
                          f"AND t.kind IN ({','.join('?' * len(TAX_KINDS))})", (cid, *TAX_KINDS)):
-        f[("t", r[0])] = 1.0
+        f[("t", r[0])] = max(f.get(("t", r[0]), 0.0), W_HINT if r[1] == "hint" else 1.0)
     for r in con.execute("SELECT person_id, role FROM content_person WHERE content_id=? AND role IN ('director','creator','actor','voice') ORDER BY ord LIMIT 8", (cid,)):
         f[("p", r["person_id"])] = 1.6 if r["role"] in ("director", "creator") else 0.8
     return f
@@ -110,7 +122,7 @@ def _idf(con, feats, total):
     out = {}
     for kind, fid in feats:
         if kind == "t":
-            n = con.execute("SELECT COUNT(*) FROM content_taxonomy WHERE taxonomy_id=? AND source IN ('tmdb','manual')", (fid,)).fetchone()[0]
+            n = con.execute(f"SELECT COUNT(*) FROM content_taxonomy WHERE taxonomy_id=? AND source IN {SRC}", (fid,)).fetchone()[0]
         else:
             n = con.execute("SELECT COUNT(DISTINCT content_id) FROM content_person WHERE person_id=?", (fid,)).fetchone()[0]
         out[(kind, fid)] = max(0.2, math.log((total + 1) / (n + 1)))
@@ -166,19 +178,22 @@ def recommend(data_dir, likes, seen, n=DEFAULT_N, interests=(), types=()):
                 idf.update(_idf(con, [("t", tid)], total))
                 wf[("t", tid)] = prof[("t", tid)] * idf[("t", tid)]
         cand = {}                                            # عمل ← [مجموع الأوزان، عدد السمات المتطابقة]
-        hit_interest = set()
+        origin_ids, other_ids = _split_interests(con, interests)
+        hit_origin, hit_other = set(), set()
         tids = [fid for kind, fid in top if kind == "t"]
         pids = [fid for kind, fid in top if kind == "p"]
         base = "c.available=1 AND c.merged_into IS NULL AND c.poster IS NOT NULL AND (c.rating IS NULL OR c.rating>=5)" + tfilter
         if tids:
             qs = ",".join("?" * len(tids))
-            for r in con.execute(f"SELECT ct.content_id, ct.taxonomy_id FROM content_taxonomy ct JOIN content c ON c.id=ct.content_id WHERE ct.taxonomy_id IN ({qs}) "
-                                 f"AND ct.source IN ('tmdb','manual') AND {base}", (*tids, *types)):
+            for r in con.execute(f"SELECT ct.content_id, ct.taxonomy_id, ct.source FROM content_taxonomy ct JOIN content c ON c.id=ct.content_id WHERE ct.taxonomy_id IN ({qs}) "
+                                 f"AND ct.source IN {SRC} AND {base}", (*tids, *types)):
                 c_ = cand.setdefault(r[0], [0.0, 0])
-                c_[0] += wf[("t", r[1])]
+                c_[0] += wf[("t", r[1])] * (W_HINT if r[2] == "hint" else 1.0)
                 c_[1] += 1
-                if r[1] in interests:
-                    hit_interest.add(r[0])
+                if r[1] in origin_ids:
+                    hit_origin.add(r[0])
+                if r[1] in other_ids:
+                    hit_other.add(r[0])
         if pids:
             qs = ",".join("?" * len(pids))
             for r in con.execute(f"SELECT cp.content_id, cp.person_id FROM content_person cp JOIN content c ON c.id=cp.content_id WHERE cp.person_id IN ({qs}) AND {base}", (*pids, *types)):
@@ -189,7 +204,9 @@ def recommend(data_dir, likes, seen, n=DEFAULT_N, interests=(), types=()):
             cand.pop(cid, None)
         # الصلة: ما اختاره صراحةً شرط (من اهتماماتك واحدٌ على الأقل)، وبلا سلوك عميق يكفي سمةٌ واحدة، ومعه سمتان فأكثر؛ ثم عتبة نسبية من الأفضل
         need = 2 if (rows and len(top) >= 4) else 1
-        cand = {c: v for c, v in cand.items() if v[1] >= need and (not interests or c in hit_interest)}
+        # اختيار الأصل (تركي/أمريكي/…) شرطٌ: لا يُعرض عملٌ من غير أصله؛ وبلا أصلٍ يُشترط تصنيفٌ مما اختاره
+        gate = hit_origin if origin_ids else hit_other if other_ids else None
+        cand = {c: v for c, v in cand.items() if v[1] >= need and (gate is None or c in gate)}
         if not cand:
             return {"cold": False, "profile": {"likes": len(likes), "seen": len(seen)}, "items": []}
         peak = max(v[0] for v in cand.values())
@@ -310,24 +327,41 @@ def find(data_dir, q, lang="ar", n=8):
         con.close()
 
 
+DEMONYMS = {"US": ("أمريكي", "American"), "TR": ("تركي", "Turkish"), "GB": ("بريطاني", "British"), "KR": ("كوري", "Korean"), "IN": ("هندي", "Indian"), "JP": ("ياباني", "Japanese"),
+            "EG": ("مصري", "Egyptian"), "SA": ("خليجي", "Gulf"), "SY": ("سوري", "Syrian"), "FR": ("فرنسي", "French"), "ES": ("إسباني", "Spanish"), "DE": ("ألماني", "German"),
+            "IT": ("إيطالي", "Italian"), "CN": ("صيني", "Chinese"), "CA": ("كندي", "Canadian"), "MX": ("مكسيكي", "Mexican"), "RU": ("روسي", "Russian"), "BR": ("برازيلي", "Brazilian"),
+            "LB": ("لبناني", "Lebanese"), "JO": ("أردني", "Jordanian"), "KW": ("كويتي", "Kuwaiti"), "AE": ("إماراتي", "Emirati"), "AU": ("أسترالي", "Australian"), "TH": ("تايلندي", "Thai")}
+
+
 def interests(data_dir, lang="ar"):
-    """اهتماماتٌ للجولة: أبرز التصنيفات والهبّات (تركي/أنمي) والدول ← [{id, name, kind}]."""
+    """اهتمامات الجولة ← [{id, name, kind, group}]: «origin» (الأصل: تركي · أمريكي · كوري · عربي…) و«genre» (التصنيف + الأنمي). تُعدّ بقرائن الأقسام أيضًا
+    فيظهر التركي وغيره ولو لم يُثرَ بعد كل أعماله."""
     con = seo_db.connect(data_dir, create=False)
     if con is None:
         return []
+    en = lang == "en"
     try:
-        def top(kind, limit, skip=()):
-            return [r for r in con.execute(
-                "SELECT t.id, t.slug, t.key, t.name_ar, t.name_en, COUNT(*) n FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id JOIN content c ON c.id=ct.content_id "
-                "WHERE t.kind=? AND ct.source IN ('tmdb','manual') AND c.available=1 AND c.merged_into IS NULL GROUP BY t.id HAVING n>=12 ORDER BY n DESC LIMIT ?", (kind, limit + len(skip))) if r["slug"] not in skip][:limit]
-        out = []
-        hubs = {"turkish": ("تركي", "Turkish"), "anime": ("أنمي", "Anime")}
-        for r in top("hub", 4):
-            nm = hubs.get(r["key"], (r["name_ar"] or r["key"], r["name_en"] or r["key"]))
-            out.append({"id": r["id"], "name": nm[1] if lang == "en" else nm[0], "kind": "hub"})
-        for kind, k, skip in (("genre", 12, ()), ("country", 4, ("tr",))):
-            for r in top(kind, k, skip):
-                out.append({"id": r["id"], "name": (r["name_en"] or r["name_ar"]) if lang == "en" else (r["name_ar"] or r["name_en"]), "kind": kind})
-        return out
+        rows = con.execute(
+            f"SELECT t.id, t.kind, t.key, t.slug, t.name_ar, t.name_en, COUNT(DISTINCT c.id) n FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id JOIN content c ON c.id=ct.content_id "
+            f"WHERE t.kind IN ('hub','genre','country','language') AND ct.source IN {SRC} AND c.available=1 AND c.merged_into IS NULL GROUP BY t.id").fetchall()
+        origins, genres = [], []
+        for r in rows:
+            if r["n"] < 12:
+                continue
+            if r["kind"] == "hub":
+                if r["key"] == "turkish":
+                    origins.append((r["n"] + 10 ** 6, {"id": r["id"], "name": "Turkish" if en else "تركي", "kind": "hub", "group": "origin"}))    # التركي أولًا
+                elif r["key"] == "anime":
+                    genres.append((r["n"] + 10 ** 6, {"id": r["id"], "name": "Anime" if en else "أنمي", "kind": "hub", "group": "genre"}))
+            elif r["kind"] == "country":
+                if r["slug"] == "tr":
+                    continue                                    # التركي هبٌّ واحد
+                dm = DEMONYMS.get(str(r["key"]).upper())
+                origins.append((r["n"], {"id": r["id"], "name": (dm[1] if en else dm[0]) if dm else ((r["name_en"] or r["name_ar"]) if en else (r["name_ar"] or r["name_en"])), "kind": "country", "group": "origin"}))
+            elif r["kind"] == "language" and str(r["key"]).lower() == "ar":
+                origins.append((r["n"], {"id": r["id"], "name": "Arabic" if en else "عربي", "kind": "language", "group": "origin"}))
+            elif r["kind"] == "genre":
+                genres.append((r["n"], {"id": r["id"], "name": (r["name_en"] or r["name_ar"]) if en else (r["name_ar"] or r["name_en"]), "kind": "genre", "group": "genre"}))
+        return [x for _, x in sorted(origins, key=lambda t: -t[0])[:12]] + [x for _, x in sorted(genres, key=lambda t: -t[0])[:16]]
     finally:
         con.close()

@@ -236,7 +236,7 @@ def build(data_dir, force=False, now=None):
             _last[os.path.abspath(data_dir)] = {"ok": True, "at": now, **res}
             with con:
                 seo_db.set_state(con, "last_build", _last[os.path.abspath(data_dir)])   # تبقى بعد إعادة تشغيل الخادم (النشر)
-            _stats_cache.pop(os.path.abspath(data_dir), None)      # الأعداد المحفوظة قبل البناء لم تعد صالحة
+            _stats_refresh_async(data_dir)                          # الأعداد تُعاد حسابها في الخلفية (يبقى القديم معروضًا حتى تنتهي)
             return res
         finally:
             con.close()
@@ -593,9 +593,48 @@ def start_build(data_dir, force=True):
 _stats_cache = {}             # مسار البيانات ← (وقت، إحصاءات): أثناء البناء تُعاد آخر إحصاءاتٍ محسوبة بدل انتظار استعلاماتٍ ثقيلة
 
 
+STATS_TTL = 600               # عمر الأعداد المعروضة قبل إعادة حسابها في الخلفية (ثوانٍ)
+_stats_busy = {}
+
+
+def _stats_save(con, k, out):
+    _stats_cache[k] = (time.time(), out)
+    try:
+        with con:
+            seo_db.set_state(con, "stats_cache", {"at": _stats_cache[k][0], "out": out})   # تبقى بعد إعادة التشغيل (النشر): لا حساب من الصفر عند كل فتح
+    except Exception:  # noqa: BLE001 — الحفظ لا يُسقط العرض
+        pass
+
+
+def _stats_refresh_async(data_dir):
+    """يحسب الأعداد في خيطٍ خلفي ويحفظها (واحدٌ في وقته) — الطلب لا ينتظرها."""
+    k = os.path.abspath(data_dir)
+    t = _stats_busy.get(k)
+    if t and t.is_alive():
+        return False
+
+    def run():
+        try:                                  # الخيط لا يُسقط شيئًا (مجلد بياناتٍ حُذف، قاعدةٌ مقفلة…): الأعداد القديمة تبقى معروضة
+            con = seo_db.connect(data_dir, create=False)
+            if con is None:
+                return
+            try:
+                running = bool(_running.get(k) and _running[k].is_alive())
+                out = _compute_stats(data_dir, con, running, _last.get(k) or seo_db.state(con, "last_build"))
+                _stats_save(con, k, out)
+            finally:
+                con.close()
+        except Exception:  # noqa: BLE001
+            pass
+    t = _stats_busy[k] = threading.Thread(target=run, daemon=True, name="seo-stats")
+    t.start()
+    return True
+
+
 def stats(data_dir, light=False):
-    """أعداد الطبقة لصفحة المدير والتقرير — من القاعدة وحدها، ولا تبني. ‏light أو بناءٌ جارٍ: آخر نسخةٍ محسوبة (إن وُجدت)
-    مع حال التشغيل، فلا ينتظر المدير دقائق حتى تُحسب الأعداد على قاعدةٍ كبيرة."""
+    """أعداد الطبقة لصفحة المدير والتقرير — من القاعدة وحدها، ولا تبني. **تُخدم من المحفوظ فورًا** (ذاكرةً، وإلا من القاعدة بعد إعادة التشغيل)،
+    وإذا شاخت (STATS_TTL) أو بعد كل بناءٍ تُعاد في الخلفية — فلا ينتظر المدير استعلاماتٍ ثقيلة على قاعدةٍ كبيرة عند كل تحديثٍ للصفحة.
+    وأول مرةٍ بلا محفوظ تُحسب في الطلب نفسه (مرةً واحدة)."""
     con = seo_db.connect(data_dir, create=False)
     k = os.path.abspath(data_dir)
     running = bool(_running.get(k) and _running[k].is_alive())
@@ -603,56 +642,72 @@ def stats(data_dir, light=False):
         return {"ok": True, "built": False, "running": running, "last": _last.get(k)}
     last = _last.get(k) or seo_db.state(con, "last_build")    # من الذاكرة، وإلا من القاعدة (بعد إعادة التشغيل)
     cached = _stats_cache.get(k)
-    if cached and (light or running or time.time() - cached[0] < 15):
-        con.close()
-        return {**cached[1], "running": running, "last": last, "cached_at": int(cached[0]), "progress": progress(data_dir) if running else None}
+    if not cached:
+        saved = seo_db.state(con, "stats_cache")
+        if isinstance(saved, dict) and isinstance(saved.get("out"), dict):
+            cached = _stats_cache[k] = (float(saved.get("at") or 0), saved["out"])
     try:
-        q = lambda sql, *a: con.execute(sql, a).fetchone()[0]   # noqa: E731
-        live = "merged_into IS NULL AND available=1"
-        per_service = {}
-        for r in con.execute("SELECT service_key, kind, COUNT(*) n, SUM(present) p FROM content_service GROUP BY 1, 2"):
-            per_service.setdefault(r["service_key"], {})[r["kind"]] = {"linked": r["n"], "present": r["p"]}
-        shared = {}
-        for r in con.execute(f"SELECT c.type, n, COUNT(*) k FROM (SELECT content_id, COUNT(*) n FROM content_service "
-                             f"WHERE present=1 GROUP BY content_id) s JOIN content c ON c.id=s.content_id WHERE {live} "
-                             f"GROUP BY c.type, n"):
-            shared.setdefault(r["type"], {})[str(r["n"])] = r["k"]
-        reviews = {r["kind"]: r["n"] for r in con.execute("SELECT kind, COUNT(*) n FROM review WHERE status='open' GROUP BY kind")}
-        out = {
-            "ok": True, "built": bool(seo_db.state(con, "built_at")), "running": running, "last": last, "progress": progress(data_dir) if running else None,
-            "built_at": seo_db.state(con, "built_at"), "services": sorted(seo_db.state(con, "signatures") or {}),
-            "entities": {"total": q(f"SELECT COUNT(*) FROM content WHERE {live}"),
-                         "movie": q(f"SELECT COUNT(*) FROM content WHERE {live} AND type='movie'"),
-                         "series": q(f"SELECT COUNT(*) FROM content WHERE {live} AND type='series'"),
-                         "unavailable": q("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=0"),
-                         "merged": q("SELECT COUNT(*) FROM content WHERE merged_into IS NOT NULL"),
-                         "by_match": {r["match"]: r["n"] for r in con.execute(
-                             f"SELECT match, COUNT(*) n FROM content WHERE {live} GROUP BY match")}},
-            "by_services": shared,                       # النوع ← {عدد السيرفرات: عدد الكيانات}
-            "per_service": per_service,
-            "links": q("SELECT COUNT(*) FROM content_service WHERE present=1"),
-            "aliases": q("SELECT COUNT(*) FROM content_alias"),
-            "seasons": q("SELECT COUNT(*) FROM season"),
-            "episodes": q("SELECT COALESCE(SUM(episode_count),0) FROM season"),
-            "episodes_official": q("SELECT COALESCE(SUM(episodes_official),0) FROM season"),
-            "series_with_official": q("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND episodes_official IS NOT NULL"),
-            "reconciliation": seo_db.state(con, "reconciliation"),
-            "reviews": {"open": sum(reviews.values()), "by_kind": reviews,
-                        "resolved": q("SELECT COUNT(*) FROM review WHERE status='resolved'"),
-                        "stale": q("SELECT COUNT(*) FROM review WHERE status='stale'")},
-            "provenance": {r["source"]: r["n"] for r in con.execute("SELECT source, COUNT(*) n FROM provenance GROUP BY source")},
-            "queue": seo_sources.queue_stats(con),
-            "taxonomy": {f"{r['kind']}:{r['key']}": {"confirmed": r["c"], "hint": r["h"]} for r in con.execute(
-                "SELECT t.kind, t.key, SUM(ct.source IN ('tmdb','manual')) c, SUM(ct.source='hint') h FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id "
-                "JOIN content c ON c.id=ct.content_id AND c.merged_into IS NULL AND c.available=1 WHERE t.kind IN ('hub','anime_kind') GROUP BY 1, 2")},
-            "people": q("SELECT COUNT(*) FROM person"), "episodes_detailed": q("SELECT COUNT(*) FROM episode"),
-            "settings": {k: ("•••" if k in seo_db.SECRET_SETTINGS and v else v) for k, v in seo_db.settings(con).items()},
-            "db_bytes": os.path.getsize(seo_db.path(data_dir)),
-        }
-        _stats_cache[k] = (time.time(), out)
+        if cached:
+            stale = time.time() - cached[0] > STATS_TTL
+            if stale and not running:
+                _stats_refresh_async(data_dir)
+            fresh = {"settings": {kk: ("•••" if kk in seo_db.SECRET_SETTINGS and v else v) for kk, v in seo_db.settings(con).items()},   # رخيصة: طازجةً دائمًا (حفظ مفتاحٍ أو تبديل معاينةٍ يظهر فورًا)
+                     "built_at": seo_db.state(con, "built_at")}
+            return {**cached[1], **fresh, "running": running, "last": last, "cached_at": int(cached[0]), "stale": stale, "progress": progress(data_dir) if running else None}
+        out = _compute_stats(data_dir, con, running, last)       # لا محفوظ إطلاقًا: حسابٌ واحد الآن ثم يُحفظ
+        _stats_save(con, k, out)
         return out
     finally:
         con.close()
+
+
+def _compute_stats(data_dir, con, running, last):
+    k = os.path.abspath(data_dir)
+    q = lambda sql, *a: con.execute(sql, a).fetchone()[0]   # noqa: E731
+    live = "merged_into IS NULL AND available=1"
+    per_service = {}
+    for r in con.execute("SELECT service_key, kind, COUNT(*) n, SUM(present) p FROM content_service GROUP BY 1, 2"):
+        per_service.setdefault(r["service_key"], {})[r["kind"]] = {"linked": r["n"], "present": r["p"]}
+    shared = {}
+    for r in con.execute(f"SELECT c.type, n, COUNT(*) k FROM (SELECT content_id, COUNT(*) n FROM content_service "
+                         f"WHERE present=1 GROUP BY content_id) s JOIN content c ON c.id=s.content_id WHERE {live} "
+                         f"GROUP BY c.type, n"):
+        shared.setdefault(r["type"], {})[str(r["n"])] = r["k"]
+    reviews = {r["kind"]: r["n"] for r in con.execute("SELECT kind, COUNT(*) n FROM review WHERE status='open' GROUP BY kind")}
+    out = {
+        "ok": True, "built": bool(seo_db.state(con, "built_at")), "running": running, "last": last, "progress": progress(data_dir) if running else None,
+        "built_at": seo_db.state(con, "built_at"), "services": sorted(seo_db.state(con, "signatures") or {}),
+        "entities": {"total": q(f"SELECT COUNT(*) FROM content WHERE {live}"),
+                     "movie": q(f"SELECT COUNT(*) FROM content WHERE {live} AND type='movie'"),
+                     "series": q(f"SELECT COUNT(*) FROM content WHERE {live} AND type='series'"),
+                     "unavailable": q("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND available=0"),
+                     "merged": q("SELECT COUNT(*) FROM content WHERE merged_into IS NOT NULL"),
+                     "by_match": {r["match"]: r["n"] for r in con.execute(
+                         f"SELECT match, COUNT(*) n FROM content WHERE {live} GROUP BY match")}},
+        "by_services": shared,                       # النوع ← {عدد السيرفرات: عدد الكيانات}
+        "per_service": per_service,
+        "links": q("SELECT COUNT(*) FROM content_service WHERE present=1"),
+        "aliases": q("SELECT COUNT(*) FROM content_alias"),
+        "seasons": q("SELECT COUNT(*) FROM season"),
+        "episodes": q("SELECT COALESCE(SUM(episode_count),0) FROM season"),
+        "episodes_official": q("SELECT COALESCE(SUM(episodes_official),0) FROM season"),
+        "series_with_official": q("SELECT COUNT(*) FROM content WHERE merged_into IS NULL AND episodes_official IS NOT NULL"),
+        "reconciliation": seo_db.state(con, "reconciliation"),
+        "reviews": {"open": sum(reviews.values()), "by_kind": reviews,
+                    "resolved": q("SELECT COUNT(*) FROM review WHERE status='resolved'"),
+                    "stale": q("SELECT COUNT(*) FROM review WHERE status='stale'")},
+        "provenance": {r["source"]: r["n"] for r in con.execute("SELECT source, COUNT(*) n FROM provenance GROUP BY source")},
+        "queue": seo_sources.queue_stats(con),
+        "taxonomy": {f"{r['kind']}:{r['key']}": {"confirmed": r["c"], "hint": r["h"]} for r in con.execute(
+            "SELECT t.kind, t.key, SUM(ct.source IN ('tmdb','manual')) c, SUM(ct.source='hint') h FROM taxonomy t JOIN content_taxonomy ct ON ct.taxonomy_id=t.id "
+            "JOIN content c ON c.id=ct.content_id AND c.merged_into IS NULL AND c.available=1 WHERE t.kind IN ('hub','anime_kind') GROUP BY 1, 2")},
+        "people": q("SELECT COUNT(*) FROM person"), "episodes_detailed": q("SELECT COUNT(*) FROM episode"),
+        "settings": {k: ("•••" if k in seo_db.SECRET_SETTINGS and v else v) for k, v in seo_db.settings(con).items()},
+        "db_bytes": os.path.getsize(seo_db.path(data_dir)),
+    }
+    return out
+
+
 
 
 def reviews(data_dir, status="open", kind="", limit=100, offset=0):
