@@ -1858,6 +1858,7 @@ def bundle_zip(out, bundle_id):
 
 BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "qa.json", "bundle.json")
 BUNDLE_EXTRA = ("sitemap-staging.xml",)       # خريطة الموقع التجريبية من الفحص النهائي: تُنزَّل من البطاقة ولا تُخدم على الموقع
+BUILD_ERROR_FILES = ("build_errors_quarantine.json", "seo_build_errors_summary.md", "seo_build_errors_summary.json")   # تقارير العزل (seo_release): تُنزَّل ولا تدخل الأرشيف ولا تُمسح بإعادة اللقطة
 _RELEASE_RX = re.compile(r"release-[\w.-]+\.(?:json|txt)")   # تقارير النشر الإنتاجي (seo_release): release-phase4.json · release-batch-1.json · release-final.txt …
 _bundling = {}
 _bundle_stage = {}            # مسار البيانات ← دالة تحديث مرحلة اللقطة (تستعملها العيّنة لعدّ أعمالها)
@@ -1907,7 +1908,7 @@ def bundle_state(data_dir):
 
 def bundle_file(data_dir, name):
     """ملفٌ من ملفات المراجعة بالاسم (من القائمة وحدها) ← (bytes, نوعه) أو None."""
-    if name not in BUNDLE_FILES + BUNDLE_EXTRA and not _ZIP_RX.fullmatch(name) and not _RELEASE_RX.fullmatch(name):
+    if name not in BUNDLE_FILES + BUNDLE_EXTRA + BUILD_ERROR_FILES and not _ZIP_RX.fullmatch(name) and not _RELEASE_RX.fullmatch(name):
         return None
     try:
         with open(os.path.join(bundle_dir(data_dir), name), "rb") as f:

@@ -1987,6 +1987,25 @@ def unit_release():
         seo_sources.TMDB_API = tbase + "/3"
         r7c = seo_release.phase7(d, SNAP)
         check("المرحلة 7 تُعاد وتنجح فيُرفع العائق (قرارٌ مثبتٌ بفحص لا بزرّ)", r7c["ok"] and not (seo_db.state(seo_db.connect(d), "release") or {}).get("blocked"))
+        # المهمة الآلية: عيبٌ حقيقي في دفعة = إرجاءٌ (تراجعٌ كامل + عزلٌ مسجَّل + لا حظر) لا توقّف
+        rel_keep = seo_db.state(seo_db.connect(d), "release")
+        seo_release._tmdb_one = boom
+        try:
+            rd = seo_release.phase8_batch(d, 10, defer=True)
+        finally:
+            seo_release._tmdb_one = orig_t1
+        con = seo_db.connect(d)
+        snap_def = [con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("content", "content_service", "redirect", "review", "enrich_queue", "api_cache")] + [json.dumps(seo_db.state(con, "index_approved"), sort_keys=True)]
+        seen_n = len(seo_db.state(con, seo_release.SEEN_KEY) or {})
+        qrep = seo_release.quarantine_report(d)
+        check("دفعةٌ فاشلة بوضع الإرجاء: ok وDEFERRED بأسماء الفحوص، تراجعٌ كامل، لا حظر، المعزولون معلَّمون، وملف العزل والتقرير الختامي يُكتبان",
+              rd["ok"] is True and rd["status"] == "DEFERRED" and "tmdb_hard_failures" in rd["failed_checks"] and snap_def == snap_before
+              and not (seo_db.state(con, "release") or {}).get("blocked") and seen_n > 0 and qrep["quarantined_total"] > 0
+              and os.path.exists(os.path.join(seo_sources.bundle_dir(d), seo_release.SUMMARY_MD)), str(rd)[:300])
+        with con:
+            seo_db.set_state(con, seo_release.SEEN_KEY, {})
+            seo_db.set_state(con, "release", rel_keep)             # الدفعة المؤجَّلة تستهلك رقمًا: تُستعاد الحال لتبقى أرقام ما بعدها كما كانت
+        con.close()
         # المرحلة 7 السريعة: بعد فحصٍ كاملٍ ناجح (5 مسارات) تفحص عيّنةً من القديم وحدها (0 جديد)، والكامل يبقى كاملًا
         full_meta = seo_db.state(seo_db.connect(d), "phase7_full") or {}
         seo_release.PHASE7_MIN_SAMPLE = 2
