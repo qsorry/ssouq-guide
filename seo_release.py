@@ -702,7 +702,7 @@ def _write_lock(con):
         con.execute("PRAGMA busy_timeout=30000")
 
 
-def phase8_batch(data_dir, n=100, now=None, submit=None):
+def phase8_batch(data_dir, n=100, now=None, submit=None, defer=False):
     """دفعة توسيعٍ واحدة بثماني خطواتٍ ثم checkpoint. إثراء الدفعة كلّه في معاملةٍ واحدة: فشلُ أي بوابة قبل الاعتماد = rollback (لا أثر إلا التقرير)."""
     now = _now(now)
     submit = submit or analytics.submit
@@ -824,6 +824,8 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
             if not gate_ok:
                 con.rollback()                                              # لا أثر للدفعة في القاعدة
                 rec["rolled_back"] = True
+                if defer:                                                   # المهمة الآلية: لا تتوقف — تُرجأ الدفعة وتكمل التالية، ويُصحَّح المرجأ في الآخر
+                    return _batch_defer(rel, k, failed_checks, rec, cand_ids, con=con, st=st, now=now, data_dir=data_dir)
                 return _batch_fail(rel, k, "batch gate failed (identity/reconciliation/redirect/canonical/hreflang: " + ", ".join(failed_checks) + ") — rolled back, nothing approved", rec, con=con, now=now, data_dir=data_dir)
             con.commit()                                                     # الإثراء اجتاز بواباته
             _seen_mark(con, [c for c in cand_ids if c not in failed_ids], st, now)                               # جُرّبت: لا تُعاد قبل expand_retry_days (المعتمد منها يخرج بالاعتماد)
@@ -879,6 +881,113 @@ def _batch_fail(rel, k, reason, extra=None, con=None, now=None, data_dir=None):
     return {"ok": False, "phase": 8, **rec}
 
 
+QUARANTINE_FILE = "build_errors_quarantine.json"
+SUMMARY_MD, SUMMARY_JSON = "seo_build_errors_summary.md", "seo_build_errors_summary.json"
+REMEDIATION = {          # فئة الخطأ ← ما يُفعل لإصلاحه دفعةً واحدة
+    "identity_mismatch": "كيانان لعملٍ واحد أو رقم TMDB غير مطابق: راجع بنود الدمج (review merged:*) وعمود tmdb_id وexternal_id للكيان، ثم أعد التشغيل.",
+    "unexplained_merge": "دمجٌ لم يثبت: الفائز بلا توثيق TMDB مطابق أو بلا تحويلٍ مباشر/مراجعة — ثبّت tmdb للفائز أو افصل الدمج يدويًا.",
+    "tmdb_mismatch": "رقم TMDB في الكيان يخالف الموثَّق في external_id: صحّح أحدهما من لوحة الهوية.",
+    "tmdb_hard_failure": "خطأٌ غير عابر عند الإثراء من TMDB (مفتاح/استجابة/بيانات): افحص context ثم أعد المحاولة بعد الإصلاح.",
+    "redirect_failure": "سلاسل/حلقات/تحويلاتٌ غير مباشرة: أعد توجيه المسار القديم إلى الهدف النهائي مباشرةً (قائمة التحويلات في التقرير).",
+    "canonical_failure": "canonical/hreflang/لغة/robots/HTTP لمسارات المرشّحين: راجع قوالب الصفحة لتلك المسارات.",
+    "reconciliation_failure": "تغيّر في المعتمد (slug أو دمج أو انقسام): لا يُعاد قبل مراجعة سبب المساس بالمعتمد.",
+    "overview_short": "ملخّص أقصر من 120 حرفًا: أكمل الوصف من TMDB بالعربية/الإنجليزية أو اكتبه يدويًا.",
+    "unmatched": "لم يُطابَق مع TMDB: أضف tmdb_id يدويًا أو اعتمد الاسم الأصلي.",
+}
+CHECK_CATEGORY = {"identity_conflicts": "identity_mismatch", "unexplained_merges": "unexplained_merge", "tmdb_mismatch": "tmdb_mismatch", "tmdb_hard_failures": "tmdb_hard_failure",
+                  "split_delta": "reconciliation_failure", "approved_slug_changes": "reconciliation_failure", "approved_merged": "reconciliation_failure",
+                  "approved_redirect_targets_changed": "reconciliation_failure", "new_redirects_not_direct": "redirect_failure", "redirect_chains": "redirect_failure",
+                  "redirect_loops": "redirect_failure", "redirect_resolve_failures": "redirect_failure", "http_failures": "canonical_failure", "canonical_failures": "canonical_failure",
+                  "hreflang_failures": "canonical_failure", "language_failures": "canonical_failure", "robots_failures": "canonical_failure"}
+
+
+def quarantine_add(data_dir, entries):
+    """يلحق أخطاءً بملف العزل (لا يُسقط شيئًا إن تعذّرت الكتابة)."""
+    try:
+        path = os.path.join(seo_sources.bundle_dir(data_dir), QUARANTINE_FILE)
+        try:
+            with open(path, encoding="utf-8") as f:
+                cur = json.load(f)
+        except (OSError, ValueError):
+            cur = {"entries": []}
+        cur["entries"].extend(entries)
+        _write(data_dir, QUARANTINE_FILE, cur)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _batch_defer(rel, k, failed_checks, extra, cand_ids, con, st, now, data_dir):
+    """دفعةٌ سقطت بوابتها (تراجعت بلا أثر): يُعزل المسبِّبون (هوية/TMDB) في ملف العزل ويُعلَّمون مجرَّبين فتُعاد الدفعة التالية بباقي السليم؛
+    وإن لم يُعرف مسبِّبٌ بعينه (تحويلات/canonical…) عُزلت الدفعة كلها. لا حظر للإصدار — تكمل المهمة ويُصحَّح العزل في الآخر."""
+    ident = (extra or {}).get("identity") or {}
+    bad = {}                                                       # كيان ← فئة الخطأ
+    for m in ident.get("unexplained_merges") or []:
+        bad[m["loser"]] = ("unexplained_merge", m)
+    for cid in ident.get("tmdb_mismatch") or []:
+        bad[cid] = ("tmdb_mismatch", {})
+    for e in ((extra or {}).get("tmdb") or {}).get("errors") or []:
+        if not e.get("transient") and e.get("id") is not None:
+            bad[e["id"]] = ("tmdb_hard_failure", e)
+    fp = (seo_sources.code_version() or {}).get("code_fingerprint")
+    cats = sorted({CHECK_CATEGORY.get(c, "reconciliation_failure") for c in failed_checks})
+    ents = [{"kind": "entity", "batch": k, "entity_id": cid, "category": c, "context": ctx, "at": now, "fingerprint": fp} for cid, (c, ctx) in bad.items()]
+    isolated = list(bad) if bad else list(cand_ids)
+    if not bad:
+        ents = [{"kind": "batch", "batch": k, "entity_id": None, "category": c, "context": {"failed_checks": failed_checks, "candidates": len(cand_ids),
+                                                                                             "redirect_audit": (extra or {}).get("redirect_audit"), "gate": (extra or {}).get("canonical_hreflang_gate")},
+                 "at": now, "fingerprint": fp} for c in cats]
+    quarantine_add(data_dir, ents)
+    reason = f"batch gate failed ({', '.join(failed_checks)}) — rolled back; {len(isolated)} " + ("entities" if bad else "candidates (whole batch)") + " quarantined, the rest continue"
+    rec = {"status": "DEFERRED", "at": now, "batch": k, "reason": reason, "quarantined": len(isolated), **(extra or {})}
+    rel.setdefault("batches", []).append({kk: v for kk, v in rec.items() if kk not in ("candidate_ids", "gate_failures", "new_routes_failures")})
+    rec["file"] = _write(data_dir, f"release-batch-{k}.json", {"phase": 8, **rec, "code": seo_sources.code_version()})
+    _save_state(con, rel, now)
+    _seen_mark(con, isolated, st, now)
+    return {"ok": True, "phase": 8, **rec}
+
+
+def quarantine_report(data_dir, since=0):
+    """التقرير الختامي الموحَّد (md + json): الأخطاء المعزولة مجمَّعةً بالفئة مع خطوة الإصلاح، وأسباب عدم الأهلية الكبرى من تقارير الدفعات."""
+    try:
+        with open(os.path.join(seo_sources.bundle_dir(data_dir), QUARANTINE_FILE), encoding="utf-8") as f:
+            ents = [e for e in json.load(f).get("entries", []) if int(e.get("at") or 0) >= int(since or 0)]
+    except (OSError, ValueError):
+        ents = []
+    groups = {}
+    for e in ents:
+        g = groups.setdefault(e["category"], {"category": e["category"], "count": 0, "entities": [], "batches": [], "remediation": REMEDIATION.get(e["category"], "")})
+        g["count"] += 1
+        if e.get("entity_id") is not None:
+            g["entities"].append(e["entity_id"])
+        if e.get("batch") not in g["batches"]:
+            g["batches"].append(e.get("batch"))
+    soft = {}
+    con = seo_db.connect(data_dir, create=False)
+    try:
+        for b in ((_state(con).get("batches") or []) if con is not None else []):
+            if int(b.get("at") or 0) >= int(since or 0):
+                for why_, n_ in ((b.get("eligibility") or {}).get("by_reason") or {}).items():
+                    cat = "overview_short" if why_.startswith("overview_") else why_
+                    if cat != "ok":
+                        soft[cat] = soft.get(cat, 0) + int(n_)
+    finally:
+        if con is not None:
+            con.close()
+    rep = {"at": int(time.time()), "fingerprint": (seo_sources.code_version() or {}).get("code_fingerprint"), "quarantined_total": len(ents),
+           "groups": sorted(groups.values(), key=lambda g: -g["count"]),
+           "not_eligible_yet": [{"category": c, "routes": n, "remediation": REMEDIATION.get(c, "")} for c, n in sorted(soft.items(), key=lambda x: -x[1])]}
+    _write(data_dir, SUMMARY_JSON, rep)
+    md = ["# تقرير أخطاء البناء المعزولة", "", f"- المعزول: **{len(ents)}** · الفئات: {len(groups)}", ""]
+    for g in rep["groups"]:
+        md += [f"## {g['category']} — {g['count']}", f"الدفعات: {', '.join(str(b) for b in g['batches'])}", f"الكيانات: {', '.join(str(x) for x in g['entities'][:50])}{' …' if len(g['entities']) > 50 else ''}",
+               f"**الإصلاح:** {g['remediation']}", ""]
+    if rep["not_eligible_yet"]:
+        md += ["## غير مؤهَّلة بعد (ليست أخطاءً)", ""] + [f"- {x['category']}: {x['routes']} مسارًا — {x['remediation']}" for x in rep["not_eligible_yet"]]
+    with open(os.path.join(seo_sources.bundle_dir(data_dir), SUMMARY_MD), "w", encoding="utf-8") as f:
+        f.write("\n".join(md) + "\n")
+    return rep
+
+
 def expand(data_dir, n=100, max_batches=None, now=None, submit=None, progress=None):
     """المرحلة 9: دفعاتٌ متتابعة ما دامت السابقة PASS؛ تتوقف عند أول فشل أو نفاد المرشّحين أو بلوغ الحدّ."""
     out = []
@@ -895,6 +1004,7 @@ def expand(data_dir, n=100, max_batches=None, now=None, submit=None, progress=No
 # ================= مهمة التوسيع المستمرة (تكمل بنفسها بعد إعادة النشر) =================
 JOB_KEY = "expand_job"      # build_state: {active, n, remaining, done, auto_resume, started_at, updated_at, last, stopped}
 JOB_WATCHDOG_EVERY = 60
+DEFER_STREAK_MAX = 10        # عشر دفعاتٍ مؤجَّلة متتالية = عيبٌ عام لا في كيانات بعينها: تتوقف المهمة
 
 
 def job_get(data_dir):
@@ -965,7 +1075,7 @@ def run_job(data_dir, now=None, submit=None, progress=None):
             break
         if progress:
             progress(int(job.get("done") or 0) + 1)
-        r = phase8_batch(data_dir, int(job.get("n") or 100), now=now, submit=submit)
+        r = phase8_batch(data_dir, int(job.get("n") or 100), now=now, submit=submit, defer=bool(job.get("defer_failures", job.get("autopilot"))))
         if r.get("status") == "BUSY":                 # القاعدة مشغولة بكاتبٍ آخر: انتظر وأعد الدفعة نفسها بلا فشلٍ ولا عدّ
             busy += 1
             if busy <= BUSY_RETRIES:
@@ -982,7 +1092,15 @@ def run_job(data_dir, now=None, submit=None, progress=None):
         if not job.get("active"):          # أُوقفت أثناء الدفعة
             break
         job["last"] = {**rec, "at": int(time.time())}
-        if not r.get("ok"):
+        if r.get("status") == "DEFERRED":
+            job["deferred"] = (job.get("deferred") or []) + [{"batch": r.get("batch"), "reason": r.get("reason"), "file": r.get("file"), "entities": int(r.get("n") or 0),
+                                                              "failed_checks": r.get("failed_checks"), "at": int(time.time())}]
+            job["deferred_streak"] = int(job.get("deferred_streak") or 0) + 1
+        elif r.get("ok"):
+            job["deferred_streak"] = 0
+        if r.get("status") == "DEFERRED" and job["deferred_streak"] >= DEFER_STREAK_MAX:
+            job.update({"active": False, "stopped": f"batch failed: {DEFER_STREAK_MAX} consecutive deferred batches — systemic fault: {r.get('reason')}"})
+        elif not r.get("ok"):
             job.update({"active": False, "stopped": f"batch failed: {r.get('reason') or r.get('status')}"})
         elif r.get("status") == "EMPTY":
             job.update({"active": False, "stopped": "no candidates left"})
@@ -993,7 +1111,7 @@ def run_job(data_dir, now=None, submit=None, progress=None):
                 elif job.get("pipeline"):                   # الختام: الحزمة النهائية للمراجعة
                     try:
                         fb = final_bundle(data_dir)
-                        job.update({"final_file": fb.get("file"), "stopped": "completed: no candidates left"})
+                        job.update({"final_file": fb.get("file"), "stopped": "completed: no candidates left" + (f" — {len(job['deferred'])} deferred batches to fix" if job.get("deferred") else "")})
                     except Exception as ex:  # noqa: BLE001
                         job.update({"stopped": f"completed: no candidates left (final bundle failed: {type(ex).__name__})"})
         else:
@@ -1005,6 +1123,14 @@ def run_job(data_dir, now=None, submit=None, progress=None):
                 if not ok_:
                     job.update({"active": False, "stopped": f"autopilot: {why_}"})
         _job_save(data_dir, job)
+    job = job_get(data_dir)
+    if job.get("deferred"):
+        try:
+            job["summary_file"] = SUMMARY_MD
+            quarantine_report(data_dir, since=job.get("started_at") or 0)
+            _job_save(data_dir, job)
+        except Exception:  # noqa: BLE001
+            pass
     return {"ok": all(b["ok"] for b in out), "batches": out, "job": job_get(data_dir)}
 
 
@@ -1117,6 +1243,8 @@ def notify_job(data_dir, job, res=None, error=None):
                 lines.append(f"التقرير: {fail['file']} (admin ← المحتوى ← ملفات المراجعة)")
         else:
             lines += ["", f"النتيجة: {stopped or 'اكتمل'}"]
+            for d_ in (job.get("deferred") or [])[:20]:
+                lines.append(f"مؤجَّلة للتصحيح: الدفعة {d_.get('batch')} — {', '.join(d_.get('failed_checks') or [])} ({d_.get('file')})")
         return fn(subject, "\n".join(lines))
     except Exception:  # noqa: BLE001
         return None

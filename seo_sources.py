@@ -1857,7 +1857,7 @@ def bundle_zip(out, bundle_id):
 
 
 BUNDLE_FILES = ("probe.json", "sample.json", "report.txt", "search-report.txt", "qa.json", "bundle.json")
-BUNDLE_EXTRA = ("sitemap-staging.xml",)       # خريطة الموقع التجريبية من الفحص النهائي: تُنزَّل من البطاقة ولا تُخدم على الموقع
+BUNDLE_EXTRA = ("sitemap-staging.xml", "build_errors_quarantine.json", "seo_build_errors_summary.md", "seo_build_errors_summary.json")       # خريطة الموقع التجريبية من الفحص النهائي: تُنزَّل من البطاقة ولا تُخدم على الموقع
 _RELEASE_RX = re.compile(r"release-[\w.-]+\.(?:json|txt)")   # تقارير النشر الإنتاجي (seo_release): release-phase4.json · release-batch-1.json · release-final.txt …
 _bundling = {}
 _bundle_stage = {}            # مسار البيانات ← دالة تحديث مرحلة اللقطة (تستعملها العيّنة لعدّ أعمالها)
