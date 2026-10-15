@@ -1988,6 +1988,7 @@ def unit_release():
         r7c = seo_release.phase7(d, SNAP)
         check("المرحلة 7 تُعاد وتنجح فيُرفع العائق (قرارٌ مثبتٌ بفحص لا بزرّ)", r7c["ok"] and not (seo_db.state(seo_db.connect(d), "release") or {}).get("blocked"))
         # المهمة الآلية: عيبٌ حقيقي في دفعة = إرجاءٌ (تراجعٌ كامل + عزلٌ مسجَّل + لا حظر) لا توقّف
+        rel_keep = seo_db.state(seo_db.connect(d), "release")
         seo_release._tmdb_one = boom
         try:
             rd = seo_release.phase8_batch(d, 10, defer=True)
@@ -2003,6 +2004,7 @@ def unit_release():
               and os.path.exists(os.path.join(seo_sources.bundle_dir(d), seo_release.SUMMARY_MD)), str(rd)[:300])
         with con:
             seo_db.set_state(con, seo_release.SEEN_KEY, {})
+            seo_db.set_state(con, "release", rel_keep)             # الدفعة المؤجَّلة تستهلك رقمًا: تُستعاد الحال لتبقى أرقام ما بعدها كما كانت
         con.close()
         # المرحلة 7 السريعة: بعد فحصٍ كاملٍ ناجح (5 مسارات) تفحص عيّنةً من القديم وحدها (0 جديد)، والكامل يبقى كاملًا
         full_meta = seo_db.state(seo_db.connect(d), "phase7_full") or {}
