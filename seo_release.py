@@ -811,12 +811,19 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
                        and recon["approved_merged"] == 0 and recon["approved_redirect_targets_changed"] == 0 and recon["new_redirects"] == recon["new_redirects_direct"]
                        and ra["chains"] == 0 and ra["loops"] == 0 and ra["resolve_failures"] == 0 and g0["http_failures"] == 0 and g0["canonical_failures"] == 0 and g0["hreflang_failures"] == 0
                        and g0["language_failures"] == 0 and g0["robots_failures"] == 0 and hard_failed == 0)
-            rec = {"batch": k, "n": len(cands), "candidate_ids": cand_ids[:200], "tmdb": {kk: v for kk, v in en.items() if kk != "merged"}, "merges": en["merged"], "identity": ident, "reconciliation": recon,
+            checks = {"identity_conflicts": not ident["conflicts"], "unexplained_merges": not ident["unexplained_merges"], "tmdb_mismatch": not ident["tmdb_mismatch"],
+                      "split_delta": recon["split_delta"] == 0, "approved_slug_changes": recon["approved_slug_changes"] == 0, "approved_merged": recon["approved_merged"] == 0,
+                      "approved_redirect_targets_changed": recon["approved_redirect_targets_changed"] == 0, "new_redirects_not_direct": recon["new_redirects"] == recon["new_redirects_direct"],
+                      "redirect_chains": ra["chains"] == 0, "redirect_loops": ra["loops"] == 0, "redirect_resolve_failures": ra["resolve_failures"] == 0,
+                      "http_failures": g0["http_failures"] == 0, "canonical_failures": g0["canonical_failures"] == 0, "hreflang_failures": g0["hreflang_failures"] == 0,
+                      "language_failures": g0["language_failures"] == 0, "robots_failures": g0["robots_failures"] == 0, "tmdb_hard_failures": hard_failed == 0}
+            failed_checks = [kk for kk, ok_ in checks.items() if not ok_]
+            rec = {"batch": k, "n": len(cands), "failed_checks": failed_checks, "candidate_ids": cand_ids[:200], "tmdb": {kk: v for kk, v in en.items() if kk != "merged"}, "merges": en["merged"], "identity": ident, "reconciliation": recon,
                    "redirect_audit": ra, "canonical_hreflang_gate": g0, "gate_failures": f0, "eligibility": elig}
             if not gate_ok:
                 con.rollback()                                              # لا أثر للدفعة في القاعدة
                 rec["rolled_back"] = True
-                return _batch_fail(rel, k, "batch gate failed (identity/reconciliation/redirect/canonical/hreflang) — rolled back, nothing approved", rec, con=con, now=now, data_dir=data_dir)
+                return _batch_fail(rel, k, "batch gate failed (identity/reconciliation/redirect/canonical/hreflang: " + ", ".join(failed_checks) + ") — rolled back, nothing approved", rec, con=con, now=now, data_dir=data_dir)
             con.commit()                                                     # الإثراء اجتاز بواباته
             _seen_mark(con, [c for c in cand_ids if c not in failed_ids], st, now)                               # جُرّبت: لا تُعاد قبل expand_retry_days (المعتمد منها يخرج بالاعتماد)
             # checkpoint — اعتماد المستحقّ الجديد ثم بوابة الخريطة (7/8) عليه؛ فشلها = تراجعٌ عن الاعتماد وحده

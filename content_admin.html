@@ -1514,7 +1514,7 @@ function renderOne(d) {
   $("oneFail").hidden = !f;
   if (f) {
     $("oneFailT").textContent = `✖ توقّف عند ${f.where || "خطوةٍ"}`;
-    $("oneFailR").innerHTML = `<div dir="auto">${esc(f.reason || f.stopped)}</div>` + (f.file ? `<div class="meta">التقرير: <span class="mono">${esc(f.file)}</span> (ملفات المراجعة ← أدوات التطوير)</div>` : "");
+    $("oneFailR").innerHTML = `<div dir="auto">${esc(f.reason || f.stopped)}</div>` + (f.file ? `<div class="meta">التقرير: <a class="linkbtn mono" href="${B}/api/content/seo/bundle/${encodeURIComponent(f.file)}" download>⬇ ${esc(f.file)}</a></div>` : "");
     window.__oneDiag = {failure: f, job: jb, release: {blocked: (d.release || {}).blocked, phases: Object.fromEntries(Object.entries((d.release || {}).phases || {}).map(([k, v]) => [k, {status: v.status, reason: v.reason}]))}, batches: (d.batches || []).slice(-3), approved: {entities: ap, routes: d.approved_routes, extras: d.extras_approved_routes}, code: d.code_fingerprint};
   }
 }
