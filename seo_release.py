@@ -776,8 +776,9 @@ def phase8_batch(data_dir, n=100, now=None, submit=None):
                     w = _row(con, r["merged_into"])
                     rv = con.execute("SELECT payload_json FROM review WHERE key=?", (f"merged:{r['merged_into']}:{cid}",)).fetchone()
                     direct = all(red_after.get(p) == t and t not in red_after for p, t in zip(seo_db.paths(r["type"], r["slug"]), seo_db.paths(w["type"], w["slug"]))) if w else False
-                    same = (w is not None and w["merged_into"] is None and str(w["tmdb_id"] or "") and
-                            str((seo_db.external(con, "content", w["id"]).get("tmdb") or {}).get("external_id")) == str(w["tmdb_id"]))
+                    wx = (seo_db.external(con, "content", w["id"]).get("tmdb") or {}) if w else {}      # الحامل قد يكون موثَّقًا في external_id وعمود tmdb_id فيه فارغ (كيانٌ أقدم)
+                    same = bool(w is not None and w["merged_into"] is None and wx.get("verified") and str(wx.get("external_id") or "") and
+                                (not str(w["tmdb_id"] or "") or str(wx.get("external_id")) == str(w["tmdb_id"])))
                     (ident["explained_merges"] if (rv and direct and same) else ident["unexplained_merges"]).append({"loser": cid, "winner": r["merged_into"], "direct_redirect": direct, "review": bool(rv), "same_verified_tmdb": same})
                     continue
                 ext = (seo_db.external(con, "content", cid).get("tmdb") or {})
