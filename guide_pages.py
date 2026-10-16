@@ -418,33 +418,81 @@ table.cmp td.go{{white-space:nowrap}}
     return doc.encode("utf-8")
 
 
+_URLSET_OPEN = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+                'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n')
+SITEMAP_SINGLE_MAX = int(os.environ.get("XM_SITEMAP_SINGLE_MAX", "40000"))   # حتى هذا العدد تبقى خريطةً واحدة؛ فوقه تصير فهرسًا (حدّ Google 50 ألف رابط أو 50 ميجابايت للملف)
+SITEMAP_PART_MAX = 40000                                                      # أقصى روابط في الخريطة الفرعية الواحدة
+
+
+def _sitemap_rows(extra=()):
+    """صفوف الخريطة ← [(المسار، XML السطر)]: الرئيسية ثم PAGES ثم `extra` (المسار، changefreq، priority)."""
+    import datetime
+    today = datetime.date.today().isoformat()
+    rows = [("/", '  <url>\n    <loc>%s/</loc>\n    <lastmod>%s</lastmod>'
+             '\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>'
+             '\n    <image:image><image:loc>%s/static/og-image.png</image:loc>'
+             '<image:title>تفعيل الاشتراك خطوة بخطوة | سمارت سوق</image:title></image:image>'
+             '\n  </url>' % (SITE, today, SITE))]
+    for path in PAGES:
+        rows.append((path, '  <url>\n    <loc>%s%s</loc>\n    <lastmod>%s</lastmod>'
+                     '\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>' % (SITE, path, today)))
+    for path, freq, prio in extra:
+        # صفحات المحتوى (كيانات/قوائم/مواسم) لا تملك تاريخ تعديلٍ حقيقي للمحتوى (updated_at يتحرّك مع كل إثراء): لا lastmod بدل تاريخٍ مضلِّل
+        lm = "" if "/content/" in path else "\n    <lastmod>%s</lastmod>" % today
+        rows.append((path, '  <url>\n    <loc>%s%s</loc>%s'
+                     '\n    <changefreq>%s</changefreq>\n    <priority>%s</priority>\n  </url>' % (SITE, path, lm, freq, prio)))
+    return rows
+
+
+def _urlset(rows):
+    return (_URLSET_OPEN + "\n".join(r for _, r in rows) + "\n</urlset>\n").encode("utf-8")
+
+
 def sitemap(extra=()):
     """خريطة الموقع مبنيّة من PAGES نفسها، فلا تتخلّف عنها عند إضافة صفحة.
     و`extra` صفحاتٌ من وحدات أخرى: (المسار، changefreq، priority) — كصفحات
-    ترتيب الدوريات في league.SITEMAP."""
-    import datetime
-    today = datetime.date.today().isoformat()
-    rows = [
-        '  <url>\n    <loc>%s/</loc>\n    <lastmod>%s</lastmod>'
-        '\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>'
-        '\n    <image:image><image:loc>%s/static/og-image.png</image:loc>'
-        '<image:title>تفعيل الاشتراك خطوة بخطوة | سمارت سوق</image:title></image:image>'
-        '\n  </url>' % (SITE, today, SITE)
-    ]
-    for path in PAGES:
-        rows.append(
-            '  <url>\n    <loc>%s%s</loc>\n    <lastmod>%s</lastmod>'
-            '\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>'
-            % (SITE, path, today))
-    for path, freq, prio in extra:
-        rows.append(
-            '  <url>\n    <loc>%s%s</loc>\n    <lastmod>%s</lastmod>'
-            '\n    <changefreq>%s</changefreq>\n    <priority>%s</priority>\n  </url>'
-            % (SITE, path, today, freq, prio))
-    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
-            'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n'
-            + "\n".join(rows) + "\n</urlset>\n").encode("utf-8")
+    ترتيب الدوريات في league.SITEMAP. كلّها في ملفٍّ واحد (تستعمله بوابات النشر)؛ العرض العام يمرّ بـ sitemap_public."""
+    return _urlset(_sitemap_rows(extra))
+
+
+def _sitemap_group(path):
+    """القسم واللغة لمسارٍ: series/movies بلغتهما، وغيرها static."""
+    lang = "en" if path.startswith("/en/") else "ar"
+    for kind in ("series", "movies"):
+        if f"/content/{kind}/" in path:
+            return f"{kind}-{lang}"
+    return "static"
+
+
+def sitemap_parts(extra=()):
+    """None ما دام العدد ≤ SITEMAP_SINGLE_MAX (خريطةٌ واحدة كما كانت)، وإلا {اسم الخريطة الفرعية: XML} مقسَّمةً بالقسم واللغة وبحدّ SITEMAP_PART_MAX للملف."""
+    rows = _sitemap_rows(extra)
+    if len(rows) <= SITEMAP_SINGLE_MAX:
+        return None
+    groups = {}
+    for r in rows:
+        groups.setdefault(_sitemap_group(r[0]), []).append(r)
+    out = {}
+    for g, rs in sorted(groups.items()):
+        for n in range(0, len(rs), SITEMAP_PART_MAX):
+            k = n // SITEMAP_PART_MAX + 1
+            out[f"sitemap-{g}{'' if k == 1 else '-%d' % k}.xml"] = _urlset(rs[n:n + SITEMAP_PART_MAX])
+    return out
+
+
+def sitemap_index(names):
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            + "\n".join(f"  <sitemap><loc>{SITE}/{n}</loc></sitemap>" for n in names) + "\n</sitemapindex>\n").encode("utf-8")
+
+
+def sitemap_public(extra=(), part=None):
+    """ما يخدمه /sitemap.xml و/sitemap-<قسم>-<لغة>.xml ← bytes أو None (خريطةٌ فرعية غير موجودة).
+    خريطةٌ واحدة حتى SITEMAP_SINGLE_MAX رابط، وفوقها فهرسٌ بخرائط فرعية — قبل بلوغ حدّ Google لا بعده."""
+    parts = sitemap_parts(extra)
+    if part is None:
+        return sitemap(extra) if parts is None else sitemap_index(parts)
+    return (parts or {}).get(part)
 
 
 # ----- الشروحات على نطاق المتجر -----
