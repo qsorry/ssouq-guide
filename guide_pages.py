@@ -438,8 +438,10 @@ def _sitemap_rows(extra=()):
         rows.append((path, '  <url>\n    <loc>%s%s</loc>\n    <lastmod>%s</lastmod>'
                      '\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>' % (SITE, path, today)))
     for path, freq, prio in extra:
-        rows.append((path, '  <url>\n    <loc>%s%s</loc>\n    <lastmod>%s</lastmod>'
-                     '\n    <changefreq>%s</changefreq>\n    <priority>%s</priority>\n  </url>' % (SITE, path, today, freq, prio)))
+        # صفحات المحتوى (كيانات/قوائم/مواسم) لا تملك تاريخ تعديلٍ حقيقي للمحتوى (updated_at يتحرّك مع كل إثراء): لا lastmod بدل تاريخٍ مضلِّل
+        lm = "" if "/content/" in path else "\n    <lastmod>%s</lastmod>" % today
+        rows.append((path, '  <url>\n    <loc>%s%s</loc>%s'
+                     '\n    <changefreq>%s</changefreq>\n    <priority>%s</priority>\n  </url>' % (SITE, path, lm, freq, prio)))
     return rows
 
 

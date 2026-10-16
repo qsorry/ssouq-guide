@@ -26,5 +26,9 @@ all_locs = [u for x in parts.values() for u in LOC.findall(x.decode())]
 whole = LOC.findall(G.sitemap(extra).decode())
 check("مجموع الأجزاء = الخريطة الكاملة بلا فقد ولا تكرار", sorted(all_locs) == sorted(whole) and len(set(all_locs)) == len(all_locs), f"{len(all_locs)} vs {len(whole)}")
 check("خريطةٌ فرعية مجهولة: None (404)", G.sitemap_public(extra, "sitemap-nope.xml") is None and G.sitemap_public(extra, "sitemap-static.xml"))
+xml = G.sitemap(extra).decode()
+ent = [b for b in xml.split("<url>") if "/content/series/s0/" in b][0]
+stat = [b for b in xml.split("<url>") if "/watch/</loc>" in b][0]
+check("روابط المحتوى بلا lastmod (تاريخٌ غير حقيقي) وتحتفظ بـ changefreq/priority، وغيرها يحتفظ به", "<lastmod>" not in ent and "<priority>0.7" in ent and "<changefreq>weekly" in ent and "<lastmod>" in stat)
 print(f"\nResult: {ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
