@@ -962,6 +962,8 @@ def _line_row(ln, ctx):
         state = "replaced"                       # للعميل (الجوال نفسه) طلبٌ أحدث بيوزرٍ أُنشئ من صفحة الإنشاء وهو موجود
     elif no in ctx["covered"] and not mine:
         state = "covered"                        # للطلب يوزرٌ آخر موجود: الاشتراك قائم
+    elif not mine and u.lower() in ctx["renamed"]:
+        state = "covered"                        # غُيّر اسم يوزره على اللوحة بسبب المكرر (يبقى حسابه باسمه الجديد): ليس مفقودًا
     elif not panel:
         state = "host_unmapped"
     elif not ((own and own.get("count"))
@@ -987,7 +989,7 @@ def _line_row(ln, ctx):
             "done_panel_id": dpid if dpanel else "", "done_panel": dpanel.get("name", ""),
             "done_account_id": dpanel.get("account_id", ""), "done_gate_id": dpanel.get("gate_id", ""),
             "state": state, "linked": str(ln.get("linked") or ""), "done": mine,
-            "covered_by": ctx["covered"].get(no, "") if state == "covered" else "",
+            "covered_by": (ctx["covered"].get(no) or ctx["renamed"].get(u.lower(), "")) if state == "covered" else "",
             "replaced_by": (lambda x: {"order": x[0], "username": x[2]} if x else None)(
                 _successor(ln, no, ctx) if state == "replaced" and not mine and u.lower() not in ctx["replaced"] else None)}
 
@@ -1054,6 +1056,8 @@ def build_index(config, data_dir, replaced=None, export=None, today=None):
            "users": users, "done": load_dupes_done(data_dir), "replaced": {str(u).lower() for u in (replaced or ())},
            "covered": _covered_orders(lines, users), "succ": _phone_successors(lines, users), "today": today or renew._today(),
            "xgates": set((export or {}).get("gates") or ())}
+    ctx["renamed"] = {str((r.get("renamed") or {}).get("from") or "").lower(): str((r.get("renamed") or {}).get("to") or "")
+                      for r in ctx["done"].values() if isinstance(r, dict) and (r.get("renamed") or {}).get("from")}
     rows, seen = [], set()
     by_order, by_user, by_pass = {}, {}, {}
     for ln in lines:

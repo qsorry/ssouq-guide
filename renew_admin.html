@@ -2338,7 +2338,7 @@ function lcard(r, i, kind){
   // مكررٌ لم يُعالج: كل طلبٍ لاحق على اليوزر نفسه بلا بديل — وخيار المعالجة (يوزر جديد بالمتبقي، وتغيير اسم القديم لصاحبه الأول)
   // من لديه المكرر: الأول (يحتفظ باليوزر) ثم كل لاحقٍ بما تمّ له، وهل غُيّر اليوزر الأول — أرقامٌ تنقل إلى بحث الآخر
   const mk = (o, ph) => `<a href="#" class="lcJump" data-o="${esc(o)}">الطلب <span class="ltr">${esc(o)}</span></a>`;
-  const MS = {sent: ['أُرسلت ✓', 'ok'], unsent: ['لم تُرسل', 'bad'], failed: ['فشل الإرسال', 'bad']};
+  const MS = {skipped: ['تُخُطّيت', 'warn'], sent: ['أُرسلت ✓', 'ok'], unsent: ['لم تُرسل', 'bad'], failed: ['فشل الإرسال', 'bad']};
   const gap = r.dup_chain && r.dup_chain.some(c => c.role === 'later' && c.replacement && !c.renamed && !c.old_missing);
   const chain = r.dup_chain && r.dup_chain.length ? `<div class="dch"><h4>مَن لديه هذا المكرر (اليوزر <span class="ltr">${esc(r.username)}</span>)</h4>`
     + (gap ? '<p class="msg err" style="margin:0">⚠ حلقة مفقودة: أُنشئ البديل ولم يُغيَّر اسم الأول — اليوزر نفسه ما زال يعمل عند الاثنين. أكمل من «أكمل المعالجة».</p>' : '')
@@ -2520,7 +2520,11 @@ function wzRender(busyLabel){
     return;
   }
   if (q('wzEnd')) q('wzEnd').onclick = wzClose;
-  if (q('wzSkip')) q('wzSkip').onclick = () => { WZ.sk[cur] = true; WZ.draft = null; WZ.err = WZ.ok = ''; wzRender(); };
+  if (q('wzSkip')) q('wzSkip').onclick = () => {
+    WZ.sk[cur] = true; WZ.draft = null; WZ.err = WZ.ok = '';
+    const m = (cur === 'send_new' || cur === 'send_old') && wzMsg(it, cur === 'send_new' ? 'new' : 'old');
+    if (m) wzRun('skip', async () => { await post('/api/renew/dup-send', {order: it.order, idx: m.idx, mode: 'skip'}); });   // يُحفظ التخطّي: لا يعود الطلب «ناقصًا» في البحث
+    else wzRender(); };
   if (!q('wzGo') && !q('wzEnd')) return;
   if (cur === 'create') q('wzGo').onclick = () => {
     const months = Number(q('wzM').value) || it.suggest || 1;
