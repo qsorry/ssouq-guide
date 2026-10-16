@@ -1215,7 +1215,25 @@ def order_search(config, data_dir, q, replaced=None, today=None, export=None, id
         exp = line_expiry(ix)
         ix = {k: ix.get(k) for k in ("phone", "date", "months", "devices", "host", "username", "sid")
               if ix.get(k) not in (None, "")} | {"expiry": exp.isoformat() if exp else ""}
-    return {"rows": rows, "index": ix, "order": order or (qo if ix else ""), "q": qn}
+    return {"rows": rows, "index": ix, "order": order or (qo if ix else ""), "q": qn,
+            "panel_hits": [] if rows or ix else panel_user_hits(data_dir, raw)}
+
+
+def panel_user_hits(data_dir, q):
+    """يوزرٌ (أو كلمة مرور) موجودٌ على لوحةٍ مسحوبة ولا طلب له في اشتراكات سلة المحفوظة: يُعرض بدل «لا نتيجة»،
+    فيُعرف أنه على اللوحة وأنه غير مرتبطٍ بطلب (لم يُبع، أو لم تُسحب طلباته)."""
+    key = str(q or "").strip().lower()
+    if not key:
+        return []
+    out = []
+    for pid, pdata in (load_panel_lines(data_dir).get("panels") or {}).items():
+        by_user = pdata.get("by_user") or {}
+        recs = [by_user[key]] if key in by_user else [r for r in by_user.values() if str(r.get("password") or "").lower() == key]
+        for r in recs[:5]:
+            out.append({"username": r.get("username", ""), "password": r.get("password", ""), "exp": r.get("exp", ""),
+                        "package": r.get("package", ""), "status": r.get("status", ""), "months": r.get("months"),
+                        "panel_id": pid, "panel_name": pdata.get("name") or pid, "built": pdata.get("built", "")})
+    return out[:20]
 
 
 def link_order(data_dir, order, username, password="", host="", replace="", base=None):

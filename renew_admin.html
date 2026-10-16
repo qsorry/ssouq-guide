@@ -2628,9 +2628,13 @@ async function loFind(q){
 }
 // كل ما يحتاج عملًا في نتيجة البحث: مفقودٌ بلا بديل (إنشاء اشتراكه)، ومكررٌ لم يُعالج (معالجه خطواتٍ) — «عالج الكل» يمرّ عليها بالترتيب
 function loTasks(rows){
-  const t = [];
-  rows.forEach(r => { if (r.dup_todo && r.dup_todo.length) r.dup_todo.forEach(item => (item.can_create || item.done) && t.push({item}));
-    else if (!r.done && r.state === 'missing' && !r.expired && r.can_create !== false && r.account_id) t.push({r}); });
+  // كل صفٍّ عملان مستقلّان: (١) مفقودٌ بلا بديل ← إنشاء اشتراكه، (٢) مكرراتٌ لم تُعالج ← المعالج. والمكرر نفسه يظهر في صفّ الأول وصفّ اللاحق فيُحسب مرةً
+  const t = [], seen = new Set();
+  rows.forEach(r => {
+    if (!r.done && r.state === 'missing' && !r.expired && r.can_create !== false && r.account_id) t.push({r});
+    (r.dup_todo || []).forEach(item => { const k = item.order + '|' + item.username;
+      if ((item.can_create || item.done) && !seen.has(k)) { seen.add(k); t.push({item}); } });
+  });
   return t;
 }
 async function loFixAll(todo, q){
@@ -2643,10 +2647,14 @@ async function loFixAll(todo, q){
 }
 function loRender(d, q){
   LO = d; const rows = d.rows || [], ix = d.index;
-  $('#loWrap').classList.toggle('hidden', !rows.length);
+  const ph = !rows.length && !ix ? (d.panel_hits || []) : [];     // يوزرٌ على اللوحة بلا طلبٍ في سلة
+  $('#loWrap').classList.toggle('hidden', !rows.length && !ph.length);
   const todo = loTasks(rows);
   $('#loBody').innerHTML = (todo.length > 1 ? `<div class="lc-a"><button class="go" id="loAll" type="button">عالج الكل (${AR(todo.length)} عمل: ${AR(todo.filter(t => t.r).length)} مفقود · ${AR(todo.filter(t => t.item).length)} مكرر)</button></div>` : '')
-    + rows.map((r, i) => lcard(r, i, 'lo')).join('');
+    + rows.map((r, i) => lcard(r, i, 'lo')).join('')
+    + ph.map(h => `<article class="lc st-found"><header class="lc-h"><div class="lc-o"><small>على اللوحة</small><b>${esc(h.panel_name)}</b></div><span class="pill warn">بلا طلب في سلة</span></header>`
+      + `<p class="lc-why">اليوزر موجود على اللوحة، لكن لا طلب له في اشتراكات سلة المسحوبة (لم يُبع، أو لم تُسحب طلباته — اسحب طلبات سلة من «المصادر» ثم أعد البحث).</p>`
+      + lcCred('', h.username, h.password, '') + `<div class="lc-g">${lcField('الانتهاء', `<span class="ltr">${esc(h.exp) || '—'}</span>`)}${lcField('الباقة', esc(h.package) || '—')}${lcField('الحالة', esc(h.status) || '—')}${lcField('آخر سحب', `<span class="ltr">${esc((h.built || '').slice(0, 10)) || '—'}</span>`)}</div></article>`).join('');
   const all = $('#loAll'); if (all) all.onclick = () => loFixAll(todo, q);
   lcBind($('#loBody'), rows, 'lo');
   const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
@@ -2654,6 +2662,8 @@ function loRender(d, q){
     const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered'), dup = rows.some(r => r.dup);
     loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : rows[0].match === 'phone' ? ' بالجوال' : '')
       + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + (rows.some(r => r.dup_todo && r.dup_todo.length) ? ' — ⚠ مكرر ولم تتم معالجته' : dup ? ' — حساب مكرر (عُولج)' : '') + ms);
+  } else if (ph.length) {
+    loState('found', `وُجد ${AR(ph.length)} ${ph.length === 1 ? 'يوزر' : 'يوزرات'} على لوحة ${ph[0].panel_name} — لا طلب له في سلة المسحوبة` + ms);
   } else if (ix) {
     loState('found', `الطلب في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
       + (d.salla && d.salla.username ? ` · في سجلّ الطلب في سلة: ${d.salla.username}` : '') + ms);
