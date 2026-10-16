@@ -16,7 +16,7 @@
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14);color-scheme:light}}
 :root[data-theme="light"]{--bg:#eef2f8;--sf:#ffffff;--sf2:#f3f6fb;--line:#d6dfeb;--ink:#12213a;--mute:#5f7290;--go:#0f9c6e;--go2:#0b7f5a;--go-ink:#ffffff;--amber:#b45309;--err:#c2412d;--blue:#2563eb;--purple:#6d5ce7;--shadow:0 14px 40px rgba(20,40,80,.14);color-scheme:light}
 *{box-sizing:border-box}
-html{background:var(--bg);scroll-padding-top:90px;-webkit-text-size-adjust:100%}
+html{background:var(--bg);scroll-padding-top:90px;-webkit-text-size-adjust:100%;overflow-x:hidden}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif;min-height:100vh;overflow-x:hidden}
 .hidden{display:none !important}
 a{color:var(--go)}
@@ -314,8 +314,8 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 .ppv input{width:92px;flex:none}
 
 /* ===== بطاقات البحث والمفقود ===== */
-.lcards>div{display:grid;gap:12px;margin-top:12px}
-.lc{border:1px solid var(--line);border-radius:18px;background:var(--sf);padding:14px 16px;display:grid;gap:12px;
+.lcards>div{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin-top:12px}
+.lc{border:1px solid var(--line);border-radius:18px;background:var(--sf);padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0;overflow-wrap:anywhere;
   box-shadow:0 1px 0 color-mix(in srgb,var(--ink) 4%,transparent);border-inline-start:4px solid var(--line)}
 .lc.st-found{border-inline-start-color:var(--go)}.lc.st-missing{border-inline-start-color:var(--err)}
 .lc.st-covered,.lc.st-replaced{border-inline-start-color:var(--mute)}.lc.st-not_pulled,.lc.st-host_unmapped{border-inline-start-color:var(--amber)}
@@ -341,13 +341,14 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
   background:color-mix(in srgb,var(--go) 8%,var(--sf))}
 .lc-done b{color:var(--go)}
 .lc-done .lc-cred{background:var(--sf)}
-.dch{display:grid;gap:6px;margin:6px 0;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--sf2)}
+.dch,.dch .dn,.lc-todo,.lc-todo .lc-a{min-width:0;overflow-wrap:anywhere}.dch .dn>span,.lc-todo .lc-a>span{min-width:0}
+.dch{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;margin:6px 0;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--sf2)}
 .dch h4{margin:0;font-size:.9rem}.dch .dn{display:grid;gap:3px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--sf);font-size:.84rem}
 .dch .dn.first{border-color:var(--go)}.dch .dn small{color:var(--mute)}.dch .ok{color:var(--go)}.dch .bad{color:var(--err)}
 .wzst{display:flex;gap:6px;margin:0;padding:0;list-style:none}.wzst li{flex:1;min-width:0;text-align:center;font-size:.72rem;color:var(--mute);border-top:3px solid var(--line);padding-top:5px}
 .wzst li.ok{color:var(--go);border-color:var(--go)}.wzst li.cur{color:var(--tx);font-weight:700;border-color:var(--warn,#e9a23b)}.wzst li.sk{text-decoration:line-through}
 .wzb h3{margin:0 0 4px;font-size:1rem}.wzb p{margin:4px 0;color:var(--mute);font-size:.86rem}.wzb textarea{min-height:200px}
-.lc-todo{display:grid;gap:8px;margin:6px 0}.lc-todo .lc-a{border:1px solid var(--err);border-radius:10px;padding:8px}
+.lc-todo{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:6px 0}.lc-todo .lc-a{border:1px solid var(--err);border-radius:10px;padding:8px}
 .lc-a{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .lc-a button,.lc-a a{flex:1 1 auto;min-width:120px;text-align:center}
 .lc-a .lc-m{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:.82rem;flex:0 0 auto}
@@ -387,16 +388,17 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 .rp-pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.75;font-size:.9rem;min-height:280px}
 .cq-r td{background:var(--sf2)}
 /* نافذة الردّ على الشكوى: ورقةٌ تملأ الشاشة على الجوال (رأسٌ ثابت · جسمٌ يتمرّر · شريط أفعالٍ ثابت أسفل)، ونافذةٌ في الوسط على الحاسوب */
-.modal{position:fixed;inset:0;z-index:60;background:rgba(4,10,22,.6);display:flex;align-items:stretch;justify-content:center}
+.modal{position:fixed;inset:0;width:100%;max-width:100vw;height:100vh;height:100dvh;z-index:60;background:rgba(4,10,22,.6);display:flex;align-items:stretch;justify-content:center}
 .modal.hidden{display:none}
-.sheet{display:flex;flex-direction:column;width:100%;height:100%;background:var(--bg);box-shadow:var(--shadow)}
+.sheet{display:flex;flex-direction:column;width:100%;max-width:100%;min-width:0;height:100%;overflow:hidden;background:var(--bg);box-shadow:var(--shadow)}
 @media (min-width:640px){.modal{align-items:center;padding:18px}.sheet{max-width:680px;height:auto;max-height:92vh;border:1px solid var(--line);border-radius:20px;overflow:hidden}}
 .shtop{flex:none;display:flex;align-items:center;gap:10px;min-height:62px;padding:8px 12px 8px 16px;padding-top:calc(8px + env(safe-area-inset-top));border-bottom:1px solid var(--line);background:var(--sf)}
 .shtop h2{flex:1;min-width:0;margin:0;font-size:1rem;line-height:1.35}
 .shtop h2 small{display:block;color:var(--mute);font-weight:400;font-size:.76rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .shtop .xbtn{flex:none;width:44px;height:44px;min-height:0;padding:0;border-radius:12px;border:1px solid var(--line);background:var(--sf2);font-size:1.3rem;line-height:1}
 .shtop .salla{flex:none;min-height:40px;padding:0 12px;font-size:.82rem;white-space:nowrap}
-.sbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 16px 18px;display:grid;gap:10px;align-content:start}
+.sbody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 16px 18px;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-content:start}
+.sbody>*,.wzb>*{min-width:0;max-width:100%}.wzb{overflow-wrap:anywhere}
 .sbody .lc-g{grid-template-columns:1fr 1fr}
 .sbody textarea{min-height:260px}
 .sfoot{flex:none;padding:10px 16px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--sf)}
@@ -2496,7 +2498,7 @@ function wzRender(busyLabel){
       + `<textarea id="wzT" rows="9">${esc(WZ.draft != null ? WZ.draft : m.text)}</textarea>`
       + (WZ.wa ? '' : '<p class="c-warn">لا رقم واتساب مربوط للإرسال الآلي — استعمل «واتساب يدوي» أو انسخ الرسالة.</p>');
     foot = '<div class="acts">' + btn('go', 'wzGo', busyLabel ? 'جارٍ الإرسال…' : 'إرسال عبر واتساب', !WZ.wa || !m.phone)
-      + `<a class="ghost" id="wzMan" target="_blank" rel="noopener" href="#">واتساب يدوي</a>` + btn('ghost', 'wzCp', 'نسخ') + btn('ghost', 'wzSkip', 'تخطَّ') + '</div>';
+      + `<a class="ghost" id="wzMan" target="_blank" rel="noopener" href="#">واتساب يدوي</a>` + btn('ghost', 'wzCp', 'نسخ') + btn('go wide', 'wzSent', '✓ أرسلتها من واتساب — علّمها مرسَلة') + btn('ghost', 'wzSkip', 'تخطَّ') + '</div>';
   } else {
     const dn = it.done || {};
     body = `<h3>✓ اكتملت المعالجة</h3><p>البديل: <b class="ltr">${esc(dn.new || '—')}</b>${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}</p>`
@@ -2537,11 +2539,12 @@ function wzRender(busyLabel){
         if (d.error || !d.ok) WZ.err = d.error || 'فشل الإرسال'; else { WZ.ok = 'أُرسلت ✓'; WZ.draft = null; } }); };
     q('wzCp').onclick = async () => { const ok = await copyText(q('wzT').value); q('wzCp').textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; };
     q('wzT').oninput = () => { WZ.draft = q('wzT').value; };
+    q('wzSent').onclick = () => { const txt = q('wzT').value;                 // زرٌّ صريح: لا نعتمد على confirm() الذي يضيع عند العودة من تطبيق واتساب في الجوال
+      wzRun('send', async () => { const d = await post('/api/renew/dup-send', {order: it.order, idx: m.idx, text: txt, mode: 'manual'});
+        if (d.error || !d.ok) WZ.err = d.error || 'تعذّر التعليم'; else { WZ.ok = 'عُلّمت مرسَلة ✓'; WZ.draft = null; } }); };
     q('wzMan').onclick = e => {
       if (!m.phone) { e.preventDefault(); WZ.err = 'لا رقم جوال لهذا العميل — انسخ الرسالة'; return wzRender(); }
       q('wzMan').href = 'https://wa.me/' + String(m.phone).replace(/\D/g, '') + '?text=' + encodeURIComponent(q('wzT').value);
-      const txt = q('wzT').value;
-      setTimeout(() => { if (confirm('هل أرسلتَ الرسالة من واتساب؟ (تُعلَّم مرسَلة)')) wzRun('send', async () => { await post('/api/renew/dup-send', {order: it.order, idx: m.idx, text: txt, mode: 'manual'}); WZ.ok = 'عُلّمت مرسَلة ✓'; }); }, 400);
     };
   }
 }
