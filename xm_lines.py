@@ -6627,9 +6627,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, raw=store_sitemap.status(),
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
-        if path == "/sitemap.xml":
-            return self._send(200, raw=guide_pages.sitemap(sitemap_extra()),
-                              ctype="application/xml; charset=utf-8",
+        if path == "/sitemap.xml" or re.fullmatch(r"/sitemap-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
+            xml = guide_pages.sitemap_public(sitemap_extra(), None if path == "/sitemap.xml" else path[1:])
+            if xml is None:
+                return self._send(404, {"error": "not found"})
+            return self._send(200, raw=xml, ctype="application/xml; charset=utf-8",
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path in ROOT_FILES:
             return self._static("/static/" + ROOT_FILES[path])
