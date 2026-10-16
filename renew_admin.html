@@ -2343,7 +2343,8 @@ function dupSummary(r, i){
   return `<div class="dch"><h4>⚠ يوزر مكرر <span class="ltr">${esc(r.username)}</span> — ${AR(ch.length)} عملاء${pend ? '' : ' · <span class="ok">✓ تمّت المعالجة</span>'}</h4>${ch.map(line).join('')}</div>`;
 }
 function lcard(r, i, kind){
-  const dn = r.done, st = dn ? ['عُوِّض ✓', 'ok'] : (LOST_STATE[r.state] || [r.state, '']);
+  const dn = r.done, pend = (r.dup_pend || (r.dup_todo || []).map(t => t.order)).includes(r.order),
+    st = dn ? (pend ? ['عُوِّض — بقيت خطوات', 'warn'] : ['عُوِّض ✓', 'ok']) : (LOST_STATE[r.state] || [r.state, '']);   // لا «عُوِّض ✓» وتحتها «أكمل المعالجة»
   const where = r.state === 'found' ? (r.found_panel || r.panel_name) + (r.found_src === 'excel' ? ' · ملف Excel' : r.found_src === 'panel' ? ' · لوحة مسحوبة' : '') : r.panel_name;
   const head = `<header class="lc-h"><div class="lc-o">${kind === 'ls' && !dn && r.state === 'missing' && (r.can_create || $('#lsGate').value) && pickFits($('#lsGate').value, r.sub) ? `<input type="checkbox" class="lsC lc-x" data-i="${i}" aria-label="تحديد">` : ''}`
     + `<small>طلب</small>${kind === 'ls' ? `<a href="#" class="lsO" data-o="${esc(r.order)}"><b class="ltr">${esc(r.order)}</b></a>` : `<b class="ltr">${esc(r.order)}</b>`}`
@@ -2680,7 +2681,7 @@ function loRender(d, q){
   const todo = loTasks(rows);
   $('#loBody').innerHTML = (todo.length > 1 ? `<div class="lc-a"><button class="go" id="loAll" type="button">عالج الكل (${AR(todo.length)} عمل: ${AR(todo.filter(t => t.r).length)} مفقود · ${AR(todo.filter(t => t.item).length)} مكرر)</button></div>` : '')
     + rows.map((r, i) => { const g = r.dup_chain && r.dup_chain.length ? r.username.toLowerCase() : '';
-        if (g && (loRender.seen || (loRender.seen = new Set())).has(g)) r = Object.assign({}, r, {dup_chain: null, dup_todo: null, dup_seen: true}); else if (g) loRender.seen.add(g);
+        if (g && (loRender.seen || (loRender.seen = new Set())).has(g)) r = Object.assign({}, r, {dup_chain: null, dup_todo: null, dup_seen: true, dup_pend: (r.dup_todo || []).map(t => t.order)}); else if (g) loRender.seen.add(g);
         return lcard(r, i, 'lo'); }).join('')
     + ph.map(h => `<article class="lc st-found"><header class="lc-h"><div class="lc-o"><small>على اللوحة</small><b>${esc(h.panel_name)}</b></div><span class="pill warn">بلا طلب في سلة</span></header>`
       + `<p class="lc-why">اليوزر موجود على اللوحة، لكن لا طلب له في اشتراكات سلة المسحوبة (لم يُبع، أو لم تُسحب طلباته — اسحب طلبات سلة من «المصادر» ثم أعد البحث).</p>`
