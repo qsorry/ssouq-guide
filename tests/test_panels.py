@@ -331,6 +331,25 @@ def test_unlisted():
         msgs[1]["sent"] = {"ok": True}
         panels.update_dupe(dd, "2", {"msgs": msgs})
         check("search: fully handled is no longer pending", _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [], dd) == [])
+        # عميلٌ ثانٍ لاحق على اليوزر نفسه: غُيّر اسم الأول من طلب «2»، فلا يبقى «أكمل المعالجة» لطلب «4» ببديلٍ وحده
+        panels.save_store_lines(dd, [_ln("1", 40, "111"), _ln("2", 10, "222"), _ln("3", 5, "111"), _ln("4", 3, "333")])
+        panels.mark_dupe_done(dd, "4", "new4", 11, extra={"msgs": [{"kind": "new", "name": "c333", "phone": "966500000333", "text": "z", "sent": {"ok": True}}]})
+        rows4 = panels.duplicates(dcfg, dd)["rows"]
+        t4 = _xl.renew_dup_todo(rows4, sr, [], dd)
+        check("search: a second later order whose first account was already renamed via another order is not pending", t4 == [], str(t4))
+        r4 = next(r for r in rows4 if r["order"] == "4")
+        it4 = _xl.renew_dup_item(r4, [], panels.dupe_messages(dd), _xl.dup_sibling_renamed(rows4).get(_xl._dup_group_key(r4)))
+        check("dup item: the shared rename shows as done (via the order that did it)", it4["need"] == [] and it4["done"]["renamed"]["via"] == "2" and it4["done"]["renamed"]["to"] == "b", str(it4))
+        ch4 = _xl.renew_dup_chain(rows4, sr, panels.dupe_messages(dd))
+        check("dup chain: no missing-link warning data for the sibling (renamed shown)", [c["renamed"] for c in ch4 if c["role"] == "later"] == ["b", "b"], str(ch4))
+        c4, b4 = _xl.dup_rename([], dcfg, dd, {"order": "4", "username": "999000111222"})
+        check("dup_rename: sibling already renamed → ok with no second message and no panel call", c4 == 200 and b4["ok"] and b4["via_order"] == "2"
+              and panels.load_dupes_done(dd)["4"]["renamed"]["to"] == "b" and len(panels.load_dupes_done(dd)["4"]["msgs"]) == 1, str((c4, b4)))
+        # بلا تغيير في أيٍّ منها: يبقى مطلوبًا (لا يُخفى ما لم يتمّ)
+        panels.update_dupe(dd, "2", {"renamed": None})
+        panels.update_dupe(dd, "4", {"renamed": None})
+        t5 = _xl.renew_dup_todo(panels.duplicates(dcfg, dd)["rows"], sr, [], dd)
+        check("search: when no order renamed the first account, rename is still pending", sorted(t["order"] for t in t5) == ["2", "4"] and all("rename" in t["need"] for t in t5), str(t5))
         check("suggest_slice rounds and clamps", panels.suggest_slice(353) == 12 and panels.suggest_slice(5) == 1
               and panels.suggest_slice(900) == 15 and panels.suggest_slice(0) == 0 and panels.suggest_slice(None) == 0)
         resr = panels.unlisted(cfg, d, replaced={("a", "g"): {"333333333333"}})

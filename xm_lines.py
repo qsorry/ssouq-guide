@@ -3409,6 +3409,10 @@ def dup_rename(accounts, cfg, ws, req):
         return 404, {"error": "لا طلب منجَز بهذا الرقم"}
     if row["done"].get("renamed"):
         return 400, {"error": "غُيّر اسم القديم من قبل: %s" % row["done"]["renamed"].get("to", "")}
+    sib = dup_sibling_renamed(panels.duplicates(cfg, ws)["rows"]).get(_dup_group_key(row))
+    if sib:                                    # غُيّر اسم القديم لطلبٍ آخر على اليوزر نفسه: يكفي، ولا رسالة ثانية لصاحبه الأول
+        panels.update_dupe(ws, order, {"renamed": sib, "rename_error": ""})
+        return 200, {"ok": True, "renamed": sib, "via_order": sib.get("via", "")}
     acct = next((a for a in (accounts or []) if str(a.get("id")) == str(row["account_id"])), None)
     gate = find_gate(acct, row["gate_id"]) if acct else None
     if not gate:
@@ -3618,8 +3622,11 @@ def dup_create(accounts, cfg, ws, req):
              "text": DUP_MSG_NEW.format(name=row["customer"] or "", line=wa_line(r.get("line", ""))), "sent": None}]
     extra = {"msgs": msgs, "src": "dup", "old": row["username"]}
     if req.get("rename_old"):                  # القديم: يتغيّر اسمه ويُرسل لصاحبه الأول (كلمة مروره ومدته كما هما)
-        info, err = _dup_rename_old(acct, gate, row, accounts, cfg)
-        if info:
+        sib = dup_sibling_renamed(panels.duplicates(cfg, ws)["rows"]).get(_dup_group_key(row))
+        info, err = (None, "") if sib else _dup_rename_old(acct, gate, row, accounts, cfg)
+        if sib:                                # غُيّر اسم القديم لطلبٍ آخر على اليوزر نفسه: لا تغيير ثانٍ ولا رسالة ثانية
+            resp["renamed"] = extra["renamed"] = sib
+        elif info:
             resp["renamed"] = extra["renamed"] = info
             msgs.append(_dup_old_msg(row, info))
         elif err == OLD_MISSING and _dup_archived(accounts, cfg, acct, gate, row):
@@ -4857,10 +4864,28 @@ def renew_lookup(st, order_no="", phone="", username="", password=""):
     return out
 
 
-def renew_dup_item(d, accounts, msgs=()):
+def _dup_group_key(d):
+    return (d["panel_id"] or "", d["username"].lower())
+
+
+def dup_sibling_renamed(dups):
+    """(لوحة، يوزر) ← تغيير اسم القديم الذي تمّ لأحد طلبات اليوزر نفسه (مع `via` = رقم ذلك الطلب).
+    القديم (صاحب اليوزر الأول) يُغيَّر اسمه **مرة واحدة** لكل يوزر: ما إن يتمّ من طلبٍ حتى تنتهي هذه الخطوة
+    لبقية الطلبات المكررة عليه، فلا تبقى «أكمل المعالجة» لطلبٍ بُدِّل بديله والحلقة مغلقة."""
+    out = {}
+    for d in dups:
+        r = (d.get("done") or {}).get("renamed")
+        if isinstance(r, dict) and r.get("to"):
+            out.setdefault(_dup_group_key(d), dict(r, via=d["order"]))
+    return out
+
+
+def renew_dup_item(d, accounts, msgs=(), sib=None):
     """مكررٌ من panels.duplicates بخطواته الباقية للمعالج: `need` ⊂ [create, rename, send_new, send_old]
-    (فارغ = تمّت المعالجة). المنتهي بلا بديل لا يحتاج شيئًا. `msgs` رسائله (من dupe_messages) بفهارسها."""
+    (فارغ = تمّت المعالجة). المنتهي بلا بديل لا يحتاج شيئًا. `msgs` رسائله (من dupe_messages) بفهارسها.
+    `sib`: تغيير القديم الذي تمّ من طلبٍ آخر على اليوزر نفسه (dup_sibling_renamed) — يُغني عن خطوة التغيير هنا."""
     rec = d["done"]
+    sib = sib if rec and not rec.get("renamed") else None
     ms = sorted((m for m in msgs if m["order"] == d["order"]), key=lambda m: m["idx"])
     new_m = next((m for m in ms if m.get("kind") == "new"), None)
     old_m = next((m for m in ms if m.get("kind") == "old"), None)
@@ -4870,7 +4895,7 @@ def renew_dup_item(d, accounts, msgs=()):
         if not d["expired"]:
             need.append("create")
     else:
-        if not rec.get("renamed") and not rec.get("old_missing"):
+        if not rec.get("renamed") and not rec.get("old_missing") and not sib:
             need.append("rename")
         if unsent(new_m):
             need.append("send_new")
@@ -4881,7 +4906,7 @@ def renew_dup_item(d, accounts, msgs=()):
             "first_order", "first_customer", "first_phone")
     return {k: d[k] for k in keep} | {
         "can_create": bool(ac and find_gate(ac, d["gate_id"])), "need": need,
-        "done": {"new": rec.get("new", ""), "months": rec.get("months"), "renamed": rec.get("renamed"),
+        "done": {"new": rec.get("new", ""), "months": rec.get("months"), "renamed": rec.get("renamed") or sib,
                  "old_missing": bool(rec.get("old_missing")), "rename_error": rec.get("rename_error", "")} if rec else None,
         "msgs": [{k: m.get(k) for k in ("idx", "kind", "name", "phone", "text", "sent")} for m in ms]}
 
@@ -4895,6 +4920,7 @@ def renew_dup_chain(dups, row, msgs=()):
         return []
     sent = lambda ms, kind: next(((m.get("sent") or {}).get("ok") and "sent" or ("unsent" if m.get("sent") is None else "failed")
                                   for m in ms if m.get("kind") == kind), "")
+    sibs = dup_sibling_renamed(dups)
     f = later[0]
     chain = [{"role": "first", "order": f["first_order"], "date": f["first_date"], "customer": f["first_customer"],
               "phone": f["first_phone"]}]
@@ -4902,7 +4928,7 @@ def renew_dup_chain(dups, row, msgs=()):
         rec, ms = d["done"] or {}, [m for m in msgs if m["order"] == d["order"]]
         chain.append({"role": "later", "order": d["order"], "date": d["date"], "customer": d["customer"], "phone": d["phone"],
                       "expired": d["expired"], "replacement": rec.get("new", ""), "months": rec.get("months"),
-                      "renamed": (rec.get("renamed") or {}).get("to", ""), "old_missing": bool(rec.get("old_missing")),
+                      "renamed": (rec.get("renamed") or (sibs.get(_dup_group_key(d)) if rec else None) or {}).get("to", ""), "old_missing": bool(rec.get("old_missing")),
                       "rename_error": rec.get("rename_error", ""), "msg_new": sent(ms, "new"), "msg_old": sent(ms, "old")})
     return chain
 
@@ -4911,7 +4937,8 @@ def renew_dup_todo(dups, row, accounts, ws=None):
     """المكررات على يوزر هذا الصف التي لم تتمّ معالجتها (لا بديل، أو بديلٌ بقي له تغيير القديم أو إرسالٌ)."""
     user, pid = str(row.get("username") or "").lower(), row.get("panel_id") or ""
     msgs = panels.dupe_messages(ws) if ws else []
-    items = (renew_dup_item(d, accounts, msgs) for d in dups
+    sibs = dup_sibling_renamed(dups)
+    items = (renew_dup_item(d, accounts, msgs, sibs.get(_dup_group_key(d))) for d in dups
              if d["username"].lower() == user and (d["panel_id"] or "") == pid)
     return [i for i in items if i["need"]]
 
@@ -7229,7 +7256,9 @@ class Handler(BaseHTTPRequestHandler):
                             if r["order"] == order and r["username"].lower() == user), None)
                 if not row:
                     return self._send(404, {"error": "لا مبيع مكرّر بهذا الطلب واليوزر"})
-                return self._send(200, {"item": renew_dup_item(row, racs, panels.dupe_messages(rws)), "wa_linked": dup_wa_ready(st),
+                return self._send(200, {"item": renew_dup_item(row, racs, panels.dupe_messages(rws),
+                                                               dup_sibling_renamed(panels.duplicates(rcfg, rws)["rows"]).get(_dup_group_key(row))),
+                                        "wa_linked": dup_wa_ready(st),
                                         "ocr": xm_web.ocr_available()})
             if path == "/api/renew/order":          # بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) وحاله على اللوحات
                 t0 = time.perf_counter()
