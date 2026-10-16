@@ -7252,12 +7252,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, d)
             if path == "/api/renew/dup-state":      # حال معالجة مكررٍ واحد لمعالج البحث: خطواته الباقية ورسائله
                 order, user = self._q("order").strip(), self._q("username").strip().lower()
-                row = next((r for r in panels.duplicates(rcfg, rws)["rows"]
-                            if r["order"] == order and r["username"].lower() == user), None)
+                drows = panels.duplicates(rcfg, rws)["rows"]          # مرةً واحدة: كل استدعاءٍ يقرأ خطوط سلة كلها
+                row = next((r for r in drows if r["order"] == order and r["username"].lower() == user), None)
                 if not row:
                     return self._send(404, {"error": "لا مبيع مكرّر بهذا الطلب واليوزر"})
                 return self._send(200, {"item": renew_dup_item(row, racs, panels.dupe_messages(rws),
-                                                               dup_sibling_renamed(panels.duplicates(rcfg, rws)["rows"]).get(_dup_group_key(row))),
+                                                               dup_sibling_renamed(drows).get(_dup_group_key(row))),
                                         "wa_linked": dup_wa_ready(st),
                                         "ocr": xm_web.ocr_available()})
             if path == "/api/renew/order":          # بحثٌ برقم الطلب (أو اليوزر أو كلمة المرور) وحاله على اللوحات

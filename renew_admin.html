@@ -2486,7 +2486,8 @@ $('#wzClose').onclick = () => { WZ.queue = []; wzClose(); };   // × يوقف «
 async function wzRun(label, fn){
   if (WZ.busy) return; WZ.busy = true; WZ.err = WZ.ok = ''; wzRender(label);
   try { await fn(); } catch (e) { WZ.err = 'تعذّر الاتصال بالخادم — أعد المحاولة'; }
-  WZ.busy = false; await wzRefresh(); wzRender();
+  WZ.busy = false; wzRender();                                  // يظهر الأثر فورًا (ما حُدّث محليًّا)، ثم يُطابَق مع الخادم دون انتظار
+  try { await wzRefresh(); wzRender(); } catch (e) {}
 }
 function wzRender(busyLabel){
   const it = WZ.item, cur = wzCur();
@@ -2521,7 +2522,7 @@ function wzRender(busyLabel){
       + `<textarea id="wzT" rows="9">${esc(WZ.draft != null ? WZ.draft : m.text)}</textarea>`
       + (WZ.wa ? '' : '<p class="c-warn">لا رقم واتساب مربوط للإرسال الآلي — استعمل «واتساب يدوي» أو انسخ الرسالة.</p>');
     foot = '<div class="acts">' + btn('go', 'wzGo', busyLabel ? 'جارٍ الإرسال…' : 'إرسال عبر واتساب', !WZ.wa || !m.phone)
-      + `<a class="ghost" id="wzMan" target="_blank" rel="noopener" href="#">واتساب يدوي</a>` + btn('ghost', 'wzCp', 'نسخ') + btn('go wide', 'wzSent', '✓ أرسلتها من واتساب — علّمها مرسَلة') + btn('ghost', 'wzSkip', 'تخطَّ') + '</div>';
+      + `<a class="ghost" id="wzMan" target="_blank" rel="noopener" href="#">واتساب يدوي</a>` + btn('ghost', 'wzCp', 'نسخ') + btn('go wide', 'wzSent', busyLabel ? 'جارٍ الحفظ…' : '✓ أرسلتها من واتساب — علّمها مرسَلة') + btn('ghost', 'wzSkip', 'تخطَّ') + '</div>';
   } else {
     const dn = it.done || {};
     body = `<h3>✓ اكتملت المعالجة</h3><p>البديل: <b class="ltr">${esc(dn.new || '—')}</b>${dn.months ? ' · ' + AR(dn.months) + ' شهرًا' : ''}</p>`
@@ -2546,7 +2547,7 @@ function wzRender(busyLabel){
   if (q('wzSkip')) q('wzSkip').onclick = () => {
     WZ.sk[cur] = true; WZ.draft = null; WZ.err = WZ.ok = '';
     const m = (cur === 'send_new' || cur === 'send_old') && wzMsg(it, cur === 'send_new' ? 'new' : 'old');
-    if (m) wzRun('skip', async () => { await post('/api/renew/dup-send', {order: it.order, idx: m.idx, mode: 'skip'}); });   // يُحفظ التخطّي: لا يعود الطلب «ناقصًا» في البحث
+    if (m) wzRun('skip', async () => { await post('/api/renew/dup-send', {order: it.order, idx: m.idx, mode: 'skip'}); m.sent = {ok: true, how: 'skipped'}; });   // يُحفظ التخطّي: لا يعود الطلب «ناقصًا» في البحث
     else wzRender(); };
   if (!q('wzGo') && !q('wzEnd')) return;
   if (cur === 'create') q('wzGo').onclick = () => {
@@ -2563,12 +2564,12 @@ function wzRender(busyLabel){
     const m = wzMsg(it, cur === 'send_new' ? 'new' : 'old');
     q('wzGo').onclick = () => { const txt = q('wzT').value; WZ.draft = txt;      // النص المعدَّل يبقى عند إعادة الرسم وإن فشل الإرسال
       wzRun('send', async () => { const d = await post('/api/renew/dup-send', {order: it.order, idx: m.idx, text: txt, mode: 'wa'});
-        if (d.error || !d.ok) WZ.err = d.error || 'فشل الإرسال'; else { WZ.ok = 'أُرسلت ✓'; WZ.draft = null; } }); };
+        if (d.error || !d.ok) WZ.err = d.error || 'فشل الإرسال'; else { WZ.ok = 'أُرسلت ✓'; WZ.draft = null; m.sent = {ok: true}; } }); };
     q('wzCp').onclick = async () => { const ok = await copyText(q('wzT').value); q('wzCp').textContent = ok ? 'نُسخ ✓' : 'تعذّر النسخ'; };
     q('wzT').oninput = () => { WZ.draft = q('wzT').value; };
     q('wzSent').onclick = () => { const txt = q('wzT').value;                 // زرٌّ صريح: لا نعتمد على confirm() الذي يضيع عند العودة من تطبيق واتساب في الجوال
       wzRun('send', async () => { const d = await post('/api/renew/dup-send', {order: it.order, idx: m.idx, text: txt, mode: 'manual'});
-        if (d.error || !d.ok) WZ.err = d.error || 'تعذّر التعليم'; else { WZ.ok = 'عُلّمت مرسَلة ✓'; WZ.draft = null; } }); };
+        if (d.error || !d.ok) WZ.err = d.error || 'تعذّر التعليم'; else { WZ.ok = 'عُلّمت مرسَلة ✓'; WZ.draft = null; m.sent = {ok: true, how: 'manual'}; } }); };
     q('wzMan').onclick = e => {
       if (!m.phone) { e.preventDefault(); WZ.err = 'لا رقم جوال لهذا العميل — انسخ الرسالة'; return wzRender(); }
       q('wzMan').href = 'https://wa.me/' + String(m.phone).replace(/\D/g, '') + '?text=' + encodeURIComponent(q('wzT').value);
