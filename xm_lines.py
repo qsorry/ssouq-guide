@@ -4918,8 +4918,8 @@ def renew_dup_chain(dups, row, msgs=()):
     later = [d for d in dups if d["username"].lower() == user and (d["panel_id"] or "") == pid]
     if not later:
         return []
-    sent = lambda ms, kind: next(((m.get("sent") or {}).get("ok") and "sent" or ("unsent" if m.get("sent") is None else "failed")
-                                  for m in ms if m.get("kind") == kind), "")
+    sent = lambda ms, kind: next((("skipped" if (m.get("sent") or {}).get("how") == "skipped" else "sent") if (m.get("sent") or {}).get("ok")
+                                  else ("unsent" if m.get("sent") is None else "failed") for m in ms if m.get("kind") == kind), "")
     sibs = dup_sibling_renamed(dups)
     f = later[0]
     chain = [{"role": "first", "order": f["first_order"], "date": f["first_date"], "customer": f["first_customer"],
@@ -7637,6 +7637,9 @@ class Handler(BaseHTTPRequestHandler):
             if not msg:
                 return self._send(404, {"error": "لا رسالة بهذا الرقم"})
             text = str(req.get("text") or msg["text"])
+            if req.get("mode") == "skip":       # تخطّيها المشغّل: تُغلق ولا تبقى «أكمل المعالجة» للأبد
+                m = panels.set_dupe_msg(rws, order, idx, sent={"ok": True, "how": "skipped", "at": renew.now_iso()})
+                return self._send(200, {"ok": True, "message": m})
             if req.get("mode") == "manual":     # فُتح واتساب يدويًا وأُرسلت من هناك
                 m = panels.set_dupe_msg(rws, order, idx, text=text, sent={"ok": True, "how": "manual", "at": renew.now_iso()})
                 panels.log_dup_send(rws, dict(msg, text=text), "manual", True)
