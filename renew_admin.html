@@ -348,6 +348,9 @@ input.pt{width:72px;min-height:40px;padding:5px 6px;background:var(--sf)}
 .wzst{display:flex;gap:6px;margin:0;padding:0;list-style:none}.wzst li{flex:1;min-width:0;text-align:center;font-size:.72rem;color:var(--mute);border-top:3px solid var(--line);padding-top:5px}
 .wzst li.ok{color:var(--go);border-color:var(--go)}.wzst li.cur{color:var(--tx);font-weight:700;border-color:var(--warn,#e9a23b)}.wzst li.sk{text-decoration:line-through}
 .wzb h3{margin:0 0 4px;font-size:1rem}.wzb p{margin:4px 0;color:var(--mute);font-size:.86rem}.wzb textarea{min-height:200px}
+.dp{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--sf);font-size:.84rem}
+.dp-s{grid-column:1/-1}.dp .go{grid-row:1;grid-column:2;min-height:38px;padding:0 14px}.dp small{color:var(--mute)}.dp .ok{color:var(--go)}.dp .bad{color:var(--err)}
+.lc-more>summary{cursor:pointer;color:var(--mute);font-size:.84rem;padding:4px 0}.lc-more[open]{display:grid;gap:12px}
 .lc-todo{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:6px 0}.lc-todo .lc-a{border:1px solid var(--err);border-radius:10px;padding:8px}
 .lc-a{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .lc-a button,.lc-a a{flex:1 1 auto;min-width:120px;text-align:center}
@@ -2321,6 +2324,24 @@ const lcEditForm = (r, i) => `<div class="lc-edit hidden"><b>تعديل بيان
   + `<div class="acts"><button class="go loEditSave" data-i="${i}" type="button">احفظ البيانات الجديدة</button><button class="ghost loEditCancel" type="button">إلغاء</button></div>`
   + `<p class="msg loEditMsg"></p></div>`;
 // بطاقةٌ لخطٍّ من المتجر: الطلب وحاله، والعميل، وبيانات الاشتراك، والتعويض المُنشأ ونسخ شرحه، والأفعال
+// مكررٌ في بطاقةٍ واحدة مختصرة: سطرٌ لكل عميل (حاله والخطوة التالية)، وزرٌّ واحد لما يحتاج معالجة — بدل سلسلةٍ وقائمةٍ منفصلتين
+function dupSummary(r, i){
+  const ch = r.dup_chain, todo = r.dup_todo || [], later = ch.filter(c => c.role === 'later');
+  const rn = later.find(x => x.renamed), om = later.some(x => x.old_missing), anyRep = later.some(x => x.replacement);
+  const pend = later.filter(c => !c.expired && (!c.replacement || c.msg_new !== 'sent' && c.msg_new !== 'skipped' || (c.msg_old && c.msg_old !== 'sent' && c.msg_old !== 'skipped'))).length;
+  const line = c => {
+    let st;
+    if (c.role === 'first') st = rn ? `<b class="ok">✓ غُيّر حسابه ← <span class="ltr">${esc(rn.renamed)}</span></b>` : om ? '<b class="bad">حسابه غير موجود على اللوحة</b>' : anyRep ? '<b class="bad">لم يُغيَّر اسم حسابه بعد</b>' : '<b>يحتفظ باليوزر</b>';
+    else if (c.expired && !c.replacement) st = '<span>منتهٍ — لا يحتاج شيئًا</span>';
+    else if (!c.replacement) st = '<b class="bad">✗ يحتاج بديلًا</b>';
+    else { const bad = [c.msg_new !== 'sent' && c.msg_new !== 'skipped' ? 'رسالة البديل' : '', c.msg_old && c.msg_old !== 'sent' && c.msg_old !== 'skipped' ? 'رسالة الأول' : ''].filter(Boolean);
+      st = `<b class="ok">✓ بديله <span class="ltr">${esc(c.replacement)}</span></b>` + (bad.length ? `<br><b class="bad">⏳ لم تُرسل: ${bad.join(' + ')}</b>` : ''); }
+    const k = todo.findIndex(t => t.order === c.order), t = todo[k];
+    const btn = t && (t.can_create || t.done) ? `<button class="go lcDupWz" data-i="${i}" data-k="${k}" type="button">${t.done ? 'أكمل' : 'عالج الآن'}</button>` : t ? '<small class="c-warn">عالجه من «المكرر والبدائل»</small>' : '';
+    return `<div class="dp"><div class="dp-w"><b>${esc(c.customer) || '—'}</b> <span class="ltr">${esc(c.phone) || ''}</span><br><small>${c.role === 'first' ? 'الأول' : 'لاحق'} · <a href="#" class="lcJump" data-o="${esc(c.order)}">${esc(c.order)}</a></small></div><div class="dp-s">${st}</div>${btn}</div>`;
+  };
+  return `<div class="dch"><h4>⚠ يوزر مكرر <span class="ltr">${esc(r.username)}</span> — ${AR(ch.length)} عملاء${pend ? '' : ' · <span class="ok">✓ تمّت المعالجة</span>'}</h4>${ch.map(line).join('')}</div>`;
+}
 function lcard(r, i, kind){
   const dn = r.done, st = dn ? ['عُوِّض ✓', 'ok'] : (LOST_STATE[r.state] || [r.state, '']);
   const where = r.state === 'found' ? (r.found_panel || r.panel_name) + (r.found_src === 'excel' ? ' · ملف Excel' : r.found_src === 'panel' ? ' · لوحة مسحوبة' : '') : r.panel_name;
@@ -2359,7 +2380,8 @@ function lcard(r, i, kind){
       + (t.can_create || t.done ? `<button class="go lcDupWz" data-i="${i}" data-k="${k}" type="button">${t.done ? 'أكمل المعالجة' : 'عالج الآن'}</button>`
         : '<small class="c-warn">اللوحة غير مربوطة ببوابة إنشاء — عالجه من «المكرر والبدائل»</small>') + '</div>').join('')
     + '</div>' : '';
-  const why = chain + todo + (whyRep || (LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '')) + (chain ? '' : dupP) + cqp;
+  const sum = r.dup_chain && r.dup_chain.length ? dupSummary(r, i) : (chain + todo);
+  const why = sum + (whyRep || (LOST_WHY[r.state] && !dn ? `<p class="lc-why">${LOST_WHY[r.state]}</p>` : '')) + (chain ? '' : dupP) + cqp;
   const grid = `<div class="lc-g">${lcField('العميل', esc(r.customer) || '—')}${lcField('الجوال', `<span class="ltr">${esc(r.phone) || '—'}</span>`)}`
     + lcField('المتبقي', esc(r.remaining) || '—') + lcField(r.state === 'found' ? 'موجود على' : 'اللوحة', esc(where))
     + (dn && r.done_panel && r.done_panel !== r.panel_name ? lcField('البديل على', `<b>${esc(r.done_panel)}</b>`) : '')
@@ -2385,7 +2407,8 @@ function lcard(r, i, kind){
   const nh = r.new_host ? `<div class="lc-a"><small class="c-warn">⚠ الهوست قديم — الجديد لهذا الاشتراك: <b class="ltr">${esc(r.new_host)}</b></small>`
     + (kind === 'lo' && r.username ? `<button class="go loHost" data-i="${i}" type="button">حدّث الهوست</button>` : '') + '</div>' : '';
   const pills = (r.dup && !dn ? `<span class="pill bad">مكرر</span>` : '') + `<span class="pill ${st[1]}">${st[0]}</span>`;
-  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password, r.zero_code) : lcCred(r.host, r.username, r.password, r.zero_code)}${nh}${cur}${done}`
+  const body = `${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password, r.zero_code) : lcCred(r.host, r.username, r.password, r.zero_code)}${nh}${cur}${done}`;
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${(r.dup_chain && r.dup_chain.length) || r.dup_seen ? `<details class="lc-more"><summary>تفاصيل الاشتراك</summary>${body}</details>` : body}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + (kind === 'lo' && r.username ? lcEditForm(r, i) : '') + '</article>';
 }
 // ---- معالج المكرر: إنشاء البديل ← تغيير القديم ← إرسال للبديل ← إرسال ما عُدّل لصاحبه الأول ----
@@ -2650,12 +2673,14 @@ async function loFixAll(todo, q){
   loFind(q);
 }
 function loRender(d, q){
-  LO = d; const rows = d.rows || [], ix = d.index;
+  LO = d; loRender.seen = new Set(); const rows = d.rows || [], ix = d.index;
   const ph = !rows.length && !ix ? (d.panel_hits || []) : [];     // يوزرٌ على اللوحة بلا طلبٍ في سلة
   $('#loWrap').classList.toggle('hidden', !rows.length && !ph.length);
   const todo = loTasks(rows);
   $('#loBody').innerHTML = (todo.length > 1 ? `<div class="lc-a"><button class="go" id="loAll" type="button">عالج الكل (${AR(todo.length)} عمل: ${AR(todo.filter(t => t.r).length)} مفقود · ${AR(todo.filter(t => t.item).length)} مكرر)</button></div>` : '')
-    + rows.map((r, i) => lcard(r, i, 'lo')).join('')
+    + rows.map((r, i) => { const g = r.dup_chain && r.dup_chain.length ? r.username.toLowerCase() : '';
+        if (g && (loRender.seen || (loRender.seen = new Set())).has(g)) r = Object.assign({}, r, {dup_chain: null, dup_todo: null, dup_seen: true}); else if (g) loRender.seen.add(g);
+        return lcard(r, i, 'lo'); }).join('')
     + ph.map(h => `<article class="lc st-found"><header class="lc-h"><div class="lc-o"><small>على اللوحة</small><b>${esc(h.panel_name)}</b></div><span class="pill warn">بلا طلب في سلة</span></header>`
       + `<p class="lc-why">اليوزر موجود على اللوحة، لكن لا طلب له في اشتراكات سلة المسحوبة (لم يُبع، أو لم تُسحب طلباته — اسحب طلبات سلة من «المصادر» ثم أعد البحث).</p>`
       + lcCred('', h.username, h.password, '') + `<div class="lc-g">${lcField('الانتهاء', `<span class="ltr">${esc(h.exp) || '—'}</span>`)}${lcField('الباقة', esc(h.package) || '—')}${lcField('الحالة', esc(h.status) || '—')}${lcField('آخر سحب', `<span class="ltr">${esc((h.built || '').slice(0, 10)) || '—'}</span>`)}</div></article>`).join('');
