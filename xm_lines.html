@@ -109,13 +109,17 @@ main{min-width:0}
 #searchBox{margin:0 0 12px;padding:12px;border:1px dashed var(--line);border-radius:14px}
 #xlsxPanel summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px}#xlsxPanel summary::-webkit-details-marker{display:none}#xlsxPanel summary .xp-head{margin:0;flex:1}
 .lbl{font-size:.85rem;color:var(--mute);margin-bottom:8px;font-weight:500}
-.pkgs{display:grid;gap:8px}
-.pkg{display:flex;align-items:center;gap:12px;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:var(--sf2);transition:border-color .15s,background .15s}
-.pkg input{accent-color:var(--go);width:18px;height:18px;margin:0}
+/* الباقات: بطاقاتٌ في عمودين (دائرة اختيار + الاسم + الوصف تحته) كصفحة الشراء في المتجر */
+.pkgs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pkgs>.empty{grid-column:1/-1}
+.pkg{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:10px;row-gap:2px;min-height:64px;padding:12px 14px;border:1.5px solid var(--line);border-radius:18px;cursor:pointer;background:var(--sf2);transition:border-color .15s,background .15s}
+.pkg input{grid-column:2;grid-row:1/span 2;accent-color:var(--go);width:20px;height:20px;margin:0}
 .pkg:has(input:checked){border-color:var(--go);background:color-mix(in srgb,var(--go) 10%,var(--sf2))}
-.pkg b{flex:1;font-weight:500}
-.pkg small{color:var(--mute);white-space:nowrap;font-size:.78rem}
-.pkg .cal{color:var(--mute)}
+.pkg b{grid-column:1;grid-row:1;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
+.pkg small{grid-column:1;grid-row:2;color:var(--mute);font-size:.78rem;line-height:1.35;overflow-wrap:anywhere}
+.pkg small:empty{display:none}
+.pkg .cal{display:none}
+@media (max-width:340px){.pkgs{grid-template-columns:1fr}}
 .stepper{display:flex;align-items:stretch;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:var(--sf2)}
 .stepper button{width:48px;font-size:1.3rem;border-radius:0;color:var(--ink)}
 .stepper button:hover{background:color-mix(in srgb,var(--go) 14%,transparent);color:var(--go)}
@@ -347,7 +351,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
     <div class="ph"><h2>إنشاء اليوزرات</h2><button class="ghost" id="reload"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>تحديث الباقات</button></div>
     <div class="create-grid">
       <div>
-        <div class="lbl"><span class="stepn">٢</span>الباقة</div>
+        <div class="lbl"><span class="stepn">٢</span>اختر الباقة</div>
         <div class="pkgs" id="pkgs"><div class="empty">جاري تحميل الباقات…</div></div>
         <div id="sliceBox" hidden>
           <div class="lbl" style="margin-top:14px">نوع البيع <small>— من باقة ١٥ شهرًا</small></div>
