@@ -2628,9 +2628,13 @@ async function loFind(q){
 }
 // كل ما يحتاج عملًا في نتيجة البحث: مفقودٌ بلا بديل (إنشاء اشتراكه)، ومكررٌ لم يُعالج (معالجه خطواتٍ) — «عالج الكل» يمرّ عليها بالترتيب
 function loTasks(rows){
-  const t = [];
-  rows.forEach(r => { if (r.dup_todo && r.dup_todo.length) r.dup_todo.forEach(item => (item.can_create || item.done) && t.push({item}));
-    else if (!r.done && r.state === 'missing' && !r.expired && r.can_create !== false && r.account_id) t.push({r}); });
+  // كل صفٍّ عملان مستقلّان: (١) مفقودٌ بلا بديل ← إنشاء اشتراكه، (٢) مكرراتٌ لم تُعالج ← المعالج. والمكرر نفسه يظهر في صفّ الأول وصفّ اللاحق فيُحسب مرةً
+  const t = [], seen = new Set();
+  rows.forEach(r => {
+    if (!r.done && r.state === 'missing' && !r.expired && r.can_create !== false && r.account_id) t.push({r});
+    (r.dup_todo || []).forEach(item => { const k = item.order + '|' + item.username;
+      if ((item.can_create || item.done) && !seen.has(k)) { seen.add(k); t.push({item}); } });
+  });
   return t;
 }
 async function loFixAll(todo, q){
