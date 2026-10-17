@@ -2331,7 +2331,7 @@ function dupSummary(r, i){
   const pend = later.filter(c => !c.expired && (!c.replacement || c.msg_new !== 'sent' && c.msg_new !== 'skipped' || (c.msg_old && c.msg_old !== 'sent' && c.msg_old !== 'skipped'))).length;
   const line = c => {
     let st;
-    if (c.role === 'first') st = rn ? `<b class="ok">✓ غُيّر حسابه ← <span class="ltr">${esc(rn.renamed)}</span></b>` : om ? '<b class="bad">حسابه غير موجود على اللوحة</b>' : anyRep ? '<b class="bad">لم يُغيَّر اسم حسابه بعد</b>' : '<b>يحتفظ باليوزر</b>';
+    if (c.role === 'first') st = rn ? `<b class="ok">✓ غُيّر حسابه ← <span class="ltr">${esc(rn.renamed)}</span></b>` : om ? '<b class="ok">✓ حسابه غير موجود على اللوحة (منتهٍ) — لا شيء يُغيَّر</b>' : anyRep ? '<b class="bad">لم يُغيَّر اسم حسابه بعد</b>' : '<b>يحتفظ باليوزر</b>';
     else if (c.expired && !c.replacement) st = '<span>منتهٍ — لا يحتاج شيئًا</span>';
     else if (!c.replacement) st = '<b class="bad">✗ يحتاج بديلًا</b>';
     else { const bad = [c.msg_new !== 'sent' && c.msg_new !== 'skipped' ? 'رسالة البديل' : '', c.msg_old && c.msg_old !== 'sent' && c.msg_old !== 'skipped' ? 'رسالة الأول' : ''].filter(Boolean);
@@ -2369,7 +2369,7 @@ function lcard(r, i, kind){
       if (c.role === 'first') {
         const ch = r.dup_chain.filter(x => x.role === 'later'), rn = ch.find(x => x.renamed), om = ch.some(x => x.old_missing);
         return `<div class="dn first"><span><b>الأول — يحتفظ باليوزر</b></span><span>${who}</span>`
-          + `<span>تغيير اسم حسابه: ${rn ? `<b class="ok">تمّ ✓</b> ← صار <b class="ltr">${esc(rn.renamed)}</b>` : om ? '<b class="bad">لم يُغيَّر — اليوزر غير موجود على اللوحة</b>' : ch.some(x => x.rename_error) ? `<b class="bad">فشل: ${esc(ch.find(x => x.rename_error).rename_error)}</b>` : ch.some(x => x.replacement) ? '<b class="bad">لم يتم بعد</b>' : '<b class="bad">لا شيء بعد — ينتظر معالجة اللاحق</b>'}</span></div>`;
+          + `<span>تغيير اسم حسابه: ${rn ? `<b class="ok">تمّ ✓</b> ← صار <b class="ltr">${esc(rn.renamed)}</b>` : om ? '<b class="ok">لا شيء يُغيَّر ✓ — اليوزر غير موجود على اللوحة (منتهٍ)</b>' : ch.some(x => x.rename_error) ? `<b class="bad">فشل: ${esc(ch.find(x => x.rename_error).rename_error)}</b>` : ch.some(x => x.replacement) ? '<b class="bad">لم يتم بعد</b>' : '<b class="bad">لا شيء بعد — ينتظر معالجة اللاحق</b>'}</span></div>`;
       }
       return `<div class="dn"><span><b>لاحق — ${c.replacement ? 'له بديل' : c.expired ? 'منتهٍ' : 'يحتاج بديلًا'}</b></span><span>${who}</span>`
         + `<span>البديل: ${c.replacement ? `<b class="ok ltr">${esc(c.replacement)}</b>${c.months ? ' · ' + AR(c.months) + ' شهرًا' : ''} ✓` : c.expired ? '— (منتهي)' : '<b class="bad">لم يُنشأ بعد</b>'}</span>`
