@@ -3796,6 +3796,8 @@ def upgrade_missing(accounts, ws, row):
     """صفٌّ «مفقود» له بديلٌ مسجَّل (user_links) ولم يدخل الفهرس بعد: يُعرض بديله بدل «مفقود»."""
     if row.get("state") != "missing" or row.get("done"):
         return
+    if (row.get("dup") or {}).get("mine_first"):    # الأول في مكرر: بديل هذا اليوزر المسجَّل لعميلٍ لاحق لا له — يبقى «مفقود» ليُعطى حسابًا جديدًا
+        return
     try:
         rp = reply_replacement(accounts, ws, row.get("username"))
     except Exception:
