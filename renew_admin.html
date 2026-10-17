@@ -2410,8 +2410,8 @@ function lcard(r, i, kind){
   const nh = r.new_host ? `<div class="lc-a"><small class="c-warn">⚠ الهوست قديم — الجديد لهذا الاشتراك: <b class="ltr">${esc(r.new_host)}</b></small>`
     + (kind === 'lo' && r.username ? `<button class="go loHost" data-i="${i}" type="button">حدّث الهوست</button>` : '') + '</div>' : '';
   const pills = (r.dup && !dn ? `<span class="pill bad">مكرر</span>` : '') + `<span class="pill ${st[1]}">${st[0]}</span>`;
-  const body = `${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password, r.zero_code) : lcCred(r.host, r.username, r.password, r.zero_code)}${nh}${cur}${done}`;
-  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${(r.dup_chain && r.dup_chain.length) || r.dup_seen ? `<details class="lc-more"><summary>تفاصيل الاشتراك</summary>${body}</details>` : body}`
+  const body = `${grid}${r.state === 'replaced' && rp && rp.username ? lcCred(rp.host || r.host, rp.username, rp.password, r.zero_code) : lcCred(r.host, r.username, r.password, r.zero_code)}${nh}${cur}`;
+  return `<article class="lc st-${dn ? 'found' : esc(r.state)}${r.dup ? ' lc-isdup' : ''}">${head.replace(`<span class="pill ${st[1]}">${st[0]}</span>`, pills)}${why}${(r.dup_chain && r.dup_chain.length) || r.dup_seen ? `<details class="lc-more"><summary>تفاصيل الاشتراك</summary>${body}</details>` : body}${done}`
     + (act ? `<div class="lc-a">${act}</div>` : '') + (kind === 'lo' && r.username ? lcEditForm(r, i) : '') + '</article>';
 }
 // ---- معالج المكرر: إنشاء البديل ← تغيير القديم ← إرسال للبديل ← إرسال ما عُدّل لصاحبه الأول ----
