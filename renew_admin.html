@@ -2698,6 +2698,9 @@ function loRender(d, q){
   } else if (ix) {
     loState('found', `الطلب في فهرس سلة (${ix.date || ''} · ${AR(ix.months || 0)} شهرًا${ix.phone ? ' · ' + ix.phone : ''}) بلا يوزر محفوظ — اربطه بيوزره أدناه`
       + (d.salla && d.salla.username ? ` · في سجلّ الطلب في سلة: ${d.salla.username}` : '') + ms);
+  } else if (d.live) {
+    const lv = d.live;
+    loState('empty', `الطلب «${d.q || q}» موجود في سلة (${lv.status || '—'}${lv.date ? ' · ' + lv.date : ''}${lv.phone ? ' · ' + lv.phone : ''}${lv.product ? ' · ' + lv.product : ''}) لكنه غير موجود في المسحوب — ${lv.why_text}.`, true);
   } else {
     loState('empty', `لم يُعثر على «${d.q || q}» في اشتراكات سلة المسحوبة. تأكّد من الرقم، أو اسحب طلبات سلة من «البيانات» ثم أعد البحث.`, true);
   }

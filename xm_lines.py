@@ -3849,6 +3849,50 @@ def _reply_salla_order(st, rcfg, order):
             "qty": max(1, len(units)), "admin_url": u.get("admin_url", ""), "salla": True}
 
 
+_PULL_WHY = {
+    "unconfirmed": "حالة الطلب في سلة ليست من الحالات المؤكدة (%s)، والسحب يتخطّى غير المؤكد",
+    "falcon": "الطلب من منتجات فالكون، وهي خارج التجديد وخطوط المتجر",
+    "no_items": "لا منتجات في الطلب",
+    "no_date": "لا تاريخ للطلب",
+    "no_months": "لا مدّة تُستخرج من اسم المنتج ولا من رمزه (SKU)، أو هو تجربة يوم",
+    "not_subscription": "المنتج لا يبدو اشتراكًا (اسمه لا يطابق أسماء الاشتراكات ولا كود فيه يوزر وباسورد)",
+    "too_old": "الطلب أقدم من حدّ السحب (%s)",
+}
+
+
+def order_pull_diagnosis(st, rcfg, order, max_months=15):
+    """طلبٌ لم يُعثر عليه في المسحوب: يُسأل عنه سلة برقمه، ويُقال هل هو فيها وما سبب استبعاده من السحب.
+    {} بلا رمز سلة أو إن لم يوجد؛ لا يرمي: البحث يُجاب بما وُجد."""
+    token = renew_salla_token(st, rcfg)
+    order = renew.norm_order(order)
+    if not token or not order:
+        return {}
+    try:
+        raw = salla_api.order_by_reference(token, order)
+    except Exception:
+        return {}
+    if not raw:
+        return {}
+    po = salla_api.parse_order({"data": raw})
+    status = po.get("status", "")
+    date = renew.parse_date(((raw.get("date") or {}).get("date")) or raw.get("date"))
+    cutoff = renew_import.panel_cutoff(max_months)
+    probe = dict(raw, items=[it for it in raw.get("items") or [] if isinstance(it, dict) and renew_import.is_subscription_item(it)])
+    if not probe["items"]:
+        why = "not_subscription"
+    elif cutoff and date and date.isoformat() < cutoff:
+        why = "too_old"
+    else:
+        _units, why = renew_import.salla_order_units(probe, include_falcon=False)
+    msg = _PULL_WHY.get(why, "")
+    if why in ("unconfirmed", "too_old"):
+        msg = msg % (status if why == "unconfirmed" else cutoff)
+    return {"order": order, "sid": str(raw.get("id") or ""), "status": status, "date": date.isoformat() if date else "",
+            "phone": po.get("phone", ""), "customer": po.get("customer_name", ""),
+            "product": ((po.get("items") or [{}])[0]).get("name", ""),
+            "why": why, "why_text": msg or ("الطلب صالح للسحب — أعد سحب طلبات سلة" if not why else "")}
+
+
 def reply_lookup(st, rcfg, rws, racs, q):
     """الردّ على شكوى طلبٍ برقمه. ثلاثة مصادر بالترتيب، وكلٌّ أرخص مما بعده: اشتراكات سلة المسحوبة (يوزره
     وباسورده معه)، ثم فهرس الطلبات وسجلّ الطلب في سلة (renew_credentials_for)، ثم الطلب نفسه من سلة إن لم
@@ -7272,6 +7316,8 @@ class Handler(BaseHTTPRequestHandler):
                         d["salla_src"] = src
                     except Exception:
                         d["salla"] = None
+                if not d["rows"] and not idx and not d.get("panel_hits") and d.get("q", "").isdigit():
+                    d["live"] = order_pull_diagnosis(st, rcfg, d["q"]) or None    # في سلة ولم يُسحب؟ ولماذا
                 dups = panels.duplicates(rcfg, rws)["rows"] if any(r.get("dup") for r in d["rows"]) else []
                 dmsgs = panels.dupe_messages(rws) if dups else []
                 for r in d["rows"]:
