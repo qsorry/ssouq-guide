@@ -2481,7 +2481,11 @@ def panel_feed(st, ws, cfg, req):
     فتراها صفحة التجديد كالسحب المباشر (المصدر «extension»)."""
     op = str(req.get("op") or "")
     if op == "start":
-        if _pull["running"] and not pull_is_stale():
+        # ضغطةُ «ابدأ» من الإضافة نفسها لمساحةٍ سحبُها السابق من الإضافة أيضًا = إعادةُ بدءٍ
+        # من المشغّل (أُغلقت الصفحة أو انقطعت الإضافة): تحلّ محلّه فورًا بدل الانتظار دقيقتين.
+        own_ext = (_pull.get("source") == "extension" and _pull.get("owner") == ws
+                   and _feed.get("ws") == ws)
+        if _pull["running"] and not pull_is_stale() and not own_ext:
             return {"ok": False, "error": pull_busy_error()}
         old = _feed.get("job")
         # انقطع المتصفّح في منتصف سحبٍ سابق (أُغلق مثلًا)؟ يُستأنف من صفحته التالية بما
