@@ -4599,7 +4599,8 @@ def comp_create(accounts, cfg, ws, req):
         return 400, {"error": "اللوحة غير مربوطة ببوابة إنشاء: اختر بوابة الإنشاء، أو اضبطها في «اللوحات وهوستاتها»"}
     gate = with_guide(acct, gate)
     # لا إنشاء مرتين: بديلٌ سابق في user_links، أو اليوزر موجودٌ على اللوحة الآن (فحصٌ مباشر؛ الفهرس قد يكون قديمًا)
-    rep = reply_replacement(accounts, ws, row["username"])
+    # والأول في مكرر: بديل هذا اليوزر المسجَّل لعميلٍ لاحق لا له (بديله هو يُعرف بطلبه: row["done"] أعلاه) فلا يمنعه
+    rep = None if (row.get("dup") or {}).get("mine_first") else reply_replacement(accounts, ws, row["username"])
     if rep and not req.get("force"):
         return 400, {"error": "له بديلٌ أُنشئ من قبل: %s على %s — لا يُنشأ له مرتين" % (rep["username"], rep.get("gate_name", ""))}
     if not req.get("force") and reply_live_exists(gate, row["username"]):
