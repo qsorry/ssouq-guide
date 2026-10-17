@@ -2693,7 +2693,7 @@ function loRender(d, q){
   const ms = d.ms != null ? ` · ${AR(d.ms)} ملّي ثانية` : '';
   if (rows.length) {
     const miss = rows.some(r => r.state === 'missing' && !r.done), done = rows.some(r => r.done), cov = rows.some(r => r.state === 'covered'), dup = rows.some(r => r.dup);
-    loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : rows[0].match === 'phone' ? ' بالجوال' : '')
+    loState('found', `وُجد ${AR(rows.length)} ${rows.length === 1 ? 'يوزر' : 'يوزرات'}` + (rows[0].match === 'username' ? ' باليوزر' : rows[0].match === 'password' ? ' بكلمة المرور' : rows[0].match === 'phone' ? ' بالجوال' : rows[0].match === 'replacement' ? ' — هذا اليوزر بديلٌ أُنشئ لصاحب الطلب' : '')
       + (miss ? ' — فيه مفقود' : done ? ' — أُنشئ له اشتراكٌ جديد ✓' : cov ? ' — الاشتراك قائم بيوزره الموجود، والآخر قديمٌ أو مكرّر' : '') + (rows.some(r => r.dup_todo && r.dup_todo.length) ? ' — ⚠ مكرر ولم تتم معالجته' : dup ? ' — حساب مكرر (عُولج)' : '') + ms);
   } else if (ph.length) {
     loState('found', `وُجد ${AR(ph.length)} ${ph.length === 1 ? 'يوزر' : 'يوزرات'} على لوحة ${ph[0].panel_name} — لا طلب له في سلة المسحوبة` + ms);
