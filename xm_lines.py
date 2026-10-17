@@ -3806,6 +3806,17 @@ def upgrade_missing(accounts, ws, row):
         row["state"], row["replacement"] = "replaced", rp
 
 
+def dup_first_needs_account(row):
+    """الأول في مكرر (يحتفظ باليوزر) وحسابه ليس على اللوحة، و«له بديل» لأن لاحقًا على اليوزر نفسه أُنشئ له بديل —
+    وذاك البديل للاحق لا له: لم يُسلَّم الأول شيئًا، فيحتاج حسابًا جديدًا. بديلٌ بطلبه هو (done) أو بطلبٍ أحدث
+    بجواله (replaced_by) أو يوزرٌ موجود (covered) يبقى كما هو."""
+    if row.get("state") != "replaced" or row.get("done") or row.get("replaced_by") or row.get("found_panel"):
+        return False
+    if not (row.get("dup") or {}).get("mine_first"):
+        return False
+    return any(c.get("role") == "later" and (c.get("replacement") or c.get("old_missing")) for c in row.get("dup_chain") or [])
+
+
 def comp_text(name, order, line, comp, channel=""):
     """رسالة التعويض: رأسٌ بالطلب والتعويض، ثم نص الشرح الكامل (line)، وفقرة القناة تسقط إن لم تُربط قناة."""
     c = "" if not comp else " مع تعويض شهر" if comp == 1 else " مع تعويض %s" % split_subs.months_ar(comp)
@@ -7328,6 +7339,8 @@ class Handler(BaseHTTPRequestHandler):
                     if r.get("dup"):                     # مكررٌ لم يُعالج: كل طلبٍ لاحق على اليوزر نفسه بلا بديل وغير منتهٍ
                         r["dup_todo"] = renew_dup_todo(dups, r, racs, rws)
                         r["dup_chain"] = renew_dup_chain(dups, r, dmsgs)
+                        if dup_first_needs_account(r):   # بديل اللاحق ليس بديله: يبقى مفقودًا ليُنشأ له حساب جديد
+                            r["state"], r["replacement"] = "missing", None
                     if r.get("done"):
                         r["copy"] = comp_copy(racs, r)
                     elif r.get("state") == "replaced":        # استُبدل من صفحة الإنشاء أو المكرر: البديل وعلى أي بوابة
