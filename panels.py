@@ -1202,6 +1202,13 @@ def order_search(config, data_dir, q, replaced=None, today=None, export=None, id
             if i not in why:
                 hits.append(i)
             why.setdefault(i, key)
+    if not hits:                                # يوزرٌ أُنشئ بديلًا (مكرر/تعويض): يُعرض طلب من أُنشئ له
+        for o, rec in load_dupes_done(data_dir).items():
+            if isinstance(rec, dict) and str(rec.get("new") or "").strip().lower() in (ql, raw.lower()) and ql:
+                for i in idx["by_order"].get(renew.norm_order(o)) or []:
+                    if i not in why:
+                        hits.append(i)
+                    why.setdefault(i, "replacement")
     pk = "" if hits else phone_key(raw)
     if pk:                                      # لا طلب ولا يوزر بهذا النص: يُبحث به جوالًا بأي صيغة (الأحدث أولًا)
         hits = sorted((i for i, r in enumerate(idx["rows"]) if _phone_of(r.get("phone")) == pk),
