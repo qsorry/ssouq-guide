@@ -7075,9 +7075,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not g_ or g_.get("mode") != "web" or g_.get("archive_only"):
                     return self._send(403, {"error": "غير متاح"})
                 try:
-                    s_ = web_session(g_)
-                    s_.begin()
-                    ct_, img_ = s_.fetch_captcha()
+                    ct_, img_ = web_session(g_).human_captcha()
                 except Exception as e:
                     return self._send(502, {"error": str(e)[:300]})
                 return self._send(200, raw=img_, ctype=ct_ or "image/jpeg")
@@ -7085,9 +7083,9 @@ class Handler(BaseHTTPRequestHandler):
                 gate = find_gate(acct, self._q("gate")) if acct else None
                 if role != "account" or not gate or gate.get("mode") != "web":
                     return self._send(403, {"error": "غير متاح"})
-                s = web_session(gate)
-                s.begin()
-                ct, img = s.fetch_captcha()
+                # human_captcha يحجز الجلسة للمشغّل: طلب الرصيد الذي يُطلق مع الباقات لا
+                # يفتح جلسة فوقها فيُبطل الكود الذي يكتبه.
+                ct, img = web_session(gate).human_captcha()
                 return self._send(200, raw=img, ctype=ct or "image/jpeg")
             if path == "/api/packages":
                 if role != "account":

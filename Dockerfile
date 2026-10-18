@@ -1,9 +1,10 @@
 FROM python:3.12-alpine
 WORKDIR /app
-# قراءة كود التحقّق آلياً (اختياري): tesseract + Pillow + pytesseract.
-# غير حاسم للبناء: لو فشل التثبيت يظل الموقع يعمل ويُطلب الكود يدوياً (fallback بشري)،
+# قراءة كود التحقّق آلياً (اختياري): tesseract + بيانات الإنجليزية + Pillow + pytesseract.
+# tesseract-ocr في Alpine بلا بيانات لغة (tesseract-ocr-data-eng حزمةٌ منفصلة)، وبلاها يفشل كل تعرّف
+# بصمت فيُطلب الكود يدويًا في كل دخول. غير حاسم للبناء: لو فشل التثبيت يظل الموقع يعمل ويُطلب الكود يدوياً (fallback بشري)،
 # فلا ينكسر النشر بسبب الـ OCR.
-RUN (apk add --no-cache tesseract-ocr && pip install --no-cache-dir pillow pytesseract) || \
+RUN (apk add --no-cache tesseract-ocr tesseract-ocr-data-eng && pip install --no-cache-dir pillow pytesseract) || \
     echo "OCR deps skipped — manual captcha fallback will be used"
 # ملصقات قنوات Stremio (‏stremio_posters): Pillow يرسمها PNG، وfribidi لتشكيل الأسماء العربية واتجاهها (raqm في
 # Pillow). غير حاسمٍ للبناء: بلاه تُرسم الملصقات SVG بالتصميم نفسه.

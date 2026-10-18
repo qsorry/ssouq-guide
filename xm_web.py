@@ -249,9 +249,12 @@ def ocr_available() -> bool:
         try:
             import pytesseract  # noqa: F401
             from PIL import Image  # noqa: F401
-            # يتحقق أن ثنائية tesseract نفسها موجودة.
+            # يتحقق أن ثنائية tesseract نفسها موجودة، ومعها بيانات اللغة الإنجليزية:
+            # حزمة tesseract-ocr في Alpine لا تحملها (tesseract-ocr-data-eng منفصلة)،
+            # وبلاها تنجح الثنائية ويفشل كل تعرّف بصمت فيُطلب الكود من المشغّل دائمًا.
             pytesseract.get_tesseract_version()
-            _OCR_STATE["ok"] = True
+            langs = pytesseract.get_languages(config="")
+            _OCR_STATE["ok"] = "eng" in langs
         except Exception:
             _OCR_STATE["ok"] = False
     return _OCR_STATE["ok"]
@@ -269,15 +272,20 @@ def solve_captcha(image: bytes) -> str:
         import pytesseract
         from PIL import Image, ImageOps, ImageFilter
 
-        im = Image.open(io.BytesIO(image)).convert("L")
-        im = im.resize((im.width * 3, im.height * 3))          # تكبير يحسّن التعرّف
-        im = ImageOps.autocontrast(im)
-        im = im.point(lambda p: 0 if p < 130 else 255)          # عتبة ثنائية
-        im = im.filter(ImageFilter.MedianFilter(3))             # إزالة خطوط التشويش
-        cfg = "--psm 7 -c tessedit_char_whitelist=0123456789"
-        txt = pytesseract.image_to_string(im, config=cfg)
-        digits = re.sub(r"\D", "", txt or "")
-        return digits
+        src = ImageOps.autocontrast(Image.open(io.BytesIO(image)).convert("L"))
+        votes = {}
+        # عدّة قراءات (تكبير × عتبة) والأكثر تكرارًا يفوز: قراءةٌ واحدة قد تلصق خط تشويش
+        # برقم (3830 بدل 380). الأولى هي الإعداد القديم نفسه فيبقى مرجّحًا عند التعادل.
+        for scale, th in ((3, 130), (2, 130), (4, 130), (3, 100), (3, 160)):
+            im = src.resize((src.width * scale, src.height * scale))   # تكبير يحسّن التعرّف
+            im = im.point(lambda p, t=th: 0 if p < t else 255)       # عتبة ثنائية
+            im = im.filter(ImageFilter.MedianFilter(3))             # إزالة خطوط التشويش
+            im = ImageOps.expand(im, 10, 255)                       # هامش أبيض حول الأرقام
+            cfg = "--psm 7 -c tessedit_char_whitelist=0123456789"
+            digits = re.sub(r"\D", "", pytesseract.image_to_string(im, config=cfg) or "")
+            if 2 <= len(digits) <= 8:
+                votes[digits] = votes.get(digits, 0) + 1
+        return max(votes, key=votes.get) if votes else ""     # max يُبقي الأسبق عند التعادل
     except Exception:
         return ""
 
@@ -516,6 +524,20 @@ class PanelWebSession:
             login_form=form,
         )
 
+    HUMAN_TTL = 180   # ثوانٍ تُترك فيها جلسة الدخول لمشغّلٍ يكتب كود صورته
+
+    def human_captcha(self):
+        """صورة كودٍ يكتبها المشغّل: جلسة دخول جديدة وصورتها، وتُحجز الجلسة له مدةً
+        فلا يفتح طلبٌ آخر (الرصيد، الباقات) جلسةً فوقها تُبطل الكود الذي يكتبه."""
+        with self._login_lock():
+            self.begin()
+            ct, img = self.fetch_captcha()
+            self._save_meta(human_at=time.time())
+            return ct, img
+
+    def human_pending(self) -> bool:
+        return time.time() - float(self._meta().get("human_at") or 0) < self.HUMAN_TTL
+
     def needs_captcha(self) -> bool:
         """هل تطلب صفحة دخول اللوحة كود تحقق؟ (حقل كابتشا في النموذج أو صورة كابتشا)."""
         meta = self._meta()
@@ -548,11 +570,23 @@ class PanelWebSession:
         النجاح → True (وتُحفظ الكوكيز). عند الحاجة لإنسان → CaptchaNeeded.
         بيانات خاطئة/حظر → LoginFailed.
         """
+        # المشغّل يكتب الآن كود صورةٍ طُلبت له: دخولٌ آلي هنا يفتح جلسةً جديدة فيُبطل
+        # صورته ويرجع «الكود غير صحيح» مرةً بعد مرة. ننتظره بدل أن نسبقه.
+        if captcha is None and self.human_pending():
+            raise CaptchaNeeded("image/jpeg", b"", "human_pending")
+
         if not self._meta().get("lkey") and captcha is None:
             self.begin()
 
         if captcha is not None:
-            return self._attempt_login(captcha)
+            with self._login_lock():
+                try:
+                    ok = self._attempt_login(captcha)
+                except LoginFailed:
+                    self._save_meta(human_at=0)
+                    raise
+                self._save_meta(human_at=0)
+                return ok
 
         # لوحة بلا كود تحقق (ككاسبر): دخول مباشر بلا صورة ولا OCR ولا إنسان.
         if not self._meta().get("login_form"):
@@ -567,7 +601,9 @@ class PanelWebSession:
             last_ct, last_img = self.fetch_captcha()
             code = solve_captcha(last_img) if self.use_ocr else ""
             if not code:
-                break  # لا OCR / لم يُقرأ → أرسل الطلب للإنسان مباشرة
+                if self.use_ocr and ocr_available():
+                    continue  # صورةٌ لم تُقرأ → صورةٌ أخرى
+                break  # لا OCR → أرسل الطلب للإنسان مباشرة
             try:
                 if self._attempt_login(code):
                     return True
@@ -741,7 +777,7 @@ class PanelWebSession:
 
     def _login_lock(self):
         with self._LOCKS_GUARD:
-            return self._LOGIN_LOCKS.setdefault(self.jar_path, __import__("threading").Lock())
+            return self._LOGIN_LOCKS.setdefault(self.jar_path, __import__("threading").RLock())
 
     def ensure_login(self):
         """يعيد استخدام الكوكيز المحفوظة؛ ولو انتهت الجلسة يسجّل الدخول آليًا.
