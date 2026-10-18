@@ -313,6 +313,27 @@ def main():
         ok = s3.login(captcha=human_code)
         check("manual captcha logs in", ok is True, "code=%s" % human_code)
 
+        # ---- صورةٌ طُلبت للمشغّل لا يُبطلها طلبٌ آخر (الرصيد يُطلق مع الباقات) ----
+        print("\n== 5b. A captcha shown to the operator is not invalidated by a parallel auto-login ==")
+        data_dir4 = tempfile.mkdtemp(prefix="xmweb4_")
+        op = xm_web.PanelWebSession(acct | {"id": "acc4"}, data_dir4)
+        ct4, img4 = op.human_captcha()
+        check("human_captcha returns an image and reserves the session",
+              ct4.startswith("image/") and bool(img4) and op.human_pending())
+        other = xm_web.PanelWebSession(acct | {"id": "acc4"}, data_dir4)   # طلب الرصيد في خيطٍ آخر
+        began = []
+        other.begin = lambda: began.append(1)
+        xm_web.solve_captcha = lambda img: ""
+        try:
+            other.ensure_login()
+            check("parallel auto-login waits for the operator", False, "no exception")
+        except xm_web.CaptchaNeeded as e:
+            check("parallel auto-login waits for the operator (no new session)",
+                  e.reason == "human_pending" and began == [], "reason=%s began=%s" % (e.reason, began))
+        ok4 = op.login(captcha=mock_code(op))
+        check("the operator's code still logs in", ok4 is True)
+        check("…and the reservation is released", not op.human_pending())
+
         print("\n== 6. Wrong password surfaces LoginFailed ==")
         data_dir3 = tempfile.mkdtemp(prefix="xmweb3_")
         bad = xm_web.PanelWebSession(acct | {"id": "acc3", "password": "WRONG"}, data_dir3)
