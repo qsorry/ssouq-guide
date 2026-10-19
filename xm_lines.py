@@ -6872,10 +6872,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, raw=store_sitemap.status(),
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
-        if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" or re.fullmatch(r"/sitemap-content-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
-            # صفحات طبقة الكيانات وحدها: يضمّها فهرس خريطة المتجر (ssouq.com/sitemap.xml) عبر وسيطه حين تُنقل إليه
-            xml = cached_sitemap(path, lambda: guide_pages.content_sitemap(
-                seo_release.public_sitemap_entries(DATA_DIR), None if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" else path[1:]))
+        if path in ("/" + guide_pages.CONTENT_SITEMAP + ".xml", "/" + guide_pages.CONTENT_SITEMAP_EXTRAS + ".xml") or re.fullmatch(r"/sitemap-content(?:-extras)?-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
+            # صفحات طبقة الكيانات وحدها: يضمّها فهرس خريطة المتجر (ssouq.com/sitemap.xml) عبر وسيطه حين تُنقل إليه. والنسخة «extras» بلا
+            # المسلسلات والأفلام العربية (يخدمها المتجر من قاعدته ويعلنها هو).
+            extras = path.startswith("/" + guide_pages.CONTENT_SITEMAP_EXTRAS)
+            whole = path in ("/" + guide_pages.CONTENT_SITEMAP + ".xml", "/" + guide_pages.CONTENT_SITEMAP_EXTRAS + ".xml")
+            xml = cached_sitemap(path, lambda: guide_pages.content_sitemap(seo_release.public_sitemap_entries(DATA_DIR), None if whole else path[1:], extras=extras))
             if xml is None:
                 return self._send(404, {"error": "not found"})
             return self._send(200, raw=xml, ctype="application/xml; charset=utf-8",
