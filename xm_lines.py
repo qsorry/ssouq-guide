@@ -232,6 +232,41 @@ MIME      = {".css": "text/css", ".js": "application/javascript", ".png": "image
 ROOT_FILES = {"/favicon.ico": "icons/favicon.ico", "/apple-touch-icon.png": "icons/apple-touch-icon.png",
               "/site.webmanifest": "site.webmanifest"}
 PUBLIC_HTML_CACHE = "public, max-age=1800"     # كاش صفحات الموقع العامة
+
+# خرائط الموقع تُبنى من قاعدة SEO وملفات كثيرة (نحو 24 ألف رابط معتمد ← 37 ثانية للطلب الواحد)، فيتجاوز بناؤها مهلة
+# جوجل ووسيط المتجر ويتكرّر مع كل زاحف. تُخزَّن هنا بالمسار: تُبنى مرةً واحدة (قفلٌ يمنع تزاحم الطلبات على البناء) وتُعاد
+# حتى تتغيّر قاعدة SEO (اعتماد دفعة) أو تنقضي SITEMAP_TTL ثانية (ما سوى ذلك: المباريات والبطولات).
+SITEMAP_TTL = int(os.environ.get("XM_SITEMAP_TTL", "600"))
+_sitemap_cache = {}
+_sitemap_lock = threading.Lock()
+
+
+def _sitemap_version():
+    """بصمة قاعدة SEO: وقت تعديل الملف وسجلّه (WAL) — تتبدّل بتبدّل ما اعتُمد."""
+    base = seo_db.path(DATA_DIR)
+    out = []
+    for f in (base, base + "-wal"):
+        try:
+            out.append(os.stat(f).st_mtime_ns)
+        except OSError:
+            out.append(0)
+    return tuple(out)
+
+
+def cached_sitemap(path, build):
+    """بايتات الخريطة `path` من الكاش، أو من `build()` مرةً واحدة؛ None (غير موجودة) لا تُخزَّن."""
+    ver = _sitemap_version()
+    hit = _sitemap_cache.get(path)
+    if hit and hit[1] == ver and time.time() - hit[0] < SITEMAP_TTL:
+        return hit[2]
+    with _sitemap_lock:
+        hit = _sitemap_cache.get(path)
+        if hit and hit[1] == ver and time.time() - hit[0] < SITEMAP_TTL:
+            return hit[2]
+        xml = build()
+        if xml is not None:
+            _sitemap_cache[path] = (time.time(), ver, xml)
+        return xml
 SESSION_TTL = 30 * 24 * 3600                          # مدة الجلسة (30 يوم)
 PORT      = int(os.environ.get("XM_PORT", "8080"))
 BIND      = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
@@ -6806,14 +6841,14 @@ class Handler(BaseHTTPRequestHandler):
                               extra={"Cache-Control": "no-store"})
         if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" or re.fullmatch(r"/sitemap-content-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
             # صفحات طبقة الكيانات وحدها: يضمّها فهرس خريطة المتجر (ssouq.com/sitemap.xml) عبر وسيطه حين تُنقل إليه
-            xml = guide_pages.content_sitemap(seo_release.public_sitemap_entries(DATA_DIR),
-                                              None if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" else path[1:])
+            xml = cached_sitemap(path, lambda: guide_pages.content_sitemap(
+                seo_release.public_sitemap_entries(DATA_DIR), None if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" else path[1:]))
             if xml is None:
                 return self._send(404, {"error": "not found"})
             return self._send(200, raw=xml, ctype="application/xml; charset=utf-8",
                               extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path == "/sitemap.xml" or re.fullmatch(r"/sitemap-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
-            xml = guide_pages.sitemap_public(sitemap_extra(), None if path == "/sitemap.xml" else path[1:])
+            xml = cached_sitemap(path, lambda: guide_pages.sitemap_public(sitemap_extra(), None if path == "/sitemap.xml" else path[1:]))
             if xml is None:
                 return self._send(404, {"error": "not found"})
             return self._send(200, raw=xml, ctype="application/xml; charset=utf-8",

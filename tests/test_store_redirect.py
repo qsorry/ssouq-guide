@@ -95,6 +95,35 @@ def unit():
         G.SITEMAP_SINGLE_MAX, G.SITEMAP_PART_MAX = old_max, old_part
 
 
+def sitemap_cache():
+    print("كاش الخرائط")
+    import xm_lines as X
+    calls = []
+
+    def build():
+        calls.append(1)
+        return b"<urlset/>"
+    X._sitemap_cache.clear()
+    a, b = X.cached_sitemap("/t.xml", build), X.cached_sitemap("/t.xml", build)
+    check("تُبنى مرةً واحدة وتُعاد من الكاش", len(calls) == 1 and a == b == b"<urlset/>", len(calls))
+    keep = X._sitemap_version
+    try:
+        X._sitemap_version = lambda: ("changed",)
+        X.cached_sitemap("/t.xml", build)
+        check("تتبدّل قاعدة SEO ← تُعاد البناء", len(calls) == 2, len(calls))
+    finally:
+        X._sitemap_version = keep
+    ttl = X.SITEMAP_TTL
+    try:
+        X.SITEMAP_TTL = 0
+        X.cached_sitemap("/t.xml", build)
+        check("وانقضاء المهلة ← تُعاد البناء", len(calls) == 3, len(calls))
+    finally:
+        X.SITEMAP_TTL = ttl
+    X._sitemap_cache.clear()
+    check("غير الموجودة (None) لا تُخزَّن", X.cached_sitemap("/none.xml", lambda: None) is None and "/none.xml" not in X._sitemap_cache)
+
+
 def _up(url):
     for _ in range(300):
         try:
@@ -161,6 +190,7 @@ def live():
 
 if __name__ == "__main__":
     unit()
+    sitemap_cache()
     live()
     print(f"\n{_p} PASS · {_f} FAIL")
     sys.exit(1 if _f else 0)
