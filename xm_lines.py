@@ -186,7 +186,10 @@ def bump_stat(key):
 # (‏404 كأن المسار لم يوجد) — لا تحويل ولا صفحة دخول، فلا أثر للوحة على الموقع العام.
 # `XM_ADMIN_HOST` فارغًا = لا نطاق للأداة، فتبقى تحت /admin كما كانت — وهو ما
 # يحدث محليًا وفي الاختبارات أصلاً لأن الطلب يصل بـ Host = 127.0.0.1 لا بالنطاق.
-SITE_HOST  = (os.environ.get("XM_SITE_HOST") or guide_pages.SITE_NETLOC).strip().lower()   # مضيف الموقع العام (يُشتقّ من XM_SITE_URL ما لم يُحدَّد)
+# مضيف الموقع العام (يُشتقّ من XM_SITE_URL ما لم يُحدَّد). وحين تُنقل صفحات المحتوى إلى المتجر (guide_pages.CONTENT_MOVED)
+# يبقى مضيف هذه الخدمة نفسها: عليه تصل طلبات وسيط المتجر، وعليه تبقى Stremio والمسابقة والواجهات، ولا أداة عليه.
+SITE_HOST  = (os.environ.get("XM_SITE_HOST")
+              or ("guide.ssouq.com" if guide_pages.CONTENT_MOVED else guide_pages.SITE_NETLOC)).strip().lower()
 ADMIN_HOST = os.environ.get("XM_ADMIN_HOST", "admin.ssouq.com").strip().lower()
 ADMIN_PATH = "/admin"                                 # مسار الأداة حين لا نطاق لها
 # صفحات الأداة بمسارها الداخلي (تحت /admin على الموقع العام، ومن الجذر على نطاقها)
@@ -6685,7 +6688,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._tool_get(path)
         # ----- الجزء العام -----
         to = guide_pages.store_redirect(path, qs)   # الشروحات على نطاق المتجر حين يُضبط XM_STORE_URL
-        if to:
+        if to and not self.headers.get(guide_pages.VIA_STORE):   # ما مرّره وسيط المتجر يُرسم هنا (وإلا دار التحويل بينهما)
             return self._redirect(to, 301)
         if path == stremio_addon.PATH or path.startswith(stremio_addon.PATH + "/"):
             return self._stremio_get(path)      # إضافة Stremio: بلا عدّاد ولا زواحف (في الرابط رمز الاشتراك)
@@ -6712,6 +6715,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, raw=store_sitemap.status(),
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
+        if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" or re.fullmatch(r"/sitemap-content-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
+            # صفحات طبقة الكيانات وحدها: يضمّها فهرس خريطة المتجر (ssouq.com/sitemap.xml) عبر وسيطه حين تُنقل إليه
+            xml = guide_pages.content_sitemap(seo_release.public_sitemap_entries(DATA_DIR),
+                                              None if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" else path[1:])
+            if xml is None:
+                return self._send(404, {"error": "not found"})
+            return self._send(200, raw=xml, ctype="application/xml; charset=utf-8",
+                              extra={"Cache-Control": PUBLIC_HTML_CACHE})
         if path == "/sitemap.xml" or re.fullmatch(r"/sitemap-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
             xml = guide_pages.sitemap_public(sitemap_extra(), None if path == "/sitemap.xml" else path[1:])
             if xml is None:
