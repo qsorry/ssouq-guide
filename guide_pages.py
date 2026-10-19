@@ -486,6 +486,26 @@ def sitemap_index(names):
             + "\n".join(f"  <sitemap><loc>{SITE}/{n}</loc></sitemap>" for n in names) + "\n</sitemapindex>\n").encode("utf-8")
 
 
+CONTENT_SITEMAP = "sitemap-content"
+
+
+def content_sitemap(entries, part=None):
+    """خريطة صفحات طبقة الكيانات وحدها (/sitemap-content.xml) لفهرس خريطة المتجر حين تُنقل إليه: بلا الرئيسية
+    وصفحات الأجهزة (للمتجر صفحاته). خريطةٌ واحدة حتى SITEMAP_SINGLE_MAX رابط، وفوقها فهرسٌ بخرائط
+    sitemap-content-<قسم>-<لغة>.xml ← bytes أو None (خريطةٌ فرعية غير موجودة)."""
+    rows = _sitemap_rows(entries)[1 + len(PAGES):]
+    if len(rows) <= SITEMAP_SINGLE_MAX:
+        return _urlset(rows) if part is None else None
+    groups, parts = {}, {}
+    for r in rows:
+        groups.setdefault(_sitemap_group(r[0]), []).append(r)
+    for g, rs in sorted(groups.items()):
+        for n in range(0, len(rs), SITEMAP_PART_MAX):
+            k = n // SITEMAP_PART_MAX + 1
+            parts[f"{CONTENT_SITEMAP}-{g}{'' if k == 1 else '-%d' % k}.xml"] = _urlset(rs[n:n + SITEMAP_PART_MAX])
+    return sitemap_index(parts) if part is None else parts.get(part)
+
+
 def sitemap_public(extra=(), part=None):
     """ما يخدمه /sitemap.xml و/sitemap-<قسم>-<لغة>.xml ← bytes أو None (خريطةٌ فرعية غير موجودة).
     خريطةٌ واحدة حتى SITEMAP_SINGLE_MAX رابط، وفوقها فهرسٌ بخرائط فرعية — قبل بلوغ حدّ Google لا بعده."""
@@ -502,6 +522,13 @@ def sitemap_public(extra=(), part=None):
 # (/api/…) التي يقرأ منها المتجر، الصور (/static و/content/…/img)، والخرائط.
 # فارغًا (الافتراضي) لا يتغيّر شيء — يُضبط بعد أن يصير ssouq.com هو المتجر الجديد.
 STORE_URL = os.environ.get("XM_STORE_URL", "").strip().rstrip("/")
+# صفحات طبقة الكيانات (seo_pages: الأفلام والمسلسلات ومواسمها وحلقاتها، الأشخاص، التصنيفات، الأحدث، التركي والأنمي…)
+# ترسمها هذه الخدمة وحدها، والمتجر يعرضها بوسيطٍ يمرّر مساراتها إلى هنا بالترويسة VIA_STORE فتُرسم كما هي.
+# وتُنقل إليه حين يصير العنوان العام هو المتجر (XM_SITE_URL = XM_STORE_URL): عندها تتحوّل على هذا النطاق بـ 301
+# إلى المسار نفسه في المتجر، وقبله تبقى هنا (لا تُحوَّل إلى صفحةٍ لا يرسمها المتجر).
+CONTENT_MOVED = bool(STORE_URL) and SITE == STORE_URL
+VIA_STORE = "X-Ssouq-Proxy"                      # يضعها وسيط المتجر (ssouq-store: src/lib/guide-proxy.ts) على كل طلبٍ يمرّره
+_SEO_LAYER = re.compile(r"^(?:/en)?/content/(?:movies|series|people|companies|genres|countries|languages|year|latest|for-you|turkish|anime)(?:/|$)")
 _ONE_SEGMENT = re.compile(r"^/(?:en/)?content(?:/[A-Za-z0-9_-]+)?$|^/watch(?:/[A-Za-z0-9_-]+)?$|^/standings(?:/[A-Za-z0-9_-]+)?$")
 
 
@@ -517,6 +544,8 @@ def store_path(path):
         return "/guide" + p
     if p == "/report":
         return "/report"
+    if _SEO_LAYER.match(path):                      # طبقة الكيانات: بمسارها كاملًا (الشرطة الأخيرة جزءٌ منه) حين تُنقل
+        return path if CONTENT_MOVED else None
     if _ONE_SEGMENT.match(p):                       # المحتوى والمشاهدة والترتيب: بالمسار نفسه
         return p
     return None
