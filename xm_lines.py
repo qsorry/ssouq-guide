@@ -6908,6 +6908,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/content/entity":       # صفحة العمل الكاملة لعنصرٍ من قائمة سيرفر (زرّ «عرض الصفحة كاملة» في نافذة التفاصيل)
             res = content_page.api_entity(DATA_DIR, content.key_ok(self._q("s")), self._q("k"), self._q("n"), self._q("y"), "en" if self._q("lang") == "en" else "ar")
             return self._send(200, res or {"ok": False}, extra={"Cache-Control": "public, max-age=300"})
+        if path == "/api/content/titles":       # كل أفلام السيرفر ومسلسلاته دفعةً (فهرس بحث المتجر المحلي)، مضغوطةً لمن يقبل gzip
+            res = content_page.api_titles(DATA_DIR, content.key_ok(self._q("s")))
+            if res is None:
+                return self._send(404, {"ok": False, "error": "not found"})
+            gz = "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
+            extra = {"Cache-Control": "public, max-age=600", "Vary": "Accept-Encoding"}
+            if gz:
+                extra["Content-Encoding"] = "gzip"
+            return self._send(200, raw=res[1] if gz else res[0], extra=extra)
         if path == "/api/content/search":       # البحث بالاسم مع الكتابة (و‏lang=en للصفحة الإنجليزية)
             res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"), self._q("lang"))
             if res is None:

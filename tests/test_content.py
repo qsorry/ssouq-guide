@@ -1180,6 +1180,23 @@ def unit_render():
     r = P.api_search(d, "falcon", "film")["html"]
     check("الواسع: أولها وعددها كله", len(titles(r)) == C.SEARCH_MAX and "(650)" in r and "و610 نتائج أخرى" in r, r[:160])
     check("كل الكلمات", titles(P.api_search(d, "falcon", "film 0007")["html"]) == ["Film 0007"])
+    print("الكتالوج كاملًا (/api/content/titles)")
+    raw, gz = P.api_titles(d, "smart")
+    t = json.loads(raw)
+    items = t["items"]
+    check("كل العناوين، أفلامًا ومسلسلات فقط، وغير مضغوطه مطابقٌ", t["ok"] and t["server"] == "smart" and items
+          and {x["k"] for x in items} <= {"series", "movie"} and json.loads(gzip.decompress(gz)) == t)
+    bb = [x for x in items if x["n"] == "Breaking Bad"]
+    check("المسلسل في قسمين مرةً واحدة", len(bb) == 1, bb)
+    card = cards(P.api_search(d, "smart", "breaking")["html"])[0]
+    check("الاسم والملصق والقسم كما في بطاقة البحث", bb and all(bb[0].get(k) == card.get(k) for k in ("k", "n", "p", "c")),
+          (bb[:1], {k: card.get(k) for k in ("k", "n", "p", "c")}))
+    vi = C._view(d, "smart")[1]
+    want = sum(len({norm for norm, _, _ in vi["index"][k]}) for k in C.SEARCH_KINDS)
+    check("عددها عدد ما يبحث فيه البحث", len(items) == want, (len(items), want))
+    check("ولا شيء للكبار", not any("Adults" in (x.get("c") or "") or "Adults" in x["n"] for x in items))
+    check("يُبنى مرةً لكل نسخة", P.api_titles(d, "smart")[0] is raw)
+    check("سيرفرٌ لا وجود له", P.api_titles(d, "nope") is None and P.api_titles(d, "") is None)
     print("خطأٌ في حرف")
     check("كلمتان بينهما تعديلٌ واحد", [C._near(a, b) for a, b in (("ياب", "باب"), ("breakng", "breaking"), ("abdc", "abcd"),
                                                                  ("باب", "باب"), ("abc", "abxy"), ("ab", "ba"))]
@@ -1861,6 +1878,16 @@ def live():
             time.sleep(.1)
             sm = next(s for s in json.loads(req(adm + "/api/content/admin", auth=True)[1])["servers"] if s["key"] == "smart")
         check("إخفاء قسم (وما فيه وحده لا يُعدّ)", not sm["loading"] and sm["counts"]["series"] == 8, sm["counts"])
+
+        print("الكتالوج كاملًا عبر HTTP")
+        code, raw, hd = req(base + "/api/content/titles?s=smart", headers={"Accept-Encoding": "gzip"})
+        t = json.loads(gzip.decompress(raw)) if hd.get("Content-Encoding") == "gzip" else {}
+        check("مضغوطًا لمن يقبل gzip", code == 200 and t.get("ok") and t.get("server") == "smart" and t.get("items")
+              and "Accept-Encoding" in (hd.get("Vary") or ""), (code, hd.get("Content-Encoding")))
+        code, raw, hd = req(base + "/api/content/titles?s=smart")
+        check("وكما هو لمن لا يقبله", code == 200 and "Content-Encoding" not in hd and json.loads(raw) == t)
+        code, raw, _ = req(base + "/api/content/titles?s=nope")
+        check("وسيرفرٌ لا وجود له: 404", code == 404 and json.loads(raw) == {"ok": False, "error": "not found"})
 
         print("الصفحات العامة")
         op = urllib.request.build_opener(_NoRedirect)

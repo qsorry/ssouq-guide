@@ -11,6 +11,7 @@
 وأسماء المسلسلات والأفلام والأقسام كما في ملف السيرفر في اللغتين: لا تُترجم.
 """
 import datetime
+import gzip
 import json
 import re
 import time
@@ -716,6 +717,34 @@ def api_search(data_dir, key, q, lang="ar"):
     if not C._has(v):
         return None
     return {"ok": True, "html": results_html(data_dir, key, srv, v, q, lang_of(lang))}
+
+
+def api_titles(data_dir, key):
+    """كل أفلام السيرفر ومسلسلاته دفعةً واحدة (‏/api/content/titles) ← (JSON، ومضغوطه gzip) أو None بلا محتوى — لفهرس بحث
+    المتجر المحلي بدل طلبٍ لكل عبارة (المواصفات في ssouq-store: store/docs/GUIDE_API_TITLES.md). العنصر بالحقول
+    والقيم نفسها التي في ‏data-d لبطاقة البحث، ومرةً واحدة كما يدمجه البحث (المسلسل في قسمين نتيجةٌ واحدة)، والمخفي
+    والكبار خارجه لأنهما خارج العرض. يُبنى مرةً لكل نسخةٍ من العرض ويُحفظ معه."""
+    srv, v = C._view(data_dir, key)
+    if not C._has(v):
+        return None
+    out = v.get("_titles")
+    if out is None:
+        items = []
+        for kind in C.SEARCH_KINDS:
+            seen = set()
+            for norm, gi, ii in v["index"][kind]:
+                if norm in seen:
+                    continue
+                seen.add(norm)
+                g = v["kinds"][kind][gi]
+                it = g["items"][ii]
+                d = {"k": kind, "n": it.get("n"), "c": g.get("name"), "y": it.get("y"), "r": it.get("r"),
+                     "p": C.img_src(key, it.get("p"), "w500")}
+                items.append({k: x for k, x in d.items() if x})
+        body = json.dumps({"ok": True, "server": key, "at": int(v["at"]), "items": items},
+                          ensure_ascii=False, separators=(",", ":")).encode()
+        out = v["_titles"] = (body, gzip.compress(body, 6))
+    return out
 
 
 def api_entity(data_dir, key, kind, name, year, lang="ar"):
