@@ -36,14 +36,15 @@ class _NoFollow(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def req(base, path):
+def req(base, path, via_store=False, body=False):
     op = urllib.request.build_opener(_NoFollow)
-    r = urllib.request.Request(base + path, headers={"Host": "guide.ssouq.com"})
+    hd = {"Host": "guide.ssouq.com", **({G.VIA_STORE: "1"} if via_store else {})}
+    r = urllib.request.Request(base + path, headers=hd)
     try:
         with op.open(r, timeout=30) as x:
-            return x.status, dict(x.headers)
+            return (x.status, dict(x.headers), x.read()) if body else (x.status, dict(x.headers))
     except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers)
+        return (e.code, dict(e.headers), e.read()) if body else (e.code, dict(e.headers))
 
 
 def unit():
@@ -61,6 +62,38 @@ def unit():
     for path in G.PAGES:
         check(f"كل صفحات الدليل لها مقابل: {path}", G.store_path(path) is not None)
 
+    print("طبقة الكيانات")
+    layer = ("/content/series/the-boys/", "/content/series/the-boys/season-2/episode-3/", "/en/content/movies/dune-2021/",
+             "/content/latest", "/content/latest/series/page/2/", "/content/genres/drama/", "/content/turkish/", "/content/anime",
+             "/content/people/actors/x/", "/content/for-you/")
+    for path in layer:
+        check(f"قبل النقل تبقى هنا: {path}", G.store_path(path) is None, G.store_path(path))
+    G.CONTENT_MOVED = True
+    try:
+        for path in layer:
+            check(f"بعد النقل ← المسار نفسه: {path}", G.store_path(path) == path, G.store_path(path))
+        for path, to in (("/content/smart", "/content/smart"), ("/content/smart/img/a.webp", None), ("/samsung-lg", "/guide/samsung-lg")):
+            check(f"وغيرها كما كان: {path}", G.store_path(path) == to, G.store_path(path))
+    finally:
+        G.CONTENT_MOVED = False
+
+    print("خريطة المحتوى")
+    ents = [("/content/series/a/", "weekly", "0.7"), ("/en/content/series/a/", "weekly", "0.7"), ("/content/movies/b/", "weekly", "0.7"),
+            ("/content/latest/", "daily", "0.5")]
+    xml = G.content_sitemap(ents).decode()
+    check("روابط الطبقة وحدها (بلا الرئيسية وصفحات الأجهزة)", xml.count("<loc>") == 4 and "/samsung-lg<" not in xml and f"<loc>{G.SITE}/</loc>" not in xml)
+    check("ولا خريطة فرعية ما دامت واحدة", G.content_sitemap(ents, "sitemap-content-static.xml") is None)
+    old_max, old_part = G.SITEMAP_SINGLE_MAX, G.SITEMAP_PART_MAX
+    G.SITEMAP_SINGLE_MAX, G.SITEMAP_PART_MAX = 2, 1
+    try:
+        idx = G.content_sitemap(ents).decode()
+        check("فوق الحد: فهرسٌ بخرائط sitemap-content-…", "<sitemapindex" in idx and f"{G.SITE}/sitemap-content-series-ar.xml" in idx
+              and f"{G.SITE}/sitemap-content-movies-ar.xml" in idx and f"{G.SITE}/sitemap-content-series-en.xml" in idx, idx)
+        part = (G.content_sitemap(ents, "sitemap-content-series-ar.xml") or b"").decode()
+        check("والخريطة الفرعية بروابط قسمها", "/content/series/a/" in part and "/en/" not in part)
+    finally:
+        G.SITEMAP_SINGLE_MAX, G.SITEMAP_PART_MAX = old_max, old_part
+
 
 def _up(url):
     for _ in range(300):
@@ -75,9 +108,10 @@ def live():
     print("\nعلى الخادم")
     procs = []
     bases = {}
-    for name, port, store in (("on", 9641, STORE + "/"), ("off", 9642, "")):
+    for name, port, store, site in (("on", 9641, STORE + "/", ""), ("off", 9642, "", ""), ("moved", 9643, STORE, STORE)):
         env = dict(os.environ, XM_DATA=tempfile.mkdtemp(prefix="redir_"), XM_BIND="127.0.0.1", XM_PORT=str(port),
-                   XM_ADMIN_PASSWORD="envpass123", XM_STORE_URL=store)
+                   XM_ADMIN_PASSWORD="envpass123", XM_STORE_URL=store, XM_SITE_URL=site)
+        env.pop("XM_SITE_HOST", None)
         procs.append(subprocess.Popen([sys.executable, os.path.join(ROOT, "xm_lines.py"), "web"], env=env,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         bases[name] = f"http://127.0.0.1:{port}"
@@ -99,6 +133,23 @@ def live():
         check("الملفات الثابتة تبقى", c == 200)
         c, _ = req(on, "/predict")
         check("مسابقة التوقّعات تبقى", c != 301)
+        c, _ = req(on, "/content/series/x/")
+        check("طبقة الكيانات قبل النقل: لا تحويل", c != 301)
+        mv = bases["moved"]
+        c, h = req(mv, "/content/series/x/season-1/?a=1")
+        check("بعد النقل: صفحة الطبقة ← المسار نفسه في المتجر", c == 301 and h.get("Location") == STORE + "/content/series/x/season-1/?a=1", h.get("Location"))
+        c, h = req(mv, "/content/series/x/", via_store=True)
+        check("وما مرّره وسيط المتجر يُرسم هنا لا يُحوَّل (لا حلقة)", c != 301, (c, h.get("Location")))
+        c, h = req(mv, "/samsung-lg", via_store=True)
+        check("والوسيط لا يمرّ بتحويل الشروحات أيضًا", c == 200, c)
+        c, _ = req(mv, "/admin/login")
+        check("بعد النقل: لا أداة على guide.ssouq.com (يبقى مضيف هذه الخدمة)", c == 404, c)
+        c, h, b = req(mv, "/sitemap-content.xml", via_store=True, body=True)
+        check("خريطة المحتوى تُخدم", c == 200 and b"<urlset" in b and "xml" in h.get("Content-Type", ""), c)
+        c, _ = req(mv, "/sitemap-content-series-ar.xml", via_store=True)
+        check("وخريطةٌ فرعية غير موجودة ← 404", c == 404, c)
+        c, _ = req(mv, "/api/content")
+        check("بعد النقل: واجهة المحتوى تبقى", c == 200, c)
         c, _ = req(off, "/")
         check("بلا XM_STORE_URL: الرئيسية كما هي", c == 200)
         c, _ = req(off, "/samsung-lg")
