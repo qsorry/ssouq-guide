@@ -1742,6 +1742,22 @@ def unit_release():
         # ---- المرحلة 6 ----
         IX.code = 403
         r6 = seo_release.phase6(d)
+        # التصدير الدفعي لصفحات الأعمال (المتجر يحمّلها ويخدمها محليًّا): المعتمد المستحقّ وحده، باللغة المطلوبة
+        _ix_ar, _ix_en = seo_pages.entity_index(d, "ar"), seo_pages.entity_index(d, "en")
+        _slugs = lambda ix_: {i[1] for i in ix_["items"]}
+        _keys_ar = [f"{i[0]}:{i[1]}" for i in _ix_ar["items"]]
+        _unapproved = q("SELECT type, slug FROM content WHERE merged_into IS NULL AND slug NOT IN (%s) AND type IN ('series','movie') LIMIT 1" % ",".join("'%s'" % x for x in _slugs(_ix_ar)))
+        _bt = seo_pages.entity_batch(d, "ar", _keys_ar + ([f"{_unapproved[0][0]}:{_unapproved[0][1]}"] if _unapproved else []) + ["series:nope-nope", "x:y", "series:../a"])
+        check("entity_index: المعتمد المستحقّ وحده بلغته (ar/en) كما في قائمة الاعتماد، بنوعه وslug وآخر تعديل",
+              _ix_ar["ok"] and _ix_ar["count"] == len(_ix_ar["items"]) > 0 and _slugs(_ix_ar) == {x["slug"] for x in ap["routes"] if x["lang"] == "ar"}
+              and _slugs(_ix_en) == {x["slug"] for x in ap["routes"] if x["lang"] == "en"} and all(len(i) == 3 and i[0] in ("series", "movie") and i[2] for i in _ix_ar["items"]),
+              str((len(_ix_ar["items"]), len(ap["routes"]))))
+        check("entity_batch: بيانات كل مفتاحٍ معتمد (index وcanonical ذاتي)، وغير المعتمد وغير الموجود والمفتاح الفاسد خارجه",
+              _bt["ok"] and len(_bt["items"]) == len(_keys_ar) and all(it["noindex"] is False and it["canonical"].endswith(it["path"]) and it["updated_at"] for it in _bt["items"])
+              and {(it["type"], it["slug"]) for it in _bt["items"]} == {tuple(k.split(":")) for k in _keys_ar}, str((len(_bt["items"]), len(_keys_ar))))
+        check("التصدير: لغةٌ غير معروفة → None، وسقفٌ للدفعة (ENTITY_BATCH_MAX)",
+              seo_pages.entity_index(d, "fr") is None and seo_pages.entity_batch(d, "fr", _keys_ar) is None
+              and len(seo_pages.entity_batch(d, "ar", _keys_ar * 20)["items"]) <= seo_pages.ENTITY_BATCH_MAX)
         check("IndexNow مرفوض (403): المرحلة 6 FAIL وتُسجَّل submitted=5 accepted=0 failed=5", r6["ok"] is False and r6["submitted"] == 5 and r6["accepted"] == 0 and r6["failed"] == 5 and r6["code"] == 403, str(r6)[:300])
         IX.code = 202; got.clear()
         r6 = seo_release.phase6(d)

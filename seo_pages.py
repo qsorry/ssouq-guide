@@ -734,15 +734,16 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
 
 
 # ================= صفحة العمل كبياناتٍ مهيكلة (يرسمها المتجر) =================
-def entity_json(data_dir, typ, slug, lang="ar"):
+def entity_json(data_dir, typ, slug, lang="ar", _con=None, _approved=None):
     """بيانات صفحة العمل نفسها التي يرسمها `render_entity` بصيغة JSON لمتجر ssouq.com (يرسمها بتصميمه على الرابط نفسه): ← قاموس
     ({"ok": True, ...}، أو {"redirect": مسار} لمدموجٍ أو محوَّل) أو None (لا شيء مُخدَّم: لا معاينة، أو لغةٌ معطّلة، أو عملٌ غير موجود).
     الأعداد والحال والـ canonical وقرار الفهرسة (`noindex`) وJSON-LD تُحسب هنا بقواعد الصفحة نفسها فلا يخترع المتجر شيئًا منها: يبقى
-    اعتماد الفهرسة من خط SEO وحده. ما يقرؤه الزائر (دليل الأهل، الأسئلة الشائعة…) نصوصًا جاهزةً بلغة الطلب."""
+    اعتماد الفهرسة من خط SEO وحده. ما يقرؤه الزائر (دليل الأهل، الأسئلة الشائعة…) نصوصًا جاهزةً بلغة الطلب.
+    ‏_con و‏_approved: اتصالٌ وقائمة اعتمادٍ قائمان (التصدير الدفعي) يُستعملان بدل فتح اتصالٍ وقراءة القائمة كلها لكل عمل — ولا يُغلق الاتصال."""
     if typ not in ("series", "movie") or not re.fullmatch(r"[a-z0-9-]{1,120}", slug or ""):
         return None
     tr = P.lang_of(lang)
-    con = seo_db.connect(data_dir, create=False)
+    con = _con or seo_db.connect(data_dir, create=False)
     if con is None:
         return None
     try:
@@ -751,188 +752,256 @@ def entity_json(data_dir, typ, slug, lang="ar"):
         st = seo_db.settings(con)
         if not st.get("preview") or lang not in (st.get("languages") or ["ar", "en"]):
             return None
-        row = con.execute("SELECT * FROM content WHERE type=? AND slug=?", (typ, slug)).fetchone()
-        if not row:
-            r = con.execute("SELECT target FROM redirect WHERE path=?", (seo_db.PATHS[typ].format(slug=slug),)).fetchone()
-            return {"redirect": (seo_db.EN if tr.en else "") + r["target"]} if r else None
-        if row["merged_into"] is not None:
-            w = con.execute("SELECT type, slug FROM content WHERE id=?", (row["merged_into"],)).fetchone()
-            return {"redirect": _path(w, tr.code)}
-        title, kind_ar = _title(row, tr), "مسلسل" if typ == "series" else "فيلم"
-        ov = _overview(row, tr)
-        tax = _tax(con, row["id"])
-        by_kind = {}
-        for t in tax:
-            by_kind.setdefault(t["kind"], []).append(t)
-        people = _people(con, row["id"], tr)
-        seasons = con.execute("SELECT * FROM season WHERE content_id=? ORDER BY number", (row["id"],)).fetchall() if typ == "series" else []
-        # أعداد الحلقات بقاعدة render_entity نفسها (الرسمي من TMDB إن وُثق، وإلا المدرج في القوائم بصياغةٍ صريحة)
-        n_official = row["episodes_official"] or (sum(s["episodes_official"] or 0 for s in seasons) or None)
-        n_listed = sum(s["episode_count"] for s in seasons if s["number"] > 0)
-        if n_official and n_listed and n_official < 3 and n_listed > 3 * n_official:
-            n_official = None
-        n_eps = n_official or n_listed
-        n_seasons = row["seasons_official"] if n_official and row["seasons_official"] else len([s for s in seasons if s["number"] > 0])
-        n_specials = next((s["episodes_official"] or 0 for s in seasons if s["number"] == 0), 0)
-        srv_keys = {ln[0] for ln in con.execute("SELECT service_key FROM content_service WHERE content_id=? AND present=1", (row["id"],))}
-        srv_all = [s for s in C.servers(data_dir) if s["key"] in srv_keys]
-        srv_names = [tr.name(s) for s in srv_all]
-        listed_tail = tr(f" مدرجة على {srv_names[0]}", f" listed on {srv_names[0]}") if len(srv_names) == 1 else tr(" في القوائم", " as listed")
-        eps_label = (lambda n: tr.count(n, "episodes") + ("" if n_official else listed_tail))
-        hubs, countries, langs, genres = by_kind.get("hub", []), by_kind.get("country", []), by_kind.get("language", []), by_kind.get("genre", [])
-        director = (people.get("director") or people.get("creator") or [None])[0]
-        cast = people.get("actor") or people.get("voice") or []
-        writers = [p for r in ("creator", "writer", "screenwriter") for p in people.get(r) or [] if not (director and p["id"] == director["id"])]
-        companies = _companies(con, row["id"])
-        airing = airing_info(row, seasons, n_seasons, (f"{tr.count(n_seasons, 'seasons')} {tr('و', 'and ')}{eps_label(n_eps)}" if seasons and n_eps else ""), tr)
-        page_title = _seo_title(title, kind_ar, typ, tr)
-        desc_bits = []
-        if row["year"]:
-            desc_bits.append(tr(f"إنتاج {row['year']}", f"{row['year']}"))
-        if countries:
-            desc_bits.append(_tname(countries[0], tr))
-        if genres:
-            desc_bits.append(tr("، ", ", ").join(_tname(g, tr) for g in genres[:3]))
-        if typ == "series" and seasons:
-            desc_bits.append(tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}", f"{tr.count(n_seasons, 'seasons')}, {eps_label(n_eps)}") + (tr(" حتى الآن", " so far") if airing and airing["live"] else ""))
-        if airing and airing["live"]:
-            desc_bits.append(airing["short"])
-        if cast:
-            desc_bits.append(tr("بطولة ", "Starring ") + tr("، ", ", ").join(_pname(p, tr) for p in cast[:3]))
-        desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") \
-            + (tr(f". متوفر عبر {tr.join(srv_names)}.", f". Available on {tr.join(srv_names)}.") if srv_names else ".")
-        desc = _seo_desc(desc, tr)
-        crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (tr("المسلسلات" if typ == "series" else "الأفلام", "Series" if typ == "series" else "Movies"), tr.path)]
-        if hubs:
-            crumbs.append((HUB_NAMES.get(hubs[0]["key"], (hubs[0]["key"], hubs[0]["key"]))[tr.en], _hub_path(hubs[0]["key"], "", tr.code)))
-        crumbs.append((title, ""))
-        _, crumb_ld = _crumbs(crumbs)
-        skey = (con.execute("SELECT service_key FROM content_service WHERE content_id=? AND present=1 ORDER BY seen_at DESC LIMIT 1", (row["id"],)).fetchone() or [""])[0]
-        poster, backdrop = _img(row["poster"], "w500", skey), _img(row["backdrop"], "w780", skey)
-        guide_g, guide_sc = seo_guide.guide_row(con, row["id"]), seo_guide.scenes(con, row["id"])
-        guide_rating = f"{guide_g['age']}+" if guide_g and guide_g["age"] else None
-        parents = None
-        if guide_g and (any(v is not None for v in guide_g["sev"].values()) or guide_g["age"]):
-            age = guide_g["age"]
-            parents = {"age": age, "age_label": tr(*seo_guide.AGE_NAMES[age]) if age in seo_guide.AGE_NAMES else "", "partial": guide_g["partial"], "reviewed": guide_g["reviewed"],
-                       "source": tr(*seo_guide.SOURCES.get(guide_g["source"], seo_guide.SOURCES["import"])),
-                       "cats": [{"key": c, "name": tr(*seo_guide.CAT_NAMES[c]), "sev": guide_g["sev"][c], "sev_name": tr(*seo_guide.SEV_NAMES[guide_g["sev"][c]]) if guide_g["sev"][c] is not None else None}
-                                for c in seo_guide.CATS],
-                       "text": guide_g["summary_en"] if tr.en else guide_g["summary_ar"]}
-        scenes = [{"season": sc["season"] or None, "episode": sc["episode"] or None,
-                   "time": f'{seo_guide.fmt_time(sc["start_s"])} – {seo_guide.fmt_time(sc["end_s"])}' if sc["start_s"] is not None and sc["end_s"] is not None else "",
-                   "category": tr(*seo_guide.CAT_NAMES[sc["category"]]), "severity": tr(*seo_guide.SEV_NAMES[sc["severity"]]),
-                   "note": (sc["note_en"] if tr.en else sc["note_ar"]) or "", "version": sc["version"] or ""} for sc in guide_sc]
-        person = lambda p: {"name": _pname(p, tr), "slug": p["slug"], "role": p["role"], "photo": _img(p["photo"], "w185"), "character": p["character"] or "",
-                            "href": _person_path(p["role"], p["slug"], tr.code)}
-        seas = []
-        for sn in seasons:
-            eps = con.execute("SELECT * FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 100", (row["id"], sn["number"])).fetchall()
-            name = sn["name"] if tr.en and sn["name"] else (tr("حلقات خاصة", "Specials") if sn["number"] == 0 else tr(f"الموسم {sn['number']}", f"Season {sn['number']}"))
-            s_label = tr.count(sn["episodes_official"], "episodes") if sn["episodes_official"] else (tr.count(sn["episode_count"], "episodes") + tr(" في القوائم", " as listed"))
-            has_page = sn["number"] > 0 and (season_ok(sn, eps, tr.code, st)[0] or any(episode_ok(e, tr.code, st) for e in eps))
-            seas.append({"number": sn["number"], "name": name, "label": s_label, "overview": (sn["overview_en"] if tr.en else sn["overview_ar"]) or "",
-                         "href": _season_path(row, sn["number"], tr.code) if has_page else None,
-                         "episodes": [{"number": e["number"], "title": (e["title_en"] if tr.en else e["title_ar"] or e["title_en"]) or "", "air_date": e["air_date"] or ""} for e in eps]})
-        facts = [{"k": tr("سنة الإنتاج", "Year"), "v": str(row["year"]) if row["year"] else ""},
-                 {"k": tr("الدولة", "Country"), "v": tr("، ", ", ").join(_tname(c, tr) for c in countries)},
-                 {"k": tr("اللغة", "Language"), "v": tr("، ", ", ").join(_tname(x, tr) for x in langs)},
-                 {"k": tr("التصنيف", "Genre"), "v": "", "links": [{"name": _tname(g, tr), "href": _hub_path(hubs[0]["key"], "genres/" + g["slug"], tr.code) if hubs else tr.path} for g in genres]},
-                 {"k": tr("المدة", "Runtime"), "v": tr(f"{row['runtime']} دقيقة", f"{row['runtime']} min") if row["runtime"] else ""},
-                 {"k": tr("التقييم", "Rating"), "v": f"{row['rating']:g}/10" if row["rating"] else ""},
-                 {"k": tr("الحالة", "Status"), "v": airing["short"] if airing else ""} if typ == "series" else {"k": "", "v": ""},
-                 {"k": tr("المواسم", "Seasons"), "v": str(n_seasons) if seasons else ""},
-                 {"k": tr("الحلقات", "Episodes"), "v": (str(n_eps) if n_official else eps_label(n_eps)) if n_eps else ""},
-                 {"k": tr("الحلقات الخاصة", "Specials"), "v": str(n_specials) if n_specials else ""}]
-        facts = [f for f in facts if f["k"] and (f["v"] or f.get("links"))]
-        faq = []
-        if ov:
-            faq.append((tr(f"ما قصة {kind_ar} {title}؟", f"What is {title} about?"), ov[:300]))
-        if seasons:
-            so_far = airing and airing["live"]
-            faq.append((tr(f"كم عدد مواسم وحلقات {title}؟", f"How many seasons and episodes does {title} have?"),
-                        tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}" + (" حتى الآن، والمسلسل ما زال يُعرض وتُضاف حلقاته تباعًا." if so_far else "."),
-                           f"{tr.count(n_seasons, 'seasons')} and {eps_label(n_eps)}" + (" so far; the series is still airing and episodes are being added." if so_far else "."))))
-        if airing:
-            faq.append((tr(f"هل ما زال {title} يُعرض؟ وهل سيكون له جزء ثانٍ؟", f"Is {title} still airing, and will there be another season?"), airing["faq_a"]))
-        if cast:
-            faq.append((tr(f"من أبطال {title}؟", f"Who stars in {title}?"), tr("، ", ", ").join(_pname(p, tr) for p in cast[:6]) + "."))
-        if director:
-            faq.append((tr(f"من {'مخرج' if director['role'] == 'director' else 'مبتكر'} {title}؟", f"Who is the {director['role']} of {title}?"), _pname(director, tr) + "."))
-        if row["year"]:
-            faq.append((tr(f"ما سنة إنتاج {title}؟", f"When was {title} released?"), str(row["year"]) + "."))
-        if srv_names:
-            faq.append((tr(f"أين أشاهد {title}؟", f"Where can I watch {title}?"), tr(f"متوفر عبر اشتراكات {tr.join(srv_names)} من سمارت سوق.", f"Available on Smart Souq's {tr.join(srv_names)} subscriptions.")))
-        faq = faq if len(faq) >= 2 else []
-        canonical = SITE + _path(row, tr.code)
-        ld = {"@context": "https://schema.org", "@type": "Movie" if typ == "movie" else "TVSeries", "name": title, "url": canonical, "inLanguage": tr.code}
-        if row["original_title"]:
-            ld["alternateName"] = row["original_title"]
-        if poster:
-            ld["image"] = poster
-        if ov:
-            ld["description"] = ov
-        if row["release_date"]:
-            ld["datePublished"] = row["release_date"]
-        if genres:
-            ld["genre"] = [_tname(g, tr) for g in genres]
-        if director:
-            ld["director" if director["role"] == "director" else "creator"] = {"@type": "Person", "name": _pname(director, tr), "url": SITE + _person_path(director["role"], director["slug"], tr.code)}
-        if cast:
-            ld["actor"] = [{"@type": "Person", "name": _pname(p, tr), "url": SITE + _person_path(p["role"], p["slug"], tr.code)} for p in cast[:12]]
-        if writers:
-            ld["author"] = [{"@type": "Person", "name": _pname(p, tr), "url": SITE + _person_path(p["role"], p["slug"], tr.code)} for p in writers[:8]]
-        if companies:
-            ld["productionCompany"] = [{"@type": "Organization", "name": c["name"], "url": SITE + _company_path(c["slug"], tr.code)} for c in companies]
-        if row["rating"] and row["votes"]:
-            ld["aggregateRating"] = {"@type": "AggregateRating", "ratingValue": row["rating"], "bestRating": 10, "ratingCount": row["votes"]}
-        if typ == "series" and n_official:
-            ld["numberOfSeasons"] = n_seasons
-            ld["numberOfEpisodes"] = n_official
-        if guide_rating:
-            ld["contentRating"] = guide_rating
-        if typ == "series" and row["status"] in ("Ended", "Canceled") and row["last_air_date"]:
-            ld["endDate"] = row["last_air_date"]
-        if countries:
-            ld["countryOfOrigin"] = [{"@type": "Country", "name": _tname(c, tr)} for c in countries]
-        if row["runtime"] and typ == "movie":
-            ld["duration"] = f"PT{row['runtime']}M"
-        if row["trailer_yt"]:
-            tl = {"@type": "VideoObject", "name": tr(f"إعلان {title}", f"{title} trailer"), "embedUrl": f"https://www.youtube.com/embed/{row['trailer_yt']}",
-                  "thumbnailUrl": f"https://i.ytimg.com/vi/{row['trailer_yt']}/hqdefault.jpg", "uploadDate": row["release_date"] or f"{row['year']}-01-01" if (row["release_date"] or row["year"]) else None}
-            ld["trailer"] = {k: v for k, v in tl.items() if v}
-        lds = [crumb_ld, ld]
-        if faq:
-            lds.append({"@context": "https://schema.org", "@type": "FAQPage", "inLanguage": tr.code, "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq]})
-        ov_ar, ov_en = _override(con, "content", row["id"], "ar"), _override(con, "content", row["id"], "en")
-        ovr = ov_en if tr.en else ov_ar
-        if ovr.get("seo_title"):
-            page_title = ovr["seo_title"]
-        if ovr.get("meta_desc"):
-            desc = ovr["meta_desc"][:160]
-        ok_ar, ok_en, live = index_flags(con, row, st)
-        if ov_ar.get("index_flag") == 0:
-            ok_ar = False
-        if ov_en.get("index_flag") == 0:
-            ok_en = False
-        alts = [{"lang": "ar", "href": SITE + _path(row, "ar")}, {"lang": "en", "href": SITE + _path(row, "en")}, {"lang": "x-default", "href": SITE + _path(row, "ar")}] if ok_ar and ok_en else []
-        sim = [{"type": r["type"], "slug": r["slug"], "title": _title(r, tr), "year": r["year"], "rating": r["rating"], "poster": _img(r["poster"], "w342", _card_skey(r)), "href": _path(r, tr.code)}
-               for r in _similar(con, row, tr, st)]
-        servers = [{"key": s["key"], "name": tr.name(s), "versions": sorted({v for ln in con.execute("SELECT versions_json FROM content_service WHERE content_id=? AND service_key=? AND present=1", (row["id"], s["key"]))
-                                                                            for v in _loads(ln[0])})} for s in srv_all]
-        return {"ok": True, "type": typ, "slug": slug, "lang": tr.code, "canonical": canonical, "path": _path(row, tr.code), "noindex": not (live and (ok_en if tr.en else ok_ar)),
-                "alts": alts, "alt_path": _path(row, "ar" if tr.en else "en"),
-                "seo": {"title": page_title, "description": desc, "intro": ovr.get("intro") or ""},
-                "title": title, "original_title": row["original_title"] if row["original_title"] and row["original_title"] != title else "", "year": row["year"],
-                "rating": row["rating"], "votes": row["votes"], "poster": poster, "backdrop": backdrop, "trailer_yt": row["trailer_yt"] or "",
-                "overview": ov, "kind_label": kind_ar, "crumbs": [{"name": n, "href": u} for n, u in crumbs], "facts": facts,
-                "chips": [{"name": HUB_NAMES.get(h["key"], (h["key"], h["key"]))[tr.en], "href": _hub_path(h["key"], "", tr.code)} for h in hubs],
-                "airing": ({k: airing.get(k) for k in ("live", "head", "detail", "note", "short")} if airing else None),
-                "parents": parents, "scenes": scenes,
-                "people": {"director": [person(director)] if director else [], "director_label": ROLE_NAMES[director["role"]][tr.en] if director else "",
-                           "cast": [person(p) for p in cast[:12]], "writers": [person(p) for p in writers[:8]]},
-                "companies": [{"name": c["name"], "href": _company_path(c["slug"], tr.code)} for c in companies],
-                "seasons": seas, "faq": [{"q": q, "a": a} for q, a in faq], "jsonld": lds, "servers": servers, "similar": sim}
+        return _entity_json(con, data_dir, typ, slug, tr, st, _approved)
+    finally:
+        if not _con:
+            con.close()
+
+
+def _entity_json(con, data_dir, typ, slug, tr, st, approved=None):
+    row = con.execute("SELECT * FROM content WHERE type=? AND slug=?", (typ, slug)).fetchone()
+    if not row:
+        r = con.execute("SELECT target FROM redirect WHERE path=?", (seo_db.PATHS[typ].format(slug=slug),)).fetchone()
+        return {"redirect": (seo_db.EN if tr.en else "") + r["target"]} if r else None
+    if row["merged_into"] is not None:
+        w = con.execute("SELECT type, slug FROM content WHERE id=?", (row["merged_into"],)).fetchone()
+        return {"redirect": _path(w, tr.code)}
+    title, kind_ar = _title(row, tr), "مسلسل" if typ == "series" else "فيلم"
+    ov = _overview(row, tr)
+    tax = _tax(con, row["id"])
+    by_kind = {}
+    for t in tax:
+        by_kind.setdefault(t["kind"], []).append(t)
+    people = _people(con, row["id"], tr)
+    seasons = con.execute("SELECT * FROM season WHERE content_id=? ORDER BY number", (row["id"],)).fetchall() if typ == "series" else []
+    # أعداد الحلقات بقاعدة render_entity نفسها (الرسمي من TMDB إن وُثق، وإلا المدرج في القوائم بصياغةٍ صريحة)
+    n_official = row["episodes_official"] or (sum(s["episodes_official"] or 0 for s in seasons) or None)
+    n_listed = sum(s["episode_count"] for s in seasons if s["number"] > 0)
+    if n_official and n_listed and n_official < 3 and n_listed > 3 * n_official:
+        n_official = None
+    n_eps = n_official or n_listed
+    n_seasons = row["seasons_official"] if n_official and row["seasons_official"] else len([s for s in seasons if s["number"] > 0])
+    n_specials = next((s["episodes_official"] or 0 for s in seasons if s["number"] == 0), 0)
+    srv_keys = {ln[0] for ln in con.execute("SELECT service_key FROM content_service WHERE content_id=? AND present=1", (row["id"],))}
+    srv_all = [s for s in C.servers(data_dir) if s["key"] in srv_keys]
+    srv_names = [tr.name(s) for s in srv_all]
+    listed_tail = tr(f" مدرجة على {srv_names[0]}", f" listed on {srv_names[0]}") if len(srv_names) == 1 else tr(" في القوائم", " as listed")
+    eps_label = (lambda n: tr.count(n, "episodes") + ("" if n_official else listed_tail))
+    hubs, countries, langs, genres = by_kind.get("hub", []), by_kind.get("country", []), by_kind.get("language", []), by_kind.get("genre", [])
+    director = (people.get("director") or people.get("creator") or [None])[0]
+    cast = people.get("actor") or people.get("voice") or []
+    writers = [p for r in ("creator", "writer", "screenwriter") for p in people.get(r) or [] if not (director and p["id"] == director["id"])]
+    companies = _companies(con, row["id"])
+    airing = airing_info(row, seasons, n_seasons, (f"{tr.count(n_seasons, 'seasons')} {tr('و', 'and ')}{eps_label(n_eps)}" if seasons and n_eps else ""), tr)
+    page_title = _seo_title(title, kind_ar, typ, tr)
+    desc_bits = []
+    if row["year"]:
+        desc_bits.append(tr(f"إنتاج {row['year']}", f"{row['year']}"))
+    if countries:
+        desc_bits.append(_tname(countries[0], tr))
+    if genres:
+        desc_bits.append(tr("، ", ", ").join(_tname(g, tr) for g in genres[:3]))
+    if typ == "series" and seasons:
+        desc_bits.append(tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}", f"{tr.count(n_seasons, 'seasons')}, {eps_label(n_eps)}") + (tr(" حتى الآن", " so far") if airing and airing["live"] else ""))
+    if airing and airing["live"]:
+        desc_bits.append(airing["short"])
+    if cast:
+        desc_bits.append(tr("بطولة ", "Starring ") + tr("، ", ", ").join(_pname(p, tr) for p in cast[:3]))
+    desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") \
+        + (tr(f". متوفر عبر {tr.join(srv_names)}.", f". Available on {tr.join(srv_names)}.") if srv_names else ".")
+    desc = _seo_desc(desc, tr)
+    crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (tr("المسلسلات" if typ == "series" else "الأفلام", "Series" if typ == "series" else "Movies"), tr.path)]
+    if hubs:
+        crumbs.append((HUB_NAMES.get(hubs[0]["key"], (hubs[0]["key"], hubs[0]["key"]))[tr.en], _hub_path(hubs[0]["key"], "", tr.code)))
+    crumbs.append((title, ""))
+    _, crumb_ld = _crumbs(crumbs)
+    skey = (con.execute("SELECT service_key FROM content_service WHERE content_id=? AND present=1 ORDER BY seen_at DESC LIMIT 1", (row["id"],)).fetchone() or [""])[0]
+    poster, backdrop = _img(row["poster"], "w500", skey), _img(row["backdrop"], "w780", skey)
+    guide_g, guide_sc = seo_guide.guide_row(con, row["id"]), seo_guide.scenes(con, row["id"])
+    guide_rating = f"{guide_g['age']}+" if guide_g and guide_g["age"] else None
+    parents = None
+    if guide_g and (any(v is not None for v in guide_g["sev"].values()) or guide_g["age"]):
+        age = guide_g["age"]
+        parents = {"age": age, "age_label": tr(*seo_guide.AGE_NAMES[age]) if age in seo_guide.AGE_NAMES else "", "partial": guide_g["partial"], "reviewed": guide_g["reviewed"],
+                   "source": tr(*seo_guide.SOURCES.get(guide_g["source"], seo_guide.SOURCES["import"])),
+                   "cats": [{"key": c, "name": tr(*seo_guide.CAT_NAMES[c]), "sev": guide_g["sev"][c], "sev_name": tr(*seo_guide.SEV_NAMES[guide_g["sev"][c]]) if guide_g["sev"][c] is not None else None}
+                            for c in seo_guide.CATS],
+                   "text": guide_g["summary_en"] if tr.en else guide_g["summary_ar"]}
+    scenes = [{"season": sc["season"] or None, "episode": sc["episode"] or None,
+               "time": f'{seo_guide.fmt_time(sc["start_s"])} – {seo_guide.fmt_time(sc["end_s"])}' if sc["start_s"] is not None and sc["end_s"] is not None else "",
+               "category": tr(*seo_guide.CAT_NAMES[sc["category"]]), "severity": tr(*seo_guide.SEV_NAMES[sc["severity"]]),
+               "note": (sc["note_en"] if tr.en else sc["note_ar"]) or "", "version": sc["version"] or ""} for sc in guide_sc]
+    person = lambda p: {"name": _pname(p, tr), "slug": p["slug"], "role": p["role"], "photo": _img(p["photo"], "w185"), "character": p["character"] or "",
+                        "href": _person_path(p["role"], p["slug"], tr.code)}
+    seas = []
+    for sn in seasons:
+        eps = con.execute("SELECT * FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 100", (row["id"], sn["number"])).fetchall()
+        name = sn["name"] if tr.en and sn["name"] else (tr("حلقات خاصة", "Specials") if sn["number"] == 0 else tr(f"الموسم {sn['number']}", f"Season {sn['number']}"))
+        s_label = tr.count(sn["episodes_official"], "episodes") if sn["episodes_official"] else (tr.count(sn["episode_count"], "episodes") + tr(" في القوائم", " as listed"))
+        has_page = sn["number"] > 0 and (season_ok(sn, eps, tr.code, st)[0] or any(episode_ok(e, tr.code, st) for e in eps))
+        seas.append({"number": sn["number"], "name": name, "label": s_label, "overview": (sn["overview_en"] if tr.en else sn["overview_ar"]) or "",
+                     "href": _season_path(row, sn["number"], tr.code) if has_page else None,
+                     "episodes": [{"number": e["number"], "title": (e["title_en"] if tr.en else e["title_ar"] or e["title_en"]) or "", "air_date": e["air_date"] or ""} for e in eps]})
+    facts = [{"k": tr("سنة الإنتاج", "Year"), "v": str(row["year"]) if row["year"] else ""},
+             {"k": tr("الدولة", "Country"), "v": tr("، ", ", ").join(_tname(c, tr) for c in countries)},
+             {"k": tr("اللغة", "Language"), "v": tr("، ", ", ").join(_tname(x, tr) for x in langs)},
+             {"k": tr("التصنيف", "Genre"), "v": "", "links": [{"name": _tname(g, tr), "href": _hub_path(hubs[0]["key"], "genres/" + g["slug"], tr.code) if hubs else tr.path} for g in genres]},
+             {"k": tr("المدة", "Runtime"), "v": tr(f"{row['runtime']} دقيقة", f"{row['runtime']} min") if row["runtime"] else ""},
+             {"k": tr("التقييم", "Rating"), "v": f"{row['rating']:g}/10" if row["rating"] else ""},
+             {"k": tr("الحالة", "Status"), "v": airing["short"] if airing else ""} if typ == "series" else {"k": "", "v": ""},
+             {"k": tr("المواسم", "Seasons"), "v": str(n_seasons) if seasons else ""},
+             {"k": tr("الحلقات", "Episodes"), "v": (str(n_eps) if n_official else eps_label(n_eps)) if n_eps else ""},
+             {"k": tr("الحلقات الخاصة", "Specials"), "v": str(n_specials) if n_specials else ""}]
+    facts = [f for f in facts if f["k"] and (f["v"] or f.get("links"))]
+    faq = []
+    if ov:
+        faq.append((tr(f"ما قصة {kind_ar} {title}؟", f"What is {title} about?"), ov[:300]))
+    if seasons:
+        so_far = airing and airing["live"]
+        faq.append((tr(f"كم عدد مواسم وحلقات {title}؟", f"How many seasons and episodes does {title} have?"),
+                    tr(f"{tr.count(n_seasons, 'seasons')} و{eps_label(n_eps)}" + (" حتى الآن، والمسلسل ما زال يُعرض وتُضاف حلقاته تباعًا." if so_far else "."),
+                       f"{tr.count(n_seasons, 'seasons')} and {eps_label(n_eps)}" + (" so far; the series is still airing and episodes are being added." if so_far else "."))))
+    if airing:
+        faq.append((tr(f"هل ما زال {title} يُعرض؟ وهل سيكون له جزء ثانٍ؟", f"Is {title} still airing, and will there be another season?"), airing["faq_a"]))
+    if cast:
+        faq.append((tr(f"من أبطال {title}؟", f"Who stars in {title}?"), tr("، ", ", ").join(_pname(p, tr) for p in cast[:6]) + "."))
+    if director:
+        faq.append((tr(f"من {'مخرج' if director['role'] == 'director' else 'مبتكر'} {title}؟", f"Who is the {director['role']} of {title}?"), _pname(director, tr) + "."))
+    if row["year"]:
+        faq.append((tr(f"ما سنة إنتاج {title}؟", f"When was {title} released?"), str(row["year"]) + "."))
+    if srv_names:
+        faq.append((tr(f"أين أشاهد {title}؟", f"Where can I watch {title}?"), tr(f"متوفر عبر اشتراكات {tr.join(srv_names)} من سمارت سوق.", f"Available on Smart Souq's {tr.join(srv_names)} subscriptions.")))
+    faq = faq if len(faq) >= 2 else []
+    canonical = SITE + _path(row, tr.code)
+    ld = {"@context": "https://schema.org", "@type": "Movie" if typ == "movie" else "TVSeries", "name": title, "url": canonical, "inLanguage": tr.code}
+    if row["original_title"]:
+        ld["alternateName"] = row["original_title"]
+    if poster:
+        ld["image"] = poster
+    if ov:
+        ld["description"] = ov
+    if row["release_date"]:
+        ld["datePublished"] = row["release_date"]
+    if genres:
+        ld["genre"] = [_tname(g, tr) for g in genres]
+    if director:
+        ld["director" if director["role"] == "director" else "creator"] = {"@type": "Person", "name": _pname(director, tr), "url": SITE + _person_path(director["role"], director["slug"], tr.code)}
+    if cast:
+        ld["actor"] = [{"@type": "Person", "name": _pname(p, tr), "url": SITE + _person_path(p["role"], p["slug"], tr.code)} for p in cast[:12]]
+    if writers:
+        ld["author"] = [{"@type": "Person", "name": _pname(p, tr), "url": SITE + _person_path(p["role"], p["slug"], tr.code)} for p in writers[:8]]
+    if companies:
+        ld["productionCompany"] = [{"@type": "Organization", "name": c["name"], "url": SITE + _company_path(c["slug"], tr.code)} for c in companies]
+    if row["rating"] and row["votes"]:
+        ld["aggregateRating"] = {"@type": "AggregateRating", "ratingValue": row["rating"], "bestRating": 10, "ratingCount": row["votes"]}
+    if typ == "series" and n_official:
+        ld["numberOfSeasons"] = n_seasons
+        ld["numberOfEpisodes"] = n_official
+    if guide_rating:
+        ld["contentRating"] = guide_rating
+    if typ == "series" and row["status"] in ("Ended", "Canceled") and row["last_air_date"]:
+        ld["endDate"] = row["last_air_date"]
+    if countries:
+        ld["countryOfOrigin"] = [{"@type": "Country", "name": _tname(c, tr)} for c in countries]
+    if row["runtime"] and typ == "movie":
+        ld["duration"] = f"PT{row['runtime']}M"
+    if row["trailer_yt"]:
+        tl = {"@type": "VideoObject", "name": tr(f"إعلان {title}", f"{title} trailer"), "embedUrl": f"https://www.youtube.com/embed/{row['trailer_yt']}",
+              "thumbnailUrl": f"https://i.ytimg.com/vi/{row['trailer_yt']}/hqdefault.jpg", "uploadDate": row["release_date"] or f"{row['year']}-01-01" if (row["release_date"] or row["year"]) else None}
+        ld["trailer"] = {k: v for k, v in tl.items() if v}
+    lds = [crumb_ld, ld]
+    if faq:
+        lds.append({"@context": "https://schema.org", "@type": "FAQPage", "inLanguage": tr.code, "mainEntity": [{"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in faq]})
+    ov_ar, ov_en = _override(con, "content", row["id"], "ar"), _override(con, "content", row["id"], "en")
+    ovr = ov_en if tr.en else ov_ar
+    if ovr.get("seo_title"):
+        page_title = ovr["seo_title"]
+    if ovr.get("meta_desc"):
+        desc = ovr["meta_desc"][:160]
+    ok_ar, ok_en, live = index_flags(con, row, st, approved)
+    if ov_ar.get("index_flag") == 0:
+        ok_ar = False
+    if ov_en.get("index_flag") == 0:
+        ok_en = False
+    alts = [{"lang": "ar", "href": SITE + _path(row, "ar")}, {"lang": "en", "href": SITE + _path(row, "en")}, {"lang": "x-default", "href": SITE + _path(row, "ar")}] if ok_ar and ok_en else []
+    sim = [{"type": r["type"], "slug": r["slug"], "title": _title(r, tr), "year": r["year"], "rating": r["rating"], "poster": _img(r["poster"], "w342", _card_skey(r)), "href": _path(r, tr.code)}
+           for r in _similar(con, row, tr, st)]
+    servers = [{"key": s["key"], "name": tr.name(s), "versions": sorted({v for ln in con.execute("SELECT versions_json FROM content_service WHERE content_id=? AND service_key=? AND present=1", (row["id"], s["key"]))
+                                                                        for v in _loads(ln[0])})} for s in srv_all]
+    return {"ok": True, "type": typ, "slug": slug, "lang": tr.code, "canonical": canonical, "path": _path(row, tr.code), "noindex": not (live and (ok_en if tr.en else ok_ar)),
+            "alts": alts, "alt_path": _path(row, "ar" if tr.en else "en"),
+            "seo": {"title": page_title, "description": desc, "intro": ovr.get("intro") or ""},
+            "title": title, "original_title": row["original_title"] if row["original_title"] and row["original_title"] != title else "", "year": row["year"],
+            "rating": row["rating"], "votes": row["votes"], "poster": poster, "backdrop": backdrop, "trailer_yt": row["trailer_yt"] or "",
+            "overview": ov, "kind_label": kind_ar, "crumbs": [{"name": n, "href": u} for n, u in crumbs], "facts": facts,
+            "chips": [{"name": HUB_NAMES.get(h["key"], (h["key"], h["key"]))[tr.en], "href": _hub_path(h["key"], "", tr.code)} for h in hubs],
+            "airing": ({k: airing.get(k) for k in ("live", "head", "detail", "note", "short")} if airing else None),
+            "parents": parents, "scenes": scenes,
+            "people": {"director": [person(director)] if director else [], "director_label": ROLE_NAMES[director["role"]][tr.en] if director else "",
+                       "cast": [person(p) for p in cast[:12]], "writers": [person(p) for p in writers[:8]]},
+            "companies": [{"name": c["name"], "href": _company_path(c["slug"], tr.code)} for c in companies],
+            "seasons": seas, "faq": [{"q": q, "a": a} for q, a in faq], "jsonld": lds, "servers": servers, "similar": sim,
+            "updated_at": row["updated_at"]}
+
+
+# ================= التصدير الدفعي لصفحات الأعمال (يحمّله المتجر ويخدمها محليًّا) =================
+ENTITY_BATCH_MAX = 40
+
+
+def _export_ctx(con, data_dir, lang):
+    """← (st، approved) إن كان التصدير مفتوحًا لهذه اللغة، وإلا None (لا معاينة، أو لغةٌ معطّلة، أو الفهرسة غير مفعّلة بعد)."""
+    st = seo_db.settings(con)
+    if not st.get("preview") or not st.get("index_live") or lang not in (st.get("languages") or ["ar", "en"]):
+        return None
+    return st, approved_routes(con)
+
+
+def entity_index(data_dir, lang="ar"):
+    """الأعمال التي تُخدم index فعلًا بهذه اللغة (معتمدة ومستحقّة الآن) ← {"at"، "items": [[النوع، slug، updated_at]]} أو None.
+    يستعمله المتجر ليعرف ما يجلبه (الأحدث من نسخته) وما يحذفه (خرج من الاعتماد)."""
+    if lang not in ("ar", "en"):
+        return None
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return None
+    try:
+        ctx = _export_ctx(con, data_dir, lang)
+        if ctx is None:
+            return None
+        st, approved = ctx
+        ids = {i for (i, ln) in approved if ln == lang}
+        out = []
+        for r in con.execute("SELECT * FROM content WHERE type IN ('series','movie') AND merged_into IS NULL ORDER BY id"):
+            if r["id"] in ids and live_index(r, lang, st, approved)[0]:
+                out.append([r["type"], r["slug"], r["updated_at"]])
+        return {"ok": True, "lang": lang, "at": int(time.time()), "count": len(out), "items": out}
+    finally:
+        con.close()
+
+
+def entity_batch(data_dir, lang, keys):
+    """بيانات (entity_json) لأعمالٍ بمفاتيحها «النوع:slug» (حتى ENTITY_BATCH_MAX) ← {"items": [...]} أو None. ما لا يُخدم index لا يدخل."""
+    if lang not in ("ar", "en"):
+        return None
+    pairs = []
+    for k in keys[:ENTITY_BATCH_MAX]:
+        t, _, sl = k.partition(":")
+        if t in ("series", "movie") and re.fullmatch(r"[a-z0-9-]{1,120}", sl):
+            pairs.append((t, sl))
+    con = seo_db.connect(data_dir, create=False)
+    if con is None:
+        return None
+    try:
+        ctx = _export_ctx(con, data_dir, lang)
+        if ctx is None:
+            return None
+        st, approved = ctx
+        items = []
+        for t, sl in pairs:
+            d = entity_json(data_dir, t, sl, lang, _con=con, _approved=approved)
+            if d and d.get("ok") and not d.get("noindex"):
+                items.append(d)
+        return {"ok": True, "lang": lang, "items": items}
     finally:
         con.close()
 

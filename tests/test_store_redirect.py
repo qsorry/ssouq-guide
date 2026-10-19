@@ -102,26 +102,41 @@ def sitemap_cache():
 
     def build():
         calls.append(1)
-        return b"<urlset/>"
+        return b"v%d" % len(calls)
+
+    def settle(n):
+        for _ in range(200):
+            if len(calls) >= n and not X._sitemap_refreshing:
+                return
+            time.sleep(0.01)
     X._sitemap_cache.clear()
     a, b = X.cached_sitemap("/t.xml", build), X.cached_sitemap("/t.xml", build)
-    check("تُبنى مرةً واحدة وتُعاد من الكاش", len(calls) == 1 and a == b == b"<urlset/>", len(calls))
+    check("الأولى تُبنى مرةً واحدة وتُعاد من الكاش", len(calls) == 1 and a == b == b"v1", len(calls))
     keep = X._sitemap_version
     try:
         X._sitemap_version = lambda: ("changed",)
-        X.cached_sitemap("/t.xml", build)
-        check("تتبدّل قاعدة SEO ← تُعاد البناء", len(calls) == 2, len(calls))
+        stale = X.cached_sitemap("/t.xml", build)
+        check("تبدّلت قاعدة SEO: تُعاد النسخة القديمة فورًا", stale == b"v1")
+        settle(2)
+        check("وتُجدَّد في الخلفية مرةً واحدة فتصير الجديدة", len(calls) == 2 and X.cached_sitemap("/t.xml", build) == b"v2", len(calls))
     finally:
         X._sitemap_version = keep
     ttl = X.SITEMAP_TTL
     try:
         X.SITEMAP_TTL = 0
-        X.cached_sitemap("/t.xml", build)
-        check("وانقضاء المهلة ← تُعاد البناء", len(calls) == 3, len(calls))
+        old = X.cached_sitemap("/t.xml", build)
+        settle(3)
+        check("وانقضاء المهلة كذلك: القديمة فورًا ثم الجديدة", old == b"v2" and len(calls) == 3, (old, len(calls)))
     finally:
         X.SITEMAP_TTL = ttl
     X._sitemap_cache.clear()
     check("غير الموجودة (None) لا تُخزَّن", X.cached_sitemap("/none.xml", lambda: None) is None and "/none.xml" not in X._sitemap_cache)
+    n0 = len(calls)
+    X._sitemap_cache["/b.xml"] = (0, ("old",), b"stale")
+    ts = [__import__("threading").Thread(target=lambda: X.cached_sitemap("/b.xml", build)) for _ in range(6)]
+    [t.start() for t in ts]; [t.join() for t in ts]
+    settle(n0 + 1)
+    check("تزاحم الطلبات على المنتهية: بناءٌ واحدٌ في الخلفية", len(calls) == n0 + 1, len(calls) - n0)
 
 
 def _up(url):
@@ -179,6 +194,9 @@ def live():
         check("وخريطةٌ فرعية غير موجودة ← 404", c == 404, c)
         c, _ = req(mv, "/api/content")
         check("بعد النقل: واجهة المحتوى تبقى", c == 200, c)
+        for pth in ("/api/content/entities/index", "/api/content/entities?keys=series:x", "/api/content/entities/index?lang=en"):
+            c, _ = req(on, pth)
+            check(f"التصدير الدفعي مغلقٌ (404) قبل المعاينة والفهرسة: {pth}", c == 404, c)
         c, _ = req(off, "/")
         check("بلا XM_STORE_URL: الرئيسية كما هي", c == 200)
         c, _ = req(off, "/samsung-lg")
