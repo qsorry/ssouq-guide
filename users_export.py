@@ -62,6 +62,9 @@ def _norm(row, host=""):
         "last_conn": last,
         "active": _ACTIVE_AR.get(act, ""),
         "host": g("host") or str(host or ""),
+        # إنشاءٌ لم يؤكّده جدول اللوحة (verified=False): يُحفظ معلَّمًا فيعرف البحث
+        # لاحقًا أن وجوده في الملف لا يثبت وجوده في اللوحة.
+        **({"unverified": True} if row.get("verified") is False else {}),
     }
 
 
@@ -128,6 +131,8 @@ def merge(data_dir, acct_id, gate_id, gate_name, new_rows, host=""):
             for k, v in n.items():                 # لا تدهس قيمةً موجودةً بفراغ
                 if v:
                     cur[k] = v
+            if r.get("verified") is True:          # أكّدته اللوحة الآن: تُرفع العلامة
+                cur.pop("unverified", None)
         else:
             idx[u] = len(rows)
             rows.append(n)
@@ -150,7 +155,8 @@ def search(data_dir, acct_id, gate_id, q, limit=50):
                         "package": r.get("package", ""), "exp": r.get("exp", ""),
                         "created": r.get("created", ""), "connections": r.get("connections", ""),
                         "last_conn": r.get("last_conn", ""), "active": r.get("active", ""),
-                        "host": r.get("host", ""), "status": ""})
+                        "host": r.get("host", ""), "status": "",
+                        **({"unverified": True} if r.get("unverified") else {})})
             if len(out) >= limit:
                 break
     return out

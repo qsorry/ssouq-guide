@@ -130,6 +130,27 @@ def main():
         both = users_export.search(d, S, SG, "z")           # في باسوردِ الصفّين
         check("limit caps results", len(users_export.search(d, S, SG, "z", limit=1)) == 1
               and len(both) == 2, "both=%d" % len(both))
+
+        # إنشاءٌ لم يؤكّده جدول اللوحة (verified=False) يُحفظ معلَّمًا، ويُرجعه البحث بعلامته،
+        # وتأكيدٌ لاحق (verified=True) يرفعها — فلا يُعرض «موجودًا» وهو قد لا يكون في اللوحة.
+        V, VG = "acctV", "gateV"
+        users_export.merge(d, V, VG, "مرح", [
+            {"username": "457723874144", "password": "p1", "verified": False},
+            {"username": "825842883908", "password": "p2", "verified": True},
+        ])
+        vr = {r["username"]: r for r in users_export.search(d, V, VG, "8")}
+        check("unverified create is saved flagged and search returns the flag",
+              vr["457723874144"].get("unverified") is True and "unverified" not in vr["825842883908"], str(vr)[:160])
+        users_export.merge(d, V, VG, "مرح", [{"username": "457723874144", "password": "p1"}])
+        check("a merge without confirmation keeps the flag",
+              users_export.search(d, V, VG, "457723874144")[0].get("unverified") is True)
+        users_export.merge(d, V, VG, "مرح", [{"username": "457723874144", "verified": True}])
+        check("a confirmed merge clears the flag",
+              "unverified" not in users_export.search(d, V, VG, "457723874144")[0])
+        users_export.merge(d, V, VG, "مرح", [{"username": "111", "verified": False}])
+        users_export.replace_all(d, V, VG, "مرح", [{"username": "111", "password": "x"}])
+        check("a full pull (rows from the panel itself) carries no flag",
+              "unverified" not in users_export.search(d, V, VG, "111")[0])
     finally:
         shutil.rmtree(d, ignore_errors=True)
 

@@ -5304,6 +5304,107 @@ def annotate_package_type(gate, rows, pkgs=None):
     return rows
 
 
+def _search_live(gate, q):
+    """سؤال اللوحة الحيّة نفسها (فالكون بالـ API، والويب بجدولها). لا يرمي: ما يمنع البحث
+    يُرجَع حالةً (need_login / login_error / error / unsupported) بجانب النتائج."""
+    if gate.get("mode") == "falcon":
+        try:
+            return {"results": falcon_api.search(gate["api_url"], gate["api_key"], q)}
+        except falcon_api.FalconError as e:
+            return {"results": [], "error": str(e)}
+        except Exception:
+            return {"results": [], "error": "تعذّر البحث في اللوحة"}
+    if gate.get("mode") == "web":         # بحث جدول اللوحة نفسه
+        try:
+            return {"results": annotate_package_type(gate, web_session(gate).search(q))}
+        except xm_web.CaptchaNeeded:
+            return {"results": [], "need_login": True}
+        except xm_web.LoginFailed as e:
+            return {"results": [], "login_error": str(e)}
+        except Exception:
+            return {"results": [], "error": "تعذّر البحث في اللوحة"}
+    return {"results": [], "unsupported": True}
+
+
+_LIVE_FAIL = ("need_login", "login_error", "error", "unsupported")
+VERIFY_MAX = 100                       # يوزراتٌ في طلب تحقّقٍ واحد (الصفحة تقسّم ما زاد)
+
+
+def verify_lines(acct, gate, items):
+    """التحقّق من يوزراتٍ أُنشئت من الأداة: يُسأل جدول اللوحة الحيّ عن كلٍّ منها.
+    items: [{username, password}]. لكلٍّ حالة: found (موجود باسمه) · renamed (لا يوجد
+    باسمه وكلمةُ مروره عند يوزرٍ آخر — غُيّر اسمه، فلا يُعاد إنشاؤه) · missing (لا أثر
+    له: يُعرض للإضافة). تُحدَّث علامة «غير مؤكَّد» في ملف التصدير بالنتيجة. أول تعذّرٍ في
+    سؤال اللوحة (دخول/كود/شبكة) يوقف الفحص ويُرجَع حالةً مع ما فُحص قبله."""
+    if gate.get("archive_only") or gate.get("mode") not in ("web", "falcon"):
+        return {"results": [], "unsupported": True}
+    out, marks, fail = [], [], {}
+    for it in (items or [])[:VERIFY_MAX]:
+        u = str((it or {}).get("username") or "").strip()
+        p = str((it or {}).get("password") or "").strip()
+        if not u:
+            continue
+        live = _search_live(gate, u)
+        fail = {k: live[k] for k in _LIVE_FAIL if live.get(k)}
+        if fail:
+            break
+        hit = next((r for r in live.get("results") or [] if str(r.get("username") or "") == u), None)
+        if hit:
+            out.append({"username": u, "state": "found", "status": hit.get("status", ""), "exp": hit.get("exp", "")})
+            marks.append({"username": u, "password": p, "verified": True})
+            continue
+        moved = None
+        if p:
+            live = _search_live(gate, p)
+            fail = {k: live[k] for k in _LIVE_FAIL if live.get(k)}
+            if fail:
+                break
+            moved = next((r for r in live.get("results") or [] if str(r.get("password") or "") == p), None)
+        if moved:
+            out.append({"username": u, "state": "renamed", "now": str(moved.get("username") or ""),
+                        "status": moved.get("status", ""), "exp": moved.get("exp", "")})
+        else:
+            out.append({"username": u, "state": "missing"})
+            marks.append({"username": u, "password": p, "verified": False})
+    if marks:
+        try:
+            users_export.merge(DATA_DIR, acct["id"], gate["id"], gate.get("name"), marks, gate.get("host", ""))
+        except Exception:
+            pass
+    return {"results": out, **fail}
+
+
+def _check_unverified(acct, gate, q, saved, links):
+    """في اللقطة يوزرٌ أُنشئ ولم يؤكّده جدول اللوحة وقتها: وجوده في الملف لا يثبت وجوده
+    في اللوحة، فتُسأل اللوحة الحيّة. ما وجدته يُعرض منها (وتُرفع علامته من الملف)، وما
+    لم تجده وبحثُها سليم يُعرَض من الملف معلَّمًا missing_on_panel. وإن تعذّر سؤالها تُعرض
+    اللقطة بعلاماتها مع حالة التعذّر."""
+    live = _search_live(gate, q)
+    found = live.get("results") or []
+    failed = any(live.get(k) for k in _LIVE_FAIL)
+    have = {str(r.get("username") or "") for r in found}
+    confirmed = [{**r, "verified": True} for r in saved if r.get("unverified") and r["username"] in have]
+    if confirmed:
+        try:
+            users_export.merge(DATA_DIR, acct["id"], gate["id"], gate.get("name"), confirmed,
+                               gate.get("host", ""))
+        except Exception:
+            pass
+    rest = []
+    for r in saved:
+        if r["username"] in have:
+            continue
+        if r.get("unverified") and not failed:
+            r = {**r, "missing_on_panel": True}
+        rest.append(r)
+    out = {"results": list(found) + annotate_package_type(gate, rest), "links": links,
+           "source": "panel" if found else "file"}
+    for k in ("need_login", "login_error", "error"):
+        if live.get(k):
+            out[k] = live[k]
+    return out
+
+
 def _search_gate(acct, gate, q):
     """بحث بوابة واحدة بالـ username/password، ومعه روابط الاستبدال (قديم↔جديد) لهذا
     الرقم فيها — لتتبّع «استُبدل بـ / بديل عن». لا يرمي: ما يمنع البحث يُرجَع حالةً
@@ -5312,9 +5413,13 @@ def _search_gate(acct, gate, q):
     اللقطة المحفوظة أولًا: يوزراتُ البوابة مخزَّنةٌ عندنا في ملف التصدير (تُحدَّث عند
     السحب الكامل وعند كل إنشاء)، فنبحث فيها أولًا — يوزرٌ وباسوردٌ بلا شبكة ولا انتظار
     جلسة اللوحة. وما لم يوجد في الملف (أو لم يُصدَّر بعد) تُسأل عنه اللوحة كما كان،
-    فلا يضيع يوزرٌ أُنشئ على اللوحة مباشرةً أو قبل أول تصدير."""
+    فلا يضيع يوزرٌ أُنشئ على اللوحة مباشرةً أو قبل أول تصدير. وما في الملف بعلامة
+    «غير مؤكَّد» تُسأل عنه اللوحة أيضًا (_check_unverified)."""
     links = user_links.find(DATA_DIR, acct["id"], gate["id"], q)
     saved = users_export.search(DATA_DIR, acct["id"], gate["id"], q)
+    if saved and not gate.get("archive_only") and gate.get("mode") in ("web", "falcon") \
+            and any(r.get("unverified") for r in saved):
+        return _check_unverified(acct, gate, q, saved, links)
     if saved:
         return {"results": annotate_package_type(gate, saved), "links": links, "source": "file",
                 **({"archive_only": True} if gate.get("archive_only") else {})}
@@ -5322,23 +5427,7 @@ def _search_gate(acct, gate, q):
         # بوابة أرشيف فقط: اللقطة المحفوظة هي المصدر الوحيد — لا تُسأل اللوحة الحيّة (ولا
         # تُرجَع رسالةُ فشل دخولٍ)، فغيابُ اليوزر هنا = غير موجودٍ في الأرشيف.
         return {"results": [], "links": links, "source": "file", "archive_only": True}
-    if gate.get("mode") == "falcon":
-        try:
-            return {"results": falcon_api.search(gate["api_url"], gate["api_key"], q), "links": links}
-        except falcon_api.FalconError as e:
-            return {"results": [], "links": links, "error": str(e)}
-        except Exception:
-            return {"results": [], "links": links, "error": "تعذّر البحث في اللوحة"}
-    if gate.get("mode") == "web":         # بحث جدول اللوحة نفسه
-        try:
-            return {"results": annotate_package_type(gate, web_session(gate).search(q)), "links": links}
-        except xm_web.CaptchaNeeded:
-            return {"results": [], "links": links, "need_login": True}
-        except xm_web.LoginFailed as e:
-            return {"results": [], "links": links, "login_error": str(e)}
-        except Exception:
-            return {"results": [], "links": links, "error": "تعذّر البحث في اللوحة"}
-    return {"results": [], "links": links, "unsupported": True}
+    return {**_search_live(gate, q), "links": links}
 
 
 def search_gate(acct, gate, q):
@@ -9176,6 +9265,18 @@ class Handler(BaseHTTPRequestHandler):
                 except stremio_accounts.StremioError as e:
                     return self._send(400 if "كلمة المرور" in str(e) else 502, {"ok": False, "error": f"Stremio: {e}"})
                 return self._send(200, {"ok": True, "email": rec["email"], "password": rec["password"]})
+            if path == "/api/verify-lines":    # خارج القفل: هل يوزرات السجل موجودةٌ في اللوحة؟
+                if role != "account":
+                    return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
+                req = self._body()
+                gate = find_gate(acct, req.get("gate"))
+                if not gate:
+                    return self._send(400, {"error": "اختر بوابة"})
+                items = req.get("users") if isinstance(req.get("users"), list) else []
+                out = verify_lines(acct, gate, items)
+                if out.get("need_login"):        # الجلسة منتهية: الصفحة تطلب الكود ثم تعيد
+                    out["need_captcha"] = True
+                return self._send(200, out)
             if path == "/api/create":
                 if role != "account":
                     return self._send(403, {"error": "ادخل بحساب مستخدم وليس المدير"})
