@@ -7,7 +7,7 @@ const { renderShots } = require('./shots_lib');
 
 // مواضع الأزرار (بكسل الصورة) — كما يطبعها capture_duplecast.js، ومثلها في B بصفحة duplecast.html
 const TV = { qr: [1230, 200, 520, 520], mac: [80, 836, 543, 154], refresh: [1596, 70, 104, 104], live: [80, 320, 560, 300] };
-const WEB = { add: [697, 981, 398, 111], code: [786, 648, 348, 132], tab: [755, 375, 340, 120],
+const WEB = { menu: [1050, 60, 72, 54], add: [697, 981, 398, 111], code: [786, 648, 348, 132], tab: [755, 375, 340, 120],
   name: [75, 885, 1020, 189], host: [75, 1110, 1020, 189], port: [75, 1335, 1020, 189], user: [75, 1560, 1020, 189],
   pass: [75, 1785, 1020, 189], save: [75, 2184, 1020, 138], row: [75, 1061, 1020, 104], ok: [75, 1200, 1020, 123],
   field: [87, 1010, 996, 189], go: [87, 1241, 996, 138], st: [66, 447, 1038, 123] };
@@ -20,10 +20,11 @@ const SPECS = [
     marks: [{ r: TV.qr, n: 1, t: 'امسح الباركود بكاميرا جوالك', at: 'top' },
             { r: TV.mac, n: 2, t: 'أو رقم جهازك في الموقع', at: 'top' }] },
   { out: 'webos-duplecast-manage.webp', src: 'dc_manage.webp', w: 740, fs: 48,
-    marks: [{ r: WEB.add, n: 1, t: 'اضغط Add Playlist', at: 'left' }] },
+    marks: [{ r: WEB.menu, n: 1, t: 'بعد مسح الباركود اضغط ☰', at: 'below', hot: 1 },
+            { r: WEB.add, n: 2, t: 'اضغط Add Playlist', at: 'left' }] },
   { out: 'webos-duplecast-form.webp', src: 'dc_form.webp', w: 740, fs: 46,
     marks: [{ r: WEB.tab, n: 1, t: 'تبويب Xtream Info', at: 'below' }, { r: WEB.name, n: 2, t: 'أي اسم', at: 'in' },
-            { r: WEB.host, n: 3, t: 'الهوست بلا البورت', at: 'in', hot: 1 }, { r: WEB.port, n: 4, t: 'رقم البورت وحده', at: 'in', hot: 1 },
+            { r: WEB.host, n: 3, t: 'كما هو بلا / في آخره', at: 'in', hot: 1 }, { r: WEB.port, n: 4, t: 'البورت 80', at: 'in', hot: 1 },
             { r: WEB.user, n: 5, t: 'اسم المستخدم', at: 'in' }, { r: WEB.pass, n: 6, t: 'كلمة المرور', at: 'in' },
             { r: WEB.save, n: 7, t: 'اضغط Save', at: 'in' }] },
   { out: 'webos-duplecast-saved.webp', src: 'dc_saved.webp', crop: [0, 630, 1170, 786], w: 740, fs: 46,
