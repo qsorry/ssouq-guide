@@ -1228,15 +1228,76 @@ function renderHistory(){
     list.forEach(x => { (groups[dayKey(x)] ||= []).push(x); });
     return `<details class="pkgGroup" data-fold="${esc("p|" + pkg)}"${isOpen("p|" + pkg, pkg === newest)}><summary><span class="fh">${chev}<b>${esc(pkg)}</b></span><span class="fm">(${list.length}) <button class="copy" data-pkg="${esc(pkg)}">نسخ الباقة</button></span></summary>
     ${Object.entries(groups).map(([day, items], di) => `
-    <details class="day" data-fold="${esc("d|" + pkg + "|" + day)}"${isOpen("d|" + pkg + "|" + day, di === 0)}><summary><span class="fh">${chev}<b>${day}</b></span><span class="fm">(${items.length}) <button class="copy" data-day="${day}" data-pkg="${esc(pkg)}">نسخ اليوم</button></span></summary>
+    <details class="day" data-fold="${esc("d|" + pkg + "|" + day)}"${isOpen("d|" + pkg + "|" + day, di === 0)}><summary><span class="fh">${chev}<b>${day}</b></span><span class="fm">(${items.length}) <button class="copy" data-vday="${day}" data-pkg="${esc(pkg)}" title="البحث عن يوزرات هذه الجلسة في اللوحة">تحقّق</button> <button class="copy" data-day="${day}" data-pkg="${esc(pkg)}">نسخ اليوم</button></span></summary>
     <div class="tw"><table class="tbl"><thead><tr><th>#</th><th>اسم المستخدم</th><th>كلمة المرور</th><th>الحالة</th><th class="hide-sm">الوقت</th><th></th></tr></thead><tbody>
     ${items.map((x,i) => `<tr><td class="n">${i+1}</td><td class="m">${esc(partOf(x,"username",/User\s+(\S+)/))}</td><td class="m">${esc(partOf(x,"password",/Pass\s+(\S+)/))}</td>
-      <td class="ust" data-u="${esc(partOf(x,"username",/User\s+(\S+)/))}">${x.verified === false ? '<span class="pill">غير مؤكد</span>' : '<span class="pill ok">نشط</span>'}</td>
+      <td class="ust" data-u="${esc(partOf(x,"username",/User\s+(\S+)/))}">${verPill(x)}</td>
       <td class="n hide-sm">${new Date(x.time).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}</td>
       <td><button class="cb" title="نسخ السطر" data-line="${esc(x.line)}">${copyIcon}</button></td></tr>`).join("")}
     </tbody></table></div></details>`).join("")}</details>`;
   }).join("");
   fillUserStatus();
+}
+// ---- التحقّق من جلسة إنشاء (يوم الباقة): هل يوزراتها موجودةٌ في اللوحة؟ ----
+// الخادم يسأل جدول اللوحة الحيّ عن كل يوزر: موجود · غُيّر اسمه (كلمة مروره عند يوزرٍ آخر،
+// فلا يُعرض للإضافة لئلا يُخصم مرتين) · غير موجود (يُعرض للإضافة بنفس اليوزر والباقة).
+const VER = {};                                   // "<بوابة>|<يوزر>" → نتيجة التحقّق
+const verKey = u => curGate + "|" + u;
+const uOf = x => partOf(x, "username", /User\s+(\S+)/), pOf = x => partOf(x, "password", /Pass\s+(\S+)/);
+function verPill(x){
+  const v = VER[verKey(uOf(x))];
+  if (v && v.state === "found") return '<span class="pill ok" title="وُجد في جدول اللوحة الآن">موجود في اللوحة</span>';
+  if (v && v.state === "renamed") return `<span class="pill warn" title="لا يوجد بهذا الاسم، وكلمة مروره عند هذا اليوزر في اللوحة">تغيّر اسمه ← <span dir="ltr">${esc(v.now)}</span></span>`;
+  if (v && v.state === "missing") return `<span class="pill bad">غير موجود في اللوحة</span> <button class="copy" data-add="${esc(uOf(x))}">إضافة</button>`;
+  return x.verified === false ? '<span class="pill">غير مؤكد</span>' : '<span class="pill ok">نشط</span>';
+}
+async function verifyDay(btn){
+  const items = load().filter(x => dayKey(x) === btn.dataset.vday && pkgKey(x) === btn.dataset.pkg);
+  const users = items.map(x => ({username: uOf(x), password: pOf(x)})).filter(x => x.username);
+  if (!users.length) return toast("لا يوزرات للتحقّق");
+  const label = btn.textContent; btn.disabled = true;
+  try {
+    for (let i = 0; i < users.length; i += 100) {         // الخادم يقبل ١٠٠ في الطلب
+      btn.textContent = users.length > 100 ? `جاري التحقّق… ${Math.min(i + 100, users.length)}/${users.length}` : "جاري التحقّق…";
+      const r = await fetch(B + "/api/verify-lines", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({gate: curGate, users: users.slice(i, i + 100)})});
+      const d = chk(await r.json());
+      (d.results || []).forEach(v => { VER[verKey(v.username)] = v; });
+      if (d.need_captcha) { renderHistory(); showCaptcha(() => verifyDay(btn)); return; }
+      if (d.unsupported) throw new Error("التحقّق غير متاح لهذه البوابة");
+      if (d.error || d.login_error) throw new Error(d.error || d.login_error);
+    }
+  } catch (e) { toast(e.message || "تعذّر التحقّق"); return; }
+  finally { btn.disabled = false; btn.textContent = label; }
+  renderHistory();
+  const st = s => users.filter(u => (VER[verKey(u.username)] || {}).state === s).length;
+  const miss = items.filter(x => (VER[verKey(uOf(x))] || {}).state === "missing");
+  const sum = `موجود ${st("found")} · غيّر اسمه ${st("renamed")} · غير موجود ${miss.length}`;
+  if (!miss.length) return toast("تمّ التحقّق: " + sum);
+  if (confirm(`نتيجة التحقّق: ${sum}.\n\nلم يُعثر في اللوحة على ${miss.length} حساب:\n${miss.slice(0, 15).map(uOf).join("\n")}${miss.length > 15 ? "\n…" : ""}\n\nهل تريد إضافتها الآن بنفس اليوزر وكلمة المرور والباقة؟ (يُخصم من رصيد اللوحة)`))
+    addMissing(miss);
+}
+// إنشاء المفقود بنفس اليوزر وكلمة المرور والباقة؛ يُحدَّث سطره في السجل بما أعادته اللوحة.
+async function addMissing(list){
+  let ok = 0;
+  for (const x of list) {
+    const u = uOf(x);
+    if (!x.package_id) { toast(`«${u}»: باقته غير محفوظة في السجل — أنشئه يدويًا`); continue; }
+    try {
+      const r = await fetch(B + "/api/create", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({gate: curGate, package_id: x.package_id, username: u, password: pOf(x), count: 1})});
+      const d = chk(await r.json());
+      if (d.need_captcha) { showCaptcha(() => addMissing(list.filter(y => (VER[verKey(uOf(y))] || {}).state === "missing"))); break; }
+      if (d.login_error) throw new Error(d.login_error);
+      const line = (d.lines || [])[0];
+      if (!line) throw new Error(d.error || "تعذّر الإنشاء");
+      const h = load(), i = h.findIndex(y => uOf(y) === u && y.time === x.time);
+      if (i >= 0) { h[i] = {...h[i], ...line, time: h[i].time, re_added: line.time}; save(h); }
+      VER[verKey(line.username || u)] = {state: line.verified === false ? "" : "found"};
+      ok++;
+    } catch (e) { toast(`«${u}»: ${e.message}`); break; }
+  }
+  renderHistory(); if (ok) { toast(`أُضيف ${ok} حساب`); loadGateStatus(); loadXlsxStatus(); }
 }
 // حال كل يوزرٍ منشأ من الخادم: بيع (في أي طلب ولمن) · بديل · لم يُبع — بعد العرض، ولا يعطّله تعذّر الاتصال
 const UST = {complaint: '', cache: {}};
@@ -1261,6 +1322,12 @@ $("hist").addEventListener("click", e => {
   if (sum && b) e.preventDefault();                          // زرّ النسخ في العنوان ينسخ ولا يطوي
   else if (sum) { const d = sum.parentElement; saveFold(d.dataset.fold, !d.open); return; }
   if (!b) return;
+  if (b.dataset.vday) { verifyDay(b); return; }
+  if (b.dataset.add) {
+    const x = load().find(y => uOf(y) === b.dataset.add);
+    if (x && confirm(`إضافة «${b.dataset.add}» إلى اللوحة بنفس كلمة المرور والباقة؟ (يُخصم من رصيد اللوحة)`)) addMissing([x]);
+    return;
+  }
   if (b.dataset.line) copy(b.dataset.line);
   else if (b.dataset.day) copy(load().filter(x => dayKey(x) === b.dataset.day && pkgKey(x) === b.dataset.pkg).map(x=>x.line).join("\n"));
   else if (b.dataset.pkg) copy(load().filter(x => pkgKey(x) === b.dataset.pkg).map(x=>x.line).join("\n"));

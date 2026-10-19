@@ -117,6 +117,35 @@ def main():
         xm_lines._search_live = fake_live
         xm_lines.search_gate(acct, live_gate, "457700000002")
         check("only confirmed rows matched: the file answers, the panel is not asked", calls == [], str(calls))
+
+        # «تحقّق» من جلسة إنشاء: موجود · غُيّر اسمه (كلمة مروره عند يوزرٍ آخر) · غير موجود
+        panel = [{"username": "111", "password": "a1", "status": "active", "exp": "2027-01-01"},
+                 {"username": "999", "password": "b2", "status": "active"}]
+        xm_lines._search_live = lambda g, q: {"results": [r for r in panel if q in (r["username"], r["password"])]}
+        v = xm_lines.verify_lines(acct, live_gate, [
+            {"username": "111", "password": "a1"}, {"username": "222", "password": "b2"},
+            {"username": "333", "password": "c3"}, {"username": ""}])
+        st = {r["username"]: r for r in v.get("results", [])}
+        check("verify: found / renamed (to the user holding its password) / missing",
+              st["111"]["state"] == "found" and st["111"]["exp"] == "2027-01-01"
+              and st["222"]["state"] == "renamed" and st["222"]["now"] == "999"
+              and st["333"]["state"] == "missing" and len(st) == 3, str(v)[:200])
+        snap = {r["username"]: r for r in xm_lines.users_export.load(
+            xm_lines.users_export.paths(xm_lines.DATA_DIR, "acc1", "gv")[0])}
+        check("verify: missing is flagged unverified in the file, found is not, renamed untouched",
+              snap["333"].get("unverified") is True and "unverified" not in snap["111"] and "222" not in snap,
+              str({k: snap[k].get("unverified") for k in snap if k in ("111", "222", "333")}))
+
+        xm_lines._search_live = lambda g, q: {"results": [], "need_login": True}
+        v2 = xm_lines.verify_lines(acct, live_gate, [{"username": "111", "password": "a1"}])
+        check("verify: panel needs login -> stops with need_login, nothing called missing",
+              v2.get("need_login") and v2.get("results") == [], str(v2))
+        v3 = xm_lines.verify_lines(acct, arch, [{"username": "111"}])
+        check("verify: archive-only gate is unsupported (no panel)", v3.get("unsupported") is True)
+        many = [{"username": str(i)} for i in range(xm_lines.VERIFY_MAX + 20)]
+        xm_lines._search_live = lambda g, q: {"results": []}
+        check("verify: capped at VERIFY_MAX per request",
+              len(xm_lines.verify_lines(acct, live_gate, many)["results"]) == xm_lines.VERIFY_MAX)
     finally:
         xm_lines._search_live = orig_live
 
