@@ -79,6 +79,47 @@ def main():
     check("archive-only: a miss is 'not in archive', never a panel login error",
           miss.get("results") == [] and miss.get("archive_only") is True
           and "login_error" not in miss and "error" not in miss, str(miss)[:120])
+    # --- يوزرٌ في الملف «غير مؤكَّد» (أُنشئ ولم يؤكّده جدول اللوحة): تُسأل اللوحة الحيّة ---
+    live_gate = {"id": "gv", "name": "مرح", "mode": "web", "host": "http://h:80",
+                 "panel_base": "http://127.0.0.1:9", "panel_user": "u", "panel_pass": "p"}
+    xm_lines.users_export.merge(xm_lines.DATA_DIR, "acc1", "gv", "مرح", [
+        {"username": "457723874144", "password": "pa", "verified": False},
+        {"username": "457700000001", "password": "pb", "verified": False},
+        {"username": "457700000002", "password": "pc", "verified": True},
+    ])
+    orig_live, calls = xm_lines._search_live, []
+
+    def fake_live(g, q):
+        calls.append(q)
+        return {"results": [{"username": "457723874144", "password": "pa", "status": "active"}]}
+    xm_lines._search_live = fake_live
+    try:
+        out = xm_lines.search_gate(acct, live_gate, "4577")
+        by = {r["username"]: r for r in out.get("results", [])}
+        check("unverified in file: the live panel is asked", calls == ["4577"], str(calls))
+        check("found on the panel: shown from it, not flagged",
+              by["457723874144"].get("status") == "active" and not by["457723874144"].get("missing_on_panel"),
+              str(by.get("457723874144")))
+        check("not found on the panel: flagged missing_on_panel",
+              by["457700000001"].get("missing_on_panel") is True, str(by.get("457700000001")))
+        check("a confirmed row in the file is not flagged", not by["457700000002"].get("missing_on_panel"))
+        snap = {r["username"]: r for r in xm_lines.users_export.search(xm_lines.DATA_DIR, "acc1", "gv", "4577")}
+        check("panel confirmation clears the file's flag; the missing one stays flagged",
+              "unverified" not in snap["457723874144"] and snap["457700000001"].get("unverified") is True)
+
+        xm_lines._search_live = lambda g, q: {"results": [], "need_login": True}
+        out2 = xm_lines.search_gate(acct, live_gate, "457700000001")
+        r2 = (out2.get("results") or [{}])[0]
+        check("panel unreachable: file row still shown, unverified but not called missing",
+              r2.get("unverified") is True and not r2.get("missing_on_panel") and out2.get("need_login"), str(out2)[:160])
+
+        calls.clear()
+        xm_lines._search_live = fake_live
+        xm_lines.search_gate(acct, live_gate, "457700000002")
+        check("only confirmed rows matched: the file answers, the panel is not asked", calls == [], str(calls))
+    finally:
+        xm_lines._search_live = orig_live
+
     cg = xm_lines.clean_gate(arch)
     check("clean_gate: archive-only web gate needs no panel creds, flag kept",
           cg["archive_only"] is True and cg["mode"] == "web", str(cg)[:120])

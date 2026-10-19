@@ -719,9 +719,15 @@ function missCard(q, all){
 // نتيجةٌ جاءت من ملف التصدير المحفوظ (فورية بلا سؤال اللوحة): نُشير إليها بهدوء، فحقل
 // «الحالة» لا تحمله اللقطة والانتهاء منها قد يسبق اللوحة قليلًا — والسحب الكامل يحدّثهما.
 const fileNote = `<div class="src-note">من الملف المحفوظ — فوريّ بلا انتظار اللوحة. لأحدث «حالة» وانتهاء، اسحب البوابة كاملةً.</div>`;
+// يوزرٌ في الملف أُنشئ ولم يؤكّده جدول اللوحة وقتها: سُئلت اللوحة فلم تجده (غير موجود)، أو
+// تعذّر سؤالها (غير مؤكد) — فلا يُعرض كأنه موجودٌ فيها.
+const rowPill = x => x.missing_on_panel
+  ? '<span class="pill bad" title="أُنشئ من النظام ولم تؤكّده اللوحة، وبحثها الآن لا يجده — راجع رصيد اللوحة وأعد الإنشاء إن لم يُخصم">غير موجود في اللوحة</span>'
+  : x.unverified ? '<span class="pill warn" title="أُنشئ من النظام ولم تؤكّده اللوحة، وتعذّر سؤالها الآن">غير مؤكد</span>'
+  : pill(x.status);
 const resTable = (rows, gid) => `<div class="tw"><table class="tbl"><thead><tr><th>اسم المستخدم</th><th>كلمة المرور</th><th>الباقة</th><th>الحالة</th><th class="hide-sm">الانتهاء</th><th></th></tr></thead><tbody>` +
   rows.map(x => { const u = esc(String(x.username||"")), p = esc(String(x.password||""));
-    return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}${x.exp_left ? `<div class="exp-left">${esc(String(x.exp_left))}</div>` : ""}</td><td>${pill(x.status)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
+    return `<tr><td class="m">${u}</td><td class="m">${p}</td><td title="${esc(String(x.package_name||""))}">${esc(String(x.package_type||"—"))}${x.exp_left ? `<div class="exp-left">${esc(String(x.exp_left))}</div>` : ""}</td><td>${rowPill(x)}</td><td class="n hide-sm">${esc(String(x.exp||"—"))}</td>
       <td><button class="cb" title="${cpTitle("نسخ السطر الكامل")}" data-copy="${esc(msgOf(x, gid))}">${copyIcon}</button></td></tr>`; }).join("") + `</tbody></table></div>`;
 
 // ---- نطاق البحث: كل بوابات العميل معًا (الافتراضي) أو المختارة وحدها — يُتذكّر لكل متصفح ----
@@ -752,9 +758,9 @@ async function doSearch(){
     const d = chk(await r.json());
     const L = renderLinks(d.links);
     if (d.unsupported){ $("searchRes").innerHTML = L + '<div class="empty">البحث غير متاح لهذه البوابة.</div>'; return; }
-    if (d.need_login){ $("searchRes").innerHTML = L + '<div class="empty">سجّل الدخول إلى اللوحة أولًا (حمّل الباقات واكتب الكود).</div>'; return; }
-    if (d.error || d.login_error){ $("searchRes").innerHTML = L + '<div class="empty">'+esc(d.error||d.login_error)+'</div>'; return; }
     const rows = d.results || [];
+    if (d.need_login && !rows.length){ $("searchRes").innerHTML = L + '<div class="empty">سجّل الدخول إلى اللوحة أولًا (حمّل الباقات واكتب الكود).</div>'; return; }
+    if ((d.error || d.login_error) && !rows.length){ $("searchRes").innerHTML = L + '<div class="empty">'+esc(d.error||d.login_error)+'</div>'; return; }
     const note = (d.source === "file" && rows.length) ? fileNote : "";
     $("searchRes").innerHTML = L + note + (rows.length ? resTable(rows) : missCard(q));
   } catch(e){ $("searchRes").innerHTML = '<div class="empty">تعذّر البحث.</div>'; }
