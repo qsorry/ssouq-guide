@@ -15,7 +15,7 @@ Xtream-Masters — إنشاء يوزرات M3U Lines (متعدد الحسابا�
 البيانات تُحفظ في data/accounts.json. لا يحتاج أي مكتبات خارجية (Python 3.8+).
 """
 import json, os, re, sys, secrets, datetime, base64, hmac, hashlib, threading, time, random
-import io, zipfile
+import io, zipfile, gzip
 from urllib.parse import quote, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -253,20 +253,53 @@ def _sitemap_version():
     return tuple(out)
 
 
+_sitemap_refreshing = set()
+
+
+def _sitemap_store(path, build):
+    xml = build()
+    if xml is not None:
+        _sitemap_cache[path] = (time.time(), _sitemap_version(), xml)
+    return xml
+
+
 def cached_sitemap(path, build):
-    """بايتات الخريطة `path` من الكاش، أو من `build()` مرةً واحدة؛ None (غير موجودة) لا تُخزَّن."""
+    """بايتات الخريطة `path` من الكاش، أو من `build()`؛ None (غير موجودة) لا تُخزَّن. الأولى (بلا نسخةٍ سابقة) تنتظر البناء، وما بعدها:
+    النسخة المنتهية (تبدّلت قاعدة SEO أو انقضت المهلة) تُعاد فورًا وتُجدَّد في الخلفية بطلبٍ واحد — فلا ينتظر زاحفٌ بناءً قد يدوم دقائق تحت الحمل."""
     ver = _sitemap_version()
     hit = _sitemap_cache.get(path)
     if hit and hit[1] == ver and time.time() - hit[0] < SITEMAP_TTL:
         return hit[2]
+    if hit:
+        with _sitemap_lock:
+            start = path not in _sitemap_refreshing
+            _sitemap_refreshing.add(path)
+
+        def refresh():
+            try:
+                _sitemap_store(path, build)
+            except Exception:  # noqa: BLE001 — يبقى ما عُرف
+                pass
+            finally:
+                _sitemap_refreshing.discard(path)
+        if start:
+            threading.Thread(target=refresh, daemon=True, name="sitemap-refresh").start()
+        return hit[2]
     with _sitemap_lock:
         hit = _sitemap_cache.get(path)
-        if hit and hit[1] == ver and time.time() - hit[0] < SITEMAP_TTL:
+        if hit:
             return hit[2]
-        xml = build()
-        if xml is not None:
-            _sitemap_cache[path] = (time.time(), ver, xml)
-        return xml
+        return _sitemap_store(path, build)
+
+
+def _json_gz(d):
+    """JSON مضغوطٌ وغير مضغوط ← (plain، gzip) أو None."""
+    if d is None:
+        return None
+    b = json.dumps(d, ensure_ascii=False, separators=(",", ":")).encode()
+    return b, gzip.compress(b, 6)
+
+
 SESSION_TTL = 30 * 24 * 3600                          # مدة الجلسة (30 يوم)
 PORT      = int(os.environ.get("XM_PORT", "8080"))
 BIND      = os.environ.get("XM_BIND", "127.0.0.1")   # في الحاوية: 0.0.0.0
@@ -6839,10 +6872,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, raw=store_sitemap.status(),
                               ctype="application/json; charset=utf-8",
                               extra={"Cache-Control": "no-store"})
-        if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" or re.fullmatch(r"/sitemap-content-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
-            # صفحات طبقة الكيانات وحدها: يضمّها فهرس خريطة المتجر (ssouq.com/sitemap.xml) عبر وسيطه حين تُنقل إليه
-            xml = cached_sitemap(path, lambda: guide_pages.content_sitemap(
-                seo_release.public_sitemap_entries(DATA_DIR), None if path == "/" + guide_pages.CONTENT_SITEMAP + ".xml" else path[1:]))
+        if path in ("/" + guide_pages.CONTENT_SITEMAP + ".xml", "/" + guide_pages.CONTENT_SITEMAP_EXTRAS + ".xml") or re.fullmatch(r"/sitemap-content(?:-extras)?-(?:static|series-ar|series-en|movies-ar|movies-en)(?:-\d+)?\.xml", path):
+            # صفحات طبقة الكيانات وحدها: يضمّها فهرس خريطة المتجر (ssouq.com/sitemap.xml) عبر وسيطه حين تُنقل إليه. والنسخة «extras» بلا
+            # المسلسلات والأفلام العربية (يخدمها المتجر من قاعدته ويعلنها هو).
+            extras = path.startswith("/" + guide_pages.CONTENT_SITEMAP_EXTRAS)
+            whole = path in ("/" + guide_pages.CONTENT_SITEMAP + ".xml", "/" + guide_pages.CONTENT_SITEMAP_EXTRAS + ".xml")
+            xml = cached_sitemap(path, lambda: guide_pages.content_sitemap(seo_release.public_sitemap_entries(DATA_DIR), None if whole else path[1:], extras=extras))
             if xml is None:
                 return self._send(404, {"error": "not found"})
             return self._send(200, raw=xml, ctype="application/xml; charset=utf-8",
@@ -6943,6 +6978,21 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/content/entity":       # صفحة العمل الكاملة لعنصرٍ من قائمة سيرفر (زرّ «عرض الصفحة كاملة» في نافذة التفاصيل)
             res = content_page.api_entity(DATA_DIR, content.key_ok(self._q("s")), self._q("k"), self._q("n"), self._q("y"), "en" if self._q("lang") == "en" else "ar")
             return self._send(200, res or {"ok": False}, extra={"Cache-Control": "public, max-age=300"})
+        if path in ("/api/content/entities/index", "/api/content/entities"):
+            # التصدير الدفعي لصفحات الأعمال المعتمدة: يحمّلها متجر ssouq.com ويخدمها محليًّا. الفهرس (ما يُخدم index وآخر تعديلٍ له)
+            # ثم دفعاتٌ بالمفاتيح (النوع:slug). مغلقٌ (404) قبل المعاينة والمرحلة 4. الفهرس يُخزَّن حتى تتغيّر قاعدة SEO.
+            lang = "en" if self._q("lang") == "en" else "ar"
+            if path.endswith("/index"):
+                got = cached_sitemap("entities-index:" + lang, lambda: _json_gz(seo_pages.entity_index(DATA_DIR, lang)))
+            else:
+                got = _json_gz(seo_pages.entity_batch(DATA_DIR, lang, [k for k in self._q("keys").split(",") if k]))
+            if got is None:
+                return self._send(404, {"ok": False, "error": "not found"})
+            gz = "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
+            extra = {"Cache-Control": "public, max-age=60", "Vary": "Accept-Encoding"}
+            if gz:
+                extra["Content-Encoding"] = "gzip"
+            return self._send(200, raw=got[1] if gz else got[0], ctype="application/json; charset=utf-8", extra=extra)
         if path == "/api/content/titles":       # كل أفلام السيرفر ومسلسلاته دفعةً (فهرس بحث المتجر المحلي)، مضغوطةً لمن يقبل gzip
             res = content_page.api_titles(DATA_DIR, content.key_ok(self._q("s")))
             if res is None:

@@ -489,11 +489,20 @@ def sitemap_index(names):
 CONTENT_SITEMAP = "sitemap-content"
 
 
-def content_sitemap(entries, part=None):
+CONTENT_SITEMAP_EXTRAS = "sitemap-content-extras"
+_AR_ENTITY_PAGE = re.compile(r"^/content/(?:series|movies)/[a-z0-9-]+/$")
+
+
+def content_sitemap(entries, part=None, extras=False):
     """خريطة صفحات طبقة الكيانات وحدها (/sitemap-content.xml) لفهرس خريطة المتجر حين تُنقل إليه: بلا الرئيسية
     وصفحات الأجهزة (للمتجر صفحاته). خريطةٌ واحدة حتى SITEMAP_SINGLE_MAX رابط، وفوقها فهرسٌ بخرائط
-    sitemap-content-<قسم>-<لغة>.xml ← bytes أو None (خريطةٌ فرعية غير موجودة)."""
+    sitemap-content-<قسم>-<لغة>.xml ← bytes أو None (خريطةٌ فرعية غير موجودة).
+    ‏extras=True (/sitemap-content-extras.xml): الخريطة نفسها **بلا صفحات المسلسلات والأفلام العربية** (يرسمها المتجر من قاعدته ويعلنها هو)،
+    ويبقى ما سواها: الإنجليزية والمواسم والحلقات والأشخاص والقوائم والهبّات؛ وأسماء أجزائها sitemap-content-extras-<قسم>-<لغة>.xml."""
     rows = _sitemap_rows(entries)[1 + len(PAGES):]
+    prefix = CONTENT_SITEMAP_EXTRAS if extras else CONTENT_SITEMAP
+    if extras:
+        rows = [r for r in rows if not _AR_ENTITY_PAGE.match(r[0])]
     if len(rows) <= SITEMAP_SINGLE_MAX:
         return _urlset(rows) if part is None else None
     groups, parts = {}, {}
@@ -502,7 +511,7 @@ def content_sitemap(entries, part=None):
     for g, rs in sorted(groups.items()):
         for n in range(0, len(rs), SITEMAP_PART_MAX):
             k = n // SITEMAP_PART_MAX + 1
-            parts[f"{CONTENT_SITEMAP}-{g}{'' if k == 1 else '-%d' % k}.xml"] = _urlset(rs[n:n + SITEMAP_PART_MAX])
+            parts[f"{prefix}-{g}{'' if k == 1 else '-%d' % k}.xml"] = _urlset(rs[n:n + SITEMAP_PART_MAX])
     return sitemap_index(parts) if part is None else parts.get(part)
 
 

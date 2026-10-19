@@ -1378,6 +1378,27 @@ def unit_enrich():
         check("hreflang للغتين فقط إن استحقّت كلتاهما الفهرسة (Prison Break نعم)", 'hreflang="en" href="https://guide.ssouq.com/en/content/series/prison-break/"' in html)
         en = seo_pages.handle(d, "/en/content/series/prison-break/", "en")[1].decode()
         check("النسخة الإنجليزية: lang=en، العنوان الإنجليزي، Story of", 'lang="en" dir="ltr"' in en and "<h1" in en and "<h2>Plot Overview</h2>" in en and "Streaming Platforms &amp; Availability" in en and len(re.search(r"<title>(.*?)</title>", en).group(1)) <= 60)
+        # بيانات الصفحة JSON (يرسمها المتجر) ← من القواعد نفسها: تُقارَن بالصفحة المرسومة لنفس العمل
+        ej, ee = seo_pages.entity_json(d, "series", "prison-break", "ar"), seo_pages.entity_json(d, "series", "prison-break", "en")
+        _title_tag = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
+        _faq_html = re.search(r'id="faq">(.*?)</section>', html, re.S)
+        _ld_types = sorted(set(re.findall(r'"@type": "([A-Za-z]+)"', html)) & {"TVSeries", "BreadcrumbList", "FAQPage"})
+        _parts = {"ok": bool(ej and ej["ok"]), "title": bool(ej) and ej["seo"]["title"] == _title_tag.replace("&amp;", "&"),
+                  "canonical": bool(ej) and ej["canonical"] == "https://guide.ssouq.com/content/series/prison-break/", "noindex": bool(ej) and ej["noindex"] is True,
+                  "path": bool(ej) and ej["path"] == "/content/series/prison-break/" and ej["alt_path"] == "/en/content/series/prison-break/",
+                  "seasons": bool(ej) and len(ej["seasons"]) == (_seas_html.group(1).count("<details") if (_seas_html := re.search(r'id="seasons">(.*?)</section>', html, re.S)) else 0),
+                  "faq": bool(ej) and len(ej["faq"]) == (_faq_html.group(1).count("<details") if _faq_html else 0),
+                  "ld": bool(ej) and sorted({x["@type"] for x in ej["jsonld"]} & {"TVSeries", "BreadcrumbList", "FAQPage"}) == _ld_types,
+                  "cast": bool(ej) and any(pp["href"] == "/content/people/actors/wentworth-miller/" for pp in ej["people"]["cast"]),
+                  "servers": bool(ej) and any(sv["key"] == "casper" for sv in ej["servers"]), "parents": bool(ej) and ej["parents"] is None, "text": bool(ej) and bool(ej["title"]) and bool(ej["overview"])}
+        check("entity_json: نفس العنوان والـ canonical والفهرسة والروابط والمواسم والأسئلة كالصفحة المرسومة", all(_parts.values()), str({k: v for k, v in _parts.items() if not v}))
+        check("entity_json: الإنجليزية بعنوانها ومسارها، والنسخة بلا ترجمة لا تُخترع",
+              ee and ee["lang"] == "en" and ee["path"] == "/en/content/series/prison-break/" and ee["alt_path"] == "/content/series/prison-break/"
+              and ee["crumbs"][0]["name"] == "Home" and ee["seo"]["title"] != ej["seo"]["title"])
+        check("entity_json: عملٌ مدموج → redirect، وغير موجود/لغةٌ غير مفعّلة/نوعٌ خاطئ → None",
+              seo_pages.entity_json(d, "series", q("SELECT slug FROM content WHERE merged_into IS NOT NULL LIMIT 1")[0][0], "ar").get("redirect")
+              and seo_pages.entity_json(d, "series", "nope-nope", "ar") is None and seo_pages.entity_json(d, "series", "prison-break", "fr") is None
+              and seo_pages.entity_json(d, "person", "prison-break", "ar") is None and seo_pages.entity_json(d, "series", "../x", "ar") is None)
         check("بلا شرطة أخيرة: 301 إليها", seo_pages.handle(d, "/content/series/prison-break", "ar")[:1] == (301,))
         check("الرابط القديم المنقحر لـ Kuruluş Osman يحوّل 301 إلى الإنجليزي", seo_pages.handle(d, "/content/series/kurulus-osman/", "ar")[0] == 301)
         check("كيانٌ مدمج يحوّل إلى الباقي", seo_pages.handle(d, "/content/series/" + q("SELECT slug FROM content WHERE merged_into IS NOT NULL LIMIT 1")[0][0] + "/", "ar")[0] == 301)
@@ -1721,6 +1742,22 @@ def unit_release():
         # ---- المرحلة 6 ----
         IX.code = 403
         r6 = seo_release.phase6(d)
+        # التصدير الدفعي لصفحات الأعمال (المتجر يحمّلها ويخدمها محليًّا): المعتمد المستحقّ وحده، باللغة المطلوبة
+        _ix_ar, _ix_en = seo_pages.entity_index(d, "ar"), seo_pages.entity_index(d, "en")
+        _slugs = lambda ix_: {i[1] for i in ix_["items"]}
+        _keys_ar = [f"{i[0]}:{i[1]}" for i in _ix_ar["items"]]
+        _unapproved = q("SELECT type, slug FROM content WHERE merged_into IS NULL AND slug NOT IN (%s) AND type IN ('series','movie') LIMIT 1" % ",".join("'%s'" % x for x in _slugs(_ix_ar)))
+        _bt = seo_pages.entity_batch(d, "ar", _keys_ar + ([f"{_unapproved[0][0]}:{_unapproved[0][1]}"] if _unapproved else []) + ["series:nope-nope", "x:y", "series:../a"])
+        check("entity_index: المعتمد المستحقّ وحده بلغته (ar/en) كما في قائمة الاعتماد، بنوعه وslug وآخر تعديل",
+              _ix_ar["ok"] and _ix_ar["count"] == len(_ix_ar["items"]) > 0 and _slugs(_ix_ar) == {x["slug"] for x in ap["routes"] if x["lang"] == "ar"}
+              and _slugs(_ix_en) == {x["slug"] for x in ap["routes"] if x["lang"] == "en"} and all(len(i) == 3 and i[0] in ("series", "movie") and i[2] for i in _ix_ar["items"]),
+              str((len(_ix_ar["items"]), len(ap["routes"]))))
+        check("entity_batch: بيانات كل مفتاحٍ معتمد (index وcanonical ذاتي)، وغير المعتمد وغير الموجود والمفتاح الفاسد خارجه",
+              _bt["ok"] and len(_bt["items"]) == len(_keys_ar) and all(it["noindex"] is False and it["canonical"].endswith(it["path"]) and it["updated_at"] for it in _bt["items"])
+              and {(it["type"], it["slug"]) for it in _bt["items"]} == {tuple(k.split(":")) for k in _keys_ar}, str((len(_bt["items"]), len(_keys_ar))))
+        check("التصدير: لغةٌ غير معروفة → None، وسقفٌ للدفعة (ENTITY_BATCH_MAX)",
+              seo_pages.entity_index(d, "fr") is None and seo_pages.entity_batch(d, "fr", _keys_ar) is None
+              and len(seo_pages.entity_batch(d, "ar", _keys_ar * 20)["items"]) <= seo_pages.ENTITY_BATCH_MAX)
         check("IndexNow مرفوض (403): المرحلة 6 FAIL وتُسجَّل submitted=5 accepted=0 failed=5", r6["ok"] is False and r6["submitted"] == 5 and r6["accepted"] == 0 and r6["failed"] == 5 and r6["code"] == 403, str(r6)[:300])
         IX.code = 202; got.clear()
         r6 = seo_release.phase6(d)
