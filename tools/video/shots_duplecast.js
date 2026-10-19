@@ -24,7 +24,7 @@ const SPECS = [
             { r: WEB.add, n: 2, t: 'اضغط Add Playlist', at: 'left' }] },
   { out: 'webos-duplecast-form.webp', src: 'dc_form.webp', w: 740, fs: 46,
     marks: [{ r: WEB.tab, n: 1, t: 'تبويب Xtream Info', at: 'below' }, { r: WEB.name, n: 2, t: 'أي اسم', at: 'in' },
-            { r: WEB.host, n: 3, t: 'كما هو بلا / في آخره', at: 'in', hot: 1 }, { r: WEB.port, n: 4, t: 'البورت 80', at: 'in', hot: 1 },
+            { r: WEB.host, n: 3, t: 'اكتب الرابط الذي وصلك', at: 'in', hot: 1 }, { r: WEB.port, n: 4, t: 'البورت 80', at: 'in', hot: 1 },
             { r: WEB.user, n: 5, t: 'اسم المستخدم', at: 'in' }, { r: WEB.pass, n: 6, t: 'كلمة المرور', at: 'in' },
             { r: WEB.save, n: 7, t: 'اضغط Save', at: 'in' }] },
   { out: 'webos-duplecast-saved.webp', src: 'dc_saved.webp', crop: [0, 630, 1170, 786], w: 740, fs: 46,
