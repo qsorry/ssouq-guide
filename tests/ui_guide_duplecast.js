@@ -1,6 +1,6 @@
 // Browser test: Duplecast (دبل كاست) in the activation guide, for Smart, Falcon and Casper, on Samsung/LG and on VIDAA.
 // Seven steps each — the install step (with the video, the price: 15 days free then $3 a year, or a 16-riyal
-// code from the store), scan the TV's barcode, Add Playlist, Xtream Info with host and port apart, saved,
+// code from the store), scan the TV's barcode, Add Playlist, Xtream Info with the host as is and port 80, saved,
 // refresh on the TV, and the activation (Activate by Payment, or Activate by code with the store's code) —
 // every image loads, the store button opens the code product, and the done screen's support message names
 // the app. Casper offers Duplecast on Samsung/LG with its own plans for those TVs (the same steps, after a note
@@ -65,8 +65,9 @@ async function up(u){ for (let i=0;i<80;i++){ try { execSync(`curl -s -o /dev/nu
       for (let i = 1; i < 7; i++) {
         await page.click('[data-next]'); await page.waitForSelector('#view .card.step');
         titles.push(await h2()); broken.push(...await brokenImgs());
-        if (i === 3) check('Xtream Info: host and port apart, with the http warning',
-          (await text()).includes('http://host.com') && (await text()).includes('8080') && !!(await page.$('#view .note.http')));
+        const t3 = i === 3 ? await text() : '';
+        if (i === 3) check('Xtream Info: host as is (no trailing slash, not https) and port 80, with the http warning',
+          ['http://mrha.ink/', 'https://mrha.ink', '80'].every(x => t3.includes(x)) && !t3.includes('8080') && !!(await page.$('#view .note.http')));
       }
       check('seven steps in order', titles.slice(1).join('|') === TITLES.join('|'), titles.join(' → '));
       check('every image loads', !broken.length, broken.join(', '));

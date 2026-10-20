@@ -557,9 +557,9 @@ const ICONS = {
   wrench: '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 1 0 3 3l-1.8 1.8-2.9-2.9z"/><path d="m12.9 9.1-8 8a2 2 0 0 0 2.8 2.8l8-8"/></svg>'
 };
 const CREDS = '<div class="note"><p>بيانات اشتراكك تصلك في رسالة تأكيد الطلب، وتجدها في '
-  + '<a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a> بالمتجر — '
-  + 'افتح طلبك ثم اضغط <b>المحتوى الرقمي</b> المحدَّد في الصورة، فالبيانات لا تظهر قبل الضغط عليه.</p>'
-  + '<img src="/static/img/order-digital.webp" alt="زر المحتوى الرقمي داخل صفحة الطلب" loading="lazy"></div>';
+  + '<a class="link" href="https://ssouq.com/account" target="_blank" rel="noopener">طلباتي</a> بالمتجر — '
+  + 'افتح طلبك تجدها في بطاقة <b>بيانات الدخول</b> كما في الصورة، ولكلٍّ منها زر <b>نسخ</b>.</p>'
+  + '<img src="/static/img/order-digital.webp" alt="بطاقة بيانات الدخول في صفحة الطلب بالمتجر: الهوست واسم المستخدم وكلمة المرور، ولكل منها زر نسخ" loading="lazy"></div>';
 
 // تنبيه http لا https — يُلحق بكل خطوة تُكتب فيها خانة الهوست، على كل جهاز وفي كل خيار،
 // لأن الجوال عند اللصق يضيف حرف s من نفسه أحيانًا فيصير الرابط https ولا يعمل الاشتراك.
@@ -665,7 +665,7 @@ const SMARTERS_TV_VIDEO = '<div class="vid"><video src="/static/video/smarters-t
    التدفّق: التطبيق من متجر الشاشة ← باركود الشاشة بالجوال (أو duplecast.com ← Manage Device) ← Add Playlist
    ← تبويب Xtream Info ← Save ← التحديث ↻ على الشاشة. ثم التفعيل: 15 يومًا مجانًا، ثم 3 دولارات للسنة من
    موقعه (Activate by Payment) — بنصّ قسم Activation في duplecast.com — أو كود تفعيل سنة من المتجر بـ16 ريال
-   (Activate by code)، وهو منتج «أكواد» في سلة يصل كوده في المحتوى الرقمي بالطلب (DUPLECAST_BUY).
+   (Activate by code)، وهو منتج «أكواد» في المتجر يصل كوده في صفحة الطلب (DUPLECAST_BUY).
    الصور من tools/video/shots_duplecast.js، والفيديو من tools/video/duplecast.html.
    ------------------------------------------------------------ */
 // بعنوان STORE_UTM نفسه مكتوبًا هنا: هذه الكتلة يقرؤها sync_guide_data.js وحدها لصفحات الأجهزة الثابتة
@@ -695,7 +695,8 @@ const DUPLECAST_STEPS = [
   { title: "امسح الباركود على الشاشة بجوالك", img: "/static/img/webos-duplecast-start.webp",
     html: '<p>أول ما يُفتح التطبيق تظهر شاشة فيها <b>باركود</b> ورقم جهازك (<b dir="ltr">MAC</b>).</p>'
       + '<ol><li>افتح كاميرا جوالك ووجّهها إلى الباركود، ثم اضغط الرابط الذي يظهر.</li>'
-      + '<li>تُفتح صفحة جهازك في موقع <b dir="ltr">duplecast.com</b> مباشرة، ورقم جهازك مكتوب فيها.</li></ol>'
+      + '<li>يُفتح موقع <b dir="ltr">duplecast.com</b>: اضغط <b>الشرطات الثلاث</b> (<b dir="ltr">☰</b>) أعلى الصفحة لتصل إلى صفحة جهازك '
+      + '<b dir="ltr">Manage Device</b>، ورقم جهازك مكتوب فيها.</li></ol>'
       + '<div class="note">لم يعمل الباركود؟ افتح <a class="link" href="https://duplecast.com" target="_blank" rel="noopener">duplecast.com</a> من الجوال أو الكمبيوتر، '
       + 'واضغط <b dir="ltr">Manage Device</b> واكتب رقم الجهاز الظاهر على شاشتك.</div>'
       + '<div class="note">امسح الباركود الظاهر على شاشتك أنت: فيه رقم جهازك. والباركود ورقم الجهاز في صور الدليل مثالان.</div>' },
@@ -706,27 +707,36 @@ const DUPLECAST_STEPS = [
     html: '<p>اختر تبويب <b dir="ltr">Xtream Info</b> ثم عبّئ الخانات:</p>'
       + '<div class="fields"><div class="f"><span dir="ltr">Mac</span><code>يظهر وحده — لا تغيّره</code></div>'
       + '<div class="f"><span dir="ltr">Playlist name</span><code>أي اسم، مثلًا ssouq</code></div>'
-      + '<div class="f"><span dir="ltr">Host</span><code>رابط الهوست بدون رقم البورت</code></div>'
-      + '<div class="f"><span dir="ltr">Port</span><code>رقم البورت وحده</code></div>'
+      + '<div class="f"><span dir="ltr">Host</span><code>الرابط الذي وصلك في طلبك</code></div>'
+      + '<div class="f"><span dir="ltr">Port</span><code dir="ltr">80</code></div>'
       + '<div class="f"><span dir="ltr">Username</span><code>اسم المستخدم</code></div>'
       + '<div class="f"><span dir="ltr">Password</span><code>كلمة المرور</code></div>'
       + '<div class="f"><span dir="ltr">Protect this playlist</span><code>اتركه غير مفعّل</code></div></div>'
       + '<p>ثم اضغط <b dir="ltr">Save</b>.</p>'
-      + '<div class="note">الهوست والبورت خانتان منفصلتان هنا، فلا تكتب الرقم مع الرابط: إن وصلك <code dir="ltr">http://host.com:8080</code> '
-      + 'فاكتب <code dir="ltr">http://host.com</code> في <b dir="ltr">Host</b> و <code dir="ltr">8080</code> في <b dir="ltr">Port</b>. ومن وصله رابط بلا رقم فبورته <code dir="ltr">80</code>.</div>'
-      + HTTP_NOTE + CREDS },
+      + '<div class="note"><p><b>في خانة <span dir="ltr">Host</span> اكتب الرابط الذي وصلك أنت</b>، لا الرابط المكتوب في الصورة: '
+      + 'الرابط في الصورة مثال فقط. تجد رابطك مع اسم المستخدم وكلمة المرور في طلبك بالمتجر: افتح '
+      + '<a class="link" href="https://ssouq.com/account" target="_blank" rel="noopener">طلباتي</a>، ثم طلبك، '
+      + 'وتجده في بطاقة <b>بيانات الدخول</b> بجانب <b dir="ltr">Host</b> كما في الصورة، واضغط <b>نسخ</b> بجانبه.</p>'
+      + '<img src="/static/img/order-digital.webp" alt="بطاقة بيانات الدخول في صفحة الطلب بالمتجر: الهوست واسم المستخدم وكلمة المرور، ولكل منها زر نسخ" loading="lazy"></div>'
+      + '<div class="note">اكتب في <b dir="ltr">Port</b> الرقم <code dir="ltr">80</code> دائمًا، ولا تكتب رقمًا مع الرابط في <b dir="ltr">Host</b>.</div>'
+      + '<div class="note http"><b>اكتب رابط الهوست كما هو تمامًا</b>'
+      + '<div class="hv"><code dir="ltr" class="ok">http://mrha.ink</code><b>✅ صحيح</b></div>'
+      + '<div class="hv"><code dir="ltr" class="bad">http://mrha.ink/</code><b>❌ خطأ</b></div>'
+      + '<div class="hv"><code dir="ltr" class="bad">https://mrha.ink</code><b>❌ خطأ</b></div>'
+      + '<p>الرابط <b dir="ltr">mrha.ink</b> هنا مثال فقط: اكتب رابطك الذي وصلك بالطريقة نفسها، بلا شرطة <b dir="ltr">/</b> في آخره.</p></div>'
+      + HTTP_NOTE },
   { title: "تأكّد أن القائمة حُفظت", img: "/static/img/webos-duplecast-saved.webp",
     html: '<p>تظهر قائمتك في جدول <b dir="ltr">Playlists</b> باسمها، مع رسالة <b dir="ltr">Playlist added successfully</b>. '
       + 'وإن أخطأت في شيء فاضغط <b dir="ltr">Edit</b> بجانبها وصحّحه.</p>' },
   { title: "حدّث التطبيق على الشاشة وشاهد", img: "/static/img/webos-duplecast-home.webp",
     html: '<ol><li>ارجع إلى التطبيق على الشاشة واضغط زر التحديث (<b dir="ltr">↻</b>)، أو أغلق التطبيق وافتحه من جديد.</li>'
       + '<li>انتظر حتى تُحمَّل قائمتك، ثم افتح <b dir="ltr">LIVE TV</b> للقنوات، أو <b dir="ltr">MOVIES</b> و <b dir="ltr">SERIES</b> للأفلام والمسلسلات.</li></ol>'
-      + '<div class="note">لم تظهر القنوات؟ تأكّد أن الهوست يبدأ بـ <b dir="ltr">http</b> وأن البورت في خانته لا مع الرابط، وصحّحهما من <b dir="ltr">Edit</b> في الموقع ثم حدّث من جديد.</div>' },
+      + '<div class="note">لم تظهر القنوات؟ تأكّد أن الهوست يبدأ بـ <b dir="ltr">http</b> بلا شرطة <b dir="ltr">/</b> في آخره، وأن البورت <b dir="ltr">80</b>، وصحّحهما من <b dir="ltr">Edit</b> في الموقع ثم حدّث من جديد.</div>' },
   { title: "بعد 15 يومًا فعّل التطبيق: 3 دولارات للسنة", img: "/static/img/webos-duplecast-price.webp",
     html: '<p>التطبيق مجاني <b>15 يومًا</b> من أول تشغيل، ثم يطلب التفعيل ليستمر. وسعر التفعيل الرسمي <b>3 دولارات للسنة</b> لكل شاشة '
       + '(و 7.5 دولار لثلاث سنوات)، كما في الصورة من موقعه. ولك طريقتان:</p>'
       + '<p><b>الأولى: من موقعه.</b> في صفحة جهازك اضغط <b dir="ltr">Activate by Payment</b> وادفع 3 دولارات عبر <b dir="ltr">PayPal</b>.</p>'
-      + '<p><b>الثانية: بكود من متجرنا بـ 16 ريال.</b> تدفع بمدى أو Apple Pay، ويصلك كود تفعيل سنة فور الدفع في <b>المحتوى الرقمي</b> بطلبك:</p>'
+      + '<p><b>الثانية: بكود من متجرنا بـ 16 ريال.</b> تدفع بمدى أو Apple Pay، ويصلك كود تفعيل سنة فور الدفع في <b>صفحة طلبك</b> بالمتجر:</p>'
       + '<p><a class="btn go" href="' + DUPLECAST_BUY + '" target="_blank" rel="noopener">اشترِ كود تفعيل Duplecast — 16 ريال</a></p>'
       + '<ol><li>في صفحة جهازك اضغط <b dir="ltr">Activate by code</b>.</li></ol>'
       + '<img src="/static/img/webos-duplecast-codebtn.webp" alt="زر Activate by code في صفحة الجهاز بموقع Duplecast" loading="lazy">'
@@ -1480,7 +1490,7 @@ function steps(){ const d = devs()[state.dev]; return d.variants ? (d.variants[s
 function renderSubs(){
   setProg(PROG_ACT, 0);
   $("#view").innerHTML = `<div class="card"><h2>أي اشتراك لديك؟</h2>
-    <p class="sub">التطبيق ورمز التفعيل يختلفان من اشتراك لآخر، فاختر اشتراكك أولًا. تجده في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account/orders" target="_blank" rel="noopener">صفحة طلباتك</a>.</p>
+    <p class="sub">التطبيق ورمز التفعيل يختلفان من اشتراك لآخر، فاختر اشتراكك أولًا. تجده في رسالة تأكيد الطلب أو في <a class="link" href="https://ssouq.com/account" target="_blank" rel="noopener">طلباتي</a> بالمتجر.</p>
     <div class="opts">${Object.entries(SUBS).map(([k, o]) => `<button class="opt${o.maintenance ? " muted" : ""}" type="button" data-sub="${k}"><img class="logo" src="${o.art}" alt="" width="46" height="46" loading="lazy"><span><b>${o.name}${o.maintenance ? `<span class="badge">صيانة</span>` : ""}</b><small>${o.sub}</small></span><span class="dot"></span></button>`).join("")}</div>
     <div class="nav"><button class="btn ghost" type="button" data-back>رجوع</button></div></div>`;
 }
