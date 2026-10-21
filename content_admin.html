@@ -1518,12 +1518,37 @@ function renderOne(d) {
     window.__oneDiag = {failure: f, job: jb, release: {blocked: (d.release || {}).blocked, phases: Object.fromEntries(Object.entries((d.release || {}).phases || {}).map(([k, v]) => [k, {status: v.status, reason: v.reason}]))}, batches: (d.batches || []).slice(-3), approved: {entities: ap, routes: d.approved_routes, extras: d.extras_approved_routes}, code: d.code_fingerprint};
   }
 }
-$("oneGo").onclick = async () => {
-  if (!confirm("بدء الإطلاق والتوسيع الآلي الكامل (إنتاجٌ فعلي)؟ يرفع noindex عن المعتمد ويرسل إلى IndexNow ويكرّر التوسيع حتى النفاد، ويتوقف عند أول فشل.")) return;
+// تُظهر الحالة في الصفحة نفسها (لا alert): تبقى مقروءةً وبجوارها العدّاد
+function oneMsg(t, live) { $("oneState").textContent = t; $("oneLive").hidden = !live; }
+async function oneStart(confirmed) {
+  if (!confirmed && !confirm("بدء الإطلاق والتوسيع الآلي الكامل (إنتاجٌ فعلي)؟ يرفع noindex عن المعتمد ويرسل إلى IndexNow ويكرّر التوسيع حتى النفاد، ويتوقف عند أول فشل.")) return;
+  $("oneGo").disabled = true; oneMsg("⏳ جارٍ البدء…", false);
   const d = await api("/api/content/admin/seo-release", {action: "pipeline_start", n: 300, every: 5}).catch(() => ({error: "تعذّر الاتصال"}));
-  if (d.error) { alert(d.error); return; }
+  if (d.error) {
+    $("oneGo").disabled = false;
+    if (/لا لقطة/.test(d.error)) {      // لا ملفات مراجعة بعد: تُنتَج الآن ثم يبدأ الإطلاق وحده
+      const b = await api("/api/content/admin/seo-bundle", {}).catch(() => ({error: "تعذّر الاتصال"}));
+      if (b.error) { oneMsg("✖ " + b.error, false); return; }
+      oneBundleWait(); return;
+    }
+    oneMsg("✖ " + d.error, false); return;
+  }
+  if (!d.started) oneMsg("عمليةٌ أخرى جاريةٌ الآن — ستبدأ المهمة حين تنتهي أو اضغط الزر بعد دقيقة", false);
   renderRelease(d);
-};
+}
+async function oneBundleWait() {
+  const b = await api("/api/content/seo/bundle").catch(() => null), l = (b && b.last) || {};
+  if (b && b.running) {
+    $("oneLive").hidden = false; $("oneGo").disabled = true;
+    $("oneN").textContent = `يُنتَج ملفات المراجعة أولًا (لا لقطة بعد البناء)… ${l.stage || ""}${l.total ? " · \u2066" + num(l.done || 0) + " / " + num(l.total) + "\u2069" : ""}`;
+    $("oneBar").style.width = l.total ? Math.min(100, Math.round((l.done || 0) / l.total * 100)) + "%" : "0";
+    $("oneT").textContent = l.elapsed ? wzFmt(l.elapsed) : "";
+    setTimeout(oneBundleWait, 2000); return;
+  }
+  if (b && l.ok) { oneMsg("✔ جاهزة ملفات المراجعة — يبدأ الإطلاق…", false); oneStart(true); return; }
+  $("oneGo").disabled = false; oneMsg("✖ تعذّر إنتاج ملفات المراجعة" + (l.error ? ": " + l.error : ""), false);
+}
+$("oneGo").onclick = () => oneStart(false);
 $("oneAuto").onchange = async () => { const d = await api("/api/content/admin/seo-release", {action: "auto_publish", on: $("oneAuto").checked}).catch(() => ({})); if (d.ok) renderRelease(d); };
 $("oneMail").onclick = async () => { $("oneMailMsg").textContent = "يُرسل…"; const d = await api("/api/content/admin/seo-release", {action: "notify_test"}).catch(e => ({error: e.message})); $("oneMailMsg").textContent = d.ok ? "✔ أُرسل إلى " + d.to : "✖ " + (d.error || "تعذّر الإرسال"); };
 $("oneStop").onclick = async () => { const d = await api("/api/content/admin/seo-release", {action: "expand_stop"}).catch(() => ({})); if (d.ok) renderRelease(d); };
