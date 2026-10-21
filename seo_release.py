@@ -251,6 +251,31 @@ def _live_paths(con, st, approved=None):
     return out
 
 
+def _missing_live(con, st, approved, paths, limit=10):
+    """معتمدٌ غاب عن خريطة الموقع ← [{id, lang, path, reason}] بسبب الغياب (مدموج · غير متاح · غير حيّ · مسار تحويل): يُكتب في تقرير الدفعة ليُعرف أي رابطٍ سبّب فرق العدّ."""
+    have = {(c, l) for _, c, l in paths}
+    redirects = {r["path"] for r in con.execute("SELECT path FROM redirect")}
+    out = []
+    for (cid, lang), a in sorted(approved.items()):
+        if (cid, lang) in have:
+            continue
+        r = _row(con, cid)
+        if not r:
+            why = "entity missing"
+        elif r["merged_into"] is not None:
+            why = f"merged into {r['merged_into']}"
+        elif not r["available"]:
+            why = "not available"
+        elif not seo_pages.live_index(r, lang, st, approved)[0]:
+            why = seo_pages.live_index(r, lang, st, approved)[1]
+        else:
+            why = "path is a redirect" if _ar(seo_pages._path(r, lang)) in redirects else "unknown"
+        out.append({"id": cid, "lang": lang, "path": a.get("path"), "reason": why})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def sitemap_entries(data_dir):
     """صفحات الكيانات في /sitemap.xml العامة — المرحلة 5 وحدها تُفعّلها (sitemap_live مع index_live): [(المسار، changefreq، priority)]."""
     con = seo_db.connect(data_dir, create=False)
@@ -846,6 +871,8 @@ def phase8_batch(data_dir, n=100, now=None, submit=None, defer=False):
             public, _ = _public_entity_locs(data_dir, [(p, "weekly", "0.7") for p, _, _ in paths])
             smap = {"expected": len(approved2), "actual": len(paths), "duplicates": len(locs) - len(set(locs)), "redirect_urls": sum(1 for p, _, _ in paths if _ar(p) in red_after),
                     "public_mismatch": len(public ^ set(locs)), "unexpected_indexable": u["unexpected_indexable"], "approved_not_indexable": u["approved_not_indexable"]}
+            if smap["actual"] != smap["expected"]:
+                smap["missing"] = _missing_live(con, st, approved2, paths)
             smap_ok = (smap["actual"] == smap["expected"] and smap["duplicates"] == 0 and smap["redirect_urls"] == 0 and smap["public_mismatch"] == 0 and smap["unexpected_indexable"] == 0
                        and smap["approved_not_indexable"] == 0 and g1["http_failures"] == 0 and g1["robots_failures"] == 0 and g1["canonical_failures"] == 0 and g1["hreflang_failures"] == 0
                        and g1["language_failures"] == 0 and g1["indexable_ok"] == len(newly))
