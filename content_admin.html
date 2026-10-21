@@ -1356,9 +1356,14 @@ function renderBundle(d) {
 }
 async function loadBundle() { try { renderBundle(await api("/api/content/seo/bundle")); } catch (e) {} }
 $("eBundle").onclick = async () => {
-  const d = await api("/api/content/admin/seo-bundle", {}).catch(() => ({error: "تعذّر الاتصال"}));
-  if (d.error) { $("eBundleState").textContent = d.error; return; }
+  const b = $("eBundle"), st = $("eBundleState");
+  b.disabled = true; st.textContent = "⏳ يُرسل الطلب إلى الخادم…";
+  const d = await api("/api/content/admin/seo-bundle", {}).catch(e => ({error: "تعذّر الاتصال: " + (e && e.message || e)}));
+  b.disabled = false;
+  if (d.error) { st.textContent = "✖ " + d.error; return; }
   renderBundle(d);
+  if (!d.running && !(d.last && d.last.error)) st.textContent = d.started === false ? "عمليةٌ جاريةٌ أصلًا — انتظر انتهاءها" : "لم يبدأ الإنتاج — أعد المحاولة وأرسل لي ما يظهر هنا";
+  setTimeout(loadBundle, 1500);      // يتابع الحال حتى لو تأخّر ظهور «يعمل الآن»
 };
 let rPoll = 0;
 function renderRelease(d) {
