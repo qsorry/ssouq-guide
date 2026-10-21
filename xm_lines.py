@@ -3837,6 +3837,18 @@ def line_copy(accounts, row):
     return guide_copy_text(acct, gate or {"host": host}, user, pw, host)
 
 
+def replaced_copy_line(accounts, row):
+    """نص الشرح لبطاقة «له بديل»: بيانات البديل (يوزره وكلمة مروره وبوابته) لا بيانات الحساب القديم المفقود.
+    "" إن لم تُعرف كلمة مرور البديل."""
+    rp = row.get("replacement") or {}
+    if not (rp.get("username") and rp.get("password")):
+        return ""
+    return line_copy(accounts, dict(row, username=rp["username"], password=rp["password"],
+                                    host=rp.get("host") or row.get("host", ""),
+                                    account_id=rp.get("account_id") or row.get("account_id"),
+                                    gate_id=rp.get("gate_id") or row.get("gate_id")))
+
+
 # رمز بوابة 0Player لكل اشتراك (الخانة Code في تطبيق 0Player بشاشات سامسونج و LG) — كما في الدليل وجدول الشكاوى
 ZERO_CODES = {"smart": "92929480", "falcon": "75710072", "casper": "59820658"}
 
@@ -7544,6 +7556,8 @@ class Handler(BaseHTTPRequestHandler):
                                                if renew.norm_host(rec.get("host")) in {renew.norm_host(h) for h in (p.get("hosts") or [])}), ""),
                             "at": str(rec.get("at", ""))[:16]}) or None
                     r["copy_line"] = line_copy(racs, r)
+                    if r.get("state") == "replaced":          # يُنسخ شرح البديل لا اليوزر القديم
+                        r["copy_line"] = replaced_copy_line(racs, r)
                     r["zero_code"] = zero_code(racs, r)
                     r["new_host"] = current_host(racs, r) if r.get("state") not in ("replaced", "covered") and not r.get("done") else ""
                 d["ms"] = int((time.perf_counter() - t0) * 1000)
@@ -7583,14 +7597,7 @@ class Handler(BaseHTTPRequestHandler):
                             r["replacement"] = None
                     r["copy_line"] = line_copy(racs, r)
                     if r.get("state") in ("replaced", "covered"):   # يُنسخ شرح البديل لا المفقود
-                        rp = r.get("replacement") or {}
-                        if rp.get("username") and rp.get("password"):
-                            r["copy_line"] = line_copy(racs, dict(r, username=rp["username"], password=rp["password"],
-                                                                  host=rp.get("host") or r.get("host", ""),
-                                                                  account_id=rp.get("account_id") or r.get("account_id"),
-                                                                  gate_id=rp.get("gate_id") or r.get("gate_id")))
-                        else:
-                            r["copy_line"] = ""
+                        r["copy_line"] = replaced_copy_line(racs, r)
                     r["zero_code"] = zero_code(racs, r)
                     r["new_host"] = current_host(racs, r) if r.get("state") not in ("replaced", "covered") and not r.get("done") else ""
                 d["pending"] = sum(1 for r in d["rows"] if not r["done"] and not r["expired"] and r["state"] == "missing")
