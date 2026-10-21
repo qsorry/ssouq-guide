@@ -2100,6 +2100,24 @@ def unit_release():
         con.execute("DELETE FROM redirect WHERE path LIKE '%/zz-old-merged/'"); con.commit()
         q7d = seo_release.phase7(d, SNAP)
         check("وبعد إزالتهما تعود المرحلة 7 PASS ويُرفع العائق", q7d["ok"] and (seo_db.state(con, "release") or {}).get("blocked") is None, str(q7d.get("metrics"))[:200])
+        # معتمدٌ لم يعد يُخدم (كيانٌ دُمج بعد اعتماده): يُفشل بوابة الخريطة، والإسقاط الآلي يعيدها PASS ويسمّيه
+        ap_keep = json.loads(json.dumps(seo_db.state(con, seo_pages.APPROVED_KEY)))
+        snap_urls_ = seo_release.snapshot_urls(d) or set()
+        vic = sorted(k[0] for k, a in seo_pages.approved_routes(con).items() if seo_release.SITE + a["path"] not in snap_urls_)[0]       # بعد اللقطة (كما في الإنتاج): الغائب عنها لا يمسّ مقارنة اللقطة
+        oth = con.execute("SELECT id FROM content WHERE id<>? AND merged_into IS NULL LIMIT 1", (vic,)).fetchone()["id"]
+        con.execute("UPDATE content SET merged_into=? WHERE id=?", (oth, vic)); con.commit()
+        s7 = seo_release.phase7(d, SNAP)
+        check("معتمدٌ غاب عن الخريطة (كيانٌ دُمج بعد اعتماده): المرحلة 7 تفشل بـ sitemap_missing", s7["ok"] is False and s7["metrics"]["sitemap_missing"] >= 1, str(s7.get("metrics"))[:200])
+        pok, pgone = seo_release.prune_stale_approvals(d)
+        check("الإسقاط الآلي للمعتمد غير المُخدم: يُسقط ما غاب ويسمّيه بسببه", pok and pgone and all(x["id"] == vic and x["reason"].startswith("merged into") for x in pgone), str(pgone))
+        s7b = seo_release.phase7(d, SNAP)
+        check("وبعد الإسقاط تعود المرحلة 7 PASS", s7b["ok"], str(s7b.get("metrics"))[:200])
+        pok2, pgone2 = seo_release.prune_stale_approvals(d)
+        check("والإسقاط ثانيةً لا يفعل شيئًا (لا معتمد غائب)", pok2 and pgone2 == [], str(pgone2))
+        con.execute("UPDATE content SET merged_into=NULL WHERE id=?", (vic,)); con.commit()
+        with con:
+            seo_db.set_state(con, seo_pages.APPROVED_KEY, ap_keep)
+        seo_release.phase7(d, SNAP)
         con.close()
         # ---- المرحلة 9: الاستمرار حتى نفاد المرشّحين ----
         ex = seo_release.expand(d, 10, 3)

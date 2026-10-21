@@ -276,6 +276,43 @@ def _missing_live(con, st, approved, paths, limit=10):
     return out
 
 
+STALE_PRUNE_CAP = 25         # أكثر من هذا من المعتمد الغائب عن الخريطة = عطلٌ في البيانات لا اعتمادٌ قديم: يتوقف ولا يُحذف شيء
+
+
+def prune_stale_approvals(data_dir, now=None):
+    """يُسقط من قائمة الاعتماد ما لم يعد يُخدم فهرسةً أصلًا (كيانٌ مدموج أو غير متاح أو مساره صار تحويلًا أو تبدّل slug بعد الاعتماد): صفحته الآن noindex أو تحويل،
+    فلا أثر عامًّا للإسقاط، وبقاؤه في القائمة يُفشل بوابة الخريطة (معتمدٌ ≠ الخريطة) في كل دفعةٍ ومرحلةٍ 7. يُعاد اعتماده وحده في دفعةٍ لاحقة إن عاد مستحقًّا.
+    سقفٌ احترازي STALE_PRUNE_CAP ← (نجح؟، [المسقَط])."""
+    now = _now(now)
+    with seo_db.lock(data_dir):
+        con = seo_db.connect(data_dir, create=False)
+        if con is None:
+            return False, []
+        try:
+            st = seo_db.settings(con)
+            ap = seo_db.state(con, APPROVED_KEY) or {}
+            approved = seo_pages.approved_routes(con)
+            if not approved or not st.get("index_live"):
+                return True, []
+            paths = _live_paths(con, st, approved)
+            stale = _missing_live(con, st, approved, paths, limit=STALE_PRUNE_CAP + 1)
+            if not stale:
+                return True, []
+            if len(stale) > STALE_PRUNE_CAP:
+                return False, stale
+            gone = {(int(x["id"]), x["lang"]) for x in stale}
+            ap["routes"] = [r for r in ap.get("routes") or [] if not (isinstance(r, dict) and (int(r["id"]), r["lang"]) in gone)]
+            ap["at"] = now
+            with con:
+                seo_db.set_state(con, APPROVED_KEY, ap)
+            rel = _state(con)
+            rel["stale_pruned"] = ((rel.get("stale_pruned") or []) + [{**x, "at": now} for x in stale])[-100:]
+            _save_state(con, rel, now)
+            return True, stale
+        finally:
+            con.close()
+
+
 def sitemap_entries(data_dir):
     """صفحات الكيانات في /sitemap.xml العامة — المرحلة 5 وحدها تُفعّلها (sitemap_live مع index_live): [(المسار، changefreq، priority)]."""
     con = seo_db.connect(data_dir, create=False)
@@ -1180,6 +1217,9 @@ def _pipeline_launch(data_dir, progress=None):
         ph = _state(con)["phases"]
     finally:
         con.close()
+    ok_, stale_ = prune_stale_approvals(data_dir)
+    if not ok_:
+        return False, f"معتمدٌ غائب عن الخريطة أكثر من {STALE_PRUNE_CAP}: {json.dumps(stale_[:5], ensure_ascii=False)}"
     steps = ((4, lambda: phase4(data_dir, snap, len(urls))), (5, lambda: phase5(data_dir)), (6, lambda: phase6(data_dir)), (7, lambda: phase7(data_dir, snap, quick=True)))
     for n, fn in steps:
         if n < 7 and (ph.get(str(n)) or {}).get("status") == "PASS":
@@ -1196,6 +1236,9 @@ def _autopilot_cycle(data_dir, job, progress=None):
     """دورة الطيار الآلي: المرحلة 7 (فحصٌ بعد النشر) ← المرحلة 10 (القوائم والمواسم والهبّات لما اعتُمد حتى الآن). أي فشلٍ = توقّف بسببه ← (نجح؟، السبب)."""
     if progress:
         progress("autopilot: فحص بعد النشر")
+    ok_, stale_ = prune_stale_approvals(data_dir)
+    if not ok_:
+        return False, f"stale approvals > {STALE_PRUNE_CAP}: {json.dumps(stale_[:5], ensure_ascii=False)}"
     r7 = phase7(data_dir, None, quick=True)
     if not r7.get("ok"):
         return False, f"phase7 failed — {str(r7.get('reason') or '')[:150]}"
