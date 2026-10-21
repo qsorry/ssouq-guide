@@ -251,6 +251,31 @@ def _live_paths(con, st, approved=None):
     return out
 
 
+def _missing_live(con, st, approved, paths, limit=10):
+    """معتمدٌ غاب عن خريطة الموقع ← [{id, lang, path, reason}] بسبب الغياب (مدموج · غير متاح · غير حيّ · مسار تحويل): يُكتب في تقرير الدفعة ليُعرف أي رابطٍ سبّب فرق العدّ."""
+    have = {(c, l) for _, c, l in paths}
+    redirects = {r["path"] for r in con.execute("SELECT path FROM redirect")}
+    out = []
+    for (cid, lang), a in sorted(approved.items()):
+        if (cid, lang) in have:
+            continue
+        r = _row(con, cid)
+        if not r:
+            why = "entity missing"
+        elif r["merged_into"] is not None:
+            why = f"merged into {r['merged_into']}"
+        elif not r["available"]:
+            why = "not available"
+        elif not seo_pages.live_index(r, lang, st, approved)[0]:
+            why = seo_pages.live_index(r, lang, st, approved)[1]
+        else:
+            why = "path is a redirect" if _ar(seo_pages._path(r, lang)) in redirects else "unknown"
+        out.append({"id": cid, "lang": lang, "path": a.get("path"), "reason": why})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def sitemap_entries(data_dir):
     """صفحات الكيانات في /sitemap.xml العامة — المرحلة 5 وحدها تُفعّلها (sitemap_live مع index_live): [(المسار، changefreq، priority)]."""
     con = seo_db.connect(data_dir, create=False)
@@ -734,6 +759,7 @@ def phase8_batch(data_dir, n=100, now=None, submit=None, defer=False):
                 return {"ok": False, "phase": 8, "status": "BUSY", "batch": k, "reason": "database busy: another process holds the write lock — will retry"}
             before = invariants(con, approved_ids | set(cand_ids))
             red_before = {r["path"]: r["target"] for r in con.execute("SELECT path, target FROM redirect")}
+            _tm = {"t0": time.time()}
             # 1 — إثراء TMDB (معاملةٌ واحدة، بلا commit حتى تمرّ بوابات الهوية والتسوية)
             en = {"attempted": 0, "enriched": 0, "miss": 0, "failed": 0, "failed_transient": 0, "merged": [], "seasons": 0, "errors": []}
             failed_ids = set()
@@ -763,6 +789,7 @@ def phase8_batch(data_dir, n=100, now=None, submit=None, defer=False):
                     en["failed"] += 1; en["failed_transient"] += int(tr_); failed_ids.add(r["id"])
                     en["errors"].append({"id": r["id"], "error": f"{type(ex).__name__}: {str(ex)[:120]}", "transient": tr_})
             hard_failed = en["failed"] - en["failed_transient"]
+            _tm["enrich_s"] = round(time.time() - _tm["t0"], 1)
             tol = max(3, len(cands) // 50)                       # انقطاعاتٌ عابرة قليلة (≤ 2% أو 3) لا تُسقط دفعةً من 300 كيان: يُستثنى كيانها فقط ويُعاد لاحقًا
             if hard_failed == 0 and en["failed_transient"] > tol:     # الشبكة/TMDB غير مستقرّين: لا عيب في المحتوى ولا يُحظر الإصدار — تُعاد الدفعة نفسها لاحقًا
                 con.rollback()
@@ -821,6 +848,7 @@ def phase8_batch(data_dir, n=100, now=None, submit=None, defer=False):
             failed_checks = [kk for kk, ok_ in checks.items() if not ok_]
             rec = {"batch": k, "n": len(cands), "failed_checks": failed_checks, "candidate_ids": cand_ids[:200], "tmdb": {kk: v for kk, v in en.items() if kk != "merged"}, "merges": en["merged"], "identity": ident, "reconciliation": recon,
                    "redirect_audit": ra, "canonical_hreflang_gate": g0, "gate_failures": f0, "eligibility": elig}
+            _tm["gates_s"] = round(time.time() - _tm["t0"] - _tm["enrich_s"], 1)
             if not gate_ok:
                 con.rollback()                                              # لا أثر للدفعة في القاعدة
                 rec["rolled_back"] = True
@@ -846,10 +874,13 @@ def phase8_batch(data_dir, n=100, now=None, submit=None, defer=False):
             public, _ = _public_entity_locs(data_dir, [(p, "weekly", "0.7") for p, _, _ in paths])
             smap = {"expected": len(approved2), "actual": len(paths), "duplicates": len(locs) - len(set(locs)), "redirect_urls": sum(1 for p, _, _ in paths if _ar(p) in red_after),
                     "public_mismatch": len(public ^ set(locs)), "unexpected_indexable": u["unexpected_indexable"], "approved_not_indexable": u["approved_not_indexable"]}
+            if smap["actual"] != smap["expected"]:
+                smap["missing"] = _missing_live(con, st, approved2, paths)
             smap_ok = (smap["actual"] == smap["expected"] and smap["duplicates"] == 0 and smap["redirect_urls"] == 0 and smap["public_mismatch"] == 0 and smap["unexpected_indexable"] == 0
                        and smap["approved_not_indexable"] == 0 and g1["http_failures"] == 0 and g1["robots_failures"] == 0 and g1["canonical_failures"] == 0 and g1["hreflang_failures"] == 0
                        and g1["language_failures"] == 0 and g1["indexable_ok"] == len(newly))
-            rec.update({"new_routes_gate": g1, "new_routes_failures": f1, "sitemap": smap})
+            _tm["total_s"] = round(time.time() - _tm["t0"], 1)
+            rec.update({"new_routes_gate": g1, "new_routes_failures": f1, "sitemap": smap, "timings": _tm})
             if not smap_ok:
                 with con:
                     seo_db.set_state(con, APPROVED_KEY, prev)
