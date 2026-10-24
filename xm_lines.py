@@ -3624,16 +3624,16 @@ def _make_line(acct, gate, row, months, tag, same_creds=False):
     pkgs = get_packages(gate)
     pkg = next((p for p in pkgs if split_package_ok(p)), None)
     fallback12 = False
-    if not pkg:                                      # لا ١٥ شهرًا على البوابة: تُعطى باقة ١٢ شهرًا كاملةً بلا تجزئة (أيًّا كانت المدة)
+    if not pkg:                                      # لا ١٥ شهرًا على البوابة: باقة ١٢ شهرًا، يُعطى منها المختار والباقي «متبقي»
         pkg = next((p for p in pkgs if not virtual_base(p.get("id")) and split_base_months(p) == 12), None)
         fallback12 = bool(pkg)
     if not pkg:
         return 400, {"error": "لا باقة ١٥ شهرًا على هذه البوابة للتجزئة منها"}, None
-    if fallback12:
-        months = 12
-    slice_m = months if months < 15 and not fallback12 else 0
+    base = 12 if fallback12 else 15
+    months = min(months, base)
+    slice_m = months if months < base else 0
     if slice_m:
-        why = split_create_error(acct, gate, pkg, slice_m)
+        why = split_create_error(acct, gate, pkg, slice_m, base_ok=fallback12)
         if why:
             return 400, {"error": why}, None
     # same_creds: الخط الجديد **بيوزر العميل وكلمة مروره القديمين** (اللذين في رسالته)، فلا يغيّر شيئًا في تطبيقه
@@ -5822,15 +5822,15 @@ def split_package_ok(pkg):
     return bool(pkg) and not virtual_base(pkg.get("id")) and split_subs.eligible(split_base_months(pkg))
 
 
-def split_create_error(acct, gate, pkg, slice_m):
-    """سبب رفض إنشاءٍ مجزّأ، أو "" إن صلح."""
+def split_create_error(acct, gate, pkg, slice_m, base_ok=False):
+    """سبب رفض إنشاءٍ مجزّأ، أو "" إن صلح. base_ok: باقة ١٢ شهرًا بديلةٌ عن ١٥ (لا ١٥ على البوابة)."""
     if not split_on(acct):
         return "الاشتراكات المجزّأة غير مفعّلة لهذا الحساب"
-    if not split_subs.slice_ok(slice_m):         # الخيارات السريعة أو «مدة أخرى» (١٠ أشهر مثلًا)
+    if not split_subs.slice_ok(slice_m, split_base_months(pkg) if base_ok else None):         # الخيارات السريعة أو «مدة أخرى» (١٠ أشهر مثلًا)
         return "مدة الجزء بالأشهر الكاملة %s" % split_subs.slice_range_text()
     if not split_gate_ok(gate):
         return "التجزئة متاحة لبوابات مرح وكاسبر وفالكون فقط"
-    if not split_package_ok(pkg):
+    if not base_ok and not split_package_ok(pkg):
         return "التجزئة من باقات ١٥ شهرًا فقط"
     return ""
 
