@@ -3628,7 +3628,8 @@ def _make_line(acct, gate, row, months, tag, same_creds=False):
         pkg = next((p for p in pkgs if not virtual_base(p.get("id")) and split_base_months(p) == 12), None)
         fallback12 = bool(pkg)
     if not pkg:
-        return 400, {"error": "لا باقة ١٥ شهرًا على هذه البوابة للتجزئة منها"}, None
+        seen = "، ".join(str(p.get("name", ""))[:40] for p in pkgs[:8])
+        return 400, {"error": "لا باقة ١٥ شهرًا ولا ١٢ شهرًا على هذه البوابة للتجزئة منها" + (" (الباقات: %s)" % seen if seen else " (لم تُقرأ باقات من البوابة)")}, None
     base = 12 if fallback12 else 15
     months = min(months, base)
     slice_m = months if months < base else 0
