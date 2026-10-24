@@ -3621,10 +3621,17 @@ def _make_line(acct, gate, row, months, tag, same_creds=False):
     months = split_subs.parse_months(months)
     if not isinstance(months, int) or months < 1 or months > 15:
         return 400, {"error": "المدة بالأشهر الكاملة من ١ إلى ١٥"}, None
-    pkg = next((p for p in get_packages(gate) if split_package_ok(p)), None)
+    pkgs = get_packages(gate)
+    pkg = next((p for p in pkgs if split_package_ok(p)), None)
+    fallback12 = False
+    if not pkg and months >= 12:                     # لا ١٥ شهرًا على البوابة: تُعطى باقة ١٢ شهرًا كاملةً بلا تجزئة
+        pkg = next((p for p in pkgs if not virtual_base(p.get("id")) and split_base_months(p) == 12), None)
+        fallback12 = bool(pkg)
     if not pkg:
         return 400, {"error": "لا باقة ١٥ شهرًا على هذه البوابة للتجزئة منها"}, None
-    slice_m = months if months < 15 else 0
+    if fallback12:
+        months = 12
+    slice_m = months if months < 15 and not fallback12 else 0
     if slice_m:
         why = split_create_error(acct, gate, pkg, slice_m)
         if why:
@@ -3645,6 +3652,8 @@ def _make_line(acct, gate, row, months, tag, same_creds=False):
     resp = {"ok": True, "line": r.get("line", ""), "username": r["username"], "password": r["password"],
             "months": months, "replaces": row["username"], "customer": row["customer"], "phone": row["phone"],
             "same_creds": bool(want_u and r["username"] == want_u and (not want_p or r["password"] == want_p))}
+    if fallback12:
+        resp["fallback_12"] = True                   # لا باقة ١٥ شهرًا على البوابة فحُوِّل إلى ١٢ شهرًا
     if r.get("rename_error"):
         resp["rename_error"] = r["rename_error"]
     if r.get("enable_error"):
