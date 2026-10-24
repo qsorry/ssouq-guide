@@ -3624,7 +3624,7 @@ def _make_line(acct, gate, row, months, tag, same_creds=False):
     pkgs = get_packages(gate)
     pkg = next((p for p in pkgs if split_package_ok(p)), None)
     fallback12 = False
-    if not pkg and months >= 12:                     # لا ١٥ شهرًا على البوابة: تُعطى باقة ١٢ شهرًا كاملةً بلا تجزئة
+    if not pkg:                                      # لا ١٥ شهرًا على البوابة: تُعطى باقة ١٢ شهرًا كاملةً بلا تجزئة (أيًّا كانت المدة)
         pkg = next((p for p in pkgs if not virtual_base(p.get("id")) and split_base_months(p) == 12), None)
         fallback12 = bool(pkg)
     if not pkg:
