@@ -2217,6 +2217,8 @@ Stremio يجمع مصادر العمل بإضافاتها: زرٌّ لكل إض�
 | `STREMIO_WARM_EVERY` | `1200` | تحميل قوائم سيرفرات الحسابات مسبقًا كل كم ثانية (‏0 = لا) |
 | `STREMIO_EMAIL_DOMAIN` | `tv.ssouq.com` | دومين إيميلات حسابات Stremio الجاهزة (وما يستقبله `mail_inbox`) |
 | `XM_MAIL_PORT` | `25` في الحاوية، فارغ محليًا | منفذ استقبال بريد الحسابات (فارغ = لا استقبال) |
+| `STORE_MAIL_SECRET` | فارغ (مغلقة) | مفتاح المتجر المشترك لواجهة بريد حسابات Real-Debrid (`/api/mail/*`) |
+| `XM_MAIL_DOMAINS` | فارغ | دومينات استقبال إضافية غير `STREMIO_EMAIL_DOMAIN` |
 | `STREMIO_PASS_SUFFIX` | `A` | ما يُضاف لكلمة مرورٍ رفضها Stremio |
 | `STREMIO_SIGNUPS_PER_HOUR` | `60` | حدّ إنشاء الحسابات بالساعة (دفعة 30 وما يتبعها) |
 | `STREMIO_API` | `https://api.strem.io` | واجهة Stremio (الاختبارات تضع الوهمية) |
@@ -2281,6 +2283,12 @@ Stremio يجمع مصادر العمل بإضافاتها: زرٌّ لكل إض�
   (‏`GET /api/stremio/mail?gate=&username=` · `POST /api/stremio/password` ‏`{gate, username, password}`)
 - يعمل متى ضُبط `XM_MAIL_PORT` (‏25 في الحاوية من الـ Dockerfile؛ محليًا وفي الاختبارات لا يعمل إلا بضبطه). وفشله
   (منفذٌ محجوز) لا يُسقط الموقع: سطرٌ في السجل فقط.
+
+- **عناوين المتجر (حسابات Real-Debrid لمنتج 4K):** المتجر (`ssouq-store`، وحدة `real-debrid`) يسجّل عنوان كل حساب ينشئه ثم يقرأ رسالة
+  التفعيل منه. بمفتاحٍ مشترك `STORE_MAIL_SECRET` (ترويسة `x-mail-secret`؛ بلا مفتاح مضبوط تبقى الواجهتان مغلقتين):
+  `POST /api/mail/known` ‏`{address}` يسجّل العنوان (على دومين الاستقبال فقط، ≤ 5000، في `data/mail_known.json`) ليقبله المستقبِل،
+  و`GET /api/mail/inbox?address=` يعيد `{messages:[{from, subject, date, text, links}]}` لعنوانٍ مسجَّل. دومينات إضافية للاستقبال:
+  `XM_MAIL_DOMAINS` (مفصولة بفاصلة). ويجب ضبط المفتاح نفسه في المتجر باسم `GUIDE_MAIL_SECRET` (Coolify).
 
 **تشغيله (مرةً واحدة):**
 1. **DNS في هوستنقر** (منطقة `ssouq.com`): سجل `A` باسم `tv` ← `158.220.81.202`، وسجل `MX` باسم `tv` ← `tv.ssouq.com`

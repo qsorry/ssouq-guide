@@ -897,14 +897,21 @@ def with_stremio(gate, rows):
 MAIL_PORT = os.environ.get("XM_MAIL_PORT", "").strip()
 
 
+def mail_domains():
+    """دومينات الاستقبال: دومين Stremio + ما في XM_MAIL_DOMAINS (مفصولة بفاصلة)."""
+    extra = [d.strip().lower() for d in os.environ.get("XM_MAIL_DOMAINS", "").split(",") if d.strip()]
+    return [stremio_accounts.DOMAIN] + extra
+
+
 def start_mail():
     """مستقبِل بريد عناوين حسابات Stremio (‏<اليوزر>@tv.ssouq.com) — يقبل عناوين حساباتنا وحدها. فشله (منفذٌ
     محجوز) لا يُسقط الموقع."""
     if not MAIL_PORT:
         return None
     try:
-        srv = mail_inbox.start(DATA_DIR, int(MAIL_PORT), [stremio_accounts.DOMAIN],
-                               lambda addr: stremio_accounts.by_email(DATA_DIR, addr) is not None)
+        srv = mail_inbox.start(DATA_DIR, int(MAIL_PORT), mail_domains(),
+                               lambda addr: stremio_accounts.by_email(DATA_DIR, addr) is not None
+                               or mail_inbox.is_registered(DATA_DIR, addr))
         print(f"بريد Stremio يستقبل على المنفذ {MAIL_PORT} لـ @{stremio_accounts.DOMAIN}", flush=True)
         return srv
     except (OSError, ValueError) as e:
@@ -6869,6 +6876,8 @@ class Handler(BaseHTTPRequestHandler):
         to = guide_pages.store_redirect(path, qs)   # الشروحات على نطاق المتجر حين يُضبط XM_STORE_URL
         if to and not self.headers.get(guide_pages.VIA_STORE):   # ما مرّره وسيط المتجر يُرسم هنا (وإلا دار التحويل بينهما)
             return self._redirect(to, 301)
+        if path == "/api/mail/inbox":           # بريد حسابات المتجر (Real-Debrid): بمفتاح المتجر المشترك
+            return self._store_mail_inbox()
         if path == stremio_addon.PATH or path.startswith(stremio_addon.PATH + "/"):
             return self._stremio_get(path)      # إضافة Stremio: بلا عدّاد ولا زواحف (في الرابط رمز الاشتراك)
         if not path.startswith(("/static/", "/api/", ADMIN_PATH + "/")) and "/img/" not in path:
@@ -8187,6 +8196,32 @@ class Handler(BaseHTTPRequestHandler):
             res["url"] = f"https://wa.me/{wa}?text={quote(res['text'], safe='')}"
         return self._send(code, res)
 
+    def _store_mail_ok(self):
+        """مفتاح المتجر المشترك (‏STORE_MAIL_SECRET، ترويسة x-mail-secret) لواجهة بريد الحسابات. بلا مفتاح مضبوط = مغلقة."""
+        sec = os.environ.get("STORE_MAIL_SECRET", "").encode()
+        got = (self.headers.get("x-mail-secret") or "").encode()
+        return bool(sec) and hmac.compare_digest(got, sec)
+
+    def _store_mail_known(self):
+        """المتجر يسجّل عنوان حساب (‏{address}) ليقبله المستقبِل."""
+        if not self._store_mail_ok():
+            return self._send(401, {"ok": False, "error": "unauthorized"})
+        try:
+            body = self._body()
+            added = mail_inbox.register(DATA_DIR, (body or {}).get("address"), mail_domains())
+        except (ValueError, AttributeError) as e:
+            return self._send(400, {"ok": False, "error": str(e)})
+        return self._send(200, {"ok": True, "added": added, "receiving": bool(MAIL_PORT)})
+
+    def _store_mail_inbox(self):
+        """رسائل عنوانٍ سجّله المتجر (الأحدث أولًا) بنصها وروابطها."""
+        if not self._store_mail_ok():
+            return self._send(401, {"ok": False, "error": "unauthorized"})
+        addr = self._q("address").strip().lower()
+        if not mail_inbox.is_registered(DATA_DIR, addr):
+            return self._send(404, {"ok": False, "error": "unknown address"})
+        return self._send(200, {"ok": True, "messages": mail_inbox.messages(DATA_DIR, addr)})
+
     def _contest_inbound(self):
         """من خدمة واتساب النظام اللوجستي: رسالةٌ خاصة وصلت رقم المسابقة ({sender_number, body,
         sent_at}، موقَّعة بـ X-Reader-Token). رسالة التوقّع تُسجَّل ويُردّ على مرسلها من رقم المسابقة،
@@ -8982,6 +9017,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._stremio_link()
             if path == "/api/contest/start":         # النتيجة والاسم من الصفحة ← رمزٌ ورسالةٌ جاهزة
                 return self._contest_start()
+            if path == "/api/mail/known":            # المتجر يسجّل عنوان بريد حساب (بمفتاحه المشترك)
+                return self._store_mail_known()
             if path == "/api/contest/wa-inbound":    # رسالة توقّعٍ وصلت خدمة واتساب (موقَّعة بسرّها)
                 return self._contest_inbound()
         if self.off_site or not path.startswith(self.P + "/api/"):

@@ -135,6 +135,18 @@ def main():
         with smtplib.SMTP("127.0.0.1", port, timeout=10) as s:
             check("وبعدها يستقبل كالعادة", s.ehlo()[0] == 250)
         check("رسالةٌ لمستلمَين تُحفظ لكلٍّ منهما", _multi(port, d))
+        # عناوين يسجّلها المتجر (Real-Debrid): تُرفض قبل التسجيل وتُقبل بعده، وغير دوميناتنا لا تُسجَّل
+        rd = "ssqabc123xyz@tv.ssouq.com"
+        check("عنوان المتجر غير مسجّل يُرفض (550)", _rcpt(port, rd)[0] == 550)
+        check("يُسجَّل عنوان على دومين الاستقبال", M.register(d, rd, ["tv.ssouq.com"]) is True)
+        check("وتكراره لا يضيف", M.register(d, rd, ["tv.ssouq.com"]) is False)
+        for bad in ("x@evil.com", "no-at-sign", "a@tv.ssouq.com"):
+            try:
+                M.register(d, bad, ["tv.ssouq.com"])
+                check("يرفض تسجيل " + bad, False)
+            except ValueError:
+                check("يرفض تسجيل " + bad, True)
+        check("المسجَّل معروف", M.is_registered(d, rd.upper()))
     finally:
         srv.shutdown()
         srv.server_close()

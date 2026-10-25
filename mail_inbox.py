@@ -74,6 +74,50 @@ def store(data_dir, addr, msg):
         os.replace(tmp, p)
 
 
+# ================= عناوين يسجّلها المتجر (حسابات Real-Debrid) =================
+# حسابات Stremio تُعرف من سجلّها؛ أما عناوين المتجر (‏POST /api/mail/known بمفتاح مشترك) فتُحفظ هنا، وبلا هذا التسجيل
+# يُرفض البريد (‏550) كأي عنوان عشوائي.
+KNOWN_FILE = "mail_known.json"
+_ADDRESS = re.compile(r"^[a-z0-9._-]{3,64}@[a-z0-9.-]+\.[a-z]{2,}$")
+
+
+def _known_path(data_dir):
+    return os.path.join(data_dir, KNOWN_FILE)
+
+
+def registered(data_dir):
+    try:
+        with open(_known_path(data_dir), encoding="utf-8") as f:
+            d = json.load(f)
+        return set(d) if isinstance(d, list) else set()
+    except (OSError, ValueError):
+        return set()
+
+
+def is_registered(data_dir, addr):
+    return str(addr or "").strip().lower() in registered(data_dir)
+
+
+def register(data_dir, addr, domains):
+    """يسجّل عنوانًا ليقبله المستقبِل. ‏ValueError إن لم يكن على أحد دوميناتنا أو كانت صيغته غير صالحة."""
+    addr = str(addr or "").strip().lower()
+    if not _ADDRESS.match(addr) or addr.rsplit("@", 1)[1] not in {d.lower() for d in domains}:
+        raise ValueError("عنوان غير صالح أو دومين غير مستقبَل")
+    with _lock:
+        cur = registered(data_dir)
+        if addr in cur:
+            return False
+        if len(cur) >= 5000:
+            raise ValueError("بلغ سقف العناوين المسجّلة")
+        cur.add(addr)
+        os.makedirs(data_dir, exist_ok=True)
+        tmp = f"{_known_path(data_dir)}.{secrets.token_hex(4)}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(sorted(cur), f)
+        os.replace(tmp, _known_path(data_dir))
+        return True
+
+
 # ================= قراءة الرسالة =================
 _TAGS = re.compile(r"(?is)<(script|style|head)\b.*?</\1>|<[^>]+>")
 _URL = re.compile(r"https?://[^\s<>\"')\]]+")
