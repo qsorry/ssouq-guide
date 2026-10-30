@@ -63,13 +63,13 @@ def main():
         links = [{"old": "444", "new": "4444", "at": "2026-05-01", "host": "http://new.x"},
                  {"old": "555", "new": "5555", "at": "2026-05-03", "host": "http://new.x"},
                  {"old": "274044584", "new": "31010", "at": "2026-07-06", "host": ""},
-                 {"old": "777", "new": "3777", "at": "2026-07-05", "host": "http://new.x"},
+                 {"old": "777", "new": "3777", "at": "2026-07-05", "host": "http://new.x", "package": "15 Months · جزء 11 شهرًا"},
                  {"old": "222", "new": "8222", "at": "2026-06-02", "host": "http://old.x", "package": "تغيير اسم (مكرر)"}]
         out = panels.replacements_export(d, links, {"m": "http://panel-m.x"})
         rows = {(r["order"], r["old"]): r for r in out["rows"]}
         check("نوع الملف", out["kind"] == "ssouq-replacements" and out["count"] == len(out["rows"]))
         lost = rows.get(("100", "111")) or {}
-        check("المفقود: البديل وكلمة مروره من يوزرات اللوحة وانتهاؤه", lost.get("new") == "9111" and lost.get("password") == "pp" and lost.get("expiry") == "2027-01-01" and lost.get("kind") == "lost", lost)
+        check("المفقود: البديل وكلمة مروره من يوزرات اللوحة، وانتهاؤه نصيب العميل (الإنشاء + ٦ أشهر) لا انتهاء باقة اللوحة", lost.get("new") == "9111" and lost.get("password") == "pp" and lost.get("expiry") == "2026-12-01" and lost.get("kind") == "lost", lost)
         dup = rows.get(("300", "222")) or {}
         check("المكرر: للطلب الثاني بكلمة مرور البديل", dup.get("new") == "9222" and dup.get("password") == "np2" and dup.get("kind") == "dup", dup)
         ren = rows.get(("200", "222")) or {}
@@ -79,6 +79,8 @@ def main():
         check("بديل البحث: طلبه من خطه المربوط", lk.get("new") == "4444" and lk.get("password") == "np4" and lk.get("host") == "http://new.x", lk)
         first = rows.get(("700", "777")) or {}
         check("يوزر لعميلين أحدهما عُوِّض ببديله: البديل الآخر لطلب العميل الآخر", first.get("new") == "3777" and first.get("kind") == "link", first)
+        check("بديل البحث من جزء ١١ شهرًا: انتهاؤه الإنشاء + ١١", first.get("months") == 11 and first.get("expiry") == "2027-06-05", first)
+        check("أشهر الجزء من اسم الباقة", panels.slice_months("x · جزء ١٢ شهرًا") == 12 and panels.slice_months("x · جزء شهران") == 2 and panels.slice_months("15 Months") == 0)
         check("طلب المعوَّض يبقى ببديله", (rows.get(("800", "777")) or {}).get("new") == "9777")
         dm = rows.get(("900", "888")) or {}
         check("بديل المكرر: كلمة مروره وهوسته من رسالته", dm.get("password") == "secret9" and dm.get("host") == "http://dup.x", dm)
