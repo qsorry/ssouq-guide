@@ -88,6 +88,9 @@ def main():
         check("«بديلٌ عن» رقم الطلب: القديم يوزر الطلب، والهوست من لوحة البديل", byno.get("new") == "31010" and byno.get("password") == "pw31" and byno.get("host") == "http://panel-m.x", byno)
         amb = rows.get(("", "555")) or {}
         check("يوزر لعميلين: بلا طلب ومعه الطلبات المحتملة", amb.get("orders") == ["500", "600"], amb)
+        import xm_lines
+        cd = xm_lines.users_export_disposition({"id": "a1", "name": "سمارت ٢"}, {"id": "g9", "name": "مرح"}, 1761800000)
+        check("اسم ملف اليوزرات: لاتيني بالمعرّفات + عربي بالحساب والبوابة", 'filename="users-a1-g9-' in cd and "filename*=UTF-8''" in cd and "%D9%85%D8%B1%D8%AD" in cd, cd)
     finally:
         shutil.rmtree(d, ignore_errors=True)
     print(f"\n{_p} نجح، {_f} فشل")
