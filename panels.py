@@ -1286,3 +1286,103 @@ def link_order(data_dir, order, username, password="", host="", replace="", base
     d["lines"], d["count"] = lines, len(lines)
     renew._write_json(store_lines_path(data_dir), d)
     return cur
+
+
+# ============================ تصدير الحسابات البديلة للمتجر ============================
+# ssouq.com يستبدل في طلبات سلة المنقولة إليه الحساب القديم المفقود ببديله (admin → الطلبات → طلبات سلة).
+# مصدرا البديل هنا: سجلّ الإنجاز (المفقود والمكرر وشكاوى الطلبات، وتغيير اسم القديم المكرر لصاحبه الأول) وروابط
+# الاستبدال (user_links: بديل البحث في صفحة الإنشاء وتعديل البيانات). صفٌّ لكل (طلب، قديم، جديد) بكلمة مرور البديل وهوسته
+# وانتهائه إن عُرفت. طلبٌ لا يُعرف (يوزرٌ قديمٌ بيع لأكثر من عميل) يُصدَّر بلا طلب ومعه الطلبات المحتملة، فلا يُستبدل في المتجر.
+
+def _first_owner_order(by_user, username, not_order):
+    """طلب صاحب اليوزر الأول (الأقدم) غير `not_order` — من بيع له اليوزر المكرر أولًا."""
+    cands = sorted((ln for ln in by_user.get(str(username or "").strip().lower(), [])
+                    if renew.norm_order(ln.get("order")) and renew.norm_order(ln.get("order")) != renew.norm_order(not_order)),
+                   key=lambda ln: (str(ln.get("date") or ""), renew.norm_order(ln.get("order"))))
+    return renew.norm_order(cands[0].get("order")) if cands else ""
+
+
+def replacements_export(data_dir, links=None):
+    """كل الحسابات البديلة ← {"kind": "ssouq-replacements", "version": 1, "built", "rows": [...]}.
+    `links`: روابط user_links من كل البوابات [{old, new, package, at, host, gate}] (يجمعها المستدعي لأنها لكل بوابة).
+    صفٌّ: {kind: lost|dup|renamed|link, order, orders, old, new, password, host, expiry, months, at, customer, phone}."""
+    lines = load_store_lines(data_dir).get("lines", [])
+    by_user, by_order = {}, {}
+    for ln in lines:
+        u = str(ln.get("username") or "").strip().lower()
+        if u:
+            by_user.setdefault(u, []).append(ln)
+        no = renew.norm_order(ln.get("order"))
+        if no:
+            by_order.setdefault(no, []).append(ln)
+    pusers = {}
+    for p in load_panel_lines(data_dir).get("panels", {}).values():
+        for u, rec in (p.get("by_user") or {}).items():
+            pusers.setdefault(u, rec)
+
+    def line_of(order, user):
+        u = str(user or "").strip().lower()
+        return next((ln for ln in by_order.get(renew.norm_order(order), []) if str(ln.get("username") or "").strip().lower() == u), None)
+
+    def fill(row, line=None):
+        new = row["new"].lower()
+        ln = line or line_of(row["order"], new) if row["order"] else line
+        p = pusers.get(new) or {}
+        row["password"] = row.get("password") or str((ln or {}).get("password") or "") or str(p.get("password") or "")
+        row["host"] = row.get("host") or str((ln or {}).get("host") or "")
+        row["expiry"] = row.get("expiry") or str(p.get("exp") or "")[:10]
+        if row["order"] and not (row.get("customer") or row.get("phone")):
+            src = (by_order.get(renew.norm_order(row["order"])) or [{}])[0]
+            row["customer"], row["phone"] = str(src.get("customer") or ""), str(src.get("phone") or "")
+        return row
+
+    rows, seen = [], set()
+
+    def add(row):
+        key = (renew.norm_order(row["order"]), row["old"].lower(), row["new"].lower())
+        if not row["old"] or not row["new"] or row["old"].lower() == row["new"].lower() or key in seen:
+            return
+        seen.add(key)
+        rows.append(row)
+
+    for order, rec in load_dupes_done(data_dir).items():
+        if not isinstance(rec, dict):
+            continue
+        no = renew.norm_order(order)
+        old, new = str(rec.get("old") or "").strip(), str(rec.get("new") or "").strip()
+        if old and new:
+            add(fill({"kind": "dup" if rec.get("src") == "dup" else "lost", "order": no, "orders": [], "old": old, "new": new,
+                      "password": str(rec.get("password") or ""), "host": str(rec.get("host") or ""), "expiry": "",
+                      "months": int(rec.get("months") or 0), "at": str(rec.get("at") or ""),
+                      "customer": str(rec.get("customer") or ""), "phone": ""}))
+        ren = rec.get("renamed") or {}
+        rfrom, rto = str(ren.get("from") or "").strip(), str(ren.get("to") or "").strip()
+        if rfrom and rto:                          # القديم المكرر غُيّر اسمه وبقي لصاحبه الأول بكلمة مروره ومدته
+            first = renew.norm_order(rec.get("first_order")) or _first_owner_order(by_user, rfrom, no)
+            base = line_of(first, rfrom) if first else None
+            add(fill({"kind": "renamed", "order": first, "orders": [], "old": rfrom, "new": rto,
+                      "password": str((base or {}).get("password") or ""), "host": str((base or {}).get("host") or ""),
+                      "expiry": str((base or {}).get("expiry") or ""), "months": 0, "at": str(rec.get("at") or ""),
+                      "customer": "", "phone": ""}, base))
+
+    covered = {(r["old"].lower(), r["new"].lower()) for r in rows}
+    for lk in links or []:
+        old, new = str(lk.get("old") or "").strip(), str(lk.get("new") or "").strip()
+        if not old or not new or (old.lower(), new.lower()) in covered:
+            continue
+        # طلب البديل: خطٌّ رُبط بالجديد (بديل البحث يربطه بطلبه)، وإلا طلب القديم إن كان لعميلٍ واحد (الجوال نفسه)
+        mine = [ln for ln in by_user.get(new.lower(), []) if renew.norm_order(ln.get("order"))]
+        olds = [ln for ln in by_user.get(old.lower(), []) if renew.norm_order(ln.get("order"))]
+        pool = mine or olds
+        orders = sorted({renew.norm_order(ln.get("order")) for ln in pool})
+        phones = {renew.norm_phone(ln.get("phone")) for ln in pool}
+        one = orders[0] if len(orders) == 1 else ""
+        if not one and orders and len(phones) == 1 and "" not in phones:   # تجديدات العميل نفسه: الأحدث
+            one = renew.norm_order(max(pool, key=lambda ln: (str(ln.get("date") or ""), renew.norm_order(ln.get("order")))).get("order"))
+        hit = next((ln for ln in mine if renew.norm_order(ln.get("order")) == one), None)
+        add(fill({"kind": "link", "order": one, "orders": [] if one else orders, "old": old, "new": new,
+                  "password": str((hit or {}).get("password") or ""), "host": str((hit or {}).get("host") or lk.get("host") or ""),
+                  "expiry": str((hit or {}).get("expiry") or ""), "months": 0, "at": str(lk.get("at") or ""),
+                  "customer": "", "phone": "", "note": str(lk.get("package") or "")}, hit))
+    rows.sort(key=lambda r: (r["at"], r["order"]))
+    return {"kind": "ssouq-replacements", "version": 1, "built": renew.now_iso(), "count": len(rows), "rows": rows}

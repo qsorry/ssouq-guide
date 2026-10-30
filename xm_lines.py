@@ -3048,6 +3048,19 @@ def replacement_users(accounts):
     return out
 
 
+def replacements_export(accounts, ws):
+    """الحسابات البديلة كلها لنقلها إلى المتجر (panels.replacements_export) بروابط user_links من كل البوابات وهوست كلٍّ منها."""
+    links = []
+    for a in (accounts or []):
+        for g in (a.get("gates") or []):
+            try:
+                recs = user_links.load(user_links.path(DATA_DIR, a["id"], g["id"]))
+            except Exception:
+                continue
+            links += [dict(r, host=g.get("host", ""), gate=g.get("name") or g.get("host") or "") for r in recs]
+    return panels.replacements_export(ws, links)
+
+
 DUP_MSG_NEW, DUP_MSG_OLD, wa_line = panels.DUP_MSG_NEW, panels.DUP_MSG_OLD, panels.wa_line   # القوالب في panels (تُرقّى بها الرسائل القديمة المحفوظة)
 
 
@@ -7677,6 +7690,10 @@ class Handler(BaseHTTPRequestHandler):
                                          'attachment; filename="salla-subscriptions.xlsx"'})
             if path == "/api/renew/store-lines":   # الاشتراكات المسحوبة JSON (للنقل)
                 return self._send(200, panels.load_store_lines(rws))
+            if path == "/api/renew/replacements.json":  # الحسابات البديلة لطلبات سلة — يُرفع في ssouq.com (الطلبات ← طلبات سلة)
+                return self._send(200, raw=json.dumps(replacements_export(racs, rws), ensure_ascii=False).encode("utf-8"),
+                                  ctype="application/json; charset=utf-8",
+                                  extra={"Content-Disposition": 'attachment; filename="ssouq-replacements.json"'})
             if path == "/api/renew/users.xlsx":     # كل يوزرات اللوحات المسحوبة Excel
                 return self._send(200, raw=_panel_users_xlsx(rws),
                                   ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
