@@ -497,7 +497,9 @@ body.modal-open{overflow:hidden}
           <button class="ghost hidden" id="pullStop" type="button">إيقاف</button></div>
         <p class="msg" id="pullMsg"></p>
         <div class="bar hidden" id="pullBar"><i id="pullFill"></i></div>
-        <div class="acts"><a class="ghost" id="dlLines" href="#"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تنزيل الاشتراكات المسحوبة Excel</a></div>
+        <div class="acts"><a class="ghost" id="dlLines" href="#"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تنزيل الاشتراكات المسحوبة Excel</a>
+          <a class="ghost" id="dlRepl" href="#"><svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>تنزيل الحسابات البديلة للمتجر (JSON)</a></div>
+        <p class="hint"><b>الحسابات البديلة</b>: كل بديلٍ أُنشئ لحسابٍ مفقود أو مكرر (وتغيير اسم القديم المكرر لصاحبه الأول) بطلبه ويوزره الجديد وكلمة مروره. يُرفع في ssouq.com (الطلبات ← طلبات سلة ← «ربط الحسابات البديلة») فيحلّ البديل محلّ القديم في طلب العميل.</p>
         <p class="hint">الملف جاهز لـ<b>استيراد الطلبات</b> في متجر ssouq-store (الطلبات ← استيراد): يُنشأ لكل عميل طلبه بمنتجه وبيانات اشتراكه، ويُتخطّى ما رُفع من قبل برقم طلبه، ويُسجَّل تاريخ النقل على الطلب.</p>
       </div>
     </details>
@@ -1944,6 +1946,7 @@ $('#dlCompare').onclick = e => { e.preventDefault(); location.href = B + '/api/r
 $('#dlRenewal').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/renewal.xlsx' + daysQ(); };
 $('#dlUsers').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/users.xlsx'; };
 $('#dlLines').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/store-lines.xlsx'; };
+$('#dlRepl').onclick = e => { e.preventDefault(); location.href = B + '/api/renew/replacements.json'; };
 
 
 /* ============ المتابعة: قائمة عملٍ واحدة بمرشّحات ============ */
