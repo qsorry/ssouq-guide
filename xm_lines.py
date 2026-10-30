@@ -3048,6 +3048,18 @@ def replacement_users(accounts):
     return out
 
 
+def users_export_disposition(acct, gate, mtime=None):
+    """اسم ملف يوزرات البوابة عند التنزيل: الحساب والبوابة وتاريخ السحب — بالعربية (filename*، RFC 5987) ومعه بديلٌ لاتيني بالمعرّفات،
+    فلا يُنزَّل كل ملفٍ باسم «users-_.xlsx» (الاسم العربي كان يُحذف كله) ولا يختلط ملفا حسابين للمنصة نفسها."""
+    from urllib.parse import quote
+    day = time.strftime("%Y-%m-%d", time.localtime(mtime)) if mtime else ""
+    parts = [str((acct or {}).get("name") or (acct or {}).get("username") or ""), str(gate.get("name") or gate.get("host") or "")]
+    label = " - ".join(p.strip() for p in parts if p and p.strip()) or str(gate.get("id") or "gate")
+    nice = re.sub(r'[\\/:*?"<>|\r\n]+', "_", "users - %s%s.xlsx" % (label, (" - " + day) if day else ""))
+    plain = re.sub(r"[^A-Za-z0-9_.-]+", "_", "users-%s-%s%s.xlsx" % ((acct or {}).get("id", ""), gate.get("id", ""), ("-" + day) if day else ""))
+    return "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (plain, quote(nice, safe=""))
+
+
 def replacements_export(accounts, ws, cfg=None):
     """الحسابات البديلة كلها لنقلها إلى المتجر (panels.replacements_export) بروابط user_links من كل البوابات وهوست كلٍّ منها."""
     links = []
@@ -7290,11 +7302,10 @@ class Handler(BaseHTTPRequestHandler):
                 _jsonl, xlsx_path = users_export.paths(DATA_DIR, acct["id"], gate["id"])
                 if not os.path.exists(xlsx_path):
                     return self._send(404, {"error": "لا يوجد ملف بعد — اسحب اليوزرات أولًا"})
-                fn = "users-%s.xlsx" % re.sub(r"[^A-Za-z0-9_.-]+", "_", str(gate.get("name") or gate["id"]))
                 with open(xlsx_path, "rb") as f:
                     return self._send(200, raw=f.read(),
                                       ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                      extra={"Content-Disposition": 'attachment; filename="%s"' % fn,
+                                      extra={"Content-Disposition": users_export_disposition(acct, gate, os.path.getmtime(xlsx_path)),
                                              "Cache-Control": "no-store"})
             if path == "/api/web/diag":           # تشخيص مؤقّت لاستخراج الرصيد
                 gate = find_gate(acct, self._q("gate")) if acct else None
