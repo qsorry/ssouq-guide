@@ -45,21 +45,27 @@ def main():
             {"order": "400", "date": "2026-04-01", "phone": "0500000004", "customer": "د", "username": "4444", "password": "np4", "host": "http://new.x", "linked": "2026-05-01"},
             {"order": "500", "date": "2026-05-01", "phone": "0500000005", "username": "555", "password": "p5"},
             {"order": "600", "date": "2026-05-02", "phone": "0500000006", "username": "555", "password": "p5"},
+            {"order": "900", "date": "2026-07-03", "phone": "0500000009", "username": "888", "password": "p8"},
+            {"order": "274044584", "date": "2026-07-03", "phone": "0500000010", "username": "1010", "password": "p10", "host": "http://old.x"},
             {"order": "700", "date": "2026-07-01", "phone": "0500000007", "username": "777", "password": "p7"},
             {"order": "800", "date": "2026-07-02", "phone": "0500000008", "username": "777", "password": "p7"},
         ]})
-        write(d, "renew_panel_lines.json", {"panels": {"m": {"by_user": {"9111": {"username": "9111", "password": "pp", "exp": "2027-01-01 00:00"}}}}})
+        write(d, "renew_panel_lines.json", {"panels": {"m": {"by_user": {"9111": {"username": "9111", "password": "pp", "exp": "2027-01-01 00:00"},
+                                                                         "31010": {"username": "31010", "password": "pw31"}}}}})
         write(d, "renew_dupes_done.json", {
             "100": {"new": "9111", "months": 6, "src": "lost", "old": "111", "host": "http://new.x", "at": "2026-06-01"},
+            "900": {"new": "9888", "src": "dup", "old": "888", "at": "2026-07-04",
+                    "msgs": [{"text": "*📌 بيانات الاشتراك:*\nHost http://dup.x\nUser 9888\nPass secret9\n\nنعتذر"}]},
             "800": {"new": "9777", "months": 9, "src": "dup", "old": "777", "password": "np8", "host": "http://new.x", "at": "2026-07-03"},
             "300": {"new": "9222", "months": 3, "src": "dup", "old": "222", "password": "np2", "host": "http://new.x",
                     "renamed": {"from": "222", "to": "8222"}, "at": "2026-06-02"},
         })
         links = [{"old": "444", "new": "4444", "at": "2026-05-01", "host": "http://new.x"},
                  {"old": "555", "new": "5555", "at": "2026-05-03", "host": "http://new.x"},
+                 {"old": "274044584", "new": "31010", "at": "2026-07-06", "host": ""},
                  {"old": "777", "new": "3777", "at": "2026-07-05", "host": "http://new.x"},
                  {"old": "222", "new": "8222", "at": "2026-06-02", "host": "http://old.x", "package": "تغيير اسم (مكرر)"}]
-        out = panels.replacements_export(d, links)
+        out = panels.replacements_export(d, links, {"m": "http://panel-m.x"})
         rows = {(r["order"], r["old"]): r for r in out["rows"]}
         check("نوع الملف", out["kind"] == "ssouq-replacements" and out["count"] == len(out["rows"]))
         lost = rows.get(("100", "111")) or {}
@@ -74,6 +80,10 @@ def main():
         first = rows.get(("700", "777")) or {}
         check("يوزر لعميلين أحدهما عُوِّض ببديله: البديل الآخر لطلب العميل الآخر", first.get("new") == "3777" and first.get("kind") == "link", first)
         check("طلب المعوَّض يبقى ببديله", (rows.get(("800", "777")) or {}).get("new") == "9777")
+        dm = rows.get(("900", "888")) or {}
+        check("بديل المكرر: كلمة مروره وهوسته من رسالته", dm.get("password") == "secret9" and dm.get("host") == "http://dup.x", dm)
+        byno = rows.get(("274044584", "1010")) or {}
+        check("«بديلٌ عن» رقم الطلب: القديم يوزر الطلب، والهوست من لوحة البديل", byno.get("new") == "31010" and byno.get("password") == "pw31" and byno.get("host") == "http://panel-m.x", byno)
         amb = rows.get(("", "555")) or {}
         check("يوزر لعميلين: بلا طلب ومعه الطلبات المحتملة", amb.get("orders") == ["500", "600"], amb)
     finally:
