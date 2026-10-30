@@ -45,15 +45,19 @@ def main():
             {"order": "400", "date": "2026-04-01", "phone": "0500000004", "customer": "د", "username": "4444", "password": "np4", "host": "http://new.x", "linked": "2026-05-01"},
             {"order": "500", "date": "2026-05-01", "phone": "0500000005", "username": "555", "password": "p5"},
             {"order": "600", "date": "2026-05-02", "phone": "0500000006", "username": "555", "password": "p5"},
+            {"order": "700", "date": "2026-07-01", "phone": "0500000007", "username": "777", "password": "p7"},
+            {"order": "800", "date": "2026-07-02", "phone": "0500000008", "username": "777", "password": "p7"},
         ]})
         write(d, "renew_panel_lines.json", {"panels": {"m": {"by_user": {"9111": {"username": "9111", "password": "pp", "exp": "2027-01-01 00:00"}}}}})
         write(d, "renew_dupes_done.json", {
             "100": {"new": "9111", "months": 6, "src": "lost", "old": "111", "host": "http://new.x", "at": "2026-06-01"},
+            "800": {"new": "9777", "months": 9, "src": "dup", "old": "777", "password": "np8", "host": "http://new.x", "at": "2026-07-03"},
             "300": {"new": "9222", "months": 3, "src": "dup", "old": "222", "password": "np2", "host": "http://new.x",
                     "renamed": {"from": "222", "to": "8222"}, "at": "2026-06-02"},
         })
         links = [{"old": "444", "new": "4444", "at": "2026-05-01", "host": "http://new.x"},
                  {"old": "555", "new": "5555", "at": "2026-05-03", "host": "http://new.x"},
+                 {"old": "777", "new": "3777", "at": "2026-07-05", "host": "http://new.x"},
                  {"old": "222", "new": "8222", "at": "2026-06-02", "host": "http://old.x", "package": "تغيير اسم (مكرر)"}]
         out = panels.replacements_export(d, links)
         rows = {(r["order"], r["old"]): r for r in out["rows"]}
@@ -67,6 +71,9 @@ def main():
         check("رابط التغيير نفسه لا يتكرر", sum(1 for r in out["rows"] if r["new"] == "8222") == 1)
         lk = rows.get(("400", "444")) or {}
         check("بديل البحث: طلبه من خطه المربوط", lk.get("new") == "4444" and lk.get("password") == "np4" and lk.get("host") == "http://new.x", lk)
+        first = rows.get(("700", "777")) or {}
+        check("يوزر لعميلين أحدهما عُوِّض ببديله: البديل الآخر لطلب العميل الآخر", first.get("new") == "3777" and first.get("kind") == "link", first)
+        check("طلب المعوَّض يبقى ببديله", (rows.get(("800", "777")) or {}).get("new") == "9777")
         amb = rows.get(("", "555")) or {}
         check("يوزر لعميلين: بلا طلب ومعه الطلبات المحتملة", amb.get("orders") == ["500", "600"], amb)
     finally:

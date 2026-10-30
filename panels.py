@@ -1374,6 +1374,9 @@ def replacements_export(data_dir, links=None):
         mine = [ln for ln in by_user.get(new.lower(), []) if renew.norm_order(ln.get("order"))]
         olds = [ln for ln in by_user.get(old.lower(), []) if renew.norm_order(ln.get("order"))]
         pool = mine or olds
+        if not mine:                               # طلبٌ أخذ بديله الخاص لهذا اليوزر (مكررٌ عُوِّض) ليس طلب هذا البديل
+            taken = {renew.norm_order(r["order"]) for r in rows if r["order"] and r["old"].lower() == old.lower() and r["new"].lower() != new.lower()}
+            pool = [ln for ln in pool if renew.norm_order(ln.get("order")) not in taken] or pool
         orders = sorted({renew.norm_order(ln.get("order")) for ln in pool})
         phones = {renew.norm_phone(ln.get("phone")) for ln in pool}
         one = orders[0] if len(orders) == 1 else ""
