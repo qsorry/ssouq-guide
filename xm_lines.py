@@ -3048,7 +3048,7 @@ def replacement_users(accounts):
     return out
 
 
-def replacements_export(accounts, ws):
+def replacements_export(accounts, ws, cfg=None):
     """الحسابات البديلة كلها لنقلها إلى المتجر (panels.replacements_export) بروابط user_links من كل البوابات وهوست كلٍّ منها."""
     links = []
     for a in (accounts or []):
@@ -3058,7 +3058,12 @@ def replacements_export(accounts, ws):
             except Exception:
                 continue
             links += [dict(r, host=g.get("host", ""), gate=g.get("name") or g.get("host") or "") for r in recs]
-    return panels.replacements_export(ws, links)
+    hosts = {}
+    for p in renew.normalize_config(cfg or {})["panels"]:
+        h = p.get("card_host") or ("http://" + p["hosts"][0] if p.get("hosts") else "")
+        if h:
+            hosts[p["id"]] = h
+    return panels.replacements_export(ws, links, hosts)
 
 
 DUP_MSG_NEW, DUP_MSG_OLD, wa_line = panels.DUP_MSG_NEW, panels.DUP_MSG_OLD, panels.wa_line   # القوالب في panels (تُرقّى بها الرسائل القديمة المحفوظة)
@@ -7691,7 +7696,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/renew/store-lines":   # الاشتراكات المسحوبة JSON (للنقل)
                 return self._send(200, panels.load_store_lines(rws))
             if path == "/api/renew/replacements.json":  # الحسابات البديلة لطلبات سلة — يُرفع في ssouq.com (الطلبات ← طلبات سلة)
-                return self._send(200, raw=json.dumps(replacements_export(racs, rws), ensure_ascii=False).encode("utf-8"),
+                return self._send(200, raw=json.dumps(replacements_export(racs, rws, rcfg), ensure_ascii=False).encode("utf-8"),
                                   ctype="application/json; charset=utf-8",
                                   extra={"Content-Disposition": 'attachment; filename="ssouq-replacements.json"'})
             if path == "/api/renew/users.xlsx":     # كل يوزرات اللوحات المسحوبة Excel
