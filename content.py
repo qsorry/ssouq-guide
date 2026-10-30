@@ -156,6 +156,9 @@ _AR_SEASON = re.compile(_B + r"(?:الموسم|موسم|الجزء|جزء|ج)\s*
 _AR_EP = re.compile(_B + r"(الحلقة|الحلقه|حلقة|حلقه|ح)\s*[:.]?\s*(\d{1,4})(?!\d)")
 _EP_ONLY = re.compile(_B + r"(?:E|Ep|Episode)\s*\.?\s*(\d{1,4})(?!\d)", re.I)
 _SEASON_ONLY = re.compile(_B + r"(?:S|Season)\s*\.?\s*(\d{1,3})(?!\d)", re.I)
+# علامة موسمٍ بقيت في اسم المسلسل بعد قطع الحلقة: لوحاتٌ (فالكون) تكتب الحلقة «Black Lightning S02 Black.Lightning
+# S02E05» أو «WWE NXT S2021 WWE NXT 2021.08.24»، فيُقطع الاسم عند أول علامة — وإلا صار كل موسمٍ (وكل حلقة) مسلسلًا.
+_SEASON_IN = re.compile(_B + r"S(?:eason)?\s*\.?\s*(\d{1,4})(?![\w])", re.I)
 
 
 def _extinf(line):
@@ -290,6 +293,9 @@ def _slim(d):
     return {k: v for k, v in d.items() if v}
 
 
+CAT_V = 3   # نسخة الفهرس: تُزاد إن تغيّرت القراءة، فيُسحب في أول دورةٍ ما قرأته نسخةٌ أقدم (‏_cat_old)
+
+
 class Parser:
     """يأخذ سطور الملف واحدًا واحدًا (‏line) ويُخرج الفهرس (‏result). والعنصر:
     فيلم {n الاسم، y السنة، p الصورة، i رقمه}، وقناة {n، p، i}، ومسلسل {n، y، p، i أكبر رقم حلقة، s المواسم}."""
@@ -375,11 +381,15 @@ class Parser:
             rec = acc.get(k)
             if rec is None:
                 acc[k] = {"n": title, "y": year, "p": poster, "i": sid}
-            else:                               # الفيلم نفسه بجودةٍ أخرى: رقمه الأحدث وأول صورة
+            else:                               # الفيلم نفسه بجودةٍ أخرى: رقمه الأحدث وأول صورة، وq عدد نسخه
+                rec["q"] = rec.get("q", 1) + 1  # (يُعدّ كلٌّ منها فيلمًا كما يعدّها التطبيق)
                 rec["i"] = max(rec["i"], sid)
                 rec["p"] = rec["p"] or poster
             return
         sname, season, num = (_clean(_tidy(ep[0])), ep[1], ep[2]) if ep else (name, 0, None)
+        m = _SEASON_IN.search(sname)
+        if m and _tidy(sname[:m.start()]):
+            sname, season = _tidy(sname[:m.start()]), season or int(m.group(1))
         sname, year = _split_year(_dequal(sname or group))
         k = _norm(sname)
         rec = acc.get(k)
@@ -398,7 +408,7 @@ class Parser:
             eps[0].add(num)
 
     def result(self):
-        out = {"v": 2, "entries": sum(self.n.values()), "n": dict(self.n), "skipped": dict(self.skipped)}
+        out = {"v": CAT_V, "entries": sum(self.n.values()), "n": dict(self.n), "skipped": dict(self.skipped)}
         for kind in KINDS:
             gs = []
             for gname, acc in self.groups[kind].items():
@@ -884,11 +894,12 @@ def _cat_at(data_dir, key):
         return 0.0
 
 
-_V2 = re.compile(rb'^\{\s*"v"\s*:\s*2\b')
+_V2 = re.compile(rb'^\{\s*"v"\s*:\s*%d\b' % CAT_V)
 
 
 def _cat_old(data_dir, key):
-    """فهرسٌ قرأته النسخة الأولى (بلا صور ولا أرقام ولا تقييم) — من أول بايتاته: النسخة الحالية تبدأ بـ ‏"v":2."""
+    """فهرسٌ قرأته نسخةٌ أقدم (الأولى بلا صور ولا تقييم، والثانية تعدّ كل موسمٍ مسلسلًا والفيلم بجوداته مرة) — من أول
+    بايتاته: النسخة الحالية تبدأ بـ ‏"v":CAT_V."""
     try:
         with open(_cat_path(data_dir, key), "rb") as f:
             return not _V2.match(f.read(32))
@@ -1016,7 +1027,7 @@ def clear(data_dir, key, drop=False):
 
 
 # ================= العرض المشتق (للصفحة والبحث) =================
-SUM_V = 1                            # نسخة الملخّص: تُزاد إن تغيّر ما فيه أو طريقة العدّ، فيُعاد بناء ما حُفظ قبلها
+SUM_V = 2                            # نسخة الملخّص: تُزاد إن تغيّر ما فيه أو طريقة العدّ، فيُعاد بناء ما حُفظ قبلها
 
 
 def _sig(st, srv):
@@ -1159,7 +1170,7 @@ def _upgrade(cat):
     """فهرسٌ من النسخة الأولى (الفيلم والقناة نصًّا، والمسلسل [الاسم، المواسم]) بصيغة العناصر الحالية — والسنة
     والجودة تُفصلان من الاسم كما في القراءة الحالية، فيُعرض الفيلم بسنته وبجوداته عنصرًا واحدًا من الآن، لا بعد
     السحب التالي."""
-    if cat.get("v") == 2:
+    if cat.get("v") in (2, CAT_V):
         return cat
     cat["old"] = True                        # للمدير: يُعاد رفعه أو يُسحب لتظهر الصور والتقييمات
     for kind in KINDS:
@@ -1233,9 +1244,11 @@ def _build(cat, hidden):
     for g in v["kinds"]["series"]:             # والمسلسل في قسمين يُعرض بمواسمه كلها في كلٍّ منهما
         for it in g["items"]:
             it["s"] = [[s, n] for s, n in sorted(ser[_ikey("series", it)].items())]
-    v["counts"] = {"series": len(ser), "seasons": sum(len(d) for d in ser.values()),
+    api_n = (cat.get("api") or {}).get("series_n") if not hidden else 0
+    v["counts"] = {"series": api_n or len(ser), "seasons": sum(len(d) for d in ser.values()),
                    "episodes": sum(sum(d.values()) for d in ser.values()),
-                   "movie": len({_ikey("movie", it) for g in v["kinds"]["movie"] for it in g["items"]}),
+                   # الأفلام كما يعدّها التطبيق (‏ALL): كل نسخةٍ في كل قسم — الجودات (‏q) والقسمان
+                   "movie": sum(it.get("q", 1) for g in v["kinds"]["movie"] for it in g["items"]),
                    "live": len({_ikey("live", it) for g in v["kinds"]["live"] for it in g["items"]})}
     return v
 
@@ -1672,7 +1685,7 @@ def enrich(cat, xt, flagged=None, allow=None):
             if it.get("i"):
                 lives.setdefault(it["i"], []).append(it)
     want = {k for k in KINDS if any(g["name"] == NO_GROUP for g in cat.get(k) or [])}   # ما يحتاج أقسام الواجهة
-    found, adult, done, heard, cids = {}, set(), {"movies": 0, "series": 0}, 0, {}
+    found, adult, done, heard, cids = {}, set(), {"movies": 0, "series": 0, "series_n": 0}, 0, {}
     if movies:
         with _api_open(xt, "get_vod_streams") as r:
             for o in _json_items(r.read):
@@ -1697,6 +1710,7 @@ def enrich(cat, xt, flagged=None, allow=None):
                 its = series.get(_norm(nm))
                 if not its:
                     continue
+                done["series_n"] += 1           # المسلسل كما تعدّه اللوحة والتطبيق: مدخلٌ لكل قسم — مما في الملف وحده
                 yr = yr or _year(o.get("releaseDate") or o.get("release_date") or o.get("year"))
                 bd = o.get("backdrop_path")
                 bd = bd[0] if isinstance(bd, list) and bd else bd
@@ -1900,6 +1914,7 @@ def _record_news(data_dir, key, cat):
         mem = _read(_seen_path(data_dir, key))
         first = mem is None
         mem = mem or {}
+        recount = not first and mem.get("v") != CAT_V   # قرأته نسخةٌ أقدم بأسماءٍ أخرى: ليس جديدًا، يُحفظ أنه رُئي
         seen_m = [h for h in mem.get("movie") or [] if isinstance(h, str)]
         seen_s = {h: {int(s): int(n) for s, n in v} for h, v in (mem.get("series") or {}).items() if isinstance(v, list)}
         known = set(seen_m)
@@ -1917,7 +1932,7 @@ def _record_news(data_dir, key, cat):
         flood = []
         for kind, got, total in (("movie", movies, len(cur["movie"])), ("series", fresh, len(cur["series"])),
                                  ("eps", more, len(cur["series"]))):
-            if len(got) > max(NEWS_FLOOD, total // 2):
+            if got and (recount or len(got) > max(NEWS_FLOOD, total // 2)):
                 flood.append([kind, len(got)])
                 got.clear()
         entries = []
@@ -1940,7 +1955,7 @@ def _record_news(data_dir, key, cat):
             for s, n in rec["s"].items():
                 was[s] = max(was.get(s, 0), n)
             seen_s[h] = was
-        _write(_seen_path(data_dir, key), {"movie": seen_m[-NEWS_SEEN:],
+        _write(_seen_path(data_dir, key), {"v": CAT_V, "movie": seen_m[-NEWS_SEEN:],
                                             "series": {h: sorted(v.items()) for h, v in list(seen_s.items())[-NEWS_SEEN:]}})
         eps = sum(sum(cur["series"][h]["s"].values()) for h in fresh) + sum(a[1] for _h, add in more for a in add)
         last = _slim({"at": now, "movie": len(movies), "series": len(fresh) + len(more), "eps": eps, "first": first,

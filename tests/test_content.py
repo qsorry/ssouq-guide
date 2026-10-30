@@ -220,6 +220,21 @@ def unit_parse():
     c3, xt = C._parse(reader(SAMPLE.encode("utf-8")))
     check("بيانات واجهة Xtream من روابط الملف، خارج الفهرس", xt == (HOST, "user123", "pass456") and c3 == cat)
 
+    print("أسماء حلقات فالكون")
+    fal = ("#EXTM3U\n" + entry("Black Lightning S02 Black.Lightning S02E05", "Netflix", "series", 40)
+           + entry("Black Lightning S03 Black.Lightning S03E01", "Netflix", "series", 41)
+           + entry("Chicago Fire S14 Mercy E03", "Netflix", "series", 42)
+           + entry("WWE NXT S2021 WWE NXT 2021.08.24", "Netflix", "series", 43)
+           + entry("WWE NXT S2021 WWE NXT 2021.08.31", "Netflix", "series", 44)
+           + entry("S.W.A.T. S02-E07", "Netflix", "series", 45)
+           + entry("Dune (2021) FHD", "VOD", "movie", 46) + entry("Dune (2021) 4K", "VOD", "movie", 47))
+    fs = seasons(catalog(fal))["Netflix"]
+    check("علامة الموسم في الاسم تُقطع: المسلسل واحدٌ بمواسمه", fs == {"Black Lightning": [[2, 1], [3, 1]],
+          "Chicago Fire": [[14, 1]], "WWE NXT": [[2021, 2]], "S.W.A.T": [[2, 1]]}, fs)
+    fv = C._build(catalog(fal), set())
+    check("والأفلام تُعدّ بنسخها كما في التطبيق، وتُعرض واحدًا", fv["counts"]["series"] == 4 and fv["counts"]["movie"] == 2
+          and len(fv["kinds"]["movie"][0]["items"]) == 1, fv["counts"])
+
     print("ملفات أخرى")
     other = ("\ufeff#EXTM3U\r\n#EXTINF:-1,Show S02E03\r\nhttps://cdn.example/show/203.m3u8\r\n"
              "#EXTINF:-1,Some Film (2019)\r\nhttps://cdn.example/films/film.mp4?token=1\r\n"
@@ -1541,7 +1556,7 @@ def unit_enrich():
         st = next(s for s in C.admin_state(d)["servers"] if s["key"] == "smart")
         check("القائمة ثم الواجهة: طلبٌ للأفلام وطلبٌ للمسلسلات", ok and mock_xtream.Handler.hits
               == ["/get.php", "/player_api.php?action=get_vod_streams", "/player_api.php?action=get_series"], mock_xtream.Handler.hits)
-        check("وحاله للمدير", st["api"] == {"ok": True, "movies": 32, "series": 10}, st["api"])
+        check("وحاله للمدير", st["api"] == {"ok": True, "movies": 32, "series": 10, "series_n": 10}, st["api"])
         v = C._view(d, "smart")[1]
         check("الأعداد", v["counts"] == {"series": 10, "seasons": 43, "episodes": 645, "movie": 32, "live": 14}, v["counts"])
         check("وما تعلّمه الواجهة للكبار يسقط", st["skipped"]["adult"] == 3 and "Hidden Adult Film" not in json.dumps(v["cat"]))
@@ -1619,7 +1634,7 @@ def unit_enrich():
 
         text = mock_xtream.build(base)[0]
         res = C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
-        check("والملف المرفوع يُثرى من روابطه", res["api"] == {"ok": True, "movies": 32, "series": 10}, res["api"])
+        check("والملف المرفوع يُثرى من روابطه", res["api"] == {"ok": True, "movies": 32, "series": 10, "series_n": 10}, res["api"])
         C.set_allow(d, "casper", "t", "Hidden Adult Film", True)
         C.ingest(d, "casper", reader(text.encode()), "file", "casper.m3u")
         a = C._adult_view(d, "casper")
@@ -1861,7 +1876,7 @@ def live():
                 break
             time.sleep(.1)
         check("وصار له محتوى، مُثرًى من واجهة السيرفر", fal["has"] and fal["source"] == "url"
-              and fal["api"] == {"ok": True, "movies": 32, "series": 10}, (fal.get("error"), fal.get("api")))
+              and fal["api"] == {"ok": True, "movies": 32, "series": 10, "series_n": 10}, (fal.get("error"), fal.get("api")))
         code, st = jpost(adm + "/api/content/admin/refresh", {"s": "kon"})
         check("«اسحب الآن» بلا رابط", code == 400)
         code, st = jpost(adm + "/api/content/admin/server", {"new": True, "name": "نجم", "key": "najm"})
