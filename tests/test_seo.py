@@ -1378,8 +1378,19 @@ def unit_enrich():
         check("hreflang للغتين فقط إن استحقّت كلتاهما الفهرسة (Prison Break نعم)", 'hreflang="en" href="https://guide.ssouq.com/en/content/series/prison-break/"' in html)
         en = seo_pages.handle(d, "/en/content/series/prison-break/", "en")[1].decode()
         check("النسخة الإنجليزية: lang=en، العنوان الإنجليزي، Story of", 'lang="en" dir="ltr"' in en and "<h1" in en and "<h2>Plot Overview</h2>" in en and "Streaming Platforms &amp; Availability" in en and len(re.search(r"<title>(.*?)</title>", en).group(1)) <= 60)
+        _meta = lambda h: (re.search(r"<title>(.*?)</title>", h, re.S).group(1).replace("&amp;", "&"),   # noqa: E731
+                           re.findall(r'<meta (?:name|property)="(?:description|og:description|twitter:description)" content="([^"]*)"', h))
+        _ta, _da = _meta(html)
+        _te, _de = _meta(en)
+        check("العنوان بلا «وأين تشاهد» / «Where to Watch»: المسلسل «القصة والمواسم والحلقات» و«Seasons & Episodes»",
+              "تشاهد" not in _ta and "Watch" not in _te and _ta.endswith("القصة والمواسم والحلقات") and _te.endswith("Seasons & Episodes"), f"{_ta} | {_te}")
+        check("الوصف (meta وog وtwitter) بلا «متوفر عبر <السيرفرات>» / «Available on»",
+              len(_da) == 3 and len(_de) == 3 and not any("متوفر عبر" in x for x in _da) and not any("Available on" in x for x in _de), str((_da, _de))[:300])
+        _tm = seo_pages._seo_title("الكتاب الأخضر", "فيلم", "movie", seo_pages.P.lang_of("ar"))
+        _tme = seo_pages._seo_title("Jay Kelly", "", "movie", seo_pages.P.lang_of("en"))
+        check("عنوان الفيلم: «فيلم الكتاب الأخضر: القصة والممثلون» و«Jay Kelly: Plot & Cast»", _tm == "فيلم الكتاب الأخضر: القصة والممثلون" and _tme == "Jay Kelly: Plot & Cast", f"{_tm} | {_tme}")
         # بيانات الصفحة JSON (يرسمها المتجر) ← من القواعد نفسها: تُقارَن بالصفحة المرسومة لنفس العمل
-        ej, ee = seo_pages.entity_json(d, "series", "prison-break", "ar"), seo_pages.entity_json(d, "series", "prison-break", "en")
+        ej, ee =seo_pages.entity_json(d, "series", "prison-break", "ar"), seo_pages.entity_json(d, "series", "prison-break", "en")
         _title_tag = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
         _faq_html = re.search(r'id="faq">(.*?)</section>', html, re.S)
         _ld_types = sorted(set(re.findall(r'"@type": "([A-Za-z]+)"', html)) & {"TVSeries", "BreadcrumbList", "FAQPage"})
@@ -1821,6 +1832,40 @@ def unit_release():
         smx = guide_pages.sitemap(C.sitemap(d3) + seo_release.public_sitemap_entries(d3)).decode()
         check("الخريطة العامة تحمل الموسم والقائمة والحلقة، والكيانات الخمسة كما هي", "/content/series/breaking-bad/season-1/" in smx and "/content/genres/drama/" in smx and "episode-1/" in smx
               and len(seo_release.sitemap_entries(d3)) == 5)
+        # الخريطة لا تعلن رابطًا يجيب 404 بعد أن تقلّصت المكتبة (3/11/2026: قوائم بصفحاتٍ أقل، مسلسلاتٌ ومواسم غابت) — على نسخةٍ
+        d4 = tempfile.mkdtemp(prefix="seo_rel4_"); shutil.rmtree(d4); shutil.copytree(d3, d4)
+        c4 = seo_db.connect(d4)
+        seo_db.set_setting(c4, "page_size", 1)                    # صفحةٌ لكل عمل: قائمة الدراما 3 صفحات فتُعتمد page/2/ وpage/3/
+        c4.close()
+        _got_len = len(got)
+        x5 = seo_release.extras(d4, None)
+        del got[_got_len:]                                          # لا يمسّ فحص IndexNow التالي (على d3)
+
+        def _served_all(dd):
+            bad, n = [], 0
+            for p_, *_ in seo_release.public_sitemap_entries(dd):
+                lg = "en" if p_.startswith("/en/") else "ar"
+                r_ = seo_pages.handle(dd, p_, lg)
+                n += 1
+                if not r_ or r_[0] != 200 or "X-Robots-Tag" in r_[2]:
+                    bad.append((p_, r_[0] if r_ else None))
+            return n, bad
+        before4 = {p_ for p_, *_ in seo_release.public_sitemap_entries(d4)}
+        n4, bad4 = _served_all(d4)
+        check("قبل التقلّص: كل رابطٍ في الخريطة يُخدم 200 وindex، وفيها صفحات الدراما 2 و3 وموسم Prison Break",
+              x5["ok"] and not bad4 and "/content/genres/drama/page/3/" in before4 and "/content/series/prison-break/season-1/" in before4, str((x5.get("reason"), bad4[:5]))[:300])
+        c4 = seo_db.connect(d4)
+        c4.execute("UPDATE content SET available=0 WHERE slug='prison-break'")          # مسلسلٌ غاب من المكتبة
+        c4.execute("DELETE FROM content_taxonomy WHERE content_id=(SELECT id FROM content WHERE slug='wonder-woman') AND taxonomy_id=?", (gt,))
+        c4.commit(); c4.close()
+        after4 = {p_ for p_, *_ in seo_release.public_sitemap_entries(d4)}
+        n4b, bad4b = _served_all(d4)
+        gone4 = before4 - after4
+        check("بعد التقلّص: الخريطة بلا أي رابطٍ 404 أو noindex (حكم الرسم نفسه)، وسقطت page/2/ وpage/3/ للدراما والموسم وحلقاته والمسلسل",
+              not bad4b and {"/content/genres/drama/page/2/", "/content/genres/drama/page/3/", "/content/series/prison-break/season-1/", "/content/series/prison-break/season-1/episode-1/"} <= gone4
+              and "/content/genres/drama/" in after4 and not any("prison-break" in p_ for p_ in after4), str((bad4b[:5], sorted(gone4)[:10]))[:400])
+        check("وما سقط من الخريطة يجيب الرسمُ عليه 404 فعلًا (لا رابط صالحٌ أُسقط خطأً)",
+              all((seo_pages.handle(d4, p_, "en" if p_.startswith("/en/") else "ar") or (404,))[0] == 404 for p_ in gone4 if "/content/series/prison-break/" not in p_ or "/season-" in p_), str(sorted(gone4)))
         check("IndexNow للجديد: أُرسل بقدر الاعتماد (مرةً واحدة بعد النجاح)", len(got) > got_before and len(got[-1]["urlList"]) == x1["indexnow"]["new"] > 0)
         n_before = len(got)
         seo_release._progress[os.path.abspath(d3)] = {"action": "extras", "at": int(time.time()), "stage": "starting"}

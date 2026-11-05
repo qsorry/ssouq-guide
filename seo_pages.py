@@ -131,13 +131,13 @@ def extra_approved(con):
     return hit
 
 
-def extra_flags(con, st, key, ok_ar, ok_en, parent_id=None):
+def extra_flags(con, st, key, ok_ar, ok_en, parent_id=None, approved=None):
     """علما صفحتَي غير-الكيان كما تُخدمان ← (ar, en, live?): قبل `index_extra_live` هما الأهلية (معاينة noindex، hreflang كما سيكون)؛ وبعده
     الفهرسة الفعلية: معتمدةٌ بمسارها ولغتها **ومستحقّةٌ الآن** — وللموسم والحلقة يُشترط أيضًا أن يكون مسلسلها معتمدًا بتلك اللغة."""
     if not (st.get("index_live") and st.get("index_extra_live")):
         return bool(ok_ar), bool(ok_en), False
     ap = extra_approved(con)
-    ent = approved_routes(con) if parent_id else None
+    ent = (approved_routes(con) if approved is None else approved) if parent_id else None
 
     def one(lang, ok):
         return bool(ok) and (key, lang) in ap and (not parent_id or (parent_id, lang) in ent)
@@ -169,13 +169,14 @@ def _cut(s, n):
 
 
 def _seo_title(title, kind_ar, typ, tr):
-    """≤60 حرفًا: الكلمة المفتاحية (الاسم) + طُعم. يُقصّ الاسم الطويل لا الطُّعم."""
+    """≤60 حرفًا: الكلمة المفتاحية (الاسم) + طُعم. يُقصّ الاسم الطويل لا الطُّعم.
+    بلا «وأين تشاهد» / «Where to Watch»: العنوان يصف العمل (قصة، ممثلون، مواسم وحلقات) ولا يَعِد بمشاهدته (حذر حقوق النشر بعد إشعار DMCA)."""
     if tr.en:
-        hook = "Guide: Plot, Cast, Seasons & Where to Watch" if typ == "series" else "Plot, Cast & Where to Watch"
+        hook = "Guide: Plot, Cast, Seasons & Episodes" if typ == "series" else "Plot & Cast"
         sep = " " if typ == "series" else ": "
         names = (title, _cut(title, 60 - len(sep) - len(hook)))
     else:
-        hook = "القصة، الحلقات، وأين تشاهد" if typ == "series" else "القصة، الممثلون، وأين تشاهد"
+        hook = "القصة والمواسم والحلقات" if typ == "series" else "القصة والممثلون"
         names = (f"{kind_ar} {title}", _cut(f"{kind_ar} {title}", 60 - 2 - len(hook)))
         sep = ": "
     for n in names:
@@ -553,8 +554,8 @@ def render_entity(con, data_dir, typ, slug, tr, st, query=None):
         desc_bits.append(airing["short"])
     if cast:
         desc_bits.append(tr("بطولة ", "Starring ") + tr("، ", ", ").join(_pname(p, tr) for p in cast[:3]))
-    desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") \
-        + (tr(f". متوفر عبر {tr.join(srv_names)}.", f". Available on {tr.join(srv_names)}.") if srv_names else ".")
+    # بلا «متوفر عبر <السيرفرات>» في الوصف (og وtwitter منه): لا يُعلن العمل في نتائج البحث متاحًا للمشاهدة عبر اشتراكاتنا (حذر حقوق النشر بعد إشعار DMCA)
+    desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") + "."
     desc = _seo_desc(desc, tr)
     # الفتات
     crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (tr("المسلسلات" if typ == "series" else "الأفلام", "Series" if typ == "series" else "Movies"), tr.path)]
@@ -807,8 +808,8 @@ def _entity_json(con, data_dir, typ, slug, tr, st, approved=None):
         desc_bits.append(airing["short"])
     if cast:
         desc_bits.append(tr("بطولة ", "Starring ") + tr("، ", ", ").join(_pname(p, tr) for p in cast[:3]))
-    desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") \
-        + (tr(f". متوفر عبر {tr.join(srv_names)}.", f". Available on {tr.join(srv_names)}.") if srv_names else ".")
+    # بلا «متوفر عبر <السيرفرات>» في الوصف (og وtwitter منه): لا يُعلن العمل في نتائج البحث متاحًا للمشاهدة عبر اشتراكاتنا (حذر حقوق النشر بعد إشعار DMCA)
+    desc = tr(f"تعرف على قصة {kind_ar} {title}", f"{title}: story, cast") + (tr("، ", ". ") + tr("، ", ", ").join(desc_bits) if desc_bits else "") + "."
     desc = _seo_desc(desc, tr)
     crumbs = [(tr("الرئيسية", "Home"), "/"), (tr("المحتوى", "Content"), tr.path), (tr("المسلسلات" if typ == "series" else "الأفلام", "Series" if typ == "series" else "Movies"), tr.path)]
     if hubs:
@@ -1128,6 +1129,14 @@ def render_company(con, data_dir, slug, tr, st, page=1):
                     "pages": pages, "works": len(works)}
 
 
+# ================= عدد صفحات القوائم: مصدرٌ واحد للرسم والخريطة =================
+def list_pages(total, st):
+    """عدد صفحات قائمةٍ فيها `total` عملًا ← min(list_max_pages, ⌈total/page_size⌉) (صفحةٌ واحدة على الأقل).
+    يستعمله الرسم (render_taxonomy · render_hub) ومرشّحو الاعتماد والخريطة (seo_release) فلا تتباعد أعداد الصفحات."""
+    size, max_pages = max(1, int(st.get("page_size", 60))), int(st.get("list_max_pages", 50))
+    return min(max_pages, max(1, -(-int(total) // size)))
+
+
 # ================= الهب =================
 def _hub_query(con, hub, section, genre=None, year=None):
     """أعمال الهب (عضوية مؤكّدة) بقسمه ← (SQL, args) بترتيبٍ ثابت: آخر إضافة ثم المعرّف."""
@@ -1151,6 +1160,23 @@ def _hub_query(con, hub, section, genre=None, year=None):
     return sql, args
 
 
+def hub_total(con, hub, section, genre, year, page, st):
+    """عدد أعمال صفحة الهب ‏/content/<hub>/[section/][genres/<g>/|year/<y>/][page/<n>/] إن كانت تُرسم (200)، وإلا None (404).
+    الشروط نفسها التي يحكم بها render_hub (وهو يستعملها): هبٌّ معروف، صفحةٌ ضمن list_max_pages، نوعٌ موجود، وصفحة القائمة غير فارغة."""
+    if hub not in HUBS:
+        return None
+    if page < 1 or page > int(st.get("list_max_pages", 50)):
+        return None
+    if genre and not con.execute("SELECT 1 FROM taxonomy WHERE kind='genre' AND slug=?", (genre,)).fetchone():
+        return None
+    sql, args = _hub_query(con, hub, section, genre, year)
+    total = con.execute(f"SELECT COUNT(*) FROM ({sql})", args).fetchone()[0]
+    listing = bool(section or genre or year or page > 1)
+    if listing and total <= (page - 1) * max(1, int(st.get("page_size", 60))):
+        return None                              # صفحة قائمةٍ فارغة (بعد آخر صفحة) = 404
+    return total
+
+
 def _hub_rows(con, hub, section, genre, year, page, size):
     sql, args = _hub_query(con, hub, section, genre, year)
     total = con.execute(f"SELECT COUNT(*) FROM ({sql})", args).fetchone()[0]
@@ -1167,7 +1193,7 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
     size, max_pages, min_items = int(st.get("page_size", 60)), int(st.get("list_max_pages", 50)), int(st.get("list_min_items", 12))
     genre = sub[1] if sub and sub[0] == "genres" else None
     year = sub[1] if sub and sub[0] == "year" else None
-    if page < 1 or page > max_pages:
+    if hub_total(con, hub, section, genre, year, page, st) is None:
         return None
     hub_name = HUB_NAMES[hub][tr.en]
     base_path = f"/content/{hub}/" + (f"{section}/" if section else "") + (f"genres/{genre}/" if genre else f"year/{year}/" if year else "")
@@ -1226,7 +1252,7 @@ def render_hub(con, data_dir, hub, section, sub, page, tr, st):
                 body += f'<section><h2>{_esc(tr("الاستوديوهات", "Studios"))}</h2><p class="chips">' + "".join(f'<span class="chip">{_esc(_tname(s, tr))} <small>{s["n"]:,}</small></span>' for s in sts) + "</p></section>"
     else:
         body += _grid(rows, tr)
-        pages = min(max_pages, max(1, -(-total // size)))
+        pages = list_pages(total, st)
         if pages > 1:
             body += '<nav class="pager">' + (f'<a href="{_esc(me(tr.code, page - 1))}" rel="prev">{_esc(tr("السابق", "Previous"))}</a>' if page > 1 else "") \
                 + f'<span>{page} / {pages}</span>' + (f'<a href="{_esc(me(tr.code, page + 1))}" rel="next">{_esc(tr("التالي", "Next"))}</a>' if page < pages else "") + "</nav>"
@@ -1347,9 +1373,9 @@ def _season_path(row, n, lang="ar", ep=None):
     return seo_db.lang_prefix(lang) + f"/content/series/{row['slug']}/season-{n}/" + (f"episode-{ep}/" if ep else "")
 
 
-def render_season(con, data_dir, slug, n, ep_no, tr, st):
-    """‏/content/series/<slug>/season-<n>/ و…/episode-<e>/ — 404 حين لا تتوفر شروط الصفحة (الحلقة خصوصًا)."""
-    _services.data_dir = data_dir
+def season_rows(con, slug, n):
+    """(المسلسل، الموسم، حلقاته) لصفحة ‏/content/series/<slug>/season-<n>/ إن كانت تُرسم، وإلا None (404): مسلسلٌ متاحٌ غير مدموج
+    وموسمٌ موجود. يستعمله render_season وفحص الخريطة (extra_route_indexed) فلا يُعلَن موسمٌ لا يُرسم."""
     row = con.execute("SELECT * FROM content WHERE type='series' AND slug=? AND merged_into IS NULL AND available=1", (slug,)).fetchone()
     if not row or n < 1:
         return None
@@ -1357,6 +1383,16 @@ def render_season(con, data_dir, slug, n, ep_no, tr, st):
     if not season:
         return None
     eps = con.execute("SELECT * FROM episode WHERE content_id=? AND season=? ORDER BY number LIMIT 300", (row["id"], n)).fetchall()
+    return row, season, eps
+
+
+def render_season(con, data_dir, slug, n, ep_no, tr, st):
+    """‏/content/series/<slug>/season-<n>/ و…/episode-<e>/ — 404 حين لا تتوفر شروط الصفحة (الحلقة خصوصًا)."""
+    _services.data_dir = data_dir
+    found = season_rows(con, slug, n)
+    if not found:
+        return None
+    row, season, eps = found
     title = _title(row, tr)
     s_name = tr(f"الموسم {n}", f"Season {n}")
     series_path = _path(row, tr.code)
@@ -1435,12 +1471,39 @@ def _tax_where(kind, key, section=""):
     return sql, args
 
 
+def taxonomy_total(con, facet, slug, section, page, st):
+    """عدد أعمال قائمة التصنيف (النوع · الدولة · اللغة · السنة · الأحدث) إن كانت صفحتها `page` تُرسم (200)، وإلا None (404).
+    الشروط نفسها التي يحكم بها render_taxonomy (وهو يستعملها): تصنيفٌ موجود، سنةٌ صالحة، عملٌ واحد على الأقل، وصفحةٌ ضمن list_pages."""
+    if page < 1 or page > int(st.get("list_max_pages", 50)):
+        return None
+    if facet in TAX_KINDS:
+        kind = TAX_KINDS[facet]
+        if not con.execute("SELECT 1 FROM taxonomy WHERE kind=? AND slug=?", (kind, slug)).fetchone():
+            return None
+    elif facet == "year":
+        kind = "year"
+        if not str(slug).isdigit() or not 1900 <= int(slug) <= 2100:
+            return None
+    elif facet == "latest":
+        kind = "latest"
+        if section not in LATEST_SECTIONS:
+            return None
+    else:
+        return None
+    where, args = _tax_where(kind, slug if kind != "latest" else "", section if facet == "latest" else "")
+    total = con.execute(f"SELECT COUNT(*) {where}", args).fetchone()[0]
+    if not total or page > list_pages(total, st):
+        return None
+    return total
+
+
 def render_taxonomy(con, data_dir, facet, slug, section, page, tr, st):
     """‏/content/<genres|countries|languages>/<slug>/ · /content/year/<yyyy>/ · /content/latest/[movies|series/] — [page/<n>/]
     بُعدٌ واحد فقط؛ الفهرسة بعدد العناصر (list_min_items) وحدّ الصفحات (list_max_pages) من الإعدادات."""
     _services.data_dir = data_dir
-    size, max_pages, min_items = int(st.get("page_size", 60)), int(st.get("list_max_pages", 50)), int(st.get("list_min_items", 12))
-    if page < 1 or page > max_pages:
+    size, min_items = int(st.get("page_size", 60)), int(st.get("list_min_items", 12))
+    total = taxonomy_total(con, facet, slug, section, page, st)
+    if total is None:
         return None
     if facet in TAX_KINDS:
         kind = TAX_KINDS[facet]
@@ -1460,12 +1523,7 @@ def render_taxonomy(con, data_dir, facet, slug, section, page, tr, st):
         kind, name, base = "latest", "", "/content/latest/" + (f"{section}/" if section else "")
         h1 = LATEST_SECTIONS[section][tr.en]
     where, args = _tax_where(kind, slug if kind != "latest" else "", section if facet in ("latest",) else "")
-    total = con.execute(f"SELECT COUNT(*) {where}", args).fetchone()[0]
-    if not total:
-        return None
-    pages = min(max_pages, max(1, -(-total // size)))
-    if page > pages:
-        return None
+    pages = list_pages(total, st)
     rows = con.execute(f"SELECT c.* {where} ORDER BY COALESCE(c.last_seen, c.first_seen, 0) DESC, c.id DESC LIMIT ? OFFSET ?",
                        (*args, size, (page - 1) * size)).fetchall()
     me = lambda lang, pg=1: seo_db.lang_prefix(lang) + base + (f"page/{pg}/" if pg > 1 else "")   # noqa: E731
@@ -1558,6 +1616,80 @@ def _served(res):
     if res[1].get("noindex", True):
         return 200, res[1]["html"], {"X-Robots-Tag": "noindex", "Cache-Control": "private, max-age=0"}
     return 200, res[1]["html"], {"Cache-Control": "public, max-age=600"}
+
+
+def extra_route_indexed(con, st, ar_path, lang, memo=None):
+    """هل تُخدم صفحة غير-الكيان (قائمة · هب · موسم · حلقة · ‏/content/) بمسارها العربي `ar_path` **200 وindex** بهذه اللغة الآن؟
+    تعيد حكم handle نفسه من الدوال نفسها التي يرسم بها (taxonomy_total · hub_total · season_rows · extra_flags) دون رسم الصفحة،
+    فتستعملها الخريطة (seo_release.extras_paths) فلا تعلن رابطًا يجيب 404 بعد أن تقلّصت المكتبة (صفحات قوائم أقل، مواسم أو مسلسلات غابت).
+    ‏memo: قاموسٌ اختياري يحفظ عدد كل قائمة بين صفحاتها في الاستدعاء الواحد."""
+    memo = {} if memo is None else memo
+    if not st.get("preview") or lang not in (st.get("languages") or ["ar", "en"]):
+        return False
+    if ar_path == "/content/":
+        if not st.get("content_hub"):
+            return False
+        ia, ie, live = extra_flags(con, st, "/content/", True, True)
+        return bool(live and (ie if lang == "en" else ia))
+    if not ar_path.endswith("/") or ar_path.rstrip("/") == "/content/countries/turkey":
+        return False
+    if con.execute("SELECT 1 FROM redirect WHERE path=?", (ar_path,)).fetchone():
+        return False
+    min_items = int(st.get("list_min_items", 12))
+    parent = None
+    ms = _RX_SEASON.match(ar_path)
+    mt = None if ms else _RX_TAX.match(ar_path)
+    if ms:
+        slug, n, ep_no = ms.group(1), int(ms.group(2)), int(ms.group(3) or 0)
+        key = ("season", slug, n)
+        if key not in memo:
+            memo[key] = season_rows(con, slug, n)
+        found = memo[key]
+        if not found:
+            return False
+        row, season, eps = found
+        parent = row["id"]
+        if ep_no:
+            ep = next((e for e in eps if e["number"] == ep_no), None)
+            if not ep or not episode_ok(ep, lang, st):          # render_season: الحلقة بلا شروطها بهذه اللغة = 404
+                return False
+            ok_ar, ok_en = episode_ok(ep, "ar", st), episode_ok(ep, "en", st)
+        else:
+            ok_ar, ok_en = season_ok(season, eps, "ar", st)[0], season_ok(season, eps, "en", st)[0]
+    elif mt:
+        facet_g, slug_g, year_g, sect_g, page_g = mt.groups()
+        if page_g == "1":
+            return False                                         # يُحوَّل 301 إلى الصفحة الأولى
+        facet = facet_g or ("year" if year_g else "latest")
+        key = ("tax", facet, slug_g or year_g or "", sect_g or "")
+        if key not in memo:
+            memo[key] = taxonomy_total(con, facet, slug_g or year_g or "", sect_g or "", 1, st)
+        total = memo[key]
+        if total is None or int(page_g or 1) > list_pages(total, st):
+            return False
+        ok_ar = ok_en = total >= min_items
+    else:
+        m = _RX.match(ar_path)
+        if not m or not m.group(8):                               # الكيانات والأشخاص والشركات خارج هذه الخريطة
+            return False
+        hub, section, subk, subv, page_g = m.group(8), m.group(9) or "", m.group(10), m.group(11), m.group(12)
+        if page_g == "1":
+            return False
+        genre = subv if subk == "genres" else None
+        year = subv if subk == "year" else None
+        page = int(page_g or 1)
+        key = ("hub", hub, section, genre, year)
+        if key not in memo:
+            memo[key] = hub_total(con, hub, section, genre, year, 1, st)
+        total = memo[key]
+        # ما يرفضه hub_total للصفحة `page` نفسها، من عدد الصفحة الأولى: خارج list_max_pages، أو صفحة قائمةٍ بعد آخر عمل
+        if total is None or page > int(st.get("list_max_pages", 50)) or (page > 1 and total <= (page - 1) * max(1, int(st.get("page_size", 60)))):
+            return False
+        ok_ar = ok_en = total >= min_items
+    if parent is not None and "approved" not in memo:
+        memo["approved"] = approved_routes(con)
+    ia, ie, live = extra_flags(con, st, ar_path, ok_ar, ok_en, parent_id=parent, approved=memo.get("approved"))
+    return bool(live and (ie if lang == "en" else ia))
 
 
 def handle(data_dir, path, lang, _info=False, _con=None):
