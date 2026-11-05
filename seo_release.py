@@ -1485,11 +1485,11 @@ EXTRA_STATE = "release_extras"     # build_state: آخر تشغيل {at, routes,
 def extras_candidates(con, st):
     """مرشّحو الاعتماد من غير الكيانات ← [(المسار العربي، النوع، معرّف المسلسل الأب أو None، اللغات المسموحة أو None)].
     تُعدَّد من القاعدة (لا زحف) بالعتبات نفسها التي يرسم بها seo_pages؛ والرسم وحده يحكم الأهلية بعد ذلك (index_ar/index_en)."""
-    size, max_pages, min_items = int(st.get("page_size", 60)), int(st.get("list_max_pages", 50)), int(st.get("list_min_items", 12))
+    min_items = int(st.get("list_min_items", 12))
     out = []
 
     def paged(base, total, kind, first=True):
-        pages = min(max_pages, max(1, -(-total // size)))
+        pages = seo_pages.list_pages(total, st)          # العدد نفسه الذي يرسم به seo_pages (لا صفحة بعد الأخيرة)
         for pg in range(1 if first else 2, pages + 1):
             out.append((base + (f"page/{pg}/" if pg > 1 else ""), kind, None, None))
 
@@ -1597,12 +1597,15 @@ def extras_gate(data_dir, con, st, routes, candidates_ineligible=()):
 
 
 def extras_paths(con, st):
-    """مسارات الخريطة للصفحات غير الكيانية: المعتمد المستحقّ (يُخدم index فعلًا) ← [(مسار بالبادئة، النوع)] — فارغٌ قبل index_extra_live."""
+    """مسارات الخريطة للصفحات غير الكيانية: المعتمد المستحقّ **الذي يُخدم الآن 200 وindex** ← [(مسار بالبادئة، النوع)] — فارغٌ قبل index_extra_live.
+    قائمة الاعتماد لقطةٌ من يوم اعتمادها، والمكتبة تتغيّر بعدها (تقلّصت في 3/11/2026: صفحات قوائم أقل، مواسم ومسلسلات غابت)، فكل مسارٍ
+    يُفحص بحكم الرسم نفسه (seo_pages.extra_route_indexed) وما صار 404 أو noindex أو تحويلًا يسقط من الخريطة بلا انتظار اعتمادٍ جديد."""
     if not (st.get("index_live") and st.get("index_extra_live")):
         return []
     stt = seo_db.state(con, seo_pages.EXTRA_KEY) or {}
-    redirects = {r["path"] for r in con.execute("SELECT path FROM redirect")}
-    return [(seo_db.lang_prefix(x["lang"]) + x["path"], x.get("kind", "")) for x in stt.get("routes") or [] if x["path"] not in redirects]
+    memo = {}
+    return [(seo_db.lang_prefix(x["lang"]) + x["path"], x.get("kind", "")) for x in stt.get("routes") or []
+            if isinstance(x, dict) and seo_pages.extra_route_indexed(con, st, x["path"], x["lang"], memo)]
 
 
 # ================= عدّاد الصفحات: ما اعتُمد، وما في الخريطة، وما فُهرس فعلًا عند قوقل (عيّنة) =================
