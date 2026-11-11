@@ -1187,6 +1187,9 @@ def unit_render():
           'src="/static/img/brands/falcon.webp"' in r and "فالكون (1)</a>" in r)
     r = P.api_search(d, "smart", "only in falcon")["html"]
     check("ما ليس هنا: أين يوجد", "لا يوجد «only in falcon» في سمارت" in r and "لكنه موجود في" in r and "فالكون (1)" in r)
+    r = P.api_search(d, "smart", "only in falcon", "ar", True)["html"]
+    check("plain: بلا بحثٍ في السيرفرات الأخرى ولا تصحيح", "لكنه موجود في" not in r and "falcon" not in r.split("</h2>")[-1])
+    check("plain: النتيجة المطابقة كما هي", titles(P.api_search(d, "smart", "breaking", "ar", True)["html"]) == titles(P.api_search(d, "smart", "breaking")["html"]))
     r = P.api_search(d, "smart", "عثمان")["html"]
     check("بالعربية", titles(r) == ["المؤسس عثمان"] and cards(r)[0]["sc"] == ["الموسم 5 (حلقتان)"])
     check("بلا همزة", "المؤسس عثمان" in P.api_search(d, "smart", "الموسس")["html"])

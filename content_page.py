@@ -628,21 +628,22 @@ def entity_hint(data_dir, q):
         con.close()
 
 
-def results_html(data_dir, key, srv, v, q, tr=AR):
+def results_html(data_dir, key, srv, v, q, tr=AR, plain=False):
     """نتائج البحث بالاسم ملصقاتٍ: لكل نوعٍ أوّل C.SEARCH_MAX بقسمها، ثم أين يوجد الاسم في السيرفرات الأخرى —
-    فمن لم يجد مسلسله هنا يعرف أيّ اشتراكٍ فيه."""
+    فمن لم يجد مسلسله هنا يعرف أيّ اشتراكٍ فيه. `plain`: بلا تصحيح كتابةٍ ولا بحثٍ في السيرفرات الأخرى — لمن يريد النتائج المطابقة
+    فقط (المتجر): بحث التصحيح يمرّ على مفردات الأسماء كلها بلغة بايثون فيستغرق ثوانيَ ويحجز الخادم (الذي لا يجد اسماً أبطأ ما يكون)."""
     q = " ".join(str(q or "").split())[:C.QUERY_MAX]
     if not C._words(q):
         return ""
     hits, total = C._search(key, v, q)
-    ent = entity_hint(data_dir, q) if not total else None   # «ون بيس»: العمل معروف بالكيان وإن كُتب اسمه في القوائم بغير هذه الكتابة
+    ent = entity_hint(data_dir, q) if not total and not plain else None   # «ون بيس»: العمل معروف بالكيان وإن كُتب اسمه في القوائم بغير هذه الكتابة
     if ent and key in ent["servers"]:                       # موجودٌ في هذا السيرفر باسمٍ آخر: تُعرض نتائج اسمه فيه
         for nm in ent["servers"][key]:
             h2, t2 = C._search(key, v, nm)
             if t2:
                 hits, total, q = h2, t2, nm
                 break
-    fixed = C.suggest(key, v, q) if not total and not ent else ""   # «ياب الحارة» ← «باب الحارة» (ولا «أقرب اسمٍ» بلا صلة لعملٍ عُرف مكانه)
+    fixed = C.suggest(key, v, q) if not total and not ent and not plain else ""   # «ياب الحارة» ← «باب الحارة» (ولا «أقرب اسمٍ» بلا صلة لعملٍ عُرف مكانه)
     shown = q
     if fixed:
         hits, total = C._search(key, v, fixed)
@@ -666,7 +667,7 @@ def results_html(data_dir, key, srv, v, q, tr=AR):
         parts.append(f'<h3>{tr.tab(kind)} <small>({n:,})</small></h3>'
                      f'<div class="grid">{_cards(key, v, kind, top, tr=tr)}</div>{more}')
     elsewhere = []
-    for s in C.servers(data_dir):
+    for s in ([] if plain else C.servers(data_dir)):
         ov = C._view(data_dir, s["key"])[1] if s["key"] != key else None
         if not C._has(ov):
             continue
@@ -712,11 +713,11 @@ def results_html(data_dir, key, srv, v, q, tr=AR):
             f'{fix}{"".join(parts)}{other}</section>')
 
 
-def api_search(data_dir, key, q, lang="ar"):
+def api_search(data_dir, key, q, lang="ar", plain=False):
     srv, v = C._view(data_dir, key)
     if not C._has(v):
         return None
-    return {"ok": True, "html": results_html(data_dir, key, srv, v, q, lang_of(lang))}
+    return {"ok": True, "html": results_html(data_dir, key, srv, v, q, lang_of(lang), plain)}
 
 
 def api_titles(data_dir, key):
