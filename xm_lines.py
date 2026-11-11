@@ -7064,7 +7064,7 @@ class Handler(BaseHTTPRequestHandler):
                 extra["Content-Encoding"] = "gzip"
             return self._send(200, raw=res[1] if gz else res[0], extra=extra)
         if path == "/api/content/search":       # البحث بالاسم مع الكتابة (و‏lang=en للصفحة الإنجليزية)
-            res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"), self._q("lang"))
+            res = content_page.api_search(DATA_DIR, content.key_ok(self._q("s")), self._q("q"), self._q("lang"), self._q("plain") == "1")
             if res is None:
                 return self._send(404, {"ok": False, "error": "not found"})
             return self._send(200, res, extra={"Cache-Control": "public, max-age=600"})
