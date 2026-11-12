@@ -1325,6 +1325,24 @@ def _vocab(v):
     return voc
 
 
+def _vocab_del(v):
+    """فهرس «الحذف» لمفردات الأسماء: كل كلمةٍ وكل ما ينتج عنها بحذف حرفٍ ← الكلمات (تكرارها، الكلمة). كلمتان بينهما
+    تعديلٌ واحد (حرفٌ مختلف أو زائد أو ناقص أو مقلوبان) تشتركان في صيغةٍ واحدة منها — فيُبحث بحثًا مباشرًا بدل مسح المفردات كلها
+    بلغة بايثون (كان يحجز الخادم ثوانيَ لكل بحثٍ بلا نتيجة). يُبنى أول مرة."""
+    idx = v.get("_vdel")
+    if idx is None:
+        idx = {}
+        for lst in _vocab(v).values():
+            for n, w in lst:
+                for f in {w} | {w[:i] + w[i + 1:] for i in range(len(w))}:
+                    idx.setdefault(f, []).append((n, w))
+        v["_vdel"] = idx
+    return idx
+
+
+_sug = {}
+
+
 def suggest(key, v, q):
     """أقرب بحثٍ له نتائج لبحثٍ بلا نتائج — خطأٌ في حرفٍ واحد من كلمة («ياب الحارة» ← «باب الحارة»، «braking bad»
     ← «breaking bad»): لكل كلمةٍ من ثلاثة أحرفٍ فأكثر أقرب كلمات الأسماء إليها الأكثر تكرارًا، ويُجرَّب تصحيح كلمةٍ
@@ -1332,11 +1350,19 @@ def suggest(key, v, q):
     words = _words(q)
     if not words or len(words) > 4 or _search(key, v, q)[1]:
         return ""
-    voc = _vocab(v)
+    ck = (key, id(v), " ".join(words))
+    if ck in _sug:
+        return _sug[ck]
+    idx = _vocab_del(v)
     alts = []
     for w in words:
-        near = sorted(((n, x) for size in (len(w) - 1, len(w), len(w) + 1) for n, x in voc.get(size, ())
-                       if _near(w, x)), key=lambda p: (-p[0], p[1])) if len(w) >= 3 and not w.isdigit() else []
+        cand = {}
+        if len(w) >= 3 and not w.isdigit():
+            for f in {w} | {w[:i] + w[i + 1:] for i in range(len(w))}:
+                for n, x in idx.get(f, ()):
+                    if _near(w, x):
+                        cand[x] = n
+        near = sorted(((n, x) for x, n in cand.items()), key=lambda p: (-p[0], p[1]))
         alts.append([x for _, x in near[:3]])
     tries = [{i: a} for i in range(len(words)) for a in alts[i]]
     tries += [{i: a, j: b} for i in range(len(words)) for j in range(i + 1, len(words))
@@ -1344,8 +1370,14 @@ def suggest(key, v, q):
     for t in tries[:24]:
         fixed = " ".join(t.get(i, w) for i, w in enumerate(words))
         if _search(key, v, fixed)[1]:
-            return fixed
-    return ""
+            res = fixed
+            break
+    else:
+        res = ""
+    if len(_sug) > 2000:
+        _sug.clear()
+    _sug[ck] = res
+    return res
 
 
 def select(v, kind, gid="", year=0, genre="", rating=0, sort="new"):
