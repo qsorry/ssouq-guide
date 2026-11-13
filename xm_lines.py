@@ -6438,6 +6438,7 @@ def start_contest_worker():
     threading.Thread(target=_contest_loop, daemon=True).start()
 
 
+CONTENT_OFF = os.environ.get("XM_DISABLE_CONTENT") == "1"   # المتجر يخدم المحتوى بنفسه: لا فهارس في الذاكرة ولا صفحات محتوى عامة هنا
 CONTENT_TICK = 600                  # كل عشر دقائق: أيّ سيرفرٍ له رابط M3U مرّ يومٌ على محتواه يُسحب
 
 
@@ -6891,6 +6892,10 @@ class Handler(BaseHTTPRequestHandler):
         qs = self.path[len(path):]              # ما بعد "؟" — يُحمَل مع التحويل
         self._bind_host()
         self._inject = False
+        if CONTENT_OFF and not self.on_tool_host and (
+                path.startswith(("/content", "/en/content", "/ar/content", "/api/content", "/api/report/", "/sitemap-content"))):
+            # المحتوى العام (صفحات وواجهات وخرائط) توقّف: كل طلبٍ يبني الفهرس كله في الذاكرة (كان يحبس الخادم عند حدّ 4GB).
+            return self._send(410, raw=b"Gone", ctype="text/plain; charset=utf-8", extra={"Cache-Control": "public, max-age=3600"})
         if self.on_tool_host:                   # نطاق الأداة: الجذر هو الأداة، بلا موقع عام
             if path == "/robots.txt":           # لوحة الإدارة لا تُفهرس
                 return self._send(200, raw=b"User-agent: *\nDisallow: /\n",
@@ -9921,15 +9926,20 @@ def web():
     start_renew_worker()
     start_split_worker()
     start_contest_worker()
-    start_content_worker()
+    # المالك 2026-11-13: المتجر صار مستقلاً عن الدليل (فهرس المحتوى والبحث والـSEO فيه)، والدليل يُبقى للوحة الإدارة
+    # (توليد الاشتراكات والتجديد والبدائل). XM_DISABLE_CONTENT=1 يوقف سحب ملفات M3U اليومي وبناء الفهارس وطبقة الكيانات
+    # وإثراءها وقناة «أضيف مؤخرًا» وأعداد منتجات سلة؛ XM_DISABLE_SEO=1 يوقف حراس فحص السكّان ومهمة التوسيع. الافتراضي: يعمل كل شيء.
+    if not CONTENT_OFF:
+        start_content_worker()
     start_reports()
     start_embedded_reader()
     start_mail()
     start_stremio_warm()
     start_stremio_genres()
     seo_release.set_notifier(seo_notify_mail)   # نتيجة النشر الآلي بالبريد (اكتمل/فشل)
-    seo_release.start_job_watchdog(DATA_DIR)    # مهمة التوسيع تكمل بنفسها بعد إعادة النشر
-    seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
+    if os.environ.get("XM_DISABLE_SEO") != "1":
+        seo_release.start_job_watchdog(DATA_DIR)    # مهمة التوسيع تكمل بنفسها بعد إعادة النشر
+        seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 
