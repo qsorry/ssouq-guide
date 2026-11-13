@@ -9921,15 +9921,20 @@ def web():
     start_renew_worker()
     start_split_worker()
     start_contest_worker()
-    start_content_worker()
+    # المالك 2026-11-13: المتجر صار مستقلاً عن الدليل (فهرس المحتوى والبحث والـSEO فيه)، والدليل يُبقى للوحة الإدارة
+    # (توليد الاشتراكات والتجديد والبدائل). XM_DISABLE_CONTENT=1 يوقف سحب ملفات M3U اليومي وبناء الفهارس وطبقة الكيانات
+    # وإثراءها وقناة «أضيف مؤخرًا» وأعداد منتجات سلة؛ XM_DISABLE_SEO=1 يوقف حراس فحص السكّان ومهمة التوسيع. الافتراضي: يعمل كل شيء.
+    if os.environ.get("XM_DISABLE_CONTENT") != "1":
+        start_content_worker()
     start_reports()
     start_embedded_reader()
     start_mail()
     start_stremio_warm()
     start_stremio_genres()
     seo_release.set_notifier(seo_notify_mail)   # نتيجة النشر الآلي بالبريد (اكتمل/فشل)
-    seo_release.start_job_watchdog(DATA_DIR)    # مهمة التوسيع تكمل بنفسها بعد إعادة النشر
-    seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
+    if os.environ.get("XM_DISABLE_SEO") != "1":
+        seo_release.start_job_watchdog(DATA_DIR)    # مهمة التوسيع تكمل بنفسها بعد إعادة النشر
+        seo_scan.start_watchdog(DATA_DIR)           # فحص السكّان كاملًا: يُستأنف وحده بعد إعادة التشغيل (نشرٌ أو سقوط)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 
