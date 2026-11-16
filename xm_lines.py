@@ -2996,7 +2996,9 @@ def _store_lines_xlsx(ws):
         if r.get("username"):
             orders_of.setdefault(r["username"], set()).add(str(r.get("order", "")))
     rows = []
-    for r in d.get("lines", []):
+    # الأقدم أولًا: المتجر يسلّم اليوزر لأول طلبٍ يمرّ عليه، فيجب أن يكون صاحبه الأول (يحتفظ به) لا اللاحق.
+    ordered = sorted(d.get("lines", []), key=lambda r: (str(r.get("date") or "9999"), str(r.get("order", ""))))
+    for r in ordered:
         others = sorted(orders_of.get(r.get("username") or "", set()) - {str(r.get("order", ""))})
         code = " | ".join(x for x in (
             ("Host " + r["host"]) if r.get("host") else "",
